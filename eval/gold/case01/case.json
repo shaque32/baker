@@ -1,0 +1,18 @@
+{
+  "case_id": "case01",
+  "description": "Synthetic case. Two devices, mixed English and Russian. Stub until Wave 1 generates it.",
+  "synthetic": true,
+  "generator": null,
+  "seed": null,
+  "devices": [],
+  "sources": [],
+  "traps": [
+    "handle_change: @alex92 renamed to @northstar",
+    "shared_account: one account used by two people",
+    "timezone: UTC stored, local time displayed in the report",
+    "gap: 4 days with no WhatsApp artifacts",
+    "decoy_thread: 'tickets' means concert tickets",
+    "second_alex: a different contact also named Alex",
+    "meeting_place: location chosen by someone other than the defendant"
+  ]
+}
