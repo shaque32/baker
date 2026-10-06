@@ -111,6 +111,7 @@ _MSG = {
     "folder": ["folder"],
     "status": ["status"],
     "owner_account": ["account", "owner account"],
+    "tag": ["tag", "tags", "bookmark", "bookmarked"],
 }
 FIELD_ALIASES: dict[RecordKind, dict[str, list[str]]] = {
     RecordKind.CHATS: {
@@ -162,7 +163,6 @@ IGNORED_COLUMNS = {
     "last activity: date",
     "last activity: time",
     "number of attachments",
-    "tags",
     "tag note",
     "carved",
     "manually decoded",
@@ -350,6 +350,13 @@ def parse_duration(cell: Cell) -> int | None:
 
 
 _IDENT_RE = re.compile(r"\+?\d[\d\-().]{3,}|[^@\s]+@[^@\s]+|@\w[\w.]*|\d{5,}")
+# Parties are separated by new lines, ';', or ', ' when the next party starts with an identifier
+# (a name like 'Smith, John' is not split).
+_PARTY_SPLIT_RE = re.compile(
+    r"[\n;]+|,\s*(?=\+?\d|[^\s,]+@|@|[A-Za-z0-9][\w]*[._\d][\w.]*(?:\s|$))"
+)
+# A lone token with no display name, such as an Instagram username 'm.reyes.auto'.
+_BARE_HANDLE_RE = re.compile(r"(?=[\w.]*[._\d])[A-Za-z0-9][\w.]*")
 _ROLE_RE = re.compile(r"^(from|to)\s*:\s*", re.I)
 _OWNER_RE = re.compile(r"\s*\(owner\)\s*$", re.I)
 
@@ -382,7 +389,7 @@ def parse_parties(cell: Cell, reflowed: bool = False) -> list[Party]:
                 lines.append(line)
         t = "\n".join(lines)
     out: list[Party] = []
-    for piece in re.split(r"[\n;]+", t):
+    for piece in _PARTY_SPLIT_RE.split(t):
         p = piece.strip()
         if not p:
             continue
@@ -396,7 +403,7 @@ def parse_parties(cell: Cell, reflowed: bool = False) -> list[Party]:
         if not p:
             continue
         tok, _, rest = p.partition(" ")
-        if _IDENT_RE.fullmatch(tok):
+        if _IDENT_RE.fullmatch(tok) or (not rest and _BARE_HANDLE_RE.fullmatch(tok)):
             out.append(Party(tok, rest.strip() or None, owner, role))
         else:
             out.append(Party(None, p, owner, role))
@@ -564,11 +571,15 @@ SUMMARY_KEYS: dict[str, list[str]] = {
         "extraction start date",
         "extraction date",
         "extraction date/time",
+        "extraction end",
+        "extraction end date/time",
     ],
     "extraction_type": ["extraction type", "extraction method"],
     "device": ["device", "model", "device model", "device name"],
     "os": ["os version", "os", "operating system"],
+    "tool": ["tool", "tool name"],
     "tool_version": [
+        "tool version",
         "ufed physical analyzer version",
         "physical analyzer version",
         "ufed reader version",
@@ -576,16 +587,23 @@ SUMMARY_KEYS: dict[str, list[str]] = {
         "report version",
         "version",
     ],
-    "time_zone": ["time zone", "timezone", "time zone settings"],
+    "time_zone": ["report time zone", "time zone", "timezone", "time zone settings"],
+    "device_time_zone": ["device time zone"],
 }
 
 
-def summary_field(pairs: list[tuple[str, str]], key: str) -> str | None:
-    wanted = SUMMARY_KEYS[key]
-    for k, v in pairs:
-        if norm(k).rstrip(":") in wanted and v.strip():
-            return v.strip()
+def summary_entry(pairs: list[tuple[str, str, str]], key: str) -> tuple[str, str] | None:
+    """(value, locator) of the first summary pair whose key matches, in alias order."""
+    for alias in SUMMARY_KEYS[key]:
+        for k, v, loc in pairs:
+            if norm(k).rstrip(":") == alias and v.strip():
+                return v.strip(), loc
     return None
+
+
+def summary_field(pairs: list[tuple[str, str, str]], key: str) -> str | None:
+    e = summary_entry(pairs, key)
+    return e[0] if e else None
 
 
 def extraction_type(raw: str | None) -> ExtractionType:
@@ -674,13 +692,14 @@ class Coverage:
 class ReportInput:
     """What a reader hands to `write_report`."""
 
-    summary: list[tuple[str, str]]
+    summary: list[tuple[str, str, str]]  # (key, value, locator)
     tables: list[RawTable]
     coverage: Coverage
 
 
 def _slug(app: str) -> str:
-    return norm(app)
+    """App as it appears in ids: the report's spelling, whitespace-normalised."""
+    return re.sub(r"\s+", " ", app).strip()
 
 
 class _Writer:
@@ -694,6 +713,7 @@ class _Writer:
         self.owner_accounts: set[str] = set()
         self.owner_idents: set[tuple[str, str]] = set()  # (app slug, identifier)
         self.threads: dict[str, tuple[str, str, str | None]] = {}
+        self.thread_ids: dict[tuple[str, str], str] = {}
         self.messages: list[tuple[object, ...]] = []
         self.recipients: list[tuple[str, str]] = []
         self.attachments: list[tuple[object, ...]] = []
@@ -738,10 +758,13 @@ class _Writer:
     # threads -------------------------------------------------------------
 
     def thread(self, app: str, key: str, locator: str, title: str | None) -> str:
-        tid = f"thr:{self.src}:{_slug(app)}:{key}"
-        if tid not in self.threads:
+        """Thread for (app, chat key). Its id and locator come from the first row seen."""
+        k = (_slug(app), key)
+        if k not in self.thread_ids:
+            tid = f"thread:{self.src}:{locator}"
+            self.thread_ids[k] = tid
             self.threads[tid] = (locator, app, title)
-        return tid
+        return self.thread_ids[k]
 
     # flush ---------------------------------------------------------------
 
@@ -770,7 +793,7 @@ class _Writer:
         c.executemany(
             "INSERT INTO messages (id, source_id, locator, thread_id, sender_account_id,"
             " direction, ts_utc, ts_offset_min, ts_raw, body, lang, deleted_flag, bookmarked)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL)",
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)",
             self.messages,
         )
         c.executemany(
@@ -813,7 +836,9 @@ def _db_bool(v: bool | None) -> int | None:
 
 
 def _row_time(row: Row, order: DateOrder, report_offset: int | None, cov: Coverage) -> Timestamp:
-    if row.has("ts_date") and row.has("ts_time"):
+    if row.has("ts_time") and not row.has("ts") and not row.has("ts_date"):
+        res = parse_time(row.get("ts_time"), order, report_offset)  # full value in one column
+    elif row.has("ts_date") and row.has("ts_time"):
         dv = row.get("ts_date")
         d = dv.date().isoformat() if isinstance(dv, datetime) else row.text("ts_date")
         t = row.text("ts_time")
@@ -840,9 +865,10 @@ def _raw_time_values(rows: list[Row]) -> list[str]:
             v = r.text("ts_date")
             if v:
                 out.append(f"{v} 00:00")
-        v = r.get("ts")
-        if isinstance(v, str):
-            out.append(v)
+        for f in ("ts", "ts_time"):
+            v = r.get(f)
+            if isinstance(v, str):
+                out.append(v)
     return out
 
 
@@ -933,7 +959,8 @@ def _messages(
             else:
                 chat_key = f"row:{r.locator}"
 
-        tid = w.thread(app, chat_key, r.locator, r.text("chat_name"))
+        title = r.text("chat_name") or r.text("participants")
+        tid = w.thread(app, chat_key, r.locator, title)
         ts = _row_time(r, order, rep_off, cov)
         mid = f"msg:{w.src}:{r.locator}"
         w.messages.append(
@@ -947,6 +974,7 @@ def _messages(
                 *_ts_cols(ts),
                 body_text(r.get("body")),
                 _db_bool(_deleted(r, cov)),
+                1 if r.text("tag") else None,  # examiner tag; blank means not stated
             )
         )
         w.recipients.extend((mid, a) for a in dict.fromkeys(recip_ids))
@@ -956,8 +984,9 @@ def _messages(
             for fname in (name or "").splitlines():
                 if fname.strip():
                     n += 1
-                    loc = f"{r.locator}#att{n}"
-                    w.attachments.append((f"att:{w.src}:{loc}", w.src, loc, mid, fname.strip()))
+                    w.attachments.append(
+                        (f"att:{w.src}:{r.locator}:{n}", w.src, r.locator, mid, fname.strip())
+                    )
 
 
 def _calls(w: _Writer, rows: list[Row], order: DateOrder, rep_off: int | None) -> None:
@@ -1042,7 +1071,7 @@ def _contacts(w: _Writer, rows: list[Row]) -> None:
             w.cov.counters["contacts_without_identifier"] += 1
         for n, ident in enumerate(idents, start=1):
             w.contacts.append(
-                (f"contact:{w.src}:{r.locator}#{n}", w.src, r.locator, w.dev, name, ident)
+                (f"contact:{w.src}:{r.locator}:{n}", w.src, r.locator, w.dev, name, ident)
             )
 
 
@@ -1063,6 +1092,14 @@ KIND_ORDER = [RecordKind.ACCOUNTS, RecordKind.CONTACTS, RecordKind.CHATS, Record
               RecordKind.CALLS]  # fmt: skip
 
 
+def default_source_id(sf: SourceFile) -> str:
+    """The file stem (`item1.xlsx` -> `item1`) when it is a plain token, else `src_<sha12>`."""
+    stem = sf.path.stem
+    if re.fullmatch(r"[A-Za-z0-9_\-]{1,64}", stem):
+        return stem
+    return f"src_{sf.sha256[:12]}"
+
+
 def write_report(
     conn: sqlite3.Connection,
     sf: SourceFile,
@@ -1073,7 +1110,7 @@ def write_report(
     report: ReportInput,
 ) -> Source:
     """Write a parsed report as canonical rows plus one coverage entry in the audit log."""
-    src = source_id or f"src_{sf.sha256[:12]}"
+    src = source_id or default_source_id(sf)
     if conn.execute("SELECT 1 FROM sources WHERE id = ?", (src,)).fetchone():
         raise ValueError(f"source {src} is already in this case database")
     cov = report.coverage
@@ -1098,12 +1135,13 @@ def write_report(
         extraction_type=extraction_type(summary_field(summary, "extraction_type")),
         file_name=sf.path.name,
         sha256=sf.sha256,
-        tool_name="Cellebrite" + (" Physical Analyzer" if tool_version else ""),
+        tool_name=summary_field(summary, "tool")
+        or "Cellebrite" + (" Physical Analyzer" if tool_version else ""),
         tool_version=tool_version,
         extracted_at_utc=extracted_utc,
         imported_at_utc=imported_at,
     )
-    dev = f"dev:{src}"
+    dev = f"device:{src}"
 
     # Parse tables into rows grouped by kind.
     grouped: dict[RecordKind, list[tuple[list[Row], DateOrder, TableCoverage]]] = defaultdict(list)
@@ -1170,11 +1208,11 @@ def write_report(
             (
                 dev,
                 src,
-                "Summary",
+                (summary_entry(summary, "device") or ("", "Summary"))[1],
                 summary_field(summary, "device") or f"Device in {sf.path.name}",
                 summary_field(summary, "device"),
                 summary_field(summary, "os"),
-                tz_raw,
+                summary_field(summary, "device_time_zone") or tz_raw,
             ),
         )
         for rkind in KIND_ORDER:

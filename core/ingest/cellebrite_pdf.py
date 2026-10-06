@@ -94,7 +94,7 @@ def _inside(top: float, bboxes: list[tuple[float, float, float, float]]) -> bool
 
 def read_pdf(data: bytes) -> ReportInput:
     cov = Coverage(notes=[PDF_NOTE])
-    summary: list[tuple[str, str]] = []
+    summary: list[tuple[str, str, str]] = []
     tables: list[RawTable] = []
     section: tuple[str, RecordKind | None] | None = None
     prev: RawTable | None = None  # last imported table, for continuation across pages
@@ -110,7 +110,7 @@ def read_pdf(data: bytes) -> ReportInput:
                     continue
                 key, sep, value = ln["text"].partition(":")
                 if sep and norm(key) in SUMMARY_KEY_NAMES and value.strip():
-                    summary.append((key, value.strip()))
+                    summary.append((key, value.strip(), f"p{pno}"))
             if not found:
                 pages_without_tables.append(pno)
             # Tables in reading order, each with the section title above it.
@@ -149,8 +149,11 @@ def read_pdf(data: bytes) -> ReportInput:
                         )
                         cov.counters["pdf_tables_continued_from_previous_page"] += 1
                     elif _is_summary_table(rows):
-                        pairs = [r for _l, r in rows if len(r) >= 2 and r[0] and r[1]]
-                        summary.extend((str(r[0]), str(r[1])) for r in pairs)
+                        summary.extend(
+                            (str(r[0]), str(r[1]), loc)
+                            for loc, r in rows
+                            if len(r) >= 2 and r[0] and r[1]
+                        )
                         continue
                 has_header = find_header(table) is not None
                 if hint is None and has_header:

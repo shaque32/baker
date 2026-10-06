@@ -124,3 +124,18 @@ def test_parse_parties_reflowed_pdf_cell_joins_wrapped_lines():
     ]
     # Without reflow (Excel), each line is its own party.
     assert len(parse_parties(cell)) == 3
+
+
+def test_parse_parties_comma_separated_and_bare_handles():
+    got = parse_parties("+12125550122 (owner), +12125550188 Jenna, m.reyes.auto")
+    assert got == [
+        Party("+12125550122", None, True, None),
+        Party("+12125550188", "Jenna", False, None),
+        Party("m.reyes.auto", None, False, None),
+    ]
+    # A comma inside a display name does not split it.
+    assert parse_parties("+12125550188 Smith, John") == [
+        Party("+12125550188", "Smith, John", False, None)
+    ]
+    assert parse_parties("Sam") == [Party(None, "Sam", False, None)]
+    assert len(parse_parties("d.petrov (owner), m.reyes.auto")) == 2

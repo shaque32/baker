@@ -34,7 +34,9 @@ Every row below it is one record. A row whose cells are all empty is skipped and
 
 Summary sheet: key-value pairs, key in column A, value in column B. Keys read (aliases accepted):
 `Extraction start date/time`, `Extraction type`, `Device` / `Model`, `OS version`,
-`UFED Physical Analyzer version` / `Report version`, `Time zone`.
+`UFED Physical Analyzer version` / `Report version` / `Tool version`, `Tool`,
+`Report time zone` / `Time zone` (applied to times only if a fixed offset), `Device time zone`
+(stored on the device). `Extraction end` is accepted for the extraction time.
 
 ### Columns
 
@@ -46,10 +48,11 @@ Summary sheet: key-value pairs, key in column A, value in column B. Keys read (a
 | from | `From`, `Sender` |
 | to | `To`, `Recipients`, `Participants` (To only if `To` is absent: means all participants other than the sender) |
 | body | `Body`, `Message`, `Text`, `Content` |
-| time | `Timestamp`, `Timestamp: Date` + `Timestamp: Time`, `Time`, `Date`, `Date/Time` |
+| time | `Timestamp`, `Timestamp: Time` alone (full value), `Timestamp: Date` + `Timestamp: Time`, `Time`, `Date`, `Date/Time` |
 | direction | `Direction`, `Type`, `Folder`, `Status` (values `Incoming`, `Outgoing`, `Sent`, `Received`, `Inbox`, `Missed`, `Read`, `Unread`) |
 | deleted | `Deleted`, `Deleted - Instant Message`, `Deleted - Chat`, `Deleted - Call`, `Record status` |
 | attachment | `Attachment #1`..`Attachment #N`, `Attachments` |
+| examiner tag | `Tag`, `Tags`, `Bookmark` (any text sets `bookmarked = 1`; blank stays NULL) |
 | duration (calls) | `Duration` (`HH:MM:SS`, `MM:SS` or seconds) |
 | party (calls) | `Parties`, `Number`, `Phone Number`, `From`, `To`; `Name` |
 | contact | `Name`; `Entries`, `Phone`, `Phone Number`, `Email`, `Identifier`, `Username` |
@@ -57,8 +60,10 @@ Summary sheet: key-value pairs, key in column A, value in column B. Keys read (a
 
 Party cells look like `<identifier> <display name>`, for example `+15551230001 Alex` or
 `alex92@s.whatsapp.net Alex`. The first whitespace-free token is the identifier; the rest is the
-display name. A trailing ` (owner)` marks the device owner. Several parties are separated by new lines
-or `;`.
+display name. A lone token with a dot, underscore or digit (an Instagram username such as
+`m.reyes.auto`) is an identifier. A trailing ` (owner)` marks the device owner. Several parties are
+separated by new lines, `;`, or `, ` when the next party starts with an identifier (so `Smith, John`
+stays one name).
 
 ### Times
 
@@ -82,12 +87,15 @@ report said.
 
 ## Stable ids and source_ref
 
-- Source id: caller-supplied (`--source-id`), else `src_<first 12 hex of SHA-256>`.
+- Source id: caller-supplied, else the file stem (`item1.xlsx` -> `item1`) when it is a plain
+  token, else `src_<first 12 hex of SHA-256>`.
 - Excel locator: `<sheet>!<row>` using the 1-based spreadsheet row, e.g. `Chats!14`.
 - PDF locator: `p<page>:t<table>:r<row>`, all 1-based, e.g. `p12:t1:r4`.
-- Message id `msg:<source_id>:<locator>`; calls `call:`, contacts `contact:` (with `#<n>` per entry),
-  threads `thr:<source_id>:<app>:<chat key>`, accounts `acct:<source_id>:<app>:<identifier>`,
-  device `dev:<source_id>`.
+- Message id `msg:<source_id>:<locator>`; calls `call:<source_id>:<locator>`; contacts
+  `contact:<source_id>:<locator>:<entry n>`; attachments `att:<source_id>:<locator>:<n>`;
+  threads `thread:<source_id>:<locator of the chat's first row>`; accounts
+  `acct:<source_id>:<app as spelled in the report>:<identifier>`; device `device:<source_id>`,
+  located at the summary's Device row. These match the synthetic case generator's expected database.
 - A party shown with a name only (no number, handle or email) gets an account scoped to its chat:
   `acct:<source_id>:<app>:name:<chat key>:<name>`, so two people called "Alex" in different chats
   are never collapsed. Coverage counts these.
@@ -131,4 +139,19 @@ row is the column header.
 ## Not imported yet
 
 Locations, timeline, web history, media and other categories; examiner bookmarks and tags
-(`messages.bookmarked` stays NULL); attachment hashes and MIME types; message language.
+beyond the Tag column; attachment hashes and MIME types; message language.
+
+## Differences from the synthetic case's expected database (on purpose)
+
+Checked against `make synth --db` from the synthetic case branch: every id, sender, recipient,
+time, direction, thread, call and contact matches. These columns differ by design:
+
+| Column | Expected DB | Importer | Why |
+|---|---|---|---|
+| `sources.fidelity` | `full_extraction` | `curated_report` | A report is examiner-generated; it can never support an absence claim. |
+| `messages.deleted_flag`, `calls.deleted_flag`, `messages.bookmarked` when blank | 0 | NULL | A blank cell is not a statement; NULL means the source did not say. |
+| `accounts.device_id` for non-owner accounts | the device | NULL | Read as "this account belongs to the device"; only owner accounts get it. |
+| `accounts.display_name` after a rename | last name seen | first name seen | Neither is complete; see the `sender_raw` proposal in PROPOSED_CHANGES.md. |
+| `messages.lang` | detected | NULL | Language detection belongs to enrichment, not import. |
+| `attachments.mime_type`, `sha256` | filled | NULL | The report lists only the file name. |
+| `devices.label` | case narrative | Device field | The report does not say whom a device was seized from. |

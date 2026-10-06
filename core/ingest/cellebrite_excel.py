@@ -52,7 +52,7 @@ class CellebriteExcelImporter:
 def read_workbook(data: bytes) -> ReportInput:
     wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
     cov = Coverage()
-    summary: list[tuple[str, str]] = []
+    summary: list[tuple[str, str, str]] = []
     tables: list[RawTable] = []
     try:
         for ws in wb.worksheets:
@@ -62,11 +62,11 @@ def read_workbook(data: bytes) -> ReportInput:
                 for i, cells in enumerate(ws.iter_rows(values_only=True), start=1)
             ]
             if norm(title) in SUMMARY_SHEETS:
-                for _loc, cells in rows:
+                for loc, cells in rows:
                     vals = [text(c) for c in cells]
                     present = [v for v in vals if v is not None]
                     if len(present) >= 2:
-                        summary.append((present[0], present[1]))
+                        summary.append((present[0], present[1], loc))
                 continue
             kind = kind_for_title(title)
             if kind is None:

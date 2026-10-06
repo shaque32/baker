@@ -37,7 +37,7 @@ def test_source_metadata_hash_and_fidelity(make_xlsx, case_db):
     assert src.extracted_at_utc == datetime(2026, 3, 1, 15, 0, tzinfo=UTC)
     row = one(case_db, "SELECT kind, fidelity, sha256 FROM sources WHERE id = 'src1'")
     assert row == ("cellebrite_excel", "curated_report", src.sha256)
-    dev = one(case_db, "SELECT label, os_version, timezone FROM devices WHERE id = 'dev:src1'")
+    dev = one(case_db, "SELECT label, os_version, timezone FROM devices WHERE id = 'device:src1'")
     assert dev == ("SyntheticPhone X1", "14.1", "(UTC-05:00) Eastern Time (US & Canada)")
 
 
@@ -123,8 +123,8 @@ def test_same_name_different_numbers_are_different_accounts(make_xlsx, case_db):
     run(case_db, make_xlsx())
     s1 = one(case_db, "SELECT sender_account_id FROM messages WHERE id = 'msg:src1:Chats!3'")[0]
     s2 = one(case_db, "SELECT sender_account_id FROM messages WHERE id = 'msg:src1:Chats!5'")[0]
-    assert s1 == "acct:src1:whatsapp:+15550000002"
-    assert s2 == "acct:src1:whatsapp:+15550000003"
+    assert s1 == "acct:src1:WhatsApp:+15550000002"
+    assert s2 == "acct:src1:WhatsApp:+15550000003"
     names = case_db.execute("SELECT display_name FROM accounts WHERE id IN (?, ?)", (s1, s2))
     assert {r[0] for r in names} == {"Alex"}
 
@@ -132,7 +132,7 @@ def test_same_name_different_numbers_are_different_accounts(make_xlsx, case_db):
 def test_name_only_party_is_scoped_to_its_thread(make_xlsx, case_db):
     run(case_db, make_xlsx())
     sender = one(case_db, "SELECT sender_account_id FROM messages WHERE id = 'msg:src1:Chats!7'")
-    assert sender[0] == "acct:src1:telegram:name:c3:Sam"
+    assert sender[0] == "acct:src1:Telegram:name:c3:Sam"
     assert coverage(case_db)["counts"]["parties_name_only"] >= 1
 
 
@@ -141,11 +141,11 @@ def test_owner_accounts_from_user_accounts_sheet(make_xlsx, case_db):
     row = one(
         case_db,
         "SELECT device_id, locator, display_name FROM accounts"
-        " WHERE id = 'acct:src1:whatsapp:+15550000001'",
+        " WHERE id = 'acct:src1:WhatsApp:+15550000001'",
     )
-    assert row == ("dev:src1", "User Accounts!2", "Dana")
+    assert row == ("device:src1", "User Accounts!2", "Dana")
     other = one(
-        case_db, "SELECT device_id FROM accounts WHERE id = 'acct:src1:whatsapp:+15550000002'"
+        case_db, "SELECT device_id FROM accounts WHERE id = 'acct:src1:WhatsApp:+15550000002'"
     )
     assert other == (None,)
 
@@ -153,16 +153,18 @@ def test_owner_accounts_from_user_accounts_sheet(make_xlsx, case_db):
 def test_threads_recipients_and_attachments(make_xlsx, case_db):
     run(case_db, make_xlsx())
     thr = one(case_db, "SELECT thread_id FROM messages WHERE id = 'msg:src1:Chats!3'")[0]
-    assert thr == "thr:src1:whatsapp:c1"
+    assert thr == "thread:src1:Chats!3"
     assert one(case_db, "SELECT title FROM threads WHERE id = ?", thr) == ("Weekend",)
     rec = case_db.execute(
         "SELECT account_id FROM message_recipients WHERE message_id = 'msg:src1:Chats!4'"
     ).fetchall()
-    assert rec == [("acct:src1:whatsapp:+15550000002",)]
+    assert rec == [("acct:src1:WhatsApp:+15550000002",)]
     att = one(case_db, "SELECT id, message_id, file_name FROM attachments")
-    assert att == ("att:src1:Chats!4#att1", "msg:src1:Chats!4", "IMG_0001.jpg")
+    assert att == ("att:src1:Chats!4:1", "msg:src1:Chats!4", "IMG_0001.jpg")
     sms_thr = one(case_db, "SELECT thread_id FROM messages WHERE locator = 'SMS Messages!2'")[0]
-    assert sms_thr == "thr:src1:sms:sms:+15550000009"
+    assert sms_thr == "thread:src1:SMS Messages!2"
+    same = one(case_db, "SELECT thread_id FROM messages WHERE locator = 'SMS Messages!3'")[0]
+    assert same == sms_thr
 
 
 def test_calls(make_xlsx, case_db):
@@ -175,9 +177,9 @@ def test_calls(make_xlsx, case_db):
         )
     }
     assert rows["Call Log!2"] == (
-        None, "acct:src1:phone:+15550000002", "outgoing", "2026-03-06T02:40:00Z", 65, None,
+        None, "acct:src1:Phone:+15550000002", "outgoing", "2026-03-06T02:40:00Z", 65, None,
     )  # fmt: skip
-    assert rows["Call Log!3"][0] == "acct:src1:phone:+15550000004"
+    assert rows["Call Log!3"][0] == "acct:src1:Phone:+15550000004"
     assert rows["Call Log!3"][2:] == ("missed", "2026-03-06T12:00:00Z", 0, 1)
     assert rows["Call Log!4"][:3] == (None, None, "unknown")  # 'Rejected' is not mapped
     cov = coverage(case_db)
@@ -189,10 +191,10 @@ def test_contacts_one_row_per_identifier(make_xlsx, case_db):
     run(case_db, make_xlsx())
     rows = case_db.execute("SELECT id, name, identifier FROM contacts ORDER BY id").fetchall()
     assert rows == [
-        ("contact:src1:Contacts!2#1", "Alex", "+15550000002"),
-        ("contact:src1:Contacts!2#2", "Alex", "alex@example.invalid"),
-        ("contact:src1:Contacts!3#1", "Alex Work", "+15550000003"),
-        ("contact:src1:Contacts!4#1", "No Number", ""),
+        ("contact:src1:Contacts!2:1", "Alex", "+15550000002"),
+        ("contact:src1:Contacts!2:2", "Alex", "alex@example.invalid"),
+        ("contact:src1:Contacts!3:1", "Alex Work", "+15550000003"),
+        ("contact:src1:Contacts!4:1", "No Number", ""),
     ]
 
 
@@ -235,10 +237,12 @@ def test_same_source_twice_is_refused(make_xlsx, case_db):
         run(case_db, path)
 
 
-def test_default_source_id_from_hash(make_xlsx, case_db):
-    path = make_xlsx()
-    src = CellebriteExcelImporter(now=NOW).import_source(path, case_db)
-    assert src.id == "src_" + src.sha256[:12]
+def test_default_source_id_from_file_stem_else_hash(make_xlsx, case_db):
+    src = CellebriteExcelImporter(now=NOW).import_source(make_xlsx(name="item1.xlsx"), case_db)
+    assert src.id == "item1"
+    odd = make_xlsx(name="phone report (final).xlsx")
+    src2 = CellebriteExcelImporter(now=NOW).import_source(odd, case_db)
+    assert src2.id == "src_" + src2.sha256[:12]
 
 
 def test_two_devices_never_share_accounts(make_xlsx, case_db):
@@ -248,8 +252,8 @@ def test_two_devices_never_share_accounts(make_xlsx, case_db):
         "SELECT id FROM accounts WHERE identifier = '+15550000002' AND app = 'WhatsApp' ORDER BY id"
     ).fetchall()
     assert rows == [
-        ("acct:phone_a:whatsapp:+15550000002",),
-        ("acct:phone_b:whatsapp:+15550000002",),
+        ("acct:phone_a:WhatsApp:+15550000002",),
+        ("acct:phone_b:WhatsApp:+15550000002",),
     ]
     assert case_db.execute("SELECT count(*) FROM identity_links").fetchone() == (0,)
 
