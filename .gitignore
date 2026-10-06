@@ -1,0 +1,24 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# Case databases and eval outputs
+*.db
+*.sqlite
+eval/out/
+
+# Data safety: real extraction and discovery formats never enter this repo.
+# Synthetic fixtures under eval/fixtures/ are allowed explicitly.
+*.ufdr
+*.ufd
+*.ufdx
+*.e01
+*.mfdb
+cases/
+discovery/
+!eval/fixtures/**
