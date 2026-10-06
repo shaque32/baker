@@ -92,10 +92,12 @@ report said.
 - Excel locator: `<sheet>!<row>` using the 1-based spreadsheet row, e.g. `Chats!14`.
 - PDF locator: `p<page>:t<table>:r<row>`, all 1-based, e.g. `p12:t1:r4`.
 - Message id `msg:<source_id>:<locator>`; calls `call:<source_id>:<locator>`; contacts
-  `contact:<source_id>:<locator>:<entry n>`; attachments `att:<source_id>:<locator>:<n>`;
-  threads `thread:<source_id>:<locator of the chat's first row>`; accounts
-  `acct:<source_id>:<app as spelled in the report>:<identifier>`; device `device:<source_id>`,
-  located at the summary's Device row. These match the synthetic case generator's expected database.
+  `contact:<source_id>:<locator>#<entry n>`; attachments `att:<source_id>:<locator>:<n>`;
+  threads `thr:<source_id>:<app>:<chat key>` (chat key = `Chat #`; else the participants; for
+  SMS sheets `sms:<counterpart>`), located at the chat's first row; accounts
+  `acct:<source_id>:<app as spelled in the report>:<identifier>`; device `dev:<source_id>`,
+  located at the summary's Device row. These match the synthetic case generator's expected database
+  and are fixed: gold labels point at them.
 - A party shown with a name only (no number, handle or email) gets an account scoped to its chat:
   `acct:<source_id>:<app>:name:<chat key>:<name>`, so two people called "Alex" in different chats
   are never collapsed. Coverage counts these.
@@ -144,9 +146,9 @@ beyond the Tag column; attachment hashes and MIME types; message language.
 ## Checked against the synthetic case
 
 The synthetic case generator (`make synth --db`) writes the rows a correct import of its two
-reports should produce. This importer matches it row for row on all nine evidence tables
+reports should produce. This importer matches it exactly on all nine evidence tables
 (sources, devices, accounts, threads, messages, recipients, attachments, calls, contacts),
-apart from `sources.tool_name` and `tool_version`, which record what the report's Summary says.
+except `imported_at_utc`.
 The generator adopted these importer rules: `curated_report`; blank cells give NULL;
 `accounts.device_id` only on the phone's own accounts; first-seen display name; no language,
 MIME type or attachment hash from a report; device label from the Device field.

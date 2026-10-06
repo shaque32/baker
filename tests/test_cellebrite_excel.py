@@ -37,7 +37,7 @@ def test_source_metadata_hash_and_fidelity(make_xlsx, case_db):
     assert src.extracted_at_utc == datetime(2026, 3, 1, 15, 0, tzinfo=UTC)
     row = one(case_db, "SELECT kind, fidelity, sha256 FROM sources WHERE id = 'src1'")
     assert row == ("cellebrite_excel", "curated_report", src.sha256)
-    dev = one(case_db, "SELECT label, os_version, timezone FROM devices WHERE id = 'device:src1'")
+    dev = one(case_db, "SELECT label, os_version, timezone FROM devices WHERE id = 'dev:src1'")
     assert dev == ("SyntheticPhone X1", "14.1", "(UTC-05:00) Eastern Time (US & Canada)")
 
 
@@ -143,7 +143,7 @@ def test_owner_accounts_from_user_accounts_sheet(make_xlsx, case_db):
         "SELECT device_id, locator, display_name FROM accounts"
         " WHERE id = 'acct:src1:WhatsApp:+15550000001'",
     )
-    assert row == ("device:src1", "User Accounts!2", "Dana")
+    assert row == ("dev:src1", "User Accounts!2", "Dana")
     other = one(
         case_db, "SELECT device_id FROM accounts WHERE id = 'acct:src1:WhatsApp:+15550000002'"
     )
@@ -153,7 +153,7 @@ def test_owner_accounts_from_user_accounts_sheet(make_xlsx, case_db):
 def test_threads_recipients_and_attachments(make_xlsx, case_db):
     run(case_db, make_xlsx())
     thr = one(case_db, "SELECT thread_id FROM messages WHERE id = 'msg:src1:Chats!3'")[0]
-    assert thr == "thread:src1:Chats!3"
+    assert thr == "thr:src1:WhatsApp:c1"
     assert one(case_db, "SELECT title FROM threads WHERE id = ?", thr) == ("Weekend",)
     rec = case_db.execute(
         "SELECT account_id FROM message_recipients WHERE message_id = 'msg:src1:Chats!4'"
@@ -162,7 +162,7 @@ def test_threads_recipients_and_attachments(make_xlsx, case_db):
     att = one(case_db, "SELECT id, message_id, file_name FROM attachments")
     assert att == ("att:src1:Chats!4:1", "msg:src1:Chats!4", "IMG_0001.jpg")
     sms_thr = one(case_db, "SELECT thread_id FROM messages WHERE locator = 'SMS Messages!2'")[0]
-    assert sms_thr == "thread:src1:SMS Messages!2"
+    assert sms_thr == "thr:src1:SMS:sms:+15550000009"
     same = one(case_db, "SELECT thread_id FROM messages WHERE locator = 'SMS Messages!3'")[0]
     assert same == sms_thr
 
@@ -191,10 +191,10 @@ def test_contacts_one_row_per_identifier(make_xlsx, case_db):
     run(case_db, make_xlsx())
     rows = case_db.execute("SELECT id, name, identifier FROM contacts ORDER BY id").fetchall()
     assert rows == [
-        ("contact:src1:Contacts!2:1", "Alex", "+15550000002"),
-        ("contact:src1:Contacts!2:2", "Alex", "alex@example.invalid"),
-        ("contact:src1:Contacts!3:1", "Alex Work", "+15550000003"),
-        ("contact:src1:Contacts!4:1", "No Number", ""),
+        ("contact:src1:Contacts!2#1", "Alex", "+15550000002"),
+        ("contact:src1:Contacts!2#2", "Alex", "alex@example.invalid"),
+        ("contact:src1:Contacts!3#1", "Alex Work", "+15550000003"),
+        ("contact:src1:Contacts!4#1", "No Number", ""),
     ]
 
 
