@@ -155,6 +155,7 @@ def _account(
             "app": app,
             "identifier": acct.identifier,
             "display_name": display,
+            "owned": acct.key in r.device.owner_accounts,
         }
     return r.accounts[k]["id"]
 
@@ -200,7 +201,7 @@ def render_device(dev: story.Device, msgs: list[story.Msg], calls: list[story.Ca
         contact_rows.append([i, name, entry_text, source, "Intact"])
         ids = []
         for j, (_, value) in enumerate(entries, start=1):
-            cid = f"contact:{src}:Contacts!{row}#{j}"
+            cid = f"contact:{src}:Contacts!{row}:{j}"
             r.contacts.append(
                 {"id": cid, "locator": f"Contacts!{row}", "name": name, "identifier": value}
             )
@@ -227,7 +228,7 @@ def render_device(dev: story.Device, msgs: list[story.Msg], calls: list[story.Ca
         )
         chat_name = _name(dev, other, dev.extracted_at) or other.identifier
         first_row = TITLE_ROWS + n + 1
-        thread_id = f"thr:{src}:{app}:{chat_no}"
+        thread_id = f"thread:{src}:Chats!{first_row}"
         r.threads.append(
             {"id": thread_id, "locator": f"Chats!{first_row}", "app": app, "title": chat_name}
         )
@@ -276,7 +277,7 @@ def render_device(dev: story.Device, msgs: list[story.Msg], calls: list[story.Ca
                     "body": m.body,
                     "lang": m.lang,  # truth for tests; the importer stores NULL
                     "deleted_flag": int(deleted),
-                    "tag": m.tag,  # shown in the report; the importer does not import tags yet
+                    "tag": m.tag,  # examiner tag shown in the report
                     "app": app,
                     "key": m.key,
                 }
@@ -385,20 +386,28 @@ def load_db(conn: sqlite3.Connection, rendered: list[Rendered], out: Path) -> No
         conn.execute(
             "INSERT INTO devices VALUES (?,?,?,?,?,?,?)",
             (
-                f"dev:{src}",
+                f"device:{src}",
                 src,
                 f"Summary!{r.device_row}",
-                d.label,
+                d.model,  # the report's Device field; who it was seized from is not in the report
                 d.model,
                 d.os_version,
                 story.DEVICE_TZ,
             ),
         )
-        dev_id = f"dev:{src}"
+        dev_id = f"device:{src}"
         for a in r.accounts.values():
             conn.execute(
                 "INSERT INTO accounts VALUES (?,?,?,?,?,?,?)",
-                (a["id"], src, a["locator"], dev_id, a["app"], a["identifier"], a["display_name"]),
+                (
+                    a["id"],
+                    src,
+                    a["locator"],
+                    dev_id if a["owned"] else None,  # only the phone's own accounts
+                    a["app"],
+                    a["identifier"],
+                    a["display_name"],
+                ),
             )
         for t in r.threads:
             conn.execute(
@@ -421,7 +430,7 @@ def load_db(conn: sqlite3.Connection, rendered: list[Rendered], out: Path) -> No
                     m["body"],
                     None,  # lang: the report does not say
                     m["deleted_flag"],
-                    None,  # bookmarked: tags are not imported yet
+                    1 if m["tag"] else None,  # bookmarked: a Tag cell; blank = not stated
                 ),
             )
             conn.execute(

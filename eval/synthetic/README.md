@@ -60,10 +60,11 @@ A record's locator is `<sheet>!<row>` with the 1-based spreadsheet row.
 - Timestamps look like `3/14/2026 9:50:20 PM(UTC-4)`. Item 1 prints UTC+0 for a phone set to
   America/New_York; the phone's zone is the `Device time zone` summary key.
 
-Expected ids in the `--db` database follow the importer spec: `msg:`, `call:` and
-`contact:<source_id>:Contacts!<row>#<entry>`, threads `thr:<source_id>:<app>:<Chat #>`,
+Expected ids in the `--db` database: `msg:` and `call:<source_id>:<locator>`,
+`contact:<source_id>:Contacts!<row>:<entry>`, threads `thread:<source_id>:Chats!<first row>`,
 accounts `acct:<source_id>:<app>:<identifier>` (first sighting sets locator and display name;
-the owner's come from `User Accounts`), device `dev:<source_id>`. Sources import as
-`curated_report`. Language, tags, attachment hashes and MIME types are not imported, so they
-are NULL. The expected database is exactly what a correct importer should produce, so an
+the owner's come from `User Accounts`, and only those carry a `device_id`), device
+`device:<source_id>` labeled with the report's Device field. Sources import as
+`curated_report`. A `Tag` cell sets `bookmarked = 1`; a blank one leaves it NULL. Language,
+attachment hashes and MIME types are not in the report, so they are NULL. The expected database is exactly what a correct importer should produce, so an
 importer test can compare against it table by table.
