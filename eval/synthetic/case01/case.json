@@ -1,0 +1,76 @@
+{
+  "case_id": "case01",
+  "description": "Synthetic case. Two phones, mixed English and Russian, hand-placed traps.",
+  "synthetic": true,
+  "generator": "case01-gen 0.1.0",
+  "seed": 20260306,
+  "devices": [
+    {
+      "source_id": "item1",
+      "label": "Item 1: Apple iPhone 13 seized from Daniel Petrov",
+      "model": "Apple iPhone 13 (A2482)",
+      "timezone": "America/New_York",
+      "report_time": "utc",
+      "extraction_type": "logical",
+      "owner": "Daniel Petrov",
+      "messages": 1030,
+      "calls": 18,
+      "contacts": 8
+    },
+    {
+      "source_id": "item2",
+      "label": "Item 2: Samsung Galaxy S22 seized from Marcus Reyes",
+      "model": "Samsung Galaxy S22 (SM-S901U)",
+      "timezone": "America/New_York",
+      "report_time": "local",
+      "extraction_type": "file_system",
+      "owner": "Marcus Reyes",
+      "messages": 922,
+      "calls": 24,
+      "contacts": 9
+    }
+  ],
+  "sources": [
+    {
+      "source_id": "item1",
+      "file": "item1.xlsx",
+      "kind": "cellebrite_excel",
+      "fidelity": "full_extraction",
+      "sha256": "9959cc5096c0b4938b15594436f1ac6bb561570a3ad8ebe82092f90f66dd3d03"
+    },
+    {
+      "source_id": "item2",
+      "file": "item2.xlsx",
+      "kind": "cellebrite_excel",
+      "fidelity": "full_extraction",
+      "sha256": "5f00547b8ad2af3b690995a911c5d398c6117183e78b09f6254885eb53e1b5ce"
+    }
+  ],
+  "traps": {
+    "handle_change": "Telegram user 5551234 shows as @alex92, then @northstar from 2026-03-10T15:14:00Z. Same user id throughout.",
+    "shared_account": "Instagram dp_garage on item1 is also used by Ilya Morozov (ig03, il01).",
+    "timezone": "item1 prints UTC+0, item2 prints local time (EST, then EDT from 2026-03-08). pr03 and pr09/c_luis read wrong if printed times are taken as local.",
+    "gap": "No WhatsApp rows on either phone from 2026-03-20T04:00:00Z to 2026-03-24T04:00:00Z; SMS, Telegram and calls continue.",
+    "decoy_thread": "'tickets' in the item1 SMS thread with Alex Turner are concert tickets (at03-at09).",
+    "second_alex": "item1 'Alex' (+12125550182) is Alex Turner. @northstar is linked to +12125550147 in item2 contacts ('Sasha N').",
+    "meeting_place": "REYES proposed the Mar 9 meeting place (pr05); PETROV agreed (pr06)."
+  },
+  "ground_truth_people": {
+    "petrov": "Daniel Petrov",
+    "reyes": "Marcus Reyes",
+    "sasha": "unknown (uses Telegram 5551234; Reyes saved him as 'Sasha N')",
+    "turner": "Alex Turner",
+    "ilya": "Ilya Morozov",
+    "katya": "Katya Petrova",
+    "mama_p": "Petrov's mother",
+    "luis": "Luis Reyes",
+    "jenna": "Jenna Ortiz",
+    "jake": "Jake Brennan",
+    "landlord": "Mr. Kim",
+    "oksana": "Oksana Lebedeva",
+    "mama_r": "Reyes's mother",
+    "kevin": "Kevin Shah",
+    "tires": "Bay Ridge Tire Supply",
+    "dre": "Andre Cole"
+  }
+}
