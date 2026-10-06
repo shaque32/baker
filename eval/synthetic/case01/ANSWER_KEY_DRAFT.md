@@ -44,7 +44,7 @@ Times below are as printed in each report. Item 1 prints UTC+0; Item 2 prints de
 
 | Record id | Printed time | From | To | Text |
 |---|---|---|---|---|
-| `contact:item1:Contacts!3:1` |  | contact | | Marc Garage: +12125550122 |
+| `contact:item1:Contacts!3#1` |  | contact | | Marc Garage: +12125550122 |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -183,7 +183,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 | Record id | Printed time | From | To | Text |
 |---|---|---|---|---|
 | `call:item1:Call Log!9` | 3/9/2026 11:58:02 PM(UTC+0) | Phone +12125550111 (owner) | +12125550122 Marc Garage | outgoing call, 00:02:03 |
-| `contact:item1:Contacts!3:1` |  | contact | | Marc Garage: +12125550122 |
+| `contact:item1:Contacts!3#1` |  | contact | | Marc Garage: +12125550122 |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -316,7 +316,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 | Record id | Printed time | From | To | Text |
 |---|---|---|---|---|
 | `msg:item1:Chats!439` | 3/12/2026 2:15:06 AM(UTC+0) | WhatsApp 12125550111@s.whatsapp.net (owner) | 12125550155@s.whatsapp.net Катя | я волнуюсь за Маркуса |
-| `contact:item1:Contacts!6:1` |  | contact | | Катя: +12125550155 |
+| `contact:item1:Contacts!6#1` |  | contact | | Катя: +12125550155 |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -331,8 +331,8 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 | Record id | Printed time | From | To | Text |
 |---|---|---|---|---|
-| `contact:item2:Contacts!4:1` |  | contact | | Sasha N: +12125550147 |
-| `contact:item2:Contacts!4:2` |  | contact | | Sasha N: 5551234 |
+| `contact:item2:Contacts!4#1` |  | contact | | Sasha N: +12125550147 |
+| `contact:item2:Contacts!4#2` |  | contact | | Sasha N: 5551234 |
 | `msg:item2:Chats!836` | 3/10/2026 12:02:50 PM(UTC-4) | Telegram 7001002 (owner) | 5551234 @northstar | ok sasha |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
@@ -348,9 +348,9 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 | Record id | Printed time | From | To | Text |
 |---|---|---|---|---|
-| `contact:item1:Contacts!4:1` |  | contact | | Alex: +12125550182 |
-| `contact:item2:Contacts!4:1` |  | contact | | Sasha N: +12125550147 |
-| `contact:item2:Contacts!4:2` |  | contact | | Sasha N: 5551234 |
+| `contact:item1:Contacts!4#1` |  | contact | | Alex: +12125550182 |
+| `contact:item2:Contacts!4#1` |  | contact | | Sasha N: +12125550147 |
+| `contact:item2:Contacts!4#2` |  | contact | | Sasha N: 5551234 |
 | `msg:item1:Chats!1004` | 3/25/2026 4:50:47 PM(UTC+0) | SMS +12125550182 Alex | +12125550111 (owner) | legend. velvet static at barclays!! |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
@@ -371,6 +371,6 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 | `msg:item1:Chats!1003` | 3/25/2026 4:44:02 PM(UTC+0) | SMS +12125550111 (owner) | +12125550182 Alex | (attachment only) |
 | `msg:item1:Chats!1004` | 3/25/2026 4:50:47 PM(UTC+0) | SMS +12125550182 Alex | +12125550111 (owner) | legend. velvet static at barclays!! |
 | `msg:item1:Chats!1006` | 4/4/2026 2:15:51 PM(UTC+0) | SMS +12125550182 Alex | +12125550111 (owner) | that show was insane last night |
-| `contact:item1:Contacts!4:1` |  | contact | | Alex: +12125550182 |
+| `contact:item1:Contacts!4#1` |  | contact | | Alex: +12125550182 |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
