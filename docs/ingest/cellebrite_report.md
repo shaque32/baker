@@ -92,9 +92,10 @@ report said.
 - Excel locator: `<sheet>!<row>` using the 1-based spreadsheet row, e.g. `Chats!14`.
 - PDF locator: `p<page>:t<table>:r<row>`, all 1-based, e.g. `p12:t1:r4`.
 - Message id `msg:<source_id>:<locator>`; calls `call:<source_id>:<locator>`; contacts
-  `contact:<source_id>:<locator>:<entry n>`; attachments `att:<source_id>:<locator>:<n>`;
-  threads `thread:<source_id>:<locator of the chat's first row>`; accounts
-  `acct:<source_id>:<app as spelled in the report>:<identifier>`; device `device:<source_id>`,
+  `contact:<source_id>:<locator>#<entry n>`; attachments `att:<source_id>:<locator>:<n>`;
+  threads `thr:<source_id>:<app>:<chat key>` (chat key = `Chat #`; else the participants; for
+  SMS sheets `sms:<counterpart>`), located at the chat's first row; accounts
+  `acct:<source_id>:<app as spelled in the report>:<identifier>`; device `dev:<source_id>`,
   located at the summary's Device row. These match the synthetic case generator's expected database.
 - A party shown with a name only (no number, handle or email) gets an account scoped to its chat:
   `acct:<source_id>:<app>:name:<chat key>:<name>`, so two people called "Alex" in different chats
@@ -143,15 +144,12 @@ beyond the Tag column; attachment hashes and MIME types; message language.
 
 ## Differences from the synthetic case's expected database (on purpose)
 
-Checked against `make synth --db` from the synthetic case branch: every id, sender, recipient,
-time, direction, thread, call and contact matches. These columns differ by design:
+Checked against `make synth --db` (synthetic case branch, commit f1300ea): every id, sender,
+recipient, time, direction, thread, call, contact and deleted flag matches. These still differ:
 
 | Column | Expected DB | Importer | Why |
 |---|---|---|---|
-| `sources.fidelity` | `full_extraction` | `curated_report` | A report is examiner-generated; it can never support an absence claim. |
-| `messages.deleted_flag`, `calls.deleted_flag`, `messages.bookmarked` when blank | 0 | NULL | A blank cell is not a statement; NULL means the source did not say. |
 | `accounts.device_id` for non-owner accounts | the device | NULL | Read as "this account belongs to the device"; only owner accounts get it. |
-| `accounts.display_name` after a rename | last name seen | first name seen | Neither is complete; see the `sender_raw` proposal in PROPOSED_CHANGES.md. |
-| `messages.lang` | detected | NULL | Language detection belongs to enrichment, not import. |
-| `attachments.mime_type`, `sha256` | filled | NULL | The report lists only the file name. |
+| `messages.bookmarked` on rows with a Tag | NULL | 1 | The schema calls `bookmarked` the examiner tag, used by the selection audit. |
+| `sources.tool_name`, `tool_version` | generator values | what the Summary sheet says | The importer can only record what the report states. |
 | `devices.label` | case narrative | Device field | The report does not say whom a device was seized from. |

@@ -713,7 +713,6 @@ class _Writer:
         self.owner_accounts: set[str] = set()
         self.owner_idents: set[tuple[str, str]] = set()  # (app slug, identifier)
         self.threads: dict[str, tuple[str, str, str | None]] = {}
-        self.thread_ids: dict[tuple[str, str], str] = {}
         self.messages: list[tuple[object, ...]] = []
         self.recipients: list[tuple[str, str]] = []
         self.attachments: list[tuple[object, ...]] = []
@@ -758,13 +757,11 @@ class _Writer:
     # threads -------------------------------------------------------------
 
     def thread(self, app: str, key: str, locator: str, title: str | None) -> str:
-        """Thread for (app, chat key). Its id and locator come from the first row seen."""
-        k = (_slug(app), key)
-        if k not in self.thread_ids:
-            tid = f"thread:{self.src}:{locator}"
-            self.thread_ids[k] = tid
+        """Thread for (app, chat key). Its locator and title come from the first row seen."""
+        tid = f"thr:{self.src}:{_slug(app)}:{key}"
+        if tid not in self.threads:
             self.threads[tid] = (locator, app, title)
-        return self.thread_ids[k]
+        return tid
 
     # flush ---------------------------------------------------------------
 
@@ -1071,7 +1068,7 @@ def _contacts(w: _Writer, rows: list[Row]) -> None:
             w.cov.counters["contacts_without_identifier"] += 1
         for n, ident in enumerate(idents, start=1):
             w.contacts.append(
-                (f"contact:{w.src}:{r.locator}:{n}", w.src, r.locator, w.dev, name, ident)
+                (f"contact:{w.src}:{r.locator}#{n}", w.src, r.locator, w.dev, name, ident)
             )
 
 
@@ -1141,7 +1138,7 @@ def write_report(
         extracted_at_utc=extracted_utc,
         imported_at_utc=imported_at,
     )
-    dev = f"device:{src}"
+    dev = f"dev:{src}"
 
     # Parse tables into rows grouped by kind.
     grouped: dict[RecordKind, list[tuple[list[Row], DateOrder, TableCoverage]]] = defaultdict(list)
