@@ -36,14 +36,14 @@
       "file": "item1.xlsx",
       "kind": "cellebrite_excel",
       "fidelity": "curated_report",
-      "sha256": "9aab3eaca48a0fb1e7bea78cea220a4c5d3f88d598c11290301eeba7cf85c087"
+      "sha256": "4d33c53a814532b144219c3fad880533ea3d5c21b694bd975ec1c4c133c94750"
     },
     {
       "source_id": "item2",
       "file": "item2.xlsx",
       "kind": "cellebrite_excel",
       "fidelity": "curated_report",
-      "sha256": "9b607f95a42d1224415337ff4b7f38a585f533e9f2e8f4ae8abed9f1789568ba"
+      "sha256": "7dd9a1ef8082d75a40643ea6bc1605cde0b20f4c39f823e8863f8b8eb18d66d7"
     }
   ],
   "traps": {

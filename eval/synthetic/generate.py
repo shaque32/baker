@@ -32,6 +32,7 @@ from eval.synthetic.filler import make_filler
 from eval.synthetic.xlsx import write_xlsx
 
 GENERATOR_VERSION = "case01-gen 0.1.0"
+TOOL_NAME = "baker-synth (Cellebrite-style layout)"
 SEED = 20260306
 DEFAULT_OUT = Path("eval/synthetic/case01")
 IMPORTED_AT = datetime(2026, 4, 9, 12, 0, tzinfo=UTC)  # fixed so the expected DB is stable
@@ -179,6 +180,8 @@ def render_device(dev: story.Device, msgs: list[story.Msg], calls: list[story.Ca
         ["Time zone", "UTC+0" if dev.report_tz == "utc" else "Device local (offset shown per row)"],
         ["Device time zone", story.DEVICE_TZ],
         ["Report version", f"baker-synth {GENERATOR_VERSION} (Cellebrite-style layout)"],
+        ["Tool", TOOL_NAME],
+        ["Tool version", GENERATOR_VERSION],
     ]
     r.device_row = 4
     r.sheets.append(("Summary", info))
@@ -201,7 +204,7 @@ def render_device(dev: story.Device, msgs: list[story.Msg], calls: list[story.Ca
         contact_rows.append([i, name, entry_text, source, "Intact"])
         ids = []
         for j, (_, value) in enumerate(entries, start=1):
-            cid = f"contact:{src}:Contacts!{row}:{j}"
+            cid = f"contact:{src}:Contacts!{row}#{j}"
             r.contacts.append(
                 {"id": cid, "locator": f"Contacts!{row}", "name": name, "identifier": value}
             )
@@ -228,7 +231,7 @@ def render_device(dev: story.Device, msgs: list[story.Msg], calls: list[story.Ca
         )
         chat_name = _name(dev, other, dev.extracted_at) or other.identifier
         first_row = TITLE_ROWS + n + 1
-        thread_id = f"thread:{src}:Chats!{first_row}"
+        thread_id = f"thr:{src}:{app}:{chat_no}"
         r.threads.append(
             {"id": thread_id, "locator": f"Chats!{first_row}", "app": app, "title": chat_name}
         )
@@ -377,7 +380,7 @@ def load_db(conn: sqlite3.Connection, rendered: list[Rendered], out: Path) -> No
                 d.extraction_type,
                 f"{src}.xlsx",
                 sha256_file(out / f"{src}.xlsx"),
-                "baker-synth (Cellebrite-style layout)",
+                TOOL_NAME,
                 GENERATOR_VERSION,
                 iso(d.extracted_at),
                 iso(IMPORTED_AT),
@@ -386,7 +389,7 @@ def load_db(conn: sqlite3.Connection, rendered: list[Rendered], out: Path) -> No
         conn.execute(
             "INSERT INTO devices VALUES (?,?,?,?,?,?,?)",
             (
-                f"device:{src}",
+                f"dev:{src}",
                 src,
                 f"Summary!{r.device_row}",
                 d.model,  # the report's Device field; who it was seized from is not in the report
@@ -395,7 +398,7 @@ def load_db(conn: sqlite3.Connection, rendered: list[Rendered], out: Path) -> No
                 story.DEVICE_TZ,
             ),
         )
-        dev_id = f"device:{src}"
+        dev_id = f"dev:{src}"
         for a in r.accounts.values():
             conn.execute(
                 "INSERT INTO accounts VALUES (?,?,?,?,?,?,?)",

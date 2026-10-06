@@ -47,7 +47,7 @@ A record's locator is `<sheet>!<row>` with the 1-based spreadsheet row.
 
 | Sheet | Columns |
 |---|---|
-| `Summary` | Key in column A, value in column B: Case number, Evidence number, Device, OS version, Extraction type, Extraction start date/time, Time zone (the report's display setting), Device time zone (the phone's zone), Report version |
+| `Summary` | Key in column A, value in column B: Case number, Evidence number, Device, OS version, Extraction type, Extraction start date/time, Time zone (the report's display setting), Device time zone (the phone's zone), Report version, Tool, Tool version |
 | `User Accounts` | `#`, `Source`, `Username`, `Name` (the phone's own accounts) |
 | `Contacts` | `#`, `Name`, `Entries` (one `<Label>: <value>` per line), `Source`, `Deleted` |
 | `Chats` | `#`, `Chat #`, `Name`, `Source` (SMS, WhatsApp, Telegram, Instagram), `Identifier`, `Participants` (one per line), `From`, `To`, `Body`, `Timestamp`, `Direction`, `Deleted`, `Attachment #1`, `Tag` |
@@ -61,10 +61,10 @@ A record's locator is `<sheet>!<row>` with the 1-based spreadsheet row.
   America/New_York; the phone's zone is the `Device time zone` summary key.
 
 Expected ids in the `--db` database: `msg:` and `call:<source_id>:<locator>`,
-`contact:<source_id>:Contacts!<row>:<entry>`, threads `thread:<source_id>:Chats!<first row>`,
+`contact:<source_id>:Contacts!<row>#<entry>`, threads `thr:<source_id>:<app>:<Chat #>`,
 accounts `acct:<source_id>:<app>:<identifier>` (first sighting sets locator and display name;
 the owner's come from `User Accounts`, and only those carry a `device_id`), device
-`device:<source_id>` labeled with the report's Device field. Sources import as
+`dev:<source_id>` labeled with the report's Device field. Sources import as
 `curated_report`. A `Tag` cell sets `bookmarked = 1`; a blank one leaves it NULL. Language,
 attachment hashes and MIME types are not in the report, so they are NULL. The expected database is exactly what a correct importer should produce, so an
 importer test can compare against it table by table.
