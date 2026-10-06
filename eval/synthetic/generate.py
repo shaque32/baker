@@ -204,7 +204,7 @@ def render_device(dev: story.Device, msgs: list[story.Msg], calls: list[story.Ca
         contact_rows.append([i, name, entry_text, source, "Intact"])
         ids = []
         for j, (_, value) in enumerate(entries, start=1):
-            cid = f"contact:{src}:Contacts!{row}#{j}"
+            cid = f"contact:{src}:Contacts!{row}:{j}"
             r.contacts.append(
                 {"id": cid, "locator": f"Contacts!{row}", "name": name, "identifier": value}
             )
@@ -231,7 +231,7 @@ def render_device(dev: story.Device, msgs: list[story.Msg], calls: list[story.Ca
         )
         chat_name = _name(dev, other, dev.extracted_at) or other.identifier
         first_row = TITLE_ROWS + n + 1
-        thread_id = f"thr:{src}:{app}:{chat_no}"
+        thread_id = f"thread:{src}:Chats!{first_row}"
         r.threads.append(
             {"id": thread_id, "locator": f"Chats!{first_row}", "app": app, "title": chat_name}
         )
@@ -389,7 +389,7 @@ def load_db(conn: sqlite3.Connection, rendered: list[Rendered], out: Path) -> No
         conn.execute(
             "INSERT INTO devices VALUES (?,?,?,?,?,?,?)",
             (
-                f"dev:{src}",
+                f"device:{src}",
                 src,
                 f"Summary!{r.device_row}",
                 d.model,  # the report's Device field; who it was seized from is not in the report
@@ -398,7 +398,7 @@ def load_db(conn: sqlite3.Connection, rendered: list[Rendered], out: Path) -> No
                 story.DEVICE_TZ,
             ),
         )
-        dev_id = f"dev:{src}"
+        dev_id = f"device:{src}"
         for a in r.accounts.values():
             conn.execute(
                 "INSERT INTO accounts VALUES (?,?,?,?,?,?,?)",
