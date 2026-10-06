@@ -38,39 +38,32 @@ the same key in `GoldClaim` format with `labeled_by` set to a DRAFT marker. Neit
 
 ## Report layout (for importers)
 
-One workbook per phone, named `<source_id>.xlsx`. The importer should take the source id from
-the file stem. Every sheet has its title on row 1, column headers on row 2 and data from row 3.
-A record's locator is `<sheet>!<row>`, with the row as Excel shows it, and its id is
-`<kind>:<source_id>:<locator>`, for example `msg:item1:Chats!412`.
+Agreed with the Cellebrite report import thread; its importer maps columns by header name.
+Full importer spec: `/mnt/project-files/baker/wave1/cellebrite-report-layout.md`.
 
-**Case Information**: two columns, `Field` and `Value`. Fields: Case number, Evidence number,
-Device (the device locator is this row), OS version, Extraction type (`Advanced Logical` or
-`Full File System`), Extraction end, Report time zone, Device time zone, Report scope, Tool,
-Tool version.
+One workbook per phone, named `<source_id>.xlsx`; `case.json` lists each source id, to pass
+as `--source-id`. Data sheets have a title on row 1, headers on row 2 and data from row 3.
+A record's locator is `<sheet>!<row>` with the 1-based spreadsheet row.
 
-**Contacts**: `#`, `Name`, `Entries`, `Source`, `Deleted`. `Entries` holds one
-`<Label>: <value>` per line, for example `Phone-Mobile: +12125550147` and
-`User ID-Telegram: 5551234`. Each entry becomes one `contacts` row with id
-`contact:<source_id>:Contacts!<row>:<entry number from 1>`.
+| Sheet | Columns |
+|---|---|
+| `Summary` | Key in column A, value in column B: Case number, Evidence number, Device, OS version, Extraction type, Extraction start date/time, Time zone (the report's display setting), Device time zone (the phone's zone), Report version |
+| `User Accounts` | `#`, `Source`, `Username`, `Name` (the phone's own accounts) |
+| `Contacts` | `#`, `Name`, `Entries` (one `<Label>: <value>` per line), `Source`, `Deleted` |
+| `Chats` | `#`, `Chat #`, `Name`, `Source` (SMS, WhatsApp, Telegram, Instagram), `Identifier`, `Participants` (one per line), `From`, `To`, `Body`, `Timestamp`, `Direction`, `Deleted`, `Attachment #1`, `Tag` |
+| `Call Log` | `#`, `Source`, `Type` (Incoming, Outgoing, Missed), `Timestamp`, `Duration` (`HH:MM:SS`), `From`, `To`, `Deleted` |
 
-**Chats**: `#`, `Chat #`, `Source` (app: SMS, WhatsApp, Telegram, Instagram), `Identifier`
-(the other party), `Participants`, `Timestamp: Time`, `Direction` (Incoming or Outgoing),
-`From`, `To`, `Body`, `Attachment #1`, `Deleted` (`Yes` or blank), `Tag` (examiner tag, e.g.
-`Evidence`). Rows are grouped by chat, then ordered by time. A thread's id uses its first row:
-`thread:<source_id>:Chats!<first row>`.
+- Party cells read `<identifier> <name>`; the phone's own account reads `<identifier> (owner)`.
+  The name is the contact name, or the Telegram display name at that row's time, so a renamed
+  handle changes between rows.
+- `Deleted` is always `Deleted` or `Intact`.
+- Timestamps look like `3/14/2026 9:50:20 PM(UTC-4)`. Item 1 prints UTC+0 for a phone set to
+  America/New_York; the phone's zone is the `Device time zone` summary key.
 
-**Call Log**: `#`, `Source` (`Phone`), `Direction` (Incoming, Outgoing, Missed),
-`Timestamp: Time`, `Duration` (`HH:MM:SS`), `From`, `To`, `Deleted`.
-
-Party cells read `<identifier> <name>`. The identifier is an E.164 number, a WhatsApp JID,
-a Telegram user id or an Instagram username. The name is the contact name or the Telegram
-display name at that message's time (so a renamed handle changes between rows), and the
-phone's own account reads `<identifier> (owner)`.
-
-Timestamps look like `3/14/2026 9:50:20 PM(UTC-4)`. Store `ts_raw` exactly as printed,
-`ts_offset_min` as the printed offset, and `ts_utc` converted from both. The printed offset is
-the report's display setting, not proof of the phone's zone; the phone's zone is the
-`Device time zone` field.
-
-The expected database (`--db`) holds exactly the rows a correct importer should produce from
-the two reports, so an importer test can compare against it table by table.
+Expected ids in the `--db` database follow the importer spec: `msg:`, `call:` and
+`contact:<source_id>:Contacts!<row>#<entry>`, threads `thr:<source_id>:<app>:<Chat #>`,
+accounts `acct:<source_id>:<app>:<identifier>` (first sighting sets locator and display name;
+the owner's come from `User Accounts`), device `dev:<source_id>`. Sources import as
+`curated_report`. Language, tags, attachment hashes and MIME types are not imported, so they
+are NULL. The expected database is exactly what a correct importer should produce, so an
+importer test can compare against it table by table.

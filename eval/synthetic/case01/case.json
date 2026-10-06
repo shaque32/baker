@@ -35,15 +35,15 @@
       "source_id": "item1",
       "file": "item1.xlsx",
       "kind": "cellebrite_excel",
-      "fidelity": "full_extraction",
-      "sha256": "9959cc5096c0b4938b15594436f1ac6bb561570a3ad8ebe82092f90f66dd3d03"
+      "fidelity": "curated_report",
+      "sha256": "9aab3eaca48a0fb1e7bea78cea220a4c5d3f88d598c11290301eeba7cf85c087"
     },
     {
       "source_id": "item2",
       "file": "item2.xlsx",
       "kind": "cellebrite_excel",
-      "fidelity": "full_extraction",
-      "sha256": "5f00547b8ad2af3b690995a911c5d398c6117183e78b09f6254885eb53e1b5ce"
+      "fidelity": "curated_report",
+      "sha256": "9b607f95a42d1224415337ff4b7f38a585f533e9f2e8f4ae8abed9f1789568ba"
     }
   ],
   "traps": {

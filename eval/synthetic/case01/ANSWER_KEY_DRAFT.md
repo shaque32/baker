@@ -44,7 +44,7 @@ Times below are as printed in each report. Item 1 prints UTC+0; Item 2 prints de
 
 | Record id | Printed time | From | To | Text |
 |---|---|---|---|---|
-| `contact:item1:Contacts!3:1` |  | contact | | Marc Garage: +12125550122 |
+| `contact:item1:Contacts!3#1` |  | contact | | Marc Garage: +12125550122 |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -59,10 +59,10 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 | Record id | Printed time | From | To | Text |
 |---|---|---|---|---|
-| `msg:item1:Chats!928` | 2/21/2026 12:02:11 AM(UTC+0) | Telegram 5551234 (@northstar) | Telegram 7001001 (owner) | hey its sasha. marc gave me ur name |
-| `msg:item1:Chats!935` | 3/3/2026 11:52:19 PM(UTC+0) | Telegram 5551234 (@northstar) | Telegram 7001001 (owner) | same price |
-| `msg:item1:Chats!936` | 3/10/2026 3:15:03 PM(UTC+0) | Telegram 5551234 (@northstar) | Telegram 7001001 (owner) | new handle. same me |
-| `msg:item1:Chats!947` | 3/28/2026 10:01:09 PM(UTC+0) | Telegram 7001001 (owner) | Telegram 5551234 (@northstar) | not now |
+| `msg:item1:Chats!928` | 2/21/2026 12:02:11 AM(UTC+0) | Telegram 5551234 @alex92 | 7001001 (owner) | hey its sasha. marc gave me ur name |
+| `msg:item1:Chats!935` | 3/3/2026 11:52:19 PM(UTC+0) | Telegram 5551234 @alex92 | 7001001 (owner) | same price |
+| `msg:item1:Chats!936` | 3/10/2026 3:15:03 PM(UTC+0) | Telegram 5551234 @northstar | 7001001 (owner) | new handle. same me |
+| `msg:item1:Chats!947` | 3/28/2026 10:01:09 PM(UTC+0) | Telegram 7001001 (owner) | 5551234 @northstar | not now |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -77,18 +77,18 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 | Record id | Printed time | From | To | Text |
 |---|---|---|---|---|
-| `msg:item1:Chats!936` | 3/10/2026 3:15:03 PM(UTC+0) | Telegram 5551234 (@northstar) | Telegram 7001001 (owner) | new handle. same me |
-| `msg:item1:Chats!937` | 3/10/2026 3:16:44 PM(UTC+0) | Telegram 7001001 (owner) | Telegram 5551234 (@northstar) | ok |
-| `msg:item1:Chats!938` | 3/13/2026 12:03:27 AM(UTC+0) | Telegram 7001001 (owner) | Telegram 5551234 (@northstar) | need 2 more by friday |
-| `msg:item1:Chats!939` | 3/13/2026 12:09:02 AM(UTC+0) | Telegram 5551234 (@northstar) | Telegram 7001001 (owner) | friday hard. saturday |
-| `msg:item1:Chats!940` | 3/13/2026 12:10:10 AM(UTC+0) | Telegram 7001001 (owner) | Telegram 5551234 (@northstar) | fine |
-| `msg:item1:Chats!941` | 3/13/2026 12:11:36 AM(UTC+0) | Telegram 5551234 (@northstar) | Telegram 7001001 (owner) | the package will be at marcs |
-| `msg:item1:Chats!942` | 3/17/2026 2:40:00 AM(UTC+0) | Telegram 5551234 (@northstar) | Telegram 7001001 (owner) | everything ok? |
-| `msg:item1:Chats!943` | 3/17/2026 2:58:12 AM(UTC+0) | Telegram 7001001 (owner) | Telegram 5551234 (@northstar) | dont know yet |
-| `msg:item1:Chats!944` | 3/21/2026 5:05:44 PM(UTC+0) | Telegram 7001001 (owner) | Telegram 5551234 (@northstar) | talk later |
-| `msg:item1:Chats!945` | 3/21/2026 5:20:01 PM(UTC+0) | Telegram 5551234 (@northstar) | Telegram 7001001 (owner) | ok |
-| `msg:item1:Chats!946` | 3/28/2026 9:45:33 PM(UTC+0) | Telegram 5551234 (@northstar) | Telegram 7001001 (owner) | ? |
-| `msg:item1:Chats!947` | 3/28/2026 10:01:09 PM(UTC+0) | Telegram 7001001 (owner) | Telegram 5551234 (@northstar) | not now |
+| `msg:item1:Chats!936` | 3/10/2026 3:15:03 PM(UTC+0) | Telegram 5551234 @northstar | 7001001 (owner) | new handle. same me |
+| `msg:item1:Chats!937` | 3/10/2026 3:16:44 PM(UTC+0) | Telegram 7001001 (owner) | 5551234 @northstar | ok |
+| `msg:item1:Chats!938` | 3/13/2026 12:03:27 AM(UTC+0) | Telegram 7001001 (owner) | 5551234 @northstar | need 2 more by friday |
+| `msg:item1:Chats!939` | 3/13/2026 12:09:02 AM(UTC+0) | Telegram 5551234 @northstar | 7001001 (owner) | friday hard. saturday |
+| `msg:item1:Chats!940` | 3/13/2026 12:10:10 AM(UTC+0) | Telegram 7001001 (owner) | 5551234 @northstar | fine |
+| `msg:item1:Chats!941` | 3/13/2026 12:11:36 AM(UTC+0) | Telegram 5551234 @northstar | 7001001 (owner) | the package will be at marcs |
+| `msg:item1:Chats!942` | 3/17/2026 2:40:00 AM(UTC+0) | Telegram 5551234 @northstar | 7001001 (owner) | everything ok? |
+| `msg:item1:Chats!943` | 3/17/2026 2:58:12 AM(UTC+0) | Telegram 7001001 (owner) | 5551234 @northstar | dont know yet |
+| `msg:item1:Chats!944` | 3/21/2026 5:05:44 PM(UTC+0) | Telegram 7001001 (owner) | 5551234 @northstar | talk later |
+| `msg:item1:Chats!945` | 3/21/2026 5:20:01 PM(UTC+0) | Telegram 5551234 @northstar | 7001001 (owner) | ok |
+| `msg:item1:Chats!946` | 3/28/2026 9:45:33 PM(UTC+0) | Telegram 5551234 @northstar | 7001001 (owner) | ? |
+| `msg:item1:Chats!947` | 3/28/2026 10:01:09 PM(UTC+0) | Telegram 7001001 (owner) | 5551234 @northstar | not now |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -103,9 +103,9 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 | Record id | Printed time | From | To | Text |
 |---|---|---|---|---|
-| `msg:item1:Chats!928` | 2/21/2026 12:02:11 AM(UTC+0) | Telegram 5551234 (@northstar) | Telegram 7001001 (owner) | hey its sasha. marc gave me ur name |
-| `msg:item1:Chats!936` | 3/10/2026 3:15:03 PM(UTC+0) | Telegram 5551234 (@northstar) | Telegram 7001001 (owner) | new handle. same me |
-| `msg:item1:Chats!938` | 3/13/2026 12:03:27 AM(UTC+0) | Telegram 7001001 (owner) | Telegram 5551234 (@northstar) | need 2 more by friday |
+| `msg:item1:Chats!928` | 2/21/2026 12:02:11 AM(UTC+0) | Telegram 5551234 @alex92 | 7001001 (owner) | hey its sasha. marc gave me ur name |
+| `msg:item1:Chats!936` | 3/10/2026 3:15:03 PM(UTC+0) | Telegram 5551234 @northstar | 7001001 (owner) | new handle. same me |
+| `msg:item1:Chats!938` | 3/13/2026 12:03:27 AM(UTC+0) | Telegram 7001001 (owner) | 5551234 @northstar | need 2 more by friday |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -120,7 +120,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 | Record id | Printed time | From | To | Text |
 |---|---|---|---|---|
-| `msg:item1:Chats!938` | 3/13/2026 12:03:27 AM(UTC+0) | Telegram 7001001 (owner) | Telegram 5551234 (@northstar) | need 2 more by friday |
+| `msg:item1:Chats!938` | 3/13/2026 12:03:27 AM(UTC+0) | Telegram 7001001 (owner) | 5551234 @northstar | need 2 more by friday |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -135,7 +135,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 | Record id | Printed time | From | To | Text |
 |---|---|---|---|---|
-| `msg:item1:Chats!941` | 3/13/2026 12:11:36 AM(UTC+0) | Telegram 5551234 (@northstar) | Telegram 7001001 (owner) | the package will be at marcs |
+| `msg:item1:Chats!941` | 3/13/2026 12:11:36 AM(UTC+0) | Telegram 5551234 @northstar | 7001001 (owner) | the package will be at marcs |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -150,8 +150,8 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 | Record id | Printed time | From | To | Text |
 |---|---|---|---|---|
-| `msg:item1:Chats!1011` | 3/6/2026 11:12:05 PM(UTC+0) | SMS +12125550122 (Marc Garage) | SMS +12125550111 (owner) | lets meet monday 8pm. lot behind kings plaza |
-| `msg:item1:Chats!1012` | 3/6/2026 11:20:40 PM(UTC+0) | SMS +12125550111 (owner) | SMS +12125550122 (Marc Garage) | ok works |
+| `msg:item1:Chats!1011` | 3/6/2026 11:12:05 PM(UTC+0) | SMS +12125550122 Marc Garage | +12125550111 (owner) | lets meet monday 8pm. lot behind kings plaza |
+| `msg:item1:Chats!1012` | 3/6/2026 11:20:40 PM(UTC+0) | SMS +12125550111 (owner) | +12125550122 Marc Garage | ok works |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -166,8 +166,8 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 | Record id | Printed time | From | To | Text |
 |---|---|---|---|---|
-| `msg:item1:Chats!1011` | 3/6/2026 11:12:05 PM(UTC+0) | SMS +12125550122 (Marc Garage) | SMS +12125550111 (owner) | lets meet monday 8pm. lot behind kings plaza |
-| `msg:item1:Chats!1012` | 3/6/2026 11:20:40 PM(UTC+0) | SMS +12125550111 (owner) | SMS +12125550122 (Marc Garage) | ok works |
+| `msg:item1:Chats!1011` | 3/6/2026 11:12:05 PM(UTC+0) | SMS +12125550122 Marc Garage | +12125550111 (owner) | lets meet monday 8pm. lot behind kings plaza |
+| `msg:item1:Chats!1012` | 3/6/2026 11:20:40 PM(UTC+0) | SMS +12125550111 (owner) | +12125550122 Marc Garage | ok works |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -182,8 +182,8 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 | Record id | Printed time | From | To | Text |
 |---|---|---|---|---|
-| `call:item1:Call Log!9` | 3/9/2026 11:58:02 PM(UTC+0) | Phone +12125550111 (owner) | Phone +12125550122 (Marc Garage) | outgoing call, 00:02:03 |
-| `contact:item1:Contacts!3:1` |  | contact | | Marc Garage: +12125550122 |
+| `call:item1:Call Log!9` | 3/9/2026 11:58:02 PM(UTC+0) | Phone +12125550111 (owner) | +12125550122 Marc Garage | outgoing call, 00:02:03 |
+| `contact:item1:Contacts!3#1` |  | contact | | Marc Garage: +12125550122 |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -198,7 +198,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 | Record id | Printed time | From | To | Text |
 |---|---|---|---|---|
-| `msg:item1:Chats!1009` | 3/5/2026 2:31:00 AM(UTC+0) | SMS +12125550111 (owner) | SMS +12125550122 (Marc Garage) | its done |
+| `msg:item1:Chats!1009` | 3/5/2026 2:31:00 AM(UTC+0) | SMS +12125550111 (owner) | +12125550122 Marc Garage | its done |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -213,10 +213,10 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 | Record id | Printed time | From | To | Text |
 |---|---|---|---|---|
-| `msg:item1:Chats!1015` | 3/15/2026 1:50:20 AM(UTC+0) | SMS +12125550111 (owner) | SMS +12125550122 (Marc Garage) | move it tonight |
-| `call:item2:Call Log!19` | 3/14/2026 10:05:44 PM(UTC-4) | Phone +12125550177 (Luis primo) | Phone +12125550122 (owner) | incoming call, 00:01:01 |
-| `msg:item2:Chats!907` | 3/14/2026 9:50:20 PM(UTC-4) | SMS +12125550111 (Dan P) | SMS +12125550122 (owner) | move it tonight |
-| `msg:item2:Chats!908` | 3/14/2026 10:09:37 PM(UTC-4) | SMS +12125550122 (owner) | SMS +12125550111 (Dan P) | cops were at the shop earlier. luis just called |
+| `msg:item1:Chats!1015` | 3/15/2026 1:50:20 AM(UTC+0) | SMS +12125550111 (owner) | +12125550122 Marc Garage | move it tonight |
+| `call:item2:Call Log!19` | 3/14/2026 10:05:44 PM(UTC-4) | Phone +12125550177 Luis primo | +12125550122 (owner) | incoming call, 00:01:01 |
+| `msg:item2:Chats!907` | 3/14/2026 9:50:20 PM(UTC-4) | SMS +12125550111 Dan P | +12125550122 (owner) | move it tonight |
+| `msg:item2:Chats!908` | 3/14/2026 10:09:37 PM(UTC-4) | SMS +12125550122 (owner) | +12125550111 Dan P | cops were at the shop earlier. luis just called |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -231,7 +231,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 | Record id | Printed time | From | To | Text |
 |---|---|---|---|---|
-| `msg:item1:Chats!1018` | 3/19/2026 6:22:48 PM(UTC+0) | SMS +12125550111 (owner) | SMS +12125550122 (Marc Garage) | dont text me about it, use telegram |
+| `msg:item1:Chats!1018` | 3/19/2026 6:22:48 PM(UTC+0) | SMS +12125550111 (owner) | +12125550122 Marc Garage | dont text me about it, use telegram |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -246,8 +246,8 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 | Record id | Printed time | From | To | Text |
 |---|---|---|---|---|
-| `msg:item1:Chats!1015` | 3/15/2026 1:50:20 AM(UTC+0) | SMS +12125550111 (owner) | SMS +12125550122 (Marc Garage) | move it tonight |
-| `msg:item1:Chats!1018` | 3/19/2026 6:22:48 PM(UTC+0) | SMS +12125550111 (owner) | SMS +12125550122 (Marc Garage) | dont text me about it, use telegram |
+| `msg:item1:Chats!1015` | 3/15/2026 1:50:20 AM(UTC+0) | SMS +12125550111 (owner) | +12125550122 Marc Garage | move it tonight |
+| `msg:item1:Chats!1018` | 3/19/2026 6:22:48 PM(UTC+0) | SMS +12125550111 (owner) | +12125550122 Marc Garage | dont text me about it, use telegram |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -262,12 +262,12 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 | Record id | Printed time | From | To | Text |
 |---|---|---|---|---|
-| `msg:item1:Chats!1019` | 3/20/2026 4:10:30 PM(UTC+0) | SMS +12125550122 (Marc Garage) | SMS +12125550111 (owner) | u good? |
-| `msg:item1:Chats!1020` | 3/20/2026 4:31:55 PM(UTC+0) | SMS +12125550111 (owner) | SMS +12125550122 (Marc Garage) | yeah |
-| `msg:item1:Chats!1021` | 3/22/2026 8:45:19 PM(UTC+0) | SMS +12125550122 (Marc Garage) | SMS +12125550111 (owner) | call me when u can |
-| `msg:item1:Chats!1030` | 3/22/2026 12:15:40 AM(UTC+0) | Telegram 7001001 (owner) | Telegram 7001002 (Marcus R) | tomorrow |
-| `msg:item1:Chats!1031` | 3/22/2026 12:20:09 AM(UTC+0) | Telegram 7001002 (Marcus R) | Telegram 7001001 (owner) | ok |
-| `call:item1:Call Log!16` | 3/22/2026 9:02:10 PM(UTC+0) | Phone +12125550111 (owner) | Phone +12125550122 (Marc Garage) | outgoing call, 00:00:00 |
+| `msg:item1:Chats!1019` | 3/20/2026 4:10:30 PM(UTC+0) | SMS +12125550122 Marc Garage | +12125550111 (owner) | u good? |
+| `msg:item1:Chats!1020` | 3/20/2026 4:31:55 PM(UTC+0) | SMS +12125550111 (owner) | +12125550122 Marc Garage | yeah |
+| `msg:item1:Chats!1021` | 3/22/2026 8:45:19 PM(UTC+0) | SMS +12125550122 Marc Garage | +12125550111 (owner) | call me when u can |
+| `msg:item1:Chats!1030` | 3/22/2026 12:15:40 AM(UTC+0) | Telegram 7001001 (owner) | 7001002 Marcus R | tomorrow |
+| `msg:item1:Chats!1031` | 3/22/2026 12:20:09 AM(UTC+0) | Telegram 7001002 Marcus R | 7001001 (owner) | ok |
+| `call:item1:Call Log!16` | 3/22/2026 9:02:10 PM(UTC+0) | Phone +12125550111 (owner) | +12125550122 Marc Garage | outgoing call, 00:00:00 |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -282,8 +282,8 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 | Record id | Printed time | From | To | Text |
 |---|---|---|---|---|
-| `msg:item1:Chats!954` | 3/20/2026 2:48:05 AM(UTC+0) | WhatsApp 12125550122@s.whatsapp.net (Marc Garage) | WhatsApp 12125550111@s.whatsapp.net (owner) | night |
-| `msg:item1:Chats!955` | 3/24/2026 1:12:44 PM(UTC+0) | WhatsApp 12125550111@s.whatsapp.net (owner) | WhatsApp 12125550122@s.whatsapp.net (Marc Garage) | morning. u at the shop? |
+| `msg:item1:Chats!954` | 3/20/2026 2:48:05 AM(UTC+0) | WhatsApp 12125550122@s.whatsapp.net Marc Garage | 12125550111@s.whatsapp.net (owner) | night |
+| `msg:item1:Chats!955` | 3/24/2026 1:12:44 PM(UTC+0) | WhatsApp 12125550111@s.whatsapp.net (owner) | 12125550122@s.whatsapp.net Marc Garage | morning. u at the shop? |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -298,9 +298,9 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 | Record id | Printed time | From | To | Text |
 |---|---|---|---|---|
-| `msg:item1:Chats!1027` | 3/18/2026 9:40:09 PM(UTC+0) | Instagram dp_garage (owner) | Instagram m.reyes.auto (owner) | got the money, come get it |
-| `msg:item1:Chats!1025` | 3/18/2026 5:02:14 PM(UTC+0) | Instagram dp_garage (owner) | Instagram m.reyes.auto (owner) | its ilya btw, dan's at work. he left his login on my ipad |
-| `msg:item1:Chats!847` | 3/18/2026 4:55:00 PM(UTC+0) | SMS +12125550133 (Ilya) | SMS +12125550111 (owner) | using ur insta on my ipad for the audi guy |
+| `msg:item1:Chats!1027` | 3/18/2026 9:40:09 PM(UTC+0) | Instagram dp_garage (owner) | m.reyes.auto | got the money, come get it |
+| `msg:item1:Chats!1025` | 3/18/2026 5:02:14 PM(UTC+0) | Instagram dp_garage (owner) | m.reyes.auto | its ilya btw, dan's at work. he left his login on my ipad |
+| `msg:item1:Chats!847` | 3/18/2026 4:55:00 PM(UTC+0) | SMS +12125550133 Ilya | +12125550111 (owner) | using ur insta on my ipad for the audi guy |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -315,8 +315,8 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 | Record id | Printed time | From | To | Text |
 |---|---|---|---|---|
-| `msg:item1:Chats!439` | 3/12/2026 2:15:06 AM(UTC+0) | WhatsApp 12125550111@s.whatsapp.net (owner) | WhatsApp 12125550155@s.whatsapp.net (Катя) | я волнуюсь за Маркуса |
-| `contact:item1:Contacts!6:1` |  | contact | | Катя: +12125550155 |
+| `msg:item1:Chats!439` | 3/12/2026 2:15:06 AM(UTC+0) | WhatsApp 12125550111@s.whatsapp.net (owner) | 12125550155@s.whatsapp.net Катя | я волнуюсь за Маркуса |
+| `contact:item1:Contacts!6#1` |  | contact | | Катя: +12125550155 |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -331,9 +331,9 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 | Record id | Printed time | From | To | Text |
 |---|---|---|---|---|
-| `contact:item2:Contacts!4:1` |  | contact | | Sasha N: +12125550147 |
-| `contact:item2:Contacts!4:2` |  | contact | | Sasha N: 5551234 |
-| `msg:item2:Chats!836` | 3/10/2026 12:02:50 PM(UTC-4) | Telegram 7001002 (owner) | Telegram 5551234 (@northstar) | ok sasha |
+| `contact:item2:Contacts!4#1` |  | contact | | Sasha N: +12125550147 |
+| `contact:item2:Contacts!4#2` |  | contact | | Sasha N: 5551234 |
+| `msg:item2:Chats!836` | 3/10/2026 12:02:50 PM(UTC-4) | Telegram 7001002 (owner) | 5551234 @northstar | ok sasha |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -348,10 +348,10 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 | Record id | Printed time | From | To | Text |
 |---|---|---|---|---|
-| `contact:item1:Contacts!4:1` |  | contact | | Alex: +12125550182 |
-| `contact:item2:Contacts!4:1` |  | contact | | Sasha N: +12125550147 |
-| `contact:item2:Contacts!4:2` |  | contact | | Sasha N: 5551234 |
-| `msg:item1:Chats!1004` | 3/25/2026 4:50:47 PM(UTC+0) | SMS +12125550182 (Alex) | SMS +12125550111 (owner) | legend. velvet static at barclays!! |
+| `contact:item1:Contacts!4#1` |  | contact | | Alex: +12125550182 |
+| `contact:item2:Contacts!4#1` |  | contact | | Sasha N: +12125550147 |
+| `contact:item2:Contacts!4#2` |  | contact | | Sasha N: 5551234 |
+| `msg:item1:Chats!1004` | 3/25/2026 4:50:47 PM(UTC+0) | SMS +12125550182 Alex | +12125550111 (owner) | legend. velvet static at barclays!! |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -366,11 +366,11 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 | Record id | Printed time | From | To | Text |
 |---|---|---|---|---|
-| `msg:item1:Chats!1001` | 3/25/2026 4:42:09 PM(UTC+0) | SMS +12125550111 (owner) | SMS +12125550182 (Alex) | got the tickets. 4 of them |
-| `msg:item1:Chats!1002` | 3/25/2026 4:43:30 PM(UTC+0) | SMS +12125550111 (owner) | SMS +12125550182 (Alex) | section 112, $85 each |
-| `msg:item1:Chats!1003` | 3/25/2026 4:44:02 PM(UTC+0) | SMS +12125550111 (owner) | SMS +12125550182 (Alex) | (attachment only) |
-| `msg:item1:Chats!1004` | 3/25/2026 4:50:47 PM(UTC+0) | SMS +12125550182 (Alex) | SMS +12125550111 (owner) | legend. velvet static at barclays!! |
-| `msg:item1:Chats!1006` | 4/4/2026 2:15:51 PM(UTC+0) | SMS +12125550182 (Alex) | SMS +12125550111 (owner) | that show was insane last night |
-| `contact:item1:Contacts!4:1` |  | contact | | Alex: +12125550182 |
+| `msg:item1:Chats!1001` | 3/25/2026 4:42:09 PM(UTC+0) | SMS +12125550111 (owner) | +12125550182 Alex | got the tickets. 4 of them |
+| `msg:item1:Chats!1002` | 3/25/2026 4:43:30 PM(UTC+0) | SMS +12125550111 (owner) | +12125550182 Alex | section 112, $85 each |
+| `msg:item1:Chats!1003` | 3/25/2026 4:44:02 PM(UTC+0) | SMS +12125550111 (owner) | +12125550182 Alex | (attachment only) |
+| `msg:item1:Chats!1004` | 3/25/2026 4:50:47 PM(UTC+0) | SMS +12125550182 Alex | +12125550111 (owner) | legend. velvet static at barclays!! |
+| `msg:item1:Chats!1006` | 4/4/2026 2:15:51 PM(UTC+0) | SMS +12125550182 Alex | +12125550111 (owner) | that show was insane last night |
+| `contact:item1:Contacts!4#1` |  | contact | | Alex: +12125550182 |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:

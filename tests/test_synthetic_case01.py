@@ -68,9 +68,9 @@ def test_committed_outputs_match_a_fresh_generation(case, name):
 
 
 def test_about_two_thousand_messages_mixed_languages(case):
-    _, conn, _ = case
+    _, conn, rendered = case
     total = conn.execute("SELECT count(*) FROM messages").fetchone()[0]
-    ru = conn.execute("SELECT count(*) FROM messages WHERE lang = 'ru'").fetchone()[0]
+    ru = sum(m["lang"] == "ru" for r in rendered for m in r.messages)
     assert 1800 <= total <= 2200
     assert ru >= 200
     assert conn.execute("SELECT count(DISTINCT source_id) FROM messages").fetchone()[0] == 2
@@ -90,7 +90,7 @@ def test_database_rows_match_the_excel_report(case, source):
     wb = openpyxl.load_workbook(out / f"{source}.xlsx", read_only=True)
     chats = {i: row for i, row in enumerate(wb["Chats"].iter_rows(values_only=True), start=1)}
     header = list(chats[2])
-    body_col, ts_col = header.index("Body"), header.index("Timestamp: Time")
+    body_col, ts_col = header.index("Body"), header.index("Timestamp")
     rows = conn.execute(
         "SELECT id, locator, body, ts_raw FROM messages WHERE source_id = ?", (source,)
     ).fetchall()
@@ -226,9 +226,14 @@ def test_trap_gap_whatsapp_silent_but_other_apps_continue(case):
 def test_trap_handle_change_same_user_id(case):
     out, _, _ = case
     wb = openpyxl.load_workbook(out / "item1.xlsx", read_only=True)
-    rows = list(wb["Chats"].iter_rows(min_row=3, values_only=True))
+    header, *rows = list(wb["Chats"].iter_rows(min_row=2, values_only=True))
     wb.close()
-    froms = {r[7] for r in rows if r[3] == "5551234" and r[6] == "Incoming"}
+    col = {name: i for i, name in enumerate(header)}
+    froms = {
+        r[col["From"]]
+        for r in rows
+        if r[col["Identifier"]] == "5551234" and r[col["Direction"]] == "Incoming"
+    }
     assert froms == {"5551234 @alex92", "5551234 @northstar"}
 
 
