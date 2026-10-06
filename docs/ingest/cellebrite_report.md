@@ -141,17 +141,12 @@ row is the column header.
 Locations, timeline, web history, media and other categories; examiner bookmarks and tags
 beyond the Tag column; attachment hashes and MIME types; message language.
 
-## Differences from the synthetic case's expected database (on purpose)
+## Checked against the synthetic case
 
-Checked against `make synth --db` from the synthetic case branch: every id, sender, recipient,
-time, direction, thread, call and contact matches. These columns differ by design:
-
-| Column | Expected DB | Importer | Why |
-|---|---|---|---|
-| `sources.fidelity` | `full_extraction` | `curated_report` | A report is examiner-generated; it can never support an absence claim. |
-| `messages.deleted_flag`, `calls.deleted_flag`, `messages.bookmarked` when blank | 0 | NULL | A blank cell is not a statement; NULL means the source did not say. |
-| `accounts.device_id` for non-owner accounts | the device | NULL | Read as "this account belongs to the device"; only owner accounts get it. |
-| `accounts.display_name` after a rename | last name seen | first name seen | Neither is complete; see the `sender_raw` proposal in PROPOSED_CHANGES.md. |
-| `messages.lang` | detected | NULL | Language detection belongs to enrichment, not import. |
-| `attachments.mime_type`, `sha256` | filled | NULL | The report lists only the file name. |
-| `devices.label` | case narrative | Device field | The report does not say whom a device was seized from. |
+The synthetic case generator (`make synth --db`) writes the rows a correct import of its two
+reports should produce. This importer matches it row for row on all nine evidence tables
+(sources, devices, accounts, threads, messages, recipients, attachments, calls, contacts),
+apart from `sources.tool_name` and `tool_version`, which record what the report's Summary says.
+The generator adopted these importer rules: `curated_report`; blank cells give NULL;
+`accounts.device_id` only on the phone's own accounts; first-seen display name; no language,
+MIME type or attachment hash from a report; device label from the Device field.
