@@ -5,12 +5,15 @@ description = "Local-first audit of government claims about phone evidence"
 requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.7,<3",
+    "openpyxl>=3.1,<4",
+    "pdfplumber>=0.11,<0.12",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8",
     "ruff>=0.6",
+    "reportlab>=4",  # builds synthetic PDF reports in tests
 ]
 
 [build-system]
