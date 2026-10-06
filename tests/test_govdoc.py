@@ -2,11 +2,13 @@ import hashlib
 import re
 import shutil
 import sqlite3
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
-import pymupdf
 import pytest
+from reportlab.lib.pdfencrypt import StandardEncryption
+from reportlab.pdfgen import canvas
 
 from core.contracts import DocKind, GovDocIngester, SourceKind
 from core.db import apply_schema
@@ -24,10 +26,8 @@ FIXED = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
 def _has_tesseract() -> bool:
     if shutil.which("tesseract") is None:
         return False
-    try:
-        return bool(pymupdf.get_tessdata())
-    except Exception:
-        return False
+    out = subprocess.run(["tesseract", "--list-langs"], capture_output=True, text=True)  # noqa: S603, S607
+    return "eng" in out.stdout.split()
 
 
 needs_ocr = pytest.mark.skipif(not _has_tesseract(), reason="Tesseract is not installed")
@@ -203,19 +203,19 @@ def test_not_a_pdf(tmp_path):
 
 
 def test_password_protected_pdf(tmp_path):
-    doc = pymupdf.open()
-    doc.new_page().insert_text((72, 72), "secret")
     path = tmp_path / "locked.pdf"
-    doc.save(path, encryption=pymupdf.PDF_ENCRYPT_AES_256, user_pw="pw", owner_pw="pw")
+    c = canvas.Canvas(str(path), encrypt=StandardEncryption("pw", ownerPassword="pw"))
+    c.drawString(72, 720, "secret")
+    c.save()
     with pytest.raises(GovDocIngestError, match="password"):
         ingester().parse(path)
 
 
 def test_blank_page_has_no_paragraphs_and_no_ocr(tmp_path):
-    doc = pymupdf.open()
-    doc.new_page()
     path = tmp_path / "blank.pdf"
-    doc.save(path)
+    c = canvas.Canvas(str(path))
+    c.showPage()
+    c.save()
     r = ingester().parse(path)
     assert r.paragraphs == [] and r.ocr_pages == ()
 
@@ -227,7 +227,7 @@ def test_blank_page_has_no_paragraphs_and_no_ocr(tmp_path):
 def test_scanned_document_falls_back_to_ocr(fixtures):
     r = ingester().parse(fixtures["scanned_affidavit.pdf"])
     assert r.ocr_pages == (1, 2)
-    assert "ocr:tesseract:eng:pages=1,2" in (r.source.tool_version or "")
+    assert re.search(r"ocr:tesseract-[\d.]+:eng:pages=1,2$", r.source.tool_version or "")
     assert r.govdoc.doc_kind == DocKind.AFFIDAVIT
     # Bates stamps are the only text layer; they are furniture, not paragraphs
     assert {t for _, t in r.furniture} == {"BKR-SYN-000001", "BKR-SYN-000002"}
@@ -242,7 +242,13 @@ def test_scanned_document_falls_back_to_ocr(fixtures):
         assert pages[p.page][p.char_start : p.char_end] == p.text
 
 
-def test_scan_without_ocr_fails_loudly(fixtures, tmp_path):
+def test_scan_without_tesseract_fails_loudly(fixtures):
+    with pytest.raises(OcrUnavailableError, match="page 1"):
+        ingester(tesseract_cmd="no-such-tesseract").parse(fixtures["scanned_affidavit.pdf"])
+
+
+@needs_ocr
+def test_scan_without_language_data_fails_loudly(fixtures, tmp_path):
     missing = tmp_path / "no-tessdata"
     missing.mkdir()
     with pytest.raises(OcrUnavailableError, match="page 1"):

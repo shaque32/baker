@@ -10,24 +10,28 @@ Three documents, each with its source paragraphs kept as ground truth:
 - scanned:       an affidavit page set rendered to images with no text layer except a
                  Bates stamp in the margin, so the ingester must fall back to OCR.
 
+Built with reportlab (BSD) and pypdfium2 (Apache-2.0/BSD-3).
+
 Usage: python -m eval.synthetic.govdocs [out_dir]   (default eval/fixtures/govdoc)
 """
 
 from __future__ import annotations
 
+import io
 import sys
 import textwrap
 from dataclasses import dataclass
 from pathlib import Path
 
-import pymupdf
+import pypdfium2 as pdfium
+from reportlab.lib.utils import ImageReader
+from reportlab.pdfgen import canvas
 
 PAGE_W, PAGE_H = 612.0, 792.0  # US Letter
 LEFT, TOP, BOTTOM = 72.0, 90.0, 720.0
-FONT, SIZE, LEADING = "helv", 10.0, 13.0
+FONT, SIZE, LEADING = "Helvetica", 10.0, 13.0
 WRAP = 92  # characters per line at 10pt Helvetica inside the margins
 PARA_GAP = 8.0
-FIXED_DATE = "D:20261006000000Z"
 
 HEADER = "SYNTHETIC TEST DOCUMENT - Case No. 26-CR-0417-SYN - NOT A REAL CASE"
 
@@ -191,11 +195,24 @@ def _indented_lines(p: Para) -> list[tuple[float, str]]:
     return [(LEFT + 24, wrapped[0].lstrip())] + [(LEFT, w) for w in wrapped[1:]]
 
 
-def _furniture(page: pymupdf.Page, n: int, total: int, bates: str | None) -> None:
-    page.insert_text((LEFT, 48), HEADER, fontname=FONT, fontsize=8)
-    page.insert_text((PAGE_W / 2 - 24, 760), f"Page {n} of {total}", fontname=FONT, fontsize=8)
-    if bates:
-        page.insert_text((PAGE_W - 160, 772), f"{bates}{n:06d}", fontname=FONT, fontsize=8)
+def _furniture(c: canvas.Canvas, n: int, total: int) -> None:
+    c.setFont(FONT, 8)
+    c.drawString(LEFT, PAGE_H - 48, HEADER)
+    c.drawString(PAGE_W / 2 - 24, PAGE_H - 760, f"Page {n} of {total}")
+
+
+def _canvas(target, title: str, producer: str) -> canvas.Canvas:
+    c = canvas.Canvas(target, pagesize=(PAGE_W, PAGE_H), invariant=1, pageCompression=1)
+    c.setTitle(title)
+    c.setProducer(producer)
+    c.setCreator(producer)
+    return c
+
+
+def _draw_lines(c: canvas.Canvas, lines: list[tuple[float, float, str]]) -> None:
+    c.setFont(FONT, SIZE)
+    for x, y, text in lines:
+        c.drawString(x, PAGE_H - y, text)
 
 
 def _layout(
@@ -230,25 +247,13 @@ def _layout(
     return pages
 
 
-def _write(
-    pages: list[list[tuple[float, float, str]]], path: Path, title: str, bates: str | None = None
-) -> None:
-    doc = pymupdf.open()
+def _write(pages: list[list[tuple[float, float, str]]], path: Path, title: str) -> None:
+    c = _canvas(str(path), title, "baker synthetic")
     for n, lines in enumerate(pages, start=1):
-        page = doc.new_page(width=PAGE_W, height=PAGE_H)
-        _furniture(page, n, len(pages), bates)
-        for x, y, text in lines:
-            page.insert_text((x, y), text, fontname=FONT, fontsize=SIZE)
-    doc.set_metadata(
-        {
-            "title": title,
-            "producer": "baker synthetic",
-            "creator": "baker synthetic",
-            "creationDate": FIXED_DATE,
-            "modDate": FIXED_DATE,
-        }
-    )
-    doc.save(path, garbage=3, deflate=True, no_new_id=True)
+        _furniture(c, n, len(pages))
+        _draw_lines(c, lines)
+        c.showPage()
+    c.save()
 
 
 def make_affidavit(path: Path) -> Path:
@@ -269,26 +274,23 @@ def make_scanned(path: Path, dpi: int = 200) -> Path:
     """Render a two-page affidavit to images, then build a PDF that has only those images
     plus a per-page Bates stamp as its text layer, like a scanned production."""
     pages = _layout(SCANNED, indent_style=False, page_break_before=5)
-    src = pymupdf.open()
+    buf = io.BytesIO()
+    src = _canvas(buf, "", "baker synthetic")
     for lines in pages:
-        page = src.new_page(width=PAGE_W, height=PAGE_H)
-        for x, y, text in lines:
-            page.insert_text((x, y), text, fontname=FONT, fontsize=SIZE)
-    out = pymupdf.open()
-    for n, page in enumerate(src, start=1):
-        pix = page.get_pixmap(dpi=dpi, colorspace=pymupdf.csGRAY)
-        new = out.new_page(width=PAGE_W, height=PAGE_H)
-        new.insert_image(new.rect, stream=pix.tobytes("png"))
-        new.insert_text((PAGE_W - 160, 772), f"BKR-SYN-{n:06d}", fontname=FONT, fontsize=8)
-    out.set_metadata(
-        {
-            "title": "",
-            "producer": "baker synthetic scan",
-            "creationDate": FIXED_DATE,
-            "modDate": FIXED_DATE,
-        }
-    )
-    out.save(path, garbage=3, deflate=True, no_new_id=True)
+        _draw_lines(src, lines)
+        src.showPage()
+    src.save()
+
+    out = _canvas(str(path), "", "baker synthetic scan")
+    pdf = pdfium.PdfDocument(buf.getvalue())
+    for n in range(1, len(pdf) + 1):
+        image = pdf[n - 1].render(scale=dpi / 72, grayscale=True).to_pil()
+        out.drawImage(ImageReader(image), 0, 0, PAGE_W, PAGE_H)
+        out.setFont(FONT, 8)
+        out.drawString(PAGE_W - 160, PAGE_H - 772, f"BKR-SYN-{n:06d}")
+        out.showPage()
+    pdf.close()
+    out.save()
     return path
 
 

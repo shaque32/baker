@@ -5,13 +5,15 @@ description = "Local-first audit of government claims about phone evidence"
 requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.7,<3",
-    "pymupdf>=1.24,<2",  # PDF text and OCR; OCR also needs a local Tesseract install
+    "pypdfium2>=4.30,<6",  # PDF text (Apache-2.0 / BSD-3)
+    "pillow>=10",  # page images for OCR; OCR itself needs a local Tesseract install
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8",
     "ruff>=0.6",
+    "reportlab>=4",  # synthetic fixture PDFs only (eval/synthetic)
 ]
 
 [build-system]

@@ -4,8 +4,8 @@ Implements GovDocIngester from core/contracts.py.
 
 The definitions below are what an expert would need to reproduce a citation by hand.
 
-- Page text. The lines of one page in PyMuPDF extraction order, each line the concatenation
-  of its spans, joined with "\\n". Fragments that sit on the same baseline (OCR often splits
+- Page text. The text segments of one page in PDFium content order (one per line in
+  ordinary documents), joined with "\\n". Fragments that sit on the same baseline (OCR often splits
   a paragraph number from its text) are joined into one line with a single space.
   OCR pages use the same rule on the OCR text layer.
 - Span. char_start and char_end are offsets into that page text, and
@@ -22,21 +22,27 @@ The definitions below are what an expert would need to reproduce a citation by h
   is needed but Tesseract is not installed, ingest fails instead of returning empty pages.
 
 The input is opened read-only, hashed with SHA-256 and parsed from the bytes in memory.
-No network access: OCR runs the local Tesseract install with local language data.
+No network access: OCR runs the local Tesseract binary with local language data.
+Libraries are permissively licensed (pypdfium2: Apache-2.0/BSD-3; Pillow: MIT-CMU).
 """
 
 from __future__ import annotations
 
 import hashlib
+import io
 import math
 import re
+import shutil
 import sqlite3
+import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-import pymupdf
+import pypdfium2 as pdfium
+import pypdfium2.raw as pdfium_c
+from pypdfium2.version import PDFIUM_INFO
 
 from core.contracts import (
     DocKind,
@@ -48,14 +54,14 @@ from core.contracts import (
     SourceKind,
 )
 
-PARSER_VERSION = "govdoc-pdf/1"
+PARSER_VERSION = "govdoc-pdf/2"
 
 OCR_MAX_TEXT_CHARS = 50  # a page with fewer text-layer characters than this may be a scan
 OCR_MIN_IMAGE_COVER = 0.5  # ...if images cover at least this share of the page
 OCR_DPI = 300
 MARGIN_FRAC = 0.08  # top and bottom band where headers, footers and Bates stamps live
 REPEAT_FRAC = 0.6  # a margin line on at least this share of pages is furniture
-PARA_GAP_RATIO = 1.35  # line pitch above this multiple of line height starts a paragraph
+PARA_GAP_RATIO = 1.35  # line pitch above this multiple of the page's usual pitch
 INDENT_PT = 12.0  # a first-line indent at least this deep starts a paragraph
 
 _MARKER = re.compile(r"^\s*(\d{1,3})[.)]\s")
@@ -121,15 +127,20 @@ def read_input(path: Path) -> tuple[bytes, str]:
     return data, hashlib.sha256(data).hexdigest()
 
 
-def _raw_lines(page: pymupdf.Page, textpage: pymupdf.TextPage | None) -> list[list]:
-    """[x0, y0, x1, y1, text] per extracted line, extraction order, blanks dropped."""
+def _raw_lines(page: pdfium.PdfPage) -> list[list]:
+    """[x0, y0, x1, y1, text] per text segment, top-down coordinates, content order."""
+    height = page.get_height()
+    tp = page.get_textpage()
     out: list[list] = []
-    d = page.get_text("dict", textpage=textpage, sort=False)
-    for block in d["blocks"]:
-        for line in block.get("lines", []):
-            text = "".join(span["text"] for span in line["spans"])
+    try:
+        for i in range(tp.count_rects()):
+            left, bottom, right, top = tp.get_rect(i)
+            text = tp.get_text_bounded(left, bottom, right, top)
+            text = text.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
             if text.strip():
-                out.append([*line["bbox"], text])
+                out.append([left, height - top, right, height - bottom, text])
+    finally:
+        tp.close()
     return out
 
 
@@ -165,38 +176,96 @@ def _build_page(number: int, height: float, raw: list[list], ocr: bool) -> PageT
     return PageText(number, "\n".join(parts), tuple(lines), height, ocr)
 
 
-def _needs_ocr(page: pymupdf.Page, raw: list[list]) -> bool:
+def _needs_ocr(page: pdfium.PdfPage, raw: list[list]) -> bool:
     chars = sum(len(r[4].strip()) for r in raw)
     if chars >= OCR_MAX_TEXT_CHARS:
         return False
-    area = abs(page.rect)
-    if not area:
+    w, h = page.get_size()
+    if w <= 0 or h <= 0:
         return False
     covered = 0.0
-    for info in page.get_image_info():
-        covered += abs(pymupdf.Rect(info["bbox"]) & page.rect)
-    return covered / area >= OCR_MIN_IMAGE_COVER
+    for obj in page.get_objects(filter=[pdfium_c.FPDF_PAGEOBJ_IMAGE]):
+        left, bottom, right, top = obj.get_bounds()
+        cw = min(right, w) - max(left, 0.0)
+        ch = min(top, h) - max(bottom, 0.0)
+        if cw > 0 and ch > 0:
+            covered += cw * ch
+    return covered / (w * h) >= OCR_MIN_IMAGE_COVER
 
 
-def extract_pages(
-    doc: pymupdf.Document, *, tessdata: str | None, language: str
-) -> tuple[PageText, ...]:
+class Tesseract:
+    """Runs the locally installed Tesseract binary. No network, no Python bindings."""
+
+    def __init__(self, cmd: str = "tesseract", tessdata: str | None = None, language: str = "eng"):
+        self.cmd = cmd
+        self.tessdata = tessdata
+        self.language = language
+
+    def version(self) -> str:
+        exe = self._exe()
+        out = subprocess.run(  # noqa: S603 - fixed argv, no shell
+            [exe, "--version"], capture_output=True, text=True, check=False, timeout=30
+        )
+        first = (out.stdout or out.stderr).splitlines()
+        return first[0].split()[-1] if first else "unknown"
+
+    def _exe(self) -> str:
+        exe = shutil.which(self.cmd)
+        if exe is None:
+            raise OcrUnavailableError(f"Tesseract not found ({self.cmd!r} is not on PATH)")
+        return exe
+
+    def lines(self, page: pdfium.PdfPage) -> list[list]:
+        """OCR one page. [x0, y0, x1, y1, text] per OCR line, in PDF points, top-down."""
+        scale = OCR_DPI / 72
+        image = page.render(scale=scale, grayscale=True).to_pil()
+        buf = io.BytesIO()
+        image.save(buf, format="PNG")
+        argv = [self._exe(), "stdin", "stdout", "-l", self.language, "--dpi", str(OCR_DPI)]
+        if self.tessdata:
+            argv += ["--tessdata-dir", self.tessdata]
+        argv.append("tsv")
+        proc = subprocess.run(  # noqa: S603 - fixed argv, no shell
+            argv, input=buf.getvalue(), capture_output=True, check=False, timeout=300
+        )
+        if proc.returncode != 0:
+            err = proc.stderr.decode("utf-8", "replace").strip().splitlines()
+            raise OcrUnavailableError(f"Tesseract failed: {err[-1] if err else proc.returncode}")
+        grouped: dict[tuple[str, str, str], list] = {}
+        for row in proc.stdout.decode("utf-8").splitlines()[1:]:
+            cols = row.split("\t")
+            if len(cols) < 12 or cols[0] != "5" or not cols[11].strip():
+                continue
+            x, y, w, h = (int(c) / scale for c in cols[6:10])
+            key = (cols[2], cols[3], cols[4])  # block, paragraph, line
+            if key not in grouped:
+                grouped[key] = [x, y, x + w, y + h, cols[11]]
+            else:
+                g = grouped[key]
+                g[0], g[1] = min(g[0], x), min(g[1], y)
+                g[2], g[3] = max(g[2], x + w), max(g[3], y + h)
+                g[4] = f"{g[4]} {cols[11]}"
+        return list(grouped.values())
+
+
+def extract_pages(pdf: pdfium.PdfDocument, ocr: Tesseract) -> tuple[PageText, ...]:
     pages: list[PageText] = []
-    for i, page in enumerate(doc, start=1):
-        raw = _raw_lines(page, None)
-        ocr = _needs_ocr(page, raw)
-        if ocr:
-            try:
-                tp = page.get_textpage_ocr(
-                    language=language, dpi=OCR_DPI, full=True, tessdata=tessdata
-                )
-            except Exception as e:  # PyMuPDF raises RuntimeError and others for this
-                raise OcrUnavailableError(
-                    f"page {i} has no usable text layer and OCR failed: {e}. "
-                    "Install Tesseract with the language data, or pass tessdata=<path>."
-                ) from e
-            raw = _raw_lines(page, tp)
-        pages.append(_build_page(i, page.rect.height, raw, ocr))
+    for i in range(len(pdf)):
+        page = pdf[i]
+        try:
+            raw = _raw_lines(page)
+            scanned = _needs_ocr(page, raw)
+            if scanned:
+                try:
+                    raw = ocr.lines(page)
+                except OcrUnavailableError as e:
+                    raise OcrUnavailableError(
+                        f"page {i + 1} has no usable text layer and OCR is unavailable: {e}. "
+                        "Install Tesseract with its language data, or pass tessdata=<path>."
+                    ) from e
+            pages.append(_build_page(i + 1, page.get_height(), raw, scanned))
+        finally:
+            page.close()
     return tuple(pages)
 
 
@@ -254,6 +323,8 @@ def _split_page(
     """Group body lines into paragraphs. Returns the paragraphs and the last printed
     paragraph number seen, so numbering can carry across pages."""
     paras: list[_Para] = []
+    pitches = sorted(b.y0 - a.y0 for a, b in zip(body, body[1:], strict=False) if b.y0 > a.y0)
+    usual = pitches[len(pitches) // 4] if pitches else 0.0  # lower quartile: plain line pitch
     for line in body:
         cur = paras[-1] if paras else None
         new = cur is None
@@ -262,7 +333,7 @@ def _split_page(
             pitch = line.y0 - prev.y0
             m = _MARKER.match(line.text)
             expected = 1 if last_marker is None else last_marker + 1
-            if pitch > PARA_GAP_RATIO * prev.height or pitch < 0:
+            if pitch > PARA_GAP_RATIO * usual or pitch < 0:
                 new = True  # blank space before the line, or a jump back up (new column)
             elif m and int(m.group(1)) == expected and _terminal(prev.text):
                 new = True  # next printed paragraph number after a finished sentence
@@ -354,11 +425,11 @@ class PdfGovDocIngester:
         *,
         tessdata: str | None = None,
         ocr_language: str = "eng",
+        tesseract_cmd: str = "tesseract",
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self.doc_kind = doc_kind  # None: classify from the title and opening text
-        self.tessdata = tessdata  # None: PyMuPDF looks for Tesseract's data locally
-        self.ocr_language = ocr_language
+        self.ocr = Tesseract(tesseract_cmd, tessdata, ocr_language)  # None: Tesseract's default
         self.clock = clock
 
     def ingest(self, path: Path, conn: sqlite3.Connection) -> tuple[GovDoc, list[GovDocParagraph]]:
@@ -369,23 +440,25 @@ class PdfGovDocIngester:
         """Parse without touching a database."""
         data, sha = read_input(path)
         try:
-            doc = pymupdf.open(stream=data, filetype="pdf")
-        except Exception as e:
+            pdf = pdfium.PdfDocument(data)
+        except pdfium.PdfiumError as e:
+            if "password" in str(e).lower():
+                raise GovDocIngestError(f"{path.name} is password protected") from e
             raise GovDocIngestError(f"{path.name} is not a readable PDF: {e}") from e
-        with doc:
-            if doc.needs_pass:
-                raise GovDocIngestError(f"{path.name} is password protected")
-            pages = extract_pages(doc, tessdata=self.tessdata, language=self.ocr_language)
-            meta_title = (doc.metadata or {}).get("title") or ""
+        try:
+            pages = extract_pages(pdf, self.ocr)
+            meta_title = pdf.get_metadata_dict().get("Title") or ""
+        finally:
+            pdf.close()
 
         furniture = find_furniture(pages)
         rows = segment(pages, furniture)
         ocr_pages = tuple(p.page for p in pages if p.ocr)
 
         key = sha[:16]
-        version = f"{PARSER_VERSION} pymupdf-{pymupdf.VersionBind}"
+        version = f"{PARSER_VERSION} pdfium-{PDFIUM_INFO}"
         if ocr_pages:
-            version += f" ocr:tesseract:{self.ocr_language}:pages=" + ",".join(
+            version += f" ocr:tesseract-{self.ocr.version()}:{self.ocr.language}:pages=" + ",".join(
                 str(n) for n in ocr_pages
             )
         source = Source(

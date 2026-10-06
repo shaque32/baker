@@ -55,4 +55,4 @@ File: core/contracts.py, core/schema.sql (same diff as the entry above: the `ocr
 Why: OCR text is not verbatim source text (Tesseract reads "I" as "|", for example). A claim
 quoted from an OCR'd page should be flagged, and a quote check against it is weaker. Today
 the ingester records OCR only at document level, in `sources.tool_version`
-("... ocr:tesseract:eng:pages=1,2"). A per-paragraph flag lets claims and the report show it.
+("... ocr:tesseract-5.3.4:eng:pages=1,2"). A per-paragraph flag lets claims and the report show it.
