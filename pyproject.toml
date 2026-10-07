@@ -5,15 +5,17 @@ description = "Local-first audit of government claims about phone evidence"
 requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.7,<3",
-    "openpyxl>=3.1,<4",
-    "pdfplumber>=0.11,<0.12",
+    "pypdfium2>=4.30,<6",  # PDF text (Apache-2.0 / BSD-3)
+    "pillow>=10",  # page images for OCR; OCR itself needs a local Tesseract install
+    "openpyxl>=3.1,<4",  # Cellebrite Excel reports (MIT)
+    "pdfplumber>=0.11,<0.12",  # Cellebrite PDF report tables (MIT; pulls pdfminer.six, MIT)
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8",
     "ruff>=0.6",
-    "reportlab>=4",  # builds synthetic PDF reports in tests
+    "reportlab>=4",  # synthetic fixture PDFs only (eval/synthetic, tests)
 ]
 
 [build-system]

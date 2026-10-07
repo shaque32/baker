@@ -24,6 +24,8 @@ with the reason and the exact diff you want, then finish the rest of your task w
 ## Evidence rules
 - The LLM never decides verdicts. It only labels individual pieces of evidence.
   Verdicts come from `core/audit/rules.py`.
+- A claim is never SUPPORTED on a model's stance label alone. An expert must accept the
+  label on the supporting evidence first.
 - Every derived record carries a `source_ref` back to the original artifact.
 - Every displayed item carries a provenance tier: observed, derived, inferred or confirmed.
   An inference never becomes observed because another component consumed it.

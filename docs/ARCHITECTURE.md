@@ -27,7 +27,7 @@ later, after the audit engine scores well on the eval set. A CLI comes first.
 |---|---|---|
 | Claim extraction | Proposes claims | Expert edits the list; every claim keeps its page and paragraph |
 | Assumptions | Fills claim-type templates | Templates are fixed per claim type; tier starts at inferred |
-| Stance | Labels one evidence item against one assumption | Quote verified verbatim by code; label is input to rules, never a verdict |
+| Stance | Labels one evidence item against one assumption | Quote verified verbatim by code; label is input to rules, never a verdict; SUPPORTED needs the expert to accept the supporting label |
 | Translation | ru -> en | Original text stays the citable text |
 
 The LLM never writes a verdict, an identity merge or a confirmation.
