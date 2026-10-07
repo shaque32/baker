@@ -243,6 +243,16 @@ TEMPLATES: dict[str, Template] = {
             ),
         ),
         Template(
+            "weekday_date",
+            AssumptionKind.TIME,
+            _ALL,
+            ("weekday",),
+            frozenset({"quoted_text", "window"}),
+            frozenset({"quoted_text", "window", "channels", "device_ids", *PARTY_FIELDS}),
+            _none,
+            lambda p: f'The weekday in "{p.quoted_text}" means {_when(p)}',
+        ),
+        Template(
             "meaning",
             AssumptionKind.MEANING,
             _ALL,

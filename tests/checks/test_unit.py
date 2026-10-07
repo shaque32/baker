@@ -262,3 +262,52 @@ def test_pipeline_hooks() -> None:
     claim = Claim(id="C1", paragraph_id="p", text="t", claim_type=ClaimType.ABSENCE,
                   status=ClaimStatus.ACCEPTED)  # fmt: skip
     assert assumptions.create(conn).build(claim) == []  # no filler: nothing proposed
+
+
+@pytest.mark.parametrize(
+    ("body", "why"),
+    [
+        ("see you next monday", "qualified"),
+        ("monday or tuesday works", "exactly one weekday"),
+        ("no day here", "exactly one weekday"),
+    ],
+)
+def test_weekday_ambiguity_is_inconclusive(body: str, why: str) -> None:
+    conn = build()
+    conn.execute(
+        "INSERT INTO messages (id, source_id, locator, thread_id, sender_account_id, direction,"
+        " ts_utc, body) VALUES ('msg:p1:9', 'p1', 'x', 't1', 'a:p1:own', 'unknown',"
+        " '2026-03-06T23:00:00Z', ?)",
+        (body,),
+    )
+    day = window(D(2026, 3, 9), D(2026, 3, 10), "Monday")
+    r = check(conn, "weekday_date", quoted_text=body, window=day)
+    assert r.outcome is CheckOutcome.INCONCLUSIVE
+    assert why in r.detail
+
+
+def test_weekday_named_on_that_same_weekday_is_open() -> None:
+    conn = build()
+    conn.execute(
+        "INSERT INTO messages (id, source_id, locator, thread_id, sender_account_id, direction,"
+        " ts_utc, body) VALUES ('msg:p1:9', 'p1', 'x', 't1', 'a:p1:own', 'unknown',"
+        " '2026-03-09T15:00:00Z', 'monday it is')"
+    )  # a Monday in New York
+    day = window(D(2026, 3, 9), D(2026, 3, 10), "Monday")
+    r = check(conn, "weekday_date", quoted_text="monday it is", window=day)
+    assert r.outcome is CheckOutcome.INCONCLUSIVE
+
+
+def test_weekday_uses_the_phones_date_not_utc() -> None:
+    # 02:00Z on Saturday Mar 7 is Friday Mar 6, 9 p.m. in New York, so "saturday" is Mar 7.
+    # Read in UTC it would be sent on a Saturday, and the day would be open.
+    conn = build()
+    conn.execute(
+        "INSERT INTO messages (id, source_id, locator, thread_id, sender_account_id, direction,"
+        " ts_utc, body) VALUES ('msg:p1:9', 'p1', 'x', 't1', 'a:p1:own', 'unknown',"
+        " '2026-03-07T02:00:00Z', 'brunch saturday')"
+    )
+    day = window(D(2026, 3, 7), D(2026, 3, 8), "Saturday, March 7")
+    assert check(conn, "weekday_date", quoted_text="brunch saturday", window=day).outcome is (
+        CheckOutcome.PASS
+    )

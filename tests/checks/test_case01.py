@@ -171,3 +171,17 @@ def test_c19_a_phone_contact_is_not_read_as_a_telegram_user(conn) -> None:
     # check must not invent a Telegram account for it, nor call the two different.
     r = check(conn, "same_account", channels=["Telegram"], handles=["@northstar", "Alex"])
     assert r.outcome is CheckOutcome.INCONCLUSIVE
+
+
+def test_c07_monday_in_a_friday_message_is_march_9(conn) -> None:
+    text = "lets meet monday 8pm. lot behind kings plaza"
+    monday = window(D(2026, 3, 9), D(2026, 3, 10), "Monday, March 9, 2026")
+    r = check(conn, "weekday_date", quoted_text=text, window=monday)
+    assert r.outcome is CheckOutcome.PASS
+    assert "msg:item1:Chats!1013" in r.record_ids and "msg:item2:Chats!905" in r.record_ids
+    assert "a Friday" in r.detail
+    # A later Monday is a question of meaning, never a fail.
+    later = window(D(2026, 3, 16), D(2026, 3, 17), "Monday, March 16, 2026")
+    assert check(conn, "weekday_date", quoted_text=text, window=later).outcome is (
+        CheckOutcome.INCONCLUSIVE
+    )
