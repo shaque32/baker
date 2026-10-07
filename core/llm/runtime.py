@@ -195,3 +195,29 @@ class FakeModel:
         text = self.respond(prompt)
         parsed, error = parse_json_output(text, schema)
         return ModelOutput(raw_text=text, parsed=parsed, error=error)
+
+
+class JsonModelPort:
+    """The port thread 6 (stance and review) builds against: generate(prompt, schema) -> raw str.
+
+    Returns the raw text even when it is not valid JSON, so the caller parses it and fails closed.
+    A runtime error comes back as an empty string, which never parses. Every call is kept in
+    `outputs` so the caller can log it with its run id.
+    """
+
+    def __init__(
+        self, model: LocalModel, run_id: str, params: GenerationParams | None = None
+    ) -> None:
+        self._model = model
+        self._run_id = run_id
+        self._params = params or GenerationParams()
+        self.outputs: list[ModelOutput] = []
+
+    @property
+    def run_id(self) -> str:
+        return self._run_id
+
+    def generate(self, prompt: str, json_schema: JsonSchema) -> str:
+        out = self._model.generate_json(prompt, json_schema, self._params)
+        self.outputs.append(out)
+        return out.raw_text

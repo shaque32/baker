@@ -126,3 +126,12 @@ def test_core_llm_has_no_network_imports():
                 names = [node.module]
             for n in names:
                 assert n.split(".")[0] not in banned, f"{path}: imports {n}"
+
+
+def test_json_model_port_returns_raw_text_and_run_id():
+    from core.llm.runtime import JsonModelPort
+
+    port = JsonModelPort(FakeModel(respond=lambda _p: "not json"), run_id="run:1")
+    assert port.run_id == "run:1"
+    assert port.generate("p", REVIEWER) == "not json"
+    assert port.outputs[0].ok is False
