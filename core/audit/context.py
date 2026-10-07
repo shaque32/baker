@@ -243,3 +243,18 @@ def render_context(lines: list[ContextLine]) -> str:
 
 def render_for(conn: sqlite3.Connection, record_id: str, window: int = DEFAULT_WINDOW) -> str:
     return render_context(build_context(conn, record_id, window))
+
+
+class ReviewContext:
+    """The pipeline's context builder: the {context} text for one evidence item's record."""
+
+    def __init__(self, window: int = DEFAULT_WINDOW) -> None:
+        self.window = window
+
+    def __call__(self, conn: sqlite3.Connection, assumption: object, item: object) -> str:
+        return render_for(conn, item.record_id, self.window)  # type: ignore[attr-defined]
+
+
+def create(conn: sqlite3.Connection) -> ReviewContext:
+    """Pipeline entry point (core.pipeline.real_components)."""
+    return ReviewContext()

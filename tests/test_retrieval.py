@@ -338,3 +338,14 @@ def test_unknown_time_and_zone_are_said_plainly():
     assert format_local(parse_utc("2026-03-07T12:00:00Z"), None, None) == (
         "2026-03-07 12:00:00 UTC (device zone unknown)"
     )
+
+
+def test_pipeline_entry_points(db):
+    from types import SimpleNamespace
+
+    from core.audit import context, retrieval
+
+    assert isinstance(retrieval.create(db), SqlRetriever)
+    build = context.create(db)
+    item = SimpleNamespace(record_id="msg:s1:Chats!33")
+    assert build(db, _assumption(), item) == render_for(db, "msg:s1:Chats!33")

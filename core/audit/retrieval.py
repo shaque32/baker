@@ -384,3 +384,8 @@ class SqlRetriever:
         self, assumption: Assumption, conn: sqlite3.Connection, k: int
     ) -> list[EvidenceCandidate]:
         return search(conn, query_for(assumption, conn), k, self.window)
+
+
+def create(conn: sqlite3.Connection) -> SqlRetriever:
+    """Pipeline entry point (core.pipeline.real_components)."""
+    return SqlRetriever()
