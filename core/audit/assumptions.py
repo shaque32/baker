@@ -122,6 +122,10 @@ def _on(p: AssumptionParams) -> str:
     return f" on {', '.join(p.channels)}" if p.channels else ""
 
 
+def _lasting(p: AssumptionParams) -> str:
+    return f" lasting {p.duration_s[0]} to {p.duration_s[1]} s" if p.duration_s else ""
+
+
 def _phones(p: AssumptionParams) -> str:
     return ", ".join(p.device_ids) or "every phone"
 
@@ -136,7 +140,7 @@ def _two_parties(p: AssumptionParams) -> str | None:
 
 def _time_rule(p: AssumptionParams) -> str | None:
     if p.quoted_text:
-        return None
+        return "a duration only applies to calls" if p.duration_s else None
     if "call" not in p.channels:
         return "pick a message by its quoted text, or a call by its parties with channel 'call'"
     return None if party_count(p) >= 1 else "a call is picked by its parties; name at least one"
@@ -165,7 +169,7 @@ def _none(_: AssumptionParams) -> str | None:
 
 
 _ALL = frozenset(ClaimType)
-_FREE = _FIELDS - {"expected_count", "count_op"}
+_FREE = _FIELDS - {"expected_count", "count_op", "duration_s"}
 
 TEMPLATES: dict[str, Template] = {
     t.id: t
@@ -186,12 +190,14 @@ TEMPLATES: dict[str, Template] = {
             _ALL,
             ("time",),
             frozenset({"window"}),
-            frozenset({"window", "quoted_text", "channels", "device_ids", *PARTY_FIELDS}),
+            frozenset(
+                {"window", "quoted_text", "duration_s", "channels", "device_ids", *PARTY_FIELDS}
+            ),
             _time_rule,
             lambda p: (
                 f'The message "{p.quoted_text}" ({_who(p)}) was sent {_when(p)}'
                 if p.quoted_text
-                else f"A call between {_who(p)} happened {_when(p)}"
+                else f"A call between {_who(p)}{_lasting(p)} happened {_when(p)}"
             ),
         ),
         Template(

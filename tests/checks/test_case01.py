@@ -102,11 +102,15 @@ def test_c05_wrong_sender_fails(conn) -> None:
 
 def test_c09_call_time_after_the_dst_change(conn) -> None:
     w = window(D(2026, 3, 9, 19, 50), D(2026, 3, 9, 20, 6), "At about 7:58 p.m. on March 9, 2026")
-    r = check(conn, "record_time", channels=["call"], person_ids=[PETROV], account_ids=MARC_0122,
-              device_ids=["dev:item1"], window=w)  # fmt: skip
+    common = dict(channels=["call"], person_ids=[PETROV], account_ids=MARC_0122,
+                  device_ids=["dev:item1"], window=w)  # fmt: skip
+    r = check(conn, "record_time", duration_s=(90, 150), **common)  # "about two minutes"
     assert r.outcome is CheckOutcome.PASS
     assert r.record_ids == ("call:item1:Call Log!9",)
-    assert "2026-03-09 19:58:02 EDT" in r.detail
+    assert "2026-03-09 19:58:02 EDT" in r.detail and "lasting 90 to 150 s" in r.searched
+    # The 123 s call is not "about ten minutes": no call matches both, so nothing passes.
+    longer = check(conn, "record_time", duration_s=(540, 660), **common)
+    assert longer.outcome is CheckOutcome.INCONCLUSIVE
 
 
 def test_calls_outside_the_window_are_never_a_fail(conn) -> None:

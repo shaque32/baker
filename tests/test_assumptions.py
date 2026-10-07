@@ -65,6 +65,12 @@ def test_local_window_is_half_open_wall_clock_resolved_to_inclusive_utc() -> Non
         ("record_time", {"window": GAP, **PEOPLE}, "quoted text"),
         ("record_time", {"window": GAP, "channels": ["call"]}, "at least one"),
         (
+            "record_time",
+            {"window": GAP, "quoted_text": "ok", "duration_s": (1, 2)},
+            "only applies to calls",
+        ),
+        ("no_contact", {**PEOPLE, "window": GAP, "duration_s": (1, 2)}, "does not take"),
+        (
             "message_count",
             {**PEOPLE, "window": GAP, "expected_count": 3, "count_op": "eq"},
             "needs device_ids",
