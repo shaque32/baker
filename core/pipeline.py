@@ -121,6 +121,8 @@ class Components:
     model_runs: Sequence[ModelRun] = ()
     k: int = 20
     reviewable: Callable[[EvidenceItem], bool] = _always
+    # Other model-backed parts whose recorder.calls the pipeline stores (the assumption filler).
+    recorders: Sequence[object] = ()
 
     def names(self) -> dict[str, str]:
         def name(obj: object) -> str:
@@ -168,11 +170,22 @@ def real_components(
     replace supplies some components directly (the eval's hostile mode swaps in a worst-case
     labeler and reviewer); those modules are not imported. filler is handed to
     core.audit.assumptions.create(conn, filler=...): the local model's template filler, or an
-    expert's (or the signed eval spec's) entries. With no filler the builder proposes nothing,
-    so every claim stays unproven.
+    expert's (or the signed eval spec's) entries. With none given, the local model's filler
+    from core.audit.assumption_filler is used; it resolves names only to persons already in
+    the case, so the expert records device-owner stipulations before the audit runs.
     """
     built: dict[str, object] = dict(replace or {})
     missing: list[str] = []
+    if filler is None:
+        try:
+            filler_mod = importlib.import_module("core.audit.assumption_filler")
+        except ModuleNotFoundError:
+            missing.append("core.audit.assumption_filler")
+        else:
+            try:
+                filler = filler_mod.create(conn)
+            except Exception as e:  # noqa: BLE001 - e.g. the signed prompt or model is missing
+                raise ComponentsMissing(f"assumption filler not ready: {e}") from e
     reviewable: Callable[[EvidenceItem], bool] = _always
     for key, module in REAL_MODULES.items():
         if key in built:
@@ -201,8 +214,11 @@ def real_components(
         reviewer=built["reviewer"],  # type: ignore[arg-type]
         context=built["context"],  # type: ignore[arg-type]
         checks=tuple(built["checks"]),  # type: ignore[call-overload]
-        model_runs=tuple(r for c in built.values() for r in getattr(c, "model_runs", ())),
+        model_runs=tuple(
+            r for c in (*built.values(), filler) for r in getattr(c, "model_runs", ())
+        ),
         reviewable=reviewable,
+        recorders=(filler,) if hasattr(filler, "recorder") else (),
     )
 
 
@@ -465,7 +481,7 @@ class _Run:
 
         A call whose label was dropped because its quote failed is stored as quote_failed.
         """
-        for comp in (self.c.labeler, self.c.reviewer):
+        for comp in (self.c.labeler, self.c.reviewer, *self.c.recorders):
             recorder = getattr(comp, "recorder", None)
             calls = getattr(recorder, "calls", None)
             if calls is None:
