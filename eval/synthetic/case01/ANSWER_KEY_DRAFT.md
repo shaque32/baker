@@ -4,13 +4,13 @@
 Approved lines get copied into `eval/gold/case01/gold.jsonl` by a human, with
 `labeled_by` set to the approver.
 
-Draft split: 8 supported, 7 contradicted, 5 unproven; 2 claims need both phones.
+Draft split: 8 supported, 6 contradicted, 6 unproven; 2 claims need both phones.
 
 Shared assumption: Item 1 is used by PETROV and Item 2 by REYES, so the owner accounts on each phone speak for them. The key treats this as given, as the affidavit does; it is not proven by the data.
 
 Labeling rules:
 
-1. A meaning claim is contradicted only when the record supplies a specific, independently corroborated alternative meaning (C20). A merely plausible alternative, or silence, makes it unproven (C06, C13).
+1. A meaning claim is contradicted only when observed or derived data rules the asserted meaning out. Context that makes another meaning more likely, however strongly, complicates the claim and leaves it unproven, as does silence (C06, C13, C20).
 2. An identity claim is contradicted only by observed evidence incompatible with one person (C19); a different saved number alone is not enough.
 3. A machine translation is inferred. A claim resting on one is supported only after a human reader confirms the translation (C17).
 4. Dates and times are judged in the phone's local time, never the printed UTC value.
@@ -40,7 +40,7 @@ Times below are as printed in each report. Item 1 prints UTC+0; Item 2 prints de
 | C17 | p3 ¶13 | content_meaning | **supported** | timezone |  | [ ] |
 | C18 | p3 ¶14 | identity | **unproven** |  |  | [ ] |
 | C19 | p3 ¶14 | identity | **contradicted** | second_alex | yes | [ ] |
-| C20 | p3 ¶15 | content_meaning | **contradicted** | decoy_thread |  | [ ] |
+| C20 | p3 ¶15 | content_meaning | **unproven** | decoy_thread |  | [ ] |
 
 ## C01: draft **supported**
 
@@ -63,7 +63,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 - Type: identity. Page 1, paragraph 4. Trap: handle_change.
 - Core assumptions: Messages under @alex92 and @northstar carry the same Telegram user ID 5551234; The first message is on Feb 20 and the last on Mar 28 (local time)
-- Reasoning: Every row in the thread shows user ID 5551234; the display name switches from @alex92 to @northstar at the Mar 10 'new handle. same me' message.
+- Reasoning: Every row in the thread shows user ID 5551234; the display name switches from @alex92 to @northstar at the Mar 10 'new handle. same me' message. Window start: the first row prints 2/21/2026 12:02:11 AM (UTC+0), which is 7:02 PM EST on Feb 20, so it falls inside the claimed window only after conversion.
 - Evidence:
 
 | Record id | Printed time | From | To | Text |
@@ -81,7 +81,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 - Type: count. Page 1, paragraph 5. Trap: handle_change.
 - Core assumptions: Count covers Telegram user ID 5551234 only, Mar 10 to Mar 31 local time
-- Reasoning: Thirteen rows fall in the window, all Telegram user 5551234; none sits near either boundary after UTC-to-local conversion. The count is derived. Any count that splits @alex92 from @northstar by handle text instead of user ID would get a different number.
+- Reasoning: Thirteen rows fall in the window, all Telegram user 5551234; none sits near either boundary after UTC-to-local conversion. Several evening rows print the next day in UTC (the Mar 12 rows print 3/13) but all stay inside the window. The count is derived. Any count that splits @alex92 from @northstar by handle text instead of user ID would get a different number.
 - Evidence:
 
 | Record id | Printed time | From | To | Text |
@@ -108,7 +108,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 - Type: timing. Page 1, paragraph 5. Trap: handle_change.
 - Core assumptions: @northstar is a different account from @alex92; No contact with that account before Mar 12
-- Reasoning: The same user ID 5551234 messaged PETROV from Feb 20 as @alex92 and announced the new handle on Mar 10, so contact began well before Mar 12.
+- Reasoning: The same user ID 5551234 messaged PETROV from Feb 20 as @alex92 and announced the new handle on Mar 10, so contact began well before Mar 12. The verdict rests on the first-contact clause alone; the phones say nothing about the seizure date, which comes from the affidavit (paragraph 3) and is not checked here.
 - Evidence:
 
 | Record id | Printed time | From | To | Text |
@@ -155,13 +155,14 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 - Type: communication. Page 2, paragraph 7. Trap: meeting_place.
 - Core assumptions: A proposal to meet Monday 8pm behind Kings Plaza on Mar 6; PETROV accepted it; 'monday' in a message sent Friday Mar 6 means Monday Mar 9 (derived)
-- Reasoning: REYES proposed 'lets meet monday 8pm. lot behind kings plaza' and PETROV replied 'ok works' on Mar 6.
+- Reasoning: REYES proposed 'lets meet monday 8pm. lot behind kings plaza' and PETROV replied 'ok works' on Mar 6. The Item 2 row is a cross-reference only: it shows the 'Marc Garage' number +12125550122 is Item 2's own SMS account, which ties that contact to REYES. The claim is decided on Item 1.
 - Evidence:
 
 | Record id | Printed time | From | To | Text |
 |---|---|---|---|---|
 | `msg:item1:Chats!1013` | 3/6/2026 11:12:05 PM(UTC+0) | SMS +12125550122 Marc Garage | +12125550111 (owner) | lets meet monday 8pm. lot behind kings plaza |
 | `msg:item1:Chats!1014` | 3/6/2026 11:20:40 PM(UTC+0) | SMS +12125550111 (owner) | +12125550122 Marc Garage | ok works |
+| `msg:item2:Chats!905` | 3/6/2026 6:12:05 PM(UTC-5) | SMS +12125550122 (owner) | +12125550111 Dan P | lets meet monday 8pm. lot behind kings plaza |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -171,13 +172,14 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 - Type: role. Page 2, paragraph 7. Trap: meeting_place.
 - Core assumptions: PETROV proposed or selected the location
-- Reasoning: REYES named the place and time; PETROV only agreed. The generator plants no other message naming the place (a test checks that 'kings plaza' appears exactly once per phone, sent by REYES). An off-phone conversation cannot be excluded, so the report should say 'the written record shows'.
+- Reasoning: REYES named the place and time; PETROV only agreed. The Item 2 row is a cross-reference tying +12125550122 to REYES, as in C07. The generator plants no other message naming the place (a test checks that 'kings plaza' appears exactly once per phone, sent by REYES). An off-phone conversation cannot be excluded, so the report should say 'the written record shows'.
 - Evidence:
 
 | Record id | Printed time | From | To | Text |
 |---|---|---|---|---|
 | `msg:item1:Chats!1013` | 3/6/2026 11:12:05 PM(UTC+0) | SMS +12125550122 Marc Garage | +12125550111 (owner) | lets meet monday 8pm. lot behind kings plaza |
 | `msg:item1:Chats!1014` | 3/6/2026 11:20:40 PM(UTC+0) | SMS +12125550111 (owner) | +12125550122 Marc Garage | ok works |
+| `msg:item2:Chats!905` | 3/6/2026 6:12:05 PM(UTC-5) | SMS +12125550122 (owner) | +12125550111 Dan P | lets meet monday 8pm. lot behind kings plaza |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -187,13 +189,14 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 - Type: communication. Page 2, paragraph 7. Trap: timezone.
 - Core assumptions: Outgoing call at about 7:58 PM local on Mar 9; Duration about two minutes
-- Reasoning: Item 1 prints 11:58:02 PM (UTC+0), which is 7:58 PM EDT after the Mar 8 DST change; duration 00:02:03.
+- Reasoning: Item 1 prints 11:58:02 PM (UTC+0), which is 7:58 PM EDT after the Mar 8 DST change; duration 00:02:03. The Item 2 row is a cross-reference only: the same call arrives on REYES's phone at its own number.
 - Evidence:
 
 | Record id | Printed time | From | To | Text |
 |---|---|---|---|---|
 | `call:item1:Call Log!9` | 3/9/2026 11:58:02 PM(UTC+0) | Phone +12125550111 (owner) | +12125550122 Marc Garage | outgoing call, 00:02:03 |
 | `contact:item1:Contacts!3#1` |  | contact | | Marc Garage: +12125550122 |
+| `call:item2:Call Log!15` | 3/9/2026 7:58:02 PM(UTC-4) | Phone +12125550111 Dan P | +12125550122 (owner) | incoming call, 00:02:03 |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -203,7 +206,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 - Type: timing. Page 2, paragraph 8. Trap: timezone.
 - Core assumptions: The message was sent at 2:31 a.m. local time
-- Reasoning: Item 1 prints 2:31:00 AM (UTC+0). The phone's time zone is America/New_York, so the local time was 9:31 PM on March 4 (Item 2 shows the same message at 9:31 PM UTC-5).
+- Reasoning: Item 1 prints 2:31:00 AM (UTC+0). The phone's time zone is America/New_York, so the local time was 9:31 PM on March 4. The conversion alone decides the claim, so it is not counted as cross-device; Item 2's copy of the message, printed 9:31 PM (UTC-5), is cited as corroboration.
 - Evidence:
 
 | Record id | Printed time | From | To | Text |
@@ -268,7 +271,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 - Type: absence. Page 2, paragraph 11. Trap: gap.
 - Core assumptions: No messages or calls between them on any app in that window
-- Reasoning: WhatsApp is silent on both phones, but SMS (Mar 20, Mar 22), Telegram (Mar 21) and an unanswered outgoing call of 00:00:00 (Mar 22) all fall inside the window. Also a timezone edge: the last WhatsApp message before the gap prints 3/20 (UTC) but is 10:48 PM Mar 19 local, outside the window.
+- Reasoning: WhatsApp is silent on both phones, but SMS (Mar 20, Mar 22), Telegram and an unanswered outgoing call of 00:00:00 (Mar 22) all fall inside the window. The SMS and call rows alone contradict the claim. The Telegram pair was sent 8:15 to 8:20 PM Mar 21 local; Item 1 prints it 3/22 (UTC). Telegram user 7001002 ('Marcus R') is tied to REYES because it is Item 2's own Telegram account, shown by the Item 2 row. Also a timezone edge: the last WhatsApp message before the gap prints 3/20 (UTC) but is 10:48 PM Mar 19 local, outside the window.
 - Evidence:
 
 | Record id | Printed time | From | To | Text |
@@ -279,6 +282,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 | `msg:item1:Chats!1031` | 3/22/2026 12:15:40 AM(UTC+0) | Telegram 7001001 (owner) | 7001002 Marcus R | tomorrow |
 | `msg:item1:Chats!1032` | 3/22/2026 12:20:09 AM(UTC+0) | Telegram 7001002 Marcus R | 7001001 (owner) | ok |
 | `call:item1:Call Log!16` | 3/22/2026 9:02:10 PM(UTC+0) | Phone +12125550111 (owner) | +12125550122 Marc Garage | outgoing call, 00:00:00 |
+| `msg:item2:Chats!923` | 3/21/2026 8:15:40 PM(UTC-4) | Telegram 7001001 Dan P | 7001002 (owner) | tomorrow |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -355,7 +359,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 - Type: identity. Page 3, paragraph 14. Trap: second_alex. Needs both phones.
 - Core assumptions: Telegram user 5551234 and the 0182 'Alex' are one person
-- Reasoning: On Item 1 the 0182 'Alex' introduces himself as 'alex turner'. On Item 2, @northstar asks REYES 'who is alex turner?', treating him as someone else. That is incompatible with one person, and it takes both phones. Item 2 also links 5551234 to 0147, not 0182 (consistent, though not decisive on its own).
+- Reasoning: On Item 1 the 0182 'Alex' introduces himself as 'alex turner'. On Item 2, @northstar asks REYES 'who is alex turner?', treating him as someone else. That is incompatible with one person, and it takes both phones. Item 2 also links 5551234 to 0147, not 0182. That identifier mismatch is consistent but not decisive on its own (labeling rule 2); the verdict rests on the 'who is alex turner?' message.
 - Evidence:
 
 | Record id | Printed time | From | To | Text |
@@ -368,13 +372,13 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
-## C20: draft **contradicted**
+## C20: draft **unproven**
 
 > On March 25, 2026, PETROV told the contact "Alex" that he "got the tickets", which in this context refers to narcotics.
 
 - Type: content_meaning. Page 3, paragraph 15. Trap: decoy_thread.
 - Core assumptions: 'tickets' refers to narcotics
-- Reasoning: The thread names a seat section, a per-seat price, a PDF named for a Barclays concert on Apr 3, the band, and 'that show was insane last night' on Apr 4. Context shows concert tickets. Contradicted under labeling rule 1: the record supplies a specific, independently corroborated alternative meaning. The PDF is in the attachments table.
+- Reasoning: The message is observed; the meaning is not. The thread names a seat section and a per-seat price, attaches a file named VelvetStatic_Barclays_0403.pdf (cited as its own attachment row), and on Apr 4 says 'that show was insane last night'. The context strongly supports concert tickets and nothing on either phone supports narcotics. But this is the same correspondents' own text, not an independent record, so it complicates the narcotics reading without ruling it out: unproven under labeling rule 1. The report should say the narcotics meaning is not established and show the concert context.
 - Evidence:
 
 | Record id | Printed time | From | To | Text |
@@ -382,6 +386,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 | `msg:item1:Chats!670` | 3/25/2026 4:42:09 PM(UTC+0) | SMS +12125550111 (owner) | +12125550182 Alex | got the tickets. 4 of them |
 | `msg:item1:Chats!671` | 3/25/2026 4:43:30 PM(UTC+0) | SMS +12125550111 (owner) | +12125550182 Alex | section 112, $85 each |
 | `msg:item1:Chats!672` | 3/25/2026 4:44:02 PM(UTC+0) | SMS +12125550111 (owner) | +12125550182 Alex | (attachment only) |
+| `att:item1:Chats!672:1` |  | attachment | | VelvetStatic_Barclays_0403.pdf |
 | `msg:item1:Chats!673` | 3/25/2026 4:50:47 PM(UTC+0) | SMS +12125550182 Alex | +12125550111 (owner) | legend. velvet static at barclays!! |
 | `msg:item1:Chats!675` | 4/4/2026 2:15:51 PM(UTC+0) | SMS +12125550182 Alex | +12125550111 (owner) | that show was insane last night |
 | `contact:item1:Contacts!4#1` |  | contact | | Alex: +12125550182 |

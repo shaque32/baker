@@ -139,8 +139,8 @@ def test_draft_key_shape(gold):
     single = [g for g in gold if not g.cross_device]
     single_split = {v: sum(g.gold_verdict == v for g in single) for v in split}
     assert sum(g.cross_device for g in gold) == 2
-    assert single_split == {"supported": 8, "contradicted": 5, "unproven": 5}
-    assert split == {"supported": 8, "contradicted": 7, "unproven": 5}
+    assert single_split == {"supported": 8, "contradicted": 4, "unproven": 6}
+    assert split == {"supported": 8, "contradicted": 6, "unproven": 6}
 
 
 def test_draft_key_is_never_marked_final(case, gold):
@@ -160,8 +160,9 @@ def test_every_cited_record_exists(case, gold):
         for rid in g.key_evidence:
             hit = conn.execute(
                 "SELECT 1 FROM messages WHERE id = ? UNION ALL SELECT 1 FROM calls WHERE id = ? "
-                "UNION ALL SELECT 1 FROM contacts WHERE id = ?",
-                (rid, rid, rid),
+                "UNION ALL SELECT 1 FROM contacts WHERE id = ? "
+                "UNION ALL SELECT 1 FROM attachments WHERE id = ?",
+                (rid, rid, rid, rid),
             ).fetchone()
             assert hit, f"{g.claim_id}: {rid} missing"
 
