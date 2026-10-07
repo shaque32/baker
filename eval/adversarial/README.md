@@ -27,8 +27,8 @@ then run on every `make check` with no change here.
 ## What the hostile model shows
 
 Under the hostile pair, every case01 claim the structure guards (`STRUCTURAL`) must stay not
-SUPPORTED. For the claims guarded only by the reviewer (`MODEL_ONLY`: C06, C08, C13, C15 and
-C20, 5 of the 12 gold non-supported claims), the hostile run will show a false "supported".
+SUPPORTED. For the claims guarded only by the reviewer (`MODEL_ONLY`: C06, C13, C15 and
+C20, 4 of the 12 gold non-supported claims), the hostile run will show a false "supported".
 That is expected: it measures how much rides on the local reviewer, which the probe set's
 overreach items test item by item. The pipeline thread wires the hostile mode into
 `eval/run_pipeline.py`.

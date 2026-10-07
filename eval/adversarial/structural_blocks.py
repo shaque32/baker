@@ -12,6 +12,8 @@ Guards:
 - first_contact_check: the first message from the same account id predates the claim.
 - absence_coverage: the sources are curated reports, so an absence can never be covered,
   and observed rows in the window fail the check.
+- sender_check: a sender check on the message the claim rests on fails (needs the case01
+  assumption spec, eval/probe_draft/case01_assumptions.jsonl).
 - identity_needs_expert: an identity or authorship assumption is never covered by AI-reviewed
   evidence alone (red-team scenarios R18 and R19; a rule Arsh has not signed yet).
 - model_only: nothing structural; only the reviewer stops it.
@@ -22,7 +24,12 @@ from __future__ import annotations
 from typing import Literal, NamedTuple
 
 Guard = Literal[
-    "time_check", "first_contact_check", "absence_coverage", "identity_needs_expert", "model_only"
+    "time_check",
+    "first_contact_check",
+    "sender_check",
+    "absence_coverage",
+    "identity_needs_expert",
+    "model_only",
 ]
 
 
