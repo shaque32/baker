@@ -421,7 +421,9 @@ def load_db(conn: sqlite3.Connection, rendered: list[Rendered], out: Path) -> No
             )
         for m in r.messages:
             conn.execute(
-                "INSERT INTO messages VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO messages (id, source_id, locator, thread_id, sender_account_id,"
+                " direction, ts_utc, ts_offset_min, ts_raw, body, lang, deleted_flag, bookmarked)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     m["id"],
                     src,
@@ -439,7 +441,8 @@ def load_db(conn: sqlite3.Connection, rendered: list[Rendered], out: Path) -> No
                 ),
             )
             conn.execute(
-                "INSERT INTO message_recipients VALUES (?,?)", (m["id"], m["recipient_account_id"])
+                "INSERT INTO message_recipients (message_id, account_id) VALUES (?,?)",
+                (m["id"], m["recipient_account_id"]),
             )
         for a in r.attachments:
             conn.execute(
