@@ -579,6 +579,8 @@ def render_answer_key(rendered: list[Rendered], gold: list[GoldClaim]) -> str:
         "",
         f"Shared assumption: {key.DEVICE_ATTRIBUTION}",
         "",
+        "Paragraph numbers (¶) are the numbers printed in the affidavit, not document order.",
+        "",
         "Times below are as printed in each report. Item 1 prints UTC+0; Item 2 prints device "
         "local time. Both phones are set to America/New_York.",
         "",

@@ -8,6 +8,8 @@ Draft split: 8 supported, 7 contradicted, 5 unproven; 2 claims need both phones.
 
 Shared assumption: Item 1 is used by PETROV and Item 2 by REYES, so the owner accounts on each phone speak for them. The key treats this as given, as the affidavit does; it is not proven by the data.
 
+Paragraph numbers (¶) are the numbers printed in the affidavit, not document order.
+
 Times below are as printed in each report. Item 1 prints UTC+0; Item 2 prints device local time. Both phones are set to America/New_York.
 
 | Claim | Para | Type | Draft verdict | Trap | Cross-device | Approve? |
