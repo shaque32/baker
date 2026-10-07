@@ -253,13 +253,13 @@ def test_trap_count_claim_matches_data(case):
         ),
     ).fetchone()[0]
     c03 = next(c for c in key.CLAIMS if c.claim_id == "C03")
-    assert n == 12
+    assert n == 13
     assert f" {n} Telegram messages" in c03.text
 
 
 def test_trap_timezone_cross_device_order_flips_when_read_naively(case):
     _, conn, rendered = case
-    (text_id,) = ids_for(rendered, "item1", "pr09")
+    (text_id,) = ids_for(rendered, "item1", "ns_move")
     (call_id,) = ids_for(rendered, "item2", "c_luis")
     text_raw = conn.execute("SELECT ts_raw FROM messages WHERE id = ?", (text_id,)).fetchone()[0]
     call_raw = conn.execute("SELECT ts_raw FROM calls WHERE id = ?", (call_id,)).fetchone()[0]
@@ -336,3 +336,54 @@ def test_filler_cannot_touch_traps(case):
             assert not any(w in body for w in story.RESERVED_WORDS), (m["key"], body)
             other = m["key"].split(":")[2]
             assert other not in trap_accounts
+
+
+def test_trap_timezone_order_needs_both_phones(case):
+    _, conn, _ = case
+    by_source = dict(
+        conn.execute(
+            "SELECT source_id, count(*) FROM messages WHERE body = 'move it tonight' GROUP BY 1"
+        ).fetchall()
+    )
+    luis_calls = dict(
+        conn.execute(
+            "SELECT c.source_id, count(*) FROM calls c JOIN accounts a ON a.id = c.from_account_id "
+            "WHERE a.identifier = '+12125550177' AND c.ts_utc LIKE '2026-03-15T02:05%' GROUP BY 1"
+        ).fetchall()
+    )
+    assert by_source == {"item1": 1}
+    assert luis_calls == {"item2": 1}
+
+
+def test_trap_meeting_place_named_only_by_reyes(case):
+    _, conn, _ = case
+    rows = conn.execute(
+        "SELECT source_id, direction FROM messages WHERE lower(body) LIKE '%kings plaza%'"
+    ).fetchall()
+    assert sorted(rows) == [("item1", "incoming"), ("item2", "outgoing")]
+
+
+def test_trap_second_alex_hard_negative_needs_both_phones(case):
+    _, conn, rendered = case
+    (intro,) = ids_for(rendered, "item1", "at00")
+    (asks,) = ids_for(rendered, "item2", "rn07")
+    body = conn.execute("SELECT body FROM messages WHERE id = ?", (intro,)).fetchone()[0]
+    sender = conn.execute(
+        "SELECT a.identifier FROM messages m JOIN accounts a ON a.id = m.sender_account_id "
+        "WHERE m.id = ?",
+        (intro,),
+    ).fetchone()[0]
+    assert "alex turner" in body and sender == "+12125550182"
+    asker, text = conn.execute(
+        "SELECT a.identifier, m.body FROM messages m JOIN accounts a "
+        "ON a.id = m.sender_account_id WHERE m.id = ?",
+        (asks,),
+    ).fetchone()
+    assert asker == "5551234" and "who is alex turner" in text
+    # neither half is on the other phone
+    assert not conn.execute(
+        "SELECT 1 FROM messages WHERE source_id = 'item1' AND body LIKE '%who is alex turner%'"
+    ).fetchone()
+    assert not conn.execute(
+        "SELECT 1 FROM messages WHERE source_id = 'item2' AND body LIKE '%its alex turner%'"
+    ).fetchone()

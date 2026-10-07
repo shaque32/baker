@@ -13,7 +13,7 @@
       "report_time": "utc",
       "extraction_type": "logical",
       "owner": "Daniel Petrov",
-      "messages": 1030,
+      "messages": 1031,
       "calls": 18,
       "contacts": 8
     },
@@ -25,7 +25,7 @@
       "report_time": "local",
       "extraction_type": "file_system",
       "owner": "Marcus Reyes",
-      "messages": 922,
+      "messages": 923,
       "calls": 24,
       "contacts": 9
     }
@@ -36,14 +36,14 @@
       "file": "item1.xlsx",
       "kind": "cellebrite_excel",
       "fidelity": "curated_report",
-      "sha256": "4d33c53a814532b144219c3fad880533ea3d5c21b694bd975ec1c4c133c94750"
+      "sha256": "9ccf905f8d2fc7d76dd3454a392cf3075f03d260f36c72e3284679e965b0293b"
     },
     {
       "source_id": "item2",
       "file": "item2.xlsx",
       "kind": "cellebrite_excel",
       "fidelity": "curated_report",
-      "sha256": "7dd9a1ef8082d75a40643ea6bc1605cde0b20f4c39f823e8863f8b8eb18d66d7"
+      "sha256": "42aab08d6537e6cf9c92f3338fe76aeb531ad1bc03adad1639785ac65ff81526"
     }
   ],
   "traps": {

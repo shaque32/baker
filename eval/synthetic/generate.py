@@ -579,6 +579,10 @@ def render_answer_key(rendered: list[Rendered], gold: list[GoldClaim]) -> str:
         "",
         f"Shared assumption: {key.DEVICE_ATTRIBUTION}",
         "",
+        "Labeling rules:",
+        "",
+        *[f"{i}. {rule}" for i, rule in enumerate(key.LABELING_RULES, start=1)],
+        "",
         "Paragraph numbers (¶) are the numbers printed in the affidavit, not document order.",
         "",
         "Times below are as printed in each report. Item 1 prints UTC+0; Item 2 prints device "
