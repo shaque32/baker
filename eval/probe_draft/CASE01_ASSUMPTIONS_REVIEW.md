@@ -18,9 +18,9 @@ How to read it:
 | C04 | contradicted | 1 | fail | 1 | [ ] |
 | C05 | supported | 2 | pass, pass | 1 | [ ] |
 | C06 | unproven | 3 | pass, pass, - |  | [ ] |
-| C07 | supported | 4 | pass, pass, pass, - | 1 | [ ] |
+| C07 | supported | 5 | pass, pass, pass, pass, - | 1 | [ ] |
 | C08 | contradicted | 2 | -, fail | 1 | [ ] |
-| C09 | supported | 2 | pass, pass | 1 | [ ] |
+| C09 | supported | 2 | pass, pass |  | [ ] |
 | C10 | contradicted | 2 | pass, fail |  | [ ] |
 | C11 | contradicted | 2 | fail | 1 | [ ] |
 | C12 | supported | 2 | pass, pass | 1 | [ ] |
@@ -113,9 +113,10 @@ Arsh: [ ] agree  [ ] change ______  Note:
 | 1 | `sender` | yes | quoted_text: lets meet monday 8pm. lot behind kings plaza<br>person_ids: person:reyes | pass | REYES proposed it. |
 | 2 | `record_time` | yes | quoted_text: lets meet monday 8pm. lot behind kings plaza<br>person_ids: person:reyes<br>window: "On March 6, 2026" (America/New_York, local wall clock) | pass | 6:12 PM EST Mar 6. |
 | 3 | `sender` | yes | quoted_text: ok works<br>person_ids: person:petrov | pass | PETROV's reply. |
-| 4 | `meaning` | yes | quoted_text: ok works<br>person_ids: person:petrov, person:reyes | - | 'ok works' accepts the proposal, and 'monday' sent on Friday Mar 6 means Mar 9. |
+| 4 | `weekday_date` | yes | quoted_text: lets meet monday 8pm. lot behind kings plaza<br>window: "Monday, March 9, 2026" (America/New_York, local wall clock) | pass | 'monday', sent on Friday Mar 6, is next Monday: Mar 9 (derived). |
+| 5 | `meaning` | yes | quoted_text: ok works<br>person_ids: person:petrov, person:reyes | - | 'ok works' accepts the proposal. |
 
-Gap: The affidavit quotes no words; quoted_text here identifies the messages the expert would point to. Only 'monday' = Mar 9 is derived; no template computes weekdays.
+Gap: The affidavit quotes no words; quoted_text here identifies the messages the expert would point to.
 
 Arsh: [ ] agree  [ ] change ______  Note:
 
@@ -138,10 +139,8 @@ Arsh: [ ] agree  [ ] change ______  Note:
 
 | # | Template | Core | Parameters | Check | Why |
 |---|---|---|---|---|---|
-| 1 | `record_time` | yes | channels: call<br>person_ids: person:petrov<br>account_ids: acct:item1:Phone:+12125550122<br>device_ids: dev:item1<br>window: "At about 7:58 p.m. on March 9, 2026" (America/New_York, local wall clock) | pass | Outgoing call 7:58:02 PM EDT, printed 11:58 PM UTC. |
+| 1 | `record_time` | yes | channels: call<br>person_ids: person:petrov<br>account_ids: acct:item1:Phone:+12125550122<br>device_ids: dev:item1<br>window: "At about 7:58 p.m. on March 9, 2026" (America/New_York, local wall clock)<br>duration_s: 90, 150 | pass | Outgoing call 7:58:02 PM EDT, printed 11:58 PM UTC, lasting 00:02:03 ('about two minutes' read as 90 to 150 seconds). |
 | 2 | `contact_entry` | yes | device_ids: dev:item1<br>quoted_text: Marc Garage<br>account_ids: acct:item1:Phone:+12125550122 | pass | The number called is the one saved as "Marc Garage" (the identity part). |
-
-Gap: Call duration ('about two minutes', 00:02:03) has no template or AssumptionParams field, and calls are not quotable, so nothing tests it. Under rules that need every core part covered, C09 cannot reach SUPPORTED until a duration check exists. Proposed fix: a call_duration template with min/max seconds (contracts and thread 4).
 
 Arsh: [ ] agree  [ ] change ______  Note:
 

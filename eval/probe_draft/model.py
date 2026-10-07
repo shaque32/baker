@@ -1,13 +1,16 @@
 """Probe item format. A probe item is one (assumption, evidence in context) decision with a
 known right answer, used to judge the local stance labeler and the AI reviewer item by item.
 
-SYNTHETIC. DRAFT until Arsh signs each item; signed items are copied into eval/gold/ by the
-frozen-files thread. Agreeing with a cloud model does not make an item right.
+SYNTHETIC. An item is a draft until Arsh signs it (labeled_by says which); signed items are
+copied into eval/gold/ by the frozen-files thread. Agreeing with a cloud model does not make an
+item right.
 
 Scoring (thread 2 runs it, eval only):
 - stance: the labeler's label for (assumption, record in context) vs gold_stance.
 - review: the reviewer sees proposed_quote as a SUPPORTS label and must answer gold_review.
   gold_review is "accept" only when gold_stance is SUPPORTS.
+- disputed items (a reasonable competing label exists) are scored and reported on their own and
+  never count toward a pass bar.
 - overreach items look like support on the surface; any reviewer accept on one is a fail.
 """
 
@@ -21,6 +24,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from core.contracts import AssumptionKind, Stance
 
 DRAFT_LABEL = "DRAFT (agent proposal, not approved by Arsh)"
+# Arsh, 2026-10-07 in the probe set thread: "yes sign it", adopting the second outside review.
+SIGNED_LABEL = "Arsh, 2026-10-07"
 
 
 class ProbeCategory(StrEnum):
@@ -61,6 +66,7 @@ class ProbeItem(_Model):
     rationale: str  # why, citing the context
     source: Literal["case01", "invented"]
     labeled_by: str = DRAFT_LABEL
+    disputed: str | None = None  # the competing label and why; scored apart from the pass bars
 
     @model_validator(mode="after")
     def _consistent(self) -> ProbeItem:
@@ -74,6 +80,8 @@ class ProbeItem(_Model):
             raise ValueError(f"{self.probe_id}: clear_support needs gold_stance supports")
         if self.category == ProbeCategory.OVERREACH and self.gold_stance == Stance.SUPPORTS:
             raise ValueError(f"{self.probe_id}: an overreach item never has gold_stance supports")
+        if self.disputed is not None and not self.disputed.strip():
+            raise ValueError(f"{self.probe_id}: disputed needs the competing label and reason")
         if self.category == ProbeCategory.OVERREACH and not self.trap:
             raise ValueError(f"{self.probe_id}: an overreach item names its trap")
         named = {

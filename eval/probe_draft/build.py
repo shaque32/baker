@@ -12,7 +12,7 @@ from collections import Counter
 from pathlib import Path
 
 from eval.probe_draft.items import ITEMS
-from eval.probe_draft.model import DRAFT_LABEL, ProbeCategory, ProbeItem
+from eval.probe_draft.model import DRAFT_LABEL, SIGNED_LABEL, ProbeCategory, ProbeItem
 
 HERE = Path(__file__).resolve().parent
 JSONL = HERE / "probe_draft.jsonl"
@@ -33,9 +33,13 @@ CATEGORY_TITLE = {
     ProbeCategory.IRRELEVANT: "Irrelevant",
 }
 
-HEADER = f"""# Probe set: DRAFT for Arsh's line-by-line review
+HEADER = f"""# Probe set
 
-**Not gold.** Every item below is labeled `{DRAFT_LABEL}`. All data is synthetic and fictional.
+**P001-P088 are signed** (`{SIGNED_LABEL}`): Arsh adopted the second outside review as his
+labels. **P089-P097 are drafts** (`{DRAFT_LABEL}`), added after that review to break label cues,
+and wait for his sign-off. Items marked **disputed** have a reasonable competing label; they are
+scored and reported on their own and never count toward a pass bar. All data is synthetic and
+fictional.
 
 ## What signing means
 
@@ -48,16 +52,38 @@ debatable. Signed items are copied into `eval/gold/` by the frozen-files thread 
 
 ## How to read an item
 
-- All lines of an item come from one phone and one chat (1:1 unless it says group).
-- `(owner)` marks the phone's own account. "The owner" in an assumption means that account.
+- All lines of an item come from one phone and one chat (1:1 unless it says group). Items come
+  from different phones, so owner ids can differ between items.
+- `(owner)` marks the phone's own account. "The owner" in an assumption means that account. An
+  assumption that names a person ("Dan wrote...", "Kaz told...") is about the human who typed;
+  an account name alone does not show who that was.
 - Contacts are named as the phone saved them. A saved name or handle is a label, not proof of
   identity.
-- Times are the phone's local time. Dates in assumptions are local dates.
+- Times are the phone's local time, with the offset shown on each line; follow the offset shown
+  (US Eastern moved to EDT on 2026-03-08 and back to EST on 2025-11-02). Dates in assumptions
+  are local dates.
 - ▶ marks the message being labeled. "Quote" is what a labeler would cite as support.
 - Stances: **supports** = the message, in context, plainly establishes the assumption.
   **contradicts** = it asserts or shows the opposite (other sender, date, count, or an explicit
   statement or correction). **complicates** = it bears on the assumption but neither establishes
   it nor asserts the opposite. **irrelevant** = it does not bear on the assumption.
+- An assumption with several parts is supported only if every part is.
+- Read words in light of the lines shown: a pronoun, "outside" or "ok works" resolves against
+  the conversation. A slang or code reading counts as established only when the conversation
+  itself confirms it.
+- An assumption that something happened (not that someone said it) is supported by a firsthand
+  report of it in the message. A plan, promise, prediction or secondhand report complicates.
+- Wrong person: when the record attributes the words to a different account, or, by quotation,
+  to a different person than the assumption names, the stance is **contradicts**.
+- Sarcasm about a fact ("sure, I was there") leaves the fact unsettled: **complicates**. When
+  the assumption is about what the message does (praise, thanks) and the context shows it does
+  the opposite, the stance is **contradicts**.
+- Coded readings (a benchmark convention, not a general relevance judgment): when the message
+  holds the words the assumption reads as code ("tickets", "the white", "shot") and the context
+  points elsewhere, the stance is **complicates**: context makes another meaning likely but
+  does not rule the code reading out. When the message does not touch the assumption's words or
+  subject, it is **irrelevant**.
+- A bare amount ("300", "2k") is read as dollars.
 - Review: the AI reviewer is shown the quote as a "supports" label. **accept** is right only
   when the stance is supports; otherwise the right answer is **dismiss**.
 
@@ -116,9 +142,13 @@ def _block(it: ProbeItem) -> list[str]:
         f"**Gold:** {it.gold_stance.value} / review {it.gold_review}  ",
         f"**Why:** {it.rationale}",
         "",
-        "Arsh: [ ] agree  [ ] change to ____",
-        "",
     ]
+    if it.disputed:
+        out += [f"**Disputed:** {it.disputed}", ""]
+    if it.labeled_by == SIGNED_LABEL:
+        out += [f"Signed: {it.labeled_by}", ""]
+    else:
+        out += ["Arsh: [ ] agree  [ ] change to ____", ""]
     return out
 
 
