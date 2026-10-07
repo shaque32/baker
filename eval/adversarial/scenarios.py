@@ -231,13 +231,20 @@ def _s(
 # ---------------------------------------------------------------- controls (must be SUPPORTED)
 
 CONTROLS: tuple[Scenario, ...] = (
+    # Rules 0.2.0 (decision 6): AI review alone covers nothing in the alpha, so an AI
+    # acceptance next to an expert's must not get in the way; AI-only support is R25.
     _s(
         "K01",
-        "Clean communication claim, support accepted by the AI reviewer",
+        "Clean communication claim, the AI reviewer and an expert each accepted a support",
         "control",
-        comm([item(1, MSG, Stance.SUPPORTS, S.AI_ACCEPTED)]),
+        comm(
+            [
+                item(1, MSG, Stance.SUPPORTS, S.AI_ACCEPTED),
+                item(2, MSG, Stance.SUPPORTS, S.ACCEPTED, record_id="msg:item1:Chats!949"),
+            ]
+        ),
         expected=Verdict.SUPPORTED,
-        tags=("ai_reviewed",),
+        tags=("confirmed",),
     ),
     _s(
         "K02",
@@ -253,14 +260,14 @@ CONTROLS: tuple[Scenario, ...] = (
         "control",
         comm(
             [
-                item(1, MSG, Stance.SUPPORTS, S.AI_ACCEPTED),
+                item(1, MSG, Stance.SUPPORTS, S.ACCEPTED),
                 item(
                     2, MSG, Stance.IRRELEVANT, S.OPEN, quote="ok", record_id="msg:item1:Chats!947"
                 ),
             ]
         ),
         expected=Verdict.SUPPORTED,
-        tags=("ai_reviewed",),
+        tags=("confirmed",),
     ),
 )
 
@@ -583,6 +590,13 @@ RED_TEAM: tuple[Scenario, ...] = (
             ],
             [],
         ),
+    ),
+    _s(
+        "R25",
+        "Clean communication claim whose only support was accepted by the AI reviewer",
+        "ai_review_only",
+        comm([item(1, MSG, Stance.SUPPORTS, S.AI_ACCEPTED)]),
+        expected=Verdict.UNPROVEN,
     ),
 )
 
