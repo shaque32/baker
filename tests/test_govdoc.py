@@ -110,6 +110,27 @@ def test_para_no_counts_document_order(fixtures):
     assert [int(m.group(1)) for m in printed if m] == list(range(1, 11))
 
 
+def test_label_is_the_printed_paragraph_number(fixtures):
+    r = ingester().parse(fixtures["affidavit.pdf"])
+    by_label = {}
+    for p in r.paragraphs:
+        if p.label is not None:
+            by_label.setdefault(p.label, []).append(p)
+    assert sorted(by_label, key=int) == [str(n) for n in range(1, 11)]
+    # printed paragraph 7 is the tenth paragraph and runs onto page 2 under the same label
+    seven = by_label["7"]
+    assert [(p.page, p.para_no) for p in seven] == [(1, 10), (2, 10)]
+    for p in r.paragraphs:
+        if p.label is None:
+            assert not re.match(r"\d+\.", p.text)
+        assert p.ocr is False
+
+
+def test_unnumbered_document_has_no_labels(fixtures):
+    r = ingester().parse(fixtures["police_report.pdf"])
+    assert all(p.label is None for p in r.paragraphs)
+
+
 def test_headers_footers_kept_out_of_paragraphs_but_listed(fixtures):
     r = ingester().parse(fixtures["affidavit.pdf"])
     for p in r.paragraphs:
@@ -166,11 +187,12 @@ def test_ingest_writes_rows(fixtures, conn):
         "affidavit",
     )
     stored = conn.execute(
-        "SELECT id, page, para_no, char_start, char_end, text FROM govdoc_paragraphs"
-        " ORDER BY page, para_no"
+        "SELECT id, page, para_no, label, char_start, char_end, text, ocr"
+        " FROM govdoc_paragraphs ORDER BY page, para_no"
     ).fetchall()
     assert stored == [
-        (p.id, p.page, p.para_no, p.char_start, p.char_end, p.text) for p in paragraphs
+        (p.id, p.page, p.para_no, p.label, p.char_start, p.char_end, p.text, int(p.ocr))
+        for p in paragraphs
     ]
 
 
@@ -227,6 +249,8 @@ def test_blank_page_has_no_paragraphs_and_no_ocr(tmp_path):
 def test_scanned_document_falls_back_to_ocr(fixtures):
     r = ingester().parse(fixtures["scanned_affidavit.pdf"])
     assert r.ocr_pages == (1, 2)
+    assert all(p.ocr for p in r.paragraphs)
+    assert [p.label for p in r.paragraphs if p.label] == ["1", "2", "3", "4", "5"]
     assert re.search(r"ocr:tesseract-[\d.]+:eng:pages=1,2$", r.source.tool_version or "")
     assert r.govdoc.doc_kind == DocKind.AFFIDAVIT
     # Bates stamps are the only text layer; they are furniture, not paragraphs

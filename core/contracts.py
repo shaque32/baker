@@ -218,10 +218,12 @@ class GovDocParagraph(Model):
     id: str
     govdoc_id: str
     page: int = Field(ge=1)
-    para_no: int = Field(ge=1)
+    para_no: int = Field(ge=1)  # position in the document, counting from 1
+    label: str | None = None  # paragraph number as printed ("7"); None if unnumbered
     char_start: int = Field(ge=0)
     char_end: int = Field(ge=0)
     text: str
+    ocr: bool = False  # text came from OCR, not the PDF text layer; not verbatim
 
 
 # ---------------------------------------------------------------- audit
