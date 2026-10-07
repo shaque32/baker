@@ -20,7 +20,7 @@ How to read it:
 | C06 | unproven | 3 | pass, pass, - |  | [ ] |
 | C07 | supported | 4 | pass, pass, pass, - | 1 | [ ] |
 | C08 | contradicted | 2 | -, fail | 1 | [ ] |
-| C09 | supported | 1 | pass | 1 | [ ] |
+| C09 | supported | 2 | pass, pass | 1 | [ ] |
 | C10 | contradicted | 2 | pass, fail |  | [ ] |
 | C11 | contradicted | 2 | fail | 1 | [ ] |
 | C12 | supported | 2 | pass, pass | 1 | [ ] |
@@ -139,6 +139,7 @@ Arsh: [ ] agree  [ ] change ______  Note:
 | # | Template | Core | Parameters | Check | Why |
 |---|---|---|---|---|---|
 | 1 | `record_time` | yes | channels: call<br>person_ids: person:petrov<br>account_ids: acct:item1:Phone:+12125550122<br>device_ids: dev:item1<br>window: "At about 7:58 p.m. on March 9, 2026" (America/New_York, local wall clock) | pass | Outgoing call 7:58:02 PM EDT, printed 11:58 PM UTC. |
+| 2 | `contact_entry` | yes | device_ids: dev:item1<br>quoted_text: Marc Garage<br>account_ids: acct:item1:Phone:+12125550122 | pass | The number called is the one saved as "Marc Garage" (the identity part). |
 
 Gap: Call duration ('about two minutes', 00:02:03) has no template or AssumptionParams field, and calls are not quotable, so nothing tests it. Under rules that need every core part covered, C09 cannot reach SUPPORTED until a duration check exists. Proposed fix: a call_duration template with min/max seconds (contracts and thread 4).
 

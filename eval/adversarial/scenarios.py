@@ -191,7 +191,11 @@ COMM = claim('On March 12, 2026, PETROV wrote to @northstar: "need 2 more by fri
 OWN, STIPS = ownership()
 MSG = assumption(1, AssumptionKind.EVENT, "Item 1 has an outgoing message with that exact text")
 WHEN = assumption(2, AssumptionKind.TIME, "The message was sent on March 12, 2026, local time")
+# Rules 0.1.0 (rule 3e): a communication claim needs an identity assumption among its core
+# ones. Here the sender check covers it, so each attack fails for its own reason.
+WHO = assumption(5, AssumptionKind.IDENTITY, "PETROV's Telegram account sent the message")
 ok_when = check(1, WHEN, CheckOutcome.PASS)
+ok_who = check(1, WHO, CheckOutcome.PASS, "sender")
 
 
 Parts = tuple[Claim, list[Assumption], list[EvidenceItem], list[CheckResult]]
@@ -204,9 +208,9 @@ def comm(
 ) -> Parts:
     return (
         COMM,
-        assumptions if assumptions is not None else [*OWN, MSG, WHEN],
+        assumptions if assumptions is not None else [*OWN, WHO, MSG, WHEN],
         evidence,
-        checks if checks is not None else [ok_when],
+        checks if checks is not None else [ok_when, ok_who],
     )
 
 
@@ -346,9 +350,9 @@ RED_TEAM: tuple[Scenario, ...] = (
         "handle_owner",
         (
             claim('PETROV wrote to ALEXANDER SOKOLOV: "need 2 more by friday".'),
-            [*OWN, MSG, WHEN, _HANDLE],
+            [*OWN, WHO, MSG, WHEN, _HANDLE],
             [item(1, MSG, Stance.SUPPORTS, S.AI_ACCEPTED)],
-            [ok_when],
+            [ok_when, ok_who],
         ),
         expected=Verdict.UNPROVEN,
     ),
@@ -358,7 +362,7 @@ RED_TEAM: tuple[Scenario, ...] = (
         "timezone",
         comm(
             [item(1, MSG, Stance.SUPPORTS, S.AI_ACCEPTED)],
-            checks=[check(1, WHEN, CheckOutcome.FAIL)],
+            checks=[check(1, WHEN, CheckOutcome.FAIL), ok_who],
         ),
         expected=Verdict.CONTRADICTED,
     ),
@@ -368,7 +372,7 @@ RED_TEAM: tuple[Scenario, ...] = (
         "time_inconclusive",
         comm(
             [item(1, MSG, Stance.SUPPORTS, S.AI_ACCEPTED)],
-            checks=[check(1, WHEN, CheckOutcome.INCONCLUSIVE)],
+            checks=[check(1, WHEN, CheckOutcome.INCONCLUSIVE), ok_who],
         ),
         expected=Verdict.UNPROVEN,
     ),
@@ -455,7 +459,7 @@ RED_TEAM: tuple[Scenario, ...] = (
         "foreign_check",
         comm(
             [item(1, MSG, Stance.SUPPORTS, S.AI_ACCEPTED)],
-            checks=[check(1, _FOREIGN, CheckOutcome.PASS)],
+            checks=[check(1, _FOREIGN, CheckOutcome.PASS), ok_who],
         ),
         expected=Verdict.UNPROVEN,
     ),
@@ -463,7 +467,7 @@ RED_TEAM: tuple[Scenario, ...] = (
         "R16",
         "Two core assumptions; accepted support covers only the first",
         "partial",
-        comm([item(1, MSG, Stance.SUPPORTS, S.AI_ACCEPTED)], checks=[]),
+        comm([item(1, MSG, Stance.SUPPORTS, S.AI_ACCEPTED)], checks=[ok_who]),
         expected=Verdict.UNPROVEN,
     ),
     _s(
@@ -472,7 +476,7 @@ RED_TEAM: tuple[Scenario, ...] = (
         "group_sender",
         comm(
             [item(1, MSG, Stance.SUPPORTS, S.AI_ACCEPTED)],
-            checks=[ok_when, check(2, MSG, CheckOutcome.FAIL, "sender")],
+            checks=[ok_when, ok_who, check(2, MSG, CheckOutcome.FAIL, "sender")],
         ),
         expected=Verdict.CONTRADICTED,
     ),
@@ -538,9 +542,9 @@ RED_TEAM: tuple[Scenario, ...] = (
                 "The package @northstar mentioned on March 12 contained narcotics.",
                 ClaimType.CONTENT_MEANING,
             ),
-            [*OWN, MSG, WHEN, _MEANING],
+            [*OWN, WHO, MSG, WHEN, _MEANING],
             [item(1, MSG, Stance.SUPPORTS, S.AI_ACCEPTED)],
-            [ok_when],
+            [ok_when, ok_who],
         ),
         expected=Verdict.UNPROVEN,
     ),

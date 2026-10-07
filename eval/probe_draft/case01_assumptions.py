@@ -289,6 +289,12 @@ SPEC: tuple[ClaimSpec, ...] = (
                 "pass",
                 "Outgoing call 7:58:02 PM EDT, printed 11:58 PM UTC.",
             ),
+            A(
+                "contact_entry",
+                P(device_ids=[ITEM1], quoted_text="Marc Garage", account_ids=MARC_0122),
+                "pass",
+                'The number called is the one saved as "Marc Garage" (the identity part).',
+            ),
         ),
         gaps=(
             "Call duration ('about two minutes', 00:02:03) has no template or AssumptionParams "
