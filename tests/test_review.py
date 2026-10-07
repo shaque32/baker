@@ -6,7 +6,9 @@ from core.audit._llm_json import PROMPTS_DIR, prompt_body
 from core.audit.review import (
     REVIEW_SCHEMA,
     LocalEvidenceReviewer,
+    NeedsHumanReaderError,
     NotReviewableError,
+    is_reviewable,
 )
 from core.contracts import (
     Assumption,
@@ -143,6 +145,28 @@ def test_refuses_items_it_must_not_touch(update):
     assert model.prompts == []
 
 
+def test_blank_context_is_a_dismissal_without_calling():
+    rev, model = reviewer(ACCEPT)
+    out = rev.review_with_reason(ASSUMPTION, ITEM, "  \n ")
+    assert out.status is EvidenceStatus.DISMISSED and out.error
+    assert model.prompts == []
+
+
+@pytest.mark.parametrize("quote", ["я волнуюсь за Маркуса", "ok Катя"])
+def test_non_english_quote_waits_for_a_human(quote):
+    rev, model = reviewer(ACCEPT)
+    item = ITEM.model_copy(update={"quote": quote})
+    assert not is_reviewable(item)
+    with pytest.raises(NeedsHumanReaderError):
+        rev.review(ASSUMPTION, item, CONTEXT)
+    assert model.prompts == []
+
+
+def test_is_reviewable():
+    assert is_reviewable(ITEM)
+    assert not is_reviewable(ITEM.model_copy(update={"stance": Stance.CONTRADICTS}))
+
+
 def test_refuses_item_for_another_assumption():
     rev, _ = reviewer(ACCEPT)
     other = ASSUMPTION.model_copy(update={"id": "asm:c2:1"})
@@ -166,6 +190,9 @@ def test_draft_docs_have_required_placeholders():
     from core.claims.extract import PLACEHOLDERS as CLAIM_PH
 
     root = Path(__file__).parents[1] / "docs/prompts"
-    for name, ph in (("stance.md", STANCE_PH), ("claims.md", CLAIM_PH)):
+    from core.audit.translation import PLACEHOLDERS as TR_PH
+
+    drafts = (("stance.md", STANCE_PH), ("claims.md", CLAIM_PH), ("translation.md", TR_PH))
+    for name, ph in drafts:
         body = prompt_body((root / name).read_text("utf-8"))
         assert ph <= required_placeholders(body), name

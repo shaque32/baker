@@ -8,6 +8,7 @@ frozen-files thread puts them there, in a PR Arsh merges.
 |---|---|---|---|
 | `stance.md` | `core/audit/prompts/stance.md` | `core/audit/stance.py` | `{assumption}`, `{record}`, `{context}` |
 | `claims.md` | `core/audit/prompts/claims.md` | `core/claims/extract.py` | `{paragraph}` |
+| `translation.md` | `core/audit/prompts/translation.md` | `core/audit/translation.py` | `{text}` |
 | `reviewer-notes.md` | `core/audit/prompts/reviewer.md` (exists) | `core/audit/review.py` | `{assumption}`, `{quote}`, `{context}` |
 
 How the code uses a prompt file:
@@ -18,8 +19,9 @@ How the code uses a prompt file:
 - Placeholders are replaced in one pass. Text from the evidence cannot add a placeholder,
   and literal JSON braces in the prompt are left alone.
 - The code refuses to start if a placeholder it needs is missing from the signed file.
-- Output is constrained to a JSON schema (`STANCE_SCHEMA`, `REVIEW_SCHEMA`, `CLAIMS_SCHEMA`).
-  Output that does not match exactly is dropped (stance, claims) or counts as a dismissal
+- Output is constrained to a JSON schema (`STANCE_SCHEMA`, `REVIEW_SCHEMA`, `CLAIMS_SCHEMA`,
+  `TRANSLATION_SCHEMA`).
+  Output that does not match exactly is dropped (stance, claims, translation) or counts as a dismissal
   (reviewer). The raw text is kept for the log either way.
 - The prompt version recorded with each call is a hash of the text sent, so any wording change
   shows up in the run record.

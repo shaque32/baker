@@ -1,9 +1,10 @@
 """ClaimExtractor: the local model proposes atomic claims; the expert edits the list.
 
 Not on the alpha's critical path: the eval scores gold claims, and the expert can enter or
-edit claims by hand. Fails closed per claim: each proposed claim must quote a span of the
-paragraph verbatim, or it is dropped. A paragraph whose whole output is unusable yields no
-claims and a ClaimDrop, so the CLI can tell the expert that paragraph needs claims by hand.
+edit claims by hand. Fails closed per claim: a proposed claim is dropped unless it quotes a
+span of the paragraph verbatim and every number in its text appears in the paragraph as
+written. A paragraph whose whole output is unusable yields no claims and a ClaimDrop, so the
+CLI can tell the expert that paragraph needs claims by hand.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from core.audit._llm_json import (
     BadModelOutput,
     JsonModel,
     call_model,
+    digit_runs,
     fill_prompt,
     load_prompt,
     model_run_id,
@@ -144,8 +146,13 @@ class LocalClaimExtractor:
             if not text:
                 self.drops.append(ClaimDrop(paragraph.id, i, "empty claim text", raw))
                 continue
-            if c.span not in paragraph.text:
+            if not c.span.strip() or c.span not in paragraph.text:
                 self.drops.append(ClaimDrop(paragraph.id, i, "span not verbatim in paragraph", raw))
+                continue
+            invented = digit_runs(text) - digit_runs(paragraph.text)
+            if invented:
+                reason = f"numbers not in paragraph: {sorted(invented)}"
+                self.drops.append(ClaimDrop(paragraph.id, i, reason, raw))
                 continue
             if text in seen:
                 self.drops.append(ClaimDrop(paragraph.id, i, "duplicate claim", raw))

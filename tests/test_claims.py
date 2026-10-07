@@ -73,3 +73,20 @@ def test_duplicates_dropped_and_empty_paragraph_skipped():
     assert len(ex.extract([PARA, empty])) == 1
     assert len(model.prompts) == 1
     assert ex.drops[0].reason == "duplicate claim"
+
+
+def test_claim_with_invented_number_is_dropped():
+    reply = {
+        "claims": [
+            {
+                "text": "The user of Item 1 sent 15 messages to Marc Garage.",
+                "claim_type": "count",
+                "span": "the user of Item 1 sent 14 messages to Marc Garage",
+            },
+            {"text": "Blank span.", "claim_type": "event", "span": "   "},
+        ]
+    }
+    ex, _ = extractor(reply)
+    assert ex.extract([PARA]) == []
+    assert "numbers not in paragraph" in ex.drops[0].reason
+    assert ex.drops[1].reason == "span not verbatim in paragraph"

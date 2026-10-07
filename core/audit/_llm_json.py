@@ -92,6 +92,14 @@ def fill_prompt(template: str, values: Mapping[str, str]) -> str:
     return _PLACEHOLDER.sub(sub, template)
 
 
+_DIGITS = re.compile(r"\d+")
+
+
+def digit_runs(text: str) -> set[str]:
+    """Every maximal run of digits, as written. Used to catch numbers a model made up."""
+    return set(_DIGITS.findall(text))
+
+
 def _no_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for k, v in pairs:

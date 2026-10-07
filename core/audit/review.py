@@ -7,7 +7,11 @@ The prompt is human-owned (core/audit/prompts/reviewer.md). Rules this module en
   labeler's rationale; the prompt is built from those three inputs only.
 - It returns AI_ACCEPTED or DISMISSED, never ACCEPTED or CONFIRMED. An AI acceptance shows
   as "AI-reviewed"; a human decision always overrides it.
-- It fails closed: a model error, malformed output or an empty reason is a dismissal.
+- It fails closed: a model error, malformed output, an empty reason or an empty context is a
+  dismissal.
+- It never accepts a quote that needs a human reader (any letter outside the Latin script).
+  Such an item is refused and stays open for an expert, so a machine reading of Russian never
+  raises a claim to "supported" on its own.
 """
 
 from __future__ import annotations
@@ -29,6 +33,7 @@ from core.audit._llm_json import (
     prompt_version,
     required_placeholders,
 )
+from core.audit.translation import needs_human_reader
 from core.contracts import Assumption, EvidenceItem, EvidenceStatus, Stance
 
 PROMPT_FILE = "reviewer.md"
@@ -49,6 +54,10 @@ REVIEW_SCHEMA: dict[str, object] = {
 
 class NotReviewableError(ValueError):
     """The item is not a verified, open, supporting item. Nothing was reviewed."""
+
+
+class NeedsHumanReaderError(NotReviewableError):
+    """The quote is not in English. The item stays open for an expert who reads the language."""
 
 
 class _ReviewOut(BaseModel):
@@ -80,6 +89,17 @@ def check_reviewable(item: EvidenceItem) -> None:
         raise NotReviewableError(f"{item.id}: status is {item.status}, not open")
     if item.quote_verified is not True or not item.quote.strip():
         raise NotReviewableError(f"{item.id}: quote is not verified")
+    if needs_human_reader(item.quote):
+        raise NeedsHumanReaderError(f"{item.id}: quote needs a human reader")
+
+
+def is_reviewable(item: EvidenceItem) -> bool:
+    """For the pipeline: call review() only on items where this is True. Others stay open."""
+    try:
+        check_reviewable(item)
+    except NotReviewableError:
+        return False
+    return True
 
 
 class LocalEvidenceReviewer:
@@ -117,6 +137,8 @@ class LocalEvidenceReviewer:
         try:
             if run_id is None:
                 raise BadModelOutput("model has no run id", None)
+            if not context.strip():
+                raise BadModelOutput("no context to review against", None)
             prompt = self.build_prompt(assumption, item, context)
             raw, obj = call_model(self.model, prompt, REVIEW_SCHEMA)
             try:
