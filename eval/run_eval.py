@@ -1,7 +1,9 @@
 """Score pipeline predictions against gold verdicts. This is the merge gate.
 
-Usage: python -m eval.run_eval [--case eval/gold/case01] [--predictions <path>]
-Predictions default to eval/out/<case>/predictions.jsonl.
+Usage: python -m eval.run_eval [--case eval/gold/case01] [--predictions <path>] [--report-only]
+Predictions default to eval/out/<case>/predictions.jsonl, which only the real pipeline writes.
+--report-only prints the scores without gating, for runs on stand-in components
+(eval/out/<case>/fake/) and for cases that are reported but do not gate.
 """
 
 from __future__ import annotations
@@ -25,6 +27,8 @@ class Scores:
     n_predicted: int
     verdict_accuracy: float
     false_supported_rate: float  # gold is not 'supported' but prediction says 'supported'
+    n_false_supported: int
+    false_supported_by_basis: dict[str, int]  # 'ai_reviewed' / 'confirmed' -> count
     confusion: dict[str, dict[str, int]]  # gold verdict -> predicted verdict ('missing' if absent)
 
 
@@ -45,6 +49,7 @@ def score(gold: list[GoldClaim], predictions: list[Prediction]) -> Scores:
     correct = 0
     not_supported = 0
     false_supported = 0
+    by_basis: dict[str, int] = {}
     for g in gold:
         pred = by_id.get(g.claim_id)
         got = pred.verdict.value if pred else "missing"
@@ -56,12 +61,16 @@ def score(gold: list[GoldClaim], predictions: list[Prediction]) -> Scores:
             not_supported += 1
             if pred and pred.verdict == Verdict.SUPPORTED:
                 false_supported += 1
+                basis = pred.supported_basis.value if pred.supported_basis else "unknown"
+                by_basis[basis] = by_basis.get(basis, 0) + 1
 
     return Scores(
         n_gold=len(gold),
         n_predicted=sum(1 for g in gold if g.claim_id in by_id),
         verdict_accuracy=correct / len(gold) if gold else 0.0,
         false_supported_rate=false_supported / not_supported if not_supported else 0.0,
+        n_false_supported=false_supported,
+        false_supported_by_basis=by_basis,
         confusion=confusion,
     )
 
@@ -77,6 +86,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--case", type=Path, default=Path("eval/gold/case01"))
     parser.add_argument("--predictions", type=Path, default=None)
+    parser.add_argument("--report-only", action="store_true")
     args = parser.parse_args(argv)
 
     predictions_path = args.predictions or Path("eval/out") / args.case.name / "predictions.jsonl"
@@ -93,11 +103,17 @@ def main(argv: list[str] | None = None) -> int:
     s = score(gold, predictions)
     print(json.dumps(s.__dict__, indent=2))
     ok = passes(s)
+    verdict = (
+        ("would pass" if ok else "would fail") if args.report_only else ("PASS" if ok else "FAIL")
+    )
     print(
-        f"eval: {'PASS' if ok else 'FAIL'} "
+        f"eval: {predictions_path}: {verdict} "
         f"(accuracy {s.verdict_accuracy:.2f} >= {MIN_VERDICT_ACCURACY}, "
         f"false-supported {s.false_supported_rate:.2f} <= {MAX_FALSE_SUPPORTED_RATE})"
     )
+    if args.report_only:
+        print("eval: report only, not gated")
+        return 0
     return 0 if ok else 1
 
 
