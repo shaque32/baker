@@ -79,6 +79,7 @@ def P(template_id: str, **kw) -> dict:  # noqa: N802
         channels=[],
         quoted_text="",
         count=None,
+        duration=None,
         window=None,
     )
     return {"template_id": template_id, **base, **kw}
@@ -147,6 +148,7 @@ GOOD = {
             people=["PETROV"],
             accounts=[MARC],
             phones=["Item 1"],
+            duration={"as_written": "about two minutes"},
             window=W("At about 7:58 p.m. on March 9, 2026", "2026-03-09T19:50", "2026-03-09T20:06"),
         )
     ],
@@ -239,8 +241,9 @@ def test_parameters_match_the_check_tests(conn):
     assert c01.params.device_ids == ("dev:item1",)
     assert c01.params.account_ids == tuple(MARC_0122)
     (c03,) = build(conn, "C03")[0]
-    assert c03.params.account_ids == tuple(NORTHSTAR)
+    assert c03.params.handles == ("@northstar",) and c03.params.account_ids == ()
     assert c03.params.person_ids == (PETROV,)
+    assert c03.params.channels == ("Telegram",)
     assert (c03.params.expected_count, c03.params.count_op) == (13, "eq")
     assert c03.params.window.tz == "America/New_York"
     assert c03.params.window.raw == "From March 10 through March 31, 2026"
@@ -249,6 +252,7 @@ def test_parameters_match_the_check_tests(conn):
     (c09,) = build(conn, "C09")[0]
     assert c09.params.account_ids == tuple(MARC_0122)
     assert c09.params.person_ids == (PETROV,)  # named in the paragraph, not the claim
+    assert c09.params.duration_s == (90, 150)
 
 
 def test_prompt_shows_only_allowed_templates_and_marks_data(conn):
@@ -335,6 +339,13 @@ BAD = [
         id="account-on-wrong-app",
     ),
     pytest.param("C14", {"template_id": "same_account"}, "not allowed", id="template-not-allowed"),
+    pytest.param("C01", {"handles": ["Marc Garage"]}, "does not take handles", id="handle-refused"),
+    pytest.param(
+        "C09",
+        {"duration": {"as_written": "about 2 minutes"}},
+        "not written",
+        id="duration-not-verbatim",
+    ),
 ]
 
 
@@ -464,3 +475,33 @@ def test_window_before_and_first():
         check_window(
             D(2026, 3, 12, 9), D(2026, 3, 13), "On March 12, 2026", "On March 12, 2026", ""
         )
+
+
+def test_every_template_has_help():
+    from core.audit.assumption_filler import TEMPLATE_HELP
+
+    assert set(TEMPLATES) <= set(TEMPLATE_HELP)
+
+
+@pytest.mark.parametrize(
+    ("words", "rng"),
+    [
+        ("about two minutes", (90, 150)),
+        ("two minutes", (120, 179)),
+        ("about 30 seconds", (22, 38)),
+        ("a minute", (60, 119)),
+        ("approximately one hour", (2700, 4500)),
+    ],
+)
+def test_duration_range(words, rng):
+    from core.audit.assumption_filler import duration_range
+
+    assert duration_range(words) == rng
+
+
+@pytest.mark.parametrize("words", ["under two minutes", "more than a minute", "a while", "2m"])
+def test_duration_range_refuses(words):
+    from core.audit.assumption_filler import duration_range
+
+    with pytest.raises(Reject):
+        duration_range(words)

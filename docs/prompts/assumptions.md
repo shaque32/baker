@@ -13,6 +13,8 @@ What the code does around it (`core/audit/assumption_filler.py`):
 - The time zone is the phone's, from the case data. UTC only if the document says UTC.
 - Code checks each time range against the dates and times the claim states, reads "at least"
   or "at most" from the claim itself, and refuses approximate counts.
+- Handles stay as written; the checks resolve them from the data. A call length is turned
+  into seconds by code ("about two minutes" is 90 to 150).
 - Every assumption is core. If a claim's key template does not survive (a meaning claim
   without "meaning", a count without "message_count"), the claim gets no assumptions and stays
   unproven.
@@ -50,6 +52,8 @@ For each assumption the claim needs, give one object with these fields. Leave a 
 - "quoted_text": words the claim quotes from a message or contact, copied exactly, without
   the quotation marks.
 - "count": {"value": N} when the claim states a number of messages or calls, else null.
+- "duration": {"as_written": "..."} with the call length exactly as written ("about three
+  minutes"), else null.
 - "window": when the claim states a date or time, else null:
   - "as_written": the exact stretch of the claim that states the date, the time and any word
     that bounds the range ("before", "after"), copied character for character. It may be long.
@@ -64,4 +68,4 @@ Use a template only for what the claim itself says. A claim about what words mea
 needs nothing from the templates above, return an empty list.
 
 Answer with JSON only:
-{"assumptions": [{"template_id": "...", "people": [], "accounts": [], "handles": [], "phones": [], "channels": [], "quoted_text": "", "count": null, "window": null}]}
+{"assumptions": [{"template_id": "...", "people": [], "accounts": [], "handles": [], "phones": [], "channels": [], "quoted_text": "", "count": null, "duration": null, "window": null}]}

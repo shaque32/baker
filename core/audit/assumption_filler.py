@@ -12,10 +12,11 @@ the document or the case data. It fails closed at every step:
 - Names resolve to persons the expert created (exact name or surname, one match only).
   Phones resolve to devices by their label. Numbers and user ids resolve to accounts by app
   and identifier, the way the checks match accounts. A handle stays a handle where the
-  template takes one; elsewhere it resolves through the checks' own handle resolution, and
-  only if that finds exactly one account. Zero or several matches drop the proposal.
+  template takes one, and the checks resolve it from the data; a template that takes no
+  handles drops the proposal. Zero or several matches for any other value drop it too.
 - A channel must be named in the claim ("Telegram", or "texted" for SMS, "call" for calls).
   A model never narrows a search to a channel the document did not name.
+- A call's stated length ("about two minutes") is turned into seconds by code.
 - A count's number must appear in the claim, and its comparison ("at least", "at most",
   exactly) is read from the claim's words by code, not taken from the model.
 - A time range must match the dates and times the document states (see `check_window`).
@@ -58,7 +59,7 @@ from core.audit._llm_json import (
 )
 from core.audit._local_model import LocalModel, open_run
 from core.audit.assumptions import TEMPLATES, Proposal, Template, local_window
-from core.audit.checks._common import CaseData, key, resolve_handle
+from core.audit.checks._common import CaseData, key
 from core.contracts import Claim, ClaimType, ModelRun
 
 PROMPT_FILE = "assumptions.md"
@@ -72,7 +73,8 @@ TEMPLATE_HELP: dict[str, str] = {
     "sender": "the quoted message was sent by one party. Needs quoted_text; one party.",
     "record_time": (
         "the quoted message (or a call between the parties) happened in a time range. "
-        "Needs window, and quoted_text or channel 'call' with parties."
+        "Needs window, and quoted_text or channel 'call' with parties. For a call, a stated "
+        "length goes in duration."
     ),
     "message_count": (
         "one phone holds a number of messages between two parties in a time range. "
@@ -83,6 +85,10 @@ TEMPLATE_HELP: dict[str, str] = {
     "contact_entry": (
         "a phone has a saved contact (quoted_text = the saved name) with a number. "
         "Needs one phone, quoted_text and the number as an account."
+    ),
+    "weekday_date": (
+        "a weekday named in the quoted message ('monday') means the date the claim gives. "
+        "Needs quoted_text and the window of that date."
     ),
     "meaning": "the quoted words mean what the claim says they mean. Needs quoted_text.",
     "authorship": "a person personally wrote what an account sent. Needs people and accounts.",
@@ -148,6 +154,12 @@ class _Account(BaseModel):
     app: StrictStr = Field(min_length=1, max_length=60)
 
 
+class _Duration(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    as_written: StrictStr = Field(min_length=1, max_length=100)
+
+
 class _ProposalOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -159,6 +171,7 @@ class _ProposalOut(BaseModel):
     channels: list[StrictStr] = Field(default_factory=list, max_length=4)
     quoted_text: StrictStr = Field(default="", max_length=500)
     count: _Count | None = None
+    duration: _Duration | None = None
     window: _Window | None = None
 
 
@@ -214,6 +227,17 @@ def fill_schema(template_ids: Iterable[str], channels: Iterable[str]) -> dict[st
                                 },
                             ]
                         },
+                        "duration": {
+                            "anyOf": [
+                                {"type": "null"},
+                                {
+                                    "type": "object",
+                                    "properties": {"as_written": s},
+                                    "required": ["as_written"],
+                                    "additionalProperties": False,
+                                },
+                            ]
+                        },
                         "window": {
                             "anyOf": [
                                 {"type": "null"},
@@ -240,6 +264,7 @@ def fill_schema(template_ids: Iterable[str], channels: Iterable[str]) -> dict[st
                         "channels",
                         "quoted_text",
                         "count",
+                        "duration",
                         "window",
                     ],
                     "additionalProperties": False,
@@ -454,6 +479,46 @@ def count_op(claim: str, value: int) -> Literal["eq", "ge", "le"]:
     return "eq"
 
 
+_NUMBER_WORDS = {
+    w: i
+    for i, w in enumerate(
+        "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen "
+        "fifteen sixteen seventeen eighteen nineteen twenty".split()
+    )
+} | {"thirty": 30, "forty": 40, "forty-five": 45, "fifty": 50, "sixty": 60, "ninety": 90}
+_UNITS = {"second": 1, "sec": 1, "minute": 60, "min": 60, "hour": 3600, "hr": 3600}
+_ABOUT = ("about", "approximately", "around", "roughly", "nearly", "almost", "some")
+_DURATION_RE = re.compile(
+    r"^(?:(?P<about>[a-z]+)\s+)?(?:(?P<a>an?)|(?P<n>\d+|[a-z-]+))\s+"
+    r"(?P<unit>second|sec|minute|min|hour|hr)s?\.?$",
+    re.IGNORECASE,
+)
+
+
+def duration_range(as_written: str) -> tuple[int, int]:
+    """Seconds a stated call length allows: "about two minutes" is 90 to 150 (25% either
+    side); "two minutes" is 120 to 179. Bounds like "under" or "more than" are refused."""
+    m = _DURATION_RE.match(as_written.strip())
+    if m is None:
+        raise Reject(f"cannot read the duration {as_written!r}")
+    lead = (m.group("about") or "").lower()
+    if lead and lead not in _ABOUT:
+        raise Reject(f"the duration {as_written!r} is a bound, not a length")
+    if m.group("a"):
+        n = 1
+    elif m.group("n").isdigit():
+        n = int(m.group("n"))
+    elif m.group("n").lower() in _NUMBER_WORDS:
+        n = _NUMBER_WORDS[m.group("n").lower()]
+    else:
+        raise Reject(f"cannot read the number in {as_written!r}")
+    unit = _UNITS[m.group("unit").lower()]
+    v = n * unit
+    if lead:
+        return round(v * 0.75), round(v * 1.25)
+    return v, v + unit - 1
+
+
 # A message quoted after a verb of saying: 'PETROV texted REYES: "its done"'. A quoted contact
 # name ('saved as "Marc Garage"') is not a message.
 _QUOTED_MESSAGE = re.compile(
@@ -615,20 +680,22 @@ class LocalAssumptionFiller:
         account_ids: set[str] = set()
         for acc in p.accounts:
             account_ids |= self._accounts(acc, device_ids)
-        handles: list[str] = []
-        for h in p.handles:
-            if "handles" in tpl.allowed:
-                handles.append(h.strip())
-            else:
-                account_ids |= self._handle_accounts(h, channels)
+        handles = [h.strip() for h in p.handles]
         if handles:
-            params["handles"] = handles
+            if "handles" not in tpl.allowed:
+                raise Reject(f"template {tpl.id!r} does not take handles")
+            params["handles"] = handles  # the checks resolve them from the data
         if account_ids:
             params["account_ids"] = sorted(account_ids)
 
         if p.count is not None:
             params["count_op"] = count_op(claim.text, p.count.value)
             params["expected_count"] = p.count.value
+
+        if p.duration is not None:
+            if not _verbatim(p.duration.as_written, claim.text):
+                raise Reject("the duration's words are not written in the claim")
+            params["duration_s"] = duration_range(p.duration.as_written)
 
         if p.window is not None:
             params["window"] = self._window(claim.text, para, p.window, device_ids, tpl.id)
@@ -688,15 +755,6 @@ class LocalAssumptionFiller:
         if not hits:
             raise Reject(f"{acc.as_written!r} on {acc.app} matches no account in the case")
         return hits
-
-    def _handle_accounts(self, handle: str, channels: list[str]) -> set[str]:
-        """For a template that takes no handles: the checks' own handle resolution, used only
-        when it finds exactly one account (on the claim's one app, if it names one)."""
-        apps = [c for c in channels if c.casefold() != "call"]
-        party = resolve_handle(self.data, handle.strip(), apps[0] if len(apps) == 1 else None)
-        if len(party.keys) != 1:
-            raise Reject(f"handle {handle!r} resolves to {len(party.keys)} accounts, not one")
-        return self.data.account_ids(party.keys)
 
     def _window(
         self, claim_text: str, para: str, w: _Window, device_ids: list[str], template_id: str
