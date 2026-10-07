@@ -30,8 +30,8 @@ def test_false_supported_counts_only_non_supported_gold():
         gold("C3", Verdict.CONTRADICTED),
     ]
     p = [
-        Prediction(claim_id="C1", verdict=Verdict.SUPPORTED),
-        Prediction(claim_id="C2", verdict=Verdict.SUPPORTED),
+        Prediction(claim_id="C1", verdict=Verdict.SUPPORTED, supported_basis="ai_reviewed"),
+        Prediction(claim_id="C2", verdict=Verdict.SUPPORTED, supported_basis="ai_reviewed"),
         Prediction(claim_id="C3", verdict=Verdict.CONTRADICTED),
     ]
     s = score(g, p)
@@ -55,5 +55,8 @@ def test_main_with_no_gold_exits_zero(tmp_path):
 def test_main_fails_below_threshold(tmp_path):
     (tmp_path / "gold.jsonl").write_text(gold("C1", Verdict.UNPROVEN).model_dump_json() + "\n")
     preds = tmp_path / "p.jsonl"
-    preds.write_text(json.dumps({"claim_id": "C1", "verdict": "supported"}) + "\n")
+    preds.write_text(
+        json.dumps({"claim_id": "C1", "verdict": "supported", "supported_basis": "confirmed"})
+        + "\n"
+    )
     assert main(["--case", str(tmp_path), "--predictions", str(preds)]) == 1
