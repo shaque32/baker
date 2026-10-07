@@ -5,7 +5,8 @@ land. They are deliberately simple and their numbers mean nothing. Any run that 
 marked fake (their module is under eval/), and the report says so in a banner.
 
 - FakeAssumptionBuilder: one core assumption per claim, tier inferred, carrying the first
-  phrase the claim puts in quotes as params.quoted_text.
+  phrase the claim puts in quotes as params.quoted_text. Communication claims also get a
+  core sender (identity) assumption, which nothing in the fakes covers, so they stay unproven.
 - QuotedPhraseRetriever: messages and contacts whose text contains that phrase.
 - PhraseLabeler: 'supports' when the record contains the phrase, else 'irrelevant'.
 - FakeReviewer: accepts (or dismisses) every supporting item it is shown.
@@ -84,7 +85,7 @@ class FakeAssumptionBuilder:
     def build(self, claim: Claim) -> list[Assumption]:
         phrases = _QUOTED.findall(claim.text)
         params = AssumptionParams(quoted_text=phrases[0] if phrases else None)
-        return [
+        out = [
             Assumption(
                 id=assumption_id(claim.id, "stand_in", params),
                 claim_id=claim.id,
@@ -97,6 +98,22 @@ class FakeAssumptionBuilder:
                 tier=ProvenanceTier.INFERRED,
             )
         ]
+        if claim.claim_type == ClaimType.COMMUNICATION:
+            sender = AssumptionParams()
+            out.append(
+                Assumption(
+                    id=assumption_id(claim.id, "stand_in_sender", sender),
+                    claim_id=claim.id,
+                    kind=AssumptionKind.IDENTITY,
+                    template_id="stand_in_sender",
+                    template_version="0",
+                    params=sender,
+                    text=f"Stand-in assumption for {claim.id}: the sender is who the claim names.",
+                    is_core=True,
+                    tier=ProvenanceTier.INFERRED,
+                )
+            )
+        return out
 
 
 class QuotedPhraseRetriever:
