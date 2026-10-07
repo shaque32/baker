@@ -1,3 +1,4 @@
+import re
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -61,6 +62,14 @@ def reviewer(*replies, prior=0, **kw) -> tuple[LocalEvidenceReviewer, FakeModel]
         clock=lambda: NOW,
     )
     return rev, model
+
+
+def test_schema_order_matches_signed_answer_line():
+    """The model writes keys in schema order, so it must be the order the prompt asks for."""
+    answer = [line for line in SIGNED.splitlines() if line.lstrip().startswith('{"')][-1]
+    keys = re.findall(r'"([a-z_]+)":', answer)
+    assert keys == list(REVIEW_SCHEMA["properties"])  # type: ignore[call-overload]
+    assert keys == REVIEW_SCHEMA["required"]
 
 
 def test_conforms_to_contract_protocol():
