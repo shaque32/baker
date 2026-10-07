@@ -1,6 +1,6 @@
 --- a/core/audit/rules.py
 +++ b/core/audit/rules.py
-@@ -1,37 +1,199 @@
+@@ -1,37 +1,221 @@
  """Verdict rules. HUMAN-OWNED (Arsh). Agents: do not modify.
  
 -STUB. The logic below is intentionally not written yet. The intended rules, from the
@@ -49,10 +49,12 @@
 +    (b) an expert accepted a supporting item on it whose record is observed or derived
 +        -> tier confirmed;
 +    (c) the AI reviewer accepted a supporting item on it whose record is observed or derived,
-+        and the assumption is an event or meaning assumption -> tier ai_reviewed.
-+        Identity, time and completeness assumptions are never covered by AI review alone:
-+        the AI reviewer never confirms identity, timing is computed by a check, and silence
-+        has no quote to verify (pending Arsh: red-team R09, R18, R19).
++        and it is an event assumption (a message or call happened, with these words)
++        -> tier ai_reviewed.
++        AI review alone never covers an identity, time, completeness or meaning assumption:
++        the AI reviewer never confirms identity, timing is computed by a check, silence has
++        no quote to verify, and what words mean is interpretation for an expert
++        (pending Arsh: red-team R09, R18, R19; C06 and C20).
 +    Never covered by: a model label nobody accepted, an item the reviewer or expert dismissed,
 +    an inferred record (a machine translation, even when accepted; C17 is a known miss,
 +    Arsh, 2026-10-07, decision 4), an inconclusive check, or an assumption's stored tier.
@@ -66,7 +68,15 @@
 +        label the AI reviewer or an expert accepted (CLAUDE.md: never SUPPORTED on a model
 +        label alone, nor without one);
 +    (d) no complicating item that is not dismissed, no counting contradiction and no failed
-+        check on any assumption of the claim, core or not.
++        check on any assumption of the claim, core or not;
++    (e) the core assumptions include the kind the claim type turns on: identity for a
++        communication claim (who sent it: C16's shared account) or an identity claim, a
++        meaning assumption for a content-meaning claim, completeness for an absence or count
++        claim, time for a timing claim. A claim whose hard part was never made an assumption
++        is not tested, whatever else is covered;
++    (f) for identity, role and content-meaning claims, no core assumption is covered by AI
++        review alone (a role template may be an event assumption, but who directed whom is
++        interpretation).
 +    supported_basis is confirmed only when no coverage and no cited support rests on the AI
 +    reviewer alone; otherwise ai_reviewed, and the reasons say so. Reports show the two
 +    differently. A human decision always overrides the AI reviewer, through the item's latest
@@ -91,6 +101,7 @@
 +    CheckOutcome,
 +    CheckResult,
 +    Claim,
++    ClaimType,
 +    EvidenceItem,
 +    EvidenceStatus,
 +    ProvenanceTier,
@@ -108,7 +119,18 @@
 +
 +_CITABLE_RECORD = frozenset({ProvenanceTier.OBSERVED, ProvenanceTier.DERIVED})
 +_REVIEWED = frozenset({EvidenceStatus.AI_ACCEPTED, EvidenceStatus.ACCEPTED})
-+_AI_MAY_COVER = frozenset({AssumptionKind.EVENT, AssumptionKind.MEANING})
++_AI_MAY_COVER = frozenset({AssumptionKind.EVENT})
++# rule 3(e): the assumption kind each claim type turns on
++_REQUIRED_KIND = {
++    ClaimType.COMMUNICATION: AssumptionKind.IDENTITY,
++    ClaimType.CONTENT_MEANING: AssumptionKind.MEANING,
++    ClaimType.IDENTITY: AssumptionKind.IDENTITY,
++    ClaimType.ABSENCE: AssumptionKind.COMPLETENESS,
++    ClaimType.COUNT: AssumptionKind.COMPLETENESS,
++    ClaimType.TIMING: AssumptionKind.TIME,
++}
++# rule 3(f): claim types an AI review may not carry on its own
++_NO_AI_COVERAGE = frozenset({ClaimType.IDENTITY, ClaimType.ROLE, ClaimType.CONTENT_MEANING})
 +
  
 -RULE_VERSION = "0.0.2-stub"
@@ -224,7 +246,7 @@
  
  
  def decide_verdict(
-@@ -39,5 +201,142 @@
+@@ -39,5 +223,155 @@
      assumptions: list[Assumption],
      evidence: list[EvidenceItem],
      checks: list[CheckResult],
@@ -313,6 +335,19 @@
 +    if not core:
 +        blockers.append("Rule 3a: the claim has no core assumption, so nothing was tested.")
 +    blockers += [_uncovered_reason(f) for f in core if f.covered_tier is None]
++    need = _REQUIRED_KIND.get(claim.claim_type)
++    if core and need is not None and not any(f.assumption.kind is need for f in core):
++        blockers.append(
++            f"Rule 3e: a {claim.claim_type.value} claim needs a core {need.value} assumption, "
++            "and this claim has none, so its central point was never tested."
++        )
++    if claim.claim_type in _NO_AI_COVERAGE:
++        blockers += [
++            f"Rule 3f: '{f.assumption.text}' rests on AI review alone, which cannot carry a "
++            f"{claim.claim_type.value} claim; it needs a check or an expert."
++            for f in core
++            if f.covered_tier is ProvenanceTier.AI_REVIEWED
++        ]
 +    supports = sorted((e for f in core for e in f.supports), key=lambda e: e.id)
 +    if core and not supports:
 +        blockers.append(
