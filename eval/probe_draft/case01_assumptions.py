@@ -243,15 +243,24 @@ SPEC: tuple[ClaimSpec, ...] = (
             ),
             A("sender", P(quoted_text="ok works", person_ids=[PETROV]), "pass", "PETROV's reply."),
             A(
+                "weekday_date",
+                P(
+                    quoted_text="lets meet monday 8pm. lot behind kings plaza",
+                    window=window("2026-03-09", "2026-03-10", "Monday, March 9, 2026"),
+                ),
+                "pass",
+                "'monday', sent on Friday Mar 6, is next Monday: Mar 9 (derived).",
+            ),
+            A(
                 "meaning",
                 P(quoted_text="ok works", person_ids=[PETROV, REYES]),
                 None,
-                "'ok works' accepts the proposal, and 'monday' sent on Friday Mar 6 means Mar 9.",
+                "'ok works' accepts the proposal.",
             ),
         ),
         gaps=(
             "The affidavit quotes no words; quoted_text here identifies the messages the expert "
-            "would point to. Only 'monday' = Mar 9 is derived; no template computes weekdays.",
+            "would point to.",
         ),
     ),
     ClaimSpec(
@@ -285,9 +294,11 @@ SPEC: tuple[ClaimSpec, ...] = (
                         "2026-03-09T20:06",
                         "At about 7:58 p.m. on March 9, 2026",
                     ),
+                    duration_s=[90, 150],
                 ),
                 "pass",
-                "Outgoing call 7:58:02 PM EDT, printed 11:58 PM UTC.",
+                "Outgoing call 7:58:02 PM EDT, printed 11:58 PM UTC, lasting 00:02:03 "
+                "('about two minutes' read as 90 to 150 seconds).",
             ),
             A(
                 "contact_entry",
@@ -295,13 +306,6 @@ SPEC: tuple[ClaimSpec, ...] = (
                 "pass",
                 'The number called is the one saved as "Marc Garage" (the identity part).',
             ),
-        ),
-        gaps=(
-            "Call duration ('about two minutes', 00:02:03) has no template or AssumptionParams "
-            "field, and calls are not quotable, so nothing tests it. Under rules that need "
-            "every core part covered, C09 cannot reach SUPPORTED until a duration check "
-            "exists. Proposed fix: a call_duration template with min/max seconds (contracts "
-            "and thread 4).",
         ),
     ),
     ClaimSpec(
