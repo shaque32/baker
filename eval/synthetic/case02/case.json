@@ -1,0 +1,101 @@
+{
+  "hidden": true,
+  "note": "Hidden eval case. Builder threads must not read eval/synthetic/case02*, tests/test_synthetic_case02.py or eval/out/case02/.",
+  "case_id": "case02",
+  "description": "Synthetic case. Two phones, English and Spanish, a resale ring for stolen tools; hand-placed traps that differ from case01.",
+  "synthetic": true,
+  "generator": "case02-gen 0.1.0",
+  "seed": 20260318,
+  "affidavit": {
+    "markdown": "affidavit_draft.md",
+    "pdf": "written next to --db as affidavit.pdf (not committed)",
+    "first_printed_paragraph": 21,
+    "time_zone_statement": "paragraph 23: Central Time (America/Chicago)"
+  },
+  "devices": [
+    {
+      "source_id": "item1",
+      "label": "Item 1: Apple iPhone 14 seized from Nolan Brandt",
+      "model": "Apple iPhone 14 (A2649)",
+      "timezone": "America/Chicago",
+      "report_time": "utc",
+      "travel": [],
+      "omitted_from_report": [],
+      "extraction_type": "logical",
+      "owner": "Nolan Brandt",
+      "messages": 651,
+      "calls": 22,
+      "contacts": 8
+    },
+    {
+      "source_id": "item2",
+      "label": "Item 2: Google Pixel 7 seized from Rafael Quintero",
+      "model": "Google Pixel 7 (GVU6C)",
+      "timezone": "America/Chicago",
+      "report_time": "local",
+      "travel": [
+        {
+          "start_utc": "2026-03-18T20:05:00Z",
+          "end_utc": "2026-03-24T05:30:00Z",
+          "offset_min": -420
+        }
+      ],
+      "omitted_from_report": [
+        "Westside Flips"
+      ],
+      "extraction_type": "file_system",
+      "owner": "Rafael Quintero",
+      "messages": 598,
+      "calls": 24,
+      "contacts": 6
+    }
+  ],
+  "sources": [
+    {
+      "source_id": "item1",
+      "file": "item1.xlsx",
+      "kind": "cellebrite_excel",
+      "fidelity": "curated_report",
+      "sha256": "ea77463e68093b60bd2ebbcd9fb61c6cb178ed76e6fda6458b0bf172915692cf"
+    },
+    {
+      "source_id": "item2",
+      "file": "item2.xlsx",
+      "kind": "cellebrite_excel",
+      "fidelity": "curated_report",
+      "sha256": "8147ce59dd8d1c0f6fac88d734bfe337eb4b289a23efe67f783b4360e42f0b39"
+    }
+  ],
+  "traps": {
+    "travel_tz": "QUINTERO's phone (item2, device-local report) prints rows from 2026-03-18T20:05:00Z to 2026-03-24T05:30:00Z as (UTC-7) because he was in Los Angeles; the Summary still says America/Chicago. The affidavit states Central time. qh03 is 12:30 AM CDT Mar 20 but prints 3/19 10:30 PM (UTC-7); s07 prints 3/20 11:41 PM (UTC-7) but is 1:41 AM CDT Mar 21.",
+    "dst": "US DST starts 2026-03-08. s03 prints 3/10 1:15 AM (UTC+0) on item1; CDT gives 8:15 PM Mar 9, CST would give 7:15 PM.",
+    "group_sender": "WhatsApp group 'Westside Flips' (item1): g05 'drop is at the storage on 4th...' was sent by HALE (+13125550131), not BRANDT.",
+    "quoted_speech": "s05: BRANDT reports Wade's words ('wade said \"bring the cash friday\"').",
+    "negation": "km02: BRANDT denies ('i never sold chino anything') in reply to MERCER.",
+    "call_count": "Five BRANDT-QUINTERO call records Mar 10-14 (Central): two connected (00:04:31, 00:01:02), two Missed, one outgoing 00:00:00. Two print outside the window's dates in UTC on item1.",
+    "deleted_flag": "item2 marks six Telegram rows with BRANDT (tq03-tq07, tq12) Deleted; item1 has them Intact. item2 also marks three filler SMS with Dani Deleted; item1 two with Gary. The flag carries no time or actor.",
+    "absence_curated": "The item2 report omits the 'Westside Flips' group although QUINTERO's account posts in it; item1's copy shows QUINTERO and HALE exchanging messages on Mar 24 (g07, g08). No row on either phone involves +13125550143 after Mar 14.",
+    "sarcasm": "g02 'yeah im the kingpin lol' answers a joke about having more drills than the hardware store.",
+    "name_collision": "item1 'Chino' is +13125550143 (Hector Salas); item2 'Chino' is +13125550158 (Victor Aguilar, QUINTERO's cousin).",
+    "attachment_only": "ch03 is an empty-bodied WhatsApp message with attachment IMG_4471.jpg; the report has no image content, hash or MIME type.",
+    "translation": "Spanish: mq01 (going to Los Angeles on Wednesday) and mf01 (slang 'la cosa está caliente', no mention of police or a storage unit).",
+    "handle_reuse": "Telegram name 'Vic Tools' is shown by two user ids on item1: 8200417 (Feb 24 to Mar 10) and 8200952 (Mar 17 to Mar 25). Inverse of case01's handle_change."
+  },
+  "ground_truth_people": {
+    "brandt": "Nolan Brandt",
+    "quintero": "Rafael Quintero",
+    "hale": "Devon Hale",
+    "fuentes": "Marisol Fuentes",
+    "salas": "Hector Salas (saved on Item 1 as 'Chino', +13125550143)",
+    "aguilar": "Victor Aguilar (QUINTERO's cousin; saved on Item 2 as 'Chino', +13125550158)",
+    "mercer": "Kyle Mercer",
+    "vic": "unknown (Telegram 'Vic Tools': user 8200417, then user 8200952 from Mar 17)",
+    "erin": "Erin Brandt (BRANDT's sister)",
+    "gary": "Gary Lindqvist (BRANDT's dispatcher at work)",
+    "theo": "Theo Marchetti",
+    "mama_q": "QUINTERO's mother",
+    "dani": "Daniela Ruiz (QUINTERO's girlfriend)",
+    "jaylen": "Jaylen Brooks",
+    "wade": "Wade (named in one message only; not on either phone)"
+  }
+}
