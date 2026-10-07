@@ -139,3 +139,18 @@ def test_stance_create_uses_context_renderer(case_db, monkeypatch):
     label = lab.label(make_assumption("They met at the garage."), cand)
     assert label.model_run_id == run.id and label.model_call_id == f"mc:{run.id}#1"
     assert ">> CONTEXT FOR msg:7" in model.prompts[0]
+
+
+def test_filler_create_needs_signed_prompt_then_wires_a_run(case_db, monkeypatch):
+    from core.audit import assumption_filler
+
+    if not (assumption_filler.PROMPTS_DIR / "assumptions.md").exists():
+        with pytest.raises(PromptMissingError):
+            assumption_filler.create(case_db, model=FakeLocal([]))
+    draft = prompt_body(
+        (Path(__file__).parents[1] / "docs/prompts/assumptions.md").read_text("utf-8")
+    )
+    monkeypatch.setattr(assumption_filler, "load_prompt", lambda name: draft)
+    filler = assumption_filler.create(case_db, model=FakeLocal([]))
+    (run,) = filler.model_runs
+    assert run.purpose == "assumptions" and run.model_sha256 == SHA

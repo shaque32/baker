@@ -8,6 +8,7 @@ frozen-files thread puts them there, in a PR Arsh merges.
 |---|---|---|---|
 | `stance.md` | `core/audit/prompts/stance.md` | `core/audit/stance.py` | `{assumption}`, `{record}`, `{context}` |
 | `claims.md` | `core/audit/prompts/claims.md` | `core/claims/extract.py` | `{paragraph}` |
+| `assumptions.md` | `core/audit/prompts/assumptions.md` | `core/audit/assumption_filler.py` | `{claim}`, `{paragraph}`, `{templates}`, `{channels}` |
 | `translation.md` | `core/audit/prompts/translation.md` | `core/audit/translation.py` | `{text}` |
 | `reviewer-notes.md` | `core/audit/prompts/reviewer.md` (exists) | `core/audit/review.py` | `{assumption}`, `{quote}`, `{context}` |
 
