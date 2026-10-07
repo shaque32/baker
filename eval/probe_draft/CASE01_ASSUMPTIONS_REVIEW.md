@@ -30,7 +30,7 @@ How to read it:
 | C16 | unproven | 3 | pass, pass, - |  | [ ] |
 | C17 | supported | 3 | pass, pass, - | 1 | [ ] |
 | C18 | unproven | 1 | - |  | [ ] |
-| C19 | contradicted | 1 | inconclusive | 1 | [ ] |
+| C19 | contradicted | 1 | - | 1 | [ ] |
 | C20 | unproven | 3 | pass, pass, - |  | [ ] |
 
 ## C01: gold supported
@@ -256,9 +256,9 @@ Arsh: [ ] agree  [ ] change ______  Note:
 
 | # | Template | Core | Parameters | Check | Why |
 |---|---|---|---|---|---|
-| 1 | `same_account` | yes | channels: Telegram<br>handles: @northstar, Alex | inconclusive | 'Alex' is a saved phone number; the check cannot tie it to a Telegram user. |
+| 1 | `person_identity` | yes | person_ids: person:alex_0182<br>account_ids: acct:item1:Telegram:5551234, acct:item2:Telegram:5551234, acct:item1:SMS:+12125550182 | - | That Telegram user 5551234 and the 'Alex' at +12125550182 on Item 1 are one person. Contradicted only by a stance label on 'who is alex turner?' (rule 2). |
 
-Gap: The claim is about one PERSON behind two accounts, not one account. No template says 'same person'. The contradiction rests on the 'who is alex turner?' message, which only a stance label can carry. Proposed fix: a same_person identity template, model-only, which rule 2 lets an observed message contradict.
+Gap: Code cannot prove two accounts are one person, and a different identifier is not a fail (rule 2), so this rests on the model. 'Alex' is a saved phone number, not a Telegram handle, so same_account does not apply. person:alex_0182 is a placeholder for the person the affidavit says both accounts belong to.
 
 Arsh: [ ] agree  [ ] change ______  Note:
 

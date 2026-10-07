@@ -499,17 +499,21 @@ SPEC: tuple[ClaimSpec, ...] = (
         "C19",
         (
             A(
-                "same_account",
-                P(channels=["Telegram"], handles=["@northstar", "Alex"]),
-                "inconclusive",
-                "'Alex' is a saved phone number; the check cannot tie it to a Telegram user.",
+                "person_identity",
+                P(
+                    person_ids=["person:alex_0182"],
+                    account_ids=(*NORTHSTAR, "acct:item1:SMS:+12125550182"),
+                ),
+                None,
+                "That Telegram user 5551234 and the 'Alex' at +12125550182 on Item 1 are one "
+                "person. Contradicted only by a stance label on 'who is alex turner?' (rule 2).",
             ),
         ),
         gaps=(
-            "The claim is about one PERSON behind two accounts, not one account. No template "
-            "says 'same person'. The contradiction rests on the 'who is alex turner?' message, "
-            "which only a stance label can carry. Proposed fix: a same_person identity "
-            "template, model-only, which rule 2 lets an observed message contradict.",
+            "Code cannot prove two accounts are one person, and a different identifier is not "
+            "a fail (rule 2), so this rests on the model. 'Alex' is a saved phone number, not a "
+            "Telegram handle, so same_account does not apply. person:alex_0182 is a placeholder "
+            "for the person the affidavit says both accounts belong to.",
         ),
     ),
     ClaimSpec(
