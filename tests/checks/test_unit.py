@@ -7,7 +7,7 @@ import pytest
 
 from core.audit.assumptions import instantiate
 from core.audit.checks import CHECKS, run_checks
-from core.contracts import CheckOutcome
+from core.contracts import CheckOutcome, Claim, ClaimStatus, ClaimType
 from core.db import apply_schema, connect
 from tests.checks.helpers import check, stipulate, window
 
@@ -130,7 +130,7 @@ def test_absence_fails_on_contact_matching_numbers_across_formats() -> None:
 def test_unknown_person_cannot_be_searched() -> None:
     r = check(build(), "no_contact", person_ids=[A, "person:nobody"], window=APRIL)
     assert r.outcome is CheckOutcome.INCONCLUSIVE
-    assert "no stipulation or confirmed link" in r.detail
+    assert "no confirmed stipulation or confirmed link" in r.detail
 
 
 def test_rejected_stipulation_is_not_used() -> None:
@@ -138,6 +138,20 @@ def test_rejected_stipulation_is_not_used() -> None:
     conn.execute("UPDATE stipulations SET status = 'rejected' WHERE person_id = ?", (B,))
     r = check(conn, "no_contact", person_ids=[A, B], window=MARCH)
     assert r.outcome is CheckOutcome.INCONCLUSIVE
+
+
+def test_proposed_stipulation_is_not_ownership() -> None:
+    conn = build()
+    conn.execute(
+        "UPDATE stipulations SET status = 'proposed', decided_by = NULL, decided_at_utc = NULL"
+        " WHERE person_id = ?",
+        (B,),
+    )
+    r = check(conn, "no_contact", person_ids=[A, B], window=MARCH)
+    assert r.outcome is CheckOutcome.INCONCLUSIVE  # would be a fail if B's phone counted
+    assert "is proposed, not confirmed" in r.detail
+    s = check(conn, "sender", quoted_text="see you at noon", person_ids=[B], device_ids=["dev:p2"])
+    assert s.outcome is CheckOutcome.INCONCLUSIVE
 
 
 def test_confirmed_identity_link_adds_an_account() -> None:
@@ -235,3 +249,16 @@ def test_run_checks_ids_follow_the_contract() -> None:
 @pytest.mark.parametrize("name", sorted(CHECKS))
 def test_every_check_has_a_name_and_version(name: str) -> None:
     assert CHECKS[name].name == name and CHECKS[name].version
+
+
+def test_pipeline_hooks() -> None:
+    from core.audit import assumptions, checks, quotes
+
+    conn = build()
+    assert quotes.create(conn) is quotes.verify_quote
+    all_checks = checks.create(conn)
+    a = instantiate("C1", "no_contact", {"person_ids": [A, B], "window": MARCH})
+    assert [c.name for c in all_checks if c.applies_to(a)] == ["absence"]
+    claim = Claim(id="C1", paragraph_id="p", text="t", claim_type=ClaimType.ABSENCE,
+                  status=ClaimStatus.ACCEPTED)  # fmt: skip
+    assert assumptions.create(conn).build(claim) == []  # no filler: nothing proposed

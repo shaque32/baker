@@ -56,12 +56,23 @@ def test_word_boundary_found_after_an_earlier_partial_match() -> None:
     assert find_quote("its done", "bits done, its done") == (11, 19)
 
 
-def test_unicode_is_compared_after_nfc_only() -> None:
-    composed = "кафе́"  # e + combining acute
-    precomposed = "кафе́"
+def test_unicode_is_compared_exactly_without_normalization() -> None:
+    decomposed = "meet at the cafe\u0301"  # e + combining acute accent
+    precomposed = "meet at the caf\u00e9"
+    assert verify_quote("the cafe\u0301", decomposed)
+    assert verify_quote("the caf\u00e9", precomposed)
+    assert not verify_quote("the caf\u00e9", decomposed)  # same look, different characters
+    assert not verify_quote("the cafe\u0301", precomposed)
+    assert not verify_quote("the cafe", precomposed)
     assert verify_quote("я волнуюсь за Маркуса", "я волнуюсь за Маркуса")
-    assert verify_quote(precomposed, composed) == verify_quote(composed, composed)
     assert not verify_quote("Я волнуюсь", "я волнуюсь за Маркуса")
+
+
+def test_every_passing_quote_is_an_exact_substring() -> None:
+    # The invariant check re-tests stored quotes as plain substrings; never pass what it rejects.
+    for quote, body in [("the package", BODY), ("its done", "bits done, its done")]:
+        span = find_quote(quote, body)
+        assert span is not None and body[span[0] : span[1]] == quote
 
 
 def test_record_text_reads_original_body_not_translation() -> None:

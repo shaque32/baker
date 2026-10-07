@@ -45,6 +45,12 @@ def checks_for(assumption: Assumption) -> list[TemplateCheck]:
     return [CHECKS[name] for name in template.checks] if template else []
 
 
+def create(conn: sqlite3.Connection) -> list[TemplateCheck]:
+    """Pipeline hook: every check. Each one answers only the templates that name it, and
+    returns an inconclusive 'does not apply' result for any other assumption."""
+    return list(CHECKS.values())
+
+
 def run_checks(assumption: Assumption, conn: sqlite3.Connection) -> list[CheckResult]:
     return [check.run(assumption, conn) for check in checks_for(assumption)]
 
@@ -59,5 +65,6 @@ __all__ = [
     "TemplateCheck",
     "TimeCheck",
     "checks_for",
+    "create",
     "run_checks",
 ]

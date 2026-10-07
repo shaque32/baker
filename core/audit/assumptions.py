@@ -27,6 +27,7 @@ Conventions every template and check shares:
 
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -402,3 +403,16 @@ class TemplateAssumptionBuilder:
                 continue
             out.setdefault(a.id, a)
         return list(out.values())
+
+
+def _no_proposals(claim: Claim, allowed: list[Template]) -> list[Proposal]:
+    return []
+
+
+def create(conn: sqlite3.Connection, filler: Filler | None = None) -> TemplateAssumptionBuilder:
+    """Pipeline hook: the AssumptionBuilder.
+
+    The filler (the local model, or the expert's entries) is passed in. With none, no
+    assumptions are proposed, so every claim stays unproven: the safe default, never a guess.
+    """
+    return TemplateAssumptionBuilder(filler or _no_proposals)

@@ -166,16 +166,22 @@ class Party:
 
 
 def person_party(data: CaseData, person_id: str) -> Party:
-    """A person's accounts: the owner accounts of each phone a device_owner stipulation (not
-    rejected) gives them, plus accounts an expert confirmed as theirs."""
+    """A person's accounts: the owner accounts of each phone an expert-confirmed device_owner
+    stipulation gives them, plus accounts an expert confirmed as theirs. A proposed
+    stipulation is not ownership yet: it is named in the notes and never used."""
     out = Party(person_id)
     for stip_id, device_id, pid, status in data.stipulations:
-        if pid != person_id or status == "rejected":
+        if pid != person_id:
+            continue
+        if status != "confirmed":
+            out.notes.append(
+                f"stipulation {stip_id} ({device_id}) is {status}, not confirmed, so it is not used"
+            )
             continue
         owned = [a for a in data.accounts.values() if a.device_id == device_id]
         out.keys.update(a.key for a in owned)
         out.notes.append(
-            f"{person_id} = owner accounts of {device_id}, per stipulation {stip_id} ({status})"
+            f"{person_id} = owner accounts of {device_id}, per confirmed stipulation {stip_id}"
         )
     for link_id, account_id, pid in data.links:
         acc = data.accounts.get(account_id)
@@ -183,7 +189,9 @@ def person_party(data: CaseData, person_id: str) -> Party:
             out.keys.add(acc.key)
             out.notes.append(f"{person_id} uses {fmt_key(acc.key)}, per confirmed link {link_id}")
     if not out.keys:
-        out.notes.append(f"no stipulation or confirmed link ties {person_id} to any account")
+        out.notes.append(
+            f"no confirmed stipulation or confirmed link ties {person_id} to any account"
+        )
     return out
 
 
@@ -344,10 +352,7 @@ def messages_for_accounts(data: CaseData, account_ids: set[str]) -> list[Row]:
 
 def messages_with_text(data: CaseData, text: str) -> list[Row]:
     """Messages whose original body contains the text verbatim and word-aligned."""
-    rows = data.conn.execute(
-        _MSG_SQL + " WHERE instr(m.body, ?) > 0 ORDER BY m.id",
-        (unicodedata.normalize("NFC", text),),
-    )
+    rows = data.conn.execute(_MSG_SQL + " WHERE instr(m.body, ?) > 0 ORDER BY m.id", (text,))
     return [row for row in map(_message_row, rows) if find_quote(text, row.text or "")]
 
 

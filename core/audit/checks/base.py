@@ -22,9 +22,14 @@ class TemplateCheck:
     name: ClassVar[str]
     version: ClassVar[str]
 
-    def run(self, assumption: Assumption, conn: sqlite3.Connection) -> CheckResult:
+    def applies_to(self, assumption: Assumption) -> bool:
+        """True if the assumption's template names this check and its parameters still fit.
+        The pipeline runs a check only where this holds."""
         template = template_of(assumption)
-        if template is None or self.name not in template.checks:
+        return template is not None and self.name in template.checks
+
+    def run(self, assumption: Assumption, conn: sqlite3.Connection) -> CheckResult:
+        if not self.applies_to(assumption):
             return self.done(
                 assumption.id,
                 CheckOutcome.INCONCLUSIVE,

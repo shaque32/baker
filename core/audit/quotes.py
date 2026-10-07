@@ -1,9 +1,11 @@
 """Verbatim quote check (QuoteVerifier).
 
 A stance label's quote becomes evidence only if it appears, character for character, in the
-record's original text. Nothing is fuzzy here: no case folding, no whitespace collapsing, no
-ellipsis stitching, no translation. The only normalization is Unicode NFC on both sides, which
-changes how a character is encoded, never which character it is.
+record's original text: an exact substring, with no normalization of any kind. No case folding,
+no whitespace collapsing, no ellipsis stitching, no translation, not even Unicode NFC (an
+accent typed as a separate combining mark differs from a precomposed one, and the quote is
+discarded). This is exactly the rule core/audit/invariants.py re-checks, so a quote that
+passes here can never stop the run there.
 
 Two further rules stop a quote that is technically a substring from passing as evidence:
 - it must contain at least one letter or digit (no quoting punctuation or whitespace);
@@ -17,13 +19,9 @@ neither is anything Baker rendered itself (a call line, a placeholder).
 from __future__ import annotations
 
 import sqlite3
-import unicodedata
+from collections.abc import Callable
 
-VERSION = "1.0.0"
-
-
-def _nfc(text: str) -> str:
-    return unicodedata.normalize("NFC", text)
+VERSION = "1.1.0"
 
 
 def _is_word_char(ch: str) -> bool:
@@ -31,12 +29,11 @@ def _is_word_char(ch: str) -> bool:
 
 
 def find_quote(quote: str, record_text: str) -> tuple[int, int] | None:
-    """Return the (start, end) span of the first verbatim, word-aligned match in the NFC form
-    of record_text, or None if the quote does not qualify."""
+    """Return the (start, end) span of the first exact, word-aligned match in record_text, or
+    None if the quote does not qualify."""
     if not quote or not record_text:
         return None
-    q = _nfc(quote)
-    text = _nfc(record_text)
+    q, text = quote, record_text
     if not any(ch.isalnum() for ch in q):
         return None
     start = text.find(q)
@@ -85,3 +82,8 @@ def verify_record_quote(conn: sqlite3.Connection, record_id: str, quote: str) ->
     """Check a quote against the record's original text as stored, never a rendered copy."""
     text = record_text(conn, record_id)
     return text is not None and verify_quote(quote, text)
+
+
+def create(conn: sqlite3.Connection) -> Callable[[str, str], bool]:
+    """Pipeline hook: the QuoteVerifier."""
+    return verify_quote
