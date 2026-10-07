@@ -11,14 +11,16 @@ The definitions below are what an expert would need to reproduce a citation by h
 - Span. char_start and char_end are offsets into that page text, and
   paragraph.text == page_text[char_start:char_end] exactly. Nothing is cleaned or rewritten.
 - Paragraph number. para_no is the paragraph's position in the document, counting from 1.
-  It is not the number printed in the document; that stays inside the text ("7.  On ...").
-  A paragraph that runs across a page break is stored once per page under the same para_no.
+  The number printed in the document goes in label ("7"), and stays inside the text too.
+  A paragraph that runs across a page break is stored once per page under the same para_no
+  and label.
 - Page furniture. Lines in the top or bottom margin that are page numbers, or that repeat on
   most pages once digits are ignored (running headers, Bates stamps), are left out of
   paragraphs. They are listed in GovDocIngestResult.furniture so nothing is dropped silently.
 - OCR. A page is OCR'd only when its text layer is nearly empty and an image covers most of
-  it (a scan, possibly with a Bates stamp on top). OCR text is not verbatim source text; the
-  pages are listed in GovDocIngestResult.ocr_pages and in the source's tool_version. If OCR
+  it (a scan, possibly with a Bates stamp on top). OCR text is not verbatim source text; its
+  paragraphs carry ocr=True, and the pages are listed in GovDocIngestResult.ocr_pages and in
+  the source's tool_version. If OCR
   is needed but Tesseract is not installed, ingest fails instead of returning empty pages.
 
 The input is opened read-only, hashed with SHA-256 and parsed from the bytes in memory.
@@ -54,7 +56,7 @@ from core.contracts import (
     SourceKind,
 )
 
-PARSER_VERSION = "govdoc-pdf/2"
+PARSER_VERSION = "govdoc-pdf/3"
 
 OCR_MAX_TEXT_CHARS = 50  # a page with fewer text-layer characters than this may be a scan
 OCR_MIN_IMAGE_COVER = 0.5  # ...if images cover at least this share of the page
@@ -357,12 +359,22 @@ def _split_page(
     return paras, last_marker
 
 
-def segment(
-    pages: tuple[PageText, ...], furniture: set[tuple[int, int]]
-) -> list[tuple[int, int, int, int, str]]:
-    """(page, para_no, char_start, char_end, text) for every paragraph, in reading order."""
-    out: list[tuple[int, int, int, int, str]] = []
+@dataclass(frozen=True)
+class _Row:
+    page: int
+    para_no: int
+    label: str | None
+    start: int
+    end: int
+    text: str
+    ocr: bool
+
+
+def segment(pages: tuple[PageText, ...], furniture: set[tuple[int, int]]) -> list[_Row]:
+    """Every paragraph, in reading order."""
+    out: list[_Row] = []
     para_no = 0
+    label: str | None = None
     last_marker: int | None = None
     prev_text: str | None = None
     for p in pages:
@@ -384,9 +396,10 @@ def segment(
             )
             if not continues:
                 para_no += 1
+                label = m.group(1) if m and starts_numbered else None
             start, end = para.lines[0].start, para.lines[-1].end
             text = p.text[start:end]
-            out.append((p.page, para_no, start, end, text))
+            out.append(_Row(p.page, para_no, label, start, end, text, p.ocr))
             prev_text = text
             if m and starts_numbered:
                 last_marker = int(m.group(1))
@@ -472,9 +485,9 @@ class PdfGovDocIngester:
             tool_version=version,
             imported_at_utc=self.clock(),
         )
-        first_line = rows[0][4].split("\n", 1)[0].strip() if rows else ""
+        first_line = rows[0].text.split("\n", 1)[0].strip() if rows else ""
         title = " ".join(meta_title.split()) or first_line or path.stem
-        opening = " ".join(r[4] for r in rows[:3])
+        opening = " ".join(r.text for r in rows[:3])
         govdoc = GovDoc(
             id=f"govdoc:{key}",
             source_id=source.id,
@@ -483,15 +496,17 @@ class PdfGovDocIngester:
         )
         paragraphs = [
             GovDocParagraph(
-                id=f"para:{key}:{page}:{para_no}",
+                id=f"para:{key}:{r.page}:{r.para_no}",
                 govdoc_id=govdoc.id,
-                page=page,
-                para_no=para_no,
-                char_start=start,
-                char_end=end,
-                text=text,
+                page=r.page,
+                para_no=r.para_no,
+                label=r.label,
+                char_start=r.start,
+                char_end=r.end,
+                text=r.text,
+                ocr=r.ocr,
             )
-            for page, para_no, start, end, text in rows
+            for r in rows
         ]
         dropped = tuple(
             (p.page, p.lines[k].text)
@@ -550,10 +565,20 @@ class PdfGovDocIngester:
             )
             conn.executemany(
                 "INSERT INTO govdoc_paragraphs"
-                " (id, govdoc_id, page, para_no, char_start, char_end, text)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                " (id, govdoc_id, page, para_no, label, char_start, char_end, text, ocr)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
-                    (p.id, p.govdoc_id, p.page, p.para_no, p.char_start, p.char_end, p.text)
+                    (
+                        p.id,
+                        p.govdoc_id,
+                        p.page,
+                        p.para_no,
+                        p.label,
+                        p.char_start,
+                        p.char_end,
+                        p.text,
+                        int(p.ocr),
+                    )
                     for p in result.paragraphs
                 ],
             )
@@ -573,12 +598,14 @@ def load(conn: sqlite3.Connection, govdoc_id: str) -> tuple[GovDoc, list[GovDocP
             govdoc_id=r[1],
             page=r[2],
             para_no=r[3],
-            char_start=r[4],
-            char_end=r[5],
-            text=r[6],
+            label=r[4],
+            char_start=r[5],
+            char_end=r[6],
+            text=r[7],
+            ocr=bool(r[8]),
         )
         for r in conn.execute(
-            "SELECT id, govdoc_id, page, para_no, char_start, char_end, text"
+            "SELECT id, govdoc_id, page, para_no, label, char_start, char_end, text, ocr"
             " FROM govdoc_paragraphs WHERE govdoc_id = ? ORDER BY page, para_no",
             (govdoc_id,),
         )

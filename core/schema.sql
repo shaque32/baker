@@ -165,10 +165,12 @@ CREATE TABLE govdoc_paragraphs (
     id         TEXT PRIMARY KEY,
     govdoc_id  TEXT NOT NULL REFERENCES govdocs(id),
     page       INTEGER NOT NULL,
-    para_no    INTEGER NOT NULL,
+    para_no    INTEGER NOT NULL,     -- position in the document, counting from 1
+    label      TEXT,                 -- paragraph number as printed; NULL if unnumbered
     char_start INTEGER NOT NULL,
     char_end   INTEGER NOT NULL,
-    text       TEXT NOT NULL
+    text       TEXT NOT NULL,
+    ocr        INTEGER NOT NULL DEFAULT 0 CHECK (ocr IN (0, 1))  -- 1 = OCR text, not verbatim
 );
 
 -- ---------------------------------------------------------------- audit side
