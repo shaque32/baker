@@ -50,6 +50,12 @@ S = EvidenceStatus
 CLAIM_ID = "claim:redteam:1"
 OTHER_CLAIM_ID = "claim:redteam:2"
 DECIDED_AT = datetime(2026, 10, 7, tzinfo=UTC)
+PIPELINE_RUN_ID = "run:redteam"
+
+# Contracts v0.2 (PR #15) adds typed assumption params, check coverage text and case-level
+# stipulations. Build for whichever contracts are on the branch; drop the v0.1 path once
+# v0.2 is on main.
+V02 = "template_id" in Assumption.model_fields
 
 # ---------------------------------------------------------------- builders
 # Every contract object is built here, so a contracts change is a one-place fix.
@@ -74,6 +80,15 @@ def assumption(
     tier: ProvenanceTier = T.INFERRED,
     claim_id: str = CLAIM_ID,
 ) -> Assumption:
+    extra: dict[str, object] = {}
+    if V02:
+        from core.contracts import AssumptionParams
+
+        extra = {
+            "template_id": f"redteam_{kind.value}",
+            "template_version": "redteam",
+            "params": AssumptionParams(),
+        }
     return Assumption(
         id=f"asm:{claim_id}:{n}",
         claim_id=claim_id,
@@ -81,17 +96,37 @@ def assumption(
         text=text,
         is_core=core,
         tier=tier,
+        **extra,  # type: ignore[arg-type]
     )
 
 
-def ownership(n: int = 0) -> Assumption:
-    """The per-case stipulation the expert confirms once: Item 1 speaks for PETROV."""
-    return assumption(
-        n,
-        AssumptionKind.IDENTITY,
-        "Item 1's owner accounts are used by PETROV (case stipulation)",
-        tier=T.CONFIRMED,
+def ownership() -> tuple[list[Assumption], tuple[object, ...]]:
+    """The per-case stipulation the expert confirms once: Item 1 speaks for PETROV.
+
+    v0.1 has no stipulations, so it is an identity assumption at tier confirmed there.
+    Returns (assumptions to add to every claim, stipulations to pass to the rules).
+    """
+    if not V02:
+        own = assumption(
+            0,
+            AssumptionKind.IDENTITY,
+            "Item 1's owner accounts are used by PETROV (case stipulation)",
+            tier=T.CONFIRMED,
+        )
+        return [own], ()
+    from core.contracts import Stipulation, StipulationKind, StipulationStatus
+
+    stip = Stipulation(
+        id="stip:device_owner:dev:item1",
+        kind=StipulationKind.DEVICE_OWNER,
+        subject_id="dev:item1",
+        person_id="person:petrov",
+        statement="Item 1 is used by PETROV",
+        status=StipulationStatus.CONFIRMED,
+        decided_by="expert:redteam",
+        decided_at_utc=DECIDED_AT,
     )
+    return [], (stip,)
 
 
 def item(
@@ -127,6 +162,7 @@ def check(n: int, asm: Assumption, outcome: CheckOutcome, name: str = "time_wind
         check_version="redteam",
         outcome=outcome,
         detail=f"red-team fixture: {name} {outcome.value}",
+        **({"searched": "red-team fixture"} if V02 else {}),  # type: ignore[arg-type]
     )
 
 
@@ -147,11 +183,12 @@ class Scenario:
     expected: Verdict | None = None
     decision: str | None = None  # the unsigned rule this scenario rests on, if any
     tags: tuple[str, ...] = field(default=())
+    stipulations: tuple[object, ...] = field(default=())
 
 
 # Shared pieces for a communication claim: "On March 12, PETROV wrote 'need 2 more by friday'."
 COMM = claim('On March 12, 2026, PETROV wrote to @northstar: "need 2 more by friday".')
-OWN = ownership(0)
+OWN, STIPS = ownership()
 MSG = assumption(1, AssumptionKind.EVENT, "Item 1 has an outgoing message with that exact text")
 WHEN = assumption(2, AssumptionKind.TIME, "The message was sent on March 12, 2026, local time")
 ok_when = check(1, WHEN, CheckOutcome.PASS)
@@ -167,7 +204,7 @@ def comm(
 ) -> Parts:
     return (
         COMM,
-        assumptions if assumptions is not None else [OWN, MSG, WHEN],
+        assumptions if assumptions is not None else [*OWN, MSG, WHEN],
         evidence,
         checks if checks is not None else [ok_when],
     )
@@ -184,7 +221,7 @@ def _s(
     tags: tuple[str, ...] = (),
 ) -> Scenario:
     c, a, e, k = parts
-    return Scenario(sid, title, trap, c, a, e, k, expected, decision, tags)
+    return Scenario(sid, title, trap, c, a, e, k, expected, decision, tags, STIPS)
 
 
 # ---------------------------------------------------------------- controls (must be SUPPORTED)
@@ -264,7 +301,7 @@ RED_TEAM: tuple[Scenario, ...] = (
         "inferred_record",
         (
             claim("PETROV wrote that he was worried about Marcus.", ClaimType.CONTENT_MEANING),
-            [OWN, _TRANSLATED],
+            [*OWN, _TRANSLATED],
             [
                 item(
                     1,
@@ -309,7 +346,7 @@ RED_TEAM: tuple[Scenario, ...] = (
         "handle_owner",
         (
             claim('PETROV wrote to ALEXANDER SOKOLOV: "need 2 more by friday".'),
-            [OWN, MSG, WHEN, _HANDLE],
+            [*OWN, MSG, WHEN, _HANDLE],
             [item(1, MSG, Stance.SUPPORTS, S.AI_ACCEPTED)],
             [ok_when],
         ),
@@ -341,7 +378,7 @@ RED_TEAM: tuple[Scenario, ...] = (
         "absence_curated",
         (
             claim("PETROV and REYES had no contact from March 20 to 23, 2026.", ClaimType.ABSENCE),
-            [OWN, _ABSENT],
+            [*OWN, _ABSENT],
             [
                 item(
                     1,
@@ -469,7 +506,7 @@ RED_TEAM: tuple[Scenario, ...] = (
         "shared_account",
         (
             claim('On March 18, PETROV, using dp_garage, told REYES "got the money".'),
-            [OWN, _ANSWER, _AUTHOR],
+            [*OWN, _ANSWER, _AUTHOR],
             [
                 item(
                     1,
@@ -493,20 +530,6 @@ RED_TEAM: tuple[Scenario, ...] = (
         decision="Same rule as R18.",
     ),
     _s(
-        "R20",
-        "Item tier says ai_reviewed but its status is open (tier smuggling)",
-        "tier_smuggling",
-        comm([item(1, MSG, Stance.SUPPORTS, S.OPEN, tier=T.AI_REVIEWED)]),
-        expected=Verdict.UNPROVEN,
-    ),
-    _s(
-        "R21",
-        "Item tier says confirmed but its status is open (tier smuggling)",
-        "tier_smuggling",
-        comm([item(1, MSG, Stance.SUPPORTS, S.OPEN, tier=T.CONFIRMED)]),
-        expected=Verdict.UNPROVEN,
-    ),
-    _s(
         "R22",
         "Meaning assumption with no evidence, while the event and time are fully covered",
         "meaning_uncovered",
@@ -515,7 +538,7 @@ RED_TEAM: tuple[Scenario, ...] = (
                 "The package @northstar mentioned on March 12 contained narcotics.",
                 ClaimType.CONTENT_MEANING,
             ),
-            [OWN, MSG, WHEN, _MEANING],
+            [*OWN, MSG, WHEN, _MEANING],
             [item(1, MSG, Stance.SUPPORTS, S.AI_ACCEPTED)],
             [ok_when],
         ),
@@ -542,7 +565,7 @@ RED_TEAM: tuple[Scenario, ...] = (
                 "The package @northstar mentioned on March 12 contained narcotics.",
                 ClaimType.CONTENT_MEANING,
             ),
-            [OWN, MSG, _MEANING],
+            [*OWN, MSG, _MEANING],
             [
                 item(1, MSG, Stance.SUPPORTS, S.AI_ACCEPTED),
                 item(
@@ -558,5 +581,26 @@ RED_TEAM: tuple[Scenario, ...] = (
         ),
     ),
 )
+
+# Tier smuggling: an item whose tier claims a review its status does not show. Contracts v0.2
+# refuses to build such an item at all (EvidenceItem.tier is the record's tier), which
+# tests/adversarial/test_rules_red_team.py checks instead.
+if not V02:
+    RED_TEAM += (
+        _s(
+            "R20",
+            "Item tier says ai_reviewed but its status is open (tier smuggling)",
+            "tier_smuggling",
+            comm([item(1, MSG, Stance.SUPPORTS, S.OPEN, tier=T.AI_REVIEWED)]),
+            expected=Verdict.UNPROVEN,
+        ),
+        _s(
+            "R21",
+            "Item tier says confirmed but its status is open (tier smuggling)",
+            "tier_smuggling",
+            comm([item(1, MSG, Stance.SUPPORTS, S.OPEN, tier=T.CONFIRMED)]),
+            expected=Verdict.UNPROVEN,
+        ),
+    )
 
 ALL: tuple[Scenario, ...] = CONTROLS + RED_TEAM

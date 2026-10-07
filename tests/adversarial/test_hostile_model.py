@@ -3,7 +3,6 @@
 from pathlib import Path
 
 from core.contracts import (
-    Assumption,
     AssumptionKind,
     EvidenceCandidate,
     EvidenceItem,
@@ -17,19 +16,13 @@ from core.contracts import (
     Verdict,
 )
 from eval.adversarial.hostile_model import HostileLabeler, HostileReviewer
+from eval.adversarial.scenarios import assumption
 from eval.adversarial.structural_blocks import CASE01_BLOCKS, MODEL_ONLY, STRUCTURAL
 from eval.run_eval import load_jsonl
 
 ROOT = Path(__file__).resolve().parents[2]
 
-ASM = Assumption(
-    id="asm:x:1",
-    claim_id="x",
-    kind=AssumptionKind.MEANING,
-    text="'tickets' refers to narcotics",
-    is_core=True,
-    tier=ProvenanceTier.INFERRED,
-)
+ASM = assumption(1, AssumptionKind.MEANING, "'tickets' refers to narcotics")
 CAND = EvidenceCandidate(
     record_id="msg:item1:Chats!1500",
     ref=SourceRef(source_id="item1", locator="Chats!1500"),
