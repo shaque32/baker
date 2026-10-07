@@ -11,6 +11,7 @@ tier: rules.py decides what a result means.
     absence       no contact in a window; passes only on full extractions that cover it
     same_account  several handles resolve to one account id
     contact       a saved contact entry has this name and number
+    weekday       a weekday named in a message points to the claimed date
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from core.audit.checks.count import CountCheck
 from core.audit.checks.identity import ContactCheck, SameAccountCheck
 from core.audit.checks.sender import SenderCheck
 from core.audit.checks.timing import TimeCheck
+from core.audit.checks.weekday import WeekdayCheck
 from core.contracts import Assumption, CheckResult
 
 CHECKS: dict[str, TemplateCheck] = {
@@ -35,6 +37,7 @@ CHECKS: dict[str, TemplateCheck] = {
         AbsenceCheck(),
         SameAccountCheck(),
         ContactCheck(),
+        WeekdayCheck(),
     ]
 }
 
@@ -64,6 +67,7 @@ __all__ = [
     "SenderCheck",
     "TemplateCheck",
     "TimeCheck",
+    "WeekdayCheck",
     "checks_for",
     "create",
     "run_checks",

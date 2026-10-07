@@ -208,10 +208,31 @@ def account_party(data: CaseData, account_ids: Iterable[str]) -> Party:
 
 
 def parties(data: CaseData, p: AssumptionParams) -> list[Party]:
-    """Each person is one party; all account ids together are one more."""
+    """Each person is one party; all account ids and handles together are one more.
+
+    A handle joins the party only if the data resolves it to exactly one account, on the one
+    app named in channels if there is one. Otherwise the whole party is left without accounts,
+    so the check comes out inconclusive rather than searching the wrong account.
+    """
     out = [person_party(data, pid) for pid in p.person_ids]
-    if p.account_ids:
-        out.append(account_party(data, p.account_ids))
+    if p.account_ids or p.handles:
+        party = account_party(data, p.account_ids)
+        apps = [c for c in p.channels if c.strip().lower() != CALL_CHANNEL]
+        app = apps[0] if len(apps) == 1 else None
+        unresolved = False
+        for h in p.handles:
+            r = resolve_handle(data, h, app)
+            party.notes += r.notes
+            party.record_ids += r.record_ids
+            if len(r.keys) == 1:
+                party.keys |= r.keys
+            else:
+                unresolved = True
+                party.notes.append(f'"{h}" does not resolve to exactly one account')
+        if unresolved:
+            party.keys.clear()
+        party.label = "/".join((*p.account_ids, *p.handles))
+        out.append(party)
     return out
 
 

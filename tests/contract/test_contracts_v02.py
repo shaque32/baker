@@ -56,6 +56,13 @@ def test_count_needs_its_operator():
         c.AssumptionParams(count_op="eq")
 
 
+def test_duration_range():
+    assert c.AssumptionParams(duration_s=(90, 150)).duration_s == (90, 150)
+    for bad in ((-1, 10), (150, 90)):
+        with pytest.raises(ValidationError):
+            c.AssumptionParams(duration_s=bad)
+
+
 def test_handles_stay_as_the_document_wrote_them():
     p = c.AssumptionParams(handles=("@alex92", "@northstar"))
     assert p.handles == ("@alex92", "@northstar")

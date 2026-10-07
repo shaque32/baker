@@ -48,6 +48,11 @@ class TimeCheck(TemplateCheck):
         else:
             rows = calls_for_accounts(data, set().union(*party_ids))
             what = "calls"
+            if p.duration_s is not None:
+                lo, hi = p.duration_s
+                # A call with no recorded duration never matches a stated duration.
+                rows = [r for r in rows if r.duration_s is not None and lo <= r.duration_s <= hi]
+                what += f" lasting {lo} to {hi} s"
         if found:
             what += " between " + " and ".join(x.describe() for x in found)
         rows = [

@@ -102,11 +102,15 @@ def test_c05_wrong_sender_fails(conn) -> None:
 
 def test_c09_call_time_after_the_dst_change(conn) -> None:
     w = window(D(2026, 3, 9, 19, 50), D(2026, 3, 9, 20, 6), "At about 7:58 p.m. on March 9, 2026")
-    r = check(conn, "record_time", channels=["call"], person_ids=[PETROV], account_ids=MARC_0122,
-              device_ids=["dev:item1"], window=w)  # fmt: skip
+    common = dict(channels=["call"], person_ids=[PETROV], account_ids=MARC_0122,
+                  device_ids=["dev:item1"], window=w)  # fmt: skip
+    r = check(conn, "record_time", duration_s=(90, 150), **common)  # "about two minutes"
     assert r.outcome is CheckOutcome.PASS
     assert r.record_ids == ("call:item1:Call Log!9",)
-    assert "2026-03-09 19:58:02 EDT" in r.detail
+    assert "2026-03-09 19:58:02 EDT" in r.detail and "lasting 90 to 150 s" in r.searched
+    # The 123 s call is not "about ten minutes": no call matches both, so nothing passes.
+    longer = check(conn, "record_time", duration_s=(540, 660), **common)
+    assert longer.outcome is CheckOutcome.INCONCLUSIVE
 
 
 def test_calls_outside_the_window_are_never_a_fail(conn) -> None:
@@ -171,3 +175,33 @@ def test_c19_a_phone_contact_is_not_read_as_a_telegram_user(conn) -> None:
     # check must not invent a Telegram account for it, nor call the two different.
     r = check(conn, "same_account", channels=["Telegram"], handles=["@northstar", "Alex"])
     assert r.outcome is CheckOutcome.INCONCLUSIVE
+
+
+def test_c07_monday_in_a_friday_message_is_march_9(conn) -> None:
+    text = "lets meet monday 8pm. lot behind kings plaza"
+    monday = window(D(2026, 3, 9), D(2026, 3, 10), "Monday, March 9, 2026")
+    r = check(conn, "weekday_date", quoted_text=text, window=monday)
+    assert r.outcome is CheckOutcome.PASS
+    assert "msg:item1:Chats!1013" in r.record_ids and "msg:item2:Chats!905" in r.record_ids
+    assert "a Friday" in r.detail
+    # A later Monday is a question of meaning, never a fail.
+    later = window(D(2026, 3, 16), D(2026, 3, 17), "Monday, March 16, 2026")
+    assert check(conn, "weekday_date", quoted_text=text, window=later).outcome is (
+        CheckOutcome.INCONCLUSIVE
+    )
+
+
+def test_c03_count_with_the_handle_as_the_document_writes_it(conn) -> None:
+    w = window(D(2026, 3, 10), D(2026, 4, 1), "From March 10 through March 31, 2026")
+    r = check(conn, "message_count", device_ids=["dev:item1"], person_ids=[PETROV],
+              handles=["@northstar"], channels=["Telegram"], window=w, expected_count=13,
+              count_op="eq")  # fmt: skip
+    assert r.outcome is CheckOutcome.PASS
+    assert "telegram 5551234" in r.searched
+
+
+def test_a_handle_that_resolves_to_no_single_account_is_inconclusive(conn) -> None:
+    w = window(D(2026, 3, 20), D(2026, 3, 24), "between March 20 and March 23, 2026")
+    r = check(conn, "no_contact", person_ids=[PETROV], handles=["@nobody"], window=w)
+    assert r.outcome is CheckOutcome.INCONCLUSIVE
+    assert "does not resolve to exactly one account" in r.detail
