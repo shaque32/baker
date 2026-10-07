@@ -107,12 +107,14 @@ def items(conn, claim_id="C01"):
     return pipeline.load_evidence(conn, run["manifest"][claim_id]["evidence"])
 
 
-def test_fake_run_covers_every_gold_claim_and_stays_unproven_while_rules_are_a_stub(conn):
-    result = pipeline.run_audit(conn, comps(), clock=_clock)
+def test_fake_run_covers_every_gold_claim(conn):
+    c = comps()
+    result = pipeline.run_audit(conn, c, clock=_clock)
     assert result.fake
     assert len(result.decisions) == 20
-    assert {d.verdict for d in result.decisions} == {Verdict.UNPROVEN}
-    assert all(pipeline.RULES_PENDING_REASON in d.reasons for d in result.decisions)
+    if c.rules_pending():
+        assert {d.verdict for d in result.decisions} == {Verdict.UNPROVEN}
+        assert all(pipeline.RULES_PENDING_REASON in d.reasons for d in result.decisions)
     preds = pipeline.predictions(conn)
     assert [p.claim_id for p in preds] == [f"C{i:02d}" for i in range(1, 21)]
     assert conn.execute("SELECT status FROM pipeline_runs").fetchone()[0] == "completed"
