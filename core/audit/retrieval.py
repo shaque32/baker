@@ -1,9 +1,11 @@
 """Structured and keyword retrieval (the Retriever contract). No model, no index, no network.
 
-An assumption becomes a `RetrievalQuery`: accounts and threads named by handle, number or id,
-an optional time window, channels, and keywords. Records that pass the structured filters are
-ranked by the share of keywords they contain. With no structured filter, a record needs at least
-one keyword hit. With neither, nothing is returned: retrieval never dumps the whole case.
+An assumption becomes a `RetrievalQuery`. Its typed params (contracts v0.2) set accounts, devices,
+channels and the time window; its claim's wording adds keywords, and handles, numbers and quoted
+names to search by when the params name nobody. The assumption text itself is never parsed.
+Records that pass the structured filters are ranked by the share of keywords they contain. With
+no structured filter, a record needs at least one keyword hit. With neither, nothing is
+returned: retrieval never dumps the whole case.
 
 Identifiers are matched literally (same identifier, same digits). That is a search aid, not an
 identity link: two accounts with the same number on two phones are both returned, each with its
@@ -17,7 +19,7 @@ No FTS5 for the alpha (decided in the Wave 2 plan); case databases are small eno
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict
@@ -42,10 +44,17 @@ class RetrievalQuery(BaseModel):
     source_ids: tuple[str, ...] = ()  # limit to these sources (phones); empty = all
     apps: tuple[str, ...] = ()  # limit to these channels ('Telegram', 'SMS'); empty = all
     start_utc: datetime | None = None  # inclusive
-    end_utc: datetime | None = None  # exclusive
+    end_utc: datetime | None = None  # inclusive, as in contracts.TimeWindow
     keywords: tuple[str, ...] = ()  # normalized words or phrases
     kinds: tuple[str, ...] = ALL_KINDS
     unresolved: tuple[str, ...] = ()  # identifiers named in the assumption but not found
+
+    def channel_ok(self, app: str | None, is_call: bool = False) -> bool:
+        """Channels match apps case-insensitively; 'call' matches any call record."""
+        if not self.apps:
+            return True
+        wanted = {a.casefold() for a in self.apps}
+        return (is_call and "call" in wanted) or (app is not None and app.casefold() in wanted)
 
     @property
     def has_party_filter(self) -> bool:
@@ -118,24 +127,46 @@ def _uniq(items: list[str]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(items))
 
 
-def _as_utc(value: object) -> datetime | None:
-    if value is None:
-        return None
-    if isinstance(value, str):
-        value = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    if not isinstance(value, datetime) or value.utcoffset() is None:
-        raise ValueError(f"time window bounds must be timezone-aware, got {value!r}")
-    return value.astimezone(UTC)
+def _accounts_of_persons(conn: sqlite3.Connection, person_ids: tuple[str, ...]) -> list[str]:
+    """Accounts a person may use, for searching only: identity links that are not rejected,
+    and the phone's own accounts on any device a stipulation (not rejected) ties to the person.
+    This finds records to look at. It confirms nothing and raises no tier.
+    """
+    if not person_ids:
+        return []
+    marks = ",".join("?" * len(person_ids))
+    linked = conn.execute(
+        f"SELECT account_id FROM identity_links WHERE person_id IN ({marks})"  # noqa: S608
+        " AND status != 'rejected' ORDER BY account_id",
+        person_ids,
+    ).fetchall()
+    owned: list[tuple[str]] = []
+    if _has_table(conn, "stipulations"):
+        owned = conn.execute(
+            "SELECT a.id FROM stipulations s JOIN accounts a ON a.device_id = s.subject_id"  # noqa: S608
+            " WHERE s.kind = 'device_owner' AND s.status != 'rejected'"
+            f" AND s.person_id IN ({marks}) ORDER BY a.id",
+            person_ids,
+        ).fetchall()
+    return [r[0] for r in [*linked, *owned]]
 
 
-def _param_fields(assumption: Assumption) -> Mapping[str, object]:
-    """Structured params, once contracts v0.2 adds them to Assumption; empty before that."""
-    params = getattr(assumption, "params", None)
-    if params is None:
-        return {}
-    if isinstance(params, BaseModel):
-        return params.model_dump()
-    return params if isinstance(params, Mapping) else {}
+def _has_table(conn: sqlite3.Connection, name: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type IN ('table', 'view') AND name = ?", (name,)
+    ).fetchone()
+    return row is not None
+
+
+def _sources_of_devices(conn: sqlite3.Connection, device_ids: tuple[str, ...]) -> tuple[str, ...]:
+    if not device_ids:
+        return ()
+    marks = ",".join("?" * len(device_ids))
+    rows = conn.execute(
+        f"SELECT DISTINCT source_id FROM devices WHERE id IN ({marks}) ORDER BY source_id",  # noqa: S608
+        device_ids,
+    ).fetchall()
+    return tuple(r[0] for r in rows) or ("(no such device)",)
 
 
 def claim_text(conn: sqlite3.Connection, claim_id: str) -> str | None:
@@ -146,36 +177,41 @@ def claim_text(conn: sqlite3.Connection, claim_id: str) -> str | None:
 def query_for(
     assumption: Assumption, conn: sqlite3.Connection, claim: str | None = None
 ) -> RetrievalQuery:
-    """Build the query: typed params where the contract has them, plus terms from the text.
+    """Build the query from the assumption's typed params and its claim's wording.
 
-    Terms come from the assumption text and from its claim's text (looked up by claim_id when
-    `claim` is not given). The claim usually names the accounts and quotes the messages that the
-    assumption only refers to ("the outgoing message", "that window").
+    Params set the filters: accounts (plus those of named persons), devices, channels and the
+    time window. The assumption text is a rendering of its template and is never parsed. The
+    claim text (looked up by claim_id when `claim` is not given) adds ranking keywords, and,
+    only when the params name no account or person, the handles, numbers and quoted names to
+    search by. params.quoted_text is searched as a phrase.
     """
-    p = _param_fields(assumption)
+    p = assumption.params
     if claim is None:
         claim = claim_text(conn, assumption.claim_id)
-    handles, numbers, keywords = extract_terms(assumption.text)
-    names = quoted(assumption.text)
-    if claim:
-        c_handles, c_numbers, c_keywords = extract_terms(claim)
-        handles, numbers = _merge(handles, c_handles), _merge(numbers, c_numbers)
-        keywords = _merge(keywords, c_keywords)
-        names = _merge(names, quoted(claim))
-    for ident in map(str, p.get("accounts") or ()):
-        if ident.startswith("@") or not digits(ident):
-            handles.append(ident)
-        else:
-            numbers.append(digits(ident))
-    acc, thr, con, unresolved = resolve_identifiers(conn, handles, numbers, names)
+    handles, numbers, keywords = extract_terms(claim or "")
+    names = quoted(claim or "")
+    if p.quoted_text:
+        keywords = _merge([normalize(p.quoted_text).strip()], keywords)
+    acc: tuple[str, ...] = ()
+    thr: tuple[str, ...] = ()
+    con: tuple[str, ...] = ()
+    unresolved: tuple[str, ...] = ()
+    named = list(p.account_ids) + _accounts_of_persons(conn, p.person_ids)
+    if named:
+        acc = _uniq(named)
+    elif p.person_ids:
+        unresolved = tuple(p.person_ids)  # named persons with no account to search by
+    else:
+        acc, thr, con, unresolved = resolve_identifiers(conn, handles, numbers, names)
+    window = p.window
     return RetrievalQuery(
         account_ids=acc,
         thread_ids=thr,
         contact_ids=con,
-        source_ids=tuple(p.get("sources") or ()),
-        apps=tuple(p.get("channels") or ()),
-        start_utc=_as_utc(p.get("start_utc")),
-        end_utc=_as_utc(p.get("end_utc")),
+        source_ids=_sources_of_devices(conn, p.device_ids),
+        apps=tuple(p.channels),
+        start_utc=window.start_utc.astimezone(UTC) if window else None,
+        end_utc=window.end_utc.astimezone(UTC) if window else None,
         keywords=tuple(keywords),
         unresolved=unresolved,
     )
@@ -192,7 +228,7 @@ def _in_window(q: RetrievalQuery, ts_utc: str | None) -> bool:
     ts = datetime.fromisoformat(ts_utc.replace("Z", "+00:00"))
     if q.start_utc is not None and ts < q.start_utc:
         return False
-    return q.end_utc is None or ts < q.end_utc
+    return q.end_utc is None or ts <= q.end_utc
 
 
 def _kw_score(q: RetrievalQuery, texts: Iterable[str]) -> float:
@@ -235,7 +271,7 @@ def _messages(
         " t.app FROM messages m JOIN threads t ON t.id = m.thread_id"
     )
     for mid, src, loc, thread, sender, ts, body, app in rows:
-        if q.source_ids and src not in q.source_ids or q.apps and app not in q.apps:
+        if q.source_ids and src not in q.source_ids or not q.channel_ok(app):
             continue
         if not _in_window(q, ts):
             continue
@@ -256,7 +292,7 @@ def _calls(
         " duration_s, ts_utc FROM calls"
     )
     for cid, src, loc, app, direction, frm, to, dur, ts in rows:
-        if q.source_ids and src not in q.source_ids or q.apps and app not in q.apps:
+        if q.source_ids and src not in q.source_ids or not q.channel_ok(app, is_call=True):
             continue
         if not _in_window(q, ts):
             continue
@@ -278,8 +314,8 @@ def _contacts(
     for cid, src, loc, name, ident in conn.execute(
         "SELECT id, source_id, locator, name, identifier FROM contacts"
     ):
-        if q.source_ids and src not in q.source_ids:
-            continue
+        if q.source_ids and src not in q.source_ids or q.apps:
+            continue  # a contact entry belongs to no channel
         text = f"{name or '(no name)'}: {ident}"
         kw = _kw_score(q, [text])
         if _keep(q, cid in con, kw):
@@ -298,7 +334,7 @@ def _attachments(
         " LEFT JOIN messages m ON m.id = a.message_id LEFT JOIN threads t ON t.id = m.thread_id"
     )
     for aid, src, loc, fname, ts, app in rows:
-        if not fname or q.source_ids and src not in q.source_ids or q.apps and app not in q.apps:
+        if not fname or q.source_ids and src not in q.source_ids or not q.channel_ok(app):
             continue
         if not _in_window(q, ts):
             continue

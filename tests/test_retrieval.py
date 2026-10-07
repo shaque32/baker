@@ -1,26 +1,42 @@
 """Retrieval and context on a tiny hand-built case. Every value here is invented."""
 
 import sqlite3
+from datetime import UTC, datetime
 
 import pytest
 
 from core.audit.context import HEADER, build_context, context_ids, render_context, render_for
 from core.audit.retrieval import RetrievalQuery, SqlRetriever, query_for, search
-from core.contracts import Assumption, AssumptionKind, ProvenanceTier
+from core.contracts import (
+    Assumption,
+    AssumptionKind,
+    AssumptionParams,
+    ProvenanceTier,
+    TimeWindow,
+)
 from core.enrich.local_time import format_local, parse_utc
 from core.enrich.records import record_text
 from core.enrich.text import extract_terms, quoted
 
 
-def _assumption(text: str, claim_id: str = "c1") -> Assumption:
+def _assumption(text: str = "rendered template text", **params) -> Assumption:
     return Assumption(
         id="a1",
-        claim_id=claim_id,
+        claim_id="c1",
         kind=AssumptionKind.EVENT,
+        template_id="test_template",
+        template_version="0",
+        params=AssumptionParams(**params),
         text=text,
         is_core=True,
         tier=ProvenanceTier.INFERRED,
     )
+
+
+MSG_INSERT = (
+    "INSERT INTO messages (id, source_id, locator, thread_id, sender_account_id, direction,"
+    " ts_utc, ts_offset_min, ts_raw, body, lang, deleted_flag, bookmarked)"
+)
 
 
 @pytest.fixture
@@ -56,7 +72,7 @@ def db(case_db: sqlite3.Connection) -> sqlite3.Connection:
         hour = 12 + i
         ts = f"2026-03-{7 + hour // 24:02d}T{hour % 24:02d}:00:00Z"
         c.execute(
-            "INSERT INTO messages VALUES (?, 's1', ?, 'thr:tg', ?, ?, ?, 0, ?, ?, NULL, 0, NULL)",
+            MSG_INSERT + " VALUES (?, 's1', ?, 'thr:tg', ?, ?, ?, 0, ?, ?, NULL, 0, NULL)",
             (
                 f"msg:s1:Chats!{3 + i}",
                 f"Chats!{3 + i}",
@@ -70,16 +86,17 @@ def db(case_db: sqlite3.Connection) -> sqlite3.Connection:
             ),
         )
     c.execute(
-        "INSERT INTO messages VALUES ('msg:s1:Chats!90', 's1', 'Chats!90', 'thr:sms',"
+        MSG_INSERT + " VALUES ('msg:s1:Chats!90', 's1', 'Chats!90', 'thr:sms',"
         " 'acct:s1:SMS:+12125550199', 'incoming', '2026-03-09T01:00:00Z', 0, 'raw', 'see you',"
         " NULL, 0, NULL)"
     )
     c.execute(
-        "INSERT INTO messages VALUES ('msg:s1:Chats!91', 's1', 'Chats!91', 'thr:sms',"
+        MSG_INSERT + " VALUES ('msg:s1:Chats!91', 's1', 'Chats!91', 'thr:sms',"
         " NULL, 'unknown', NULL, NULL, '??', 'no time here', NULL, NULL, NULL)"
     )
     c.execute(
-        "INSERT INTO message_recipients VALUES ('msg:s1:Chats!4', 'acct:s1:Telegram:5550001')"
+        "INSERT INTO message_recipients (message_id, account_id)"
+        " VALUES ('msg:s1:Chats!4', 'acct:s1:Telegram:5550001')"
     )
     c.execute(
         "INSERT INTO calls VALUES ('call:s1:Call Log!3', 's1', 'Call Log!3', 'dev:s1', 'Phone',"
@@ -119,11 +136,11 @@ def test_apostrophes_are_not_quotes():
 
 def test_nothing_named_means_nothing_returned(db):
     assert search(db, RetrievalQuery(), k=10) == []
-    assert SqlRetriever().retrieve(_assumption("the thing happened"), db, k=10) == []
+    assert SqlRetriever().retrieve(_assumption(), db, k=10) == []
 
 
 def test_handle_resolves_through_thread_title_and_display_name(db):
-    q = query_for(_assumption("@newname and @oldname are one account"), db, claim="")
+    q = query_for(_assumption(), db, claim="@newname and @oldname are one account")
     assert q.thread_ids == ("thr:tg",)
     assert q.account_ids == ("acct:s1:Telegram:5550001",)
     assert q.unresolved == ()
@@ -132,12 +149,12 @@ def test_handle_resolves_through_thread_title_and_display_name(db):
 
 
 def test_unresolved_identifiers_are_reported(db):
-    q = query_for(_assumption("@nobody wrote to 9998887777"), db, claim="")
+    q = query_for(_assumption(), db, claim="@nobody wrote to 9998887777")
     assert q.unresolved == ("@nobody", "9998887777")
 
 
 def test_number_matches_accounts_calls_and_contacts_by_digits(db):
-    q = query_for(_assumption("contact with 212-555-0199"), db, claim="")
+    q = query_for(_assumption(), db, claim="contact with 212-555-0199")
     got = [c.record_id for c in search(db, q, k=100)]
     assert "msg:s1:Chats!90" in got
     assert "call:s1:Call Log!3" in got
@@ -161,15 +178,17 @@ def test_keywords_rank_within_a_party_filter(db):
     assert [c.record_id for c in got[1:]] == ["msg:s1:Chats!3", "msg:s1:Chats!4"]
 
 
-def test_window_is_start_inclusive_end_exclusive_and_drops_unknown_times(db):
-    from datetime import UTC, datetime
-
+def test_window_includes_both_ends_and_drops_unknown_times(db):
     q = RetrievalQuery(
         thread_ids=("thr:tg", "thr:sms"),
         start_utc=datetime(2026, 3, 7, 13, tzinfo=UTC),
         end_utc=datetime(2026, 3, 7, 15, tzinfo=UTC),
     )
-    assert [c.record_id for c in search(db, q, k=100)] == ["msg:s1:Chats!4", "msg:s1:Chats!5"]
+    assert [c.record_id for c in search(db, q, k=100)] == [
+        "msg:s1:Chats!4",
+        "msg:s1:Chats!5",
+        "msg:s1:Chats!6",
+    ]
     q = RetrievalQuery(thread_ids=("thr:sms",), start_utc=datetime(2026, 1, 1, tzinfo=UTC))
     assert "msg:s1:Chats!91" not in [c.record_id for c in search(db, q, k=100)]
 
@@ -187,13 +206,71 @@ def test_candidates_are_observed_and_cite_their_source(db):
 
 
 def test_retrieval_is_deterministic(db):
-    q = query_for(_assumption("@newname sent the package"), db, claim="")
+    q = query_for(_assumption(), db, claim="@newname sent the package")
     assert search(db, q, k=20) == search(db, q, k=20)
 
 
-def test_claim_text_adds_terms(db):
-    q = query_for(_assumption("the outgoing message exists"), db, claim='Bo wrote "see you"')
+def test_claim_text_adds_terms_and_assumption_text_is_never_parsed(db):
+    q = query_for(_assumption("@newname wrote 'package'"), db, claim='Bo wrote "see you"')
     assert "see you" in q.keywords
+    assert "package" not in q.keywords and q.thread_ids == ()
+
+
+# ---------------------------------------------------------------- typed params (contracts v0.2)
+
+
+def test_params_accounts_replace_identifiers_from_the_claim(db):
+    q = query_for(_assumption(account_ids=("acct:s1:SMS:+12125550199",)), db, claim="@newname")
+    assert q.account_ids == ("acct:s1:SMS:+12125550199",) and q.thread_ids == ()
+    assert [c.record_id for c in search(db, q, k=10)] == ["msg:s1:Chats!90"]
+
+
+def test_params_window_channels_devices_and_quoted_text(db):
+    window = TimeWindow(
+        start_utc=datetime(2026, 3, 8, 12, tzinfo=UTC),
+        end_utc=datetime(2026, 3, 8, 16, tzinfo=UTC),
+        tz="America/New_York",
+        raw="March 8",
+    )
+    q = query_for(
+        _assumption(
+            account_ids=("acct:s1:Telegram:5550001", "acct:s1:Phone:+12125550199"),
+            device_ids=("dev:s1",),
+            channels=("call",),
+            window=window,
+        ),
+        db,
+        claim="",
+    )
+    assert q.source_ids == ("s1",)
+    assert [c.record_id for c in search(db, q, k=10)] == ["call:s1:Call Log!3"]
+    q = query_for(
+        _assumption(channels=("telegram",), quoted_text="Bring the PACKAGE"), db, claim=""
+    )
+    assert search(db, q, k=1)[0].record_id == "msg:s1:Chats!33"
+
+
+def test_unknown_device_matches_nothing(db):
+    q = query_for(_assumption(account_ids=("acct:s1:Telegram:100",), device_ids=("dev:x",)), db)
+    assert search(db, q, k=10) == []
+
+
+def test_person_reaches_accounts_through_stipulation_and_links_but_not_rejected_ones(db):
+    db.execute("INSERT INTO persons VALUES ('p:owner', 'Owner Person', 'expert:test')")
+    db.execute("INSERT INTO persons VALUES ('p:bo', 'Bo Person', 'expert:test')")
+    db.execute(
+        "INSERT INTO stipulations VALUES ('stip:device_owner:dev:s1', 'device_owner', 'dev:s1',"
+        " 'p:owner', 'Phone A belongs to Owner Person', 'proposed', NULL, NULL)"
+    )
+    db.execute(
+        "INSERT INTO identity_links VALUES ('l1', 'acct:s1:SMS:+12125550199', 'p:bo',"
+        " 'rejected', 'inferred', 'same first name', NULL, NULL)"
+    )
+    q = query_for(_assumption(person_ids=("p:owner",)), db, claim="")
+    assert set(q.account_ids) == {"acct:s1:Telegram:100", "acct:s1:Phone:+12125550111"}
+    q = query_for(_assumption(person_ids=("p:bo",)), db, claim="Bo")
+    assert q.account_ids == () and q.unresolved == ("p:bo",)
+    assert search(db, q, k=10) == []
 
 
 # ---------------------------------------------------------------- context

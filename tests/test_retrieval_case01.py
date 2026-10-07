@@ -8,11 +8,11 @@ import pytest
 
 from core.audit.context import build_context
 from core.audit.retrieval import query_for, search
-from core.contracts import Assumption, AssumptionKind, ProvenanceTier
+from core.contracts import Assumption, AssumptionKind, AssumptionParams, ProvenanceTier
 from eval.synthetic.generate import generate
 
 GOLD = Path(__file__).resolve().parents[1] / "eval/gold/case01/gold.jsonl"
-RECALL_FLOOR = 0.65  # recall@50 from text alone, before typed params; measured 0.69 (49/71)
+RECALL_FLOOR = 0.60  # recall@50 from claim wording alone, empty params; measured 0.634 (45/71)
 
 
 @pytest.fixture(scope="module")
@@ -29,23 +29,25 @@ def gold() -> list[dict]:
     return [json.loads(line) for line in GOLD.read_text(encoding="utf-8").splitlines() if line]
 
 
-def _assumption(claim_id: str, text: str) -> Assumption:
+def _assumption(claim_id: str, **params) -> Assumption:
     return Assumption(
         id=f"{claim_id}-a",
         claim_id=claim_id,
         kind=AssumptionKind.EVENT,
-        text=text,
+        template_id="test_template",
+        template_version="0",
+        params=AssumptionParams(**params),
+        text="not parsed",
         is_core=True,
         tier=ProvenanceTier.INFERRED,
     )
 
 
 def _retrieved(conn, g: dict, k: int) -> set[str]:
-    got: set[str] = set()
-    for text in g["core_assumptions"]:
-        q = query_for(_assumption(g["claim_id"], text), conn, claim=g["text"])
-        got |= {c.record_id for c in search(conn, q, k)}
-    return got
+    """Claim wording only, with empty params: the floor before templates fill accounts and
+    windows."""
+    q = query_for(_assumption(g["claim_id"]), conn, claim=g["text"])
+    return {c.record_id for c in search(conn, q, k)}
 
 
 def test_recall_of_gold_key_evidence_does_not_regress(conn, gold):
@@ -63,7 +65,7 @@ def test_handle_change_finds_both_handles_by_user_id(conn, gold):
 
 
 def test_second_alex_stays_two_accounts(conn):
-    q = query_for(_assumption("x", '"Alex" wrote about the tickets'), conn, claim="")
+    q = query_for(_assumption("x"), conn, claim='"Alex" wrote about the tickets')
     accounts = {a.split(":", 2)[2] for a in q.account_ids}
     assert "SMS:+12125550182" in accounts
     assert not any("5551234" in a for a in accounts)
