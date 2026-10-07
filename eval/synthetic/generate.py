@@ -297,6 +297,8 @@ def render_device(dev: story.Device, msgs: list[story.Msg], calls: list[story.Ca
                     }
                 )
             r.keys.setdefault(m.key, []).append(mid)
+            if m.attachment:
+                r.keys[f"att:{m.key}"] = [f"att:{src}:{loc}:1"]
     r.sheets.append(("Chats", chat_rows))
 
     # ---- Call Log
@@ -558,6 +560,8 @@ def _row_index(rendered: list[Rendered]) -> dict[str, dict]:
             idx[c["id"]] = {"kind": "call", **c}
         for c in r.contacts:
             idx[c["id"]] = {"kind": "contact", **c}
+        for a in r.attachments:
+            idx[a["id"]] = {"kind": "attachment", **a}
     return idx
 
 
@@ -628,6 +632,8 @@ def render_answer_key(rendered: list[Rendered], gold: list[GoldClaim]) -> str:
                     f"{row['to_cell']} | {row['direction']} call, "
                     f"{fmt_duration(row['duration_s'])} |"
                 )
+            elif row["kind"] == "attachment":
+                out.append(f"| `{rid}` |  | attachment | | {row['file_name']} |")
             else:
                 out.append(f"| `{rid}` |  | contact | | {row['name']}: {row['identifier']} |")
         out += ["", "Arsh's decision: [ ] agree  [ ] change to ______  Note:", ""]
@@ -672,7 +678,7 @@ def case_json(rendered: list[Rendered], out: Path) -> dict:
             "shared_account": "Instagram dp_garage on item1 is also used by Ilya Morozov "
             "(ig03, il01).",
             "timezone": "item1 prints UTC+0, item2 prints local time (EST, then EDT from "
-            "2026-03-08). pr03 and pr09/c_luis read wrong if printed times are "
+            "2026-03-08). pr03 and ns_move/c_luis read wrong if printed times are "
             "taken as local.",
             "gap": f"No WhatsApp rows on either phone from {iso(story.WA_GAP_START)} to "
             f"{iso(story.WA_GAP_END)}; SMS, Telegram and calls continue.",
