@@ -135,3 +135,15 @@ def test_json_model_port_returns_raw_text_and_run_id():
     assert port.run_id == "run:1"
     assert port.generate("p", REVIEWER) == "not json"
     assert port.outputs[0].ok is False
+
+
+def test_stance_prompt_file_with_header_marker(tmp_path):
+    f = tmp_path / "stance.md"
+    f.write_text("# header {not a placeholder}\n<!-- prompt starts -->\nA={assumption} R={record} "
+                 "C={context}\n", encoding="utf-8")  # fmt: skip
+    assert prompts.stance_prompt("a", "r", "c", f) == "A=a R=r C=c\n"
+
+
+def test_record_line_carries_sender_and_time():
+    line = prompts.record_line("hi", "[t1] +1 (Item 1 owner): yo\n[t2] +2 (Vic): hi")
+    assert line == "[t2] +2 (Vic): hi"

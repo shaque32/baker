@@ -37,9 +37,21 @@ STANCE_SCHEMA = {
 }
 
 
+PROMPT_START = "<!-- prompt starts -->"
+
+
 def _body(path: Path) -> str:
-    """The prompt text the model sees: everything from the first line that starts the prompt."""
+    """The prompt text the model sees.
+
+    A prompt file may carry a human header above a line that is exactly PROMPT_START (the
+    convention in docs/prompts/); only the text after it is sent. Older files without that line
+    start at their first prompt sentence.
+    """
     text = path.read_text(encoding="utf-8")
+    lines = text.splitlines(keepends=True)
+    for n, line in enumerate(lines):
+        if line.strip() == PROMPT_START:
+            return "".join(lines[n + 1 :]).strip() + "\n"
     marker = "You are reviewing" if path == REVIEWER_PROMPT else "You label one message"
     i = text.find(marker)
     if i < 0:
@@ -65,5 +77,17 @@ def reviewer_prompt(assumption: str, quote: str, context: str) -> str:
     return render(REVIEWER_PROMPT, assumption=assumption, quote=quote, context=context)
 
 
-def stance_prompt(assumption: str, record: str, context: str) -> str:
-    return render(STANCE_DRAFT, assumption=assumption, record=record, context=context)
+def stance_prompt(assumption: str, record: str, context: str, path: Path = STANCE_DRAFT) -> str:
+    return render(path, assumption=assumption, record=record, context=context)
+
+
+def record_line(record_text: str, context: str) -> str:
+    """The context line holding the record, so the model sees its sender and local time.
+
+    The quote check still runs against the bare record text, so a quote that copies the
+    header fails, as it would in the product.
+    """
+    for line in context.splitlines():
+        if line.endswith(record_text):
+            return line
+    return record_text

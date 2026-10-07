@@ -144,11 +144,13 @@ def score_stance(
     params: GenerationParams,
     repeat: int = 2,
     log: CallLog | None = None,
+    stance_path: Path = prompts.STANCE_DRAFT,
 ) -> StanceScore:
     s = StanceScore()
-    version = prompts.prompt_version(prompts.STANCE_DRAFT)
+    version = prompts.prompt_version(stance_path)
     for it in items:
-        prompt = prompts.stance_prompt(it["assumption"], it["record_text"], it["context"])
+        record = prompts.record_line(it["record_text"], it["context"])
+        prompt = prompts.stance_prompt(it["assumption"], record, it["context"], stance_path)
         outs = _call(model, prompt, prompts.STANCE_SCHEMA, params, repeat, log,
                      purpose="stance", version=version, item_id=it["id"])  # fmt: skip
         first = outs[0]
@@ -231,11 +233,13 @@ def run_model(
     params: GenerationParams,
     repeat: int,
     out_dir: Path,
+    stance_path: Path = prompts.STANCE_DRAFT,
 ) -> dict[str, Any]:
     log = CallLog(out_dir / f"{model.name}.calls.jsonl")
     r = score_reviewer(model, reviewer_items, params, repeat, log)
-    st = score_stance(model, stance_items, params, repeat, log)
+    st = score_stance(model, stance_items, params, repeat, log, stance_path)
     result = {"model": model.name, "sha256": model.sha256, **summarize(r, st)}
+    result["stance_prompt"] = f"{stance_path.name}@{prompts.prompt_version(stance_path)}"
     result["reviewer_failures"] = r.failures
     result["stance_failures"] = st.failures
     calls = [json.loads(line) for line in log.path.read_text(encoding="utf-8").splitlines()]
@@ -267,6 +271,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--models", type=Path, required=True)
     ap.add_argument("--reviewer", type=Path, default=HERE / "smoke_reviewer.jsonl")
     ap.add_argument("--stance", type=Path, default=HERE / "smoke_stance.jsonl")
+    ap.add_argument("--stance-prompt", type=Path, default=prompts.STANCE_DRAFT,
+                    help="stance prompt file, e.g. thread 6's docs/prompts/stance.md")  # fmt: skip
     ap.add_argument("--repeat", type=int, default=2)
     ap.add_argument("--n-ctx", type=int, default=8192)
     ap.add_argument("--out", type=Path, default=Path("eval/out/probe"))
@@ -289,7 +295,8 @@ def main(argv: list[str] | None = None) -> int:
             results.append({"model": spec.name, "load_error": str(e), "passes_all": False})
             continue
         loaded = gpu_memory_mib()
-        res = run_model(model, reviewer_items, stance_items, params, args.repeat, args.out)
+        res = run_model(model, reviewer_items, stance_items, params, args.repeat, args.out,
+                        args.stance_prompt)  # fmt: skip
         res["license"] = spec.license
         res["vram_used_mib"] = None if loaded is None or before is None else loaded - before
         results.append(res)

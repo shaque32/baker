@@ -36,7 +36,7 @@ class ModelSpec:
 class GenerationParams:
     """Deterministic by default: greedy decoding with a fixed seed."""
 
-    max_tokens: int = 512
+    max_tokens: int = 1024  # stance and review; translation callers pass more
     temperature: float = 0.0
     seed: int = 1234
     n_ctx: int = 8192
