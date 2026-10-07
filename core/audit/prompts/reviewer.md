@@ -1,7 +1,8 @@
 # Evidence reviewer prompt (HUMAN-OWNED, Arsh)
 
-v1.0, signed by Arsh on 2026-10-07: draft v0.1 plus the four edits in docs/prompts/reviewer-notes.md,
-and the answer written reason first. Arsh edits this wording; agents only wire it to the local model.
+v1.1, signed by Arsh on 2026-10-07: draft v0.1 plus the four edits in docs/prompts/reviewer-notes.md.
+The decision comes first: reason-first accepted 7 of 21 overreach traps on Qwen3-14B, against 0
+with this order. Arsh edits this wording; agents only wire it to the local model.
 Only the text after the next line is sent to the model.
 
 <!-- prompt starts -->
@@ -33,7 +34,5 @@ Dismiss if any of these hold:
 - Understanding the quote depends on a message that is not in English.
 - You are unsure.
 
-Write the reason first, then the decision.
-
 Answer with JSON only:
-{"reason": "<one sentence citing the context>", "decision": "accept" | "dismiss"}
+{"decision": "accept" | "dismiss", "reason": "<one sentence citing the context>"}

@@ -2,7 +2,7 @@
 
 These are agent-written **drafts** for Arsh to edit and sign. They are not used by the product.
 
-Arsh signed all five on 2026-10-07 (v1.0, reviewer answering reason first). The signed
+Arsh signed all five on 2026-10-07 (reviewer v1.1, decision first). The signed
 copies in `core/audit/prompts/` are the ones in use; change those, not these drafts.
 The signed copies live in `core/audit/prompts/` (frozen, human-owned), and only the
 frozen-files thread puts them there, in a PR Arsh merges.

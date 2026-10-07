@@ -59,14 +59,14 @@ PLACEHOLDERS = frozenset({"assumption", "quote", "context"})
 MAX_REASON_CHARS = 1000
 
 # Property order is the order the model writes (llama.cpp grammars follow it). It must match
-# the answer line of the signed prompt: the reason first, so the decision follows from it.
+# the answer line of the signed prompt (decision first; reason-first did worse on the probe).
 REVIEW_SCHEMA: dict[str, object] = {
     "type": "object",
     "properties": {
-        "reason": {"type": "string", "minLength": 1, "maxLength": MAX_REASON_CHARS},
         "decision": {"type": "string", "enum": ["accept", "dismiss"]},
+        "reason": {"type": "string", "minLength": 1, "maxLength": MAX_REASON_CHARS},
     },
-    "required": ["reason", "decision"],
+    "required": ["decision", "reason"],
     "additionalProperties": False,
 }
 
