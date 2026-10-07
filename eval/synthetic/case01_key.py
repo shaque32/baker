@@ -14,6 +14,18 @@ from dataclasses import dataclass
 
 DRAFT_LABEL = "DRAFT (agent proposal, not approved by Arsh)"
 
+# Rules applied consistently across claims; shown in the answer key.
+LABELING_RULES = (
+    "A meaning claim is contradicted only when the record supplies a specific, independently "
+    "corroborated alternative meaning (C20). A merely plausible alternative, or silence, makes "
+    "it unproven (C06, C13).",
+    "An identity claim is contradicted only by observed evidence incompatible with one person "
+    "(C19); a different saved number alone is not enough.",
+    "A machine translation is inferred. A claim resting on one is supported only after a human "
+    "reader confirms the translation (C17).",
+    "Dates and times are judged in the phone's local time, never the printed UTC value.",
+)
+
 # The working assumption every claim shares; flagged for Arsh in the answer key.
 DEVICE_ATTRIBUTION = (
     "Item 1 is used by PETROV and Item 2 by REYES, so the owner accounts on each phone speak "
@@ -67,16 +79,22 @@ CLAIMS: tuple[DraftClaim, ...] = (
     ),
     C(
         "C03",
-        "From March 10 through March 31, 2026, Item 1 recorded 12 Telegram messages exchanged "
+        "From March 10 through March 31, 2026, Item 1 recorded 13 Telegram messages exchanged "
         "between PETROV and @northstar.",
         "count",
         False,
         "supported",
         ("Count covers Telegram user ID 5551234 only, Mar 10 to Mar 31 local time",),
-        tuple(("item1", f"ns{i:02d}") for i in range(9, 21)),
+        tuple(
+            ("item1", k)
+            for k in [f"ns{i:02d}" for i in range(9, 15)]
+            + ["ns_move"]
+            + [f"ns{i:02d}" for i in range(15, 21)]
+        ),
         "handle_change",
-        "Twelve rows (ns09 to ns20) fall in the window. Any count that splits @alex92 from "
-        "@northstar by handle text instead of user ID would get a different number.",
+        "Thirteen rows fall in the window, all Telegram user 5551234; none sits near either "
+        "boundary after UTC-to-local conversion. The count is derived. Any count that splits "
+        "@alex92 from @northstar by handle text instead of user ID would get a different number.",
     ),
     C(
         "C04",
@@ -101,8 +119,9 @@ CLAIMS: tuple[DraftClaim, ...] = (
         "supported",
         ("The outgoing message is on Item 1 with that exact text and date",),
         (("item1", "ns11"),),
-        None,
-        "Verbatim outgoing Telegram message at 8:03 PM local on Mar 12.",
+        "timezone",
+        "Verbatim outgoing Telegram message at 8:03 PM local on Mar 12. Item 1 prints it as "
+        "3/13 (UTC), so reading the printed date would wrongly contradict a correct claim.",
     ),
     C(
         "C06",
@@ -113,8 +132,10 @@ CLAIMS: tuple[DraftClaim, ...] = (
         "unproven",
         ("The 'package' contained narcotics",),
         (("item1", "ns14"),),
-        None,
-        "The message exists, but nothing on either phone says what the package held.",
+        "timezone",
+        "The message and its date (8:11 PM Mar 12 local, printed as 3/13 UTC) are observed; "
+        "only the meaning is unproven. Nothing on either phone says what the package held, and "
+        "no alternative meaning is corroborated (labeling rule 1).",
     ),
     C(
         "C07",
@@ -123,7 +144,11 @@ CLAIMS: tuple[DraftClaim, ...] = (
         "communication",
         False,
         "supported",
-        ("A proposal to meet Monday 8pm behind Kings Plaza on Mar 6", "PETROV accepted it"),
+        (
+            "A proposal to meet Monday 8pm behind Kings Plaza on Mar 6",
+            "PETROV accepted it",
+            "'monday' in a message sent Friday Mar 6 means Monday Mar 9 (derived)",
+        ),
         (("item1", "pr05"), ("item1", "pr06")),
         "meeting_place",
         "REYES proposed 'lets meet monday 8pm. lot behind kings plaza' and PETROV replied "
@@ -138,7 +163,10 @@ CLAIMS: tuple[DraftClaim, ...] = (
         ("PETROV proposed or selected the location",),
         (("item1", "pr05"), ("item1", "pr06")),
         "meeting_place",
-        "REYES named the place and time; PETROV only agreed. Nothing shows PETROV choosing it.",
+        "REYES named the place and time; PETROV only agreed. The generator plants no other "
+        "message naming the place (a test checks that 'kings plaza' appears exactly once per "
+        "phone, sent by REYES). An off-phone conversation cannot be excluded, so the report "
+        "should say 'the written record shows'.",
     ),
     C(
         "C09",
@@ -160,7 +188,7 @@ CLAIMS: tuple[DraftClaim, ...] = (
         False,
         "contradicted",
         ("The message was sent at 2:31 a.m. local time",),
-        (("item1", "pr03"),),
+        (("item1", "pr03"), ("item2", "pr03")),
         "timezone",
         "Item 1 prints 2:31:00 AM (UTC+0). The phone's time zone is America/New_York, so the "
         "local time was 9:31 PM on March 4 (Item 2 shows the same message at 9:31 PM UTC-5).",
@@ -168,16 +196,20 @@ CLAIMS: tuple[DraftClaim, ...] = (
     C(
         "C11",
         "At 10:05 p.m. on March 14, 2026, REYES received a phone call warning him about police "
-        'activity at his shop, and after that call PETROV texted REYES "move it tonight".',
+        'activity at his shop, and after that call PETROV sent the Telegram message "move it '
+        'tonight".',
         "timing",
         True,
         "contradicted",
-        ("PETROV's text came after the 10:05 p.m. call",),
-        (("item1", "pr09"), ("item2", "c_luis"), ("item2", "pr09"), ("item2", "pr10")),
+        ("PETROV's message came after the 10:05 p.m. call",),
+        (("item1", "ns_move"), ("item2", "c_luis"), ("item2", "pr10")),
         "timezone",
-        "Item 1 prints the text at 1:50:20 AM 3/15 (UTC+0) and Item 2 prints the call at "
-        "10:05:44 PM 3/14 (UTC-4). In UTC the text is 01:50 and the call 02:05: the text came "
-        "15 minutes before the call. Reading the printed times naively reverses the order.",
+        "The message (to @northstar) is only on Item 1, printed 1:50:20 AM 3/15 (UTC+0). The "
+        "call is only on Item 2, printed 10:05:44 PM 3/14 (UTC-4). In UTC the message is 01:50 "
+        "and the call 02:05: the message came 15 minutes before the call. Reading the printed "
+        "times naively reverses the order. Neither phone alone has both records. The call's "
+        "content is only inferred from REYES's later SMS, but the failed timing assumption "
+        "already makes the claim contradicted.",
     ),
     C(
         "C12",
@@ -197,10 +229,12 @@ CLAIMS: tuple[DraftClaim, ...] = (
         False,
         "unproven",
         ("PETROV gave REYES instructions", "The instructions concerned narcotics"),
-        (("item1", "pr09"), ("item1", "pr12")),
+        (("item1", "pr12"), ("item1", "ns_move"), ("item1", "pr05")),
         None,
-        "Short messages such as 'move it tonight' can be read as instructions, but what 'it' is "
-        "and who directed whom is interpretation. Role claims stay unproven without more.",
+        "Short imperatives such as 'dont text me about it, use telegram' are observed, but what "
+        "'it' is and who directed whom is interpretation, and 'narcotics' is not established "
+        "(as in C06). REYES set the meeting time and place (pr05), which cuts against PETROV "
+        "as the director. Role claims stay unproven without more.",
     ),
     C(
         "C14",
@@ -218,8 +252,10 @@ CLAIMS: tuple[DraftClaim, ...] = (
             ("item1", "c_mar22"),
         ),
         "gap",
-        "WhatsApp is silent on both phones, but SMS (Mar 20, Mar 22), Telegram (Mar 21) and a "
-        "missed call (Mar 22) all fall inside the window.",
+        "WhatsApp is silent on both phones, but SMS (Mar 20, Mar 22), Telegram (Mar 21) and an "
+        "unanswered outgoing call of 00:00:00 (Mar 22) all fall inside the window. Also a "
+        "timezone edge: the last WhatsApp message before the gap prints 3/20 (UTC) but is "
+        "10:48 PM Mar 19 local, outside the window.",
     ),
     C(
         "C15",
@@ -241,7 +277,10 @@ CLAIMS: tuple[DraftClaim, ...] = (
         "communication",
         False,
         "unproven",
-        ("PETROV personally wrote the dp_garage message",),
+        (
+            "PETROV personally wrote the dp_garage message",
+            "m.reyes.auto is REYES (Item 2's own Instagram account)",
+        ),
         (("item1", "ig05"), ("item1", "ig03"), ("item1", "il01")),
         "shared_account",
         "The message is on the account, but the same account wrote 'its ilya btw, dan's at "
@@ -257,8 +296,10 @@ CLAIMS: tuple[DraftClaim, ...] = (
         "supported",
         ("The outgoing message is in Russian to Катя", "It says he is worried about Marcus"),
         (("item1", "ka01"), ("item1", "contact:Катя")),
-        None,
-        "'я волнуюсь за Маркуса' means 'I am worried about Marcus'. Original text is the citation.",
+        "timezone",
+        "'я волнуюсь за Маркуса' means 'I am worried about Marcus'. Original text is the citation. "
+        "Printed 3/12 (UTC) but sent 10:15 PM Mar 11 local. A machine translation is inferred, "
+        "so 'supported' holds only once a Russian reader confirms the translation; record who.",
     ),
     C(
         "C18",
@@ -267,7 +308,7 @@ CLAIMS: tuple[DraftClaim, ...] = (
         False,
         "unproven",
         ("Telegram user 5551234 is Alexander Sokolov",),
-        (("item2", "contact:Sasha N"), ("item2", "rn04")),
+        (("item2", "contact:Sasha N"), ("item2", "rn04"), ("item1", "ns01")),
         None,
         "Item 2 saves the account as 'Sasha N' and REYES calls him 'sasha'. That fits a nickname "
         "for Alexander but names no surname; nothing ties the account to Sokolov.",
@@ -278,11 +319,18 @@ CLAIMS: tuple[DraftClaim, ...] = (
         "identity",
         True,
         "contradicted",
-        ("Telegram user 5551234 uses +12125550182",),
-        (("item1", "contact:Alex"), ("item2", "contact:Sasha N"), ("item1", "at07")),
+        ("Telegram user 5551234 and the 0182 'Alex' are one person",),
+        (
+            ("item1", "contact:Alex"),
+            ("item1", "at00"),
+            ("item2", "rn07"),
+            ("item2", "contact:Sasha N"),
+        ),
         "second_alex",
-        "Item 2 links Telegram user 5551234 to +12125550147, not 0182. The 'Alex' at 0182 is a "
-        "separate SMS thread about work and a concert.",
+        "On Item 1 the 0182 'Alex' introduces himself as 'alex turner'. On Item 2, @northstar "
+        "asks REYES 'who is alex turner?', treating him as someone else. That is incompatible "
+        "with one person, and it takes both phones. Item 2 also links 5551234 to 0147, not 0182 "
+        "(consistent, though not decisive on its own).",
     ),
     C(
         "C20",
@@ -303,7 +351,8 @@ CLAIMS: tuple[DraftClaim, ...] = (
         "decoy_thread",
         "The thread names a seat section, a per-seat price, a PDF named for a Barclays concert on "
         "Apr 3, the band, and 'that show was insane last night' on Apr 4. Context shows concert "
-        "tickets. Arsh: decide whether this is contradicted or only complicated (unproven).",
+        "tickets. Contradicted under labeling rule 1: the record supplies a specific, "
+        "independently corroborated alternative meaning. The PDF is in the attachments table.",
     ),
 )
 

@@ -13,7 +13,7 @@ Every name, number, agency and event in this document is fictional. Generated fr
 
 4. Item 1 contains a contact named "Marc Garage" with the number +1 (212) 555-0122. Between February 20 and March 28, 2026, PETROV exchanged Telegram messages on Item 1 with a single Telegram account, user ID 5551234, which appears under the handle @alex92 and, from March 10, 2026, under the handle @northstar.
 
-5. From March 10 through March 31, 2026, Item 1 recorded 12 Telegram messages exchanged between PETROV and @northstar. PETROV first made contact with @northstar on March 12, 2026, two days after the seizure.
+5. From March 10 through March 31, 2026, Item 1 recorded 13 Telegram messages exchanged between PETROV and @northstar. PETROV first made contact with @northstar on March 12, 2026, two days after the seizure.
 
 6. On March 12, 2026, PETROV wrote to @northstar: "need 2 more by friday". The package in the message "the package will be at marcs", which @northstar sent on March 12, 2026, contained narcotics.
 
@@ -23,7 +23,7 @@ Every name, number, agency and event in this document is fictional. Generated fr
 
 8. At 2:31 a.m. on March 5, 2026, PETROV texted REYES "its done".
 
-9. At 10:05 p.m. on March 14, 2026, REYES received a phone call warning him about police activity at his shop, and after that call PETROV texted REYES "move it tonight".
+9. At 10:05 p.m. on March 14, 2026, REYES received a phone call warning him about police activity at his shop, and after that call PETROV sent the Telegram message "move it tonight".
 
 10. On March 19, 2026, PETROV texted REYES: "dont text me about it, use telegram". PETROV directed REYES's handling and movement of the narcotics.
 

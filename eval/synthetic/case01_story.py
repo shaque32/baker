@@ -239,6 +239,9 @@ SCRIPTED_MESSAGES: tuple[Msg, ...] = (
     Msg(
         "ns14", et("2026-03-12 20:11:36"), "ns_tg", "pet_tg", "the package will be at marcs", tag=EV
     ),
+    # trap: timezone, cross-device. Sent 15 minutes BEFORE Luis's call to Reyes (item2 only).
+    # This message is on item1 only and the call on item2 only, so the order needs both phones.
+    Msg("ns_move", et("2026-03-14 21:50:20"), "pet_tg", "ns_tg", "move it tonight", tag=EV),
     Msg("ns15", et("2026-03-16 22:40:00"), "ns_tg", "pet_tg", "everything ok?"),
     Msg("ns16", et("2026-03-16 22:58:12"), "pet_tg", "ns_tg", "dont know yet"),
     Msg("ns17", et("2026-03-21 13:05:44"), "pet_tg", "ns_tg", "talk later"),
@@ -252,6 +255,15 @@ SCRIPTED_MESSAGES: tuple[Msg, ...] = (
     Msg("rn04", et("2026-03-10 12:02:50"), "rey_tg", "ns_tg", "ok sasha"),
     Msg("rn05", et("2026-03-13 19:30:05"), "ns_tg", "rey_tg", "saturday still on?"),
     Msg("rn06", et("2026-03-13 19:42:47"), "rey_tg", "ns_tg", "yeah"),
+    # trap: second_alex, cross-device. @northstar asks about Alex Turner as a third person.
+    Msg(
+        "rn07",
+        et("2026-03-26 20:14:09"),
+        "ns_tg",
+        "rey_tg",
+        "who is alex turner? dan keeps bringing him up",
+    ),
+    Msg("rn08", et("2026-03-26 20:20:31"), "rey_tg", "ns_tg", "guy from his work. nobody"),
     # ---- Petrov <-> Reyes, SMS (both devices)
     Msg(
         "pr01", et("2026-03-02 10:15:09"), "rey_sms", "pet_sms", "yo u coming by the shop this week"
@@ -271,8 +283,6 @@ SCRIPTED_MESSAGES: tuple[Msg, ...] = (
     Msg("pr06", et("2026-03-06 18:20:40"), "pet_sms", "rey_sms", "ok works"),
     Msg("pr07", et("2026-03-09 20:02:13"), "pet_sms", "rey_sms", "here"),
     Msg("pr08", et("2026-03-09 20:03:01"), "rey_sms", "pet_sms", "2 min"),
-    # trap: timezone, cross-device. Petrov's text is 15 minutes BEFORE Luis's call to Reyes.
-    Msg("pr09", et("2026-03-14 21:50:20"), "pet_sms", "rey_sms", "move it tonight", tag=EV),
     Msg(
         "pr10",
         et("2026-03-14 22:09:37"),
@@ -341,6 +351,14 @@ SCRIPTED_MESSAGES: tuple[Msg, ...] = (
     Msg("ka02", et("2026-03-11 22:17:30"), "katya_wa", "pet_wa", "что случилось?", "ru"),
     Msg("ka03", et("2026-03-11 22:20:12"), "pet_wa", "katya_wa", "потом расскажу", "ru"),
     # ---- Petrov <-> Alex Turner, SMS (item1). Trap: decoy_thread + second_alex.
+    # trap: second_alex. On item1 the 0182 'Alex' names himself as Alex Turner.
+    Msg(
+        "at00",
+        et("2026-02-17 09:05:12"),
+        "turner_sms",
+        "pet_sms",
+        "hey its alex turner, new number. save it",
+    ),
     Msg("at01", et("2026-03-02 08:45:00"), "turner_sms", "pet_sms", "running late, cover standup?"),
     Msg("at02", et("2026-03-02 08:47:22"), "pet_sms", "turner_sms", "ya"),
     Msg("at03", et("2026-03-25 12:30:18"), "turner_sms", "pet_sms", "did u get them?"),
