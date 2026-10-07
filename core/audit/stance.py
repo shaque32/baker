@@ -11,6 +11,7 @@ it verbatim before the label can become an EvidenceItem.
 
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,7 +31,15 @@ from core.audit._llm_json import (
     required_placeholders,
     run_json_call,
 )
-from core.contracts import Assumption, EvidenceCandidate, ModelCall, Stance, StanceLabel
+from core.audit._local_model import LocalModel, open_run
+from core.contracts import (
+    Assumption,
+    EvidenceCandidate,
+    ModelCall,
+    ModelRun,
+    Stance,
+    StanceLabel,
+)
 
 PROMPT_FILE = "stance.md"
 PLACEHOLDERS = frozenset({"assumption", "record", "context"})
@@ -129,6 +138,7 @@ class LocalStanceLabeler:
         self.render_record = render_record
         self.render_context = render_context
         self.recorder = recorder if recorder is not None else CallRecorder()
+        self.model_runs: tuple[ModelRun, ...] = ()  # set by create(); the pipeline stores them
 
     def build_prompt(self, assumption: Assumption, candidate: EvidenceCandidate) -> str:
         return fill_prompt(
@@ -193,3 +203,22 @@ class LocalStanceLabeler:
         if result.label is None:
             raise DroppedStanceLabel(result)
         return result.label
+
+
+def create(conn: sqlite3.Connection, *, model: LocalModel | None = None) -> LocalStanceLabeler:
+    """The pipeline's stance labeler: the signed prompt, the configured local model, and the
+    context thread's renderer, which shows the record's own line (sender, account, device-local
+    time) marked '>>' among its neighbours. Raises if the signed prompt or the model config is
+    missing; nothing falls back to a draft."""
+    from core.audit.context import render_for  # retrieval and context thread
+
+    template = load_prompt(PROMPT_FILE)
+    opened = open_run(conn, "stance", template, model=model)
+    labeler = LocalStanceLabeler(
+        opened.port,
+        template=template,
+        render_context=lambda c: render_for(conn, c.record_id),
+        recorder=opened.recorder,
+    )
+    labeler.model_runs = (opened.run,)
+    return labeler

@@ -41,11 +41,13 @@ from core.audit._llm_json import (
     run_json_call,
     utc_now,
 )
+from core.audit._local_model import LocalModel, open_run
 from core.audit.translation import needs_human_reader
 from core.contracts import (
     Assumption,
     EvidenceItem,
     EvidenceStatus,
+    ModelRun,
     ReviewDecision,
     ReviewerKind,
     Stance,
@@ -145,6 +147,7 @@ class LocalEvidenceReviewer:
         self.recorder = recorder if recorder is not None else CallRecorder(clock=clock)
         self.prior_reviews = prior_reviews
         self.clock = clock
+        self.model_runs: tuple[ModelRun, ...] = ()  # set by create(); the pipeline stores them
 
     def build_prompt(self, assumption: Assumption, item: EvidenceItem, context: str) -> str:
         # item.rationale is deliberately not an input: the reviewer judges the quote cold.
@@ -205,6 +208,22 @@ class LocalEvidenceReviewer:
 
 def _failed(why: str) -> str:
     return f"Dismissed because the AI review could not be completed ({why})."
+
+
+def create(conn: sqlite3.Connection, *, model: LocalModel | None = None) -> LocalEvidenceReviewer:
+    """The pipeline's AI reviewer: the signed reviewer prompt and the configured local model,
+    with prior decisions read from evidence_reviews. Raises if the model config is missing."""
+    template = load_prompt(PROMPT_FILE)
+    opened = open_run(conn, "review", template, model=model)
+    reviewer = LocalEvidenceReviewer(
+        opened.port,
+        model_name=opened.model_name,
+        template=template,
+        recorder=opened.recorder,
+        prior_reviews=lambda eid: review_count(conn, eid),
+    )
+    reviewer.model_runs = (opened.run,)
+    return reviewer
 
 
 # ---------------------------------------------------------------- storage
