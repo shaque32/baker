@@ -322,6 +322,9 @@ class AssumptionParams(Model):
     account_ids: tuple[str, ...] = ()  # accounts.id
     person_ids: tuple[str, ...] = ()  # persons.id
     device_ids: tuple[str, ...] = ()  # devices.id
+    # handles or display names exactly as the document writes them ('@northstar'); checks
+    # resolve them to accounts from the data, so the template filler never decides that
+    handles: tuple[str, ...] = ()
     window: TimeWindow | None = None
     expected_count: int | None = Field(default=None, ge=0)
     count_op: Literal["eq", "ge", "le"] | None = None  # how expected_count is compared
