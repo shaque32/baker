@@ -54,7 +54,7 @@
 +        AI review alone never covers an identity, time, completeness or meaning assumption:
 +        the AI reviewer never confirms identity, timing is computed by a check, silence has
 +        no quote to verify, and what words mean is interpretation for an expert
-+        (pending Arsh: red-team R09, R18, R19; C06 and C20).
++        (Arsh, 2026-10-07, decision 5; red-team R09, R18, R19; C06 and C20).
 +    Never covered by: a model label nobody accepted, an item the reviewer or expert dismissed,
 +    an inferred record (a machine translation, even when accepted; C17 is a known miss,
 +    Arsh, 2026-10-07, decision 4), an inconclusive check, or an assumption's stored tier.
@@ -76,7 +76,7 @@
 +        is not tested, whatever else is covered;
 +    (f) for identity, role and content-meaning claims, no core assumption is covered by AI
 +        review alone (a role template may be an event assumption, but who directed whom is
-+        interpretation).
++        interpretation). Rules 2c, 3e and 3f: Arsh, 2026-10-07, decision 5.
 +    supported_basis is confirmed only when no coverage and no cited support rests on the AI
 +    reviewer alone; otherwise ai_reviewed, and the reasons say so. Reports show the two
 +    differently. A human decision always overrides the AI reviewer, through the item's latest
