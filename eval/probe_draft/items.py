@@ -188,7 +188,7 @@ ITEMS: list[ProbeItem] = [
         "need 2 more by friday",
         S.SUPPORTS,
         "Verbatim outgoing message from the owner account in the 5551234 chat, 8:03 PM EDT on "
-        "March 12 local. (The report prints it as 3/13 in UTC; the local date is March 12.)",
+        "March 12 local.",
     ),
     item(
         "P002",
@@ -278,8 +278,7 @@ ITEMS: list[ProbeItem] = [
         "я волнуюсь за Маркуса",
         S.SUPPORTS,
         "'я волнуюсь за Маркуса' literally means 'I am worried about Marcus'; no slang. Sent "
-        "10:15 PM EDT March 11 local. (The verdict rules still require a human-confirmed "
-        "translation; the stance label itself is supports.)",
+        "10:15 PM EDT March 11 local.",
     ),
     item(
         "P008",
@@ -444,8 +443,7 @@ ITEMS: list[ProbeItem] = [
         None,
         "en",
         K.EVENT,
-        "The contact saved as Andre told the owner he would not come in to work on Friday, "
-        "March 27, 2026.",
+        "The contact saved as Andre told the owner he would not come in on Friday, March 27, 2026.",
         [
             ln(*WA1, "2026-03-25 16:10:00 EDT", "u on the schedule fri?"),
             ln(
@@ -458,8 +456,8 @@ ITEMS: list[ProbeItem] = [
         1,
         "not coming in fri",
         S.SUPPORTS,
-        "Sent Wednesday March 25, so 'fri' is March 27; the question about 'the schedule' "
-        "makes 'coming in' mean coming in to work.",
+        "Sent Wednesday March 25, so 'fri' is March 27. The assumption says only that he would "
+        "not come in, which the message states.",
     ),
     item(
         "P016",
@@ -874,8 +872,8 @@ ITEMS: list[ProbeItem] = [
         1,
         "i was at 3 parties friday",
         S.COMPLICATES,
-        "'also on the moon' makes the reply sarcastic: Nico is mocking the question, not "
-        "admitting he was there. The owner's 'ok ok' backs off.",
+        "'also on the moon' makes the reply most likely sarcastic, and the owner's 'ok ok' backs "
+        "off. That casts doubt on the words without ruling out that he was there.",
     ),
     item(
         "P036",
@@ -902,8 +900,8 @@ ITEMS: list[ProbeItem] = [
         2,
         "great job, another flawless delivery",
         S.COMPLICATES,
-        "'only 3 hours late', after a customer complaint and an apology, makes 'great job' "
-        "sarcastic. It is a complaint, not praise.",
+        "'only 3 hours late', after a customer complaint and an apology, makes 'great job' most "
+        "likely sarcastic, so the words cannot be taken as praise; the lines do not settle it.",
     ),
     item(
         "P037",
@@ -957,7 +955,8 @@ ITEMS: list[ProbeItem] = [
         "later_correction",
         "ru",
         K.EVENT,
-        "The owner and the contact saved as Тимур settled on meeting on Friday, March 20, 2026.",
+        "The final plan the owner and the contact saved as Тимур agreed in this chat was to meet "
+        "on Friday, March 20, 2026.",
         [
             ln(
                 "Telegram 7718266 Тимур",
@@ -1024,8 +1023,8 @@ ITEMS: list[ProbeItem] = [
         1,
         "need 2 more by friday",
         S.CONTRADICTS,
-        "Local time is 8:03 PM EDT on March 12. The report prints 3/13 because it shows UTC; "
-        "dates are judged in the phone's local time.",
+        "The message was sent at 8:03 PM EDT on March 12 local time, not on March 13. Dates are "
+        "judged in the phone's local time.",
     ),
     item(
         "P043",
@@ -1033,8 +1032,8 @@ ITEMS: list[ProbeItem] = [
         "time_mismatch",
         "en",
         K.TIME,
-        "The contact saved as Rina texted the owner that she was home before 3 a.m. local time "
-        "on March 8, 2026.",
+        "Before 3 a.m. local time on March 8, 2026, the contact saved as Rina texted the owner "
+        "that she was home.",
         [
             ln(*SMS1, "2026-03-08 01:52:10 EST", "text me when ur home"),
             ln(
@@ -1343,7 +1342,8 @@ ITEMS: list[ProbeItem] = [
         "Вадим меня кинул на двести",
         S.COMPLICATES,
         "'кинул' literally means 'threw'; colloquially 'let down' or 'cheated'. 'на двести' "
-        "(for two hundred) names no currency. 'Stole $200' needs a loose translation.",
+        "(for two hundred) is read as dollars, as elsewhere in the set. Reading 'кинул' as "
+        "'stole' needs a loose translation.",
     ),
     item(
         "P057",
@@ -1351,8 +1351,7 @@ ITEMS: list[ProbeItem] = [
         "shared_account",
         "en",
         K.IDENTITY,
-        'The owner personally wrote "got the money, come get it" to m.reyes.auto on March 18, '
-        "2026.",
+        'Dan wrote "got the money, come get it" to m.reyes.auto on March 18, 2026.',
         [C1026, C1027, C1028, C1029],
         2,
         "got the money, come get it",
@@ -1366,7 +1365,7 @@ ITEMS: list[ProbeItem] = [
         "shared_account",
         "en",
         K.IDENTITY,
-        "Kaz, the usual user of the Instagram account kz.cuts, told ron.v_ to come by after 8.",
+        "Kaz told ron.v_ to come by after 8.",
         [
             ln(
                 "Instagram kz.cuts (owner)",
@@ -1494,7 +1493,8 @@ ITEMS: list[ProbeItem] = [
         "who is alex turner?",
         S.CONTRADICTS,
         "User 5551234 asks 'who is alex turner? dan keeps bringing him up', treating Alex "
-        "Turner as someone else, and the owner answers 'guy from his work'. (Item 2 lines.)",
+        "Turner as someone else, and the owner answers 'guy from his work. nobody', confirming "
+        "a third person. Shown on the second phone, whose owner account is 7001002.",
     ),
     item(
         "P064",
@@ -1502,7 +1502,7 @@ ITEMS: list[ProbeItem] = [
         None,
         "en",
         K.COMPLETENESS,
-        "The owner and +1 212-555-0122 had no contact of any kind between March 20 and March "
+        "The owner and +1 212-555-0122 had no contact of any kind from March 20 through March "
         "23, 2026.",
         [C1019, C1020, C1021],
         1,
@@ -1965,7 +1965,7 @@ ITEMS: list[ProbeItem] = [
     ),
     item(
         "P088",
-        C.IRRELEVANT,
+        C.COMPLICATES,
         None,
         "en",
         K.EVENT,
@@ -1981,7 +1981,8 @@ ITEMS: list[ProbeItem] = [
         ],
         0,
         "shot of espresso or regular?",
-        S.IRRELEVANT,
-        "A coffee order from a cart; 'shot' is espresso.",
+        S.COMPLICATES,
+        "A coffee order from a cart; 'shot' is espresso. The message holds the word a gun "
+        "reading rests on, so it bears on the assumption (complicates), as with P045 and P046.",
     ),
 ]

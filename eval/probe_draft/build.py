@@ -48,8 +48,11 @@ debatable. Signed items are copied into `eval/gold/` by the frozen-files thread 
 
 ## How to read an item
 
-- All lines of an item come from one phone and one chat (1:1 unless it says group).
-- `(owner)` marks the phone's own account. "The owner" in an assumption means that account.
+- All lines of an item come from one phone and one chat (1:1 unless it says group). Items come
+  from different phones, so owner ids can differ between items.
+- `(owner)` marks the phone's own account. "The owner" in an assumption means that account. An
+  assumption that names a person ("Dan wrote...", "Kaz told...") is about the human who typed;
+  an account name alone does not show who that was.
 - Contacts are named as the phone saved them. A saved name or handle is a label, not proof of
   identity.
 - Times are the phone's local time. Dates in assumptions are local dates.
@@ -58,6 +61,12 @@ debatable. Signed items are copied into `eval/gold/` by the frozen-files thread 
   **contradicts** = it asserts or shows the opposite (other sender, date, count, or an explicit
   statement or correction). **complicates** = it bears on the assumption but neither establishes
   it nor asserts the opposite. **irrelevant** = it does not bear on the assumption.
+- An assumption with several parts is supported only if every part is.
+- Coded readings: when the message holds the words the assumption reads as code ("tickets",
+  "the white", "shot") and the context points elsewhere, the stance is **complicates**: context
+  makes another meaning likely but does not rule the code reading out. When the message does
+  not touch the assumption's words or subject, it is **irrelevant**.
+- A bare amount ("300", "2k") is read as dollars.
 - Review: the AI reviewer is shown the quote as a "supports" label. **accept** is right only
   when the stance is supports; otherwise the right answer is **dismiss**.
 
