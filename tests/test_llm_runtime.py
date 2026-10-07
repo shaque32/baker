@@ -160,3 +160,10 @@ def test_from_draft_converts_one_item():
     r, s = convert(item)
     assert r["overreach"] and r["quote"] in r["context"] and r["expected"] == "dismiss"
     assert s["record"] == "[t] S (a): hi there" and s["context"].endswith(s["record"])
+
+
+def test_table_prints_tokens_per_second_as_a_number():
+    from eval.probe.run_probe import table
+
+    out = table([{"model": "m", "reviewer_accuracy": 0.5, "tokens_per_second": 9.6}])
+    assert "| 9.6 |" in out and "50%" in out

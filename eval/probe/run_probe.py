@@ -250,11 +250,16 @@ def run_model(
     return result
 
 
+RAW_COLUMNS = {"tokens_per_second", "mean_seconds_per_call", "vram_used_mib"}
+
+
 def table(results: list[dict[str, Any]]) -> str:
-    def f(v: object) -> str:
+    def f(col: str, v: object) -> str:
         if v is None:
             return "n/a"
-        return f"{v:.0%}" if isinstance(v, float) else str(v)
+        if isinstance(v, float) and col not in RAW_COLUMNS:
+            return f"{v:.0%}"
+        return str(v)
 
     cols = ["model", "reviewer_valid_output", "reviewer_accuracy", "overreach_false_accepts",
             "reviewer_clear_accept_rate", "stance_valid_output", "quote_verified",
@@ -262,7 +267,7 @@ def table(results: list[dict[str, Any]]) -> str:
             "stance_repeat_identical", "tokens_per_second", "passes_all"]  # fmt: skip
     lines = ["| " + " | ".join(cols) + " |", "|" + "---|" * len(cols)]
     for res in results:
-        lines.append("| " + " | ".join(f(res.get(c)) for c in cols) + " |")
+        lines.append("| " + " | ".join(f(c, res.get(c)) for c in cols) + " |")
     return "\n".join(lines)
 
 
