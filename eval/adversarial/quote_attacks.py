@@ -92,4 +92,6 @@ QUOTE_ATTACKS: tuple[QuoteAttack, ...] = (
     ),
     QuoteAttack("Q28", "“need 2 more by friday”", R1, False, "wrapped in curly quotes"),
     QuoteAttack("Q29", "need 2 more by friday", "", False, "record text is empty"),
+    QuoteAttack("Q30", "the packag", "the package will be at marcs", False, "quote stops mid-word"),
+    QuoteAttack("Q31", "...", "dont know yet...", False, "punctuation only: cites no words"),
 )
