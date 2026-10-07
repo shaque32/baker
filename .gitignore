@@ -11,6 +11,8 @@ dist/
 *.db
 *.sqlite
 eval/out/
+# Synthetic reports are rebuilt by `make synth`; case.json pins their SHA-256.
+eval/synthetic/*/*.xlsx
 
 # Data safety: real extraction and discovery formats never enter this repo.
 # Synthetic fixtures under eval/fixtures/ are allowed explicitly.
