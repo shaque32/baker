@@ -56,6 +56,12 @@ def test_count_needs_its_operator():
         c.AssumptionParams(count_op="eq")
 
 
+def test_handles_stay_as_the_document_wrote_them():
+    p = c.AssumptionParams(handles=("@alex92", "@northstar"))
+    assert p.handles == ("@alex92", "@northstar")
+    assert p.account_ids == ()
+
+
 def test_assumption_requires_template_and_params():
     params = c.AssumptionParams(account_ids=("acct:item1:Telegram:5551234",))
     a = c.Assumption(
