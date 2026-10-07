@@ -189,3 +189,19 @@ def test_c07_monday_in_a_friday_message_is_march_9(conn) -> None:
     assert check(conn, "weekday_date", quoted_text=text, window=later).outcome is (
         CheckOutcome.INCONCLUSIVE
     )
+
+
+def test_c03_count_with_the_handle_as_the_document_writes_it(conn) -> None:
+    w = window(D(2026, 3, 10), D(2026, 4, 1), "From March 10 through March 31, 2026")
+    r = check(conn, "message_count", device_ids=["dev:item1"], person_ids=[PETROV],
+              handles=["@northstar"], channels=["Telegram"], window=w, expected_count=13,
+              count_op="eq")  # fmt: skip
+    assert r.outcome is CheckOutcome.PASS
+    assert "telegram 5551234" in r.searched
+
+
+def test_a_handle_that_resolves_to_no_single_account_is_inconclusive(conn) -> None:
+    w = window(D(2026, 3, 20), D(2026, 3, 24), "between March 20 and March 23, 2026")
+    r = check(conn, "no_contact", person_ids=[PETROV], handles=["@nobody"], window=w)
+    assert r.outcome is CheckOutcome.INCONCLUSIVE
+    assert "does not resolve to exactly one account" in r.detail

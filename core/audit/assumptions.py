@@ -8,10 +8,12 @@ zone, an expected count, channels, quoted words. Checks read those parameters, n
 sentence, so a misread "March 20 to 23" cannot turn into a confident pass or fail.
 
 Conventions every template and check shares:
-- Parties. Each person_id is one party: the owner accounts of the phone a device_owner
-  stipulation ties to that person, plus accounts an expert linked to them. All account_ids
-  together are one more party. So "PETROV and @northstar" is person_ids=(PETROV,) plus
-  account_ids=(the @northstar accounts,), and "PETROV and REYES" is two person_ids.
+- Parties. Each person_id is one party: the owner accounts of the phone an expert-confirmed
+  device_owner stipulation ties to that person, plus accounts an expert linked to them. All
+  account_ids and handles together are one more party. A handle counts only if the data
+  resolves it to exactly one account (on the one app named in channels, if there is one).
+  So "PETROV and @northstar" is person_ids=(PETROV,) plus handles=("@northstar",), and
+  "PETROV and REYES" is two person_ids.
 - Accounts are matched across phones by app and identifier, never by display name. Handles
   are resolved from the data by the checks, and the detail says how.
 - device_ids limits which phones are searched. A count names exactly one phone.
@@ -49,7 +51,8 @@ from core.contracts import (
 
 TEMPLATES_VERSION = "1.0.0"
 
-PARTY_FIELDS = ("person_ids", "account_ids")  # fields that name who an assumption is about
+# Fields that name who an assumption is about.
+PARTY_FIELDS = ("person_ids", "account_ids", "handles")
 _FIELDS = frozenset(AssumptionParams.model_fields)
 
 
@@ -76,7 +79,8 @@ def local_window(start: datetime, end_exclusive: datetime, tz: str, raw: str) ->
 
 
 def party_count(p: AssumptionParams) -> int:
-    return len(p.person_ids) + (1 if p.account_ids else 0)
+    """Each person is a party; account_ids and handles together are one more."""
+    return len(p.person_ids) + (1 if p.account_ids or p.handles else 0)
 
 
 # ---------------------------------------------------------------- templates
@@ -109,8 +113,8 @@ class Template:
 
 def _who(p: AssumptionParams) -> str:
     parts = list(p.person_ids)
-    if p.account_ids:
-        parts.append("/".join(p.account_ids))
+    if p.account_ids or p.handles:
+        parts.append("/".join((*p.account_ids, *p.handles)))
     return " and ".join(parts) or "anyone"
 
 
