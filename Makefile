@@ -34,8 +34,10 @@ eval-real:
 	$(PY) -m eval.run_eval --predictions eval/out/case01/no_reviewer/predictions.jsonl --report-only
 
 # Red team: real structure, worst-case model. Fails if a structurally blocked claim goes supported.
+# Uses the case01 assumption spec (draft until signed; then it moves under eval/gold/case01/).
+ASSUMPTION_SPEC ?= eval/probe_draft/case01_assumptions.jsonl
 eval-hostile:
-	$(PY) -m eval.run_pipeline --mode hostile
+	$(PY) -m eval.run_pipeline --mode hostile --assumption-spec $(ASSUMPTION_SPEC)
 
 # Offline HTML claims report for the last fake run.
 report: eval-fake
