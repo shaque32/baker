@@ -147,3 +147,16 @@ def test_stance_prompt_file_with_header_marker(tmp_path):
 def test_record_line_carries_sender_and_time():
     line = prompts.record_line("hi", "[t1] +1 (Item 1 owner): yo\n[t2] +2 (Vic): hi")
     assert line == "[t2] +2 (Vic): hi"
+
+
+def test_from_draft_converts_one_item():
+    from eval.probe.from_draft import convert
+
+    line = {"sender": "S", "account_id": "a", "local_time": "t", "text": "hi there"}
+    item = {"probe_id": "P001", "category": "overreach", "trap": "x", "lang": "en",
+            "assumption": "A", "target": line, "context": [{**line, "text": "before"}],
+            "target_index": 1, "proposed_quote": "hi", "gold_stance": "complicates",
+            "gold_review": "dismiss"}  # fmt: skip
+    r, s = convert(item)
+    assert r["overreach"] and r["quote"] in r["context"] and r["expected"] == "dismiss"
+    assert s["record"] == "[t] S (a): hi there" and s["context"].endswith(s["record"])

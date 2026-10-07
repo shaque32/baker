@@ -149,7 +149,7 @@ def score_stance(
     s = StanceScore()
     version = prompts.prompt_version(stance_path)
     for it in items:
-        record = prompts.record_line(it["record_text"], it["context"])
+        record = it.get("record") or prompts.record_line(it["record_text"], it["context"])
         prompt = prompts.stance_prompt(it["assumption"], record, it["context"], stance_path)
         outs = _call(model, prompt, prompts.STANCE_SCHEMA, params, repeat, log,
                      purpose="stance", version=version, item_id=it["id"])  # fmt: skip

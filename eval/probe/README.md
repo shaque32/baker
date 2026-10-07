@@ -11,6 +11,11 @@ machine that will run Baker. Everything here is synthetic.
   `core/audit/prompts/`.
 - The reviewer prompt is read from `core/audit/prompts/reviewer.md` unchanged.
 
+## Thread 3's probe set
+`python -m eval.probe.from_draft <path to eval/probe_draft/probe_draft.jsonl>` writes
+`eval/out/probe_items/reviewer.jsonl` and `stance.jsonl`; pass them to `run_probe` with
+`--reviewer` and `--stance`. Results stay provisional until Arsh signs the items.
+
 ## Run on a Mac (Apple silicon)
 1. `python3 -m venv .venv && source .venv/bin/activate`, then `pip install -e ".[dev,local]"`.
    On Apple silicon llama-cpp-python builds with Metal by default, so the model runs on the GPU.
