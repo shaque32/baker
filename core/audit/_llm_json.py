@@ -6,6 +6,8 @@ Three jobs, all fail-closed:
 - `fill_prompt`: substitutes `{name}` placeholders in one pass, so text from evidence can never
   inject a second placeholder, and literal JSON braces in a prompt are left alone.
 - `parse_json_object`: strict parse of one JSON object. Anything else raises `BadModelOutput`.
+- `CallRecorder`: turns every call, kept or dropped, into a contracts `ModelCall` with the
+  rendered prompt and the raw output, for the pipeline to store in `model_calls`.
 """
 
 from __future__ import annotations
@@ -13,9 +15,12 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
+
+from core.contracts import ModelCall, ModelCallOutcome, model_call_id
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 MAX_OUTPUT_CHARS = 20_000
@@ -32,12 +37,25 @@ class JsonModel(Protocol):
 
 
 class BadModelOutput(ValueError):
-    """The model returned something we will not use. The raw text is kept for the log."""
+    """The model returned something we will not use. The raw text is kept for the log.
+    kind 'error' is a runtime failure (no usable output at all); 'invalid_output' is output
+    that failed parsing or validation."""
 
-    def __init__(self, reason: str, raw: str | None) -> None:
+    def __init__(
+        self,
+        reason: str,
+        raw: str | None,
+        kind: Literal["error", "invalid_output"] = "invalid_output",
+    ) -> None:
         super().__init__(reason)
         self.reason = reason
         self.raw = raw
+        self.kind = kind
+        self.call: ModelCall | None = None  # set by run_json_call once the call is recorded
+
+    @property
+    def outcome(self) -> ModelCallOutcome:
+        return ModelCallOutcome.ERROR if self.kind == "error" else ModelCallOutcome.INVALID_OUTPUT
 
 
 class PromptMissingError(FileNotFoundError):
@@ -132,7 +150,10 @@ def call_model(
     try:
         raw = model.generate(prompt, schema)
     except Exception as e:  # any model failure is a dropped output
-        raise BadModelOutput(f"model call failed: {type(e).__name__}: {e}", None) from e
+        reason = f"model call failed: {type(e).__name__}: {e}"
+        raise BadModelOutput(reason, None, kind="error") from e
+    if raw == "":  # core.llm's port returns '' on a runtime error
+        raise BadModelOutput("model returned nothing", raw, kind="error")
     return raw, parse_json_object(raw)
 
 
@@ -143,3 +164,72 @@ def model_run_id(model: JsonModel) -> str | None:
     except Exception:  # a broken model object is treated like a failed call
         return None
     return rid if isinstance(rid, str) and rid else None
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+class CallRecorder:
+    """Builds one ModelCall per model call, numbered per model run. The pipeline stores
+    `calls` in the model_calls table. `start_seq` lets it continue numbering a run that
+    already has rows."""
+
+    def __init__(
+        self,
+        clock: Callable[[], datetime] = utc_now,
+        start_seq: Callable[[str], int] = lambda _run_id: 1,
+    ) -> None:
+        self._clock = clock
+        self._start_seq = start_seq
+        self._next: dict[str, int] = {}
+        self.calls: list[ModelCall] = []
+
+    def record(
+        self,
+        model_run_id: str,
+        subject_ids: tuple[str, ...],
+        prompt: str,
+        raw_output: str | None,
+        outcome: ModelCallOutcome,
+        error: str | None = None,
+    ) -> ModelCall:
+        seq = self._next.get(model_run_id) or self._start_seq(model_run_id)
+        self._next[model_run_id] = seq + 1
+        call = ModelCall(
+            id=model_call_id(model_run_id, seq),
+            model_run_id=model_run_id,
+            seq=seq,
+            subject_ids=subject_ids,
+            prompt=prompt,
+            raw_output=raw_output if isinstance(raw_output, str) else "",
+            outcome=outcome,
+            error=error,
+            at_utc=self._clock(),
+        )
+        self.calls.append(call)
+        return call
+
+
+def run_json_call(
+    model: JsonModel,
+    recorder: CallRecorder,
+    run_id: str,
+    subject_ids: tuple[str, ...],
+    prompt: str,
+    schema: Mapping[str, Any],
+    validate: Callable[[dict[str, Any]], Any],
+) -> tuple[Any, ModelCall]:
+    """Call the model, validate, and record the call either way. Returns (validated, call)
+    or raises BadModelOutput carrying `.call` with the recorded failure."""
+    raw: str | None = None
+    try:
+        raw, obj = call_model(model, prompt, schema)
+        value = validate(obj)
+    except BadModelOutput as e:
+        raw_out = raw if raw is not None else e.raw
+        e.raw = raw_out
+        e.call = recorder.record(run_id, subject_ids, prompt, raw_out, e.outcome, e.reason)
+        raise
+    call = recorder.record(run_id, subject_ids, prompt, raw, ModelCallOutcome.OK)
+    return value, call

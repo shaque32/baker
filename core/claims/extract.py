@@ -18,14 +18,15 @@ from pydantic import BaseModel, ConfigDict, Field, StrictStr, ValidationError
 from core.audit._llm_json import (
     PROMPTS_DIR,
     BadModelOutput,
+    CallRecorder,
     JsonModel,
-    call_model,
     digit_runs,
     fill_prompt,
     load_prompt,
     model_run_id,
     prompt_version,
     required_placeholders,
+    run_json_call,
 )
 from core.contracts import Claim, ClaimStatus, ClaimType, GovDocParagraph
 
@@ -82,12 +83,19 @@ class _ClaimsOut(BaseModel):
     claims: list[dict[str, object]] = Field(max_length=MAX_CLAIMS_PER_PARAGRAPH)
 
 
+def _validate_list(obj: dict[str, object]) -> list[dict[str, object]]:
+    try:
+        return _ClaimsOut.model_validate(obj).claims
+    except ValidationError as e:
+        raise BadModelOutput(f"wrong shape: {e.errors(include_url=False)}", None) from None
+
+
 @dataclass(frozen=True)
 class ClaimDrop:
     paragraph_id: str
     index: int | None  # position in the model's list; None if the whole output was dropped
     reason: str
-    raw_output: str | None
+    model_call_id: str | None  # the recorded call holding the raw output
 
 
 class LocalClaimExtractor:
@@ -99,6 +107,7 @@ class LocalClaimExtractor:
         *,
         template: str | None = None,
         prompts_dir: Path = PROMPTS_DIR,
+        recorder: CallRecorder | None = None,
     ) -> None:
         self.model = model
         self.template = template if template is not None else load_prompt(PROMPT_FILE, prompts_dir)
@@ -107,6 +116,7 @@ class LocalClaimExtractor:
             raise ValueError(f"claims prompt lacks placeholders: {sorted(missing)}")
         self.prompt_version = prompt_version(self.template)
         self.drops: list[ClaimDrop] = []
+        self.recorder = recorder if recorder is not None else CallRecorder()
 
     def extract(self, paragraphs: list[GovDocParagraph]) -> list[Claim]:
         claims: list[Claim] = []
@@ -118,18 +128,23 @@ class LocalClaimExtractor:
         if not paragraph.text.strip():
             return []
         run_id = model_run_id(self.model)
-        raw: str | None = None
+        if run_id is None:
+            self.drops.append(ClaimDrop(paragraph.id, None, "model has no run id", None))
+            return []
+        prompt = fill_prompt(self.template, {"paragraph": paragraph.text})
         try:
-            if run_id is None:
-                raise BadModelOutput("model has no run id", None)
-            prompt = fill_prompt(self.template, {"paragraph": paragraph.text})
-            raw, obj = call_model(self.model, prompt, CLAIMS_SCHEMA)
-            try:
-                items = _ClaimsOut.model_validate(obj).claims
-            except ValidationError as e:
-                raise BadModelOutput(f"wrong shape: {e.errors(include_url=False)}", raw) from None
+            items, call = run_json_call(
+                self.model,
+                self.recorder,
+                run_id,
+                (paragraph.id,),
+                prompt,
+                CLAIMS_SCHEMA,
+                _validate_list,
+            )
         except BadModelOutput as e:
-            self.drops.append(ClaimDrop(paragraph.id, None, e.reason, raw or e.raw))
+            call_id = e.call.id if e.call is not None else None
+            self.drops.append(ClaimDrop(paragraph.id, None, e.reason, call_id))
             return []
 
         out: list[Claim] = []
@@ -139,23 +154,25 @@ class LocalClaimExtractor:
                 c = _ClaimOut.model_validate(item)
             except ValidationError as e:
                 self.drops.append(
-                    ClaimDrop(paragraph.id, i, f"wrong shape: {e.error_count()} errors", raw)
+                    ClaimDrop(paragraph.id, i, f"wrong shape: {e.error_count()} errors", call.id)
                 )
                 continue
             text = c.text.strip()
             if not text:
-                self.drops.append(ClaimDrop(paragraph.id, i, "empty claim text", raw))
+                self.drops.append(ClaimDrop(paragraph.id, i, "empty claim text", call.id))
                 continue
             if not c.span.strip() or c.span not in paragraph.text:
-                self.drops.append(ClaimDrop(paragraph.id, i, "span not verbatim in paragraph", raw))
+                self.drops.append(
+                    ClaimDrop(paragraph.id, i, "span not verbatim in paragraph", call.id)
+                )
                 continue
             invented = digit_runs(text) - digit_runs(paragraph.text)
             if invented:
                 reason = f"numbers not in paragraph: {sorted(invented)}"
-                self.drops.append(ClaimDrop(paragraph.id, i, reason, raw))
+                self.drops.append(ClaimDrop(paragraph.id, i, reason, call.id))
                 continue
             if text in seen:
-                self.drops.append(ClaimDrop(paragraph.id, i, "duplicate claim", raw))
+                self.drops.append(ClaimDrop(paragraph.id, i, "duplicate claim", call.id))
                 continue
             seen.add(text)
             out.append(

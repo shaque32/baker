@@ -21,15 +21,16 @@ from pydantic import BaseModel, ConfigDict, Field, StrictStr, ValidationError
 from core.audit._llm_json import (
     PROMPTS_DIR,
     BadModelOutput,
+    CallRecorder,
     JsonModel,
-    call_model,
     fill_prompt,
     load_prompt,
     model_run_id,
     prompt_version,
     required_placeholders,
+    run_json_call,
 )
-from core.contracts import Assumption, EvidenceCandidate, Stance, StanceLabel
+from core.contracts import Assumption, EvidenceCandidate, ModelCall, Stance, StanceLabel
 
 PROMPT_FILE = "stance.md"
 PLACEHOLDERS = frozenset({"assumption", "record", "context"})
@@ -77,7 +78,9 @@ class DroppedStanceLabel(ValueError):
 @dataclass(frozen=True)
 class StanceResult:
     """What happened on one call. Exactly one of label / dropped_reason is set.
-    The pipeline stores raw_output for every call, kept or dropped."""
+    `call` is the recorded ModelCall (prompt and raw output), kept or dropped; None only when
+    no call was made. If the quote later fails verification, the pipeline records that.
+    """
 
     assumption_id: str
     record_id: str
@@ -85,7 +88,11 @@ class StanceResult:
     prompt_version: str
     label: StanceLabel | None
     dropped_reason: str | None
-    raw_output: str | None
+    call: ModelCall | None
+
+    @property
+    def raw_output(self) -> str | None:
+        return self.call.raw_output if self.call is not None else None
 
 
 def validate_stance_output(obj: dict[str, object]) -> _StanceOut:
@@ -111,6 +118,7 @@ class LocalStanceLabeler:
         prompts_dir: Path = PROMPTS_DIR,
         render_record: Renderer = default_record,
         render_context: Renderer = default_context,
+        recorder: CallRecorder | None = None,
     ) -> None:
         self.model = model
         self.template = template if template is not None else load_prompt(PROMPT_FILE, prompts_dir)
@@ -120,6 +128,7 @@ class LocalStanceLabeler:
         self.prompt_version = prompt_version(self.template)
         self.render_record = render_record
         self.render_context = render_context
+        self.recorder = recorder if recorder is not None else CallRecorder()
 
     def build_prompt(self, assumption: Assumption, candidate: EvidenceCandidate) -> str:
         return fill_prompt(
@@ -133,15 +142,22 @@ class LocalStanceLabeler:
 
     def try_label(self, assumption: Assumption, candidate: EvidenceCandidate) -> StanceResult:
         run_id = model_run_id(self.model)
-        raw: str | None = None
+        if run_id is None:
+            return self._result(assumption, candidate, None, None, "model has no run id", None)
+        prompt = self.build_prompt(assumption, candidate)
+        subject = (assumption.id, candidate.record_id)
         try:
-            if run_id is None:
-                raise BadModelOutput("model has no run id", None)
-            prompt = self.build_prompt(assumption, candidate)
-            raw, obj = call_model(self.model, prompt, STANCE_SCHEMA)
-            out = validate_stance_output(obj)
+            out, call = run_json_call(
+                self.model,
+                self.recorder,
+                run_id,
+                subject,
+                prompt,
+                STANCE_SCHEMA,
+                validate_stance_output,
+            )
         except BadModelOutput as e:
-            return self._result(assumption, candidate, run_id, None, e.reason, raw or e.raw)
+            return self._result(assumption, candidate, run_id, None, e.reason, e.call)
         label = StanceLabel(
             assumption_id=assumption.id,
             record_id=candidate.record_id,
@@ -149,8 +165,9 @@ class LocalStanceLabeler:
             quote=out.quote,
             rationale=out.rationale,
             model_run_id=run_id,
+            model_call_id=call.id,
         )
-        return self._result(assumption, candidate, run_id, label, None, raw)
+        return self._result(assumption, candidate, run_id, label, None, call)
 
     def _result(
         self,
@@ -159,7 +176,7 @@ class LocalStanceLabeler:
         run_id: str | None,
         label: StanceLabel | None,
         dropped_reason: str | None,
-        raw: str | None,
+        call: ModelCall | None,
     ) -> StanceResult:
         return StanceResult(
             assumption_id=assumption.id,
@@ -168,7 +185,7 @@ class LocalStanceLabeler:
             prompt_version=self.prompt_version,
             label=label,
             dropped_reason=dropped_reason,
-            raw_output=raw,
+            call=call,
         )
 
     def label(self, assumption: Assumption, candidate: EvidenceCandidate) -> StanceLabel:

@@ -26,10 +26,12 @@ thread to carry if Arsh agrees. The first two do not change what the model is as
    "- Understanding the quote depends on a message that is not in English."
 
 How the code treats the reviewer, for reference:
-- It reviews only verified SUPPORTS items that are still open. It refuses contradicting items
-  and items a human already decided.
+- It reviews only verified SUPPORTS items that are open and have never been reviewed. It
+  refuses contradicting items, items a human decided, and items an expert reopened.
 - It never sees the labeler's rationale.
 - A model error, malformed JSON, extra fields, an empty reason or an empty context counts as a
   dismissal, recorded with the reason it failed.
 - A quote with non-Latin letters is never sent to the reviewer. It stays open for an expert.
 - "accept" becomes `ai_accepted`, shown as AI-reviewed, never confirmed.
+- Every decision is a `ReviewDecision` row in `evidence_reviews` with the reviewer's one-sentence
+  reason, and the raw model output is kept in `model_calls`.

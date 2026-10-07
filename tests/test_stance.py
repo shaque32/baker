@@ -9,26 +9,18 @@ from core.audit.stance import (
     LocalStanceLabeler,
 )
 from core.contracts import (
-    Assumption,
-    AssumptionKind,
     EvidenceCandidate,
+    ModelCallOutcome,
     ProvenanceTier,
     SourceRef,
     Stance,
     StanceLabeler,
 )
-from tests.fake_model import FakeModel
+from tests.fake_model import FakeModel, make_assumption
 
 DRAFT = prompt_body((Path(__file__).parents[1] / "docs/prompts/stance.md").read_text("utf-8"))
 
-ASSUMPTION = Assumption(
-    id="asm:c1:1",
-    claim_id="c1",
-    kind=AssumptionKind.MEANING,
-    text="The sender asked to meet at the garage on March 5.",
-    is_core=True,
-    tier=ProvenanceTier.INFERRED,
-)
+ASSUMPTION = make_assumption("The sender asked to meet at the garage on March 5.")
 CANDIDATE = EvidenceCandidate(
     record_id="msg:src1:00012",
     ref=SourceRef(source_id="src1", locator="Chats!14"),
@@ -57,7 +49,12 @@ def test_good_output_becomes_label_with_ids_from_inputs():
     assert label.assumption_id == ASSUMPTION.id
     assert label.record_id == CANDIDATE.record_id
     assert label.model_run_id == "run:fake:1"
+    assert label.model_call_id == "mc:run:fake:1#1"
     assert model.schemas[0] is STANCE_SCHEMA
+    (call,) = lab.recorder.calls
+    assert call.outcome is ModelCallOutcome.OK
+    assert call.subject_ids == (ASSUMPTION.id, CANDIDATE.record_id)
+    assert call.prompt == model.prompts[0]
 
 
 def test_prompt_contains_inputs_and_no_header():
@@ -126,7 +123,24 @@ def test_dropped_output_keeps_raw_text_for_the_log():
     lab, _ = labeler("nonsense output")
     result = lab.try_label(ASSUMPTION, CANDIDATE)
     assert result.raw_output == "nonsense output"
+    assert result.call is not None
+    assert result.call.outcome is ModelCallOutcome.INVALID_OUTPUT
     assert result.prompt_version.startswith("sha256:")
+
+
+@pytest.mark.parametrize("reply", [RuntimeError("CUDA out of memory"), ""])
+def test_runtime_error_is_recorded_as_error(reply):
+    lab, _ = labeler(reply)
+    result = lab.try_label(ASSUMPTION, CANDIDATE)
+    assert result.label is None
+    assert result.call.outcome is ModelCallOutcome.ERROR
+    assert result.call.raw_output == ""
+
+
+def test_call_numbers_continue_per_run():
+    lab, _ = labeler(GOOD, "bad", GOOD)
+    ids = [lab.try_label(ASSUMPTION, CANDIDATE).call.id for _ in range(3)]
+    assert ids == ["mc:run:fake:1#1", "mc:run:fake:1#2", "mc:run:fake:1#3"]
 
 
 def test_irrelevant_may_have_empty_quote():
@@ -136,7 +150,8 @@ def test_irrelevant_may_have_empty_quote():
 
 def test_model_without_run_id_is_dropped():
     lab, model = labeler(GOOD, run_id=None)
-    assert lab.try_label(ASSUMPTION, CANDIDATE).label is None
+    result = lab.try_label(ASSUMPTION, CANDIDATE)
+    assert result.label is None and result.call is None
     assert model.prompts == []
 
 

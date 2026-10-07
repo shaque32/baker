@@ -63,7 +63,9 @@ def test_verbatim_spans_kept_others_dropped():
 def test_whole_output_dropped_is_recorded():
     ex, _ = extractor("not json")
     assert ex.extract([PARA]) == []
-    assert ex.drops[0].index is None and ex.drops[0].raw_output == "not json"
+    assert ex.drops[0].index is None
+    (call,) = ex.recorder.calls
+    assert call.raw_output == "not json" and ex.drops[0].model_call_id == call.id
 
 
 def test_duplicates_dropped_and_empty_paragraph_skipped():

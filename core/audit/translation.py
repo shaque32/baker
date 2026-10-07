@@ -26,16 +26,17 @@ from pydantic import BaseModel, ConfigDict, Field, StrictStr, ValidationError
 from core.audit._llm_json import (
     PROMPTS_DIR,
     BadModelOutput,
+    CallRecorder,
     JsonModel,
-    call_model,
     digit_runs,
     fill_prompt,
     load_prompt,
     model_run_id,
     prompt_version,
     required_placeholders,
+    run_json_call,
 )
-from core.contracts import Message, ProvenanceTier
+from core.contracts import Message, ModelCall, ProvenanceTier
 
 PROMPT_FILE = "translation.md"
 PLACEHOLDERS = frozenset({"text"})
@@ -95,7 +96,7 @@ class TranslationResult:
     prompt_version: str
     translation: Translation | None
     dropped_reason: str | None
-    raw_output: str | None
+    call: ModelCall | None  # None only when no call was made
 
 
 def translation_id(message_id: str, run_id: str) -> str:
@@ -117,6 +118,7 @@ class LocalTranslator:
         *,
         template: str | None = None,
         prompts_dir: Path = PROMPTS_DIR,
+        recorder: CallRecorder | None = None,
     ) -> None:
         self.model = model
         self.template = template if template is not None else load_prompt(PROMPT_FILE, prompts_dir)
@@ -124,31 +126,45 @@ class LocalTranslator:
         if missing:
             raise ValueError(f"translation prompt lacks placeholders: {sorted(missing)}")
         self.prompt_version = prompt_version(self.template)
+        self.recorder = recorder if recorder is not None else CallRecorder()
 
     def translate(self, message: Message) -> TranslationResult | None:
         """None when the message does not need translating (English, Latin script only)."""
         if not message.body.strip() or not needs_human_reader(message.body, message.lang):
             return None
         run_id = model_run_id(self.model)
-        raw: str | None = None
-        try:
-            if run_id is None:
-                raise BadModelOutput("model has no run id", None)
-            prompt = fill_prompt(self.template, {"text": message.body})
-            raw, obj = call_model(self.model, prompt, TRANSLATION_SCHEMA)
+        if run_id is None:
+            return TranslationResult(
+                message.id, None, self.prompt_version, None, "model has no run id", None
+            )
+        prompt = fill_prompt(self.template, {"text": message.body})
+
+        def validate(obj: dict[str, object]) -> str:
             try:
                 out = _TranslationOut.model_validate(obj)
             except ValidationError as e:
-                raise BadModelOutput(f"wrong shape: {e.errors(include_url=False)}", raw) from None
+                raise BadModelOutput(f"wrong shape: {e.errors(include_url=False)}", None) from None
             text = out.translation.strip()
             if not text:
-                raise BadModelOutput("empty translation", raw)
+                raise BadModelOutput("empty translation", None)
             if text == message.body.strip():
-                raise BadModelOutput("translation is the original text", raw)
+                raise BadModelOutput("translation is the original text", None)
             check_numbers(message.body, text)
+            return text
+
+        try:
+            text, call = run_json_call(
+                self.model,
+                self.recorder,
+                run_id,
+                (message.id,),
+                prompt,
+                TRANSLATION_SCHEMA,
+                validate,
+            )
         except BadModelOutput as e:
             return TranslationResult(
-                message.id, run_id, self.prompt_version, None, e.reason, raw or e.raw
+                message.id, run_id, self.prompt_version, None, e.reason, e.call
             )
         t = Translation(
             id=translation_id(message.id, run_id),
@@ -158,7 +174,7 @@ class LocalTranslator:
             model_run_id=run_id,
             prompt_version=self.prompt_version,
         )
-        return TranslationResult(message.id, run_id, self.prompt_version, t, None, raw)
+        return TranslationResult(message.id, run_id, self.prompt_version, t, None, call)
 
 
 def insert_translation(conn: sqlite3.Connection, t: Translation) -> None:

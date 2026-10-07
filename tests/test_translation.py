@@ -12,7 +12,14 @@ from core.audit.translation import (
     insert_translation,
     needs_human_reader,
 )
-from core.contracts import Message, MessageDirection, ProvenanceTier, SourceRef, Timestamp
+from core.contracts import (
+    Message,
+    MessageDirection,
+    ModelCallOutcome,
+    ProvenanceTier,
+    SourceRef,
+    Timestamp,
+)
 from tests.fake_model import FakeModel
 
 DRAFT = prompt_body((Path(__file__).parents[1] / "docs/prompts/translation.md").read_text("utf-8"))
@@ -61,6 +68,7 @@ def test_translation_is_inferred_and_keeps_original():
     assert t.id == "tr:msg:src1:Chats!9:en:run:fake:1"
     assert RU.body in model.prompts[0]
     assert model.schemas[0] is TRANSLATION_SCHEMA
+    assert result.call is not None and result.call.outcome is ModelCallOutcome.OK
     assert "DRAFT for Arsh" not in model.prompts[0]
 
 
@@ -88,6 +96,7 @@ def test_bad_translation_is_dropped(reply):
     result = tr.translate(RU)
     assert result is not None
     assert result.translation is None and result.dropped_reason
+    assert result.call is not None and result.call.outcome is not ModelCallOutcome.OK
 
 
 def test_missing_signed_prompt_fails_loudly(tmp_path):
