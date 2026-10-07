@@ -87,6 +87,7 @@ def _call(
     version: str,
     item_id: str,
 ) -> list[ModelOutput]:
+    print(f"  {purpose} {item_id}", file=sys.stderr, flush=True)
     outs = []
     for _ in range(repeat):
         out = model.generate_json(prompt, schema, params)
