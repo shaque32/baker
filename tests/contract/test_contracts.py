@@ -113,10 +113,3 @@ def test_evidence_item_requires_verified_quote():
     c.EvidenceItem(quote_verified=True, **fields)
     with pytest.raises(ValidationError):
         c.EvidenceItem(quote_verified=False, **fields)
-
-
-def test_rules_are_a_stub():
-    from core.audit import rules
-
-    with pytest.raises(NotImplementedError):
-        rules.decide_verdict(None, [], [], [])  # type: ignore[arg-type]

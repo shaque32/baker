@@ -322,9 +322,14 @@ class AssumptionParams(Model):
     account_ids: tuple[str, ...] = ()  # accounts.id
     person_ids: tuple[str, ...] = ()  # persons.id
     device_ids: tuple[str, ...] = ()  # devices.id
+    # handles or display names exactly as the document writes them ('@northstar'); checks
+    # resolve them to accounts from the data, so the template filler never decides that
+    handles: tuple[str, ...] = ()
     window: TimeWindow | None = None
     expected_count: int | None = Field(default=None, ge=0)
     count_op: Literal["eq", "ge", "le"] | None = None  # how expected_count is compared
+    # inclusive range a call's duration must fall in, e.g. (90, 150) for "about two minutes"
+    duration_s: tuple[int, int] | None = None
     channels: tuple[str, ...] = ()  # apps as spelled in accounts.app / threads.app, 'sms', 'call'
     quoted_text: str | None = None  # words the document attributes to the evidence
 
@@ -332,6 +337,10 @@ class AssumptionParams(Model):
     def _count_pair(self) -> AssumptionParams:
         if (self.expected_count is None) != (self.count_op is None):
             raise ValueError("expected_count and count_op go together")
+        if self.duration_s is not None:
+            lo, hi = self.duration_s
+            if lo < 0 or hi < lo:
+                raise ValueError("duration_s is (min, max) seconds with 0 <= min <= max")
         return self
 
 
