@@ -12,6 +12,9 @@ dependencies = [
     "tzdata>=2024.1",  # IANA zone database for zoneinfo on Windows (Apache-2.0)
 ]
 
+[project.scripts]
+baker = "cli.main:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8",
@@ -30,7 +33,7 @@ requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["core*", "eval*"]
+include = ["core*", "eval*", "cli*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
