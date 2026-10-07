@@ -1,4 +1,4 @@
-"""Verdict rules 0.1.0 (core/audit/rules.py). Every rule in its docstring has a test here.
+"""Verdict rules 0.2.0 (core/audit/rules.py). Every rule in its docstring has a test here.
 
 SYNTHETIC. The claims echo case01 (C06, C16, C17, C18, C20) only to name the trap each tests.
 """
@@ -115,10 +115,49 @@ def test_version_is_not_a_stub():
     assert not rules.RULE_VERSION.endswith("-stub")
 
 
+@pytest.fixture
+def ai_events(monkeypatch):
+    """The 0.1.0 rule: AI review alone may cover event assumptions. Decision 6 turned it off
+    for the alpha; it returns only once a local model accepts 0 overreach traps on the signed
+    probe set. These tests keep that path working for when it does."""
+    monkeypatch.setattr(rules, "_AI_MAY_COVER", frozenset({K.EVENT}))
+    monkeypatch.setattr(rules, "_SUPPORT_ACCEPTED", rules._REVIEWED)
+
+
+# ------------------------------------------------------------ decision 6
+
+
+def test_decision_6_ai_review_alone_covers_nothing():
+    assert rules._AI_MAY_COVER == frozenset()
+    assert rules._SUPPORT_ACCEPTED == frozenset({S.ACCEPTED})
+
+
+def test_decision_6_ai_accepted_event_waits_for_an_expert():
+    """P079 on Qwen3-14B: 'don't work there anymore' AI-accepted as 'quit'. In the alpha that
+    acceptance only sorts the item for the expert; the claim stays UNPROVEN."""
+    d = decide([EVENT, TIME], [ev(1, EVENT)], [chk(TIME)])
+    assert d.verdict is Verdict.UNPROVEN
+    reasons = " ".join(d.reasons)
+    assert "decision 6" in reasons and "1 AI-accepted item(s) await an expert" in reasons
+    d = decide([EVENT, TIME], [ev(1, EVENT, status=S.ACCEPTED)], [chk(TIME)])
+    assert d.verdict is Verdict.SUPPORTED
+    assert d.supported_basis is c.SupportedBasis.CONFIRMED
+
+
+def test_decision_6_ai_acceptance_cannot_stand_in_for_rule_3c():
+    """A check covers the identity, but the only supporting label is AI-accepted."""
+    who = asm(6, K.IDENTITY, template="contact_entry")
+    d = decide(
+        [who], [ev(1, who)], [chk(who, name="contact")], claim=claim_of(c.ClaimType.IDENTITY)
+    )
+    assert d.verdict is Verdict.UNPROVEN
+    assert "Rule 3c" in " ".join(d.reasons)
+
+
 # ------------------------------------------------------------ controls
 
 
-def test_ai_reviewed_support():
+def test_ai_reviewed_support(ai_events):
     d = decide([EVENT, TIME], [ev(1, EVENT)], [chk(TIME)])
     assert d.verdict is Verdict.SUPPORTED
     assert d.supported_basis is c.SupportedBasis.AI_REVIEWED
@@ -135,7 +174,7 @@ def test_expert_confirmed_support():
     assert d.supported_basis is c.SupportedBasis.CONFIRMED
 
 
-def test_expert_support_but_ai_coverage_elsewhere_is_ai_reviewed():
+def test_expert_support_but_ai_coverage_elsewhere_is_ai_reviewed(ai_events):
     other = asm(3)
     d = decide(
         [EVENT, other],
@@ -146,9 +185,9 @@ def test_expert_support_but_ai_coverage_elsewhere_is_ai_reviewed():
 
 
 def test_coverage_is_returned_per_core_assumption_and_never_written_back():
-    d = decide([EVENT, TIME, asm(9, core=False)], [ev(1, EVENT)], [chk(TIME)])
+    d = decide([EVENT, TIME, asm(9, core=False)], [ev(1, EVENT, status=S.ACCEPTED)], [chk(TIME)])
     tiers = {cov.assumption_id: cov.tier for cov in d.coverage}
-    assert tiers == {EVENT.id: T.AI_REVIEWED, TIME.id: T.DERIVED}
+    assert tiers == {EVENT.id: T.CONFIRMED, TIME.id: T.DERIVED}
     assert EVENT.tier is T.INFERRED and TIME.tier is T.INFERRED
 
 
@@ -173,7 +212,10 @@ def test_unreviewed_contradiction_on_inferred_record_only_complicates():
 
 
 def test_dismissed_contradiction_is_ignored():
-    d = decide([EVENT], [ev(1, EVENT), ev(2, EVENT, Stance.CONTRADICTS, S.DISMISSED)])
+    d = decide(
+        [EVENT],
+        [ev(1, EVENT, status=S.ACCEPTED), ev(2, EVENT, Stance.CONTRADICTS, S.DISMISSED)],
+    )
     assert d.verdict is Verdict.SUPPORTED
 
 
@@ -271,7 +313,7 @@ def test_model_contradiction_can_contradict_identity(status):
 
 def test_decision_3_unconfirmed_ownership_never_covers():
     sender = asm(6, K.IDENTITY, people=("person:petrov",))
-    parts = ([EVENT, sender], [ev(1, EVENT)], [chk(sender, name="sender")])
+    parts = ([EVENT, sender], [ev(1, EVENT, status=S.ACCEPTED)], [chk(sender, name="sender")])
     proposed = stip(status=c.StipulationStatus.PROPOSED)
     d = decide(*parts, [proposed])
     assert d.verdict is Verdict.UNPROVEN
@@ -311,7 +353,7 @@ def test_communication_claim_needs_a_sender():
     d = decide([EVENT], [ev(1, EVENT)], claim=comm)
     assert d.verdict is Verdict.UNPROVEN
     assert "Rule 3e" in " ".join(d.reasons)
-    d = decide([EVENT, SENDER], [ev(1, EVENT)], [OK_SENDER], claim=comm)
+    d = decide([EVENT, SENDER], [ev(1, EVENT, status=S.ACCEPTED)], [OK_SENDER], claim=comm)
     assert d.verdict is Verdict.SUPPORTED
     author = asm(9, K.IDENTITY, template="authorship")  # no check can test authorship
     d = decide([EVENT, SENDER, author], [ev(1, EVENT), ev(2, author)], [OK_SENDER], claim=comm)
@@ -343,7 +385,7 @@ def test_claim_type_needs_its_assumption_kind(claim_type, kind):
 @pytest.mark.parametrize(
     "claim_type", [c.ClaimType.ROLE, c.ClaimType.IDENTITY, c.ClaimType.CONTENT_MEANING]
 )
-def test_interpretive_claims_never_rest_on_ai_coverage(claim_type):
+def test_interpretive_claims_never_rest_on_ai_coverage(claim_type, ai_events):
     """Rule 3f: a role template is an event assumption, but 'PETROV directed REYES' (C13)
     is interpretation."""
     role = asm(8, K.EVENT, template="role")
@@ -361,7 +403,7 @@ def test_interpretive_claims_never_rest_on_ai_coverage(claim_type):
     assert d.verdict is Verdict.SUPPORTED
 
 
-def test_identity_claim_covered_by_checks_may_cite_ai_support():
+def test_identity_claim_covered_by_checks_may_cite_ai_support(ai_events):
     """C01, C02: the contact or same-account check covers the identity; the AI-accepted
     record only satisfies rule 3c, so the claim is SUPPORTED (AI-reviewed)."""
     who = asm(6, K.IDENTITY, template="contact_entry")
@@ -384,7 +426,9 @@ def test_any_live_complication_blocks_support(status):
 
 
 def test_irrelevant_items_change_nothing():
-    d = decide([EVENT], [ev(1, EVENT), ev(2, EVENT, Stance.IRRELEVANT, S.ACCEPTED)])
+    d = decide(
+        [EVENT], [ev(1, EVENT, status=S.ACCEPTED), ev(2, EVENT, Stance.IRRELEVANT, S.ACCEPTED)]
+    )
     assert d.verdict is Verdict.SUPPORTED
 
 

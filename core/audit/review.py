@@ -58,6 +58,8 @@ PROMPT_FILE = "reviewer.md"
 PLACEHOLDERS = frozenset({"assumption", "quote", "context"})
 MAX_REASON_CHARS = 1000
 
+# Property order is the order the model writes (llama.cpp grammars follow it). It must match
+# the answer line of the signed prompt (decision first; reason-first did worse on the probe).
 REVIEW_SCHEMA: dict[str, object] = {
     "type": "object",
     "properties": {

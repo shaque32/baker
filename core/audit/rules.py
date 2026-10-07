@@ -24,11 +24,15 @@ Rule 2. Coverage of one core assumption. It is covered when, and only when, one 
     (b) an expert accepted a supporting item on it whose record is observed or derived
         -> tier confirmed;
     (c) the AI reviewer accepted a supporting item on it whose record is observed or derived,
-        and it is an event assumption (a message or call happened, with these words)
-        -> tier ai_reviewed.
-        AI review alone never covers an identity, time, completeness or meaning assumption:
-        the AI reviewer never confirms identity, timing is computed by a check, silence has
-        no quote to verify, and what words mean is interpretation for an expert
+        and its kind is in _AI_MAY_COVER -> tier ai_reviewed. For the alpha that set is EMPTY,
+        so AI review alone covers nothing (Arsh, 2026-10-07, decision 6: on his signed probe
+        set the best local model, Qwen3-14B, still accepted 3 overreach traps, and the bar is
+        0). The AI reviewer still sorts evidence for the expert. Event assumptions (a message or
+        call happened, with these words) may return to the set only once a local model accepts
+        0 overreach traps on the signed probe set, and that change bumps RULE_VERSION.
+        Even then, AI review never covers an identity, time, completeness or meaning
+        assumption: the AI reviewer never confirms identity, timing is computed by a check,
+        silence has no quote to verify, and what words mean is interpretation for an expert
         (Arsh, 2026-10-07, decision 5; red-team R09, R18, R19; C06 and C20).
     Never covered by: a model label nobody accepted, an item the reviewer or expert dismissed,
     an inferred record (a machine translation, even when accepted; C17 is a known miss,
@@ -40,8 +44,9 @@ Rule 3. SUPPORTED needs all of:
     (a) the claim has at least one core assumption;
     (b) every core assumption is covered (rule 2);
     (c) at least one supporting item on a core assumption, whose record is observed and whose
-        label the AI reviewer or an expert accepted (CLAUDE.md: never SUPPORTED on a model
-        label alone, nor without one);
+        label an expert accepted (CLAUDE.md: never SUPPORTED on a model label alone, nor
+        without one). An AI acceptance does not satisfy this while _AI_MAY_COVER is empty
+        (decision 6): in the alpha the expert accepts the key evidence for every SUPPORTED;
     (d) no complicating item that is not dismissed, no counting contradiction and no failed
         check on any assumption of the claim, core or not;
     (e) the core assumptions include the kind the claim type turns on: identity for a
@@ -53,9 +58,10 @@ Rule 3. SUPPORTED needs all of:
         review alone (a role template may be an event assumption, but who directed whom is
         interpretation). Rules 2c, 3e and 3f: Arsh, 2026-10-07, decision 5.
     supported_basis is confirmed only when no coverage and no cited support rests on the AI
-    reviewer alone; otherwise ai_reviewed, and the reasons say so. Reports show the two
-    differently. A human decision always overrides the AI reviewer, through the item's latest
-    review.
+    reviewer alone; otherwise ai_reviewed, and the reasons say so. Under decision 6 every
+    SUPPORTED is confirmed; the ai_reviewed path stays for when AI coverage returns. Reports
+    show the two differently. A human decision always overrides the AI reviewer, through the
+    item's latest review.
 
 Rule 4. Otherwise UNPROVEN, with a reason naming each core assumption left uncovered.
 
@@ -89,11 +95,16 @@ from core.contracts import (
     verdict_id,
 )
 
-RULE_VERSION = "0.1.0"
+RULE_VERSION = "0.2.0"
 
 _CITABLE_RECORD = frozenset({ProvenanceTier.OBSERVED, ProvenanceTier.DERIVED})
 _REVIEWED = frozenset({EvidenceStatus.AI_ACCEPTED, EvidenceStatus.ACCEPTED})
-_AI_MAY_COVER = frozenset({AssumptionKind.EVENT})
+# rule 2(c): assumption kinds AI review alone may cover. Empty for the alpha (decision 6);
+# 0.1.0 had {EVENT}. Refill only after a local model accepts 0 traps on the signed probe set.
+_AI_MAY_COVER: frozenset[AssumptionKind] = frozenset()
+# rule 3(c): review statuses whose supporting label can carry a SUPPORTED. AI_ACCEPTED counts
+# only while AI review may cover something.
+_SUPPORT_ACCEPTED = _REVIEWED if _AI_MAY_COVER else frozenset({EvidenceStatus.ACCEPTED})
 # rule 3(e): the assumption kind each claim type turns on
 _REQUIRED_KIND = {
     ClaimType.COMMUNICATION: AssumptionKind.IDENTITY,
@@ -195,6 +206,10 @@ def _cover(
     f.covering_stipulations = people
 
 
+def _a(word: str) -> str:
+    return ("an " if word[:1] in "aeiou" else "a ") + word
+
+
 def _uncovered_reason(f: _Finding) -> str:
     text = f.assumption.text
     if f.unconfirmed_people:
@@ -204,7 +219,7 @@ def _uncovered_reason(f: _Finding) -> str:
         )
     if f.assumption.kind not in _AI_MAY_COVER:
         return (
-            f"Rule 2: '{text}' is not covered: a {f.assumption.kind.value} assumption needs a "
+            f"Rule 2: '{text}' is not covered: {_a(f.assumption.kind.value)} assumption needs a "
             "passing check or an expert's acceptance; AI review alone does not cover it."
         )
     return f"Rule 2: '{text}' is not covered by a passing check or an accepted supporting item."
@@ -260,7 +275,7 @@ def decide_verdict(
                 f.complicating.append(e)
             elif (
                 e.stance is Stance.SUPPORTS
-                and e.status in _REVIEWED
+                and e.status in _SUPPORT_ACCEPTED
                 and e.tier is ProvenanceTier.OBSERVED
             ):
                 f.supports.append(e)
@@ -322,10 +337,23 @@ def decide_verdict(
         ]
     supports = sorted((e for f in core for e in f.supports), key=lambda e: e.id)
     if core and not supports:
-        blockers.append(
-            "Rule 3c: no supporting item on an observed record has been accepted by the AI "
-            "reviewer or an expert."
+        waiting = sum(
+            1
+            for f in core
+            for e in ev_by[f.assumption.id]
+            if e.stance is Stance.SUPPORTS and e.status is EvidenceStatus.AI_ACCEPTED
         )
+        if _AI_MAY_COVER:
+            blockers.append(
+                "Rule 3c: no supporting item on an observed record has been accepted by the AI "
+                "reviewer or an expert."
+            )
+        else:
+            blockers.append(
+                "Rule 3c: no supporting item on an observed record has been accepted by an "
+                "expert. AI review sorts evidence but cannot make a claim supported (decision 6)"
+                + (f"; {waiting} AI-accepted item(s) await an expert." if waiting else ".")
+            )
     for f in findings:
         if not f.assumption.is_core:
             blockers += [
