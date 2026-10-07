@@ -11,6 +11,13 @@ machine that will run Baker. Everything here is synthetic.
   `core/audit/prompts/`.
 - The reviewer prompt is read from `core/audit/prompts/reviewer.md` unchanged.
 
+## Run on a Mac (Apple silicon)
+1. `python3 -m venv .venv && source .venv/bin/activate`, then `pip install -e ".[dev,local]"`.
+   On Apple silicon llama-cpp-python builds with Metal by default, so the model runs on the GPU.
+   Xcode command line tools are needed for the build (`xcode-select --install`).
+2. Pick models that fit in memory: 16 GB fits 8B models at Q4/Q5; 24 GB or more fits 14B at Q4_K_M.
+3. Steps 3 to 5 below are the same. Accuracy results carry over to Windows; speed does not.
+
 ## Run on the GPU PC (Windows)
 1. `python -m venv .venv` and `.venv\Scripts\activate`, then `pip install -e ".[dev]"`.
 2. llama-cpp-python with CUDA. Prebuilt wheel first:
