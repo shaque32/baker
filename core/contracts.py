@@ -23,6 +23,7 @@ class ProvenanceTier(StrEnum):
     OBSERVED = "observed"  # directly present in the source
     DERIVED = "derived"  # computed deterministically from observed data
     INFERRED = "inferred"  # produced by a model; always shown with uncertainty
+    AI_REVIEWED = "ai_reviewed"  # accepted by the local AI reviewer; never shown as confirmed
     CONFIRMED = "confirmed"  # an expert explicitly accepted it (logged)
 
 
@@ -99,6 +100,7 @@ class ClaimStatus(StrEnum):
 
 class EvidenceStatus(StrEnum):
     OPEN = "open"
+    AI_ACCEPTED = "ai_accepted"  # local AI reviewer accepted; a human decision overrides it
     ACCEPTED = "accepted"
     DISMISSED = "dismissed"
 
@@ -396,6 +398,17 @@ class StanceLabeler(Protocol):
     """core/audit/stance.py. One label per (assumption, candidate). Never a verdict."""
 
     def label(self, assumption: Assumption, candidate: EvidenceCandidate) -> StanceLabel: ...
+
+
+class EvidenceReviewer(Protocol):
+    """core/audit/review.py. Second local-model pass over one verified evidence item.
+
+    Returns AI_ACCEPTED or DISMISSED. Never a verdict, never CONFIRMED, never ACCEPTED.
+    """
+
+    def review(
+        self, assumption: Assumption, item: EvidenceItem, context: str
+    ) -> EvidenceStatus: ...
 
 
 class QuoteVerifier(Protocol):

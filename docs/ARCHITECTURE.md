@@ -27,7 +27,8 @@ later, after the audit engine scores well on the eval set. A CLI comes first.
 |---|---|---|
 | Claim extraction | Proposes claims | Expert edits the list; every claim keeps its page and paragraph |
 | Assumptions | Fills claim-type templates | Templates are fixed per claim type; tier starts at inferred |
-| Stance | Labels one evidence item against one assumption | Quote verified verbatim by code; label is input to rules, never a verdict; SUPPORTED needs the expert to accept the supporting label |
+| Stance | Labels one evidence item against one assumption | Quote verified verbatim by code; label is input to rules, never a verdict; SUPPORTED needs the supporting label accepted by the AI reviewer or an expert |
+| Review | Local model accepts or dismisses one verified supporting item | Separate human-owned prompt; tier becomes ai_reviewed, never confirmed; a human decision overrides it; cloud models only in eval/ as benchmarks |
 | Translation | ru -> en | Original text stays the citable text |
 
 The LLM never writes a verdict, an identity merge or a confirmation.
@@ -49,6 +50,7 @@ core/
     assumptions.py    AssumptionBuilder
     retrieval.py      Retriever
     stance.py         StanceLabeler (wires the human-owned prompt to the local model)
+    review.py         EvidenceReviewer (second local pass; ai_accepted or dismissed)
     quotes.py         verify_quote
     checks/           DeterministicCheck implementations
     rules.py          decide_verdict (human-owned)
