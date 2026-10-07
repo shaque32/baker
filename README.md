@@ -13,3 +13,8 @@ Synthetic data only. Never put real discovery material in this repo.
 make install   # editable install with dev tools
 make check     # lint, tests, eval
 ```
+
+Scanned government documents need OCR, which uses a local Tesseract install
+(`apt install tesseract-ocr`, or the Windows installer from UB Mannheim). Without it, text-layer
+PDFs still import, scanned pages fail with a clear error, and the OCR test is skipped.
+`make fixtures` regenerates the synthetic PDFs in `eval/fixtures/govdoc/`.
