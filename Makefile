@@ -1,6 +1,6 @@
 PY ?= python3
 
-.PHONY: install lint fmt test eval eval-fake eval-real check synth fixtures report
+.PHONY: install lint fmt test eval eval-fake eval-real eval-hostile check synth fixtures report
 
 install:
 	$(PY) -m pip install -e ".[dev]"
@@ -32,6 +32,10 @@ eval-real:
 	$(PY) -m eval.run_eval
 	$(PY) -m eval.run_pipeline --mode real --reviewer none
 	$(PY) -m eval.run_eval --predictions eval/out/case01/no_reviewer/predictions.jsonl --report-only
+
+# Red team: real structure, worst-case model. Fails if a structurally blocked claim goes supported.
+eval-hostile:
+	$(PY) -m eval.run_pipeline --mode hostile
 
 # Offline HTML claims report for the last fake run.
 report: eval-fake

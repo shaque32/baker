@@ -158,12 +158,25 @@ REAL_MODULES = {
 }
 
 
-def real_components(conn: sqlite3.Connection) -> Components:
-    """The product's components. Each module exposes create(conn)."""
-    built: dict[str, object] = {}
+def real_components(
+    conn: sqlite3.Connection,
+    replace: dict[str, object] | None = None,
+    filler: object | None = None,
+) -> Components:
+    """The product's components. Each module exposes create(conn).
+
+    replace supplies some components directly (the eval's hostile mode swaps in a worst-case
+    labeler and reviewer); those modules are not imported. filler is handed to
+    core.audit.assumptions.create(conn, filler=...): the local model's template filler, or an
+    expert's (or the signed eval spec's) entries. With no filler the builder proposes nothing,
+    so every claim stays unproven.
+    """
+    built: dict[str, object] = dict(replace or {})
     missing: list[str] = []
     reviewable: Callable[[EvidenceItem], bool] = _always
     for key, module in REAL_MODULES.items():
+        if key in built:
+            continue
         try:
             mod = importlib.import_module(module)
         except ModuleNotFoundError:
@@ -173,7 +186,9 @@ def real_components(conn: sqlite3.Connection) -> Components:
         if create is None:
             missing.append(f"{module}.create")
             continue
-        built[key] = create(conn)
+        built[key] = (
+            create(conn, filler=filler) if key == "assumptions" and filler else create(conn)
+        )
         if key == "reviewer" and hasattr(mod, "is_reviewable"):
             reviewable = mod.is_reviewable
     if missing:
@@ -606,6 +621,9 @@ class _Run:
         evidence_ids: list[str] = []
         for a in assumptions:
             for chk in c.checks:
+                applies = getattr(chk, "applies_to", None)
+                if applies is not None and not applies(a):
+                    continue
                 r = chk.run(a, conn)
                 if r.assumption_id != a.id:
                     raise invariants.InvariantViolation(f"check {r.id} answered {r.assumption_id}")
@@ -780,6 +798,10 @@ def run_audit(
                     "dropped_labels": result.dropped_labels,
                     "stored_items": result.stored_items,
                     "reviewer_failures": result.reviewer_failures,
+                    "rejected_assumptions": [
+                        {"template_id": r.proposal.template_id, "reason": r.reason}
+                        for r in getattr(components.assumptions, "rejected", ())
+                    ],
                 },
             )
             conn.execute(

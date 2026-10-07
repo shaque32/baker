@@ -15,6 +15,7 @@ from core.audit.invariants import InvariantViolation, check_report_text, record_
 from core.contracts import (
     EvidenceCandidate,
     EvidenceStatus,
+    Prediction,
     ProvenanceTier,
     SourceRef,
     Stance,
@@ -28,7 +29,12 @@ from core.db import connect
 from core.report.html import SUPPORTED_AI, SUPPORTED_EXPERT, render_report, write_report
 from core.review import actions, audit_log
 from eval import run_pipeline
-from eval.pipeline_fakes import PhraseLabeler, QuotedPhraseRetriever, fake_components
+from eval.pipeline_fakes import (
+    InconclusiveCheck,
+    PhraseLabeler,
+    QuotedPhraseRetriever,
+    fake_components,
+)
 
 NOW = datetime(2026, 10, 7, 12, tzinfo=UTC)
 EXPERT = "expert:test"
@@ -279,3 +285,29 @@ def test_repeat_runs_on_fresh_databases_give_identical_predictions(tmp_path):
     a = run_pipeline.run_once("case01", "fake", "accept", tmp_path / "a")
     b = run_pipeline.run_once("case01", "fake", "accept", tmp_path / "b")
     assert a == b and len(a) == 20
+
+
+def test_checks_run_only_where_they_apply(conn):
+    class Picky(InconclusiveCheck):
+        name = "picky"
+
+        def applies_to(self, assumption):
+            return False
+
+    pipeline.run_audit(conn, comps(checks=(Picky(),)), clock=_clock, claim_ids=["C01"])
+    assert conn.execute("SELECT COUNT(*) FROM check_results").fetchone()[0] == 0
+
+
+def test_hostile_gate_fails_only_on_structural_claims(monkeypatch):
+    import sys
+    import types
+
+    blocks = types.ModuleType("eval.adversarial.structural_blocks")
+    blocks.STRUCTURAL, blocks.MODEL_ONLY = ("C04",), ("C06",)
+    monkeypatch.setitem(sys.modules, "eval.adversarial", types.ModuleType("eval.adversarial"))
+    monkeypatch.setitem(sys.modules, "eval.adversarial.structural_blocks", blocks)
+    sup = SupportedBasis.AI_REVIEWED
+    model_only = [Prediction(claim_id="C06", verdict=Verdict.SUPPORTED, supported_basis=sup)]
+    assert run_pipeline.hostile_gate(model_only) == 0
+    breach = [Prediction(claim_id="C04", verdict=Verdict.SUPPORTED, supported_basis=sup)]
+    assert run_pipeline.hostile_gate(breach) == 1
