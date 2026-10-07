@@ -81,3 +81,21 @@ def test_check_finds_what_the_spec_expects(case01, row):
     (name,) = TEMPLATES[row["template_id"]].checks
     result = CHECKS[name].run(a, case01)
     assert result.outcome.value == row["expected_check"], result.detail
+
+
+def test_supported_claims_carry_the_kind_their_type_needs():
+    """Rules 0.1.0 rule 3e: e.g. a communication claim needs a core identity assumption."""
+    assumptions = _need("core.audit.assumptions")
+    rules = _need("core.audit.rules")
+    required = getattr(rules, "_REQUIRED_KIND", None)
+    if required is None:
+        pytest.skip("rules.py has no rule 3e yet")
+    from core.contracts import ClaimType
+
+    gold = spec.gold_by_id()
+    for c in spec.SPEC:
+        if gold[c.claim_id]["gold_verdict"] != "supported":
+            continue
+        need = required.get(ClaimType(gold[c.claim_id]["claim_type"]))
+        kinds = {assumptions.TEMPLATES[a.template_id].kind for a in c.assumptions if a.is_core}
+        assert need is None or need in kinds, f"{c.claim_id} needs a core {need} assumption"
