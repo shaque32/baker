@@ -32,18 +32,18 @@ CLAIM = c.Claim(
     id="C1",
     paragraph_id="p",
     text="On March 12, PETROV wrote 'need 2 more by friday'.",
-    claim_type=c.ClaimType.COMMUNICATION,
+    claim_type=c.ClaimType.EVENT,  # the one claim type that needs no particular kind
     status=c.ClaimStatus.ACCEPTED,
 )
 
 
-def asm(n: int, kind: K = K.EVENT, *, core: bool = True, people=(), claim_id="C1"):
+def asm(n: int, kind: K = K.EVENT, *, core: bool = True, people=(), claim_id="C1", template=None):
     params = c.AssumptionParams(person_ids=tuple(people))
     return c.Assumption(
         id=f"asm:{claim_id}:t{n}",
         claim_id=claim_id,
         kind=kind,
-        template_id=f"t{n}",
+        template_id=template or f"t{n}",
         template_version="1",
         params=params,
         text=f"assumption {n}",
@@ -95,6 +95,10 @@ def stip(person="person:petrov", status=c.StipulationStatus.CONFIRMED, device="d
     )
 
 
+def claim_of(claim_type: c.ClaimType) -> c.Claim:
+    return CLAIM.model_copy(update={"claim_type": claim_type})
+
+
 def decide(assumptions, evidence=(), checks=(), stipulations=(), claim=CLAIM):
     return rules.decide_verdict(
         claim, list(assumptions), list(evidence), list(checks), list(stipulations), RUN
@@ -103,6 +107,8 @@ def decide(assumptions, evidence=(), checks=(), stipulations=(), claim=CLAIM):
 
 EVENT = asm(1)
 TIME = asm(2, K.TIME)
+SENDER = asm(0, K.IDENTITY, template="sender")
+OK_SENDER = chk(SENDER, name="sender")
 
 
 def test_version_is_not_a_stub():
@@ -130,10 +136,10 @@ def test_expert_confirmed_support():
 
 
 def test_expert_support_but_ai_coverage_elsewhere_is_ai_reviewed():
-    meaning = asm(3, K.MEANING)
+    other = asm(3)
     d = decide(
-        [EVENT, meaning],
-        [ev(1, EVENT, status=S.ACCEPTED), ev(2, meaning, status=S.AI_ACCEPTED)],
+        [EVENT, other],
+        [ev(1, EVENT, status=S.ACCEPTED), ev(2, other, status=S.AI_ACCEPTED)],
     )
     assert d.verdict is Verdict.SUPPORTED
     assert d.supported_basis is c.SupportedBasis.AI_REVIEWED
@@ -203,7 +209,11 @@ def test_unreviewed_or_dismissed_support_does_not_cover():
 def test_decision_4_inferred_record_never_covers():
     """C17: a machine translation, even accepted by an expert, stays unproven."""
     meaning = asm(3, K.MEANING)
-    d = decide([meaning], [ev(1, meaning, status=S.ACCEPTED, tier=T.INFERRED)])
+    d = decide(
+        [EVENT, meaning],
+        [ev(1, EVENT, status=S.ACCEPTED), ev(2, meaning, status=S.ACCEPTED, tier=T.INFERRED)],
+        claim=claim_of(c.ClaimType.CONTENT_MEANING),
+    )
     assert d.verdict is Verdict.UNPROVEN
 
 
@@ -218,12 +228,45 @@ def test_one_inconclusive_check_spoils_a_pass():
     assert decide([EVENT, TIME], [ev(1, EVENT)], checks).verdict is Verdict.UNPROVEN
 
 
-@pytest.mark.parametrize("kind", [K.IDENTITY, K.TIME, K.COMPLETENESS])
-def test_ai_review_alone_never_covers_identity_time_or_completeness(kind):
-    """C16, C18 and absence claims: the AI reviewer never confirms identity or silence."""
+@pytest.mark.parametrize("kind", [K.IDENTITY, K.TIME, K.COMPLETENESS, K.MEANING])
+def test_ai_review_alone_covers_only_event_assumptions(kind):
+    """C16, C18, absence claims, C06 and C20: identity, timing, silence and meaning need a
+    check or an expert, never the AI reviewer alone."""
     a = asm(5, kind)
-    assert decide([a], [ev(1, a)]).verdict is Verdict.UNPROVEN
+    d = decide([a], [ev(1, a)])
+    assert d.verdict is Verdict.UNPROVEN
+    assert "AI review alone does not cover it" in " ".join(d.reasons)
     assert decide([a], [ev(1, a, status=S.ACCEPTED)]).verdict is Verdict.SUPPORTED
+
+
+@pytest.mark.parametrize("template", ["authorship", "person_identity", "sender"])
+def test_ai_review_never_covers_a_real_identity_template(template):
+    """Thread 4's identity templates (core/audit/assumptions.py) are identity assumptions."""
+    who = asm(6, K.IDENTITY, people=("person:petrov",), template=template)
+    d = decide([EVENT, who], [ev(1, EVENT), ev(2, who)], stipulations=[stip()])
+    assert d.verdict is Verdict.UNPROVEN
+    assert {cov.assumption_id: cov.covered for cov in d.coverage}[who.id] is False
+
+
+def test_accept_everything_reviewer_cannot_support_a_meaning_claim():
+    """Thread 7's stand-in run: C06 and C20 came out SUPPORTED when meaning was AI-coverable."""
+    meaning = asm(3, K.MEANING, template="meaning")
+    d = decide(
+        [EVENT, meaning],
+        [ev(1, EVENT), ev(2, meaning)],
+        claim=claim_of(c.ClaimType.CONTENT_MEANING),
+    )
+    assert d.verdict is Verdict.UNPROVEN
+
+
+@pytest.mark.parametrize("status", [S.OPEN, S.AI_ACCEPTED])
+def test_model_contradiction_can_contradict_identity(status):
+    """C19: 'who is alex turner?' contradicts 'one person' through stance, not a check."""
+    who = asm(6, K.IDENTITY, template="person_identity")
+    d = decide(
+        [who], [ev(2, who, Stance.CONTRADICTS, status)], claim=claim_of(c.ClaimType.IDENTITY)
+    )
+    assert d.verdict is Verdict.CONTRADICTED
 
 
 def test_decision_3_unconfirmed_ownership_never_covers():
@@ -259,6 +302,74 @@ def test_checks_alone_never_support():
     d = decide([TIME], [], [chk(TIME)])
     assert d.verdict is Verdict.UNPROVEN
     assert "Rule 3c" in " ".join(d.reasons)
+
+
+def test_communication_claim_needs_a_sender():
+    """C16 with a stand-in that tests only 'the message exists': who wrote it on the shared
+    account was never an assumption, so the claim is not supported."""
+    comm = claim_of(c.ClaimType.COMMUNICATION)
+    d = decide([EVENT], [ev(1, EVENT)], claim=comm)
+    assert d.verdict is Verdict.UNPROVEN
+    assert "Rule 3e" in " ".join(d.reasons)
+    d = decide([EVENT, SENDER], [ev(1, EVENT)], [OK_SENDER], claim=comm)
+    assert d.verdict is Verdict.SUPPORTED
+    author = asm(9, K.IDENTITY, template="authorship")  # no check can test authorship
+    d = decide([EVENT, SENDER, author], [ev(1, EVENT), ev(2, author)], [OK_SENDER], claim=comm)
+    assert d.verdict is Verdict.UNPROVEN
+
+
+@pytest.mark.parametrize(
+    ("claim_type", "kind"),
+    [
+        (c.ClaimType.COMMUNICATION, K.IDENTITY),
+        (c.ClaimType.CONTENT_MEANING, K.MEANING),
+        (c.ClaimType.IDENTITY, K.IDENTITY),
+        (c.ClaimType.ABSENCE, K.COMPLETENESS),
+        (c.ClaimType.COUNT, K.COMPLETENESS),
+        (c.ClaimType.TIMING, K.TIME),
+    ],
+)
+def test_claim_type_needs_its_assumption_kind(claim_type, kind):
+    """Rule 3e: a meaning claim tested only on 'the message exists' is not supported."""
+    claim = claim_of(claim_type)
+    d = decide([EVENT], [ev(1, EVENT, status=S.ACCEPTED)], claim=claim)
+    assert d.verdict is Verdict.UNPROVEN
+    assert "Rule 3e" in " ".join(d.reasons)
+    a = asm(7, kind)
+    d = decide([EVENT, a], [ev(1, EVENT, status=S.ACCEPTED)], [chk(a)], claim=claim)
+    assert d.verdict is Verdict.SUPPORTED
+
+
+@pytest.mark.parametrize(
+    "claim_type", [c.ClaimType.ROLE, c.ClaimType.IDENTITY, c.ClaimType.CONTENT_MEANING]
+)
+def test_interpretive_claims_never_rest_on_ai_coverage(claim_type):
+    """Rule 3f: a role template is an event assumption, but 'PETROV directed REYES' (C13)
+    is interpretation."""
+    role = asm(8, K.EVENT, template="role")
+    needed = {
+        c.ClaimType.IDENTITY: [asm(7, K.IDENTITY)],
+        c.ClaimType.CONTENT_MEANING: [asm(7, K.MEANING)],
+    }.get(claim_type, [])
+    checks = [chk(a) for a in needed]
+    d = decide([role, *needed], [ev(1, role)], checks, claim=claim_of(claim_type))
+    assert d.verdict is Verdict.UNPROVEN
+    assert "Rule 3f" in " ".join(d.reasons)
+    d = decide(
+        [role, *needed], [ev(1, role, status=S.ACCEPTED)], checks, claim=claim_of(claim_type)
+    )
+    assert d.verdict is Verdict.SUPPORTED
+
+
+def test_identity_claim_covered_by_checks_may_cite_ai_support():
+    """C01, C02: the contact or same-account check covers the identity; the AI-accepted
+    record only satisfies rule 3c, so the claim is SUPPORTED (AI-reviewed)."""
+    who = asm(6, K.IDENTITY, template="contact_entry")
+    d = decide(
+        [who], [ev(1, who)], [chk(who, name="contact")], claim=claim_of(c.ClaimType.IDENTITY)
+    )
+    assert d.verdict is Verdict.SUPPORTED
+    assert d.supported_basis is c.SupportedBasis.AI_REVIEWED
 
 
 def test_derived_record_covers_but_does_not_satisfy_rule_3c():
