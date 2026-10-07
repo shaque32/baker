@@ -111,12 +111,15 @@ def score_reviewer(
     params: GenerationParams,
     repeat: int = 2,
     log: CallLog | None = None,
+    reason_first: bool = False,
 ) -> ReviewerScore:
     s = ReviewerScore()
-    version = prompts.prompt_version(prompts.REVIEWER_PROMPT)
+    path = prompts.REVIEWER_REASON_FIRST if reason_first else prompts.REVIEWER_PROMPT
+    schema = prompts.REVIEWER_SCHEMA_REASON_FIRST if reason_first else prompts.REVIEWER_SCHEMA
+    version = prompts.prompt_version(path)
     for it in items:
-        prompt = prompts.reviewer_prompt(it["assumption"], it["quote"], it["context"])
-        outs = _call(model, prompt, prompts.REVIEWER_SCHEMA, params, repeat, log,
+        prompt = prompts.reviewer_prompt(it["assumption"], it["quote"], it["context"], path)
+        outs = _call(model, prompt, schema, params, repeat, log,
                      purpose="review", version=version, item_id=it["id"])  # fmt: skip
         first = outs[0]
         s.n += 1
@@ -234,11 +237,14 @@ def run_model(
     repeat: int,
     out_dir: Path,
     stance_path: Path = prompts.STANCE_DRAFT,
+    reason_first: bool = False,
 ) -> dict[str, Any]:
-    log = CallLog(out_dir / f"{model.name}.calls.jsonl")
-    r = score_reviewer(model, reviewer_items, params, repeat, log)
+    suffix = ".reason_first" if reason_first else ""
+    log = CallLog(out_dir / f"{model.name}{suffix}.calls.jsonl")
+    r = score_reviewer(model, reviewer_items, params, repeat, log, reason_first)
     st = score_stance(model, stance_items, params, repeat, log, stance_path)
     result = {"model": model.name, "sha256": model.sha256, **summarize(r, st)}
+    result["reviewer_variant"] = "reason_first" if reason_first else "as_signed"
     result["stance_prompt"] = f"{stance_path.name}@{prompts.prompt_version(stance_path)}"
     result["reviewer_failures"] = r.failures
     result["stance_failures"] = st.failures
@@ -278,6 +284,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--stance", type=Path, default=HERE / "smoke_stance.jsonl")
     ap.add_argument("--stance-prompt", type=Path, default=prompts.STANCE_DRAFT,
                     help="stance prompt file, e.g. thread 6's docs/prompts/stance.md")  # fmt: skip
+    ap.add_argument("--reason-first", action="store_true",
+                    help="also run a reason-before-decision reviewer variant")  # fmt: skip
     ap.add_argument("--repeat", type=int, default=2)
     ap.add_argument("--n-ctx", type=int, default=8192)
     ap.add_argument("--out", type=Path, default=Path("eval/out/probe"))
@@ -300,13 +308,16 @@ def main(argv: list[str] | None = None) -> int:
             results.append({"model": spec.name, "load_error": str(e), "passes_all": False})
             continue
         loaded = gpu_memory_mib()
-        res = run_model(model, reviewer_items, stance_items, params, args.repeat, args.out,
-                        args.stance_prompt)  # fmt: skip
-        res["license"] = spec.license
-        res["vram_used_mib"] = None if loaded is None or before is None else loaded - before
-        results.append(res)
+        variants = [False, True] if args.reason_first else [False]
+        for reason_first in variants:
+            res = run_model(model, reviewer_items, stance_items, params, args.repeat, args.out,
+                            args.stance_prompt, reason_first)  # fmt: skip
+            res["model"] = spec.name + (" (reason first)" if reason_first else "")
+            res["license"] = spec.license
+            res["vram_used_mib"] = None if loaded is None or before is None else loaded - before
+            results.append(res)
+            print(f"{res['model']}: passes_all={res['passes_all']}", file=sys.stderr)
         del model
-        print(f"{spec.name}: passes_all={res['passes_all']}", file=sys.stderr)
     (args.out / "summary.json").write_text(
         json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8"
     )

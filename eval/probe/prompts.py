@@ -22,6 +22,19 @@ REVIEWER_SCHEMA = {
     "additionalProperties": False,
 }
 
+# Same keys, reason first. The JSON grammar follows property order, so the model has to write
+# its reason before it commits to a decision.
+REVIEWER_SCHEMA_REASON_FIRST = {
+    "type": "object",
+    "properties": {
+        "reason": {"type": "string"},
+        "decision": {"type": "string", "enum": ["accept", "dismiss"]},
+    },
+    "required": ["reason", "decision"],
+    "additionalProperties": False,
+}
+REVIEWER_REASON_FIRST = Path(__file__).with_name("reviewer_reason_first.md")
+
 STANCE_SCHEMA = {
     "type": "object",
     "properties": {
@@ -73,8 +86,8 @@ def render(path: Path, **fields: str) -> str:
     return text
 
 
-def reviewer_prompt(assumption: str, quote: str, context: str) -> str:
-    return render(REVIEWER_PROMPT, assumption=assumption, quote=quote, context=context)
+def reviewer_prompt(assumption: str, quote: str, context: str, path: Path = REVIEWER_PROMPT) -> str:
+    return render(path, assumption=assumption, quote=quote, context=context)
 
 
 def stance_prompt(assumption: str, record: str, context: str, path: Path = STANCE_DRAFT) -> str:

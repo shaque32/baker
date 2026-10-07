@@ -167,3 +167,11 @@ def test_table_prints_tokens_per_second_as_a_number():
 
     out = table([{"model": "m", "reviewer_accuracy": 0.5, "tokens_per_second": 9.6}])
     assert "| 9.6 |" in out and "50%" in out
+
+
+def test_reason_first_variant_asks_for_reason_before_decision(tmp_path):
+    rev = load_items(ROOT / "eval/probe/smoke_reviewer.jsonl")[:2]
+    model = FakeModel(respond=lambda _p: '{"reason": "r", "decision": "dismiss"}')
+    res = run_model(model, rev, [], GenerationParams(), 1, tmp_path, reason_first=True)
+    assert res["reviewer_variant"] == "reason_first" and res["reviewer_valid_output"] == 1.0
+    assert '{"reason"' in model.calls[0] and "{assumption}" not in model.calls[0]
