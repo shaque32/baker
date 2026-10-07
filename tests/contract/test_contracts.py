@@ -25,10 +25,20 @@ ENUM_COLUMNS = {
     ("assumptions", "kind"): c.AssumptionKind,
     ("assumptions", "tier"): c.ProvenanceTier,
     ("evidence_items", "stance"): c.Stance,
-    ("evidence_items", "tier"): c.ProvenanceTier,
-    ("evidence_items", "status"): c.EvidenceStatus,
+    ("evidence_reviews", "reviewer_kind"): c.ReviewerKind,
+    ("evidence_reviews", "status"): c.EvidenceStatus,
     ("check_results", "outcome"): c.CheckOutcome,
+    ("stipulations", "kind"): c.StipulationKind,
+    ("stipulations", "status"): c.StipulationStatus,
     ("verdicts", "verdict"): c.Verdict,
+    ("verdicts", "supported_basis"): c.SupportedBasis,
+    ("model_calls", "outcome"): c.ModelCallOutcome,
+    ("pipeline_runs", "status"): c.PipelineRunStatus,
+}
+
+# (table, column) -> the subset of an enum its CHECK constraint allows
+SUBSET_COLUMNS = {
+    ("evidence_items", "tier"): {t.value for t in c.RECORD_TIERS},
 }
 
 
@@ -50,6 +60,11 @@ def test_schema_applies_cleanly():
 @pytest.mark.parametrize(("table", "column"), sorted(ENUM_COLUMNS))
 def test_schema_enums_match_contracts(table, column):
     assert check_values(table, column) == {e.value for e in ENUM_COLUMNS[(table, column)]}
+
+
+@pytest.mark.parametrize(("table", "column"), sorted(SUBSET_COLUMNS))
+def test_schema_subset_enums(table, column):
+    assert check_values(table, column) == SUBSET_COLUMNS[(table, column)]
 
 
 def test_every_evidence_table_has_source_ref():
@@ -98,10 +113,3 @@ def test_evidence_item_requires_verified_quote():
     c.EvidenceItem(quote_verified=True, **fields)
     with pytest.raises(ValidationError):
         c.EvidenceItem(quote_verified=False, **fields)
-
-
-def test_rules_are_a_stub():
-    from core.audit import rules
-
-    with pytest.raises(NotImplementedError):
-        rules.decide_verdict(None, [], [], [])  # type: ignore[arg-type]
