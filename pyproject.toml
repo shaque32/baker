@@ -9,7 +9,11 @@ dependencies = [
     "pillow>=10",  # page images for OCR; OCR itself needs a local Tesseract install
     "openpyxl>=3.1,<4",  # Cellebrite Excel reports (MIT)
     "pdfplumber>=0.11,<0.12",  # Cellebrite PDF report tables (MIT; pulls pdfminer.six, MIT)
+    "tzdata>=2024.1",  # IANA zone database for zoneinfo on Windows (Apache-2.0)
 ]
+
+[project.scripts]
+baker = "cli.main:main"
 
 [project.optional-dependencies]
 dev = [
@@ -17,13 +21,19 @@ dev = [
     "ruff>=0.6",
     "reportlab>=4",  # synthetic fixture PDFs only (eval/synthetic, tests)
 ]
+local = [
+    "llama-cpp-python>=0.3.16",  # local GGUF runtime (MIT); install the CUDA build on the GPU PC
+]
+bench = [
+    "anthropic>=1.0,<2",  # eval/bench only: cloud upper bound, never imported by core/ (MIT)
+]
 
 [build-system]
 requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["core*", "eval*"]
+include = ["core*", "eval*", "cli*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -39,3 +49,4 @@ ignore = ["S105", "S106"]  # enum values like "pass" are not passwords
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S608"]  # tests build SQL from constants only
 "eval/synthetic/xlsx.py" = ["E501"]  # OOXML namespace URLs
+"eval/probe/build_smoke.py" = ["E501"]  # probe item text

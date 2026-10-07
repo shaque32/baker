@@ -24,3 +24,7 @@ eval/synthetic/*/*.xlsx
 cases/
 discovery/
 !eval/fixtures/**
+eval/probe/models*.local.json
+
+# Local model files never enter the repo.
+*.gguf
