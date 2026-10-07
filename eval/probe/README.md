@@ -11,10 +11,12 @@ machine that will run Baker. Everything here is synthetic.
   `core/audit/prompts/`.
 - The reviewer prompt is read from `core/audit/prompts/reviewer.md` unchanged.
 
-## Thread 3's probe set
-`python -m eval.probe.from_draft <path to eval/probe_draft/probe_draft.jsonl>` writes
-`eval/out/probe_items/reviewer.jsonl` and `stance.jsonl`; pass them to `run_probe` with
-`--reviewer` and `--stance`. Results stay provisional until Arsh signs the items.
+## Signed probe set (thread 3)
+`run_probe --probe-set <eval/probe_draft/probe_draft.jsonl>` scores the signed set directly.
+Only signed, undisputed items count toward a pass bar; disputed items and drafts are scored
+and reported under `not_gated` (Arsh's rule, 2026-10-07). Accuracy alone misleads: a reviewer
+that dismisses everything scores about 65% on the gated set, so read the false-accept rate and
+the clear-accept rate (support recall) next to it.
 
 ## Run on a Mac (Apple silicon)
 1. `python3 -m venv .venv && source .venv/bin/activate`, then `pip install -e ".[dev,local]"`.

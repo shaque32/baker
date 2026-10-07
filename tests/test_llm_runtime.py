@@ -175,3 +175,22 @@ def test_reason_first_variant_asks_for_reason_before_decision(tmp_path):
     res = run_model(model, rev, [], GenerationParams(), 1, tmp_path, reason_first=True)
     assert res["reviewer_variant"] == "reason_first" and res["reviewer_valid_output"] == 1.0
     assert '{"reason"' in model.calls[0] and "{assumption}" not in model.calls[0]
+
+
+def test_disputed_and_draft_items_never_count_toward_bars(tmp_path):
+    rev = load_items(ROOT / "eval/probe/smoke_reviewer.jsonl")
+    trap = next(it for it in rev if it["overreach"])
+    clear = [it for it in rev if it["expected"] == "accept"]
+    disputed = {**trap, "id": "D1", "disputed": "Arsh unsure"}
+    draft = {**trap, "id": "D2", "labeled_by": "DRAFT (agent proposal)"}
+    model = FakeModel(respond=lambda _p: '{"decision": "accept", "reason": "x"}')
+    res = run_model(model, clear + [disputed, draft], [], GenerationParams(), 1, tmp_path)
+    assert res["overreach_false_accepts"] == 0 and res["reviewer_items"] == len(clear)
+    assert res["not_gated"]["overreach_false_accepts"] == 2
+
+
+def test_false_accept_rate_reported():
+    from eval.probe.run_probe import ReviewerScore, StanceScore, summarize
+
+    m = summarize(ReviewerScore(n=4, dismiss_items=2, false_accepts=1), StanceScore())
+    assert m["reviewer_false_accept_rate"] == 0.5

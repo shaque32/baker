@@ -56,6 +56,8 @@ class ReviewerScore:
     overreach_false_accepts: int = 0
     clear_items: int = 0
     clear_accepted: int = 0
+    dismiss_items: int = 0
+    false_accepts: int = 0
     repeat_identical: int = 0
     failures: list[dict[str, Any]] = field(default_factory=list)
 
@@ -134,6 +136,9 @@ def score_reviewer(
         if it["expected"] == "accept":
             s.clear_items += 1
             s.clear_accepted += decision == "accept"
+        else:
+            s.dismiss_items += 1
+            s.false_accepts += decision == "accept"
         if not first.ok or decision != it["expected"]:
             s.failures.append({"id": it["id"], "category": it["category"],
                                "expected": it["expected"], "got": decision,
@@ -179,6 +184,20 @@ def score_stance(
     return s
 
 
+def is_gated(item: dict[str, Any]) -> bool:
+    """Only signed, undisputed items count toward a pass bar (Arsh's rule, 2026-10-07).
+
+    Items without the fields (the smoke set) count, and stay provisional as a whole.
+    """
+    if item.get("disputed"):
+        return False
+    return not str(item.get("labeled_by", "")).startswith("DRAFT")
+
+
+def split_gated(items: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    return [i for i in items if is_gated(i)], [i for i in items if not is_gated(i)]
+
+
 def summarize(r: ReviewerScore, st: StanceScore) -> dict[str, Any]:
     m = {
         "reviewer_valid_output": _ratio(r.valid, r.n),
@@ -186,6 +205,9 @@ def summarize(r: ReviewerScore, st: StanceScore) -> dict[str, Any]:
         "overreach_false_accepts": r.overreach_false_accepts,
         "overreach_items": r.overreach_items,
         "reviewer_clear_accept_rate": _ratio(r.clear_accepted, r.clear_items),
+        "reviewer_false_accept_rate": _ratio(r.false_accepts, r.dismiss_items),
+        "reviewer_items": r.n,
+        "stance_items": st.n,
         "reviewer_repeat_identical": _ratio(r.repeat_identical, r.n),
         "stance_valid_output": _ratio(st.valid, st.n),
         "stance_accuracy": _ratio(st.correct, st.n),
@@ -241,9 +263,21 @@ def run_model(
 ) -> dict[str, Any]:
     suffix = ".reason_first" if reason_first else ""
     log = CallLog(out_dir / f"{model.name}{suffix}.calls.jsonl")
-    r = score_reviewer(model, reviewer_items, params, repeat, log, reason_first)
-    st = score_stance(model, stance_items, params, repeat, log, stance_path)
+    rev_gate, rev_extra = split_gated(reviewer_items)
+    st_gate, st_extra = split_gated(stance_items)
+    r = score_reviewer(model, rev_gate, params, repeat, log, reason_first)
+    st = score_stance(model, st_gate, params, repeat, log, stance_path)
     result = {"model": model.name, "sha256": model.sha256, **summarize(r, st)}
+    if rev_extra or st_extra:
+        # Disputed and unsigned items: scored and reported, never counted toward a pass bar.
+        rx = score_reviewer(model, rev_extra, params, repeat, log, reason_first)
+        sx = score_stance(model, st_extra, params, repeat, log, stance_path)
+        extra = summarize(rx, sx)
+        extra.pop("bars")
+        extra.pop("passes_all")
+        extra["reviewer_failures"] = rx.failures
+        extra["stance_failures"] = sx.failures
+        result["not_gated"] = extra
     result["reviewer_variant"] = "reason_first" if reason_first else "as_signed"
     result["stance_prompt"] = f"{stance_path.name}@{prompts.prompt_version(stance_path)}"
     result["reviewer_failures"] = r.failures
@@ -267,8 +301,10 @@ def table(results: list[dict[str, Any]]) -> str:
             return f"{v:.0%}"
         return str(v)
 
-    cols = ["model", "reviewer_valid_output", "reviewer_accuracy", "overreach_false_accepts",
-            "reviewer_clear_accept_rate", "stance_valid_output", "quote_verified",
+    cols = ["model", "reviewer_items", "reviewer_valid_output", "reviewer_accuracy",
+            "overreach_false_accepts",
+            "reviewer_clear_accept_rate", "reviewer_false_accept_rate", "stance_valid_output",
+            "quote_verified",
             "supports_precision", "supports_recall", "reviewer_repeat_identical",
             "stance_repeat_identical", "tokens_per_second", "passes_all"]  # fmt: skip
     lines = ["| " + " | ".join(cols) + " |", "|" + "---|" * len(cols)]
@@ -282,6 +318,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--models", type=Path, required=True)
     ap.add_argument("--reviewer", type=Path, default=HERE / "smoke_reviewer.jsonl")
     ap.add_argument("--stance", type=Path, default=HERE / "smoke_stance.jsonl")
+    ap.add_argument("--probe-set", type=Path, default=None,
+                    help="signed probe_draft.jsonl; replaces --reviewer, --stance")  # fmt: skip
     ap.add_argument("--stance-prompt", type=Path, default=prompts.STANCE_DRAFT,
                     help="stance prompt file, e.g. thread 6's docs/prompts/stance.md")  # fmt: skip
     ap.add_argument("--reason-first", action="store_true",
@@ -294,8 +332,15 @@ def main(argv: list[str] | None = None) -> int:
     from core.llm.runtime import LlamaCppModel, ModelSpec
 
     args.out.mkdir(parents=True, exist_ok=True)
-    reviewer_items = load_items(args.reviewer)
-    stance_items = load_items(args.stance)
+    if args.probe_set is not None:
+        from eval.probe.from_draft import convert
+
+        pairs = [convert(row) for row in load_items(args.probe_set)]
+        reviewer_items = [r for r, _ in pairs]
+        stance_items = [s for _, s in pairs]
+    else:
+        reviewer_items = load_items(args.reviewer)
+        stance_items = load_items(args.stance)
     params = GenerationParams(n_ctx=args.n_ctx)
     results = []
     for entry in json.loads(args.models.read_text(encoding="utf-8")):

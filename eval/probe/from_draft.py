@@ -25,7 +25,8 @@ def convert(item: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     context = "\n".join(fmt(x) for x in lines)
     common = {"id": item["probe_id"], "category": item["category"], "trap": item.get("trap"),
               "lang": item["lang"], "assumption": item["assumption"],
-              "context": context}  # fmt: skip
+              "context": context, "disputed": item.get("disputed"),
+              "labeled_by": item.get("labeled_by")}  # fmt: skip
     reviewer = {**common, "overreach": item["category"] == "overreach",
                 "quote": item["proposed_quote"], "expected": item["gold_review"]}  # fmt: skip
     stance = {**common, "record_text": item["target"]["text"], "record": fmt(item["target"]),
