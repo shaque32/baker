@@ -27,7 +27,11 @@ with the reason and the exact diff you want, then finish the rest of your task w
 - A claim is never SUPPORTED on a model's stance label alone. An expert must accept the
   label on the supporting evidence first.
 - Every derived record carries a `source_ref` back to the original artifact.
-- Every displayed item carries a provenance tier: observed, derived, inferred or confirmed.
+- Every displayed item carries a provenance tier: observed, derived, inferred, ai_reviewed or confirmed.
+  ai_reviewed means the local AI reviewer accepted it. confirmed means a human expert accepted it.
+  ai_reviewed never displays or exports as confirmed, and a human decision always overrides it.
+- The AI reviewer only reviews evidence items. It never confirms identity links or claims.
+- The AI reviewer runs on the local model in core/. Cloud models may be used only in eval/, as benchmarks.
   An inference never becomes observed because another component consumed it.
 - Any quote attributed to evidence must be verified verbatim by code before it is stored.
   Unverified quotes are discarded, never stored.

@@ -59,7 +59,7 @@ CREATE TABLE identity_links (
     account_id TEXT NOT NULL REFERENCES accounts(id),
     person_id  TEXT NOT NULL REFERENCES persons(id),
     status     TEXT NOT NULL CHECK (status IN ('proposed', 'confirmed', 'rejected', 'unresolved')),
-    tier       TEXT NOT NULL CHECK (tier IN ('observed', 'derived', 'inferred', 'confirmed')),
+    tier       TEXT NOT NULL CHECK (tier IN ('observed', 'derived', 'inferred', 'ai_reviewed', 'confirmed')),
     basis      TEXT NOT NULL,
     decided_by TEXT,
     decided_at_utc TEXT
@@ -202,7 +202,7 @@ CREATE TABLE assumptions (
     kind     TEXT NOT NULL CHECK (kind IN ('identity', 'time', 'meaning', 'completeness', 'event')),
     text     TEXT NOT NULL,
     is_core  INTEGER NOT NULL CHECK (is_core IN (0, 1)),
-    tier     TEXT NOT NULL CHECK (tier IN ('observed', 'derived', 'inferred', 'confirmed'))
+    tier     TEXT NOT NULL CHECK (tier IN ('observed', 'derived', 'inferred', 'ai_reviewed', 'confirmed'))
 );
 
 CREATE TABLE evidence_items (
@@ -214,8 +214,8 @@ CREATE TABLE evidence_items (
     stance        TEXT NOT NULL CHECK (stance IN ('supports', 'contradicts', 'complicates', 'irrelevant')),
     quote         TEXT NOT NULL,    -- verified verbatim against the record before insert
     rationale     TEXT NOT NULL,
-    tier          TEXT NOT NULL CHECK (tier IN ('observed', 'derived', 'inferred', 'confirmed')),
-    status        TEXT NOT NULL CHECK (status IN ('open', 'accepted', 'dismissed')),
+    tier          TEXT NOT NULL CHECK (tier IN ('observed', 'derived', 'inferred', 'ai_reviewed', 'confirmed')),
+    status        TEXT NOT NULL CHECK (status IN ('open', 'ai_accepted', 'accepted', 'dismissed')),
     model_run_id  TEXT REFERENCES model_runs(id)
 );
 
