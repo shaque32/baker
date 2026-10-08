@@ -84,6 +84,23 @@ def sha256_file(path: Path, chunk: int = 1 << 20) -> str:
     return h.hexdigest()
 
 
+# Length and count limits are not sent to the decoder. llama.cpp unrolls each one into nested
+# optional rules ("maxLength": 2000 becomes 2000 nested copies of a char rule), which fails to
+# parse past its limits and has crashed the process (Wave 3 Mac run, 2026-10-08). Every pass
+# checks the same limits on the decoded output with pydantic, so an over-long answer is still
+# dropped, never kept; max_tokens bounds the generation itself.
+GRAMMAR_DROPPED_KEYS = frozenset({"maxLength", "minLength", "maxItems", "minItems"})
+
+
+def grammar_schema(schema: Any) -> Any:
+    """The schema as the decoder sees it: the same shape, without length and count limits."""
+    if isinstance(schema, Mapping):
+        return {k: grammar_schema(v) for k, v in schema.items() if k not in GRAMMAR_DROPPED_KEYS}
+    if isinstance(schema, list):
+        return [grammar_schema(v) for v in schema]
+    return schema
+
+
 def parse_json_output(text: str, schema: JsonSchema) -> tuple[dict[str, Any] | None, str | None]:
     """Strict parse: one JSON object, required keys present, enum values respected, no extras.
 
@@ -156,7 +173,7 @@ class LlamaCppModel:
         try:
             resp = self._llm.create_chat_completion(
                 messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object", "schema": dict(schema)},
+                response_format={"type": "json_object", "schema": grammar_schema(schema)},
                 temperature=p.temperature,
                 max_tokens=p.max_tokens,
                 seed=p.seed,
