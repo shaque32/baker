@@ -1,6 +1,6 @@
 PY ?= python3
 
-.PHONY: install lint fmt test eval eval-fake eval-real eval-hostile check synth fixtures report
+.PHONY: install lint fmt test eval eval-model-free eval-fake eval-real eval-hostile check synth fixtures report
 
 install:
 	$(PY) -m pip install -e ".[dev]"
@@ -16,32 +16,41 @@ fmt:
 test:
 	$(PY) -m pytest -q
 
-# The merge gate scores eval/out/case01/predictions.jsonl, which only the real pipeline writes.
-# eval-fake runs the whole pipeline on stand-ins first (twice, to prove runs repeat) and prints
-# its scores without gating, so every merge exercises the full pipeline end to end.
-eval: eval-fake
-	$(PY) -m eval.run_eval
+# The case01 assumption sheet: the signed copy once Arsh signs it, else the draft. Every run
+# prints which one it used.
+ASSUMPTION_SPEC ?= $(if $(wildcard eval/gold/case01/assumptions.jsonl),eval/gold/case01/assumptions.jsonl,eval/probe_draft/case01_assumptions.jsonl)
 
+# The merge gate. Model-free: real assumptions (from the sheet), retrieval, checks, quote check
+# and rules; a stand-in labels every retrieved record and a simulated expert accepts only the
+# key evidence Arsh signed in gold (eval/simulated_expert.py). Gate: accuracy >= 0.80 and zero
+# false supported on case01. The unreviewed run (0 supported by design) is reported beside it,
+# then the red-team run, which fails if a structurally blocked claim goes supported.
+eval: eval-model-free eval-hostile
+
+eval-model-free:
+	$(PY) -m eval.run_pipeline --mode model-free --assumption-spec $(ASSUMPTION_SPEC) --repeat
+	$(PY) -m eval.run_eval --predictions eval/out/case01/model_free/unreviewed/predictions.jsonl --report-only
+	$(PY) -m eval.run_eval --predictions eval/out/case01/model_free/predictions.jsonl
+
+# The pipeline on the eval stand-ins from eval/pipeline_fakes.py; not gated.
 eval-fake:
 	$(PY) -m eval.run_pipeline --mode fake --repeat
 	$(PY) -m eval.run_eval --predictions eval/out/case01/fake/predictions.jsonl --report-only
 
-# Product components; fails with the list of modules not built yet.
+# The real local model (stance labeler and AI reviewer) plus the simulated expert, on a machine
+# with the model installed. Gated like make eval; the unreviewed run is reported.
 eval-real:
-	$(PY) -m eval.run_pipeline --mode real --repeat
+	$(PY) -m eval.run_pipeline --mode real --assumption-spec $(ASSUMPTION_SPEC) --repeat
+	$(PY) -m eval.run_eval --predictions eval/out/case01/unreviewed/predictions.jsonl --report-only
 	$(PY) -m eval.run_eval
-	$(PY) -m eval.run_pipeline --mode real --reviewer none
-	$(PY) -m eval.run_eval --predictions eval/out/case01/no_reviewer/predictions.jsonl --report-only
 
 # Red team: real structure, worst-case model. Fails if a structurally blocked claim goes supported.
-# Uses the case01 assumption spec (draft until signed; then it moves under eval/gold/case01/).
-ASSUMPTION_SPEC ?= eval/probe_draft/case01_assumptions.jsonl
 eval-hostile:
 	$(PY) -m eval.run_pipeline --mode hostile --assumption-spec $(ASSUMPTION_SPEC)
 
-# Offline HTML claims report for the last fake run.
-report: eval-fake
-	@echo "open eval/out/case01/fake/report.html"
+# Offline HTML claims report for the last model-free run, after the simulated expert.
+report: eval-model-free
+	@echo "open eval/out/case01/model_free/report.html"
 
 check: lint test eval
 

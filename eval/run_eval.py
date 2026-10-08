@@ -1,7 +1,9 @@
 """Score pipeline predictions against gold verdicts. This is the merge gate.
 
 Usage: python -m eval.run_eval [--case eval/gold/case01] [--predictions <path>] [--report-only]
-Predictions default to eval/out/<case>/predictions.jsonl, which only the real pipeline writes.
+Predictions default to eval/out/<case>/predictions.jsonl, which the real pipeline writes
+(make eval-real). make eval gates eval/out/<case>/model_free/predictions.jsonl: the model-free
+run after the simulated expert (eval/simulated_expert.py).
 --report-only prints the scores without gating, for runs on stand-in components
 (eval/out/<case>/fake/) and for cases that are reported but do not gate.
 """
@@ -19,6 +21,9 @@ from core.contracts import GoldClaim, Prediction, Verdict
 # Gate thresholds. Human-owned: change only with Arsh's sign-off.
 MIN_VERDICT_ACCURACY = 0.80
 MAX_FALSE_SUPPORTED_RATE = 0.05
+# Zero false supported, as a count (Arsh, 2026-10-08, Wave 3 plan decision 2). On case01's 12
+# non-supported claims the 0.05 rate already allows none; the count keeps it so on any case.
+MAX_FALSE_SUPPORTED = 0
 
 
 @dataclass(frozen=True)
@@ -79,6 +84,7 @@ def passes(s: Scores) -> bool:
     return (
         s.verdict_accuracy >= MIN_VERDICT_ACCURACY
         and s.false_supported_rate <= MAX_FALSE_SUPPORTED_RATE
+        and s.n_false_supported <= MAX_FALSE_SUPPORTED
     )
 
 
@@ -109,7 +115,8 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"eval: {predictions_path}: {verdict} "
         f"(accuracy {s.verdict_accuracy:.2f} >= {MIN_VERDICT_ACCURACY}, "
-        f"false-supported {s.false_supported_rate:.2f} <= {MAX_FALSE_SUPPORTED_RATE})"
+        f"false-supported {s.n_false_supported} <= {MAX_FALSE_SUPPORTED}, "
+        f"rate {s.false_supported_rate:.2f} <= {MAX_FALSE_SUPPORTED_RATE})"
     )
     if args.report_only:
         print("eval: report only, not gated")
