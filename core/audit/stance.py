@@ -32,6 +32,7 @@ from core.audit._llm_json import (
     run_json_call,
 )
 from core.audit._local_model import LocalModel, open_run
+from core.audit.quotes import find_quote
 from core.contracts import (
     Assumption,
     EvidenceCandidate,
@@ -58,6 +59,33 @@ STANCE_SCHEMA: dict[str, object] = {
 }
 
 Renderer = Callable[[EvidenceCandidate], str]
+
+# Templates about one message, named by its quoted text. The deterministic sender and time
+# checks pick that message the same way (verbatim, word-aligned).
+ONE_MESSAGE_TEMPLATES = frozenset({"sender", "record_time"})
+NOT_THE_MESSAGE = (
+    "Recorded as complicates, not contradicts: this record is not the message the assumption "
+    "names, so it cannot rule that message out. Model's rationale: "
+)
+
+
+def subject_stance(assumption: Assumption, record_text: str, stance: Stance) -> Stance:
+    """The stance to store for a label on one record.
+
+    "The message X was sent by Y" or "... was sent on Z" can only be contradicted by the
+    message X itself: another message with another sender or time says nothing against it.
+    A model's "contradicts" on any other record is kept in front of the expert as
+    "complicates", so it still blocks SUPPORTED but never makes the claim CONTRADICTED alone.
+    """
+    quoted = assumption.params.quoted_text
+    if (
+        stance is Stance.CONTRADICTS
+        and assumption.template_id in ONE_MESSAGE_TEMPLATES
+        and quoted
+        and find_quote(quoted, record_text) is None
+    ):
+        return Stance.COMPLICATES
+    return stance
 
 
 def default_record(candidate: EvidenceCandidate) -> str:
