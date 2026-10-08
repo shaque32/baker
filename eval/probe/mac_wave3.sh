@@ -6,7 +6,10 @@
 set -euo pipefail
 
 MODELS="${MODELS:-eval/probe/models.local.json}"
-PROBE_SET="${PROBE_SET:-eval/probe_draft/probe_draft.jsonl}"  # signed P001-P088 plus drafts
+# The signed probe set (P001-P088) lives in eval/gold/probe/; older checkouts have the drafts file.
+if [ -f eval/gold/probe/probe.jsonl ]; then DEFAULT_PROBE=eval/gold/probe/probe.jsonl
+else DEFAULT_PROBE=eval/probe_draft/probe_draft.jsonl; fi
+PROBE_SET="${PROBE_SET:-$DEFAULT_PROBE}"
 OUT="${OUT:-eval/out/wave3_mac}"
 RAM_GB=$(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1073741824 ))
 

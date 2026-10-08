@@ -82,4 +82,4 @@ One command runs all three on a Mac and prints a file to paste back:
 
 On 16 GB it uses n_ctx 4096 and three claims (C02, C05, C12), projected to the whole case; on
 more memory it runs the whole case at n_ctx 8192. `CLAIMS=`, `NCTX=`, `MODELS=` and
-`PROBE_SET=` override.
+`PROBE_SET=` override; the probe set defaults to the signed `eval/gold/probe/probe.jsonl`.
