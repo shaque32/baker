@@ -24,11 +24,16 @@ with the reason and the exact diff you want, then finish the rest of your task w
 ## Evidence rules
 - The LLM never decides verdicts. It only labels individual pieces of evidence.
   Verdicts come from `core/audit/rules.py`.
-- A claim is never SUPPORTED on a model's stance label alone. The supporting label must first be
-  accepted by the local AI reviewer (ai_accepted) or by an expert (accepted).
+- A claim is never SUPPORTED on a model's stance label alone. In the alpha (rules 0.2.0) an expert
+  must accept its supporting evidence (accepted). An AI reviewer acceptance (ai_accepted) only sorts
+  evidence for the expert and never makes a claim SUPPORTED; such a claim stays UNPROVEN, awaiting
+  expert review. AI-only coverage of event assumptions can return only after a local model accepts
+  zero overreach traps on the signed probe set, and only through a change to `core/audit/rules.py`
+  that bumps RULE_VERSION.
 - Every derived record carries a `source_ref` back to the original artifact.
 - Every displayed item carries a provenance tier: observed, derived, inferred, ai_reviewed or confirmed.
   ai_reviewed means the local AI reviewer accepted it. confirmed means a human expert accepted it.
+  Under rules 0.2.0 every SUPPORTED verdict is confirmed.
   ai_reviewed never displays or exports as confirmed, and a human decision always overrides it.
 - The AI reviewer only reviews evidence items. It never confirms identity links or claims.
 - The AI reviewer runs on the local model in core/. Cloud models may be used only in eval/, as benchmarks.
