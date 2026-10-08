@@ -24,7 +24,7 @@ How to read it:
 | C10 | contradicted | 2 | pass, fail |  | [ ] |
 | C11 | contradicted | 2 | fail | 1 | [ ] |
 | C12 | supported | 2 | pass, pass | 1 | [ ] |
-| C13 | unproven | 2 | -, - |  | [ ] |
+| C13 | unproven | 3 | -, - |  | [ ] |
 | C14 | contradicted | 1 | fail |  | [ ] |
 | C15 | unproven | 1 | - | 1 | [ ] |
 | C16 | unproven | 3 | pass, pass, - |  | [ ] |
@@ -189,6 +189,7 @@ Arsh: [ ] agree  [ ] change ______  Note:
 |---|---|---|---|---|---|
 | 1 | `role` | yes | person_ids: person:petrov, person:reyes | - | That PETROV directed REYES's handling and movement. |
 | 2 | `meaning` | yes | quoted_text: dont text me about it, use telegram | - | That 'it' is narcotics; not established (as C06). |
+| 3 | `meaning` | no | quoted_text: move it tonight | - | That 'it' is narcotics; not established (probe P033). Sent to @northstar, not REYES, so it does not show PETROV directing REYES (Arsh, 2026-10-08). |
 
 Arsh: [ ] agree  [ ] change ______  Note:
 

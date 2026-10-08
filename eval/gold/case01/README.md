@@ -8,6 +8,7 @@ data and draft the affidavit, but only Arsh writes and signs off `gold.jsonl`.
 | `case.json` | agent drafts, human reviews | Case metadata: seed, generator version, devices, source files, planted traps |
 | `affidavit.md` | agent drafts, human reviews | The mock government document, numbered paragraphs |
 | `gold.jsonl` | **human only** | One `GoldClaim` per line (see `core/contracts.py`) |
+| `assumptions.jsonl` | **human only** (signed by Arsh, 2026-10-08) | The assumption sheet `make eval` fills claims from: one template entry per line. Drafted in `eval/probe_draft/case01_assumptions.py`; identical to its build except `labeled_by` |
 | `sources/` | generator | Synthetic extraction reports to import (Cellebrite-style Excel/PDF, later UFDR) |
 
 The eval goes through an importer: the generator emits report files in `sources/`, and the
