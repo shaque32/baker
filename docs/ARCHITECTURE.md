@@ -57,7 +57,10 @@ core/
     prompts/          human-owned prompts
   review/             expert actions + audit log
   report/             ReportRenderer
-cli/                  `baker import`, `baker claims`, `baker audit`, `baker report`
+  review/status.py    what each claim needs from the expert (shared by screen and report)
+  review/redecide.py  re-run the verdict rules after expert review, no model
+cli/                  `baker import`, `baker claims`, `baker audit`, `baker report`, `baker serve`
+ui/                   expert review screen on 127.0.0.1 (stdlib server, no scripts)
 eval/
   synthetic/          deterministic synthetic case generator
   gold/case01/        mock affidavit + gold verdicts (human-owned)

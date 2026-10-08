@@ -17,6 +17,11 @@
                             --by expert:<name>
     python -m cli report    --db case.db --out report.html
     python -m cli verify-log --db case.db
+    python -m cli redecide  --db case.db --by expert:<name>
+    python -m cli serve     --db case.db [--port 8765] [--expert "<name>"] [--open]
+
+`redecide` re-runs the verdict rules on the last audit's stored evidence after expert review;
+it calls no model. `serve` opens the expert review screen on http://127.0.0.1 only.
 
 `audit` uses the product components. Until they are all built it names what is missing;
 `--fake` runs the eval stand-ins instead, and the report then says it is a test run.
@@ -147,6 +152,47 @@ def cmd_verify_log(a: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
+def cmd_redecide(a: argparse.Namespace) -> int:
+    from core.review.redecide import redecide
+
+    conn = _open(a.db)
+    try:
+        result = redecide(conn, a.by)
+    except InvariantViolation as e:
+        print(f"redecide stopped, nothing was stored: {e}", file=sys.stderr)
+        return 1
+    tally: dict[str, int] = {}
+    for d in result.decisions:
+        tally[d.verdict.value] = tally.get(d.verdict.value, 0) + 1
+    print(f"{result.run_id} (rules only, evidence from {result.from_run}): {tally}")
+    for cid, why in sorted(result.skipped.items()):
+        print(f"  {cid}: {why}")
+    return 0
+
+
+def cmd_serve(a: argparse.Namespace) -> int:
+    from ui.server import make_server, url
+
+    if not a.db.exists():
+        raise SystemExit(f"no case database at {a.db}; run `init` first")
+    try:
+        server = make_server(a.db, a.port, a.expert)
+    except OSError as e:
+        raise SystemExit(f"cannot open port {a.port} on 127.0.0.1 ({e}); try --port 8766") from e
+    print(f"Baker review screen: {url(server)}  (this computer only; Ctrl+C stops it)")
+    if a.open:
+        import webbrowser
+
+        webbrowser.open(url(server))
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+    return 0
+
+
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="baker", description="Baker: audit claims about phone data.")
     sub = p.add_subparsers(dest="command", required=True)
@@ -198,6 +244,14 @@ def parser() -> argparse.ArgumentParser:
     sp = add("report", cmd_report, "write the HTML claims report")
     sp.add_argument("--out", type=Path, required=True)
     add("verify-log", cmd_verify_log, "verify the audit log hash chain")
+
+    sp = add("redecide", cmd_redecide, "re-run the verdict rules after expert review (no model)")
+    sp.add_argument("--by", required=True)
+
+    sp = add("serve", cmd_serve, "open the expert review screen on this computer")
+    sp.add_argument("--port", type=int, default=8765)
+    sp.add_argument("--expert", help="your name, recorded with every decision")
+    sp.add_argument("--open", action="store_true", help="open it in the default browser")
     return p
 
 
