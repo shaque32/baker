@@ -9,6 +9,20 @@ Pass bars (wave2-consensus.md, section 4): valid output 100%, quote check >= 95%
 "supports" precision >= 95% and recall >= 90%, zero reviewer false accepts on overreach items,
 identical output on a repeat run. Results on the smoke items are provisional: the signed probe
 set replaces them.
+
+Expert confirms (rules 0.2.0). No claim is SUPPORTED until an expert accepts its key evidence,
+so the reviewer decides nothing and the stance labeler's job is to put the right evidence in
+front of the expert. `expert_confirms` scores that, from the stance items alone (--stance-only
+skips the reviewer items):
+- supports recall >= 90%: a true support the model misses, or quotes wrongly, never reaches
+  the expert's queue;
+- contradicts precision >= 90%: a "contradicts" on an observed record makes the claim
+  CONTRADICTED with no expert step (rules.py rule 1b), so a wrong one is a wrong verdict;
+- zero "supports" on an item whose gold is "contradicts": the expert would be shown
+  contradicting evidence as support;
+- valid output 100%.
+Supports precision is reported as expert load (items the expert dismisses), not gated. These
+criteria were set before the 8B and 14B were re-run on them (Wave 3, 2026-10-08).
 """
 
 from __future__ import annotations
@@ -18,6 +32,7 @@ import json
 import shutil
 import subprocess  # noqa: S404 - nvidia-smi only, fixed arguments
 import sys
+from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -73,6 +88,7 @@ class StanceScore:
     gold_supports: int = 0
     repeat_identical: int = 0
     failures: list[dict[str, Any]] = field(default_factory=list)
+    confusion: dict[str, dict[str, int]] = field(default_factory=dict)  # gold -> got
 
 
 def _call(
@@ -153,7 +169,7 @@ def score_stance(
     params: GenerationParams,
     repeat: int = 2,
     log: CallLog | None = None,
-    stance_path: Path = prompts.STANCE_DRAFT,
+    stance_path: Path = prompts.STANCE_PROMPT,
 ) -> StanceScore:
     s = StanceScore()
     version = prompts.prompt_version(stance_path)
@@ -167,6 +183,8 @@ def score_stance(
         s.repeat_identical += all(o.raw_text == first.raw_text for o in outs)
         s.gold_supports += it["expected"] == "supports"
         if not first.ok:
+            row = s.confusion.setdefault(it["expected"], {})
+            row["invalid"] = row.get("invalid", 0) + 1
             s.failures.append({"id": it["id"], "error": first.error, "raw": first.raw_text[:300]})
             continue
         s.valid += 1
@@ -174,6 +192,11 @@ def score_stance(
         s.quote_verified += quote_ok
         # An unverified quote is discarded, so its label cannot count as "supports".
         stance = first.parsed["stance"] if quote_ok else "dropped"
+        # Confusion only: an irrelevant label needs no quote (core/audit/stance.py), and it
+        # never reaches the expert either way. stance_accuracy keeps its original definition.
+        shown = "irrelevant" if first.parsed["stance"] == "irrelevant" else stance
+        row = s.confusion.setdefault(it["expected"], {})
+        row[shown] = row.get(shown, 0) + 1
         s.correct += stance == it["expected"]
         if stance == "supports":
             s.predicted_supports += 1
@@ -199,6 +222,39 @@ def split_gated(items: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list
     return [i for i in items if is_gated(i)], [i for i in items if not is_gated(i)]
 
 
+EXPERT_CONFIRMS_BARS = {"supports_recall": 0.90, "contradicts_precision": 0.90}
+
+
+def expert_confirms(st: StanceScore) -> dict[str, Any]:
+    """Stance scored for rules 0.2.0, where the expert accepts every SUPPORTED's evidence."""
+    got = Counter()
+    for row in st.confusion.values():
+        got.update(row)
+    contra_true = st.confusion.get("contradicts", {}).get("contradicts", 0)
+    contra_gold = sum(st.confusion.get("contradicts", {}).values())
+    m = {
+        "supports_recall": _ratio(st.true_supports_predicted, st.gold_supports),
+        "contradicts_precision": _ratio(contra_true, got["contradicts"]),
+        "contradicts_recall": _ratio(contra_true, contra_gold),
+        "contradicts_shown_as_supports": st.confusion.get("contradicts", {}).get("supports", 0),
+        "expert_load_supports_shown": got["supports"],
+        "expert_load_precision": _ratio(st.true_supports_predicted, st.predicted_supports),
+        "stance_valid_output": _ratio(st.valid, st.n),
+        "confusion": st.confusion,
+    }
+    bars = {
+        "valid_output_100": m["stance_valid_output"] == 1.0,
+        "supports_recall_90": (m["supports_recall"] or 0)
+        >= EXPERT_CONFIRMS_BARS["supports_recall"],
+        "contradicts_precision_90": m["contradicts_precision"] is None
+        or m["contradicts_precision"] >= EXPERT_CONFIRMS_BARS["contradicts_precision"],
+        "no_contradicts_shown_as_supports": m["contradicts_shown_as_supports"] == 0,
+    }
+    m["bars"] = bars
+    m["passes_all"] = all(bars.values())
+    return m
+
+
 def summarize(r: ReviewerScore, st: StanceScore) -> dict[str, Any]:
     m = {
         "reviewer_valid_output": _ratio(r.valid, r.n),
@@ -219,6 +275,7 @@ def summarize(r: ReviewerScore, st: StanceScore) -> dict[str, Any]:
     }
     m["bars"] = check_bars(m)
     m["passes_all"] = all(m["bars"].values())
+    m["expert_confirms"] = expert_confirms(st)
     return m
 
 
@@ -259,9 +316,12 @@ def run_model(
     params: GenerationParams,
     repeat: int,
     out_dir: Path,
-    stance_path: Path = prompts.STANCE_DRAFT,
+    stance_path: Path = prompts.STANCE_PROMPT,
     reason_first: bool = False,
+    stance_only: bool = False,
 ) -> dict[str, Any]:
+    if stance_only:
+        reviewer_items = []
     suffix = ".reason_first" if reason_first else ""
     log = CallLog(out_dir / f"{model.name}{suffix}.calls.jsonl")
     rev_gate, rev_extra = split_gated(reviewer_items)
@@ -288,10 +348,22 @@ def run_model(
     seconds = sum(c["seconds"] for c in calls)
     result["tokens_per_second"] = round(tokens / seconds, 1) if seconds else None
     result["mean_seconds_per_call"] = round(seconds / len(calls), 2) if calls else None
+    stance_calls = [c for c in calls if c["purpose"] == "stance"]
+    result["mean_seconds_per_stance_call"] = (
+        round(sum(c["seconds"] for c in stance_calls) / len(stance_calls), 2)
+        if stance_calls
+        else None
+    )
+    result["stance_only"] = stance_only
     return result
 
 
-RAW_COLUMNS = {"tokens_per_second", "mean_seconds_per_call", "vram_used_mib"}
+RAW_COLUMNS = {
+    "tokens_per_second",
+    "mean_seconds_per_call",
+    "mean_seconds_per_stance_call",
+    "vram_used_mib",
+}
 
 
 def table(results: list[dict[str, Any]]) -> str:
@@ -311,6 +383,17 @@ def table(results: list[dict[str, Any]]) -> str:
     lines = ["| " + " | ".join(cols) + " |", "|" + "---|" * len(cols)]
     for res in results:
         lines.append("| " + " | ".join(f(c, res.get(c)) for c in cols) + " |")
+    ec_cols = ["supports_recall", "contradicts_precision", "contradicts_recall",
+               "contradicts_shown_as_supports", "expert_load_supports_shown",
+               "expert_load_precision", "stance_valid_output", "passes_all"]  # fmt: skip
+    lines += ["", "Expert confirms (rules 0.2.0): stance scored for surfacing evidence", ""]
+    lines += ["| model | " + " | ".join(ec_cols) + " | s/stance call |",
+              "|" + "---|" * (len(ec_cols) + 2)]  # fmt: skip
+    for res in results:
+        ec = res.get("expert_confirms", {})
+        cells = [f(c, ec.get(c)) for c in ec_cols]
+        cells.append(f("mean_seconds_per_stance_call", res.get("mean_seconds_per_stance_call")))
+        lines.append(f"| {res.get('model')} | " + " | ".join(cells) + " |")
     return "\n".join(lines)
 
 
@@ -321,10 +404,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--stance", type=Path, default=HERE / "smoke_stance.jsonl")
     ap.add_argument("--probe-set", type=Path, default=None,
                     help="signed probe_draft.jsonl; replaces --reviewer, --stance")  # fmt: skip
-    ap.add_argument("--stance-prompt", type=Path, default=prompts.STANCE_DRAFT,
+    ap.add_argument("--stance-prompt", type=Path, default=prompts.STANCE_PROMPT,
                     help="stance prompt file, e.g. thread 6's docs/prompts/stance.md")  # fmt: skip
     ap.add_argument("--reason-first", action="store_true",
                     help="also run a reason-before-decision reviewer variant")  # fmt: skip
+    ap.add_argument("--stance-only", action="store_true",
+                    help="skip the reviewer items (the reviewer decides nothing)")  # fmt: skip
     ap.add_argument("--repeat", type=int, default=2)
     ap.add_argument("--n-ctx", type=int, default=8192)
     ap.add_argument("--out", type=Path, default=Path("eval/out/probe"))
@@ -357,7 +442,7 @@ def main(argv: list[str] | None = None) -> int:
         variants = [False, True] if args.reason_first else [False]
         for reason_first in variants:
             res = run_model(model, reviewer_items, stance_items, params, args.repeat, args.out,
-                            args.stance_prompt, reason_first)  # fmt: skip
+                            args.stance_prompt, reason_first, args.stance_only)  # fmt: skip
             res["model"] = spec.name + (" (reason first)" if reason_first else "")
             res["license"] = spec.license
             res["vram_used_mib"] = None if loaded is None or before is None else loaded - before

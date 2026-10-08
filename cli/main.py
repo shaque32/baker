@@ -4,13 +4,14 @@
     python -m cli import    --db case.db --report item1.xlsx [--source-id item1]
     python -m cli govdoc    --db case.db --pdf affidavit.pdf
     python -m cli claims    --db case.db list
+    python -m cli claims    --db case.db propose [--only <para id> ...]
     python -m cli claims    --db case.db add --id C01 --paragraph <para id> --type identity
                             --text "..." --by expert:<name>
     python -m cli claims    --db case.db set --id C01 --status accepted|edited|removed
                             [--text "..."] --by expert:<name>
     python -m cli stipulate --db case.db --device dev:item1 --person "Daniel Petrov"
                             --by expert:<name>
-    python -m cli audit     --db case.db [--fake]
+    python -m cli audit     --db case.db [--fake] [--ai-review]
     python -m cli evidence  --db case.db --id <evidence id> --status accepted|dismissed|open
                             --reason "..." --by expert:<name>
     python -m cli verdict   --db case.db --claim C01 (--confirm | --set unproven --note "...")
@@ -25,6 +26,10 @@ it calls no model. `serve` opens the expert review screen on http://127.0.0.1 on
 
 `audit` uses the product components. Until they are all built it names what is missing;
 `--fake` runs the eval stand-ins instead, and the report then says it is a test run.
+`--ai-review` adds the local AI reviewer pass, which only sorts evidence for the expert (rules
+0.2.0) and costs one model call per supporting item, so it is off by default.
+`claims propose` asks the local model for claims on every paragraph that has none yet; they
+are stored as 'proposed' until the expert accepts, edits or removes them.
 """
 
 from __future__ import annotations
@@ -34,6 +39,8 @@ import sys
 from pathlib import Path
 
 from core import pipeline
+from core.audit._llm_json import ModelUnavailable
+from core.audit._local_model import ModelConfigError
 from core.audit.invariants import InvariantViolation
 from core.contracts import ClaimStatus, ClaimType, EvidenceStatus, Verdict
 from core.db import apply_schema, connect
@@ -80,6 +87,8 @@ def cmd_govdoc(a: argparse.Namespace) -> int:
 
 def cmd_claims(a: argparse.Namespace) -> int:
     conn = _open(a.db)
+    if a.action == "propose":
+        return _propose(conn, a.only)
     if a.action == "list":
         for c in pipeline.load_claims(conn, include_removed=True):
             print(f"{c.id}\t{c.status.value}\t{c.claim_type.value}\t{c.paragraph_id}\t{c.text}")
@@ -89,6 +98,35 @@ def cmd_claims(a: argparse.Namespace) -> int:
     else:
         actions.set_claim_status(conn, a.id, ClaimStatus(a.status), a.by, a.text)
         print(f"{a.id} is {a.status}")
+    return 0
+
+
+def _propose(conn, paragraph_ids: list[str] | None) -> int:  # noqa: ANN001
+    from core.audit._llm_json import PromptMissingError
+    from core.audit._local_model import ModelConfigError
+    from core.claims import extract
+    from core.claims.propose import load_paragraphs, propose_claims
+
+    try:
+        paragraphs = load_paragraphs(conn, paragraph_ids)
+        extractor = extract.create(conn)
+    except (ValueError, ModelConfigError, PromptMissingError) as e:
+        print(f"claims propose: {e}", file=sys.stderr)
+        return 2
+    if not paragraphs:
+        print("claims propose: no paragraphs; import the government document first")
+        return 2
+    r = propose_claims(conn, extractor, paragraphs)
+    for c in r.claims:
+        print(f"{c.id}\tproposed\t{c.claim_type.value}\t{c.paragraph_id}\t{c.text}")
+    for d in r.drops:
+        where = "whole answer" if d.index is None else f"item {d.index}"
+        print(f"dropped {d.paragraph_id} ({where}): {d.reason}", file=sys.stderr)
+    print(
+        f"{len(r.claims)} claims proposed; {len(r.skipped)} paragraphs skipped (already have"
+        f" claims); {len(r.drops)} proposals dropped. Accept, edit or remove each with"
+        " `claims set`."
+    )
     return 0
 
 
@@ -107,13 +145,16 @@ def cmd_audit(a: argparse.Namespace) -> int:
         comps = fake_components()
     else:
         try:
-            comps = pipeline.real_components(conn)
+            comps = pipeline.real_components(conn, ai_review=a.ai_review)
         except pipeline.ComponentsMissing as e:
             print(f"audit: {e}. Use --fake for a test run.", file=sys.stderr)
             return 2
+        except ModelConfigError as e:
+            print(f"audit: {e}", file=sys.stderr)
+            return 2
     try:
         result = pipeline.run_audit(conn, comps)
-    except InvariantViolation as e:
+    except (InvariantViolation, ModelUnavailable) as e:
         print(f"audit stopped, nothing was stored: {e}", file=sys.stderr)
         return 1
     tally: dict[str, int] = {}
@@ -211,9 +252,12 @@ def parser() -> argparse.ArgumentParser:
     sp.add_argument("--pdf", type=Path, required=True)
 
     sp = add("claims", cmd_claims, "list, add or review claims")
-    sp.add_argument("action", choices=("list", "add", "set"))
+    sp.add_argument("action", choices=("list", "add", "set", "propose"))
     sp.add_argument("--id")
     sp.add_argument("--paragraph")
+    sp.add_argument(
+        "--only", action="append", help="propose: limit to this paragraph id (repeatable)"
+    )
     sp.add_argument("--type", choices=[t.value for t in ClaimType])
     sp.add_argument("--text")
     sp.add_argument("--status", choices=("accepted", "edited", "removed"))
@@ -226,6 +270,11 @@ def parser() -> argparse.ArgumentParser:
 
     sp = add("audit", cmd_audit, "run the audit pipeline")
     sp.add_argument("--fake", action="store_true", help="test run with eval stand-ins")
+    sp.add_argument(
+        "--ai-review",
+        action="store_true",
+        help="also run the local AI reviewer, a sorting aid that decides nothing",
+    )
 
     sp = add("evidence", cmd_evidence, "accept, dismiss or reopen an evidence item")
     sp.add_argument("--id", required=True)

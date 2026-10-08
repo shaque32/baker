@@ -81,7 +81,8 @@ def test_smoke_items_quotes_are_verbatim():
 def _oracle(items_by_assumption):
     def respond(prompt: str) -> str:
         for it in items_by_assumption:
-            if it["assumption"] in prompt and ("record_text" in it) == ("Message (the" in prompt):
+            is_stance = "Message (the" in prompt or "[RECORD START]" in prompt  # draft, signed
+            if it["assumption"] in prompt and ("record_text" in it) == is_stance:
                 if "record_text" in it:
                     return json.dumps({"stance": it["expected"], "quote": it["record_text"],
                                        "rationale": "oracle"})  # fmt: skip

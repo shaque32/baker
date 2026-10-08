@@ -1,7 +1,8 @@
 """ClaimExtractor: the local model proposes atomic claims; the expert edits the list.
 
 Not on the alpha's critical path: the eval scores gold claims, and the expert can enter or
-edit claims by hand. Fails closed per claim: a proposed claim is dropped unless it quotes a
+edit claims by hand. `baker claims propose` (core/claims/propose.py) runs it so the expert
+starts from a proposed list. Fails closed per claim: a proposed claim is dropped unless it quotes a
 span of the paragraph verbatim and every number in its text appears in the paragraph as
 written. A paragraph whose whole output is unusable yields no claims and a ClaimDrop, so the
 CLI can tell the expert that paragraph needs claims by hand.
@@ -9,6 +10,7 @@ CLI can tell the expert that paragraph needs claims by hand.
 
 from __future__ import annotations
 
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -28,7 +30,8 @@ from core.audit._llm_json import (
     required_placeholders,
     run_json_call,
 )
-from core.contracts import Claim, ClaimStatus, ClaimType, GovDocParagraph
+from core.audit._local_model import LocalModel, open_run
+from core.contracts import Claim, ClaimStatus, ClaimType, GovDocParagraph, ModelRun
 
 PROMPT_FILE = "claims.md"
 PLACEHOLDERS = frozenset({"paragraph"})
@@ -117,6 +120,7 @@ class LocalClaimExtractor:
         self.prompt_version = prompt_version(self.template)
         self.drops: list[ClaimDrop] = []
         self.recorder = recorder if recorder is not None else CallRecorder()
+        self.model_runs: tuple[ModelRun, ...] = ()  # set by create(); propose stores them
 
     def extract(self, paragraphs: list[GovDocParagraph]) -> list[Claim]:
         claims: list[Claim] = []
@@ -186,3 +190,16 @@ class LocalClaimExtractor:
                 )
             )
         return out
+
+
+def create(
+    conn: sqlite3.Connection, *, model: LocalModel | None = None, reuse: bool = True
+) -> LocalClaimExtractor:
+    """The product's claim extractor: the signed claims prompt and the configured local model
+    (core/audit/_local_model.py). Raises if the signed prompt or the model config is missing.
+    Its ModelRun is in `model_runs`; core/claims/propose.py stores it with the calls."""
+    template = load_prompt(PROMPT_FILE)
+    opened = open_run(conn, "claims", template, model=model, schema=CLAIMS_SCHEMA, reuse=reuse)
+    extractor = LocalClaimExtractor(opened.port, template=template, recorder=opened.recorder)
+    extractor.model_runs = (opened.run,)
+    return extractor

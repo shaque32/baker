@@ -213,7 +213,7 @@ def create(conn: sqlite3.Connection, *, model: LocalModel | None = None) -> Loca
     from core.audit.context import render_for  # retrieval and context thread
 
     template = load_prompt(PROMPT_FILE)
-    opened = open_run(conn, "stance", template, model=model)
+    opened = open_run(conn, "stance", template, model=model, schema=STANCE_SCHEMA)
     labeler = LocalStanceLabeler(
         opened.port,
         template=template,

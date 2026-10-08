@@ -216,7 +216,7 @@ def create(conn: sqlite3.Connection, *, model: LocalModel | None = None) -> Loca
     """The pipeline's AI reviewer: the signed reviewer prompt and the configured local model,
     with prior decisions read from evidence_reviews. Raises if the model config is missing."""
     template = load_prompt(PROMPT_FILE)
-    opened = open_run(conn, "review", template, model=model)
+    opened = open_run(conn, "review", template, model=model, schema=REVIEW_SCHEMA)
     reviewer = LocalEvidenceReviewer(
         opened.port,
         model_name=opened.model_name,
