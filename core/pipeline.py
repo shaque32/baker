@@ -9,6 +9,10 @@ only moves data between them, stores it, and refuses anything that breaks a rule
   call behind a failed quote is stored as quote_failed.
 - A label that names a different assumption or record than the one it was asked about is
   dropped.
+- The AI reviewer is optional and off by default (real_components(ai_review=False)): under
+  rules 0.2.0 an AI acceptance decides nothing, it only sorts evidence for the expert, and it
+  costs one model call per supporting item. With no reviewer every item stays open for the
+  expert.
 - The AI reviewer sees supporting items only, and never sees the labeler's rationale. A
   reviewer error, or an answer other than ai_accepted or dismissed, counts as a dismissal.
   An item the reviewer cannot review (Components.reviewable, for example a quote in a script
@@ -43,6 +47,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from core.audit import invariants, rules
+from core.audit._llm_json import ModelUnavailable
 from core.contracts import (
     CONTRACTS_VERSION,
     Assumption,
@@ -113,7 +118,7 @@ class Components:
     retriever: Retriever
     labeler: StanceLabeler
     verify_quote: QuoteVerifier
-    reviewer: EvidenceReviewer
+    reviewer: EvidenceReviewer | None  # None: no AI review pass; items stay open for the expert
     context: ContextBuilder
     checks: Sequence[DeterministicCheck] = ()
     rule: VerdictRule = rules.decide_verdict  # type: ignore[assignment]
@@ -126,6 +131,8 @@ class Components:
 
     def names(self) -> dict[str, str]:
         def name(obj: object) -> str:
+            if obj is None:
+                return "none"
             t = obj if callable(obj) and hasattr(obj, "__qualname__") else type(obj)
             return f"{t.__module__}.{t.__qualname__}"
 
@@ -164,8 +171,13 @@ def real_components(
     conn: sqlite3.Connection,
     replace: dict[str, object] | None = None,
     filler: object | None = None,
+    ai_review: bool = False,
 ) -> Components:
     """The product's components. Each module exposes create(conn).
+
+    ai_review adds the local AI reviewer pass (core.audit.review). It is off by default: under
+    rules 0.2.0 it only sorts evidence for the expert. A reviewer given in replace is used
+    whatever ai_review says.
 
     replace supplies some components directly (the eval's hostile mode swaps in a worst-case
     labeler and reviewer); those modules are not imported. filler is handed to
@@ -175,6 +187,8 @@ def real_components(
     the case, so the expert records device-owner stipulations before the audit runs.
     """
     built: dict[str, object] = dict(replace or {})
+    if not ai_review:
+        built.setdefault("reviewer", None)
     missing: list[str] = []
     if filler is None:
         try:
@@ -230,6 +244,7 @@ class RunResult:
     dropped_labels: int = 0
     stored_items: int = 0
     reviewer_failures: int = 0
+    model_outputs_reused: int = 0
     manifest: dict[str, dict[str, list[str]]] = field(default_factory=dict)
 
 
@@ -512,6 +527,8 @@ class _Run:
     def _label(self, a: Assumption, cand) -> EvidenceItem | None:  # noqa: ANN001
         try:
             label = self.c.labeler.label(a, cand)
+        except ModelUnavailable:
+            raise  # no model at all stops the run; it is not a dropped label
         except Exception:  # noqa: BLE001 - bad model output is dropped, never guessed at
             self.flush_calls()
             return self._drop()
@@ -572,6 +589,8 @@ class _Run:
 
     def _review(self, a: Assumption, item: EvidenceItem) -> None:
         """One AI review per item, never after any earlier review. Fails closed."""
+        if self.c.reviewer is None:
+            return  # no AI review pass: the item stays open for the expert
         if item.stance != Stance.SUPPORTS or self._next_seq(item.id) > 1:
             return
         if not self.c.reviewable(item):
@@ -590,6 +609,8 @@ class _Run:
             if not ok:
                 raise ValueError(f"reviewer returned {d!r}")
             d = d.model_copy(update={"id": review_id(item.id, seq), "seq": seq})
+        except ModelUnavailable:
+            raise
         except Exception as e:  # noqa: BLE001 - any reviewer failure is a dismissal
             self.result.reviewer_failures += 1
             run = getattr(self.c.reviewer, "model_run_id", None) or self.review_run
@@ -737,6 +758,15 @@ class _Run:
         return decision
 
 
+def _reused(c: Components) -> int:
+    """Calls answered from stored outputs (core/audit/_local_model.py) in this run."""
+    ports = {
+        id(p): p for p in (getattr(x, "model", None) for x in (c.labeler, c.reviewer, *c.recorders))
+    }
+    counts = (getattr(p, "reused", 0) for p in ports.values())
+    return sum(n for n in counts if isinstance(n, int))
+
+
 def _new_run_id(conn: sqlite3.Connection, now: datetime) -> str:
     base = "run:" + now.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
     run_id, n = base, 1
@@ -798,8 +828,10 @@ def run_audit(
                 )
             stipulations = load_stipulations(conn)
             run = _Run(conn, components, now, result)
+            reused_before = _reused(components)
             for claim in claims:
                 result.decisions.append(run.claim(claim, stipulations))
+            result.model_outputs_reused = _reused(components) - reused_before
             audit_log.append(
                 conn,
                 now,
@@ -814,6 +846,7 @@ def run_audit(
                     "dropped_labels": result.dropped_labels,
                     "stored_items": result.stored_items,
                     "reviewer_failures": result.reviewer_failures,
+                    "model_outputs_reused": result.model_outputs_reused,
                     "rejected_assumptions": [
                         {"template_id": r.proposal.template_id, "reason": r.reason}
                         for r in getattr(components.assumptions, "rejected", ())

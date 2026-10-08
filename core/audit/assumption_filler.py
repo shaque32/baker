@@ -806,7 +806,9 @@ def create(
     """The filler for core.audit.assumptions.create(conn, filler=...). Raises if the signed
     prompt or the model config is missing."""
     template = load_prompt(PROMPT_FILE)
-    opened = open_run(conn, "assumptions", template, model=model)
+    # The per-call schema is fixed by the templates and channels the prompt lists, so the
+    # empty schema records its shape for stored-output reuse.
+    opened = open_run(conn, "assumptions", template, model=model, schema=fill_schema((), ()))
     filler = LocalAssumptionFiller(opened.port, conn, template=template, recorder=opened.recorder)
     filler.model_runs = (opened.run,)
     return filler

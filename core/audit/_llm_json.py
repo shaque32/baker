@@ -58,6 +58,12 @@ class BadModelOutput(ValueError):
         return ModelCallOutcome.ERROR if self.kind == "error" else ModelCallOutcome.INVALID_OUTPUT
 
 
+class ModelUnavailable(RuntimeError):
+    """The model file could not be loaded (missing, wrong hash, no runtime). Unlike a bad
+    output, this is never dropped as one item: it stops the run, so a run without a model can
+    never look like a run that found nothing."""
+
+
 class PromptMissingError(FileNotFoundError):
     """The signed prompt is not in core/audit/prompts/ yet. Drafts live in docs/prompts/."""
 
@@ -149,6 +155,8 @@ def call_model(
     the model becomes BadModelOutput, so callers have one failure path."""
     try:
         raw = model.generate(prompt, schema)
+    except ModelUnavailable:
+        raise
     except Exception as e:  # any model failure is a dropped output
         reason = f"model call failed: {type(e).__name__}: {e}"
         raise BadModelOutput(reason, None, kind="error") from e

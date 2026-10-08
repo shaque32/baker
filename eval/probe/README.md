@@ -7,8 +7,9 @@ machine that will run Baker. Everything here is synthetic.
 - `smoke_reviewer.jsonl`, `smoke_stance.jsonl`: provisional items written by Claude so the test
   can run before the signed probe set exists. Rebuild with `python -m eval.probe.build_smoke`.
   Results on them are provisional; the signed probe set (thread 3, signed by Arsh) replaces them.
-- `stance_draft.md`: probe-only stance prompt. The product prompt is human-owned in
-  `core/audit/prompts/`.
+- `stance_draft.md`: the old probe-only stance prompt, kept for comparison. The probe now scores
+  the signed product prompt `core/audit/prompts/stance.md` by default (`--stance-prompt` picks
+  another).
 - The reviewer prompt is read from `core/audit/prompts/reviewer.md` unchanged.
 
 ## Signed probe set (thread 3)
@@ -48,3 +49,37 @@ dropped, so neither can turn into a false "supported".
 ## Cloud upper bound (eval only)
 `pip install -e ".[bench]"`, then `python -m eval.bench.claude_bench`. Sends only these synthetic
 items to the Claude API. Agreeing with Claude does not count as being right.
+
+## Wave 3: which model the alpha ships with (expert confirms)
+Under rules 0.2.0 the expert accepts the key evidence of every SUPPORTED claim and the AI
+reviewer decides nothing (the product leaves it off unless `baker audit --ai-review`). So the
+model is chosen on how well its stance labels put the right evidence in front of the expert,
+not on reviewer precision. `run_probe --stance-only` prints an "Expert confirms" table:
+
+| criterion | bar | why |
+|---|---|---|
+| supports recall (quote verified) | >= 90% | a missed or misquoted support never reaches the expert |
+| contradicts precision | >= 90% | a "contradicts" on an observed record makes the claim contradicted with no expert step (rule 1b) |
+| contradicts shown as supports | 0 | the expert would see contradicting evidence offered as support |
+| valid output | 100% | |
+
+Decision rule, fixed before the 8B and 14B were re-run (2026-10-08): ship the fastest model
+that meets all four on the signed, undisputed items; among those, the higher supports recall.
+If none meets them, ship the one with the fewest contradictions shown as support, then the
+higher supports recall, and say plainly which bar it misses. Supports precision is expert
+load (items to dismiss), reported, not gated.
+
+Speed: `time_case` audits case01 on each model (cold run, then the rerun an expert triggers
+after accepting evidence, which reuses stored outputs and costs no model calls), counts model
+calls per claim, projects a full-case time from the measured seconds per call, and reports
+how much gold key evidence was surfaced next to how much retrieval reached at all.
+`time_case --dry-run` counts the calls with no model. `claim_recall` scores
+`baker claims propose` against the 20 case01 gold claims (target 90%, not gating).
+
+One command runs all three on a Mac and prints a file to paste back:
+
+    bash eval/probe/mac_wave3.sh
+
+On 16 GB it uses n_ctx 4096 and three claims (C02, C05, C12), projected to the whole case; on
+more memory it runs the whole case at n_ctx 8192. `CLAIMS=`, `NCTX=`, `MODELS=` and
+`PROBE_SET=` override.
