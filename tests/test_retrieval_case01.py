@@ -12,7 +12,7 @@ from core.contracts import Assumption, AssumptionKind, AssumptionParams, Provena
 from eval.synthetic.generate import generate
 
 GOLD = Path(__file__).resolve().parents[1] / "eval/gold/case01/gold.jsonl"
-RECALL_FLOOR = 0.60  # recall@50 from claim wording alone, empty params; measured 0.634 (45/71)
+RECALL_FLOOR = 0.60  # recall@50 from claim wording alone, empty params; measured 0.648 (46/71)
 
 
 @pytest.fixture(scope="module")

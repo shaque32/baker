@@ -184,11 +184,10 @@ def test_window_includes_both_ends_and_drops_unknown_times(db):
         start_utc=datetime(2026, 3, 7, 13, tzinfo=UTC),
         end_utc=datetime(2026, 3, 7, 15, tzinfo=UTC),
     )
-    assert [c.record_id for c in search(db, q, k=100)] == [
-        "msg:s1:Chats!4",
-        "msg:s1:Chats!5",
-        "msg:s1:Chats!6",
-    ]
+    got = [c.record_id for c in search(db, q, k=100)]
+    assert got[:3] == ["msg:s1:Chats!4", "msg:s1:Chats!5", "msg:s1:Chats!6"]
+    # Then the nearest record just before and just after the window, and nothing else.
+    assert got[3:] == ["msg:s1:Chats!3", "msg:s1:Chats!7"]
     q = RetrievalQuery(thread_ids=("thr:sms",), start_utc=datetime(2026, 1, 1, tzinfo=UTC))
     assert "msg:s1:Chats!91" not in [c.record_id for c in search(db, q, k=100)]
 
@@ -222,7 +221,11 @@ def test_claim_text_adds_terms_and_assumption_text_is_never_parsed(db):
 def test_params_accounts_replace_identifiers_from_the_claim(db):
     q = query_for(_assumption(account_ids=("acct:s1:SMS:+12125550199",)), db, claim="@newname")
     assert q.account_ids == ("acct:s1:SMS:+12125550199",) and q.thread_ids == ()
-    assert [c.record_id for c in search(db, q, k=10)] == ["msg:s1:Chats!90"]
+    # The account's own contact entry (same number) comes first, then its messages.
+    assert [c.record_id for c in search(db, q, k=10)] == [
+        "contact:s1:Contacts!3#1",
+        "msg:s1:Chats!90",
+    ]
 
 
 def test_params_window_channels_devices_and_quoted_text(db):
@@ -271,6 +274,168 @@ def test_person_reaches_accounts_through_stipulation_and_links_but_not_rejected_
     q = query_for(_assumption(person_ids=("p:bo",)), db, claim="Bo")
     assert q.account_ids == () and q.unresolved == ("p:bo",)
     assert search(db, q, k=10) == []
+
+
+# ---------------------------------------------------------------- two phones, sides, edges
+
+
+def _two_phones(c: sqlite3.Connection) -> None:
+    """Bo's phone (s2), owned by p:bo; Phone A (s1) owned by p:owner. Both phones logged the
+    same SMS exchange and the same call."""
+    c.execute(
+        "INSERT INTO sources VALUES ('s2', 'synthetic', 'curated_report', 'logical', 's2.xlsx',"
+        " ?, NULL, NULL, NULL, '2026-03-01T00:00:00Z')",
+        ("1" * 64,),
+    )
+    c.execute(
+        "INSERT INTO devices VALUES ('dev:s2', 's2', 'Summary!4', 'Phone B', NULL, NULL,"
+        " 'America/New_York')"
+    )
+    accounts = [
+        ("acct:s1:SMS:+12125550111", "s1", "dev:s1", "SMS", "+12125550111", None),
+        ("acct:s2:SMS:+12125550199", "s2", "dev:s2", "SMS", "+12125550199", None),
+        ("acct:s2:SMS:+12125550111", "s2", None, "SMS", "+12125550111", "Owner"),
+        ("acct:s2:Phone:+12125550199", "s2", "dev:s2", "Phone", "+12125550199", None),
+        ("acct:s2:Phone:+12125550111", "s2", None, "Phone", "+12125550111", None),
+    ]
+    for aid, src, dev, app, ident, name in accounts:
+        c.execute(
+            "INSERT INTO accounts VALUES (?, ?, 'x', ?, ?, ?, ?)", (aid, src, dev, app, ident, name)
+        )
+    c.execute("INSERT INTO threads VALUES ('thr:s2:sms', 's2', 'Chats!9', 'dev:s2', 'SMS', 'Dan')")
+    exchange = [
+        ("2026-03-10T15:00:00Z", False, "meet at the lot?"),
+        ("2026-03-10T15:05:00Z", True, "ok works"),
+        ("2026-03-12T18:00:00Z", True, "its done"),
+    ]
+    for n, (ts, by_owner, body) in enumerate(exchange):
+        for src, thread, own, other, base in (
+            ("s1", "thr:sms", "acct:s1:SMS:+12125550111", "acct:s1:SMS:+12125550199", 101),
+            ("s2", "thr:s2:sms", "acct:s2:SMS:+12125550111", "acct:s2:SMS:+12125550199", 201),
+        ):
+            mid = f"msg:{src}:Chats!{base + n}"
+            sender, to = (own, other) if by_owner else (other, own)
+            c.execute(
+                MSG_INSERT + " VALUES (?, ?, ?, ?, ?, 'unknown', ?, 0, ?, ?, NULL, 0, NULL)",
+                (mid, src, f"Chats!{base + n}", thread, sender, ts, ts, body),
+            )
+            c.execute("INSERT INTO message_recipients VALUES (?, ?, NULL)", (mid, to))
+    c.execute(
+        "INSERT INTO calls VALUES ('call:s2:Call Log!3', 's2', 'Call Log!3', 'dev:s2', 'Phone',"
+        " 'acct:s2:Phone:+12125550111', 'acct:s2:Phone:+12125550199', 'incoming',"
+        " '2026-03-08T14:30:01Z', 0, 'raw', 124, 0)"
+    )
+    for pid, dev in (("p:owner", "dev:s1"), ("p:bo", "dev:s2")):
+        c.execute("INSERT INTO persons VALUES (?, ?, 'expert:test')", (pid, pid))
+        c.execute(
+            "INSERT INTO stipulations VALUES (?, 'device_owner', ?, ?, 'owner', 'proposed',"
+            " NULL, NULL)",
+            (f"stip:device_owner:{dev}", dev, pid),
+        )
+
+
+def _ids(conn: sqlite3.Connection, k: int = 100, claim: str = "", **params) -> list[str]:
+    q = query_for(_assumption(**params), conn, claim=claim)
+    return [c.record_id for c in search(conn, q, k=k)]
+
+
+def test_account_brings_its_contact_card_matched_by_number(db):
+    db.execute(
+        "INSERT INTO contacts VALUES ('contact:s1:Contacts!3#2', 's1', 'Contacts!3', 'dev:s1',"
+        " 'Bo Garage', 'bo.telegram')"
+    )
+    got = _ids(db, account_ids=("acct:s1:SMS:+12125550199",))
+    # Entry #1 has the account's number; #2 is the same card, so it comes too.
+    assert got[:2] == ["contact:s1:Contacts!3#1", "contact:s1:Contacts!3#2"]
+    # A window excludes contacts: they carry no time.
+    window = TimeWindow(
+        start_utc=datetime(2026, 3, 9, tzinfo=UTC),
+        end_utc=datetime(2026, 3, 10, tzinfo=UTC),
+        tz="UTC",
+        raw="March 9",
+    )
+    got = _ids(db, account_ids=("acct:s1:SMS:+12125550199",), window=window)
+    assert not any(r.startswith("contact:") for r in got)
+
+
+def test_person_side_covers_the_same_number_on_the_other_phone(db):
+    _two_phones(db)
+    q = query_for(_assumption(person_ids=("p:owner",)), db, claim="")
+    assert {"acct:s2:SMS:+12125550111", "acct:s2:Phone:+12125550111"} <= set(q.account_ids)
+    assert "acct:s2:SMS:+12125550199" not in q.account_ids  # Bo's own number is not the owner's
+    assert q.sides == ()  # one side only
+
+
+def test_records_between_two_sides_rank_first(db):
+    _two_phones(db)
+    got = _ids(db, k=8, person_ids=("p:owner", "p:bo"))
+    between = {f"msg:s1:Chats!{n}" for n in (101, 102, 103)}
+    between |= {f"msg:s2:Chats!{n}" for n in (201, 202, 203)}
+    between |= {"call:s1:Call Log!3", "call:s2:Call Log!3"}
+    assert set(got) == between  # the owner's 50 Telegram messages with someone else wait
+    assert "msg:s1:Chats!90" not in got  # Bo alone, to nobody named: one side only
+
+
+def test_quoted_text_just_outside_the_window_is_returned(db):
+    _two_phones(db)
+    # "its done" at 2 a.m. UTC on March 12; both phones logged it at 18:00Z (2 p.m. New York).
+    window = TimeWindow(
+        start_utc=datetime(2026, 3, 12, 2, tzinfo=UTC),
+        end_utc=datetime(2026, 3, 12, 2, 0, 59, tzinfo=UTC),
+        tz="UTC",
+        raw="2 a.m. on March 12",
+    )
+    got = _ids(db, person_ids=("p:owner", "p:bo"), window=window, quoted_text="its done")
+    assert {"msg:s1:Chats!103", "msg:s2:Chats!203"} <= set(got)
+    # The nearest exchange record before the window comes too; nothing inside it exists.
+    assert "msg:s1:Chats!102" in got or "msg:s2:Chats!202" in got
+
+
+def test_quoted_message_brings_the_messages_either_side(db):
+    _two_phones(db)
+    got = _ids(
+        db,
+        account_ids=("acct:s1:SMS:+12125550199",),
+        device_ids=("dev:s1",),
+        quoted_text="meet at the lot?",
+    )
+    i = got.index("msg:s1:Chats!101")
+    # Its copy on Bo's phone, then the message before it and the reply.
+    assert got[i + 1 : i + 4] == ["msg:s2:Chats!201", "msg:s1:Chats!90", "msg:s1:Chats!102"]
+
+
+def test_message_brings_its_attachment(db):
+    got = [c.record_id for c in search(db, RetrievalQuery(thread_ids=("thr:tg",)), k=100)]
+    i = got.index("msg:s1:Chats!40")
+    assert got[i + 1] == "att:s1:Chats!40:1"
+
+
+def test_other_phone_copy_comes_even_outside_a_device_filter(db):
+    _two_phones(db)
+    got = _ids(
+        db, account_ids=("acct:s1:Phone:+12125550199",), device_ids=("dev:s1",), channels=("call",)
+    )
+    assert got == ["call:s1:Call Log!3", "call:s2:Call Log!3"]
+    got = _ids(
+        db,
+        k=3,
+        account_ids=("acct:s1:SMS:+12125550199",),
+        device_ids=("dev:s1",),
+        quoted_text="its done",
+    )
+    assert got[:2] == ["msg:s1:Chats!103", "msg:s2:Chats!203"]
+
+
+def test_mirrors_need_the_same_text_or_numbers(db):
+    _two_phones(db)
+    db.execute("UPDATE messages SET body = 'its done.' WHERE id = 'msg:s2:Chats!203'")
+    db.execute("UPDATE calls SET duration_s = 300 WHERE id = 'call:s2:Call Log!3'")
+    got = _ids(
+        db,
+        account_ids=("acct:s1:SMS:+12125550199", "acct:s1:Phone:+12125550199"),
+        device_ids=("dev:s1",),
+    )
+    assert "msg:s2:Chats!203" not in got and "call:s2:Call Log!3" not in got
 
 
 # ---------------------------------------------------------------- context
@@ -349,3 +514,10 @@ def test_pipeline_entry_points(db):
     build = context.create(db)
     item = SimpleNamespace(record_id="msg:s1:Chats!33")
     assert build(db, _assumption(), item) == render_for(db, "msg:s1:Chats!33")
+
+
+def test_attachment_label_can_be_quote_checked(db):
+    from core.audit import invariants
+
+    # The pipeline checks a label's quote against this text; an attachment cites its file name.
+    assert invariants.record_text(db, "att:s1:Chats!40:1") == "invoice_march.pdf"
