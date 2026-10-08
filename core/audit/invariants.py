@@ -73,12 +73,18 @@ class InvariantViolation(Exception):
 def record_text(conn: sqlite3.Connection, record_id: str) -> str | None:
     """The citable text of a record, exactly as stored. None if the record does not exist.
 
-    Messages cite their original body. Calls and contacts have no body, so their text is a
-    fixed rendering of stored fields; a quote from them can only cite those fields.
+    Messages cite their original body and attachments their file name. Calls and contacts have
+    no body, so their text is a fixed rendering of stored fields; a quote from them can only cite
+    those fields.
     """
     kind = record_id.split(":", 1)[0]
     if kind == "msg":
         row = conn.execute("SELECT body FROM messages WHERE id = ?", (record_id,)).fetchone()
+        return row[0] if row else None
+    if kind == "att":
+        row = conn.execute(
+            "SELECT file_name FROM attachments WHERE id = ?", (record_id,)
+        ).fetchone()
         return row[0] if row else None
     if kind == "contact":
         row = conn.execute(
