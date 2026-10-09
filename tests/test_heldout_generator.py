@@ -10,10 +10,11 @@ import pytest
 
 from eval.heldout import GENERATOR, ID_PREFIX, SEEDS, SOURCE
 from eval.heldout.generate import generate
-from eval.heldout.glossary import RU_EN_PAIRS
+from eval.heldout.glossary import RU_EN_PAIRS, SLANG_FORMS
 from eval.heldout.pools import AREA_CODES, CYRILLIC_FULL, MENTIONED_RU, PLACES, WEEKDAYS_EN
 from eval.heldout.schedule import COMPOSITION, FOUR_TRAPS
 from eval.heldout.text import normalized
+from eval.heldout.verbs import has_past_verb
 from eval.stancedata.families import family
 from eval.stancedata.model import GenItem
 
@@ -450,7 +451,7 @@ def test_supports_assumptions_add_nothing_the_record_lacks(
 
 
 _CURRENCY = re.compile(
-    r"\$|\b(dollars?|bucks?|rubles?)\b|рубл|(?<![а-яё])руб(?![а-яё])|бакс", re.IGNORECASE
+    r"\$|\b(dollars?|bucks?|rubles?)\b|рубл|(?<![а-яё])руб(?![а-яё])|бакс|доллар", re.IGNORECASE
 )
 
 
@@ -522,3 +523,36 @@ def test_no_doubled_parties_or_pronouns(
         assert not _DOUBLED_PARTY.search(it.assumption), (it.probe_id, it.assumption)
         for line in [it.target, *it.context]:
             assert not _DOUBLED_PRONOUN.search(line.text), (it.probe_id, line.text)
+
+
+# ------------------------------------------------------------- supports records: verb, no slang
+
+_VERB_FAMILIES = {
+    "sup_plain",
+    "sup_time_window",
+    "sup_contact",
+    "sup_account_shared",
+    "sup_injection",
+}
+_SLANG = re.compile("|".join(SLANG_FORMS))
+
+
+def test_supports_records_carry_a_past_verb(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    for it in test_items + dev_items:
+        if it.family in _VERB_FAMILIES:
+            assert has_past_verb(it.target.text), (it.probe_id, it.family, it.target.text)
+
+
+def test_supports_records_avoid_slang_pairs(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    for it in test_items + dev_items:
+        if it.gold_stance != "supports":
+            continue
+        texts = [it.target.text]
+        if it.family == "sup_answer" and it.target_index > 0:  # the question carries the verb
+            texts.append(it.context[it.target_index - 1].text)
+        for text in texts:
+            assert not _SLANG.search(text.lower()), (it.probe_id, it.family, text)

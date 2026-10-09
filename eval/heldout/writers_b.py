@@ -126,7 +126,7 @@ def ovr_time_mismatch(slot: Slot, rng: random.Random) -> Draft:
             utc = at_local(SPRING_CHANGE, 3, rng.randint(5, 40), rng.randrange(60), tz=st.chat.tz)
             loc = local(utc, st.chat.tz)
             d = date_phrase(loc.date())
-            assumption = f'Before 3:00 a.m. on {d}, {st.s} sent {st.r} the message "{text}".'
+            assumption = f'{st.s} sent {st.r} the message "{text}" before 3:00 a.m. on {d}.'
             why = (
                 f"the clocks jumped from 1:59 to 3:00 that night and the phone read "
                 f"{clock12(loc)} {_zone(loc)}, after 3:00 a.m., so the message is outside "
@@ -139,7 +139,7 @@ def ovr_time_mismatch(slot: Slot, rng: random.Random) -> Draft:
             loc = local(utc, st.chat.tz)
             d = date_phrase(loc.date())
             assumption = (
-                f'Between 12:30 a.m. and 1:15 a.m. on {d}, {st.s} sent {st.r} the message "{text}".'
+                f'{st.s} sent {st.r} the message "{text}" between 12:30 a.m. and 1:15 a.m. on {d}.'
             )
             why = (
                 f"the phone read {clock12(loc)} {_zone(loc)}, the second pass through that "
@@ -164,13 +164,13 @@ def ovr_time_mismatch(slot: Slot, rng: random.Random) -> Draft:
             edge = max(0, minute - rng.randint(25, 120))
             edge -= edge % 5
             assumption = (
-                f'Before {clock12_hm(edge // 60, edge % 60)} on {d}, {st.s} sent {st.r} "{text}".'
+                f'{st.s} sent {st.r} "{text}" before {clock12_hm(edge // 60, edge % 60)} on {d}.'
             )
         else:
             edge = min(1439, minute + rng.randint(25, 120))
             edge += (-edge) % 5
             assumption = (
-                f'After {clock12_hm(edge // 60, edge % 60)} on {d}, {st.s} sent {st.r} "{text}".'
+                f'{st.s} sent {st.r} "{text}" after {clock12_hm(edge // 60, edge % 60)} on {d}.'
             )
         why = f"the phone's clock for the record reads {clock12(loc)} {_zone(loc)} on {d}"
     else:  # a different day altogether

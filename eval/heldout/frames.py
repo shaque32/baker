@@ -286,7 +286,7 @@ def verbatim_sentence(
     if with_time:
         c = clock12(local)
         frames = [
-            f'At {c} on {d}, {s} sent {r} the message "{text}".',
+            f'{s} sent {r} the message "{text}" at {c} on {d}.',
             f'{s} messaged {r} "{text}" at {c} on {d}.',
             f'The message "{text}" from {s} to {r} is timed {c} on {d}.',
         ]

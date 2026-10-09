@@ -177,9 +177,9 @@ def sup_time_window(slot: Slot, rng: random.Random) -> Draft:
     if form == 0:
         assumption = f"{st.s} messaged {st.r} between {c1} and {c2} on {d}."
     elif form == 1:
-        assumption = f"Before {c2} on {d}, {st.s} sent {st.r} a message."
+        assumption = f"{st.s} sent {st.r} a message before {c2} on {d}."
     else:
-        assumption = f"After {c1} on {d}, {st.s} sent a message to {st.r}."
+        assumption = f"{st.s} sent a message to {st.r} after {c1} on {d}."
     c = f"{clock12(loc)} {_zone(loc)}"
     if dst:
         rationale = (
