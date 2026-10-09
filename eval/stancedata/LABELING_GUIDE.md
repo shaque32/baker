@@ -1,6 +1,6 @@
 # Labeling guide for generated stance data
 
-DRAFT v0.1, 2026-10-09. Not signed. Arsh signs it by replying "approved" (or with edits) in the
+DRAFT v0.2, 2026-10-09. Not signed. Arsh signs it by replying "approved" (or with edits) in the
 "Custom model for Baker" thread; the signed copy then goes to `eval/gold/stancedata/` through the
 frozen-files thread, and this draft stays here unchanged.
 
@@ -74,6 +74,10 @@ the record's fact with an incompatible one makes the record **contradicts**, not
     stay literally true after the correction. The exceptions are the families whose point is
     the message itself: `sup_verbatim`, `sup_contact`, `sup_account_shared`,
     `ovr_sender_mismatch`, `ovr_time_mismatch`, `con_in_window`, `con_other_speaker`.
+    The same holds for every trap family, `ovr_injection_unrelated` and `ovr_plan` included:
+    "the message from Nate says that Rosa drove the boat" invites contradicts for an item whose
+    answer is irrelevant, and "X wrote that they sold the car" is true of a message that only
+    plans the sale.
 13. **Filler never settles the question.** Messages placed after a question or a plan must not
     answer or confirm it; otherwise the item becomes a different family.
 14. **A supports assumption says what the message communicates.** "The contact saved as Nico
@@ -81,7 +85,9 @@ the record's fact with an incompatible one makes the record **contradicts**, not
     message ...": that is what a message shows. "Nico picked up Rosa's shift" as a bare fact is
     never a supports item, because a message is evidence of what was said, and an expert may
     hold the act itself unproven. This follows the signed items P021 to P027. Contradicts and
-    overreach assumptions may state the fact (rule 12).
+    overreach assumptions may state the fact (rule 12). The paraphrase is third person
+    throughout ("that she would book the court if she got paid", never "if i get paid") and
+    adds no qualifier the record lacks ("still", "again", "already").
 15. **A short answer supports only what the question and the answer state together.** "did ur
     cousin pay u back" and "yep 250" support "his cousin paid him back $250", not "paid him
     back $250 in cash that morning"; extra detail in the assumption makes it `ovr_partial`.
@@ -90,10 +96,18 @@ the record's fact with an incompatible one makes the record **contradicts**, not
     embeds a different value is `con_other_value`, not an overreach.
 17. **Relative time is open only near midnight.** `cpl_relative_time` records are sent between
     midnight and about 3 a.m. local, where "tonight", "last night" or "вчера" can mean either
-    of two dates. Later in the day the relative word is not ambiguous.
+    of two dates. Later in the day the relative word is not ambiguous. The answer is
+    complicates whenever the clock time leaves both dates possible, even when one reading is far
+    likelier: "tutoring ran late tonight" at 00:57 almost surely means the evening before, and
+    the record still does not settle the date.
 18. **Third parties may be named.** An assumption may name a person who is not in the chat
     ("Lina made $240 in tips"); whether the record shows it still follows the family rules, and
     a sender's report of what that person did is `cpl_hearsay`.
+19. **A correction names the replacement.** A later message from the same sender counts as a
+    correction only when it gives a value that cannot be true together with the record's, for
+    the same thing: "booth 5, not 35", "sorry, 300 not 500", "не 118, а 181". "they moved us" or
+    "the other lot" may describe a later change rather than a mistake, so such an item is
+    `complicates`, never `ovr_later_correction`.
 
 ## The families
 
@@ -116,7 +130,7 @@ on the surface; they exist to teach the model where the line is.
 | `con_other_speaker` | contradicts | In a group chat, the assumption attributes words to one member; the record shows a different member wrote them. | Assumption: +1 ...0142 offered to drive. Record: "i'll drive" from +1 ...0187. |
 | `ovr_time_mismatch` | contradicts (trap) | Same words and people, but the record's local date or clock time falls outside what the assumption states. | Assumption: sent on May 3. Record: 9:40 p.m. May 2 local. |
 | `ovr_sender_mismatch` | contradicts (trap) | The assumption says one account sent the words; the record shows another account sent them. | Assumption: the owner wrote "its done". Record: "its done" from Bo. |
-| `ovr_later_correction` | contradicts (trap) | The record states the fact, but a later message from the same sender replaces it with an incompatible value. | Record: "paid him 500". Later, same sender: "sorry, 300 not 500". Assumption: paid 500. |
+| `ovr_later_correction` | contradicts (trap) | The record states the fact, but a later message from the same sender replaces it with an incompatible value for the same thing (rule 19). | Record: "paid him 500". Later, same sender: "sorry, 300 not 500". Assumption: paid 500. |
 | `ovr_negation` | contradicts (trap) | The assumption's words appear in the record inside a negated statement. | Record: "i did not take the van". Assumption: Bo took the van. |
 | `ovr_handle_owner` | complicates (trap) | The assumption names a real person; the record shows only an account, handle or saved label, one consistent with that name or neutral (a label carrying a different person's name is not this family). | Assumption: Rita Vance told the owner to wait. Record from @rv_44: "wait there". |
 | `ovr_shared_account` | complicates (trap) | The context shows someone other than the usual user typing on the account; the assumption names the usual person. | Context: "its Lee, Kai left his phone". Assumption: Kai wrote "open at 10". |
@@ -162,6 +176,9 @@ settles it.
 - **By code, on every example.** The answer comes from the family table above, never from the
   generator. The quote must appear exactly in the record. Assumptions and rationales never use
   the four banned words. Tests enforce all three.
+- **By a blind second reader, before Arsh's turn.** A reader who never saw the answers labels
+  100 items of each set from this guide alone; every disagreement is settled in the generator
+  or in this guide first, so Arsh's sample does not spend his time on known problems.
 - **By Arsh, on samples.** A random 200 training examples and a random 100 held-out test
   examples go to Arsh in one review sheet, about 4 to 5 hours in total. If more than 2% of either
   sample is wrong (more than 4 of 200, or more than 2 of 100), the generator is fixed and the
