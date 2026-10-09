@@ -21,6 +21,7 @@ from datetime import UTC, date, datetime, time
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from core.audit.quotes import verify_quote
 from core.contracts import AssumptionKind
 from eval.probe_draft.model import ProbeLine
 from eval.stancedata.families import family
@@ -170,6 +171,11 @@ def build_item(
         raise ValueError(f"{probe_id}: messages must be in strictly increasing UTC order")
     if quote.strip() != quote or not quote:
         raise ValueError(f"{probe_id}: quote must be non-empty with no outer whitespace")
+    if not verify_quote(quote, msgs[target].text):
+        # The product's rule (core/audit/quotes.py): exact substring, starting and ending on a
+        # word boundary, with at least one letter or digit. A quote that fails it would be
+        # discarded in the product, so no item may carry one.
+        raise ValueError(f"{probe_id}: quote is not a word-aligned verbatim part of the record")
     f = family(family_id)
     if f.disputed and source == "heldout_gen" and disputed is None:
         disputed = (

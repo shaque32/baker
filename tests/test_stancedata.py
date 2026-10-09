@@ -69,6 +69,10 @@ def test_item_checks() -> None:
         _item(rationale="Nothing here says he is guilty.")
     with pytest.raises(ValueError, match="verbatim"):
         _item(quote="van is repaired")
+    with pytest.raises(ValueError, match="word-aligned"):
+        _item(quote="van is fixe")  # cut inside a word: the product would discard it
+    with pytest.raises(ValueError, match="word-aligned"):
+        _item(msgs=_msgs("ok", "??"), quote="??")  # no letter or digit
     with pytest.raises(ValueError, match="increasing UTC"):
         _item(msgs=list(reversed(_msgs("a b", "van is fixed"))))
     with pytest.raises(ValueError, match="kind"):
