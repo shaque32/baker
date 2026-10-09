@@ -313,3 +313,78 @@ def test_hostile_gate_fails_only_on_structural_claims(monkeypatch):
     assert run_pipeline.hostile_gate(model_only) == 0
     breach = [Prediction(claim_id="C04", verdict=Verdict.SUPPORTED, supported_basis=sup)]
     assert run_pipeline.hostile_gate(breach) == 1
+
+
+def _one_message_case(conn, contradict_named: bool):
+    """C05 with a real "sender" assumption: the named message plus one other message, both
+    labeled contradicts unless contradict_named is False (then the named one supports)."""
+    from core.audit.assumptions import instantiate
+
+    (named,) = conn.execute(
+        "SELECT id FROM messages WHERE body = 'need 2 more by friday'"
+    ).fetchall()[0:1]
+    other = "msg:item1:Chats!3"
+    sender = instantiate(
+        "C05",
+        "sender",
+        {"quoted_text": "need 2 more by friday", "person_ids": ["person:petrov"]},
+        True,
+    )
+
+    class Builder:
+        def build(self, claim):
+            return [sender]
+
+    class Two:
+        def retrieve(self, assumption, conn, k):
+            return [
+                EvidenceCandidate(
+                    record_id=rid,
+                    ref=SourceRef(source_id=rid.split(":")[1], locator=rid.split(":", 2)[2]),
+                    text=record_text(conn, rid),
+                    tier=ProvenanceTier.OBSERVED,
+                    retrieval_score=1.0,
+                )
+                for rid in (named[0], other)
+            ]
+
+    class Contrarian(PhraseLabeler):
+        def label(self, assumption, candidate):
+            is_named = candidate.record_id == named[0]
+            return StanceLabel(
+                assumption_id=assumption.id,
+                record_id=candidate.record_id,
+                stance=Stance.CONTRADICTS if contradict_named or not is_named else Stance.SUPPORTS,
+                quote=candidate.text.split()[0],
+                rationale="a different sender",
+                model_run_id="mr:fake-stance",
+            )
+
+    result = pipeline.run_audit(
+        conn,
+        comps(assumptions=Builder(), retriever=Two(), labeler=Contrarian(), reviewer=None),
+        clock=_clock,
+        claim_ids=["C05"],
+    )
+    by_record = {e.record_id: e for e in items(conn, "C05")}
+    return result.decisions[0], by_record[named[0]], by_record[other]
+
+
+def test_another_message_never_contradicts_a_one_message_assumption(conn):
+    decision, named, other = _one_message_case(conn, contradict_named=False)
+    assert named.stance == Stance.SUPPORTS
+    assert other.stance == Stance.COMPLICATES  # kept for the expert, not a contradiction
+    assert other.rationale.startswith("Recorded as complicates, not contradicts")
+    assert other.rationale.endswith("a different sender")
+    assert decision.verdict == Verdict.UNPROVEN
+    (raw,) = conn.execute(
+        "SELECT stance FROM evidence_items WHERE record_id = ?", (other.record_id,)
+    ).fetchone()
+    assert raw == Stance.COMPLICATES.value
+
+
+def test_the_named_message_itself_still_contradicts(conn):
+    decision, named, other = _one_message_case(conn, contradict_named=True)
+    assert named.stance == Stance.CONTRADICTS
+    assert other.stance == Stance.COMPLICATES
+    assert decision.verdict == Verdict.CONTRADICTED

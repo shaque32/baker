@@ -23,7 +23,18 @@ only moves data between them, stores it, and refuses anything that breaks a rule
 - The verdict comes from the rule (core/audit/rules.py). While the rules are a stub, the claim
   is stored as unproven with a reason saying no verdict was decided.
 - core/audit/invariants.py re-checks every decision against the stored records. A violation
-  rolls back the run's work, marks the pipeline run failed, and stops.
+  rolls back that claim's work, marks the pipeline run failed, and stops.
+- A claim whose core check already failed is not sent to the stance model: rule 1a makes it
+  contradicted whatever its evidence says, so labels could not change its verdict, and they
+  cost model calls (about a fifth of case01's). The run's audit-log entry lists these claims
+  under `unlabeled` with the reason, and the report and review screen say so.
+  Components.label_settled turns labeling back on for them (`baker audit --label-all`).
+
+Saving. Each claim is committed when it finishes. If a run stops part way (a crash, a closed
+laptop, a missing model, an invariant violation), the claims already finished keep their
+stored model outputs, so the next run reuses them (core/audit/_local_model.py) instead of
+calling the model again. Only a completed run is ever read: reports, predictions, the review
+screen and redecide all go through last_run(), so a stopped run's verdicts are never shown.
 
 Runs. Each run_audit call is one pipeline_runs row. Verdicts belong to a run. Assumptions,
 check results and evidence items have content-derived ids (core/contracts.py), so a re-run on
@@ -46,7 +57,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from core.audit import invariants, rules
+from core.audit import invariants, rules, stance
 from core.audit._llm_json import ModelUnavailable
 from core.contracts import (
     CONTRACTS_VERSION,
@@ -128,6 +139,9 @@ class Components:
     reviewable: Callable[[EvidenceItem], bool] = _always
     # Other model-backed parts whose recorder.calls the pipeline stores (the assumption filler).
     recorders: Sequence[object] = ()
+    # Label claims a failed core check already decides (rule 1a) too. Off: their labels could
+    # not change the verdict, so they are skipped to save model calls.
+    label_settled: bool = False
 
     def names(self) -> dict[str, str]:
         def name(obj: object) -> str:
@@ -246,6 +260,7 @@ class RunResult:
     reviewer_failures: int = 0
     model_outputs_reused: int = 0
     manifest: dict[str, dict[str, list[str]]] = field(default_factory=dict)
+    unlabeled: dict[str, str] = field(default_factory=dict)  # claim id -> why it was not labeled
 
 
 # ---------------------------------------------------------------- helpers
@@ -477,6 +492,31 @@ def extract_claims(
 # ---------------------------------------------------------------- audit step
 
 
+def settled_by_check(
+    assumptions: Sequence[Assumption], checks: Sequence[CheckResult]
+) -> str | None:
+    """Why this claim's evidence need not be labeled, or None if it must be.
+
+    Under rules 0.2.0, rule 1a makes a claim contradicted when a deterministic check failed on
+    one of its core assumptions, and rule 1 is applied first. Evidence can only add more
+    contradictions to it, never remove the failed check, so no label can change the verdict
+    and labeling would only spend model calls. Redecide reuses the stored check, so expert
+    review cannot change it either; a new full audit runs the checks again. The test in
+    tests/test_fewer_calls.py holds this against the real rules with every stance, review
+    status and tier, so a rule change that breaks it fails there.
+    """
+    core = {a.id: a for a in assumptions if a.is_core}
+    for r in checks:
+        if r.outcome is CheckOutcome.FAIL and r.assumption_id in core:
+            return (
+                f"Evidence was not sent to the stance model: check {r.check_name} failed on the"
+                f" core assumption '{core[r.assumption_id].text}', so rule 1a decides this claim"
+                " (contradicted) whatever the evidence says. The check's cited records are the"
+                " evidence. `baker audit --label-all` labels it anyway."
+            )
+    return None
+
+
 class _Run:
     """State for one pipeline run."""
 
@@ -540,15 +580,19 @@ class _Run:
             self.flush_calls({label.model_call_id} if label.model_call_id else set())
             return self._drop()
         self.flush_calls()
+        stance_ = stance.subject_stance(a, text, label.stance)
+        rationale = label.rationale
+        if stance_ is not label.stance:  # the model call log keeps the raw label
+            rationale = stance.NOT_THE_MESSAGE + rationale
         return EvidenceItem(
-            id=evidence_id(a.id, cand.record_id, label.stance, label.quote),
+            id=evidence_id(a.id, cand.record_id, stance_, label.quote),
             assumption_id=a.id,
             record_id=cand.record_id,
             ref=cand.ref,
-            stance=label.stance,
+            stance=stance_,
             quote=label.quote,
             quote_verified=True,
-            rationale=label.rationale,
+            rationale=rationale,
             tier=cand.tier,
             status=EvidenceStatus.OPEN,
             model_run_id=label.model_run_id,
@@ -682,6 +726,12 @@ class _Run:
                 )
                 checks.append(r)
 
+        settled = None
+        if c.rule is rules.decide_verdict and not (c.label_settled or c.rules_pending()):
+            settled = settled_by_check(assumptions, checks)
+        if settled is not None:
+            self.result.unlabeled[claim.id] = settled
+        for a in assumptions if settled is None else ():
             seen: set[str] = set()
             for cand in c.retriever.retrieve(a, conn, c.k):
                 if cand.record_id in seen:
@@ -776,17 +826,31 @@ def _new_run_id(conn: sqlite3.Connection, now: datetime) -> str:
     return run_id
 
 
+Progress = Callable[[int, int, VerdictDecision], None]
+
+
 def run_audit(
     conn: sqlite3.Connection,
     components: Components,
     clock: Clock | None = None,
     claim_ids: Sequence[str] | None = None,
     config: dict[str, str | int | float | bool | None] | None = None,
+    progress: Progress | None = None,
 ) -> RunResult:
-    """Audit every claim that is not removed (or just claim_ids). All or nothing."""
+    """Audit every claim that is not removed (or just claim_ids).
+
+    Each claim is committed when it finishes, so a stopped run keeps the model outputs of the
+    claims it finished and the next run reuses them. The run only counts once it completes:
+    until then nothing reads its verdicts. progress(done, total, decision) is called after each
+    claim is saved."""
     now = _now(clock)
     result = RunResult(run_id=_new_run_id(conn, now), fake=components.fake())
-    cfg = {"k": components.k, "fake": result.fake, **(config or {})}
+    cfg = {
+        "k": components.k,
+        "fake": result.fake,
+        "label_settled": components.label_settled,
+        **(config or {}),
+    }
     with conn:
         conn.execute(
             "INSERT INTO pipeline_runs (id, started_at_utc, finished_at_utc, status, baker_version,"
@@ -826,12 +890,17 @@ def run_audit(
                         iso(m.started_at_utc),
                     ),
                 )
-            stipulations = load_stipulations(conn)
-            run = _Run(conn, components, now, result)
-            reused_before = _reused(components)
-            for claim in claims:
-                result.decisions.append(run.claim(claim, stipulations))
-            result.model_outputs_reused = _reused(components) - reused_before
+        stipulations = load_stipulations(conn)
+        run = _Run(conn, components, now, result)
+        reused_before = _reused(components)
+        for n, claim in enumerate(claims, 1):
+            with conn:  # one claim per transaction: a stop keeps every finished claim's work
+                decision = run.claim(claim, stipulations)
+            result.decisions.append(decision)
+            if progress is not None:
+                progress(n, len(claims), decision)
+        result.model_outputs_reused = _reused(components) - reused_before
+        with conn:
             audit_log.append(
                 conn,
                 now,
@@ -847,6 +916,7 @@ def run_audit(
                     "stored_items": result.stored_items,
                     "reviewer_failures": result.reviewer_failures,
                     "model_outputs_reused": result.model_outputs_reused,
+                    "unlabeled": result.unlabeled,
                     "rejected_assumptions": [
                         {"template_id": r.proposal.template_id, "reason": r.reason}
                         for r in getattr(components.assumptions, "rejected", ())

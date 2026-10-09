@@ -60,6 +60,7 @@ class ClaimState:
     expert_decided: int = 0
     decided_after_run: bool = False  # an expert decided one of its items after the run
     edited_after_run: bool = False  # the expert changed the claim text after the run
+    unlabeled: str | None = None  # why the run did not send this claim's evidence to the model
 
     @property
     def awaiting_expert(self) -> bool:
@@ -212,6 +213,7 @@ def _state(
     )
     if not items or decision is None:
         return st
+    st.unlabeled = (run or {}).get("unlabeled", {}).get(claim.id)
     st.assumptions = pipeline.load_assumptions(conn, items["assumptions"])
     st.checks = pipeline.load_checks(conn, items["checks"])
     st.evidence = pipeline.load_evidence(conn, items["evidence"])

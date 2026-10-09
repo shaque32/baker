@@ -285,3 +285,51 @@ def test_a_rerun_reuses_every_stance_output(conn):
     ).fetchone()[0]
     assert rows == n  # still recorded under the new run
     assert pipeline.last_run(conn)["model_outputs_reused"] == n
+
+
+# ---------------------------------------------------------------- decoder grammar
+
+
+def _pass_schemas() -> dict[str, object]:
+    from core.audit.assumption_filler import fill_schema
+    from core.audit.review import REVIEW_SCHEMA
+    from core.audit.stance import STANCE_SCHEMA
+    from core.audit.translation import TRANSLATION_SCHEMA
+    from core.claims.extract import CLAIMS_SCHEMA
+
+    return {
+        "stance": STANCE_SCHEMA,
+        "review": REVIEW_SCHEMA,
+        "claims": CLAIMS_SCHEMA,
+        "translation": TRANSLATION_SCHEMA,
+        "assumptions": fill_schema(["contact_entry", "same_account"], ["Telegram", "SMS"]),
+    }
+
+
+def test_decoder_grammar_drops_length_limits_and_keeps_the_shape():
+    from core.llm.runtime import GRAMMAR_DROPPED_KEYS, grammar_schema
+
+    for name, schema in _pass_schemas().items():
+        g = grammar_schema(schema)
+        text = json.dumps(g)
+        assert not any(f'"{k}"' in text for k in GRAMMAR_DROPPED_KEYS), name
+        assert g["required"] == schema["required"] and g["type"] == "object", name
+    stance = grammar_schema(_pass_schemas()["stance"])
+    assert stance["properties"]["stance"]["enum"] == [
+        "supports",
+        "contradicts",
+        "complicates",
+        "irrelevant",
+    ]
+    assert stance["additionalProperties"] is False
+
+
+def test_every_pass_schema_compiles_to_a_llama_grammar():
+    """The Mac run crashed compiling the stance schema's maxLength. Runs where llama.cpp is
+    installed (the model machine); skipped in CI."""
+    llama_grammar = pytest.importorskip("llama_cpp.llama_grammar")
+    from core.llm.runtime import grammar_schema
+
+    for name, schema in _pass_schemas().items():
+        gbnf = llama_grammar.json_schema_to_gbnf(json.dumps(grammar_schema(schema)))
+        assert llama_grammar.LlamaGrammar.from_string(gbnf, verbose=False), name

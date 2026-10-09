@@ -5,6 +5,10 @@ Usage:
       No model. Counts the calls a real run makes (stance calls do not depend on the model).
   python -m eval.probe.time_case --models eval/probe/models.local.json [--claims C02,C05]
       [--n-ctx 4096] [--ai-review] [--case case01] [--out eval/out/speed]
+      [--stance-prompt eval/probe/stance_v1_1_draft.md]
+
+--stance-prompt times a draft stance prompt instead of the signed one (the product only ever
+uses the signed core/audit/prompts/stance.md). Compare the two on the same machine and claims.
 
 For each model in the models file (the probe's file; a null sha256 is computed here):
 1. Build the case fresh, as the eval does (eval/run_pipeline.build_case), with the case's
@@ -79,12 +83,38 @@ def machine() -> dict[str, Any]:
 # ---------------------------------------------------------------- one run
 
 
-def _components(conn: sqlite3.Connection, model: Any, spec: Path, ai_review: bool):  # noqa: ANN202
-    replace: dict[str, object] = {"labeler": stance_mod.create(conn, model=model)}
+def _stance_labeler(conn: sqlite3.Connection, model: Any, prompt: Path | None) -> Any:
+    """The product's stance labeler, or the same wiring on a draft prompt file."""
+    if prompt is None:
+        return stance_mod.create(conn, model=model)
+    from core.audit._llm_json import prompt_body
+    from core.audit._local_model import open_run
+    from core.audit.context import render_for
+
+    template = prompt_body(prompt.read_text(encoding="utf-8"))
+    opened = open_run(conn, "stance", template, model=model, schema=stance_mod.STANCE_SCHEMA)
+    labeler = stance_mod.LocalStanceLabeler(
+        opened.port,
+        template=template,
+        render_context=lambda c: render_for(conn, c.record_id),
+        recorder=opened.recorder,
+    )
+    labeler.model_runs = (opened.run,)
+    return labeler
+
+
+def _components(  # noqa: ANN202
+    conn: sqlite3.Connection,
+    model: Any,
+    spec: Path,
+    ai_review: bool,
+    stance_prompt: Path | None = None,
+):
+    replace: dict[str, object] = {"labeler": _stance_labeler(conn, model, stance_prompt)}
     if ai_review:
         replace["reviewer"] = review_mod.create(conn, model=model)
     # real_components collects the model_runs of the passes given in replace.
-    return pipeline.real_components(conn, replace=replace, filler=rp.spec_filler(spec))
+    return pipeline.real_components(conn, replace=replace, filler=rp.spec_filler(spec, conn))
 
 
 def _ports(comps: pipeline.Components) -> dict[str, RunPort]:
@@ -193,9 +223,14 @@ def _stats(ports: dict[str, RunPort]) -> dict[str, Any]:
 
 
 def audit_once(
-    conn: sqlite3.Connection, model: Any, spec: Path, ai_review: bool, claims: list[str] | None
+    conn: sqlite3.Connection,
+    model: Any,
+    spec: Path,
+    ai_review: bool,
+    claims: list[str] | None,
+    stance_prompt: Path | None = None,
 ) -> dict[str, Any]:
-    comps = _components(conn, model, spec, ai_review)
+    comps = _components(conn, model, spec, ai_review, stance_prompt)
     start = time.perf_counter()
     result = pipeline.run_audit(conn, comps, clock=rp._clock, claim_ids=claims)
     wall = time.perf_counter() - start
@@ -223,6 +258,7 @@ def time_model(
     ai_review: bool,
     claims: list[str] | None,
     full_stance_calls: int | None,
+    stance_prompt: Path | None = None,
 ) -> dict[str, Any]:
     name = entry["name"]
     path = Path(entry["path"]).expanduser()
@@ -235,11 +271,11 @@ def time_model(
     gold = load_jsonl(Path("eval/gold") / case / "gold.jsonl", GoldClaim)
     try:
         print(f"{name}: cold run", file=sys.stderr, flush=True)
-        cold = audit_once(conn, model, spec, ai_review, claims)
+        cold = audit_once(conn, model, spec, ai_review, claims, stance_prompt)
         cold["model_load_seconds"] = round(model.load_seconds or 0.0, 1)
         cold["surfacing"] = surfacing(conn, [g for g in gold if not claims or g.claim_id in claims])
         print(f"{name}: warm run (rerun after expert decisions)", file=sys.stderr, flush=True)
-        warm = audit_once(conn, model, spec, ai_review, claims)
+        warm = audit_once(conn, model, spec, ai_review, claims, stance_prompt)
     finally:
         conn.close()
     res: dict[str, Any] = {
@@ -313,6 +349,7 @@ def markdown(summary: dict[str, Any]) -> str:
         "",
         f"Machine: {m.get('cpu')}, {m.get('ram_gb')} GB, {m.get('platform')}",
         f"Assumptions: {summary['assumption_spec']}",
+        f"Stance prompt: {summary.get('stance_prompt', 'core/audit/prompts/stance.md (signed)')}",
     ]
     d = summary["dry_run"]
     lines += [
@@ -387,6 +424,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--n-ctx", type=int, default=None, help="4096 for a 14B model on 16 GB")
     ap.add_argument("--ai-review", action="store_true", help="also time the AI reviewer pass")
     ap.add_argument("--out", type=Path, default=Path("eval/out/speed"))
+    ap.add_argument(
+        "--stance-prompt", type=Path, default=None, help="a draft stance prompt to time instead"
+    )
     args = ap.parse_args(argv)
     if not args.dry_run and args.models is None:
         ap.error("pass --models (or --dry-run)")
@@ -398,6 +438,7 @@ def main(argv: list[str] | None = None) -> int:
         "case": args.case,
         "machine": machine(),
         "assumption_spec": str(spec),
+        "stance_prompt": str(args.stance_prompt or "core/audit/prompts/stance.md (signed)"),
         "dry_run": dry_run(args.case, spec, args.out),
     }
     full = summary["dry_run"]["stance_calls"]
@@ -414,6 +455,7 @@ def main(argv: list[str] | None = None) -> int:
                     ai_review=args.ai_review,
                     claims=claims,
                     full_stance_calls=full,
+                    stance_prompt=args.stance_prompt,
                 )
             except Exception as e:  # noqa: BLE001 - report and move on to the next model
                 res = {"model": entry.get("name"), "error": f"{type(e).__name__}: {e}"}

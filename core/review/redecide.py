@@ -148,6 +148,9 @@ def redecide(
                     "evidence_from_run": evidence_from,
                     "requested_by": requested_by,
                     "skipped": result.skipped,
+                    "unlabeled": {
+                        k: v for k, v in src.get("unlabeled", {}).items() if k in manifest
+                    },
                 },
             )
             conn.execute(
