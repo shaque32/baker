@@ -21,7 +21,7 @@ from pathlib import Path
 from eval.stancedata.chat import build_item, item_rng, write_jsonl
 from eval.stancedata.families import family
 from eval.stancedata.model import GenItem
-from eval.train.scenes_c import pick_scenario
+from eval.train.scenes_c import pick_scenario, takes_fact
 
 GENERATOR = "eval.train 1.0.0"
 SOURCE = "train_gen"
@@ -35,10 +35,13 @@ def generate(n: int, seed: int) -> list[GenItem]:
     group can be left with fewer siblings than the scenario made; it keeps its Tg id.
     """
     items: list[GenItem] = []
+    slot = 0  # fact scenarios built so far; fact_pool spreads the facts evenly over it
     while len(items) < n:
         first = len(items) + 1
         rng = item_rng(GENERATOR, seed, first)
-        chat, specs = pick_scenario(rng)(rng)
+        scenario = pick_scenario(rng)
+        chat, specs = scenario(rng, slot)
+        slot += takes_fact(scenario)
         group = f"Tg{first:06d}" if len(specs) > 1 else None
         for spec in specs:
             if len(items) >= n:

@@ -292,11 +292,20 @@ class Party:
 
     @property
     def pron(self) -> str:
-        return self.person.pron if self.account.owner or self.account.label else "they"
+        """An assumption never genders an account: 'they' for every party."""
+        return "they"
 
     @property
     def end(self) -> str:
         return self.person.end
+
+
+def third_party(rng: random.Random, lang: str, taken: set[str]) -> Person:
+    """A person a record can mention by first name who is not one of the chat's members."""
+    p = person(rng, lang)
+    while p.name in taken:
+        p = person(rng, lang)
+    return p
 
 
 def cast(rng: random.Random, lang: str, extra: int = 0) -> tuple[str, Party, list[Party]]:

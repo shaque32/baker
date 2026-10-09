@@ -10,12 +10,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-PREFIX_EN = ("", "", "", "", "ok ", "btw ", "so ", "yo ", "update: ", "fyi ", "hey ", "ok so ",
-             "also ", "oh and ", "done. ", "k so ")  # fmt: skip
-SUFFIX_EN = ("", "", "", "", " lol", " btw", " 👍", "!!", " thx", " ok", ", finally", " haha",
-             "...", " fyi", ". done", " so yeah")  # fmt: skip
-PREFIX_RU = ("", "", "", "кароч ", "ну ", "слушай, ", "короче ", "всё, ", "ок ", "так, ", "а, ")
-SUFFIX_RU = ("", "", "", ")", "))", " лол", ", всё", " наконец-то", "!!", " ок", ", кароч")
+# Decorations: a line gets at most one, a prefix or a tail, and never a tail after a question
+# (`scenario.decorate`). Nothing here suggests completion, so a plan or a question stays one.
+PREFIX_EN = ("yo ", "hey ", "ok ", "k ", "btw ", "so ", "wait ", "lol ")
+SUFFIX_EN = (" lol", " haha", " ugh", " tbh", " fr", " 👍", "...")
+PREFIX_RU = ("ну ", "кароч ", "короче ", "слушай, ", "блин, ", "а, ")
+SUFFIX_RU = (" лол", ")", "))", " ахах", "...")
 
 # Generic small talk for any scene. ACK lines are short agreements that could read as an answer
 # to a question or a confirmation of a plan, so they never follow such a record (guide rule 13).
@@ -140,34 +140,51 @@ SELF_INTRO_RU = ("это {n}, новый номер", "привет, это {n}"
 
 @dataclass(frozen=True)
 class Debt:
-    """A debt the contact asserts against the owner; the owner disputes it in the context."""
+    """A debt the contact asserts against the owner; the owner disputes it in the context.
+
+    Every record carries an explicit verb ("owe", "должен{d}"); "{d}" is the owner's ending in
+    "должен"/"должна". `still` says whether the record itself says "still"/"ещё", so the
+    assumption adds no qualifier the record lacks.
+    """
 
     lang: str
     record: str  # "{v}" amount, "{x}" the thing
     things: tuple[str, ...]  # "ru|en" pairs for Russian, plain for English
     values: tuple[str, ...]
-    unit: str  # "${v}" or "{v} rubles"
+    still: bool
 
 
+THINGS_EN = ("tiles", "uhaul", "dj deposit", "car parts", "flight", "hotel", "brake job",
+             "gym pass", "movers", "venue", "cake", "paint", "concert tickets", "storage unit",
+             "vet bill", "groceries", "airbnb", "lumber")  # fmt: skip
+THINGS_RU = ("плитку|tiles", "газель|van", "диджея|DJ", "запчасти|car parts", "билет|ticket",
+             "отель|hotel", "торт|cake", "краску|paint", "дрель|drill", "бензин|gas")  # fmt: skip
 DEBTS = (
-    Debt("en", "u still owe me {v} for the {x}",
-         ("tiles", "uhaul", "dj deposit", "car parts", "flight", "hotel", "brake job", "gym pass"),
-         ("80", "150", "200", "300", "450"), "${v}"),
-    Debt("en", "{v} for the {x}, dont forget", ("tiles", "uhaul", "car parts", "hotel", "cake"),
-         ("90", "120", "250", "400"), "${v}"),
-    Debt("en", "still waiting on the {v} u owe me for the {x}",
-         ("movers", "flight", "deposit", "brake job", "venue"),
-         ("100", "200", "350", "500"), "${v}"),
-    Debt("en", "u still owe me {v} for the {x}, its been 3 weeks",
-         ("tiles", "dj", "uhaul", "hotel"), ("150", "220", "300"), "${v}"),
-    Debt("ru", "с тебя ещё {v} за {x}",
-         ("плитку|tiles", "газель|van rental", "диджея|DJ", "запчасти|car parts", "билет|ticket",
-          "отель|hotel"), ("3000", "5000", "8000", "12000"), "{v} rubles"),
-    Debt("ru", "с тебя ещё {v} за {x}, уже три недели",
-         ("плитку|tiles", "запчасти|car parts", "отель|hotel", "торт|cake"),
-         ("4000", "6000", "10000"), "{v} rubles"),
-    Debt("ru", "{v} за {x} не забудь", ("газель|van rental", "диджея|DJ", "билет|ticket"),
-         ("2500", "5000", "7000"), "{v} rubles"),
+    Debt("en", "u still owe me {v} for the {x}", THINGS_EN, ("80", "150", "200", "300", "450"),
+         True),
+    Debt("en", "u owe me {v} for the {x}, dont forget", THINGS_EN, ("90", "120", "250", "400"),
+         False),
+    Debt("en", "still waiting on the {v} u owe me for the {x}", THINGS_EN,
+         ("100", "200", "350", "500"), True),
+    Debt("en", "u still owe me {v} for the {x}, its been 3 weeks", THINGS_EN, ("150", "220", "300"),
+         True),
+    Debt("en", "hey u owe me {v} for the {x}", THINGS_EN, ("60", "110", "180", "260"), False),
+    Debt("en", "dont forget u owe me {v} for the {x}", THINGS_EN, ("70", "130", "240", "380"),
+         False),
+    Debt("en", "u still owe me the {v} for the {x} btw", THINGS_EN, ("85", "160", "210", "320"),
+         True),
+    Debt("en", "reminder, u owe me {v} for the {x}", THINGS_EN, ("95", "140", "230", "410"), False),
+    Debt("en", "u owe me {v} for the {x}, i covered it", THINGS_EN, ("55", "125", "275", "360"),
+         False),
+    Debt("ru", "ты мне ещё должен{d} {v} за {x}", THINGS_RU, ("3000", "5000", "8000", "12000"),
+         True),
+    Debt("ru", "ты мне ещё должен{d} {v} за {x}, уже три недели", THINGS_RU,
+         ("4000", "6000", "10000"), True),
+    Debt("ru", "ты мне должен{d} {v} за {x}, не забудь", THINGS_RU, ("2500", "5000", "7000"),
+         False),
+    Debt("ru", "напоминаю, ты мне должен{d} {v} за {x}", THINGS_RU, ("3500", "4500", "9000"),
+         False),
+    Debt("ru", "ты мне всё ещё должен{d} {v} за {x}", THINGS_RU, ("2000", "6500", "11000"), True),
 )  # fmt: skip
 
 
@@ -182,52 +199,55 @@ class QA:
     claim: str  # what the answer, read with the question, plainly says; "{v}" slot
 
 
-# Claims are full clauses: "{p}" is the answering sender's pronoun, "{poss}" and "{obj}" its forms.
+# Claims are full clauses: "{p}" is the answering sender's pronoun ("they") and "{poss}" its
+# possessive. A claim uses only words the question or the answer carries, and a currency marker
+# ("${v}", "{v} rubles") only when one of them shows one.
 QAS = (
     QA("en", "did the tiles come?", ("yes, all {v}", "yep all {v}", "yeah all {v}, all here"),
        ("40", "60", "24"), "all {v} tiles came"),
-    QA("en", "how much was the plumber", ("{v}", "{v} bucks", "{v}, cash"), ("300", "400", "450"),
+    QA("en", "how much did the plumber cost", ("{v}", "{v} bucks", "{v}, cash"),
+       ("300", "400", "450"),
        "the plumber cost ${v}"),
-    QA("en", "did u pay the movers", ("yep, {v} cash", "yeah {v}", "paid, {v} cash"),
+    QA("en", "did u pay the movers", ("yep, paid {v} cash", "yeah paid, {v}", "paid, {v} cash"),
        ("400", "500", "650"), "{p} paid the movers ${v}"),
-    QA("en", "what time did u land", ("{v}", "{v} sharp", "{v}, just got my bag"),
+    QA("en", "what time did u land", ("{v}", "{v} sharp", "landed {v}, just got my bag"),
        ("4:40", "6:15", "noon"), "{p} landed at {v}"),
-    QA("en", "is the van ready", ("yeah picked it up at {v}", "yes got it at {v}", "got it at {v}"),
-       ("5", "6", "noon"), "{p} picked the van up at {v}"),
+    QA("en", "did u pick up the van", ("yeah picked it up at {v}", "yes picked it up at {v}",
+       "picked up at {v}"), ("5", "6", "noon"), "{p} picked the van up at {v}"),
     QA("en", "did ur cousin pay u back", ("yes, {v} on venmo", "yeah {v}, venmo", "yep {v}"),
-       ("100", "200", "250"), "{poss} cousin paid {obj} back ${v}"),
-    QA("en", "how many people r coming sat", ("{v} confirmed", "{v} so far", "{v}, final"),
-       ("40", "55", "70"), "{v} people confirmed for Saturday"),
+       ("100", "200", "250"), "{poss} cousin paid {v} back"),
+    QA("en", "how many people r coming saturday", ("{v} confirmed", "{v} so far", "{v}, final"),
+       ("40", "55", "70"), "{v} people were coming on Saturday"),
     QA("en", "did u sign the lease", ("signed it this morning, {v} floor", "yes, {v} floor",
        "yep this morning, the {v} floor one"), ("2nd", "3rd", "4th"),
-       "{p} signed the lease for the {v}-floor apartment"),
+       "{p} signed the lease for the {v} floor"),
     QA("en", "how much did the screen cost", ("{v}, took an hour", "{v}", "{v} flat"),
-       ("120", "150", "200"), "the screen repair cost ${v}"),
+       ("120", "150", "200"), "the screen cost ${v}"),
     QA("en", "did the kids get picked up", ("yes at {v}", "yeah, {v}", "yep right at {v}"),
        ("3", "3:15", "3:30"), "the kids were picked up at {v}"),
     QA("en", "how many clients today", ("{v}", "{v}, long day", "only {v}"), ("7", "9", "11"),
        "{p} had {v} clients that day"),
-    QA("en", "is rent paid", ("paid it on the {v}", "yes, on the {v}", "yep, went out the {v}"),
+    QA("en", "is rent paid", ("paid it on the {v}", "yes, paid on the {v}", "yep, paid the {v}"),
        ("1st", "3rd", "5th"), "{p} paid the rent on the {v}"),
-    QA("en", "did u get the deposit back", ("yes, {v} of it", "yeah {v}", "{v}, finally"),
+    QA("en", "did u get the deposit back", ("yes, {v} of it", "yeah {v}", "{v}, at last"),
        ("1000", "1200", "800"), "{p} got ${v} of the deposit back"),
     QA("en", "how many boxes left", ("{v}", "{v} i think.. no, {v} for sure", "just {v}"),
        ("6", "10", "12"), "{v} boxes were left"),
-    QA("en", "did u book the dj", ("yes, {v} deposit paid", "yep, {v} down", "booked, {v} deposit"),
-       ("200", "300", "500"), "{p} booked the DJ and paid a ${v} deposit"),
+    QA("en", "did u book the dj", ("yes, {v} deposit paid", "yep, {v} deposit down",
+       "booked, {v} deposit"), ("200", "300", "500"), "{p} booked the DJ for a ${v} deposit"),
     QA("ru", "плитку привезли?", ("да, все {v}", "ага, все {v}", "привезли, все {v}"),
-       ("40", "60", "24"), "all {v} tiles came"),
+       ("40", "60", "24"), "all {v} tiles were delivered"),
     QA("ru", "сколько взял сантехник", ("{v}", "{v} налом", "{v}, норм"), ("3000", "4000", "5000"),
-       "the plumber charged {v} rubles"),
+       "the plumber took {v} rubles"),
     QA("ru", "грузчикам заплатил{c}?", ("да, {v} налом", "ага, {v}", "заплатил{c}, {v}"),
        ("8000", "10000", "12000"), "{p} paid the movers {v} rubles"),
     QA("ru", "во сколько прилетел{c}", ("в {v}", "{v}", "в {v}, уже еду"),
        ("16:40", "18:15", "21:00"), "{p} landed at {v}"),
-    QA("ru", "сколько человек будет в субботу", ("{v} подтвердили", "{v} пока", "{v}, точно"),
-       ("40", "55", "70"), "{v} people confirmed for Saturday"),
-    QA("ru", "за квартиру заплатил{c}?", ("да, {v}-го", "ага, {v}-го скинул{c}", "{v}-го, да"),
-       ("5", "8", "10"), "{p} paid the rent on the {v}th"),
-    QA("ru", "сколько клиентов сегодня", ("{v}", "{v}, устал{c}", "всего {v}"), ("7", "9", "11"),
+    QA("ru", "сколько человек придёт в субботу", ("{v} подтвердили", "{v} пока", "{v}, точно"),
+       ("40", "55", "70"), "{v} people were coming on Saturday"),
+    QA("ru", "за квартиру заплатил{c}?", ("да, {v}-го", "ага, {v}-го заплатил{c}", "{v}-го, да"),
+       ("5", "8", "10"), "{p} paid for the apartment on the {v}th"),
+    QA("ru", "сколько клиентов сегодня", ("{v}", "{v}, устал{c}", "только {v}"), ("7", "9", "11"),
        "{p} had {v} clients that day"),
     QA("ru", "детей забрал{c}?", ("да, в {v}", "ага, {v}", "забрал{c}, в {v}"),
        ("15:00", "15:30", "16:00"), "{p} picked the kids up at {v}"),

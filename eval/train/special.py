@@ -1,9 +1,11 @@
 """Hand-written scenarios for the families a fact grammar cannot produce, English.
 
-Slots: {S} the record's sender as the phone shows it, {O} the other party, {pron} {poss} {obj}
-the sender's pronouns, {date} the record's local date, {prev} the day before, {clock} its local
-clock time, {month} its month and year, {x} and {y} from xs and ys (chosen together when both
-have the same length, else independently), {c} and {o} Russian endings.
+Slots: {S} the record's sender as the phone shows it, {O} the other party, {pron} and {poss}
+the sender's pronouns (always "they" and "their": an assumption genders nobody), {date} the
+record's local date, {prev} the day before, {next} the day after, {clock} its local clock time,
+{month} its month and year, {x} and {y} from xs and ys (chosen together when both have the same
+length, else independently; {X} and {Y} capitalized), {c} and {o} Russian endings. A claim
+names people and objects outright: never "the man", "it" or a relative time.
 """
 
 from __future__ import annotations
@@ -52,7 +54,7 @@ PRONOUN = (
     S(
         "ovr_pronoun",
         "bring that thing tmrw pls",
-        "{S} asked {O} to bring {y} the next day.",
+        "{S} asked {O} to bring {y} on {next}.",
         "'That thing' is never named in the record or the context shown.",
         ys=OBJECTS,
     ),
@@ -94,14 +96,14 @@ PRONOUN = (
     S(
         "ovr_pronoun",
         "they picked it up this morning",
-        "{y} was collected that morning.",
+        "{Y} was collected on the morning of {date}.",
         "'It' has no antecedent in the record or the context shown.",
         ys=OBJECTS,
     ),
     S(
         "ovr_pronoun",
         "ok its under the {x}, go",
-        "{S} told {O} that {y} was under the {x}.",
+        "{Y} was under the {x}.",
         "The record places 'it' but never says what 'it' is.",
         xs=PLACES,
         ys=OBJECTS,
@@ -119,7 +121,7 @@ CODE_WORD = (
     S(
         "ovr_code_word",
         "need {x} more of the {y}",
-        "'{y}' in {S}'s message means pills; {S} asked {O} for more pills.",
+        "'{y}' means pills; {S} asked {O} for {x} more pills.",
         "Nothing shown says '{y}' means anything other than {y}; the decoding is the assumption's.",
         xs=("2", "3", "5", "a few"),
         ys=("blue ones", "party favors", "snacks", "candy", "vitamins", "cookies"),
@@ -134,21 +136,21 @@ CODE_WORD = (
     S(
         "ovr_code_word",
         "got the {y}? im outside",
-        "'{y}' refers to the stolen cards; {S} asked whether {O} had them.",
+        "'{y}' refers to the stolen cards; {S} asked whether {O} had the stolen cards.",
         "The plain word is '{y}'; reading it as stolen cards needs outside knowledge.",
         ys=("groceries", "paperwork", "food", "stuff", "snacks"),
     ),
     S(
         "ovr_code_word",
         "the {y} is ready, swing by after 6",
-        "'{y}' means cocaine; {S} told {O} the cocaine was ready.",
+        "'{y}' means cocaine; {S} had cocaine ready for {O} after 6 p.m.",
         "The context shown does not establish that '{y}' stands for anything else.",
         ys=("food", "paperwork", "stuff", "candy"),
     ),
     S(
         "ovr_code_word",
         "left the {y} in the mailbox",
-        "{S} left drugs in the mailbox, calling them '{y}'.",
+        "{S} left drugs, called '{y}', in the mailbox.",
         "Nothing shown decodes '{y}'; the record says only that {y} was left.",
         ys=("groceries", "paperwork", "snacks", "candy"),
     ),
@@ -162,21 +164,21 @@ CODE_WORD = (
     S(
         "ovr_code_word",
         "can u do {x} plates by friday",
-        "'Plates' means stolen license plates; {S} ordered {x} of them for Friday.",
+        "'Plates' means stolen license plates; {S} ordered {x} stolen license plates for Friday.",
         "The record says 'plates'; nothing shown makes them license plates or stolen.",
         xs=("20", "30", "40"),
     ),
     S(
         "ovr_code_word",
         "ill have the {y} for u tmrw",
-        "'{y}' stands for counterfeit bills; {S} promised {O} counterfeit bills.",
+        "'{y}' stands for counterfeit bills; {S} promised {O} counterfeit bills for {next}.",
         "The reading of '{y}' as counterfeit bills comes from outside the chat.",
         ys=("paperwork", "party favors", "stuff", "groceries"),
     ),
     S(
         "ovr_code_word",
         "need the {y} by 9, big night",
-        "'{y}' means ecstasy; {S} asked {O} for ecstasy before 9 p.m.",
+        "'{y}' means ecstasy; {S} asked {O} for ecstasy before 9 p.m. on {date}.",
         "Nothing in the record or context shown gives '{y}' a hidden meaning.",
         ys=("candy", "party favors", "snacks", "vitamins"),
     ),
@@ -186,14 +188,14 @@ DIFFERENT_TOPIC = (
     S(
         "ovr_different_topic",
         "the parts are in, come get them",
-        "{S} told {O} that drugs were ready for pickup.",
+        "{S} had drugs ready for {O} to pick up.",
         "The context is a bike repair; the words fit the assumption only out of context.",
         before=(("o", "hows the bike coming along"), ("c", "chain and both tires, told u")),
     ),
     S(
         "ovr_different_topic",
         "its here, {x} boxes, back of the shop",
-        "{S} told {O} that {x} kilos had arrived at the shop.",
+        "{X} kilos of drugs were at the back of the shop.",
         "The context is a tile order; 'boxes' are boxes of tile unless something shows otherwise.",
         before=(("o", "did the tile order ship"),),
         xs=("6", "8", "12"),
@@ -201,15 +203,15 @@ DIFFERENT_TOPIC = (
     S(
         "ovr_different_topic",
         "{x} plates ready by 5",
-        "{S} had {x} stolen license plates ready by 5 p.m.",
+        "{S} had {x} stolen license plates ready by 5 p.m. on {date}.",
         "The context is catering; the plates are dinner plates in that reading.",
         before=(("c", "catering for sat is set"), ("o", "nice, how many")),
         xs=("40", "60", "80"),
     ),
     S(
         "ovr_different_topic",
-        "yeah {x} cash, come by tonight",
-        "{S} agreed to sell {O} drugs for ${x} that night.",
+        "yep ${x} cash, come by tonight",
+        "{S} agreed to sell {O} drugs for ${x} on {date}.",
         "The context shows the sale is a game console.",
         before=(("o", "u still selling the ps5"),),
         xs=("250", "300", "350"),
@@ -217,7 +219,7 @@ DIFFERENT_TOPIC = (
     S(
         "ovr_different_topic",
         "we pushed like 200 shots tonight",
-        "{S} sold 200 doses of a drug that night.",
+        "{S} sold 200 doses of a drug on {date}.",
         "The context is a bar shift; 'shots' are drinks in that reading.",
         before=(("o", "how was the shift"),),
     ),
@@ -238,7 +240,7 @@ DIFFERENT_TOPIC = (
     S(
         "ovr_different_topic",
         "cleaned him out, got full asking",
-        "{S} robbed a man.",
+        "{S} robbed the buyer of the car.",
         "The context is a car sale; 'cleaned him out' is about the price in that reading.",
         before=(("o", "how'd the car sale go"),),
     ),

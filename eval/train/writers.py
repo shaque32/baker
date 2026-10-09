@@ -7,19 +7,17 @@ assumption, the quote and the rationale. The stance is never here; it comes from
 from __future__ import annotations
 
 import random
-import re
 from dataclasses import dataclass
 from datetime import timedelta
 
 from core.contracts import AssumptionKind as K
 from eval.stancedata.chat import fictional_phone, long_date, pretty_phone
 from eval.stancedata.families import family
-from eval.train import filler
+from eval.train import facts as fx
 from eval.train.facts import Fact
 from eval.train.facts import claim as fact_claim
-from eval.train.facts import shown as fact_shown
 from eval.train.names import AREA_CODES, Party, full_name, person, telegram_id, username
-from eval.train.scenario import MOSCOW, Chat, clock12, hour12, month_year
+from eval.train.scenario import MOSCOW, Chat, clock12, decorate, hour12
 
 
 @dataclass(frozen=True)
@@ -39,29 +37,9 @@ def kind_of(rng: random.Random, fam: str) -> K:
     return rng.choice(family(fam).kinds)
 
 
-DONE_WORDS = {"done", "finally", "всё", "наконец"}
-
-
-def wrap(rng: random.Random, core: str, lang: str, done_ok: bool = True) -> str:
-    """Casual prefix and suffix around the quotable core; both keep the core word-aligned.
-
-    Neither repeats a word next to it ("ok so so did u", "lol lol", "done. ... . done"). With
-    done_ok False (plans, conditions, questions, denials) neither can suggest completion.
-    """
-
-    def words(s: str) -> set[str]:
-        return set(re.findall(r"\w+", s.lower()))
-
-    def ok(s: str) -> bool:
-        return done_ok or not words(s) & DONE_WORDS
-
-    core_words = re.findall(r"\w+", core.lower())
-    head, tail = set(core_words[:1]), set(core_words[-1:])
-    pres = filler.PREFIX_RU if lang == "ru" else filler.PREFIX_EN
-    pre = rng.choice([p for p in pres if ok(p) and not words(p) & head])
-    sufs = filler.SUFFIX_RU if lang == "ru" else filler.SUFFIX_EN
-    suf = rng.choice([s for s in sufs if ok(s) and not words(s) & (words(pre) | tail)])
-    return f"{pre}{core}{suf}"
+def wrap(rng: random.Random, core: str, lang: str) -> str:
+    """At most one casual decoration around the quotable core, which stays word-aligned."""
+    return decorate(rng, core, lang, 0.5)
 
 
 def frame(rng: random.Random, c: Chat, pred: str, *, date: bool = False, meaning: bool = False,
@@ -172,13 +150,14 @@ def spec_sender_mismatch(rng: random.Random, c: Chat) -> Spec:
 
 def spec_handle_owner(rng: random.Random, c: Chat, pred: str, quote: str,
                       intro: bool) -> Spec | None:  # fmt: skip
-    """A real-person name attached to the sender's account; never to the owner's own account."""
+    """A real-person name attached to the sender's account; never to the owner's own account.
+
+    The assumption states the fact of the named person (guide rule 12), never a report.
+    """
     if c.sender.account.owner:
         return None
-    full, s, o, p = full_name(rng, c.sender.person), c.sender.who, c.other.who, c.sender.person.pron
-    forms = [f"{full} told {o} that {p} {pred}", f"{full} {pred}",
-             f"{full}, writing as {s}, told {o} that {p} {pred}",
-             f"{full} wrote to {o} that {p} {pred}"]  # fmt: skip
+    full, s = full_name(rng, c.sender.person), c.sender.who
+    forms = [f"{full} {pred}", f"{full} {pred}", f"{full}, writing as {s}, {pred}"]
     why = f"The record shows only {s}; nothing shown proves that account is {full}."
     if intro:
         why += " A self-introduction in the chat is not that proof."
@@ -186,29 +165,23 @@ def spec_handle_owner(rng: random.Random, c: Chat, pred: str, quote: str,
                 why)  # fmt: skip
 
 
-def spec_partial(rng: random.Random, c: Chat, f: Fact, v: str, quote: str) -> Spec | None:
+def spec_partial(rng: random.Random, c: Chat, f: Fact, v: str, quote: str,
+                 money: bool) -> Spec | None:  # fmt: skip
     if not f.extra:
         return None
-    extra, pred, s, o, p = (
-        rng.choice(f.extra),
-        fact_claim(f, v),
-        c.sender.who,
-        c.other.who,
-        c.sender.pron,
-    )
-    forms = [f"{s} {pred} and {extra}", f"{s} told {o} that {p} {pred} and {extra}"]
-    why = f"The record shows only that {p} {pred}; nothing shown establishes that {p} {extra}."
+    extra, pred, s = rng.choice(f.extra), fact_claim(f, v, money), c.sender.who
+    forms = [f"{s} {pred} and {extra}", f"{s} {pred} and also {extra}"]
+    why = f"The record shows only that they {pred}; nothing shown establishes that they {extra}."
     return Spec("ovr_partial", K.EVENT, cap(rng.choice(forms)), quote, why)
 
 
-def spec_count(rng: random.Random, c: Chat, f: Fact, v: str, quote: str) -> Spec | None:
-    if not f.general:
+def spec_count(rng: random.Random, c: Chat, f: Fact, v: str, quote: str,
+               money: bool) -> Spec | None:  # fmt: skip
+    g = fx.general(f, rng, v, money)
+    if g is None:
         return None
-    g = rng.choice(f.general).replace("{v}", fact_shown(f, v))
-    s, o, p = c.sender.who, c.other.who, c.sender.pron
-    forms = [f"{s} {g}", f"{s} told {o} that {p} {g}"]
     why = "The record shows one instance; the other occasions the assumption asserts are not shown."
-    return Spec("ovr_count", K.COMPLETENESS, cap(rng.choice(forms)), quote, why)
+    return Spec("ovr_count", K.COMPLETENESS, cap(f"{c.sender.who} {g}"), quote, why)
 
 
 def spec_contact(rng: random.Random, c: Chat) -> Spec | None:
@@ -262,34 +235,23 @@ def other_party(rng: random.Random, c: Chat) -> tuple[str, Party | None]:
     return f"the Instagram account {username(rng, p)}", None
 
 
-TIME_EVENTS = ("landed in Denver at {t}", "called the owner at {t}", "left the gym at {t}",
-               "arrived at the restaurant at {t}", "got to the airport at {t}")  # fmt: skip
-ABSENT_WORDS = ("groceries", "party favors", "candy", "paperwork", "vitamins", "the blue ones")
+TIME_EVENTS = ("landed in Denver at {t}", "left the gym at {t}", "got to the airport at {t}",
+               "arrived at the restaurant at {t}", "closed the shop at {t}",
+               "dropped the kids at school at {t}")  # fmt: skip
 
 
 def spec_irrelevant(rng: random.Random, c: Chat, fam: str, g: Fact, same_person: bool) -> Spec:
-    """An assumption the record does not bear on, in any assumption kind."""
-    kind = kind_of(rng, fam)
-    if same_person:
-        subj, pron = c.sender.who, c.sender.pron
-    else:
-        subj, p = other_party(rng, c)
-        pron = p.pron if p else "they"
-    v = rng.choice(g.values)
-    if kind == K.EVENT:
-        a = rng.choice(
-            [f"{subj} {fact_claim(g, v)}", f"{subj} told the owner that {pron} {fact_claim(g, v)}"]
-        )
-    elif kind == K.IDENTITY:
-        a = f"{subj} belongs to {full_name(rng, person(rng, 'ru' if c.lang == 'ru' else 'en'))}"
-    elif kind == K.TIME:
+    """An assumption the record does not bear on: a plain unrelated fact (an event, an amount, a
+    place or a time), never a contact pattern or an identity link, which the excerpt itself could
+    bear on."""
+    kinds = [k for k in family(fam).kinds if k in (K.EVENT, K.TIME)] or [K.EVENT]
+    kind = rng.choice(kinds)
+    subj = c.sender.who if same_person else other_party(rng, c)[0]
+    if kind == K.TIME:
         t = clock12(c.local.replace(hour=rng.randrange(24), minute=rng.randrange(60)))
         a = f"{subj} {rng.choice(TIME_EVENTS).format(t=t)} on {long_date(c.day)}"
-    elif kind == K.MEANING:
-        w = rng.choice([x for x in ABSENT_WORDS if x not in c.record.text.lower()])
-        a = f"by '{w}' in the chat, {subj} meant drugs"
     else:
-        a = f"the owner and {subj} exchanged messages every day in {month_year(c.day)}"
+        a = f"{subj} {fact_claim(g, rng.choice(g.values))}"
     why = "The record is about a different matter and does not bear on the assumption."
     if not same_person:
         why = ("The record is about a different matter and a different account; it does not "

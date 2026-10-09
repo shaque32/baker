@@ -17,10 +17,12 @@ from eval.train.names import Party
 TZS_US = ("America/New_York", "America/New_York", "America/New_York", "America/New_York",
           "America/Chicago", "America/Los_Angeles")  # fmt: skip
 MOSCOW = "Europe/Moscow"
-FIRST_DAY = date(2025, 6, 1)
-LAST_DAY = date(2026, 12, 20)
+# Records fall in 2024-01-03 .. 2026-09-27; context lines sit at most two days away, so every
+# line falls in 2024-01-01 .. 2026-09-30 and nothing is dated after the day the set was built.
+FIRST_DAY = date(2024, 1, 3)
+LAST_DAY = date(2026, 9, 27)
 SPRING_DST = date(2026, 3, 8)
-FALL_DST = date(2026, 11, 1)
+FALL_DST = date(2025, 11, 2)
 
 Line = tuple[str, str]  # (who, text): "o" owner, "c" contact, "c2" second contact
 
@@ -149,25 +151,22 @@ def fill_ends(text: str, owner: Party, contact: Party) -> str:
     return text.replace("{c}", contact.end).replace("{o}", owner.end)
 
 
-FILLER_PREFIX_EN = ("btw ", "yo ", "hey ", "also ", "oh ", "so ", "wait ")
-FILLER_SUFFIX_EN = (" lol", " haha", "...", "!!", " btw", " ugh")
-FILLER_PREFIX_RU = ("кароч ", "ну ", "слушай, ", "а, ", "короче ", "блин, ")
-FILLER_SUFFIX_RU = (")", "))", " лол", "!!", "...")
-
-
 def _words(s: str) -> set[str]:
     return set(s.lower().replace(",", " ").split())
 
 
-def decorate(rng: random.Random, text: str, lang: str) -> str:
-    """A casual prefix or suffix on about half the lines, never repeating a word of the line."""
-    pres, sufs = ((FILLER_PREFIX_RU, FILLER_SUFFIX_RU) if lang == "ru"
-                  else (FILLER_PREFIX_EN, FILLER_SUFFIX_EN))  # fmt: skip
+def decorate(rng: random.Random, text: str, lang: str, p: float = 0.5) -> str:
+    """At most one casual decoration on a line: a prefix or a tail, each with probability p/2.
+
+    A tail never follows a question, and neither repeats a word of the line ("lol lol").
+    """
+    pres, sufs = (filler.PREFIX_RU, filler.SUFFIX_RU) if lang == "ru" else (
+        filler.PREFIX_EN, filler.SUFFIX_EN)  # fmt: skip
     roll = rng.random()
-    if roll < 0.25:
-        return rng.choice([p for p in pres if not _words(p) & _words(text)]) + text
-    if roll < 0.5 and not text.endswith("?"):
-        return text + rng.choice([s for s in sufs if not _words(s) & _words(text)])
+    if roll < p / 2:
+        return rng.choice([x for x in pres if not _words(x) & _words(text)]) + text
+    if roll < p and not text.rstrip(" )").endswith("?"):
+        return text + rng.choice([x for x in sufs if not _words(x) & _words(text)])
     return text
 
 
