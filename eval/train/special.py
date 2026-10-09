@@ -61,7 +61,7 @@ PRONOUN = (
     S(
         "ovr_pronoun",
         "did u get rid of it yet",
-        "{S} asked {O} whether {O} had gotten rid of {y}.",
+        "{S} asked {O} whether they had gotten rid of {y}.",
         "'It' is unresolved in everything shown; the assumption supplies the object.",
         ys=OBJECTS,
     ),
@@ -82,7 +82,7 @@ PRONOUN = (
     S(
         "ovr_pronoun",
         "dont touch that till i get there",
-        "{S} told {O} not to touch {y} before {S} arrived.",
+        "{S} told {O} not to touch {y} before they arrived.",
         "'That' is not resolved by the record or the context shown.",
         ys=OBJECTS,
     ),
@@ -111,7 +111,7 @@ PRONOUN = (
     S(
         "ovr_pronoun",
         "did u bring the thing",
-        "{S} asked {O} whether {O} had brought {y}.",
+        "{S} asked {O} whether they had brought {y}.",
         "'The thing' is unresolved; the assumption names the object itself.",
         ys=OBJECTS,
     ),
@@ -129,14 +129,14 @@ CODE_WORD = (
     S(
         "ovr_code_word",
         "bring the {y} when u come",
-        "By '{y}' {S} meant drugs; {S} asked {O} to bring drugs.",
+        "By '{y}' {S} meant drugs and asked {O} to bring drugs.",
         "The record says '{y}'; no context shown gives it a hidden meaning.",
         ys=("groceries", "paperwork", "party favors", "food", "candy", "stuff"),
     ),
     S(
         "ovr_code_word",
         "got the {y}? im outside",
-        "'{y}' refers to the stolen cards; {S} asked whether {O} had the stolen cards.",
+        "'{y}' refers to stolen cards; {S} asked whether {O} had the cards.",
         "The plain word is '{y}'; reading it as stolen cards needs outside knowledge.",
         ys=("groceries", "paperwork", "food", "stuff", "snacks"),
     ),
@@ -164,14 +164,14 @@ CODE_WORD = (
     S(
         "ovr_code_word",
         "can u do {x} plates by friday",
-        "'Plates' means stolen license plates; {S} ordered {x} stolen license plates for Friday.",
+        "'Plates' means stolen license plates; {S} ordered {x} such plates for Friday.",
         "The record says 'plates'; nothing shown makes them license plates or stolen.",
         xs=("20", "30", "40"),
     ),
     S(
         "ovr_code_word",
         "ill have the {y} for u tmrw",
-        "'{y}' stands for counterfeit bills; {S} promised {O} counterfeit bills for {next}.",
+        "'{y}' stands for counterfeit bills; {S} promised {O} the bills for {next}.",
         "The reading of '{y}' as counterfeit bills comes from outside the chat.",
         ys=("paperwork", "party favors", "stuff", "groceries"),
     ),

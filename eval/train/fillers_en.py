@@ -66,7 +66,7 @@ SCENE_EN: dict[str, tuple[str, ...]] = {
         "the jack is under the back seat",
         "the e-zpass is in the visor",
         "can u move the car before 8, street cleaning",
-        "the mechanic only speaks spanish fyi",
+        "heads up the mechanic only speaks spanish",
     ),  # fmt: skip
     "moving": (
         "how many boxes r left in the hallway",
@@ -232,7 +232,7 @@ SCENE_EN: dict[str, tuple[str, ...]] = {
         "is it buzz or scissors for u",
         "the chair by the window is the good one",
         "she wants u to come with clean hair",
-        "the braids take 4 hours fyi",
+        "heads up the braids take 4 hours",
         "the barber shop is cash only",
         "they close early on sundays",
     ),  # fmt: skip

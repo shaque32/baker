@@ -31,7 +31,7 @@ PRONOUN_RU = (
     S(
         "ovr_pronoun",
         "ты это уже выбросил{o}?",
-        "{S} asked {O} whether {O} had thrown {y} away.",
+        "{S} asked {O} whether they had thrown {y} away.",
         "'Это' has no antecedent in the record or the context shown.",
         ys=OBJECTS_RU,
         lang="ru",
@@ -76,7 +76,7 @@ CODE_WORD_RU = (
         "нужно ещё {x} {y}",
         "'{y}' means pills; {S} asked {O} for more pills.",
         "Nothing shown decodes '{y}'; the record asks for {y}.",
-        xs=("две", "три", "пять"),
+        xs=("две", "три", "четыре"),  # 2 to 4 take these forms; 5 and up would need "коробок"
         ys=("конфеты", "витаминки", "коробки"),
         lang="ru",
     ),
@@ -98,7 +98,7 @@ CODE_WORD_RU = (
     S(
         "ovr_code_word",
         "бумаги будут завтра",
-        "'Бумаги' means forged documents; {S} promised {O} forged documents for {next}.",
+        "'Бумаги' means forged documents; {S} promised {O} the documents for {next}.",
         "The record says 'бумаги' (papers); forged is the assumption's own reading.",
         lang="ru",
     ),
@@ -154,7 +154,7 @@ JOKE_RU = (
     ),
     S(
         "ovr_joke",
-        "почку продал{c} ахах",
+        "да почку продал{c} ахах",
         "{S} sold a kidney.",
         "The sender answers a question about money with an obvious joke, marked by 'ахах'.",
         before=(("o", "откуда новые диски"),),

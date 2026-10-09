@@ -7,6 +7,7 @@ record. Writers read its local date and clock from the zone, never from UTC.
 from __future__ import annotations
 
 import random
+import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
@@ -158,14 +159,20 @@ def _words(s: str) -> set[str]:
 def decorate(rng: random.Random, text: str, lang: str, p: float = 0.5) -> str:
     """At most one casual decoration on a line: a prefix or a tail, each with probability p/2.
 
-    A tail never follows a question, and neither repeats a word of the line ("lol lol").
+    A tail never follows a question or a short reply ("no tbh", "nothing else fr": the line's
+    last clause must have three words), and neither repeats a word of the line ("lol lol").
     """
     pres, sufs = (filler.PREFIX_RU, filler.SUFFIX_RU) if lang == "ru" else (
         filler.PREFIX_EN, filler.SUFFIX_EN)  # fmt: skip
     roll = rng.random()
     if roll < p / 2:
-        return rng.choice([x for x in pres if not _words(x) & _words(text)]) + text
-    if roll < p and not text.rstrip(" )").endswith("?"):
+        # No prefix repeats a word of the line, and "so" never lands before "yeah" ("so yeah").
+        starts_yes = text.startswith(("yeah", "yep", "yes"))
+        pres = [x for x in pres if not _words(x) & _words(text) and not (x == "so " and starts_yes)]
+        return rng.choice(pres) + text
+    last_clause = re.split(r"[,;:]", re.sub(r"\{[^}]*\}", "", text))[-1]  # "{o}" is an ending
+    short = len(re.findall(r"[^\W\d_]+", last_clause)) < 3
+    if roll < p and not short and not text.rstrip(" )").endswith("?"):
         return text + rng.choice([x for x in sufs if not _words(x) & _words(text)])
     return text
 

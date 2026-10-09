@@ -10,7 +10,11 @@ the pairs are listed in eval/train/glossary.py). "{l}" is the speaker's past-ten
 
 from __future__ import annotations
 
+import re
+
 from eval.train.facts import CONDITIONS_RU, Fact
+
+DATED_RU = re.compile(r"понедельник|вторник|сред|четверг|пятниц|суббот|воскресень")
 
 
 def R(key: str, scene: str, claim: str, claim_base: str, values: tuple[str, ...], *, past: str,
@@ -19,14 +23,22 @@ def R(key: str, scene: str, claim: str, claim_base: str, values: tuple[str, ...]
     pm, pk = past.replace("{l}", "{m}"), past.replace("{l}", "{k}")
     if not exact:
         exact = (f"{past} {obj.replace('{v}', 'ровно {v}')}, ни больше ни меньше",)
+    # An act that names its own day ("в понедельник", "5-го") takes no second time word.
+    dated = "-го" in obj or any(DATED_RU.search(v) for v in values)
+    plan = (
+        (f"{fut} {obj} после работы", f"{fut} {obj}, обещаю", f"обязательно {fut} {obj}",
+         f"{fut} {obj}, точно")
+        if dated
+        else (f"завтра {fut} {obj}", f"{fut} {obj} на неделе", f"{fut} {obj} после работы",
+              f"{fut} {obj}, обещаю")
+    )  # fmt: skip
     return Fact(
         key, scene, "ru", "", "", claim, claim_base, values, shown=shown, exact=exact,
         extra=extra, general=general,
         done=(f"{past} {obj}", f"{obj} {past}", f"я {past} {obj}", f"да, {past} {obj}"),
         neg=(f"не {past} {obj}", f"{obj} не {past}", f"так и не {past} {obj}",
              f"нет, не {past} {obj}"),
-        plan=(f"завтра {fut} {obj}", f"{fut} {obj} на неделе", f"{fut} {obj} после работы",
-              f"{fut} {obj}, обещаю"),
+        plan=plan,
         cond=tuple(f"{c}, {fut} {obj}" for c in CONDITIONS_RU)
         + tuple(f"{fut} {obj}, {c}" for c in CONDITIONS_RU),
         q=(f"ты {pm} {obj}?", f"{obj} {pm}?", f"{pm} {obj}? да или нет", f"а ты {pm} {obj}?"),
@@ -48,7 +60,7 @@ FACTS_RU: tuple[Fact, ...] = (
       ("8000", "10000", "12000"), past="заплатил{l}", fut="заплачу", obj="электрику {v}",
       extra=("got a receipt",)),
     R("ru_tiles", "repair", "picked up {v} boxes of tile from the warehouse",
-      "pick up {v} boxes of tile from the warehouse", ("4", "6", "8", "10"), past="забрал{l}",
+      "pick up {v} boxes of tile from the warehouse", ("6", "8", "10", "12"), past="забрал{l}",
       fut="заберу", obj="{v} коробок плитки со склада", extra=("paid for the tile in cash",)),
     R("ru_window", "repair", "paid {v} rubles for the window installation",
       "pay {v} rubles for the window installation", ("15000", "20000", "25000"),

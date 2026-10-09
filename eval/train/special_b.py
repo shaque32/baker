@@ -71,7 +71,7 @@ JOKE = (
     ),
     S(
         "ovr_joke",
-        "yep blind drunk, hit 3 mailboxes lol",
+        "yep blind drunk, hit three mailboxes lol",
         "{S} drove home drunk after the party.",
         "'Lol' marks the record as a joke; nothing shown treats it as real.",
         before=(("o", "u drove home after the party right?"),),

@@ -88,7 +88,7 @@ def sc_group(rng: random.Random, slot: int) -> Result:
     c1, pred = c.contacts[0], fx.claim(f, st.v, fx.has_marker(core))
     a = rng.choice([f"{c1.who} wrote in the group chat that they {pred}",
                     f"in the group chat, {c1.who} said they {pred}",
-                    f"{c1.who} {pred}, as {c1.who} wrote in the group"])  # fmt: skip
+                    f"{c1.who} {pred}, as they wrote in the group"])  # fmt: skip
     why = f"The sender line shows {c.record.account.sender}; {c1.who} did not write it."
     lead = Spec("con_other_speaker", kind_of(rng, "con_other_speaker"), cap(a), core, why)
     plain = spec_plain(rng, c, pred, core, plain_why(c))
@@ -147,7 +147,7 @@ def sc_disputed(rng: random.Random, slot: int) -> Result:
                 core, "The record asserts the debt and the owner disputes it in the next line, so "
                 "neither side is established.")  # fmt: skip
     plain = Spec("sup_plain", K.EVENT,
-                 cap(f"{s} told the owner that the owner {still}owed {amount} for the {x_en}"),
+                 cap(f"{s} told the owner that they were {still}owed {amount} for the {x_en}"),
                  core, "The record states the demand in plain words; the owner's reply disputes "
                  "the debt, not that the demand was made.")  # fmt: skip
     return c, siblings(rng, lead, [plain], 0.6, 1)

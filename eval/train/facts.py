@@ -54,7 +54,7 @@ CONDITIONS = (
     ("{n} shows up", "{N} showed up"),
     ("i get paid friday", "{p} got paid friday"),
     ("the price is right", "the price was right"),
-    ("ur there by 6", "{o} was there by 6"),
+    ("{n} is there by 6", "{N} was there by 6"),
     ("{n} brings the receipt", "{N} brought the receipt"),
     ("my check clears", "{poss} check cleared"),
     ("{n} calls back", "{N} called back"),
@@ -125,10 +125,29 @@ def negated(f: Fact, rng: random.Random, v: str, end: str = "") -> str:
     )
 
 
+DATED = re.compile(
+    r"\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|\bon the \d+(st|nd|rd|th)\b"
+)
+
+
 def planned(f: Fact, rng: random.Random, v: str, end: str = "") -> str:
+    """A plan; an act that names its own day takes no second time word ("on friday tmrw")."""
     if f.plan:
         return _fill(rng.choice(f.plan), v=v, l=end)
     act = _fill(f.act, v=v)
+    if DATED.search(act):
+        return rng.choice(
+            (
+                f"gonna {act}",
+                f"will {act}",
+                f"ill {act}",
+                f"planning to {act}",
+                f"ima {act}",
+                f"ill {act} for sure",
+                f"gonna {act}, promise",
+                f"will {act}, dont worry",
+            )
+        )
     return rng.choice(
         (
             f"gonna {act} tmrw",
@@ -185,7 +204,7 @@ def hedged(f: Fact, rng: random.Random, v: str, end: str = "") -> str:
             f"{acted} i think",
             f"{acted}, like 90% sure",
             f"if i remember right i {acted}",
-            f"probably {acted}, cant remember tbh",
+            f"probably {acted}, cant really remember tbh",
             f"i believe i {acted}, not certain",
         )
     )

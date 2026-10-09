@@ -359,7 +359,7 @@ def test_record_templates_are_spread_out(many: list[GenItem]) -> None:
 FRAME = set(
     "told owner that they their would asked whether thought without being sure said says wrote "
     "texted messaged message messages sent came from exchanged were contact between before after "
-    "morning afternoon evening night read plainly states group chat answer question confirmed "
+    "morning afternoon evening night states group chat answer question confirmed "
     "according telegram user shown instagram account saved personally typed usual someone else "
     "noon midnight into than with january february march april may june july august september "
     "october november december".split()
@@ -421,3 +421,108 @@ def test_slang_pairs_never_back_a_supports_item(items: list[GenItem]) -> None:
             tokens = re.findall(r"[^\W\d_]+", text)
             for ru, _ in SLANG:
                 assert not _ru_hit(ru, text, tokens), (ru, it.target.text)
+
+
+# --- round 3: wording leftovers an expert would notice ------------------------------------
+
+PARTY = re.compile(
+    r"the owner|the contact saved as \S+|Telegram user \d+|"
+    r"the (?:Instagram|Telegram|Signal|WhatsApp) account \S+|\+1 \d{3}-\d{3}-\d{4}"
+)
+NOUN_STOP = set(
+    "the a an and or to of for in on at with as that by from up out into than if so but was "
+    "were is are be had has have did do not no they their them it its this who whether would "
+    "said told says wrote texted asked before after until when while about back more less off "
+    "such на в и не за с к у по из от до о а но что это как ещё уже".split()
+)
+RU_NUMERAL = {"один": 1, "одна": 1, "два": 2, "две": 2, "три": 3, "четыре": 4, "пять": 5,
+              "шесть": 6, "семь": 7, "восемь": 8, "девять": 9, "десять": 10}  # fmt: skip
+RU_COUNTED = re.compile(
+    r"\b(\d+|одна|один|два|две|три|четыре|пять|шесть|семь|восемь|девять|десять) "
+    r"(коробк\w*|конфет\w*|витамин\w*|тренировок|занятий|часов|человек|минут\w*)\b"
+)
+RU_FORMS = {"коробк": ("коробка", "коробки", "коробок"), "конфет": ("конфета", "конфеты", "конфет"),
+            "витамин": ("витаминка", "витаминки", "витаминок"),
+            "минут": ("минута", "минуты", "минут")}  # fmt: skip
+SEASONAL = {"merry christmas": {12}, "happy new year": {12, 1}, "happy thanksgiving": {11},
+            "с новым годом": {12, 1}, "с рождеством": {12, 1}}  # fmt: skip
+WEEKDAY = re.compile(r"\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|"
+                     r"понедельник|вторник|среду|четверг|пятницу|субботу|воскресенье")  # fmt: skip
+RELATIVE_DAY = re.compile(r"\b(this weekend|tmrw|tomorrow|tonight)\b|\bзавтра\b|\bна неделе\b")
+WORD_TAIL = re.compile(r"\s*(lol|haha|ugh|tbh|fr|👍|лол|ахах|\.\.\.)$")
+
+
+def _count_class(num: str) -> int:
+    """0: the singular, 1: the form after 2 to 4, 2: the genitive plural (5 and up, 11 to 14)."""
+    n = RU_NUMERAL.get(num) or int(num)
+    if n % 100 in range(11, 15) or n % 10 == 0 or n % 10 >= 5:
+        return 2
+    return 0 if n % 10 == 1 else 1
+
+
+def test_no_read_plainly_prefix(items: list[GenItem]) -> None:
+    for it in items:
+        assert "read plainly" not in it.assumption.lower(), it.assumption
+
+
+def test_party_named_once_per_assumption(items: list[GenItem]) -> None:
+    # "X paid 45, as X wrote in the group": the second mention of a party is "they".
+    for it in items:
+        counts = Counter(PARTY.findall(it.assumption))
+        assert all(n == 1 for n in counts.values()), (counts, it.assumption)
+
+
+def test_no_repeated_noun_phrase_in_assumption(items: list[GenItem]) -> None:
+    # "bought the Honda ... and paid cash for the honda": no two-word phrase appears twice.
+    for it in items:
+        toks = _tokens(re.sub(r"\b[ap]\.m\.", " ", _bare(it.assumption)))
+        pairs = Counter(
+            (x, y)
+            for x, y in zip(toks, toks[1:], strict=False)
+            if x not in NOUN_STOP and y not in NOUN_STOP
+        )
+        assert all(n == 1 for n in pairs.values()), (pairs, it.assumption)
+
+
+def test_russian_numerals_agree_with_nouns(items: list[GenItem]) -> None:
+    # 2 to 4 take "коробки", 5 and up (and 11 to 14) take "коробок".
+    for it in items:
+        for ln in it.lines():
+            for num, noun in RU_COUNTED.findall(ln.text.lower()):
+                cls = _count_class(num)
+                stem = next((s for s in RU_FORMS if noun.startswith(s)), None)
+                if stem:
+                    assert noun == RU_FORMS[stem][cls], (num, noun, ln.text)
+                else:  # nouns the pools only use in the genitive plural
+                    assert cls == 2, (num, noun, ln.text)
+
+
+def test_seasonal_greetings_match_the_month(items: list[GenItem]) -> None:
+    for it in items:
+        for ln in it.lines():
+            month = int(ln.local_time[5:7])
+            for greeting, months in SEASONAL.items():
+                assert greeting not in ln.text.lower() or month in months, (ln.text, ln.local_time)
+
+
+def test_no_fyi_in_any_line(items: list[GenItem]) -> None:
+    for it in items:
+        for ln in it.lines():
+            assert not re.search(r"\bfyi\b", ln.text.lower()), ln.text
+
+
+def test_weekday_never_pairs_with_a_relative_day(items: list[GenItem]) -> None:
+    # "on friday this weekend": a record that names its day takes no second time word.
+    for it in items:
+        t = it.target.text.lower()
+        assert not (WEEKDAY.search(t) and RELATIVE_DAY.search(t)), it.target.text
+
+
+def test_tails_never_follow_short_replies(items: list[GenItem]) -> None:
+    # "no tbh", "nothing else fr": a tail never follows a clause of fewer than three words.
+    for it in items:
+        for ln in it.lines():
+            m = WORD_TAIL.search(ln.text)
+            if m and m.start() > 0:  # a bare "lol" or "fr" is the whole reply, not a tail
+                last = re.split(r"[,;:]", ln.text[: m.start()])[-1]
+                assert len(re.findall(r"[^\W\d_]+", last)) >= 3, ln.text

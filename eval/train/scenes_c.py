@@ -150,6 +150,9 @@ def sc_special(rng: random.Random, slot: int) -> Result:
     return c, siblings(rng, lead, [irr], 0.2, 1)
 
 
+LAUGHS = {"lol", "haha", "lmaooo", "ахах", "ахахах", "лол"}
+
+
 def sc_pleasantry(rng: random.Random, slot: int) -> Result:
     lang = "ru" if rng.random() < 0.2 else "en"
     f = Fact("talk", "talk", lang, "", "", "", "", ("x",))
@@ -158,7 +161,9 @@ def sc_pleasantry(rng: random.Random, slot: int) -> Result:
     core = rng.choice(pool)
     if rng.random() < 0.4:  # two bits of small talk in one message, sharing no word
         words = set(re.findall(r"\w+", core.lower()))
-        rest = [x for x in pool if x != core and not words & set(re.findall(r"\w+", x.lower()))]
+        # The second bit is never a bare laugh ("thx, lol" would read as a tail).
+        rest = [x for x in pool if x != core and not words & set(re.findall(r"\w+", x.lower()))
+                and not set(re.findall(r"\w+", x.lower())) <= LAUGHS]  # fmt: skip
         core += rng.choice((" ", ", ")) + rng.choice(rest)
     c = finish(rng, st, core, do_wrap=False)
     lead = spec_irrelevant(rng, c, "irr_pleasantry", rng.choice(ALL_FACTS), rng.random() < 0.7)

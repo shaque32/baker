@@ -105,9 +105,9 @@ def sc_hear(rng: random.Random, slot: int) -> Result:
     why = (f"The sender only reports what {third.name.lower()} said; nothing shown confirms it "
            "first hand.")  # fmt: skip
     lead = Spec("cpl_hearsay", K.EVENT, cap(a), core, why)
-    # The supports sibling keeps the hearsay and names the third person twice rather than
-    # gendering anyone or leaving a pronoun open.
-    said = rng.choice([f"{n} said {n} {pred}", f"according to {n}, {n} {pred}"])
+    # The supports sibling keeps the hearsay; "they" is the third person just named, so nobody
+    # is gendered and no name is repeated.
+    said = rng.choice([f"{n} said they {pred}", f"{n} said that they {pred}"])
     plain = spec_plain(rng, c, said, core, plain_why(c), told_only=True, bare=True)
     return c, siblings(rng, lead, [plain], 0.5, 1)
 

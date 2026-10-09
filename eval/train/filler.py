@@ -52,7 +52,7 @@ NEUTRAL_EN = (
     "need anything from the store", "cant find parking anywhere", "ill be outside in 5",
     "taking the dog out brb", "u still at work?", "whats the gate code", "im at the pharmacy",
     "hold that thought", "my phone is about to die", "lost my charger again", "whats the wifi here",
-    "the line here is insane", "be there in 20", "i overslept lol", "my alarm didnt go off",
+    "the line here is insane", "be there in 20", "i overslept again lol", "my alarm didnt go off",
     "its so noisy in here, text me", "whos got my umbrella", "the deli is closed already",
 )  # fmt: skip
 ACK_RU = (
@@ -81,20 +81,21 @@ NEUTRAL_RU = (
     "дети наконец уснули", "я в холле", "на какой ветке ты", "из магазина что-нибудь надо?",
     "парковки нигде нет", "через 5 минут выйду", "с собакой выйду, сек", "ты ещё на работе?",
     "какой код от калитки", "я в аптеке", "телефон вот-вот сядет", "зарядку опять потерял{o}",
-    "какой тут вайфай", "очередь тут жесть", "буду через 20", "проспал{o} лол",
+    "какой тут вайфай", "очередь тут жесть", "буду через 20", "проспал{o} на час лол",
     "будильник не сработал", "тут шумно, пиши", "у кого мой зонт", "магазин уже закрыт",
 )  # fmt: skip
 
+# No seasonal or weekday greeting here: a line is placed on any date of the year.
 PLEASANTRIES_EN = (
-    "happy new year!!", "thx man", "good morning ☀️", "happy birthday!!!", "lol", "lol 😂😂",
-    "merry christmas", "night", "gn", "ty!!", "have a good one", "congrats!!", "safe travels",
+    "sleep well", "thx man", "good morning ☀️", "happy birthday!!!", "lol", "lol 😂😂",
+    "talk soon", "night", "gn", "ty!!", "have a good one", "congrats!!", "safe travels",
     "miss u", "feel better", "love u", "haha nice", "sup", "hey hey", "ok see u", "good luck tmrw",
-    "hows the fam", "happy friday", "thx 🙏", "lmaooo", "take care", "happy thanksgiving", "hbd!!",
+    "hows the fam", "drive safe", "thx 🙏", "lmaooo", "take care", "say hi to everyone", "hbd!!",
     "get home safe", "thinking of u", "yooo", "whats good", "long time!!", "ok bye", "ttyl",
 )  # fmt: skip
 PLEASANTRIES_RU = (
-    "с новым годом!!", "спс)", "доброе утро", "с днём рождения!!!", "ахах", "ну ок))", "спокойной",
-    "ну всё, давай", "удачи завтра", "как сам", "как семья", "с пятницей)", "береги себя",
+    "хорошего дня", "спс)", "доброе утро", "с днём рождения!!!", "ахах", "ну ок))", "спокойной",
+    "ну всё, давай", "удачи завтра", "как сам", "как семья", "до связи", "береги себя",
     "скучаю", "выздоравливай", "с праздником!", "ну ты даёшь))", "привет привет", "ок пока",
     "давно не виделись!!", "добрых снов", "ахахах жесть", "ну бывай",
 )  # fmt: skip

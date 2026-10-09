@@ -54,8 +54,8 @@ def frame(rng: random.Random, c: Chat, pred: str, *, date: bool = False, meaning
     pp = pred if bare else f"{c.sender.pron} {pred}"
     told = "wrote in the group chat that" if c.is_group() else f"told {o} that"
     if meaning:
-        forms = [f"the message from {s} to {o} says that {pp}",
-                 f"read plainly, the message from {s} states that {pp}"]  # fmt: skip
+        forms = [f"the message from {s} to {o} says that {pp}", f"{s} {told} {pp}",
+                 f"{s} wrote to {o} that {pp}"]  # fmt: skip
     else:
         forms = [f"{s} {told} {pp}", f"in a message to {o}, {s} said {pp}",
                  f"{s} wrote to {o} that {pp}", f"{s} texted {o} that {pp}"]  # fmt: skip
@@ -209,11 +209,17 @@ def spec_in_window(rng: random.Random, c: Chat) -> Spec:
     d1, d2 = long_date(c.day - timedelta(days=a)), long_date(c.day + timedelta(days=b))
     if rng.random() < 0.6:
         span = f"on {d1}" if a == b == 0 else f"between {d1} and {d2}"
-        text = f"there was no contact between the owner and {who} {span}"
+        text = rng.choice([f"there was no contact between the owner and {who} {span}",
+                           f"the owner and {who} did not message each other {span}",
+                           f"no message passed between the owner and {who} {span}"])  # fmt: skip
         why = f"The record is a message between them at {c.stamp}, inside that window."
     else:
         first = long_date(c.day + timedelta(days=rng.randint(1, 30)))
-        text = f"the first message between the owner and {who} was sent on {first}"
+        text = rng.choice([
+            f"the owner and {who} had no contact before {first}",
+            f"no message between the owner and {who} predates {first}",
+            f"the owner and {who} first messaged each other on {first}",
+        ])  # fmt: skip
         why = f"The record is a message between them at {c.stamp}, earlier than that date."
     return Spec("con_in_window", kind_of(rng, "con_in_window"), cap(text), c.record.text, why)
 

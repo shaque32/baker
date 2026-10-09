@@ -47,7 +47,7 @@ FACTS_A: tuple[Fact, ...] = (
     F("drywall", "repair", "let the drywall guy in on {v}", "let the drywall guy in on {v}",
       "let the drywall guy in on {V}", DAYS,
       exact=("let the drywall guy in on {v}, the only day he came",),
-      extra=("stayed the whole time the drywall guy worked",),
+      extra=("stayed the whole time",),
       general=("let the drywall guy in every day that week",)),
     F("roof", "repair", "patch {v} spots on the roof", "patched {v} spots on the roof",
       "patched {v} spots on the roof", ("two", "three", "four"),
