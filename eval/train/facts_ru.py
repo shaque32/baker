@@ -159,7 +159,7 @@ FACTS_RU: tuple[Fact, ...] = (
       ("20000", "30000", "40000"), past="получил{l}", fut="получу", obj="{v} залога обратно",
       extra=("signed the release",)),
     R("ru_lease", "rent", "signed the contract for the apartment on the {v}th floor",
-      "sign the contract for the apartment on the {v}th floor", ("2", "3", "4"),
+      "sign the contract for the apartment on the {v}th floor", ("4", "5", "6"),
       past="подписал{l}", fut="подпишу", obj="договор на квартиру на {v}-м этаже",
       exact=("подписал{l} договор на квартиру на {v}-м этаже, другую не предлагали",),
       extra=("paid the first month",)),
