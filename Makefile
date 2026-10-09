@@ -1,6 +1,6 @@
 PY ?= python3
 
-.PHONY: install lint fmt test eval eval-model-free eval-fake eval-real eval-hostile check synth fixtures report
+.PHONY: install lint fmt test eval eval-model-free eval-fake eval-real eval-hostile check synth fixtures report stancedata
 
 install:
 	$(PY) -m pip install -e ".[dev]"
@@ -60,3 +60,14 @@ synth:
 
 fixtures:
 	$(PY) -m eval.synthetic.govdocs eval/fixtures/govdoc
+
+# Baker's own stance model, phase 1 (eval/stancedata/README.md): the synthetic training items,
+# the held-out test and dev splits, then the overlap check, which fails on any overlap with the
+# probe set, case01, case02 or between training and held-out. Not part of make check.
+STANCEDATA ?= eval/out/stancedata
+stancedata:
+	$(PY) -m eval.train.generate --n 12000 --seed 1 --out $(STANCEDATA)/train.jsonl
+	$(PY) -m eval.heldout.generate --out-dir $(STANCEDATA)
+	$(PY) -m eval.stancedata.contamination --out $(STANCEDATA)/contamination \
+		--train $(STANCEDATA)/train.jsonl \
+		--heldout $(STANCEDATA)/heldout_test.jsonl $(STANCEDATA)/heldout_dev.jsonl
