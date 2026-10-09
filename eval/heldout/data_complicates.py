@@ -608,7 +608,7 @@ INFERENCES: tuple[Tpl, ...] = (
     tpl(
         "market",
         "en",
-        "sold out by 10, packed up early",
+        "sold out fast, packed up early",
         *_I,
         that="{s} left {place} before noon",
         why="packing up early gives no time of leaving",
@@ -632,7 +632,7 @@ INFERENCES: tuple[Tpl, ...] = (
     tpl(
         "showing",
         "en",
-        "the lights were on at {place} at midnight",
+        "the lights were still on at {place} when i drove past",
         *_I,
         that="{name} was working late at {place}",
         why="lights do not show who, if anyone, was inside",
@@ -728,9 +728,9 @@ INFERENCES: tuple[Tpl, ...] = (
     tpl(
         "gig",
         "en",
-        "the band's gear was still on stage at 2am",
+        "the band's gear was still on stage when we locked up",
         *_I,
-        that="the band played until 2 a.m.",
+        that="the band played until the venue locked up",
         why="gear left on stage does not give a set time",
     ),
     tpl(
@@ -778,7 +778,7 @@ INFERENCES: tuple[Tpl, ...] = (
     tpl(
         "market",
         "ru",
-        "распродали к десяти, свернулись рано",
+        "распродали быстро, свернулись рано",
         *_I,
         that="{s} left the market before noon",
         why="packing up early gives no time of leaving",

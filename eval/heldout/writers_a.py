@@ -17,6 +17,7 @@ from eval.heldout.frames import (
     fact_sentence,
     fill,
     place,
+    reported,
     setup_chat,
     verbatim_sentence,
 )
@@ -474,12 +475,16 @@ def con_other_speaker(slot: Slot, rng: random.Random) -> Draft:
     utc = random_local(rng, st.chat.tz)
     loc = local(utc, st.chat.tz)
     vp = fill(e.vp(), Setup(st.chat, a, None, s_a, "the group"))
+    rep = reported(vp)
     d = date_phrase(loc.date())
+    verb = "wrote" if slot.k % 2 else "said"
+    # Two people can clock in at 10, so a bare fact about the member is not excluded by the
+    # sender's line; every form says who wrote or said it.
     assumption = rng.choice(
         [
             f"In the group chat, {s_a} was the one who {vp}.",
-            f"{s_a} {vp} in the group chat on {d}.",
-            f"The group member who {vp} was {s_a}.",
+            f"{s_a} {verb} in the group chat on {d} that {rep}.",
+            f"The group member who wrote that {rep} was {s_a}.",
         ]
     )
     quote = e.quote()

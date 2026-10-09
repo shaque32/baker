@@ -409,7 +409,7 @@ def ovr_different_topic(slot: Slot, rng: random.Random) -> Draft:
     c1, c2 = e.part("c1"), e.part("c2")
     core: list[Line] = [(st.receiver, c1), (st.sender, c2), (st.sender, e.text())]
     if rng.random() < 0.4:
-        core.insert(2, (st.receiver, st.chat.filler(rng)))
+        core.insert(2, (st.receiver, st.chat.filler(rng, neutral=True)))
     lines, target = place(rng, st.chat, core, len(core) - 1, (0, 2), (0, 2))
     utc = random_local(rng, st.chat.tz)
     that = fill(e.that(), st)

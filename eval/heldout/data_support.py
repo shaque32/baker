@@ -808,10 +808,10 @@ STATEMENTS: tuple[Tpl, ...] = (
     tpl(
         "showing",
         "en",
-        "we got {n} offers on {place} by noon",
+        "we got {n} offers on {place} already",
         *_A,
         n=(2, 9),
-        that="the sender got {n} offers on {place} by noon",
+        that="the sender got {n} offers on {place} already",
     ),
     tpl(
         "showing",
@@ -1313,7 +1313,7 @@ QA: tuple[Tpl, ...] = (
         "en",
         "yes, parked by the fountain",
         *_QA,
-        q="is the truck at humboldt yet?",
+        q="is the truck at humboldt park yet?",
         that="the truck was parked at Humboldt Park by the fountain",
     ),
     tpl(

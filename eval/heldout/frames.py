@@ -133,23 +133,24 @@ def place(
     used = {text for _, text in core}  # the filler draw skips lines already on screen
     core_text = " ".join(text for _, text in core)
     about = {acct for acct in chat.contacts if names_in(acct.label, core_text)}
+    speakers = {acct for acct, _ in core}
 
-    def line() -> Line:
-        who = rng.choice(members)
-        # Someone the core lines talk about by name gets only small talk, so no filler of
-        # theirs can sit in tension with what the record says about them.
-        return who, chat.filler(rng, neutral or who in about, used)
+    def line(who: Account) -> Line:
+        # Someone who sends a core line, or whom the core lines talk about by name, gets only
+        # small talk, so no filler of theirs can sit in tension with what the record says.
+        small = neutral or who in about or who in speakers
+        return who, chat.filler(rng, small, used)
 
-    pre = [line() for _ in range(n_before)]
-    post = [line() for _ in range(n_after)]
+    pre = [line(rng.choice(members)) for _ in range(n_before)]
+    post = [line(rng.choice(members)) for _ in range(n_after)]
     if all(acct.owner for acct, _ in pre + core + post):  # the other party must be on screen
         contact = rng.choice(chat.contacts)
         if post:
-            post[-1] = (contact, post[-1][1])
+            post[-1] = line(contact)
         elif pre:
-            pre[0] = (contact, pre[0][1])
+            pre[0] = line(contact)
         else:
-            post = [(contact, line()[1])]
+            post = [line(contact)]
     return pre + core + post, target + n_before
 
 

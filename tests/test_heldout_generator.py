@@ -8,10 +8,19 @@ from pathlib import Path
 
 import pytest
 
-from eval.heldout import GENERATOR, ID_PREFIX, SEEDS, SOURCE
+from eval.heldout import GENERATOR, ID_PREFIX, SEEDS, SOURCE, scene
 from eval.heldout.generate import generate
 from eval.heldout.glossary import RU_EN_PAIRS, SLANG_FORMS
-from eval.heldout.pools import AREA_CODES, CYRILLIC_FULL, MENTIONED_RU, PLACES, WEEKDAYS_EN
+from eval.heldout.pools import (
+    AREA_CODES,
+    CYRILLIC_FULL,
+    MENTIONED_RU,
+    NEUTRAL_EN,
+    NEUTRAL_MIXED,
+    NEUTRAL_RU,
+    PLACES,
+    WEEKDAYS_EN,
+)
 from eval.heldout.schedule import COMPOSITION, FOUR_TRAPS
 from eval.heldout.text import normalized
 from eval.heldout.verbs import has_past_verb
@@ -560,3 +569,45 @@ def test_supports_records_avoid_slang_pairs(
             texts.append(it.context[it.target_index - 1].text)
         for text in texts:
             assert not _SLANG.search(text.lower()), (it.probe_id, it.family, text)
+
+
+# --------------------------------------------------------- group chats: attribution; filler
+
+_ATTRIBUTION = re.compile(
+    r"wrote in the group|said in the group|was the one who|The group member who"
+    r"|написала? в группе|сказала? в группе"
+)
+
+
+def test_other_speaker_assumptions_attribute_the_words(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    """Two people can clock in at 10: the family's point is who wrote it, so the assumption
+    must name the writer, which rule 12 allows for attribution."""
+    for it in test_items + dev_items:
+        if it.family == "con_other_speaker":
+            assert _ATTRIBUTION.search(it.assumption), (it.probe_id, it.assumption)
+
+
+def test_fillers_by_core_senders_are_small_talk(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A filler by someone who sends a core line is small talk, never a situation line that
+    could sit in tension with what the record says."""
+    origin: dict[str, bool] = {}  # filler text -> drawn from the small-talk pool
+    draw = scene.Chat.filler
+
+    def spy(self: scene.Chat, rng, neutral: bool = False, used: set[str] | None = None) -> str:
+        track = used if used is not None else set()
+        before = set(track)
+        text = draw(self, rng, neutral, track)
+        small = NEUTRAL_RU if self.lang == "ru" else NEUTRAL_EN + NEUTRAL_MIXED
+        drawn = track - before  # the base line the draw added, before casual spelling and typos
+        origin[text] = drawn.pop() in small if drawn else bool(neutral)
+        return text
+
+    monkeypatch.setattr(scene.Chat, "filler", spy)
+    for it in generate("test") + generate("dev"):
+        lines = [it.target, *it.context]
+        core = {ln.sender for ln in lines if ln.text not in origin}
+        for ln in lines:
+            if ln.text in origin and not origin[ln.text]:
+                assert ln.sender not in core, (it.probe_id, ln.sender, ln.text)
