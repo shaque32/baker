@@ -138,9 +138,26 @@ def test_overlap_check_flags_copies_and_light_edits(reference_index) -> None:
 
 
 def test_overlap_check_ignores_a_shared_sentence_frame(reference_index) -> None:
-    frame = "On May 2, 2026, the contact saved as Tess told the owner that the dryer was fixed."
-    res = contamination.compare("t", [contamination.Text("frame", frame)], reference_index)
-    assert res.flags == []
+    frames = [
+        "On May 2, 2026, the contact saved as Tess told the owner that the dryer was fixed.",
+        # The name Jules is in the probe set too; the frame still is not a copy.
+        "The contact saved as Jules told the owner that all 60 tiles came.",
+    ]
+    for frame in frames:
+        res = contamination.compare("t", [contamination.Text("frame", frame)], reference_index)
+        assert res.flags == [], frame
+    vikram = "The first message between the owner and the contact saved as Vikram was sent on "
+    held = contamination._index([contamination.Text("h", vikram + "March 6, 2025.")])
+    other = vikram.replace("Vikram", "Imani") + "December 1, 2025"
+    assert contamination.compare("t", [contamination.Text("q", other)], held).flags == []
+    same = contamination.Text("q", vikram + "March 6, 2025")
+    assert [f.kind for f in contamination.compare("t", [same], held).flags] == ["exact"]
+
+
+def test_overlap_check_flags_a_near_copy_of_a_probe_record(reference_index) -> None:
+    near = contamination.Text("ru", "слушай, я там больше не работаю)")  # signed P079 plus noise
+    kinds = {f.kind for f in contamination.compare("t", [near], reference_index).flags}
+    assert kinds == {"jaccard"}
 
 
 class _Replay:

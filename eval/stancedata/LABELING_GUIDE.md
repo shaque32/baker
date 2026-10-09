@@ -76,6 +76,24 @@ the record's fact with an incompatible one makes the record **contradicts**, not
     `ovr_sender_mismatch`, `ovr_time_mismatch`, `con_in_window`, `con_other_speaker`.
 13. **Filler never settles the question.** Messages placed after a question or a plan must not
     answer or confirm it; otherwise the item becomes a different family.
+14. **A supports assumption says what the message communicates.** "The contact saved as Nico
+    told the owner that he had picked up Rosa's shift", "the owner wrote that ...", "X sent the
+    message ...": that is what a message shows. "Nico picked up Rosa's shift" as a bare fact is
+    never a supports item, because a message is evidence of what was said, and an expert may
+    hold the act itself unproven. This follows the signed items P021 to P027. Contradicts and
+    overreach assumptions may state the fact (rule 12).
+15. **A short answer supports only what the question and the answer state together.** "did ur
+    cousin pay u back" and "yep 250" support "his cousin paid him back $250", not "paid him
+    back $250 in cash that morning"; extra detail in the assumption makes it `ovr_partial`.
+16. **A generalization keeps the record's value.** `ovr_count` reuses the number or phrase the
+    record shows ("every month" from one "paid the rent on the 1st"); a generalization that
+    embeds a different value is `con_other_value`, not an overreach.
+17. **Relative time is open only near midnight.** `cpl_relative_time` records are sent between
+    midnight and about 3 a.m. local, where "tonight", "last night" or "вчера" can mean either
+    of two dates. Later in the day the relative word is not ambiguous.
+18. **Third parties may be named.** An assumption may name a person who is not in the chat
+    ("Lina made $240 in tips"); whether the record shows it still follows the family rules, and
+    a sender's report of what that person did is `cpl_hearsay`.
 
 ## The families
 

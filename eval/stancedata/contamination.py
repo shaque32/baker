@@ -15,8 +15,9 @@ Every free text of an item (assumption, record, context lines, rationale) is com
 reference text after normalizing case, punctuation and spacing. A pair is flagged when:
 - exact: the normalized texts are equal and have at least EXACT_MIN_TOKENS words;
 - run: they share a contiguous run of at least RUN_MIN_TOKENS words that also covers at least
-  RUN_MIN_SHARE of the shorter text (so a shared sentence frame like "the contact saved as" in two
-  long assumptions does not count, but a copied message does);
+  RUN_MIN_SHARE of the shorter text and holds at least RUN_MIN_CONTENT words outside the
+  assumption frames the labeling guide mandates ("the contact saved as X told the owner that"
+  shared by two assumptions is a frame, a copied message is not);
 - jaccard: their sets of word 3-grams overlap by at least JACCARD_MIN (light edits, reordering).
 Equal texts shorter than EXACT_MIN_TOKENS ("ok thx", "where r u") are counted, not flagged:
 independent chats share them by chance.
@@ -45,6 +46,20 @@ RUN_MIN_TOKENS = 6
 RUN_MIN_SHARE = 0.6
 JACCARD_MIN = 0.6
 JACCARD_MIN_TOKENS = 5
+RUN_MIN_CONTENT = 3
+# The words of the assumption frames every generator is told to use, plus names of apps, months
+# and pronouns. A shared run made of these alone is a frame, not a copy.
+FRAME_TOKENS = frozenset(
+    """
+    the a an and or of to in on at by for from with between before after until as that this
+    these those there was were is are be been had has have did do does not no any all one first
+    last message messages sent wrote told said says saying asked replied answered owner contact
+    saved user number account telegram whatsapp sms signal instagram chat group shows according
+    record he she they him her his their it its them we you i u me my our your who whom which
+    january february march april may june july august september october november december
+    2024 2025 2026 am pm local time date day
+    """.split()
+)
 # A 3-gram in more reference texts than this is a sentence frame; it still counts toward a pair's
 # score but does not make two texts candidates on its own (keeps the run fast).
 CANDIDATE_MAX_POSTINGS = 400
@@ -60,18 +75,19 @@ def grams(toks: tuple[str, ...], n: int = 3) -> set[tuple[str, ...]]:
     return {toks[i : i + n] for i in range(len(toks) - n + 1)}
 
 
-def longest_run(a: tuple[str, ...], b: tuple[str, ...]) -> int:
-    """Length of the longest contiguous run of words the two texts share."""
-    best = 0
+def longest_run(a: tuple[str, ...], b: tuple[str, ...]) -> tuple[str, ...]:
+    """The longest contiguous run of words the two texts share (empty if none)."""
+    best, best_end = 0, 0
     prev = [0] * (len(b) + 1)
-    for x in a:
+    for i, x in enumerate(a, 1):
         cur = [0] * (len(b) + 1)
         for j, y in enumerate(b, 1):
             if x == y:
                 cur[j] = prev[j - 1] + 1
-                best = max(best, cur[j])
+                if cur[j] > best:
+                    best, best_end = cur[j], i
         prev = cur
-    return best
+    return a[best_end - best : best_end]
 
 
 @dataclass(frozen=True)
@@ -158,8 +174,13 @@ def compare(name: str, queries: Iterable[Text], index: Index) -> Result:
             rt, rg = index.toks[i], index.grams[i]
             shorter = min(len(qt), len(rt))
             run = longest_run(qt, rt)
-            if run >= RUN_MIN_TOKENS and run >= RUN_MIN_SHARE * shorter:
-                found.append(Flag("run", run / shorter, q, index.texts[i]))
+            content = sum(t not in FRAME_TOKENS for t in run)
+            if (
+                len(run) >= RUN_MIN_TOKENS
+                and len(run) >= RUN_MIN_SHARE * shorter
+                and content >= RUN_MIN_CONTENT
+            ):
+                found.append(Flag("run", len(run) / shorter, q, index.texts[i]))
                 continue
             if min(len(qt), len(rt)) >= JACCARD_MIN_TOKENS and qg and rg:
                 jac = len(qg & rg) / len(qg | rg)
