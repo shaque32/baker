@@ -55,7 +55,12 @@ the record's fact with an incompatible one makes the record **contradicts**, not
    daylight-saving change, the local clock reading decides.
 6. **Plain Russian counts.** A Russian record whose literal meaning matches the assumption
    supports it, as in signed P021 to P027. A Russian record that needs a slang or loose reading
-   does not.
+   does not. The accepted literal pairs are the two generator glossaries,
+   `eval/heldout/glossary.py` (`RU_EN_PAIRS`) and `eval/train/glossary.py`; signing this guide
+   signs them. Each glossary also names its slang pairs (`SLANG_PAIRS`: старшая = charge nurse,
+   зачётная = keeper, палёная = fake, фикс = flat fee, в ночь = nights, закрыл всё = locked up,
+   свернулись = packed up, разошлось = sold out, баксов = bucks, всё = in full), which never
+   back a supports item; tests enforce both.
 7. **Quotes are copied exactly** from the record, never from the context, never translated.
    Each example stores the shortest part of the record its answer rests on. An "irrelevant"
    example stores the record's text, and the model is not asked to quote it.
