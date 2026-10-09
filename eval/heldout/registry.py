@@ -10,6 +10,7 @@ none. The order is a fixed table of this generator version, never of the wall cl
 from __future__ import annotations
 
 import random
+import re
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 
@@ -183,10 +184,17 @@ def _combo_count(pools: dict[str, list]) -> int:
     return total
 
 
+def _numbered(place: object) -> bool:
+    """'unit 118', 'dock 4', '4 East': a place named by a number, as against a named one."""
+    return re.match(r"(unit|dock) |\d+ ", str(place)) is not None
+
+
 def _clashes(rec: dict[str, object]) -> bool:
     for a, b in (("n", "m"), ("place", "place2"), ("day", "day2")):
         if a in rec and b in rec and rec[a] == rec[b]:
             return True
+    if "place" in rec and "place2" in rec and _numbered(rec["place"]) != _numbered(rec["place2"]):
+        return True  # a unit number is replaced by another unit number, a lot by another lot
     return False
 
 

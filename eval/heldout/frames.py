@@ -5,11 +5,11 @@ from __future__ import annotations
 import random
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 from eval.heldout.pools import CYRILLIC_NAMES, LATIN_NAMES
 from eval.heldout.registry import Entry
-from eval.heldout.scene import Chat, Draft, make_chat, random_local, timeline
+from eval.heldout.scene import Chat, Draft, local, make_chat, random_local, timeline
 from eval.heldout.schedule import Slot
 from eval.heldout.text import (
     account_phrase,
@@ -76,10 +76,37 @@ def setup_chat(
                 chat.genders[label] = gg
     if members > 1:
         all_members = [chat.owner] + chat.contacts
+        if slot.record_lang == "ru" and g:  # a gendered Russian verb needs a matching sender
+            fits = [a for a in all_members if a.owner or chat.genders.get(a.label or "") == g]
+            if not fits:
+                label = _pick_label(rng, "ru", g)
+                first = chat.contacts[0]
+                chat.contacts[0] = Account(first.app, first.identifier, label)
+                chat.genders[label] = g
+                fits = [chat.contacts[0]]
+            all_members = fits
         snd = rng.choice(all_members)
         return Setup(chat, snd, None, account_phrase(rng, snd), "the group")
     snd, rcv = (contact, chat.owner) if who == "contact" else (chat.owner, contact)
     return Setup(chat, snd, rcv, account_phrase(rng, snd), account_phrase(rng, rcv))
+
+
+def names_in(label: str | None, text: str) -> bool:
+    """Whether a saved name or handle names someone the text talks about."""
+    if not label:
+        return False
+    low = text.lower()
+    for token in re.split(r"[^\w]+", label.lstrip("@").lower()):
+        if len(token) < 3 or token.isdigit():
+            continue
+        if token.isascii():
+            if re.search(rf"\b{re.escape(token)}\b", low):
+                return True
+        else:  # a Cyrillic name declines, so its stem is what the text would carry
+            stem = token[:-1] if len(token) > 3 else token
+            if re.search(rf"(?<![а-яё]){re.escape(stem)}", low):
+                return True
+    return False
 
 
 def place(
@@ -104,9 +131,14 @@ def place(
     if len(core) + n_before + n_after < 2:  # every item has at least one context line
         n_after = 1
     used = {text for _, text in core}  # the filler draw skips lines already on screen
+    core_text = " ".join(text for _, text in core)
+    about = {acct for acct in chat.contacts if names_in(acct.label, core_text)}
 
     def line() -> Line:
-        return rng.choice(members), chat.filler(rng, neutral, used)
+        who = rng.choice(members)
+        # Someone the core lines talk about by name gets only small talk, so no filler of
+        # theirs can sit in tension with what the record says about them.
+        return who, chat.filler(rng, neutral or who in about, used)
 
     pre = [line() for _ in range(n_before)]
     post = [line() for _ in range(n_after)]
@@ -137,6 +169,12 @@ def draft(
     chat = setup.chat
     utc = record_utc or random_local(rng, chat.tz)
     times = timeline(rng, len(lines), target, utc, kinds)
+    rec_date = local(times[target], chat.tz).date()
+    days = {  # "tomorrow" or "last night" in a record is an absolute local date in the assumption
+        "xnext": date_phrase(rec_date + timedelta(days=1)),
+        "xprev": date_phrase(rec_date - timedelta(days=1)),
+    }
+    assumption, rationale = render(assumption, days), render(rationale, days)
     if assumption.endswith(".."):  # "... at 11 p.m.." when a clause ends in an abbreviation
         assumption = assumption[:-1]
     return Draft(chat, lines, target, capitalize_first(assumption), quote, rationale, kind, times)
@@ -164,8 +202,9 @@ def fact_sentence(
             (f"{s} told {r} that {rep}.", False),
             (f"On {d}, {s} told {r} that {rep}.", False),
             (f"{s} wrote to {r} that {rep}.", False),
-            (f"The message from {s} to {r} says that the sender {vp}.", True),
         ]
+        if not vp.startswith("said "):
+            frames.append((f"The message from {s} to {r} says that the sender {vp}.", True))
     else:
         that = fill(entry.that(), setup)
         if "the sender" in that:
@@ -206,14 +245,19 @@ _TIME_WORDS = (
 
 
 def reported(vp: str) -> str:
-    """'was on 4 East' -> 'they were on 4 East': the sender's act as the message reports it."""
+    """'was on 4 East' -> 'they were on 4 East': the sender's act as the message reports it.
+
+    A verb phrase that already reports speech ('said they were on nights') keeps only the
+    speech itself, so no frame ends up as 'told the owner that they said'."""
     first, _, rest = vp.partition(" ")
+    if first == "said":
+        return rest
     return f"they {_AGREE.get(first, first)} {rest}".rstrip()
 
 
-def fact_form(rng: random.Random, entry: Entry, setup: Setup, local: datetime) -> str:
+def fact_form(rng: random.Random, entry: Entry, setup: Setup, local: datetime | date) -> str:
     """The fact itself, with the sender named as the phone shows it; never "the message says"."""
-    d = date_phrase(local.date())
+    d = date_phrase(local.date() if isinstance(local, datetime) else local)
     if entry.tpl.that:
         that = fill(entry.that(), setup)
         that = re.sub(r"the sender's (\w+)", lambda m: f"the {m.group(1)} of {setup.s}", that)

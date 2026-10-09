@@ -67,7 +67,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         "en",
         "i can run the lift {day} if nobody else can",
         *_ACT,
-        vp="offered to run the lift on {day}",
+        vp="said they could run the lift on {day}",
         quote="i can run the lift {day}",
     ),
     tpl(
@@ -92,8 +92,8 @@ STATEMENTS: tuple[Tpl, ...] = (
         *_A,
         n=(4, 40),
         g="m",
-        vp="brought {n} bags of mix to the Halsted site and left them by the gate",
-        that="{n} bags of mix were brought to the Halsted site and left by the gate",
+        vp="brought {n} bags of mix to Halsted and left the bags by the gate",
+        that="{n} bags of mix were brought to Halsted and left by the gate",
         quote="привёз {n:мешок|мешка|мешков} смеси на холстед",
     ),
     tpl(
@@ -108,7 +108,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         "ru",
         "я на объекте на дэймен до {t}, подъезжай",
         *_A,
-        vp="said they were at the Damen job until {t}",
+        vp="said they were at the site on Damen until {t}",
         quote="я на объекте на дэймен до {t}",
     ),
     tpl(
@@ -116,14 +116,14 @@ STATEMENTS: tuple[Tpl, ...] = (
         "ru",
         "залили фундамент на 18-й {day}",
         *_A,
-        that="the foundation at the 18th Street lot was poured on {day}",
+        that="the foundation on 18th Street was poured on {day}",
     ),
     tpl(
         "site",
         "ru",
         "могу завтра поработать на подъёмнике, если больше некому",
         *_ACT,
-        vp="offered to work the lift the next day",
+        vp="said they could work the lift on {xnext}",
         quote="могу завтра поработать на подъёмнике",
     ),
     tpl(
@@ -147,7 +147,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         "we did {n}0 plates for {place}, all gone by 2",
         *_A,
         n=(6, 30),
-        that="{n}0 plates were served at {place} and were gone by 2",
+        that="the sender did {n}0 plates for {place} and all were gone by 2",
         quote="we did {n}0 plates for {place}",
     ),
     tpl(
@@ -163,7 +163,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         "en",
         "i can do the job at {place} {day} myself",
         *_ACT,
-        vp="offered to do the job at {place} alone on {day}",
+        vp="said they could do the job at {place} on {day} themselves",
     ),
     tpl(
         "cater",
@@ -192,7 +192,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         "ru",
         "фургон стоит у хамболдт-парка, открываемся в {t}",
         *_A,
-        that="the truck was at Humboldt Park and opening at {t}",
+        that="the van was at Humboldt Park, opening at {t}",
     ),
     tpl(
         "cater",
@@ -216,14 +216,14 @@ STATEMENTS: tuple[Tpl, ...] = (
         "могу {day} сам отработать на фудтраке",
         *_ACT,
         g="m",
-        vp="offered to work the food truck alone on {day}",
+        vp="said they could work the food truck alone on {day}",
     ),
     tpl(
         "cater",
         "ru",
         "санинспектор заходил, всё прошли без замечаний",
         *_A,
-        that="the health inspector passed the truck without remarks",
+        that="the health inspector came by and everything passed without remarks",
         quote="санинспектор заходил, всё прошли без замечаний",
     ),
     # nurse: nursing and hospital shifts
@@ -254,7 +254,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         "we had {n} admits on {place} last night, no breaks",
         *_A,
         n=(3, 14),
-        that="{place} had {n} admissions the night before",
+        that="{place} had {n} admissions on {xprev}",
         quote="we had {n} admits on {place}",
     ),
     tpl(
@@ -262,7 +262,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         "en",
         "i can cover {day} nights if u need",
         *_ACT,
-        vp="offered to cover {day} nights",
+        vp="said they could cover {day} nights",
         quote="i can cover {day} nights",
     ),
     tpl(
@@ -292,7 +292,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         "ru",
         "старшая перевела меня на четвёртый этаж до конца недели",
         *_A,
-        that="the charge nurse moved the sender to the fourth floor for the rest of the week",
+        that="the charge nurse moved the sender to the fourth floor until the end of the week",
     ),
     tpl(
         "nurse",
@@ -300,14 +300,14 @@ STATEMENTS: tuple[Tpl, ...] = (
         "взяла смену {name_g} в воскресенье",
         *_A,
         g="f",
-        vp="took the Sunday shift in place of {name}",
+        vp="took the shift of {name} on Sunday",
     ),
     tpl(
         "nurse",
         "ru",
         "могу подменить {day} в ночь",
         *_ACT,
-        vp="offered to cover the night shift on {day}",
+        vp="said they could cover the night shift on {day}",
     ),
     tpl(
         "nurse",
@@ -315,7 +315,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         "вышла в {t}, с записями провозилась",
         *_A,
         g="f",
-        vp="clocked out at {t}",
+        vp="left at {t}",
         quote="вышла в {t}",
     ),
     # gig: music gigs and DJ sets
@@ -348,7 +348,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         "en",
         "i can bring the pa and the subs {day}",
         *_ACT,
-        vp="offered to bring the PA and the subs on {day}",
+        vp="said they could bring the PA and the subs on {day}",
     ),
     tpl(
         "gig",
@@ -369,7 +369,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         "en",
         "{name} is spinning the first hour, then me",
         *_A,
-        that="{name} was playing the first hour, then the sender",
+        that="{name} was spinning the first hour, then the sender",
         quote="{name} is spinning the first hour",
     ),
     tpl(
@@ -400,14 +400,14 @@ STATEMENTS: tuple[Tpl, ...] = (
         "ru",
         "могу привезти колонки и сабы {day}",
         *_ACT,
-        vp="offered to bring the speakers and subs on {day}",
+        vp="said they could bring the speakers and subs on {day}",
     ),
     tpl(
         "gig",
         "ru",
         "саундчек закончили, выходим в {t}",
         *_A,
-        that="soundcheck was done and the band was going on at {t}",
+        that="soundcheck was finished and they were going on at {t}",
     ),
     # market: farmers' markets
     tpl(
@@ -432,14 +432,14 @@ STATEMENTS: tuple[Tpl, ...] = (
         "en",
         "market manager gave us the corner spot for {day}",
         *_A,
-        that="the market manager gave them the corner spot for {day}",
+        that="the market manager gave the sender the corner spot for {day}",
     ),
     tpl(
         "market",
         "en",
         "i can haul the tent and tables {day}",
         *_ACT,
-        vp="offered to haul the tent and tables on {day}",
+        vp="said they could haul the tent and tables on {day}",
     ),
     tpl(
         "market",
@@ -478,7 +478,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         "мы в палатке {n} до часу",
         *_A,
         n=(2, 60),
-        that="the sender was at stall {n} until 1",
+        that="they were at stall {n} until 1",
     ),
     tpl(
         "market",
@@ -492,7 +492,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         "ru",
         "могу {day} привезти тент и столы",
         *_ACT,
-        vp="offered to bring the tent and tables on {day}",
+        vp="said they could bring the tent and tables on {day}",
     ),
     tpl(
         "market",
@@ -531,7 +531,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         "en",
         "i can take the {day} slot at {place}",
         *_ACT,
-        vp="offered to take the {day} slot at {place}",
+        vp="said they could take the {day} slot at {place}",
     ),
     tpl(
         "tutor",
@@ -577,7 +577,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         "ru",
         "могу взять {day} слот в кафе на кларк",
         *_ACT,
-        vp="offered to take the {day} slot at the cafe on Clark",
+        vp="said they could take the {day} slot at the cafe on Clark",
     ),
     tpl(
         "tutor",
@@ -611,14 +611,14 @@ STATEMENTS: tuple[Tpl, ...] = (
         "the trailer at {place} is sealed, seal number ends in {n}",
         *_A,
         n=(10, 99),
-        that="the trailer at {place} was sealed with a seal number ending in {n}",
+        that="the trailer at {place} was sealed and the seal number ends in {n}",
     ),
     tpl(
         "warehouse",
         "en",
         "i can take the {t} run to {place}",
         *_ACT,
-        vp="offered to take the {t} run to {place}",
+        vp="said they could take the {t} run to {place}",
     ),
     tpl(
         "warehouse",
@@ -665,7 +665,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         "ru",
         "могу взять рейс в {t} в элмхёрст",
         *_ACT,
-        vp="offered to take the {t} run to Elmhurst",
+        vp="said they could take the {t} run to Elmhurst",
     ),
     tpl(
         "warehouse",
@@ -673,7 +673,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         "погрузчик на девятом доке опять сломался, вызвал ремонт",
         *_A,
         g="m",
-        that="the forklift at dock 9 broke down and repairs were called",
+        that="the forklift at dock 9 broke down again and repairs were called",
     ),
     tpl(
         "warehouse",
@@ -712,7 +712,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         "en",
         "i can do the {day} walks at {t}",
         *_ACT,
-        vp="offered to do the {day} walks at {t}",
+        vp="said they could do the {day} walks at {t}",
     ),
     tpl(
         "dog",
@@ -734,7 +734,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         "en",
         "rex threw up on the rug, cleaned it, hes fine now",
         *_A,
-        that="Rex threw up on the rug and the sender cleaned it",
+        that="Rex threw up on the rug and the sender cleaned the rug",
         quote="rex threw up on the rug, cleaned it",
     ),
     tpl(
@@ -763,7 +763,11 @@ STATEMENTS: tuple[Tpl, ...] = (
         that="Biscuit got both pills at {t}",
     ),
     tpl(
-        "dog", "ru", "могу гулять {day} в {t}", *_ACT, vp="offered to walk the dog on {day} at {t}"
+        "dog",
+        "ru",
+        "могу гулять {day} в {t}",
+        *_ACT,
+        vp="said they could do the walk on {day} at {t}",
     ),
     tpl(
         "dog",
@@ -796,14 +800,14 @@ STATEMENTS: tuple[Tpl, ...] = (
         "we got {n} offers on {place} by noon",
         *_A,
         n=(2, 9),
-        that="{n} offers came in on {place} by noon",
+        that="the sender got {n} offers on {place} by noon",
     ),
     tpl(
         "showing",
         "en",
         "i can cover the open house at {place} {day}",
         *_ACT,
-        vp="offered to cover the open house at {place} on {day}",
+        vp="said they could cover the open house at {place} on {day}",
     ),
     tpl(
         "showing",
@@ -834,7 +838,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         "показал квартиру на милуоки в {t}, покупатели были 40 минут",
         *_A,
         g="m",
-        vp="showed the Milwaukee Avenue condo at {t} and the buyers stayed 40 minutes",
+        vp="showed the apartment on Milwaukee at {t} and the buyers stayed 40 minutes",
         quote="показал квартиру на милуоки в {t}",
     ),
     tpl(
@@ -843,14 +847,14 @@ STATEMENTS: tuple[Tpl, ...] = (
         "по дому на дэймен пришло {n:предложение|предложения|предложений} к обеду",
         *_A,
         n=(2, 9),
-        that="{n} offers came in on the Damen two-flat by noon",
+        that="{n} offers came in on the house on Damen by lunchtime",
     ),
     tpl(
         "showing",
         "ru",
         "могу провести день открытых дверей {day}",
         *_ACT,
-        vp="offered to run the open house on {day}",
+        vp="said they could run the open house on {day}",
     ),
     tpl(
         "showing",
@@ -865,7 +869,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         "ru",
         "{name} встречает инспектора на лейквью в {t}",
         *_A,
-        that="{name} was meeting the inspector at the Lakeview walk-up at {t}",
+        that="{name} was meeting the inspector at Lakeview at {t}",
     ),
     # church: church and community events
     tpl(
@@ -883,14 +887,14 @@ STATEMENTS: tuple[Tpl, ...] = (
         "the pantry got {n} boxes from the food bank today",
         *_A,
         n=(5, 60),
-        that="the pantry received {n} boxes from the food bank that day",
+        that="the pantry got {n} boxes from the food bank that day",
     ),
     tpl(
         "church",
         "en",
         "i can run the sound board {day} service",
         *_ACT,
-        vp="offered to run the sound board at the {day} service",
+        vp="said they could run the sound board at the {day} service",
     ),
     tpl(
         "church",
@@ -937,14 +941,14 @@ STATEMENTS: tuple[Tpl, ...] = (
         "для раздачи привезли {n:коробку|коробки|коробок} из фудбанка",
         *_A,
         n=(5, 60),
-        that="{n} boxes from the food bank were delivered for the pantry",
+        that="{n} boxes were brought from the food bank for the giveaway",
     ),
     tpl(
         "church",
         "ru",
         "могу {day} посидеть за пультом на службе",
         *_ACT,
-        vp="offered to run the sound board at the {day} service",
+        vp="said they could sit at the sound board during the {day} service",
     ),
     tpl(
         "church",
@@ -959,7 +963,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         "ru",
         "{name} закрывает зал после обеда",
         *_A,
-        that="{name} was locking the hall after the lunch",
+        that="{name} was locking the hall after lunch",
     ),
     # boat: boat and fishing trips
     tpl(
@@ -968,7 +972,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         "we left {place} at {t}, {n} of us on board",
         *_A,
         n=(2, 8),
-        that="the boat left {place} at {t} with {n} people on board",
+        that="they left {place} at {t} with {n} on board",
     ),
     tpl(
         "boat",
@@ -992,7 +996,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         "en",
         "i can trailer the boat to {place} {day}",
         *_ACT,
-        vp="offered to trailer the boat to {place} on {day}",
+        vp="said they could trailer the boat to {place} on {day}",
     ),
     tpl(
         "boat",
@@ -1022,7 +1026,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         "вышли с причала в {t}, нас {n:человек|человека|человек} на борту",
         *_A,
         n=(2, 8),
-        that="the boat left the dock at {t} with {n} people on board",
+        that="they left the dock at {t} with {n} people on board",
     ),
     tpl(
         "boat",
@@ -1046,14 +1050,14 @@ STATEMENTS: tuple[Tpl, ...] = (
         "ru",
         "могу {day} отвезти лодку на прицепе к рампе",
         *_ACT,
-        vp="offered to trailer the boat to the ramp on {day}",
+        vp="said they could trailer the boat to the ramp on {day}",
     ),
     tpl(
         "boat",
         "ru",
         "вернулись к стоянке к {t}, лодка привязана",
         *_A,
-        that="the boat was back at the slip and tied up by {t}",
+        that="they were back at the slip by {t} and the boat was tied up",
     ),
     # sneaker: sneaker and resale flipping
     tpl(
@@ -1087,7 +1091,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         "en",
         "i can meet the buyer at {place} at {t}",
         *_ACT,
-        vp="offered to meet the buyer at {place} at {t}",
+        vp="said they could meet the buyer at {place} at {t}",
     ),
     tpl(
         "sneaker",
@@ -1102,7 +1106,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         "en",
         "the pair from {name} came in fake, stitching is off",
         *_A,
-        that="the pair from {name} arrived fake, with the stitching off",
+        that="the pair from {name} came in fake, with the stitching off",
         quote="the pair from {name} came in fake",
     ),
     tpl(
@@ -1130,14 +1134,14 @@ STATEMENTS: tuple[Tpl, ...] = (
         "отправил данки {name_d} утром, трек в приложении",
         *_A,
         g="m",
-        vp="shipped the Dunks for {name} that morning",
+        vp="shipped the Dunks to {name} that morning",
     ),
     tpl(
         "sneaker",
         "ru",
         "могу встретить покупателя в {t} у кафе на дивижн",
         *_ACT,
-        vp="offered to meet the buyer at {t} by the cafe on Division",
+        vp="said they could meet the buyer at {t} by the cafe on Division",
     ),
     tpl(
         "sneaker",
@@ -1162,7 +1166,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         "paid the rent on {place} thru {day}, {n}0 bucks",
         *_A,
         n=(6, 30),
-        vp="paid the rent on {place} through {day}, {n}0 dollars",
+        vp="paid the rent on {place} through {day}, {n}0 bucks",
     ),
     tpl(
         "storage",
@@ -1176,7 +1180,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         "en",
         "i can meet the movers at {place} at {t}",
         *_ACT,
-        vp="offered to meet the movers at {place} at {t}",
+        vp="said they could meet the movers at {place} at {t}",
     ),
     tpl(
         "storage",
@@ -1188,9 +1192,9 @@ STATEMENTS: tuple[Tpl, ...] = (
     tpl(
         "storage",
         "en",
-        "the office at {place} closes at {t} on weekends",
+        "the storage office closes at {t} on weekends",
         *_A,
-        that="the office at {place} closed at {t} on weekends",
+        that="the storage office closed at {t} on weekends",
     ),
     tpl(
         "storage",
@@ -1209,7 +1213,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         *_A,
         n=(6, 30),
         g="m",
-        vp="paid for the unit through the end of the month, {n}0 dollars",
+        vp="paid for the unit through the end of the month, {n}0 bucks",
     ),
     tpl(
         "storage",
@@ -1217,21 +1221,21 @@ STATEMENTS: tuple[Tpl, ...] = (
         "поменял замок на 118, новый ключ у {name_g}",
         *_A,
         g="m",
-        vp="changed the lock on unit 118 and left the new key with {name}",
+        vp="changed the lock on 118 and {name} had the new key",
     ),
     tpl(
         "storage",
         "ru",
         "могу встретить грузчиков у склада в {t}",
         *_ACT,
-        vp="offered to meet the movers at the storage place at {t}",
+        vp="said they could meet the movers at the storage place at {t}",
     ),
     tpl(
         "storage",
         "ru",
         "офис на уэстерн по выходным закрывается в {t}",
         *_A,
-        that="the office on Western Avenue closed at {t} on weekends",
+        that="the office on Western closes at {t} on weekends",
     ),
 )
 
@@ -1303,7 +1307,7 @@ QA: tuple[Tpl, ...] = (
         *_QA,
         n=(5, 30),
         q="how many plates for {place}?",
-        that="{place} needed {n}0 plates after a table was added",
+        that="there were {n}0 plates for {place} after a table was added",
     ),
     tpl(
         "cater",
@@ -1320,7 +1324,7 @@ QA: tuple[Tpl, ...] = (
         "да, стоим у фонтана",
         *_QA,
         q="фургон уже в хамболдт-парке?",
-        that="the truck was at Humboldt Park by the fountain",
+        that="the van was at Humboldt Park by the fountain",
     ),
     tpl(
         "cater",
@@ -1329,7 +1333,7 @@ QA: tuple[Tpl, ...] = (
         *_QA,
         n=(3, 25),
         q="клиент картой платил или наличкой?",
-        that="the client paid {n}00 in cash",
+        that="the client paid exactly {n}00 in cash",
     ),
     tpl(
         "nurse",
@@ -1482,7 +1486,7 @@ QA: tuple[Tpl, ...] = (
         *_QA,
         n=(3, 9),
         q="did her mom pay u?",
-        that="the student's mother paid for {n} sessions up front",
+        that="the mom paid for {n} sessions up front",
     ),
     tpl(
         "tutor",
@@ -1560,7 +1564,7 @@ QA: tuple[Tpl, ...] = (
         "under the blue pot, locked up after",
         *_QA,
         q="where did u leave the key?",
-        that="the sender left the key under the blue pot and locked up",
+        that="the key is under the blue pot and the sender locked up",
     ),
     tpl(
         "dog",
@@ -1587,7 +1591,7 @@ QA: tuple[Tpl, ...] = (
         *_QA,
         g="m",
         q="где ключ оставил?",
-        that="the sender left the key under the blue pot and locked up",
+        that="the key is under the blue pot and the sender locked up",
     ),
     tpl(
         "showing",
@@ -1612,7 +1616,7 @@ QA: tuple[Tpl, ...] = (
         "same as before, nothing changed",
         *_QA,
         q="lockbox code for {place}?",
-        that="the lockbox code for {place} was unchanged",
+        that="the lockbox code for {place} was the same as before, nothing changed",
     ),
     tpl(
         "showing",
@@ -1621,7 +1625,7 @@ QA: tuple[Tpl, ...] = (
         *_QA,
         g="m",
         q="показал сегодня дом на дэймен?",
-        that="the sender showed the Damen two-flat that day at {t} and the buyers stayed an hour",
+        that="the sender showed the house on Damen that day at {t} and they were there for an hour",
     ),
     tpl(
         "showing",
@@ -1674,7 +1678,7 @@ QA: tuple[Tpl, ...] = (
         "{name}, после обеда",
         *_QA,
         q="кто закрывал зал?",
-        that="{name} locked the hall after the lunch",
+        that="{name} locked the hall after lunch",
     ),
     tpl(
         "boat",
@@ -1683,7 +1687,7 @@ QA: tuple[Tpl, ...] = (
         *_QA,
         n=(2, 20),
         q="how many keepers?",
-        that="they kept {n} fish and threw back the small ones",
+        that="there were {n} keepers and the sender threw back the small ones",
     ),
     tpl(
         "boat",
@@ -1709,7 +1713,7 @@ QA: tuple[Tpl, ...] = (
         *_QA,
         n=(2, 20),
         q="сколько зачётных?",
-        that="they kept {n} fish and released the small ones",
+        that="there were {n} keepers and the small ones were released",
     ),
     tpl(
         "boat",
@@ -1717,7 +1721,7 @@ QA: tuple[Tpl, ...] = (
         "в {t}, с причала на белмонт",
         *_QA,
         q="во сколько вышли?",
-        that="they left from the Belmont Harbor dock at {t}",
+        that="they left from the dock on Belmont at {t}",
     ),
     tpl(
         "sneaker",
@@ -1735,7 +1739,7 @@ QA: tuple[Tpl, ...] = (
         *_QA,
         n=(2, 8),
         q="how many did u get off the drop?",
-        that="the sender got {n} pairs from the drop, all size 10",
+        that="the sender got {n} pairs from the drop, all 10s",
     ),
     tpl(
         "sneaker",
@@ -1752,7 +1756,7 @@ QA: tuple[Tpl, ...] = (
         *_QA,
         n=(2, 9),
         q="за сколько ушли джорданы {name_d}?",
-        that="{name} paid {n}40 in cash for the Jordans",
+        that="the Jordans went to {name} for {n}40 in cash",
     ),
     tpl(
         "sneaker",
@@ -1771,7 +1775,7 @@ QA: tuple[Tpl, ...] = (
         *_QA,
         n=(3, 30),
         q="how much was left in {place}?",
-        that="{n} boxes were left in {place} and went into the truck",
+        that="{n} boxes were left in {place}, all in the truck",
     ),
     tpl(
         "storage",
@@ -1797,7 +1801,7 @@ QA: tuple[Tpl, ...] = (
         *_QA,
         n=(3, 30),
         q="сколько осталось в боксе?",
-        that="{n} boxes were left in the unit and went into the truck",
+        that="{n} boxes were left in the unit and all the boxes were in the truck",
     ),
     tpl(
         "storage",
@@ -1806,6 +1810,6 @@ QA: tuple[Tpl, ...] = (
         *_QA,
         g="m",
         q="у кого новый ключ?",
-        that="{name} had the new key after the sender changed the lock",
+        that="{name} had the new key and the sender changed the lock",
     ),
 )

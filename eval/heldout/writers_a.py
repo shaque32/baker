@@ -211,7 +211,7 @@ def sup_contact(slot: Slot, rng: random.Random) -> Draft:
         where = f"on {date_phrase(d)}"
     elif form == 1:
         d1 = d - timedelta(days=rng.randint(0, 4))
-        d2 = d + timedelta(days=rng.randint(0, 4))
+        d2 = d + timedelta(days=rng.randint(1, 4) if d1 == d else rng.randint(0, 4))
         assumption = (
             f"The owner and {x} exchanged messages between {date_phrase(d1)} and {date_phrase(d2)}."
         )
@@ -477,7 +477,7 @@ def con_other_speaker(slot: Slot, rng: random.Random) -> Draft:
     d = date_phrase(loc.date())
     assumption = rng.choice(
         [
-            f"In the group chat, it was {s_a} who {vp}.",
+            f"In the group chat, {s_a} was the one who {vp}.",
             f"{s_a} {vp} in the group chat on {d}.",
             f"The group member who {vp} was {s_a}.",
         ]
@@ -498,30 +498,5 @@ def random_fact(rng: random.Random, st: Setup, loc_date: date) -> str:
     """An English fact about this chat's situation, for records that must not bear on it."""
     pool = [t for t in STATEMENTS if t.lang == "en" and t.sit == st.chat.sit]
     t = rng.choice(pool)
-    entries = expand(t)
-    e = rng.choice(entries)
-    d = date_phrase(loc_date)
-    if t.vp and (not t.that or rng.random() < 0.5):
-        vp = fill(e.vp(), st)
-        return rng.choice(
-            [
-                f"On {d}, {st.s} {vp}.",
-                f"{st.s} {vp} on {d}.",
-                f"{st.s} {vp}, according to the chat with {st.r} on {d}.",
-            ]
-        )
-    that = fill(e.that(), st)
-    if "the sender" in that:
-        return rng.choice(
-            [
-                f"The message from {st.s} to {st.r} on {d} says that {that}.",
-                f"The message of {d} from {st.s} to {st.r} says that {that}.",
-            ]
-        )
-    return rng.choice(
-        [
-            f"On {d}, {st.s} told {st.r} that {that}.",
-            f"{st.s} wrote to {st.r} on {d} that {that}.",
-            f"According to the chat of {d}, {st.s} told {st.r} that {that}.",
-        ]
-    )
+    e = rng.choice(expand(t))
+    return fact_form(rng, e, st, loc_date)

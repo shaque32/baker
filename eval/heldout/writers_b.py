@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+import re
 from datetime import timedelta
 
 from core.contracts import AssumptionKind as K
@@ -255,6 +256,25 @@ def ovr_negation(slot: Slot, rng: random.Random) -> Draft:
 # ------------------------------------------------------------ overreach, gold complicates
 
 
+def _person_claim(rng: random.Random, e, st: Setup, person: str, d: str) -> str:
+    """A fact with a named person in it: the act as theirs, or the record as sent by them.
+
+    Never a report ('X told the owner that'); the claim is the act or the sending itself."""
+    text = e.text()
+    sent = [f'{person} sent {st.r} "{text}" on {d}.', f'On {d}, {person} wrote "{text}" to {st.r}.']
+    if rng.random() < 0.3:
+        return rng.choice(sent)
+    if e.tpl.vp and (not e.tpl.that or "the sender" not in e.tpl.that or rng.random() < 0.5):
+        vp = fill(e.vp(), st)
+        return rng.choice([f"{person} {vp}.", f"On {d}, {person} {vp}."])
+    if e.tpl.that and "the sender" in e.tpl.that:
+        that = fill(e.that(), st)
+        that = re.sub(r"the sender's (\w+)", lambda m: f"the {m.group(1)} of {person}", that)
+        that = that.replace("the sender", person)
+        return rng.choice([f"{that}.", f"On {d}, {that}."])
+    return rng.choice(sent)
+
+
 def ovr_handle_owner(slot: Slot, rng: random.Random) -> Draft:
     """A real person's name for an account the phone shows only as a number, handle or label.
 
@@ -300,14 +320,7 @@ def ovr_handle_owner(slot: Slot, rng: random.Random) -> Draft:
     utc = random_local(rng, st.chat.tz)
     loc = local(utc, st.chat.tz)
     d = date_phrase(loc.date())
-    if e.tpl.that and (not e.tpl.vp or rng.random() < 0.5):
-        that = fill(e.that(), st).replace("the sender", full)
-        assumption = rng.choice(
-            [f"{full} told {st.r} that {that}.", f"On {d}, {full} wrote to {st.r} that {that}."]
-        )
-    else:
-        vp = fill(e.vp(), st)
-        assumption = rng.choice([f"{full} {vp}.", f"According to the chat of {d}, {full} {vp}."])
+    assumption = _person_claim(rng, e, st, full, d)
     extra = ", and a self-introduction in the chat is not that proof either" if intro else ""
     extra2 = (
         "; a saved name or handle is a label on the phone, not proof"
@@ -338,13 +351,7 @@ def ovr_shared_account(slot: Slot, rng: random.Random) -> Draft:
         if slot.record_lang == "ru"
         else (f"{label} {rng.choice(LATIN_SURNAMES)}" if rng.random() < 0.5 else label)
     )
-    if e.tpl.that and (not e.tpl.vp or rng.random() < 0.5):
-        that = fill(e.that(), st).replace("the sender", person)
-        assumption = rng.choice(
-            [f"{person} told {st.r} that {that}.", f"{person} wrote to {st.r} that {that}."]
-        )
-    else:
-        assumption = f"{person} {fill(e.vp(), st)}."
+    assumption = _person_claim(rng, e, st, person, date_phrase(local(utc, st.chat.tz).date()))
     rationale = (
         f"A line before the record says {other} is typing on {label}'s phone, so the "
         f"record does not show that {person} wrote it."
@@ -483,7 +490,7 @@ def ovr_joke(slot: Slot, rng: random.Random) -> Draft:
     e = slot.entry
     setup_line, reply = fill(e.part("setup"), st), e.part("reply")
     core: list[Line] = [(st.receiver, setup_line), (st.sender, e.text()), (st.receiver, reply)]
-    lines, target = place(rng, st.chat, core, 1, (0, 2), (0, 1))
+    lines, target = place(rng, st.chat, core, 1, (0, 2), (0, 0))  # the joke is the last word
     utc = random_local(rng, st.chat.tz)
     loc = local(utc, st.chat.tz)
     assumption = _act_sentence(rng, e, st, loc)

@@ -356,7 +356,7 @@ DISPUTES: tuple[Tpl, ...] = (
         *_DS,
         n=(2, 15),
         reply="he gave me my half only",
-        that="the promoter gave {r} {n}00 for both of them",
+        that="the promoter paid {r} {n}00 for both {s} and {r}",
     ),
     tpl(
         "market",
@@ -497,7 +497,7 @@ DISPUTES: tuple[Tpl, ...] = (
         *_DS,
         n=(2, 15),
         reply="он дал только мою половину",
-        that="the promoter gave {r} {n}00 for both of them",
+        that="the promoter paid {r} {n}00 for both {s} and {r}",
     ),
     tpl(
         "market",
@@ -1226,7 +1226,7 @@ RELATIVE: tuple[Tpl, ...] = (
         "en",
         "biscuit got her pills tonight",
         *_RT,
-        that="Biscuit got her pills on {xdate}",
+        that="Biscuit got the pills on {xdate}",
         rel="tonight",
     ),
     tpl(
