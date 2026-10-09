@@ -286,6 +286,8 @@ def _claim_block(conn: sqlite3.Connection, st: ClaimState) -> str:
                 f"</td><td>{e(c.searched)}</td><td>{e(c.detail)}</td></tr>"
             )
         out.append("</table>")
+    if st.unlabeled:
+        out.append(f"<p class='muted'>{e(st.unlabeled)}</p>")
 
     shown = [x for x in st.evidence if x.stance != Stance.IRRELEVANT]
     hidden = len(st.evidence) - len(shown)

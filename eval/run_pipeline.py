@@ -377,6 +377,7 @@ def run_once(
 
         unreviewed = write_outputs(conn, out / "unreviewed", summary)
         ready = key_readiness(gold, recorder.retrieved, conn, result.manifest)
+        ready["not_labeled"] = not_labeled(conn, gold, result)
         decided = expert_review(conn, gold, result.manifest, _clock)
         # Second pass: the same retrieval, checks and assumptions, the first pass's stored
         # labels (no model call), and the rules on the expert's decisions.
@@ -403,6 +404,24 @@ def run_once(
         conn.close()
 
 
+def not_labeled(conn, gold, result: pipeline.RunResult) -> dict[str, dict]:  # noqa: ANN001
+    """Claims the run did not send to the stance model because a failed core check already
+    decides them (core/pipeline.py, settled_by_check). Retrieval does not run for them either,
+    so their key evidence counts as not retrieved above. This shows how much of it the failed
+    checks cite, which the expert sees on the claim."""
+    out: dict[str, dict] = {}
+    for claim_id in sorted(result.unlabeled):
+        key = gold.key(claim_id)
+        cited: set[str] = set()
+        for check_id in result.manifest.get(claim_id, {}).get("checks", []):
+            (rids,) = conn.execute(
+                "SELECT record_ids_json FROM check_results WHERE id = ?", (check_id,)
+            ).fetchone()
+            cited |= set(json.loads(rids))
+        out[claim_id] = {"key": len(key), "cited_by_checks": len(key & cited)}
+    return out
+
+
 def print_summary(s: dict) -> None:
     r = s["readiness"]
     e = s["simulated_expert"]
@@ -417,8 +436,16 @@ def print_summary(s: dict) -> None:
         f"{r['key_evidence_recall_retrieved']:.0%}, surfaced to the expert "
         f"{r['key_evidence_recall_surfaced']:.0%}"
     )
-    missed = {c: v["missed"] for c, v in r["per_claim"].items() if v["missed"]}
+    skipped = r.get("not_labeled", {})
+    missed = {c: v["missed"] for c, v in r["per_claim"].items() if v["missed"] and c not in skipped}
     print(f"pipeline: key evidence never retrieved: {json.dumps(missed)}")
+    if skipped:
+        key = sum(v["key"] for v in skipped.values())
+        cited = sum(v["cited_by_checks"] for v in skipped.values())
+        print(
+            f"pipeline: not sent to the model, a failed core check decides them: "
+            f"{', '.join(skipped)}; their failed checks cite {cited} of their {key} key records"
+        )
     print(
         f"pipeline: claims ready for the expert (key evidence surfaced) "
         f"{len(r['claims_ready_for_expert'])}/{s['claims']}; all key evidence retrieved "
