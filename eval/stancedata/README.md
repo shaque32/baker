@@ -33,6 +33,14 @@ dev split, on a Mac with the model installed, uses the existing runner unchanged
     python -m eval.probe.run_probe --models eval/probe/models.local.json --stance-only \
         --repeat 1 --probe-set eval/out/stancedata/heldout_dev.jsonl
 
+The sample Arsh checks is rebuilt from the generated files, so it always matches them:
+
+    python -m eval.stancedata.review_sheet --train eval/out/stancedata/train.jsonl \
+        --heldout eval/out/stancedata/heldout_test.jsonl --out eval/out/stancedata/review_sheet.md
+
+Before that sample, a blind second reader (one who never saw the answers) labels 100 items of
+each set from the guide alone; disagreements are fixed in the generator or the guide first.
+
 ## Why two generators
 
 A model trained on one generator learns that generator: its names, its phrasing, its trap
