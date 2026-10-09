@@ -11,7 +11,7 @@ go bar. The two generators live next door:
 
 | Path | What it is |
 |---|---|
-| `LABELING_GUIDE.md` | The rulebook: the four answers, ten ground rules, 37 families with a fixed answer each. For Arsh to sign. |
+| `LABELING_GUIDE.md` | The rulebook: the four answers, the ground rules, 37 families with a fixed answer each. For Arsh to sign. |
 | `families.py` | The same families as code. A generator picks a family; the label comes from it. |
 | `model.py`, `chat.py` | The item format (a probe item with a wider id) and the shared mechanics: accounts, local times, item assembly. No wording. |
 | `../train/` | Training generator: 12,000 items by default, with sibling items that share a record and differ in the assumption. |
