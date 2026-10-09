@@ -164,9 +164,10 @@ STATEMENTS: tuple[Tpl, ...] = (
     tpl(
         "cater",
         "en",
-        "offered to do the job at {place} {day} myself",
+        "took the {day} job at {place}, doing it myself",
         *_ACT,
-        vp="offered to do the job at {place} on {day} themselves",
+        vp="took the {day} job at {place}",
+        quote="took the {day} job at {place}",
     ),
     tpl(
         "cater",
@@ -263,10 +264,10 @@ STATEMENTS: tuple[Tpl, ...] = (
     tpl(
         "nurse",
         "en",
-        "offered to cover {day} nights if u need",
+        "signed up to cover {day} nights, holler if u still need me",
         *_ACT,
-        vp="offered to cover {day} nights",
-        quote="offered to cover {day} nights",
+        vp="signed up to cover {day} nights",
+        quote="signed up to cover {day} nights",
     ),
     tpl(
         "nurse",

@@ -513,6 +513,8 @@ def test_jokes_are_never_walked_back_by_the_joker(
 
 _DOUBLED_PARTY = re.compile(r"\b(.{4,60}?) and \1\b")
 _DOUBLED_PRONOUN = re.compile(r"\b(u|you|i|me|ты|я|мне|тебе) \w+ \1\b", re.IGNORECASE)
+# A slot filled with a value that already carries the article ("took the the Riverside brunch job").
+_DOUBLED_WORD = re.compile(r"\b(the|a|an|to|on|in|at|for|of|and|в|на|и|с|у) \1\b", re.IGNORECASE)
 
 
 def test_no_doubled_parties_or_pronouns(
@@ -521,8 +523,10 @@ def test_no_doubled_parties_or_pronouns(
     for it in test_items + dev_items:
         assert "the owner and the owner" not in it.assumption, it.probe_id
         assert not _DOUBLED_PARTY.search(it.assumption), (it.probe_id, it.assumption)
+        assert not _DOUBLED_WORD.search(it.assumption), (it.probe_id, it.assumption)
         for line in [it.target, *it.context]:
             assert not _DOUBLED_PRONOUN.search(line.text), (it.probe_id, line.text)
+            assert not _DOUBLED_WORD.search(line.text), (it.probe_id, line.text)
 
 
 # ------------------------------------------------------------- supports records: verb, no slang
