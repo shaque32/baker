@@ -69,6 +69,28 @@ If none meets them, ship the one with the fewest contradictions shown as support
 higher supports recall, and say plainly which bar it misses. Supports precision is expert
 load (items to dismiss), reported, not gated.
 
+Result (2026-10-09, Arsh's MacBook Air M4, 24 GB, llama-cpp-python 0.3.36, n_ctx 8192):
+neither model meets all four bars, so the rule picks the fewest contradictions shown as
+support: **Qwen3-14B Q4_K_M**. It misses one bar (5 contradicting items shown as support,
+bar 0). The 8B misses two (8 shown as support, and 99% valid output).
+
+| | Qwen3-14B Q4_K_M | Qwen3-8B Q4_K_M |
+|---|---|---|
+| supports recall / contradicts precision | 100% / 100% | 100% / 100% |
+| contradicts shown as supports (bar 0) | 5 | 8 |
+| valid output (bar 100%) | 100% | 99% |
+| contradicts recall | 50% | 31% |
+| supports shown to the expert (precision) | 49 (55%) | 55 (49%) |
+| seconds per stance call, case01 audit | 43.0 | 27.6 |
+| labels dropped in the timed audit | 1 of 75 | 47 of 121 |
+| full case01 (613 stance calls), projected | about 7.3 h | about 4.7 h |
+| claim proposal recall (target 90%) | 90% | 75% |
+
+The 14B was timed before the speed test's call count was fixed (75 calls on C02, C05 and C12
+instead of 121); its seconds per call carry over. Hardware floor: a 24 GB Apple silicon Mac,
+the only machine measured end to end. A full case runs in the background or overnight.
+Windows/NVIDIA speed is still unmeasured.
+
 Speed: `time_case` audits case01 on each model (cold run, then the rerun an expert triggers
 after accepting evidence, which reuses stored outputs and costs no model calls), counts model
 calls per claim, projects a full-case time from the measured seconds per call, and reports

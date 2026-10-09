@@ -24,6 +24,10 @@ CLAIM_ARGS=()
 if [ -n "$CLAIMS" ]; then CLAIM_ARGS=(--claims "$CLAIMS"); fi
 
 mkdir -p "$OUT"
+python -c "import llama_cpp, platform; print('llama-cpp-python', llama_cpp.__version__, platform.platform())" \
+  > "$OUT/versions.txt"
+ls -l $(python -c "import json; print(' '.join(m['path'] for m in json.load(open('$MODELS'))))") \
+  >> "$OUT/versions.txt" 2>&1 || true
 echo "1/3 stance probe on the signed set (stance only; the reviewer decides nothing now)"
 python -m eval.probe.run_probe --models "$MODELS" \
   --probe-set "$PROBE_SET" --stance-only --repeat 1 \
@@ -38,6 +42,8 @@ python -m eval.probe.claim_recall --models "$MODELS" --n-ctx "$NCTX" --out "$OUT
 
 {
   echo "# Wave 3 Mac results ($(date -u +%Y-%m-%dT%H:%MZ), ${RAM_GB} GB, n_ctx ${NCTX})"
+  echo
+  cat "$OUT/versions.txt"
   echo
   cat "$OUT/probe/summary.md"
   echo

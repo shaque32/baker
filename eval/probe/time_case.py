@@ -84,7 +84,7 @@ def _components(conn: sqlite3.Connection, model: Any, spec: Path, ai_review: boo
     if ai_review:
         replace["reviewer"] = review_mod.create(conn, model=model)
     # real_components collects the model_runs of the passes given in replace.
-    return pipeline.real_components(conn, replace=replace, filler=rp.spec_filler(spec))
+    return pipeline.real_components(conn, replace=replace, filler=rp.spec_filler(spec, conn))
 
 
 def _ports(comps: pipeline.Components) -> dict[str, RunPort]:
