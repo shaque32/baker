@@ -304,11 +304,12 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
     return page.wrap("Case", "".join(out), run_banner(conn, page, "/"))
 
 
-def _devices(conn: sqlite3.Connection, page: Page, back: str) -> str:
+def _devices(conn: sqlite3.Connection, page: Page, back: str, heading: bool = True) -> str:
     devices = list(conn.execute("SELECT id, label, model, source_id FROM devices ORDER BY id"))
     stips = {s.subject_id: s for s in pipeline.load_stipulations(conn)}
     out = [
-        "<h2>Devices and stipulations</h2><p>Who used each phone is a stipulation you make, not "
+        ("<h2>Devices and stipulations</h2>" if heading else "")
+        + "<p>Who used each phone is a stipulation you make, not "
         "a finding. Every report lists it as a limitation.</p>"
         "<table><thead><tr><th>Device</th><th>Source</th><th>Stipulated user</th>"
         "<th>Change</th></tr></thead>"
@@ -943,7 +944,7 @@ def setup_page(
 
     # 3. owners
     out.append("<h2>3. Who used each phone</h2>")
-    out.append(_devices(conn, page, "/setup"))
+    out.append(_devices(conn, page, "/setup", heading=False))
 
     # 4. model and run
     out.append("<h2>4. The model</h2>")

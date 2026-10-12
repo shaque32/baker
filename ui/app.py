@@ -31,6 +31,7 @@ Local-server protections. Another web page open in the same browser can send req
 from __future__ import annotations
 
 import hmac
+import re
 import secrets
 import sqlite3
 from collections.abc import Callable
@@ -56,6 +57,7 @@ CSP = (
     "frame-ancestors 'none'; base-uri 'none'"
 )
 MAX_BODY = 1_000_000
+TEXTAREA = re.compile(r"<textarea([^>]*)>[^<]*</textarea>")
 MAX_UPLOAD = 16 * 1024**3  # a full Cellebrite PDF report can run to gigabytes
 
 # What each action needs: an open case, and no background job of these kinds running.
@@ -697,13 +699,17 @@ class App:
             ("Content-Security-Policy", CSP),
             ("X-Content-Type-Options", "nosniff"),
             ("X-Frame-Options", "DENY"),
-            ("Referrer-Policy", "no-referrer"),
+            # same-origin, not no-referrer: under no-referrer a browser sends "Origin: null"
+            # with this screen's own forms, and the Origin check refuses every one of them.
+            ("Referrer-Policy", "same-origin"),
             ("Cache-Control", "no-store"),
         ]
 
     def _html(self, body: str, status: int = 200) -> Response:
         try:
-            check_report_text(body)
+            # A textarea holds cited claim text for the expert to edit; it cannot carry the
+            # cited-text span, so its contents are left out of the check like any cited span.
+            check_report_text(TEXTAREA.sub("<textarea></textarea>", body))
         except InvariantViolation as err:
             return self._plain(500, f"page withheld: {err}")
         return Response(
