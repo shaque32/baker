@@ -377,6 +377,17 @@ UNICODE = replace(
     messages=tuple(replace(m, body=UNICODE_BODIES.get(m.key, m.body)) for m in PHONE.messages),
 )
 
+
+def x11() -> list[xl.SheetSpec]:
+    """Excel writes a carriage return as _x000D_, never as a raw CR: an XML reader turns a raw
+    CR into LF, so writing one would make the file depend on which XML writer openpyxl uses."""
+    excel = replace(
+        UNICODE,
+        messages=tuple(replace(m, body=m.body.replace("\r", "_x000D_")) for m in UNICODE.messages),
+    )
+    return xl.sheets(excel)
+
+
 ATTACHMENTS_ONLY = replace(
     PHONE,
     messages=tuple(replace(m, body="") if m.key in ("m04", "m06") else m for m in PHONE.messages),
@@ -778,9 +789,10 @@ VARIANTS: tuple[Variant, ...] = (
     ),
     _v(
         "x11_multiline_unicode",
-        "line breaks (LF and CRLF), tabs, leading and trailing spaces, Cyrillic and emoji",
-        _xlsx("x11", lambda: xl.sheets(UNICODE)),
-        replace(BASE, messages=msgs(UNICODE)),
+        "line breaks (LF and CRLF), tabs, leading and trailing spaces, Cyrillic and emoji; "
+        "the CR stored as Excel stores it",
+        _xlsx("x11", x11),
+        replace(BASE, messages=msgs(UNICODE), info=A({"cells_with_excel_escapes_decoded"})),
     ),
     _v(
         "x12_attachments_only",
