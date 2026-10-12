@@ -79,7 +79,7 @@ def test_check_finds_what_the_sheet_expects(case02, row):
 def test_eval_uses_the_drafts_until_signed_and_says_so():
     signed = run_pipeline.Path("eval/gold/case02/gold.jsonl")
     if signed.exists():
-        pytest.skip("case02 is signed; tests/test_gold_case02.py covers it")
+        pytest.skip("case02 is signed; tests/test_synthetic_case02_gold.py covers it")
     assert run_pipeline.gold_path("case02") == spec.GOLD_DRAFT.relative_to(spec.HERE.parents[2])
     assert run_pipeline.key_status(run_pipeline.gold_path("case02")).startswith("draft")
     sheet = run_pipeline.assumption_sheet("case02")

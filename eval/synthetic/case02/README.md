@@ -34,7 +34,6 @@ affidavit PDF (`affidavit.pdf`) to `eval/out/case02/`, which is not committed.
   scores it **report-only** (`make eval-case02`). It never gates a merge; it gates paying
   pilots. The printed summary is aggregate only, so builders running `make check` see no claim
   or record ids; details are in `eval/out/case02/model_free/run.json`, which builders do not read.
-- **Arsh signs the gold and the assumption sheet.** Until then the run uses the drafts here and
-  says "draft, not signed by Arsh" on every line it prints; an unsigned key can never gate.
-  Signed copies go in `eval/gold/case02/` (`gold.jsonl`, `assumptions.jsonl`), and the run then
-  uses them.
+- **Signed by Arsh on 2026-10-12**, with draft labeling rules 5 to 8. The signed key and
+  assumption sheet are in `eval/gold/case02/` and `make eval` uses them; the drafts here stay as
+  the build output the signed copies are tested against. An unsigned key can never gate.
