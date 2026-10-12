@@ -110,7 +110,8 @@ class Page:
             "<meta name='viewport' content='width=device-width, initial-scale=1'>"
             f"<title>{e(title)} · Baker</title><style>{REPORT_CSS}{UI_CSS}</style></head><body>"
             "<nav><strong>Baker</strong><a href='/'>Case</a><a href='/claims'>Claims queue</a>"
-            "<a href='/claim/new'>Add a claim</a><a href='/report'>Report</a>"
+            "<a href='/claim/new'>Add a claim</a><a href='/exhibits'>Exhibits</a>"
+            "<a href='/report'>Report</a>"
             f"<a href='/log'>Audit log</a><span class='who'>{who}</span></nav>"
             f"{flash}{banner}{body}</body></html>"
         )
