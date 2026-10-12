@@ -8,7 +8,7 @@ name: windows-installer
 
 on:
   push:
-    branches: [main, "claude/project-thread-iwvlnw"]  # TEMP: the build thread's branch, removed before the PR
+    branches: [main]
     tags: ["v*"]
   pull_request:
     paths:
