@@ -1,6 +1,6 @@
 PY ?= python3
 
-.PHONY: install lint fmt test eval eval-model-free eval-fake eval-real eval-hostile check synth fixtures report stancedata
+.PHONY: install lint fmt test eval eval-model-free eval-case02 eval-fake eval-real eval-hostile check synth fixtures report stancedata
 
 install:
 	$(PY) -m pip install -e ".[dev]"
@@ -24,13 +24,22 @@ ASSUMPTION_SPEC ?= $(if $(wildcard eval/gold/case01/assumptions.jsonl),eval/gold
 # and rules; a stand-in labels every retrieved record and a simulated expert accepts only the
 # key evidence Arsh signed in gold (eval/simulated_expert.py). Gate: accuracy >= 0.80 and zero
 # false supported on case01. The unreviewed run (0 supported by design) is reported beside it,
-# then the red-team run, which fails if a structurally blocked claim goes supported.
-eval: eval-model-free eval-hostile
+# then the red-team run, which fails if a structurally blocked claim goes supported, then
+# case02, reported and never gated (it gates paying pilots, not merges).
+eval: eval-model-free eval-hostile eval-case02
 
 eval-model-free:
 	$(PY) -m eval.run_pipeline --mode model-free --assumption-spec $(ASSUMPTION_SPEC) --repeat
 	$(PY) -m eval.run_eval --predictions eval/out/case01/model_free/unreviewed/predictions.jsonl --report-only
 	$(PY) -m eval.run_eval --predictions eval/out/case01/model_free/predictions.jsonl
+
+# case02, the hidden held-out case: the same model-free run, report-only, aggregate output only.
+# Builders never read eval/synthetic/case02*, eval/out/case02/ or the case02 tests. It uses
+# eval/gold/case02/ once Arsh signs it, else the drafts, and says which.
+CASE02_GOLD ?= $(if $(wildcard eval/gold/case02/gold.jsonl),eval/gold/case02/gold.jsonl,eval/synthetic/case02/draft_gold.jsonl)
+eval-case02:
+	$(PY) -m eval.run_pipeline --case case02 --mode model-free
+	$(PY) -m eval.run_eval --case eval/gold/case02 --gold $(CASE02_GOLD) --predictions eval/out/case02/model_free/predictions.jsonl --report-only
 
 # The pipeline on the eval stand-ins from eval/pipeline_fakes.py; not gated.
 eval-fake:
