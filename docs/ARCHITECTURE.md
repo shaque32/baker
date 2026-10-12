@@ -55,8 +55,9 @@ core/
     checks/           DeterministicCheck implementations
     rules.py          decide_verdict (human-owned)
     prompts/          human-owned prompts
+  restore/            Context Restore: find pasted exhibit quotes in the extraction (code only)
   review/             expert actions + audit log
-  report/             ReportRenderer
+  report/             ReportRenderer; restore.py and letter.py (selection-audit request)
   review/status.py    what each claim needs from the expert (shared by screen and report)
   review/redecide.py  re-run the verdict rules after expert review, no model
 cli/                  `baker import`, `baker claims`, `baker audit`, `baker report`, `baker serve`

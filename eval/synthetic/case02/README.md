@@ -25,10 +25,16 @@ affidavit PDF (`affidavit.pdf`) to `eval/out/case02/`, which is not committed.
 | `affidavit_draft.md` | Mock affidavit excerpt; printed paragraph numbers start at 21 |
 | `draft_gold.jsonl` | DRAFT key in `GoldClaim` format, `labeled_by` set to a DRAFT marker |
 | `ANSWER_KEY_DRAFT.md` | The same key with reasoning and cited rows, for line-by-line review |
+| `case02_assumptions.jsonl` | DRAFT assumption sheet, built by `eval/synthetic/case02_assumptions.py` |
+| `CASE02_ASSUMPTIONS_REVIEW.md` | The same sheet for line-by-line review, with expected check results and gaps |
 
 ## Status
 
-- Results on case02 are reported with every eval run but **do not gate the alpha**. They gate
-  paying pilots.
-- **Arsh signs the gold.** The draft key is the generating agent's proposal; approved lines are
-  copied into `eval/gold/case02/` by a human.
+- `make eval` (and so `make check`) runs case02 model-free with the simulated expert and
+  scores it **report-only** (`make eval-case02`). It never gates a merge; it gates paying
+  pilots. The printed summary is aggregate only, so builders running `make check` see no claim
+  or record ids; details are in `eval/out/case02/model_free/run.json`, which builders do not read.
+- **Arsh signs the gold and the assumption sheet.** Until then the run uses the drafts here and
+  says "draft, not signed by Arsh" on every line it prints; an unsigned key can never gate.
+  Signed copies go in `eval/gold/case02/` (`gold.jsonl`, `assumptions.jsonl`), and the run then
+  uses them.
