@@ -16,6 +16,8 @@ $p = Start-Process $exe -ArgumentList (@('-s') + $parts) -Wait -PassThru
 if ($p.ExitCode) { throw "CUDA installer exit code $($p.ExitCode)" }
 $root = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$short"
 if (-not (Test-Path "$root\bin\nvcc.exe")) { throw "nvcc not found under $root" }
-"CUDA_PATH=$root" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+# Visual Studio's CUDA build rules look for CUDA_PATH_V<major>_<minor>, not CUDA_PATH.
+$versioned = 'CUDA_PATH_V' + ($short -replace '\.', '_')
+"CUDA_PATH=$root", "$versioned=$root", "CudaToolkitDir=$root\" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
 "$root\bin" | Out-File $env:GITHUB_PATH -Append -Encoding utf8
 & "$root\bin\nvcc.exe" --version
