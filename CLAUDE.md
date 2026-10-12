@@ -50,6 +50,9 @@ with the reason and the exact diff you want, then finish the rest of your task w
 - Never put real discovery material in the repo, in prompts, in tests or in fixtures.
 - No network calls anywhere in `core/`. No telemetry. Models load from local paths.
 - Inputs are opened read-only and SHA-256 hashed on import.
+- case02 is the hidden held-out case. Never read `eval/synthetic/case02*`, `eval/gold/case02/`,
+  `eval/out/case02/` or any test whose name contains `case02`, unless your task names case02.
+  `make eval` reports it as aggregate numbers only; never tune anything to them.
 
 ## Before you finish
 - `make check` must pass (lint, tests, eval).
