@@ -40,9 +40,10 @@ class GenerationParams:
     """Deterministic by default: greedy decoding with a fixed seed.
 
     The speed settings (flash_attn, n_batch, prompt_lookup, chat_template) apply when the model
-    file loads; a different value passed to one call is ignored. Their defaults are the plain
-    runtime every signed result so far was measured with. RUNTIMES names the alternatives the
-    Mac speed run compares (eval/probe/speed_round2.py).
+    file loads; a different value passed to one call is ignored. The defaults are PRODUCT_RUNTIME,
+    picked by the Mac speed run (eval/probe/README.md, "Faster calls, round 2"). RUNTIMES names
+    every runtime that run compared; "plain" is the one the signed probe results were first
+    measured with.
     """
 
     max_tokens: int = 1024  # stance and review; translation callers pass more
@@ -50,8 +51,8 @@ class GenerationParams:
     seed: int = 1234
     n_ctx: int = 8192
     n_gpu_layers: int = -1  # -1 offloads every layer to the GPU
-    flash_attn: bool = False
-    n_batch: int = 512  # prompt tokens read per step (llama.cpp's n_batch and n_ubatch)
+    flash_attn: bool = True
+    n_batch: int = 1024  # prompt tokens read per step (llama.cpp's n_batch and n_ubatch)
     prompt_lookup: int = 0  # draft tokens per step copied from the prompt; 0 is off
     chat_template: str = "gguf"  # "no-think": the model's own template, Qwen3 non-thinking mode
 
@@ -94,6 +95,11 @@ RUNTIMES: dict[str, dict[str, int | bool]] = {
     "flash": {"flash_attn": True, "n_batch": 1024},
     "flash-lookup": {"flash_attn": True, "n_batch": 1024, "prompt_lookup": 10},
 }
+
+# What the product runs on. Mac run 2026-10-12 (Qwen3-14B Q4, M4 24 GB): "flash" gave the same
+# output as "plain" on all 88 signed probe items, 22.5 s instead of 28.3 s per probe call, at
+# the same peak memory. "flash-lookup" was no faster (28.5 s) and used 0.9 GB more.
+PRODUCT_RUNTIME = "flash"
 
 
 def with_runtime(

@@ -13,6 +13,7 @@ import pytest
 
 from core.llm.runtime import (
     PLAIN_SPEED,
+    PRODUCT_RUNTIME,
     RUNTIMES,
     GenerationParams,
     speed_kwargs,
@@ -29,17 +30,22 @@ OLD_RECORD_KEYS = {"max_tokens", "temperature", "seed", "n_ctx", "n_gpu_layers",
 def test_plain_runtime_records_and_loads_as_before():
     # Stored outputs are reused only under the same recorded params, so the plain runtime
     # must record exactly what runs recorded before the speed settings existed.
-    p = GenerationParams()
+    p = with_runtime(GenerationParams(), "plain")
     assert set(p.as_record()) == OLD_RECORD_KEYS
     assert speed_kwargs(p) == {}
-    assert with_runtime(p, "plain") == p
+
+
+def test_product_runs_on_the_runtime_the_mac_run_picked():
+    assert PRODUCT_RUNTIME == "flash"
+    assert GenerationParams() == with_runtime(GenerationParams(), PRODUCT_RUNTIME)
+    assert GenerationParams().chat_template == "gguf"  # no-think was not adopted
 
 
 def test_fast_runtime_is_recorded_so_it_never_reuses_plain_outputs():
     flash = with_runtime(GenerationParams(n_ctx=4096), "flash")
     rec = flash.as_record()
     assert rec["flash_attn"] is True and rec["n_batch"] == 1024 and rec["n_ctx"] == 4096
-    assert rec != GenerationParams(n_ctx=4096).as_record()
+    assert rec != with_runtime(GenerationParams(n_ctx=4096), "plain").as_record()
     assert speed_kwargs(flash) == {"flash_attn": True, "n_batch": 1024, "n_ubatch": 1024}
 
 
@@ -52,7 +58,8 @@ def test_no_think_template_is_recorded():
 def test_runtime_switch_resets_settings_it_does_not_name():
     lookup = with_runtime(GenerationParams(), "flash-lookup")
     assert with_runtime(lookup, "flash").prompt_lookup == 0
-    assert with_runtime(lookup, "plain").as_record() == GenerationParams().as_record()
+    plain = with_runtime(lookup, "plain")
+    assert not plain.flash_attn and plain.n_batch == 512 and plain.prompt_lookup == 0
 
 
 def test_prompt_lookup_keeps_every_logit():

@@ -48,7 +48,7 @@ from core.audit import review as review_mod
 from core.audit import stance as stance_mod
 from core.audit._local_model import LazyModel, ModelConfig, RunPort
 from core.contracts import GoldClaim, Stance
-from core.llm.runtime import RUNTIMES, FakeModel, sha256_file, with_runtime
+from core.llm.runtime import PRODUCT_RUNTIME, RUNTIMES, FakeModel, sha256_file, with_runtime
 from eval import run_pipeline as rp
 from eval.run_eval import load_jsonl
 
@@ -265,7 +265,7 @@ def time_model(
     claims: list[str] | None,
     full_stance_calls: int | None,
     stance_prompt: Path | None = None,
-    runtime: str = "plain",
+    runtime: str = PRODUCT_RUNTIME,
     chat_template: str = "gguf",
 ) -> dict[str, Any]:
     name = entry["name"]
@@ -438,7 +438,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--stance-prompt", type=Path, default=None, help="a draft stance prompt to time instead"
     )
-    ap.add_argument("--runtime", choices=sorted(RUNTIMES), default="plain",
+    ap.add_argument("--runtime", choices=sorted(RUNTIMES), default=PRODUCT_RUNTIME,
                     help="speed settings the model loads with (core/llm/runtime.py)")  # fmt: skip
     ap.add_argument("--chat-template", choices=["gguf", "no-think"], default="gguf")
     args = ap.parse_args(argv)

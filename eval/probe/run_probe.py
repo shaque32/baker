@@ -39,7 +39,14 @@ from pathlib import Path
 from typing import Any
 
 from core.llm.calls import CallLog, make_record
-from core.llm.runtime import RUNTIMES, GenerationParams, LocalModel, ModelOutput, with_runtime
+from core.llm.runtime import (
+    PRODUCT_RUNTIME,
+    RUNTIMES,
+    GenerationParams,
+    LocalModel,
+    ModelOutput,
+    with_runtime,
+)
 from eval.probe import prompts
 
 HERE = Path(__file__).parent
@@ -413,7 +420,7 @@ def main(argv: list[str] | None = None) -> int:
                     help="also run a reason-before-decision reviewer variant")  # fmt: skip
     ap.add_argument("--stance-only", action="store_true",
                     help="skip the reviewer items (the reviewer decides nothing)")  # fmt: skip
-    ap.add_argument("--runtime", choices=sorted(RUNTIMES), default="plain",
+    ap.add_argument("--runtime", choices=sorted(RUNTIMES), default=PRODUCT_RUNTIME,
                     help="speed settings the model loads with (core/llm/runtime.py)")  # fmt: skip
     ap.add_argument("--chat-template", choices=["gguf", "no-think"], default="gguf")
     ap.add_argument("--repeat", type=int, default=2)
