@@ -1,4 +1,6 @@
--- Baker canonical schema v0.2.0 (matches CONTRACTS_VERSION in core/contracts.py).
+-- Baker canonical schema v0.3.0 (matches CONTRACTS_VERSION in core/contracts.py).
+-- A case database made under an older version is not upgraded in place: the CHECK on
+-- pipeline_runs.status changed in 0.3.0, so re-create the case (stored inputs re-import).
 -- HUMAN-OWNED. Agents: propose changes in PROPOSED_CHANGES.md.
 -- One SQLite database per case.
 -- Conventions:
@@ -193,12 +195,32 @@ CREATE TABLE pipeline_runs (
     id                TEXT PRIMARY KEY,  -- 'run:<YYYYMMDDTHHMMSSZ>'
     started_at_utc    TEXT NOT NULL,
     finished_at_utc   TEXT,
-    status            TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed')),
+    status            TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed', 'stopped')),
     baker_version     TEXT NOT NULL,
     contracts_version TEXT NOT NULL,
     rule_version      TEXT NOT NULL,
     config_json       TEXT NOT NULL,     -- eval mode, k, flags
     note              TEXT               -- why it failed, e.g. the invariant that stopped it
+);
+
+-- One row per claim per audit run, written as the run works, so a screen can show progress
+-- and an estimate. A claim is shown for review only when its row is 'done' and its run is
+-- completed; anything else reads "labeling incomplete".
+CREATE TABLE run_claims (
+    pipeline_run_id    TEXT NOT NULL REFERENCES pipeline_runs(id),
+    claim_id           TEXT NOT NULL REFERENCES claims(id),
+    position           INTEGER NOT NULL CHECK (position >= 1),  -- the expert's claim order
+    state              TEXT NOT NULL CHECK (state IN ('queued', 'labeling', 'done', 'failed')),
+    candidates_total   INTEGER CHECK (candidates_total >= 0),   -- NULL until retrieval ran
+    candidates_labeled INTEGER NOT NULL DEFAULT 0 CHECK (candidates_labeled >= 0),
+    model_calls        INTEGER NOT NULL DEFAULT 0 CHECK (model_calls >= 0),  -- new calls only
+    started_at_utc     TEXT,
+    finished_at_utc    TEXT,
+    PRIMARY KEY (pipeline_run_id, claim_id),
+    UNIQUE (pipeline_run_id, position),
+    CHECK (candidates_total IS NULL OR candidates_labeled <= candidates_total),
+    CHECK (state <> 'done' OR (finished_at_utc IS NOT NULL AND candidates_total IS NOT NULL
+                               AND candidates_labeled = candidates_total))
 );
 
 CREATE TABLE model_runs (
@@ -344,7 +366,50 @@ CREATE TABLE audit_log (
     hash         TEXT NOT NULL      -- sha256 over prev_hash, at_utc, actor, action, payload_json
 );
 
+-- ---------------------------------------------------------------- Context Restore
+-- The expert pastes an exhibit; Baker finds each quoted message in the extraction.
+-- Matches are derived by code (core/restore/), never by a model, and never touch verdicts.
+-- Excerpts and matches are recomputed when sources or the matcher change; the exhibit text is
+-- never edited. An excerpt with no match keeps what was searched, never "does not exist".
+
+CREATE TABLE exhibits (
+    id            TEXT PRIMARY KEY,  -- 'exh:<hash of label and text>'
+    label         TEXT NOT NULL CHECK (length(label) > 0),
+    paragraph_id  TEXT REFERENCES govdoc_paragraphs(id),
+    text          TEXT NOT NULL CHECK (length(text) > 0),  -- exactly as pasted
+    sha256        TEXT NOT NULL,     -- of text, UTF-8
+    split         TEXT NOT NULL CHECK (split IN ('line', 'block')),
+    added_by      TEXT NOT NULL CHECK (added_by LIKE 'expert:%'),
+    added_at_utc  TEXT NOT NULL
+);
+
+CREATE TABLE exhibit_excerpts (
+    id              TEXT PRIMARY KEY,  -- 'exc:<exhibit_id>#<seq>'
+    exhibit_id      TEXT NOT NULL REFERENCES exhibits(id),
+    seq             INTEGER NOT NULL CHECK (seq >= 1),
+    char_start      INTEGER NOT NULL CHECK (char_start >= 0),
+    char_end        INTEGER NOT NULL CHECK (char_end > char_start),
+    text            TEXT NOT NULL,     -- exhibits.text[char_start:char_end]
+    searched        TEXT NOT NULL,     -- what was searched and each source's coverage
+    source_ids_json TEXT NOT NULL DEFAULT '[]',
+    matcher_version TEXT NOT NULL,
+    UNIQUE (exhibit_id, seq)
+);
+
+CREATE TABLE exhibit_matches (
+    id                 TEXT PRIMARY KEY,  -- 'xm:<excerpt_id>|<record_id>'
+    excerpt_id         TEXT NOT NULL REFERENCES exhibit_excerpts(id),
+    record_id          TEXT NOT NULL REFERENCES messages(id),
+    source_id          TEXT NOT NULL REFERENCES sources(id),
+    locator            TEXT NOT NULL,
+    method             TEXT NOT NULL CHECK (method IN ('exact', 'tolerant', 'transliteration')),
+    spans_json         TEXT NOT NULL,     -- [[start, end], ...] in the message body
+    excerpt_spans_json TEXT NOT NULL,     -- paired spans in the excerpt text
+    matcher_version    TEXT NOT NULL
+);
+
 CREATE INDEX idx_messages_thread_ts ON messages(thread_id, ts_utc);
+CREATE INDEX idx_exhibit_matches_excerpt ON exhibit_matches(excerpt_id);
 CREATE INDEX idx_messages_sender ON messages(sender_account_id);
 CREATE INDEX idx_evidence_assumption ON evidence_items(assumption_id);
 CREATE INDEX idx_verdicts_run ON verdicts(pipeline_run_id, claim_id);

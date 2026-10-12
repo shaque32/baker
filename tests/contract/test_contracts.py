@@ -34,6 +34,9 @@ ENUM_COLUMNS = {
     ("verdicts", "supported_basis"): c.SupportedBasis,
     ("model_calls", "outcome"): c.ModelCallOutcome,
     ("pipeline_runs", "status"): c.PipelineRunStatus,
+    ("run_claims", "state"): c.RunClaimState,
+    ("exhibits", "split"): c.ExcerptSplit,
+    ("exhibit_matches", "method"): c.MatchMethod,
 }
 
 # (table, column) -> the subset of an enum its CHECK constraint allows
