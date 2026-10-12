@@ -32,7 +32,9 @@ ROOT = Path(__file__).parents[1]
 DRAFT = prompt_body((ROOT / "docs/prompts/assumptions.md").read_text("utf-8"))
 GOLD = {
     d["claim_id"]: d
-    for d in map(json.loads, (ROOT / "eval/gold/case01/gold.jsonl").read_text().splitlines())
+    for d in map(
+        json.loads, (ROOT / "eval/gold/case01/gold.jsonl").read_text(encoding="utf-8").splitlines()
+    )
 }
 PETROV, REYES = "person:petrov", "person:reyes"
 NORTHSTAR = ["acct:item1:Telegram:5551234", "acct:item2:Telegram:5551234"]

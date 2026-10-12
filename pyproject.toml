@@ -35,6 +35,12 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["core*", "eval*", "cli*", "ui*"]
 
+# Files core/ reads at run time. Without them a non-editable install (the Windows installer,
+# `pip install .`) cannot create a case database or load a signed prompt.
+[tool.setuptools.package-data]
+core = ["schema.sql"]
+"core.audit" = ["prompts/*.md"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 

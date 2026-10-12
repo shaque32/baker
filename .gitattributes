@@ -1,0 +1,7 @@
+# Check out every text file with LF line endings on every machine, Windows included, so the
+# files the Windows installer ships are byte-identical to the repository's.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.iss text eol=crlf
