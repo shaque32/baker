@@ -5,9 +5,11 @@ database. Every cited span (government text, evidence quotes, record text) is wr
 <span class="q"> so the forbidden-word check can tell cited text from the tool's own words.
 
 Display rules:
-- The report shows the latest completed pipeline run (a full audit, or a rules-only re-decide
-  after expert review; core/review/redecide.py). Evidence review status is shown as it is now;
-  if an expert decided anything after the run, a banner says to re-run the verdicts.
+- The report shows pipeline.view_run(): the latest completed pipeline run (a full audit, or a
+  rules-only re-decide after expert review; core/review/redecide.py), or a newer audit that has
+  not finished yet. Then a banner says so, and every claim it has not finished prints as
+  "Labeling incomplete" with no verdict and no evidence. Evidence review status is shown as it
+  is now; if an expert decided anything after the run, a banner says to re-run the verdicts.
 - Verdict labels come from core/review/status.py, which the review screen uses too.
   "Supported (expert-confirmed)" only when the verdict's supported_basis is confirmed, which
   rules.py sets only if an expert accepted every supporting item it cites (the invariants
@@ -408,7 +410,7 @@ def _versions(conn: sqlite3.Connection, run: dict | None) -> str:
 
 def render_report(conn: sqlite3.Connection) -> str:
     srcs = sources(conn)
-    run = pipeline.last_run(conn)
+    run = pipeline.view_run(conn)
     govdocs = [r[0] for r in conn.execute("SELECT title FROM govdocs ORDER BY id")]
 
     states = claim_states(conn, run=run)
@@ -429,6 +431,14 @@ def render_report(conn: sqlite3.Connection) -> str:
     if run is None:
         parts.append("<div class='banner'><strong>No audit has run on this case.</strong></div>")
     else:
+        if run.get("partial"):
+            incomplete = sum(1 for st in states if st.incomplete)
+            parts.append(
+                "<div class='banner'><strong>Labeling incomplete: this audit has not finished."
+                f"</strong> It finished {len(run['manifest'])} of {len(run['claim_order'] or ())}"
+                f' claims. The other {incomplete} claim(s) print as "Labeling incomplete": '
+                "their evidence was not fully labeled, so they have no verdict.</div>"
+            )
         if run.get("fake"):
             parts.append(
                 "<div class='banner'><strong>Test run with stand-in components.</strong> Some "
