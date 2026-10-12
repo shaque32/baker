@@ -11,7 +11,7 @@ fixed text (about 2,100 characters) plus the assumption come first, and the pipe
 assumption's records one after another, so consecutive calls share all of that.
 
 Risk: a different order can change some labels. The probe on the signed set decides (see
-eval/probe/mac_prompt_order.sh). If v1.1 passes, signing copies this body into
+eval/probe/mac_speed_round2.sh). If v1.1 passes, signing copies this body into
 core/audit/prompts/stance.md as v1.1.
 
 <!-- prompt starts -->

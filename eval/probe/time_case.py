@@ -5,10 +5,11 @@ Usage:
       No model. Counts the calls a real run makes (stance calls do not depend on the model).
   python -m eval.probe.time_case --models eval/probe/models.local.json [--claims C02,C05]
       [--n-ctx 4096] [--ai-review] [--case case01] [--out eval/out/speed]
-      [--stance-prompt eval/probe/stance_v1_1_draft.md]
+      [--stance-prompt eval/probe/stance_v1_1_draft.md] [--runtime flash] [--chat-template no-think]
 
 --stance-prompt times a draft stance prompt instead of the signed one (the product only ever
 uses the signed core/audit/prompts/stance.md). Compare the two on the same machine and claims.
+--runtime and --chat-template load the model with other speed settings (core/llm/runtime.py).
 
 For each model in the models file (the probe's file; a null sha256 is computed here):
 1. Build the case fresh, as the eval does (eval/run_pipeline.build_case), with the case's
@@ -47,13 +48,14 @@ from core.audit import review as review_mod
 from core.audit import stance as stance_mod
 from core.audit._local_model import LazyModel, ModelConfig, RunPort
 from core.contracts import GoldClaim, Stance
-from core.llm.runtime import FakeModel, sha256_file
+from core.llm.runtime import RUNTIMES, FakeModel, sha256_file, with_runtime
 from eval import run_pipeline as rp
 from eval.run_eval import load_jsonl
 
 GOLD_SPEC = Path("eval/gold/case01/assumptions.jsonl")  # once Arsh signs the sheet
 DRAFT_SPEC = Path("eval/probe_draft/case01_assumptions.jsonl")
 K = pipeline.Components.k  # candidates per assumption, as the pipeline asks for
+OUTPUT_SIZES = (256, 384, 512)  # completion-token sizes the output-length check counts
 DIRECTION = {"supported": Stance.SUPPORTS, "contradicted": Stance.CONTRADICTS}
 
 
@@ -218,6 +220,10 @@ def _stats(ports: dict[str, RunPort]) -> dict[str, Any]:
             else None,
             "mean_completion_tokens": round(toks / len(fresh)) if fresh else None,
             "tokens_per_second": round(toks / secs, 1) if secs else None,
+            "max_completion_tokens": max((s.completion_tokens for s in fresh), default=None),
+            "completion_tokens_over": {
+                str(n): sum(s.completion_tokens > n for s in fresh) for n in OUTPUT_SIZES
+            },
         }
     return out
 
@@ -259,6 +265,8 @@ def time_model(
     claims: list[str] | None,
     full_stance_calls: int | None,
     stance_prompt: Path | None = None,
+    runtime: str = "plain",
+    chat_template: str = "gguf",
 ) -> dict[str, Any]:
     name = entry["name"]
     path = Path(entry["path"]).expanduser()
@@ -267,6 +275,7 @@ def time_model(
         print(f"{name}: computing SHA-256 of {path} (one pass over the file)", file=sys.stderr)
         sha = sha256_file(path)
     model = LazyModel(ModelConfig(name=name, path=path, sha256=sha, n_ctx=n_ctx))
+    model.params = with_runtime(model.params, runtime, chat_template)  # before the lazy load
     conn = rp.build_case(case, out / name / f"{case}.db")
     gold = load_jsonl(Path("eval/gold") / case / "gold.jsonl", GoldClaim)
     try:
@@ -282,6 +291,8 @@ def time_model(
         "model": name,
         "sha256": sha,
         "n_ctx": model.params.n_ctx,
+        "runtime": runtime,
+        "params": model.params.as_record(),
         "ai_review": ai_review,
         "claims_run": claims or "all",
         "cold": cold,
@@ -427,6 +438,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--stance-prompt", type=Path, default=None, help="a draft stance prompt to time instead"
     )
+    ap.add_argument("--runtime", choices=sorted(RUNTIMES), default="plain",
+                    help="speed settings the model loads with (core/llm/runtime.py)")  # fmt: skip
+    ap.add_argument("--chat-template", choices=["gguf", "no-think"], default="gguf")
     args = ap.parse_args(argv)
     if not args.dry_run and args.models is None:
         ap.error("pass --models (or --dry-run)")
@@ -456,6 +470,8 @@ def main(argv: list[str] | None = None) -> int:
                     claims=claims,
                     full_stance_calls=full,
                     stance_prompt=args.stance_prompt,
+                    runtime=args.runtime,
+                    chat_template=args.chat_template,
                 )
             except Exception as e:  # noqa: BLE001 - report and move on to the next model
                 res = {"model": entry.get("name"), "error": f"{type(e).__name__}: {e}"}
