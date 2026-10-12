@@ -92,3 +92,14 @@ def test_claim_with_invented_number_is_dropped():
     assert ex.extract([PARA]) == []
     assert "numbers not in paragraph" in ex.drops[0].reason
     assert ex.drops[1].reason == "span not verbatim in paragraph"
+
+
+def test_span_across_a_pdf_line_break_is_kept():
+    from core.claims.extract import span_in
+
+    para = '6. PETROV wrote to @northstar: "need 2 more by friday". The package in\nthe message'
+    assert span_in("The package in the message", para)  # the model wrote a space for the break
+    assert span_in("The package in\nthe message", para)
+    assert not span_in("The package is in the message", para)  # words still exact
+    assert not span_in("the package in the message", para)  # case still exact
+    assert not span_in("   ", para)

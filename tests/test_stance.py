@@ -163,3 +163,28 @@ def test_missing_signed_prompt_fails_loudly(tmp_path):
 def test_prompt_without_placeholders_is_refused():
     with pytest.raises(ValueError, match="placeholders"):
         LocalStanceLabeler(FakeModel(GOOD), template="label {assumption} please")
+
+
+def test_only_the_named_message_can_contradict_a_one_message_assumption():
+    from core.audit.assumptions import instantiate
+    from core.audit.stance import subject_stance
+
+    p = {"quoted_text": "need 2 more by friday", "person_ids": ["person:petrov"]}
+    sender = instantiate("C05", "sender", p, True)
+    other, named = "customer wants it by friday", "ok need 2 more by friday!"
+    assert subject_stance(sender, other, Stance.CONTRADICTS) == Stance.COMPLICATES
+    assert subject_stance(sender, named, Stance.CONTRADICTS) == Stance.CONTRADICTS
+    for s in (Stance.SUPPORTS, Stance.COMPLICATES, Stance.IRRELEVANT):
+        assert subject_stance(sender, other, s) == s
+    # Word-aligned like the checks: "need 2 more by friday" is not inside "need 2 more by fridays".
+    assert (
+        subject_stance(sender, "need 2 more by fridays", Stance.CONTRADICTS) == Stance.COMPLICATES
+    )
+    # Other templates are left alone, e.g. a contact entry with another name for the number.
+    contact = instantiate(
+        "C01",
+        "contact_entry",
+        {"device_ids": ["dev:item1"], "quoted_text": "Marc Garage", "account_ids": ["acct:x"]},
+        True,
+    )
+    assert subject_stance(contact, "Mike +12125550122", Stance.CONTRADICTS) == Stance.CONTRADICTS

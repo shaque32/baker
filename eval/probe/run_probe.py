@@ -383,6 +383,9 @@ def table(results: list[dict[str, Any]]) -> str:
     lines = ["| " + " | ".join(cols) + " |", "|" + "---|" * len(cols)]
     for res in results:
         lines.append("| " + " | ".join(f(c, res.get(c)) for c in cols) + " |")
+    for res in results:
+        if res.get("load_error"):
+            lines.append(f"\n{res['model']} did not load: {res['load_error']}")
     ec_cols = ["supports_recall", "contradicts_precision", "contradicts_recall",
                "contradicts_shown_as_supports", "expert_load_supports_shown",
                "expert_load_precision", "stance_valid_output", "passes_all"]  # fmt: skip

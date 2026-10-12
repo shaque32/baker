@@ -3,13 +3,14 @@
 Not on the alpha's critical path: the eval scores gold claims, and the expert can enter or
 edit claims by hand. `baker claims propose` (core/claims/propose.py) runs it so the expert
 starts from a proposed list. Fails closed per claim: a proposed claim is dropped unless it quotes a
-span of the paragraph verbatim and every number in its text appears in the paragraph as
-written. A paragraph whose whole output is unusable yields no claims and a ClaimDrop, so the
-CLI can tell the expert that paragraph needs claims by hand.
+span of the paragraph verbatim (line breaks aside, see span_in) and every number in its text
+appears in the paragraph as written. A paragraph whose whole output is unusable yields no
+claims and a ClaimDrop, so the CLI can tell the expert that paragraph needs claims by hand.
 """
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
@@ -39,6 +40,18 @@ MAX_CLAIMS_PER_PARAGRAPH = 20
 MAX_CLAIM_CHARS = 600
 
 _TYPES = [t.value for t in ClaimType]
+
+
+def span_in(span: str, paragraph: str) -> bool:
+    """True if the span's words appear in the paragraph in order, character for character,
+    with any run of whitespace in one matching any run in the other. A paragraph read from a PDF
+    keeps the page's line breaks, and a model copying a span across one writes a space. The
+    span only locates the claim; it is never stored or cited as evidence."""
+    words = span.split()
+    if not words:
+        return False
+    return re.search(r"\s+".join(map(re.escape, words)), paragraph) is not None
+
 
 CLAIMS_SCHEMA: dict[str, object] = {
     "type": "object",
@@ -165,7 +178,7 @@ class LocalClaimExtractor:
             if not text:
                 self.drops.append(ClaimDrop(paragraph.id, i, "empty claim text", call.id))
                 continue
-            if not c.span.strip() or c.span not in paragraph.text:
+            if not span_in(c.span, paragraph.text):
                 self.drops.append(
                     ClaimDrop(paragraph.id, i, "span not verbatim in paragraph", call.id)
                 )

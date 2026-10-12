@@ -46,7 +46,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from core.audit import invariants, rules
+from core.audit import invariants, rules, stance
 from core.audit._llm_json import ModelUnavailable
 from core.contracts import (
     CONTRACTS_VERSION,
@@ -540,15 +540,19 @@ class _Run:
             self.flush_calls({label.model_call_id} if label.model_call_id else set())
             return self._drop()
         self.flush_calls()
+        stance_ = stance.subject_stance(a, text, label.stance)
+        rationale = label.rationale
+        if stance_ is not label.stance:  # the model call log keeps the raw label
+            rationale = stance.NOT_THE_MESSAGE + rationale
         return EvidenceItem(
-            id=evidence_id(a.id, cand.record_id, label.stance, label.quote),
+            id=evidence_id(a.id, cand.record_id, stance_, label.quote),
             assumption_id=a.id,
             record_id=cand.record_id,
             ref=cand.ref,
-            stance=label.stance,
+            stance=stance_,
             quote=label.quote,
             quote_verified=True,
-            rationale=label.rationale,
+            rationale=rationale,
             tier=cand.tier,
             status=EvidenceStatus.OPEN,
             model_run_id=label.model_run_id,
