@@ -11,6 +11,12 @@ machine that will run Baker. Everything here is synthetic.
   the signed product prompt `core/audit/prompts/stance.md` by default (`--stance-prompt` picks
   another).
 - The reviewer prompt is read from `core/audit/prompts/reviewer.md` unchanged.
+- `stance_v1_1_draft.md`: the signed stance wording, line for line, reordered so every fixed
+  instruction comes before the case data. Consecutive calls on one assumption then share the
+  whole prompt up to the record, which llama.cpp does not read again. On case01 (no model) the
+  text the model must read drops from 89% to 56% of the prompt text. Not used by the product
+  until Arsh signs it. `bash eval/probe/mac_prompt_order.sh` scores it against the signed v1.0
+  on the probe set and times both on the same claims.
 
 ## Signed probe set (thread 3)
 `run_probe --probe-set <eval/probe_draft/probe_draft.jsonl>` scores the signed set directly.

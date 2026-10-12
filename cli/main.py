@@ -11,7 +11,7 @@
                             [--text "..."] --by expert:<name>
     python -m cli stipulate --db case.db --device dev:item1 --person "Daniel Petrov"
                             --by expert:<name>
-    python -m cli audit     --db case.db [--fake] [--ai-review]
+    python -m cli audit     --db case.db [--fake] [--ai-review] [--label-all]
     python -m cli evidence  --db case.db --id <evidence id> --status accepted|dismissed|open
                             --reason "..." --by expert:<name>
     python -m cli verdict   --db case.db --claim C01 (--confirm | --set unproven --note "...")
@@ -28,6 +28,10 @@ it calls no model. `serve` opens the expert review screen on http://127.0.0.1 on
 `--fake` runs the eval stand-ins instead, and the report then says it is a test run.
 `--ai-review` adds the local AI reviewer pass, which only sorts evidence for the expert (rules
 0.2.0) and costs one model call per supporting item, so it is off by default.
+`audit` saves each claim as it finishes and prints its progress. If it stops part way, run it
+again: the finished claims' model outputs are reused, not recomputed. Claims a failed core
+check already contradicts are not sent to the model (their labels could not change the
+verdict); `--label-all` labels them too.
 `claims propose` asks the local model for claims on every paragraph that has none yet; they
 are stored as 'proposed' until the expert accepts, edits or removes them.
 """
@@ -42,7 +46,7 @@ from core import pipeline
 from core.audit._llm_json import ModelUnavailable
 from core.audit._local_model import ModelConfigError
 from core.audit.invariants import InvariantViolation
-from core.contracts import ClaimStatus, ClaimType, EvidenceStatus, Verdict
+from core.contracts import ClaimStatus, ClaimType, EvidenceStatus, Verdict, VerdictDecision
 from core.db import apply_schema, connect
 from core.report.html import write_report
 from core.review import actions, audit_log
@@ -152,10 +156,19 @@ def cmd_audit(a: argparse.Namespace) -> int:
         except ModelConfigError as e:
             print(f"audit: {e}", file=sys.stderr)
             return 2
+    comps.label_settled = a.label_all
+
+    def progress(done: int, total: int, d: VerdictDecision) -> None:
+        print(f"[{done}/{total}] {d.claim_id}: {d.verdict.value}", file=sys.stderr, flush=True)
+
     try:
-        result = pipeline.run_audit(conn, comps)
+        result = pipeline.run_audit(conn, comps, progress=progress)
     except (InvariantViolation, ModelUnavailable) as e:
-        print(f"audit stopped, nothing was stored: {e}", file=sys.stderr)
+        print(
+            f"audit stopped before it finished, so none of its verdicts count: {e}. The model"
+            " outputs of the claims it finished are kept; run it again to resume from them.",
+            file=sys.stderr,
+        )
         return 1
     tally: dict[str, int] = {}
     for d in result.decisions:
@@ -274,6 +287,11 @@ def parser() -> argparse.ArgumentParser:
         "--ai-review",
         action="store_true",
         help="also run the local AI reviewer, a sorting aid that decides nothing",
+    )
+    sp.add_argument(
+        "--label-all",
+        action="store_true",
+        help="also label claims a failed core check already contradicts (more model calls)",
     )
 
     sp = add("evidence", cmd_evidence, "accept, dismiss or reopen an evidence item")
