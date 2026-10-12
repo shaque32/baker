@@ -79,8 +79,13 @@ def cmd_import(a: argparse.Namespace) -> int:
         from core.ingest.cellebrite_pdf import CellebritePdfImporter as Importer
     else:
         from core.ingest.cellebrite_excel import CellebriteExcelImporter as Importer
-    src = Importer(source_id=a.source_id).import_source(a.report, conn)
+    from core.ingest.coverage import format_text, summary
+
+    src = Importer(source_id=a.source_id, date_order=a.date_order).import_source(a.report, conn)
     print(f"imported {src.file_name} as {src.id} ({src.fidelity.value}), sha256 {src.sha256}")
+    cov = summary(conn, src.id)
+    if cov is not None:
+        print(format_text(cov))
     return 0
 
 
@@ -285,6 +290,11 @@ def parser() -> argparse.ArgumentParser:
     sp = add("import", cmd_import, "import a Cellebrite report (.xlsx or .pdf)")
     sp.add_argument("--report", type=Path, required=True)
     sp.add_argument("--source-id")
+    sp.add_argument(
+        "--date-order",
+        choices=("mdy", "dmy"),
+        help="the report's date order (month or day first), when the report does not decide it",
+    )
     sp = add("govdoc", cmd_govdoc, "import the government document (PDF)")
     sp.add_argument("--pdf", type=Path, required=True)
 

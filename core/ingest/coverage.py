@@ -1,0 +1,618 @@
+"""Read an import's coverage record and say, in plain words, what was read and what was not.
+
+Every Cellebrite import writes one `source_coverage` row (core/schema.sql, `SourceCoverage` in
+core/contracts.py). Its payload is described in docs/ingest/coverage.md. This module turns it
+into a short summary for the case screen, the CLI and the report's limitations.
+
+Each item is a list of segments. A segment marked quoted is text taken from the report itself
+(a sheet or column name, a raw value); everything else is Baker's own words. Renderers pass
+quoted segments through their quote helper, so the forbidden-word check can tell them apart.
+"""
+
+from __future__ import annotations
+
+import json
+import sqlite3
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import Literal
+
+from core.contracts import SourceCoverage
+
+Level = Literal["attention", "info"]
+Segment = tuple[str, bool]  # (text, quoted from the report)
+
+KIND_WORDS = {
+    "chats": "chat messages",
+    "sms": "SMS and MMS messages",
+    "calls": "calls",
+    "contacts": "contacts",
+    "accounts": "the phone's own accounts",
+}
+_RECORD_WORDS = {
+    "chats": "messages",
+    "sms": "messages",
+    "calls": "calls",
+    "contacts": "contacts",
+    "accounts": "accounts",
+}
+_KEY_FIELD_WORDS = {
+    "time": "time column, so its records have no time",
+    "body": "message text column, so its messages have no text to cite",
+    "from": "sender column, so senders are known only where direction says so",
+    "name": "name column",
+}
+# Each phrase follows a count; {be}, {have}, {s0} and {them} agree with it.
+_SKIP_REASON_WORDS = {
+    "no_values_in_known_columns": (
+        "had values only in columns Baker does not read (for example a footer or a sub-heading)"
+    ),
+    "header_like_row": "held only column names (a second header row Baker could not join)",
+    "account_without_identifier": "had no username or identifier",
+}
+_TIME_PROBLEM_WORDS = {
+    "ambiguous_day_month": (
+        "could be read day first or month first, and nothing in the report decides which, "
+        "so no time was set. Re-import with the report's date order stated (month first or "
+        "day first) to read {them}"
+    ),
+    "unparsed": "{be} not a date and time Baker recognises; kept as written, with no time",
+    "date_only": "{be} a date with no time of day; kept as written, with no time",
+    "two_digit_year": "{have} a two-digit year, which Baker does not guess; kept as written",
+    "named_zone": (
+        "name{s0} a time zone instead of a UTC offset; Baker does not apply zone names, so no "
+        "UTC time was set"
+    ),
+    "numeric": "{be} a bare number, not a date; kept as written, with no time",
+    "no_offset": (
+        "{have} no UTC offset in the value, the column name or the report settings; kept as "
+        "written, with no UTC time"
+    ),
+}
+
+
+def _fill(template: str, count: int) -> str:
+    one = count == 1
+    return template.format(
+        be="is" if one else "are",
+        have="has" if one else "have",
+        s0="s" if one else "",
+        them="it" if one else "them",
+    )
+
+
+# A second column for one of these fields may hold a different value (a read time, a second
+# text), so the expert must see that it was not read.
+_KEY_DUPLICATE_FIELDS = {"ts", "ts_date", "ts_time", "body", "from", "to", "parties", "duration"}
+# Counters whose rows lost information; each is something the expert must see.
+_ATTENTION_COUNTERS = {
+    "calls_with_extra_parties_dropped": (
+        "Calls listing more than one caller or callee, where only the first of each was kept"
+    ),
+    "messages_with_multiple_senders_first_kept": (
+        "Messages listing more than one sender, where only the first was kept"
+    ),
+    "calls_party_unattributed": (
+        "Calls naming a party without saying whether it called or was called (the party is "
+        "recorded, but not as caller or callee)"
+    ),
+    "values_contradicting_stated_date_order": (
+        "Time values that can only be read the other way round from the date order stated at "
+        "import (each was read as written; check the stated order)"
+    ),
+}
+_INFO_COUNTERS = {
+    "times_offset_from_report_settings": (
+        "Times read with the report's fixed time zone setting, having no offset of their own"
+    ),
+    "times_offset_from_column_header": (
+        "Times read with the offset in their column name, having no offset of their own"
+    ),
+    "direction_unknown": "Messages with no stated or derivable direction",
+    "parties_name_only": "Parties shown by name only, with no number or handle",
+    "pdf_tables_kind_from_columns": "Tables under no heading, classified by their columns",
+    "pdf_tables_continued_from_previous_page": (
+        "Tables continued from the previous page and joined to it"
+    ),
+    "pdf_text_lines_outside_tables_in_data_sections": (
+        "Lines of text outside tables in message or call sections, not read"
+    ),
+    "extraction_time_unread": "Extraction times in the summary that could not be read",
+    "pdf_subheadings_in_sections": "Sub-headings inside sections (kept in their section)",
+}
+
+
+@dataclass(frozen=True)
+class CoverageItem:
+    level: Level
+    code: str
+    parts: tuple[Segment, ...]
+    locators: tuple[str, ...] = ()  # where to look, capped (see MAX_LISTED in the importer)
+
+    @property
+    def plain(self) -> str:
+        return "".join(t for t, _q in self.parts)
+
+
+@dataclass(frozen=True)
+class CoverageSummary:
+    source_id: str
+    file_name: str
+    importer: str
+    importer_version: str
+    status: Literal["complete", "needs_review"]
+    headline: str
+    items: tuple[CoverageItem, ...] = field(default=())
+
+    @property
+    def attention(self) -> list[CoverageItem]:
+        return [i for i in self.items if i.level == "attention"]
+
+    @property
+    def info(self) -> list[CoverageItem]:
+        return [i for i in self.items if i.level == "info"]
+
+
+# ---------------------------------------------------------------- loading
+
+
+def load(conn: sqlite3.Connection, source_id: str) -> SourceCoverage | None:
+    """The coverage record for one source. Imports from before importer 0.2.0 wrote it to the
+    audit log only, so that is read when the table has no row."""
+    row = conn.execute(
+        "SELECT source_id, importer, importer_version, payload_json FROM source_coverage"
+        " WHERE source_id = ?",
+        (source_id,),
+    ).fetchone()
+    if row is not None:
+        return SourceCoverage(
+            source_id=row[0], importer=row[1], importer_version=row[2], payload=json.loads(row[3])
+        )
+    for (payload_json,) in conn.execute(
+        "SELECT payload_json FROM audit_log WHERE action = 'import' ORDER BY seq DESC"
+    ):
+        p = json.loads(payload_json)
+        if p.get("source_id") == source_id:
+            return SourceCoverage(
+                source_id=source_id,
+                importer=str(p.get("importer", "")),
+                importer_version=str(p.get("importer_version", "")),
+                payload=p,
+            )
+    return None
+
+
+def load_all(conn: sqlite3.Connection) -> list[SourceCoverage]:
+    ids = [r[0] for r in conn.execute("SELECT id FROM sources WHERE kind != 'govdoc' ORDER BY id")]
+    return [c for c in (load(conn, i) for i in ids) if c is not None]
+
+
+def summary(conn: sqlite3.Connection, source_id: str) -> CoverageSummary | None:
+    """The summary for one source, or None when it has no coverage record (a govdoc)."""
+    c = load(conn, source_id)
+    return summarize(c) if c is not None else None
+
+
+def summaries(conn: sqlite3.Connection) -> list[CoverageSummary]:
+    """One summary per imported evidence source, in source id order."""
+    return [summarize(c) for c in load_all(conn)]
+
+
+# ---------------------------------------------------------------- summarising
+
+
+def _n(count: int, word: str) -> str:
+    return f"{count:,} {word}" if count != 1 else f"1 {word.removesuffix('s')}"
+
+
+def _q(text: object) -> Segment:
+    return (str(text), True)
+
+
+def _t(text: str) -> Segment:
+    return (text, False)
+
+
+def _names(values: list[str]) -> list[Segment]:
+    out: list[Segment] = []
+    for i, v in enumerate(values):
+        if i:
+            out.append(_t(", "))
+        out.append(_q(v))
+    return out
+
+
+def _table_items(t: dict) -> list[CoverageItem]:
+    items: list[CoverageItem] = []
+    name = str(t.get("name"))
+    kind = str(t.get("kind") or "")
+    records = _RECORD_WORDS.get(kind, "records")
+    where = [_t("In "), _q(name), _t(", ")]
+    for f in t.get("missing_key_fields", []) or []:
+        items.append(
+            CoverageItem(
+                "attention",
+                f"missing_{f}",
+                (*where, _t(f"there is no {_KEY_FIELD_WORDS.get(f, f + ' column')}.")),
+            )
+        )
+    for reason, count in sorted((t.get("rows_skipped") or {}).items()):
+        if reason in ("empty", "repeated_header"):
+            continue
+        items.append(
+            CoverageItem(
+                "attention",
+                f"rows_skipped_{reason}",
+                (
+                    *where,
+                    _t(
+                        f"{_n(count, 'rows')} {'was' if count == 1 else 'were'} not imported: "
+                        f"{'it' if count == 1 else 'they'} "
+                        f"{_SKIP_REASON_WORDS.get(reason, reason.replace('_', ' '))}."
+                    ),
+                ),
+                tuple((t.get("skipped_locators") or {}).get(reason, [])),
+            )
+        )
+    for problem, count in sorted((t.get("time_problems") or {}).items()):
+        items.append(
+            CoverageItem(
+                "attention",
+                f"times_{problem}",
+                (
+                    *where,
+                    _t(
+                        f"{_n(count, 'time values')} "
+                        + _fill(_TIME_PROBLEM_WORDS.get(problem, problem.replace("_", " ")), count)
+                        + "."
+                    ),
+                ),
+                tuple((t.get("time_problem_locators") or {}).get(problem, [])),
+            )
+        )
+    for d in t.get("duplicate_columns") or []:
+        if not isinstance(d, dict):
+            continue
+        key = d.get("field") in _KEY_DUPLICATE_FIELDS
+        items.append(
+            CoverageItem(
+                "attention" if key else "info",
+                "duplicate_column",
+                (
+                    *where,
+                    _t("column "),
+                    _q(d.get("column")),
+                    _t(" was not read: an earlier column, "),
+                    _q(d.get("used")),
+                    _t(", holds the same field."),
+                ),
+            )  # fmt: skip
+        )
+    not_filled = t.get("merged_columns_not_filled") or []
+    if not_filled:
+        items.append(
+            CoverageItem(
+                "attention",
+                "merged_cells_not_filled",
+                (
+                    *where,
+                    _t(
+                        "merged cells span several rows in columns whose value Baker does not "
+                        "copy to every row (text, times, attachments, flags); only the first "
+                        "row of each merge has the value. Columns: "
+                    ),
+                    *_names(not_filled),
+                    _t("."),
+                ),
+            )
+        )
+    for loc_reason, locs in sorted((t.get("flagged_locators") or {}).items()):
+        if loc_reason == "body_at_excel_cell_limit":
+            items.append(
+                CoverageItem(
+                    "attention",
+                    "body_at_excel_cell_limit",
+                    (
+                        *where,
+                        _t(
+                            f"{_n(len(locs), 'message texts')} may be cut off at "
+                            "Excel's 32,767-character cell limit."
+                        ),
+                    ),  # fmt: skip
+                    tuple(locs),
+                )
+            )
+    unknown = t.get("unknown_columns") or []
+    if unknown:
+        items.append(
+            CoverageItem(
+                "info",
+                "unknown_columns",
+                (*where, _t("columns Baker does not read: "), *_names(unknown), _t(".")),
+            )
+        )
+    for col, off in sorted((t.get("header_offsets") or {}).items()):
+        items.append(
+            CoverageItem(
+                "info",
+                "header_offset",
+                (
+                    *where,
+                    _t("times in "),
+                    _q(col),
+                    _t(f" were read at UTC{_fmt_off(off)}, from the column name."),
+                ),  # fmt: skip
+            )
+        )
+    for col, zone in sorted((t.get("header_zone_names") or {}).items()):
+        items.append(
+            CoverageItem(
+                "info",
+                "header_zone_name",
+                (
+                    *where,
+                    _t("column "),
+                    _q(col),
+                    _t(" names the zone "),
+                    _q(zone),
+                    _t(", which is not a UTC offset, so it was not applied."),
+                ),
+            )  # fmt: skip
+        )
+    filled = int(t.get("merged_cells_filled") or 0)
+    if filled:
+        items.append(
+            CoverageItem(
+                "info",
+                "merged_cells_filled",
+                (
+                    *where,
+                    _t(
+                        f"{_n(filled, 'cells')} of merged chat, party or app columns "
+                        "took the merged value."
+                    ),
+                ),  # fmt: skip
+            )
+        )
+    for note in t.get("header_notes") or []:
+        items.append(CoverageItem("info", "header_note", (*where, _q(note))))
+    if t.get("app_from_title"):
+        items.append(
+            CoverageItem(
+                "info",
+                "app_from_title",
+                (
+                    *where,
+                    _t("the app was taken from the title: "),
+                    _q(t["app_from_title"]),
+                    _t("."),
+                ),
+            )  # fmt: skip
+        )
+    no_body = (t.get("flagged_locators") or {}).get("no_body_or_attachment")
+    if no_body:
+        items.append(
+            CoverageItem(
+                "info",
+                "no_body_or_attachment",
+                (*where, _t(f"some {records} have neither text nor an attachment.")),
+                tuple(no_body),
+            )
+        )
+    return items
+
+
+def _fmt_off(off: int) -> str:
+    sign = "-" if off < 0 else "+"
+    h, m = divmod(abs(off), 60)
+    return f"{sign}{h}" + (f":{m:02d}" if m else "")
+
+
+def summarize(c: SourceCoverage) -> CoverageSummary:
+    p = c.payload
+    items: list[CoverageItem] = []
+    tables = [t for t in p.get("tables", []) if isinstance(t, dict)]
+    for entry in p.get("not_imported", []) or []:
+        reason = str(entry.get("reason", ""))
+        deliberate = reason == "category not imported" or reason.startswith("section '")
+        rows, lines = entry.get("rows"), entry.get("lines")
+        parts: list[Segment] = [_q(entry.get("name")), _t(" was not imported")]
+        if isinstance(rows, int):
+            parts.append(_t(f" ({_n(rows, 'rows')}, any header included)"))
+        elif isinstance(lines, int):
+            parts.append(_t(f" ({_n(lines, 'lines')} of text)"))
+        parts.append(_t(": " + _reason_words(reason)))
+        if entry.get("section"):
+            parts += [_t(" (section "), _q(entry["section"]), _t(")")]
+        parts.append(_t("."))
+        cols = entry.get("columns") or []
+        if cols:
+            parts += [_t(" Its first row: "), *_names(cols), _t(".")]
+        items.append(
+            CoverageItem(
+                "info" if deliberate else "attention",
+                "category_not_imported" if deliberate else "not_imported",
+                tuple(parts),
+            )
+        )
+    for t in tables:
+        items += _table_items(t)
+    borrowed: dict[tuple[str, str], list[str]] = {}
+    for t in tables:
+        basis, order = t.get("date_order_basis"), t.get("date_order")
+        if basis in ("other tables in the report", "stated at import") and order in ("dmy", "mdy"):
+            borrowed.setdefault((basis, order), []).append(str(t.get("name")))
+    for (basis, order), names in borrowed.items():
+        words = "day first" if order == "dmy" else "month first"
+        why = (
+            "because other tables in the same report decide the order"
+            if basis == "other tables in the report"
+            else "as stated at import"
+        )
+        items.append(
+            CoverageItem(
+                "info",
+                "date_order",
+                (_t("Dates in "), *_names(names), _t(f" were read {words}, {why}.")),
+            )
+        )
+    counts = p.get("counts", {}) or {}
+    for key, words in _ATTENTION_COUNTERS.items():
+        if counts.get(key):
+            items.append(CoverageItem("attention", key, (_t(f"{words}: {counts[key]:,}."),)))
+    for key, words in _INFO_COUNTERS.items():
+        if counts.get(key):
+            items.append(CoverageItem("info", key, (_t(f"{words}: {counts[key]:,}."),)))
+    unmapped = p.get("unmapped_direction_values") or {}
+    if unmapped:
+        items.append(
+            CoverageItem(
+                "info",
+                "unmapped_direction_values",
+                (_t("Direction values Baker does not read: "), *_names(sorted(unmapped)), _t(".")),
+            )
+        )
+    missing = p.get("categories_not_found")
+    if missing:
+        names = [KIND_WORDS.get(k, k) for k in missing]
+        items.append(
+            CoverageItem(
+                "info",
+                "categories_not_found",
+                (
+                    _t(
+                        "The report has no section Baker reads for "
+                        + ", ".join(names)
+                        + ". That means only that the report does not include them, not "
+                        "that the phone had none."
+                    ),
+                ),
+            )
+        )
+    if p.get("summary_found") is False:
+        items.append(
+            CoverageItem(
+                "info",
+                "no_summary",
+                (
+                    _t(
+                        "The report has no summary Baker recognises, so the extraction time, "
+                        "device and report time zone were not read from it."
+                    ),
+                ),
+            )
+        )
+    stated = p.get("date_order_stated_at_import")
+    if stated:
+        words = "day first" if stated == "dmy" else "month first"
+        items.append(
+            CoverageItem(
+                "info", "date_order_stated", (_t(f"Date order stated at import: {words}."),)
+            )
+        )
+    tz_raw = p.get("report_time_zone_raw")
+    if tz_raw is not None and p.get("report_offset_min_applied") is None:
+        items.append(
+            CoverageItem(
+                "info",
+                "report_time_zone_not_fixed",
+                (
+                    _t("The report's time zone setting "),
+                    _q(tz_raw),
+                    _t(" is not a fixed UTC offset, so it was not applied to times without one."),
+                ),
+            )  # fmt: skip
+        )
+    hidden = p.get("hidden_sheets") or []
+    if hidden:
+        items.append(
+            CoverageItem(
+                "info",
+                "hidden_sheets",
+                (_t("Hidden sheets, read like the others: "), *_names(hidden), _t(".")),
+            )
+        )
+    multi = p.get("accounts_with_multiple_display_names") or []
+    if multi:
+        items.append(
+            CoverageItem(
+                "info",
+                "accounts_with_multiple_display_names",
+                (
+                    _t("Accounts shown with more than one display name (the first is stored): "),
+                    *_names(multi),
+                    _t("."),
+                ),
+            )  # fmt: skip
+        )
+    for note in p.get("notes", []) or []:
+        # Notes with report text in them are rendered above from structured fields; only
+        # Baker's own fixed notes are shown as they are.
+        if note.startswith(_OWN_NOTES):
+            items.append(CoverageItem("info", "note", (_t(note),)))
+
+    imported = sum(int(t.get("rows_imported") or 0) for t in tables)
+    read = sum(int(t.get("rows_read") or 0) for t in tables)
+    n_not = len(p.get("not_imported", []) or [])
+    attention = [i for i in items if i.level == "attention"]
+    head = (
+        f"Imported all {_n(read, 'rows')} read" if imported == read and read != 1
+        else f"Imported {_n(imported, 'rows')} of {_n(read, 'rows')} read"
+    )  # fmt: skip
+    headline = (
+        f"{head} from {_n(len(tables), 'tables')}"
+        + (f"; {_n(n_not, 'parts')} of the report not imported" if n_not else "")
+        + (
+            f". {_n(len(attention), 'items')} to review."
+            if attention
+            else ". Nothing needs review."
+        )
+    )
+    return CoverageSummary(
+        source_id=c.source_id,
+        file_name=str(p.get("file_name", "")),
+        importer=c.importer,
+        importer_version=c.importer_version,
+        status="needs_review" if attention else "complete",
+        headline=headline,
+        items=tuple(items),
+    )
+
+
+_OWN_NOTES = ("Text comes from PDF layout", "Pages with no ruled table")
+
+
+def _reason_words(reason: str) -> str:
+    if reason == "category not imported" or reason.startswith("section '"):
+        return "Baker does not import this category"
+    return reason
+
+
+def where(item: CoverageItem, limit: int = 5) -> str:
+    """'see Chats!3, Chats!7, ...': the first rows or tables to open, or '' when none."""
+    if not item.locators:
+        return ""
+    more = ", ..." if len(item.locators) > limit else ""
+    return f"see {', '.join(item.locators[:limit])}{more}"
+
+
+def render(item: CoverageItem, quote: Callable[[str], str], escape: Callable[[str], str]) -> str:
+    """One item as markup: text from the report through `quote` (the screen's and the
+    report's q()), Baker's own words through `escape`, then where to look."""
+    body = "".join(quote(t) if quoted else escape(t) for t, quoted in item.parts)
+    loc = where(item)
+    return body + (f" ({escape(loc)})" if loc else "")
+
+
+def format_text(s: CoverageSummary, limit: int = 8) -> str:
+    """Plain-text summary for the command line: the headline, then every item to review,
+    then up to `limit` informational items."""
+    lines = [f"Import coverage for {s.file_name} ({s.source_id}): {s.headline}"]
+    for i in s.attention:
+        loc = where(i)
+        lines.append(f"  ! {i.plain}" + (f" [{loc}]" if loc else ""))
+    for i in s.info[:limit]:
+        lines.append(f"  - {i.plain}")
+    if len(s.info) > limit:
+        lines.append(f"  - and {len(s.info) - limit} more notes in the case's coverage record")
+    return "\n".join(lines)

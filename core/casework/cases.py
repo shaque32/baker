@@ -249,8 +249,12 @@ def import_upload(
     kind: str,
     actor: str,
     clock: Clock | None = None,
+    date_order: str | None = None,
 ) -> Imported:
     """Import one uploaded file: 'report' (Cellebrite Excel or PDF) or 'govdoc' (PDF).
+
+    `date_order` ('mdy' or 'dmy') is the report's date order when the expert states it; left
+    out, the importer works it out from the report or leaves ambiguous dates unread.
 
     `upload` is the file the screen just wrote into inputs/ and `upload_sha256` the hash taken
     while writing it. On any error the upload is deleted and nothing is stored."""
@@ -264,6 +268,9 @@ def import_upload(
             raise ReviewError("the government document is imported from a PDF")
         if kind not in ("report", "govdoc"):
             raise ReviewError("choose what kind of file this is")
+        date_order = date_order or None
+        if date_order not in (None, "mdy", "dmy"):
+            raise ReviewError("the date order is month first or day first")
         if upload.stat().st_size == 0:
             raise ReviewError(f"{name} is empty")
         dup = conn.execute(
@@ -289,8 +296,13 @@ def import_upload(
                 from core.ingest.cellebrite_pdf import CellebritePdfImporter as Importer
             else:
                 from core.ingest.cellebrite_excel import CellebriteExcelImporter as Importer
-            src = Importer().import_source(path, conn)
+            from core.ingest.coverage import summary as coverage_summary
+
+            src = Importer(date_order=date_order).import_source(path, conn)
             summary = f"{src.fidelity.value.replace('_', ' ')}"
+            cov = coverage_summary(conn, src.id)
+            if cov is not None:
+                summary += f". {cov.headline.removesuffix('.')}"
         if src.sha256 != upload_sha256:  # the bytes parsed are not the bytes received
             raise ReviewError(
                 f"{name} changed between upload and import (SHA-256 {upload_sha256} then "
