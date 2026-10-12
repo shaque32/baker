@@ -199,6 +199,12 @@ did not read: `python -m eval.synthetic.variants.check -v`. tests/test_ingest_va
 the same set. These are built from public descriptions of Cellebrite reports, not from real
 exports; a real report can still differ (see the plan's risk list).
 
+Excel stores characters that XML text cannot hold, such as the carriage return of a CRLF line
+break, as `_xHHHH_` (and a literal `_x` as `_x005F_x`). openpyxl returns these still escaped, so
+the Excel reader decodes them in one pass and counts the cells it decoded
+(`cells_with_excel_escapes_decoded`). The variants write a CR the same way: a raw CR would be
+turned into LF by the XML reader, so the built file would depend on whether lxml is installed.
+
 ## Checked against the synthetic case
 
 The synthetic case generator (`make synth --db`) writes the rows a correct import of its two
