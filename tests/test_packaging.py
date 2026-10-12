@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import ast
 import fnmatch
 import importlib.util
 import json
 import re
+import sys
 import tomllib
 from pathlib import Path, PurePosixPath
 
@@ -72,6 +74,32 @@ def test_pip_install_includes_every_data_file_core_and_ui_read():
         if not covered:
             missing.append(f)
     assert not missing, f"add to [tool.setuptools.package-data] in pyproject.toml: {missing}"
+
+
+def test_every_package_a_shipped_file_imports_is_installed():
+    """The installed copy runs the case01 gate and the speed test, so every third-party module a
+    shipped file imports must come with the installer (llama_cpp ships as its own runtime)."""
+    shipped_dists = {
+        re.split(r"[<>=!~;\[ ]", req, maxsplit=1)[0].lower().replace("-", "_")
+        for req in stage.runtime_requirements()
+    } | {"llama_cpp"}
+    missing: dict[str, str] = {}
+    for f in stage.tracked_files(ROOT):
+        if not (f.endswith(".py") and stage.shipped(f)):
+            continue
+        for node in ast.walk(ast.parse((ROOT / f).read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Import):
+                names = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                names = [node.module]
+            else:
+                continue
+            for name in names:
+                top = name.split(".")[0]
+                local = top in {"cli", "core", "ui", "eval"}
+                if not local and top not in sys.stdlib_module_names and top not in shipped_dists:
+                    missing.setdefault(top, f)
+    assert not missing, f"add to pyproject dependencies or the synthetic extra: {missing}"
 
 
 def test_pins_are_complete():

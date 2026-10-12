@@ -21,6 +21,9 @@ dev = [
     "ruff>=0.6",
     "reportlab>=4",  # synthetic fixture PDFs only (eval/synthetic, tests)
 ]
+synthetic = [
+    "reportlab>=4",  # renders the synthetic case PDFs; the Windows installer ships it for the eval gate
+]
 local = [
     "llama-cpp-python>=0.3.16",  # local GGUF runtime (MIT); install the CUDA build on the GPU PC
 ]
