@@ -1,8 +1,7 @@
 """Stage the files the Windows installer ships, then Inno Setup packs them (baker.iss).
 
     python packaging/windows/stage.py --out build/stage --python-zip python-embed.zip
-        --llama-cpu wheels/cpu/llama_cpp_python-*.whl --llama-cuda wheels/cuda/llama_cpp_python-*.whl
-        [--crt-dlls <dir>] [--cuda-dlls <dir>]
+        --llama-cpu <cpu wheel> --llama-cuda <cuda wheel> [--crt-dlls <dir>] [--cuda-dlls <dir>]
 
 Layout of build/stage (and of the installed folder):
     python/                 embeddable CPython, with Baker's dependencies in Lib/site-packages
@@ -108,7 +107,9 @@ def stage_python(zip_path: Path, out: Path, pins: dict) -> str:
     stdlib = next(out.glob("python3*.zip")).name
     # Paths are relative to python.exe. `import site` makes Lib/site-packages work as usual.
     pth.write_text(
-        f"{stdlib}\n.\nLib\\site-packages\n..\\baker\nimport site\n", encoding="utf-8", newline="\r\n"
+        f"{stdlib}\n.\nLib\\site-packages\n..\\baker\nimport site\n",
+        encoding="utf-8",
+        newline="\r\n",
     )
     return sha
 

@@ -119,4 +119,5 @@ def write_xlsx(path: Path, sheets: list[Sheet]) -> None:
             info = zipfile.ZipInfo(name, date_time=_FIXED_TIME)
             info.compress_type = zipfile.ZIP_STORED
             info.external_attr = 0o644 << 16
+            info.create_system = 3  # zipfile writes 0 on Windows; case.json pins the Unix bytes
             z.writestr(info, data.encode("utf-8"))

@@ -705,13 +705,17 @@ def generate(out: Path, db: Path | None = None, seed: int = SEED) -> list[Render
         write_xlsx(out / f"{r.device.key}.xlsx", r.sheets)
     gold = draft_gold(rendered)
     (out / "case.json").write_text(
-        json.dumps(case_json(rendered, out), indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        json.dumps(case_json(rendered, out), indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+        newline="\n",  # the same bytes on Windows as on Linux
     )
-    (out / "affidavit_draft.md").write_text(render_affidavit(), encoding="utf-8")
+    (out / "affidavit_draft.md").write_text(render_affidavit(), encoding="utf-8", newline="\n")
     (out / "draft_gold.jsonl").write_text(
-        "".join(g.model_dump_json() + "\n" for g in gold), encoding="utf-8"
+        "".join(g.model_dump_json() + "\n" for g in gold), encoding="utf-8", newline="\n"
     )
-    (out / "ANSWER_KEY_DRAFT.md").write_text(render_answer_key(rendered, gold), encoding="utf-8")
+    (out / "ANSWER_KEY_DRAFT.md").write_text(
+        render_answer_key(rendered, gold), encoding="utf-8", newline="\n"
+    )
     if db is not None:
         db.parent.mkdir(parents=True, exist_ok=True)
         db.unlink(missing_ok=True)
