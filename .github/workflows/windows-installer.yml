@@ -69,7 +69,10 @@ jobs:
       fail-fast: false
       matrix:
         variant: [cpu, cuda]
-    runs-on: windows-latest
+    # Visual Studio 2022: CUDA 12.4's build integration does not know the Visual Studio on
+    # windows-latest. The MSVC runtime shipped with the installer is the newer one, which runs
+    # code built by this older compiler.
+    runs-on: windows-2022
     timeout-minutes: 330
     defaults:
       run:
