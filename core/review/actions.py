@@ -118,7 +118,19 @@ def decide_evidence(
 
 
 def _current_verdict(conn: sqlite3.Connection, claim_id: str) -> tuple[str, str]:
-    """(verdict id, verdict) in the latest completed run."""
+    """(verdict id, verdict) in the run the screen shows: the latest completed run, or an
+    audit that has not finished (pipeline.view_run()), whose finished claims are reviewable."""
+    from core import pipeline  # core.pipeline imports this package
+
+    run = pipeline.view_run(conn)
+    if run is not None and run.get("partial"):
+        row = conn.execute(
+            "SELECT id, verdict FROM verdicts WHERE claim_id = ? AND pipeline_run_id = ?",
+            (claim_id, run["run_id"]),
+        ).fetchone()
+        if row is None:
+            raise ReviewError(f"labeling of {claim_id} is not finished; no verdict yet")
+        return row[0], row[1]
     row = conn.execute(
         "SELECT v.id, v.verdict FROM verdicts v JOIN pipeline_runs r ON r.id = v.pipeline_run_id"
         " WHERE v.claim_id = ? AND r.status = 'completed'"
