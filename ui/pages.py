@@ -33,6 +33,7 @@ from core.contracts import (
 )
 from core.report.html import CSS as REPORT_CSS
 from core.report.html import STANCE_LABEL, audit_log_summary, record_line, review_label, sources
+from core.report.restore import CSS as RESTORE_CSS
 from core.review.status import AGAINST, ClaimState, claim_state, claim_states, queue
 
 CONTEXT_WINDOW = 10  # messages either side: about 20 messages of context
@@ -108,7 +109,8 @@ class Page:
         return (
             "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
             "<meta name='viewport' content='width=device-width, initial-scale=1'>"
-            f"<title>{e(title)} · Baker</title><style>{REPORT_CSS}{UI_CSS}</style></head><body>"
+            f"<title>{e(title)} · Baker</title>"
+            f"<style>{REPORT_CSS}{RESTORE_CSS}{UI_CSS}</style></head><body>"
             "<nav><strong>Baker</strong><a href='/'>Case</a><a href='/claims'>Claims queue</a>"
             "<a href='/claim/new'>Add a claim</a><a href='/exhibits'>Exhibits</a>"
             "<a href='/report'>Report</a>"

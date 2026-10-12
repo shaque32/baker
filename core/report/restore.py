@@ -42,6 +42,8 @@ tr.target td { font-weight: bold; background: var(--warn); }
 .ctx td { font-size: 12px; } .ctx td.t { white-space: nowrap; }
 .exhibit { border: 1px solid var(--line); padding: 4px 16px 12px; margin: 18px 0; }
 .nf { color: var(--await); font-weight: bold; }
+.piece { font: 12.5px Menlo, Consolas, monospace; border: 1px solid var(--line);
+  background: var(--panel); padding: 0 4px; white-space: pre-wrap; }
 pre.letter { white-space: pre-wrap; border: 1px solid var(--line); background: var(--panel);
   padding: 12px; font: 13px/1.45 Menlo, Consolas, monospace; }
 .item { border: 1px solid var(--line); padding: 8px 12px; margin: 10px 0; }
@@ -62,6 +64,11 @@ def q(text: object) -> str:
 
 def e(text: object) -> str:
     return html.escape("" if text is None else str(text))
+
+
+def shown(text: str) -> str:
+    """A piece of cited text set off in its own box, so spaces and punctuation stay visible."""
+    return f"<span class='piece'>{q(text)}</span>"
 
 
 def highlighted(text: str, spans: tuple[tuple[int, int], ...]) -> str:
@@ -96,8 +103,8 @@ def match_notes(excerpt: ExhibitExcerpt, m: ExhibitMatch, body: str) -> list[str
     before = excerpt.text[: m.excerpt_spans[0][0]].strip()
     after = excerpt.text[m.excerpt_spans[-1][1] :].strip()
     if before or after:
-        parts = ([f"before the quoted words {q(before)}"] if before else []) + (
-            [f"after them {q(after)}"] if after else []
+        parts = ([f"before the quoted words {shown(before)}"] if before else []) + (
+            [f"after them {shown(after)}"] if after else []
         )
         notes.append(
             "Exhibit text set aside, not compared (a label, time or punctuation the exhibit "
@@ -107,7 +114,7 @@ def match_notes(excerpt: ExhibitExcerpt, m: ExhibitMatch, body: str) -> list[str
     if gaps:
         notes.append(
             "<strong>The exhibit leaves out words from this message:</strong> "
-            + "; ".join(q(g.strip()) for g in gaps)
+            + "; ".join(shown(g.strip()) for g in gaps)
             + "."
         )
     if body[: m.spans[0][0]].strip() or body[m.spans[-1][1] :].strip():
