@@ -1,8 +1,10 @@
 """`baker serve`: the expert review screen on this computer only.
 
 The standard library's HTTP server, bound to 127.0.0.1 and nothing else, handling one request
-at a time (one SQLite connection per request, no threads). It never opens an outbound
-connection; ui/app.py does all the work.
+at a time (one SQLite connection per request). A background audit or claim proposal runs in its
+own thread with its own connection (core/casework/jobs.py). It never opens an outbound
+connection; ui/app.py does all the work. File uploads (multipart/form-data) are streamed to the
+case folder, never held in memory (ui/upload.py).
 """
 
 from __future__ import annotations
@@ -56,6 +58,18 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(self.app.handle(req))
 
     def do_POST(self) -> None:  # noqa: N802 - http.server naming
+        ctype = self.headers.get("Content-Type") or ""
+        if ctype.lower().startswith("multipart/form-data"):
+            parts = urlsplit(self.path)
+            raw = self.headers.get("Content-Length")
+            length = int(raw) if raw and raw.isdigit() else None
+            req = Request(
+                method="POST",
+                path=parts.path,
+                headers={k.lower(): v for k, v in self.headers.items()},
+            )
+            self._send(self.app.handle_upload(req, self.rfile, length))
+            return
         req = self._request("POST")
         if req is not None:
             self._send(self.app.handle(req))
@@ -64,9 +78,15 @@ class _Handler(BaseHTTPRequestHandler):
         sys.stderr.write(f"baker serve: {self.command} {urlsplit(self.path).path}\n")
 
 
-def make_server(db: Path, port: int = DEFAULT_PORT, expert: str | None = None) -> HTTPServer:
-    """Bind 127.0.0.1:port (0 picks a free port). Nothing else is ever bound."""
-    app = App(db, expert=expert)
+def make_server(
+    db: Path | None = None,
+    port: int = DEFAULT_PORT,
+    expert: str | None = None,
+    home: Path | None = None,
+) -> HTTPServer:
+    """Bind 127.0.0.1:port (0 picks a free port). Nothing else is ever bound. On one case
+    database (db) or on a cases folder (home)."""
+    app = App(db, expert=expert, home=home)
     handler = type("Handler", (_Handler,), {"app": app})
     server = HTTPServer((HOST, port), handler)
     app.port = server.server_address[1]
