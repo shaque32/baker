@@ -119,6 +119,10 @@ _INFO_COUNTERS = {
     ),
     "extraction_time_unread": "Extraction times in the summary that could not be read",
     "pdf_subheadings_in_sections": "Sub-headings inside sections (kept in their section)",
+    "cells_with_excel_escapes_decoded": (
+        "Cells holding characters Excel stores escaped (such as _x000D_ for the carriage "
+        "return of a line break), read as the characters they stand for"
+    ),
 }
 
 
