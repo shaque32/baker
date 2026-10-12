@@ -19,11 +19,16 @@ Scanned government documents need OCR, which uses a local Tesseract install
 PDFs still import, scanned pages fail with a clear error, and the OCR test is skipped.
 `make fixtures` regenerates the synthetic PDFs in `eval/fixtures/govdoc/`.
 
-## Expert review screen
+## Working in the browser
 
 ```
-baker serve --db case.db --expert "Your Name" --open
+baker serve --open                                  # cases in ~/Baker/cases (or --cases DIR)
+baker serve --db case.db --expert "Your Name" --open  # one existing case database
+baker model-check                                   # is the local model there, pinned, and does it fit?
 ```
 
-Opens the review screen at `http://127.0.0.1:8765/`, served from this computer only, with no
-internet access and no scripts. See [docs/review-screen.md](docs/review-screen.md).
+Opens Baker at `http://127.0.0.1:8765/`, served from this computer only, with no internet
+access and no scripts. The expert makes a case, imports the government document and the
+Cellebrite reports (copied into the case folder, read-only, SHA-256 hashed), settles the
+claims, confirms who used each phone, runs the audit in the background with progress, and
+reviews each claim as soon as it is labeled. See [docs/review-screen.md](docs/review-screen.md).

@@ -513,6 +513,7 @@ def latest_attempt(conn: sqlite3.Connection) -> dict | None:
             continue
         finished = finished_claims(conn, r[0])
         order = config.get("claim_order")
+        last = finished[-1] if finished else {}
         return {
             "run_id": r[0],
             "partial": True,
@@ -529,6 +530,10 @@ def latest_attempt(conn: sqlite3.Connection) -> dict | None:
             "claim_order": list(order) if order is not None else None,
             "manifest": {p["claim_id"]: p["manifest"] for p in finished},
             "unlabeled": {p["claim_id"]: p["unlabeled"] for p in finished if p.get("unlabeled")},
+            "components": config.get("components", {}),
+            "stored_items": last.get("stored_items", 0),
+            "dropped_labels": last.get("dropped_labels", 0),
+            "reviewer_failures": last.get("reviewer_failures", 0),
         }
     return None
 
@@ -1069,6 +1074,7 @@ def run_audit(
         "fake": result.fake,
         "label_settled": components.label_settled,
         "claim_order": [cl.id for cl in claims],
+        "components": components.names(),
         **(config or {}),
     }
     with conn:
@@ -1132,6 +1138,10 @@ def run_audit(
                         "verdict_id": decision.id,
                         "manifest": result.manifest[claim.id],
                         "unlabeled": result.unlabeled.get(claim.id),
+                        # running totals, so an unfinished run's report can print them
+                        "stored_items": result.stored_items,
+                        "dropped_labels": result.dropped_labels,
+                        "reviewer_failures": result.reviewer_failures,
                     },
                 )
             current = None
