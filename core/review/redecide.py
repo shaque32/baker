@@ -65,6 +65,10 @@ def redecide(
     _expert(requested_by)
     if rules.RULE_VERSION.endswith("-stub"):
         raise ReviewError("the verdict rules are not written yet")
+    if pipeline.view_run(conn) != pipeline.last_run(conn):
+        raise ReviewError(
+            "the latest audit has not finished; resume it before re-running the verdicts"
+        )
     src = pipeline.last_run(conn)
     if src is None:
         raise ReviewError("no completed audit to re-decide; run the audit first")

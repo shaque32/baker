@@ -19,10 +19,16 @@
     python -m cli report    --db case.db --out report.html
     python -m cli verify-log --db case.db
     python -m cli redecide  --db case.db --by expert:<name>
-    python -m cli serve     --db case.db [--port 8765] [--expert "<name>"] [--open]
+    python -m cli serve     [--cases <folder> | --db case.db] [--port 8765] [--expert "<name>"]
+                            [--open]
+    python -m cli model-check
 
 `redecide` re-runs the verdict rules on the last audit's stored evidence after expert review;
-it calls no model. `serve` opens the expert review screen on http://127.0.0.1 only.
+it calls no model. `serve` opens the expert's screen on http://127.0.0.1 only. Without --db it
+works on a cases folder (--cases, else $BAKER_CASES, else ~/Baker/cases), where the expert
+makes a case, imports its files, settles the claims and runs the audit in the background, all
+in the browser. `model-check` says whether the configured local model is there, is the pinned
+file (SHA-256) and fits in this computer's memory.
 
 `audit` uses the product components. Until they are all built it names what is missing;
 `--fake` runs the eval stand-ins instead, and the report then says it is a test run.
@@ -73,8 +79,13 @@ def cmd_import(a: argparse.Namespace) -> int:
         from core.ingest.cellebrite_pdf import CellebritePdfImporter as Importer
     else:
         from core.ingest.cellebrite_excel import CellebriteExcelImporter as Importer
-    src = Importer(source_id=a.source_id).import_source(a.report, conn)
+    from core.ingest.coverage import format_text, summary
+
+    src = Importer(source_id=a.source_id, date_order=a.date_order).import_source(a.report, conn)
     print(f"imported {src.file_name} as {src.id} ({src.fidelity.value}), sha256 {src.sha256}")
+    cov = summary(conn, src.id)
+    if cov is not None:
+        print(format_text(cov))
     return 0
 
 
@@ -225,15 +236,23 @@ def cmd_redecide(a: argparse.Namespace) -> int:
 
 
 def cmd_serve(a: argparse.Namespace) -> int:
+    from core.casework.cases import cases_home
     from ui.server import make_server, url
 
-    if not a.db.exists():
-        raise SystemExit(f"no case database at {a.db}; run `init` first")
+    home = None
+    if a.db is not None:
+        if not a.db.exists():
+            raise SystemExit(f"no case database at {a.db}; run `init` first")
+    else:
+        home = a.cases or cases_home()
+        home.mkdir(parents=True, exist_ok=True)
     try:
-        server = make_server(a.db, a.port, a.expert)
+        server = make_server(a.db, a.port, a.expert, home=home)
     except OSError as e:
         raise SystemExit(f"cannot open port {a.port} on 127.0.0.1 ({e}); try --port 8766") from e
-    print(f"Baker review screen: {url(server)}  (this computer only; Ctrl+C stops it)")
+    where = f"case {a.db}" if a.db is not None else f"cases in {home}"
+    print(f"Baker: {url(server)}  ({where}; this computer only; Ctrl+C stops it)")
+    print("A running audit stops when this does; its finished claims are kept and resume later.")
     if a.open:
         import webbrowser
 
@@ -245,6 +264,16 @@ def cmd_serve(a: argparse.Namespace) -> int:
     finally:
         server.server_close()
     return 0
+
+
+def cmd_model_check(a: argparse.Namespace) -> int:
+    from core.casework.model_check import check_model
+
+    result = check_model()
+    for level, message in result.lines:
+        print(f"{level:4}  {message}")
+    print("model ready" if result.ok else "model NOT ready")
+    return 0 if result.ok else 1
 
 
 def parser() -> argparse.ArgumentParser:
@@ -261,6 +290,11 @@ def parser() -> argparse.ArgumentParser:
     sp = add("import", cmd_import, "import a Cellebrite report (.xlsx or .pdf)")
     sp.add_argument("--report", type=Path, required=True)
     sp.add_argument("--source-id")
+    sp.add_argument(
+        "--date-order",
+        choices=("mdy", "dmy"),
+        help="the report's date order (month or day first), when the report does not decide it",
+    )
     sp = add("govdoc", cmd_govdoc, "import the government document (PDF)")
     sp.add_argument("--pdf", type=Path, required=True)
 
@@ -315,10 +349,16 @@ def parser() -> argparse.ArgumentParser:
     sp = add("redecide", cmd_redecide, "re-run the verdict rules after expert review (no model)")
     sp.add_argument("--by", required=True)
 
-    sp = add("serve", cmd_serve, "open the expert review screen on this computer")
+    sp = sub.add_parser("serve", help="open the expert's screen on this computer")
+    sp.set_defaults(fn=cmd_serve)
+    g = sp.add_mutually_exclusive_group()
+    g.add_argument("--db", type=Path, help="one case database")
+    g.add_argument("--cases", type=Path, help="the cases folder (default ~/Baker/cases)")
     sp.add_argument("--port", type=int, default=8765)
     sp.add_argument("--expert", help="your name, recorded with every decision")
     sp.add_argument("--open", action="store_true", help="open it in the default browser")
+    sp = sub.add_parser("model-check", help="check the local model before a first audit")
+    sp.set_defaults(fn=cmd_model_check)
     return p
 
 

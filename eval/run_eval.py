@@ -1,11 +1,15 @@
 """Score pipeline predictions against gold verdicts. This is the merge gate.
 
-Usage: python -m eval.run_eval [--case eval/gold/case01] [--predictions <path>] [--report-only]
+Usage: python -m eval.run_eval [--case eval/gold/case01] [--gold <path>] [--predictions <path>]
+                               [--report-only]
 Predictions default to eval/out/<case>/predictions.jsonl, which the real pipeline writes
 (make eval-real). make eval gates eval/out/<case>/model_free/predictions.jsonl: the model-free
 run after the simulated expert (eval/simulated_expert.py).
 --report-only prints the scores without gating, for runs on stand-in components
-(eval/out/<case>/fake/) and for cases that are reported but do not gate.
+(eval/out/<case>/fake/) and for cases that are reported but do not gate (case02: it gates
+paying pilots, not merges).
+--gold scores against another key than <case>/gold.jsonl: case02's draft key until Arsh signs
+it. Every run prints whether the key it used is signed.
 """
 
 from __future__ import annotations
@@ -91,17 +95,25 @@ def passes(s: Scores) -> bool:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--case", type=Path, default=Path("eval/gold/case01"))
+    parser.add_argument("--gold", type=Path, default=None)
     parser.add_argument("--predictions", type=Path, default=None)
     parser.add_argument("--report-only", action="store_true")
     args = parser.parse_args(argv)
 
     predictions_path = args.predictions or Path("eval/out") / args.case.name / "predictions.jsonl"
-    gold = load_jsonl(args.case / "gold.jsonl", GoldClaim)
+    gold_file = args.gold or args.case / "gold.jsonl"
+    gold = load_jsonl(gold_file, GoldClaim)
     predictions = load_jsonl(predictions_path, Prediction)
 
     if not gold:
-        print(f"eval: {args.case} has no gold labels yet; nothing to score.")
+        print(f"eval: {gold_file} has no gold labels yet; nothing to score.")
         return 0
+    drafts = sum(1 for g in gold if g.labeled_by.upper().startswith("DRAFT"))
+    if drafts:
+        print(f"eval: key {gold_file} is a DRAFT ({drafts}/{len(gold)} claims not signed by Arsh)")
+        if not args.report_only:
+            print("eval: FAIL, an unsigned key never gates")
+            return 1
     if not predictions:
         print(f"eval: {len(gold)} gold claims, no predictions at {predictions_path}.")
         return 0

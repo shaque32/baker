@@ -370,12 +370,38 @@ class _Row:
     ocr: bool
 
 
+RUN_TO_START_MID_DOCUMENT = 3  # numbers in a row that let numbering start above 1
+
+
+def _first_marker(pages: tuple[PageText, ...], furniture: set[tuple[int, int]]) -> int | None:
+    """Where printed paragraph numbering starts, when it does not start at 1. An excerpt
+    ('paragraphs 1 to 20 omitted') opens at 21; it counts only if the numbers after it run on
+    (21, 22, 23), so a wrapped line that happens to start with '2.' never starts numbering."""
+    markers = [
+        int(m.group(1))
+        for p in pages
+        for k, ln in enumerate(p.lines)
+        if (p.page, k) not in furniture and (m := _MARKER.match(ln.text))
+    ]
+    if 1 in markers:
+        return None  # numbered from 1: the usual rule applies
+    for i, n in enumerate(markers):
+        want = n + 1
+        for later in markers[i + 1 :]:
+            if later == want:
+                want += 1
+                if want - n >= RUN_TO_START_MID_DOCUMENT:
+                    return n
+    return None
+
+
 def segment(pages: tuple[PageText, ...], furniture: set[tuple[int, int]]) -> list[_Row]:
     """Every paragraph, in reading order."""
     out: list[_Row] = []
     para_no = 0
     label: str | None = None
-    last_marker: int | None = None
+    start_at = _first_marker(pages, furniture)
+    last_marker: int | None = start_at - 1 if start_at is not None else None
     prev_text: str | None = None
     for p in pages:
         body = [ln for k, ln in enumerate(p.lines) if (p.page, k) not in furniture]

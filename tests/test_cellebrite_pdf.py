@@ -65,7 +65,9 @@ def build_pdf(path: Path) -> Path:
 
 def test_pdf_import(tmp_path: Path, case_db: sqlite3.Connection):
     path = build_pdf(tmp_path / "report.pdf")
-    src = CellebritePdfImporter(source_id="srcp", now=NOW).import_source(path, case_db)
+    # Every date in this report has day and month at 12 or below, so the order is stated.
+    importer = CellebritePdfImporter(source_id="srcp", now=NOW, date_order="mdy")
+    src = importer.import_source(path, case_db)
     assert src.kind is SourceKind.CELLEBRITE_PDF
     assert src.fidelity is Fidelity.CURATED_REPORT
     assert src.tool_version == "7.70.0.1"
@@ -94,7 +96,10 @@ def test_pdf_import(tmp_path: Path, case_db: sqlite3.Connection):
         case_db.execute("SELECT payload_json FROM audit_log WHERE action='import'").fetchone()[0]
     )
     assert cov["importer"] == "cellebrite_pdf"
-    assert any(n["reason"] == "section 'timeline'" for n in cov["not_imported"])
+    assert any(
+        n["reason"] == "category not imported" and n["section"] == "Timeline"
+        for n in cov["not_imported"]
+    )
     assert cov["counts"]["pdf_tables_continued_from_previous_page"] >= 1
     assert cov["counts"]["times_offset_from_report_settings"] == 1
     assert any("line breaks" in n for n in cov["notes"])

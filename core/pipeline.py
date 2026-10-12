@@ -30,11 +30,21 @@ only moves data between them, stores it, and refuses anything that breaks a rule
   under `unlabeled` with the reason, and the report and review screen say so.
   Components.label_settled turns labeling back on for them (`baker audit --label-all`).
 
-Saving. Each claim is committed when it finishes. If a run stops part way (a crash, a closed
-laptop, a missing model, an invariant violation), the claims already finished keep their
-stored model outputs, so the next run reuses them (core/audit/_local_model.py) instead of
-calling the model again. Only a completed run is ever read: reports, predictions, the review
-screen and redecide all go through last_run(), so a stopped run's verdicts are never shown.
+Saving. Each claim is committed when it finishes, together with an audit-log entry naming
+what it considered (CLAIM_ACTION). The model work for a claim (assumptions, labels, AI review)
+runs before anything is written, and the claim's rows are then written in one short
+transaction, so a long run never holds the database locked while the model works: the expert
+can review finished claims on the screen while the audit runs. If a run stops part way (a
+crash, a closed laptop, a missing model, an invariant violation, the expert's Stop), the claims
+already finished keep their stored model outputs, so the next run reuses them
+(core/audit/_local_model.py) instead of calling the model again.
+
+Which run is read. Predictions, the eval and redecide read only completed runs (last_run()).
+The review screen and the report read view_run(): the latest completed run, unless a newer
+full audit has not finished but has finished at least one claim. Then they show that run's
+finished claims, each decided by the rules and checked by the invariants like any other, and
+mark every claim it has not finished "Labeling incomplete" (core/review/status.py). A claim it
+has not finished never shows a verdict, and an unfinished run is never scored.
 
 Runs. Each run_audit call is one pipeline_runs row. Verdicts belong to a run. Assumptions,
 check results and evidence items have content-derived ids (core/contracts.py), so a re-run on
@@ -105,6 +115,7 @@ from core.review import audit_log
 
 PIPELINE_VERSION = "0.1.0"
 RUN_ACTION = "pipeline.run"
+CLAIM_ACTION = "pipeline.claim"  # one per finished claim, written with the claim's rows
 HALT_ACTION = "pipeline.halted"
 RULES_PENDING_REASON = (
     "Verdict rules are not written yet (core/audit/rules.py is a stub). No verdict was decided; "
@@ -117,6 +128,11 @@ Clock = Callable[[], datetime]
 
 class ComponentsMissing(Exception):
     pass
+
+
+class RunStopped(Exception):
+    """Raised by a progress callback to stop a run between claims (the screen's Stop button).
+    The run is stored as stopped, not failed; every finished claim keeps its work."""
 
 
 def _always(item: EvidenceItem) -> bool:
@@ -466,6 +482,103 @@ def last_run(conn: sqlite3.Connection) -> dict | None:
     }
 
 
+def finished_claims(conn: sqlite3.Connection, run_id: str) -> list[dict]:
+    """The CLAIM_ACTION payloads of one run, in the order its claims finished."""
+    out = []
+    for (payload_json,) in conn.execute(
+        "SELECT payload_json FROM audit_log WHERE action = ? ORDER BY seq", (CLAIM_ACTION,)
+    ):
+        payload = json.loads(payload_json)
+        if payload.get("run_id") == run_id:
+            out.append(payload)
+    return out
+
+
+def latest_attempt(conn: sqlite3.Connection) -> dict | None:
+    """The newest full audit that has not completed (running, stopped or failed), if it is newer
+    than the latest completed run. Rules-only re-decides are never partial and never count."""
+    done = conn.execute(
+        "SELECT started_at_utc, id FROM pipeline_runs WHERE status = 'completed'"
+        " ORDER BY started_at_utc DESC, id DESC LIMIT 1"
+    ).fetchone()
+    for r in conn.execute(
+        "SELECT id, started_at_utc, finished_at_utc, status, baker_version, contracts_version,"
+        " rule_version, config_json, note FROM pipeline_runs WHERE status != 'completed'"
+        " ORDER BY started_at_utc DESC, id DESC"
+    ):
+        if done is not None and (r[1], r[0]) <= tuple(done):
+            return None
+        config = json.loads(r[7])
+        if config.get("mode") == "rules_only":
+            continue
+        finished = finished_claims(conn, r[0])
+        order = config.get("claim_order")
+        last = finished[-1] if finished else {}
+        return {
+            "run_id": r[0],
+            "partial": True,
+            "status": r[3],
+            "note": r[8],
+            "fake": bool(config.get("fake")),
+            "rules_pending": False,
+            "started_at_utc": r[1],
+            "finished_at_utc": r[2],
+            "baker_version": r[4],
+            "contracts_version": r[5],
+            "rule_version": r[6],
+            "config": config,
+            "claim_order": list(order) if order is not None else None,
+            "manifest": {p["claim_id"]: p["manifest"] for p in finished},
+            "unlabeled": {p["claim_id"]: p["unlabeled"] for p in finished if p.get("unlabeled")},
+            "components": config.get("components", {}),
+            "stored_items": last.get("stored_items", 0),
+            "dropped_labels": last.get("dropped_labels", 0),
+            "reviewer_failures": last.get("reviewer_failures", 0),
+        }
+    return None
+
+
+def mark_stale_runs_stopped(conn: sqlite3.Connection, clock: Clock | None = None) -> list[str]:
+    """Runs still marked running when nothing in this process runs them (the app was closed or
+    the computer slept through a crash) become stopped. Their finished claims keep their work.
+    Call only when no audit is running on this case."""
+    stale = [r[0] for r in conn.execute("SELECT id FROM pipeline_runs WHERE status = 'running'")]
+    if stale:
+        with conn:
+            for run_id in stale:
+                conn.execute(
+                    "UPDATE pipeline_runs SET status = 'stopped', finished_at_utc = ?, note = ?"
+                    " WHERE id = ?",
+                    (iso(_now(clock)), "found still marked running when Baker started", run_id),
+                )
+                conn.execute(
+                    "UPDATE run_claims SET state = 'failed', candidates_labeled = 0,"
+                    " finished_at_utc = ? WHERE pipeline_run_id = ? AND state = 'labeling'",
+                    (iso(_now(clock)), run_id),
+                )
+                audit_log.append(
+                    conn,
+                    _now(clock),
+                    "system",
+                    HALT_ACTION,
+                    {"run_id": run_id, "error": "found still marked running", "stopped": True},
+                )
+    return stale
+
+
+def view_run(conn: sqlite3.Connection) -> dict | None:
+    """The run the review screen and the report show.
+
+    The latest completed run, unless a newer full audit has not completed and has finished at
+    least one claim: then that partial run (partial=True), whose manifest holds only the claims
+    it finished. A newer audit with no finished claim yet is not shown; the run before it stays
+    on screen. Predictions, the eval and redecide never read a partial run (last_run())."""
+    attempt = latest_attempt(conn)
+    if attempt is not None and attempt["manifest"]:
+        return attempt
+    return last_run(conn)
+
+
 # ---------------------------------------------------------------- claims step
 
 
@@ -517,17 +630,113 @@ def settled_by_check(
     return None
 
 
+def _new_calls(c: Components) -> int:
+    """Model calls made so far in this process that were not answered from stored outputs."""
+    ports = {
+        id(p): p for p in (getattr(x, "model", None) for x in (c.labeler, c.reviewer, *c.recorders))
+    }
+    return sum(
+        sum(1 for st in getattr(p, "stats", ()) if not getattr(st, "reused", False))
+        for p in ports.values()
+        if isinstance(getattr(p, "stats", None), list)
+    )
+
+
+class _Progress:
+    """Keeps run_claims current while a claim works, so the screen can show it.
+
+    Each update is its own short transaction, written only while no claim rows are pending.
+    Progress is for display: a progress write that cannot get the database (the expert's
+    decision is being saved at that moment) is skipped, never allowed to stop the audit. The
+    claim's 'done' row is the exception: it is written in the claim's own transaction."""
+
+    def __init__(self, conn: sqlite3.Connection, run_id: str, c: Components, clock: Clock | None):
+        self.conn, self.run_id, self.c, self.clock = conn, run_id, c, clock
+        self.calls_at_start = 0
+        self.total = 0
+
+    def _update(self, claim_id: str, sql: str, params: tuple, commit: bool = True) -> None:
+        try:
+            self.conn.execute(
+                f"UPDATE run_claims SET {sql} WHERE pipeline_run_id = ? AND claim_id = ?",  # noqa: S608
+                (*params, self.run_id, claim_id),
+            )
+            if commit:
+                self.conn.commit()
+        except sqlite3.OperationalError:
+            if not commit:
+                raise
+            self.conn.rollback()
+
+    def started(self, claim_id: str) -> None:
+        self.calls_at_start = _new_calls(self.c)
+        self.total = 0
+        self._update(claim_id, "state = 'labeling', started_at_utc = ?", (iso(_now(self.clock)),))
+
+    def retrieved(self, claim_id: str, total: int) -> None:
+        self.total = total
+        self._update(claim_id, "candidates_total = ?", (total,))
+
+    def labeled(self, claim_id: str, n: int) -> None:
+        calls = _new_calls(self.c) - self.calls_at_start
+        self._update(claim_id, "candidates_labeled = ?, model_calls = ?", (n, calls))
+
+    def done(self, claim_id: str) -> None:
+        """Inside the claim's write transaction: the claim and its 'done' row commit together."""
+        self._update(
+            claim_id,
+            "state = 'done', candidates_total = ?, candidates_labeled = ?, model_calls = ?,"
+            " finished_at_utc = ?",
+            (
+                self.total,
+                self.total,
+                _new_calls(self.c) - self.calls_at_start,
+                iso(_now(self.clock)),
+            ),
+            commit=False,
+        )
+
+    def failed(self, claim_id: str) -> None:
+        self._update(
+            claim_id,
+            "state = 'failed', candidates_labeled = 0, finished_at_utc = ?",
+            (iso(_now(self.clock)),),
+        )
+
+
 class _Run:
     """State for one pipeline run."""
 
-    def __init__(self, conn: sqlite3.Connection, c: Components, now: datetime, result: RunResult):
+    def __init__(
+        self,
+        conn: sqlite3.Connection,
+        c: Components,
+        now: datetime,
+        result: RunResult,
+        clock: Clock | None = None,
+    ):
         self.conn = conn
         self.c = c
         self.now = now
+        self.progress = _Progress(conn, result.run_id, c, clock)
         self.result = result
         self.run_id = result.run_id
         self.flushed: dict[int, int] = {}
         self.review_run = next((m.id for m in c.model_runs if m.purpose == "review"), None)
+        # Rows a claim's model work produces wait here until the claim's model work is done,
+        # so no write transaction is open while the model runs (see the module docstring).
+        self.pending: list[tuple[str, tuple]] | None = None
+
+    def _write(self, sql: str, params: tuple) -> None:
+        if self.pending is None:
+            self.conn.execute(sql, params)
+        else:
+            self.pending.append((sql, params))
+
+    def _write_pending(self) -> None:
+        pending, self.pending = self.pending or [], None
+        for sql, params in pending:
+            self.conn.execute(sql, params)
 
     # -- model calls
 
@@ -545,7 +754,7 @@ class _Run:
             for call in calls[done:]:
                 if call.id in quote_failed:
                     call = call.model_copy(update={"outcome": ModelCallOutcome.QUOTE_FAILED})
-                self.conn.execute(
+                self._write(
                     "INSERT INTO model_calls (id, model_run_id, seq, subject_json, prompt,"
                     " raw_output, outcome, error, at_utc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
@@ -613,7 +822,7 @@ class _Run:
         )
 
     def _insert_review(self, d: ReviewDecision) -> None:
-        self.conn.execute(
+        self._write(
             "INSERT INTO evidence_reviews (id, evidence_id, seq, reviewer_kind, reviewer, status,"
             " reason, model_run_id, model_call_id, decided_at_utc)"
             " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -678,11 +887,13 @@ class _Run:
 
     def claim(self, claim: Claim, stipulations: list[Stipulation]) -> VerdictDecision:
         conn, c = self.conn, self.c
+        self.progress.started(claim.id)
+        self.pending = []  # nothing is written until this claim's model work is done
         assumptions = list(c.assumptions.build(claim))
         for a in assumptions:
             if a.claim_id != claim.id:
                 raise invariants.InvariantViolation(f"assumption {a.id} built for {a.claim_id}")
-            conn.execute(
+            self._write(
                 f"INSERT OR IGNORE INTO assumptions ({_ASSUMPTION_COLS})"  # noqa: S608
                 " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
@@ -708,7 +919,7 @@ class _Run:
                 r = chk.run(a, conn)
                 if r.assumption_id != a.id:
                     raise invariants.InvariantViolation(f"check {r.id} answered {r.assumption_id}")
-                conn.execute(
+                self._write(
                     "INSERT OR REPLACE INTO check_results (id, assumption_id, check_name,"
                     " check_version, outcome, searched, record_ids_json, source_ids_json, detail)"
                     " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -731,16 +942,19 @@ class _Run:
             settled = settled_by_check(assumptions, checks)
         if settled is not None:
             self.result.unlabeled[claim.id] = settled
+        # Retrieval first (no model), so the screen knows how many candidates there are.
+        todo: list[tuple[Assumption, object]] = []
         for a in assumptions if settled is None else ():
             seen: set[str] = set()
             for cand in c.retriever.retrieve(a, conn, c.k):
-                if cand.record_id in seen:
-                    continue
-                seen.add(cand.record_id)
-                item = self._label(a, cand)
-                if item is None or item.id in evidence_ids:
-                    continue
-                conn.execute(
+                if cand.record_id not in seen:
+                    seen.add(cand.record_id)
+                    todo.append((a, cand))
+        self.progress.retrieved(claim.id, len(todo))
+        for n, (a, cand) in enumerate(todo, 1):
+            item = self._label(a, cand)
+            if item is not None and item.id not in evidence_ids:
+                self._write(
                     "INSERT OR IGNORE INTO evidence_items (id, assumption_id, source_id, locator,"
                     " record_id, stance, quote, rationale, tier, model_run_id)"
                     " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -760,7 +974,10 @@ class _Run:
                 self._review(a, item.model_copy(update={"status": evidence_status(conn, item.id)}))
                 evidence_ids.append(item.id)
                 self.result.stored_items += 1
+            self.progress.labeled(claim.id, n)
 
+        self.flush_calls()  # calls a component made after the last label (the filler's)
+        self._write_pending()  # the claim's write transaction starts here
         evidence = load_evidence(conn, evidence_ids)
         if c.rules_pending():
             decision = VerdictDecision(
@@ -800,6 +1017,7 @@ class _Run:
                 iso(decision.decided_at_utc),
             ),
         )
+        self.progress.done(claim.id)
         self.result.manifest[claim.id] = {
             "assumptions": [a.id for a in assumptions],
             "checks": [r.id for r in checks],
@@ -837,18 +1055,26 @@ def run_audit(
     config: dict[str, str | int | float | bool | None] | None = None,
     progress: Progress | None = None,
 ) -> RunResult:
-    """Audit every claim that is not removed (or just claim_ids).
+    """Audit every claim that is not removed, in claim id order, or just claim_ids, in the
+    order given (the expert's order on the screen).
 
-    Each claim is committed when it finishes, so a stopped run keeps the model outputs of the
-    claims it finished and the next run reuses them. The run only counts once it completes:
-    until then nothing reads its verdicts. progress(done, total, decision) is called after each
-    claim is saved."""
+    Each claim is committed when it finishes, with a CLAIM_ACTION audit-log entry, so a stopped
+    run keeps the model outputs of the claims it finished and the next run reuses them. The run
+    is scored only once it completes; until then only the screen and the report show its
+    finished claims (view_run()). progress(done, total, decision) is called after each claim is
+    saved; an exception it raises stops the run there (the screen's Stop button)."""
     now = _now(clock)
     result = RunResult(run_id=_new_run_id(conn, now), fake=components.fake())
+    claims = load_claims(conn)
+    if claim_ids is not None:
+        by_id = {cl.id: cl for cl in claims}
+        claims = [by_id[i] for i in dict.fromkeys(claim_ids) if i in by_id]
     cfg = {
         "k": components.k,
         "fake": result.fake,
         "label_settled": components.label_settled,
+        "claim_order": [cl.id for cl in claims],
+        "components": components.names(),
         **(config or {}),
     }
     with conn:
@@ -866,10 +1092,12 @@ def run_audit(
                 canonical_json(cfg),
             ),
         )
-    claims = load_claims(conn)
-    if claim_ids is not None:
-        wanted = set(claim_ids)
-        claims = [cl for cl in claims if cl.id in wanted]
+        conn.executemany(
+            "INSERT INTO run_claims (pipeline_run_id, claim_id, position, state)"
+            " VALUES (?, ?, ?, 'queued')",
+            [(result.run_id, cl.id, n) for n, cl in enumerate(claims, 1)],
+        )
+    current: str | None = None
     try:
         with conn:
             for m in components.model_runs:
@@ -891,16 +1119,43 @@ def run_audit(
                     ),
                 )
         stipulations = load_stipulations(conn)
-        run = _Run(conn, components, now, result)
+        run = _Run(conn, components, now, result, clock)
         reused_before = _reused(components)
         for n, claim in enumerate(claims, 1):
+            current = claim.id
             with conn:  # one claim per transaction: a stop keeps every finished claim's work
                 decision = run.claim(claim, stipulations)
+                audit_log.append(  # inside the claim's write transaction, after its rows
+                    conn,
+                    _now(clock),
+                    "system",
+                    CLAIM_ACTION,
+                    {
+                        "run_id": result.run_id,
+                        "claim_id": claim.id,
+                        "done": n,
+                        "total": len(claims),
+                        "verdict_id": decision.id,
+                        "manifest": result.manifest[claim.id],
+                        "unlabeled": result.unlabeled.get(claim.id),
+                        # running totals, so an unfinished run's report can print them
+                        "stored_items": result.stored_items,
+                        "dropped_labels": result.dropped_labels,
+                        "reviewer_failures": result.reviewer_failures,
+                    },
+                )
+            current = None
             result.decisions.append(decision)
             if progress is not None:
                 progress(n, len(claims), decision)
         result.model_outputs_reused = _reused(components) - reused_before
         with conn:
+            # The UPDATE opens the write transaction before the log reads its last entry, so a
+            # decision the expert records at the same moment cannot take the same log seq.
+            conn.execute(
+                "UPDATE pipeline_runs SET status = ?, finished_at_utc = ? WHERE id = ?",
+                (PipelineRunStatus.COMPLETED.value, iso(_now(clock)), result.run_id),
+            )
             audit_log.append(
                 conn,
                 now,
@@ -923,18 +1178,27 @@ def run_audit(
                     ],
                 },
             )
-            conn.execute(
-                "UPDATE pipeline_runs SET status = ?, finished_at_utc = ? WHERE id = ?",
-                (PipelineRunStatus.COMPLETED.value, iso(_now(clock)), result.run_id),
-            )
     except Exception as e:
+        conn.rollback()
+        stopped = isinstance(e, RunStopped)
+        status = PipelineRunStatus.STOPPED if stopped else PipelineRunStatus.FAILED
         with conn:
             conn.execute(
                 "UPDATE pipeline_runs SET status = ?, finished_at_utc = ?, note = ? WHERE id = ?",
-                (PipelineRunStatus.FAILED.value, iso(_now(clock)), str(e)[:2000], result.run_id),
+                (status.value, iso(_now(clock)), str(e)[:2000], result.run_id),
             )
+            if current is not None:  # its work was rolled back
+                conn.execute(
+                    "UPDATE run_claims SET state = 'failed', candidates_labeled = 0,"
+                    " finished_at_utc = ? WHERE pipeline_run_id = ? AND claim_id = ?",
+                    (iso(_now(clock)), result.run_id, current),
+                )
             audit_log.append(
-                conn, now, "system", HALT_ACTION, {"run_id": result.run_id, "error": str(e)}
+                conn,
+                now,
+                "system",
+                HALT_ACTION,
+                {"run_id": result.run_id, "error": str(e), "stopped": stopped},
             )
         raise
     return result

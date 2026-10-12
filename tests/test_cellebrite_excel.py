@@ -202,7 +202,12 @@ def test_coverage_entry(make_xlsx, case_db):
     run(case_db, make_xlsx())
     cov = coverage(case_db)
     assert cov["fidelity"] == "curated_report"
-    assert {"name": "Locations", "reason": "sheet not recognised"} in cov["not_imported"]
+    assert {
+        "name": "Locations",
+        "reason": "category not imported",
+        "rows": 2,
+        "columns": ["#", "Latitude", "Longitude", "Timestamp"],
+    } in cov["not_imported"]
     chats = next(t for t in cov["tables"] if t["name"] == "Chats")
     assert chats["header_locator"] == "Chats!2"
     assert chats["unknown_columns"] == ["Mood"]

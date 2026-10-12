@@ -44,12 +44,17 @@ Modes:
   --repeat          run twice on fresh databases and fail unless the predictions are identical.
 
 case02 is the hidden test case: this script can run it, but builders never tune against it.
+For a case whose case.json says "hidden", the printed summary is aggregate only (no claim ids,
+no record ids); the details stay in <out>/run.json, which builders do not read. Until Arsh signs
+case02's key and assumption sheet, the drafts under eval/synthetic/case02/ stand in, and every
+run says so.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -76,20 +81,53 @@ def synthetic_dir(case: str) -> Path:
     return Path("eval/synthetic") / case
 
 
+# Draft keys, used only until Arsh signs the case's gold (eval/gold/<case>/gold.jsonl).
+DRAFT_GOLD = {"case02": Path("eval/synthetic/case02/draft_gold.jsonl")}
+
+
+def gold_path(case: str) -> Path:
+    """The case's signed gold if there is one, else its draft key (case02 only)."""
+    signed = Path("eval/gold") / case / "gold.jsonl"
+    if signed.exists() and signed.read_text(encoding="utf-8").strip():
+        return signed
+    return DRAFT_GOLD.get(case, signed)
+
+
+def key_status(path: Path) -> str:
+    """'signed' only for gold under eval/gold/ with no line still marked DRAFT."""
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
+    drafts = sum(1 for r in rows if str(r.get("labeled_by", "")).upper().startswith("DRAFT"))
+    if Path("eval/gold") in path.parents and not drafts:
+        return "signed"
+    return f"draft, not signed by Arsh ({drafts}/{len(rows)} claims marked DRAFT)"
+
+
+def is_hidden(case: str) -> bool:
+    meta = json.loads((synthetic_dir(case) / "case.json").read_text(encoding="utf-8"))
+    return bool(meta.get("hidden"))
+
+
 def ensure_reports(case: str) -> dict:
     meta = json.loads((synthetic_dir(case) / "case.json").read_text(encoding="utf-8"))
     missing = [s for s in meta["sources"] if not (synthetic_dir(case) / s["file"]).exists()]
     if missing:
-        if case != "case01":
+        if case == "case01":
+            from eval.synthetic.generate import generate
+        elif case == "case02":
+            from eval.synthetic.case02_generate import generate
+        else:
             raise SystemExit(f"{case}: reports missing; build them with that case's generator")
-        from eval.synthetic.generate import generate
-
         generate(synthetic_dir(case), None)
     return meta
 
 
 def render_affidavit_pdf(case: str, path: Path) -> Path:
     """The case's mock affidavit as a PDF, laid out like the govdoc fixtures."""
+    if case == "case02":
+        from eval.synthetic.case02_generate import write_affidavit_pdf
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return write_affidavit_pdf(path)
     if case != "case01":
         raise SystemExit(f"{case}: no affidavit renderer")
     from eval.synthetic import govdocs as g
@@ -121,12 +159,28 @@ def render_affidavit_pdf(case: str, path: Path) -> Path:
 
 
 def paragraph_for(paragraphs: list[GovDocParagraph], gold: GoldClaim) -> GovDocParagraph:
-    """Gold cites the printed paragraph number. Prefer the page gold names."""
+    """Gold cites the printed paragraph number. Prefer the page gold names.
+
+    If the ingester gave no paragraph that label (it labels a numbered run only when the run
+    starts at 1, so an excerpt that starts at paragraph 21 gets no labels), fall back to the
+    paragraph whose text starts with the printed number, and say so: the eval still runs, and
+    the gap stays visible until the ingester reads such excerpts."""
     hits = [p for p in paragraphs if p.label == str(gold.para_no)]
+    if not hits:
+        hits = [p for p in paragraphs if re.match(rf"{gold.para_no}\.\s", p.text)]
+        if hits and gold.para_no not in _UNLABELED_SEEN:
+            _UNLABELED_SEEN.add(gold.para_no)
+            print(
+                f"pipeline: NOTE the govdoc ingester did not label printed paragraph "
+                f"{gold.para_no}; matched it by the number at the start of its text"
+            )
     if not hits:
         raise SystemExit(f"{gold.claim_id}: no paragraph printed as {gold.para_no}")
     on_page = [p for p in hits if p.page == gold.page]
     return (on_page or hits)[0]
+
+
+_UNLABELED_SEEN: set[int] = set()
 
 
 def build_case(case: str, db_path: Path) -> object:
@@ -144,7 +198,7 @@ def build_case(case: str, db_path: Path) -> object:
     pdf = render_affidavit_pdf(case, db_path.parent / "affidavit.pdf")
     _, paragraphs = PdfGovDocIngester(DocKind.AFFIDAVIT, clock=_clock).ingest(pdf, conn)
 
-    gold = load_jsonl(Path("eval/gold") / case / "gold.jsonl", GoldClaim)
+    gold = load_jsonl(gold_path(case), GoldClaim)
     for gc in gold:
         para = paragraph_for(paragraphs, gc)
         actions.add_claim(
@@ -263,14 +317,20 @@ def hostile_gate(preds: list[Prediction]) -> int:
     return 0
 
 
+DRAFT_SHEETS = {
+    "case01": Path("eval/probe_draft/case01_assumptions.jsonl"),
+    "case02": Path("eval/synthetic/case02/case02_assumptions.jsonl"),
+}
+
+
 def assumption_sheet(case: str) -> Path | None:
     """The case's assumption sheet: the signed copy under eval/gold/ if there is one, else the
-    draft under eval/probe_draft/ (case01 only)."""
+    draft (eval/probe_draft/ for case01, the hidden eval/synthetic/case02/ for case02)."""
     signed = Path("eval/gold") / case / "assumptions.jsonl"
     if signed.exists():
         return signed
-    draft = Path("eval/probe_draft") / f"{case}_assumptions.jsonl"
-    return draft if draft.exists() else None
+    draft = DRAFT_SHEETS.get(case)
+    return draft if draft is not None and draft.exists() else None
 
 
 def sheet_status(spec: Path | None) -> str:
@@ -331,7 +391,7 @@ def run_once(
     from eval.simulated_expert import review as expert_review
 
     conn = build_case(case, out / f"{case}.db")
-    gold = GoldKey(load_jsonl(Path("eval/gold") / case / "gold.jsonl", GoldClaim))
+    gold = GoldKey(load_jsonl(gold_path(case), GoldClaim))
     try:
         if mode == "fake":
             from eval.pipeline_fakes import fake_components
@@ -364,6 +424,7 @@ def run_once(
             "reviewer": reviewer,
             "expert": expert,
             "assumption_sheet": {"path": str(spec), "status": sheet_status(spec)},
+            "gold": {"path": str(gold_path(case)), "status": key_status(gold_path(case))},
             "fake": result.fake,
             "claims": len(result.decisions),
             "stored_items": result.stored_items,
@@ -398,7 +459,10 @@ def run_once(
         preds = write_outputs(conn, out, summary)
         summary["verdicts"] = _verdict_counts(preds)
         (out / "run.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
-        print_summary(summary)
+        if is_hidden(case):
+            print_hidden_summary(summary)
+        else:
+            print_summary(summary)
         return preds
     finally:
         conn.close()
@@ -420,6 +484,24 @@ def not_labeled(conn, gold, result: pipeline.RunResult) -> dict[str, dict]:  # n
             cited |= set(json.loads(rids))
         out[claim_id] = {"key": len(key), "cited_by_checks": len(key & cited)}
     return out
+
+
+def print_hidden_summary(s: dict) -> None:
+    """Aggregate numbers only, so builders who run make eval learn nothing claim by claim."""
+    r = s["readiness"]
+    print(f"pipeline: {s['case']} {s['mode']} (hidden case, aggregate only): {s['claims']} claims")
+    print(f"pipeline: gold {s['gold']['status']}")
+    print(f"pipeline: assumption sheet {s['assumption_sheet']['status']}")
+    print(f"pipeline: unreviewed run verdicts {s['unreviewed_verdicts']} (0 supported by design)")
+    print(
+        f"pipeline: key evidence {r['key_evidence']} records; retrieved "
+        f"{r['key_evidence_recall_retrieved']:.0%}, surfaced to the expert "
+        f"{r['key_evidence_recall_surfaced']:.0%}"
+    )
+    print(
+        f"pipeline: claims ready for the expert {len(r['claims_ready_for_expert'])}/{s['claims']}"
+    )
+    print(f"pipeline: verdicts after the simulated expert {s['verdicts']}")
 
 
 def print_summary(s: dict) -> None:
@@ -474,6 +556,8 @@ def main(argv: list[str] | None = None) -> int:
         expert = "simulated" if args.mode in ("model-free", "real") else "none"
     if expert == "simulated" and args.mode not in ("model-free", "real"):
         parser.error("the simulated expert runs in model-free and real modes only")
+    if args.mode == "hostile" and args.case != "case01":
+        parser.error("the red-team gate lists case01's structural claims; run it on case01")
     spec = args.assumption_spec
     if spec is None and args.mode == "model-free":
         spec = assumption_sheet(args.case)
