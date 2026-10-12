@@ -6,10 +6,14 @@ installer works on a clean PC.
 
 On an NVIDIA machine (rented or a friendly examiner's), in PowerShell:
 
-    powershell -ExecutionPolicy Bypass -File .\speedtest.ps1 -Installer .\Baker-Setup-<version>.exe
+    powershell -ExecutionPolicy Bypass -File .\speedtest.ps1
+
+run in the folder that holds this script, Baker-Setup-<version>.exe and its .sha256 file (the
+"baker-installer" download from the build).
 
 Options:
-    -InstallerSha256 <hex>  check the installer against the SHA-256 published with it
+    -Installer <path|url>   the installer, if it is not next to this script
+    -InstallerSha256 <hex>  the SHA-256 published with it (default: read from its .sha256 file)
     -Claims C02,C05,C12     time only these case01 claims and project the whole case
                             (default: the whole case on an NVIDIA GPU, C02,C05,C12 on CPU)
     -SkipProbe              skip the 88-item probe (CI's CPU run does; it adds hours on a CPU)
@@ -20,7 +24,7 @@ Needs about 25 GB free disk (model 9 GB, Baker 1 GB, a copy during install) and 
 connection for the model download only. Baker itself never connects to the internet.
 #>
 param(
-    [Parameter(Mandatory)][string]$Installer,
+    [string]$Installer = '',
     [string]$InstallerSha256 = '',
     [string]$Claims = '',
     [switch]$SkipProbe,
@@ -67,6 +71,14 @@ if (-not $Claims -and -not (Test-Path $smi)) { $Claims = 'C02,C05,C12' }
 
 # ------------------------------------------------------------------ install
 Step 'Installer'
+if (-not $Installer) {
+    $found = Get-ChildItem $PSScriptRoot -Filter 'Baker-Setup-*.exe' | Sort-Object LastWriteTime | Select-Object -Last 1
+    if (-not $found) { throw "No Baker-Setup-*.exe next to $PSCommandPath; pass -Installer <path>" }
+    $Installer = $found.FullName
+}
+if (-not $InstallerSha256 -and (Test-Path "$Installer.sha256")) {
+    $InstallerSha256 = ((Get-Content "$Installer.sha256" -Raw).Trim() -split '\s+')[0]
+}
 if ($Installer -match '^https://') {
     $local = Join-Path $Out (Split-Path $Installer -Leaf)
     Invoke-WebRequest $Installer -OutFile $local
