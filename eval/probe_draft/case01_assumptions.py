@@ -397,6 +397,14 @@ SPEC: tuple[ClaimSpec, ...] = (
                 None,
                 "That 'it' is narcotics; not established (as C06).",
             ),
+            A(
+                "meaning",
+                P(quoted_text="move it tonight"),
+                None,
+                "That 'it' is narcotics; not established (probe P033). Sent to @northstar, not "
+                "REYES, so it does not show PETROV directing REYES (Arsh, 2026-10-08).",
+                is_core=False,
+            ),
         ),
     ),
     ClaimSpec(
