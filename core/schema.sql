@@ -204,8 +204,8 @@ CREATE TABLE pipeline_runs (
 );
 
 -- One row per claim per audit run, written as the run works, so a screen can show progress
--- and an estimate. A claim is shown for review only when its row is 'done' and its run is
--- completed; anything else reads "labeling incomplete".
+-- and an estimate. A claim is shown for review only when its row is 'done'; anything else
+-- reads "labeling incomplete". Only a completed run is scored.
 CREATE TABLE run_claims (
     pipeline_run_id    TEXT NOT NULL REFERENCES pipeline_runs(id),
     claim_id           TEXT NOT NULL REFERENCES claims(id),

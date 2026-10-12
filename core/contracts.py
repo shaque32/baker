@@ -145,7 +145,8 @@ class PipelineRunStatus(StrEnum):
     FAILED = "failed"  # includes an invariant stop
     # stopped before it finished, not by an error: the expert stopped it, or the app closed and
     # a later start found it still marked running. Finished claims keep their work and a new
-    # run reuses it. Never read as a result: only a completed run is.
+    # run reuses it. Never scored: only a completed run is. Its done claims stay visible for
+    # review.
     STOPPED = "stopped"
 
 
@@ -602,8 +603,9 @@ class RunClaimProgress(Model):
     """One claim's progress in one audit run, so a screen can show a run while it works.
 
     Written by the pipeline as the claim moves through the run; one row per (run, claim).
-    A claim is shown for review only in state DONE, and only once its run is completed.
-    Anything else is "labeling incomplete" wherever it appears, the report included.
+    A claim is shown for review only in state DONE. Every claim not DONE reads "labeling
+    incomplete" wherever it appears, the report included. Only a completed run is scored
+    (predictions, the eval) or re-decided.
     """
 
     pipeline_run_id: str
