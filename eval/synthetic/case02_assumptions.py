@@ -685,8 +685,8 @@ def render_sheet(recs: list[dict]) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     recs = records()
-    JSONL.write_text(render_jsonl(recs), encoding="utf-8")
-    SHEET.write_text(render_sheet(recs), encoding="utf-8")
+    JSONL.write_text(render_jsonl(recs), encoding="utf-8", newline="\n")
+    SHEET.write_text(render_sheet(recs), encoding="utf-8", newline="\n")
     print(f"wrote {JSONL.name} and {SHEET.name}: {len(recs)} claims")
     return 0
 
