@@ -44,13 +44,15 @@ from core import pipeline
 from core.audit.invariants import InvariantViolation, check_report_text
 from core.casework import cases, jobs
 from core.casework.model_check import ModelCheck, check_model
-from core.contracts import ClaimStatus, ClaimType, EvidenceStatus, Verdict
+from core.contracts import ClaimStatus, ClaimType, EvidenceStatus, ExcerptSplit, Verdict
 from core.db import connect
 from core.report.html import render_report
+from core.report.letter import request_letter
+from core.restore.store import ExhibitError, add_exhibit, match_exhibits, remove_exhibit
 from core.review import actions
 from core.review.actions import ReviewError
 from core.review.redecide import redecide
-from ui import pages, upload
+from ui import pages, restore_pages, upload
 
 CSP = (
     "default-src 'none'; style-src 'unsafe-inline'; img-src 'none'; form-action 'self'; "
@@ -156,6 +158,7 @@ class App:
         self.expert: str | None = None
         self.flash: tuple[str, bool] | None = None
         self.port = port
+        self._added: str | None = None
         self.jobs = jobs.Jobs()
         self.components_for = components_for or _real_components
         self.extractor_for = extractor_for or _real_extractor
@@ -298,6 +301,18 @@ class App:
         if p == "/evidence":
             body = pages.evidence_page(conn, page, req.query.get("id", ""))
             return self._html(body) if body else self._not_found(page, "no such evidence item")
+        if p == "/exhibits":
+            return self._html(restore_pages.exhibits_page(conn, page))
+        if p == "/exhibit":
+            body = restore_pages.exhibit_page(conn, page, req.query.get("id", ""))
+            return self._html(body) if body else self._not_found(page, "no such exhibit")
+        if p == "/exhibit/match":
+            body = restore_pages.match_page(conn, page, req.query.get("id", ""))
+            return self._html(body) if body else self._not_found(page, "no such match")
+        if p == "/request-letter":
+            return self._html(restore_pages.letter_page(conn, page))
+        if p == "/request-letter.txt":
+            return self._letter_text(conn, page)
         if p == "/log":
             return self._html(pages.log_page(conn, page, req.query.get("all") == "1"))
         if p in ("/report", "/report.html"):
@@ -332,6 +347,9 @@ class App:
             "/model/check": lambda: self._check_model(),
             "/audit/start": lambda: self._start_audit(conn, f),  # type: ignore[arg-type]
             "/audit/stop": lambda: self._stop_audit(),
+            "/exhibit/add": lambda: self._add_exhibit(conn, f),  # type: ignore[arg-type]
+            "/exhibit/remove": lambda: self._remove_exhibit(conn, f),  # type: ignore[arg-type]
+            "/exhibit/rematch": lambda: self._rematch(conn, f),  # type: ignore[arg-type]
         }
         handler = handlers.get(req.path)
         if handler is None:
@@ -344,7 +362,15 @@ class App:
                 back = pages.link("/claim", id=f.get("id", ""))
             if req.path in ("/case/new", "/case/open"):
                 back = "/setup"
-        except (ReviewError, InvariantViolation, ValueError, sqlite3.IntegrityError) as err:
+            if req.path == "/exhibit/add" and self._added:
+                back = pages.link("/exhibit", id=self._added)
+        except (
+            ReviewError,
+            ExhibitError,
+            InvariantViolation,
+            ValueError,
+            sqlite3.IntegrityError,
+        ) as err:
             self.flash = (f"Not recorded: {err}", True)
         except sqlite3.OperationalError as err:  # the audit held the database too long
             self.flash = (f"Not recorded, the case database was busy ({err}). Try again.", True)
@@ -683,6 +709,47 @@ class App:
         finally:
             conn.close()
         return self._redirect("/setup")
+
+    # -- Context Restore
+
+    def _add_exhibit(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        self._added = None
+        ex = add_exhibit(
+            conn,
+            f.get("label", ""),
+            f.get("text", "").replace("\r\n", "\n"),
+            ExcerptSplit(f.get("split", "line")),
+            self.actor,
+            f.get("paragraph") or None,
+        )
+        self._added = ex.id
+        return f"Added {ex.label} and searched the extraction for each quoted message."
+
+    def _remove_exhibit(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        remove_exhibit(conn, f.get("id", ""), self.actor)
+        return "Exhibit removed."
+
+    def _rematch(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        n = match_exhibits(conn, [f["id"]] if f.get("id") else None)
+        return f"Searched {n} exhibit(s) again against the messages imported now."
+
+    def _letter_text(self, conn: sqlite3.Connection, page: pages.Page) -> Response:
+        text = request_letter(conn)
+        if text is None:
+            return self._not_found(page, "no request is needed for this case")
+        try:
+            check_report_text(text)
+        except InvariantViolation as err:
+            return self._plain(500, f"letter withheld: {err}")
+        return Response(
+            200,
+            text.encode("utf-8"),
+            [
+                ("Content-Type", "text/plain; charset=utf-8"),
+                ("Content-Disposition", 'attachment; filename="baker-request-draft.txt"'),
+                *self._security_headers(),
+            ],
+        )
 
     def _redecide(self, conn: sqlite3.Connection) -> str:
         result = redecide(conn, self.actor)

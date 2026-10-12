@@ -43,6 +43,8 @@ from core.contracts import (
     VerdictDecision,
     display_tier,
 )
+from core.report import restore as restore_html
+from core.report.letter import letter_section
 from core.review import audit_log
 from core.review.status import (
     AWAITING_EXPERT,
@@ -418,7 +420,7 @@ def render_report(conn: sqlite3.Connection) -> str:
         "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
         "<title>Baker claims report</title>"
-        f"<style>{CSS}</style></head><body>",
+        f"<style>{CSS}{restore_html.CSS}</style></head><body>",
         "<h1>Baker claims report</h1>",
         "<p class='muted'>"
         + (" · ".join(q(t) for t in govdocs) or "No government document imported")
@@ -477,6 +479,8 @@ def render_report(conn: sqlite3.Connection) -> str:
     parts += [_claim_block(conn, st) for st in states]
 
     parts.append(searches_section(states, srcs))
+    parts.append(restore_html.restore_section(conn))
+    parts.append(letter_section(conn))
 
     parts.append(
         "<h2>Sources</h2><table><thead><tr><th>File</th><th>Kind</th><th>Coverage</th>"

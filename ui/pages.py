@@ -33,6 +33,7 @@ from core.contracts import (
 )
 from core.report.html import CSS as REPORT_CSS
 from core.report.html import STANCE_LABEL, audit_log_summary, record_line, review_label, sources
+from core.report.restore import CSS as RESTORE_CSS
 from core.review.status import AGAINST, ClaimState, claim_state, claim_states, queue
 
 CONTEXT_WINDOW = 10  # messages either side: about 20 messages of context
@@ -127,14 +128,16 @@ class Page:
             links = (
                 f"{cases}<a href='/setup'>Set up and run</a><a href='/'>Case</a>"
                 "<a href='/claims'>Claims queue</a><a href='/claim/new'>Add a claim</a>"
-                "<a href='/report'>Report</a><a href='/log'>Audit log</a>"
+                "<a href='/exhibits'>Exhibits</a><a href='/report'>Report</a>"
+                "<a href='/log'>Audit log</a>"
                 f"<span class='muted'>{q(self.case_name)}</span>"
             )
         notice = f"<div class='flash'>{self.notice}</div>" if self.notice else ""
         return (
             "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
             f"<meta name='viewport' content='width=device-width, initial-scale=1'>{meta}"
-            f"<title>{e(title)} · Baker</title><style>{REPORT_CSS}{UI_CSS}</style></head><body>"
+            f"<title>{e(title)} · Baker</title>"
+            f"<style>{REPORT_CSS}{RESTORE_CSS}{UI_CSS}</style></head><body>"
             f"<nav><strong>Baker</strong>{links}<span class='who'>{who}</span></nav>"
             f"{notice}{flash}{banner}{body}</body></html>"
         )
