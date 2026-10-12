@@ -60,8 +60,11 @@ core/
   report/             ReportRenderer; restore.py and letter.py (selection-audit request)
   review/status.py    what each claim needs from the expert (shared by screen and report)
   review/redecide.py  re-run the verdict rules after expert review, no model
+  casework/           case folders and imports, background audit and claim-proposal jobs,
+                      the model check, keeping the computer awake (used by the screen)
 cli/                  `baker import`, `baker claims`, `baker audit`, `baker report`, `baker serve`
-ui/                   expert review screen on 127.0.0.1 (stdlib server, no scripts)
+ui/                   the expert's screen on 127.0.0.1 (stdlib server, no scripts): start a case,
+                      run the audit in the background, review
 eval/
   synthetic/          deterministic synthetic case generator
   gold/case01/        mock affidavit + gold verdicts (human-owned)

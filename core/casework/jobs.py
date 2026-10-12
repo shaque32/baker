@@ -118,20 +118,23 @@ _KIND = {"audit": "audit", "propose": "claim proposal", "model_check": "model ch
 # ---------------------------------------------------------------- estimates
 
 
-def measured_seconds(c: pipeline.Components) -> float | None:
+def _new_call_seconds(c: pipeline.Components) -> list[float]:
     ports = {
         id(p): p for p in (getattr(x, "model", None) for x in (c.labeler, c.reviewer, *c.recorders))
     }
-    secs = [
+    return [
         float(getattr(s, "seconds", 0.0))
         for p in ports.values()
         if isinstance(getattr(p, "stats", None), list)
         for s in p.stats
         if not getattr(s, "reused", False)
     ]
-    if len(secs) < MIN_CALLS_TO_MEASURE:
-        return None
-    return sum(secs) / len(secs)
+
+
+def measured_seconds(c: pipeline.Components) -> float | None:
+    """Mean seconds per new model call so far, once there are enough calls to say."""
+    secs = _new_call_seconds(c)
+    return sum(secs) / len(secs) if len(secs) >= MIN_CALLS_TO_MEASURE else None
 
 
 def seconds_per_call(speed_file: Path = SPEED_FILE) -> tuple[float, str]:
@@ -150,22 +153,16 @@ def seconds_per_call(speed_file: Path = SPEED_FILE) -> tuple[float, str]:
 
 
 def record_speed(c: pipeline.Components, speed_file: Path = SPEED_FILE) -> None:
-    spc = measured_seconds(c)
-    if spc is None:
+    secs = _new_call_seconds(c)
+    if len(secs) < MIN_CALLS_TO_MEASURE:
         return
-    n = sum(
-        1
-        for p in {id(p): p for p in (getattr(x, "model", None) for x in (c.labeler,))}.values()
-        for s in getattr(p, "stats", ())
-        if not getattr(s, "reused", False)
-    )
     try:
         speed_file.parent.mkdir(parents=True, exist_ok=True)
         speed_file.write_text(
             json.dumps(
                 {
-                    "seconds_per_call": round(spc, 2),
-                    "calls": n,
+                    "seconds_per_call": round(sum(secs) / len(secs), 2),
+                    "calls": len(secs),
                     "measured_at_utc": _now().isoformat().replace("+00:00", "Z"),
                 }
             ),
@@ -315,7 +312,7 @@ def propose_job(*, extractor_for: ExtractorFor) -> Callable[[Job], None]:
                 "done",
                 f"{proposed} claims proposed from {job.total} paragraphs"
                 + (
-                    f"; {dropped} proposals dropped because they did not quote the paragraph"
+                    f"; {dropped} proposals dropped by the claim checks (the audit log says why)"
                     if dropped
                     else ""
                 )
