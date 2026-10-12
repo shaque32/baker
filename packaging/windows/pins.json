@@ -34,8 +34,8 @@
     "file": "Qwen3-14B-Q4_K_M.gguf",
     "url": "https://huggingface.co/Qwen/Qwen3-14B-GGUF/resolve/main/Qwen3-14B-Q4_K_M.gguf",
     "metadata_url": "https://huggingface.co/api/models/Qwen/Qwen3-14B-GGUF/tree/main",
-    "sha256": null,
-    "size": null,
+    "sha256": "500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0",
+    "size": 9001752960,
     "license": "Apache-2.0",
     "n_ctx": 8192
   }

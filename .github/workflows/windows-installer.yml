@@ -29,6 +29,12 @@ on:
 permissions:
   contents: read
 
+# A newer push waits for the running build instead of cancelling it, so the slow llama builds
+# finish and fill the cache.
+concurrency:
+  group: windows-installer-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   PYTHON_VERSION: "3.12"
 
