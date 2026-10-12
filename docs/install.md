@@ -11,20 +11,21 @@ can skip it and copy the model from a USB drive instead.
 | Windows | Windows 10 or 11, 64-bit | Windows 11 |
 | Processor | x64 with AVX2 (Intel 2013 or later, AMD 2015 or later) | 8 cores or more |
 | Memory | 16 GB | 32 GB |
-| Graphics | none (runs on the processor, slowly) | NVIDIA with 12 GB or more of video memory |
+| Graphics | none (runs on the processor, but see the speed table) | NVIDIA with 12 GB or more of video memory |
 | Disk | 15 GB free (Baker 1 GB, model 9 GB, room for cases) | SSD |
 
 How long a case takes depends almost entirely on the graphics card. Measured on the synthetic
-test case (case01, 20 claims, 495 model calls):
+test case (case01, 20 claims, about 500 model calls):
 
 | Machine | Seconds per model call | Whole case | Measured |
 |---|---|---|---|
-| Apple M4 Mac, 24 GB (for comparison) | 43 | about 5.9 h | 2026-10-09, projected from 75 calls |
-| Windows, no GPU (4 cores, 16 GB) | not yet measured | | CI speed test, pending |
+| Apple M4 Mac, 24 GB (for comparison) | 56 | 7.75 h; about 6.2 h with flash attention, Baker's default since 2026-10-12 (estimated) | 2026-10-12, full case01 run |
+| Windows, no GPU (4 cores, 16 GB) | more than 270 (estimated) | more than 1.5 days (estimated) | 2026-10-12, GitHub Windows runner: 3 claims, an estimated 75 calls, did not finish in 5 h 46 min |
 | Windows, NVIDIA GPU | not yet measured | | rented-machine speed test, pending |
 
-Until the NVIDIA numbers are in, plan on running a case overnight. A run can stop and resume:
-finished claims are kept.
+Without an NVIDIA card, a 4-core PC is too slow for real cases: use an NVIDIA PC or an Apple
+silicon Mac with 24 GB. Until the NVIDIA numbers are in, plan on running a case overnight. A run
+can stop and resume: finished claims are kept.
 
 The 12 GB figure is an estimate, not a measurement: the model is 9.0 GB and its working memory
 at Baker's context size about 1.3 GB more. On a card with less, the model may fail to load; the
