@@ -155,7 +155,7 @@ jobs:
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { choco install innosetup --no-progress -y | Out-Null }
           $m = (Get-Content packaging/windows/pins.json -Raw | ConvertFrom-Json).model
-          $gb = [math]::Round($m.size / 1GB, 1)
+          $gb = [math]::Round($m.size / 1e9, 1)
           & $iscc /Qp "/DStage=$PWD\build\stage" "/DAppVersion=${{ steps.version.outputs.version }}" `
             "/DModelFile=$($m.file)" "/DModelUrl=$($m.url)" "/DModelSha256=$($m.sha256)" `
             "/DModelName=$($m.name)" "/DModelSizeGB=$gb" "/DModelNCtx=$($m.n_ctx)" `
