@@ -29,10 +29,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: windows-installer-${{ github.ref }}
-  cancel-in-progress: true
-
 env:
   PYTHON_VERSION: "3.12"
 
@@ -52,6 +48,7 @@ jobs:
           test "$md5" = "$(jq -r .python.md5 packaging/windows/pins.json)"
           test "$sha" = "$(jq -r .python.sha256 packaging/windows/pins.json)"
       - name: Model file (Hugging Face's own SHA-256 and size)
+        if: always()
         run: |
           file=$(jq -r .model.file packaging/windows/pins.json)
           meta=$(curl -fsSL "$(jq -r .model.metadata_url packaging/windows/pins.json)" |
@@ -76,11 +73,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+      - id: key
+        name: Cache key (the llama and CUDA pins and the build scripts only)
+        shell: bash
+        run: |
+          pins=$(jq -c '[.llama_cpp_python, .cuda]' packaging/windows/pins.json)
+          scripts=$(cat packaging/windows/build_llama.ps1 packaging/windows/install_cuda.ps1)
+          echo "hash=$(printf '%s\n%s' "$pins" "$scripts" | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
       - id: cache
         uses: actions/cache@v4
         with:
           path: build/wheels/${{ matrix.variant }}
-          key: llama-${{ matrix.variant }}-${{ hashFiles('packaging/windows/pins.json', 'packaging/windows/build_llama.ps1', 'packaging/windows/install_cuda.ps1') }}
+          key: llama-${{ matrix.variant }}-${{ steps.key.outputs.hash }}
       - name: CUDA toolkit (build machine only)
         if: matrix.variant == 'cuda' && steps.cache.outputs.cache-hit != 'true'
         run: packaging/windows/install_cuda.ps1
@@ -154,7 +158,7 @@ jobs:
           $exe = Get-ChildItem build/installer -Filter *.exe | Select-Object -First 1
           $sha = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
           "$sha  $($exe.Name)" | Out-File "$($exe.FullName).sha256" -Encoding ascii
-          Copy-Item build/stage/BUILD_INFO.json build/installer/
+          Copy-Item build/stage/BUILD_INFO.json, packaging/windows/speedtest.ps1 build/installer/
           "### Installer`n`n``$($exe.Name)`` ($([math]::Round($exe.Length / 1MB)) MB)`n`nSHA-256 ``$sha``" |
             Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
       - uses: actions/upload-artifact@v4

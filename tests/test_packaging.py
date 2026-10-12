@@ -84,7 +84,8 @@ def test_pins_are_complete():
     model = pins["model"]
     assert HEX64.fullmatch(model["sha256"])
     assert model["size"] > 1_000_000_000
-    assert model["url"].startswith("https://huggingface.co/") and model["url"].endswith(model["file"])
+    assert model["url"].startswith("https://huggingface.co/")
+    assert model["url"].endswith(model["file"])
     assert model["license"] == "Apache-2.0"
 
 
