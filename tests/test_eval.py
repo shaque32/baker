@@ -81,3 +81,15 @@ def test_false_supported_is_split_by_basis():
     s = score(g, p)
     assert s.n_false_supported == 2
     assert s.false_supported_by_basis == {"ai_reviewed": 1, "confirmed": 1}
+
+
+def test_a_draft_key_never_gates(tmp_path):
+    """An unsigned key (labeled_by DRAFT ...) scores report-only, and refuses to gate."""
+    draft = gold("C1", Verdict.UNPROVEN).model_copy(update={"labeled_by": "DRAFT (agent)"})
+    key = tmp_path / "draft_gold.jsonl"
+    key.write_text(draft.model_dump_json() + "\n")
+    preds = tmp_path / "p.jsonl"
+    preds.write_text(json.dumps({"claim_id": "C1", "verdict": "unproven"}) + "\n")
+    args = ["--case", str(tmp_path), "--gold", str(key), "--predictions", str(preds)]
+    assert main([*args, "--report-only"]) == 0
+    assert main(args) == 1

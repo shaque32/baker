@@ -19,7 +19,7 @@ from typing import Literal, Protocol
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # Bump on every change to this file or core/schema.sql. pipeline_runs records it.
-CONTRACTS_VERSION = "0.2.0"
+CONTRACTS_VERSION = "0.3.0"
 
 # ---------------------------------------------------------------- enums
 
@@ -143,6 +143,35 @@ class PipelineRunStatus(StrEnum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"  # includes an invariant stop
+    # stopped before it finished, not by an error: the expert stopped it, or the app closed and
+    # a later start found it still marked running. Finished claims keep their work and a new
+    # run reuses it. Never scored: only a completed run is. Its done claims stay visible for
+    # review.
+    STOPPED = "stopped"
+
+
+class RunClaimState(StrEnum):
+    """Where one claim stands in one audit run (run_claims)."""
+
+    QUEUED = "queued"  # not started
+    LABELING = "labeling"  # checks, retrieval and stance labeling under way
+    DONE = "done"  # every candidate labeled and the verdict stored
+    FAILED = "failed"  # the run stopped on this claim; its work was rolled back
+
+
+class MatchMethod(StrEnum):
+    """How an exhibit excerpt was found in a message body. Order = order tried."""
+
+    EXACT = "exact"  # character for character, word-aligned (core/audit/quotes.find_quote)
+    TOLERANT = "tolerant"  # equal after the fixed normalization: Unicode NFKC, case, whitespace
+    #                        and line breaks, quote, apostrophe and dash styles, ellipsis form
+    TRANSLITERATION = "transliteration"  # equal after Cyrillic-to-Latin transliteration plus
+    #                                      the tolerant normalization; one side must be Cyrillic
+
+
+class ExcerptSplit(StrEnum):
+    LINE = "line"  # each non-blank line is one quoted message
+    BLOCK = "block"  # blank lines separate quoted messages (keeps multi-line bodies whole)
 
 
 class CheckOutcome(StrEnum):
@@ -570,6 +599,121 @@ class ModelCall(Model):
     at_utc: datetime
 
 
+class RunClaimProgress(Model):
+    """One claim's progress in one audit run, so a screen can show a run while it works.
+
+    Written by the pipeline as the claim moves through the run; one row per (run, claim).
+    A claim is shown for review only in state DONE. Every claim not DONE reads "labeling
+    incomplete" wherever it appears, the report included. Only a completed run is scored
+    (predictions, the eval) or re-decided.
+    """
+
+    pipeline_run_id: str
+    claim_id: str
+    position: int = Field(ge=1)  # 1-based order the claims run in (the expert's order)
+    state: RunClaimState
+    candidates_total: int | None = Field(default=None, ge=0)  # None until retrieval has run
+    candidates_labeled: int = Field(default=0, ge=0)
+    model_calls: int = Field(default=0, ge=0)  # new calls made; stored outputs reused excluded
+    started_at_utc: datetime | None = None
+    finished_at_utc: datetime | None = None
+
+    @model_validator(mode="after")
+    def _consistent(self) -> RunClaimProgress:
+        _aware(self.started_at_utc, "started_at_utc")
+        _aware(self.finished_at_utc, "finished_at_utc")
+        if self.candidates_total is not None and self.candidates_labeled > self.candidates_total:
+            raise ValueError("more candidates labeled than retrieved")
+        if self.state is RunClaimState.QUEUED and self.started_at_utc is not None:
+            raise ValueError("a queued claim has not started")
+        if self.state is RunClaimState.DONE and (
+            self.finished_at_utc is None
+            or self.candidates_total is None
+            or self.candidates_labeled != self.candidates_total
+        ):
+            raise ValueError("a done claim has every candidate labeled and a finish time")
+        return self
+
+
+# ---------------------------------------------------------------- Context Restore
+# The expert pastes a government exhibit's quoted messages; Baker finds each in the
+# extraction. Matches are derived by code (core/restore/), never by a model, and never touch
+# verdicts. An excerpt with no match keeps what was searched, never "does not exist".
+
+
+class Exhibit(Model):
+    """A government exhibit's quoted messages, pasted by the expert. Never edited after import."""
+
+    id: str  # exhibit_id(label, text)
+    label: str = Field(min_length=1)  # as the expert names it, e.g. "Government Exhibit 4"
+    paragraph_id: str | None = None  # govdoc_paragraphs.id that cites it, if the expert chose one
+    text: str = Field(min_length=1)  # exactly as pasted
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")  # of text, UTF-8
+    split: ExcerptSplit
+    added_by: str = Field(pattern=r"^expert:")
+    added_at_utc: datetime
+
+    @model_validator(mode="after")
+    def _hashed_and_aware(self) -> Exhibit:
+        _aware(self.added_at_utc, "added_at_utc")
+        if hashlib.sha256(self.text.encode("utf-8")).hexdigest() != self.sha256:
+            raise ValueError("sha256 is the SHA-256 of text as pasted, UTF-8")
+        return self
+
+
+class ExhibitExcerpt(Model):
+    """One quoted message from an exhibit, and what Baker searched for it."""
+
+    id: str  # excerpt_id(exhibit_id, seq)
+    exhibit_id: str
+    seq: int = Field(ge=1)
+    char_start: int = Field(ge=0)  # span in Exhibit.text
+    char_end: int = Field(ge=0)
+    text: str  # Exhibit.text[char_start:char_end]
+    searched: str  # what was searched and each source's coverage; shown when nothing matched
+    source_ids: tuple[str, ...] = ()  # sources searched
+    matcher_version: str
+
+    @model_validator(mode="after")
+    def _span(self) -> ExhibitExcerpt:
+        if not self.text or self.char_end - self.char_start != len(self.text):
+            raise ValueError("text is the non-empty slice Exhibit.text[char_start:char_end]")
+        return self
+
+
+class ExhibitMatch(Model):
+    """Where an excerpt appears in the extraction. Derived by code; no model decides a match.
+
+    Stored only after core/restore re-verified it against the stored message body:
+    for each pair, normalize(excerpt.text[a:b]) == normalize(body[c:d]) under `method`.
+    More than one span means the exhibit left words out (an ellipsis); the omitted words are the
+    body text between consecutive spans. Excerpt text outside excerpt_spans (a printed time or
+    sender name the exhibit added) is shown beside the match, never compared.
+    A match displays at tier derived; the message it points to keeps its own tier.
+    """
+
+    id: str  # exhibit_match_id(excerpt_id, record_id)
+    excerpt_id: str
+    record_id: str  # messages.id
+    ref: SourceRef
+    method: MatchMethod
+    spans: tuple[tuple[int, int], ...] = Field(min_length=1)  # char spans in the message body
+    excerpt_spans: tuple[tuple[int, int], ...] = Field(min_length=1)  # paired spans in the excerpt
+    matcher_version: str
+
+    @model_validator(mode="after")
+    def _paired(self) -> ExhibitMatch:
+        if len(self.spans) != len(self.excerpt_spans):
+            raise ValueError("spans and excerpt_spans pair up one to one")
+        for seq in (self.spans, self.excerpt_spans):
+            prev = 0
+            for a, b in seq:
+                if a < prev or b <= a:
+                    raise ValueError("spans are non-empty, ordered and non-overlapping")
+                prev = b
+        return self
+
+
 class AuditLogEntry(Model):
     seq: int = Field(ge=1)
     at_utc: datetime
@@ -661,6 +805,18 @@ def verdict_id(claim_id: str, pipeline_run_id: str) -> str:
 
 def model_call_id(model_run_id: str, seq: int) -> str:
     return f"mc:{model_run_id}#{seq}"
+
+
+def exhibit_id(label: str, text: str) -> str:
+    return f"exh:{short_hash([label, text])}"
+
+
+def excerpt_id(exhibit_id: str, seq: int) -> str:
+    return f"exc:{exhibit_id}#{seq}"
+
+
+def exhibit_match_id(excerpt_id: str, record_id: str) -> str:
+    return f"xm:{excerpt_id}|{record_id}"
 
 
 # ---------------------------------------------------------------- function signatures
