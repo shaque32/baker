@@ -43,6 +43,7 @@ from core.contracts import (
     VerdictDecision,
     display_tier,
 )
+from core.ingest import coverage as import_coverage
 from core.report import restore as restore_html
 from core.report.letter import letter_section
 from core.review import audit_log
@@ -188,6 +189,14 @@ def _limitations(conn: sqlite3.Connection, srcs: list[tuple]) -> str:
             items.append(
                 f"<li>The coverage of {q(s[4])} is not known, so no absence finding can rest "
                 "on it.</li>"
+            )
+    for cov in import_coverage.summaries(conn):
+        if cov.status == "needs_review":
+            lis = "".join(f"<li>{import_coverage.render(i, q, e)}</li>" for i in cov.attention)
+            items.append(
+                f"<li>Baker did not read all of {q(cov.file_name)}: {e(cov.headline)} Records "
+                "in the parts listed here are not in the evidence Baker reviewed, and times it "
+                f"could not read are not used.<ul>{lis}</ul></li>"
             )
     items += [
         f"<li><strong>{SUPPORTED_EXPERT}</strong> means an expert accepted every supporting "

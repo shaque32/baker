@@ -698,6 +698,7 @@ class App:
                 up.file_name or "",
                 up.fields.get("kind", ""),
                 self.actor,
+                date_order=up.fields.get("date_order") or None,
             )
             self.flash = (
                 f"Imported {got.file_name} as {got.source_id}: {got.summary}. "

@@ -85,13 +85,14 @@ either imported, skipped with a reason, or inside a sheet listed in `not_importe
 
 ## Where it is shown
 
-Planned, in files other Wave 4 threads own (`cli/`, `ui/`, `core/report/`), so they are asks to
-those threads rather than part of this change:
-- `baker import` prints `format_text` after each import and takes `--date-order mdy|dmy`;
-- the case screen shows each source's headline and its attention items, and offers the date
-  order on import;
-- the report lists, under limitations, every source whose status is `needs_review`, with its
+- `baker import` prints `format_text` after each import and takes `--date-order mdy|dmy`.
+- The case screen's Files table shows each report's headline and its attention items, and the
+  report upload form offers the date order (left to Baker by default).
+- The report lists, under Limitations, every source whose status is `needs_review`, with its
   attention items.
 
-Until then the record is in the case database and `python -m eval.synthetic.variants.check -v`
-shows what the summaries say.
+All three render items with `coverage.render(item, q, e)`, so text from the report is quoted.
+A file already in a case cannot be imported into it again, so to state the order for a report
+that came back with `times_ambiguous_day_month`, import it into a new case (or a new case
+database on the command line). `python -m eval.synthetic.variants.check -v` shows what each
+variant's summary says.

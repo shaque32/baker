@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -184,6 +185,12 @@ def load(conn: sqlite3.Connection, source_id: str) -> SourceCoverage | None:
 def load_all(conn: sqlite3.Connection) -> list[SourceCoverage]:
     ids = [r[0] for r in conn.execute("SELECT id FROM sources WHERE kind != 'govdoc' ORDER BY id")]
     return [c for c in (load(conn, i) for i in ids) if c is not None]
+
+
+def summary(conn: sqlite3.Connection, source_id: str) -> CoverageSummary | None:
+    """The summary for one source, or None when it has no coverage record (a govdoc)."""
+    c = load(conn, source_id)
+    return summarize(c) if c is not None else None
 
 
 def summaries(conn: sqlite3.Connection) -> list[CoverageSummary]:
@@ -581,13 +588,29 @@ def _reason_words(reason: str) -> str:
     return reason
 
 
+def where(item: CoverageItem, limit: int = 5) -> str:
+    """'see Chats!3, Chats!7, ...': the first rows or tables to open, or '' when none."""
+    if not item.locators:
+        return ""
+    more = ", ..." if len(item.locators) > limit else ""
+    return f"see {', '.join(item.locators[:limit])}{more}"
+
+
+def render(item: CoverageItem, quote: Callable[[str], str], escape: Callable[[str], str]) -> str:
+    """One item as markup: text from the report through `quote` (the screen's and the
+    report's q()), Baker's own words through `escape`, then where to look."""
+    body = "".join(quote(t) if quoted else escape(t) for t, quoted in item.parts)
+    loc = where(item)
+    return body + (f" ({escape(loc)})" if loc else "")
+
+
 def format_text(s: CoverageSummary, limit: int = 8) -> str:
     """Plain-text summary for the command line: the headline, then every item to review,
     then up to `limit` informational items."""
     lines = [f"Import coverage for {s.file_name} ({s.source_id}): {s.headline}"]
     for i in s.attention:
-        where = f" [see {', '.join(i.locators[:5])}{', ...' if len(i.locators) > 5 else ''}]"
-        lines.append(f"  ! {i.plain}" + (where if i.locators else ""))
+        loc = where(i)
+        lines.append(f"  ! {i.plain}" + (f" [{loc}]" if loc else ""))
     for i in s.info[:limit]:
         lines.append(f"  - {i.plain}")
     if len(s.info) > limit:

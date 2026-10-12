@@ -31,6 +31,7 @@ from core.contracts import (
     Verdict,
     display_tier,
 )
+from core.ingest import coverage as import_coverage
 from core.report.html import CSS as REPORT_CSS
 from core.report.html import STANCE_LABEL, audit_log_summary, record_line, review_label, sources
 from core.report.restore import CSS as RESTORE_CSS
@@ -818,6 +819,30 @@ FIDELITY = {
 }
 
 
+def _import_coverage(conn: sqlite3.Connection, source_id: str) -> str:
+    """What the import read and what it did not (core/ingest/coverage.py): the headline, then
+    the items to review. Text from the report goes through q()."""
+    s = import_coverage.summary(conn, source_id)
+    if s is None:
+        return ""
+    out = f"<br>{e(s.headline)}"
+    if s.attention:
+        lis = "".join(f"<li>{import_coverage.render(i, q, e)}</li>" for i in s.attention)
+        out += f"<ul>{lis}</ul>"
+    return out
+
+
+def _date_order_choice(off: str) -> str:
+    return (
+        f"<p><label>Date order <select name='date_order'{off}>"
+        "<option value=''>let Baker work it out</option>"
+        "<option value='mdy'>month first (3/4 is 4 March)</option>"
+        "<option value='dmy'>day first (3/4 is 3 April)</option>"
+        "</select></label> <span class='muted'>Dates like 3/4/2026 that nothing in the report "
+        "decides are left unread unless you state the order.</span></p>"
+    )
+
+
 def _upload_form(page: Page, kind: str, label: str, accept: str, disabled: bool) -> str:
     """multipart form; the token comes before the file so the server checks it first."""
     off = " disabled" if disabled else ""
@@ -826,7 +851,8 @@ def _upload_form(page: Page, kind: str, label: str, accept: str, disabled: bool)
         f"<input type='hidden' name='token' value='{e(page.token)}'>"
         f"<input type='hidden' name='kind' value='{e(kind)}'>"
         f"<p><strong>{e(label)}</strong></p>"
-        f"<input type='file' name='file' accept='{e(accept)}' required{off}> "
+        + (_date_order_choice(off) if kind == "report" else "")
+        + f"<input type='file' name='file' accept='{e(accept)}' required{off}> "
         f"<button type='submit'{off}>Import</button></form>"
     )
 
@@ -875,7 +901,7 @@ def setup_page(
                 recs = f"{n} paragraphs"
             else:
                 what = f"{e(kind)}, {e(extraction)} extraction, {e(tool)} {e(tver or '')}"
-                cov = e(FIDELITY.get(fidelity, fidelity))
+                cov = e(FIDELITY.get(fidelity, fidelity)) + _import_coverage(conn, sid)
                 recs = str(counts.get(sid, 0))
             out.append(
                 f"<tr><td>{q(fname)}<br><span class='mono'>{e(sid)}</span></td><td>{what}</td>"
