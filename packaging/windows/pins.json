@@ -1,0 +1,31 @@
+{
+  "comment": "Everything the Windows installer downloads at build time, pinned. A changed hash fails the build.",
+  "python": {
+    "version": "3.12.10",
+    "url": "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip",
+    "md5": "fe8ef205f2e9c3ba44d0cf9954e1abd3",
+    "sha256": null
+  },
+  "llama_cpp_python": {
+    "version": "0.3.36",
+    "sdist_sha256": "832db0699007f1be95a7e41ef12e88926b02ba836461e36a36372db2760c1a2e",
+    "cpu_cmake_args": "-DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_OPENMP=OFF -DLLAMA_CURL=OFF",
+    "cuda_cmake_args": "-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75-real;86-real;89"
+  },
+  "cuda": {
+    "version": "12.4.1",
+    "url": "https://developer.download.nvidia.com/compute/cuda/12.4.1/network_installers/cuda_12.4.1_windows_network.exe",
+    "components": ["nvcc", "cudart", "cublas", "cublas_dev", "thrust", "visual_studio_integration"],
+    "runtime_dlls": ["cudart64_12.dll", "cublas64_12.dll", "cublasLt64_12.dll"]
+  },
+  "model": {
+    "name": "qwen3-14b-q4_k_m",
+    "file": "Qwen3-14B-Q4_K_M.gguf",
+    "url": "https://huggingface.co/Qwen/Qwen3-14B-GGUF/resolve/main/Qwen3-14B-Q4_K_M.gguf",
+    "metadata_url": "https://huggingface.co/api/models/Qwen/Qwen3-14B-GGUF/tree/main",
+    "sha256": null,
+    "size": null,
+    "license": "Apache-2.0",
+    "n_ctx": 8192
+  }
+}
