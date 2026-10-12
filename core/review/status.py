@@ -11,6 +11,11 @@ the evidence that verdict was decided on. It never upgrades a verdict:
 - "Unproven, awaiting expert review" when the verdict is unproven and supporting evidence on the
   claim has no expert decision yet (the AI reviewer accepted it, or nobody reviewed it). Under
   rules 0.2.0 an AI acceptance alone never makes a claim supported; the expert decides.
+- "Labeling incomplete" when the run shown is an audit that has not finished (still running, or
+  stopped) and has not finished this claim. Such a claim has no verdict and no evidence on
+  screen or in the report; it appears for review only once all its candidates are labeled.
+
+Which run: pipeline.view_run(), the same run for the screen and the report.
 """
 
 from __future__ import annotations
@@ -36,6 +41,7 @@ SUPPORTED_AI = "Supported (AI-reviewed)"
 SUPPORTED_EXPERT = "Supported (expert-confirmed)"
 AWAITING_EXPERT = "Unproven, awaiting expert review"
 NOT_AUDITED = "Not audited"
+LABELING_INCOMPLETE = "Labeling incomplete"
 RULES_PENDING = "Unproven (rules not written yet)"
 
 AGAINST = (Stance.CONTRADICTS, Stance.COMPLICATES)
@@ -61,6 +67,7 @@ class ClaimState:
     decided_after_run: bool = False  # an expert decided one of its items after the run
     edited_after_run: bool = False  # the expert changed the claim text after the run
     unlabeled: str | None = None  # why the run did not send this claim's evidence to the model
+    incomplete: bool = False  # the run shown has not finished labeling this claim
 
     @property
     def awaiting_expert(self) -> bool:
@@ -73,10 +80,14 @@ class ClaimState:
 
     @property
     def label(self) -> str:
+        if self.incomplete:
+            return LABELING_INCOMPLETE
         return verdict_label(self.decision, self.awaiting_expert)[0]
 
     @property
     def css(self) -> str:
+        if self.incomplete:
+            return "v-unp"
         return verdict_label(self.decision, self.awaiting_expert)[1]
 
     @property
@@ -86,6 +97,14 @@ class ClaimState:
     def needs(self) -> list[tuple[int, str]]:
         """(priority, what the expert should do), most urgent first. Empty when done."""
         out: list[tuple[int, str]] = []
+        if self.incomplete:
+            return [
+                (
+                    8,
+                    "Labeling incomplete: the audit has not finished this claim. It appears for "
+                    "review once all its candidates are labeled.",
+                )
+            ]
         if self.decision is None:
             return [(8, "Not audited yet. Run the audit to check this claim.")]
         if self.edited_after_run:
@@ -183,14 +202,14 @@ def edited_after(conn: sqlite3.Connection, since: str) -> set[str]:
 def claim_states(
     conn: sqlite3.Connection, include_removed: bool = False, run: dict | None = None
 ) -> list[ClaimState]:
-    """One state per claim, in claim id order, against the latest completed run."""
-    run = pipeline.last_run(conn) if run is None else run
+    """One state per claim, in claim id order, against pipeline.view_run() unless run is given."""
+    run = pipeline.view_run(conn) if run is None else run
     edited = edited_after(conn, run["started_at_utc"]) if run else set()
     return [_state(conn, c, run, edited) for c in pipeline.load_claims(conn, include_removed)]
 
 
 def claim_state(conn: sqlite3.Connection, claim_id: str) -> ClaimState | None:
-    run = pipeline.last_run(conn)
+    run = pipeline.view_run(conn)
     edited = edited_after(conn, run["started_at_utc"]) if run else set()
     for c in pipeline.load_claims(conn, include_removed=True):
         if c.id == claim_id:
@@ -211,6 +230,9 @@ def _state(
         run_id=run["run_id"] if run else None,
         decision=decision,
     )
+    order = (run or {}).get("claim_order") or ()
+    if (run or {}).get("partial") and claim.id in order and decision is None:
+        st.incomplete = True
     if not items or decision is None:
         return st
     st.unlabeled = (run or {}).get("unlabeled", {}).get(claim.id)

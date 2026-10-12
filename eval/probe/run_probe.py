@@ -39,7 +39,7 @@ from pathlib import Path
 from typing import Any
 
 from core.llm.calls import CallLog, make_record
-from core.llm.runtime import GenerationParams, LocalModel, ModelOutput
+from core.llm.runtime import RUNTIMES, GenerationParams, LocalModel, ModelOutput, with_runtime
 from eval.probe import prompts
 
 HERE = Path(__file__).parent
@@ -413,6 +413,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="also run a reason-before-decision reviewer variant")  # fmt: skip
     ap.add_argument("--stance-only", action="store_true",
                     help="skip the reviewer items (the reviewer decides nothing)")  # fmt: skip
+    ap.add_argument("--runtime", choices=sorted(RUNTIMES), default="plain",
+                    help="speed settings the model loads with (core/llm/runtime.py)")  # fmt: skip
+    ap.add_argument("--chat-template", choices=["gguf", "no-think"], default="gguf")
     ap.add_argument("--repeat", type=int, default=2)
     ap.add_argument("--n-ctx", type=int, default=8192)
     ap.add_argument("--out", type=Path, default=Path("eval/out/probe"))
@@ -430,7 +433,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         reviewer_items = load_items(args.reviewer)
         stance_items = load_items(args.stance)
-    params = GenerationParams(n_ctx=args.n_ctx)
+    params = with_runtime(GenerationParams(n_ctx=args.n_ctx), args.runtime, args.chat_template)
     results = []
     for entry in json.loads(args.models.read_text(encoding="utf-8")):
         spec = ModelSpec(name=entry["name"], path=Path(entry["path"]),
@@ -448,6 +451,8 @@ def main(argv: list[str] | None = None) -> int:
                             args.stance_prompt, reason_first, args.stance_only)  # fmt: skip
             res["model"] = spec.name + (" (reason first)" if reason_first else "")
             res["license"] = spec.license
+            res["runtime"] = args.runtime
+            res["params"] = params.as_record()
             res["vram_used_mib"] = None if loaded is None or before is None else loaded - before
             results.append(res)
             print(f"{res['model']}: passes_all={res['passes_all']}", file=sys.stderr)
