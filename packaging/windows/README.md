@@ -17,7 +17,8 @@ copy, then uninstalls it. The installer, its `.sha256`, `BUILD_INFO.json` and `s
 are the `baker-installer` artifact of the run.
 
 CPU timing: **Actions > windows-installer > Run workflow** with "Time the 14B model" ticked, or
-push a commit whose message contains `[cpu-timing]`. Results are in the run summary and the
+on a pull request add the `cpu-timing` label (or push a commit to `main` whose message contains
+`[cpu-timing]`). Results are in the run summary and the
 `cpu-timing` artifact.
 
 ## Decisions

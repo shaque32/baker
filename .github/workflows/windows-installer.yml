@@ -11,6 +11,8 @@ on:
     branches: [main]
     tags: ["v*"]
   pull_request:
+    # labeled: adding the cpu-timing label to a pull request runs the CPU timing on it.
+    types: [opened, synchronize, reopened, labeled]
     paths:
       - "packaging/**"
       - ".github/workflows/windows-installer.yml"
@@ -41,6 +43,7 @@ env:
 jobs:
   pins:
     # Every download the build makes, checked against pins.json before anything is built on it.
+    if: github.event.action != 'labeled' || github.event.label.name == 'cpu-timing'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -72,6 +75,7 @@ jobs:
     # Visual Studio 2022: CUDA 12.4's build integration does not know the Visual Studio on
     # windows-latest. The MSVC runtime shipped with the installer is the newer one, which runs
     # code built by this older compiler.
+    if: github.event.action != 'labeled' || github.event.label.name == 'cpu-timing'
     runs-on: windows-2022
     timeout-minutes: 330
     defaults:
@@ -225,10 +229,11 @@ jobs:
   cpu-timing:
     # The 14B on 4 CPU cores and 16 GB, no GPU: the slowest machine an expert might use.
     needs: installer
-    # Also runs when a pushed commit message contains [cpu-timing] (a dispatch needs main).
+    # A dispatch needs the workflow on main, so a pull request gets it from the cpu-timing label.
     if: >-
       (github.event_name == 'workflow_dispatch' && inputs.cpu_timing) ||
-      (github.event_name == 'push' && contains(github.event.head_commit.message, '[cpu-timing]'))
+      (github.event_name == 'push' && contains(github.event.head_commit.message, '[cpu-timing]')) ||
+      (github.event.action == 'labeled' && github.event.label.name == 'cpu-timing')
     runs-on: windows-latest
     timeout-minutes: 350
     defaults:
