@@ -126,6 +126,37 @@ def test_label_is_the_printed_paragraph_number(fixtures):
         assert p.ocr is False
 
 
+def test_excerpt_numbered_from_mid_document_keeps_printed_labels(tmp_path):
+    """An affidavit excerpt that opens at paragraph 21 ('paragraphs 1 to 20 omitted')."""
+    numbered = [p for p in syn.AFFIDAVIT if p.number is not None]
+    excerpt = (
+        syn.Para("EXCERPT: PARAGRAPHS 1 TO 20 OMITTED", heading=True),
+        *(syn.Para(p.text, p.number + 20) for p in numbered),
+    )
+    path = tmp_path / "excerpt.pdf"
+    syn._write(syn._layout(excerpt, indent_style=False), path, "Excerpt")
+    r = ingester().parse(path)
+    labels = [p.label for p in r.paragraphs if p.label is not None]
+    assert list(dict.fromkeys(labels)) == [str(p.number + 20) for p in numbered]
+    for p in r.paragraphs:
+        if p.label is not None:
+            assert p.text.startswith(f"{p.label}.") or p.page > 1
+
+
+def test_lone_number_mid_document_does_not_start_numbering(tmp_path):
+    """A '2.' with no 3 and 4 after it is a wrapped line, not paragraph numbering."""
+    paras = (
+        syn.Para("An unnumbered statement about two phones, items 1 and"),
+        syn.Para("Neither phone was examined on scene."),
+    )
+    lines = syn._layout(paras, indent_style=False)
+    x, y, _t = lines[0][1]
+    lines[0][1] = (x, y, "2. Neither phone was examined on scene.")
+    path = tmp_path / "lone.pdf"
+    syn._write(lines, path, "Lone")
+    assert all(p.label is None for p in ingester().parse(path).paragraphs)
+
+
 def test_unnumbered_document_has_no_labels(fixtures):
     r = ingester().parse(fixtures["police_report.pdf"])
     assert all(p.label is None for p in r.paragraphs)

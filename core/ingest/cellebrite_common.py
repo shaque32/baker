@@ -9,6 +9,7 @@ Layout assumptions are documented in docs/ingest/cellebrite_report.md.
 
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 from collections import Counter, defaultdict
@@ -28,11 +29,15 @@ from core.contracts import (
 from core.ingest.source_file import SourceFile
 from core.review import audit_log
 
-IMPORTER_VERSION = "0.1.0"
+IMPORTER_VERSION = "0.2.0"
 HEADER_SCAN_ROWS = 10
 MAX_LISTED = 50  # cap on ids listed in a coverage payload
 
+EXCEL_CELL_LIMIT = 32767  # characters; Excel truncates longer cell text
+
 type Cell = str | int | float | bool | datetime | None
+
+_OFF = r"[+-]\s*\d{1,2}(?::?\d{2})?"  # a UTC offset as written: '+3', '-05:00', '+0530'
 
 
 class RecordKind(StrEnum):
@@ -43,6 +48,16 @@ class RecordKind(StrEnum):
     ACCOUNTS = "accounts"
 
 
+@dataclass(frozen=True)
+class Merge:
+    """A merged cell range, as 0-based indexes into RawTable.rows and into the row's cells."""
+
+    first_row: int
+    last_row: int
+    first_col: int
+    last_col: int
+
+
 @dataclass
 class RawTable:
     """One sheet (Excel) or one table (PDF) as read, before any interpretation."""
@@ -51,40 +66,151 @@ class RawTable:
     kind_hint: RecordKind | None  # from the sheet name or section title, if recognised
     rows: list[tuple[str, list[Cell]]]  # (locator, cells), header rows included
     reflowed: bool = False  # True for PDF: line breaks in cells may come from page layout
+    app_hint: str | None = None  # app named in the sheet or section title ('Chats - WhatsApp')
+    merges: list[Merge] = field(default_factory=list)  # merged ranges (Excel only)
+    header_notes: list[str] = field(default_factory=list)  # e.g. a two-row header was joined
 
 
 # ---------------------------------------------------------------- names and aliases
 
+_INVISIBLE_RE = re.compile("[​‌‍⁠﻿]")
+
 
 def norm(text: object) -> str:
-    return re.sub(r"\s+", " ", str(text)).strip().lower()
+    """Lowercase, whitespace collapsed (no-break spaces included), invisible marks removed."""
+    s = _INVISIBLE_RE.sub("", str(text)).replace(" ", " ")
+    return re.sub(r"\s+", " ", s).strip().lower()
+
+
+def header_norm(text: object) -> str:
+    """A header name for alias lookup: `norm` plus a trailing ':' or '*' removed and the
+    separators in 'Timestamp - Date' / 'Timestamp:Date' written as 'timestamp: date'."""
+    n = norm(text).rstrip(":*").strip()
+    n = re.sub(r"\s*[:–—]\s*", ": ", n)
+    return re.sub(r"^(timestamp|start time|time stamp) - ", r"\1: ", n)
 
 
 SHEET_KINDS: dict[str, RecordKind] = {
     "chats": RecordKind.CHATS,
     "chat": RecordKind.CHATS,
+    "chat messages": RecordKind.CHATS,
     "instant messages": RecordKind.CHATS,
+    "instant message": RecordKind.CHATS,
     "sms messages": RecordKind.SMS,
     "sms": RecordKind.SMS,
+    "sms/mms": RecordKind.SMS,
+    "sms & mms": RecordKind.SMS,
     "mms messages": RecordKind.SMS,
+    "mms": RecordKind.SMS,
     "messages": RecordKind.SMS,
+    "text messages": RecordKind.SMS,
     "call log": RecordKind.CALLS,
+    "call logs": RecordKind.CALLS,
     "calls": RecordKind.CALLS,
+    "call history": RecordKind.CALLS,
     "contacts": RecordKind.CONTACTS,
+    "address book": RecordKind.CONTACTS,
     "user accounts": RecordKind.ACCOUNTS,
     "accounts": RecordKind.ACCOUNTS,
 }
-SUMMARY_SHEETS = {"summary", "extraction summary", "case information", "report summary"}
+# Report categories Baker does not import (yet). The timeline repeats messages and calls, so it
+# is never imported. Coverage lists every such sheet or section with its row count.
+NOT_IMPORTED_CATEGORIES = {
+    "timeline",
+    "locations",
+    "device locations",
+    "web history",
+    "web bookmarks",
+    "searched items",
+    "installed applications",
+    "applications usage",
+    "cell towers",
+    "wireless networks",
+    "calendar",
+    "notes",
+    "emails",
+    "images",
+    "videos",
+    "audio",
+    "documents",
+    "data files",
+    "cookies",
+    "passwords",
+    "social media",
+    "voicemail",
+    "recordings",
+}
+SUMMARY_SHEETS = {
+    "summary",
+    "extraction summary",
+    "case information",
+    "report summary",
+    "device information",
+    "device info",
+    "extraction information",
+}
+# Apps a sheet or section title may name next to its kind ('Chats - WhatsApp',
+# 'Instant Messages (Telegram)', 'Signal Chats'). Only these, so a title such as
+# 'Chat Statistics' is never read as chats.
+KNOWN_APPS = {
+    "whatsapp": "WhatsApp",
+    "whatsapp business": "WhatsApp Business",
+    "telegram": "Telegram",
+    "signal": "Signal",
+    "instagram": "Instagram",
+    "facebook messenger": "Facebook Messenger",
+    "messenger": "Messenger",
+    "snapchat": "Snapchat",
+    "viber": "Viber",
+    "wechat": "WeChat",
+    "imessage": "iMessage",
+    "skype": "Skype",
+    "line": "Line",
+    "kik": "Kik",
+    "discord": "Discord",
+    "wickr": "Wickr",
+    "threema": "Threema",
+    "sms": "SMS",
+    "mms": "MMS",
+}
+_COUNT_SUFFIX_RE = re.compile(r"\s*\(\s*[\d,]+\s*\)$")  # "Chats (1,234)"
+
+
+def _title_parts(title: str) -> tuple[RecordKind, str | None] | None:
+    t = _COUNT_SUFFIX_RE.sub("", norm(title)).strip()
+    if "timeline" in t:
+        return None  # the timeline repeats messages and calls; never imported
+    if t in SHEET_KINDS:
+        return SHEET_KINDS[t], None
+    candidates: list[tuple[str, str]] = []
+    m = re.fullmatch(r"(.+?)\s*(?:-|–|:|\()\s*(.+?)\)?", t)
+    if m:
+        candidates += [(m.group(1), m.group(2)), (m.group(2), m.group(1))]
+    for app in KNOWN_APPS:
+        if t.startswith(app + " "):
+            candidates.append((t[len(app) + 1 :], app))
+    for kind_part, app_part in candidates:
+        kind = SHEET_KINDS.get(kind_part.strip())
+        app = KNOWN_APPS.get(app_part.strip())
+        if kind is not None and app is not None:
+            if kind is RecordKind.SMS and app not in ("SMS", "MMS", "iMessage"):
+                kind = RecordKind.CHATS  # 'WhatsApp Messages' are chats, not SMS
+            return kind, app
+    return None
 
 
 def kind_for_title(title: str) -> RecordKind | None:
-    t = norm(title)
-    t = re.sub(r"\s*\(\d+\)$", "", t)  # "Chats (123)"
-    return SHEET_KINDS.get(t)
+    parts = _title_parts(title)
+    return parts[0] if parts else None
+
+
+def app_for_title(title: str) -> str | None:
+    parts = _title_parts(title)
+    return parts[1] if parts else None
 
 
 _COMMON = {
-    "app": ["source", "application", "app", "service"],
+    "app": ["source", "application", "app", "service", "app name", "application name"],
     "deleted": [
         "deleted",
         "deleted - instant message",
@@ -93,21 +219,36 @@ _COMMON = {
         "deleted - contact",
         "record status",
         "deleted state",
+        "record state",
     ],
 }
 _TIME = {
-    "ts": ["timestamp", "date/time", "time", "date", "timestamp: date/time", "start time"],
+    "ts": [
+        "timestamp",
+        "date/time",
+        "time",
+        "date",
+        "timestamp: date/time",
+        "start time",
+        "date & time",
+        "date and time",
+        "datetime",
+        "time stamp",
+        "message timestamp",
+        "message date/time",
+    ],
     "ts_date": ["timestamp: date", "date (date)"],
     "ts_time": ["timestamp: time", "time (time)"],
 }
+TIME_FIELDS = ("ts", "ts_date", "ts_time")
 _MSG = {
     **_COMMON,
     **_TIME,
-    "from": ["from", "sender"],
-    "to": ["to", "recipients", "recipient"],
-    "body": ["body", "message", "text", "content"],
-    "direction": ["direction"],
-    "type": ["type"],
+    "from": ["from", "sender", "author", "from (sender)"],
+    "to": ["to", "recipients", "recipient", "receiver", "receivers", "recipient(s)"],
+    "body": ["body", "message", "text", "content", "message body", "body text", "message text"],
+    "direction": ["direction", "message direction"],
+    "type": ["type", "message type"],
     "folder": ["folder"],
     "status": ["status"],
     "owner_account": ["account", "owner account"],
@@ -116,33 +257,44 @@ _MSG = {
 FIELD_ALIASES: dict[RecordKind, dict[str, list[str]]] = {
     RecordKind.CHATS: {
         **_MSG,
-        "chat_id": ["chat #", "chat id", "chat identifier", "identifier", "thread", "thread id"],
-        "chat_name": ["name", "chat name", "description"],
-        "participants": ["participants"],
+        "chat_id": [
+            "chat #",
+            "chat id",
+            "chat identifier",
+            "identifier",
+            "thread",
+            "thread id",
+            "conversation",
+            "conversation id",
+        ],
+        "chat_name": ["name", "chat name", "description", "conversation name", "group name"],
+        "participants": ["participants", "members", "chat participants"],
     },
     RecordKind.SMS: {
         **_MSG,
-        "parties": ["parties", "number", "phone number"],
+        "parties": ["parties", "number", "phone number", "party"],
         "participants": ["participants"],
     },
     RecordKind.CALLS: {
         **_COMMON,
         **_TIME,
+        "ts_date": [*_TIME["ts_date"], "start time: date", "call date"],
+        "ts_time": [*_TIME["ts_time"], "start time: time", "call time"],
         "from": ["from", "caller"],
         "to": ["to", "callee"],
         "parties": ["parties", "number", "phone number", "party"],
         "name": ["name"],
-        "direction": ["direction"],
+        "direction": ["direction", "call direction"],
         "type": ["type", "call type"],
         "status": ["status"],
-        "duration": ["duration"],
+        "duration": ["duration", "call duration", "duration (hh:mm:ss)", "duration (seconds)"],
     },
     RecordKind.CONTACTS: {
         **_COMMON,
-        "name": ["name", "display name", "contact name"],
+        "name": ["name", "display name", "contact name", "full name"],
         "entries": ["entries", "entry"],
-        "phone": ["phone", "phone number", "phone numbers", "mobile", "number"],
-        "email": ["email", "e-mail", "emails"],
+        "phone": ["phone", "phone number", "phone numbers", "mobile", "number", "telephone"],
+        "email": ["email", "e-mail", "emails", "email address", "e-mail address"],
         "username": ["username", "user name", "user id", "identifier"],
     },
     RecordKind.ACCOUNTS: {
@@ -151,6 +303,28 @@ FIELD_ALIASES: dict[RecordKind, dict[str, list[str]]] = {
         "name": ["name", "display name"],
         "entries": ["entries"],
     },
+}
+# What a table must have to be read as its kind. A sheet titled 'Chats' that holds locations has
+# 'Time' and 'Name' columns, which alone would pass a two-alias test; this stops it.
+CORE_FIELDS: dict[RecordKind, tuple[set[str], str]] = {
+    RecordKind.CHATS: ({"body"}, "message body or attachment column"),
+    RecordKind.SMS: ({"body"}, "message body or attachment column"),
+    RecordKind.CALLS: ({"duration", "parties", "from", "to"}, "duration or party column"),
+    RecordKind.CONTACTS: ({"entries", "phone", "email", "username"}, "number or email column"),
+    RecordKind.ACCOUNTS: ({"username", "entries"}, "username or identifier column"),
+}  # fmt: skip
+# Fields whose merged cells (Excel) are copied down to every row of the range: they label a group
+# of rows (one chat, one sender). Bodies, times, attachments, flags and durations are never copied.
+FILLABLE_FIELDS = {
+    "chat_id",
+    "chat_name",
+    "participants",
+    "app",
+    "from",
+    "to",
+    "parties",
+    "owner_account",
+    "name",
 }
 # Present in real reports, deliberately not imported, so not reported as unknown.
 IGNORED_COLUMNS = {
@@ -177,7 +351,14 @@ IGNORED_COLUMNS = {
     "priority",
     "smsc",
 }
-ATTACHMENT_RE = re.compile(r"^attachments?(?: #?\d+)?$")
+ATTACHMENT_RE = re.compile(
+    r"^(?:attachments?|attached files?)(?:\s*#?\s*\d+)?(?:\s*:\s*(?:file ?name|name|file))?$"
+)
+# A fixed-offset qualifier after a time column's name: 'Timestamp (UTC+3)', 'Time - UTC'.
+_HEADER_OFFSET_RE = re.compile(
+    rf"^(?P<base>.+?)\s*(?:-\s*|\(\s*|\[\s*)(?:UTC|GMT)\s*(?P<off>{_OFF})?\s*[\)\]]?$", re.I
+)
+_HEADER_QUALIFIER_RE = re.compile(r"^(?P<base>.+?)\s*\((?P<q>[^()]+)\)$")
 
 _ALL_ALIASES: dict[str, str] = {}
 for _kind_map in FIELD_ALIASES.values():
@@ -186,26 +367,77 @@ for _kind_map in FIELD_ALIASES.values():
             _ALL_ALIASES.setdefault(_n, _field)
 
 
-def map_headers(
-    kind: RecordKind, headers: list[Cell]
-) -> tuple[dict[str, int], list[int], list[str]]:
-    """Map header cells to fields. Returns (field -> column index, attachment columns, unknown
-    header names). First matching column wins for a field."""
+def known_header(name: object) -> bool:
+    """True when `name` is a column name Baker knows for some record kind."""
+    n = header_norm(name)
+    return n in _ALL_ALIASES or bool(ATTACHMENT_RE.match(n)) or n in IGNORED_COLUMNS
+
+
+@dataclass
+class HeaderMap:
+    fields: dict[str, int]  # field -> column index; the first matching column wins
+    attachments: list[int]
+    unknown: list[str]  # header names Baker does not know
+    duplicates: list[tuple[str, str]]  # (column, field) for a field already mapped; not read
+    offsets: dict[str, int]  # time field -> fixed offset stated in its header
+    qualifiers: dict[str, str]  # time field -> zone named in its header, not applied
+
+    @property
+    def hits(self) -> int:
+        return len(self.fields) + len(self.duplicates) + (1 if self.attachments else 0)
+
+
+def _split_header(n: str, aliases: dict[str, str]) -> tuple[str, int | None, str | None]:
+    """(name, fixed offset, other qualifier) for a time column written 'Timestamp (UTC+3)' or
+    'Time (Device local)'. Only time columns are split: 'Body (Translated)' stays unknown."""
+    if n in aliases:
+        return n, None, None
+    m = _HEADER_OFFSET_RE.match(n)
+    if m and aliases.get(m.group("base")) in TIME_FIELDS:
+        return m.group("base"), parse_offset(m.group("off")), None
+    q = _HEADER_QUALIFIER_RE.match(n)
+    if q and aliases.get(q.group("base")) in TIME_FIELDS:
+        return q.group("base"), None, q.group("q").strip()
+    return n, None, None
+
+
+def map_headers(kind: RecordKind, headers: list[Cell]) -> HeaderMap:
+    """Map header cells to fields by name, never by position."""
     aliases = {n: f for f, names in FIELD_ALIASES[kind].items() for n in names}
-    fields: dict[str, int] = {}
-    attachments: list[int] = []
-    unknown: list[str] = []
-    for i, h in enumerate(headers):
-        if h is None or str(h).strip() == "":
-            continue
-        n = norm(h)
+    parsed = [
+        (i, str(h).strip(), *_split_header(header_norm(h), aliases))
+        for i, h in enumerate(headers)
+        if h is not None and str(h).strip()
+    ]
+    names = {p[2] for p in parsed}
+    other_ts = {n for n in names if aliases.get(n) in TIME_FIELDS} - {"date", "time"}
+    if {"date", "time"} <= names and not other_ts:
+        # 'Date' and 'Time' in separate columns: read them together, not the date alone.
+        aliases = {**aliases, "date": "ts_date", "time": "ts_time"}
+    hm = HeaderMap({}, [], [], [], {}, {})
+    for i, raw, n, offset, qualifier in parsed:
         if n in aliases:
-            fields.setdefault(aliases[n], i)
+            f = aliases[n]
+            if f in hm.fields:
+                hm.duplicates.append((raw, f))
+                continue
+            hm.fields[f] = i
+            if offset is not None:
+                hm.offsets[f] = offset
+            if qualifier is not None:
+                hm.qualifiers[f] = qualifier
         elif ATTACHMENT_RE.match(n) and kind in (RecordKind.CHATS, RecordKind.SMS):
-            attachments.append(i)
+            hm.attachments.append(i)
         elif n not in IGNORED_COLUMNS:
-            unknown.append(str(h).strip())
-    return fields, attachments, unknown
+            hm.unknown.append(raw)
+    return hm
+
+
+def has_core_fields(kind: RecordKind, hm: HeaderMap) -> bool:
+    need, _ = CORE_FIELDS[kind]
+    return bool(need & hm.fields.keys()) or (
+        kind in (RecordKind.CHATS, RecordKind.SMS) and bool(hm.attachments)
+    )
 
 
 def classify(field_names: set[str]) -> RecordKind | None:
@@ -222,19 +454,41 @@ def classify(field_names: set[str]) -> RecordKind | None:
 
 
 def find_header(table: RawTable) -> tuple[RecordKind, int] | None:
-    """Index into table.rows of the header row, and the record kind."""
+    """Index into table.rows of the header row, and the record kind. A header row has at least
+    two known column names and the columns its kind cannot do without."""
     for idx, (_loc, cells) in enumerate(table.rows[:HEADER_SCAN_ROWS]):
-        names = [norm(c) for c in cells if c is not None and str(c).strip()]
         if table.kind_hint is not None:
-            aliases = {n for names_ in FIELD_ALIASES[table.kind_hint].values() for n in names_}
-            if sum(1 for n in names if n in aliases) >= 2:
-                return table.kind_hint, idx
+            kind = table.kind_hint
         else:
+            names = [header_norm(c) for c in cells if c is not None and str(c).strip()]
             found = {_ALL_ALIASES[n] for n in names if n in _ALL_ALIASES}
             kind = classify(found) if len(found) >= 2 else None
-            if kind is not None:
-                return kind, idx
+            if kind is None:
+                continue
+        hm = map_headers(kind, cells)
+        if hm.hits >= 2 and has_core_fields(kind, hm):
+            return kind, idx
     return None
+
+
+def header_problem(table: RawTable) -> str:
+    """Plain reason a table had no usable header row, for coverage."""
+    kind = table.kind_hint
+    if kind is not None:
+        for _loc, cells in table.rows[:HEADER_SCAN_ROWS]:
+            if map_headers(kind, cells).hits >= 2:
+                return f"columns do not look like {kind.value}: there is no {CORE_FIELDS[kind][1]}"
+    return f"no recognised header row in the first {HEADER_SCAN_ROWS} rows"
+
+
+def header_preview(table: RawTable, limit: int = 12) -> list[str]:
+    """The first row with two or more text cells, trimmed, so the expert can see what the
+    table held. Header-like text only; the cells are cut to 40 characters."""
+    for _loc, cells in table.rows[:HEADER_SCAN_ROWS]:
+        vals = [str(c).strip()[:40] for c in cells if isinstance(c, str) and c.strip()]
+        if len(vals) >= 2:
+            return vals[:limit]
+    return []
 
 
 # ---------------------------------------------------------------- cell parsing
@@ -414,15 +668,54 @@ def parse_parties(cell: Cell, reflowed: bool = False) -> list[Party]:
 
 
 _TS_RE = re.compile(
-    r"""^\s*
-    (?P<a>\d{1,4})[/.\-](?P<b>\d{1,2})[/.\-](?P<c>\d{1,4})
-    (?:[\sT,]+(?P<H>\d{1,2}):(?P<M>\d{2})(?::(?P<S>\d{2})(?:\.(?P<f>\d{1,6}))?)?
+    rf"""^\s*
+    (?P<a>\d{{1,4}})[/.\-](?P<b>\d{{1,2}})[/.\-](?P<c>\d{{1,4}})
+    (?:[\sT,]+(?P<H>\d{{1,2}}):(?P<M>\d{{2}})(?::(?P<S>\d{{2}})(?:[.,](?P<f>\d{{1,6}}))?)?
        \s*(?P<ampm>[AaPp]\.?[Mm]\.?)?)?
-    \s*(?:\(?\s*(?P<utc>UTC|GMT)\s*(?P<off>[+-]\s*\d{1,2}(?::?\d{2})?)?\s*\)?)?
+    \s*(?:[\(\[]?\s*(?:(?P<utc>UTC|GMT|Z)\s*(?P<off>{_OFF})?|(?P<bare>[+-]\d{{2}}:?\d{{2}}))\s*[\)\]]?)?
     \s*$""",
-    re.X,
+    re.X | re.I,
 )
-_FIXED_TZ_RE = re.compile(r"^\(?\s*(?:UTC|GMT)\s*(?P<off>[+-]\s*\d{1,2}(?::?\d{2})?)?\s*\)?$", re.I)
+_FIXED_TZ_RE = re.compile(rf"^[\(\[]?\s*(?:UTC|GMT)\s*(?P<off>{_OFF})?\s*[\)\]]?$", re.I)
+# A value that parses as a date and time but ends in a zone name or abbreviation ('EST',
+# '(Eastern Standard Time)', 'Europe/Moscow'). Named zones are never applied: their offset depends
+# on daylight saving and on what the tool meant by the name.
+_NAMED_ZONE_RE = re.compile(
+    r"^(?P<dt>.*?\d)\s*[\(\[]?\s*(?P<zone>[A-Za-z][A-Za-z_/ ]{1,40})[\)\]]?\s*$"
+)
+_WEEKDAY_RE = re.compile(r"^\s*(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?,?\s+", re.I)
+_MONTHS = {
+    m: i
+    for i, names in enumerate(
+        [
+            ("jan", "january"), ("feb", "february"), ("mar", "march"), ("apr", "april"),
+            ("may",), ("jun", "june"), ("jul", "july"), ("aug", "august"),
+            ("sep", "sept", "september"), ("oct", "october"), ("nov", "november"),
+            ("dec", "december"),
+        ],
+        start=1,
+    )
+    for m in names
+}  # fmt: skip
+# '05-Mar-2026 21:31', '5 March 2026 21:31' and 'Mar 5, 2026 9:31 PM'. English month names only.
+_DMONY_RE = re.compile(
+    r"^\s*(?P<d>\d{1,2})[\s\-/.]+(?P<mon>[A-Za-z]{3,9})\.?[\s\-/.,]+(?P<y>\d{4})(?P<rest>(?:[\sT,].*)?)$"
+)
+_MONDY_RE = re.compile(
+    r"^\s*(?P<mon>[A-Za-z]{3,9})\.?\s+(?P<d>\d{1,2})(?:st|nd|rd|th)?,?\s+(?P<y>\d{4})(?P<rest>(?:[\sT,].*)?)$"
+)
+
+
+class TimeProblem(StrEnum):
+    """Why a time value got no UTC instant. Each is counted in coverage; none is guessed."""
+
+    UNPARSED = "unparsed"  # not a date and time Baker recognises
+    DATE_ONLY = "date_only"  # a date with no time is not a point in time
+    TWO_DIGIT_YEAR = "two_digit_year"
+    AMBIGUOUS_DAY_MONTH = "ambiguous_day_month"  # 3/4/2026 with no row deciding the order
+    NAMED_ZONE = "named_zone"  # 'EST', '(Eastern Standard Time)': not applied
+    NUMERIC = "numeric"  # a bare number (an Excel serial date shown as a number)
+    NO_OFFSET = "no_offset"  # a valid local time with no offset anywhere in the report
 
 
 def parse_offset(off: str | None) -> int:
@@ -448,15 +741,33 @@ def fixed_report_offset(tz_raw: str | None) -> int | None:
     return parse_offset(m.group("off")) if m else None
 
 
+def _month_name_to_iso(s: str) -> str | None:
+    """'05-Mar-2026 21:31' -> '2026-03-05 21:31'. None when there is no English month name."""
+    for rx in (_DMONY_RE, _MONDY_RE):
+        m = rx.match(s)
+        if m and m.group("mon").lower() in _MONTHS:
+            mo = _MONTHS[m.group("mon").lower()]
+            return f"{m.group('y')}-{mo:02d}-{int(m.group('d')):02d}{m.group('rest')}"
+    return None
+
+
+def _canonical(s: str) -> str:
+    """Strip a leading weekday and turn month names into numbers. Day and month order is then
+    unambiguous (year first). The raw value is kept separately and never changed."""
+    s = _WEEKDAY_RE.sub("", s)
+    return _month_name_to_iso(s) or s
+
+
 @dataclass
 class DateOrder:
-    """Day/month order for one table, decided from the values that disambiguate."""
+    """Day/month order, decided only from values that disambiguate (a first number above 12 is
+    a day; a second number above 12 is a day). Nothing is assumed when no value decides."""
 
     dmy_votes: int = 0
     mdy_votes: int = 0
 
     def observe(self, raw: str) -> None:
-        m = _TS_RE.match(raw)
+        m = _TS_RE.match(_canonical(raw))
         if not m or len(m.group("a")) == 4:
             return
         a, b = int(m.group("a")), int(m.group("b"))
@@ -464,6 +775,9 @@ class DateOrder:
             self.dmy_votes += 1
         elif b > 12 >= a:
             self.mdy_votes += 1
+
+    def merged(self, other: DateOrder) -> DateOrder:
+        return DateOrder(self.dmy_votes + other.dmy_votes, self.mdy_votes + other.mdy_votes)
 
     @property
     def label(self) -> str:
@@ -473,7 +787,7 @@ class DateOrder:
             return "dmy"
         if self.mdy_votes:
             return "mdy"
-        return "mdy_assumed"
+        return "undecided"
 
 
 def _to_ts(naive: datetime, offset_min: int | None, raw: str) -> Timestamp:
@@ -486,80 +800,109 @@ def _to_ts(naive: datetime, offset_min: int | None, raw: str) -> Timestamp:
 @dataclass
 class TimeResult:
     ts: Timestamp
-    offset_from_report: bool = False
-    unparsed: bool = False
+    offset_from_fallback: bool = False  # offset came from the column header or report settings
+    problem: TimeProblem | None = None
+
+    @property
+    def unparsed(self) -> bool:
+        return self.problem is not None and self.problem is not TimeProblem.NO_OFFSET
+
+
+def _no_utc(raw: str | None, problem: TimeProblem | None) -> TimeResult:
+    return TimeResult(Timestamp(utc=None, offset_min=None, raw=raw), problem=problem)
 
 
 def parse_time(
-    value: Cell, order: DateOrder, report_offset: int | None, raw_override: str | None = None
+    value: Cell, order: DateOrder, fallback_offset: int | None, raw_override: str | None = None
 ) -> TimeResult:
+    """One time value. An offset written in the value wins; else `fallback_offset` (a fixed
+    offset stated in the column header or the report settings) applies; else no UTC instant."""
     if value is None or (isinstance(value, str) and not value.strip()):
-        return TimeResult(Timestamp(utc=None, offset_min=None, raw=None))
+        return _no_utc(None, None)
     if isinstance(value, datetime):
         raw = raw_override or value.isoformat(sep=" ")
         if value.tzinfo is not None:
             off = int(value.utcoffset().total_seconds() // 60)  # type: ignore[union-attr]
             return TimeResult(Timestamp(utc=value.astimezone(UTC), offset_min=off, raw=raw))
-        return TimeResult(
-            _to_ts(value, report_offset, raw), offset_from_report=report_offset is not None
-        )
+        return _with_fallback(value, fallback_offset, raw)
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        return _no_utc(raw_override or text(value), TimeProblem.NUMERIC)
     raw = raw_override or str(value)
-    s = raw.strip()
+    s = _canonical(raw.strip())
     m = _TS_RE.match(s)
     if m:
-        return _parse_match(m, raw, order, report_offset)
+        return _parse_match(m, raw, order, fallback_offset)
     try:
         iso = datetime.fromisoformat(s.replace("Z", "+00:00"))
     except ValueError:
-        return TimeResult(Timestamp(utc=None, offset_min=None, raw=raw), unparsed=True)
+        return _no_utc(raw, _diagnose(s, order))
     if iso.tzinfo is not None:
         off = int(iso.utcoffset().total_seconds() // 60)  # type: ignore[union-attr]
         return TimeResult(Timestamp(utc=iso.astimezone(UTC), offset_min=off, raw=raw))
-    return TimeResult(_to_ts(iso, report_offset, raw), offset_from_report=report_offset is not None)
+    if len(s) <= 10:
+        return _no_utc(raw, TimeProblem.DATE_ONLY)
+    return _with_fallback(iso, fallback_offset, raw)
+
+
+def _diagnose(s: str, order: DateOrder) -> TimeProblem:
+    """Why a value did not parse: a readable time with a zone name, or not a time at all."""
+    if re.fullmatch(r"\d+(?:\.\d+)?", s):
+        return TimeProblem.NUMERIC
+    nz = _NAMED_ZONE_RE.match(s)
+    if nz:
+        inner = _TS_RE.match(nz.group("dt"))
+        if inner and inner.group("H") is not None and not inner.group("utc"):
+            if _parse_match(inner, s, order, 0).problem is None:
+                return TimeProblem.NAMED_ZONE
+    return TimeProblem.UNPARSED
+
+
+def _with_fallback(naive: datetime, fallback_offset: int | None, raw: str) -> TimeResult:
+    if fallback_offset is None:
+        return _no_utc(raw, TimeProblem.NO_OFFSET)
+    return TimeResult(_to_ts(naive, fallback_offset, raw), offset_from_fallback=True)
 
 
 def _parse_match(
-    m: re.Match[str], raw: str, order: DateOrder, report_offset: int | None
+    m: re.Match[str], raw: str, order: DateOrder, fallback_offset: int | None
 ) -> TimeResult:
-    unparsed = TimeResult(Timestamp(utc=None, offset_min=None, raw=raw), unparsed=True)
     if m.group("H") is None:
-        return unparsed  # a date with no time is not a point in time
+        return _no_utc(raw, TimeProblem.DATE_ONLY)
     a, b, c = m.group("a"), m.group("b"), m.group("c")
     if len(a) == 4:
         y, mo, d = int(a), int(b), int(c)
     elif len(c) == 4:
         x, z = int(a), int(b)
         label = order.label
-        if label == "dmy":
+        if x == z or x > 12 >= z or z > 12 >= x:
+            # Unambiguous on its own (or both numbers are the same).
+            d, mo = (x, z) if x > 12 else (z, x) if z > 12 else (x, z)
+        elif label == "dmy":
             d, mo = x, z
-        elif label in ("mdy", "mdy_assumed"):
+        elif label == "mdy":
             mo, d = x, z
-        elif x > 12 >= z:  # conflicting table: parse only values that are unambiguous
-            d, mo = x, z
-        elif z > 12 >= x:
-            mo, d = x, z
-        else:
-            return unparsed
+        else:  # undecided or conflicting: never guess the order
+            return _no_utc(raw, TimeProblem.AMBIGUOUS_DAY_MONTH)
         y = int(c)
     else:
-        return unparsed  # two-digit years are not guessed
+        return _no_utc(raw, TimeProblem.TWO_DIGIT_YEAR)
     hour, minute = int(m.group("H")), int(m.group("M"))
     sec = int(m.group("S") or 0)
     micro = int((m.group("f") or "0").ljust(6, "0"))
     ampm = (m.group("ampm") or "").lower().replace(".", "")
     if ampm:
         if not 1 <= hour <= 12:
-            return unparsed
+            return _no_utc(raw, TimeProblem.UNPARSED)
         hour = hour % 12 + (12 if ampm == "pm" else 0)
     try:
         naive = datetime(y, mo, d, hour, minute, sec, micro)
     except ValueError:
-        return unparsed
+        return _no_utc(raw, TimeProblem.UNPARSED)
     if m.group("utc"):
         return TimeResult(_to_ts(naive, parse_offset(m.group("off")), raw))
-    return TimeResult(
-        _to_ts(naive, report_offset, raw), offset_from_report=report_offset is not None
-    )
+    if m.group("bare"):
+        return TimeResult(_to_ts(naive, parse_offset(m.group("bare")), raw))
+    return _with_fallback(naive, fallback_offset, raw)
 
 
 # ---------------------------------------------------------------- report metadata
@@ -646,8 +989,46 @@ class Row:
     def empty(self) -> bool:
         return all(text(c) is None for c in self.cells)
 
+    def empty_in_known_columns(self) -> bool:
+        """True when every mapped column and attachment column is blank (a footer such as
+        'Total: 45', or a value only in a column Baker does not read)."""
+        cols = [*self.fields.values(), *self.attachment_cols]
+        return all(text(self.cells[i]) is None for i in cols if i < len(self.cells))
+
 
 # ---------------------------------------------------------------- coverage
+
+
+def _listed(d: dict[str, list[str]], key: str, value: str) -> None:
+    """Append to a capped list of locators in a coverage payload."""
+    items = d.setdefault(key, [])
+    if len(items) < MAX_LISTED:
+        items.append(value)
+
+
+# Fields whose absence from a table the expert must see: without them the records are thin.
+KEY_FIELDS: dict[RecordKind, list[str]] = {
+    RecordKind.CHATS: ["time", "body", "from"],
+    RecordKind.SMS: ["time", "body"],
+    RecordKind.CALLS: ["time"],
+    RecordKind.CONTACTS: ["name"],
+    RecordKind.ACCOUNTS: [],
+}
+
+
+def _has_time(hm: HeaderMap) -> bool:
+    return bool({"ts", "ts_time"} & hm.fields.keys())
+
+
+def missing_key_fields(kind: RecordKind, hm: HeaderMap) -> list[str]:
+    f = hm.fields
+    have = {
+        "time": _has_time(hm),
+        "body": "body" in f,
+        "from": "from" in f,
+        "name": "name" in f,
+    }
+    return [k for k in KEY_FIELDS[kind] if not have[k]]
 
 
 @dataclass
@@ -658,9 +1039,22 @@ class TableCoverage:
     rows_read: int = 0
     rows_imported: int = 0
     rows_skipped: Counter[str] = field(default_factory=Counter)
+    skipped_locators: dict[str, list[str]] = field(default_factory=dict)
     unknown_columns: list[str] = field(default_factory=list)
+    duplicate_columns: list[dict[str, str]] = field(default_factory=list)
     absent_fields: list[str] = field(default_factory=list)
+    missing_key_fields: list[str] = field(default_factory=list)
+    header_offsets: dict[str, int] = field(default_factory=dict)  # column -> offset applied
+    header_zone_names: dict[str, str] = field(default_factory=dict)  # column -> zone, not applied
     date_order: str | None = None
+    date_order_basis: str | None = None  # 'this table', 'other tables in the report', 'none'
+    time_problems: Counter[str] = field(default_factory=Counter)
+    time_problem_locators: dict[str, list[str]] = field(default_factory=dict)
+    app_from_title: str | None = None
+    merged_cells_filled: int = 0
+    merged_columns_not_filled: list[str] = field(default_factory=list)
+    header_notes: list[str] = field(default_factory=list)
+    flagged_locators: dict[str, list[str]] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -670,19 +1064,35 @@ class TableCoverage:
             "rows_read": self.rows_read,
             "rows_imported": self.rows_imported,
             "rows_skipped": dict(self.rows_skipped),
+            "skipped_locators": self.skipped_locators,
             "unknown_columns": self.unknown_columns,
+            "duplicate_columns": self.duplicate_columns,
             "absent_fields": self.absent_fields,
+            "missing_key_fields": self.missing_key_fields,
+            "header_offsets": self.header_offsets,
+            "header_zone_names": self.header_zone_names,
             "date_order": self.date_order,
+            "date_order_basis": self.date_order_basis,
+            "time_problems": dict(self.time_problems),
+            "time_problem_locators": self.time_problem_locators,
+            "app_from_title": self.app_from_title,
+            "merged_cells_filled": self.merged_cells_filled,
+            "merged_columns_not_filled": self.merged_columns_not_filled,
+            "header_notes": self.header_notes,
+            "flagged_locators": self.flagged_locators,
         }
 
 
 @dataclass
 class Coverage:
     tables: list[TableCoverage] = field(default_factory=list)
-    not_imported: list[dict[str, str]] = field(default_factory=list)
+    not_imported: list[dict[str, object]] = field(default_factory=list)
     counters: Counter[str] = field(default_factory=Counter)
     unmapped_direction_values: Counter[str] = field(default_factory=Counter)
     notes: list[str] = field(default_factory=list)
+    summary_found: bool = True
+    hidden_sheets: list[str] = field(default_factory=list)
+    multi_name_accounts: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------- writer
@@ -769,6 +1179,7 @@ class _Writer:
         multi = [a for a, names in self.account_names.items() if len(names) > 1]
         if multi:
             self.cov.counters["accounts_with_multiple_display_names"] = len(multi)
+            self.cov.multi_name_accounts = sorted(multi)[:MAX_LISTED]
             self.cov.notes.append(
                 "Some accounts appear with more than one display name; the first one seen is "
                 "stored. Ids: " + ", ".join(sorted(multi)[:MAX_LISTED])
@@ -832,26 +1243,40 @@ def _db_bool(v: bool | None) -> int | None:
     return None if v is None else int(v)
 
 
-def _row_time(row: Row, order: DateOrder, report_offset: int | None, cov: Coverage) -> Timestamp:
+@dataclass
+class TimeContext:
+    """What one table's times are read with."""
+
+    order: DateOrder
+    report_offset: int | None
+    header_offsets: dict[str, int]
+    tc: TableCoverage
+
+
+def _row_time(row: Row, tctx: TimeContext, cov: Coverage) -> Timestamp:
     if row.has("ts_time") and not row.has("ts") and not row.has("ts_date"):
-        res = parse_time(row.get("ts_time"), order, report_offset)  # full value in one column
+        used, value = "ts_time", row.get("ts_time")  # full value in one column
     elif row.has("ts_date") and row.has("ts_time"):
         dv = row.get("ts_date")
         d = dv.date().isoformat() if isinstance(dv, datetime) else row.text("ts_date")
         t = row.text("ts_time")
-        if d is None and t is None:
-            res = parse_time(None, order, report_offset)
-        else:
-            raw = f"{d or ''} {t or ''}".strip()
-            res = parse_time(raw, order, report_offset)
+        used = "ts_time" if "ts_time" in tctx.header_offsets else "ts_date"
+        value = None if d is None and t is None else f"{d or ''} {t or ''}".strip()
     else:
-        res = parse_time(row.get("ts"), order, report_offset)
+        used, value = "ts", row.get("ts")
+    header_off = tctx.header_offsets.get(used)
+    fallback = header_off if header_off is not None else tctx.report_offset
+    res = parse_time(value, tctx.order, fallback)
+    if res.problem is not None:
+        tctx.tc.time_problems[res.problem.value] += 1
+        _listed(tctx.tc.time_problem_locators, res.problem.value, row.locator)
     if res.unparsed:
         cov.counters["times_unparsed"] += 1
-    elif res.ts.raw is not None and res.ts.utc is None:
+    elif res.problem is TimeProblem.NO_OFFSET:
         cov.counters["times_without_offset"] += 1
-    if res.offset_from_report:
-        cov.counters["times_offset_from_report_settings"] += 1
+    if res.offset_from_fallback:
+        key = "column_header" if header_off is not None else "report_settings"
+        cov.counters[f"times_offset_from_{key}"] += 1
     return res.ts
 
 
@@ -880,11 +1305,12 @@ def _app(row: Row, default: str) -> str:
 
 
 def _messages(
-    w: _Writer, kind: RecordKind, rows: list[Row], order: DateOrder, rep_off: int | None
+    w: _Writer, kind: RecordKind, rows: list[Row], tctx: TimeContext, app_hint: str | None
 ) -> None:
     cov = w.cov
+    tc = tctx.tc
     for r in rows:
-        app = _app(r, "SMS" if kind is RecordKind.SMS else "unknown")
+        app = _app(r, app_hint or ("SMS" if kind is RecordKind.SMS else "unknown"))
         senders = r.parties("from")
         to_parties = r.parties("to")
         participants = r.parties("participants")
@@ -958,8 +1384,12 @@ def _messages(
 
         title = r.text("chat_name") or r.text("participants")
         tid = w.thread(app, chat_key, r.locator, title)
-        ts = _row_time(r, order, rep_off, cov)
+        ts = _row_time(r, tctx, cov)
         mid = f"msg:{w.src}:{r.locator}"
+        body = body_text(r.get("body"))
+        if len(body) >= EXCEL_CELL_LIMIT:
+            cov.counters["bodies_at_excel_cell_limit"] += 1
+            _listed(tc.flagged_locators, "body_at_excel_cell_limit", r.locator)
         w.messages.append(
             (
                 mid,
@@ -969,12 +1399,13 @@ def _messages(
                 sender_id,
                 direction.value,
                 *_ts_cols(ts),
-                body_text(r.get("body")),
+                body,
                 _db_bool(_deleted(r, cov)),
                 1 if r.text("tag") else None,  # examiner tag; blank means not stated
             )
         )
         w.recipients.extend((mid, a) for a in dict.fromkeys(recip_ids))
+        n_before = len(w.attachments)
         n = 0
         for col in r.attachment_cols:
             name = text(r.cells[col]) if col < len(r.cells) else None
@@ -984,12 +1415,15 @@ def _messages(
                     w.attachments.append(
                         (f"att:{w.src}:{r.locator}:{n}", w.src, r.locator, mid, fname.strip())
                     )
+        if not body.strip() and len(w.attachments) == n_before:
+            cov.counters["messages_without_body_or_attachment"] += 1
+            _listed(tc.flagged_locators, "no_body_or_attachment", r.locator)
 
 
-def _calls(w: _Writer, rows: list[Row], order: DateOrder, rep_off: int | None) -> None:
+def _calls(w: _Writer, rows: list[Row], tctx: TimeContext, app_hint: str | None) -> None:
     cov = w.cov
     for r in rows:
-        app = _app(r, "unknown")
+        app = _app(r, app_hint or "unknown")
         scope = f"row:{r.locator}"
         direction, unmapped = stated_call_direction(r)
         if unmapped:
@@ -1020,7 +1454,7 @@ def _calls(w: _Writer, rows: list[Row], order: DateOrder, rep_off: int | None) -
         to_id = w.account(app, to[0], r.locator, scope) if to else None
         if len(frm) > 1 or len(to) > 1:
             cov.counters["calls_with_extra_parties_dropped"] += 1
-        ts = _row_time(r, order, rep_off, cov)
+        ts = _row_time(r, tctx, cov)
         w.calls.append(
             (
                 f"call:{w.src}:{r.locator}",
@@ -1072,9 +1506,9 @@ def _contacts(w: _Writer, rows: list[Row]) -> None:
             )
 
 
-def _accounts(w: _Writer, rows: list[Row], tc: TableCoverage) -> None:
+def _accounts(w: _Writer, rows: list[Row], tc: TableCoverage, app_hint: str | None) -> None:
     for r in rows:
-        app = _app(r, "unknown")
+        app = _app(r, app_hint or "unknown")
         idents = _entry_values(r.get("username")) or _entry_values(r.get("entries"))
         if not idents:
             tc.rows_skipped["account_without_identifier"] += 1
@@ -1097,6 +1531,116 @@ def default_source_id(sf: SourceFile) -> str:
     return f"src_{sf.sha256[:12]}"
 
 
+def _fill_merges(table: RawTable, hidx: int, hm: HeaderMap, tc: TableCoverage) -> None:
+    """Copy a merged cell's value down its range, for columns that label a group of rows (chat,
+    sender, app). Other merged columns are left blank and named in coverage."""
+    by_col = {i: f for f, i in hm.fields.items()}
+    headers = table.rows[hidx][1]
+    for mg in table.merges:
+        if mg.last_row <= hidx or mg.last_row == mg.first_row:
+            continue  # header rows, or a merge across columns only
+        top = table.rows[mg.first_row][1]
+        value = top[mg.first_col] if mg.first_col < len(top) else None
+        f = by_col.get(mg.first_col)
+        if value is None or (isinstance(value, str) and not value.strip()):
+            continue  # an empty merged cell: there is nothing to copy or lose
+        if f in FILLABLE_FIELDS and mg.first_row >= hidx + 1:
+            for r in range(mg.first_row + 1, mg.last_row + 1):
+                cells = table.rows[r][1]
+                if mg.first_col < len(cells) and cells[mg.first_col] is None:
+                    cells[mg.first_col] = value
+                    tc.merged_cells_filled += 1
+        elif mg.first_row >= hidx + 1:
+            name = str(headers[mg.first_col]).strip() if mg.first_col < len(headers) else "?"
+            if name not in tc.merged_columns_not_filled:
+                tc.merged_columns_not_filled.append(name)
+
+
+def _header_like(cells: list[Cell]) -> bool:
+    """Two or more filled cells, every one a known column name."""
+    vals = [c for c in cells if text(c) is not None]
+    return len(vals) >= 2 and all(isinstance(c, str) and known_header(c) for c in vals)
+
+
+def _table_rows(
+    table: RawTable, cov: Coverage
+) -> tuple[RecordKind, list[Row], DateOrder, HeaderMap, TableCoverage, RawTable] | None:
+    tc = TableCoverage(name=table.name, kind=table.kind_hint)
+    found = find_header(table)
+    if found is None:
+        cov.not_imported.append(
+            {
+                "name": table.name,
+                "reason": header_problem(table),
+                "rows": sum(1 for _l, c in table.rows if any(text(x) is not None for x in c)),
+                "columns": header_preview(table),
+            }
+        )
+        return None
+    rkind, hidx = found
+    tc.kind = rkind.value
+    tc.app_from_title = table.app_hint
+    tc.header_notes = list(table.header_notes)
+    hloc, headers = table.rows[hidx]
+    tc.header_locator = hloc
+    hm = map_headers(rkind, headers)
+    tc.unknown_columns = hm.unknown
+    tc.duplicate_columns = [
+        {"column": col, "field": f, "used": str(headers[hm.fields[f]]).strip()}
+        for col, f in hm.duplicates
+    ]
+    tc.header_offsets = {str(headers[hm.fields[f]]).strip(): o for f, o in hm.offsets.items()}
+    tc.header_zone_names = {str(headers[hm.fields[f]]).strip(): q for f, q in hm.qualifiers.items()}
+    expected = {"deleted", "app"} | (
+        {"ts"} if rkind not in (RecordKind.CONTACTS, RecordKind.ACCOUNTS) else set()
+    )
+    has_time = _has_time(hm)
+    tc.absent_fields = sorted(
+        f
+        for f in expected
+        if f not in hm.fields
+        and not (f == "ts" and has_time)
+        and not (f == "app" and table.app_hint)
+    )
+    tc.missing_key_fields = missing_key_fields(rkind, hm)
+    _fill_merges(table, hidx, hm, tc)
+    rows: list[Row] = []
+    header_norms = [norm(h) for h in headers]
+    h0 = next((i for i, h in enumerate(headers) if text(h) is not None), 0)
+    for loc, cells in table.rows[hidx + 1 :]:
+        tc.rows_read += 1
+        row = Row(loc, cells, hm.fields, hm.attachments, table.reflowed)
+        if row.empty():
+            tc.rows_skipped["empty"] += 1
+            continue
+        first = cells[h0] if h0 < len(cells) else None
+        if (
+            isinstance(first, str)
+            and norm(first) == header_norms[h0]
+            and [norm(c) for c in cells] == header_norms
+        ):
+            tc.rows_skipped["repeated_header"] += 1
+            continue
+        if _header_like(cells):
+            # A second header row Baker could not join (a group name over its columns).
+            tc.rows_skipped["header_like_row"] += 1
+            _listed(tc.skipped_locators, "header_like_row", loc)
+            continue
+        if row.empty_in_known_columns():
+            # Not a record Baker can read: a footer ('Total: 45'), a sub-heading, or values only
+            # in columns it does not know. Listed so the expert can open the row.
+            tc.rows_skipped["no_values_in_known_columns"] += 1
+            _listed(tc.skipped_locators, "no_values_in_known_columns", loc)
+            continue
+        rows.append(row)
+    tc.rows_imported = len(rows)
+    order = DateOrder()
+    for v in _raw_time_values(rows):
+        order.observe(v)
+    cov.tables.append(tc)
+    return rkind, rows, order, hm, tc, table
+
+
 def write_report(
     conn: sqlite3.Connection,
     sf: SourceFile,
@@ -1105,8 +1649,15 @@ def write_report(
     source_id: str | None,
     imported_at: datetime,
     report: ReportInput,
+    date_order: str | None = None,
 ) -> Source:
-    """Write a parsed report as canonical rows plus one coverage entry in the audit log."""
+    """Write a parsed report as canonical rows, one source_coverage row and one coverage entry
+    in the audit log, in one transaction.
+
+    `date_order` ('mdy' or 'dmy') is the day/month order a person stated at import, from the
+    report's date format. Without it, the order comes only from values that decide it."""
+    if date_order not in (None, "mdy", "dmy"):
+        raise ValueError(f"date_order must be 'mdy' or 'dmy', not {date_order!r}")
     src = source_id or default_source_id(sf)
     if conn.execute("SELECT 1 FROM sources WHERE id = ?", (src,)).fetchone():
         raise ValueError(f"source {src} is already in this case database")
@@ -1119,12 +1670,50 @@ def write_report(
             f"Report time zone {tz_raw!r} is not a fixed UTC offset; it was not applied to "
             "times that lack their own offset."
         )
+
+    # Parse tables into rows grouped by kind. Day/month order is decided per table from the
+    # values that disambiguate; a table with none borrows the order the rest of the report
+    # shows (one report, one date format). With no deciding value anywhere, ambiguous dates
+    # stay unread.
+    parsed = [t for t in (_table_rows(table, cov) for table in report.tables) if t is not None]
+    report_order = DateOrder()
+    for p in parsed:
+        report_order = report_order.merged(p[2])
+    grouped: dict[RecordKind, list[tuple[list[Row], TimeContext, str | None]]] = defaultdict(list)
+    for rkind, rows, order, hm, tc, table in parsed:
+        effective = order
+        if rkind not in (RecordKind.CONTACTS, RecordKind.ACCOUNTS) and "time" not in (
+            tc.missing_key_fields
+        ):
+            if date_order is not None:
+                effective = DateOrder(int(date_order == "dmy"), int(date_order == "mdy"))
+                tc.date_order_basis = "stated at import"
+                if order.label not in ("undecided", date_order):
+                    # Some values can only be read the other way; each is still read as written.
+                    cov.counters["values_contradicting_stated_date_order"] += (
+                        order.mdy_votes if date_order == "dmy" else order.dmy_votes
+                    )
+            elif order.label != "undecided":
+                tc.date_order_basis = "this table"
+            elif report_order.label in ("dmy", "mdy"):
+                effective = report_order
+                tc.date_order_basis = "other tables in the report"
+            else:
+                tc.date_order_basis = "none"
+            tc.date_order = effective.label
+        tctx = TimeContext(effective, rep_off, hm.offsets, tc)
+        grouped[rkind].append((rows, tctx, table.app_hint))
+
     tool_version = summary_field(summary, "tool_version")
     extracted_raw = summary_field(summary, "extraction_start")
     extracted_utc = None
     if extracted_raw:
-        ts = parse_time(extracted_raw, DateOrder(), rep_off).ts
-        extracted_utc = ts.utc
+        order = report_order if report_order.label in ("dmy", "mdy") else DateOrder()
+        if date_order is not None:
+            order = DateOrder(int(date_order == "dmy"), int(date_order == "mdy"))
+        extracted_utc = parse_time(extracted_raw, order, rep_off).ts.utc
+        if extracted_utc is None:
+            cov.counters["extraction_time_unread"] += 1
     source = Source(
         id=src,
         kind=kind,
@@ -1139,46 +1728,6 @@ def write_report(
         imported_at_utc=imported_at,
     )
     dev = f"dev:{src}"
-
-    # Parse tables into rows grouped by kind.
-    grouped: dict[RecordKind, list[tuple[list[Row], DateOrder, TableCoverage]]] = defaultdict(list)
-    for table in report.tables:
-        tc = TableCoverage(name=table.name, kind=table.kind_hint)
-        found = find_header(table)
-        if found is None:
-            cov.not_imported.append({"name": table.name, "reason": "no recognised header row"})
-            continue
-        rkind, hidx = found
-        tc.kind = rkind.value
-        hloc, headers = table.rows[hidx]
-        tc.header_locator = hloc
-        fields, att_cols, unknown = map_headers(rkind, headers)
-        tc.unknown_columns = unknown
-        expected = {"deleted", "app"} | (
-            {"ts"} if rkind not in (RecordKind.CONTACTS, RecordKind.ACCOUNTS) else set()
-        )
-        tc.absent_fields = sorted(
-            f for f in expected if f not in fields and not (f == "ts" and "ts_date" in fields)
-        )
-        rows: list[Row] = []
-        for loc, cells in table.rows[hidx + 1 :]:
-            tc.rows_read += 1
-            row = Row(loc, cells, fields, att_cols, table.reflowed)
-            if row.empty():
-                tc.rows_skipped["empty"] += 1
-                continue
-            if [norm(c) for c in cells] == [norm(h) for h in headers]:
-                tc.rows_skipped["repeated_header"] += 1
-                continue
-            rows.append(row)
-        tc.rows_imported = len(rows)
-        order = DateOrder()
-        for v in _raw_time_values(rows):
-            order.observe(v)
-        if rkind not in (RecordKind.CONTACTS, RecordKind.ACCOUNTS):
-            tc.date_order = order.label
-        grouped[rkind].append((rows, order, tc))
-        cov.tables.append(tc)
 
     w = _Writer(conn, src, dev, cov)
     with conn:
@@ -1213,23 +1762,25 @@ def write_report(
             ),
         )
         for rkind in KIND_ORDER:
-            for rows, order, tc in grouped.get(rkind, []):
+            for rows, tctx, app_hint in grouped.get(rkind, []):
                 if rkind is RecordKind.ACCOUNTS:
-                    _accounts(w, rows, tc)
+                    _accounts(w, rows, tctx.tc, app_hint)
                 elif rkind is RecordKind.CONTACTS:
                     _contacts(w, rows)
                 elif rkind is RecordKind.CALLS:
-                    _calls(w, rows, order, rep_off)
+                    _calls(w, rows, tctx, app_hint)
                 else:
-                    _messages(w, rkind, rows, order, rep_off)
+                    _messages(w, rkind, rows, tctx, app_hint)
         w.flush()
-        audit_log.append(
-            conn,
-            imported_at,
-            "system",
-            "import",
-            coverage_payload(source, importer_name, tz_raw, rep_off, cov),
+        payload = coverage_payload(
+            source, importer_name, tz_raw, rep_off, cov, sorted(grouped), report_order, date_order
         )
+        conn.execute(
+            "INSERT INTO source_coverage (source_id, importer, importer_version, payload_json)"
+            " VALUES (?, ?, ?, ?)",
+            (source.id, importer_name, IMPORTER_VERSION, json.dumps(payload, sort_keys=True)),
+        )
+        audit_log.append(conn, imported_at, "system", "import", payload)
     return source
 
 
@@ -1238,8 +1789,17 @@ def _iso(dt: datetime | None) -> str | None:
 
 
 def coverage_payload(
-    source: Source, importer: str, tz_raw: str | None, rep_off: int | None, cov: Coverage
+    source: Source,
+    importer: str,
+    tz_raw: str | None,
+    rep_off: int | None,
+    cov: Coverage,
+    kinds_read: list[RecordKind] | None = None,
+    report_order: DateOrder | None = None,
+    stated_date_order: str | None = None,
 ) -> dict[str, object]:
+    """The coverage record for one import. Shape: docs/ingest/coverage.md."""
+    read = set(kinds_read or [])
     return {
         "importer": importer,
         "importer_version": IMPORTER_VERSION,
@@ -1253,6 +1813,13 @@ def coverage_payload(
         ),
         "report_time_zone_raw": tz_raw,
         "report_offset_min_applied": rep_off,
+        "report_date_order": report_order.label if report_order else None,
+        "date_order_stated_at_import": stated_date_order,
+        "summary_found": cov.summary_found,
+        "hidden_sheets": cov.hidden_sheets,
+        "accounts_with_multiple_display_names": cov.multi_name_accounts,
+        "categories_read": [k.value for k in KIND_ORDER if k in read],
+        "categories_not_found": [k.value for k in KIND_ORDER if k not in read],
         "tables": [t.as_dict() for t in cov.tables],
         "not_imported": cov.not_imported,
         "counts": dict(sorted(cov.counters.items())),

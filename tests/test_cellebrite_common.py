@@ -7,6 +7,7 @@ from core.ingest.cellebrite_common import (
     Party,
     RawTable,
     RecordKind,
+    TimeProblem,
     find_header,
     fixed_report_offset,
     parse_deleted,
@@ -36,7 +37,7 @@ def order(*values: str) -> DateOrder:
     ],
 )
 def test_parse_time_with_offset(raw, utc, offset):
-    ts = parse_time(raw, DateOrder(), None).ts
+    ts = parse_time(raw, order("3/13/2026 1:00"), None).ts  # a table that reads month first
     assert (ts.utc, ts.offset_min, ts.raw) == (utc, offset, raw)
 
 
@@ -53,7 +54,7 @@ def test_unparseable_or_partial_times_have_no_utc(raw):
 def test_date_order_from_disambiguating_rows():
     assert order("13/3/2026 1:00", "3/4/2026 1:00").label == "dmy"
     assert order("3/13/2026 1:00", "3/4/2026 1:00").label == "mdy"
-    assert order("3/4/2026 1:00").label == "mdy_assumed"
+    assert order("3/4/2026 1:00").label == "undecided"
     assert order("13/3/2026 1:00", "3/13/2026 1:00").label == "conflict"
     dmy = parse_time("3/4/2026 1:00(UTC+0)", order("13/3/2026 1:00"), None).ts
     assert dmy.utc == datetime(2026, 4, 3, 1, 0, tzinfo=UTC)
@@ -139,3 +140,17 @@ def test_parse_parties_comma_separated_and_bare_handles():
     ]
     assert parse_parties("Sam") == [Party(None, "Sam", False, None)]
     assert len(parse_parties("d.petrov (owner), m.reyes.auto")) == 2
+
+
+def test_undecided_date_order_never_guesses():
+    """3/4/2026 with nothing in the report deciding day or month first is left unread."""
+    res = parse_time("3/4/2026 1:00(UTC+0)", DateOrder(), None)
+    assert res.ts.utc is None and res.ts.raw == "3/4/2026 1:00(UTC+0)"
+    assert res.problem is TimeProblem.AMBIGUOUS_DAY_MONTH
+    # Values that decide themselves (a number above 12, or day equal to month) are read.
+    assert parse_time("3/14/2026 1:00(UTC+0)", DateOrder(), None).ts.utc == datetime(
+        2026, 3, 14, 1, 0, tzinfo=UTC
+    )
+    assert parse_time("4/4/2026 1:00(UTC+0)", DateOrder(), None).ts.utc == datetime(
+        2026, 4, 4, 1, 0, tzinfo=UTC
+    )
