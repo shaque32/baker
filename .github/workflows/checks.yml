@@ -1,0 +1,64 @@
+# make check (lint, tests, eval) on Linux and Windows for every push and pull request.
+# Windows is where experts run Baker: paths, time zones, SQLite file locks and a machine with no
+# Tesseract all show up here first. Both machines run on a local clock that is not UTC, so a
+# test that reads the machine's time zone instead of the record's fails here, not at a pilot.
+name: checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  make-check:
+    # A pull request from a branch of this repository is already checked by its push.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Local clock not on UTC
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            tzutil //s "Pacific Standard Time"
+            tzutil //g
+          else
+            echo "TZ=America/Los_Angeles" >> "$GITHUB_ENV"
+          fi
+
+      - name: Tesseract on Linux only (Windows checks the missing-Tesseract path)
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y --no-install-recommends tesseract-ocr >/dev/null
+
+      - name: GNU make
+        if: runner.os == 'Windows'
+        run: command -v make || choco install make --no-progress -y
+
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+
+      - name: make check
+        run: make check PY=python
