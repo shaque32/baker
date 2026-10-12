@@ -1,4 +1,4 @@
-# Stance prompt v1.1 DRAFT (for Arsh to sign; not used by the product until signed)
+# Stance prompt v1.1 DRAFT (NOT signed: failed contradicts precision on the Mac run, 2026-10-12; see eval/probe/README.md)
 
 Same words as the signed v1.0 (core/audit/prompts/stance.md), in a different order: every
 fixed instruction now comes before the case data, and the JSON line stays last. The wording is
