@@ -31,7 +31,7 @@ from core.restore.store import (
     searched_sources,
     stale_reason,
 )
-from core.restore.view import Line, MatchView, match_view
+from core.restore.view import ContextView, Line, match_view
 
 REPORT_CONTEXT_MAX_MATCHES = 3  # excerpts with more matches list them without full context
 
@@ -162,7 +162,7 @@ def context_table(lines: tuple[Line, ...] | list[Line]) -> str:
     return "".join(out)
 
 
-def view_block(view: MatchView) -> str:
+def view_block(view: ContextView) -> str:
     t = view.thread
     out = [
         f"<p>Conversation: {e(t.app)} thread {q(t.title or '(untitled)')} on {q(t.device)} in "

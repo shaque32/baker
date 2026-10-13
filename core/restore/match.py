@@ -65,7 +65,7 @@ class Found:
 @dataclass
 class Outcome:
     found: list[Found] = field(default_factory=list)
-    total: int = 0  # verified matches before the MAX_MATCHES cap
+    total: int = 0  # verified matches before the limit (MAX_MATCHES by default)
     dropped: int = 0  # candidate matches that failed verification
     core: tuple[int, int] | None = None  # the part of the excerpt that was searched for, if found
 
@@ -213,8 +213,9 @@ class Index:
         return next((b.text for b in self.bodies if b.record_id == record_id), None)
 
 
-def find(excerpt: str, index: Index) -> Outcome:
-    """Search for one excerpt. Only verified matches are returned."""
+def find(excerpt: str, index: Index, limit: int | None = MAX_MATCHES) -> Outcome:
+    """Search for one excerpt. Only verified matches are returned, at most `limit` of them
+    (every one when limit is None); Outcome.total counts them all."""
     texts = {b.record_id: b.text for b in index.bodies}
     for core in cores(excerpt):
         segs = segments(excerpt, *core)
@@ -226,7 +227,7 @@ def find(excerpt: str, index: Index) -> Outcome:
             if not good:
                 continue
             return Outcome(
-                found=good[:MAX_MATCHES],
+                found=good[:limit],
                 total=len(good),
                 dropped=len(candidates) - len(good),
                 core=core,
