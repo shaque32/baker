@@ -166,3 +166,14 @@ def test_batch_order_is_fixed_by_the_seed_and_covers_every_item() -> None:
     first = sorted(i for b in plan[: len(plan) // 2] for i in b)
     assert first == list(range(200))
     assert lr_at(0, 100, 10) == pytest.approx(0.1) and lr_at(100, 100, 10) == 0.0
+
+
+def test_micro_batches_cover_the_batch_within_the_token_budget() -> None:
+    pytest.importorskip("torch")
+    from eval.stancemodel.model import micro_batches
+
+    lengths = [300, 120, 310, 90, 200, 336, 150, 128]
+    pieces = micro_batches(list(range(8)), lengths, 700)
+    assert sorted(i for p in pieces for i in p) == list(range(8))
+    assert all(len(p) * max(lengths[i] for i in p) <= 700 for p in pieces)
+    assert micro_batches([0, 1], [400, 500], 100) == [[0], [1]]  # one item always fits alone

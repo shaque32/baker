@@ -32,11 +32,12 @@ import torch
 from eval.stancedata.chat import read_jsonl, sha256_file
 from eval.stancedata.score import score
 from eval.stancemodel import features
-from eval.stancemodel.encode import Encoded, encode
+from eval.stancemodel.encode import NO_SPAN, Encoded, encode
 from eval.stancemodel.model import (
     collate,
     export,
-    losses,
+    loss_sums,
+    micro_batches,
     new_model,
     score_items,
     trainable_state,
@@ -80,7 +81,7 @@ def lr_at(step: int, total: int, warmup: int) -> float:
 def evaluate(
     model: Any, encs: Sequence[Encoded], items: list[dict], pad_id: int, out: Path
 ) -> dict[str, Any]:
-    scores = score_items(model, encs, pad_id)
+    scores = score_items(model, encs, pad_id, batch_size=16)
     rows = label_items(encs, scores, Policy())
     write_jsonl(rows, out)
     res = score(items, {r["probe_id"]: r for r in rows})["undisputed"]
@@ -112,6 +113,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--span-weight", type=float, default=0.5)
     ap.add_argument("--dropout", type=float, default=0.1)
     ap.add_argument("--max-len", type=int, default=384)
+    ap.add_argument("--max-tokens", type=int, default=2048, help="padded tokens per micro-batch")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--threads", type=int, default=4)
     ap.add_argument("--budget-min", type=float, default=105.0)
@@ -150,7 +152,8 @@ def main(argv: list[str] | None = None) -> int:
         dev_items = dev_items[: args.dev_limit]
     train_enc = [encode(it, tok, args.max_len) for it in train_items]
     dev_enc = [encode(it, tok, args.max_len) for it in dev_items]
-    plan = batch_plan([len(e.input_ids) for e in train_enc], args.batch, args.epochs, args.seed)
+    lengths = [len(e.input_ids) for e in train_enc]
+    plan = batch_plan(lengths, args.batch, args.epochs, args.seed)
     total = len(plan)
     per_epoch = math.ceil(len(train_enc) / args.batch)
     warmup = max(1, int(total * args.warmup))
@@ -203,20 +206,28 @@ def main(argv: list[str] | None = None) -> int:
             log({"event": "paused", "step": step, "total": total})
             return EXIT_PAUSED
         model.train()
-        batch = collate([train_enc[i] for i in plan[step]], tok.pad_token_id)
-        logits, start, end = model(
-            batch["input_ids"], batch["attention_mask"], batch["record_mask"]
-        )
-        stance_loss, span_loss = losses(logits, start, end, batch)
-        loss = stance_loss + args.span_weight * span_loss
-        loss.backward()
+        idx = plan[step]
+        n_items = len(idx)
+        n_span = max(1, sum(train_enc[i].span_start != NO_SPAN for i in idx))
+        stance_total = span_total = 0.0
+        for piece in micro_batches(idx, lengths, args.max_tokens):
+            batch = collate([train_enc[i] for i in piece], tok.pad_token_id)
+            logits, start, end = model(
+                batch["input_ids"], batch["attention_mask"], batch["record_mask"]
+            )
+            stance_sum, span_sum = loss_sums(logits, start, end, batch)
+            loss = stance_sum / n_items + args.span_weight * span_sum / n_span
+            loss.backward()
+            stance_total += stance_sum.item()
+            span_total += span_sum.item()
+        stance_loss, span_loss = stance_total / n_items, span_total / n_span
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         opt.step()
         sched.step()
         opt.zero_grad(set_to_none=True)
         step += 1
         now = time.time()
-        window.append((stance_loss.item(), span_loss.item(), now - t_last))
+        window.append((stance_loss, span_loss, now - t_last))
         t_last = now
         if step % 25 == 0:
             n = len(window)

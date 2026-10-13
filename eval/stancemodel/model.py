@@ -85,22 +85,43 @@ def collate(batch: Sequence[Encoded], pad_id: int) -> dict[str, torch.Tensor]:
     return out
 
 
-def losses(
+def loss_sums(
     logits: torch.Tensor,
     start: torch.Tensor,
     end: torch.Tensor,
     batch: dict[str, torch.Tensor],
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    stance_loss = nn.functional.cross_entropy(logits, batch["labels"])
+    """Summed stance loss over the items, and summed span loss over the items that have a
+    quote (the mean of its start and end losses), so micro-batches add up to one batch."""
+    stance = nn.functional.cross_entropy(logits, batch["labels"], reduction="sum")
     has_span = batch["span_start"] != NO_SPAN
     if has_span.any():
-        span_loss = 0.5 * (
-            nn.functional.cross_entropy(start[has_span], batch["span_start"][has_span])
-            + nn.functional.cross_entropy(end[has_span], batch["span_end"][has_span])
+        span = 0.5 * (
+            nn.functional.cross_entropy(
+                start[has_span], batch["span_start"][has_span], reduction="sum"
+            )
+            + nn.functional.cross_entropy(
+                end[has_span], batch["span_end"][has_span], reduction="sum"
+            )
         )
     else:
-        span_loss = logits.new_zeros(())
-    return stance_loss, span_loss
+        span = logits.new_zeros(())
+    return stance, span
+
+
+def micro_batches(idx: Sequence[int], lengths: Sequence[int], max_tokens: int) -> list[list[int]]:
+    """Split one batch into pieces of at most max_tokens padded tokens each (memory bound);
+    the gradients of the pieces add up to the whole batch's."""
+    out: list[list[int]] = []
+    cur: list[int] = []
+    for i in sorted(idx, key=lambda i: lengths[i]):
+        if cur and (len(cur) + 1) * lengths[i] > max_tokens:
+            out.append(cur)
+            cur = []
+        cur.append(i)
+    if cur:
+        out.append(cur)
+    return out
 
 
 @torch.no_grad()
