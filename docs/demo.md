@@ -36,6 +36,10 @@ baker demo --scripted                                     # back to the scripted
 
 ## The 10-minute flow
 
+Open with this, before the screen: "You stay in charge. Baker does not replace the forensic
+analyst or make any call for you. It does the searching and scrolling, hands you the exact
+records, and nothing counts as supported until you accept it yourself."
+
 1. **Cases, then the case.** One case, nothing else on the screen. Open it. The setup page
    shows the three imported files, each with its SHA-256, and "curated report (examiner-selected;
    cannot show absence)".
