@@ -18,7 +18,7 @@ import sqlite3
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 import pytest
 
@@ -468,3 +468,20 @@ def test_cli_redecide(db, capsys):
     assert cli_main(["redecide", "--db", str(db), "--by", EXPERT]) == 0
     assert "rules only" in capsys.readouterr().out
     assert cli_main(["redecide", "--db", str(db), "--by", "nobody"]) == 2
+
+
+def test_a_form_brings_the_expert_back_to_what_they_acted_on(db, conn):
+    """Each form's next carries an anchor, so the page does not jump back to the top."""
+    app = App(db, expert="Test Expert", port=PORT)
+    eid = key_items(conn, "C05")[0]
+    page = get(app, "/claim", id="C05").text
+    anchored = f"/claim?id=C05#{quote(eid, safe='')}"
+    assert f'name="next" value="{anchored}"' in page and f"id='{eid}'" in page
+    assert 'value="/claim?id=C05#verdict"' in page and "id='verdict'" in page
+    assert 'value="/claim?id=C05#edit"' in page and "id='edit'" in page
+    r = post(app, "/evidence/decide", id=eid, status="accepted", reason="ok", next=anchored)
+    assert r.status == 303 and r.header("Location") == anchored
+    page = get(app, "/claim", id="C05").text
+    assert 'class="flash toast" role="status"' in page  # seen wherever the page opens
+    assert 'value="/claim?id=C05#verdict"' in page  # the re-run banner comes back to the verdict
+    assert 'value="/#audit"' in get(app, "/").text and "id='audit'" in get(app, "/").text

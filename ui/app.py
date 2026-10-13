@@ -696,7 +696,7 @@ class App:
                 cases.discard(p)
             _drain(stream, length - counted.read_bytes)
             self.flash = (f"Not imported: {err}", True)
-            return self._redirect("/setup")
+            return self._redirect("/setup#files")
         _drain(stream, length - counted.read_bytes)
         conn = connect(case.db)
         conn.execute("PRAGMA busy_timeout = 10000")
@@ -720,7 +720,7 @@ class App:
             self.flash = (f"Not imported: {err}", True)
         finally:
             conn.close()
-        return self._redirect("/setup")
+        return self._redirect("/setup#files")
 
     # -- Context Restore
 
