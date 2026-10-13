@@ -39,6 +39,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Literal
 from zoneinfo import ZoneInfo
 
+from core import encryption
 from core.contracts import short_hash
 from core.enrich.local_time import device_zone, parse_utc
 from core.restore.match import Index
@@ -586,11 +587,18 @@ _INDEXES: dict[str, tuple[tuple[object, ...], Index]] = {}  # database file -> (
 _KEEP = 4  # databases whose index is kept in memory
 
 
+def _forget_indexes() -> None:
+    _INDEXES.clear()
+
+
+encryption.on_lock(_forget_indexes)  # no message text stays in memory once a case is locked
+
+
 def _index(conn: sqlite3.Connection) -> Index:
     """The matcher's index of every message body. Its tolerant and transliteration folds take
     seconds to build in a large case, so it is kept in memory for the database file while its
     messages are unchanged. Baker only ever adds messages, so their count, last rowid and total
-    length tell when they changed."""
+    length tell when they changed. Locking any case drops every kept index."""
     path = next((r[2] for r in conn.execute("PRAGMA database_list") if r[1] == "main"), "")
     key = tuple(
         conn.execute("SELECT COUNT(*), MAX(rowid), TOTAL(LENGTH(body)) FROM messages").fetchone()

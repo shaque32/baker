@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+from core import encryption
 from core.audit.context import context_ids
 from core.audit.invariants import check_report_text
 from core.contracts import ExcerptSplit
@@ -23,6 +24,7 @@ from core.db import connect
 from core.report.html import render_report
 from core.report.selection import Links, claim_note, selection_html, totals
 from core.restore.store import add_exhibit
+from core.selection import audit as selection_module
 from core.selection.audit import (
     EXCHANGE_GAP,
     Passage,
@@ -348,6 +350,23 @@ def test_the_audit_reads_only_and_is_the_same_every_time(db) -> None:
         ro.close()
     assert first == second
     assert any(p.quiet for u in with_gaps.units for p in u.passages)
+
+
+def test_locking_a_case_drops_the_kept_index_of_its_messages(db, conn) -> None:
+    """The matcher's index holds every message's text. It is kept in memory between views, and
+    locking a case (or forgetting every key) drops it, so it never outlives a case's key."""
+
+    def kept() -> list[Path]:
+        return [Path(p).resolve() for p in selection_module._INDEXES]
+
+    selection_audit(conn)
+    assert db.resolve() in kept()
+    encryption.lock(db)
+    assert kept() == []
+    selection_audit(conn)
+    assert db.resolve() in kept()
+    encryption.forget_all()
+    assert kept() == []
 
 
 def test_one_paragraph_alone_still_knows_what_the_others_quote(conn) -> None:

@@ -106,8 +106,9 @@ for the forbidden-word check.
 ## Speed
 
 The matcher's index of every message body is kept in memory per case database while its messages
-are unchanged. The first view after the screen starts builds it: on a synthetic copy of case01
-grown to 117,000 messages that took about 11 seconds when a quote had to be searched tolerantly,
-then about a second per view. Naming the quiet stretches runs the Gaps check over every message
-and call each time, about 2.5 seconds more at that size. The claim pages and the conversation
-view do not run it.
+are unchanged, and dropped whenever a case is locked, so no message text outlives an encrypted
+case's key (`core/encryption.py` `on_lock`). The first view after the screen starts builds it:
+on a synthetic copy of case01 grown to 117,000 messages that took about 11 seconds when a quote
+had to be searched tolerantly, then about a second per view. Naming the quiet stretches runs the
+Gaps check over every message and call each time, about 2.5 seconds more at that size. The claim
+pages and the conversation view do not run it.
