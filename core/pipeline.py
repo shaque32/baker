@@ -72,6 +72,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
+from core import db
 from core.audit import invariants, rules, stance
 from core.audit._llm_json import ModelUnavailable
 from core.contracts import (
@@ -694,7 +695,7 @@ class _Progress:
             )
             if commit:
                 self.conn.commit()
-        except sqlite3.OperationalError:
+        except db.OperationalError:
             if not commit:
                 raise
             self.conn.rollback()

@@ -36,6 +36,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
+from core import db
 from core.audit._llm_json import CallRecorder, ModelUnavailable, prompt_version
 from core.contracts import ModelRun, canonical_json, short_hash
 
@@ -226,7 +227,7 @@ def stored_output_lookup(conn: sqlite3.Connection, run: ModelRun) -> StoredOutpu
                 " ORDER BY mc.at_utc, mc.id",
                 (run.purpose, run.model_sha256, run.prompt_sha256, prompt),
             ).fetchall()
-        except sqlite3.OperationalError:  # schema without model_calls (pre-v0.2)
+        except db.OperationalError:  # schema without model_calls (pre-v0.2)
             return None
         for raw, params_json in rows:
             if _reuse_key(json.loads(params_json)) == key:
@@ -241,7 +242,7 @@ def next_call_seq(conn: sqlite3.Connection, run_id: str) -> int:
         row = conn.execute(
             "SELECT COALESCE(MAX(seq), 0) + 1 FROM model_calls WHERE model_run_id = ?", (run_id,)
         ).fetchone()
-    except sqlite3.OperationalError:  # schema without model_calls (pre-v0.2)
+    except db.OperationalError:  # schema without model_calls (pre-v0.2)
         return 1
     return int(row[0])
 

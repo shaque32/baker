@@ -521,3 +521,42 @@ def test_hashing_reader_hashes_what_it_reads():
     while r.read(7):
         pass
     assert r.h.hexdigest() == hashlib.sha256(b"abc" * 1000).hexdigest() and r.size == 3000
+
+
+def test_an_encrypted_case_imports_a_ufdr_through_decryption(case01, tmp_path):
+    """The copy is encrypted as it is uploaded; the importer reads the zip through the
+    decrypting reader, hashes the plain bytes and stores the same records as a plain import."""
+    from core import encryption
+    from core.db import connect
+    from tests.test_coverage_display import HOST
+    from ui.app import Request
+
+    app = _screen(tmp_path / "plain")
+    pkg = case01 / "item2.ufdr"
+    app.handle(
+        Request(
+            "POST",
+            "/case/new",
+            {},
+            dict(HOST),
+            {"token": app.token, "name": "Synth encrypted", "encrypt": "1",
+             "passphrase": "correct horse battery staple",
+             "passphrase2": "correct horse battery staple"},
+        )
+    )  # fmt: skip
+    case = app.case
+    assert case is not None and encryption.is_encrypted_case(case.db)
+    assert _send(app, pkg).status == 303
+    assert "Imported item2.ufdr" in _setup(app)
+    copy = case.inputs / "item2.ufdr"
+    assert encryption.is_encrypted_file(copy) and not zipfile.is_zipfile(copy)
+    conn = connect(case.db)
+    plain = _db()
+    UfdrImporter(source_id="item2").import_source(pkg, plain)
+    sha = hashlib.sha256(pkg.read_bytes()).hexdigest()
+    assert conn.execute("SELECT sha256 FROM sources WHERE id = 'item2'").fetchone() == (sha,)
+    for name, sql in PARITY.items():
+        if name == "sources":
+            continue
+        assert sorted(map(repr, conn.execute(sql))) == sorted(map(repr, plain.execute(sql))), name
+    conn.close()

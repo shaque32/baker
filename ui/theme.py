@@ -101,11 +101,12 @@ tr:target td { outline: 0; background: #fbf1cf; }
 form.inline { display: inline; }
 form.box { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
   padding: 12px 14px; margin: 12px 0; font-size: 13px; }
-input[type=text], input[type=file], textarea, select { font: 14px var(--sans); color: var(--fg);
+input[type=text], input[type=password], input[type=file], textarea, select {
+  font: 14px var(--sans); color: var(--fg);
   background: #fff; border: 1px solid var(--line-strong); border-radius: 8px; padding: 6px 9px;
   max-width: 100%; box-sizing: border-box; }
-input[type=text]:focus, textarea:focus, select:focus { outline: 2px solid var(--accent);
-  outline-offset: 1px; }
+input[type=text]:focus, input[type=password]:focus, textarea:focus, select:focus {
+  outline: 2px solid var(--accent); outline-offset: 1px; }
 input[type=text].wide, textarea { width: 100%; }
 button { font: 500 13px var(--sans); color: var(--fg); background: var(--card);
   border: 1px solid var(--line-strong); border-radius: 8px; padding: 6px 12px;
