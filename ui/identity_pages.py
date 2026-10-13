@@ -129,7 +129,8 @@ def _link_card(
             "<label>Why (one sentence; needed to confirm or reject)<br>"
             "<input type='text' name='note' maxlength='300' class='wide'></label><br>" + choices,
             "plain",
-            f"/identities#{row['id']}",
+            "/identities",
+            anchor=row["id"],
         )
         + "</div></article>"
     )
