@@ -89,6 +89,11 @@ eval or re-decided.
    override.
 6. **Report.** View it, save it (`Report` page, or `/report?download=1`), or print it to PDF from
    the browser; the print layout is built in. **Audit log** verifies the hash chain.
+7. **Timeline and Gaps.** The Timeline tab puts every date and time the government document
+   states beside the phone records' own timestamps and lists the differences first; the Gaps tab
+   lists stretches with no messages or calls on each phone, app and thread. Both are derived by
+   code, change no verdict, and appear in the report. Their two case settings (time tolerance,
+   shortest quiet stretch) are logged with your name. See [timeline.md](timeline.md).
 
 ## Rules the screen keeps
 

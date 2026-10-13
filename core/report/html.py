@@ -45,6 +45,7 @@ from core.contracts import (
 )
 from core.ingest import coverage as import_coverage
 from core.report import restore as restore_html
+from core.report import timeline as timeline_html
 from core.report.letter import letter_section
 from core.review import audit_log
 from core.review.status import (
@@ -455,7 +456,8 @@ def _versions(conn: sqlite3.Connection, run: dict | None) -> str:
     return "".join(out)
 
 
-def render_report(conn: sqlite3.Connection) -> str:
+def render_report(conn: sqlite3.Connection, timeline: timeline_html.Settings | None = None) -> str:
+    """timeline: the case's timeline settings (core/timeline/settings.py); defaults if None."""
     srcs = sources(conn)
     run = pipeline.view_run(conn)
     govdocs = [r[0] for r in conn.execute("SELECT title FROM govdocs ORDER BY id")]
@@ -467,7 +469,7 @@ def render_report(conn: sqlite3.Connection) -> str:
         "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
         "<title>Baker claims report</title>"
-        f"<style>{CSS}{restore_html.CSS}</style></head><body>",
+        f"<style>{CSS}{restore_html.CSS}{timeline_html.CSS}</style></head><body>",
         "<h1>Baker claims report</h1>",
         "<p class='muted'>"
         + (" · ".join(q(t) for t in govdocs) or "No government document imported")
@@ -526,6 +528,7 @@ def render_report(conn: sqlite3.Connection) -> str:
     parts += [_claim_block(conn, st) for st in states]
 
     parts.append(searches_section(states, srcs))
+    parts.append(timeline_html.report_section(conn, timeline or timeline_html.Settings()))
     parts.append(restore_html.restore_section(conn))
     parts.append(letter_section(conn))
 
@@ -628,9 +631,11 @@ def _compact(payload_json: str) -> str:
     return "; ".join(f"{k}: {v}" for k, v in p.items() if v not in (None, ""))
 
 
-def write_report(conn: sqlite3.Connection, path: Path) -> Path:
+def write_report(
+    conn: sqlite3.Connection, path: Path, timeline: timeline_html.Settings | None = None
+) -> Path:
     """Render, check the tool's own wording, then write. Raises InvariantViolation on a bad word."""
-    text = render_report(conn)
+    text = render_report(conn, timeline)
     invariants.check_report_text(text)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")

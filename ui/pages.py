@@ -127,6 +127,8 @@ class Page:
                 ("/claims", "Claims queue"),
                 ("/claim/new", "Add a claim"),
                 ("/exhibits", "Exhibits"),
+                ("/timeline", "Timeline"),
+                ("/gaps", "Gaps"),
                 ("/report", "Report"),
                 ("/log", "Audit log"),
                 ("/setup", "Set up and run"),

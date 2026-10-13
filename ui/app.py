@@ -52,7 +52,8 @@ from core.restore.store import ExhibitError, add_exhibit, match_exhibits, remove
 from core.review import actions
 from core.review.actions import ReviewError
 from core.review.redecide import redecide
-from ui import pages, restore_pages, theme, upload
+from core.timeline import settings as timeline_settings
+from ui import pages, restore_pages, theme, timeline_pages, upload
 
 CSP = (
     "default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; img-src 'none'; "
@@ -318,12 +319,16 @@ class App:
             return self._html(body) if body else self._not_found(page, "no such match")
         if p == "/request-letter":
             return self._html(restore_pages.letter_page(conn, page))
+        if p == "/timeline":
+            return self._html(timeline_pages.timeline_page(conn, page, self._timeline()))
+        if p == "/gaps":
+            return self._html(timeline_pages.gaps_page(conn, page, self._timeline()))
         if p == "/request-letter.txt":
             return self._letter_text(conn, page)
         if p == "/log":
             return self._html(pages.log_page(conn, page, req.query.get("all") == "1"))
         if p in ("/report", "/report.html"):
-            body = render_report(conn)
+            body = render_report(conn, timeline=self._timeline())
             download = req.query.get("download") == "1" or p == "/report.html"
             if not download:  # on screen, the vendored fonts; a saved copy uses system fonts
                 body = body.replace("<style>", f"<style>{theme.FONT_CSS}", 1)
@@ -361,6 +366,7 @@ class App:
             "/exhibit/add": lambda: self._add_exhibit(conn, f),  # type: ignore[arg-type]
             "/exhibit/remove": lambda: self._remove_exhibit(conn, f),  # type: ignore[arg-type]
             "/exhibit/rematch": lambda: self._rematch(conn, f),  # type: ignore[arg-type]
+            "/timeline/settings": lambda: self._timeline_settings(conn, f),  # type: ignore[arg-type]
         }
         handler = handlers.get(req.path)
         if handler is None:
@@ -406,6 +412,18 @@ class App:
                     )
             finally:
                 conn.close()
+
+    def _timeline(self) -> timeline_settings.Settings:
+        return timeline_settings.from_case(self._open().settings)
+
+    def _timeline_settings(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        s = timeline_settings.save(
+            self._open(), conn, self.actor, f.get("tolerance_min", ""), f.get("gap_hours", "")
+        )
+        return (
+            f"Saved: time tolerance {s.tolerance_min} min, shortest quiet stretch "
+            f"{s.gap_hours} h. Findings only; no verdict changes."
+        )
 
     def _set_expert(self, f: dict[str, str]) -> str:
         self.set_expert(f.get("name", ""))
