@@ -135,3 +135,16 @@ def test_times_that_cannot_be_read_with_confidence_get_no_utc(value, problem):
 
     res = parse_time(value, DateOrder(), None)
     assert res.ts.utc is None and res.problem is problem
+
+
+def test_excel_escapes_are_read_as_excel_means_them():
+    """_x000D_ is a carriage return; _x005F_ is a literal underscore, so _x005F_x000D_ is the
+    text '_x000D_'. Text with no escape is left as it is."""
+    from core.ingest.cellebrite_common import Coverage
+    from core.ingest.cellebrite_excel import _unescape
+
+    cov = Coverage()
+    assert _unescape("a_x000D_\nb", cov) == "a\r\nb"
+    assert _unescape("_x005F_x000D_", cov) == "_x000D_"
+    assert _unescape("box_x1", cov) == "box_x1" and _unescape(7, cov) == 7
+    assert cov.counters["cells_with_excel_escapes_decoded"] == 2

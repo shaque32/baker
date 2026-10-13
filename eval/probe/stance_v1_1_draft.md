@@ -1,4 +1,4 @@
-# Stance prompt v1.1 DRAFT (for Arsh to sign; not used by the product until signed)
+# Stance prompt v1.1 DRAFT (NOT signed: failed contradicts precision on the Mac run, 2026-10-12; see eval/probe/README.md)
 
 Same words as the signed v1.0 (core/audit/prompts/stance.md), in a different order: every
 fixed instruction now comes before the case data, and the JSON line stays last. The wording is
@@ -11,7 +11,7 @@ fixed text (about 2,100 characters) plus the assumption come first, and the pipe
 assumption's records one after another, so consecutive calls share all of that.
 
 Risk: a different order can change some labels. The probe on the signed set decides (see
-eval/probe/mac_prompt_order.sh). If v1.1 passes, signing copies this body into
+eval/probe/mac_speed_round2.sh). If v1.1 passes, signing copies this body into
 core/audit/prompts/stance.md as v1.1.
 
 <!-- prompt starts -->

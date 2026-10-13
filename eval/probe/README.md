@@ -15,8 +15,8 @@ machine that will run Baker. Everything here is synthetic.
   instruction comes before the case data. Consecutive calls on one assumption then share the
   whole prompt up to the record, which llama.cpp does not read again. On case01 (no model) the
   text the model must read drops from 89% to 56% of the prompt text. Not used by the product
-  until Arsh signs it. `bash eval/probe/mac_prompt_order.sh` scores it against the signed v1.0
-  on the probe set and times both on the same claims.
+  until Arsh signs it. `bash eval/probe/mac_speed_round2.sh` scores it against the signed v1.0
+  on the probe set and times both on the same claims (see "Faster calls, round 2").
 
 ## Signed probe set (thread 3)
 `run_probe --probe-set <eval/probe_draft/probe_draft.jsonl>` scores the signed set directly.
@@ -111,3 +111,68 @@ One command runs all three on a Mac and prints a file to paste back:
 On 16 GB it uses n_ctx 4096 and three claims (C02, C05, C12), projected to the whole case; on
 more memory it runs the whole case at n_ctx 8192. `CLAIMS=`, `NCTX=`, `MODELS=` and
 `PROBE_SET=` override; the probe set defaults to the signed `eval/gold/probe/probe.jsonl`.
+
+## Faster calls, round 2 (Wave 4)
+Same 14B, cheaper calls. `core/llm/runtime.py` has three runtimes and two chat templates:
+
+| setting | what it does | can it change output? |
+|---|---|---|
+| `plain` | how every signed result so far was measured | |
+| `flash` | flash attention, and 1,024 prompt tokens read per step instead of 512 | only through floating-point order (a near-tie can flip) |
+| `flash-lookup` | `flash` plus prompt-lookup decoding: guesses the next tokens by copying from the prompt and keeps a guess only where the model's greedy choice agrees | as `flash`; costs about 5 GB more memory at n_ctx 8192 (llama-cpp-python keeps every token's logits) |
+| `no-think` template | the model file's own template with Qwen3's `enable_thinking=False`, which adds an empty thinking block | yes: the model reads something different, so it is re-scored |
+
+The plain runtime records the same params as before; any other setting is recorded, so it
+never reuses outputs stored under another setting. The product runs on `flash`
+(`PRODUCT_RUNTIME`), picked by the Mac run below, so outputs stored before it are not reused
+once (a case's first rerun after the upgrade calls the model again).
+
+One sitting on the Mac, about 6 hours for the 14B (start it in the evening), runs the stance
+probe on the signed set and times C02, C05 and C12, then prints
+`eval/out/speed_round2/RESULTS.md`:
+
+    source .venv/bin/activate
+    bash eval/probe/mac_speed_round2.sh
+
+| step | stance prompt | runtime | template | runs |
+|---|---|---|---|---|
+| A | v1.0 (signed) | plain | gguf | probe + timed audit (before) |
+| B | v1.0 | flash | gguf | probe |
+| C | v1.0 | flash-lookup | gguf | probe |
+| D | v1.1 draft | chosen by rule 1 | gguf | probe + timed audit (after) |
+| E | v1.1 draft | chosen by rule 1 | no-think | probe |
+
+A preflight loads each setting once and labels two items, so a setting that crashes stops the
+run in minutes. A stopped run resumes: run the same command again.
+
+Rules, fixed before the run (2026-10-12). "Holds the bars" against a baseline means: every
+Expert-confirms bar the baseline meets is met, and on a bar the baseline misses (the 14B shows
+5 contradicting items as support) it is no worse.
+1. Runtime: the fastest of `flash` and `flash-lookup` that holds the bars against `plain` on
+   v1.0, is at least 5% faster per stance call and uses at most 2 GB more peak memory;
+   otherwise `plain`. Identical output is reported, not required.
+2. Stance prompt v1.1 is ready to sign when it holds the bars against v1.0 on the chosen runtime.
+3. The no-think template is recommended only when it holds the bars against step D and shows
+   fewer contradicting items as support. Arsh decides it together with v1.1.
+4. The stance output cap stays at 1,024 tokens. A valid answer may quote up to 2,000
+   characters (`core/audit/stance.py`), so a lower cap would drop such a label; the run counts
+   answers that reached the cap and what they cost. `MAX_RATIONALE_CHARS` is not lowered
+   either: the decoder does not enforce it, so a lower limit would drop labels without
+   saving time.
+
+Result (2026-10-12, Arsh's MacBook Air M4, 24 GB, llama-cpp-python 0.3.36, Qwen3-14B Q4_K_M,
+n_ctx 8192):
+
+| step | probe s/call | audit s/call | full case01 (498 calls) | peak memory | Expert-confirms bars |
+|---|---|---|---|---|---|
+| A v1.0, plain | 28.3 | 56.0 | 7.75 h | 10.1 GB | 3 of 4 (5 contradicting shown as support) |
+| B v1.0, flash | 22.5 | not timed | about 6.2 h (estimate) | 10.1 GB | same as A, identical output 88/88 |
+| C v1.0, flash-lookup | 28.5 | not timed | | 11.0 GB | same as A, identical labels |
+| D v1.1, flash | 15.1 | 42.2 | 5.83 h | 10.2 GB | contradicts precision 77% (bar 90%) |
+| E v1.1, flash, no-think | 19.1 | not timed | | 10.1 GB | as D |
+
+Decisions by the rules: runtime `flash` (rule 1). Stance prompt v1.1 is **not** signed: it
+misses contradicts precision, which v1.0 meets, so it would make more claims contradicted on
+a wrong model label (rule 2). No-think is not adopted (rule 3). The cap stays at 1,024; the
+longest answer was 259 tokens (rule 4). The 6.2 h for flash with v1.0 is an estimate (A's
+audit time scaled by B's probe speed-up), not a measured run.

@@ -14,7 +14,7 @@ import hashlib
 import json
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -32,18 +32,38 @@ class ModelSpec:
     chat_format: str | None = None  # None: use the template stored in the GGUF
 
 
+CHAT_TEMPLATES = ("gguf", "no-think")
+
+
 @dataclass(frozen=True)
 class GenerationParams:
-    """Deterministic by default: greedy decoding with a fixed seed."""
+    """Deterministic by default: greedy decoding with a fixed seed.
+
+    The speed settings (flash_attn, n_batch, prompt_lookup, chat_template) apply when the model
+    file loads; a different value passed to one call is ignored. The defaults are PRODUCT_RUNTIME,
+    picked by the Mac speed run (eval/probe/README.md, "Faster calls, round 2"). RUNTIMES names
+    every runtime that run compared; "plain" is the one the signed probe results were first
+    measured with.
+    """
 
     max_tokens: int = 1024  # stance and review; translation callers pass more
     temperature: float = 0.0
     seed: int = 1234
     n_ctx: int = 8192
     n_gpu_layers: int = -1  # -1 offloads every layer to the GPU
+    flash_attn: bool = True
+    n_batch: int = 1024  # prompt tokens read per step (llama.cpp's n_batch and n_ubatch)
+    prompt_lookup: int = 0  # draft tokens per step copied from the prompt; 0 is off
+    chat_template: str = "gguf"  # "no-think": the model's own template, Qwen3 non-thinking mode
+
+    def __post_init__(self) -> None:
+        if self.chat_template not in CHAT_TEMPLATES:
+            raise ValueError(f"chat_template must be one of {CHAT_TEMPLATES}")
+        if self.n_batch < 1 or self.prompt_lookup < 0:
+            raise ValueError("n_batch must be at least 1 and prompt_lookup at least 0")
 
     def as_record(self) -> dict[str, str | int | float | bool]:
-        return {
+        record: dict[str, str | int | float | bool] = {
             "max_tokens": self.max_tokens,
             "temperature": self.temperature,
             "seed": self.seed,
@@ -51,6 +71,46 @@ class GenerationParams:
             "n_gpu_layers": self.n_gpu_layers,
             "grammar": "json_schema",
         }
+        # A speed setting is recorded only when it differs from the plain runtime, so runs made
+        # before these settings existed keep the same record and their stored outputs stay
+        # reusable. A run on any other setting never reuses them.
+        for key, plain in PLAIN_SPEED.items():
+            value = getattr(self, key)
+            if value != plain:
+                record[key] = value
+        return record
+
+
+PLAIN_SPEED: dict[str, str | int | bool] = {
+    "flash_attn": False,
+    "n_batch": 512,
+    "prompt_lookup": 0,
+    "chat_template": "gguf",
+}
+
+# Runtimes the Mac speed run compares. Under greedy decoding none of them should change what
+# the model says, but each changes the arithmetic order, so that is measured, not assumed.
+RUNTIMES: dict[str, dict[str, int | bool]] = {
+    "plain": {},
+    "flash": {"flash_attn": True, "n_batch": 1024},
+    "flash-lookup": {"flash_attn": True, "n_batch": 1024, "prompt_lookup": 10},
+}
+
+# What the product runs on. Mac run 2026-10-12 (Qwen3-14B Q4, M4 24 GB): "flash" gave the same
+# output as "plain" on all 88 signed probe items, 22.5 s instead of 28.3 s per probe call, at
+# the same peak memory. "flash-lookup" was no faster (28.5 s) and used 0.9 GB more.
+PRODUCT_RUNTIME = "flash"
+
+
+def with_runtime(
+    params: GenerationParams, runtime: str = "plain", chat_template: str | None = None
+) -> GenerationParams:
+    """params on one of RUNTIMES, optionally with another chat template."""
+    if runtime not in RUNTIMES:
+        raise ValueError(f"unknown runtime {runtime!r}; one of {sorted(RUNTIMES)}")
+    out = replace(params, **{**PLAIN_SPEED, **RUNTIMES[runtime]})
+    template = chat_template if chat_template is not None else params.chat_template
+    return replace(out, chat_template=template)
 
 
 @dataclass(frozen=True)
@@ -163,7 +223,10 @@ class LlamaCppModel:
             seed=self.params.seed,
             chat_format=spec.chat_format,
             verbose=False,
+            **speed_kwargs(self.params),
         )
+        if self.params.chat_template == "no-think":
+            self._llm.chat_handler = no_think_handler(self._llm)
 
     def generate_json(
         self, prompt: str, schema: JsonSchema, params: GenerationParams | None = None
@@ -192,6 +255,64 @@ class LlamaCppModel:
             completion_tokens=int(usage.get("completion_tokens", 0)),
             seconds=elapsed,
         )
+
+
+def speed_kwargs(params: GenerationParams) -> dict[str, Any]:
+    """Llama() arguments for the speed settings. The plain runtime passes none, so it loads
+    exactly as before these settings existed."""
+    kwargs: dict[str, Any] = {}
+    if params.flash_attn:
+        kwargs["flash_attn"] = True
+    if params.n_batch != PLAIN_SPEED["n_batch"]:
+        kwargs["n_batch"] = params.n_batch
+        kwargs["n_ubatch"] = params.n_batch
+    if params.prompt_lookup:
+        # Prompt-lookup decoding: guesses the next tokens by copying from the prompt (quotes
+        # are copied from it) and keeps a guess only where the model's own greedy choice agrees.
+        from llama_cpp.llama_speculative import LlamaPromptLookupDecoding
+
+        kwargs["draft_model"] = LlamaPromptLookupDecoding(num_pred_tokens=params.prompt_lookup)
+        # llama-cpp-python (0.3.36) sizes its logits buffer from this argument but fills one row
+        # per token whenever a draft model is set, so without it any prompt longer than n_batch
+        # fails. The buffer is n_ctx rows by the vocabulary (about 5 GB for Qwen3 at 8192).
+        kwargs["logits_all"] = True
+    return kwargs
+
+
+NO_THINK_SUFFIX = "<think>\n\n</think>\n\n"
+
+
+def no_think_handler(llm: Any) -> Any:
+    """A chat handler that renders the model file's own template with enable_thinking=False.
+
+    For Qwen3 that is the template the model was trained on for answers without a thinking
+    block: the same text plus an empty <think></think> block after the assistant header. The
+    JSON grammar already stops the model from writing a thinking block, so this changes what
+    the model reads, not how long it writes; its effect on labels is measured on the probe.
+    Refuses (raises) unless rendering differs from the plain template by exactly that block.
+    """
+    from llama_cpp import llama_chat_format
+
+    template = llm.metadata.get("tokenizer.chat_template")
+    if not template or "enable_thinking" not in template:
+        raise ValueError("chat_template 'no-think' needs a chat template with enable_thinking")
+    eos_id, bos_id = llm.token_eos(), llm.token_bos()
+    eos = llm._model.token_get_text(eos_id) if eos_id != -1 else ""
+    bos = llm._model.token_get_text(bos_id) if bos_id != -1 else ""
+
+    class NoThink(llama_chat_format.Jinja2ChatFormatter):
+        def __call__(self, **kwargs: Any) -> Any:
+            return super().__call__(enable_thinking=False, **kwargs)
+
+    plain = llama_chat_format.Jinja2ChatFormatter(
+        template=template, eos_token=eos, bos_token=bos, stop_token_ids=[eos_id]
+    )
+    no_think = NoThink(template=template, eos_token=eos, bos_token=bos, stop_token_ids=[eos_id])
+    sample = [{"role": "user", "content": "x"}]
+    if no_think(messages=sample).prompt != plain(messages=sample).prompt + NO_THINK_SUFFIX:
+        raise ValueError("chat_template 'no-think' did not render as the plain template plus "
+                         "an empty thinking block; refusing to guess")  # fmt: skip
+    return no_think.to_chat_handler()
 
 
 @dataclass

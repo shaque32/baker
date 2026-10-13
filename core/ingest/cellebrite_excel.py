@@ -36,6 +36,10 @@ from core.ingest.cellebrite_common import (
 from core.ingest.source_file import read_source
 
 _COUNT_RE = re.compile(r"\s*\(\s*[\d,]+\s*\)$")
+# Excel stores characters XML cannot hold as text, such as the carriage return of a CRLF line
+# break, as _xHHHH_ (ECMA-376 Part 1, 22.9.2.19 ST_Xstring), and a literal "_x" as _x005F_x.
+# openpyxl returns cell strings still escaped.
+_XSTRING_RE = re.compile(r"_x([0-9A-Fa-f]{4})_")
 _MERGE_RE = re.compile(rb'<mergeCell\s+ref="([A-Z]+[0-9]+:[A-Z]+[0-9]+)"')
 
 
@@ -145,6 +149,17 @@ def _fill_header_band(rows: list[tuple[str, list[Cell]]], merges: list[Merge]) -
                 cells[mg.first_col] = value
 
 
+def _unescape(value: Cell, cov: Coverage) -> Cell:
+    """A cell string as Excel means it: each _xHHHH_ escape becomes its character, in one pass,
+    so _x005F_x000D_ stays the literal text '_x000D_'. Counted in the coverage record."""
+    if not isinstance(value, str) or "_x" not in value:
+        return value
+    out = _XSTRING_RE.sub(lambda m: chr(int(m.group(1), 16)), value)
+    if out != value:
+        cov.counters["cells_with_excel_escapes_decoded"] += 1
+    return out
+
+
 def read_workbook(data: bytes) -> ReportInput:
     wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
     cov = Coverage()
@@ -155,7 +170,7 @@ def read_workbook(data: bytes) -> ReportInput:
         for ws in wb.worksheets:
             title = ws.title
             rows: list[tuple[str, list[Cell]]] = [
-                (f"{title}!{i}", list(cells))
+                (f"{title}!{i}", [_unescape(c, cov) for c in cells])
                 for i, cells in enumerate(ws.iter_rows(values_only=True), start=1)
             ]
             if norm(title) in SUMMARY_SHEETS:
