@@ -21,6 +21,7 @@ go bar. The two generators live next door:
 | `GO_BAR.md`, `gobar.py` | The adoption rule, fixed before training. |
 | `review_sheet.py` | The random sample Arsh checks: 200 training items and 100 held-out items. |
 | `TEST_LOG.md` | Every scoring of the held-out test split. |
+| `../stancemodel/` | Arm 1, the small classifier: training on CPU, export, labeling, policy tuning on dev, and the case01 speed test. |
 
 ## Build and check
 
