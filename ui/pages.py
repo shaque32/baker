@@ -386,12 +386,17 @@ def _devices(conn: sqlite3.Connection, page: Page, back: str, heading: bool = Tr
 # ---------------------------------------------------------------- queue
 
 
+def _vcls(st: ClaimState) -> str:
+    """The pill's classes: the verdict's, plus its own style for a claim nothing tested."""
+    return f"{st.css} v-nt" if st.untested else st.css
+
+
 def _tally(states: list[ClaimState]) -> str:
     """A bar split by finding, then one chip per finding with its count."""
     if not states:
         return ""
     known = {"v-sup", "v-con", "v-unp", "v-await"}
-    by_label = Counter((st.label, st.css) for st in states)
+    by_label = Counter((st.label, _vcls(st)) for st in states)
     bar = "".join(
         f"<span class='{css if css in known else 'other'}' "
         f"style='width:{100 * n / len(states):.2f}%'></span>"
@@ -413,7 +418,7 @@ def _ledger(states: list[ClaimState], current: str | None = None, compact: bool 
             "<div class='row'><div class='head'><span class='meta'>"
             f"<a href='{e(link('/claim', id=st.claim.id))}'>{e(st.name)}</a> · {e(st.where)} · "
             f"{e(st.claim.claim_type.value)}</span>"
-            f"<span class='verdict {st.css}'>{e(st.label)}</span></div>"
+            f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span></div>"
             f"<div class='text'>{q(st.claim.text)}</div>"
             + (f"<div class='needs'>{e(needs)}</div>" if needs else "")
             + "</div></li>"
@@ -535,7 +540,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
         )
     out.append(
         "<div class='card'><div class='in'><div class='eyebrow'>Verdict</div>"
-        f"<span class='verdict {st.css}'>{e(st.label)}</span>"
+        f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span>"
     )
     needs = st.needs()
     if needs:
@@ -1241,7 +1246,7 @@ def run_page(
     for pos, cid, state, total, labeled, calls in rows:
         st = labels.get(cid)
         if state == "done" and st is not None and not st.incomplete:
-            finding = f"<span class='verdict {st.css}'>{e(st.label)}</span>"
+            finding = f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span>"
         elif state == "done":
             finding = "<span class='muted'>Finished; shown once it is the run on screen</span>"
         else:

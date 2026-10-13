@@ -127,6 +127,8 @@ th { background: var(--panel); font: 500 10.5px var(--mono); letter-spacing: 0.1
 .v-unp::before { content: "?"; }
 .v-await { color: var(--await); background: var(--unp-bg); border: 1px dashed var(--await); }
 .v-await::before { content: "?"; }
+.verdict.v-nt { color: var(--muted); background: var(--panel); border: 1px dashed var(--muted); }
+.v-nt::before { content: "–"; }
 blockquote { margin: 10px 0; padding: 8px 14px; border-left: 2px solid var(--line-strong);
   background: var(--panel); border-radius: 0 8px 8px 0; }
 .q { white-space: pre-wrap; }
@@ -281,7 +283,8 @@ def _claim_block(conn: sqlite3.Connection, st: ClaimState) -> str:
     )
     out.append(f"<blockquote>{q(claim.text)}</blockquote>")
     out.append(f"<p class='muted'>Claim id <span class='mono'>{e(claim.id)}</span></p>")
-    out.append(f'<p><span class="verdict {st.css}">{e(st.label)}</span></p>')
+    nt = " v-nt" if st.untested else ""
+    out.append(f'<p><span class="verdict {st.css}{nt}">{e(st.label)}</span></p>')
     if st.awaiting_expert:
         out.append(
             f"<p>{st.ai_accepted} supporting item(s) accepted by the local AI reviewer and "
