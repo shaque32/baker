@@ -385,7 +385,12 @@ def run_once(
     out: Path,
     spec: Path | None = None,
     expert: str = "none",
+    labeler_model: object | None = None,
+    claim_ids: list[str] | None = None,
 ) -> list[Prediction]:
+    """One audit of a case. labeler_model (real mode only) is the stance labeler's model in
+    place of the configured local one: the cloud benchmark (eval/bench) passes Claude here.
+    claim_ids audits just those claims."""
     from eval.simulated_expert import GoldKey, RecordingRetriever, ReplayLabeler
     from eval.simulated_expert import readiness as key_readiness
     from eval.simulated_expert import review as expert_review
@@ -404,7 +409,14 @@ def run_once(
                 raise SystemExit(f"{case}: model-free mode needs an assumption sheet")
             comps = model_free_components(conn, spec, gold)
         else:
-            comps = pipeline.real_components(conn, filler=spec_filler(spec, conn) if spec else None)
+            replace: dict[str, object] = {}
+            if labeler_model is not None:
+                from core.audit import stance as stance_mod
+
+                replace["labeler"] = stance_mod.create(conn, model=labeler_model)  # type: ignore[arg-type]
+            comps = pipeline.real_components(
+                conn, replace=replace, filler=spec_filler(spec, conn) if spec else None
+            )
             if reviewer == "none":
                 from eval.pipeline_fakes import FakeReviewer
 
@@ -417,7 +429,7 @@ def run_once(
             "expert": expert,
             "assumption_spec": str(spec),
         }
-        result = pipeline.run_audit(conn, comps, clock=_clock, config=config)
+        result = pipeline.run_audit(conn, comps, clock=_clock, claim_ids=claim_ids, config=config)
         summary: dict = {
             "case": case,
             "mode": mode,
@@ -444,7 +456,11 @@ def run_once(
         # labels (no model call), and the rules on the expert's decisions.
         comps.labeler = ReplayLabeler(conn)
         second = pipeline.run_audit(
-            conn, comps, clock=_clock, config={**config, "pass": "after simulated expert"}
+            conn,
+            comps,
+            clock=_clock,
+            claim_ids=claim_ids,
+            config={**config, "pass": "after simulated expert"},
         )
         if second.manifest != result.manifest:
             raise SystemExit("pipeline: the replay pass considered different evidence")
