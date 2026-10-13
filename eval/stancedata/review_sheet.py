@@ -19,7 +19,8 @@ from pathlib import Path
 
 from eval.stancedata.chat import read_jsonl, sha256_file
 
-SEED = 20261009
+# 20261009 drew the first sheet, which Arsh sent back on 2026-10-13; a rebuild draws a new one.
+SEED = 20261013
 TRAIN_SAMPLE = 200
 HELDOUT_SAMPLE = 100
 
@@ -69,9 +70,26 @@ def build(train: Path | None, heldout: Path | None) -> str:
         "would give. More than 2% wrong in either part (more than 4 of 200, or more than 2 of 100)",
         "means the generator is fixed, everything is rebuilt and a new sample is drawn.",
         "",
-        "The rules are in eval/stancedata/LABELING_GUIDE.md. In short: supports only when the",
-        "record plainly shows the assumption; contradicts when it shows something that cannot be",
-        "true with it; complicates when it bears on it but leaves it open; irrelevant otherwise.",
+        "The full rules are in eval/stancedata/LABELING_GUIDE.md (draft v0.3). The ones a",
+        "reader most needs:",
+        "",
+        "- **supports**: the record, read in its context, plainly shows what the assumption",
+        "  states, with no slang, code word, unresolved pronoun or outside fact needed.",
+        "- **contradicts**: what the record says cannot be true together with the assumption,",
+        "  with no unstated fact needed: not where home is, not whether it could still happen",
+        "  later that day. The quote itself must carry the contradiction.",
+        "- **complicates**: the record bears on the assumption but leaves it open.",
+        "- **irrelevant**: the record does not bear on the assumption.",
+        "- **Context explains, never reverses.** The chat may tell what the quoted words refer to,",
+        "  but when a later message corrects the record, the record is complicates and the",
+        "  correcting message is the contradicting one.",
+        "- **One record cannot prove a message does not exist.** The same words on another date or",
+        "  from another account leave the assumption open, unless the assumption itself excludes",
+        '  other messages ("first contact on", "no contact between").',
+        "- **Slang never supports.** A Russian record that needs a slang or loose reading is",
+        "  complicates, because the claim then rests on a translation the record does not settle.",
+        '- **Rationales claim only what is shown.** A "lol" leaves sincerity open; a denial',
+        "  conflicts in what it says, which does not make it true.",
         "",
     ]
     parts = [("Part 1: training examples", train, TRAIN_SAMPLE, SEED),

@@ -65,26 +65,36 @@ FAMILIES: tuple[Family, ...] = (
        "The record states a different count, amount, day, place or object than the assumption, "
        "in a way that cannot both be true."),
     _F("con_other_state", C.CONTRADICTS, S.CONTRADICTS, None, (K.EVENT,),
-       "The record states a fact that cannot hold at the same time as the assumption, such as "
-       "being back home against still being abroad."),
+       "The record names a place or state that cannot hold at the same stated time as the "
+       "assumption's, with nothing unstated needed: 'back in Moscow since sunday' against still "
+       "in Sochi that Tuesday, never 'home since sunday' when nothing shows where home is."),
     _F("con_in_window", C.CONTRADICTS, S.CONTRADICTS, None, (K.COMPLETENESS, K.TIME),
        "The assumption says there was no contact in a window, or that first contact came on a "
        "date; the record is a message between those accounts inside the window, or earlier."),
-    _F("con_other_speaker", C.CONTRADICTS, S.CONTRADICTS, None, (K.IDENTITY, K.EVENT),
-       "In a group chat, the assumption attributes words to one member; the record shows a "
-       "different member wrote them."),
-    # Overreach: looks like support on the surface. Gold is contradicts for these four.
-    _F("ovr_time_mismatch", C.OVERREACH, S.CONTRADICTS, "time_mismatch", (K.TIME,),
-       "Same words and people, but the record's local date or local clock time falls outside "
-       "what the assumption states; at a DST change the local clock reading decides."),
-    _F("ovr_sender_mismatch", C.OVERREACH, S.CONTRADICTS, "sender_mismatch", (K.EVENT, K.IDENTITY),
-       "The assumption says one account sent the words; the record shows a different account "
-       "sent them."),
-    _F("ovr_later_correction", C.OVERREACH, S.CONTRADICTS, "later_correction", (K.EVENT,),
-       "The record states the assumed fact, but a later message from the same sender in the "
-       "context replaces it with an incompatible value."),
+    _F("con_correction", C.CONTRADICTS, S.CONTRADICTS, None, (K.EVENT,),
+       "The record is the sender's own correction of an earlier message in the context, giving "
+       "a value for the same thing that cannot be true together with the assumption's; the "
+       "quote is the correcting words.", new=True),
+    # Overreach with gold contradicts: the record's own words rule the assumption out.
     _F("ovr_negation", C.OVERREACH, S.CONTRADICTS, "negation", (K.EVENT,),
        "The assumption's words appear in the record inside a negated statement."),
+    # Overreach whose gold changed to complicates in draft v0.3: the record's words match the
+    # assumption, but its date, sender or a later correction leaves the assumption open, and one
+    # record cannot show that no other message exists.
+    _F("ovr_time_mismatch", C.OVERREACH, S.COMPLICATES, "time_mismatch", (K.TIME,),
+       "Same words and people, but the record's local date or local clock time falls outside "
+       "what the assumption states; at a DST change the local clock reading decides.", new=True),
+    _F("ovr_sender_mismatch", C.OVERREACH, S.COMPLICATES, "sender_mismatch", (K.EVENT, K.IDENTITY),
+       "The assumption says one account sent the words; the record shows a different account "
+       "sent them.", new=True),
+    _F("ovr_speaker_mismatch", C.OVERREACH, S.COMPLICATES, "speaker_mismatch",
+       (K.IDENTITY, K.EVENT),
+       "In a group chat, the assumption attributes words to one member; the record shows a "
+       "different member wrote them.", new=True),
+    _F("ovr_later_correction", C.OVERREACH, S.COMPLICATES, "later_correction", (K.EVENT,),
+       "The record states the assumed fact, but a later message from the same sender in the "
+       "context replaces it with an incompatible value; that later message, not the record, "
+       "carries the contradiction.", new=True),
     # Overreach with gold complicates (or irrelevant for an unrelated injection).
     _F("ovr_handle_owner", C.OVERREACH, S.COMPLICATES, "handle_owner", (K.IDENTITY, K.EVENT),
        "The assumption names a real person, but the record shows only an account, number, "
@@ -109,7 +119,8 @@ FAMILIES: tuple[Family, ...] = (
     _F("ovr_question", C.OVERREACH, S.COMPLICATES, "question_not_statement", (K.EVENT,),
        "The record asks a question; the assumption treats it as a statement of fact."),
     _F("ovr_joke", C.OVERREACH, S.COMPLICATES, "joke", (K.MEANING, K.EVENT),
-       "The context marks the record as a joke or sarcasm; the assumption takes it literally."),
+       "A marker in the record or its context ('lol', a laughing reply) leaves it unclear "
+       "whether the sender meant it seriously; the assumption takes it literally."),
     _F("ovr_partial", C.OVERREACH, S.COMPLICATES, "partial", (K.EVENT,),
        "The assumption joins two facts; the record shows only one and nothing shown "
        "establishes the other."),

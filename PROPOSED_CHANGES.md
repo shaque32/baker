@@ -29,3 +29,85 @@ Diff:
 +| `../../synthetic/case01/` | generator | Synthetic extraction reports (`make synth` rebuilds `item1.xlsx`, `item2.xlsx`; `case.json` pins their SHA-256) |
 -The eval goes through an importer: the generator emits report files in `sources/`, and the
 +The eval goes through an importer: the generator emits report files in `eval/synthetic/case01/`, and the
+
+## 2026-10-13 claude/project-thread-czwpc8: relabel 8 signed probe items under strict contradicts
+File: eval/gold/probe/probe.jsonl (through eval/probe_draft/items.py and probe_draft.jsonl),
+eval/probe_draft/model.py (`SIGNED_LABEL`), tests/test_gold_probe.py
+Why: on 2026-10-13 Arsh chose "Strict everywhere" in the "Custom model for Baker" thread:
+contradicts only when the record's own words rule the assumption out (stance guide draft v0.3,
+rules 22 and 23). These 8 items are contradicts only under the old rule, so until they change
+the probe set and the v0.3 training data disagree. Applied only after Arsh signs this list.
+Diff (eval/probe_draft/items.py; quotes, records and context stay as they are):
+- P038: S.CONTRADICTS -> S.COMPLICATES. Rationale: "Gabe says he paid Ruiz 2k, but three
+  minutes later he corrects it: '1.2k not 2k. rest next week'. That later message, not this
+  record, rules out $2,000."
+- P039: S.CONTRADICTS -> S.COMPLICATES. Rationale: "This record sets Friday; the next morning
+  Тимур moves it to Saturday ('нет, давай в субботу, в пятницу не могу') and the owner confirms.
+  That later message, not this record, shows Friday was not the final plan."
+- P040: S.CONTRADICTS -> S.COMPLICATES. Rationale: "'its done' here came from the owner's own
+  number +12125550111, not +12125550122; the record does not show whether +12125550122 also
+  sent those words."
+- P041: S.CONTRADICTS -> S.COMPLICATES. Rationale: "The volunteer here is +17185550172 (Nadia),
+  not +17185550181 (Kofi), who asked; the record does not show whether +17185550181 also said
+  it."
+- P042: S.CONTRADICTS -> S.COMPLICATES. Rationale: "The same words went to the same user at
+  8:03 PM EDT on March 12 local time, not on March 13; the record does not show whether a
+  matching message was also sent on March 13."
+- P043: S.CONTRADICTS -> S.COMPLICATES. Rationale: "DST edge: the local clock read 3:05 AM EDT
+  when Rina sent this, after 3 a.m.; the record does not show whether she also texted that she
+  was home before 3 a.m."
+- P044: S.CONTRADICTS -> S.COMPLICATES. Rationale: "DST edge: 1:20 EST (06:20 UTC) is 40
+  minutes after the owner's 1:40 EDT 'where r u' (05:40 UTC); the record does not show whether
+  Cal said it before the question too."
+- P071: C.CONTRADICTS -> C.OVERREACH, trap None -> "speaker_mismatch", S.CONTRADICTS ->
+  S.COMPLICATES. Rationale: "The offer here comes from +13475550158 (Marisol), and
+  +13475550124 (Theo) thanks her; the record does not show whether +13475550124 also offered."
+Then the 8 items carry Arsh's new signature date in `labeled_by`, `SIGNED_LABEL` becomes the set
+of signed labels, probe_draft.jsonl is rebuilt and its 88 signed lines are copied to
+eval/gold/probe/probe.jsonl. Effects: gated gold contradicts on the probe set drop from 16 to 8;
+the Cloud Claude test (#48) and the 14B's "contradicting records shown as supports" count are
+re-scored against the new labels.
+
+## 2026-10-13 claude/project-thread-czwpc8: keep the go bar's protection for the traps that moved
+File: eval/stancedata/GO_BAR.md, eval/stancedata/gobar.py, plus the metric in
+eval/stancedata/score.py and eval/probe/run_probe.py
+Why: under guide v0.3 the trap families time_mismatch, sender_mismatch, speaker_mismatch and
+later_correction (and the 8 relabeled probe items) are complicates, so the zero-tolerance bar
+"contradicting records shown as supports" no longer covers them: a model that shows a misdated
+or corrected message as support would pass. GO_BAR.md changes only by Arsh's decision, and no
+candidate has a test result yet (TEST_LOG.md is empty), so the change is allowed now.
+Diff:
+gobar.py
+-    "contradicts_shown_as_supports": 0,  # at most
++    "contradicts_shown_as_supports": 0,  # at most
++    "moved_traps_shown_as_supports": 0,  # at most (guide v0.3)
+-AT_MOST = {"contradicts_shown_as_supports"}
++AT_MOST = {"contradicts_shown_as_supports", "moved_traps_shown_as_supports"}
+-MIN_GOLD_CONTRADICTS = {"probe": 16, "heldout": 420}
++MIN_GOLD_CONTRADICTS = {"probe": 8, "heldout": 420}
+score.py and run_probe.py: `moved_traps_shown_as_supports` = gated items whose trap is
+time_mismatch, sender_mismatch, speaker_mismatch or later_correction and whose answer is supports.
+GO_BAR.md, bar 2: "78 items, 16 gold contradicts" -> "78 items, 8 gold contradicts after the
+2026-10-13 relabel"; bars 2 and 3 gain "zero items of the trap families guide v0.3 moved to
+complicates shown as supports"; a dated line records Arsh's decision and its reason.
+
+## 2026-10-13 claude/project-thread-czwpc8: align the 14B stance prompt with strict contradicts
+File: core/audit/prompts/stance.md (optional; not needed for the small model)
+Why: guide v0.3 reads contradicts strictly, but the prompt's "(a different sender, a different
+time, ...)" invites the 14B to call a misdated or misattributed message contradicts, so the two
+labelers would disagree on those records. Apply when the prompt is next revised, with a Mac
+re-run of the probe set.
+Diff:
+-- "contradicts": the record itself shows something that cannot be true at the same time as
+-  the assumption (a different sender, a different time, a statement that rules it out).
+-  A record that only makes another reading more likely is not "contradicts".
++- "contradicts": what the record itself says cannot be true at the same time as the
++  assumption, with no unstated fact needed. Matching words with a different date or sender
++  rule out only an assumption that excludes other messages ("first contact on", "no contact
++  between"). A record that only makes another reading more likely is not "contradicts".
+-  a joke or sarcasm, a later correction, a handle whose owner is not shown, a time that
+-  depends on a time zone, or anything that would need outside knowledge.
++  a joke or sarcasm, a later correction, the same words on another date or from another
++  account, a handle whose owner is not shown, a time that depends on a time zone, or anything
++  that would need outside knowledge.
+and the header's version line v1.0 -> v1.1.
