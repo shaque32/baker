@@ -114,6 +114,8 @@ def cmd_import(a: argparse.Namespace) -> int:
     conn = _open(a.db)
     if a.report.suffix.lower() == ".pdf":
         from core.ingest.cellebrite_pdf import CellebritePdfImporter as Importer
+    elif a.report.suffix.lower() in (".ufdr", ".zip"):
+        from core.ingest.ufdr import UfdrImporter as Importer  # type: ignore[assignment]
     else:
         from core.ingest.cellebrite_excel import CellebriteExcelImporter as Importer
     from core.ingest.coverage import format_text, summary
@@ -243,8 +245,12 @@ def cmd_verdict(a: argparse.Namespace) -> int:
 
 
 def cmd_report(a: argparse.Namespace) -> int:
+    from core.casework.cases import Case
+    from core.timeline.settings import from_case
+
     conn = _open(a.db)
-    print(f"wrote {write_report(conn, a.out)}")
+    tl = from_case(Case(Path(a.db)).settings)  # the case's own timeline settings
+    print(f"wrote {write_report(conn, a.out, tl)}")
     return 0
 
 
@@ -384,7 +390,7 @@ def parser() -> argparse.ArgumentParser:
         return sp
 
     add("init", cmd_init, "create a case database")
-    sp = add("import", cmd_import, "import a Cellebrite report (.xlsx or .pdf)")
+    sp = add("import", cmd_import, "import a Cellebrite report (.xlsx, .pdf, or .ufdr/.zip)")
     sp.add_argument("--report", type=Path, required=True)
     sp.add_argument("--source-id")
     sp.add_argument(

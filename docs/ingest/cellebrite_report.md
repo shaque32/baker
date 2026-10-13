@@ -2,7 +2,7 @@
 
 Importers: `core/ingest/cellebrite_excel.py` and `core/ingest/cellebrite_pdf.py`.
 Both implement `EvidenceImporter` and share one row mapper (`core/ingest/cellebrite_common.py`).
-UFDR is out of scope here.
+UFDR packages have their own reader (unverified format support): docs/ingest/ufdr.md.
 
 ## What we know and what we assumed
 

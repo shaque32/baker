@@ -1,10 +1,11 @@
-"""Shared mapping for Cellebrite Excel and PDF reports.
+"""Shared mapping for Cellebrite Excel and PDF reports, also used by the UFDR importer.
 
 Both readers turn their input into `RawTable`s (header text plus rows of cell values, each with a
 locator). Everything after that (column mapping, party parsing, times, deleted flags, ids, writing
 canonical rows and the coverage record) lives here so the two formats behave identically.
 
-Layout assumptions are documented in docs/ingest/cellebrite_report.md.
+Layout assumptions are documented in docs/ingest/cellebrite_report.md. core/ingest/ufdr.py feeds
+the message and call mapping and the writer with rows built from UFDR models instead of cells.
 """
 
 from __future__ import annotations
