@@ -120,9 +120,12 @@ def parse(
     content_type: str,
     open_file: Callable[[], Path],
     before_file: Callable[[dict[str, str]], None],
+    wrap: Callable[[BinaryIO], BinaryIO] | None = None,
 ) -> Upload:
     """Parse one upload. open_file() names the file to write the (single) file part to;
-    before_file(fields) may raise to refuse the upload before anything is written."""
+    before_file(fields) may raise to refuse the upload before anything is written. wrap, for
+    an encrypted case, wraps that file in an encrypting writer: the hash and size are still of
+    the plain bytes received."""
     delim = b"--" + boundary(content_type)
     r = _Reader(stream, length)
     out = Upload()
@@ -145,8 +148,11 @@ def parse(
             out.file_name = filename
             out.path = open_file()
             with out.path.open("xb") as f:
-                sink = _Sink(f)
+                w = wrap(f) if wrap is not None else f
+                sink = _Sink(w)
                 r.stream_until(end, sink.write)
+                if w is not f:
+                    w.close()  # the encrypted file's last chunk
             out.sha256, out.size = sink.sha.hexdigest(), sink.size
         r.fill(2)
         tail = r.take(2)

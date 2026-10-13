@@ -22,6 +22,8 @@
     python -m cli serve     [--cases <folder> | --db case.db] [--port 8765] [--expert "<name>"]
                             [--open]
     python -m cli model-check
+    python -m cli encrypt   --db case.db --by expert:<name>
+    python -m cli passphrase --db case.db --by expert:<name>
     python -m cli demo      [--port 8766] [--expert "<name>"] [--no-open] [--build-only]
                             [--from-case <case folder> | --scripted]
 
@@ -44,6 +46,11 @@ verdict); `--label-all` labels them too.
 cases folder (~/Baker/demo/cases, or $BAKER_DEMO/cases), so each demo starts clean in seconds
 and a screen share shows no other case. `--from-case` saves a finished synthetic case01 audit
 (a real local-model run) as the demo from then on; `--scripted` goes back to the scripted one.
+`encrypt` encrypts a case made before encryption at rest (its database and the copies of its
+files; core/casework/protect.py), or finishes one that was interrupted, and prints its recovery
+key once. Nothing encrypts a case on its own. `passphrase` changes an encrypted case's
+passphrase. Every command on an encrypted case asks for its passphrase (or recovery key) in the
+terminal; it is never taken from an option or the environment.
 `claims propose` asks the local model for claims on every paragraph that has none yet; they
 are stored as 'proposed' until the expert accepts, edits or removes them.
 """
@@ -59,14 +66,38 @@ from core.audit._llm_json import ModelUnavailable
 from core.audit._local_model import ModelConfigError
 from core.audit.invariants import InvariantViolation
 from core.contracts import ClaimStatus, ClaimType, EvidenceStatus, Verdict, VerdictDecision
-from core.db import apply_schema, connect
+from core.db import CaseLocked, apply_schema, connect
 from core.report.html import write_report
 from core.review import actions, audit_log
+
+
+def _ask(prompt: str) -> str:
+    """A secret typed in the terminal, never echoed."""
+    import getpass
+
+    if not sys.stdin.isatty():
+        raise SystemExit("this needs a passphrase typed in a terminal")
+    return getpass.getpass(prompt)
+
+
+def _unlock(path: Path) -> None:
+    from core import encryption
+
+    if not encryption.is_encrypted_case(path) or encryption.is_unlocked(path):
+        return
+    for _ in range(3):
+        try:
+            encryption.unlock(path, _ask(f"Passphrase or recovery key for {path}: "))
+            return
+        except encryption.WrongSecret as e:
+            print(f"error: {e}", file=sys.stderr)
+    raise SystemExit("the case stays locked")
 
 
 def _open(path: Path, create: bool = False):  # -> sqlite3.Connection
     if not create and not path.exists():
         raise SystemExit(f"no case database at {path}; run `init` first")
+    _unlock(path)
     return connect(path)
 
 
@@ -272,6 +303,45 @@ def cmd_serve(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_encrypt(a: argparse.Namespace) -> int:
+    from core.casework import protect
+    from core.casework.cases import Case
+
+    if not a.db.exists():
+        raise SystemExit(f"no case database at {a.db}")
+    case = Case(a.db)
+    st = protect.state(case)
+    if st == "encrypted":
+        raise SystemExit(f"{a.db} is already encrypted")
+    if st == "partial":
+        print("This case's encryption did not finish; this finishes it.")
+        secret, again = _ask("Passphrase chosen then, or the recovery key: "), None
+    else:
+        print("Encrypting the database and the copies of the case's files. This cannot be undone.")
+        secret = _ask("New passphrase (at least 12 characters): ")
+        again = _ask("The passphrase again: ")
+    done = protect.encrypt_case(case, secret, a.by, again=again)
+    print(f"encrypted {a.db}: database {'now' if done.database else 'already'} encrypted, "
+          f"{done.files} copied file(s) encrypted")  # fmt: skip
+    print()
+    print(f"Recovery key: {done.recovery_key}")
+    print("Write it down now and keep it away from this computer. It opens the case if the")
+    print("passphrase is lost. Baker shows it only this once and keeps no copy.")
+    return 0
+
+
+def cmd_passphrase(a: argparse.Namespace) -> int:
+    from core.casework import protect
+    from core.casework.cases import Case
+
+    current = _ask("Current passphrase or recovery key: ")
+    new = _ask("New passphrase (at least 12 characters): ")
+    again = _ask("The new passphrase again: ")
+    protect.change_passphrase(Case(a.db), current, new, again, a.by)
+    print("passphrase changed; the recovery key is the same as before")
+    return 0
+
+
 def cmd_model_check(a: argparse.Namespace) -> int:
     from core.casework.model_check import check_model
 
@@ -376,6 +446,11 @@ def parser() -> argparse.ArgumentParser:
     sp = add("redecide", cmd_redecide, "re-run the verdict rules after expert review (no model)")
     sp.add_argument("--by", required=True)
 
+    sp = add("encrypt", cmd_encrypt, "encrypt a case's database and copied files (one way)")
+    sp.add_argument("--by", required=True)
+    sp = add("passphrase", cmd_passphrase, "change an encrypted case's passphrase")
+    sp.add_argument("--by", required=True)
+
     sp = sub.add_parser("serve", help="open the expert's screen on this computer")
     sp.set_defaults(fn=cmd_serve)
     g = sp.add_mutually_exclusive_group()
@@ -404,7 +479,7 @@ def main(argv: list[str] | None = None) -> int:
     a = parser().parse_args(argv)
     try:
         return a.fn(a)
-    except actions.ReviewError as e:
+    except (actions.ReviewError, CaseLocked) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
 

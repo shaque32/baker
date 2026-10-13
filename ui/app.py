@@ -40,9 +40,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import BinaryIO
 
-from core import pipeline
+from core import db, encryption, pipeline
 from core.audit.invariants import InvariantViolation, check_report_text
-from core.casework import cases, jobs
+from core.casework import cases, jobs, protect
 from core.casework.model_check import ModelCheck, check_model
 from core.contracts import (
     ClaimStatus,
@@ -52,7 +52,8 @@ from core.contracts import (
     IdentityLinkStatus,
     Verdict,
 )
-from core.db import connect
+from core.db import CaseLocked, connect
+from core.encryption import EncryptionError
 from core.identity.links import propose_links
 from core.report.html import render_report
 from core.report.letter import request_letter
@@ -91,9 +92,14 @@ NEEDS_NO_JOB: dict[str, tuple[str, ...]] = {
     "/case/import": ("audit", "propose", "model_check"),
     "/case/new": ("audit", "propose", "model_check"),
     "/case/open": ("audit", "propose", "model_check"),
+    "/case/encrypt": ("audit", "propose", "model_check"),
+    "/case/lock": ("audit", "propose", "model_check"),
 }
 NO_CASE_GET = {"/cases"}
 NO_CASE_POST = {"/expert", "/case/new", "/case/open"}
+# Posts that must not have the case database open while they run: encrypting replaces the
+# database file (Windows cannot replace an open file), and locking forgets its key.
+OWN_DB_POST = {"/case/encrypt", "/case/lock", "/case/recovery/done"}
 
 
 def _real_components(conn: sqlite3.Connection, ai_review: bool) -> pipeline.Components:
@@ -168,7 +174,9 @@ class App:
         if db_path is not None and not Path(db_path).exists():
             raise FileNotFoundError(f"no case database at {db_path}")
         self.home = None if db_path is not None else Path(home)  # type: ignore[arg-type]
+        self.single = None if db_path is None else cases.Case(Path(db_path))
         self.case: cases.Case | None = None
+        self.recovery: tuple[Path, str] | None = None  # a recovery key to show once
         self.token = secrets.token_urlsafe(32)
         self.expert: str | None = None
         self.flash: tuple[str, bool] | None = None
@@ -182,8 +190,8 @@ class App:
         self.last_check: ModelCheck | None = None
         if expert:
             self.set_expert(expert)
-        if db_path is not None:
-            self.open_case(cases.Case(Path(db_path)))
+        if self.single is not None and not protect.is_locked(self.single):
+            self.open_case(self.single)
 
     def _open(self) -> cases.Case:
         if self.case is None:
@@ -195,6 +203,8 @@ class App:
         return None if self.case is None else self.case.db
 
     def open_case(self, case: cases.Case) -> None:
+        if protect.is_locked(case):
+            raise CaseLocked("this case is locked: open it with its passphrase or recovery key")
         conn = connect(case.db)
         try:
             pipeline.mark_stale_runs_stopped(conn)  # nothing in this process runs them
@@ -253,10 +263,20 @@ class App:
             if req.method == "GET":
                 return self._cases()
             return self._post(None, req)
+        if protect.is_locked(self.case):
+            self.case = None
+            self.flash = ("The case is locked. Open it with its passphrase.", True)
+            return self._redirect("/cases")
+        if req.method == "POST" and req.path in OWN_DB_POST:
+            return self._post(None, req)
         try:
             conn = connect(self.case.db)
             conn.execute("PRAGMA busy_timeout = 10000")  # an audit may be saving a claim
-        except sqlite3.Error as err:
+        except CaseLocked as err:
+            self.case = None
+            self.flash = (str(err), True)
+            return self._redirect("/cases")
+        except db.Error as err:
             return self._plain(500, f"cannot open the case database: {err}")
         try:
             if req.method == "GET":
@@ -361,6 +381,10 @@ class App:
             "/expert": lambda: self._set_expert(f),
             "/case/new": lambda: self._new_case(f),
             "/case/open": lambda: self._open_case(f),
+            "/case/encrypt": lambda: self._encrypt(f),
+            "/case/lock": lambda: self._lock(),
+            "/case/passphrase": lambda: self._change_passphrase(f),
+            "/case/recovery/done": lambda: self._recovery_done(),
             "/evidence/decide": lambda: self._decide(conn, f),  # type: ignore[arg-type]
             "/verdict": lambda: self._verdict(conn, f),  # type: ignore[arg-type]
             "/claim/edit": lambda: self._edit_claim(conn, f),  # type: ignore[arg-type]
@@ -392,18 +416,24 @@ class App:
             if req.path == "/claim/add":
                 back = pages.link("/claim", id=f.get("id", ""))
             if req.path in ("/case/new", "/case/open"):
-                back = "/setup"
+                back = "/setup#recovery" if self._recovery_for_open() else "/setup"
+            if req.path == "/case/encrypt":
+                back = "/setup#recovery"
+            if req.path == "/case/lock":
+                back = "/cases"
             if req.path == "/exhibit/add" and self._added:
                 back = pages.link("/exhibit", id=self._added)
         except (
             ReviewError,
+            CaseLocked,
+            EncryptionError,
             ExhibitError,
             InvariantViolation,
             ValueError,
-            sqlite3.IntegrityError,
+            *db.IntegrityError,
         ) as err:
             self.flash = (f"Not recorded: {err}", True)
-        except sqlite3.OperationalError as err:  # the audit held the database too long
+        except db.OperationalError as err:  # the audit held the database too long
             self.flash = (f"Not recorded, the case database was busy ({err}). Try again.", True)
         return self._redirect(back)
 
@@ -521,36 +551,106 @@ class App:
     def _cases(self) -> Response:
         page = self._page()
         if self.home is None:
-            return self._html(pages.cases_page(page, None, [], str(self.db_path)))
+            single = self.single
+            locked = single is not None and protect.is_locked(single)
+            return self._html(
+                pages.cases_page(page, None, [], str(single.db if single else ""), locked)
+            )
         rows = []
         for c in cases.list_cases(self.home):
             try:
-                conn = connect(c.db)
-                try:
-                    state = cases.last_audit_line(conn)
-                finally:
-                    conn.close()
-            except (sqlite3.Error, InvariantViolation) as err:
-                state = f"cannot read: {err}"
-            rows.append((c.folder.name, c.name, state))
+                lock = _lock_state(c)
+                if lock == "locked":
+                    state = "locked"
+                else:
+                    conn = connect(c.db)
+                    try:
+                        state = cases.last_audit_line(conn)
+                    finally:
+                        conn.close()
+            except (*db.Error, InvariantViolation, CaseLocked, EncryptionError) as err:
+                lock, state = "plain", f"cannot read: {err}"
+            rows.append((c.folder.name, c.name, state, lock))
         return self._html(pages.cases_page(page, self.home, rows, None))
 
     def _new_case(self, f: dict[str, str]) -> str:
         if self.home is None:
             raise ReviewError("this screen was started on one case database")
-        case = cases.create_case(self.home, f.get("name", ""), self.actor)
+        passphrase = None
+        if f.get("encrypt") == "1":
+            passphrase = f.get("passphrase", "")
+            if passphrase != f.get("passphrase2", ""):
+                raise ReviewError("the two passphrases do not match")
+        case = cases.create_case(self.home, f.get("name", ""), self.actor, passphrase=passphrase)
         self.open_case(case)
+        key = cases.recovery_key_for(case)
+        if key is not None:
+            self.recovery = (case.db, key)
+            return f"Made the encrypted case {case.name}. Write down its recovery key below."
         return f"Made the case {case.name}. Import its files below."
 
     def _open_case(self, f: dict[str, str]) -> str:
         if self.home is None:
-            raise ReviewError("this screen was started on one case database")
-        slug = f.get("case", "")
-        match = [c for c in cases.list_cases(self.home) if c.folder.name == slug]
-        if not match:
-            raise ReviewError("no such case")
-        self.open_case(match[0])
-        return f"Opened {match[0].name}."
+            if self.single is None:
+                raise ReviewError("this screen was started on one case database")
+            target = self.single
+        else:
+            slug = f.get("case", "")
+            match = [c for c in cases.list_cases(self.home) if c.folder.name == slug]
+            if not match:
+                raise ReviewError("no such case")
+            target = match[0]
+        unlocked = False
+        if protect.is_locked(target):
+            try:
+                encryption.unlock(target.db, f.get("passphrase", ""))
+            except encryption.WrongSecret as err:
+                raise ReviewError(str(err)) from err
+            unlocked = True
+        self.open_case(target)
+        return f"Unlocked and opened {target.name}." if unlocked else f"Opened {target.name}."
+
+    # -- encryption
+
+    def _recovery_for_open(self) -> str | None:
+        if self.recovery is None or self.case is None or self.recovery[0] != self.case.db:
+            return None
+        return self.recovery[1]
+
+    def _encrypt(self, f: dict[str, str]) -> str:
+        case = self._open()
+        partial = protect.state(case) == "partial"
+        done = protect.encrypt_case(
+            case,
+            f.get("passphrase", ""),
+            self.actor,
+            again=None if partial else f.get("passphrase2", ""),
+        )
+        self.recovery = (case.db, done.recovery_key)
+        return (
+            f"Encrypted {case.name}: the database and {done.files} copied file(s). Write down "
+            "its recovery key below."
+        )
+
+    def _lock(self) -> str:
+        case = self._open()
+        if protect.state(case) == "plain":
+            raise ReviewError("this case is not encrypted, so there is nothing to lock")
+        protect.lock(case)
+        self.case = None
+        self.recovery = None
+        self.last_check = None
+        return f"Locked {case.name}. Its passphrase or recovery key opens it again."
+
+    def _change_passphrase(self, f: dict[str, str]) -> str:
+        protect.change_passphrase(
+            self._open(), f.get("current", ""), f.get("new", ""), f.get("new2", ""), self.actor
+        )
+        return "Passphrase changed. The recovery key is the same as before."
+
+    def _recovery_done(self) -> str:
+        self.recovery = None
+        return "Recovery key hidden. Baker keeps no copy of it."
 
     # -- set up and run
 
@@ -605,6 +705,8 @@ class App:
             estimate=estimate,
             job_kind=running,
             resumable=resumable,
+            protection=protect.state(case),
+            recovery_key=self._recovery_for_open(),
         )
 
     def _move_claim(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
@@ -741,8 +843,20 @@ class App:
             _ = self.actor
 
         try:
+            wrap = cases.input_writer(case)
+        except CaseLocked as err:
+            _drain(stream, length)
+            self.case = None
+            self.flash = (f"Not imported: {err}", True)
+            return self._redirect("/cases")
+        try:
             up = upload.parse(
-                counted, length, req.headers.get("content-type", ""), open_file, before_file
+                counted,
+                length,
+                req.headers.get("content-type", ""),
+                open_file,
+                before_file,
+                wrap=wrap,
             )
         except _Refused:
             for p in written:
@@ -877,6 +991,12 @@ class App:
             message.encode("utf-8"),
             [("Content-Type", "text/plain; charset=utf-8"), *self._security_headers()],
         )
+
+
+def _lock_state(case: cases.Case) -> str:
+    if protect.state(case) == "plain":
+        return "plain"
+    return "locked" if protect.is_locked(case) else "open"
 
 
 def _drain(stream: BinaryIO, n: int) -> None:

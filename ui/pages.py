@@ -887,11 +887,33 @@ def error_page(page: Page, status: int, message: str) -> str:
 # ---------------------------------------------------------------- cases
 
 
+PASSPHRASE_HINT = (
+    "At least 12 characters; a few words is easiest. Baker cannot recover a lost passphrase: "
+    "keep it, or the recovery key Baker shows next, somewhere safe."
+)
+LOCK_LABEL = {"plain": "Not encrypted", "locked": "Encrypted, locked", "open": "Encrypted"}
+
+
+def _unlock_fields(slug: str) -> str:
+    return (
+        f"<input type='hidden' name='case' value='{e(slug)}'>"
+        "<input type='password' name='passphrase' required size='30' "
+        "autocomplete='current-password' placeholder='Passphrase or recovery key' "
+        "aria-label='Passphrase or recovery key'> "
+        "<button type='submit'>Unlock and open</button>"
+    )
+
+
 def cases_page(
-    page: Page, home: object, rows: list[tuple[str, str, str]], single: str | None
+    page: Page,
+    home: object,
+    rows: list[tuple[str, str, str, str]],
+    single: str | None,
+    single_locked: bool = False,
 ) -> str:
-    """rows: (folder name, case name, one-line state). single: the database path when the screen
-    was started on one case database (`--db`), which has no cases folder."""
+    """rows: (folder name, case name, one-line state, lock state: plain | locked | open).
+    single: the database path when the screen was started on one case database (`--db`),
+    which has no cases folder; single_locked when that database is encrypted and locked."""
     out = ["<h1>Cases</h1>"]
     if single is not None:
         out.append(
@@ -899,6 +921,12 @@ def cases_page(
             "</span>. Start <span class='mono'>baker serve</span> without "
             "<span class='mono'>--db</span> to make and open cases in a cases folder.</p>"
         )
+        if single_locked:
+            out.append(name_form(page))
+            out.append(
+                "<p>This case is encrypted and locked.</p>"
+                + page.form("/case/open", _unlock_fields(""))
+            )
         return page.wrap("Cases", "".join(out))
     out.append(name_form(page))
     out.append(
@@ -906,17 +934,20 @@ def cases_page(
         "own database and read-only copies of its files.</p>"
     )
     if rows:
-        out.append("<table><thead><tr><th>Case</th><th>State</th><th></th></tr></thead>")
-        for slug, name, state in rows:
+        out.append(
+            "<table><thead><tr><th>Case</th><th>State</th><th>Encryption</th><th></th></tr></thead>"
+        )
+        for slug, name, state, lock in rows:
+            fields = (
+                _unlock_fields(slug)
+                if lock == "locked"
+                else f"<input type='hidden' name='case' value='{e(slug)}'>"
+                "<button type='submit'>Open</button>"
+            )
             out.append(
                 f"<tr><td>{q(name)}<br><span class='mono'>{e(slug)}</span></td><td>{e(state)}</td>"
-                "<td>"
-                + page.form(
-                    "/case/open",
-                    f"<input type='hidden' name='case' value='{e(slug)}'>"
-                    "<button type='submit'>Open</button>",
-                    "inline",
-                )
+                f"<td>{e(LOCK_LABEL.get(lock, lock))}</td><td>"
+                + page.form("/case/open", fields, "inline")
                 + "</td></tr>"
             )
         out.append("</table>")
@@ -928,6 +959,14 @@ def cases_page(
             "/case/new",
             "<input type='text' name='name' required maxlength='80' class='wide' "
             "placeholder='Case name, for example: United States v. Petrov (synthetic)'><br>"
+            "<label><input type='checkbox' name='encrypt' value='1' checked> Encrypt this case "
+            "with a passphrase (recommended)</label><br>"
+            "<input type='password' name='passphrase' autocomplete='new-password' minlength='12' "
+            "placeholder='Passphrase' aria-label='Passphrase'> "
+            "<input type='password' name='passphrase2' autocomplete='new-password' "
+            "placeholder='The passphrase again' aria-label='The passphrase again'>"
+            f"<p class='muted'>{e(PASSPHRASE_HINT)} The case name stays readable in this list."
+            "</p>"
             "<button type='submit' class='primary'>Make the case</button>",
         )
     )
@@ -1005,10 +1044,12 @@ def setup_page(
     estimate: str,
     job_kind: str | None,
     resumable: str | None,
+    protection: str = "plain",  # core.casework.protect.state
+    recovery_key: str | None = None,
 ) -> str:
     busy = job_kind is not None
     audit_busy = job_kind == "audit"
-    out = ["<h1>Set up and run</h1>", name_form(page)]
+    out = ["<h1>Set up and run</h1>", recovery_box(page, recovery_key), name_form(page)]
     out.append(
         "<p>Four steps: import the files, settle the claims, confirm who used each phone, then "
         "run the audit. It runs in the background; you can review each claim as soon as it is "
@@ -1177,7 +1218,101 @@ def setup_page(
                 back="/run",
             )
         )
-    return page.wrap("Set up and run", "".join(out), refresh=10 if busy else None)
+    out.append(encryption_section(page, protection, busy))
+    # No refresh while the recovery key is on screen: it must not vanish mid-copy.
+    refresh = 10 if busy and recovery_key is None else None
+    return page.wrap("Set up and run", "".join(out), refresh=refresh)
+
+
+def recovery_box(page: Page, key: str | None) -> str:
+    if key is None:
+        return ""
+    return (
+        "<div class='flash' id='recovery'><p><strong>Write down this case's recovery key "
+        "now.</strong> It opens the case if the passphrase is lost. Baker shows it only this "
+        "once and keeps no copy anywhere; keep it away from this computer (on paper, or in your "
+        "password manager).</p>"
+        f"<p class='mono' style='font-size:1.25em'>{e(key)}</p>"
+        + page.form(
+            "/case/recovery/done",
+            "<button type='submit'>I have written it down</button>",
+            "inline",
+            back="/setup",
+        )
+        + "</div>"
+    )
+
+
+def encryption_section(page: Page, protection: str, busy: bool) -> str:
+    out = ["<h2 id='encryption'>Encryption</h2>"]
+    off = " disabled" if busy else ""
+    wait = "<p class='muted'>Wait until the background work finishes.</p>" if busy else ""
+    if protection == "plain":
+        out.append(
+            "<p>This case is <strong>not encrypted</strong>. Anyone who can read its folder "
+            "can read its database and the copies of its files. Encrypting locks both with a "
+            "passphrase (AES-256). It is a one-way step, it does not change any finding, and "
+            "large reports can take a few minutes; keep this page open.</p>"
+            + wait
+            + page.form(
+                "/case/encrypt",
+                "<input type='password' name='passphrase' required minlength='12' "
+                "autocomplete='new-password' placeholder='Passphrase' aria-label='Passphrase'> "
+                "<input type='password' name='passphrase2' required autocomplete='new-password' "
+                "placeholder='The passphrase again' aria-label='The passphrase again'>"
+                f"<p class='muted'>{e(PASSPHRASE_HINT)}</p>"
+                f"<button type='submit'{off}>Encrypt this case</button>",
+                back="/setup",
+                anchor="encryption",
+            )
+        )
+        return "".join(out)
+    if protection == "partial":
+        out.append(
+            "<p><strong>Encryption did not finish.</strong> Part of this case is still not "
+            "encrypted. Enter the passphrase chosen when it started (or the recovery key) to "
+            "finish; nothing is lost either way.</p>"
+            + wait
+            + page.form(
+                "/case/encrypt",
+                "<input type='password' name='passphrase' required size='30' "
+                "autocomplete='current-password' placeholder='Passphrase or recovery key' "
+                "aria-label='Passphrase or recovery key'> "
+                f"<button type='submit'{off}>Finish encrypting</button>",
+                back="/setup",
+                anchor="encryption",
+            )
+        )
+        return "".join(out)
+    out.append(
+        "<p>This case is <strong>encrypted</strong>: its database and the copies of its files "
+        "cannot be read without the passphrase or the recovery key. It stays unlocked until you "
+        "lock it or stop Baker.</p>"
+        + wait
+        + page.form(
+            "/case/lock",
+            f"<button type='submit'{off}>Lock this case now</button>",
+            back="/cases",
+        )
+        + "<h3>Change the passphrase</h3>"
+        + page.form(
+            "/case/passphrase",
+            "<input type='password' name='current' required size='34' "
+            "autocomplete='current-password' "
+            "placeholder='Current passphrase or recovery key' "
+            "aria-label='Current passphrase or recovery key'><br>"
+            "<input type='password' name='new' required minlength='12' "
+            "autocomplete='new-password' placeholder='New passphrase' "
+            "aria-label='New passphrase'> "
+            "<input type='password' name='new2' required autocomplete='new-password' "
+            "placeholder='The new passphrase again' aria-label='The new passphrase again'><br>"
+            "<button type='submit'>Change the passphrase</button> <span class='muted'>The "
+            "recovery key stays the same.</span>",
+            back="/setup",
+            anchor="encryption",
+        )
+    )
+    return "".join(out)
 
 
 def _where_short(conn: sqlite3.Connection, paragraph_id: str) -> str:

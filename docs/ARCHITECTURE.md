@@ -42,7 +42,8 @@ module's internals. Modules talk through the database and the contract types.
 core/
   contracts.py        frozen: data models + function signatures (human-owned)
   schema.sql          frozen: canonical tables (human-owned)
-  db.py               open a case database, apply schema
+  db.py               open a case database (plain or encrypted), apply schema
+  encryption.py       case keys, encrypted copies of inputs, the keyring of unlocked cases
   ingest/             one file per input format; implements EvidenceImporter or GovDocIngester
   enrich/             search index, embeddings, translation, gap detection
   claims/             ClaimExtractor
@@ -64,6 +65,7 @@ core/
   review/redecide.py  re-run the verdict rules after expert review, no model
   casework/           case folders and imports, background audit and claim-proposal jobs,
                       the model check, keeping the computer awake (used by the screen)
+                      protect.py: encrypting an existing case, passphrase changes
 cli/                  `baker import`, `baker claims`, `baker audit`, `baker report`, `baker serve`
 ui/                   the expert's screen on 127.0.0.1 (stdlib server, no scripts): start a case,
                       run the audit in the background, review
@@ -77,6 +79,12 @@ tests/
 ## Key decisions
 
 - **Case database.** One SQLite file per case. Nothing is shared between cases.
+- **Encryption at rest.** A case can be encrypted with the expert's passphrase: the database
+  with SQLCipher, each copied input with AES-256-GCM in chunks, one random key per case wrapped
+  in `case.key` (core/encryption.py, docs/encryption.md). Plain cases open unchanged; only the
+  expert's explicit "Encrypt this case" converts one (core/casework/protect.py). Database
+  errors are caught through `core.db.Error`/`OperationalError`/`IntegrityError`, because
+  SQLCipher raises its own classes.
 - **Stable ids.** Ids are strings built deterministically from source and locator
   (for example `msg:<source_id>:<locator>`), so re-importing gives the same ids and gold labels
   can point at specific messages.
