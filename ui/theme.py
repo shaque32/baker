@@ -226,10 +226,12 @@ article.idlink.st-rejected { opacity: 0.8; }
 .idgrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1px;
   background: var(--line); border-top: 1px solid var(--line); }
 .idgrid > div { background: var(--card); padding: 14px 20px; }
-.side { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600;
+.idgrid .side { display: flex; align-items: center; gap: 8px; font-size: 12.5px;
+  font-weight: 600;
   margin: 0 0 8px; }
-.side::before { content: ""; width: 3px; height: 13px; border-radius: 2px; }
-.side.for::before { background: var(--sup); } .side.against::before { background: var(--con); }
+.idgrid .side::before { content: ""; width: 3px; height: 13px; border-radius: 2px; }
+.idgrid .side.for::before { background: var(--sup); }
+.idgrid .side.against::before { background: var(--con); }
 ul.sig { list-style: none; padding: 0; margin: 0; }
 ul.sig li { font-size: 13px; line-height: 1.45; margin: 0 0 12px; }
 ul.sig .quote { font-size: 14px; color: var(--fg); }

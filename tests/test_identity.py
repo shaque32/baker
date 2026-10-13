@@ -260,3 +260,16 @@ def test_the_identities_page_flow(conn):
     assert "identity change(s) since the last audit" not in page  # no audit has run here
     check_report_text(page)
     assert "Open Identities" in _get(app, "/setup").text
+
+
+def test_identity_styles_do_not_reach_the_claim_page_sidebar():
+    # The claim page's ledger is <aside class='side'>. A bare .side rule from the Identities
+    # page once made it a flex row and squashed it into a thin column.
+    import re
+
+    from ui.theme import THEME_CSS
+
+    for selector in re.findall(r"([^{}]+)\{", THEME_CSS):
+        for part in selector.split(","):
+            if re.match(r"\.side\b", part.strip()):
+                raise AssertionError(f"unscoped .side rule: {part.strip()!r}")
