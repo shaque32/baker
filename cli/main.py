@@ -212,8 +212,12 @@ def cmd_verdict(a: argparse.Namespace) -> int:
 
 
 def cmd_report(a: argparse.Namespace) -> int:
+    from core.casework.cases import Case
+    from core.timeline.settings import from_case
+
     conn = _open(a.db)
-    print(f"wrote {write_report(conn, a.out)}")
+    tl = from_case(Case(Path(a.db)).settings)  # the case's own timeline settings
+    print(f"wrote {write_report(conn, a.out, tl)}")
     return 0
 
 

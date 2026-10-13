@@ -144,6 +144,8 @@ class Page:
                 ("/claim/new", "Add a claim"),
                 ("/identities", "Identities"),
                 ("/exhibits", "Exhibits"),
+                ("/timeline", "Timeline"),
+                ("/gaps", "Gaps"),
                 ("/report", "Report"),
                 ("/log", "Audit log"),
                 ("/setup", "Set up and run"),
