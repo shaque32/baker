@@ -236,6 +236,37 @@ def edited_after(conn: sqlite3.Connection, since: str) -> set[str]:
     return out
 
 
+HOLDINGS = (
+    "Baker checks claims against records on the phones. When it could not set up a check, "
+    "compare the claim with what this case holds:"
+)
+
+
+def case_holdings(conn: sqlite3.Connection) -> list[str]:
+    """One line per imported extraction source, with the devices it holds, exactly as imported.
+
+    Shown next to a claim Baker could not test, so the expert can check a claim about the
+    case's own material ("based on extraction reports for two phones") against it at a glance.
+    """
+    devices: dict[str, list[str]] = {}
+    for source_id, label, model, os_version in conn.execute(
+        "SELECT source_id, label, model, os_version FROM devices ORDER BY id"
+    ):
+        what = model or label
+        devices.setdefault(source_id, []).append(f"{what}, {os_version}" if os_version else what)
+    out = []
+    for sid, kind, fidelity, extraction, name, sha in conn.execute(
+        "SELECT id, kind, fidelity, extraction_type, file_name, sha256 FROM sources"
+        " WHERE kind != 'govdoc' ORDER BY id"
+    ):
+        held = "; ".join(devices.get(sid, [])) or "no device recorded"
+        out.append(
+            f"{name}: {held} ({kind.replace('_', ' ')}, {fidelity.replace('_', ' ')}, "
+            f"{extraction.replace('_', ' ')} extraction, SHA-256 {sha[:12]}…)"
+        )
+    return out
+
+
 def claim_states(
     conn: sqlite3.Connection, include_removed: bool = False, run: dict | None = None
 ) -> list[ClaimState]:

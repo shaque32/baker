@@ -49,9 +49,11 @@ from core.report.letter import letter_section
 from core.review import audit_log
 from core.review.status import (
     AWAITING_EXPERT,
+    HOLDINGS,
     SUPPORTED_AI,
     SUPPORTED_EXPERT,
     ClaimState,
+    case_holdings,
     claim_states,
 )
 from core.review.status import verdict_label as _verdict_label
@@ -339,6 +341,8 @@ def _claim_block(conn: sqlite3.Connection, st: ClaimState) -> str:
         out.append(f"<p class='muted'>{e(st.unlabeled)}</p>")
     if st.untested:
         out.append(f"<p><strong>{e(st.not_tested or '')}</strong></p>")
+        held = "".join(f"<li>{e(h)}</li>" for h in case_holdings(conn))
+        out.append(f"<p>{e(HOLDINGS)}</p><ul>{held or '<li>No extraction imported.</li>'}</ul>")
 
     shown = [x for x in st.evidence if x.stance != Stance.IRRELEVANT]
     hidden = len(st.evidence) - len(shown)

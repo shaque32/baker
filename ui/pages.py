@@ -38,7 +38,9 @@ from core.report.html import STANCE_LABEL, audit_log_summary, record_line, revie
 from core.report.restore import CSS as RESTORE_CSS
 from core.review.status import (
     AGAINST,
+    HOLDINGS,
     ClaimState,
+    case_holdings,
     claim_name,
     claim_state,
     claim_states,
@@ -597,6 +599,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
         out.append(f"<p class='muted'>{e(st.unlabeled)}</p>")
     if st.untested:
         out.append(f"<p><strong>{e(st.not_tested or '')}</strong></p>")
+        out.append(_holdings(conn))
     groups = _groups(st)
     if not groups:
         out.append("<p class='muted'>No relevant evidence items were stored for this claim.</p>")
@@ -651,6 +654,12 @@ def _verdict_forms(page: Page, st: ClaimState, back: str) -> str:
         + "<p class='muted'>A confirmation or override applies to this run's verdict. After "
         "re-running the verdicts, confirm again.</p></details>"
     )
+
+
+def _holdings(conn: sqlite3.Connection) -> str:
+    held = case_holdings(conn)
+    items = "".join(f"<li>{e(h)}</li>" for h in held) or "<li>No extraction imported.</li>"
+    return f"<p>{e(HOLDINGS)}</p><ul>{items}</ul>"
 
 
 def _edit_claim_form(page: Page, st: ClaimState, back: str) -> str:
