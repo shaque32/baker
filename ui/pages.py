@@ -126,6 +126,7 @@ class Page:
                 ("/", "Case"),
                 ("/claims", "Claims queue"),
                 ("/claim/new", "Add a claim"),
+                ("/identities", "Identities"),
                 ("/exhibits", "Exhibits"),
                 ("/report", "Report"),
                 ("/log", "Audit log"),
@@ -337,6 +338,22 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
         "<a href='/log'>Open the log</a>.</p>"
     )
     return page.wrap("Case", "".join(out), run_banner(conn, page, "/"))
+
+
+def _identities_step(conn: sqlite3.Connection) -> str:
+    """One line on the set-up page: the people the document names, beyond the phone owners."""
+    added = conn.execute(
+        "SELECT COUNT(*) FROM persons WHERE id NOT IN (SELECT person_id FROM stipulations)"
+    ).fetchone()[0]
+    by = dict(conn.execute("SELECT status, COUNT(*) FROM identity_links GROUP BY status"))
+    return (
+        "<p><strong>Other people the document names.</strong> A claim about someone with no "
+        "account in the case (a surname the document prints in capitals, or a contact name) "
+        "cannot be tested "
+        f"until you add the name and decide who is behind it. {added} added; "
+        f"{by.get('confirmed', 0)} link(s) confirmed, {by.get('proposed', 0)} proposed. "
+        "<a href='/identities'>Open Identities</a>.</p>"
+    )
 
 
 def _devices(conn: sqlite3.Connection, page: Page, back: str, heading: bool = True) -> str:
@@ -597,6 +614,12 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
         out.append(f"<p class='muted'>{e(st.unlabeled)}</p>")
     if st.untested:
         out.append(f"<p><strong>{e(st.not_tested or '')}</strong></p>")
+        if "matches no person" in (st.not_tested or ""):
+            out.append(
+                "<p>A name in this claim is not a person in the case yet. Add it on "
+                "<a href='/identities'>Identities</a> and decide who is behind it; the next "
+                "audit run can then test the claim.</p>"
+            )
     groups = _groups(st)
     if not groups:
         out.append("<p class='muted'>No relevant evidence items were stored for this claim.</p>")
@@ -1057,9 +1080,10 @@ def setup_page(
                 + ". Open one to accept it again.</p>"
             )
 
-    # 3. owners
+    # 3. owners, then the other people the document names
     out.append("<h2>3. Who used each phone</h2>")
     out.append(_devices(conn, page, "/setup", heading=False))
+    out.append(_identities_step(conn))
 
     # 4. model and run
     out.append("<h2>4. The model</h2>")

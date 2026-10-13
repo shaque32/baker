@@ -44,15 +44,23 @@ from core import pipeline
 from core.audit.invariants import InvariantViolation, check_report_text
 from core.casework import cases, jobs
 from core.casework.model_check import ModelCheck, check_model
-from core.contracts import ClaimStatus, ClaimType, EvidenceStatus, ExcerptSplit, Verdict
+from core.contracts import (
+    ClaimStatus,
+    ClaimType,
+    EvidenceStatus,
+    ExcerptSplit,
+    IdentityLinkStatus,
+    Verdict,
+)
 from core.db import connect
+from core.identity.links import propose_links
 from core.report.html import render_report
 from core.report.letter import request_letter
 from core.restore.store import ExhibitError, add_exhibit, match_exhibits, remove_exhibit
 from core.review import actions
 from core.review.actions import ReviewError
 from core.review.redecide import redecide
-from ui import pages, restore_pages, theme, upload
+from ui import identity_pages, pages, restore_pages, theme, upload
 
 CSP = (
     "default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; img-src 'none'; "
@@ -71,6 +79,11 @@ NEEDS_NO_JOB: dict[str, tuple[str, ...]] = {
     "/claims/move": ("audit",),
     "/stipulate": ("audit",),
     "/stipulation/withdraw": ("audit",),
+    "/person/add": ("audit",),
+    "/person/remove": ("audit",),
+    "/identity/decide": ("audit",),
+    "/identity/link": ("audit",),
+    "/identity/look": ("audit",),
     "/redecide": ("audit",),
     "/claims/propose": ("audit", "propose", "model_check"),
     "/model/check": ("audit", "propose", "model_check"),
@@ -308,6 +321,8 @@ class App:
         if p == "/evidence":
             body = pages.evidence_page(conn, page, req.query.get("id", ""))
             return self._html(body) if body else self._not_found(page, "no such evidence item")
+        if p == "/identities":
+            return self._html(identity_pages.identities_page(conn, page))
         if p == "/exhibits":
             return self._html(restore_pages.exhibits_page(conn, page))
         if p == "/exhibit":
@@ -354,6 +369,11 @@ class App:
             "/claims/propose": lambda: self._propose(),
             "/stipulate": lambda: self._stipulate(conn, f),  # type: ignore[arg-type]
             "/stipulation/withdraw": lambda: self._withdraw(conn, f),  # type: ignore[arg-type]
+            "/person/add": lambda: self._add_person(conn, f),  # type: ignore[arg-type]
+            "/person/remove": lambda: self._remove_person(conn, f),  # type: ignore[arg-type]
+            "/identity/decide": lambda: self._decide_link(conn, f),  # type: ignore[arg-type]
+            "/identity/link": lambda: self._link_account(conn, f),  # type: ignore[arg-type]
+            "/identity/look": lambda: self._look_for_links(conn),  # type: ignore[arg-type]
             "/redecide": lambda: self._redecide(conn),  # type: ignore[arg-type]
             "/model/check": lambda: self._check_model(),
             "/audit/start": lambda: self._start_audit(conn, f),  # type: ignore[arg-type]
@@ -453,7 +473,44 @@ class App:
 
     def _stipulate(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         actions.stipulate_device_owner(conn, f.get("device", ""), f.get("person", ""), self.actor)
+        propose_links(conn)  # a renamed owner may carry other names now
         return "Stipulation recorded. Re-run the verdicts to apply it."
+
+    # -- identities
+
+    def _add_person(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        pid = actions.add_person(conn, f.get("name", ""), self.actor)
+        found = propose_links(conn)
+        mine = [lid for lid in found.added if lid.endswith(f"|{pid}")]
+        return (
+            f"Added {f.get('name', '').strip()}. Baker proposed {len(mine)} link(s) to decide. "
+            "It applies on the next audit run."
+        )
+
+    def _remove_person(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        actions.remove_person(conn, f.get("id", ""), self.actor)
+        return "Person removed. It applies on the next audit run."
+
+    def _decide_link(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        status = IdentityLinkStatus(f.get("status", ""))
+        actions.decide_identity_link(conn, f.get("id", ""), status, self.actor, f.get("note", ""))
+        return (
+            f"Link {status.value}. It reaches the checks on the next audit run; re-running the "
+            "verdicts alone does not apply it."
+        )
+
+    def _link_account(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        actions.link_account(
+            conn, f.get("account", ""), f.get("person", ""), self.actor, f.get("note", "")
+        )
+        return "Link recorded and confirmed. It reaches the checks on the next audit run."
+
+    def _look_for_links(self, conn: sqlite3.Connection) -> str:
+        found = propose_links(conn)
+        return (
+            f"Looked again: {len(found.added)} new proposal(s), {len(found.removed)} withdrawn "
+            "because the names no longer match."
+        )
 
     def _withdraw(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         actions.withdraw_stipulation(conn, f.get("id", ""), self.actor)

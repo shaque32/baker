@@ -18,8 +18,8 @@ Display rules:
   "Unproven, awaiting expert review".
 - Each evidence item shows its provenance tier from contracts.display_tier: the record's tier
   (observed, derived, inferred), or ai_reviewed / confirmed from its review status.
-- Device-ownership stipulations, source coverage, what each search covered and the meaning of
-  each verdict are printed as limitations in every report.
+- Device-ownership stipulations, expert-confirmed identity links, source coverage, what each
+  search covered and the meaning of each verdict are printed as limitations in every report.
 - The report carries source hashes, Baker, contract, rule, report and model versions, and an
   audit-log summary with the hash-chain result.
 """
@@ -212,6 +212,17 @@ def _limitations(conn: sqlite3.Connection, srcs: list[tuple]) -> str:
         items.append(
             "<li><strong>No device-ownership stipulation was recorded.</strong> Findings that "
             "name a person do not establish who used each phone.</li>"
+        )
+    for app, ident, person, by, at in conn.execute(
+        "SELECT a.app, a.identifier, p.name, l.decided_by, l.decided_at_utc"
+        " FROM identity_links l JOIN accounts a ON a.id = l.account_id"
+        " JOIN persons p ON p.id = l.person_id WHERE l.status = 'confirmed' ORDER BY l.id"
+    ):
+        items.append(
+            "<li><strong>Who uses an account is an expert decision, not a finding.</strong> "
+            f"{e(by)} confirmed on {e(at)} that {q(f'{app} {ident}')} is used by {q(person)}. "
+            "Baker did not verify it. Every check that ties this person to that account rests "
+            "on it.</li>"
         )
     for s in srcs:
         if s[2] == Fidelity.CURATED_REPORT.value:
