@@ -1,8 +1,9 @@
 """Server-rendered pages of the expert review screen. Pure functions of the case database.
 
 No JavaScript, no external fonts, styles or images: every page is one HTML document with an
-inline style block. Cited text (government document, claim text, evidence quotes, record text)
-goes through q() so the forbidden-word check can tell it from the tool's own words.
+inline style block (the look is in ui/theme.py; its fonts are vendored and served locally).
+Cited text (government document, claim text, evidence quotes, record text) goes through q()
+so the forbidden-word check can tell it from the tool's own words.
 
 Every form carries the server's per-session token. Labels come from core/review/status.py, the
 same module the report uses, so the screen and the report never disagree. An AI-accepted item
@@ -43,30 +44,11 @@ from core.review.status import (
     claim_states,
     queue,
 )
+from ui.theme import FONT_CSS, MARK, THEME_CSS
 
 CONTEXT_WINDOW = 10  # messages either side: about 20 messages of context
 
 UI_CSS = """
-nav { font: 14px Helvetica, Arial, sans-serif; border-bottom: 1px solid var(--line);
-  padding-bottom: 8px; margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 14px;
-  align-items: baseline; }
-nav a { color: var(--fg); } nav .who { margin-left: auto; color: var(--muted); }
-.flash { padding: 10px 12px; border: 1px solid var(--line); margin: 10px 0;
-  font-family: Helvetica, Arial, sans-serif; }
-.flash.err { border: 2px solid var(--con); }
-form.inline { display: inline; }
-form.box { border: 1px solid var(--line); padding: 10px 12px; margin: 10px 0;
-  background: var(--panel); font-family: Helvetica, Arial, sans-serif; font-size: 13px; }
-input[type=text], textarea, select { font: 14px Helvetica, Arial, sans-serif; padding: 4px;
-  max-width: 100%; box-sizing: border-box; }
-input[type=text].wide, textarea { width: 100%; }
-button { font: 13px Helvetica, Arial, sans-serif; padding: 4px 10px; margin: 4px 4px 0 0;
-  cursor: pointer; }
-.item { border: 1px solid var(--line); padding: 8px 12px; margin: 10px 0; }
-.badge { display: inline-block; font: bold 11px Helvetica, Arial, sans-serif; padding: 1px 6px;
-  border: 1px solid currentColor; margin-right: 6px; }
-.b-ai { color: var(--supai); } .b-conf { color: var(--sup); } .b-open { color: var(--unp); }
-.b-against { color: var(--con); }
 tr.target td { font-weight: bold; background: var(--warn); }
 .ctx td { font-size: 12px; }
 """
@@ -100,6 +82,7 @@ class Page:
         notice: str = "",
         busy: bool = False,
         many_cases: bool = False,
+        path: str = "",
     ):
         self.token = token
         self.expert = expert
@@ -108,6 +91,7 @@ class Page:
         self.notice = notice  # HTML from the app, shown on every page while a job runs
         self.busy = busy  # an audit is running: no re-run of the verdicts
         self.many_cases = many_cases  # the screen was started on a cases folder
+        self.path = path  # the page's own path, to mark its tab
 
     def form(self, action: str, body: str, cls: str = "box", back: str = "") -> str:
         return (
@@ -118,7 +102,14 @@ class Page:
             + "</form>"
         )
 
-    def wrap(self, title: str, body: str, banner: str = "", refresh: int | None = None) -> str:
+    def wrap(
+        self,
+        title: str,
+        body: str,
+        banner: str = "",
+        refresh: int | None = None,
+        wide: bool = False,
+    ) -> str:
         who = (
             f"Reviewing as <strong>{e(self.expert)}</strong>"
             if self.expert
@@ -129,26 +120,53 @@ class Page:
             msg, err = self.flash
             flash = f'<div class="flash{" err" if err else ""}">{e(msg)}</div>'
         meta = f"<meta http-equiv='refresh' content='{int(refresh)}'>" if refresh else ""
-        cases = "<a href='/cases'>Cases</a>" if self.many_cases else ""
-        if self.case_name is None:
-            links = cases
-        else:
-            links = (
-                f"{cases}<a href='/setup'>Set up and run</a><a href='/'>Case</a>"
-                "<a href='/claims'>Claims queue</a><a href='/claim/new'>Add a claim</a>"
-                "<a href='/exhibits'>Exhibits</a><a href='/report'>Report</a>"
-                "<a href='/log'>Audit log</a>"
-                f"<span class='muted'>{q(self.case_name)}</span>"
-            )
+        tabs = [("/cases", "Cases")] if self.many_cases else []
+        if self.case_name is not None:
+            tabs += [
+                ("/", "Case"),
+                ("/claims", "Claims queue"),
+                ("/claim/new", "Add a claim"),
+                ("/exhibits", "Exhibits"),
+                ("/report", "Report"),
+                ("/log", "Audit log"),
+                ("/setup", "Set up and run"),
+            ]
+        links = "".join(
+            f"<a href='{href}'{' class=on' if _tab(self.path) == href else ''}>{label}</a>"
+            for href, label in tabs
+        )
+        case = (
+            f"<div class='casename'>{q(self.case_name)}<small>case open on this computer</small>"
+            "</div>"
+            if self.case_name is not None
+            else ""
+        )
         notice = f"<div class='flash'>{self.notice}</div>" if self.notice else ""
         return (
             "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
             f"<meta name='viewport' content='width=device-width, initial-scale=1'>{meta}"
             f"<title>{e(title)} · Baker</title>"
-            f"<style>{REPORT_CSS}{RESTORE_CSS}{UI_CSS}</style></head><body>"
-            f"<nav><strong>Baker</strong>{links}<span class='who'>{who}</span></nav>"
-            f"{notice}{flash}{banner}{body}</body></html>"
+            f"<style>{FONT_CSS}{REPORT_CSS}{RESTORE_CSS}{UI_CSS}{THEME_CSS}</style></head><body>"
+            "<header class='top'><div class='bar'>"
+            f"<a class='brand' href='{'/' if self.case_name is not None else '/cases'}'>"
+            f"{MARK}<span>Baker</span></a>{case}<div class='right'>"
+            "<span class='pill'>Offline · nothing leaves this computer</span>"
+            f"<span class='who'>{who}</span></div></div>"
+            f"<nav class='tabs'>{links}</nav></header>"
+            f"<main{' class=wide' if wide else ''}>{notice}{flash}{banner}{body}</main>"
+            "</body></html>"
         )
+
+
+def _tab(path: str) -> str:
+    """The tab a page sits under: a claim and its evidence under the queue."""
+    if path in ("/claim", "/evidence"):
+        return "/claims"
+    if path in ("/exhibit", "/exhibit/match", "/request-letter"):
+        return "/exhibits"
+    if path == "/run":
+        return "/setup"
+    return path
 
 
 # ---------------------------------------------------------------- banners
@@ -188,7 +206,12 @@ def run_banner(conn: sqlite3.Connection, page: Page, back: str) -> str:
             "<div class='banner'><strong>Verdicts are out of date.</strong> You made "
             f"{' and '.join(what)} after the last verdict run. Re-run the verdicts to apply them. "
             "This runs the verdict rules only; no model is called."
-            + page.form("/redecide", "<button type='submit'>Re-run verdicts</button>", "", back)
+            + page.form(
+                "/redecide",
+                "<button type='submit' class='primary'>Re-run verdicts</button>",
+                "",
+                back,
+            )
             + "</div>"
         )
     return "".join(out)
@@ -232,8 +255,8 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
                 "/expert",
                 "<p><strong>Who is reviewing?</strong> Your name is recorded with every "
                 "decision in the audit log.</p><input type='text' name='name' required "
-                "maxlength='60' placeholder='Your name'> <button type='submit'>Start reviewing"
-                "</button>",
+                "maxlength='60' placeholder='Your name'> <button type='submit' class='primary'>"
+                "Start reviewing</button>",
             )
         )
     else:
@@ -298,7 +321,8 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
             out.append(
                 page.form(
                     "/redecide",
-                    "<button type='submit'>Re-run verdicts (rules only, no model)</button>",
+                    "<button type='submit' class='primary'>Re-run verdicts (rules only, no model)"
+                    "</button>",
                     back="/",
                 )
             )
@@ -362,24 +386,56 @@ def _devices(conn: sqlite3.Connection, page: Page, back: str, heading: bool = Tr
 # ---------------------------------------------------------------- queue
 
 
+def _vcls(st: ClaimState) -> str:
+    """The pill's classes: the verdict's, plus its own style for a claim nothing tested."""
+    return f"{st.css} v-nt" if st.untested else st.css
+
+
+def _tally(states: list[ClaimState]) -> str:
+    """A bar split by finding, then one chip per finding with its count."""
+    if not states:
+        return ""
+    known = {"v-sup", "v-con", "v-unp", "v-await"}
+    by_label = Counter((st.label, _vcls(st)) for st in states)
+    bar = "".join(
+        f"<span class='{css if css in known else 'other'}' "
+        f"style='width:{100 * n / len(states):.2f}%'></span>"
+        for (_, css), n in sorted(by_label.items(), key=lambda kv: kv[0][1])
+    )
+    chips = "".join(
+        f"<span class='verdict {css}'>{e(label)} <b>{n}</b></span>"
+        for (label, css), n in sorted(by_label.items(), key=lambda kv: kv[0][1])
+    )
+    return f"<div class='tally'>{bar}</div><div class='counts'>{chips}</div>"
+
+
+def _ledger(states: list[ClaimState], current: str | None = None, compact: bool = False) -> str:
+    rows = []
+    for st in states:
+        needs = "" if compact else " ".join(t for _, t in st.needs())
+        rows.append(
+            f"<li{' class=on' if st.claim.id == current else ''}>"
+            "<div class='row'><div class='head'><span class='meta'>"
+            f"<a href='{e(link('/claim', id=st.claim.id))}'>{e(st.name)}</a> · {e(st.where)} · "
+            f"{e(st.claim.claim_type.value)}</span>"
+            f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span></div>"
+            f"<div class='text'>{q(st.claim.text)}</div>"
+            + (f"<div class='needs'>{e(needs)}</div>" if needs else "")
+            + "</div></li>"
+        )
+    return f"<ul class='ledger'>{''.join(rows)}</ul>"
+
+
 def claims_queue(conn: sqlite3.Connection, page: Page) -> str:
     states = queue(conn)
     out = [
-        "<h1>Claims queue</h1><p>Sorted by what needs you most. AI-accepted evidence is a "
-        "sorting aid: no claim becomes supported until you accept its key evidence and re-run "
-        "the verdicts.</p>",
-        "<table><thead><tr><th>Claim</th><th>Where</th><th>Type</th><th>Finding</th>"
-        "<th>What it needs</th></tr></thead>",
+        "<div class='eyebrow'>Claims ledger</div>"
+        "<h1>Claims queue</h1><p class='muted'>Sorted by what needs you most. AI-accepted "
+        "evidence is a sorting aid: no claim becomes supported until you accept its key evidence "
+        "and re-run the verdicts.</p>",
+        _tally(states),
+        _ledger(states),
     ]
-    for st in states:
-        needs = st.needs()
-        what = "<br>".join(e(t) for _, t in needs) or "<span class='muted'>Nothing. Done.</span>"
-        out.append(
-            f"<tr><td><a href='{e(link('/claim', id=st.claim.id))}'>{e(st.name)}</a></td>"
-            f"<td>{e(st.where)}</td><td>{e(st.claim.claim_type.value)}</td>"
-            f"<td><span class='verdict {st.css}'>{e(st.label)}</span></td><td>{what}</td></tr>"
-        )
-    out.append("</table>")
     removed = [c for c in pipeline.load_claims(conn, include_removed=True) if c.status == "removed"]
     if removed:
         out.append(
@@ -470,18 +526,22 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
     back = link("/claim", id=claim_id)
     c, d = st.claim, st.decision
     out = [
+        "<div class='claim-head'>"
         f"<h1>{e(st.name)} <span class='muted'>· {e(st.where)} · {e(c.claim_type.value)} · "
         f"claim {e(c.status.value)}"
-        f"{' by the expert' if c.model_run_id is None else ' (model-proposed)'}</span></h1>",
-        f"<blockquote>{q(c.text)}</blockquote>",
-        f"<p class='muted'>Claim id <span class='mono'>{e(c.id)}</span></p>",
+        f"{' by the expert' if c.model_run_id is None else ' (model-proposed)'}</span></h1>"
+        f"<span class='mono muted'>Claim id {e(c.id)}</span></div>",
+        f"<blockquote class='claimtext'>{q(c.text)}</blockquote>",
     ]
     if st.paragraph_text:
         out.append(
             f"<details><summary>Paragraph as printed ({e(st.where)})</summary>"
             f"<blockquote>{q(st.paragraph_text)}</blockquote></details>"
         )
-    out.append(f"<p><span class='verdict {st.css}'>{e(st.label)}</span></p>")
+    out.append(
+        "<div class='card'><div class='in'><div class='eyebrow'>Verdict</div>"
+        f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span>"
+    )
     needs = st.needs()
     if needs:
         out.append("<ul>" + "".join(f"<li>{e(t)}</li>" for _, t in needs) + "</ul>")
@@ -496,7 +556,8 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
             note = f" Note: {e(d.override_note)}" if d.override_note else ""
             kind = "overrode" if d.override_note is not None else "confirmed"
             out.append(f"<p>{e(d.confirmed_by)} {kind} this verdict.{note}</p>")
-        out.append(_verdict_forms(page, st, back))
+        out.append(f"</div><div class='in'>{_verdict_forms(page, st, back)}")
+    out.append("</div></div>")
 
     coverage = {cv.assumption_id: cv for cv in (d.coverage if d else ())}
     if st.assumptions:
@@ -555,7 +616,13 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
         out.append(f"<p class='muted'>{hidden} retrieved records were labeled irrelevant.</p>")
 
     out.append(_edit_claim_form(page, st, back))
-    return page.wrap(st.name, "".join(out), run_banner(conn, page, back))
+    states = claim_states(conn)
+    side = (
+        f"<aside class='side'><div class='eyebrow'>Claims ledger <span>{len(states)} claims"
+        f"</span></div>{_tally(states)}{_ledger(states, c.id, compact=True)}</aside>"
+    )
+    body = f"<div class='split'>{side}<div>{''.join(out)}</div></div>"
+    return page.wrap(st.name, body, run_banner(conn, page, back), wide=True)
 
 
 def _verdict_forms(page: Page, st: ClaimState, back: str) -> str:
@@ -645,17 +712,19 @@ def evidence_page(conn: sqlite3.Connection, page: Page, evidence_id: str) -> str
     if lines:
         out.append(
             "<p class='muted'>Messages around the record, in time order. Times are the phone's "
-            "local time. The record under review is in bold.</p><table class='ctx'><thead><tr>"
-            "<th>Local time</th><th>Sender</th><th>Direction</th><th>Text</th></tr></thead>"
+            "local time. The record under review is highlighted.</p><div class='thread'>"
         )
         for ln in lines:
-            shown = f"<br>shown as {q(ln.shown_as)}" if ln.shown_as else ""
+            shown = f" (shown as {q(ln.shown_as)})" if ln.shown_as else ""
+            side = " out" if ln.direction == "outgoing" else ""
+            tag = "<span class='cited'>UNDER REVIEW</span>" if ln.is_target else ""
             out.append(
-                f"<tr{' class=target' if ln.is_target else ''}><td>{e(ln.local_time)}</td>"
-                f"<td>{q(ln.sender)}{shown}</td><td>{e(ln.direction)}</td><td>{q(ln.body)}</td>"
-                "</tr>"
+                f"<div class='msg{side}{' target' if ln.is_target else ''}'>"
+                f"<div class='who2'>{q(ln.sender)}{shown} · {e(ln.direction)}</div>"
+                f"<div class='body'>{q(ln.body)}</div>"
+                f"<div class='t'>{tag}{e(ln.local_time)}</div></div>"
             )
-        out.append("</table>")
+        out.append("</div>")
     else:
         out.append("<p class='muted'>No surrounding messages for this kind of record.</p>")
     out.append("<h2>Review history</h2>")
@@ -807,7 +876,7 @@ def cases_page(
             "/case/new",
             "<input type='text' name='name' required maxlength='80' class='wide' "
             "placeholder='Case name, for example: United States v. Petrov (synthetic)'><br>"
-            "<button type='submit'>Make the case</button>",
+            "<button type='submit' class='primary'>Make the case</button>",
         )
     )
     return page.wrap("Cases", "".join(out))
@@ -1047,7 +1116,8 @@ def setup_page(
                 "supporting item.</label><br><label><input type='checkbox' name='label_all' "
                 "value='1'> Also label claims a failed check already decides (more model calls; "
                 "their verdict cannot change).</label></p>"
-                f"<button type='submit'{off}>{start}</button> <span class='muted'>Keeps this "
+                f"<button type='submit' class='primary'{off}>{start}</button> "
+                "<span class='muted'>Keeps this "
                 "computer awake while it runs. You can stop it; finished claims are kept.</span>",
                 back="/run",
             )
@@ -1176,7 +1246,7 @@ def run_page(
     for pos, cid, state, total, labeled, calls in rows:
         st = labels.get(cid)
         if state == "done" and st is not None and not st.incomplete:
-            finding = f"<span class='verdict {st.css}'>{e(st.label)}</span>"
+            finding = f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span>"
         elif state == "done":
             finding = "<span class='muted'>Finished; shown once it is the run on screen</span>"
         else:

@@ -36,18 +36,19 @@ from core.restore.view import Line, MatchView, match_view
 REPORT_CONTEXT_MAX_MATCHES = 3  # excerpts with more matches list them without full context
 
 CSS = """
-mark { background: var(--warn); color: inherit; padding: 0 1px; border-bottom: 2px solid
-  var(--await); }
+mark { background: #fbf1cf; color: inherit; padding: 0 2px; border-radius: 3px;
+  border-bottom: 2px solid var(--await); }
 tr.target td { font-weight: bold; background: var(--warn); }
 .ctx td { font-size: 12px; } .ctx td.t { white-space: nowrap; }
-.exhibit { border: 1px solid var(--line); padding: 4px 16px 12px; margin: 18px 0; }
+.exhibit { border: 1px solid var(--line); border-radius: 14px;
+  background: var(--card); padding: 6px 20px 14px; margin: 18px 0; }
 .nf { color: var(--await); font-weight: bold; }
-.piece { font: 12.5px Menlo, Consolas, monospace; border: 1px solid var(--line);
+.piece { font: 12.5px var(--mono); border: 1px solid var(--line);
   background: var(--panel); padding: 0 4px; white-space: pre-wrap; }
 pre.letter { white-space: pre-wrap; border: 1px solid var(--line); background: var(--panel);
-  padding: 12px; font: 13px/1.45 Menlo, Consolas, monospace; }
+  padding: 12px; font: 13px/1.45 var(--mono); }
 .item { border: 1px solid var(--line); padding: 8px 12px; margin: 10px 0; }
-pre.exhibit-text { white-space: pre-wrap; font: 13px/1.45 Menlo, Consolas, monospace;
+pre.exhibit-text { white-space: pre-wrap; font: 13px/1.45 var(--mono);
   background: var(--panel); padding: 8px; border: 1px solid var(--line); }
 """
 

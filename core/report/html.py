@@ -74,45 +74,79 @@ STANCE_LABEL = {
 }
 
 CSS = """
-:root { --fg:#1b1b1b; --muted:#5b5b5b; --bg:#ffffff; --line:#d9d9d9; --panel:#f6f6f4;
-  --sup:#1d6b3a; --supai:#6b5a1d; --con:#9b2226; --unp:#44546a; --await:#8a4b00;
-  --warn:#fff4d6; }
-@media (prefers-color-scheme: dark) { :root { --fg:#e8e8e8; --muted:#a8a8a8; --bg:#161616;
-  --line:#3a3a3a; --panel:#202020; --sup:#6fcf97; --supai:#e2c46b; --con:#ff8a8a;
-  --unp:#9fb3cc; --await:#f2b36b; --warn:#3b3220; } }
-body { font: 15px/1.5 Georgia, "Times New Roman", serif; color: var(--fg); background: var(--bg);
-  max-width: 980px; margin: 0 auto; padding: 24px 16px 64px; }
-h1, h2, h3 { font-family: Helvetica, Arial, sans-serif; line-height: 1.25; }
-h1 { font-size: 26px; margin-bottom: 4px; } h2 { font-size: 20px; margin-top: 36px;
-  border-bottom: 1px solid var(--line); padding-bottom: 4px; } h3 { font-size: 16px; }
-.muted { color: var(--muted); } .mono { font-family: Menlo, Consolas, monospace; font-size: 12px;
-  word-break: break-all; }
-.banner { background: var(--warn); border: 1px solid var(--line); padding: 12px 14px;
-  margin: 16px 0; font-family: Helvetica, Arial, sans-serif; }
-.banner strong { font-size: 17px; }
-table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 13px; }
-th, td { border: 1px solid var(--line); padding: 5px 7px; text-align: left; vertical-align: top; }
-th { background: var(--panel); font-family: Helvetica, Arial, sans-serif; }
-.claim { border: 1px solid var(--line); padding: 4px 16px 12px; margin: 18px 0; }
-.verdict { display: inline-block; font: bold 13px Helvetica, Arial, sans-serif; padding: 3px 8px;
-  border: 2px solid currentColor; }
-.v-sup { color: var(--sup); } .v-supai { color: var(--supai); } .v-con { color: var(--con); }
-.v-unp { color: var(--unp); } .v-await { color: var(--await); border-style: dashed; }
-blockquote { margin: 8px 0; padding: 6px 12px; border-left: 3px solid var(--line);
-  background: var(--panel); }
+:root { --fg:#141414; --muted:#57534b; --bg:#f7f5f0; --card:#fdfcfa; --line:#e4e0d8;
+  --line-strong:#cfc9bd; --panel:#efece5; --accent:#1d3557;
+  --sup:#2f5d43; --sup-bg:#e6eee8; --sup-line:#bcd0c2; --supai:#5c5a1f;
+  --con:#9a3a2c; --con-bg:#f4e5e1; --con-line:#e2c0b8;
+  --unp:#7f5a12; --unp-bg:#f5ecd6; --unp-line:#e3d2a8; --await:#7f5a12; --warn:#f5ecd6;
+  --sans: Inter, "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica,
+    Arial, sans-serif;
+  --serif: "Instrument Serif", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; }
+body { font: 15px/1.55 var(--sans); color: var(--fg); background: var(--bg);
+  max-width: 980px; margin: 0 auto; padding: 32px 20px 72px;
+  -webkit-font-smoothing: antialiased; }
+::selection { background: #d9e1ec; }
+a { color: var(--accent); text-underline-offset: 2px; }
+h1, h2, h3 { line-height: 1.2; color: var(--fg); }
+h1 { font: 400 40px/1.1 var(--serif); letter-spacing: -0.02em; margin: 8px 0 6px; }
+h2 { font-size: 17px; font-weight: 600; margin: 40px 0 10px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--line); }
+h3 { font-size: 15px; font-weight: 600; }
+.muted { color: var(--muted); }
+.mono { font-family: var(--mono); font-size: 11.5px; word-break: break-all; }
+.banner { background: var(--unp-bg); border: 1px solid var(--unp-line); border-radius: 10px;
+  padding: 12px 16px; margin: 16px 0; color: #4a3608; }
+.banner strong { font-size: 15px; }
+table { border-collapse: separate; border-spacing: 0; width: 100%; margin: 10px 0;
+  font-size: 13px; background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  overflow: hidden; }
+th, td { border-bottom: 1px solid var(--line); padding: 8px 10px; text-align: left;
+  vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+th { background: var(--panel); font: 500 10.5px var(--mono); letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--muted); }
+.claim { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  padding: 6px 22px 16px; margin: 20px 0;
+  box-shadow: 0 1px 2px rgb(20 20 20 / 0.04), 0 6px 18px -10px rgb(20 20 20 / 0.12); }
+.claim > blockquote { font: 400 24px/1.25 var(--serif); letter-spacing: -0.01em;
+  background: none; border-left: 2px solid var(--fg); border-radius: 0; padding: 2px 0 2px 18px; }
+.verdict { display: inline-flex; align-items: center; gap: 6px; font: 500 13px var(--sans);
+  padding: 3px 11px 3px 8px; border: 1px solid var(--line-strong); border-radius: 999px;
+  background: var(--panel); color: var(--muted); white-space: nowrap; }
+.verdict::before { content: "•"; display: inline-flex; align-items: center;
+  justify-content: center; width: 15px; height: 15px; border: 1.5px solid currentColor;
+  border-radius: 50%; font-size: 10px; font-weight: 700; line-height: 1; box-sizing: border-box; }
+.v-sup { color: var(--sup); background: var(--sup-bg); border-color: var(--sup-line); }
+.v-sup::before { content: "✓"; }
+.v-supai { color: var(--supai); background: var(--sup-bg); border: 1px dashed var(--sup-line); }
+.v-supai::before { content: "✓"; }
+.v-con { color: var(--con); background: var(--con-bg); border-color: var(--con-line); }
+.v-con::before { content: "✕"; }
+.v-unp { color: var(--unp); background: var(--unp-bg); border-color: var(--unp-line); }
+.v-unp::before { content: "?"; }
+.v-await { color: var(--await); background: var(--unp-bg); border: 1px dashed var(--await); }
+.v-await::before { content: "?"; }
+.verdict.v-nt { color: var(--muted); background: var(--panel); border: 1px dashed var(--muted); }
+.v-nt::before { content: "–"; }
+blockquote { margin: 10px 0; padding: 8px 14px; border-left: 2px solid var(--line-strong);
+  background: var(--panel); border-radius: 0 8px 8px 0; }
 .q { white-space: pre-wrap; }
-details summary { cursor: pointer; font-family: Helvetica, Arial, sans-serif; font-size: 13px; }
+details { margin: 8px 0; }
+details summary { cursor: pointer; font-size: 13px; font-weight: 500; color: var(--accent); }
 @page { margin: 16mm 14mm; }
 @media print {
-  :root { --fg:#000; --muted:#444; --bg:#fff; --line:#999; --panel:#f2f2f2; --sup:#000;
-    --supai:#000; --con:#000; --unp:#000; --await:#000; --warn:#fff; }
+  :root { --fg:#000; --muted:#444; --bg:#fff; --card:#fff; --line:#999; --panel:#f2f2f2;
+    --sup:#000; --supai:#000; --con:#000; --unp:#000; --await:#000; --warn:#fff;
+    --sup-bg:#fff; --con-bg:#fff; --unp-bg:#fff; }
   body { max-width: none; padding: 0; font-size: 10.5pt; }
   h2 { break-after: avoid; } h3 { break-after: avoid; }
-  .claim { break-inside: avoid; } tr { break-inside: avoid; }
+  .claim { break-inside: avoid; box-shadow: none; } tr { break-inside: avoid; }
   thead { display: table-header-group; }
   table { width: calc(100% - 2px); }
   .claim { margin-right: 2px; }
-  .banner { border: 2px solid #000; }
+  .verdict { border: 1.5px solid #000; }
+  .banner { border: 2px solid #000; color: #000; }
   .noprint { display: none; }
 }
 """
@@ -249,7 +283,8 @@ def _claim_block(conn: sqlite3.Connection, st: ClaimState) -> str:
     )
     out.append(f"<blockquote>{q(claim.text)}</blockquote>")
     out.append(f"<p class='muted'>Claim id <span class='mono'>{e(claim.id)}</span></p>")
-    out.append(f'<p><span class="verdict {st.css}">{e(st.label)}</span></p>')
+    nt = " v-nt" if st.untested else ""
+    out.append(f'<p><span class="verdict {st.css}{nt}">{e(st.label)}</span></p>')
     if st.awaiting_expert:
         out.append(
             f"<p>{st.ai_accepted} supporting item(s) accepted by the local AI reviewer and "

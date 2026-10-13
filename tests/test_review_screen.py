@@ -347,7 +347,26 @@ def test_pages_load_nothing_from_outside_and_run_no_script(db, conn):
         page = r.text.lower()
         assert "<script" not in page and " src=" not in page and "@import" not in page
         assert not re.search(r"(href|action)\s*=\s*['\"]?\s*(https?:)?//", page), path
-        assert not re.search(r"url\(", page), path
+        # The only url() allowed: the screen's own vendored fonts, by relative path.
+        fonts = re.findall(r"url\(([^)]*)\)", page)
+        assert all(re.fullmatch(r"'/static/fonts/[a-z0-9-]+\.woff2'", u) for u in fonts), path
+        assert "font-src 'self'" in csp
+
+
+def test_fonts_are_served_from_this_computer_only(db):
+    from ui import theme
+
+    app = App(db, port=PORT)
+    assert theme.FONT_FILES  # vendored, not fetched
+    for name in theme.FONT_FILES:
+        assert name in theme.FONT_CSS
+        r = get(app, f"/static/fonts/{name}")
+        assert r.status == 200 and r.header("Content-Type") == "font/woff2"
+        assert r.body == (theme.FONT_DIR / name).read_bytes()
+    for bad in ("../app.py", "LICENSES.txt", "%2e%2e/app.py", "x.woff2", ""):
+        assert get(app, f"/static/fonts/{bad}").status == 404, bad
+    no_host = Request("GET", "/static/fonts/" + next(iter(theme.FONT_FILES)), {}, {})
+    assert app.handle(no_host).status == 400
 
 
 def test_the_whole_flow_makes_no_network_call(db, conn, monkeypatch):
