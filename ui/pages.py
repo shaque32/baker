@@ -95,7 +95,13 @@ class Page:
         self.many_cases = many_cases  # the screen was started on a cases folder
         self.path = path  # the page's own path, to mark its tab
 
-    def form(self, action: str, body: str, cls: str = "box", back: str = "") -> str:
+    def form(
+        self, action: str, body: str, cls: str = "box", back: str = "", anchor: str = ""
+    ) -> str:
+        """anchor: the id of the element to come back to after the post, so a click does not
+        land the expert at the top of a long page."""
+        if back and anchor:
+            back = f"{back}#{urlquote(anchor, safe='')}"
         return (
             f'<form method="post" action="{e(action)}" class="{cls}">'
             f'<input type="hidden" name="token" value="{e(self.token)}">'
@@ -120,7 +126,8 @@ class Page:
         flash = ""
         if self.flash:
             msg, err = self.flash
-            flash = f'<div class="flash{" err" if err else ""}">{e(msg)}</div>'
+            # A toast: the page may open part-way down, at the item acted on.
+            flash = f'<div class="flash toast{" err" if err else ""}" role="status">{e(msg)}</div>'
         meta = f"<meta http-equiv='refresh' content='{int(refresh)}'>" if refresh else ""
         tabs = [("/cases", "Cases")] if self.many_cases else []
         if self.case_name is not None:
@@ -213,6 +220,7 @@ def run_banner(conn: sqlite3.Connection, page: Page, back: str) -> str:
                 "<button type='submit' class='primary'>Re-run verdicts</button>",
                 "",
                 back,
+                "verdict" if back.startswith("/claim?") else "",
             )
             + "</div>"
         )
@@ -292,7 +300,7 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
 
     out.append(_devices(conn, page, "/"))
 
-    out.append("<h2>Audit</h2>")
+    out.append("<h2 id='audit'>Audit</h2>")
     if run is None:
         out.append("<p>No audit has run yet. <a href='/setup'>Set up and run the audit</a>.</p>")
     else:
@@ -326,6 +334,7 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
                     "<button type='submit' class='primary'>Re-run verdicts (rules only, no model)"
                     "</button>",
                     back="/",
+                    anchor="audit",
                 )
             )
     out.append(
@@ -361,6 +370,7 @@ def _devices(conn: sqlite3.Connection, page: Page, back: str, heading: bool = Tr
                 "<button type='submit'>Withdraw</button>",
                 "inline",
                 back,
+                f"dev-{dev_id}",
             )
         else:
             who = "<span class='muted'>none</span>" + (
@@ -374,9 +384,11 @@ def _devices(conn: sqlite3.Connection, page: Page, back: str, heading: bool = Tr
             " <button type='submit'>Stipulate</button>",
             "inline",
             back,
+            f"dev-{dev_id}",
         )
         out.append(
-            f"<tr><td>{q(label)} <span class='mono'>{e(dev_id)}</span><br>{q(model or '')}</td>"
+            f"<tr id='dev-{e(dev_id)}'><td>{q(label)} <span class='mono'>{e(dev_id)}</span><br>"
+            f"{q(model or '')}</td>"
             f"<td class='mono'>{e(source_id)}</td><td>{who}</td><td>{change}</td></tr>"
         )
     out.append("</table>")
@@ -474,6 +486,7 @@ def _decide_form(page: Page, item: EvidenceItem, decided: bool, back: str) -> st
         "<button type='submit' name='status' value='accepted'>Accept</button>"
         "<button type='submit' name='status' value='dismissed'>Dismiss</button>" + reopen,
         back=back,
+        anchor=item.id,
     )
 
 
@@ -541,7 +554,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
             f"<blockquote>{q(st.paragraph_text)}</blockquote></details>"
         )
     out.append(
-        "<div class='card'><div class='in'><div class='eyebrow'>Verdict</div>"
+        "<div class='card' id='verdict'><div class='in'><div class='eyebrow'>Verdict</div>"
         f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span>"
     )
     needs = st.needs()
@@ -640,6 +653,7 @@ def _verdict_forms(page: Page, st: ClaimState, back: str) -> str:
             "<input type='text' class='wide' name='note' maxlength='500' "
             "placeholder='Note (optional)'><br><button type='submit'>Confirm this verdict</button>",
             back=back,
+            anchor="verdict",
         )
         + page.form(
             "/verdict",
@@ -650,6 +664,7 @@ def _verdict_forms(page: Page, st: ClaimState, back: str) -> str:
             "placeholder='Why (required; the report prints it as an expert override)'><br>"
             "<button type='submit'>Override the verdict</button>",
             back=back,
+            anchor="verdict",
         )
         + "<p class='muted'>A confirmation or override applies to this run's verdict. After "
         "re-running the verdicts, confirm again.</p></details>"
@@ -665,7 +680,7 @@ def _holdings(conn: sqlite3.Connection) -> str:
 def _edit_claim_form(page: Page, st: ClaimState, back: str) -> str:
     cid = e(st.claim.id)
     return (
-        "<h2>Edit this claim</h2>"
+        "<h2 id='edit'>Edit this claim</h2>"
         + page.form(
             "/claim/edit",
             f"<input type='hidden' name='claim' value='{cid}'>"
@@ -674,6 +689,7 @@ def _edit_claim_form(page: Page, st: ClaimState, back: str) -> str:
             "<button type='submit'>Save new wording</button> <span class='muted'>A changed "
             "claim needs a full audit.</span>",
             back=back,
+            anchor="edit",
         )
         + page.form(
             "/claim/edit",
@@ -681,6 +697,7 @@ def _edit_claim_form(page: Page, st: ClaimState, back: str) -> str:
             "<button type='submit' name='status' value='accepted'>Accept as written</button>"
             "<button type='submit' name='status' value='removed'>Remove this claim</button>",
             back=back,
+            anchor="edit",
         )
     )
 
@@ -973,7 +990,7 @@ def setup_page(
     )
 
     # 1. files
-    out.append("<h2>1. Files</h2>")
+    out.append("<h2 id='files'>1. Files</h2>")
     srcs = sources(conn)
     govdocs = {r[0]: r for r in conn.execute("SELECT source_id, title, doc_kind FROM govdocs")}
     if srcs:
@@ -1020,7 +1037,7 @@ def setup_page(
     )
 
     # 2. claims
-    out.append("<h2>2. Claims</h2>")
+    out.append("<h2 id='claims'>2. Claims</h2>")
     claims = {c.id: c for c in pipeline.load_claims(conn, include_removed=True)}
     has_paras = conn.execute("SELECT 1 FROM govdoc_paragraphs LIMIT 1").fetchone() is not None
     if not has_paras:
@@ -1035,6 +1052,7 @@ def setup_page(
                 "is audited until you accept, edit or remove each one. Or "
                 "<a href='/claim/new'>add a claim yourself</a>.</span>",
                 back="/setup",
+                anchor="claims",
             )
         )
     if order or any(c.status.value == "removed" for c in claims.values()):
@@ -1047,7 +1065,7 @@ def setup_page(
             c = claims[cid]
             where = _where_short(conn, c.paragraph_id)
             out.append(
-                f"<tr><td>{n}</td><td><a href='{e(link('/claim', id=cid))}'>"
+                f"<tr id='claim-{e(cid)}'><td>{n}</td><td><a href='{e(link('/claim', id=cid))}'>"
                 f"{e(claim_name(conn, cid, c.paragraph_id))}</a></td>"
                 f"<td>{e(where)}</td><td>{e(c.claim_type.value)}</td><td>{e(c.status.value)}"
                 f"{'' if c.model_run_id is None else ' (model)'}</td><td>{q(c.text)}</td>"
@@ -1067,11 +1085,11 @@ def setup_page(
             )
 
     # 3. owners
-    out.append("<h2>3. Who used each phone</h2>")
+    out.append("<h2 id='owners'>3. Who used each phone</h2>")
     out.append(_devices(conn, page, "/setup", heading=False))
 
     # 4. model and run
-    out.append("<h2>4. The model</h2>")
+    out.append("<h2 id='model'>4. The model</h2>")
     if model_lines:
         out.append(
             "<ul>"
@@ -1090,6 +1108,7 @@ def setup_page(
             "</button> <span class='muted'>Finds the model file, checks its SHA-256 against the "
             "config and checks this computer's memory. The audit also does this first.</span>",
             back="/setup",
+            anchor="model",
         )
     )
 
@@ -1153,11 +1172,18 @@ def _claim_buttons(page: Page, cid: str, status: str, text: str, locked: bool) -
         else "<button type='submit' name='status' value='accepted'>Accept</button>"
     )
     return (
-        page.form(
+        (
+            page.form("/claim/edit", hidden + accept, "inline", "/setup", f"claim-{cid}")
+            if accept
+            else ""
+        )
+        # A removed claim leaves the table, so its form comes back to the section instead.
+        + page.form(
             "/claim/edit",
-            hidden + accept + "<button type='submit' name='status' value='removed'>Remove</button>",
+            hidden + "<button type='submit' name='status' value='removed'>Remove</button>",
             "inline",
             "/setup",
+            "claims",
         )
         + page.form(
             "/claims/move",
@@ -1165,6 +1191,7 @@ def _claim_buttons(page: Page, cid: str, status: str, text: str, locked: bool) -
             "<button type='submit' name='delta' value='1'>Down</button>",
             "inline",
             "/setup",
+            f"claim-{cid}",
         )
         + "<details><summary>Edit the wording</summary>"
         + page.form(
@@ -1173,6 +1200,7 @@ def _claim_buttons(page: Page, cid: str, status: str, text: str, locked: bool) -
             f"<textarea name='text' rows='3' required>{e(text)}</textarea><br>"
             "<button type='submit'>Save</button>",
             back="/setup",
+            anchor=f"claim-{cid}",
         )
         + "</details>"
     )

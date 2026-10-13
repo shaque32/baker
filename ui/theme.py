@@ -85,6 +85,17 @@ h1 { font-size: 40px; }
 .flash { padding: 10px 14px; margin: 12px 0; border: 1px solid var(--line); border-radius: 10px;
   background: var(--card); }
 .flash.err { border-color: var(--con-line); background: var(--con-bg); color: var(--con); }
+.flash.toast { position: fixed; right: 20px; bottom: 20px; z-index: 10; margin: 0;
+  max-width: min(440px, calc(100vw - 40px)); box-shadow: 0 10px 30px -10px rgb(20 20 20 / 0.3);
+  animation: toast-out 0.4s ease 7s forwards; }
+.flash.toast.err { animation: none; }
+@keyframes toast-out { to { opacity: 0; visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) { .flash.toast { animation: none; } }
+
+/* coming back to the item a form acted on: clear the sticky header, mark it briefly */
+[id] { scroll-margin-top: 128px; }
+.item:target, .card:target, tr:target td { outline: 2px solid #c9a24a; outline-offset: 2px; }
+tr:target td { outline: 0; background: #fbf1cf; }
 
 /* forms and buttons */
 form.inline { display: inline; }
@@ -201,6 +212,7 @@ blockquote.claimtext { font: 400 32px/1.18 var(--serif); letter-spacing: -0.015e
 }
 @media (max-width: 600px) {
   header.top { position: static; }
+  [id] { scroll-margin-top: 12px; }
   main { padding: 20px 16px 64px; }
   .bar { padding: 10px 16px 2px; } nav.tabs { padding: 0 16px; }
   h1 { font-size: 32px; }
