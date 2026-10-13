@@ -138,12 +138,16 @@ def test_the_mac_installer_parses_reads_the_same_pins_and_keeps_an_existing_mode
     import subprocess
 
     script = ROOT / "packaging" / "mac" / "install.sh"
-    subprocess.run(["bash", "-n", str(script)], check=True)  # noqa: S603, S607 - fixed args
+    if sys.platform != "win32":  # Windows' "bash" is the WSL launcher, often with no Linux in it
+        subprocess.run(["bash", "-n", str(script)], check=True)  # noqa: S603, S607 - fixed args
     text = script.read_text(encoding="utf-8")
     assert "packaging/windows/pins.json" in text
     for key in ("['llama_cpp_python']['version']", "['model']['sha256']", "['model']['url']"):
         assert key in text
     assert 'if [ -f "$CONFIG" ]' in text  # never overwrites ~/.baker/model.json
     assert "shasum -a 256" in text  # the model is checked before it is used
+    # Executable in git, so a checkout on any system (and the zip GitHub makes) keeps the bit.
+    cmd = ["git", "ls-files", "-s", "packaging/mac"]  # noqa: S607 - fixed args
+    modes = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True).stdout  # noqa: S603
     for name in ("install.sh", "Install Baker.command"):
-        assert (ROOT / "packaging" / "mac" / name).stat().st_mode & 0o111
+        assert any(line.startswith("100755") and line.endswith(name) for line in modes.splitlines())
