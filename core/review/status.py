@@ -51,6 +51,7 @@ AGAINST = (Stance.CONTRADICTS, Stance.COMPLICATES)
 class ClaimState:
     claim: Claim
     where: str  # "page 1, paragraph 4"
+    name: str  # what the screen and report call it: "¶4.2" for a proposed claim, else its id
     paragraph_text: str | None
     run_id: str | None
     decision: VerdictDecision | None
@@ -188,6 +189,21 @@ def _where(conn: sqlite3.Connection, paragraph_id: str) -> tuple[str, str | None
     return f"page {para[0]}, paragraph {para[2] if para[2] else '#' + str(para[1])}", para[3]
 
 
+def claim_name(conn: sqlite3.Connection, claim_id: str, paragraph_id: str) -> str:
+    """A short name for the screen and the report. Proposed claims have ids like
+    'claim:para:<hash>:1:7:2' (core/claims/extract.py); they are named by the paragraph's printed
+    label and their number in it, "¶6.2". Claims the expert numbered keep their own id."""
+    prefix = f"claim:{paragraph_id}:"
+    if not claim_id.startswith(prefix) or not claim_id[len(prefix) :].isdigit():
+        return claim_id
+    r = conn.execute(
+        "SELECT para_no, label FROM govdoc_paragraphs WHERE id = ?", (paragraph_id,)
+    ).fetchone()
+    if r is None:
+        return claim_id
+    return f"\u00b6{r[1] if r[1] else '#' + str(r[0])}.{claim_id[len(prefix) :]}"
+
+
 def edited_after(conn: sqlite3.Connection, since: str) -> set[str]:
     out: set[str] = set()
     for (payload,) in conn.execute(
@@ -226,6 +242,7 @@ def _state(
     st = ClaimState(
         claim=claim,
         where=where,
+        name=claim_name(conn, claim.id, claim.paragraph_id),
         paragraph_text=ptext,
         run_id=run["run_id"] if run else None,
         decision=decision,
