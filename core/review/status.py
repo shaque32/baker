@@ -42,6 +42,7 @@ SUPPORTED_EXPERT = "Supported (expert-confirmed)"
 AWAITING_EXPERT = "Unproven, awaiting expert review"
 NOT_AUDITED = "Not audited"
 LABELING_INCOMPLETE = "Labeling incomplete"
+NOT_TESTED = "Unproven, not tested"
 RULES_PENDING = "Unproven (rules not written yet)"
 
 AGAINST = (Stance.CONTRADICTS, Stance.COMPLICATES)
@@ -68,6 +69,7 @@ class ClaimState:
     decided_after_run: bool = False  # an expert decided one of its items after the run
     edited_after_run: bool = False  # the expert changed the claim text after the run
     unlabeled: str | None = None  # why the run did not send this claim's evidence to the model
+    not_tested: str | None = None  # why nothing was checked: the claim got no core assumption
     incomplete: bool = False  # the run shown has not finished labeling this claim
 
     @property
@@ -80,9 +82,20 @@ class ClaimState:
         )
 
     @property
+    def untested(self) -> bool:
+        """No core assumption, so nothing was checked; an expert override says otherwise."""
+        return (
+            self.not_tested is not None
+            and self.decision is not None
+            and self.decision.override_note is None
+        )
+
+    @property
     def label(self) -> str:
         if self.incomplete:
             return LABELING_INCOMPLETE
+        if self.untested:
+            return NOT_TESTED
         return verdict_label(self.decision, self.awaiting_expert)[0]
 
     @property
@@ -110,6 +123,14 @@ class ClaimState:
             return [(8, "Not audited yet. Run the audit to check this claim.")]
         if self.edited_after_run:
             out.append((0, "Claim text changed after the audit. Run the full audit again."))
+        if self.untested:
+            out.append(
+                (
+                    1,
+                    "Not tested: Baker could not set up what to check, so no record was "
+                    "searched. Check this claim yourself, then confirm or override the verdict.",
+                )
+            )
         more = self.decision.verdict == Verdict.SUPPORTED  # already carried; review is optional
         if self.ai_accepted:
             out.append(
@@ -254,6 +275,9 @@ def _state(
         return st
     st.unlabeled = (run or {}).get("unlabeled", {}).get(claim.id)
     st.assumptions = pipeline.load_assumptions(conn, items["assumptions"])
+    if not any(a.is_core for a in st.assumptions):
+        # Runs before this was recorded have no reason stored; the claim is untested either way.
+        st.not_tested = (run or {}).get("not_tested", {}).get(claim.id) or pipeline.NOT_TESTED
     st.checks = pipeline.load_checks(conn, items["checks"])
     st.evidence = pipeline.load_evidence(conn, items["evidence"])
     st.last_reviewer = last_reviewers(conn, [e.id for e in st.evidence])

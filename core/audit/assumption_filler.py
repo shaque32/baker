@@ -21,6 +21,13 @@ the document or the case data. It fails closed at every step:
   exactly) is read from the claim's words by code, not taken from the model.
 - A time range must match the dates and times the document states (see `check_window`).
   The zone is the phone's zone from the case data; UTC only if the document says UTC.
+  Code reads the claim's own plain dates and times (`stated_windows`: "On March 12, 2026",
+  "between March 20 and March 23, 2026", "At about 7:58 p.m. on March 9, 2026") and builds
+  those ranges itself, the way the signed case01 sheet writes them. When the model's range
+  is refused or missing, the range the claim states on the same day (or its only one) is used
+  instead, and still goes through `check_window`. A quoted message the claim dates gets its
+  time assumption from code when the model gave none: the sender's parties and words with the
+  claim's one stated range. The model's arithmetic is never needed for a plain stated date.
 - Every proposed assumption is core. The model does not get to mark one optional.
 - A claim must not be judged on its easy parts (`coverage_gap`): each claim type needs its
   key template (a meaning claim needs "meaning", a count needs "message_count", ...), a stated
@@ -454,6 +461,88 @@ def check_window(
     raise Reject(f"window end {last.date()} is not a date the claim states")
 
 
+ABOUT_MINUTES = 8  # "at about 7:58 p.m." is 7:50 to 8:05 (the signed case01 sheet, C09)
+_AT_TIME_RE = re.compile(
+    r"\b(?:at\s+)?(?P<about>about\s+|approximately\s+|around\s+)?"
+    r"(?P<h>\d{1,2})(?::(?P<m>\d{2}))?\s*(?P<ap>a\.?m\.?|p\.?m\.?)(?![a-z])\s*,?\s*(?:on\s+)?$",
+    re.IGNORECASE,
+)
+_LEAD_RE = re.compile(r"\b(?:on|between|from)\s+$", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class StatedWindow:
+    """A plain range the claim states in its own words: wall clock, end exclusive."""
+
+    raw: str
+    start: datetime
+    end: datetime
+
+
+def stated_windows(text: str, context: str = "") -> list[StatedWindow] | None:
+    """Every date the text states, as the range it plainly means, or None when any date is
+    not plain: an open range ("before", "after", "since", "until"), a date with no year in the
+    text or its context, or a time code cannot pin to one date.
+
+    - "March 12, 2026": the whole day.
+    - "March 20 and March 23, 2026" or "March 10 through March 31, 2026": first day to the
+      end of the last.
+    - "2:31 a.m. on March 5, 2026": that minute. "about 7:58 p.m." is 8 minutes either side.
+    """
+    years = {int(y) for y in _YEAR_RE.findall(text + " " + context)}
+    out: list[StatedWindow] = []
+    for m in _DATE_RE.finditer(text):
+        before = text[max(0, m.start() - 48) : m.start()]
+        if any(_has_word(before[-12:], w) for w in (*OPEN_START, *OPEN_END)):
+            return None
+        y_end = int(m.group(6)) if m.group(6) else None
+        y1 = int(m.group(3)) if m.group(3) else y_end
+        if y1 is None:
+            if len(years) != 1:
+                return None
+            (y1,) = years
+        try:
+            d1 = date(y1, _MONTHS[m.group(1).lower()], int(m.group(2)))
+            if m.group(5):
+                mon2 = _MONTHS[m.group(4).lower()] if m.group(4) else d1.month
+                d2 = date(y_end or y1, mon2, int(m.group(5)))
+            else:
+                d2 = d1
+        except ValueError:
+            return None
+        if d2 < d1:
+            return None
+        start_i, end_i = m.start(), m.end()
+        at = _AT_TIME_RE.search(before)
+        if at is not None and not m.group(5):
+            h, mi = int(at.group("h")), int(at.group("m") or 0)
+            if not 1 <= h <= 12 or mi > 59:
+                return None
+            t = datetime.combine(
+                d1, time((h % 12) + (12 if at.group("ap").lower()[0] == "p" else 0), mi)
+            )
+            start_i = m.start() - len(before) + at.start()
+            if at.group("about"):
+                start, end = (
+                    t - timedelta(minutes=ABOUT_MINUTES),
+                    t + timedelta(minutes=ABOUT_MINUTES),
+                )
+            else:
+                start, end = t, t + timedelta(minutes=1)
+        else:
+            if time_mentions(text[m.end() : m.end() + 24]):
+                return None  # "March 5 at 2:31 a.m.": leave it to the model and check_window
+            lead = _LEAD_RE.search(before)
+            if lead is not None:
+                start_i = m.start() - len(before) + lead.start()
+            start = datetime.combine(d1, time(0, 0))
+            end = datetime.combine(d2 + timedelta(days=1), time(0, 0))
+        out.append(StatedWindow(text[start_i:end_i].strip(), start, end))
+    if _NUM_DATE_RE.search(text):
+        return None  # numeric dates (3/12/2026) may be either order; never guess
+    return out
+
+
 _COUNT_NOUNS = r"(?:messages?|texts?|calls?|times|emails?|chats?)"
 _APPROX = ("about", "approximately", "around", "roughly", "nearly", "almost", "some", "over",
            "more than", "fewer than", "less than", "under")  # fmt: skip
@@ -642,6 +731,7 @@ class LocalAssumptionFiller:
             except Reject as e:
                 self._drop(claim, i, str(e), call.id)
 
+        out = self._add_record_time(claim, para, out, allowed_ids)
         gap = coverage_gap(claim, out)
         if gap:
             self._drop(claim, None, f"{gap}; the claim stays unproven", call.id)
@@ -697,10 +787,70 @@ class LocalAssumptionFiller:
                 raise Reject("the duration's words are not written in the claim")
             params["duration_s"] = duration_range(p.duration.as_written)
 
-        if p.window is not None:
-            params["window"] = self._window(claim.text, para, p.window, device_ids, tpl.id)
+        if p.window is not None and "window" not in tpl.allowed:
+            pass  # a sender is picked by its words and party; the time is record_time's job
+        elif p.window is not None:
+            try:
+                params["window"] = self._window(claim.text, para, p.window, device_ids, tpl.id)
+            except Reject as refused:
+                # The model's range is refused; use the range the claim states that day.
+                try:
+                    params["window"] = self._stated(claim, para, device_ids, tpl.id, p.window.start)
+                except Reject as e:
+                    raise Reject(f"{refused}, and {e}") from None
+        elif "window" in tpl.required:
+            params["window"] = self._stated(claim, para, device_ids, tpl.id, None)
 
         return Proposal(p.template_id, params, is_core=True)
+
+    def _stated(
+        self, claim: Claim, para: str, device_ids: list[str], template_id: str, near: str | None
+    ) -> Any:
+        """The claim's own stated range: the one on the model's start day, or its only one.
+        Raises Reject when there is none, or more than one could be meant."""
+        if template_id == "no_contact" and any(
+            _has_word(claim.text, w) for w in ("first", "last", "earliest", "latest")
+        ):
+            # "first made contact on March 12" means none before it, not none that day.
+            raise Reject("the claim's range for no contact is not a plain stated range")
+        stated = stated_windows(claim.text, para) or []
+        if near is not None and len(stated) > 1:
+            try:
+                day = datetime.fromisoformat(near).date()
+            except ValueError:
+                day = None
+            stated = [w for w in stated if w.start.date() == day]
+        if len(stated) != 1:
+            raise Reject("the time range is not one the claim plainly states")
+        (w,) = stated
+        check_window(w.start, w.end, w.raw, claim.text, para, template_id)
+        try:
+            return local_window(w.start, w.end, self._phone_zone(device_ids), w.raw)
+        except ValueError as e:
+            raise Reject(str(e)) from None
+
+    def _add_record_time(
+        self, claim: Claim, para: str, out: list[Proposal], allowed_ids: set[str]
+    ) -> list[Proposal]:
+        """A claim that dates a quoted message ("On March 12, 2026, PETROV wrote ...") and got
+        a sender assumption but no time range gets the record_time assumption from code: the
+        sender's parties and words, in the one range the claim states."""
+        if "record_time" not in allowed_ids or not date_mentions(claim.text):
+            return out
+        if any(isinstance(p.params, dict) and p.params.get("window") for p in out):
+            return out
+        senders = [p for p in out if p.template_id == "sender" and isinstance(p.params, dict)]
+        if len(senders) != 1:
+            return out
+        sender = dict(senders[0].params)
+        try:
+            window = self._stated(claim, para, sender.get("device_ids", []), "record_time", None)
+        except Reject as e:
+            self._drop(claim, None, f"record_time from the claim's date: {e}", None)
+            return out
+        allowed = TEMPLATES["record_time"].allowed
+        params = {k: v for k, v in sender.items() if k in allowed} | {"window": window}
+        return [*out, Proposal("record_time", params, is_core=True)]
 
     def _person(self, name: str) -> str:
         n = _nfc(name.strip()).casefold()

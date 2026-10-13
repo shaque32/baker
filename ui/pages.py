@@ -534,6 +534,8 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
     out.append("<h2>Evidence</h2>")
     if st.unlabeled:
         out.append(f"<p class='muted'>{e(st.unlabeled)}</p>")
+    if st.untested:
+        out.append(f"<p><strong>{e(st.not_tested or '')}</strong></p>")
     groups = _groups(st)
     if not groups:
         out.append("<p class='muted'>No relevant evidence items were stored for this claim.</p>")

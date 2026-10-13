@@ -1,0 +1,223 @@
+{
+ "about": "Synthetic case01 only. Claims the local model (qwen3-14b-q4_k_m) proposed on Arsh's Mac on 2026-10-12, with the assumption filler's raw output for each, replayed by tests/test_filler_replay.py. Paragraph text is as Baker read it from the rendered synthetic affidavit PDF (its font has no Cyrillic, so one name reads as boxes).",
+ "model": "qwen3-14b-q4_k_m",
+ "model_sha256": "500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0",
+ "claims": [
+  {
+   "paragraph_label": "2",
+   "claim_no": 1,
+   "claim_type": "event",
+   "text": "The affidavit is based on forensic extraction reports for two phones.",
+   "paragraph": "2. This affidavit is based on forensic extraction reports for two phones: Item 1, an\nApple iPhone 13 seized from DANIEL PETROV, and Item 2, a Samsung Galaxy S22 seized\nfrom MARCUS REYES.",
+   "model_output": "{\"assumptions\": []}"
+  },
+  {
+   "paragraph_label": "4",
+   "claim_no": 1,
+   "claim_type": "identity",
+   "text": "Item 1 contains a contact named \"Marc Garage\" with the number +1 (212) 555-0122.",
+   "paragraph": "4. Item 1 contains a contact named \"Marc Garage\" with the number +1 (212) 555-0122.\nBetween February 20 and March 28, 2026, PETROV exchanged Telegram messages on Item 1\nwith a single Telegram account, user ID 5551234, which appears under the handle\n@alex92 and, from March 10, 2026, under the handle @northstar.",
+   "model_output": "{\"assumptions\": [{\"template_id\": \"contact_entry\", \"people\": [], \"accounts\": [{\"as_written\": \"+1 (212) 555-0122\", \"app\": \"Phone\"}], \"handles\": [], \"phones\": [\"Item 1\"], \"channels\": [], \"quoted_text\": \"Marc Garage\", \"count\": null, \"duration\": null, \"window\": null}]}"
+  },
+  {
+   "paragraph_label": "4",
+   "claim_no": 2,
+   "claim_type": "communication",
+   "text": "PETROV exchanged Telegram messages on Item 1 with a single Telegram account, user ID 5551234, which appears under the handle @alex92.",
+   "paragraph": "4. Item 1 contains a contact named \"Marc Garage\" with the number +1 (212) 555-0122.\nBetween February 20 and March 28, 2026, PETROV exchanged Telegram messages on Item 1\nwith a single Telegram account, user ID 5551234, which appears under the handle\n@alex92 and, from March 10, 2026, under the handle @northstar.",
+   "model_output": "{\"assumptions\": [{\"template_id\": \"person_identity\", \"people\": [\"PETROV\"], \"accounts\": [{\"as_written\": \"5551234\", \"app\": \"Telegram\"}], \"handles\": [\"@alex92\"], \"phones\": [], \"channels\": [\"Telegram\"], \"quoted_text\": \"\", \"count\": null, \"duration\": null, \"window\": {\"as_written\": \"Between February 20 and March 28, 2026\", \"start\": \"2026-02-20T00:00\", \"end\": \"2026-03-28T00:00\", \"zone\": \"phone\"}}, {\"template_id\": \"person_identity\", \"people\": [\"PETROV\"], \"accounts\": [{\"as_written\": \"5551234\", \"app\": \"Telegram\"}], \"handles\": [\"@northstar\"], \"phones\": [], \"channels\": [\"Telegram\"], \"quoted_text\": \"\", \"count\": null, \"duration\": null, \"window\": {\"as_written\": \"from March 10, 2026\", \"start\": \"2026-03-10T00:00\", \"end\": \"2026-03-11T00:00\", \"zone\": \"phone\"}}] } "
+  },
+  {
+   "paragraph_label": "4",
+   "claim_no": 3,
+   "claim_type": "communication",
+   "text": "PETROV exchanged Telegram messages on Item 1 with a single Telegram account, user ID 5551234, which appears under the handle @northstar from March 10, 2026.",
+   "paragraph": "4. Item 1 contains a contact named \"Marc Garage\" with the number +1 (212) 555-0122.\nBetween February 20 and March 28, 2026, PETROV exchanged Telegram messages on Item 1\nwith a single Telegram account, user ID 5551234, which appears under the handle\n@alex92 and, from March 10, 2026, under the handle @northstar.",
+   "model_output": "{\"assumptions\": [{\"template_id\": \"person_identity\", \"people\": [\"PETROV\"], \"accounts\": [{\"as_written\": \"5551234\", \"app\": \"Telegram\"}], \"handles\": [\"@northstar\"], \"phones\": [], \"channels\": [\"Telegram\"], \"quoted_text\": \"\", \"count\": null, \"duration\": null, \"window\": {\"as_written\": \"from March 10, 2026\", \"start\": \"2026-03-10T00:00\", \"end\": \"2026-03-11T00:00\", \"zone\": \"phone\"}}] } "
+  },
+  {
+   "paragraph_label": "4",
+   "claim_no": 4,
+   "claim_type": "timing",
+   "text": "The Telegram account with user ID 5551234 appeared under the handle @alex92 between February 20 and March 28, 2026.",
+   "paragraph": "4. Item 1 contains a contact named \"Marc Garage\" with the number +1 (212) 555-0122.\nBetween February 20 and March 28, 2026, PETROV exchanged Telegram messages on Item 1\nwith a single Telegram account, user ID 5551234, which appears under the handle\n@alex92 and, from March 10, 2026, under the handle @northstar.",
+   "model_output": "{\"assumptions\": [{\"template_id\": \"same_account\", \"people\": [], \"accounts\": [{\"as_written\": \"5551234\", \"app\": \"Telegram\"}], \"handles\": [\"@alex92\", \"@northstar\"], \"phones\": [], \"channels\": [\"Telegram\"], \"quoted_text\": \"\", \"count\": null, \"duration\": null, \"window\": {\"as_written\": \"from March 10, 2026\", \"start\": \"2026-03-10T00:00\", \"end\": \"2026-04-10T00:00\", \"zone\": \"phone\"}}, {\"template_id\": \"record_time\", \"people\": [], \"accounts\": [{\"as_written\": \"5551234\", \"app\": \"Telegram\"}], \"handles\": [\"@alex92\"], \"phones\": [], \"channels\": [\"Telegram\"], \"quoted_text\": \"\", \"count\": null, \"duration\": null, \"window\": {\"as_written\": \"Between February 20 and March 28, 2026\", \"start\": \"2026-02-20T00:00\", \"end\": \"2026-03-28T00:00\", \"zone\": \"phone\"}}]} "
+  },
+  {
+   "paragraph_label": "4",
+   "claim_no": 5,
+   "claim_type": "timing",
+   "text": "The Telegram account with user ID 5551234 appeared under the handle @northstar from March 10, 2026.",
+   "paragraph": "4. Item 1 contains a contact named \"Marc Garage\" with the number +1 (212) 555-0122.\nBetween February 20 and March 28, 2026, PETROV exchanged Telegram messages on Item 1\nwith a single Telegram account, user ID 5551234, which appears under the handle\n@alex92 and, from March 10, 2026, under the handle @northstar.",
+   "model_output": "{\"assumptions\": [{\"template_id\": \"same_account\", \"people\": [], \"accounts\": [{\"as_written\": \"5551234\", \"app\": \"Telegram\"}], \"handles\": [\"@alex92\", \"@northstar\"], \"phones\": [], \"channels\": [\"Telegram\"], \"quoted_text\": \"\", \"count\": null, \"duration\": null, \"window\": null}]} "
+  },
+  {
+   "paragraph_label": "5",
+   "claim_no": 1,
+   "claim_type": "count",
+   "text": "Item 1 recorded 13 Telegram messages exchanged between PETROV and @northstar from March 10 through March 31, 2026.",
+   "paragraph": "5. From March 10 through March 31, 2026, Item 1 recorded 13 Telegram messages exchanged\nbetween PETROV and @northstar. PETROV first made contact with @northstar on March 12,\n2026, two days after the seizure.",
+   "model_output": "{\"assumptions\": [{\"template_id\": \"message_count\", \"people\": [], \"accounts\": [], \"handles\": [\"@northstar\"], \"phones\": [\"Item 1\"], \"channels\": [\"Telegram\"], \"quoted_text\": \"\", \"count\": {\"value\": 13}, \"duration\": null, \"window\": {\"as_written\": \"March 10 through March 31, 2026\", \"start\": \"2026-03-10T00:00\", \"end\": \"2026-04-01T00:00\", \"zone\": \"phone\"}}] } "
+  },
+  {
+   "paragraph_label": "5",
+   "claim_no": 2,
+   "claim_type": "event",
+   "text": "PETROV first made contact with @northstar on March 12, 2026.",
+   "paragraph": "5. From March 10 through March 31, 2026, Item 1 recorded 13 Telegram messages exchanged\nbetween PETROV and @northstar. PETROV first made contact with @northstar on March 12,\n2026, two days after the seizure.",
+   "model_output": "{\"assumptions\": [{\"template_id\": \"record_time\", \"people\": [], \"accounts\": [], \"handles\": [], \"phones\": [\"Item 1\"], \"channels\": [\"Telegram\"], \"quoted_text\": \"PETROV first made contact with @northstar on March 12, 2026\", \"count\": null, \"duration\": null, \"window\": {\"as_written\": \"March 12, 2026\", \"start\": \"2026-03-12T00:00\", \"end\": \"2026-03-13T00:00\", \"zone\": \"phone\"}}] } "
+  },
+  {
+   "paragraph_label": "6",
+   "claim_no": 1,
+   "claim_type": "communication",
+   "text": "On March 12, 2026, PETROV wrote to @northstar: 'need 2 more by friday'",
+   "paragraph": "6. On March 12, 2026, PETROV wrote to @northstar: \"need 2 more by friday\". The package in\nthe message \"the package will be at marcs\", which @northstar sent on March 12, 2026,\ncontained narcotics.",
+   "model_output": "{\"assumptions\": [{\"template_id\": \"sender\", \"people\": [], \"accounts\": [], \"handles\": [], \"phones\": [], \"channels\": [], \"quoted_text\": \"need 2 more by friday\", \"count\": null, \"duration\": null, \"window\": null}]} "
+  },
+  {
+   "paragraph_label": "6",
+   "claim_no": 2,
+   "claim_type": "event",
+   "text": "The package in the message 'the package will be at marcs', which @northstar sent on March 12, 2026, contained narcotics.",
+   "paragraph": "6. On March 12, 2026, PETROV wrote to @northstar: \"need 2 more by friday\". The package in\nthe message \"the package will be at marcs\", which @northstar sent on March 12, 2026,\ncontained narcotics.",
+   "model_output": "{\"assumptions\": [{\"template_id\": \"sender\", \"people\": [], \"accounts\": [], \"handles\": [\"@northstar\"], \"phones\": [], \"channels\": [], \"quoted_text\": \"the package will be at marcs\", \"count\": null, \"duration\": null, \"window\": {\"as_written\": \"on March 12, 2026\", \"start\": \"2026-03-12T00:00\", \"end\": \"2026-03-13T00:00\", \"zone\": \"phone\"}}, {\"template_id\": \"meaning\", \"people\": [], \"accounts\": [], \"handles\": [], \"phones\": [], \"channels\": [], \"quoted_text\": \"the package will be at marcs\", \"count\": null, \"duration\": null, \"window\": null}, {\"template_id\": \"event\", \"people\": [], \"accounts\": [], \"handles\": [], \"phones\": [], \"channels\": [], \"quoted_text\": \"\", \"count\": null, \"duration\": null, \"window\": null}]}"
+  },
+  {
+   "paragraph_label": "9",
+   "claim_no": 1,
+   "claim_type": "event",
+   "text": "At 10:05 p.m. on March 14, 2026, REYES received a phone call warning him about police activity at his shop",
+   "paragraph": "9. At 10:05 p.m. on March 14, 2026, REYES received a phone call warning him about police\nactivity at his shop, and after that call PETROV sent the Telegram message \"move it\ntonight\".",
+   "model_output": "{\"assumptions\": [{\"template_id\": \"record_time\", \"people\": [\"REYES\"], \"accounts\": [], \"handles\": [], \"phones\": [], \"channels\": [\"call\"], \"quoted_text\": \"\", \"count\": null, \"duration\": null, \"window\": {\"as_written\": \"At 10:05 p.m. on March 14, 2026\", \"start\": \"2026-03-14T22:05\", \"end\": \"2026-03-15T00:00\", \"zone\": \"phone\"}}] } "
+  },
+  {
+   "paragraph_label": "9",
+   "claim_no": 2,
+   "claim_type": "communication",
+   "text": "PETROV sent the Telegram message \"move it tonight\"",
+   "paragraph": "9. At 10:05 p.m. on March 14, 2026, REYES received a phone call warning him about police\nactivity at his shop, and after that call PETROV sent the Telegram message \"move it\ntonight\".",
+   "model_output": "{\"assumptions\": [{\"template_id\": \"sender\", \"people\": [\"PETROV\"], \"accounts\": [], \"handles\": [], \"phones\": [], \"channels\": [\"Telegram\"], \"quoted_text\": \"move it tonight\", \"count\": null, \"duration\": null, \"window\": null}]}"
+  },
+  {
+   "paragraph_label": "10",
+   "claim_no": 1,
+   "claim_type": "communication",
+   "text": "On March 19, 2026, PETROV texted REYES: 'dont text me about it, use telegram'",
+   "paragraph": "10. On March 19, 2026, PETROV texted REYES: \"dont text me about it, use telegram\". PETROV\ndirected REYES's handling and movement of the narcotics.",
+   "model_output": "{\"assumptions\": [{\"template_id\": \"sender\", \"people\": [\"PETROV\"], \"accounts\": [], \"handles\": [], \"phones\": [], \"channels\": [\"SMS\"], \"quoted_text\": \"dont text me about it, use telegram\", \"count\": null, \"duration\": null, \"window\": null}]} "
+  },
+  {
+   "paragraph_label": "10",
+   "claim_no": 2,
+   "claim_type": "role",
+   "text": "PETROV directed REYES's handling and movement of the narcotics",
+   "paragraph": "10. On March 19, 2026, PETROV texted REYES: \"dont text me about it, use telegram\". PETROV\ndirected REYES's handling and movement of the narcotics.",
+   "model_output": "{\"assumptions\": [{\"template_id\": \"role\", \"people\": [\"PETROV\"], \"accounts\": [], \"handles\": [], \"phones\": [], \"channels\": [], \"quoted_text\": \"\", \"count\": null, \"duration\": null, \"window\": null}]} "
+  },
+  {
+   "paragraph_label": "11",
+   "claim_no": 1,
+   "claim_type": "absence",
+   "text": "PETROV and REYES had no contact of any kind between March 20 and March 23, 2026.",
+   "paragraph": "11. PETROV and REYES had no contact of any kind between March 20 and March 23, 2026.\nPETROV deleted the WhatsApp messages he exchanged with REYES between March 20 and\nMarch 23, 2026.",
+   "model_output": "{\"assumptions\": [{\"template_id\": \"no_contact\", \"people\": [\"PETROV\", \"REYES\"], \"accounts\": [], \"handles\": [], \"phones\": [], \"channels\": [], \"quoted_text\": \"\", \"count\": null, \"duration\": null, \"window\": {\"as_written\": \"between March 20 and March 23, 2026\", \"start\": \"2026-03-20T00:00\", \"end\": \"2026-03-23T00:00\", \"zone\": \"phone\"}}] } "
+  },
+  {
+   "paragraph_label": "11",
+   "claim_no": 2,
+   "claim_type": "event",
+   "text": "PETROV deleted the WhatsApp messages he exchanged with REYES between March 20 and March 23, 2026.",
+   "paragraph": "11. PETROV and REYES had no contact of any kind between March 20 and March 23, 2026.\nPETROV deleted the WhatsApp messages he exchanged with REYES between March 20 and\nMarch 23, 2026.",
+   "model_output": "{\"assumptions\": [{\"template_id\": \"no_contact\", \"people\": [\"PETROV\", \"REYES\"], \"accounts\": [], \"handles\": [], \"phones\": [], \"channels\": [], \"quoted_text\": \"\", \"count\": null, \"duration\": null, \"window\": {\"as_written\": \"between March 20 and March 23, 2026\", \"start\": \"2026-03-20T00:00\", \"end\": \"2026-03-23T23:59\", \"zone\": \"phone\"}}, {\"template_id\": \"record_time\", \"people\": [], \"accounts\": [], \"handles\": [], \"phones\": [], \"channels\": [\"WhatsApp\"], \"quoted_text\": \"PETROV deleted the WhatsApp messages he exchanged with REYES between March 20 and March 23, 2026\", \"count\": null, \"duration\": null, \"window\": {\"as_written\": \"between March 20 and March 23, 2026\", \"start\": \"2026-03-20T00:00\", \"end\": \"2026-03-23T23:59\", \"zone\": \"phone\"}}, {\"template_id\": \"sender\", \"people\": [\"PETROV\"], \"accounts\": [], \"handles\": [], \"phones\": [], \"channels\": [\"WhatsApp\"], \"quoted_text\": \"PETROV deleted the WhatsApp messages he exchanged with REYES between March 20 and March 23, 2026\", \"count\": null, \"duration\": null, \"window\": {\"as_written\": \"between March 20 and March 23, 2026\", \"start\": \"2026-03-20T00:00\", \"end\": \"2026-03-23T23:59\", \"zone\": \"phone\"}}] } "
+  },
+  {
+   "paragraph_label": "7",
+   "claim_no": 1,
+   "claim_type": "event",
+   "text": "On March 6, 2026, PETROV and REYES agreed by text message to meet at 8 p.m. on Monday, March 9, 2026, in the lot behind Kings Plaza.",
+   "paragraph": "7. On March 6, 2026, PETROV and REYES agreed by text message to meet at 8 p.m. on Monday,\nMarch 9, 2026, in the lot behind Kings Plaza. PETROV chose the location of the March\n9, 2026 meeting. At about 7:58 p.m. on March 9, 2026, Item 1 placed a call of about\ntwo minutes to +1 (212) 555-0122, the number saved as \"Marc Garage\".",
+   "model_output": "{\"assumptions\": [{\"template_id\": \"event\", \"people\": [\"PETROV\", \"REYES\"], \"accounts\": [], \"handles\": [], \"phones\": [], \"channels\": [], \"quoted_text\": \"On March 6, 2026, PETROV and REYES agreed by text message to meet at 8 p.m. on Monday, March 9, 2026, in the lot behind Kings Plaza.\", \"count\": null, \"duration\": null, \"window\": null}, {\"template_id\": \"role\", \"people\": [\"PETROV\"], \"accounts\": [], \"handles\": [], \"phones\": [], \"channels\": [], \"quoted_text\": \"PETROV chose the location of the March 9, 2026 meeting.\", \"count\": null, \"duration\": null, \"window\": null}, {\"template_id\": \"record_time\", \"people\": [], \"accounts\": [], \"handles\": [], \"phones\": [\"Item 1\"], \"channels\": [\"call\"], \"quoted_text\": \"\", \"count\": null, \"duration\": {\"as_written\": \"about two minutes\"}, \"window\": {\"as_written\": \"At about 7:58 p.m. on March 9, 2026\", \"start\": \"2026-03-09T19:58\", \"end\": \"2026-03-10T00:00\", \"zone\": \"phone\"}}]}"
+  },
+  {
+   "paragraph_label": "7",
+   "claim_no": 2,
+   "claim_type": "role",
+   "text": "PETROV chose the location of the March 9, 2026 meeting.",
+   "paragraph": "7. On March 6, 2026, PETROV and REYES agreed by text message to meet at 8 p.m. on Monday,\nMarch 9, 2026, in the lot behind Kings Plaza. PETROV chose the location of the March\n9, 2026 meeting. At about 7:58 p.m. on March 9, 2026, Item 1 placed a call of about\ntwo minutes to +1 (212) 555-0122, the number saved as \"Marc Garage\".",
+   "model_output": "{\"assumptions\": [{\"template_id\": \"role\", \"people\": [\"PETROV\"], \"accounts\": [], \"handles\": [], \"phones\": [], \"channels\": [], \"quoted_text\": \"\", \"count\": null, \"duration\": null, \"window\": null}]} "
+  },
+  {
+   "paragraph_label": "7",
+   "claim_no": 3,
+   "claim_type": "communication",
+   "text": "At about 7:58 p.m. on March 9, 2026, Item 1 placed a call of about two minutes to +1 (212) 555-0122, the number saved as \"Marc Garage\".",
+   "paragraph": "7. On March 6, 2026, PETROV and REYES agreed by text message to meet at 8 p.m. on Monday,\nMarch 9, 2026, in the lot behind Kings Plaza. PETROV chose the location of the March\n9, 2026 meeting. At about 7:58 p.m. on March 9, 2026, Item 1 placed a call of about\ntwo minutes to +1 (212) 555-0122, the number saved as \"Marc Garage\".",
+   "model_output": "{\"assumptions\": [{\"template_id\": \"record_time\", \"people\": [], \"accounts\": [], \"handles\": [], \"phones\": [\"Item 1\"], \"channels\": [\"call\"], \"quoted_text\": \"\", \"count\": null, \"duration\": {\"as_written\": \"about two minutes\"}, \"window\": {\"as_written\": \"At about 7:58 p.m. on March 9, 2026\", \"start\": \"2026-03-09T19:05\", \"end\": \"2026-03-09T19:20\", \"zone\": \"phone\"}}]}"
+  },
+  {
+   "paragraph_label": "8",
+   "claim_no": 1,
+   "claim_type": "communication",
+   "text": "PETROV texted REYES 'its done' at 2:31 a.m. on March 5, 2026",
+   "paragraph": "8. At 2:31 a.m. on March 5, 2026, PETROV texted REYES \"its done\".",
+   "model_output": "{\"assumptions\": [{\"template_id\": \"sender\", \"people\": [\"PETROV\"], \"accounts\": [], \"handles\": [], \"phones\": [], \"channels\": [\"SMS\"], \"quoted_text\": \"its done\", \"count\": null, \"duration\": null, \"window\": {\"as_written\": \"at 2:31 a.m. on March 5, 2026\", \"start\": \"2026-03-05T02:31\", \"end\": \"2026-03-05T02:32\", \"zone\": \"phone\"}}, {\"template_id\": \"record_time\", \"people\": [], \"accounts\": [], \"handles\": [], \"phones\": [], \"channels\": [\"SMS\"], \"quoted_text\": \"its done\", \"count\": null, \"duration\": null, \"window\": {\"as_written\": \"at 2:31 a.m. on March 5, 2026\", \"start\": \"2026-03-05T02:31\", \"end\": \"2026-03-05T02:32\", \"zone\": \"phone\"}}]}"
+  },
+  {
+   "paragraph_label": "12",
+   "claim_no": 1,
+   "claim_type": "communication",
+   "text": "On March 18, 2026, PETROV used the Instagram account dp_garage to tell REYES 'got the money, come get it'.",
+   "paragraph": "12. On March 18, 2026, PETROV, using the Instagram account dp_garage, told REYES \"got the\nmoney, come get it\".",
+   "model_output": "{\"assumptions\": [{\"template_id\": \"sender\", \"people\": [\"PETROV\"], \"accounts\": [{\"as_written\": \"dp_garage\", \"app\": \"Instagram\"}], \"handles\": [], \"phones\": [], \"channels\": [\"Instagram\"], \"quoted_text\": \"got the money, come get it\", \"count\": null, \"duration\": null, \"window\": null}]} "
+  },
+  {
+   "paragraph_label": "13",
+   "claim_no": 1,
+   "claim_type": "communication",
+   "text": "On March 11, 2026, PETROV wrote in Russian to the WhatsApp contact saved as ' ■■■■ ' that he was worried about Marcus.",
+   "paragraph": "13. On March 11, 2026, PETROV wrote in Russian to the WhatsApp contact saved as \" ■■■■ \"\nthat he was worried about Marcus.",
+   "model_output": "{\"assumptions\": [{\"template_id\": \"sender\", \"people\": [\"PETROV\"], \"accounts\": [], \"handles\": [], \"phones\": [], \"channels\": [\"WhatsApp\"], \"quoted_text\": \"he was worried about Marcus\", \"count\": null, \"duration\": null, \"window\": {\"as_written\": \"On March 11, 2026\", \"start\": \"2026-03-11T00:00\", \"end\": \"2026-03-12T00:00\", \"zone\": \"phone\"}}, {\"template_id\": \"contact_entry\", \"people\": [], \"accounts\": [{\"as_written\": \"■■■■\", \"app\": \"WhatsApp\"}], \"handles\": [], \"phones\": [], \"channels\": [], \"quoted_text\": \"■■■■\", \"count\": null, \"duration\": null, \"window\": null}]}"
+  },
+  {
+   "paragraph_label": "13",
+   "claim_no": 2,
+   "claim_type": "identity",
+   "text": "The WhatsApp contact saved as ' ■■■■ ' is linked to an identity.",
+   "paragraph": "13. On March 11, 2026, PETROV wrote in Russian to the WhatsApp contact saved as \" ■■■■ \"\nthat he was worried about Marcus.",
+   "model_output": "{\"assumptions\": [{\"template_id\": \"contact_entry\", \"people\": [], \"accounts\": [{\"as_written\": \"■■■■\", \"app\": \"WhatsApp\"}], \"handles\": [], \"phones\": [], \"channels\": [], \"quoted_text\": \"■■■■\", \"count\": null, \"duration\": null, \"window\": null}, {\"template_id\": \"person_identity\", \"people\": [\"PETROV\"], \"accounts\": [{\"as_written\": \"■■■■\", \"app\": \"WhatsApp\"}], \"handles\": [], \"phones\": [], \"channels\": [], \"quoted_text\": \"\", \"count\": null, \"duration\": null, \"window\": null}]}"
+  },
+  {
+   "paragraph_label": "13",
+   "claim_no": 3,
+   "claim_type": "content_meaning",
+   "text": "PETROV wrote in Russian to the WhatsApp contact saved as ' ■■■■ ' that he was worried about Marcus.",
+   "paragraph": "13. On March 11, 2026, PETROV wrote in Russian to the WhatsApp contact saved as \" ■■■■ \"\nthat he was worried about Marcus.",
+   "model_output": "{\"assumptions\": [{\"template_id\": \"sender\", \"people\": [\"PETROV\"], \"accounts\": [], \"handles\": [], \"phones\": [], \"channels\": [\"WhatsApp\"], \"quoted_text\": \"he was worried about Marcus\", \"count\": null, \"duration\": null, \"window\": null}, {\"template_id\": \"contact_entry\", \"people\": [], \"accounts\": [{\"as_written\": \"■■■■\", \"app\": \"WhatsApp\"}], \"handles\": [], \"phones\": [], \"channels\": [], \"quoted_text\": \"\", \"count\": null, \"duration\": null, \"window\": null}, {\"template_id\": \"record_time\", \"people\": [], \"accounts\": [], \"handles\": [], \"phones\": [], \"channels\": [\"WhatsApp\"], \"quoted_text\": \"he was worried about Marcus\", \"count\": null, \"duration\": null, \"window\": {\"as_written\": \"On March 11, 2026\", \"start\": \"2026-03-11T00:00\", \"end\": \"2026-03-12T00:00\", \"zone\": \"phone\"}}] } "
+  },
+  {
+   "paragraph_label": "14",
+   "claim_no": 1,
+   "claim_type": "identity",
+   "text": "The Telegram user @northstar is ALEXANDER SOKOLOV.",
+   "paragraph": "14. The Telegram user @northstar is ALEXANDER SOKOLOV. @northstar is the same person saved\nin Item 1 as \"Alex\" at +1 (212) 555-0182.",
+   "model_output": "{\"assumptions\": [{\"template_id\": \"person_identity\", \"people\": [\"ALEXANDER SOKOLOV\"], \"accounts\": [{\"as_written\": \"@northstar\", \"app\": \"Telegram\"}], \"handles\": [\"@northstar\"], \"phones\": [], \"channels\": [], \"quoted_text\": \"\", \"count\": null, \"duration\": null, \"window\": null}]} "
+  },
+  {
+   "paragraph_label": "14",
+   "claim_no": 2,
+   "claim_type": "identity",
+   "text": "@northstar is the same person saved in Item 1 as \"Alex\" at +1 (212) 555-0182.",
+   "paragraph": "14. The Telegram user @northstar is ALEXANDER SOKOLOV. @northstar is the same person saved\nin Item 1 as \"Alex\" at +1 (212) 555-0182.",
+   "model_output": "{\"assumptions\": [{\"template_id\": \"person_identity\", \"people\": [\"ALEXANDER SOKOLOV\"], \"accounts\": [{\"as_written\": \"@northstar\", \"app\": \"Telegram\"}], \"handles\": [\"@northstar\"], \"phones\": [], \"channels\": [], \"quoted_text\": \"\", \"count\": null, \"duration\": null, \"window\": null}, {\"template_id\": \"same_account\", \"people\": [], \"accounts\": [{\"as_written\": \"Alex\", \"app\": \"Phone\"}, {\"as_written\": \"@northstar\", \"app\": \"Telegram\"}], \"handles\": [], \"phones\": [], \"channels\": [], \"quoted_text\": \"\", \"count\": null, \"duration\": null, \"window\": null}]}"
+  },
+  {
+   "paragraph_label": "15",
+   "claim_no": 1,
+   "claim_type": "communication",
+   "text": "On March 25, 2026, PETROV communicated with the contact 'Alex' about getting the tickets.",
+   "paragraph": "15. On March 25, 2026, PETROV told the contact \"Alex\" that he \"got the tickets\", which in\nthis context refers to narcotics.",
+   "model_output": "{\"assumptions\": [{\"template_id\": \"sender\", \"people\": [\"PETROV\"], \"accounts\": [], \"handles\": [], \"phones\": [], \"channels\": [], \"quoted_text\": \"got the tickets\", \"count\": null, \"duration\": null, \"window\": null}, {\"template_id\": \"meaning\", \"people\": [], \"accounts\": [], \"handles\": [], \"phones\": [], \"channels\": [], \"quoted_text\": \"got the tickets\", \"count\": null, \"duration\": null, \"window\": null}, {\"template_id\": \"contact_entry\", \"people\": [], \"accounts\": [{\"as_written\": \"Alex\", \"app\": \"Phone\"}], \"handles\": [], \"phones\": [], \"channels\": [], \"quoted_text\": \"\", \"count\": null, \"duration\": null, \"window\": null}, {\"template_id\": \"record_time\", \"people\": [], \"accounts\": [], \"handles\": [], \"phones\": [], \"channels\": [], \"quoted_text\": \"got the tickets\", \"count\": null, \"duration\": null, \"window\": {\"as_written\": \"On March 25, 2026\", \"start\": \"2026-03-25T00:00\", \"end\": \"2026-03-26T00:00\", \"zone\": \"phone\"}}] } "
+  }
+ ]
+}

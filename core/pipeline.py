@@ -24,6 +24,11 @@ only moves data between them, stores it, and refuses anything that breaks a rule
   is stored as unproven with a reason saying no verdict was decided.
 - core/audit/invariants.py re-checks every decision against the stored records. A violation
   rolls back that claim's work, marks the pipeline run failed, and stops.
+- A claim that gets no core assumption is not tested: nothing is checked or searched, and
+  rule 3a keeps it unproven. That happens when the assumption filler refuses every proposal
+  (a value it cannot tie to the document or the case data fails closed). The claim's audit-log
+  entry and the run's entry list it under `not_tested` with the refusals, and the report and
+  review screen say "Not tested" instead of a plain unproven.
 - A claim whose core check already failed is not sent to the stance model: rule 1a makes it
   contradicted whatever its evidence says, so labels could not change its verdict, and they
   cost model calls (about a fifth of case01's). The run's audit-log entry lists these claims
@@ -277,9 +282,24 @@ class RunResult:
     model_outputs_reused: int = 0
     manifest: dict[str, dict[str, list[str]]] = field(default_factory=dict)
     unlabeled: dict[str, str] = field(default_factory=dict)  # claim id -> why it was not labeled
+    not_tested: dict[str, str] = field(default_factory=dict)  # claim id -> why nothing was checked
 
 
 # ---------------------------------------------------------------- helpers
+
+NOT_TESTED = (
+    "Not tested: Baker could not set up what to check for this claim, so no record was "
+    "searched and the claim stays unproven."
+)
+
+
+def not_tested_reason(refused: Sequence[str], limit: int = 4) -> str:
+    """The sentence the screen and report show for a claim with no core assumption."""
+    seen = list(dict.fromkeys(r.strip() for r in refused if r and r.strip()))
+    if not seen:
+        return NOT_TESTED
+    more = f" (and {len(seen) - limit} more)" if len(seen) > limit else ""
+    return f"{NOT_TESTED} Refused: {'; '.join(seen[:limit])}{more}."
 
 
 def iso(dt: datetime | None) -> str | None:
@@ -530,6 +550,7 @@ def latest_attempt(conn: sqlite3.Connection) -> dict | None:
             "claim_order": list(order) if order is not None else None,
             "manifest": {p["claim_id"]: p["manifest"] for p in finished},
             "unlabeled": {p["claim_id"]: p["unlabeled"] for p in finished if p.get("unlabeled")},
+            "not_tested": {p["claim_id"]: p["not_tested"] for p in finished if p.get("not_tested")},
             "components": config.get("components", {}),
             "stored_items": last.get("stored_items", 0),
             "dropped_labels": last.get("dropped_labels", 0),
@@ -890,6 +911,11 @@ class _Run:
         self.progress.started(claim.id)
         self.pending = []  # nothing is written until this claim's model work is done
         assumptions = list(c.assumptions.build(claim))
+        if not any(a.is_core for a in assumptions):
+            refused = getattr(c.assumptions, "refused", None)
+            self.result.not_tested[claim.id] = not_tested_reason(
+                refused(claim.id) if callable(refused) else []
+            )
         for a in assumptions:
             if a.claim_id != claim.id:
                 raise invariants.InvariantViolation(f"assumption {a.id} built for {a.claim_id}")
@@ -1138,6 +1164,7 @@ def run_audit(
                         "verdict_id": decision.id,
                         "manifest": result.manifest[claim.id],
                         "unlabeled": result.unlabeled.get(claim.id),
+                        "not_tested": result.not_tested.get(claim.id),
                         # running totals, so an unfinished run's report can print them
                         "stored_items": result.stored_items,
                         "dropped_labels": result.dropped_labels,
@@ -1172,6 +1199,7 @@ def run_audit(
                     "reviewer_failures": result.reviewer_failures,
                     "model_outputs_reused": result.model_outputs_reused,
                     "unlabeled": result.unlabeled,
+                    "not_tested": result.not_tested,
                     "rejected_assumptions": [
                         {"template_id": r.proposal.template_id, "reason": r.reason}
                         for r in getattr(components.assumptions, "rejected", ())
