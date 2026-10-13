@@ -49,6 +49,10 @@ _SKIP_REASON_WORDS = {
     ),
     "header_like_row": "held only column names (a second header row Baker could not join)",
     "account_without_identifier": "had no username or identifier",
+    "same_id_as_an_earlier_record": (
+        "repeated the record id of an earlier record (the same record listed twice); the "
+        "earlier one was imported"
+    ),
 }
 _TIME_PROBLEM_WORDS = {
     "ambiguous_day_month": (
@@ -71,9 +75,10 @@ _TIME_PROBLEM_WORDS = {
 }
 
 
-def _fill(template: str, count: int) -> str:
+def _fill(template: str, count: int, **extra: str) -> str:
     one = count == 1
     return template.format(
+        **extra,
         be="is" if one else "are",
         have="has" if one else "have",
         s0="s" if one else "",
@@ -100,6 +105,9 @@ _ATTENTION_COUNTERS = {
         "Time values that can only be read the other way round from the date order stated at "
         "import (each was read as written; check the stated order)"
     ),
+    "attachments_without_file_reference": (
+        "Attachments the package names without pointing to a file inside it (no file hash)"
+    ),
 }
 _INFO_COUNTERS = {
     "times_offset_from_report_settings": (
@@ -119,10 +127,55 @@ _INFO_COUNTERS = {
     ),
     "extraction_time_unread": "Extraction times in the summary that could not be read",
     "pdf_subheadings_in_sections": "Sub-headings inside sections (kept in their section)",
+    "attachment_files_hashed": "Attachment files found in the package and SHA-256 hashed",
+    "attachment_files_encrypted_not_hashed": (
+        "Attachment files encrypted in the package, so not hashed"
+    ),
+    "chats_without_messages": "Chats with no messages in the package",
     "cells_with_excel_escapes_decoded": (
         "Cells holding characters Excel stores escaped (such as _x000D_ for the carriage "
         "return of a line break), read as the characters they stand for"
     ),
+}
+
+
+# Shown first for every import made with an unverified reader (the UFDR importer, until a real
+# package has been checked against Cellebrite Reader). Attention level: the expert must see it.
+FORMAT_UNVERIFIED = (
+    "Baker's UFDR reader is not yet verified. It was built from Cellebrite's public "
+    "descriptions of the UFDR format and tested only on synthetic packages, never on a real "
+    "one. Before relying on a record, open the same record in Cellebrite Reader and compare "
+    "(each record's locator gives its place in report.xml)."
+)
+# Record flags a UFDR import lists by locator: (level, words). {n} is the count with its noun;
+# {be}, {have}, {s0} and {them} agree with it.
+_FLAG_WORDS: dict[str, tuple[Level, str]] = {
+    "carved": (
+        "attention",
+        "{n} {be} marked as recovered by carving (rebuilt from raw or unallocated data), so "
+        "{them} may be incomplete or wrong in text, time or parties. They were imported; check "
+        "each one in Cellebrite Reader before relying on it.",
+    ),
+    "decoding_confidence_not_high": (
+        "attention",
+        "{n} {have} a decoding confidence other than high in the package; check {them} in "
+        "Cellebrite Reader before relying on {them}.",
+    ),
+    "attachment_file_not_in_package": (
+        "attention",
+        "{n} name{s0} an attachment file that is not in the package, so the file was not hashed.",
+    ),
+    "attachment_hash_differs": (
+        "attention",
+        "{n} {have} an attachment whose SHA-256 in the package differs from the hash stated for "
+        "it in report.xml.",
+    ),
+    "attachment_without_name": (
+        "attention",
+        "{n} {have} an attachment with neither a file name nor a file, so it was not recorded.",
+    ),
+    "duration_unread": ("attention", "{n} {have} a call duration Baker could not read."),
+    "no_time": ("attention", "{n} {have} no time in the package, so no time was set."),
 }
 
 
@@ -147,6 +200,11 @@ class CoverageSummary:
     status: Literal["complete", "needs_review"]
     headline: str
     items: tuple[CoverageItem, ...] = field(default=())
+
+    @property
+    def format_unverified(self) -> bool:
+        """The import was made with a reader not yet checked against a real file."""
+        return any(i.code == "format_unverified" for i in self.items)
 
     @property
     def attention(self) -> list[CoverageItem]:
@@ -226,7 +284,8 @@ def _names(values: list[str]) -> list[Segment]:
     return out
 
 
-def _table_items(t: dict) -> list[CoverageItem]:
+def _table_items(t: dict, xml: bool = False) -> list[CoverageItem]:
+    """Items for one table (a sheet or PDF table), or one record type of a UFDR (`xml`)."""
     items: list[CoverageItem] = []
     name = str(t.get("name"))
     kind = str(t.get("kind") or "")
@@ -250,7 +309,8 @@ def _table_items(t: dict) -> list[CoverageItem]:
                 (
                     *where,
                     _t(
-                        f"{_n(count, 'rows')} {'was' if count == 1 else 'were'} not imported: "
+                        f"{_n(count, 'records' if xml else 'rows')} "
+                        f"{'was' if count == 1 else 'were'} not imported: "
                         f"{'it' if count == 1 else 'they'} "
                         f"{_SKIP_REASON_WORDS.get(reason, reason.replace('_', ' '))}."
                     ),
@@ -311,7 +371,18 @@ def _table_items(t: dict) -> list[CoverageItem]:
             )
         )
     for loc_reason, locs in sorted((t.get("flagged_locators") or {}).items()):
-        if loc_reason == "body_at_excel_cell_limit":
+        if loc_reason in _FLAG_WORDS:
+            level, words = _FLAG_WORDS[loc_reason]
+            n = int((t.get("flag_counts") or {}).get(loc_reason, len(locs)))
+            items.append(
+                CoverageItem(
+                    level,
+                    loc_reason,
+                    (*where, _t(_fill(words, n, n=_n(n, "records")))),
+                    tuple(locs),
+                )
+            )
+        elif loc_reason == "body_at_excel_cell_limit":
             items.append(
                 CoverageItem(
                     "attention",
@@ -332,7 +403,12 @@ def _table_items(t: dict) -> list[CoverageItem]:
             CoverageItem(
                 "info",
                 "unknown_columns",
-                (*where, _t("columns Baker does not read: "), *_names(unknown), _t(".")),
+                (
+                    *where,
+                    _t(f"{'fields' if xml else 'columns'} Baker does not read: "),
+                    *_names(unknown),
+                    _t("."),
+                ),
             )
         )
     for col, off in sorted((t.get("header_offsets") or {}).items()):
@@ -406,6 +482,82 @@ def _table_items(t: dict) -> list[CoverageItem]:
     return items
 
 
+def _ufdr_items(u: dict) -> list[CoverageItem]:
+    """What a UFDR package held beyond its records: extractions, files, record states."""
+    items: list[CoverageItem] = []
+    partial = u.get("partial_extractions") or []
+    if partial:
+        items.append(
+            CoverageItem(
+                "attention",
+                "partial_extraction",
+                (
+                    _t("The package marks these extractions as holding partial data: "),
+                    *_names([str(x) for x in partial]),
+                    _t(". Records missing from them may be on the phone."),
+                ),
+            )
+        )
+    exts = u.get("extractions") or []
+    if len(exts) > 1:
+        items.append(
+            CoverageItem(
+                "info",
+                "several_extractions",
+                (
+                    _t(f"The package holds {len(exts)} extractions of one device, read together: "),
+                    *_names([str(e.get("name") or e.get("type") or "?") for e in exts]),
+                    _t(". A record that appears in more than one may be imported more than once."),
+                ),
+            )  # fmt: skip
+        )
+    if u.get("namespace") and not u.get("namespace_known"):
+        items.append(
+            CoverageItem(
+                "info",
+                "unknown_namespace",
+                (
+                    _t("report.xml uses the XML namespace "),
+                    _q(u["namespace"]),
+                    _t(", which Baker has not seen documented; it was read the same way."),
+                ),
+            )
+        )
+    files = int(u.get("package_files") or 0)
+    hashed = int(u.get("package_files_hashed") or 0)
+    if files:
+        items.append(
+            CoverageItem(
+                "info",
+                "package_files",
+                (
+                    _t(
+                        f"The package holds {_n(files, 'other files')} (pictures, databases and "
+                        f"other extracted files). Baker read report.xml and hashed "
+                        f"{_n(hashed, 'files')} attached to messages; it did not read the rest."
+                    ),
+                ),
+            )
+        )
+    tagged = int(u.get("tagged_files") or 0)
+    if tagged:
+        items.append(
+            CoverageItem(
+                "info",
+                "tagged_files",
+                (_t(f"report.xml lists {_n(tagged, 'files')}; Baker does not import that list."),),
+            )
+        )
+    states = u.get("deleted_state_values") or {}
+    if states:
+        parts: list[Segment] = [_t("Record states as the package gives them: ")]
+        for i, (k, v) in enumerate(sorted(states.items())):
+            parts += [*([_t(", ")] if i else []), _q(k), _t(f" ({v:,})")]
+        parts.append(_t(". Baker stores only what the package states."))
+        items.append(CoverageItem("info", "record_states", tuple(parts)))
+    return items
+
+
 def _fmt_off(off: int) -> str:
     sign = "-" if off < 0 else "+"
     h, m = divmod(abs(off), 60)
@@ -415,13 +567,19 @@ def _fmt_off(off: int) -> str:
 def summarize(c: SourceCoverage) -> CoverageSummary:
     p = c.payload
     items: list[CoverageItem] = []
+    xml = p.get("layout") == "xml"  # a UFDR: record types, not sheets or tables
+    if p.get("format_support") == "unverified":
+        items.append(CoverageItem("attention", "format_unverified", (_t(FORMAT_UNVERIFIED),)))
     tables = [t for t in p.get("tables", []) if isinstance(t, dict)]
     for entry in p.get("not_imported", []) or []:
         reason = str(entry.get("reason", ""))
         deliberate = reason == "category not imported" or reason.startswith("section '")
         rows, lines = entry.get("rows"), entry.get("lines")
+        records = entry.get("records")
         parts: list[Segment] = [_q(entry.get("name")), _t(" was not imported")]
-        if isinstance(rows, int):
+        if isinstance(records, int):
+            parts.append(_t(f" ({_n(records, 'records')})"))
+        elif isinstance(rows, int):
             parts.append(_t(f" ({_n(rows, 'rows')}, any header included)"))
         elif isinstance(lines, int):
             parts.append(_t(f" ({_n(lines, 'lines')} of text)"))
@@ -440,7 +598,7 @@ def summarize(c: SourceCoverage) -> CoverageSummary:
             )
         )
     for t in tables:
-        items += _table_items(t)
+        items += _table_items(t, xml)
     borrowed: dict[tuple[str, str], list[str]] = {}
     for t in tables:
         basis, order = t.get("date_order_basis"), t.get("date_order")
@@ -485,10 +643,11 @@ def summarize(c: SourceCoverage) -> CoverageSummary:
                 "categories_not_found",
                 (
                     _t(
-                        "The report has no section Baker reads for "
+                        f"The {'package' if xml else 'report'} has no "
+                        f"{'records' if xml else 'section'} Baker reads for "
                         + ", ".join(names)
-                        + ". That means only that the report does not include them, not "
-                        "that the phone had none."
+                        + f". That means only that the {'package' if xml else 'report'} does "
+                        "not include them, not that the phone had none."
                     ),
                 ),
             )
@@ -500,8 +659,11 @@ def summarize(c: SourceCoverage) -> CoverageSummary:
                 "no_summary",
                 (
                     _t(
-                        "The report has no summary Baker recognises, so the extraction time, "
-                        "device and report time zone were not read from it."
+                        "The package has no device metadata Baker recognises, so the "
+                        "extraction time and device were not read from it."
+                        if xml
+                        else "The report has no summary Baker recognises, so the extraction "
+                        "time, device and report time zone were not read from it."
                     ),
                 ),
             )
@@ -549,6 +711,8 @@ def summarize(c: SourceCoverage) -> CoverageSummary:
                 ),
             )  # fmt: skip
         )
+    if isinstance(p.get("ufdr"), dict):
+        items += _ufdr_items(p["ufdr"])
     for note in p.get("notes", []) or []:
         # Notes with report text in them are rendered above from structured fields; only
         # Baker's own fixed notes are shown as they are.
@@ -559,12 +723,14 @@ def summarize(c: SourceCoverage) -> CoverageSummary:
     read = sum(int(t.get("rows_read") or 0) for t in tables)
     n_not = len(p.get("not_imported", []) or [])
     attention = [i for i in items if i.level == "attention"]
+    rw, tw = ("records", "record types") if xml else ("rows", "tables")
     head = (
-        f"Imported all {_n(read, 'rows')} read" if imported == read and read != 1
-        else f"Imported {_n(imported, 'rows')} of {_n(read, 'rows')} read"
+        f"Imported all {_n(read, rw)} read" if imported == read and read != 1
+        else f"Imported {_n(imported, rw)} of {_n(read, rw)} read"
     )  # fmt: skip
     headline = (
-        f"{head} from {_n(len(tables), 'tables')}"
+        ("Unverified format. " if p.get("format_support") == "unverified" else "")
+        + f"{head} from {_n(len(tables), tw)}"
         + (f"; {_n(n_not, 'parts')} of the report not imported" if n_not else "")
         + (
             f". {_n(len(attention), 'items')} to review."
@@ -589,6 +755,8 @@ _OWN_NOTES = ("Text comes from PDF layout", "Pages with no ruled table")
 def _reason_words(reason: str) -> str:
     if reason == "category not imported" or reason.startswith("section '"):
         return "Baker does not import this category"
+    if reason == "model type not recognised":
+        return "Baker does not know this record type, so its records were not read"
     return reason
 
 

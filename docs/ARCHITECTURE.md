@@ -64,6 +64,8 @@ core/
   review/redecide.py  re-run the verdict rules after expert review, no model
   casework/           case folders and imports, background audit and claim-proposal jobs,
                       the model check, keeping the computer awake (used by the screen)
+  timeline/           Timeline check (stated times vs record times) and quiet stretches;
+                      derived by code on demand, never stored, never touches verdicts
 cli/                  `baker import`, `baker claims`, `baker audit`, `baker report`, `baker serve`
 ui/                   the expert's screen on 127.0.0.1 (stdlib server, no scripts): start a case,
                       run the audit in the background, review

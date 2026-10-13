@@ -52,9 +52,29 @@ zero reviewer false accepts on overreach items, identical output on a repeat run
 An invalid reviewer output counts as a dismissal, and a stance whose quote is not verbatim is
 dropped, so neither can turn into a false "supported".
 
-## Cloud upper bound (eval only)
-`pip install -e ".[bench]"`, then `python -m eval.bench.claude_bench`. Sends only these synthetic
-items to the Claude API. Agreeing with Claude does not count as being right.
+## Cloud Claude benchmark (eval only)
+Can cloud Claude be offered as a per-case opt-in? `eval/bench/claude_bench.py` runs the signed
+probe set (reviewer and stance) and then synthetic case01 through the real pipeline, with the
+cloud model as the stance labeler, the simulated expert and the merge-gate scoring. It reports
+the Expert-confirms bars, reviewer overreach, case01 accuracy and false supported, key evidence
+surfaced, and time and cost for the case, beside the local 14B's signed results.
+
+    pip install -e ".[bench]"
+    export ANTHROPIC_API_KEY=...        # or an `ant auth login` profile
+    python -m eval.bench.claude_bench   # Sonnet 5.5 and Haiku 5.5, effort medium
+    # writes eval/out/bench/RESULTS.md and summary.json
+
+Only the signed probe files and case01 can go to the API; any other file, and case02, is refused
+before a client is made. `--dry-run` runs everything on a stand-in client with no network.
+`--skip-case` runs the probe only; `--claims C02,C05` runs part of case01 (reported, not
+decided). Agreeing with Claude does not count as being right; only the signed labels score.
+
+Decision rule, fixed 2026-10-13 before any cloud run: a model is a candidate for a per-case
+opt-in only if it meets all four Expert-confirms bars on the signed undisputed items (including
+zero contradicting items shown as support, which the 14B misses with 5) and has zero false
+supported and verdict accuracy >= 0.80 on case01 after the simulated expert. Among candidates,
+the cheaper per case. Reviewer overreach and repeat identity are reported, not gated. Passing
+changes nothing in the product: the cloud rule in CLAUDE.md is Arsh's to change.
 
 ## Wave 3: which model the alpha ships with (expert confirms)
 Under rules 0.2.0 the expert accepts the key evidence of every SUPPORTED claim and the AI

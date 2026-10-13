@@ -144,6 +144,8 @@ class Page:
                 ("/claim/new", "Add a claim"),
                 ("/identities", "Identities"),
                 ("/exhibits", "Exhibits"),
+                ("/timeline", "Timeline"),
+                ("/gaps", "Gaps"),
                 ("/report", "Report"),
                 ("/log", "Audit log"),
                 ("/setup", "Set up and run"),
@@ -950,7 +952,7 @@ def name_form(page: Page) -> str:
 FIDELITY = {
     "curated_report": "curated report (examiner-selected; cannot show absence)",
     "full_extraction": "full extraction",
-    "unknown": "not stated",
+    "unknown": "not known (cannot show absence)",
 }
 
 
@@ -1059,7 +1061,13 @@ def setup_page(
             ".pdf",
             busy,
         )
-        + _upload_form(page, "report", "Cellebrite report (Excel .xlsx or PDF)", ".xlsx,.pdf", busy)
+        + _upload_form(
+            page,
+            "report",
+            "Cellebrite report (Excel .xlsx, PDF, or UFDR package .ufdr, unverified)",
+            ".xlsx,.pdf,.ufdr,.zip",
+            busy,
+        )
     )
 
     # 2. claims
