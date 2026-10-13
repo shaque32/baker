@@ -1,6 +1,6 @@
 # Import coverage
 
-Every Cellebrite import (Excel or PDF) records what it read and what it did not, so a real
+Every Cellebrite import (Excel, PDF or UFDR) records what it read and what it did not, so a real
 report that Baker only partly understands is never mistaken for a complete one. The rule: the
 importer either reads a record correctly or says exactly what it skipped and why. It never drops
 records silently and never guesses a value it cannot read with confidence.
@@ -82,6 +82,9 @@ New in 0.2.0:
 Invariant, checked by tests/test_ingest_variants.py on every variant: for each table,
 `rows_read == rows_imported + sum(rows_skipped)`, and every data row written to a sheet is
 either imported, skipped with a reason, or inside a sheet listed in `not_imported` with its count.
+
+UFDR imports add their own codes and a `ufdr` block to the payload, and list record types
+instead of sheets: docs/ingest/ufdr.md.
 
 ## Where it is shown
 

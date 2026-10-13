@@ -225,8 +225,17 @@ def _limitations(conn: sqlite3.Connection, srcs: list[tuple]) -> str:
                 "on it.</li>"
             )
     for cov in import_coverage.summaries(conn):
-        if cov.status == "needs_review":
-            lis = "".join(f"<li>{import_coverage.render(i, q, e)}</li>" for i in cov.attention)
+        if cov.format_unverified:
+            items.append(
+                f"<li><strong>{q(cov.file_name)} was read with Baker's UFDR reader, which is not "
+                "yet verified against a real UFDR.</strong> It was built from Cellebrite's public "
+                "descriptions of the format and tested on synthetic packages only. Each record "
+                "cited from this file should be compared with the same record in Cellebrite "
+                "Reader before it is relied on.</li>"
+            )
+        attention = [i for i in cov.attention if i.code != "format_unverified"]
+        if attention:
+            lis = "".join(f"<li>{import_coverage.render(i, q, e)}</li>" for i in attention)
             items.append(
                 f"<li>Baker did not read all of {q(cov.file_name)}: {e(cov.headline)} Records "
                 "in the parts listed here are not in the evidence Baker reviewed, and times it "

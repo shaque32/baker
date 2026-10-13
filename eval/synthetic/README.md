@@ -17,6 +17,7 @@ it with the committed files, so a stale or non-deterministic output fails `make 
 | `filler.py` | Seeded background chatter; never touches trap threads or reserved words |
 | `generate.py` | Renders the reports, the expected database, the affidavit and the draft key |
 | `xlsx.py` | Minimal deterministic .xlsx writer |
+| `ufdr.py` | Deterministic synthetic UFDR packages: case01's phones from their Excel rows, plus builders for edge cases (`python -m eval.synthetic.ufdr`) |
 | `case01/` | Generated outputs (the `.xlsx` reports are rebuilt, not committed) |
 
 ## Case01 at a glance

@@ -39,7 +39,8 @@ DEFAULT_HOME = Path.home() / "Baker" / "cases"
 DB_NAME = "case.db"
 UPLOAD_PREFIX = ".upload-"
 
-REPORT_SUFFIXES = (".xlsx", ".pdf")
+REPORT_SUFFIXES = (".xlsx", ".pdf", ".ufdr", ".zip")
+UFDR_SUFFIXES = (".ufdr", ".zip")
 GOVDOC_SUFFIXES = (".pdf",)
 
 Clock = Callable[[], datetime]
@@ -251,7 +252,7 @@ def import_upload(
     clock: Clock | None = None,
     date_order: str | None = None,
 ) -> Imported:
-    """Import one uploaded file: 'report' (Cellebrite Excel or PDF) or 'govdoc' (PDF).
+    """Import one uploaded file: 'report' (Cellebrite Excel, PDF or UFDR) or 'govdoc' (PDF).
 
     `date_order` ('mdy' or 'dmy') is the report's date order when the expert states it; left
     out, the importer works it out from the report or leaves ambiguous dates unread.
@@ -263,7 +264,9 @@ def import_upload(
         name = safe_file_name(original_name)
         suffix = Path(name).suffix.lower()
         if kind == "report" and suffix not in REPORT_SUFFIXES:
-            raise ReviewError("a Cellebrite report is an Excel (.xlsx) or PDF (.pdf) file")
+            raise ReviewError(
+                "a Cellebrite report is an Excel (.xlsx), PDF (.pdf) or UFDR (.ufdr or .zip) file"
+            )
         if kind == "govdoc" and suffix not in GOVDOC_SUFFIXES:
             raise ReviewError("the government document is imported from a PDF")
         if kind not in ("report", "govdoc"):
@@ -294,12 +297,18 @@ def import_upload(
         else:
             if suffix == ".pdf":
                 from core.ingest.cellebrite_pdf import CellebritePdfImporter as Importer
+            elif suffix in UFDR_SUFFIXES:
+                from core.ingest.ufdr import UfdrImporter as Importer  # type: ignore[assignment]
             else:
                 from core.ingest.cellebrite_excel import CellebriteExcelImporter as Importer
             from core.ingest.coverage import summary as coverage_summary
 
             src = Importer(date_order=date_order).import_source(path, conn)
-            summary = f"{src.fidelity.value.replace('_', ' ')}"
+            summary = (
+                "coverage not known"
+                if src.fidelity.value == "unknown"
+                else src.fidelity.value.replace("_", " ")
+            )
             cov = coverage_summary(conn, src.id)
             if cov is not None:
                 summary += f". {cov.headline.removesuffix('.')}"
