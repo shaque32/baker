@@ -35,7 +35,14 @@ from core.ingest import coverage as import_coverage
 from core.report.html import CSS as REPORT_CSS
 from core.report.html import STANCE_LABEL, audit_log_summary, record_line, review_label, sources
 from core.report.restore import CSS as RESTORE_CSS
-from core.review.status import AGAINST, ClaimState, claim_state, claim_states, queue
+from core.review.status import (
+    AGAINST,
+    ClaimState,
+    claim_name,
+    claim_state,
+    claim_states,
+    queue,
+)
 
 CONTEXT_WINDOW = 10  # messages either side: about 20 messages of context
 
@@ -368,7 +375,7 @@ def claims_queue(conn: sqlite3.Connection, page: Page) -> str:
         needs = st.needs()
         what = "<br>".join(e(t) for _, t in needs) or "<span class='muted'>Nothing. Done.</span>"
         out.append(
-            f"<tr><td><a href='{e(link('/claim', id=st.claim.id))}'>{e(st.claim.id)}</a></td>"
+            f"<tr><td><a href='{e(link('/claim', id=st.claim.id))}'>{e(st.name)}</a></td>"
             f"<td>{e(st.where)}</td><td>{e(st.claim.claim_type.value)}</td>"
             f"<td><span class='verdict {st.css}'>{e(st.label)}</span></td><td>{what}</td></tr>"
         )
@@ -377,7 +384,11 @@ def claims_queue(conn: sqlite3.Connection, page: Page) -> str:
     if removed:
         out.append(
             "<p class='muted'>Removed claims: "
-            + ", ".join(f"<a href='{e(link('/claim', id=c.id))}'>{e(c.id)}</a>" for c in removed)
+            + ", ".join(
+                f"<a href='{e(link('/claim', id=c.id))}'>"
+                f"{e(claim_name(conn, c.id, c.paragraph_id))}</a>"
+                for c in removed
+            )
             + "</p>"
         )
     return page.wrap("Claims queue", "".join(out), run_banner(conn, page, "/claims"))
@@ -459,10 +470,11 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
     back = link("/claim", id=claim_id)
     c, d = st.claim, st.decision
     out = [
-        f"<h1>{e(c.id)} <span class='muted'>· {e(st.where)} · {e(c.claim_type.value)} · "
+        f"<h1>{e(st.name)} <span class='muted'>· {e(st.where)} · {e(c.claim_type.value)} · "
         f"claim {e(c.status.value)}"
         f"{' by the expert' if c.model_run_id is None else ' (model-proposed)'}</span></h1>",
         f"<blockquote>{q(c.text)}</blockquote>",
+        f"<p class='muted'>Claim id <span class='mono'>{e(c.id)}</span></p>",
     ]
     if st.paragraph_text:
         out.append(
@@ -541,7 +553,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
         out.append(f"<p class='muted'>{hidden} retrieved records were labeled irrelevant.</p>")
 
     out.append(_edit_claim_form(page, st, back))
-    return page.wrap(c.id, "".join(out), run_banner(conn, page, back))
+    return page.wrap(st.name, "".join(out), run_banner(conn, page, back))
 
 
 def _verdict_forms(page: Page, st: ClaimState, back: str) -> str:
@@ -955,7 +967,8 @@ def setup_page(
             c = claims[cid]
             where = _where_short(conn, c.paragraph_id)
             out.append(
-                f"<tr><td>{n}</td><td><a href='{e(link('/claim', id=cid))}'>{e(cid)}</a></td>"
+                f"<tr><td>{n}</td><td><a href='{e(link('/claim', id=cid))}'>"
+                f"{e(claim_name(conn, cid, c.paragraph_id))}</a></td>"
                 f"<td>{e(where)}</td><td>{e(c.claim_type.value)}</td><td>{e(c.status.value)}"
                 f"{'' if c.model_run_id is None else ' (model)'}</td><td>{q(c.text)}</td>"
                 f"<td>{_claim_buttons(page, cid, c.status.value, c.text, audit_busy)}</td></tr>"
@@ -966,7 +979,9 @@ def setup_page(
             out.append(
                 "<p class='muted'>Removed (not audited): "
                 + ", ".join(
-                    f"<a href='{e(link('/claim', id=c.id))}'>{e(c.id)}</a>" for c in removed
+                    f"<a href='{e(link('/claim', id=c.id))}'>"
+                    f"{e(claim_name(conn, c.id, c.paragraph_id))}</a>"
+                    for c in removed
                 )
                 + ". Open one to accept it again.</p>"
             )
@@ -1155,6 +1170,7 @@ def run_page(
         "<table><thead><tr><th>#</th><th>Claim</th><th>State</th><th>Candidates labeled</th>"
         "<th>New model calls</th><th>Finding</th></tr></thead>"
     )
+    paragraphs = dict(conn.execute("SELECT id, paragraph_id FROM claims"))
     for pos, cid, state, total, labeled, calls in rows:
         st = labels.get(cid)
         if state == "done" and st is not None and not st.incomplete:
@@ -1165,7 +1181,8 @@ def run_page(
             finding = "<span class='verdict v-unp'>Labeling incomplete</span>"
         cands = "" if total is None else f"{labeled} of {total}"
         out.append(
-            f"<tr><td>{pos}</td><td><a href='{e(link('/claim', id=cid))}'>{e(cid)}</a></td>"
+            f"<tr><td>{pos}</td><td><a href='{e(link('/claim', id=cid))}'>"
+            f"{e(claim_name(conn, cid, paragraphs.get(cid, '')))}</a></td>"
             f"<td>{e(STATE_TEXT.get(state, state))}</td><td>{cands}</td><td>{calls}</td>"
             f"<td>{finding}</td></tr>"
         )

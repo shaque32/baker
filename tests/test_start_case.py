@@ -35,7 +35,7 @@ from core.contracts import (
 from core.db import connect
 from core.llm.runtime import FakeModel
 from core.report.html import render_report
-from core.review import audit_log
+from core.review import audit_log, status
 from core.review.status import LABELING_INCOMPLETE, claim_state
 from eval import run_pipeline
 from eval.run_eval import load_jsonl
@@ -308,6 +308,16 @@ def test_proposed_claims_must_be_decided_and_owners_confirmed_before_the_audit(a
     assert proposed  # the paragraphs naming Marc Garage
     ready = {r.text: r.ok for r in cases.readiness(case, conn)}
     assert any("still need your decision" in t and not ok for t, ok in ready.items())
+    # A proposed claim is named by its printed paragraph and number, not its long internal id.
+    pid = conn.execute("SELECT paragraph_id FROM claims WHERE id = ?", (proposed[0],)).fetchone()[0]
+    label = conn.execute("SELECT label FROM govdoc_paragraphs WHERE id = ?", (pid,)).fetchone()[0]
+    name = f"¶{label}.{proposed[0].rsplit(':', 1)[1]}"
+    assert status.claim_name(conn, proposed[0], pid) == name
+    assert status.claim_name(conn, "C05", pid) == "C05"
+    for path in ("/setup", "/claims"):
+        assert f">{name}</a>" in get(app, path).text
+    claim_page = get(app, "/claim", id=proposed[0]).text
+    assert f"<h1>{name} " in claim_page and proposed[0] in claim_page  # the id stays findable
     post(app, "/audit/start", next="/run")
     assert "not ready" in get(app, "/").text
     assert app.jobs.current.kind == "propose"  # type: ignore[union-attr]

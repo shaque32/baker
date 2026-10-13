@@ -243,11 +243,12 @@ def _claim_block(conn: sqlite3.Connection, st: ClaimState) -> str:
     claim, decision = st.claim, st.decision
     out = [f'<div class="claim" id="{e(claim.id)}">']
     out.append(
-        f"<h3>{e(claim.id)} <span class='muted'>· {e(st.where)} · {e(claim.claim_type.value)} · "
+        f"<h3>{e(st.name)} <span class='muted'>· {e(st.where)} · {e(claim.claim_type.value)} · "
         f"claim {e(claim.status.value)}"
         f"{' by the expert' if claim.model_run_id is None else ' (model-proposed)'}</span></h3>"
     )
     out.append(f"<blockquote>{q(claim.text)}</blockquote>")
+    out.append(f"<p class='muted'>Claim id <span class='mono'>{e(claim.id)}</span></p>")
     out.append(f'<p><span class="verdict {st.css}">{e(st.label)}</span></p>')
     if st.awaiting_expert:
         out.append(
@@ -345,7 +346,7 @@ def searches_section(states: list[ClaimState], srcs: list[tuple]) -> str:
                 or "none named"
             )
             rows.append(
-                f"<tr><td>{e(st.claim.id)}</td><td>{e(a.text)}</td>"
+                f"<tr><td>{e(st.name)}</td><td>{e(a.text)}</td>"
                 f"<td>{e(c.check_name)} {e(c.check_version)}</td><td>{e(c.outcome.value)}</td>"
                 f"<td>{e(c.searched)}</td><td>{e(searched_sources)}</td></tr>"
             )
