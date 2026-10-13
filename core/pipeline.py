@@ -587,6 +587,16 @@ def mark_stale_runs_stopped(conn: sqlite3.Connection, clock: Clock | None = None
     return stale
 
 
+DEMO_LABELER = "eval.demo."
+
+
+def scripted_demo(run: dict | None) -> bool:
+    """True for an audit, or a verdict re-run of one, whose labels came from the demo case's
+    scripted labeler (eval/demo.py) rather than a model."""
+    labeler = ((run or {}).get("components") or {}).get("labeler", "")
+    return isinstance(labeler, str) and labeler.startswith(DEMO_LABELER)
+
+
 def view_run(conn: sqlite3.Connection) -> dict | None:
     """The run the review screen and the report show.
 

@@ -378,7 +378,7 @@ def test_audit_runs_in_the_background_in_the_experts_order(app, inputs):
     page = get(app, "/run").text
     assert "Finished" in page and LABELING_INCOMPLETE not in page
     queue_page = get(app, "/claims").text
-    assert "Unproven, awaiting expert review" in queue_page
+    assert "Support found: do you agree?" in queue_page
     # Untested is said, with why, not shown as a plain unproven.
     c21 = states["C21"]
     assert c21.untested and c21.label == status.NOT_TESTED
