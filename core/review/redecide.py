@@ -155,6 +155,9 @@ def redecide(
                     "unlabeled": {
                         k: v for k, v in src.get("unlabeled", {}).items() if k in manifest
                     },
+                    "not_tested": {
+                        k: v for k, v in src.get("not_tested", {}).items() if k in manifest
+                    },
                 },
             )
             conn.execute(

@@ -406,23 +406,36 @@ class TemplateAssumptionBuilder:
     def __init__(self, filler: Filler) -> None:
         self._filler = filler
         self.rejected: list[Rejected] = []
+        self._why: dict[str, list[str]] = {}  # claim id -> what was refused, last build
 
     def build(self, claim: Claim) -> list[Assumption]:
         allowed = templates_for(claim.claim_type)
         allowed_ids = {t.id for t in allowed}
         out: dict[str, Assumption] = {}
+        why: list[str] = []
         for proposal in self._filler(claim, allowed):
             if proposal.template_id not in allowed_ids:
-                why = f"template {proposal.template_id!r} is not allowed for {claim.claim_type}"
-                self.rejected.append(Rejected(proposal, why))
+                reason = f"template {proposal.template_id!r} is not allowed for {claim.claim_type}"
+                self.rejected.append(Rejected(proposal, reason))
+                why.append(reason)
                 continue
             try:
                 a = instantiate(claim.id, proposal.template_id, proposal.params, proposal.is_core)
             except (ValidationError, ValueError) as e:
                 self.rejected.append(Rejected(proposal, str(e)))
+                why.append(f"template {proposal.template_id!r}: {e}")
                 continue
             out.setdefault(a.id, a)
+        drops = getattr(self._filler, "drops", None)  # the local-model filler keeps its refusals
+        if isinstance(drops, list):
+            why = [d.reason for d in drops if getattr(d, "claim_id", None) == claim.id] + why
+        self._why[claim.id] = why
         return list(out.values())
+
+    def refused(self, claim_id: str) -> list[str]:
+        """Why proposals for the claim were refused in its last build, model and code
+        refusals alike, in order. Empty when nothing was proposed or nothing was refused."""
+        return list(self._why.get(claim_id, ()))
 
 
 def _no_proposals(claim: Claim, allowed: list[Template]) -> list[Proposal]:

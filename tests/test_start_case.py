@@ -346,8 +346,12 @@ def test_audit_runs_in_the_background_in_the_experts_order(app, inputs):
     case = _make_case(app, inputs)
     conn = connect(case.db)
     _add_gold_claims(app, conn)
+    # A claim the signed sheet has no assumptions for: nothing can be checked for it.
+    para = conn.execute("SELECT paragraph_id FROM claims WHERE id = 'C05'").fetchone()[0]
+    post(app, "/claim/add", id="C21", paragraph=para, type="event",
+         text="PETROV met REYES at the garage.")  # fmt: skip
     _stipulate(app)
-    for _ in range(len(GOLD)):  # past the top stays at the top
+    for _ in range(len(GOLD) + 1):  # past the top stays at the top
         post(app, "/claims/move", claim="C09", delta="-1", next="/setup")
     order = cases.claim_order(case, conn)
     assert order[0] == "C09"
@@ -372,7 +376,16 @@ def test_audit_runs_in_the_background_in_the_experts_order(app, inputs):
     assert all(st.decision.verdict != Verdict.SUPPORTED for st in states.values())
     page = get(app, "/run").text
     assert "Finished" in page and LABELING_INCOMPLETE not in page
-    assert "Unproven, awaiting expert review" in get(app, "/claims").text
+    queue_page = get(app, "/claims").text
+    assert "Unproven, awaiting expert review" in queue_page
+    # Untested is said, with why, not shown as a plain unproven.
+    c21 = states["C21"]
+    assert c21.untested and c21.label == status.NOT_TESTED
+    assert c21.not_tested.startswith(pipeline.NOT_TESTED)
+    assert status.NOT_TESTED in queue_page and "Not tested: Baker could not" in queue_page
+    assert pipeline.NOT_TESTED in get(app, "/claim", id="C21").text
+    assert pipeline.last_run(conn)["not_tested"].keys() == {"C21"}
+    assert all(not st.untested for cid, st in states.items() if cid != "C21")
     assert audit_log.verify_chain(conn)
 
 

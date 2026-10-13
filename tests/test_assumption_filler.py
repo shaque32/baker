@@ -277,51 +277,6 @@ BAD = [
     pytest.param("C14", {"channels": ["WhatsApp"]}, "does not name the channel", id="narrowed"),
     pytest.param("C14", {"channels": ["Signal"]}, "not an app", id="unknown-app"),
     pytest.param(
-        "C14",
-        {
-            "window": W(
-                "between March 20 and March 23, 2026", "2026-03-19T00:00", "2026-03-24T00:00"
-            )
-        },
-        "not a date the claim states",
-        id="window-start-not-stated",
-    ),
-    pytest.param(
-        "C14",
-        {
-            "window": W(
-                "between March 20 and March 23, 2026", "2026-03-20T00:00", "2026-03-26T00:00"
-            )
-        },
-        "not a date the claim states",
-        id="window-end-not-stated",
-    ),
-    pytest.param(
-        "C14",
-        {
-            "window": W(
-                "between March 20 and March 23, 2026",
-                "2026-03-20T00:00",
-                "2026-03-24T00:00",
-                zone="UTC",
-            )
-        },
-        "does not say UTC",
-        id="utc-not-written",
-    ),
-    pytest.param(
-        "C14",
-        {"window": W("between March 20 and 23", "2026-03-20T00:00", "2026-03-24T00:00")},
-        "not written in the claim",
-        id="window-words-invented",
-    ),
-    pytest.param(
-        "C10",
-        {"window": W("At 2:31 a.m. on March 5, 2026", "2026-03-05T07:31", "2026-03-05T07:32")},
-        "not near a time",
-        id="utc-time-as-local",
-    ),
-    pytest.param(
         "C03",
         {"count": {"value": 10}},
         "not written in the claim as a number",
@@ -349,6 +304,107 @@ BAD = [
         id="duration-not-verbatim",
     ),
 ]
+
+
+# The model's range is refused, so code uses the range the claim plainly states instead
+# (stated_windows): the same assumption as the good answer, never a guess at the model's.
+BAD_WINDOWS = [
+    pytest.param(
+        "C14",
+        {
+            "window": W(
+                "between March 20 and March 23, 2026", "2026-03-19T00:00", "2026-03-24T00:00"
+            )
+        },
+        id="window-start-not-stated",
+    ),
+    pytest.param(
+        "C14",
+        {
+            "window": W(
+                "between March 20 and March 23, 2026", "2026-03-20T00:00", "2026-03-26T00:00"
+            )
+        },
+        id="window-end-not-stated",
+    ),
+    pytest.param(
+        "C14",
+        {
+            "window": W(
+                "between March 20 and March 23, 2026",
+                "2026-03-20T00:00",
+                "2026-03-24T00:00",
+                zone="UTC",
+            )
+        },
+        id="utc-not-written",
+    ),
+    pytest.param(
+        "C14",
+        {"window": W("between March 20 and 23", "2026-03-20T00:00", "2026-03-24T00:00")},
+        id="window-words-invented",
+    ),
+    pytest.param(
+        "C10",
+        {"window": W("At 2:31 a.m. on March 5, 2026", "2026-03-05T07:31", "2026-03-05T07:32")},
+        id="utc-time-as-local",
+    ),
+]
+
+
+@pytest.mark.parametrize(("cid", "change"), BAD_WINDOWS)
+def test_a_refused_model_range_is_replaced_by_the_range_the_claim_states(conn, cid, change):
+    good = {a.template_id: a for a in build(conn, cid)[0]}
+    repaired = {a.template_id: a for a in build(conn, cid, _one(cid, **change))[0]}
+    assert repaired.keys() == good.keys()
+    for tid, a in repaired.items():
+        assert a.params.window == good[tid].params.window, tid
+        assert a.params == good[tid].params
+
+
+def test_a_model_range_on_a_day_the_claim_does_not_state_is_still_dropped(conn):
+    # C07 states two dates (March 6 and March 9); a range on neither day matches no stated one.
+    answers = {
+        "C07": [
+            P(
+                "record_time",
+                people=["PETROV", "REYES"],
+                channels=["SMS"],
+                window=W("On March 6, 2026", "2026-03-08T00:00", "2026-03-09T00:00"),
+            )
+        ]
+    }
+    assumptions, filler, _ = build(conn, "C07", answers)
+    assert assumptions == []
+    assert any("not one the claim plainly states" in d.reason for d in filler.drops)
+
+
+def test_a_dated_quote_gets_its_time_assumption_from_code(conn):
+    # C05 "On March 12, 2026, PETROV wrote ...": the model gave only the sender.
+    good = {a.template_id: a for a in build(conn, "C05")[0]}
+    answers = {"C05": GOOD["C05"][:1]}
+    got = {a.template_id: a for a in build(conn, "C05", answers)[0]}
+    assert got.keys() == {"sender", "record_time"}
+    assert got["record_time"].params == good["record_time"].params
+
+
+def test_stated_windows_read_the_claims_own_words():
+    from core.audit.assumption_filler import stated_windows
+
+    (w,) = stated_windows("At about 7:58 p.m. on March 9, 2026, Item 1 placed a call")
+    assert (w.raw, w.start.isoformat(), w.end.isoformat()) == (
+        "At about 7:58 p.m. on March 9, 2026",
+        "2026-03-09T19:50:00",
+        "2026-03-09T20:06:00",
+    )
+    (w,) = stated_windows("no contact between March 20 and March 23, 2026.")
+    assert (w.start.day, w.end.day) == (20, 24)
+    (w,) = stated_windows("texted REYES 'its done' at 2:31 a.m. on March 5, 2026")
+    assert (w.start.hour, w.start.minute, (w.end - w.start).seconds) == (2, 31, 60)
+    assert stated_windows("no contact before March 12, 2026") is None  # open: the model's call
+    assert stated_windows("sent on 3/12/2026") is None  # month and day order unknown
+    assert stated_windows("sent on March 12") is None  # no year anywhere
+    assert stated_windows("sent on March 12", "Events of 2026.")[0].start.year == 2026
 
 
 @pytest.mark.parametrize(("cid", "change", "why"), BAD)
@@ -400,7 +456,8 @@ def test_meaning_claim_keeps_meaning(conn):
     ("cid", "keep", "why"),
     [
         ("C05", "record_time", "who sent it"),  # quoted message, sender untested
-        ("C05", "sender", "states a date"),  # date untested
+        # A sender alone now gets its date from code (test_a_dated_quote_gets_its_time_...);
+        # a stated date with no quote to date stays untested (C06 above).
     ],
 )
 def test_claim_is_not_judged_on_its_easy_parts(conn, cid, keep, why):
