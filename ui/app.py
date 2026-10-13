@@ -52,12 +52,14 @@ from core.restore.store import ExhibitError, add_exhibit, match_exhibits, remove
 from core.review import actions
 from core.review.actions import ReviewError
 from core.review.redecide import redecide
-from ui import pages, restore_pages, upload
+from ui import pages, restore_pages, theme, upload
 
 CSP = (
-    "default-src 'none'; style-src 'unsafe-inline'; img-src 'none'; form-action 'self'; "
+    "default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; img-src 'none'; "
+    "form-action 'self'; "
     "frame-ancestors 'none'; base-uri 'none'"
 )
+FONT_PREFIX = "/static/fonts/"
 MAX_BODY = 1_000_000
 TEXTAREA = re.compile(r"<textarea([^>]*)>[^<]*</textarea>")
 MAX_UPLOAD = 16 * 1024**3  # a full Cellebrite PDF report can run to gigabytes
@@ -158,6 +160,7 @@ class App:
         self.expert: str | None = None
         self.flash: tuple[str, bool] | None = None
         self.port = port
+        self.path = ""  # the request being answered, so a page can mark its tab
         self._added: str | None = None
         self.jobs = jobs.Jobs()
         self.components_for = components_for or _real_components
@@ -216,10 +219,13 @@ class App:
     # -- entry point
 
     def handle(self, req: Request) -> Response:
+        self.path = req.path
         if req.headers.get("host") not in self.allowed_hosts():
             return self._plain(400, "This screen only answers requests from this computer.")
         if req.method not in ("GET", "POST"):
             return self._plain(405, "method not allowed")
+        if req.method == "GET" and req.path.startswith(FONT_PREFIX):
+            return self._font(req.path[len(FONT_PREFIX) :])
         if req.method == "POST" and (
             not self._origin_ok(req)
             or not hmac.compare_digest(req.form.get("token", ""), self.token)
@@ -278,6 +284,7 @@ class App:
             notice=notice,
             busy=busy,
             many_cases=self.home is not None,
+            path=self.path,
         )
 
     def _get(self, conn: sqlite3.Connection, req: Request) -> Response:
@@ -316,8 +323,12 @@ class App:
         if p == "/log":
             return self._html(pages.log_page(conn, page, req.query.get("all") == "1"))
         if p in ("/report", "/report.html"):
-            resp = self._html(render_report(conn))
-            if req.query.get("download") == "1" or p == "/report.html":
+            body = render_report(conn)
+            download = req.query.get("download") == "1" or p == "/report.html"
+            if not download:  # on screen, the vendored fonts; a saved copy uses system fonts
+                body = body.replace("<style>", f"<style>{theme.FONT_CSS}", 1)
+            resp = self._html(body)
+            if download:
                 resp.headers.append(
                     ("Content-Disposition", 'attachment; filename="baker-report.html"')
                 )
@@ -784,6 +795,17 @@ class App:
             status,
             body.encode("utf-8"),
             [("Content-Type", "text/html; charset=utf-8"), *self._security_headers()],
+        )
+
+    def _font(self, name: str) -> Response:
+        """One of the vendored fonts, by exact file name; nothing else is served from disk."""
+        if name not in theme.FONT_FILES:
+            return self._plain(404, "no such file")
+        headers = [h for h in self._security_headers() if h[0] != "Cache-Control"]
+        return Response(
+            200,
+            (theme.FONT_DIR / name).read_bytes(),
+            [("Content-Type", "font/woff2"), ("Cache-Control", "max-age=86400"), *headers],
         )
 
     def _redirect(self, location: str) -> Response:

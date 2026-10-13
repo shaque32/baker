@@ -43,7 +43,7 @@ include = ["core*", "eval*", "cli*", "ui*"]
 [tool.setuptools.package-data]
 core = ["schema.sql"]
 "core.audit" = ["prompts/*.md"]
-ui = ["**/*.css", "**/*.html", "**/*.js", "**/*.svg", "**/*.png", "**/*.ico"]
+ui = ["**/*.css", "**/*.html", "**/*.js", "**/*.svg", "**/*.png", "**/*.ico", "**/*.woff2", "static/**/*.txt"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
