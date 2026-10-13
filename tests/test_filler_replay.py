@@ -18,6 +18,7 @@ from core.audit._llm_json import prompt_body
 from core.audit.assumption_filler import LocalAssumptionFiller
 from core.audit.assumptions import TemplateAssumptionBuilder
 from core.contracts import Claim, ClaimStatus, ClaimType
+from core.review import actions
 from eval.synthetic.generate import generate
 from tests.checks.helpers import stipulate
 from tests.fake_model import FakeModel
@@ -29,20 +30,21 @@ RUN = json.loads(
 )
 TESTED_IN_THE_RUN = 5  # what the Mac run itself got, before code read the stated dates
 TESTED_NOW = 10
+TESTED_WITH_NAMES = 12  # after the expert adds ALEXANDER SOKOLOV on the Identities page
 
 
 def _name(c: dict) -> str:
     return f"¶{c['paragraph_label']}.{c['claim_no']}"
 
 
-@pytest.fixture(scope="module")
-def built(tmp_path_factory):
-    out = tmp_path_factory.mktemp("case01")
+def _replay(out: Path, people: tuple[str, ...] = ()):  # noqa: ANN202
     db = out / "case01.db"
     generate(out, db)
     conn = sqlite3.connect(db)
     stipulate(conn, "person:petrov", "Daniel Petrov", "dev:item1")
     stipulate(conn, "person:reyes", "Marcus Reyes", "dev:item2")
+    for name in people:  # names the expert added on the Identities page
+        actions.add_person(conn, name, "expert:test")
     conn.execute("PRAGMA foreign_keys = OFF")
     paragraphs = {c["paragraph_label"]: c["paragraph"] for c in RUN["claims"]}
     for label, text in paragraphs.items():
@@ -72,8 +74,18 @@ def built(tmp_path_factory):
             status=ClaimStatus.ACCEPTED,
         )
         result[_name(c)] = (builder.build(claim), builder.refused(claim.id))
-    yield result
     conn.close()
+    return result
+
+
+@pytest.fixture(scope="module")
+def built(tmp_path_factory):
+    return _replay(tmp_path_factory.mktemp("case01"))
+
+
+@pytest.fixture(scope="module")
+def built_with_names(tmp_path_factory):
+    return _replay(tmp_path_factory.mktemp("case01-names"), ("ALEXANDER SOKOLOV",))
 
 
 def test_more_claims_are_tested_than_in_the_run(built):
@@ -106,3 +118,14 @@ def test_names_not_in_the_case_stay_refused(built):
     assumptions, refused = built["¶14.1"]
     assert assumptions == []
     assert any("matches no person" in r for r in refused)
+
+
+def test_a_name_the_expert_adds_lets_its_claims_be_tested(built_with_names):
+    # ¶14.1 "The Telegram user @northstar is ALEXANDER SOKOLOV." (gold C18). The model wrote
+    # @northstar as an account; it stays a handle, which the checks resolve from the data.
+    (a,) = built_with_names["¶14.1"][0]
+    assert a.template_id == "person_identity" and a.is_core
+    assert a.params.person_ids == ("person:alexander-sokolov",)
+    assert a.params.handles == ("@northstar",) and a.params.account_ids == ()
+    tested = [n for n, (x, _) in built_with_names.items() if any(y.is_core for y in x)]
+    assert len(tested) == TESTED_WITH_NAMES, tested

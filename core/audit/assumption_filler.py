@@ -13,7 +13,8 @@ the document or the case data. It fails closed at every step:
   Phones resolve to devices by their label. Numbers and user ids resolve to accounts by app
   and identifier, the way the checks match accounts. A handle stays a handle where the
   template takes one, and the checks resolve it from the data; a template that takes no
-  handles drops the proposal. Zero or several matches for any other value drop it too.
+  handles drops the proposal. A handle the model wrote as an account ("@northstar") is kept as
+  a handle the same way. Zero or several matches for any other value drop it too.
 - A channel must be named in the claim ("Telegram", or "texted" for SMS, "call" for calls).
   A model never narrows a search to a channel the document did not name.
 - A call's stated length ("about two minutes") is turned into seconds by code.
@@ -768,9 +769,21 @@ class LocalAssumptionFiller:
             params["channels"] = channels
 
         account_ids: set[str] = set()
-        for acc in p.accounts:
-            account_ids |= self._accounts(acc, device_ids)
         handles = [h.strip() for h in p.handles]
+        for acc in p.accounts:
+            try:
+                account_ids |= self._accounts(acc, device_ids)
+            except Reject:
+                # "@northstar" written as an account is a handle, not an identifier. Where the
+                # template takes handles it stays one, and the checks resolve it from the data
+                # (exactly one account, or the party is left unresolved). Anything else fails.
+                written = acc.as_written.strip()
+                if "handles" not in tpl.allowed or not (
+                    written.startswith("@") or written in handles
+                ):
+                    raise
+                if written not in handles:
+                    handles.append(written)
         if handles:
             if "handles" not in tpl.allowed:
                 raise Reject(f"template {tpl.id!r} does not take handles")
