@@ -269,6 +269,14 @@ def query_for(
             sides.append(tuple(same_identifier_accounts(conn, found)))
         else:
             unresolved.append(person)  # a named person with no account to search by
+    if p.handles and p.person_ids and not p.account_ids:
+        # "@northstar is ALEXANDER SOKOLOV": the handle's own records are what such a claim is
+        # about, whatever links the person has, so the handle is one more side to search.
+        h_acc, h_thr, _, h_unresolved = resolve_identifiers(conn, p.handles, ())
+        if h_acc:
+            sides.append(tuple(same_identifier_accounts(conn, h_acc)))
+        thr = _uniq([*thr, *h_thr])
+        unresolved += h_unresolved
     if sides:
         acc = _uniq([a for side in sides for a in side])
     elif not p.person_ids:

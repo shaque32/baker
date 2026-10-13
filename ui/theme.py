@@ -85,6 +85,17 @@ h1 { font-size: 40px; }
 .flash { padding: 10px 14px; margin: 12px 0; border: 1px solid var(--line); border-radius: 10px;
   background: var(--card); }
 .flash.err { border-color: var(--con-line); background: var(--con-bg); color: var(--con); }
+.flash.toast { position: fixed; right: 20px; bottom: 20px; z-index: 10; margin: 0;
+  max-width: min(440px, calc(100vw - 40px)); box-shadow: 0 10px 30px -10px rgb(20 20 20 / 0.3);
+  animation: toast-out 0.4s ease 7s forwards; }
+.flash.toast.err { animation: none; }
+@keyframes toast-out { to { opacity: 0; visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) { .flash.toast { animation: none; } }
+
+/* coming back to the item a form acted on: clear the sticky header, mark it briefly */
+[id] { scroll-margin-top: 128px; }
+.item:target, .card:target, tr:target td { outline: 2px solid #c9a24a; outline-offset: 2px; }
+tr:target td { outline: 0; background: #fbf1cf; }
 
 /* forms and buttons */
 form.inline { display: inline; }
@@ -193,14 +204,50 @@ blockquote.claimtext { font: 400 32px/1.18 var(--serif); letter-spacing: -0.015e
 .msg .cited { font: 600 9.5px var(--mono); letter-spacing: 0.1em; color: #6b4d0c;
   background: #f0dca3; border-radius: 3px; padding: 1px 4px; margin-right: 6px; }
 
+/* identities: a person, and each link with its records for and against */
+.lede { font-size: 15px; color: var(--muted); max-width: 70ch; }
+section.person { margin: 34px 0; }
+h2.pname { font: 400 30px/1.15 var(--serif); letter-spacing: -0.01em; margin: 4px 0 6px; }
+.idhead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;
+  gap: 6px; }
+.idpair { font-size: 17px; font-weight: 600; margin: 10px 0 4px; }
+.idpair .arrow { color: var(--muted); font-weight: 400; margin: 0 6px; }
+.stpill { display: inline-flex; align-items: center; height: 20px; padding: 0 9px;
+  border: 1px solid var(--line-strong); border-radius: 999px; font: 500 11px var(--sans);
+  color: var(--fg); background: var(--card); margin: 0 6px 4px 0; white-space: nowrap; }
+.stpill b { margin-left: 4px; }
+.st-confirmed.stpill { color: var(--sup); background: var(--sup-bg);
+  border-color: var(--sup-line); }
+.st-rejected.stpill { color: var(--con); background: var(--con-bg); border-color: var(--con-line); }
+.st-unresolved.stpill { color: var(--unp); background: var(--unp-bg);
+  border-color: var(--unp-line); }
+article.idlink.st-rejected { opacity: 0.8; }
+.idgrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1px;
+  background: var(--line); border-top: 1px solid var(--line); }
+.idgrid > div { background: var(--card); padding: 14px 20px; }
+.side { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600;
+  margin: 0 0 8px; }
+.side::before { content: ""; width: 3px; height: 13px; border-radius: 2px; }
+.side.for::before { background: var(--sup); } .side.against::before { background: var(--con); }
+ul.sig { list-style: none; padding: 0; margin: 0; }
+ul.sig li { font-size: 13px; line-height: 1.45; margin: 0 0 12px; }
+ul.sig .quote { font-size: 14px; color: var(--fg); }
+ul.sig .ref { font-size: 10.5px; color: var(--muted); margin-top: 2px; overflow-wrap: anywhere; }
+.caution { border-left: 3px solid #c9a24a; background: #fbf1cf; padding: 8px 12px;
+  border-radius: 0 8px 8px 0; font-size: 13.5px; }
+button[aria-pressed=true] { box-shadow: inset 0 0 0 2px var(--fg); }
+ul.unplaced .head .text { font-weight: 600; }
+
 @media (max-width: 900px) {
   .split { grid-template-columns: minmax(0, 1fr); }
   aside.side { position: static; max-height: none; order: 2; }
   blockquote.claimtext { font-size: 26px; }
   .msg { max-width: 88%; }
+  .idgrid { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 600px) {
   header.top { position: static; }
+  [id] { scroll-margin-top: 12px; }
   main { padding: 20px 16px 64px; }
   .bar { padding: 10px 16px 2px; } nav.tabs { padding: 0 16px; }
   h1 { font-size: 32px; }

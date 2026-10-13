@@ -8,8 +8,9 @@ the evidence that verdict was decided on. It never upgrades a verdict:
 - "Supported (expert-confirmed)" only when rules.py stored supported_basis 'confirmed'.
 - "Supported (AI-reviewed)" for supported_basis 'ai_reviewed'. Rules 0.2.0 never produce it,
   but if a later rule version does, it never displays as confirmed.
-- "Unproven, awaiting expert review" when the verdict is unproven and supporting evidence on the
-  claim has no expert decision yet (the AI reviewer accepted it, or nobody reviewed it). Under
+- "Support found: do you agree?" when the verdict is unproven and supporting evidence on the
+  claim has no expert decision yet (the AI reviewer accepted it, or nobody reviewed it). It reads
+  as Baker's finding put to the expert, never as a verdict: the verdict stays unproven, and under
   rules 0.2.0 an AI acceptance alone never makes a claim supported; the expert decides.
 - "Labeling incomplete" when the run shown is an audit that has not finished (still running, or
   stopped) and has not finished this claim. Such a claim has no verdict and no evidence on
@@ -39,7 +40,7 @@ from core.contracts import (
 
 SUPPORTED_AI = "Supported (AI-reviewed)"
 SUPPORTED_EXPERT = "Supported (expert-confirmed)"
-AWAITING_EXPERT = "Unproven, awaiting expert review"
+AWAITING_EXPERT = "Support found: do you agree?"
 NOT_AUDITED = "Not audited"
 LABELING_INCOMPLETE = "Labeling incomplete"
 NOT_TESTED = "Unproven, not tested"
@@ -137,12 +138,16 @@ class ClaimState:
                 (
                     5 if more else 1,
                     f"{self.ai_accepted} supporting item(s) the AI reviewer accepted. "
-                    "Accept or dismiss each one.",
+                    "Accept the ones you agree with and dismiss the rest.",
                 )
             )
         if self.open_support:
             out.append(
-                (5 if more else 2, f"{self.open_support} supporting item(s) nobody has reviewed.")
+                (
+                    5 if more else 2,
+                    f"Baker found {self.open_support} record(s) it reads as support. Check each "
+                    "one: accept the ones you agree with and dismiss the rest.",
+                )
             )
         if self.open_against:
             out.append((3, f"{self.open_against} contradicting or complicating item(s) to review."))
@@ -233,6 +238,37 @@ def edited_after(conn: sqlite3.Connection, since: str) -> set[str]:
         p = json.loads(payload)
         if p.get("text") is not None:
             out.add(p["claim_id"])
+    return out
+
+
+HOLDINGS = (
+    "Baker checks claims against records on the phones. When it could not set up a check, "
+    "compare the claim with what this case holds:"
+)
+
+
+def case_holdings(conn: sqlite3.Connection) -> list[str]:
+    """One line per imported extraction source, with the devices it holds, exactly as imported.
+
+    Shown next to a claim Baker could not test, so the expert can check a claim about the
+    case's own material ("based on extraction reports for two phones") against it at a glance.
+    """
+    devices: dict[str, list[str]] = {}
+    for source_id, label, model, os_version in conn.execute(
+        "SELECT source_id, label, model, os_version FROM devices ORDER BY id"
+    ):
+        what = model or label
+        devices.setdefault(source_id, []).append(f"{what}, {os_version}" if os_version else what)
+    out = []
+    for sid, kind, fidelity, extraction, name, sha in conn.execute(
+        "SELECT id, kind, fidelity, extraction_type, file_name, sha256 FROM sources"
+        " WHERE kind != 'govdoc' ORDER BY id"
+    ):
+        held = "; ".join(devices.get(sid, [])) or "no device recorded"
+        out.append(
+            f"{name}: {held} ({kind.replace('_', ' ')}, {fidelity.replace('_', ' ')}, "
+            f"{extraction.replace('_', ' ')} extraction, SHA-256 {sha[:12]}…)"
+        )
     return out
 
 

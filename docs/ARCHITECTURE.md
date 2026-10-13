@@ -56,6 +56,8 @@ core/
     rules.py          decide_verdict (human-owned)
     prompts/          human-owned prompts
   restore/            Context Restore: find pasted exhibit quotes in the extraction (code only)
+  identity/           propose account -> person links from names in the data (code only);
+                      the expert confirms or rejects each one on the Identities page
   review/             expert actions + audit log
   report/             ReportRenderer; restore.py and letter.py (selection-audit request)
   review/status.py    what each claim needs from the expert (shared by screen and report)

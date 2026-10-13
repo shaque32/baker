@@ -265,20 +265,36 @@ def decide_identity_link(
     note: str = "",
     clock: Clock | None = None,
 ) -> None:
-    """Confirm or reject a proposed link. Links never merge on their own."""
+    """Confirm, reject or leave unresolved a link. Links never merge on their own.
+
+    Only 'confirmed' raises the link to tier confirmed, and only a confirmed link counts in a
+    check. Any other decision puts the tier back to inferred. The expert can change a decision
+    later; each one is a new audit-log entry.
+    """
     _expert(actor)
-    if status not in (IdentityLinkStatus.CONFIRMED, IdentityLinkStatus.REJECTED):
-        raise ReviewError("an expert decision on a link is 'confirmed' or 'rejected'")
+    decided = (
+        IdentityLinkStatus.CONFIRMED,
+        IdentityLinkStatus.REJECTED,
+        IdentityLinkStatus.UNRESOLVED,
+    )
+    if status not in decided:
+        raise ReviewError("an expert decision on a link is 'confirmed', 'rejected' or 'unresolved'")
+    if status is not IdentityLinkStatus.UNRESOLVED and not note.strip():
+        raise ReviewError("say why, in one sentence")
     row = conn.execute("SELECT status FROM identity_links WHERE id = ?", (link_id,)).fetchone()
     if row is None:
         raise ReviewError(f"no identity link {link_id}")
     now = _now(clock)
-    tier = ProvenanceTier.CONFIRMED if status == IdentityLinkStatus.CONFIRMED else None
+    tier = (
+        ProvenanceTier.CONFIRMED
+        if status == IdentityLinkStatus.CONFIRMED
+        else ProvenanceTier.INFERRED
+    )
     with conn:
         conn.execute(
-            "UPDATE identity_links SET status = ?, tier = COALESCE(?, tier), decided_by = ?,"
+            "UPDATE identity_links SET status = ?, tier = ?, decided_by = ?,"
             " decided_at_utc = ? WHERE id = ?",
-            (status.value, tier, actor, _iso(now), link_id),
+            (status.value, tier.value, actor, _iso(now), link_id),
         )
         audit_log.append(
             conn,
@@ -286,6 +302,120 @@ def decide_identity_link(
             actor,
             "identity.decide",
             {"link_id": link_id, "status": status.value, "was": row[0], "note": note},
+        )
+
+
+def link_account(
+    conn: sqlite3.Connection,
+    account_id: str,
+    person_id: str,
+    actor: str,
+    note: str,
+    clock: Clock | None = None,
+) -> str:
+    """The expert links an account to a person themselves (a link code did not propose).
+    It is the expert's own decision, so it is confirmed at once. Returns the link id."""
+    _expert(actor)
+    if not note.strip():
+        raise ReviewError("say why, in one sentence")
+    if conn.execute("SELECT 1 FROM accounts WHERE id = ?", (account_id,)).fetchone() is None:
+        raise ReviewError(f"no account {account_id}")
+    if conn.execute("SELECT 1 FROM persons WHERE id = ?", (person_id,)).fetchone() is None:
+        raise ReviewError(f"no person {person_id}")
+    lid = f"link:{account_id}|{person_id}"
+    if conn.execute("SELECT 1 FROM identity_links WHERE id = ?", (lid,)).fetchone():
+        decide_identity_link(conn, lid, IdentityLinkStatus.CONFIRMED, actor, note, clock)
+        return lid
+    now = _now(clock)
+    with conn:
+        conn.execute(
+            "INSERT INTO identity_links (id, account_id, person_id, status, tier, basis,"
+            " decided_by, decided_at_utc) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                lid,
+                account_id,
+                person_id,
+                IdentityLinkStatus.CONFIRMED.value,
+                ProvenanceTier.CONFIRMED.value,
+                f"Linked by {actor}: {note.strip()}",
+                actor,
+                _iso(now),
+            ),
+        )
+        audit_log.append(
+            conn,
+            now,
+            actor,
+            "identity.link",
+            {"link_id": lid, "account_id": account_id, "person_id": person_id, "note": note},
+        )
+    return lid
+
+
+def add_person(conn: sqlite3.Connection, name: str, actor: str, clock: Clock | None = None) -> str:
+    """The expert adds a person the government document names, written as the document writes
+    it ("ALEXANDER SOKOLOV"). A person is only a name: nothing ties them to an account until an
+    expert confirms a link. Refused when the name would make another person's name ambiguous
+    for the assumption filler (same whole name or same surname). Returns the person id."""
+    from core.identity.links import person_id_for, tokens
+
+    _expert(actor)
+    name = " ".join(name.split())
+    words = tokens(name)
+    if not words or len(name) > 120:
+        raise ReviewError("enter the name as the document writes it (up to 120 characters)")
+    rows = list(conn.execute("SELECT id, name FROM persons ORDER BY id"))
+    for pid, other in rows:
+        theirs = tokens(other)
+        if not theirs:
+            continue
+        mine = {" ".join(words), words[-1]}
+        if mine & {" ".join(theirs), theirs[-1]}:
+            raise ReviewError(
+                f"{name} would also match {other} ({pid}); the audit could not tell them apart"
+            )
+    pid = person_id_for(name, (r[0] for r in rows))
+    now = _now(clock)
+    with conn:
+        conn.execute(
+            "INSERT INTO persons (id, name, created_by) VALUES (?, ?, ?)", (pid, name, actor)
+        )
+        audit_log.append(conn, now, actor, "person.add", {"person_id": pid, "name": name})
+    return pid
+
+
+def remove_person(
+    conn: sqlite3.Connection, person_id: str, actor: str, clock: Clock | None = None
+) -> None:
+    """Remove a person the expert added, with their undecided and rejected links. Refused for a
+    phone owner (withdraw the stipulation instead) and for a person with a confirmed link
+    (reject it first), so nothing an expert confirmed disappears silently."""
+    _expert(actor)
+    row = conn.execute("SELECT name FROM persons WHERE id = ?", (person_id,)).fetchone()
+    if row is None:
+        raise ReviewError(f"no person {person_id}")
+    if conn.execute("SELECT 1 FROM stipulations WHERE person_id = ?", (person_id,)).fetchone():
+        raise ReviewError("this person is a phone owner; change the stipulation instead")
+    if conn.execute(
+        "SELECT 1 FROM identity_links WHERE person_id = ? AND status = 'confirmed'", (person_id,)
+    ).fetchone():
+        raise ReviewError("reject this person's confirmed links first")
+    now = _now(clock)
+    with conn:
+        gone = [
+            r[0]
+            for r in conn.execute(
+                "SELECT id FROM identity_links WHERE person_id = ? ORDER BY id", (person_id,)
+            )
+        ]
+        conn.execute("DELETE FROM identity_links WHERE person_id = ?", (person_id,))
+        conn.execute("DELETE FROM persons WHERE id = ?", (person_id,))
+        audit_log.append(
+            conn,
+            now,
+            actor,
+            "person.remove",
+            {"person_id": person_id, "name": row[0], "links_removed": gone},
         )
 
 
