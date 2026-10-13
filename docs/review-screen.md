@@ -76,7 +76,10 @@ eval or re-decided.
    **Unproven, awaiting expert review**, never as supported. A claim Baker could not set up
    any check for (the assumption filler refused every proposal, for example a name that is no
    person in the case) shows as **Unproven, not tested**, with the refusals, at the top of the
-   queue: no record was searched for it, so the expert checks it by hand.
+   queue: no record was searched for it, so the expert checks it by hand. Its claim page and
+   the report list what the case holds (each imported extraction file, the devices in it, its
+   kind, coverage and SHA-256), so a claim about the case's own material, such as "based on
+   extraction reports for two phones", can be compared at a glance.
 3. **Claim page.** The claim, its paragraph as printed, the verdict and the rules' reasons, the
    assumptions and what each check searched, and every evidence item grouped by review state.
    Accept, dismiss or reopen each item with a one-sentence reason. "See about 20 messages around

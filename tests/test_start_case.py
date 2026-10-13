@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import html
 import io
 import json
 import os
@@ -383,7 +384,16 @@ def test_audit_runs_in_the_background_in_the_experts_order(app, inputs):
     assert c21.untested and c21.label == status.NOT_TESTED
     assert c21.not_tested.startswith(pipeline.NOT_TESTED)
     assert status.NOT_TESTED in queue_page and "Not tested: Baker could not" in queue_page
-    assert pipeline.NOT_TESTED in get(app, "/claim", id="C21").text
+    claim_page = get(app, "/claim", id="C21").text
+    assert pipeline.NOT_TESTED in claim_page
+    # ...next to what the case holds, so a claim about the case's own material can be checked.
+    held = status.case_holdings(conn)
+    assert len(held) == 2 and any("Apple iPhone 13" in h for h in held), held
+    report = render_report(conn)
+    for page_html in (claim_page, report):
+        assert html.escape(status.HOLDINGS) in page_html
+        assert all(html.escape(h) in page_html for h in held)
+    assert html.escape(status.HOLDINGS) not in get(app, "/claim", id="C05").text
     assert pipeline.last_run(conn)["not_tested"].keys() == {"C21"}
     assert all(not st.untested for cid, st in states.items() if cid != "C21")
     assert audit_log.verify_chain(conn)
