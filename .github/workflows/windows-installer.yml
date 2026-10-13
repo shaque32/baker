@@ -1,0 +1,261 @@
+# Builds the Windows installer, installs it on a fresh Windows runner and runs case01 from the
+# installed copy. Optionally times the 14B model on the runner's CPU (no GPU), which is the
+# measured floor for a laptop with no NVIDIA card. See docs/install.md and packaging/windows/.
+#
+# The llama-cpp-python builds are slow (the CUDA one most of all), so each is cached until
+# pins.json or its build script changes.
+name: windows-installer
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    # labeled: adding the cpu-timing label to a pull request runs the CPU timing on it.
+    types: [opened, synchronize, reopened, labeled]
+    paths:
+      - "packaging/**"
+      - ".github/workflows/windows-installer.yml"
+      - "pyproject.toml"
+  workflow_dispatch:
+    inputs:
+      cpu_timing:
+        description: "Time the 14B model on the runner's CPU (2 to 4 hours)"
+        type: boolean
+        default: false
+      claims:
+        description: "case01 claims to time (the Mac's 16 GB run used C02,C05,C12)"
+        type: string
+        default: "C02,C05,C12"
+
+permissions:
+  contents: read
+
+# A newer push waits for the running build instead of cancelling it, so the slow llama builds
+# finish and fill the cache.
+concurrency:
+  group: windows-installer-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  pins:
+    # Every download the build makes, checked against pins.json before anything is built on it.
+    if: github.event.action != 'labeled' || github.event.label.name == 'cpu-timing'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python embeddable package (python.org MD5, pinned SHA-256)
+        run: |
+          url=$(jq -r .python.url packaging/windows/pins.json)
+          curl -fsSL "$url" -o embed.zip
+          md5=$(md5sum embed.zip | cut -d' ' -f1); sha=$(sha256sum embed.zip | cut -d' ' -f1)
+          echo "python embed md5 $md5 sha256 $sha"
+          test "$md5" = "$(jq -r .python.md5 packaging/windows/pins.json)"
+          test "$sha" = "$(jq -r .python.sha256 packaging/windows/pins.json)"
+      - name: Model file (Hugging Face's own SHA-256 and size)
+        if: always()
+        run: |
+          file=$(jq -r .model.file packaging/windows/pins.json)
+          meta=$(curl -fsSL "$(jq -r .model.metadata_url packaging/windows/pins.json)" |
+            jq -c --arg f "$file" '.[] | select(.path == $f) | .lfs')
+          echo "Hugging Face $file: $meta"
+          test "$(echo "$meta" | jq -r .oid)" = "$(jq -r .model.sha256 packaging/windows/pins.json)"
+          test "$(echo "$meta" | jq -r .size)" = "$(jq -r .model.size packaging/windows/pins.json)"
+
+  llama-runtime:
+    name: llama-cpp-python (${{ matrix.variant }})
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [cpu, cuda]
+    # Visual Studio 2022: CUDA 12.4's build integration does not know the Visual Studio on
+    # windows-latest. The MSVC runtime shipped with the installer is the newer one, which runs
+    # code built by this older compiler.
+    if: github.event.action != 'labeled' || github.event.label.name == 'cpu-timing'
+    runs-on: windows-2022
+    timeout-minutes: 330
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - id: key
+        name: Cache key (the llama and CUDA pins and the build scripts only)
+        shell: bash
+        run: |
+          pins=$(jq -c '[.llama_cpp_python, .cuda]' packaging/windows/pins.json)
+          scripts=$(cat packaging/windows/build_llama.ps1 packaging/windows/install_cuda.ps1)
+          echo "hash=$(printf '%s\n%s' "$pins" "$scripts" | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+      - id: cache
+        uses: actions/cache@v4
+        with:
+          path: build/wheels/${{ matrix.variant }}
+          key: llama-${{ matrix.variant }}-${{ steps.key.outputs.hash }}
+      - name: CUDA toolkit (build machine only)
+        if: matrix.variant == 'cuda' && steps.cache.outputs.cache-hit != 'true'
+        run: packaging/windows/install_cuda.ps1
+      - name: Build the wheel
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: packaging/windows/build_llama.ps1 -Variant ${{ matrix.variant }} -OutDir build/wheels/${{ matrix.variant }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: llama-${{ matrix.variant }}
+          path: |
+            build/wheels/${{ matrix.variant }}/*.whl
+            build/wheels/${{ matrix.variant }}/cuda-dlls/*.dll
+          if-no-files-found: error
+          retention-days: 7
+
+  installer:
+    needs: [pins, llama-runtime]
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: llama-*
+          path: build/wheels
+      - id: version
+        name: Version
+        run: |
+          $v = python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])"
+          $sha = "${{ github.sha }}".Substring(0, 7)
+          "version=$v+$sha" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+      - name: Python and MSVC runtime
+        run: |
+          $py = (Get-Content packaging/windows/pins.json -Raw | ConvertFrom-Json).python
+          Invoke-WebRequest $py.url -OutFile build/python-embed.zip
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $crt = & $vswhere -latest -products * -find 'VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT' |
+            Where-Object { $_ -notmatch 'onecore' } | Select-Object -Last 1
+          if (-not $crt) { throw 'MSVC runtime DLLs not found' }
+          Write-Host "MSVC runtime from $crt"
+          New-Item -ItemType Directory -Force build/crt | Out-Null
+          Copy-Item "$crt\msvcp140*.dll", "$crt\vcruntime140*.dll" build/crt
+          Get-ChildItem build/crt
+      - name: Stage
+        run: |
+          $cpu = Get-ChildItem build/wheels/llama-cpu -Filter *.whl | Select-Object -First 1
+          $cuda = Get-ChildItem build/wheels/llama-cuda -Filter *.whl | Select-Object -First 1
+          python packaging/windows/stage.py --out build/stage --python-zip build/python-embed.zip `
+            --llama-cpu $cpu.FullName --llama-cuda $cuda.FullName `
+            --crt-dlls build/crt --cuda-dlls build/wheels/llama-cuda/cuda-dlls
+          if ($LASTEXITCODE) { throw 'stage failed' }
+      - name: Inno Setup
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup --no-progress -y | Out-Null }
+          $m = (Get-Content packaging/windows/pins.json -Raw | ConvertFrom-Json).model
+          $gb = [math]::Round($m.size / 1e9, 1)
+          & $iscc /Qp "/DStage=$PWD\build\stage" "/DAppVersion=${{ steps.version.outputs.version }}" `
+            "/DModelFile=$($m.file)" "/DModelUrl=$($m.url)" "/DModelSha256=$($m.sha256)" `
+            "/DModelName=$($m.name)" "/DModelSizeGB=$gb" "/DModelNCtx=$($m.n_ctx)" `
+            "/O$PWD\build\installer" packaging/windows/baker.iss
+          if ($LASTEXITCODE) { throw 'ISCC failed' }
+          $exe = Get-ChildItem build/installer -Filter *.exe | Select-Object -First 1
+          $sha = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
+          "$sha  $($exe.Name)" | Out-File "$($exe.FullName).sha256" -Encoding ascii
+          Copy-Item build/stage/BUILD_INFO.json, packaging/windows/speedtest.ps1 build/installer/
+          "### Installer`n`n``$($exe.Name)`` ($([math]::Round($exe.Length / 1MB)) MB)`n`nSHA-256 ``$sha``" |
+            Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+      - uses: actions/upload-artifact@v4
+        with:
+          name: baker-installer
+          path: build/installer/*
+          if-no-files-found: error
+          retention-days: 30
+
+  smoke-test:
+    # A Windows runner that has never seen this repo's Python: install, then use the installed copy.
+    needs: installer
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: baker-installer
+          path: dist
+      - name: Install silently (CPU runtime, no model)
+        run: |
+          $exe = Get-ChildItem dist -Filter *.exe | Select-Object -First 1
+          $p = Start-Process $exe.FullName -Wait -PassThru -ArgumentList `
+            '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/MERGETASKS=addtopath,!downloadmodel', "/LOG=$PWD\setup.log"
+          Get-Content setup.log | Select-String 'runtime|model|Model' | ForEach-Object { $_.Line }
+          if ($p.ExitCode) { throw "setup exit code $($p.ExitCode)" }
+      - name: The baker command and the model runtime load
+        run: |
+          $app = "$env:LOCALAPPDATA\Programs\Baker"
+          & "$app\baker.cmd" --help | Select-Object -First 5
+          if ($LASTEXITCODE) { throw 'baker --help failed' }
+          & "$app\python\python.exe" -X utf8 -c "import llama_cpp, sys; print('llama-cpp-python', llama_cpp.__version__, sys.version); llama_cpp.llama_backend_init(); print(llama_cpp.llama_print_system_info().decode())"
+          if ($LASTEXITCODE) { throw 'llama_cpp did not load' }
+          & "$app\baker.cmd" init --db "$env:RUNNER_TEMP\smoke.db"
+          if ($LASTEXITCODE) { throw 'baker init failed' }
+      - name: case01 merge gate from the installed copy
+        run: |
+          Set-Location "$env:LOCALAPPDATA\Programs\Baker\baker"
+          $py = "..\python\python.exe"
+          & $py -X utf8 -m eval.run_pipeline --mode model-free --assumption-spec eval/gold/case01/assumptions.jsonl
+          if ($LASTEXITCODE) { throw 'pipeline failed' }
+          & $py -X utf8 -m eval.run_eval --predictions eval/out/case01/model_free/predictions.jsonl
+          if ($LASTEXITCODE) { throw 'gate failed on the installed copy' }
+      - name: Uninstall leaves no program files
+        run: |
+          $app = "$env:LOCALAPPDATA\Programs\Baker"
+          $p = Start-Process "$app\unins000.exe" -Wait -PassThru -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES'
+          if ($p.ExitCode) { throw "uninstall exit code $($p.ExitCode)" }
+          Start-Sleep -Seconds 3
+          if (Test-Path "$app\python") { throw 'python folder left behind' }
+
+  cpu-timing:
+    # The 14B on 4 CPU cores and 16 GB, no GPU: the slowest machine an expert might use.
+    needs: installer
+    # A dispatch needs the workflow on main, so a pull request gets it from the cpu-timing label.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.cpu_timing) ||
+      (github.event_name == 'push' && contains(github.event.head_commit.message, '[cpu-timing]')) ||
+      (github.event.action == 'labeled' && github.event.label.name == 'cpu-timing')
+    runs-on: windows-latest
+    timeout-minutes: 350
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: baker-installer
+          path: dist
+      - name: Speed test (CPU)
+        run: |
+          $exe = Get-ChildItem dist -Filter *.exe | Select-Object -First 1
+          packaging/windows/speedtest.ps1 -Installer $exe.FullName -Claims "${{ inputs.claims || 'C02,C05,C12' }}" -SkipProbe -Out "$PWD\speedtest"
+      - name: Results
+        if: always()
+        run: |
+          if (Test-Path speedtest/RESULTS.md) { Get-Content speedtest/RESULTS.md | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8 }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cpu-timing
+          path: speedtest/
+          retention-days: 90
