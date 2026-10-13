@@ -36,6 +36,7 @@ from core.selection.audit import (
     summary,
 )
 from core.selection.picks import Lookup
+from core.timeline.settings import Settings
 
 CSS = """
 .sel-unit { margin: 28px 0 36px; }
@@ -112,6 +113,7 @@ class Links:
 
     context: Callable[[str], str] | None = None  # message id -> its whole conversation
     claim: Callable[[str], str] | None = None  # claim id -> the claim page
+    gaps: str | None = None  # the Gaps page, which shows each quiet stretch in full
 
 
 def anchor(unit_id: str) -> str:
@@ -356,6 +358,9 @@ def _passage_html(
         f"<li>{'<strong>' + e(s) + '</strong>' if s.startswith(heading) else e(s)}</li>"
         for s in summary(unit, p)
     )
+    if p.quiet and links.gaps is not None:
+        them = "it" if len(p.quiet) == 1 else "them"
+        items += f"<li><a href='{e(links.gaps)}'>See {them} on the Gaps tab</a></li>"
     out = [f"<article class='sel-passage' id='{e(p.id)}'><div class='in'>"]
     if p.copy_of is not None:
         first = by_id[p.copy_of]
@@ -547,9 +552,14 @@ def selection_html(
     return "".join(out)
 
 
-def selection_section(conn: sqlite3.Connection, states: list[ClaimState] | None = None) -> str:
-    """The report's Selection audit section, ending with the draft request."""
-    audit = selection_audit(conn)
+def selection_section(
+    conn: sqlite3.Connection,
+    states: list[ClaimState] | None = None,
+    timeline: Settings | None = None,
+) -> str:
+    """The report's Selection audit section, ending with the draft request. timeline: the case's
+    timeline settings, for the quiet stretches; defaults if None."""
+    audit = selection_audit(conn, timeline=timeline or Settings())
     states = claim_states(conn) if states is None else states
     return (
         "<h2 id='selection-audit'>Selection audit</h2>"

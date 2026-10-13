@@ -554,9 +554,10 @@ def render_report(conn: sqlite3.Connection, timeline: timeline_html.Settings | N
     parts += [_claim_block(conn, st) for st in states]
 
     parts.append(searches_section(states, srcs))
-    parts.append(timeline_html.report_section(conn, timeline or timeline_html.Settings()))
+    timeline = timeline or timeline_html.Settings()
+    parts.append(timeline_html.report_section(conn, timeline))
     parts.append(restore_html.restore_section(conn))
-    parts.append(selection_html.selection_section(conn, states))
+    parts.append(selection_html.selection_section(conn, states, timeline))
 
     parts.append(
         "<h2>Sources</h2><table><thead><tr><th>File</th><th>Kind</th><th>Coverage</th>"

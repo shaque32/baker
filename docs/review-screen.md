@@ -91,16 +91,17 @@ eval or re-decided.
 5. **Confirm or override** each verdict. An override needs a note and prints as an expert
    override.
 6. **Selection.** Every message the government's document quotes, an exhibit quotes or the
-   examiner tagged, in its own exchange with the messages around it that were not picked
+   examiner tagged, in its own exchange with the messages around it that were not picked, and the
+   quiet stretches the Gaps tab lists in the pauses around it
    ([selection-audit.md](selection-audit.md)). A claim page whose paragraph quotes messages links
    to its passages. It never changes a verdict.
-7. **Report.** View it, save it (`Report` page, or `/report?download=1`), or print it to PDF from
-   the browser; the print layout is built in. **Audit log** verifies the hash chain.
 7. **Timeline and Gaps.** The Timeline tab puts every date and time the government document
    states beside the phone records' own timestamps and lists the differences first; the Gaps tab
    lists stretches with no messages or calls on each phone, app and thread. Both are derived by
    code, change no verdict, and appear in the report. Their two case settings (time tolerance,
    shortest quiet stretch) are logged with your name. See [timeline.md](timeline.md).
+8. **Report.** View it, save it (`Report` page, or `/report?download=1`), or print it to PDF from
+   the browser; the print layout is built in. **Audit log** verifies the hash chain.
 
 ## Rules the screen keeps
 

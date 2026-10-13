@@ -353,7 +353,7 @@ class App:
             body = restore_pages.match_page(conn, page, req.query.get("id", ""))
             return self._html(body) if body else self._not_found(page, "no such match")
         if p == "/selection":
-            return self._html(selection_pages.selection_page(conn, page))
+            return self._html(selection_pages.selection_page(conn, page, self._timeline()))
         if p == "/selection/context":
             body = selection_pages.context_page(conn, page, req.query.get("id", ""))
             return self._html(body) if body else self._not_found(page, "no such message")

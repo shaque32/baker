@@ -10,9 +10,10 @@ why a message was not picked. Nothing is stored: it is derived from the case dat
 it is shown.
 
 On the review screen: the **Selection** tab (`/selection`), "Open in the conversation" for 20
-messages either side and related threads (`/selection/context?id=...`), and a line on each claim
-page whose paragraph quotes messages. The report prints it as its **Selection audit** section,
-which ends with the draft request for the full extraction (`core/report/letter.py`).
+messages either side and related threads (`/selection/context?id=...`), a link to the **Gaps** tab
+from each passage whose pauses hold a quiet stretch, and a line on each claim page whose paragraph
+quotes messages. The report prints it as its **Selection audit** section, which ends with the
+draft request for the full extraction (`core/report/letter.py`).
 
 ## What counts as picked (`core/selection/picks.py`)
 
@@ -76,6 +77,14 @@ from someone other than the sender of the picked messages; the pause to the prev
 message when the exchange opens or closes with a pick; and whether a quote is only part of its
 message.
 
+When the Gaps check (`core/timeline/gaps.py`, with the case's shortest-stretch setting) lists a
+quiet stretch in the thread's pause just before or just after the exchange, on the same phone, in
+the thread's app or in the thread itself, the passage names it: "In the pause after this
+exchange, the Gaps check lists a quiet stretch: no messages in this app on this phone from
+2026-03-25 12:51 EDT to 2026-03-28 14:15 EDT (3 days 1 h)." When a pause holds several, it gives
+their number and the longest. The Gaps page has each stretch in full, with its pace and what the
+other phones hold; like the Gaps check, the passage states a stretch and never explains it.
+
 When the same picked messages are on two sources, the second passage is folded into the first if
 its exchange holds the same messages; if not, both are shown and the difference is counted ("it
 holds 1 message that the exchange there does not").
@@ -99,4 +108,6 @@ for the forbidden-word check.
 The matcher's index of every message body is kept in memory per case database while its messages
 are unchanged. The first view after the screen starts builds it: on a synthetic copy of case01
 grown to 117,000 messages that took about 11 seconds when a quote had to be searched tolerantly,
-then about a second per view.
+then about a second per view. Naming the quiet stretches runs the Gaps check over every message
+and call each time, about 2.5 seconds more at that size. The claim pages and the conversation
+view do not run it.

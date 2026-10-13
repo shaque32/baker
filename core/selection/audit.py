@@ -16,6 +16,10 @@ and each exchange holding messages the unit picked:
   picks, the nearest messages outside it, with the pause between, so a pause is shown, not hidden.
 Long runs are cut to the messages nearest the picks, and the rows say how many are not shown.
 
+Quiet stretches. Given the case's timeline settings, each passage also names the quiet stretches
+the Gaps check lists (core/timeline/gaps.py) in the thread's pause just before or just after its
+exchange: on the phone, in the app or in the thread, at the level the Gaps check lists them.
+
 The same picked messages on two sources make two passages. The second is folded into the first
 when its picks are copies of the first's (core/selection/picks.py same_message), and the
 difference between the two exchanges is counted.
@@ -52,6 +56,9 @@ from core.selection.picks import (
     same_message,
     tagged,
 )
+from core.timeline.gaps import Gap, find_gaps
+from core.timeline.records import CaseRecords
+from core.timeline.settings import Settings
 
 EXCHANGE_GAP = timedelta(hours=1)  # a longer pause between two messages starts a new exchange
 MIN_SIDE = 3  # messages shown before and after the picks, reaching outside the exchange if needed
@@ -98,6 +105,17 @@ class Row:
 
 
 @dataclass(frozen=True)
+class Quiet:
+    """A quiet stretch the Gaps check lists in the thread's pause just before or just after an
+    exchange. A stretch is stated, never explained."""
+
+    side: Literal["before", "after"]
+    scope: str  # 'phone', 'app' or 'thread': where the Gaps check lists it
+    start_utc: datetime  # that series' last record before the stretch
+    end_utc: datetime  # and its first record after it
+
+
+@dataclass(frozen=True)
 class Passage:
     id: str  # page anchor, stable: unit, thread and first pick
     unit_id: str
@@ -119,8 +137,8 @@ class Passage:
     last_utc: datetime | None
     opens_thread: bool  # the source holds no earlier message in this thread
     closes_thread: bool  # the source holds no later message in this thread
-    pause_before_s: float | None  # from the thread's previous message to the exchange
-    pause_after_s: float | None  # from the exchange to the next message, when that has a time
+    prev_utc: datetime | None  # the thread's message just before the exchange, if it has a time
+    next_utc: datetime | None  # and just after it
     left_out_ids: tuple[str, ...] = ()  # every left-out message of the exchange, shown or not
     between_ids: tuple[str, ...] = ()  # those of them between the first and the last pick
     nearby: tuple[Line, ...] = ()  # the source's other conversations around the same time
@@ -128,6 +146,21 @@ class Passage:
     copy_of: str | None = None  # the passage on another source whose picks this one copies
     only_here: int = 0  # messages of this exchange that the copy_of passage's exchange lacks
     only_there: int = 0  # and the other way round
+    quiet: tuple[Quiet, ...] = ()  # quiet stretches the Gaps check lists in the two pauses
+
+    @property
+    def pause_before_s(self) -> float | None:
+        """From the thread's previous message to the exchange."""
+        if self.prev_utc is None or self.first_utc is None:
+            return None
+        return (self.first_utc - self.prev_utc).total_seconds()
+
+    @property
+    def pause_after_s(self) -> float | None:
+        """From the exchange to the thread's next message, when that has a time."""
+        if self.next_utc is None or self.last_utc is None:
+            return None
+        return (self.next_utc - self.last_utc).total_seconds()
 
     @property
     def left_out(self) -> int:
@@ -434,8 +467,8 @@ def _passage(
         last_utc=last,
         opens_thread=a == 0,
         closes_thread=b == len(msgs) - 1,
-        pause_before_s=(first - prev_t).total_seconds() if first and prev_t else None,
-        pause_after_s=(next_t - last).total_seconds() if last and next_t else None,
+        prev_utc=prev_t,
+        next_utc=next_t,
         left_out_ids=tuple(msgs[i].id for i in out_all),
         between_ids=tuple(msgs[i].id for i in left_out(range(i0 + 1, i1))),
         nearby=tuple(nearby),
@@ -587,10 +620,13 @@ def paragraph_label(label: str | None, para_no: int) -> str:
     return f"¶{label if label else '#' + str(para_no)}"
 
 
-def selection_audit(conn: sqlite3.Connection, paragraph_id: str | None = None) -> SelectionAudit:
+def selection_audit(
+    conn: sqlite3.Connection, paragraph_id: str | None = None, timeline: Settings | None = None
+) -> SelectionAudit:
     """The selection audit of the case as it is now. With paragraph_id, only that paragraph's
     unit: every paragraph's quotes are still looked up, so a message another paragraph quotes is
-    not counted as left out."""
+    not counted as left out. With timeline (the case's timeline settings), each passage also
+    names the quiet stretches the Gaps check lists in its pauses."""
     index = _index(conn)
     names = case_names(conn)
     paras = _paragraphs(conn)
@@ -653,6 +689,12 @@ def selection_audit(conn: sqlite3.Connection, paragraph_id: str | None = None) -
             units.append(
                 Unit(kind="tags", id="tags", label="Examiner tags", passages=tuple(passages))
             )
+    if timeline is not None:
+        stretches = find_gaps(CaseRecords(conn), [], timeline)  # stated times do not move them
+        units = [
+            replace(u, passages=tuple(replace(p, quiet=quiet(p, stretches)) for p in u.passages))
+            for u in units
+        ]
     return SelectionAudit(
         units=tuple(units),
         sources=tuple(_sources(conn)),
@@ -662,6 +704,31 @@ def selection_audit(conn: sqlite3.Connection, paragraph_id: str | None = None) -
         unsearched=tuple(unsearched),
         paragraphs=len(paras),
     )
+
+
+def quiet(p: Passage, stretches: list[Gap]) -> tuple[Quiet, ...]:
+    """The stretches, of the passage's phone, of its thread's app or of its thread, that lie in
+    the thread's pause just before or just after the exchange. A stretch that only touches a
+    pause, or reaches past one of its ends, is not named."""
+    t = p.thread
+    pauses: list[tuple[Literal["before", "after"], datetime, datetime]] = []
+    if p.prev_utc is not None and p.first_utc is not None:
+        pauses.append(("before", p.prev_utc, p.first_utc))
+    if p.last_utc is not None and p.next_utc is not None:
+        pauses.append(("after", p.last_utc, p.next_utc))
+    out: list[Quiet] = []
+    for side, a, b in pauses:
+        for g in stretches:
+            sr = g.series
+            if sr.source_id != t.source_id:
+                continue
+            if (sr.scope == "app" and sr.app != t.app) or (
+                sr.scope == "thread" and sr.thread_id != t.id
+            ):
+                continue
+            if a <= g.start < g.end <= b:
+                out.append(Quiet(side, sr.scope, g.start, g.end))
+    return tuple(sorted(out, key=lambda q: (q.side == "after", q.start_utc)))
 
 
 def _sources(conn: sqlite3.Connection) -> list[SourceLine]:
@@ -706,6 +773,20 @@ def span_text(p: Passage) -> str:
     if a.date() == b.date() and a.tzname() == b.tzname():
         return f"{a:%Y-%m-%d %H:%M} to {b:%H:%M} {b.tzname()}"
     return f"{a:%Y-%m-%d %H:%M} {a.tzname()} to {b:%Y-%m-%d %H:%M} {b.tzname()}"
+
+
+def _at(t: datetime, zone: str | None) -> str:
+    """One time on the phone's own clock (UTC when its zone is not known)."""
+    local = t.astimezone(ZoneInfo(zone) if zone else UTC)
+    return f"{local:%Y-%m-%d %H:%M} {local.tzname()}"
+
+
+# What a quiet stretch has none of, by the level the Gaps check lists it at.
+_QUIET_WHAT = {
+    "phone": "messages or calls on this phone",
+    "app": "messages in this app on this phone",
+    "thread": "messages in this thread",
+}
 
 
 def _n(n: int, word: str, plural: str | None = None) -> str:
@@ -789,6 +870,21 @@ def summary(unit: Unit, p: Passage) -> list[str]:
             lines.append(f"The next message in this thread is {gap_text(p.pause_after_s)} later.")
         else:
             lines.append("The next message in this thread has no usable time.")
+    for side in ("before", "after"):
+        found = [qs for qs in p.quiet if qs.side == side]
+        if not found:
+            continue
+        qs = max(found, key=lambda x: (x.end_utc - x.start_utc, -x.start_utc.timestamp()))
+        what = (
+            f"no {_QUIET_WHAT[qs.scope]} from {_at(qs.start_utc, p.zone)} to "
+            f"{_at(qs.end_utc, p.zone)} ({gap_text((qs.end_utc - qs.start_utc).total_seconds())})"
+        )
+        lines.append(
+            f"In the pause {side} this exchange, the Gaps check lists a quiet stretch: {what}."
+            if len(found) == 1
+            else f"In the pause {side} this exchange, the Gaps check lists {len(found)} quiet "
+            f"stretches. The longest: {what}."
+        )
     if p.partial and unit.kind != "tags":
         lines.append(
             f"{who} quotes only part of {_n(p.partial, 'message')}; the whole message is shown, "

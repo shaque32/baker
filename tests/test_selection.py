@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import shutil
 import sqlite3
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -25,15 +26,20 @@ from core.restore.store import add_exhibit
 from core.selection.audit import (
     EXCHANGE_GAP,
     Passage,
+    Quiet,
     SelectionAudit,
     Unit,
     _Thread,
     gap_text,
     lookup_note,
+    quiet,
     selection_audit,
     summary,
 )
 from core.selection.picks import paragraph_quotes, skip_reason
+from core.timeline.gaps import find_gaps
+from core.timeline.records import CaseRecords
+from core.timeline.settings import Settings
 from eval import run_pipeline
 from ui.app import App, Request
 
@@ -337,9 +343,11 @@ def test_the_audit_reads_only_and_is_the_same_every_time(db) -> None:
     ro = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     try:
         first, second = selection_audit(ro), selection_audit(ro)
+        with_gaps = selection_audit(ro, timeline=Settings())
     finally:
         ro.close()
     assert first == second
+    assert any(p.quiet for u in with_gaps.units for p in u.passages)
 
 
 def test_one_paragraph_alone_still_knows_what_the_others_quote(conn) -> None:
@@ -370,6 +378,83 @@ def test_tool_words_never_use_the_forbidden_words(conn) -> None:
             check_report_text(lookup_note(lk))
 
 
+# ---------------------------------------------------------------- quiet stretches (Gaps)
+
+
+def test_a_quiet_stretch_in_a_pause_is_named_on_the_passage(conn) -> None:
+    """¶15's exchange ends at 12:51 on March 25, and the Gaps check lists the phone's SMS going
+    quiet from then until March 28. Without the case's timeline settings nothing is named."""
+    assert not _only(_unit(selection_audit(conn), "¶15")).quiet
+    unit = _unit(selection_audit(conn, timeline=Settings()), "¶15")
+    p = _only(unit)
+    assert p.quiet == (Quiet("after", "app", p.last_utc, p.quiet[0].end_utc),)
+    assert p.last_utc < p.quiet[0].end_utc <= p.next_utc
+    assert (
+        "In the pause after this exchange, the Gaps check lists a quiet stretch: no messages in "
+        "this app on this phone from 2026-03-25 12:51 EDT to 2026-03-28 14:15 EDT (3 days 1 h)."
+        in summary(unit, p)
+    )
+
+
+def test_a_quiet_stretch_that_ends_where_the_pause_starts_is_not_named(conn) -> None:
+    """The phone's Telegram goes quiet until message 946; ¶6's pause runs from 947 to 948."""
+    p = _only(_unit(selection_audit(conn, timeline=Settings()), "¶6"))
+    assert p.quiet == ()
+    data = CaseRecords(conn)
+    telegram = next(
+        g
+        for g in find_gaps(data, [], Settings())
+        if g.series.scope == "app" and g.series.app == "Telegram" and g.after.id == M(946)
+    )
+    touching = replace(telegram, after=data.by_id[M(947)])
+    assert touching.end == p.prev_utc
+    assert quiet(p, [touching]) == ()
+    inside = replace(telegram, before=data.by_id[M(947)], after=data.by_id[M(948)])
+    assert quiet(p, [inside]) == (Quiet("before", "app", p.prev_utc, p.first_utc),)
+    reaching = replace(telegram, after=data.by_id[M(948)])  # starts before the pause, at 946
+    assert reaching.start < p.prev_utc < reaching.end == p.first_utc
+    assert quiet(p, [reaching]) == ()
+    other_phone = replace(inside, series=replace(inside.series, source_id="item2"))
+    other_app = replace(inside, series=replace(inside.series, app="SMS"))
+    assert quiet(p, [other_phone, other_app]) == ()
+
+
+def test_quiet_stretches_named_lie_in_the_pause_on_the_passages_own_phone(conn) -> None:
+    settings = Settings(gap_hours=24)  # a short setting, so case01 has many stretches
+    stretches = find_gaps(CaseRecords(conn), [], settings)
+
+    def listed(qs: Quiet, p: Passage) -> bool:
+        return any(
+            (g.start, g.end, g.series.scope) == (qs.start_utc, qs.end_utc, qs.scope)
+            and g.series.source_id == p.thread.source_id
+            and (qs.scope == "phone" or g.series.app == p.thread.app)
+            and (qs.scope != "thread" or g.series.thread_id == p.thread.id)
+            for g in stretches
+        )
+
+    named = 0
+    for u in selection_audit(conn, timeline=settings).units:
+        for p in u.passages:
+            for qs in p.quiet:
+                named += 1
+                before = qs.side == "before"
+                a, b = (p.prev_utc, p.first_utc) if before else (p.last_utc, p.next_utc)
+                assert a <= qs.start_utc < qs.end_utc <= b
+                assert listed(qs, p)
+            check_report_text("\n".join(summary(u, p)))
+    assert named >= 5
+    p = _only(_unit(selection_audit(conn, timeline=settings), "¶15"))
+    lines = [s for s in summary(_unit(selection_audit(conn), "¶15"), p) if "quiet" in s]
+    assert lines == [
+        "In the pause before this exchange, the Gaps check lists 3 quiet stretches. The longest: "
+        "no messages in this app on this phone from 2026-03-14 22:15 EDT to 2026-03-16 09:58 EDT "
+        "(35 h 43 min).",
+        "In the pause after this exchange, the Gaps check lists 4 quiet stretches. The longest: "
+        "no messages in this app on this phone from 2026-03-25 12:51 EDT to 2026-03-28 14:15 EDT "
+        "(3 days 1 h).",
+    ]
+
+
 # ---------------------------------------------------------------- report and screen
 
 
@@ -380,6 +465,8 @@ def test_report_has_the_selection_audit_and_the_request(conn) -> None:
     assert "<h3 id='full-extraction-request'>Request for the full extraction</h3>" in html
     assert "Not quoted anywhere in the document: 2 between the quoted messages." in html
     assert "A message such a source leaves out is not in the case" in html
+    assert "the Gaps check lists a quiet stretch: no messages in this app on this phone" in html
+    assert "href='/gaps'" not in html  # the report has no server to link to
 
 
 def _app(db: Path) -> App:
@@ -393,6 +480,7 @@ def test_screen_selection_tab_and_conversation_page(db) -> None:
     assert "<a href='/selection' class=on>Selection</a>" in page.text
     assert "Not quoted anywhere in the document" in page.text
     assert "/selection/context?id=msg%3Aitem1%3AChats%21948" in page.text
+    assert "<a href='/gaps'>See it on the Gaps tab</a>" in page.text
     ctx = app.handle(Request("GET", "/selection/context", {"id": M(948)}, dict(HOST)))
     assert ctx.status == 200 and "Quoted in ¶6" in ctx.text
     assert "<a href='/selection' class=on>Selection</a>" in ctx.text

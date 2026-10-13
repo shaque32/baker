@@ -16,6 +16,7 @@ from core.report.selection import Links, mark_html, selection_html
 from core.restore.view import context_view
 from core.review.status import claim_states
 from core.selection.audit import selection_audit
+from core.timeline.settings import Settings
 from ui.pages import Page, link
 
 
@@ -23,11 +24,13 @@ def _links() -> Links:
     return Links(
         context=lambda rid: link("/selection/context", id=rid),
         claim=lambda cid: link("/claim", id=cid),
+        gaps="/gaps",
     )
 
 
-def selection_page(conn: sqlite3.Connection, page: Page) -> str:
-    audit = selection_audit(conn)
+def selection_page(conn: sqlite3.Connection, page: Page, timeline: Settings) -> str:
+    """timeline: the case's timeline settings, for the quiet stretches the Gaps tab lists."""
+    audit = selection_audit(conn, timeline=timeline)
     body = (
         "<h1>Selection audit</h1>"
         + selection_html(audit, _links(), claim_states(conn))
