@@ -132,3 +132,18 @@ def test_no_network_tool_ships_in_core():
         if f.startswith("core/") and f.endswith(".py"):
             text = (ROOT / f).read_text(encoding="utf-8")
             assert "huggingface" not in text.lower(), f
+
+
+def test_the_mac_installer_parses_reads_the_same_pins_and_keeps_an_existing_model_setting():
+    import subprocess
+
+    script = ROOT / "packaging" / "mac" / "install.sh"
+    subprocess.run(["bash", "-n", str(script)], check=True)  # noqa: S603, S607 - fixed args
+    text = script.read_text(encoding="utf-8")
+    assert "packaging/windows/pins.json" in text
+    for key in ("['llama_cpp_python']['version']", "['model']['sha256']", "['model']['url']"):
+        assert key in text
+    assert 'if [ -f "$CONFIG" ]' in text  # never overwrites ~/.baker/model.json
+    assert "shasum -a 256" in text  # the model is checked before it is used
+    for name in ("install.sh", "Install Baker.command"):
+        assert (ROOT / "packaging" / "mac" / name).stat().st_mode & 0o111

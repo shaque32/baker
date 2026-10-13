@@ -34,7 +34,14 @@ from core.contracts import (
 )
 from core.ingest import coverage as import_coverage
 from core.report.html import CSS as REPORT_CSS
-from core.report.html import STANCE_LABEL, audit_log_summary, record_line, review_label, sources
+from core.report.html import (
+    STANCE_LABEL,
+    audit_log_summary,
+    record_line,
+    review_label,
+    sources,
+    stand_in_banner,
+)
 from core.report.restore import CSS as RESTORE_CSS
 from core.review.status import (
     AGAINST,
@@ -183,11 +190,7 @@ def run_banner(conn: sqlite3.Connection, page: Page, back: str) -> str:
     if run.get("partial"):
         out.append(partial_banner(conn, run))
     if run.get("fake"):
-        out.append(
-            "<div class='banner'><strong>Test run with stand-in components.</strong> The "
-            "evidence on this case came from eval stand-ins, not the real labeler. Nothing here "
-            "is a finding.</div>"
-        )
+        out.append(stand_in_banner(run))
     later = conn.execute(
         "SELECT COUNT(*) FROM evidence_reviews WHERE reviewer_kind = 'expert'"
         " AND decided_at_utc > ?",

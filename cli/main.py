@@ -22,6 +22,8 @@
     python -m cli serve     [--cases <folder> | --db case.db] [--port 8765] [--expert "<name>"]
                             [--open]
     python -m cli model-check
+    python -m cli demo      [--port 8766] [--expert "<name>"] [--no-open] [--build-only]
+                            [--from-case <case folder> | --scripted]
 
 `redecide` re-runs the verdict rules on the last audit's stored evidence after expert review;
 it calls no model. `serve` opens the expert's screen on http://127.0.0.1 only. Without --db it
@@ -38,6 +40,10 @@ file (SHA-256) and fits in this computer's memory.
 again: the finished claims' model outputs are reused, not recomputed. Claims a failed core
 check already contradicts are not sent to the model (their labels could not change the
 verdict); `--label-all` labels them too.
+`demo` resets the synthetic demo case (eval/demo.py) and opens it on its own port, from its own
+cases folder (~/Baker/demo/cases, or $BAKER_DEMO/cases), so each demo starts clean in seconds
+and a screen share shows no other case. `--from-case` saves a finished synthetic case01 audit
+(a real local-model run) as the demo from then on; `--scripted` goes back to the scripted one.
 `claims propose` asks the local model for claims on every paragraph that has none yet; they
 are stored as 'proposed' until the expert accepts, edits or removes them.
 """
@@ -276,6 +282,27 @@ def cmd_model_check(a: argparse.Namespace) -> int:
     return 0 if result.ok else 1
 
 
+def cmd_demo(a: argparse.Namespace) -> int:
+    from eval import demo
+
+    root = demo.demo_root()
+    if a.from_case is not None:
+        snap = demo.save_snapshot(root, a.from_case)
+        print(f"saved {a.from_case} as the demo; every reset restores it (copy in {snap})")
+    elif a.scripted:
+        demo.drop_snapshot(root)
+    case, kind = demo.reset(root)
+    what = "a saved audit" if kind == "snapshot" else "scripted labels, no model; see docs/demo.md"
+    print(f"demo case ready: {case.name} ({what}): {demo.summary(case)}")
+    if a.build_only:
+        return 0
+    return cmd_serve(
+        argparse.Namespace(
+            db=None, cases=demo.cases_dir(root), port=a.port, expert=a.expert, open=not a.no_open
+        )
+    )
+
+
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="baker", description="Baker: audit claims about phone data.")
     sub = p.add_subparsers(dest="command", required=True)
@@ -359,6 +386,17 @@ def parser() -> argparse.ArgumentParser:
     sp.add_argument("--open", action="store_true", help="open it in the default browser")
     sp = sub.add_parser("model-check", help="check the local model before a first audit")
     sp.set_defaults(fn=cmd_model_check)
+    sp = sub.add_parser("demo", help="reset the synthetic demo case and open it")
+    sp.set_defaults(fn=cmd_demo)
+    sp.add_argument("--port", type=int, default=8766, help="default 8766, beside a real `serve`")
+    sp.add_argument("--expert", help="the name recorded with decisions made during the demo")
+    sp.add_argument("--no-open", action="store_true", help="do not open the browser")
+    sp.add_argument("--build-only", action="store_true", help="reset the case, do not serve it")
+    g = sp.add_mutually_exclusive_group()
+    g.add_argument(
+        "--from-case", type=Path, help="save this finished synthetic case01 audit as the demo"
+    )
+    g.add_argument("--scripted", action="store_true", help="forget a saved audit; use the script")
     return p
 
 

@@ -444,7 +444,7 @@ def test_server_binds_loopback_only_and_answers(db):
 
 def test_report_has_awaiting_versions_coverage_log_and_print_layout(conn, tmp_path):
     html = render_report(conn)
-    assert AWAITING_EXPERT in html and "awaiting expert review.</strong>" in html
+    assert AWAITING_EXPERT in html and "waiting for the expert to agree.</strong>" in html
     for sha in [r[0] for r in conn.execute("SELECT sha256 FROM sources")]:
         assert sha in html
     assert "<h2>Versions</h2>" in html and "Verdict rules" in html and "test-stance" in html

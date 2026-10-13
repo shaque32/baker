@@ -15,7 +15,7 @@ Display rules:
   rules.py sets only if an expert accepted every supporting item it cites (the invariants
   re-check this). Otherwise "Supported (AI-reviewed)". AI-reviewed never displays as confirmed.
   An unproven claim whose supporting evidence no expert has decided yet shows as
-  "Unproven, awaiting expert review".
+  "Support found: do you agree?", Baker's finding put to the expert; its verdict is unproven.
 - Each evidence item shows its provenance tier from contracts.display_tier: the record's tier
   (observed, derived, inferred), or ai_reviewed / confirmed from its review status.
 - Device-ownership stipulations, source coverage, what each search covered and the meaning of
@@ -238,9 +238,11 @@ def _limitations(conn: sqlite3.Connection, srcs: list[tuple]) -> str:
         f"<strong>{SUPPORTED_AI}</strong> would mean a local AI reviewer accepted the "
         "supporting evidence and no human expert has confirmed it; under the current rules no "
         "claim reaches supported on AI review alone.</li>",
-        f"<li><strong>{AWAITING_EXPERT}</strong> means supporting evidence was found but no "
-        "expert has accepted or dismissed it yet. The local AI reviewer's acceptances only sort "
-        "evidence for the expert; they never make a claim supported.</li>",
+        f"<li><strong>{AWAITING_EXPERT}</strong> means Baker found records it reads as "
+        "supporting the claim and no expert has accepted or dismissed them yet. Until an expert "
+        "does, the verdict is unproven. The labels are model output and can be wrong, so the "
+        "expert checks each item. The local AI reviewer's acceptances only sort evidence for "
+        "the expert; they never make a claim supported.</li>",
         "<li>Unproven means the evidence Baker reviewed does not establish the claim. It does "
         "not mean the claim is false.</li>",
         "<li>A search that finds nothing does not show that something did not happen. Each "
@@ -287,9 +289,9 @@ def _claim_block(conn: sqlite3.Connection, st: ClaimState) -> str:
     out.append(f'<p><span class="verdict {st.css}{nt}">{e(st.label)}</span></p>')
     if st.awaiting_expert:
         out.append(
-            f"<p>{st.ai_accepted} supporting item(s) accepted by the local AI reviewer and "
-            f"{st.open_support} not reviewed are waiting for an expert. Until an expert accepts "
-            "the key evidence, the claim stays unproven.</p>"
+            f"<p>Baker found supporting evidence: {st.ai_accepted} item(s) accepted by the local "
+            f"AI reviewer and {st.open_support} not reviewed, waiting for an expert to agree or "
+            "disagree. Until an expert accepts the key evidence, the claim stays unproven.</p>"
         )
     if st.edited_after_run:
         out.append("<p><strong>The claim text changed after this audit.</strong> Re-run it.</p>")
@@ -487,11 +489,7 @@ def render_report(conn: sqlite3.Connection) -> str:
                 "their evidence was not fully labeled, so they have no verdict.</div>"
             )
         if run.get("fake"):
-            parts.append(
-                "<div class='banner'><strong>Test run with stand-in components.</strong> Some "
-                "steps of this run used fakes from the eval harness, not the real labeler, "
-                "reviewer or checks. Nothing here is a finding.</div>"
-            )
+            parts.append(stand_in_banner(run))
         if run.get("rules_pending"):
             parts.append(
                 "<div class='banner'><strong>Verdict rules are not written yet.</strong> Every "
@@ -511,9 +509,9 @@ def render_report(conn: sqlite3.Connection) -> str:
         awaiting = sum(1 for st in states if st.awaiting_expert)
         if awaiting:
             parts.append(
-                f"<div class='banner'><strong>{awaiting} claim(s) are awaiting expert "
-                "review.</strong> They stay unproven until an expert accepts their key "
-                "evidence.</div>"
+                f"<div class='banner'><strong>{awaiting} claim(s): support found, waiting for "
+                "the expert to agree.</strong> They stay unproven until an expert accepts their "
+                "key evidence.</div>"
             )
 
     parts.append("<h2>Summary</h2><table><thead><tr><th>Finding</th><th>Claims</th></tr></thead>")
@@ -626,6 +624,24 @@ def _compact(payload_json: str) -> str:
     except ValueError:
         return payload_json
     return "; ".join(f"{k}: {v}" for k, v in p.items() if v not in (None, ""))
+
+
+def stand_in_banner(run: dict) -> str:
+    """The banner for a run that used eval stand-ins. The demo case (eval/demo.py) says
+    exactly what was scripted; any other stand-in run is a test run."""
+    if pipeline.scripted_demo(run):
+        return (
+            "<div class='banner'><strong>Demo case: synthetic data, scripted labels.</strong> "
+            "Every name and message here is fictional. So the demo opens in seconds, no model "
+            "ran: the evidence labels and most expert decisions were scripted from the signed "
+            "answer key. The checks, quote checks and verdict rules are Baker's own. On a real "
+            "case the local model labels the evidence and the expert decides every item.</div>"
+        )
+    return (
+        "<div class='banner'><strong>Test run with stand-in components.</strong> Some "
+        "steps of this run used fakes from the eval harness, not the real labeler, "
+        "reviewer or checks. Nothing here is a finding.</div>"
+    )
 
 
 def write_report(conn: sqlite3.Connection, path: Path) -> Path:

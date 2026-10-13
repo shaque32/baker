@@ -1,0 +1,182 @@
+"""The demo case (eval/demo.py, `baker demo`): synthetic case01, built in seconds through the
+product's own code, scripted labels said plainly on every page, verdicts that match the signed
+answer key once the person giving the demo does the one step left open, and a reset that never
+touches anything but a demo case."""
+
+from __future__ import annotations
+
+import json
+import shutil
+import sqlite3
+from pathlib import Path
+
+import pytest
+
+from core import pipeline
+from core.casework import cases
+from core.contracts import EvidenceStatus, Stance
+from core.db import connect
+from core.report.html import render_report
+from core.review import actions, audit_log
+from core.review.redecide import redecide
+from eval import demo
+from ui.app import App, Request
+
+PORT = 8766
+HOST = {"host": f"127.0.0.1:{PORT}"}
+EXPERT = "expert:Test Expert"
+
+
+@pytest.fixture(scope="module")
+def built(tmp_path_factory) -> Path:
+    root = tmp_path_factory.mktemp("demo")
+    demo.reset(root)
+    return root
+
+
+@pytest.fixture
+def root(built, tmp_path) -> Path:
+    """A private copy of the built demo, so each test may change it."""
+    out = tmp_path / "demo"
+    shutil.copytree(built, out)
+    return out
+
+
+def _case(root: Path) -> cases.Case:
+    (case,) = cases.list_cases(demo.cases_dir(root))
+    return case
+
+
+def _verdicts(conn: sqlite3.Connection) -> dict[str, str]:
+    run = pipeline.last_run(conn)
+    return dict(
+        conn.execute(
+            "SELECT claim_id, verdict FROM verdicts WHERE pipeline_run_id = ?", (run["run_id"],)
+        )
+    )
+
+
+def test_demo_matches_the_answer_key_except_the_claim_left_for_the_demo(root):
+    gold = {g.claim_id: g.gold_verdict.value for g in demo.load_gold().values()}
+    conn = connect(_case(root).db)
+    got = _verdicts(conn)
+    assert set(got) == set(gold)
+    for claim_id in demo.LEFT_OPEN:
+        assert got[claim_id] == "unproven"
+    assert {c: v for c, v in got.items() if c not in demo.LEFT_OPEN} == {
+        c: v for c, v in gold.items() if c not in demo.LEFT_OPEN
+    }
+
+
+def test_the_live_step_makes_c05_supported_only_after_the_expert_accepts(root):
+    conn = connect(_case(root).db)
+    run = pipeline.last_run(conn)
+    items = [
+        e
+        for e in pipeline.load_evidence(conn, run["manifest"]["C05"]["evidence"])
+        if e.stance is Stance.SUPPORTS
+    ]
+    assert items and all(e.status is EvidenceStatus.OPEN for e in items)
+    for e in items:
+        actions.decide_evidence(conn, e.id, EvidenceStatus.ACCEPTED, EXPERT, "Read it myself.")
+    redecide(conn, EXPERT)
+    assert _verdicts(conn)["C05"] == "supported"
+    basis = conn.execute(
+        "SELECT supported_basis FROM verdicts WHERE claim_id = 'C05' AND pipeline_run_id = ?",
+        (pipeline.last_run(conn)["run_id"],),
+    ).fetchone()[0]
+    assert basis == "confirmed"
+
+
+def test_scripted_parts_are_named_on_the_screen_and_in_the_report(root):
+    case = _case(root)
+    conn = connect(case.db)
+    run = pipeline.last_run(conn)
+    assert run["fake"] and pipeline.scripted_demo(run)
+    assert "Demo case: synthetic data, scripted labels." in render_report(conn)
+    app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
+    app.open_case(case)
+    page = app.handle(Request("GET", "/claims", {}, dict(HOST))).body.decode()
+    assert "Demo case: synthetic data, scripted labels." in page
+    reviewers = {r for (r,) in conn.execute("SELECT DISTINCT reviewer FROM evidence_reviews")}
+    assert reviewers == {demo.SCRIPTED_EXPERT}
+    labels = {r for (r,) in conn.execute("SELECT DISTINCT model_run_id FROM evidence_items")}
+    assert labels == {demo.DEMO_RUN.id}
+
+
+def test_every_claim_page_and_the_report_render(root):
+    case = _case(root)
+    app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
+    app.open_case(case)
+    for claim_id in demo.load_gold():
+        resp = app.handle(Request("GET", "/claim", {"id": claim_id}, dict(HOST)))
+        assert resp.status == 200, (claim_id, resp.body[:200])
+    assert app.handle(Request("GET", "/report", {}, dict(HOST))).status == 200
+
+
+def test_inputs_are_read_only_hashed_copies_and_the_log_verifies(root):
+    case = _case(root)
+    conn = connect(case.db)
+    assert audit_log.verify_chain(conn)
+    meta = json.loads(demo.CASE_META.read_text(encoding="utf-8"))
+    shas = {s for (s,) in conn.execute("SELECT sha256 FROM sources WHERE kind != 'govdoc'")}
+    assert shas == {s["sha256"] for s in meta["sources"]}
+    files = list(case.inputs.iterdir())
+    assert len(files) == 3
+    assert all(not (f.stat().st_mode & 0o222) for f in files)
+
+
+def test_reset_rebuilds_a_clean_demo(root):
+    case = _case(root)
+    conn = connect(case.db)
+    e = conn.execute("SELECT id FROM evidence_items WHERE stance = 'supports' LIMIT 1").fetchone()
+    actions.decide_evidence(conn, e[0], EvidenceStatus.ACCEPTED, EXPERT, "Demo click.")
+    conn.close()
+    demo.reset(root)
+    conn = connect(_case(root).db)
+    experts = conn.execute(
+        "SELECT COUNT(*) FROM evidence_reviews WHERE reviewer = ?", (EXPERT,)
+    ).fetchone()[0]
+    assert experts == 0
+
+
+def test_reset_never_deletes_a_case_that_is_not_a_demo(root):
+    real = cases.create_case(demo.cases_dir(root), "Somebody's case", EXPERT)
+    with pytest.raises(SystemExit, match="not demo cases"):
+        demo.reset(root)
+    assert real.db.is_file()
+    assert len(cases.list_cases(demo.cases_dir(root))) == 2
+
+
+def test_a_saved_audit_becomes_the_demo_and_scripted_brings_the_script_back(root, tmp_path):
+    source = tmp_path / "finished"
+    shutil.copytree(_case(root).folder, source)
+    demo.save_snapshot(root, source)
+    case, kind = demo.reset(root)
+    assert kind == "snapshot" and case.settings["demo"] == "snapshot"
+    assert case.folder.name == demo.DEMO_FOLDER
+    demo.drop_snapshot(root)
+    _, kind = demo.reset(root)
+    assert kind == "scripted"
+
+
+def test_only_synthetic_case01_can_become_the_demo(root, tmp_path):
+    source = tmp_path / "other"
+    shutil.copytree(_case(root).folder, source)
+    conn = connect(source / cases.DB_NAME)
+    conn.execute("UPDATE sources SET sha256 = ? WHERE id = 'item1'", ("1" * 64,))
+    conn.commit()
+    conn.close()
+    with pytest.raises(SystemExit, match="not one of synthetic case01"):
+        demo.save_snapshot(root, source)
+    assert not demo.snapshot_dir(root).exists()
+
+
+def test_cli_demo_build_only(tmp_path, monkeypatch, capsys):
+    from cli.main import main
+
+    monkeypatch.setenv(demo.DEMO_ROOT_ENV, str(tmp_path / "demo"))
+    assert main(["demo", "--build-only"]) == 0
+    out = capsys.readouterr().out
+    assert "demo case ready" in out and "scripted labels" in out
+    assert len(cases.list_cases(tmp_path / "demo" / "cases")) == 1

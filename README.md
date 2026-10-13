@@ -25,7 +25,12 @@ PDFs still import, scanned pages fail with a clear error, and the OCR test is sk
 baker serve --open                                  # cases in ~/Baker/cases (or --cases DIR)
 baker serve --db case.db --expert "Your Name" --open  # one existing case database
 baker model-check                                   # is the local model there, pinned, and does it fit?
+baker demo                                          # reset and open the synthetic demo case (port 8766)
 ```
+
+Giving a demo: [docs/demo.md](docs/demo.md) (the 10-minute flow and the planted traps' answer
+key). Installing on an expert's computer: [docs/install-mac.md](docs/install-mac.md) (one
+script, Apple silicon) or [docs/install.md](docs/install.md) (Windows installer).
 
 Opens Baker at `http://127.0.0.1:8765/`, served from this computer only, with no internet
 access and no scripts. The expert makes a case, imports the government document and the
