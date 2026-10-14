@@ -419,7 +419,7 @@ def _intro_fits(
             words = [w1] + ([w2] if known else [])
             named = " ".join(words)
             if persons and not all(_intro_conflicts(p, words) for p in persons):
-                break
+                continue  # this one fits the claimed person; a later one may not
             if persons:
                 who = " or ".join(cite(p.name) for p in persons)
                 note = (
@@ -475,6 +475,9 @@ _NEGATED = re.compile(
 )
 
 
+_NUMBER_AFTER = re.compile(r"\s*(?:number|num|no\b|nr\b|#)", re.IGNORECASE)
+
+
 def _handoff(body: str, app: str, claimed_app: str) -> re.Match[str] | None:
     """The first words in a message about using another person's phone, account or login that
     bear on a message sent on claimed_app."""
@@ -490,8 +493,8 @@ def _handoff(body: str, app: str, claimed_app: str) -> re.Match[str] | None:
             ok = True
         else:  # an account, a login, signed in: only in a conversation on the same app
             ok = app.strip().casefold() == claimed_app.strip().casefold()
-        if ok:
-            return m
+        if ok and _NUMBER_AFTER.match(body, m.end()) is None:
+            return m  # "used his phone number" names a contact detail, not a device
     return None
 
 
@@ -554,12 +557,15 @@ def _parse(value: str | None) -> datetime | None:
     return t if t.tzinfo else None
 
 
-def _multi_owner_fits(case: Case, keys: set[Key]) -> list[Fit]:
+def _multi_owner_fits(case: Case, keys: set[Key], persons: list[idl.Person]) -> list[Fit]:
     out: list[Fit] = []
+    theirs = {d for p in persons for d in p.devices}  # phones stipulated to the named people
     for k in sorted(keys):
         g = case.ids.groups.get(k)
         if g is None or len(set(g.owner_devices)) < 2:
             continue
+        if theirs and set(g.owner_devices) <= theirs:
+            continue  # every phone belongs to the people the claim names: no one else
         devices = sorted(set(g.owner_devices))
         rep = next(a for a in g.account_ids if case.data.accounts[a].device_id == devices[0])
         src, loc = case.ids.account_refs.get(rep, ("", ""))
@@ -613,7 +619,7 @@ def _other_user(case: Case, assumptions: list[Assumption]) -> Alternative | None
             if persons:
                 fits += _name_fits(case, keys, persons)
                 searched.append(f"names saved for {_account_label(case, keys)}")
-            fits += _multi_owner_fits(case, keys)
+            fits += _multi_owner_fits(case, keys, persons)
             searched.append("which phones hold each account as their own")
         if claimed:
             hands, s = _handoff_fits(case, claimed)
@@ -973,7 +979,7 @@ def _phone_rows(case: Case, sid: str) -> list[Row]:
 
 
 def _app_quiet(case: Case, assumptions: list[Assumption]) -> Alternative | None:
-    fits: list[Fit] = []
+    pairs: list[tuple[Row, str]] = []
     used: list[str] = []
     # Per app and window, the phones where that app is quiet: one sentence each, so no sentence
     # joins an app to a window it was not found quiet in.
@@ -1019,15 +1025,17 @@ def _app_quiet(case: Case, assumptions: list[Assumption]) -> Alternative | None:
                 for edge, row in edges:
                     if row is None:
                         continue
-                    fits.append(
-                        _fit(
-                            case,
+                    if row.kind == "message":  # copies are told apart by who they went to
+                        row = replace(row, recipients=_recipients(case, row.id))
+                    pairs.append(
+                        (
                             row,
                             f"The {edge} {cite(window.raw)} on {cite(sid)}: its nearest "
                             f"{cite(app)} record in any conversation.",
                         )
                     )
-    fits = _merge(fits)  # an edge record two windows share shows once
+    # An edge two windows share, or its copy on the other phone, shows once with each note.
+    fits = _collapse(case, pairs)
     if not fits:
         return None
     return Alternative(
@@ -1110,6 +1118,7 @@ def _same_words(case: Case, assumptions: list[Assumption]) -> Alternative | None
     mine = [a for a in assumptions if a.template_id == "meaning" and a.params.quoted_text]
     pairs: list[tuple[Row, str]] = []
     used: list[str] = []
+    near: dict[str, float] = {}  # record id -> seconds from the nearest quoted message
     for a in mine:
         qt = a.params.quoted_text or ""
         words = _words(qt)
@@ -1148,9 +1157,15 @@ def _same_words(case: Case, assumptions: list[Assumption]) -> Alternative | None
         notes = {r.id: n for r, n in found}
         anchor = claimed[0].ts_utc
         pairs += [(r, notes[r.id]) for r in _by_time(rows, anchor)]
+        for r in rows:
+            gap = abs((r.ts_utc - anchor).total_seconds()) if r.ts_utc and anchor else float("inf")
+            near[r.id] = min(gap, near.get(r.id, gap))
         if rows:
             used.append(a.id)
     fits = _collapse(case, pairs)  # a message, or its copies, two statements share shows once
+    # Nearest in time first across every statement, so one quote's far matches never crowd
+    # out another quote's near ones.
+    fits.sort(key=lambda f: near.get(f.record_id, float("inf")))
     if not fits:
         return None
     return Alternative(

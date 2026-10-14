@@ -123,8 +123,11 @@ def test_a_time_read_off_the_printed_utc_clock(conn):
 def test_a_whole_app_quiet_on_both_phones(conn):
     alts = alts_for(conn, "C15")
     quiet = alts["app_quiet"]
-    assert {f.source_id for f in quiet.fits} == {"item1", "item2"}
-    assert all("WhatsApp" in f.note for f in quiet.fits)
+    # Both phones are quiet; their edge records are copies of one exchange, so each shows once
+    # with both phones' notes.
+    assert "item1" in quiet.summary and "item2" in quiet.summary
+    assert quiet.total == 2
+    assert all("WhatsApp" in f.note and "item2" in f.note for f in quiet.fits)
     assert "curated" in alts
     for a in alts.values():  # the claim says "deleted"; Baker's own words never do
         for text in (a.title, a.summary, a.searched, *(f.note for f in a.fits)):
@@ -270,6 +273,8 @@ def test_report_lists_alternatives_under_their_claims(conn):
         ("I wouldn’t use her account", "Instagram", "Instagram", None),
         ("you shouldnt borrow his phone", "SMS", "SMS", None),
         ("I cannot use his phone", "SMS", "SMS", None),
+        ("I used his phone number", "SMS", "SMS", None),  # a contact detail, not a device
+        ("took her phone # earlier", "SMS", "SMS", None),
         ("he left his phone at home", "SMS", "SMS", None),  # left somewhere, not handed over
         ("she left me her password", "SMS", "SMS", "left me her password"),
         ("not sure but im using his phone", "SMS", "SMS", "using his phone"),  # not a denial
@@ -1000,3 +1005,60 @@ def test_clock_twins_on_the_later_phone_stay_two_records(conn):
     assert clock is not None
     assert clock.total == 2
     assert [f.source_id for f in clock.fits] == ["item1", "item2"]
+
+
+# ---------------------------------------------------------------- thirteenth review
+
+
+def test_a_later_introduction_in_the_same_message_still_counts(conn):
+    acct = "acct:item1:WhatsApp:12125550111@s.whatsapp.net"
+    (thread,) = conn.execute(
+        "SELECT thread_id FROM messages WHERE sender_account_id = ? LIMIT 1", (acct,)
+    ).fetchone()
+    conn.execute(
+        "INSERT INTO messages (id, source_id, locator, thread_id, sender_account_id, direction,"
+        " ts_utc, ts_raw, body) VALUES ('msg:test:twointros', 'item1', 'Test!50', ?, ?,"
+        " 'outgoing', '2026-03-01T12:00:00Z', 'test', 'im daniel. its ilya actually')",
+        (thread, acct),
+    )
+    case = explain.load(conn)
+    person = case.person("person:dev:item1:owner")
+    found, _ = explain._intro_fits(case, {case.data.accounts[acct].key}, [person])
+    assert "msg:test:twointros" in {r.id for r, _ in found}
+
+
+def test_an_account_on_phones_all_owned_by_the_named_person_is_no_lead(conn):
+    case = explain.load(conn)
+    acct = case.data.accounts["acct:item1:Phone:+12125550122"]
+    g = case.ids.groups[acct.key]
+    g.owner_devices[:] = ["dev:item2", "dev:item3"]  # an owner account on two phones
+    owns_all = Person("p", "Daniel Petrov", "t", ("daniel", "petrov"), tuple(g.owner_devices))
+    owns_one = Person("p", "Daniel Petrov", "t", ("daniel", "petrov"), tuple(g.owner_devices[:1]))
+    assert explain._multi_owner_fits(case, {acct.key}, [owns_all]) == []
+    assert len(explain._multi_owner_fits(case, {acct.key}, [owns_one])) == 1
+
+
+def test_same_words_nearest_first_across_statements(conn):
+    states = [claim_state(conn, c) for c in ("C13", "C17")]
+    first, second = (next(a for a in st.assumptions if a.template_id == "meaning") for st in states)
+    case = explain.load(conn)
+
+    def place(a, rid: str, minutes: int, n: int) -> None:  # noqa: ANN001
+        (claimed, *_) = explain._quoted_rows(case, a)
+        (thread,) = conn.execute(
+            "SELECT thread_id FROM messages WHERE id = ?", (claimed.id,)
+        ).fetchone()
+        word = explain._words(a.params.quoted_text or "")[0]
+        at = claimed.ts_utc + timedelta(minutes=minutes)
+        conn.execute(
+            "INSERT INTO messages (id, source_id, locator, thread_id, direction, ts_utc, ts_raw,"
+            " body) VALUES (?, ?, ?, ?, 'incoming', ?, 'test', ?)",
+            (rid, claimed.source_id, f"Test!{60 + n}", thread, at.isoformat(), f"so {word} ok"),
+        )
+
+    for n in range(explain.MAX_FITS + 1):  # far matches for the first quote
+        place(first, f"msg:test:far{n}", 600 + n, n)
+    place(second, "msg:test:near", 1, 20)
+    alt = explain._same_words(explain.load(conn), [first, second])
+    assert alt is not None
+    assert alt.fits[0].record_id == "msg:test:near"
