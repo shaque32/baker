@@ -60,8 +60,9 @@ def _fit(f: Fit, href: Callable[[Fit], str | None]) -> str:
     target = href(f)
     look = f" · <a href='{_e(target)}'>See it in its conversation</a>" if target else ""
     when = f"{_e(f.when)} · " if f.when else ""
+    text = _q(f.quote) if f.quote else _e(f.label)  # a call's label is Baker's words, not cited
     return (
-        f"<li>{_q(f.quote)}<br>{note_html(f.note)}<br><span class='meta'>{when}{_e(ids)} · "
+        f"<li>{text}<br>{note_html(f.note)}<br><span class='meta'>{when}{_e(ids)} · "
         f"{tier}</span>{look}</li>"
     )
 

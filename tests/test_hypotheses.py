@@ -289,6 +289,9 @@ def test_report_lists_alternatives_under_their_claims(conn):
         ("I did not, in fact, use his phone", "SMS", "SMS", None),  # an aside in a denial
         ("no, i used his phone", "SMS", "SMS", "used his phone"),  # an answer, then a clause
         ("not now, im using his phone", "SMS", "SMS", "using his phone"),
+        ("I haven’t used his phone", "SMS", "SMS", None),  # curly apostrophes
+        ("I wasn’t using his phone", "SMS", "SMS", None),
+        ("she isn't using her phone", "SMS", "SMS", None),
     ],
 )
 def test_hand_off_words(body, app, claimed_app, found):
@@ -418,7 +421,8 @@ def test_a_quiet_app_edge_can_be_a_call(conn):
     quiet = alts_for(conn, "C15")["app_quiet"]
     before = next(f for f in quiet.fits if f.source_id == "item1" and "last before" in f.note)
     assert before.record_id == "call:item1:test"
-    assert before.quote == "WhatsApp call, 30 s"
+    assert before.quote == ""  # a call has no words to quote
+    assert before.label == "A call on WhatsApp, 30 s"
 
 
 # ---------------------------------------------------------------- scope (third Codex review)
@@ -1431,3 +1435,30 @@ def test_hand_offs_rank_by_the_nearest_claimed_message(conn):
     found, _ = explain._handoff_fits(explain.load(conn), [quoted, later])
     ids = [r.id for r, _ in found]
     assert ids.index("msg:test:by-later") < min(ids.index(f"msg:test:h{n}") for n in range(7))
+
+
+# ---------------------------------------------------------------- nineteenth review
+
+
+def test_a_call_line_is_never_shown_as_cited_text():
+    fit = explain.Fit("call:x", "item1", "Calls!1", "", "Mar 1", "Baker's note.", False,
+                      "A call on WhatsApp, 30 s")  # fmt: skip
+    alt = Alternative("app_quiet", "completeness", "t", "s", (fit,), 1, "", ())
+    page = alternatives_html([alt])
+    assert "A call on WhatsApp, 30 s" in page
+    assert '<span class="q">A call on' not in page
+
+
+def test_hand_off_words_come_before_the_accounts_names(conn, monkeypatch):
+    quote = _asm(conn, "C16", "sender").params.quoted_text
+    auth = _asm(conn, "C16", "authorship", quoted_text=quote)
+    many = [
+        explain.Fit(f"contact:n{n}", "item1", "", "Ilya M", "", "A saved name.")
+        for n in range(explain.MAX_FITS + 1)
+    ]
+    monkeypatch.setattr(explain, "_name_fits", lambda *a, **k: list(many))
+    monkeypatch.setattr(explain, "_intro_fits", lambda *a, **k: ([], ""))
+    monkeypatch.setattr(explain, "_persons", lambda *a, **k: [_person("Daniel Petrov")])
+    alt = explain._other_user(explain.load(conn), [auth])
+    assert alt is not None
+    assert alt.fits[0].note.startswith("Speaks of using another person's")  # not crowded out

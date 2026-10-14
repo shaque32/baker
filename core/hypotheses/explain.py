@@ -133,10 +133,11 @@ class Fit:
     record_id: str  # messages.id, calls.id, contacts.id, accounts.id, threads.id or sources.id
     source_id: str
     locator: str
-    quote: str  # exactly as the case holds it: a message body, a name, a file name
+    quote: str  # exactly as the case holds it: a message body, a name, a file name; '' for a call
     when: str  # the record's time on its phone's own clock; '' for names and sources
     note: str  # Baker's words; text from the case inside is marked with cite()
     local: bool = False  # True only when `when` is a local time derived from the phone's zone
+    label: str = ""  # Baker's words for a record with no text of its own (a call), never quoted
 
 
 @dataclass(frozen=True)
@@ -208,7 +209,9 @@ def _fit(case: Case, row: Row, note: str) -> Fit:
     """A record's fit. Its locator is looked up later, only for the fits a lead shows."""
     when = local_str(case.data, row) if row.ts_utc is not None else ""  # no time, none derived
     local = row.ts_utc is not None and case.data.tz_for(row.source_id) is not None
-    return Fit(row.id, row.source_id, "", _row_text(row), when, note, local)
+    if row.kind == "call":  # a call has no words: describe it, never show it as quoted text
+        return Fit(row.id, row.source_id, "", "", when, note, local, _call_label(row))
+    return Fit(row.id, row.source_id, "", row.text or "", when, note, local)
 
 
 def _located(case: Case, alt: Alternative) -> Alternative:
@@ -222,11 +225,9 @@ def _located(case: Case, alt: Alternative) -> Alternative:
     return replace(alt, fits=tuple(out))
 
 
-def _row_text(row: Row) -> str:
-    if row.kind == "call":
-        dur = f", {row.duration_s} s" if row.duration_s is not None else ""
-        return f"{row.app} call{dur}"
-    return row.text or ""
+def _call_label(row: Row) -> str:
+    dur = f", {row.duration_s} s" if row.duration_s is not None else ""
+    return f"A call on {row.app}{dur}"
 
 
 def _who(data: CaseData, account_id: str | None) -> str:
@@ -508,9 +509,8 @@ _WORD_IN_CLAUSE = (
     r"after|before)\b)[^\W\d_]+"
 )
 _NEGATED = re.compile(
-    r"\b(?:never|not|no|cannot|didn'?t|didn’t|dont|don'?t|don’t|wont|won'?t|cant|can'?t|can’t|"
-    r"havent|haven'?t|wasnt|wasn'?t|couldnt|couldn'?t|couldn’t|wouldnt|wouldn'?t|wouldn’t|"
-    r"shouldnt|shouldn'?t|shouldn’t|won’t|didnt)\b"
+    r"\b(?:never|not|no|cannot|"
+    r"(?:did|do|wo|ca|have|was|could|would|should|is|are|were|has|had)n['’]?t|cant|wont)\b"
     # Up to five words between the denial and the verb ("did not have a chance to use"), and an
     # aside between two commas ("did not, in fact, use"), but not across a word that starts a
     # new clause ("no idea but i used his phone") or a single comma ("not now, im using").
@@ -709,7 +709,9 @@ def _other_user(case: Case, assumptions: list[Assumption]) -> Alternative | None
                 "using the account or phone; compare them with the person the claim names."
             )
     # A hand-off message held on both phones, found by statements about each, shows once.
-    fits = _merge(fits + _collapse(case, hand_pairs))
+    # Hand-off words near the message come first: evidence about the message itself, ahead of
+    # names and introductions from the account's whole history.
+    fits = _merge(_collapse(case, hand_pairs) + fits)
     if not fits:
         return None
     title = (
