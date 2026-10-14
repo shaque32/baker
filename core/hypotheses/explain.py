@@ -509,7 +509,7 @@ _WORD_IN_CLAUSE = (
     r"after|before)\b)[^\W\d_]+"
 )
 _NEGATED = re.compile(
-    r"\b(?:never|not|no|cannot|"
+    r"\b(?:never|not|no|cannot|nobody|noone|neither|nor|none|"
     r"(?:did|do|wo|ca|have|was|could|would|should|is|are|were|has|had)n['’]?t|cant|wont)\b"
     # Up to five words between the denial and the verb ("did not have a chance to use"), and an
     # aside between two commas ("did not, in fact, use"), but not across a word that starts a

@@ -292,6 +292,9 @@ def test_report_lists_alternatives_under_their_claims(conn):
         ("I haven’t used his phone", "SMS", "SMS", None),  # curly apostrophes
         ("I wasn’t using his phone", "SMS", "SMS", None),
         ("she isn't using her phone", "SMS", "SMS", None),
+        ("Nobody used his phone", "SMS", "SMS", None),  # a negative subject
+        ("no one used her account", "Instagram", "Instagram", None),
+        ("neither of us used his phone", "SMS", "SMS", None),
     ],
 )
 def test_hand_off_words(body, app, claimed_app, found):
