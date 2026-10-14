@@ -242,18 +242,20 @@ the same four definitions and rules 1 to 24; this section adds what is new.
 
 25. **Names.** `item1` is a phone, named by its source as Baker's screens name it. "Daniel
     Petrov (the user of item1)" is the person an expert stipulated as item1's user. A name
-    alone, "Rita Vance", is a person the government document names. "Telegram 5550147" is an
-    account: the same app and identifier is the same account on every phone, and an SMS number
-    and a call number with the same digits are one account. Counts read "exactly 12", "at least
-    12" or "at most 12". "At about 9 p.m." is 8:52 to 9:08 p.m., eight minutes either side, as
-    Baker reads a document's "about". A message named by its words ('The message "gate code
-    1190"') is the message that holds those words; it may say more ("gate code 1190, dont share
-    it"). For the weekday template the quote is the assumption's quoted words in full, not only
-    the weekday, and the record's send date does the rest. Accounts joined by "/" are one
-    party, any of those accounts: "a call between Phone +13125550188/Phone +13125550199" is a
-    call that involves either number, the way Baker's checks read it. Case01's paragraph 10.1
-    showed why names, not ids: the 14B read "sent by person:dev:item1:owner" against the same
-    number saved as "Dan P" and answered contradicts.
+    alone, "Rita Vance", is a person the government document names; a claim may name them by
+    surname alone ("Vance used"), as documents often do; if two people in the excerpt's brackets
+    share that surname, it does not show which one is meant. "Telegram 5550147" is an account:
+    the same app and identifier is the same account on every phone, and an SMS number and a call
+    number with the same digits are one account. Counts read "exactly 12", "at least 12" or "at
+    most 12". "At about 9 p.m." is 8:52 to 9:08 p.m., eight minutes either side, as Baker reads
+    a document's "about". A message named by its words ('The message "gate code 1190"') is the
+    message that holds those words; it may say more ("gate code 1190, dont share it"). For the
+    weekday template the quote is the assumption's quoted words in full, not only the weekday,
+    and the record's send date does the rest. Accounts joined by "/" are one party, any of those
+    accounts: "a call between Phone +13125550188/Phone +13125550199" is a call that involves
+    either number, the way Baker's checks read it. Case01's paragraph 10.1 showed why names, not
+    ids: the 14B read "sent by person:dev:item1:owner" against the same number saved as "Dan P"
+    and answered contradicts.
 26. **What a line shows about people.** A sender line prints the app and identifier, then the
     sender's name as the source showed it, if the source kept one, then "(owner)" if it is the
     record's own phone's account, then in brackets the people Baker holds as confirmed for that
@@ -294,8 +296,9 @@ the same four definitions and rules 1 to 24; this section adds what is new.
       record, and only in words that cover every earlier use ("every time i wrote the shed i
       meant the one in my backyard"); v0.3 generates no such item. When the claim names no one,
       the claim's own meaning from the words' user supports, since it shows the words carry that
-      meaning. A claim's date is the record line's local date (rule 5). A record that holds the
-      quoted words and settles nothing, an explanation from anyone else, or one that may explain
+      meaning. A claim's date is read against the record line's local date (rule 5): a record on
+      that date, or in that month, can support it. A record that holds the quoted words, from
+      anyone, and settles nothing, an explanation from anyone else, or one that may explain
       someone else's words ("the shed = the unit on 5th" from an account the excerpt never shows
       using them) is complicates (rules 6 and 18).
     - **Role and event.** They state a role or an act as a fact, so a message never supports
@@ -342,7 +345,7 @@ the same four definitions and rules 1 to 24; this section adds what is new.
 | `bk_author_cue` | complicates (trap) | authorship | The record, from a named account, carries a cue about who is typing (a self-introduction, someone else on the phone, a signature, even one that names the person the assumption names: a name in a chat is never proof, rule 4). "What the account sent" means the messages the claim attributes to the person, and nothing shows the record is one of them: the cue shows the account was not always typed by that person, which leaves those messages open, never rules them out. | Assumption: Rita Vance personally wrote what Telegram 5550147 sent. Record: "this is her brother, she left it here". |
 | `bk_claim_open` | complicates (trap) | meaning, role, event | The record holds the quoted words and nothing shown says what they mean, or its sender gives them a meaning of its own, unlike the claim's, while the claim names no one who used them (meaning), or it comes from or goes to an account bracketed with a named person, plainly inside the window if one is given, and bears on the act or role without being it or ruling it out (role, event) (rule 29). | Claim: Vance used "the shed" to mean the storage unit on 5th Street. Assumption: The words "the shed" mean what the claim says they mean. Record: "drop it by the shed". |
 | `bk_meaning_said` | supports | meaning | A message from the account that used the quoted words (it gives the meaning as its own, or used the words earlier in the excerpt), plainly saying they mean exactly what the claim says they mean; when the claim names who used them, the line's brackets carry that person (rule 29). | Same claim and assumption. Record from `Telegram 5550147 [Rita Vance]`, which wrote "drop it by the shed" earlier in the chat: "when i say the shed i mean the unit on 5th". |
-| `bk_meaning_other` | complicates (trap) | meaning | That same account, bracketed with the person the claim names as the words' user, plainly gives the words a meaning of another kind than the claim's, and the claim gives no date before the record: like a denial, it says nothing about messages it does not cover, so one record cannot show that no other message used the words as the claim says (rules 23 and 29). | Same claim and assumption. Record from `Telegram 5550147 [Rita Vance]`: "when i say the shed i mean the one in my backyard". |
+| `bk_meaning_other` | complicates (trap) | meaning | That same account, bracketed with the person the claim names as the words' user, plainly gives the words a meaning of another kind than the claim's, and the claim is not dated wholly before the record: like a denial, it says nothing about messages it does not cover, so one record cannot show that no other message used the words as the claim says (rules 23 and 29). | Same claim and assumption. Record from `Telegram 5550147 [Rita Vance]`: "when i say the shed i mean the one in my backyard". |
 | `bk_event_is_record` | supports | event | The claim's event is a message or call, and the record is it: between the named parties, each shown by a bracket or by the account the claim gives for them, plainly inside the window, and for a message saying exactly what the claim says it said (rule 29). | Claim: On May 2, 2026, Vance texted Ortiz at (312) 555-0188 the gate code 1190. Assumption: The event the claim states happened, involving Rita Vance and SMS +13125550188 "on May 2, 2026" (America/Chicago). Record from `SMS +13125550161 [Rita Vance]` in its chat with SMS +13125550188, May 2: "gate code 1190". |
 | `bk_claim_denied` | contradicts | role, event | A person the claim names, from an account bracketed with them, rules the act or role out for the claim's whole time in their own words, sent after it: a denial that covers it, or placing themselves elsewhere for all of it (rules 23 and 29). | Claim: On May 2, 2026, Vance met Ortiz at the yard. Same assumption. Record from `SMS +13125550161 [Rita Vance]`, sent May 4: "didnt see ortiz at all on the 2nd, i was in denver all weekend". |
 | `bk_unrelated` | irrelevant | all | Another message, call, contact row or attachment that holds none of the quoted words, is not between the named parties and says nothing that bears on the claim's act, role or meaning: it involves none of them, or one of them with someone else: a person the assumption does not name, shown in that person's brackets, or an account other than the one the assumption names for the other party. For the sender, time, no-contact and count templates, an account no bracket shows may be a named person (`bk_party_unshown`); for role and event, rule 29 says when that leaves the record open. A record from or to a named person that bears on the claim is `bk_claim_open`. | Sender assumption about "gate code 1190"; record "running 10 min late" from the same account. |

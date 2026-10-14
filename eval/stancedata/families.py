@@ -279,9 +279,9 @@ FAMILIES: tuple[Family, ...] = (
     _F("bk_meaning_other", C.OVERREACH, S.COMPLICATES, "claim_unsettled", (K.MEANING,),
        "Baker's meaning template, shown with the claim. The account that used the quoted words, "
        "bracketed with the person the claim names as their user, plainly gives them a meaning "
-       "of another kind than the claim's, while the claim gives no date before the record: like "
-       "a denial, it says nothing about messages it does not cover, so one record cannot show "
-       "that no other message used the words as the claim says (rules 23 and 29).", new=True,
+       "of another kind than the claim's, while the claim is not dated wholly before the record: "
+       "like a denial, it says nothing about messages it does not cover, so one record cannot "
+       "show that no other message used the words as the claim says (rules 23 and 29).", new=True,
        templates=("meaning",)),
     _F("bk_event_is_record", C.CLEAR_SUPPORT, S.SUPPORTS, None, (K.EVENT,),
        "Baker's event template, shown with a claim whose event is a message or call. The record "

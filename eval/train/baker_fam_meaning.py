@@ -146,9 +146,9 @@ def explained(rng: random.Random, k: int, family: str, unnamed: bool = False) ->
                    "show that no other account used them as the claim says, so the claim's "
                    "meaning is not settled")  # fmt: skip
         else:
-            end = ("unlike the claim's meaning; but the claim gives no date before the record, "
-                   "and one record cannot show that no other message used the words as the claim "
-                   "says, so the claim's meaning is not settled")  # fmt: skip
+            end = ("unlike the claim's meaning; but the claim is not dated wholly before the "
+                   "record, and one record cannot show that no other message used the words as "
+                   "the claim says, so the claim's meaning is not settled")  # fmt: skip
         head = (f"The record comes from {line.sender}, which used the words earlier in this chat "
                 f'and now says "{quoted}" means "{meant}"' if use else
                 f'The record comes from {line.sender}, which says what it means by "{quoted}": '
