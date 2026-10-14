@@ -407,6 +407,8 @@ def _intro_fits(
         case.data, [r for r in messages_for_accounts(case.data, accounts) if r.sender in accounts]
     ):
         for m in _INTRO.finditer(row.text or ""):
+            if (row.text or "")[m.end() : m.end() + 1] in ("'", "’"):
+                continue  # "this is Daniel's phone" names whose phone, not who is writing
             w1 = m.group(1).casefold()
             w2 = (m.group(2) or "").casefold()
             if w1 not in case.ids.known_words:
@@ -668,12 +670,28 @@ def _merge(fits: list[Fit]) -> list[Fit]:
     return list(out.values())
 
 
-def _not_shown(case: Case, rows: Iterable[Row], shown: dict[tuple[str, ...], str]) -> list[Row]:
-    """The rows not already shown, by any statement, as a copy on another phone. shown maps a
-    copy key to the phone it was first shown from; identical rows on one phone all stay."""
-    return [
-        r for r in rows if shown.setdefault(_copy_key(case.data, r), r.source_id) == r.source_id
-    ]
+def _collapse(case: Case, pairs: Iterable[tuple[Row, str]]) -> list[Fit]:
+    """One line per record across every statement. A record found twice, or a copy on another
+    phone of a record already shown, adds its note to that line; identical rows on one phone
+    stay separate records."""
+    fits: list[Fit] = []
+    first: dict[tuple[str, ...], tuple[str, int]] = {}  # copy key -> (phone, index in fits)
+    at: dict[str, int] = {}  # record id -> index in fits
+    for r, note in pairs:
+        i = at.get(r.id)
+        if i is None:
+            key = _copy_key(case.data, r)
+            seen = first.get(key)
+            if seen is None or seen[0] == r.source_id:
+                first.setdefault(key, (r.source_id, len(fits)))
+                at[r.id] = len(fits)
+                fits.append(_fit(case, r, note))
+                continue
+            i = seen[1]
+        old = fits[i]
+        if note not in old.note:
+            fits[i] = replace(old, note=f"{old.note} {note}")
+    return fits
 
 
 def _sorted_pairs(pairs: list[tuple[Row, str]]) -> list[tuple[Row, str]]:
@@ -812,7 +830,7 @@ def _day_boundary(case: Case, assumptions: list[Assumption]) -> Alternative | No
     fits: list[Fit] = []
     used: list[str] = []
     summaries: list[str] = []
-    shown: dict[tuple[str, ...], str] = {}
+    pairs: list[tuple[Row, str]] = []
     for a in assumptions:
         window = a.params.window
         if a.template_id not in _WINDOW_TEMPLATES or window is None or window.tz == "UTC":
@@ -845,17 +863,15 @@ def _day_boundary(case: Case, assumptions: list[Assumption]) -> Alternative | No
             f"Read in UTC instead of {cite(window.tz)}, the stated dates {cite(window.raw)} "
             f"hold {len(as_utc)} record(s) between these parties instead of {len(stated)}."
         )
-        for r in _by_time(_not_shown(case, moved, shown)):
+        for r in _by_time(moved):
             zone = cite(window.tz)
             side = (
                 f"inside them read in the stated zone {zone}, outside them in UTC"
                 if r.id in stated
                 else f"outside them read in the stated zone {zone}, inside them in UTC"
             )
-            fits.append(
-                _fit(case, r, f"For the stated dates {cite(window.raw)}, this record is {side}.")
-            )
-    fits = _merge(fits)  # a record two statements both move shows once
+            pairs.append((r, f"For the stated dates {cite(window.raw)}, this record is {side}."))
+    fits = _collapse(case, pairs)  # a record two statements both move shows once
     if not fits:
         return None
     return Alternative(
@@ -879,7 +895,7 @@ def _other_app(case: Case, assumptions: list[Assumption]) -> Alternative | None:
     fits: list[Fit] = []
     used: list[str] = []
     summaries: list[str] = []
-    shown: dict[tuple[str, ...], str] = {}
+    pairs: list[tuple[Row, str]] = []
     for a in assumptions:
         p = a.params
         apps = [c for c in p.channels if c.strip().lower() != CALL_CHANNEL]
@@ -911,17 +927,16 @@ def _other_app(case: Case, assumptions: list[Assumption]) -> Alternative | None:
             f"Inside {cite(window.raw)} the same people were in contact outside "
             f"{_joined(apps)}: {len(others)} record(s) on other apps or calls."
         )
-        for r in _by_time(_not_shown(case, others, shown)):
+        for r in _by_time(others):
             what = "A call" if r.kind == "call" else f"A {cite(r.app)} message"
-            fits.append(
-                _fit(
-                    case,
+            pairs.append(
+                (
                     r,
                     f"{what} between the same people inside {cite(window.raw)}, outside "
                     f"{_joined(apps)}.",
                 )
             )
-    fits = _merge(fits)
+    fits = _collapse(case, pairs)
     if not fits:
         return None
     return Alternative(
@@ -1096,7 +1111,7 @@ def _words(text: str) -> list[str]:
 
 def _same_words(case: Case, assumptions: list[Assumption]) -> Alternative | None:
     mine = [a for a in assumptions if a.template_id == "meaning" and a.params.quoted_text]
-    fits: list[Fit] = []
+    pairs: list[tuple[Row, str]] = []
     used: list[str] = []
     for a in mine:
         qt = a.params.quoted_text or ""
@@ -1135,11 +1150,10 @@ def _same_words(case: Case, assumptions: list[Assumption]) -> Alternative | None
         rows = _dedupe(case.data, [r for r, _ in found])
         notes = {r.id: n for r, n in found}
         anchor = claimed[0].ts_utc
-        for r in _by_time(rows, anchor):
-            fits.append(_fit(case, r, notes[r.id]))
+        pairs += [(r, notes[r.id]) for r in _by_time(rows, anchor)]
         if rows:
             used.append(a.id)
-    fits = _merge(fits)  # a message two statements both point to shows once
+    fits = _collapse(case, pairs)  # a message, or its copies, two statements share shows once
     if not fits:
         return None
     return Alternative(

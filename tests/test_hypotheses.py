@@ -893,3 +893,71 @@ def test_one_saved_name_on_two_accounts_shows_for_each(conn):
     }
     fits = explain._name_fits(case, {k1, k2}, [_person("Daniel Petrov")])
     assert {f.record_id for f in fits} == {"c1", "c2"}
+
+
+# ---------------------------------------------------------------- eleventh review
+
+
+def test_a_possessive_name_is_not_an_introduction(conn):
+    acct = "acct:item1:WhatsApp:12125550111@s.whatsapp.net"
+    (thread,) = conn.execute(
+        "SELECT thread_id FROM messages WHERE sender_account_id = ? LIMIT 1", (acct,)
+    ).fetchone()
+    for i, body in enumerate(["this is ilya's phone", "hey its ilya morozov’s ipad"]):
+        conn.execute(
+            "INSERT INTO messages (id, source_id, locator, thread_id, sender_account_id,"
+            " direction, ts_utc, ts_raw, body) VALUES (?, 'item1', ?, ?, ?, 'outgoing',"
+            " '2026-03-01T12:00:00Z', 'test', ?)",
+            (f"msg:test:poss{i}", f"Test!{20 + i}", thread, acct, body),
+        )
+    case = explain.load(conn)
+    person = case.person("person:dev:item1:owner")
+    found, _ = explain._intro_fits(case, {case.data.accounts[acct].key}, [person])
+    assert not {"msg:test:poss0", "msg:test:poss1"} & {r.id for r, _ in found}
+
+
+def test_a_copy_found_by_another_phones_statement_keeps_its_note(conn):
+    one = _asm(conn, "C14", "no_contact", channels=("WhatsApp",), device_ids=("dev:item1",))
+    two = _asm(conn, "C14", "no_contact", channels=("Telegram",), device_ids=("dev:item2",))
+    two = two.model_copy(update={"id": "asm:item2"})
+    alt = explain._other_app(explain.load(conn), [one, two])
+    assert alt is not None
+    assert {f.source_id for f in alt.fits} == {"item1"}
+    # item2's copy fits the Telegram statement too: its line carries both statements' notes.
+    assert any(f.note.count("outside") == 2 for f in alt.fits)
+
+
+def test_same_words_copies_two_phone_scoped_statements_find_show_once(conn):
+    meaning = next(a for a in claim_state(conn, "C13").assumptions if a.template_id == "meaning")
+    case = explain.load(conn)
+    word = explain._words(meaning.params.quoted_text or "")[0]
+    # The same neighboring message on both phones, next to each phone's copy of the quote.
+    for r in explain._quoted_rows(case, meaning):
+        (thread,) = conn.execute("SELECT thread_id FROM messages WHERE id = ?", (r.id,)).fetchone()
+        mid = f"msg:{r.source_id}:neighbor"
+        conn.execute(
+            "INSERT INTO messages (id, source_id, locator, thread_id, sender_account_id,"
+            " direction, ts_utc, ts_raw, body) VALUES (?, ?, 'Test!30', ?, ?, 'incoming',"
+            " '2026-03-01T12:00:00Z', 'test', ?)",
+            (mid, r.source_id, thread, r.sender, f"we {word} later"),
+        )
+        for acct in r.recipients:
+            conn.execute(
+                "INSERT INTO message_recipients (message_id, account_id) VALUES (?, ?)",
+                (mid, acct),
+            )
+    scoped = [
+        meaning.model_copy(
+            update={
+                "id": f"asm:{d}",
+                "params": meaning.params.model_copy(update={"device_ids": (f"dev:{d}",)}),
+            }
+        )
+        for d in ("item1", "item2")
+    ]
+    case = explain.load(conn)
+    both = explain._same_words(case, scoped)
+    alone = explain._same_words(case, scoped[:1])
+    assert both is not None and alone is not None
+    assert both.total == alone.total
+    assert {f.record_id for f in both.fits} == {f.record_id for f in alone.fits}
