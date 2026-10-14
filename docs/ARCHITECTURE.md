@@ -63,7 +63,8 @@ core/
   identity/           propose account -> person links from names in the data (code only);
                       the expert confirms or rejects each one on the Identities page
   review/             expert actions + audit log
-  report/             ReportRenderer; restore.py, selection.py, letter.py (full-extraction request)
+  report/             ReportRenderer; restore.py, selection.py, letter.py (full-extraction request),
+                      hypotheses.py (other explanations, shared with the claim page)
   review/status.py    what each claim needs from the expert (shared by screen and report)
   review/redecide.py  re-run the verdict rules after expert review, no model
   casework/           case folders and imports, background audit and claim-proposal jobs,
@@ -71,6 +72,10 @@ core/
                       protect.py: encrypting an existing case, passphrase changes
   timeline/           Timeline check (stated times vs record times) and quiet stretches;
                       derived by code on demand, never stored, never touches verdicts
+  hypotheses/         other explanations per claim, with the records that fit each (someone
+                      else used the account or phone, another clock, the day boundary, another
+                      app, a whole app quiet, a curated report, the same words elsewhere);
+                      code only, derived on demand, never stored, never touches verdicts
 cli/                  `baker import`, `baker claims`, `baker audit`, `baker report`, `baker serve`
 ui/                   the expert's screen on 127.0.0.1 (stdlib server, no scripts): start a case,
                       run the audit in the background, review
