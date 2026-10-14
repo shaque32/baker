@@ -95,6 +95,10 @@ class Cast:
         tg = self._new(lambda: telegram_id(rng))
         return Who(person, number, tg, self._new(lambda: username(rng, person)))
 
+    def number(self) -> str:
+        """A phone number no one in the scene has."""
+        return self._new(lambda: fictional_phone(self.rng, AREA_CODES))
+
     def _new(self, draw: Callable[[], str]) -> str:
         for _ in range(500):
             x = draw()

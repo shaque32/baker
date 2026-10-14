@@ -29,7 +29,7 @@ from eval.train.baker_scene import Ev, render
 from eval.train.baker_text import salt_of, spread
 from eval.train.baker_time import Win, inside_any, inside_both, wall
 
-KIND_WORD = {"msg": "message", "att": "attachment", "call": "call"}
+KIND_WORD = {"msg": "a message", "att": "an attachment", "call": "a call"}
 
 
 def file_name(rng: random.Random, k: int, family: str, local: datetime, dated: bool) -> str:
@@ -109,7 +109,7 @@ def _contact(
     at = when(line.local_time, win, utc, s.phone.zone)
     d = Draft(family, template, params, s.scene, s.phone, evs, target, line.text, "",
               {"utc": utc})  # fmt: skip
-    d.rationale = f"The record is a {KIND_WORD[rec.kind]} between the named parties at {at}"
+    d.rationale = f"The record is {KIND_WORD[rec.kind]} between the named parties at {at}"
     return d, win, rec, s
 
 
@@ -168,7 +168,7 @@ def outside_window(rng: random.Random, k: int) -> Draft:
         _count(rng, d, win, s, s.phone.dev)
     elif devices := _devices(rng, s):
         d.params["device_ids"] = devices
-    d.rationale += f", plainly outside \"{win.raw}\" ({win.tz}), so it does not bear on it."
+    d.rationale += f', plainly outside "{win.raw}" ({win.tz}), so it does not bear on it.'
     return d
 
 

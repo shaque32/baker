@@ -5,8 +5,10 @@
 Writes the items (one JSON line each) and `<out>.manifest.json` beside them. Item i is built
 from `item_rng(GENERATOR, seed, i)` and the package's fixed pools alone: a scenario's random
 stream is seeded by the id of its first item, and its sibling items (same chat and record,
-different assumption and family) take the following ids and share a group. The same command
-always writes a byte-identical file.
+different assumption and family) take the following ids and share a group. After the n plain
+items come `--n-baker` items in Baker's own wording (eval/train/baker.py, generator
+baker.GENERATOR), with the ids that follow. The same command always writes a byte-identical
+file, and its plain part does not depend on --n-baker.
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ from pathlib import Path
 from eval.stancedata.chat import build_item, item_rng, write_jsonl
 from eval.stancedata.families import family
 from eval.stancedata.model import GenItem
+from eval.train import baker
 from eval.train.scenes_c import pick_scenario, takes_fact
 from eval.train.writers import sentence
 
@@ -28,8 +31,15 @@ GENERATOR = "eval.train 1.1.0"  # 1.1.0: labels follow guide draft v0.3 (strict 
 SOURCE = "train_gen"
 
 
-def generate(n: int, seed: int) -> list[GenItem]:
-    """The first n items for this seed, in id order.
+def generate(n: int, seed: int, n_baker: int = 0) -> list[GenItem]:
+    """The first n plain items for this seed, in id order, then n_baker items in Baker's own
+    wording with the ids that follow."""
+    items = plain(n, seed)
+    return items + baker.generate(n_baker, seed, len(items) + 1)
+
+
+def plain(n: int, seed: int) -> list[GenItem]:
+    """The first n plain items for this seed, in id order.
 
     Each scenario's rng is seeded from the generator, the seed and the index of its first item,
     so a shorter run is a prefix of a longer one. The run is cut at exactly n, so the final
@@ -71,10 +81,14 @@ def manifest(items: list[GenItem], seed: int, sha256: str) -> dict:
     def count(key) -> dict[str, int]:
         return dict(sorted(Counter(key(it) for it in items).items()))
 
+    n_baker = sum(1 for it in items if it.generator == baker.GENERATOR)
     return {
         "generator": GENERATOR,
+        "baker_generator": baker.GENERATOR,
         "seed": seed,
         "n": len(items),
+        "n_plain": len(items) - n_baker,
+        "n_baker": n_baker,
         "sha256": sha256,
         "by_family": count(lambda it: it.family),
         "by_stance": count(lambda it: family(it.family).stance.value),
@@ -88,12 +102,13 @@ def manifest(items: list[GenItem], seed: int, sha256: str) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--n", type=int, default=12000)
+    ap.add_argument("--n", type=int, default=12000, help="plain items")
+    ap.add_argument("--n-baker", type=int, default=6000, help="items in Baker's own wording")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--out", type=Path, default=Path("eval/out/stancedata/train.jsonl"))
     args = ap.parse_args(argv)
     started = time.perf_counter()
-    items = generate(args.n, args.seed)
+    items = generate(args.n, args.seed, args.n_baker)
     sha = write_jsonl(items, args.out)
     m = manifest(items, args.seed, sha)
     side = args.out.with_name(args.out.name + ".manifest.json")

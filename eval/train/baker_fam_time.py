@@ -114,13 +114,13 @@ def _call(
 
 def time_inside(rng: random.Random, k: int) -> Draft:
     d, win = _message(rng, k, "bk_time_inside", "inside")
-    d.rationale += f", plainly inside \"{win.raw}\" ({win.tz})."
+    d.rationale += f', plainly inside "{win.raw}" ({win.tz}).'
     return d
 
 
 def call_inside(rng: random.Random, k: int) -> Draft:
     d, win, _ = _call(rng, "inside", "bk_call_inside")
-    d.rationale += f", plainly inside \"{win.raw}\" ({win.tz})."
+    d.rationale += f', plainly inside "{win.raw}" ({win.tz}).'
     return d
 
 

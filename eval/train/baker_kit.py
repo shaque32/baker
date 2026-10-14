@@ -9,6 +9,7 @@ the scene (brackets included) and builds the item with eval.stancedata.bakerform
 from __future__ import annotations
 
 import random
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
@@ -67,9 +68,16 @@ def finish(d: Draft, probe_id: str, generator: str) -> GenItem:
     )  # fmt: skip
 
 
+MACHINE = re.compile(
+    r"^(?:(?:incoming|outgoing|missed) call from |(?:IMG|VID|PXL|Screenshot)_[\w-]+\.\w+$)"
+)
+
+
 def lang_of(lines: list[bf.Line], target: int) -> str:
-    """'ru' when every worded line is Russian, 'mixed' when Russian and English lines meet."""
-    worded = [ln.text for ln in lines if any(ch.isalpha() for ch in ln.text)]
+    """'ru' when every worded line is Russian, 'mixed' when Russian and English lines meet.
+    Call texts and file names are the report's, in no chat language."""
+    worded = [ln.text for ln in lines
+              if any(ch.isalpha() for ch in ln.text) and not MACHINE.match(ln.text)]  # fmt: skip
     ru = [cyrillic(t) for t in worded]
     if all(ru) and ru:
         return "ru"
@@ -99,7 +107,9 @@ def chatter(rng: random.Random, lang: str, n: int, avoid: str = "") -> list[str]
     """n context lines: mostly short fillers, sometimes an everyday line; none holds `avoid`."""
     out: list[str] = []
     while len(out) < n:
-        if rng.random() < 0.3:
+        if lang == "ru" and rng.random() < 0.06:
+            line = rng.choice(FILLER["en"][:12])  # people switch to "ok" or "omw" mid-chat
+        elif rng.random() < 0.3:
             line = fill(rng, rng.choice(ORDINARY[lang]))[0]
         else:
             line = rng.choice(FILLER[lang])
@@ -155,10 +165,18 @@ class Setup:
         return self.partner.acc("Phone")
 
 
-def setup(rng: random.Random, kind: str, app: str | None = None, lang: str = "en") -> Setup:
+def setup(
+    rng: random.Random,
+    kind: str,
+    app: str | None = None,
+    lang: str = "en",
+    taken: tuple[str, ...] = (),
+) -> Setup:
     """kind 'third': the partner is a third party with no brackets; 'linked': a third party an
-    expert linked to a named person; 'phones': the owner of a second phone in the scene."""
+    expert linked to a named person; 'phones': the owner of a second phone in the scene. No one
+    in the scene has a first name in `taken`."""
     cast = Cast(rng)
+    cast.taken |= set(taken)
     app = app or rng.choice(MSG_APPS)
     nums = items(rng, 2)
     phone = cast.phone(nums[0], (app, "Phone"), lang)

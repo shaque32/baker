@@ -63,7 +63,7 @@ CALLED_BY_NAME: tuple[str, ...] = (
     "is this {first} {Sur}?",
     "{first} {Sur}? got ur number from the front desk",
     "{Sur}? its about the {item}",
-    "thanks {first} {Sur}!",
+    "hey {first} {Sur}, quick question",
     "{first} {Sur}, right?",
     "hi, looking for {first} {Sur}",
 )
@@ -77,7 +77,7 @@ AUTHOR_CUES: tuple[str, ...] = (
     "[{first} typing for {other}], {pron} cant text rn",
     "[{other} gave me {poss} phone, its {first}]",
     "[not {other}, its {first}], {pron} forgot {poss} phone",
-    "[{other}s in the shower, its {first}]",
+    "[{other} is in the shower, its {first}]",
     "[its {first} using this phone], mine died",
     "[{first} sending this for {other}]",
     "[{first} again on {other}s phone]",
@@ -88,7 +88,7 @@ AUTHOR_CUES: tuple[str, ...] = (
     "[{first} here], {other} lent me the phone",
     "[im {other}s {rel} {first}], {pron} asked me to answer",
     "see u soon, [love {first}]",
-    "{ordinary} [-{first}]",
+    "[{ordinary} -{first}]",
     "[{first} on the family phone]",
     "[this is {first}, i have {other}s phone today]",
     "[{first} here, {other} handed me the phone]",
@@ -111,6 +111,7 @@ RELS = {
 }
 
 # One handle became another, or two handles are one account; {h1}, {h2}, {h3} as written.
+# A line with "my" or "i" (Russian: a verb ending in {e}) is the account speaking.
 HANDLES_SAID: tuple[str, ...] = (
     "[changed my @ from {h1} to {h2}]",
     "[{h1} is now {h2}], same account",
@@ -135,11 +136,11 @@ HANDLES_SAID_3: tuple[str, ...] = (
     "[it was {h1}, then {h2}, now its {h3}]",
 )
 HANDLES_SAID_RU: tuple[str, ...] = (
-    "[сменил ник с {h1} на {h2}]",
+    "[сменил{e} ник с {h1} на {h2}]",
     "[{h1} теперь {h2}], аккаунт тот же",
-    "[переименовала страницу: была {h1}, стала {h2}]",
+    "[переименовал{e} страницу: была {h1}, стала {h2}]",
     "[{h1} и {h2} это один аккаунт]",
-    "[теперь я {h2}, раньше был {h1}]",
+    "[теперь я {h2}, раньше был{e} {h1}]",
 )
 
 # Phrases whose meaning a claim might argue about; ordinary words, nothing decoded.

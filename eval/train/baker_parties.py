@@ -79,13 +79,21 @@ def call_context(
     rng: random.Random, s: Setup, call: Ev, lang: str, with_partner: bool = True
 ) -> tuple[list[Ev], int]:
     """The call among messages from the phone's chats near its time: the chat with the call's
-    partner (if `with_partner`) and one or two chats with other people, all on the owner's app."""
+    partner (if `with_partner`) and one or two chats with other people, all on the owner's app.
+    Some line always comes from a non-owner account (guide rule 11)."""
     chats = [(s.me, s.you)] if with_partner else []
     chats += [(s.me, w.acc(s.app)) for w in strangers(rng, s, rng.randint(1, 2), lang)]
     nb, na = rng.randint(0, 3), rng.randint(0, 3)
     if nb + na == 0:
         nb = 1
-    return around(rng, call, chats, chatter(rng, lang, nb), chatter(rng, lang, na))
+    evs, target = around(rng, call, chats, chatter(rng, lang, nb), chatter(rng, lang, na))
+    if all(e.frm in s.phone.own for e in evs):
+        i = min((j for j in range(len(evs)) if j != target), key=lambda j: abs(j - target))
+        e = evs[i]
+        if e.to is None:
+            raise ValueError("a chat line needs its partner")
+        evs[i] = Ev(e.utc, e.to, e.text, to=e.frm)
+    return evs, target
 
 
 def range_holding(rng: random.Random, dur: int) -> tuple[int, int] | None:
