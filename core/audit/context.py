@@ -319,9 +319,10 @@ def _members_text(
     member_ids: list[str],
 ) -> str:
     """The members line, bounded so a big group cannot crowd the record out of the model's
-    context. At most MAX_MEMBERS accounts are listed: the record's own sender first, then the
-    other senders on the lines shown, then the rest, each group in sorted order. The line then
-    says how many it leaves out, so it never reads as complete."""
+    context. At most MAX_MEMBERS accounts are kept, chosen in this priority: the record's own
+    sender, the other senders on the lines shown, then the rest in sorted order. The kept ones
+    print in members_line's sorted order, as every members line does (and the generated stance
+    items), and the line then says how many it leaves out, so it never reads as complete."""
     printed = {names.sender(aid) for aid in member_ids}
     if len(printed) <= MAX_MEMBERS:
         return names.members(member_ids)
