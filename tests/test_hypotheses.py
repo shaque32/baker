@@ -1187,7 +1187,7 @@ def test_hand_off_search_keeps_to_the_exact_window(conn):
         conn.execute(
             "INSERT INTO messages (id, source_id, locator, thread_id, direction, ts_utc, ts_raw,"
             " body) VALUES (?, 'item1', ?, ?, 'incoming', ?, 'test', 'im using his phone')",
-            (rid, f"Test!{rid}", thread, explain._iso(at)),
+            (rid, f"Test!{rid}", thread, at.isoformat().replace("+00:00", "Z")),
         )
     found, _ = explain._handoff_fits(explain.load(conn), [quoted])
     ids = {r.id for r, _ in found}
@@ -1465,3 +1465,63 @@ def test_hand_off_words_come_before_the_accounts_names(conn, monkeypatch):
     alt = explain._other_user(explain.load(conn), [auth])
     assert alt is not None
     assert alt.fits[0].note.startswith("Speaks of using another person's")  # not crowded out
+
+
+# ---------------------------------------------------------------- independent review
+
+
+def test_another_senders_copy_of_the_words_brings_in_no_names(conn, monkeypatch):
+    # C16: dp_garage sent the quote. The same words sent from another account must not put that
+    # account's saved names forward as someone else behind dp_garage.
+    a = _asm(conn, "C16", "sender")
+    case = explain.load(conn)
+    claimed = explain._claimed_rows(case, [a])[a.id]
+    stranger = replace(claimed[0], id="msg:test:stranger", sender="acct:item1:SMS:+12125550133")
+    monkeypatch.setattr(explain, "_claimed_rows", lambda *_: {a.id: [*claimed, stranger]})
+    seen: list[set] = []
+    monkeypatch.setattr(
+        explain, "_multi_owner_fits", lambda c, keys, p: seen.append(set(keys)) or []
+    )
+    explain._other_user(case, [a])
+    ilya = case.data.accounts["acct:item1:SMS:+12125550133"].key
+    assert seen and all(ilya not in keys for keys in seen)
+
+
+@pytest.mark.parametrize(
+    ("saved", "shown"),
+    [("Dad", False), ("Boss", False), ("Danny", False), ("Dani P", False), ("Ilya M", True)],
+)
+def test_role_words_and_familiar_forms_are_not_someone_else(conn, saved, shown):
+    case = explain.load(conn)
+    name = SimpleNamespace(
+        text=saved, kind="contact name", words=tuple(saved.casefold().split()),
+        record_id="c1", source_id="item1", locator="c1", note="",
+    )  # fmt: skip
+    k = ("sms", "+1")
+    case.ids.groups = {k: SimpleNamespace(label="a", names=[name])}
+    fits = explain._name_fits(case, {k}, [_person("Daniel Petrov")])
+    assert bool(fits) is shown
+
+
+def test_a_composed_account_label_is_never_shown_as_cited_text(conn):
+    case = explain.load(conn)
+    acct = case.data.accounts["acct:item1:Instagram:dp_garage"]
+    g = case.ids.groups[acct.key]
+    case.ids.groups[acct.key] = replace(g, owner_devices=("dev:item1", "dev:item2"))  # type: ignore[type-var]
+    (fit,) = explain._multi_owner_fits(case, {acct.key}, [])
+    assert fit.quote == "" and fit.label
+    page = alternatives_html([Alternative("other_user", "authorship", "t", "s", (fit,), 1, "", ())])
+    assert "<li>An owner account on more than one phone<br>" in page
+
+
+def test_merging_two_notes_keeps_the_records_label():
+    a = explain.Fit("call:x", "item1", "", "", "Mar 1", "One.", False, "A call on SMS, 3 s")
+    b = replace(a, note="Two.")
+    (merged,) = explain._merge([a, b])
+    assert merged.label == "A call on SMS, 3 s" and merged.note == "One. Two."
+
+
+def test_each_claims_leads_carry_no_repeated_page_id():
+    fit = explain.Fit("msg:x", "item1", "L", "hi", "Mar 1", "Note.")
+    alt = Alternative("other_user", "authorship", "t", "s", (fit,), 1, "", ())
+    assert " id=" not in alternatives_html([alt, alt]).replace("<span id=", "")

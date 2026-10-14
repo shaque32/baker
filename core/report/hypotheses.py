@@ -81,7 +81,7 @@ def alternatives_html(
             else ""
         )
         out.append(
-            f"<div class='alt' id='alt-{_e(a.kind)}'><span class='fam'>derived · "
+            f"<div class='alt' data-kind='{_e(a.kind)}'><span class='fam'>derived · "
             f"{_e(FAMILY_TEXT[a.family])}</span><h4>{_e(a.title)}</h4><p>{note_html(a.summary)}</p>"
             "<ul>" + "".join(_fit(f, href) for f in a.fits) + "</ul>" + more
         )

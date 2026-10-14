@@ -465,6 +465,21 @@ def _intro_fits(
     return found, searched
 
 
+# Saved names that say who someone is to the phone's owner, not what they are called.
+_ROLE_WORDS = frozenset(
+    "me my myself i dad daddy mom mommy mum mother father papa mama bro brother sis sister "
+    "son daughter wife husband hubby wifey babe baby bae honey hun love boss work home office "
+    "uncle aunt auntie grandma grandpa cousin friend bestie buddy boo kid kids family new old "
+    "phone cell mobile main other second private personal".split()
+)
+
+
+def _nickname_of(word: str, name_word: str) -> bool:
+    """A familiar form of a name word: the same first three letters ("danny", "dani" of
+    "daniel"). Used only to keep a saved name off the list, never to link anyone."""
+    return len(word) >= 3 and len(name_word) >= 3 and word[:3] == name_word[:3]
+
+
 def _name_fits(case: Case, keys: set[Key], persons: list[idl.Person]) -> list[Fit]:
     out: list[Fit] = []
     # Per account and name, as many lines as the phone holding the most such records: its
@@ -482,6 +497,10 @@ def _name_fits(case: Case, keys: set[Key], persons: list[idl.Person]) -> list[Fi
                 continue
             if any(_shares_word(p, s.words) for p in persons):
                 continue
+            if all(w in _ROLE_WORDS for w in s.words):
+                continue  # "Dad", "Boss", "Me": how the phone's owner knows them, not a name
+            if any(_nickname_of(w, pw) for p in persons for w in s.words for pw in p.words):
+                continue  # "Danny" for Daniel: a short form, not someone else
             name = (k, s.kind, text.casefold())  # an account name and a contact are no copies
             n = per_phone[(*name, s.source_id)] = per_phone.get((*name, s.source_id), 0) + 1
             placed.add((k, s.record_id))
@@ -605,12 +624,6 @@ def _handoff_fits(case: Case, claimed: list[Row]) -> tuple[list[tuple[Row, str]]
     return found, searched
 
 
-def _iso(t: datetime) -> str:
-    """UTC with microseconds kept. SQL compares it through julianday(), so a stored time with
-    fractional seconds is ordered as a time, not as text."""
-    return t.astimezone(UTC).isoformat().replace("+00:00", "Z")
-
-
 def _parse(value: str | None) -> datetime | None:
     if not value:
         return None
@@ -643,10 +656,11 @@ def _multi_owner_fits(case: Case, keys: set[Key], persons: list[idl.Person]) -> 
                 rep,
                 src,
                 loc,
-                g.label,
+                "",  # the label is Baker's composition of the account, not text the case holds
                 "",
                 f"{cite(g.label)} is an owner account on more than one phone ({phones}); a "
                 "message from it may have been written on any of them.",
+                label="An owner account on more than one phone",
             )
         )
     return out
@@ -667,8 +681,16 @@ def _other_user(case: Case, assumptions: list[Assumption]) -> Alternative | None
         # Each statement on its own: its accounts against its own people, so a name another
         # statement gives for another account never hides a conflict here.
         claimed = claimed_by_quote.get(a.id, [])
+        # The accounts that sent the quote: those of the statement's own parties when any copy
+        # was sent from one, so another sender's copy of the same words ("ok") never brings that
+        # sender's names in as someone else behind this account. When no copy was sent by a
+        # party, the claim may name the wrong sender, and every sender is weighed.
+        party_accounts = set().union(
+            set(), *(case.data.account_ids(x.keys) for x in parties(case.data, a.params))
+        )
+        senders = [r for r in claimed if r.sender in party_accounts] or claimed
         keys: set[Key] = set()
-        for r in claimed:
+        for r in senders:
             acc = case.data.accounts.get(r.sender or "")
             if acc is not None:
                 keys.add(acc.key)
@@ -740,10 +762,7 @@ def _merge(fits: list[Fit]) -> list[Fit]:
             prev = out[f.record_id]
             if f.note in prev.note:
                 continue  # the same finding from another statement
-            out[f.record_id] = Fit(
-                prev.record_id, prev.source_id, prev.locator, prev.quote, prev.when,
-                f"{prev.note} {f.note}", prev.local,
-            )  # fmt: skip
+            out[f.record_id] = replace(prev, note=f"{prev.note} {f.note}")
         else:
             out[f.record_id] = f
     return list(out.values())
