@@ -454,6 +454,91 @@ def test_stated_windows_read_the_claims_own_words():
     assert stated_windows("sent on March 12", "Events of 2026.")[0].start.year == 2026
 
 
+@pytest.mark.parametrize(
+    ("text", "raw", "start", "end"),
+    [
+        (
+            "Between 9 p.m. and 11 p.m. on May 2, 2026, Item 1 sent texts.",
+            "Between 9 p.m. and 11 p.m. on May 2, 2026",
+            "21:00",
+            "23:01",
+        ),
+        (
+            "From 9 p.m. to 11 p.m. on May 2, 2026, Item 1 sent texts.",
+            "From 9 p.m. to 11 p.m. on May 2, 2026",
+            "21:00",
+            "23:01",
+        ),
+        (
+            "Between 9 and 11 p.m. on May 2, 2026, Item 1 sent texts.",
+            "Between 9 and 11 p.m. on May 2, 2026",
+            "21:00",
+            "23:01",
+        ),
+        ("between 10:15 a.m. and 11:45 a.m. on May 2, 2026", None, "10:15", "11:46"),
+        ("between noon and 2 p.m. on May 2, 2026", None, "12:00", "14:01"),
+        (
+            "At about noon on May 2, 2026, Item 1 called.",
+            "At about noon on May 2, 2026",
+            "11:52",
+            "12:08",
+        ),
+        ("At noon on May 2, 2026, Item 1 called.", None, "12:00", "12:01"),
+        ("At about 9 p.m. on May 2, 2026, Item 1 called.", None, "20:52", "21:08"),
+    ],
+)
+def test_stated_windows_read_times_of_day(text, raw, start, end):
+    from core.audit.assumption_filler import stated_windows
+
+    (w,) = stated_windows(text)
+    assert (w.start.strftime("%H:%M"), w.end.strftime("%H:%M")) == (start, end)
+    assert w.start.date() == w.end.date() == D(2026, 5, 2).date()
+    if raw is not None:
+        assert w.raw == raw
+    check_window(w.start, w.end, w.raw, text, "", "record_time")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "At midnight on May 2, 2026, Item 1 called.",  # start or end of the day
+        "between 11 and 1 p.m. on May 2, 2026",  # the bare hour cannot take p.m.
+        "between 10 p.m. and midnight on May 2, 2026",
+        "between 11 p.m. and 1 a.m. on May 2, 2026",  # crosses midnight
+        "between about 9 and 11 p.m. on May 2, 2026",
+        "between 9 p.m. and about 11 p.m. on May 2, 2026",
+        "between 9 and 11 on May 2, 2026",  # no a.m. or p.m.
+        "at 21:00 on May 2, 2026",
+    ],
+)
+def test_stated_windows_leave_unplain_times_to_the_model(text):
+    from core.audit.assumption_filler import stated_windows
+
+    assert stated_windows(text) is None
+
+
+@pytest.mark.parametrize(
+    ("start", "end"),
+    [
+        (D(2026, 5, 2, 23), D(2026, 5, 2, 23, 1)),  # only the last minute
+        (D(2026, 5, 2, 21), D(2026, 5, 2, 21, 1)),  # only the first minute
+        (D(2026, 5, 2), D(2026, 5, 3)),  # the whole day
+    ],
+)
+def test_check_window_holds_both_ends_of_a_stated_time_range(start, end):
+    for raw in ("Between 9 and 11 p.m. on May 2, 2026", "From 9 p.m. to 11 p.m. on May 2, 2026"):
+        with pytest.raises(Reject):
+            check_window(start, end, raw, raw, "", "record_time")
+    raw = "Between 9 and 11 p.m. on May 2, 2026"
+    check_window(D(2026, 5, 2, 21), D(2026, 5, 2, 23, 1), raw, raw, "", "record_time")
+
+
+def test_check_window_refuses_the_whole_day_for_a_stated_noon():
+    raw = "At about noon on May 2, 2026"
+    with pytest.raises(Reject):
+        check_window(D(2026, 5, 2), D(2026, 5, 3), raw, raw, "", "record_time")
+
+
 @pytest.mark.parametrize(("cid", "change", "why"), BAD)
 def test_bad_values_drop_the_proposal_and_the_claim_stays_unproven(conn, cid, change, why):
     assumptions, filler, _ = build(conn, cid, _one(cid, **change))

@@ -344,6 +344,11 @@ _NUM_DATE_RE = re.compile(r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b")
 _YEAR_RE = re.compile(r"\b(19\d\d|20\d\d)\b")
 _TIME_RE = re.compile(r"\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)(?![a-z])", re.IGNORECASE)
 _TIME24_RE = re.compile(r"\b([01]?\d|2[0-3]):([0-5]\d)\b(?!\s*(?:a\.?m|p\.?m))", re.IGNORECASE)
+# "between 9 and 11 p.m.": the bare first hour takes the second time's a.m. or p.m.
+_BARE_HOUR_RE = re.compile(
+    r"\b(?:between|from)\s+(\d{1,2})(?::(\d{2}))?\s*(?:and|to|until|till|through|thru|-|–)\s*$",
+    re.IGNORECASE,
+)
 
 OPEN_START = ("before", "prior to", "until", "up to")
 OPEN_END = ("after", "since", "onward", "onwards", "later")
@@ -374,11 +379,15 @@ def date_mentions(text: str) -> list[_DateMention]:
 def time_mentions(text: str) -> list[time]:
     out: list[time] = []
     for m in _TIME_RE.finditer(text):
-        h, mi = int(m.group(1)), int(m.group(2) or 0)
-        if not 1 <= h <= 12 or mi > 59:
+        t = _clock(m.group(1), m.group(2), m.group(3))
+        if t is None:
             continue
-        pm = m.group(3).lower().startswith("p")
-        out.append(time((h % 12) + (12 if pm else 0), mi))
+        bare = _BARE_HOUR_RE.search(text[max(0, m.start() - 16) : m.start()])
+        if bare is not None:
+            first = _clock(bare.group(1), bare.group(2), m.group(3))
+            if first is not None and first < t:
+                out.append(first)
+        out.append(t)
     for m in _TIME24_RE.finditer(text):
         out.append(time(int(m.group(1)), int(m.group(2))))
     if _has_word(text, "midnight"):
@@ -386,6 +395,51 @@ def time_mentions(text: str) -> list[time]:
     if _has_word(text, "noon"):
         out.append(time(12, 0))
     return out
+
+
+def _clock(h: str | None, mi: str | None, ap: str | None, word: str | None = None) -> time | None:
+    """A time of day as written, or None when it is not one plain time. "midnight" is None:
+    it may be the start or the end of the day."""
+    if word is not None:
+        return time(12, 0) if word.lower() == "noon" else None
+    if h is None or ap is None:
+        return None
+    hour, minute = int(h), int(mi or 0)
+    if not 1 <= hour <= 12 or minute > 59:
+        return None
+    return time((hour % 12) + (12 if ap.lower().startswith("p") else 0), minute)
+
+
+def _clock_re(p: str, ap_optional: bool = False) -> str:
+    q = "?" if ap_optional else ""
+    return (
+        rf"(?:(?P<{p}h>\d{{1,2}})(?::(?P<{p}m>\d{{2}}))?\s*(?P<{p}ap>a\.?m\.?|p\.?m\.?){q}(?![a-z])"
+        rf"|(?P<{p}w>noon|midnight)\b)"
+    )
+
+
+# "between 9 and 11 p.m.", "from 9 p.m. to 11 p.m.", "between noon and 2 p.m."
+_RANGE_TIME = (
+    rf"\b(?:between|from)\s+{_clock_re('a', ap_optional=True)}\s*"
+    rf"(?:and|to|until|till|through|thru|-|–)\s*{_clock_re('b')}"
+)
+_RANGE_TIME_RE = re.compile(_RANGE_TIME, re.IGNORECASE)
+
+
+def _time_range(m: re.Match[str]) -> tuple[time, time] | None:
+    """The two times of a _RANGE_TIME match, or None when they are not a plain range on one
+    day: midnight, an end not after the start (it may cross midnight), or a bare first hour
+    that cannot take the end's a.m. or p.m. ("between 11 and noon")."""
+    end = _clock(m.group("bh"), m.group("bm"), m.group("bap"), m.group("bw"))
+    if end is None:
+        return None
+    if m.group("aw") is not None:
+        start = _clock(None, None, None, m.group("aw"))
+    else:
+        start = _clock(m.group("ah"), m.group("am"), m.group("aap") or m.group("bap"))
+    if start is None or start >= end:
+        return None
+    return start, end
 
 
 def _date_stated(d: date, mentions: list[_DateMention], years: set[int]) -> bool:
@@ -439,6 +493,16 @@ def check_window(
     open_end = any(_has_word(low, w) for w in OPEN_END)
     last = end - timedelta(microseconds=1)
 
+    for rm in _RANGE_TIME_RE.finditer(as_written):
+        # "between 9 and 11 p.m.": the start is near 9 p.m. and the end near 11 p.m., not
+        # both near either one
+        rng = _time_range(rm)
+        if rng is None:
+            raise Reject("the stated time range is not a plain range on one day")
+        if not open_start and not _near(start, [rng[0]]):
+            raise Reject("window start is not near the start of the stated time range")
+        if not open_end and not _near(end, [rng[1]]):
+            raise Reject("window end is not near the end of the stated time range")
     if not open_start:
         if not _date_stated(start.date(), mentions, years):
             raise Reject(f"window start {start.date()} is not a date the claim states")
@@ -468,9 +532,18 @@ def check_window(
 
 
 ABOUT_MINUTES = 8  # "at about 7:58 p.m." is 7:50 to 8:05 (the signed case01 sheet, C09)
+_TIED = r"\s*,?\s*(?:on\s+)?$"  # the time is tied to the date right after it
 _AT_TIME_RE = re.compile(
-    r"\b(?:at\s+)?(?P<about>about\s+|approximately\s+|around\s+)?"
-    r"(?P<h>\d{1,2})(?::(?P<m>\d{2}))?\s*(?P<ap>a\.?m\.?|p\.?m\.?)(?![a-z])\s*,?\s*(?:on\s+)?$",
+    rf"\b(?:at\s+)?(?P<about>about\s+|approximately\s+|around\s+)?{_clock_re('t')}{_TIED}",
+    re.IGNORECASE,
+)
+_AT_RANGE_RE = re.compile(_RANGE_TIME + _TIED, re.IGNORECASE)
+# a time just before the one read, joined to it: a range code did not read as one
+_JOINED_RE = re.compile(r"(?:and|to|until|till|through|thru|-|–)\s*$", re.IGNORECASE)
+# a time with no a.m. or p.m. tied to the date ("between 9 and 11 on", "at 21:00 on")
+_LOOSE_TIME_RE = re.compile(
+    r"\b(?:at|about|around|approximately|between|from|and|to|until|till|through|thru)\s+"
+    r"\d{1,2}(?::\d{2})?(?:\s*(?:hours|hrs))?" + _TIED,
     re.IGNORECASE,
 )
 _LEAD_RE = re.compile(r"\b(?:on|between|from)\s+$", re.IGNORECASE)
@@ -494,11 +567,15 @@ def stated_windows(text: str, context: str = "") -> list[StatedWindow] | None:
     - "March 20 and March 23, 2026" or "March 10 through March 31, 2026": first day to the
       end of the last.
     - "2:31 a.m. on March 5, 2026": that minute. "about 7:58 p.m." is 8 minutes either side.
+      "noon" is 12:00. "midnight" is not read: it may be the start or the end of the day.
+    - "Between 9 and 11 p.m. on May 2, 2026" or "From 9 p.m. to 11 p.m. ...": 9:00 p.m.
+      through the 11:00 p.m. minute. A bare first hour takes the end's a.m. or p.m.; a range
+      that would cross midnight, or carries "about", is not read.
     """
     years = {int(y) for y in _YEAR_RE.findall(text + " " + context)}
     out: list[StatedWindow] = []
     for m in _DATE_RE.finditer(text):
-        before = text[max(0, m.start() - 48) : m.start()]
+        before = text[max(0, m.start() - 64) : m.start()]
         if any(_has_word(before[-12:], w) for w in (*OPEN_START, *OPEN_END)):
             return None
         y_end = int(m.group(6)) if m.group(6) else None
@@ -519,14 +596,24 @@ def stated_windows(text: str, context: str = "") -> list[StatedWindow] | None:
         if d2 < d1:
             return None
         start_i, end_i = m.start(), m.end()
-        at = _AT_TIME_RE.search(before)
-        if at is not None and not m.group(5):
-            h, mi = int(at.group("h")), int(at.group("m") or 0)
-            if not 1 <= h <= 12 or mi > 59:
+        rng = _AT_RANGE_RE.search(before)
+        at = _AT_TIME_RE.search(before) if rng is None else None
+        if (rng is not None or at is not None) and m.group(5):
+            return None  # a time of day on a range of dates: leave it to the model
+        if rng is not None:
+            times = _time_range(rng)
+            if times is None:
                 return None
-            t = datetime.combine(
-                d1, time((h % 12) + (12 if at.group("ap").lower()[0] == "p" else 0), mi)
-            )
+            start_i = m.start() - len(before) + rng.start()
+            start = datetime.combine(d1, times[0])
+            end = datetime.combine(d1, times[1]) + timedelta(minutes=1)  # through the end minute
+        elif at is not None:
+            if _JOINED_RE.search(before[: at.start()]):
+                return None  # "about 9 p.m. and 11 p.m. on ...": a range not read as one
+            tt = _clock(at.group("th"), at.group("tm"), at.group("tap"), at.group("tw"))
+            if tt is None:
+                return None
+            t = datetime.combine(d1, tt)
             start_i = m.start() - len(before) + at.start()
             if at.group("about"):
                 start, end = (
@@ -536,6 +623,8 @@ def stated_windows(text: str, context: str = "") -> list[StatedWindow] | None:
             else:
                 start, end = t, t + timedelta(minutes=1)
         else:
+            if _LOOSE_TIME_RE.search(before):
+                return None  # a time code cannot read: never widen it to the whole day
             if time_mentions(text[m.end() : m.end() + 24]):
                 return None  # "March 5 at 2:31 a.m.": leave it to the model and check_window
             lead = _LEAD_RE.search(before)
