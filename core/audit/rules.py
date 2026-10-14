@@ -17,7 +17,13 @@ Rule 1. Contradiction. The claim is CONTRADICTED if any core assumption has
           only a failed check or an accepted item can contradict a meaning);
         - for any other assumption, any item not dismissed whose record is observed or
           derived, or that was accepted (Arsh, 2026-10-06: a wrong "contradicted" costs less
-          than a wrong "supported").
+          than a wrong "supported"),
+        - except that when every deterministic check on the assumption passed (at least one
+          ran), only an item an expert accepted counts. A model's or the AI reviewer's
+          "contradicts" there is treated as "complicates": it cannot overrule a passed check,
+          and it still blocks SUPPORTED until the expert dismisses it (Arsh, 2026-10-14,
+          rules 0.2.1; case01 Mac run, where the 14B read the receiving phone's copy of a
+          message the sender check had passed as contradicting it).
 
 Rule 2. Coverage of one core assumption. It is covered when, and only when, one of these holds:
     (a) every deterministic check on it passed (at least one ran) -> tier derived;
@@ -95,7 +101,7 @@ from core.contracts import (
     verdict_id,
 )
 
-RULE_VERSION = "0.2.0"
+RULE_VERSION = "0.2.1"
 
 _CITABLE_RECORD = frozenset({ProvenanceTier.OBSERVED, ProvenanceTier.DERIVED})
 _REVIEWED = frozenset({EvidenceStatus.AI_ACCEPTED, EvidenceStatus.ACCEPTED})
@@ -147,9 +153,9 @@ class _Finding:
         )
 
 
-def _counts_as_contradiction(a: Assumption, e: EvidenceItem) -> bool:
+def _counts_as_contradiction(a: Assumption, e: EvidenceItem, checks_passed: bool) -> bool:
     """Rule 1b, for an item whose stance is contradicts and which is not dismissed."""
-    if a.kind is AssumptionKind.MEANING:
+    if a.kind is AssumptionKind.MEANING or checks_passed:
         return e.status is EvidenceStatus.ACCEPTED
     return e.status in _REVIEWED or e.tier in _CITABLE_RECORD
 
@@ -263,11 +269,12 @@ def decide_verdict(
         f.failed_checks = sorted(
             (c for c in ck_by[aid] if c.outcome is CheckOutcome.FAIL), key=lambda c: c.id
         )
+        checks_passed = bool(ck_by[aid]) and all(c.outcome is CheckOutcome.PASS for c in ck_by[aid])
         for e in sorted(ev_by[aid], key=lambda e: e.id):
             if e.status is EvidenceStatus.DISMISSED:
                 continue
             if e.stance is Stance.CONTRADICTS:
-                if _counts_as_contradiction(a, e):
+                if _counts_as_contradiction(a, e, checks_passed):
                     f.contradicting.append(e)
                 else:
                     f.complicating.append(e)

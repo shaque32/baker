@@ -29,6 +29,10 @@ the document or the case data. It fails closed at every step:
   instead, and still goes through `check_window`. A quoted message the claim dates gets its
   time assumption from code when the model gave none: the sender's parties and words with the
   claim's one stated range. The model's arithmetic is never needed for a plain stated date.
+- A sender assumption the model left without a party gets the person the claim names as the
+  writer ("PETROV wrote", "PETROV texted REYES"), read by code (`stated_sender`), when that
+  name matches exactly one person the expert created. Otherwise it stays without a party and
+  is refused as before.
 - Every proposed assumption is core. The model does not get to mark one optional.
 - A claim must not be judged on its easy parts (`coverage_gap`): each claim type needs its
   key template (a meaning claim needs "meaning", a count needs "message_count", ...), a stated
@@ -617,6 +621,14 @@ _QUOTED_MESSAGE = re.compile(
 )
 
 
+# The writer of a quoted message, as the claim names it: 'PETROV wrote', 'Daniel Petrov texted
+# REYES'. One to three capitalised words right before a verb of writing.
+_WRITER_RE = re.compile(
+    r"(?<![\w@])([A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*){0,2})\s+"
+    r"(?:wrote|texted|messaged|sent|told|replied|emailed)\b"
+)
+
+
 def coverage_gap(claim: Claim, proposals: list[Proposal]) -> str | None:
     """What the kept proposals leave untested that the claim states, or None.
 
@@ -763,6 +775,10 @@ class LocalAssumptionFiller:
             params["device_ids"] = sorted(set(device_ids))
         if p.people:
             params["person_ids"] = sorted({self._person(n) for n in p.people})
+        elif tpl.id == "sender" and not (p.handles or p.phones or p.accounts):
+            writer = self.stated_sender(claim)
+            if writer is not None:
+                params["person_ids"] = [writer]
 
         channels = self._channels(claim.text, p.channels)
         if channels:
@@ -864,6 +880,24 @@ class LocalAssumptionFiller:
         allowed = TEMPLATES["record_time"].allowed
         params = {k: v for k, v in sender.items() if k in allowed} | {"window": window}
         return [*out, Proposal("record_time", params, is_core=True)]
+
+    def stated_sender(self, claim: Claim) -> str | None:
+        """The one person the claim names as the writer, or None when it names none or the
+        names do not all resolve to the same single person the expert created."""
+        found: set[str] = set()
+        for match in _WRITER_RE.finditer(claim.text):
+            words = match.group(1).split()
+            hits = set()
+            for i in range(len(words)):
+                try:
+                    hits.add(self._person(" ".join(words[i:])))
+                except Reject:
+                    continue
+                break  # the longest form that names a person
+            if len(hits) != 1:
+                return None
+            found |= hits
+        return found.pop() if len(found) == 1 else None
 
     def _person(self, name: str) -> str:
         n = _nfc(name.strip()).casefold()

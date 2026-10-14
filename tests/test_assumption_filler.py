@@ -388,6 +388,38 @@ def test_a_dated_quote_gets_its_time_assumption_from_code(conn):
     assert got["record_time"].params == good["record_time"].params
 
 
+def test_a_sender_without_a_party_gets_the_writer_the_claim_names(conn):
+    # Mac run ¶6.1: the model left the sender's party out, so nobody was checked as the
+    # sender and the claim could never be supported (rule 3e). "PETROV wrote" names him.
+    good = {a.template_id: a for a in build(conn, "C05")[0]}
+    answers = {"C05": [{**GOOD["C05"][0], "people": []}]}
+    got = {a.template_id: a for a in build(conn, "C05", answers)[0]}
+    assert got.keys() == {"sender", "record_time"}
+    assert got["sender"].params == good["sender"].params
+    assert got["record_time"].params == good["record_time"].params
+
+
+@pytest.mark.parametrize(
+    ("text", "named"),
+    [
+        ("On March 12, 2026, PETROV wrote to @northstar: 'need 2 more by friday'.", True),
+        ("Daniel Petrov texted REYES 'its done'.", True),
+        ("REYES said PETROV wrote 'its done'.", True),  # the writer, not the speaker
+        ("ALEXANDER SOKOLOV wrote 'its done'.", False),  # no such person in the case
+        ("PETROV wrote 'ok' and REYES replied 'fine'.", False),  # two writers
+        ("The message 'its done' was sent at 2:31 a.m.", False),  # names no writer
+    ],
+)
+def test_stated_sender_is_the_one_person_the_claim_names_as_writer(conn, text, named):
+    filler = LocalAssumptionFiller(FakeModel(by_claim(GOOD)), conn, template=DRAFT)
+    c = Claim(id="X", paragraph_id="para:1", text=text, claim_type=ClaimType.COMMUNICATION,
+              status=ClaimStatus.ACCEPTED)  # fmt: skip
+    got = filler.stated_sender(c)
+    assert (got is not None) == named, got
+    if named:
+        assert got == filler._person("PETROV")
+
+
 def test_stated_windows_read_the_claims_own_words():
     from core.audit.assumption_filler import stated_windows
 
