@@ -1,6 +1,6 @@
 # Cellebrite UFDR import (unverified)
 
-Importer: `core/ingest/ufdr.py` (`UfdrImporter`, importer `ufdr` 0.1.0). It implements
+Importer: `core/ingest/ufdr.py` (`UfdrImporter`, importer `ufdr` 0.1.1). It implements
 `EvidenceImporter` and writes the same canonical rows as the Excel and PDF importers, through
 the same record mapping in `core/ingest/cellebrite_common.py`, so retrieval, checks, rules, the
 review screen and the report work unchanged.
@@ -40,6 +40,7 @@ project (xmlns http://pa.cellebrite.com/report/2.0, reportVersion, ...)
     multiField (name)/value*                             several simple values
     modelField (name)/model                              one nested model (a Party)
     multiModelField (name)/model*                        nested models (Participants, Messages)
+    any other named child (nodeField, ...)               not read; listed as a field not read
   taggedFiles/file                                        counted, not imported
 ```
 
@@ -151,11 +152,14 @@ history and the other types above, message language, files not attached to a mes
 
 ## Before calling it verified
 
-1. Get one real UFDR from a closed or training case (never into the repo or a prompt).
-2. Import it on the expert's machine and read the coverage: every record type, field and
-   metadata item Baker did not read is listed there.
-3. Open 20 records of each imported type in Cellebrite Reader and compare sender, recipients,
-   time and offset, text, record state and attachments with Baker's records.
+1. An expert runs `baker ufdr-check` on a real UFDR on their own computer
+   (docs/ingest/ufdr_check.md). Nothing leaves the computer except the check's shareable
+   report, which holds no case content. The package itself never goes into the repo or a prompt.
+2. The report compares Baker's import with report.xml record by record and lists every record
+   type, field and value shape Baker did not read.
+3. The expert opens the sampled records (20 of each kind, in the private file) in Cellebrite
+   Reader and compares sender, recipients, time and offset, text, record state and attachments,
+   and notes the counts Reader shows per category.
 4. Fix what differs, add a synthetic variant that reproduces each difference, then set
    `FORMAT_SUPPORT = "verified"` in `core/ingest/ufdr.py` in the same change and say which
    package versions were checked. Deciding whether a UFDR can count as a full extraction (and

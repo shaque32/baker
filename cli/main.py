@@ -2,6 +2,7 @@
 
     python -m cli init      --db case.db
     python -m cli import    --db case.db --report item1.xlsx [--source-id item1]
+    python -m cli ufdr-check --package item1.ufdr --out <empty folder> [--sample 20]
     python -m cli govdoc    --db case.db --pdf affidavit.pdf
     python -m cli claims    --db case.db list
     python -m cli claims    --db case.db propose [--only <para id> ...]
@@ -51,6 +52,10 @@ files; core/casework/protect.py), or finishes one that was interrupted, and prin
 key once. Nothing encrypts a case on its own. `passphrase` changes an encrypted case's
 passphrase. Every command on an encrypted case asks for its passphrase (or recovery key) in the
 terminal; it is never taken from an option or the environment.
+`ufdr-check` compares what Baker imports from a UFDR with the package's own report.xml, record
+by record, without touching any case (docs/ingest/ufdr.md, "Before calling it verified"). It
+writes ufdr-check.md and .json, which hold no case content and can be sent back, and
+ufdr-check-private.md, a sample of records to compare in Cellebrite Reader, which stays here.
 `claims propose` asks the local model for claims on every paragraph that has none yet; they
 are stored as 'proposed' until the expert accepts, edits or removes them.
 """
@@ -125,6 +130,25 @@ def cmd_import(a: argparse.Namespace) -> int:
     cov = summary(conn, src.id)
     if cov is not None:
         print(format_text(cov))
+    return 0
+
+
+def cmd_ufdr_check(a: argparse.Namespace) -> int:
+    from core.ingest import ufdr_check
+
+    try:
+        result = ufdr_check.run(a.package, a.sample, a.date_order)
+        paths = ufdr_check.write(result, a.out)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    d = result.shareable
+    print(f"Differences found: {d['differences']}")
+    if result.import_error:
+        print(f"Baker refused the package: {result.import_error}")
+    print(f"shareable, no case content (read it before sending): {paths[0]}")
+    print(f"  the same for a program: {paths[1]}")
+    print(f"PRIVATE, keep on this computer: {paths[2]}")
     return 0
 
 
@@ -398,6 +422,14 @@ def parser() -> argparse.ArgumentParser:
         choices=("mdy", "dmy"),
         help="the report's date order (month or day first), when the report does not decide it",
     )
+    sp = sub.add_parser(
+        "ufdr-check", help="check Baker's UFDR import against the package's own report.xml"
+    )
+    sp.set_defaults(fn=cmd_ufdr_check)
+    sp.add_argument("--package", type=Path, required=True, help="the .ufdr (or .zip) file")
+    sp.add_argument("--out", type=Path, required=True, help="an empty folder for the results")
+    sp.add_argument("--sample", type=int, default=20, help="records per kind to compare in Reader")
+    sp.add_argument("--date-order", choices=("mdy", "dmy"))
     sp = add("govdoc", cmd_govdoc, "import the government document (PDF)")
     sp.add_argument("--pdf", type=Path, required=True)
 
