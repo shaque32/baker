@@ -18,7 +18,10 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 APP="$HOME/Baker/app"
 MODELS="$HOME/Baker/models"
-PINS="$HERE/packaging/windows/pins.json"
+# BAKER_PINS and BAKER_MIN_MEMORY_GB are for the clean-install test only
+# (.github/workflows/clean-install.yml): a stub model on a small CI Mac.
+PINS="${BAKER_PINS:-$HERE/packaging/windows/pins.json}"
+MIN_GB="${BAKER_MIN_MEMORY_GB:-16}"
 WANT_MODEL=1
 for arg in "$@"; do
   case "$arg" in
@@ -30,7 +33,7 @@ done
 say() { printf '\n== %s\n' "$*"; }
 stop() { printf '\nSTOPPED: %s\n' "$*"; exit 1; }
 # One pinned value from pins.json (the Windows build's pins: the same runtime and model).
-pin() { "$APP/.venv/bin/python" -c "import json; print(json.load(open('$PINS'))$1)"; }
+pin() { "$APP/.venv/bin/python" -c "import json, sys; print(json.load(open(sys.argv[1]))$1)" "$PINS"; }
 
 [ -f "$HERE/pyproject.toml" ] && [ -d "$HERE/core" ] || stop "run this from the Baker folder"
 
@@ -40,8 +43,8 @@ say "1/6 Checking this Mac"
 RAM_GB=$(( $(sysctl -n hw.memsize) / 1073741824 ))
 FREE_GB=$(( $(df -k "$HOME" | awk 'NR==2 {print $4}') / 1048576 ))
 echo "Memory: ${RAM_GB} GB. Free disk: ${FREE_GB} GB."
-if [ "$RAM_GB" -lt 16 ]; then
-  stop "Baker's model needs at least 16 GB of memory; this Mac has ${RAM_GB} GB"
+if [ "$RAM_GB" -lt "$MIN_GB" ]; then
+  stop "Baker's model needs at least $MIN_GB GB of memory; this Mac has ${RAM_GB} GB"
 elif [ "$RAM_GB" -lt 24 ]; then
   echo "NOTE: with ${RAM_GB} GB a case runs, but slowly. 24 GB or more is recommended."
 fi
@@ -116,6 +119,7 @@ fi
 "$BAKER" model-check || echo "The model is not ready yet; Baker works, but cannot audit a case."
 "$BAKER" demo --build-only
 
+mkdir -p "$HOME/Desktop"
 for name in "Baker" "Baker demo"; do
   cmd="serve --open"; [ "$name" = "Baker demo" ] && cmd="demo"
   f="$HOME/Desktop/$name.command"
