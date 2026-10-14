@@ -574,6 +574,28 @@ def test_members_are_senders_and_listed_recipients(db):
     assert chat_members(db, "msg:s1:missing") is None
 
 
+def test_a_big_groups_members_line_is_bounded_and_says_what_it_leaves_out(db):
+    from core.audit.context import MAX_MEMBERS
+
+    for i in range(30):
+        aid = f"acct:s1:Telegram:77700{i:02d}"
+        db.execute(
+            "INSERT INTO accounts VALUES (?, 's1', 'x', NULL, 'Telegram', ?, NULL)",
+            (aid, f"77700{i:02d}"),
+        )
+        db.execute(
+            "INSERT INTO message_recipients (message_id, account_id) VALUES ('msg:s1:Chats!4', ?)",
+            (aid,),
+        )
+    first = render_for(db, "msg:s1:Chats!4", window=1, names=_named(db)).splitlines()[0]
+    listed = first.removeprefix("Members seen in this chat's records: ").split("; and ")[0]
+    accounts = listed.split("; ")
+    assert len(accounts) == MAX_MEMBERS
+    # The senders on the lines shown are always listed; the line says how many it leaves out.
+    assert "Telegram 100 (owner)" in accounts and "Telegram 5550001" in accounts
+    assert first.endswith("; and 12 more accounts not listed")
+
+
 def test_named_context_of_an_attachment_has_members_and_a_call_or_contact_has_none(db):
     names = _named(db, stipulate=True)
     att = render_for(db, "att:s1:Chats!40:1", window=1, names=names).splitlines()

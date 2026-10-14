@@ -23,11 +23,12 @@ import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from core.audit.readable import CaseNames
+from core.audit.readable import CaseNames, members_line
 from core.enrich.local_time import device_zone, format_local, parse_utc
 from core.enrich.records import get_record
 
 DEFAULT_WINDOW = 20  # messages on either side of the target
+MAX_MEMBERS = 20  # members a members line lists; a bigger group's line says how many it leaves out
 HEADER = (
     "(One line per record, in time order. '>>' marks the record under review. Times are the"
     " phone's local time. Sender is app and account id; '(this phone)' is the phone's own account.)"
@@ -304,8 +305,38 @@ def render_for(
     if names is None:
         return render_context(lines)
     member_ids = chat_members(conn, record_id)
-    members = names.members(member_ids) if member_ids else None  # never an empty member list
+    members = None  # a call or contact has no chat, and an empty member list is never shown
+    if member_ids:
+        members = _members_text(conn, names, record_id, window, member_ids)
     return render_context(lines, NAMED_HEADER, members)
+
+
+def _members_text(
+    conn: sqlite3.Connection,
+    names: CaseNames,
+    record_id: str,
+    window: int,
+    member_ids: list[str],
+) -> str:
+    """The members line, bounded so a big group cannot crowd the record out of the model's
+    context. Up to MAX_MEMBERS accounts are listed: every sender on a line shown, then the rest
+    in sorted order; the line then says how many it leaves out, so it never reads as complete."""
+    printed = {names.sender(aid) for aid in member_ids}
+    if len(printed) <= MAX_MEMBERS:
+        return names.members(member_ids)
+    ids = list(context_ids(conn, record_id, window, include_target=True))
+    marks = ",".join("?" * len(ids))
+    shown = {
+        names.sender(r[0])
+        for r in conn.execute(
+            f"SELECT sender_account_id FROM messages WHERE id IN ({marks})"  # noqa: S608
+            " AND sender_account_id IS NOT NULL",
+            ids,
+        )
+    }
+    rest = sorted(printed - shown)
+    kept = shown | set(rest[: max(0, MAX_MEMBERS - len(shown))])
+    return f"{members_line(kept)}; and {len(printed) - len(kept)} more accounts not listed"
 
 
 class ReviewContext:
