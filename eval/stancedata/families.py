@@ -83,14 +83,16 @@ FAMILIES: tuple[Family, ...] = (
     # record cannot show that no other message exists.
     _F("ovr_time_mismatch", C.OVERREACH, S.COMPLICATES, "time_mismatch", (K.TIME,),
        "Same words and people, but the record's local date or local clock time falls outside "
-       "what the assumption states; at a DST change the local clock reading decides.", new=True),
+       "what the assumption states; at a DST change the local clock reading decides. One record "
+       "cannot show that no matching message was sent at the assumption's time.", new=True),
     _F("ovr_sender_mismatch", C.OVERREACH, S.COMPLICATES, "sender_mismatch", (K.EVENT, K.IDENTITY),
        "The assumption says one account sent the words; the record shows a different account "
-       "sent them.", new=True),
+       "sent them, and cannot show that the first account never wrote them too.", new=True),
     _F("ovr_speaker_mismatch", C.OVERREACH, S.COMPLICATES, "speaker_mismatch",
        (K.IDENTITY, K.EVENT),
        "In a group chat, the assumption attributes words to one member; the record shows a "
-       "different member wrote them.", new=True),
+       "different member wrote them, and cannot show that the first member never said them too.",
+       new=True),
     _F("ovr_later_correction", C.OVERREACH, S.COMPLICATES, "later_correction", (K.EVENT,),
        "The record states the assumed fact, but a later message from the same sender in the "
        "context replaces it with an incompatible value; that later message, not the record, "
