@@ -316,12 +316,12 @@ DISPUTES: tuple[Tpl, ...] = (
     tpl(
         "site",
         "en",
-        "u still owe me {n}00 for the demo day",
+        "still waiting on my {n}00 for the demo day",
         *_DS,
         n=(2, 9),
         reply="paid u friday, check venmo",
         that="{r} owed {s} {n}00 for the demo day",
-        quote="u still owe me {n}00",
+        quote="still waiting on my {n}00",
     ),
     tpl(
         "site",

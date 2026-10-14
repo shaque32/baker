@@ -523,7 +523,7 @@ def con_in_window(slot: Slot, rng: random.Random) -> Draft:
         )
         kind, why = K.COMPLETENESS, f"inside the window from {span}"
     elif form == 2:
-        assumption = f"No message passed between the owner and {x} on {date_phrase(d)}."
+        assumption = f"The owner and {x} exchanged no messages on {date_phrase(d)}."
         kind, why = K.COMPLETENESS, "on that very date"
     elif form == 3:
         first = d + timedelta(days=rng.randint(1, 25))

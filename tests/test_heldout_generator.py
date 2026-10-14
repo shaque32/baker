@@ -1111,8 +1111,8 @@ def test_hearsay_carries_its_marker_and_states_are_the_senders_own(
 # calls from the call text, and brackets from the sender lines.
 
 _PLAIN_SHA = {  # the plain part of each split (eval.heldout 1.3.0): no bk_* change moves it
-    "test": "7d29a467bccf74f96745390cd47232a42c469dc7334f032477262d23ce02ee9d",
-    "dev": "dba392920a35e9460fdf8a1a7a843a8a803d0b369eae94a3132a01af0ce7482f",
+    "test": "992b7c924a5abc5f6c0847efe52815434ac0324e1fae11cc112fc648585c7407",
+    "dev": "13cc45af73f8b3105c5323d91d1927440b6c277a9646b580496808fe7edf24bd",
 }
 _ABBR_HOURS = {"EST": -5, "EDT": -4, "CST": -6, "CDT": -5, "MST": -7, "MDT": -6, "PST": -8,
                "PDT": -7}  # fmt: skip
