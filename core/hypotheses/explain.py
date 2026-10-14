@@ -193,7 +193,8 @@ def load(conn: sqlite3.Connection) -> Case:
 
 def _fit(case: Case, row: Row, note: str) -> Fit:
     src, loc = case.locator(row.id)
-    return Fit(row.id, src or row.source_id, loc, _row_text(row), local_str(case.data, row), note)
+    when = local_str(case.data, row) if row.ts_utc is not None else ""  # no time, none derived
+    return Fit(row.id, src or row.source_id, loc, _row_text(row), when, note)
 
 
 def _row_text(row: Row) -> str:
@@ -203,16 +204,25 @@ def _row_text(row: Row) -> str:
     return row.text or ""
 
 
-def _copy_key(row: Row) -> tuple[str, str]:
-    """The same message held on two phones shows once."""
-    return (row.text or row.kind, row.ts_utc.isoformat() if row.ts_utc else row.id)
+def _copy_key(row: Row) -> tuple[str, ...]:
+    """What two copies of one message or call on two phones share. Only rows from different
+    sources are ever taken as copies; two rows on one phone are two records."""
+    when = row.ts_utc.isoformat() if row.ts_utc else row.id
+    return (row.kind, row.app.strip().casefold(), row.text or "", str(row.duration_s), when)
 
 
 def _dedupe(rows: Iterable[Row]) -> list[Row]:
-    seen: dict[tuple[str, str], Row] = {}
+    """The same message held on two phones shows once (the first copy seen)."""
+    out: list[Row] = []
+    sources: dict[tuple[str, ...], set[str]] = {}
     for r in rows:
-        seen.setdefault(_copy_key(r), r)
-    return list(seen.values())
+        k = _copy_key(r)
+        seen = sources.setdefault(k, set())
+        if seen and r.source_id not in seen:
+            continue  # a copy of a row from another phone
+        seen.add(r.source_id)
+        out.append(r)
+    return out
 
 
 def _by_time(rows: Iterable[Row], anchor: datetime | None = None) -> list[Row]:
@@ -264,14 +274,34 @@ def _account_label(case: Case, keys: Iterable[Key]) -> str:
     return ", ".join(labels) or "no account"
 
 
+def _quoted_rows(case: Case, a: Assumption) -> list[Row]:
+    """Messages holding the assumption's quote, verbatim and word-aligned, within its scope: the
+    phones and apps it names, and messages its parties sent or received. When no copy
+    involves a party (the claim may name the wrong sender), every copy in scope is kept."""
+    p = a.params
+    if not p.quoted_text:
+        return []
+    rows = messages_with_text(case.data, p.quoted_text)
+    if p.device_ids:
+        srcs = set(case.data.sources_for(p.device_ids))
+        rows = [r for r in rows if r.source_id in srcs]
+    apps = [c for c in p.channels if c.strip().lower() != CALL_CHANNEL]
+    if apps:
+        rows = [r for r in rows if channel_ok(r, apps)]
+    accounts: set[str] = set()
+    for party in parties(case.data, p):
+        accounts |= case.data.account_ids(party.keys)
+    involved = [r for r in rows if r.accounts & accounts]
+    return involved or rows
+
+
 def _claimed_rows(case: Case, assumptions: list[Assumption]) -> dict[str, list[Row]]:
-    """Messages holding each quote the claim's assumptions cite, verbatim and word-aligned."""
-    out: dict[str, list[Row]] = {}
-    for a in assumptions:
-        qt = a.params.quoted_text
-        if a.template_id in _QUOTE_TEMPLATES and qt and qt not in out:
-            out[qt] = messages_with_text(case.data, qt)
-    return out
+    """For each assumption that cites a quote, the messages it points to (by assumption id)."""
+    return {
+        a.id: _quoted_rows(case, a)
+        for a in assumptions
+        if a.template_id in _QUOTE_TEMPLATES and a.params.quoted_text
+    }
 
 
 def _persons(case: Case, assumptions: list[Assumption]) -> list[idl.Person]:
@@ -285,8 +315,26 @@ def _persons(case: Case, assumptions: list[Assumption]) -> list[idl.Person]:
     return list(seen.values())
 
 
-def _names_person(person: idl.Person, words: list[str]) -> bool:
-    return idl.match_level(list(person.words), words) is not None
+def _same_word(a: str, b: str) -> bool:
+    """Equal, or one is a short form of the other (its start, three letters or more)."""
+    lo, hi = (a, b) if len(a) <= len(b) else (b, a)
+    return a == b or (len(lo) >= 3 and hi.startswith(lo))
+
+
+def _shares_word(person: idl.Person, words: Iterable[str]) -> bool:
+    """A saved name shares a part of the person's name: any word of it, middle names too."""
+    return any(_same_word(w, pw) for w in words for pw in person.words)
+
+
+def _intro_conflicts(person: idl.Person, words: list[str]) -> bool:
+    """A self-introduction names someone else: no word in common with the person's name, or
+    the same first name with a different surname ("Daniel Jones" for Daniel Petrov)."""
+    if not _shares_word(person, words):
+        return True
+    if len(words) > 1 and len(person.words) > 1:
+        first_ok = _same_word(words[0], person.words[0])
+        return first_ok and not _same_word(words[-1], person.words[-1])
+    return False
 
 
 # ---------------------------------------------------------------- someone else used it
@@ -307,12 +355,12 @@ def _intro_fits(
                 continue
             words = [w1] + ([w2] if w2 and w2 not in _NOT_SURNAME else [])
             named = " ".join(words)
-            if persons and any(_names_person(p, words) for p in persons):
+            if persons and not all(_intro_conflicts(p, words) for p in persons):
                 break
             if persons:
                 who = " or ".join(cite(p.name) for p in persons)
                 note = (
-                    f"The account's user gives the name “{cite(named)}”, which is not part of "
+                    f"The account's user gives the name “{cite(named)}”, which does not match "
                     f"{who} as written."
                 )
             else:
@@ -337,7 +385,7 @@ def _name_fits(case: Case, keys: set[Key], persons: list[idl.Person]) -> list[Fi
             text = s.text.strip()
             if s.kind == "user name" or "@" in text or not s.words or text.casefold() in seen:
                 continue
-            if any(_names_person(p, s.words) for p in persons):
+            if any(_shares_word(p, s.words) for p in persons):
                 continue
             seen.add(text.casefold())
             who = " or ".join(cite(p.name) for p in persons)
@@ -553,7 +601,7 @@ def _searched(parts: list[str]) -> str:
 def _clock_rows(case: Case, a: Assumption, claimed: dict[str, list[Row]]) -> list[Row]:
     p = a.params
     if p.quoted_text:
-        return claimed.get(p.quoted_text, [])
+        return claimed.get(a.id, [])
     if CALL_CHANNEL in p.channels:
         accounts = set().union(*(case.data.account_ids(x.keys) for x in parties(case.data, p)))
         rows = calls_for_accounts(case.data, accounts) if accounts else []
@@ -642,7 +690,7 @@ def _party_rows(case: Case, a: Assumption) -> tuple[list[Row], list[set[str]]] |
 def _day_boundary(case: Case, assumptions: list[Assumption]) -> Alternative | None:
     fits: list[Fit] = []
     used: list[str] = []
-    summary = ""
+    summaries: list[str] = []
     for a in assumptions:
         window = a.params.window
         if a.template_id not in _WINDOW_TEMPLATES or window is None or window.tz == "UTC":
@@ -662,26 +710,26 @@ def _day_boundary(case: Case, assumptions: list[Assumption]) -> Alternative | No
         if not moved:
             continue
         used.append(a.id)
-        if not summary:
-            summary = (
-                f"Read in UTC instead of {cite(window.tz)}, the stated dates "
-                f"{cite(window.raw)} hold {len(as_utc)} record(s) between these parties instead "
-                f"of {len(stated)}."
-            )
+        summaries.append(
+            f"Read in UTC instead of {cite(window.tz)}, the stated dates {cite(window.raw)} "
+            f"hold {len(as_utc)} record(s) between these parties instead of {len(stated)}."
+        )
         for r in _by_time(moved):
             side = (
-                "inside the stated dates only on the phone's zone, outside them in UTC"
+                "inside them only on the phone's zone, outside them in UTC"
                 if r.id in stated
-                else "outside the stated dates on the phone's zone, inside them in UTC"
+                else "outside them on the phone's zone, inside them in UTC"
             )
-            fits.append(_fit(case, r, f"This record is {side}."))
+            fits.append(
+                _fit(case, r, f"For the stated dates {cite(window.raw)}, this record is {side}.")
+            )
     if not fits:
         return None
     return Alternative(
         "day_boundary",
         "timing",
         "The day boundary depends on the time zone",
-        summary,
+        " ".join(dict.fromkeys(summaries)),
         tuple(fits[:MAX_FITS]),
         len(fits),
         "Searched messages and calls between the parties the claim names, on the apps it "
@@ -747,6 +795,26 @@ _EDGE = (
     " FROM messages m JOIN threads t ON t.id = m.thread_id"
     " WHERE m.source_id = ? AND lower(t.app) = lower(?) AND m.ts_utc"
 )
+# Per phone and app: its records (messages and calls), its records with no usable time, its
+# records inside the window, and the phone's other records inside the window.
+_APP_COUNTS = """
+SELECT
+  (SELECT COUNT(*) FROM messages m JOIN threads t ON t.id = m.thread_id
+    WHERE m.source_id = :sid AND lower(t.app) = lower(:app))
+  + (SELECT COUNT(*) FROM calls WHERE source_id = :sid AND lower(app) = lower(:app)),
+  (SELECT COUNT(*) FROM messages m JOIN threads t ON t.id = m.thread_id
+    WHERE m.source_id = :sid AND lower(t.app) = lower(:app) AND m.ts_utc IS NULL)
+  + (SELECT COUNT(*) FROM calls
+    WHERE source_id = :sid AND lower(app) = lower(:app) AND ts_utc IS NULL),
+  (SELECT COUNT(*) FROM messages m JOIN threads t ON t.id = m.thread_id
+    WHERE m.source_id = :sid AND lower(t.app) = lower(:app) AND m.ts_utc BETWEEN :lo AND :hi)
+  + (SELECT COUNT(*) FROM calls
+    WHERE source_id = :sid AND lower(app) = lower(:app) AND ts_utc BETWEEN :lo AND :hi),
+  (SELECT COUNT(*) FROM messages m JOIN threads t ON t.id = m.thread_id
+    WHERE m.source_id = :sid AND lower(t.app) != lower(:app) AND m.ts_utc BETWEEN :lo AND :hi)
+  + (SELECT COUNT(*) FROM calls
+    WHERE source_id = :sid AND lower(app) != lower(:app) AND ts_utc BETWEEN :lo AND :hi)
+"""
 _LAST_BEFORE = _EDGE + " < ? ORDER BY m.ts_utc DESC, m.id LIMIT 1"
 _FIRST_AFTER = _EDGE + " > ? ORDER BY m.ts_utc ASC, m.id LIMIT 1"
 
@@ -765,29 +833,13 @@ def _app_quiet(case: Case, assumptions: list[Assumption]) -> Alternative | None:
         lo, hi = _iso(p.window.start_utc), _iso(p.window.end_utc)
         for app in apps:
             for sid in case.data.sources_for(p.device_ids):
-                holds = case.conn.execute(
-                    "SELECT COUNT(*) FROM messages m JOIN threads t ON t.id = m.thread_id"
-                    " WHERE m.source_id = ? AND lower(t.app) = lower(?)",
-                    (sid, app),
-                ).fetchone()[0]
+                holds, untimed, inside, rest = case.conn.execute(
+                    _APP_COUNTS, {"sid": sid, "app": app, "lo": lo, "hi": hi}
+                ).fetchone()
                 if not holds:
                     continue  # this phone holds no records of the app at all
-                inside = case.conn.execute(
-                    "SELECT COUNT(*) FROM messages m JOIN threads t ON t.id = m.thread_id"
-                    " WHERE m.source_id = ? AND lower(t.app) = lower(?)"
-                    " AND m.ts_utc >= ? AND m.ts_utc <= ?",
-                    (sid, app, lo, hi),
-                ).fetchone()[0]
-                if inside:
-                    continue
-                rest = case.conn.execute(
-                    "SELECT (SELECT COUNT(*) FROM messages m JOIN threads t ON t.id = m.thread_id"
-                    "  WHERE m.source_id = ? AND lower(t.app) != lower(?)"
-                    "  AND m.ts_utc >= ? AND m.ts_utc <= ?)"
-                    " + (SELECT COUNT(*) FROM calls"
-                    "  WHERE source_id = ? AND ts_utc >= ? AND ts_utc <= ?)",
-                    (sid, app, lo, hi, sid, lo, hi),
-                ).fetchone()[0]
+                if inside or untimed:
+                    continue  # the app has records in the window, or some that cannot be placed
                 if not rest:
                     continue  # the whole phone is quiet; the gaps view covers that
                 used.append(a.id)
@@ -892,10 +944,11 @@ def _same_words(case: Case, assumptions: list[Assumption]) -> Alternative | None
     for a in mine:
         qt = a.params.quoted_text or ""
         words = _words(qt)
-        claimed = messages_with_text(case.data, qt)
+        claimed = _quoted_rows(case, a)
         if not words or not claimed:
             continue
         copies = {_copy_key(r) for r in claimed}
+        claimed_ids = {r.id for r in claimed}
         threads = list(
             dict.fromkeys(
                 case.conn.execute(
@@ -917,8 +970,8 @@ def _same_words(case: Case, assumptions: list[Assumption]) -> Alternative | None
                 if m is None:
                     continue
                 row = Row(mid, "message", sid, app, sender, (), _parse(ts), raw, body)
-                if _copy_key(row) in copies:
-                    continue
+                if row.id in claimed_ids or _copy_key(row) in copies:
+                    continue  # the claimed message, or its copy on the other phone
                 found.append((row, f"Uses “{cite(m.group(0))}” in the same conversation."))
         rows = _dedupe(r for r, _ in found)
         notes = {r.id: n for r, n in found}

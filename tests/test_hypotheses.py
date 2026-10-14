@@ -274,3 +274,50 @@ def test_hand_off_words(body, app, claimed_app, found):
 def test_self_introductions(body, name):
     m = explain._INTRO.search(body)
     assert (m.group(1) if m else None) == name
+
+
+def _person(name: str):  # noqa: ANN202
+    from core.identity.links import Person, tokens
+
+    return Person("person:x", name, "expert:t", tuple(tokens(name)), ())
+
+
+@pytest.mark.parametrize(
+    ("person", "words", "conflicts"),
+    [
+        ("Daniel Petrov", ["ilya"], True),
+        ("Daniel Petrov", ["daniel", "jones"], True),  # same first name, another surname
+        ("Daniel Petrov", ["dan"], False),  # a short form of his first name
+        ("Daniel Petrov", ["daniel", "petrov"], False),
+        ("John Michael Smith", ["michael"], False),  # a middle name is part of the name
+    ],
+)
+def test_who_an_introduction_names(person, words, conflicts):
+    assert explain._intro_conflicts(_person(person), words) is conflicts
+
+
+def test_a_middle_name_is_a_shared_part():
+    assert explain._shares_word(_person("John Michael Smith"), ["michael"])
+    assert explain._shares_word(_person("Daniel Petrov"), ["dan", "p"])
+    assert not explain._shares_word(_person("Daniel Petrov"), ["sasha", "n"])
+
+
+def _row(rid: str, source: str, text: str, ts: datetime | None):  # noqa: ANN202
+    from core.audit.checks._common import Row
+
+    return Row(rid, "message", source, "SMS", None, (), ts, None, text)
+
+
+def test_copies_collapse_only_across_phones():
+    t = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
+    rows = [
+        _row("a1", "item1", "ok", t),
+        _row("a2", "item1", "ok", t),
+        _row("b1", "item2", "ok", t),
+    ]
+    assert [r.id for r in explain._dedupe(rows)] == ["a1", "a2"]  # two replies on one phone
+
+
+def test_a_record_with_no_time_gets_no_derived_time(conn):
+    fit = explain._fit(explain.load(conn), _row("msg:none", "item1", "x", None), "note")
+    assert fit.when == ""
