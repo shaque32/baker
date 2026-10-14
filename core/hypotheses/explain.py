@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
+from bisect import bisect_left, bisect_right
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
@@ -479,9 +480,10 @@ _NEGATED = re.compile(
 )
 
 
-# "his phone number", "her phone call": a contact detail or a call, not the device.
+# "his phone number", "his phone's number", "her phone call": a contact detail or a call, not
+# the device.
 _NUMBER_AFTER = re.compile(
-    r"\s*(?:number|num|no\b|nr\b|#|(?:a\s+)?(?:calls?|ring)\b)", re.IGNORECASE
+    r"(?:['’]s)?\s*(?:number|num|no\b|nr\b|#|(?:a\s+)?(?:calls?|ring)\b)", re.IGNORECASE
 )
 
 
@@ -510,39 +512,38 @@ def _handoff_fits(case: Case, claimed: list[Row]) -> tuple[list[tuple[Row, str]]
     out: dict[str, tuple[Row, str]] = {}
     claimed_ids = {r.id for r in claimed}
     spans: list[str] = []
-    for c in claimed:
+    # Per phone, the claimed messages in time order, each with its place in the claim, so each
+    # phone's records are read once (cached on the case) however many messages are claimed.
+    anchors: dict[str, list[tuple[datetime, int, Row]]] = {}
+    for i, c in enumerate(claimed):
         if c.ts_utc is None:
             continue
-        lo, hi = c.ts_utc - pad, c.ts_utc + pad
-        spans.append(f"{cite(c.source_id)} from {_day(lo)} to {_day(hi)} UTC")
-        # SQL narrows by julianday(), to the millisecond, with a second's slack; the exact
-        # bounds are checked on the parsed times below.
-        slack = timedelta(seconds=1)
-        rows = case.conn.execute(
-            "SELECT m.id, m.source_id, t.app, m.sender_account_id, m.ts_utc, m.ts_raw, m.body"
-            " FROM messages m JOIN threads t ON t.id = m.thread_id"
-            " WHERE m.source_id = ? AND julianday(m.ts_utc) BETWEEN julianday(?) AND julianday(?)"
-            " ORDER BY julianday(m.ts_utc), m.id",
-            (c.source_id, _iso(lo - slack), _iso(hi + slack)),
+        spans.append(
+            f"{cite(c.source_id)} from {_day(c.ts_utc - pad)} to {_day(c.ts_utc + pad)} UTC"
         )
-        for mid, sid, app, sender, ts, raw, body in rows:
-            if mid in out:
-                continue  # found already, near another claimed message
-            at = _parse(ts)
-            if at is None or not lo <= at <= hi:
+        anchors.setdefault(c.source_id, []).append((c.ts_utc, i, c))
+    for sid, near in anchors.items():
+        near.sort(key=lambda x: (x[0], x[1]))
+        times = [t for t, _, _ in near]
+        for r in _phone_rows(case, sid):
+            if r.kind != "message" or r.ts_utc is None:
                 continue
-            m = _handoff(body or "", app, c.app)
-            if m is None:
-                continue
-            row = Row(mid, "message", sid, app, sender, _recipients(case, mid), at, raw, body)
-            out[mid] = (
-                row,
-                f"The message itself speaks of using another person's phone, account or login "
-                f"(“{cite(m.group(0))}”)."
-                if mid in claimed_ids
-                else f"Speaks of using another person's phone, account or login "
-                f"(“{cite(m.group(0))}”), on the same phone near the message.",
-            )
+            # The claimed messages within the pad of this one, exactly, in the claim's order.
+            lo = bisect_left(times, r.ts_utc - pad)
+            hi = bisect_right(times, r.ts_utc + pad)
+            for _, _, c in sorted(near[lo:hi], key=lambda x: x[1]):
+                m = _handoff(r.text or "", r.app, c.app)
+                if m is None:
+                    continue
+                out[r.id] = (
+                    replace(r, recipients=_recipients(case, r.id)),
+                    f"The message itself speaks of using another person's phone, account or "
+                    f"login (“{cite(m.group(0))}”)."
+                    if r.id in claimed_ids
+                    else f"Speaks of using another person's phone, account or login "
+                    f"(“{cite(m.group(0))}”), on the same phone near the message.",
+                )
+                break
     anchor = claimed[0].ts_utc if claimed else None
     rows = _by_time(_dedupe(case.data, [r for r, _ in out.values()]), anchor)
     found = [out[r.id] for r in rows]

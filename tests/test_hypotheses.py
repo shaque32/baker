@@ -13,6 +13,7 @@ import ast
 import re
 import shutil
 import sqlite3
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -283,6 +284,8 @@ def test_report_lists_alternatives_under_their_claims(conn):
         ("no idea why but i used his phone", "SMS", "SMS", "used his phone"),  # a new clause
         ("I took his phone call", "SMS", "SMS", None),  # a call, not the device
         ("give her phone a call later", "SMS", "SMS", None),
+        ("I used his phone's number", "SMS", "SMS", None),  # possessive, still a number
+        ("i borrowed his phone’s charger", "SMS", "SMS", "borrowed his phone"),
     ],
 )
 def test_hand_off_words(body, app, claimed_app, found):
@@ -1222,3 +1225,22 @@ def test_same_words_nearness_follows_every_copy_of_a_line(conn):
     alt = explain._same_words(explain.load(conn), scoped)
     assert alt is not None
     assert alt.fits[0].record_id == "msg:item1:neighbor"  # one minute from item2's quote
+
+
+# ---------------------------------------------------------------- sixteenth review
+
+
+def test_hand_off_search_reads_each_phone_once(conn):
+    quote = _asm(conn, "C16", "sender").params.quoted_text
+    case = explain.load(conn)
+    a = _asm(conn, "C16", "authorship", quoted_text=quote, device_ids=("dev:item1",))
+    (quoted,) = explain._claimed_rows(case, [a])[a.id]
+    many = [replace(quoted, id=f"{quoted.id}#{n}") for n in range(5)]  # one quote, five places
+    reads: list[str] = []
+    conn.set_trace_callback(lambda sql: reads.append(sql) if "FROM messages m" in sql else None)
+    try:
+        found, _ = explain._handoff_fits(explain.load(conn), many)
+    finally:
+        conn.set_trace_callback(None)
+    assert found
+    assert len(reads) == 1  # the phone's records, read once for every claimed message
