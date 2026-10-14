@@ -442,8 +442,13 @@ def _time_range(m: re.Match[str]) -> tuple[time, time] | None:
     return start, end
 
 
-# Quoted words: "...", “...”, ‘...’ and '...' (an apostrophe inside a word opens no quote).
-_QUOTE_SPAN_RE = re.compile(r"\"[^\"\n]*\"|“[^”\n]*”|‘[^’\n]*’|(?<!\w)'[^'\n]*?'(?!\w)")
+# Quoted words: "...", “...”, ‘...’ and '...' (an apostrophe inside a word opens or closes
+# no quote).
+_QUOTE_SPAN_RE = re.compile(
+    r"\"[^\"\n]*\"|“[^”\n]*”"
+    r"|‘(?:[^’\n]|(?<=\w)’(?=\w))*’"  # 'I’ll': an apostrophe inside a word closes nothing
+    r"|(?<!\w)'(?:[^'\n]|(?<=\w)'(?=\w))*'(?!\w)"
+)
 
 
 def _unquoted(text: str) -> str:
@@ -584,8 +589,9 @@ def stated_windows(text: str, context: str = "") -> list[StatedWindow] | None:
     """
     years = {int(y) for y in _YEAR_RE.findall(text + " " + context)}
     out: list[StatedWindow] = []
-    for m in _DATE_RE.finditer(text):
-        before = text[max(0, m.start() - 64) : m.start()]
+    plain = _unquoted(text)  # a date or time in quoted words is the message's, not the claim's
+    for m in _DATE_RE.finditer(plain):
+        before = plain[max(0, m.start() - 64) : m.start()]
         if any(_has_word(before[-12:], w) for w in (*OPEN_START, *OPEN_END)):
             return None
         y_end = int(m.group(6)) if m.group(6) else None
@@ -635,7 +641,7 @@ def stated_windows(text: str, context: str = "") -> list[StatedWindow] | None:
         else:
             if _LOOSE_TIME_RE.search(before):
                 return None  # a time code cannot read: never widen it to the whole day
-            if time_mentions(_unquoted(text)[m.end() : m.end() + 24]):
+            if time_mentions(plain[m.end() : m.end() + 24]):
                 return None  # "March 5 at 2:31 a.m.": leave it to the model and check_window
             lead = _LEAD_RE.search(before)
             if lead is not None:

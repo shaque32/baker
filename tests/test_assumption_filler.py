@@ -545,6 +545,8 @@ def test_check_window_refuses_the_whole_day_for_a_stated_noon():
         ('On March 12, 2026, PETROV wrote "meet me at noon".', None),
         ("On March 12, 2026, PETROV wrote 'meet me at 9 p.m.'.", None),
         ("On March 12, 2026, PETROV wrote “see you at noon”.", None),
+        ("On March 12, 2026, PETROV wrote 'I'll meet you at noon'.", None),
+        ("On March 12, 2026, PETROV wrote ‘I’ll meet you at noon’.", None),
         ("At noon on March 12, 2026, PETROV wrote 'ok'.", "time of day"),  # outside the quote
         ("On March 12, 2026 at 9 p.m., PETROV's phone sent 'ok'.", "time of day"),
     ],
@@ -568,6 +570,10 @@ def test_stated_windows_skip_a_time_inside_quoted_words():
     (w,) = stated_windows("On March 12, 2026, PETROV wrote 'noon'.")
     assert (w.start.hour, (w.end - w.start).days) == (0, 1)
     assert stated_windows("On March 12, 2026 at noon, PETROV wrote 'ok'.") is None
+    # a date in the quoted words is the message's: no range for it
+    assert stated_windows('PETROV wrote "meet me at noon on March 12, 2026".') == []
+    (w,) = stated_windows("On March 11, 2026, PETROV wrote 'see you at noon on March 12'.")
+    assert (w.start.day, w.start.hour) == (11, 0)
 
 
 @pytest.mark.parametrize(("cid", "change", "why"), BAD)
