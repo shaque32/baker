@@ -371,7 +371,9 @@ def _intro_conflicts(person: idl.Person, words: list[str]) -> bool:
         return True
     if len(words) > 1 and len(person.words) > 1:
         first_ok = _same_word(words[0], person.words[0])
-        return first_ok and not _same_word(words[-1], person.words[-1])
+        # The introduction may be cut after two words ("John Michael" of John Michael Smith),
+        # so its second word conflicts only when it is no part of the person's name.
+        return first_ok and not any(_same_word(words[-1], w) for w in person.words[1:])
     return False
 
 
@@ -444,7 +446,8 @@ def _name_fits(case: Case, keys: set[Key], persons: list[idl.Person]) -> list[Fi
 
 _NEGATED = re.compile(
     r"\b(?:never|not|no|didn'?t|didn’t|dont|don'?t|don’t|wont|won'?t|cant|can'?t|can’t|"
-    r"havent|haven'?t|wasnt|wasn'?t)\b(?:\s+[^\W\d_]+){0,2}\s*$",
+    r"havent|haven'?t|wasnt|wasn'?t|couldnt|couldn'?t|couldn’t|wouldnt|wouldn'?t|wouldn’t|"
+    r"shouldnt|shouldn'?t|shouldn’t|won’t|didnt)\b(?:\s+[^\W\d_]+){0,2}\s*$",
     re.IGNORECASE,
 )
 
@@ -702,13 +705,13 @@ def _clock(case: Case, assumptions: list[Assumption]) -> Alternative | None:
         offsets = case.offsets(r.id for r in rows)
         # Every copy is read on its own phone's clocks (phones can print different offsets);
         # a record shows once, from the first copy whose reading fits.
-        shown: set[tuple[str, ...]] = set()
+        shown: dict[tuple[str, ...], str] = {}  # copy key -> the phone it was shown from
         for r in rows:
             at = r.ts_utc
             if at is None or in_window(at, window):
                 continue  # no usable time, or inside the stated time on the real clock
-            if _copy_key(case.data, r) in shown:
-                continue
+            if shown.get(_copy_key(case.data, r), r.source_id) != r.source_id:
+                continue  # a copy, on another phone, of a record already shown
             tz = case.data.tz_for(r.source_id)
             if tz is None:
                 continue  # the phone's own zone is unknown, so no reading is "another" clock
@@ -735,7 +738,7 @@ def _clock(case: Case, assumptions: list[Assumption]) -> Alternative | None:
                         )
                     )
                     used.append(a.id)
-                    shown.add(_copy_key(case.data, r))
+                    shown[_copy_key(case.data, r)] = r.source_id
                     break
     if not fits:
         return None
@@ -877,6 +880,7 @@ def _other_app(case: Case, assumptions: list[Assumption]) -> Alternative | None:
                     f"{_joined(apps)}.",
                 )
             )
+    fits = _merge(fits)
     if not fits:
         return None
     return Alternative(
@@ -894,44 +898,22 @@ def _other_app(case: Case, assumptions: list[Assumption]) -> Alternative | None:
 
 # ---------------------------------------------------------------- a whole app gone quiet
 
-# The app's messages and calls on one phone, as one list, for the records at the window's edges.
-_EDGE = (
-    "SELECT * FROM ("
-    " SELECT m.id, 'message' AS kind, m.source_id, t.app, m.sender_account_id, m.ts_utc,"
-    " m.ts_raw, m.body, NULL AS duration_s"
-    " FROM messages m JOIN threads t ON t.id = m.thread_id"
-    " WHERE m.source_id = :sid AND lower(t.app) = lower(:app)"
+# Every message and call on one phone. Times are compared in Python as datetimes, to the
+# microsecond, never as text or through SQLite's millisecond julianday().
+_PHONE_RECORDS = (
+    "SELECT m.id, 'message', m.source_id, t.app, m.sender_account_id, m.ts_utc, m.ts_raw,"
+    " m.body, NULL FROM messages m JOIN threads t ON t.id = m.thread_id WHERE m.source_id = ?"
     " UNION ALL"
     " SELECT c.id, 'call', c.source_id, c.app, c.from_account_id, c.ts_utc, c.ts_raw, NULL,"
-    " c.duration_s FROM calls c WHERE c.source_id = :sid AND lower(c.app) = lower(:app)"
-    ") WHERE ts_utc IS NOT NULL AND julianday(ts_utc)"
+    " c.duration_s FROM calls c WHERE c.source_id = ?"
 )
-# Per phone and app: its records (messages and calls), its records with no usable time, its
-# records inside the window [lo, hi), and the phone's other records inside the window.
-_APP_COUNTS = """
-SELECT
-  (SELECT COUNT(*) FROM messages m JOIN threads t ON t.id = m.thread_id
-    WHERE m.source_id = :sid AND lower(t.app) = lower(:app))
-  + (SELECT COUNT(*) FROM calls WHERE source_id = :sid AND lower(app) = lower(:app)),
-  (SELECT COUNT(*) FROM messages m JOIN threads t ON t.id = m.thread_id
-    WHERE m.source_id = :sid AND lower(t.app) = lower(:app) AND m.ts_utc IS NULL)
-  + (SELECT COUNT(*) FROM calls
-    WHERE source_id = :sid AND lower(app) = lower(:app) AND ts_utc IS NULL),
-  (SELECT COUNT(*) FROM messages m JOIN threads t ON t.id = m.thread_id
-    WHERE m.source_id = :sid AND lower(t.app) = lower(:app)
-      AND julianday(m.ts_utc) >= julianday(:lo) AND julianday(m.ts_utc) < julianday(:hi))
-  + (SELECT COUNT(*) FROM calls
-    WHERE source_id = :sid AND lower(app) = lower(:app)
-      AND julianday(ts_utc) >= julianday(:lo) AND julianday(ts_utc) < julianday(:hi)),
-  (SELECT COUNT(*) FROM messages m JOIN threads t ON t.id = m.thread_id
-    WHERE m.source_id = :sid AND lower(t.app) != lower(:app)
-      AND julianday(m.ts_utc) >= julianday(:lo) AND julianday(m.ts_utc) < julianday(:hi))
-  + (SELECT COUNT(*) FROM calls
-    WHERE source_id = :sid AND lower(app) != lower(:app)
-      AND julianday(ts_utc) >= julianday(:lo) AND julianday(ts_utc) < julianday(:hi))
-"""
-_LAST_BEFORE = _EDGE + " < julianday(:bound) ORDER BY julianday(ts_utc) DESC, id LIMIT 1"
-_FIRST_AFTER = _EDGE + " >= julianday(:bound) ORDER BY julianday(ts_utc) ASC, id LIMIT 1"
+
+
+def _phone_rows(case: Case, sid: str) -> list[Row]:
+    return [
+        Row(r[0], r[1], r[2], r[3], r[4], (), _parse(r[5]), r[6], r[7], r[8])
+        for r in case.conn.execute(_PHONE_RECORDS, (sid, sid))
+    ]
 
 
 def _app_quiet(case: Case, assumptions: list[Assumption]) -> Alternative | None:
@@ -945,15 +927,21 @@ def _app_quiet(case: Case, assumptions: list[Assumption]) -> Alternative | None:
         apps = [c for c in p.channels if c.strip().lower() != CALL_CHANNEL]
         if a.template_id not in _SILENCE_TEMPLATES or p.window is None or not apps:
             continue
-        # The window's end is inclusive to the microsecond (23:59:59.999999); julianday() keeps
-        # only milliseconds, so the SQL uses the exclusive next instant instead.
-        lo = _iso(p.window.start_utc)
-        hi = _iso(p.window.end_utc + timedelta(microseconds=1))
+        window = p.window
         for app in apps:
             for sid in case.data.sources_for(p.device_ids):
-                holds, untimed, inside, rest = case.conn.execute(
-                    _APP_COUNTS, {"sid": sid, "app": app, "lo": lo, "hi": hi}
-                ).fetchone()
+                rows = _phone_rows(case, sid)
+                mine_ = [r for r in rows if r.app.strip().casefold() == app.strip().casefold()]
+                holds = len(mine_)
+                untimed = sum(1 for r in mine_ if r.ts_utc is None)
+                inside = sum(1 for r in mine_ if r.ts_utc and in_window(r.ts_utc, window))
+                rest = sum(
+                    1
+                    for r in rows
+                    if r.app.strip().casefold() != app.strip().casefold()
+                    and r.ts_utc
+                    and in_window(r.ts_utc, window)
+                )
                 if not holds:
                     continue  # this phone holds no records of the app at all
                 if inside or untimed:
@@ -961,21 +949,23 @@ def _app_quiet(case: Case, assumptions: list[Assumption]) -> Alternative | None:
                 if not rest:
                     continue  # the whole phone is quiet; the gaps view covers that
                 used.append(a.id)
-                phones = quiet.setdefault((app, p.window.raw), [])
+                phones = quiet.setdefault((app, window.raw), [])
                 phones.append(f"{cite(sid)} ({rest} other record(s))")
-                for edge, sql, bound in (
-                    ("last before", _LAST_BEFORE, lo),
-                    ("first after", _FIRST_AFTER, hi),
-                ):
-                    r = case.conn.execute(sql, {"sid": sid, "app": app, "bound": bound}).fetchone()
-                    if r is None:
+                timed = [r for r in mine_ if r.ts_utc is not None]
+                before = [r for r in timed if r.ts_utc < window.start_utc]  # type: ignore[operator]
+                after = [r for r in timed if r.ts_utc > window.end_utc]  # type: ignore[operator]
+                edges = (
+                    ("last before", max(before, key=lambda r: (r.ts_utc, r.id), default=None)),
+                    ("first after", min(after, key=lambda r: (r.ts_utc, r.id), default=None)),
+                )
+                for edge, row in edges:
+                    if row is None:
                         continue
-                    row = Row(r[0], r[1], r[2], r[3], r[4], (), _parse(r[5]), r[6], r[7], r[8])
                     fits.append(
                         _fit(
                             case,
                             row,
-                            f"The {edge} {cite(p.window.raw)} on {cite(sid)}: its nearest "
+                            f"The {edge} {cite(window.raw)} on {cite(sid)}: its nearest "
                             f"{cite(app)} record in any conversation.",
                         )
                     )

@@ -266,6 +266,9 @@ def test_report_lists_alternatives_under_their_claims(conn):
         ("i never used his account", "Instagram", "Instagram", None),  # a denial
         ("I didn't use her phone", "SMS", "SMS", None),
         ("I did not borrow his phone", "SMS", "SMS", None),
+        ("I couldn't use his phone", "SMS", "SMS", None),
+        ("I wouldn’t use her account", "Instagram", "Instagram", None),
+        ("you shouldnt borrow his phone", "SMS", "SMS", None),
         ("not sure but im using his phone", "SMS", "SMS", "using his phone"),  # not a denial
     ],
 )
@@ -302,6 +305,8 @@ def _person(name: str):  # noqa: ANN202
         ("Daniel Petrov", ["dan"], False),  # a short form of his first name
         ("Daniel Petrov", ["daniel", "petrov"], False),
         ("John Michael Smith", ["michael"], False),  # a middle name is part of the name
+        ("John Michael Smith", ["john", "michael"], False),  # the full name, cut at two words
+        ("John Michael Smith", ["john", "jones"], True),
     ],
 )
 def test_who_an_introduction_names(person, words, conflicts):
@@ -612,3 +617,47 @@ def test_a_record_at_the_instant_after_the_window_is_outside(conn):
     assert {f.source_id for f in quiet.fits} == {"item1", "item2"}  # item1 is still quiet
     after = next(f for f in quiet.fits if f.source_id == "item1" and "first after" in f.note)
     assert after.record_id == "msg:item1:next"
+
+
+# ---------------------------------------------------------------- seventh review
+
+
+def test_a_record_in_the_windows_last_microsecond_is_inside(conn):
+    conn.execute(
+        "INSERT INTO messages (id, source_id, locator, thread_id, direction, ts_utc, ts_raw, body)"
+        " VALUES ('msg:item1:last', 'item1', 'Test!6', 'thr:item1:WhatsApp:1', 'incoming',"
+        " '2026-03-24T03:59:59.999999Z', 'test', 'hi')"
+    )
+    quiet = alts_for(conn, "C15")["app_quiet"]
+    assert {f.source_id for f in quiet.fits} == {"item2"}  # item1's WhatsApp is not quiet
+
+
+def test_one_record_outside_two_named_apps_shows_once(conn):
+    whatsapp = _asm(conn, "C14", "no_contact", channels=("WhatsApp",))
+    telegram = _asm(conn, "C14", "no_contact", channels=("Telegram",))
+    alt = explain._other_app(explain.load(conn), [whatsapp, telegram])
+    assert alt is not None
+    ids = [f.record_id for f in alt.fits]
+    assert len(ids) == len(set(ids)) == alt.total
+    both = [f for f in alt.fits if "WhatsApp" in f.note and "Telegram" in f.note]
+    assert both  # a record outside both apps keeps both statements' notes
+
+
+def test_two_identical_records_on_one_phone_both_show_on_the_clock(conn):
+    rid = "msg:item1:Chats!1011"
+    conn.execute(
+        "INSERT INTO messages SELECT 'msg:item1:twin', source_id, 'Test!7', thread_id,"
+        " sender_account_id, sender_raw, direction, ts_utc, ts_offset_min, ts_raw, body, lang,"
+        " deleted_flag, bookmarked FROM messages WHERE id = ?",
+        (rid,),
+    )
+    conn.execute(
+        "INSERT INTO message_recipients SELECT 'msg:item1:twin', account_id, raw"
+        " FROM message_recipients WHERE message_id = ?",
+        (rid,),
+    )
+    clock = explain._clock(explain.load(conn), [_asm(conn, "C10", "record_time")])
+    assert clock is not None
+    ids = {f.record_id for f in clock.fits}
+    assert "msg:item1:twin" in ids
+    assert ids & {rid, "msg:item2:Chats!903"}
