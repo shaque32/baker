@@ -56,8 +56,10 @@ import argparse
 import json
 import re
 import sys
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from core import pipeline
 from core.contracts import ClaimType, DocKind, GoldClaim, GovDocParagraph, Prediction
@@ -387,10 +389,13 @@ def run_once(
     expert: str = "none",
     labeler_model: object | None = None,
     claim_ids: list[str] | None = None,
+    labeler_factory: Callable[[Any], object] | None = None,
 ) -> list[Prediction]:
     """One audit of a case. labeler_model (real mode only) is the stance labeler's model in
     place of the configured local one: the cloud benchmark (eval/bench) passes Claude here.
-    claim_ids audits just those claims."""
+    labeler_factory (real mode only) builds a whole stance labeler on the case database instead,
+    as Baker's own small stance model needs (eval/stancemodel). claim_ids audits just those
+    claims."""
     from eval.simulated_expert import GoldKey, RecordingRetriever, ReplayLabeler
     from eval.simulated_expert import readiness as key_readiness
     from eval.simulated_expert import review as expert_review
@@ -410,7 +415,9 @@ def run_once(
             comps = model_free_components(conn, spec, gold)
         else:
             replace: dict[str, object] = {}
-            if labeler_model is not None:
+            if labeler_factory is not None:
+                replace["labeler"] = labeler_factory(conn)
+            elif labeler_model is not None:
                 from core.audit import stance as stance_mod
 
                 replace["labeler"] = stance_mod.create(conn, model=labeler_model)  # type: ignore[arg-type]

@@ -58,6 +58,7 @@ keeps a claim from going SUPPORTED without making it CONTRADICTED.
 | `predict.py` | Labels items in `eval.stancedata.score` format, with the probabilities. |
 | `tune.py` | Picks the decision policy on the dev split, by a rule fixed before any dev result. |
 | `time_case01.py` | The speed bar: seconds per stance decision on case01, through the product pipeline. |
+| `hidden_case_bar.py` | Go-bar condition 5: the model as Baker's stance labeler on the hidden case02, with the simulated expert; aggregate numbers only, once per model. |
 
 ## Run it
 

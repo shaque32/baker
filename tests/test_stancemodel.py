@@ -342,3 +342,25 @@ def test_case_items_name_owners_confirmed_people_and_the_phone(case_db) -> None:
                             claim_id="C1")  # fmt: skip
     ev = case_item(case_db, event, SimpleNamespace(record_id="msg:sa:Chats!2", text=""), WINDOW)
     assert ev["baker_claim"] == "Ann met Carl at the lot."
+
+
+def test_the_hidden_case_bar_counts_false_contradicted_and_keeps_aggregates_only() -> None:
+    from types import SimpleNamespace
+
+    from core.contracts import Verdict
+    from eval.stancemodel.hidden_case_bar import bar_numbers, passes
+
+    def gold(cid: str, v: Verdict) -> SimpleNamespace:
+        return SimpleNamespace(claim_id=cid, gold_verdict=v)
+
+    def pred(cid: str, v: Verdict) -> SimpleNamespace:
+        return SimpleNamespace(claim_id=cid, verdict=v, supported_basis=None)
+
+    s, c, u = Verdict.SUPPORTED, Verdict.CONTRADICTED, Verdict.UNPROVEN
+    golds = [gold("A", s), gold("B", u), gold("C", c), gold("D", u), gold("E", s)]
+    preds = [pred("A", s), pred("B", c), pred("C", c), pred("D", u), pred("E", c)]
+    n = bar_numbers(golds, preds)  # type: ignore[arg-type]
+    assert n == {"claims": 5, "verdict_accuracy": 0.6, "false_supported": 0,
+                 "false_contradicted": 2}  # fmt: skip
+    assert not passes(n)
+    assert passes({**n, "false_contradicted": 0, "verdict_accuracy": 0.8})
