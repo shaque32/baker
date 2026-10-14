@@ -27,6 +27,16 @@ order, the record marked `RECORD:`. A line is `<local time> | <sender> | <text>`
 written as assumptions write it ("10:46 p.m. on February 15, 2025 (Saturday, EST)") and +1
 numbers as "+1 718-555-0122". The text is untouched.
 
+Inside Baker the model reads what Baker sends its stance step (`time_case01.case_item`). The
+assumption is Baker's own template text, ids included. Lines are Baker's context lines, and a
+call or contact reads as Baker's record text. The record mark names the phone
+(`RECORD (dev:item1):`). A sender is `<app> <id>`, then the name the source showed, then
+`(owner)` for the phone's own account, then `[person ids]`. Person ids come only from
+expert-confirmed device-owner stipulations and identity links, matched as Baker's checks match
+them (`core/audit/checks/_common.person_party`). Training items written in this form must
+match `case_item` exactly, so a change to it, or to its window of 3 messages, is agreed with
+the data generators first.
+
 How a label is chosen (`policy.py`): the four probabilities go through a policy tuned on the dev
 split only. "supports" needs enough probability and little "contradicts" probability;
 "contradicts" needs enough probability; a label that falls short becomes "complicates", which

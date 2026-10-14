@@ -4,7 +4,9 @@ text pair, plus where the record's text sits in the excerpt.
 SYNTHETIC data only. Pure Python, no torch, so the rendering is testable anywhere and the product
 can later render a case's records the same way.
 
-The excerpt is every line of the chat in time order, the record marked "RECORD:". Each line is
+The excerpt is every line of the chat in time order, the record marked "RECORD:", or
+"RECORD (dev:item1):" when the item names the phone the record was extracted from (items written
+the way Baker sends a case's records, eval/stancemodel/time_case01.case_item). Each line is
 "<local time> | <sender> | <text>". The time is the phone's local clock reading, written the way
 assumptions write it ("10:46 p.m. on February 15, 2025"), with the weekday and zone after it; the
 sender's +1 numbers are written "+1 718-555-0122", also as assumptions write them. Nothing is
@@ -22,7 +24,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"  # 1.1.0: the record mark names the phone (device_id)
 
 RECORD_MARK = "RECORD: "
 LINE_SEP = " || "
@@ -70,6 +72,13 @@ class Rendered:
     lines_total: int
 
 
+def record_mark(item: dict[str, Any]) -> str:
+    """The record line's mark: "RECORD: ", or "RECORD (dev:item1): " when the item names its
+    phone."""
+    device = item.get("device_id")
+    return f"RECORD ({device}): " if device else RECORD_MARK
+
+
 def ordered_lines(item: dict[str, Any]) -> tuple[list[dict[str, Any]], int]:
     lines = list(item["context"])
     lines.insert(item["target_index"], item["target"])
@@ -79,6 +88,7 @@ def ordered_lines(item: dict[str, Any]) -> tuple[list[dict[str, Any]], int]:
 def render(item: dict[str, Any], keep: set[int] | None = None) -> Rendered:
     """Render an item; `keep` limits the context to those line indexes (the record always stays)."""
     lines, t = ordered_lines(item)
+    mark = record_mark(item)
     parts: list[str] = []
     record_start = record_end = -1
     pos = 0
@@ -88,8 +98,8 @@ def render(item: dict[str, Any], keep: set[int] | None = None) -> Rendered:
             continue
         text, text_off = line_text(line)
         if i == t:
-            text = RECORD_MARK + text
-            text_off += len(RECORD_MARK)
+            text = mark + text
+            text_off += len(mark)
         if parts:
             pos += len(LINE_SEP)
         if i == t:

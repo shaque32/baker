@@ -29,6 +29,7 @@ from typing import Any
 
 from core import pipeline
 from core.audit import invariants
+from core.audit.checks._common import CaseData, person_party
 from core.audit.context import build_context
 from core.contracts import Assumption, EvidenceCandidate, GoldClaim, ModelRun, Stance, StanceLabel
 from eval import run_pipeline as rp
@@ -45,22 +46,100 @@ WINDOW = 3  # messages either side of the record; the training excerpts hold at 
 _ZONE_NOTE = re.compile(r"\s*\(UTC[+-]\d\d:\d\d\)$")
 
 
-def _sender(line: Any) -> str:
-    """The training data's sender form: '<app> <id> (owner)' or '<app> <id> <shown name>'."""
-    if line.sender.endswith(" (this phone)"):
-        return line.sender.removesuffix(" (this phone)") + " (owner)"
-    return line.sender + (f" {line.shown_as}" if line.shown_as else "")
+class Parties:
+    """Who an account is, as far as Baker's own checks know it: the persons an expert-confirmed
+    device_owner stipulation or an expert-confirmed identity link ties its app and identifier to
+    (core.audit.checks._common.person_party). Proposed and rejected ones never count, so nothing
+    here merges an identity the expert has not confirmed. Read once, when the labeler is built."""
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self.conn = conn
+        self.data = CaseData(conn)
+        pids = {pid for _, _, pid, status in self.data.stipulations if status == "confirmed"}
+        pids |= {pid for _, _, pid in self.data.links}
+        self.keys = {pid: person_party(self.data, pid).keys for pid in sorted(pids)}
+
+    def persons(self, account_id: str) -> list[str]:
+        acc = self.data.accounts.get(account_id)
+        if acc is None:
+            return []
+        return [pid for pid, keys in self.keys.items() if acc.key in keys]
+
+    def account_of(self, record_id: str) -> str | None:
+        """The account a context line's record came from: a message's sender, a call's caller."""
+        if record_id.startswith("contact:"):
+            return None
+        sql = (
+            "SELECT from_account_id FROM calls WHERE id = ?"
+            if record_id.startswith("call:")
+            else "SELECT sender_account_id FROM messages WHERE id = ?"
+        )
+        row = self.conn.execute(sql, (record_id,)).fetchone()
+        return row[0] if row else None
+
+    def sender(self, line: Any) -> str:
+        """'<app> <id>[ <shown as>][ (owner)][ [<person ids>]]'. "(owner)" marks the phone's own
+        account (accounts are kept per phone, so only the record's phone's own); a line with no
+        account keeps Baker's text ("unknown sender", "contact list")."""
+        aid = self.account_of(line.record_id)
+        acc = self.data.accounts.get(aid) if aid else None
+        if acc is None:
+            return str(line.sender)
+        out = f"{acc.app} {acc.identifier}"
+        if line.shown_as:
+            out += f" {line.shown_as}"
+        if acc.is_owner:
+            out += " (owner)"
+        persons = self.persons(acc.id)
+        if persons:
+            out += f" [{', '.join(persons)}]"
+        return out
+
+    def device_of(self, record_id: str) -> str | None:
+        """The phone a record was extracted from."""
+        if record_id.startswith("call:"):
+            sql = "SELECT device_id FROM calls WHERE id = ?"
+        elif record_id.startswith("contact:"):
+            sql = "SELECT device_id FROM contacts WHERE id = ?"
+        elif record_id.startswith("att:"):
+            sql = (
+                "SELECT t.device_id FROM attachments a JOIN messages m ON m.id = a.message_id"
+                " JOIN threads t ON t.id = m.thread_id WHERE a.id = ?"
+            )
+        else:
+            sql = (
+                "SELECT t.device_id FROM messages m JOIN threads t ON t.id = m.thread_id"
+                " WHERE m.id = ?"
+            )
+        row = self.conn.execute(sql, (record_id,)).fetchone()
+        return row[0] if row else None
 
 
 def case_item(
-    conn: sqlite3.Connection, assumption: Assumption, cand: EvidenceCandidate, window: int
+    conn: sqlite3.Connection,
+    assumption: Assumption,
+    cand: EvidenceCandidate,
+    window: int,
+    parties: Parties | None = None,
 ) -> dict[str, Any]:
     """One (assumption, record in context) pair from the case database, as the model reads it.
-    The record's text is the text a quote is checked against (core.audit.invariants)."""
+
+    The assumption is Baker's own text. The lines are Baker's context lines (core.audit.context):
+    sender as Parties.sender writes it, the phone's local time without its "(UTC-05:00)" note,
+    the body as stored. The record's text is the text a quote is checked against
+    (core.audit.invariants): a contact reads "Name +1...", a call "outgoing call from ... to ...
+    at ..., 123s". device_id names the phone the record was extracted from. The Baker-form
+    training items (eval/train, eval/heldout) are written to match this exactly; tell the
+    "Custom model for Baker" thread before changing it or WINDOW."""
+    parties = parties or Parties(conn)
     text = invariants.record_text(conn, cand.record_id) or cand.text
     lines = build_context(conn, cand.record_id, window)
     rows = [
-        {"sender": _sender(ln), "local_time": _ZONE_NOTE.sub("", ln.local_time), "text": ln.body}
+        {
+            "sender": parties.sender(ln),
+            "local_time": _ZONE_NOTE.sub("", ln.local_time),
+            "text": ln.body,
+        }
         for ln in lines
     ]
     targets = [i for i, ln in enumerate(lines) if ln.is_target]
@@ -69,13 +148,17 @@ def case_item(
         rows[t]["text"] = text
     else:
         rows, t = [{"sender": "unknown sender", "local_time": "time unknown", "text": text}], 0
-    return {
+    item: dict[str, Any] = {
         "probe_id": cand.record_id,
         "assumption": assumption.text,
         "target": rows[t],
         "context": rows[:t] + rows[t + 1 :],
         "target_index": t,
     }
+    device = parties.device_of(cand.record_id)
+    if device:
+        item["device_id"] = device
+    return item
 
 
 class ClassifierLabeler:
@@ -89,6 +172,7 @@ class ClassifierLabeler:
         self.load_seconds = time.perf_counter() - t0
         self.conn = conn
         self.window = window
+        self.parties = Parties(conn)
         self.policy = Policy.from_dict(self.meta.get("policy"))
         self.seconds: list[float] = []
         self.labels: Counter[str] = Counter()
@@ -114,7 +198,7 @@ class ClassifierLabeler:
         from eval.stancemodel.model import score_items
 
         t0 = time.perf_counter()
-        item = case_item(self.conn, assumption, candidate, self.window)
+        item = case_item(self.conn, assumption, candidate, self.window, self.parties)
         enc = encode(item, self.tok, int(self.meta["max_len"]))
         scores = score_items(self.model, [enc], self.tok.pad_token_id, batch_size=1)[0]
         stance = decide(scores["probs"], self.policy)

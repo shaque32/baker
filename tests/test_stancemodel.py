@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import ast
 import re
+import sqlite3
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -88,6 +89,16 @@ def test_the_record_is_marked_and_its_text_is_untouched() -> None:
     assert r.excerpt.index("is the van ready?") < r.record_start < r.excerpt.index("ok thanks")
     assert "+1 718-555-0122 Dante" in r.excerpt
     assert (r.lines_kept, r.lines_total) == (3, 3)
+
+
+def test_the_record_mark_names_the_phone_when_the_item_does() -> None:
+    it = _item(["is the van ready?", "van is fixed, come by"], 1, "van is fixed")
+    plain = features.render(it)
+    it["device_id"] = "dev:item1"
+    named = features.render(it)
+    assert "RECORD (dev:item1): " in named.excerpt and features.RECORD_MARK not in named.excerpt
+    assert named.excerpt[named.record_start : named.record_end] == "van is fixed, come by"
+    assert named.excerpt.replace("RECORD (dev:item1): ", features.RECORD_MARK) == plain.excerpt
 
 
 def test_far_context_goes_first_and_the_record_never_goes() -> None:
@@ -177,3 +188,109 @@ def test_micro_batches_cover_the_batch_within_the_token_budget() -> None:
     assert sorted(i for p in pieces for i in p) == list(range(8))
     assert all(len(p) * max(lengths[i] for i in p) <= 700 for p in pieces)
     assert micro_batches([0, 1], [400, 500], 100) == [[0], [1]]  # one item always fits alone
+
+
+def _two_phones(c: sqlite3.Connection) -> None:
+    """Phone A (dev:a, owner stipulated and confirmed as p:ann) and phone B (dev:b, owner only
+    proposed as p:ben). Carl's number is linked to p:carl (confirmed); Dee's only proposed."""
+    for src, dev, label in (("sa", "dev:a", "Phone A"), ("sb", "dev:b", "Phone B")):
+        c.execute(
+            "INSERT INTO sources VALUES (?, 'synthetic', 'curated_report', 'logical', ?, ?,"
+            " NULL, NULL, NULL, '2026-03-01T00:00:00Z')",
+            (src, f"{src}.xlsx", src[-1] * 64),
+        )
+        c.execute(
+            "INSERT INTO devices VALUES (?, ?, 'Summary!4', ?, NULL, NULL, 'America/New_York')",
+            (dev, src, label),
+        )
+    accounts = [
+        ("acct:sa:SMS:+12125550111", "sa", "dev:a", "SMS", "+12125550111"),
+        ("acct:sa:Phone:+12125550111", "sa", "dev:a", "Phone", "+12125550111"),
+        ("acct:sa:SMS:+12125550122", "sa", None, "SMS", "+12125550122"),
+        ("acct:sa:SMS:+12125550133", "sa", None, "SMS", "+12125550133"),
+        ("acct:sa:SMS:+12125550144", "sa", None, "SMS", "+12125550144"),
+        ("acct:sa:Phone:+12125550133", "sa", None, "Phone", "+12125550133"),
+        ("acct:sb:SMS:+12125550122", "sb", "dev:b", "SMS", "+12125550122"),
+    ]
+    for aid, src, dev, app, ident in accounts:
+        c.execute(
+            "INSERT INTO accounts VALUES (?, ?, 'x', ?, ?, ?, NULL)", (aid, src, dev, app, ident)
+        )
+    c.execute("INSERT INTO threads VALUES ('thr:a', 'sa', 'Chats!1', 'dev:a', 'SMS', NULL)")
+    msgs = [
+        ("msg:sa:Chats!1", "acct:sa:SMS:+12125550122", "2026-03-10T15:00:00Z", "meet at the lot?"),
+        ("msg:sa:Chats!2", "acct:sa:SMS:+12125550111", "2026-03-10T15:05:00Z", "ok works"),
+        ("msg:sa:Chats!3", "acct:sa:SMS:+12125550133", "2026-03-10T15:07:00Z", "im there"),
+        ("msg:sa:Chats!4", "acct:sa:SMS:+12125550144", "2026-03-10T15:09:00Z", "me too"),
+    ]
+    for mid, sender, ts, body in msgs:
+        c.execute(
+            "INSERT INTO messages (id, source_id, locator, thread_id, sender_account_id,"
+            " direction, ts_utc, ts_offset_min, ts_raw, body) VALUES"
+            " (?, 'sa', ?, 'thr:a', ?, 'unknown', ?, 0, ?, ?)",
+            (mid, mid.split(":")[-1], sender, ts, ts, body),
+        )
+    c.execute(
+        "INSERT INTO calls VALUES ('call:sa:Call Log!3', 'sa', 'Call Log!3', 'dev:a', 'Phone',"
+        " 'acct:sa:Phone:+12125550133', 'acct:sa:Phone:+12125550111', 'incoming',"
+        " '2026-03-10T15:06:00Z', 0, '3/10/2026 3:06:00 PM(UTC+0)', 61, 0)"
+    )
+    c.execute(
+        "INSERT INTO contacts VALUES ('contact:sa:Contacts!3#1', 'sa', 'Contacts!3', 'dev:a',"
+        " 'Carl Shop', '+12125550133')"
+    )
+    for pid in ("p:ann", "p:ben", "p:carl", "p:dee"):
+        c.execute("INSERT INTO persons VALUES (?, ?, 'expert:test')", (pid, pid))
+    c.execute(
+        "INSERT INTO stipulations VALUES ('stip:device_owner:dev:a', 'device_owner', 'dev:a',"
+        " 'p:ann', 'Phone A belongs to Ann', 'confirmed', 'expert:test', '2026-03-01T00:00:00Z')"
+    )
+    c.execute(
+        "INSERT INTO stipulations VALUES ('stip:device_owner:dev:b', 'device_owner', 'dev:b',"
+        " 'p:ben', 'Phone B belongs to Ben', 'proposed', NULL, NULL)"
+    )
+    for lid, aid, pid, status in (
+        ("l1", "acct:sa:SMS:+12125550133", "p:carl", "confirmed"),
+        ("l2", "acct:sa:SMS:+12125550144", "p:dee", "proposed"),
+    ):
+        c.execute(
+            "INSERT INTO identity_links VALUES (?, ?, ?, ?, 'inferred', 'test', NULL, NULL)",
+            (lid, aid, pid, status),
+        )
+
+
+def test_case_items_name_owners_confirmed_people_and_the_phone(case_db) -> None:
+    """Baker-form rows: "(owner)" for the phone's own account, persons only from confirmed
+    stipulations and links (matched across apps by number), the record's phone, and calls and
+    contacts with Baker's record text."""
+    from types import SimpleNamespace
+
+    from eval.stancemodel.time_case01 import WINDOW, Parties, case_item
+
+    _two_phones(case_db)
+    parties = Parties(case_db)
+    asm = SimpleNamespace(text="Baker's assumption text")
+
+    def item(rid: str) -> dict:
+        return case_item(case_db, asm, SimpleNamespace(record_id=rid, text=""), WINDOW, parties)
+
+    it = item("msg:sa:Chats!2")
+    senders = [r["sender"] for r in (*it["context"][:1], it["target"], *it["context"][1:])]
+    assert senders == [
+        "SMS +12125550122",  # Ben's phone is only proposed as his: no person
+        "SMS +12125550111 (owner) [p:ann]",
+        "SMS +12125550133 [p:carl]",
+        "SMS +12125550144",  # Dee's link is only proposed
+    ]
+    assert it["device_id"] == "dev:a" and it["target"]["text"] == "ok works"
+    assert it["assumption"] == "Baker's assumption text"
+    assert it["target"]["local_time"] == "2026-03-10 11:05:00 EDT"
+    call = item("call:sa:Call Log!3")
+    assert call["target"]["sender"] == "Phone +12125550133 [p:carl]"  # same number as the link
+    assert call["target"]["text"].startswith("incoming call from +12125550133")
+    contact = item("contact:sa:Contacts!3#1")
+    assert contact["context"] == [] and contact["device_id"] == "dev:a"
+    target = {"sender": "contact list", "local_time": "no time in source"}
+    assert contact["target"] == {**target, "text": "Carl Shop +12125550133"}
+    r = features.render(contact)
+    assert r.excerpt == "RECORD (dev:a): no time in source | contact list | Carl Shop +12125550133"
