@@ -885,9 +885,9 @@ _FIRST_AFTER = _EDGE + " > :bound ORDER BY ts_utc ASC, id LIMIT 1"
 def _app_quiet(case: Case, assumptions: list[Assumption]) -> Alternative | None:
     fits: list[Fit] = []
     used: list[str] = []
-    lines: list[str] = []
-    windows: list[str] = []
-    quiet_apps: list[str] = []
+    # Per app and window, the phones where that app is quiet: one sentence each, so no sentence
+    # joins an app to a window it was not found quiet in.
+    quiet: dict[tuple[str, str], list[str]] = {}
     for a in assumptions:
         p = a.params
         apps = [c for c in p.channels if c.strip().lower() != CALL_CHANNEL]
@@ -906,9 +906,8 @@ def _app_quiet(case: Case, assumptions: list[Assumption]) -> Alternative | None:
                 if not rest:
                     continue  # the whole phone is quiet; the gaps view covers that
                 used.append(a.id)
-                lines.append(f"{cite(sid)} ({rest} other record(s))")
-                windows.append(p.window.raw)
-                quiet_apps.append(app)
+                phones = quiet.setdefault((app, p.window.raw), [])
+                phones.append(f"{cite(sid)} ({rest} other record(s))")
                 for edge, sql, bound in (
                     ("last before", _LAST_BEFORE, lo),
                     ("first after", _FIRST_AFTER, hi),
@@ -921,8 +920,8 @@ def _app_quiet(case: Case, assumptions: list[Assumption]) -> Alternative | None:
                         _fit(
                             case,
                             row,
-                            f"The {edge} the window on {cite(sid)}: its nearest {cite(app)} "
-                            "record in any conversation.",
+                            f"The {edge} {cite(p.window.raw)} on {cite(sid)}: its nearest "
+                            f"{cite(app)} record in any conversation.",
                         )
                     )
     if not fits:
@@ -931,10 +930,13 @@ def _app_quiet(case: Case, assumptions: list[Assumption]) -> Alternative | None:
         "app_quiet",
         "completeness",
         "The whole app is quiet, not one conversation",
-        f"{_joined(quiet_apps)} has no record in any conversation on "
-        f"{'; '.join(dict.fromkeys(lines))} in the stated window ({_joined(windows)}), while "
-        "the phone's other apps and calls go on. A silence across a whole app can come from the "
-        "app or the extraction, not only from one conversation.",
+        " ".join(
+            f"{cite(app)} has no record in any conversation in {cite(window)} on "
+            f"{'; '.join(dict.fromkeys(phones))}, while the phone's other apps and calls go on."
+            for (app, window), phones in quiet.items()
+        )
+        + " A silence across a whole app can come from the app or the extraction, not only from "
+        "one conversation.",
         tuple(fits[:MAX_FITS]),
         len(fits),
         "Searched every conversation of the app the claim names on each phone that holds the "

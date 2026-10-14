@@ -445,3 +445,24 @@ def test_a_call_never_moves_a_message_count(conn):
     count = silence.model_copy(update={"template_id": "message_count"})
     ids = [f.record_id for f in explain._day_boundary(case, [count]).fits]
     assert "call:item1:edge" not in ids and ids
+
+
+def test_each_quiet_app_sentence_keeps_its_own_app_and_window(conn):
+    whatsapp = _asm(conn, "C15", "event")
+    # The same WhatsApp silence again, under another window label: two sentences, never merged.
+    other = whatsapp.model_copy(
+        update={
+            "id": "asm:test",
+            "params": whatsapp.params.model_copy(
+                update={
+                    "window": whatsapp.params.window.model_copy(update={"raw": "second window"})
+                }
+            ),
+        }
+    )
+    alt = explain._app_quiet(explain.load(conn), [whatsapp, other])
+    assert alt is not None
+    sentences = [x for x in alt.summary.split(". ") if "has no record" in x]
+    assert len(sentences) == 2
+    assert "second window" in sentences[1] and "second window" not in sentences[0]
+    assert all("second window" in f.note or "March" in f.note for f in alt.fits)
