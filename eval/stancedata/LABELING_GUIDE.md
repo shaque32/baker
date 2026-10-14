@@ -103,7 +103,10 @@ whose words exclude other messages, such as "first contact on" or "no contact be
     overreach assumptions may state the fact (rule 12). The paraphrase is third person
     throughout ("that they would book the court if they got paid", never "if i get paid"), adds
     no qualifier the record lacks ("still", "again", "already") and names nothing the record
-    does not ("to the wedding" when no message mentions a wedding).
+    does not ("to the wedding" when no message mentions a wedding). A record with no subject
+    reports the sender's own act only when its verb is plainly past ("paid him 200", "dropped
+    the keys off"); "put 200 in savings" or "let the plumber in" reads as an instruction as
+    easily, so it never supports.
 15. **A short answer supports only what the question and the answer state together.** "did ur
     cousin pay u back" and "yep $250" support "the owner's cousin paid the owner back $250", not
     "paid the owner back $250 in cash that morning"; extra detail in the assumption makes it
@@ -114,7 +117,7 @@ whose words exclude other messages, such as "first contact on" or "no contact be
     embeds a different value is `con_other_value`, not an overreach.
 17. **Relative time is open only near midnight.** `cpl_relative_time` records are sent between
     midnight and about 3 a.m. local, where "tonight", "last night", "earlier tonight", "an hour
-    ago" or "вчера" can mean either of two dates. Later in the day the relative word is not
+    ago", "вчера" or "ночью" can mean either of two dates. Later in the day the relative word is not
     ambiguous. A phrase that can point to only one date ("this afternoon" sent at 12:41 a.m.
     means the afternoon before) is not this family, and the generators do not write it. The answer is
     complicates whenever the clock time leaves both dates possible, even when one reading is far
@@ -156,7 +159,9 @@ whose words exclude other messages, such as "first contact on" or "no contact be
     noon", never "landed in New York that day". A message's date or sender rules out only an
     assumption whose words exclude other messages ("first contact on", "no contact between");
     otherwise the same words on another date, or from another account, leave the assumption
-    open, because one record cannot show that no other message exists. Where that gap matters,
+    open, because one record cannot show that no other message exists. A past-tense denial
+    that names no time ("i didnt pay the 250"), answering no question that names one, covers
+    the act at any time before it was sent. Where that gap matters,
     the timeline search reports it with the coverage it had (CLAUDE.md: "not found" never means
     "did not happen").
 24. **Rationales claim only what is shown.** A rationale names no weekday, place or fact that
