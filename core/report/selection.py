@@ -132,54 +132,88 @@ class Totals:
     between: int  # of them, between two picked messages
 
 
-def totals(units: list[Unit]) -> Totals:
-    passages = [p for u in units for p in u.primary]
-    picked = {r for p in passages for r in p.picked_ids}
-    left = {r for p in passages for r in p.left_out_ids}
-    between = {r for p in passages for r in p.between_ids}
-    return Totals(len(picked), len(passages), len(left), len(between))
+def _exchanges(groups: list[set[str]]) -> int:
+    """How many exchanges the passages' messages make: passages that share a message are one."""
+    head = list(range(len(groups)))
+
+    def root(i: int) -> int:
+        while head[i] != i:
+            i = head[i]
+        return i
+
+    owner: dict[str, int] = {}
+    for i, ids in enumerate(groups):
+        for r in ids:
+            a, b = root(i), root(owner.setdefault(r, i))
+            if a != b:
+                head[max(a, b)] = min(a, b)
+    return len({root(i) for i in range(len(groups))})
+
+
+def totals(units: list[Unit], same: dict[str, str] | None = None) -> Totals:
+    """Counts over every passage of the units. With same (SelectionAudit.same), a message and its
+    copies on other sources count once, so an exchange seen on two phones counts once even when
+    one phone lacks a picked message and its passage there is not folded into the other."""
+    same = same or {}
+
+    def one(ids: tuple[str, ...]) -> set[str]:
+        return {same.get(r, r) for r in ids}
+
+    passages = [p for u in units for p in u.passages]
+    picked = set().union(*(one(p.picked_ids) for p in passages))
+    left = set().union(*(one(p.left_out_ids) for p in passages))
+    between = set().union(*(one(p.between_ids) for p in passages))
+    exchanges = _exchanges([one(p.exchange_ids) for p in passages])
+    return Totals(len(picked), exchanges, len(left), len(between))
 
 
 def _n(n: int, word: str, plural: str | None = None) -> str:
     return f"{n:,} {word if n == 1 else plural or word + 's'}"
 
 
+def _document_glance(audit: SelectionAudit, doc_id: str, title: str) -> list[str]:
+    """What one government document's quotes found. A message counts as quoted when a paragraph
+    of the same document quotes it, so each document is counted on its own."""
+    units = [u for u in audit.of("document") if u.doc == doc_id]
+    one = len(audit.docs) == 1
+    the_doc = "The government document" if one else f"The document {q(title)}"
+    if not units:
+        return [f"{the_doc} puts no words in quotation marks, so no quote is placed."]
+    lks = [lk for u in units for lk in u.lookups]
+    placed = sum(1 for lk in lks if lk.places)
+    skipped = sum(1 for lk in lks if lk.skipped)
+    missing = sum(1 for lk in lks if not lk.skipped and not lk.found and not lk.loose)
+    unplaced = len(lks) - placed - skipped - missing
+    line = (
+        f"{the_doc} puts {_n(len(lks), 'set')} of words in quotation marks, in "
+        f"{_n(len(units), 'paragraph')}. {placed:,} {'is' if placed == 1 else 'are'} placed on a "
+        "message"
+    )
+    rest = [f"{missing:,} not found"] if missing else []
+    rest += [f"{unplaced:,} found but not placed"] if unplaced else []
+    rest += [f"{skipped:,} not looked up (names, single words, redactions)"] if skipped else []
+    out = [line + (f"; {', '.join(rest)}." if rest else ".")]
+    t = totals(units, audit.same)
+    if t.exchanges:
+        out.append(
+            f"<strong>In the {_n(t.exchanges, 'exchange')} those quotes come from, "
+            f"{_n(t.left_out, 'message')} {'is' if t.left_out == 1 else 'are'} not quoted "
+            f"anywhere in {'the' if one else 'that'} document"
+            + (f", {t.between:,} of them between two quoted messages" if t.between else "")
+            + ".</strong>"
+        )
+    return out
+
+
 def _glance(audit: SelectionAudit) -> list[str]:
     """The opening list: what was checked and what was found, in the tool's own words."""
     out: list[str] = []
-    docs = audit.of("document")
-    lks = [lk for u in docs for lk in u.lookups]
-    if not audit.paragraphs:
+    if not audit.docs:
         out.append("No government document is imported, so there are no quotes to place.")
-    elif not docs:
-        out.append(
-            "The government document puts no words in quotation marks, so no quote is placed."
-        )
-    else:
-        placed = sum(1 for lk in lks if lk.places)
-        skipped = sum(1 for lk in lks if lk.skipped)
-        missing = sum(1 for lk in lks if not lk.skipped and not lk.found)
-        unplaced = len(lks) - placed - skipped - missing
-        line = (
-            f"The government document puts {_n(len(lks), 'set')} of words in quotation marks, "
-            f"in {_n(len(docs), 'paragraph')}. {placed:,} {'is' if placed == 1 else 'are'} "
-            "placed on a message"
-        )
-        rest = [f"{missing:,} not found"] if missing else []
-        rest += [f"{unplaced:,} found but not placed"] if unplaced else []
-        rest += [f"{skipped:,} not looked up (names, single words, redactions)"] if skipped else []
-        out.append(line + (f"; {', '.join(rest)}." if rest else "."))
-        t = totals(docs)
-        if t.exchanges:
-            out.append(
-                f"<strong>In the {_n(t.exchanges, 'exchange')} those quotes come from, "
-                f"{_n(t.left_out, 'message')} {'is' if t.left_out == 1 else 'are'} not quoted "
-                "anywhere in the document"
-                + (f", {t.between:,} of them between two quoted messages" if t.between else "")
-                + ".</strong>"
-            )
+    for doc_id, title in audit.docs:
+        out += _document_glance(audit, doc_id, title)
     for u in audit.of("exhibit"):
-        t = totals([u])
+        t = totals([u], audit.same)
         out.append(
             f"{exhibit_name(u.label, True)}: {u.placed:,} of "
             f"{_n(len(u.lookups), 'quoted message')} "
@@ -202,7 +236,7 @@ def _glance(audit: SelectionAudit) -> list[str]:
         line = (
             f"The examiner tagged {_n(tagged, 'message')} ({per}); "
             f"{audit.tagged_quoted:,} of them {'is' if audit.tagged_quoted == 1 else 'are'} quoted "
-            "in the document."
+            f"in {'the document' if len(audit.docs) <= 1 else 'at least one of the documents'}."
         )
         tags = next(iter(audit.of("tags")), None)
         if tags and tags.passages:
@@ -236,6 +270,11 @@ def _coverage(audit: SelectionAudit) -> str:
 # ---------------------------------------------------------------- one message
 
 
+def paragraph_name(unit: Unit) -> str:
+    """A paragraph's label, with its document's title (cited) when the case has more than one."""
+    return e(unit.label) + (f" of {q(unit.title)}" if unit.title else "")
+
+
 def _mark_text(m: Mark) -> tuple[str, str]:
     """(css class, html) for a mark from another part of the selection."""
     u = m.unit
@@ -243,9 +282,9 @@ def _mark_text(m: Mark) -> tuple[str, str]:
         return "else", "Examiner tag"
     if u.kind == "document":
         return (
-            ("else", f"Quoted in {e(u.label)}")
+            ("else", f"Quoted in {paragraph_name(u)}")
             if m.placed
-            else ("maybe", f"May be quoted in {e(u.label)}")
+            else ("maybe", f"May be quoted in {paragraph_name(u)}")
         )
     return (
         ("else", f"In {exhibit_name(u.label)}")
@@ -273,7 +312,7 @@ def _bubble(unit: Unit, row: Row, marks: list[Mark]) -> str:
         cls.append("out")
     if row.role == "picked":
         cls.append("pick")
-        tags.append(("pick", _PICK[unit.kind].format(label=e(unit.label))))
+        tags.append(("pick", _PICK[unit.kind].format(label=paragraph_name(unit))))
     elif row.left_out:
         cls.append("left")
         tags.append(("left", _LEFT[unit.kind]))
@@ -340,7 +379,7 @@ def _convo(unit: Unit, p: Passage, marks: dict[str, list[Mark]]) -> str:
 def _where(p: Passage) -> str:
     t = p.thread
     return (
-        f"{e(t.app)} conversation {q(t.title or '(untitled)')} · {q(t.device)} · "
+        f"{q(t.app)} conversation {q(t.title or '(untitled)')} · {q(t.device)} · "
         f"{q(t.file_name)} ({e(FIDELITY_WORDS.get(p.fidelity, p.fidelity))}) · tier derived"
     )
 
@@ -384,7 +423,7 @@ def _passage_html(
         if c.same_as_copy:
             foot.append(
                 f"<p class='muted'>The same exchange is also on {q(c.thread.file_name)} "
-                f"({e(c.thread.app)} conversation {q(c.thread.title or '(untitled)')}): the same "
+                f"({q(c.thread.app)} conversation {q(c.thread.title or '(untitled)')}): the same "
                 f"{_n(c.exchange, 'message')}, so it is not shown again.</p>"
             )
         else:
@@ -435,8 +474,8 @@ def _claims_html(states: list[ClaimState], links: Links) -> str:
     )
 
 
-def _badge(unit: Unit) -> str:
-    t = totals([unit])
+def _badge(unit: Unit, same: dict[str, str]) -> str:
+    t = totals([unit], same)
     if not t.exchanges:
         return ""
     word = {"document": "not quoted", "exhibit": "not in the exhibit", "tags": "not tagged"}
@@ -446,15 +485,26 @@ def _badge(unit: Unit) -> str:
     )
 
 
+def _pages(unit: Unit) -> str:
+    """Where a paragraph is printed: 'page 3', or 'pages 3–4' when it runs across a page break."""
+    if unit.last_page is not None:
+        return f"pages {unit.page}–{unit.last_page}"
+    return f"page {unit.page}"
+
+
 def _paragraph_html(
-    unit: Unit, marks: dict[str, list[Mark]], links: Links, claims: list[ClaimState]
+    unit: Unit,
+    marks: dict[str, list[Mark]],
+    links: Links,
+    claims: list[ClaimState],
+    same: dict[str, str],
 ) -> str:
-    where = f"page {unit.page}" + (f" of {q(unit.title)}" if unit.title else "")
+    where = _pages(unit) + (f" of {q(unit.title)}" if unit.title else "")
     spans = tuple(lk.span for lk in unit.lookups if lk.span is not None)
     text = highlighted(unit.text or "", spans) if spans else q(unit.text or "")
     out = [
         f"<section class='sel-unit' id='{e(anchor(unit.id))}'>"
-        f"<h3>{e(unit.label)} <span class='muted'>{where}</span>{_badge(unit)}</h3>",
+        f"<h3>{e(unit.label)} <span class='muted'>{where}</span>{_badge(unit, same)}</h3>",
         f"<blockquote>{text}</blockquote>",
     ]
     if unit.ocr:
@@ -469,10 +519,12 @@ def _paragraph_html(
     return "".join(out)
 
 
-def _exhibit_html(unit: Unit, marks: dict[str, list[Mark]], links: Links) -> str:
+def _exhibit_html(
+    unit: Unit, marks: dict[str, list[Mark]], links: Links, same: dict[str, str]
+) -> str:
     out = [
         f"<section class='sel-unit' id='{e(anchor(unit.id))}'>"
-        f"<h3>{exhibit_name(unit.label, True)}{_badge(unit)}</h3>"
+        f"<h3>{exhibit_name(unit.label, True)}{_badge(unit, same)}</h3>"
         "<ul class='sel-quotes'>"
         + "".join(
             f"<li class='muted'>Quoted message {lk.seq}:</li>{_lookup_html(lk)}"
@@ -485,17 +537,21 @@ def _exhibit_html(unit: Unit, marks: dict[str, list[Mark]], links: Links) -> str
     return "".join(out)
 
 
-def _tags_html(unit: Unit, marks: dict[str, list[Mark]], links: Links) -> str:
+def _tags_html(
+    unit: Unit, marks: dict[str, list[Mark]], links: Links, audit: SelectionAudit
+) -> str:
+    quoting = "the document does not quote" if len(audit.docs) <= 1 else "no document quotes"
     return (
-        f"<section class='sel-unit' id='{e(anchor(unit.id))}'><h3>Examiner tags{_badge(unit)}</h3>"
-        "<p class='muted'>Messages a report marks with an examiner tag that the document does "
-        "not quote, each in its exchange.</p>" + _passages(unit, marks, links) + "</section>"
+        f"<section class='sel-unit' id='{e(anchor(unit.id))}'>"
+        f"<h3>Examiner tags{_badge(unit, audit.same)}</h3>"
+        f"<p class='muted'>Messages a report marks with an examiner tag that {quoting}, each in "
+        "its exchange.</p>" + _passages(unit, marks, links) + "</section>"
     )
 
 
 def _unplaced_html(units: list[Unit]) -> str:
     rows = [
-        f"<tr><td>{e(u.label)}</td><td>{q(lk.text)}</td><td>{e(lookup_note(lk))}</td></tr>"
+        f"<tr><td>{paragraph_name(u)}</td><td>{q(lk.text)}</td><td>{e(lookup_note(lk))}</td></tr>"
         for u in units
         for lk in u.lookups
     ]
@@ -536,19 +592,25 @@ def selection_html(
     by_para: dict[str, list[ClaimState]] = {}
     for st in claims or []:
         by_para.setdefault(st.claim.paragraph_id, []).append(st)
+
+    def claims_of(u: Unit) -> list[ClaimState]:
+        """Claims from any stored part of the paragraph (one part per page it is printed on)."""
+        return [st for pid in (u.ids or (u.id,)) for st in by_para.get(pid, [])]
+
     out = [INTRO, _coverage(audit)]
     out.append("<ul>" + "".join(f"<li>{s}</li>" for s in _glance(audit)) + "</ul>")
     docs = audit.of("document")
     shown = [u for u in docs if u.passages]
     if docs:
-        out.append("<h3 class='eyebrow'>Government document</h3>")
-        out += [_paragraph_html(u, marks, links, by_para.get(u.id, [])) for u in shown]
+        heading = "Government document" if len(audit.docs) <= 1 else "Government documents"
+        out.append(f"<h3 class='eyebrow'>{heading}</h3>")
+        out += [_paragraph_html(u, marks, links, claims_of(u), audit.same) for u in shown]
         out.append(_unplaced_html([u for u in docs if not u.passages]))
     exhibits = [u for u in audit.of("exhibit") if u.passages or u.lookups]
     if exhibits:
         out.append("<h3 class='eyebrow'>Exhibits</h3>")
-        out += [_exhibit_html(u, marks, links) for u in exhibits]
-    out += [_tags_html(u, marks, links) for u in audit.of("tags") if u.passages]
+        out += [_exhibit_html(u, marks, links, audit.same) for u in exhibits]
+    out += [_tags_html(u, marks, links, audit) for u in audit.of("tags") if u.passages]
     return "".join(out)
 
 
@@ -569,9 +631,10 @@ def selection_section(
     )
 
 
-def claim_note(unit: Unit, href: str) -> str | None:
-    """One line for a claim page: what the selection audit found around its paragraph's quotes."""
-    t = totals([unit])
+def claim_note(unit: Unit, href: str, same: dict[str, str] | None = None) -> str | None:
+    """One line for a claim page: what the selection audit found around its paragraph's quotes.
+    same: SelectionAudit.same, so a message seen on two phones counts once."""
+    t = totals([unit], same)
     if not t.exchanges:
         return None
     found = (

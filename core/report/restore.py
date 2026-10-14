@@ -150,7 +150,7 @@ def context_table(lines: tuple[Line, ...] | list[Line]) -> str:
         "<th>Tier</th><th>Source</th></tr></thead>"
     ]
     for ln in lines:
-        who = e(ln.sender) + (f"<br>shown as {q(ln.shown_as)}" if ln.shown_as else "")
+        who = q(ln.sender) + (f"<br>shown as {q(ln.shown_as)}" if ln.shown_as else "")
         cls = " class='target'" if ln.is_target else ""
         out.append(
             f"<tr{cls}><td class='t'>{e(ln.utc)}</td><td class='t'>{e(ln.local)}</td>"
@@ -165,7 +165,7 @@ def context_table(lines: tuple[Line, ...] | list[Line]) -> str:
 def view_block(view: ContextView) -> str:
     t = view.thread
     out = [
-        f"<p>Conversation: {e(t.app)} thread {q(t.title or '(untitled)')} on {q(t.device)} in "
+        f"<p>Conversation: {q(t.app)} thread {q(t.title or '(untitled)')} on {q(t.device)} in "
         f"{q(t.file_name)}, {t.messages:,} messages"
         + (f", {e(t.first_utc)} to {e(t.last_utc)} UTC" if t.first_utc else "")
         + f". Showing {len(view.lines)}"
@@ -187,7 +187,7 @@ def view_block(view: ContextView) -> str:
         for r in view.related:
             rt = r.thread
             out.append(
-                f"<p><strong>{e(rt.app)} thread {q(rt.title or '(untitled)')}</strong> on "
+                f"<p><strong>{q(rt.app)} thread {q(rt.title or '(untitled)')}</strong> on "
                 f"{q(rt.device)} in {q(rt.file_name)} ({rt.messages:,} messages). Shares "
                 + ", ".join(q(s.split(":", 1)[1]) for s in r.shared)
                 + ".</p>"

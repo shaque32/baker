@@ -22,8 +22,9 @@ from core.audit.invariants import check_report_text
 from core.contracts import ExcerptSplit
 from core.db import connect
 from core.report.html import render_report
-from core.report.selection import Links, claim_note, selection_html, totals
+from core.report.selection import Links, Totals, claim_note, selection_html, totals
 from core.restore.store import add_exhibit
+from core.review.status import claim_states
 from core.selection import audit as selection_module
 from core.selection.audit import (
     EXCHANGE_GAP,
@@ -93,6 +94,18 @@ def _only(unit: Unit) -> Passage:
 
 def _roles(p: Passage) -> list[tuple[str, str | None]]:
     return [(r.role, r.line.record_id if r.line else None) for r in p.rows]
+
+
+def _reword(conn: sqlite3.Connection, label: str, old: str, new: str) -> None:
+    """Change words of one paragraph of the synthetic affidavit."""
+    with conn:
+        text = conn.execute(
+            "SELECT text FROM govdoc_paragraphs WHERE label = ?", (label,)
+        ).fetchone()[0]
+        assert old in text
+        conn.execute(
+            "UPDATE govdoc_paragraphs SET text = ? WHERE label = ?", (text.replace(old, new), label)
+        )
 
 
 def _copy_message(conn: sqlite3.Connection, src: str, new_id: str, **changes: object) -> None:
@@ -185,7 +198,7 @@ def test_the_same_message_on_both_phones_is_folded_into_one_passage(conn) -> Non
     assert "The previous message in this thread is 4 h 34 min earlier." in summary(
         _unit(audit, "¶12"), p12
     )
-    assert totals(audit.of("document")).picked == 7  # copies are not counted twice
+    assert totals(audit.of("document"), audit.same).picked == 7  # copies are not counted twice
 
 
 def test_a_copy_whose_exchange_differs_is_shown_with_the_difference(conn) -> None:
@@ -254,6 +267,181 @@ def test_a_quote_found_nowhere_says_what_that_does_not_show(conn) -> None:
     )
 
 
+def test_a_quote_is_looked_for_with_every_method_before_it_is_placed(conn) -> None:
+    """As printed, the quote is in no message. Without its comma it is one message character for
+    character, and ¶6's message with letter case aside. Stopping at the first method that finds
+    something would place it on the wrong one and count ¶6's message as not quoted."""
+    _reword(conn, "6", '"need 2 more by friday"', '"Need 2 more by friday,"')
+    alex = conn.execute("SELECT thread_id FROM messages WHERE id = ?", (M(670),)).fetchone()[0]
+    _copy_message(
+        conn, M(948), M(9004), thread_id=alex, body="Need 2 more by friday",
+        ts_utc="2026-03-26T12:00:00Z",
+    )  # fmt: skip
+    unit = _unit(selection_audit(conn), "¶6")
+    first = unit.lookups[0]
+    assert (first.found, first.loose, first.places) == (2, 0, ())
+    assert first.hits == tuple(sorted((M(948), M(9004))))
+    assert lookup_note(first).startswith("Found in 2 messages. Code cannot confirm")
+    p = _only(unit)
+    assert p.picked_ids == (M(951),)
+    assert (p.before, p.maybe) == (2, 1)  # 949 and 950; 948 may be quoted
+    assert next(r for r in p.rows if r.line and r.line.record_id == M(948)).maybe
+
+
+def test_the_same_words_with_other_punctuation_are_never_counted_as_left_out(conn) -> None:
+    _reword(conn, "6", '"need 2 more by friday"', '"need 2 more, by friday"')
+    unit = _unit(selection_audit(conn), "¶6")
+    first = unit.lookups[0]
+    assert (first.found, first.loose, first.places, first.hits) == (0, 1, (), (M(948),))
+    assert lookup_note(first) == (
+        "Not found as printed. The same words with different punctuation are in 1 message, so it "
+        "is not placed and it is marked as may be quoted."
+    )
+    p = _only(unit)
+    assert p.picked_ids == (M(951),) and (p.before, p.maybe) == (2, 1)
+    # Found as printed in one message, and with other punctuation in another: not placed.
+    _reword(conn, "6", '"need 2 more, by friday"', '"need 2 more by friday"')
+    _copy_message(
+        conn, M(948), M(9005), body="need 2 more... by friday!", ts_utc="2026-03-26T12:00:00Z"
+    )
+    unit = _unit(selection_audit(conn), "¶6")
+    first = unit.lookups[0]
+    assert (first.found, first.loose, first.places) == (1, 1, ())
+    assert lookup_note(first) == (
+        "Found in 1 message, and the same words with different punctuation in 1 more message. "
+        "Code does not decide which one is meant. Not placed."
+    )
+    assert _only(unit).maybe == 1
+    for lk in unit.lookups:
+        check_report_text(lookup_note(lk))
+
+
+def test_a_quote_with_no_letters_keeps_the_messages_that_are_just_those_marks(conn) -> None:
+    _reword(conn, "9", '"move it\ntonight".', '"move it\ntonight". REYES answered "?" and "👍".')
+    _copy_message(conn, M(949), M(9006), body=" ? ", ts_utc="2026-03-13T00:05:00Z")
+    _copy_message(conn, M(950), M(9007), body="👍🏽", ts_utc="2026-03-13T00:10:30Z")
+    audit = selection_audit(conn)
+    marks, thumb = _unit(audit, "¶9").lookups[-2:]
+    assert (marks.text, thumb.text) == ("?", "👍")
+    for lk, rid in ((marks, M(9006)), (thumb, M(9007))):
+        assert lk.skipped == "no letters or digits to look up" and not lk.places
+        assert rid in lk.hits
+        assert "just these characters" in lookup_note(lk)
+        check_report_text(lookup_note(lk))
+    p = _only(_unit(audit, "¶6"))
+    assert (p.between, p.maybe) == (2, 2)  # 949 and 950 not quoted; the two replies may be
+
+
+# ---------------------------------------------------------------- paragraphs, documents, copies
+
+
+def test_a_paragraph_printed_across_a_page_break_is_one_paragraph(db, conn) -> None:
+    """The importer stores such a paragraph once per page. Its parts are read as one text, so a
+    quote running across the break is still found, and a claim on either part finds them."""
+    pid, page, para_no, start, text = conn.execute(
+        "SELECT id, page, para_no, char_start, text FROM govdoc_paragraphs WHERE label = '6'"
+    ).fetchone()
+    k = text.index("be at marcs")
+    second = pid.rsplit(":", 2)[0] + f":{page + 1}:{para_no}"
+    with conn:
+        conn.execute(
+            "UPDATE govdoc_paragraphs SET text = ?, char_end = ? WHERE id = ?",
+            (text[:k].rstrip(), start + k, pid),
+        )
+        conn.execute(
+            "INSERT INTO govdoc_paragraphs (id, govdoc_id, page, para_no, label, char_start,"
+            " char_end, text, ocr) SELECT ?, govdoc_id, page + 1, para_no, label, 0, ?, ?, ocr"
+            " FROM govdoc_paragraphs WHERE id = ?",
+            (second, len(text) - k, text[k:], pid),
+        )
+        cid = conn.execute(
+            "SELECT id FROM claims WHERE paragraph_id = ? ORDER BY id", (pid,)
+        ).fetchone()[0]
+        conn.execute("UPDATE claims SET paragraph_id = ? WHERE id = ?", (second, cid))
+    audit = selection_audit(conn)
+    unit = _unit(audit, "¶6")
+    assert unit.ids == (pid, second) and (unit.page, unit.last_page) == (page, page + 1)
+    assert [lk.text for lk in unit.lookups] == [
+        "need 2 more by friday",
+        "the package will be at marcs",
+    ]
+    assert [lk.places[0].record_id for lk in unit.lookups] == [M(948), M(951)]
+    assert _only(unit).between == 2
+    html = selection_html(audit, claims=claim_states(conn))
+    assert f"pages {page}–{page + 1}" in html
+    assert f"href='#{cid}'" in html  # the claim on the second part is listed with the paragraph
+    assert [u.label for u in selection_audit(conn, paragraph_id=second).units] == ["¶6"]
+    claim = _app(db).handle(Request("GET", "/claim", {"id": cid}, dict(HOST)))
+    assert "Selection audit: ¶6 quotes 2 messages from 1 exchange" in claim.text
+
+
+def test_two_quotes_sharing_words_mark_the_message_once(conn) -> None:
+    _reword(conn, "12", 'come get it".', 'come get it". By "come get it" he meant the bag.')
+    audit = selection_audit(conn)
+    unit = _unit(audit, "¶12")
+    assert [len(lk.places) for lk in unit.lookups] == [2, 2]  # on both phones
+    picked = next(r for r in unit.primary[0].rows if r.role == "picked")
+    assert picked.spans == ((0, len(picked.line.body)),)
+    assert "</mark><mark>" not in selection_html(audit)  # no words shown twice
+
+
+def test_each_government_document_is_counted_on_its_own(conn) -> None:
+    """A message counts as quoted only when a paragraph of the same document quotes it, so a
+    second document gets its own counts, named by its title."""
+    affidavit = conn.execute("SELECT id FROM govdocs").fetchone()[0]
+    alone = selection_audit(conn)
+    before = totals(alone.of("document"), alone.same)
+    text = '1. REYES answered "friday hard. saturday".'
+    with conn:
+        conn.execute(
+            "INSERT INTO govdocs (id, source_id, title, doc_kind) SELECT 'govdoc:test2',"
+            " source_id, 'POLICE REPORT (SYNTHETIC)', 'police_report' FROM govdocs"
+        )
+        conn.execute(
+            "INSERT INTO govdoc_paragraphs (id, govdoc_id, page, para_no, label, char_start,"
+            " char_end, text) VALUES ('para:test2:1:1', 'govdoc:test2', 1, 1, '1', 0, ?, ?)",
+            (len(text), text),
+        )
+    audit = selection_audit(conn)
+    titles = ["AFFIDAVIT (SYNTHETIC CASE01)", "POLICE REPORT (SYNTHETIC)"]
+    assert [t for _, t in audit.docs] == titles
+    ours = [u for u in audit.of("document") if u.doc == affidavit]
+    assert totals(ours, audit.same) == before  # the other document's quote changes nothing here
+    assert _only(_unit(audit, "¶6")).between == 2
+    other = next(u for u in audit.of("document") if u.doc == "govdoc:test2")
+    p = _only(other)
+    assert p.picked_ids == (M(949),) and (p.before, p.after) == (1, 2)
+    html = selection_html(audit)
+    check_report_text(html)
+    report = '<span class="q">POLICE REPORT (SYNTHETIC)</span>'
+    assert (
+        f"The document {report} puts 1 set of words in quotation marks, in 1 paragraph. 1 is "
+        "placed on a message." in html
+    )
+    assert (
+        "In the 1 exchange those quotes come from, 3 messages are not quoted anywhere in that "
+        "document." in html
+    )
+    assert f"Quoted in ¶1 of {report}" in html  # 949, in ¶6's passage
+
+
+def test_an_exchange_on_two_phones_counts_once_when_one_lacks_a_quoted_message(conn) -> None:
+    """¶12's exchange is on both phones. A second quoted message is only on the first, so the
+    two passages are not folded into one; the totals still count each message and the exchange
+    once."""
+    _copy_message(conn, M(1028), M(9008), body="ok on my way", ts_utc="2026-03-18T21:45:00Z")
+    _copy_message(conn, M(920, 2), M(9009, 2), body="ok on my way", ts_utc="2026-03-18T21:45:00Z")
+    _copy_message(conn, M(1028), M(9010), body="bring the bag", ts_utc="2026-03-18T21:50:00Z")
+    _reword(conn, "12", 'come get it".', 'come get it". He then wrote "bring the bag".')
+    audit = selection_audit(conn)
+    unit = _unit(audit, "¶12")
+    assert [p.picked_ids for p in unit.primary] == [(M(1028), M(9010)), (M(920, 2),)]
+    assert totals([unit]) == Totals(picked=3, exchanges=2, left_out=4, between=1)  # per phone
+    assert totals([unit], audit.same) == Totals(picked=2, exchanges=1, left_out=2, between=1)
+    note = claim_note(unit, "/x", audit.same)
+    assert note is not None and "¶12 quotes 2 messages from 1 exchange; 2 other messages" in note
+
+
 # ---------------------------------------------------------------- exchanges
 
 
@@ -290,8 +478,12 @@ def test_a_message_with_no_time_is_its_own_exchange(conn) -> None:
     assert p.untimed and p.exchange == 1 and p.left_out == 0
     assert summary(unit, p) == [
         "¶15 quotes a message with no usable time in the source, so code cannot tell what was "
-        "exchanged with it. The messages beside it in the source's order are shown."
+        "exchanged with it. It is listed after the thread's messages that have a time, so the "
+        "messages shown beside it are not necessarily the ones sent or received around it."
     ]
+    last_timed = [m.id for m in _Thread(conn, p.thread.id).msgs if m.utc is not None][-3:]
+    assert [r for r, _ in _roles(p)] == ["earlier"] * 3 + ["picked"]
+    assert [rid for _, rid in _roles(p)][:3] == last_timed  # not 669 and 671, its neighbours
 
 
 # ---------------------------------------------------------------- exhibits and tags
@@ -386,6 +578,28 @@ def test_cited_text_is_set_apart_from_the_tools_words(conn) -> None:
     page = selection_html(selection_audit(conn), Links(context=lambda r: f"/x?{r}"))
     check_report_text(page)  # the label and the message are cited text, not the tool's words
     assert '<span class="q">i deleted it, leader said so</span>' in page
+
+
+def test_a_sender_named_with_a_forbidden_word_is_cited_text(db, conn) -> None:
+    """Some apps name a removed account 'Deleted Account'. That name is the source's, so it is
+    cited, in the passage and in the table of other conversations nearby."""
+    with conn:
+        conn.execute(
+            "INSERT INTO accounts (id, source_id, locator, app, identifier)"
+            " VALUES ('acct:test:gone', 'item1', 'test', 'Telegram', 'Deleted Account')"
+        )
+        conn.execute(
+            "UPDATE messages SET sender_account_id = 'acct:test:gone' WHERE id IN (?, ?)",
+            (M(949), M(811)),
+        )
+    audit = selection_audit(conn)
+    assert M(811) in [ln.record_id for ln in _only(_unit(audit, "¶6")).nearby]
+    html = selection_html(audit)
+    check_report_text(html)
+    assert html.count('<span class="q">Telegram Deleted Account</span>') >= 2  # bubble, table
+    app = _app(db)
+    for path, query in (("/selection", {}), ("/selection/context", {"id": M(949)})):
+        assert app.handle(Request("GET", path, query, dict(HOST))).status == 200, path
 
 
 def test_tool_words_never_use_the_forbidden_words(conn) -> None:

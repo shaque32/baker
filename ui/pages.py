@@ -566,10 +566,11 @@ def _groups(st: ClaimState) -> list[tuple[str, list[EvidenceItem]]]:
 
 def _selection_note(conn: sqlite3.Connection, paragraph_id: str) -> str:
     """What the selection audit found around the quotes of the claim's paragraph, if anything."""
-    units = selection_audit(conn, paragraph_id=paragraph_id).of("document")
+    audit = selection_audit(conn, paragraph_id=paragraph_id)
+    units = audit.of("document")
     if not units:
         return ""
-    return claim_note(units[0], f"/selection#{selection_anchor(units[0].id)}") or ""
+    return claim_note(units[0], f"/selection#{selection_anchor(units[0].id)}", audit.same) or ""
 
 
 def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | None:

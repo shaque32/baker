@@ -65,7 +65,7 @@ class Found:
 @dataclass
 class Outcome:
     found: list[Found] = field(default_factory=list)
-    total: int = 0  # verified matches before the limit (MAX_MATCHES by default)
+    total: int = 0  # verified matches before the MAX_MATCHES cap
     dropped: int = 0  # candidate matches that failed verification
     core: tuple[int, int] | None = None  # the part of the excerpt that was searched for, if found
 
@@ -109,12 +109,15 @@ def segments(text: str, a: int, b: int) -> list[tuple[int, int]]:
     return [(x, y) for x, y in out if any(ch.isalnum() for ch in text[x:y])]
 
 
-def cores(excerpt: str) -> list[tuple[int, int]]:
-    """Candidate parts of the excerpt to search for, the fullest first."""
+def core_groups(excerpt: str) -> list[list[tuple[int, int]]]:
+    """Candidate parts of the excerpt to search for, the fullest first, grouped by where they
+    start (the excerpt as pasted, then after each printed label): each group holds the part with
+    and without its closing marks."""
     starts = [0] + [
         m.end() for m in LABEL_END_RE.finditer(excerpt, 0, min(len(excerpt), LABEL_SCAN))
     ]
-    out: list[tuple[int, int]] = []
+    seen: list[tuple[int, int]] = []
+    groups: list[list[tuple[int, int]]] = []
     for n, s in enumerate(starts):
         a, b = _unwrap(excerpt, s, len(excerpt))
         if n and len(WORD_RE.findall(excerpt[a:b])) < 2:
@@ -124,10 +127,19 @@ def cores(excerpt: str) -> list[tuple[int, int]]:
             b -= 1
             a2, b2 = _unwrap(excerpt, a, b)
             variants.append((a2, b2))
+        group = []
         for v in variants:
-            if v not in out and segments(excerpt, *v):
-                out.append(v)
-    return out
+            if v not in seen and segments(excerpt, *v):
+                seen.append(v)
+                group.append(v)
+        if group:
+            groups.append(group)
+    return groups
+
+
+def cores(excerpt: str) -> list[tuple[int, int]]:
+    """Candidate parts of the excerpt to search for, the fullest first."""
+    return [c for group in core_groups(excerpt) for c in group]
 
 
 # ---------------------------------------------------------------- the search
@@ -167,6 +179,22 @@ class Index:
     def __init__(self, bodies: Iterable[Body]) -> None:
         self.bodies = list(bodies)
         self._folded: dict[str, list[Folded]] = {}
+        self._cyrillic: bool | None = None
+        self._texts: dict[str, str] | None = None
+
+    @property
+    def texts(self) -> dict[str, str]:
+        """Record id -> stored body, for re-verifying matches; made once per index."""
+        if self._texts is None:
+            self._texts = {b.record_id: b.text for b in self.bodies}
+        return self._texts
+
+    @property
+    def any_cyrillic(self) -> bool:
+        """Some message is written (partly) in Cyrillic."""
+        if self._cyrillic is None:
+            self._cyrillic = any(has_cyrillic(b.text) for b in self.bodies)
+        return self._cyrillic
 
     @classmethod
     def from_db(cls, conn: sqlite3.Connection) -> Index:
@@ -192,10 +220,12 @@ class Index:
                     out.append(Found(body.record_id, body.ref, method, tuple(spans), tuple(segs)))
             return out
         level = _LEVEL[method]
+        cyrillic_excerpt = any(has_cyrillic(excerpt[a:b]) for a, b in segs)
+        if method is MatchMethod.TRANSLITERATION and not (cyrillic_excerpt or self.any_cyrillic):
+            return out  # no Cyrillic on either side: nothing can count as a transliteration
         needles = [fold(excerpt[a:b], level).text for a, b in segs]  # type: ignore[arg-type]
         if not all(needles):
             return out
-        cyrillic_excerpt = any(has_cyrillic(excerpt[a:b]) for a, b in segs)
         for body, f in zip(self.bodies, self.folded(level), strict=True):
             if needles[0] not in f.text:
                 continue
@@ -213,10 +243,9 @@ class Index:
         return next((b.text for b in self.bodies if b.record_id == record_id), None)
 
 
-def find(excerpt: str, index: Index, limit: int | None = MAX_MATCHES) -> Outcome:
-    """Search for one excerpt. Only verified matches are returned, at most `limit` of them
-    (every one when limit is None); Outcome.total counts them all."""
-    texts = {b.record_id: b.text for b in index.bodies}
+def find(excerpt: str, index: Index) -> Outcome:
+    """Search for one excerpt. Only verified matches are returned."""
+    texts = index.texts
     for core in cores(excerpt):
         segs = segments(excerpt, *core)
         for method in METHODS:
@@ -227,11 +256,38 @@ def find(excerpt: str, index: Index, limit: int | None = MAX_MATCHES) -> Outcome
             if not good:
                 continue
             return Outcome(
-                found=good[:limit],
+                found=good[:MAX_MATCHES],
                 total=len(good),
                 dropped=len(candidates) - len(good),
                 core=core,
             )
+    return Outcome()
+
+
+def find_every(excerpt: str, index: Index) -> Outcome:
+    """Every message the excerpt is verified in, for a caller that must not guess which one is
+    meant (core/selection/picks.py). As in find, the first starting point that finds anything
+    decides (the excerpt as pasted, then after a printed label), but there every part, with and
+    without its closing marks, is searched with every method. Each message is returned once,
+    with its first match: the fullest part, the strictest method."""
+    texts = index.texts
+    for group in core_groups(excerpt):
+        best: dict[str, Found] = {}
+        dropped = 0
+        decided: tuple[int, int] | None = None
+        for core in group:
+            segs = segments(excerpt, *core)
+            for method in METHODS:
+                candidates = index.search(excerpt, method, segs)
+                good = [c for c in candidates if verify(excerpt, texts[c.record_id], c)]
+                dropped += len(candidates) - len(good)
+                if good and decided is None:
+                    decided = core
+                for c in good:
+                    best.setdefault(c.record_id, c)
+        if best:
+            found = list(best.values())
+            return Outcome(found=found, total=len(found), dropped=dropped, core=decided)
     return Outcome()
 
 

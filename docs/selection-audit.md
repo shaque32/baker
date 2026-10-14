@@ -18,18 +18,24 @@ draft request for the full extraction (`core/report/letter.py`).
 ## What counts as picked (`core/selection/picks.py`)
 
 - **Document quotes.** Words a paragraph of the government document puts in quotation marks
-  (`"..."` or `“...”`). Line breaks inside the marks are read as spaces. Quoted words that are a
-  name in the case (a contact, an account's identifier or display name, a thread title, a person),
-  a single word, or a redaction with no letters are not looked up, and the page lists them as not
-  looked up. A message whose whole text is such a quote ("tmrw") is marked "may be quoted".
+  (`"..."` or `“...”`). Line breaks inside the marks are read as spaces. A paragraph printed
+  across a page break, which the importer stores once per page, is read as one text, so a quote
+  that runs across the break is one quote; the page names it by both pages. Quoted words that are
+  a name in the case (a contact, an account's identifier or display name, a thread title, a
+  person), a single word, or a redaction or mark with no letters or digits are not looked up, and
+  the page lists them as not looked up. A message whose whole text is such a quote ("tmrw", or
+  just "?" for a quoted "?", emoji skin tones aside) is marked "may be quoted".
 - **Exhibits.** Each quoted message of an exhibit pasted on the Exhibits page, as Context Restore
   split it. An exhibit not searched there yet is named and not checked.
 - **Examiner tags.** Messages a report marks with an examiner tag (bookmark). Tagged messages the
   document also quotes are covered under the document; the rest get their own section.
 
-Quotes are looked up with the Context Restore matcher (`core/restore/match.py`: exact, then
-tolerant, then transliteration; every match re-verified against the stored message body), across
-every message in the case.
+Quotes are looked up across every message in the case with every method of the Context Restore
+matcher (`core/restore/match.py` `find_every`: exact, tolerant and transliteration, every match
+re-verified against the stored message body). Context Restore itself stops at the first method
+that finds something; here every method is tried, so a quote that is one message character for
+character and another with letter case aside is found in both. The quote is also looked for as
+the same words with any punctuation between them, letter case aside.
 
 ## Placing a quote fails closed
 
@@ -40,6 +46,10 @@ words were found and places nothing:
 
 - found in two different messages: "Code cannot confirm they are one message seen on different
   phones, so it does not decide which one is meant";
+- found as printed in one message, and the same words with different punctuation in another:
+  "Code does not decide which one is meant";
+- not found as printed, but the same words with different punctuation are in a message: that
+  message is marked "may be quoted";
 - found in more than 4 messages: too many to tell;
 - only the words after a colon or dash found (the matcher reads what comes before as a printed
   label): the whole quote was not found;
@@ -89,6 +99,17 @@ When the same picked messages are on two sources, the second passage is folded i
 its exchange holds the same messages; if not, both are shown and the difference is counted ("it
 holds 1 message that the exchange there does not").
 
+## Totals
+
+The opening list and each heading count messages, not records: a message and its copies on other
+sources (the same text, at most 2 minutes apart, never two records of one source) count once,
+and passages that share a message or a copy of one are one exchange. So an exchange on both
+phones counts once even when one phone lacks a quoted message and its passage is shown apart.
+
+Each government document is counted on its own, because a message counts as quoted only when a
+paragraph of the same document quotes it. With more than one document, the opening list gives
+each document's counts under its title, and paragraphs and marks name their document.
+
 ## What it cannot show
 
 A message the examiner left out of a curated report is not in the case, so it cannot be shown or
@@ -108,7 +129,7 @@ for the forbidden-word check.
 The matcher's index of every message body is kept in memory per case database while its messages
 are unchanged, and dropped whenever a case is locked, so no message text outlives an encrypted
 case's key (`core/encryption.py` `on_lock`). The first view after the screen starts builds it:
-on a synthetic copy of case01 grown to 117,000 messages that took about 11 seconds when a quote
-had to be searched tolerantly, then about a second per view. Naming the quiet stretches runs the
-Gaps check over every message and call each time, about 2.5 seconds more at that size. The claim
-pages and the conversation view do not run it.
+on a synthetic copy of case01 grown to 117,000 messages that took about 10 seconds, then about a
+second per view, every method and the same-words look-up included. Naming the quiet stretches
+runs the Gaps check over every message and call each time, about 2 seconds more at that size.
+The claim pages (about half a second) and the conversation view do not run it.

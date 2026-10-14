@@ -34,8 +34,9 @@ from __future__ import annotations
 import re
 import sqlite3
 from collections import Counter, defaultdict
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
+from itertools import combinations, groupby
 from typing import Literal
 from zoneinfo import ZoneInfo
 
@@ -54,6 +55,7 @@ from core.selection.picks import (
     document_lookups,
     exhibit_ids,
     exhibit_lookups,
+    facts,
     same_message,
     tagged,
 )
@@ -140,6 +142,7 @@ class Passage:
     closes_thread: bool  # the source holds no later message in this thread
     prev_utc: datetime | None  # the thread's message just before the exchange, if it has a time
     next_utc: datetime | None  # and just after it
+    exchange_ids: tuple[str, ...] = ()  # every message of the exchange, in thread order
     left_out_ids: tuple[str, ...] = ()  # every left-out message of the exchange, shown or not
     between_ids: tuple[str, ...] = ()  # those of them between the first and the last pick
     nearby: tuple[Line, ...] = ()  # the source's other conversations around the same time
@@ -186,9 +189,12 @@ class Unit:
     exhibit's quoted messages, or the examiner's tags."""
 
     kind: Kind
-    id: str  # paragraph id, exhibit id, or 'tags'
+    id: str  # paragraph id (its first page's), exhibit id, or 'tags'
     label: str  # '¶6' (tool text), the exhibit's label as pasted (cited), or 'Examiner tags'
     page: int | None = None  # a paragraph's page
+    last_page: int | None = None  # the page it ends on, when it runs across a page break
+    ids: tuple[str, ...] = ()  # a paragraph's stored parts, one per page it is printed on
+    doc: str | None = None  # a paragraph's government document
     title: str | None = None  # the document's title, when the case has more than one (cited)
     text: str | None = None  # the paragraph as printed (cited)
     ocr: bool = False  # the paragraph's text came from OCR, so its quotes may not be verbatim
@@ -208,7 +214,7 @@ class Unit:
 @dataclass(frozen=True)
 class Mark:
     """Why a message shown in a passage is marked: a unit placed a pick on it (placed), or it
-    holds words a unit quotes that were not placed (lookup.found tells in how many messages)."""
+    holds words a unit quotes that were not placed (lookup.hits: every message they are in)."""
 
     unit: Unit
     lookup: Lookup | None  # None for an examiner tag
@@ -233,6 +239,10 @@ class SelectionAudit:
     tagged_quoted: int = 0  # tagged messages a paragraph of the document quotes
     unsearched: tuple[str, ...] = ()  # labels of exhibits Context Restore has not searched yet
     paragraphs: int = 0  # government-document paragraphs in the case, quoting or not
+    docs: tuple[tuple[str, str], ...] = ()  # (id, title) of each government document, in id order
+    # message id -> one id for it and its copies on other sources, so counts take a message
+    # seen on two phones once (only messages that have such a copy are listed)
+    same: dict[str, str] = field(default_factory=dict)
 
     def of(self, kind: Kind) -> list[Unit]:
         return [u for u in self.units if u.kind == kind]
@@ -470,6 +480,7 @@ def _passage(
         closes_thread=b == len(msgs) - 1,
         prev_utc=prev_t,
         next_utc=next_t,
+        exchange_ids=tuple(msgs[i].id for i in range(a, b + 1)),
         left_out_ids=tuple(msgs[i].id for i in out_all),
         between_ids=tuple(msgs[i].id for i in left_out(range(i0 + 1, i1))),
         nearby=tuple(nearby),
@@ -535,6 +546,17 @@ def _copies(x: _Built, p: _Built) -> bool:
     )
 
 
+def _merged(spans: tuple[tuple[int, int], ...]) -> tuple[tuple[int, int], ...]:
+    """Spans in order, overlapping or touching ones joined: two quotes can share words."""
+    out: list[tuple[int, int]] = []
+    for a, b in sorted(spans):
+        if out and a <= out[-1][1]:
+            out[-1] = (out[-1][0], max(out[-1][1], b))
+        else:
+            out.append((a, b))
+    return tuple(out)
+
+
 def _unit_passages(
     conn: sqlite3.Connection,
     unit_id: str,
@@ -548,7 +570,7 @@ def _unit_passages(
     spans: dict[str, dict[str, tuple[tuple[int, int], ...]]] = defaultdict(dict)
     for p in places:
         got = spans[p.thread_id].get(p.record_id, ())
-        spans[p.thread_id][p.record_id] = tuple(sorted(set(got) | set(p.spans)))
+        spans[p.thread_id][p.record_id] = _merged((*got, *p.spans))
     built: list[_Built] = []
     for tid in sorted(spans):
         if tid not in threads:
@@ -615,12 +637,46 @@ def _index(conn: sqlite3.Connection) -> Index:
     return index
 
 
-def _paragraphs(conn: sqlite3.Connection) -> list[tuple]:
-    return conn.execute(
+@dataclass(frozen=True)
+class _Para:
+    """One paragraph of a government document. The importer stores a paragraph that runs across
+    a page break once per page (core/ingest/govdoc.py); its parts are read as one text, so a
+    quotation that runs across the break is still one quote."""
+
+    ids: tuple[str, ...]  # the stored parts, in page order
+    doc: str
+    page: int
+    last_page: int
+    para_no: int
+    label: str | None
+    text: str  # the parts joined by a line break
+    ocr: bool
+    title: str
+
+
+def _paragraphs(conn: sqlite3.Connection) -> list[_Para]:
+    rows = conn.execute(
         "SELECT p.id, p.govdoc_id, p.page, p.para_no, p.label, p.text, p.ocr, g.title"
         " FROM govdoc_paragraphs p JOIN govdocs g ON g.id = p.govdoc_id"
-        " ORDER BY p.govdoc_id, p.para_no"
+        " ORDER BY p.govdoc_id, p.para_no, p.page, p.char_start, p.id"
     ).fetchall()
+    out = []
+    for (doc, para_no), group in groupby(rows, key=lambda r: (r[1], r[3])):
+        parts = list(group)
+        out.append(
+            _Para(
+                ids=tuple(r[0] for r in parts),
+                doc=doc,
+                page=parts[0][2],
+                last_page=parts[-1][2],
+                para_no=para_no,
+                label=parts[0][4],
+                text="\n".join(r[5] for r in parts),
+                ocr=any(r[6] for r in parts),
+                title=parts[0][7],
+            )
+        )
+    return out
 
 
 def paragraph_label(label: str | None, para_no: int) -> str:
@@ -638,30 +694,34 @@ def selection_audit(
     index = _index(conn)
     names = case_names(conn)
     paras = _paragraphs(conn)
-    many = len({p[1] for p in paras}) > 1
-    lookups = {p[0]: document_lookups(conn, p[5], index, names) for p in paras}
+    many = len({p.doc for p in paras}) > 1
+    lookups = {p.ids[0]: document_lookups(conn, p.text, index, names) for p in paras}
     placed: dict[str, set[str]] = defaultdict(set)  # govdoc id -> messages its paragraphs quote
     hits: dict[str, set[str]] = defaultdict(set)  # govdoc id -> messages holding words it quotes
     for p in paras:
-        for lk in lookups[p[0]]:
-            placed[p[1]].update(pl.record_id for pl in lk.places)
-            hits[p[1]].update(lk.hits)
+        for lk in lookups[p.ids[0]]:
+            placed[p.doc].update(pl.record_id for pl in lk.places)
+            hits[p.doc].update(lk.hits)
     threads: dict[str, _Thread] = {}
     units: list[Unit] = []
-    for pid, govdoc_id, page, para_no, label, text, ocr, title in paras:
-        if not lookups[pid] or (paragraph_id is not None and pid != paragraph_id):
+    for p in paras:
+        pid = p.ids[0]
+        if not lookups[pid] or (paragraph_id is not None and paragraph_id not in p.ids):
             continue
-        sel, maybe = placed[govdoc_id], hits[govdoc_id] - placed[govdoc_id]
+        sel, maybe = placed[p.doc], hits[p.doc] - placed[p.doc]
         places = [pl for lk in lookups[pid] for pl in lk.places]
         units.append(
             Unit(
                 kind="document",
                 id=pid,
-                label=paragraph_label(label, para_no),
-                page=page,
-                title=title if many else None,
-                text=text,
-                ocr=bool(ocr),
+                label=paragraph_label(p.label, p.para_no),
+                page=p.page,
+                last_page=p.last_page if p.last_page != p.page else None,
+                ids=p.ids,
+                doc=p.doc,
+                title=p.title if many else None,
+                text=p.text,
+                ocr=p.ocr,
                 lookups=tuple(lookups[pid]),
                 passages=tuple(_unit_passages(conn, pid, places, sel, maybe, threads)),
             )
@@ -711,6 +771,8 @@ def selection_audit(
         tagged_quoted=sum(1 for t in tags if t.record_id in quoted),
         unsearched=tuple(unsearched),
         paragraphs=len(paras),
+        docs=tuple(dict.fromkeys((p.doc, p.title) for p in paras)),
+        same=_same_messages(conn, units),
     )
 
 
@@ -737,6 +799,32 @@ def quiet(p: Passage, stretches: list[Gap]) -> tuple[Quiet, ...]:
             if a <= g.start < g.end <= b:
                 out.append(Quiet(side, sr.scope, g.start, g.end))
     return tuple(sorted(out, key=lambda q: (q.side == "after", q.start_utc)))
+
+
+def _same_messages(conn: sqlite3.Connection, units: list[Unit]) -> dict[str, str]:
+    """For every message in the passages' exchanges that has a copy on another source
+    (core/selection/picks.py same_message), the id that stands for all its copies. A group never
+    holds two messages of one source, so two like messages on one phone stay two."""
+    ids = sorted({r for u in units for p in u.passages for r in p.exchange_ids})
+    by_body: dict[str, list[Facts]] = defaultdict(list)
+    for f in facts(conn, ids).values():
+        by_body[f.body].append(f)
+    head = {i: i for i in ids}
+    sources = {i: {f.source_id} for fs in by_body.values() for f in fs for i in [f.id]}
+
+    def root(x: str) -> str:
+        while head[x] != x:
+            x = head[x]
+        return x
+
+    for group in by_body.values():
+        for a, b in combinations(sorted(group, key=lambda f: (f.utc or _LAST, f.id)), 2):
+            ra, rb = root(a.id), root(b.id)
+            if ra != rb and same_message(a, b) and not sources[ra] & sources[rb]:
+                keep, drop = min(ra, rb), max(ra, rb)
+                head[drop] = keep
+                sources[keep] |= sources.pop(drop)
+    return {i: root(i) for i in ids if root(i) != i}
 
 
 def _sources(conn: sqlite3.Connection) -> list[SourceLine]:
@@ -825,7 +913,8 @@ def summary(unit: Unit, p: Passage) -> list[str]:
     if p.untimed:
         return [
             f"{who} {verb} a message with no usable time in the source, so code cannot tell what "
-            "was exchanged with it. The messages beside it in the source's order are shown."
+            "was exchanged with it. It is listed after the thread's messages that have a time, so "
+            "the messages shown beside it are not necessarily the ones sent or received around it."
         ]
     span = span_text(p)
     if p.exchange == n:
@@ -907,23 +996,45 @@ def lookup_note(lk: Lookup) -> str:
         if not lk.hits:
             return f"Not looked up: {lk.skipped}."
         n = len(lk.hits)
+        what = "words" if any(ch.isalnum() for ch in lk.text) else "characters"
         return (
             f"Not looked up: {lk.skipped}. {_n(n, 'message')} {'is' if n == 1 else 'are'} just "
-            f"these words, so {'it is' if n == 1 else 'they are'} marked as may be quoted."
+            f"these {what}, so {'it is' if n == 1 else 'they are'} marked as may be quoted."
         )
+    loose = (
+        f" The same words with different punctuation are in {_n(lk.loose, 'more message')}."
+        if lk.loose
+        else ""
+    )
     if lk.part:
         return (
             "The whole quote was not found. Only the words after a colon or dash were found, in "
-            f"{_n(lk.found, 'message')}, so it is not placed."
+            f"{_n(lk.found, 'message')}, so it is not placed." + loose
         )
-    if not lk.found:
+    if not lk.found and not lk.loose:
         return (
             "Not found in the messages searched. This does not show that the message was never "
             "sent or received."
         )
+    if not lk.found:
+        n = lk.loose
+        return (
+            "Not found as printed. The same words with different punctuation are in "
+            f"{_n(n, 'message')}, so it is not placed and {'it is' if n == 1 else 'they are'} "
+            "marked as may be quoted."
+        )
     if lk.found > MAX_PLACES:
-        return f"Found in {lk.found:,} messages, too many to tell which one is meant. Not placed."
+        return (
+            f"Found in {lk.found:,} messages, too many to tell which one is meant. Not placed."
+            + loose
+        )
     if not lk.places:
+        if lk.loose:
+            return (
+                f"Found in {_n(lk.found, 'message')}, and the same words with different "
+                f"punctuation in {_n(lk.loose, 'more message')}. Code does not decide which one "
+                "is meant. Not placed."
+            )
         return (
             f"Found in {lk.found} messages. Code cannot confirm they are one message seen on "
             "different phones, so it does not decide which one is meant. Not placed."
