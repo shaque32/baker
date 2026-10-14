@@ -670,25 +670,32 @@ def _merge(fits: list[Fit]) -> list[Fit]:
     return list(out.values())
 
 
-def _collapse(case: Case, pairs: Iterable[tuple[Row, str]]) -> list[Fit]:
-    """One line per record across every statement. A record found twice, or a copy on another
-    phone of a record already shown, adds its note to that line; identical rows on one phone
-    stay separate records."""
+def _collapse(case: Case, pairs: Iterable[tuple[Row, str]], name_copies: bool = False) -> list[Fit]:
+    """One line per record across every statement. A record found again adds its note to its
+    line. Copies on different phones share lines: the n-th identical row on a phone joins the
+    n-th line of that copy key, so a key shows as many lines as the phone holding the most such
+    rows (as in _dedupe), whichever phone comes first. name_copies prefixes a note that a copy
+    on another phone adds with that phone, for notes that read the copy on its own phone."""
     fits: list[Fit] = []
-    first: dict[tuple[str, ...], tuple[str, int]] = {}  # copy key -> (phone, index in fits)
+    lines: dict[tuple[str, ...], list[int]] = {}  # copy key -> its lines, as indexes in fits
+    count: dict[tuple[tuple[str, ...], str], int] = {}  # (copy key, phone) -> rows placed
     at: dict[str, int] = {}  # record id -> index in fits
     for r, note in pairs:
         i = at.get(r.id)
         if i is None:
             key = _copy_key(case.data, r)
-            seen = first.get(key)
-            if seen is None or seen[0] == r.source_id:
-                first.setdefault(key, (r.source_id, len(fits)))
+            n = count.get((key, r.source_id), 0)
+            count[(key, r.source_id)] = n + 1
+            slots = lines.setdefault(key, [])
+            if n >= len(slots):
+                slots.append(len(fits))
                 at[r.id] = len(fits)
                 fits.append(_fit(case, r, note))
                 continue
-            i = seen[1]
+            i = at[r.id] = slots[n]
         old = fits[i]
+        if name_copies and r.source_id != old.source_id:
+            note = f"{cite(r.source_id)}'s copy: {note}"
         if note not in old.note:
             fits[i] = replace(old, note=f"{old.note} {note}")
     return fits
@@ -741,12 +748,11 @@ def _clock(case: Case, assumptions: list[Assumption]) -> Alternative | None:
     if not mine:
         return None
     claimed = _claimed_rows(case, mine)
-    fits: list[Fit] = []
+    pairs: list[tuple[Row, str]] = []
     used: list[str] = []
     # Every copy is read on its own phone's clocks (phones can print different offsets). A
     # record shows once, from the first copy whose reading fits, across every statement; a copy
     # on another phone that fits too adds its own reading to that line.
-    first: dict[tuple[str, ...], tuple[str, int]] = {}  # copy key -> (phone, index in fits)
     for a in mine:
         window = a.params.window
         wall = _wall(window) if window is not None else None
@@ -777,25 +783,16 @@ def _clock(case: Case, assumptions: list[Assumption]) -> Alternative | None:
                         f"on the phone's own clock ({case.data.sources[r.source_id].tz}) it is "
                         f"{local_str(case.data, r)}"
                     )
-                    fit = _fit(
-                        case,
-                        r,
-                        f"Read on {label}, this record is at {_day(t)}, inside the stated "
-                        f"time {cite(window.raw)}; {phone}.",
+                    pairs.append(
+                        (
+                            r,
+                            f"Read on {label}, this record is at {_day(t)}, inside the stated "
+                            f"time {cite(window.raw)}; {phone}.",
+                        )
                     )
-                    key = _copy_key(case.data, r)
-                    seen = first.get(key)
-                    if seen is not None and seen[0] != r.source_id:
-                        old = fits[seen[1]]
-                        extra = f"{cite(r.source_id)}'s copy: {fit.note}"
-                        if extra not in old.note:
-                            fits[seen[1]] = replace(old, note=f"{old.note} {extra}")
-                    else:
-                        first.setdefault(key, (r.source_id, len(fits)))
-                        fits.append(fit)
                     used.append(a.id)
                     break
-    fits = _merge(fits)  # a record two time statements both point to shows once
+    fits = _collapse(case, pairs, name_copies=True)  # each record once, every copy's reading
     if not fits:
         return None
     return Alternative(

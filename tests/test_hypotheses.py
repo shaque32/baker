@@ -961,3 +961,42 @@ def test_same_words_copies_two_phone_scoped_statements_find_show_once(conn):
     assert both is not None and alone is not None
     assert both.total == alone.total
     assert {f.record_id for f in both.fits} == {f.record_id for f in alone.fits}
+
+
+# ---------------------------------------------------------------- twelfth review
+
+
+def _twin(conn, rid: str, new: str) -> None:  # noqa: ANN001
+    conn.execute(
+        "INSERT INTO messages SELECT ?, source_id, 'Test!40', thread_id, sender_account_id,"
+        " sender_raw, direction, ts_utc, ts_offset_min, ts_raw, body, lang, deleted_flag,"
+        " bookmarked FROM messages WHERE id = ?",
+        (new, rid),
+    )
+    conn.execute(
+        "INSERT INTO message_recipients SELECT ?, account_id, raw FROM message_recipients"
+        " WHERE message_id = ?",
+        (new, rid),
+    )
+
+
+def test_two_rows_on_the_later_phone_stay_two_records(conn):
+    _twin(conn, "msg:item2:Chats!912", "msg:item2:twin")
+    one = _asm(conn, "C14", "no_contact", channels=("WhatsApp",), device_ids=("dev:item1",))
+    two = _asm(conn, "C14", "no_contact", channels=("Telegram",), device_ids=("dev:item2",))
+    two = two.model_copy(update={"id": "asm:item2"})
+    case = explain.load(conn)
+    alone = explain._other_app(case, [one])
+    both = explain._other_app(case, [one, two])
+    assert both.total == alone.total + 1  # item2's second row is a record of its own
+
+
+def test_clock_twins_on_the_later_phone_stay_two_records(conn):
+    _twin(conn, "msg:item2:Chats!903", "msg:item2:twin")
+    one = _asm(conn, "C10", "record_time", device_ids=("dev:item1",))
+    two = _asm(conn, "C10", "record_time", device_ids=("dev:item2",))
+    two = two.model_copy(update={"id": "asm:item2"})
+    clock = explain._clock(explain.load(conn), [one, two])
+    assert clock is not None
+    assert clock.total == 2
+    assert [f.source_id for f in clock.fits] == ["item1", "item2"]
