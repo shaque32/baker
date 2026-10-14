@@ -39,10 +39,14 @@ from core.report.html import (
     audit_log_summary,
     record_line,
     review_label,
+    said,
     sources,
     stand_in_banner,
 )
 from core.report.restore import CSS as RESTORE_CSS
+from core.report.selection import CSS as SELECTION_CSS
+from core.report.selection import anchor as selection_anchor
+from core.report.selection import claim_note
 from core.review.status import (
     AGAINST,
     HOLDINGS,
@@ -53,6 +57,7 @@ from core.review.status import (
     claim_states,
     queue,
 )
+from core.selection.audit import selection_audit
 from ui.theme import FONT_CSS, MARK, THEME_CSS
 
 CONTEXT_WINDOW = 10  # messages either side: about 20 messages of context
@@ -144,6 +149,7 @@ class Page:
                 ("/claim/new", "Add a claim"),
                 ("/identities", "Identities"),
                 ("/exhibits", "Exhibits"),
+                ("/selection", "Selection"),
                 ("/timeline", "Timeline"),
                 ("/gaps", "Gaps"),
                 ("/report", "Report"),
@@ -165,7 +171,8 @@ class Page:
             "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
             f"<meta name='viewport' content='width=device-width, initial-scale=1'>{meta}"
             f"<title>{e(title)} · Baker</title>"
-            f"<style>{FONT_CSS}{REPORT_CSS}{RESTORE_CSS}{UI_CSS}{THEME_CSS}</style></head><body>"
+            f"<style>{FONT_CSS}{REPORT_CSS}{RESTORE_CSS}{SELECTION_CSS}{UI_CSS}{THEME_CSS}</style>"
+            "</head><body>"
             "<header class='top'><div class='bar'>"
             f"<a class='brand' href='{'/' if self.case_name is not None else '/cases'}'>"
             f"{MARK}<span>Baker</span></a>{case}<div class='right'>"
@@ -183,6 +190,8 @@ def _tab(path: str) -> str:
         return "/claims"
     if path in ("/exhibit", "/exhibit/match", "/request-letter"):
         return "/exhibits"
+    if path == "/selection/context":
+        return "/selection"
     if path == "/run":
         return "/setup"
     return path
@@ -525,7 +534,7 @@ def evidence_card(
         f"<span class='mono'>{e(item.ref.source_id)} {e(item.ref.locator)} · "
         f"{e(item.record_id)}</span></p>"
         f"<p class='muted'>Model rationale (inferred): {e(item.rationale)}</p>"
-        f"<p><strong>Review:</strong> {e(review_label(conn, item))} · "
+        f"<p><strong>Review:</strong> {review_label(conn, item)} · "
         f"<a href='{e(link('/evidence', id=item.id))}'>See about 20 messages around it</a></p>"
         f"{_decide_form(page, item, last_kind == 'expert', back)}</div>"
     )
@@ -556,6 +565,15 @@ def _groups(st: ClaimState) -> list[tuple[str, list[EvidenceItem]]]:
     return [(k, v) for k, v in groups.items() if v]
 
 
+def _selection_note(conn: sqlite3.Connection, paragraph_id: str) -> str:
+    """What the selection audit found around the quotes of the claim's paragraph, if anything."""
+    audit = selection_audit(conn, paragraph_id=paragraph_id)
+    units = audit.of("document")
+    if not units:
+        return ""
+    return claim_note(units[0], f"/selection#{selection_anchor(units[0].id)}", audit.same) or ""
+
+
 def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | None:
     st = claim_state(conn, claim_id)
     if st is None:
@@ -575,6 +593,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
             f"<details><summary>Paragraph as printed ({e(st.where)})</summary>"
             f"<blockquote>{q(st.paragraph_text)}</blockquote></details>"
         )
+        out.append(_selection_note(conn, c.paragraph_id))
     out.append(
         "<div class='card' id='verdict'><div class='in'><div class='eyebrow'>Verdict</div>"
         f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span>"
@@ -590,7 +609,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
             f"{e(d.pipeline_run_id)}.</p></details>"
         )
         if d.confirmed_by:
-            note = f" Note: {e(d.override_note)}" if d.override_note else ""
+            note = f" Note: {said(d.override_note)}" if d.override_note else ""
             kind = "overrode" if d.override_note is not None else "confirmed"
             out.append(f"<p>{e(d.confirmed_by)} {kind} this verdict.{note}</p>")
         out.append(f"</div><div class='in'>{_verdict_forms(page, st, back)}")
@@ -744,7 +763,8 @@ def evidence_page(conn: sqlite3.Connection, page: Page, evidence_id: str) -> str
     back = link("/evidence", id=evidence_id)
     history = list(
         conn.execute(
-            "SELECT seq, reviewer, status, reason, decided_at_utc FROM evidence_reviews"
+            "SELECT seq, reviewer_kind, reviewer, status, reason, decided_at_utc"
+            " FROM evidence_reviews"
             " WHERE evidence_id = ? ORDER BY seq",
             (evidence_id,),
         )
@@ -787,9 +807,9 @@ def evidence_page(conn: sqlite3.Connection, page: Page, evidence_id: str) -> str
             "<table><thead><tr><th>#</th><th>Reviewer</th><th>Status</th><th>Reason</th>"
             "<th>When (UTC)</th></tr></thead>"
             + "".join(
-                f"<tr><td>{s}</td><td>{e(who)}</td><td>{e(status)}</td><td>{e(reason)}</td>"
-                f"<td>{e(at)}</td></tr>"
-                for s, who, status, reason, at in history
+                f"<tr><td>{s}</td><td>{e(who)}</td><td>{e(status)}</td>"
+                f"<td>{said(reason) if kind == 'expert' else e(reason)}</td><td>{e(at)}</td></tr>"
+                for s, kind, who, status, reason, at in history
             )
             + "</table>"
         )

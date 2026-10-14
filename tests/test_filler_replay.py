@@ -106,6 +106,10 @@ def test_dated_quotes_are_timed_on_the_day_the_claim_states(built):
     assert rt.params.quoted_text == "need 2 more by friday"
     assert rt.params.window.raw == "On March 12, 2026"
     assert rt.params.window.start_utc.isoformat() == "2026-03-12T04:00:00+00:00"
+    # The model gave the sender no party; code reads "PETROV wrote" (the Mac run of
+    # 2026-10-13 showed ¶6.1 could never be supported without it, rule 3e).
+    (sender,) = [a for a in built["¶6.1"][0] if a.template_id == "sender"]
+    assert sender.params.person_ids == rt.params.person_ids == ("person:petrov",)
     # ¶11.1 "no contact ... between March 20 and March 23, 2026" (gold C14): the model ended
     # its range on March 22; the claim's own words end it at the close of March 23.
     (nc,) = built["¶11.1"][0]

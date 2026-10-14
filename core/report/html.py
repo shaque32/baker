@@ -2,7 +2,9 @@
 
 No scripts, no external fonts, styles or images. Everything shown is read from the case
 database. Every cited span (government text, evidence quotes, record text) is wrapped in
-<span class="q"> so the forbidden-word check can tell cited text from the tool's own words.
+<span class="q"> so the forbidden-word check can tell cited text from the tool's own words. A
+reason or note an expert typed is wrapped in <span class="said">, which the check also leaves as
+written: it is the expert's own wording, shown next to their name.
 
 Display rules:
 - The report shows pipeline.view_run(): the latest completed pipeline run (a full audit, or a
@@ -20,6 +22,9 @@ Display rules:
   (observed, derived, inferred), or ai_reviewed / confirmed from its review status.
 - Device-ownership stipulations, expert-confirmed identity links, source coverage, what each
   search covered and the meaning of each verdict are printed as limitations in every report.
+- The Selection audit section (core/report/selection.py) shows each message the document quotes,
+  an exhibit quotes or the examiner tagged in its own exchange, with the messages around it that
+  were not picked. It never changes a verdict.
 - The report carries source hashes, Baker, contract, rule, report and model versions, and an
   audit-log summary with the hash-chain result.
 """
@@ -45,8 +50,8 @@ from core.contracts import (
 )
 from core.ingest import coverage as import_coverage
 from core.report import restore as restore_html
+from core.report import selection as selection_html
 from core.report import timeline as timeline_html
-from core.report.letter import letter_section
 from core.review import audit_log
 from core.review.status import (
     AWAITING_EXPERT,
@@ -160,6 +165,11 @@ def q(text: object) -> str:
     return f'<span class="q">{html.escape(str(text))}</span>'
 
 
+def said(text: object) -> str:
+    """A reason or note an expert typed, as they wrote it. Never for Baker's or a model's text."""
+    return f'<span class="said">{html.escape(str(text))}</span>'
+
+
 def e(text: object) -> str:
     return html.escape("" if text is None else str(text))
 
@@ -170,6 +180,7 @@ def verdict_label(decision: VerdictDecision, awaiting: bool = False) -> tuple[st
 
 
 def review_label(conn: sqlite3.Connection, item: EvidenceItem) -> str:
+    """The latest review of an item, as HTML: the expert's reason in their own words."""
     r = conn.execute(
         "SELECT reviewer_kind, reviewer, status, reason FROM evidence_reviews"
         " WHERE evidence_id = ? ORDER BY seq DESC LIMIT 1",
@@ -180,10 +191,10 @@ def review_label(conn: sqlite3.Connection, item: EvidenceItem) -> str:
     kind, who, status, reason = r
     if kind == "expert":
         what = {"accepted": "Accepted", "dismissed": "Dismissed", "open": "Reopened"}[status]
-        return f"{what} by {who}: {reason}"
+        return f"{what} by {e(who)}: {said(reason)}"
     what = {"ai_accepted": "Accepted", "dismissed": "Dismissed"}[status]
     tail = " Not confirmed by an expert." if status == "ai_accepted" else ""
-    return f"{what} by the local AI reviewer: {reason}{tail}"
+    return f"{what} by the local AI reviewer: {e(reason)}{tail}"
 
 
 # ---------------------------------------------------------------- sections
@@ -325,7 +336,7 @@ def _claim_block(conn: sqlite3.Connection, st: ClaimState) -> str:
             f"{e(pipeline.iso(decision.decided_at_utc))} in {e(decision.pipeline_run_id)}.</p>"
         )
         if decision.confirmed_by:
-            note = f" Note: {e(decision.override_note)}" if decision.override_note else ""
+            note = f" Note: {said(decision.override_note)}" if decision.override_note else ""
             out.append(f"<p>Verdict reviewed by {e(decision.confirmed_by)}.{note}</p>")
     coverage = {cv.assumption_id: cv for cv in (decision.coverage if decision else ())}
 
@@ -379,7 +390,7 @@ def _claim_block(conn: sqlite3.Connection, st: ClaimState) -> str:
                 f"<tr><td><blockquote>{q(x.quote)}</blockquote>{record_line(conn, x.record_id)}"
                 f"<br><span class='muted'>Model rationale (inferred): {e(x.rationale)}</span>"
                 f"</td><td>{STANCE_LABEL[x.stance]}</td><td>{display_tier(x).value}</td>"
-                f"<td>{e(review_label(conn, x))}</td>"
+                f"<td>{review_label(conn, x)}</td>"
                 f"<td class='mono'>{e(x.ref.source_id)} {e(x.ref.locator)}<br>{e(x.record_id)}"
                 "</td></tr>"
             )
@@ -495,7 +506,8 @@ def render_report(conn: sqlite3.Connection, timeline: timeline_html.Settings | N
         "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
         "<title>Baker claims report</title>"
-        f"<style>{CSS}{restore_html.CSS}{timeline_html.CSS}</style></head><body>",
+        f"<style>{CSS}{restore_html.CSS}{timeline_html.CSS}{selection_html.CSS}</style>"
+        "</head><body>",
         "<h1>Baker claims report</h1>",
         "<p class='muted'>"
         + (" · ".join(q(t) for t in govdocs) or "No government document imported")
@@ -550,9 +562,10 @@ def render_report(conn: sqlite3.Connection, timeline: timeline_html.Settings | N
     parts += [_claim_block(conn, st) for st in states]
 
     parts.append(searches_section(states, srcs))
-    parts.append(timeline_html.report_section(conn, timeline or timeline_html.Settings()))
+    timeline = timeline or timeline_html.Settings()
+    parts.append(timeline_html.report_section(conn, timeline))
     parts.append(restore_html.restore_section(conn))
-    parts.append(letter_section(conn))
+    parts.append(selection_html.selection_section(conn, states, timeline))
 
     parts.append(
         "<h2>Sources</h2><table><thead><tr><th>File</th><th>Kind</th><th>Coverage</th>"

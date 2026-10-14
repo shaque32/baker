@@ -27,7 +27,7 @@ later, after the audit engine scores well on the eval set. A CLI comes first.
 |---|---|---|
 | Claim extraction | Proposes claims | Expert edits the list; every claim keeps its page and paragraph |
 | Assumptions | Fills claim-type templates | Templates are fixed per claim type; tier starts at inferred |
-| Stance | Labels one evidence item against one assumption | Quote verified verbatim by code; label is input to rules, never a verdict; SUPPORTED needs the supporting label accepted by an expert (rules 0.2.0) |
+| Stance | Labels one evidence item against one assumption | Quote verified verbatim by code; label is input to rules, never a verdict; SUPPORTED needs the supporting label accepted by an expert (rules 0.2.0); an unreviewed "contradicts" cannot overrule a check that passed, it only complicates (rules 0.2.1) |
 | Review | Local model accepts or dismisses one verified supporting item | Separate human-owned prompt; a sorting aid for the expert that never makes a claim SUPPORTED under rules 0.2.0; tier becomes ai_reviewed, never confirmed; a human decision overrides it; cloud models only in eval/ as benchmarks |
 | Translation | ru -> en | Original text stays the citable text |
 
@@ -57,10 +57,13 @@ core/
     rules.py          decide_verdict (human-owned)
     prompts/          human-owned prompts
   restore/            Context Restore: find pasted exhibit quotes in the extraction (code only)
+  selection/          selection audit: each message the document quotes, an exhibit quotes or the
+                      examiner tagged, in its exchange with the messages around it that were not
+                      picked (code only, derived each time, never changes a verdict)
   identity/           propose account -> person links from names in the data (code only);
                       the expert confirms or rejects each one on the Identities page
   review/             expert actions + audit log
-  report/             ReportRenderer; restore.py and letter.py (selection-audit request)
+  report/             ReportRenderer; restore.py, selection.py, letter.py (full-extraction request)
   review/status.py    what each claim needs from the expert (shared by screen and report)
   review/redecide.py  re-run the verdict rules after expert review, no model
   casework/           case folders and imports, background audit and claim-proposal jobs,

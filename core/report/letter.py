@@ -162,9 +162,10 @@ def request_letter(conn: sqlite3.Connection) -> str | None:
     return "\n".join(lines)
 
 
-def letter_section(conn: sqlite3.Connection) -> str:
-    """The report's selection-audit section: the draft request, or a line saying none is needed."""
-    out = ["<h2 id='selection-audit'>Selection audit</h2>"]
+def letter_body(conn: sqlite3.Connection) -> str:
+    """The draft request, or a line saying none is needed (the report's Selection audit section
+    ends with it, core/report/selection.py)."""
+    out: list[str] = []
     text = request_letter(conn)
     srcs = needs_request(conn)
     if text is None:
