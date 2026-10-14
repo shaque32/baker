@@ -229,25 +229,32 @@ settles it.
 ## Baker's own wording (new in v0.3)
 
 Baker does not send the stance step plain sentences. It sends the text of one of its fixed
-assumption templates (`core/audit/assumptions.py`), with its own ids, and the record as its
-database stores it: a message, a call, a contact row or an attachment's file name. A pipeline
-test on case01 (2026-10-14, thread "Train the small model") showed a model trained only on plain
-sentences mislabels these, so both generators also write items in Baker's own wording. The
-answers follow the same four definitions and rules 1 to 24; this section adds what is new.
+assumption templates (`core/audit/assumptions.py`), with the names the case gives its phones,
+people and accounts (`core/audit/readable.py`), and the record as its database stores it: a
+message, a call, a contact row or an attachment's file name. A pipeline test on case01
+(2026-10-14, thread "Train the small model") showed a model trained only on plain sentences
+mislabels these, so both generators also write items in Baker's own wording. The answers follow
+the same four definitions and rules 1 to 24; this section adds what is new.
 
 ### How Baker's wording reads
 
-25. **Ids.** `dev:item1` is a phone. `acct:item1:Telegram:5550147` is the Telegram account
-    5550147 as phone item1's extraction lists it; the same app and identifier on another phone
-    is the same account. `person:dev:item1:owner` is the person an expert stipulated as phone
-    item1's owner. `person:vance` is a person the government document names, whom no expert has
-    tied to any account.
-26. **What a line shows about people.** A sender line prints the app and identifier, then
-    "(owner)" if it is the record's own phone's account, then in brackets the person ids Baker
-    holds as confirmed for that account: stipulated phone owners and links an expert confirmed,
-    never proposed ones (`Telegram 5550147 (owner) [person:dev:item1:owner]`). A person id that
-    appears in no bracket is unresolved, and rule 4 applies to it: no handle, saved name or
-    self-introduction shows who it is. The RECORD line also names the phone it came from.
+25. **Names.** `item1` is a phone, named by its source as Baker's screens name it. "Daniel
+    Petrov (the user of item1)" is the person an expert stipulated as item1's user. A name
+    alone, "Rita Vance", is a person the government document names. "Telegram 5550147" is an
+    account: the same app and identifier is the same account on every phone, and an SMS number
+    and a call number with the same digits are one account. Counts read "exactly 12", "at least
+    12" or "at most 12". Case01's paragraph 10.1 showed why names, not ids: the 14B read "sent by
+    person:dev:item1:owner" against the same number saved as "Dan P" and answered contradicts.
+26. **What a line shows about people.** A sender line prints the app and identifier, then the
+    name the phone saved for it if any, then "(owner)" if it is the record's own phone's
+    account, then in brackets the people Baker holds as confirmed for that account: stipulated
+    phone users and links an expert confirmed, never proposed ones. On item1 the user's own
+    number reads `SMS +13125550161 (owner) [Daniel Petrov (the user of item1)]`; on a phone that
+    saved it as "Dan P", `SMS +13125550161 Dan P [Daniel Petrov (the user of item1)]`. A person
+    the assumption names who appears in no bracket is unresolved, and rule 4 applies to them: no
+    handle, saved name or self-introduction shows who it is, even one that matches their name
+    (`SMS +13125550188 Rita` does not show Rita Vance). The RECORD line also names the phone it
+    came from.
 27. **Zones.** The zone after a window ("(America/New_York)") is the zone the document's times
     are read in. A line's zone abbreviation is the phone's: EST and EDT are America/New_York,
     CST and CDT America/Chicago, MST and MDT America/Denver, PST and PDT America/Los_Angeles.
@@ -257,38 +264,57 @@ answers follow the same four definitions and rules 1 to 24; this section adds wh
     the report printed it>, 123s"; that printed time is often UTC ("(UTC+0)"), and the line's
     local time decides. A contact row reads "<saved name> <number>", has no time, and belongs to
     the phone its RECORD line names.
-29. **"The claim" is not shown.** The meaning, role and event templates say "what the claim
-    says" or "the claim states", but the stance step is not shown the claim. Until Baker shows
-    it, no record can support or contradict these templates: a record that holds the quoted
-    words, or comes from or goes to an account bracketed with a named person (inside the
-    window, if one is given), is complicates; any other is irrelevant.
+29. **The claim, for meaning, role and event.** These templates say "what the claim says", "the
+    role the claim states" or "the event the claim states". For them Baker shows the claim's own
+    text from the government document before the assumption (stance prompt v1.1, Arsh's choice
+    of 2026-10-14). Read the assumption with the claim filled in. The claim is never evidence
+    and is never quoted.
+    - **Meaning.** Supports only when the record is a message in which whoever used the quoted
+      words plainly says they mean what the claim says they mean ("when i say the shed i mean
+      the unit on 5th"). Contradicts when that sender plainly gives the words a meaning that
+      cannot be true together with the claim's ("the shed is the one in my backyard, we
+      dont have a unit"). A record that holds the quoted words and settles nothing, or an
+      explanation from anyone else, is complicates (rules 6 and 18).
+    - **Role and event.** They state a role or an act as a fact, so a message never supports
+      them (rule 14), with one exception: when the claim's event is itself a message or call,
+      the record that is that message or call (between the named parties, shown by account or
+      bracketed name, inside the window, and saying what the claim says it said) supports.
+      Contradicts needs a named person's own words, from an account bracketed with them, that
+      rule the act or role out for the claim's whole time: a denial that covers it (rule 23),
+      or placing themselves elsewhere for all of it. A record from or to such an account that
+      bears on the act or role without settling it is complicates.
+    - Any other record, including one that involves none of the named persons, is irrelevant.
 
 ### Baker's own wording: families
 
 | Family | Answer | Template | What the record shows | Invented example |
 |---|---|---|---|---|
-| `bk_sender_shown` | supports | sender | The quoted words, from the named sender: a named account's app and identifier, or the named person id in the line's brackets. | Assumption: The message "gate code 1190" was sent by person:dev:item1:owner. Record on item1, line `SMS +13125550161 (owner) [person:dev:item1:owner]`: "gate code 1190". |
+| `bk_sender_shown` | supports | sender | The quoted words, from the named sender: a named account's app and identifier, or the named person in the line's brackets, whatever name the phone saved. | Assumption: The message "gate code 1190" was sent by Daniel Petrov (the user of item1). Record on item2, line `SMS +13125550161 Dan P [Daniel Petrov (the user of item1)]`: "gate code 1190". |
 | `bk_sender_other` | complicates (trap) | sender | The quoted words from a different account or person; one record cannot show the named sender never sent them too (rule 23). | Same assumption; the record "gate code 1190" comes from `SMS +13125550188`. |
-| `bk_party_unshown` | complicates (trap) | sender, time, no-contact, count | The assumption names a person id that no line carries in brackets, so the record shows only an account (rule 26). | Assumption: The message "gate code 1190" was sent by person:vance. Record from `SMS +13125550188`: "gate code 1190". |
-| `bk_time_inside` | supports | time | The quoted words, from the named sender if one is named, at a local time plainly inside the window in the assumption's zone. | Assumption: The message "gate code 1190" (acct:item1:SMS:+13125550188) was sent "on May 2, 2026" (America/Chicago). Record: 2026-05-02 14:10 CDT. |
-| `bk_call_inside` | supports | time (call) | A call between the named parties' numbers, its local time plainly inside the window and its length inside the range, if one is given (rule 28). | Assumption: A call between person:dev:item1:owner and acct:item1:Phone:+13125550188 lasting 60 to 120 s happened "at about 9 p.m. on May 2, 2026" (America/Chicago). Record: outgoing call, 21:02 CDT, 84s. |
+| `bk_party_unshown` | complicates (trap) | sender, time, no-contact, count | The assumption names a person that no line carries in brackets, so the record shows only an account, a handle or a saved name, even one like the person's name (rule 26). | Assumption: The message "gate code 1190" was sent by Rita Vance. Record from `SMS +13125550188 Rita`: "gate code 1190". |
+| `bk_time_inside` | supports | time | The quoted words, from the named sender if one is named, at a local time plainly inside the window in the assumption's zone. | Assumption: The message "gate code 1190" (SMS +13125550188) was sent "on May 2, 2026" (America/Chicago). Record: 2026-05-02 14:10 CDT. |
+| `bk_call_inside` | supports | time (call) | A call between the named parties' numbers, its local time plainly inside the window and its length inside the range, if one is given (rule 28). | Assumption: A call between Daniel Petrov (the user of item1) and Phone +13125550188 lasting 60 to 120 s happened "at about 9 p.m. on May 2, 2026" (America/Chicago). Record: outgoing call, 21:02 CDT, 84s. |
 | `bk_time_outside` | complicates (trap) | time | The named message or a call between the named parties, at a local time outside the window (rule 23). | The record "gate code 1190" at 2026-05-03 08:15 CDT against "on May 2, 2026". |
 | `bk_zone_edge` | complicates (trap) | time, no-contact | The line's zone differs from the assumption's, and the record is inside the window in one and outside it in the other (rule 27). | "on May 2, 2026" (America/New_York); record 2026-05-02 23:30 CDT, which is 12:30 a.m. May 3 in New York. |
 | `bk_call_length` | complicates (trap) | time (call) | A call between the named parties inside the window, but its length is outside the stated range; one record cannot show there was no other call. | Range 60 to 120 s; the call lasted 14s. |
-| `bk_identity_named` | complicates (trap) | identity | The record, from a named account, has its sender giving the person's name or someone calling them by it; a name in a chat is never proof (rule 4). | Assumption: acct:item2:Telegram:5550147 belongs to person:vance. Record from Telegram 5550147: "its rita vance btw". |
+| `bk_identity_named` | complicates (trap) | identity | The record, from a named account, has its sender giving the person's name or someone calling them by it; a name in a chat is never proof (rule 4). | Assumption: Telegram 5550147 belongs to Rita Vance. Record from Telegram 5550147: "its rita vance btw". |
 | `bk_account_silent` | irrelevant | identity, authorship | The record is from a named account but says nothing about who holds it or who is typing. | Same assumption; record "parking is on 3rd". |
 | `bk_handles_said` | complicates | same account | A message, from the account itself or anyone else, says the two handles are one account or that one became the other. A message shows what was said, not the platform's records (rule 14). | Assumption: On Telegram, @rv_44, @ritav are one account. Record from Telegram 5550147: "switched my @ from rv_44 to ritav". |
-| `bk_contact_row` | supports | contact | A contact row on the named phone with exactly that saved name and that number. | Assumption: dev:item1 has a contact "Gus Tires" with the number of acct:item1:Phone:+13125550177. Record on item1: "Gus Tires +13125550177". |
+| `bk_contact_row` | supports | contact | A contact row on the named phone with exactly that saved name and that number. | Assumption: item1 has a contact "Gus Tires" with the number of Phone +13125550177. Record on item1: "Gus Tires +13125550177". |
 | `bk_contact_row_differs` | complicates | contact | A contact row on the named phone with that name and another number, or that number under another name (rule 23). | Record on item1: "Gus Tires +13125550190". |
-| `bk_count_one` | complicates | count | One message between the named parties inside the window: one of the counted messages, which cannot settle the number. | Assumption: dev:item1 holds eq 12 messages between ... "from May 1 through May 9, 2026". Record: one such message, May 4. |
-| `bk_no_contact_inside` | contradicts | no-contact | A message or call between the named parties (both shown, by account or bracketed person id), plainly inside the window in the assumption's zone. | Assumption: No contact between person:dev:item1:owner and acct:item1:SMS:+13125550188 "before May 3, 2026" (America/Chicago) on every phone. Record: May 1, between them. |
-| `bk_other_phone` | complicates | no-contact, count | The assumption covers one named phone; the record, between the named parties, is on another phone. It shows contact, not what the named phone holds. | "... on dev:item1"; the record comes from item2. |
+| `bk_count_one` | complicates | count | One message between the named parties inside the window: one of the counted messages, which cannot settle the number. | Assumption: item1 holds exactly 12 messages between ... "from May 1 through May 9, 2026". Record: one such message, May 4. |
+| `bk_no_contact_inside` | contradicts | no-contact | A message or call between the named parties (both shown, by account or bracketed name), plainly inside the window in the assumption's zone. | Assumption: No contact between Daniel Petrov (the user of item1) and SMS +13125550188 "before May 3, 2026" (America/Chicago) on every phone. Record: May 1, between them. |
+| `bk_other_phone` | complicates | no-contact, count | The assumption covers one named phone; the record, between the named parties, is on another phone. It shows contact, not what the named phone holds. | "... on item1"; the record comes from item2. |
 | `bk_outside_window` | irrelevant | no-contact, count | A message or call between the named parties, plainly outside the window in any zone. | "before May 3, 2026"; record May 9. |
 | `bk_weekday_next` | supports | weekday | The quoted words name the stated date's weekday for a plan, sent one to six days before that date. | Assumption: The weekday in "lets do thursday at the yard" means "Thursday, May 7, 2026" (America/Chicago). Record sent Monday May 4. |
 | `bk_weekday_open` | complicates | weekday | The record names the weekday it was sent on, or says "next" or "this" before the weekday, so which date it means is open. | "next thursday at the yard", sent Monday May 4. |
 | `bk_weekday_wrong` | contradicts | weekday | The quoted words name a different weekday from the stated date's, or plan for that weekday after the date has passed. | "lets do friday at the yard" against "Thursday, May 7, 2026". |
-| `bk_author_cue` | complicates (trap) | authorship | The record, from a named account, carries a cue about who is typing (a self-introduction, someone else on the phone, a signature); one record cannot show who typed what the account sent. | Assumption: person:vance personally wrote what acct:item2:Telegram:5550147 sent. Record: "this is her brother, she left it here". |
-| `bk_claim_unseen` | complicates | meaning, role, event | The record holds the quoted words (meaning), or comes from or goes to an account bracketed with a named person (role; event inside its window), but nothing shown says what the claim states (rule 29). | Assumption: The words "drop it by the shed" mean what the claim says they mean. Record: "drop it by the shed". |
+| `bk_author_cue` | complicates (trap) | authorship | The record, from a named account, carries a cue about who is typing (a self-introduction, someone else on the phone, a signature); one record cannot show who typed what the account sent. | Assumption: Rita Vance personally wrote what Telegram 5550147 sent. Record: "this is her brother, she left it here". |
+| `bk_claim_open` | complicates (trap) | meaning, role, event | The record holds the quoted words and nothing shown says what they mean (meaning), or it comes from or goes to an account bracketed with a named person, plainly inside the window if one is given, and bears on the act or role without being it or ruling it out (role, event) (rule 29). | Claim: Vance used "the shed" to mean the storage unit on 5th Street. Assumption: The words "the shed" mean what the claim says they mean. Record: "drop it by the shed". |
+| `bk_meaning_said` | supports | meaning | A message from the account that used the quoted words, plainly saying they mean exactly what the claim says they mean (rule 29). | Same claim and assumption. Record from Telegram 5550147, which wrote "drop it by the shed" earlier in the chat: "when i say the shed i mean the unit on 5th". |
+| `bk_meaning_other` | contradicts | meaning | That same account plainly gives the words a meaning that cannot be true together with the claim's (rule 29). | Same claim and assumption. Record from Telegram 5550147: "the shed is the one in my backyard, we dont have a unit". |
+| `bk_event_is_record` | supports | event | The claim's event is a message or call, and the record is it: between the named parties, plainly inside the window, and for a message saying exactly what the claim says it said (rule 29). | Claim: On May 2, 2026, Vance texted Ortiz the gate code 1190. Assumption: The event the claim states happened, involving Rita Vance and SMS +13125550188 "on May 2, 2026" (America/Chicago). Record from `SMS +13125550161 [Rita Vance]` in its chat with SMS +13125550188, May 2: "gate code 1190". |
+| `bk_claim_denied` | contradicts | role, event | A person the claim names, from an account bracketed with them, rules the act or role out for the claim's whole time in their own words, sent after it: a denial that covers it, or placing themselves elsewhere for all of it (rules 23 and 29). | Claim: On May 2, 2026, Vance met Ortiz at the yard. Same assumption. Record from `SMS +13125550161 [Rita Vance]`, sent May 4: "didnt see ortiz at all on the 2nd, i was in denver all weekend". |
 | `bk_unrelated` | irrelevant | all | Another message, call, contact row or attachment that holds none of the quoted words and involves none of the named parties on the matter. | Sender assumption about "gate code 1190"; record "running 10 min late" from the same account. |
 
 ## Changes from v0.2, for Arsh to sign
@@ -305,13 +331,16 @@ answers follow the same four definitions and rules 1 to 24; this section adds wh
    both test sets (a change to `GO_BAR.md` and `gobar.py` that only Arsh can make).
 3. **Rationales (rule 24).** Joke, denial, slang and count rationales say what is uncertain
    instead of declaring it, and never name a weekday the record does not have.
-4. **Baker's own wording (rules 25 to 29, 23 new `bk_` families).** Items whose assumption is
-   Baker's template text with its ids, and whose record may be a call, a contact row or an
-   attachment, as the product sends them. Decisions to sign: confirmed person ids shown in
-   brackets count as shown (rule 26); a zone-dependent time is complicates (rule 27); one count
-   record, one contact row that differs, a call of the wrong length, a handle change said in a
-   message and an author cue are complicates; templates that point to "the claim" are never
-   supports or contradicts until Baker shows the stance step the claim (rule 29).
+4. **Baker's own wording (rules 25 to 29, 27 new `bk_` families).** Items whose assumption is
+   Baker's template text with the names the case gives (rule 25), shown with the claim for the
+   meaning, role and event templates, and whose record may be a call, a contact row or an
+   attachment, as the product sends them. Decisions to sign: people an expert confirmed,
+   shown in brackets, count as shown, and a saved name never does (rule 26); a zone-dependent
+   time is complicates (rule 27); one count record, one contact row that differs, a call of the
+   wrong length, a handle change said in a message and an author cue are complicates; for the
+   templates that point to "the claim", only the words' own user explaining them, or the
+   claimed message or call itself, supports, and only a named person's own denial or alibi
+   from an account bracketed with them contradicts (rule 29).
 
 ## Decided when v0.2 was signed (2026-10-12, as proposed)
 

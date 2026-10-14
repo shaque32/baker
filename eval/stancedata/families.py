@@ -165,11 +165,12 @@ FAMILIES: tuple[Family, ...] = (
     _F("irr_pleasantry", C.IRRELEVANT, S.IRRELEVANT, None, tuple(K),
        "The record is a greeting, thanks or small talk with no bearing on the assumption."),
     # Baker's own wording (guide rules 25 to 29): the assumption is the product's template text
-    # (core/audit/assumptions.py) with Baker's ids, and the record may be a call, a contact row
-    # or an attachment. `templates` names the templates a family's items use.
+    # (core/audit/assumptions.py) with the names the case gives (core/audit/readable.py), and
+    # the record may be a call, a contact row or an attachment. `templates` names the templates
+    # a family's items use.
     _F("bk_sender_shown", C.CLEAR_SUPPORT, S.SUPPORTS, None, (K.IDENTITY,),
        "Baker's sender template. The record holds the quoted words, and its line shows the named "
-       "sender: a named account's app and identifier, or the named person id in the line's "
+       "sender: a named account's app and identifier, or the named person in the line's "
        "brackets.", new=True, templates=("sender",)),
     _F("bk_sender_other", C.OVERREACH, S.COMPLICATES, "sender_mismatch", (K.IDENTITY,),
        "Baker's sender template. The record holds the quoted words, but its line shows a "
@@ -177,9 +178,9 @@ FAMILIES: tuple[Family, ...] = (
        "too.", new=True, templates=("sender",)),
     _F("bk_party_unshown", C.OVERREACH, S.COMPLICATES, "handle_owner",
        (K.IDENTITY, K.TIME, K.COMPLETENESS),
-       "A Baker template names a person id that no line carries in brackets, so the record shows "
-       "only an account, handle or saved name for that party, even if the chat uses the "
-       "person's name.", new=True,
+       "A Baker template names a person that no line carries in brackets, so the record shows "
+       "only an account, handle or saved name for that party, even if the saved name or the "
+       "chat uses the person's name.", new=True,
        templates=("sender", "record_time", "no_contact", "message_count")),
     _F("bk_time_inside", C.CLEAR_SUPPORT, S.SUPPORTS, None, (K.TIME,),
        "Baker's time template for a message. The record holds the quoted words, comes from the "
@@ -228,7 +229,7 @@ FAMILIES: tuple[Family, ...] = (
        "number.", new=True, templates=("message_count",)),
     _F("bk_no_contact_inside", C.CONTRADICTS, S.CONTRADICTS, None, (K.COMPLETENESS,),
        "Baker's no-contact template. The record is a message or call between the named parties, "
-       "both shown by account or bracketed person id, on a phone the assumption covers, plainly "
+       "both shown by account or bracketed name, on a phone the assumption covers, plainly "
        "inside the window in the zone the assumption names.", new=True,
        templates=("no_contact",)),
     _F("bk_other_phone", C.COMPLICATES, S.COMPLICATES, None, (K.COMPLETENESS,),
@@ -255,11 +256,30 @@ FAMILIES: tuple[Family, ...] = (
        "Baker's authorship template. The record, from a named account, carries a cue about who "
        "is typing (a self-introduction, someone else on the phone, a signature); one record "
        "cannot show who typed what the account sent.", new=True, templates=("authorship",)),
-    _F("bk_claim_unseen", C.COMPLICATES, S.COMPLICATES, None, (K.MEANING, K.EVENT),
-       "Baker's meaning, role and event templates point to a claim the stance step is not "
-       "shown. The record holds the quoted words, or comes from or goes to an account bracketed "
-       "with a named person (inside the window, if one is given).", new=True,
+    _F("bk_claim_open", C.OVERREACH, S.COMPLICATES, "claim_unsettled", (K.MEANING, K.EVENT),
+       "Baker's meaning, role and event templates, shown with the claim. The record holds the "
+       "quoted words and nothing shown says what they mean, or it comes from or goes to an "
+       "account bracketed with a named person (plainly inside the window, if one is given) and "
+       "bears on the act or role without being it or ruling it out.", new=True,
        templates=("meaning", "role", "event")),
+    _F("bk_meaning_said", C.CLEAR_SUPPORT, S.SUPPORTS, None, (K.MEANING,),
+       "Baker's meaning template, shown with the claim. The record is a message from the account "
+       "that used the quoted words, plainly saying they mean exactly what the claim says they "
+       "mean, with no hedge, joke or later correction.", new=True, templates=("meaning",)),
+    _F("bk_meaning_other", C.CONTRADICTS, S.CONTRADICTS, None, (K.MEANING,),
+       "Baker's meaning template, shown with the claim. The account that used the quoted words "
+       "plainly gives them a meaning that cannot be true together with the claim's, with no "
+       "hedge, joke or later correction.", new=True, templates=("meaning",)),
+    _F("bk_event_is_record", C.CLEAR_SUPPORT, S.SUPPORTS, None, (K.EVENT,),
+       "Baker's event template, shown with a claim whose event is a message or call. The record "
+       "is that message or call: between the named parties, plainly inside the window, and for "
+       "a message saying exactly what the claim says it said.", new=True,
+       templates=("event",)),
+    _F("bk_claim_denied", C.CONTRADICTS, S.CONTRADICTS, None, (K.EVENT,),
+       "Baker's role and event templates, shown with the claim. A person the claim names, from an "
+       "account bracketed with them, rules the act or role out for the claim's whole time in "
+       "their own words, sent after it: a denial that covers it, or placing themselves "
+       "elsewhere for all of it.", new=True, templates=("role", "event")),
     _F("bk_unrelated", C.IRRELEVANT, S.IRRELEVANT, None, tuple(K),
        "Any Baker template. Another message, call, contact row or attachment that holds none of "
        "the quoted words and does not involve the named parties on the matter.", new=True,

@@ -31,7 +31,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 from core.audit.assumptions import TEMPLATES, Names
-from core.audit.checks._common import Key, key
+from core.audit.checks._common import CaseData, Key, key, person_party
 from core.contracts import Assumption, AssumptionParams
 
 COUNT_WORDS = {"eq": "exactly", "ge": "at least", "le": "at most"}
@@ -128,37 +128,25 @@ def assumption_text(a: Assumption, names: CaseNames) -> str:
 
 
 def case_names(conn: sqlite3.Connection) -> CaseNames:
-    """Read the names from a case database. Read-only."""
+    """Read the names from a case database. Read-only. The people on an account are exactly
+    the parties Baker's checks tie to it (core.audit.checks._common.person_party)."""
+    data = CaseData(conn)
     phones = {did: sid for did, sid in conn.execute("SELECT id, source_id FROM devices")}
     people = {pid: name for pid, name in conn.execute("SELECT id, name FROM persons")}
-    accounts = {
-        aid: AccountName(app, identifier, device_id is not None)
-        for aid, app, identifier, device_id in conn.execute(
-            "SELECT id, app, identifier, device_id FROM accounts"
-        )
-    }
     users: dict[str, set[str]] = defaultdict(set)
+    for _sid, device_id, person_id, status in data.stipulations:
+        if status == "confirmed":
+            users[person_id].add(device_id)
     confirmed: dict[Key, set[str]] = defaultdict(set)
-    owners = conn.execute(
-        "SELECT subject_id, person_id FROM stipulations"
-        " WHERE kind = 'device_owner' AND status = 'confirmed'"
-    ).fetchall()
-    for device_id, person_id in owners:
-        users[person_id].add(device_id)
-        for app, identifier in conn.execute(
-            "SELECT app, identifier FROM accounts WHERE device_id = ?", (device_id,)
-        ):
-            confirmed[key(app, identifier)].add(person_id)
-    for account_id, person_id in conn.execute(
-        "SELECT account_id, person_id FROM identity_links WHERE status = 'confirmed'"
-    ):
-        acc = accounts.get(account_id)
-        if acc is not None:
-            confirmed[acc.key].add(person_id)
+    for person_id in sorted({*users, *(pid for _, _, pid in data.links)}):
+        for k in person_party(data, person_id).keys:
+            confirmed[k].add(person_id)
     return CaseNames(
         phones=phones,
         people=people,
         users={p: tuple(sorted(d)) for p, d in users.items()},
-        account_names=accounts,
+        account_names={
+            aid: AccountName(a.app, a.identifier, a.is_owner) for aid, a in data.accounts.items()
+        },
         confirmed={k: tuple(sorted(v)) for k, v in confirmed.items()},
     )

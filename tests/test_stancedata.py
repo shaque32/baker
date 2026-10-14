@@ -53,7 +53,7 @@ def _item(family_id: str = "sup_plain", **kw):
 def test_every_family_is_in_the_guide_with_the_same_answer() -> None:
     rows = re.findall(r"^\| `(\w+)` \| (\w+)", GUIDE.read_text(encoding="utf-8"), re.M)
     assert dict(rows) == {f.family_id: f.stance.value for f in FAMILIES}
-    assert len(BY_ID) == len(FAMILIES) == 61
+    assert len(BY_ID) == len(FAMILIES) == 65
 
 
 def test_label_comes_from_the_family() -> None:
