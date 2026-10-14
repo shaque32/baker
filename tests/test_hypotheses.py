@@ -263,6 +263,10 @@ def test_report_lists_alternatives_under_their_claims(conn):
         ("signed in as Daniel", "Instagram", "Instagram", None),  # no one else's thing
         ("logged in on my phone", "SMS", "SMS", None),  # one's own phone
         ("im using my phone rn", "SMS", "SMS", None),  # one's own phone, either phrasing
+        ("i never used his account", "Instagram", "Instagram", None),  # a denial
+        ("I didn't use her phone", "SMS", "SMS", None),
+        ("I did not borrow his phone", "SMS", "SMS", None),
+        ("not sure but im using his phone", "SMS", "SMS", "using his phone"),  # not a denial
     ],
 )
 def test_hand_off_words(body, app, claimed_app, found):
@@ -596,3 +600,15 @@ def test_a_phone_with_no_zone_shows_no_derived_local_time(conn):
     assert "local time derived" not in alternatives_html(
         [Alternative("clock", "timing", "t", "s", (fit,), 1, "", ())]
     )
+
+
+def test_a_record_at_the_instant_after_the_window_is_outside(conn):
+    conn.execute(
+        "INSERT INTO messages (id, source_id, locator, thread_id, direction, ts_utc, ts_raw, body)"
+        " VALUES ('msg:item1:next', 'item1', 'Test!5', 'thr:item1:WhatsApp:1', 'incoming',"
+        " '2026-03-24T04:00:00Z', 'test', 'hi')"
+    )
+    quiet = alts_for(conn, "C15")["app_quiet"]
+    assert {f.source_id for f in quiet.fits} == {"item1", "item2"}  # item1 is still quiet
+    after = next(f for f in quiet.fits if f.source_id == "item1" and "first after" in f.note)
+    assert after.record_id == "msg:item1:next"

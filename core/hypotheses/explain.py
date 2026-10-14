@@ -442,10 +442,19 @@ def _name_fits(case: Case, keys: set[Key], persons: list[idl.Person]) -> list[Fi
     return out
 
 
+_NEGATED = re.compile(
+    r"\b(?:never|not|no|didn'?t|didn’t|dont|don'?t|don’t|wont|won'?t|cant|can'?t|can’t|"
+    r"havent|haven'?t|wasnt|wasn'?t)\b(?:\s+[^\W\d_]+){0,2}\s*$",
+    re.IGNORECASE,
+)
+
+
 def _handoff(body: str, app: str, claimed_app: str) -> re.Match[str] | None:
     """The first words in a message about using another person's phone, account or login that
     bear on a message sent on claimed_app."""
     for m in _HANDOFF.finditer(body):
+        if _NEGATED.search(body[max(0, m.start() - 40) : m.start()]):
+            continue  # "i never used his account" denies a hand-off
         if (m.group("whose1") or m.group("whose") or "").casefold() == "my":
             continue  # logging in on one's own phone or account names no one else's
         thing = (m.group("thing") or m.group("thing2") or "").casefold()
@@ -898,7 +907,7 @@ _EDGE = (
     ") WHERE ts_utc IS NOT NULL AND julianday(ts_utc)"
 )
 # Per phone and app: its records (messages and calls), its records with no usable time, its
-# records inside the window, and the phone's other records inside the window.
+# records inside the window [lo, hi), and the phone's other records inside the window.
 _APP_COUNTS = """
 SELECT
   (SELECT COUNT(*) FROM messages m JOIN threads t ON t.id = m.thread_id
@@ -910,19 +919,19 @@ SELECT
     WHERE source_id = :sid AND lower(app) = lower(:app) AND ts_utc IS NULL),
   (SELECT COUNT(*) FROM messages m JOIN threads t ON t.id = m.thread_id
     WHERE m.source_id = :sid AND lower(t.app) = lower(:app)
-      AND julianday(m.ts_utc) BETWEEN julianday(:lo) AND julianday(:hi))
+      AND julianday(m.ts_utc) >= julianday(:lo) AND julianday(m.ts_utc) < julianday(:hi))
   + (SELECT COUNT(*) FROM calls
     WHERE source_id = :sid AND lower(app) = lower(:app)
-      AND julianday(ts_utc) BETWEEN julianday(:lo) AND julianday(:hi)),
+      AND julianday(ts_utc) >= julianday(:lo) AND julianday(ts_utc) < julianday(:hi)),
   (SELECT COUNT(*) FROM messages m JOIN threads t ON t.id = m.thread_id
     WHERE m.source_id = :sid AND lower(t.app) != lower(:app)
-      AND julianday(m.ts_utc) BETWEEN julianday(:lo) AND julianday(:hi))
+      AND julianday(m.ts_utc) >= julianday(:lo) AND julianday(m.ts_utc) < julianday(:hi))
   + (SELECT COUNT(*) FROM calls
     WHERE source_id = :sid AND lower(app) != lower(:app)
-      AND julianday(ts_utc) BETWEEN julianday(:lo) AND julianday(:hi))
+      AND julianday(ts_utc) >= julianday(:lo) AND julianday(ts_utc) < julianday(:hi))
 """
 _LAST_BEFORE = _EDGE + " < julianday(:bound) ORDER BY julianday(ts_utc) DESC, id LIMIT 1"
-_FIRST_AFTER = _EDGE + " > julianday(:bound) ORDER BY julianday(ts_utc) ASC, id LIMIT 1"
+_FIRST_AFTER = _EDGE + " >= julianday(:bound) ORDER BY julianday(ts_utc) ASC, id LIMIT 1"
 
 
 def _app_quiet(case: Case, assumptions: list[Assumption]) -> Alternative | None:
@@ -936,7 +945,10 @@ def _app_quiet(case: Case, assumptions: list[Assumption]) -> Alternative | None:
         apps = [c for c in p.channels if c.strip().lower() != CALL_CHANNEL]
         if a.template_id not in _SILENCE_TEMPLATES or p.window is None or not apps:
             continue
-        lo, hi = _iso(p.window.start_utc), _iso(p.window.end_utc)
+        # The window's end is inclusive to the microsecond (23:59:59.999999); julianday() keeps
+        # only milliseconds, so the SQL uses the exclusive next instant instead.
+        lo = _iso(p.window.start_utc)
+        hi = _iso(p.window.end_utc + timedelta(microseconds=1))
         for app in apps:
             for sid in case.data.sources_for(p.device_ids):
                 holds, untimed, inside, rest = case.conn.execute(
