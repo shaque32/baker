@@ -21,6 +21,8 @@ import urllib.request
 from playwright.sync_api import Page, sync_playwright
 
 EXPERT = "Smoke Test (synthetic)"
+# Straight to 127.0.0.1: never through a proxy from the environment or the Windows registry.
+NO_PROXY = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
 def need(ok: bool, why: str) -> None:
@@ -31,15 +33,17 @@ def need(ok: bool, why: str) -> None:
 def wait_up(base: str, seconds: float = 90) -> None:
     need(base.startswith("http://127.0.0.1:"), f"{base} is not a Baker on this computer")
     deadline = time.monotonic() + seconds
+    last = "no answer"
     while True:
         try:
-            with urllib.request.urlopen(base + "/cases", timeout=5) as r:  # noqa: S310 - http only
+            with NO_PROXY.open(base + "/cases", timeout=5) as r:
                 if r.status == 200:
                     return
-        except OSError:
-            pass
+                last = f"HTTP {r.status}"
+        except OSError as e:
+            last = repr(e)
         if time.monotonic() > deadline:
-            raise SystemExit(f"FAIL: nothing answered at {base} within {seconds:.0f} s")
+            raise SystemExit(f"FAIL: nothing answered at {base} within {seconds:.0f} s ({last})")
         time.sleep(1)
 
 

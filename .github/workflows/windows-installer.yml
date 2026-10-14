@@ -299,17 +299,10 @@ jobs:
           if ($LASTEXITCODE) { throw 'pipeline failed' }
           & $py -X utf8 -m eval.run_eval --predictions eval/out/case01/model_free/predictions.jsonl
           if ($LASTEXITCODE) { throw 'gate failed on the installed copy' }
-      - name: The demo and the start screen, from the installed copy
+      - name: The demo case, built by the installed copy
         run: |
-          $baker = "$env:LOCALAPPDATA\Programs\Baker\baker.cmd"
-          & $baker demo --build-only
+          & "$env:LOCALAPPDATA\Programs\Baker\baker.cmd" demo --build-only
           if ($LASTEXITCODE) { throw 'baker demo --build-only failed' }
-          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\ui" | Out-Null
-          $ui = "$env:RUNNER_TEMP\ui"
-          Start-Process $baker -ArgumentList 'serve' -WindowStyle Hidden `
-            -RedirectStandardOutput "$ui\serve.log" -RedirectStandardError "$ui\serve.err.log"
-          Start-Process $baker -ArgumentList 'demo', '--no-open' -WindowStyle Hidden `
-            -RedirectStandardOutput "$ui\demo.log" -RedirectStandardError "$ui\demo.err.log"
       # The browser test's own Python and Chromium, set up only after Baker has run without them.
       - uses: actions/checkout@v4
         with:
@@ -319,19 +312,33 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Headless Chromium on the start screen and the demo case
+      # One step: Windows ends the processes a step started when that step ends.
+      - name: Start Baker and the demo, then headless Chromium on both
+        env:
+          PYTHONUNBUFFERED: "1"
         run: |
           python -m pip install --quiet playwright==1.56.0
           python -m playwright install chromium
-          python src/packaging/smoke_ui.py --serve http://127.0.0.1:8765 --demo http://127.0.0.1:8766 --screenshots "$env:RUNNER_TEMP\ui"
-          if ($LASTEXITCODE) { throw 'browser smoke test failed' }
+          $baker = "$env:LOCALAPPDATA\Programs\Baker\baker.cmd"
+          $ui = "$env:RUNNER_TEMP\ui"
+          New-Item -ItemType Directory -Force $ui | Out-Null
+          $serve = Start-Process $baker -ArgumentList 'serve' -WindowStyle Hidden -PassThru `
+            -RedirectStandardOutput "$ui\serve.log" -RedirectStandardError "$ui\serve.err.log"
+          $demo = Start-Process $baker -ArgumentList 'demo', '--no-open' -WindowStyle Hidden -PassThru `
+            -RedirectStandardOutput "$ui\demo.log" -RedirectStandardError "$ui\demo.err.log"
+          python src/packaging/smoke_ui.py --serve http://127.0.0.1:8765 --demo http://127.0.0.1:8766 --screenshots $ui
+          $failed = $LASTEXITCODE
+          foreach ($p in @($serve, $demo)) {
+            if ($p.HasExited) { "baker process $($p.Id) exited with code $($p.ExitCode)" } else { "baker process $($p.Id) still running" }
+          }
+          Get-ChildItem "$ui\*.log" | ForEach-Object { "--- $($_.Name)"; Get-Content $_ }
+          if ($failed) { throw 'browser smoke test failed' }
       - name: Stop Baker
         if: always()
         run: |
           Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" |
             Where-Object { $_.CommandLine -match '-m cli (serve|demo)' } |
             ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
-          Get-Content "$env:RUNNER_TEMP\ui\*.log" -ErrorAction SilentlyContinue
       - uses: actions/upload-artifact@v4
         if: always()
         with:
