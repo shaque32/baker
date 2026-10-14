@@ -11,8 +11,10 @@ Two checks, both by script, nothing by eye:
    this script is the only code in eval/stancedata, eval/train or eval/heldout that does.
 2. Training items against the held-out set, so the exam shares no text with the lessons.
 
-Every free text of an item (assumption, record, context lines, rationale) is compared with every
-reference text after normalizing case, punctuation and spacing. A pair is flagged when:
+Every free text of an item (assumption, record, context lines, rationale, and the claim an item
+in Baker's own wording shows) is compared with every reference text after normalizing case,
+punctuation and spacing; for an item in Baker's own wording the assumption is the product's
+template frame, so only the words it quotes are compared. A pair is flagged when:
 - exact: the normalized texts are equal and have at least EXACT_MIN_TOKENS words;
 - run: they share a contiguous run of at least RUN_MIN_TOKENS words that also covers at least
   RUN_MIN_SHARE of the shorter text and holds at least RUN_MIN_CONTENT words outside the
@@ -58,6 +60,8 @@ FRAME_TOKENS = frozenset(
     record he she they him her his their it its them we you i u me my our your who whom which
     january february march april may june july august september october november december
     2024 2025 2026 am pm local time date day
+    person dev acct phone call calls outgoing incoming missed utc list source item1 item2 item3
+    item4 item5 item6 item7 item8 item9 line lines record bracket brackets window zone
     """.split()
 )
 # A 3-gram in more reference texts than this is a sentence frame; it still counts toward a pair's
@@ -281,7 +285,16 @@ def reference_texts(root: Path = ROOT) -> Iterator[Text]:
 def item_text_list(rows: Iterable[dict], label: str) -> Iterator[Text]:
     for row in rows:
         pid = row["probe_id"]
-        yield Text(f"{label} {pid} assumption", row["assumption"])
+        if row.get("baker_template"):
+            # Baker's own wording: the template frame is the product's and is shared on purpose
+            # (core/audit/assumptions.py); only the words the template quotes are the item's.
+            quoted = (row.get("baker_params") or {}).get("quoted_text")
+            if quoted:
+                yield Text(f"{label} {pid} quoted words", quoted)
+            if row.get("baker_claim"):  # the model reads the claim beside the assumption
+                yield Text(f"{label} {pid} claim", row["baker_claim"])
+        else:
+            yield Text(f"{label} {pid} assumption", row["assumption"])
         yield Text(f"{label} {pid} record", row["target"]["text"])
         yield Text(f"{label} {pid} rationale", row["rationale"])
         for n, line in enumerate(row["context"]):

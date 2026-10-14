@@ -10,7 +10,7 @@ import pytest
 
 from eval.probe_draft import build
 from eval.probe_draft.items import DISPUTED, ITEMS
-from eval.probe_draft.model import SIGNED_LABEL, ProbeCategory, ProbeItem
+from eval.probe_draft.model import SIGNED_LABELS, ProbeCategory, ProbeItem
 from eval.synthetic.generate import generate
 
 REQUIRED_TRAPS = {
@@ -61,14 +61,14 @@ def test_jsonl_round_trips():
     parsed = [ProbeItem.model_validate_json(x) for x in lines]
     assert parsed == ITEMS
     signed = {
-        json.loads(x)["probe_id"] for x in lines if json.loads(x)["labeled_by"] == SIGNED_LABEL
+        json.loads(x)["probe_id"] for x in lines if json.loads(x)["labeled_by"] in SIGNED_LABELS
     }
     assert signed == {f"P{n:03d}" for n in range(1, 89)}
     assert all(json.loads(x)["labeled_by"].startswith("DRAFT") for x in lines[88:])
 
 
 def test_disputed_items_are_signed_and_known():
-    assert set(DISPUTED) <= {i.probe_id for i in ITEMS if i.labeled_by == SIGNED_LABEL}
+    assert set(DISPUTED) <= {i.probe_id for i in ITEMS if i.labeled_by in SIGNED_LABELS}
     assert {i.probe_id for i in ITEMS if i.disputed} == set(DISPUTED)
 
 

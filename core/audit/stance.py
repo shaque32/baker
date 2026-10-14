@@ -162,6 +162,12 @@ class LocalStanceLabeler:
         missing = PLACEHOLDERS - required_placeholders(self.template)
         if missing:
             raise ValueError(f"stance prompt lacks placeholders: {sorted(missing)}")
+        # fill_prompt leaves a slot it has no value for in place, so a prompt with a slot this
+        # labeler does not fill (v1.1's {claim}, before its code lands) is refused, never sent.
+        unfilled = required_placeholders(self.template) - PLACEHOLDERS
+        if unfilled:
+            raise ValueError(f"stance prompt has placeholders the labeler does not fill: "
+                             f"{sorted(unfilled)}")  # fmt: skip
         self.prompt_version = prompt_version(self.template)
         self.render_record = render_record
         self.render_context = render_context

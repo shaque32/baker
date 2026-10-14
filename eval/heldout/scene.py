@@ -11,6 +11,7 @@ from core.contracts import AssumptionKind
 from eval.heldout import GENERATOR, SOURCE
 from eval.heldout.pools import (
     AREA_CODES,
+    AWAY,
     CYRILLIC_NAMES,
     FILLER_EN,
     FILLER_RU,
@@ -19,6 +20,7 @@ from eval.heldout.pools import (
     NEUTRAL_EN,
     NEUTRAL_MIXED,
     NEUTRAL_RU,
+    REACTIONS,
     ROLE_LABELS_BY_SIT,
     RU_ZONES,
     TELEGRAM_HANDLES,
@@ -61,18 +63,31 @@ class Chat:
     owner: Account
     contacts: list[Account]
     genders: dict[str, str] = field(default_factory=dict)  # label -> m/f for Russian verbs
+    filled: set[str] = field(default_factory=set)  # every line filler() returned
 
     @property
     def contact(self) -> Account:
         return self.contacts[0]
 
+    @property
+    def group(self) -> bool:
+        return len(self.contacts) > 1
+
     def filler(
-        self, rng: random.Random, neutral: bool = False, used: set[str] | None = None
+        self,
+        rng: random.Random,
+        neutral: bool = False,
+        used: set[str] | None = None,
+        calm: bool = False,
+        settled: bool = False,
     ) -> str:
         """One harmless line about the chat's own situation (one in five is small talk).
 
         `used` holds the lines already on screen; a line is drawn from the rest of the pool
-        and added to it, so one chat never shows the same small talk twice."""
+        and added to it, so one chat never shows the same small talk twice. `calm` leaves out
+        the reaction lines (a laugh, surprise, doubt), for a line that follows a record.
+        `settled` leaves out the lines that put the sender elsewhere or on the way ("on my
+        way", "in a meeting"), for a line from the record's own sender."""
         if self.lang == "ru":
             about, small = FILLER_RU[self.sit], NEUTRAL_RU
         elif self.lang == "mixed":
@@ -80,12 +95,18 @@ class Chat:
         else:
             about, small = FILLER_EN[self.sit], NEUTRAL_EN
         pool = small if neutral or rng.random() < 0.2 else about
+        if calm:
+            pool = [t for t in pool if t not in REACTIONS]
+        if settled:
+            pool = [t for t in pool if t not in AWAY]
         if used is not None:
             pool = [t for t in pool if t not in used] or pool
         base = rng.choice(pool)
         if used is not None:
             used.add(base)
-        return typo(rng, casual(rng, base))
+        text = typo(rng, casual(rng, base))
+        self.filled.add(text)
+        return text
 
     def zone(self) -> ZoneInfo:
         return ZoneInfo(self.tz)
@@ -166,10 +187,22 @@ def random_day(rng: random.Random, first: date = FIRST_DAY, last: date = LAST_DA
 
 
 def random_local(
-    rng: random.Random, tz: str, day: date | None = None, hours: tuple[int, int] = (7, 22)
+    rng: random.Random,
+    tz: str,
+    day: date | None = None,
+    hours: tuple[int, int] = (7, 22),
+    avoid: set[int] | frozenset[int] = frozenset(),
 ) -> datetime:
-    """A UTC instant whose local clock in tz falls on `day` within `hours` (inclusive hours)."""
+    """A UTC instant whose local clock in tz falls on `day` within `hours` (inclusive hours).
+
+    `avoid` holds weekdays (Monday 0) the item's lines name as one day: a message that names
+    "friday" is never sent on a Friday, where a past event would say "today" and a plan
+    "next friday" (guide rule 24). A drawn day on such a weekday moves to the next day."""
     day = day or random_day(rng)
+    if len(avoid) >= 7:
+        raise ValueError("every weekday is avoided")
+    while day.weekday() in avoid:
+        day += timedelta(days=1)
     lo, hi = hours
     hh = rng.randint(lo, hi)
     mm, ss = rng.randrange(60), rng.randrange(60)

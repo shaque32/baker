@@ -86,6 +86,31 @@ def party_count(p: AssumptionParams) -> int:
 # ---------------------------------------------------------------- templates
 
 
+class Names:
+    """How a template's text names phones, people, accounts and counts.
+
+    This base prints Baker's own ids ("person:dev:item1:owner", "eq 12"): that is the stored
+    Assumption.text, which nothing parses. What a model reads is rendered with
+    core.audit.readable.CaseNames instead, so the 14B, the small model and its training data
+    see the names the case gives them.
+    """
+
+    def person(self, person_id: str) -> str:
+        return person_id
+
+    def accounts(self, account_ids: Iterable[str]) -> list[str]:
+        return list(account_ids)
+
+    def phone(self, device_id: str) -> str:
+        return device_id
+
+    def count(self, op: str, n: int) -> str:
+        return f"{op} {n}"
+
+
+IDS = Names()
+
+
 @dataclass(frozen=True)
 class Template:
     id: str
@@ -95,7 +120,11 @@ class Template:
     required: frozenset[str]  # AssumptionParams fields that must be set
     allowed: frozenset[str]  # fields that may be set (required included)
     rule: Callable[[AssumptionParams], str | None]  # extra shape rule; returns the problem
-    render: Callable[[AssumptionParams], str]
+    fmt: Callable[[AssumptionParams, Names], str]
+
+    def render(self, p: AssumptionParams, names: Names | None = None) -> str:
+        """The assumption as text; with no names, the stored Assumption.text."""
+        return self.fmt(p, names or IDS)
 
     def problems(self, p: AssumptionParams) -> list[str]:
         out = []
@@ -111,10 +140,14 @@ class Template:
         return out
 
 
-def _who(p: AssumptionParams) -> str:
-    parts = list(p.person_ids)
+def _persons(p: AssumptionParams, n: Names) -> str:
+    return " and ".join(n.person(x) for x in p.person_ids)
+
+
+def _who(p: AssumptionParams, n: Names) -> str:
+    parts = [n.person(x) for x in p.person_ids]
     if p.account_ids or p.handles:
-        parts.append("/".join((*p.account_ids, *p.handles)))
+        parts.append("/".join((*n.accounts(p.account_ids), *p.handles)))
     return " and ".join(parts) or "anyone"
 
 
@@ -130,8 +163,8 @@ def _lasting(p: AssumptionParams) -> str:
     return f" lasting {p.duration_s[0]} to {p.duration_s[1]} s" if p.duration_s else ""
 
 
-def _phones(p: AssumptionParams) -> str:
-    return ", ".join(p.device_ids) or "every phone"
+def _phones(p: AssumptionParams, n: Names) -> str:
+    return ", ".join(n.phone(d) for d in p.device_ids) or "every phone"
 
 
 def _one_party(p: AssumptionParams) -> str | None:
@@ -186,7 +219,7 @@ TEMPLATES: dict[str, Template] = {
             frozenset({"quoted_text"}),
             frozenset({"quoted_text", "channels", "device_ids", *PARTY_FIELDS}),
             _one_party,
-            lambda p: f'The message "{p.quoted_text}" was sent by {_who(p)}{_on(p)}',
+            lambda p, n: f'The message "{p.quoted_text}" was sent by {_who(p, n)}{_on(p)}',
         ),
         Template(
             "record_time",
@@ -198,10 +231,10 @@ TEMPLATES: dict[str, Template] = {
                 {"window", "quoted_text", "duration_s", "channels", "device_ids", *PARTY_FIELDS}
             ),
             _time_rule,
-            lambda p: (
-                f'The message "{p.quoted_text}" ({_who(p)}) was sent {_when(p)}'
+            lambda p, n: (
+                f'The message "{p.quoted_text}" ({_who(p, n)}) was sent {_when(p)}'
                 if p.quoted_text
-                else f"A call between {_who(p)}{_lasting(p)} happened {_when(p)}"
+                else f"A call between {_who(p, n)}{_lasting(p)} happened {_when(p)}"
             ),
         ),
         Template(
@@ -214,9 +247,9 @@ TEMPLATES: dict[str, Template] = {
                 {"window", "expected_count", "count_op", "device_ids", "channels", *PARTY_FIELDS}
             ),
             _count_rule,
-            lambda p: (
-                f"{_phones(p)} holds {p.count_op} {p.expected_count} messages between "
-                f"{_who(p)}{_on(p)} {_when(p)}"
+            lambda p, n: (
+                f"{_phones(p, n)} holds {n.count(p.count_op or '', p.expected_count or 0)} "
+                f"messages between {_who(p, n)}{_on(p)} {_when(p)}"
             ),
         ),
         Template(
@@ -227,7 +260,7 @@ TEMPLATES: dict[str, Template] = {
             frozenset({"window"}),
             frozenset({"window", "channels", "device_ids", *PARTY_FIELDS}),
             _two_parties,
-            lambda p: f"No contact between {_who(p)}{_on(p)} {_when(p)} on {_phones(p)}",
+            lambda p, n: f"No contact between {_who(p, n)}{_on(p)} {_when(p)} on {_phones(p, n)}",
         ),
         Template(
             "same_account",
@@ -237,7 +270,7 @@ TEMPLATES: dict[str, Template] = {
             frozenset({"channels", "handles"}),
             frozenset({"channels", "handles", "device_ids"}),
             _same_account_rule,
-            lambda p: f"On {', '.join(p.channels)}, {', '.join(p.handles)} are one account",
+            lambda p, n: f"On {', '.join(p.channels)}, {', '.join(p.handles)} are one account",
         ),
         Template(
             "contact_entry",
@@ -247,9 +280,9 @@ TEMPLATES: dict[str, Template] = {
             frozenset({"device_ids", "quoted_text", "account_ids"}),
             frozenset({"device_ids", "quoted_text", "account_ids"}),
             _contact_rule,
-            lambda p: (
-                f'{_phones(p)} has a contact "{p.quoted_text}" with the number of '
-                f"{p.account_ids[0]}"
+            lambda p, n: (
+                f'{_phones(p, n)} has a contact "{p.quoted_text}" with the number of '
+                f"{n.accounts(p.account_ids[:1])[0]}"
             ),
         ),
         Template(
@@ -260,7 +293,7 @@ TEMPLATES: dict[str, Template] = {
             frozenset({"quoted_text", "window"}),
             frozenset({"quoted_text", "window", "channels", "device_ids", *PARTY_FIELDS}),
             _none,
-            lambda p: f'The weekday in "{p.quoted_text}" means {_when(p)}',
+            lambda p, n: f'The weekday in "{p.quoted_text}" means {_when(p)}',
         ),
         Template(
             "meaning",
@@ -270,7 +303,7 @@ TEMPLATES: dict[str, Template] = {
             frozenset({"quoted_text"}),
             _FREE,
             _none,
-            lambda p: f'The words "{p.quoted_text}" mean what the claim says they mean',
+            lambda p, n: f'The words "{p.quoted_text}" mean what the claim says they mean',
         ),
         Template(
             "authorship",
@@ -280,8 +313,8 @@ TEMPLATES: dict[str, Template] = {
             frozenset({"person_ids", "account_ids"}),
             _FREE,
             _none,
-            lambda p: (
-                f"{' and '.join(p.person_ids)} personally wrote what {'/'.join(p.account_ids)} sent"
+            lambda p, n: (
+                f"{_persons(p, n)} personally wrote what {'/'.join(n.accounts(p.account_ids))} sent"
             ),
         ),
         Template(
@@ -292,9 +325,9 @@ TEMPLATES: dict[str, Template] = {
             frozenset({"person_ids"}),
             _FREE,
             _none,
-            lambda p: (
-                f"{'/'.join(p.account_ids) or ', '.join(p.handles) or 'The account'} belongs "
-                f"to {' and '.join(p.person_ids)}"
+            lambda p, n: (
+                f"{'/'.join(n.accounts(p.account_ids)) or ', '.join(p.handles) or 'The account'}"
+                f" belongs to {_persons(p, n)}"
             ),
         ),
         Template(
@@ -305,7 +338,7 @@ TEMPLATES: dict[str, Template] = {
             frozenset({"person_ids"}),
             _FREE,
             _none,
-            lambda p: f"{' and '.join(p.person_ids)} played the role the claim states",
+            lambda p, n: f"{_persons(p, n)} played the role the claim states",
         ),
         Template(
             "event",
@@ -315,7 +348,7 @@ TEMPLATES: dict[str, Template] = {
             frozenset(),
             _FREE,
             _none,
-            lambda p: f"The event the claim states happened, involving {_who(p)} {_when(p)}",
+            lambda p, n: f"The event the claim states happened, involving {_who(p, n)} {_when(p)}",
         ),
     ]
 }

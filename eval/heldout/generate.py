@@ -3,7 +3,9 @@
     python -m eval.heldout.generate --out-dir eval/out/stancedata
 
 Item i of a split is built from `item_rng(GENERATOR, seed, i)` and the fixed schedule alone, so
-the output is byte-identical from run to run and from machine to machine.
+the output is byte-identical from run to run and from machine to machine. The items in Baker's
+own wording follow the plain ones in each split, ids continuing, each built from
+`item_rng(BK_GENERATOR, seed, i)` and its fixed plan (eval/heldout/bk_generate.py).
 """
 
 from __future__ import annotations
@@ -17,6 +19,8 @@ from pathlib import Path
 from eval.heldout import GENERATOR, ID_PREFIX, SEEDS, SOURCE
 from eval.heldout import writers_a as wa
 from eval.heldout import writers_b as wb
+from eval.heldout.bk_common import BK_GENERATOR
+from eval.heldout.bk_generate import bk_items
 from eval.heldout.scene import finish
 from eval.heldout.schedule import COMPOSITION, schedule
 from eval.stancedata.chat import item_rng, write_jsonl
@@ -35,9 +39,10 @@ WRITERS: dict[str, Callable] = {
     "con_other_value": wa.con_other_value,
     "con_other_state": wa.con_other_state,
     "con_in_window": wa.con_in_window,
-    "con_other_speaker": wa.con_other_speaker,
+    "con_correction": wa.con_correction,
     "ovr_time_mismatch": wb.ovr_time_mismatch,
     "ovr_sender_mismatch": wb.ovr_sender_mismatch,
+    "ovr_speaker_mismatch": wb.ovr_speaker_mismatch,
     "ovr_later_correction": wb.ovr_later_correction,
     "ovr_negation": wb.ovr_negation,
     "ovr_handle_owner": wb.ovr_handle_owner,
@@ -66,7 +71,13 @@ assert set(WRITERS) == set(COMPOSITION), "every scheduled family needs a writer"
 
 
 def generate(split: str) -> list[GenItem]:
-    """All items of one split (test or dev), in id order."""
+    """All items of one split (test or dev), in id order: the plain items, then the items in
+    Baker's own wording."""
+    return plain_items(split) + bk_items(split)
+
+
+def plain_items(split: str) -> list[GenItem]:
+    """The plain-sentence items of one split, in id order."""
     seed = SEEDS[split]
     prefix = ID_PREFIX[split]
     items: list[GenItem] = []
@@ -126,7 +137,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     out_dir: Path = args.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
-    manifest: dict[str, object] = {"generator": GENERATOR, "source": SOURCE, "seeds": SEEDS}
+    manifest: dict[str, object] = {
+        "generator": GENERATOR,
+        "baker_generator": BK_GENERATOR,
+        "source": SOURCE,
+        "seeds": SEEDS,
+    }
     files: dict[str, object] = {}
     for split in ("test", "dev"):
         items = generate(split)
