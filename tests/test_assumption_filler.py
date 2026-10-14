@@ -539,6 +539,37 @@ def test_check_window_refuses_the_whole_day_for_a_stated_noon():
         check_window(D(2026, 5, 2), D(2026, 5, 3), raw, raw, "", "record_time")
 
 
+@pytest.mark.parametrize(
+    ("text", "gap"),
+    [
+        ('On March 12, 2026, PETROV wrote "meet me at noon".', None),
+        ("On March 12, 2026, PETROV wrote 'meet me at 9 p.m.'.", None),
+        ("On March 12, 2026, PETROV wrote “see you at noon”.", None),
+        ("At noon on March 12, 2026, PETROV wrote 'ok'.", "time of day"),  # outside the quote
+        ("On March 12, 2026 at 9 p.m., PETROV's phone sent 'ok'.", "time of day"),
+    ],
+)
+def test_a_time_inside_quoted_words_is_not_the_send_time(text, gap):
+    from types import SimpleNamespace
+
+    from core.audit.assumption_filler import coverage_gap
+    from core.audit.assumptions import Proposal
+
+    c = Claim(id="X", paragraph_id="para:1", text=text, claim_type=ClaimType.COMMUNICATION,
+              status=ClaimStatus.ACCEPTED)  # fmt: skip
+    window = SimpleNamespace(raw="On March 12, 2026")
+    got = coverage_gap(c, [Proposal("record_time", {"window": window}), Proposal("sender", {})])
+    assert (got is None) if gap is None else (gap in got)
+
+
+def test_stated_windows_skip_a_time_inside_quoted_words():
+    from core.audit.assumption_filler import stated_windows
+
+    (w,) = stated_windows("On March 12, 2026, PETROV wrote 'noon'.")
+    assert (w.start.hour, (w.end - w.start).days) == (0, 1)
+    assert stated_windows("On March 12, 2026 at noon, PETROV wrote 'ok'.") is None
+
+
 @pytest.mark.parametrize(("cid", "change", "why"), BAD)
 def test_bad_values_drop_the_proposal_and_the_claim_stays_unproven(conn, cid, change, why):
     assumptions, filler, _ = build(conn, cid, _one(cid, **change))
