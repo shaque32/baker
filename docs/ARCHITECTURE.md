@@ -45,6 +45,7 @@ core/
   db.py               open a case database (plain or encrypted), apply schema
   encryption.py       case keys, encrypted copies of inputs, the keyring of unlocked cases
   ingest/             one file per input format; implements EvidenceImporter or GovDocIngester
+                      ufdr_check.py: offline check of a UFDR import against its report.xml
   enrich/             search index, embeddings, translation, gap detection
   claims/             ClaimExtractor
   audit/

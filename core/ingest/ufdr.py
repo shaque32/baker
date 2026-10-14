@@ -64,7 +64,7 @@ from core.ingest.cellebrite_common import (
 from core.review import audit_log
 
 IMPORTER_NAME = "ufdr"
-IMPORTER_VERSION = "0.1.0"
+IMPORTER_VERSION = "0.1.1"
 # Becomes "verified" only after a real UFDR has been checked against Cellebrite Reader
 # (docs/ingest/ufdr.md, "Before calling it verified"). Every import records it.
 FORMAT_SUPPORT = "unverified"
@@ -270,6 +270,10 @@ def _model(el: _El) -> _Model:
         elif ch.tag == "multiModelField":
             m.field_names.append(name)
             m.many[key] = [_model(c) for c in ch.children if c.tag == "model"]
+        elif name:
+            # Any other named child (a nodeField, say) is not read; naming it puts it among the
+            # fields Baker does not read in coverage instead of passing it over in silence.
+            m.field_names.append(name)
     return m
 
 
