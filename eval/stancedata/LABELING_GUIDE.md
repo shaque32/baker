@@ -1,6 +1,6 @@
 # Labeling guide for generated stance data
 
-DRAFT v0.3, 2026-10-13. Not signed. Arsh signed v0.2 on 2026-10-12 (`eval/gold/stancedata/`).
+DRAFT v0.3, 2026-10-14. Not signed. Arsh signed v0.2 on 2026-10-12 (`eval/gold/stancedata/`).
 v0.3 follows his review of the label sample on 2026-10-13: contradicts now needs the record's own
 words to rule the assumption out (rules 22 to 24), and the guide adds Baker's own wording
 (rules 25 to 29); "Changes from v0.2" at the end lists every change. Arsh signs it by replying "approved" (or with edits) in the "Custom model for Baker"
@@ -243,10 +243,11 @@ the same four definitions and rules 1 to 24; this section adds what is new.
     alone, "Rita Vance", is a person the government document names. "Telegram 5550147" is an
     account: the same app and identifier is the same account on every phone, and an SMS number
     and a call number with the same digits are one account. Counts read "exactly 12", "at least
-    12" or "at most 12". A message named by its words ('The message "gate code 1190"') is the
-    message that holds those words; it may say more ("gate code 1190, dont share it"). Case01's
-    paragraph 10.1 showed why names, not ids: the 14B read "sent by person:dev:item1:owner"
-    against the same number saved as "Dan P" and answered contradicts.
+    12" or "at most 12". "At about 9 p.m." is 8:52 to 9:08 p.m., eight minutes either side, as
+    Baker reads a document's "about". A message named by its words ('The message "gate code
+    1190"') is the message that holds those words; it may say more ("gate code 1190, dont share
+    it"). Case01's paragraph 10.1 showed why names, not ids: the 14B read "sent by
+    person:dev:item1:owner" against the same number saved as "Dan P" and answered contradicts.
 26. **What a line shows about people.** A sender line prints the app and identifier, then the
     sender's name as the source showed it, if the source kept one, then "(owner)" if it is the
     record's own phone's account, then in brackets the people Baker holds as confirmed for that
@@ -274,10 +275,14 @@ the same four definitions and rules 1 to 24; this section adds what is new.
     and is never quoted.
     - **Meaning.** Supports only when the record is a message in which whoever used the quoted
       words plainly says they mean what the claim says they mean ("when i say the shed i mean
-      the unit on 5th"). Contradicts when that sender plainly gives the words a meaning that
-      cannot be true together with the claim's ("the shed is the one in my backyard, we
-      dont have a unit"). A record that holds the quoted words and settles nothing, or an
-      explanation from anyone else, is complicates (rules 6 and 18).
+      the unit on 5th"). The sender is the words' user when the record gives the meaning as
+      their own ("when i say", "i call the unit the shed") or an earlier message of theirs in
+      the excerpt uses the words. Contradicts when that sender plainly gives the words a
+      meaning that cannot be true together with the claim's ("the shed is the one in my
+      backyard, we dont have a unit"). A record that holds the quoted words and settles
+      nothing, an explanation from anyone else, or one that may explain someone else's words
+      ("the shed = the unit on 5th" from an account the excerpt never shows using them) is
+      complicates (rules 6 and 18).
     - **Role and event.** They state a role or an act as a fact, so a message never supports
       them (rule 14), with one exception: when the claim's event is itself a message or call,
       the record that is that message or call (between the named parties, inside the window,
@@ -288,9 +293,9 @@ the same four definitions and rules 1 to 24; this section adds what is new.
       complicates. Contradicts needs a named person's own words, from an account bracketed
       with them, that rule the act or role out for the claim's whole time: a denial that
       covers it (rule 23), or placing themselves elsewhere for all of it. The denial may name
-      the claim's other person as "u" when that person is the chat's other party, shown by a
-      bracket. A record from or to such an account that bears on the act or role without
-      settling it is complicates.
+      the claim's other person as the claim names them ("ortiz"), or as "u" when that person
+      is the chat's other party, shown by a bracket. A record from or to such an account that
+      bears on the act or role without settling it is complicates.
     - Any other record, including one that involves none of the named persons, is irrelevant.
 
 ### Baker's own wording: families
@@ -314,12 +319,12 @@ the same four definitions and rules 1 to 24; this section adds what is new.
 | `bk_no_contact_inside` | contradicts | no-contact | A message or call between the named parties (both shown, by account or bracketed name), plainly inside the window in the assumption's zone. | Assumption: No contact between Daniel Petrov (the user of item1) and SMS +13125550188 "before May 3, 2026" (America/Chicago) on every phone. Record: May 1, between them. |
 | `bk_other_phone` | complicates | no-contact, count | The assumption covers one named phone; the record, between the named parties, is on another phone. It shows contact, not what the named phone holds. | "... on item1"; the record comes from item2. |
 | `bk_outside_window` | irrelevant | no-contact, count | A message or call between the named parties, plainly outside the window in any zone. | "before May 3, 2026"; record May 9. |
-| `bk_weekday_next` | supports | weekday | The quoted words name the stated date's weekday for a plan, a proposal or a request ("can u cover wednesday?"), sent one to six days before that date. | Assumption: The weekday in "lets do thursday at the yard" means "Thursday, May 7, 2026" (America/Chicago). Record sent Monday May 4. |
-| `bk_weekday_open` | complicates | weekday | The record names the weekday it was sent on, or says "next" or "this" before the weekday, so which date it means is open. | "next thursday at the yard", sent Monday May 4. |
+| `bk_weekday_next` | supports | weekday | The quoted words name the stated date's weekday for a plan, a proposal or a request ("can u cover wednesday?"), sent one to six days before that date. "This" before the weekday reads the same when the date is a later day of the same week, both days Monday to Saturday ("this saturday", sent on a Wednesday). | Assumption: The weekday in "lets do thursday at the yard" means "Thursday, May 7, 2026" (America/Chicago). Record sent Monday May 4. |
+| `bk_weekday_open` | complicates | weekday | The record names the weekday it was sent on, or says "next" before the weekday, or "this" before a weekday already past in the week it was sent ("this monday", sent on a Wednesday) or with a Sunday on either side (a week starts on Sunday for some and on Monday for others), so which date it means is open. | "next thursday at the yard", sent Monday May 4. |
 | `bk_weekday_wrong` | contradicts | weekday | The quoted words name a different weekday from the stated date's, or plan for that weekday after the date has passed. | "lets do friday at the yard" against "Thursday, May 7, 2026". |
 | `bk_author_cue` | complicates (trap) | authorship | The record, from a named account, carries a cue about who is typing (a self-introduction, someone else on the phone, a signature). "What the account sent" means the messages the claim attributes to the person, and nothing shows the record is one of them: the cue shows the account was not always typed by that person, which leaves those messages open, never rules them out. | Assumption: Rita Vance personally wrote what Telegram 5550147 sent. Record: "this is her brother, she left it here". |
 | `bk_claim_open` | complicates (trap) | meaning, role, event | The record holds the quoted words and nothing shown says what they mean (meaning), or it comes from or goes to an account bracketed with a named person, plainly inside the window if one is given, and bears on the act or role without being it or ruling it out (role, event) (rule 29). | Claim: Vance used "the shed" to mean the storage unit on 5th Street. Assumption: The words "the shed" mean what the claim says they mean. Record: "drop it by the shed". |
-| `bk_meaning_said` | supports | meaning | A message from the account that used the quoted words, plainly saying they mean exactly what the claim says they mean (rule 29). | Same claim and assumption. Record from Telegram 5550147, which wrote "drop it by the shed" earlier in the chat: "when i say the shed i mean the unit on 5th". |
+| `bk_meaning_said` | supports | meaning | A message from the account that used the quoted words (it gives the meaning as its own, or used the words earlier in the excerpt), plainly saying they mean exactly what the claim says they mean (rule 29). | Same claim and assumption. Record from Telegram 5550147, which wrote "drop it by the shed" earlier in the chat: "when i say the shed i mean the unit on 5th". |
 | `bk_meaning_other` | contradicts | meaning | That same account plainly gives the words a meaning that cannot be true together with the claim's (rule 29). | Same claim and assumption. Record from Telegram 5550147: "the shed is the one in my backyard, we dont have a unit". |
 | `bk_event_is_record` | supports | event | The claim's event is a message or call, and the record is it: between the named parties, each shown by a bracket or by the account the claim gives for them, plainly inside the window, and for a message saying exactly what the claim says it said (rule 29). | Claim: On May 2, 2026, Vance texted Ortiz at (312) 555-0188 the gate code 1190. Assumption: The event the claim states happened, involving Rita Vance and SMS +13125550188 "on May 2, 2026" (America/Chicago). Record from `SMS +13125550161 [Rita Vance]` in its chat with SMS +13125550188, May 2: "gate code 1190". |
 | `bk_claim_denied` | contradicts | role, event | A person the claim names, from an account bracketed with them, rules the act or role out for the claim's whole time in their own words, sent after it: a denial that covers it, or placing themselves elsewhere for all of it (rules 23 and 29). | Claim: On May 2, 2026, Vance met Ortiz at the yard. Same assumption. Record from `SMS +13125550161 [Rita Vance]`, sent May 4: "didnt see ortiz at all on the 2nd, i was in denver all weekend". |
@@ -345,10 +350,12 @@ the same four definitions and rules 1 to 24; this section adds what is new.
    attachment, as the product sends them. Decisions to sign: people an expert confirmed,
    shown in brackets, count as shown, and a saved name never does (rule 26); a zone-dependent
    time is complicates (rule 27); one count record, one contact row that differs, a call of the
-   wrong length, a handle change said in a message and an author cue are complicates; for the
-   templates that point to "the claim", only the words' own user explaining them, or the
-   claimed message or call itself, supports, and only a named person's own denial or alibi
-   from an account bracketed with them contradicts (rule 29).
+   wrong length, a handle change said in a message and an author cue are complicates; "this"
+   before a weekday is plain only for a later day of the same Monday-to-Saturday week; "at
+   about" is eight minutes either side, as Baker reads it (rule 25); for the templates that
+   point to "the claim", only the words' own user explaining them, or the claimed message or
+   call itself, supports, and only a named person's own denial or alibi from an account
+   bracketed with them contradicts (rule 29).
 
 ## Decided when v0.2 was signed (2026-10-12, as proposed)
 

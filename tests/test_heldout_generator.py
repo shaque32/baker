@@ -1394,8 +1394,11 @@ def _readings(raw: str) -> tuple[list[tuple[datetime, datetime]], datetime | Non
         assert start < end, raw
         return [(start, end)], None
     if m := re.fullmatch(rf"at about (.+?) on {_DATE}", raw):
+        # Baker reads "at about 9 p.m." as 8:52 to 9:08 (core/audit/assumption_filler.py), and
+        # only before "a.m." or "p.m.", so never "at about noon".
+        assert m.group(1) != "noon", raw
         at = _date(*m.groups()[1:]) + timedelta(hours=_hour(m.group(1)))
-        return [(at - timedelta(minutes=30), at + timedelta(minutes=30))], at
+        return [(at - timedelta(minutes=8), at + timedelta(minutes=8))], at
     raise AssertionError(f"unexpected window words: {raw!r}")
 
 
@@ -1437,7 +1440,7 @@ def test_bk_windows_match_their_words_and_records_keep_their_margins(
     test_items: list[GenItem], dev_items: list[GenItem]
 ) -> None:
     """Plainly inside: an hour from every edge under every reading, in the named zone and on
-    the phone's clock ("at about": within ten minutes, same zone). Plainly outside: a day (dates)
+    the phone's clock ("at about": within five minutes, same zone). Plainly outside: a day (dates)
     or two hours (clock times) beyond every edge in both zones. A zone edge: inside in one zone
     and outside in the other, by ten minutes or more."""
     seen = Counter()
@@ -1450,7 +1453,7 @@ def test_bk_windows_match_their_words_and_records_keep_their_margins(
         zones = {tz, phone}
         if it.family in _INSIDE:
             if about is not None:
-                assert tz == phone and abs(utc - _wall(about, tz)) <= timedelta(minutes=10)
+                assert tz == phone and abs(utc - _wall(about, tz)) <= timedelta(minutes=5)
             else:
                 assert all(_inside_by(utc, readings, z) >= timedelta(hours=1) for z in zones)
             seen["inside"] += 1
@@ -1574,6 +1577,8 @@ def test_bk_weekday_items_relate_the_dates(
                 assert day == sent.weekday() and delta in (0, 7), it.probe_id
             else:
                 assert day == target.weekday() and delta in (upcoming, upcoming + 7), it.probe_id
+                # "this" is plain for a later day of the same Monday-to-Saturday week.
+                assert mod == "next" or not sent.weekday() < day <= 5, it.probe_id
         else:
             assert mod == "", it.probe_id
             assert day != target.weekday() or -6 <= delta <= -1, it.probe_id
@@ -1885,7 +1890,9 @@ def test_bk_denials_come_after_the_claim_and_cover_it(
     assert covers["never"] >= 12 and covers["dates"] >= 6, covers
 
 
-_SHORT_FORMS = {"pippa", "ros", "thad", "xan", "quin", "tam"}
+# The short forms a chat may call a first name by (eval/heldout/bk_fam_sender.py, _SHORT).
+_SHORT_FORMS = {"philippa": "pippa", "rosalind": "ros", "thaddeus": "thad", "xander": "xan",
+                "quincy": "quin", "tamar": "tam"}  # fmt: skip
 
 
 def test_bk_unshown_parties_are_called_by_name_in_a_third(
@@ -1902,7 +1909,7 @@ def test_bk_unshown_parties_are_called_by_name_in_a_third(
             lines, who = _in_order(it), _who(it)
             person = next(p for p in (it.baker_params or {})["person_ids"] if "dev:" not in p)
             name = (it.baker_names or {})[person].lower().split()
-            forms = {*name, *(f for f in _SHORT_FORMS if name[0].startswith(f))}
+            forms = {*name, _SHORT_FORMS.get(name[0], name[0])}
             hits = [ln for ln in lines if forms & set(re.findall(r"[a-z]+", ln.text.lower()))]
             if not hits:
                 continue

@@ -19,7 +19,9 @@ from eval.stancedata import bakerform as bf
 from eval.stancedata.chat import local_str
 from eval.stancedata.model import GenItem
 
-BK_GENERATOR = "eval.heldout.baker 1.0.0"
+# 1.1.0: "at about" is Baker's eight minutes either side and never "noon"; a "this <weekday>"
+# rationale names why the week is open. A new version draws every Baker item afresh.
+BK_GENERATOR = "eval.heldout.baker 1.1.0"
 
 SAY: dict[str, tuple[str, ...]] = {}
 CTX: dict[str, tuple[str, ...]] = {}

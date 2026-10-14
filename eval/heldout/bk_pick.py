@@ -37,7 +37,8 @@ def pick_window(
         h1 = rng.randint(6, 23 - width)
         return bt.between(day, h1, h1 + width, tz)
     if kind == "about":
-        return bt.about(day, rng.randint(8, 21), tz)
+        # Never "at about noon": Baker reads a document's "about" only before "a.m." or "p.m.".
+        return bt.about(day, rng.choice([h for h in range(8, 22) if h != 12]), tz)
     raise ValueError(f"unknown window kind {kind!r}")
 
 

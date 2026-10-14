@@ -4,8 +4,9 @@ A window is wall-clock bounds in the zone the assumption names, with the documen
 (`raw`). A record is plainly inside when it sits at least an hour from every edge, read in that
 zone and in the phone's zone; plainly outside when it is at least a day (date windows) or two
 hours (clock windows) beyond the window in both readings; on a zone edge when it is inside in
-one reading and outside in the other. "At about 9 p.m." is 8:30 to 9:30, and a record inside it
-lies within seven minutes of 9.
+one reading and outside in the other. "At about 9 p.m." is 8:52 to 9:08, eight minutes either
+side, as Baker reads a document's "about" (core/audit/assumption_filler.py); a record plainly
+inside it lies within five minutes of 9.
 """
 
 from __future__ import annotations
@@ -29,7 +30,8 @@ WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", 
 HOUR = timedelta(hours=1)
 DAY = timedelta(days=1)
 EDGE = timedelta(minutes=10)  # a zone-edge record is this far from the edge in both readings
-ABOUT = timedelta(minutes=7)  # "at about 9 p.m.": a record inside it is this close to 9
+ABOUT_HALF = timedelta(minutes=8)  # "at about 9 p.m." is 8:52 to 9:08, as Baker reads it
+ABOUT = timedelta(minutes=5)  # a record plainly inside it is this close to 9
 CLOCK_HOURS = (*range(6, 12), *range(13, 23))  # window clock times: never noon or midnight
 
 
@@ -116,8 +118,9 @@ def win_between(d: date, h1: int, h2: int, tz: str) -> Win:
 
 
 def win_about(d: date, h: int, m: int, tz: str) -> Win:
-    c, half = datetime.combine(d, time(h, m)), timedelta(minutes=30)
-    return Win(c - half, c + half, tz, f"at about {clock(h, m)} on {long_date(d)}", True, c)
+    c = datetime.combine(d, time(h, m))
+    raw = f"at about {clock(h, m)} on {long_date(d)}"
+    return Win(c - ABOUT_HALF, c + ABOUT_HALF, tz, raw, True, c)
 
 
 def win_day(d: date, tz: str) -> Win:

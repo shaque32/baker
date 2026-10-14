@@ -9,7 +9,7 @@ from __future__ import annotations
 
 HOME: tuple[str, ...] = (
     "[the spare key is in the planter] by the steps",
-    "ok [left the {item} by the back door]",
+    "ok [left the {item} on the porch steps]",
     "[can u grab {n} bags of ice] on the way",
     "[the landlord finally fixed the boiler]",
     "[moved the {vehicle} to the other side] for street cleaning",

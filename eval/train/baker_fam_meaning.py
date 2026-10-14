@@ -2,15 +2,15 @@
 bk_meaning_other and the meaning third of bk_claim_open.
 
 The claim says what some words meant. bk_meaning_said: the account that used the words (in the
-record itself, and sometimes earlier in the chat too) plainly says they mean exactly the claim's
-meaning (supports). bk_meaning_other: that account says they mean something of another kind
-altogether (contradicts). Both families explain in the same frames, openers and tails, none of
-them a marker like "only" or "nothing else", so only the meaning tells them apart; the quote is
-the explanation alone, without the opener or tail (rule 7). bk_claim_open: the record uses the
-words and nothing shown says what they mean (complicates). A claim names the words' user only
-when that account's line carries them in brackets. No line from anyone else holds the words, no
-other line shares a content word with any meaning in play, and the lines after an explanation
-are plain acknowledgements, so nothing hedges or corrects it.
+record itself, giving the meaning as its own, or earlier in the chat too) plainly says they mean
+exactly the claim's meaning (supports). bk_meaning_other: that account says they mean something
+of another kind altogether (contradicts). Both families explain in the same frames, openers and
+tails, none of them a marker like "only" or "nothing else", so only the meaning tells them
+apart; the quote is the explanation alone, without the opener or tail (rule 7). bk_claim_open:
+the record uses the words and nothing shown says what they mean (complicates). A claim names the
+words' user only when that account's line carries them in brackets. No line from anyone else
+holds the words, no other line shares a content word with any meaning in play, and the lines
+after an explanation are plain acknowledgements, so nothing hedges or corrects it.
 """
 
 from __future__ import annotations
@@ -20,11 +20,19 @@ import re
 from datetime import timedelta
 
 from eval.train.baker_claim_meaning import meaning_claim, record_when
-from eval.train.baker_claim_ru import EXPLAIN_RU, MEANINGS_RU, OPENERS_RU, TAILS_RU, USE_RU
+from eval.train.baker_claim_ru import (
+    EXPLAIN_RU,
+    MEANINGS_RU,
+    OPENERS_RU,
+    OWN_RU,
+    TAILS_RU,
+    USE_RU,
+)
 from eval.train.baker_claim_words import (
     EXPLAIN,
     MEANINGS,
     OPENERS,
+    OWN,
     PLURAL,
     TAILS,
     TOPICS,
@@ -92,7 +100,8 @@ def _excerpt(
 
 def explained(rng: random.Random, k: int, family: str) -> Draft:
     """The words' user says what they mean, in the same frames either way: the claim's meaning
-    (bk_meaning_said) or another kind of thing altogether (bk_meaning_other)."""
+    (bk_meaning_said) or another kind of thing altogether (bk_meaning_other). A frame that does
+    not give the meaning as the sender's own comes after the sender's own use of the words."""
     ru, ordinal = split_ru(k)
     lang = "ru" if ru else "en"
     table = MEANINGS_RU if ru else MEANINGS
@@ -107,7 +116,7 @@ def explained(rng: random.Random, k: int, family: str) -> Draft:
     s = setup(rng, pick_kind(rng), lang=lang)
     from_me = rng.random() < 0.5
     use = ""
-    if rng.random() < 0.4:
+    if rng.random() < 0.4 or frames[ti] not in (OWN_RU if ru else OWN):
         use = say(rng.choice(USE_RU if ru else USE), quoted, "")
     in_play = content(f"{claim_m} {chat_m} {' '.join(others)}") - words(quoted)
     evs, target = _excerpt(rng, s, text, from_me, lang, quoted, in_play, use)
@@ -116,12 +125,16 @@ def explained(rng: random.Random, k: int, family: str) -> Draft:
     user = s.phone.person if from_me else s.you_pid
     named = user if user is not None and rng.random() < 0.7 else None
     claim = meaning_claim(rng, quoted, claim_m, named, record_when(rng, rec.utc, s.phone.zone))
-    how = "used the words earlier in this chat and now" if use else "uses the words and"
     end = ("the meaning the claim gives them" if said else
            "a meaning that cannot be true together with the claim's")  # fmt: skip
-    rationale = (f"The record comes from {line.sender}, which {how} plainly says "
-                 f'"{quoted}" means "{meant}": {end}.')  # fmt: skip
-    notes = {"user": rec.frm, "used_before": bool(use), "clause": clause}
+    if use:
+        rationale = (f"The record comes from {line.sender}, which used the words earlier in this "
+                     f'chat and now plainly says "{quoted}" means "{meant}": {end}.')  # fmt: skip
+    else:
+        rationale = (f"The record comes from {line.sender}, which plainly says what it means by "
+                     f'"{quoted}": "{meant}", {end}.')  # fmt: skip
+    notes = {"user": rec.frm, "used_before": bool(use), "clause": clause,
+             "own": frames[ti] in (OWN_RU if ru else OWN)}  # fmt: skip
     return Draft(family, "meaning", {"quoted_text": quoted}, s.scene, s.phone, evs, target,
                  clause, rationale, notes, claim=claim)  # fmt: skip
 

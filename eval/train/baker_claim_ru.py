@@ -39,8 +39,11 @@ MEANINGS_RU: tuple[tuple[str, str, str, tuple[str, str]], ...] = (
 # "только", "просто" or "ничего больше", so only the meaning tells the families apart.
 EXPLAIN_RU = (
     "{p} - это {m}", "{p} = {m}", "{p} значит {m}", "{p}? это {m}", "если я пишу {p}, это {m}",
-    "{p} у меня значит {m}", "{p} - это у нас {m}",
+    "когда я говорю {p}, я имею в виду {m}", "{p} - это у нас {m}",
 )  # fmt: skip
+# As baker_claim_words.OWN: frames that give the meaning as the sender's own usage.
+OWN_RU = frozenset({"если я пишу {p}, это {m}", "когда я говорю {p}, я имею в виду {m}",
+                    "{p} - это у нас {m}"})  # fmt: skip
 OPENERS_RU = ("", "", "", "напоминаю: ", "чтобы было понятно: ", "короче, ", "кстати, ")
 TAILS_RU = ("", "", "", "", ", если что", ", ок?")
 USE_RU = ("{p} уже у меня", "как там {p}?", "{p} на месте", "{p} у тебя?", "завтра будет {p}")

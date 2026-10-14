@@ -35,7 +35,10 @@ from eval.train.baker_fam_time import call_inside, call_length, time_inside, tim
 from eval.train.baker_fam_unrelated import unrelated
 from eval.train.baker_kit import Draft, finish
 
-GENERATOR = "eval.train.baker 1.0.0"
+# 1.1.0: "at about" is Baker's eight minutes either side, "this <weekday>" is plain only for a
+# later day of the same Monday-to-Saturday week, and a meaning explanation is the sender's
+# own (guide v0.3 draft of 2026-10-14). A new version draws every Baker item afresh.
+GENERATOR = "eval.train.baker 1.1.0"
 ATTEMPTS = 40
 
 Writer = Callable[[random.Random, int], Draft]

@@ -242,11 +242,13 @@ FAMILIES: tuple[Family, ...] = (
        templates=("no_contact", "message_count")),
     _F("bk_weekday_next", C.CLEAR_SUPPORT, S.SUPPORTS, None, (K.TIME,),
        "Baker's weekday template. The quoted words name the stated date's weekday for a plan, "
-       "in a record sent one to six days before that date.", new=True,
+       "in a record sent one to six days before that date; 'this' before the weekday reads the "
+       "same when the date is a later day of the same Monday-to-Saturday week.", new=True,
        templates=("weekday_date",)),
     _F("bk_weekday_open", C.COMPLICATES, S.COMPLICATES, None, (K.TIME,),
-       "Baker's weekday template. The record names the weekday it was sent on, or puts 'next' or "
-       "'this' before the weekday, so which date it means is open.", new=True,
+       "Baker's weekday template. The record names the weekday it was sent on, or puts 'next' "
+       "before the weekday, or 'this' before a weekday already past in the week it was sent or "
+       "with a Sunday on either side, so which date it means is open.", new=True,
        templates=("weekday_date",)),
     _F("bk_weekday_wrong", C.CONTRADICTS, S.CONTRADICTS, None, (K.TIME,),
        "Baker's weekday template. The quoted words name a different weekday from the stated "
@@ -264,8 +266,9 @@ FAMILIES: tuple[Family, ...] = (
        templates=("meaning", "role", "event")),
     _F("bk_meaning_said", C.CLEAR_SUPPORT, S.SUPPORTS, None, (K.MEANING,),
        "Baker's meaning template, shown with the claim. The record is a message from the account "
-       "that used the quoted words, plainly saying they mean exactly what the claim says they "
-       "mean, with no hedge, joke or later correction.", new=True, templates=("meaning",)),
+       "that used the quoted words (it gives the meaning as its own, or used them earlier in the "
+       "excerpt), plainly saying they mean exactly what the claim says they mean, with no hedge, "
+       "joke or later correction.", new=True, templates=("meaning",)),
     _F("bk_meaning_other", C.CONTRADICTS, S.CONTRADICTS, None, (K.MEANING,),
        "Baker's meaning template, shown with the claim. The account that used the quoted words "
        "plainly gives them a meaning that cannot be true together with the claim's, with no "

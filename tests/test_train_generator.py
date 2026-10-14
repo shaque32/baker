@@ -22,8 +22,8 @@ from eval.stancedata.model import GenItem
 from eval.train import baker
 from eval.train import generate as gen
 from eval.train.baker_cast import FIRSTS_EN, FORMAL_RU, SURNAMES_RU
-from eval.train.baker_claim_ru import OPENERS_RU, TAILS_RU
-from eval.train.baker_claim_words import OPENERS, TAILS
+from eval.train.baker_claim_ru import EXPLAIN_RU, OPENERS_RU, OWN_RU, TAILS_RU
+from eval.train.baker_claim_words import EXPLAIN, OPENERS, OWN, TAILS
 from eval.train.baker_cues import SURNAMES
 from eval.train.baker_fam_denied import DENY_OPENERS, DENY_TAILS, QUESTIONS
 from eval.train.baker_fam_sender import NICKS, NICKS_RU
@@ -1254,11 +1254,15 @@ def test_baker_windows_hold_or_miss_their_records(bk: list[Any]) -> None:
             continue
         raw = it.baker_params["window"]["raw"]
         m = _margins(it, it.target)
+        if raw.startswith("at about"):
+            # Baker reads "at about 9 p.m." as 8:52 to 9:08 (core/audit/assumption_filler.py).
+            start, end, _, _ = _window(it)
+            assert end - start == 16 * MINUTE and "noon" not in raw, (it.probe_id, raw)
         if it.family in BK_INSIDE and raw.startswith("at about"):
             utc, phone = _utc(it.target.local_time)
             start, end, tz, _ = _window(it)
             wall = utc.astimezone(ZoneInfo(tz)).replace(tzinfo=None)
-            assert tz == phone and abs(wall - (start + (end - start) / 2)) <= 7 * MINUTE
+            assert tz == phone and abs(wall - (start + (end - start) / 2)) <= 5 * MINUTE
         elif it.family in BK_INSIDE:
             assert min(m.values()) >= HOUR, (it.probe_id, raw, m)
         elif it.family in BK_OUTSIDE:
@@ -1299,11 +1303,15 @@ def test_baker_weekdays_relate_to_their_dates(bk: list[Any]) -> None:
         assert 8 <= sent_at.hour <= 21
         wd, prefix = _weekday(it.baker_params["quoted_text"])
         gap = (day - sent).days
+        # "this <weekday>" is plain only for a later day of the same Monday-to-Saturday week.
+        later_this_week = sent.weekday() < wd <= 5
         if it.family == "bk_weekday_next":
-            assert not prefix and wd == day.weekday() and 1 <= gap <= 6, it.probe_id
+            assert prefix in ("", "this") and wd == day.weekday() and 1 <= gap <= 6, it.probe_id
+            assert later_this_week or not prefix, it.probe_id
         elif it.family == "bk_weekday_open" and prefix:
             first = sent + timedelta(days=(wd - sent.weekday()) % 7)
             assert wd != sent.weekday() and day in (first, first + timedelta(days=7))
+            assert prefix == "next" or not later_this_week, it.probe_id
         elif it.family == "bk_weekday_open":
             assert wd == sent.weekday() and gap in (0, 7), it.probe_id
         else:
@@ -1311,7 +1319,7 @@ def test_baker_weekdays_relate_to_their_dates(bk: list[Any]) -> None:
             ahead = wd not in (day.weekday(), sent.weekday()) and 1 <= gap <= 6
             assert ahead or (wd == day.weekday() and 2 <= -gap <= 6), it.probe_id
         seen[f"{it.family}|{prefix}"] += 1
-    assert len(seen) == 5 and min(seen.values()) >= 25
+    assert len(seen) == 6 and min(seen.values()) >= 15, seen
 
 
 def test_baker_calls_name_their_numbers_and_lengths(bk: list[Any]) -> None:
@@ -1425,6 +1433,16 @@ def test_baker_quotes_follow_the_guide(bk: list[Any]) -> None:
     assert all(seen[f"{f}|{whole}"] >= 5 for f in BK_FRAMED for whole in (True, False)), seen
 
 
+def test_baker_own_frames_speak_in_the_first_person() -> None:
+    # A frame counts as the sender's own usage only when it says so ("i", "me", "я", "у нас").
+    first_person = re.compile(r"\b(?:i|me)\b|(?<![а-яё])я(?![а-яё])|у нас")
+    assert OWN <= set(EXPLAIN) and OWN_RU <= set(EXPLAIN_RU)
+    for frame in OWN | OWN_RU:
+        assert first_person.search(frame), frame
+    for frame in set(EXPLAIN) - OWN | set(EXPLAIN_RU) - OWN_RU:
+        assert not first_person.search(frame), frame
+
+
 def test_baker_meaning_records_come_from_the_words_user(bk: list[Any]) -> None:
     # Rule 29: only the words' own user can say what they meant; nobody else uses them here.
     seen: Counter[str] = Counter()
@@ -1437,9 +1455,14 @@ def test_baker_meaning_records_come_from_the_words_user(bk: list[Any]) -> None:
         before = [e for e in d.evs[: d.target] if w in e.text.casefold()]
         assert bool(before) == d.notes["used_before"], it.probe_id
         assert w in rec.text.casefold() or before, it.probe_id
+        # The explanation gives the meaning as the sender's own, or follows the sender's own
+        # use of the words: never an explanation that may be of someone else's words.
+        assert d.notes["own"] or d.notes["used_before"], (it.probe_id, rec.text)
+        seen[f"own|{d.notes['own']}"] += 1
         seen[f"{it.family}|{d.notes['used_before']}"] += 1
         seen[it.lang] += 1
-    assert len([k for k in seen if "|" in k]) == 4 and seen["ru"] + seen["mixed"] >= 10, seen
+    assert len([k for k in seen if "|" in k and not k.startswith("own")]) == 4, seen
+    assert seen["own|True"] and seen["own|False"] and seen["ru"] + seen["mixed"] >= 10, seen
 
 
 def test_baker_names_numbers_and_handles(bk: list[Any]) -> None:

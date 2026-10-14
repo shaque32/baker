@@ -66,8 +66,8 @@ def inside(
             if tz != phone_zone:
                 continue
             win = win_about(day, rng.choice(CLOCK_HOURS), rng.choice((0, 30)), tz)
-            shift = timedelta(minutes=30, seconds=rng.randint(-400, 400))  # from the lower bound
-            utc = at_wall(win.start + shift, tz)
+            assert win.about is not None  # noqa: S101 - an "about" window has its clock time
+            utc = at_wall(win.about + timedelta(seconds=rng.randint(-290, 290)), tz)
         else:
             utc = at(day, rng.randint(7, 22), rng.randrange(60), rng.randrange(60), phone_zone)
             win = _around(rng, form, wall(utc, tz), tz)

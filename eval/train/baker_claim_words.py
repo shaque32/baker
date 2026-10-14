@@ -104,6 +104,11 @@ EXPLAIN = (
     "{p} {is} what i call {m}", "if i say {p} i mean {m}", "i call {m} {p}",
     "for me {p} {is} {m}", "{p}, as in {m}", "when i text {p} its {m}", "{p} refers to {m}",
 )  # fmt: skip
+# Frames that give the meaning as the sender's own usage (rule 29). With any other frame the
+# chat also shows the sender using the words earlier, or the record would be an explanation
+# that may be of someone else's words.
+OWN = frozenset({"by {p} i mean {m}", "{p} {is} what i call {m}", "if i say {p} i mean {m}",
+                 "i call {m} {p}", "for me {p} {is} {m}", "when i text {p} its {m}"})  # fmt: skip
 # Words around an explanation that the answer does not rest on: the quote leaves them out.
 OPENERS = ("", "", "", "to be clear, ", "remember ", "ok so ", "heads up, ", "btw ")
 TAILS = ("", "", "", "", ", ok?", ", u know that", ", for next time")

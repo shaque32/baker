@@ -95,13 +95,22 @@ def wk_open(s: BkSlot, rng: random.Random) -> BkDraft:
             'record does not say which; "{raw}" is only one of them.',
         )
     else:
+        # Never a later day of the same Monday-to-Saturday week, where "this" is plain: a day
+        # already past that week, or a Sunday on either side.
         low, high = (s.day + 1, 6) if s.day < 6 else (0, 5)
         sent = _on_weekday(rng, rng.randint(low, high))
         target = sent + timedelta(days=(s.day - sent.weekday()) % 7)
-        why = (
-            'The record says "{word}", sent {local}; a weekday with "this" before it leaves '
-            'open which week it means, so the record does not settle that it means "{raw}".'
-        )
+        if 6 in (s.day, sent.weekday()):
+            why = (
+                'The record says "{word}", sent {local}; at the turn of a week, which week "this" '
+                "points to depends on the day a week is counted from, so the record does not "
+                'settle that it means "{raw}".'
+            )
+        else:
+            why = (
+                'The record says "{word}", sent {local}, after that week\'s day had passed, so '
+                'which week it means is open and the record does not settle that it means "{raw}".'
+            )
     return _item(s, rng, pr, sent, target, why)
 
 

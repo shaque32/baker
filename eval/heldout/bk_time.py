@@ -2,8 +2,9 @@
 
 A window is wall-clock bounds in the zone the assumption names. Every test here reads the
 window in that zone and, when the phone keeps another zone, in the phone's zone too:
-"plainly inside" is at least an hour from every edge in both (an "at about" window: within ten
-minutes of its time, same zone only), "plainly outside" at least a day (dates) or two hours
+"plainly inside" is at least an hour from every edge in both (an "at about" window, eight
+minutes either side of its time as Baker reads a document's "about": within five minutes of its
+time, same zone only), "plainly outside" at least a day (dates) or two hours
 (clock times) beyond every edge in both, and a zone flip is inside in one zone and outside in
 the other by ten minutes or more. Words that allow a second reading ("after May 6" may start
 on May 6 or on May 7) keep every reading, and a record must pass under all of them.
@@ -23,6 +24,8 @@ from eval.stancedata.chat import NonexistentLocalTime, at_local, long_date
 HOUR = timedelta(hours=1)
 DAY = timedelta(days=1)
 FLIP_MARGIN = timedelta(minutes=10)
+ABOUT_HALF = timedelta(minutes=8)  # "at about 9 p.m." is 8:52 to 9:08, as Baker reads it
+ABOUT_NEAR = timedelta(minutes=5)  # a record plainly inside it is this close to 9
 FAR_PAST = datetime(2020, 1, 1)
 FAR_FUTURE = datetime(2030, 1, 1)
 FIRST_DAY = date(2024, 1, 10)
@@ -116,7 +119,7 @@ def between(day: date, h1: int, h2: int, tz: str) -> Win:
 
 def about(day: date, hour: int, tz: str) -> Win:
     nominal = _at(day, hour * 60)
-    start, end = nominal - timedelta(minutes=30), nominal + timedelta(minutes=30)
+    start, end = nominal - ABOUT_HALF, nominal + ABOUT_HALF
     raw = f"at about {clock(hour)} on {long_date(day)}"
     return Win("about", start, end, tz, raw, ((start, end),), nominal)
 
@@ -136,7 +139,7 @@ def outside_by(utc: datetime, win: Win, tz: str) -> timedelta:
 
 def plainly_inside(utc: datetime, win: Win, phone_tz: str) -> bool:
     if win.kind == "about":
-        near = abs(utc - wall_utc(win.nominal, win.tz)) <= timedelta(minutes=10)  # type: ignore[arg-type]
+        near = abs(utc - wall_utc(win.nominal, win.tz)) <= ABOUT_NEAR  # type: ignore[arg-type]
         return win.tz == phone_tz and near
     return all(inside_by(utc, win, z) >= HOUR for z in {win.tz, phone_tz})
 
@@ -186,7 +189,7 @@ def _jitter(rng: random.Random, utc: datetime) -> datetime:
 def _inside_candidate(rng: random.Random, win: Win) -> datetime | None:
     if win.kind == "about":
         base = wall_utc(win.nominal, win.tz)  # type: ignore[arg-type]
-        return base + timedelta(seconds=rng.randint(-540, 540))
+        return base + timedelta(seconds=rng.randint(-290, 290))
     if win.kind == "between":
         lo, hi = win.start.hour * 60 + 60, win.end.hour * 60 - 60
         return local_instant(win.start.date(), rng.randint(lo, hi), win.tz)
