@@ -66,8 +66,16 @@ def first_of(p: Person) -> str | None:
     return p.name if p.lang == "en" else FORMAL_RU.get(p.name)
 
 
+_ROOT = {f.casefold(): m.casefold() for m, f in SURNAMES_RU}
+
+
+def _key(name: str) -> str:
+    """A name as the no-two-alike check reads it: Belov and Belova are one surname."""
+    return _ROOT.get(name.casefold(), name.casefold())
+
+
 def _free(name: str, used: set[str], shown: str) -> bool:
-    return name.casefold() not in used and name.casefold() not in shown
+    return _key(name) not in used and name.casefold() not in shown
 
 
 def _pick(rng: random.Random, pool: Iterable[str], used: set[str], shown: str) -> str:
@@ -101,15 +109,15 @@ def cast(
     drawn = ("person:dev:", "person:doe_")  # surnames drawn at random
     lasts = {pid: cap(pid.split(":", 1)[1]) for pid in todo if not pid.startswith(drawn)}
     fixed = [*firsts.values(), *lasts.values()]
-    used = {part.casefold() for n in names.values() for part in n.split(" ", 1)}
-    if len({x.casefold() for x in fixed}) < len(fixed) or used & {x.casefold() for x in fixed}:
+    used = {_key(part) for n in names.values() for part in n.split(" ", 1)}
+    if len({_key(x) for x in fixed}) < len(fixed) or used & {_key(x) for x in fixed}:
         raise ValueError("two people of an item would share a name")
-    used |= {x.casefold() for x in fixed}
+    used |= {_key(x) for x in fixed}
     for pid in todo:
         first = firsts.get(pid) or _pick(rng, FIRSTS_EN, used, shown)
-        used.add(first.casefold())
+        used.add(_key(first))
         last = lasts.get(pid) or _pick(rng, _surnames(people.get(pid)), used, shown)
-        used.add(last.casefold())
+        used.add(_key(last))
         names[pid] = f"{first} {last}"
     return names
 

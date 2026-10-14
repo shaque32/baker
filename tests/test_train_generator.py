@@ -1054,6 +1054,7 @@ BK_INSIDE = {"bk_time_inside", "bk_call_inside", "bk_call_length", "bk_no_contac
              "bk_event_is_record"}  # fmt: skip
 BK_MEANING = {"bk_meaning_said", "bk_meaning_other"}  # the words' user explains them
 CLAIMED = ("meaning", "role", "event")  # the templates whose items show the claim
+ROOT = {f: m for m, f in SURNAMES_RU}  # Belova reads as Belov: one surname, two forms
 BK_OUTSIDE = {"bk_time_outside", "bk_outside_window"}
 BK_CUE = {"bk_identity_named", "bk_author_cue", "bk_handles_said"}
 BK_SENDER = re.compile(r"(\S+) (\S+)( \(owner\))?(?: \[([^\]]+)\])?")
@@ -1178,6 +1179,9 @@ def test_baker_items_show_names_never_ids(bk: list[Any]) -> None:
             assert not re.search(r"\b(person|acct|dev):", text), (it.probe_id, text)
         names = it.baker_names or {}
         assert set(names) >= set(it.baker_params.get("person_ids", ())), it.probe_id
+        firsts = [n.split(" ")[0] for n in names.values()]
+        lasts = [ROOT.get(x, x) for x in (n.split(" ")[1] for n in names.values())]
+        assert len(set(firsts)) == len(firsts) and len(set(lasts)) == len(lasts), names
         for pid in set().union(*(_brackets(ln.sender) for ln in _ids(d))):
             assert pid in names, (it.probe_id, pid)
 

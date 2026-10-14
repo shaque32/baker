@@ -47,7 +47,7 @@ from eval.train.names import Person
 
 # The owner calls the partner by name just before the partner's record; {n} is that name.
 NAME_LEADS = ("{n} u there?", "hey {n}", "{n} did u get my msg", "thx {n}",
-              "{n}!! call me when u can", "ok {n} lmk", "{n} quick question", "morning {n}",
+              "{n} hope ur week is going ok", "ok {n} lmk", "{n} quick question", "morning {n}",
               "{n} r u around today", "hi {n}, its me")  # fmt: skip
 NAME_LEADS_RU = ("{n}, ты тут?", "привет, {n}", "{n}, набери, когда сможешь", "спасибо, {n}",
                  "{n}, вопрос есть", "{n}, ты где?")  # fmt: skip

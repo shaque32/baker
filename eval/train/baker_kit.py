@@ -232,8 +232,8 @@ def setup(
         other = cast.phone(nums[1], (app, "Phone"), lang)
         return Setup(Scene((phone, other)), phone, other.owner, app, other.person, other)
     partner = cast.who(lang, named=kind == "linked")
-    if kind == "linked":
-        pid = slug(rng)
+    if kind == "linked":  # a Russian speaker's surname in its Latin form, in their gender
+        pid = named_slug(rng, partner.person) if lang == "ru" else slug(rng)
         links = tuple((partner.acc(a), pid) for a in dict.fromkeys((app, "Phone", "SMS")))
         return Setup(Scene((phone,), links, ((pid, partner.person),)), phone, partner, app, pid)
     return Setup(Scene((phone,)), phone, partner, app, None)
