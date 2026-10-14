@@ -105,7 +105,10 @@ _WHOSE = r"(?:ur|your|his|her|their|my|[^\W\d_]+'s|[^\W\d_]+’s)"
 _HANDOFF = re.compile(
     r"\b(?:using|used|use|borrow(?:ed|ing)?|took|take|taking|grab(?:bed)?|left|gave|shared|"
     rf"lent|give)\s+(?:me\s+)?{_WHOSE}\s+(?P<thing>{_THINGS})\b"
-    r"|\b(?:logged|signed)\s+in\s+(?:as|on|to|with|from)\b",
+    # A login counts only on someone else's phone or account ("logged in on his ipad"); "logged
+    # in from home" or "signed in as Daniel" names no one else's.
+    r"|\b(?:logged|signed)\s+(?:in(?:to)?|on)\s+(?:(?:on|to|with|from|as|into)\s+)?"
+    rf"(?P<whose>{_WHOSE})\s+(?P<thing2>{_THINGS})\b",
     re.IGNORECASE,
 )
 _WORD = re.compile(r"[^\W\d_]{4,}")
@@ -212,6 +215,17 @@ def _who(data: CaseData, account_id: str | None) -> str:
     return repr(acct.key) if acct else account_id
 
 
+def _recipients(case: Case, message_id: str) -> tuple[str, ...]:
+    """A message's recipient accounts, so copies are told apart by who they went to."""
+    return tuple(
+        r[0]
+        for r in case.conn.execute(
+            "SELECT account_id FROM message_recipients WHERE message_id = ? ORDER BY account_id",
+            (message_id,),
+        )
+    )
+
+
 def _copy_key(data: CaseData, row: Row) -> tuple[str, ...]:
     """What two copies of one message or call on two phones share: kind, app, words or length,
     time, sender and recipients. Only rows from different sources are ever taken as copies;
@@ -230,17 +244,16 @@ def _copy_key(data: CaseData, row: Row) -> tuple[str, ...]:
 
 
 def _dedupe(data: CaseData, rows: Iterable[Row]) -> list[Row]:
-    """The same message held on two phones shows once (the first copy seen)."""
-    out: list[Row] = []
-    sources: dict[tuple[str, ...], set[str]] = {}
+    """The same record held on two phones shows once. For each copy key the phone holding the
+    most such rows is kept (the first seen on a tie), so two identical replies on one phone stay
+    two, whichever phone comes first."""
+    rows = list(rows)
+    counts: dict[tuple[str, ...], dict[str, int]] = {}
     for r in rows:
-        k = _copy_key(data, r)
-        seen = sources.setdefault(k, set())
-        if seen and r.source_id not in seen:
-            continue  # a copy of a row from another phone
-        seen.add(r.source_id)
-        out.append(r)
-    return out
+        per = counts.setdefault(_copy_key(data, r), {})
+        per[r.source_id] = per.get(r.source_id, 0) + 1
+    keep = {k: max(per, key=lambda sid: per[sid]) for k, per in counts.items()}
+    return [r for r in rows if keep[_copy_key(data, r)] == r.source_id]
 
 
 def _by_time(rows: Iterable[Row], anchor: datetime | None = None) -> list[Row]:
@@ -429,7 +442,9 @@ def _handoff(body: str, app: str, claimed_app: str) -> re.Match[str] | None:
     """The first words in a message about using another person's phone, account or login that
     bear on a message sent on claimed_app."""
     for m in _HANDOFF.finditer(body):
-        thing = (m.group("thing") or "").casefold()
+        if (m.group("whose") or "").casefold() == "my":
+            continue  # logging in on one's own phone or account names no one else's
+        thing = (m.group("thing") or m.group("thing2") or "").casefold()
         if thing in _APP_WORDS:
             ok = _APP_WORDS[thing] == claimed_app.strip().casefold()
         elif thing in _DEVICE_WORDS:
@@ -463,7 +478,9 @@ def _handoff_fits(case: Case, claimed: list[Row]) -> tuple[list[tuple[Row, str]]
             m = _handoff(body or "", app, c.app)
             if m is None:
                 continue
-            row = Row(mid, "message", sid, app, sender, (), _parse(ts), raw, body)
+            row = Row(
+                mid, "message", sid, app, sender, _recipients(case, mid), _parse(ts), raw, body
+            )
             out[mid] = (
                 row,
                 f"Speaks of using another person's phone, account or login "
@@ -524,13 +541,18 @@ def _other_user(case: Case, assumptions: list[Assumption]) -> Alternative | None
     if not mine:
         return None
     claimed_by_quote = _claimed_rows(case, mine)
-    claimed = [r for rows in claimed_by_quote.values() for r in rows]
-    keys: set[Key] = set()
-    for r in claimed:
-        acc = case.data.accounts.get(r.sender or "")
-        if acc is not None:
-            keys.add(acc.key)
+    fits: list[Fit] = []
+    searched: list[str] = []
+    about_account = all(a.template_id == "person_identity" for a in mine)
     for a in mine:
+        # Each statement on its own: its accounts against its own people, so a name another
+        # statement gives for another account never hides a conflict here.
+        claimed = claimed_by_quote.get(a.id, [])
+        keys: set[Key] = set()
+        for r in claimed:
+            acc = case.data.accounts.get(r.sender or "")
+            if acc is not None:
+                keys.add(acc.key)
         for aid in a.params.account_ids:
             acc = case.data.accounts.get(aid)
             if acc is not None:
@@ -538,28 +560,26 @@ def _other_user(case: Case, assumptions: list[Assumption]) -> Alternative | None
         if a.params.handles:
             for p in parties(case.data, a.params)[len(a.params.person_ids) :]:
                 keys |= p.keys
-    persons = _persons(case, mine)
-    fits: list[Fit] = []
-    searched: list[str] = []
-    about_account = all(a.template_id == "person_identity" for a in mine)
-    if keys:
-        if persons or about_account:  # a name to set it against, or a claim about the account
-            intros, s = _intro_fits(case, keys, persons)
-            searched.append(s)
-            fits += [_fit(case, r, n) for r, n in _sorted_pairs(intros)]
-        if persons:
-            fits += _name_fits(case, keys, persons)
-            searched.append(f"names saved for {_account_label(case, keys)}")
-        fits += _multi_owner_fits(case, keys)
-        searched.append("which phones hold each account as their own")
-    if claimed:
-        hands, s = _handoff_fits(case, claimed)
-        if s:
-            searched.append(s)
-        fits += [_fit(case, r, n) for r, n in hands]
+        persons = _persons(case, [a])
+        if keys:
+            if persons or a.template_id == "person_identity":  # a name, or a claim about it
+                intros, s = _intro_fits(case, keys, persons)
+                searched.append(s)
+                fits += [_fit(case, r, n) for r, n in _sorted_pairs(intros)]
+            if persons:
+                fits += _name_fits(case, keys, persons)
+                searched.append(f"names saved for {_account_label(case, keys)}")
+            fits += _multi_owner_fits(case, keys)
+            searched.append("which phones hold each account as their own")
+        if claimed:
+            hands, s = _handoff_fits(case, claimed)
+            if s:
+                searched.append(s)
+            fits += [_fit(case, r, n) for r, n in hands]
     fits = _merge(fits)
     if not fits:
         return None
+    persons = _persons(case, mine)
     title = (
         "Someone else may be behind the account"
         if about_account
@@ -593,6 +613,8 @@ def _merge(fits: list[Fit]) -> list[Fit]:
     for f in fits:
         if f.record_id in out:
             prev = out[f.record_id]
+            if f.note in prev.note:
+                continue  # the same finding from another statement
             out[f.record_id] = Fit(
                 prev.record_id, prev.source_id, prev.locator, prev.quote, prev.when,
                 f"{prev.note} {f.note}",
@@ -658,26 +680,31 @@ def _clock(case: Case, assumptions: list[Assumption]) -> Alternative | None:
             continue
         rows = _clock_rows(case, a, claimed)
         offsets = case.offsets(r.id for r in rows)
-        for r in _dedupe(case.data, rows):
+        # Every copy is read on its own phone's clocks (phones can print different offsets);
+        # a record shows once, from the first copy whose reading fits.
+        shown: set[tuple[str, ...]] = set()
+        for r in rows:
             at = r.ts_utc
             if at is None or in_window(at, window):
                 continue  # no usable time, or inside the stated time on the real clock
+            if _copy_key(case.data, r) in shown:
+                continue
             tz = case.data.tz_for(r.source_id)
-            own = at.astimezone(tz).utcoffset() if tz else None
+            if tz is None:
+                continue  # the phone's own zone is unknown, so no reading is "another" clock
+            own = at.astimezone(tz).utcoffset()
             readings: list[tuple[str, datetime]] = []
             off = offsets.get(r.id)
-            if off is not None and (own is None or timedelta(minutes=off) != own):
+            if off is not None and timedelta(minutes=off) != own:
                 printed = (at + timedelta(minutes=off)).replace(tzinfo=None)
                 readings.append((f"the clock the report printed ({_offset_text(off)})", printed))
-            if (own is None or own != timedelta(0)) and off != 0:
+            if own != timedelta(0) and off != 0:
                 readings.append(("UTC", at.replace(tzinfo=None)))
             for label, t in readings:
                 if wall[0] <= t <= wall[1]:
                     phone = (
                         f"on the phone's own clock ({case.data.sources[r.source_id].tz}) it is "
                         f"{local_str(case.data, r)}"
-                        if tz
-                        else "the phone's own zone is not recorded"
                     )
                     fits.append(
                         _fit(
@@ -688,6 +715,7 @@ def _clock(case: Case, assumptions: list[Assumption]) -> Alternative | None:
                         )
                     )
                     used.append(a.id)
+                    shown.add(_copy_key(case.data, r))
                     break
     if not fits:
         return None
@@ -733,17 +761,17 @@ def _day_boundary(case: Case, assumptions: list[Assumption]) -> Alternative | No
             continue
         # A message count counts messages only, so a call cannot move it; no_contact covers calls.
         msgs_only = a.template_id == "message_count"
+        srcs = set(case.data.sources_for(a.params.device_ids))
         rows = _dedupe(
             case.data,
-            (
+            [
                 r
                 for r in got[0]
-                if channel_ok(r, a.params.channels) and not (msgs_only and r.kind == "call")
-            ),
+                if r.source_id in srcs
+                and channel_ok(r, a.params.channels)
+                and not (msgs_only and r.kind == "call")
+            ],
         )
-        if a.params.device_ids:
-            srcs = set(case.data.sources_for(a.params.device_ids))
-            rows = [r for r in rows if r.source_id in srcs]
         lo, hi = wall[0].replace(tzinfo=UTC), wall[1].replace(tzinfo=UTC)
         stated = {r.id for r in rows if r.ts_utc and in_window(r.ts_utc, window)}
         as_utc = {r.id for r in rows if r.ts_utc and lo <= r.ts_utc <= hi}
@@ -1034,7 +1062,9 @@ def _same_words(case: Case, assumptions: list[Assumption]) -> Alternative | None
                 m = pattern.search(body or "")
                 if m is None:
                     continue
-                row = Row(mid, "message", sid, app, sender, (), _parse(ts), raw, body)
+                row = Row(
+                    mid, "message", sid, app, sender, _recipients(case, mid), _parse(ts), raw, body
+                )
                 if row.id in claimed_ids or _copy_key(case.data, row) in copies:
                     continue  # the claimed message, or its copy on the other phone
                 found.append((row, f"Uses “{cite(m.group(0))}” in the same conversation."))

@@ -25,7 +25,7 @@ from core.contracts import GoldClaim
 from core.db import connect
 from core.hypotheses import explain
 from core.hypotheses.explain import Alternative
-from core.identity.links import CITE_CLOSE, CITE_OPEN
+from core.identity.links import CITE_CLOSE, CITE_OPEN, Person
 from core.report.html import render_report
 from core.review.status import claim_state, claim_states
 from eval import run_pipeline
@@ -256,6 +256,11 @@ def test_report_lists_alternatives_under_their_claims(conn):
         ("he left his login on my ipad", "Instagram", "Instagram", "left his login"),
         ("he left his login on my ipad", "Instagram", "SMS", None),  # a login on another app
         ("call me on my phone", "SMS", "SMS", None),  # the owner's own phone, no hand-off
+        ("logged in on his ipad", "SMS", "WhatsApp", "logged in on his ipad"),
+        ("logged into ur insta again", "Instagram", "Instagram", "logged into ur insta"),
+        ("logged in from home", "Instagram", "Instagram", None),  # no one else's
+        ("signed in as Daniel", "Instagram", "Instagram", None),  # no one else's thing
+        ("logged in on my phone", "SMS", "SMS", None),  # one's own phone
     ],
 )
 def test_hand_off_words(body, app, claimed_app, found):
@@ -466,3 +471,75 @@ def test_each_quiet_app_sentence_keeps_its_own_app_and_window(conn):
     assert len(sentences) == 2
     assert "second window" in sentences[1] and "second window" not in sentences[0]
     assert all("second window" in f.note or "March" in f.note for f in alt.fits)
+
+
+# ---------------------------------------------------------------- copies and clocks (fourth review)
+
+
+def test_each_statement_is_checked_against_its_own_people(conn, monkeypatch):
+    # C18: the Telegram account's user names himself Sasha, not Sokolov. Another statement
+    # naming a Sasha for a different account must not hide that.
+    sasha = Person("person:sasha", "Sasha Ivanov", "expert:t", ("sasha", "ivanov"), ())
+    real = explain.Case.person
+    monkeypatch.setattr(
+        explain.Case, "person", lambda self, pid: sasha if pid == sasha.id else real(self, pid)
+    )
+    claim = _asm(conn, "C18", "person_identity")
+    other = claim.model_copy(
+        update={
+            "id": "asm:other",
+            "template_id": "sender",
+            "params": claim.params.model_copy(
+                update={
+                    "person_ids": (sasha.id,),
+                    "account_ids": ("acct:item1:SMS:+12125550133",),
+                    "handles": (),
+                }
+            ),
+        }
+    )
+    case = explain.load(conn)
+    alone = explain._other_user(case, [claim])
+    both = explain._other_user(case, [claim, other])
+    assert alone is not None and both is not None
+    assert "msg:item1:Chats!938" in {f.record_id for f in both.fits}
+
+
+@pytest.mark.parametrize("device", ["dev:item1", "dev:item2"])
+def test_day_boundary_keeps_the_named_phones_copy(conn, device):
+    a = _asm(conn, "C14", "no_contact", device_ids=(device,))
+    alt = explain._day_boundary(explain.load(conn), [a])
+    assert alt is not None
+    assert {f.source_id for f in alt.fits} == {device.removeprefix("dev:")}
+
+
+def test_rows_carry_their_recipients(conn):
+    case = explain.load(conn)
+    assert explain._recipients(case, "msg:item1:Chats!1011") == ("acct:item1:SMS:+12125550122",)
+
+
+def test_copies_keep_the_most_rows_any_phone_holds():
+    t = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
+    rows = [
+        _row("b1", "item2", "ok", t),
+        _row("a1", "item1", "ok", t),
+        _row("a2", "item1", "ok", t),
+    ]
+    assert [r.id for r in explain._dedupe(_NO_ACCOUNTS, rows)] == ["a1", "a2"]
+
+
+def test_every_copy_is_read_on_its_own_clock(conn, monkeypatch):
+    # Each copy is read on its own phone's clocks, whichever comes first, and the record shows
+    # once: item1's copy fits on its printed UTC clock, item2's when read in UTC.
+    real = explain._clock_rows
+    monkeypatch.setattr(explain, "_clock_rows", lambda *a: list(reversed(real(*a))))
+    clock = explain._clock(explain.load(conn), [_asm(conn, "C10", "record_time")])
+    assert clock is not None
+    (fit,) = clock.fits
+    assert fit.record_id in {"msg:item1:Chats!1011", "msg:item2:Chats!903"}
+
+
+def test_no_clock_lead_when_the_phone_zone_is_unknown(conn):
+    case = explain.load(conn)
+    case.data.tz_for = lambda source_id: None
+    assert explain._clock(case, [_asm(conn, "C10", "record_time")]) is None
