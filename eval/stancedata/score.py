@@ -24,41 +24,24 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from eval.probe.run_probe import MOVED_TRAPS, StanceScore, expert_confirms, is_gated
+from core.llm.runtime import ModelOutput
+from eval.probe.run_probe import StanceScore, expert_confirms, is_gated, tally_answer
 from eval.stancedata.chat import read_jsonl
 
 STANCES = ("supports", "contradicts", "complicates", "irrelevant")
 
 
 def add_prediction(s: StanceScore, item: dict[str, Any], pred: dict[str, Any] | None) -> str:
-    """Count one item the way run_probe.score_stance does; return the label as scored."""
-    expected = item["gold_stance"]
-    record_text = item["target"]["text"]
-    s.n += 1
+    """Count one item the way run_probe.score_stance does (run_probe.tally_answer, with the
+    product's quote check); return the label as scored."""
     s.repeat_identical += 1  # one deterministic pass; repeat checks belong to run_probe
-    s.gold_supports += expected == "supports"
+    it = {"id": item["probe_id"], "category": item["category"], "trap": item.get("trap"),
+          "kind": item.get("assumption_kind"), "expected": item["gold_stance"],
+          "record_text": item["target"]["text"]}  # fmt: skip
     if not pred or pred.get("stance") not in STANCES or not isinstance(pred.get("quote", ""), str):
-        row = s.confusion.setdefault(expected, {})
-        row["invalid"] = row.get("invalid", 0) + 1
-        s.failures.append({"id": item["probe_id"], "error": "invalid output"})
-        return "invalid"
-    s.valid += 1
-    quote = pred.get("quote", "")
-    quote_ok = bool(quote) and quote in record_text
-    s.quote_verified += quote_ok
-    stance = pred["stance"] if quote_ok else "dropped"
-    shown = "irrelevant" if pred["stance"] == "irrelevant" else stance
-    row = s.confusion.setdefault(expected, {})
-    row[shown] = row.get(shown, 0) + 1
-    s.correct += stance == expected
-    if stance == "supports":
-        s.predicted_supports += 1
-        s.true_supports_predicted += expected == "supports"
-        s.moved_traps_shown_as_supports += item.get("trap") in MOVED_TRAPS
-    if stance != expected:
-        s.failures.append({"id": item["probe_id"], "category": item["category"],
-                           "expected": expected, "got": stance, "quote": quote[:200]})  # fmt: skip
-    return shown
+        return tally_answer(s, it, ModelOutput("", None, "invalid output"))
+    parsed = {"stance": pred["stance"], "quote": pred.get("quote", "")}
+    return tally_answer(s, it, ModelOutput(json.dumps(parsed), parsed, None))
 
 
 def score(items: list[dict[str, Any]], preds: dict[str, dict[str, Any]]) -> dict[str, Any]:

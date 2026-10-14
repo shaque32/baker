@@ -10,13 +10,15 @@ Usage:
   python -m eval.bench.claude_bench [--models claude-sonnet-5-5,claude-haiku-5-5]
       [--effort medium] [--probe-set eval/gold/probe/probe.jsonl] [--repeat 2]
       [--skip-case] [--claims C02,C05] [--out eval/out/bench]
-      [--stance-prompt eval/probe/stance_v1_1_signed.md] [--stance-only] [--layout product]
+      [--stance-prompt eval/probe/stance_v1_1_signed.md] [--stance-only]
+      [--layout product|product_members|legacy]
   python -m eval.bench.claude_bench --dry-run
       No network: a stand-in client answers every call, to check the plumbing.
 
 --stance-prompt scores the probe on another stance prompt file (the product prompt is used for
 case01 either way); --stance-only skips the reviewer items; --layout picks the probe input layout
-(eval/probe/from_draft.py: "product", the default since 2026-10-14, or "legacy").
+(eval/probe/from_draft.py: "product", the default since 2026-10-14; "product_members", which adds
+the chat's members line as stance prompt v1.1's wiring will; or "legacy").
 
 Needs `pip install -e ".[bench]"` and Anthropic credentials (ANTHROPIC_API_KEY, or an
 `ant auth login` profile).
@@ -63,6 +65,9 @@ ALLOWED_PROBE_DIRS = (ROOT / "eval" / "gold" / "probe", ROOT / "eval" / "probe_d
 ALLOWED_PROBE_FILES = (ROOT / "eval" / "probe" / "smoke_stance.jsonl",
                        ROOT / "eval" / "probe" / "smoke_reviewer.jsonl")  # fmt: skip
 ALLOWED_CASES = ("case01",)
+# Stance prompt files the bench may send (--stance-prompt): the signed product prompt and the
+# probe's own prompt files. Anything else is refused before a client is made.
+ALLOWED_PROMPT_DIRS = (ROOT / "core" / "audit" / "prompts", ROOT / "eval" / "probe")
 
 # USD per million tokens (input, output), Anthropic first-party rates as of 2026-10-06.
 # Haiku 5.5 is priced for prompts up to 100K tokens; every prompt here is far shorter.
@@ -116,6 +121,15 @@ def check_probe_path(path: Path) -> Path:
     raise DataSafetyError(
         f"{path}: only the synthetic probe files may go to a cloud model "
         f"(eval/gold/probe/, eval/probe_draft/, eval/probe/smoke_*.jsonl)"
+    )
+
+
+def check_prompt_path(path: Path) -> Path:
+    p = path.resolve()
+    if p.suffix == ".md" and any(p.parent == d for d in ALLOWED_PROMPT_DIRS):
+        return p
+    raise DataSafetyError(
+        f"{path}: only a prompt file in core/audit/prompts/ or eval/probe/ may go to a cloud model"
     )
 
 
@@ -306,10 +320,11 @@ def run_probe(
     from eval.probe import prompts
     from eval.probe.run_probe import run_model
 
+    path = check_prompt_path(stance_prompt) if stance_prompt else prompts.STANCE_PROMPT
     reviewer, stance = probe_items(probe, layout)
     before = model.usage.copy()
     res = run_model(model, reviewer, stance, model.params, repeat, out,  # type: ignore[arg-type]
-                    stance_prompt or prompts.STANCE_PROMPT, stance_only=stance_only)  # fmt: skip
+                    path, stance_only=stance_only)  # fmt: skip
     res["layout"] = layout
     res["usage"] = model.usage.since(before).as_dict(model.name)
     res["effort"] = model.effort
@@ -549,12 +564,17 @@ def main(argv: list[str] | None = None) -> int:
         help="stance prompt for the probe, e.g. eval/probe/stance_v1_1_signed.md",
     )
     ap.add_argument("--stance-only", action="store_true", help="probe: skip the reviewer items")
-    ap.add_argument("--layout", choices=["product", "legacy"], default="product",
-                    help="probe input layout (eval/probe/from_draft.py)")  # fmt: skip
+    ap.add_argument(
+        "--layout",
+        choices=["product", "product_members", "legacy"],
+        default="product",
+        help="probe input layout (eval/probe/from_draft.py)",
+    )
     ap.add_argument("--out", type=Path, default=Path("eval/out/bench"))
     args = ap.parse_args(argv)
 
     probe = check_probe_path(args.probe_set)
+    stance_prompt = check_prompt_path(args.stance_prompt) if args.stance_prompt else None
     check_case(DEFAULT_CASE)
     claims = [c.strip() for c in args.claims.split(",")] if args.claims else None
     results = []
@@ -564,7 +584,7 @@ def main(argv: list[str] | None = None) -> int:
         out = args.out / name
         out.mkdir(parents=True, exist_ok=True)
         print(f"{name}: probe ({probe.name})", file=sys.stderr, flush=True)
-        probe_res = run_probe(model, probe, args.repeat, out / "probe", args.stance_prompt,
+        probe_res = run_probe(model, probe, args.repeat, out / "probe", stance_prompt,
                               args.stance_only, args.layout)  # fmt: skip
         res: dict[str, Any] = {"model": name, "effort": args.effort, "probe": probe_res}
         if not args.skip_case:

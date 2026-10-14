@@ -33,10 +33,9 @@ def test_product_layout_sends_the_message_text_as_the_record():
     reviewer, stance = convert(item)
     assert stance["record"] == item["target"]["text"] == stance["record_text"]
     lines = stance["context"].splitlines()
-    assert lines[0] == (
-        "Members seen in this chat's records: Telegram 5551234; Telegram 7001001 (owner)"
-    )
-    assert lines[1] == PROBE_HEADER and "Times are the phone's local time" in PROBE_HEADER
+    # Today's product context opens with its header; no members line until v1.1 is wired.
+    assert lines[0] == PROBE_HEADER and "Times are the phone's local time" in PROBE_HEADER
+    assert "Members seen" not in stance["context"]
     marked = [ln for ln in lines if ln.startswith(">>")]
     assert marked == [">> [2026-03-12 20:03:27 EDT] Telegram 7001001 (owner), outgoing: "
                       "need 2 more by friday"]  # fmt: skip
@@ -44,9 +43,19 @@ def test_product_layout_sends_the_message_text_as_the_record():
     assert stance["kind"] == "event"
 
 
+def test_product_members_layout_opens_with_the_members_line():
+    _, plain = convert(_item("P001"))
+    _, stance = convert(_item("P001"), "product_members")
+    lines = stance["context"].splitlines()
+    assert lines[0] == (
+        "Members seen in this chat's records: Telegram 5551234; Telegram 7001001 (owner)"
+    )
+    assert "\n".join(lines[1:]) == plain["context"] and stance["record"] == plain["record"]
+
+
 def test_every_signed_item_marks_exactly_its_record():
     for item in _rows():
-        _, stance = convert(item)
+        _, stance = convert(item, "product_members")
         marked = [ln for ln in stance["context"].splitlines() if ln.startswith(">>")]
         assert len(marked) == 1 and marked[0].endswith(item["target"]["text"]), item["probe_id"]
         assert stance["record"] == item["target"]["text"]
@@ -85,11 +94,11 @@ class _Answers:
         return ModelOutput(raw_text=json.dumps(parsed), parsed=parsed, error=None)
 
 
-def _score(answers: dict[str, list[dict]], pids: list[str]):
+def _score(answers: dict[str, list[dict]], pids: list[str], repeat: int = 2):
     items = [convert(_item(p))[1] for p in pids]
     table = {it["record_text"]: answers[it["id"]] for it in items}
     model = _Answers(table)
-    st = run_probe.score_stance(model, items, GenerationParams(), repeat=2)
+    st = run_probe.score_stance(model, items, GenerationParams(), repeat=repeat)
     return model, run_probe.expert_confirms(st)
 
 
@@ -105,6 +114,25 @@ def test_quotes_are_checked_as_the_product_checks_them():
     assert ec["reported"]["labels_identical_across_repeats"] == 0.0
     _, ec = _score({"P012": [cut, cut]}, ["P012"])
     assert ec["supports_recall"] == 0.0
+
+
+def test_one_answer_per_item_reports_no_repeat_agreement():
+    good = {"stance": "supports", "quote": "happy valentines lol", "rationale": "r"}
+    _, ec = _score({"P012": [good]}, ["P012"], repeat=1)
+    assert ec["reported"]["labels_identical_across_repeats"] is None
+    assert ec["reported"]["other_repeats"] == []
+
+
+def test_overreach_count_is_part_of_the_trap_count():
+    # P049 is an overreach item whose gold is contradicts: a supports there is not a trap shown
+    # as supports (contradicts_shown_as_supports counts it), so neither count moves.
+    item = _item("P049")
+    assert item["category"] == "overreach" and item["gold_stance"] == "contradicts"
+    sup = {"stance": "supports", "quote": item["target"]["text"], "rationale": "r"}
+    _, ec = _score({"P049": [sup, sup]}, ["P049"])
+    assert ec["reported"]["traps_shown_as_supports"] == 0
+    assert ec["reported"]["overreach_shown_as_supports"] == 0
+    assert ec["contradicts_shown_as_supports"] == 1
 
 
 def test_reported_metrics_never_change_the_bars():
@@ -160,9 +188,29 @@ def test_bench_copy_of_v1_1_is_the_signed_text():
 def test_bench_dry_run_on_v1_1_stance_only(tmp_path):
     client = cb.DryRunClient()
     model = cb.ClaudeModel("claude-haiku-5-5", client=client)
-    res = cb.run_probe(model, cb.SIGNED_PROBE, 1, tmp_path, V1_1, stance_only=True)
+    res = cb.run_probe(model, cb.SIGNED_PROBE, 1, tmp_path, V1_1, stance_only=True,
+                       layout="product_members")  # fmt: skip
     assert len(client.requests) == len(_rows())  # stance calls only
     prompt = client.requests[0]["messages"][0]["content"]
     assert "[CLAIM START]\n(not needed for this assumption)\n[CLAIM END]" in prompt
+    assert "Members seen in this chat's records:" in prompt
     assert res["stance_prompt"].startswith("stance_v1_1_signed.md@") and res["stance_only"]
-    assert res["layout"] == "product" and "reported" in res["expert_confirms"]
+    assert res["layout"] == "product_members" and "reported" in res["expert_confirms"]
+    # No reviewer ran: its parts of the old bars are not measured, so they do not fail.
+    assert res["bars"]["valid_output_100"] and res["reviewer_items"] == 0
+
+
+def test_bench_sends_only_prompt_files_from_the_prompt_folders(tmp_path):
+    outside = tmp_path / "stance.md"
+    outside.write_text("<!-- prompt starts -->\n{assumption}{record}{context}\n")
+    with pytest.raises(cb.DataSafetyError):
+        cb.check_prompt_path(outside)
+    with pytest.raises(cb.DataSafetyError):
+        cb.check_prompt_path(ROOT / "eval" / "gold" / "probe" / "README.md")
+    assert cb.check_prompt_path(V1_1) == V1_1.resolve()
+    assert cb.check_prompt_path(ROOT / "core" / "audit" / "prompts" / "stance.md")
+    client = cb.DryRunClient()
+    model = cb.ClaudeModel("claude-haiku-5-5", client=client)
+    with pytest.raises(cb.DataSafetyError):
+        cb.run_probe(model, cb.SIGNED_PROBE, 1, tmp_path / "out", outside, stance_only=True)
+    assert client.requests == []

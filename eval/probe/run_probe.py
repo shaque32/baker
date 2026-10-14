@@ -59,6 +59,7 @@ from core.llm.runtime import (
     with_runtime,
 )
 from eval.probe import prompts
+from eval.probe.from_draft import LAYOUTS
 
 HERE = Path(__file__).parent
 BARS = {
@@ -128,7 +129,8 @@ class StanceScore:
     # unreviewed contradicts can turn into a CONTRADICTED verdict (rules.py rule 1b).
     verdict_capable_contradicts: int = 0
     verdict_capable_true_contradicts: int = 0
-    labels_identical: int = 0  # items whose answers all got the same scored label
+    repeat_samples: int = 0  # items answered more than once
+    labels_identical: int = 0  # of those, items whose answers all got the same scored label
     repeats: list[StanceScore] = field(default_factory=list)  # answers 2.., scored alone
     failures: list[dict[str, Any]] = field(default_factory=list)
     confusion: dict[str, dict[str, int]] = field(default_factory=dict)  # gold -> got
@@ -230,16 +232,19 @@ def score_stance(
         s.repeat_identical += all(o.raw_text == first.raw_text for o in outs)
         # The first answer decides, as a stored output does in the product. Later answers are
         # scored the same way and reported (StanceScore.repeats), never gated.
-        labels = [_tally(s, it, first)]
+        labels = [tally_answer(s, it, first)]
         while len(s.repeats) < len(outs) - 1:
             s.repeats.append(StanceScore())
-        labels += [_tally(r, it, o) for r, o in zip(s.repeats, outs[1:], strict=False)]
-        s.labels_identical += len(set(labels)) == 1
+        labels += [tally_answer(r, it, o) for r, o in zip(s.repeats, outs[1:], strict=False)]
+        if len(labels) > 1:
+            s.repeat_samples += 1
+            s.labels_identical += len(set(labels)) == 1
     return s
 
 
-def _tally(s: StanceScore, it: dict[str, Any], out: ModelOutput) -> str:
-    """Score one answer into s; return the label as scored ("dropped" for a failed quote)."""
+def tally_answer(s: StanceScore, it: dict[str, Any], out: ModelOutput) -> str:
+    """Score one answer into s; return the label as scored ("dropped" for a failed quote).
+    eval/stancedata/score.py counts its predictions through this too, so both agree."""
     s.n += 1
     s.gold_supports += it["expected"] == "supports"
     if not out.ok:
@@ -264,8 +269,9 @@ def _tally(s: StanceScore, it: dict[str, Any], out: ModelOutput) -> str:
         s.predicted_supports += 1
         s.true_supports_predicted += it["expected"] == "supports"
         s.moved_traps_shown_as_supports += it.get("trap") in MOVED_TRAPS
-        s.traps_shown_as_supports += it["expected"] in ("complicates", "irrelevant")
-        s.overreach_shown_as_supports += it.get("category") == "overreach"
+        trap = it["expected"] in ("complicates", "irrelevant")
+        s.traps_shown_as_supports += trap
+        s.overreach_shown_as_supports += trap and it.get("category") == "overreach"
     if shown == "contradicts" and it.get("kind") != "meaning":
         s.verdict_capable_contradicts += 1
         s.verdict_capable_true_contradicts += it["expected"] == "contradicts"
@@ -336,7 +342,7 @@ def expert_confirms(st: StanceScore) -> dict[str, Any]:
         "gold_contradicts": contra_gold,
         "supports_recall_95ci": wilson(st.true_supports_predicted, st.gold_supports),
         "contradicts_precision_95ci": wilson(contra_true, got["contradicts"]),
-        "labels_identical_across_repeats": _ratio(st.labels_identical, st.n),
+        "labels_identical_across_repeats": _ratio(st.labels_identical, st.repeat_samples),
         "other_repeats": [
             {k: v for k, v in expert_confirms(r).items() if k not in ("confusion", "reported")}
             for r in st.repeats
@@ -373,14 +379,21 @@ def check_bars(m: dict[str, Any]) -> dict[str, bool]:
     def ge(value: float | None, bar: float) -> bool:
         return value is not None and value >= bar
 
+    # A stance-only run (--stance-only) has no reviewer answers: its reviewer parts are not
+    # failed, they are not measured, so only the stance parts decide.
+    reviewer_ran = m.get("reviewer_items", 1) > 0
+
+    def rev(value: float | None, bar: float) -> bool:
+        return ge(value, bar) if reviewer_ran else True
+
     return {
-        "valid_output_100": ge(m["reviewer_valid_output"], 1.0)
+        "valid_output_100": rev(m["reviewer_valid_output"], 1.0)
         and ge(m["stance_valid_output"], 1.0),
         "quote_verified_95": ge(m["quote_verified"], BARS["quote_verified"]),
         "supports_precision_95": ge(m["supports_precision"], BARS["supports_precision"]),
         "supports_recall_90": ge(m["supports_recall"], BARS["supports_recall"]),
         "zero_overreach_false_accepts": m["overreach_false_accepts"] == 0,
-        "repeat_identical": ge(m["reviewer_repeat_identical"], 1.0)
+        "repeat_identical": rev(m["reviewer_repeat_identical"], 1.0)
         and ge(m["stance_repeat_identical"], 1.0),
     }
 
@@ -504,9 +517,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="also run a reason-before-decision reviewer variant")  # fmt: skip
     ap.add_argument("--stance-only", action="store_true",
                     help="skip the reviewer items (the reviewer decides nothing)")  # fmt: skip
-    ap.add_argument("--layout", choices=["product", "legacy"], default="product",
-                    help="probe input layout (eval/probe/from_draft.py); legacy = before "
-                    "2026-10-14")  # fmt: skip
+    ap.add_argument("--layout", choices=list(LAYOUTS), default="product",
+                    help="probe input layout (eval/probe/from_draft.py)")  # fmt: skip
     ap.add_argument("--runtime", choices=sorted(RUNTIMES), default=PRODUCT_RUNTIME,
                     help="speed settings the model loads with (core/llm/runtime.py)")  # fmt: skip
     ap.add_argument("--chat-template", choices=["gguf", "no-think"], default="gguf")
@@ -546,6 +558,7 @@ def main(argv: list[str] | None = None) -> int:
             res["model"] = spec.name + (" (reason first)" if reason_first else "")
             res["license"] = spec.license
             res["runtime"] = args.runtime
+            res["layout"] = args.layout if args.probe_set is not None else None
             res["params"] = params.as_record()
             res["vram_used_mib"] = None if loaded is None or before is None else loaded - before
             results.append(res)

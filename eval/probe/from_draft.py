@@ -14,9 +14,10 @@ Any other item (the signed probe set, P001 to P088) is shown in the product's la
 (layout="product", the default since 2026-10-14): the RECORD is the message text alone, as
 core/audit/stance.default_record sends it, and the context is laid out as
 core/audit/context.render_context lays it out, with its header line ("Times are the phone's local
-time"), '>>' on the record under review and each message's direction, opened by the chat's
-members line (core/audit/readable.members_line) built from the senders the excerpt shows. The
-earlier layout (layout="legacy") put the "[time] sender (account id):" header inside the RECORD,
+time"), '>>' on the record under review and each message's direction. layout="product_members"
+also opens the context with the chat's members line (core/audit/readable.members_line), built
+from the senders the excerpt shows, as stance prompt v1.1's wiring will send it. The earlier
+layout (layout="legacy") put the "[time] sender (account id):" header inside the RECORD,
 so a model that quoted it had its answer discarded by the quote check, and it showed no
 direction, no members and no note that times are local; the grading audit of 2026-10-14
 (cloud-bench/2026-10-14/GRADING_AUDIT.md) found those gaps decided items. Labels are untouched.
@@ -33,7 +34,10 @@ from typing import Any
 from core.audit.context import HEADER
 from core.audit.readable import members_line
 
-LAYOUTS = ("product", "legacy")
+# "product": core/audit/context.py's layout as the product sends it today. "product_members":
+# the same, opened by the chat's members line, as signed stance prompt v1.1 and its pipeline
+# wiring will send it (PROPOSED_CHANGES.md, part three). "legacy": the probe before 2026-10-14.
+LAYOUTS = ("product", "product_members", "legacy")
 # The product's context header. The signed probe set prints the phone's own account "(owner)",
 # as stance prompt v1.1 and core/audit/readable.py do, where context.py still says
 # "(this phone)"; the sentence is changed to match the lines it describes.
@@ -68,25 +72,25 @@ def member(sender: str) -> str:
     return f"{parts[0]} {parts[1]}" + (" (owner)" if "(owner)" in sender else "")
 
 
-def product_context(item: dict[str, Any]) -> str:
+def product_context(item: dict[str, Any], members: bool = False) -> str:
     lines = list(item["context"])
     lines.insert(item["target_index"], item["target"])
-    members = members_line(member(x["sender"]) for x in lines)
     shown = [product_line(x, i == item["target_index"]) for i, x in enumerate(lines)]
-    return "\n".join([members, PROBE_HEADER, *shown])
+    head = [members_line(member(x["sender"]) for x in lines)] if members else []
+    return "\n".join([*head, PROBE_HEADER, *shown])
 
 
 def convert(item: dict[str, Any], layout: str = "product") -> tuple[dict[str, Any], dict[str, Any]]:
     if layout not in LAYOUTS:
         raise ValueError(f"layout must be one of {LAYOUTS}, not {layout!r}")
     baker = bool(item.get("device_id"))
-    product = layout == "product" and not baker
+    product = layout != "legacy" and not baker
     lines = list(item["context"])
     lines.insert(item["target_index"], item["target"])
     shown = [fmt(x, baker) for x in lines]
     if item.get("baker_members"):
         shown.insert(0, members_line(item["baker_members"]))
-    context = product_context(item) if product else "\n".join(shown)
+    context = product_context(item, layout == "product_members") if product else "\n".join(shown)
     common = {"id": item["probe_id"], "category": item["category"], "trap": item.get("trap"),
               "lang": item["lang"], "assumption": item["assumption"],
               "context": context, "disputed": item.get("disputed"),
