@@ -33,8 +33,12 @@ Not read: CSV exports (Magnet itself advises Excel over CSV for multi-line or no
 message text), HTML and PDF reports, and the portable case (its database layout is not public).
 
 An `.xlsx` is taken as an AXIOM export when a header in its first rows names a time with its
-zone (`... Date/Time - UTC+00:00 (M/d/yyyy)`), or a header row names both `Recovery method` and
-`Evidence number` or `Item ID`. Cellebrite reports carry neither.
+zone (`... Date/Time - UTC+00:00 (M/d/yyyy)`) or `Recovery method`, or a sheet is named as an
+AXIOM artifact type with its platform (`Android Contacts`). Cellebrite reports carry none of
+these.
+
+An XML hit is read only in its place: `Artifact` / `Hits` / `Hit` / `Fragment`. Elements with
+those names anywhere else are not read.
 
 ## What we assumed
 
@@ -79,9 +83,14 @@ Every artifact may carry `Source` (the file inside the image the hit came from, 
 record. `Recovery method` is read for flags (below). Any other field is listed in coverage as a
 field Baker does not read.
 
-A message's time is the first present of `Message Date/Time`, `Message Sent Date/Time`,
-`Sent Date/Time`, `Message Received Date/Time`, `Received Date/Time`, `Created Date/Time`,
-`Date/Time`; when more than one is present, coverage says which was used.
+A message's time comes from `Message Date/Time`, `Message Sent Date/Time`, `Sent Date/Time`,
+`Message Received Date/Time`, `Received Date/Time`, `Created Date/Time` or `Date/Time`, in that
+order of preference, per hit: a hit whose first field is blank takes the next filled one, read
+with that field's own zone and date format. Coverage names the fields and the order.
+
+A hit with nothing in any field Baker reads is not imported; it is listed for review
+(`no_values_in_known_columns`). A device details artifact with no field Baker knows is listed as
+not imported, and device fields Baker does not read are named in the coverage record.
 
 ### Times
 
@@ -95,7 +104,9 @@ field with no zone gives no UTC time.
 Day and month order comes from, in order: the order the expert states at import
 (`date_order`), the date format in the field's name (`M/d/yyyy` month first, `d/M/yyyy` or
 `dd.MM.yyyy` day first), then the values that decide it. It is never assumed. Values that can
-only be read the other way round from a stated or named order are counted for review.
+only be read the other way round from the stated order, or from the field's date format, are
+counted for review, each under its own heading. The case sheet's acquisition time key may carry
+a zone and format too, and they are applied the same way.
 
 ### Parties and the phone's own accounts
 

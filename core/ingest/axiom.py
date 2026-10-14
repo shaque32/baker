@@ -339,10 +339,10 @@ class _XmlReader:
             n = len(self.artifacts) + 1
             self.cur = Artifact(attrs.get("name", "").strip() or f"(unnamed {n})", f"Artifact[{n}]")
             self.artifacts.append(self.cur)
-        elif local == "Hit" and self.cur is not None:
+        elif local == "Hit" and self.cur is not None and self.path[-3:-1] == ["Artifact", "Hits"]:
             self.hit = {}
             self.hit_loc = f"{self.cur.locator}/Hit[{len(self.cur.hits) + 1}]"
-        elif local == "Fragment" and self.hit is not None:
+        elif local == "Fragment" and self.hit is not None and self.path[-2] == "Hit":
             self.frag = (attrs.get("name", "").strip(), [])
         if len(self.path) == 2:
             self.other[local] += 1
@@ -364,7 +364,12 @@ class _XmlReader:
                 return
             value = "".join(parts)
             self.hit[fname] = value if value.strip() else None
-        elif local == "Hit" and self.hit is not None and self.cur is not None:
+        elif (
+            local == "Hit"
+            and self.hit is not None
+            and self.cur is not None
+            and self.path[-2:] == ["Artifact", "Hits"]
+        ):
             self.cur.hits.append((self.hit_loc, self.hit))
             self.hit = None
         elif local == "Artifact":
@@ -514,12 +519,14 @@ def read_workbook(data: bytes) -> ReadReport:
 
 
 _TIME_HEADER_RE = re.compile(r"date/time\s+-\s+(?:utc|gmt)", re.I)
+_PLATFORM_START_RE = re.compile(r"^(?:android|ios)\s")
 
 
 def looks_like_axiom_workbook(path: Path) -> bool:
     """True when an .xlsx has the marks of an AXIOM export: a time column named with its UTC
-    offset ('... Date/Time - UTC+00:00 (M/d/yyyy)'), or a header row naming both 'Recovery
-    method' and 'Evidence number' or 'Item ID'. Cellebrite reports carry neither."""
+    offset ('... Date/Time - UTC+00:00 (M/d/yyyy)'), a 'Recovery method' column, or a sheet
+    named as an AXIOM artifact type with its platform ('Android Contacts', 'iOS WhatsApp
+    Accounts Information'). Cellebrite reports carry none of these."""
     try:
         with open_input(path) as f:
             wb = load_workbook(io.BytesIO(f.read()), read_only=True, data_only=True)
@@ -527,11 +534,13 @@ def looks_like_axiom_workbook(path: Path) -> bool:
         return False
     try:
         for ws in wb.worksheets:
+            title = norm(ws.title)
+            cut = len(ws.title) == EXCEL_SHEET_NAME_LIMIT
+            if _PLATFORM_START_RE.match(title) and classify(ws.title, cut)[0] is not None:
+                return True
             for cells in ws.iter_rows(max_row=HEADER_SCAN_ROWS, values_only=True):
                 names = {norm(c) for c in cells if isinstance(c, str)}
-                if any(_TIME_HEADER_RE.search(n) for n in names):
-                    return True
-                if "recovery method" in names and names & {"evidence number", "item id"}:
+                if any(_TIME_HEADER_RE.search(n) for n in names) or "recovery method" in names:
                     return True
     finally:
         wb.close()
@@ -567,8 +576,8 @@ def _parties(ident: Cell, name: Cell) -> list[Party]:
 class _Mapped:
     kind: RecordKind
     app: str | None
-    rows: list[Row]
-    tctx: TimeContext
+    tc: TableCoverage
+    groups: list[tuple[list[Row], TimeContext]]  # rows by the time field they were read from
 
 
 class _Mapper:
@@ -581,11 +590,13 @@ class _Mapper:
         self.recovery_values: Counter[str] = Counter()
         self.device: dict[str, tuple[str, str]] = {}  # key -> (value, locator)
         self.artifact_counts: dict[str, int] = {}
+        self.device_fields_not_read: dict[str, list[str]] = {}
 
     def _resolve(
         self, art: Artifact, kind: str, tc: TableCoverage
-    ) -> tuple[dict[str, FieldName], list[str]]:
-        """field key -> the field name used; and notes on time fields present but not used."""
+    ) -> tuple[dict[str, FieldName], list[FieldName], list[str]]:
+        """field key -> the field name used; every time field present, in order of preference
+        (a hit with the first one blank takes its time from the next); and notes."""
         aliases = FIELDS[kind]
         names = [field_name(n) for n in art.fields]
         by_base: dict[str, FieldName] = {}
@@ -603,23 +614,18 @@ class _Mapper:
                     used[key] = by_base[a]
                     break
         known = {a for options in aliases.values() for a in options} | IGNORED_FIELDS
-        tc.unknown_columns = [fn.written for fn in names if fn.base not in known][:30]
+        tc.unknown_columns = [fn.written for fn in names if fn.base not in known]
         notes = []
-        if "ts" in used:
-            others = [
-                by_base[a].written
-                for a in aliases["ts"]
-                if a in by_base and by_base[a] is not used["ts"]
-            ]
-            if others:
-                notes.append(
-                    f"times were read from {used['ts'].written!r}; also present and not used: "
-                    + ", ".join(repr(o) for o in others)
-                    + "."
-                )
+        ts_fields = [by_base[a] for a in aliases.get("ts", ()) if a in by_base]
+        if len(ts_fields) > 1:
+            notes.append(
+                f"times were read from {ts_fields[0].written!r}; where it is blank, from "
+                + ", then ".join(repr(f.written) for f in ts_fields[1:])
+                + "."
+            )
         for d in art.duplicates:
             tc.duplicate_columns.append({"column": d, "field": norm(d), "used": d})
-        return used, notes
+        return used, ts_fields, notes
 
     def _flag(self, name: str, tc: TableCoverage, reason: str, locator: str) -> None:
         self.flag_counts.setdefault(name, Counter())[reason] += 1
@@ -637,12 +643,28 @@ class _Mapper:
             )
             return None
         if kind == "device":
+            known = {a for options in _DEVICE_FIELDS.values() for a in options} | IGNORED_FIELDS
+            read = 0
             for loc, hit in art.hits:
                 fmap = {field_name(k).base: (k, v) for k, v in hit.items()}
                 for key, options in _DEVICE_FIELDS.items():
                     for a in options:
-                        if a in fmap and text(fmap[a][1]) and key not in self.device:
-                            self.device[key] = (str(text(fmap[a][1])), loc)
+                        if a in fmap and text(fmap[a][1]):
+                            read += 1
+                            if key not in self.device:
+                                self.device[key] = (str(text(fmap[a][1])), loc)
+            unknown = [f for f in art.fields if field_name(f).base not in known]
+            if unknown:
+                self.device_fields_not_read[art.name] = unknown
+            if not read:
+                self.cov.not_imported.append(
+                    {
+                        "name": art.name,
+                        "reason": "device details with no field Baker knows",
+                        "rows" if art.header_locator is None and art.locator == art.name
+                        else "records": len(art.hits),
+                    }
+                )  # fmt: skip
             return None
         if art.header_locator is None and art.locator == art.name:  # an Excel sheet, no header
             self.cov.not_imported.append(
@@ -658,7 +680,7 @@ class _Mapper:
         tc.app_from_title = app
         if art.hidden:
             self.cov.hidden_sheets.append(art.name)
-        used, notes = self._resolve(art, kind, tc)
+        used, ts_fields, notes = self._resolve(art, kind, tc)
         tc.header_notes = notes
         if truncated:
             tc.header_notes.append(
@@ -672,17 +694,29 @@ class _Mapper:
                 f"messages were grouped into threads by {used['chat_id'].written!r}."
             )
         self.tables.append(tc)
-        ts_name = used.get("ts")
-        offsets: dict[str, int] = {}
-        if ts_name is not None:
-            if ts_name.offset is not None:
-                offsets["ts"] = ts_name.offset
-                tc.header_offsets = {ts_name.written: ts_name.offset}
-            elif ts_name.zone is not None:
-                tc.header_zone_names = {ts_name.written: ts_name.zone}
-        rows = [self._row(art.name, rkind, tc, used, loc, hit) for loc, hit in art.hits]
+        for fn in ts_fields:
+            if fn.offset is not None:
+                tc.header_offsets[fn.written] = fn.offset
+            elif fn.zone is not None:
+                tc.header_zone_names[fn.written] = fn.zone
+        rows: dict[str, list[Row]] = {fn.written: [] for fn in ts_fields} or {"": []}
+        for loc, hit in art.hits:
+            if all(
+                text(hit.get(fn.written)) is None and not isinstance(hit.get(fn.written), datetime)
+                for key, fn in used.items()
+                if key != "recovery"
+            ) and all(text(hit.get(fn.written)) is None for fn in ts_fields):
+                tc.rows_skipped["no_values_in_known_columns"] += 1
+                _listed(tc.skipped_locators, "no_values_in_known_columns", loc)
+                continue
+            ts_used = next(
+                (fn for fn in ts_fields if _filled(hit.get(fn.written))),
+                ts_fields[0] if ts_fields else None,
+            )
+            row = self._row(art.name, rkind, tc, used, ts_used, loc, hit)
+            rows[ts_used.written if ts_used else ""].append(row)
         tc.rows_read = len(art.hits)
-        tc.rows_imported = len(rows)
+        tc.rows_imported = sum(len(r) for r in rows.values())
         tc.missing_key_fields = [
             k
             for k, f in (("time", "ts"), ("body", "body"), ("from", "from_id"), ("name", "name"))
@@ -696,13 +730,19 @@ class _Mapper:
             f for f in ("ts", "deleted") if f not in used and rkind not in (
                 RecordKind.CONTACTS, RecordKind.ACCOUNTS)
         )  # fmt: skip
-        order = DateOrder()
-        for r in rows:
-            v = r.get("ts")
-            if isinstance(v, str):
-                order.observe(v)
-        tctx = TimeContext(self._order(tc, rkind, order, ts_name), None, offsets, tc)
-        return _Mapped(rkind, app, rows, tctx)
+        by_name = {fn.written: fn for fn in ts_fields}
+        groups = []
+        for written, group in rows.items():
+            own = DateOrder()
+            for r in group:
+                v = r.get("ts")
+                if isinstance(v, str):
+                    own.observe(v)
+            fn = by_name.get(written)
+            offsets = {"ts": fn.offset} if fn is not None and fn.offset is not None else {}
+            order = self._order(tc, rkind, own, fn)
+            groups.append((group, TimeContext(order, None, offsets, tc)))
+        return _Mapped(rkind, app, tc, groups)
 
     def _order(
         self, tc: TableCoverage, kind: RecordKind, own: DateOrder, ts: FieldName | None
@@ -725,9 +765,12 @@ class _Mapper:
             tc.date_order = own.label
             return own
         if own.label not in ("undecided", want):
-            self.cov.counters["values_contradicting_stated_date_order"] += (
-                own.mdy_votes if want == "dmy" else own.dmy_votes
+            counter = (
+                "values_contradicting_stated_date_order"
+                if self.stated is not None
+                else "values_contradicting_field_date_format"
             )
+            self.cov.counters[counter] += own.mdy_votes if want == "dmy" else own.dmy_votes
         tc.date_order = eff.label
         return eff
 
@@ -737,11 +780,12 @@ class _Mapper:
         kind: RecordKind,
         tc: TableCoverage,
         used: dict[str, FieldName],
+        ts: FieldName | None,
         loc: str,
         hit: dict[str, Cell],
     ) -> Row:
         def get(key: str) -> Cell:
-            fn = used.get(key)
+            fn = ts if key == "ts" else used.get(key)
             return hit.get(fn.written) if fn is not None else None
 
         rec = text(get("recovery"))
@@ -831,6 +875,10 @@ class _Mapper:
 _TIMESPAN_RE = re.compile(r"^(?:(\d+)[.:])?(\d{1,2}):(\d{2}):(\d{2})(?:\.\d+)?$")
 
 
+def _filled(v: Cell) -> bool:
+    return isinstance(v, datetime) or text(v) is not None
+
+
 def _duration(raw: Cell) -> int | None:
     """Seconds from '00:03:38', '1.02:03:04', '218' or a number; None when unread."""
     if isinstance(raw, int | float) and not isinstance(raw, bool):
@@ -899,15 +947,14 @@ class AxiomImporter:
         cov.summary_found = bool(rep.summary) or bool(mp.device)
         cov.tables = mp.tables
 
-        summ = _summary(rep.summary)
+        summ, summ_names = _summary(rep.summary)
         extracted_utc = None
         if "extraction_start" in summ:
-            order = (
-                DateOrder(int(self.date_order == "dmy"), int(self.date_order == "mdy"))
-                if self.date_order
-                else DateOrder()
-            )
-            extracted_utc = parse_time(summ["extraction_start"][0], order, None).ts.utc
+            fn = summ_names["extraction_start"]
+            named = date_format_order(fn.date_format)
+            stated = self.date_order or (named if named in ("dmy", "mdy") else None)
+            order = DateOrder(int(stated == "dmy"), int(stated == "mdy")) if stated else DateOrder()
+            extracted_utc = parse_time(summ["extraction_start"][0], order, fn.offset).ts.utc
             if extracted_utc is None:
                 cov.counters["extraction_time_unread"] += 1
         dev_label = _device_label(mp.device, summ)
@@ -969,14 +1016,15 @@ class AxiomImporter:
                 for m in mapped:
                     if m.kind is not kind:
                         continue
-                    if kind is RecordKind.ACCOUNTS:
-                        _accounts(w, m.rows, m.tctx.tc, m.app)
-                    elif kind is RecordKind.CONTACTS:
-                        _contacts(w, m.rows)
-                    elif kind is RecordKind.CALLS:
-                        _calls(w, m.rows, m.tctx, m.app)
-                    else:
-                        _messages(w, kind, m.rows, m.tctx, m.app)
+                    for rows, tctx in m.groups:
+                        if kind is RecordKind.ACCOUNTS:
+                            _accounts(w, rows, m.tc, m.app)
+                        elif kind is RecordKind.CONTACTS:
+                            _contacts(w, rows)
+                        elif kind is RecordKind.CALLS:
+                            _calls(w, rows, tctx, m.app)
+                        else:
+                            _messages(w, kind, rows, tctx, m.app)
             w.flush()
             payload = coverage_payload(
                 source,
@@ -1000,6 +1048,7 @@ class AxiomImporter:
                     "artifacts": dict(mp.artifact_counts),
                     "recovery_method_values": dict(sorted(mp.recovery_values.items())),
                     "device_read": {k: v[1] for k, v in sorted(mp.device.items())},
+                    "device_fields_not_read": mp.device_fields_not_read,
                     "summary_read": {k: v[1] for k, v in sorted(summ.items())},
                 },
             )
@@ -1017,18 +1066,23 @@ class AxiomImporter:
         return source
 
 
-def _summary(pairs: list[tuple[str, str, str]]) -> dict[str, tuple[str, str]]:
+def _summary(
+    pairs: list[tuple[str, str, str]],
+) -> tuple[dict[str, tuple[str, str]], dict[str, FieldName]]:
+    """key -> (value, locator) for the case sheet values Baker reads, and key -> the name as
+    written. A key may carry a zone and date format, as a time field's name does
+    ('Acquisition Date/Time - UTC+00:00 (M/d/yyyy)')."""
     out: dict[str, tuple[str, str]] = {}
+    names: dict[str, FieldName] = {}
+    parsed = [(field_name(k.rstrip(": ")), v, loc) for k, v, loc in pairs]
     for key, aliases in SUMMARY_KEYS.items():
         for a in aliases:
-            hit = next(
-                ((v.strip(), loc) for k, v, loc in pairs if norm(k).rstrip(":") == a and v.strip()),
-                None,
-            )
+            hit = next(((fn, v, loc) for fn, v, loc in parsed if fn.base == a and v.strip()), None)
             if hit:
-                out[key] = hit
+                out[key] = (hit[1].strip(), hit[2])
+                names[key] = hit[0]
                 break
-    return out
+    return out, names
 
 
 def _device_label(

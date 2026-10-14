@@ -463,3 +463,86 @@ def test_an_encrypted_case_imports_an_axiom_xml_through_decryption(case01, tmp_p
     for name, sql in PARITY.items():
         assert sorted(map(repr, conn.execute(sql))) == sorted(map(repr, plain.execute(sql))), name
     conn.close()
+
+
+# ---------------------------------------------------------------- review follow-ups
+
+
+def test_a_hit_with_its_first_time_field_blank_takes_the_next_one(tmp_path):
+    sent = "Sent Date/Time - UTC+00:00 (M/d/yyyy)"
+    received = "Received Date/Time - UTC+01:00 (d/M/yyyy)"
+    arts = [
+        (
+            "Android SMS",
+            [
+                [("Partner", "+15550100003"), ("Message", "out"), (sent, "3/4/2026 9:00:00 PM"),
+                 (received, None)],
+                [("Partner", "+15550100003"), ("Message", "in"), (sent, None),
+                 (received, "3/4/2026 9:00:00 PM")],
+            ],
+        )
+    ]  # fmt: skip
+    for path in _both(tmp_path, arts):
+        conn, s = _import(path)
+        rows = dict(conn.execute("SELECT body, ts_utc FROM messages"))
+        assert rows == {"out": "2026-03-04T21:00:00Z", "in": "2026-04-03T20:00:00Z"}
+        assert "no_time" not in _codes(s)
+
+
+def test_hits_with_nothing_in_fields_baker_reads_are_listed_not_imported(tmp_path):
+    arts = [_wa(_msg("hi", "3/4/2026 9:00:00 PM"), [("Mood", "odd")])]
+    for path in _both(tmp_path, arts):
+        conn, s = _import(path)
+        assert conn.execute("SELECT COUNT(*) FROM messages").fetchone() == (1,)
+        assert _codes(s)["rows_skipped_no_values_in_known_columns"] == "attention"
+
+
+def test_a_workbook_with_only_contacts_and_accounts_is_still_read_as_axiom(tmp_path):
+    arts = [
+        OWNER_WA,
+        ("Android Contacts", [[("Display Name", "Jo"), ("Phone Number(s)", "+15550100002")]]),
+    ]
+    xlsx = _both(tmp_path, arts)[1]
+    assert report_importer(xlsx) is AxiomImporter
+
+
+def test_device_details_baker_cannot_read_are_listed(tmp_path):
+    arts = [("iOS Device Information", [[("Handset Label", "x")]]), _wa(_msg("hi", None))]
+    conn, s = _import(_both(tmp_path, arts)[0])
+    entry = next(e for e in json.loads(
+        conn.execute("SELECT payload_json FROM source_coverage").fetchone()[0]
+    )["not_imported"] if e["name"] == "iOS Device Information")  # fmt: skip
+    assert entry["reason"] == "device details with no field Baker knows"
+    assert "not_imported" in _codes(s)
+
+
+def test_hits_outside_the_artifact_hits_hierarchy_are_not_read(tmp_path):
+    p = tmp_path / "h.xml"
+    p.write_text(
+        "<R><Artifact name='Android SMS'><Hit><Fragment name='Message'>stray</Fragment></Hit>"
+        "<Hits><Hit><Fragment name='Message'>kept</Fragment>"
+        "<Fragment name='Partner'>+15550100003</Fragment></Hit></Hits></Artifact></R>"
+    )
+    conn, _s = _import(p)
+    assert [r[0] for r in conn.execute("SELECT body FROM messages")] == ["kept"]
+
+
+def test_the_acquisition_time_key_applies_its_own_zone_and_format(tmp_path):
+    xlsx = tmp_path / "s.xlsx"
+    sheets = workbook_sheets(
+        [_wa(_msg("hi", "3/4/2026 9:00:00 PM"))],
+        [("Acquisition Date/Time - UTC-05:00 (d/M/yyyy)", "3/4/2026 9:00:00 PM")],
+    )
+    write_xlsx(xlsx, sheets)
+    conn, _s = _import(xlsx)
+    assert conn.execute("SELECT extracted_at_utc FROM sources").fetchone() == (
+        "2026-04-04T02:00:00Z",
+    )
+
+
+def test_values_against_the_field_date_format_are_not_called_a_stated_order(tmp_path):
+    arts = [_wa(_msg("a", "3/25/2026 9:00:00 PM", ts_name="Message Date/Time - UTC (d/M/yyyy)"))]
+    _conn, s = _import(_both(tmp_path, arts)[0])
+    codes = _codes(s)
+    assert codes["values_contradicting_field_date_format"] == "attention"
+    assert "values_contradicting_stated_date_order" not in codes

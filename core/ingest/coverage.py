@@ -101,6 +101,10 @@ _ATTENTION_COUNTERS = {
         "Calls naming a party without saying whether it called or was called (the party is "
         "recorded, but not as caller or callee)"
     ),
+    "values_contradicting_field_date_format": (
+        "Time values that can only be read the other way round from the date format their "
+        "field name states (each was read as written; compare with the tool that made the report)"
+    ),
     "values_contradicting_stated_date_order": (
         "Time values that can only be read the other way round from the date order stated at "
         "import (each was read as written; check the stated order)"
