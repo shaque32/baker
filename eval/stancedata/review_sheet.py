@@ -50,7 +50,8 @@ def render_item(row: dict) -> list[str]:
         out.append("")
     out.append(f"**Assumption:** {row['assumption']}")
     out.append("")
-    phone = f" (record from {row['device_id']})" if row.get("device_id") else ""
+    device = row.get("device_id")
+    phone = f" (record from {device.removeprefix('dev:')})" if device else ""
     for line in lines:
         mark = f"**>>**{phone}" if line.get("marked") else "  "
         out.append(f"- {mark} `{line['local_time']}` {line['sender']}: {line['text']}")
@@ -94,14 +95,16 @@ def build(train: Path | None, heldout: Path | None) -> str:
         "  complicates, because the claim then rests on a translation the record does not settle.",
         '- **Rationales claim only what is shown.** A "lol" leaves sincerity open; a denial',
         "  conflicts in what it says, which does not make it true.",
-        "- **Baker's own wording** (rules 25 to 29). Some assumptions are Baker's template text:",
-        "  `dev:item3` is a phone, `acct:item3:Telegram:5550147` an account as that phone lists",
-        "  it, `person:dev:item3:owner` the phone's stipulated owner, `person:vance` a person the",
-        "  document names. A line shows \"(owner)\" for the record's own phone's account and, in",
-        "  brackets, the person ids Baker holds as confirmed for that account; a person id in no",
-        "  bracket is not shown. A call's text prints the report's time (often UTC); the line's",
-        '  local time decides. Templates that say "the claim" are never supports or',
-        "  contradicts, because the claim is not shown.",
+        "- **Baker's own wording** (rules 25 to 29). Some assumptions are Baker's template text",
+        '  with the case\'s names: `item3` is a phone, "Lena Okafor (the user of item3)" the',
+        "  person an expert stipulated as its user, a name alone a person the document names,",
+        '  "Telegram 5550147" an account (the same account on every phone). A line shows',
+        "  \"(owner)\" for the record's own phone's account and, in brackets, the people Baker",
+        "  holds as confirmed for that account; a person in no bracket is not shown, whatever the",
+        "  chat calls anyone. A call's text prints the report's time (often UTC); the line's local",
+        "  time decides. For the meaning, role and event templates the claim is shown: only the",
+        "  words' own user explaining them, or the claimed message or call itself, supports; only",
+        "  a named person's own denial or alibi, from an account bracketed with them, contradicts.",
         "",
     ]
     parts = [("Part 1: training examples", train, TRAIN_SAMPLE, SEED),

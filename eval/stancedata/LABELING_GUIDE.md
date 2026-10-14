@@ -246,15 +246,15 @@ the same four definitions and rules 1 to 24; this section adds what is new.
     12" or "at most 12". Case01's paragraph 10.1 showed why names, not ids: the 14B read "sent by
     person:dev:item1:owner" against the same number saved as "Dan P" and answered contradicts.
 26. **What a line shows about people.** A sender line prints the app and identifier, then the
-    name the phone saved for it if any, then "(owner)" if it is the record's own phone's
-    account, then in brackets the people Baker holds as confirmed for that account: stipulated
-    phone users and links an expert confirmed, never proposed ones. On item1 the user's own
-    number reads `SMS +13125550161 (owner) [Daniel Petrov (the user of item1)]`; on a phone that
-    saved it as "Dan P", `SMS +13125550161 Dan P [Daniel Petrov (the user of item1)]`. A person
-    the assumption names who appears in no bracket is unresolved, and rule 4 applies to them: no
-    handle, saved name or self-introduction shows who it is, even one that matches their name
-    (`SMS +13125550188 Rita` does not show Rita Vance). The RECORD line also names the phone it
-    came from.
+    sender's name as the source showed it, if the source kept one, then "(owner)" if it is the
+    record's own phone's account, then in brackets the people Baker holds as confirmed for that
+    account: stipulated phone users and links an expert confirmed, never proposed ones. On item1
+    the user's own number reads `SMS +13125550161 (owner) [Daniel Petrov (the user of item1)]`;
+    on item2, which holds messages from that number, `SMS +13125550161 [Daniel Petrov (the user
+    of item1)]`. A person the assumption names who appears in no bracket is unresolved, and rule
+    4 applies to them: no handle, saved name, contact entry or self-introduction shows who it
+    is, even one that matches their name (a chat that calls `SMS +13125550188` "rita" does not
+    show Rita Vance). The RECORD line also names the phone it came from.
 27. **Zones.** The zone after a window ("(America/New_York)") is the zone the document's times
     are read in. A line's zone abbreviation is the phone's: EST and EDT are America/New_York,
     CST and CDT America/Chicago, MST and MDT America/Denver, PST and PDT America/Los_Angeles.
@@ -289,9 +289,9 @@ the same four definitions and rules 1 to 24; this section adds what is new.
 
 | Family | Answer | Template | What the record shows | Invented example |
 |---|---|---|---|---|
-| `bk_sender_shown` | supports | sender | The quoted words, from the named sender: a named account's app and identifier, or the named person in the line's brackets, whatever name the phone saved. | Assumption: The message "gate code 1190" was sent by Daniel Petrov (the user of item1). Record on item2, line `SMS +13125550161 Dan P [Daniel Petrov (the user of item1)]`: "gate code 1190". |
+| `bk_sender_shown` | supports | sender | The quoted words, from the named sender: a named account's app and identifier, or the named person in the line's brackets, on any phone. | Assumption: The message "gate code 1190" was sent by Daniel Petrov (the user of item1). Record on item2, line `SMS +13125550161 [Daniel Petrov (the user of item1)]`: "gate code 1190". |
 | `bk_sender_other` | complicates (trap) | sender | The quoted words from a different account or person; one record cannot show the named sender never sent them too (rule 23). | Same assumption; the record "gate code 1190" comes from `SMS +13125550188`. |
-| `bk_party_unshown` | complicates (trap) | sender, time, no-contact, count | The assumption names a person that no line carries in brackets, so the record shows only an account, a handle or a saved name, even one like the person's name (rule 26). | Assumption: The message "gate code 1190" was sent by Rita Vance. Record from `SMS +13125550188 Rita`: "gate code 1190". |
+| `bk_party_unshown` | complicates (trap) | sender, time, no-contact, count | The assumption names a person that no line carries in brackets, so the record shows only an account, a handle or a name in the chat, even one like the person's name (rule 26). | Assumption: The message "gate code 1190" was sent by Rita Vance. Record from `SMS +13125550188`, just after the owner wrote "rita whats the code": "gate code 1190". |
 | `bk_time_inside` | supports | time | The quoted words, from the named sender if one is named, at a local time plainly inside the window in the assumption's zone. | Assumption: The message "gate code 1190" (SMS +13125550188) was sent "on May 2, 2026" (America/Chicago). Record: 2026-05-02 14:10 CDT. |
 | `bk_call_inside` | supports | time (call) | A call between the named parties' numbers, its local time plainly inside the window and its length inside the range, if one is given (rule 28). | Assumption: A call between Daniel Petrov (the user of item1) and Phone +13125550188 lasting 60 to 120 s happened "at about 9 p.m. on May 2, 2026" (America/Chicago). Record: outgoing call, 21:02 CDT, 84s. |
 | `bk_time_outside` | complicates (trap) | time | The named message or a call between the named parties, at a local time outside the window (rule 23). | The record "gate code 1190" at 2026-05-03 08:15 CDT against "on May 2, 2026". |
