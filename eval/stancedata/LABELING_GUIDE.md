@@ -278,12 +278,17 @@ the same four definitions and rules 1 to 24; this section adds what is new.
       explanation from anyone else, is complicates (rules 6 and 18).
     - **Role and event.** They state a role or an act as a fact, so a message never supports
       them (rule 14), with one exception: when the claim's event is itself a message or call,
-      the record that is that message or call (between the named parties, shown by account or
-      bracketed name, inside the window, and saying what the claim says it said) supports.
-      Contradicts needs a named person's own words, from an account bracketed with them, that
-      rule the act or role out for the claim's whole time: a denial that covers it (rule 23),
-      or placing themselves elsewhere for all of it. A record from or to such an account that
-      bears on the act or role without settling it is complicates.
+      the record that is that message or call (between the named parties, inside the window,
+      and saying what the claim says it said) supports. Each party must be shown: by a bracket
+      carrying the person, or by the account the claim itself gives for them ("texted Ortiz at
+      (312) 555-0188"). When the claim names a person only by name and the record shows their
+      account with no bracket, who holds it is not shown (rule 26), and the record is
+      complicates. Contradicts needs a named person's own words, from an account bracketed
+      with them, that rule the act or role out for the claim's whole time: a denial that
+      covers it (rule 23), or placing themselves elsewhere for all of it. The denial may name
+      the claim's other person as "u" when that person is the chat's other party, shown by a
+      bracket. A record from or to such an account that bears on the act or role without
+      settling it is complicates.
     - Any other record, including one that involves none of the named persons, is irrelevant.
 
 ### Baker's own wording: families
@@ -314,7 +319,7 @@ the same four definitions and rules 1 to 24; this section adds what is new.
 | `bk_claim_open` | complicates (trap) | meaning, role, event | The record holds the quoted words and nothing shown says what they mean (meaning), or it comes from or goes to an account bracketed with a named person, plainly inside the window if one is given, and bears on the act or role without being it or ruling it out (role, event) (rule 29). | Claim: Vance used "the shed" to mean the storage unit on 5th Street. Assumption: The words "the shed" mean what the claim says they mean. Record: "drop it by the shed". |
 | `bk_meaning_said` | supports | meaning | A message from the account that used the quoted words, plainly saying they mean exactly what the claim says they mean (rule 29). | Same claim and assumption. Record from Telegram 5550147, which wrote "drop it by the shed" earlier in the chat: "when i say the shed i mean the unit on 5th". |
 | `bk_meaning_other` | contradicts | meaning | That same account plainly gives the words a meaning that cannot be true together with the claim's (rule 29). | Same claim and assumption. Record from Telegram 5550147: "the shed is the one in my backyard, we dont have a unit". |
-| `bk_event_is_record` | supports | event | The claim's event is a message or call, and the record is it: between the named parties, plainly inside the window, and for a message saying exactly what the claim says it said (rule 29). | Claim: On May 2, 2026, Vance texted Ortiz the gate code 1190. Assumption: The event the claim states happened, involving Rita Vance and SMS +13125550188 "on May 2, 2026" (America/Chicago). Record from `SMS +13125550161 [Rita Vance]` in its chat with SMS +13125550188, May 2: "gate code 1190". |
+| `bk_event_is_record` | supports | event | The claim's event is a message or call, and the record is it: between the named parties, each shown by a bracket or by the account the claim gives for them, plainly inside the window, and for a message saying exactly what the claim says it said (rule 29). | Claim: On May 2, 2026, Vance texted Ortiz at (312) 555-0188 the gate code 1190. Assumption: The event the claim states happened, involving Rita Vance and SMS +13125550188 "on May 2, 2026" (America/Chicago). Record from `SMS +13125550161 [Rita Vance]` in its chat with SMS +13125550188, May 2: "gate code 1190". |
 | `bk_claim_denied` | contradicts | role, event | A person the claim names, from an account bracketed with them, rules the act or role out for the claim's whole time in their own words, sent after it: a denial that covers it, or placing themselves elsewhere for all of it (rules 23 and 29). | Claim: On May 2, 2026, Vance met Ortiz at the yard. Same assumption. Record from `SMS +13125550161 [Rita Vance]`, sent May 4: "didnt see ortiz at all on the 2nd, i was in denver all weekend". |
 | `bk_unrelated` | irrelevant | all | Another message, call, contact row or attachment that holds none of the quoted words and involves none of the named parties on the matter. | Sender assumption about "gate code 1190"; record "running 10 min late" from the same account. |
 
