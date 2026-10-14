@@ -13,7 +13,7 @@ import ast
 import re
 import shutil
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -269,6 +269,9 @@ def test_report_lists_alternatives_under_their_claims(conn):
         ("I couldn't use his phone", "SMS", "SMS", None),
         ("I wouldn’t use her account", "Instagram", "Instagram", None),
         ("you shouldnt borrow his phone", "SMS", "SMS", None),
+        ("I cannot use his phone", "SMS", "SMS", None),
+        ("he left his phone at home", "SMS", "SMS", None),  # left somewhere, not handed over
+        ("she left me her password", "SMS", "SMS", "left me her password"),
         ("not sure but im using his phone", "SMS", "SMS", "using his phone"),  # not a denial
     ],
 )
@@ -661,3 +664,92 @@ def test_two_identical_records_on_one_phone_both_show_on_the_clock(conn):
     ids = {f.record_id for f in clock.fits}
     assert "msg:item1:twin" in ids
     assert ids & {rid, "msg:item2:Chats!903"}
+
+
+# ---------------------------------------------------------------- eighth review
+
+
+def test_one_record_two_time_statements_point_to_shows_once_on_the_clock(conn):
+    a = _asm(conn, "C10", "record_time")
+    twice = a.model_copy(update={"id": "asm:twice"})
+    clock = explain._clock(explain.load(conn), [a, twice])
+    assert clock is not None
+    ids = [f.record_id for f in clock.fits]
+    assert len(ids) == len(set(ids)) == clock.total == 1
+
+
+def test_no_other_clock_when_the_phones_own_clock_fits_too(conn):
+    from zoneinfo import ZoneInfo
+
+    from core.contracts import TimeWindow
+
+    case = explain.load(conn)
+    a = _asm(conn, "C10", "record_time")
+    (fit,) = explain._clock(case, [a]).fits
+    (ts,) = conn.execute("SELECT ts_utc FROM messages WHERE id = ?", (fit.record_id,)).fetchone()
+    at = explain._parse(ts)
+    own = at.astimezone(case.data.tz_for(fit.source_id)).replace(tzinfo=None)
+    printed = at.replace(tzinfo=None)
+    # Stated in Tokyo, wide enough for the phone's own reading and the printed UTC reading, while
+    # the record's instant is outside it.
+    tokyo = ZoneInfo("Asia/Tokyo")
+    lo = (min(own, printed) - timedelta(minutes=1)).replace(tzinfo=tokyo).astimezone(UTC)
+    hi = (max(own, printed) + timedelta(minutes=1)).replace(tzinfo=tokyo).astimezone(UTC)
+    window = TimeWindow(start_utc=lo, end_utc=hi, tz="Asia/Tokyo", raw="test")
+    assert not (lo <= at <= hi)
+    assert explain._clock(case, [_asm(conn, "C10", "record_time", window=window)]) is None
+
+
+def test_a_sender_statement_keeps_a_copy_in_another_conversation(conn):
+    a = _asm(conn, "C05", "sender")
+    case = explain.load(conn)
+    (claimed, *_) = explain._quoted_rows(case, a)
+    (thread,) = conn.execute(
+        "SELECT m.thread_id FROM messages m JOIN threads t ON t.id = m.thread_id"
+        " WHERE m.source_id = ? AND t.app = ? AND m.thread_id != ("
+        "  SELECT thread_id FROM messages WHERE id = ?) LIMIT 1",
+        (claimed.source_id, claimed.app, claimed.id),
+    ).fetchone()
+    conn.execute(
+        "INSERT INTO messages (id, source_id, locator, thread_id, direction, ts_utc, ts_raw, body)"
+        " VALUES ('msg:test:elsewhere', ?, 'Test!8', ?, 'incoming', '2026-03-01T12:00:00Z',"
+        " 'test', ?)",
+        (claimed.source_id, thread, claimed.text),
+    )
+    ids = [r.id for r in explain._quoted_rows(explain.load(conn), a)]
+    assert claimed.id in ids and "msg:test:elsewhere" in ids
+
+
+def test_an_identical_row_of_the_quoted_message_is_itself_a_quoted_row(conn):
+    meaning = next(a for a in claim_state(conn, "C13").assumptions if a.template_id == "meaning")
+    (claimed, *_) = explain._quoted_rows(explain.load(conn), meaning)
+    conn.execute(
+        "INSERT INTO messages SELECT 'msg:test:twin', source_id, 'Test!9', thread_id,"
+        " sender_account_id, sender_raw, direction, ts_utc, ts_offset_min, ts_raw, body, lang,"
+        " deleted_flag, bookmarked FROM messages WHERE id = ?",
+        (claimed.id,),
+    )
+    conn.execute(
+        "INSERT INTO message_recipients SELECT 'msg:test:twin', account_id, raw"
+        " FROM message_recipients WHERE message_id = ?",
+        (claimed.id,),
+    )
+    case = explain.load(conn)
+    assert "msg:test:twin" in {r.id for r in explain._quoted_rows(case, meaning)}
+
+
+def test_a_word_after_a_first_name_is_a_surname_only_when_the_case_knows_it(conn):
+    acct = "acct:item1:WhatsApp:12125550111@s.whatsapp.net"
+    (thread,) = conn.execute(
+        "SELECT thread_id FROM messages WHERE sender_account_id = ? LIMIT 1", (acct,)
+    ).fetchone()
+    conn.execute(
+        "INSERT INTO messages (id, source_id, locator, thread_id, sender_account_id, direction,"
+        " ts_utc, ts_raw, body) VALUES ('msg:test:intro', 'item1', 'Test!10', ?, ?, 'outgoing',"
+        " '2026-03-01T12:00:00Z', 'test', 'hey im daniel working today')",
+        (thread, acct),
+    )
+    case = explain.load(conn)
+    person = case.person("person:dev:item1:owner")
+    found, _ = explain._intro_fits(case, {case.data.accounts[acct].key}, [person])
+    assert "msg:test:intro" not in {r.id for r, _ in found}

@@ -101,10 +101,14 @@ _DEVICE_WORDS = frozenset("phone cell ipad tablet laptop computer pc iphone sams
 _THINGS = "|".join(
     ["account", "acct", "login", "log-?in", "password", *_APP_WORDS, *sorted(_DEVICE_WORDS)]
 )
+_CREDENTIALS = r"(?:account|acct|login|log-?in|password)"
 _WHOSE = r"(?:ur|your|his|her|their|my|[^\W\d_]+'s|[^\W\d_]+’s)"
 _HANDOFF = re.compile(
-    r"\b(?:using|used|use|borrow(?:ed|ing)?|took|take|taking|grab(?:bed)?|left|gave|shared|"
+    r"\b(?:using|used|use|borrow(?:ed|ing)?|took|take|taking|grab(?:bed)?|gave|shared|"
     rf"lent|give)\s+(?:me\s+)?(?P<whose1>{_WHOSE})\s+(?P<thing>{_THINGS})\b"
+    # Leaving a login with someone hands it over; leaving a phone somewhere ("he left his phone
+    # at home") says nothing about who used it, so "left" counts only for a login or account.
+    rf"|\bleft\s+(?:me\s+)?(?P<whose3>{_WHOSE})\s+(?P<thing3>{_CREDENTIALS})\b"
     # A login counts only on someone else's phone or account ("logged in on his ipad"); "logged
     # in from home" or "signed in as Daniel" names no one else's.
     r"|\b(?:logged|signed)\s+(?:in(?:to)?|on)\s+(?:(?:on|to|with|from|as|into)\s+)?"
@@ -328,6 +332,8 @@ def _quoted_rows(case: Case, a: Assumption) -> list[Row]:
     if a.template_id in _TIMED_QUOTES:
         # The time checks' rule: every named party on the message, or no party named.
         return [r for r in rows if not party_ids or involves_all(r, party_ids)]
+    if a.template_id == "sender":
+        return rows  # the sender check weighs every copy in scope, the wrong sender's too
     accounts = set().union(*party_ids) if party_ids else set()
     involved = [r for r in rows if r.accounts & accounts]
     return involved or rows
@@ -393,7 +399,10 @@ def _intro_fits(
             w2 = (m.group(2) or "").casefold()
             if w1 not in case.ids.known_words:
                 continue
-            words = [w1] + ([w2] if w2 and w2 not in _NOT_SURNAME else [])
+            # The second word is read as a surname only when the case knows it as a name word,
+            # so "I'm Daniel working today" stays "Daniel".
+            known = w2 and w2 not in _NOT_SURNAME and w2 in case.ids.known_words
+            words = [w1] + ([w2] if known else [])
             named = " ".join(words)
             if persons and not all(_intro_conflicts(p, words) for p in persons):
                 break
@@ -445,7 +454,7 @@ def _name_fits(case: Case, keys: set[Key], persons: list[idl.Person]) -> list[Fi
 
 
 _NEGATED = re.compile(
-    r"\b(?:never|not|no|didn'?t|didn’t|dont|don'?t|don’t|wont|won'?t|cant|can'?t|can’t|"
+    r"\b(?:never|not|no|cannot|didn'?t|didn’t|dont|don'?t|don’t|wont|won'?t|cant|can'?t|can’t|"
     r"havent|haven'?t|wasnt|wasn'?t|couldnt|couldn'?t|couldn’t|wouldnt|wouldn'?t|wouldn’t|"
     r"shouldnt|shouldn'?t|shouldn’t|won’t|didnt)\b(?:\s+[^\W\d_]+){0,2}\s*$",
     re.IGNORECASE,
@@ -458,9 +467,9 @@ def _handoff(body: str, app: str, claimed_app: str) -> re.Match[str] | None:
     for m in _HANDOFF.finditer(body):
         if _NEGATED.search(body[max(0, m.start() - 40) : m.start()]):
             continue  # "i never used his account" denies a hand-off
-        if (m.group("whose1") or m.group("whose") or "").casefold() == "my":
+        if (m.group("whose1") or m.group("whose") or m.group("whose3") or "").casefold() == "my":
             continue  # logging in on one's own phone or account names no one else's
-        thing = (m.group("thing") or m.group("thing2") or "").casefold()
+        thing = (m.group("thing") or m.group("thing2") or m.group("thing3") or "").casefold()
         if thing in _APP_WORDS:
             ok = _APP_WORDS[thing] == claimed_app.strip().casefold()
         elif thing in _DEVICE_WORDS:
@@ -715,6 +724,8 @@ def _clock(case: Case, assumptions: list[Assumption]) -> Alternative | None:
             tz = case.data.tz_for(r.source_id)
             if tz is None:
                 continue  # the phone's own zone is unknown, so no reading is "another" clock
+            if wall[0] <= at.astimezone(tz).replace(tzinfo=None) <= wall[1]:
+                continue  # the stated time fits on the phone's own clock too; no other clock needed
             own = at.astimezone(tz).utcoffset()
             readings: list[tuple[str, datetime]] = []
             off = offsets.get(r.id)
@@ -740,6 +751,7 @@ def _clock(case: Case, assumptions: list[Assumption]) -> Alternative | None:
                     used.append(a.id)
                     shown[_copy_key(case.data, r)] = r.source_id
                     break
+    fits = _merge(fits)  # a record two time statements both point to shows once
     if not fits:
         return None
     return Alternative(
