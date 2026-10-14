@@ -10,7 +10,9 @@ from pathlib import Path
 import pytest
 
 from core.contracts import AssumptionKind as K
+from core.contracts import ClaimType, GoldClaim, Prediction, SupportedBasis, Verdict
 from core.llm.runtime import GenerationParams, ModelOutput
+from eval import run_eval
 from eval.probe import prompts, run_probe
 from eval.probe.from_draft import convert
 from eval.stancedata import bakerform as bf
@@ -375,6 +377,59 @@ def test_go_bar_decision() -> None:
     no_contradicts["gated"]["contradicts_precision"] = None
     assert not gobar.decide(probe=no_contradicts, heldout=_perfect("heldout"), case02=CASE02_OK,
                             seconds_per_call=1.0, contamination_passed=True).go  # fmt: skip
+
+
+def test_go_bar_scorer_fails_a_moved_trap_shown_as_supports() -> None:
+    # GO_BAR.md bars 2 and 3 hold moved traps at zero, so the go bar's scorer cannot report a
+    # pass with one shown as supports; run_probe's four Expert-confirms bars do not count it.
+    items = read_jsonl(PROBE)
+    preds = {it["probe_id"]: {"stance": it["gold_stance"], "quote": it["proposed_quote"]}
+             for it in items}  # fmt: skip
+    assert score.score(items, preds)["gated"]["passes_all"] is True
+    preds["P038"] = {"stance": "supports", "quote": preds["P038"]["quote"]}  # a moved trap
+    gated = score.score(items, preds)["gated"]
+    assert gated["moved_traps_shown_as_supports"] == 1
+    assert {bar for bar, ok in gated["bars"].items() if not ok} == {
+        "no_moved_traps_shown_as_supports"
+    }
+    assert gated["passes_all"] is False
+    st = score.StanceScore()
+    for it in items:
+        if run_probe.is_gated(it):
+            score.add_prediction(st, it, preds[it["probe_id"]])
+    assert run_probe.expert_confirms(st)["passes_all"] is True
+
+
+def _claim(cid: str, gold: Verdict) -> GoldClaim:
+    return GoldClaim(claim_id=cid, page=1, para_no=1, text="t", claim_type=ClaimType.EVENT,
+                     cross_device=False, gold_verdict=gold, core_assumptions=(),
+                     key_evidence=(), trap=None, rationale="r", labeled_by="test",
+                     labeled_at=datetime(2026, 10, 14, tzinfo=UTC))  # fmt: skip
+
+
+def _pred(cid: str, got: Verdict) -> Prediction:
+    basis = SupportedBasis.CONFIRMED if got == Verdict.SUPPORTED else None
+    return Prediction(claim_id=cid, verdict=got, supported_basis=basis)
+
+
+def test_go_bar_reads_case02_from_the_merge_gate_score() -> None:
+    # Condition 5 takes run_eval's own score, as an object or as the JSON it prints; run_eval
+    # has no false-contradicted count, so the go bar reads it from the confusion table.
+    s, c, u = Verdict.SUPPORTED, Verdict.CONTRADICTED, Verdict.UNPROVEN
+    pairs = [(s, s), (u, u), (c, c), (u, c), (s, s)]  # one unproven claim decided contradicted
+    gold = [_claim(f"C{n}", g) for n, (g, _) in enumerate(pairs)]
+    scores = run_eval.score(gold, [_pred(f"C{n}", p) for n, (_, p) in enumerate(pairs)])
+    printed = json.loads(json.dumps(scores.__dict__))
+    want = {"false_supported": 0, "false_contradicted": 1, "verdict_accuracy": 0.8}
+    assert gobar.case02_numbers(scores) == gobar.case02_numbers(printed) == want
+    assert gobar.case02_numbers(want) == want
+    args = dict(probe=_perfect("probe"), heldout=_perfect("heldout"), seconds_per_call=4.0,
+                contamination_passed=True)  # fmt: skip
+    for form in (scores, printed, want):
+        d = gobar.decide(case02=form, **args)
+        assert d.reasons == ["case02: false_contradicted is 1, needs <= 0"], d.reasons
+    clean = run_eval.score(gold, [_pred(f"C{n}", g) for n, (g, _) in enumerate(pairs)])
+    assert gobar.decide(case02=clean, **args).go
 
 
 def test_go_bar_file_states_the_coded_numbers() -> None:

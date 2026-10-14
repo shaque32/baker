@@ -10,6 +10,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from core.contracts import Verdict
+from eval.run_eval import Scores
+
 # The bar to beat: Qwen3-14B Q4_K_M with the signed stance prompt, 22.61 s per stance call on
 # Arsh's 24 GB Mac (thread "Model speed and claim proposal", run posted 2026-10-08 21:06 UTC).
 BASELINE_MODEL = "qwen3-14b-q4_k_m"
@@ -36,6 +39,25 @@ MIN_GOLD_CONTRADICTS = {"probe": 8, "heldout": 420}
 # Condition 5: Baker's real pipeline on the hidden case02, aggregate numbers only.
 CASE02_AT_MOST = {"false_supported": 0, "false_contradicted": 0}
 CASE02_MIN_VERDICT_ACCURACY = 0.80
+CASE02_KEYS = ("false_supported", "false_contradicted", "verdict_accuracy")
+
+
+def case02_numbers(result: Scores | dict[str, Any]) -> dict[str, Any]:
+    """Condition 5's three numbers from case02's merge-gate score: an eval.run_eval.Scores, the
+    JSON run_eval prints for one, or the three numbers already worked out. run_eval counts false
+    supported (n_false_supported) but not false contradicted, a claim decided contradicted whose
+    gold verdict is supported or unproven, so that one is read from its confusion table."""
+    d = vars(result) if isinstance(result, Scores) else result
+    if "confusion" not in d:
+        return {key: d.get(key) for key in CASE02_KEYS}
+    contradicted = Verdict.CONTRADICTED.value
+    return {
+        "false_supported": d.get("n_false_supported"),
+        "false_contradicted": sum(
+            row.get(contradicted, 0) for gold, row in d["confusion"].items() if gold != contradicted
+        ),
+        "verdict_accuracy": d.get("verdict_accuracy"),
+    }
 
 
 @dataclass
@@ -67,13 +89,13 @@ def decide(
     *,
     probe: dict[str, Any] | None,
     heldout: dict[str, Any] | None,
-    case02: dict[str, Any] | None,
+    case02: Scores | dict[str, Any] | None,
     seconds_per_call: float | None,
     contamination_passed: bool,
 ) -> Decision:
     """probe and heldout are eval.stancedata.score.score() results for the same model file;
-    case02 holds that model's aggregate numbers from Baker's pipeline on case02 (GO_BAR.md,
-    condition 5): false_supported, false_contradicted and verdict_accuracy."""
+    case02 is that model's merge-gate score from Baker's pipeline on case02 (GO_BAR.md,
+    condition 5), in any form case02_numbers reads."""
     reasons: list[str] = []
     if not contamination_passed:
         reasons.append("overlap check did not pass on the training file used")
@@ -82,10 +104,11 @@ def decide(
     if case02 is None:
         reasons.append("case02: no result")
     else:
+        numbers = case02_numbers(case02)
         for key, most in CASE02_AT_MOST.items():
-            if case02.get(key) is None or case02[key] > most:
-                reasons.append(f"case02: {key} is {case02.get(key)}, needs <= {most}")
-        acc = case02.get("verdict_accuracy")
+            if numbers[key] is None or numbers[key] > most:
+                reasons.append(f"case02: {key} is {numbers[key]}, needs <= {most}")
+        acc = numbers["verdict_accuracy"]
         if acc is None or acc < CASE02_MIN_VERDICT_ACCURACY:
             reasons.append(
                 f"case02: verdict accuracy is {acc}, needs >= {CASE02_MIN_VERDICT_ACCURACY:.2f}"
