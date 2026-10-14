@@ -1810,14 +1810,15 @@ def test_bk_meaning_records_follow_their_family(
     on an earlier line explains them in the record, as the claim's meaning (said) or as the
     plain thing they name (other), of another kind than the claim's meaning and never naming
     it; neither denies anything, and the quote holds the explanation. The claim names the
-    words' user."""
+    words' user and no date, so another meaning leaves it open: one record cannot show that no
+    other message used the words as the claim says (complicates, rules 23 and 29)."""
     plain_of = {words: plain for _, words, plain in bk_meanings.PHRASES}
     seen = Counter()
     for it in _bk(test_items + dev_items):
         if it.baker_template != "meaning" or it.family == "bk_unrelated":
             continue
         m = _MEANT.fullmatch(it.baker_claim or "")
-        assert m, it.probe_id
+        assert m and not re.search(r"\b\d{4}\b", it.baker_claim or ""), it.probe_id
         raw_words, raw_meaning = m["w1"] or m["w2"], m["m"]
         words, meaning = normalized(raw_words), normalized(raw_meaning)
         rec, rest = normalized(it.target.text), [normalized(ln.text) for ln in it.context]

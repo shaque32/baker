@@ -1,7 +1,7 @@
-"""Writers for the claim families a record can settle (guide rule 29), shown with the claim:
-bk_meaning_said and bk_meaning_other, where the account that used the words says what they
-mean, and bk_event_is_record, where the claim's event is a message or call and the record is
-that message or call."""
+"""Writers for the claim families where a record speaks to the claim itself (guide rule 29),
+shown with the claim: bk_meaning_said and bk_meaning_other, where the account that used the
+words says what they mean, and bk_event_is_record, where the claim's event is a message or call
+and the record is that message or call."""
 
 from __future__ import annotations
 
@@ -19,8 +19,10 @@ from eval.heldout.bk_schedule import BkSlot
 
 def meaning_explained(s: BkSlot, rng: random.Random) -> BkDraft:
     """bk_meaning_said / bk_meaning_other: the account that used the words earlier in the
-    chat says they mean the claim's meaning, or the plain thing they name, another kind of
-    thing than the claim's meaning, which the record never mentions."""
+    chat says they mean the claim's meaning (supports), or the plain thing they name, another
+    kind of thing than the claim's meaning, which the record never mentions (complicates: the
+    claim gives no date, and one record cannot show that no other message used the words as
+    the claim says, rule 23)."""
     p = ck.party(rng, s, linked=s.variant == "linked")
     mine = p.mine(True)
     before = [(mine, s.usage), (not mine, rng.choice(mn.ASK))]
@@ -39,10 +41,15 @@ def meaning_explained(s: BkSlot, rng: random.Random) -> BkDraft:
             f"{s.meaning}, the meaning the claim gives them."
         )
     else:
-        why = (
+        why = pick(
+            rng,
             f'{p.shown}, which used "{s.words}" earlier in the chat, says they mean {s.plain}, '
-            f"another kind of thing than {s.meaning}, the meaning the claim gives them; both "
-            "cannot be what the words meant."
+            f"not {s.meaning} as the claim has it; the claim names no date, and this one "
+            "explanation cannot show the words never carried the claim's meaning in some other "
+            "message, so it stays open.",
+            f'Asked about "{s.words}", {p.shown} explains them as {s.plain}, a different thing '
+            f"from {s.meaning}; that tells how the words were meant here, but with no date in the "
+            "claim, other messages could still have used them as the claim says.",
         )
     return BkDraft(s.family, "meaning", {"quoted_text": s.words}, ex, s.quote, why, p.pr.p,
                    s.lang, p.pr.sc, claim=claim, facts={"variant": s.variant})  # fmt: skip

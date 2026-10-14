@@ -171,13 +171,15 @@ def weekday_open(rng: random.Random, k: int) -> Draft:
     past = first - timedelta(days=7)
     d = _draft(rng, family, text, core, sent, target, last_hour=21 if prefix else 9)
     if prefix == "this" and 6 in (wd, sent.weekday()):
-        d.rationale = (f"Weeks start on different days for different people, so \"{word}\", "
-                       f"sent on {full(sent)}, could mean {full(past)} or {full(first)}; which "
-                       "date it means is open.")  # fmt: skip
+        d.rationale = (f"\"{word}\" names a day of the week it was sent in, {full(sent)}, but "
+                       "weeks start on different days for different people, and for some that "
+                       "week's day had already passed, so the words do not plainly name "
+                       f"{full(first)}; the record does not settle which date it "
+                       "means.")  # fmt: skip
     elif prefix == "this":
-        d.rationale = (f"Sent on {full(sent)}, \"{word}\" names a day of that week already past, "
-                       f"{full(past)}, or the coming one, {full(first)}; which date it means is "
-                       "open.")  # fmt: skip
+        d.rationale = (f"Sent on {full(sent)}, after that week's day had passed ({full(past)}), "
+                       f"\"{word}\" does not plainly name the coming one, {full(first)}; the "
+                       "record does not settle which date it means.")  # fmt: skip
     elif prefix:
         d.rationale = (f"Sent on {full(sent)}, \"{word}\" could mean {full(first)} or "
                        f"{full(later)}, so which date it means is open.")  # fmt: skip

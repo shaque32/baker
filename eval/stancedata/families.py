@@ -276,11 +276,13 @@ FAMILIES: tuple[Family, ...] = (
        "excerpt), plainly saying they mean exactly what the claim says they mean, with no hedge, "
        "joke or later correction; when the claim names who used them, the line's brackets carry "
        "that person.", new=True, templates=("meaning",)),
-    _F("bk_meaning_other", C.CONTRADICTS, S.CONTRADICTS, None, (K.MEANING,),
+    _F("bk_meaning_other", C.OVERREACH, S.COMPLICATES, "claim_unsettled", (K.MEANING,),
        "Baker's meaning template, shown with the claim. The account that used the quoted words, "
        "bracketed with the person the claim names as their user, plainly gives them a meaning "
-       "that cannot be true together with the claim's, with no hedge, joke or later "
-       "correction.", new=True, templates=("meaning",)),
+       "of another kind than the claim's, while the claim gives no date before the record: like "
+       "a denial, it says nothing about messages it does not cover, so one record cannot show "
+       "that no other message used the words as the claim says (rules 23 and 29).", new=True,
+       templates=("meaning",)),
     _F("bk_event_is_record", C.CLEAR_SUPPORT, S.SUPPORTS, None, (K.EVENT,),
        "Baker's event template, shown with a claim whose event is a message or call. The record "
        "is that message or call: between the named parties, plainly inside the window, and for "

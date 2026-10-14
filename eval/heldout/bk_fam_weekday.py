@@ -108,14 +108,14 @@ def wk_open(s: BkSlot, rng: random.Random) -> BkDraft:
         target = sent + timedelta(days=(s.day - sent.weekday()) % 7)
         if 6 in (s.day, sent.weekday()):
             why = (
-                'The record says "{word}", sent {local}; weeks start on different days for '
-                'different people, so which week "this" points to is open, and the record does '
-                'not settle that it means "{raw}".'
+                'The record says "{word}", sent {local}; whether that week\'s day is still ahead '
+                "depends on which day a week starts on, and for some people it had passed, so "
+                '"this" does not plainly point to "{raw}".'
             )
         else:
             why = (
                 'The record says "{word}", sent {local}, after that week\'s day had passed, so '
-                'which week it means is open and the record does not settle that it means "{raw}".'
+                '"this" does not plainly point to "{raw}", and the record leaves the date open.'
             )
     return _item(s, rng, pr, sent, target, why, last)
 

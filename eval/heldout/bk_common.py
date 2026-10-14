@@ -25,7 +25,8 @@ from eval.stancedata.model import GenItem
 # listener's gender ("понял", "выручил"), which no item's people decide. 1.3.0: a plan for the
 # date's weekday sent after the date is bk_weekday_after (complicates, rule 23), no longer
 # contradicts, and a plan for the send day's weekday is sent before 10 a.m.; four Russian lines
-# read more naturally. A new version draws every Baker item afresh.
+# read more naturally, and one code meaning shares no run of words with the training set's. A
+# new version draws every Baker item afresh.
 BK_GENERATOR = "eval.heldout.baker 1.3.0"
 
 SAY: dict[str, tuple[str, ...]] = {}

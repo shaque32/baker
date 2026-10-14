@@ -1458,10 +1458,27 @@ def test_baker_own_frames_speak_in_the_first_person() -> None:
     assert not any("next time" in tail for tail in TAILS)
 
 
+_CLAIM_ON = re.compile(r"\bon ([A-Z][a-z]+ \d{1,2}, \d{4})")
+_CLAIM_IN = re.compile(r"\bin ([A-Z][a-z]+ \d{4})")
+
+
+def _claim_before_record(claim: str, local: date) -> bool:
+    """Whether the claim's date or month ends before the record's local date."""
+    if m := _CLAIM_ON.search(claim):
+        return datetime.strptime(m.group(1), "%B %d, %Y").date() < local
+    if m := _CLAIM_IN.search(claim):
+        month = datetime.strptime(m.group(1), "%B %Y").date()
+        return (month.year, month.month) < (local.year, local.month)
+    return False
+
+
 def test_baker_meaning_records_come_from_the_words_user(bk: list[Any]) -> None:
     # Rule 29: only the words' own user can say what they meant; nobody else uses them here.
-    # Another meaning contradicts only a claim that names that user; with no user named it is
-    # bk_claim_open, since one account's meaning cannot rule out another's use (rule 23).
+    # Another meaning is complicates: with the user named (bk_meaning_other), since no claim
+    # here is dated wholly before the record, and like a denial the explanation says nothing
+    # about messages it does not cover; with no one named (bk_claim_open), since one account's
+    # meaning cannot rule out another's use (rule 23).
+    assert next(f for f in FAMILIES if f.family_id == "bk_meaning_other").stance == "complicates"
     seen: Counter[str] = Counter()
     for it, d, _ in bk:
         own_meaning = it.family == "bk_claim_open" and "clause" in d.notes
@@ -1481,6 +1498,8 @@ def test_baker_meaning_records_come_from_the_words_user(bk: list[Any]) -> None:
         assert not named or it.family != "bk_claim_open", it.probe_id
         # A named claim names the person the record's line carries in brackets; else no one.
         assert bool(pids_in(d.claim) & _rec_ids(d)) == named == bool(pids_in(d.claim)), it.probe_id
+        rec_day = rec.utc.astimezone(ZoneInfo(d.phone.zone)).date()
+        assert not _claim_before_record(d.claim, rec_day), (it.probe_id, d.claim)
         seen[f"own|{d.notes['own']}"] += 1
         seen[f"{it.family}|{d.notes['used_before']}"] += 1
         seen[f"named|{it.family}|{named}"] += 1

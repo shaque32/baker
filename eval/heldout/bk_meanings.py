@@ -3,10 +3,10 @@ gives them, and what their user says they mean. SYNTHETIC.
 
 PHRASES are (situation, words, what the words plainly name in that situation). CODES are the
 meanings a claim gives such words. A usage line uses the words without saying what they mean;
-an EXPLAIN line from their user says what they mean: the claim's meaning (bk_meaning_said) or
-the plain thing (bk_meaning_other), which is another kind of thing than the claim's meaning
-and never names it. Slots: {p} the words, {x} the meaning explained, {spot} a place from the
-situation.
+an EXPLAIN line from their user says what they mean: the claim's meaning (bk_meaning_said,
+supports) or the plain thing (bk_meaning_other, complicates), which is another kind of thing
+than the claim's meaning and never names it. Slots: {p} the words, {x} the meaning explained,
+{spot} a place from the situation.
 """
 
 from __future__ import annotations
@@ -111,7 +111,7 @@ PHRASES = (
 )
 
 CODES = (
-    "the cash from the weekend sales",
+    "the cash box from the flea market",
     "the second phone",
     "the spare key to the storage unit",
     "the envelope of cash for the landlord",

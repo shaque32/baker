@@ -4,15 +4,18 @@ bk_meaning_other and the meaning third of bk_claim_open.
 The claim says what some words meant. bk_meaning_said: the account that used the words (in the
 record itself, giving the meaning as its own, or earlier in the chat too) plainly says they mean
 exactly the claim's meaning (supports). bk_meaning_other: that account says they mean something
-of another kind altogether, and the claim names it as the words' user (contradicts). All three
-explain in the same frames, openers and tails, none of them a marker like "only" or "nothing
-else", so only the meaning and the claim's person tell them apart; the quote is the explanation
-alone, without the opener or tail (rule 7). bk_claim_open: the record uses the words and nothing
-shown says what they mean, or its sender gives them another meaning while the claim names no
-one who used them, so one account's meaning cannot rule out another's use (complicates). A claim
-names the words' user only when that account's line carries them in brackets. No line from
-anyone else holds the words, no other line shares a content word with any meaning in play, and
-the lines after an explanation are plain acknowledgements, so nothing hedges or corrects it.
+of another kind altogether, and the claim names it as the words' user (complicates: like a
+denial, the explanation says nothing about messages it does not cover, and no claim here is
+dated wholly before the record, so one record cannot show that no other message used the words
+as the claim says; rule 23). All three explain in the same frames, openers and tails, none of
+them a marker like "only" or "nothing else", so only the meaning and the claim's person tell
+them apart; the quote is the explanation alone, without the opener or tail (rule 7).
+bk_claim_open: the record uses the words and nothing shown says what they mean, or its sender
+gives them another meaning while the claim names no one who used them, so one account's meaning
+cannot rule out another's use (complicates). A claim names the words' user only when that
+account's line carries them in brackets. No line from anyone else holds the words, no other line
+shares a content word with any meaning in play, and the lines after an explanation are plain
+acknowledgements, so nothing hedges or corrects it.
 """
 
 from __future__ import annotations
@@ -121,7 +124,7 @@ def explained(rng: random.Random, k: int, family: str, unnamed: bool = False) ->
     from_me = rng.random() < 0.5
     user = s.phone.person if from_me else s.you_pid
     if family == "bk_meaning_other" and user is None:
-        # Another meaning rules out only the meaning of the user the claim names (rule 29).
+        # The claim names the words' user, shown by the line's brackets (rule 29).
         raise ValueError("bk_meaning_other needs a bracketed user for the claim to name")
     use = ""
     if rng.random() < 0.4 or frames[ti] not in (OWN_RU if ru else OWN):
@@ -137,25 +140,27 @@ def explained(rng: random.Random, k: int, family: str, unnamed: bool = False) ->
     else:
         named = user
     claim = meaning_claim(rng, quoted, claim_m, named, record_when(rng, rec.utc, s.phone.zone))
-    if unnamed:
-        end = ("but the claim names no one who used them, and one account's meaning cannot show "
-               "that no other account used them as the claim says, so the claim's meaning is not "
-               "settled")  # fmt: skip
+    if not said:
+        if unnamed:
+            end = ("but the claim names no one who used them, and one account's meaning cannot "
+                   "show that no other account used them as the claim says, so the claim's "
+                   "meaning is not settled")  # fmt: skip
+        else:
+            end = ("unlike the claim's meaning; but the claim gives no date before the record, "
+                   "and one record cannot show that no other message used the words as the claim "
+                   "says, so the claim's meaning is not settled")  # fmt: skip
         head = (f"The record comes from {line.sender}, which used the words earlier in this chat "
                 f'and now says "{quoted}" means "{meant}"' if use else
                 f'The record comes from {line.sender}, which says what it means by "{quoted}": '
                 f'"{meant}"')  # fmt: skip
         rationale = f"{head}, {end}."
+    elif use:
+        rationale = (f"The record comes from {line.sender}, which used the words earlier in this "
+                     f'chat and now plainly says "{quoted}" means "{meant}": the meaning the '
+                     "claim gives them.")  # fmt: skip
     else:
-        end = ("the meaning the claim gives them" if said else
-               "a meaning that cannot be true together with the claim's")  # fmt: skip
-        if use:
-            rationale = (f"The record comes from {line.sender}, which used the words earlier "
-                         f'in this chat and now plainly says "{quoted}" means "{meant}": '
-                         f"{end}.")  # fmt: skip
-        else:
-            rationale = (f"The record comes from {line.sender}, which plainly says what it "
-                         f'means by "{quoted}": "{meant}", {end}.')  # fmt: skip
+        rationale = (f"The record comes from {line.sender}, which plainly says what it means by "
+                     f'"{quoted}": "{meant}", the meaning the claim gives them.')  # fmt: skip
     notes = {"user": rec.frm, "used_before": bool(use), "clause": clause,
              "own": frames[ti] in (OWN_RU if ru else OWN), "named": named is not None}  # fmt: skip
     return Draft(family, "meaning", {"quoted_text": quoted}, s.scene, s.phone, evs, target,
