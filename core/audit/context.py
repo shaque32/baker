@@ -9,14 +9,21 @@ Device-local time is derived from the stored UTC time and the device's zone (dev
 never from the offset a report printed. Display names are not shown: the accounts table keeps only
 the first name seen, so a renamed handle (case01 handle_change) would show the wrong name on later
 messages. Once the schema keeps the sender text per message (sender_raw), it is shown as written.
+
+The stance labeler reads the case's names (stance prompt v1.1, core/audit/readable.py): given a
+CaseNames, each sender prints as its sender line ("SMS +1 (212) 555-0111 Dan P [Daniel Petrov
+(the user of item1)]"), and a message's or attachment's context opens with its chat's members
+line. The AI reviewer's prompt does not explain those names yet, so it reads ids as before.
 """
 
 from __future__ import annotations
 
 import re
 import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass
 
+from core.audit.readable import CaseNames
 from core.enrich.local_time import device_zone, format_local, parse_utc
 from core.enrich.records import get_record
 
@@ -25,6 +32,11 @@ HEADER = (
     "(One line per record, in time order. '>>' marks the record under review. Times are the"
     " phone's local time. Sender is app and account id; '(this phone)' is the phone's own account.)"
 )
+NAMED_HEADER = (
+    "(One line per record, in time order. '>>' marks the record under review. Times are the"
+    " phone's local time. Sender is app and account, then the name the phone saved for it if any;"
+    " '(owner)' is the phone's own account; brackets name the people an expert tied to it.)"
+)
 
 
 @dataclass(frozen=True)
@@ -32,7 +44,7 @@ class ContextLine:
     record_id: str
     locator: str
     sender: str  # "Telegram 5551234", "SMS +12125550111 (this phone)" or "unknown sender"
-    shown_as: str | None  # sender text as the source printed it, when the schema keeps it
+    shown_as: str | None  # sender text as the source printed it, unless `sender` holds it
     direction: str
     local_time: str
     body: str
@@ -133,10 +145,45 @@ def _sender(conn: sqlite3.Connection, account_id: str | None) -> str:
     return f"{app} {identifier}" + (" (this phone)" if device_id else "")
 
 
+def _named_sender(names: CaseNames | None) -> Callable[[sqlite3.Connection, str | None], str]:
+    if names is None:
+        return _sender
+    return lambda _conn, account_id: names.sender(account_id)
+
+
+def chat_members(conn: sqlite3.Connection, record_id: str) -> list[str] | None:
+    """The member accounts of a message's or attachment's chat: every account that sent one of
+    its messages or that the source lists as a recipient of one. None for any other record,
+    which has no chat."""
+    if record_id.startswith("att:"):
+        row = conn.execute(
+            "SELECT message_id FROM attachments WHERE id = ?", (record_id,)
+        ).fetchone()
+        if row is None or row[0] is None:
+            return None
+        record_id = row[0]
+    if not record_id.startswith("msg:"):
+        return None
+    row = conn.execute("SELECT thread_id FROM messages WHERE id = ?", (record_id,)).fetchone()
+    if row is None:
+        return None
+    rows = conn.execute(
+        "SELECT sender_account_id FROM messages WHERE thread_id = ?"
+        " UNION SELECT r.account_id FROM message_recipients r"
+        " JOIN messages m ON m.id = r.message_id WHERE m.thread_id = ?",
+        (row[0], row[0]),
+    ).fetchall()
+    return [r[0] for r in rows if r[0] is not None]
+
+
 def build_context(
-    conn: sqlite3.Connection, record_id: str, window: int = DEFAULT_WINDOW
+    conn: sqlite3.Connection,
+    record_id: str,
+    window: int = DEFAULT_WINDOW,
+    names: CaseNames | None = None,
 ) -> list[ContextLine]:
-    """Context lines around a record, the target marked. Messages only; empty for a contact."""
+    """Context lines around a record, the target marked. Messages only; empty for a contact.
+    With names, each sender prints as its sender line, the source's own name for it included."""
     if record_id.startswith("contact:"):
         return _contact_line(conn, record_id)
     ids = list(context_ids(conn, record_id, window, include_target=True))
@@ -166,8 +213,8 @@ def build_context(
             ContextLine(
                 record_id=rid,
                 locator=locator,
-                sender=_sender(conn, sender_id),
-                shown_as=shown,
+                sender=names.sender(sender_id, shown) if names else _sender(conn, sender_id),
+                shown_as=None if names else shown,
                 direction=direction,
                 local_time=format_local(parse_utc(ts_utc), zones[device_id], ts_raw),  # type: ignore[arg-type]
                 body=body,
@@ -175,7 +222,7 @@ def build_context(
             )
         )
     if record_id.startswith("call:"):
-        lines = _with_call_line(conn, record_id, lines, by_id)
+        lines = _with_call_line(conn, record_id, lines, by_id, _named_sender(names))
     return lines
 
 
@@ -202,6 +249,7 @@ def _with_call_line(
     call_id: str,
     lines: list[ContextLine],
     by_id: dict[str, tuple[object, ...]],
+    sender: Callable[[sqlite3.Connection, str | None], str] = _sender,
 ) -> list[ContextLine]:
     """Put the call itself, marked as the target, at its place in time among the messages."""
     rec = get_record(conn, call_id)
@@ -213,7 +261,7 @@ def _with_call_line(
     call_line = ContextLine(
         record_id=call_id,
         locator=rec.ref.locator,
-        sender=_sender(conn, row[0]),
+        sender=sender(conn, row[0]),
         shown_as=None,
         direction=row[1],
         local_time=format_local(parse_utc(rec.ts_utc), device_zone(conn, row[3]), row[2]),
@@ -229,11 +277,14 @@ def _one_line(text: str) -> str:
     return text.replace("\r\n", "\n").replace("\r", "\n").replace("\n", " \\n ")
 
 
-def render_context(lines: list[ContextLine]) -> str:
-    """Plain text for the {context} slot of the prompts. The target line starts with '>>'."""
+def render_context(
+    lines: list[ContextLine], header: str = HEADER, members: str | None = None
+) -> str:
+    """Plain text for the {context} slot of the prompts. The target line starts with '>>'. A
+    members line, when given, comes first."""
     if not lines:
         return "(no surrounding messages)"
-    out = [HEADER]
+    out = ([members] if members else []) + [header]
     for ln in lines:
         mark = ">>" if ln.is_target else "  "
         who = ln.sender + (f' shown as "{ln.shown_as}"' if ln.shown_as else "")
@@ -241,8 +292,20 @@ def render_context(lines: list[ContextLine]) -> str:
     return "\n".join(out)
 
 
-def render_for(conn: sqlite3.Connection, record_id: str, window: int = DEFAULT_WINDOW) -> str:
-    return render_context(build_context(conn, record_id, window))
+def render_for(
+    conn: sqlite3.Connection,
+    record_id: str,
+    window: int = DEFAULT_WINDOW,
+    names: CaseNames | None = None,
+) -> str:
+    """The {context} text for one record. With names (the stance labeler, prompt v1.1), senders
+    print as sender lines and a chat record's context opens with its members line."""
+    lines = build_context(conn, record_id, window, names)
+    if names is None:
+        return render_context(lines)
+    member_ids = chat_members(conn, record_id)
+    members = names.members(member_ids) if member_ids else None  # never an empty member list
+    return render_context(lines, NAMED_HEADER, members)
 
 
 class ReviewContext:

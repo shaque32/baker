@@ -51,6 +51,8 @@ core/
     assumptions.py    AssumptionBuilder
     retrieval.py      Retriever
     stance.py         StanceLabeler (wires the human-owned prompt to the local model)
+    readable.py       names a model reads ("Daniel Petrov (the user of item1)"), never ids
+    context.py        surrounding messages; for stance, sender lines and the chat's members
     review.py         EvidenceReviewer (second local pass; ai_accepted or dismissed)
     quotes.py         verify_quote
     checks/           DeterministicCheck implementations

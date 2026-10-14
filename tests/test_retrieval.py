@@ -5,7 +5,14 @@ from datetime import UTC, datetime
 
 import pytest
 
-from core.audit.context import HEADER, build_context, context_ids, render_context, render_for
+from core.audit.context import (
+    HEADER,
+    NAMED_HEADER,
+    build_context,
+    context_ids,
+    render_context,
+    render_for,
+)
 from core.audit.retrieval import RetrievalQuery, SqlRetriever, query_for, search
 from core.contracts import (
     Assumption,
@@ -514,6 +521,91 @@ def test_pipeline_entry_points(db):
     build = context.create(db)
     item = SimpleNamespace(record_id="msg:s1:Chats!33")
     assert build(db, _assumption(), item) == render_for(db, "msg:s1:Chats!33")
+
+
+# ---------------------------------------------------------------- names (stance prompt v1.1)
+
+
+def _named(db: sqlite3.Connection, stipulate: bool = False):
+    from core.audit.readable import case_names
+    from core.review.actions import stipulate_device_owner
+
+    if stipulate:
+        stipulate_device_owner(db, "dev:s1", "Daniel Petrov", "expert:Test Examiner")
+    return case_names(db)
+
+
+def test_named_context_opens_with_the_chats_members(db):
+    rows = render_for(db, "msg:s1:Chats!4", window=1, names=_named(db, stipulate=True)).splitlines()
+    owner = "Telegram 100 (owner) [Daniel Petrov (the user of s1)]"
+    assert rows[0] == f"Members seen in this chat's records: {owner}; Telegram 5550001"
+    assert rows[1] == NAMED_HEADER
+    assert rows[3] == f">> [2026-03-07 08:00:00 EST (UTC-05:00)] {owner}, outgoing: chat 1"
+    assert rows[2].startswith("   [") and "] Telegram 5550001, incoming: " in rows[2]
+    assert "(this phone)" not in "\n".join(rows)
+    assert "acct:" not in "\n".join(rows) and "person:" not in "\n".join(rows)
+
+
+def test_named_context_without_a_stipulation_names_no_one(db):
+    rows = render_for(db, "msg:s1:Chats!4", window=0, names=_named(db)).splitlines()
+    assert rows[0] == (
+        "Members seen in this chat's records: Telegram 100 (owner); Telegram 5550001"
+    )
+    assert "[" not in rows[2].split("]", 1)[1]  # no person in brackets after the time
+
+
+def test_members_are_senders_and_listed_recipients(db):
+    from core.audit.context import chat_members
+
+    db.execute("INSERT INTO accounts VALUES ('acct:s1:SMS:+13125550188', 's1', 'x', NULL, 'SMS',"
+               " '+13125550188', NULL)")  # fmt: skip
+    db.execute(
+        "INSERT INTO message_recipients (message_id, account_id)"
+        " VALUES ('msg:s1:Chats!90', 'acct:s1:SMS:+13125550188')"
+    )
+    # Chats!91 has no sender account; it names no member.
+    assert sorted(chat_members(db, "msg:s1:Chats!91")) == [
+        "acct:s1:SMS:+12125550199",
+        "acct:s1:SMS:+13125550188",
+    ]
+    assert chat_members(db, "att:s1:Chats!40:1") == chat_members(db, "msg:s1:Chats!40")
+    assert chat_members(db, "call:s1:Call Log!3") is None
+    assert chat_members(db, "contact:s1:Contacts!3#1") is None
+    assert chat_members(db, "msg:s1:missing") is None
+
+
+def test_named_context_of_an_attachment_has_members_and_a_call_or_contact_has_none(db):
+    names = _named(db, stipulate=True)
+    att = render_for(db, "att:s1:Chats!40:1", window=1, names=names).splitlines()
+    assert att[0].startswith("Members seen in this chat's records: ")
+    call = render_for(db, "call:s1:Call Log!3", window=1, names=names).splitlines()
+    assert call[0] == NAMED_HEADER
+    assert (
+        ">> [2026-03-08 10:30:00 EDT (UTC-04:00)] Phone +12125550111 (owner) [Daniel Petrov"
+        in (call[2])
+    )
+    contact = render_for(db, "contact:s1:Contacts!3#1", names=names).splitlines()
+    assert contact[0] == NAMED_HEADER and len(contact) == 2
+
+
+def test_named_context_prints_the_sources_own_name_in_the_sender_line(db):
+    db.execute("UPDATE messages SET sender_raw = 'Bo' WHERE id = 'msg:s1:Chats!90'")
+    rows = render_for(db, "msg:s1:Chats!90", window=0, names=_named(db)).splitlines()
+    assert rows[0] == "Members seen in this chat's records: SMS +12125550199"
+    assert "] SMS +12125550199 Bo, incoming: see you" in rows[2]
+    assert "shown as" not in rows[2]
+
+
+def test_the_reviewer_still_reads_ids(db):
+    """The reviewer's prompt does not explain readable names yet (PROPOSED_CHANGES.md)."""
+    from types import SimpleNamespace
+
+    from core.audit import context
+
+    _named(db, stipulate=True)
+    text = context.create(db)(db, _assumption(), SimpleNamespace(record_id="msg:s1:Chats!4"))
+    assert text.splitlines()[0] == HEADER
+    assert "Telegram 100 (this phone)" in text and "Members seen" not in text
 
 
 def test_attachment_label_can_be_quote_checked(db):
