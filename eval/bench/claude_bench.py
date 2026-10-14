@@ -10,8 +10,13 @@ Usage:
   python -m eval.bench.claude_bench [--models claude-sonnet-5-5,claude-haiku-5-5]
       [--effort medium] [--probe-set eval/gold/probe/probe.jsonl] [--repeat 2]
       [--skip-case] [--claims C02,C05] [--out eval/out/bench]
+      [--stance-prompt eval/probe/stance_v1_1_signed.md] [--stance-only] [--layout product]
   python -m eval.bench.claude_bench --dry-run
       No network: a stand-in client answers every call, to check the plumbing.
+
+--stance-prompt scores the probe on another stance prompt file (the product prompt is used for
+case01 either way); --stance-only skips the reviewer items; --layout picks the probe input layout
+(eval/probe/from_draft.py: "product", the default since 2026-10-14, or "legacy").
 
 Needs `pip install -e ".[bench]"` and Anthropic credentials (ANTHROPIC_API_KEY, or an
 `ant auth login` profile).
@@ -76,14 +81,20 @@ UNSUPPORTED_SCHEMA_KEYS = frozenset(
 )
 
 # The local Qwen3-14B Q4_K_M, as measured on Arsh's Mac (eval/probe/README.md, results of
-# 2026-10-09 and 2026-10-12, signed stance prompt v1.0). Copied, not re-measured here.
+# 2026-10-09 and 2026-10-12, signed stance prompt v1.0). Copied, not re-measured here. The
+# probe figures are its 2026-10-07 answers re-scored on the v0.3 labels Arsh signed 2026-10-14
+# (cloud-bench/2026-10-14/RESCORE_v0_3.md): stance prompt v1.0, legacy input layout, so they
+# are comparable only to a cloud run on the same prompt and layout.
 LOCAL_14B: dict[str, Any] = {
-    "model": "Qwen3-14B Q4_K_M (local, Mac)",
+    "model": "Qwen3-14B Q4_K_M (local, Mac; v1.0, legacy layout)",
     "supports_recall": 1.0,
-    "contradicts_precision": 1.0,
-    "contradicts_shown_as_supports": 5,
+    "contradicts_precision": 0.875,
+    "contradicts_shown_as_supports": 0,
+    "moved_traps_shown_as_supports": 5,
+    "traps_shown_as_supports": 22,
+    "verdict_capable_precision": 0.875,
     "stance_valid_output": 1.0,
-    "contradicts_recall": 0.50,
+    "contradicts_recall": 0.875,
     "expert_load_supports_shown": 49,
     "expert_load_precision": 0.55,
     "probe_seconds_per_stance_call": 22.5,
@@ -273,20 +284,33 @@ class DryRunClient:
 # ---------------------------------------------------------------- the two runs
 
 
-def probe_items(path: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def probe_items(
+    path: Path, layout: str = "product"
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     from eval.probe.from_draft import convert
     from eval.probe.run_probe import load_items
 
-    pairs = [convert(row) for row in load_items(check_probe_path(path))]
+    pairs = [convert(row, layout) for row in load_items(check_probe_path(path))]
     return [r for r, _ in pairs], [s for _, s in pairs]
 
 
-def run_probe(model: ClaudeModel, probe: Path, repeat: int, out: Path) -> dict[str, Any]:
+def run_probe(
+    model: ClaudeModel,
+    probe: Path,
+    repeat: int,
+    out: Path,
+    stance_prompt: Path | None = None,
+    stance_only: bool = False,
+    layout: str = "product",
+) -> dict[str, Any]:
+    from eval.probe import prompts
     from eval.probe.run_probe import run_model
 
-    reviewer, stance = probe_items(probe)
+    reviewer, stance = probe_items(probe, layout)
     before = model.usage.copy()
-    res = run_model(model, reviewer, stance, model.params, repeat, out)  # type: ignore[arg-type]
+    res = run_model(model, reviewer, stance, model.params, repeat, out,  # type: ignore[arg-type]
+                    stance_prompt or prompts.STANCE_PROMPT, stance_only=stance_only)  # fmt: skip
+    res["layout"] = layout
     res["usage"] = model.usage.since(before).as_dict(model.name)
     res["effort"] = model.effort
     return res
@@ -371,6 +395,10 @@ def _pct(v: object) -> str:
     return f"{v:.0%}" if isinstance(v, float) else ("n/a" if v is None else str(v))
 
 
+def _ci(v: object) -> str:
+    return f"{v[0]:.0%}-{v[1]:.0%}" if isinstance(v, list | tuple) else "n/a"
+
+
 def _money(v: object) -> str:
     return f"${v:.2f}" if isinstance(v, float | int) and not isinstance(v, bool) else str(v)
 
@@ -382,6 +410,8 @@ def results_markdown(results: list[dict[str, Any]], meta: dict[str, Any]) -> str
         f"Run {meta['at_utc']}. Probe set: {meta['probe_set']}. Effort: {meta['effort']}. "
         f"Repeat: {meta['repeat']}.{' DRY RUN (stand-in client, no API calls).' if meta['dry_run'] else ''}",  # noqa: E501
         "Synthetic data only. Signed, undisputed items count toward a bar.",
+        f"Probe stance prompt: {meta.get('stance_prompt')}. Probe input layout: "
+        f"{meta.get('layout', 'legacy')} (eval/probe/from_draft.py).",
         "",
         "## Trap tests: stance, Expert-confirms bars (signed undisputed items)",
         "",
@@ -408,6 +438,37 @@ def results_markdown(results: list[dict[str, Any]], meta: dict[str, Any]) -> str
         )
     lines += [
         "",
+        "Reported beside the bars, not gating them (grading audit, 2026-10-14): gold complicates"
+        " or irrelevant items shown as supports, contradicts precision on assumptions that are"
+        " not meaning assumptions (the only kind a model's unreviewed contradicts can turn into a"
+        " verdict, rules.py rule 1b), 95% intervals, and the second answer scored alone.",
+        "",
+        "| model | traps shown as supports (overreach) | moved traps shown as supports "
+        "| contradicts precision, verdict-capable kinds | supports recall 95% CI "
+        "| contradicts precision 95% CI | same label both answers | second answer: recall "
+        "/ precision |",
+        "|---|---|---|---|---|---|---|---|",
+        f"| {loc['model']} | {loc['traps_shown_as_supports']} | "
+        f"{loc['moved_traps_shown_as_supports']} | {_pct(loc['verdict_capable_precision'])} "
+        "| | | | |",
+    ]
+    for r in results:
+        ec = r["probe"]["expert_confirms"]
+        rep = ec.get("reported", {})
+        other = (rep.get("other_repeats") or [{}])[0]
+        lines.append(
+            f"| {r['model']} | {rep.get('traps_shown_as_supports')}"
+            f" ({rep.get('overreach_shown_as_supports')})"
+            f" | {ec.get('moved_traps_shown_as_supports')}"
+            f" | {_pct(rep.get('verdict_capable_contradicts_precision'))}"
+            f" | {_ci(rep.get('supports_recall_95ci'))} of {rep.get('gold_supports')}"
+            f" | {_ci(rep.get('contradicts_precision_95ci'))}"
+            f" | {_pct(rep.get('labels_identical_across_repeats'))}"
+            f" | {_pct(other.get('supports_recall'))}"
+            f" / {_pct(other.get('contradicts_precision'))} |"
+        )
+    lines += [
+        "",
         "## Trap tests: AI reviewer (reported, not gated under rules 0.2.0)",
         "",
         "| model | overreach false accepts (0) | false accept rate | clear accept rate "
@@ -417,6 +478,9 @@ def results_markdown(results: list[dict[str, Any]], meta: dict[str, Any]) -> str
     ]
     for r in results:
         p = r["probe"]
+        if p.get("stance_only"):
+            lines.append(f"| {r['model']} | not run (--stance-only) |" + " |" * 7)
+            continue
         lines.append(
             f"| {r['model']} | {p['overreach_false_accepts']} of {p['overreach_items']}"
             f" | {_pct(p['reviewer_false_accept_rate'])} | {_pct(p['reviewer_clear_accept_rate'])}"
@@ -478,6 +542,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--skip-case", action="store_true", help="probe only, no case01 run")
     ap.add_argument("--claims", default=None, help="case01 claims to run, e.g. C02,C05")
     ap.add_argument("--dry-run", action="store_true", help="stand-in client, no network")
+    ap.add_argument(
+        "--stance-prompt",
+        type=Path,
+        default=None,
+        help="stance prompt for the probe, e.g. eval/probe/stance_v1_1_signed.md",
+    )
+    ap.add_argument("--stance-only", action="store_true", help="probe: skip the reviewer items")
+    ap.add_argument("--layout", choices=["product", "legacy"], default="product",
+                    help="probe input layout (eval/probe/from_draft.py)")  # fmt: skip
     ap.add_argument("--out", type=Path, default=Path("eval/out/bench"))
     args = ap.parse_args(argv)
 
@@ -491,7 +564,8 @@ def main(argv: list[str] | None = None) -> int:
         out = args.out / name
         out.mkdir(parents=True, exist_ok=True)
         print(f"{name}: probe ({probe.name})", file=sys.stderr, flush=True)
-        probe_res = run_probe(model, probe, args.repeat, out / "probe")
+        probe_res = run_probe(model, probe, args.repeat, out / "probe", args.stance_prompt,
+                              args.stance_only, args.layout)  # fmt: skip
         res: dict[str, Any] = {"model": name, "effort": args.effort, "probe": probe_res}
         if not args.skip_case:
             print(f"{name}: {DEFAULT_CASE} audit", file=sys.stderr, flush=True)
@@ -506,6 +580,9 @@ def main(argv: list[str] | None = None) -> int:
         "effort": args.effort,
         "repeat": args.repeat,
         "dry_run": args.dry_run,
+        "stance_prompt": results[0]["probe"]["stance_prompt"] if results else None,
+        "layout": args.layout,
+        "stance_only": args.stance_only,
     }
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "summary.json").write_text(

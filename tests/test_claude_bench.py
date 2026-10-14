@@ -146,5 +146,6 @@ def test_report_names_the_local_baseline_and_each_decision():
     res["decision"] = cb.decide(res)
     md = cb.results_markdown([res], {"at_utc": "t", "probe_set": "p", "effort": "medium",
                                      "repeat": 2, "dry_run": False})  # fmt: skip
-    assert "Qwen3-14B" in md and "| 5 |" in md  # the 14B's five contradicting items
+    assert "Qwen3-14B" in md and "| 22 | 5 |" in md  # the 14B's traps and moved traps shown
+    assert "Probe input layout: legacy" in md  # a run from before the layout was recorded
     assert "claude-sonnet-5-5: **undecided**" in md

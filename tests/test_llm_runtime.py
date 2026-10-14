@@ -158,9 +158,12 @@ def test_from_draft_converts_one_item():
             "assumption": "A", "target": line, "context": [{**line, "text": "before"}],
             "target_index": 1, "proposed_quote": "hi", "gold_stance": "complicates",
             "gold_review": "dismiss"}  # fmt: skip
-    r, s = convert(item)
+    r, s = convert(item, "legacy")
     assert r["overreach"] and r["quote"] in r["context"] and r["expected"] == "dismiss"
     assert s["record"] == "[t] S (a): hi there" and s["context"].endswith(s["record"])
+    r, s = convert(item)  # the product layout, the default
+    assert r["quote"] in r["context"] and s["record"] == "hi there"
+    assert s["context"].splitlines()[-1] == ">> [t] S, incoming: hi there"
 
 
 def test_table_prints_tokens_per_second_as_a_number():
