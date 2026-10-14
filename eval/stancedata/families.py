@@ -248,7 +248,8 @@ FAMILIES: tuple[Family, ...] = (
     _F("bk_weekday_open", C.COMPLICATES, S.COMPLICATES, None, (K.TIME,),
        "Baker's weekday template. The record names the weekday it was sent on, or puts 'next' "
        "before the weekday, or 'this' before a weekday already past in the week it was sent or "
-       "with a Sunday on either side, so which date it means is open.", new=True,
+       "with a Sunday on either side, so which date it means is open. The stated date is one "
+       "the words can mean: after 'this', the coming such day.", new=True,
        templates=("weekday_date",)),
     _F("bk_weekday_wrong", C.CONTRADICTS, S.CONTRADICTS, None, (K.TIME,),
        "Baker's weekday template. The quoted words name a different weekday from the stated "
@@ -260,19 +261,22 @@ FAMILIES: tuple[Family, ...] = (
        "cannot show who typed what the account sent.", new=True, templates=("authorship",)),
     _F("bk_claim_open", C.OVERREACH, S.COMPLICATES, "claim_unsettled", (K.MEANING, K.EVENT),
        "Baker's meaning, role and event templates, shown with the claim. The record holds the "
-       "quoted words and nothing shown says what they mean, or it comes from or goes to an "
-       "account bracketed with a named person (plainly inside the window, if one is given) and "
-       "bears on the act or role without being it or ruling it out.", new=True,
+       "quoted words and nothing shown says what they mean, or its sender gives them a meaning "
+       "of its own, unlike the claim's, while the claim names no one who used them; or it comes "
+       "from or goes to an account bracketed with a named person (plainly inside the window, if "
+       "one is given) and bears on the act or role without being it or ruling it out.", new=True,
        templates=("meaning", "role", "event")),
     _F("bk_meaning_said", C.CLEAR_SUPPORT, S.SUPPORTS, None, (K.MEANING,),
        "Baker's meaning template, shown with the claim. The record is a message from the account "
        "that used the quoted words (it gives the meaning as its own, or used them earlier in the "
        "excerpt), plainly saying they mean exactly what the claim says they mean, with no hedge, "
-       "joke or later correction.", new=True, templates=("meaning",)),
+       "joke or later correction; when the claim names who used them, the line's brackets carry "
+       "that person.", new=True, templates=("meaning",)),
     _F("bk_meaning_other", C.CONTRADICTS, S.CONTRADICTS, None, (K.MEANING,),
-       "Baker's meaning template, shown with the claim. The account that used the quoted words "
-       "plainly gives them a meaning that cannot be true together with the claim's, with no "
-       "hedge, joke or later correction.", new=True, templates=("meaning",)),
+       "Baker's meaning template, shown with the claim. The account that used the quoted words, "
+       "bracketed with the person the claim names as their user, plainly gives them a meaning "
+       "that cannot be true together with the claim's, with no hedge, joke or later "
+       "correction.", new=True, templates=("meaning",)),
     _F("bk_event_is_record", C.CLEAR_SUPPORT, S.SUPPORTS, None, (K.EVENT,),
        "Baker's event template, shown with a claim whose event is a message or call. The record "
        "is that message or call: between the named parties, plainly inside the window, and for "

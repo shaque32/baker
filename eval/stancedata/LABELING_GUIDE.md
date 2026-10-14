@@ -168,10 +168,11 @@ whose words exclude other messages, such as "first contact on" or "no contact be
     that gives no time is left open, so the generators date the act before the message. Where that gap matters,
     the timeline search reports it with the coverage it had (CLAUDE.md: "not found" never means
     "did not happen").
-24. **Rationales claim only what is shown.** A rationale names no weekday, place or fact that
-    the record and its context do not show, and a weekday it gives for a date is that date's
-    weekday. It may quote a weekday the record itself uses ("since saturday"). A joke marker ("lol", a laughing reply) leaves sincerity open: the rationale says so
-    and never calls the record harmless, venting or a joke. A denial conflicts with the
+24. **Rationales claim only what is shown.** A rationale names no place or fact that the record
+    and its context do not show. A weekday it names either goes with a date and is that date's
+    weekday ("sent on Wednesday, May 6, 2026", the date a line's time shows), or is quoted from
+    the record ("since saturday"). A joke marker ("lol", a laughing reply) leaves sincerity
+    open: the rationale says so and never calls the record harmless, venting or a joke. A denial conflicts with the
     assumption in what it says: the rationale never says the denial is true. A slang reading is
     open because the assumption rests on a translation the record does not settle (rule 6), not
     because the literal reading is odd.
@@ -277,18 +278,24 @@ the same four definitions and rules 1 to 24; this section adds what is new.
       words plainly says they mean what the claim says they mean ("when i say the shed i mean
       the unit on 5th"). The sender is the words' user when the record gives the meaning as
       their own ("when i say", "i call the unit the shed") or an earlier message of theirs in
-      the excerpt uses the words. Contradicts when that sender plainly gives the words a
-      meaning that cannot be true together with the claim's ("the shed is the one in my
-      backyard, we dont have a unit"). A record that holds the quoted words and settles
-      nothing, an explanation from anyone else, or one that may explain someone else's words
-      ("the shed = the unit on 5th" from an account the excerpt never shows using them) is
+      the excerpt uses the words. When the claim names who used the words ("Vance used"), the
+      sender must be that person, shown by the line's brackets (rule 26). Contradicts when
+      that sender plainly gives the words a meaning that cannot be true together with the
+      claim's ("the shed is the one in my backyard, we dont have a unit") and the claim names
+      them as the words' user. When the claim names no one, another meaning from one account
+      is complicates: it cannot show that no other account used the words as the claim says
+      (rule 23); the claim's own meaning from the words' user still supports, since it shows
+      the words carry that meaning. A record that holds the quoted words and settles nothing,
+      an explanation from anyone else, or one that may explain someone else's words ("the
+      shed = the unit on 5th" from an account the excerpt never shows using them) is
       complicates (rules 6 and 18).
     - **Role and event.** They state a role or an act as a fact, so a message never supports
       them (rule 14), with one exception: when the claim's event is itself a message or call,
       the record that is that message or call (between the named parties, inside the window,
       and saying what the claim says it said) supports. Each party must be shown: by a bracket
       carrying the person, or by the account the claim itself gives for them ("texted Ortiz at
-      (312) 555-0188"). When the claim names a person only by name and the record shows their
+      (312) 555-0188"), which the assumption names with its app ("WhatsApp +13125550188" is
+      that number on WhatsApp). When the claim names a person only by name and the record shows their
       account with no bracket, who holds it is not shown (rule 26), and the record is
       complicates. Contradicts needs a named person's own words, from an account bracketed
       with them, that rule the act or role out for the claim's whole time: a denial that
@@ -320,15 +327,15 @@ the same four definitions and rules 1 to 24; this section adds what is new.
 | `bk_other_phone` | complicates | no-contact, count | The assumption covers one named phone; the record, between the named parties, is on another phone. It shows contact, not what the named phone holds. | "... on item1"; the record comes from item2. |
 | `bk_outside_window` | irrelevant | no-contact, count | A message or call between the named parties, plainly outside the window in any zone. | "before May 3, 2026"; record May 9. |
 | `bk_weekday_next` | supports | weekday | The quoted words name the stated date's weekday for a plan, a proposal or a request ("can u cover wednesday?"), sent one to six days before that date. "This" before the weekday reads the same when the date is a later day of the same week, both days Monday to Saturday ("this saturday", sent on a Wednesday). | Assumption: The weekday in "lets do thursday at the yard" means "Thursday, May 7, 2026" (America/Chicago). Record sent Monday May 4. |
-| `bk_weekday_open` | complicates | weekday | The record names the weekday it was sent on, or says "next" before the weekday, or "this" before a weekday already past in the week it was sent ("this monday", sent on a Wednesday) or with a Sunday on either side (a week starts on Sunday for some and on Monday for others), so which date it means is open. | "next thursday at the yard", sent Monday May 4. |
+| `bk_weekday_open` | complicates | weekday | The record names the weekday it was sent on, or says "next" before the weekday, or "this" before a weekday already past in the week it was sent ("this monday", sent on a Wednesday) or with a Sunday on either side (a week starts on Sunday for some and on Monday for others), so which date it means is open. The stated date is one the words can mean: after "this", the coming such day, never one a week later. | "next thursday at the yard", sent Monday May 4. |
 | `bk_weekday_wrong` | contradicts | weekday | The quoted words name a different weekday from the stated date's, or plan for that weekday after the date has passed. | "lets do friday at the yard" against "Thursday, May 7, 2026". |
 | `bk_author_cue` | complicates (trap) | authorship | The record, from a named account, carries a cue about who is typing (a self-introduction, someone else on the phone, a signature). "What the account sent" means the messages the claim attributes to the person, and nothing shows the record is one of them: the cue shows the account was not always typed by that person, which leaves those messages open, never rules them out. | Assumption: Rita Vance personally wrote what Telegram 5550147 sent. Record: "this is her brother, she left it here". |
-| `bk_claim_open` | complicates (trap) | meaning, role, event | The record holds the quoted words and nothing shown says what they mean (meaning), or it comes from or goes to an account bracketed with a named person, plainly inside the window if one is given, and bears on the act or role without being it or ruling it out (role, event) (rule 29). | Claim: Vance used "the shed" to mean the storage unit on 5th Street. Assumption: The words "the shed" mean what the claim says they mean. Record: "drop it by the shed". |
-| `bk_meaning_said` | supports | meaning | A message from the account that used the quoted words (it gives the meaning as its own, or used the words earlier in the excerpt), plainly saying they mean exactly what the claim says they mean (rule 29). | Same claim and assumption. Record from Telegram 5550147, which wrote "drop it by the shed" earlier in the chat: "when i say the shed i mean the unit on 5th". |
-| `bk_meaning_other` | contradicts | meaning | That same account plainly gives the words a meaning that cannot be true together with the claim's (rule 29). | Same claim and assumption. Record from Telegram 5550147: "the shed is the one in my backyard, we dont have a unit". |
+| `bk_claim_open` | complicates (trap) | meaning, role, event | The record holds the quoted words and nothing shown says what they mean, or its sender gives them a meaning of its own, unlike the claim's, while the claim names no one who used them (meaning), or it comes from or goes to an account bracketed with a named person, plainly inside the window if one is given, and bears on the act or role without being it or ruling it out (role, event) (rule 29). | Claim: Vance used "the shed" to mean the storage unit on 5th Street. Assumption: The words "the shed" mean what the claim says they mean. Record: "drop it by the shed". |
+| `bk_meaning_said` | supports | meaning | A message from the account that used the quoted words (it gives the meaning as its own, or used the words earlier in the excerpt), plainly saying they mean exactly what the claim says they mean; when the claim names who used them, the line's brackets carry that person (rule 29). | Same claim and assumption. Record from `Telegram 5550147 [Rita Vance]`, which wrote "drop it by the shed" earlier in the chat: "when i say the shed i mean the unit on 5th". |
+| `bk_meaning_other` | contradicts | meaning | That same account, bracketed with the person the claim names as the words' user, plainly gives the words a meaning that cannot be true together with the claim's (rule 29). | Same claim and assumption. Record from `Telegram 5550147 [Rita Vance]`: "the shed is the one in my backyard, we dont have a unit". |
 | `bk_event_is_record` | supports | event | The claim's event is a message or call, and the record is it: between the named parties, each shown by a bracket or by the account the claim gives for them, plainly inside the window, and for a message saying exactly what the claim says it said (rule 29). | Claim: On May 2, 2026, Vance texted Ortiz at (312) 555-0188 the gate code 1190. Assumption: The event the claim states happened, involving Rita Vance and SMS +13125550188 "on May 2, 2026" (America/Chicago). Record from `SMS +13125550161 [Rita Vance]` in its chat with SMS +13125550188, May 2: "gate code 1190". |
 | `bk_claim_denied` | contradicts | role, event | A person the claim names, from an account bracketed with them, rules the act or role out for the claim's whole time in their own words, sent after it: a denial that covers it, or placing themselves elsewhere for all of it (rules 23 and 29). | Claim: On May 2, 2026, Vance met Ortiz at the yard. Same assumption. Record from `SMS +13125550161 [Rita Vance]`, sent May 4: "didnt see ortiz at all on the 2nd, i was in denver all weekend". |
-| `bk_unrelated` | irrelevant | all | Another message, call, contact row or attachment that holds none of the quoted words and is not between the named parties: it involves none of them, or one of them with someone the assumption does not name. | Sender assumption about "gate code 1190"; record "running 10 min late" from the same account. |
+| `bk_unrelated` | irrelevant | all | Another message, call, contact row or attachment that holds none of the quoted words and is not between the named parties: it involves none of them, or one of them with a person the assumption does not name, shown in that person's brackets (an account no bracket shows may be a named person: `bk_party_unshown`). | Sender assumption about "gate code 1190"; record "running 10 min late" from the same account. |
 
 ## Changes from v0.2, for Arsh to sign
 
@@ -343,7 +350,7 @@ the same four definitions and rules 1 to 24; this section adds what is new.
    `ovr_speaker_mismatch` and `ovr_later_correction` shown as supports becomes a deciding bar on
    both test sets (a change to `GO_BAR.md` and `gobar.py` that only Arsh can make).
 3. **Rationales (rule 24).** Joke, denial, slang and count rationales say what is uncertain
-   instead of declaring it, and never name a weekday the record does not have.
+   instead of declaring it, and name a weekday only with its date or as the record's own word.
 4. **Baker's own wording (rules 25 to 29, 27 new `bk_` families).** Items whose assumption is
    Baker's template text with the names the case gives (rule 25), shown with the claim for the
    meaning, role and event templates, and whose record may be a call, a contact row or an
@@ -354,8 +361,9 @@ the same four definitions and rules 1 to 24; this section adds what is new.
    before a weekday is plain only for a later day of the same Monday-to-Saturday week; "at
    about" is eight minutes either side, as Baker reads it (rule 25); for the templates that
    point to "the claim", only the words' own user explaining them, or the claimed message or
-   call itself, supports, and only a named person's own denial or alibi from an account
-   bracketed with them contradicts (rule 29).
+   call itself, supports, and only a named person's own words from an account bracketed with
+   them contradict: a denial or alibi, or for meaning a meaning of their own unlike the
+   claim's (rule 29).
 
 ## Decided when v0.2 was signed (2026-10-12, as proposed)
 
@@ -387,7 +395,7 @@ the same four definitions and rules 1 to 24; this section adds what is new.
   examples go to Arsh in one review sheet, about 4 to 5 hours in total. If more than 2% of either
   sample is wrong (more than 4 of 200, or more than 2 of 100), the generator is fixed and the
   whole set rebuilt, and a fresh sample is drawn. The sheet prints the four answers and rules 6,
-  19 and 22 to 24 at the top, so a reader without this guide judges by the same standard. Until the held-out sample passes, held-out
-  scores are reported as provisional and decide nothing.
+  19 and 22 to 24 at the top, so a reader without this guide judges by the same standard. Until
+  the held-out sample passes, held-out scores are reported as provisional and decide nothing.
 - **Never tuned to a model.** An example changes only when Arsh decides its answer was wrong,
   never because a model got it wrong.

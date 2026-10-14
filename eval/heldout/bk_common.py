@@ -5,6 +5,7 @@ the draft a writer returns and the step that turns it into a checked item.
 from __future__ import annotations
 
 import random
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -20,8 +21,10 @@ from eval.stancedata.chat import local_str
 from eval.stancedata.model import GenItem
 
 # 1.1.0: "at about" is Baker's eight minutes either side and never "noon"; a "this <weekday>"
-# rationale names why the week is open. A new version draws every Baker item afresh.
-BK_GENERATOR = "eval.heldout.baker 1.1.0"
+# rationale names why the week is open. 1.2.0: Russian lines never mark the speaker's or the
+# listener's gender ("понял", "выручил"), which no item's people decide. A new version draws
+# every Baker item afresh.
+BK_GENERATOR = "eval.heldout.baker 1.2.0"
 
 SAY: dict[str, tuple[str, ...]] = {}
 CTX: dict[str, tuple[str, ...]] = {}
@@ -82,6 +85,9 @@ def finish(d: BkDraft, probe_id: str, names: dict[str, str]) -> GenItem:
 # ------------------------------------------------------------------ context lines
 
 
+_CYRILLIC = re.compile(r"[а-яё]", re.IGNORECASE)
+
+
 def ctx_pool(sit: str, lang: str) -> tuple[str, ...]:
     if lang == "ru":
         return CTX_RU.get(sit, ()) + SMALL_RU
@@ -98,7 +104,11 @@ def ctx_texts(
     pool = [t for t in ctx_pool(sit, lang) if not any(b and b in normalized(t) for b in bad)]
     if len(pool) < n:
         raise RuntimeError(f"too few context lines for {sit} ({lang})")
-    return rng.sample(pool, n)
+    picked = rng.sample(pool, n)
+    if lang == "mixed" and n and all(_CYRILLIC.search(t) for t in picked):
+        # A mixed chat has English around its Russian record, whatever the draw.
+        picked[0] = rng.choice([t for t in pool if not _CYRILLIC.search(t)])
+    return picked
 
 
 def chat_excerpt(

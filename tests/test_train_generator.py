@@ -21,7 +21,7 @@ from eval.stancedata.families import FAMILIES
 from eval.stancedata.model import GenItem
 from eval.train import baker
 from eval.train import generate as gen
-from eval.train.baker_cast import FIRSTS_EN, FORMAL_RU, SURNAMES_RU
+from eval.train.baker_cast import FIRSTS_EN, FORMAL_RU, SURNAMES_RU, pids_in
 from eval.train.baker_claim_ru import EXPLAIN_RU, OPENERS_RU, OWN_RU, TAILS_RU
 from eval.train.baker_claim_words import EXPLAIN, OPENERS, OWN, TAILS
 from eval.train.baker_cues import SURNAMES
@@ -1312,6 +1312,8 @@ def test_baker_weekdays_relate_to_their_dates(bk: list[Any]) -> None:
             first = sent + timedelta(days=(wd - sent.weekday()) % 7)
             assert wd != sent.weekday() and day in (first, first + timedelta(days=7))
             assert prefix == "next" or not later_this_week, it.probe_id
+            # "this" names a day of the send day's week, never one a week after the coming one
+            assert prefix == "next" or day == first, it.probe_id
         elif it.family == "bk_weekday_open":
             assert wd == sent.weekday() and gap in (0, 7), it.probe_id
         else:
@@ -1406,15 +1408,17 @@ def test_baker_quotes_follow_the_guide(bk: list[Any]) -> None:
     # Rule 7: the meaning families quote the explanation and bk_claim_denied the denial, without
     # an opener or tail the answer does not rest on ("remember ", ", period").
     seen: Counter[str] = Counter()
-    for it, _, _ in bk:
+    for it, d, _ in bk:
         q, text, p = it.proposed_quote, it.target.text, it.baker_params
         assert q and q in text
         quoting = it.baker_template in ("weekday_date", "meaning")
-        if it.family in BK_FRAMED:
-            heads, tails = BK_FRAMED[it.family]
+        # bk_claim_open's own-meaning items explain the words in the meaning families' frames.
+        explains = it.family in BK_MEANING or (it.family == "bk_claim_open" and "clause" in d.notes)
+        if it.family in BK_FRAMED or explains:
+            heads, tails = BK_FRAMED.get(it.family, BK_FRAMED["bk_meaning_other"])
             head, _, tail = text.partition(q)
             assert head in heads and tail in tails, (it.probe_id, head, tail)
-            if it.family in BK_MEANING:
+            if explains:
                 assert p["quoted_text"].casefold() in q.casefold(), it.probe_id
             seen[f"{it.family}|{q == text}"] += 1
         elif quoting and it.family not in BK_MEANING | {"bk_unrelated"}:
@@ -1426,7 +1430,7 @@ def test_baker_quotes_follow_the_guide(bk: list[Any]) -> None:
         elif it.family != "bk_author_cue":
             assert q == text, (it.family, q)
         skip = BK_MEANING | {"bk_unrelated", "bk_contact_row_differs"}
-        if "quoted_text" in p and it.family not in skip:
+        if "quoted_text" in p and it.family not in skip and not explains:
             assert p["quoted_text"] in text and p["quoted_text"] not in " ".join(
                 ln.text for ln in it.context
             ), it.probe_id
@@ -1445,9 +1449,12 @@ def test_baker_own_frames_speak_in_the_first_person() -> None:
 
 def test_baker_meaning_records_come_from_the_words_user(bk: list[Any]) -> None:
     # Rule 29: only the words' own user can say what they meant; nobody else uses them here.
+    # Another meaning contradicts only a claim that names that user; with no user named it is
+    # bk_claim_open, since one account's meaning cannot rule out another's use (rule 23).
     seen: Counter[str] = Counter()
     for it, d, _ in bk:
-        if it.family not in BK_MEANING:
+        own_meaning = it.family == "bk_claim_open" and "clause" in d.notes
+        if it.family not in BK_MEANING and not own_meaning:
             continue
         w, rec = it.baker_params["quoted_text"].casefold(), d.evs[d.target]
         users = {e.frm for e in d.evs if w in e.text.casefold()}
@@ -1458,10 +1465,20 @@ def test_baker_meaning_records_come_from_the_words_user(bk: list[Any]) -> None:
         # The explanation gives the meaning as the sender's own, or follows the sender's own
         # use of the words: never an explanation that may be of someone else's words.
         assert d.notes["own"] or d.notes["used_before"], (it.probe_id, rec.text)
+        named = d.notes["named"]
+        assert named or it.family != "bk_meaning_other", it.probe_id
+        assert not named or it.family != "bk_claim_open", it.probe_id
+        # A named claim names the person the record's line carries in brackets; else no one.
+        assert bool(pids_in(d.claim) & _rec_ids(d)) == named == bool(pids_in(d.claim)), it.probe_id
         seen[f"own|{d.notes['own']}"] += 1
         seen[f"{it.family}|{d.notes['used_before']}"] += 1
+        seen[f"named|{it.family}|{named}"] += 1
         seen[it.lang] += 1
-    assert len([k for k in seen if "|" in k and not k.startswith("own")]) == 4, seen
+    assert len([k for k in seen if k.startswith("bk_")]) == 6, seen
+    assert {k for k in seen if k.startswith("named|")} == {
+        "named|bk_meaning_said|True", "named|bk_meaning_said|False",
+        "named|bk_meaning_other|True", "named|bk_claim_open|False",
+    }, seen  # fmt: skip
     assert seen["own|True"] and seen["own|False"] and seen["ru"] + seen["mixed"] >= 10, seen
 
 

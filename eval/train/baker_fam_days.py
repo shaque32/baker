@@ -5,7 +5,8 @@ and the record is sent between 8 a.m. and 10 p.m. on the phone's clock. bk_weekd
 weekday, sent one to six days before a date with that weekday, or "this" before a weekday that
 is a later day of the same Monday-to-Saturday week as the send day (supports). bk_weekday_open:
 the weekday the record was sent on, "next" before a weekday, or "this" before a weekday that is
-not a later day of that week, against one of the dates it can mean (complicates).
+not a later day of that week, against one of the dates it can mean: for "this", the coming such
+day, never the one a week after it (complicates).
 bk_weekday_wrong: another weekday, or the date's weekday sent after the date has passed
 (contradicts).
 """
@@ -139,7 +140,8 @@ def weekday_open(rng: random.Random, k: int) -> Draft:
     """k % 3: 0 the weekday it was sent on, 1 "next", 2 "this" before a weekday that is not a
     later day of the send day's Monday-to-Saturday week (one already past that week, or a
     Sunday on either side, where weeks that start on Sunday and on Monday disagree); the stated
-    date is the first such day on or after the send date, or the one a week later."""
+    date is the first such day on or after the send date, or, except after "this", the one a
+    week later."""
     family = "bk_weekday_open"
     prefix = ("", "next", "this")[k % 3]
     text, core, word, wd = _plan(rng, k, family, prefix)
@@ -153,16 +155,19 @@ def weekday_open(rng: random.Random, k: int) -> Draft:
         sent = _day_with(rng, wd, same=not prefix)
     first = sent + timedelta(days=(wd - sent.weekday()) % 7)
     later = first + timedelta(days=7)
-    target = rng.choice((first, later))
+    # "This" names a day of the send day's own week, the one already past or the coming one,
+    # never the one a week after that; "next" and the send day's weekday can mean either.
+    target = first if prefix == "this" else rng.choice((first, later))
+    past = first - timedelta(days=7)
     d = _draft(rng, family, text, core, sent, target)
     if prefix == "this" and 6 in (wd, sent.weekday()):
         d.rationale = (f"Sent on {full(sent)}, at the turn of a week, \"{word}\" depends on the "
-                       f"day a week is counted from, so it could mean {full(first)} or "
-                       f"{full(later)}; which date it means is open.")  # fmt: skip
+                       f"day a week is counted from, so it could mean {full(past)} or "
+                       f"{full(first)}; which date it means is open.")  # fmt: skip
     elif prefix == "this":
-        d.rationale = (f"Sent on {full(sent)}, \"{word}\" names a day already past in that week, "
-                       f"so it could mean {full(first)} or {full(later)}; which date it means "
-                       "is open.")  # fmt: skip
+        d.rationale = (f"Sent on {full(sent)}, \"{word}\" names a day of that week already past, "
+                       f"{full(past)}, or the coming one, {full(first)}; which date it means is "
+                       "open.")  # fmt: skip
     elif prefix:
         d.rationale = (f"Sent on {full(sent)}, \"{word}\" could mean {full(first)} or "
                        f"{full(later)}, so which date it means is open.")  # fmt: skip

@@ -81,7 +81,7 @@ HANDLE_ANY_EN = (
     "[{old} became {new}] after the rebrand",
     "heads up [@{old} switched to @{new}], same page",
 )
-HANDLE_SELF_RU = ("[сменил ник с @{old} на @{new}]",)
+HANDLE_SELF_RU = ("[мой ник теперь @{new}, раньше был @{old}]",)
 HANDLE_ANY_RU = (
     "[@{old} теперь @{new}], это тот же аккаунт",
     "[@{old} и @{new} — один аккаунт], просто переименовали",

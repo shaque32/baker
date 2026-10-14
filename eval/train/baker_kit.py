@@ -95,7 +95,8 @@ def finish(d: Draft, probe_id: str, generator: str, rng: random.Random) -> GenIt
     agree_all(d)
     lines = [render(d.scene, d.phone, e) for e in d.evs]
     quoted = d.params.get("quoted_text")
-    if quoted and d.template in QUOTING and d.family not in USED_BEFORE:
+    earlier = d.family in USED_BEFORE or d.notes.get("used_before")  # bk_claim_open's own meaning
+    if quoted and d.template in QUOTING and not earlier:
         for i, ln in enumerate(lines):
             if i != d.target and quoted.casefold() in ln.text.casefold():
                 raise ValueError(f"{probe_id}: the quoted words also stand on a context line")

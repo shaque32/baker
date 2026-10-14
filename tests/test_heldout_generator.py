@@ -1299,6 +1299,24 @@ def test_bk_russian_records_are_about_one_in_ten(
             assert not any(_cyrillic(line.text) for line in it.context), it.probe_id
 
 
+# Past-tense forms that mark the speaker's or the listener's gender, which no item decides: a
+# man's "понял" from an account an item ties to a woman would hint who typed it ("клиент
+# видел?" speaks of a third person and may stay).
+_GENDERED_RU = re.compile(
+    r"(?<![а-яё])(?:понял|принял|выручил|надел|помыл|заточил|забрал|оставил|сменил"
+    r"|нашёл|нашел)а?(?![а-яё])|(?<![а-яё])(?:развела|нашла|загрузила|размяла|упаковала"
+    r"|поставила|заказала|пересадила|обработала)(?![а-яё])"
+)
+
+
+def test_bk_russian_lines_never_mark_gender(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    for it in _bk(test_items + dev_items):
+        for line in [it.target, *it.context]:
+            assert not _GENDERED_RU.search(line.text.lower()), (it.probe_id, line.text)
+
+
 def test_bk_record_texts_never_repeat(test_items: list[GenItem], dev_items: list[GenItem]) -> None:
     """No family repeats a record, and no Baker-wording record repeats anywhere in the
     held-out set, dev split included."""
