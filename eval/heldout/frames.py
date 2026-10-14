@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
 from eval.heldout.pools import CYRILLIC_NAMES, LATIN_NAMES
-from eval.heldout.registry import Entry
+from eval.heldout.registry import FACT_DAYS, Entry
 from eval.heldout.scene import Chat, Draft, local, make_chat, random_local, timeline
 from eval.heldout.schedule import Slot
 from eval.heldout.text import (
@@ -18,6 +18,7 @@ from eval.heldout.text import (
     clock12,
     date_phrase,
     render,
+    weekday_date,
     weekdays_in,
 )
 from eval.stancedata.chat import Account
@@ -401,6 +402,40 @@ def plain_fact(entry: Entry, setup: Setup) -> str:
     contradicting record must rule out. Its time is the template's own ({xdate}, "on {day}"),
     never the chat's date added on top, so it claims no more time than the record speaks to."""
     return capitalize_first(named_fact(entry, setup)) + "."
+
+
+# A weekday a denied act carries: "on Thursday", "on Thursday night".
+_ON_WEEKDAY = re.compile(r"\bon (" + "|".join(FACT_DAYS) + r")( night)?\b")
+
+
+def denied_fact(entry: Entry, setup: Setup, sent: date) -> str:
+    """The act a denial rules out, as a plain fact (rule 12) dated before the message `sent`
+    on (a local date). An undated past-tense denial covers the act at any time before it was
+    sent and says nothing about a later one (rule 23), so an act with no time of its own is
+    dated "Before" that date. The question's own day stays ("yesterday" -> {xprev}); a weekday
+    the record or its question names becomes that weekday's date in the six days before the
+    message, which is never sent on a weekday its lines name (rule 24)."""
+    that = named_fact(entry, setup)
+    if "{x" in that:
+        return capitalize_first(that) + "."
+    if any(day in _ON_WEEKDAY.sub("", that) for day in FACT_DAYS):
+        raise ValueError(f"a weekday outside 'on <day>' in a denied act: {that!r}")
+
+    def dated(day: str) -> str:
+        back = (sent.weekday() - FACT_DAYS.index(day)) % 7
+        if not back:
+            raise RuntimeError(f"a denial is sent on the weekday it names: {that!r}")
+        return weekday_date(sent - timedelta(days=back))
+
+    def on_day(m: re.Match[str]) -> str:
+        return f"on the night of {dated(m.group(1))}" if m.group(2) else f"on {dated(m.group(1))}"
+
+    if _ON_WEEKDAY.search(that):
+        return capitalize_first(_ON_WEEKDAY.sub(on_day, that)) + "."
+    day = entry.fact.get("day")
+    if day in FACT_DAYS:  # the record names the day ("wasnt even there tuesday"), the act not
+        return f"On {dated(str(day))}, {that}."
+    return f"Before {date_phrase(sent)}, {that}."
 
 
 # A time a fact gives only relative to the chat ("that morning"). With no message or chat

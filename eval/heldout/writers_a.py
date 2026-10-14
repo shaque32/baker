@@ -19,6 +19,7 @@ from eval.heldout.frames import (
     Line,
     Setup,
     bare_fact,
+    denied_fact,
     draft,
     fact_form,
     fact_sentence,
@@ -142,13 +143,24 @@ def sup_plain(slot: Slot, rng: random.Random) -> Draft:
     return draft(slot, rng, st, lines, target, assumption, quote, rationale, kind, utc)
 
 
+def _hour_after(clock: str) -> int:
+    """The first full local hour at which an event at `clock` ("4:45") is over on its latest
+    daytime reading (1 to 6:30 as p.m., 7 to 11:30 as a.m., 12 as noon), 75 minutes on."""
+    hour, _, minute = clock.partition(":")
+    h = int(hour) + 12 if 1 <= int(hour) <= 6 else int(hour)
+    end = h * 60 + int(minute or 0) + 75
+    return -(-end // 60)
+
+
 def sup_answer(slot: Slot, rng: random.Random) -> Draft:
     st = setup_chat(slot, rng)
     e = slot.entry
     q = e.part("q")
     core: list[Line] = [(st.receiver, q), (st.sender, e.text())]
     lines, target = place(rng, st.chat, core, 1, (0, 3), (0, 2))
-    utc = record_time(rng, st, lines)
+    # A past event at a clock time ("both, at 8") is answered after it, on any reading.
+    hours = (_hour_after(e.part("after")), 22) if e.tpl.has("after") else (7, 22)
+    utc = record_time(rng, st, lines, hours)
     loc = local(utc, st.chat.tz)
     assumption, _ = fact_sentence(rng, e, st, loc, prefer="that" if e.tpl.that else "vp")
     quote = e.quote()
@@ -341,7 +353,8 @@ def sup_account_shared(slot: Slot, rng: random.Random) -> Draft:
         assumption = f'The message "{text}" was sent from {a} on {d}.'
         quote, kind = text, K.IDENTITY
     elif e.tpl.that:
-        that = fill(e.that(), st).replace("the sender", "the account's user")
+        # "the writer": whoever typed it; the assumption claims nothing about who that was.
+        that = fill(e.that(), st).replace("the sender", "the writer")
         assumption = f"{a} wrote to {st.r} on {d} that {that}."
         quote, kind = e.quote(), K.EVENT
     else:
@@ -388,8 +401,9 @@ def con_denial(slot: Slot, rng: random.Random) -> Draft:
     core: list[Line] = [(st.receiver, ask), (st.sender, e.text())]
     lines, target = place(rng, st.chat, core, 1, (0, 3), (0, 2))
     utc = record_time(rng, st, lines)
-    # The act the question asks about, at the question's own time ("yesterday" -> {xprev}).
-    assumption = plain_fact(e, st)
+    # The act the question asks about, at the question's own time ("yesterday" -> {xprev},
+    # "thursday" -> that Thursday's date), or else before the denial was sent (rule 23).
+    assumption = denied_fact(e, st, local(utc, st.chat.tz).date())
     quote = e.quote()
     # Rule 24: the denial conflicts with the assumption in what it says, never as a fact.
     rationale = rng.choice(

@@ -885,7 +885,7 @@ HEARSAY: tuple[Tpl, ...] = (
     tpl(
         "nurse",
         "en",
-        "{name} said the sunday shift got covered",
+        "{name} says the sunday shift got covered",
         *_HS,
         that="the Sunday shift was covered",
     ),
@@ -972,7 +972,7 @@ HEARSAY: tuple[Tpl, ...] = (
     tpl(
         "church",
         "en",
-        "pastor said {name} locked up {place}",
+        "pastor says {name} locked up {place}",
         *_HS,
         that="{name} locked up {place}",
         src="the pastor",
@@ -1109,7 +1109,7 @@ HEARSAY: tuple[Tpl, ...] = (
     tpl(
         "boat",
         "ru",
-        "{name} пишет, что лодка уже на стоянке",
+        "{name} говорит, что лодка уже на стоянке",
         *_HS,
         that="the boat was back at the slip",
     ),

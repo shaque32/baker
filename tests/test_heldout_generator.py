@@ -15,6 +15,8 @@ from core.audit.quotes import verify_quote
 from eval.heldout import GENERATOR, ID_PREFIX, SEEDS, SOURCE, bk_meanings, bk_names, scene
 from eval.heldout.bk_common import BK_GENERATOR
 from eval.heldout.bk_schedule import BK_COMPOSITION
+from eval.heldout.data_complicates import HEARSAY
+from eval.heldout.data_support import QA
 from eval.heldout.frames import names_in
 from eval.heldout.generate import generate, plain_items
 from eval.heldout.glossary import RU_EN_PAIRS, SLANG_FORMS
@@ -436,8 +438,8 @@ _FRAME_WORDS = set(
     told wrote said says sent message messages messaged exchanged replied answered asked
     confirmed least themselves someone others
     read timed owner contact saved number account user shown group according chat shows record
-    telegram instagram whatsapp signal phone sender between before after during that this with
-    from their they there were been being have having into onto over under when while then than
+    telegram instagram whatsapp signal phone sender writer between before after during that this
+    with from their they there were been being have having into onto over under when while then than
     also both some same other later earlier morning night evening afternoon noon midnight week
     month year today local time could would should might will shall must does done doing
     around until through within without because where which what whose still each every
@@ -990,15 +992,127 @@ def test_relative_days_in_contradicting_records_are_sent_by_day(
             assert 7 <= int(it.target.local_time[11:13]) <= 22, (it.probe_id, it.target)
 
 
+_FULL_DATE = re.compile(
+    r"(?:(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), )?"
+    r"((?:January|February|March|April|May|June|July|August|September|October|November"
+    r"|December) \d{1,2}, \d{4})"
+)
+
+
+def test_denied_acts_are_dated_before_the_message(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    """Rule 23: an undated past-tense denial covers the act at any time before it was sent and
+    leaves a later act open, so the assumption dates the act before the message ("Before
+    April 1, 2025, ..."). A weekday the record or its question names is that weekday's own
+    date in the week before the message (rule 24)."""
+    for it in _plain(test_items + dev_items):
+        if it.family not in ("con_denial", "ovr_negation"):
+            continue
+        sent = date.fromisoformat(it.target.local_time[:10])
+        found = list(_FULL_DATE.finditer(it.assumption))
+        assert found, (it.probe_id, it.assumption)
+        for m in found:
+            day = datetime.strptime(m.group(2), "%B %d, %Y").date()
+            assert m.group(1) in (None, day.strftime("%A")), (it.probe_id, it.assumption)
+            if it.assumption[: m.start()].endswith("Before "):
+                assert day <= sent, (it.probe_id, it.assumption)
+            else:
+                assert day < sent, (it.probe_id, it.assumption)
+        texts = [it.target.text]
+        if it.family == "con_denial":
+            texts.append(it.context[it.target_index - 1].text)
+        for name in set().union(*(_days_in(t) for t in texts)):
+            want = sent - timedelta(days=(sent.weekday() - WEEKDAYS_EN.index(name)) % 7 or 7)
+            stamp = f"{want.strftime('%A')}, {want.strftime('%B')} {want.day}, {want.year}"
+            assert stamp in it.assumption, (it.probe_id, stamp, it.assumption)
+
+
+# An answer's element whose tense or time the record leaves open ("done, back at 6").
+_OPEN_ELEMENT = re.compile(
+    r"\bback at\b|\b(?:until|till|by) (?:\d|\{t\})|\bsold out\b|\bwas sold\b|\bfinished by\b"
+)
+_PAST_CLOCK = re.compile(r"\bat (\d{1,2})(?::(\d\d))?(?![\d:])|\bthe (\d{1,2})(?::(\d\d))? run\b")
+
+
+def test_answers_leave_open_elements_out_and_come_after_their_clock(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    """A sup_answer fact keeps no second element whose tense or time the record leaves open,
+    in any answer template, and a past event at a clock time ("both, at 8") is answered at
+    least an hour after its latest daytime reading (1 to 6:30 as p.m., 7 to 12 as morning)."""
+    for t in QA:
+        assert not _OPEN_ELEMENT.search(t.that or t.vp), t.text
+    for it in _plain(test_items + dev_items):
+        if it.family != "sup_answer":
+            continue
+        own = _outside_quotes(it.assumption)
+        assert not _OPEN_ELEMENT.search(own), (it.probe_id, it.assumption)
+        if "set for" in own:  # a schedule, not a past event
+            continue
+        sent = datetime.strptime(it.target.local_time[:16], "%Y-%m-%d %H:%M")
+        for m in _PAST_CLOCK.finditer(own):
+            hour = int(m.group(1) or m.group(3))
+            minute = int(m.group(2) or m.group(4) or 0)
+            latest = (hour + 12 if 1 <= hour <= 6 else hour) * 60 + minute
+            assert sent.hour * 60 + sent.minute >= latest + 60, (it.probe_id, it.target)
+
+
+def test_shared_account_facts_claim_no_typist(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    """A shared account's fact calls whoever typed it "the writer", never the account's user
+    or the sender, so the assumption claims nothing about who typed."""
+    for it in _plain(test_items + dev_items):
+        if it.family == "sup_account_shared":
+            own = _outside_quotes(it.assumption)
+            assert not re.search(r"account's user|\bthe sender\b", own), it.assumption
+
+
+def test_count_generalizations_name_no_period(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    """ "That month" can end before the occasion an ovr_count record speaks of, or start after
+    it; the generalization names no period of its own."""
+    for it in _plain(test_items + dev_items):
+        if it.family == "ovr_count":
+            assert not re.search(r"\bthat (?:week|weekend|month|year)\b", it.assumption), (
+                it.probe_id,
+                it.assumption,
+            )
+
+
+_SECOND_HAND = re.compile(
+    r"\b(?:says|heard|told me|according to)\b"
+    r"|(?<![а-яё])(?:говорит|слышал|слышала|по словам)(?![а-яё])",
+    re.IGNORECASE,
+)
+
+
+def test_hearsay_carries_its_marker_and_states_are_the_senders_own(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    """Rule 18: a cpl_hearsay record passes on what the sender heard and says so ("says",
+    "heard", "told me", "according to"); a con_other_state record about a third person is the
+    sender's own claim, with no such marker."""
+    for t in HEARSAY:
+        assert _SECOND_HAND.search(t.text), t.text
+    for it in _plain(test_items + dev_items):
+        if it.family == "cpl_hearsay":
+            assert _SECOND_HAND.search(it.target.text), (it.probe_id, it.target.text)
+        if it.family == "con_other_state":
+            assert not _SECOND_HAND.search(it.target.text), (it.probe_id, it.target.text)
+
+
 # ================================================================== Baker's own wording (bk_*)
 #
 # These items follow the plain ones in each split. Their checks re-derive every fact from the
 # item itself: times from the lines' local clock and zone, windows from the document's words,
 # calls from the call text, and brackets from the sender lines.
 
-_PLAIN_SHA = {  # the plain part of each split keeps its bytes (eval/heldout before bk_*)
-    "test": "ef06403f88878dcc74049e1ed9a85fcbd7b2ca597d9cd0fc55b5a1763568fb88",
-    "dev": "018cdc43d6edf2110e90fce304f5acd605812156595d7d5ed2b7527a883e4d4e",
+_PLAIN_SHA = {  # the plain part of each split (eval.heldout 1.3.0): no bk_* change moves it
+    "test": "7d29a467bccf74f96745390cd47232a42c469dc7334f032477262d23ce02ee9d",
+    "dev": "dba392920a35e9460fdf8a1a7a843a8a803d0b369eae94a3132a01af0ce7482f",
 }
 _ABBR_HOURS = {"EST": -5, "EDT": -4, "CST": -6, "CDT": -5, "MST": -7, "MDT": -6, "PST": -8,
                "PDT": -7}  # fmt: skip

@@ -2032,6 +2032,8 @@ PARTIALS: tuple[Tpl, ...] = (
     ),
 )
 
+# Counts: one occasion against "every" or "always". The generalization names no period of its
+# own ("that month" can end before the occasion it generalizes, or start after it).
 _CN = ("count",)
 
 COUNTS: tuple[Tpl, ...] = (
@@ -2041,14 +2043,14 @@ COUNTS: tuple[Tpl, ...] = (
         "delivered {n} crates again tuesday",
         *_CN,
         n=(2, 12),
-        that="{s} delivered {n} crates every Tuesday that month",
+        that="{s} delivered {n} crates every Tuesday",
     ),
     tpl(
         "warehouse",
         "en",
         "took the 6am route again",
         *_CN,
-        that="{s} drove the 6 a.m. route every day that week",
+        that="{s} drove the 6 a.m. route every day",
     ),
     tpl(
         "site",
@@ -2063,7 +2065,7 @@ COUNTS: tuple[Tpl, ...] = (
         "en",
         "another night on {place}",
         *_CN,
-        that="{s} worked every night on {place} that month",
+        that="{s} worked every night on {place}",
     ),
     tpl(
         "gig",
@@ -2162,7 +2164,7 @@ COUNTS: tuple[Tpl, ...] = (
         *_CN,
         n=(2, 12),
         g="m",
-        that="{s} delivered {n} crates every Tuesday that month",
+        that="{s} delivered {n} crates every Tuesday",
     ),
     tpl(
         "warehouse",
@@ -2170,7 +2172,7 @@ COUNTS: tuple[Tpl, ...] = (
         "опять взял маршрут на 6 утра",
         *_CN,
         g="m",
-        that="{s} drove the 6 a.m. route every day that week",
+        that="{s} drove the 6 a.m. route every day",
     ),
     tpl(
         "site",
@@ -2192,7 +2194,7 @@ COUNTS: tuple[Tpl, ...] = (
         "ru",
         "ещё одна ночь на четвёртом этаже",
         *_CN,
-        that="{s} worked every night on the fourth floor that month",
+        that="{s} worked every night on the fourth floor",
     ),
     tpl(
         "gig",

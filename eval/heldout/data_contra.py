@@ -565,7 +565,9 @@ VALUES: tuple[Tpl, ...] = tuple(v for v, _ in _PAIRS)
 CORRECTIONS: tuple[Tpl, ...] = tuple(c for _, c in _PAIRS)
 
 # Denials: `ask` is the other party's question, `vp` the act it asks about with the same time
-# ("yesterday" -> on {xprev}), and the quote holds the words that deny it.
+# ("yesterday" -> on {xprev}), and the quote holds the words that deny it. A weekday stays
+# "on {day}" (or is only in the lines); a recurring act (a dose, a run) names its day. The
+# writer dates the act before the message (frames.denied_fact, rule 23).
 _D = ("deny",)
 
 DENIALS: tuple[Tpl, ...] = (
@@ -683,7 +685,7 @@ DENIALS: tuple[Tpl, ...] = (
         "nope, same 40 as always, check the venmo",
         *_D,
         ask="u charged them double for the {day} session?",
-        vp="charged double for the {day} session",
+        vp="charged double for the session on {day}",
         quote="nope, same 40 as always",
     ),
     tpl(
@@ -1007,7 +1009,8 @@ DENIALS: tuple[Tpl, ...] = (
 )
 
 # Negations: the record's own words state that the act did not happen; the time is the
-# record's ("yesterday" -> on {xprev}), never a day with hours still to come.
+# record's ("yesterday" -> on {xprev}), never a day with hours still to come, and an act with
+# no time is dated before the message (frames.denied_fact, rule 23).
 _N = ("neg",)
 
 NEGATIONS: tuple[Tpl, ...] = (
@@ -1061,10 +1064,10 @@ NEGATIONS: tuple[Tpl, ...] = (
     tpl(
         "nurse",
         "en",
-        "never gave the {t} dose, {name} did",
+        "never gave the {t} dose yesterday, {name} did",
         *_N,
-        vp="gave the dose at {t}",
-        quote="never gave the {t} dose",
+        vp="gave the dose at {t} on {xprev}",
+        quote="never gave the {t} dose yesterday",
     ),
     tpl("gig", "en", "i did not play {place} {day}", *_N, vp="played {place} on {day}"),
     tpl(
@@ -1193,11 +1196,11 @@ NEGATIONS: tuple[Tpl, ...] = (
     tpl(
         "nurse",
         "ru",
-        "дозу в {t} не я давала, а {name}",
+        "вчера дозу в {t} не я давала, а {name}",
         *_N,
         g="f",
-        vp="gave the dose at {t}",
-        quote="дозу в {t} не я давала",
+        vp="gave the dose at {t} on {xprev}",
+        quote="вчера дозу в {t} не я давала",
     ),
     tpl(
         "gig",

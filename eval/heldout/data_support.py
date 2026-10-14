@@ -509,7 +509,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         "ru",
         "дождь, уехали с рынка в {t}",
         *_A,
-        that="the sender and others left the market at {t} because of rain",
+        that="the sender and others left the market at {t}",
         quote="уехали с рынка в {t}",
     ),
     # tutor: tutoring
@@ -1257,6 +1257,10 @@ STATEMENTS: tuple[Tpl, ...] = (
     ),
 )
 
+# Answers: `q` is the other party's question. An answer's second element whose tense or time
+# the record leaves open ("done, back at 6": back by now, or later?) stays out of the fact.
+# `after` names a past event's clock time: the answer is sent after its latest daytime reading
+# (writers_a.sup_answer), so "both, at 8" never answers before 8.
 _QA = ("qa", "any")
 
 QA: tuple[Tpl, ...] = (
@@ -1367,7 +1371,7 @@ QA: tuple[Tpl, ...] = (
         "{place}, till {t}",
         *_QA,
         q="where did they float u?",
-        vp="said they were floated to {place} until {t}",
+        vp="said they were floated to {place}",
     ),
     tpl(
         "nurse",
@@ -1443,7 +1447,7 @@ QA: tuple[Tpl, ...] = (
         *_QA,
         n=(8, 60),
         q="how much honey did u bring?",
-        that="the sender brought {n} jars of honey and sold out by 11",
+        that="the sender brought {n} jars of honey",
     ),
     tpl(
         "market",
@@ -1469,7 +1473,7 @@ QA: tuple[Tpl, ...] = (
         *_QA,
         n=(2, 12),
         q="сколько мёда привёз?",
-        that="the sender brought {n} crates of honey and everything was sold by 11",
+        that="the sender brought {n} crates of honey",
     ),
     tpl(
         "market",
@@ -1539,7 +1543,8 @@ QA: tuple[Tpl, ...] = (
         *_QA,
         q="u finish route {n}?",
         n=(4, 40),
-        that="route {n} was finished and the sender was back at {t}",
+        that="the sender finished route {n}",
+        after="{t}",
     ),
     tpl(
         "warehouse",
@@ -1548,6 +1553,7 @@ QA: tuple[Tpl, ...] = (
         *_QA,
         q="who drove the {t} run?",
         that="{name} drove the {t} run while the sender was on the belt",
+        after="{t}",
     ),
     tpl(
         "warehouse",
@@ -1566,6 +1572,7 @@ QA: tuple[Tpl, ...] = (
         g="m",
         q="кто ездил в {t}?",
         that="{name} drove the {t} run while the sender was on the belt",
+        after="{t}",
     ),
     tpl(
         "dog",
@@ -1591,6 +1598,7 @@ QA: tuple[Tpl, ...] = (
         *_QA,
         q="did biscuit get her pills?",
         that="Biscuit got both pills at {t}",
+        after="{t}",
     ),
     tpl(
         "dog",
@@ -1627,6 +1635,7 @@ QA: tuple[Tpl, ...] = (
         *_QA,
         q="did u show {place} today?",
         that="the sender showed {place} that day at {t} and the buyers stayed an hour",
+        after="{t}",
     ),
     tpl(
         "showing",
@@ -1645,6 +1654,7 @@ QA: tuple[Tpl, ...] = (
         q="показал сегодня дом на дэймен?",
         that="the sender showed the house on Damen that day at {t}",
         quote="да, в {t}",
+        after="{t}",
     ),
     tpl(
         "showing",
@@ -1662,7 +1672,8 @@ QA: tuple[Tpl, ...] = (
         *_QA,
         n=(4, 20),
         q="how many chairs did u set up?",
-        that="the sender set up {n}0 chairs by {t}",
+        that="the sender set up {n}0 chairs",
+        after="{t}",
     ),
     tpl(
         "church",
@@ -1689,7 +1700,8 @@ QA: tuple[Tpl, ...] = (
         n=(4, 20),
         g="m",
         q="сколько стульев поставил?",
-        that="the sender set up {n}0 chairs and finished by {t}",
+        that="the sender set up {n}0 chairs",
+        after="{t}",
     ),
     tpl(
         "church",
@@ -1715,6 +1727,7 @@ QA: tuple[Tpl, ...] = (
         *_QA,
         q="what time did u guys leave?",
         that="the sender and others left from {place} at {t}",
+        after="{t}",
     ),
     tpl(
         "boat",
@@ -1741,6 +1754,7 @@ QA: tuple[Tpl, ...] = (
         *_QA,
         q="во сколько вышли?",
         that="the sender and others left from the dock on Belmont at {t}",
+        after="{t}",
     ),
     tpl(
         "sneaker",

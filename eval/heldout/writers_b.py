@@ -16,6 +16,7 @@ from eval.heldout.frames import (
     RELATIVE_THAT,
     Line,
     Setup,
+    denied_fact,
     draft,
     fill,
     named_days,
@@ -336,7 +337,7 @@ def ovr_negation(slot: Slot, rng: random.Random) -> Draft:
     e = slot.entry
     lines, target = place(rng, st.chat, [(st.sender, e.text())], 0, (0, 3), (0, 2))
     utc = record_time(rng, st, lines)
-    assumption = plain_fact(e, st)
+    assumption = denied_fact(e, st, local(utc, st.chat.tz).date())  # dated before it (rule 23)
     quote = e.quote()
     rationale = (
         f'The assumption\'s act appears in the record only inside a negation ("{quote}"); '
