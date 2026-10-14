@@ -34,8 +34,12 @@ def pick_tz(rng: random.Random, lang: str) -> str:
     return rng.choice(TZS_US)
 
 
-def pick_day(rng: random.Random) -> date:
-    return FIRST_DAY + timedelta(days=rng.randrange((LAST_DAY - FIRST_DAY).days + 1))
+def pick_day(rng: random.Random, weekdays: tuple[int, ...] = ()) -> date:
+    """A record date in the window; with `weekdays` (0 = Monday), one of those weekdays."""
+    while True:
+        day = FIRST_DAY + timedelta(days=rng.randrange((LAST_DAY - FIRST_DAY).days + 1))
+        if not weekdays or day.weekday() in weekdays:
+            return day
 
 
 def record_time(
@@ -69,6 +73,38 @@ def month_year(d: date) -> str:
     return f"{d.strftime('%B')} {d.year}"
 
 
+# A weekday a line names as one particular day ("on monday", "whats the plan for sat", "в
+# четверг"), not a repeating one ("fridays", "every friday", "по субботам", "the thursday run").
+_EN_DAY = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday|sat", "sunday")
+_RU_DAY = (r"понедельник\w*", r"вторник\w*", r"сред[аеуы]", r"четверг\w*", r"пятниц\w*",
+           r"суббот\w*", r"воскресень\w*")  # fmt: skip
+_EVERY = re.compile(r"\b(every|each)\s+$|(каждую|каждый|каждое|по)\s+$")
+_TOMORROW = re.compile(r"\b(tmrw|tomorrow)\b|завтра")
+
+
+def named_weekdays(text: str) -> set[int]:
+    """The weekdays (0 = Monday) a line names as one particular day."""
+    t, out = text.lower(), set()
+    for d in range(7):
+        for m in re.finditer(rf"\b({_EN_DAY[d]})\b(?!s\b)", t):
+            if not _EVERY.search(t[: m.start()]) and not re.match(r"\s+(run|league)\b", t[m.end():]):
+                out.add(d)
+        for m in re.finditer(rf"(?<![\w-]){_RU_DAY[d]}", t):
+            if not m.group(0).endswith(("ам", "ами", "ах")) and not _EVERY.search(t[: m.start()]):
+                out.add(d)
+    return out
+
+
+def weekday_clash(text: str, day: date) -> bool:
+    """Whether a line's weekday words clash with its own local date: a past event, a plan or a
+    question about one particular day never names the weekday it is sent on (that would be
+    "today"), and "cant tmrw, thursday?" is never sent on a Wednesday."""
+    named = named_weekdays(text)
+    if day.weekday() in named:
+        return True
+    return bool(_TOMORROW.search(text.lower())) and (day.weekday() + 1) % 7 in named
+
+
 def _gap(rng: random.Random) -> timedelta:
     r = rng.random()
     if r < 0.45:
@@ -82,17 +118,27 @@ def _gap(rng: random.Random) -> timedelta:
     return timedelta(seconds=s)
 
 
-def spread(rng: random.Random, when: datetime, n_before: int, n_after: int) -> list[datetime]:
-    """UTC times for n_before lines, the record at `when`, then n_after lines."""
+def _quick_gap(rng: random.Random) -> timedelta:
+    """A gap of seconds to a few minutes, for a line that answers or corrects its neighbour."""
+    return timedelta(seconds=rng.randint(15, 240))
+
+
+def spread(rng: random.Random, when: datetime, n_before: int, n_after: int,
+           quick: tuple[int, int] = (0, 0)) -> list[datetime]:  # fmt: skip
+    """UTC times for n_before lines, the record at `when`, then n_after lines.
+
+    `quick` counts the lines on each side nearest the record that follow within minutes: a
+    correction comes right after the statement it corrects, not two days later.
+    """
     before: list[datetime] = []
     t = when
-    for _ in range(n_before):
-        t = t - _gap(rng)
+    for i in range(n_before):
+        t = t - (_quick_gap(rng) if i < quick[0] else _gap(rng))
         before.append(t)
     after: list[datetime] = []
     t = when
-    for _ in range(n_after):
-        t = t + _gap(rng)
+    for i in range(n_after):
+        t = t + (_quick_gap(rng) if i < quick[1] else _gap(rng))
         after.append(t)
     return list(reversed(before)) + [when] + after
 
@@ -156,24 +202,36 @@ def _words(s: str) -> set[str]:
     return set(s.lower().replace(",", " ").split())
 
 
-def decorate(rng: random.Random, text: str, lang: str, p: float = 0.5) -> str:
+# A laugh or smiley marker ("lol", "haha", "😂", "лол", "ахах", ")"): guide rule 24 says it
+# leaves open whether the sender meant a line seriously, so it never decorates a record and
+# never follows one, except in the joke family's own lines.
+LAUGH = re.compile(r"\b(lol|haha\w*|lmao\w*|лол|ахах\w*)\b|😂|🤣|\)")
+
+
+def decorate(rng: random.Random, text: str, lang: str, p: float = 0.5,
+             laughs: bool = True) -> str:  # fmt: skip
     """At most one casual decoration on a line: a prefix or a tail, each with probability p/2.
 
     A tail never follows a question or a short reply ("no tbh", "nothing else fr": the line's
     last clause must have three words), and neither repeats a word of the line ("lol lol").
+    Without `laughs`, no decoration is a laugh or smiley marker.
     """
     pres, sufs = (filler.PREFIX_RU, filler.SUFFIX_RU) if lang == "ru" else (
         filler.PREFIX_EN, filler.SUFFIX_EN)  # fmt: skip
+    if not laughs:
+        pres = tuple(x for x in pres if not LAUGH.search(x))
+        sufs = tuple(x for x in sufs if not LAUGH.search(x))
     roll = rng.random()
     if roll < p / 2:
         # No prefix repeats a word of the line, and "so" never lands before "yeah" ("so yeah").
         starts_yes = text.startswith(("yeah", "yep", "yes"))
         pres = [x for x in pres if not _words(x) & _words(text) and not (x == "so " and starts_yes)]
-        return rng.choice(pres) + text
+        return rng.choice(pres) + text if pres else text
     last_clause = re.split(r"[,;:]", re.sub(r"\{[^}]*\}", "", text))[-1]  # "{o}" is an ending
     short = len(re.findall(r"[^\W\d_]+", last_clause)) < 3
     if roll < p and not short and not text.rstrip(" )").endswith("?"):
-        return text + rng.choice([x for x in sufs if not _words(x) & _words(text)])
+        tails = [x for x in sufs if not _words(x) & _words(text)]
+        return text + rng.choice(tails) if tails else text
     return text
 
 
@@ -203,12 +261,14 @@ def filler_lines(rng: random.Random, lang: str, n_before: int, n_after: int, own
     out: list[Line] = []
     who = first or rng.choice(whos)
     for i in range(n_before + n_after):
-        scene_lines, generic = filler_pools(lang, scene, safe_after and i >= n_before)
-        scene_lines = [t for t in scene_lines if t not in used]
-        generic = [t for t in generic if t not in used]
+        after = i >= n_before
+        scene_lines, generic = filler_pools(lang, scene, safe_after and after)
+        # No laugh after the record: it could read as laughing at it (guide rule 24).
+        scene_lines = [t for t in scene_lines if t not in used and not (after and LAUGH.search(t))]
+        generic = [t for t in generic if t not in used and not (after and LAUGH.search(t))]
         t = rng.choice(scene_lines if scene_lines and rng.random() < 0.6 else generic)
         used.add(t)
-        text = t if t in acks else decorate(rng, t, lang)
+        text = t if t in acks else decorate(rng, t, lang, laughs=not after)
         speaker = owner if who == "o" else contacts[int(who[1:]) - 1 if len(who) > 1 else 0]
         addressee = contacts[0] if speaker is owner else owner
         out.append((who, text.replace("{o}", speaker.end).replace("{c}", addressee.end)))
@@ -219,10 +279,10 @@ def filler_lines(rng: random.Random, lang: str, n_before: int, n_after: int, own
 
 def assemble(rng: random.Random, *, tz: str, app: str, owner: Party, contacts: list[Party],
              lang: str, before: list[Line], record: Line, after: list[Line],
-             when: datetime) -> Chat:  # fmt: skip
+             when: datetime, quick: tuple[int, int] = (0, 0)) -> Chat:  # fmt: skip
     """Build the Chat: lines before, the record at `when` (UTC), lines after."""
     chat = Chat(tz, app, owner, contacts, lang, [], len(before))
-    times = spread(rng, when, len(before), len(after))
+    times = spread(rng, when, len(before), len(after), quick)
     lines = [*before, record, *after]
     chat.msgs = [Msg(chat.party(who).account, t, text.strip()) for (who, text), t in
                  zip(lines, times, strict=True)]  # fmt: skip

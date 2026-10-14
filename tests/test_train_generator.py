@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import pytest
@@ -158,7 +158,8 @@ def test_fact_families_state_the_fact(items: list[GenItem]) -> None:
     # Guide rule 12: a correction, a denial or another value contradicts a fact, not a report.
     report = re.compile(r"\b(told|wrote|texted|said|says|states)\b|message (says|states)|"
                         r"sent (the owner|.*message)")  # fmt: skip
-    fams = {"ovr_later_correction", "con_other_value", "con_other_state", "con_denial"}
+    fams = {"ovr_later_correction", "con_other_value", "con_other_state", "con_denial",
+            "con_correction", "ovr_negation"}  # fmt: skip
     for it in items:
         if it.family in fams:
             assert not report.search(it.assumption), it.assumption
@@ -201,10 +202,12 @@ PERSON = set("i i'm im i'll ill my me mine we our us u ur you your yours я мн
 GENDER = set("he she his him her hers он она его её ему ей".split())
 OPEN_REFERENCE = re.compile(
     r"\b(it|him|her|them)\b|\bthe (man|woman)\b|\b(last night|the night before|yesterday|tonight|"
-    r"tomorrow|tmrw|this weekend|this morning|the next day|вчера|сегодня|завтра)\b"
+    r"tomorrow|tmrw|this weekend|this morning|the next day|that week|that month|that year|"
+    r"вчера|сегодня|завтра)\b"
 )
 REPORT_OK = {f.family_id for f in FAMILIES if f.stance.value == "supports"} | {
-    "ovr_sender_mismatch", "ovr_time_mismatch", "con_in_window", "con_other_speaker"}  # fmt: skip
+    "ovr_sender_mismatch", "ovr_time_mismatch", "con_in_window", "ovr_speaker_mismatch",
+}  # fmt: skip
 REPORT = re.compile(
     r"\b(said|says|stated|states|wrote|texted|messaged|сказал|сказала|написал|написала|говорит|"
     r"пишет)\b|\btold\b[^.;]*?\bthat\b|\btold\b(?![^.;]*?\bto\b)|\b(the|a|that|in a) message\b|"
@@ -235,9 +238,10 @@ def test_assumptions_never_gender_anyone(items: list[GenItem]) -> None:
 
 def test_assumptions_resolve_references_and_dates(items: list[GenItem]) -> None:
     # No object placeholder, no "the man", no relative time: a record's "last night" becomes a
-    # local date in the assumption.
+    # local date in the assumption. No "had had" from a bound on an act that starts with "had".
     for it in items:
         assert not OPEN_REFERENCE.search(_bare(it.assumption)), it.assumption
+        assert "had had" not in it.assumption, it.assumption
 
 
 def test_report_frames_only_in_message_families(items: list[GenItem]) -> None:
@@ -526,3 +530,226 @@ def test_tails_never_follow_short_replies(items: list[GenItem]) -> None:
             if m and m.start() > 0:  # a bare "lol" or "fr" is the whole reply, not a tail
                 last = re.split(r"[,;:]", ln.text[: m.start()])[-1]
                 assert len(re.findall(r"[^\W\d_]+", last)) >= 3, ln.text
+
+
+# --- guide v0.3: strict contradicts, rationales that claim only what is shown -------------
+
+WEEKDAY_NAMES = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+                 r"понедельник\w*", r"вторник\w*", r"сред[аеуы]", r"четверг\w*", r"пятниц[аеуы]",
+                 r"суббот[аеуы]", r"воскресень[еюя]")  # fmt: skip
+WEEKDAY_NAME = re.compile("|".join(rf"\b({d})\b" for d in WEEKDAY_NAMES))
+# A quoted phrase: "..." or '...'; an apostrophe inside a word ("owner's") opens no quote.
+QUOTED_PHRASE = re.compile(r"\"[^\"]*\"|(?<!\w)'(?:[^']|(?<=\w)'(?=\w))*'(?!\w)")
+DECLARES = re.compile(r"at the same time|\bjok(e|es|ing)\b|\bvent(s|ing)?\b|\bharmless\b|"
+                      r"\bsarcas|\bliterally\b|\bobvious")  # fmt: skip
+LAUGH_MARK = re.compile(r"\b(lol|haha\w*|lmao\w*|лол|ахах\w*)\b|😂|🤣|\)")
+MONTHS = ("January", "February", "March", "April", "May", "June", "July", "August",
+          "September", "October", "November", "December")  # fmt: skip
+LONG_DATE = re.compile(rf"\b({'|'.join(MONTHS)}) (\d{{1,2}}), (\d{{4}})")
+CLOCK = r"(noon|midnight|\d{1,2}(?::\d{2})? [ap]\.m\.)"
+# A clock on a date ("by 2 p.m. on March 3, 2026", "at 9:12 a.m. on March 3, 2026"), and a
+# bound that is a date alone ("before March 3, 2026": the days before it).
+CLOCK_ON = re.compile(rf"\b(?:by|before|at) {CLOCK} on {LONG_DATE.pattern}", re.I)
+CLOCK_BOUND = re.compile(rf"\b(?:by|before) {CLOCK} on {LONG_DATE.pattern}", re.I)
+BEFORE_DATE = re.compile(rf"\bbefore {LONG_DATE.pattern}", re.I)
+# An act with its own clock time or day of the month ("landed in Chicago at noon").
+ACT_AT = re.compile(r"\bat (noon|midnight|\d{1,2})(?::(\d{2}))?(?![\w:]| [ap]\.m\.)")
+ACT_TRAIN = re.compile(r"\b(\d{1,2})(am|pm) train\b")
+ACT_ON = re.compile(r"\bon the (\d{1,2})(?:st|nd|rd|th)\b(?! floor)")
+EN_WEEKDAY = re.compile(rf"\b({'|'.join(WEEKDAY_NAMES[:7])})\b", re.I)
+
+
+def _unquoted_weekdays(text: str) -> list[int]:
+    """The weekdays (0 = Monday) a text names outside its quoted phrases."""
+    bare = QUOTED_PHRASE.sub(" ", text.lower())
+    return [(m.lastindex - 1) % 7 for m in WEEKDAY_NAME.finditer(bare) if m.lastindex]
+
+
+def _laughs(text: str) -> bool:
+    """A laugh or smiley marker; a parenthetical such as "(auto)" is not a smiley."""
+    return bool(LAUGH_MARK.search(re.sub(r"\([^()]*\)", " ", text)))
+
+
+def _minute_of(clock: str) -> int:
+    if clock in ("noon", "midnight"):
+        return 720 if clock == "noon" else 0
+    m = re.fullmatch(r"(\d{1,2})(?::(\d{2}))? ([ap])\.m\.", clock)
+    assert m, clock
+    return (int(m.group(1)) % 12 + (12 if m.group(3) == "p" else 0)) * 60 + int(m.group(2) or 0)
+
+
+def _act_minute(text: str) -> int | None:
+    """An act's own clock time, read as early as is natural: a school pickup or a hotel
+    check-in "at 3" is 3 p.m., a landing "at 8" may be 8 a.m., a bar closes at 2 in the night."""
+    if m := ACT_TRAIN.search(text):
+        return (int(m[1]) % 12 + (12 if m[2] == "pm" else 0)) * 60
+    if m := ACT_AT.search(text):
+        if m[1] in ("noon", "midnight"):
+            return 720 if m[1] == "noon" else 0
+        h, pm = int(m[1]), re.search(r"\b(picked the kids up|checked in)\b", text)
+        return (h + (12 if h < 12 and pm else 0)) * 60 + int(m[2] or 0)
+    return None
+
+
+def _date(month: str, day: str, year: str) -> date:
+    return date(int(year), MONTHS.index(month.capitalize()) + 1, int(day))
+
+
+def _local(line) -> datetime:
+    return datetime.strptime(line.local_time[:19], "%Y-%m-%d %H:%M:%S")
+
+
+def test_rationale_weekdays_match_the_record(many: list[GenItem]) -> None:
+    # Guide rule 24: a weekday a rationale names outside a quoted phrase is the record's own
+    # local weekday ("One Friday is shown" on a Thursday record was wrong).
+    assert _unquoted_weekdays("One Friday is shown; 'every friday' is a loose phrase.") == [4]
+    assert _unquoted_weekdays("Not 'в понедельник' but the owner's пятницу.") == [4]
+    assert _unquoted_weekdays("The record gives 'monday'; the assumption says 'Tuesday'.") == []
+    for it in many:
+        day = date.fromisoformat(it.target.local_time[:10]).weekday()
+        assert set(_unquoted_weekdays(it.rationale)) <= {day}, (it.rationale, it.target.local_time)
+
+
+def test_rationales_say_what_is_uncertain(many: list[GenItem]) -> None:
+    # Rule 24: a joke marker leaves sincerity open, a denial or a correction conflicts with the
+    # assumption in what it says (its truth is for the expert), a slang reading needs a
+    # translator, and a date, sender or speaker mismatch leaves the assumption open (rule 23).
+    # Quoted words ("got the deposit back at the same time") are the record's or the
+    # assumption's, not the rationale's own claim.
+    for it in many:
+        why = it.rationale.lower()
+        assert not DECLARES.search(QUOTED_PHRASE.sub(" ", why)), (it.family, it.rationale)
+        if it.family == "ovr_joke":
+            assert re.search(r"unclear whether the (sender|owner) meant", why), it.rationale
+        if it.family in ("con_denial", "ovr_negation", "con_correction"):
+            assert "cannot be true together with" in why and "for the expert" in why, it.rationale
+        if it.family == "ovr_translation":
+            assert "translator" in why, it.rationale
+        if it.family in ("ovr_time_mismatch", "ovr_sender_mismatch", "ovr_speaker_mismatch"):
+            assert re.search(r"does not show whether|cannot show|is not shown", why), it.rationale
+
+
+def test_laugh_markers_only_mark_jokes(many: list[GenItem]) -> None:
+    # A laugh or smiley leaves open whether the sender meant it (rule 24), so no supports or
+    # contradicts record carries one, and no line after such a record laughs.
+    assert _laughs("ну ок))") and _laughs("paid him lol") and not _laughs("(auto) stance=x")
+    for it in many:
+        if it.gold_stance in ("supports", "contradicts"):
+            assert not _laughs(it.target.text), (it.family, it.target.text)
+            for ln in it.lines()[it.target_index + 1 :]:
+                assert not _laughs(ln.text), (it.family, it.target.text, ln.text)
+
+
+def test_corrections_mark_the_right_message(many: list[GenItem]) -> None:
+    # Rules 19 and 22: the correcting message is con_correction (contradicts, quoting the
+    # correcting words); the statement it corrects is ovr_later_correction (complicates), whose
+    # rationale names the correction. One sender, within minutes.
+    seen: Counter[str] = Counter()
+    for it in many:
+        if it.family not in ("con_correction", "ovr_later_correction"):
+            continue
+        lines, i = it.lines(), it.target_index
+        mine = [j for j, ln in enumerate(lines) if ln.sender == it.target.sender and j != i]
+        if it.family == "con_correction":
+            j = max(j for j in mine if j < i)  # the statement it corrects comes first
+            assert it.proposed_quote not in lines[j].text, (it.proposed_quote, lines[j].text)
+        else:
+            j = min(j for j in mine if j > i)  # the correction comes after
+            assert lines[j].text in it.rationale, (lines[j].text, it.rationale)
+        assert abs(j - i) <= 2, [ln.text for ln in lines]
+        assert abs((_local(lines[j]) - _local(lines[i])).total_seconds()) <= 600
+        seen[it.family] += 1
+    assert seen["con_correction"] >= 20 and seen["ovr_later_correction"] >= 20, seen
+
+
+def test_contradicts_assumptions_end_by_the_record(many: list[GenItem]) -> None:
+    # Rule 23: a record rules an act or a place out only up to the moment it was sent ("still in
+    # denver" at 12:09 rules out "landed in New York by noon", never "that day"). A contradicts
+    # assumption names no later date; one that names the record's date ends by its local clock;
+    # denials, negations and any assumption naming a weekday always carry that bound.
+    assert CLOCK_ON.findall("By 2 p.m. on March 3, 2026, X had paid") == [
+        ("2 p.m.", "March", "3", "2026")]  # fmt: skip
+    assert BEFORE_DATE.findall("X landed at noon before March 3, 2026") == [("March", "3", "2026")]
+    seen: Counter[str] = Counter()
+    for it in many:
+        if it.gold_stance != "contradicts" or it.family == "con_in_window":
+            continue
+        a, lt = it.assumption, it.target.local_time
+        day, minute = date.fromisoformat(lt[:10]), int(lt[11:13]) * 60 + int(lt[14:16])
+        assert all(_date(*m) <= day for m in LONG_DATE.findall(a)), (a, lt)
+        clocks = [(_minute_of(t), _date(*m)) for t, *m in CLOCK_ON.findall(a)]
+        assert all(t <= minute for t, d in clocks if d == day), (a, lt)
+        if it.family in ("con_other_value", "con_correction"):
+            # A value the record gives is bounded at its own minute: by an earlier hour, 4 of
+            # "exactly 5" lash sets could already have been done.
+            assert all(t == minute for t, d in clocks if d == day), (a, lt)
+        # The record's date appears only with a clock at or before the record's, or as the
+        # date-only bound "before" it.
+        ends = [d for _, d in clocks] + [_date(*m) for m in BEFORE_DATE.findall(a)]
+        if day in [_date(*m) for m in LONG_DATE.findall(a)]:
+            assert day in ends, (a, lt)
+        if it.family in ("con_denial", "ovr_negation") or EN_WEEKDAY.search(a):
+            assert ends, (a, lt)
+            seen["clock" if clocks else "date"] += 1
+    assert seen["clock"] > 100, seen
+
+
+def test_clock_bounds_never_cut_into_the_act(many: list[GenItem]) -> None:
+    # "By 10 a.m. on January 5, X had landed in Chicago at noon" makes no sense: a clock bound
+    # on an act is never earlier than the act's own time, and an act on a later day of the month
+    # than the bound's date takes a date bound instead. A bound on the telling ("before 3 a.m.,
+    # X told Y that they took the 6am train") or on a quoted message is a different matter.
+    assert _act_minute("landed in Chicago at 3") == 180 and _act_minute("checked in at 3") == 900
+    assert _act_minute("took the 8am train") == 480 and _act_minute("at 9:12 a.m. on May 3") is None
+    assert ACT_ON.search("on the 1st") and not ACT_ON.search("on the 4th floor")
+    seen: Counter[str] = Counter()
+    for it in many:
+        a = QUOTED.sub(" ", it.assumption)
+        bounds = CLOCK_BOUND.findall(a)
+        if not bounds or re.search(r"\b(told|wrote|said|confirmed|texted|messaged)\b", a):
+            continue
+        t, *d = bounds[0]
+        if m := ACT_ON.search(a):
+            assert int(m[1]) <= _date(*d).day, (it.family, a)
+            seen["day"] += 1
+        act = _act_minute(a)
+        if act is not None:
+            assert act <= _minute_of(t), (it.family, a)
+            seen["clock"] += 1
+    assert seen["clock"] >= 5, seen
+
+
+TIME_ON = re.compile(rf"\b(by|before|after|at) {CLOCK} on {LONG_DATE.pattern}", re.I)
+
+
+def test_stated_times_hold_or_miss_the_record(many: list[GenItem]) -> None:
+    # A supports assumption's time holds the record ("before 9:40 p.m." for a record at 9:14
+    # p.m., never "before 9:10 p.m."); a time mismatch's misses it.
+    seen: Counter[str] = Counter()
+    for it in many:
+        lt = it.target.local_time
+        day, minute = date.fromisoformat(lt[:10]), int(lt[11:13]) * 60 + int(lt[14:16])
+        mismatch = it.family == "ovr_time_mismatch"
+        if "daylight-saving" in it.rationale or it.gold_stance == "contradicts":
+            continue  # a DST record reads its clock twice; contradicts has its own test
+        for word, t, *d in TIME_ON.findall(QUOTED.sub(" ", it.assumption)):
+            if _date(*d) != day:
+                continue
+            t, word = _minute_of(t), word.lower()
+            if it.gold_stance == "supports":
+                ok = {"before": t > minute, "after": t < minute, "at": t == minute,
+                      "by": t >= minute}[word]  # fmt: skip
+            elif mismatch:
+                ok = {"before": t <= minute, "after": t > minute}.get(word, True)
+            else:
+                ok = True
+            assert ok, (it.family, it.assumption, lt)
+            seen[it.gold_stance] += 1
+    assert seen["supports"] > 100 and seen["complicates"] > 100, seen
+
+
+def test_other_state_names_the_place(many: list[GenItem]) -> None:
+    # Rule 23: never "home" when nothing shows where home is.
+    for it in many:
+        if it.family == "con_other_state":
+            assert not re.search(r"\bhome\b|\bдома\b|\bдомой\b", it.target.text.lower()), it

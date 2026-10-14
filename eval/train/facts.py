@@ -109,10 +109,18 @@ def exact(f: Fact, rng: random.Random, v: str, end: str = "") -> str | None:
     return _fill(rng.choice(f.exact), v=v, l=end)
 
 
-def negated(f: Fact, rng: random.Random, v: str, end: str = "") -> str:
+# A negation that covers every occasion before the message, not just the one in question.
+NEVER = re.compile(r"\bnever\b|ни разу|никогда")
+
+
+def negated(f: Fact, rng: random.Random, v: str, end: str = "", never: bool = False) -> str:
+    """A negated record form; with `never`, one that says "never" (or "ни разу")."""
     if f.neg:
-        return _fill(rng.choice(f.neg), v=v, l=end)
+        forms = tuple(x for x in f.neg if NEVER.search(x)) if never else f.neg
+        return _fill(rng.choice(forms), v=v, l=end)
     act, acted = _fill(f.act, v=v), _fill(f.acted, v=v)
+    if never:
+        return rng.choice((f"never {acted}", f"nope, never {acted}", f"i never {acted}"))
     return rng.choice(
         (
             f"didnt {act}",
@@ -231,6 +239,30 @@ def reported(f: Fact, rng: random.Random, v: str, n: str, pron: str, end: str = 
 def shown(f: Fact, v: str) -> str:
     """The value as an English assumption or rationale writes it."""
     return f.shown[f.values.index(v)] if f.shown else v
+
+
+def claim_value(f: Fact, v: str, money: bool = False) -> str:
+    """The value as the assumption writes it, currency marker included ('$120', '5000 rubles')."""
+    s = shown(f, v)
+    if money and f.money:
+        return f"{s} rubles" if "{v} rubles" in f.claim else f"${s}"
+    return s
+
+
+DAY_NAMES = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+
+
+DAY_WORD = re.compile(rf"\b({'|'.join(DAY_NAMES)})\b", re.I)
+
+
+def is_day(f: Fact, v: str) -> bool:
+    """Whether the value is a weekday."""
+    return shown(f, v).lower() in DAY_NAMES
+
+
+def names_day(text: str) -> bool:
+    """Whether an assumption names a weekday, which a later week could repeat."""
+    return DAY_WORD.search(text) is not None
 
 
 def _money(template: str, money: bool) -> str:

@@ -1,4 +1,9 @@
-"""Writers for the clear-support and contradicts families. Each returns a Draft."""
+"""Writers for the clear-support and contradicts families. Each returns a Draft.
+
+A contradicts assumption states the fact itself (guide rule 12) and claims no more time than
+the record speaks to (rule 23); its quote holds the words that rule it out (rule 22). A
+rationale says what the record states, never that a denial or a correction is true (rule 24).
+"""
 
 from __future__ import annotations
 
@@ -16,8 +21,9 @@ from eval.heldout.frames import (
     fact_form,
     fact_sentence,
     fill,
+    named_fact,
     place,
-    reported,
+    plain_fact,
     setup_chat,
     verbatim_sentence,
 )
@@ -29,10 +35,18 @@ from eval.heldout.pools import (
     STEERING_EN,
     STEERING_RU,
 )
-from eval.heldout.registry import expand
+from eval.heldout.registry import Entry, expand
 from eval.heldout.scene import FALL_CHANGE, SPRING_CHANGE, Draft, local, random_local
 from eval.heldout.schedule import Slot
-from eval.heldout.text import account_phrase, clock12, clock12_hm, date_phrase, render
+from eval.heldout.text import (
+    account_phrase,
+    capitalize_first,
+    clock12,
+    clock12_hm,
+    date_phrase,
+    render,
+    weekday_date,
+)
 from eval.stancedata.chat import at_local, pretty_phone
 
 US = ("America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles")
@@ -83,6 +97,17 @@ def sup_verbatim(slot: Slot, rng: random.Random) -> Draft:
     return draft(slot, rng, st, lines, target, assumption, text, rationale, kind, utc)
 
 
+_CURRENCY = re.compile(r"\$|\b(dollars?|bucks?|rubles?)\b", re.IGNORECASE)
+_WEEKDAY = re.compile(r"\b(mon|tues|wednes|thurs|fri|satur|sun)day\b", re.IGNORECASE)
+
+
+def _restated(fact: str) -> str:
+    """'that <fact>' for a rationale, or a plain pointer to the assumption when the fact names
+    a weekday: a rationale names only the record's own local weekday (rule 24), and the
+    record's "friday" is the event's day, not the day the record was sent."""
+    return "what the assumption restates" if _WEEKDAY.search(fact) else f"that {fact}"
+
+
 def sup_plain(slot: Slot, rng: random.Random) -> Draft:
     st = setup_chat(slot, rng)
     e = slot.entry
@@ -94,9 +119,10 @@ def sup_plain(slot: Slot, rng: random.Random) -> Draft:
     kind = K.MEANING if centric else K.EVENT
     quote = e.quote()
     if slot.record_lang == "ru":
+        said = _restated(bare_fact(rng, e, st))
         rationale = (
-            f'In plain Russian, "{quote}" states that {bare_fact(rng, e, st)}; no slang '
-            f"or outside fact is needed, and nothing later in the chat changes it."
+            f'In plain Russian, "{quote}" states {said}; no slang or outside fact is needed, '
+            f"and nothing later in the chat changes it."
         )
     else:
         rationale = rng.choice(
@@ -122,7 +148,7 @@ def sup_answer(slot: Slot, rng: random.Random) -> Draft:
     quote = e.quote()
     rationale = (
         f'The record answers the question just before it ("{q}") from {st.r}; read '
-        f"together they say that {bare_fact(rng, e, st)}."
+        f"together they state {_restated(bare_fact(rng, e, st))}."
     )
     return draft(
         slot,
@@ -198,7 +224,7 @@ def sup_time_window(slot: Slot, rng: random.Random) -> Draft:
 def sup_contact(slot: Slot, rng: random.Random) -> Draft:
     st = setup_chat(slot, rng)
     text = slot.entry.text()
-    reply = st.chat.filler(rng, neutral=True)
+    reply = st.chat.filler(rng, neutral=True, calm=True)
     core: list[Line] = [(st.sender, text), (st.receiver, reply)]
     lines, target = place(rng, st.chat, core, 0, (0, 3), (0, 2))
     utc = random_local(rng, st.chat.tz)
@@ -282,7 +308,7 @@ def sup_account_shared(slot: Slot, rng: random.Random) -> Draft:
     intro, other = _intro(rng, slot, st.chat, acct.label)
     core: list[Line] = [(acct, intro), (acct, e.text())]
     if rng.random() < 0.5:
-        core.insert(1, (st.receiver, st.chat.filler(rng, neutral=True)))
+        core.insert(1, (st.receiver, st.chat.filler(rng, neutral=True, calm=True)))
     target_core = len(core) - 1
     lines, target = place(rng, st.chat, core, target_core, (0, 2), (0, 2))
     utc = random_local(rng, st.chat.tz)
@@ -350,20 +376,17 @@ def con_denial(slot: Slot, rng: random.Random) -> Draft:
     core: list[Line] = [(st.receiver, ask), (st.sender, e.text())]
     lines, target = place(rng, st.chat, core, 1, (0, 3), (0, 2))
     utc = random_local(rng, st.chat.tz)
-    loc = local(utc, st.chat.tz)
-    vp = fill(e.vp(), st)
-    d = date_phrase(loc.date())
-    assumption = rng.choice(
-        [
-            f"{st.s} {vp}, as the chat with {st.r} shows.",
-            f"The chat of {d} with {st.r} shows that {st.s} {vp}.",
-            f"According to the chat of {d}, {st.s} {vp}.",
-        ]
-    )
+    # The act the question asks about, at the question's own time ("yesterday" -> {xprev}).
+    assumption = plain_fact(e, st)
     quote = e.quote()
-    rationale = (
-        f'Asked "{ask}", {st.s} denies it outright: "{quote}". A plain denial by the '
-        f"sender cannot be true at the same time as the assumption."
+    # Rule 24: the denial conflicts with the assumption in what it says, never as a fact.
+    rationale = rng.choice(
+        [
+            f'To "{ask}", {st.s} replies "{quote}". What those words state cannot be true '
+            f"together with the assumption; whether the denial is true is for the expert.",
+            f'{st.s} replies "{quote}" to "{ask}"; what those words state rules the assumption '
+            f"out. The record shows the denial, not whether it is true.",
+        ]
     )
     return draft(
         slot,
@@ -380,32 +403,59 @@ def con_denial(slot: Slot, rng: random.Random) -> Draft:
     )
 
 
+def value_kind(e: Entry) -> tuple[str, str, str]:
+    """(what the value is, the record's value, the other value) for a value or correction
+    entry: ("number", "500", "700"), ("place", ...) or ("day", ...)."""
+    rec = e.rec
+    if "m" in rec:
+        zeros = re.search(r"\{n\}(\d*)", e.tpl.text)  # "{n}00" and "{n}40" alike
+        suffix = zeros.group(1) if zeros else ""
+        return "number", f"{rec['n']}{suffix}", f"{rec['m']}{suffix}"
+    if "place2" in rec:
+        return "place", str(rec["place"]), str(rec["place2"])
+    return "day", str(e.fact["day"]), str(e.fact["day2"])
+
+
 def con_other_value(slot: Slot, rng: random.Random) -> Draft:
     st = setup_chat(slot, rng)
     e = slot.entry
     lines, target = place(rng, st.chat, [(st.sender, e.text())], 0, (0, 3), (0, 3))
     utc = random_local(rng, st.chat.tz)
-    loc = local(utc, st.chat.tz)
-    assumption = fact_form(rng, e, st, loc)
+    assumption = plain_fact(e, st)
     quote = e.quote()
-    rec = e.rec
-    if "m" in rec:
-        zeros = re.search(r"\{n\}(\d*)", e.tpl.text)  # "{n}00" and "{n}40" alike
-        suffix = zeros.group(1) if zeros else ""
-        got, claimed = f"{rec['n']}{suffix}", f"{rec['m']}{suffix}"
-    elif "place2" in rec:
-        got, claimed = rec["place"], rec["place2"]
-    else:
-        got, claimed = e.fact["day"], e.fact["day2"]
-    kind = K.COMPLETENESS if "m" in rec and rng.random() < 0.5 else K.EVENT
-    rationale = (
-        f'The record fixes the value ("{quote}"): {got}, stated so that {claimed} '
-        f"cannot also be true."
-    )
+    what, got, claimed = value_kind(e)
+    kind = K.COMPLETENESS if what == "number" and rng.random() < 0.5 else K.EVENT
+    if what == "number":
+        rationale = (
+            f'The record fixes the number at {got} ("{quote}"), so the {claimed} the '
+            f"assumption gives cannot also be true of the same thing."
+        )
+    else:  # a weekday the record names stays inside its quote (rule 24)
+        rationale = (
+            f'The record fixes the {what} outright ("{quote}"), so the {what} the assumption '
+            f"gives cannot also be true of the same thing."
+        )
     return draft(slot, rng, st, lines, target, assumption, quote, rationale, kind, utc)
 
 
+def _still_variants(rng: random.Random, fact: str) -> str:
+    """'X was still in Phoenix on <day>', or the same claim as 'remained in' or 'had not left'."""
+    m = re.fullmatch(r"(.+?) (was|were) still in ([A-Z][a-z]+) on (.+)", fact)
+    if not m:
+        return fact
+    who, _, city, day = m.groups()
+    return rng.choice(
+        [
+            fact,
+            f"{who} remained in {city} through {day}",
+            f"{who} had not yet left {city} by {day}",
+        ]
+    )
+
+
 def con_other_state(slot: Slot, rng: random.Random) -> Draft:
+    """A place or state held since a named day, against the assumption "still" elsewhere (or in
+    the opposite state) on the record's own date, named with its weekday (rule 23)."""
     st = setup_chat(slot, rng)
     e = slot.entry
     utc = random_local(rng, st.chat.tz, hours=(9, 21))
@@ -413,15 +463,16 @@ def con_other_state(slot: Slot, rng: random.Random) -> Draft:
     back = rng.randint(2, 3)
     wd = (loc.date() - timedelta(days=back)).weekday()
     since = SINCE_RU[wd] if slot.record_lang == "ru" else SINCE_EN[wd]
-    xs = {"xwd2": since, "xdate": date_phrase(loc.date())}
+    day = weekday_date(loc.date())
+    xs = {"xwd2": since, "xdate": day}
     text = render(e.text(), xs)
     quote = render(e.quote(), xs)
-    lines, target = place(rng, st.chat, [(st.sender, text)], 0, (0, 3), (0, 2))
-    fact = render(bare_fact(rng, e, st), xs).replace("the sender", st.s)
-    assumption = rng.choice([f"{fact}.", f"According to the chat, {fact}."])
+    lines, target = place(rng, st.chat, [(st.sender, text)], 0, (0, 3), (0, 2), neutral=True)
+    fact = render(named_fact(e, st), xs)
+    assumption = capitalize_first(_still_variants(rng, fact)) + "."
     rationale = (
-        f'Sent on {date_phrase(loc.date())}, the record says "{quote}", a state that '
-        f"cannot hold if {fact}."
+        f'The record was sent on {day} and says "{quote}". That cannot be true together '
+        f"with the assumption that {fact}; nothing outside the record is needed to see it."
     )
     return draft(slot, rng, st, lines, target, assumption, quote, rationale, K.EVENT, utc)
 
@@ -464,44 +515,61 @@ def con_in_window(slot: Slot, rng: random.Random) -> Draft:
     return draft(slot, rng, st, lines, target, assumption, text, rationale, kind, utc)
 
 
-def con_other_speaker(slot: Slot, rng: random.Random) -> Draft:
-    st = setup_chat(slot, rng, members=rng.choice((2, 3)))
+def correction_core(
+    rng: random.Random, st: Setup, e: Entry
+) -> tuple[list[Line], int, dict[int, str]]:
+    """The original statement, up to two neutral lines from the other party, then the same
+    sender's correction; returns the lines, the number between, and the gap kinds that keep
+    the two on one local date (the record hours of both writers are 9:00 to 21:59)."""
+    core: list[Line] = [(st.sender, e.text())]
+    between = rng.randint(0, 2)
+    for _ in range(between):
+        core.append((st.receiver, st.chat.filler(rng, neutral=True, calm=True)))
+    core.append((st.sender, e.part("fix")))
+    gaps = {i: rng.choice(("quick", "normal")) for i in range(between + 1)}
+    return core, between, gaps
+
+
+def con_correction(slot: Slot, rng: random.Random) -> Draft:
+    """The record is the sender's own correction; the assumption repeats the value it replaces
+    as a plain fact (rules 12 and 19), and the quote is the correcting words."""
+    st = setup_chat(slot, rng)
     e = slot.entry
-    members = [st.chat.owner] + st.chat.contacts
-    others = [m for m in members if m != st.sender]
-    a = rng.choice(others)
-    s_a = account_phrase(rng, a)
-    lines, target = place(rng, st.chat, [(st.sender, e.text())], 0, (1, 3), (0, 3))
-    utc = random_local(rng, st.chat.tz)
-    loc = local(utc, st.chat.tz)
-    vp = fill(e.vp(), Setup(st.chat, a, None, s_a, "the group"))
-    rep = reported(vp)
-    d = date_phrase(loc.date())
-    verb = "wrote" if slot.k % 2 else "said"
-    # Two people can clock in at 10, so a bare fact about the member is not excluded by the
-    # sender's line; every form says who wrote or said it.
-    assumption = rng.choice(
+    core, between, gaps = correction_core(rng, st, e)
+    lines, target = place(rng, st.chat, core, len(core) - 1, (0, 2), (0, 2), neutral=True)
+    start = target - len(core) + 1  # the original statement's index
+    kinds = {start + i: kind for i, kind in gaps.items()}
+    utc = random_local(rng, st.chat.tz, hours=(9, 21))
+    assumption = plain_fact(e, st)
+    quote = e.part("fixq")
+    what, _, _ = value_kind(e)
+    earlier = "in the message just before" if between == 0 else f"{between + 1} messages earlier"
+    rationale = rng.choice(
         [
-            f"In the group chat, {s_a} was the one who {vp}.",
-            f"{s_a} {verb} in the group chat on {d} that {rep}.",
-            f"The group member who wrote that {rep} was {s_a}.",
+            f'{st.s} wrote "{e.text()}" {earlier}, and this message from the same sender '
+            f'corrects it: "{quote}". The corrected {what} cannot be true together with the '
+            f"assumption, which repeats the first one.",
+            f'This is {st.s} correcting their own earlier message ("{e.text()}"): "{quote}". '
+            f"The assumption keeps the {what} that the correction replaces, so the two cannot "
+            f"both be true.",
         ]
     )
-    quote = e.quote()
-    rationale = (
-        f'The message that does this ("{quote}") came from {st.s}, not from {s_a}; '
-        f"the group shows the sender on every line."
+    return draft(
+        slot, rng, st, lines, target, assumption, quote, rationale, K.EVENT, utc, kinds=kinds
     )
-    kind = rng.choice((K.IDENTITY, K.EVENT))
-    return draft(slot, rng, st, lines, target, assumption, quote, rationale, kind, utc)
 
 
 # ------------------------------------------------------------------------- shared with b
 
 
 def random_fact(rng: random.Random, st: Setup, loc_date: date) -> str:
-    """An English fact about this chat's situation, for records that must not bear on it."""
-    pool = [t for t in STATEMENTS if t.lang == "en" and t.sit == st.chat.sit]
+    """An English fact about this chat's situation, for records that must not bear on it. It
+    names no currency, since no record on screen shows one (rule 15)."""
+    pool = [
+        t
+        for t in STATEMENTS
+        if t.lang == "en" and t.sit == st.chat.sit and not _CURRENCY.search(t.vp + " " + t.that)
+    ]
     t = rng.choice(pool)
     e = rng.choice(expand(t))
     return fact_form(rng, e, st, loc_date)

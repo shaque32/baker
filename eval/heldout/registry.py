@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 
 from eval.heldout import GENERATOR
 from eval.heldout.pools import (
+    CITIES,
     CLOCKS,
     MENTIONED_EN,
     MENTIONED_RU,
@@ -44,6 +45,8 @@ _BASES = {
     "name_g": "name",
     "name_d": "name",
     "name_i": "name",
+    "city": "city",
+    "city2": "city2",
 }
 
 Choice = dict[str, tuple[object, object]]  # slot name -> (record form, fact form)
@@ -137,6 +140,8 @@ def _choices(base: str, tpl: Tpl) -> list[Choice]:
         return [{f: (c, c) for f in ("name", "name_g", "name_d", "name_i")} for c in MENTIONED_EN]
     if base == "t":
         return [{"t": (c, c)} for c in CLOCKS]
+    if base in ("city", "city2"):  # "denver" or "в денвере" in the record, "Denver" in a fact
+        return [{base: (ru_form if ru else en_form, name)} for en_form, ru_form, name in CITIES]
     raise ValueError(f"unknown slot base {base!r} in {tpl.text!r}")
 
 
@@ -190,7 +195,7 @@ def _numbered(place: object) -> bool:
 
 
 def _clashes(rec: dict[str, object]) -> bool:
-    for a, b in (("n", "m"), ("place", "place2"), ("day", "day2")):
+    for a, b in (("n", "m"), ("place", "place2"), ("day", "day2"), ("city", "city2")):
         if a in rec and b in rec and rec[a] == rec[b]:
             return True
     if "place" in rec and "place2" in rec and _numbered(rec["place"]) != _numbered(rec["place2"]):
@@ -219,16 +224,18 @@ class Walk:
             self.entries[i] = expand(self.templates[i])
         return self.entries[i]
 
-    def _take(self, i: int) -> Entry | None:
-        """The template's next entry whose record text was not handed out yet, or None."""
+    def _take(self, i: int, keys: Callable[[Entry], Iterable[str]] | None) -> Entry | None:
+        """The template's next entry whose record text (and extra keys) were not handed out
+        yet, or None."""
         entries = self._entries(i)
         used = self.used.get(i, 0)
         while used < len(entries):
             entry = entries[used]
             used += 1
-            key = normalized(entry.text())
-            if key not in self.seen:
-                self.seen.add(key)
+            wanted = {normalized(entry.text())}
+            wanted |= {normalized(k) for k in (keys(entry) if keys else ())}
+            if not wanted & self.seen:
+                self.seen |= wanted
                 self.used[i] = used
                 return entry
         self.used[i] = used
@@ -240,8 +247,13 @@ class Walk:
         tags: Sequence[str],
         family: str,
         pred: Callable[[Tpl], bool] | None = None,
+        keys: Callable[[Entry], Iterable[str]] | None = None,
     ) -> Entry:
-        """The next unused entry in `lang` whose template carries one of `tags` and passes pred."""
+        """The next unused entry in `lang` whose template carries one of `tags` and passes pred.
+
+        `keys` gives more texts the entry puts on screen as a record or states as a fact (a
+        correcting message, an assumption's fact); like the record text, each goes to one item
+        in the whole set, so no two items share a record or an assumption's fact."""
         order = self.order[lang]
         key = (family, lang)
         start = self.cursor.get(key, 0)
@@ -252,7 +264,7 @@ class Walk:
             tpl = self.templates[i]
             if not (tpl.tags & wanted) or (pred is not None and not pred(tpl)):
                 continue
-            entry = self._take(i)
+            entry = self._take(i, keys)
             if entry is None:
                 continue
             self.cursor[key] = pos + 1

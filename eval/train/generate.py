@@ -22,8 +22,9 @@ from eval.stancedata.chat import build_item, item_rng, write_jsonl
 from eval.stancedata.families import family
 from eval.stancedata.model import GenItem
 from eval.train.scenes_c import pick_scenario, takes_fact
+from eval.train.writers import sentence
 
-GENERATOR = "eval.train 1.0.0"
+GENERATOR = "eval.train 1.1.0"  # 1.1.0: labels follow guide draft v0.3 (strict contradicts)
 SOURCE = "train_gen"
 
 
@@ -54,7 +55,7 @@ def generate(n: int, seed: int) -> list[GenItem]:
                     generator=GENERATOR,
                     lang=chat.lang,
                     kind=spec.kind,
-                    assumption=spec.assumption,
+                    assumption=sentence(spec.assumption),
                     msgs=chat.msgs,
                     target=chat.target,
                     quote=spec.quote,

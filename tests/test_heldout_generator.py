@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
 
 from eval.heldout import GENERATOR, ID_PREFIX, SEEDS, SOURCE, scene
+from eval.heldout.frames import names_in
 from eval.heldout.generate import generate
 from eval.heldout.glossary import RU_EN_PAIRS, SLANG_FORMS
 from eval.heldout.pools import (
@@ -21,7 +23,7 @@ from eval.heldout.pools import (
     PLACES,
     WEEKDAYS_EN,
 )
-from eval.heldout.schedule import COMPOSITION, FOUR_TRAPS
+from eval.heldout.schedule import COMPOSITION, CONTRADICTS_FAMILIES, MISMATCH_TRAPS
 from eval.heldout.text import normalized
 from eval.heldout.verbs import has_past_verb
 from eval.stancedata.families import family
@@ -32,16 +34,19 @@ PACKAGE = Path(__file__).resolve().parent.parent / "eval" / "heldout"
 # The test split, exactly; the dev split is half of every number.
 BLOCKS = {
     "clear_support": 200,
-    "contradicts": 300,
+    "contradicts": 390,
     "complicates": 120,
     "irrelevant": 80,
 }
 MINIMUMS = {"sup_": 15, "con_": 40, "cpl_": 15}
-OVERREACH_GATED = 300  # every ovr_* family except ovr_translation
-OVERREACH_FOUR_TRAPS = 120
+OVERREACH_GATED = 340  # every ovr_* family except ovr_translation
+OVERREACH_MISMATCH_TRAPS = 120  # time, sender, speaker and later-correction traps
 OVERREACH_OTHER_MIN = 12
 TRANSLATION = 20
-TOTAL = 1020
+TOTAL = 1150
+# GO_BAR.md: at least 1,000 gated items; the bar needs 420 gold contradicts, kept with a margin.
+GATED_MIN = 1000
+CONTRADICTS_MIN = 440
 
 
 @pytest.fixture(scope="module")
@@ -76,14 +81,20 @@ def _check_composition(items: list[GenItem], scale: int) -> None:
                 assert n >= floor // scale, family_id
     gated = sum(n for f, n in fam.items() if f.startswith("ovr_") and f != "ovr_translation")
     assert gated == OVERREACH_GATED // scale
-    assert sum(fam[f] for f in FOUR_TRAPS) >= OVERREACH_FOUR_TRAPS // scale
+    assert sum(fam[f] for f in MISMATCH_TRAPS) >= OVERREACH_MISMATCH_TRAPS // scale
     for family_id, n in fam.items():
-        if family_id.startswith("ovr_") and family_id not in FOUR_TRAPS:
+        if family_id.startswith("ovr_") and family_id not in MISMATCH_TRAPS:
             assert n >= OVERREACH_OTHER_MIN // scale, family_id
     assert fam["ovr_translation"] == TRANSLATION // scale
     assert fam["irr_other_topic"] > 0 and fam["irr_pleasantry"] > 0
     stances = Counter(it.gold_stance for it in items)
-    assert stances["contradicts"] >= 420 // scale
+    assert stances["contradicts"] >= CONTRADICTS_MIN // scale
+    assert sum(it.disputed is None for it in items) >= GATED_MIN // scale
+    # Guide v0.3: contradicts come only from these families; the four traps are complicates.
+    contra = {it.family for it in items if it.gold_stance == "contradicts"}
+    assert contra == set(CONTRADICTS_FAMILIES)
+    for family_id in MISMATCH_TRAPS:
+        assert family(family_id).stance == "complicates", family_id
 
 
 def test_generation_is_deterministic(test_items: list[GenItem], dev_items: list[GenItem]) -> None:
@@ -277,20 +288,38 @@ def _after_target(it: GenItem):
     return it.context[it.target_index :]
 
 
-def test_later_corrections_replace_the_same_slot(
+def _correction(it: GenItem) -> tuple[str, str]:
+    """(the original statement, the same sender's correction) of a correction item."""
+    if it.family == "ovr_later_correction":  # the record is the original; the fix comes later
+        fix = next(line.text for line in _after_target(it) if line.sender == it.target.sender)
+        return it.target.text, fix
+    before = it.context[: it.target_index]  # con_correction: the record is the fix
+    original = next(line.text for line in reversed(before) if line.sender == it.target.sender)
+    return original, it.target.text
+
+
+def test_corrections_replace_the_same_slot(
     test_items: list[GenItem], dev_items: list[GenItem]
 ) -> None:
+    """Rule 19: a correction names the replacement and the value it replaces."""
     for it in test_items + dev_items:
-        if it.family != "ovr_later_correction":
+        if it.family not in ("ovr_later_correction", "con_correction"):
             continue
-        fix = next(line.text for line in _after_target(it) if line.sender == it.target.sender)
+        original, fix = _correction(it)
         assert _NEGATION.search(fix.lower()), (it.probe_id, fix)
         got = _slot_values(fix)
         kind = next((k for k in ("place", "day", "number") if len(got[k]) >= 2), None)
         assert kind, (it.probe_id, fix)
-        had = _slot_values(it.target.text)[kind]
+        had = _slot_values(original)[kind]
         assert got[kind] & had, (it.probe_id, "the correction repeats the record's value", fix)
         assert got[kind] - had, (it.probe_id, "the correction names a new value", fix)
+        if it.family == "con_correction":  # rule 22: the quote is the correcting words
+            quoted = _slot_values(it.proposed_quote)[kind]
+            assert _NEGATION.search(it.proposed_quote.lower()), (it.probe_id, it.proposed_quote)
+            assert quoted & had and quoted - had, (it.probe_id, it.proposed_quote)
+            assert original in it.rationale, (it.probe_id, "the rationale names the original")
+        else:  # rule 22: the rationale names the later message that overturns the record
+            assert fix in it.rationale and "does not settle" in it.rationale, it.probe_id
 
 
 # Rule 12: assumptions state facts. These families are about a message or a contact pattern
@@ -301,8 +330,8 @@ _REPORT_ALLOWED = {
     "sup_account_shared",
     "ovr_sender_mismatch",
     "ovr_time_mismatch",
+    "ovr_speaker_mismatch",
     "con_in_window",
-    "con_other_speaker",
     "sup_plain",
     "sup_answer",
     "sup_injection",
@@ -573,20 +602,47 @@ def test_supports_records_avoid_slang_pairs(
 
 # --------------------------------------------------------- group chats: attribution; filler
 
-_ATTRIBUTION = re.compile(
-    r"wrote in the group|said in the group|was the one who|The group member who"
-    r"|написала? в группе|сказала? в группе"
-)
+_ATTRIBUTION = re.compile(r"(?:wrote|said) in the group chat")
+_EXCLUSIVE = re.compile(r"was the one who|the group member who|\bonly\b", re.IGNORECASE)
 
 
-def test_other_speaker_assumptions_attribute_the_words(
+def test_speaker_mismatch_assumptions_attribute_the_words(
     test_items: list[GenItem], dev_items: list[GenItem]
 ) -> None:
-    """Two people can clock in at 10: the family's point is who wrote it, so the assumption
-    must name the writer, which rule 12 allows for attribution."""
+    """The family's point is who wrote it, so the assumption names the writer (rule 12 allows
+    attribution), and never claims that no one else wrote it: two members can both offer to
+    drive, so the record leaves the assumption open (rule 23)."""
     for it in test_items + dev_items:
-        if it.family == "con_other_speaker":
+        if it.family == "ovr_speaker_mismatch":
             assert _ATTRIBUTION.search(it.assumption), (it.probe_id, it.assumption)
+            assert not _EXCLUSIVE.search(_outside_quotes(it.assumption)), it.probe_id
+
+
+def _names(phrase: str, sender: str) -> bool:
+    """Whether an assumption's account phrase names the account of this line's sender."""
+    if sender.endswith("(owner)"):
+        return phrase == "the owner"
+    app, ident, label = _SENDER.match(sender).groups()
+    if ident.startswith("+1"):
+        ident = f"+1 {ident[2:5]}-{ident[5:8]}-{ident[8:]}"
+    return ident in phrase or bool(label and label in phrase)
+
+
+_NOT_FROM = re.compile(r"not from (.+?)(?:;|, as the group)")
+
+
+def test_mismatch_accounts_are_on_screen(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    """Rule 11: the account the assumption names has a line in the excerpt."""
+    for it in test_items + dev_items:
+        if it.family not in ("ovr_sender_mismatch", "ovr_speaker_mismatch"):
+            continue
+        m = _NOT_FROM.search(_outside_quotes(it.rationale))
+        assert m, (it.probe_id, it.rationale)
+        named = m.group(1)
+        assert any(_names(named, line.sender) for line in it.context), (it.probe_id, named)
+        assert not _names(named, it.target.sender), (it.probe_id, named)
 
 
 def test_fillers_by_core_senders_are_small_talk(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -595,10 +651,16 @@ def test_fillers_by_core_senders_are_small_talk(monkeypatch: pytest.MonkeyPatch)
     origin: dict[str, bool] = {}  # filler text -> drawn from the small-talk pool
     draw = scene.Chat.filler
 
-    def spy(self: scene.Chat, rng, neutral: bool = False, used: set[str] | None = None) -> str:
+    def spy(
+        self: scene.Chat,
+        rng,
+        neutral: bool = False,
+        used: set[str] | None = None,
+        calm: bool = False,
+    ) -> str:
         track = used if used is not None else set()
         before = set(track)
-        text = draw(self, rng, neutral, track)
+        text = draw(self, rng, neutral, track, calm)
         small = NEUTRAL_RU if self.lang == "ru" else NEUTRAL_EN + NEUTRAL_MIXED
         drawn = track - before  # the base line the draw added, before casual spelling and typos
         origin[text] = drawn.pop() in small if drawn else bool(neutral)
@@ -611,3 +673,236 @@ def test_fillers_by_core_senders_are_small_talk(monkeypatch: pytest.MonkeyPatch)
         for ln in lines:
             if ln.text in origin and not origin[ln.text]:
                 assert ln.sender not in core, (it.probe_id, ln.sender, ln.text)
+
+
+# ------------------------------------------------- rationales and records under guide v0.3
+
+_WEEKDAY_NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+
+
+def _record_weekday(it: GenItem) -> str:
+    return datetime.strptime(it.target.local_time[:10], "%Y-%m-%d").strftime("%A")
+
+
+def test_rationale_weekdays_match_the_record_date(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    """Rule 24: a weekday a rationale names in its own words is the record's local weekday;
+    a weekday inside a quoted phrase is the record's or the context's own word."""
+    for it in test_items + dev_items:
+        own = _outside_quotes(it.rationale)
+        for day in _WEEKDAY_NAMES:
+            if re.search(rf"\b{day}\b", own, re.IGNORECASE):
+                assert day == _record_weekday(it), (it.probe_id, it.family, it.rationale)
+
+
+_DECLARED = re.compile(
+    r"plain denial|cannot be true at the same time|\b(jokes?|joking|kidding|venting|harmless)\b",
+    re.IGNORECASE,
+)
+
+
+def test_rationales_say_what_is_uncertain_instead_of_declaring_it(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    """Rule 24: a denial conflicts in what it says, never as a fact; a joke marker leaves
+    sincerity open; a slang reading is open because its translation is not settled."""
+    for it in test_items + dev_items:
+        own = _outside_quotes(it.rationale)
+        assert not _DECLARED.search(own), (it.probe_id, it.family, it.rationale)
+        if it.family in ("con_denial", "ovr_negation"):
+            assert "cannot be true together" in own or "rules the assumption out" in own, (
+                it.probe_id
+            )
+        if it.family == "con_denial":
+            assert "whether the denial is true" in own or "not whether it is true" in own
+        if it.family == "ovr_joke":
+            assert "unclear whether" in own and "seriously" in own, it.probe_id
+        if it.family == "ovr_translation":
+            assert "the assumption reads it as" in own and "do not settle" in own, it.probe_id
+
+
+_JOKE_RETRACTION = re.compile(
+    r"\b(jk|j/k|kidding|for real|actually|seriously)\b|шучу|на самом деле|серьёзно", re.IGNORECASE
+)
+
+
+def test_joke_records_are_not_retracted_in_the_record(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    """A record that takes its own joke back ("jk its in the truck") settles what the sender
+    meant; a joke item leaves it open, so the record carries only the marker."""
+    for it in test_items + dev_items:
+        if it.family == "ovr_joke":
+            assert not _JOKE_RETRACTION.search(it.target.text), (it.probe_id, it.target.text)
+
+
+def test_contradicting_records_need_no_slang(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    """Rule 23: a contradiction needs nothing unstated, a slang reading included."""
+    for it in test_items + dev_items:
+        if it.gold_stance == "contradicts":
+            assert not _SLANG.search(it.target.text.lower()), (it.probe_id, it.target.text)
+
+
+_STILL = re.compile(r"\b(?:still|remained|had not yet left)\b")
+
+
+def test_state_assumptions_hold_on_the_record_date(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    """Rule 23: con_other_state claims the incompatible state on the record's own local date
+    (weekday and date), never a span the record does not speak to."""
+    for it in test_items + dev_items:
+        if it.family != "con_other_state":
+            continue
+        day = datetime.strptime(it.target.local_time[:10], "%Y-%m-%d")
+        stamp = f"{day.strftime('%A')}, {day.strftime('%B')} {day.day}, {day.year}"
+        assert stamp in it.assumption, (it.probe_id, stamp, it.assumption)
+        assert _STILL.search(it.assumption), (it.probe_id, it.assumption)
+        assert stamp in it.rationale, (it.probe_id, it.rationale)
+
+
+def test_mismatch_traps_leave_the_assumption_open(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    """Rule 23: one record cannot show that no other matching message exists."""
+    for it in test_items + dev_items:
+        if it.family in ("ovr_time_mismatch", "ovr_sender_mismatch", "ovr_speaker_mismatch"):
+            assert "does not show whether" in it.rationale, (it.probe_id, it.rationale)
+
+
+_DENIAL_WORDS = re.compile(
+    r"\b(no|not|never|nope|didnt|wasnt|nothing|nobody|lie)\b|n't"
+    r"|(?<![а-яё])(не|нет|ни)(?![а-яё])",
+    re.IGNORECASE,
+)
+
+
+def test_denial_quotes_carry_the_denial(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    """Rule 22: the quote of a denial or a negation holds the denying words themselves."""
+    for it in test_items + dev_items:
+        if it.family in ("con_denial", "ovr_negation"):
+            assert _DENIAL_WORDS.search(it.proposed_quote), (it.probe_id, it.proposed_quote)
+
+
+def test_contacts_are_not_named_in_the_record(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    """A record from the contact saved as Nico that says "it went to Nico like always" reads as
+    self-reference, so no contact on screen carries the name of a person the record talks
+    about. The shared-account families name the account's usual user on purpose."""
+    for it in test_items + dev_items:
+        if it.family in ("sup_account_shared", "ovr_shared_account"):
+            continue
+        for line in [it.target, *it.context]:
+            label = _SENDER.match(line.sender).group(3)
+            if not label or label.endswith("(owner)"):
+                continue
+            first = re.split(r"[^\w]+", label.lstrip("@"))[0]
+            assert not names_in(first, it.target.text), (it.probe_id, label, it.target.text)
+
+
+# ------------------------------------------- rule 23: values pin the same thing and occasion
+
+_NEGATED = re.compile(
+    r"(?:\bnot\b|(?<![а-яё])не(?![а-яё]))\s+(?:за\s+|во?\s+)?([^,.]+)", re.IGNORECASE
+)
+_RU_DAYS = {
+    "понедельник": "monday",
+    "вторник": "tuesday",
+    "сред": "wednesday",
+    "четверг": "thursday",
+    "пятниц": "friday",
+    "суббот": "saturday",
+    "воскресень": "sunday",
+}
+_SAME_DAY = re.compile(
+    r"\b(today|tonight|last night|yesterday)\b|сегодня|вчера|прошлой ночью", re.IGNORECASE
+)
+_DAY_WORDS = {"today": 0, "tonight": 0, "сегодня": 0}  # the rest name the day before
+
+
+def _days_in(text: str) -> set[str]:
+    low = text.lower()
+    days = {d for d in WEEKDAYS_EN if re.search(rf"\b{d}\b", low)}
+    return days | {en for stem, en in _RU_DAYS.items() if stem in low}
+
+
+def _negates_the_assumed_value(record: str, assumption: str) -> bool:
+    """Whether the record itself rules out the very value the assumption gives: "..., not 15",
+    "не в среду", or "nowhere else" on the day the assumption names."""
+    low = assumption.lower()
+    numbers = set(re.findall(r"\d+", assumption))
+    if re.search(r"\bnowhere else\b", record, re.IGNORECASE):
+        if _days_in(record) & _days_in(assumption):
+            return True
+    for m in _NEGATED.finditer(record):
+        phrase = m.group(1).strip().lower()
+        got = set(re.findall(r"\d+", phrase))
+        if got:
+            if got <= numbers:
+                return True
+            continue
+        days = _days_in(phrase)
+        if days:
+            if days & _days_in(assumption):
+                return True
+            continue
+        if phrase and phrase in low:
+            return True
+    return False
+
+
+def _pins_the_day(it: GenItem) -> bool:
+    """The other way to pin the occasion: the assumption carries the local date the record's
+    "today" or "last night" names, and the record is sent by day, where rule 17 cannot apply."""
+    m = _SAME_DAY.search(it.target.text)
+    sent = datetime.strptime(it.target.local_time[:19], "%Y-%m-%d %H:%M:%S")
+    if not m or not 7 <= sent.hour <= 22:
+        return False
+    back = _DAY_WORDS.get(m.group(0).lower(), 1)
+    day = (sent - timedelta(days=back)).date()
+    return f"{day.strftime('%B')} {day.day}, {day.year}" in it.assumption
+
+
+def test_values_and_corrections_pin_the_same_thing_and_occasion(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    """Rule 23: "sold 32 jars, exactly" leaves room for another sale of 30. A value record
+    negates the assumption's value for the same named thing, or both pin the same day."""
+    for it in test_items + dev_items:
+        if it.family not in ("con_other_value", "con_correction"):
+            continue
+        pinned = _negates_the_assumed_value(it.target.text, it.assumption) or _pins_the_day(it)
+        assert pinned, (it.probe_id, it.family, it.target.text, it.assumption)
+
+
+_RELATIVE_DAY = re.compile(
+    r"\b(today|tonight|yesterday|last night|this morning)\b|сегодня|вчера|ночью|за ночь",
+    re.IGNORECASE,
+)
+
+
+def test_relative_days_in_contradicting_records_are_sent_by_day(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    """Rule 17: a relative day in a contradicting record, or in the question or original
+    statement it answers, is read at a send time between 7 a.m. and 11 p.m. local, and an
+    original and its correction share one local date."""
+    for it in test_items + dev_items:
+        if it.gold_stance != "contradicts":
+            continue
+        texts = [it.target.text]
+        if it.family == "con_denial":
+            texts.append(it.context[it.target_index - 1].text)
+        if it.family == "con_correction":
+            original, _ = _correction(it)
+            texts.append(original)
+            line = next(ln for ln in it.context if ln.text == original)
+            assert line.local_time[:10] == it.target.local_time[:10], it.probe_id
+        if any(_RELATIVE_DAY.search(t) for t in texts):
+            assert 7 <= int(it.target.local_time[11:13]) <= 22, (it.probe_id, it.target)

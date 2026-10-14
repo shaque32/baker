@@ -11,9 +11,10 @@ from eval.stancedata.chat import long_date
 from eval.train import facts as fx
 from eval.train import filler
 from eval.train.facts import Fact
-from eval.train.scenario import Line, fill_ends
+from eval.train.scenario import Line, fill_ends, pick_day
 from eval.train.scenes import (
     Result,
+    days_free_of,
     fact_pool,
     finish,
     other_fact,
@@ -24,14 +25,17 @@ from eval.train.scenes import (
 )
 from eval.train.writers import (
     Spec,
+    bound_time,
     cap,
     frame,
     kind_of,
+    other_writer_why,
     spec_handle_owner,
     spec_irrelevant,
     spec_plain,
     spec_sender_mismatch,
     spec_time_mismatch,
+    when_sent,
 )  # fmt: skip
 
 
@@ -77,20 +81,28 @@ def sc_handle(rng: random.Random, slot: int) -> Result:
     if lead is None:  # never for the owner's own account; the sender here is always a contact
         return sc_stated(rng, slot)
     cands = [spec_plain(rng, c, pred, core, plain_why(c)), spec_sender_mismatch(rng, c)]
-    return c, siblings(rng, lead, cands, 0.6, 2)
+    return c, siblings(rng, lead, cands, 0.5, 1)
 
 
 def sc_group(rng: random.Random, slot: int) -> Result:
     f = fact_pool(slot)
     st = setup(rng, f, extra=1, who="c2")
     core = fx.stated(f, rng, st.vr, st.sender.end)
-    c = finish(rng, st, core, total=(2, 6))
+    # Both members show: a chat whose excerpt shows one non-owner account is one-to-one with
+    # the owner (guide rule 11).
+    c = finish(rng, st, core, total=(2, 6), first="c")
     c1, pred = c.contacts[0], fx.claim(f, st.v, fx.has_marker(core))
     a = rng.choice([f"{c1.who} wrote in the group chat that they {pred}",
                     f"in the group chat, {c1.who} said they {pred}",
                     f"{c1.who} {pred}, as they wrote in the group"])  # fmt: skip
-    why = f"The sender line shows {c.record.account.sender}; {c1.who} did not write it."
-    lead = Spec("con_other_speaker", kind_of(rng, "con_other_speaker"), cap(a), core, why)
+    if rng.random() < 0.35:  # the time may fit; the speaker still does not
+        a = f"{when_sent(rng, c)}, {c1.who} wrote in the group chat that they {pred}"
+    # Another member wrote these words; one record cannot show that c1 never wrote them too
+    # (guide rule 23), so the answer is complicates.
+    why = other_writer_why(c.record.account.sender, c1.who, group=True)
+    # The answer rests on who sent the record, so the quote is the record in full (rule 22).
+    lead = Spec("ovr_speaker_mismatch", kind_of(rng, "ovr_speaker_mismatch"), cap(a),
+                c.record.text, why)  # fmt: skip
     plain = spec_plain(rng, c, pred, core, plain_why(c))
     return c, siblings(rng, lead, [plain], 0.6, 1)
 
@@ -113,9 +125,10 @@ def sc_injection(rng: random.Random, slot: int) -> Result:
         extra = rng.choice(f.extra)
         specs.append(Spec("ovr_injection_related", K.EVENT, cap(f"{s} {pred} and {extra}"), core,
                           "Ignoring the steering text, the record shows the first part only; "
-                          f"nothing shown establishes that they {extra}."))  # fmt: skip
+                          f"nothing shown establishes the rest ('{extra}')."))  # fmt: skip
     elif f.general:
-        g = fx.general(f, rng, st.v, money) or ""
+        g = (fx.general(f, rng, st.v, money) or "").replace(
+            "that week", f"in the week of {long_date(c.day)}")  # fmt: skip
         specs.append(Spec("ovr_injection_related", K.EVENT, cap(f"{s} {g}"), core,
                           "Ignoring the steering text, the record shows one instance, not the "
                           "pattern the assumption asserts."))  # fmt: skip
@@ -157,7 +170,8 @@ def sc_qa(rng: random.Random, slot: int) -> Result:
     lang = "ru" if rng.random() < 0.2 else "en"
     qa = rng.choice([q for q in filler.QAS if q.lang == lang])
     f = Fact("qa", "qa", lang, "", "", qa.claim, qa.claim, qa.values)
-    st = setup(rng, f, who="c")
+    # "how many people r coming saturday" is never asked or answered on a Saturday.
+    st = setup(rng, f, who="c", day=pick_day(rng, days_free_of(qa.question, *qa.answers)))
     q = fill_ends(qa.question, st.owner, st.contacts[0])
     core = fill_ends(rng.choice(qa.answers).replace("{v}", st.v), st.owner, st.contacts[0])
     c = finish(rng, st, core, before=[("o", q)], do_wrap=False, total=(1, 4))
@@ -168,7 +182,9 @@ def sc_qa(rng: random.Random, slot: int) -> Result:
     a = rng.choice([f"{s} told the owner that {clause}",
                     f"in answer to the owner's question, {s} said {clause}",
                     f"{s} confirmed to the owner that {clause}"])  # fmt: skip
+    if rng.random() < 0.3:  # the telling, bounded by a time after the record's
+        a = f"before {bound_time(rng, c, after=True)} on {long_date(c.day)}, {a}"
     why = f'The owner asks "{q}" just before; read with that question, the answer states it.'
     lead = Spec("sup_answer", K.EVENT, cap(a), core, why)
     cands = [spec_time_mismatch(rng, c, clause, core, clause=True), spec_sender_mismatch(rng, c)]
-    return c, siblings(rng, lead, cands, 0.5, 2)
+    return c, siblings(rng, lead, cands, 0.4, 1)

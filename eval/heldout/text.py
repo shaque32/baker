@@ -63,6 +63,12 @@ def date_phrase(day: date) -> str:
     return long_date(day)
 
 
+def weekday_date(day: date) -> str:
+    """'Wednesday, November 12, 2025': a date with its own weekday, so a reader can place
+    "since sunday" in a record without a calendar."""
+    return f"{day.strftime('%A')}, {long_date(day)}"
+
+
 def casual(rng: random.Random, text: str, lower_p: float = 0.9) -> str:
     """Mostly lowercase, as people text. Applied to a whole line before any quote is cut."""
     if text != text.lower() and rng.random() < lower_p:

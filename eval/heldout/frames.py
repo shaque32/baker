@@ -32,11 +32,45 @@ class Setup:
     r: str  # how it names the receiver ("the group" in a group chat)
 
 
-def _pick_label(rng: random.Random, lang: str, gender: str | None) -> str:
+def _pick_label(rng: random.Random, lang: str, gender: str | None, about: str = "") -> str:
+    """A saved name for a contact, never one the item's lines talk about (`about`)."""
     if lang == "ru":
         pool = [n for n, g in CYRILLIC_NAMES if not gender or g == gender]
-        return rng.choice(pool)
-    return rng.choice(LATIN_NAMES)
+    else:
+        pool = list(LATIN_NAMES)
+    return rng.choice([n for n in pool if not names_in(n, about)] or pool)
+
+
+def _entry_text(entry: Entry | None) -> str:
+    """Every line an entry can put on screen: the record and its extra lines (a question, a
+    setup, a reply, a correction)."""
+    if entry is None:
+        return ""
+    return " ".join([entry.text()] + [entry.part(key) for key, _ in entry.tpl.extra])
+
+
+def _unclash(rng: random.Random, chat: Chat, lang: str, about: str) -> None:
+    """A contact whose saved name is a person the lines talk about ("it went to Nico" from the
+    contact saved as Nico) gets another name, so the excerpt never reads as self-reference."""
+    taken = {a.label for a in chat.contacts if a.label}
+    for i, acct in enumerate(chat.contacts):
+        if not acct.label:
+            continue
+        first = re.split(r"[^\w]+", acct.label.lstrip("@"))[0]
+        if not names_in(first, about):
+            continue
+        g = chat.genders.get(acct.label)
+        label = acct.label
+        for _ in range(50):
+            label = _pick_label(rng, lang, g, about)
+            if acct.app == "Telegram" and lang == "en":
+                label = "@" + label.lower()
+            if label not in taken:
+                break
+        taken.add(label)
+        chat.contacts[i] = Account(acct.app, acct.identifier, label)
+        if g:
+            chat.genders[label] = g
 
 
 def setup_chat(
@@ -56,6 +90,8 @@ def setup_chat(
     g = gender or (entry.tpl.g if entry else "") or None
     who = sender if sender != "random" else rng.choice(("contact", "owner"))
     chat = make_chat(rng, slot.lang, sit, members)
+    about = _entry_text(entry)
+    _unclash(rng, chat, slot.record_lang, about)
     contact = chat.contacts[0]
     needs_gender = slot.record_lang == "ru" and g and who == "contact"
     if person_label or (
@@ -66,7 +102,7 @@ def setup_chat(
             or chat.genders[contact.label] != g
         )
     ):
-        label = _pick_label(rng, slot.record_lang, g if needs_gender else None)
+        label = _pick_label(rng, slot.record_lang, g if needs_gender else None, about)
         if contact.app == "Telegram" and slot.record_lang == "en":
             label = "@" + label.lower()
         contact = Account(contact.app, contact.identifier, label)
@@ -79,7 +115,7 @@ def setup_chat(
         if slot.record_lang == "ru" and g:  # a gendered Russian verb needs a matching sender
             fits = [a for a in all_members if a.owner or chat.genders.get(a.label or "") == g]
             if not fits:
-                label = _pick_label(rng, "ru", g)
+                label = _pick_label(rng, "ru", g, about)
                 first = chat.contacts[0]
                 chat.contacts[0] = Account(first.app, first.identifier, label)
                 chat.genders[label] = g
@@ -135,22 +171,23 @@ def place(
     about = {acct for acct in chat.contacts if names_in(acct.label, core_text)}
     speakers = {acct for acct, _ in core}
 
-    def line(who: Account) -> Line:
+    def line(who: Account, after: bool) -> Line:
         # Someone who sends a core line, or whom the core lines talk about by name, gets only
-        # small talk, so no filler of theirs can sit in tension with what the record says.
+        # small talk, so no filler of theirs can sit in tension with what the record says. A
+        # line after the core never laughs at or doubts it (rule 24).
         small = neutral or who in about or who in speakers
-        return who, chat.filler(rng, small, used)
+        return who, chat.filler(rng, small, used, calm=after)
 
-    pre = [line(rng.choice(members)) for _ in range(n_before)]
-    post = [line(rng.choice(members)) for _ in range(n_after)]
+    pre = [line(rng.choice(members), False) for _ in range(n_before)]
+    post = [line(rng.choice(members), True) for _ in range(n_after)]
     if all(acct.owner for acct, _ in pre + core + post):  # the other party must be on screen
         contact = rng.choice(chat.contacts)
         if post:
-            post[-1] = line(contact)
+            post[-1] = line(contact, True)
         elif pre:
-            pre[0] = line(contact)
+            pre[0] = line(contact, False)
         else:
-            post = [line(contact)]
+            post = [line(contact, True)]
     return pre + core + post, target + n_before
 
 
@@ -172,13 +209,15 @@ def draft(
     times = timeline(rng, len(lines), target, utc, kinds)
     rec_date = local(times[target], chat.tz).date()
     days = {  # "tomorrow" or "last night" in a record is an absolute local date in the assumption
+        "xdate": date_phrase(rec_date),
         "xnext": date_phrase(rec_date + timedelta(days=1)),
         "xprev": date_phrase(rec_date - timedelta(days=1)),
     }
     assumption, rationale = render(assumption, days), render(rationale, days)
     if assumption.endswith(".."):  # "... at 11 p.m.." when a clause ends in an abbreviation
         assumption = assumption[:-1]
-    return Draft(chat, lines, target, capitalize_first(assumption), quote, rationale, kind, times)
+    assumption, rationale = capitalize_first(assumption), capitalize_first(rationale)
+    return Draft(chat, lines, target, assumption, quote, rationale, kind, times)
 
 
 # ----------------------------------------------------------------------------- sentences
@@ -256,21 +295,34 @@ def reported(vp: str) -> str:
     return f"they {_AGREE.get(first, first)} {rest}".rstrip()
 
 
-def fact_form(rng: random.Random, entry: Entry, setup: Setup, local: datetime | date) -> str:
-    """The fact itself, with the sender named as the phone shows it; never "the message says"."""
-    d = date_phrase(local.date() if isinstance(local, datetime) else local)
+def named_fact(entry: Entry, setup: Setup) -> str:
+    """The entry's fact as a clause, with the sender named as the phone shows it."""
     if entry.tpl.that:
         that = fill(entry.that(), setup)
-        that = re.sub(r"the sender's (\w+)", lambda m: f"the {m.group(1)} of {setup.s}", that)
-        that = that.replace("the sender", setup.s)
-    else:
-        that = f"{setup.s} {fill(entry.vp(), setup)}"
-    frames = [f"{that}, according to the chat of {d} with {setup.r}."]
-    if any(w in that.lower() for w in _TIME_WORDS):
-        frames.append(f"According to the chat of {d}, {that}.")
-    else:
-        frames += [f"On {d}, {that}.", f"On {d}, {that}."]
-    return rng.choice(frames)
+        if setup.s == "the owner":
+            that = that.replace("the sender's ", "the owner's ")
+        else:
+            that = re.sub(r"the sender's (\w+)", lambda m: f"the {m.group(1)} of {setup.s}", that)
+        return that.replace("the sender", setup.s)
+    return f"{setup.s} {fill(entry.vp(), setup)}"
+
+
+def plain_fact(entry: Entry, setup: Setup) -> str:
+    """The fact itself as a sentence, with no chat or message frame (rule 12): what a
+    contradicting record must rule out. Its time is the template's own ({xdate}, "on {day}"),
+    never the chat's date added on top, so it claims no more time than the record speaks to."""
+    return capitalize_first(named_fact(entry, setup)) + "."
+
+
+def fact_form(rng: random.Random, entry: Entry, setup: Setup, local: datetime | date) -> str:
+    """The fact itself, with the sender named as the phone shows it: never "the message says"
+    or "according to the chat", which would claim something about the chat (rules 12 and 21).
+    A fact with no time of its own carries the chat's date."""
+    d = date_phrase(local.date() if isinstance(local, datetime) else local)
+    that = named_fact(entry, setup)
+    if "{x" in that or any(w in that.lower() for w in _TIME_WORDS):
+        return capitalize_first(that) + "."
+    return rng.choice([f"On {d}, {that}.", f"{capitalize_first(that)} on {d}."])
 
 
 def bare_fact(rng: random.Random, entry: Entry, setup: Setup) -> str:

@@ -1537,7 +1537,7 @@ JOKES: tuple[Tpl, ...] = (
     tpl(
         "site",
         "en",
-        "sold it for beer money obviously 🙄 jk its in {name}'s truck",
+        "sold it for beer money obviously 🙄",
         *_J,
         setup="where did the generator go",
         reply="lol ok",
@@ -1617,7 +1617,7 @@ JOKES: tuple[Tpl, ...] = (
     tpl(
         "storage",
         "en",
-        "ya and found a dead body in it, cops are here now 😂 jk just old chairs",
+        "ya and found a dead body in it, cops are here now 😂",
         *_J,
         setup="did u clear out {place}",
         reply="lol u scared me",
@@ -1637,10 +1637,10 @@ JOKES: tuple[Tpl, ...] = (
     tpl(
         "tutor",
         "en",
-        "100%, hes basically a genius now 😂",
+        "100%, basically a genius now 😂",
         *_J,
         setup="did {name} pass the practice test",
-        reply="lol sure he is",
+        reply="lol sure",
         that="{name} scored 100% on the practice test",
         quote="100%",
     ),
@@ -2247,7 +2247,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "он меня развёл на двести",
         *_ID,
         that="someone stole 200 from {s}",
-        lit="'развёл' is slang for talked into or conned; the literal sense is 'separated'",
+        lit="'развёл на двести' can mean conned out of 200 or just talked into spending 200",
+        reads="theft",
     ),
     tpl(
         "site",
@@ -2255,7 +2256,11 @@ IDIOMS: tuple[Tpl, ...] = (
         "мы его сдали",
         *_ID,
         that="{s} and others reported someone to the police",
-        lit="'сдали' is literally 'handed in' and can mean turned in, gave up or returned",
+        lit=(
+            "'сдали' can mean turned someone in, but also handed something in, returned it or "
+            "passed it"
+        ),
+        reads="a report to the police",
     ),
     tpl(
         "gig",
@@ -2263,7 +2268,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "он слился в последний момент",
         *_ID,
         that="someone fled the city at the last moment",
-        lit="'слился' is literally 'drained away' and colloquially means backed out",
+        lit="'слился' is slang for backed out or dropped out",
+        reads="fleeing the city",
     ),
     tpl(
         "tutor",
@@ -2272,7 +2278,8 @@ IDIOMS: tuple[Tpl, ...] = (
         *_ID,
         g="m",
         that="{s} leaked confidential documents to {name}",
-        lit="'слил' is literally 'poured out' and colloquially leaked, dumped or lost",
+        lit="'слил' can mean passed on, leaked, dumped or lost",
+        reads="leaking confidential documents",
     ),
     tpl(
         "site",
@@ -2280,7 +2287,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "нас спалили на объекте",
         *_ID,
         that="the police caught {s} and others at the site",
-        lit="'спалили' is literally 'burned' and colloquially means noticed or caught, by anyone",
+        lit="'спалили' is slang for noticed or caught out, by anyone",
+        reads="caught by the police",
     ),
     tpl(
         "market",
@@ -2288,7 +2296,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "замутили тему с {name_i}",
         *_ID,
         that="{s} set up a drug deal with {name}",
-        lit="'замутили тему' is literally 'stirred up a topic' and means started some project",
+        lit="'замутили тему' is slang for started something together, of any kind",
+        reads="a drug deal",
     ),
     tpl(
         "storage",
@@ -2296,7 +2305,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "он на бабки попал",
         *_ID,
         that="someone was robbed",
-        lit="'попал на бабки' is slang for ended up owing money",
+        lit="'попал на бабки' is slang for ended up owing or losing money",
+        reads="a robbery",
     ),
     tpl(
         "warehouse",
@@ -2305,7 +2315,8 @@ IDIOMS: tuple[Tpl, ...] = (
         *_ID,
         g="m",
         that="{s} planted evidence on someone",
-        lit="'подставил' is literally 'put under' and colloquially set up or let down",
+        lit="'подставил' can mean set someone up, let someone down or got someone in trouble",
+        reads="planting evidence",
     ),
     tpl(
         "cater",
@@ -2313,7 +2324,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "она его бортанула",
         *_ID,
         that="someone got fired",
-        lit="'бортанула' is slang for rejected or dumped",
+        lit="'бортанула' is slang for turned down or dumped",
+        reads="a firing",
     ),
     tpl(
         "boat",
@@ -2321,7 +2333,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "меня крутили два часа",
         *_ID,
         that="{s} was detained by police for two hours",
-        lit="'крутили' is literally 'twisted' and slang for grilled or hassled, by anyone",
+        lit="'крутили' can mean questioned, hassled or kept busy, by anyone",
+        reads="a police detention",
     ),
     tpl(
         "showing",
@@ -2329,7 +2342,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "у него там крыша",
         *_ID,
         that="someone there is protected by corrupt police",
-        lit="'крыша' is literally 'roof' and slang for protection of any kind",
+        lit="'крыша' can be a literal roof or, as slang, protection or backing of any kind",
+        reads="corrupt police",
     ),
     tpl(
         "site",
@@ -2338,7 +2352,8 @@ IDIOMS: tuple[Tpl, ...] = (
         *_ID,
         g="m",
         that="{s} promised {r} a bribe",
-        lit="'отстегну' is literally 'unfasten' and slang for giving someone a share of money",
+        lit="'отстегну' is slang for paying someone a share, for any reason",
+        reads="a bribe",
     ),
     tpl(
         "sneaker",
@@ -2347,15 +2362,20 @@ IDIOMS: tuple[Tpl, ...] = (
         *_ID,
         g="m",
         that="{s} paid someone a thousand for drugs",
-        lit="'закинул косарь' is slang for sent a thousand of some currency",
+        lit="'закинул косарь' is slang for sent someone a thousand, for any reason",
+        reads="a payment for drugs",
     ),
     tpl(
         "gig",
         "ru",
         "он меня слил ментам",
         *_ID,
-        that="someone reported {s} to the police",
-        lit="'слил ментам' is slang for gave up to the cops; literally 'poured to the cops'",
+        that="someone gave the police a formal statement against {s}",
+        lit=(
+            "'слил ментам' is slang for gave someone away to the cops, anything from a hint to a "
+            "name"
+        ),
+        reads="a formal statement",
     ),
     tpl(
         "church",
@@ -2363,7 +2383,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "мы её тормознули у входа",
         *_ID,
         that="{s} and others detained someone at the entrance",
-        lit="'тормознули' is literally 'braked' and colloquially stopped someone to talk",
+        lit="'тормознули' is slang for stopped someone, often just to talk",
+        reads="detaining",
     ),
     tpl(
         "showing",
@@ -2371,7 +2392,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "он пробил мой номер",
         *_ID,
         that="someone illegally searched a police database for the number of {s}",
-        lit="'пробил' is literally 'punched through' and slang for looked up",
+        lit="'пробил' is slang for looked up or checked, by any means",
+        reads="an illegal police database search",
     ),
     tpl(
         "nurse",
@@ -2379,7 +2401,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "она его прикрыла",
         *_ID,
         that="someone was hidden from the police",
-        lit="'прикрыла' is literally 'covered' and colloquially covered for or shut down",
+        lit="'прикрыла' can mean covered for someone, shielded them or shut something down",
+        reads="hiding someone from the police",
     ),
     tpl(
         "warehouse",
@@ -2388,7 +2411,8 @@ IDIOMS: tuple[Tpl, ...] = (
         *_ID,
         g="m",
         that="{s} assaulted someone on {xprev}",
-        lit="'вломил' is slang for hit; the literal verb means broke in",
+        lit="'вломил' is slang that can mean hit someone or gave someone a hard time",
+        reads="an assault",
     ),
     tpl(
         "storage",
@@ -2396,7 +2420,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "его закрыли на трое суток",
         *_ID,
         that="someone was jailed for three days",
-        lit="'закрыли' is literally 'closed' and slang for locked up, or for shutting a business",
+        lit="'закрыли' can mean locked up, but also shut down, as a shop or an account",
+        reads="jail",
     ),
     tpl(
         "gig",
@@ -2404,7 +2429,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "мы с ним замутили на выходных",
         *_ID,
         that="{s} bought drugs with someone that weekend",
-        lit="'замутили' is slang for got something going, often a party or a scheme",
+        lit="'замутили' is slang for got something going, a party, a plan or a romance",
+        reads="buying drugs",
     ),
     tpl(
         "warehouse",
@@ -2413,7 +2439,8 @@ IDIOMS: tuple[Tpl, ...] = (
         *_ID,
         g="m",
         that="{s} quit the criminal scheme",
-        lit="'соскочил' is literally 'jumped off' and slang for backed out of anything",
+        lit="'соскочил с темы' is slang for backed out of something, of any kind",
+        reads="quitting a criminal scheme",
     ),
     tpl(
         "tutor",
@@ -2421,23 +2448,26 @@ IDIOMS: tuple[Tpl, ...] = (
         "он мне должен по жизни",
         *_ID,
         that="someone owes {s} money",
-        lit="'должен по жизни' is slang for owes a favor, not money",
+        lit="'должен по жизни' is slang for owing someone big, a favor as much as money",
+        reads="a money debt",
     ),
     tpl(
         "boat",
         "ru",
-        "{name} нас подставил с грузом",
+        "из-за {name_g} нас подставили с грузом",
         *_ID,
         that="{name} informed the police about their shipment",
-        lit="'подставил' is slang for let down or set up; nothing says police",
+        lit="'подставили' can mean let someone down, set them up or got them in trouble",
+        reads="informing the police",
     ),
     tpl(
         "sneaker",
         "ru",
         "я на нуле, скинь косарь",
         *_ID,
-        that="{s} asked {r} for a thousand",
-        lit="'косарь' is slang for a thousand of any currency and 'на нуле' for broke",
+        that="the bank account of {s} was empty",
+        lit="'я на нуле' is slang for being out of money, or just worn out",
+        reads="an empty bank account",
     ),
     tpl(
         "site",
@@ -2446,6 +2476,7 @@ IDIOMS: tuple[Tpl, ...] = (
         *_ID,
         that="{s} and {name} settled a debt by force",
         lit="'порешали' is slang for sorted things out, by any means",
+        reads="settling a debt by force",
     ),
     tpl(
         "gig",
@@ -2453,7 +2484,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "он опять на измене",
         *_ID,
         that="someone was under the influence of drugs again",
-        lit="'на измене' is slang for paranoid or anxious; literally 'on betrayal'",
+        lit="'на измене' is slang for paranoid or on edge, for any reason",
+        reads="being on drugs",
     ),
     tpl(
         "storage",
@@ -2461,7 +2493,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "нас приняли у склада",
         *_ID,
         that="{s} and others were arrested at the storage place",
-        lit="'приняли' is literally 'received' and slang for detained, but also for met",
+        lit="'приняли' can mean detained, but also received or met",
+        reads="an arrest",
     ),
     tpl(
         "nurse",
@@ -2469,7 +2502,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "она меня сдала с потрохами",
         *_ID,
         that="someone gave {s} up to the police completely",
-        lit="'сдала с потрохами' is slang for betrayed completely, to anyone",
+        lit="'сдала с потрохами' is slang for gave someone away completely, to anyone",
+        reads="giving them up to the police",
     ),
     tpl(
         "showing",
@@ -2477,7 +2511,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "он всё разрулил с ментами",
         *_ID,
         that="someone bribed the police",
-        lit="'разрулил' is slang for sorted out; nothing says how",
+        lit="'разрулил' is slang for sorted things out, by any means",
+        reads="a bribe",
     ),
     tpl(
         "cater",
@@ -2486,7 +2521,8 @@ IDIOMS: tuple[Tpl, ...] = (
         *_ID,
         g="m",
         that="{s} assaulted someone",
-        lit="'отшил' is slang for rebuffed; nothing physical",
+        lit="'отшил' is slang for brushed off or turned away",
+        reads="an assault",
     ),
     tpl(
         "site",
@@ -2494,7 +2530,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "он с нами не в теме",
         *_ID,
         that="someone refused to join the conspiracy",
-        lit="'не в теме' is slang for not informed or not involved in anything",
+        lit="'не в теме' is slang for not in the know or not involved, in anything",
+        reads="refusing to join a conspiracy",
     ),
     tpl(
         "showing",
@@ -2502,7 +2539,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "там всё схвачено",
         *_ID,
         that="the officials there were bribed",
-        lit="'схвачено' is literally 'grabbed' and slang for arranged through connections",
+        lit="'всё схвачено' is slang for everything is arranged, through connections or otherwise",
+        reads="bribery",
     ),
     tpl(
         "sneaker",
@@ -2510,7 +2548,11 @@ IDIOMS: tuple[Tpl, ...] = (
         "мы его разули на пятьсот",
         *_ID,
         that="{s} and others robbed someone of 500",
-        lit="'разули' is literally 'took his shoes off' and slang for won money off someone",
+        lit=(
+            "'разули' is literally 'took his shoes off' and as slang can mean took money off "
+            "someone in a game, a deal or a scam"
+        ),
+        reads="a robbery",
     ),
     tpl(
         "gig",
@@ -2519,6 +2561,7 @@ IDIOMS: tuple[Tpl, ...] = (
         *_ID,
         g="m",
         that="{s} used drugs on {xprev}",
-        lit="'ушёл в отрыв' is slang for partied hard",
+        lit="'ушёл в отрыв' is slang for let loose or partied hard",
+        reads="drug use",
     ),
 )

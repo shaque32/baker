@@ -88,13 +88,13 @@ STATEMENTS: tuple[Tpl, ...] = (
     tpl(
         "site",
         "ru",
-        "привёз {n:мешок|мешка|мешков} смеси на холстед, оставил у ворот",
+        "привёз {n:паллету|паллеты|паллет} смеси на холстед, оставил у ворот",
         *_A,
         n=(4, 40),
         g="m",
-        vp="brought {n} bags of mix to Halsted and left the bags by the gate",
-        that="{n} bags of mix were brought to Halsted and left by the gate",
-        quote="привёз {n:мешок|мешка|мешков} смеси на холстед",
+        vp="brought {n} pallets of mix to Halsted and left the pallets by the gate",
+        that="{n} pallets of mix were brought to Halsted and left by the gate",
+        quote="привёз {n:паллету|паллеты|паллет} смеси на холстед",
     ),
     tpl(
         "site",
@@ -734,7 +734,7 @@ STATEMENTS: tuple[Tpl, ...] = (
     tpl(
         "dog",
         "en",
-        "took {name}'s dog to the vet, {n}0 for the visit",
+        "took {name}'s dog to the vet, visit cost {n}0",
         *_A,
         n=(4, 20),
         vp="took {name}'s dog to the vet and the visit cost {n}0",
@@ -950,10 +950,10 @@ STATEMENTS: tuple[Tpl, ...] = (
     tpl(
         "church",
         "ru",
-        "для раздачи привезли {n:коробку|коробки|коробок} из фудбанка",
+        "для раздачи привезли {n:ящик|ящика|ящиков} из фудбанка",
         *_A,
         n=(5, 60),
-        that="{n} boxes were brought from the food bank for the giveaway",
+        that="{n} crates were brought from the food bank for the giveaway",
     ),
     tpl(
         "church",
@@ -993,7 +993,7 @@ STATEMENTS: tuple[Tpl, ...] = (
         "got {n} keepers and threw back the rest",
         *_A,
         n=(2, 20),
-        vp="caught {n} keepers and threw back the rest",
+        vp="got {n} keepers and threw back the rest",
         quote="got {n} keepers",
     ),
     tpl(
@@ -1169,7 +1169,7 @@ STATEMENTS: tuple[Tpl, ...] = (
     tpl(
         "storage",
         "en",
-        "cleared out {place} this morning, {n} boxes to the truck",
+        "cleared out {place} this morning, loaded {n} boxes in the truck",
         *_A,
         n=(3, 30),
         vp="cleared out {place} that morning and loaded {n} boxes into the truck",
@@ -1186,7 +1186,7 @@ STATEMENTS: tuple[Tpl, ...] = (
     tpl(
         "storage",
         "en",
-        "changed the lock on {place}, new key is with {name}",
+        "changed the lock on {place}, left the new key with {name}",
         *_A,
         vp="changed the lock on {place} and left the new key with {name}",
     ),
@@ -1372,7 +1372,7 @@ QA: tuple[Tpl, ...] = (
         "en",
         "no, {name} took it",
         *_QA,
-        q="did u end up covering sunday?",
+        q="did u end up covering the sunday shift?",
         that="{name} covered the Sunday shift, not the sender",
     ),
     tpl(
@@ -1431,8 +1431,8 @@ QA: tuple[Tpl, ...] = (
         "ru",
         "два, оба полные",
         *_QA,
-        q="сколько сетов у {name_g} {day}?",
-        that="{name} had two full sets on {day}",
+        q="сколько шоу у {name_g} {day}?",
+        that="{name} had two full shows on {day}",
     ),
     tpl(
         "market",
@@ -1458,7 +1458,7 @@ QA: tuple[Tpl, ...] = (
         "no, cash only, reader died",
         *_QA,
         q="can u take cards today?",
-        that="the stand was cash only because the card reader died",
+        that="the sender could only take cash that day because the reader died",
     ),
     tpl(
         "market",
@@ -1621,7 +1621,7 @@ QA: tuple[Tpl, ...] = (
     tpl(
         "showing",
         "en",
-        "yes at {t}, they stayed an hour",
+        "yes at {t}, the buyers stayed an hour",
         *_QA,
         q="did u show {place} today?",
         that="the sender showed {place} that day at {t} and the buyers stayed an hour",
@@ -1813,11 +1813,11 @@ QA: tuple[Tpl, ...] = (
     tpl(
         "storage",
         "ru",
-        "{n:коробка|коробки|коробок}, всё в грузовике",
+        "{n:ящик|ящика|ящиков}, всё уже в грузовике",
         *_QA,
         n=(3, 30),
-        q="сколько осталось в боксе?",
-        that="{n} boxes were left in the unit and all the boxes were in the truck",
+        q="сколько ящиков в грузовике?",
+        that="{n} crates were in the truck",
     ),
     tpl(
         "storage",

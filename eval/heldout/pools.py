@@ -302,6 +302,22 @@ MENTIONED_RU = (
     ("Таня", "Тани", "Тане", "Таней", "Tanya"),
 )
 
+# Cities a record can name as where someone or something is (con_other_state): the English
+# record form, the Russian record form with its preposition, and the name assumptions use. Real
+# city names, invented people (guide rule 8). Two different cities cannot both hold at once.
+CITIES = (
+    ("denver", "в денвере", "Denver"),
+    ("phoenix", "в фениксе", "Phoenix"),
+    ("boston", "в бостоне", "Boston"),
+    ("dallas", "в далласе", "Dallas"),
+    ("atlanta", "в атланте", "Atlanta"),
+    ("seattle", "в сиэтле", "Seattle"),
+    ("detroit", "в детройте", "Detroit"),
+    ("houston", "в хьюстоне", "Houston"),
+    ("tampa", "в тампе", "Tampa"),
+    ("omaha", "в омахе", "Omaha"),
+)
+
 # Casual clock values that read the same in a record and in an assumption ("at 6:30").
 CLOCKS = (
     "6",
@@ -1312,4 +1328,11 @@ NEUTRAL_RU = NEUTRAL_RU + (
     "ничего страшного, бывает",
     "сейчас не могу",
     "ясно, ок",
+)
+
+# Small talk that reacts to the line before it: a laugh, surprise or doubt. Such a line never
+# follows a record (scene.Chat.filler, `calm`): after a record it would read as a laughing or
+# doubting reply, which leaves the record's sincerity open (guide rule 24).
+REACTIONS = frozenset(
+    {"lol same", "haha ok", "wait what", "for real?", "лол, ладно", "серьёзно, что ли?"}
 )

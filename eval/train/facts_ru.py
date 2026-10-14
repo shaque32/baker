@@ -37,7 +37,7 @@ def R(key: str, scene: str, claim: str, claim_base: str, values: tuple[str, ...]
         extra=extra, general=general,
         done=(f"{past} {obj}", f"{obj} {past}", f"я {past} {obj}", f"да, {past} {obj}"),
         neg=(f"не {past} {obj}", f"{obj} не {past}", f"так и не {past} {obj}",
-             f"нет, не {past} {obj}"),
+             f"нет, не {past} {obj}", f"ни разу не {past} {obj}"),
         plan=plan,
         cond=tuple(f"{c}, {fut} {obj}" for c in CONDITIONS_RU)
         + tuple(f"{fut} {obj}, {c}" for c in CONDITIONS_RU),

@@ -1086,7 +1086,7 @@ HEARSAY: tuple[Tpl, ...] = (
     tpl(
         "warehouse",
         "ru",
-        "диспетчер говорит, {name} закрыл маршрут {n} к {t}",
+        "диспетчер говорит, маршрут {n} у {name_g} был закрыт к {t}",
         *_HS,
         n=(4, 40),
         that="{name} finished route {n} by {t}",

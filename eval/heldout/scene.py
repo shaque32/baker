@@ -19,6 +19,7 @@ from eval.heldout.pools import (
     NEUTRAL_EN,
     NEUTRAL_MIXED,
     NEUTRAL_RU,
+    REACTIONS,
     ROLE_LABELS_BY_SIT,
     RU_ZONES,
     TELEGRAM_HANDLES,
@@ -67,12 +68,17 @@ class Chat:
         return self.contacts[0]
 
     def filler(
-        self, rng: random.Random, neutral: bool = False, used: set[str] | None = None
+        self,
+        rng: random.Random,
+        neutral: bool = False,
+        used: set[str] | None = None,
+        calm: bool = False,
     ) -> str:
         """One harmless line about the chat's own situation (one in five is small talk).
 
         `used` holds the lines already on screen; a line is drawn from the rest of the pool
-        and added to it, so one chat never shows the same small talk twice."""
+        and added to it, so one chat never shows the same small talk twice. `calm` leaves out
+        the reaction lines (a laugh, surprise, doubt), for a line that follows a record."""
         if self.lang == "ru":
             about, small = FILLER_RU[self.sit], NEUTRAL_RU
         elif self.lang == "mixed":
@@ -80,6 +86,8 @@ class Chat:
         else:
             about, small = FILLER_EN[self.sit], NEUTRAL_EN
         pool = small if neutral or rng.random() < 0.2 else about
+        if calm:
+            pool = [t for t in pool if t not in REACTIONS]
         if used is not None:
             pool = [t for t in pool if t not in used] or pool
         base = rng.choice(pool)

@@ -3,14 +3,17 @@ Same slots as special.py."""
 
 from __future__ import annotations
 
-from eval.train.special import NAMES, S
+from eval.train.special import MON_TO_THU, NAMES, S
 
 JOKE = (
+    # Rationales say what the marker leaves open and never call the record a joke, venting or
+    # harmless (guide rule 24).
     S(
         "ovr_joke",
         "robbing a bank obviously lol",
         "{S} robbed a bank on {date}.",
-        "The owner asks where the sender was; the record's own 'lol' marks the answer as a joke.",
+        "The record's 'lol', and the owner's 'lol' after it, leave it unclear whether the sender "
+        "meant it seriously, so the record does not establish a bank robbery.",
         before=(("o", "where were u all afternoon??"),),
         after=(("o", "lol"),),
     ),
@@ -18,8 +21,8 @@ JOKE = (
         "ovr_joke",
         "sold a kidney lmao",
         "{S} sold a kidney.",
-        "An obvious joke in answer to a money question, marked by 'lmao'; nothing shown treats "
-        "it as real.",
+        "The 'lmao' and the owner's laughing reply leave it unclear whether the sender meant it "
+        "seriously; the record does not establish that a kidney was sold.",
         before=(("o", "how'd u afford the new rims"),),
         after=(("o", "😂"),),
     ),
@@ -27,7 +30,8 @@ JOKE = (
         "ovr_joke",
         "yeah i paid {x} in monopoly money haha",
         "{S} paid {X} in counterfeit money.",
-        "'Haha' and monopoly money mark the record as a joke; nothing shown treats it as real.",
+        "The 'haha' leaves it unclear whether the sender meant it seriously, so the record does "
+        "not establish a payment in counterfeit money.",
         before=(("o", "did u pay {x} back"),),
         xs=NAMES,
     ),
@@ -35,7 +39,8 @@ JOKE = (
         "ovr_joke",
         "i torched the old place, easier than cleaning lol",
         "{S} set fire to {poss} old apartment.",
-        "'Lol' marks the record as a joke; nothing shown treats it as real.",
+        "The record's 'lol' and the owner's laughing reply leave it unclear whether the sender "
+        "meant it seriously; the record does not establish a fire.",
         before=(("o", "hows the move going"),),
         after=(("o", "lol"),),
     ),
@@ -43,7 +48,8 @@ JOKE = (
         "ovr_joke",
         "cant, im in jail 😂",
         "{S} was in jail.",
-        "The '😂' marks the record as a joke; nothing shown says the sender was in jail.",
+        "The '😂' and the owner's 'lol ok' leave it unclear whether the sender meant it "
+        "seriously, so the record does not establish that the sender was in jail.",
         before=(("o", "u coming to the game"),),
         after=(("o", "lol ok"),),
     ),
@@ -51,7 +57,8 @@ JOKE = (
         "ovr_joke",
         "im gonna burn his house down i swear lol",
         "{S} threatened to burn down the landlord's house.",
-        "'Lol' and 'i swear' mark the record as venting, not a threat.",
+        "The 'lol', and the owner's 'lol same', leave it unclear whether the sender meant it "
+        "seriously, so the record does not establish a threat.",
         before=(("c", "my landlord raised rent again"),),
         after=(("o", "lol same"),),
     ),
@@ -59,21 +66,24 @@ JOKE = (
         "ovr_joke",
         "like a thousand lol",
         "{S} saw a thousand clients on {date}.",
-        "'Like a thousand lol' is hyperbole; nothing shown treats it as a count.",
+        "The 'lol' leaves it unclear whether the sender meant the number seriously, so the "
+        "record does not establish a count.",
         before=(("o", "how many clients today"),),
     ),
     S(
         "ovr_joke",
         "yes i stole it and sold it on ebay 🙄",
         "{S} stole {O}'s charger and sold the charger on ebay.",
-        "The '🙄' marks the record as sarcasm; nothing shown treats it as real.",
+        "The eye-roll '🙄' leaves it unclear whether the sender meant it seriously, so the record "
+        "does not establish a theft or a sale.",
         before=(("o", "did u take my charger"),),
     ),
     S(
         "ovr_joke",
         "yep blind drunk, hit three mailboxes lol",
         "{S} drove home drunk after the party.",
-        "'Lol' marks the record as a joke; nothing shown treats it as real.",
+        "The record's 'lol' and the owner's laughing reply leave it unclear whether the sender "
+        "meant it seriously; the record does not establish a drunk drive.",
         before=(("o", "u drove home after the party right?"),),
         after=(("o", "lol"),),
     ),
@@ -81,24 +91,29 @@ JOKE = (
         "ovr_joke",
         "sure ill just rob the bar till lol",
         "The owner planned to rob the bar's till.",
-        "'Lol' marks the owner's line as a joke about the cost; nothing shown treats it as a plan.",
+        "The 'lol' leaves it unclear whether the owner meant it seriously, so the record does not "
+        "establish a plan to rob the till.",
         before=(("c", "the dj wants 1200"),),
         who="o",
     ),
 )
 
 COUNT = (
+    # A record that names a weekday is sent on that day; the rationale says what is shown (one
+    # message and a loose phrase) and names no weekday outside the record's own words.
     S(
         "ovr_count",
         "dropped it by noon like always",
         "{S} made a delivery before noon every week in {month}.",
-        "The record shows one drop and a loose 'like always'; it does not show every week.",
+        "The record shows one drop and a loose 'like always'; it does not show the other weeks.",
     ),
     S(
         "ovr_count",
         "same as every friday, 2 bags",
-        "{S} delivered two bags every Friday that year.",
-        "One Friday is shown; 'every friday' is the sender's loose phrase, not a record of each.",
+        "{S} delivered two bags every Friday in {month}.",
+        "The record is one message using the loose phrase 'same as every friday'; it does not "
+        "show a delivery on each of the days the assumption covers.",
+        days=(4,),
     ),
     S(
         "ovr_count",
@@ -117,20 +132,22 @@ COUNT = (
     S(
         "ovr_count",
         "did the thursday run again, like always",
-        "{S} and {O} met every week in {month}.",
-        "One run and a loose 'like always' are shown; the other weeks are not.",
+        "{S} did the Thursday run every week in {month}.",
+        "One message about 'the thursday run' and a loose 'like always' are shown; the other "
+        "weeks are not.",
+        days=(3, 4),
     ),
     S(
         "ovr_count",
         "{x}s late again, every single time",
-        "{X} was late every day that week.",
+        "{X} was late every day in the week of {date}.",
         "One instance plus a loose complaint; the other days are not shown.",
         xs=NAMES,
     ),
     S(
         "ovr_count",
         "took the kids this morning, like always",
-        "{S} took the kids every morning that month.",
+        "{S} took the kids every morning in {month}.",
         "One morning and a loose phrase are shown; the other mornings are not.",
     ),
     S(
@@ -262,76 +279,99 @@ RELATIVE_TIME = (
 )
 
 OTHER_STATE = (
+    # The record names where the sender is (or what holds) when it is sent. A record rules out
+    # only what it covers up to that moment (guide rule 23), so the assumption is dated before
+    # the record's date, covers the whole of it ("all day on"), or is bounded by a whole hour
+    # before the record's clock, never its own minute: never "home" without a named place,
+    # never quitting a job against working a shift, never "closed" against an event.
     S(
         "con_other_state",
-        "been home in queens since sunday",
-        "{S} was still in Lisbon on {date}.",
-        "Being home since Sunday cannot hold with still being in Lisbon on {date}.",
+        "back in queens since sunday, just got off the 7 train",
+        "{S} was in Lisbon on {prev}.",
+        "At {clock} on {date} the sender writes 'back in queens since sunday, just got off the 7 "
+        "train'. Being back in Queens since then cannot be true together with being in Lisbon "
+        "the day before the message; whether it is true is for the expert.",
+        quote="back in queens since sunday",
+        days=(1, 2, 3, 4, 5),
     ),
     S(
         "con_other_state",
-        "im at the shop now, car wont be done till 5",
-        "{S} was at the airport at {clock} on {date}.",
-        "The record places the sender at the shop at that moment.",
-    ),
-    S(
-        "con_other_state",
-        "quit the bar 2 weeks ago",
-        "{S} worked a shift at the bar on {date}.",
-        "Having quit two weeks earlier rules out a shift on {date}.",
-    ),
-    S(
-        "con_other_state",
-        "the vans been at the garage all week",
-        "{S} drove the van to Boston on {date}.",
-        "A van at the garage all week cannot have been driven to Boston on {date}.",
-    ),
-    S(
-        "con_other_state",
-        "sold the corolla in march",
-        "{S} still owned the Corolla on {date}.",
-        "Sold in March cannot hold with still owning it on {date}.",
-    ),
-    S(
-        "con_other_state",
-        "still in the hospital, 3rd day",
-        "{S} was at work on {date}.",
-        "The sender was in the hospital at the time, not at work.",
-    ),
-    S(
-        "con_other_state",
-        "we moved out of the 3rd floor place last month",
-        "{S} lived in the 3rd-floor apartment on {date}.",
-        "Having moved out the month before rules out living there on {date}.",
-    ),
-    S(
-        "con_other_state",
-        "ive been off the gym since the surgery, 2 months now",
-        "{S} was at the gym on {date}.",
-        "Two months away from the gym cannot hold with being there on {date}.",
+        "im at the dmv in yonkers, the line is out the door",
+        "{S} was at JFK airport all day on {date}.",
+        "At {clock} the sender writes 'im at the dmv in yonkers', which cannot be true together "
+        "with being at the airport all day on that date.",
+        quote="im at the dmv in yonkers",
     ),
     S(
         "con_other_state",
         "flight got cancelled, still in denver",
-        "{S} landed in New York on {date}.",
-        "Still being in Denver rules out having landed in New York by the message.",
+        "{S} had landed in New York by {hour} on {date}.",
+        "Sent at {clock}, 'flight got cancelled, still in denver' cannot be true together with "
+        "the assumption, whose time ends at {hour}, before the message.",
+        quote="still in denver",
+    ),
+    S(
+        "con_other_state",
+        "im still in lisbon, my flight got moved to next week",
+        "{S} had flown back to New York before {date}.",
+        "On {date} the sender writes 'im still in lisbon, my flight got moved to next week', "
+        "which cannot be true together with having flown back before that date.",
+        quote="im still in lisbon, my flight got moved to next week",
+    ),
+    S(
+        "con_other_state",
+        "sold the corolla 3 weeks ago, the new owner has it",
+        "{S} still owned the Corolla on {lastweek}.",
+        "On {date} the sender writes 'sold the corolla 3 weeks ago'. What those words state "
+        "cannot be true together with still owning it a week before; whether they are true is "
+        "for the expert.",
+        quote="sold the corolla 3 weeks ago",
+    ),
+    S(
+        "con_other_state",
+        "we moved out of the 3rd floor apartment a month ago",
+        "{S} was still living in the 3rd-floor apartment on {lastweek}.",
+        "On {date} the sender writes 'we moved out of the 3rd floor apartment a month ago', "
+        "which cannot be true together with still living there a week before.",
     ),
     S(
         "con_other_state",
         "never had a car, i take the bus everywhere",
-        "{S} drove {poss} own car to the wedding.",
-        "Never having had a car rules out driving one's own car.",
+        "{S} owned a car on {lastweek}.",
+        "On {date} the sender writes 'never had a car'. What those words state cannot be true "
+        "together with owning one a week before; whether they are true is for the expert.",
+        quote="never had a car",
     ),
     S(
         "con_other_state",
-        "the salons been closed since the flood, 3 weeks",
-        "{S} did clients at the salon on {date}.",
-        "A salon closed for three weeks rules out clients there on {date}.",
+        "still in chicago for work, back friday",
+        "{S} had come back to Boston from Chicago before {date}.",
+        "On {date} the sender writes 'still in chicago for work, back friday', which cannot be "
+        "true together with having come back before that date.",
+        quote="still in chicago for work, back friday",
+        days=MON_TO_THU,
     ),
     S(
         "con_other_state",
-        "im still in lisbon, flight is thursday",
-        "{S} was in New York on {date}.",
-        "Still being in Lisbon rules out being in New York at the time of the message.",
+        "landed in miami an hour ago, waiting on my bag",
+        "{S} was in Chicago all day on {date}.",
+        "At {clock} the sender is waiting on a bag after landing in Miami ('landed in miami an "
+        "hour ago, waiting on my bag'), which cannot be true together with the assumption.",
+    ),
+    S(
+        "con_other_state",
+        "on the train to philly, just passed trenton",
+        "{S} was in Boston all day on {date}.",
+        "At {clock} the sender writes 'on the train to philly, just passed trenton', which "
+        "cannot be true together with being in Boston all day on that date.",
+    ),
+    S(
+        "con_other_state",
+        "still at my moms in albany, driving back tmrw",
+        "{S} had left Albany before {date}.",
+        "On {date} the sender writes 'still at my moms in albany, driving back tmrw'. Being "
+        "still in Albany then cannot be true together with the assumption; whether it is true "
+        "is for the expert.",
+        quote="still at my moms in albany",
     ),
 )

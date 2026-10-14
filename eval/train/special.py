@@ -2,10 +2,13 @@
 
 Slots: {S} the record's sender as the phone shows it, {O} the other party, {pron} and {poss}
 the sender's pronouns (always "they" and "their": an assumption genders nobody), {date} the
-record's local date, {prev} the day before, {next} the day after, {clock} its local clock time,
+record's local date, {prev} the day before, {next} the day after, {lastweek} a week before,
+{clock} its local clock time (for rationales: an assumption never gives the record's own
+minute), {hour} the last whole hour before it ("2 p.m." for 2:47 p.m., "1 p.m." for 2:00 p.m.),
 {month} its month and year, {x} and {y} from xs and ys (chosen together when both have the same
-length, else independently; {X} and {Y} capitalized), {c} and {o} Russian endings. A claim
-names people and objects outright: never "the man", "it" or a relative time.
+length, else independently; {X} and {Y} capitalized), {c} and {o} Russian endings. A claim names people and objects outright:
+never "the man", "it" or a relative time. A rationale quotes any weekday the record names and
+never names one of its own (guide rule 24).
 """
 
 from __future__ import annotations
@@ -28,12 +31,20 @@ class Special:
     why: str  # the rationale
     xs: tuple[str, ...] = ()
     ys: tuple[str, ...] = ()
+    days: tuple[int, ...] = ()  # local weekdays the record may fall on (0 = Monday); () = any
 
 
 def S(family: str, record: str, claim: str, why: str, *, quote: str | None = None,
       before: tuple[Line, ...] = (), after: tuple[Line, ...] = (), who: str = "c",
-      xs: tuple[str, ...] = (), ys: tuple[str, ...] = (), lang: str = "en") -> Special:  # fmt: skip
-    return Special(family, lang, who, before, record, after, quote or record, claim, why, xs, ys)
+      xs: tuple[str, ...] = (), ys: tuple[str, ...] = (), lang: str = "en",
+      days: tuple[int, ...] = ()) -> Special:  # fmt: skip
+    return Special(family, lang, who, before, record, after, quote or record, claim, why, xs, ys,
+                   days)  # fmt: skip
+
+
+# Weekday sets for `days`.
+MON_TO_SAT = (0, 1, 2, 3, 4, 5)
+MON_TO_THU = (0, 1, 2, 3)
 
 
 PLACES = ("seat", "mat", "sink", "porch step", "mattress", "bench", "spare tire", "cooler")
@@ -167,6 +178,7 @@ CODE_WORD = (
         "'Plates' means stolen license plates; {S} ordered {x} such plates for Friday.",
         "The record says 'plates'; nothing shown makes them license plates or stolen.",
         xs=("20", "30", "40"),
+        days=MON_TO_THU,
     ),
     S(
         "ovr_code_word",
