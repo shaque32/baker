@@ -25,6 +25,9 @@ Display rules:
 - The Selection audit section (core/report/selection.py) shows each message the document quotes,
   an exhibit quotes or the examiner tagged in its own exchange, with the messages around it that
   were not picked. It never changes a verdict.
+- Each claim lists the other explanations its records raise (core/hypotheses/, rendered by
+  core/report/hypotheses.py, the same fragment as the claim page), with the records that fit
+  each. Found by code, shown as leads for the expert; they never change a verdict.
 - The report carries source hashes, Baker, contract, rule, report and model versions, and an
   audit-log summary with the hash-chain result.
 """
@@ -48,7 +51,9 @@ from core.contracts import (
     VerdictDecision,
     display_tier,
 )
+from core.hypotheses import explain
 from core.ingest import coverage as import_coverage
+from core.report import hypotheses as alternatives_html
 from core.report import restore as restore_html
 from core.report import selection as selection_html
 from core.report import timeline as timeline_html
@@ -64,7 +69,7 @@ from core.review.status import (
 )
 from core.review.status import verdict_label as _verdict_label
 
-REPORT_VERSION = "0.2.0"
+REPORT_VERSION = "0.3.0"
 
 __all__ = [
     "AWAITING_EXPERT",
@@ -309,7 +314,7 @@ def record_line(conn: sqlite3.Connection, record_id: str) -> str:
     return q(text) if text is not None else "record not found"
 
 
-def _claim_block(conn: sqlite3.Connection, st: ClaimState) -> str:
+def _claim_block(conn: sqlite3.Connection, st: ClaimState, case: explain.Case) -> str:
     claim, decision = st.claim, st.decision
     out = [f'<div class="claim" id="{e(claim.id)}">']
     out.append(
@@ -399,6 +404,13 @@ def _claim_block(conn: sqlite3.Connection, st: ClaimState) -> str:
         out.append("<p class='muted'>No relevant evidence items were stored for this claim.</p>")
     if hidden:
         out.append(f"<p class='muted'>{hidden} retrieved records were labeled irrelevant.</p>")
+    # Leads are worked out from the run's assumptions; after an edit they would describe the old
+    # claim, so they wait for a re-run (the claim already says to re-run it).
+    if st.assumptions and not st.incomplete and not st.edited_after_run:
+        alts = explain.alternatives(case, st.assumptions)
+        if alts:
+            out.append("<h4>Other explanations to check</h4>")
+            out.append(alternatives_html.alternatives_html(alts))
     out.append("</div>")
     return "".join(out)
 
@@ -467,7 +479,7 @@ def audit_log_summary(conn: sqlite3.Connection) -> dict:
 
 
 def _versions(conn: sqlite3.Connection, run: dict | None) -> str:
-    rows = [("Report", REPORT_VERSION)]
+    rows = [("Report", REPORT_VERSION), ("Other explanations (code)", explain.VERSION)]
     if run:
         rows += [
             ("Baker pipeline", run["baker_version"]),
@@ -506,7 +518,8 @@ def render_report(conn: sqlite3.Connection, timeline: timeline_html.Settings | N
         "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
         "<title>Baker claims report</title>"
-        f"<style>{CSS}{restore_html.CSS}{timeline_html.CSS}{selection_html.CSS}</style>"
+        f"<style>{CSS}{restore_html.CSS}{timeline_html.CSS}{selection_html.CSS}"
+        f"{alternatives_html.CSS}</style>"
         "</head><body>",
         "<h1>Baker claims report</h1>",
         "<p class='muted'>"
@@ -559,7 +572,8 @@ def render_report(conn: sqlite3.Connection, timeline: timeline_html.Settings | N
 
     parts.append(_limitations(conn, srcs))
     parts.append("<h2>Claims</h2>")
-    parts += [_claim_block(conn, st) for st in states]
+    case = explain.load(conn)
+    parts += [_claim_block(conn, st, case) for st in states]
 
     parts.append(searches_section(states, srcs))
     timeline = timeline or timeline_html.Settings()
