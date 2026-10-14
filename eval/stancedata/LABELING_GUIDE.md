@@ -255,11 +255,12 @@ the same four definitions and rules 1 to 24; this section adds what is new.
     4 applies to them: no handle, saved name, contact entry or self-introduction shows who it
     is, even one that matches their name (a chat that calls `SMS +13125550188` "rita" does not
     show Rita Vance). The RECORD line also names the phone it came from.
-27. **Zones.** The zone after a window ("(America/New_York)") is the zone the document's times
-    are read in. A line's zone abbreviation is the phone's: EST and EDT are America/New_York,
-    CST and CDT America/Chicago, MST and MDT America/Denver, PST and PDT America/Los_Angeles.
-    When the record falls inside the window in one zone and outside it in the other, the answer
-    depends on a time zone and is complicates.
+27. **Zones.** The zone after a window ("(America/New_York)") is the zone Baker read the
+    document's times in; the document itself may have meant the phone's local time. A line's
+    zone abbreviation is the phone's: EST and EDT are America/New_York, CST and CDT
+    America/Chicago, MST and MDT America/Denver, PST and PDT America/Los_Angeles. When the
+    record falls inside the window in one of the two zones and outside it in the other, the
+    answer depends on a time zone and is complicates.
 28. **Calls and contacts.** A call record reads "outgoing call from +1... to +1... at <time as
     the report printed it>, 123s"; that printed time is often UTC ("(UTC+0)"), and the line's
     local time decides. A contact row reads "<saved name> <number>", has no time, and belongs to
