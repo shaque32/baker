@@ -54,6 +54,7 @@ MAX_LOCATORS = 10  # first differing locators listed per check
 MAX_SHAPES = 25  # value shapes listed per field
 MAX_SCHEMA_FIELDS = 60  # field names listed per model kind
 
+PARTY_HOLDERS = {"from", "to", "parties", "participants"}  # fields holding parties, any type
 TOP_MESSAGE_TYPES = {"InstantMessage", "Message", "SMS", "MMS"}
 CHAT_MESSAGE_TYPES = ufdr.MESSAGE_TYPES
 BODY = ("body", "text", "message", "content")
@@ -173,6 +174,8 @@ class MessageRec:
     recipient_owner: bool  # a stated recipient says IsPhoneOwner
     recipients: list[str]  # identifiers (else names) of stated recipients
     direction: str | None  # Direction field as written
+    folder: str | None
+    status: str | None
     state: str | None
     attachments: int
     attachment_files: int  # attachments naming a path that is in the package
@@ -222,7 +225,7 @@ class Tally:
         self.messages: dict[str, MessageRec] = {}
         self.calls: dict[str, CallRec] = {}
         self.contacts: dict[str, ContactRec] = {}
-        self.user_accounts = 0
+        self.user_accounts: dict[str, str | None] = {}  # locator -> username
         self.owner_ids: set[str] = set()  # UserAccount usernames: the phone's own accounts
         self.ids: Counter[str] = Counter()  # model ids of messages and calls
         self.repeats: set[str] = set()  # locators whose model id an earlier record had
@@ -356,7 +359,7 @@ class Tally:
             if v and v not in parent.entries:
                 parent.entries.append(v)
             return
-        if f.type == "Party" and parent is not None:
+        if parent is not None and (f.type == "Party" or holder in PARTY_HOLDERS):
             ident = _text(f.fields.get("identifier"))
             name = _text(f.fields.get("name"))
             if ident is not None or name is not None:
@@ -367,9 +370,11 @@ class Tally:
         if f.locator is None:
             return
         if f.top and f.type == "UserAccount":
-            self.user_accounts += 1
-            if (u := _text(f.fields.get("username"))) is not None:
+            u = _text(f.fields.get("username"))
+            if u is not None:
                 self.owner_ids.add(u)
+            if u is not None or f.entries:  # one with no identifier is skipped, and listed
+                self.user_accounts[f.locator] = u
         elif (f.top and f.type in TOP_MESSAGE_TYPES) or not f.top:
             self._message(f)
         elif f.type == "Call":
@@ -411,7 +416,9 @@ class Tally:
             recipient_owner=any(p[3] for p in recips),
             recipients=[p[0] or p[1] or "" for p in recips],
             direction=_text(f.fields.get("direction")),
-            state=f.attrs.get("deleted_state") or f.attrs.get("deleted"),
+            folder=_text(f.fields.get("folder")),
+            status=_text(f.fields.get("status")),
+            state=_state(f),
             attachments=sum(1 for named, _p in f.attachments if named),
             attachment_files=sum(1 for _n, p in f.attachments if p and _member(p) in self.members),
         )
@@ -435,7 +442,7 @@ class Tally:
             direction=_text(f.fields.get("direction")) or _text(f.fields.get("type")),
             sender=(frm[0][0] or frm[0][1]) if frm else None,
             recipient=(to[0][0] or to[0][1]) if to else None,
-            state=f.attrs.get("deleted_state") or f.attrs.get("deleted"),
+            state=_state(f),
         )
 
     # driving -------------------------------------------------------------
@@ -455,6 +462,14 @@ class Tally:
             p.Parse(b"", True)
         except expat.ExpatError as err:
             raise ValueError(f"report.xml is not well-formed XML ({err})") from err
+
+
+def _state(f: _Frame) -> str | None:
+    """The record state as the package writes it: an attribute, else a field."""
+    for a in ("deleted_state", "deleted"):
+        if a in f.attrs:
+            return f.attrs[a]
+    return _first(f.fields, ("deleted_state", "deletedstate", "recordstatus"))
 
 
 def _text(v: str | None) -> str | None:
@@ -491,8 +506,30 @@ def iso_utc(raw: str | None) -> str | None:
     s = re.sub(r"[Zz]$", "+00:00", s)
     s = re.sub(r"([+-]\d{2})(\d{2})$", r"\1:\2", s)
     s = re.sub(r"\.(\d+)", lambda m: "." + m.group(1)[:6].ljust(6, "0"), s)
-    dt = datetime.fromisoformat(s).astimezone(UTC)
+    try:
+        dt = datetime.fromisoformat(s).astimezone(UTC)
+    except ValueError:  # '2026-02-30T...': not a real time; the importer lists it, unread
+        return None
     return dt.isoformat().replace("+00:00", "Z")
+
+
+# Stated message directions, read separately from the importer: Direction, then Folder, then
+# Status, the first word of each.
+_DIRECTION_WORDS = {"incoming": "incoming", "outgoing": "outgoing"}
+_FOLDER_WORDS = {"inbox": "incoming", "sent": "outgoing", "outbox": "outgoing"}
+_STATUS_WORDS = {"received": "incoming", "sent": "outgoing"}
+
+
+def message_direction(x: MessageRec) -> str | None:
+    for value, words in (
+        (x.direction, _DIRECTION_WORDS),
+        (x.folder, _FOLDER_WORDS),
+        (x.status, _STATUS_WORDS),
+    ):
+        first = (value or "").strip().lower().split(" ")[0]
+        if first in words:
+            return words[first]
+    return None
 
 
 def seconds(raw: str | None) -> int | None:
@@ -558,7 +595,7 @@ class Check:
             "compared": self.compared,
             "differ": self.differ,
             "not_checked": self.not_checked,
-            "first_differing_locators": self.locators,
+            "first_differing_locators": [safe_locator(x) for x in self.locators],
         }
 
 
@@ -578,9 +615,9 @@ class Count:
             "imported_by_baker": self.imported,
             "repeats_imported_once": self.expected_not_imported,
             "missing": len(self.missing),
-            "first_missing_locators": self.missing[:MAX_LOCATORS],
+            "first_missing_locators": [safe_locator(x) for x in self.missing[:MAX_LOCATORS]],
             "extra": len(self.extra),
-            "first_extra_locators": self.extra[:MAX_LOCATORS],
+            "first_extra_locators": [safe_locator(x) for x in self.extra[:MAX_LOCATORS]],
         }
 
 
@@ -671,8 +708,8 @@ def compare(t: Tally, conn: sqlite3.Connection, src: str) -> tuple[list[Count], 
             to.see(all(r in got for r in x.recipients), loc)
         else:
             to.not_checked += 1
-        stated = (x.direction or "").lower().split(" ")[0]
-        if stated in ("incoming", "outgoing"):
+        stated = message_direction(x)
+        if stated is not None:
             direction.see(dirn == stated, loc)
         elif x.sender is not None and (x.sender_owner or x.sender in t.owner_ids):
             direction.see(dirn == "outgoing", loc)
@@ -746,16 +783,16 @@ def compare(t: Tally, conn: sqlite3.Connection, src: str) -> tuple[list[Count], 
     k_entries = check("contacts", "entries", "one Baker row per distinct entry value")
     k_name = check("contacts", "name", "contact name")
     db_contacts: set[str] = set()
-    for loc, n, name in conn.execute(
-        "SELECT locator, COUNT(*), MIN(name) FROM contacts WHERE source_id = ? GROUP BY locator",
-        (src,),
-    ):
+    names: dict[str, list[str | None]] = {}
+    for loc, name in conn.execute("SELECT locator, name FROM contacts WHERE source_id = ?", (src,)):
+        names.setdefault(loc, []).append(name)
+    for loc, stored in names.items():
         db_contacts.add(loc)
         x = t.contacts.get(loc)
         if x is None:
             continue
-        k_entries.see(n == max(1, x.entries), loc)
-        k_name.see(_digest(name) == x.name, loc)
+        k_entries.see(len(stored) == max(1, x.entries), loc)
+        k_name.see(all(_digest(n) == x.name for n in stored), loc)
 
     accounts = {
         loc
@@ -768,7 +805,7 @@ def compare(t: Tally, conn: sqlite3.Connection, src: str) -> tuple[list[Count], 
         _counts("messages", t.messages, db_msgs, t.repeats),
         _counts("calls", t.calls, db_calls, t.repeats),
         _counts("contacts", t.contacts, db_contacts, set()),
-        Count("phone's own accounts (UserAccount)", t.user_accounts, len(accounts), 0, [], []),
+        _counts("phone's own accounts (UserAccount)", t.user_accounts, accounts, set()),
     ]
     xml_atts = sum(m.attachments for m in t.messages.values() if m.locator in db_msgs)
     (db_atts,) = conn.execute(
@@ -940,6 +977,12 @@ def _shareable(
             else {},
         },  # fmt: skip
     }
+
+
+def safe_locator(loc: str) -> str:
+    """'Chat[3]/Messages[17]' as written; a model type or field name in it that does not look
+    like a schema name becomes its shape."""
+    return re.sub(r"[^/\[\]]+(?=\[)", lambda m: _safe_name(m.group(0)), loc)
 
 
 def _safe_label(label: str) -> str:

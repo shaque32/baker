@@ -418,3 +418,97 @@ def test_a_node_field_is_named_as_not_read(tmp_path):
     assert d["differences"] == 0
     assert "Photo" in d["baker_coverage"]["fields_baker_does_not_read"]["InstantMessage"]
     assert d["model_kinds"]["InstantMessage"]["fields"]["Photo (nodeField)"] == 1
+
+
+# ---------------------------------------------------------------- review findings (PR #58)
+
+
+def _broken(monkeypatch, *sql: str) -> None:
+    real = ufdr.UfdrImporter.import_source
+
+    def broken(self, path, conn):
+        src = real(self, path, conn)
+        for q in sql:
+            conn.execute(q)
+        return src
+
+    monkeypatch.setattr(ufdr.UfdrImporter, "import_source", broken)
+
+
+def test_folder_and_status_directions_are_checked(tmp_path, monkeypatch):
+    sms = [
+        model("SMS", many("Parties", [party("+15550100003", "Al", False)]),
+              field("Folder", "Inbox"), field("Body", "in"), ts_field("TimeStamp", T)),
+        model("SMS", many("Parties", [party("+15550100003", "Al", False)]),
+              field("Status", "Sent"), field("Body", "out"), ts_field("TimeStamp", T)),
+    ]  # fmt: skip
+    path = write_package(tmp_path / "s.ufdr", report_xml({"SMS": sms}))
+    d = ufdr_check.run(path).shareable
+    assert _by(d, "messages", "direction")["compared"] == 2 and d["differences"] == 0
+    _broken(monkeypatch, "UPDATE messages SET direction = 'incoming' WHERE locator = 'SMS[2]'")
+    assert _by(ufdr_check.run(path).shareable, "messages", "direction")["differ"] == 1
+
+
+def test_a_deleted_state_written_as_a_field_is_checked(tmp_path, monkeypatch):
+    msg = _msg("x", T, JO, (OWNER,), field("RecordStatus", "Deleted"), deleted_state=None)
+    call = model("Call", field("Type", "Incoming"), ts_field("TimeStamp", T),
+                 field("deleted_state", "Intact"), deleted_state=None)  # fmt: skip
+    path = write_package(tmp_path / "d.ufdr", report_xml({"InstantMessage": [msg], "Call": [call]}))
+    d = ufdr_check.run(path).shareable
+    assert _by(d, "messages", "record_state")["compared"] == 1
+    assert _by(d, "calls", "record_state")["compared"] == 1 and d["differences"] == 0
+    _broken(
+        monkeypatch, "UPDATE messages SET deleted_flag = 0", "UPDATE calls SET deleted_flag = 1"
+    )
+    d = ufdr_check.run(path).shareable
+    assert _by(d, "messages", "record_state")["differ"] == 1
+    assert _by(d, "calls", "record_state")["differ"] == 1
+
+
+def test_a_dropped_user_account_is_a_difference(variants, monkeypatch):
+    _broken(
+        monkeypatch, "UPDATE accounts SET locator = 'Chat[1]' WHERE locator LIKE 'UserAccount[%'"
+    )
+    d = ufdr_check.run(variants).shareable
+    assert _rec(d, "phone's own accounts (UserAccount)")["first_missing_locators"] == [
+        "UserAccount[1]"
+    ]
+    assert d["differences"] == 1
+
+
+def test_an_impossible_iso_time_is_not_checked_and_does_not_stop_the_check(tmp_path):
+    xml = report_xml({"InstantMessage": [_msg("x", "2026-02-30T21:31:00-05:00")]})
+    d = ufdr_check.run(write_package(tmp_path / "t.ufdr", xml)).shareable
+    assert _by(d, "messages", "time_utc")["not_checked"] == 1
+    assert d["differences"] == 0
+
+
+def test_every_stored_contact_name_is_compared(variants, monkeypatch):
+    _broken(
+        monkeypatch,
+        "UPDATE contacts SET name = 'Zz' WHERE id = (SELECT MAX(id) FROM contacts"
+        " WHERE locator = 'Contact[1]')",
+    )
+    d = ufdr_check.run(variants).shareable
+    assert _by(d, "contacts", "name")["first_differing_locators"] == ["Contact[1]"]
+
+
+def test_parties_of_another_model_type_are_read(tmp_path, monkeypatch):
+    jo = party(*JO).replace('type="Party"', 'type="Person"')
+    msg = model("InstantMessage", one("From", jo), field("Body", "x"), ts_field("TimeStamp", T))
+    path = write_package(tmp_path / "p.ufdr", report_xml({"InstantMessage": [msg]}))
+    d = ufdr_check.run(path).shareable
+    assert _by(d, "messages", "sender")["compared"] == 1 and d["differences"] == 0
+
+
+def test_locators_in_the_shareable_report_are_sanitized(tmp_path):
+    chat = model(
+        "Chat",
+        field("Id", "c"),
+        many(f"Notes {CANARY}", [_msg("x")], "InstantMessage"),
+    )
+    xml = report_xml({"Chat": [chat], "Message": [_msg("y").replace("InstantMessage", "Message")]})
+    r = ufdr_check.run(write_package(tmp_path / "l.ufdr", xml))
+    text = json.dumps(r.shareable) + ufdr_check.shareable_markdown(r.shareable)
+    assert CANARY not in text
+    assert ufdr_check.safe_locator(f"Chat[1]/Notes {CANARY}[1]") == "Chat[1]/(shape Aaaaa AAAA)[1]"
