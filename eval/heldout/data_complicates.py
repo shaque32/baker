@@ -220,7 +220,7 @@ HEDGES: tuple[Tpl, ...] = (
     tpl(
         "nurse",
         "ru",
-        "по-моему {day} на четвёртом этаже смена {name_g}, но не точно",
+        "по-моему {day} на четвёртом этаже была смена {name_g}, но не точно",
         *_H,
         that="{name} worked the fourth floor on {day}",
     ),
@@ -1204,10 +1204,10 @@ RELATIVE: tuple[Tpl, ...] = (
     tpl(
         "church",
         "en",
-        "i set up the chairs tonight for the {t} service",
+        "i finished setting up the chairs tonight for the {t} service",
         *_RT,
         that="the chairs were set up on {xdate}",
-        quote="i set up the chairs tonight",
+        quote="i finished setting up the chairs tonight",
         rel="tonight",
     ),
     tpl(

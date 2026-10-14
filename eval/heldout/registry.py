@@ -18,6 +18,7 @@ from eval.heldout import GENERATOR
 from eval.heldout.pools import (
     CITIES,
     CLOCKS,
+    FOR_RU,
     MENTIONED_EN,
     MENTIONED_RU,
     PLACES,
@@ -31,7 +32,8 @@ from eval.heldout.text import normalized, render, slots_used
 MAX_COMBOS = 48
 FACT_DAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 # Slot families: every slot of one base takes its value from one choice, in different forms
-# ({name} nominative, {name_g} genitive ... ; {day} "on tuesday", {day_since} "since tuesday").
+# ({name} nominative, {name_g} genitive ... ; {day} "on tuesday", {day_since} "since tuesday",
+# {day_for} "на вторник" in Russian, where the day follows a verb that takes "на").
 _BASES = {
     "n": "n",
     "m": "m",
@@ -40,6 +42,7 @@ _BASES = {
     "place2": "place2",
     "day": "day",
     "day_since": "day",
+    "day_for": "day",
     "day2": "day2",
     "name": "name",
     "name_g": "name",
@@ -119,8 +122,13 @@ def _choices(base: str, tpl: Tpl) -> list[Choice]:
         return [{base: (p, p)} for p in PLACES[tpl.sit]]
     if base == "day":
         days, since = (WEEKDAYS_RU, SINCE_RU) if ru else (WEEKDAYS_EN, SINCE_EN)
+        for_ = FOR_RU if ru else WEEKDAYS_EN
         return [
-            {"day": (days[i], FACT_DAYS[i]), "day_since": (since[i], FACT_DAYS[i])}
+            {
+                "day": (days[i], FACT_DAYS[i]),
+                "day_since": (since[i], FACT_DAYS[i]),
+                "day_for": (for_[i], FACT_DAYS[i]),
+            }
             for i in range(7)
         ]
     if base == "day2":

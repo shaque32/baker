@@ -431,10 +431,10 @@ STATEMENTS: tuple[Tpl, ...] = (
     tpl(
         "market",
         "en",
-        "set up at booth {n} at {place}, im here till 1",
+        "im set up at booth {n} at {place}, here till 1",
         *_A,
         n=(2, 60),
-        that="the sender set up at booth {n} at {place} and was there until 1",
+        that="the sender set up at booth {n} at {place}",
     ),
     tpl(
         "market",
@@ -487,12 +487,12 @@ STATEMENTS: tuple[Tpl, ...] = (
         "заняли палатку {n}, стоим до часу",
         *_A,
         n=(2, 60),
-        that="the sender and others took stall {n} and were there until 1",
+        that="the sender and others took stall {n}",
     ),
     tpl(
         "market",
         "ru",
-        "нам дали угловое место на {day}",
+        "нам дали угловое место {day_for}",
         *_A,
         that="the sender and others were given the corner spot for {day}",
     ),
@@ -577,7 +577,7 @@ STATEMENTS: tuple[Tpl, ...] = (
     tpl(
         "tutor",
         "ru",
-        "перенёс занятие с {name_i} на {day} в {t}",
+        "перенёс занятие с {name_i} {day_for} в {t}",
         *_A,
         g="m",
         vp="moved the session with {name} to {day} at {t}",
@@ -889,11 +889,11 @@ STATEMENTS: tuple[Tpl, ...] = (
     tpl(
         "church",
         "en",
-        "set up {n}0 chairs in {place}, done by {t}",
+        "finished setting up {n}0 chairs in {place} by {t}",
         *_A,
         n=(4, 20),
         vp="set up {n}0 chairs in {place} by {t}",
-        quote="set up {n}0 chairs in {place}",
+        quote="finished setting up {n}0 chairs in {place}",
     ),
     tpl(
         "church",

@@ -352,6 +352,17 @@ WEEKDAYS_RU = (
     "в субботу",
     "в воскресенье",
 )
+# "for Tuesday" ("перенёс на вторник"): a plan's day after a verb that takes "на", never
+# "на во вторник".
+FOR_RU = (
+    "на понедельник",
+    "на вторник",
+    "на среду",
+    "на четверг",
+    "на пятницу",
+    "на субботу",
+    "на воскресенье",
+)
 # "since Tuesday": the preposition changes with the noun, so the whole phrase is stored.
 SINCE_EN = tuple(f"since {d}" for d in WEEKDAYS_EN)
 SINCE_RU = (

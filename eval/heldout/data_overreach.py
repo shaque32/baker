@@ -202,9 +202,9 @@ PRONOUNS: tuple[Tpl, ...] = (
     tpl(
         "sneaker",
         "ru",
-        "покупателям нужно ещё две таких к {day}",
+        "покупателям нужно ещё две таких {day_for}",
         *_P,
-        that="{s} said the buyers wanted two more guns by {day}",
+        that="{s} said the buyers wanted two more guns for {day}",
     ),
     tpl(
         "market",
@@ -546,7 +546,7 @@ CODEWORDS: tuple[Tpl, ...] = (
     tpl(
         "tutor",
         "ru",
-        "{n:пакет|пакета|пакетов} на {day}, как в прошлый раз",
+        "{n:пакет|пакета|пакетов} {day_for}, как в прошлый раз",
         *_C,
         n=(2, 12),
         word="пакетов",
@@ -1871,7 +1871,7 @@ PARTIALS: tuple[Tpl, ...] = (
     tpl(
         "church",
         "en",
-        "set up {n}0 chairs in {place}",
+        "got {n}0 chairs set up in {place}",
         *_PA,
         n=(4, 20),
         that="{s} set up {n}0 chairs in {place} and took money from the collection",
@@ -2069,7 +2069,7 @@ COUNTS: tuple[Tpl, ...] = (
         *_CN,
         that="{s} and others sold out at the market every week",
     ),
-    tpl("tutor", "en", "{name} was late again", *_CN, that="{name} was late to every session"),
+    tpl("tutor", "en", "{name} was late again", *_CN, that="{name} was late every time"),
     tpl(
         "dog",
         "en",
@@ -2142,7 +2142,7 @@ COUNTS: tuple[Tpl, ...] = (
         "en",
         "did the {t} med pass again",
         *_CN,
-        that="{s} did the med pass at {t} every night",
+        that="{s} did the med pass at {t} every day",
     ),
     tpl(
         "warehouse",
@@ -2198,7 +2198,7 @@ COUNTS: tuple[Tpl, ...] = (
         *_CN,
         that="{s} and others sold out at the market every week",
     ),
-    tpl("tutor", "ru", "{name} опять опаздывает", *_CN, that="{name} was late to every session"),
+    tpl("tutor", "ru", "{name} опять опаздывает", *_CN, that="{name} was late every time"),
     tpl(
         "dog",
         "ru",
