@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from core.audit.quotes import verify_quote
-from eval.heldout import GENERATOR, ID_PREFIX, SEEDS, SOURCE, bk_names, scene
+from eval.heldout import GENERATOR, ID_PREFIX, SEEDS, SOURCE, bk_meanings, bk_names, scene
 from eval.heldout.bk_common import BK_GENERATOR
 from eval.heldout.bk_schedule import BK_COMPOSITION
 from eval.heldout.frames import names_in
@@ -1197,28 +1197,39 @@ def test_bk_record_texts_never_repeat(test_items: list[GenItem], dev_items: list
 _WORDS_QUOTED = {"bk_sender_shown", "bk_sender_other", "bk_time_inside", "bk_weekday_next",
                  "bk_weekday_open", "bk_weekday_wrong"}  # fmt: skip
 _CUE_QUOTED = {"bk_identity_named", "bk_handles_said", "bk_author_cue"}
+_CLAUSE_QUOTED = {"bk_meaning_said", "bk_meaning_other", "bk_claim_denied", "bk_claim_open"}
 
 
 def test_bk_quotes_follow_the_quote_rules(
     test_items: list[GenItem], dev_items: list[GenItem]
 ) -> None:
     """The quoted words when the template quotes words; the cue for identity, authorship and
-    handles; otherwise the record's whole text (its time, sender, numbers or length decide, or,
-    for a claim, the whole message: an explanation, a denial or the claimed message itself)."""
+    handles; for an explanation, a denial or a record bearing on an act or role, the clause the
+    answer rests on (guide rule 7): the whole record, or the record less a tail after a comma
+    or a lead-in that adds nothing; otherwise the record's whole text (its time, sender,
+    numbers or length decide, or it is the claimed message itself)."""
+    clauses = Counter()
     for it in _bk(test_items + dev_items):
         quoted = (it.baker_params or {}).get("quoted_text")
-        assert verify_quote(it.proposed_quote, it.target.text), it.probe_id
+        rec, quote = it.target.text, it.proposed_quote
+        assert verify_quote(quote, rec), it.probe_id
         words = it.family in _WORDS_QUOTED or (
             it.family in ("bk_time_outside", "bk_zone_edge", "bk_party_unshown", "bk_claim_open")
             and quoted is not None
             and it.baker_template != "contact_entry"
         )
         if words:
-            assert it.proposed_quote == quoted, it.probe_id
+            assert quote == quoted, it.probe_id
         elif it.family in _CUE_QUOTED:  # the cue span; its content is checked per family
-            assert len(it.proposed_quote.split()) >= 2, it.probe_id
+            assert len(quote.split()) >= 2, it.probe_id
+        elif it.family in _CLAUSE_QUOTED:
+            tail = rec.startswith(quote + ", ") or rec == f"to be clear {quote}"
+            assert rec == quote or tail or rec.endswith(f", {quote}"), (it.probe_id, quote)
+            clauses[it.family, rec == quote] += 1
         else:
-            assert it.proposed_quote == it.target.text, it.probe_id
+            assert quote == rec, it.probe_id
+    for family_id in _CLAUSE_QUOTED:  # some records are all deciding text, some are not
+        assert clauses[family_id, True] and clauses[family_id, False], (family_id, clauses)
 
 
 # ------------------------------------------------------------------ bk windows, read from words
@@ -1654,16 +1665,21 @@ def test_bk_meaning_records_follow_their_family(
 ) -> None:
     """bk_claim_open: the record uses or asks about the words, and no line says what they mean
     or uses them before. bk_meaning_said and bk_meaning_other: the account that used the words
-    on an earlier line explains them in the record, as the claim's meaning (said) or as another
-    thing, naming the claim's meaning as what they are not (other); the claim names its user."""
+    on an earlier line explains them in the record, as the claim's meaning (said) or as the
+    plain thing they name (other), of another kind than the claim's meaning and never naming
+    it; neither denies anything, and the quote holds the explanation. The claim names the
+    words' user."""
+    plain_of = {words: plain for _, words, plain in bk_meanings.PHRASES}
     seen = Counter()
     for it in _bk(test_items + dev_items):
         if it.baker_template != "meaning" or it.family == "bk_unrelated":
             continue
         m = _MEANT.fullmatch(it.baker_claim or "")
         assert m, it.probe_id
-        words, meaning = normalized(m["w1"] or m["w2"]), normalized(m["m"])
+        raw_words, raw_meaning = m["w1"] or m["w2"], m["m"]
+        words, meaning = normalized(raw_words), normalized(raw_meaning)
         rec, rest = normalized(it.target.text), [normalized(ln.text) for ln in it.context]
+        quote = normalized(it.proposed_quote)
         assert words == normalized((it.baker_params or {})["quoted_text"]) and words in rec
         if it.family == "bk_claim_open":
             assert not any(words in t or meaning in t for t in rest) and meaning not in rec
@@ -1673,8 +1689,12 @@ def test_bk_meaning_records_follow_their_family(
             assert any(words in normalized(ln.text) and ln.sender == sender for ln in earlier)
             label = sender.split(" [", 1)[1].rstrip("]")
             assert label.split(" (")[0].split()[-1] in (it.baker_claim or ""), it.probe_id
-            negated = re.search(rf"\b{_NOT} {re.escape(meaning)}\b", rec)
-            assert meaning in rec and bool(negated) == (it.family == "bk_meaning_other")
+            assert words in quote and not re.search(rf"\b{_NOT}\b", rec), it.probe_id
+            if it.family == "bk_meaning_said":
+                assert meaning in quote, it.probe_id
+            else:
+                assert normalized(plain_of[raw_words]) in quote, it.probe_id
+                assert meaning not in rec and not bk_meanings.clash(raw_words, raw_meaning)
         seen[it.family] += 1
     assert seen == {"bk_claim_open": 12, "bk_meaning_said": 36, "bk_meaning_other": 36}, seen
 
@@ -1749,3 +1769,30 @@ def test_bk_denials_come_after_the_claim_and_cover_it(
         assert named[0] <= start.date() and named[-1] >= last_day, (it.probe_id, text)
         covers["dates"] += 1
     assert covers["never"] >= 12 and covers["dates"] >= 6, covers
+
+
+_SHORT_FORMS = {"pippa", "ros", "thad", "xan", "quin", "tam"}
+
+
+def test_bk_unshown_parties_are_called_by_name_in_a_third(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    """bk_party_unshown: in a third of the items the owner, answering the record, calls the
+    unbracketed account by a word of the named person's name or a short form of it. The person
+    still shows in no bracket (see the parties test), so the answer stays open (rule 26)."""
+    for items, want in ((test_items, 8), (dev_items, 4)):
+        called = 0
+        for it in _bk(items):
+            if it.family != "bk_party_unshown":
+                continue
+            lines, who = _in_order(it), _who(it)
+            person = next(p for p in (it.baker_params or {})["person_ids"] if "dev:" not in p)
+            name = (it.baker_names or {})[person].lower().split()
+            forms = {*name, *(f for f in _SHORT_FORMS if name[0].startswith(f))}
+            hits = [ln for ln in lines if forms & set(re.findall(r"[a-z]+", ln.text.lower()))]
+            if not hits:
+                continue
+            called += 1
+            assert hits == [lines[-1]] and it.target_index == len(lines) - 2, it.probe_id
+            assert _sender(lines[-1], who)[2] and not _sender(it.target, who)[2], it.probe_id
+        assert called == want, (want, called)

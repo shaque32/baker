@@ -26,6 +26,9 @@ from eval.stancedata import bakerform as bf
 
 _NAME_LINES = ("thx {sur}", "ok {sur}, noted", "got it {sur}", "{sur} ur a lifesaver",
                "cheers {sur}", "perfect, ty {sur}", "nice one {sur}")  # fmt: skip
+# Short forms a chat may call a first name by.
+_SHORT = {"Philippa": "pippa", "Rosalind": "ros", "Thaddeus": "thad", "Xander": "xan",
+          "Quincy": "quin", "Tamar": "tam"}  # fmt: skip
 
 
 def shown(s: BkSlot, rng: random.Random) -> BkDraft:
@@ -108,9 +111,12 @@ def other(s: BkSlot, rng: random.Random) -> BkDraft:
 
 
 def _name_line(rng: random.Random, pr: Pair, s: BkSlot, ex: Excerpt) -> str:
-    """A line after the record in which the owner calls the sender by the person's first name
-    or surname; returns the name as the line writes it."""
+    """A line after the record in which the owner calls the other account by the person's
+    first name, a short form of it, or their surname; returns the name as the line writes
+    it."""
     called = s.first.lower() if rng.random() < 0.7 else surname(s.person).lower()
+    if called == s.first.lower() and s.first in _SHORT and rng.random() < 0.5:
+        called = _SHORT[s.first]
     text = rng.choice(_NAME_LINES).format(sur=called)
     t = ex.lines[-1].utc
     if t is None:
@@ -134,8 +140,9 @@ def unshown(s: BkSlot, rng: random.Random) -> BkDraft:
     them = shown_as(pr.sc, pr.p, pr.other)
     win = None if v.startswith("sender") else window(rng, pr.p.tz)
     utc = bt.place_inside(rng, win, pr.p.tz) if win else pk.some_time(rng, pr.p.tz)
-    mine = False if v in ("sender", "sender_named", "time_msg") else rng.random() < 0.5
-    named = v == "sender_named" and s.lang != "ru"
+    named = v in ("sender_named", "nc_msg") and s.lang != "ru"  # a third of the family
+    # the owner answers a named account's own record by name
+    mine = False if named or v in ("sender", "time_msg") else rng.random() < 0.5
     ex = pr.chat(rng, s, utc, s.text, mine, where="before" if named else "both")
     called = _name_line(rng, pr, s, ex) if named else ""
     params: dict[str, object]
@@ -177,6 +184,11 @@ def unshown(s: BkSlot, rng: random.Random) -> BkDraft:
             f"{them} inside {window_words(win) if win else 'the window'}, not with an account "
             "confirmed as the named person's.",
         )
+        if named:
+            why = (
+                f'The owner calls {them} "{called}", but no line carries {slug} in brackets; '
+                "a name used in a chat does not show that the account is the person's."
+            )
     return BkDraft(s.family, template, params, ex, quote, why, pr.p, s.lang, pr.sc, win,
                    facts={"variant": v}, mentions={slug} if named else set())  # fmt: skip
 

@@ -179,11 +179,13 @@ class Walk:
 
     # ------------------------------------------------------------ claims (guide rule 29)
 
-    def meaning(self, lang: str, form: str) -> tuple[str, str, str, str, str, str]:
-        """(situation, words, the claim's meaning, the plain meaning, a usage line, record) for
-        the meaning template. form: open (the record uses the words), open_q (it asks about
-        them), said or other (their user explains them), bare (no record). No two items, in
-        either split, use the same words."""
+    def meaning(self, lang: str, form: str) -> tuple[str, str, str, str, str, str, str]:
+        """(situation, words, the claim's meaning, the plain meaning, a usage line, record,
+        quote) for the meaning template. form: open (the record uses the words), open_q (it
+        asks about them), said or other (their user explains them: as the claim's meaning, or
+        as the plain thing, never of the claimed meaning's kind), bare (no record). The quote is
+        the words, or the clause of an explanation the answer rests on. No two items, in either
+        split, use the same words."""
         ru = lang in ("ru", "mixed")
         pool = self.phrases["ru" if ru else "en"]
         used = self.used_words
@@ -195,13 +197,15 @@ class Walk:
                 continue
             plain = "" if ru else row[2]
             code = mn.CODES[self._next("code", len(mn.CODES))]
+            while form == "other" and mn.clash(words, code):
+                code = mn.CODES[self._next("code", len(mn.CODES))]
             spots = cues.SPOTS_RU if ru else cues.SPOTS
             spot = spots[sit][self._next("mspot", 2)]
             uses = mn.USAGE_RU if ru else mn.USAGE
             verbs = {} if ru else mn.agree(words)
             usage = cues.fill(uses[self._next(f"use|{ru}", len(uses))], p=words, spot=spot,
                               **verbs)  # fmt: skip
-            record = ""
+            record, quote = "", words
             if form == "open":
                 record = usage
             elif form == "open_q":
@@ -209,19 +213,20 @@ class Walk:
                 record = cues.fill(asks[self._next(f"useq|{ru}", len(asks))], p=words,
                                    spot=spot, **verbs)  # fmt: skip
             elif form in ("said", "other"):
-                table = mn.SAID if form == "said" else mn.OTHER
-                record = cues.fill(table[self._next(form, len(table))], p=words, m=code,
-                                   a=plain, **verbs)  # fmt: skip
+                line = mn.EXPLAIN[self._next(form, len(mn.EXPLAIN))]
+                x = code if form == "said" else plain
+                record, quote = cues.quote_split(cues.fill(line, p=words, x=x, **verbs))
             if record and not self._fresh(record):
                 continue
             used.add(words)
-            return sit, words, code, plain, usage, record
+            return sit, words, code, plain, usage, record, quote
         raise RuntimeError(f"the {lang} meaning words ran out")
 
-    def act(self, kind: str, form: str, z: str) -> tuple[str, str, dict[str, str], str]:
-        """(situation, key, slot values, record) for a claimed act (kind 'act') or role (kind
-        'role') involving person:<z>; form picks the record's lines from the table (plan, did,
-        ask, tell, from, to, deny), or '' for no record."""
+    def act(self, kind: str, form: str, z: str) -> tuple[str, str, dict[str, str], str, str]:
+        """(situation, key, slot values, record, quote) for a claimed act (kind 'act') or role
+        (kind 'role') involving person:<z>; form picks the record's lines from the table (plan,
+        did, ask, tell, from, to, deny), or '' for no record. The quote is the clause the answer
+        rests on: the whole record unless its line marks one."""
         table = acts.ACTS if kind == "act" else acts.ROLES
         keys = sorted(table)
         for _ in range(200):
@@ -232,9 +237,10 @@ class Walk:
                       "thing": cues.THINGS[sit][v],
                       "hh": acts.HOURS[self._next("hh", len(acts.HOURS))]}  # fmt: skip
             if not form:
-                return sit, key, values, ""
+                return sit, key, values, "", ""
             lines = table[key][form]
-            record = cues.fill(lines[self._next(f"{kind}|{form}|{key}", len(lines))], **values)
+            marked = cues.fill(lines[self._next(f"{kind}|{form}|{key}", len(lines))], **values)
+            record, quote = cues.quote_split(marked)
             if self._fresh(record):
-                return sit, key, values, record
+                return sit, key, values, record, quote
         raise RuntimeError(f"no unused {kind} {form} record")

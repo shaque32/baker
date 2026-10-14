@@ -109,7 +109,7 @@ def _claim(walk: Walk, s: BkSlot, want: tuple[str, ...]) -> None:
         form = {"bk_meaning_said": "said", "bk_meaning_other": "other"}.get(s.family, "bare")
         if "meaning_open" in want:
             form = "open" if s.variant == "meaning" else "open_q"
-        s.sit, s.words, s.meaning, s.plain, s.usage, text = walk.meaning(s.lang, form)
+        s.sit, s.words, s.meaning, s.plain, s.usage, text, s.quote = walk.meaning(s.lang, form)
         s.text = text or s.text
     if {"act", "role", "claim_bare"} & set(want):
         kind = "role" if "role" in want else "act"
@@ -118,7 +118,7 @@ def _claim(walk: Walk, s: BkSlot, want: tuple[str, ...]) -> None:
         s.person2 = walk.person()
         forms = ACT_FORMS.get(s.variant, ("deny",) if s.family == "bk_claim_denied" else ("",))
         form = forms[walk._next(f"form|{s.family}|{s.variant}", len(forms))]
-        s.sit, s.act, s.vals, text = walk.act(kind, form, s.person2)
+        s.sit, s.act, s.vals, text, s.quote = walk.act(kind, form, s.person2)
         s.vals["kind"], s.vals["form"] = kind, form
         s.text = text or s.text
     if "handle_self" in want or "handle_any" in want:

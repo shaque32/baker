@@ -164,6 +164,7 @@ class BkSlot:
     meaning: str = ""  # the meaning the claim gives them
     plain: str = ""  # the plain thing they name in the chat
     usage: str = ""  # a line that uses the words
+    quote: str = ""  # the clause of an explanation, a denial or a claim's record to quote
     act: str = ""  # the act or role a claim states (bk_acts key)
     vals: dict[str, str] = field(default_factory=dict)  # its slot values (z, spot, thing, hh)
 

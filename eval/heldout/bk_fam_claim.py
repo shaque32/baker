@@ -12,6 +12,7 @@ from eval.heldout import bk_pick as pk
 from eval.heldout import bk_time as bt
 from eval.heldout.bk_build import pair
 from eval.heldout.bk_common import BkDraft, pick, window_words
+from eval.heldout.bk_cues import quote_split
 from eval.heldout.bk_naming import owner_sur, sur
 from eval.heldout.bk_schedule import BkSlot
 from eval.stancedata import bakerform as bf
@@ -83,29 +84,30 @@ def claim_open(s: BkSlot, rng: random.Random) -> BkDraft:
     way = "from" if from_person else "to"
     why = f"The record, {way} {p.shown}{inside}, {_WHY_FORM[form]}."
     template = "role" if s.vals["kind"] == "role" else "event"
-    return BkDraft(s.family, template, params, ex, s.text, why, p.pr.p, s.lang, p.pr.sc, win,
+    return BkDraft(s.family, template, params, ex, s.quote, why, p.pr.p, s.lang, p.pr.sc, win,
                    claim=claim,
                    mentions={bf.named_person(s.person2)},
                    facts={"variant": s.variant, "form": form})  # fmt: skip
 
 
-def _denial_text(rng: random.Random, s: BkSlot, win: bt.Win) -> tuple[str, str]:
-    """The denial and what it covers: 'never' (all time before it), or the window's dates."""
+def _denial_text(rng: random.Random, s: BkSlot, win: bt.Win) -> tuple[str, str, str]:
+    """The denial, the clause it rests on, and what it covers: 'never' (all time before it),
+    or the window's dates."""
     entry = acts.ACTS[s.act]
     if win.kind == "before" or rng.random() < 0.45:
-        return s.text, "never"
+        return s.text, s.quote, "never"
     city = rng.choice(acts.CITIES)
     first, last = win.first_day(), win.last_day()
     if first == last and rng.random() < 0.5:
-        text = ck.fill(rng.choice(entry["deny_day"]), s, day=ck.texted(first))
+        marked = ck.fill(rng.choice(entry["deny_day"]), s, day=ck.texted(first))
     elif first == last:
-        text = ck.fill(rng.choice(acts.ALIBI_DAY), s, day=ck.texted(first), city=city)
+        marked = ck.fill(rng.choice(acts.ALIBI_DAY), s, day=ck.texted(first), city=city)
     else:
         lo = first - bt.DAY * rng.randint(0, 2)
         hi = last + bt.DAY * rng.randint(0, 2)
-        text = ck.fill(rng.choice(acts.ALIBI_SPAN), s, first=ck.texted(lo), last=ck.texted(hi),
-                       city=city)  # fmt: skip
-    return text, "dates"
+        marked = ck.fill(rng.choice(acts.ALIBI_SPAN), s, first=ck.texted(lo),
+                         last=ck.texted(hi), city=city)  # fmt: skip
+    return (*quote_split(marked), "dates")
 
 
 def claim_denied(s: BkSlot, rng: random.Random) -> BkDraft:
@@ -118,13 +120,13 @@ def claim_denied(s: BkSlot, rng: random.Random) -> BkDraft:
         span = ck.role_span(rng, tz)
         utc = ck.after_end(rng, span, tz)
         claim, params, win = ck.role_claim(span, p.actor, s), {"person_ids": [p.person]}, None
-        text, covers, template = s.text, "never", "role"
+        text, quote, covers, template = s.text, s.quote, "never", "role"
     else:
         win = pk.pick_window(rng, tz, ("on", "On", "through", "before", "between", "about"))
         utc = ck.after_end(rng, win, tz)
         claim = ck.event_claim(win, p.actor, s)
         params = {"person_ids": ck.person_ids(rng, s, p.person), "window": win.tw()}
-        text, covers = _denial_text(rng, s, win)
+        text, quote, covers = _denial_text(rng, s, win)
         template = "event"
     before, after = ck.other_side(rng, mine, 0.0, 0.5)
     if rng.random() < 0.55:
@@ -142,6 +144,6 @@ def claim_denied(s: BkSlot, rng: random.Random) -> BkDraft:
         f"Sent after the claim's time ({ex.record.local_time}), the record from {p.shown} "
         f"denies the {what} the claim states {scope}, so it conflicts with the assumption.",
     )
-    return BkDraft(s.family, template, params, ex, text, why, p.pr.p, s.lang, p.pr.sc, win,
+    return BkDraft(s.family, template, params, ex, quote, why, p.pr.p, s.lang, p.pr.sc, win,
                    claim=claim, mentions={bf.named_person(s.person2)},
                    facts={"variant": s.variant, "covers": covers})  # fmt: skip

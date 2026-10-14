@@ -3,9 +3,10 @@ gives them, and what their user says they mean. SYNTHETIC.
 
 PHRASES are (situation, words, what the words plainly name in that situation). CODES are the
 meanings a claim gives such words. A usage line uses the words without saying what they mean;
-a SAID line from their user says they mean the claim's meaning, an OTHER line says they mean
-the plain thing and not the claim's. Slots: {p} the words, {m} the claim's meaning, {a} the
-plain meaning, {spot} a place from the situation.
+an EXPLAIN line from their user says what they mean: the claim's meaning (bk_meaning_said) or
+the plain thing (bk_meaning_other), which is another kind of thing than the claim's meaning
+and never names it. Slots: {p} the words, {x} the meaning explained, {spot} a place from the
+situation.
 """
 
 from __future__ import annotations
@@ -150,26 +151,45 @@ USAGE_Q = (
     "{is} {p} in ur car or mine?",
 )
 
-SAID = (
-    "when i say {p} i mean {m}",
-    "by {p} i mean {m}",
-    "{p} = {m}, thats what i meant",
-    "{p} {is} {m}, should have said",
-    "to be clear {p} {is} {m}",
-    "{p}? i meant {m}",
-    "{p} {means} {m}",
-    "{p}, as in {m}",
+# Both explanation families use these lines, so no wording tells them apart: only whether
+# {x} is the claim's meaning. Brackets mark the clause an item quotes when the rest adds
+# nothing to the answer (guide rule 7); an unmarked line is all deciding text.
+EXPLAIN = (
+    "when i say {p} i mean {x}",
+    "by {p} i mean {x}",
+    "[{p} = {x}], thats what i meant",
+    "[{p} {is} {x}], should have said",
+    "to be clear [{p} {is} {x}]",
+    "{p}? i meant {x}",
+    "{p} {means} {x}",
+    "{p}, as in {x}",
 )
-OTHER = (
-    "{p} {is} just {a}, not {m}",
-    "when i say {p} i mean {a}, not {m}",
-    "{p} {means} {a}. nothing to do with {m}",
-    "{p}? thats {a}, not {m}",
-    "by {p} i mean {a}, never {m}",
-    "{p} {is} literally {a}, nothing to do with {m}",
-    "{p}? i only ever mean {a} by that, not {m}",
-    "{p} {is} {a}, never {m}",
-)
+
+# Kinds a plain meaning shares with some claimed meanings. bk_meaning_other never pairs words
+# whose plain thing is of a claimed meaning's kind (key blanks against a spare key, a list of
+# drops against a ledger, a speaker against a second phone): the explanation must plainly be
+# another kind of thing, never one the claimed thing could hide behind.
+_KINDS = {
+    "lock": ("the lockout kit", "the key blanks", "the rekey kit", "the code machine",
+             "the tension wrenches", "the pin trays", "the key tags", "the key covers"),
+    "paper": ("the manifest", "the delivery slips", "the intake forms", "the hem box",
+              "the scripts binder", "the star charts", "the test prints", "the pattern rolls",
+              "the jug labels", "the plant tags", "the key tags"),
+    "device": ("the coxbox", "the stroke watch", "the power tank", "the bike lights",
+               "the tow lights", "the dew heaters", "the heat mats", "the code machine"),
+}  # fmt: skip
+CODE_KIND = {
+    "the second phone": "device",
+    "the backup hard drive": "device",
+    "the spare key to the storage unit": "lock",
+    "the key to the back gate": "lock",
+    "the ledger with the cash counts": "paper",
+}
+
+
+def clash(words: str, code: str) -> bool:
+    """Whether the words' plain thing is of the same kind as the claimed meaning."""
+    return words in _KINDS.get(CODE_KIND.get(code, ""), ())
 
 
 def agree(words: str) -> dict[str, str]:

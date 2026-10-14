@@ -19,7 +19,8 @@ from eval.heldout.bk_schedule import BkSlot
 
 def meaning_explained(s: BkSlot, rng: random.Random) -> BkDraft:
     """bk_meaning_said / bk_meaning_other: the account that used the words earlier in the
-    chat says they mean the claim's meaning, or plainly another one that excludes it."""
+    chat says they mean the claim's meaning, or the plain thing they name, another kind of
+    thing than the claim's meaning, which the record never mentions."""
     p = ck.party(rng, s, linked=s.variant == "linked")
     mine = p.mine(True)
     before = [(mine, s.usage), (not mine, rng.choice(mn.ASK))]
@@ -40,9 +41,10 @@ def meaning_explained(s: BkSlot, rng: random.Random) -> BkDraft:
     else:
         why = (
             f'{p.shown}, which used "{s.words}" earlier in the chat, says they mean {s.plain}, '
-            f"not {s.meaning}; that cannot be true together with the claim's meaning."
+            f"another kind of thing than {s.meaning}, the meaning the claim gives them; both "
+            "cannot be what the words meant."
         )
-    return BkDraft(s.family, "meaning", {"quoted_text": s.words}, ex, s.text, why, p.pr.p,
+    return BkDraft(s.family, "meaning", {"quoted_text": s.words}, ex, s.quote, why, p.pr.p,
                    s.lang, p.pr.sc, claim=claim, facts={"variant": s.variant})  # fmt: skip
 
 

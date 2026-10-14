@@ -191,6 +191,12 @@ def cue_split(marked: str) -> tuple[str, str]:
     return _CUE.sub(r"\1", marked), found[0]
 
 
+def quote_split(marked: str) -> tuple[str, str]:
+    """The record text and the part an item quotes (guide rule 7): the bracketed span, the
+    clause the answer rests on, or the whole text when the template marks none."""
+    return cue_split(marked) if "[" in marked else (marked, marked)
+
+
 def fill(template: str, **values: str) -> str:
     """str.format for the slots a template uses; unused values are ignored."""
     return template.format_map(values)
