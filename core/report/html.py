@@ -250,7 +250,15 @@ def _limitations(conn: sqlite3.Connection, srcs: list[tuple]) -> str:
                 "on it.</li>"
             )
     for cov in import_coverage.summaries(conn):
-        if cov.format_unverified:
+        if cov.format_unverified and cov.importer == "axiom":
+            items.append(
+                f"<li><strong>{q(cov.file_name)} was read with Baker's Magnet AXIOM reader, which "
+                "is not yet verified against a real AXIOM export.</strong> It was built from "
+                "public descriptions of AXIOM's report exports and tested on synthetic exports "
+                "only. Each record cited from this file should be compared with the same record "
+                "in AXIOM Examine before it is relied on.</li>"
+            )
+        elif cov.format_unverified:
             items.append(
                 f"<li><strong>{q(cov.file_name)} was read with Baker's UFDR reader, which is not "
                 "yet verified against a real UFDR.</strong> It was built from Cellebrite's public "

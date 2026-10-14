@@ -6,7 +6,7 @@ later, after the audit engine scores well on the eval set. A CLI comes first.
 ## Pipeline
 
 ```
-1. INGEST     extraction report (UFDR, Cellebrite Excel/PDF/HTML, later AXIOM, raw ZIP)
+1. INGEST     extraction report (UFDR, Cellebrite Excel/PDF/HTML, AXIOM XML/Excel, raw ZIP)
               + government document PDF -> SHA-256 every input, read-only
 2. NORMALIZE  importers write canonical rows (core/schema.sql); every row has source_ref,
               times are UTC + original offset + raw source value
@@ -94,7 +94,8 @@ tests/
   (for example `msg:<source_id>:<locator>`), so re-importing gives the same ids and gold labels
   can point at specific messages.
 - **source_ref.** `source_id` plus a `locator` string whose meaning depends on the source kind:
-  an XML path for UFDR, `sheet!row` for Excel, `page:para` for PDF.
+  an XML path for UFDR, `sheet!row` for Excel, `page:para` for PDF, `Artifact[n]/Hit[m]` for an
+  AXIOM XML report.
 - **Fidelity.** Every source records whether it is a full extraction or a curated report.
   Absence checks and the selection audit read this; a curated report can never support an absence claim.
 - **Two-stage evidence.** `StanceLabel` is raw, untrusted model output. It becomes an

@@ -139,14 +139,33 @@ _INFO_COUNTERS = {
 }
 
 
-# Shown first for every import made with an unverified reader (the UFDR importer, until a real
-# package has been checked against Cellebrite Reader). Attention level: the expert must see it.
+# Shown first for every import made with an unverified reader (the UFDR and AXIOM importers,
+# until a real file has been checked against the tool that made it). Attention level: the
+# expert must see it.
 FORMAT_UNVERIFIED = (
     "Baker's UFDR reader is not yet verified. It was built from Cellebrite's public "
     "descriptions of the UFDR format and tested only on synthetic packages, never on a real "
     "one. Before relying on a record, open the same record in Cellebrite Reader and compare "
     "(each record's locator gives its place in report.xml)."
 )
+FORMAT_UNVERIFIED_AXIOM = (
+    "Baker's Magnet AXIOM reader is not yet verified. It was built from public descriptions of "
+    "AXIOM's XML and Excel report exports and tested only on synthetic exports, never on a real "
+    "one. Before relying on a record, open the same record in AXIOM Examine (or the examiner's "
+    "portable case) and compare (each record's locator gives its artifact and hit, or its sheet "
+    "and row)."
+)
+# Per importer: the unverified notice, the tool to compare records in, and what the file is.
+READERS: dict[str, tuple[str, str, str]] = {
+    "ufdr": (FORMAT_UNVERIFIED, "Cellebrite Reader", "package"),
+    "axiom": (FORMAT_UNVERIFIED_AXIOM, "AXIOM Examine", "report"),
+}
+
+
+def reader_words(importer: str) -> tuple[str, str, str]:
+    return READERS.get(importer, READERS["ufdr"])
+
+
 # Record flags a UFDR import lists by locator: (level, words). {n} is the count with its noun;
 # {be}, {have}, {s0} and {them} agree with it.
 _FLAG_WORDS: dict[str, tuple[Level, str]] = {
@@ -154,12 +173,12 @@ _FLAG_WORDS: dict[str, tuple[Level, str]] = {
         "attention",
         "{n} {be} marked as recovered by carving (rebuilt from raw or unallocated data), so "
         "{them} may be incomplete or wrong in text, time or parties. They were imported; check "
-        "each one in Cellebrite Reader before relying on it.",
+        "each one in {tool} before relying on it.",
     ),
     "decoding_confidence_not_high": (
         "attention",
         "{n} {have} a decoding confidence other than high in the package; check {them} in "
-        "Cellebrite Reader before relying on {them}.",
+        "{tool} before relying on {them}.",
     ),
     "attachment_file_not_in_package": (
         "attention",
@@ -175,7 +194,7 @@ _FLAG_WORDS: dict[str, tuple[Level, str]] = {
         "{n} {have} an attachment with neither a file name nor a file, so it was not recorded.",
     ),
     "duration_unread": ("attention", "{n} {have} a call duration Baker could not read."),
-    "no_time": ("attention", "{n} {have} no time in the package, so no time was set."),
+    "no_time": ("attention", "{n} {have} no time in the {container}, so no time was set."),
 }
 
 
@@ -284,7 +303,7 @@ def _names(values: list[str]) -> list[Segment]:
     return out
 
 
-def _table_items(t: dict, xml: bool = False) -> list[CoverageItem]:
+def _table_items(t: dict, xml: bool = False, importer: str = "ufdr") -> list[CoverageItem]:
     """Items for one table (a sheet or PDF table), or one record type of a UFDR (`xml`)."""
     items: list[CoverageItem] = []
     name = str(t.get("name"))
@@ -370,6 +389,7 @@ def _table_items(t: dict, xml: bool = False) -> list[CoverageItem]:
                 ),
             )
         )
+    _notice, tool, container = reader_words(importer)
     for loc_reason, locs in sorted((t.get("flagged_locators") or {}).items()):
         if loc_reason in _FLAG_WORDS:
             level, words = _FLAG_WORDS[loc_reason]
@@ -378,7 +398,10 @@ def _table_items(t: dict, xml: bool = False) -> list[CoverageItem]:
                 CoverageItem(
                     level,
                     loc_reason,
-                    (*where, _t(_fill(words, n, n=_n(n, "records")))),
+                    (
+                        *where,
+                        _t(_fill(words, n, n=_n(n, "records"), tool=tool, container=container)),
+                    ),
                     tuple(locs),
                 )
             )
@@ -569,7 +592,8 @@ def summarize(c: SourceCoverage) -> CoverageSummary:
     items: list[CoverageItem] = []
     xml = p.get("layout") == "xml"  # a UFDR: record types, not sheets or tables
     if p.get("format_support") == "unverified":
-        items.append(CoverageItem("attention", "format_unverified", (_t(FORMAT_UNVERIFIED),)))
+        notice = reader_words(str(p.get("importer", "")))[0]
+        items.append(CoverageItem("attention", "format_unverified", (_t(notice),)))
     tables = [t for t in p.get("tables", []) if isinstance(t, dict)]
     for entry in p.get("not_imported", []) or []:
         reason = str(entry.get("reason", ""))
@@ -598,19 +622,23 @@ def summarize(c: SourceCoverage) -> CoverageSummary:
             )
         )
     for t in tables:
-        items += _table_items(t, xml)
+        items += _table_items(t, xml, str(p.get("importer", "")))
     borrowed: dict[tuple[str, str], list[str]] = {}
     for t in tables:
         basis, order = t.get("date_order_basis"), t.get("date_order")
-        if basis in ("other tables in the report", "stated at import") and order in ("dmy", "mdy"):
+        if basis in ("other tables in the report", "stated at import", "field name") and order in (
+            "dmy",
+            "mdy",
+        ):
             borrowed.setdefault((basis, order), []).append(str(t.get("name")))
     for (basis, order), names in borrowed.items():
         words = "day first" if order == "dmy" else "month first"
-        why = (
-            "because other tables in the same report decide the order"
-            if basis == "other tables in the report"
-            else "as stated at import"
-        )
+        why = {
+            "other tables in the report": (
+                "because other tables in the same report decide the order"
+            ),
+            "field name": "as the date format in the time field's name states",
+        }.get(basis, "as stated at import")
         items.append(
             CoverageItem(
                 "info",
