@@ -234,6 +234,19 @@ def _who(data: CaseData, account_id: str | None) -> str:
     return repr(acct.key) if acct else account_id
 
 
+def _thread_recipients(case: Case, thread_id: str) -> dict[str, tuple[str, ...]]:
+    """Every message's recipient accounts in one conversation, read in one query."""
+    out: dict[str, list[str]] = {}
+    for mid, acct in case.conn.execute(
+        "SELECT r.message_id, r.account_id FROM message_recipients r"
+        " JOIN messages m ON m.id = r.message_id WHERE m.thread_id = ?"
+        " ORDER BY r.message_id, r.account_id",
+        (thread_id,),
+    ):
+        out.setdefault(mid, []).append(acct)
+    return {k: tuple(v) for k, v in out.items()}
+
+
 def _recipients(case: Case, message_id: str) -> tuple[str, ...]:
     """A message's recipient accounts, so copies are told apart by who they went to."""
     return tuple(
@@ -440,18 +453,27 @@ def _intro_fits(
 
 def _name_fits(case: Case, keys: set[Key], persons: list[idl.Person]) -> list[Fit]:
     out: list[Fit] = []
-    seen: set[tuple[Key, str]] = set()  # per account: its copies on both phones show once
+    # Per account and name, as many lines as the phone holding the most such records: its
+    # copies on both phones show once, two records on one phone show twice.
+    lines: dict[tuple[Key, str], int] = {}
+    per_phone: dict[tuple[Key, str, str], int] = {}
+    placed: set[tuple[Key, str]] = set()  # (account, record): a record listed twice
     for k in sorted(keys):
         g = case.ids.groups.get(k)
         if g is None:
             continue
         for s in g.names:
             text = s.text.strip()
-            if s.kind == "user name" or "@" in text or not s.words or (k, text.casefold()) in seen:
+            if s.kind == "user name" or "@" in text or not s.words or (k, s.record_id) in placed:
                 continue
             if any(_shares_word(p, s.words) for p in persons):
                 continue
-            seen.add((k, text.casefold()))
+            name = (k, text.casefold())
+            n = per_phone[(*name, s.source_id)] = per_phone.get((*name, s.source_id), 0) + 1
+            placed.add((k, s.record_id))
+            if n <= lines.get(name, 0):
+                continue  # a copy of a record already shown, on another phone
+            lines[name] = n
             who = " or ".join(cite(p.name) for p in persons)
             extra = f" ({s.note})" if s.note else ""
             out.append(
@@ -1164,17 +1186,21 @@ def _same_words(case: Case, assumptions: list[Assumption]) -> Alternative | None
             continue
         copies = {_copy_key(case.data, r) for r in claimed}
         claimed_ids = {r.id for r in claimed}
-        threads = list(
-            dict.fromkeys(
-                case.conn.execute(
-                    "SELECT thread_id FROM messages WHERE id = ?", (r.id,)
-                ).fetchone()[0]
-                for r in claimed
-            )
-        )
+        # Each quoted message's time, by its conversation: a match is near only to a quote in
+        # its own conversation.
+        quoted_at: dict[str, list[datetime]] = {}
+        for r in claimed:
+            (tid,) = case.conn.execute(
+                "SELECT thread_id FROM messages WHERE id = ?", (r.id,)
+            ).fetchone()
+            times = quoted_at.setdefault(tid, [])
+            if r.ts_utc is not None:
+                times.append(r.ts_utc)
         pattern = re.compile(r"\b(?:" + "|".join(re.escape(w) for w in words) + r")\b", re.I)
         found: list[tuple[Row, str]] = []
-        for tid in threads:
+        thread_of: dict[str, str] = {}
+        for tid in quoted_at:
+            to = _thread_recipients(case, tid)
             for mid, sid, app, sender, ts, raw, body in case.conn.execute(
                 "SELECT m.id, m.source_id, t.app, m.sender_account_id, m.ts_utc, m.ts_raw, m.body"
                 " FROM messages m JOIN threads t ON t.id = m.thread_id WHERE m.thread_id = ?"
@@ -1184,21 +1210,24 @@ def _same_words(case: Case, assumptions: list[Assumption]) -> Alternative | None
                 m = pattern.search(body or "")
                 if m is None:
                     continue
-                row = Row(
-                    mid, "message", sid, app, sender, _recipients(case, mid), _parse(ts), raw, body
-                )
+                row = Row(mid, "message", sid, app, sender, to.get(mid, ()), _parse(ts), raw, body)
                 if row.id in claimed_ids or _copy_key(case.data, row) in copies:
                     continue  # the claimed message, or its copy on the other phone
                 found.append((row, f"Uses “{cite(m.group(0))}” in the same conversation."))
+                thread_of[mid] = tid
         rows = _dedupe(case.data, [r for r, _ in found])
         notes = {r.id: n for r, n in found}
         anchor = claimed[0].ts_utc
         pairs += [(r, notes[r.id]) for r in _by_time(rows, anchor)]
-        # From every quoted message: one quote can stand in several messages.
-        quoted_at = [c.ts_utc for c in claimed if c.ts_utc is not None]
+        # From every quoted message in the match's own conversation: one quote can stand in
+        # several messages.
         for r in rows:
             gap = min(
-                (abs((r.ts_utc - t).total_seconds()) for t in quoted_at if r.ts_utc),
+                (
+                    abs((r.ts_utc - t).total_seconds())
+                    for t in quoted_at[thread_of[r.id]]
+                    if r.ts_utc
+                ),
                 default=float("inf"),
             )
             k = _copy_key(case.data, r)

@@ -1244,3 +1244,83 @@ def test_hand_off_search_reads_each_phone_once(conn):
         conn.set_trace_callback(None)
     assert found
     assert len(reads) == 1  # the phone's records, read once for every claimed message
+
+
+# ---------------------------------------------------------------- seventeenth review
+
+
+def test_one_name_in_two_records_on_one_phone_shows_twice(conn):
+    case = explain.load(conn)
+
+    def name(rid: str, sid: str):  # noqa: ANN202
+        return SimpleNamespace(
+            text="Ilya M", kind="contact name", words=("ilya", "m"), record_id=rid,
+            source_id=sid, locator=rid, note="",
+        )  # fmt: skip
+
+    k = ("sms", "+1")
+    names = [name("c1", "item1"), name("c2", "item1"), name("c3", "item2"), name("c1", "item1")]
+    case.ids.groups = {k: SimpleNamespace(label="a", names=names)}
+    fits = explain._name_fits(case, {k}, [_person("Daniel Petrov")])
+    # Two records on item1 stay two; item2's record is a copy of one of them.
+    assert [f.record_id for f in fits] == ["c1", "c2"]
+
+
+def _meaning_thread(conn):  # noqa: ANN202
+    meaning = next(a for a in claim_state(conn, "C13").assumptions if a.template_id == "meaning")
+    (quoted, *_) = explain._quoted_rows(explain.load(conn), meaning)
+    (thread,) = conn.execute("SELECT thread_id FROM messages WHERE id = ?", (quoted.id,)).fetchone()
+    return meaning, quoted, thread
+
+
+def _add_message(conn, rid: str, sid: str, thread: str, at: datetime, body: str) -> None:  # noqa: ANN001
+    conn.execute(
+        "INSERT INTO messages (id, source_id, locator, thread_id, direction, ts_utc, ts_raw,"
+        " body) VALUES (?, ?, ?, ?, 'incoming', ?, 'test', ?)",
+        (rid, sid, f"Test!{rid}", thread, at.isoformat(), body),
+    )
+
+
+def test_same_words_reads_recipients_once_per_conversation(conn):
+    meaning, quoted, thread = _meaning_thread(conn)
+    word = explain._words(meaning.params.quoted_text or "")[0]
+    for n in range(20):
+        at = quoted.ts_utc + timedelta(minutes=10 + n)
+        _add_message(conn, f"msg:test:w{n}", quoted.source_id, thread, at, f"so {word} ok")
+    case = explain.load(conn)
+    reads: list[str] = []
+    conn.set_trace_callback(
+        lambda sql: reads.append(sql) if "FROM message_recipients" in sql else None
+    )
+    try:
+        alt = explain._same_words(case, [meaning])
+    finally:
+        conn.set_trace_callback(None)
+    assert alt is not None and alt.total >= 20
+    assert len(reads) < 10  # not one query per matching message
+
+
+def test_same_words_nearness_stays_in_each_conversation(conn):
+    meaning, quoted, thread = _meaning_thread(conn)
+    word = explain._words(meaning.params.quoted_text or "")[0]
+    (other,) = conn.execute(
+        "SELECT thread_id FROM messages WHERE source_id = ? AND thread_id != ? LIMIT 1",
+        (quoted.source_id, thread),
+    ).fetchone()
+    t0 = quoted.ts_utc
+    later = t0 + timedelta(minutes=5000)
+    # The quote again, in another conversation, a minute from a match in the first one.
+    _add_message(conn, "msg:test:elsewhere", quoted.source_id, other, later,
+                 meaning.params.quoted_text or "")  # fmt: skip
+    _add_message(conn, "msg:test:late", quoted.source_id, thread, later + timedelta(minutes=1),
+                 f"and {word} too")  # fmt: skip
+    for n in range(explain.MAX_FITS + 1):
+        _add_message(conn, f"msg:test:early{n}", quoted.source_id, thread,
+                     t0 + timedelta(minutes=2 + n), f"so {word} ok")  # fmt: skip
+    case = explain.load(conn)
+    assert any(r.id == "msg:test:elsewhere" for r in explain._quoted_rows(case, meaning))
+    alt = explain._same_words(case, [meaning])
+    assert alt is not None
+    shown = [f.record_id for f in alt.fits]
+    assert "msg:test:late" not in shown  # far from the quote in its own conversation
+    assert shown[0] == "msg:test:early0"
