@@ -73,6 +73,7 @@ FAMILY_TEXT: dict[Family, str] = {
 _IDENTITY_TEMPLATES = frozenset({"sender", "authorship", "person_identity"})
 _WINDOW_TEMPLATES = frozenset({"message_count", "no_contact"})
 _SILENCE_TEMPLATES = frozenset({"no_contact", "event"})
+_TIMED_QUOTES = frozenset({"record_time", "weekday_date"})
 _QUOTE_TEMPLATES = frozenset({"sender", "record_time", "weekday_date", "meaning"})
 
 # The user of an account naming themselves: "hey its alex turner", "its ilya btw". Only at the
@@ -203,19 +204,37 @@ def _row_text(row: Row) -> str:
     return row.text or ""
 
 
-def _copy_key(row: Row) -> tuple[str, ...]:
-    """What two copies of one message or call on two phones share. Only rows from different
-    sources are ever taken as copies; two rows on one phone are two records."""
+def _who(data: CaseData, account_id: str | None) -> str:
+    """An account as both phones would name it (app and identifier), not by its per-phone id."""
+    if account_id is None:
+        return ""
+    acct = data.accounts.get(account_id)
+    return repr(acct.key) if acct else account_id
+
+
+def _copy_key(data: CaseData, row: Row) -> tuple[str, ...]:
+    """What two copies of one message or call on two phones share: kind, app, words or length,
+    time, sender and recipients. Only rows from different sources are ever taken as copies;
+    two rows on one phone are two records."""
     when = row.ts_utc.isoformat() if row.ts_utc else row.id
-    return (row.kind, row.app.strip().casefold(), row.text or "", str(row.duration_s), when)
+    to = sorted(_who(data, x) for x in row.recipients)
+    return (
+        row.kind,
+        row.app.strip().casefold(),
+        row.text or "",
+        str(row.duration_s),
+        when,
+        _who(data, row.sender),
+        "|".join(to),
+    )
 
 
-def _dedupe(rows: Iterable[Row]) -> list[Row]:
+def _dedupe(data: CaseData, rows: Iterable[Row]) -> list[Row]:
     """The same message held on two phones shows once (the first copy seen)."""
     out: list[Row] = []
     sources: dict[tuple[str, ...], set[str]] = {}
     for r in rows:
-        k = _copy_key(r)
+        k = _copy_key(data, r)
         seen = sources.setdefault(k, set())
         if seen and r.source_id not in seen:
             continue  # a copy of a row from another phone
@@ -275,7 +294,8 @@ def _account_label(case: Case, keys: Iterable[Key]) -> str:
 
 def _quoted_rows(case: Case, a: Assumption) -> list[Row]:
     """Messages holding the assumption's quote, verbatim and word-aligned, within its scope: the
-    phones and apps it names, and messages its parties sent or received. When no copy
+    phones and apps it names, and messages its parties sent or received. For a time statement
+    every named party must be on the message, as in the time checks. Otherwise, when no copy
     involves a party (the claim may name the wrong sender), every copy in scope is kept."""
     p = a.params
     if not p.quoted_text:
@@ -287,9 +307,11 @@ def _quoted_rows(case: Case, a: Assumption) -> list[Row]:
     apps = [c for c in p.channels if c.strip().lower() != CALL_CHANNEL]
     if apps:
         rows = [r for r in rows if channel_ok(r, apps)]
-    accounts: set[str] = set()
-    for party in parties(case.data, p):
-        accounts |= case.data.account_ids(party.keys)
+    party_ids = [case.data.account_ids(x.keys) for x in parties(case.data, p)]
+    if a.template_id in _TIMED_QUOTES:
+        # The time checks' rule: every named party on the message, or no party named.
+        return [r for r in rows if not party_ids or involves_all(r, party_ids)]
+    accounts = set().union(*party_ids) if party_ids else set()
     involved = [r for r in rows if r.accounts & accounts]
     return involved or rows
 
@@ -345,7 +367,7 @@ def _intro_fits(
     accounts = case.data.account_ids(keys)
     found: list[tuple[Row, str]] = []
     for row in _dedupe(
-        r for r in messages_for_accounts(case.data, accounts) if r.sender in accounts
+        case.data, [r for r in messages_for_accounts(case.data, accounts) if r.sender in accounts]
     ):
         for m in _INTRO.finditer(row.text or ""):
             w1 = m.group(1).casefold()
@@ -448,7 +470,7 @@ def _handoff_fits(case: Case, claimed: list[Row]) -> tuple[list[tuple[Row, str]]
                 f"(“{cite(m.group(0))}”), on the same phone near the message.",
             )
     anchor = claimed[0].ts_utc if claimed else None
-    rows = _by_time(_dedupe(r for r, _ in out.values()), anchor)
+    rows = _by_time(_dedupe(case.data, [r for r, _ in out.values()]), anchor)
     found = [out[r.id] for r in rows]
     searched = (
         "messages on " + "; ".join(dict.fromkeys(spans)) + " for words about using another "
@@ -636,7 +658,7 @@ def _clock(case: Case, assumptions: list[Assumption]) -> Alternative | None:
             continue
         rows = _clock_rows(case, a, claimed)
         offsets = case.offsets(r.id for r in rows)
-        for r in _dedupe(rows):
+        for r in _dedupe(case.data, rows):
             at = r.ts_utc
             if at is None or in_window(at, window):
                 continue  # no usable time, or inside the stated time on the real clock
@@ -709,7 +731,16 @@ def _day_boundary(case: Case, assumptions: list[Assumption]) -> Alternative | No
         got = _party_rows(case, a)
         if wall is None or got is None:
             continue
-        rows = _dedupe(r for r in got[0] if channel_ok(r, a.params.channels))
+        # A message count counts messages only, so a call cannot move it; no_contact covers calls.
+        msgs_only = a.template_id == "message_count"
+        rows = _dedupe(
+            case.data,
+            (
+                r
+                for r in got[0]
+                if channel_ok(r, a.params.channels) and not (msgs_only and r.kind == "call")
+            ),
+        )
         if a.params.device_ids:
             srcs = set(case.data.sources_for(a.params.device_ids))
             rows = [r for r in rows if r.source_id in srcs]
@@ -743,8 +774,9 @@ def _day_boundary(case: Case, assumptions: list[Assumption]) -> Alternative | No
         " ".join(dict.fromkeys(summaries)),
         tuple(fits[:MAX_FITS]),
         len(fits),
-        "Searched messages and calls between the parties the claim names, on the apps it "
-        "names, and compared the stated dates in the stated zone with the same dates in UTC.",
+        "Searched messages (and calls, for a statement of no contact) between the parties the "
+        "claim names, on the apps it names, and compared the stated dates in the stated zone "
+        "with the same dates in UTC.",
         tuple(used),
     )
 
@@ -755,7 +787,7 @@ def _day_boundary(case: Case, assumptions: list[Assumption]) -> Alternative | No
 def _other_app(case: Case, assumptions: list[Assumption]) -> Alternative | None:
     fits: list[Fit] = []
     used: list[str] = []
-    named: list[str] = []
+    summaries: list[str] = []
     for a in assumptions:
         p = a.params
         apps = [c for c in p.channels if c.strip().lower() != CALL_CHANNEL]
@@ -778,23 +810,32 @@ def _other_app(case: Case, assumptions: list[Assumption]) -> Alternative | None:
             and in_window(r.ts_utc, window)
             and not channel_ok(r, p.channels)
         ]
-        others = _dedupe(others)
+        others = _dedupe(case.data, others)
         if not others:
             continue
         used.append(a.id)
-        named += apps
+        # One sentence per statement, so each names only its own apps and window.
+        summaries.append(
+            f"Inside {cite(window.raw)} the same people were in contact outside "
+            f"{_joined(apps)}: {len(others)} record(s) on other apps or calls."
+        )
         for r in _by_time(others):
             what = "A call" if r.kind == "call" else f"A {cite(r.app)} message"
-            fits.append(_fit(case, r, f"{what} between the same people inside {cite(window.raw)}."))
+            fits.append(
+                _fit(
+                    case,
+                    r,
+                    f"{what} between the same people inside {cite(window.raw)}, outside "
+                    f"{_joined(apps)}.",
+                )
+            )
     if not fits:
         return None
-    apps_text = ", ".join(cite(x) for x in dict.fromkeys(named))
     return Alternative(
         "other_app",
         "completeness",
         "The conversation may have gone on another app",
-        f"Inside the stated window the same people were in contact outside {apps_text}: "
-        f"{len(fits)} record(s) on other apps or calls.",
+        " ".join(dict.fromkeys(summaries)),
         tuple(fits[:MAX_FITS]),
         len(fits),
         "Searched messages and calls between the parties the claim names, inside its window, on "
@@ -969,7 +1010,7 @@ def _same_words(case: Case, assumptions: list[Assumption]) -> Alternative | None
         claimed = _quoted_rows(case, a)
         if not words or not claimed:
             continue
-        copies = {_copy_key(r) for r in claimed}
+        copies = {_copy_key(case.data, r) for r in claimed}
         claimed_ids = {r.id for r in claimed}
         threads = list(
             dict.fromkeys(
@@ -992,10 +1033,10 @@ def _same_words(case: Case, assumptions: list[Assumption]) -> Alternative | None
                 if m is None:
                     continue
                 row = Row(mid, "message", sid, app, sender, (), _parse(ts), raw, body)
-                if row.id in claimed_ids or _copy_key(row) in copies:
+                if row.id in claimed_ids or _copy_key(case.data, row) in copies:
                     continue  # the claimed message, or its copy on the other phone
                 found.append((row, f"Uses “{cite(m.group(0))}” in the same conversation."))
-        rows = _dedupe(r for r, _ in found)
+        rows = _dedupe(case.data, [r for r, _ in found])
         notes = {r.id: n for r, n in found}
         anchor = claimed[0].ts_utc
         for r in _by_time(rows, anchor):

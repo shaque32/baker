@@ -15,6 +15,7 @@ import shutil
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -308,6 +309,9 @@ def _row(rid: str, source: str, text: str, ts: datetime | None):  # noqa: ANN202
     return Row(rid, "message", source, "SMS", None, (), ts, None, text)
 
 
+_NO_ACCOUNTS = SimpleNamespace(accounts={})
+
+
 def test_copies_collapse_only_across_phones():
     t = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
     rows = [
@@ -315,7 +319,10 @@ def test_copies_collapse_only_across_phones():
         _row("a2", "item1", "ok", t),
         _row("b1", "item2", "ok", t),
     ]
-    assert [r.id for r in explain._dedupe(rows)] == ["a1", "a2"]  # two replies on one phone
+    assert [r.id for r in explain._dedupe(_NO_ACCOUNTS, rows)] == [
+        "a1",
+        "a2",
+    ]  # two replies on one phone
 
 
 def test_a_record_with_no_time_gets_no_derived_time(conn):
@@ -377,3 +384,64 @@ def test_a_quiet_app_edge_can_be_a_call(conn):
     before = next(f for f in quiet.fits if f.source_id == "item1" and "last before" in f.note)
     assert before.record_id == "call:item1:test"
     assert before.quote == "WhatsApp call, 30 s"
+
+
+# ---------------------------------------------------------------- scope (third Codex review)
+
+
+def test_copies_need_the_same_people():
+    from core.audit.checks._common import Row
+
+    t = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
+    rows = [
+        Row("a", "message", "item1", "SMS", "acct:a", ("acct:b",), t, None, "ok"),
+        Row("b", "message", "item2", "SMS", "acct:c", ("acct:d",), t, None, "ok"),
+    ]
+    assert [r.id for r in explain._dedupe(_NO_ACCOUNTS, rows)] == ["a", "b"]
+
+
+def test_a_quoted_time_needs_every_named_party(conn):
+    case = explain.load(conn)
+    # Petrov and a stranger's number: the quoted message is between Petrov and someone else.
+    timed = _asm(
+        conn,
+        "C10",
+        "record_time",
+        person_ids=("person:dev:item1:owner",),
+        account_ids=("acct:item1:SMS:+12125550133",),
+    )
+    assert explain._quoted_rows(case, timed) == []
+    # A sender statement keeps every copy: the claim may name the wrong sender.
+    sender = timed.model_copy(update={"template_id": "sender"})
+    assert explain._quoted_rows(case, sender)
+
+
+def test_each_other_app_sentence_names_its_own_app(conn):
+    whatsapp = _asm(conn, "C14", "no_contact", channels=("WhatsApp",))
+    telegram = _asm(conn, "C14", "no_contact", channels=("Telegram",))
+    alt = explain._other_app(explain.load(conn), [whatsapp, telegram])
+    assert alt is not None
+    sentences = alt.summary.split(". ")
+    assert len(sentences) == 2
+    assert "WhatsApp" in sentences[0] and "Telegram" not in sentences[0]
+    assert "Telegram" in sentences[1] and "WhatsApp" not in sentences[1]
+
+
+def test_a_call_never_moves_a_message_count(conn):
+    frm, to = conn.execute(
+        "SELECT from_account_id, to_account_id FROM calls WHERE id = 'call:item1:Call Log!16'"
+    ).fetchone()
+    conn.execute(
+        "INSERT INTO calls (id, source_id, locator, device_id, app, from_account_id,"
+        " to_account_id, direction, ts_utc, ts_offset_min, ts_raw, duration_s)"
+        " VALUES ('call:item1:edge', 'item1', 'Test!2', 'dev:item1', 'Phone', ?, ?,"
+        " 'outgoing', '2026-03-20T02:00:00Z', 0, '3/20/2026 2:00:00 AM(UTC+0)', 60)",
+        (frm, to),
+    )
+    case = explain.load(conn)
+    silence = _asm(conn, "C14", "no_contact")
+    ids = [f.record_id for f in explain._day_boundary(case, [silence]).fits]
+    assert "call:item1:edge" in ids
+    count = silence.model_copy(update={"template_id": "message_count"})
+    ids = [f.record_id for f in explain._day_boundary(case, [count]).fits]
+    assert "call:item1:edge" not in ids and ids
