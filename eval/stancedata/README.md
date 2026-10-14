@@ -11,11 +11,12 @@ go bar. The two generators live next door:
 
 | Path | What it is |
 |---|---|
-| `LABELING_GUIDE.md` | The rulebook: the four answers, the ground rules, 38 families with a fixed answer each. Draft v0.3, for Arsh to sign. |
+| `LABELING_GUIDE.md` | The rulebook: the four answers, the ground rules, 65 families with a fixed answer each (38 plain, 27 in Baker's own wording). Draft v0.3, for Arsh to sign. |
 | `families.py` | The same families as code. A generator picks a family; the label comes from it. |
 | `model.py`, `chat.py` | The item format (a probe item with a wider id) and the shared mechanics: accounts, local times, item assembly. No wording. |
-| `../train/` | Training generator: 12,000 items by default, with sibling items that share a record and differ in the assumption. |
-| `../heldout/` | Held-out generator, written separately with its own names, situations and wording: a 1,020-item test split (ids H...) and a 510-item dev split (ids D...). |
+| `bakerform.py`, `names.py` | Items in Baker's own wording: the product's assumption templates, sender lines and call text, rendered with the names a case gives (`core/audit/readable.py`), so the model reads what Baker will show it. |
+| `../train/` | Training generator: 12,000 plain items, with sibling items that share a record and differ in the assumption, then 7,000 items in Baker's own wording (`--n-baker`). |
+| `../heldout/` | Held-out generator, written separately with its own names, situations and wording: a 1,822-item test split (ids H...; 1,150 plain, 672 in Baker's wording) and a 911-item dev split (ids D...; 575 plain, 336 in Baker's wording). |
 | `contamination.py` | Overlap check: generated text against the probe set, case01 and case02, and training against held-out. The only code here that reads that data. |
 | `score.py` | Scores any model's predictions with the exact rules of `eval/probe/run_probe.py`. |
 | `GO_BAR.md`, `gobar.py` | The adoption rule, fixed before training. |
