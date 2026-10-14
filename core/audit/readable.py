@@ -20,15 +20,21 @@ that account, as the signed probe set prints senders: on item1, "SMS +1212555011
 +12125550111 Dan P [Daniel Petrov (the user of item1)]". Only confirmed device_owner
 stipulations and confirmed identity links count, matched across phones by app and identifier
 exactly as the checks match parties. A saved name never links anyone.
+
+No two people of a case read alike: people who share a name also print their id ("Alex Smith
+(person:alex-smith-1a2b3c4d)"), except phone users, whom their phone tells apart. Anything Baker
+holds no name for prints its id, so a run never fails on a name.
 """
 
 from __future__ import annotations
 
 import re
 import sqlite3
-from collections import defaultdict
+import unicodedata
+from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from functools import cached_property
 
 from core.audit.assumptions import TEMPLATES, Names
 from core.audit.checks._common import CaseData, Key, key, person_party
@@ -36,6 +42,10 @@ from core.contracts import Assumption, AssumptionParams
 
 COUNT_WORDS = {"eq": "exactly", "ge": "at least", "le": "at most"}
 OWNER_PERSON = re.compile(r"^person:(.+):owner$")  # core.review.actions.stipulate_device_owner
+
+
+def _fold(name: str) -> str:
+    return " ".join(unicodedata.normalize("NFC", name).casefold().split())
 
 
 @dataclass(frozen=True)
@@ -67,6 +77,12 @@ class CaseNames(Names):
         return self.phones.get(device_id, device_id.removeprefix("dev:"))
 
     def person(self, person_id: str) -> str:
+        """A person as a model reads them. No two people of one case read alike: people who
+        share a name print their id too, except phone users, whom their phone tells apart."""
+        label = self._person_labels.get(person_id)
+        return label if label is not None else self._person(person_id)
+
+    def _person(self, person_id: str) -> str:
         devices = self.users.get(person_id)
         if devices:
             user = "the user of " + " and ".join(self.phone(d) for d in devices)
@@ -76,6 +92,22 @@ class CaseNames(Names):
         if owner:  # a phone's user with no confirmed stipulation: the phone, never a name
             return f"the user of {self.phone(owner.group(1))}"
         return self.people.get(person_id, person_id)
+
+    @cached_property
+    def _person_labels(self) -> dict[str, str]:
+        shown = {  # people whose name is printed
+            pid: name
+            for pid, name in self.people.items()
+            if pid in self.users or not OWNER_PERSON.match(pid)
+        }
+        shared = Counter(_fold(name) for name in shown.values())
+        out = {}
+        for pid, name in shown.items():
+            label = self._person(pid)
+            if shared[_fold(name)] > 1 and pid not in self.users:
+                label = f"{label} ({pid})"
+            out[pid] = label
+        return out
 
     def account(self, account_id: str) -> str:
         acc = self.account_names.get(account_id)
@@ -131,7 +163,11 @@ def case_names(conn: sqlite3.Connection) -> CaseNames:
     """Read the names from a case database. Read-only. The people on an account are exactly
     the parties Baker's checks tie to it (core.audit.checks._common.person_party)."""
     data = CaseData(conn)
-    phones = {did: sid for did, sid in conn.execute("SELECT id, source_id FROM devices")}
+    devices = conn.execute("SELECT id, source_id FROM devices").fetchall()
+    per_source = Counter(sid for _, sid in devices)
+    phones = {  # a phone is its source; a source holding two phones names each by its id too
+        did: sid if per_source[sid] == 1 else f"{sid} ({did})" for did, sid in devices
+    }
     people = {pid: name for pid, name in conn.execute("SELECT id, name FROM persons")}
     users: dict[str, set[str]] = defaultdict(set)
     for _sid, device_id, person_id, status in data.stipulations:

@@ -196,3 +196,52 @@ def test_unfitting_template_keeps_the_stored_text(names: CaseNames) -> None:
     broken = a.model_copy(update={"template_id": "no_such_template"})
     assert assumption_text(broken, names) == a.text
     assert assumption_text(a, names) == "Rita Vance played the role the claim states"
+
+
+def test_people_who_share_a_name_never_read_alike(case_db: sqlite3.Connection) -> None:
+    _source(case_db, "item1")
+    _source(case_db, "item2")
+    _account(case_db, "acct:item2:SMS:+12125550144", "item2", "SMS", "+12125550144")
+    _person(case_db, "person:alex-smith", "Alex Smith")
+    _person(case_db, "person:alex-smith-1a2b3c4d", "alex  smith")
+    _person(case_db, "person:daniel-petrov", "Daniel Petrov")
+    _person(case_db, "person:mara-lind", "Mara Lind")
+    _link(case_db, "acct:item2:SMS:+12125550144", "person:alex-smith-1a2b3c4d", "confirmed")
+    stipulate_device_owner(case_db, "dev:item1", "Daniel Petrov", EXPERT)
+    stipulate_device_owner(case_db, "dev:item2", "Daniel Petrov", EXPERT)
+    names = case_names(case_db)
+    assert names.person("person:alex-smith") == "Alex Smith (person:alex-smith)"
+    assert (
+        names.sender("acct:item2:SMS:+12125550144")
+        == "SMS +12125550144 [alex  smith (person:alex-smith-1a2b3c4d)]"
+    )
+    # Phone users are told apart by their phones; a document person of the same name by id.
+    assert names.person("person:dev:item1:owner") == "Daniel Petrov (the user of item1)"
+    assert names.person("person:dev:item2:owner") == "Daniel Petrov (the user of item2)"
+    assert names.person("person:daniel-petrov") == "Daniel Petrov (person:daniel-petrov)"
+    assert names.person("person:mara-lind") == "Mara Lind"
+    labels = [names.person(pid) for (pid,) in case_db.execute("SELECT id FROM persons")]
+    assert len(set(labels)) == len(labels)
+
+
+def test_a_withdrawn_users_name_is_not_shown_so_it_shares_nothing(
+    case_db: sqlite3.Connection,
+) -> None:
+    _source(case_db, "item1")
+    _person(case_db, "person:daniel-petrov", "Daniel Petrov")
+    sid = stipulate_device_owner(case_db, "dev:item1", "Daniel Petrov", EXPERT)
+    withdraw_stipulation(case_db, sid, EXPERT)
+    names = case_names(case_db)
+    assert names.person("person:daniel-petrov") == "Daniel Petrov"
+    assert names.person("person:dev:item1:owner") == "the user of item1"
+
+
+def test_a_source_holding_two_phones_names_each(case_db: sqlite3.Connection) -> None:
+    _source(case_db, "item1")
+    case_db.execute(
+        "INSERT INTO devices (id, source_id, locator, label)"
+        " VALUES ('dev:item1#2', 'item1', 'Device 2', 'Apple iPad')"
+    )
+    names = case_names(case_db)
+    assert names.phone("dev:item1") == "item1 (dev:item1)"
+    assert names.phone("dev:item1#2") == "item1 (dev:item1#2)"
