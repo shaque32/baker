@@ -25,7 +25,7 @@ from core.audit.quotes import verify_quote
 from core.contracts import AssumptionKind
 from eval.probe_draft.model import ProbeLine
 from eval.stancedata.families import family
-from eval.stancedata.model import GenItem, generated_label
+from eval.stancedata.model import BAKER_FIELDS, GenItem, generated_label
 
 APPS = ("SMS", "WhatsApp", "Telegram", "Signal", "Instagram")
 DEFAULT_TZ = "America/New_York"
@@ -219,7 +219,9 @@ def write_jsonl(items: Iterable[GenItem], path: Path) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="\n") as fh:
         for it in items:
-            fh.write(it.model_dump_json() + "\n")
+            # Plain items leave the Baker-wording fields out, so their lines stay as before.
+            unset = {name for name in BAKER_FIELDS if getattr(it, name) is None}
+            fh.write(it.model_dump_json(exclude=unset) + "\n")
     return sha256_file(path)
 
 

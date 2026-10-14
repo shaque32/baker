@@ -15,12 +15,18 @@ phone `person:dev:item1:owner`, and a person the document names `person:<surname
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from core.audit.assumptions import TEMPLATES, local_window, parse_params
+from core.audit.quotes import verify_quote
 from core.contracts import TimeWindow
+from eval.probe_draft.model import ProbeLine
+from eval.stancedata.chat import local_str
+from eval.stancedata.families import family
+from eval.stancedata.model import GenItem, generated_label
 
 # Apps as Cellebrite reports spell them; calls and contact rows use "Phone".
 APPS = ("SMS", "WhatsApp", "Telegram", "Signal", "Instagram", "Phone")
@@ -131,4 +137,135 @@ def report_time(utc: datetime, offset_min: int = 0) -> str:
     return (
         f"{local.month}/{local.day}/{local.year} {hour}:{local.minute:02d}:"
         f"{local.second:02d} {ampm}({zone})"
+    )
+
+
+# ---------------------------------------------------------------- lines and items
+
+
+@dataclass(frozen=True)
+class Line:
+    """One excerpt line as the small model's adapter builds it from Baker's database."""
+
+    sender: str
+    account_id: str  # the account behind the line; a contact row's number as a Phone account
+    local_time: str
+    text: str
+    utc: datetime | None = None  # None only for a contact row, which has no time
+
+
+def message_line(
+    item: int,
+    app: str,
+    identifier: str,
+    utc: datetime,
+    tz: str,
+    text: str,
+    *,
+    owner: bool = False,
+    persons: Iterable[str] = (),
+) -> Line:
+    """A message (or an attachment's file name, as its text) on phone item<n>."""
+    return Line(
+        sender_line(app, identifier, owner=owner, persons=persons),
+        account_id(item, app, identifier),
+        local_str(utc, tz),
+        text,
+        utc,
+    )
+
+
+def call_line(
+    item: int,
+    utc: datetime,
+    tz: str,
+    direction: str,
+    frm: str,
+    to: str,
+    duration_s: int,
+    *,
+    owner: bool = False,
+    persons: Iterable[str] = (),
+    report_offset_min: int = 0,
+) -> Line:
+    """A call on phone item<n>: its line shows the calling number's account, as Baker's context
+    does, and its text is the record text with the time as the report printed it."""
+    if direction not in ("incoming", "outgoing", "missed"):
+        raise ValueError(f"bad call direction {direction!r}")
+    return Line(
+        sender_line("Phone", frm, owner=owner, persons=persons),
+        account_id(item, "Phone", frm),
+        local_str(utc, tz),
+        call_text(direction, frm, to, report_time(utc, report_offset_min), duration_s),
+        utc,
+    )
+
+
+def contact_line(item: int, name: str | None, number: str) -> Line:
+    """A contact row on phone item<n>. It is shown alone: Baker gives it no context."""
+    return Line(CONTACT_SENDER, account_id(item, "Phone", number), CONTACT_TIME,
+                contact_text(name, number))  # fmt: skip
+
+
+def build_baker_item(
+    *,
+    probe_id: str,
+    family_id: str,
+    source: str,
+    generator: str,
+    lang: str,
+    template_id: str,
+    params: dict[str, Any],
+    lines: Sequence[Line],
+    target: int,
+    quote: str,
+    rationale: str,
+    device: str,
+    group: str | None = None,
+    disputed: str | None = None,
+    labeled_by: str | None = None,
+) -> GenItem:
+    """Assemble and check one item in Baker's own wording. The assumption is the product's
+    rendering of (template_id, params); the label comes from the family, as for plain items.
+
+    lines are the excerpt in time order with the record at `target`; device is the phone the
+    record came from ('dev:item3').
+    """
+    if not 0 <= target < len(lines):
+        raise ValueError(f"{probe_id}: target {target} outside {len(lines)} lines")
+    timed = [ln.utc for ln in lines if ln.utc is not None]
+    if len(timed) != len(lines) and len(lines) != 1:
+        raise ValueError(f"{probe_id}: a line without a time (a contact row) stands alone")
+    if any(b <= a for a, b in zip(timed, timed[1:], strict=False)):
+        raise ValueError(f"{probe_id}: lines must be in strictly increasing UTC order")
+    if quote.strip() != quote or not verify_quote(quote, lines[target].text):
+        raise ValueError(f"{probe_id}: quote is not a word-aligned verbatim part of the record")
+    parsed = parse_params(template_id, params)
+    template = TEMPLATES[template_id]
+    f = family(family_id)
+    probe_lines = [ProbeLine(sender=ln.sender, account_id=ln.account_id,
+                             local_time=ln.local_time, text=ln.text) for ln in lines]  # fmt: skip
+    return GenItem(
+        probe_id=probe_id,
+        category=f.category,
+        trap=f.trap,
+        lang=lang,
+        assumption_kind=template.kind,
+        assumption=template.render(parsed),
+        target=probe_lines[target],
+        context=tuple(x for i, x in enumerate(probe_lines) if i != target),
+        target_index=target,
+        proposed_quote=quote,
+        gold_stance=f.stance,
+        gold_review="accept" if f.stance == "supports" else "dismiss",
+        rationale=rationale,
+        source=source,
+        labeled_by=labeled_by or generated_label(generator),
+        disputed=disputed,
+        family=family_id,
+        generator=generator,
+        group=group or probe_id,
+        device_id=device,
+        baker_template=template_id,
+        baker_params=parsed.model_dump(mode="json", exclude_defaults=True),
     )

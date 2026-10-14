@@ -31,6 +31,9 @@ class Family:
     rule: str  # one sentence: what the record and the assumption look like
     new: bool = False  # a convention the signed probe set does not cover yet
     disputed: bool = False  # the signed probe items of this kind are marked disputed
+    # Baker's own wording (guide rules 25 to 29): the product templates (core/audit/assumptions.py)
+    # this family's assumptions are rendered from. Empty for plain-sentence families.
+    templates: tuple[str, ...] = ()
 
 
 _F = Family

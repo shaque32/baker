@@ -14,12 +14,16 @@ Ids: T = training pair, D = held-out development split (for iterating), H = held
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field, model_validator
 
+from core.audit.assumptions import TEMPLATES, parse_params
 from eval.probe_draft.model import ProbeItem
 from eval.stancedata.families import BANNED_WORDS, family
+
+# Fields only items in Baker's own wording carry; plain items leave them out of the file.
+BAKER_FIELDS = ("device_id", "baker_template", "baker_params")
 
 GENERATED_LABEL_PREFIX = "DRAFT (labels by construction"
 
@@ -38,6 +42,12 @@ class GenItem(ProbeItem):
     family: str
     generator: str  # module and version, e.g. "eval.train 1.0.0"
     group: str  # items built from one chat scenario share a group; split train/val by group
+    # Baker's own wording (families with templates): the phone the record came from, the
+    # product template the assumption is rendered from, and its parameters as AssumptionParams
+    # JSON. The assumption must be exactly the product's rendering of them.
+    device_id: str | None = Field(default=None, pattern=r"^dev:item\d+$")
+    baker_template: str | None = None
+    baker_params: dict[str, Any] | None = None
 
     @model_validator(mode="after")
     def _matches_family(self) -> GenItem:
@@ -55,6 +65,18 @@ class GenItem(ProbeItem):
             for word in BANNED_WORDS:
                 if word in text:
                     raise ValueError(f"{self.probe_id}: {name} uses the banned word {word!r}")
+        if f.templates:
+            if self.baker_template not in f.templates:
+                raise ValueError(f"{self.probe_id}: {f.family_id} uses templates {f.templates}")
+            if self.baker_params is None or self.device_id is None:
+                raise ValueError(f"{self.probe_id}: Baker wording needs its parameters and phone")
+            t = TEMPLATES[self.baker_template]
+            if self.assumption != t.render(parse_params(t.id, self.baker_params)):
+                raise ValueError(f"{self.probe_id}: assumption is not the product's rendering")
+            if self.assumption_kind != t.kind:
+                raise ValueError(f"{self.probe_id}: kind differs from template {t.id}")
+        elif any(getattr(self, name) is not None for name in BAKER_FIELDS):
+            raise ValueError(f"{self.probe_id}: only Baker-wording families carry {BAKER_FIELDS}")
         prefix = {"train_gen": "T", "heldout_gen": "DH"}[self.source]
         if self.probe_id[0] not in prefix:
             raise ValueError(f"{self.probe_id}: id prefix does not match source {self.source}")

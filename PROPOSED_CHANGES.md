@@ -68,7 +68,7 @@ eval/gold/probe/probe.jsonl. Effects: gated gold contradicts on the probe set dr
 the Cloud Claude test (#48) and the 14B's "contradicting records shown as supports" count are
 re-scored against the new labels.
 
-## 2026-10-13 claude/project-thread-czwpc8: keep the go bar's protection for the traps that moved
+## 2026-10-13 claude/project-thread-czwpc8: keep the go bar's protection for the traps that moved, and add Baker's real pipeline on case02
 File: eval/stancedata/GO_BAR.md, eval/stancedata/gobar.py, plus the metric in
 eval/stancedata/score.py and eval/probe/run_probe.py
 Why: under guide v0.3 the trap families time_mismatch, sender_mismatch, speaker_mismatch and
@@ -90,6 +90,48 @@ time_mismatch, sender_mismatch, speaker_mismatch or later_correction and whose a
 GO_BAR.md, bar 2: "78 items, 16 gold contradicts" -> "78 items, 8 gold contradicts after the
 2026-10-13 relabel"; bars 2 and 3 gain "zero items of the trap families guide v0.3 moved to
 complicates shown as supports"; a dated line records Arsh's decision and its reason.
+
+Part two (2026-10-14, agreed with the "Train the small model" thread): a fifth condition on
+Baker's real pipeline. Why: the shakedown on case01 (/mnt/project-files/baker/stancemodel/
+case01-shakedown.md) showed a model can pass conditions 2 and 3, which use plain sentences and
+chat messages only, and still mislabel what Baker really sends it (template wording with ids,
+calls, contact rows). case01 has now been read claim by claim during development, so it stays a
+development check; case02, the hidden held-out case, decides.
+GO_BAR.md, after condition 4:
++5. **Baker's real pipeline on the hidden case.** The candidate is Baker's stance labeler
++   (eval/stancemodel ClassifierLabeler). It runs on case02 with the case's assumption sheet,
++   Baker's retrieval, quote check, checks and rules, then the simulated expert and the
++   merge-gate scoring, the same way `make eval-real` scores case01 for the 14B. It must have 0
++   false supported, 0 false contradicted (a claim decided contradicted whose gold verdict is
++   supported or unproven) and a verdict accuracy of at least 0.80, the case01 merge-gate
++   threshold. It is scored once per finished candidate, aggregate numbers only, and logged in
++   TEST_LOG.md together with that candidate's test-split scoring, so it shares the
++   three-candidate limit. Nobody reads per-claim output.
+"Reported, never deciding": "`make eval-real` on case01, case02" -> "`make eval-real` and the
+small model's pipeline run on case01 (a development check)".
+gobar.py:
++# Condition 5: Baker's real pipeline on the hidden case02, aggregate numbers only.
++CASE02_AT_MOST = {"false_supported": 0, "false_contradicted": 0}
++CASE02_MIN_VERDICT_ACCURACY = 0.80
+ def decide(
+     *,
+     probe: dict[str, Any] | None,
+     heldout: dict[str, Any] | None,
++    case02: dict[str, Any] | None,
+     seconds_per_call: float | None,
+     contamination_passed: bool,
+ ) -> Decision:
++    if case02 is None:
++        reasons.append("case02: no result")
++    else:
++        for key, most in CASE02_AT_MOST.items():
++            if case02.get(key) is None or case02[key] > most:
++                reasons.append(f"case02: {key} is {case02.get(key)}, needs <= {most}")
++        acc = case02.get("verdict_accuracy")
++        if acc is None or acc < CASE02_MIN_VERDICT_ACCURACY:
++            reasons.append(f"case02: verdict accuracy is {acc}, needs >= 0.80")
+The test that keeps GO_BAR.md and gobar.py in step gains the new numbers. The case02 harness is
+built only after Arsh signs this condition.
 
 ## 2026-10-13 claude/project-thread-czwpc8: align the 14B stance prompt with strict contradicts
 File: core/audit/prompts/stance.md (optional; not needed for the small model)
