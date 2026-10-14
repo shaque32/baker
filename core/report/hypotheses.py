@@ -56,7 +56,7 @@ def note_html(note: str) -> str:
 def _fit(f: Fit, href: Callable[[Fit], str | None]) -> str:
     where = " ".join(x for x in (f.source_id, f.locator) if x)
     ids = " · ".join(dict.fromkeys(x for x in (where, f.record_id) if x))
-    tier = "observed record" + (", local time derived" if f.when else "")
+    tier = "observed record" + (", local time derived" if f.local else "")
     target = href(f)
     look = f" · <a href='{_e(target)}'>See it in its conversation</a>" if target else ""
     when = f"{_e(f.when)} · " if f.when else ""

@@ -104,7 +104,7 @@ _THINGS = "|".join(
 _WHOSE = r"(?:ur|your|his|her|their|my|[^\W\d_]+'s|[^\W\d_]+’s)"
 _HANDOFF = re.compile(
     r"\b(?:using|used|use|borrow(?:ed|ing)?|took|take|taking|grab(?:bed)?|left|gave|shared|"
-    rf"lent|give)\s+(?:me\s+)?{_WHOSE}\s+(?P<thing>{_THINGS})\b"
+    rf"lent|give)\s+(?:me\s+)?(?P<whose1>{_WHOSE})\s+(?P<thing>{_THINGS})\b"
     # A login counts only on someone else's phone or account ("logged in on his ipad"); "logged
     # in from home" or "signed in as Daniel" names no one else's.
     r"|\b(?:logged|signed)\s+(?:in(?:to)?|on)\s+(?:(?:on|to|with|from|as|into)\s+)?"
@@ -130,6 +130,7 @@ class Fit:
     quote: str  # exactly as the case holds it: a message body, a name, a file name
     when: str  # the record's time on its phone's own clock; '' for names and sources
     note: str  # Baker's words; text from the case inside is marked with cite()
+    local: bool = False  # True only when `when` is a local time derived from the phone's zone
 
 
 @dataclass(frozen=True)
@@ -197,7 +198,8 @@ def load(conn: sqlite3.Connection) -> Case:
 def _fit(case: Case, row: Row, note: str) -> Fit:
     src, loc = case.locator(row.id)
     when = local_str(case.data, row) if row.ts_utc is not None else ""  # no time, none derived
-    return Fit(row.id, src or row.source_id, loc, _row_text(row), when, note)
+    local = row.ts_utc is not None and case.data.tz_for(row.source_id) is not None
+    return Fit(row.id, src or row.source_id, loc, _row_text(row), when, note, local)
 
 
 def _row_text(row: Row) -> str:
@@ -318,6 +320,8 @@ def _quoted_rows(case: Case, a: Assumption) -> list[Row]:
         srcs = set(case.data.sources_for(p.device_ids))
         rows = [r for r in rows if r.source_id in srcs]
     apps = [c for c in p.channels if c.strip().lower() != CALL_CHANNEL]
+    if p.channels and not apps:
+        return []  # calls only: a quote names no message in that scope
     if apps:
         rows = [r for r in rows if channel_ok(r, apps)]
     party_ids = [case.data.account_ids(x.keys) for x in parties(case.data, p)]
@@ -442,7 +446,7 @@ def _handoff(body: str, app: str, claimed_app: str) -> re.Match[str] | None:
     """The first words in a message about using another person's phone, account or login that
     bear on a message sent on claimed_app."""
     for m in _HANDOFF.finditer(body):
-        if (m.group("whose") or "").casefold() == "my":
+        if (m.group("whose1") or m.group("whose") or "").casefold() == "my":
             continue  # logging in on one's own phone or account names no one else's
         thing = (m.group("thing") or m.group("thing2") or "").casefold()
         if thing in _APP_WORDS:
@@ -469,7 +473,8 @@ def _handoff_fits(case: Case, claimed: list[Row]) -> tuple[list[tuple[Row, str]]
         rows = case.conn.execute(
             "SELECT m.id, m.source_id, t.app, m.sender_account_id, m.ts_utc, m.ts_raw, m.body"
             " FROM messages m JOIN threads t ON t.id = m.thread_id"
-            " WHERE m.source_id = ? AND m.ts_utc >= ? AND m.ts_utc <= ? ORDER BY m.ts_utc, m.id",
+            " WHERE m.source_id = ? AND julianday(m.ts_utc) BETWEEN julianday(?) AND julianday(?)"
+            " ORDER BY julianday(m.ts_utc), m.id",
             (c.source_id, _iso(lo), _iso(hi)),
         )
         for mid, sid, app, sender, ts, raw, body in rows:
@@ -499,7 +504,9 @@ def _handoff_fits(case: Case, claimed: list[Row]) -> tuple[list[tuple[Row, str]]
 
 
 def _iso(t: datetime) -> str:
-    return t.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    """UTC with microseconds kept. SQL compares it through julianday(), so a stored time with
+    fractional seconds is ordered as a time, not as text."""
+    return t.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _parse(value: str | None) -> datetime | None:
@@ -543,8 +550,10 @@ def _other_user(case: Case, assumptions: list[Assumption]) -> Alternative | None
     claimed_by_quote = _claimed_rows(case, mine)
     fits: list[Fit] = []
     searched: list[str] = []
+    against: list[str] = []  # one sentence per statement that found something
     about_account = all(a.template_id == "person_identity" for a in mine)
     for a in mine:
+        before = len(fits)
         # Each statement on its own: its accounts against its own people, so a name another
         # statement gives for another account never hides a conflict here.
         claimed = claimed_by_quote.get(a.id, [])
@@ -576,25 +585,27 @@ def _other_user(case: Case, assumptions: list[Assumption]) -> Alternative | None
             if s:
                 searched.append(s)
             fits += [_fit(case, r, n) for r, n in hands]
+        found = len({f.record_id for f in fits[before:]})
+        if found and persons:
+            who = " or ".join(cite(p.name) for p in persons)
+            against.append(
+                f"For the statement naming {who}: {found} record(s) point to someone else "
+                "using the account or phone."
+            )
+        elif found:
+            against.append(
+                f"{found} record(s) give the account's user a name, or point to another person "
+                "using the account or phone; compare them with the person the claim names."
+            )
     fits = _merge(fits)
     if not fits:
         return None
-    persons = _persons(case, mine)
     title = (
         "Someone else may be behind the account"
         if about_account
         else "Someone else may have written it"
     )
-    if persons:
-        who = " or ".join(cite(p.name) for p in persons)
-        summary = (
-            f"Records in the case point to someone other than {who} using the account or phone."
-        )
-    else:
-        summary = (
-            "Records in the case give the account's user a name, or point to another person "
-            "using the account or phone; compare them with the person the claim names."
-        )
+    summary = " ".join(dict.fromkeys(against))
     return Alternative(
         "other_user",
         "authorship",
@@ -617,7 +628,7 @@ def _merge(fits: list[Fit]) -> list[Fit]:
                 continue  # the same finding from another statement
             out[f.record_id] = Fit(
                 prev.record_id, prev.source_id, prev.locator, prev.quote, prev.when,
-                f"{prev.note} {f.note}",
+                f"{prev.note} {f.note}", prev.local,
             )  # fmt: skip
         else:
             out[f.record_id] = f
@@ -884,7 +895,7 @@ _EDGE = (
     " UNION ALL"
     " SELECT c.id, 'call', c.source_id, c.app, c.from_account_id, c.ts_utc, c.ts_raw, NULL,"
     " c.duration_s FROM calls c WHERE c.source_id = :sid AND lower(c.app) = lower(:app)"
-    ") WHERE ts_utc"
+    ") WHERE ts_utc IS NOT NULL AND julianday(ts_utc)"
 )
 # Per phone and app: its records (messages and calls), its records with no usable time, its
 # records inside the window, and the phone's other records inside the window.
@@ -898,16 +909,20 @@ SELECT
   + (SELECT COUNT(*) FROM calls
     WHERE source_id = :sid AND lower(app) = lower(:app) AND ts_utc IS NULL),
   (SELECT COUNT(*) FROM messages m JOIN threads t ON t.id = m.thread_id
-    WHERE m.source_id = :sid AND lower(t.app) = lower(:app) AND m.ts_utc BETWEEN :lo AND :hi)
+    WHERE m.source_id = :sid AND lower(t.app) = lower(:app)
+      AND julianday(m.ts_utc) BETWEEN julianday(:lo) AND julianday(:hi))
   + (SELECT COUNT(*) FROM calls
-    WHERE source_id = :sid AND lower(app) = lower(:app) AND ts_utc BETWEEN :lo AND :hi),
+    WHERE source_id = :sid AND lower(app) = lower(:app)
+      AND julianday(ts_utc) BETWEEN julianday(:lo) AND julianday(:hi)),
   (SELECT COUNT(*) FROM messages m JOIN threads t ON t.id = m.thread_id
-    WHERE m.source_id = :sid AND lower(t.app) != lower(:app) AND m.ts_utc BETWEEN :lo AND :hi)
+    WHERE m.source_id = :sid AND lower(t.app) != lower(:app)
+      AND julianday(m.ts_utc) BETWEEN julianday(:lo) AND julianday(:hi))
   + (SELECT COUNT(*) FROM calls
-    WHERE source_id = :sid AND lower(app) != lower(:app) AND ts_utc BETWEEN :lo AND :hi)
+    WHERE source_id = :sid AND lower(app) != lower(:app)
+      AND julianday(ts_utc) BETWEEN julianday(:lo) AND julianday(:hi))
 """
-_LAST_BEFORE = _EDGE + " < :bound ORDER BY ts_utc DESC, id LIMIT 1"
-_FIRST_AFTER = _EDGE + " > :bound ORDER BY ts_utc ASC, id LIMIT 1"
+_LAST_BEFORE = _EDGE + " < julianday(:bound) ORDER BY julianday(ts_utc) DESC, id LIMIT 1"
+_FIRST_AFTER = _EDGE + " > julianday(:bound) ORDER BY julianday(ts_utc) ASC, id LIMIT 1"
 
 
 def _app_quiet(case: Case, assumptions: list[Assumption]) -> Alternative | None:
@@ -1075,6 +1090,7 @@ def _same_words(case: Case, assumptions: list[Assumption]) -> Alternative | None
             fits.append(_fit(case, r, notes[r.id]))
         if rows:
             used.append(a.id)
+    fits = _merge(fits)  # a message two statements both point to shows once
     if not fits:
         return None
     return Alternative(

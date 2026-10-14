@@ -27,6 +27,7 @@ from core.hypotheses import explain
 from core.hypotheses.explain import Alternative
 from core.identity.links import CITE_CLOSE, CITE_OPEN, Person
 from core.report.html import render_report
+from core.report.hypotheses import alternatives_html
 from core.review.status import claim_state, claim_states
 from eval import run_pipeline
 from eval.run_eval import load_jsonl
@@ -261,6 +262,7 @@ def test_report_lists_alternatives_under_their_claims(conn):
         ("logged in from home", "Instagram", "Instagram", None),  # no one else's
         ("signed in as Daniel", "Instagram", "Instagram", None),  # no one else's thing
         ("logged in on my phone", "SMS", "SMS", None),  # one's own phone
+        ("im using my phone rn", "SMS", "SMS", None),  # one's own phone, either phrasing
     ],
 )
 def test_hand_off_words(body, app, claimed_app, found):
@@ -503,6 +505,10 @@ def test_each_statement_is_checked_against_its_own_people(conn, monkeypatch):
     both = explain._other_user(case, [claim, other])
     assert alone is not None and both is not None
     assert "msg:item1:Chats!938" in {f.record_id for f in both.fits}
+    # Each statement gets its own sentence: Sasha is never pooled with another statement's person.
+    sasha_cited = f"{CITE_OPEN}Sasha Ivanov{CITE_CLOSE}"
+    assert f"{sasha_cited} or " not in both.summary
+    assert f" or {sasha_cited}" not in both.summary
 
 
 @pytest.mark.parametrize("device", ["dev:item1", "dev:item2"])
@@ -543,3 +549,50 @@ def test_no_clock_lead_when_the_phone_zone_is_unknown(conn):
     case = explain.load(conn)
     case.data.tz_for = lambda source_id: None
     assert explain._clock(case, [_asm(conn, "C10", "record_time")]) is None
+
+
+# ---------------------------------------------------------------- fifth review
+
+
+def test_a_record_in_the_windows_first_fraction_of_a_second_is_inside(conn):
+    conn.execute(
+        "INSERT INTO messages (id, source_id, locator, thread_id, direction, ts_utc, ts_raw, body)"
+        " VALUES ('msg:item1:frac', 'item1', 'Test!3', 'thr:item1:WhatsApp:1', 'incoming',"
+        " '2026-03-20T04:00:00.500000Z', 'test', 'hi')"
+    )
+    quiet = alts_for(conn, "C15")["app_quiet"]
+    assert {f.source_id for f in quiet.fits} == {"item2"}  # item1's WhatsApp is not quiet
+
+
+def test_a_calls_only_statement_quotes_no_message(conn):
+    a = _asm(conn, "C10", "record_time", channels=("call",))
+    assert explain._quoted_rows(explain.load(conn), a) == []
+
+
+def test_one_message_two_meaning_statements_point_to_shows_once(conn):
+    case = explain.load(conn)
+    meaning = next(a for a in claim_state(conn, "C13").assumptions if a.template_id == "meaning")
+    (claimed, *_) = explain._quoted_rows(case, meaning)
+    thread = conn.execute("SELECT thread_id FROM messages WHERE id = ?", (claimed.id,)).fetchone()
+    word = explain._words(meaning.params.quoted_text or "")[0]
+    conn.execute(
+        "INSERT INTO messages (id, source_id, locator, thread_id, direction, ts_utc, ts_raw, body)"
+        " VALUES ('msg:test:same', ?, 'Test!4', ?, 'incoming', '2026-03-01T12:00:00Z', 'test', ?)",
+        (claimed.source_id, thread[0], f"we {word} later"),
+    )
+    twice = meaning.model_copy(update={"id": "asm:twice"})
+    alt = explain._same_words(explain.load(conn), [meaning, twice])
+    assert alt is not None
+    assert [f.record_id for f in alt.fits].count("msg:test:same") == 1
+    assert alt.total == len({f.record_id for f in alt.fits})
+
+
+def test_a_phone_with_no_zone_shows_no_derived_local_time(conn):
+    case = explain.load(conn)
+    case.data.tz_for = lambda source_id: None
+    row = explain._quoted_rows(case, _asm(conn, "C10", "record_time"))[0]
+    fit = explain._fit(case, row, "note")
+    assert fit.when and not fit.local
+    assert "local time derived" not in alternatives_html(
+        [Alternative("clock", "timing", "t", "s", (fit,), 1, "", ())]
+    )
