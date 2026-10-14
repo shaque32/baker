@@ -149,7 +149,7 @@ VAGUE: tuple[str, ...] = (
     "[need {n} more of the {color} ones]", "[the thing is ready] whenever",
     "[did u handle that yet]", "[ill take care of it], dont worry",
     "[is the package good to go]", "[tell him the usual]", "[we're square now]",
-    "[the guy came through]", "[it went fine], talk later", "[put it where we said]",
+    "[the guy came through]", "[it went fine], talk later", "[it goes in the back, like before]",
     "[make sure its clean this time]", "[got the stuff from the guy]",
     "[keep it quiet for now]", "[the {color} bag is for u]", "[ask him if hes still in]",
     "[same as before, half now half later]", "[the delivery is set]",

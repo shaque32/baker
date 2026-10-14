@@ -233,7 +233,7 @@ def chat(
     if lead:
         evs.insert(target, Ev(utc - timedelta(seconds=rng.randint(5, 20)), to, lead, to=frm))
         target += 1
-        while target > 4:  # at most three lines before the record
+        while target > 3:  # at most three lines before the record
             evs.pop(0)
             target -= 1
     return evs, target

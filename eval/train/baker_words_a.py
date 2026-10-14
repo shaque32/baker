@@ -30,7 +30,7 @@ HOME: tuple[str, ...] = (
     "[can u cover my shift] if i take one of urs",
     "[the tow truck is on {street}]",
     "[they changed the wifi password to {code}]",
-    "[pharmacy says the refill is ready]",
+    "[my prescription is waiting at the counter]",
     "[the {item} is in the trunk]",
     "[need {n} more chairs for the party]",
     "[i paid the parking ticket online]",

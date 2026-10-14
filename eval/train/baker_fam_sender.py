@@ -4,7 +4,8 @@ bk_sender_shown: the quoted words come from the named sender, shown by its accou
 person id in its line's brackets (supports). bk_sender_other: they come from another account or
 person, so one record cannot show the named sender never sent them too (complicates).
 bk_party_unshown: the assumption names a person:<surname> that no line carries in brackets, on
-the sender, time, no-contact or count template (complicates).
+the sender, time, no-contact or count template (complicates). The answer rests on the
+record's sender or time, so the quote is the record's full text (guide rule 22).
 """
 
 from __future__ import annotations
@@ -60,7 +61,7 @@ def sender_shown(rng: random.Random, k: int) -> Draft:
     else:
         why = "the named account"
     rationale = f"The record holding the quoted words comes from {line.sender}, {why}."
-    return Draft("bk_sender_shown", "sender", params, s.scene, s.phone, evs, target, quoted,
+    return Draft("bk_sender_shown", "sender", params, s.scene, s.phone, evs, target, text,
                  rationale)  # fmt: skip
 
 
@@ -88,7 +89,7 @@ def sender_other(rng: random.Random, k: int) -> Draft:
     named = _named(params)
     rationale = (f"The record holding the quoted words comes from {line.sender}, not from "
                  f"{named}; one record cannot show that {named} never sent them too.")  # fmt: skip
-    return Draft("bk_sender_other", "sender", params, s.scene, s.phone, evs, target, quoted,
+    return Draft("bk_sender_other", "sender", params, s.scene, s.phone, evs, target, text,
                  rationale, {"named": named})  # fmt: skip
 
 
@@ -138,7 +139,7 @@ def party_unshown(rng: random.Random, k: int) -> Draft:
     unshown = f"no line carries {pid} in brackets, so nothing shown ties {partner} to {pid}"
     if by_message:
         params: dict[str, Any] = {"quoted_text": quoted, "person_ids": (pid,)}
-        d = Draft(family, template, params, s.scene, s.phone, evs, target, quoted, "")
+        d = Draft(family, template, params, s.scene, s.phone, evs, target, text, "")
         d.rationale = f"The record holding the quoted words comes from {partner}"
         if win is not None:
             params["window"] = win.tw

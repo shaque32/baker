@@ -49,9 +49,9 @@ VARIANTS: dict[str, tuple[str, ...]] = {
     "bk_sender_other": ("named_owner", "named_third", "named_linked", "named_cross"),
     "bk_party_unshown": ("sender", "sender_named", "time_msg", "time_call", "nc_msg", "count_msg"),
     "bk_time_inside": ("anyone", "acct", "owner_person", "linked", "about", "cross_zone"),
-    "bk_call_inside": ("out_person", "in_acct", "in_linked", "cross"),
+    "bk_call_inside": ("out_person", "in_linked", "cross_out", "cross_in"),
     "bk_time_outside": ("msg_acct", "msg_anyone", "msg_person", "msg_linked", "call_person",
-                        "call_acct"),
+                        "call_linked"),
     "bk_zone_edge": ("msg_phone", "msg_named", "call_phone", "call_named", "nc_phone",
                      "nc_named"),
     "bk_call_length": ("short_out", "long_out", "short_in", "long_in"),
@@ -74,7 +74,7 @@ VARIANTS: dict[str, tuple[str, ...]] = {
                      "ident_other", "role_event_row"),
 }  # fmt: skip
 
-_NO_TEXT = {"time_call", "call_person", "call_acct", "call_phone", "call_named", "call",
+_NO_TEXT = {"time_call", "call_person", "call_linked", "call_phone", "call_named", "call",
             "nc_call", "attachment", "nc_attachment", "count_attachment"}  # fmt: skip
 _UNRELATED: dict[str, tuple[str, ...]] = {
     "sender_same": ("say", "q"),

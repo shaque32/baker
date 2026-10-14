@@ -1,5 +1,8 @@
 """Families on Baker's time template: a message or a call against a stated window.
 
+The answer rests on the record's time (and sender), so the quote is the record's full text
+(guide rule 22); the assumption's quoted words are all of it or a span of it.
+
 bk_time_inside and bk_call_inside are supports (plainly inside, the named sender or parties
 shown); bk_time_outside (plainly outside), bk_call_length (inside, wrong length) and bk_zone_edge
 (inside in one zone reading only) are complicates.
@@ -73,7 +76,7 @@ def _message(
         params |= name_account(rng, s, rec.frm)
         who = f" from {line.sender}"
     at = when(line.local_time, win, utc, s.phone.zone)
-    d = Draft(family, T, params, s.scene, s.phone, evs, target, quoted, "", {"utc": utc})
+    d = Draft(family, T, params, s.scene, s.phone, evs, target, text, "", {"utc": utc})
     d.rationale = f"The record holding the quoted words{who} was sent {at}"
     return d, win
 

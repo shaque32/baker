@@ -98,7 +98,7 @@ WEEKDAY_EN = (
     "how about {mod}{day}, {spot} around 10",
     "{mod}{day} it is, {spot} at 7",
     "pencil me in for {mod}{day} at {spot}",
-    "bring {thing} {mod}{day}, we'll need it",
+    "pls bring {thing} {mod}{day}",
     "{mod}{day} morning at {spot}?",
     "ok {mod}{day} then, ill text when im near {spot}",
 )

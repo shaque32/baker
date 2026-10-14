@@ -238,12 +238,18 @@ def around(
 
 
 def sides(rng: random.Random, n_before: int, n_after: int, rec_mine: bool) -> list[bool]:
-    """Who sends each context line (True: the owner side), so both sides show: at least one
-    line comes from the side that did not send the record."""
-    n = n_before + n_after
-    marks = [rng.random() < 0.5 for _ in range(n)]
-    if n and all(m == rec_mine for m in marks):
-        marks[rng.randrange(n)] = not rec_mine
+    """Who sends each context line (True: the owner side), in time order. The sides take
+    turns outward from the record: the line after it always comes from the other side, the
+    line before it usually does, so both sides are on screen."""
+    other = not rec_mine
+    near_before = other if rng.random() < 0.65 else rec_mine
+    near_after = other
+    before = [near_before if (n_before - 1 - i) % 2 == 0 else not near_before
+              for i in range(n_before)]  # fmt: skip
+    after = [near_after if i % 2 == 0 else not near_after for i in range(n_after)]
+    marks = before + after
+    if marks and all(m == rec_mine for m in marks):
+        marks[n_before - 1 if n_before else 0] = other
     return marks
 
 

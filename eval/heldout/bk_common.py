@@ -120,6 +120,7 @@ def chat_excerpt(
     nb, na = min(nb, 3), min(na, 3)
     marks = sides(rng, nb, na, mine)
     texts = ctx_texts(rng, sit, lang, nb + na, avoid=(text, *avoid))
+    texts.sort(key=lambda t: not t.endswith("?"))  # questions read best before the record
     pairs = list(zip(marks, texts, strict=True))
     return chat(rng, sc, ph, me, other, utc, text, mine, pairs[:nb], pairs[nb:], spread)
 

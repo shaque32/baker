@@ -139,9 +139,12 @@ def call_excerpt(
 # ------------------------------------------------------------------ attachments
 
 
-def attachment_name(rng: random.Random, utc: datetime, tz: str, dated: bool = True) -> str:
+def attachment_name(
+    rng: random.Random, utc: datetime, tz: str, dated: bool = True, photos: bool = False
+) -> str:
     """A file name as a phone saves it; a dated name carries the send date and a clock time a
-    few minutes before the send."""
+    few minutes before the send. `photos` keeps to photos and videos: no voice note or
+    screenshot, whose content could hold words."""
     taken = utc.astimezone(ZoneInfo(tz)) - timedelta(seconds=rng.randint(20, 400))
     if taken.date() != utc.astimezone(ZoneInfo(tz)).date():
         dated = False
@@ -149,12 +152,15 @@ def attachment_name(rng: random.Random, utc: datetime, tz: str, dated: bool = Tr
         return rng.choice(("IMG_{n}.jpg", "IMG_{n}.HEIC", "VID_{n}.mov", "DSC0{n}.JPG")).format(
             n=rng.randint(1000, 9999)
         )
-    forms = (
+    forms = [
         f"IMG_{taken:%Y%m%d_%H%M%S}.jpg",
         f"VID_{taken:%Y%m%d_%H%M%S}.mp4",
         f"IMG-{taken:%Y%m%d}-WA{rng.randint(1, 60):04d}.jpg",
-        f"PTT-{taken:%Y%m%d}-WA{rng.randint(1, 60):04d}.opus",
         f"photo_{taken:%Y-%m-%d_%H-%M-%S}.jpg",
-        f"Screenshot_{taken:%Y%m%d-%H%M%S}.png",
-    )
+    ]
+    if not photos:
+        forms += [
+            f"PTT-{taken:%Y%m%d}-WA{rng.randint(1, 60):04d}.opus",
+            f"Screenshot_{taken:%Y%m%d-%H%M%S}.png",
+        ]
     return rng.choice(forms)

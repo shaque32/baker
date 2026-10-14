@@ -4,20 +4,27 @@ references, supports assumptions that add nothing, spread-out templates)."""
 
 from __future__ import annotations
 
+import json
 import random
 import re
-from collections import Counter
-from datetime import date, datetime
+from collections import Counter, defaultdict
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 
+from eval.stancedata import bakerform as bf
 from eval.stancedata.families import FAMILIES
 from eval.stancedata.model import GenItem
+from eval.train import baker
 from eval.train import generate as gen
+from eval.train.baker_cues import SURNAMES
+from eval.train.baker_text import words
 from eval.train.glossary import PAIRS, SLANG
-from eval.train.names import AREA_CODES
+from eval.train.names import AREA_CODES, PEOPLE_EN, PEOPLE_RU
 from eval.train.verbs import SUPPORT_VERBS_EN, SUPPORT_VERBS_RU
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,6 +40,12 @@ def items() -> list[GenItem]:
 @pytest.fixture(scope="module")
 def many() -> list[GenItem]:
     return gen.generate(4000, 1)
+
+
+@pytest.fixture(scope="module")
+def combined() -> list[GenItem]:
+    """The plain items of `items`, then one full cycle of Baker-wording items."""
+    return gen.generate(600, 1, n_baker=len(baker.CYCLE))
 
 
 def _dump(rows: list[GenItem]) -> list[str]:
@@ -56,8 +69,8 @@ def test_items_validate_with_ids_in_order(items: list[GenItem]) -> None:
         assert it.labeled_by.startswith("DRAFT")
 
 
-def test_every_family_appears(items: list[GenItem]) -> None:
-    seen = {it.family for it in items}
+def test_every_family_appears(combined: list[GenItem]) -> None:
+    seen = {it.family for it in combined}
     assert seen == {f.family_id for f in FAMILIES}
 
 
@@ -134,7 +147,7 @@ def test_package_source_never_touches_test_data() -> None:
 
 def test_cli_writes_file_and_manifest(tmp_path: Path) -> None:
     out = tmp_path / "train.jsonl"
-    assert gen.main(["--n", "25", "--seed", "3", "--out", str(out)]) == 0
+    assert gen.main(["--n", "25", "--n-baker", "0", "--seed", "3", "--out", str(out)]) == 0
     lines = out.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 25
     side = out.with_name("train.jsonl.manifest.json")
@@ -1026,3 +1039,401 @@ def test_time_and_sender_answers_quote_the_whole_record(many: list[GenItem]) -> 
     for it in many:
         if it.family in WHOLE_RECORD:
             assert it.proposed_quote == it.target.text, (it.family, it.proposed_quote)
+
+
+# ---------------------------------------------------------------- Baker's own wording (bk_*)
+
+BK_N = 2400  # a hundred items of each family, two hundred of bk_unrelated
+BK_FAMILY = {f.family_id: f for f in FAMILIES}
+BK_INSIDE = {"bk_time_inside", "bk_call_inside", "bk_call_length", "bk_no_contact_inside",
+             "bk_count_one", "bk_other_phone", "bk_party_unshown", "bk_claim_unseen"}  # fmt: skip
+BK_OUTSIDE = {"bk_time_outside", "bk_outside_window"}
+BK_CUE = {"bk_identity_named", "bk_author_cue", "bk_handles_said"}
+BK_SENDER = re.compile(r"(\S+) (\S+)( \(owner\))?(?: \[([^\]]+)\])?")
+BK_CALL = re.compile(r"(?:incoming|outgoing|missed) call from (\S+) to (\S+) at .+, (\d+)s")
+BK_DAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+BK_DAY = {**{d: i for i, d in enumerate(BK_DAYS)}, "tues": 1, "thurs": 3, "fri": 4}
+BK_DAY_RU = ("понедельник", "вторник", "сред", "четверг", "пятниц", "суббот", "воскресенье")
+BK_EN_DAY = re.compile(rf"\b(next |this )?({'|'.join(BK_DAY)})\b")
+BK_LETTERS = set("abcdefghijklm")
+PEOPLE_NAMES = {p.name for p in (*PEOPLE_EN, *PEOPLE_RU)}
+MINUTE, HOUR = timedelta(minutes=1), timedelta(hours=1)
+
+
+@pytest.fixture(scope="module")
+def bk() -> list[Any]:
+    """Baker-wording items with the drafts they came from (scene, phone, events)."""
+    return baker.generate_with_drafts(BK_N, 1, 12001)
+
+
+def _brackets(sender: str) -> set[str]:
+    m = BK_SENDER.fullmatch(sender)
+    return set(m.group(4).split(", ")) if m and m.group(4) else set()
+
+
+def _utc(local_time: str) -> tuple[datetime, str]:
+    """A line's time as UTC, and the phone zone its abbreviation names (guide rule 27)."""
+    stamp, abbr = local_time.rsplit(" ", 1)
+    zone = bf.ZONE_OF[abbr]
+    wall = datetime.strptime(stamp, "%Y-%m-%d %H:%M:%S")
+    for fold in (0, 1):
+        aware = wall.replace(tzinfo=ZoneInfo(zone), fold=fold)
+        if aware.tzname() == abbr:
+            return aware.astimezone(UTC), zone
+    raise AssertionError(local_time)
+
+
+def _window(it: GenItem) -> tuple[datetime, datetime, str, str]:
+    """The assumption's window as wall-clock [start, end) in its zone, and its raw words."""
+    w = it.baker_params["window"]
+    tz = ZoneInfo(w["tz"])
+    start = datetime.fromisoformat(w["start_utc"]).astimezone(tz).replace(tzinfo=None)
+    end = datetime.fromisoformat(w["end_utc"]) + timedelta(microseconds=1)
+    return start, end.astimezone(tz).replace(tzinfo=None), w["tz"], w["raw"]
+
+
+def _margins(it: GenItem, line: Any) -> dict[str, timedelta]:
+    """How far inside (+) or outside (-) the window a line is, read in the window's zone and in
+    the phone's: the smaller of the wall-clock and the elapsed distance to the nearest edge."""
+    utc, phone = _utc(line.local_time)
+    start, end, tz, _ = _window(it)
+    out = {}
+    for zone in dict.fromkeys((tz, phone)):
+        z = ZoneInfo(zone)
+        wall = utc.astimezone(z).replace(tzinfo=None)
+        s, e = start.replace(tzinfo=z), end.replace(tzinfo=z)
+        if start <= wall < end and s <= utc < e:
+            out[zone] = min(wall - start, end - wall, utc - s, e - utc)
+        elif start <= wall < end or s <= utc < e:
+            out[zone] = timedelta(0)
+        else:
+            out[zone] = -min(abs(wall - start), abs(wall - end), abs(utc - s), abs(utc - e))
+    return out
+
+
+def test_baker_schedule_ids_and_labels(bk: list[Any]) -> None:
+    counts = Counter(baker.slot(j)[0] for j in range(6000))
+    assert counts == {f: 500 if f == "bk_unrelated" else 250 for f in baker.WRITERS}
+    assert set(baker.WRITERS) == {f for f in BK_FAMILY if f.startswith("bk_")}
+    ks: dict[str, list[int]] = defaultdict(list)
+    for j in range(6000):
+        fam, k = baker.slot(j)
+        ks[fam].append(k)
+    assert all(v == list(range(len(v))) for v in ks.values())
+    for j, (it, d, _) in enumerate(bk):
+        GenItem.model_validate(it.model_dump(mode="json"))
+        assert it.probe_id == f"T{12001 + j:06d}" and it.generator == baker.GENERATOR
+        assert it.source == "train_gen" and it.family == baker.slot(j)[0] == d.family
+        f = BK_FAMILY[it.family]
+        assert it.gold_stance == f.stance.value and it.baker_template in f.templates
+        assert it.device_id == d.phone.dev
+        for word in ("guilty", "innocent", "leader", "deleted"):
+            assert word not in f"{it.assumption} {it.rationale}".lower(), it.probe_id
+    templates = Counter(it.baker_template for it, _, _ in bk if it.family == "bk_unrelated")
+    assert len(templates) == 12 and min(templates.values()) >= 16
+
+
+def test_baker_runs_are_deterministic_and_leave_plain_items_alone() -> None:
+    a = gen.generate(40, 3, n_baker=30)
+    assert _dump(a) == _dump(gen.generate(40, 3, n_baker=30))
+    assert _dump(a[:40]) == _dump(gen.generate(40, 3))
+    assert _dump(gen.generate(40, 3, n_baker=12)) == _dump(a)[:52]
+    assert [it.probe_id for it in a[40:]] == [f"T{n:06d}" for n in range(41, 71)]
+
+
+def test_cli_writes_baker_items_after_the_plain_ones(tmp_path: Path) -> None:
+    out = tmp_path / "train.jsonl"
+    assert gen.main(["--n", "10", "--n-baker", "24", "--seed", "2", "--out", str(out)]) == 0
+    rows = [json.loads(x) for x in out.read_text(encoding="utf-8").splitlines()]
+    assert [r["generator"] for r in rows] == [gen.GENERATOR] * 10 + [baker.GENERATOR] * 24
+    assert rows[10]["probe_id"] == "T000011"
+    m = json.loads(out.with_name("train.jsonl.manifest.json").read_text(encoding="utf-8"))
+    assert (m["n"], m["n_plain"], m["n_baker"]) == (34, 10, 24)
+
+
+def test_baker_brackets_follow_the_scene(bk: list[Any]) -> None:
+    # Rule 26: "(owner)" marks the record phone's own account; the brackets hold the owner of
+    # every phone that has the account as its own, on any phone, and the links the scene confirms.
+    for it, d, _ in bk:
+        for line, ev in zip(it.lines(), d.evs, strict=True):
+            if ev.kind == "contact":
+                assert (line.sender, line.local_time) == ("contact list", "no time in source")
+                continue
+            m = BK_SENDER.fullmatch(line.sender)
+            assert m and (m.group(1), m.group(2)) == (ev.frm.app, ev.frm.ident), line.sender
+            assert bool(m.group(3)) == (ev.frm in d.phone.own), line.sender
+            want = {bf.owner_person(p.item) for p in d.scene.phones if ev.frm in p.own}
+            want |= {pid for acc, pid in d.scene.links if acc == ev.frm}
+            assert _brackets(line.sender) == want, (it.probe_id, line.sender)
+
+
+def test_baker_excerpts_show_a_non_owner_line(bk: list[Any]) -> None:
+    for it, _, _ in bk:
+        assert any("(owner)" not in ln.sender for ln in it.lines()), it.probe_id
+        assert len(it.context) <= 6
+
+
+def test_baker_windows_hold_or_miss_their_records(bk: list[Any]) -> None:
+    seen: Counter[str] = Counter()
+    for it, _, _ in bk:
+        timed = it.family in BK_INSIDE | BK_OUTSIDE | {"bk_zone_edge"}
+        if "window" not in it.baker_params or not timed:
+            continue
+        raw = it.baker_params["window"]["raw"]
+        m = _margins(it, it.target)
+        if it.family in BK_INSIDE and raw.startswith("at about"):
+            utc, phone = _utc(it.target.local_time)
+            start, end, tz, _ = _window(it)
+            wall = utc.astimezone(ZoneInfo(tz)).replace(tzinfo=None)
+            assert tz == phone and abs(wall - (start + (end - start) / 2)) <= 7 * MINUTE
+        elif it.family in BK_INSIDE:
+            assert min(m.values()) >= HOUR, (it.probe_id, raw, m)
+        elif it.family in BK_OUTSIDE:
+            need = 2 * HOUR if raw.startswith(("between", "at about")) else 24 * HOUR
+            assert max(m.values()) <= -need, (it.probe_id, raw, m)
+        else:
+            assert len(m) == 2 and sorted(v > timedelta(0) for v in m.values()) == [False, True]
+            assert min(abs(v) for v in m.values()) >= 10 * MINUTE, (it.probe_id, m)
+        seen[it.family] += 1
+    assert set(seen) == BK_INSIDE | BK_OUTSIDE | {"bk_zone_edge"}
+
+
+def _weekday(quoted: str) -> tuple[int, str]:
+    """The weekday a plan names (0 is Monday) and the word before it: "", "next" or "this"."""
+    low = quoted.lower()
+    ru = [i for i, stem in enumerate(BK_DAY_RU) if stem in low]
+    if ru:
+        assert len(ru) == 1, quoted
+        this = re.search(r"\bв (этот|эту|это) ", low)
+        prefix = "next" if "следующ" in low else "this" if this else ""
+        return ru[0], prefix
+    found = BK_EN_DAY.findall(low)
+    assert len(found) == 1, quoted
+    return BK_DAY[found[0][1]], found[0][0].strip()
+
+
+def test_baker_weekdays_relate_to_their_dates(bk: list[Any]) -> None:
+    seen: Counter[str] = Counter()
+    for it, _, _ in bk:
+        if it.baker_template != "weekday_date" or it.family == "bk_unrelated":
+            continue
+        utc, zone = _utc(it.target.local_time)
+        start, end, tz, raw = _window(it)
+        sent_at = utc.astimezone(ZoneInfo(zone))
+        day, sent = start.date(), sent_at.date()
+        assert tz == zone and start.hour == 0 and end - start == timedelta(days=1)
+        assert raw == f"{BK_DAYS[day.weekday()].capitalize()}, {day:%B} {day.day}, {day.year}"
+        assert 8 <= sent_at.hour <= 21
+        wd, prefix = _weekday(it.baker_params["quoted_text"])
+        gap = (day - sent).days
+        if it.family == "bk_weekday_next":
+            assert not prefix and wd == day.weekday() and 1 <= gap <= 6, it.probe_id
+        elif it.family == "bk_weekday_open" and prefix:
+            first = sent + timedelta(days=(wd - sent.weekday()) % 7)
+            assert wd != sent.weekday() and day in (first, first + timedelta(days=7))
+        elif it.family == "bk_weekday_open":
+            assert wd == sent.weekday() and gap in (0, 7), it.probe_id
+        else:
+            assert not prefix
+            ahead = wd not in (day.weekday(), sent.weekday()) and 1 <= gap <= 6
+            assert ahead or (wd == day.weekday() and 2 <= -gap <= 6), it.probe_id
+        seen[f"{it.family}|{prefix}"] += 1
+    assert len(seen) == 5 and min(seen.values()) >= 25
+
+
+def test_baker_calls_name_their_numbers_and_lengths(bk: list[Any]) -> None:
+    seen = 0
+    for it, _, _ in bk:
+        m = BK_CALL.fullmatch(it.target.text)
+        if m is None or it.family in ("bk_unrelated", "bk_claim_unseen"):
+            continue
+        seen += 1
+        frm, to, dur = m.group(1), m.group(2), int(m.group(3))
+        p = it.baker_params
+        accounts = {a.split(":")[-1] for a in p.get("account_ids", ())}
+        persons = set(p.get("person_ids", ()))
+        assert it.target.sender.split(" ")[:2] == ["Phone", frm]
+        assert to in accounts and (frm in accounts or persons & _brackets(it.target.sender))
+        assert len(persons) <= 1, it.probe_id
+        stated = p.get("duration_s")
+        if it.family == "bk_call_length":
+            assert dur < stated[0] / 2 or dur > 2 * stated[1], it.probe_id
+        elif stated:
+            assert stated[0] * 1.1 <= dur <= stated[1] * 0.9, it.probe_id
+    assert seen >= 250
+
+
+def test_baker_contact_rows_sit_on_the_named_phone(bk: list[Any]) -> None:
+    seen = 0
+    for it, _, _ in bk:
+        if it.family not in ("bk_contact_row", "bk_contact_row_differs"):
+            continue
+        seen += 1
+        p = it.baker_params
+        assert not it.context and it.target.sender == "contact list"
+        assert p["device_ids"] == [it.device_id]
+        assert p["account_ids"][0].startswith(it.device_id.replace("dev:", "acct:") + ":Phone:")
+        number = p["account_ids"][0].rsplit(":", 1)[1]
+        name, row_number = it.target.text.rsplit(" ", 1)
+        if it.family == "bk_contact_row":
+            assert (name, row_number) == (p["quoted_text"], number)
+        elif name == p["quoted_text"]:
+            assert row_number != number
+        else:
+            assert row_number == number
+            first = {w for w in re.findall(r"\w+", name) if w in PEOPLE_NAMES}
+            assert first and not first & set(re.findall(r"\w+", p["quoted_text"]))
+    assert seen == 200
+
+
+def test_baker_sender_families_name_the_right_party(bk: list[Any]) -> None:
+    for it, d, _ in bk:
+        rec, p = d.evs[d.target], it.baker_params
+        own = f":{rec.frm.app}:{rec.frm.ident}"
+        if it.family == "bk_sender_shown":
+            if p.get("person_ids"):
+                assert p["person_ids"][0] in _brackets(it.target.sender)
+            else:
+                assert all(a.endswith(own) for a in p["account_ids"])
+            assert p.get("channels", [rec.frm.app]) == [rec.frm.app]
+        elif it.family == "bk_sender_other":
+            for x in p.get("person_ids", ()):
+                assert x not in _brackets(it.target.sender)
+                assert any(x in _brackets(ln.sender) for ln in it.context), it.probe_id
+            for a in p.get("account_ids", ()):
+                assert a.rsplit(":", 1)[1] != rec.frm.ident, it.probe_id
+        elif it.family == "bk_party_unshown":
+            unshown = [x for x in p["person_ids"] if not x.startswith("person:dev:")]
+            assert len(unshown) == 1, it.probe_id
+            assert all(unshown[0] not in _brackets(ln.sender) for ln in it.lines())
+
+
+def test_baker_quotes_follow_the_guide(bk: list[Any]) -> None:
+    # Rule 22: time and sender answers quote the whole record; cue families quote the cue.
+    for it, _, _ in bk:
+        q, text, p = it.proposed_quote, it.target.text, it.baker_params
+        assert q and q in text
+        if it.baker_template in ("weekday_date", "meaning") and it.family != "bk_unrelated":
+            assert q == p["quoted_text"], it.probe_id
+        elif it.family == "bk_handles_said":
+            assert all(h in q for h in p["handles"]), it.probe_id
+        elif it.family == "bk_identity_named":
+            assert p["person_ids"][0].split(":")[1] in q.lower(), it.probe_id
+        elif it.family != "bk_author_cue":
+            assert q == text, (it.family, q)
+        if "quoted_text" in p and it.family not in ("bk_unrelated", "bk_contact_row_differs"):
+            assert p["quoted_text"] in text and p["quoted_text"] not in " ".join(
+                ln.text for ln in it.context
+            ), it.probe_id
+
+
+def test_baker_names_numbers_and_handles(bk: list[Any]) -> None:
+    # Training names start with A to M (Russian А to Л); numbers are fictional 555-01xx ones.
+    for it, _, _ in bk:
+        for t in [it.assumption, *(f"{ln.sender} {ln.text}" for ln in it.lines())]:
+            for number in re.findall(r"\+1\d{10}", t):
+                assert number[2:5] in AREA_CODES and number[5:10] == "55501", t
+            for slug in re.findall(r"person:(?!dev:)(\w+)", t):
+                assert slug[0] in BK_LETTERS, t
+        for ln in it.lines():
+            app, ident = (ln.sender.split(" ") + [""])[:2]
+            if app == "Telegram":
+                assert re.fullmatch(r"[34]\d{6}", ident), ln.sender
+            if app == "Instagram":
+                assert ident[0] in BK_LETTERS, ln.sender
+        for h in it.baker_params.get("handles", ()):
+            assert re.fullmatch(r"@[a-z0-9_.]{5,}", h) and h[1] in BK_LETTERS, h
+            assert "." not in h or it.baker_params["channels"] == ["Instagram"], h
+    assert all(s[0] in BK_LETTERS for s in SURNAMES)
+
+
+def test_baker_language_mix(bk: list[Any]) -> None:
+    langs = Counter(it.lang for it, _, _ in bk)
+    assert 0.06 < (langs["ru"] + langs["mixed"]) / len(bk) < 0.16 and langs["mixed"] > 0
+    for it, _, _ in bk:
+        texts = [ln.text for ln in it.lines()]
+        if it.lang in ("ru", "mixed"):
+            assert any(re.search(r"[а-яё]", t, re.I) for t in texts), it.probe_id
+        else:
+            assert not any(re.search(r"[а-яё]", t, re.I) for t in texts), it.probe_id
+
+
+def test_baker_records_never_repeat_within_a_family(bk: list[Any]) -> None:
+    texts: dict[str, list[str]] = defaultdict(list)
+    for it, _, _ in bk:
+        texts[it.family].append(it.target.text)
+    for fam, rows in texts.items():
+        assert len(set(rows)) == len(rows), fam
+
+
+def test_baker_counts_stay_open(bk: list[Any]) -> None:
+    # One message cannot settle a count: the stated number is more than the excerpt shows.
+    seen = 0
+    for it, _, _ in bk:
+        p = it.baker_params
+        if it.baker_template != "message_count" or it.family == "bk_unrelated":
+            continue
+        seen += 1
+        shown = sum(max(_margins(it, ln).values()) >= timedelta(0) for ln in it.lines())
+        assert p["expected_count"] >= 2 and p["expected_count"] > shown, it.probe_id
+        assert len(p["device_ids"]) == 1
+    assert seen >= 175
+
+
+def test_baker_no_contact_records_show_both_parties(bk: list[Any]) -> None:
+    seen = 0
+    for it, d, _ in bk:
+        if it.family != "bk_no_contact_inside":
+            continue
+        seen += 1
+        p, rec = it.baker_params, d.evs[d.target]
+        accounts = {ln.account_id.split(":", 2)[2] for ln in it.lines()}
+        brackets = set().union(*(_brackets(ln.sender) for ln in it.lines()))
+        assert set(p.get("person_ids", ())) <= brackets, it.probe_id
+        for a in p.get("account_ids", ()):
+            assert a.split(":", 2)[2] in accounts or a.rsplit(":", 1)[1] in it.target.text
+        assert it.device_id in p.get("device_ids", [it.device_id])
+        assert p.get("channels", ["call"] if rec.kind == "call" else [rec.frm.app]) == (
+            ["call"] if rec.kind == "call" else [rec.frm.app]
+        )
+        ends = {rec.frm, rec.to}
+        named = set(p.get("account_ids", ()))
+        for pid in p.get("person_ids", ()):
+            assert ends & d.scene.holders(pid), it.probe_id
+        assert all(any(d.phone.aid(e) == a for e in ends if e) for a in named), it.probe_id
+    assert seen == 100
+
+
+def test_baker_identity_and_authorship_name_the_record_account(bk: list[Any]) -> None:
+    for it, d, _ in bk:
+        p = it.baker_params
+        if it.family in ("bk_identity_named", "bk_account_silent", "bk_author_cue"):
+            assert p["account_ids"] == [it.target.account_id], it.probe_id
+            assert len(p["person_ids"]) == 1
+        if it.family == "bk_identity_named":
+            assert not p["person_ids"][0].startswith("person:dev:")
+            assert not _brackets(it.target.sender), it.probe_id
+        if it.family == "bk_claim_unseen" and it.baker_template != "meaning":
+            rec = d.evs[d.target]
+            for pid in p["person_ids"]:
+                assert {rec.frm, rec.to} & d.scene.holders(pid), it.probe_id
+                assert any(pid in _brackets(ln.sender) for ln in it.lines()), it.probe_id
+
+
+def test_baker_unrelated_records_share_nothing_with_the_assumption(bk: list[Any]) -> None:
+    for it, _, _ in bk:
+        if it.family != "bk_unrelated":
+            continue
+        p, t = it.baker_params, it.baker_template
+        shown = " ".join(f"{ln.sender} {ln.account_id} {ln.text}" for ln in it.lines())
+        seen = set().union(*(words(ln.text) for ln in it.lines()))
+        if "quoted_text" in p:
+            assert not words(p["quoted_text"]) & seen, (it.probe_id, p["quoted_text"])
+        for h in p.get("handles", ()):
+            assert h[1:] not in shown, it.probe_id
+        if not (t == "sender" or (t == "record_time" and "quoted_text" in p)):
+            # only a sender or time assumption may name the record's own sender
+            for a in p.get("account_ids", ()):
+                assert a.rsplit(":", 1)[1] not in shown, (it.probe_id, a)
+        if t in ("role", "event", "authorship", "person_identity"):
+            assert not any(pid in shown for pid in p["person_ids"]), it.probe_id
