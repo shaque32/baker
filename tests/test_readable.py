@@ -245,3 +245,82 @@ def test_a_source_holding_two_phones_names_each(case_db: sqlite3.Connection) -> 
     names = case_names(case_db)
     assert names.phone("dev:item1") == "item1 (dev:item1)"
     assert names.phone("dev:item1#2") == "item1 (dev:item1#2)"
+
+
+class _FakeLocal:
+    """A local model stand-in: records each prompt, answers "irrelevant"."""
+
+    name = "fake-14b"
+    sha256 = "ab" * 32
+
+    def __init__(self) -> None:
+        self.prompts: list[str] = []
+
+    def generate_json(self, prompt, schema, params=None):  # noqa: ANN001, ANN201
+        from types import SimpleNamespace
+
+        self.prompts.append(prompt)
+        return SimpleNamespace(raw_text='{"stance": "irrelevant", "quote": "", "rationale": "r"}')
+
+
+def test_the_stance_model_reads_the_cases_names(names: CaseNames, case_db: sqlite3.Connection):
+    """Stance prompt v1.1 end to end: case01 paragraph 10.1's shape, where item2 saved the
+    stipulated owner's number as "Dan P". The model reads names, the chat's members and, for a
+    template that says "the claim", the claim; the stored assumption keeps Baker's ids."""
+    from core.audit import stance
+    from core.contracts import EvidenceCandidate, ProvenanceTier, SourceRef
+
+    conn = case_db
+    conn.execute(
+        "INSERT INTO threads VALUES ('thr:item2:SMS', 'item2', 'Chats', 'dev:item2', 'SMS', NULL)"
+    )
+    conn.execute(
+        "INSERT INTO messages (id, source_id, locator, thread_id, sender_account_id, sender_raw,"
+        " direction, ts_utc, ts_offset_min, ts_raw, body) VALUES ('msg:item2:Chats!3', 'item2',"
+        " 'Chats!3', 'thr:item2:SMS', 'acct:item2:SMS:+1 (212) 555-0111', 'Dan P', 'incoming',"
+        " '2026-05-03T02:10:44Z', -300, '5/2/2026 9:10:44 PM', 'move it tonight')"
+    )
+    conn.execute(
+        "INSERT INTO sources (id, kind, fidelity, extraction_type, file_name, sha256,"
+        " imported_at_utc) VALUES ('gd', 'govdoc', 'unknown', 'not_applicable', 'aff.pdf', ?,"
+        " '2026-05-10T00:00:00Z')",
+        ("1" * 64,),
+    )
+    conn.execute("INSERT INTO govdocs VALUES ('gd:1', 'gd', 'Affidavit', 'affidavit')")
+    claim = 'PETROV wrote "move it tonight", directing the crew.'
+    conn.execute(
+        "INSERT INTO govdoc_paragraphs (id, govdoc_id, page, para_no, label, char_start, char_end,"
+        " text) VALUES ('p10', 'gd:1', 1, 10, '10.1', 0, ?, ?)",
+        (len(claim), claim),
+    )
+    conn.execute(
+        "INSERT INTO claims VALUES ('C10', 'p10', ?, 'communication', 'accepted', NULL)", (claim,)
+    )
+    model = _FakeLocal()
+    labeler = stance.create(conn, model=model)
+    cand = EvidenceCandidate(
+        record_id="msg:item2:Chats!3",
+        ref=SourceRef(source_id="item2", locator="Chats!3"),
+        text="move it tonight",
+        tier=ProvenanceTier.OBSERVED,
+        retrieval_score=1.0,
+    )
+    owner = "person:dev:item1:owner"
+    sender = instantiate(
+        "C10", "sender", {"quoted_text": "move it tonight", "person_ids": [owner]}, True
+    )
+    role = instantiate("C10", "role", {"person_ids": [owner]}, True)
+    labeler.try_label(sender, cand)
+    labeler.try_label(role, cand)
+    sent, roled = model.prompts
+    dan = "Daniel Petrov (the user of item1)"
+    assert f'Assumption:\nThe message "move it tonight" was sent by {dan}\n' in sent
+    assert f"Assumption:\n{dan} played the role the claim states\n" in roled
+    assert "[CLAIM START]\n(not needed for this assumption)\n[CLAIM END]" in sent
+    assert f"[CLAIM START]\n{claim}\n[CLAIM END]" in roled
+    assert (
+        f"[CONTEXT START]\nMembers seen in this chat's records: SMS +1 (212) 555-0111 [{dan}]\n"
+    ) in sent
+    assert f"] SMS +1 (212) 555-0111 Dan P [{dan}], incoming: move it tonight" in sent
+    assert owner not in sent and "acct:" not in sent
+    assert sender.text.endswith(owner)  # the stored text keeps the id

@@ -4,6 +4,7 @@ import pytest
 
 from core.audit._llm_json import PromptMissingError, prompt_body
 from core.audit.stance import (
+    NO_CLAIM,
     STANCE_SCHEMA,
     DroppedStanceLabel,
     LocalStanceLabeler,
@@ -18,7 +19,10 @@ from core.contracts import (
 )
 from tests.fake_model import FakeModel, make_assumption
 
-DRAFT = prompt_body((Path(__file__).parents[1] / "docs/prompts/stance.md").read_text("utf-8"))
+SIGNED = prompt_body(
+    (Path(__file__).parents[1] / "core/audit/prompts/stance.md").read_text("utf-8")
+)
+DRAFT = SIGNED  # the tests below fill the signed prompt (v1.1)
 
 ASSUMPTION = make_assumption("The sender asked to meet at the garage on March 5.")
 CANDIDATE = EvidenceCandidate(
@@ -166,11 +170,75 @@ def test_prompt_without_placeholders_is_refused():
 
 
 def test_prompt_with_a_slot_the_labeler_does_not_fill_is_refused():
-    """Stance prompt v1.1 adds {claim} (PROPOSED_CHANGES.md); until build_prompt fills it, the
-    labeler refuses that prompt instead of sending the model a bare placeholder."""
-    with_claim = DRAFT.replace("{assumption}", "{claim}\n{assumption}", 1)
-    with pytest.raises(ValueError, match=r"does not fill: \['claim'\]"):
-        LocalStanceLabeler(FakeModel(GOOD), template=with_claim)
+    """fill_prompt leaves an unknown slot in place, so the labeler refuses a prompt with one
+    instead of sending the model a bare placeholder."""
+    with_slot = DRAFT.replace("{assumption}", "{names}\n{assumption}", 1)
+    with pytest.raises(ValueError, match=r"does not fill: \['names'\]"):
+        LocalStanceLabeler(FakeModel(GOOD), template=with_slot)
+
+
+def test_a_prompt_without_the_claim_slot_is_refused():
+    """v1.0 had no {claim}; the labeler fills v1.1 only, so v1.0 is never sent by mistake."""
+    v10 = DRAFT.replace("[CLAIM START]\n{claim}\n[CLAIM END]\n", "")
+    with pytest.raises(ValueError, match=r"lacks placeholders: \['claim'\]"):
+        LocalStanceLabeler(FakeModel(GOOD), template=v10)
+
+
+def _with_template(a, template_id: str):
+    return a.model_copy(update={"template_id": template_id})
+
+
+@pytest.mark.parametrize("template_id", ["meaning", "role", "event"])
+def test_the_claim_is_shown_for_templates_that_say_the_claim(template_id):
+    model = FakeModel(GOOD)
+    lab = LocalStanceLabeler(model, template=SIGNED, claim_text={"c1": "Petrov ran the crew."}.get)
+    lab.label(_with_template(ASSUMPTION, template_id), CANDIDATE)
+    assert "[CLAIM START]\nPetrov ran the crew.\n[CLAIM END]" in model.prompts[0]
+
+
+@pytest.mark.parametrize("template_id", ["sender", "record_time", "same_account", "test_meaning"])
+def test_other_templates_show_no_claim(template_id):
+    model = FakeModel(GOOD)
+    lab = LocalStanceLabeler(model, template=SIGNED, claim_text={"c1": "Petrov ran the crew."}.get)
+    lab.label(_with_template(ASSUMPTION, template_id), CANDIDATE)
+    assert "Petrov ran the crew." not in model.prompts[0]
+    assert f"[CLAIM START]\n{NO_CLAIM}\n[CLAIM END]" in model.prompts[0]
+
+
+def test_a_claim_with_no_text_shows_no_claim():
+    model = FakeModel(GOOD)
+    lab = LocalStanceLabeler(model, template=SIGNED, claim_text=lambda cid: None)
+    lab.label(_with_template(ASSUMPTION, "meaning"), CANDIDATE)
+    assert f"[CLAIM START]\n{NO_CLAIM}\n[CLAIM END]" in model.prompts[0]
+
+
+def test_claim_text_cannot_inject_placeholders():
+    model = FakeModel(GOOD)
+    lab = LocalStanceLabeler(model, template=SIGNED, claim_text=lambda cid: "see {record}")
+    lab.label(_with_template(ASSUMPTION, "meaning"), CANDIDATE)
+    assert "[CLAIM START]\nsee {record}\n[CLAIM END]" in model.prompts[0]
+
+
+def test_no_claim_matches_the_probe_runner():
+    from eval.probe import prompts
+
+    assert NO_CLAIM == prompts.NO_CLAIM
+
+
+def test_the_assumption_renderer_is_used():
+    model = FakeModel(GOOD)
+    lab = LocalStanceLabeler(model, template=SIGNED, render_assumption=lambda a: "READABLE")
+    lab.label(ASSUMPTION, CANDIDATE)
+    assert "Assumption:\nREADABLE\n" in model.prompts[0]
+    assert ASSUMPTION.text not in model.prompts[0]
+
+
+def test_the_signed_prompt_is_v1_1():
+    head = (Path(__file__).parents[1] / "core/audit/prompts/stance.md").read_text("utf-8")
+    assert "\nv1.1, signed by Arsh on 2026-10-14" in head
+    for part in ("[CLAIM START]", "How names read:", "with no unstated fact needed",
+                 "the same words on another date or from another"):  # fmt: skip
+        assert part in SIGNED
 
 
 def test_only_the_named_message_can_contradict_a_one_message_assumption():

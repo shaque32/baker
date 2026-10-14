@@ -7,6 +7,11 @@ output that is not exactly the expected object is dropped, with the raw text kep
 The model never supplies ids. assumption_id and record_id come from the inputs, and
 model_run_id from the model. The quote is still untrusted here; core/audit/quotes.py verifies
 it verbatim before the label can become an EvidenceItem.
+
+Prompt v1.1 (signed 2026-10-14) shows the claim for the meaning, role and event templates, which
+say "the claim", and "(not needed for this assumption)" for the others. The model reads the
+case's names, never Baker's ids: the assumption through core/audit/readable.py and the context
+through core/audit/context.py with the same CaseNames. The stored Assumption.text keeps the ids.
 """
 
 from __future__ import annotations
@@ -43,7 +48,10 @@ from core.contracts import (
 )
 
 PROMPT_FILE = "stance.md"
-PLACEHOLDERS = frozenset({"assumption", "record", "context"})
+PLACEHOLDERS = frozenset({"assumption", "record", "context", "claim"})
+# Templates whose wording says "the claim"; the prompt shows the claim's text for these only.
+CLAIM_TEMPLATES = frozenset({"meaning", "role", "event"})
+NO_CLAIM = "(not needed for this assumption)"  # as eval/probe/prompts.py shows it
 MAX_QUOTE_CHARS = 2000
 MAX_RATIONALE_CHARS = 1000
 
@@ -59,6 +67,8 @@ STANCE_SCHEMA: dict[str, object] = {
 }
 
 Renderer = Callable[[EvidenceCandidate], str]
+AssumptionRenderer = Callable[[Assumption], str]
+ClaimText = Callable[[str], str | None]  # claim id -> the claim's text, None if unknown
 
 # Templates about one message, named by its quoted text. The deterministic sender and time
 # checks pick that message the same way (verbatim, word-aligned).
@@ -94,6 +104,14 @@ def default_record(candidate: EvidenceCandidate) -> str:
 
 def default_context(candidate: EvidenceCandidate) -> str:
     return "(no surrounding messages provided)"
+
+
+def default_assumption(assumption: Assumption) -> str:
+    return assumption.text
+
+
+def no_claim_text(claim_id: str) -> str | None:
+    return None
 
 
 class _StanceOut(BaseModel):
@@ -155,6 +173,8 @@ class LocalStanceLabeler:
         prompts_dir: Path = PROMPTS_DIR,
         render_record: Renderer = default_record,
         render_context: Renderer = default_context,
+        render_assumption: AssumptionRenderer = default_assumption,
+        claim_text: ClaimText = no_claim_text,
         recorder: CallRecorder | None = None,
     ) -> None:
         self.model = model
@@ -163,7 +183,7 @@ class LocalStanceLabeler:
         if missing:
             raise ValueError(f"stance prompt lacks placeholders: {sorted(missing)}")
         # fill_prompt leaves a slot it has no value for in place, so a prompt with a slot this
-        # labeler does not fill (v1.1's {claim}, before its code lands) is refused, never sent.
+        # labeler does not fill is refused, never sent.
         unfilled = required_placeholders(self.template) - PLACEHOLDERS
         if unfilled:
             raise ValueError(f"stance prompt has placeholders the labeler does not fill: "
@@ -171,16 +191,26 @@ class LocalStanceLabeler:
         self.prompt_version = prompt_version(self.template)
         self.render_record = render_record
         self.render_context = render_context
+        self.render_assumption = render_assumption
+        self.claim_text = claim_text
         self.recorder = recorder if recorder is not None else CallRecorder()
         self.model_runs: tuple[ModelRun, ...] = ()  # set by create(); the pipeline stores them
+
+    def claim_for(self, assumption: Assumption) -> str:
+        """The {claim} slot: the claim's text for a template that says "the claim", else
+        NO_CLAIM. A claim whose text cannot be found shows NO_CLAIM too, never another text."""
+        if assumption.template_id not in CLAIM_TEMPLATES:
+            return NO_CLAIM
+        return self.claim_text(assumption.claim_id) or NO_CLAIM
 
     def build_prompt(self, assumption: Assumption, candidate: EvidenceCandidate) -> str:
         return fill_prompt(
             self.template,
             {
-                "assumption": assumption.text,
+                "assumption": self.render_assumption(assumption),
                 "record": self.render_record(candidate),
                 "context": self.render_context(candidate),
+                "claim": self.claim_for(assumption),
             },
         )
 
@@ -239,19 +269,35 @@ class LocalStanceLabeler:
         return result.label
 
 
-def create(conn: sqlite3.Connection, *, model: LocalModel | None = None) -> LocalStanceLabeler:
+def create(
+    conn: sqlite3.Connection, *, model: LocalModel | None = None, template: str | None = None
+) -> LocalStanceLabeler:
     """The pipeline's stance labeler: the signed prompt, the configured local model, and the
     context thread's renderer, which shows the record's own line (sender, account, device-local
     time) marked '>>' among its neighbours. Raises if the signed prompt or the model config is
-    missing; nothing falls back to a draft."""
-    from core.audit.context import render_for  # retrieval and context thread
+    missing; nothing falls back to a draft.
 
-    template = load_prompt(PROMPT_FILE)
+    The case's names are read once, here: the pipeline builds its components per audit, after
+    the expert's stipulations and identity decisions for that audit are in. `template` is for
+    the speed test's draft prompts only (eval/probe/time_case.py); the product passes none."""
+    from core.audit.context import render_for  # retrieval and context thread
+    from core.audit.readable import assumption_text, case_names
+
+    if template is None:
+        template = load_prompt(PROMPT_FILE)
     opened = open_run(conn, "stance", template, model=model, schema=STANCE_SCHEMA)
+    names = case_names(conn)
+
+    def claim_text(claim_id: str) -> str | None:
+        row = conn.execute("SELECT text FROM claims WHERE id = ?", (claim_id,)).fetchone()
+        return row[0] if row else None
+
     labeler = LocalStanceLabeler(
         opened.port,
         template=template,
-        render_context=lambda c: render_for(conn, c.record_id),
+        render_context=lambda c: render_for(conn, c.record_id, names=names),
+        render_assumption=lambda a: assumption_text(a, names),
+        claim_text=claim_text,
         recorder=opened.recorder,
     )
     labeler.model_runs = (opened.run,)
