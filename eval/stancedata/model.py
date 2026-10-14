@@ -81,21 +81,25 @@ class GenItem(ProbeItem):
                 raise ValueError(f"{self.probe_id}: Baker wording needs its parameters and phone")
             t = TEMPLATES[self.baker_template]
             parsed = parse_params(t.id, self.baker_params)
-            names = (
-                None
-                if self.baker_names is None
-                else case_names(self.baker_names, parsed.account_ids)
-            )
+            if self.baker_names is None:
+                raise ValueError(f"{self.probe_id}: Baker wording names the people it involves")
+            names = case_names(self.baker_names, parsed.account_ids)
             if self.assumption != t.render(parsed, names):
                 raise ValueError(f"{self.probe_id}: assumption is not the product's rendering")
-            if names is not None:
-                shown = [self.assumption, *(ln.sender for ln in (self.target, *self.context))]
-                if any(i in x for x in shown for i in ("person:", "acct:", "dev:")):
-                    raise ValueError(f"{self.probe_id}: an id shows where a name belongs")
+            shown = [
+                self.assumption,
+                self.rationale,
+                self.baker_claim or "",
+                *(ln.sender for ln in (self.target, *self.context)),
+            ]
+            if any(i in x for x in shown for i in ("person:", "acct:", "dev:")):
+                raise ValueError(f"{self.probe_id}: an id shows where a name belongs")
             if self.assumption_kind != t.kind:
                 raise ValueError(f"{self.probe_id}: kind differs from template {t.id}")
-            if self.baker_claim is not None and t.id not in CLAIM_TEMPLATES:
-                raise ValueError(f"{self.probe_id}: only {CLAIM_TEMPLATES} items show the claim")
+            if (self.baker_claim is not None) != (t.id in CLAIM_TEMPLATES):
+                raise ValueError(
+                    f"{self.probe_id}: {CLAIM_TEMPLATES} items, and only they, show the claim"
+                )
         elif any(getattr(self, name) is not None for name in BAKER_FIELDS):
             raise ValueError(f"{self.probe_id}: only Baker-wording families carry {BAKER_FIELDS}")
         prefix = {"train_gen": "T", "heldout_gen": "DH"}[self.source]
