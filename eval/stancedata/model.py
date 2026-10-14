@@ -23,7 +23,10 @@ from eval.probe_draft.model import ProbeItem
 from eval.stancedata.families import BANNED_WORDS, family
 
 # Fields only items in Baker's own wording carry; plain items leave them out of the file.
-BAKER_FIELDS = ("device_id", "baker_template", "baker_params")
+BAKER_FIELDS = ("device_id", "baker_template", "baker_params", "baker_claim")
+# Templates whose text points to "the claim". Baker's stance step shows them the claim's own
+# text (stance prompt v1.1 in PROPOSED_CHANGES.md); their items carry it as baker_claim.
+CLAIM_TEMPLATES = ("meaning", "role", "event")
 
 GENERATED_LABEL_PREFIX = "DRAFT (labels by construction"
 
@@ -44,10 +47,12 @@ class GenItem(ProbeItem):
     group: str  # items built from one chat scenario share a group; split train/val by group
     # Baker's own wording (families with templates): the phone the record came from, the
     # product template the assumption is rendered from, and its parameters as AssumptionParams
-    # JSON. The assumption must be exactly the product's rendering of them.
+    # JSON. The assumption must be exactly the product's rendering of them. baker_claim is the
+    # claim's text as the government document states it, for CLAIM_TEMPLATES only.
     device_id: str | None = Field(default=None, pattern=r"^dev:item\d+$")
     baker_template: str | None = None
     baker_params: dict[str, Any] | None = None
+    baker_claim: str | None = Field(default=None, min_length=1)
 
     @model_validator(mode="after")
     def _matches_family(self) -> GenItem:
@@ -60,8 +65,8 @@ class GenItem(ProbeItem):
             raise ValueError(
                 f"{self.probe_id}: {f.family_id} items are disputed in the held-out set"
             )
-        for name in ("assumption", "rationale"):
-            text = getattr(self, name).casefold()
+        for name in ("assumption", "rationale", "baker_claim"):
+            text = (getattr(self, name) or "").casefold()
             for word in BANNED_WORDS:
                 if word in text:
                     raise ValueError(f"{self.probe_id}: {name} uses the banned word {word!r}")
@@ -75,6 +80,8 @@ class GenItem(ProbeItem):
                 raise ValueError(f"{self.probe_id}: assumption is not the product's rendering")
             if self.assumption_kind != t.kind:
                 raise ValueError(f"{self.probe_id}: kind differs from template {t.id}")
+            if self.baker_claim is not None and t.id not in CLAIM_TEMPLATES:
+                raise ValueError(f"{self.probe_id}: only {CLAIM_TEMPLATES} items show the claim")
         elif any(getattr(self, name) is not None for name in BAKER_FIELDS):
             raise ValueError(f"{self.probe_id}: only Baker-wording families carry {BAKER_FIELDS}")
         prefix = {"train_gen": "T", "heldout_gen": "DH"}[self.source]

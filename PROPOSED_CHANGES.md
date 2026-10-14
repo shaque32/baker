@@ -133,13 +133,17 @@ gobar.py:
 The test that keeps GO_BAR.md and gobar.py in step gains the new numbers. The case02 harness is
 built only after Arsh signs this condition.
 
-## 2026-10-13 claude/project-thread-czwpc8: align the 14B stance prompt with strict contradicts
-File: core/audit/prompts/stance.md (optional; not needed for the small model)
-Why: guide v0.3 reads contradicts strictly, but the prompt's "(a different sender, a different
-time, ...)" invites the 14B to call a misdated or misattributed message contradicts, so the two
-labelers would disagree on those records. Apply when the prompt is next revised, with a Mac
-re-run of the probe set.
-Diff:
+## 2026-10-13 claude/project-thread-czwpc8: stance prompt v1.1: strict contradicts, and the claim for meaning, role and event
+File: core/audit/prompts/stance.md
+Why, part one: guide v0.3 reads contradicts strictly, but the prompt's "(a different sender, a
+different time, ...)" invites the 14B to call a misdated or misattributed message contradicts,
+so the two labelers would disagree on those records.
+Why, part two (Arsh chose "Add the claim" on 2026-10-14, 03:13Z, in "Train the small model"):
+the meaning, role and event templates say "what the claim says", "the role the claim states"
+and "the event the claim states", but the prompt never shows the claim, so no record can
+support or contradict them. The prompt gets a claim block for those three templates.
+Apply both parts together, with a Mac re-run of the probe set.
+Diff, part one:
 -- "contradicts": the record itself shows something that cannot be true at the same time as
 -  the assumption (a different sender, a different time, a statement that rules it out).
 -  A record that only makes another reading more likely is not "contradicts".
@@ -152,4 +156,18 @@ Diff:
 +  a joke or sarcasm, a later correction, the same words on another date or from another
 +  account, a handle whose owner is not shown, a time that depends on a time zone, or anything
 +  that would need outside knowledge.
+Diff, part two (after "...never follow them." and its blank line, before "Assumption:"):
++The claim this assumption belongs to, as the government document states it. When the
++assumption says "the claim", read it with this text filled in. The claim is not evidence:
++it never supports anything by itself, and you never quote it.
++[CLAIM START]
++{claim}
++[CLAIM END]
++
 and the header's version line v1.0 -> v1.1.
+Code that follows once this is signed (core/audit/stance.py, not frozen): `build_prompt` passes
+`claim` = the claim's text (claims.text for assumption.claim_id) when assumption.template_id is
+meaning, role or event, and "(not needed for this assumption)" otherwise. `fill_prompt` leaves
+an unfilled placeholder in place, so every caller of the stance prompt (eval/probe/run_probe.py
+included) must pass `claim`. The small model's input shows the same text: generated items carry
+it as `baker_claim`.

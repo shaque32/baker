@@ -45,6 +45,9 @@ def render_item(row: dict) -> list[str]:
     lines.insert(row["target_index"], {**row["target"], "marked": True})
     trap = f", trap: {row['trap']}" if row.get("trap") else ""
     out = [f"### {row['probe_id']}: {row['gold_stance']}{trap} ({row['lang']})", ""]
+    if row.get("baker_claim"):
+        out.append(f"**Claim (shown with the assumption):** {row['baker_claim']}")
+        out.append("")
     out.append(f"**Assumption:** {row['assumption']}")
     out.append("")
     phone = f" (record from {row['device_id']})" if row.get("device_id") else ""

@@ -224,12 +224,14 @@ def build_baker_item(
     group: str | None = None,
     disputed: str | None = None,
     labeled_by: str | None = None,
+    claim: str | None = None,
 ) -> GenItem:
     """Assemble and check one item in Baker's own wording. The assumption is the product's
     rendering of (template_id, params); the label comes from the family, as for plain items.
 
     lines are the excerpt in time order with the record at `target`; device is the phone the
-    record came from ('dev:item3').
+    record came from ('dev:item3'); claim is the claim's text, shown only with the meaning, role
+    and event templates.
     """
     if not 0 <= target < len(lines):
         raise ValueError(f"{probe_id}: target {target} outside {len(lines)} lines")
@@ -268,4 +270,5 @@ def build_baker_item(
         device_id=device,
         baker_template=template_id,
         baker_params=parsed.model_dump(mode="json", exclude_defaults=True),
+        baker_claim=claim,
     )
