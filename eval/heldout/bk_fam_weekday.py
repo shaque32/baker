@@ -1,6 +1,6 @@
-"""Writers for the weekday families: bk_weekday_next, bk_weekday_open and bk_weekday_wrong.
-The record plans for one weekday; the window is one whole local day in the phone's zone, worded
-"Thursday, May 7, 2026", and its weekday is that date's."""
+"""Writers for the weekday families: bk_weekday_next, bk_weekday_open, bk_weekday_wrong and
+bk_weekday_after. The record plans for one weekday; the window is one whole local day in the
+phone's zone, worded "Thursday, May 7, 2026", and its weekday is that date's."""
 
 from __future__ import annotations
 
@@ -28,10 +28,10 @@ def word(s: BkSlot) -> str:
     return cues.DAYS_RU[mod][s.day]
 
 
-def _sent(rng: random.Random, day: date, tz: str) -> datetime:
-    """A time between 8 a.m. and 10 p.m. local on day."""
+def _sent(rng: random.Random, day: date, tz: str, last: int = 22 * 60) -> datetime:
+    """A time between 8 a.m. and the minute `last` (10 p.m.) local on day."""
     for _ in range(50):
-        utc = bt.local_instant(day, rng.randint(8 * 60, 22 * 60), tz)
+        utc = bt.local_instant(day, rng.randint(8 * 60, last), tz)
         if utc is not None:
             return utc + timedelta(seconds=rng.randrange(60))
     raise RuntimeError("no send time")
@@ -42,8 +42,10 @@ def _on_weekday(rng: random.Random, weekday: int) -> date:
     return base + timedelta(days=(weekday - base.weekday()) % 7)
 
 
-def _item(s: BkSlot, rng: random.Random, pr: Pair, sent: date, target: date, why: str) -> BkDraft:
-    utc = _sent(rng, sent, pr.p.tz)
+def _item(
+    s: BkSlot, rng: random.Random, pr: Pair, sent: date, target: date, why: str, last: int = 22 * 60
+) -> BkDraft:
+    utc = _sent(rng, sent, pr.p.tz, last)
     win = bt.weekday_day(target, pr.p.tz)
     mine = rng.random() < 0.5
     ex = pr.chat(rng, s, utc, s.text, mine, avoid=_DAY_WORDS)
@@ -74,9 +76,13 @@ def wk_next(s: BkSlot, rng: random.Random) -> BkDraft:
 
 def wk_open(s: BkSlot, rng: random.Random) -> BkDraft:
     """bk_weekday_open: the plan names the weekday it was sent on, or puts "next" or "this"
-    before the weekday; the stated date is one of the dates it may mean."""
+    before the weekday; the stated date is one of the dates it may mean. A plan for the send
+    day's own weekday is sent before 10 a.m., so a time it names ("at 7") can still be that
+    day's."""
     pr = pair(rng, s)
+    last = 22 * 60
     if s.variant == "same_day":
+        last = 9 * 60 + 59
         sent = _on_weekday(rng, s.day)
         target = sent + timedelta(days=rng.choice((0, 7)))
         why = (
@@ -102,41 +108,48 @@ def wk_open(s: BkSlot, rng: random.Random) -> BkDraft:
         target = sent + timedelta(days=(s.day - sent.weekday()) % 7)
         if 6 in (s.day, sent.weekday()):
             why = (
-                'The record says "{word}", sent {local}; at the turn of a week, which week "this" '
-                "points to depends on the day a week is counted from, so the record does not "
-                'settle that it means "{raw}".'
+                'The record says "{word}", sent {local}; weeks start on different days for '
+                'different people, so which week "this" points to is open, and the record does '
+                'not settle that it means "{raw}".'
             )
         else:
             why = (
                 'The record says "{word}", sent {local}, after that week\'s day had passed, so '
                 'which week it means is open and the record does not settle that it means "{raw}".'
             )
-    return _item(s, rng, pr, sent, target, why)
+    return _item(s, rng, pr, sent, target, why, last)
 
 
 def wk_wrong(s: BkSlot, rng: random.Random) -> BkDraft:
-    """bk_weekday_wrong: the stated date falls on another weekday than the quoted words name,
-    or the plan was sent after the stated date had passed."""
+    """bk_weekday_wrong: the stated date falls on another weekday than the quoted words name."""
     pr = pair(rng, s)
-    if s.variant == "other_day":
-        wd = rng.choice([d for d in range(7) if d != s.day])
-        target = _on_weekday(rng, wd)
-        sent = target - timedelta(days=rng.randint(1, 6))
-        why = pick(
-            rng,
-            'The quoted words name "{word}", and the stated date "{raw}" falls on another '
-            "weekday, so the words cannot mean that date.",
-            'The record plans for "{word}", while "{raw}" is a different weekday; the quoted '
-            "words rule that date out.",
-        )
-    else:
-        target = _on_weekday(rng, s.day)
-        sent = target + timedelta(days=rng.randint(1, 6))
-        why = pick(
-            rng,
-            'The record plans for "{word}" and was sent on {sent}, after "{raw}" had passed, so '
-            "the plan cannot mean that date.",
-            'Sent {local}, the plan for "{word}" looks ahead, and "{raw}" was already past, so '
-            "the words cannot mean it.",
-        )
+    wd = rng.choice([d for d in range(7) if d != s.day])
+    target = _on_weekday(rng, wd)
+    sent = target - timedelta(days=rng.randint(1, 6))
+    why = pick(
+        rng,
+        'The quoted words name "{word}", and the stated date "{raw}" falls on another '
+        "weekday, so the words cannot mean that date.",
+        'The record plans for "{word}", while "{raw}" is a different weekday; the quoted '
+        "words rule that date out.",
+    )
+    return _item(s, rng, pr, sent, target, why)
+
+
+def wk_after(s: BkSlot, rng: random.Random) -> BkDraft:
+    """bk_weekday_after: a plan for the stated date's weekday, sent one to six days after that
+    date: this record means a later date, and the same words sent before the date could mean
+    it (rule 23)."""
+    pr = pair(rng, s)
+    target = _on_weekday(rng, s.day)
+    sent = target + timedelta(days=rng.randint(1, 6))
+    why = pick(
+        rng,
+        'The record plans for "{word}" but was sent on {sent}, after "{raw}" had passed, so '
+        "this message means a later date; the same words sent before that date could mean it, "
+        "and one record cannot show that no such message exists.",
+        'Sent {local}, the plan for "{word}" looks ahead past "{raw}", so this record does not '
+        "mean that date; another message with the same words, sent earlier, could, and nothing "
+        "here shows there was none.",
+    )
     return _item(s, rng, pr, sent, target, why)

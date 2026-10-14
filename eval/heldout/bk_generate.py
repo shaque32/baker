@@ -48,6 +48,7 @@ WRITERS: dict[str, Writer] = {
     "bk_weekday_next": wkd.wk_next,
     "bk_weekday_open": wkd.wk_open,
     "bk_weekday_wrong": wkd.wk_wrong,
+    "bk_weekday_after": wkd.wk_after,
     "bk_author_cue": ide.author,
     "bk_claim_open": clm.claim_open,
     "bk_meaning_said": said.meaning_explained,

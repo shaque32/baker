@@ -1052,8 +1052,8 @@ def test_time_and_sender_answers_quote_the_whole_record(many: list[GenItem]) -> 
 
 # ---------------------------------------------------------------- Baker's own wording (bk_*)
 
-BK_N = 2800  # a hundred items of each family, two hundred of bk_unrelated
-BK_RUN = 7000  # `make stancedata`: 250 of each family, 500 of bk_unrelated
+BK_N = 2900  # a hundred items of each family, two hundred of bk_unrelated
+BK_RUN = 7250  # `make stancedata`: 250 of each family, 500 of bk_unrelated
 BK_FAMILY = {f.family_id: f for f in FAMILIES}
 BK_INSIDE = {"bk_time_inside", "bk_call_inside", "bk_call_length", "bk_no_contact_inside",
              "bk_count_one", "bk_other_phone", "bk_party_unshown", "bk_claim_open",
@@ -1302,6 +1302,9 @@ def test_baker_weekdays_relate_to_their_dates(bk: list[Any]) -> None:
         assert raw == f"{BK_DAYS[day.weekday()].capitalize()}, {day:%B} {day.day}, {day.year}"
         assert 8 <= sent_at.hour <= 21
         wd, prefix = _weekday(it.baker_params["quoted_text"])
+        # A plan for the send day's own weekday is sent before 10 a.m., so a time of day it
+        # names ("monday morning") can still be that day's.
+        assert wd != sent.weekday() or sent_at.hour <= 9, it.probe_id
         gap = (day - sent).days
         # "this <weekday>" is plain only for a later day of the same Monday-to-Saturday week.
         later_this_week = sent.weekday() < wd <= 5
@@ -1316,12 +1319,16 @@ def test_baker_weekdays_relate_to_their_dates(bk: list[Any]) -> None:
             assert prefix == "next" or day == first, it.probe_id
         elif it.family == "bk_weekday_open":
             assert wd == sent.weekday() and gap in (0, 7), it.probe_id
-        else:
+        elif it.family == "bk_weekday_wrong":
             assert not prefix
-            ahead = wd not in (day.weekday(), sent.weekday()) and 1 <= gap <= 6
-            assert ahead or (wd == day.weekday() and 2 <= -gap <= 6), it.probe_id
+            assert wd not in (day.weekday(), sent.weekday()) and 1 <= gap <= 6, it.probe_id
+        else:
+            # Sent after the date: this record means a later date, but the same words sent
+            # before it could mean it (rule 23), so the family is complicates.
+            assert it.family == "bk_weekday_after" and it.gold_stance == "complicates"
+            assert not prefix and wd == day.weekday() and 2 <= -gap <= 6, it.probe_id
         seen[f"{it.family}|{prefix}"] += 1
-    assert len(seen) == 6 and min(seen.values()) >= 15, seen
+    assert len(seen) == 7 and min(seen.values()) >= 15, seen
 
 
 def test_baker_calls_name_their_numbers_and_lengths(bk: list[Any]) -> None:
@@ -1438,13 +1445,17 @@ def test_baker_quotes_follow_the_guide(bk: list[Any]) -> None:
 
 
 def test_baker_own_frames_speak_in_the_first_person() -> None:
-    # A frame counts as the sender's own usage only when it says so ("i", "me", "я", "у нас").
-    first_person = re.compile(r"\b(?:i|me)\b|(?<![а-яё])я(?![а-яё])|у нас")
+    # A frame counts as the sender's own usage only when it says so ("i", "me", "я"). "у нас"
+    # may only place a thing ("это у нас сейф" reads as "our safe"), so no frame leans on it.
+    first_person = re.compile(r"\b(?:i|me)\b|(?<![а-яё])я(?![а-яё])")
     assert OWN <= set(EXPLAIN) and OWN_RU <= set(EXPLAIN_RU)
     for frame in OWN | OWN_RU:
         assert first_person.search(frame), frame
     for frame in set(EXPLAIN) - OWN | set(EXPLAIN_RU) - OWN_RU:
         assert not first_person.search(frame), frame
+    assert not any("у нас" in frame for frame in EXPLAIN_RU)
+    # No tail confines the meaning to later messages ("for next time" coins the words).
+    assert not any("next time" in tail for tail in TAILS)
 
 
 def test_baker_meaning_records_come_from_the_words_user(bk: list[Any]) -> None:

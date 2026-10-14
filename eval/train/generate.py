@@ -107,7 +107,7 @@ def manifest(items: list[GenItem], seed: int, sha256: str) -> dict:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--n", type=int, default=12000, help="plain items")
-    ap.add_argument("--n-baker", type=int, default=7000, help="items in Baker's own wording")
+    ap.add_argument("--n-baker", type=int, default=7250, help="items in Baker's own wording")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--out", type=Path, default=Path("eval/out/stancedata/train.jsonl"))
     args = ap.parse_args(argv)

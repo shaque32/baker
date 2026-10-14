@@ -4,7 +4,7 @@ As baker_claim_words.MEANINGS: (words, the claim's meaning in English, the same 
 Russian chat, two meanings of another kind altogether). The words stay in one grammatical form
 in every line ("посылка уже у меня", "посылка - это деньги за машину"), so the assumption quotes
 them verbatim; every Russian meaning reads the same in the nominative and the accusative, so
-"это ..." and "я имею в виду ..." both take it unchanged.
+"это ...", "я имею в виду ..." and "так я называю ..." all take it unchanged.
 """
 
 from __future__ import annotations
@@ -39,11 +39,12 @@ MEANINGS_RU: tuple[tuple[str, str, str, tuple[str, str]], ...] = (
 # "только", "просто" or "ничего больше", so only the meaning tells the families apart.
 EXPLAIN_RU = (
     "{p} - это {m}", "{p} = {m}", "{p} значит {m}", "{p}? это {m}", "если я пишу {p}, это {m}",
-    "когда я говорю {p}, я имею в виду {m}", "{p} - это у нас {m}",
+    "когда я говорю {p}, я имею в виду {m}", "{p} - так я называю {m}",
 )  # fmt: skip
-# As baker_claim_words.OWN: frames that give the meaning as the sender's own usage.
+# As baker_claim_words.OWN: frames that give the meaning as the sender's own usage, in the first
+# person singular ("у нас" may only place a thing: "это у нас сейф" reads as "our safe").
 OWN_RU = frozenset({"если я пишу {p}, это {m}", "когда я говорю {p}, я имею в виду {m}",
-                    "{p} - это у нас {m}"})  # fmt: skip
+                    "{p} - так я называю {m}"})  # fmt: skip
 OPENERS_RU = ("", "", "", "напоминаю: ", "чтобы было понятно: ", "короче, ", "кстати, ")
 TAILS_RU = ("", "", "", "", ", если что", ", ок?")
 USE_RU = ("{p} уже у меня", "как там {p}?", "{p} на месте", "{p} у тебя?", "завтра будет {p}")

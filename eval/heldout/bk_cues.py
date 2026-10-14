@@ -108,7 +108,7 @@ WEEKDAY_RU = (
     "увидимся {acc} {spot}",
     "сможешь подменить меня {acc}?",
     "{acc} буду {spot} к десяти",
-    "заеду {acc} после работы, {spot}",
+    "заеду {acc} после работы, жди {spot}",
 )
 DAYS_EN = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 # Accusative with its preposition: bare, "next" and "this" forms, Monday first.
@@ -175,7 +175,7 @@ THINGS_RU = {
     "orchard": ("ящики", "лестницы"),
     "tow": ("пусковое", "тележки"),
     "laundry": ("монеты", "новый ремень"),
-    "print": ("пробники", "тонер"),
+    "print": ("образцы", "тонер"),
     "greenhouse": ("кассеты", "сетку"),
 }
 

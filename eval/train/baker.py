@@ -1,9 +1,9 @@
 """Training items in Baker's own wording (guide rules 25 to 29): the bk_* families.
 
-Item j of a Baker run (0-based) fills slot j % 28 of CYCLE and is the k-th item of that slot's
+Item j of a Baker run (0-based) fills slot j % 29 of CYCLE and is the k-th item of that slot's
 family, k counting the family's earlier slots; its random stream is item_rng(GENERATOR, seed, j)
 alone, so the same run is byte-identical and a shorter run is a prefix of a longer one.
-bk_unrelated has two slots in the cycle and every other family one: 7000 items give 250 per
+bk_unrelated has two slots in the cycle and every other family one: 7250 items give 250 per
 family and 500 for bk_unrelated. The meaning, role and event templates carry the claim's own
 text (rule 29), and every item names its people (baker_cast.py). A writer that cannot finish a
 draft (a rare clash, such as quoted words that also stand on a context line) raises, and the
@@ -26,7 +26,7 @@ from eval.train.baker_fam_count import (
     outside_window,
     zone_edge,
 )
-from eval.train.baker_fam_days import weekday_next, weekday_open, weekday_wrong
+from eval.train.baker_fam_days import weekday_after, weekday_next, weekday_open, weekday_wrong
 from eval.train.baker_fam_denied import claim_denied
 from eval.train.baker_fam_meaning import meaning_other, meaning_said
 from eval.train.baker_fam_people import account_silent, author_cue, handles_said, identity_named
@@ -39,8 +39,11 @@ from eval.train.baker_kit import Draft, finish
 # later day of the same Monday-to-Saturday week, and a meaning explanation is the sender's
 # own (guide v0.3 draft of 2026-10-14). 1.2.0: an open "this <weekday>" is dated to the coming
 # such day, never a week later, and another meaning contradicts only a claim that names its
-# user; with no user named it is bk_claim_open. A new version draws every Baker item afresh.
-GENERATOR = "eval.train.baker 1.2.0"
+# user; with no user named it is bk_claim_open. 1.3.0: a plan for the date's weekday sent after
+# the date is bk_weekday_after (complicates, rule 23), no longer contradicts; a plan for the send
+# day's weekday is sent before 10 a.m.; the Russian own-usage frame is "так я называю". A new
+# version draws every Baker item afresh.
+GENERATOR = "eval.train.baker 1.3.0"
 ATTEMPTS = 40
 
 Writer = Callable[[random.Random, int], Draft]
@@ -66,6 +69,7 @@ WRITERS: dict[str, Writer] = {
     "bk_weekday_next": weekday_next,
     "bk_weekday_open": weekday_open,
     "bk_weekday_wrong": weekday_wrong,
+    "bk_weekday_after": weekday_after,
     "bk_author_cue": author_cue,
     "bk_claim_open": claim_open,
     "bk_meaning_said": meaning_said,
@@ -73,7 +77,7 @@ WRITERS: dict[str, Writer] = {
     "bk_event_is_record": event_is_record,
     "bk_claim_denied": claim_denied,
 }
-CYCLE: tuple[str, ...] = (*WRITERS, "bk_unrelated")  # bk_unrelated at slots 10 and 27
+CYCLE: tuple[str, ...] = (*WRITERS, "bk_unrelated")  # bk_unrelated at slots 10 and 28
 
 
 def slot(j: int) -> tuple[str, int]:

@@ -1191,7 +1191,7 @@ def test_bk_composition_follows_the_plain_items(
         bk = _bk(items)
         fam = _by_family(bk)
         assert fam == {f: n // scale for f, n in BK_COMPOSITION.items()}
-        assert sum(fam.values()) == 672 // scale  # 24 per family, 48 unrelated (test split)
+        assert sum(fam.values()) == 696 // scale  # 24 per family, 48 unrelated (test split)
         first = len(items) - len(bk)
         assert first == TOTAL // scale
         assert not _bk(items[:first]), "Baker-wording items come after every plain item"
@@ -1327,7 +1327,7 @@ def test_bk_record_texts_never_repeat(test_items: list[GenItem], dev_items: list
 
 
 _WORDS_QUOTED = {"bk_sender_shown", "bk_sender_other", "bk_time_inside", "bk_weekday_next",
-                 "bk_weekday_open", "bk_weekday_wrong"}  # fmt: skip
+                 "bk_weekday_open", "bk_weekday_wrong", "bk_weekday_after"}  # fmt: skip
 _CUE_QUOTED = {"bk_identity_named", "bk_handles_said", "bk_author_cue"}
 _CLAUSE_QUOTED = {"bk_meaning_said", "bk_meaning_other", "bk_claim_denied", "bk_claim_open"}
 
@@ -1575,8 +1575,9 @@ def test_bk_weekday_items_relate_the_dates(
     test_items: list[GenItem], dev_items: list[GenItem]
 ) -> None:
     """next: a bare weekday, the date's, sent one to six days before it. open: the weekday the
-    record was sent on (the date that day or a week on), or "next"/"this" with the date one of
-    its readings. wrong: another weekday than the date's, or the date already past."""
+    record was sent on (the date that day or a week on, sent before 10 a.m.), or "next"/"this"
+    with the date one of its readings. wrong: another weekday than the date's. after: the
+    date's weekday, sent after the date (complicates, rule 23)."""
     for it in _bk(test_items + dev_items):
         if not it.family.startswith("bk_weekday"):
             continue
@@ -1593,13 +1594,17 @@ def test_bk_weekday_items_relate_the_dates(
         elif it.family == "bk_weekday_open":
             if mod == "":
                 assert day == sent.weekday() and delta in (0, 7), it.probe_id
+                # Sent before 10 a.m., so a time the plan names ("at 7") can be that day's.
+                assert int(it.target.local_time[11:13]) <= 9, it.probe_id
             else:
                 assert day == target.weekday() and delta in (upcoming, upcoming + 7), it.probe_id
                 # "this" is plain for a later day of the same Monday-to-Saturday week.
                 assert mod == "next" or not sent.weekday() < day <= 5, it.probe_id
+        elif it.family == "bk_weekday_wrong":
+            assert mod == "" and day != target.weekday(), it.probe_id
         else:
-            assert mod == "", it.probe_id
-            assert day != target.weekday() or -6 <= delta <= -1, it.probe_id
+            assert it.family == "bk_weekday_after" and it.gold_stance == "complicates"
+            assert mod == "" and day == target.weekday() and -6 <= delta <= -1, it.probe_id
 
 
 # ------------------------------------------------------------------ bk parties on screen

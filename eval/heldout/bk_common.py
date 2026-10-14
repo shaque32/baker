@@ -22,9 +22,11 @@ from eval.stancedata.model import GenItem
 
 # 1.1.0: "at about" is Baker's eight minutes either side and never "noon"; a "this <weekday>"
 # rationale names why the week is open. 1.2.0: Russian lines never mark the speaker's or the
-# listener's gender ("понял", "выручил"), which no item's people decide. A new version draws
-# every Baker item afresh.
-BK_GENERATOR = "eval.heldout.baker 1.2.0"
+# listener's gender ("понял", "выручил"), which no item's people decide. 1.3.0: a plan for the
+# date's weekday sent after the date is bk_weekday_after (complicates, rule 23), no longer
+# contradicts, and a plan for the send day's weekday is sent before 10 a.m.; four Russian lines
+# read more naturally. A new version draws every Baker item afresh.
+BK_GENERATOR = "eval.heldout.baker 1.3.0"
 
 SAY: dict[str, tuple[str, ...]] = {}
 CTX: dict[str, tuple[str, ...]] = {}

@@ -247,13 +247,17 @@ FAMILIES: tuple[Family, ...] = (
        templates=("weekday_date",)),
     _F("bk_weekday_open", C.COMPLICATES, S.COMPLICATES, None, (K.TIME,),
        "Baker's weekday template. The record names the weekday it was sent on, or puts 'next' "
-       "before the weekday, or 'this' before a weekday already past in the week it was sent or "
-       "with a Sunday on either side, so which date it means is open. The stated date is one "
-       "the words can mean: after 'this', the coming such day.", new=True,
-       templates=("weekday_date",)),
+       "before the weekday, or 'this' before a weekday already past in the week it was sent, "
+       "or 'this' when the named day or the send day is a Sunday, so which date it means is "
+       "open. The stated date is one the words can mean: after 'this', the coming such day.",
+       new=True, templates=("weekday_date",)),
     _F("bk_weekday_wrong", C.CONTRADICTS, S.CONTRADICTS, None, (K.TIME,),
        "Baker's weekday template. The quoted words name a different weekday from the stated "
-       "date's, or plan for that weekday after the stated date has passed.", new=True,
+       "date's.", new=True, templates=("weekday_date",)),
+    _F("bk_weekday_after", C.OVERREACH, S.COMPLICATES, "time_mismatch", (K.TIME,),
+       "Baker's weekday template. The quoted words plan for the stated date's weekday but were "
+       "sent after that date had passed: this record means a later date, and the same words "
+       "sent before the date could mean it (rule 23).", new=True,
        templates=("weekday_date",)),
     _F("bk_author_cue", C.OVERREACH, S.COMPLICATES, "shared_account", (K.IDENTITY,),
        "Baker's authorship template. The record, from a named account, carries a cue about who "

@@ -111,7 +111,8 @@ OWN = frozenset({"by {p} i mean {m}", "{p} {is} what i call {m}", "if i say {p} 
                  "i call {m} {p}", "for me {p} {is} {m}", "when i text {p} its {m}"})  # fmt: skip
 # Words around an explanation that the answer does not rest on: the quote leaves them out.
 OPENERS = ("", "", "", "to be clear, ", "remember ", "ok so ", "heads up, ", "btw ")
-TAILS = ("", "", "", "", ", ok?", ", u know that", ", for next time")
+# No tail limits the meaning to later messages ("for next time" reads as coining the words).
+TAILS = ("", "", "", "", ", ok?", ", u know that", ", fyi")
 # The words used and left unexplained.
 USE = (
     "did u handle {p}", "{p} {is} ready", "dont forget {p}", "i have {p}", "{p} {is} all set",
