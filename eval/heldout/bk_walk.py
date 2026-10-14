@@ -103,11 +103,20 @@ class Walk:
                 pool.append((t, sit, v, d))
                 continue
             if ru:
-                text = cues.fill(cues.WEEKDAY_RU[t], acc=cues.DAYS_RU[mod][d],
-                                 spot=cues.SPOTS_RU[sit][v], thing=cues.THINGS_RU[sit][v])
+                text = cues.fill(
+                    cues.WEEKDAY_RU[t],
+                    acc=cues.DAYS_RU[mod][d],
+                    spot=cues.SPOTS_RU[sit][v],
+                    thing=cues.THINGS_RU[sit][v],
+                )
             else:
-                text = cues.fill(cues.WEEKDAY_EN[t], mod=mod, day=cues.DAYS_EN[d],
-                                 spot=cues.SPOTS[sit][v], thing=cues.THINGS[sit][v])
+                text = cues.fill(
+                    cues.WEEKDAY_EN[t],
+                    mod=mod,
+                    day=cues.DAYS_EN[d],
+                    spot=cues.SPOTS[sit][v],
+                    thing=cues.THINGS[sit][v],
+                )
             if self._fresh(text):
                 return sit, text, d
         raise RuntimeError("the weekday plans ran out")

@@ -41,8 +41,10 @@ def shown(s: BkSlot, rng: random.Random) -> BkDraft:
         ids = acct_ids(pr, sender, rng, both=v == "acct_both")
         party = {"account_ids": ids}
         if len(ids) == 2:
-            why = (f"Both ids name one account, {sender.app} {sender.ident}, as the two phones "
-                   "list it, and the record's line shows it sending the quoted words.")
+            why = (
+                f"Both ids name one account, {sender.app} {sender.ident}, as the two phones "
+                "list it, and the record's line shows it sending the quoted words."
+            )
         else:
             why = pick(
                 rng,
@@ -141,8 +143,10 @@ def unshown(s: BkSlot, rng: random.Random) -> BkDraft:
         if win is not None:
             params["window"] = win.tw()
         if named:
-            why = (f'The owner calls the sender "{s.person}", but no line carries {slug} in '
-                   f"brackets; a name used in a chat does not show who holds {them}.")
+            why = (
+                f'The owner calls the sender "{s.person}", but no line carries {slug} in '
+                f"brackets; a name used in a chat does not show who holds {them}."
+            )
         else:
             why = pick(
                 rng,

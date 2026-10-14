@@ -61,7 +61,7 @@ ID_CUES: tuple[str, ...] = (
 # A line from the other party that calls the sender by the name, shown before the record.
 CALLED_BY_NAME: tuple[str, ...] = (
     "is this {first} {Sur}?",
-    "{first} {Sur}? got ur number from the front desk",
+    "{first} {Sur}? ur sister passed me this number",
     "{Sur}? its about the {item}",
     "hey {first} {Sur}, quick question",
     "{first} {Sur}, right?",

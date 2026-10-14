@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 import random
+from collections.abc import Callable
 
 from eval.heldout import ID_PREFIX, SEEDS
 from eval.heldout import bk_fam_call as cal

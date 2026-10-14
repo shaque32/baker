@@ -195,40 +195,66 @@ def _contact(rng: random.Random, c: Ctx) -> dict[str, Any]:
     raise RuntimeError("no contact apart from the excerpt")
 
 
+def _what(c: Ctx) -> str:
+    """The record as a rationale names it."""
+    sender = c.lines[c.target].sender
+    names = {"contact": "The contact row", "call": f"The call shown as {sender}",
+             "att": f"The attachment from {sender}"}  # fmt: skip
+    return names.get(c.rec.kind, f"The message from {sender}")
+
+
 def unrelated(rng: random.Random, k: int) -> Draft:
     template = TEMPLATES[k % 12]
     c = _record(rng, k)
-    why = "holds none of the quoted words"
+    what = _what(c)
     if template == "record_time" and (k // 12) % 2 == 1:
-        params = {"person_ids": (c.s.phone.person,),
-                  "account_ids": (_stranger(rng, c, "Phone"),), "channels": ("call",),
-                  "window": c.window(rng)}  # fmt: skip
+        acct = _stranger(rng, c, "Phone")
+        params = {"person_ids": (c.s.phone.person,), "account_ids": (acct,),
+                  "channels": ("call",), "window": c.window(rng)}  # fmt: skip
         if rng.random() < 0.3:
             params["duration_s"] = rng.choice(RANGES)
-        why = "is not a call between the named parties"
+        rationale = (f"{what} does not involve {acct}, whose number no line shows, so the record "
+                     "is not the call the assumption describes.")  # fmt: skip
     elif template in ("sender", "record_time", "meaning", "weekday_date"):
         params = _quoted(rng, c, template)
+        rationale = (f'{what} does not contain "{params["quoted_text"]}", and no line shown uses '
+                     "those words, so the record has no bearing on the assumption.")  # fmt: skip
     elif template in ("message_count", "no_contact"):
         params = _pair(rng, c) | {"window": c.window(rng)}
+        acct = params["account_ids"][0]
         if template == "message_count":
             params |= {"device_ids": (c.s.phone.dev,), "count_op": rng.choice(("eq", "ge", "le")),
                        "expected_count": rng.randint(2, 60)}  # fmt: skip
-        elif rng.random() < 0.4:
-            params["device_ids"] = (c.s.phone.dev,)
-        why = "is not between the named parties"
+            end = "is not one of the messages the assumption counts"
+        else:
+            if rng.random() < 0.4:
+                params["device_ids"] = (c.s.phone.dev,)
+            end = "is not contact between the named parties"
+        rationale = f"{what} does not involve {acct}, which no line shows, so the record {end}."
     elif template == "same_account":
-        params, why = _handles(rng, c), "mentions neither handle"
+        params = _handles(rng, c)
+        h1, h2 = params["handles"]
+        rationale = (f"{what} names neither {h1} nor {h2}, so the record says nothing about "
+                     "whether they are one account.")  # fmt: skip
     elif template == "contact_entry":
-        params, why = _contact(rng, c), "is not a contact row with that name or that number"
+        params = _contact(rng, c)
+        rationale = (f'{what} shows neither the name "{params["quoted_text"]}" nor the number of '
+                     f"{params['account_ids'][0]}, so the record says nothing about that "
+                     "contact entry.")  # fmt: skip
     elif template in ("authorship", "person_identity"):
         app = rng.choice([a for a in MSG_APPS if a != c.s.app] or [c.s.app])
-        params = {"person_ids": (_unbracketed(rng, c),), "account_ids": (_stranger(rng, c, app),)}
-        why = "is not from the named account"
+        acct = _stranger(rng, c, app)
+        params = {"person_ids": (_unbracketed(rng, c),), "account_ids": (acct,)}
+        about = "who typed what that account sent" if template == "authorship" else "who holds it"
+        rationale = (f"{what} is not from {acct}, which no line shows, so the record says nothing "
+                     f"about {about}.")  # fmt: skip
     else:  # role, event
-        params = {"person_ids": (_unbracketed(rng, c),)}
+        pid = _unbracketed(rng, c)
+        params = {"person_ids": (pid,)}
         if template == "event" and rng.random() < 0.5:
             params["window"] = c.window(rng)
-        why = "neither comes from nor goes to an account bracketed with a named person"
-    rationale = f"The record {why}, so it does not bear on the assumption."
+        rationale = (f"No line shown carries {pid} in brackets, so nothing ties "
+                     f"{what[0].lower()}{what[1:]} to that person; the record has no bearing on "
+                     f"the {template} the claim states.")  # fmt: skip
     return Draft(FAMILY, template, params, c.s.scene, c.s.phone, c.evs, c.target,
                  c.lines[c.target].text, rationale)  # fmt: skip

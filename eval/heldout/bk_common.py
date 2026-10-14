@@ -10,8 +10,7 @@ from datetime import datetime
 from typing import Any
 
 from core.audit.quotes import verify_quote
-from eval.heldout import SOURCE
-from eval.heldout import bk_lines_a, bk_lines_b, bk_lines_c, bk_lines_d
+from eval.heldout import SOURCE, bk_lines_a, bk_lines_b, bk_lines_c, bk_lines_d
 from eval.heldout.bk_lines_ru import CTX_RU, SAY_RU, SMALL_RU
 from eval.heldout.bk_scene import Acct, Excerpt, Phone, Scene, chat, sides, split_counts
 from eval.heldout.bk_time import Win

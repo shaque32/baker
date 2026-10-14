@@ -42,9 +42,7 @@ def _on_weekday(rng: random.Random, weekday: int) -> date:
     return base + timedelta(days=(weekday - base.weekday()) % 7)
 
 
-def _item(
-    s: BkSlot, rng: random.Random, pr: Pair, sent: date, target: date, why: str
-) -> BkDraft:
+def _item(s: BkSlot, rng: random.Random, pr: Pair, sent: date, target: date, why: str) -> BkDraft:
     utc = _sent(rng, sent, pr.p.tz)
     win = bt.weekday_day(target, pr.p.tz)
     mine = rng.random() < 0.5
@@ -81,8 +79,10 @@ def wk_open(s: BkSlot, rng: random.Random) -> BkDraft:
     if s.variant == "same_day":
         sent = _on_weekday(rng, s.day)
         target = sent + timedelta(days=rng.choice((0, 7)))
-        why = ('The record says "{word}" and was sent on a {weekday} ({local}), so it may mean '
-               'that same day or the one a week later; whether it means "{raw}" is open.')
+        why = (
+            'The record says "{word}" and was sent on a {weekday} ({local}), so it may mean '
+            'that same day or the one a week later; whether it means "{raw}" is open.'
+        )
     elif s.variant == "next":
         sent = bt.base_day(rng)
         upcoming = sent + timedelta(days=(s.day - sent.weekday() - 1) % 7 + 1)
@@ -98,8 +98,10 @@ def wk_open(s: BkSlot, rng: random.Random) -> BkDraft:
         low, high = (s.day + 1, 6) if s.day < 6 else (0, 5)
         sent = _on_weekday(rng, rng.randint(low, high))
         target = sent + timedelta(days=(s.day - sent.weekday()) % 7)
-        why = ('The record says "{word}", sent {local}; a weekday with "this" before it leaves '
-               'open which week it means, so the record does not settle that it means "{raw}".')
+        why = (
+            'The record says "{word}", sent {local}; a weekday with "this" before it leaves '
+            'open which week it means, so the record does not settle that it means "{raw}".'
+        )
     return _item(s, rng, pr, sent, target, why)
 
 

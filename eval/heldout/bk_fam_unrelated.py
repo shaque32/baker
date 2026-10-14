@@ -75,8 +75,10 @@ def unrelated(s: BkSlot, rng: random.Random) -> BkDraft:
     if v == "time_msg":
         win = pk.pick_window(rng, pr.p.tz, _NC_KINDS)
         params = {"quoted_text": s.q, "window": win.tw()}
-        why = ("The record holds none of the quoted words, so its time says nothing about when "
-               "the quoted message was sent.")
+        why = (
+            "The record holds none of the quoted words, so its time says nothing about when "
+            "the quoted message was sent."
+        )
         return _draft(s, "record_time", params, ex, why, pr.p, pr.sc, win)
     if v == "count_third":
         y = pr.sc.new(rng, pr.me.app)
@@ -84,14 +86,18 @@ def unrelated(s: BkSlot, rng: random.Random) -> BkDraft:
         params = {"device_ids": [pr.p.dev], "person_ids": [pr.p.owner],
                   "account_ids": [pr.p.aid(y)], "window": win.tw(),
                   "expected_count": rng.choice((2, 4, 7, 12)), "count_op": "ge"}  # fmt: skip
-        why = (f"The record is between the owner and {shown_as(pr.sc, pr.p, pr.other)}, not "
-               f"{y.ident}, so it is not one of the messages the assumption counts.")
+        why = (
+            f"The record is between the owner and {shown_as(pr.sc, pr.p, pr.other)}, not "
+            f"{y.ident}, so it is not one of the messages the assumption counts."
+        )
         return _draft(s, "message_count", params, ex, why, pr.p, pr.sc, win)
     if v == "same_acct":
         app, old, new = s.handles
         params = {"channels": [app], "handles": [old, new]}
-        why = ("The record mentions neither handle, so it does not bear on whether they are one "
-               "account.")
+        why = (
+            "The record mentions neither handle, so it does not bear on whether they are one "
+            "account."
+        )
         return _draft(s, "same_account", params, ex, why, pr.p, pr.sc)
     if v == "weekday_msg":
         day = _plan_day(s.q)
@@ -99,14 +105,18 @@ def unrelated(s: BkSlot, rng: random.Random) -> BkDraft:
         target = target.fromordinal(target.toordinal() + (day - target.weekday()) % 7)
         win = bt.weekday_day(target, pr.p.tz)
         params = {"quoted_text": s.q, "window": win.tw()}
-        why = ("The record holds none of the quoted words, so it does not bear on which date "
-               "they mean.")
+        why = (
+            "The record holds none of the quoted words, so it does not bear on which date "
+            "they mean."
+        )
         return _draft(s, "weekday_date", params, ex, why, pr.p, pr.sc, win)
     # ident_other: the named account is not on screen; the record comes from someone else
     named = pr.sc.new(rng, pr.me.app)
     params = {"person_ids": [bf.named_person(s.person)], "account_ids": [pr.p.aid(named)]}
-    why = (f"The record comes from {who}, not the named account, and says nothing about who "
-           "holds that account.")
+    why = (
+        f"The record comes from {who}, not the named account, and says nothing about who "
+        "holds that account."
+    )
     return _draft(s, "person_identity", params, ex, why, pr.p, pr.sc)
 
 
@@ -121,13 +131,17 @@ def _call(s: BkSlot, rng: random.Random) -> BkDraft:
     said = c.said()
     if v == "meaning_call":
         params: dict[str, object] = {"quoted_text": s.q}
-        why = (f"The record is {said}; it holds none of the quoted words and does not bear on "
-               "what they mean.")
+        why = (
+            f"The record is {said}; it holds none of the quoted words and does not bear on "
+            "what they mean."
+        )
         return _draft(s, "meaning", params, ex, why, c.p, c.sc)
     y = c.sc.new(rng, "Phone")
     params = {"person_ids": [c.p.owner], "account_ids": [c.p.aid(y)], "window": win.tw()}
-    why = (f"The record is {said}; its other side is {third.ident}, not {y.ident}, so it is "
-           "not a call between the named parties.")
+    why = (
+        f"The record is {said}; its other side is {third.ident}, not {y.ident}, so it is "
+        "not a call between the named parties."
+    )
     if v == "time_call3":
         params["channels"] = ["call"]
         return _draft(s, "record_time", params, ex, why, c.p, c.sc, win)
@@ -146,8 +160,10 @@ def _row(s: BkSlot, rng: random.Random) -> BkDraft:
         name, number = other_name(rng, s.contact, ru, share_one=False), sc.number(rng)
         params: dict[str, object] = {"device_ids": [p.dev], "quoted_text": name,
                                      "account_ids": [p.aid(Acct("Phone", number))]}  # fmt: skip
-        why = (f'The row "{rec.text}" holds neither the name "{name}" nor the number {number}, '
-               "so it does not bear on that entry.")
+        why = (
+            f'The row "{rec.text}" holds neither the name "{name}" nor the number {number}, '
+            "so it does not bear on that entry."
+        )
         return _draft(s, "contact_entry", params, ex, why, p, sc)
     person = bf.named_person(s.person)
     if (s.k // 12) % 2 == 0:
@@ -157,6 +173,8 @@ def _row(s: BkSlot, rng: random.Random) -> BkDraft:
         win = pk.pick_window(rng, p.tz, _NC_KINDS)
         params = {"person_ids": [person], "window": win.tw()}
         template = "event"
-    why = (f"The record is a contact row; it neither comes from nor goes to an account "
-           f"bracketed with {person}.")
+    why = (
+        f"The record is a contact row; it neither comes from nor goes to an account "
+        f"bracketed with {person}."
+    )
     return _draft(s, template, params, ex, why, p, sc)

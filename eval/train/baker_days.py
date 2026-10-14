@@ -1,6 +1,6 @@
 """Plans that name a weekday, for Baker's weekday template. Every line is invented.
 
-Each line plans one particular occasion ("lets do thursday at the gym"), never a repeating one
+Each line plans one particular occasion ("movers are booked for thursday"), never a repeating one
 ("we close early thursdays"), so the weekday it names points to one date: the next such day
 after the message, unless the line itself says "next" or "this".
 """
@@ -12,11 +12,11 @@ SHORT_EN = {1: "tues", 3: "thurs", 4: "fri"}  # short forms that read only as a 
 
 # {wd}: a bare weekday.
 PLANS: tuple[str, ...] = (
-    "[lets do {wd} at {place}]",
+    "[we got the tennis court {wd}]",
     "[can u come by {wd}] to look at the {item}",
     "[{wd} works for me], bring the {item}",
     "[i can drop it off {wd}]",
-    "[see u {wd} at {place}]",
+    "[ill be at {place} {wd} if u wanna stop by]",
     "[movers are booked for {wd}]",
     "[lets meet {wd} instead]",
     "[{wd} is the only day i can do]",
@@ -51,12 +51,12 @@ PLANS: tuple[str, ...] = (
 )
 # {wd} with "next" or "this" before it.
 NEXT_THIS: tuple[str, ...] = (
-    "[next {wd} at {place}]",
-    "[lets do next {wd}]",
+    "[the walkthrough got moved to next {wd}]",
+    "[next {wd} is when the crew comes]",
     "[how about next {wd}]",
     "[this {wd} works]",
-    "[lets do this {wd}]",
-    "[see u this {wd}]",
+    "[this {wd} is open for me]",
+    "[catch u this {wd}]",
     "[can u come by next {wd}]",
     "[movers are booked for next {wd}]",
     "[this {wd} at {place}?]",

@@ -32,8 +32,10 @@ def identity(s: BkSlot, rng: random.Random) -> BkDraft:
     person = bf.named_person(s.person)
     params = {"person_ids": [person], "account_ids": [pr.p.aid(pr.other)]}
     if s.variant == "answer":
-        why = (f'The owner asks "{s.ask}" and {who} answers "{s.cue}"; answering to a name in a '
-               "chat does not show who holds the account.")
+        why = (
+            f'The owner asks "{s.ask}" and {who} answers "{s.cue}"; answering to a name in a '
+            "chat does not show who holds the account."
+        )
     else:
         why = pick(
             rng,
@@ -66,8 +68,7 @@ def silent(s: BkSlot, rng: random.Random) -> BkDraft:
         template = "authorship"
         why = pick(
             rng,
-            f"The record from {who} is an ordinary update; it says nothing about who typed "
-            "it.",
+            f"The record from {who} is an ordinary update; it says nothing about who typed it.",
             f"This update from {who} carries no cue about who was typing, so it does not "
             "bear on who wrote what the account sent.",
         )

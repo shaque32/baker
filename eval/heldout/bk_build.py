@@ -125,9 +125,7 @@ class Call:
         off = bt.report_offset(rng, utc, self.p.tz)
         return self.sc.call(self.p, utc, self.direction, self.frm, self.to, dur, off)
 
-    def excerpt(
-        self, rng: random.Random, utc: datetime, dur: int, where: str = "both"
-    ) -> Excerpt:
+    def excerpt(self, rng: random.Random, utc: datetime, dur: int, where: str = "both") -> Excerpt:
         return pk.call_excerpt(rng, self.sc, self.p, self.line(rng, utc, dur), where=where)
 
     def said(self) -> str:
@@ -225,4 +223,3 @@ def two_parties(
         return pr, merge({"person_ids": [pr.linked]}, owner_style(rng, pr))
     pr = pair(rng, s)
     return pr, {"person_ids": [pr.p.owner], "account_ids": [pr.p.aid(pr.other)]}
-

@@ -85,8 +85,10 @@ def _call_parties(rng: random.Random, s: BkSlot) -> Call:
 
 
 def _call_words(c: Call, local: str) -> str:
-    return (f"{c.said()} at {local}, whose line carries {c.person} and whose text shows "
-            f"{c.to.ident}, the number {c.acct_id} names")
+    return (
+        f"{c.said()} at {local}, whose line carries {c.person} and whose text shows "
+        f"{c.to.ident}, the number {c.acct_id} names"
+    )
 
 
 def nc_inside(s: BkSlot, rng: random.Random) -> BkDraft:
@@ -101,8 +103,10 @@ def nc_inside(s: BkSlot, rng: random.Random) -> BkDraft:
         if rng.random() < 0.4:
             params["device_ids"] = [c.p.dev]
         what = _call_words(c, ex.record.local_time)
-        why = (f"The record is {what}; it falls inside {window_words(win)}, so it shows contact "
-               "between the two named parties in the window.")
+        why = (
+            f"The record is {what}; it falls inside {window_words(win)}, so it shows contact "
+            "between the two named parties in the window."
+        )
         return BkDraft(s.family, "no_contact", params, ex, ex.record.text, why, c.p, s.lang,
                        c.sc, win, facts={"variant": v})  # fmt: skip
     if v == "msg_person" or (v == "attachment" and rng.random() < 0.5):

@@ -69,12 +69,16 @@ def inside(s: BkSlot, rng: random.Random) -> BkDraft:
     rec = ex.record
     by = f" from {who}" if who else ""
     if v == "about":
-        why = (f"The record holds the quoted words{by}, sent at {rec.local_time}, within "
-               f"minutes of the time {window_words(win)} gives.")
+        why = (
+            f"The record holds the quoted words{by}, sent at {rec.local_time}, within "
+            f"minutes of the time {window_words(win)} gives."
+        )
     elif win.tz != pr.p.tz:
-        why = (f"The record holds the quoted words{by}; its local time {rec.local_time} is "
-               f"{shown_in(rec.utc, win.tz)} in {win.tz}, inside {window_words(win)} on "
-               "either clock.")
+        why = (
+            f"The record holds the quoted words{by}; its local time {rec.local_time} is "
+            f"{shown_in(rec.utc, win.tz)} in {win.tz}, inside {window_words(win)} on "
+            "either clock."
+        )
     else:
         why = pick(
             rng,
@@ -141,12 +145,16 @@ def _near_end(utc: datetime, win: bt.Win) -> bool:
 
 def _edge_words(want: str, local: str, there: str, win: bt.Win) -> str:
     if want == "phone":
-        return (f'On the phone\'s clock the record is at {local}, inside the words "{win.raw}"; '
-                f"read in {win.tz}, the window's zone, the same moment is {there}, outside "
-                "them, so the answer turns on the zone.")
-    return (f"Read in {win.tz}, the window's zone, the record's moment is {there}, inside "
-            f'"{win.raw}"; on the phone\'s own clock it is {local}, outside those words, so the '
-            "answer depends on the zone.")
+        return (
+            f'On the phone\'s clock the record is at {local}, inside the words "{win.raw}"; '
+            f"read in {win.tz}, the window's zone, the same moment is {there}, outside "
+            "them, so the answer turns on the zone."
+        )
+    return (
+        f"Read in {win.tz}, the window's zone, the record's moment is {there}, inside "
+        f'"{win.raw}"; on the phone\'s own clock it is {local}, outside those words, so the '
+        "answer depends on the zone."
+    )
 
 
 def edge(s: BkSlot, rng: random.Random) -> BkDraft:

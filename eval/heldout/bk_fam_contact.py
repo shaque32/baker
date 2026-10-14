@@ -113,13 +113,16 @@ def claim(s: BkSlot, rng: random.Random) -> BkDraft:
     acct = shown_as(pr.sc, pr.p, pr.other)
     way = "goes to" if mine else "comes from"
     if v == "role":
-        why = (f"The record {way} {acct}, whose line carries {pr.linked}, but nothing shown says "
-               "what role the claim states.")
+        why = (
+            f"The record {way} {acct}, whose line carries {pr.linked}, but nothing shown says "
+            "what role the claim states."
+        )
         template = "role"
     else:
         inside = f", inside {window_words(win)}" if win else ""
-        why = (f"The record {way} {acct}{inside}, but nothing shown says what event the claim "
-               "states.")
+        why = (
+            f"The record {way} {acct}{inside}, but nothing shown says what event the claim states."
+        )
         template = "event"
     return BkDraft(s.family, template, params, ex, s.text, why, pr.p, s.lang, pr.sc, win,
                    facts={"variant": v})  # fmt: skip

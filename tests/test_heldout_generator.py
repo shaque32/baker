@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 
-from eval.heldout import GENERATOR, ID_PREFIX, SEEDS, SOURCE, scene
+from core.audit.quotes import verify_quote
+from eval.heldout import GENERATOR, ID_PREFIX, SEEDS, SOURCE, bk_names, scene
 from eval.heldout.bk_common import BK_GENERATOR
+from eval.heldout.bk_schedule import BK_COMPOSITION
 from eval.heldout.frames import names_in
-from eval.heldout.generate import generate
+from eval.heldout.generate import generate, plain_items
 from eval.heldout.glossary import RU_EN_PAIRS, SLANG_FORMS
 from eval.heldout.pools import (
     AREA_CODES,
@@ -28,6 +31,8 @@ from eval.heldout.pools import (
 from eval.heldout.schedule import COMPOSITION, CONTRADICTS_FAMILIES, MISMATCH_TRAPS
 from eval.heldout.text import normalized
 from eval.heldout.verbs import has_past_verb
+from eval.stancedata.bakerform import ZONE_OF
+from eval.stancedata.chat import write_jsonl
 from eval.stancedata.families import family
 from eval.stancedata.model import GenItem
 
@@ -1138,8 +1143,13 @@ def test_bk_russian_records_are_about_one_in_ten(
     test_items: list[GenItem], dev_items: list[GenItem]
 ) -> None:
     for items in (test_items, dev_items):
-        worded = [it for it in _bk(items) if it.target.sender != "contact list"
-                  and not _call(it.target) and not re.fullmatch(r"\S+\.\w{3,4}", it.target.text)]
+        worded = [
+            it
+            for it in _bk(items)
+            if it.target.sender != "contact list"
+            and not _call(it.target)
+            and not re.fullmatch(r"\S+\.\w{3,4}", it.target.text)
+        ]
         langs = Counter(it.lang for it in worded)
         assert 0.07 <= (langs["ru"] + langs["mixed"]) / len(worded) <= 0.15, langs
         assert langs["mixed"] >= 1, langs
@@ -1547,11 +1557,10 @@ def test_bk_unrelated_records_hold_none_of_the_matter(
                            for ln in it.context), it.probe_id  # fmt: skip
         for handle in params.get("handles", []):
             assert handle.lstrip("@").lower() not in rec.text.lower() + rec.sender.lower()
-        if it.baker_template in ("record_time", "no_contact", "message_count", "person_identity"):
+        named = ("no_contact", "message_count", "person_identity")
+        if it.baker_template in named or params.get("channels") == ["call"]:
             accounts = [p for party in _parties(it) for p in party if p.startswith("acct:")]
-            assert accounts and not any(_on_line(ln, accounts) for ln in _in_order(it)), (
-                it.probe_id
-            )
+            assert accounts and not any(_on_line(ln, accounts) for ln in _in_order(it)), it.probe_id
         if it.baker_template in ("role", "event"):
             assert rec.sender == "contact list", it.probe_id
     assert len(shapes) >= 10, shapes
