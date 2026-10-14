@@ -237,18 +237,26 @@ def decorate(rng: random.Random, text: str, lang: str, p: float = 0.5,
     return text
 
 
-def filler_pools(lang: str, scene: str, safe: bool) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """(scene lines, generic lines) for one draw; `safe` leaves the acknowledgments out."""
+def filler_pools(lang: str, scene: str, safe: bool,
+                 placed: bool = False) -> tuple[tuple[str, ...], tuple[str, ...]]:  # fmt: skip
+    """(scene lines, generic lines) for one draw; `safe` leaves the acknowledgments out and
+    `placed` every line that puts anyone somewhere (filler.PLACE_EN, filler.PLACE_RU)."""
     if lang == "ru":
-        return fillers_ru.SCENE_RU.get(scene, ()), filler.NEUTRAL_RU + (
-            () if safe else filler.ACK_RU
-        )
-    return fillers_en.SCENE_EN.get(scene, ()), filler.NEUTRAL_EN + (() if safe else filler.ACK_EN)
+        scene_lines = fillers_ru.SCENE_RU.get(scene, ())
+        generic = filler.NEUTRAL_RU + (() if safe else filler.ACK_RU)
+    else:
+        scene_lines = fillers_en.SCENE_EN.get(scene, ())
+        generic = filler.NEUTRAL_EN + (() if safe else filler.ACK_EN)
+    if placed:
+        away = set(filler.PLACE_RU if lang == "ru" else filler.PLACE_EN)
+        scene_lines = tuple(t for t in scene_lines if t not in away)
+        generic = tuple(t for t in generic if t not in away)
+    return scene_lines, generic
 
 
 def filler_lines(rng: random.Random, lang: str, n_before: int, n_after: int, owner: Party,
                  contacts: list[Party], whos: tuple[str, ...] = ("o", "c"), *, scene: str = "",
-                 safe_after: bool = False, first: str | None = None,
+                 safe_after: bool = False, first: str | None = None, placed: bool = False,
                  ) -> tuple[list[Line], list[Line]]:  # fmt: skip
     """Small talk around the record: n_before lines before it and n_after after it.
 
@@ -256,7 +264,8 @@ def filler_lines(rng: random.Random, lang: str, n_before: int, n_after: int, own
     otherwise, never twice in one chat. With `safe_after`, the lines after the record carry no
     acknowledgment that could read as an answer or a confirmation (guide rule 13). A line's
     "{o}" is the ending of whoever speaks it and "{c}" that of the person spoken to. `first`
-    forces the first speaker, so a non-owner line is always on screen (guide rule 11).
+    forces the first speaker, so a non-owner line is always on screen (guide rule 11). With
+    `placed`, no line puts anyone anywhere: the record says where its sender is.
     """
     acks = set(filler.ACK_RU if lang == "ru" else filler.ACK_EN)
     used: set[str] = set()
@@ -264,7 +273,7 @@ def filler_lines(rng: random.Random, lang: str, n_before: int, n_after: int, own
     who = first or rng.choice(whos)
     for i in range(n_before + n_after):
         after = i >= n_before
-        scene_lines, generic = filler_pools(lang, scene, safe_after and after)
+        scene_lines, generic = filler_pools(lang, scene, safe_after and after, placed)
         # No laugh after the record: it could read as laughing at it (guide rule 24).
         scene_lines = [t for t in scene_lines if t not in used and not (after and LAUGH.search(t))]
         generic = [t for t in generic if t not in used and not (after and LAUGH.search(t))]

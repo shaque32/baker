@@ -27,7 +27,11 @@ from eval.train import baker
 from eval.train.scenes_c import pick_scenario, takes_fact
 from eval.train.writers import sentence
 
-GENERATOR = "eval.train 1.1.0"  # 1.1.0: labels follow guide draft v0.3 (strict contradicts)
+# 1.1.0: labels follow guide draft v0.3 (strict contradicts). 1.2.0: wording only; a record's
+# act carries its subject when its verb could be an instruction ("i put 200 in savings"), a bare
+# "no" only answers a question shown, and a record that says where its sender is meets no filler
+# that puts anyone somewhere.
+GENERATOR = "eval.train 1.2.0"
 SOURCE = "train_gen"
 
 

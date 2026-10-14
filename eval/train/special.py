@@ -122,8 +122,7 @@ PRONOUN = (
     S(
         "ovr_pronoun",
         "ok its under the {x}, go",
-        "{S} told {O} that {y} was under the {x}. || On {date}, {S} told {O} that {y} was under "
-        "the {x}.",
+        "{y} was under the {x} on {date}. || On {date}, {y} was under the {x}.",
         "The record places 'it' but never says what 'it' is.",
         xs=PLACES,
         ys=OBJECTS,

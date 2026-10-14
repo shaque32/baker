@@ -180,19 +180,20 @@ def finish(rng: random.Random, st: Setup, core: str, *, before: list[Line] | Non
            after: list[Line] | None = None, hours: tuple[int, int] = (7, 23), fold: int = 0,
            do_wrap: bool = True, after_fill: bool = True, safe_after: bool = False,
            total: tuple[int, int] = (1, 6), quick: bool = False,
-           first: str | None = None) -> Chat:  # fmt: skip
+           first: str | None = None, placed: bool = False) -> Chat:  # fmt: skip
     """Pad the scenario lines with small talk, time them and assemble the Chat.
 
     A non-owner line is always on screen (guide rule 11); `first` makes the first small-talk
     line come from that party ("c" in a group chat, so both members show). With `safe_after`, no
     filler after the record can read as an answer or a confirmation (guide rule 13). With
     `quick`, the scenario's own lines sit within minutes of the record (a correction and what it
-    corrects). Lines whose weekday words clash with their own date ("whats the plan for sat"
-    sent on a Saturday) are drawn again.
+    corrects). With `placed` (a record that says where its sender is), no filler puts anyone
+    anywhere ("im outside", "be there in 20"). Lines whose weekday words clash with their own
+    date ("whats the plan for sat" sent on a Saturday) are drawn again.
     """
     for _ in range(60):
         chat = _finish_once(rng, st, core, before, after, hours, fold, do_wrap, after_fill,
-                            safe_after, total, quick, first)  # fmt: skip
+                            safe_after, total, quick, first, placed)  # fmt: skip
         if not any(weekday_clash(m.text, chat.local_of(i).date())
                    for i, m in enumerate(chat.msgs)):  # fmt: skip
             return chat
@@ -202,7 +203,7 @@ def finish(rng: random.Random, st: Setup, core: str, *, before: list[Line] | Non
 def _finish_once(rng: random.Random, st: Setup, core: str, before: list[Line] | None,
                  after: list[Line] | None, hours: tuple[int, int], fold: int, do_wrap: bool,
                  after_fill: bool, safe_after: bool, total: tuple[int, int], quick: bool,
-                 first: str | None) -> Chat:  # fmt: skip
+                 first: str | None, placed: bool) -> Chat:  # fmt: skip
     before, after = list(before or []), list(after or [])
     near = (len(before), len(after)) if quick else (0, 0)
     rec_lang = st.f.lang
@@ -218,6 +219,7 @@ def _finish_once(rng: random.Random, st: Setup, core: str, before: list[Line] | 
     extra_before, extra_after = filler_lines(
         rng, ctx_lang, n_before, need - n_before, st.owner, st.contacts, whos,
         scene=st.f.scene, safe_after=safe_after, first=first or (None if has_contact else "c"),
+        placed=placed,
     ) if need else ([], [])  # fmt: skip
     before, after = extra_before + before, after + extra_after
     lang = "mixed" if need and ctx_lang != rec_lang else rec_lang
@@ -371,6 +373,6 @@ def sc_denial(rng: random.Random, slot: int) -> Result:
     st = setup(rng, f)
     q = fx.asked(f, rng, st.vr, st.sender.end)
     other_who = "c" if st.who == "o" else "o"
-    core = fx.negated(f, rng, st.vr, st.sender.end, never=f.key in REPEATED)
+    core = fx.negated(f, rng, st.vr, st.sender.end, never=f.key in REPEATED, answer=True)
     c = finish(rng, st, core, before=[(other_who, q)], quick=True)
     return _neg_pair(rng, c, f, st.v, core, "con_denial")

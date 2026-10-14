@@ -102,7 +102,7 @@ FACTS_F: tuple[Fact, ...] = (
       "signed {V} up for swim lessons", ("lina", "milo", "jada", "eli"),
       exact=("signed {v} up for swim lessons, just {v}",), extra=("paid for a full session",)),
     F("savings", "money", "put {v} in savings", "put {v} in savings", "put ${v} in savings",
-      ("100", "200", "300", "500"), exact=("put exactly {v} in savings",),
+      ("100", "200", "300", "500"), exact=("i put exactly {v} in savings",),
       extra=("paid off a credit card too",), general=("put ${v} in savings every month",)),
     F("phonebill", "money", "pay the {v} phone bill", "paid the {v} phone bill",
       "paid the ${v} phone bill",

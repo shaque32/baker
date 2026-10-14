@@ -736,7 +736,10 @@ def test_contradicts_assumptions_end_by_the_record(many: list[GenItem]) -> None:
             assert all(d < day or d in before for d in dates), (a, lt)
             assert all(d < day for _, d in clocks), (a, lt)
             if NEVER.search(it.target.text.lower()) or EN_WEEKDAY.search(a):
-                assert not clocks, (a, it.target.text)
+                # The act's own clock ("never closed the bar at midnight") is not an added time.
+                own = it.target.text.lower()
+                added = [t for t, *_ in CLOCK_ON.findall(rest) if f"at {t}" not in own]
+                assert not added, (a, it.target.text)
                 seen["date-level"] += 1
         seen["clock"] += bool(clocks)
         seen["window"] += bool(windows)

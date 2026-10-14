@@ -85,6 +85,47 @@ NEUTRAL_RU = (
     "будильник не сработал", "тут шумно, пиши", "у кого мой зонт", "магазин уже закрыт",
 )  # fmt: skip
 
+# Lines that put anyone somewhere, or on the way: where they are, that they are coming or
+# leaving, a door, a train, a home. A record that says where its sender is ("still in denver")
+# draws its filler without them (scenario.filler_pools), so no line seems to contradict it.
+PLACE_EN = (
+    "running a bit late", "send me the address again", "omw", "where r u", "5 min",
+    "cant talk, at work", "ugh traffic", "parking now", "almost there", "same spot?",
+    "coming down now", "ring the bell twice", "buzz me in", "im outside", "which door",
+    "the train is stuck at 59th", "whats the apt number", "where did u park",
+    "im at the deli downstairs", "cant find my keys", "the elevator is out", "did u leave already",
+    "ill be there by 7", "my uber cancelled", "still at the office", "the 2 train is a mess",
+    "text me when ur close", "r u driving or taking the train", "walking in now",
+    "come up when ur here", "the bridge is backed up", "r we still good for later",
+    "is it the blue door", "im at the laundromat", "ill grab coffee, u want one",
+    "the dog got out again", "did u lock the back door", "stuck behind a garbage truck",
+    "my train is delayed", "heading out now", "whos coming tonight", "send me ur location",
+    "r u home", "doorbell doesnt work, knock", "ill be late, start without me",
+    "left my wallet at home ugh", "whats ur eta", "the kids r asleep finally", "im in the lobby",
+    "which train r u taking", "need anything from the store", "cant find parking anywhere",
+    "ill be outside in 5", "taking the dog out brb", "u still at work?", "whats the gate code",
+    "im at the pharmacy", "whats the wifi here", "the line here is insane", "be there in 20",
+    "whos got my umbrella", "the deli is closed already",
+    "ok im here", "k see u then", "ok ill wait", "ok see u",
+)  # fmt: skip
+PLACE_RU = (
+    "ты где", "скинь адрес ещё раз", "еду", "опаздываю минут на 10", "не могу говорить, на работе",
+    "пробки жесть", "паркуюсь", "почти на месте", "там же?", "звони в домофон", "выхожу",
+    "ща спущусь", "я внизу", "какая дверь", "метро стоит", "какой номер квартиры",
+    "я у магазина внизу", "ключи не найду", "лифт не работает", "ты уже выехал{c}?", "буду к семи",
+    "такси отменилось", "ещё на работе", "напиши как подъедешь", "ты на машине или на метро",
+    "захожу", "поднимайся как приедешь", "мост стоит", "мы сегодня в силе?", "синяя дверь?",
+    "я в прачечной", "возьму кофе, тебе брать?", "собака опять сбежала", "дверь закрыл{c}?",
+    "за мусоровозом застрял{o}", "электричка опаздывает", "выезжаю", "кто сегодня будет",
+    "скинь геолокацию", "ты дома?", "звонок не работает, стучи", "опоздаю, начинайте без меня",
+    "кошелёк дома забыл{o}", "во сколько будешь", "молоко купи если сможешь",
+    "дети наконец уснули", "я в холле", "на какой ветке ты", "из магазина что-нибудь надо?",
+    "парковки нигде нет", "через 5 минут выйду", "с собакой выйду, сек", "ты ещё на работе?",
+    "какой код от калитки", "я в аптеке", "какой тут вайфай", "очередь тут жесть", "буду через 20",
+    "у кого мой зонт", "магазин уже закрыт",
+    "ок жду", "ок я тут",
+)  # fmt: skip
+
 # No seasonal or weekday greeting here: a line is placed on any date of the year.
 PLEASANTRIES_EN = (
     "sleep well", "thx man", "good morning ☀️", "happy birthday!!!", "lol", "lol 😂😂",

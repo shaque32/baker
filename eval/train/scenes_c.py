@@ -177,8 +177,11 @@ def sc_special(rng: random.Random, slot: int) -> Result:
     # A joke's own marker must be the last word on it: no decoration after it and no filler
     # after the record (round-2 rule H).
     joke = fam == "ovr_joke"
+    # A record that says where its sender is ("still in denver") meets no filler that puts
+    # anyone somewhere ("im outside", "be there in 20").
     c = finish(rng, st, fill(sp.record), before=before, after=after, hours=hours,
-               do_wrap=not joke and rng.random() < 0.7, after_fill=not joke)  # fmt: skip
+               do_wrap=not joke and rng.random() < 0.7, after_fill=not joke,
+               placed=fam == "con_other_state")  # fmt: skip
     # {hour} is the last whole hour before the record's clock, never its own minute.
     hour = c.local.hour if c.local.minute else c.local.hour - 1
     slots = dict(S=c.sender.who, O=c.other.who, pron="they", poss="their", date=long_date(c.day),

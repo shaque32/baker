@@ -94,12 +94,28 @@ def _fill(s: str, **kw: str) -> str:
     return s.format(**kw)
 
 
+# Verbs whose past form is their base form. With no subject, "put 200 in savings" or "let the
+# plumber in" reads as an instruction as easily as the sender's own act (guide rule 14).
+SAME_PAST = frozenset({
+    "put", "let", "set", "cut", "hit", "quit", "shut", "spread", "read", "cost", "hurt", "bet",
+    "split", "sublet", "upset", "bid", "cast", "shed",
+})  # fmt: skip
+
+
+def own(acted: str) -> str:
+    """The sender's own past act as a record writes it: "i put 200 in savings" when its verb
+    could be an instruction, else as it is ("paid him 200")."""
+    return f"i {acted}" if acted.split(" ", 1)[0] in SAME_PAST else acted
+
+
 def stated(f: Fact, rng: random.Random, v: str, end: str = "") -> str:
     """The record form that states the fact."""
     if f.done:
         return _fill(rng.choice(f.done), v=v, l=end)
     a = _fill(f.acted, v=v)
-    return rng.choice((a, a, f"i {a}", f"just {a}", f"yep {a}", f"i {a}"))
+    o = own(a)
+    just = f"just {a}" if o == a else f"i just {a}"
+    return rng.choice((o, o, f"i {a}", just, f"yep {o}", f"i {a}"))
 
 
 def exact(f: Fact, rng: random.Random, v: str, end: str = "") -> str | None:
@@ -111,26 +127,39 @@ def exact(f: Fact, rng: random.Random, v: str, end: str = "") -> str | None:
 
 # A negation that covers every occasion before the message, not just the one in question.
 NEVER = re.compile(r"\bnever\b|ни разу|никогда")
+# A bare "no" that answers a question: "nope, never paid him", "i didnt pay him, no".
+BARE_NO = re.compile(r"^(?:nope|no|нет), |, no$")
 
 
-def negated(f: Fact, rng: random.Random, v: str, end: str = "", never: bool = False) -> str:
-    """A negated record form; with `never`, one that says "never" (or "ни разу")."""
+def negated(f: Fact, rng: random.Random, v: str, end: str = "", never: bool = False,
+            answer: bool = False) -> str:  # fmt: skip
+    """A negated record form; with `never`, one that says "never" (or "ни разу"). Only an
+    `answer` to a question shown before it opens or ends on a bare "no" (or "нет"); otherwise
+    the "no" would answer a question the excerpt does not show."""
     if f.neg:
         forms = tuple(x for x in f.neg if NEVER.search(x)) if never else f.neg
-        return _fill(rng.choice(forms), v=v, l=end)
+        return _answering(_fill(rng.choice(forms), v=v, l=end), answer)
     act, acted = _fill(f.act, v=v), _fill(f.acted, v=v)
+    nv = f"never {acted}" if own(acted) == acted else f"i never {acted}"
     if never:
-        return rng.choice((f"never {acted}", f"nope, never {acted}", f"i never {acted}"))
-    return rng.choice(
-        (
-            f"didnt {act}",
-            f"never {acted}",
-            f"i did not {act}",
-            f"did not {act}",
-            f"i didnt {act}, no",
-            f"nope, never {acted}",
-        )
+        return _answering(rng.choice((nv, f"nope, {nv}", f"i never {acted}")), answer)
+    return _answering(
+        rng.choice(
+            (
+                f"didnt {act}",
+                nv,
+                f"i did not {act}",
+                f"did not {act}",
+                f"i didnt {act}, no",
+                f"nope, {nv}",
+            )
+        ),
+        answer,
     )
+
+
+def _answering(text: str, answer: bool) -> str:
+    return text if answer else BARE_NO.sub("", text)
 
 
 DATED = re.compile(
@@ -189,6 +218,8 @@ def asked(f: Fact, rng: random.Random, v: str, end: str = "") -> str:
     if f.q:
         return _fill(rng.choice(f.q), v=v, m=end)
     act, acted = _second_person(_fill(f.act, v=v)), _second_person(_fill(f.acted, v=v))
+    # "sublet the room for 1000? yes or no" could ask whether to do it; "u sublet ..." cannot.
+    yes_no = acted if own(acted) == acted else f"u {acted}"
     return rng.choice(
         (
             f"did u {act}?",
@@ -196,7 +227,7 @@ def asked(f: Fact, rng: random.Random, v: str, end: str = "") -> str:
             f"did you {act}",
             f"wait did u {act}??",
             f"so did u {act} or not",
-            f"{acted}? yes or no",
+            f"{yes_no}? yes or no",
         )
     )
 
@@ -205,14 +236,16 @@ def hedged(f: Fact, rng: random.Random, v: str, end: str = "") -> str:
     if f.hedge:
         return _fill(rng.choice(f.hedge), v=v, l=end)
     acted = _fill(f.acted, v=v)
+    o = own(acted)
+    probably = f"probably {acted}" if o == acted else f"i probably {acted}"
     return rng.choice(
         (
             f"pretty sure i {acted}",
             f"i think i {acted}",
-            f"{acted} i think",
-            f"{acted}, like 90% sure",
+            f"{o} i think",
+            f"{o}, like 90% sure",
             f"if i remember right i {acted}",
-            f"probably {acted}, cant really remember tbh",
+            f"{probably}, cant really remember tbh",
             f"i believe i {acted}, not certain",
         )
     )
