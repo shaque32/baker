@@ -33,5 +33,6 @@ on a pull request add the `cpu-timing` label (or push a commit to `main` whose m
   llama.cpp.
 - The MSVC runtime DLLs ship next to the llama runtime, so a PC without the Visual C++
   redistributable still loads it.
-- Unsigned until a code-signing certificate exists; the installer's SHA-256 is published with
-  every build.
+- Builds of main are signed with Microsoft Artifact Signing once its GitHub secrets and
+  variables exist (docs/code-signing.md); until then, and on every pull request, the installer is
+  unsigned and the run warns. The installer's SHA-256 is published with every build.
