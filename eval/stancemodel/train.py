@@ -121,6 +121,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--eval-every", type=int, default=250)
     ap.add_argument("--limit", type=int, default=0, help="train on the first N items (smoke test)")
     ap.add_argument("--dev-limit", type=int, default=0, help="score the first N dev items")
+    ap.add_argument(
+        "--init", type=Path, default=None,
+        help="start from the weights of another run's checkpoint (last.pt or epochN.pt) "
+        "with a fresh optimizer and schedule",
+    )  # fmt: skip
     args = ap.parse_args(argv)
 
     t_start = time.time()
@@ -173,6 +178,8 @@ def main(argv: list[str] | None = None) -> int:
     config = {k: (str(v) if isinstance(v, Path) else v) for k, v in vars(args).items()}
     config.update(train_sha256=train_sha, plan=plan_digest(plan), total_steps=total,
                   features=features.VERSION)  # fmt: skip
+    if args.init:
+        config["init_sha256"] = sha256_file(args.init)
 
     step = 0
     ckpt = args.run / "last.pt"
@@ -187,8 +194,14 @@ def main(argv: list[str] | None = None) -> int:
         step = state["step"]
         log({"event": "resumed", "step": step, "total": total})
     else:
+        if args.init:
+            init = torch.load(args.init, map_location="cpu", weights_only=False)
+            weights = init["model"] if "model" in init else init  # last.pt or epochN.pt
+            if model.load_state_dict(weights, strict=False).unexpected_keys:
+                raise SystemExit(f"{args.init} is not a checkpoint of this model")
         (args.run / "config.json").write_text(json.dumps(config, indent=2) + "\n", "utf-8")
-        log({"event": "start", "total": total, "per_epoch": per_epoch, "items": len(train_enc)})
+        log({"event": "start", "total": total, "per_epoch": per_epoch, "items": len(train_enc),
+             **({"init_sha256": config["init_sha256"]} if args.init else {})})  # fmt: skip
 
     def checkpoint() -> None:
         save_checkpoint(ckpt, {
