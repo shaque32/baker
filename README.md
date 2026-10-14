@@ -26,6 +26,7 @@ baker serve --open                                  # cases in ~/Baker/cases (or
 baker serve --db case.db --expert "Your Name" --open  # one existing case database
 baker model-check                                   # is the local model there, pinned, and does it fit?
 baker demo                                          # reset and open the synthetic demo case (port 8766)
+baker encrypt --db CASE/case.db --by "expert:Your Name"  # encrypt a case made before encryption
 ```
 
 Giving a demo: [docs/demo.md](docs/demo.md) (the 10-minute flow and the planted traps' answer
@@ -37,3 +38,5 @@ access and no scripts. The expert makes a case, imports the government document 
 Cellebrite reports (copied into the case folder, read-only, SHA-256 hashed), settles the
 claims, confirms who used each phone, runs the audit in the background with progress, and
 reviews each claim as soon as it is labeled. See [docs/review-screen.md](docs/review-screen.md).
+New cases are encrypted with a passphrase by default; older cases stay as they are until the
+expert encrypts them. See [docs/encryption.md](docs/encryption.md).

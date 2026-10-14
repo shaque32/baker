@@ -22,7 +22,7 @@ Say this if asked; the yellow banner on every page says the same.
 |---|---|
 | Import: read-only copies, SHA-256, coverage ("curated report, cannot show absence") | The evidence labels: key evidence from the signed answer key, labeled the way the answer points; everything else labeled irrelevant. No model ran. |
 | Assumptions (from the signed assumption sheet), retrieval, every deterministic check (sender, time with time zones, absence, count, contact, identity) | Most expert decisions: "Demo expert (scripted from the answer key)" accepted or dismissed every item, except on C05, which is left for you |
-| The quote check, the verdict rules (0.2.0), the hash-chained audit log, the report | |
+| The quote check, the verdict rules (0.2.1), the hash-chained audit log, the report | |
 
 On a real case the local model (Qwen3-14B, on the expert's own computer) labels the evidence and
 the expert decides every item. A full case01 run takes about 6 to 8 hours on a 24 GB Mac.
@@ -57,9 +57,8 @@ records, and nothing counts as supported until you accept it yourself."
 5. **Report.** The printable claims report: verdicts, cited records with their source rows,
    limitations (the owner stipulations, curated reports), source hashes and the audit log.
 
-Avoid the words guilty, innocent, leader and deleted in a reason you type: Baker refuses to
-show a page with those words outside a quote, and today that check also catches the expert's
-own reasons (a known issue).
+Baker itself never says guilty, innocent, leader or deleted. A reason or note you type is
+yours, so it shows exactly as you wrote it, those words included.
 
 ## Answer key: the planted traps
 

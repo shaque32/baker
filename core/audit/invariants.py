@@ -61,6 +61,9 @@ FORBIDDEN_WORDS = re.compile(r"\b(guilty|innocent|leader|deleted)\b", re.IGNOREC
 # Report renderers wrap every cited span (government text, evidence quotes, record text) in
 # this element. Its content is HTML-escaped, so it never contains '<'.
 QUOTED_SPAN = re.compile(r'<span class="q">[^<]*</span>')
+# ...and every reason or note an expert typed in this element (core/report/html.said). The
+# expert's own words are theirs to choose; the check is for what Baker or a model says.
+EXPERT_SPAN = re.compile(r'<span class="said">[^<]*</span>')
 
 
 class InvariantViolation(Exception):
@@ -269,8 +272,9 @@ def check_decision(
 
 
 def check_report_text(html: str) -> None:
-    """Tool-authored report text never uses the forbidden words. Cited spans are exempt."""
-    own_text = QUOTED_SPAN.sub("", html)
+    """Tool-authored report text never uses the forbidden words. Cited spans and the expert's
+    own reasons and notes are exempt; a model's rationale or reason is checked like Baker's."""
+    own_text = EXPERT_SPAN.sub("", QUOTED_SPAN.sub("", html))
     m = FORBIDDEN_WORDS.search(own_text)
     if m:
         start = max(0, m.start() - 60)

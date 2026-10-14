@@ -1,4 +1,4 @@
-"""Verdict rules 0.2.0 (core/audit/rules.py). Every rule in its docstring has a test here.
+"""Verdict rules 0.2.1 (core/audit/rules.py). Every rule in its docstring has a test here.
 
 SYNTHETIC. The claims echo case01 (C06, C16, C17, C18, C20) only to name the trap each tests.
 """
@@ -231,6 +231,35 @@ def test_decision_2_model_contradicts_on_meaning_only_complicates(status):
 def test_decision_2_expert_accepted_contradiction_on_meaning_counts():
     meaning = asm(3, K.MEANING)
     d = decide([meaning], [ev(2, meaning, Stance.CONTRADICTS, S.ACCEPTED)])
+    assert d.verdict is Verdict.CONTRADICTED
+
+
+@pytest.mark.parametrize("status", [S.OPEN, S.AI_ACCEPTED])
+def test_0_2_1_model_contradicts_cannot_overrule_a_passed_check(status):
+    """Mac run ¶10.1 (C12): the sender check passed on the receiving phone's copy of the
+    message, and the 14B labeled that same copy 'contradicts'. It only complicates."""
+    sender = asm(6, K.IDENTITY, people=("person:petrov",))
+    passed = chk(sender, name="sender")
+    against = ev(2, sender, Stance.CONTRADICTS, status)
+    d = decide([sender], [ev(1, sender, status=S.ACCEPTED), against], [passed], [stip()])
+    assert d.verdict is Verdict.UNPROVEN
+    assert "complicates" in " ".join(d.reasons)
+    # The expert dismisses it, and the claim is supported.
+    dismissed = against.model_copy(update={"status": S.DISMISSED})
+    d = decide([sender], [ev(1, sender, status=S.ACCEPTED), dismissed], [passed], [stip()])
+    assert d.verdict is Verdict.SUPPORTED
+
+
+def test_0_2_1_expert_accepted_contradiction_still_beats_a_passed_check():
+    d = decide([TIME], [ev(2, TIME, Stance.CONTRADICTS, S.ACCEPTED)], [chk(TIME)])
+    assert d.verdict is Verdict.CONTRADICTED
+
+
+def test_0_2_1_model_contradicts_counts_when_a_check_did_not_pass():
+    d = decide([TIME], [ev(2, TIME, Stance.CONTRADICTS, S.OPEN)], [chk(TIME, O.INCONCLUSIVE)])
+    assert d.verdict is Verdict.CONTRADICTED
+    passed, unsure = chk(TIME), chk(TIME, O.INCONCLUSIVE, name="other")
+    d = decide([TIME], [ev(2, TIME, Stance.CONTRADICTS, S.OPEN)], [passed, unsure])
     assert d.verdict is Verdict.CONTRADICTED
 
 

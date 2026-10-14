@@ -14,7 +14,7 @@ import pytest
 
 from core import pipeline
 from core.casework import cases
-from core.contracts import EvidenceStatus, Stance
+from core.contracts import EvidenceStatus, Stance, Verdict
 from core.db import connect
 from core.report.html import render_report
 from core.review import actions, audit_log
@@ -112,6 +112,33 @@ def test_every_claim_page_and_the_report_render(root):
         resp = app.handle(Request("GET", "/claim", {"id": claim_id}, dict(HOST)))
         assert resp.status == 200, (claim_id, resp.body[:200])
     assert app.handle(Request("GET", "/report", {}, dict(HOST))).status == 200
+
+
+def test_an_experts_own_reason_with_a_blocked_word_shows_as_written(root):
+    """Guilty, innocent, leader and deleted are words Baker never uses. An expert may: their
+    reasons and override notes show as typed, and the page and report still render."""
+    case = _case(root)
+    conn = connect(case.db)
+    reason = "Nothing shows these messages were deleted."
+    first, second = [
+        r[0] for r in conn.execute("SELECT id FROM evidence_items WHERE stance = 'supports'")
+    ][:2]
+    actions.decide_evidence(conn, first, EvidenceStatus.ACCEPTED, EXPERT, reason)
+    actions.decide_evidence(conn, second, EvidenceStatus.DISMISSED, EXPERT, reason)
+    redecide(conn, EXPERT)
+    actions.override_verdict(conn, "C03", Verdict.UNPROVEN, EXPERT, "Not the leader; " + reason)
+    conn.close()
+    app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
+    app.open_case(case)
+    pages = [("/claim", {"id": c}) for c in demo.load_gold()]
+    pages += [("/evidence", {"id": first}), ("/evidence", {"id": second}), ("/report", {})]
+    shown = ""
+    for path, query in pages:
+        resp = app.handle(Request("GET", path, query, dict(HOST)))
+        assert resp.status == 200, (path, query, resp.body[:200])
+        shown += resp.body.decode()
+    assert f'<span class="said">{reason}</span>' in shown
+    assert "Not the leader;" in shown
 
 
 def test_inputs_are_read_only_hashed_copies_and_the_log_verifies(root):

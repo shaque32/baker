@@ -27,7 +27,7 @@ later, after the audit engine scores well on the eval set. A CLI comes first.
 |---|---|---|
 | Claim extraction | Proposes claims | Expert edits the list; every claim keeps its page and paragraph |
 | Assumptions | Fills claim-type templates | Templates are fixed per claim type; tier starts at inferred |
-| Stance | Labels one evidence item against one assumption | Quote verified verbatim by code; label is input to rules, never a verdict; SUPPORTED needs the supporting label accepted by an expert (rules 0.2.0) |
+| Stance | Labels one evidence item against one assumption | Quote verified verbatim by code; label is input to rules, never a verdict; SUPPORTED needs the supporting label accepted by an expert (rules 0.2.0); an unreviewed "contradicts" cannot overrule a check that passed, it only complicates (rules 0.2.1) |
 | Review | Local model accepts or dismisses one verified supporting item | Separate human-owned prompt; a sorting aid for the expert that never makes a claim SUPPORTED under rules 0.2.0; tier becomes ai_reviewed, never confirmed; a human decision overrides it; cloud models only in eval/ as benchmarks |
 | Translation | ru -> en | Original text stays the citable text |
 
@@ -42,7 +42,8 @@ module's internals. Modules talk through the database and the contract types.
 core/
   contracts.py        frozen: data models + function signatures (human-owned)
   schema.sql          frozen: canonical tables (human-owned)
-  db.py               open a case database, apply schema
+  db.py               open a case database (plain or encrypted), apply schema
+  encryption.py       case keys, encrypted copies of inputs, the keyring of unlocked cases
   ingest/             one file per input format; implements EvidenceImporter or GovDocIngester
   enrich/             search index, embeddings, translation, gap detection
   claims/             ClaimExtractor
@@ -56,14 +57,18 @@ core/
     rules.py          decide_verdict (human-owned)
     prompts/          human-owned prompts
   restore/            Context Restore: find pasted exhibit quotes in the extraction (code only)
+  selection/          selection audit: each message the document quotes, an exhibit quotes or the
+                      examiner tagged, in its exchange with the messages around it that were not
+                      picked (code only, derived each time, never changes a verdict)
   identity/           propose account -> person links from names in the data (code only);
                       the expert confirms or rejects each one on the Identities page
   review/             expert actions + audit log
-  report/             ReportRenderer; restore.py and letter.py (selection-audit request)
+  report/             ReportRenderer; restore.py, selection.py, letter.py (full-extraction request)
   review/status.py    what each claim needs from the expert (shared by screen and report)
   review/redecide.py  re-run the verdict rules after expert review, no model
   casework/           case folders and imports, background audit and claim-proposal jobs,
                       the model check, keeping the computer awake (used by the screen)
+                      protect.py: encrypting an existing case, passphrase changes
   timeline/           Timeline check (stated times vs record times) and quiet stretches;
                       derived by code on demand, never stored, never touches verdicts
 cli/                  `baker import`, `baker claims`, `baker audit`, `baker report`, `baker serve`
@@ -79,6 +84,12 @@ tests/
 ## Key decisions
 
 - **Case database.** One SQLite file per case. Nothing is shared between cases.
+- **Encryption at rest.** A case can be encrypted with the expert's passphrase: the database
+  with SQLCipher, each copied input with AES-256-GCM in chunks, one random key per case wrapped
+  in `case.key` (core/encryption.py, docs/encryption.md). Plain cases open unchanged; only the
+  expert's explicit "Encrypt this case" converts one (core/casework/protect.py). Database
+  errors are caught through `core.db.Error`/`OperationalError`/`IntegrityError`, because
+  SQLCipher raises its own classes.
 - **Stable ids.** Ids are strings built deterministically from source and locator
   (for example `msg:<source_id>:<locator>`), so re-importing gives the same ids and gold labels
   can point at specific messages.

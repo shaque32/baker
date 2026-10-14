@@ -55,6 +55,7 @@ from core.contracts import (
     Source,
     SourceKind,
 )
+from core.encryption import open_input
 
 PARSER_VERSION = "govdoc-pdf/3"
 
@@ -123,8 +124,9 @@ class GovDocIngestResult:
 
 
 def read_input(path: Path) -> tuple[bytes, str]:
-    """Read the file once, read-only, and return its bytes and SHA-256."""
-    with path.open("rb") as f:
+    """Read the file once, read-only, and return its bytes and SHA-256 (of the plain bytes,
+    when it is a copy in an encrypted case)."""
+    with open_input(path) as f:
         data = f.read()
     return data, hashlib.sha256(data).hexdigest()
 

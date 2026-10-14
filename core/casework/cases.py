@@ -4,6 +4,8 @@
         case.db       the case database (core/schema.sql)
         case.json     the case name, when it was made, the expert's claim order
         inputs/       read-only copies of every imported file
+        case.key      only in an encrypted case: its wrapped key (core/encryption.py); the
+                      database and every copy in inputs/ are then encrypted too
 
 The cases folder is $BAKER_CASES, else ~/Baker/cases. `baker serve --db some.db` works on a
 single database the same way: its settings sit beside it (some.json) and its copies in
@@ -13,7 +15,12 @@ Importing a file. The upload is written into the case's inputs folder and SHA-25
 is written, then made read-only. The importer then opens that copy read-only and hashes exactly
 the bytes it parses (core/ingest/source_file.py, core/ingest/govdoc.py); the two hashes must
 agree or nothing is stored. The expert's original file is never opened by Baker. A file whose
-hash is already in the case is refused, so nothing is imported twice.
+hash is already in the case is refused, so nothing is imported twice. In an encrypted case the
+upload is encrypted as it is written, and the hashes are of the plain bytes, so they still
+match the expert's original file.
+
+Encrypting a case made before encryption existed is a separate, deliberate step
+(core/casework/protect.py); nothing here encrypts or changes an existing plain case.
 """
 
 from __future__ import annotations
@@ -28,9 +35,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import BinaryIO
 
-from core import pipeline
-from core.db import apply_schema, connect
+from core import encryption, pipeline
+from core.db import OperationalError, apply_schema, connect
 from core.review import audit_log
 from core.review.actions import ReviewError, _expert
 
@@ -116,10 +124,26 @@ def check_case_name(name: str) -> str:
     return name
 
 
-def create_case(home: Path, name: str, actor: str, clock: Clock | None = None) -> Case:
-    """A new case folder with an empty case database. The audit log records who made it."""
+def create_case(
+    home: Path,
+    name: str,
+    actor: str,
+    clock: Clock | None = None,
+    passphrase: str | None = None,
+    kdf: encryption.Kdf | None = None,
+) -> Case:
+    """A new case folder with an empty case database. The audit log records who made it.
+
+    With a passphrase the case is encrypted from the start (core/encryption.py) and unlocked
+    in this process; read its recovery key once with `recovery_key_for` right after."""
     _expert(actor)
     name = check_case_name(name)
+    if passphrase is not None:
+        try:
+            encryption.check_new_passphrase(passphrase)
+            encryption.require()
+        except (ValueError, encryption.EncryptionError) as err:
+            raise ReviewError(str(err)) from err
     home.mkdir(parents=True, exist_ok=True)
     base = _slug(name)
     folder, n = home / base, 1
@@ -130,14 +154,30 @@ def create_case(home: Path, name: str, actor: str, clock: Clock | None = None) -
     case = Case(folder / DB_NAME)
     case.inputs.mkdir()
     now = _now(clock)
+    if passphrase is not None:
+        _new_recovery[case.db] = encryption.create_key(case.db, passphrase, kdf, now)
     conn = connect(case.db)
     try:
         apply_schema(conn)
-        _logged(conn, now, actor, "case.create", {"name": name})
+        _logged(
+            conn,
+            now,
+            actor,
+            "case.create",
+            {"name": name, "encrypted": True} if passphrase is not None else {"name": name},
+        )
     finally:
         conn.close()
     case.save_settings(name=name, created_at_utc=_iso(now), created_by=actor)
     return case
+
+
+_new_recovery: dict[Path, str] = {}
+
+
+def recovery_key_for(case: Case) -> str | None:
+    """The recovery key of a case this process just encrypted, once; None after that."""
+    return _new_recovery.pop(case.db, None)
 
 
 def _logged(conn: sqlite3.Connection, at: datetime, actor: str, action: str, payload: dict) -> None:
@@ -199,6 +239,15 @@ def safe_file_name(name: str) -> str:
         stem, suffix = base, ""
     stem = stem[:100] or "file"
     return f"{stem}.{suffix.lower()}" if suffix else stem
+
+
+def input_writer(case: Case) -> Callable[[BinaryIO], BinaryIO] | None:
+    """For an encrypted case, what wraps an upload's file so it is encrypted as it is
+    written (CaseLocked when the case is locked); None for a plain case."""
+    if not encryption.is_encrypted_case(case.db):
+        return None
+    key_id, dek = encryption.case_key(case.db)
+    return lambda f: encryption.EncryptedWriter(f, dek, key_id)  # type: ignore[return-value]
 
 
 def upload_path(case: Case) -> Path:
@@ -274,7 +323,7 @@ def import_upload(
         date_order = date_order or None
         if date_order not in (None, "mdy", "dmy"):
             raise ReviewError("the date order is month first or day first")
-        if upload.stat().st_size == 0:
+        if encryption.input_size(upload) == 0:
             raise ReviewError(f"{name} is empty")
         dup = conn.execute(
             "SELECT id, file_name FROM sources WHERE sha256 = ?", (upload_sha256,)
@@ -354,7 +403,7 @@ def source_counts(conn: sqlite3.Connection) -> dict[str, int]:
             rows = conn.execute(
                 f"SELECT source_id, COUNT(*) FROM {table} GROUP BY source_id"  # noqa: S608
             ).fetchall()
-        except sqlite3.OperationalError:
+        except OperationalError:
             continue
         for sid, n in rows:
             out[sid] = out.get(sid, 0) + n
