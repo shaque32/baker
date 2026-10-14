@@ -47,14 +47,17 @@ report or full extraction), its message count and dates, and the methods tried. 
 message does not exist. Only message text is searched, not translations, attachments, call logs,
 contacts or images.
 
-## Selection audit: request for the full extraction (`core/report/letter.py`)
+## Request for the full extraction (`core/report/letter.py`)
+
+The selection audit ([selection-audit.md](selection-audit.md)) shows each quoted message of an
+exhibit in its own exchange, with the messages around it the exhibit left out.
 
 When any evidence source is a curated report or of unknown coverage, the report's Selection audit
-section and the screen's **Request letter** page carry a draft request for each phone's full
-extraction, the extraction summary, how the report was produced from it, and the examiner's
-notes. It lists each report with its device, extraction type, tool, extraction date and SHA-256,
-and any exhibit whose quoted messages were not located. Bracketed fields are for counsel. It is a
-draft, not legal advice, and Baker never sends it anywhere.
+section ends with, and the screen's **Request letter** page carries, a draft request for each
+phone's full extraction, the extraction summary, how the report was produced from it, and the
+examiner's notes. It lists each report with its device, extraction type, tool, extraction date
+and SHA-256, and any exhibit whose quoted messages were not located. Bracketed fields are for
+counsel. It is a draft, not legal advice, and Baker never sends it anywhere.
 
 ## Storage
 

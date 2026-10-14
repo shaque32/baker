@@ -37,7 +37,9 @@ its whole app already shows is listed once, at the app. Each stretch states what
 and the source's coverage (a curated report holds only what the examiner chose), records with no
 usable time, what other phones hold in the same span, and the times the document states inside
 it. Baker states a quiet stretch; it never explains one. Not found does not mean it did not
-happen.
+happen. The Selection tab names a listed stretch that falls in the pause just before or just
+after an exchange holding a message the government picked
+([selection-audit.md](selection-audit.md)).
 
 ## Settings
 

@@ -336,6 +336,23 @@ def forget(key_id: str) -> None:
 def forget_all() -> None:
     with _keys_lock:
         _keys.clear()
+    _locked()
+
+
+_lock_hooks: list[Callable[[], None]] = []
+
+
+def on_lock(hook: Callable[[], None]) -> None:
+    """Call hook() whenever this process locks a case or forgets every key, so a module that keeps
+    case content in memory drops it with the key (core/selection/audit.py keeps the matcher's
+    index of the messages)."""
+    if hook not in _lock_hooks:
+        _lock_hooks.append(hook)
+
+
+def _locked() -> None:
+    for hook in tuple(_lock_hooks):
+        hook()
 
 
 def unlocked_key(key_id: str) -> bytes | None:
@@ -379,6 +396,7 @@ def lock(db: Path) -> None:
     kp = key_path(db)
     if kp.is_file():
         forget(read_key_file(kp).key_id)
+    _locked()
 
 
 def case_key(db: Path) -> tuple[str, bytes]:

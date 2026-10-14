@@ -332,7 +332,8 @@ def test_requests_from_other_sites_are_refused(db, conn):
 
 
 PAGES = [("/", {}), ("/claims", {}), ("/claim", {"id": "C05"}), ("/claim/new", {}),
-         ("/log", {}), ("/report", {})]  # fmt: skip
+         ("/log", {}), ("/report", {}), ("/selection", {}),
+         ("/selection/context", {"id": "msg:item1:Chats!948"})]  # fmt: skip
 
 
 def test_pages_load_nothing_from_outside_and_run_no_script(db, conn):
@@ -392,7 +393,7 @@ def test_the_whole_flow_makes_no_network_call(db, conn, monkeypatch):
     assert calls == []
 
 
-SERVER_FILES = ["ui", "core/review", "core/report"]
+SERVER_FILES = ["ui", "core/review", "core/report", "core/selection", "core/restore"]
 NETWORK_MODULES = {"socket", "urllib.request", "http.client", "requests", "httpx", "ssl",
                    "ftplib", "smtplib", "webbrowser"}  # fmt: skip
 

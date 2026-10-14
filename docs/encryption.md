@@ -33,7 +33,8 @@ shows **once**, when the case is encrypted. Either opens the case.
   included. The original evidence is untouched; the expert's review work in that case is lost.
 
 An unlocked key lives only in the memory of the running Baker. Stopping Baker (or pressing
-"Lock this case now") locks the case. Python cannot promise to wipe memory, so turn on the
+"Lock this case now") locks the case. Locking also drops the index of message text the Selection
+tab keeps in memory to look quotes up quickly. Python cannot promise to wipe memory, so turn on the
 computer's own disk encryption too (FileVault on a Mac, BitLocker on Windows).
 
 ## New cases

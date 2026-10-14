@@ -62,7 +62,7 @@ from core.review import actions
 from core.review.actions import ReviewError
 from core.review.redecide import redecide
 from core.timeline import settings as timeline_settings
-from ui import identity_pages, pages, restore_pages, theme, timeline_pages, upload
+from ui import identity_pages, pages, restore_pages, selection_pages, theme, timeline_pages, upload
 
 CSP = (
     "default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; img-src 'none'; "
@@ -352,6 +352,11 @@ class App:
         if p == "/exhibit/match":
             body = restore_pages.match_page(conn, page, req.query.get("id", ""))
             return self._html(body) if body else self._not_found(page, "no such match")
+        if p == "/selection":
+            return self._html(selection_pages.selection_page(conn, page, self._timeline()))
+        if p == "/selection/context":
+            body = selection_pages.context_page(conn, page, req.query.get("id", ""))
+            return self._html(body) if body else self._not_found(page, "no such message")
         if p == "/request-letter":
             return self._html(restore_pages.letter_page(conn, page))
         if p == "/timeline":

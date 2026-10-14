@@ -1,5 +1,5 @@
-"""What the expert sees for one match: the message in its own conversation, about 20 messages
-either side, and the related threads between the same participants.
+"""What the expert sees for one match (or any message): the message in its own conversation,
+about 20 messages either side, and the related threads between the same participants.
 
 Every line carries its tier. Message text, sender, direction and the UTC time are observed (as
 the source recorded them, the time normalized to UTC). The phone's local time is derived from the
@@ -66,8 +66,8 @@ class Related:
 
 
 @dataclass(frozen=True)
-class MatchView:
-    match: ExhibitMatch
+class ContextView:
+    record_id: str  # the message shown in context
     thread: ThreadInfo
     lines: tuple[Line, ...]
     before: int  # thread messages before the first line shown
@@ -75,12 +75,18 @@ class MatchView:
     related: tuple[Related, ...]
 
 
+@dataclass(frozen=True)
+class MatchView(ContextView):
+    match: ExhibitMatch
+
+
 def _utc_text(ts_utc: str | None) -> str:
     dt = parse_utc(ts_utc)
     return f"{dt:%Y-%m-%d %H:%M:%S} UTC" if dt else "time unknown"
 
 
-def _lines(conn: sqlite3.Connection, ids: list[str], target: str | None) -> list[Line]:
+def message_lines(conn: sqlite3.Connection, ids: list[str], target: str | None) -> list[Line]:
+    """One display line per message id, in the order given; target marks one of them."""
     if not ids:
         return []
     marks = ",".join("?" * len(ids))
@@ -229,7 +235,7 @@ def _period(
         )
     ]
     if ids:
-        return _lines(conn, ids[:RELATED_CAP], None), False, max(0, len(ids) - RELATED_CAP)
+        return message_lines(conn, ids[:RELATED_CAP], None), False, max(0, len(ids) - RELATED_CAP)
     before = conn.execute(
         "SELECT id FROM messages WHERE thread_id = ? AND ts_utc < ? ORDER BY ts_utc DESC, id DESC"
         " LIMIT 1",
@@ -239,25 +245,26 @@ def _period(
         "SELECT id FROM messages WHERE thread_id = ? AND ts_utc > ? ORDER BY ts_utc, id LIMIT 1",
         (thread_id, last),
     ).fetchone()
-    return _lines(conn, [r[0] for r in (before, after) if r], None), True, 0
+    return message_lines(conn, [r[0] for r in (before, after) if r], None), True, 0
 
 
 # ---------------------------------------------------------------- the view
 
 
-def match_view(conn: sqlite3.Connection, match: ExhibitMatch, window: int = WINDOW) -> MatchView:
-    row = conn.execute("SELECT thread_id FROM messages WHERE id = ?", (match.record_id,)).fetchone()
+def context_view(conn: sqlite3.Connection, record_id: str, window: int = WINDOW) -> ContextView:
+    """A message in its own conversation: `window` messages either side, and related threads."""
+    row = conn.execute("SELECT thread_id FROM messages WHERE id = ?", (record_id,)).fetchone()
     if row is None:
-        raise LookupError(f"message {match.record_id} is not in this case")
+        raise LookupError(f"message {record_id} is not in this case")
     thread_id = row[0]
     info = thread_info(conn, thread_id)
     assert info is not None  # noqa: S101 - messages.thread_id is a foreign key
     # The whole thread in time order (context_ids' own ordering), then the window around it.
-    order = list(context_ids(conn, match.record_id, 10**9, include_target=True))
-    i = order.index(match.record_id)
+    order = list(context_ids(conn, record_id, 10**9, include_target=True))
+    i = order.index(record_id)
     lo, hi = max(0, i - window), min(len(order), i + window + 1)
     ids = order[lo:hi]
-    lines = _lines(conn, ids, match.record_id)
+    lines = message_lines(conn, ids, record_id)
     times = [
         r[0]
         for r in conn.execute(
@@ -267,11 +274,24 @@ def match_view(conn: sqlite3.Connection, match: ExhibitMatch, window: int = WIND
         )
     ]
     first, last = (min(times), max(times)) if times else (None, None)
-    return MatchView(
-        match=match,
+    return ContextView(
+        record_id=record_id,
         thread=info,
         lines=tuple(lines),
         before=lo,
         after=len(order) - hi,
         related=tuple(related_threads(conn, thread_id, first, last)),
+    )
+
+
+def match_view(conn: sqlite3.Connection, match: ExhibitMatch, window: int = WINDOW) -> MatchView:
+    v = context_view(conn, match.record_id, window)
+    return MatchView(
+        record_id=v.record_id,
+        thread=v.thread,
+        lines=v.lines,
+        before=v.before,
+        after=v.after,
+        related=v.related,
+        match=match,
     )
