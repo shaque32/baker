@@ -278,6 +278,9 @@ def test_report_lists_alternatives_under_their_claims(conn):
         ("he left his phone at home", "SMS", "SMS", None),  # left somewhere, not handed over
         ("she left me her password", "SMS", "SMS", "left me her password"),
         ("not sure but im using his phone", "SMS", "SMS", "using his phone"),  # not a denial
+        ("I did not have a chance to use his phone", "SMS", "SMS", None),  # a longer denial
+        ("never got around to using her account", "Instagram", "Instagram", None),
+        ("no idea why but i used his phone", "SMS", "SMS", "used his phone"),  # a new clause
     ],
 )
 def test_hand_off_words(body, app, claimed_app, found):
@@ -1032,10 +1035,19 @@ def test_an_account_on_phones_all_owned_by_the_named_person_is_no_lead(conn):
     acct = case.data.accounts["acct:item1:Phone:+12125550122"]
     g = case.ids.groups[acct.key]
     g.owner_devices[:] = ["dev:item2", "dev:item3"]  # an owner account on two phones
-    owns_all = Person("p", "Daniel Petrov", "t", ("daniel", "petrov"), tuple(g.owner_devices))
-    owns_one = Person("p", "Daniel Petrov", "t", ("daniel", "petrov"), tuple(g.owner_devices[:1]))
-    assert explain._multi_owner_fits(case, {acct.key}, [owns_all]) == []
-    assert len(explain._multi_owner_fits(case, {acct.key}, [owns_one])) == 1
+    daniel = Person("p", "Daniel Petrov", "t", ("daniel", "petrov"), tuple(g.owner_devices))
+
+    def owned(*statuses: str) -> int:
+        case.data.stipulations = [
+            (f"s{i}", d, "p", st)
+            for i, (d, st) in enumerate(zip(g.owner_devices, statuses, strict=False))
+        ]
+        return len(explain._multi_owner_fits(case, {acct.key}, [daniel]))
+
+    assert owned("confirmed", "confirmed") == 0
+    assert owned("confirmed") == 1  # one phone not stipulated to him
+    assert owned("confirmed", "proposed") == 1  # proposed is not ownership yet
+    assert owned("proposed", "proposed") == 1
 
 
 def test_same_words_nearest_first_across_statements(conn):
@@ -1062,3 +1074,82 @@ def test_same_words_nearest_first_across_statements(conn):
     alt = explain._same_words(explain.load(conn), [first, second])
     assert alt is not None
     assert alt.fits[0].record_id == "msg:test:near"
+
+
+# ---------------------------------------------------------------- fourteenth review
+
+
+def test_quiet_app_call_copies_are_told_apart_by_callee(conn):
+    case = explain.load(conn)
+    caller, one, other = sorted({a.key: a.id for a in case.data.accounts.values()}.values())[:3]
+    for sid, to in (("item1", one), ("item2", other)):
+        conn.execute(
+            "INSERT INTO calls (id, source_id, locator, app, from_account_id, to_account_id,"
+            " direction, ts_utc, ts_raw, duration_s) VALUES (?, ?, 'Test!1', 'WhatsApp', ?, ?,"
+            " 'outgoing', '2026-03-01T12:00:00Z', 'test', 30)",
+            (f"call:{sid}:test", sid, caller, to),
+        )
+    case = explain.load(conn)
+    rows = [
+        r
+        for sid in ("item1", "item2")
+        for r in explain._phone_rows(case, sid)
+        if r.id == f"call:{sid}:test"
+    ]
+    assert [r.recipients for r in rows] == [(one,), (other,)]
+    assert len(explain._collapse(case, [(r, "edge") for r in rows])) == 2  # two calls, not copies
+
+
+def test_same_words_nearness_counts_every_quoted_message(conn):
+    meaning = next(a for a in claim_state(conn, "C13").assumptions if a.template_id == "meaning")
+    case = explain.load(conn)
+    (quoted, *_) = explain._quoted_rows(case, meaning)
+    (thread,) = conn.execute("SELECT thread_id FROM messages WHERE id = ?", (quoted.id,)).fetchone()
+    word = explain._words(meaning.params.quoted_text or "")[0]
+
+    def add(rid: str, minutes: int, body: str) -> None:
+        at = quoted.ts_utc + timedelta(minutes=minutes)
+        conn.execute(
+            "INSERT INTO messages (id, source_id, locator, thread_id, direction, ts_utc, ts_raw,"
+            " body) VALUES (?, ?, ?, ?, 'incoming', ?, 'test', ?)",
+            (rid, quoted.source_id, f"Test!{rid}", thread, at.isoformat(), body),
+        )
+
+    add("msg:test:again", 5000, meaning.params.quoted_text or "")  # the quote, a second time
+    for n in range(explain.MAX_FITS + 1):
+        add(f"msg:test:first{n}", 2 + n, f"so {word} ok")
+    add("msg:test:by-again", 5001, f"and {word} too")
+    case = explain.load(conn)
+    assert len(explain._quoted_rows(case, meaning)) > 1
+    alt = explain._same_words(case, [meaning])
+    assert alt is not None
+    assert alt.fits[0].record_id == "msg:test:by-again"  # one minute from the second quote
+
+
+def test_hand_off_copies_two_phone_scoped_statements_find_show_once(conn):
+    quote = _asm(conn, "C16", "sender").params.quoted_text
+    one = _asm(conn, "C16", "authorship", quoted_text=quote, device_ids=("dev:item1",))
+    two = _asm(conn, "C16", "authorship", quoted_text=quote, device_ids=("dev:item2",))
+    two = two.model_copy(update={"id": "asm:item2"})
+    case = explain.load(conn)
+    both = explain._other_user(case, [one, two])
+    assert both is not None
+    # "left his login" sits next to the quote on both phones: one record, shown once.
+    assert sum("left his login" in f.note for f in both.fits) == 1
+
+
+def test_the_quoted_message_itself_can_speak_of_a_hand_off(conn):
+    quote = _asm(conn, "C16", "sender").params.quoted_text
+    case = explain.load(conn)
+    a = _asm(conn, "C16", "authorship", quoted_text=quote, device_ids=("dev:item1",))
+    (quoted,) = explain._claimed_rows(case, [a])[a.id]
+    conn.execute(
+        "UPDATE messages SET body = ? WHERE id = ?", (f"{quote}, im using his phone", quoted.id)
+    )
+    a = a.model_copy(
+        update={"params": a.params.model_copy(update={"quoted_text": f"{quote}, im using"})}
+    )
+    alt = explain._other_user(explain.load(conn), [a])
+    assert alt is not None
+    fit = next(f for f in alt.fits if f.record_id == quoted.id)
+    assert fit.note.startswith("The message itself speaks of using another person's phone")

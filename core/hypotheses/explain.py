@@ -470,7 +470,11 @@ def _name_fits(case: Case, keys: set[Key], persons: list[idl.Person]) -> list[Fi
 _NEGATED = re.compile(
     r"\b(?:never|not|no|cannot|didn'?t|didn’t|dont|don'?t|don’t|wont|won'?t|cant|can'?t|can’t|"
     r"havent|haven'?t|wasnt|wasn'?t|couldnt|couldn'?t|couldn’t|wouldnt|wouldn'?t|wouldn’t|"
-    r"shouldnt|shouldn'?t|shouldn’t|won’t|didnt)\b(?:\s+[^\W\d_]+){0,2}\s*$",
+    r"shouldnt|shouldn'?t|shouldn’t|won’t|didnt)\b"
+    # Up to five words between the denial and the verb ("did not have a chance to use"), but
+    # not across a word that starts a new clause ("no idea but i used his phone").
+    r"(?:\s+(?!(?:but|and|so|then|yet|because|though|although|or|until|unless|since|when|"
+    r"while|after|before)\b)[^\W\d_]+){0,5}\s*$",
     re.IGNORECASE,
 )
 
@@ -482,7 +486,7 @@ def _handoff(body: str, app: str, claimed_app: str) -> re.Match[str] | None:
     """The first words in a message about using another person's phone, account or login that
     bear on a message sent on claimed_app."""
     for m in _HANDOFF.finditer(body):
-        if _NEGATED.search(body[max(0, m.start() - 40) : m.start()]):
+        if _NEGATED.search(body[max(0, m.start() - 60) : m.start()]):
             continue  # "i never used his account" denies a hand-off
         if (m.group("whose1") or m.group("whose") or m.group("whose3") or "").casefold() == "my":
             continue  # logging in on one's own phone or account names no one else's
@@ -516,8 +520,8 @@ def _handoff_fits(case: Case, claimed: list[Row]) -> tuple[list[tuple[Row, str]]
             (c.source_id, _iso(lo), _iso(hi)),
         )
         for mid, sid, app, sender, ts, raw, body in rows:
-            if mid in claimed_ids or mid in out:
-                continue
+            if mid in out:
+                continue  # found already, near another claimed message
             m = _handoff(body or "", app, c.app)
             if m is None:
                 continue
@@ -526,7 +530,10 @@ def _handoff_fits(case: Case, claimed: list[Row]) -> tuple[list[tuple[Row, str]]
             )
             out[mid] = (
                 row,
-                f"Speaks of using another person's phone, account or login "
+                f"The message itself speaks of using another person's phone, account or login "
+                f"(“{cite(m.group(0))}”)."
+                if mid in claimed_ids
+                else f"Speaks of using another person's phone, account or login "
                 f"(“{cite(m.group(0))}”), on the same phone near the message.",
             )
     anchor = claimed[0].ts_utc if claimed else None
@@ -559,7 +566,11 @@ def _parse(value: str | None) -> datetime | None:
 
 def _multi_owner_fits(case: Case, keys: set[Key], persons: list[idl.Person]) -> list[Fit]:
     out: list[Fit] = []
-    theirs = {d for p in persons for d in p.devices}  # phones stipulated to the named people
+    # Phones an expert confirmed as the named people's: a proposed stipulation is not ownership.
+    named = {p.id for p in persons}
+    theirs = {
+        d for _, d, pid, status in case.data.stipulations if status == "confirmed" and pid in named
+    }
     for k in sorted(keys):
         g = case.ids.groups.get(k)
         if g is None or len(set(g.owner_devices)) < 2:
@@ -593,6 +604,7 @@ def _other_user(case: Case, assumptions: list[Assumption]) -> Alternative | None
     searched: list[str] = []
     against: list[str] = []  # one sentence per statement that found something
     about_account = all(a.template_id == "person_identity" for a in mine)
+    hand_pairs: list[tuple[Row, str]] = []  # collapsed across statements, as copies may repeat
     for a in mine:
         before = len(fits)
         # Each statement on its own: its accounts against its own people, so a name another
@@ -621,12 +633,13 @@ def _other_user(case: Case, assumptions: list[Assumption]) -> Alternative | None
                 searched.append(f"names saved for {_account_label(case, keys)}")
             fits += _multi_owner_fits(case, keys, persons)
             searched.append("which phones hold each account as their own")
+        hands: list[tuple[Row, str]] = []
         if claimed:
             hands, s = _handoff_fits(case, claimed)
             if s:
                 searched.append(s)
-            fits += [_fit(case, r, n) for r, n in hands]
-        found = len({f.record_id for f in fits[before:]})
+            hand_pairs += hands
+        found = len({f.record_id for f in fits[before:]} | {r.id for r, _ in hands})
         if found and persons:
             who = " or ".join(cite(p.name) for p in persons)
             against.append(
@@ -638,7 +651,8 @@ def _other_user(case: Case, assumptions: list[Assumption]) -> Alternative | None
                 f"{found} record(s) give the account's user a name, or point to another person "
                 "using the account or phone; compare them with the person the claim names."
             )
-    fits = _merge(fits)
+    # A hand-off message held on both phones, found by statements about each, shows once.
+    fits = _merge(fits + _collapse(case, hand_pairs))
     if not fits:
         return None
     title = (
@@ -961,10 +975,11 @@ def _other_app(case: Case, assumptions: list[Assumption]) -> Alternative | None:
 # microsecond, never as text or through SQLite's millisecond julianday().
 _PHONE_RECORDS = (
     "SELECT m.id, 'message', m.source_id, t.app, m.sender_account_id, m.ts_utc, m.ts_raw,"
-    " m.body, NULL FROM messages m JOIN threads t ON t.id = m.thread_id WHERE m.source_id = ?"
+    " m.body, NULL, NULL FROM messages m JOIN threads t ON t.id = m.thread_id"
+    " WHERE m.source_id = ?"
     " UNION ALL"
     " SELECT c.id, 'call', c.source_id, c.app, c.from_account_id, c.ts_utc, c.ts_raw, NULL,"
-    " c.duration_s FROM calls c WHERE c.source_id = ?"
+    " c.duration_s, c.to_account_id FROM calls c WHERE c.source_id = ?"
 )
 
 
@@ -972,7 +987,19 @@ def _phone_rows(case: Case, sid: str) -> list[Row]:
     """Read once per phone and kept on the case, so a report reads each phone's records once."""
     if sid not in case.phone_rows:
         case.phone_rows[sid] = [
-            Row(r[0], r[1], r[2], r[3], r[4], (), _parse(r[5]), r[6], r[7], r[8])
+            # A call's callee is read here; a message's recipients only for the edges shown.
+            Row(
+                r[0],
+                r[1],
+                r[2],
+                r[3],
+                r[4],
+                (r[9],) if r[9] else (),
+                _parse(r[5]),
+                r[6],
+                r[7],
+                r[8],
+            )
             for r in case.conn.execute(_PHONE_RECORDS, (sid, sid))
         ]
     return case.phone_rows[sid]
@@ -1157,8 +1184,13 @@ def _same_words(case: Case, assumptions: list[Assumption]) -> Alternative | None
         notes = {r.id: n for r, n in found}
         anchor = claimed[0].ts_utc
         pairs += [(r, notes[r.id]) for r in _by_time(rows, anchor)]
+        # From every quoted message: one quote can stand in several messages.
+        quoted_at = [c.ts_utc for c in claimed if c.ts_utc is not None]
         for r in rows:
-            gap = abs((r.ts_utc - anchor).total_seconds()) if r.ts_utc and anchor else float("inf")
+            gap = min(
+                (abs((r.ts_utc - t).total_seconds()) for t in quoted_at if r.ts_utc),
+                default=float("inf"),
+            )
             near[r.id] = min(gap, near.get(r.id, gap))
         if rows:
             used.append(a.id)
