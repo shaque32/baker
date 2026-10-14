@@ -146,7 +146,10 @@ Why, part three (case01 paragraph 10.1, found 2026-10-14 in "Start a case in the
 14B read "sent by person:dev:item1:owner" against a line from "Dan P, +1 212 555 0111" and
 answered contradicts, though Baker held that number as the stipulated owner's. The assumption
 and the context now print the names the case gives (core/audit/readable.py), with the people
-an expert tied to each sender's account in brackets, and the prompt says how to read them.
+an expert tied to each sender's account in brackets, and the prompt says how to read them. A
+message's context also opens with its chat's members, so the model can tell a chat between two
+accounts from a group whose other members say nothing near the record (agreed with "Start a
+case in the browser" on 2026-10-14).
 Apply all three parts together, with a Mac re-run of the probe set.
 Diff, part one:
 -- "contradicts": the record itself shows something that cannot be true at the same time as
@@ -174,7 +177,10 @@ Diff, part three (before "Choose exactly one stance:"):
 +is the person an expert stipulated as item1's user. A sender line shows the app and account,
 +the name the phone saved for it if any, "(owner)" for the phone's own account, and in
 +brackets the people an expert has tied to that account. Only a bracket shows who an account
-+belongs to; a saved name or a name in a message does not.
++belongs to; a saved name or a name in a message does not. A chat's context opens with
++"Members seen in this chat's records:", each account that sent in the chat or that the phone
++listed as a recipient; a member who did neither is missing, so that line shows who was in the
++chat, never who was not.
 +
 and the header's version line v1.0 -> v1.1.
 Code that follows once this is signed (core/audit/stance.py, not frozen): `build_prompt` passes
@@ -185,5 +191,7 @@ included) must pass `claim`. The small model's input shows the same text: genera
 it as `baker_claim`. For part three, `build_prompt` fills `assumption` with
 `readable.assumption_text(assumption, case_names(conn))` instead of `assumption.text`, and the
 context lines print senders with `CaseNames.sender`, "(owner)" replacing "(this phone)" as in
-the signed probe set; the stored `Assumption.text` keeps Baker's ids. Generated items carry the
-same strings.
+the signed probe set; the stored `Assumption.text` keeps Baker's ids. A message's or
+attachment's context opens with `CaseNames.members(...)` over its chat's member accounts (the
+union of the chat's message senders and listed recipients); a call's or contact row's has no
+such line. Generated items carry the same strings (`baker_members`).

@@ -24,7 +24,9 @@ from eval.stancedata.families import BANNED_WORDS, family
 from eval.stancedata.names import case_names
 
 # Fields only items in Baker's own wording carry; plain items leave them out of the file.
-BAKER_FIELDS = ("device_id", "baker_template", "baker_params", "baker_claim", "baker_names")
+BAKER_FIELDS = (
+    "device_id", "baker_template", "baker_params", "baker_claim", "baker_names", "baker_members"
+)  # fmt: skip
 # Templates whose text points to "the claim". Baker's stance step shows them the claim's own
 # text (stance prompt v1.1 in PROPOSED_CHANGES.md); their items carry it as baker_claim.
 CLAIM_TEMPLATES = ("meaning", "role", "event")
@@ -51,12 +53,15 @@ class GenItem(ProbeItem):
     # JSON. baker_names gives each person the item involves a name (person id -> name), and the
     # assumption must be exactly the product's rendering of the parameters with those names
     # (core/audit/readable.py). baker_claim is the claim's text as the government document
-    # states it, for CLAIM_TEMPLATES only.
+    # states it, for CLAIM_TEMPLATES only. baker_members are the record's chat's member
+    # accounts as sender lines print them, sorted, for the line Baker's context opens a message
+    # or attachment record with (readable.members_line); a call or contact row has none.
     device_id: str | None = Field(default=None, pattern=r"^dev:item\d+$")
     baker_template: str | None = None
     baker_params: dict[str, Any] | None = None
     baker_claim: str | None = Field(default=None, min_length=1)
     baker_names: dict[str, str] | None = None
+    baker_members: tuple[str, ...] | None = Field(default=None, min_length=1)
 
     @model_validator(mode="after")
     def _matches_family(self) -> GenItem:
@@ -91,6 +96,7 @@ class GenItem(ProbeItem):
                 self.rationale,
                 self.baker_claim or "",
                 *(ln.sender for ln in (self.target, *self.context)),
+                *(self.baker_members or ()),
             ]
             if any(i in x for x in shown for i in ("person:", "acct:", "dev:")):
                 raise ValueError(f"{self.probe_id}: an id shows where a name belongs")
@@ -99,6 +105,14 @@ class GenItem(ProbeItem):
             if (self.baker_claim is not None) != (t.id in CLAIM_TEMPLATES):
                 raise ValueError(
                     f"{self.probe_id}: {CLAIM_TEMPLATES} items, and only they, show the claim"
+                )
+            members = self.baker_members
+            if members is not None and (
+                list(members) != sorted(set(members))
+                or any(ln.sender not in members for ln in (self.target, *self.context))
+            ):
+                raise ValueError(
+                    f"{self.probe_id}: the chat's members hold every line's sender, sorted, once"
                 )
         elif any(getattr(self, name) is not None for name in BAKER_FIELDS):
             raise ValueError(f"{self.probe_id}: only Baker-wording families carry {BAKER_FIELDS}")

@@ -1246,6 +1246,22 @@ def test_baker_excerpts_show_a_non_owner_line(bk: list[Any]) -> None:
         assert len(it.context) <= 6
 
 
+def test_baker_chat_records_carry_their_chats_members(bk: list[Any]) -> None:
+    # Rule 26: a message's or attachment's excerpt is its own chat, between one of the record
+    # phone's own accounts and one other, and the item carries both for the members line
+    # Baker's context opens with; a call or a contact row has no chat and no members.
+    for it, d, _ in bk:
+        rec = d.evs[d.target]
+        if rec.kind in ("call", "contact"):
+            assert it.baker_members is None, it.probe_id
+            continue
+        chat = {rec.frm, rec.to}
+        assert len(chat) == 2 and len(chat & set(d.phone.own)) == 1, it.probe_id
+        for e in d.evs:
+            assert e.kind in ("msg", "att") and {e.frm, e.to} == chat, it.probe_id
+        assert it.baker_members == tuple(sorted({ln.sender for ln in it.lines()})), it.probe_id
+
+
 def test_baker_windows_hold_or_miss_their_records(bk: list[Any]) -> None:
     seen: Counter[str] = Counter()
     for it, _, _ in bk:

@@ -265,7 +265,13 @@ the same four definitions and rules 1 to 24; this section adds what is new.
     of item1)]`. A person the assumption names who appears in no bracket is unresolved, and rule
     4 applies to them: no handle, saved name, contact entry or self-introduction shows who it
     is, even one that matches their name (a chat that calls `SMS +13125550188` "rita" does not
-    show Rita Vance). The RECORD line also names the phone it came from.
+    show Rita Vance). The RECORD line also names the phone it came from. A message's or an
+    attachment's excerpt opens with "Members seen in this chat's records:", each account that
+    sent in the chat or that the source listed as a recipient, printed as its sender lines print
+    it. A line with the owner's account and one other is a chat between those two, so its
+    messages went to the owner even when no owner line is shown (rule 11). A member who never
+    sent and was never listed is missing, so the line shows who was in the chat, never who was
+    not. A call or a contact row has no chat and no such line.
 27. **Zones.** The zone after a window ("(America/New_York)") is the zone Baker read the
     document's times in; the document itself may have meant the phone's local time. A line's
     zone abbreviation is the phone's: EST and EDT are America/New_York, CST and CDT
@@ -367,7 +373,8 @@ the same four definitions and rules 1 to 24; this section adds what is new.
 4. **Baker's own wording (rules 25 to 29, 28 new `bk_` families).** Items whose assumption is
    Baker's template text with the names the case gives (rule 25), shown with the claim for the
    meaning, role and event templates, and whose record may be a call, a contact row or an
-   attachment, as the product sends them. Decisions to sign: people an expert confirmed, shown
+   attachment, as the product sends them; a message's excerpt opens with the chat's members, as
+   Baker's context does (rule 26). Decisions to sign: people an expert confirmed, shown
    in brackets, count as shown, and a saved name never does (rule 26); a zone-dependent time is
    complicates (rule 27); one count record, one contact row that differs, a call of the wrong
    length, a handle change said in a message, an author cue and a plan for the date's weekday

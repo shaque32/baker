@@ -197,6 +197,79 @@ def test_items_read_by_name() -> None:
         GenItem.model_validate(leaked)
 
 
+def test_chat_members_are_the_products(conn: sqlite3.Connection) -> None:
+    """A message item carries its chat's members, and the line they make is the one the product
+    prints for the record's chat: the accounts of the chat's senders and listed recipients."""
+    thread = "thr:item1:Telegram:1"
+    conn.execute(
+        "INSERT INTO message_recipients VALUES ('msg:item1:1', ?, NULL)",
+        (bf.account_id(1, *OWNER),),
+    )
+    product = _named(conn)
+    member_ids = [
+        r[0]
+        for r in conn.execute(
+            "SELECT sender_account_id FROM messages WHERE thread_id = ? UNION"
+            " SELECT r.account_id FROM message_recipients r JOIN messages m"
+            " ON m.id = r.message_id WHERE m.thread_id = ?",
+            (thread, thread),
+        )
+    ]
+    vance, owner = [bf.named_person("vance")], [bf.owner_person(1)]
+    lines = [
+        bf.message_line(1, *OTHER, UTC_AT, TZ, "gate code 1190", persons=vance),
+        bf.message_line(1, *OWNER, UTC_AT + timedelta(minutes=1), TZ, "ok", owner=True,
+                        persons=owner),
+    ]  # fmt: skip
+    item = bf.build_baker_item(
+        probe_id="T999998",
+        family_id="bk_sender_shown",
+        source="train_gen",
+        generator="eval.train test",
+        lang="en",
+        template_id="sender",
+        params={"quoted_text": "gate code 1190", "person_ids": vance},
+        lines=lines,
+        target=0,
+        quote="gate code 1190",
+        rationale="The line's brackets show Rita Vance sent the quoted words.",
+        device="dev:item1",
+        names=NAMES,
+    )
+    assert readable.members_line(item.baker_members or ()) == product.members(member_ids)
+    assert product.members(member_ids) == (
+        "Members seen in this chat's records: Telegram 5550147 (owner) [Daniel Petrov (the user"
+        " of item1)]; Telegram 5550163 [Rita Vance]"
+    )
+    assert GenItem.model_validate(item.model_dump()) == item
+    missing = item.model_dump() | {"baker_members": item.baker_members[:1]}
+    with pytest.raises(ValueError, match="members hold every line's sender"):
+        GenItem.model_validate(missing)
+
+
+def test_only_a_chat_record_carries_members() -> None:
+    call = bf.call_line(1, UTC_AT, TZ, "outgoing", NUMBER_A, NUMBER_B, 84, owner=True)
+    contact = bf.contact_line(1, "Gus Tires", NUMBER_B)
+    assert (call.kind, contact.kind) == ("call", "contact")
+    msg = bf.message_line(1, *OTHER, UTC_AT + timedelta(minutes=2), TZ, "gate code 1190")
+    assert msg.kind == "message"
+    with pytest.raises(ValueError, match="only its own chat's messages"):
+        bf.build_baker_item(
+            probe_id="T999997",
+            family_id="bk_sender_shown",
+            source="train_gen",
+            generator="eval.train test",
+            lang="en",
+            template_id="sender",
+            params={"quoted_text": "gate code 1190", "person_ids": [bf.owner_person(1)]},
+            lines=[call, msg],
+            target=1,
+            quote="gate code 1190",
+            rationale="The line shows who sent the quoted words.",
+            device="dev:item1",
+        )
+
+
 def test_local_time_matches_the_adapter() -> None:
     from zoneinfo import ZoneInfo
 

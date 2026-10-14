@@ -21,6 +21,10 @@ that account, as the signed probe set prints senders: on item1, "SMS +1212555011
 stipulations and confirmed identity links count, matched across phones by app and identifier
 exactly as the checks match parties. A saved name never links anyone.
 
+A message's or attachment's context opens with its chat's members (members_line): every
+account seen in the chat's records, printed as its sender line prints it, so a model can tell a
+chat between two accounts from a group whose other members say nothing near the record.
+
 No two people of a case read alike: people who share a name also print their id ("Alex Smith
 (person:alex-smith-1a2b3c4d)"), except phone users, whom their phone tells apart. Anything Baker
 holds no name for prints its id, so a run never fails on a name.
@@ -42,10 +46,21 @@ from core.contracts import Assumption, AssumptionParams
 
 COUNT_WORDS = {"eq": "exactly", "ge": "at least", "le": "at most"}
 OWNER_PERSON = re.compile(r"^person:(.+):owner$")  # core.review.actions.stipulate_device_owner
+MEMBERS = "Members seen in this chat's records"
 
 
 def _fold(name: str) -> str:
     return " ".join(unicodedata.normalize("NFC", name).casefold().split())
+
+
+def members_line(senders: Iterable[str]) -> str:
+    """The line a chat record's context opens with: "Members seen in this chat's records: " and
+    each member account as its sender line prints it, with no name from the source ("SMS
+    +13125550161 (owner) [Daniel Petrov (the user of item1)]; SMS +13125550188"), each once, in
+    sorted order. An account is seen when it sent one of the chat's messages or the source lists
+    it as a recipient; a member who did neither is missing, so the line shows who was in the
+    chat, never who was not. A call or a contact row has no chat and no such line."""
+    return f"{MEMBERS}: {'; '.join(sorted(set(senders)))}"
 
 
 @dataclass(frozen=True)
@@ -145,6 +160,11 @@ class CaseNames(Names):
         if people:
             out += f" [{', '.join(people)}]"
         return out
+
+    def members(self, account_ids: Iterable[str | None]) -> str:
+        """The members line (members_line) for a chat whose member accounts are account_ids; a
+        message with no sender account names no member."""
+        return members_line(self.sender(aid) for aid in account_ids if aid is not None)
 
     def assumption(self, template_id: str, params: AssumptionParams) -> str:
         return TEMPLATES[template_id].render(params, self)

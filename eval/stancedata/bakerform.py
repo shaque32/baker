@@ -154,6 +154,7 @@ class Line:
     local_time: str
     text: str
     utc: datetime | None = None  # None only for a contact row, which has no time
+    kind: str = "message"  # a message or an attachment; "call" or "contact" for those rows
 
 
 def message_line(
@@ -200,13 +201,14 @@ def call_line(
         local_str(utc, tz),
         call_text(direction, frm, to, report_time(utc, report_offset_min), duration_s),
         utc,
+        "call",
     )
 
 
 def contact_line(item: int, name: str | None, number: str) -> Line:
     """A contact row on phone item<n>. It is shown alone: Baker gives it no context."""
     return Line(CONTACT_SENDER, account_id(item, "Phone", number), CONTACT_TIME,
-                contact_text(name, number))  # fmt: skip
+                contact_text(name, number), kind="contact")  # fmt: skip
 
 
 def build_baker_item(
@@ -238,6 +240,11 @@ def build_baker_item(
     brackets name ('person:dev:item1:owner' -> 'Daniel Petrov'): the assumption and the sender
     lines then read as core.audit.readable prints them for a case where an expert stipulated
     each phone owner and the document named everyone else.
+
+    A message or attachment record's excerpt is its own chat, as Baker's context is, and the
+    item carries the chat's members for the line the context opens with
+    (core.audit.readable.members_line): every account the excerpt shows, which in a generated
+    chat is every member. A call or a contact row has no chat and carries none.
     """
     if not 0 <= target < len(lines):
         raise ValueError(f"{probe_id}: target {target} outside {len(lines)} lines")
@@ -248,6 +255,9 @@ def build_baker_item(
         raise ValueError(f"{probe_id}: lines must be in strictly increasing UTC order")
     if quote.strip() != quote or not verify_quote(quote, lines[target].text):
         raise ValueError(f"{probe_id}: quote is not a word-aligned verbatim part of the record")
+    chat = lines[target].kind == "message"
+    if chat and any(ln.kind != "message" for ln in lines):
+        raise ValueError(f"{probe_id}: a message's excerpt holds only its own chat's messages")
     parsed = parse_params(template_id, params)
     template = TEMPLATES[template_id]
     f = family(family_id)
@@ -269,6 +279,7 @@ def build_baker_item(
         )
         for ln in lines
     ]
+    members = tuple(sorted({ln.sender for ln in probe_lines})) if chat else None
     return GenItem(
         probe_id=probe_id,
         category=f.category,
@@ -294,4 +305,5 @@ def build_baker_item(
         baker_params=parsed.model_dump(mode="json", exclude_defaults=True),
         baker_claim=claim,
         baker_names=kept,
+        baker_members=members,
     )

@@ -1232,6 +1232,24 @@ def test_bk_sender_lines_follow_the_bracket_rule(
                 assert by_number.setdefault(ident, key) == key, (it.probe_id, ident)
 
 
+def test_bk_chat_records_carry_their_chats_members(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    """Guide rule 26: a message's or attachment's excerpt is its own chat, between the record
+    phone's own account and one other on one app, and the item carries both for the members
+    line Baker's context opens with; a call or a contact row has no chat and no members."""
+    for it in _bk(test_items + dev_items):
+        app = it.target.account_id.split(":")[2]
+        if app == "Phone":  # a call or a contact row
+            assert it.baker_members is None, it.probe_id
+            continue
+        lines = _in_order(it)
+        senders = {ln.sender for ln in lines}
+        assert it.baker_members == tuple(sorted(senders)), it.probe_id
+        assert len(senders) == 2 and sum("(owner)" in x for x in senders) == 1, it.probe_id
+        assert {ln.account_id.split(":")[2] for ln in lines} == {app}, it.probe_id
+
+
 def test_bk_names_and_numbers_follow_the_pools(
     test_items: list[GenItem], dev_items: list[GenItem]
 ) -> None:

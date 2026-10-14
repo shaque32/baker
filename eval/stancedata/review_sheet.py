@@ -17,6 +17,7 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+from core.audit.readable import members_line
 from eval.stancedata.chat import read_jsonl, sha256_file
 
 # 20261009 drew the first sheet, which Arsh sent back on 2026-10-13; a rebuild draws a new one.
@@ -52,6 +53,8 @@ def render_item(row: dict) -> list[str]:
     out.append("")
     device = row.get("device_id")
     phone = f" (record from {device.removeprefix('dev:')})" if device else ""
+    if row.get("baker_members"):
+        out.append(f"- {members_line(row['baker_members'])}")
     for line in lines:
         mark = f"**>>**{phone}" if line.get("marked") else "  "
         out.append(f"- {mark} `{line['local_time']}` {line['sender']}: {line['text']}")
@@ -100,13 +103,15 @@ def build(train: Path | None, heldout: Path | None) -> str:
         "  person an expert stipulated as its user, a name alone a person the document names,",
         '  "Telegram 5550147" an account (the same account on every phone). A line shows',
         "  \"(owner)\" for the record's own phone's account and, in brackets, the people Baker",
-        "  holds as confirmed for that account; a person in no bracket is not shown, whatever the",
-        "  chat calls anyone. A call's text prints the report's time (often UTC); the line's local",
-        "  time decides. For the meaning, role and event templates the claim is shown: only the",
-        "  words' own user explaining them, or the claimed message or call itself, supports; only",
-        "  a named person's own denial or alibi, from an account bracketed with them, contradicts;",
-        "  another meaning from the words' own user is complicates, since it says nothing about",
-        "  the claim's other messages.",
+        "  holds as confirmed for that account; a person in no bracket is not shown, whatever",
+        "  the chat calls anyone. A message's chat opens with the accounts seen in it, so a",
+        "  line with the owner's account and one other is a chat between those two; a member",
+        "  who never sent and was never listed is missing. A call's text prints the report's",
+        "  time (often UTC); the line's local time decides. For the meaning, role and event",
+        "  templates the claim is shown: only the words' own user explaining them, or the",
+        "  claimed message or call itself, supports; only a named person's own denial or alibi,",
+        "  from an account bracketed with them, contradicts; another meaning from the words'",
+        "  own user is complicates, since it says nothing about the claim's other messages.",
         '- **Time words as Baker reads them.** "At about 9 p.m." is 8:52 to 9:08 p.m. "This',
         '  Saturday" is plain only for a later day of the same Monday-to-Saturday week; sent on',
         '  any other day, which date it means is open, as with "next Saturday" or a bare',
