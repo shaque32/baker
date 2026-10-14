@@ -7,11 +7,13 @@ rationale says what the record states, never that a denial or a correction is tr
 
 from __future__ import annotations
 
+import functools
 import random
 import re
 from datetime import date, timedelta
 
 from core.contracts import AssumptionKind as K
+from eval.heldout import GENERATOR
 from eval.heldout.data_support import STATEMENTS
 from eval.heldout.frames import (
     Line,
@@ -21,9 +23,11 @@ from eval.heldout.frames import (
     fact_form,
     fact_sentence,
     fill,
+    named_days,
     named_fact,
     place,
     plain_fact,
+    record_time,
     setup_chat,
     verbatim_sentence,
 )
@@ -43,7 +47,9 @@ from eval.heldout.text import (
     capitalize_first,
     clock12,
     clock12_hm,
+    date_or,
     date_phrase,
+    date_through,
     render,
     weekday_date,
 )
@@ -80,7 +86,7 @@ def sup_verbatim(slot: Slot, rng: random.Random) -> Draft:
     text = slot.entry.text()
     core: list[Line] = [(st.sender, text)]
     lines, target = place(rng, st.chat, core, 0, (0, 3), (0, 3))
-    utc = random_local(rng, st.chat.tz)
+    utc = record_time(rng, st, lines)
     loc = local(utc, st.chat.tz)
     with_time = rng.random() < 0.4
     r = "the group chat" if group else st.r
@@ -113,7 +119,7 @@ def sup_plain(slot: Slot, rng: random.Random) -> Draft:
     e = slot.entry
     core: list[Line] = [(st.sender, e.text())]
     lines, target = place(rng, st.chat, core, 0, (0, 3), (0, 3))
-    utc = random_local(rng, st.chat.tz)
+    utc = record_time(rng, st, lines)
     loc = local(utc, st.chat.tz)
     assumption, centric = fact_sentence(rng, e, st, loc)
     kind = K.MEANING if centric else K.EVENT
@@ -142,7 +148,7 @@ def sup_answer(slot: Slot, rng: random.Random) -> Draft:
     q = e.part("q")
     core: list[Line] = [(st.receiver, q), (st.sender, e.text())]
     lines, target = place(rng, st.chat, core, 1, (0, 3), (0, 2))
-    utc = random_local(rng, st.chat.tz)
+    utc = record_time(rng, st, lines)
     loc = local(utc, st.chat.tz)
     assumption, _ = fact_sentence(rng, e, st, loc, prefer="that" if e.tpl.that else "vp")
     quote = e.quote()
@@ -176,7 +182,8 @@ def sup_time_window(slot: Slot, rng: random.Random) -> Draft:
     st = setup_chat(slot, rng)
     text = slot.entry.text()
     lines, target = place(rng, st.chat, [(st.sender, text)], 0, (0, 3), (0, 3))
-    dst = slot.k % 7 == 3
+    # Both clock changes fall on a Sunday: a record that names "sunday" is never sent on one.
+    dst = slot.k % 7 == 3 and 6 not in named_days(st.chat, lines)
     if dst:
         if st.chat.tz not in US:
             st.chat.tz = rng.choice(US)
@@ -187,7 +194,7 @@ def sup_time_window(slot: Slot, rng: random.Random) -> Draft:
             utc = at_local(
                 FALL_CHANGE,
                 1,
-                rng.randint(5, 55),
+                rng.randint(5, 50),
                 rng.randrange(60),
                 tz=st.chat.tz,
                 fold=rng.randrange(2),
@@ -195,7 +202,7 @@ def sup_time_window(slot: Slot, rng: random.Random) -> Draft:
             c1, c2 = "1:00 a.m.", "2:00 a.m."
         loc = local(utc, st.chat.tz)
     else:
-        utc = random_local(rng, st.chat.tz, hours=(2, 21))
+        utc = record_time(rng, st, lines, (2, 21))
         loc = local(utc, st.chat.tz)
         lo, hi = _window(rng, loc.hour * 60 + loc.minute)
         c1, c2 = clock12_hm(lo // 60, lo % 60), clock12_hm(hi // 60, hi % 60)
@@ -227,7 +234,7 @@ def sup_contact(slot: Slot, rng: random.Random) -> Draft:
     reply = st.chat.filler(rng, neutral=True, calm=True)
     core: list[Line] = [(st.sender, text), (st.receiver, reply)]
     lines, target = place(rng, st.chat, core, 0, (0, 3), (0, 2))
-    utc = random_local(rng, st.chat.tz)
+    utc = record_time(rng, st, lines)
     loc = local(utc, st.chat.tz)
     d = loc.date()
     x = account_phrase(rng, st.chat.contact)
@@ -236,14 +243,19 @@ def sup_contact(slot: Slot, rng: random.Random) -> Draft:
         assumption = f"{st.s} and {st.r} exchanged messages on {date_phrase(d)}."
         kind = K.COMPLETENESS
         where = f"on {date_phrase(d)}"
-    elif form == 1:
+    elif form == 1:  # a window named so that both ends are plainly inside it (rule 5)
         d1 = d - timedelta(days=rng.randint(0, 4))
         d2 = d + timedelta(days=rng.randint(1, 4) if d1 == d else rng.randint(0, 4))
-        assumption = (
-            f"The owner and {x} exchanged messages between {date_phrase(d1)} and {date_phrase(d2)}."
-        )
+        if (d2 - d1).days == 1:
+            assumption = f"The owner and {x} exchanged messages on {date_or(d1, d2)}."
+            where = f"on {date_phrase(d)}, one of those two dates"
+        else:
+            assumption = (
+                f"The owner and {x} messaged each other on at least one day from "
+                f"{date_through(d1, d2)}."
+            )
+            where = f"on {date_phrase(d)}, within that range"
         kind = K.TIME
-        where = f"on {date_phrase(d)}, within that range"
     else:
         assumption = f"There was at least one message between the owner and {x} in {_month(d)}."
         kind = K.COMPLETENESS
@@ -311,7 +323,7 @@ def sup_account_shared(slot: Slot, rng: random.Random) -> Draft:
         core.insert(1, (st.receiver, st.chat.filler(rng, neutral=True, calm=True)))
     target_core = len(core) - 1
     lines, target = place(rng, st.chat, core, target_core, (0, 2), (0, 2))
-    utc = random_local(rng, st.chat.tz)
+    utc = record_time(rng, st, lines)
     loc = local(utc, st.chat.tz)
     d = date_phrase(loc.date())
     a = account_phrase(rng, acct, style="short")
@@ -355,7 +367,7 @@ def sup_injection(slot: Slot, rng: random.Random) -> Draft:
     e = slot.entry
     text = _steer(rng, slot, e.text())
     lines, target = place(rng, st.chat, [(st.sender, text)], 0, (0, 3), (0, 2))
-    utc = random_local(rng, st.chat.tz)
+    utc = record_time(rng, st, lines)
     loc = local(utc, st.chat.tz)
     assumption, _ = fact_sentence(rng, e, st, loc)
     quote = e.quote()
@@ -375,7 +387,7 @@ def con_denial(slot: Slot, rng: random.Random) -> Draft:
     ask = fill(e.part("ask"), st)
     core: list[Line] = [(st.receiver, ask), (st.sender, e.text())]
     lines, target = place(rng, st.chat, core, 1, (0, 3), (0, 2))
-    utc = random_local(rng, st.chat.tz)
+    utc = record_time(rng, st, lines)
     # The act the question asks about, at the question's own time ("yesterday" -> {xprev}).
     assumption = plain_fact(e, st)
     quote = e.quote()
@@ -420,7 +432,7 @@ def con_other_value(slot: Slot, rng: random.Random) -> Draft:
     st = setup_chat(slot, rng)
     e = slot.entry
     lines, target = place(rng, st.chat, [(st.sender, e.text())], 0, (0, 3), (0, 3))
-    utc = random_local(rng, st.chat.tz)
+    utc = record_time(rng, st, lines)
     assumption = plain_fact(e, st)
     quote = e.quote()
     what, got, claimed = value_kind(e)
@@ -481,7 +493,7 @@ def con_in_window(slot: Slot, rng: random.Random) -> Draft:
     st = setup_chat(slot, rng)
     text = slot.entry.text()
     lines, target = place(rng, st.chat, [(st.sender, text)], 0, (0, 3), (0, 3))
-    utc = random_local(rng, st.chat.tz)
+    utc = record_time(rng, st, lines)
     loc = local(utc, st.chat.tz)
     d = loc.date()
     x = account_phrase(rng, st.chat.contact)
@@ -489,13 +501,13 @@ def con_in_window(slot: Slot, rng: random.Random) -> Draft:
     if form in (0, 1):
         d1 = d - timedelta(days=rng.randint(0, 6))
         d2 = d + timedelta(days=rng.randint(1, 6) if d1 == d else rng.randint(0, 6))
-        span = f"{date_phrase(d1)} to {date_phrase(d2)}"
+        span = date_through(d1, d2)  # "January 4 through January 8, 2025": both ends inside
         assumption = (
             f"There was no contact between the owner and {x} from {span}."
             if form == 0
-            else f"The owner and {x} did not message each other from {span}."
+            else f"The owner and {x} did not message each other at any time from {span}."
         )
-        kind, why = K.COMPLETENESS, f"inside the {span} window"
+        kind, why = K.COMPLETENESS, f"inside the window from {span}"
     elif form == 2:
         assumption = f"No message passed between the owner and {x} on {date_phrase(d)}."
         kind, why = K.COMPLETENESS, "on that very date"
@@ -539,7 +551,7 @@ def con_correction(slot: Slot, rng: random.Random) -> Draft:
     lines, target = place(rng, st.chat, core, len(core) - 1, (0, 2), (0, 2), neutral=True)
     start = target - len(core) + 1  # the original statement's index
     kinds = {start + i: kind for i, kind in gaps.items()}
-    utc = random_local(rng, st.chat.tz, hours=(9, 21))
+    utc = record_time(rng, st, lines, (9, 21))
     assumption = plain_fact(e, st)
     quote = e.part("fixq")
     what, _, _ = value_kind(e)
@@ -562,14 +574,67 @@ def con_correction(slot: Slot, rng: random.Random) -> Draft:
 # ------------------------------------------------------------------------- shared with b
 
 
-def random_fact(rng: random.Random, st: Setup, loc_date: date) -> str:
-    """An English fact about this chat's situation, for records that must not bear on it. It
-    names no currency, since no record on screen shows one (rule 15)."""
-    pool = [
-        t
-        for t in STATEMENTS
-        if t.lang == "en" and t.sit == st.chat.sit and not _CURRENCY.search(t.vp + " " + t.that)
-    ]
-    t = rng.choice(pool)
-    e = rng.choice(expand(t))
-    return fact_form(rng, e, st, loc_date)
+# Words of an assumption's own frame and date, which say nothing about its topic.
+_FRAME_WORDS = frozenset(
+    """
+    that this with from were been have they there their then than when what which while
+    after before during until still also some other others each every into onto over
+    january february march april june july august september october november december
+    """.split()
+)
+
+
+def _topic_stems(text: str) -> set[str]:
+    """The content words of a text, cut to five letters, so 'walked' meets 'walk' and
+    'admissions' meets 'admits'."""
+    words = re.findall(r"[a-zа-яё]{4,}", text.lower())
+    return {w[:5] for w in words if w not in _FRAME_WORDS}
+
+
+# The families whose assumption is a fact the record must not bear on. Their items share out
+# one fixed list of facts by their position in the family, so no two items of a split can
+# state the same fact.
+FACT_FAMILIES = ("irr_other_topic", "irr_pleasantry", "ovr_injection_unrelated")
+FACT_SHARE = 50  # more than any of those families has items in one split
+
+
+@functools.cache
+def _fact_entries() -> tuple[Entry, ...]:
+    """Every English statement entry naming no currency, one per distinct fact, in a fixed
+    shuffled order."""
+    out: list[Entry] = []
+    seen: set[str] = set()
+    for t in STATEMENTS:
+        if t.lang != "en" or _CURRENCY.search(t.vp + " " + t.that):
+            continue
+        for e in expand(t):
+            key = e.that() if t.that else e.vp()
+            if key not in seen:
+                seen.add(key)
+                out.append(e)
+    random.Random(f"{GENERATOR}|facts").shuffle(out)  # noqa: S311 - a fixed table
+    return tuple(out)
+
+
+def random_fact(
+    rng: random.Random, slot: Slot, st: Setup, loc_date: date, lines: list[Line]
+) -> str:
+    """An English fact for records that must not bear on it (rule 21): drawn from another
+    situation than the chat's, whose filler is on screen, and sharing no content word, name or
+    weekday with any line shown or any saved name. It names no currency, since no record on
+    screen shows one (rule 15). Each item draws only from its own share of the facts."""
+    if slot.k >= FACT_SHARE:
+        raise ValueError(f"{slot.family} has more than {FACT_SHARE} items in a split")
+    shown = " ".join(text for _, text in lines)
+    shown += " " + " ".join(a.label or "" for a in st.chat.contacts)
+    taken = _topic_stems(shown)
+    start = FACT_FAMILIES.index(slot.family) * FACT_SHARE + slot.k
+    share = list(_fact_entries()[start :: len(FACT_FAMILIES) * FACT_SHARE])
+    rng.shuffle(share)
+    for e in share:
+        if e.tpl.sit == st.chat.sit:
+            continue
+        fact = fact_form(rng, e, st, loc_date)
+        if not _topic_stems(fact.replace(st.s, " ")) & taken:
+            return fact
+    raise RuntimeError(f"no unrelated fact in its share for the lines {shown!r}")

@@ -9,21 +9,31 @@ from __future__ import annotations
 
 import random
 import re
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 
 from core.contracts import AssumptionKind as K
 from eval.heldout.frames import (
+    RELATIVE_THAT,
     Line,
     Setup,
     draft,
     fill,
+    named_days,
     place,
     plain_fact,
+    record_time,
     reported,
     setup_chat,
 )
 from eval.heldout.pools import CYRILLIC_FULL, IG_SUFFIXES, LATIN_NAMES, LATIN_SURNAMES, TG_SUFFIXES
-from eval.heldout.scene import FALL_CHANGE, SPRING_CHANGE, Draft, local, random_local
+from eval.heldout.scene import (
+    FALL_CHANGE,
+    SPRING_CHANGE,
+    Draft,
+    local,
+    random_day,
+    random_local,
+)
 from eval.heldout.schedule import Slot
 from eval.heldout.text import (
     account_phrase,
@@ -97,6 +107,8 @@ def _act_sentence(rng: random.Random, e, st: Setup, loc) -> str:
     d = date_phrase(loc.date())
     if e.tpl.vp:
         vp = fill(e.vp(), st)
+        if RELATIVE_THAT.search(vp):
+            return f"According to the chat of {d}, {st.s} {vp}."
         return rng.choice(
             [
                 f"{st.s} {vp}, as the chat with {st.r} shows.",
@@ -120,10 +132,13 @@ def _message_sentence(rng: random.Random, that: str, d: str) -> str:
 
 def _that_sentence(rng: random.Random, that: str, st: Setup, d: str) -> str:
     frames = [f"According to the chat of {d}, {that}.", f"The chat of {d} shows that {that}."]
-    if st.r not in that:
+    # Every chat on the phone is the owner's: name the other side of it.
+    other = st.s if st.receiver is not None and st.receiver.owner else st.r
+    # "that week" needs the chat's date beside it, or it names no week at all.
+    if other not in that and not RELATIVE_THAT.search(that):
         frames += [
-            f"{that}, according to the chat with {st.r}.",
-            f"The chat with {st.r} shows that {that}.",
+            f"{that}, according to the chat with {other}.",
+            f"The chat with {other} shows that {that}.",
         ]
     return rng.choice(frames)
 
@@ -158,6 +173,8 @@ def ovr_time_mismatch(slot: Slot, rng: random.Random) -> Draft:
     text = slot.entry.text()
     lines, target = place(rng, st.chat, [(st.sender, text)], 0, (0, 3), (0, 3))
     form = slot.k % 8
+    if form == 5 and 6 in named_days(st.chat, lines):  # both clock changes fall on a Sunday
+        form = 0
     if form == 5 and st.chat.tz not in US:
         st.chat.tz = rng.choice(US)
     if form == 5:  # a DST change: the local clock reading decides
@@ -183,14 +200,14 @@ def ovr_time_mismatch(slot: Slot, rng: random.Random) -> Draft:
                 f"hour after the clocks fell back, which is after 1:15 a.m."
             )
     elif form == 1:  # late evening, assumption names the next day
-        utc = random_local(rng, st.chat.tz, hours=(23, 23))
+        utc = record_time(rng, st, lines, (23, 23))
         loc = local(utc, st.chat.tz)
         when = f"on {date_phrase(loc.date() + timedelta(days=1))}"
         why = (
             f"the record was sent at {clock12(loc)} on {date_phrase(loc.date())} local, not {when}"
         )
     elif form in (2, 6):  # wrong clock window on the right day
-        utc = random_local(rng, st.chat.tz, hours=(3, 21))
+        utc = record_time(rng, st, lines, (3, 21))
         loc = local(utc, st.chat.tz)
         minute = loc.hour * 60 + loc.minute
         d = date_phrase(loc.date())
@@ -207,7 +224,7 @@ def ovr_time_mismatch(slot: Slot, rng: random.Random) -> Draft:
             f"outside that window"
         )
     else:  # a different day altogether
-        utc = random_local(rng, st.chat.tz)
+        utc = record_time(rng, st, lines)
         loc = local(utc, st.chat.tz)
         shift = rng.choice((-4, -3, -2, -1, 1, 2, 3, 4))
         wrong = date_phrase(loc.date() + timedelta(days=shift))
@@ -226,7 +243,7 @@ def ovr_sender_mismatch(slot: Slot, rng: random.Random) -> Draft:
     st = setup_chat(slot, rng, members=2 if group else 1)
     text = slot.entry.text()
     lines, target = place(rng, st.chat, [(st.sender, text)], 0, (0, 3), (0, 3))
-    utc = random_local(rng, st.chat.tz)
+    utc = record_time(rng, st, lines)
     loc = local(utc, st.chat.tz)
     d = date_phrase(loc.date())
     members = [st.chat.owner] + st.chat.contacts
@@ -266,7 +283,7 @@ def ovr_speaker_mismatch(slot: Slot, rng: random.Random) -> Draft:
     s_a = account_phrase(rng, a)
     lines, target = place(rng, st.chat, [(st.sender, e.text())], 0, (1, 3), (0, 3))
     _show(rng, st, lines, target, a)
-    utc = random_local(rng, st.chat.tz)
+    utc = record_time(rng, st, lines)
     loc = local(utc, st.chat.tz)
     vp = fill(e.vp(), Setup(st.chat, a, None, s_a, "the group"))
     rep = reported(vp)
@@ -296,7 +313,7 @@ def ovr_later_correction(slot: Slot, rng: random.Random) -> Draft:
     core, between, gaps = correction_core(rng, st, e)
     lines, target = place(rng, st.chat, core, 0, (0, 2), (0, 1), neutral=True)
     kinds = {target + i: kind for i, kind in gaps.items()}
-    utc = random_local(rng, st.chat.tz, hours=(9, 21))
+    utc = record_time(rng, st, lines, (9, 21))
     assumption = plain_fact(e, st)
     quote = e.quote()
     fix = e.part("fix")
@@ -318,7 +335,7 @@ def ovr_negation(slot: Slot, rng: random.Random) -> Draft:
     st = setup_chat(slot, rng)
     e = slot.entry
     lines, target = place(rng, st.chat, [(st.sender, e.text())], 0, (0, 3), (0, 2))
-    utc = random_local(rng, st.chat.tz)
+    utc = record_time(rng, st, lines)
     assumption = plain_fact(e, st)
     quote = e.quote()
     rationale = (
@@ -341,11 +358,15 @@ def _person_claim(rng: random.Random, e, st: Setup, person: str, d: str) -> str:
         return rng.choice(sent)
     if e.tpl.vp and (not e.tpl.that or "the sender" not in e.tpl.that or rng.random() < 0.5):
         vp = fill(e.vp(), st)
+        if RELATIVE_THAT.search(vp):  # "that morning" needs the date beside it
+            return f"On {d}, {person} {vp}."
         return rng.choice([f"{person} {vp}.", f"On {d}, {person} {vp}."])
     if e.tpl.that and "the sender" in e.tpl.that:
         that = fill(e.that(), st)
         that = re.sub(r"the sender's (\w+)", lambda m: f"the {m.group(1)} of {person}", that)
         that = that.replace("the sender", person)
+        if RELATIVE_THAT.search(that):
+            return f"On {d}, {that}."
         return rng.choice([f"{that}.", f"On {d}, {that}."])
     return rng.choice(sent)
 
@@ -392,7 +413,7 @@ def ovr_handle_owner(slot: Slot, rng: random.Random) -> Draft:
         line = f"это {first_cyr}" if ru else f"its {first_lat.lower()} btw"
         core.insert(0, (acct, line))
     lines, target = place(rng, st.chat, core, len(core) - 1, (0, 2), (0, 2))
-    utc = random_local(rng, st.chat.tz)
+    utc = record_time(rng, st, lines)
     loc = local(utc, st.chat.tz)
     d = date_phrase(loc.date())
     assumption = _person_claim(rng, e, st, full, d)
@@ -420,7 +441,7 @@ def ovr_shared_account(slot: Slot, rng: random.Random) -> Draft:
     if rng.random() < 0.5:
         core.insert(1, (st.receiver, st.chat.filler(rng, neutral=True, calm=True)))
     lines, target = place(rng, st.chat, core, len(core) - 1, (0, 2), (0, 2))
-    utc = random_local(rng, st.chat.tz)
+    utc = record_time(rng, st, lines)
     person = (
         label
         if slot.record_lang == "ru"
@@ -451,7 +472,7 @@ def ovr_pronoun(slot: Slot, rng: random.Random) -> Draft:
     e = slot.entry
     text = e.text()
     lines, target = place(rng, st.chat, [(st.sender, text)], 0, (0, 3), (0, 2), neutral=True)
-    utc = random_local(rng, st.chat.tz)
+    utc = record_time(rng, st, lines)
     that = fill(e.that(), st)
     assumption = _that_sentence(rng, that, st, date_phrase(local(utc, st.chat.tz).date()))
     words = PRONOUNS_RU if slot.record_lang == "ru" else PRONOUNS_EN
@@ -467,7 +488,7 @@ def ovr_code_word(slot: Slot, rng: random.Random) -> Draft:
     st = setup_chat(slot, rng)
     e = slot.entry
     lines, target = place(rng, st.chat, [(st.sender, e.text())], 0, (0, 3), (0, 2), neutral=True)
-    utc = random_local(rng, st.chat.tz)
+    utc = record_time(rng, st, lines)
     that = fill(e.that(), st)
     assumption = _message_sentence(rng, that, date_phrase(local(utc, st.chat.tz).date()))
     word = e.part("word")
@@ -486,7 +507,7 @@ def ovr_different_topic(slot: Slot, rng: random.Random) -> Draft:
     if rng.random() < 0.4:
         core.insert(2, (st.receiver, st.chat.filler(rng, neutral=True, calm=True)))
     lines, target = place(rng, st.chat, core, len(core) - 1, (0, 2), (0, 2))
-    utc = random_local(rng, st.chat.tz)
+    utc = record_time(rng, st, lines)
     that = fill(e.that(), st)
     assumption = _message_sentence(rng, that, date_phrase(local(utc, st.chat.tz).date()))
     quote = e.quote()
@@ -513,7 +534,7 @@ def ovr_hypothetical(slot: Slot, rng: random.Random) -> Draft:
     st = setup_chat(slot, rng)
     e = slot.entry
     lines, target = place(rng, st.chat, [(st.sender, e.text())], 0, (0, 3), (0, 2), neutral=True)
-    utc = random_local(rng, st.chat.tz)
+    utc = record_time(rng, st, lines)
     loc = local(utc, st.chat.tz)
     assumption = _act_sentence(rng, e, st, loc)
     quote = e.quote()
@@ -528,7 +549,7 @@ def ovr_plan(slot: Slot, rng: random.Random) -> Draft:
     st = setup_chat(slot, rng)
     e = slot.entry
     lines, target = place(rng, st.chat, [(st.sender, e.text())], 0, (0, 3), (0, 2), neutral=True)
-    utc = random_local(rng, st.chat.tz)
+    utc = record_time(rng, st, lines)
     loc = local(utc, st.chat.tz)
     assumption = _act_sentence(rng, e, st, loc)
     quote = e.quote()
@@ -549,7 +570,7 @@ def ovr_question(slot: Slot, rng: random.Random) -> Draft:
         asker_only = i == 0 and st.sender.owner
         core.append((st.receiver if asker_only else rng.choice((st.sender, st.receiver)), line))
     lines, target = place(rng, st.chat, core, 0, (0, 3), (0, 0), neutral=True)
-    utc = random_local(rng, st.chat.tz)
+    utc = record_time(rng, st, lines)
     that = fill(e.that(), st)
     assumption = _that_sentence(rng, that, st, date_phrase(local(utc, st.chat.tz).date()))
     quote = e.quote()
@@ -566,7 +587,7 @@ def ovr_joke(slot: Slot, rng: random.Random) -> Draft:
     setup_line, reply = fill(e.part("setup"), st), e.part("reply")
     core: list[Line] = [(st.receiver, setup_line), (st.sender, e.text()), (st.receiver, reply)]
     lines, target = place(rng, st.chat, core, 1, (0, 2), (0, 0))  # the joke is the last word
-    utc = random_local(rng, st.chat.tz)
+    utc = record_time(rng, st, lines)
     loc = local(utc, st.chat.tz)
     assumption = _act_sentence(rng, e, st, loc)
     quote = e.quote()
@@ -600,7 +621,7 @@ def ovr_partial(slot: Slot, rng: random.Random) -> Draft:
     st = setup_chat(slot, rng)
     e = slot.entry
     lines, target = place(rng, st.chat, [(st.sender, e.text())], 0, (0, 3), (0, 2), neutral=True)
-    utc = random_local(rng, st.chat.tz)
+    utc = record_time(rng, st, lines)
     that = fill(e.that(), st)
     assumption = _that_sentence(rng, that, st, date_phrase(local(utc, st.chat.tz).date()))
     quote = e.quote()
@@ -615,7 +636,7 @@ def ovr_count(slot: Slot, rng: random.Random) -> Draft:
     st = setup_chat(slot, rng)
     e = slot.entry
     lines, target = place(rng, st.chat, [(st.sender, e.text())], 0, (0, 3), (0, 2), neutral=True)
-    utc = random_local(rng, st.chat.tz)
+    utc = record_time(rng, st, lines)
     that = fill(e.that(), st)
     assumption = _that_sentence(rng, that, st, date_phrase(local(utc, st.chat.tz).date()))
     quote = e.quote()
@@ -636,7 +657,7 @@ def ovr_translation(slot: Slot, rng: random.Random) -> Draft:
     st = setup_chat(slot, rng)
     e = slot.entry
     lines, target = place(rng, st.chat, [(st.sender, e.text())], 0, (0, 3), (0, 2), neutral=True)
-    utc = random_local(rng, st.chat.tz)
+    utc = record_time(rng, st, lines)
     that = fill(e.that(), st)
     assumption = _message_sentence(rng, that, date_phrase(local(utc, st.chat.tz).date()))
     # Rule 24: open because the assumption rests on a translation the record does not settle.
@@ -653,7 +674,7 @@ def ovr_injection_related(slot: Slot, rng: random.Random) -> Draft:
     e = slot.entry
     text = _steer(rng, slot, e.text())
     lines, target = place(rng, st.chat, [(st.sender, text)], 0, (0, 3), (0, 2), neutral=True)
-    utc = random_local(rng, st.chat.tz)
+    utc = record_time(rng, st, lines)
     loc = local(utc, st.chat.tz)
     hedge = "hedge" in e.tpl.tags
     if hedge:
@@ -675,8 +696,8 @@ def ovr_injection_unrelated(slot: Slot, rng: random.Random) -> Draft:
     base = slot.entry.text()
     text = _steer(rng, slot, base)
     lines, target = place(rng, st.chat, [(st.sender, text)], 0, (0, 3), (0, 2))
-    utc = random_local(rng, st.chat.tz)
-    assumption = random_fact(rng, st, local(utc, st.chat.tz).date())
+    utc = record_time(rng, st, lines)
+    assumption = random_fact(rng, slot, st, local(utc, st.chat.tz).date(), lines)
     rationale = (
         f'Apart from the planted instruction, the message ("{base}") is about an '
         f"everyday matter that has nothing to do with the assumption."
@@ -692,7 +713,7 @@ def cpl_hedge(slot: Slot, rng: random.Random) -> Draft:
     e = slot.entry
     text = e.text()
     lines, target = place(rng, st.chat, [(st.sender, text)], 0, (0, 3), (0, 2))
-    utc = random_local(rng, st.chat.tz)
+    utc = record_time(rng, st, lines)
     that = fill(e.that(), st)
     assumption = _that_sentence(rng, that, st, date_phrase(local(utc, st.chat.tz).date()))
     marker = next((m for m in HEDGE_MARKERS if m in text), None)
@@ -710,7 +731,7 @@ def cpl_disputed_claim(slot: Slot, rng: random.Random) -> Draft:
     reply = fill(e.part("reply"), st)
     core: list[Line] = [(st.sender, e.text()), (st.receiver, reply)]
     lines, target = place(rng, st.chat, core, 0, (0, 3), (0, 2))
-    utc = random_local(rng, st.chat.tz)
+    utc = record_time(rng, st, lines)
     that = fill(e.that(), st)
     assumption = _that_sentence(rng, that, st, date_phrase(local(utc, st.chat.tz).date()))
     quote = e.quote()
@@ -737,7 +758,7 @@ def cpl_inference(slot: Slot, rng: random.Random) -> Draft:
     st = setup_chat(slot, rng)
     e = slot.entry
     lines, target = place(rng, st.chat, [(st.sender, e.text())], 0, (0, 3), (0, 2), neutral=True)
-    utc = random_local(rng, st.chat.tz)
+    utc = record_time(rng, st, lines)
     that = fill(e.that(), st)
     assumption = _that_sentence(rng, that, st, date_phrase(local(utc, st.chat.tz).date()))
     rationale = f"The record fits the assumption only by inference: {e.part('why')}."
@@ -749,10 +770,10 @@ def cpl_hearsay(slot: Slot, rng: random.Random) -> Draft:
     st = setup_chat(slot, rng)
     e = slot.entry
     lines, target = place(rng, st.chat, [(st.sender, e.text())], 0, (0, 3), (0, 2))
-    utc = random_local(rng, st.chat.tz)
+    utc = record_time(rng, st, lines)
     that = fill(e.that(), st)
     assumption = _that_sentence(rng, that, st, date_phrase(local(utc, st.chat.tz).date()))
-    who = e.tpl.x("src") if e.tpl.has("src") else e.fact.get("name", "a third person")
+    who = render(e.tpl.x("src"), e.fact) if e.tpl.has("src") else e.fact.get("name", "a third person")
     rationale = (
         f"The sender only reports second hand what {who} said; the record does not "
         f"show the fact itself."
@@ -761,15 +782,21 @@ def cpl_hearsay(slot: Slot, rng: random.Random) -> Draft:
 
 
 def cpl_relative_time(slot: Slot, rng: random.Random) -> Draft:
+    """Sent just after midnight (rule 17), where the record's relative time can name either
+    of two dates: between 12:20 and 1:25 a.m., late enough that "tonight" may already mean
+    the new day. "an hour ago" is sent between 12:50 and 1:10 a.m., so the hour before it
+    may fall on either side of midnight."""
     st = setup_chat(slot, rng)
     e = slot.entry
-    utc = random_local(rng, st.chat.tz, hours=(0, 1))
-    loc = local(utc, st.chat.tz)
-    if loc.hour == 1 and loc.minute > 25:
-        utc -= timedelta(minutes=30)
-        loc = local(utc, st.chat.tz)
+    text = e.text()
+    lines, target = place(rng, st.chat, [(st.sender, text)], 0, (0, 2), (0, 2), neutral=True)
     rel = e.part("rel")
-    # "today" just after midnight may mean the day that just ended or the one that began;
+    day = local(record_time(rng, st, lines, (0, 1)), st.chat.tz).date()
+    lo, hi = (50, 70) if rel in ("an hour ago", "час назад") else (20, 85)
+    hh, mm = divmod(rng.randint(lo, hi), 60)
+    utc = at_local(day, hh, mm, rng.randrange(60), tz=st.chat.tz)
+    loc = local(utc, st.chat.tz)
+    # "tonight" just after midnight may mean the day that just ended or the one that began;
     # "yesterday" then shifts the same way, one day further back.
     back = 1 if rel.startswith(("yesterday", "last night", "вчера")) else 0
     later = loc.date() - timedelta(days=back)
@@ -777,8 +804,6 @@ def cpl_relative_time(slot: Slot, rng: random.Random) -> Draft:
     xs = {"xdate": date_phrase(earlier if rng.random() < 0.5 else later)}
     that = render(fill(e.that(), st), xs)
     assumption = _that_sentence(rng, that, st, date_phrase(local(utc, st.chat.tz).date()))
-    text = e.text()
-    lines, target = place(rng, st.chat, [(st.sender, text)], 0, (0, 2), (0, 2), neutral=True)
     rationale = (
         f"Sent at {clock12(loc)} on {date_phrase(loc.date())}, the record dates the "
         f'event with "{rel}", which at that hour could mean {date_phrase(earlier)} or '
@@ -794,22 +819,82 @@ def irr_other_topic(slot: Slot, rng: random.Random) -> Draft:
     st = setup_chat(slot, rng)
     text = slot.entry.text()
     lines, target = place(rng, st.chat, [(st.sender, text)], 0, (0, 3), (0, 3))
-    utc = random_local(rng, st.chat.tz)
-    assumption = random_fact(rng, st, local(utc, st.chat.tz).date())
+    utc = record_time(rng, st, lines)
+    assumption = random_fact(rng, slot, st, local(utc, st.chat.tz).date(), lines)
     rationale = (
         f'"{text}" is about an unrelated everyday matter; nothing in it bears on the '
-        f"assumption about {st.s}."
+        f"assumption."
     )
     kind = rng.choice(list(K))
     return draft(slot, rng, st, lines, target, assumption, text, rationale, kind, utc)
+
+
+# Greetings bound to a date or an hour, and when each is sent: a holiday on its day, a
+# weekday greeting on that weekday, "good morning" in the morning (blind-reader note, shape 4).
+_RU_HOLIDAYS = (
+    date(2025, 1, 1),
+    date(2025, 1, 7),
+    date(2025, 2, 23),
+    date(2025, 3, 8),
+    date(2025, 5, 1),
+    date(2025, 5, 9),
+    date(2025, 6, 12),
+    date(2024, 11, 4),
+)
+_GREETING_DAYS: tuple[tuple[str, tuple[date, ...]], ...] = (
+    ("thanksgiving", (date(2024, 11, 28), date(2025, 11, 27))),
+    ("christmas", (date(2024, 12, 24), date(2024, 12, 25))),
+    ("new year", (date(2024, 12, 31), date(2025, 1, 1))),
+    ("новым годом", (date(2024, 12, 31), date(2025, 1, 1))),
+    ("с наступающим", tuple(date(2024, 12, d) for d in range(26, 31))),
+    ("easter", (date(2025, 4, 20),)),  # Western and Orthodox Easter fell on one day in 2025
+    ("пасхой", (date(2025, 4, 20),)),
+    ("happy 4th", (date(2025, 7, 4),)),
+    ("mothers day", (date(2025, 5, 11),)),
+    ("с праздником", _RU_HOLIDAYS),
+    ("stay warm", tuple(date(2024, 12, 1) + timedelta(days=i) for i in range(90))),
+)
+_GREETING_WEEKDAYS: tuple[tuple[str, int], ...] = (
+    ("happy monday", 0),
+    ("happy tuesday", 1),
+    ("happy wednesday", 2),
+    ("happy thursday", 3),
+    ("happy friday", 4),
+    ("happy saturday", 5),
+    ("happy sunday", 6),
+    ("enjoy the weekend", 4),
+    ("хороших выходных", 4),
+    ("hope the weekend was good", 0),
+)
+_GREETING_HOURS: tuple[tuple[str, tuple[int, int]], ...] = (
+    ("good morning", (6, 10)),
+    ("доброе утро", (6, 10)),
+    ("sleep well", (21, 23)),
+    ("good night", (21, 23)),
+    ("спокойной ночи", (21, 23)),
+)
+
+
+def _greeting_time(rng: random.Random, st: Setup, lines: list[Line], text: str) -> datetime:
+    """The record's instant, on a date and at an hour the greeting fits."""
+    low = text.lower()
+    hours = next((h for key, h in _GREETING_HOURS if key in low), (7, 22))
+    day = next((rng.choice(days) for key, days in _GREETING_DAYS if key in low), None)
+    weekday = next((wd for key, wd in _GREETING_WEEKDAYS if key in low), None)
+    if weekday is not None:
+        day = random_day(rng)
+        day += timedelta(days=(weekday - day.weekday()) % 7)
+    if day is None:
+        return record_time(rng, st, lines, hours)
+    return random_local(rng, st.chat.tz, day=day, hours=hours)
 
 
 def irr_pleasantry(slot: Slot, rng: random.Random) -> Draft:
     st = setup_chat(slot, rng)
     text = slot.entry.text()
     lines, target = place(rng, st.chat, [(st.sender, text)], 0, (0, 3), (0, 3))
-    utc = random_local(rng, st.chat.tz)
-    assumption = random_fact(rng, st, local(utc, st.chat.tz).date())
+    utc = _greeting_time(rng, st, lines, text)
+    assumption = random_fact(rng, slot, st, local(utc, st.chat.tz).date(), lines)
     rationale = f'"{text}" is a greeting or small talk; it has no bearing on the assumption.'
     kind = rng.choice(list(K))
     return draft(slot, rng, st, lines, target, assumption, text, rationale, kind, utc)

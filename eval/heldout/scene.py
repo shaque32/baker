@@ -62,10 +62,15 @@ class Chat:
     owner: Account
     contacts: list[Account]
     genders: dict[str, str] = field(default_factory=dict)  # label -> m/f for Russian verbs
+    filled: set[str] = field(default_factory=set)  # every line filler() returned
 
     @property
     def contact(self) -> Account:
         return self.contacts[0]
+
+    @property
+    def group(self) -> bool:
+        return len(self.contacts) > 1
 
     def filler(
         self,
@@ -93,7 +98,9 @@ class Chat:
         base = rng.choice(pool)
         if used is not None:
             used.add(base)
-        return typo(rng, casual(rng, base))
+        text = typo(rng, casual(rng, base))
+        self.filled.add(text)
+        return text
 
     def zone(self) -> ZoneInfo:
         return ZoneInfo(self.tz)
@@ -174,10 +181,22 @@ def random_day(rng: random.Random, first: date = FIRST_DAY, last: date = LAST_DA
 
 
 def random_local(
-    rng: random.Random, tz: str, day: date | None = None, hours: tuple[int, int] = (7, 22)
+    rng: random.Random,
+    tz: str,
+    day: date | None = None,
+    hours: tuple[int, int] = (7, 22),
+    avoid: set[int] | frozenset[int] = frozenset(),
 ) -> datetime:
-    """A UTC instant whose local clock in tz falls on `day` within `hours` (inclusive hours)."""
+    """A UTC instant whose local clock in tz falls on `day` within `hours` (inclusive hours).
+
+    `avoid` holds weekdays (Monday 0) the item's lines name as one day: a message that names
+    "friday" is never sent on a Friday, where a past event would say "today" and a plan
+    "next friday" (guide rule 24). A drawn day on such a weekday moves to the next day."""
     day = day or random_day(rng)
+    if len(avoid) >= 7:
+        raise ValueError("every weekday is avoided")
+    while day.weekday() in avoid:
+        day += timedelta(days=1)
     lo, hi = hours
     hh = rng.randint(lo, hi)
     mm, ss = rng.randrange(60), rng.randrange(60)

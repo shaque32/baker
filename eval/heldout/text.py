@@ -63,6 +63,23 @@ def date_phrase(day: date) -> str:
     return long_date(day)
 
 
+def date_or(d1: date, d2: date) -> str:
+    """'January 4 or 5, 2025': two dates, either of which the claim may fall on."""
+    if (d1.year, d1.month) == (d2.year, d2.month):
+        return f"{d1.strftime('%B')} {d1.day} or {d2.day}, {d1.year}"
+    if d1.year == d2.year:
+        return f"{d1.strftime('%B')} {d1.day} or {d2.strftime('%B')} {d2.day}, {d1.year}"
+    return f"{long_date(d1)} or {long_date(d2)}"
+
+
+def date_through(d1: date, d2: date) -> str:
+    """'January 4 through January 8, 2025': a window whose two ends are both inside it, never
+    "between ... and ...", which leaves the last day open (blind-reader note, shape 5)."""
+    if d1.year == d2.year:
+        return f"{d1.strftime('%B')} {d1.day} through {long_date(d2)}"
+    return f"{long_date(d1)} through {long_date(d2)}"
+
+
 def weekday_date(day: date) -> str:
     """'Wednesday, November 12, 2025': a date with its own weekday, so a reader can place
     "since sunday" in a record without a calendar."""
@@ -77,14 +94,45 @@ def casual(rng: random.Random, text: str, lower_p: float = 0.9) -> str:
 
 
 _VOWELS = "aeiou"
+_EN_DAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+# One named day in a Russian line, in any case form. Plurals ("по средам") are habits, not days.
+_RU_DAYS = (
+    r"понедельник(?:а|у)?",
+    r"вторник(?:а|у)?",
+    r"сред(?:а|у|ы)",
+    r"четверг(?:а|у)?",
+    r"пятниц(?:а|у|ы)",
+    r"суббот(?:а|у|ы)",
+    r"воскресень(?:е|я)",
+)
+_EN_DAY_RE = tuple(re.compile(rf"\b{d}\b") for d in _EN_DAYS)
+_RU_DAY_RE = tuple(re.compile(rf"(?<![а-яё]){d}(?![а-яё])") for d in _RU_DAYS)
+
+
+_GREETING_DAY = re.compile(r"\bhappy (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b")
+
+
+def weekdays_in(text: str) -> set[int]:
+    """The weekdays (Monday 0) a line names as one day: "friday", "since sunday", "в среду".
+
+    A plural ("tuesdays", "по средам") names a habit, not a day, and is left out; so is a
+    greeting ("happy friday"), which names the day it is sent on."""
+    low = _GREETING_DAY.sub(" ", text.lower())
+    out = {i for i, rx in enumerate(_EN_DAY_RE) if rx.search(low)}
+    return out | {i for i, rx in enumerate(_RU_DAY_RE) if rx.search(low)}
 
 
 def typo(rng: random.Random, text: str, p: float = 0.12) -> str:
-    """Occasionally mangle one ASCII word of a context line (never a record)."""
+    """Occasionally mangle one ASCII word of a context line (never a record). A weekday is
+    never mangled, so the day a line names stays readable (and checkable)."""
     if rng.random() >= p:
         return text
     words = text.split(" ")
-    idx = [i for i, w in enumerate(words) if len(w) >= 5 and w.isascii() and w.isalpha()]
+    idx = [
+        i
+        for i, w in enumerate(words)
+        if len(w) >= 5 and w.isascii() and w.isalpha() and w.lower() not in _EN_DAYS
+    ]
     if not idx:
         return text
     i = rng.choice(idx)

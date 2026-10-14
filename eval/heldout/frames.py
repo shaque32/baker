@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import random
 import re
+from collections import Counter
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
@@ -17,6 +18,7 @@ from eval.heldout.text import (
     clock12,
     date_phrase,
     render,
+    weekdays_in,
 )
 from eval.stancedata.chat import Account
 
@@ -191,6 +193,88 @@ def place(
     return pre + core + post, target + n_before
 
 
+def named_days(chat: Chat, lines: list[Line]) -> set[int]:
+    """The weekdays the item's own lines (record, question, setup, correction; not filler)
+    name as one day. The record is never sent on one of them (guide rule 24)."""
+    out: set[int] = set()
+    for _, text in lines:
+        if text not in chat.filled:
+            out |= weekdays_in(text)
+    return out
+
+
+def record_time(
+    rng: random.Random, st: Setup, lines: list[Line], hours: tuple[int, int] = (7, 22)
+) -> datetime:
+    """The record's UTC instant: a random local time within `hours`, on a day whose weekday
+    no line of the item names. A past event a line names ("did u play the Pulaski Room
+    tuesday?") then falls on an earlier weekday and a plan on a later one."""
+    return random_local(rng, st.chat.tz, hours=hours, avoid=named_days(st.chat, lines))
+
+
+def _show_group(
+    rng: random.Random, chat: Chat, lines: list[Line], target: int, kinds: dict[int, str]
+) -> tuple[list[Line], int, dict[int, str]]:
+    """Rule 11: a group chat shows at least two non-owner members; an excerpt with one is a
+    one-to-one chat. A filler line whose sender has another line on screen goes to a member
+    not yet shown (as small talk); failing that, such a line opens the excerpt."""
+    if not chat.group:
+        return lines, target, kinds
+    shown = {acct for acct, _ in lines if not acct.owner}
+    if len(shown) >= 2:
+        return lines, target, kinds
+    newcomer = rng.choice([c for c in chat.contacts if c not in shown])
+    used = {text for _, text in lines}
+    count = Counter(acct for acct, _ in lines)
+    for i, (acct, text) in enumerate(lines):
+        if i != target and text in chat.filled and count[acct] > 1:
+            lines[i] = (newcomer, chat.filler(rng, True, used, calm=i > target))
+            return lines, target, kinds
+    if len(lines) >= 7:
+        raise RuntimeError("a group chat excerpt has no room for a second member")
+    lines.insert(0, (newcomer, chat.filler(rng, True, used)))
+    return lines, target + 1, {i + 1: kind for i, kind in kinds.items()}
+
+
+def _day_clashes(chat: Chat, lines: list[Line], times: list[datetime]) -> list[int]:
+    """Lines sent on a weekday they name as one day ("we did not pour friday" on a Friday)."""
+    return [
+        i
+        for i, ((_, text), utc) in enumerate(zip(lines, times, strict=True))
+        if local(utc, chat.tz).weekday() in weekdays_in(text)
+    ]
+
+
+def _coherent_days(
+    rng: random.Random,
+    chat: Chat,
+    lines: list[Line],
+    target: int,
+    times: list[datetime],
+    kinds: dict[int, str],
+) -> list[datetime]:
+    """Rule 24 for every line: a filler line that names its own weekday is redrawn as small
+    talk; an item line on another date than the record is brought next to it in time. The
+    record's own date already avoids every weekday its item lines name (record_time)."""
+    for i in _day_clashes(chat, lines, times):
+        acct, text = lines[i]
+        if i != target and text in chat.filled:
+            used = {t for _, t in lines}
+            lines[i] = (acct, chat.filler(rng, True, used, calm=i > target))
+    clashes = _day_clashes(chat, lines, times)
+    if not clashes:
+        return times
+    near = dict(kinds)
+    for i in clashes:
+        for gap in range(min(i, target), max(i, target)):
+            near[gap] = "quick"
+    times = timeline(rng, len(lines), target, times[target], near)
+    clashes = _day_clashes(chat, lines, times)
+    if clashes:
+        raise RuntimeError(f"lines name the weekday they are sent on: {clashes} {lines}")
+    return times
+
+
 def draft(
     slot: Slot,
     rng: random.Random,
@@ -206,7 +290,9 @@ def draft(
 ) -> Draft:
     chat = setup.chat
     utc = record_utc or random_local(rng, chat.tz)
+    lines, target, kinds = _show_group(rng, chat, list(lines), target, dict(kinds or {}))
     times = timeline(rng, len(lines), target, utc, kinds)
+    times = _coherent_days(rng, chat, lines, target, times, kinds)
     rec_date = local(times[target], chat.tz).date()
     days = {  # "tomorrow" or "last night" in a record is an absolute local date in the assumption
         "xdate": date_phrase(rec_date),
@@ -314,12 +400,38 @@ def plain_fact(entry: Entry, setup: Setup) -> str:
     return capitalize_first(named_fact(entry, setup)) + "."
 
 
+# A time a fact gives only relative to the chat ("that morning"). With no message or chat
+# frame and no date beside it, it points to no day at all, so it is fixed to the chat's date.
+RELATIVE_THAT = re.compile(r"\bthat (day|night|morning|evening|afternoon|week|month)\b")
+
+
+def anchor_times(text: str, day: date) -> str:
+    """'that morning' -> 'on the morning of May 1, 2025': each relative time fixed to `day`."""
+    d = date_phrase(day)
+
+    def sub(m: re.Match[str]) -> str:
+        unit = m.group(1)
+        if unit == "day":
+            return f"on {d}"
+        if unit == "week":
+            return f"in the week of {d}"
+        if unit == "month":
+            return f"in {day.strftime('%B')} {day.year}"
+        return f"on the {unit} of {d}"
+
+    return RELATIVE_THAT.sub(sub, text)
+
+
 def fact_form(rng: random.Random, entry: Entry, setup: Setup, local: datetime | date) -> str:
     """The fact itself, with the sender named as the phone shows it: never "the message says"
     or "according to the chat", which would claim something about the chat (rules 12 and 21).
-    A fact with no time of its own carries the chat's date."""
-    d = date_phrase(local.date() if isinstance(local, datetime) else local)
+    A fact with no time of its own carries the chat's date, and a relative one ("that
+    morning") is fixed to it."""
+    day = local.date() if isinstance(local, datetime) else local
+    d = date_phrase(day)
     that = named_fact(entry, setup)
+    if RELATIVE_THAT.search(that):
+        return capitalize_first(anchor_times(that, day)) + "."
     if "{x" in that or any(w in that.lower() for w in _TIME_WORDS):
         return capitalize_first(that) + "."
     return rng.choice([f"On {d}, {that}.", f"{capitalize_first(that)} on {d}."])
