@@ -30,10 +30,10 @@ debatable. Signed items are copied into `eval/gold/` by the frozen-files thread 
   are local dates.
 - ▶ marks the message being labeled. "Quote" is what a labeler would cite as support.
 - Stances: **supports** = the message, in context, plainly establishes the assumption.
-  **contradicts** = what the message says cannot be true together with the assumption, with no
-  unstated fact needed (another count, an explicit statement). **complicates** = it bears on the
-  assumption but neither establishes it nor rules it out. **irrelevant** = it does not bear on
-  the assumption.
+  **contradicts** = it asserts or shows the opposite (another count, place or state; contact
+  earlier than a stated first contact or inside a stated quiet window; an explicit statement).
+  **complicates** = it bears on the assumption but neither establishes it nor asserts the
+  opposite. **irrelevant** = it does not bear on the assumption.
 - An assumption with several parts is supported only if every part is.
 - Read words in light of the lines shown: a pronoun, "outside" or "ok works" resolves against
   the conversation. A slang or code reading counts as established only when the conversation
@@ -45,6 +45,11 @@ debatable. Signed items are copied into `eval/gold/` by the frozen-files thread 
   exclude other messages ("first contact on", "no contact between"); otherwise the stance is
   **complicates**, because one record cannot show that no other message exists. A message that
   a later message corrects is **complicates**; the correction carries the contradiction.
+- Stance guide v0.3 (signed 2026-10-14), which the training data follows, is stricter in two
+  more cases. A denial that names no time leaves open an assumption that names none (P049),
+  since the act could come later. A statement of the opposite leaves open "X told Y that ..."
+  (P066 to P069), since X could have said it in another message. Those five keep their signed
+  answer, **contradicts**, until Arsh decides.
 - Quoted speech: when the record, by quotation, attributes the words to a different person than
   the assumption names, the stance is **contradicts** (P047 and P048, both disputed).
 - Sarcasm about a fact ("sure, I was there") leaves the fact unsettled: **complicates**. When

@@ -5,11 +5,17 @@ then write a record and an assumption that fit its rule; the label comes from th
 from the generator's own judgment. LABELING_GUIDE.md explains every family for the signer, and a
 test checks the two stay in step.
 
-Conventions follow the signed stance prompt (core/audit/prompts/stance.md v1.0) and the signed
-probe set (eval/gold/probe, P001-P088). Families marked `new` describe a case the signed probe set
-does not cover; Arsh decided them when he signed guide v0.3 on 2026-10-14. Families marked
-`disputed` follow a signed label that the probe set itself marks disputed; they are generated for
-training, and the held-out set marks their items disputed so they never count toward a bar.
+Conventions follow stance guide v0.3 (LABELING_GUIDE.md, signed 2026-10-14) and stance prompt
+v1.1, signed with it, which the pipeline wiring applies. Where the signed probe set
+(eval/gold/probe, P001-P088) reads contradicts more broadly than the guide (P049 and P066 to
+P069; eval/probe_draft/PROBE_REVIEW.md), the families follow the guide.
+
+Families marked `new` brought a convention the signed probe set did not show when they were
+added; Arsh decided each one when he signed the guide that added it (v0.2 on 2026-10-12, v0.3 on
+2026-10-14). Since the 2026-10-14 relabel, probe items P038 to P044 and P071 show the four trap
+families v0.3 moved to complicates. Families marked `disputed` follow a signed label that the
+probe set itself marks disputed; they are generated for training, and the held-out set marks
+their items disputed so they never count toward a bar.
 """
 
 from __future__ import annotations
@@ -30,7 +36,7 @@ class Family:
     trap: str | None
     kinds: tuple[K, ...]
     rule: str  # one sentence: what the record and the assumption look like
-    new: bool = False  # a convention the signed probe set does not cover yet
+    new: bool = False  # a convention the signed probe set did not show when it was added
     disputed: bool = False  # the signed probe items of this kind are marked disputed
     # Baker's own wording (guide rules 25 to 29): the product templates (core/audit/assumptions.py)
     # this family's assumptions are rendered from. Empty for plain-sentence families.

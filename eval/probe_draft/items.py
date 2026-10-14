@@ -7,12 +7,15 @@ Conventions every item follows (PROBE_REVIEW.md repeats them for the signer):
   label on the phone, not proof of who someone is.
 - Times are the phone's local time. Dates in assumptions are local dates (case01 key rule 4).
 - Stances: supports = the item, read in its context, plainly establishes the assumption.
-  contradicts = what the item says cannot be true together with the assumption, with no
-  unstated fact needed (a different count, an explicit statement). A different sender, date or
-  time rules out only an assumption whose words exclude other messages ("first contact on"), and
-  a later correction contradicts through the correcting message (stance guide v0.3, rules 22
-  and 23). complicates = it bears on the assumption but neither establishes it nor rules it out.
-  irrelevant = it does not bear on the assumption.
+  contradicts = the item asserts or shows the opposite (another count, place or state; contact
+  earlier than a stated first contact or inside a stated quiet window; an explicit statement).
+  Since the 2026-10-14 relabel, a different sender, date or time rules out only an assumption
+  whose words exclude other messages ("first contact on"), and a later correction contradicts
+  through the correcting message (stance guide v0.3, rules 22 and 23). Guide v0.3 also leaves
+  open an undated assumption against a denial that names no time (P049) and "X told Y that ..."
+  against a statement of the opposite (P066 to P069); those five keep their signed contradicts
+  until Arsh decides. complicates = it bears on the assumption but neither establishes it nor
+  asserts the opposite. irrelevant = it does not bear on the assumption.
 - case01 items copy records verbatim from eval/synthetic/case01 (record_id set on every line).
   Everything else is invented: fictional people, 555-01xx numbers, invented handles.
 """

@@ -17,7 +17,7 @@ protect that, and must be much faster.
 1. **No overlap.** `python -m eval.stancedata.contamination` passes on the exact training file
    the model was trained on, against the probe set, case01, case02 and the held-out set.
 2. **Signed probe set.** On the gated items (P001 to P088, signed and undisputed: 78 items, 8
-   gold contradicts after the 2026-10-14 relabel), scored by `eval.probe.run_probe
+   gold contradicts after the 2026-10-13 relabel), scored by `eval.probe.run_probe
    --stance-only` or `eval.stancedata.score`:
    - valid output 100%;
    - supports recall at least 90% (a label whose quote is not verbatim in the record is dropped
@@ -36,6 +36,7 @@ protect that, and must be much faster.
 4. **At least 5 times faster.** At most 4.52 seconds per stance decision on case01, measured on
    Arsh's 24 GB Mac, against the 14B's measured 22.61 seconds per call on the same Mac
    (2026-10-08).
+
 5. **Baker's real pipeline on the hidden case.** The candidate is Baker's stance labeler
    (eval/stancemodel ClassifierLabeler). It runs on case02 with the case's assumption sheet,
    Baker's retrieval, quote check, checks and rules, then the simulated expert and the
