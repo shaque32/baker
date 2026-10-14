@@ -99,7 +99,8 @@ whose words exclude other messages, such as "first contact on" or "no contact be
     told the owner that he had picked up Rosa's shift", "the owner wrote that ...", "X sent the
     message ...": that is what a message shows. "Nico picked up Rosa's shift" as a bare fact is
     never a supports item, because a message is evidence of what was said, and an expert may
-    hold the act itself unproven. This follows the signed items P021 to P027. Contradicts and
+    hold the act itself unproven. "According to the chat of May 3, Nico picked up Rosa's shift"
+    and "the chat of May 3 shows that Nico picked up Rosa's shift" state the act too. This follows the signed items P021 to P027. Contradicts and
     overreach assumptions may state the fact (rule 12). The paraphrase is third person
     throughout ("that they would book the court if they got paid", never "if i get paid"), adds
     no qualifier the record lacks ("still", "again", "already") and names nothing the record
@@ -124,8 +125,10 @@ whose words exclude other messages, such as "first contact on" or "no contact be
     likelier: "tutoring ran late tonight" at 00:57 almost surely means the evening before, and
     the record still does not settle the date.
 18. **Third parties may be named.** An assumption may name a person who is not in the chat
-    ("Lina made $240 in tips"); whether the record shows it still follows the family rules, and
-    a sender's report of what that person did is `cpl_hearsay`.
+    ("Lina made $240 in tips"); whether the record shows it still follows the family rules. A
+    sender passing on what they heard about that person ("lina says", "heard", "told me",
+    "according to lina") is `cpl_hearsay`; a plain statement about the person ("lina has been
+    in tampa since tuesday") is the sender's own claim and follows the other rules.
 19. **A correction names the replacement.** A later message from the same sender counts as a
     correction only when it gives a value that cannot be true together with the record's, for
     the same thing: "booth 5, not 35", "sorry, 300 not 500", "не 118, а 181". "they moved us" or
@@ -161,7 +164,8 @@ whose words exclude other messages, such as "first contact on" or "no contact be
     otherwise the same words on another date, or from another account, leave the assumption
     open, because one record cannot show that no other message exists. A past-tense denial
     that names no time ("i didnt pay the 250"), answering no question that names one, covers
-    the act at any time before it was sent. Where that gap matters,
+    the act at any time before it was sent, and says nothing about a later act: an assumption
+    that gives no time is left open, so the generators date the act before the message. Where that gap matters,
     the timeline search reports it with the coverage it had (CLAUDE.md: "not found" never means
     "did not happen").
 24. **Rationales claim only what is shown.** A rationale names no weekday, place or fact that
