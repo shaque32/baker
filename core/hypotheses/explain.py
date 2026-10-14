@@ -28,6 +28,7 @@ Nothing here says which explanation is right, and nothing here touches a verdict
 
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 from bisect import bisect_left, bisect_right
@@ -165,14 +166,16 @@ class Case:
 
     def offsets(self, ids: Iterable[str]) -> dict[str, int | None]:
         """The UTC offset the report printed on each message or call."""
-        out: dict[str, int | None] = {}
-        for rid in ids:
-            table = "calls" if rid.startswith("call") else "messages"
-            r = self.conn.execute(
-                f"SELECT ts_offset_min FROM {table} WHERE id = ?",  # noqa: S608
-                (rid,),
-            ).fetchone()
-            out[rid] = None if r is None else r[0]
+        ids = sorted(set(ids))
+        out: dict[str, int | None] = dict.fromkeys(ids)
+        for table in ("messages", "calls"):  # one query per table, however many records
+            out.update(
+                self.conn.execute(
+                    f"SELECT id, ts_offset_min FROM {table}"  # noqa: S608
+                    " WHERE id IN (SELECT value FROM json_each(?))",
+                    (json.dumps(ids),),
+                ).fetchall()
+            )
         return out
 
     def locator(self, record_id: str) -> tuple[str, str]:
@@ -232,6 +235,16 @@ def _who(data: CaseData, account_id: str | None) -> str:
         return ""
     acct = data.accounts.get(account_id)
     return repr(acct.key) if acct else account_id
+
+
+def _thread_ids(case: Case, message_ids: list[str]) -> dict[str, str]:
+    """Each message's conversation, read in one query."""
+    return dict(
+        case.conn.execute(
+            "SELECT id, thread_id FROM messages WHERE id IN (SELECT value FROM json_each(?))",
+            (json.dumps(sorted(set(message_ids))),),
+        ).fetchall()
+    )
 
 
 def _thread_recipients(case: Case, thread_id: str) -> dict[str, tuple[str, ...]]:
@@ -455,8 +468,8 @@ def _name_fits(case: Case, keys: set[Key], persons: list[idl.Person]) -> list[Fi
     out: list[Fit] = []
     # Per account and name, as many lines as the phone holding the most such records: its
     # copies on both phones show once, two records on one phone show twice.
-    lines: dict[tuple[Key, str], int] = {}
-    per_phone: dict[tuple[Key, str, str], int] = {}
+    lines: dict[tuple[Key, str, str], int] = {}
+    per_phone: dict[tuple[Key, str, str, str], int] = {}
     placed: set[tuple[Key, str]] = set()  # (account, record): a record listed twice
     for k in sorted(keys):
         g = case.ids.groups.get(k)
@@ -468,7 +481,7 @@ def _name_fits(case: Case, keys: set[Key], persons: list[idl.Person]) -> list[Fi
                 continue
             if any(_shares_word(p, s.words) for p in persons):
                 continue
-            name = (k, text.casefold())
+            name = (k, s.kind, text.casefold())  # an account name and a contact are no copies
             n = per_phone[(*name, s.source_id)] = per_phone.get((*name, s.source_id), 0) + 1
             placed.add((k, s.record_id))
             if n <= lines.get(name, 0):
@@ -490,14 +503,19 @@ def _name_fits(case: Case, keys: set[Key], persons: list[idl.Person]) -> list[Fi
     return out
 
 
+_WORD_IN_CLAUSE = (
+    r"(?!(?:but|and|so|then|yet|because|though|although|or|until|unless|since|when|while|"
+    r"after|before)\b)[^\W\d_]+"
+)
 _NEGATED = re.compile(
     r"\b(?:never|not|no|cannot|didn'?t|didn’t|dont|don'?t|don’t|wont|won'?t|cant|can'?t|can’t|"
     r"havent|haven'?t|wasnt|wasn'?t|couldnt|couldn'?t|couldn’t|wouldnt|wouldn'?t|wouldn’t|"
     r"shouldnt|shouldn'?t|shouldn’t|won’t|didnt)\b"
-    # Up to five words between the denial and the verb ("did not have a chance to use"), but
-    # not across a word that starts a new clause ("no idea but i used his phone").
-    r"(?:\s+(?!(?:but|and|so|then|yet|because|though|although|or|until|unless|since|when|"
-    r"while|after|before)\b)[^\W\d_]+){0,5}\s*$",
+    # Up to five words between the denial and the verb ("did not have a chance to use"), and an
+    # aside between two commas ("did not, in fact, use"), but not across a word that starts a
+    # new clause ("no idea but i used his phone") or a single comma ("not now, im using").
+    rf"(?:\s+{_WORD_IN_CLAUSE}){{0,5}}(?:\s*,(?:\s+{_WORD_IN_CLAUSE}){{1,3}}\s*,)?"
+    rf"(?:\s+{_WORD_IN_CLAUSE}){{0,5}}\s*$",
     re.IGNORECASE,
 )
 
@@ -566,8 +584,17 @@ def _handoff_fits(case: Case, claimed: list[Row]) -> tuple[list[tuple[Row, str]]
                     f"(“{cite(m.group(0))}”), on the same phone near the message.",
                 )
                 break
-    anchor = claimed[0].ts_utc if claimed else None
-    rows = _by_time(_dedupe(case.data, [r for r, _ in out.values()]), anchor)
+    # Nearest first to any claimed message on the record's own phone, measured on every copy
+    # before copies on the other phone are dropped.
+    gap: dict[tuple[str, ...], float] = {}
+    for r, _ in out.values():
+        d = min(abs((r.ts_utc - t).total_seconds()) for t, _, _ in anchors[r.source_id])  # type: ignore[operator]
+        k = _copy_key(case.data, r)
+        gap[k] = min(d, gap.get(k, d))
+    rows = sorted(
+        _dedupe(case.data, [r for r, _ in out.values()]),
+        key=lambda r: (gap[_copy_key(case.data, r)], r.ts_utc, r.id),
+    )
     found = [out[r.id] for r in rows]
     searched = (
         "messages on " + "; ".join(dict.fromkeys(spans)) + " for words about using another "
@@ -808,9 +835,8 @@ def _clock(case: Case, assumptions: list[Assumption]) -> Alternative | None:
         wall = _wall(window) if window is not None else None
         if window is None or wall is None:
             continue
-        rows = _clock_rows(case, a, claimed)
-        offsets = case.offsets(r.id for r in rows)
-        for r in rows:
+        rows: list[tuple[Row, datetime, ZoneInfo]] = []
+        for r in _clock_rows(case, a, claimed):
             at = r.ts_utc
             if at is None or in_window(at, window):
                 continue  # no usable time, or inside the stated time on the real clock
@@ -819,6 +845,9 @@ def _clock(case: Case, assumptions: list[Assumption]) -> Alternative | None:
                 continue  # the phone's own zone is unknown, so no reading is "another" clock
             if wall[0] <= at.astimezone(tz).replace(tzinfo=None) <= wall[1]:
                 continue  # the stated time fits on the phone's own clock too; no other clock needed
+            rows.append((r, at, tz))
+        offsets = case.offsets(r.id for r, _, _ in rows)  # only for records still in the running
+        for r, at, tz in rows:
             own = at.astimezone(tz).utcoffset()
             readings: list[tuple[str, datetime]] = []
             off = offsets.get(r.id)
@@ -1189,11 +1218,9 @@ def _same_words(case: Case, assumptions: list[Assumption]) -> Alternative | None
         # Each quoted message's time, by its conversation: a match is near only to a quote in
         # its own conversation.
         quoted_at: dict[str, list[datetime]] = {}
+        thread_ids = _thread_ids(case, [r.id for r in claimed])
         for r in claimed:
-            (tid,) = case.conn.execute(
-                "SELECT thread_id FROM messages WHERE id = ?", (r.id,)
-            ).fetchone()
-            times = quoted_at.setdefault(tid, [])
+            times = quoted_at.setdefault(thread_ids[r.id], [])
             if r.ts_utc is not None:
                 times.append(r.ts_utc)
         pattern = re.compile(r"\b(?:" + "|".join(re.escape(w) for w in words) + r")\b", re.I)
@@ -1220,8 +1247,8 @@ def _same_words(case: Case, assumptions: list[Assumption]) -> Alternative | None
         anchor = claimed[0].ts_utc
         pairs += [(r, notes[r.id]) for r in _by_time(rows, anchor)]
         # From every quoted message in the match's own conversation: one quote can stand in
-        # several messages.
-        for r in rows:
+        # several messages. Every copy counts, before copies on the other phone are dropped.
+        for r, _ in found:
             gap = min(
                 (
                     abs((r.ts_utc - t).total_seconds())

@@ -286,6 +286,9 @@ def test_report_lists_alternatives_under_their_claims(conn):
         ("give her phone a call later", "SMS", "SMS", None),
         ("I used his phone's number", "SMS", "SMS", None),  # possessive, still a number
         ("i borrowed his phone’s charger", "SMS", "SMS", "borrowed his phone"),
+        ("I did not, in fact, use his phone", "SMS", "SMS", None),  # an aside in a denial
+        ("no, i used his phone", "SMS", "SMS", "used his phone"),  # an answer, then a clause
+        ("not now, im using his phone", "SMS", "SMS", "using his phone"),
     ],
 )
 def test_hand_off_words(body, app, claimed_app, found):
@@ -1324,3 +1327,107 @@ def test_same_words_nearness_stays_in_each_conversation(conn):
     shown = [f.record_id for f in alt.fits]
     assert "msg:test:late" not in shown  # far from the quote in its own conversation
     assert shown[0] == "msg:test:early0"
+
+
+# ---------------------------------------------------------------- eighteenth review
+
+
+def test_an_account_name_and_a_contact_with_the_same_words_both_show(conn):
+    case = explain.load(conn)
+
+    def name(rid: str, sid: str, kind: str):  # noqa: ANN202
+        return SimpleNamespace(
+            text="Ilya M", kind=kind, words=("ilya", "m"), record_id=rid, source_id=sid,
+            locator=rid, note="",
+        )  # fmt: skip
+
+    k = ("sms", "+1")
+    names = [name("a1", "item1", "account name"), name("c2", "item2", "contact name")]
+    case.ids.groups = {k: SimpleNamespace(label="a", names=names)}
+    fits = explain._name_fits(case, {k}, [_person("Daniel Petrov")])
+    assert [f.record_id for f in fits] == ["a1", "c2"]  # different records, not copies
+
+
+def _trace(conn, needle: str):  # noqa: ANN202
+    reads: list[str] = []
+    conn.set_trace_callback(lambda sql: reads.append(sql) if needle in sql else None)
+    return reads
+
+
+def test_same_words_reads_quoted_conversations_in_one_query(conn):
+    meaning, quoted, thread = _meaning_thread(conn)
+    for n in range(5):  # the quote, five more times in its conversation
+        at = quoted.ts_utc + timedelta(minutes=30 + n)
+        _add_message(conn, f"msg:test:q{n}", quoted.source_id, thread, at,
+                     meaning.params.quoted_text or "")  # fmt: skip
+    case = explain.load(conn)
+    reads = _trace(conn, "thread_id FROM messages")
+    try:
+        explain._same_words(case, [meaning])
+    finally:
+        conn.set_trace_callback(None)
+    assert len(reads) == 1
+
+
+def test_clock_reads_offsets_in_one_query_per_table(conn):
+    a = _asm(conn, "C10", "record_time")
+    case = explain.load(conn)
+    ids = [r[0] for r in conn.execute("SELECT id FROM messages LIMIT 20")]
+    ids += [r[0] for r in conn.execute("SELECT id FROM calls LIMIT 20")]
+    reads = _trace(conn, "ts_offset_min")
+    try:
+        offsets = case.offsets(ids)
+        assert explain._clock(case, [a]) is not None
+    finally:
+        conn.set_trace_callback(None)
+    assert set(offsets) == set(ids)
+    assert len(reads) <= 4  # two for the 40 records, two for the clock lead
+
+
+def test_same_words_nearness_counts_copies_dropped_as_duplicates(conn):
+    meaning = next(a for a in claim_state(conn, "C13").assumptions if a.template_id == "meaning")
+    case = explain.load(conn)
+    word = explain._words(meaning.params.quoted_text or "")[0]
+    quoted = {r.source_id: r for r in explain._quoted_rows(case, meaning)}
+    assert {"item1", "item2"} <= set(quoted)
+    t0 = quoted["item1"].ts_utc
+
+    def add(r, rid: str, minutes: int, body: str) -> None:  # noqa: ANN001
+        (thread,) = conn.execute("SELECT thread_id FROM messages WHERE id = ?", (r.id,)).fetchone()
+        conn.execute(
+            "INSERT INTO messages (id, source_id, locator, thread_id, sender_account_id,"
+            " direction, ts_utc, ts_raw, body) VALUES (?, ?, ?, ?, ?, 'incoming', ?, 'test', ?)",
+            (rid, r.source_id, f"Test!{rid}", thread, r.sender,
+             (t0 + timedelta(minutes=minutes)).isoformat(), body),
+        )  # fmt: skip
+        for acct in r.recipients:
+            conn.execute(
+                "INSERT INTO message_recipients (message_id, account_id) VALUES (?, ?)",
+                (rid, acct),
+            )
+
+    for sid in ("item1", "item2"):
+        add(quoted[sid], f"msg:{sid}:neighbor", 5000, f"we {word} later")
+    add(quoted["item2"], "msg:item2:again", 5001, meaning.params.quoted_text or "")
+    for n in range(explain.MAX_FITS + 1):
+        add(quoted["item1"], f"msg:item1:filler{n}", 2 + n, f"so {word} ok")
+    alt = explain._same_words(explain.load(conn), [meaning])  # one statement, both phones
+    assert alt is not None
+    assert alt.fits[0].record_id in {"msg:item1:neighbor", "msg:item2:neighbor"}
+
+
+def test_hand_offs_rank_by_the_nearest_claimed_message(conn):
+    quote = _asm(conn, "C16", "sender").params.quoted_text
+    case = explain.load(conn)
+    a = _asm(conn, "C16", "authorship", quoted_text=quote, device_ids=("dev:item1",))
+    (quoted,) = explain._claimed_rows(case, [a])[a.id]
+    (thread,) = conn.execute("SELECT thread_id FROM messages WHERE id = ?", (quoted.id,)).fetchone()
+    later = replace(quoted, id="msg:test:later-quote", ts_utc=quoted.ts_utc + timedelta(days=10))
+    for n in range(explain.MAX_FITS + 1):
+        _add_message(conn, f"msg:test:h{n}", "item1", thread,
+                     quoted.ts_utc + timedelta(minutes=2 + n), "im using his phone")  # fmt: skip
+    _add_message(conn, "msg:test:by-later", "item1", thread,
+                 later.ts_utc + timedelta(minutes=1), "im using his phone")  # fmt: skip
+    found, _ = explain._handoff_fits(explain.load(conn), [quoted, later])
+    ids = [r.id for r, _ in found]
+    assert ids.index("msg:test:by-later") < min(ids.index(f"msg:test:h{n}") for n in range(7))
