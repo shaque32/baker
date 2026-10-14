@@ -6,6 +6,8 @@ no person, weekday, date, clock time, laugh or word about who holds or types on 
 
 from __future__ import annotations
 
+import re
+
 HOME_RU: tuple[str, ...] = (
     "[ключи оставил у охранника], заберёшь?",
     "[посылку забрала], лежит в прихожей",
@@ -78,3 +80,20 @@ VAGUE_RU: tuple[str, ...] = (
     "[синие пакеты для тебя]",
     "[скажи ей, что всё решено]",
 )
+
+# Past-tense forms a speaker uses of themselves in these pools, (masculine, feminine); `agree`
+# puts a line from someone whose name the item shows into that person's own gender.
+SELF_FORMS = (
+    ("взял", "взяла"), ("видел", "видела"), ("забрал", "забрала"), ("оплатил", "оплатила"),
+    ("оставил", "оставила"), ("перевёл", "перевела"), ("перегнал", "перегнала"),
+    ("перезагрузил", "перезагрузила"), ("полил", "полила"), ("положил", "положила"),
+    ("поменял", "поменяла"), ("понял", "поняла"), ("сложил", "сложила"), ("вынес", "вынесла"),
+)  # fmt: skip
+
+
+def agree(text: str, end: str) -> str:
+    """The line in its speaker's gender: `end` is "а" for a woman, "" for a man."""
+    for masc, fem in SELF_FORMS:
+        a, b = (masc, fem) if end else (fem, masc)
+        text = re.sub(rf"(?<![а-яё]){a}(?![а-яё])", b, text)
+    return text

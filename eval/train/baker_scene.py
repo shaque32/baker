@@ -4,6 +4,8 @@ parties, expert-confirmed links, and the excerpt lines Baker's adapter prints fo
 Brackets come from the scene alone (guide rule 26): an account carries person:dev:itemN:owner
 when its app and identifier are one of phone N's own accounts, on any phone, since Baker matches
 accounts across phones; and person:<surname> when the scene records an expert-confirmed link.
+Items show those people by name (eval/train/baker_cast.py); phone users and linked people are
+cast with first names that have a Latin form starting A to M.
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ from datetime import datetime, timedelta
 
 from eval.stancedata import bakerform as bf
 from eval.stancedata.chat import fictional_phone
+from eval.train.baker_cast import first_of
 from eval.train.names import AREA_CODES, PEOPLE_EN, PEOPLE_RU, Person, telegram_id, username
 
 MSG_APPS = ("SMS", "SMS", "SMS", "WhatsApp", "Telegram", "Signal", "Instagram")
@@ -66,12 +69,25 @@ class Phone:
 class Scene:
     phones: tuple[Phone, ...]
     links: tuple[tuple[Acc, str], ...] = ()  # expert-confirmed: account -> person:<surname>
+    people: tuple[tuple[str, Person], ...] = ()  # a linked person id -> the chat person it is
+
+    @property
+    def owners(self) -> dict[str, Person]:
+        return {p.person: p.owner.person for p in self.phones}
 
     def persons(self, a: Acc) -> tuple[str, ...]:
         """The person ids Baker holds as confirmed for an account, as its brackets show them."""
         out = {p.person for p in self.phones if a in p.own}
         out |= {pid for acc, pid in self.links if acc == a}
         return tuple(sorted(out))
+
+    def speaker(self, a: Acc) -> Person | None:
+        """Whom the item shows by name for an account: a phone's user or a linked person."""
+        for p in self.phones:
+            if a in p.own:
+                return p.owner.person
+        people = dict(self.people)
+        return next((people.get(pid) for acc, pid in self.links if acc == a), None)
 
     def holders(self, pid: str) -> frozenset[Acc]:
         """Every account Baker ties to a person id: a phone's own accounts, or linked ones."""
@@ -86,9 +102,12 @@ class Cast:
         self.rng = rng
         self.taken: set[str] = set()
 
-    def who(self, lang: str = "en") -> Who:
+    def who(self, lang: str = "en", named: bool = False) -> Who:
+        """A new person; `named` ones (phone users, linked people) get a full name in items, so
+        their first name has a Latin form starting A to M."""
         rng = self.rng
-        pool = [p for p in (PEOPLE_RU if lang == "ru" else PEOPLE_EN) if p.name not in self.taken]
+        pool = [p for p in (PEOPLE_RU if lang == "ru" else PEOPLE_EN)
+                if p.name not in self.taken and (first_of(p) or not named)]  # fmt: skip
         person = rng.choice(pool)
         self.taken.add(person.name)
         number = self._new(lambda: fictional_phone(rng, AREA_CODES))
@@ -110,7 +129,7 @@ class Cast:
     def phone(self, item: int, apps: tuple[str, ...], lang: str = "en") -> Phone:
         """Phone item<n> in a random zone; its owner's own accounts are `apps` plus the
         phone's number (Phone), sometimes SMS: one to three in all."""
-        owner = self.who(lang)
+        owner = self.who(lang, named=True)
         own = list(dict.fromkeys((*apps, "Phone")))
         if len(own) < 3 and "SMS" not in own and self.rng.random() < 0.6:
             own.append("SMS")

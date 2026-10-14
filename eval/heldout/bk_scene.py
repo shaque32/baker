@@ -13,7 +13,7 @@ import random
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from eval.heldout.bk_names import IG_HANDLES
+from eval.heldout.bk_names import NEUTRAL_IG
 from eval.heldout.pools import AREA_CODES
 from eval.stancedata import bakerform as bf
 from eval.stancedata.chat import fictional_phone
@@ -64,6 +64,7 @@ class Scene:
     phones: list[Phone] = field(default_factory=list)
     links: dict[Acct, str] = field(default_factory=dict)  # expert-confirmed: account -> person
     taken: set[str] = field(default_factory=set)
+    names: dict[str, str] = field(default_factory=dict)  # person id -> the name the case gives
 
     def persons(self, a: Acct) -> list[str]:
         out = [p.owner for p in self.phones if a in p.own]
@@ -111,7 +112,7 @@ class Scene:
         raise RuntimeError("no free Telegram id")
 
     def ig(self, rng: random.Random) -> str:
-        free = [h for h in IG_HANDLES if h not in self.taken]
+        free = [h for h in NEUTRAL_IG if h not in self.taken]
         ident = rng.choice(free)
         self.taken.add(ident)
         return ident

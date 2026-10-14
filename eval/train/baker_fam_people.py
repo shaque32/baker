@@ -14,6 +14,7 @@ import re
 from typing import Any
 
 from eval.stancedata import bakerform as bf
+from eval.train.baker_cast import cap, first_of
 from eval.train.baker_cues import (
     AUTHOR_CUES,
     AUTHOR_CUES_RU,
@@ -24,7 +25,7 @@ from eval.train.baker_cues import (
     RELS,
     SURNAMES,
 )
-from eval.train.baker_fam_sender import called_by, cap
+from eval.train.baker_fam_sender import called_by
 from eval.train.baker_kit import (
     ORDINARY,
     Draft,
@@ -34,6 +35,7 @@ from eval.train.baker_kit import (
     record_text,
     setup,
     slug,
+    surname_of,
 )
 from eval.train.baker_scene import render
 from eval.train.baker_text import combo, fill, salt_of, split_ru
@@ -60,7 +62,7 @@ def identity_named(rng: random.Random, k: int) -> Draft:
     rationale = (f"The record from {line.sender} has its sender giving the name {cap(sur)}, but "
                  f"a name typed in a chat does not show that {pid} holds the account.")  # fmt: skip
     return Draft(family, "person_identity", params, s.scene, s.phone, evs, target, core,
-                 rationale)  # fmt: skip
+                 rationale, names={pid: f"{s.partner.person.name} {cap(sur)}"})  # fmt: skip
 
 
 def account_silent(rng: random.Random, k: int) -> Draft:
@@ -112,7 +114,11 @@ def author_cue(rng: random.Random, k: int) -> Draft:
     line = render(s.scene, s.phone, rec)
     rationale = (f"The record from {line.sender} carries a cue about who is typing (\"{core}\"); "
                  "one record cannot show who typed what the account sent.")  # fmt: skip
-    return Draft(family, "authorship", params, s.scene, s.phone, evs, target, core, rationale)
+    d = Draft(family, "authorship", params, s.scene, s.phone, evs, target, core, rationale)
+    first = first_of(holder)
+    if not own and first and not pid.startswith("person:doe_"):  # the cue names the holder
+        d.names[pid] = f"{first} {cap(surname_of(pid))}"
+    return d
 
 
 def possessive(rng: random.Random, name: str) -> str:

@@ -19,8 +19,10 @@ from typing import Any
 from eval.stancedata import bakerform as bf
 from eval.train.baker_cues import VAGUE
 from eval.train.baker_days import DAYS_EN, PLANS, PLANS_RU, V_RU
+from eval.train.baker_fam_acts import claim_apart
 from eval.train.baker_fam_contact import FORMS, PEOPLE, _name, saved_name
 from eval.train.baker_fam_count import file_name
+from eval.train.baker_fam_meaning import content
 from eval.train.baker_fam_people import _handle
 from eval.train.baker_kit import (
     ORDINARY,
@@ -251,10 +253,15 @@ def unrelated(rng: random.Random, k: int) -> Draft:
     else:  # role, event
         pid = _unbracketed(rng, c)
         params = {"person_ids": (pid,)}
-        if template == "event" and rng.random() < 0.5:
+        if rng.random() < (0.5 if template == "event" else 0.4):
             params["window"] = c.window(rng)
         rationale = (f"No line shown carries {pid} in brackets, so nothing ties "
                      f"{what[0].lower()}{what[1:]} to that person; the record has no bearing on "
                      f"the {template} the claim states.")  # fmt: skip
+    claim = ""
+    if template in ("meaning", "role", "event"):
+        seen = set().union(*(content(ln.text) for ln in c.lines))
+        taken = {p.person for p in c.s.scene.phones} | {pid for _, pid in c.s.scene.links}
+        claim = claim_apart(rng, template, params, seen, taken)
     return Draft(FAMILY, template, params, c.s.scene, c.s.phone, c.evs, c.target,
-                 c.lines[c.target].text, rationale)  # fmt: skip
+                 c.lines[c.target].text, rationale, claim=claim)  # fmt: skip

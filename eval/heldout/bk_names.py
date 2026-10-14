@@ -39,19 +39,53 @@ FIRSTS = (
 # Russian people: (Latin slug, Cyrillic surname, Cyrillic first name).
 RU_PEOPLE = (
     ("orlova", "Орлова", "Ника"),
-    ("nikitin", "Никитин", "Матвей"),
+    ("nikitin", "Никитин", "Назар"),
     ("rybakov", "Рыбаков", "Платон"),
     ("sobolev", "Соболев", "Савва"),
-    ("panina", "Панина", "Мила"),
+    ("panina", "Панина", "Римма"),
     ("tarasov", "Тарасов", "Семён"),
     ("osipova", "Осипова", "Таисия"),
     ("shestakov", "Шестаков", "Ян"),
     ("polyakova", "Полякова", "Олеся"),
-    ("yakushev", "Якушев", "Мирон"),
+    ("yakushev", "Якушев", "Ростислав"),
     ("savelyeva", "Савельева", "Ульяна"),
     ("rodionov", "Родионов", "Тимофей"),
 )
 RU_FIRSTS = ("Мила", "Ника", "Платон", "Савва", "Семён", "Таисия", "Ян", "Мирон", "Ульяна")
+# How a case document spells the Russian people's first names (their surnames are the slugs).
+RU_LATIN = {
+    "Ника": "Nika", "Назар": "Nazar", "Платон": "Platon", "Савва": "Savva", "Римма": "Rimma",
+    "Семён": "Semyon", "Таисия": "Taisiya", "Ян": "Yan", "Олеся": "Olesya",
+    "Ростислав": "Rostislav", "Ульяна": "Ulyana", "Тимофей": "Timofey",
+}  # fmt: skip
+
+# The names a numbered person id stands for: the document named them, Baker numbered the id.
+WITHHELD = {"name_0417": "Penrose", "name_0388": "Tuckett", "name_0562": "Wyndham",
+            "name_0731": "Sayle"}  # fmt: skip
+
+
+def surname(slug: str) -> str:
+    """The surname a person slug stands for: 'norcott' -> 'Norcott'."""
+    return WITHHELD.get(slug) or slug.split("_")[0].capitalize()
+
+
+# Phone users an expert stipulated, as the case names them: (first name, surname). None of
+# these words is a first name, surname, handle or chat word used anywhere else in the
+# held-out Baker-wording items, so no line's text ever names a phone's user.
+OWNERS = (
+    ("Nadine", "Pardoe"), ("Orla", "Thackeray"), ("Percival", "Vandermolen"),
+    ("Quentin", "Ostrowski"), ("Rafferty", "Pettigrew"), ("Sabine", "Quiller"),
+    ("Tobias", "Rademacher"), ("Ursula", "Szabo"), ("Valentina", "Thistlewood"),
+    ("Winifred", "Uffington"), ("Yolanda", "Vandeventer"), ("Zachariah", "Whitcombe"),
+    ("Norah", "Yarborough"), ("Oswin", "Zeller"), ("Perpetua", "Northcutt"),
+    ("Rowena", "Prothero"), ("Stellan", "Ruskin"), ("Tova", "Stanhope"), ("Viggo", "Tremaine"),
+    ("Wilhelmina", "Vickery"), ("Yannick", "Wolcott"), ("Zinnia", "Youngblood"),
+    ("Niamh", "Zabriskie"), ("Osvaldo", "Nevins"), ("Priya", "Oglesby"),
+    ("Rasmus", "Pendergast"), ("Sigrid", "Quarles"), ("Torben", "Rourke"),
+    ("Ugo", "Sandoval"), ("Verity", "Tolland"), ("Wolfgang", "Vosburgh"), ("Yvette", "Yeager"),
+    ("Zelda", "Zamora"), ("Nicasio", "Nesbit"), ("Orrin", "Overton"), ("Pilar", "Paget"),
+    ("Romilly", "Rendell"), ("Sunniva", "Sutter"), ("Teodor", "Tamblyn"), ("Vashti", "Upton"),
+)  # fmt: skip
 
 # Instagram usernames: an account's identifier on Instagram.
 IG_HANDLES = (
@@ -62,7 +96,16 @@ IG_HANDLES = (
     "yael.pots", "zev.stargazes", "noa.pantry", "oona.irons", "pax.pianos", "rhys.rinks",
     "silas.sorts", "tamar.tees", "una.blooms", "ximena.keys", "yosef.cider", "zaid.zines",
     "nettle.and.fern", "orbit.club", "plumline.stage", "rinkside.ruthie", "seedtray.seren",
+    "overcast.laundry", "parcelpost.bikes", "quarry.pottery", "ridgeline.hauling",
+    "stonefruit.stand", "tidewater.rows", "tumbleweed.tow", "underpass.press", "vantage.rowing",
+    "wavecrest.tailors", "yellowpine.greens", "nautilus.prints", "ospreyhill.farm",
+    "pebblecreek.honey", "sundial.rink", "riverbend.keys", "orchardgate.cider",
+    "thimble.and.thread", "skyward.scopes", "kilnyard.clay",
 )  # fmt: skip
+# Handles that hold no first name, for accounts whose brackets may name a person: a handle
+# like "pim.prints" on an account an expert tied to someone else would send two signals.
+NAME_WORDS = {n.lower() for n in FIRSTS} | {"yosef", "zaid", "ruthie", "seren"}
+NEUTRAL_IG = tuple(h for h in IG_HANDLES if not NAME_WORDS & set(h.split(".")))
 
 # Handle pairs one account went by, as a document writes them (with "@"): (app, old, new).
 HANDLE_PAIRS = (

@@ -1,0 +1,157 @@
+"""Baker's meaning template shown with its claim (guide rule 29): bk_meaning_said,
+bk_meaning_other and the meaning third of bk_claim_open.
+
+The claim says what some words meant. bk_meaning_said: the account that used the words (in the
+record itself, and sometimes earlier in the chat too) plainly says they mean exactly the claim's
+meaning (supports). bk_meaning_other: that account says they mean something of another kind
+altogether, with "only" or "nothing else" (contradicts). bk_claim_open: the record uses the
+words and nothing shown says what they mean (complicates). A claim names the words' user only
+when that account's line carries them in brackets. No line from anyone else holds the words, no
+other line shares a content word with any meaning in play, and the lines after an explanation
+are plain acknowledgements, so nothing hedges or corrects it.
+"""
+
+from __future__ import annotations
+
+import random
+import re
+from datetime import timedelta
+
+from eval.train.baker_claim_ru import MEANINGS_RU, OTHER_RU, SAY_RU, USE_RU
+from eval.train.baker_claim_words import MEANINGS, OTHER, PLURAL, SAY, TOPICS, USE
+from eval.train.baker_claims import calm, meaning_claim, record_when, settle
+from eval.train.baker_kit import (
+    Draft,
+    Setup,
+    any_time,
+    chatter,
+    lang_of_text,
+    pick_kind,
+    quoted_words,
+    record_text,
+    setup,
+)
+from eval.train.baker_scene import Ev, render, thread
+from eval.train.baker_text import combo, salt_of, split_ru, words
+
+
+def content(text: str) -> set[str]:
+    """Content words that could hint at a meaning: three letters or more (Russian: four)."""
+    return {w for w in words(text) if len(w) >= (4 if re.search(r"[а-яё]", w) else 3)}
+
+
+def say(template: str, p: str, m: str) -> str:
+    return (
+        template.replace("{p}", p).replace("{m}", m).replace("{is}", "are" if p in PLURAL else "is")
+    )
+
+
+def _excerpt(
+    rng: random.Random,
+    s: Setup,
+    text: str,
+    from_me: bool,
+    lang: str,
+    quoted: str,
+    meanings: set[str],
+    used_before: str = "",
+) -> tuple[list[Ev], int]:
+    """The record from one end of the chat, with `used_before` from the same end a little
+    earlier, everyday lines before it and plain acknowledgements after it."""
+    utc = any_time(rng, s.phone.zone)
+    frm, to = (s.me, s.you) if from_me else (s.you, s.me)
+    nb = rng.randint(0, 2) if used_before else rng.randint(1, 3)
+    na = rng.randint(0, 3) if nb else rng.randint(1, 3)
+    rec = Ev(utc, frm, text, to=to)
+    evs, target = thread(rng, rec, chatter(rng, lang, nb, quoted), calm(rng, lang, na))
+    settle(rng, evs, target, lang)
+    if used_before:
+        first = evs[0].utc or utc
+        evs.insert(0, Ev(first - timedelta(seconds=rng.randint(60, 900)), frm, used_before, to=to))
+        target += 1
+    for i, e in enumerate(evs):
+        if i == target:
+            continue
+        if e.frm != frm and quoted.casefold() in e.text.casefold():
+            raise ValueError("someone else uses the words")
+        if content(e.text) & meanings:
+            raise ValueError("a context line touches a meaning in play")
+    return evs, target
+
+
+def explained(rng: random.Random, k: int, family: str) -> Draft:
+    """The words' user says what they mean: the claim's meaning (bk_meaning_said) or another
+    kind of thing altogether (bk_meaning_other)."""
+    ru, ordinal = split_ru(k)
+    lang = "ru" if ru else "en"
+    table = MEANINGS_RU if ru else MEANINGS
+    said = family == "bk_meaning_said"
+    pool = (SAY_RU if ru else SAY) if said else (OTHER_RU if ru else OTHER)
+    sizes = (len(table), len(pool), 1 if said else 2)
+    mi, ti, oi = combo(ordinal, sizes, salt_of(f"{family}|{lang}"))
+    quoted, claim_m, chat_m, others = table[mi]
+    meant = chat_m if said else others[oi]
+    text = say(pool[ti], quoted, meant)
+    s = setup(rng, pick_kind(rng), lang=lang)
+    from_me = rng.random() < 0.5
+    use = ""
+    if rng.random() < 0.4:
+        use = say(rng.choice(USE_RU if ru else USE), quoted, "")
+    in_play = content(f"{claim_m} {chat_m} {' '.join(others)}") - words(quoted)
+    evs, target = _excerpt(rng, s, text, from_me, lang, quoted, in_play, use)
+    rec = evs[target]
+    line = render(s.scene, s.phone, rec)
+    user = s.phone.person if from_me else s.you_pid
+    named = user if user is not None and rng.random() < 0.7 else None
+    claim = meaning_claim(rng, quoted, claim_m, named, record_when(rng, rec.utc, s.phone.zone))
+    how = "used the words earlier in this chat and now" if use else "uses the words and"
+    end = ("the meaning the claim gives them" if said else
+           "a meaning that cannot be true together with the claim's")  # fmt: skip
+    rationale = (f"The record comes from {line.sender}, which {how} plainly says "
+                 f'"{quoted}" means "{meant}": {end}.')  # fmt: skip
+    notes = {"user": rec.frm, "used_before": bool(use)}
+    return Draft(family, "meaning", {"quoted_text": quoted}, s.scene, s.phone, evs, target, text,
+                 rationale, notes, claim=claim)  # fmt: skip
+
+
+def meaning_said(rng: random.Random, k: int) -> Draft:
+    return explained(rng, k, "bk_meaning_said")
+
+
+def meaning_other(rng: random.Random, k: int) -> Draft:
+    return explained(rng, k, "bk_meaning_other")
+
+
+def open_meaning(rng: random.Random, j: int, family: str) -> Draft:
+    """The j-th meaning item of bk_claim_open: words a claim gives a meaning to, used and left
+    unexplained (even j), or a span of an everyday record that a claim reads as a code (odd j)."""
+    if j % 2 == 0:
+        ru, ordinal = split_ru(j // 2)
+        table, uses = (MEANINGS_RU, USE_RU) if ru else (MEANINGS, USE)
+        mi, ui = combo(ordinal, (len(table), len(uses)), salt_of(f"{family}|use|{ru}"))
+        quoted, claim_m, chat_m, others = table[mi]
+        text = say(uses[ui], quoted, "")
+        in_play = content(f"{claim_m} {chat_m} {' '.join(others)}")
+    else:
+        i = j // 2
+        text, core = record_text(rng, i, f"{family}|meaning", vague=i % 3 == 0)
+        quoted = quoted_words(rng, text, core)
+        topics = [t for t in TOPICS if not words(t) & words(text)]
+        if not topics:
+            raise ValueError("every topic shares a word with the record")
+        claim_m = rng.choice(topics)
+        in_play = content(claim_m)
+    lang = lang_of_text(text)
+    s = setup(rng, pick_kind(rng), lang=lang)
+    from_me = rng.random() < 0.5
+    evs, target = _excerpt(rng, s, text, from_me, lang, quoted, in_play - words(quoted))
+    rec = evs[target]
+    line = render(s.scene, s.phone, rec)
+    user = s.phone.person if from_me else s.you_pid
+    named = user if user is not None and rng.random() < 0.6 else None
+    when = record_when(rng, rec.utc, s.phone.zone)
+    claim = meaning_claim(rng, quoted, claim_m, named, when, code=j % 2 == 1)
+    rationale = (f'The record from {line.sender} uses "{quoted}", but nothing shown says what the '
+                 "words mean, so the meaning the claim gives them is not settled.")  # fmt: skip
+    return Draft(family, "meaning", {"quoted_text": quoted}, s.scene, s.phone, evs, target, quoted,
+                 rationale, claim=claim)  # fmt: skip

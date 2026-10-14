@@ -45,7 +45,7 @@ def identity(s: BkSlot, rng: random.Random) -> BkDraft:
             f"holds the account, and no line carries {person} in brackets.",
         )
     return BkDraft(s.family, "person_identity", params, ex, s.cue, why, pr.p, s.lang, pr.sc,
-                   facts={"variant": s.variant})  # fmt: skip
+                   facts={"variant": s.variant}, mentions={person})  # fmt: skip
 
 
 def silent(s: BkSlot, rng: random.Random) -> BkDraft:
@@ -119,12 +119,13 @@ def author(s: BkSlot, rng: random.Random) -> BkDraft:
     a = pr.sender(own)
     person = pr.p.owner if own else bf.named_person(s.person)
     params = {"person_ids": [person], "account_ids": [pr.p.aid(a)]}
-    why = pick(
-        rng,
-        f'The record carries a cue about who is typing ("{s.cue}"); one record cannot show who '
-        "typed what the account sent.",
-        f'"{s.cue}" points to someone other than the usual user, so who wrote what '
-        f"{a.app} {a.ident} sent is left open.",
-    )
+    cue = f'The record carries a cue about who is typing ("{s.cue}"); one record cannot show who '
+    cue += "typed what the account sent."
+    if (s.first2 and s.first2.lower() in s.cue.lower()) or "asked me" in s.cue:
+        why = pick(rng, cue, f'"{s.cue}" says someone other than {person} was typing, so who '
+                             f"wrote what {a.app} {a.ident} sent is left open.")  # fmt: skip
+    else:  # a sign-off or an introduction with the assumption's own person
+        why = pick(rng, cue, f'The record names its writer ("{s.cue}"), but a name typed in a '
+                             "message does not show who typed it.")  # fmt: skip
     return BkDraft(s.family, "authorship", params, ex, s.cue, why, pr.p, s.lang, pr.sc,
-                   facts={"variant": s.variant})  # fmt: skip
+                   facts={"variant": s.variant}, mentions={person})  # fmt: skip

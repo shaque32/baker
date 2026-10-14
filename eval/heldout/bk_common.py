@@ -46,6 +46,8 @@ class BkDraft:
     scene: Scene
     win: Win | None = None
     facts: dict[str, Any] = field(default_factory=dict)  # what tests re-check
+    claim: str | None = None  # the claim's text, for the meaning, role and event templates
+    mentions: set[str] = field(default_factory=set)  # person ids whose names the lines use
 
     @property
     def device(self) -> str:
@@ -54,7 +56,9 @@ class BkDraft:
         return self.phone.dev
 
 
-def finish(d: BkDraft, probe_id: str) -> GenItem:
+def finish(d: BkDraft, probe_id: str, names: dict[str, str]) -> GenItem:
+    """The checked item, read by the names the case gives its people (`names`: person id ->
+    name); the rationale and claim are already written with those names."""
     return bf.build_baker_item(
         probe_id=probe_id,
         family_id=d.family,
@@ -68,6 +72,8 @@ def finish(d: BkDraft, probe_id: str) -> GenItem:
         quote=d.quote,
         rationale=d.rationale,
         device=d.device,
+        claim=d.claim,
+        names=names,
     )
 
 

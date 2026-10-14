@@ -9,7 +9,9 @@ from __future__ import annotations
 import random
 from collections import deque
 
+from eval.heldout import bk_acts as acts
 from eval.heldout import bk_cues as cues
+from eval.heldout import bk_meanings as mn
 from eval.heldout.bk_common import BK_GENERATOR, RU_SITS, SAY, SITS
 from eval.heldout.bk_lines_ru import SAY_RU
 from eval.heldout.bk_names import (
@@ -21,6 +23,7 @@ from eval.heldout.bk_names import (
     RU_FIRSTS,
     RU_PEOPLE,
     SLUGS,
+    surname,
 )
 from eval.heldout.text import normalized
 
@@ -57,6 +60,10 @@ class Walk:
                        for f in RU_FIRSTS]  # fmt: skip
         _rng("contacts|ru").shuffle(ru_contacts)
         self.ru_contacts = deque(ru_contacts)
+        self.phrases = {"en": deque(_rng("phrases").sample(mn.PHRASES, len(mn.PHRASES))),
+                        "ru": deque(_rng("phrases|ru").sample(mn.PHRASES_RU,
+                                                              len(mn.PHRASES_RU)))}  # fmt: skip
+        self.used_words: set[str] = set()
 
     def _next(self, key: str, size: int) -> int:
         i = self.n.get(key, 0)
@@ -169,3 +176,65 @@ class Walk:
             if self._fresh(name):
                 return name
         raise RuntimeError("the contact names ran out")
+
+    # ------------------------------------------------------------ claims (guide rule 29)
+
+    def meaning(self, lang: str, form: str) -> tuple[str, str, str, str, str, str]:
+        """(situation, words, the claim's meaning, the plain meaning, a usage line, record) for
+        the meaning template. form: open (the record uses the words), open_q (it asks about
+        them), said or other (their user explains them), bare (no record). No two items, in
+        either split, use the same words."""
+        ru = lang in ("ru", "mixed")
+        pool = self.phrases["ru" if ru else "en"]
+        used = self.used_words
+        for _ in range(2 * len(pool)):
+            row = pool.popleft()
+            pool.append(row)
+            sit, words = row[0], row[1]
+            if words in used:
+                continue
+            plain = "" if ru else row[2]
+            code = mn.CODES[self._next("code", len(mn.CODES))]
+            spots = cues.SPOTS_RU if ru else cues.SPOTS
+            spot = spots[sit][self._next("mspot", 2)]
+            uses = mn.USAGE_RU if ru else mn.USAGE
+            verbs = {} if ru else mn.agree(words)
+            usage = cues.fill(uses[self._next(f"use|{ru}", len(uses))], p=words, spot=spot,
+                              **verbs)  # fmt: skip
+            record = ""
+            if form == "open":
+                record = usage
+            elif form == "open_q":
+                asks = mn.USAGE_Q_RU if ru else mn.USAGE_Q
+                record = cues.fill(asks[self._next(f"useq|{ru}", len(asks))], p=words,
+                                   spot=spot, **verbs)  # fmt: skip
+            elif form in ("said", "other"):
+                table = mn.SAID if form == "said" else mn.OTHER
+                record = cues.fill(table[self._next(form, len(table))], p=words, m=code,
+                                   a=plain, **verbs)  # fmt: skip
+            if record and not self._fresh(record):
+                continue
+            used.add(words)
+            return sit, words, code, plain, usage, record
+        raise RuntimeError(f"the {lang} meaning words ran out")
+
+    def act(self, kind: str, form: str, z: str) -> tuple[str, str, dict[str, str], str]:
+        """(situation, key, slot values, record) for a claimed act (kind 'act') or role (kind
+        'role') involving person:<z>; form picks the record's lines from the table (plan, did,
+        ask, tell, from, to, deny), or '' for no record."""
+        table = acts.ACTS if kind == "act" else acts.ROLES
+        keys = sorted(table)
+        for _ in range(200):
+            key = keys[self._next(f"{kind}|key", len(keys))]
+            sit = SITS[self._next(f"{kind}|sit", len(SITS))]
+            v = self._next(f"{kind}|v|{sit}", 2)
+            values = {"z": surname(z).lower(), "Z": surname(z), "spot": cues.SPOTS[sit][v],
+                      "thing": cues.THINGS[sit][v],
+                      "hh": acts.HOURS[self._next("hh", len(acts.HOURS))]}  # fmt: skip
+            if not form:
+                return sit, key, values, ""
+            lines = table[key][form]
+            record = cues.fill(lines[self._next(f"{kind}|{form}|{key}", len(lines))], **values)
+            if self._fresh(record):
+                return sit, key, values, record
+        raise RuntimeError(f"no unused {kind} {form} record")

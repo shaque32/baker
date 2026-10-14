@@ -6,12 +6,14 @@ from __future__ import annotations
 
 import random
 
+from eval.heldout import bk_claimkit as ck
 from eval.heldout import bk_cues as cues
 from eval.heldout import bk_pick as pk
 from eval.heldout import bk_time as bt
 from eval.heldout.bk_build import call_scene, pair, shown_as
 from eval.heldout.bk_common import BkDraft, pick
 from eval.heldout.bk_fam_contact import contact_phone, other_name
+from eval.heldout.bk_naming import sur
 from eval.heldout.bk_scene import Acct, Excerpt, Phone, Scene
 from eval.heldout.bk_schedule import BkSlot
 from eval.stancedata import bakerform as bf
@@ -40,9 +42,10 @@ def _draft(
     ph: Phone,
     sc: Scene,
     win: bt.Win | None = None,
+    claim: str | None = None,
 ) -> BkDraft:
     return BkDraft(s.family, template, params, ex, ex.record.text, why, ph, s.lang, sc, win,
-                   facts={"variant": s.variant})  # fmt: skip
+                   claim=claim, facts={"variant": s.variant})  # fmt: skip
 
 
 def unrelated(s: BkSlot, rng: random.Random) -> BkDraft:
@@ -123,19 +126,21 @@ def unrelated(s: BkSlot, rng: random.Random) -> BkDraft:
 def _call(s: BkSlot, rng: random.Random) -> BkDraft:
     """A call record: with a third party (time and no-contact forms) or any call (meaning)."""
     v = s.variant
-    c = call_scene(rng, s, rng.choice(("out_person", "in_linked")))
+    forms = ("out_person",) if v == "meaning_call" else ("out_person", "in_linked")
+    c = call_scene(rng, s, rng.choice(forms))
     third = c.to if c.direction == "outgoing" else c.frm
     win = pk.pick_window(rng, c.p.tz, _NC_KINDS)
     utc = bt.place_inside(rng, win, c.p.tz)
     ex = c.excerpt(rng, utc, pk.duration(rng))
     said = c.said()
     if v == "meaning_call":
-        params: dict[str, object] = {"quoted_text": s.q}
+        params: dict[str, object] = {"quoted_text": s.words}
+        claim = f'{sur(bf.named_person(s.person))} used "{s.words}" to mean {s.meaning}.'
         why = (
             f"The record is {said}; it holds none of the quoted words and does not bear on "
             "what they mean."
         )
-        return _draft(s, "meaning", params, ex, why, c.p, c.sc)
+        return _draft(s, "meaning", params, ex, why, c.p, c.sc, claim=claim)
     y = c.sc.new(rng, "Phone")
     params = {"person_ids": [c.p.owner], "account_ids": [c.p.aid(y)], "window": win.tw()}
     why = (
@@ -166,15 +171,18 @@ def _row(s: BkSlot, rng: random.Random) -> BkDraft:
         )
         return _draft(s, "contact_entry", params, ex, why, p, sc)
     person = bf.named_person(s.person)
-    if (s.k // 12) % 2 == 0:
+    if s.vals["kind"] == "role":
+        span = ck.role_span(rng, p.tz)
         params = {"person_ids": [person]}
-        template = "role"
+        claim = ck.role_claim(span, sur(person), s)
+        template, win = "role", None
     else:
-        win = pk.pick_window(rng, p.tz, _NC_KINDS)
-        params = {"person_ids": [person], "window": win.tw()}
+        win = pk.pick_window(rng, p.tz, ck.EVENT_KINDS)
+        params = {"person_ids": ck.person_ids(rng, s, person), "window": win.tw()}
+        claim = ck.event_claim(win, sur(person), s)
         template = "event"
     why = (
         f"The record is a contact row; it neither comes from nor goes to an account "
-        f"bracketed with {person}."
+        f"bracketed with {person}, and says nothing about the {template} the claim states."
     )
-    return _draft(s, template, params, ex, why, p, sc)
+    return _draft(s, template, params, ex, why, p, sc, win, claim=claim)

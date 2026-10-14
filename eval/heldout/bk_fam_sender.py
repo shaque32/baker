@@ -19,6 +19,7 @@ from eval.heldout.bk_build import (
     shown_as,
 )
 from eval.heldout.bk_common import BkDraft, clause, pick, window_words
+from eval.heldout.bk_names import surname
 from eval.heldout.bk_scene import Excerpt, Scene, items, zone
 from eval.heldout.bk_schedule import BkSlot
 from eval.stancedata import bakerform as bf
@@ -42,16 +43,16 @@ def shown(s: BkSlot, rng: random.Random) -> BkDraft:
         party = {"account_ids": ids}
         if len(ids) == 2:
             why = (
-                f"Both ids name one account, {sender.app} {sender.ident}, as the two phones "
-                "list it, and the record's line shows it sending the quoted words."
+                f"The assumption names {sender.app} {sender.ident}, one account on both phones, "
+                "and the record's line shows that account sending the quoted words."
             )
         else:
             why = pick(
                 rng,
                 f"The record holds the quoted words, and its sender line, {line.sender}, is the "
                 "account the assumption names.",
-                f"Its line shows {sender.app} {sender.ident} as the sender; {ids[0]} is that "
-                "account on this phone, and the record holds the quoted words.",
+                f"Its line shows {sender.app} {sender.ident} sending the quoted words, the "
+                "account the assumption names.",
             )
     else:
         if v == "owner_person":
@@ -106,13 +107,16 @@ def other(s: BkSlot, rng: random.Random) -> BkDraft:
 # ------------------------------------------------------------------ bk_party_unshown
 
 
-def _name_line(rng: random.Random, pr: Pair, s: BkSlot, ex: Excerpt) -> None:
-    """A line after the record in which the owner calls the sender by the person's surname."""
-    text = rng.choice(_NAME_LINES).format(sur=s.person)
+def _name_line(rng: random.Random, pr: Pair, s: BkSlot, ex: Excerpt) -> str:
+    """A line after the record in which the owner calls the sender by the person's first name
+    or surname; returns the name as the line writes it."""
+    called = s.first.lower() if rng.random() < 0.7 else surname(s.person).lower()
+    text = rng.choice(_NAME_LINES).format(sur=called)
     t = ex.lines[-1].utc
     if t is None:
         raise ValueError("a chat line needs its time")
     ex.lines.append(pr.sc.msg(pr.p, pr.me, t + timedelta(seconds=rng.randint(40, 900)), text))
+    return called
 
 
 def window(rng: random.Random, tz: str) -> bt.Win:
@@ -131,10 +135,9 @@ def unshown(s: BkSlot, rng: random.Random) -> BkDraft:
     win = None if v.startswith("sender") else window(rng, pr.p.tz)
     utc = bt.place_inside(rng, win, pr.p.tz) if win else pk.some_time(rng, pr.p.tz)
     mine = False if v in ("sender", "sender_named", "time_msg") else rng.random() < 0.5
-    named = v == "sender_named" and not s.person.startswith("name_") and s.lang != "ru"
+    named = v == "sender_named" and s.lang != "ru"
     ex = pr.chat(rng, s, utc, s.text, mine, where="before" if named else "both")
-    if named:
-        _name_line(rng, pr, s, ex)
+    called = _name_line(rng, pr, s, ex) if named else ""
     params: dict[str, object]
     if v in ("sender", "sender_named", "time_msg"):
         quote = clause(rng, s.text)
@@ -144,7 +147,7 @@ def unshown(s: BkSlot, rng: random.Random) -> BkDraft:
             params["window"] = win.tw()
         if named:
             why = (
-                f'The owner calls the sender "{s.person}", but no line carries {slug} in '
+                f'The owner calls the sender "{called}", but no line carries {slug} in '
                 f"brackets; a name used in a chat does not show who holds {them}."
             )
         else:
@@ -175,7 +178,7 @@ def unshown(s: BkSlot, rng: random.Random) -> BkDraft:
             "confirmed as the named person's.",
         )
     return BkDraft(s.family, template, params, ex, quote, why, pr.p, s.lang, pr.sc, win,
-                   facts={"variant": v})  # fmt: skip
+                   facts={"variant": v}, mentions={slug} if named else set())  # fmt: skip
 
 
 def _unshown_call(s: BkSlot, rng: random.Random, slug: str) -> BkDraft:

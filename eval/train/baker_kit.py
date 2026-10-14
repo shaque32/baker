@@ -2,20 +2,24 @@
 record and context texts, and the assembly of one draft into a checked GenItem.
 
 A writer returns a Draft: the scene, the record's phone, the excerpt's events with the record at
-`target`, the template parameters, the quote and the rationale. `finish` renders every line from
-the scene (brackets included) and builds the item with eval.stancedata.bakerform.
+`target`, the template parameters, the quote, the rationale and, for the meaning, role and event
+templates, the claim. Drafts use Baker's ids; `finish` casts a name for every person the item
+involves (baker_cast.py), renders every line from the scene (brackets included) and builds the
+item with eval.stancedata.bakerform, which prints the assumption and the lines by name.
 """
 
 from __future__ import annotations
 
 import random
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any
 
 from eval.stancedata import bakerform as bf
 from eval.stancedata.model import GenItem
+from eval.stancedata.names import bracketed
+from eval.train.baker_cast import cast, fill_claim, pids_in, readable
 from eval.train.baker_cues import SURNAMES, VAGUE
 from eval.train.baker_scene import (
     MSG_APPS,
@@ -33,11 +37,12 @@ from eval.train.baker_text import FILLER, cyrillic, decorate, fill, salt_of, spl
 from eval.train.baker_time import at, pick_day
 from eval.train.baker_words_a import HOME
 from eval.train.baker_words_b import OUT
-from eval.train.baker_words_ru import HOME_RU, VAGUE_RU
+from eval.train.baker_words_ru import HOME_RU, VAGUE_RU, agree
 
 ORDINARY = {"en": HOME + OUT, "ru": HOME_RU}
 VAGUE_BY = {"en": VAGUE, "ru": VAGUE_RU}
 QUOTING = ("sender", "record_time", "weekday_date", "meaning")
+USED_BEFORE = ("bk_meaning_said", "bk_meaning_other")  # the words' user wrote them earlier too
 
 
 @dataclass
@@ -52,19 +57,53 @@ class Draft:
     quote: str
     rationale: str
     notes: dict[str, Any] = field(default_factory=dict)  # facts the tests re-check
+    claim: str = ""  # the claim's text, people as {{person id}} or {{person id|last}}
+    names: dict[str, str] = field(default_factory=dict)  # names a writer fixed: id -> name
 
 
-def finish(d: Draft, probe_id: str, generator: str) -> GenItem:
+def names_for(rng: random.Random, d: Draft, lines: list[bf.Line]) -> dict[str, str]:
+    """A name for every person the item's params, brackets, claim and rationale mention."""
+    pids = {*d.params.get("person_ids", ()), *pids_in(d.claim), *pids_in(d.rationale)}
+    pids |= {pid for ln in lines for pid in bracketed(ln.sender)}
+    shown = " ".join(f"{ln.sender.split(' [')[0]} {ln.text}" for ln in lines).casefold()
+    return cast(rng, pids, d.names, d.scene.owners, dict(d.scene.people), shown)
+
+
+OWN_GENDER = ("bk_author_cue", "bk_handles_said")  # records already in the speaker's gender
+
+
+def agree_all(d: Draft) -> None:
+    """Russian lines from people the item names, in each one's own gender; a record changed
+    takes its quote, quoted words, rationale and claim along."""
+    for i, e in enumerate(d.evs):
+        person = d.scene.speaker(e.frm)
+        if person is None or person.lang != "ru" or (i == d.target and d.family in OWN_GENDER):
+            continue
+        text = agree(e.text, person.end)
+        if text == e.text:
+            continue
+        d.evs[i] = replace(e, text=text)
+        if i == d.target:
+            d.quote, d.rationale = agree(d.quote, person.end), agree(d.rationale, person.end)
+            d.claim = agree(d.claim, person.end)
+            if "quoted_text" in d.params:
+                d.params["quoted_text"] = agree(d.params["quoted_text"], person.end)
+
+
+def finish(d: Draft, probe_id: str, generator: str, rng: random.Random) -> GenItem:
+    agree_all(d)
     lines = [render(d.scene, d.phone, e) for e in d.evs]
     quoted = d.params.get("quoted_text")
-    if quoted and d.template in QUOTING:
+    if quoted and d.template in QUOTING and d.family not in USED_BEFORE:
         for i, ln in enumerate(lines):
             if i != d.target and quoted.casefold() in ln.text.casefold():
                 raise ValueError(f"{probe_id}: the quoted words also stand on a context line")
+    names = names_for(rng, d, lines)
     return bf.build_baker_item(
         probe_id=probe_id, family_id=d.family, source="train_gen", generator=generator,
         lang=lang_of(lines, d.target), template_id=d.template, params=d.params, lines=lines,
-        target=d.target, quote=d.quote, rationale=d.rationale, device=d.phone.dev,
+        target=d.target, quote=d.quote, rationale=readable(d.rationale, names),
+        device=d.phone.dev, claim=fill_claim(d.claim, names) or None, names=names,
     )  # fmt: skip
 
 
@@ -183,11 +222,11 @@ def setup(
     if kind == "phones":
         other = cast.phone(nums[1], (app, "Phone"), lang)
         return Setup(Scene((phone, other)), phone, other.owner, app, other.person, other)
-    partner = cast.who(lang)
+    partner = cast.who(lang, named=kind == "linked")
     if kind == "linked":
         pid = slug(rng)
         links = tuple((partner.acc(a), pid) for a in dict.fromkeys((app, "Phone", "SMS")))
-        return Setup(Scene((phone,), links), phone, partner, app, pid)
+        return Setup(Scene((phone,), links, ((pid, partner.person),)), phone, partner, app, pid)
     return Setup(Scene((phone,)), phone, partner, app, None)
 
 
@@ -200,7 +239,7 @@ def with_other_phone(rng: random.Random, s: Setup, lang: str = "en") -> Setup:
         cast.taken |= {who.person.name, who.number, who.tg, who.ig}
     taken = {p.item for p in s.scene.phones}
     other = cast.phone(rng.choice([n for n in range(1, 10) if n not in taken]), ("SMS",), lang)
-    scene = Scene((*s.scene.phones, other), s.scene.links)
+    scene = Scene((*s.scene.phones, other), s.scene.links, s.scene.people)
     return Setup(scene, s.phone, s.partner, s.app, s.you_pid, other)
 
 

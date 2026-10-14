@@ -1,19 +1,15 @@
 """The fixed plan of the Baker-wording items: family, variant, language and claimed wording.
 
 Both splits put these items after the plain ones, ids continuing. The test split has the
-composition below and the dev split half of it. Each slot claims its wording from the walk
-(bk_walk) in schedule order, test split first, so no record text repeats in the held-out set
-and the two splits share none.
+composition below and the dev split half of it. Each slot then claims its wording from the
+walk in schedule order, test split first (bk_wording), so no record text repeats in the
+held-out set and the two splits share none.
 """
 
 from __future__ import annotations
 
-import functools
-from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from eval.heldout import bk_cues as cues
-from eval.heldout.bk_walk import Walk
 from eval.heldout.schedule import counts as plain_counts
 
 BK_COMPOSITION: dict[str, int] = {
@@ -38,7 +34,11 @@ BK_COMPOSITION: dict[str, int] = {
     "bk_weekday_open": 24,
     "bk_weekday_wrong": 24,
     "bk_author_cue": 24,
-    "bk_claim_unseen": 24,
+    "bk_claim_open": 24,
+    "bk_meaning_said": 24,
+    "bk_meaning_other": 24,
+    "bk_event_is_record": 24,
+    "bk_claim_denied": 24,
     "bk_unrelated": 48,
 }
 
@@ -68,7 +68,11 @@ VARIANTS: dict[str, tuple[str, ...]] = {
     "bk_weekday_open": ("same_day", "next", "this"),
     "bk_weekday_wrong": ("other_day", "after_date"),
     "bk_author_cue": ("slug_third", "owner_self"),
-    "bk_claim_unseen": ("meaning", "role", "event"),
+    "bk_claim_open": ("meaning", "role_from", "event_from", "meaning_q", "role_to", "event_to"),
+    "bk_meaning_said": ("linked", "owner"),
+    "bk_meaning_other": ("linked", "owner"),
+    "bk_event_is_record": ("msg_in", "msg_out", "call_in", "msg_cross", "msg_acct", "call_out"),
+    "bk_claim_denied": ("event_linked", "event_owner", "role_linked", "role_owner"),
     "bk_unrelated": ("sender_same", "sender_att", "time_msg", "time_call3", "count_third",
                      "nc_call3", "same_acct", "contact_other", "weekday_msg", "meaning_call",
                      "ident_other", "role_event_row"),
@@ -86,12 +90,15 @@ _UNRELATED: dict[str, tuple[str, ...]] = {
     "same_acct": ("say", "handles"),
     "contact_other": ("contact",),
     "weekday_msg": ("say", "wkq"),
-    "meaning_call": ("q",),
+    "meaning_call": ("meaning_bare",),
     "ident_other": ("say",),
-    "role_event_row": ("contact", "role"),
+    "role_event_row": ("contact", "claim_bare"),
 }
-_WORDED = {"say", "ident", "ident_answer", "author", "author_owner", "handle_self", "handle_any",
-           "wk", "contact"}  # fmt: skip
+WORDED = {"say", "ident", "ident_answer", "author", "author_owner", "handle_self", "handle_any",
+           "wk", "contact", "meaning_open"}  # fmt: skip
+# The record lines each claim variant writes (bk_acts): "" leaves the record to the writer.
+ACT_FORMS = {"role_from": ("from",), "role_to": ("to",), "event_from": ("plan", "did"),
+              "event_to": ("ask", "tell")}  # fmt: skip
 
 
 def needs(family: str, variant: str) -> tuple[str, ...]:
@@ -110,8 +117,16 @@ def needs(family: str, variant: str) -> tuple[str, ...]:
         return ("wk",)
     if family.startswith("bk_contact_row"):
         return ("contact",)
-    if family == "bk_claim_unseen" and variant == "role":
-        return ("say", "role")
+    if family == "bk_claim_open":
+        if variant.startswith("meaning"):
+            return ("meaning_open",)
+        return ("role",) if variant.startswith("role") else ("act",)
+    if family in ("bk_meaning_said", "bk_meaning_other"):
+        return ("meaning",)
+    if family == "bk_event_is_record":
+        return () if variant.startswith("call") else ("say",)
+    if family == "bk_claim_denied":
+        return ("role",) if variant.startswith("role") else ("act",)
     return ("say",)
 
 
@@ -144,6 +159,13 @@ class BkSlot:
     handles: tuple[str, str, str] = ("", "", "")  # (app, old, new), each handle with "@"
     day: int = -1  # the weekday a plan names, Monday 0
     contact: str = ""  # a saved contact name
+    person2: str = ""  # another person a claim names (person:<slug>), never on any line
+    words: str = ""  # the quoted words of a meaning claim
+    meaning: str = ""  # the meaning the claim gives them
+    plain: str = ""  # the plain thing they name in the chat
+    usage: str = ""  # a line that uses the words
+    act: str = ""  # the act or role a claim states (bk_acts key)
+    vals: dict[str, str] = field(default_factory=dict)  # its slot values (z, spot, thing, hh)
 
 
 def bk_counts(split: str) -> dict[str, int]:
@@ -154,7 +176,8 @@ def bk_counts(split: str) -> dict[str, int]:
     raise ValueError(f"unknown split {split!r}; use 'test' or 'dev'")
 
 
-def _slots(split: str) -> list[BkSlot]:
+def slots(split: str) -> list[BkSlot]:
+    """The split's planned items in id order, before they claim their wording."""
     start = sum(plain_counts(split).values())
     seq = []
     for order, fam in enumerate(BK_COMPOSITION):
@@ -165,110 +188,4 @@ def _slots(split: str) -> list[BkSlot]:
     for i, (_, _, fam, k) in enumerate(seq):
         variants = VARIANTS[fam]
         out.append(BkSlot(start + i + 1, split, fam, k, variants[k % len(variants)]))
-    return out
-
-
-def _named(walk: Walk) -> str:
-    """A person slug that reads as a surname (not a withheld "name_0417")."""
-    for _ in range(8):
-        slug = walk.person()
-        if not slug.startswith("name_"):
-            return slug
-    raise RuntimeError("no surname slug")
-
-
-def _identity(walk: Walk, s: BkSlot, ru: bool, answer: bool) -> None:
-    """A self-naming record: the person, their name as written, and the record and cue."""
-    for _ in range(30):
-        if ru:
-            s.person, s.sur, s.first = walk.ru_person()
-        else:
-            s.person = _named(walk)
-            s.sur = s.person
-        names = {"first": s.first.lower(), "First": s.first, "sur": s.sur.lower(),
-                 "Sur": s.sur[:1].upper() + s.sur[1:]}  # fmt: skip
-        try:
-            if not answer:
-                table = cues.ID_RU if ru else cues.ID_EN
-                s.text, s.cue = walk.marked(table, f"id|{ru}", **names)
-                return
-            pairs = cues.ID_ANSWER_RU if ru else cues.ID_ANSWER_EN
-            ask, rec = pairs[walk._next(f"ida|{ru}", len(pairs))]
-            s.text, s.cue = walk.marked((rec,), f"idr|{ru}", **names)
-            s.ask = cues.fill(ask, **names)
-            return
-        except RuntimeError:
-            continue
-    raise RuntimeError("no unused identity record")
-
-
-def _author(walk: Walk, s: BkSlot, ru: bool, named: bool) -> None:
-    """A record with a cue about who is typing; `named` cues name the assumption's person."""
-    for _ in range(30):
-        first2 = walk.ru_first() if ru else s.first2.lower()
-        if ru:
-            table = cues.AUTHOR_RU
-        else:
-            table = cues.AUTHOR_EN if named else cues.AUTHOR_OWNER_EN
-        if named and not ru:
-            s.person = _named(walk)
-        sur = s.person
-        try:
-            s.text, s.cue = walk.marked(table, f"au|{ru}|{named}", first2=first2, sur=sur,
-                                        Sur=sur.capitalize(), First=s.first)  # fmt: skip
-            s.first2 = first2
-            return
-        except RuntimeError:
-            s.first2 = walk.first(avoid=s.first)
-    raise RuntimeError("no unused authorship record")
-
-
-def _claim(walk: Walk, s: BkSlot, want: tuple[str, ...]) -> None:
-    ru = s.lang in ("ru", "mixed")
-    s.person = walk.person()
-    s.first, s.first2 = walk.first(), ""
-    s.first2 = walk.first(avoid=s.first)
-    if "role" in want:
-        s.person = walk.role_person()
-    if "handles" in want:
-        s.handles = walk.handle_pair()
-    old, new = (h.lstrip("@") for h in s.handles[1:])
-    if "say" in want:
-        s.sit, s.text = walk.say_line(s.lang)
-    if "q" in want:
-        _, s.q = walk.say_line(s.lang if "say" in want else "en", no_money=True)
-    if "wkq" in want:
-        _, s.q, _ = walk.weekday(s.lang, "")
-    if "wk" in want:
-        mod = {"next": "next ", "this": "this "}.get(s.variant, "")
-        s.sit, s.text, s.day = walk.weekday(s.lang, mod)
-    if "contact" in want:
-        s.contact = walk.contact("ru" if ru else "en")
-    if "ident" in want or "ident_answer" in want:
-        _identity(walk, s, ru, "ident_answer" in want)
-    if "author" in want or "author_owner" in want:
-        _author(walk, s, ru, "author" in want)
-    if "handle_self" in want or "handle_any" in want:
-        kind = "self" if "handle_self" in want else "any"
-        table = getattr(cues, f"HANDLE_{kind.upper()}_{'RU' if ru else 'EN'}")
-        s.text, s.cue = walk.marked(table, f"hd|{kind}|{ru}", old=old, new=new)
-
-
-@functools.lru_cache(maxsize=1)
-def bk_schedule() -> dict[str, list[BkSlot]]:
-    """Both splits with their wording claimed, test first; a fixed table."""
-    walk = Walk()
-    out: dict[str, list[BkSlot]] = {}
-    for split in ("test", "dev"):
-        slots = _slots(split)
-        seen: Counter[str] = Counter()
-        for s in slots:
-            want = needs(s.family, s.variant)
-            if _WORDED & set(want):
-                s.lang = lang_for(seen[s.family])
-                seen[s.family] += 1
-                if s.lang == "mixed" and "contact" in want:
-                    s.lang = "en"
-            _claim(walk, s, want)
-        out[split] = slots
     return out

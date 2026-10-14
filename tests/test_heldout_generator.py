@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import re
 from collections import Counter
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -35,6 +36,7 @@ from eval.stancedata.bakerform import ZONE_OF
 from eval.stancedata.chat import write_jsonl
 from eval.stancedata.families import family
 from eval.stancedata.model import GenItem
+from eval.stancedata.names import case_names
 
 PACKAGE = Path(__file__).resolve().parent.parent / "eval" / "heldout"
 
@@ -1033,11 +1035,23 @@ def _phone_tz(it: GenItem) -> str:
     return ZONE_OF[it.target.local_time[20:]]
 
 
-def _sender(line) -> tuple[str, str, bool, tuple[str, ...]]:  # noqa: ANN001
+def _who(it: GenItem) -> dict[str, str]:
+    """Each name the item prints in brackets -> the person id it stands for. Lines read by
+    name (core/audit/readable.py), and no two people of an item read alike."""
+    people = it.baker_names or {}
+    names = case_names(people)
+    who = {names.person(pid): pid for pid in people}
+    assert len(who) == len(people), it.probe_id
+    return who
+
+
+def _sender(line, who: dict[str, str]) -> tuple[str, str, bool, tuple[str, ...]]:  # noqa: ANN001
+    """(app, identifier, owner?, the person ids its brackets name) of a sender line."""
     m = _BK_SENDER.match(line.sender)
     assert m, line.sender
-    persons = tuple(m.group(4).split(", ")) if m.group(4) else ()
-    return m.group(1), m.group(2), bool(m.group(3)), persons
+    labels = m.group(4).split(", ") if m.group(4) else []
+    assert labels == sorted(set(labels)), line.sender  # printed in order, once each
+    return m.group(1), m.group(2), bool(m.group(3)), tuple(who[x] for x in labels)
 
 
 def _call(line) -> dict[str, object] | None:  # noqa: ANN001
@@ -1063,7 +1077,7 @@ def test_bk_composition_follows_the_plain_items(
         bk = _bk(items)
         fam = _by_family(bk)
         assert fam == {f: n // scale for f, n in BK_COMPOSITION.items()}
-        assert sum(fam.values()) == 1152 // scale
+        assert sum(fam.values()) == 672 // scale  # 24 per family, 48 unrelated (test split)
         first = len(items) - len(bk)
         assert first == TOTAL // scale
         assert not _bk(items[:first]), "Baker-wording items come after every plain item"
@@ -1084,7 +1098,7 @@ def test_bk_sender_lines_follow_the_bracket_rule(
     carry its stipulated owner; an account reads the same on every line; own accounts on number
     apps share one number, so a number's brackets do not depend on the app."""
     for it in _bk(test_items + dev_items):
-        p = _item_no(it)
+        p, who = _item_no(it), _who(it)
         own = f"person:dev:item{p}:owner"
         seen: dict[tuple[str, str], str] = {}
         by_number: dict[str, tuple[str, ...]] = {}
@@ -1093,15 +1107,14 @@ def test_bk_sender_lines_follow_the_bracket_rule(
                 assert len(it.context) == 0 and line.local_time == "no time in source"
                 assert line.account_id.startswith(f"acct:item{p}:Phone:+1"), it.probe_id
                 continue
-            app, ident, owner, persons = _sender(line)
+            app, ident, owner, persons = _sender(line, who)
             assert line.account_id == f"acct:item{p}:{app}:{ident}", (it.probe_id, line)
             assert owner == (own in persons), (it.probe_id, line.sender)
-            assert list(persons) == sorted(set(persons)), line.sender
             for person in persons:
                 assert re.fullmatch(r"person:(dev:item[1-9]:owner|[a-z][a-z0-9_]*)", person)
             assert seen.setdefault((app, ident), line.sender) == line.sender, it.probe_id
             if app in ("SMS", "WhatsApp", "Signal", "Phone"):
-                key = (*persons, "(owner)" if owner else "")
+                key = (*sorted(persons), "(owner)" if owner else "")
                 assert by_number.setdefault(ident, key) == key, (it.probe_id, ident)
 
 
@@ -1109,27 +1122,38 @@ def test_bk_names_and_numbers_follow_the_pools(
     test_items: list[GenItem], dev_items: list[GenItem]
 ) -> None:
     handles = {h.lstrip("@") for _, *pair in bk_names.HANDLE_PAIRS for h in pair}
-    for name in (*bk_names.SLUGS, *bk_names.ROLE_SLUGS, *bk_names.FIRSTS):
+    latin = [
+        *bk_names.SLUGS,
+        *bk_names.ROLE_SLUGS,
+        *bk_names.FIRSTS,
+        *bk_names.WITHHELD.values(),
+        *bk_names.RU_LATIN.values(),
+        *(n for pair in bk_names.OWNERS for n in pair),
+    ]
+    for name in latin:
         assert "N" <= name[0].upper() <= "Z", name
     for _, sur, first in bk_names.RU_PEOPLE:
         assert "М" <= sur[0] <= "Я" and "М" <= first[0] <= "Я", sur
-    for first in bk_names.RU_FIRSTS:
+    for first in (*bk_names.RU_FIRSTS, *bk_names.RU_LATIN):
         assert "М" <= first[0] <= "Я", first
     for it in _bk(test_items + dev_items):
-        params = it.baker_params or {}
+        params, who = it.baker_params or {}, _who(it)
         persons = list(params.get("person_ids", []))
         for line in _in_order(it):
             if line.sender != "contact list":
-                persons += _sender(line)[3]
+                persons += _sender(line, who)[3]
+        assert set(persons) == set(it.baker_names or {}), it.probe_id
         for person in persons:
             slug = person.removeprefix("person:")
             assert slug.startswith("dev:item") or "n" <= slug[0] <= "z", (it.probe_id, person)
+        for name in (it.baker_names or {}).values():  # first name and surname, N to Z
+            assert re.fullmatch(r"[N-Z][a-z]+ [N-Z][a-z]+", name), (it.probe_id, name)
         for aid in [line.account_id for line in _in_order(it)] + params.get("account_ids", []):
             _, app, ident = _acct(aid)
             if app == "Telegram":
                 assert re.fullmatch(r"[89]\d{6}", ident), (it.probe_id, ident)
             elif app == "Instagram":
-                assert ident in bk_names.IG_HANDLES or ident in handles, (it.probe_id, ident)
+                assert ident in bk_names.NEUTRAL_IG or ident in handles, (it.probe_id, ident)
             else:
                 m = re.fullmatch(r"\+1(\d{3})555(01\d{2})", ident)
                 assert m and m.group(1) in AREA_CODES, (it.probe_id, ident)
@@ -1179,12 +1203,13 @@ def test_bk_quotes_follow_the_quote_rules(
     test_items: list[GenItem], dev_items: list[GenItem]
 ) -> None:
     """The quoted words when the template quotes words; the cue for identity, authorship and
-    handles; otherwise the record's whole text (its time, sender, numbers or length decide)."""
+    handles; otherwise the record's whole text (its time, sender, numbers or length decide, or,
+    for a claim, the whole message: an explanation, a denial or the claimed message itself)."""
     for it in _bk(test_items + dev_items):
         quoted = (it.baker_params or {}).get("quoted_text")
         assert verify_quote(it.proposed_quote, it.target.text), it.probe_id
         words = it.family in _WORDS_QUOTED or (
-            it.family in ("bk_time_outside", "bk_zone_edge", "bk_party_unshown", "bk_claim_unseen")
+            it.family in ("bk_time_outside", "bk_zone_edge", "bk_party_unshown", "bk_claim_open")
             and quoted is not None
             and it.baker_template != "contact_entry"
         )
@@ -1279,8 +1304,8 @@ def _window_of(it: GenItem) -> tuple[list, datetime | None, str] | None:
 
 
 _INSIDE = {"bk_time_inside", "bk_call_inside", "bk_call_length", "bk_count_one",
-           "bk_no_contact_inside", "bk_other_phone", "bk_party_unshown",
-           "bk_claim_unseen"}  # fmt: skip
+           "bk_no_contact_inside", "bk_other_phone", "bk_party_unshown", "bk_claim_open",
+           "bk_event_is_record"}  # fmt: skip
 
 
 def test_bk_windows_match_their_words_and_records_keep_their_margins(
@@ -1334,17 +1359,18 @@ def test_bk_calls_read_from_their_text(test_items: list[GenItem], dev_items: lis
     spare, or (bk_call_length) misses it by half the minimum or twice the maximum."""
     checked = Counter()
     for it in _bk(test_items + dev_items):
+        who = _who(it)
         for line in _in_order(it):
             call = _call(line)
             if call is not None:
-                app, ident, _, _ = _sender(line)
+                app, ident, _, _ = _sender(line, who)
                 assert call["utc"] == _utc(line), (it.probe_id, line.text)
                 assert app == "Phone" and ident == call["frm"] != call["to"], it.probe_id
         call = _call(it.target)
         if call is None or it.family in ("bk_unrelated", "bk_party_unshown"):
             continue
         params = it.baker_params or {}
-        assert params["person_ids"][0] in _sender(it.target)[3], it.probe_id
+        assert params["person_ids"][0] in _sender(it.target, who)[3], it.probe_id
         assert len(params["person_ids"]) == 1 and len(params["account_ids"]) == 1, it.probe_id
         _, app, ident = _acct(params["account_ids"][0])
         assert app == "Phone" and ident == call["to"], it.probe_id
@@ -1355,6 +1381,7 @@ def test_bk_calls_read_from_their_text(test_items: list[GenItem], dev_items: lis
             assert span[0] <= 0.9 * dur and span[1] >= 1.1 * dur, it.probe_id
         checked[it.family] += 1
     assert checked["bk_call_inside"] == 36 and checked["bk_call_length"] == 36, checked
+    assert checked["bk_event_is_record"] == 12, checked
 
 
 def test_bk_contact_rows_sit_on_the_named_phone(
@@ -1430,12 +1457,12 @@ def test_bk_weekday_items_relate_the_dates(
 # ------------------------------------------------------------------ bk parties on screen
 
 
-def _on_line(line, party: list[str]) -> bool:  # noqa: ANN001
-    """Whether a line shows a party: a person in its brackets, or one of the party's account
-    ids as its sender or as a number in its call text."""
+def _on_line(it: GenItem, line, party: list[str]) -> bool:  # noqa: ANN001
+    """Whether a line of the item shows a party: a person in its brackets, or one of the
+    party's account ids as its sender or as a number in its call text."""
     if line.sender == "contact list":
         return False
-    app, ident, _, persons = _sender(line)
+    app, ident, _, persons = _sender(line, _who(it))
     call = _call(line)
     for name in party:
         if name.startswith("person:") and name in persons:
@@ -1459,40 +1486,47 @@ def _chat_accounts(it: GenItem) -> set[str]:
     return {line.account_id for line in _in_order(it)}
 
 
-_BOTH_SHOWN = {"bk_no_contact_inside", "bk_count_one", "bk_other_phone", "bk_outside_window"}
+_BOTH_SHOWN = {"bk_no_contact_inside", "bk_count_one", "bk_other_phone", "bk_outside_window",
+               "bk_event_is_record"}  # fmt: skip
+_CLAIMED = {"bk_claim_open", "bk_claim_denied"}
 
 
 def test_bk_named_parties_are_shown_as_each_family_needs(
     test_items: list[GenItem], dev_items: list[GenItem]
 ) -> None:
     for it in _bk(test_items + dev_items):
-        f, rec, parties = it.family, it.target, _parties(it)
+        f, rec, parties, lines = it.family, it.target, _parties(it), _in_order(it)
         if f == "bk_sender_shown" or (f == "bk_time_inside" and parties):
-            assert len(parties) == 1 and _on_line(rec, parties[0]), it.probe_id
+            assert len(parties) == 1 and _on_line(it, rec, parties[0]), it.probe_id
         elif f == "bk_time_inside":
             assert "(anyone)" in it.assumption, it.probe_id
         elif f == "bk_sender_other":
-            assert not _on_line(rec, parties[0]), it.probe_id
-            assert any(_on_line(line, parties[0]) for line in it.context), it.probe_id
+            assert not _on_line(it, rec, parties[0]), it.probe_id
+            assert any(_on_line(it, line, parties[0]) for line in it.context), it.probe_id
         elif f == "bk_party_unshown":
             named = [p for p in (it.baker_params or {})["person_ids"] if "dev:item" not in p]
-            assert named and not any(_on_line(ln, named) for ln in _in_order(it)), it.probe_id
+            assert named and not any(_on_line(it, ln, named) for ln in lines), it.probe_id
         elif f in _BOTH_SHOWN:
             assert len(parties) == 2, it.probe_id
             if _call(rec):
-                assert all(_on_line(rec, party) for party in parties), it.probe_id
+                assert all(_on_line(it, rec, party) for party in parties), it.probe_id
             else:  # a one-to-one chat: the record's sender and the one other account
                 assert len(_chat_accounts(it)) == 2, it.probe_id
-                assert all(any(_on_line(ln, party) for ln in _in_order(it)) for party in parties)
-                assert any(_on_line(rec, party) for party in parties), it.probe_id
+                assert all(any(_on_line(it, ln, party) for ln in lines) for party in parties)
+                assert any(_on_line(it, rec, party) for party in parties), it.probe_id
         elif f in ("bk_identity_named", "bk_account_silent", "bk_author_cue"):
-            assert len(parties) == 2 and _on_line(rec, parties[1]), it.probe_id
-            persons = _sender(rec)[3]
+            assert len(parties) == 2 and _on_line(it, rec, parties[1]), it.probe_id
+            persons = _sender(rec, _who(it))[3]
             assert persons == (() if f != "bk_author_cue" else persons), it.probe_id
             assert all(p not in persons or "dev:item" in p for p in parties[0]), it.probe_id
-        elif f == "bk_claim_unseen" and it.baker_template != "meaning":
-            assert len(_chat_accounts(it)) == 2, it.probe_id
-            assert any(_on_line(ln, parties[0]) for ln in _in_order(it)), it.probe_id
+        elif f in _CLAIMED and it.baker_template != "meaning":
+            # one chat with the claim's person, bracketed on the record (from them) or on the
+            # other side's lines (to them); the other person the claim names has no account
+            person, *other = (it.baker_params or {})["person_ids"]
+            assert len(_chat_accounts(it)) == 2 and len(other) <= 1, it.probe_id
+            assert any(_on_line(it, ln, [person]) for ln in lines), it.probe_id
+            assert f == "bk_claim_open" or _on_line(it, rec, [person]), it.probe_id
+            assert not any(_on_line(it, ln, other) for ln in lines), it.probe_id
 
 
 def test_bk_counts_and_phones_leave_the_answer_open(
@@ -1509,7 +1543,7 @@ def test_bk_counts_and_phones_leave_the_answer_open(
         elif it.baker_template in ("message_count", "no_contact") and it.family != "bk_unrelated":
             assert params.get("device_ids", [it.device_id]) == [it.device_id], it.probe_id
         if it.baker_template == "no_contact" and params.get("channels"):
-            assert params["channels"] == [_sender(it.target)[0]], it.probe_id
+            assert params["channels"] == [_sender(it.target, _who(it))[0]], it.probe_id
 
 
 # ------------------------------------------------------------------ bk cues and unrelated records
@@ -1560,7 +1594,158 @@ def test_bk_unrelated_records_hold_none_of_the_matter(
         named = ("no_contact", "message_count", "person_identity")
         if it.baker_template in named or params.get("channels") == ["call"]:
             accounts = [p for party in _parties(it) for p in party if p.startswith("acct:")]
-            assert accounts and not any(_on_line(ln, accounts) for ln in _in_order(it)), it.probe_id
+            assert not any(_on_line(it, ln, accounts) for ln in _in_order(it)), it.probe_id
+            assert accounts, it.probe_id
         if it.baker_template in ("role", "event"):
             assert rec.sender == "contact list", it.probe_id
     assert len(shapes) >= 10, shapes
+
+
+# ------------------------------------------------------------------ bk claims (guide rule 29)
+
+_CLAIM_TEMPLATES = {"meaning", "role", "event"}
+_MEANT = re.compile(
+    r'(?:.+ used "(?P<w1>.+)" to mean|When .+ wrote "(?P<w2>.+)", .+ meant) (?P<m>.+)\.'
+)
+_NOT = r"(?:not|never|nothing to do with)"
+
+
+def test_bk_claims_show_with_their_templates(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    """A meaning, role or event item shows the claim, and nothing else does. The claim quotes
+    the words (meaning) or names its person by surname (role, event), and carries no ids."""
+    shown = Counter()
+    for it in _bk(test_items + dev_items):
+        claim, params = it.baker_claim, it.baker_params or {}
+        if it.baker_template not in _CLAIM_TEMPLATES:
+            assert claim is None, it.probe_id
+            continue
+        assert claim and claim[0].isupper() and claim[-1] in '."', it.probe_id
+        if it.baker_template == "meaning":
+            assert f'"{params["quoted_text"]}"' in claim, it.probe_id
+        else:
+            surname = (it.baker_names or {})[params["person_ids"][0]].split()[-1]
+            assert surname in claim, (it.probe_id, claim)
+        shown[it.family] += 1
+    for family_id in ("bk_claim_open", "bk_meaning_said", "bk_meaning_other",
+                      "bk_event_is_record", "bk_claim_denied"):  # fmt: skip
+        assert shown[family_id] == 36, shown
+    assert shown["bk_unrelated"] > 0, shown
+
+
+def test_bk_ids_and_users_names_never_show_in_texts(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    """Names replace ids in what a model reads, and no line's text names a phone's stipulated
+    user: only the case names them."""
+    for it in _bk(test_items + dev_items):
+        lines = _in_order(it)
+        texts = [it.assumption, it.rationale, it.baker_claim or "", *(ln.sender for ln in lines)]
+        assert not any(i in t for t in texts for i in ("person:", "acct:", "dev:")), it.probe_id
+        words = {w for ln in lines for w in re.findall(r"[a-z]+", ln.text.lower())}
+        for pid, name in (it.baker_names or {}).items():
+            if pid.endswith(":owner"):
+                assert not set(name.lower().split()) & words, (it.probe_id, name)
+
+
+def test_bk_meaning_records_follow_their_family(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    """bk_claim_open: the record uses or asks about the words, and no line says what they mean
+    or uses them before. bk_meaning_said and bk_meaning_other: the account that used the words
+    on an earlier line explains them in the record, as the claim's meaning (said) or as another
+    thing, naming the claim's meaning as what they are not (other); the claim names its user."""
+    seen = Counter()
+    for it in _bk(test_items + dev_items):
+        if it.baker_template != "meaning" or it.family == "bk_unrelated":
+            continue
+        m = _MEANT.fullmatch(it.baker_claim or "")
+        assert m, it.probe_id
+        words, meaning = normalized(m["w1"] or m["w2"]), normalized(m["m"])
+        rec, rest = normalized(it.target.text), [normalized(ln.text) for ln in it.context]
+        assert words == normalized((it.baker_params or {})["quoted_text"]) and words in rec
+        if it.family == "bk_claim_open":
+            assert not any(words in t or meaning in t for t in rest) and meaning not in rec
+        else:
+            earlier = it.context[: it.target_index]
+            sender = it.target.sender
+            assert any(words in normalized(ln.text) and ln.sender == sender for ln in earlier)
+            label = sender.split(" [", 1)[1].rstrip("]")
+            assert label.split(" (")[0].split()[-1] in (it.baker_claim or ""), it.probe_id
+            negated = re.search(rf"\b{_NOT} {re.escape(meaning)}\b", rec)
+            assert meaning in rec and bool(negated) == (it.family == "bk_meaning_other")
+        seen[it.family] += 1
+    assert seen == {"bk_claim_open": 12, "bk_meaning_said": 36, "bk_meaning_other": 36}, seen
+
+
+def _dial(number: str) -> str:
+    return f"({number[2:5]}) {number[5:8]}-{number[8:]}"
+
+
+def test_bk_event_records_are_the_claimed_message_or_call(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    """bk_event_is_record: the claim opens with the window's words and quotes the record's
+    text word for word (a message) or dials the call's other number (a call), and it names
+    each person of the assumption."""
+    for it in _bk(test_items + dev_items):
+        if it.family != "bk_event_is_record":
+            continue
+        claim, rec = it.baker_claim or "", it.target
+        assert claim.lower().removeprefix("sometime ").startswith(_raw(it).lower())
+        call = _call(rec)
+        if call is None:
+            assert f'"{rec.text}"' in claim and it.proposed_quote == rec.text, it.probe_id
+        else:
+            assert " called " in claim and _dial(str(call["to"])) in claim, it.probe_id
+        for person in (it.baker_params or {})["person_ids"]:
+            assert (it.baker_names or {})[person].split()[-1] in claim, it.probe_id
+
+
+_TEXTED = re.compile(r"\b(" + "|".join(m.lower() for m in _MONTHS) + r") (\d{1,2})\b")
+_SPAN = re.compile(r"From (.+?) through ([A-Z][a-z]+ \d{1,2}, \d{4}), ")
+
+
+def _texted_day(month: str, day: str, near: date) -> date:
+    """A date a chat writes without a year ('march 3'), in the year that puts it nearest."""
+    days = []
+    for year in (near.year - 1, near.year, near.year + 1):
+        with contextlib.suppress(ValueError):  # february 29
+            days.append(date(year, _MONTHS.index(month.capitalize()) + 1, int(day)))
+    return min(days, key=lambda d: abs(d - near))
+
+
+def test_bk_denials_come_after_the_claim_and_cover_it(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    """bk_claim_denied: sent a day or more after the claim's time (a role's span opens its
+    claim), the record rules the act or role out for all time before it ("never", no dates)
+    or for dates that hold every day of the claim's window."""
+    covers = Counter()
+    for it in _bk(test_items + dev_items):
+        if it.family != "bk_claim_denied":
+            continue
+        utc, text = _utc(it.target), it.target.text.lower()
+        if it.baker_template == "event":
+            readings, _, tz = _window_of(it) or ([], None, "")
+            assert not _raw(it).startswith("after"), it.probe_id
+        else:
+            m = _SPAN.match(it.baker_claim or "")
+            assert m, it.probe_id
+            readings, _ = _readings(f"from {m.group(1)} through {m.group(2)}")
+            tz = _phone_tz(it)
+        for z in {tz, _phone_tz(it)}:
+            assert _outside_by(utc, readings, z) >= _ONE_DAY, it.probe_id
+            assert utc > _wall(readings[0][1], z), it.probe_id
+        start, end = readings[0]
+        named = [_texted_day(mo, d, start.date()) for mo, d in _TEXTED.findall(text)]
+        if not named:
+            assert re.search(r"\b(never|ever)\b", text), it.probe_id
+            covers["never"] += 1
+            continue
+        assert len(named) in (1, 2), it.probe_id
+        last_day = (end - timedelta(microseconds=1)).date()
+        assert named[0] <= start.date() and named[-1] >= last_day, (it.probe_id, text)
+        covers["dates"] += 1
+    assert covers["never"] >= 12 and covers["dates"] >= 6, covers
