@@ -321,3 +321,59 @@ def test_copies_collapse_only_across_phones():
 def test_a_record_with_no_time_gets_no_derived_time(conn):
     fit = explain._fit(explain.load(conn), _row("msg:none", "item1", "x", None), "note")
     assert fit.when == ""
+
+
+# ---------------------------------------------------------------- scope (second Codex review)
+
+
+def _asm(conn: sqlite3.Connection, claim_id: str, template_id: str, **params):  # noqa: ANN202
+    """The claim's first assumption of this template, with some parameters replaced."""
+    st = claim_state(conn, claim_id)
+    assert st is not None
+    a = next(x for x in st.assumptions if x.template_id == template_id)
+    return a.model_copy(update={"params": a.params.model_copy(update=params)})
+
+
+def test_a_weekday_reference_gets_no_clock_lead(conn):
+    # A weekday's target day is counted from the send date, so another clock moves it too.
+    a = _asm(conn, "C10", "record_time")
+    assert explain._clock(explain.load(conn), [a]) is not None
+    weekday = a.model_copy(update={"template_id": "weekday_date"})
+    assert explain._clock(explain.load(conn), [weekday]) is None
+
+
+def test_day_boundary_notes_name_the_stated_zone(conn):
+    (fit,) = alts_for(conn, "C14")["day_boundary"].fits
+    assert "stated zone" in fit.note and "America/New_York" in fit.note
+    assert "phone's zone" not in fit.note
+
+
+@pytest.mark.parametrize("device", ["dev:item1", "dev:item2"])
+def test_other_app_records_stay_on_the_named_phone(conn, device):
+    a = _asm(conn, "C14", "no_contact", channels=("WhatsApp",), device_ids=(device,))
+    alt = explain._other_app(explain.load(conn), [a])
+    assert alt is not None
+    assert {f.source_id for f in alt.fits} == {device.removeprefix("dev:")}
+
+
+def test_clock_calls_stay_on_the_named_phone_and_parties(conn):
+    case = explain.load(conn)
+    a = _asm(conn, "C09", "record_time")
+    accounts = set(a.params.account_ids)
+    rows = explain._clock_rows(case, a, {})
+    assert rows and all(r.source_id == "item1" and r.accounts & accounts for r in rows)
+    other = a.model_copy(update={"params": a.params.model_copy(update={"device_ids": ("dev:x",)})})
+    assert explain._clock_rows(case, other, {}) == []
+
+
+def test_a_quiet_app_edge_can_be_a_call(conn):
+    conn.execute(
+        "INSERT INTO calls (id, source_id, locator, device_id, app, from_account_id,"
+        " to_account_id, direction, ts_utc, ts_offset_min, ts_raw, duration_s)"
+        " VALUES ('call:item1:test', 'item1', 'Test!1', 'dev:item1', 'WhatsApp', NULL, NULL,"
+        " 'incoming', '2026-03-20T03:00:00Z', 0, '3/20/2026 3:00:00 AM(UTC+0)', 30)"
+    )
+    quiet = alts_for(conn, "C15")["app_quiet"]
+    before = next(f for f in quiet.fits if f.source_id == "item1" and "last before" in f.note)
+    assert before.record_id == "call:item1:test"
+    assert before.quote == "WhatsApp call, 30 s"

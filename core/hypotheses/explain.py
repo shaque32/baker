@@ -71,7 +71,6 @@ FAMILY_TEXT: dict[Family, str] = {
 }
 
 _IDENTITY_TEMPLATES = frozenset({"sender", "authorship", "person_identity"})
-_TIME_TEMPLATES = frozenset({"record_time", "weekday_date"})
 _WINDOW_TEMPLATES = frozenset({"message_count", "no_contact"})
 _SILENCE_TEMPLATES = frozenset({"no_contact", "event"})
 _QUOTE_TEMPLATES = frozenset({"sender", "record_time", "weekday_date", "meaning"})
@@ -603,17 +602,28 @@ def _clock_rows(case: Case, a: Assumption, claimed: dict[str, list[Row]]) -> lis
     if p.quoted_text:
         return claimed.get(a.id, [])
     if CALL_CHANNEL in p.channels:
-        accounts = set().union(*(case.data.account_ids(x.keys) for x in parties(case.data, p)))
-        rows = calls_for_accounts(case.data, accounts) if accounts else []
+        # The same scope as the time check: the named phones, and every named party on the call.
+        party_ids = [case.data.account_ids(x.keys) for x in parties(case.data, p)]
+        if not party_ids or not all(party_ids):
+            return []
+        sources = set(case.data.sources_for(p.device_ids))
+        rows = calls_for_accounts(case.data, set().union(*party_ids))
         if p.duration_s:
             lo, hi = p.duration_s
             rows = [r for r in rows if r.duration_s is not None and lo <= r.duration_s <= hi]
-        return rows
+        return [
+            r
+            for r in rows
+            if r.source_id in sources and channel_ok(r, p.channels) and involves_all(r, party_ids)
+        ]
     return []
 
 
 def _clock(case: Case, assumptions: list[Assumption]) -> Alternative | None:
-    mine = [a for a in assumptions if a.template_id in _TIME_TEMPLATES and a.params.window]
+    # Only record_time: a weekday_date window is the day a message refers to, counted from its
+    # send date, so another clock would move the target day too. Reading the send time alone on
+    # another clock against the old target would mislead.
+    mine = [a for a in assumptions if a.template_id == "record_time" and a.params.window]
     if not mine:
         return None
     claimed = _claimed_rows(case, mine)
@@ -715,10 +725,11 @@ def _day_boundary(case: Case, assumptions: list[Assumption]) -> Alternative | No
             f"hold {len(as_utc)} record(s) between these parties instead of {len(stated)}."
         )
         for r in _by_time(moved):
+            zone = cite(window.tz)
             side = (
-                "inside them only on the phone's zone, outside them in UTC"
+                f"inside them read in the stated zone {zone}, outside them in UTC"
                 if r.id in stated
-                else "outside them on the phone's zone, inside them in UTC"
+                else f"outside them read in the stated zone {zone}, inside them in UTC"
             )
             fits.append(
                 _fit(case, r, f"For the stated dates {cite(window.raw)}, this record is {side}.")
@@ -758,10 +769,14 @@ def _other_app(case: Case, assumptions: list[Assumption]) -> Alternative | None:
         if got is None:
             continue
         window = p.window
+        srcs = set(case.data.sources_for(p.device_ids))
         others = [
             r
             for r in got[0]
-            if r.ts_utc and in_window(r.ts_utc, window) and not channel_ok(r, p.channels)
+            if r.source_id in srcs
+            and r.ts_utc
+            and in_window(r.ts_utc, window)
+            and not channel_ok(r, p.channels)
         ]
         others = _dedupe(others)
         if not others:
@@ -790,10 +805,17 @@ def _other_app(case: Case, assumptions: list[Assumption]) -> Alternative | None:
 
 # ---------------------------------------------------------------- a whole app gone quiet
 
+# The app's messages and calls on one phone, as one list, for the records at the window's edges.
 _EDGE = (
-    "SELECT m.id, m.source_id, t.app, m.sender_account_id, m.ts_utc, m.ts_raw, m.body"
+    "SELECT * FROM ("
+    " SELECT m.id, 'message' AS kind, m.source_id, t.app, m.sender_account_id, m.ts_utc,"
+    " m.ts_raw, m.body, NULL AS duration_s"
     " FROM messages m JOIN threads t ON t.id = m.thread_id"
-    " WHERE m.source_id = ? AND lower(t.app) = lower(?) AND m.ts_utc"
+    " WHERE m.source_id = :sid AND lower(t.app) = lower(:app)"
+    " UNION ALL"
+    " SELECT c.id, 'call', c.source_id, c.app, c.from_account_id, c.ts_utc, c.ts_raw, NULL,"
+    " c.duration_s FROM calls c WHERE c.source_id = :sid AND lower(c.app) = lower(:app)"
+    ") WHERE ts_utc"
 )
 # Per phone and app: its records (messages and calls), its records with no usable time, its
 # records inside the window, and the phone's other records inside the window.
@@ -815,8 +837,8 @@ SELECT
   + (SELECT COUNT(*) FROM calls
     WHERE source_id = :sid AND lower(app) != lower(:app) AND ts_utc BETWEEN :lo AND :hi)
 """
-_LAST_BEFORE = _EDGE + " < ? ORDER BY m.ts_utc DESC, m.id LIMIT 1"
-_FIRST_AFTER = _EDGE + " > ? ORDER BY m.ts_utc ASC, m.id LIMIT 1"
+_LAST_BEFORE = _EDGE + " < :bound ORDER BY ts_utc DESC, id LIMIT 1"
+_FIRST_AFTER = _EDGE + " > :bound ORDER BY ts_utc ASC, id LIMIT 1"
 
 
 def _app_quiet(case: Case, assumptions: list[Assumption]) -> Alternative | None:
@@ -850,10 +872,10 @@ def _app_quiet(case: Case, assumptions: list[Assumption]) -> Alternative | None:
                     ("last before", _LAST_BEFORE, lo),
                     ("first after", _FIRST_AFTER, hi),
                 ):
-                    r = case.conn.execute(sql, (sid, app, bound)).fetchone()
+                    r = case.conn.execute(sql, {"sid": sid, "app": app, "bound": bound}).fetchone()
                     if r is None:
                         continue
-                    row = Row(r[0], "message", r[1], r[2], r[3], (), _parse(r[4]), r[5], r[6])
+                    row = Row(r[0], r[1], r[2], r[3], r[4], (), _parse(r[5]), r[6], r[7], r[8])
                     fits.append(
                         _fit(
                             case,
