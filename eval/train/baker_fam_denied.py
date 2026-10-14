@@ -3,11 +3,14 @@ the claim's whole time (guide rules 23 and 29; contradicts).
 
 The record comes from an account bracketed with that person (the record phone's user, or a
 partner an expert linked or stipulated) and is sent one to ten days after the window ends. It
-denies the act or role for any time ("i never drove for kapoor, ever"), or, from the phone's
-user, whose zone is the window's, says they did not see the other person at all on the claim's
-day or stretch of days, which rules out an act that needs both of them in one place. The other
-person is named by surname or full name, or is the chat partner ("u") when that partner's lines
-carry them. Plain acknowledgements follow, so nothing hedges, corrects or reopens the time.
+denies the act or role for any time, in the claim's own terms or a plain superset of them ("i
+never drove for kapoor"), or, from the phone's user, whose zone is the window's, says they did
+not see the other person at all on the claim's day or stretch of days, which rules out an act
+that needs both of them in one place. The other person is named by surname or full name, or is
+the chat partner ("u") when that partner's lines carry them. An opener ("look, ") or a tail (",
+ever") may frame the denial; the quote is the denial alone (rule 7), and "no, " opens one only
+right after the other end's question. Plain acknowledgements follow, so nothing hedges,
+corrects or reopens the time.
 """
 
 from __future__ import annotations
@@ -17,8 +20,8 @@ from datetime import date, timedelta
 from typing import Any
 
 from eval.train.baker_cast import FIRSTS_EN, cap
-from eval.train.baker_claim_words import CITIES, DAY_DENIALS, EVENTS, ROLES, SPAN_DENIALS
-from eval.train.baker_claims import STREETS, act_claim, chat_day, chat_span, fresh_slug, steady_chat
+from eval.train.baker_claim_words import EVENTS, ROLES
+from eval.train.baker_claims import STREETS, act_claim, fresh_slug, steady_chat
 from eval.train.baker_kit import Draft, pick_kind, setup, surname_of
 from eval.train.baker_scene import render
 from eval.train.baker_text import combo, salt_of
@@ -36,9 +39,57 @@ from eval.train.baker_time import (
 )
 
 FAMILY = "bk_claim_denied"
-PREFIX = ("", "look, ", "for the record, ", "no, ", "to be clear, ", "listen, ", "again, ",
-          "let me be clear, ")  # fmt: skip
 LAST = date(2026, 9, 30)
+# Around a denial: openers and tails the answer does not rest on, which the quote leaves out.
+DENY_OPENERS = ("", "", "look, ", "for the record, ", "to be clear, ", "listen, ", "again, ",
+                "let me be clear, ", "no, ")  # fmt: skip
+DENY_TAILS = ("", "", "", ", ever", ", period")
+# The other end's question just before a denial that opens "no, " (and some others).
+QUESTIONS = ("is it true what ppl are saying?", "wait is that true?", "so did u or not?",
+             "were u part of that?", "is any of that true?",
+             "did u have anything to do with it?")  # fmt: skip
+# Denials of a day or a stretch of days: {dc} a date as a chat writes it ("may 3rd"), {span} a
+# stretch ("from may 1st through the 9th"), {city} where the speaker was instead.
+DAY_DENIALS = (
+    "i never once saw {q} on {dc}", "i was never with {q} on {dc}",
+    "on {dc} i was in {city} from morning to night, never saw {q}",
+    "i spent all of {dc} in {city} and never saw {q}",
+)  # fmt: skip
+SPAN_DENIALS = (
+    "i never once saw {q} {span}", "i was not with {q} once {span}",
+    "i was in {city} {span} and didnt see {q} once",
+    "i was out of town in {city} {span}, i never saw {q}",
+)  # fmt: skip
+CITIES = ("Albany", "Atlanta", "Baltimore", "Boston", "Buffalo", "Charlotte", "Chicago",
+          "Cleveland", "Columbus", "Dallas", "Detroit", "El Paso", "Hartford", "Houston",
+          "Indianapolis", "Jacksonville", "Kansas City", "Las Vegas", "Louisville", "Memphis",
+          "Miami", "Milwaukee")  # fmt: skip
+MONTHS = ("january", "february", "march", "april", "may", "june", "july", "august",
+          "september", "october", "november", "december")  # fmt: skip
+
+
+def ordinal(n: int) -> str:
+    suffix = "th" if 11 <= n % 100 <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
+def chat_day(rng: random.Random, d: date, sent: date) -> str:
+    """'may 2nd', 'may 2', '5/2', or 'the 2nd' when sent in the same month."""
+    opts = [f"{MONTHS[d.month - 1]} {ordinal(d.day)}", f"{MONTHS[d.month - 1]} {d.day}",
+            f"{d.month}/{d.day}"]  # fmt: skip
+    if (d.year, d.month) == (sent.year, sent.month):
+        opts.append(f"the {ordinal(d.day)}")
+    return rng.choice(opts)
+
+
+def chat_span(rng: random.Random, d1: date, d2: date) -> str:
+    """'from may 1st through the 9th', 'from april 28th through may 3rd'."""
+    a = f"{MONTHS[d1.month - 1]} {ordinal(d1.day)}"
+    if d1.month == d2.month:
+        b = rng.choice((f"the {ordinal(d2.day)}", f"{MONTHS[d2.month - 1]} {ordinal(d2.day)}"))
+    else:
+        b = f"{MONTHS[d2.month - 1]} {ordinal(d2.day)}"
+    return f"from {a} through {b}"
 
 
 def _space(template: str) -> list[tuple[int, str, str]]:
@@ -81,8 +132,11 @@ def _window(rng: random.Random, template: str, kind: str, zone: str) -> Win:
 def claim_denied(rng: random.Random, k: int) -> Draft:
     template = ("role", "event")[k % 2]
     space = SPACE[template]
-    ei, xi = combo(k // 2, (len(space), len(PREFIX)), salt_of(f"{FAMILY}|{template}"))
+    ei, xi = combo(k // 2, (len(space), len(DENY_OPENERS)), salt_of(f"{FAMILY}|{template}"))
     a, kind, line = space[ei]
+    opener = DENY_OPENERS[xi]
+    asked = opener == "no, " or rng.random() < 0.2
+    tail = rng.choice(DENY_TAILS) if kind == "never" else ""
     a = a if a >= 0 else rng.choice(TOGETHER)
     act = (ROLES if template == "role" else EVENTS)[a]
     s = setup(rng, pick_kind(rng, (3, 4, 3)))
@@ -110,9 +164,9 @@ def claim_denied(rng: random.Random, k: int) -> Draft:
     sent = wall(utc, s.phone.zone).date()
     line = line.replace("{dc}", chat_day(rng, win.start.date(), sent))
     line = line.replace("{span}", chat_span(rng, win.start.date(), last_day))
-    text = PREFIX[xi] + line.replace("{city}", rng.choice(CITIES))
-    from_me = p_acc == s.me
-    evs, target = steady_chat(rng, s, text, utc, from_me, "en")
+    clause = line.replace("{city}", rng.choice(CITIES))
+    lead = rng.choice(QUESTIONS) if asked else ""
+    evs, target = steady_chat(rng, s, opener + clause + tail, utc, p_acc == s.me, "en", lead=lead)
     rec = evs[target]
     params: dict[str, Any] = {"person_ids": (p,)}
     if template == "event":
@@ -121,7 +175,8 @@ def claim_denied(rng: random.Random, k: int) -> Draft:
             opts.append({"person_ids": (p,), "account_ids": (s.phone.aid(l_acc),)})
         params = rng.choice(opts)
     params["window"] = win.tw
-    claim = act_claim(rng, template, p, act.claim, q, rng.choice(STREETS), win.raw)
+    q_acc = l_acc if "account_ids" in params else None  # the claim gives the account it names
+    claim = act_claim(rng, template, p, act.claim, q, rng.choice(STREETS), win.raw, q_acc)
     rendered = render(s.scene, s.phone, rec)
     says = {
         "never": f"denies the {template} the claim states outright, for any time",
@@ -131,7 +186,8 @@ def claim_denied(rng: random.Random, k: int) -> Draft:
     rationale = (f"In the record from {rendered.sender}, sent {rendered.local_time}, after "
                  f'"{win.raw}" ({win.tz}) ended, {p} {says}; that covers the claim\'s whole '
                  "time.")  # fmt: skip
-    d = Draft(FAMILY, template, params, s.scene, s.phone, evs, target, text, rationale,
-              {"kind": kind, "speaker": p, "end": win.end}, claim=claim)  # fmt: skip
+    notes = {"kind": kind, "speaker": p, "end": win.end, "clause": clause, "asked": asked}
+    d = Draft(FAMILY, template, params, s.scene, s.phone, evs, target, clause, rationale, notes,
+              claim=claim)  # fmt: skip
     d.names.update(names)
     return d

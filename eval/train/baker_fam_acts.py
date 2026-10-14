@@ -7,9 +7,11 @@ one, bears on the act or role without being it or ruling it out (complicates); i
 comes from baker_fam_meaning. bk_event_is_record: the claim's event is a message or a call, and
 the record is that very message or call between the named parties, plainly inside the window,
 the message saying what the claim says it said, word for word or (a code) value for value
-(supports). A named party is the record's own line (its account or the person its brackets
-carry) or the other end of the chat or call; when the other end carries brackets, the claim
-names that person.
+(supports). Each party is shown (rule 29): the actor by the record line's brackets; the other
+end by its brackets, when the assumption names that person, or else by the account the
+assumption names, which the claim gives for them ("texted Dara Ahern at (347) 555-0132"). Any
+account an assumption names, in either family, appears in its claim. A chat partner no bracket
+carries keeps, in a claim, the first name the chat and their handles use.
 """
 
 from __future__ import annotations
@@ -18,6 +20,8 @@ import random
 from typing import Any
 
 from eval.stancedata import bakerform as bf
+from eval.train.baker_cast import cap, first_of
+from eval.train.baker_claim_meaning import meaning_claim
 from eval.train.baker_claim_words import EVENTS, ROLES, TOPICS
 from eval.train.baker_claims import (
     CODE_TEXTS,
@@ -27,7 +31,6 @@ from eval.train.baker_claims import (
     call_claim,
     code_claim,
     fresh_slug,
-    meaning_claim,
     message_claim,
     steady_chat,
 )
@@ -39,9 +42,11 @@ from eval.train.baker_kit import (
     any_time,
     chat,
     lang_of_text,
+    named_slug,
     pick_kind,
     record_text,
     setup,
+    surname_of,
 )
 from eval.train.baker_parties import call_context, call_event
 from eval.train.baker_place import inside
@@ -58,6 +63,16 @@ def shown(s: Setup, acc: Acc) -> str:
     """An account's sender text on the record's phone, brackets included."""
     return bf.sender_line(acc.app, acc.ident, owner=acc in s.phone.own,
                           persons=s.scene.persons(acc))  # fmt: skip
+
+
+def partner_named(rng: random.Random, s: Setup) -> tuple[str, dict[str, str]]:
+    """The person a claim names for the chat partner no bracket carries: a surname that suits
+    them and the first name the chat and the partner's handles use."""
+    first = first_of(s.partner.person)
+    if first is None:
+        raise ValueError("the partner's first name has no Latin form from A to M")
+    q = named_slug(rng, s.partner.person)
+    return q, {q: f"{first} {cap(surname_of(q))}"}
 
 
 def claim_open(rng: random.Random, k: int) -> Draft:
@@ -82,7 +97,11 @@ def open_act(rng: random.Random, j: int, template: str, family: str) -> Draft:
     p_owner = s.you_pid is None or rng.random() < 0.6
     p, p_acc = (s.phone.person, s.me) if p_owner else (s.you_pid, s.you)
     other, other_acc = (s.you_pid, s.you) if p_owner else (s.phone.person, s.me)
-    q = other if other is not None and rng.random() < 0.6 else fresh_slug(rng, {p, other or ""})
+    names: dict[str, str] = {}
+    if other is None:  # the unbracketed partner, named as the chat knows them
+        q, names = partner_named(rng, s)
+    else:
+        q = other if rng.random() < 0.6 else fresh_slug(rng, {p, other})
     win = None
     if rng.random() < 0.7:
         tz = other_zone(rng, s.phone.zone) if rng.random() < 0.2 else s.phone.zone
@@ -102,13 +121,16 @@ def open_act(rng: random.Random, j: int, template: str, family: str) -> Draft:
         params["window"] = win.tw
         at = when(render(s.scene, s.phone, rec).local_time, win, utc, s.phone.zone)
         at = f', sent {at}, plainly inside "{win.raw}" ({win.tz})'
+    q_acc = other_acc if "account_ids" in params else None  # the claim gives that account
     claim = act_claim(rng, template, p, act.claim, q, rng.choice(STREETS),
-                      win.raw if win else None)  # fmt: skip
+                      win.raw if win else None, q_acc)  # fmt: skip
     way = "comes from" if rec.frm == p_acc else "goes to"
     rationale = (f"The record {way} {shown(s, p_acc)}{at}. It bears on the {template} the claim "
                  "states without showing it or ruling it out.")  # fmt: skip
-    return Draft(family, template, params, s.scene, s.phone, evs, target, text, rationale,
-                 {"named_acc": p_acc}, claim=claim)  # fmt: skip
+    d = Draft(family, template, params, s.scene, s.phone, evs, target, text, rationale,
+              {"named_acc": p_acc}, claim=claim)  # fmt: skip
+    d.names.update(names)
+    return d
 
 
 def _code(k: int) -> str:
@@ -140,23 +162,28 @@ def event_is_record(rng: random.Random, k: int) -> Draft:
     rec = evs[target]
     if rec.to is None:
         raise ValueError("a message needs its chat partner")
-    if other is not None and rng.random() < 0.5:
+    q_acc: Acc | None = None
+    if other is not None and rng.random() < 0.5:  # the other end, shown by its brackets
         params: dict[str, Any] = {"person_ids": (p, other)}
-    else:
+    else:  # the other end's account, which the claim gives
         params = {"person_ids": (p,), "account_ids": (s.phone.aid(rec.to),)}
+        q_acc = rec.to
     params["window"] = win.tw
-    q = other if other is not None else fresh_slug(rng, {p})
+    q, names = (other, {}) if other is not None else partner_named(rng, s)
     if what:
-        claim = code_claim(rng, p, q, rec.frm.app, what, code, win.raw)
+        claim = code_claim(rng, p, q, rec.frm.app, what, code, win.raw, q_acc)
     else:
-        claim = message_claim(rng, p, q, rec.frm.app, text, win.raw)
+        claim = message_claim(rng, p, q, rec.frm.app, text, win.raw, q_acc)
     line = render(s.scene, s.phone, rec)
     at = when(line.local_time, win, utc, s.phone.zone)
     same = f"giving the {what}, {code}" if what else "word for word"
-    rationale = (f"The record from {line.sender} to {shown(s, rec.to)}, sent {at}, plainly inside "
+    to = shown(s, rec.to) + (f", the account the claim gives for {q}" if q_acc else "")
+    rationale = (f"The record from {line.sender} to {to}, sent {at}, plainly inside "
                  f'"{win.raw}" ({win.tz}), is the message the claim states, {same}.')  # fmt: skip
-    return Draft(family, "event", params, s.scene, s.phone, evs, target, text, rationale,
-                 {"utc": utc}, claim=claim)  # fmt: skip
+    d = Draft(family, "event", params, s.scene, s.phone, evs, target, text, rationale,
+              {"utc": utc}, claim=claim)  # fmt: skip
+    d.names.update(names)
+    return d
 
 
 def _call(rng: random.Random, family: str) -> Draft:
@@ -173,13 +200,16 @@ def _call(rng: random.Random, family: str) -> Draft:
     if call.to is None:
         raise ValueError("a call needs its other number")
     params = {"person_ids": (p,), "account_ids": (s.phone.aid(call.to),), "window": win.tw}
-    q = other if other is not None else fresh_slug(rng, {p})
+    q, names = (other, {}) if other is not None else partner_named(rng, s)
     line = render(s.scene, s.phone, call)
-    rationale = (f"The record is a call from {line.sender} to Phone {call.to.ident} at "
-                 f'{line.local_time}, plainly inside "{win.raw}" ({win.tz}): the call the claim '
-                 "states.")  # fmt: skip
-    return Draft(family, "event", params, s.scene, s.phone, evs, target, line.text, rationale,
-                 {"utc": utc}, claim=call_claim(rng, p, q, win.raw))  # fmt: skip
+    rationale = (f"The record is a call from {line.sender} to Phone {call.to.ident}, the number "
+                 f"the claim gives for {q}, at {line.local_time}, plainly inside \"{win.raw}\" "
+                 f"({win.tz}): the call the claim states.")  # fmt: skip
+    claim = call_claim(rng, p, q, win.raw, call.to)
+    d = Draft(family, "event", params, s.scene, s.phone, evs, target, line.text, rationale,
+              {"utc": utc}, claim=claim)  # fmt: skip
+    d.names.update(names)
+    return d
 
 
 def claim_apart(

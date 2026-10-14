@@ -4,7 +4,9 @@ bk_meaning_other and the meaning third of bk_claim_open.
 The claim says what some words meant. bk_meaning_said: the account that used the words (in the
 record itself, and sometimes earlier in the chat too) plainly says they mean exactly the claim's
 meaning (supports). bk_meaning_other: that account says they mean something of another kind
-altogether, with "only" or "nothing else" (contradicts). bk_claim_open: the record uses the
+altogether (contradicts). Both families explain in the same frames, openers and tails, none of
+them a marker like "only" or "nothing else", so only the meaning tells them apart; the quote is
+the explanation alone, without the opener or tail (rule 7). bk_claim_open: the record uses the
 words and nothing shown says what they mean (complicates). A claim names the words' user only
 when that account's line carries them in brackets. No line from anyone else holds the words, no
 other line shares a content word with any meaning in play, and the lines after an explanation
@@ -17,9 +19,18 @@ import random
 import re
 from datetime import timedelta
 
-from eval.train.baker_claim_ru import MEANINGS_RU, OTHER_RU, SAY_RU, USE_RU
-from eval.train.baker_claim_words import MEANINGS, OTHER, PLURAL, SAY, TOPICS, USE
-from eval.train.baker_claims import calm, meaning_claim, record_when, settle
+from eval.train.baker_claim_meaning import meaning_claim, record_when
+from eval.train.baker_claim_ru import EXPLAIN_RU, MEANINGS_RU, OPENERS_RU, TAILS_RU, USE_RU
+from eval.train.baker_claim_words import (
+    EXPLAIN,
+    MEANINGS,
+    OPENERS,
+    PLURAL,
+    TAILS,
+    TOPICS,
+    USE,
+)
+from eval.train.baker_claims import calm, settle
 from eval.train.baker_kit import (
     Draft,
     Setup,
@@ -80,18 +91,19 @@ def _excerpt(
 
 
 def explained(rng: random.Random, k: int, family: str) -> Draft:
-    """The words' user says what they mean: the claim's meaning (bk_meaning_said) or another
-    kind of thing altogether (bk_meaning_other)."""
+    """The words' user says what they mean, in the same frames either way: the claim's meaning
+    (bk_meaning_said) or another kind of thing altogether (bk_meaning_other)."""
     ru, ordinal = split_ru(k)
     lang = "ru" if ru else "en"
     table = MEANINGS_RU if ru else MEANINGS
+    frames, openers, tails = (EXPLAIN_RU, OPENERS_RU, TAILS_RU) if ru else (EXPLAIN, OPENERS, TAILS)
     said = family == "bk_meaning_said"
-    pool = (SAY_RU if ru else SAY) if said else (OTHER_RU if ru else OTHER)
-    sizes = (len(table), len(pool), 1 if said else 2)
+    sizes = (len(table), len(frames), 1 if said else 2)
     mi, ti, oi = combo(ordinal, sizes, salt_of(f"{family}|{lang}"))
     quoted, claim_m, chat_m, others = table[mi]
     meant = chat_m if said else others[oi]
-    text = say(pool[ti], quoted, meant)
+    clause = say(frames[ti], quoted, meant)
+    text = rng.choice(openers) + clause + rng.choice(tails)
     s = setup(rng, pick_kind(rng), lang=lang)
     from_me = rng.random() < 0.5
     use = ""
@@ -109,9 +121,9 @@ def explained(rng: random.Random, k: int, family: str) -> Draft:
            "a meaning that cannot be true together with the claim's")  # fmt: skip
     rationale = (f"The record comes from {line.sender}, which {how} plainly says "
                  f'"{quoted}" means "{meant}": {end}.')  # fmt: skip
-    notes = {"user": rec.frm, "used_before": bool(use)}
-    return Draft(family, "meaning", {"quoted_text": quoted}, s.scene, s.phone, evs, target, text,
-                 rationale, notes, claim=claim)  # fmt: skip
+    notes = {"user": rec.frm, "used_before": bool(use), "clause": clause}
+    return Draft(family, "meaning", {"quoted_text": quoted}, s.scene, s.phone, evs, target,
+                 clause, rationale, notes, claim=claim)  # fmt: skip
 
 
 def meaning_said(rng: random.Random, k: int) -> Draft:

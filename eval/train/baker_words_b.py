@@ -75,7 +75,7 @@ OUT: tuple[str, ...] = (
     "[can u pick up {n} pizzas]",
     "[i burned the rice again]",
     "[the gym changed its hours]",
-    "[my knee is still swollen]",
+    "[the physical therapist gave me new stretches]",
     "[the doctor wants more bloodwork]",
     "[pharmacy is out of my meds]",
     "[i got the flu shot]",

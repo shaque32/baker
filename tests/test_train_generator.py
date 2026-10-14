@@ -22,7 +22,10 @@ from eval.stancedata.model import GenItem
 from eval.train import baker
 from eval.train import generate as gen
 from eval.train.baker_cast import FIRSTS_EN, FORMAL_RU, SURNAMES_RU
+from eval.train.baker_claim_ru import OPENERS_RU, TAILS_RU
+from eval.train.baker_claim_words import OPENERS, TAILS
 from eval.train.baker_cues import SURNAMES
+from eval.train.baker_fam_denied import DENY_OPENERS, DENY_TAILS, QUESTIONS
 from eval.train.baker_fam_sender import NICKS, NICKS_RU
 from eval.train.baker_scene import render
 from eval.train.baker_text import words
@@ -1053,6 +1056,16 @@ BK_INSIDE = {"bk_time_inside", "bk_call_inside", "bk_call_length", "bk_no_contac
              "bk_count_one", "bk_other_phone", "bk_party_unshown", "bk_claim_open",
              "bk_event_is_record"}  # fmt: skip
 BK_MEANING = {"bk_meaning_said", "bk_meaning_other"}  # the words' user explains them
+BK_FRAMED = {  # the openers and tails that may frame a quoted clause (rule 7)
+    "bk_meaning_said": (OPENERS + OPENERS_RU, TAILS + TAILS_RU),
+    "bk_meaning_other": (OPENERS + OPENERS_RU, TAILS + TAILS_RU),
+    "bk_claim_denied": (DENY_OPENERS, DENY_TAILS),
+}
+# Words that would tell the meaning families apart by wording alone.
+BK_MARKERS = re.compile(
+    r"\b(only|just|nothing else|nothing more|thats it|that's it)\b"
+    r"|только|просто|ничего больше|больше ничего|ничего другого|\bи вс[её]\b"
+)
 CLAIMED = ("meaning", "role", "event")  # the templates whose items show the claim
 ROOT = {f: m for m, f in SURNAMES_RU}  # Belova reads as Belov: one surname, two forms
 BK_OUTSIDE = {"bk_time_outside", "bk_outside_window"}
@@ -1379,12 +1392,21 @@ def test_baker_sender_families_name_the_right_party(bk: list[Any]) -> None:
 
 def test_baker_quotes_follow_the_guide(bk: list[Any]) -> None:
     # Rule 22: time and sender answers quote the whole record; cue families quote the cue.
-    # The meaning families quote the explanation whole: the words alone do not explain them.
+    # Rule 7: the meaning families quote the explanation and bk_claim_denied the denial, without
+    # an opener or tail the answer does not rest on ("remember ", ", period").
+    seen: Counter[str] = Counter()
     for it, _, _ in bk:
         q, text, p = it.proposed_quote, it.target.text, it.baker_params
         assert q and q in text
         quoting = it.baker_template in ("weekday_date", "meaning")
-        if quoting and it.family not in BK_MEANING | {"bk_unrelated"}:
+        if it.family in BK_FRAMED:
+            heads, tails = BK_FRAMED[it.family]
+            head, _, tail = text.partition(q)
+            assert head in heads and tail in tails, (it.probe_id, head, tail)
+            if it.family in BK_MEANING:
+                assert p["quoted_text"].casefold() in q.casefold(), it.probe_id
+            seen[f"{it.family}|{q == text}"] += 1
+        elif quoting and it.family not in BK_MEANING | {"bk_unrelated"}:
             assert q == p["quoted_text"], it.probe_id
         elif it.family == "bk_handles_said":
             assert all(h in q for h in p["handles"]), it.probe_id
@@ -1397,6 +1419,7 @@ def test_baker_quotes_follow_the_guide(bk: list[Any]) -> None:
             assert p["quoted_text"] in text and p["quoted_text"] not in " ".join(
                 ln.text for ln in it.context
             ), it.probe_id
+    assert all(seen[f"{f}|{whole}"] >= 5 for f in BK_FRAMED for whole in (True, False)), seen
 
 
 def test_baker_meaning_records_come_from_the_words_user(bk: list[Any]) -> None:
@@ -1547,6 +1570,65 @@ def test_baker_denials_come_after_the_window_from_the_named_person(bk: list[Any]
         assert rec.utc is not None and rec.utc >= datetime.fromisoformat(p["window"]["end_utc"])
         seen[f"{it.baker_template}|{d.notes['kind']}"] += 1
     assert len(seen) == 4 and min(seen.values()) >= 5, seen
+
+
+def test_baker_denials_say_no_only_to_a_question_shown(bk: list[Any]) -> None:
+    # A denial opens "no, " only right after the other end's question, which the excerpt shows.
+    seen: Counter[str] = Counter()
+    for it, d, _ in bk:
+        if it.family != "bk_claim_denied":
+            continue
+        rec = d.evs[d.target]
+        prev = d.evs[d.target - 1] if d.target else None
+        asked = prev is not None and prev.frm == rec.to and prev.text in QUESTIONS
+        assert asked == d.notes["asked"], it.probe_id
+        if rec.text.startswith("no, "):
+            assert asked, it.probe_id
+        seen[f"{asked}|{rec.text.startswith('no, ')}"] += 1
+    assert seen["True|True"] >= 3 and seen["True|False"] >= 3, seen
+
+
+def test_baker_meaning_families_differ_in_meaning_alone(bk: list[Any]) -> None:
+    # Both meaning families explain in the same frames, openers and tails: no marker such as
+    # "only" or "nothing else" stands in either, so the wording never gives the label away.
+    seen: Counter[str] = Counter()
+    for it, _, _ in bk:
+        if it.family in BK_MEANING:
+            assert not BK_MARKERS.search(it.target.text.casefold()), it.probe_id
+            seen[it.family] += 1
+    assert min(seen.values()) >= 90, seen
+
+
+def _digits(text: str) -> str:
+    return re.sub(r"\D", "", text)
+
+
+def test_baker_claims_show_every_party(bk: list[Any]) -> None:
+    # Rule 29: each party of a claimed message or call is shown, by a bracket carrying the
+    # person on some line or by the account the claim gives for them ("texted Dara Ahern at
+    # (347) 555-0132"); every claim gives each account its assumption names, and an Instagram
+    # handle built on a first name belongs to someone the claim names by that first name.
+    seen: Counter[str] = Counter()
+    for it, _, _ in bk:
+        claim, p, names = it.baker_claim or "", it.baker_params, it.baker_names or {}
+        if it.family == "bk_event_is_record":
+            for pid in p["person_ids"]:
+                assert any("[" in ln.sender and names[pid] in ln.sender for ln in it.lines()), (
+                    it.probe_id
+                )
+        if not claim:
+            continue
+        for aid in p.get("account_ids", ()):
+            ident = aid.split(":", 3)[3]
+            num = _digits(ident)[-10:]
+            assert (len(num) >= 7 and num in _digits(claim)) or ident.lstrip(
+                "@"
+            ).casefold() in claim.casefold(), (it.probe_id, ident)
+            stems = [f for f in FIRSTS_EN if ident.startswith(f.lower())]
+            if ":Instagram:" in aid and stems and it.lang == "en":
+                assert f"{max(stems, key=len)} " in claim, (it.probe_id, ident)
+            seen[it.family] += 1
+    assert seen["bk_event_is_record"] >= 40 and seen["bk_claim_open"] >= 3, seen
 
 
 def test_baker_unrelated_records_share_nothing_with_the_assumption(bk: list[Any]) -> None:
