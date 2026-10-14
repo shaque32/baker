@@ -39,6 +39,7 @@ from core.report.html import (
     audit_log_summary,
     record_line,
     review_label,
+    said,
     sources,
     stand_in_banner,
 )
@@ -533,7 +534,7 @@ def evidence_card(
         f"<span class='mono'>{e(item.ref.source_id)} {e(item.ref.locator)} · "
         f"{e(item.record_id)}</span></p>"
         f"<p class='muted'>Model rationale (inferred): {e(item.rationale)}</p>"
-        f"<p><strong>Review:</strong> {e(review_label(conn, item))} · "
+        f"<p><strong>Review:</strong> {review_label(conn, item)} · "
         f"<a href='{e(link('/evidence', id=item.id))}'>See about 20 messages around it</a></p>"
         f"{_decide_form(page, item, last_kind == 'expert', back)}</div>"
     )
@@ -608,7 +609,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
             f"{e(d.pipeline_run_id)}.</p></details>"
         )
         if d.confirmed_by:
-            note = f" Note: {e(d.override_note)}" if d.override_note else ""
+            note = f" Note: {said(d.override_note)}" if d.override_note else ""
             kind = "overrode" if d.override_note is not None else "confirmed"
             out.append(f"<p>{e(d.confirmed_by)} {kind} this verdict.{note}</p>")
         out.append(f"</div><div class='in'>{_verdict_forms(page, st, back)}")
@@ -762,7 +763,8 @@ def evidence_page(conn: sqlite3.Connection, page: Page, evidence_id: str) -> str
     back = link("/evidence", id=evidence_id)
     history = list(
         conn.execute(
-            "SELECT seq, reviewer, status, reason, decided_at_utc FROM evidence_reviews"
+            "SELECT seq, reviewer_kind, reviewer, status, reason, decided_at_utc"
+            " FROM evidence_reviews"
             " WHERE evidence_id = ? ORDER BY seq",
             (evidence_id,),
         )
@@ -805,9 +807,9 @@ def evidence_page(conn: sqlite3.Connection, page: Page, evidence_id: str) -> str
             "<table><thead><tr><th>#</th><th>Reviewer</th><th>Status</th><th>Reason</th>"
             "<th>When (UTC)</th></tr></thead>"
             + "".join(
-                f"<tr><td>{s}</td><td>{e(who)}</td><td>{e(status)}</td><td>{e(reason)}</td>"
-                f"<td>{e(at)}</td></tr>"
-                for s, who, status, reason, at in history
+                f"<tr><td>{s}</td><td>{e(who)}</td><td>{e(status)}</td>"
+                f"<td>{said(reason) if kind == 'expert' else e(reason)}</td><td>{e(at)}</td></tr>"
+                for s, kind, who, status, reason, at in history
             )
             + "</table>"
         )

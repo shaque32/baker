@@ -57,9 +57,8 @@ records, and nothing counts as supported until you accept it yourself."
 5. **Report.** The printable claims report: verdicts, cited records with their source rows,
    limitations (the owner stipulations, curated reports), source hashes and the audit log.
 
-Avoid the words guilty, innocent, leader and deleted in a reason you type: Baker refuses to
-show a page with those words outside a quote, and today that check also catches the expert's
-own reasons (a known issue).
+Baker itself never says guilty, innocent, leader or deleted. A reason or note you type is
+yours, so it shows exactly as you wrote it, those words included.
 
 ## Answer key: the planted traps
 

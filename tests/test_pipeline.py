@@ -269,6 +269,16 @@ def test_forbidden_words_outside_quotes_are_caught():
         check_report_text("<p>The messages were deleted.</p>")
 
 
+def test_an_experts_own_words_are_exempt_and_nothing_else_is():
+    check_report_text(
+        '<p>Dismissed by expert:A: <span class="said">not deleted, only hidden</span></p>'
+    )
+    with pytest.raises(InvariantViolation):
+        check_report_text('<p><span class="said">their reason</span>, so it was deleted.</p>')
+    with pytest.raises(InvariantViolation):
+        check_report_text('<p><span class="said" title="x">deleted</span></p>')
+
+
 def test_cli_audit_review_and_report(conn, tmp_path):
     db = Path(conn.execute("PRAGMA database_list").fetchone()[2])
     assert cli_main(["audit", "--db", str(db)]) == 2  # real components not built yet
