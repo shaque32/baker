@@ -96,9 +96,12 @@ def test_the_record_mark_names_the_phone_when_the_item_does() -> None:
     plain = features.render(it)
     it["device_id"] = "dev:item1"
     named = features.render(it)
-    assert "RECORD (dev:item1): " in named.excerpt and features.RECORD_MARK not in named.excerpt
+    assert "RECORD (item1): " in named.excerpt and features.RECORD_MARK not in named.excerpt
     assert named.excerpt[named.record_start : named.record_end] == "van is fixed, come by"
-    assert named.excerpt.replace("RECORD (dev:item1): ", features.RECORD_MARK) == plain.excerpt
+    # A Baker-form sender keeps Baker's spelling of its numbers; plain items respell them.
+    assert "Signal +17185550122 Dante" in named.excerpt
+    respelled = features.spoken_sender(named.excerpt)
+    assert respelled.replace("RECORD (item1): ", features.RECORD_MARK) == plain.excerpt
 
 
 def test_the_claim_goes_before_the_assumption_and_never_in_the_excerpt() -> None:
@@ -307,7 +310,7 @@ def test_case_items_name_owners_confirmed_people_and_the_phone(case_db) -> None:
     target = {"sender": "contact list", "local_time": "no time in source"}
     assert contact["target"] == {**target, "text": "Carl Shop +12125550133"}
     r = features.render(contact)
-    assert r.excerpt == "RECORD (dev:a): no time in source | contact list | Carl Shop +12125550133"
+    assert r.excerpt == "RECORD (a): no time in source | contact list | Carl Shop +12125550133"
     assert "baker_claim" not in it  # only meaning, role and event assumptions carry the claim
     case_db.execute("INSERT INTO govdocs VALUES ('doc1', 'sa', 'Affidavit', 'affidavit')")
     case_db.execute(

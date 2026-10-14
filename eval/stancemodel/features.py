@@ -5,13 +5,16 @@ SYNTHETIC data only. Pure Python, no torch, so the rendering is testable anywher
 can later render a case's records the same way.
 
 The excerpt is every line of the chat in time order, the record marked "RECORD:", or
-"RECORD (dev:item1):" when the item names the phone the record was extracted from (items written
-the way Baker sends a case's records, eval/stancemodel/time_case01.case_item). Each line is
+"RECORD (item1):" when the item names the phone the record was extracted from (Baker-form items,
+written the way Baker sends a case's records, eval/stancemodel/time_case01.case_item; the phone
+reads as its source id, as core/audit/readable.py names it). Each line is
 "<local time> | <sender> | <text>". The time is the phone's local clock reading, written the way
-assumptions write it ("10:46 p.m. on February 15, 2025"), with the weekday and zone after it; the
-sender's +1 numbers are written "+1 718-555-0122", also as assumptions write them. Nothing is
-inferred: both are the record's own fields in another spelling, and the text is untouched, so a
-quote cut from it is verbatim in the record.
+assumptions write it ("10:46 p.m. on February 15, 2025"), with the weekday and zone after it. In
+plain items the sender's +1 numbers are written "+1 718-555-0122", as the plain assumptions write
+them; a Baker-form sender is kept exactly as core/audit/readable.py printed it, because Baker's
+assumptions print the same numbers that way ("SMS +12125550111"). Nothing is inferred: both are
+the record's own fields in another spelling, and the text is untouched, so a quote cut from it is
+verbatim in the record.
 
 When a pair is too long for the model, context lines farthest from the record go first. The
 record line itself is never dropped.
@@ -24,7 +27,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-VERSION = "1.2.0"  # 1.1.0: the record mark names the phone; 1.2.0: the claim line (baker_claim)
+# 1.1.0: the record mark names the phone; 1.2.0: the claim line (baker_claim); 1.3.0: the phone
+# reads as its source id, and Baker-form senders keep Baker's spelling
+VERSION = "1.3.0"
 
 RECORD_MARK = "RECORD: "
 CLAIM_MARK = "CLAIM: "
@@ -57,9 +62,15 @@ def spoken_sender(sender: str) -> str:
     return _PHONE.sub(r"+1 \1-\2-\3", sender)
 
 
-def line_text(line: dict[str, Any]) -> tuple[str, int]:
+def phone_name(device_id: str) -> str:
+    """'dev:item1' -> 'item1': Baker's phone ids are 'dev:' plus the source id."""
+    return device_id.removeprefix("dev:")
+
+
+def line_text(line: dict[str, Any], baker_form: bool = False) -> tuple[str, int]:
     """One rendered line and the offset of the message text inside it."""
-    head = spoken_time(line["local_time"]) + FIELD_SEP + spoken_sender(line["sender"]) + FIELD_SEP
+    sender = line["sender"] if baker_form else spoken_sender(line["sender"])
+    head = spoken_time(line["local_time"]) + FIELD_SEP + sender + FIELD_SEP
     return head + line["text"], len(head)
 
 
@@ -82,10 +93,10 @@ def assumption_text(item: dict[str, Any]) -> str:
 
 
 def record_mark(item: dict[str, Any]) -> str:
-    """The record line's mark: "RECORD: ", or "RECORD (dev:item1): " when the item names its
+    """The record line's mark: "RECORD: ", or "RECORD (item1): " when the item names its
     phone."""
     device = item.get("device_id")
-    return f"RECORD ({device}): " if device else RECORD_MARK
+    return f"RECORD ({phone_name(device)}): " if device else RECORD_MARK
 
 
 def ordered_lines(item: dict[str, Any]) -> tuple[list[dict[str, Any]], int]:
@@ -98,6 +109,7 @@ def render(item: dict[str, Any], keep: set[int] | None = None) -> Rendered:
     """Render an item; `keep` limits the context to those line indexes (the record always stays)."""
     lines, t = ordered_lines(item)
     mark = record_mark(item)
+    baker_form = bool(item.get("device_id"))
     parts: list[str] = []
     record_start = record_end = -1
     pos = 0
@@ -105,7 +117,7 @@ def render(item: dict[str, Any], keep: set[int] | None = None) -> Rendered:
     for i, line in enumerate(lines):
         if i != t and keep is not None and i not in keep:
             continue
-        text, text_off = line_text(line)
+        text, text_off = line_text(line, baker_form)
         if i == t:
             text = mark + text
             text_off += len(mark)

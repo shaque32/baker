@@ -30,7 +30,7 @@ numbers as "+1 718-555-0122". The text is untouched.
 Inside Baker the model reads what Baker sends its stance step (`time_case01.case_item`). The
 assumption is Baker's own template text, ids included. Lines are Baker's context lines, and a
 call or contact reads as Baker's record text. The record mark names the phone
-(`RECORD (dev:item1):`). A sender is `<app> <id>`, then the name the source showed, then
+(`RECORD (item1):`, its source id). A sender is `<app> <id>`, then the name the source showed, then
 `(owner)` for the phone's own account, then `[person ids]`. Person ids come only from
 expert-confirmed device-owner stipulations and identity links, matched as Baker's checks match
 them (`core/audit/checks/_common.person_party`). For the meaning, role and event assumptions, whose
