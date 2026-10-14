@@ -33,7 +33,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
-from core import pipeline
+from core import encryption, pipeline
 from core.audit.invariants import record_text
 from core.casework import cases
 from core.contracts import (
@@ -283,6 +283,11 @@ def check_synthetic(folder: Path) -> None:
     db = folder / cases.DB_NAME
     if not db.is_file():
         raise SystemExit(f"demo: no case database in {folder}")
+    if encryption.is_encrypted_case(db):
+        raise SystemExit(
+            "demo: that case is encrypted; save the demo from a synthetic case01 audit that is "
+            "not (the demo case is shown on screen shares and opens without a passphrase)"
+        )
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     try:
         reports = conn.execute("SELECT file_name, sha256 FROM sources WHERE kind != 'govdoc'")

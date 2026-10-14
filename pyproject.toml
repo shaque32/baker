@@ -10,6 +10,8 @@ dependencies = [
     "openpyxl>=3.1,<4",  # Cellebrite Excel reports (MIT)
     "pdfplumber>=0.11,<0.12",  # Cellebrite PDF report tables (MIT; pulls pdfminer.six, MIT)
     "tzdata>=2024.1",  # IANA zone database for zoneinfo on Windows (Apache-2.0)
+    "cryptography>=42,<51",  # AES-256-GCM for encrypted cases' copied files (Apache-2.0 / BSD)
+    "sqlcipher3-wheels>=0.5.5,<0.6",  # SQLCipher 4 for encrypted case databases (zlib; SQLCipher BSD-3)
 ]
 
 [project.scripts]

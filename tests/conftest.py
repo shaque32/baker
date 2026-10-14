@@ -106,3 +106,14 @@ def case_db() -> sqlite3.Connection:
     conn = connect(":memory:")
     apply_schema(conn)
     return conn
+
+
+@pytest.fixture(autouse=True)
+def _case_keys(monkeypatch: pytest.MonkeyPatch):  # noqa: ANN202
+    """Case keys at test strength (tests/test_encryption.py checks the real cost), and no case
+    key left unlocked from one test to the next."""
+    from core import encryption
+
+    monkeypatch.setattr(encryption, "DEFAULT_KDF", encryption.Kdf(n=1 << 10))
+    yield
+    encryption.forget_all()

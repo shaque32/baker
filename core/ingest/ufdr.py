@@ -41,6 +41,7 @@ from core.contracts import (
     Source,
     SourceKind,
 )
+from core.encryption import open_input
 from core.ingest.cellebrite_common import (
     MAX_LISTED,
     Cell,
@@ -450,8 +451,9 @@ class _HashingReader:
 
 
 def sha256_file(path: Path) -> str:
+    """SHA-256 of the package's plain bytes (decrypted as read, in an encrypted case)."""
     h = hashlib.sha256()
-    with path.open("rb") as f:
+    with open_input(path) as f:
         while chunk := f.read(CHUNK):
             h.update(chunk)
     return h.hexdigest()
@@ -740,9 +742,10 @@ class UfdrImporter:
 
     def import_source(self, path: Path, conn: sqlite3.Connection) -> Source:
         sha = sha256_file(path)
-        if not zipfile.is_zipfile(path):
-            raise ValueError(f"{path.name} is not a zip package, so it is not a UFDR")
-        with path.open("rb") as raw, zipfile.ZipFile(raw) as z:
+        with open_input(path) as raw:
+            if not zipfile.is_zipfile(raw):
+                raise ValueError(f"{path.name} is not a zip package, so it is not a UFDR")
+        with open_input(path) as raw, zipfile.ZipFile(raw) as z:
             report = find_report(z)
             scan = _scan(z, report)
             return self._write(path, sha, conn, z, report, scan)
