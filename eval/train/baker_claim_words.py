@@ -96,7 +96,7 @@ PLURAL = frozenset({"the tickets", "the books", "the cookies", "the twins", "the
 
 # The words' user says what they mean ({m}); the meaning is exactly the claim's. {is} agrees.
 SAY = (
-    "when i say {p} i mean {m}", "{p} = {m}, just so we're clear", "by {p} i mean {m}",
+    "{p} = {m}, just so we're clear", "by {p} i mean {m}",
     "{p} means {m}", "just so u know, {p} {is} {m}", "{p} is what i call {m}",
     "ok so {p} {is} {m}", "to be clear, {p} {is} {m}", "{p}? thats {m}",
     "remember {p} {is} {m}", "if i say {p} i mean {m}",
@@ -238,12 +238,12 @@ EVENTS = (
 # Denials of a day or a stretch of days: {dc} a date as a chat writes it ("may 3rd"), {span} a
 # stretch ("from may 1st through the 9th"), {city} where the speaker was instead.
 DAY_DENIALS = (
-    "i didnt see {q} at all on {dc}", "i was never with {q} on {dc}",
-    "i was in {city} all day on {dc}, i didnt see {q}",
+    "i never once saw {q} on {dc}", "i was never with {q} on {dc}",
+    "on {dc} i was in {city} from morning to night, never saw {q}",
     "i spent all of {dc} in {city} and never saw {q}",
 )  # fmt: skip
 SPAN_DENIALS = (
-    "i didnt see {q} at all {span}", "i was not with {q} once {span}",
+    "i never once saw {q} {span}", "i was not with {q} once {span}",
     "i was in {city} {span} and didnt see {q} once",
     "i was out of town in {city} {span}, i never saw {q}",
 )  # fmt: skip

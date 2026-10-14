@@ -3,7 +3,7 @@
 bk_sender_shown: the quoted words come from the named sender, shown by its account or by a
 person id in its line's brackets (supports); a third of them sit on the scene's other phone,
 from the first phone's user's own number, whose line shows no "(owner)" but carries that user in
-brackets (case01's paragraph 10.1). bk_sender_other: they come from another account or person,
+brackets (guide rule 26). bk_sender_other: they come from another account or person,
 so one record cannot show the named sender never sent them too (complicates).
 bk_party_unshown: the assumption names a person:<surname> that no line carries in brackets, on
 the sender, time, no-contact or count template (complicates); in a third of them the chat calls
@@ -15,11 +15,12 @@ full text (guide rule 22).
 from __future__ import annotations
 
 import random
+from dataclasses import replace
 from typing import Any
 
 from eval.stancedata import bakerform as bf
 from eval.train.baker_cast import cap, first_of
-from eval.train.baker_cues import CALLED_BY_NAME, SURNAMES
+from eval.train.baker_cues import CALLED_BY_NAME
 from eval.train.baker_fam_count import KIND_WORD, _count, file_name
 from eval.train.baker_fam_time import other_zone, when
 from eval.train.baker_kit import (
@@ -28,6 +29,7 @@ from eval.train.baker_kit import (
     any_time,
     chat,
     lang_of_text,
+    named_slug,
     pick_kind,
     quoted_words,
     record_text,
@@ -40,6 +42,7 @@ from eval.train.baker_place import inside
 from eval.train.baker_scene import render
 from eval.train.baker_text import fill
 from eval.train.baker_time import wall
+from eval.train.baker_words_ru import agree
 from eval.train.names import Person
 
 # The owner calls the partner by name just before the partner's record; {n} is that name.
@@ -139,8 +142,9 @@ def sender_other(rng: random.Random, k: int) -> Draft:
 
 
 def called_by(rng: random.Random, s: Setup, surname: str) -> str:
-    """A line from the owner that calls the partner by a full name."""
-    line = rng.choice(CALLED_BY_NAME)
+    """A line from the owner that calls the partner by a full name; an Instagram chat has no
+    phone number to mention."""
+    line = rng.choice([x for x in CALLED_BY_NAME if s.app != "Instagram" or "number" not in x])
     line = line.replace("{first}", s.partner.person.name).replace("{Sur}", cap(surname))
     return fill(rng, line)[0]
 
@@ -155,8 +159,8 @@ def by_name(rng: random.Random, s: Setup, surname: str) -> tuple[str, str]:
         n = rng.choice([p.name, NICKS_RU.get(p.name, p.name)])
         return rng.choice(NAME_LEADS_RU).replace("{n}", n), n
     if rng.random() < 0.3:
-        line = called_by(rng, s, surname)
-        return line, f"{p.name} {cap(surname)}"
+        line, full = called_by(rng, s, surname), f"{p.name} {cap(surname)}"
+        return line, full if full in line else cap(surname)  # "Fenwick? its about the van"
     n = rng.choice([p.name.lower(), NICKS.get(p.name, p.name.lower())])
     return rng.choice(NAME_LEADS).replace("{n}", n), n
 
@@ -170,7 +174,7 @@ def party_unshown(rng: random.Random, k: int) -> Draft:
     lang = lang_of_text(text)
     s = setup(rng, "third", lang=lang)
     named = k % 3 == 0  # the chat calls the sender by the person's name
-    pid = bf.named_person(rng.choice(SURNAMES)) if named else slug(rng)
+    pid = named_slug(rng, s.partner.person) if named else slug(rng)
     quoted = quoted_words(rng, text, core)
     win = None
     if template == "sender":
@@ -188,12 +192,16 @@ def party_unshown(rng: random.Random, k: int) -> Draft:
     from_me = not by_message and not named and rng.random() < 0.5
     evs, target = chat(rng, s, text, utc, from_me, lang, avoid=quoted if by_message else "",
                        kind=kind, lead=lead)  # fmt: skip
+    if named and lang == "ru":  # the name shows the partner's gender, and the lines follow it
+        end = s.partner.person.end
+        evs = [replace(e, text=agree(e.text, end)) if e.frm == s.you else e for e in evs]
+        text, quoted = evs[target].text, agree(quoted, end)
     rec = evs[target]
     line = render(s.scene, s.phone, rec)
     partner = bf.sender_line(s.you.app, s.you.ident)
     unshown = f"no line carries {pid} in brackets, so nothing shown ties {partner} to {pid}"
     if named:
-        unshown = f'the chat calls it "{n}", but ' + unshown
+        unshown = f'the chat addresses {partner} as "{n}", but ' + unshown
     names = {pid: f"{first_of(s.partner.person)} {cap(surname_of(pid))}"} if named else {}
     if by_message:
         params: dict[str, Any] = {"quoted_text": quoted, "person_ids": (pid,)}

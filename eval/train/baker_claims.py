@@ -57,8 +57,10 @@ def upfirst(s: str) -> str:
     return s[:1].upper() + s[1:]
 
 
-def lowfirst(s: str) -> str:
-    return s[:1].lower() + s[1:]
+def timed(rng: random.Random, frames: tuple[str, ...] | list[str], raw: str) -> str:
+    """A frame that writes the window's own words exactly as they are: at the sentence's start
+    ({T}) when they begin with a capital ("On May 2, 2026"), inside it ({t}) otherwise."""
+    return rng.choice([f for f in frames if f.startswith("{T}") == raw[:1].isupper()])
 
 
 SELF = {"en": ("ok", "k", "👍", "kk"), "ru": ("ок", "ага", "👍")}  # the record's own sender
@@ -123,15 +125,13 @@ def act_claim(
     """A role or event claim: p did `act` (with q), within the window's own words if given."""
     did, P, Pl = _did(act, q, street), full(p), last(p)
     if raw is None:
-        frames = ["{P} {did}.", "It was {P} who {did}."]
-    else:
-        frames = ["{T}, {P} {did}.", "{P} {did} {t}."]
-        frames.append("{P} {did}. {Pl} did so {t}." if template == "role" else
-                      "{P} {did}. This took place {t}.")  # fmt: skip
-        if raw.startswith(("from", "before", "after")):
-            frames.append("During the period {t}, {P} {did}.")
-    t = lowfirst(raw or "")
-    return rng.choice(frames).format(P=P, Pl=Pl, did=did, T=upfirst(t), t=t)
+        return rng.choice(("{P} {did}.", "It was {P} who {did}.")).format(P=P, did=did)
+    frames = ["{T}, {P} {did}.", "{P} {did} {t}."]
+    frames.append("{P} {did}. {Pl} did so {t}." if template == "role" else
+                  "{P} {did}. This took place {t}.")  # fmt: skip
+    if raw.startswith(("from", "before", "after")):
+        frames.append("During the period {t}, {P} {did}.")
+    return timed(rng, frames, raw).format(P=P, Pl=Pl, did=did, T=raw, t=raw)
 
 
 MESSAGE_FRAMES = (
@@ -157,21 +157,18 @@ CALL_FRAMES = ("{T}, {P} called {Q}.", "{P} placed a call to {Q} {t}.", "{T}, {P
 def message_claim(rng: random.Random, p: str, q: str, app: str, text: str, raw: str) -> str:
     """p sent q a message reading `text`, word for word, within the window."""
     frames = MESSAGE_FRAMES + APP_FRAMES.get(app, ())
-    t = lowfirst(raw)
-    return rng.choice(frames).format(P=full(p), Q=full(q), x=text, T=upfirst(t), t=t)
+    return timed(rng, frames, raw).format(P=full(p), Q=full(q), x=text, T=raw, t=raw)
 
 
 def code_claim(rng: random.Random, p: str, q: str, app: str, what: str, code: str, raw: str) -> str:
     """p sent q the code `what` is, in other words than the message's own."""
     frames = CODE_FRAMES + (("{T}, {P} texted {Q} the {k}, {c}.",) if app == "SMS" else ())
-    t = lowfirst(raw)
-    return rng.choice(frames).format(P=full(p), Q=full(q), k=what, c=code, T=upfirst(t), t=t)
+    return timed(rng, frames, raw).format(P=full(p), Q=full(q), k=what, c=code, T=raw, t=raw)
 
 
 def call_claim(rng: random.Random, p: str, q: str, raw: str) -> str:
     """p called q within the window."""
-    t = lowfirst(raw)
-    return rng.choice(CALL_FRAMES).format(P=full(p), Q=full(q), T=upfirst(t), t=t)
+    return timed(rng, CALL_FRAMES, raw).format(P=full(p), Q=full(q), T=raw, t=raw)
 
 
 MEANING_P = ('{P} used "{w}" to refer to {m}.', '{P} used the words "{w}" as a code for {m}.',

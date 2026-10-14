@@ -19,7 +19,7 @@ from typing import Any
 from eval.stancedata import bakerform as bf
 from eval.stancedata.model import GenItem
 from eval.stancedata.names import bracketed
-from eval.train.baker_cast import cast, fill_claim, pids_in, readable
+from eval.train.baker_cast import SURNAMES_RU, cast, fill_claim, pids_in, readable
 from eval.train.baker_cues import SURNAMES, VAGUE
 from eval.train.baker_scene import (
     MSG_APPS,
@@ -38,6 +38,7 @@ from eval.train.baker_time import at, pick_day
 from eval.train.baker_words_a import HOME
 from eval.train.baker_words_b import OUT
 from eval.train.baker_words_ru import HOME_RU, VAGUE_RU, agree
+from eval.train.names import Person
 
 ORDINARY = {"en": HOME + OUT, "ru": HOME_RU}
 VAGUE_BY = {"en": VAGUE, "ru": VAGUE_RU}
@@ -169,6 +170,14 @@ def slug(rng: random.Random) -> str:
     """A named person the document names: an invented surname, sometimes a numbered stand-in."""
     if rng.random() < 0.08:
         return bf.named_person(f"doe_{rng.randrange(10, 9999):04d}")
+    return bf.named_person(rng.choice(SURNAMES))
+
+
+def named_slug(rng: random.Random, p: Person) -> str:
+    """The person:<surname> for a chat person an item names in full: a surname that suits them
+    (a Russian speaker's in its Latin form, in their gender)."""
+    if p.lang == "ru":
+        return bf.named_person(rng.choice(SURNAMES_RU)[p.pron == "she"].lower())
     return bf.named_person(rng.choice(SURNAMES))
 
 

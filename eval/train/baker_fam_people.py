@@ -32,16 +32,18 @@ from eval.train.baker_kit import (
     any_time,
     chat,
     lang_of_text,
+    named_slug,
     record_text,
     setup,
     slug,
     surname_of,
 )
-from eval.train.baker_scene import render
+from eval.train.baker_scene import MSG_APPS, render
 from eval.train.baker_text import combo, fill, salt_of, split_ru
 from eval.train.names import PEOPLE_EN, PEOPLE_RU, STEMS, TAGS
 
 SELF = re.compile(r"\b(?:my|i)\b|\{e\}")  # a handle line the account itself speaks
+NUMBERED = tuple(a for a in MSG_APPS if a != "Instagram")  # apps a phone number identifies
 
 
 def identity_named(rng: random.Random, k: int) -> Draft:
@@ -50,7 +52,8 @@ def identity_named(rng: random.Random, k: int) -> Draft:
     family = "bk_identity_named"
     t, si = combo(k, (len(ID_CUES), len(SURNAMES)), salt_of(family))
     sur = SURNAMES[si]
-    s = setup(rng, "third")
+    app = rng.choice(NUMBERED) if "number" in ID_CUES[t] else None  # Instagram has no number
+    s = setup(rng, "third", app=app)
     cue = ID_CUES[t].replace("{first}", s.partner.person.name).replace("{Sur}", cap(sur))
     text, core = fill(rng, cue)
     lead = called_by(rng, s, sur) if rng.random() < 0.3 else ""
@@ -109,14 +112,14 @@ def author_cue(rng: random.Random, k: int) -> Draft:
     text, core = fill(rng, cue)
     evs, target = chat(rng, s, text, any_time(rng, s.phone.zone), own, lang)
     rec = evs[target]
-    pid = s.phone.person if own else slug(rng)
+    pid = s.phone.person if own else named_slug(rng, holder)
     params: dict[str, Any] = {"person_ids": (pid,), "account_ids": (s.phone.aid(rec.frm),)}
     line = render(s.scene, s.phone, rec)
     rationale = (f"The record from {line.sender} carries a cue about who is typing (\"{core}\"); "
                  "one record cannot show who typed what the account sent.")  # fmt: skip
     d = Draft(family, "authorship", params, s.scene, s.phone, evs, target, core, rationale)
     first = first_of(holder)
-    if not own and first and not pid.startswith("person:doe_"):  # the cue names the holder
+    if not own and first:  # the cue may name the holder: the named person keeps that name
         d.names[pid] = f"{first} {cap(surname_of(pid))}"
     return d
 

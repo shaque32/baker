@@ -21,7 +21,10 @@ from eval.stancedata.families import FAMILIES
 from eval.stancedata.model import GenItem
 from eval.train import baker
 from eval.train import generate as gen
+from eval.train.baker_cast import FIRSTS_EN, FORMAL_RU, SURNAMES_RU
 from eval.train.baker_cues import SURNAMES
+from eval.train.baker_fam_sender import NICKS, NICKS_RU
+from eval.train.baker_scene import render
 from eval.train.baker_text import words
 from eval.train.glossary import PAIRS, SLANG
 from eval.train.names import AREA_CODES, PEOPLE_EN, PEOPLE_RU
@@ -1043,10 +1046,14 @@ def test_time_and_sender_answers_quote_the_whole_record(many: list[GenItem]) -> 
 
 # ---------------------------------------------------------------- Baker's own wording (bk_*)
 
-BK_N = 2400  # a hundred items of each family, two hundred of bk_unrelated
+BK_N = 2800  # a hundred items of each family, two hundred of bk_unrelated
+BK_RUN = 7000  # `make stancedata`: 250 of each family, 500 of bk_unrelated
 BK_FAMILY = {f.family_id: f for f in FAMILIES}
 BK_INSIDE = {"bk_time_inside", "bk_call_inside", "bk_call_length", "bk_no_contact_inside",
-             "bk_count_one", "bk_other_phone", "bk_party_unshown", "bk_claim_unseen"}  # fmt: skip
+             "bk_count_one", "bk_other_phone", "bk_party_unshown", "bk_claim_open",
+             "bk_event_is_record"}  # fmt: skip
+BK_MEANING = {"bk_meaning_said", "bk_meaning_other"}  # the words' user explains them
+CLAIMED = ("meaning", "role", "event")  # the templates whose items show the claim
 BK_OUTSIDE = {"bk_time_outside", "bk_outside_window"}
 BK_CUE = {"bk_identity_named", "bk_author_cue", "bk_handles_said"}
 BK_SENDER = re.compile(r"(\S+) (\S+)( \(owner\))?(?: \[([^\]]+)\])?")
@@ -1069,6 +1076,16 @@ def bk() -> list[Any]:
 def _brackets(sender: str) -> set[str]:
     m = BK_SENDER.fullmatch(sender)
     return set(m.group(4).split(", ")) if m and m.group(4) else set()
+
+
+def _ids(d: Any) -> list[bf.Line]:
+    """The draft's lines as Baker's ids print them (an item shows its people by name)."""
+    return [render(d.scene, d.phone, e) for e in d.evs]
+
+
+def _rec_ids(d: Any) -> set[str]:
+    """The person ids in the record line's brackets."""
+    return _brackets(_ids(d)[d.target].sender)
 
 
 def _utc(local_time: str) -> tuple[datetime, str]:
@@ -1112,11 +1129,11 @@ def _margins(it: GenItem, line: Any) -> dict[str, timedelta]:
 
 
 def test_baker_schedule_ids_and_labels(bk: list[Any]) -> None:
-    counts = Counter(baker.slot(j)[0] for j in range(6000))
+    counts = Counter(baker.slot(j)[0] for j in range(BK_RUN))
     assert counts == {f: 500 if f == "bk_unrelated" else 250 for f in baker.WRITERS}
     assert set(baker.WRITERS) == {f for f in BK_FAMILY if f.startswith("bk_")}
     ks: dict[str, list[int]] = defaultdict(list)
-    for j in range(6000):
+    for j in range(BK_RUN):
         fam, k = baker.slot(j)
         ks[fam].append(k)
     assert all(v == list(range(len(v))) for v in ks.values())
@@ -1127,10 +1144,42 @@ def test_baker_schedule_ids_and_labels(bk: list[Any]) -> None:
         f = BK_FAMILY[it.family]
         assert it.gold_stance == f.stance.value and it.baker_template in f.templates
         assert it.device_id == d.phone.dev
-        for word in ("guilty", "innocent", "leader", "deleted"):
-            assert word not in f"{it.assumption} {it.rationale}".lower(), it.probe_id
+        said = f"{it.assumption} {it.rationale} {it.baker_claim or ''}".lower()
+        for word in ("guilty", "innocent", "leader", "deleted", "gang"):
+            assert not re.search(rf"\b{word}", said), (it.probe_id, word)
     templates = Counter(it.baker_template for it, _, _ in bk if it.family == "bk_unrelated")
     assert len(templates) == 12 and min(templates.values()) >= 16
+
+
+def test_baker_claims_show_on_meaning_role_and_event_only(bk: list[Any]) -> None:
+    # Rule 29: the claim shows with the meaning, role and event templates, in its own words;
+    # a meaning claim quotes the words, and a role or event claim holds its window's raw words.
+    seen: Counter[str] = Counter()
+    for it, _, _ in bk:
+        claim, p = it.baker_claim, it.baker_params
+        assert bool(claim) == (it.baker_template in CLAIMED), it.probe_id
+        if not claim:
+            continue
+        seen[it.baker_template] += 1
+        assert claim.endswith(".") and claim[0].isupper() and "{" not in claim, claim
+        if it.baker_template == "meaning":
+            assert f'"{p["quoted_text"]}"' in claim, it.probe_id
+        elif "window" in p:
+            assert p["window"]["raw"] in claim, (it.probe_id, claim)
+    assert min(seen.values()) >= 90, seen
+
+
+def test_baker_items_show_names_never_ids(bk: list[Any]) -> None:
+    # Rule 25: the assumption, the lines, the claim and the rationale show people by name.
+    for it, d, _ in bk:
+        shown = [it.assumption, it.rationale, it.baker_claim or ""]
+        shown += [f"{ln.sender} {ln.text}" for ln in it.lines()]
+        for text in shown:
+            assert not re.search(r"\b(person|acct|dev):", text), (it.probe_id, text)
+        names = it.baker_names or {}
+        assert set(names) >= set(it.baker_params.get("person_ids", ())), it.probe_id
+        for pid in set().union(*(_brackets(ln.sender) for ln in _ids(d))):
+            assert pid in names, (it.probe_id, pid)
 
 
 def test_baker_runs_are_deterministic_and_leave_plain_items_alone() -> None:
@@ -1155,16 +1204,20 @@ def test_baker_brackets_follow_the_scene(bk: list[Any]) -> None:
     # Rule 26: "(owner)" marks the record phone's own account; the brackets hold the owner of
     # every phone that has the account as its own, on any phone, and the links the scene confirms.
     for it, d, _ in bk:
-        for line, ev in zip(it.lines(), d.evs, strict=True):
+        names = it.baker_names or {}
+        for line, ids, ev in zip(it.lines(), _ids(d), d.evs, strict=True):
+            assert (line.text, line.local_time) == (ids.text, ids.local_time), it.probe_id
             if ev.kind == "contact":
                 assert (line.sender, line.local_time) == ("contact list", "no time in source")
                 continue
-            m = BK_SENDER.fullmatch(line.sender)
-            assert m and (m.group(1), m.group(2)) == (ev.frm.app, ev.frm.ident), line.sender
-            assert bool(m.group(3)) == (ev.frm in d.phone.own), line.sender
+            m = BK_SENDER.fullmatch(ids.sender)
+            assert m and (m.group(1), m.group(2)) == (ev.frm.app, ev.frm.ident), ids.sender
+            assert bool(m.group(3)) == (ev.frm in d.phone.own), ids.sender
             want = {bf.owner_person(p.item) for p in d.scene.phones if ev.frm in p.own}
             want |= {pid for acc, pid in d.scene.links if acc == ev.frm}
-            assert _brackets(line.sender) == want, (it.probe_id, line.sender)
+            assert _brackets(ids.sender) == want, (it.probe_id, ids.sender)
+            for pid in want:  # the item shows each one by name
+                assert names[pid] in line.sender, (it.probe_id, line.sender)
 
 
 def test_baker_excerpts_show_a_non_owner_line(bk: list[Any]) -> None:
@@ -1243,9 +1296,9 @@ def test_baker_weekdays_relate_to_their_dates(bk: list[Any]) -> None:
 
 def test_baker_calls_name_their_numbers_and_lengths(bk: list[Any]) -> None:
     seen = 0
-    for it, _, _ in bk:
+    for it, d, _ in bk:
         m = BK_CALL.fullmatch(it.target.text)
-        if m is None or it.family in ("bk_unrelated", "bk_claim_unseen"):
+        if m is None or it.family in ("bk_unrelated", "bk_claim_open"):
             continue
         seen += 1
         frm, to, dur = m.group(1), m.group(2), int(m.group(3))
@@ -1253,7 +1306,7 @@ def test_baker_calls_name_their_numbers_and_lengths(bk: list[Any]) -> None:
         accounts = {a.split(":")[-1] for a in p.get("account_ids", ())}
         persons = set(p.get("person_ids", ()))
         assert it.target.sender.split(" ")[:2] == ["Phone", frm]
-        assert to in accounts and (frm in accounts or persons & _brackets(it.target.sender))
+        assert to in accounts and (frm in accounts or persons & _rec_ids(d)), it.probe_id
         assert len(persons) <= 1, it.probe_id
         stated = p.get("duration_s")
         if it.family == "bk_call_length":
@@ -1287,33 +1340,47 @@ def test_baker_contact_rows_sit_on_the_named_phone(bk: list[Any]) -> None:
 
 
 def test_baker_sender_families_name_the_right_party(bk: list[Any]) -> None:
+    seen: Counter[str] = Counter()
     for it, d, _ in bk:
-        rec, p = d.evs[d.target], it.baker_params
+        rec, p, ids = d.evs[d.target], it.baker_params, _ids(d)
         own = f":{rec.frm.app}:{rec.frm.ident}"
         if it.family == "bk_sender_shown":
             if p.get("person_ids"):
-                assert p["person_ids"][0] in _brackets(it.target.sender)
+                assert p["person_ids"][0] in _rec_ids(d)
             else:
                 assert all(a.endswith(own) for a in p["account_ids"])
             assert p.get("channels", [rec.frm.app]) == [rec.frm.app]
+            if d.notes.get("elsewhere"):  # another phone's user's own number: no "(owner)"
+                seen["elsewhere"] += 1
+                assert "(owner)" not in it.target.sender and rec.frm not in d.phone.own
+                assert p["person_ids"][0].startswith("person:dev:"), it.probe_id
         elif it.family == "bk_sender_other":
             for x in p.get("person_ids", ()):
-                assert x not in _brackets(it.target.sender)
-                assert any(x in _brackets(ln.sender) for ln in it.context), it.probe_id
+                assert x not in _rec_ids(d)
+                assert any(x in _brackets(ln.sender) for ln in ids), it.probe_id
             for a in p.get("account_ids", ()):
                 assert a.rsplit(":", 1)[1] != rec.frm.ident, it.probe_id
         elif it.family == "bk_party_unshown":
             unshown = [x for x in p["person_ids"] if not x.startswith("person:dev:")]
             assert len(unshown) == 1, it.probe_id
-            assert all(unshown[0] not in _brackets(ln.sender) for ln in it.lines())
+            assert all(unshown[0] not in _brackets(ln.sender) for ln in ids)
+            called = re.search(r'addresses \S+ \S+ as "([^"]+)"', it.rationale)
+            if called:  # the owner calls the record's sender by name, just before the record
+                seen["called"] += 1
+                lead = d.evs[d.target - 1]
+                assert lead.frm in d.phone.own and called.group(1) in lead.text, it.probe_id
+                assert rec.frm not in d.phone.own and not _rec_ids(d), it.probe_id
+    assert seen["elsewhere"] >= 30 and seen["called"] >= 30, seen
 
 
 def test_baker_quotes_follow_the_guide(bk: list[Any]) -> None:
     # Rule 22: time and sender answers quote the whole record; cue families quote the cue.
+    # The meaning families quote the explanation whole: the words alone do not explain them.
     for it, _, _ in bk:
         q, text, p = it.proposed_quote, it.target.text, it.baker_params
         assert q and q in text
-        if it.baker_template in ("weekday_date", "meaning") and it.family != "bk_unrelated":
+        quoting = it.baker_template in ("weekday_date", "meaning")
+        if quoting and it.family not in BK_MEANING | {"bk_unrelated"}:
             assert q == p["quoted_text"], it.probe_id
         elif it.family == "bk_handles_said":
             assert all(h in q for h in p["handles"]), it.probe_id
@@ -1321,20 +1388,42 @@ def test_baker_quotes_follow_the_guide(bk: list[Any]) -> None:
             assert p["person_ids"][0].split(":")[1] in q.lower(), it.probe_id
         elif it.family != "bk_author_cue":
             assert q == text, (it.family, q)
-        if "quoted_text" in p and it.family not in ("bk_unrelated", "bk_contact_row_differs"):
+        skip = BK_MEANING | {"bk_unrelated", "bk_contact_row_differs"}
+        if "quoted_text" in p and it.family not in skip:
             assert p["quoted_text"] in text and p["quoted_text"] not in " ".join(
                 ln.text for ln in it.context
             ), it.probe_id
 
 
+def test_baker_meaning_records_come_from_the_words_user(bk: list[Any]) -> None:
+    # Rule 29: only the words' own user can say what they meant; nobody else uses them here.
+    seen: Counter[str] = Counter()
+    for it, d, _ in bk:
+        if it.family not in BK_MEANING:
+            continue
+        w, rec = it.baker_params["quoted_text"].casefold(), d.evs[d.target]
+        users = {e.frm for e in d.evs if w in e.text.casefold()}
+        assert users == {rec.frm} == {d.notes["user"]}, it.probe_id
+        before = [e for e in d.evs[: d.target] if w in e.text.casefold()]
+        assert bool(before) == d.notes["used_before"], it.probe_id
+        assert w in rec.text.casefold() or before, it.probe_id
+        seen[f"{it.family}|{d.notes['used_before']}"] += 1
+        seen[it.lang] += 1
+    assert len([k for k in seen if "|" in k]) == 4 and seen["ru"] + seen["mixed"] >= 10, seen
+
+
 def test_baker_names_numbers_and_handles(bk: list[Any]) -> None:
     # Training names start with A to M (Russian А to Л); numbers are fictional 555-01xx ones.
     for it, _, _ in bk:
-        for t in [it.assumption, *(f"{ln.sender} {ln.text}" for ln in it.lines())]:
+        shown = [it.assumption, it.rationale, it.baker_claim or ""]
+        for t in shown + [f"{ln.sender} {ln.text}" for ln in it.lines()]:
             for number in re.findall(r"\+1\d{10}", t):
                 assert number[2:5] in AREA_CODES and number[5:10] == "55501", t
-            for slug in re.findall(r"person:(?!dev:)(\w+)", t):
-                assert slug[0] in BK_LETTERS, t
+        for pid in it.baker_params.get("person_ids", ()):
+            assert pid.startswith("person:dev:") or pid.split(":")[1][0] in BK_LETTERS, pid
+        for name in (it.baker_names or {}).values():
+            first, last = name.split(" ")
+            assert first[0] in FIRST_LETTERS and last[0] in FIRST_LETTERS, name
         for ln in it.lines():
             app, ident = (ln.sender.split(" ") + [""])[:2]
             if app == "Telegram":
@@ -1345,6 +1434,10 @@ def test_baker_names_numbers_and_handles(bk: list[Any]) -> None:
             assert re.fullmatch(r"@[a-z0-9_.]{5,}", h) and h[1] in BK_LETTERS, h
             assert "." not in h or it.baker_params["channels"] == ["Instagram"], h
     assert all(s[0] in BK_LETTERS for s in SURNAMES)
+    latin = [*FIRSTS_EN, *FORMAL_RU.values(), *(x for pair in SURNAMES_RU for x in pair)]
+    assert all(x[0] in FIRST_LETTERS for x in latin)
+    nicks = [*NICKS.values(), *NICKS_RU.values(), *NICKS, *NICKS_RU]
+    assert all(x[0].upper() in FIRST_LETTERS for x in nicks)
 
 
 def test_baker_language_mix(bk: list[Any]) -> None:
@@ -1388,7 +1481,7 @@ def test_baker_no_contact_records_show_both_parties(bk: list[Any]) -> None:
         seen += 1
         p, rec = it.baker_params, d.evs[d.target]
         accounts = {ln.account_id.split(":", 2)[2] for ln in it.lines()}
-        brackets = set().union(*(_brackets(ln.sender) for ln in it.lines()))
+        brackets = set().union(*(_brackets(ln.sender) for ln in _ids(d)))
         assert set(p.get("person_ids", ())) <= brackets, it.probe_id
         for a in p.get("account_ids", ()):
             assert a.split(":", 2)[2] in accounts or a.rsplit(":", 1)[1] in it.target.text
@@ -1413,19 +1506,51 @@ def test_baker_identity_and_authorship_name_the_record_account(bk: list[Any]) ->
         if it.family == "bk_identity_named":
             assert not p["person_ids"][0].startswith("person:dev:")
             assert not _brackets(it.target.sender), it.probe_id
-        if it.family == "bk_claim_unseen" and it.baker_template != "meaning":
-            rec = d.evs[d.target]
-            for pid in p["person_ids"]:
-                assert {rec.frm, rec.to} & d.scene.holders(pid), it.probe_id
-                assert any(pid in _brackets(ln.sender) for ln in it.lines()), it.probe_id
+        if it.family == "bk_claim_open" and it.baker_template != "meaning":
+            rec, pid = d.evs[d.target], p["person_ids"][0]  # the claim's actor is in the chat
+            assert {rec.frm, rec.to} & d.scene.holders(pid), it.probe_id
+            assert any(pid in _brackets(ln.sender) for ln in _ids(d)), it.probe_id
+
+
+def test_baker_event_records_are_the_event(bk: list[Any]) -> None:
+    # Rule 29: the record is the act the claim states, between the parties it names, plainly
+    # inside the window (test_baker_windows_hold_or_miss_their_records checks the window).
+    seen: Counter[str] = Counter()
+    for it, d, _ in bk:
+        if it.family != "bk_event_is_record":
+            continue
+        rec, p = d.evs[d.target], it.baker_params
+        seen[rec.kind] += 1
+        pids, accts = p["person_ids"], p.get("account_ids", ())
+        assert len(pids) + len(accts) == 2 and rec.to is not None, it.probe_id
+        ends = {rec.frm, rec.to}
+        held = [ends & d.scene.holders(pid) for pid in pids]
+        held += [{e for e in ends if d.phone.aid(e) == a} for a in accts]
+        assert all(held) and set().union(*held) == ends, it.probe_id
+        assert rec.frm in d.scene.holders(pids[0]), it.probe_id  # the actor sent it or called
+    assert seen["call"] >= 15 and seen["msg"] >= 60, seen
+
+
+def test_baker_denials_come_after_the_window_from_the_named_person(bk: list[Any]) -> None:
+    # Rule 29: the named person's own words, from an account carrying them in brackets, sent
+    # after the claim's window ended, rule the act out for that whole time.
+    seen: Counter[str] = Counter()
+    for it, d, _ in bk:
+        if it.family != "bk_claim_denied":
+            continue
+        p, rec = it.baker_params, d.evs[d.target]
+        assert p["person_ids"][0] in _rec_ids(d), it.probe_id
+        assert rec.utc is not None and rec.utc >= datetime.fromisoformat(p["window"]["end_utc"])
+        seen[f"{it.baker_template}|{d.notes['kind']}"] += 1
+    assert len(seen) == 4 and min(seen.values()) >= 5, seen
 
 
 def test_baker_unrelated_records_share_nothing_with_the_assumption(bk: list[Any]) -> None:
-    for it, _, _ in bk:
+    for it, d, _ in bk:
         if it.family != "bk_unrelated":
             continue
         p, t = it.baker_params, it.baker_template
-        shown = " ".join(f"{ln.sender} {ln.account_id} {ln.text}" for ln in it.lines())
+        shown = " ".join(f"{ln.sender} {ln.account_id} {ln.text}" for ln in _ids(d))
         seen = set().union(*(words(ln.text) for ln in it.lines()))
         if "quoted_text" in p:
             assert not words(p["quoted_text"]) & seen, (it.probe_id, p["quoted_text"])
@@ -1437,3 +1562,7 @@ def test_baker_unrelated_records_share_nothing_with_the_assumption(bk: list[Any]
                 assert a.rsplit(":", 1)[1] not in shown, (it.probe_id, a)
         if t in ("role", "event", "authorship", "person_identity"):
             assert not any(pid in shown for pid in p["person_ids"]), it.probe_id
+        if it.baker_claim:  # the claim is about no one a line carries in brackets
+            names = it.baker_names or {}
+            bracketed = set().union(*(_brackets(ln.sender) for ln in _ids(d)))
+            assert not any(names[x] in it.baker_claim for x in bracketed), it.probe_id
