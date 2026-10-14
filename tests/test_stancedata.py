@@ -118,7 +118,8 @@ def reference_index() -> contamination.Index:
 def test_reference_data_covers_probe_case01_and_case02(reference_index) -> None:
     sources = [t.source for t in reference_index.texts]
     assert sum(s.startswith("probe(signed)") and s.endswith("assumption") for s in sources) == 88
-    assert sum(s.startswith("probe(draft)") and s.endswith("assumption") for s in sources) == 97
+    drafts = len(read_jsonl(ROOT / "eval" / "probe_draft" / "probe_draft.jsonl"))
+    assert sum(s.startswith("probe(draft)") and s.endswith("assumption") for s in sources) == drafts
     assert sum(s.startswith("case01 msg:") for s in sources) > 1500
     assert sum(s.startswith("case02 msg:") for s in sources) > 1000
     assert any(s.startswith("case01 gold C20") for s in sources)

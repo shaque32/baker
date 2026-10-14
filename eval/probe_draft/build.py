@@ -44,8 +44,9 @@ HEADER = f"""# Probe set
 
 **P001-P088 are signed** (`{SIGNED_LABEL}`): Arsh adopted the second outside review as his
 labels. On 2026-10-14 he relabeled P038 to P044 and P071 from contradicts to complicates under
-the strict contradicts of stance guide v0.3 (`{RELABEL_LABEL}`). **P089-P097 are drafts**
-(`{DRAFT_LABEL}`), added after that review to break label cues, and wait for his sign-off.
+the strict contradicts of stance guide v0.3 (`{RELABEL_LABEL}`). **P089-P105 are drafts**
+(`{DRAFT_LABEL}`) and wait for his sign-off: P089-P097 were added after that review to break
+label cues, and P098-P105 are contradicts under guide v0.3.
 Items marked **disputed** have a reasonable competing label; they are scored and reported on
 their own and never count toward a pass bar. All data is synthetic and fictional.
 
@@ -90,8 +91,9 @@ debatable. Signed items are copied into `eval/gold/` by the frozen-files thread 
 - Stance guide v0.3 (signed 2026-10-14), which the training data follows, is stricter in two
   more cases. A denial that names no time leaves open an assumption that names none (P049),
   since the act could come later. A statement of the opposite leaves open "X told Y that ..."
-  (P066 to P069), since X could have said it in another message. Those five keep their signed
-  answer, **contradicts**, until Arsh decides.
+  (P066 to P069; drafts P092 to P094), since X could have said it in another message. The five
+  signed items keep their answer, **contradicts**, until Arsh signs the relabel proposed in
+  `PROPOSED_CHANGES.md`.
 - Quoted speech: when the record, by quotation, attributes the words to a different person than
   the assumption names, the stance is **contradicts** (P047 and P048, both disputed).
 - Sarcasm about a fact ("sure, I was there") leaves the fact unsettled: **complicates**. When

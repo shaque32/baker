@@ -78,7 +78,7 @@ def test_ids_unique_and_sequential():
 
 def test_counts_within_targets():
     cats = Counter(i.category for i in ITEMS)
-    assert 80 <= len(ITEMS) <= 100
+    assert 80 <= len(ITEMS) <= 110
     assert cats[ProbeCategory.OVERREACH] >= 25
     assert cats[ProbeCategory.CLEAR_SUPPORT] >= 24
     assert cats[ProbeCategory.CONTRADICTS] >= 8
