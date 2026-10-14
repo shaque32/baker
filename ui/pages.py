@@ -700,6 +700,11 @@ def _alternatives(conn: sqlite3.Connection, st: ClaimState) -> str:
     """Other explanations the records raise (core/hypotheses/); never part of the verdict."""
     if st.incomplete or not st.assumptions:
         return ""
+    if st.edited_after_run:
+        return (
+            "<p class='muted'>Other explanations are worked out from the audited claim. The claim "
+            "text changed after this audit, so they show again after a re-run.</p>"
+        )
     alts = explain.alternatives(explain.load(conn), st.assumptions)
     if not alts:
         return ""

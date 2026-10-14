@@ -807,3 +807,89 @@ def test_copies_two_phone_scoped_statements_point_to_show_once(conn, finder):
     # item2's copies of item1's records add nothing: the same records, the same total.
     assert {f.record_id for f in both.fits} == {f.record_id for f in alone.fits}
     assert both.total == alone.total
+
+
+# ---------------------------------------------------------------- tenth review
+
+
+def test_a_copy_on_another_phone_adds_its_own_clock_reading(conn):
+    one = _asm(conn, "C10", "record_time", device_ids=("dev:item1",))
+    two = _asm(conn, "C10", "record_time", device_ids=("dev:item2",))
+    two = two.model_copy(update={"id": "asm:item2"})
+    clock = explain._clock(explain.load(conn), [one, two])
+    assert clock is not None
+    (fit,) = clock.fits
+    assert fit.source_id == "item1"
+    assert "'s copy: Read on" in fit.note  # item2's own reading kept on the same line
+    assert set(clock.assumption_ids) == {one.id, two.id}
+
+
+def test_quiet_app_sentences_keep_windows_with_the_same_words_apart(conn):
+    a = _asm(conn, "C15", "event")
+    w = a.params.window
+    moved = w.model_copy(
+        update={
+            "start_utc": w.start_utc + timedelta(minutes=1),
+            "end_utc": w.end_utc + timedelta(minutes=1),
+        }
+    )
+    b = _asm(conn, "C15", "event", window=moved).model_copy(update={"id": "asm:moved"})
+    alt = explain._app_quiet(explain.load(conn), [a, b])
+    assert alt is not None
+    assert alt.summary.count("has no record in any conversation") == 2
+
+
+def test_locators_are_looked_up_only_for_shown_records(conn, monkeypatch):
+    case = explain.load(conn)
+    real = case.locator
+
+    def refuse(rid: str) -> tuple[str, str]:
+        raise AssertionError(f"looked up {rid} before it was shown")
+
+    monkeypatch.setattr(case, "locator", refuse)
+    row = explain._quoted_rows(case, _asm(conn, "C10", "record_time"))[0]
+    fit = explain._fit(case, row, "note")  # every match makes a fit; none is looked up yet
+    calls: list[str] = []
+    monkeypatch.setattr(case, "locator", lambda rid: calls.append(rid) or real(rid))
+    alts = explain.alternatives(case, claim_state(conn, "C14").assumptions)
+    assert alts and len(calls) <= sum(len(a.fits) for a in alts)
+    shown = explain._located(case, Alternative("clock", "timing", "t", "s", (fit,), 9, "", ()))
+    (sid, loc) = conn.execute(
+        "SELECT source_id, locator FROM messages WHERE id = ?", (row.id,)
+    ).fetchone()
+    assert (shown.fits[0].source_id, shown.fits[0].locator) == (sid, loc)
+
+
+def test_no_leads_for_a_claim_edited_after_the_audit(conn):
+    from core.report.html import _claim_block
+    from ui.pages import _alternatives
+
+    st = claim_state(conn, "C16")
+    assert "Other explanations to check" in _claim_block(conn, st, explain.load(conn))
+    st.edited_after_run = True
+    assert "Other explanations to check" not in _claim_block(conn, st, explain.load(conn))
+    page = _alternatives(conn, st)
+    assert "id='alternatives'" not in page and "re-run" in page
+
+
+def test_one_saved_name_on_two_accounts_shows_for_each(conn):
+    case = explain.load(conn)
+
+    def name(rid: str):  # noqa: ANN202
+        return SimpleNamespace(
+            text="Ilya M",
+            kind="contact name",
+            words=("ilya", "m"),
+            record_id=rid,
+            source_id="item1",
+            locator=rid,
+            note="",
+        )
+
+    k1, k2 = ("sms", "+1"), ("whatsapp", "1@s")
+    case.ids.groups = {
+        k1: SimpleNamespace(label="a", names=[name("c1")]),
+        k2: SimpleNamespace(label="b", names=[name("c2")]),
+    }
+    fits = explain._name_fits(case, {k1, k2}, [_person("Daniel Petrov")])
+    assert {f.record_id for f in fits} == {"c1", "c2"}

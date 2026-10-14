@@ -404,7 +404,9 @@ def _claim_block(conn: sqlite3.Connection, st: ClaimState, case: explain.Case) -
         out.append("<p class='muted'>No relevant evidence items were stored for this claim.</p>")
     if hidden:
         out.append(f"<p class='muted'>{hidden} retrieved records were labeled irrelevant.</p>")
-    if st.assumptions and not st.incomplete:
+    # Leads are worked out from the run's assumptions; after an edit they would describe the old
+    # claim, so they wait for a re-run (the claim already says to re-run it).
+    if st.assumptions and not st.incomplete and not st.edited_after_run:
         alts = explain.alternatives(case, st.assumptions)
         if alts:
             out.append("<h4>Other explanations to check</h4>")

@@ -31,7 +31,7 @@ from __future__ import annotations
 import re
 import sqlite3
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -201,10 +201,21 @@ def load(conn: sqlite3.Connection) -> Case:
 
 
 def _fit(case: Case, row: Row, note: str) -> Fit:
-    src, loc = case.locator(row.id)
+    """A record's fit. Its locator is looked up later, only for the fits a lead shows."""
     when = local_str(case.data, row) if row.ts_utc is not None else ""  # no time, none derived
     local = row.ts_utc is not None and case.data.tz_for(row.source_id) is not None
-    return Fit(row.id, src or row.source_id, loc, _row_text(row), when, note, local)
+    return Fit(row.id, row.source_id, "", _row_text(row), when, note, local)
+
+
+def _located(case: Case, alt: Alternative) -> Alternative:
+    """The shown fits with their locators: one lookup per shown record, not per match."""
+    out = []
+    for f in alt.fits:
+        if not f.locator:
+            src, loc = case.locator(f.record_id)
+            f = replace(f, source_id=src or f.source_id, locator=loc) if loc else f
+        out.append(f)
+    return replace(alt, fits=tuple(out))
 
 
 def _row_text(row: Row) -> str:
@@ -426,18 +437,18 @@ def _intro_fits(
 
 def _name_fits(case: Case, keys: set[Key], persons: list[idl.Person]) -> list[Fit]:
     out: list[Fit] = []
-    seen: set[str] = set()
+    seen: set[tuple[Key, str]] = set()  # per account: its copies on both phones show once
     for k in sorted(keys):
         g = case.ids.groups.get(k)
         if g is None:
             continue
         for s in g.names:
             text = s.text.strip()
-            if s.kind == "user name" or "@" in text or not s.words or text.casefold() in seen:
+            if s.kind == "user name" or "@" in text or not s.words or (k, text.casefold()) in seen:
                 continue
             if any(_shares_word(p, s.words) for p in persons):
                 continue
-            seen.add(text.casefold())
+            seen.add((k, text.casefold()))
             who = " or ".join(cite(p.name) for p in persons)
             extra = f" ({s.note})" if s.note else ""
             out.append(
@@ -714,9 +725,10 @@ def _clock(case: Case, assumptions: list[Assumption]) -> Alternative | None:
     claimed = _claimed_rows(case, mine)
     fits: list[Fit] = []
     used: list[str] = []
-    # Every copy is read on its own phone's clocks (phones can print different offsets); a
-    # record shows once, from the first copy whose reading fits, across every statement.
-    shown: dict[tuple[str, ...], str] = {}  # copy key -> the phone it was shown from
+    # Every copy is read on its own phone's clocks (phones can print different offsets). A
+    # record shows once, from the first copy whose reading fits, across every statement; a copy
+    # on another phone that fits too adds its own reading to that line.
+    first: dict[tuple[str, ...], tuple[str, int]] = {}  # copy key -> (phone, index in fits)
     for a in mine:
         window = a.params.window
         wall = _wall(window) if window is not None else None
@@ -728,8 +740,6 @@ def _clock(case: Case, assumptions: list[Assumption]) -> Alternative | None:
             at = r.ts_utc
             if at is None or in_window(at, window):
                 continue  # no usable time, or inside the stated time on the real clock
-            if shown.get(_copy_key(case.data, r), r.source_id) != r.source_id:
-                continue  # a copy, on another phone, of a record already shown
             tz = case.data.tz_for(r.source_id)
             if tz is None:
                 continue  # the phone's own zone is unknown, so no reading is "another" clock
@@ -749,16 +759,23 @@ def _clock(case: Case, assumptions: list[Assumption]) -> Alternative | None:
                         f"on the phone's own clock ({case.data.sources[r.source_id].tz}) it is "
                         f"{local_str(case.data, r)}"
                     )
-                    fits.append(
-                        _fit(
-                            case,
-                            r,
-                            f"Read on {label}, this record is at {_day(t)}, inside the stated "
-                            f"time {cite(window.raw)}; {phone}.",
-                        )
+                    fit = _fit(
+                        case,
+                        r,
+                        f"Read on {label}, this record is at {_day(t)}, inside the stated "
+                        f"time {cite(window.raw)}; {phone}.",
                     )
+                    key = _copy_key(case.data, r)
+                    seen = first.get(key)
+                    if seen is not None and seen[0] != r.source_id:
+                        old = fits[seen[1]]
+                        extra = f"{cite(r.source_id)}'s copy: {fit.note}"
+                        if extra not in old.note:
+                            fits[seen[1]] = replace(old, note=f"{old.note} {extra}")
+                    else:
+                        first.setdefault(key, (r.source_id, len(fits)))
+                        fits.append(fit)
                     used.append(a.id)
-                    shown[_copy_key(case.data, r)] = r.source_id
                     break
     fits = _merge(fits)  # a record two time statements both point to shows once
     if not fits:
@@ -948,7 +965,7 @@ def _app_quiet(case: Case, assumptions: list[Assumption]) -> Alternative | None:
     used: list[str] = []
     # Per app and window, the phones where that app is quiet: one sentence each, so no sentence
     # joins an app to a window it was not found quiet in.
-    quiet: dict[tuple[str, str], list[str]] = {}
+    quiet: dict[tuple[str, str, datetime, datetime], list[str]] = {}
     for a in assumptions:
         p = a.params
         apps = [c for c in p.channels if c.strip().lower() != CALL_CHANNEL]
@@ -976,7 +993,9 @@ def _app_quiet(case: Case, assumptions: list[Assumption]) -> Alternative | None:
                 if not rest:
                     continue  # the whole phone is quiet; the gaps view covers that
                 used.append(a.id)
-                phones = quiet.setdefault((app, window.raw), [])
+                # Keyed by the resolved window too: one wording can mean different periods.
+                key = (app, window.raw, window.start_utc, window.end_utc)
+                phones = quiet.setdefault(key, [])
                 phones.append(f"{cite(sid)} ({rest} other record(s))")
                 timed = [r for r in mine_ if r.ts_utc is not None]
                 before = [r for r in timed if r.ts_utc < window.start_utc]  # type: ignore[operator]
@@ -1006,7 +1025,7 @@ def _app_quiet(case: Case, assumptions: list[Assumption]) -> Alternative | None:
         " ".join(
             f"{cite(app)} has no record in any conversation in {cite(window)} on "
             f"{'; '.join(dict.fromkeys(phones))}, while the phone's other apps and calls go on."
-            for (app, window), phones in quiet.items()
+            for (app, window, _, _), phones in quiet.items()
         )
         + " A silence across a whole app can come from the app or the extraction, not only from "
         "one conversation.",
@@ -1144,4 +1163,4 @@ def alternatives(case: Case, assumptions: list[Assumption]) -> list[Alternative]
     """Every alternative the records raise for one claim's assumptions, in a fixed order.
     Read-only: nothing is written, and the claim's verdict is never read or changed."""
     finders = (_other_user, _clock, _day_boundary, _other_app, _app_quiet, _curated, _same_words)
-    return [alt for find in finders if (alt := find(case, assumptions)) is not None]
+    return [_located(case, alt) for find in finders if (alt := find(case, assumptions)) is not None]
