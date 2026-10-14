@@ -42,6 +42,7 @@ from eval.stancemodel.policy import Policy, decide
 
 MODEL_NAME = "baker-stance-classifier"
 RATIONALE = "Classifier label; the quote is the span the model marked in the record."
+CLAIM_TEMPLATES = frozenset({"meaning", "role", "event"})  # their text points at "the claim"
 WINDOW = 3  # messages either side of the record; the training excerpts hold at most six lines
 _ZONE_NOTE = re.compile(r"\s*\(UTC[+-]\d\d:\d\d\)$")
 
@@ -128,9 +129,11 @@ def case_item(
     sender as Parties.sender writes it, the phone's local time without its "(UTC-05:00)" note,
     the body as stored. The record's text is the text a quote is checked against
     (core.audit.invariants): a contact reads "Name +1...", a call "outgoing call from ... to ...
-    at ..., 123s". device_id names the phone the record was extracted from. The Baker-form
-    training items (eval/train, eval/heldout) are written to match this exactly; tell the
-    "Custom model for Baker" thread before changing it or WINDOW."""
+    at ..., 123s". device_id names the phone the record was extracted from. For the meaning, role
+    and event templates, whose text points at "the claim", baker_claim carries the claim's text
+    (Arsh's decision of 2026-10-14; the 14B prompt gets the same once its change is signed).
+    The Baker-form training items (eval/train, eval/heldout) are written to match this exactly;
+    tell the "Custom model for Baker" thread before changing it or WINDOW."""
     parties = parties or Parties(conn)
     text = invariants.record_text(conn, cand.record_id) or cand.text
     lines = build_context(conn, cand.record_id, window)
@@ -158,6 +161,12 @@ def case_item(
     device = parties.device_of(cand.record_id)
     if device:
         item["device_id"] = device
+    if getattr(assumption, "template_id", None) in CLAIM_TEMPLATES:
+        row = conn.execute(
+            "SELECT text FROM claims WHERE id = ?", (assumption.claim_id,)
+        ).fetchone()
+        if row:
+            item["baker_claim"] = row[0]
     return item
 
 

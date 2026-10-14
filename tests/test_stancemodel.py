@@ -101,6 +101,20 @@ def test_the_record_mark_names_the_phone_when_the_item_does() -> None:
     assert named.excerpt.replace("RECORD (dev:item1): ", features.RECORD_MARK) == plain.excerpt
 
 
+def test_the_claim_goes_before_the_assumption_and_never_in_the_excerpt() -> None:
+    it = _item(["is the van ready?", "van is fixed, come by"], 1, "van is fixed")
+    plain = features.render(it)
+    it["baker_claim"] = "Dante told the owner the van was repaired."
+    r = features.render(it)
+    assert (
+        r.assumption == "CLAIM: Dante told the owner the van was repaired. || " + plain.assumption
+    )
+    assert r.excerpt == plain.excerpt and (r.record_start, r.record_end) == (
+        plain.record_start,
+        plain.record_end,
+    )
+
+
 def test_far_context_goes_first_and_the_record_never_goes() -> None:
     it = _item(["a1", "b2", "c3", "rec here", "d5", "e6"], 3, "rec here")
     assert features.drop_order(it) == [0, 5, 1, 4, 2]
@@ -294,3 +308,17 @@ def test_case_items_name_owners_confirmed_people_and_the_phone(case_db) -> None:
     assert contact["target"] == {**target, "text": "Carl Shop +12125550133"}
     r = features.render(contact)
     assert r.excerpt == "RECORD (dev:a): no time in source | contact list | Carl Shop +12125550133"
+    assert "baker_claim" not in it  # only meaning, role and event assumptions carry the claim
+    case_db.execute("INSERT INTO govdocs VALUES ('doc1', 'sa', 'Affidavit', 'affidavit')")
+    case_db.execute(
+        "INSERT INTO govdoc_paragraphs (id, govdoc_id, page, para_no, label, char_start,"
+        " char_end, text) VALUES ('para:1', 'doc1', 1, 1, NULL, 0, 24, 'Ann met Carl at the lot.')"
+    )
+    case_db.execute(
+        "INSERT INTO claims VALUES ('C1', 'para:1', 'Ann met Carl at the lot.', 'event',"
+        " 'accepted', NULL)"
+    )
+    event = SimpleNamespace(text="The event the claim states happened", template_id="event",
+                            claim_id="C1")  # fmt: skip
+    ev = case_item(case_db, event, SimpleNamespace(record_id="msg:sa:Chats!2", text=""), WINDOW)
+    assert ev["baker_claim"] == "Ann met Carl at the lot."

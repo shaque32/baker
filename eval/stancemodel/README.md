@@ -33,7 +33,9 @@ call or contact reads as Baker's record text. The record mark names the phone
 (`RECORD (dev:item1):`). A sender is `<app> <id>`, then the name the source showed, then
 `(owner)` for the phone's own account, then `[person ids]`. Person ids come only from
 expert-confirmed device-owner stipulations and identity links, matched as Baker's checks match
-them (`core/audit/checks/_common.person_party`). Training items written in this form must
+them (`core/audit/checks/_common.person_party`). For the meaning, role and event assumptions, whose
+text points at "the claim", the claim's own text comes first (`CLAIM: <text> || <assumption>`),
+on the assumption side, so a quote is never cut from it. Training items written in this form must
 match `case_item` exactly, so a change to it, or to its window of 3 messages, is agreed with
 the data generators first.
 

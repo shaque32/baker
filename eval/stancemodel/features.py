@@ -24,9 +24,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-VERSION = "1.1.0"  # 1.1.0: the record mark names the phone (device_id)
+VERSION = "1.2.0"  # 1.1.0: the record mark names the phone; 1.2.0: the claim line (baker_claim)
 
 RECORD_MARK = "RECORD: "
+CLAIM_MARK = "CLAIM: "
 LINE_SEP = " || "
 FIELD_SEP = " | "
 
@@ -72,6 +73,14 @@ class Rendered:
     lines_total: int
 
 
+def assumption_text(item: dict[str, Any]) -> str:
+    """The first text of the pair: the assumption, after "CLAIM: <claim text> || " when the item
+    carries the claim (Baker's meaning, role and event assumptions point at it). The claim sits
+    on the assumption side, so a quote can never be cut from it."""
+    claim = item.get("baker_claim")
+    return f"{CLAIM_MARK}{claim}{LINE_SEP}{item['assumption']}" if claim else item["assumption"]
+
+
 def record_mark(item: dict[str, Any]) -> str:
     """The record line's mark: "RECORD: ", or "RECORD (dev:item1): " when the item names its
     phone."""
@@ -110,7 +119,7 @@ def render(item: dict[str, Any], keep: set[int] | None = None) -> Rendered:
         kept += 1
     excerpt = LINE_SEP.join(parts)
     assert excerpt[record_start:record_end] == item["target"]["text"]  # noqa: S101 - invariant
-    return Rendered(item["assumption"], excerpt, record_start, record_end, kept, len(lines))
+    return Rendered(assumption_text(item), excerpt, record_start, record_end, kept, len(lines))
 
 
 def drop_order(item: dict[str, Any]) -> list[int]:
