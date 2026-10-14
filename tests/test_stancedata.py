@@ -224,10 +224,29 @@ def test_scorer_matches_run_probe_exactly() -> None:
         score.add_prediction(ours, it, preds.get(it["probe_id"]))
     got = run_probe.expert_confirms(ours)
     for key in ("supports_recall", "contradicts_precision", "contradicts_recall",
-                "contradicts_shown_as_supports", "expert_load_supports_shown",
-                "expert_load_precision", "stance_valid_output", "confusion", "bars"):  # fmt: skip
+                "contradicts_shown_as_supports", "moved_traps_shown_as_supports",
+                "expert_load_supports_shown", "expert_load_precision", "stance_valid_output",
+                "confusion", "bars"):  # fmt: skip
         assert got[key] == expected[key], key
+    assert expected["moved_traps_shown_as_supports"] > 0  # the cycle labels some moved traps
     assert (ours.correct, ours.quote_verified) == (st.correct, st.quote_verified)
+
+
+def test_moved_traps_are_the_families_guide_v0_3_made_complicates() -> None:
+    moved = {f.trap: set() for f in FAMILIES if f.trap in run_probe.MOVED_TRAPS}
+    for f in FAMILIES:
+        if f.trap in moved:
+            moved[f.trap].add(f.stance.value)
+    assert set(moved) == run_probe.MOVED_TRAPS
+    assert all(stances == {"complicates"} for stances in moved.values()), moved
+    probe = [it for it in read_jsonl(PROBE) if it["trap"] in run_probe.MOVED_TRAPS]
+    assert {it["probe_id"] for it in probe} == {*(f"P0{n}" for n in range(38, 45)), "P071"}
+    assert {it["gold_stance"] for it in probe} == {"complicates"}
+    one = probe[0]  # P038, a signed later correction
+    pred = {"stance": "supports", "quote": one["proposed_quote"]}
+    shown = score.score([one], {one["probe_id"]: pred})
+    assert shown["gated"]["moved_traps_shown_as_supports"] == 1
+    assert shown["gated"]["contradicts_shown_as_supports"] == 0
 
 
 class _Capture(_Replay):
@@ -307,32 +326,54 @@ def _perfect(name: str) -> dict:
     n = gobar.MIN_GATED[name]
     gated = {"n": n, "gold_contradicts": gobar.MIN_GOLD_CONTRADICTS[name],
              "stance_valid_output": 1.0, "supports_recall": 0.95,
-             "contradicts_precision": 0.93, "contradicts_shown_as_supports": 0}  # fmt: skip
+             "contradicts_precision": 0.93, "contradicts_shown_as_supports": 0,
+             "moved_traps_shown_as_supports": 0}  # fmt: skip
     return {"gated": gated}
 
 
+CASE02_OK = {"false_supported": 0, "false_contradicted": 0, "verdict_accuracy": 0.85}
+
+
 def test_go_bar_decision() -> None:
-    ok = gobar.decide(probe=_perfect("probe"), heldout=_perfect("heldout"),
+    ok = gobar.decide(probe=_perfect("probe"), heldout=_perfect("heldout"), case02=CASE02_OK,
                       seconds_per_call=4.5, contamination_passed=True)  # fmt: skip
     assert ok.go and ok.reasons == []
     bad_heldout = _perfect("heldout")
     bad_heldout["gated"]["contradicts_shown_as_supports"] = 1
+    moved_probe = _perfect("probe")
+    moved_probe["gated"]["moved_traps_shown_as_supports"] = 1
+    unscored = _perfect("heldout")  # a result from before the moved-trap count existed
+    del unscored["gated"]["moved_traps_shown_as_supports"]
+    few_contradicts = _perfect("probe")
+    few_contradicts["gated"]["gold_contradicts"] = gobar.MIN_GOLD_CONTRADICTS["probe"] - 1
     small = {"gated": {"n": 0}}  # held-out sample not signed yet: nothing gated
     for kw, needle in [
         ({"heldout": bad_heldout}, "contradicts_shown_as_supports"),
+        ({"probe": moved_probe}, "probe: moved_traps_shown_as_supports is 1"),
+        ({"heldout": unscored}, "heldout: moved_traps_shown_as_supports is None"),
+        ({"probe": few_contradicts}, "fewer than 8 gold contradicts"),
         ({"heldout": small}, "gated items"),
         ({"seconds_per_call": 4.6}, "speed"),
         ({"contamination_passed": False}, "overlap"),
         ({"probe": None}, "probe: no result"),
+        ({"case02": None}, "case02: no result"),
+        ({"case02": {**CASE02_OK, "false_supported": 1}}, "case02: false_supported is 1"),
+        ({"case02": {**CASE02_OK, "false_contradicted": 1}}, "case02: false_contradicted is 1"),
+        ({"case02": {**CASE02_OK, "verdict_accuracy": 0.79}}, "case02: verdict accuracy"),
+        ({"case02": {"false_supported": 0, "false_contradicted": 0}}, "verdict accuracy is None"),
+        ({"case02": {"verdict_accuracy": 0.9}}, "case02: false_supported is None"),
     ]:
-        args = dict(probe=_perfect("probe"), heldout=_perfect("heldout"),
+        args = dict(probe=_perfect("probe"), heldout=_perfect("heldout"), case02=CASE02_OK,
                     seconds_per_call=4.0, contamination_passed=True)  # fmt: skip
         args.update(kw)
         d = gobar.decide(**args)
         assert not d.go and any(needle in r for r in d.reasons), (kw, d.reasons)
+    edge = {**CASE02_OK, "verdict_accuracy": gobar.CASE02_MIN_VERDICT_ACCURACY}
+    assert gobar.decide(probe=_perfect("probe"), heldout=_perfect("heldout"), case02=edge,
+                        seconds_per_call=4.0, contamination_passed=True).go  # fmt: skip
     no_contradicts = _perfect("probe")
     no_contradicts["gated"]["contradicts_precision"] = None
-    assert not gobar.decide(probe=no_contradicts, heldout=_perfect("heldout"),
+    assert not gobar.decide(probe=no_contradicts, heldout=_perfect("heldout"), case02=CASE02_OK,
                             seconds_per_call=1.0, contamination_passed=True).go  # fmt: skip
 
 
@@ -344,6 +385,15 @@ def test_go_bar_file_states_the_coded_numbers() -> None:
     assert f"{gobar.MIN_GOLD_CONTRADICTS['heldout']} gold contradicts" in text
     assert f"{gobar.MIN_GATED['probe']} items, {gobar.MIN_GOLD_CONTRADICTS['probe']}" in text
     assert "at least 90%" in text and "valid output 100%" in text
+    flat = " ".join(text.split())
+    assert "(" + ", ".join(sorted(run_probe.MOVED_TRAPS, key=TRAP_ORDER.index)) + ")" in flat
+    assert 'shown as "supports"' in flat and "The moved-trap bar applies here too" in flat
+    assert "It must have 0 false supported, 0 false contradicted" in flat
+    assert gobar.CASE02_AT_MOST == {"false_supported": 0, "false_contradicted": 0}
+    assert f"verdict accuracy of at least {gobar.CASE02_MIN_VERDICT_ACCURACY:.2f}" in flat
+
+
+TRAP_ORDER = ["time_mismatch", "sender_mismatch", "speaker_mismatch", "later_correction"]
 
 
 def test_review_sample_is_fixed_and_spread_over_families() -> None:

@@ -1,6 +1,7 @@
 # Stance data for Baker's own model
 
-SYNTHETIC. Labels are DRAFT until Arsh signs the labeling guide and the label samples.
+SYNTHETIC. Arsh signed labeling guide v0.3 on 2026-10-14; generated labels stay DRAFT until he
+signs the label samples.
 
 Baker's stance step labels how one phone record bears on one assumption. Today a prompted
 Qwen3-14B does it at about 23 seconds per record on a 24 GB Mac. The plan is a small model
@@ -11,7 +12,7 @@ go bar. The two generators live next door:
 
 | Path | What it is |
 |---|---|
-| `LABELING_GUIDE.md` | The rulebook: the four answers, the ground rules, 66 families with a fixed answer each (38 plain, 28 in Baker's own wording). Draft v0.3, for Arsh to sign. |
+| `LABELING_GUIDE.md` | The rulebook: the four answers, the ground rules, 66 families with a fixed answer each (38 plain, 28 in Baker's own wording). v0.3, signed by Arsh on 2026-10-14; the signed copy is in `eval/gold/stancedata/`. |
 | `families.py` | The same families as code. A generator picks a family; the label comes from it. |
 | `model.py`, `chat.py` | The item format (a probe item with a wider id) and the shared mechanics: accounts, local times, item assembly. No wording. |
 | `bakerform.py`, `names.py` | Items in Baker's own wording: the product's assumption templates, sender lines and call text, rendered with the names a case gives (`core/audit/readable.py`), so the model reads what Baker will show it. |

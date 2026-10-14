@@ -12,7 +12,14 @@ from collections import Counter
 from pathlib import Path
 
 from eval.probe_draft.items import ITEMS
-from eval.probe_draft.model import DRAFT_LABEL, SIGNED_LABEL, ProbeCategory, ProbeItem
+from eval.probe_draft.model import (
+    DRAFT_LABEL,
+    RELABEL_LABEL,
+    SIGNED_LABEL,
+    SIGNED_LABELS,
+    ProbeCategory,
+    ProbeItem,
+)
 
 HERE = Path(__file__).resolve().parent
 JSONL = HERE / "probe_draft.jsonl"
@@ -36,10 +43,11 @@ CATEGORY_TITLE = {
 HEADER = f"""# Probe set
 
 **P001-P088 are signed** (`{SIGNED_LABEL}`): Arsh adopted the second outside review as his
-labels. **P089-P097 are drafts** (`{DRAFT_LABEL}`), added after that review to break label cues,
-and wait for his sign-off. Items marked **disputed** have a reasonable competing label; they are
-scored and reported on their own and never count toward a pass bar. All data is synthetic and
-fictional.
+labels. On 2026-10-14 he relabeled P038 to P044 and P071 from contradicts to complicates under
+the strict contradicts of stance guide v0.3 (`{RELABEL_LABEL}`). **P089-P097 are drafts**
+(`{DRAFT_LABEL}`), added after that review to break label cues, and wait for his sign-off.
+Items marked **disputed** have a reasonable competing label; they are scored and reported on
+their own and never count toward a pass bar. All data is synthetic and fictional.
 
 ## What signing means
 
@@ -64,17 +72,23 @@ debatable. Signed items are copied into `eval/gold/` by the frozen-files thread 
   are local dates.
 - ▶ marks the message being labeled. "Quote" is what a labeler would cite as support.
 - Stances: **supports** = the message, in context, plainly establishes the assumption.
-  **contradicts** = it asserts or shows the opposite (other sender, date, count, or an explicit
-  statement or correction). **complicates** = it bears on the assumption but neither establishes
-  it nor asserts the opposite. **irrelevant** = it does not bear on the assumption.
+  **contradicts** = what the message says cannot be true together with the assumption, with no
+  unstated fact needed (another count, an explicit statement). **complicates** = it bears on the
+  assumption but neither establishes it nor rules it out. **irrelevant** = it does not bear on
+  the assumption.
 - An assumption with several parts is supported only if every part is.
 - Read words in light of the lines shown: a pronoun, "outside" or "ok works" resolves against
   the conversation. A slang or code reading counts as established only when the conversation
   itself confirms it.
 - An assumption that something happened (not that someone said it) is supported by a firsthand
   report of it in the message. A plan, promise, prediction or secondhand report complicates.
-- Wrong person: when the record attributes the words to a different account, or, by quotation,
-  to a different person than the assumption names, the stance is **contradicts**.
+- Other sender, other time, later correction: matching words from a different account, or at a
+  local date or time other than the assumption states, rule out only an assumption whose words
+  exclude other messages ("first contact on", "no contact between"); otherwise the stance is
+  **complicates**, because one record cannot show that no other message exists. A message that
+  a later message corrects is **complicates**; the correction carries the contradiction.
+- Quoted speech: when the record, by quotation, attributes the words to a different person than
+  the assumption names, the stance is **contradicts** (P047 and P048, both disputed).
 - Sarcasm about a fact ("sure, I was there") leaves the fact unsettled: **complicates**. When
   the assumption is about what the message does (praise, thanks) and the context shows it does
   the opposite, the stance is **contradicts**.
@@ -145,7 +159,7 @@ def _block(it: ProbeItem) -> list[str]:
     ]
     if it.disputed:
         out += [f"**Disputed:** {it.disputed}", ""]
-    if it.labeled_by == SIGNED_LABEL:
+    if it.labeled_by in SIGNED_LABELS:
         out += [f"Signed: {it.labeled_by}", ""]
     else:
         out += ["Arsh: [ ] agree  [ ] change to ____", ""]

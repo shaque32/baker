@@ -26,6 +26,10 @@ from core.contracts import AssumptionKind, Stance
 DRAFT_LABEL = "DRAFT (agent proposal, not approved by Arsh)"
 # Arsh, 2026-10-07 in the probe set thread: "yes sign it", adopting the second outside review.
 SIGNED_LABEL = "Arsh, 2026-10-07"
+# Arsh, 2026-10-14 in the "Custom model for Baker" thread: "approved", relabeling 8 signed items
+# under stance guide v0.3's strict contradicts (items.RELABELED).
+RELABEL_LABEL = "Arsh, 2026-10-14"
+SIGNED_LABELS = frozenset({SIGNED_LABEL, RELABEL_LABEL})
 
 
 class ProbeCategory(StrEnum):

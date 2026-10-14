@@ -22,7 +22,9 @@ skips the reviewer items):
   contradicting evidence as support;
 - valid output 100%.
 Supports precision is reported as expert load (items the expert dismisses), not gated. These
-criteria were set before the 8B and 14B were re-run on them (Wave 3, 2026-10-08).
+criteria were set before the 8B and 14B were re-run on them (Wave 3, 2026-10-08). Also reported:
+items of the trap families stance guide v0.3 moved from contradicts to complicates (MOVED_TRAPS)
+shown as supports, which the own-model go bar holds at zero (eval/stancedata/GO_BAR.md).
 """
 
 from __future__ import annotations
@@ -58,6 +60,10 @@ BARS = {
     "overreach_false_accepts": 0,
     "repeat_identical": 1.0,
 }
+# Trap families stance guide v0.3 moved from contradicts to complicates (Arsh, 2026-10-14).
+MOVED_TRAPS = frozenset(
+    {"time_mismatch", "sender_mismatch", "speaker_mismatch", "later_correction"}
+)
 
 
 def load_items(path: Path) -> list[dict[str, Any]]:
@@ -94,6 +100,7 @@ class StanceScore:
     true_supports_predicted: int = 0
     gold_supports: int = 0
     repeat_identical: int = 0
+    moved_traps_shown_as_supports: int = 0  # MOVED_TRAPS items labeled supports
     failures: list[dict[str, Any]] = field(default_factory=list)
     confusion: dict[str, dict[str, int]] = field(default_factory=dict)  # gold -> got
 
@@ -213,6 +220,7 @@ def score_stance(
         if stance == "supports":
             s.predicted_supports += 1
             s.true_supports_predicted += it["expected"] == "supports"
+            s.moved_traps_shown_as_supports += it.get("trap") in MOVED_TRAPS
         if stance != it["expected"]:
             s.failures.append({"id": it["id"], "category": it["category"],
                                "expected": it["expected"], "got": stance,
@@ -249,6 +257,7 @@ def expert_confirms(st: StanceScore) -> dict[str, Any]:
         "contradicts_precision": _ratio(contra_true, got["contradicts"]),
         "contradicts_recall": _ratio(contra_true, contra_gold),
         "contradicts_shown_as_supports": st.confusion.get("contradicts", {}).get("supports", 0),
+        "moved_traps_shown_as_supports": st.moved_traps_shown_as_supports,  # reported here
         "expert_load_supports_shown": got["supports"],
         "expert_load_precision": _ratio(st.true_supports_predicted, st.predicted_supports),
         "stance_valid_output": _ratio(st.valid, st.n),
@@ -399,8 +408,9 @@ def table(results: list[dict[str, Any]]) -> str:
         if res.get("load_error"):
             lines.append(f"\n{res['model']} did not load: {res['load_error']}")
     ec_cols = ["supports_recall", "contradicts_precision", "contradicts_recall",
-               "contradicts_shown_as_supports", "expert_load_supports_shown",
-               "expert_load_precision", "stance_valid_output", "passes_all"]  # fmt: skip
+               "contradicts_shown_as_supports", "moved_traps_shown_as_supports",
+               "expert_load_supports_shown", "expert_load_precision", "stance_valid_output",
+               "passes_all"]  # fmt: skip
     lines += ["", "Expert confirms (rules 0.2.0): stance scored for surfacing evidence", ""]
     lines += ["| model | " + " | ".join(ec_cols) + " | s/stance call |",
               "|" + "---|" * (len(ec_cols) + 2)]  # fmt: skip

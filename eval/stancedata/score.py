@@ -24,7 +24,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from eval.probe.run_probe import StanceScore, expert_confirms, is_gated
+from eval.probe.run_probe import MOVED_TRAPS, StanceScore, expert_confirms, is_gated
 from eval.stancedata.chat import read_jsonl
 
 STANCES = ("supports", "contradicts", "complicates", "irrelevant")
@@ -54,6 +54,7 @@ def add_prediction(s: StanceScore, item: dict[str, Any], pred: dict[str, Any] | 
     if stance == "supports":
         s.predicted_supports += 1
         s.true_supports_predicted += expected == "supports"
+        s.moved_traps_shown_as_supports += item.get("trap") in MOVED_TRAPS
     if stance != expected:
         s.failures.append({"id": item["probe_id"], "category": item["category"],
                            "expected": expected, "got": stance, "quote": quote[:200]})  # fmt: skip
@@ -114,8 +115,9 @@ def load_predictions(path: Path) -> dict[str, dict[str, Any]]:
 
 def summary_table(result: dict[str, Any]) -> str:
     cols = ["n", "stance_valid_output", "supports_recall", "contradicts_precision",
-            "contradicts_shown_as_supports", "gold_contradicts", "overreach_shown_as_supports",
-            "overreach_items", "expert_load_precision", "passes_all"]  # fmt: skip
+            "contradicts_shown_as_supports", "moved_traps_shown_as_supports", "gold_contradicts",
+            "overreach_shown_as_supports", "overreach_items", "expert_load_precision",
+            "passes_all"]  # fmt: skip
     lines = ["| view | " + " | ".join(cols) + " |", "|---" * (len(cols) + 1) + "|"]
     for view in ("gated", "undisputed", "disputed"):
         m = result[view]

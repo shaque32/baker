@@ -94,7 +94,8 @@ def reviewer_prompt(assumption: str, quote: str, context: str, path: Path = REVI
 
 
 # What a stance prompt with a {claim} slot (v1.1) shows for an assumption that needs no claim,
-# as core/audit/stance.py is to fill it once that prompt is signed (PROPOSED_CHANGES.md).
+# as core/audit/stance.py is to fill it once that prompt is applied (signed 2026-10-14; its code
+# lands with it, PROPOSED_CHANGES.md).
 NO_CLAIM = "(not needed for this assumption)"
 
 

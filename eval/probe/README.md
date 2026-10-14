@@ -89,6 +89,11 @@ not on reviewer precision. `run_probe --stance-only` prints an "Expert confirms"
 | contradicts shown as supports | 0 | the expert would see contradicting evidence offered as support |
 | valid output | 100% | |
 
+The table also reports `moved_traps_shown_as_supports`: items of the trap families stance guide
+v0.3 moved from contradicts to complicates (time, sender and speaker mismatches and later
+corrections; Arsh signed it on 2026-10-14) shown as supports. It decides the own-model go bar
+(`eval/stancedata/GO_BAR.md`), not the rule below.
+
 Decision rule, fixed before the 8B and 14B were re-run (2026-10-08): ship the fastest model
 that meets all four on the signed, undisputed items; among those, the higher supports recall.
 If none meets them, ship the one with the fewest contradictions shown as support, then the

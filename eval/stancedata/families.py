@@ -1,4 +1,4 @@
-"""The item families both stance-data generators draw from. SYNTHETIC, DRAFT until Arsh signs.
+"""The item families both stance-data generators draw from. SYNTHETIC.
 
 A family fixes the gold stance, the probe category and the trap name. Generators choose a family,
 then write a record and an assumption that fit its rule; the label comes from the family, never
@@ -7,9 +7,9 @@ test checks the two stay in step.
 
 Conventions follow the signed stance prompt (core/audit/prompts/stance.md v1.0) and the signed
 probe set (eval/gold/probe, P001-P088). Families marked `new` describe a case the signed probe set
-does not cover; Arsh decides them when he signs the guide. Families marked `disputed` follow a
-signed label that the probe set itself marks disputed; they are generated for training, and the
-held-out set marks their items disputed so they never count toward a bar.
+does not cover; Arsh decided them when he signed guide v0.3 on 2026-10-14. Families marked
+`disputed` follow a signed label that the probe set itself marks disputed; they are generated for
+training, and the held-out set marks their items disputed so they never count toward a bar.
 """
 
 from __future__ import annotations
@@ -83,7 +83,7 @@ FAMILIES: tuple[Family, ...] = (
     # Overreach with gold contradicts: the record's own words rule the assumption out.
     _F("ovr_negation", C.OVERREACH, S.CONTRADICTS, "negation", (K.EVENT,),
        "The assumption's words appear in the record inside a negated statement."),
-    # Overreach whose gold changed to complicates in draft v0.3: the record's words match the
+    # Overreach whose gold changed to complicates in v0.3: the record's words match the
     # assumption, but its date, sender or a later correction leaves the assumption open, and one
     # record cannot show that no other message exists.
     _F("ovr_time_mismatch", C.OVERREACH, S.COMPLICATES, "time_mismatch", (K.TIME,),

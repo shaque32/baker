@@ -7,9 +7,12 @@ Conventions every item follows (PROBE_REVIEW.md repeats them for the signer):
   label on the phone, not proof of who someone is.
 - Times are the phone's local time. Dates in assumptions are local dates (case01 key rule 4).
 - Stances: supports = the item, read in its context, plainly establishes the assumption.
-  contradicts = the item asserts or shows the opposite (different sender, date, count, or an
-  explicit statement or correction). complicates = it bears on the assumption but neither
-  establishes it nor asserts the opposite. irrelevant = it does not bear on the assumption.
+  contradicts = what the item says cannot be true together with the assumption, with no
+  unstated fact needed (a different count, an explicit statement). A different sender, date or
+  time rules out only an assumption whose words exclude other messages ("first contact on"), and
+  a later correction contradicts through the correcting message (stance guide v0.3, rules 22
+  and 23). complicates = it bears on the assumption but neither establishes it nor rules it out.
+  irrelevant = it does not bear on the assumption.
 - case01 items copy records verbatim from eval/synthetic/case01 (record_id set on every line).
   Everything else is invented: fictional people, 555-01xx numbers, invented handles.
 """
@@ -18,7 +21,7 @@ from __future__ import annotations
 
 from core.contracts import AssumptionKind as K
 from core.contracts import Stance as S
-from eval.probe_draft.model import SIGNED_LABEL, ProbeItem, ProbeLine
+from eval.probe_draft.model import RELABEL_LABEL, SIGNED_LABEL, ProbeItem, ProbeLine
 from eval.probe_draft.model import ProbeCategory as C
 
 
@@ -173,7 +176,8 @@ JULES = ("SMS +16465550118 Jules", "sms:+16465550118")
 MARISA = ("SMS +19175550139 Marisa", "sms:+19175550139")
 
 
-# P001-P088. Arsh signed these on 2026-10-07 ("yes sign it"), adopting the second outside review.
+# P001-P088. Arsh signed these on 2026-10-07 ("yes sign it"), adopting the second outside review,
+# and relabeled the RELABELED items on 2026-10-14.
 _SIGNED: list[ProbeItem] = [
     # ============================================================ clear_support
     item(
@@ -948,9 +952,9 @@ _SIGNED: list[ProbeItem] = [
         ],
         0,
         "paid ruiz the 2k today",
-        S.CONTRADICTS,
-        "Three minutes later Gabe corrects himself: '1.2k not 2k. rest next week'. His own "
-        "correction states the opposite amount.",
+        S.COMPLICATES,
+        "Gabe says he paid Ruiz 2k, but three minutes later he corrects it: '1.2k not 2k. rest "
+        "next week'. That later message, not this record, rules out $2,000.",
     ),
     item(
         "P039",
@@ -978,9 +982,10 @@ _SIGNED: list[ProbeItem] = [
         ],
         0,
         "встречаемся в пятницу у метро",
-        S.CONTRADICTS,
-        "The Friday plan ('we meet Friday by the metro') is replaced the next morning: 'no, "
-        "let's do Saturday, I can't Friday', and the owner confirms Saturday.",
+        S.COMPLICATES,
+        "This record sets Friday; the next morning Тимур moves it to Saturday ('нет, давай в "
+        "субботу, в пятницу не могу') and the owner confirms. That later message, not this "
+        "record, shows Friday was not the final plan.",
     ),
     item(
         "P040",
@@ -992,9 +997,9 @@ _SIGNED: list[ProbeItem] = [
         [C1009, C1010, C1011, C1012],
         2,
         "its done",
-        S.CONTRADICTS,
-        "The sender column shows the owner's own number +12125550111; +12125550122 is the one "
-        "who replies 'nice'.",
+        S.COMPLICATES,
+        "'its done' here came from the owner's own number +12125550111, not +12125550122; the "
+        "record does not show whether +12125550122 also sent those words.",
     ),
     item(
         "P041",
@@ -1011,8 +1016,9 @@ _SIGNED: list[ProbeItem] = [
         ],
         1,
         "ill handle the cash pickup thurs",
-        S.CONTRADICTS,
-        "The volunteer is +17185550172 (Nadia). +17185550181 (Kofi) is the one who asked.",
+        S.COMPLICATES,
+        "The volunteer here is +17185550172 (Nadia), not +17185550181 (Kofi), who asked; the "
+        "record does not show whether +17185550181 also said it.",
     ),
     item(
         "P042",
@@ -1025,9 +1031,9 @@ _SIGNED: list[ProbeItem] = [
         [C947, C948, C949],
         1,
         "need 2 more by friday",
-        S.CONTRADICTS,
-        "The message was sent at 8:03 PM EDT on March 12 local time, not on March 13. Dates are "
-        "judged in the phone's local time.",
+        S.COMPLICATES,
+        "The same words went to the same user at 8:03 PM EDT on March 12 local time, not on "
+        "March 13; the record does not show whether a matching message was also sent on March 13.",
     ),
     item(
         "P043",
@@ -1054,9 +1060,9 @@ _SIGNED: list[ProbeItem] = [
         ],
         2,
         "home. thx for the ride",
-        S.CONTRADICTS,
-        "DST edge: clocks jumped from 2:00 EST to 3:00 EDT that night, so the message came only "
-        "7 minutes after 'almost there', but the local clock read 3:05 AM, after 3 a.m.",
+        S.COMPLICATES,
+        "DST edge: the local clock read 3:05 AM EDT when Rina sent this, after 3 a.m.; the "
+        "record does not show whether she also texted that she was home before 3 a.m.",
     ),
     item(
         "P044",
@@ -1077,9 +1083,9 @@ _SIGNED: list[ProbeItem] = [
         ],
         1,
         "still at the bar",
-        S.CONTRADICTS,
-        "DST edge: on November 2, 2025 the 1 a.m. hour repeated. 1:40 EDT is 05:40 UTC and "
-        "1:20 EST is 06:20 UTC, so Cal answered 40 minutes after the question, not before it.",
+        S.COMPLICATES,
+        "DST edge: 1:20 EST (06:20 UTC) is 40 minutes after the owner's 1:40 EDT 'where r u' "
+        "(05:40 UTC); the record does not show whether Cal said it before the question too.",
     ),
     item(
         "P045",
@@ -1648,10 +1654,11 @@ _SIGNED: list[ProbeItem] = [
         "unlikely he was at the site two minutes earlier, but the message speaks to 8:47, not "
         "8:45.",
     ),
+    # An overreach since the 2026-10-14 relabel; it stays here so the ids stay in order.
     item(
         "P071",
-        C.CONTRADICTS,
-        None,
+        C.OVERREACH,
+        "speaker_mismatch",
         "en",
         K.IDENTITY,
         "In the group chat, +1 347-555-0124 said he would pay the electric bill this month.",
@@ -1677,8 +1684,9 @@ _SIGNED: list[ProbeItem] = [
         ],
         1,
         "ill pay the electric bill this month",
-        S.CONTRADICTS,
-        "The offer comes from +13475550158 (Marisol); +13475550124 (Theo) thanks her for it.",
+        S.COMPLICATES,
+        "The offer here comes from +13475550158 (Marisol), and +13475550124 (Theo) thanks her; "
+        "the record does not show whether +13475550124 also offered.",
     ),
     # ============================================================ complicates
     item(
@@ -2014,9 +2022,16 @@ DISPUTED: dict[str, str] = {
 }
 
 
+# Relabeled from contradicts to complicates by Arsh on 2026-10-14 ("approved" in the "Custom
+# model for Baker" thread): under stance guide v0.3 a different sender or date, or a later
+# correction, leaves the record open, since one record cannot show that no other message exists.
+RELABELED = {"P038", "P039", "P040", "P041", "P042", "P043", "P044", "P071"}
+
+
 def _signed(it: ProbeItem) -> ProbeItem:
+    label = RELABEL_LABEL if it.probe_id in RELABELED else SIGNED_LABEL
     return ProbeItem.model_validate(
-        {**it.model_dump(), "labeled_by": SIGNED_LABEL, "disputed": DISPUTED.get(it.probe_id)}
+        {**it.model_dump(), "labeled_by": label, "disputed": DISPUTED.get(it.probe_id)}
     )
 
 

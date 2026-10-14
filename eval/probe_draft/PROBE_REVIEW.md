@@ -1,10 +1,11 @@
 # Probe set
 
 **P001-P088 are signed** (`Arsh, 2026-10-07`): Arsh adopted the second outside review as his
-labels. **P089-P097 are drafts** (`DRAFT (agent proposal, not approved by Arsh)`), added after that review to break label cues,
-and wait for his sign-off. Items marked **disputed** have a reasonable competing label; they are
-scored and reported on their own and never count toward a pass bar. All data is synthetic and
-fictional.
+labels. On 2026-10-14 he relabeled P038 to P044 and P071 from contradicts to complicates under
+the strict contradicts of stance guide v0.3 (`Arsh, 2026-10-14`). **P089-P097 are drafts**
+(`DRAFT (agent proposal, not approved by Arsh)`), added after that review to break label cues, and wait for his sign-off.
+Items marked **disputed** have a reasonable competing label; they are scored and reported on
+their own and never count toward a pass bar. All data is synthetic and fictional.
 
 ## What signing means
 
@@ -29,17 +30,23 @@ debatable. Signed items are copied into `eval/gold/` by the frozen-files thread 
   are local dates.
 - ▶ marks the message being labeled. "Quote" is what a labeler would cite as support.
 - Stances: **supports** = the message, in context, plainly establishes the assumption.
-  **contradicts** = it asserts or shows the opposite (other sender, date, count, or an explicit
-  statement or correction). **complicates** = it bears on the assumption but neither establishes
-  it nor asserts the opposite. **irrelevant** = it does not bear on the assumption.
+  **contradicts** = what the message says cannot be true together with the assumption, with no
+  unstated fact needed (another count, an explicit statement). **complicates** = it bears on the
+  assumption but neither establishes it nor rules it out. **irrelevant** = it does not bear on
+  the assumption.
 - An assumption with several parts is supported only if every part is.
 - Read words in light of the lines shown: a pronoun, "outside" or "ok works" resolves against
   the conversation. A slang or code reading counts as established only when the conversation
   itself confirms it.
 - An assumption that something happened (not that someone said it) is supported by a firsthand
   report of it in the message. A plan, promise, prediction or secondhand report complicates.
-- Wrong person: when the record attributes the words to a different account, or, by quotation,
-  to a different person than the assumption names, the stance is **contradicts**.
+- Other sender, other time, later correction: matching words from a different account, or at a
+  local date or time other than the assumption states, rule out only an assumption whose words
+  exclude other messages ("first contact on", "no contact between"); otherwise the stance is
+  **complicates**, because one record cannot show that no other message exists. A message that
+  a later message corrects is **complicates**; the correction carries the contradiction.
+- Quoted speech: when the record, by quotation, attributes the words to a different person than
+  the assumption names, the stance is **contradicts** (P047 and P048, both disputed).
 - Sarcasm about a fact ("sure, I was there") leaves the fact unsettled: **complicates**. When
   the assumption is about what the message does (praise, thanks) and the context shows it does
   the opposite, the stance is **contradicts**.
@@ -63,13 +70,13 @@ debatable. Signed items are copied into `eval/gold/` by the frozen-files thread 
 | Category | Items | en | ru | mixed | from case01 |
 |---|---|---|---|---|---|
 | clear_support | 34 | 25 | 8 | 1 | 8 |
-| overreach | 34 | 29 | 5 | 0 | 7 |
-| contradicts | 11 | 9 | 2 | 0 | 2 |
+| overreach | 35 | 30 | 5 | 0 | 7 |
+| contradicts | 10 | 8 | 2 | 0 | 2 |
 | complicates | 11 | 8 | 3 | 0 | 2 |
 | irrelevant | 7 | 5 | 2 | 0 | 1 |
 | **total** | 97 | 76 | 20 | 1 | 20 |
 
-Overreach traps: code_word 2, count_overreach 1, different_topic 2, handle_owner 2, hypothetical 1, joke 1, later_correction 2, negation 1, partial 1, plan_not_event 1, prompt_injection 3, pronoun 2, question_not_statement 1, quoted_speech 2, sarcasm 2, sender_mismatch 2, shared_account 2, slang 1, time_mismatch 3, translation_dependence 2
+Overreach traps: code_word 2, count_overreach 1, different_topic 2, handle_owner 2, hypothetical 1, joke 1, later_correction 2, negation 1, partial 1, plan_not_event 1, prompt_injection 3, pronoun 2, question_not_statement 1, quoted_speech 2, sarcasm 2, sender_mismatch 2, shared_account 2, slang 1, speaker_mismatch 1, time_mismatch 3, translation_dependence 2
 
 ## Clear support (reviewer should accept)
 
@@ -883,10 +890,10 @@ Signed: Arsh, 2026-10-07
 |  | 2026-03-04 14:13:37 EST | SMS +13475550175 Gabe | sorry typo, 1.2k not 2k. rest next week |
 
 **Quote:** `paid ruiz the 2k today`  
-**Gold:** contradicts / review dismiss  
-**Why:** Three minutes later Gabe corrects himself: '1.2k not 2k. rest next week'. His own correction states the opposite amount.
+**Gold:** complicates / review dismiss  
+**Why:** Gabe says he paid Ruiz 2k, but three minutes later he corrects it: '1.2k not 2k. rest next week'. That later message, not this record, rules out $2,000.
 
-Signed: Arsh, 2026-10-07
+Signed: Arsh, 2026-10-14
 
 ### P039
 
@@ -902,10 +909,10 @@ Signed: Arsh, 2026-10-07
 |  | 2026-03-18 10:07:20 EDT | Telegram 7718290 (owner) | ок, суббота |
 
 **Quote:** `встречаемся в пятницу у метро`  
-**Gold:** contradicts / review dismiss  
-**Why:** The Friday plan ('we meet Friday by the metro') is replaced the next morning: 'no, let's do Saturday, I can't Friday', and the owner confirms Saturday.
+**Gold:** complicates / review dismiss  
+**Why:** This record sets Friday; the next morning Тимур moves it to Saturday ('нет, давай в субботу, в пятницу не могу') and the owner confirms. That later message, not this record, shows Friday was not the final plan.
 
-Signed: Arsh, 2026-10-07
+Signed: Arsh, 2026-10-14
 
 ### P040
 
@@ -921,10 +928,10 @@ Signed: Arsh, 2026-10-07
 |  | 2026-03-04 21:33:12 EST | SMS +12125550122 Marc Garage | nice |
 
 **Quote:** `its done`  
-**Gold:** contradicts / review dismiss  
-**Why:** The sender column shows the owner's own number +12125550111; +12125550122 is the one who replies 'nice'.
+**Gold:** complicates / review dismiss  
+**Why:** 'its done' here came from the owner's own number +12125550111, not +12125550122; the record does not show whether +12125550122 also sent those words.
 
-Signed: Arsh, 2026-10-07
+Signed: Arsh, 2026-10-14
 
 ### P041
 
@@ -939,10 +946,10 @@ Signed: Arsh, 2026-10-07
 |  | 2026-03-25 20:03:05 EDT | Signal +17185550181 Kofi | ok cool |
 
 **Quote:** `ill handle the cash pickup thurs`  
-**Gold:** contradicts / review dismiss  
-**Why:** The volunteer is +17185550172 (Nadia). +17185550181 (Kofi) is the one who asked.
+**Gold:** complicates / review dismiss  
+**Why:** The volunteer here is +17185550172 (Nadia), not +17185550181 (Kofi), who asked; the record does not show whether +17185550181 also said it.
 
-Signed: Arsh, 2026-10-07
+Signed: Arsh, 2026-10-14
 
 ### P042
 
@@ -957,10 +964,10 @@ Signed: Arsh, 2026-10-07
 |  | 2026-03-12 20:09:02 EDT | Telegram 5551234 @northstar | friday hard. saturday |
 
 **Quote:** `need 2 more by friday`  
-**Gold:** contradicts / review dismiss  
-**Why:** The message was sent at 8:03 PM EDT on March 12 local time, not on March 13. Dates are judged in the phone's local time.
+**Gold:** complicates / review dismiss  
+**Why:** The same words went to the same user at 8:03 PM EDT on March 12 local time, not on March 13; the record does not show whether a matching message was also sent on March 13.
 
-Signed: Arsh, 2026-10-07
+Signed: Arsh, 2026-10-14
 
 ### P043
 
@@ -975,10 +982,10 @@ Signed: Arsh, 2026-10-07
 | ▶ | 2026-03-08 03:05:41 EDT | SMS +16465550123 Rina | home. thx for the ride |
 
 **Quote:** `home. thx for the ride`  
-**Gold:** contradicts / review dismiss  
-**Why:** DST edge: clocks jumped from 2:00 EST to 3:00 EDT that night, so the message came only 7 minutes after 'almost there', but the local clock read 3:05 AM, after 3 a.m.
+**Gold:** complicates / review dismiss  
+**Why:** DST edge: the local clock read 3:05 AM EDT when Rina sent this, after 3 a.m.; the record does not show whether she also texted that she was home before 3 a.m.
 
-Signed: Arsh, 2026-10-07
+Signed: Arsh, 2026-10-14
 
 ### P044
 
@@ -992,10 +999,10 @@ Signed: Arsh, 2026-10-07
 | ▶ | 2025-11-02 01:20:05 EST | SMS +13475550198 Cal | still at the bar, 10 min |
 
 **Quote:** `still at the bar`  
-**Gold:** contradicts / review dismiss  
-**Why:** DST edge: on November 2, 2025 the 1 a.m. hour repeated. 1:40 EDT is 05:40 UTC and 1:20 EST is 06:20 UTC, so Cal answered 40 minutes after the question, not before it.
+**Gold:** complicates / review dismiss  
+**Why:** DST edge: 1:20 EST (06:20 UTC) is 40 minutes after the owner's 1:40 EDT 'where r u' (05:40 UTC); the record does not show whether Cal said it before the question too.
 
-Signed: Arsh, 2026-10-07
+Signed: Arsh, 2026-10-14
 
 ### P045
 
@@ -1305,6 +1312,24 @@ Signed: Arsh, 2026-10-07
 
 Signed: Arsh, 2026-10-07
 
+### P071
+
+*overreach · trap: speaker_mismatch · en · identity · invented*
+
+**Assumption:** In the group chat, +1 347-555-0124 said he would pay the electric bill this month.
+
+| | Time (local) | Sender | Text |
+|---|---|---|---|
+|  | 2026-04-01 19:00:00 EDT | WhatsApp +13475550124 Theo | electric bill came, 212 this month |
+| ▶ | 2026-04-01 19:04:22 EDT | WhatsApp +13475550158 Marisol | ill pay the electric bill this month |
+|  | 2026-04-01 19:05:00 EDT | WhatsApp +13475550124 Theo | thank u!! |
+
+**Quote:** `ill pay the electric bill this month`  
+**Gold:** complicates / review dismiss  
+**Why:** The offer here comes from +13475550158 (Marisol), and +13475550124 (Theo) thanks her; the record does not show whether +13475550124 also offered.
+
+Signed: Arsh, 2026-10-14
+
 ## Contradicts
 
 ### P062
@@ -1425,24 +1450,6 @@ Signed: Arsh, 2026-10-07
 **Quote:** `в Москву лечу только в мае`  
 **Gold:** contradicts / review dismiss  
 **Why:** 'нет, я в Бруклине. в Москву лечу только в мае' = 'no, I'm in Brooklyn. I only fly to Moscow in May'.
-
-Signed: Arsh, 2026-10-07
-
-### P071
-
-*contradicts · en · identity · invented*
-
-**Assumption:** In the group chat, +1 347-555-0124 said he would pay the electric bill this month.
-
-| | Time (local) | Sender | Text |
-|---|---|---|---|
-|  | 2026-04-01 19:00:00 EDT | WhatsApp +13475550124 Theo | electric bill came, 212 this month |
-| ▶ | 2026-04-01 19:04:22 EDT | WhatsApp +13475550158 Marisol | ill pay the electric bill this month |
-|  | 2026-04-01 19:05:00 EDT | WhatsApp +13475550124 Theo | thank u!! |
-
-**Quote:** `ill pay the electric bill this month`  
-**Gold:** contradicts / review dismiss  
-**Why:** The offer comes from +13475550158 (Marisol); +13475550124 (Theo) thanks her for it.
 
 Signed: Arsh, 2026-10-07
 

@@ -8,10 +8,11 @@ ROOT = Path(__file__).resolve().parents[1]
 SIGNED_GUIDE = ROOT / "eval" / "gold" / "stancedata" / "LABELING_GUIDE.md"
 DRAFT_GUIDE = ROOT / "eval" / "stancedata" / "LABELING_GUIDE.md"
 
-# Pinned when Arsh signed the guide on 2026-10-12 (commit 0f298d6).
+# Pinned when Arsh signed guide v0.3 on 2026-10-14; the glossaries are unchanged since he signed
+# them with v0.2 on 2026-10-12 (commit 0f298d6).
 SIGNED_SHA256 = {
     "eval/stancedata/LABELING_GUIDE.md": (
-        "38a381894a0478d21e57b48f36a489f6188dd3d6e718b98356b50018df2b09d0"
+        "40b8618456d264dd5f97377f9f94ceef50a4a05cd6c1d8ecb8f63e8a497c09a2"
     ),
     "eval/train/glossary.py": "952496c486d00df67c8d8cb63c98e8bc0278086ec401d28e5eb6dc36dda28cf8",
     "eval/heldout/glossary.py": "c61327dd0b1e309892f0ec6f025cf6f35d0d4d8fb3f10761db42e4ba8a1f479c",

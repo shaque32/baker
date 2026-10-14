@@ -1,10 +1,11 @@
 # Labeling guide for generated stance data
 
-DRAFT v0.3, 2026-10-14. Not signed. Arsh signed v0.2 on 2026-10-12 (`eval/gold/stancedata/`).
-v0.3 follows his review of the label sample on 2026-10-13: contradicts now needs the record's own
-words to rule the assumption out (rules 22 to 24), and the guide adds Baker's own wording
-(rules 25 to 29); "Changes from v0.2" at the end lists every change. Arsh signs it by replying "approved" (or with edits) in the "Custom model for Baker"
-thread; the signed copy then replaces the one in `eval/gold/stancedata/`.
+v0.3, signed by Arsh on 2026-10-14 ("approved" in the "Custom model for Baker" thread); the
+signed copy is `eval/gold/stancedata/LABELING_GUIDE.md`. v0.3 follows his review of the label
+sample on 2026-10-13: contradicts now needs the record's own words to rule the assumption out
+(rules 22 to 24), and the guide adds Baker's own wording (rules 25 to 29); "Changes from v0.2"
+at the end lists every change. Any change below this paragraph needs a new signature: edit this
+draft, have Arsh sign it, then copy it to `eval/gold/stancedata/` and update the pins there.
 
 SYNTHETIC. Every example below is invented.
 
