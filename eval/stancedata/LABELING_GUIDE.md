@@ -236,7 +236,10 @@ people and accounts (`core/audit/readable.py`), and the record as its database s
 message, a call, a contact row or an attachment's file name. A pipeline test on case01
 (2026-10-14, thread "Train the small model") showed a model trained only on plain sentences
 mislabels these, so both generators also write items in Baker's own wording. The answers follow
-the same four definitions and rules 1 to 24; this section adds what is new.
+the same four definitions and rules 1 to 24, except rule 21, which says how a plain item's
+irrelevant assumption is written: Baker's templates may be about contact or identity, and a
+record is irrelevant when it does not bear on the template (`bk_outside_window`,
+`bk_account_silent`, `bk_unrelated`). This section adds what is new.
 
 ### How Baker's wording reads
 
@@ -268,10 +271,10 @@ the same four definitions and rules 1 to 24; this section adds what is new.
     show Rita Vance). The RECORD line also names the phone it came from. A message's or an
     attachment's excerpt opens with "Members seen in this chat's records:", each account that
     sent in the chat or that the source listed as a recipient, printed as its sender lines print
-    it. A line with the owner's account and one other is a chat between those two, so its
-    messages went to the owner even when no owner line is shown (rule 11). A member who never
-    sent and was never listed is missing, so the line shows who was in the chat, never who was
-    not. A call or a contact row has no chat and no such line.
+    it. When it holds the owner's account and one other, each message in the chat went from one
+    of them to the other, even when no owner line is shown (rule 11). A member who never sent and
+    was never listed is missing, so the line never shows that no one else was in the chat. A
+    call or a contact row has no chat and no such line.
 27. **Zones.** The zone after a window ("(America/New_York)") is the zone Baker read the
     document's times in; the document itself may have meant the phone's local time. A line's
     zone abbreviation is the phone's: EST and EDT are America/New_York, CST and CDT
@@ -340,12 +343,12 @@ the same four definitions and rules 1 to 24; this section adds what is new.
 | `bk_handles_said` | complicates | same account | A message, from the account itself or anyone else, says the two handles are one account or that one became the other. A message shows what was said, not the platform's records (rule 14). | Assumption: On Telegram, @rv_44, @ritav are one account. Record from Telegram 5550147: "switched my @ from rv_44 to ritav". |
 | `bk_contact_row` | supports | contact | A contact row on the named phone with exactly that saved name and that number. | Assumption: item1 has a contact "Gus Tires" with the number of Phone +13125550177. Record on item1: "Gus Tires +13125550177". |
 | `bk_contact_row_differs` | complicates | contact | A contact row on the named phone with that name and another number, or that number under another name (rule 23). | Record on item1: "Gus Tires +13125550190". |
-| `bk_count_one` | complicates | count | One message between the named parties inside the window: one of the counted messages, which cannot settle the number. | Assumption: item1 holds exactly 12 messages between ... "from May 1 through May 9, 2026". Record: one such message, May 4. |
-| `bk_no_contact_inside` | contradicts | no-contact | A message or call between the named parties (both shown, by account or bracketed name), plainly inside the window in the assumption's zone. | Assumption: No contact between Daniel Petrov (the user of item1) and SMS +13125550188 "before May 3, 2026" (America/Chicago) on every phone. Record: May 1, between them. |
-| `bk_other_phone` | complicates | no-contact, count | The assumption covers one named phone; the record, between the named parties, is on another phone. It shows contact, not what the named phone holds. | "... on item1"; the record comes from item2. |
+| `bk_count_one` | complicates | count | One message between the named parties inside the window (an attachment counts as the message it came in): one of the counted messages, which cannot settle the number, whether the count is exactly, at least or at most. | Assumption: item1 holds exactly 12 messages between ... "from May 1 through May 9, 2026". Record: one such message, May 4. |
+| `bk_no_contact_inside` | contradicts | no-contact | A message (an attachment's included) or call between the named parties (both shown, by account or bracketed name), plainly inside the window in the assumption's zone. | Assumption: No contact between Daniel Petrov (the user of item1) and SMS +13125550188 "before May 3, 2026" (America/Chicago) on every phone. Record: May 1, between them. |
+| `bk_other_phone` | complicates | no-contact, count | The assumption covers one named phone; the record, between the named parties, is on another phone. It shows contact, not what the named phone holds, whatever the count's form. | "... on item1"; the record comes from item2. |
 | `bk_outside_window` | irrelevant | no-contact, count | A message or call between the named parties, plainly outside the window in any zone. | "before May 3, 2026"; record May 9. |
 | `bk_weekday_next` | supports | weekday | The quoted words name the stated date's weekday for a plan, a proposal or a request ("can u cover wednesday?"), sent one to six days before that date. "This" before the weekday reads the same when the date is a later day of the same week, both days Monday to Saturday ("this saturday", sent on a Wednesday). | Assumption: The weekday in "lets do thursday at the yard" means "Thursday, May 7, 2026" (America/Chicago). Record sent Monday May 4. |
-| `bk_weekday_open` | complicates | weekday | The record names the weekday it was sent on (sent before 10 a.m., so a time of day it names has not passed), or says "next" before the weekday, or says "this" before a weekday already past in the week it was sent ("this monday", sent on a Wednesday) or when the named day or the send day is a Sunday (a week starts on Sunday for some and on Monday for others, and for one of them that day had passed), so the words do not plainly name the coming day and which date it means is open. The stated date is one the words can mean: after "this", the coming such day, never one a week later. A bare weekday sent on a Sunday for a later day is `bk_weekday_next`. | "next thursday at the yard", sent Monday May 4. |
+| `bk_weekday_open` | complicates | weekday | The record names the weekday it was sent on (sent before 10 a.m., so a time of day it names has not passed), or says "next" before the weekday, or says "this" before a weekday already past in the week it was sent ("this monday", sent on a Wednesday), or says "this" when the named day or the send day is a Sunday (a week starts on Sunday for some and on Monday for others, and for one of them that day had passed), so the words do not plainly name the coming day and which date it means is open. The stated date is one the words can mean: after "this", the coming such day, never one a week later. A bare weekday, with neither "this" nor "next", sent one to six days before the date it names is `bk_weekday_next`, Sunday on either side included. | "next thursday at the yard", sent Monday May 4. |
 | `bk_weekday_wrong` | contradicts | weekday | The quoted words name a different weekday from the stated date's. | "lets do friday at the yard" against "Thursday, May 7, 2026". |
 | `bk_weekday_after` | complicates (trap) | weekday | The quoted words plan for the stated date's weekday, in a record sent after that date had passed: this record means a later date, but the same words sent before the date could mean it, and one record cannot show that no such message exists (rule 23). | "lets do thursday at the yard", sent Saturday May 9, against "Thursday, May 7, 2026". |
 | `bk_author_cue` | complicates (trap) | authorship | The record, from a named account, carries a cue about who is typing (a self-introduction, someone else on the phone, a signature, even one that names the person the assumption names: a name in a chat is never proof, rule 4). "What the account sent" means the messages the claim attributes to the person, and nothing shows the record is one of them: the cue shows the account was not always typed by that person, which leaves those messages open, never rules them out. | Assumption: Rita Vance personally wrote what Telegram 5550147 sent. Record: "this is her brother, she left it here". |
