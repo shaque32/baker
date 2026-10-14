@@ -15,6 +15,7 @@ complicates.
 from __future__ import annotations
 
 import functools
+import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
@@ -120,9 +121,22 @@ POOL_TAGS: dict[str, tuple[str, ...]] = {
     "irr_pleasantry": ("pleas",),
 }
 
+# An answer that opens on a bare "no," (or ends on one) denies a question; a family that shows
+# the record without that question never draws it, so no denial stands with nothing to deny.
+_BARE_DENIAL = re.compile(r"^\s*(?:no|nope|nah|нет|неа)\s*,|,\s*(?:no|nope|нет)\W*$", re.IGNORECASE)
+
+
+def _no_bare_denial(t: Tpl) -> bool:
+    return not _BARE_DENIAL.search(t.text)
+
+
 PREDICATES: dict[str, Callable[[Tpl], bool]] = {
     "ovr_speaker_mismatch": lambda t: bool(t.vp),  # the act must be attributable to a member
     "sup_account_shared": lambda t: bool(t.that or t.vp),
+    "sup_verbatim": _no_bare_denial,
+    "con_in_window": _no_bare_denial,
+    "ovr_time_mismatch": _no_bare_denial,
+    "ovr_sender_mismatch": _no_bare_denial,
 }
 
 

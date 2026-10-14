@@ -1322,6 +1322,23 @@ NEUTRAL_RU = NEUTRAL_RU + (
     "ясно, ок",
 )
 
+# Small talk that puts its sender somewhere else or on the way. The record's own sender never
+# gets one, so no line of theirs says "on my way" beside a record that says where they are.
+AWAY = frozenset(
+    {
+        "running late",
+        "on my way",
+        "cant talk now, in a meeting",
+        "be there in 10",
+        "немного опаздываю",
+        "уже еду",
+        "не могу говорить, на встрече",
+        "буду через 10",
+        "ща буду",
+        "ok буду в 7",
+    }
+)
+
 # Small talk that reacts to the line before it: a laugh, surprise or doubt. Such a line never
 # follows a record (scene.Chat.filler, `calm`): after a record it would read as a laughing or
 # doubting reply, which leaves the record's sincerity open (guide rule 24).

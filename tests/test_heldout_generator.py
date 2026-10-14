@@ -15,6 +15,7 @@ from eval.heldout.generate import generate
 from eval.heldout.glossary import RU_EN_PAIRS, SLANG_FORMS
 from eval.heldout.pools import (
     AREA_CODES,
+    AWAY,
     CYRILLIC_FULL,
     MENTIONED_RU,
     NEUTRAL_EN,
@@ -657,10 +658,11 @@ def test_fillers_by_core_senders_are_small_talk(monkeypatch: pytest.MonkeyPatch)
         neutral: bool = False,
         used: set[str] | None = None,
         calm: bool = False,
+        settled: bool = False,
     ) -> str:
         track = used if used is not None else set()
         before = set(track)
-        text = draw(self, rng, neutral, track, calm)
+        text = draw(self, rng, neutral, track, calm, settled)
         small = NEUTRAL_RU if self.lang == "ru" else NEUTRAL_EN + NEUTRAL_MIXED
         drawn = track - before  # the base line the draw added, before casual spelling and typos
         origin[text] = drawn.pop() in small if drawn else bool(neutral)
@@ -673,6 +675,71 @@ def test_fillers_by_core_senders_are_small_talk(monkeypatch: pytest.MonkeyPatch)
         for ln in lines:
             if ln.text in origin and not origin[ln.text]:
                 assert ln.sender not in core, (it.probe_id, ln.sender, ln.text)
+
+
+def test_record_senders_never_say_they_are_elsewhere(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No filler line of the record's own sender puts them elsewhere or on the way ("on my
+    way", "in a meeting"), which could sit beside a record that says where they are."""
+    base_of: dict[str, str] = {}  # filler text -> the pool line it was drawn from
+    draw = scene.Chat.filler
+
+    def spy(
+        self: scene.Chat,
+        rng,
+        neutral: bool = False,
+        used: set[str] | None = None,
+        calm: bool = False,
+        settled: bool = False,
+    ) -> str:
+        track = used if used is not None else set()
+        before = set(track)
+        text = draw(self, rng, neutral, track, calm, settled)
+        drawn = track - before
+        if drawn:
+            base_of[text] = drawn.pop()
+        return text
+
+    monkeypatch.setattr(scene.Chat, "filler", spy)
+    for it in generate("test") + generate("dev"):
+        for ln in it.context:
+            if ln.sender == it.target.sender and ln.text in base_of:
+                assert base_of[ln.text] not in AWAY, (it.probe_id, ln.text, it.target.text)
+
+
+_BARE_DENIAL = re.compile(r"^\s*(no|nope|nah|нет|неа)\s*,|,\s*(no|nope|нет)\W*$", re.IGNORECASE)
+_ASKS = re.compile(r"\?|^(did|do|does|are|is|was|were|can|could|will|would|u|you)\b", re.IGNORECASE)
+
+
+def test_bare_denials_show_their_question(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    """A record that opens (or ends) on a bare "no" denies something; the question it answers,
+    from another sender, is on screen before it."""
+    for it in test_items + dev_items:
+        if not _BARE_DENIAL.search(it.target.text):
+            continue
+        before = it.context[: it.target_index]
+        asked = [ln for ln in before if ln.sender != it.target.sender and _ASKS.search(ln.text)]
+        assert asked, (it.probe_id, it.family, it.target.text)
+
+
+# Verbs whose past form is their base form: with no subject, "set up 40 chairs" reads as an
+# instruction as easily as a report.
+_SAME_PAST = {"put", "cut", "set", "let", "hit", "read", "quit", "shut", "spread"}
+_OPENERS = set("ok okay ya yeah yes yep no nope just already finally also then so lol k".split())
+
+
+def test_supports_records_never_read_as_instructions(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    for it in test_items + dev_items:
+        if it.gold_stance != "supports":
+            continue
+        for clause in re.split(r"[,.;:!?]", it.target.text.lower()):
+            words = re.findall(r"[a-z']+", clause)
+            while words and words[0] in _OPENERS:
+                words.pop(0)
+            assert not (words and words[0] in _SAME_PAST), (it.probe_id, it.target.text)
 
 
 # ------------------------------------------------- rationales and records under guide v0.3

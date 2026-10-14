@@ -11,6 +11,7 @@ from core.contracts import AssumptionKind
 from eval.heldout import GENERATOR, SOURCE
 from eval.heldout.pools import (
     AREA_CODES,
+    AWAY,
     CYRILLIC_NAMES,
     FILLER_EN,
     FILLER_RU,
@@ -78,12 +79,15 @@ class Chat:
         neutral: bool = False,
         used: set[str] | None = None,
         calm: bool = False,
+        settled: bool = False,
     ) -> str:
         """One harmless line about the chat's own situation (one in five is small talk).
 
         `used` holds the lines already on screen; a line is drawn from the rest of the pool
         and added to it, so one chat never shows the same small talk twice. `calm` leaves out
-        the reaction lines (a laugh, surprise, doubt), for a line that follows a record."""
+        the reaction lines (a laugh, surprise, doubt), for a line that follows a record.
+        `settled` leaves out the lines that put the sender elsewhere or on the way ("on my
+        way", "in a meeting"), for a line from the record's own sender."""
         if self.lang == "ru":
             about, small = FILLER_RU[self.sit], NEUTRAL_RU
         elif self.lang == "mixed":
@@ -93,6 +97,8 @@ class Chat:
         pool = small if neutral or rng.random() < 0.2 else about
         if calm:
             pool = [t for t in pool if t not in REACTIONS]
+        if settled:
+            pool = [t for t in pool if t not in AWAY]
         if used is not None:
             pool = [t for t in pool if t not in used] or pool
         base = rng.choice(pool)

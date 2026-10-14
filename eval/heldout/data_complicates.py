@@ -1043,9 +1043,7 @@ HEARSAY: tuple[Tpl, ...] = (
         g="m",
         that="the crew was paid on {day}",
     ),
-    tpl(
-        "cater", "ru", "{name} говорит, фургон уже в парке", *_HS, that="the van was at the park"
-    ),
+    tpl("cater", "ru", "{name} говорит, фургон уже в парке", *_HS, that="the van was at the park"),
     tpl(
         "cater",
         "ru",

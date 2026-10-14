@@ -773,7 +773,9 @@ def cpl_hearsay(slot: Slot, rng: random.Random) -> Draft:
     utc = record_time(rng, st, lines)
     that = fill(e.that(), st)
     assumption = _that_sentence(rng, that, st, date_phrase(local(utc, st.chat.tz).date()))
-    who = render(e.tpl.x("src"), e.fact) if e.tpl.has("src") else e.fact.get("name", "a third person")
+    who = (
+        render(e.tpl.x("src"), e.fact) if e.tpl.has("src") else e.fact.get("name", "a third person")
+    )
     rationale = (
         f"The sender only reports second hand what {who} said; the record does not "
         f"show the fact itself."
@@ -822,8 +824,7 @@ def irr_other_topic(slot: Slot, rng: random.Random) -> Draft:
     utc = record_time(rng, st, lines)
     assumption = random_fact(rng, slot, st, local(utc, st.chat.tz).date(), lines)
     rationale = (
-        f'"{text}" is about an unrelated everyday matter; nothing in it bears on the '
-        f"assumption."
+        f'"{text}" is about an unrelated everyday matter; nothing in it bears on the assumption.'
     )
     kind = rng.choice(list(K))
     return draft(slot, rng, st, lines, target, assumption, text, rationale, kind, utc)

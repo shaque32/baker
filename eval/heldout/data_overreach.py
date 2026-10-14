@@ -1013,7 +1013,9 @@ CONDITIONS: tuple[Tpl, ...] = (
         *_CO,
         vp="covered {name}'s shift",
     ),
-    tpl("boat", "ru", "если погода позволит, выходим в 5", *_CO, that="{s} and others went out at 5"),
+    tpl(
+        "boat", "ru", "если погода позволит, выходим в 5", *_CO, that="{s} and others went out at 5"
+    ),
     tpl(
         "sneaker",
         "ru",
@@ -1405,7 +1407,13 @@ QUESTIONS: tuple[Tpl, ...] = (
         that="the truck reached {place} by {t}",
     ),
     tpl("storage", "en", "u cleared out {place} yet?", *_AS, that="{r} cleared out {place}"),
-    tpl("nurse", "en", "did {name} do the {t} med pass?", *_AS, that="{name} did the med pass at {t}"),
+    tpl(
+        "nurse",
+        "en",
+        "did {name} do the {t} med pass?",
+        *_AS,
+        that="{name} did the med pass at {t}",
+    ),
     tpl(
         "cater",
         "ru",
@@ -1949,7 +1957,10 @@ PARTIALS: tuple[Tpl, ...] = (
         "отыграли два сета в пуласки-рум {day}",
         *_PA,
         n=(2, 15),
-        that="{s} and others played two sets at the Pulaski Room on {day} and were paid {n}00 in cash",
+        that=(
+            "{s} and others played two sets at the Pulaski Room on {day} and were paid {n}00 "
+            "in cash"
+        ),
     ),
     tpl(
         "market",

@@ -109,7 +109,9 @@ _EN_DAY_RE = tuple(re.compile(rf"\b{d}\b") for d in _EN_DAYS)
 _RU_DAY_RE = tuple(re.compile(rf"(?<![а-яё]){d}(?![а-яё])") for d in _RU_DAYS)
 
 
-_GREETING_DAY = re.compile(r"\bhappy (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b")
+_GREETING_DAY = re.compile(
+    r"\bhappy (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b"
+)
 
 
 def weekdays_in(text: str) -> set[int]:

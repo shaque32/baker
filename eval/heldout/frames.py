@@ -170,15 +170,17 @@ def place(
         n_after = 1
     used = {text for _, text in core}  # the filler draw skips lines already on screen
     core_text = " ".join(text for _, text in core)
+    record_sender = core[target][0]
     about = {acct for acct in chat.contacts if names_in(acct.label, core_text)}
     speakers = {acct for acct, _ in core}
 
     def line(who: Account, after: bool) -> Line:
         # Someone who sends a core line, or whom the core lines talk about by name, gets only
         # small talk, so no filler of theirs can sit in tension with what the record says. A
-        # line after the core never laughs at or doubts it (rule 24).
+        # line after the core never laughs at or doubts it (rule 24), and the record's own
+        # sender never says they are elsewhere or on the way.
         small = neutral or who in about or who in speakers
-        return who, chat.filler(rng, small, used, calm=after)
+        return who, chat.filler(rng, small, used, calm=after, settled=who == record_sender)
 
     pre = [line(rng.choice(members), False) for _ in range(n_before)]
     post = [line(rng.choice(members), True) for _ in range(n_after)]
@@ -260,7 +262,8 @@ def _coherent_days(
         acct, text = lines[i]
         if i != target and text in chat.filled:
             used = {t for _, t in lines}
-            lines[i] = (acct, chat.filler(rng, True, used, calm=i > target))
+            settled = acct == lines[target][0]
+            lines[i] = (acct, chat.filler(rng, True, used, calm=i > target, settled=settled))
     clashes = _day_clashes(chat, lines, times)
     if not clashes:
         return times

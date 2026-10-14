@@ -1043,7 +1043,11 @@ NEGATIONS: tuple[Tpl, ...] = (
     ),
     tpl("site", "en", "i never gave {name} the gate code", *_N, vp="gave {name} the gate code"),
     tpl(
-        "cater", "en", "i did not cash the check from {name}", *_N, vp="cashed the check from {name}"
+        "cater",
+        "en",
+        "i did not cash the check from {name}",
+        *_N,
+        vp="cashed the check from {name}",
     ),
     tpl(
         "cater",
