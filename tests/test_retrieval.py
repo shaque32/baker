@@ -596,6 +596,26 @@ def test_a_big_groups_members_line_is_bounded_and_says_what_it_leaves_out(db):
     assert first.endswith("; and 12 more accounts not listed")
 
 
+def test_a_members_line_stays_bounded_when_the_lines_shown_have_more_senders(db):
+    """41 lines can show more senders than MAX_MEMBERS; the record's own sender stays listed."""
+    from core.audit.context import MAX_MEMBERS
+
+    for i in range(3, 53):  # every Telegram message from its own account
+        aid = f"acct:s1:Telegram:888{i:02d}"
+        db.execute(
+            "INSERT INTO accounts VALUES (?, 's1', 'x', NULL, 'Telegram', ?, NULL)",
+            (aid, f"888{i:02d}"),
+        )
+        db.execute(
+            "UPDATE messages SET sender_account_id = ? WHERE id = ?", (aid, f"msg:s1:Chats!{i}")
+        )
+    first = render_for(db, "msg:s1:Chats!28", names=_named(db)).splitlines()[0]
+    listed = first.removeprefix("Members seen in this chat's records: ").split("; and ")[0]
+    assert len(listed.split("; ")) == MAX_MEMBERS
+    assert "Telegram 88828" in listed.split("; ")
+    assert first.endswith(f"; and {51 - MAX_MEMBERS} more accounts not listed")
+
+
 def test_named_context_of_an_attachment_has_members_and_a_call_or_contact_has_none(db):
     names = _named(db, stipulate=True)
     att = render_for(db, "att:s1:Chats!40:1", window=1, names=names).splitlines()

@@ -319,23 +319,27 @@ def _members_text(
     member_ids: list[str],
 ) -> str:
     """The members line, bounded so a big group cannot crowd the record out of the model's
-    context. Up to MAX_MEMBERS accounts are listed: every sender on a line shown, then the rest
-    in sorted order; the line then says how many it leaves out, so it never reads as complete."""
+    context. At most MAX_MEMBERS accounts are listed: the record's own sender first, then the
+    other senders on the lines shown, then the rest, each group in sorted order. The line then
+    says how many it leaves out, so it never reads as complete."""
     printed = {names.sender(aid) for aid in member_ids}
     if len(printed) <= MAX_MEMBERS:
         return names.members(member_ids)
     ids = list(context_ids(conn, record_id, window, include_target=True))
+    target = record_id
+    if record_id.startswith("att:"):
+        row = conn.execute("SELECT message_id FROM attachments WHERE id = ?", (record_id,))
+        target = row.fetchone()[0]
     marks = ",".join("?" * len(ids))
-    shown = {
-        names.sender(r[0])
-        for r in conn.execute(
-            f"SELECT sender_account_id FROM messages WHERE id IN ({marks})"  # noqa: S608
-            " AND sender_account_id IS NOT NULL",
-            ids,
-        )
-    }
-    rest = sorted(printed - shown)
-    kept = shown | set(rest[: max(0, MAX_MEMBERS - len(shown))])
+    rows = conn.execute(
+        f"SELECT id, sender_account_id FROM messages WHERE id IN ({marks})"  # noqa: S608
+        " AND sender_account_id IS NOT NULL",
+        ids,
+    ).fetchall()
+    own = {names.sender(aid) for mid, aid in rows if mid == target}
+    shown = {names.sender(aid) for _, aid in rows} - own
+    order = sorted(own) + sorted(shown) + sorted(printed - own - shown)
+    kept = order[:MAX_MEMBERS]
     return f"{members_line(kept)}; and {len(printed) - len(kept)} more accounts not listed"
 
 
