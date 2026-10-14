@@ -753,3 +753,57 @@ def test_a_word_after_a_first_name_is_a_surname_only_when_the_case_knows_it(conn
     person = case.person("person:dev:item1:owner")
     found, _ = explain._intro_fits(case, {case.data.accounts[acct].key}, [person])
     assert "msg:test:intro" not in {r.id for r, _ in found}
+
+
+# ---------------------------------------------------------------- ninth review
+
+
+def test_a_quoted_authorship_statement_gets_its_hand_off_words(conn):
+    quote = _asm(conn, "C16", "sender").params.quoted_text
+    auth = _asm(conn, "C16", "authorship", quoted_text=quote)
+    case = explain.load(conn)
+    assert explain._claimed_rows(case, [auth])[auth.id]
+    alt = explain._other_user(case, [auth])
+    assert alt is not None
+    assert any("Speaks of using another person's" in f.note for f in alt.fits)
+
+
+def test_an_edge_record_two_windows_share_shows_once(conn):
+    a = _asm(conn, "C15", "event")
+    alt = explain._app_quiet(explain.load(conn), [a, a.model_copy(update={"id": "asm:twice"})])
+    assert alt is not None
+    ids = [f.record_id for f in alt.fits]
+    assert len(ids) == len(set(ids)) == alt.total
+
+
+def test_each_phone_is_read_once_per_case(conn):
+    case = explain.load(conn)
+    assert explain._phone_rows(case, "item1") is explain._phone_rows(case, "item1")
+
+
+def test_a_record_two_statements_move_across_the_day_shows_once(conn):
+    a = _asm(conn, "C14", "no_contact")
+    one = explain._day_boundary(explain.load(conn), [a])
+    two = explain._day_boundary(explain.load(conn), [a, a.model_copy(update={"id": "asm:twice"})])
+    assert [f.record_id for f in two.fits] == [f.record_id for f in one.fits]
+    assert two.total == one.total
+
+
+@pytest.mark.parametrize("finder", ["_clock", "_other_app", "_day_boundary"])
+def test_copies_two_phone_scoped_statements_point_to_show_once(conn, finder):
+    claim, template, extra = {
+        "_clock": ("C10", "record_time", {}),
+        "_other_app": ("C14", "no_contact", {"channels": ("WhatsApp",)}),
+        "_day_boundary": ("C14", "no_contact", {}),
+    }[finder]
+    one = _asm(conn, claim, template, device_ids=("dev:item1",), **extra)
+    two = _asm(conn, claim, template, device_ids=("dev:item2",), **extra)
+    two = two.model_copy(update={"id": "asm:item2"})
+    case = explain.load(conn)
+    find = getattr(explain, finder)
+    both = find(case, [one, two])
+    alone = find(case, [one])
+    assert both is not None and alone is not None
+    # item2's copies of item1's records add nothing: the same records, the same total.
+    assert {f.record_id for f in both.fits} == {f.record_id for f in alone.fits}
+    assert both.total == alone.total

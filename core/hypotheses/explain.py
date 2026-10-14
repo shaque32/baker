@@ -31,7 +31,7 @@ from __future__ import annotations
 import re
 import sqlite3
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -74,7 +74,7 @@ _IDENTITY_TEMPLATES = frozenset({"sender", "authorship", "person_identity"})
 _WINDOW_TEMPLATES = frozenset({"message_count", "no_contact"})
 _SILENCE_TEMPLATES = frozenset({"no_contact", "event"})
 _TIMED_QUOTES = frozenset({"record_time", "weekday_date"})
-_QUOTE_TEMPLATES = frozenset({"sender", "record_time", "weekday_date", "meaning"})
+_QUOTE_TEMPLATES = frozenset({"sender", "authorship", "record_time", "weekday_date", "meaning"})
 
 # The user of an account naming themselves: "hey its alex turner", "its ilya btw". Only at the
 # start of a message or a sentence, or after a greeting, so "the gym is ..." is not read as one.
@@ -157,6 +157,7 @@ class Case:
     data: CaseData
     ids: idl.Case  # names on accounts, persons and every name word in the case
     files: dict[str, tuple[str, str, str]]  # source id -> (file name, fidelity, extraction)
+    phone_rows: dict[str, list[Row]] = field(default_factory=dict)  # source id -> its records
 
     def person(self, person_id: str) -> idl.Person | None:
         return next((p for p in self.ids.persons if p.id == person_id), None)
@@ -656,6 +657,14 @@ def _merge(fits: list[Fit]) -> list[Fit]:
     return list(out.values())
 
 
+def _not_shown(case: Case, rows: Iterable[Row], shown: dict[tuple[str, ...], str]) -> list[Row]:
+    """The rows not already shown, by any statement, as a copy on another phone. shown maps a
+    copy key to the phone it was first shown from; identical rows on one phone all stay."""
+    return [
+        r for r in rows if shown.setdefault(_copy_key(case.data, r), r.source_id) == r.source_id
+    ]
+
+
 def _sorted_pairs(pairs: list[tuple[Row, str]]) -> list[tuple[Row, str]]:
     notes = {r.id: n for r, n in pairs}
     return [(r, notes[r.id]) for r in _by_time(r for r, _ in pairs)]
@@ -705,6 +714,9 @@ def _clock(case: Case, assumptions: list[Assumption]) -> Alternative | None:
     claimed = _claimed_rows(case, mine)
     fits: list[Fit] = []
     used: list[str] = []
+    # Every copy is read on its own phone's clocks (phones can print different offsets); a
+    # record shows once, from the first copy whose reading fits, across every statement.
+    shown: dict[tuple[str, ...], str] = {}  # copy key -> the phone it was shown from
     for a in mine:
         window = a.params.window
         wall = _wall(window) if window is not None else None
@@ -712,9 +724,6 @@ def _clock(case: Case, assumptions: list[Assumption]) -> Alternative | None:
             continue
         rows = _clock_rows(case, a, claimed)
         offsets = case.offsets(r.id for r in rows)
-        # Every copy is read on its own phone's clocks (phones can print different offsets);
-        # a record shows once, from the first copy whose reading fits.
-        shown: dict[tuple[str, ...], str] = {}  # copy key -> the phone it was shown from
         for r in rows:
             at = r.ts_utc
             if at is None or in_window(at, window):
@@ -786,6 +795,7 @@ def _day_boundary(case: Case, assumptions: list[Assumption]) -> Alternative | No
     fits: list[Fit] = []
     used: list[str] = []
     summaries: list[str] = []
+    shown: dict[tuple[str, ...], str] = {}
     for a in assumptions:
         window = a.params.window
         if a.template_id not in _WINDOW_TEMPLATES or window is None or window.tz == "UTC":
@@ -818,7 +828,7 @@ def _day_boundary(case: Case, assumptions: list[Assumption]) -> Alternative | No
             f"Read in UTC instead of {cite(window.tz)}, the stated dates {cite(window.raw)} "
             f"hold {len(as_utc)} record(s) between these parties instead of {len(stated)}."
         )
-        for r in _by_time(moved):
+        for r in _by_time(_not_shown(case, moved, shown)):
             zone = cite(window.tz)
             side = (
                 f"inside them read in the stated zone {zone}, outside them in UTC"
@@ -828,6 +838,7 @@ def _day_boundary(case: Case, assumptions: list[Assumption]) -> Alternative | No
             fits.append(
                 _fit(case, r, f"For the stated dates {cite(window.raw)}, this record is {side}.")
             )
+    fits = _merge(fits)  # a record two statements both move shows once
     if not fits:
         return None
     return Alternative(
@@ -851,6 +862,7 @@ def _other_app(case: Case, assumptions: list[Assumption]) -> Alternative | None:
     fits: list[Fit] = []
     used: list[str] = []
     summaries: list[str] = []
+    shown: dict[tuple[str, ...], str] = {}
     for a in assumptions:
         p = a.params
         apps = [c for c in p.channels if c.strip().lower() != CALL_CHANNEL]
@@ -882,7 +894,7 @@ def _other_app(case: Case, assumptions: list[Assumption]) -> Alternative | None:
             f"Inside {cite(window.raw)} the same people were in contact outside "
             f"{_joined(apps)}: {len(others)} record(s) on other apps or calls."
         )
-        for r in _by_time(others):
+        for r in _by_time(_not_shown(case, others, shown)):
             what = "A call" if r.kind == "call" else f"A {cite(r.app)} message"
             fits.append(
                 _fit(
@@ -922,10 +934,13 @@ _PHONE_RECORDS = (
 
 
 def _phone_rows(case: Case, sid: str) -> list[Row]:
-    return [
-        Row(r[0], r[1], r[2], r[3], r[4], (), _parse(r[5]), r[6], r[7], r[8])
-        for r in case.conn.execute(_PHONE_RECORDS, (sid, sid))
-    ]
+    """Read once per phone and kept on the case, so a report reads each phone's records once."""
+    if sid not in case.phone_rows:
+        case.phone_rows[sid] = [
+            Row(r[0], r[1], r[2], r[3], r[4], (), _parse(r[5]), r[6], r[7], r[8])
+            for r in case.conn.execute(_PHONE_RECORDS, (sid, sid))
+        ]
+    return case.phone_rows[sid]
 
 
 def _app_quiet(case: Case, assumptions: list[Assumption]) -> Alternative | None:
@@ -981,6 +996,7 @@ def _app_quiet(case: Case, assumptions: list[Assumption]) -> Alternative | None:
                             f"{cite(app)} record in any conversation.",
                         )
                     )
+    fits = _merge(fits)  # an edge record two windows share shows once
     if not fits:
         return None
     return Alternative(
