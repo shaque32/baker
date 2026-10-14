@@ -186,12 +186,14 @@ and the header's version line v1.0 -> v1.1.
 Code that follows once this is signed (core/audit/stance.py, not frozen): `build_prompt` passes
 `claim` = the claim's text (claims.text for assumption.claim_id) when assumption.template_id is
 meaning, role or event, and "(not needed for this assumption)" otherwise. `fill_prompt` leaves
-an unfilled placeholder in place, so every caller of the stance prompt (eval/probe/run_probe.py
-included) must pass `claim`. The small model's input shows the same text: generated items carry
-it as `baker_claim`. For part three, `build_prompt` fills `assumption` with
-`readable.assumption_text(assumption, case_names(conn))` instead of `assumption.text`, and the
-context lines print senders with `CaseNames.sender`, "(owner)" replacing "(this phone)" as in
-the signed probe set; the stored `Assumption.text` keeps Baker's ids. A message's or
-attachment's context opens with `CaseNames.members(...)` over its chat's member accounts (the
-union of the chat's message senders and listed recipients); a call's or contact row's has no
-such line. Generated items carry the same strings (`baker_members`).
+an unfilled placeholder in place, so `LocalStanceLabeler` refuses a prompt with a slot it does
+not fill: it refuses v1.1 until `claim` joins its placeholders and `build_prompt` fills it.
+eval/probe/run_probe.py already passes the claim whenever the stance prompt has the slot. The
+small model's input shows the same text: generated items carry it as `baker_claim`. For part
+three, `build_prompt` fills `assumption` with `readable.assumption_text(assumption,
+case_names(conn))` instead of `assumption.text`, and the context lines print senders with
+`CaseNames.sender`, "(owner)" replacing "(this phone)" as in the signed probe set; the stored
+`Assumption.text` keeps Baker's ids. A message's or attachment's context opens with
+`CaseNames.members(...)` over its chat's member accounts (the union of the chat's message
+senders and listed recipients); a call's or contact row's has no such line. Generated items
+carry the same strings (`baker_members`).

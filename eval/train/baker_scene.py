@@ -161,7 +161,8 @@ class Ev:
 
 
 def render(scene: Scene, phone: Phone, ev: Ev) -> bf.Line:
-    """The line Baker's adapter prints for this event on this phone."""
+    """The line Baker's adapter prints for this event on this phone; a message lists its chat
+    partner as its recipient, as a report does."""
     if ev.kind == "contact":
         return bf.contact_line(phone.item, ev.text or None, ev.frm.ident)
     if ev.utc is None:
@@ -173,8 +174,14 @@ def render(scene: Scene, phone: Phone, ev: Ev) -> bf.Line:
         return bf.call_line(phone.item, ev.utc, phone.zone, ev.direction, ev.frm.ident,
                             ev.to.ident, ev.dur, owner=own, persons=persons,
                             report_offset_min=ev.offset)  # fmt: skip
+    to = () if ev.to is None else (sender(scene, phone, ev.to),)
     return bf.message_line(phone.item, ev.frm.app, ev.frm.ident, ev.utc, phone.zone, ev.text,
-                           owner=own, persons=persons)  # fmt: skip
+                           owner=own, persons=persons, recipients=to)  # fmt: skip
+
+
+def sender(scene: Scene, phone: Phone, a: Acc) -> str:
+    """An account as a line on this phone prints it."""
+    return bf.sender_line(a.app, a.ident, owner=a in phone.own, persons=scene.persons(a))
 
 
 def thread(

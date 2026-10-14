@@ -63,9 +63,12 @@ class Draft:
 
 
 def names_for(rng: random.Random, d: Draft, lines: list[bf.Line]) -> dict[str, str]:
-    """A name for every person the item's params, brackets, claim and rationale mention."""
+    """A name for every person the item's params, brackets, claim and rationale mention; a
+    chat record's brackets include those of its members (the recipients its lines list)."""
     pids = {*d.params.get("person_ids", ()), *pids_in(d.claim), *pids_in(d.rationale)}
-    pids |= {pid for ln in lines for pid in bracketed(ln.sender)}
+    chat = lines[d.target].kind == "message"
+    accounts = {s for ln in lines for s in (ln.sender, *(ln.recipients if chat else ()))}
+    pids |= {pid for s in accounts for pid in bracketed(s)}
     shown = " ".join(f"{ln.sender.split(' [')[0]} {ln.text}" for ln in lines).casefold()
     return cast(rng, pids, d.names, d.scene.owners, dict(d.scene.people), shown)
 

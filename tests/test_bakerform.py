@@ -199,7 +199,9 @@ def test_items_read_by_name() -> None:
 
 def test_chat_members_are_the_products(conn: sqlite3.Connection) -> None:
     """A message item carries its chat's members, and the line they make is the one the product
-    prints for the record's chat: the accounts of the chat's senders and listed recipients."""
+    prints for the record's chat: the accounts of the chat's senders and listed recipients. In
+    the fixture's chat only Rita Vance writes; the owner's account is listed as her message's
+    recipient, and is a member all the same."""
     thread = "thr:item1:Telegram:1"
     conn.execute(
         "INSERT INTO message_recipients VALUES ('msg:item1:1', ?, NULL)",
@@ -216,11 +218,9 @@ def test_chat_members_are_the_products(conn: sqlite3.Connection) -> None:
         )
     ]
     vance, owner = [bf.named_person("vance")], [bf.owner_person(1)]
-    lines = [
-        bf.message_line(1, *OTHER, UTC_AT, TZ, "gate code 1190", persons=vance),
-        bf.message_line(1, *OWNER, UTC_AT + timedelta(minutes=1), TZ, "ok", owner=True,
-                        persons=owner),
-    ]  # fmt: skip
+    to_owner = [bf.sender_line(*OWNER, owner=True, persons=owner)]
+    lines = [bf.message_line(1, *OTHER, UTC_AT, TZ, "gate code 1190", persons=vance,
+                             recipients=to_owner)]  # fmt: skip
     item = bf.build_baker_item(
         probe_id="T999998",
         family_id="bk_sender_shown",
@@ -241,6 +241,7 @@ def test_chat_members_are_the_products(conn: sqlite3.Connection) -> None:
         "Members seen in this chat's records: Telegram 5550147 (owner) [Daniel Petrov (the user"
         " of item1)]; Telegram 5550163 [Rita Vance]"
     )
+    assert item.baker_names == NAMES
     assert GenItem.model_validate(item.model_dump()) == item
     missing = item.model_dump() | {"baker_members": item.baker_members[:1]}
     with pytest.raises(ValueError, match="members hold every line's sender"):

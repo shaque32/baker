@@ -29,7 +29,9 @@ go bar. The two generators live next door:
 
 writes `eval/out/stancedata/` (training items, both held-out splits, manifests) and runs the
 overlap check, which fails the build on any overlap. Scoring the prompted 14B on the held-out
-dev split, on a Mac with the model installed, uses the existing runner unchanged:
+dev split, on a Mac with the model installed, uses the existing runner, which shows an item in
+Baker's own wording as Baker shows a case's records: senders without Baker's internal ids, a chat
+record's members line first, and the claim once the stance prompt has a `{claim}` slot (v1.1):
 
     python -m eval.probe.run_probe --models eval/probe/models.local.json --stance-only \
         --repeat 1 --probe-set eval/out/stancedata/heldout_dev.jsonl

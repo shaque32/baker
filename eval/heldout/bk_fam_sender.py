@@ -121,7 +121,8 @@ def _name_line(rng: random.Random, pr: Pair, s: BkSlot, ex: Excerpt) -> str:
     t = ex.lines[-1].utc
     if t is None:
         raise ValueError("a chat line needs its time")
-    ex.lines.append(pr.sc.msg(pr.p, pr.me, t + timedelta(seconds=rng.randint(40, 900)), text))
+    at = t + timedelta(seconds=rng.randint(40, 900))
+    ex.lines.append(pr.sc.msg(pr.p, pr.me, at, text, pr.other))
     return called
 
 

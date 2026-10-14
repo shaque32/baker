@@ -6,7 +6,8 @@ copied from the family, never chosen by the generator.
 
 A GenItem is a ProbeItem with a wider id, so the existing probe tools read it unchanged:
 `python -m eval.probe.run_probe --probe-set <heldout.jsonl> --stance-only` scores a local model on
-the held-out set exactly as on the signed probe set.
+the held-out set as on the signed probe set; an item in Baker's own wording reads there as Baker
+shows a case's records (eval/probe/from_draft.py).
 
 Ids: T = training pair, D = held-out development split (for iterating), H = held-out test split
 (touched only for a go or no-go decision; GO_BAR.md).

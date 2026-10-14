@@ -11,10 +11,10 @@ Two checks, both by script, nothing by eye:
    this script is the only code in eval/stancedata, eval/train or eval/heldout that does.
 2. Training items against the held-out set, so the exam shares no text with the lessons.
 
-Every free text of an item (assumption, record, context lines, rationale) is compared with every
-reference text after normalizing case, punctuation and spacing; for an item in Baker's own wording
-the assumption is the product's template frame, so only the words it quotes are compared. A pair
-is flagged when:
+Every free text of an item (assumption, record, context lines, rationale, and the claim an item
+in Baker's own wording shows) is compared with every reference text after normalizing case,
+punctuation and spacing; for an item in Baker's own wording the assumption is the product's
+template frame, so only the words it quotes are compared. A pair is flagged when:
 - exact: the normalized texts are equal and have at least EXACT_MIN_TOKENS words;
 - run: they share a contiguous run of at least RUN_MIN_TOKENS words that also covers at least
   RUN_MIN_SHARE of the shorter text and holds at least RUN_MIN_CONTENT words outside the
@@ -291,6 +291,8 @@ def item_text_list(rows: Iterable[dict], label: str) -> Iterator[Text]:
             quoted = (row.get("baker_params") or {}).get("quoted_text")
             if quoted:
                 yield Text(f"{label} {pid} quoted words", quoted)
+            if row.get("baker_claim"):  # the model reads the claim beside the assumption
+                yield Text(f"{label} {pid} claim", row["baker_claim"])
         else:
             yield Text(f"{label} {pid} assumption", row["assumption"])
         yield Text(f"{label} {pid} record", row["target"]["text"])

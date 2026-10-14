@@ -155,6 +155,7 @@ class Line:
     text: str
     utc: datetime | None = None  # None only for a contact row, which has no time
     kind: str = "message"  # a message or an attachment; "call" or "contact" for those rows
+    recipients: tuple[str, ...] = ()  # a message's listed recipients, printed as senders are
 
 
 def message_line(
@@ -167,14 +168,17 @@ def message_line(
     *,
     owner: bool = False,
     persons: Iterable[str] = (),
+    recipients: Iterable[str] = (),
 ) -> Line:
-    """A message (or an attachment's file name, as its text) on phone item<n>."""
+    """A message (or an attachment's file name, as its text) on phone item<n>. recipients are
+    the accounts the source lists as its recipients, each as sender_line prints it."""
     return Line(
         sender_line(app, identifier, owner=owner, persons=persons),
         account_id(item, app, identifier),
         local_str(utc, tz),
         text,
         utc,
+        recipients=tuple(recipients),
     )
 
 
@@ -243,8 +247,9 @@ def build_baker_item(
 
     A message or attachment record's excerpt is its own chat, as Baker's context is, and the
     item carries the chat's members for the line the context opens with
-    (core.audit.readable.members_line): every account the excerpt shows, which in a generated
-    chat is every member. A call or a contact row has no chat and carries none.
+    (core.audit.readable.members_line): every account that sent a line or that a line lists as
+    a recipient, as Baker takes the chat's senders and listed recipients. A call or a contact
+    row has no chat and carries none.
     """
     if not 0 <= target < len(lines):
         raise ValueError(f"{probe_id}: target {target} outside {len(lines)} lines")
@@ -261,25 +266,29 @@ def build_baker_item(
     parsed = parse_params(template_id, params)
     template = TEMPLATES[template_id]
     f = family(family_id)
+    shown = {ln.sender for ln in lines}  # every account the item prints
+    if chat:  # with the accounts the chat's messages list as recipients, for its members line
+        shown |= {r for ln in lines for r in ln.recipients}
     readable = None
     kept: dict[str, str] | None = None
     if names is not None:
-        involved = {*parsed.person_ids, *(pid for ln in lines for pid in bracketed(ln.sender))}
+        involved = {*parsed.person_ids, *(pid for s in shown for pid in bracketed(s))}
         missing = sorted(pid for pid in involved if not names.get(pid, "").strip())
         if missing:
             raise ValueError(f"{probe_id}: no name for {', '.join(missing)}")
         kept = {pid: names[pid] for pid in sorted(involved)}
         readable = case_names(kept, parsed.account_ids)
+    printed = {x: x if readable is None else readable_sender(x, readable) for x in shown}
     probe_lines = [
         ProbeLine(
-            sender=ln.sender if readable is None else readable_sender(ln.sender, readable),
+            sender=printed[ln.sender],
             account_id=ln.account_id,
             local_time=ln.local_time,
             text=ln.text,
         )
         for ln in lines
     ]
-    members = tuple(sorted({ln.sender for ln in probe_lines})) if chat else None
+    members = tuple(sorted(set(printed.values()))) if chat else None
     return GenItem(
         probe_id=probe_id,
         category=f.category,

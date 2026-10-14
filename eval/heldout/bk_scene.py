@@ -75,10 +75,16 @@ class Scene:
     def owner_phone(self, a: Acct) -> Phone | None:
         return next((p for p in self.phones if a in p.own), None)
 
-    def msg(self, ph: Phone, a: Acct, utc: datetime, text: str) -> bf.Line:
-        return bf.message_line(
-            ph.item, a.app, a.ident, utc, ph.tz, text, owner=a in ph.own, persons=self.persons(a)
-        )
+    def msg(self, ph: Phone, a: Acct, utc: datetime, text: str, to: Acct | None = None) -> bf.Line:
+        """A message on ph from a; `to` is the chat's other side, which the source lists as its
+        recipient."""
+        recipients = () if to is None else (self.sender(ph, to),)
+        return bf.message_line(ph.item, a.app, a.ident, utc, ph.tz, text, owner=a in ph.own,
+                               persons=self.persons(a), recipients=recipients)  # fmt: skip
+
+    def sender(self, ph: Phone, a: Acct) -> str:
+        """An account as a line on ph prints it."""
+        return bf.sender_line(a.app, a.ident, owner=a in ph.own, persons=self.persons(a))
 
     def call(
         self, ph: Phone, utc: datetime, direction: str, frm: Acct, to: Acct, dur: int, off: int = 0
@@ -198,17 +204,21 @@ def chat(
 ) -> Excerpt:
     """A one-to-one chat on ph between me (an own account of ph) and other, with the record
     and the context lines (mine?, text) before and after it, in time order."""
+
+    def line(mine: bool, utc: datetime, text: str) -> bf.Line:
+        return sc.msg(ph, me, utc, text, other) if mine else sc.msg(ph, other, utc, text, me)
+
     lines: list[bf.Line] = []
     t = rec_utc
     for mine, text in reversed(before):
         t -= gaps(rng, 1, *spread)[0]
-        lines.insert(0, sc.msg(ph, me if mine else other, t, text))
+        lines.insert(0, line(mine, t, text))
     target = len(lines)
-    lines.append(sc.msg(ph, me if rec_mine else other, rec_utc, rec_text))
+    lines.append(line(rec_mine, rec_utc, rec_text))
     t = rec_utc
     for mine, text in after:
         t += gaps(rng, 1, *spread)[0]
-        lines.append(sc.msg(ph, me if mine else other, t, text))
+        lines.append(line(mine, t, text))
     return Excerpt(lines, target)
 
 

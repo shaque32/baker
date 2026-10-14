@@ -180,9 +180,14 @@ def score_stance(
 ) -> StanceScore:
     s = StanceScore()
     version = prompts.prompt_version(stance_path)
+    takes_claim = prompts.has_placeholder(stance_path, "claim")
     for it in items:
         record = it.get("record") or prompts.record_line(it["record_text"], it["context"])
-        prompt = prompts.stance_prompt(it["assumption"], record, it["context"], stance_path)
+        # A prompt with a {claim} slot shows the claim an item carries (eval/probe/from_draft.py);
+        # one without it cannot, as in the product.
+        claim = (it.get("claim") or prompts.NO_CLAIM) if takes_claim else None
+        prompt = prompts.stance_prompt(it["assumption"], record, it["context"], stance_path,
+                                       claim)  # fmt: skip
         outs = _call(model, prompt, prompts.STANCE_SCHEMA, params, repeat, log,
                      purpose="stance", version=version, item_id=it["id"])  # fmt: skip
         first = outs[0]

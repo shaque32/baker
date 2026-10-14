@@ -165,6 +165,14 @@ def test_prompt_without_placeholders_is_refused():
         LocalStanceLabeler(FakeModel(GOOD), template="label {assumption} please")
 
 
+def test_prompt_with_a_slot_the_labeler_does_not_fill_is_refused():
+    """Stance prompt v1.1 adds {claim} (PROPOSED_CHANGES.md); until build_prompt fills it, the
+    labeler refuses that prompt instead of sending the model a bare placeholder."""
+    with_claim = DRAFT.replace("{assumption}", "{claim}\n{assumption}", 1)
+    with pytest.raises(ValueError, match=r"does not fill: \['claim'\]"):
+        LocalStanceLabeler(FakeModel(GOOD), template=with_claim)
+
+
 def test_only_the_named_message_can_contradict_a_one_message_assumption():
     from core.audit.assumptions import instantiate
     from core.audit.stance import subject_stance
