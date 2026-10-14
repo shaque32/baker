@@ -91,8 +91,9 @@ class Cast:
         pool = [p for p in (PEOPLE_RU if lang == "ru" else PEOPLE_EN) if p.name not in self.taken]
         person = rng.choice(pool)
         self.taken.add(person.name)
-        return Who(person, self._new(lambda: fictional_phone(rng, AREA_CODES)),
-                   self._new(lambda: telegram_id(rng)), self._new(lambda: username(rng, person)))  # fmt: skip
+        number = self._new(lambda: fictional_phone(rng, AREA_CODES))
+        tg = self._new(lambda: telegram_id(rng))
+        return Who(person, number, tg, self._new(lambda: username(rng, person)))
 
     def _new(self, draw: Callable[[], str]) -> str:
         for _ in range(500):
