@@ -111,7 +111,8 @@ eval or re-decided.
   local AI reviewer accepted shows its tier as `ai_reviewed` ("AI-reviewed, not confirmed"); only
   an expert's acceptance shows as `confirmed`.
 - The screen and the report use the same labels (`core/review/status.py`).
-- Every page passes the same forbidden-word check as the report.
+- Every page passes the same forbidden-word check as the report. Cited text and the
+  expert's own reasons and notes are exempt; Baker's wording and a model's are not.
 
 ## Local-server protections
 
