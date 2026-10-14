@@ -17,6 +17,7 @@ from core.audit._llm_json import prompt_body
 from core.audit.assumption_filler import (
     LocalAssumptionFiller,
     Reject,
+    _ProposalOut,
     check_window,
     count_op,
     date_mentions,
@@ -400,24 +401,38 @@ def test_a_sender_without_a_party_gets_the_writer_the_claim_names(conn):
 
 
 @pytest.mark.parametrize(
-    ("text", "named"),
+    ("text", "quoted", "writer"),
     [
-        ("On March 12, 2026, PETROV wrote to @northstar: 'need 2 more by friday'.", True),
-        ("Daniel Petrov texted REYES 'its done'.", True),
-        ("REYES said PETROV wrote 'its done'.", True),  # the writer, not the speaker
-        ("ALEXANDER SOKOLOV wrote 'its done'.", False),  # no such person in the case
-        ("PETROV wrote 'ok' and REYES replied 'fine'.", False),  # two writers
-        ("The message 'its done' was sent at 2:31 a.m.", False),  # names no writer
+        ("On March 12, 2026, PETROV wrote to @northstar: 'need 2 more by friday'.",
+         "need 2 more by friday", "PETROV"),
+        ("Daniel Petrov texted REYES 'its done'.", "its done", "PETROV"),
+        ("PETROV WROTE 'its done'.", "its done", "PETROV"),  # verbs in capitals too
+        ("PETROV wrote 'ok' and REYES replied 'fine'.", "fine", "REYES"),  # nearest verb
+        ("PETROV wrote 'ok' and REYES replied 'fine'.", "ok", "PETROV"),
+        ("REYES said PETROV wrote 'its done'.", "its done", "PETROV"),  # writer, not speaker
+        ("PETROV wrote a report quoting REYES: 'ok'.", "ok", None),  # "quoting" governs
+        ("PETROV told agents that REYES said 'ok'.", "ok", None),  # "said" governs
+        ("ALEXANDER SOKOLOV wrote 'its done'.", "its done", None),  # no such person
+        ("The message 'its done' was sent at 2:31 a.m.", "its done", None),  # no writer
+        ("PETROV wrote 'its done'.", "not in the claim", None),
     ],
-)
-def test_stated_sender_is_the_one_person_the_claim_names_as_writer(conn, text, named):
+)  # fmt: skip
+def test_stated_sender_is_the_writer_of_the_quoted_words(conn, text, quoted, writer):
     filler = LocalAssumptionFiller(FakeModel(by_claim(GOOD)), conn, template=DRAFT)
     c = Claim(id="X", paragraph_id="para:1", text=text, claim_type=ClaimType.COMMUNICATION,
               status=ClaimStatus.ACCEPTED)  # fmt: skip
-    got = filler.stated_sender(c)
-    assert (got is not None) == named, got
-    if named:
-        assert got == filler._person("PETROV")
+    got = filler.stated_sender(c, quoted)
+    assert got == (filler._person(writer) if writer else None)
+
+
+def test_a_phone_scope_does_not_stop_the_writer_from_being_read(conn):
+    good = {a.template_id: a for a in build(conn, "C05")[0]}
+    answers = {"C05": [{**GOOD["C05"][0], "people": [], "phones": ["Item 1"]}]}
+    filler = LocalAssumptionFiller(FakeModel(by_claim(answers)), conn, template=DRAFT)
+    para = "Item 1 holds this exchange. " + claim("C05").text  # so "Item 1" is written
+    out = filler._resolve(claim("C05"), para, _ProposalOut.model_validate(answers["C05"][0]))
+    assert out.params["person_ids"] == list(good["sender"].params.person_ids)
+    assert out.params["device_ids"] == ["dev:item1"]
 
 
 def test_stated_windows_read_the_claims_own_words():

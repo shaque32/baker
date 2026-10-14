@@ -30,8 +30,9 @@ the document or the case data. It fails closed at every step:
   time assumption from code when the model gave none: the sender's parties and words with the
   claim's one stated range. The model's arithmetic is never needed for a plain stated date.
 - A sender assumption the model left without a party gets the person the claim names as the
-  writer ("PETROV wrote", "PETROV texted REYES"), read by code (`stated_sender`), when that
-  name matches exactly one person the expert created. Otherwise it stays without a party and
+  writer of the quoted words ("PETROV wrote", "PETROV texted REYES"), read by code
+  (`stated_sender`) from the verb nearest before the quote, when that name matches exactly one
+  person the expert created. Otherwise it stays without a party and
   is refused as before.
 - Every proposed assumption is core. The model does not get to mark one optional.
 - A claim must not be judged on its easy parts (`coverage_gap`): each claim type needs its
@@ -623,10 +624,19 @@ _QUOTED_MESSAGE = re.compile(
 
 # The writer of a quoted message, as the claim names it: 'PETROV wrote', 'Daniel Petrov texted
 # REYES'. One to three capitalised words right before a verb of writing.
+_WRITER_VERBS = r"wrote|texted|messaged|sent|told|replied|emailed"
 _WRITER_RE = re.compile(
     r"(?<![\w@])([A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*){0,2})\s+"
-    r"(?:wrote|texted|messaged|sent|told|replied|emailed)\b"
+    rf"(?i:(?:{_WRITER_VERBS}))\b"
 )
+# Any verb that can introduce a quote. The one nearest before the quote governs it: in
+# 'PETROV wrote a report quoting REYES: "ok"' it is "quoting", so PETROV is not the writer.
+_QUOTING_RE = re.compile(
+    rf"\b(?:{_WRITER_VERBS}|said|says|asked|posted|quoted|quoting|quotes|forwarded|forwarding|"
+    r"stated|saying|according|reads|read)\b",
+    re.IGNORECASE,
+)
+QUOTE_REACH = 80  # characters from the writer's verb to the quote
 
 
 def coverage_gap(claim: Claim, proposals: list[Proposal]) -> str | None:
@@ -775,8 +785,9 @@ class LocalAssumptionFiller:
             params["device_ids"] = sorted(set(device_ids))
         if p.people:
             params["person_ids"] = sorted({self._person(n) for n in p.people})
-        elif tpl.id == "sender" and not (p.handles or p.phones or p.accounts):
-            writer = self.stated_sender(claim)
+        elif tpl.id == "sender" and not (p.handles or p.accounts):
+            # A phone scopes the search but is no party, so it does not stop this.
+            writer = self.stated_sender(claim, p.quoted_text)
             if writer is not None:
                 params["person_ids"] = [writer]
 
@@ -881,23 +892,33 @@ class LocalAssumptionFiller:
         params = {k: v for k, v in sender.items() if k in allowed} | {"window": window}
         return [*out, Proposal("record_time", params, is_core=True)]
 
-    def stated_sender(self, claim: Claim) -> str | None:
-        """The one person the claim names as the writer, or None when it names none or the
-        names do not all resolve to the same single person the expert created."""
-        found: set[str] = set()
-        for match in _WRITER_RE.finditer(claim.text):
-            words = match.group(1).split()
-            hits = set()
-            for i in range(len(words)):
-                try:
-                    hits.add(self._person(" ".join(words[i:])))
-                except Reject:
-                    continue
-                break  # the longest form that names a person
-            if len(hits) != 1:
-                return None
-            found |= hits
-        return found.pop() if len(found) == 1 else None
+    def stated_sender(self, claim: Claim, quoted: str | None) -> str | None:
+        """The person the claim names as the writer of the quoted words, or None.
+
+        The verb nearest before the quote must be a verb of writing with a name right before
+        it ("PETROV wrote to @northstar: ..."), at most QUOTE_REACH characters from the quote,
+        and the name must match exactly one person the expert created. Anything else (no
+        quote, "quoting", "said", a name that is no person) names no writer."""
+        if not quoted or not quoted.strip():
+            return None
+        at = _nfc(claim.text).find(_nfc(quoted.strip()))
+        if at < 0:
+            return None
+        before = _nfc(claim.text)[:at]
+        verbs = list(_QUOTING_RE.finditer(before))
+        if not verbs or at - verbs[-1].end() > QUOTE_REACH:
+            return None
+        last = verbs[-1]
+        match = next((m for m in _WRITER_RE.finditer(before) if m.end() == last.end()), None)
+        if match is None:
+            return None
+        words = match.group(1).split()
+        for i in range(len(words)):
+            try:
+                return self._person(" ".join(words[i:]))  # the longest form that names a person
+            except Reject:
+                continue
+        return None
 
     def _person(self, name: str) -> str:
         n = _nfc(name.strip()).casefold()
