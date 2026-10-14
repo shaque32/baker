@@ -71,10 +71,25 @@ decided). Agreeing with Claude does not count as being right; only the signed la
 
 Decision rule, fixed 2026-10-13 before any cloud run: a model is a candidate for a per-case
 opt-in only if it meets all four Expert-confirms bars on the signed undisputed items (including
-zero contradicting items shown as support, which the 14B misses with 5) and has zero false
+zero contradicting items shown as support, which the 14B missed with 5 on the 2026-10-07
+labels and meets on the v0.3 labels Arsh signed 2026-10-14) and has zero false
 supported and verdict accuracy >= 0.80 on case01 after the simulated expert. Among candidates,
 the cheaper per case. Reviewer overreach and repeat identity are reported, not gated. Passing
 changes nothing in the product: the cloud rule in CLAUDE.md is Arsh's to change.
+
+Probe input and scoring, from the grading audit of 2026-10-14
+(cloud-bench/2026-10-14/GRADING_AUDIT.md and its 10-reader consensus): the probe shows a signed
+item the way the product shows a record. The RECORD is the message text alone and the context
+uses core/audit/context.py's layout (local-time header, '>>' on the record, direction)
+(`--layout product`, the default). `--layout product_members` also opens the context with the
+chat's members line, built from the excerpt's senders, as stance prompt v1.1's wiring will send
+it; use it with v1.1. `--layout legacy` reproduces earlier runs. Quotes are checked with the
+product's core/audit/quotes.verify_quote. `--stance-prompt eval/probe/stance_v1_1_signed.md`
+(only prompt files in core/audit/prompts/ and eval/probe/ are accepted) scores a model on the
+signed v1.1 text, which the v0.3 labels follow; a v1.0 run scored on v0.3 labels mixes two rule
+sets. The bars are unchanged; `expert_confirms(...)["reported"]` adds traps shown as supports,
+contradicts precision on non-meaning assumptions (rule 1b), 95% intervals and the second answer
+scored alone, all reported and none gated.
 
 ## Wave 3: which model the alpha ships with (expert confirms)
 Under rules 0.2.0 the expert accepts the key evidence of every SUPPORTED claim and the AI

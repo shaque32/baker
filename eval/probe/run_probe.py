@@ -17,7 +17,10 @@ skips the reviewer items):
 - supports recall >= 90%: a true support the model misses, or quotes wrongly, never reaches
   the expert's queue;
 - contradicts precision >= 90%: a "contradicts" on an observed record makes the claim
-  CONTRADICTED with no expert step (rules.py rule 1b), so a wrong one is a wrong verdict;
+  CONTRADICTED with no expert step (rules.py rule 1b), so a wrong one is a wrong verdict. Rule
+  1b treats a model's contradicts on a meaning assumption, or on one whose checks all passed,
+  as complicates, so for those items a wrong one costs the expert a look, not a verdict; the
+  bar counts every kind, and `reported` gives the precision on the other kinds;
 - zero "supports" on an item whose gold is "contradicts": the expert would be shown
   contradicting evidence as support;
 - valid output 100%.
@@ -25,6 +28,11 @@ Supports precision is reported as expert load (items the expert dismisses), not 
 criteria were set before the 8B and 14B were re-run on them (Wave 3, 2026-10-08). Also reported:
 items of the trap families stance guide v0.3 moved from contradicts to complicates (MOVED_TRAPS)
 shown as supports, which the own-model go bar holds at zero (eval/stancedata/GO_BAR.md).
+
+`expert_confirms(...)["reported"]` (grading audit, 2026-10-14; reported, never gated): every
+gold complicates or irrelevant item shown as supports, contradicts precision on non-meaning
+assumptions, 95% intervals with the item counts behind them, and each later repeat scored on its
+own. With 8 gated gold contradicts, one wrong "contradicts" already puts precision under 90%.
 """
 
 from __future__ import annotations
@@ -40,6 +48,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from core.audit.quotes import verify_quote
 from core.llm.calls import CallLog, make_record
 from core.llm.runtime import (
     PRODUCT_RUNTIME,
@@ -50,6 +59,7 @@ from core.llm.runtime import (
     with_runtime,
 )
 from eval.probe import prompts
+from eval.probe.from_draft import LAYOUTS
 
 HERE = Path(__file__).parent
 BARS = {
@@ -73,6 +83,17 @@ def load_items(path: Path) -> list[dict[str, Any]]:
 
 def _ratio(num: int, den: int) -> float | None:
     return None if den == 0 else num / den
+
+
+def wilson(num: int, den: int, z: float = 1.96) -> tuple[float, float] | None:
+    """95% Wilson interval for num/den: how far a rate on a few dozen items can be trusted."""
+    if den == 0:
+        return None
+    p = num / den
+    d = 1 + z * z / den
+    c = p + z * z / (2 * den)
+    h = z * ((p * (1 - p) / den + z * z / (4 * den * den)) ** 0.5)
+    return round((c - h) / d, 3), round((c + h) / d, 3)
 
 
 @dataclass
@@ -101,6 +122,16 @@ class StanceScore:
     gold_supports: int = 0
     repeat_identical: int = 0
     moved_traps_shown_as_supports: int = 0  # MOVED_TRAPS items labeled supports
+    # Reported, not gated (grading audit, 2026-10-14):
+    traps_shown_as_supports: int = 0  # gold complicates or irrelevant labeled supports
+    overreach_shown_as_supports: int = 0  # of those, overreach-category items
+    # "contradicts" on an assumption that is not a meaning assumption: the only kind a model's
+    # unreviewed contradicts can turn into a CONTRADICTED verdict (rules.py rule 1b).
+    verdict_capable_contradicts: int = 0
+    verdict_capable_true_contradicts: int = 0
+    repeat_samples: int = 0  # items answered more than once
+    labels_identical: int = 0  # of those, items whose answers all got the same scored label
+    repeats: list[StanceScore] = field(default_factory=list)  # answers 2.., scored alone
     failures: list[dict[str, Any]] = field(default_factory=list)
     confusion: dict[str, dict[str, int]] = field(default_factory=dict)  # gold -> got
 
@@ -198,34 +229,57 @@ def score_stance(
         outs = _call(model, prompt, prompts.STANCE_SCHEMA, params, repeat, log,
                      purpose="stance", version=version, item_id=it["id"])  # fmt: skip
         first = outs[0]
-        s.n += 1
         s.repeat_identical += all(o.raw_text == first.raw_text for o in outs)
-        s.gold_supports += it["expected"] == "supports"
-        if not first.ok:
-            row = s.confusion.setdefault(it["expected"], {})
-            row["invalid"] = row.get("invalid", 0) + 1
-            s.failures.append({"id": it["id"], "error": first.error, "raw": first.raw_text[:300]})
-            continue
-        s.valid += 1
-        quote_ok = bool(first.parsed["quote"]) and first.parsed["quote"] in it["record_text"]
-        s.quote_verified += quote_ok
-        # An unverified quote is discarded, so its label cannot count as "supports".
-        stance = first.parsed["stance"] if quote_ok else "dropped"
-        # Confusion only: an irrelevant label needs no quote (core/audit/stance.py), and it
-        # never reaches the expert either way. stance_accuracy keeps its original definition.
-        shown = "irrelevant" if first.parsed["stance"] == "irrelevant" else stance
-        row = s.confusion.setdefault(it["expected"], {})
-        row[shown] = row.get(shown, 0) + 1
-        s.correct += stance == it["expected"]
-        if stance == "supports":
-            s.predicted_supports += 1
-            s.true_supports_predicted += it["expected"] == "supports"
-            s.moved_traps_shown_as_supports += it.get("trap") in MOVED_TRAPS
-        if stance != it["expected"]:
-            s.failures.append({"id": it["id"], "category": it["category"],
-                               "expected": it["expected"], "got": stance,
-                               "quote": first.parsed["quote"][:200]})  # fmt: skip
+        # The first answer decides, as a stored output does in the product. Later answers are
+        # scored the same way and reported (StanceScore.repeats), never gated.
+        labels = [tally_answer(s, it, first)]
+        while len(s.repeats) < len(outs) - 1:
+            s.repeats.append(StanceScore())
+        labels += [tally_answer(r, it, o) for r, o in zip(s.repeats, outs[1:], strict=False)]
+        if len(labels) > 1:
+            s.repeat_samples += 1
+            s.labels_identical += len(set(labels)) == 1
     return s
+
+
+def tally_answer(s: StanceScore, it: dict[str, Any], out: ModelOutput) -> str:
+    """Score one answer into s; return the label as scored ("dropped" for a failed quote).
+    eval/stancedata/score.py counts its predictions through this too, so both agree."""
+    s.n += 1
+    s.gold_supports += it["expected"] == "supports"
+    if not out.ok:
+        row = s.confusion.setdefault(it["expected"], {})
+        row["invalid"] = row.get("invalid", 0) + 1
+        s.failures.append({"id": it["id"], "error": out.error, "raw": out.raw_text[:300]})
+        return "invalid"
+    s.valid += 1
+    # The product's quote check (core/audit/quotes.py): verbatim, word-aligned, in the record's
+    # own text. A quote the product would discard is discarded here too.
+    quote_ok = verify_quote(out.parsed["quote"], it["record_text"])
+    s.quote_verified += quote_ok
+    # An unverified quote is discarded, so its label cannot count as "supports".
+    stance = out.parsed["stance"] if quote_ok else "dropped"
+    # Confusion only: an irrelevant label needs no quote (core/audit/stance.py), and it
+    # never reaches the expert either way. stance_accuracy keeps its original definition.
+    shown = "irrelevant" if out.parsed["stance"] == "irrelevant" else stance
+    row = s.confusion.setdefault(it["expected"], {})
+    row[shown] = row.get(shown, 0) + 1
+    s.correct += stance == it["expected"]
+    if stance == "supports":
+        s.predicted_supports += 1
+        s.true_supports_predicted += it["expected"] == "supports"
+        s.moved_traps_shown_as_supports += it.get("trap") in MOVED_TRAPS
+        trap = it["expected"] in ("complicates", "irrelevant")
+        s.traps_shown_as_supports += trap
+        s.overreach_shown_as_supports += trap and it.get("category") == "overreach"
+    if shown == "contradicts" and it.get("kind") != "meaning":
+        s.verdict_capable_contradicts += 1
+        s.verdict_capable_true_contradicts += it["expected"] == "contradicts"
+    if stance != it["expected"]:
+        s.failures.append({"id": it["id"], "category": it["category"],
+                           "expected": it["expected"], "got": stance,
+                           "quote": out.parsed["quote"][:200]})  # fmt: skip
+    return shown
 
 
 def is_gated(item: dict[str, Any]) -> bool:
@@ -273,6 +327,27 @@ def expert_confirms(st: StanceScore) -> dict[str, Any]:
     }
     m["bars"] = bars
     m["passes_all"] = all(bars.values())
+    # Reported beside the bars, never gating them (the bars are Arsh's to change). Added by the
+    # grading audit of 2026-10-14: the bars leave false supports on traps ungated, count meaning
+    # "contradicts" that rule 1b already treats as complicates, and rest on few items.
+    m["reported"] = {
+        "traps_shown_as_supports": st.traps_shown_as_supports,
+        "overreach_shown_as_supports": st.overreach_shown_as_supports,
+        "verdict_capable_contradicts_precision": _ratio(
+            st.verdict_capable_true_contradicts, st.verdict_capable_contradicts
+        ),
+        "verdict_capable_wrong_contradicts": st.verdict_capable_contradicts
+        - st.verdict_capable_true_contradicts,
+        "gold_supports": st.gold_supports,
+        "gold_contradicts": contra_gold,
+        "supports_recall_95ci": wilson(st.true_supports_predicted, st.gold_supports),
+        "contradicts_precision_95ci": wilson(contra_true, got["contradicts"]),
+        "labels_identical_across_repeats": _ratio(st.labels_identical, st.repeat_samples),
+        "other_repeats": [
+            {k: v for k, v in expert_confirms(r).items() if k not in ("confusion", "reported")}
+            for r in st.repeats
+        ],
+    }
     return m
 
 
@@ -304,14 +379,21 @@ def check_bars(m: dict[str, Any]) -> dict[str, bool]:
     def ge(value: float | None, bar: float) -> bool:
         return value is not None and value >= bar
 
+    # A stance-only run (--stance-only) has no reviewer answers: its reviewer parts are not
+    # failed, they are not measured, so only the stance parts decide.
+    reviewer_ran = m.get("reviewer_items", 1) > 0
+
+    def rev(value: float | None, bar: float) -> bool:
+        return ge(value, bar) if reviewer_ran else True
+
     return {
-        "valid_output_100": ge(m["reviewer_valid_output"], 1.0)
+        "valid_output_100": rev(m["reviewer_valid_output"], 1.0)
         and ge(m["stance_valid_output"], 1.0),
         "quote_verified_95": ge(m["quote_verified"], BARS["quote_verified"]),
         "supports_precision_95": ge(m["supports_precision"], BARS["supports_precision"]),
         "supports_recall_90": ge(m["supports_recall"], BARS["supports_recall"]),
         "zero_overreach_false_accepts": m["overreach_false_accepts"] == 0,
-        "repeat_identical": ge(m["reviewer_repeat_identical"], 1.0)
+        "repeat_identical": rev(m["reviewer_repeat_identical"], 1.0)
         and ge(m["stance_repeat_identical"], 1.0),
     }
 
@@ -435,6 +517,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="also run a reason-before-decision reviewer variant")  # fmt: skip
     ap.add_argument("--stance-only", action="store_true",
                     help="skip the reviewer items (the reviewer decides nothing)")  # fmt: skip
+    ap.add_argument("--layout", choices=list(LAYOUTS), default="product",
+                    help="probe input layout (eval/probe/from_draft.py)")  # fmt: skip
     ap.add_argument("--runtime", choices=sorted(RUNTIMES), default=PRODUCT_RUNTIME,
                     help="speed settings the model loads with (core/llm/runtime.py)")  # fmt: skip
     ap.add_argument("--chat-template", choices=["gguf", "no-think"], default="gguf")
@@ -449,7 +533,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.probe_set is not None:
         from eval.probe.from_draft import convert
 
-        pairs = [convert(row) for row in load_items(args.probe_set)]
+        pairs = [convert(row, args.layout) for row in load_items(args.probe_set)]
         reviewer_items = [r for r, _ in pairs]
         stance_items = [s for _, s in pairs]
     else:
@@ -474,6 +558,7 @@ def main(argv: list[str] | None = None) -> int:
             res["model"] = spec.name + (" (reason first)" if reason_first else "")
             res["license"] = spec.license
             res["runtime"] = args.runtime
+            res["layout"] = args.layout if args.probe_set is not None else None
             res["params"] = params.as_record()
             res["vram_used_mib"] = None if loaded is None or before is None else loaded - before
             results.append(res)
