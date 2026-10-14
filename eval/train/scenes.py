@@ -38,6 +38,7 @@ from eval.train.scenario import (
     weekday_clash,
 )  # fmt: skip
 from eval.train.writers import (
+    ACT_DAY,
     Spec,
     act_before,
     cap,
@@ -76,8 +77,9 @@ def fact_pool(slot: int, ru: float = 0.2) -> Fact:
     return pool[min(int(t * len(pool)), len(pool) - 1)]
 
 
-def other_fact(rng: random.Random, f: Fact) -> Fact:
-    return rng.choice([g for g in ALL_FACTS if g.scene != f.scene])
+def other_facts(f: Fact) -> list[Fact]:
+    """The facts of every other scene, for an irrelevant assumption beside a record of f."""
+    return [g for g in ALL_FACTS if g.scene != f.scene]
 
 
 @dataclass
@@ -103,7 +105,11 @@ class Setup:
 
 
 def other_value(rng: random.Random, st: Setup, v: str) -> str:
-    return rng.choice([x for x in st.values if x != v])
+    """Another of the fact's values; a weekday that is the record's own is never one (a
+    correction to "monday" is never sent on a Monday)."""
+    rest = [x for x in st.values if x != v]
+    fit = [x for x in rest if st.day.weekday() not in named_weekdays(fx.claim(st.f, x))]
+    return rng.choice(fit or rest)
 
 
 def marked(st: Setup, v: str) -> str:
@@ -119,9 +125,22 @@ def free_days(f: Fact) -> tuple[int, ...]:
     word would mean that very day; a dated assumption about a named weekday then has one natural
     date (guide rule 24 and the round-4 weekday rule).
     """
-    named = {fx.DAY_NAMES.index(w.lower()) for v in f.values
-             for w in fx.DAY_WORD.findall(fx.claim(f, v))}  # fmt: skip
+    named = named_days(f)
     return tuple(d for d in range(7) if d not in named) if named else ()
+
+
+def named_days(f: Fact) -> set[int]:
+    """The weekdays (0 = Monday) that any of the fact's values names."""
+    return {fx.DAY_NAMES.index(w.lower()) for v in f.values
+            for w in fx.DAY_WORD.findall(fx.claim(f, v))}  # fmt: skip
+
+
+def month_days(f: Fact) -> int:
+    """The latest day of the month any of the fact's values names ("paid the rent on the 8th"),
+    or 0. The record is sent later in that month, so each value's day has one natural date,
+    in the record's month and before it."""
+    return max((int(m[1]) for v in f.values if (m := ACT_DAY.search(fx.claim(f, v)))),
+               default=0)  # fmt: skip
 
 
 def days_free_of(*texts: str) -> tuple[int, ...]:
@@ -132,9 +151,9 @@ def days_free_of(*texts: str) -> tuple[int, ...]:
 
 
 def setup(rng: random.Random, f: Fact, *, extra: int = 0, who: str | None = None,
-          day: date | None = None) -> Setup:  # fmt: skip
-    if day is None:
-        day = pick_day(rng, free_days(f))
+          day: date | None = None, texts: tuple[str, ...] = ()) -> Setup:  # fmt: skip
+    """The cast, the value and the record's local date. The date is never a weekday that the
+    fact's values or `texts` (lines the scenario will add) name as one particular day."""
     app, owner, contacts = cast(rng, f.lang, extra)
     tz = pick_tz(rng, f.lang)
     if who is None:
@@ -148,6 +167,11 @@ def setup(rng: random.Random, f: Fact, *, extra: int = 0, who: str | None = None
     if len(values) < 2:
         values = f.values
     v = rng.choice(values)
+    if day is None:
+        # A fact whose values name every weekday leaves none free; the record's value decides.
+        fits = set(free_days(f) or days_free_of(fx.claim(f, v)) or range(7))
+        fits &= set(days_free_of(*texts) or range(7))
+        day = pick_day(rng, tuple(sorted(fits)), after_mday=month_days(f))
     vr = fx.mark(f, v) if f.money and rng.random() < 0.4 else v
     return Setup(f, app, owner, contacts, tz, day, who, sender, other, v, vr, values)
 
@@ -241,11 +265,11 @@ def sc_stated(rng: random.Random, slot: int) -> Result:
         if rng.random() < 0.3
         else spec_plain(rng, c, pred, core, plain_why(c))
     )
-    cands = [spec_time_mismatch(rng, c, pred, core), spec_sender_mismatch(rng, c),
+    cands = [spec_time_mismatch(rng, c, pred), spec_sender_mismatch(rng, c),
              spec_handle_owner(rng, c, pred, core, False),
              spec_partial(rng, c, f, st.v, core, money), spec_count(rng, c, f, st.v, core, money),
              spec_time_window(rng, c), spec_contact(rng, c), spec_in_window(rng, c),
-             spec_irrelevant(rng, c, "irr_other_topic", other_fact(rng, f), False),
+             spec_irrelevant(rng, c, "irr_other_topic", other_facts(f), False),
              spec_plain(rng, c, pred, core, plain_why(c))]  # fmt: skip
     return c, siblings(rng, lead, cands, 0.6)
 
@@ -264,10 +288,10 @@ def sc_exact(rng: random.Random, slot: int) -> Result:
            f"says {quoted(fx.claim_value(f, v2, money))}.")  # fmt: skip
     pred2 = fx.claim(f, v2, money)
     kind = kind_of(rng, "con_other_value")
-    if fx.names_day(pred2):
+    if fx.names_day(pred2) or ACT_DAY.search(pred2):
         # "the only day he came was tuesday" rules out a Wednesday before the message, not a
         # later one: the assumption dates the act before the record's date (guide rule 23).
-        why += " The assumption's date falls before the message."
+        why += " The assumption dates the act before the message."
         lead = Spec("con_other_value", kind, act_before(rng, c, c.sender.who, pred2), core, why)
     else:
         lead = fact_lead(c, "con_other_value", kind, pred2, core, why)

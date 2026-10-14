@@ -5,10 +5,12 @@ the sender's pronouns (always "they" and "their": an assumption genders nobody),
 record's local date, {prev} the day before, {next} the day after, {lastweek} a week before,
 {clock} its local clock time (for rationales: an assumption never gives the record's own
 minute), {hour} the last whole hour before it ("2 p.m." for 2:47 p.m., "1 p.m." for 2:00 p.m.),
-{month} its month and year, {x} and {y} from xs and ys (chosen together when both have the same
-length, else independently; {X} and {Y} capitalized), {c} and {o} Russian endings. A claim names people and objects outright:
-never "the man", "it" or a relative time. A rationale quotes any weekday the record names and
-never names one of its own (guide rule 24).
+{later} a whole hour two hours after its hour (the con_other_state records, which carry it, fall
+before 10 p.m.), {month} its month and year, {x} and {y} from xs and ys (chosen together when
+both have the same length, else independently; {X} and {Y} capitalized), {c} and {o} Russian
+endings. A claim names people and objects outright: never "the man", "it" or a relative time,
+and never a definite thing the chat does not show ("the shop" with no shop in it). A rationale
+quotes any weekday the record names and never names one of its own (guide rule 24).
 """
 
 from __future__ import annotations
@@ -27,7 +29,7 @@ class Special:
     record: str
     after: tuple[Line, ...]
     quote: str  # a word-aligned substring of record after filling
-    claim: str  # the assumption
+    claim: str  # the assumption; alternatives (one is drawn) are separated by " || "
     why: str  # the rationale
     xs: tuple[str, ...] = ()
     ys: tuple[str, ...] = ()
@@ -48,15 +50,18 @@ MON_TO_THU = (0, 1, 2, 3)
 
 
 PLACES = ("seat", "mat", "sink", "porch step", "mattress", "bench", "spare tire", "cooler")
-OBJECTS = ("a knife", "a gun", "the cash", "the pills", "the stolen laptop", "a bag of weed",
-           "the stolen watch", "the fake ids")  # fmt: skip
+# What a pronoun might stand for. Indefinite, so the assumption names an object without
+# pointing to one the chat would have to show (the trap is the object itself).
+OBJECTS = ("a knife", "a gun", "an envelope of cash", "a bottle of pills", "a stolen laptop",
+           "a bag of weed", "a stolen watch", "a stack of fake IDs")  # fmt: skip
 NAMES = ("ana", "bea", "cleo", "gus", "ike", "mara", "kofi", "dev")
 
 PRONOUN = (
     S(
         "ovr_pronoun",
         "put it under the {x}",
-        "{S} told {O} to put {y} under the {x}.",
+        "{S} told {O} to put {y} under the {x}. || On {date}, {S} told {O} to put {y} under the "
+        "{x}.",
         "The record says only 'it'; nothing shown says what it is, so the object is the "
         "assumption's own guess.",
         xs=PLACES,
@@ -72,49 +77,53 @@ PRONOUN = (
     S(
         "ovr_pronoun",
         "did u get rid of it yet",
-        "{S} asked {O} whether they had gotten rid of {y}.",
+        "{S} asked {O} whether they had gotten rid of {y}. || On {date}, {S} asked {O} whether "
+        "they had gotten rid of {y}.",
         "'It' is unresolved in everything shown; the assumption supplies the object.",
         ys=OBJECTS,
     ),
     S(
         "ovr_pronoun",
         "leave it in the glovebox",
-        "{S} told {O} to leave {y} in the glovebox.",
+        "{S} told {O} to leave {y} in the glovebox. || On {date}, {S} told {O} to leave {y} in "
+        "the glovebox.",
         "Nothing shown says what 'it' is.",
         ys=OBJECTS,
     ),
     S(
         "ovr_pronoun",
         "i moved it to the garage",
-        "{S} moved {y} to the garage.",
+        "{S} moved {y} to the garage. || Before {next}, {S} moved {y} to the garage.",
         "The record does not say what was moved; the object comes from outside the chat.",
         ys=OBJECTS,
     ),
     S(
         "ovr_pronoun",
         "dont touch that till i get there",
-        "{S} told {O} not to touch {y} before they arrived.",
+        "{S} told {O} not to touch {y} before they arrived. || On {date}, {S} told {O} not to "
+        "touch {y} before they arrived.",
         "'That' is not resolved by the record or the context shown.",
         ys=OBJECTS,
     ),
     S(
         "ovr_pronoun",
         "that thing is still in my trunk",
-        "{S} kept {y} in {poss} trunk.",
+        "{S} kept {y} in {poss} trunk. || On {date}, {S} had {y} in {poss} trunk.",
         "What 'that thing' is never appears in the text shown.",
         ys=OBJECTS,
     ),
     S(
         "ovr_pronoun",
         "they picked it up this morning",
-        "{Y} was collected on the morning of {date}.",
+        "Someone picked up {y} on the morning of {date}.",
         "'It' has no antecedent in the record or the context shown.",
         ys=OBJECTS,
     ),
     S(
         "ovr_pronoun",
         "ok its under the {x}, go",
-        "{Y} was under the {x}.",
+        "{S} told {O} that {y} was under the {x}. || On {date}, {S} told {O} that {y} was under "
+        "the {x}.",
         "The record places 'it' but never says what 'it' is.",
         xs=PLACES,
         ys=OBJECTS,
@@ -122,7 +131,8 @@ PRONOUN = (
     S(
         "ovr_pronoun",
         "did u bring the thing",
-        "{S} asked {O} whether they had brought {y}.",
+        "{S} asked {O} whether they had brought {y}. || On {date}, {S} asked {O} whether they "
+        "had brought {y}.",
         "'The thing' is unresolved; the assumption names the object itself.",
         ys=OBJECTS,
     ),
@@ -132,7 +142,8 @@ CODE_WORD = (
     S(
         "ovr_code_word",
         "need {x} more of the {y}",
-        "'{y}' means pills; {S} asked {O} for {x} more pills.",
+        "'{y}' means pills; {S} asked {O} for {x} more pills. || '{y}' means pills; on {date}, "
+        "{S} asked {O} for {x} more pills.",
         "Nothing shown says '{y}' means anything other than {y}; the decoding is the assumption's.",
         xs=("2", "3", "5", "a few"),
         ys=("blue ones", "party favors", "snacks", "candy", "vitamins", "cookies"),
@@ -140,42 +151,49 @@ CODE_WORD = (
     S(
         "ovr_code_word",
         "bring the {y} when u come",
-        "By '{y}' {S} meant drugs and asked {O} to bring drugs.",
+        "{S} meant drugs by '{y}' and asked {O} to bring drugs. || On {date}, {S} asked {O} to "
+        "bring drugs, which they called '{y}'.",
         "The record says '{y}'; no context shown gives it a hidden meaning.",
         ys=("groceries", "paperwork", "party favors", "food", "candy", "stuff"),
     ),
     S(
         "ovr_code_word",
         "got the {y}? im outside",
-        "'{y}' refers to stolen cards; {S} asked whether {O} had the cards.",
+        "'{y}' refers to stolen cards; {S} asked whether {O} had the cards. || '{y}' refers to "
+        "stolen cards; on {date}, {S} asked whether {O} had the cards.",
         "The plain word is '{y}'; reading it as stolen cards needs outside knowledge.",
         ys=("groceries", "paperwork", "food", "stuff", "snacks"),
     ),
     S(
         "ovr_code_word",
         "the {y} is ready, swing by after 6",
-        "'{y}' means cocaine; {S} had cocaine ready for {O} after 6 p.m.",
+        "'{y}' means cocaine; {S} had cocaine ready for {O} after 6 p.m. || '{y}' means "
+        "cocaine; {S} had cocaine ready for {O} after 6 p.m. on {date}.",
         "The context shown does not establish that '{y}' stands for anything else.",
         ys=("food", "paperwork", "stuff", "candy"),
     ),
     S(
         "ovr_code_word",
         "left the {y} in the mailbox",
-        "{S} left drugs, called '{y}', in the mailbox.",
+        "{S} left drugs, called '{y}', in the mailbox. || Before {next}, {S} left drugs, "
+        "called '{y}', in the mailbox.",
         "Nothing shown decodes '{y}'; the record says only that {y} was left.",
         ys=("groceries", "paperwork", "snacks", "candy"),
     ),
     S(
         "ovr_code_word",
         "how much for a half",
-        "{S} asked the price of half an ounce of cannabis.",
+        "{S} asked how much half an ounce of cannabis cost. || On {date}, {S} asked how much "
+        "half an ounce of cannabis cost.",
         "'A half' is not tied to anything in the text shown; the cannabis reading is a guess.",
         quote="how much for a half",
     ),
     S(
         "ovr_code_word",
         "can u do {x} plates by friday",
-        "'Plates' means stolen license plates; {S} ordered {x} such plates for Friday.",
+        "'Plates' means stolen license plates; {S} ordered {x} such plates for Friday. || "
+        "'Plates' means stolen license plates; on {date}, {S} ordered {x} such plates for "
+        "Friday.",
         "The record says 'plates'; nothing shown makes them license plates or stolen.",
         xs=("20", "30", "40"),
         days=MON_TO_THU,
@@ -200,14 +218,16 @@ DIFFERENT_TOPIC = (
     S(
         "ovr_different_topic",
         "the parts are in, come get them",
-        "{S} had drugs ready for {O} to pick up.",
+        "{S} had drugs ready for {O} to pick up. || On {date}, {S} had drugs ready for {O} to "
+        "pick up.",
         "The context is a bike repair; the words fit the assumption only out of context.",
         before=(("o", "hows the bike coming along"), ("c", "chain and both tires, told u")),
     ),
     S(
         "ovr_different_topic",
         "its here, {x} boxes, back of the shop",
-        "{X} kilos of drugs were at the back of the shop.",
+        "{S} had {x} kilos of drugs at the back of the shop. || On {date}, {S} had {x} kilos of "
+        "drugs at the back of the shop.",
         "The context is a tile order; 'boxes' are boxes of tile unless something shows otherwise.",
         before=(("o", "did the tile order ship"),),
         xs=("6", "8", "12"),
@@ -230,36 +250,39 @@ DIFFERENT_TOPIC = (
     ),
     S(
         "ovr_different_topic",
-        "we pushed like 200 shots tonight",
-        "{S} sold 200 doses of a drug on {date}.",
+        "we pushed like 200 shots last night",
+        "{S} sold 200 doses of a drug on the night of {prev}.",
         "The context is a bar shift; 'shots' are drinks in that reading.",
         before=(("o", "how was the shift"),),
     ),
     S(
         "ovr_different_topic",
         "hid the extra boards behind the shed so nobody takes them",
-        "{S} hid stolen goods behind the shed.",
+        "{S} hid stolen goods behind the shed. || Before {next}, {S} hid stolen goods behind the "
+        "shed.",
         "The context is a deck build; the boards are lumber for it.",
         before=(("o", "hows the deck"), ("c", "almost done, ran out of screws")),
     ),
     S(
         "ovr_different_topic",
         "ill bring the muscle, 3 guys",
-        "{S} brought three men to intimidate someone.",
+        "{S} offered to bring three men to intimidate someone. || On {date}, {S} offered to "
+        "bring three men to intimidate someone.",
         "The context is a move; 'muscle' means people to carry furniture there.",
         before=(("c", "moving day is sat, truck at 9"), ("o", "i cant lift the couch alone")),
     ),
     S(
         "ovr_different_topic",
         "cleaned him out, got full asking",
-        "{S} robbed the buyer of the car.",
+        "{S} robbed the person who bought the car. || Before {next}, {S} robbed the person who "
+        "bought the car.",
         "The context is a car sale; 'cleaned him out' is about the price in that reading.",
         before=(("o", "how'd the car sale go"),),
     ),
     S(
         "ovr_different_topic",
         "yeah wiped it clean, nothing left on it",
-        "{S} destroyed evidence on a laptop.",
+        "{S} destroyed evidence on a laptop. || Before {next}, {S} destroyed evidence on a laptop.",
         "The context is a laptop repair; wiping a drive is part of the repair.",
         before=(("o", "laptop fixed?"),),
         after=(("o", "cool, did u reinstall windows"),),
@@ -267,14 +290,16 @@ DIFFERENT_TOPIC = (
     S(
         "ovr_different_topic",
         "ill bring the goods, 6 bottles",
-        "{S} delivered contraband to the wedding.",
+        "{S} offered to bring contraband to the wedding. || On {date}, {S} offered to bring "
+        "contraband to the wedding.",
         "The context is a wedding; the bottles are drinks for it.",
         before=(("c", "nails at 2 then the wedding"), ("o", "who's bringing wine")),
     ),
     S(
         "ovr_different_topic",
         "dropped the box at the back door like u said",
-        "{S} delivered drugs to the back door.",
+        "{S} delivered drugs to the back door. || Before {next}, {S} delivered drugs to the "
+        "back door.",
         "The context is a laptop part; the box is that delivery.",
         before=(("o", "the laptop fan came in, can u bring it"),),
     ),

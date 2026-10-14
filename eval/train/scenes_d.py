@@ -19,17 +19,20 @@ from eval.train.scenes import (
     fact_pool,
     finish,
     marked,
-    other_fact,
+    other_facts,
     other_value,
     plain_why,
     setup,
     siblings,
 )
 from eval.train.writers import (
+    ACT_DAY,
     Spec,
     act_before,
-    bounded,
     cap,
+    dated_act,
+    done_by,
+    pin,
     quoted,
     spec_in_window,
     spec_irrelevant,
@@ -46,7 +49,10 @@ def sc_plan(rng: random.Random, slot: int) -> Result:
     c = finish(rng, st, core, safe_after=True)
     money = fx.has_marker(core)
     why = "The record states a plan or intention; nothing shown says the act happened."
-    lead = fact_lead(c, "ovr_plan", K.EVENT, fx.claim(f, st.v, money), core, why)
+    # A planned act is dated on or after the record's date: a plan does not rule out an act
+    # before it, but an assumption dated there would read as if it might.
+    a = dated_act(rng, c, c.sender.who, fx.claim(f, st.v, money), ahead=True)
+    lead = Spec("ovr_plan", K.EVENT, a, core, why)
     plain = spec_plain(rng, c, f"would {fx.claim_base(f, st.v, money)}", core, plain_why(c),
                        told_only=True)  # fmt: skip
     return c, siblings(rng, lead, [plain], 0.5, 1)
@@ -54,11 +60,12 @@ def sc_plan(rng: random.Random, slot: int) -> Result:
 
 def sc_cond(rng: random.Random, slot: int) -> Result:
     f = fact_pool(slot)
-    st = setup(rng, f)
+    cnd, said = rng.choice(fx.CONDITIONS)
+    # "if i get paid friday" is never sent on a Friday.
+    st = setup(rng, f, texts=(cnd,) if f.lang == "en" else (*f.cond, *fx.CONDITIONS_RU))
     third = st.third(rng)
-    rep: str | None = None
+    rep: str | None = said if f.lang == "en" else None
     if f.lang == "en":
-        cnd, rep = rng.choice(fx.CONDITIONS)
         cnd, act = cnd.format(n=third.name.lower()), f.act.format(v=st.vr)
         core = rng.choice([f"if {cnd} ill {act}", f"ill {act} if {cnd}",
                            f"only if {cnd} will i {act}", f"if {cnd} then ill {act}"])  # fmt: skip
@@ -68,7 +75,8 @@ def sc_cond(rng: random.Random, slot: int) -> Result:
     money = fx.has_marker(core)
     why = ("The record makes the act conditional; nothing shown says the condition was met or "
            "the act done.")  # fmt: skip
-    lead = fact_lead(c, "ovr_hypothetical", K.EVENT, fx.claim(f, st.v, money), core, why)
+    a = dated_act(rng, c, c.sender.who, fx.claim(f, st.v, money), ahead=True)
+    lead = Spec("ovr_hypothetical", K.EVENT, a, core, why)
     if rep is None:
         return c, [lead]
     rep = rep.format(N=third.name, p="they", poss="their", o=c.other.who)
@@ -85,10 +93,8 @@ def sc_question(rng: random.Random, slot: int) -> Result:
     money = fx.has_marker(core)
     o, pred = c.other.who, fx.claim(f, st.v, money)
     why = "The record is a question, not a statement; nothing shown answers it."
-    # A bound before or after the record: a question settles neither (guide rule 23).
-    a = bounded(rng, c, o, pred, after=rng.random() < 0.5) if rng.random() < 0.45 else cap(
-        f"{o} {pred}")  # fmt: skip
-    lead = Spec("ovr_question", K.EVENT, a, core, why)
+    # Any date or bound before or after the record: a question settles none (guide rule 23).
+    lead = Spec("ovr_question", K.EVENT, dated_act(rng, c, o, pred), core, why)
     asked = cap(f"{c.sender.who} asked {o} whether they {pred}")
     plain = Spec(
         "sup_plain", K.EVENT, asked, core, "The record is that question, restated plainly."
@@ -104,11 +110,7 @@ def sc_hedge(rng: random.Random, slot: int) -> Result:
     money = fx.has_marker(core)
     pred = fx.claim(f, st.v, money)
     why = "The sender hedges the statement rather than asserting it; it is not stated as certain."
-    if rng.random() < 0.45:
-        a = bounded(rng, c, c.sender.who, pred, after=rng.random() < 0.5)
-        lead = Spec("cpl_hedge", K.EVENT, a, core, why)
-    else:
-        lead = fact_lead(c, "cpl_hedge", K.EVENT, pred, core, why)
+    lead = Spec("cpl_hedge", K.EVENT, dated_act(rng, c, c.sender.who, pred), core, why)
     plain = spec_plain(rng, c, f"thought they {pred}, without being sure", core, plain_why(c),
                        told_only=True)  # fmt: skip
     return c, siblings(rng, lead, [plain], 0.5, 1)
@@ -122,10 +124,10 @@ def sc_hear(rng: random.Random, slot: int) -> Result:
     c = finish(rng, st, core)
     money = fx.has_marker(core)
     n, pred = third.name, fx.claim(f, st.v, money)
-    if rng.random() < 0.45:
-        a = bounded(rng, c, n, pred, after=rng.random() < 0.5)
+    if rng.random() < 0.15:
+        a = f"{n}, whom the chat mentions, {pin(c, pred) or pred}"
     else:
-        a = rng.choice([f"{n} {pred}", f"{n}, whom the chat mentions, {pred}"])
+        a = dated_act(rng, c, n, pred, p=0.8)
     why = (f"The sender only reports what {third.name.lower()} said; nothing shown confirms it "
            "first hand.")  # fmt: skip
     lead = Spec("cpl_hearsay", K.EVENT, cap(a), core, why)
@@ -184,12 +186,10 @@ def sc_correction(rng: random.Random, slot: int) -> Result:
            f"{quoted(marked(st, v2))} later in the chat ({quoted(corr)}), so the record alone does "
            f"not settle {_settles(f, v1)}.")  # fmt: skip
     pred = fx.claim(f, v1, money)
-    if rng.random() < 0.45:
-        a = bounded(rng, c, c.sender.who, pred, after=rng.random() < 0.5)
-        lead = Spec("ovr_later_correction", K.EVENT, a, core, why)
-    else:
-        lead = fact_lead(c, "ovr_later_correction", K.EVENT, pred, core, why)
-    irr = spec_irrelevant(rng, c, "irr_other_topic", other_fact(rng, f), False)
+    # Dated only as far as the record shows the act, so the correction is the one open point.
+    a = done_by(rng, c, c.sender.who, pred, p=0.75)
+    lead = Spec("ovr_later_correction", K.EVENT, a, core, why)
+    irr = spec_irrelevant(rng, c, "irr_other_topic", other_facts(f), False)
     return c, siblings(rng, lead, [irr], 0.3, 1)
 
 
@@ -223,12 +223,13 @@ def sc_corrected(rng: random.Random, slot: int) -> Result:
         "right is for the expert.",
     ])  # fmt: skip
     pred = fx.claim(f, v1, money)
-    # A weekday could come round again after the message, so an assumption about one dates the
-    # act before the record's date (guide rule 23); other values need no date.
-    if fx.names_day(pred):
+    # A weekday or a day of the month could come round again after the message, so an
+    # assumption about one dates the act before the record's date (guide rule 23); other values
+    # need no date.
+    if fx.names_day(pred) or ACT_DAY.search(pred):
         lead = Spec("con_correction", K.EVENT, act_before(rng, c, c.sender.who, pred), quote, why)
     else:
         lead = fact_lead(c, "con_correction", K.EVENT, pred, quote, why)
     cands = [spec_verbatim(rng, c), spec_in_window(rng, c), spec_sender_mismatch(rng, c),
-             spec_irrelevant(rng, c, "irr_other_topic", other_fact(rng, f), False)]  # fmt: skip
+             spec_irrelevant(rng, c, "irr_other_topic", other_facts(f), False)]  # fmt: skip
     return c, siblings(rng, lead, cands, 0.5, 2)

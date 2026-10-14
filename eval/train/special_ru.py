@@ -7,16 +7,17 @@ from __future__ import annotations
 
 from eval.train.special import MON_TO_THU, S
 
-OBJECTS_RU = ("a knife", "a gun", "the cash", "the pills", "the stolen phone", "a bag of weed")
-PLACES_RU = ("сиденье", "коврик", "матрас", "крыльцо", "запаску")
+# Indefinite, so the assumption names an object without pointing to one the chat would have
+# to show; every place is a word the glossary pairs ("машину" the car, "склад" the warehouse).
+OBJECTS_RU = ("a knife", "a gun", "an envelope of cash", "a bottle of pills", "a stolen phone",
+              "a bag of weed")  # fmt: skip
 
 PRONOUN_RU = (
     S(
         "ovr_pronoun",
-        "положи это под {x}",
-        "{S} told {O} to put {y} under the {x}.",
+        "положи это в машину",
+        "{S} told {O} to put {y} in the car. || On {date}, {S} told {O} to put {y} in the car.",
         "The record says only 'это'; nothing shown says what it is.",
-        xs=PLACES_RU,
         ys=OBJECTS_RU,
         lang="ru",
     ),
@@ -31,32 +32,43 @@ PRONOUN_RU = (
     S(
         "ovr_pronoun",
         "ты это уже выбросил{o}?",
-        "{S} asked {O} whether they had thrown {y} away.",
+        "{S} asked {O} whether they had thrown {y} away. || On {date}, {S} asked {O} whether "
+        "they had thrown {y} away.",
         "'Это' has no antecedent in the record or the context shown.",
         ys=OBJECTS_RU,
         lang="ru",
     ),
     S(
         "ovr_pronoun",
-        "оставь это в бардачке",
-        "{S} told {O} to leave {y} in the glovebox.",
+        "оставь это на складе",
+        "{S} told {O} to leave {y} at the warehouse. || On {date}, {S} told {O} to leave {y} at "
+        "the warehouse.",
         "Nothing shown says what 'это' is.",
         ys=OBJECTS_RU,
         lang="ru",
     ),
     S(
         "ovr_pronoun",
-        "я это в гараж убрал{c}",
-        "{S} moved {y} to the garage.",
-        "The record does not say what was moved.",
+        "я это в квартире убрал{c}",
+        "{S} put {y} away in the apartment. || Before {next}, {S} put {y} away in the apartment.",
+        "The record does not say what was put away.",
         ys=OBJECTS_RU,
         lang="ru",
     ),
     S(
         "ovr_pronoun",
         "эта штука до сих пор у меня в багажнике",
-        "{S} kept {y} in {poss} trunk.",
+        "{S} kept {y} in {poss} trunk. || On {date}, {S} had {y} in {poss} trunk.",
         "'Эта штука' is never named in the text shown.",
+        ys=OBJECTS_RU,
+        lang="ru",
+    ),
+    S(
+        "ovr_pronoun",
+        "это в отель отвези",
+        "{S} told {O} to take {y} to the hotel. || On {date}, {S} told {O} to take {y} to the "
+        "hotel.",
+        "The record never says what 'это' is.",
         ys=OBJECTS_RU,
         lang="ru",
     ),
@@ -66,7 +78,8 @@ CODE_WORD_RU = (
     S(
         "ovr_code_word",
         "привези {y}",
-        "'{y}' means drugs; {S} asked {O} to bring drugs.",
+        "'{y}' means drugs; {S} asked {O} to bring drugs. || '{y}' means drugs; on {date}, {S} "
+        "asked {O} to bring drugs.",
         "The plain word is '{y}'; nothing shown gives it another meaning.",
         ys=("товар", "посылочку", "зелень", "сахар"),
         lang="ru",
@@ -74,7 +87,8 @@ CODE_WORD_RU = (
     S(
         "ovr_code_word",
         "нужно ещё {x} {y}",
-        "'{y}' means pills; {S} asked {O} for more pills.",
+        "'{y}' means pills; {S} asked {O} for more pills. || '{y}' means pills; on {date}, {S} "
+        "asked {O} for more pills.",
         "Nothing shown decodes '{y}'; the record asks for {y}.",
         xs=("две", "три", "четыре"),  # 2 to 4 take these forms; 5 and up would need "коробок"
         ys=("конфеты", "витаминки", "коробки"),
@@ -83,7 +97,8 @@ CODE_WORD_RU = (
     S(
         "ovr_code_word",
         "{y} готов, заезжай после 6",
-        "'{y}' means cocaine; {S} had cocaine ready for {O} after 6 p.m.",
+        "'{y}' means cocaine; {S} had cocaine ready for {O} after 6 p.m. || '{y}' means "
+        "cocaine; {S} had cocaine ready for {O} after 6 p.m. on {date}.",
         "The context shown does not establish that '{y}' stands for anything else.",
         ys=("товар", "сахар"),
         lang="ru",
@@ -91,7 +106,8 @@ CODE_WORD_RU = (
     S(
         "ovr_code_word",
         "сколько за половинку",
-        "{S} asked the price of half an ounce of cannabis.",
+        "{S} asked how much half an ounce of cannabis cost. || On {date}, {S} asked how much "
+        "half an ounce of cannabis cost.",
         "'Половинку' is tied to nothing in the text shown; the cannabis reading is a guess.",
         lang="ru",
     ),
@@ -108,7 +124,8 @@ DIFFERENT_TOPIC_RU = (
     S(
         "ovr_different_topic",
         "детали пришли, забирай",
-        "{S} had drugs ready for {O} to pick up.",
+        "{S} had drugs ready for {O} to pick up. || On {date}, {S} had drugs ready for {O} to "
+        "pick up.",
         "The context is a bike repair; 'детали' are its parts.",
         before=(("o", "как там велик"), ("c", "цепь и оба колеса, я ж говорил{c}")),
         lang="ru",
@@ -116,7 +133,7 @@ DIFFERENT_TOPIC_RU = (
     S(
         "ovr_different_topic",
         "привезли, {x} коробок, в подсобке",
-        "{X} kilos of drugs were in the back room of the shop.",
+        "{S} received {x} kilos of drugs on {date}. || {S} received {x} kilos of drugs.",
         "The context is a tile order; the boxes are tile.",
         before=(("o", "плитку привезли?"),),
         xs=("6", "8", "12"),
@@ -157,7 +174,7 @@ JOKE_RU = (
     S(
         "ovr_joke",
         "да почку продал{c} ахах",
-        "{S} sold a kidney.",
+        "{S} sold a kidney. || Before {next}, {S} sold a kidney.",
         "The 'ахах' and the owner's '))' leave it unclear whether the sender meant it seriously; "
         "the record does not establish that a kidney was sold.",
         before=(("o", "откуда новые диски"),),
@@ -167,7 +184,7 @@ JOKE_RU = (
     S(
         "ovr_joke",
         "старую хату спалил{c}, проще чем мыть)",
-        "{S} set fire to the old apartment.",
+        "{S} set fire to {poss} old place. || Before {next}, {S} set fire to {poss} old place.",
         "The record's ')' and the owner's 'ахах' leave it unclear whether the sender meant it "
         "seriously, so the record does not establish a fire.",
         before=(("o", "как переезд"),),
@@ -177,7 +194,7 @@ JOKE_RU = (
     S(
         "ovr_joke",
         "не могу, я в тюрьме))",
-        "{S} was in jail.",
+        "{S} was in jail. || {S} was in jail on {date}.",
         "The '))' and the owner's 'лол' leave it unclear whether the sender meant it seriously, "
         "so the record does not establish that the sender was in jail.",
         before=(("o", "придёшь на игру?"),),
@@ -190,16 +207,16 @@ COUNT_RU = (
     S(
         "ovr_count",
         "как всегда, к обеду доставил{c}",
-        "{S} made a delivery before noon every week in {month}.",
+        "{S} made a delivery by lunchtime every week in {month}.",
         "The record shows one delivery and a loose 'как всегда'; it does not show the other weeks.",
         lang="ru",
     ),
     S(
         "ovr_count",
-        "был{c} в зале утром, как всегда",
+        "был{c} в спортзале утром, как всегда",
         "{S} went to the gym every day in {month}.",
         "One visit and a loose 'как всегда' are shown; the other days are not.",
-        before=(("o", "ты в зал ходишь ещё?"),),
+        before=(("o", "ты в спортзал ходишь ещё?"),),
         lang="ru",
     ),
     S(
@@ -224,7 +241,7 @@ INFERENCE_RU = (
     S(
         "cpl_inference",
         "не, с мая туда не хожу",
-        "{S} quit the bar job.",
+        "{S} quit {poss} job at the bar. || Before {next}, {S} quit {poss} job at the bar.",
         "Not going there since May could be quitting, being let go or a leave; the record "
         "does not say which.",
         before=(("o", "ты ещё в баре работаешь?"),),
@@ -232,9 +249,9 @@ INFERENCE_RU = (
     ),
     S(
         "cpl_inference",
-        "ключи на крючке, бак полный",
-        "{S} drove the van that day.",
-        "Keys and a full tank suggest a drive but do not show one.",
+        "ключи от машины оставил{c} на крючке, бак полный",
+        "{S} drove the car on {date}. || {S} drove the car.",
+        "Keys left on the hook and a full tank suggest a drive but do not show one.",
         lang="ru",
     ),
     S(
@@ -256,6 +273,7 @@ INFERENCE_RU = (
 )
 
 RELATIVE_TIME_RU = (
+    # Only phrases that can point to either of two dates near midnight (guide rule 17).
     S(
         "cpl_relative_time",
         "вчера вечером ключи отдал{c}",
@@ -274,10 +292,10 @@ RELATIVE_TIME_RU = (
     ),
     S(
         "cpl_relative_time",
-        "сегодня вечером починил{c} раковину наконец",
-        "{S} fixed the sink on {date}.",
-        "Sent at {clock} after midnight; 'сегодня вечером' most "
-        "likely means the evening before this date.",
+        "вчера заплатил{c} за коммуналку",
+        "{S} paid for the utilities on {prev}.",
+        "Sent at {clock}, just after midnight; 'вчера' may mean the date before this one or the "
+        "one before that, so the date is open.",
         lang="ru",
     ),
 )
@@ -332,9 +350,10 @@ OTHER_STATE_RU = (
     S(
         "con_other_state",
         "я в питере до пятницы, по работе",
-        "{S} was in Moscow all day on {date}.",
+        "{S} was in Moscow all day on {date}. || {S} was in Moscow from {hour} to {later} on "
+        "{date}.",
         "At {clock} the sender writes 'я в питере до пятницы', which cannot be true together "
-        "with being in Moscow all day on that date.",
+        "with being in Moscow at that time on that date.",
         quote="я в питере до пятницы",
         days=MON_TO_THU,
         lang="ru",
@@ -342,7 +361,7 @@ OTHER_STATE_RU = (
     S(
         "con_other_state",
         "еду в электричке в тверь, только проехали клин",
-        "{S} was in Kazan all day on {date}.",
+        "{S} was in Kazan all day on {date}. || {S} was in Kazan from {hour} to {later} on {date}.",
         "At {clock} the sender writes 'еду в электричке в тверь, только проехали клин'. Being on "
         "that train then cannot be true together with the assumption; whether it is true is for "
         "the expert.",
@@ -359,7 +378,7 @@ TRANSLATION_RU = (
     S(
         "ovr_translation",
         "{x} меня кинул",
-        "{y} stole money from {S}.",
+        "{y} stole money from {S}. || Before {next}, {y} stole money from {S}.",
         "'кинул' can mean the sender was ditched or let down, or that they were scammed out of "
         "money; the assumption takes the last reading, and the record does not settle which the "
         "sender meant without a translator.",
@@ -371,7 +390,7 @@ TRANSLATION_RU = (
     S(
         "ovr_translation",
         "{x} слил всё",
-        "{y} leaked everything.",
+        "{y} leaked everything. || Before {next}, {y} leaked everything.",
         "'слил всё' can mean that person leaked everything, blew everything or poured it all "
         "out; the assumption takes the first reading, and the record does not settle which the "
         "sender meant without a translator.",
@@ -383,7 +402,7 @@ TRANSLATION_RU = (
     S(
         "ovr_translation",
         "мы {x} сделали",
-        "{S} and others beat {y} up.",
+        "{S} and others beat {y} up. || Before {next}, {S} and others beat {y} up.",
         "'сделали' here can mean the sender's side beat that person in a game or a contest, or "
         "beat them up; the assumption takes the second reading, and the record does not settle "
         "which the sender meant without a translator.",
@@ -395,7 +414,7 @@ TRANSLATION_RU = (
     S(
         "ovr_translation",
         "{x} меня развела на бабки",
-        "{y} swindled {S} out of money.",
+        "{y} swindled {S} out of money. || Before {next}, {y} swindled {S} out of money.",
         "'развела на бабки' can mean that person talked the sender into spending money or "
         "swindled them out of it; the assumption takes the second reading, and the record does "
         "not settle which the sender meant without a translator.",
@@ -407,10 +426,10 @@ TRANSLATION_RU = (
     S(
         "ovr_translation",
         "я {x} сдал{c}",
-        "{S} turned {y} in to the police.",
+        "{S} turned {y} in to the police. || Before {next}, {S} turned {y} in to the police.",
         "'сдал' can mean the sender handed that person over or dropped them off somewhere, or "
-        "informed on them; the assumption takes the last reading and adds the police, and the "
-        "record does not settle which the sender meant without a translator.",
+        "turned them in to the police; the assumption takes the last reading, and the record "
+        "does not settle which the sender meant without a translator.",
         quote="сдал{c}",
         xs=("диму", "лёшу", "глеба"),
         ys=("Дима", "Лёша", "Глеб"),
@@ -419,7 +438,7 @@ TRANSLATION_RU = (
     S(
         "ovr_translation",
         "бабки {x} занёс",
-        "{y} delivered a bribe.",
+        "{y} delivered a bribe. || Before {next}, {y} delivered a bribe.",
         "'занёс' can mean that person simply brought the money over or that they paid a bribe; "
         "the assumption takes the second reading, and the record does not settle which the "
         "sender meant without a translator.",

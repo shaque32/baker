@@ -20,7 +20,7 @@ JOKE = (
     S(
         "ovr_joke",
         "sold a kidney lmao",
-        "{S} sold a kidney.",
+        "{S} sold a kidney. || Before {next}, {S} sold a kidney.",
         "The 'lmao' and the owner's laughing reply leave it unclear whether the sender meant it "
         "seriously; the record does not establish that a kidney was sold.",
         before=(("o", "how'd u afford the new rims"),),
@@ -29,7 +29,7 @@ JOKE = (
     S(
         "ovr_joke",
         "yeah i paid {x} in monopoly money haha",
-        "{S} paid {X} in counterfeit money.",
+        "{S} paid {X} in counterfeit money. || Before {next}, {S} paid {X} in counterfeit money.",
         "The 'haha' leaves it unclear whether the sender meant it seriously, so the record does "
         "not establish a payment in counterfeit money.",
         before=(("o", "did u pay {x} back"),),
@@ -38,7 +38,7 @@ JOKE = (
     S(
         "ovr_joke",
         "i torched the old place, easier than cleaning lol",
-        "{S} set fire to {poss} old apartment.",
+        "{S} set fire to {poss} old place. || Before {next}, {S} set fire to {poss} old place.",
         "The record's 'lol' and the owner's laughing reply leave it unclear whether the sender "
         "meant it seriously; the record does not establish a fire.",
         before=(("o", "hows the move going"),),
@@ -47,7 +47,7 @@ JOKE = (
     S(
         "ovr_joke",
         "cant, im in jail 😂",
-        "{S} was in jail.",
+        "{S} was in jail. || {S} was in jail on {date}.",
         "The '😂' and the owner's 'lol ok' leave it unclear whether the sender meant it "
         "seriously, so the record does not establish that the sender was in jail.",
         before=(("o", "u coming to the game"),),
@@ -56,7 +56,8 @@ JOKE = (
     S(
         "ovr_joke",
         "im gonna burn his house down i swear lol",
-        "{S} threatened to burn down the landlord's house.",
+        "{S} threatened to burn down the landlord's house. || On {date}, {S} threatened to burn "
+        "down the landlord's house.",
         "The 'lol', and the owner's 'lol same', leave it unclear whether the sender meant it "
         "seriously, so the record does not establish a threat.",
         before=(("c", "my landlord raised rent again"),),
@@ -73,7 +74,8 @@ JOKE = (
     S(
         "ovr_joke",
         "yes i stole it and sold it on ebay 🙄",
-        "{S} stole {O}'s charger and sold the charger on ebay.",
+        "{S} stole {O}'s charger and sold the charger on ebay. || Before {next}, {S} stole "
+        "{O}'s charger and sold the charger on ebay.",
         "The eye-roll '🙄' leaves it unclear whether the sender meant it seriously, so the record "
         "does not establish a theft or a sale.",
         before=(("o", "did u take my charger"),),
@@ -81,7 +83,8 @@ JOKE = (
     S(
         "ovr_joke",
         "yep blind drunk, hit three mailboxes lol",
-        "{S} drove home drunk after the party.",
+        "{S} drove home drunk after the party. || Before {next}, {S} drove home drunk after the "
+        "party.",
         "The record's 'lol' and the owner's laughing reply leave it unclear whether the sender "
         "meant it seriously; the record does not establish a drunk drive.",
         before=(("o", "u drove home after the party right?"),),
@@ -90,7 +93,8 @@ JOKE = (
     S(
         "ovr_joke",
         "sure ill just rob the bar till lol",
-        "The owner planned to rob the bar's till.",
+        "The owner planned to rob the bar's till. || On {date}, the owner planned to rob the "
+        "bar's till.",
         "The 'lol' leaves it unclear whether the owner meant it seriously, so the record does not "
         "establish a plan to rob the till.",
         before=(("c", "the dj wants 1200"),),
@@ -103,16 +107,18 @@ COUNT = (
     # message and a loose phrase) and names no weekday outside the record's own words.
     S(
         "ovr_count",
-        "dropped it by noon like always",
-        "{S} made a delivery before noon every week in {month}.",
-        "The record shows one drop and a loose 'like always'; it does not show the other weeks.",
+        "dropped the kids at school by 8 like always",
+        "{S} dropped the kids at school by 8 a.m. every weekday in {month}.",
+        "The record shows one drop-off and a loose 'like always'; it does not show the other days.",
+        days=(0, 1, 2, 3, 4),
     ),
     S(
         "ovr_count",
         "same as every friday, 2 bags",
-        "{S} delivered two bags every Friday in {month}.",
+        "{S} dropped off two bags of laundry every Friday in {month}.",
         "The record is one message using the loose phrase 'same as every friday'; it does not "
-        "show a delivery on each of the days the assumption covers.",
+        "show a drop-off on each of the days the assumption covers.",
+        before=(("o", "how many bags of laundry did u drop off"),),
         days=(4,),
     ),
     S(
@@ -153,18 +159,20 @@ COUNT = (
     S(
         "ovr_count",
         "8 clients today, same as always",
-        "{S} did 8 clients every day.",
+        "{S} had 8 clients every day in {month}.",
         "One day's count and a loose 'same as always' are shown; no other days are.",
     ),
     S(
         "ovr_count",
         "went again today, like always",
-        "{S} went every day.",
+        "{S} went every day in {month}.",
         "One visit and a loose 'like always' are shown; the other days are not.",
     ),
 )
 
 INFERENCE = (
+    # The assumption infers something about what the record is about, never about a subject
+    # the record does not name (a neighbor nobody mentions, a car nobody is said to take).
     S(
         "cpl_inference",
         "70 and sunny, staying another week",
@@ -174,19 +182,20 @@ INFERENCE = (
     S(
         "cpl_inference",
         "left the keys on the hook, van's gassed up",
-        "{S} drove the van that day.",
+        "{S} drove the van on {date}. || {S} drove the van.",
         "Keys and a full tank suggest a drive but do not show one.",
     ),
     S(
         "cpl_inference",
         "i dont work there anymore",
-        "{S} quit the bar job.",
+        "{S} quit {poss} job at the bar. || Before {next}, {S} quit {poss} job at the bar.",
         "Not working there any more could be quitting or being let go.",
+        before=(("o", "u still at the bar on 5th?"),),
     ),
     S(
         "cpl_inference",
         "landed. ugh humidity",
-        "{S} was in Miami.",
+        "{S} was in Miami on {date}. || {S} was in Miami.",
         "Humidity does not name the city.",
     ),
     S(
@@ -205,39 +214,41 @@ INFERENCE = (
     S(
         "cpl_inference",
         "smells like weed in the hallway again",
-        "The neighbor was smoking cannabis in the hallway.",
-        "A smell does not show who was smoking or where.",
+        "Someone smoked cannabis in the hallway on {date}. || Someone smoked cannabis in the "
+        "hallway.",
+        "A smell does not show that anyone smoked there, or when.",
     ),
     S(
         "cpl_inference",
-        "the corollas not in the driveway",
-        "{X} took the Corolla.",
-        "A missing car does not show who took it.",
+        "{x} left an hour ago, the corollas not in the driveway",
+        "{X} took the Corolla on {date}. || {X} took the Corolla.",
+        "The record says {x} left and the Corolla is gone; it does not say {x} took it.",
         xs=NAMES,
     ),
     S(
         "cpl_inference",
         "{x} showed up with a black eye",
-        "{X} was in a fight.",
+        "{X} was in a fight. || Before {next}, {X} was in a fight.",
         "A black eye has other causes; the fight is an inference.",
         xs=NAMES,
     ),
     S(
         "cpl_inference",
         "{x}s bags are by the door",
-        "{X} was moving out.",
+        "{X} was moving out. || On {date}, {X} was moving out.",
         "Packed bags suggest a departure but do not show a move.",
         xs=NAMES,
     ),
     S(
         "cpl_inference",
         "3 missed calls from the landlord",
-        "The landlord was angry about the rent.",
-        "Missed calls show no reason; the rent and the anger are inferred.",
+        "The landlord was angry with {S}. || On {date}, the landlord was angry with {S}.",
+        "Missed calls show no reason; the anger is inferred.",
     ),
 )
 
 RELATIVE_TIME = (
+    # Only phrases that can point to either of two dates near midnight (guide rule 17).
     S(
         "cpl_relative_time",
         "dropped the keys off last night",
@@ -259,10 +270,10 @@ RELATIVE_TIME = (
     ),
     S(
         "cpl_relative_time",
-        "sent the rent yesterday",
-        "{S} paid the rent on {prev}.",
-        "Sent at {clock}, right after midnight; the sender may still count the earlier date as "
-        "today.",
+        "sent the rent earlier tonight",
+        "{S} sent the rent on {prev}.",
+        "Sent at {clock}, just after midnight; 'earlier tonight' may fall before or after "
+        "midnight, so the date is open.",
     ),
     S(
         "cpl_relative_time",
@@ -281,9 +292,9 @@ RELATIVE_TIME = (
 OTHER_STATE = (
     # The record names where the sender is (or what holds) when it is sent. A record rules out
     # only what it covers up to that moment (guide rule 23), so the assumption is dated before
-    # the record's date, covers the whole of it ("all day on"), or is bounded by a whole hour
-    # before the record's clock, never its own minute: never "home" without a named place,
-    # never quitting a job against working a shift, never "closed" against an event.
+    # the record's date, covers the whole of it ("all day on"), or holds a window around the
+    # record's clock, never its own minute: never "home" without a named place, never quitting
+    # a job against working a shift, never "closed" against an event.
     S(
         "con_other_state",
         "back in queens since sunday, just got off the 7 train",
@@ -297,9 +308,10 @@ OTHER_STATE = (
     S(
         "con_other_state",
         "im at the dmv in yonkers, the line is out the door",
-        "{S} was at JFK airport all day on {date}.",
+        "{S} was at JFK airport all day on {date}. || {S} was at JFK airport from {hour} to "
+        "{later} on {date}.",
         "At {clock} the sender writes 'im at the dmv in yonkers', which cannot be true together "
-        "with being at the airport all day on that date.",
+        "with being at the airport at that time on that date.",
         quote="im at the dmv in yonkers",
     ),
     S(
@@ -354,16 +366,18 @@ OTHER_STATE = (
     S(
         "con_other_state",
         "landed in miami an hour ago, waiting on my bag",
-        "{S} was in Chicago all day on {date}.",
+        "{S} was in Chicago all day on {date}. || {S} was in Chicago from {hour} to {later} on "
+        "{date}.",
         "At {clock} the sender is waiting on a bag after landing in Miami ('landed in miami an "
         "hour ago, waiting on my bag'), which cannot be true together with the assumption.",
     ),
     S(
         "con_other_state",
         "on the train to philly, just passed trenton",
-        "{S} was in Boston all day on {date}.",
+        "{S} was in Boston all day on {date}. || {S} was in Boston from {hour} to {later} on "
+        "{date}.",
         "At {clock} the sender writes 'on the train to philly, just passed trenton', which "
-        "cannot be true together with being in Boston all day on that date.",
+        "cannot be true together with being in Boston at that time on that date.",
     ),
     S(
         "con_other_state",

@@ -284,4 +284,5 @@ def general(f: Fact, rng: random.Random, v: str, money: bool = False) -> str | N
     """A generalization of the act with the record's value, or None if the fact has none."""
     if not f.general:
         return None
-    return _fill(_money(rng.choice(f.general), money), v=shown(f, v))
+    s = shown(f, v)
+    return _fill(_money(rng.choice(f.general), money), v=s, V=s.capitalize())

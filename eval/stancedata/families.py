@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from core.audit.assumptions import TEMPLATES
 from core.contracts import AssumptionKind as K
 from core.contracts import Stance as S
 from eval.probe_draft.model import ProbeCategory as C
@@ -37,6 +38,7 @@ class Family:
 
 
 _F = Family
+BAKER_TEMPLATES = tuple(TEMPLATES)  # the product's 12 assumption templates
 
 FAMILIES: tuple[Family, ...] = (
     # Supports: the record, read in its context, plainly shows what the assumption states.
@@ -162,6 +164,106 @@ FAMILIES: tuple[Family, ...] = (
        "The record is about a different act, object and subject from the assumption."),
     _F("irr_pleasantry", C.IRRELEVANT, S.IRRELEVANT, None, tuple(K),
        "The record is a greeting, thanks or small talk with no bearing on the assumption."),
+    # Baker's own wording (guide rules 25 to 29): the assumption is the product's template text
+    # (core/audit/assumptions.py) with Baker's ids, and the record may be a call, a contact row
+    # or an attachment. `templates` names the templates a family's items use.
+    _F("bk_sender_shown", C.CLEAR_SUPPORT, S.SUPPORTS, None, (K.IDENTITY,),
+       "Baker's sender template. The record holds the quoted words, and its line shows the named "
+       "sender: a named account's app and identifier, or the named person id in the line's "
+       "brackets.", new=True, templates=("sender",)),
+    _F("bk_sender_other", C.OVERREACH, S.COMPLICATES, "sender_mismatch", (K.IDENTITY,),
+       "Baker's sender template. The record holds the quoted words, but its line shows a "
+       "different account or person; one record cannot show the named sender never sent them "
+       "too.", new=True, templates=("sender",)),
+    _F("bk_party_unshown", C.OVERREACH, S.COMPLICATES, "handle_owner",
+       (K.IDENTITY, K.TIME, K.COMPLETENESS),
+       "A Baker template names a person id that no line carries in brackets, so the record shows "
+       "only an account, handle or saved name for that party, even if the chat uses the "
+       "person's name.", new=True,
+       templates=("sender", "record_time", "no_contact", "message_count")),
+    _F("bk_time_inside", C.CLEAR_SUPPORT, S.SUPPORTS, None, (K.TIME,),
+       "Baker's time template for a message. The record holds the quoted words, comes from the "
+       "named sender if one is named, and its local time is plainly inside the window in the "
+       "zone the assumption names.", new=True, templates=("record_time",)),
+    _F("bk_call_inside", C.CLEAR_SUPPORT, S.SUPPORTS, None, (K.TIME,),
+       "Baker's time template for a call. The record is a call between the named parties' "
+       "numbers, its local time plainly inside the window and its length inside the range if "
+       "one is given; the time printed inside the call text is the report's reading, and the "
+       "line's local time decides.", new=True, templates=("record_time",)),
+    _F("bk_time_outside", C.OVERREACH, S.COMPLICATES, "time_mismatch", (K.TIME,),
+       "Baker's time template. The record is the named message, or a call between the named "
+       "parties, at a local time outside the window; one record cannot show there was no "
+       "matching message or call inside it.", new=True, templates=("record_time",)),
+    _F("bk_zone_edge", C.OVERREACH, S.COMPLICATES, "time_zone", (K.TIME, K.COMPLETENESS),
+       "The line's zone differs from the zone the assumption names, and the record is inside the "
+       "window in one zone and outside it in the other, so the answer depends on a time zone.",
+       new=True, templates=("record_time", "no_contact")),
+    _F("bk_call_length", C.OVERREACH, S.COMPLICATES, "duration_mismatch", (K.TIME,),
+       "Baker's call template with a length range. A call between the named parties inside the "
+       "window whose length is outside the range; one record cannot show there was no other "
+       "call.", new=True, templates=("record_time",)),
+    _F("bk_identity_named", C.OVERREACH, S.COMPLICATES, "handle_owner", (K.IDENTITY,),
+       "Baker's identity template. The record, from a named account, has its sender giving the "
+       "person's name or someone calling them by it; a name in a chat never shows who holds an "
+       "account.", new=True, templates=("person_identity",)),
+    _F("bk_account_silent", C.IRRELEVANT, S.IRRELEVANT, None, (K.IDENTITY,),
+       "Baker's identity or authorship template. The record is from a named account but says "
+       "nothing about who holds it or who is typing.", new=True,
+       templates=("person_identity", "authorship")),
+    _F("bk_handles_said", C.COMPLICATES, S.COMPLICATES, None, (K.IDENTITY,),
+       "Baker's same-account template. A message, from the account itself or anyone else, says "
+       "the two handles are one account or that one became the other; a message shows what was "
+       "said, not the platform's records.", new=True, templates=("same_account",)),
+    _F("bk_contact_row", C.CLEAR_SUPPORT, S.SUPPORTS, None, (K.IDENTITY,),
+       "Baker's contact template. The record is a contact row on the named phone with exactly "
+       "the saved name and the number the assumption gives.", new=True,
+       templates=("contact_entry",)),
+    _F("bk_contact_row_differs", C.COMPLICATES, S.COMPLICATES, None, (K.IDENTITY,),
+       "Baker's contact template. A contact row on the named phone with that name and another "
+       "number, or that number under another name; one row cannot show the named entry is "
+       "absent.", new=True, templates=("contact_entry",)),
+    _F("bk_count_one", C.COMPLICATES, S.COMPLICATES, None, (K.COMPLETENESS,),
+       "Baker's count template. The record is one message between the named parties on the "
+       "named phone inside the window: one of the counted messages, which cannot settle the "
+       "number.", new=True, templates=("message_count",)),
+    _F("bk_no_contact_inside", C.CONTRADICTS, S.CONTRADICTS, None, (K.COMPLETENESS,),
+       "Baker's no-contact template. The record is a message or call between the named parties, "
+       "both shown by account or bracketed person id, on a phone the assumption covers, plainly "
+       "inside the window in the zone the assumption names.", new=True,
+       templates=("no_contact",)),
+    _F("bk_other_phone", C.COMPLICATES, S.COMPLICATES, None, (K.COMPLETENESS,),
+       "Baker's no-contact or count template limited to one named phone. The record, between the "
+       "named parties, is on another phone: it shows contact, not what the named phone holds.",
+       new=True, templates=("no_contact", "message_count")),
+    _F("bk_outside_window", C.IRRELEVANT, S.IRRELEVANT, None, (K.COMPLETENESS,),
+       "Baker's no-contact or count template. The record is a message or call between the named "
+       "parties, plainly outside the window in any zone.", new=True,
+       templates=("no_contact", "message_count")),
+    _F("bk_weekday_next", C.CLEAR_SUPPORT, S.SUPPORTS, None, (K.TIME,),
+       "Baker's weekday template. The quoted words name the stated date's weekday for a plan, "
+       "in a record sent one to six days before that date.", new=True,
+       templates=("weekday_date",)),
+    _F("bk_weekday_open", C.COMPLICATES, S.COMPLICATES, None, (K.TIME,),
+       "Baker's weekday template. The record names the weekday it was sent on, or puts 'next' or "
+       "'this' before the weekday, so which date it means is open.", new=True,
+       templates=("weekday_date",)),
+    _F("bk_weekday_wrong", C.CONTRADICTS, S.CONTRADICTS, None, (K.TIME,),
+       "Baker's weekday template. The quoted words name a different weekday from the stated "
+       "date's, or plan for that weekday after the stated date has passed.", new=True,
+       templates=("weekday_date",)),
+    _F("bk_author_cue", C.OVERREACH, S.COMPLICATES, "shared_account", (K.IDENTITY,),
+       "Baker's authorship template. The record, from a named account, carries a cue about who "
+       "is typing (a self-introduction, someone else on the phone, a signature); one record "
+       "cannot show who typed what the account sent.", new=True, templates=("authorship",)),
+    _F("bk_claim_unseen", C.COMPLICATES, S.COMPLICATES, None, (K.MEANING, K.EVENT),
+       "Baker's meaning, role and event templates point to a claim the stance step is not "
+       "shown. The record holds the quoted words, or comes from or goes to an account bracketed "
+       "with a named person (inside the window, if one is given).", new=True,
+       templates=("meaning", "role", "event")),
+    _F("bk_unrelated", C.IRRELEVANT, S.IRRELEVANT, None, tuple(K),
+       "Any Baker template. Another message, call, contact row or attachment that holds none of "
+       "the quoted words and does not involve the named parties on the matter.", new=True,
+       templates=BAKER_TEMPLATES),
 )  # fmt: skip
 
 BY_ID: dict[str, Family] = {f.family_id: f for f in FAMILIES}

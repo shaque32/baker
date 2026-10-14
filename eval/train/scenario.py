@@ -34,11 +34,12 @@ def pick_tz(rng: random.Random, lang: str) -> str:
     return rng.choice(TZS_US)
 
 
-def pick_day(rng: random.Random, weekdays: tuple[int, ...] = ()) -> date:
-    """A record date in the window; with `weekdays` (0 = Monday), one of those weekdays."""
+def pick_day(rng: random.Random, weekdays: tuple[int, ...] = (), after_mday: int = 0) -> date:
+    """A record date in the window; with `weekdays` (0 = Monday), one of those weekdays; with
+    `after_mday`, a day of the month after that one."""
     while True:
         day = FIRST_DAY + timedelta(days=rng.randrange((LAST_DAY - FIRST_DAY).days + 1))
-        if not weekdays or day.weekday() in weekdays:
+        if (not weekdays or day.weekday() in weekdays) and day.day > after_mday:
             return day
 
 
@@ -87,7 +88,8 @@ def named_weekdays(text: str) -> set[int]:
     t, out = text.lower(), set()
     for d in range(7):
         for m in re.finditer(rf"\b({_EN_DAY[d]})\b(?!s\b)", t):
-            if not _EVERY.search(t[: m.start()]) and not re.match(r"\s+(run|league)\b", t[m.end():]):
+            attributive = re.match(r"\s+(run|league)\b", t[m.end() :])  # "the thursday run"
+            if not _EVERY.search(t[: m.start()]) and not attributive:
                 out.add(d)
         for m in re.finditer(rf"(?<![\w-]){_RU_DAY[d]}", t):
             if not m.group(0).endswith(("ам", "ами", "ах")) and not _EVERY.search(t[: m.start()]):

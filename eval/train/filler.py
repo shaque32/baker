@@ -217,9 +217,10 @@ class QA:
     claim: str  # what the answer, read with the question, plainly says; "{v}" slot
 
 
-# Claims are full clauses: "{p}" is the answering sender's pronoun ("they") and "{poss}" its
-# possessive. A claim uses only words the question or the answer carries, and a currency marker
-# ("${v}", "{v} rubles") only when one of them shows one.
+# Claims are full clauses: "{p}" is the answering sender's pronoun ("they"), "{poss}" its
+# possessive and "{day}" the question's "today" as a local date ("on May 2, 2025"). A claim
+# uses only words the question or the answer carries, and a currency marker ("${v}",
+# "{v} rubles") only when one of them shows one.
 QAS = (
     QA("en", "did the tiles come?", ("yes, all {v}", "yep all {v}", "yeah all {v}, all here"),
        ("40", "60", "24"), "all {v} tiles came"),
@@ -244,7 +245,7 @@ QAS = (
     QA("en", "did the kids get picked up", ("yes at {v}", "yeah, {v}", "yep right at {v}"),
        ("3", "3:15", "3:30"), "the kids were picked up at {v}"),
     QA("en", "how many clients today", ("{v}", "{v}, long day", "only {v}"), ("7", "9", "11"),
-       "{p} had {v} clients that day"),
+       "{p} had {v} clients {day}"),
     QA("en", "is rent paid", ("paid it on the {v}", "yes, paid on the {v}", "yep, paid the {v}"),
        ("1st", "3rd", "5th"), "{p} paid the rent on the {v}"),
     QA("en", "did u get the deposit back", ("yes, {v} of it", "yeah {v}", "{v}, at last"),
@@ -266,7 +267,7 @@ QAS = (
     QA("ru", "за квартиру заплатил{c}?", ("да, {v}-го", "ага, {v}-го заплатил{c}", "{v}-го, да"),
        ("5", "8", "10"), "{p} paid for the apartment on the {v}th"),
     QA("ru", "сколько клиентов сегодня", ("{v}", "{v}, устал{c}", "только {v}"), ("7", "9", "11"),
-       "{p} had {v} clients that day"),
+       "{p} had {v} clients {day}"),
     QA("ru", "детей забрал{c}?", ("да, в {v}", "ага, {v}", "забрал{c}, в {v}"),
        ("15:00", "15:30", "16:00"), "{p} picked the kids up at {v}"),
 )  # fmt: skip

@@ -30,8 +30,9 @@ from eval.train.scenes import (
     days_free_of,
     fact_pool,
     finish,
-    free_days,
-    other_fact,
+    month_days,
+    named_days,
+    other_facts,
     plain_why,
     sc_denial,
     sc_exact,
@@ -82,7 +83,7 @@ def sc_time(rng: random.Random, slot: int) -> Result:
     c = finish(rng, st, core)
     pred = fx.claim(f, st.v, fx.has_marker(core))
     lead = spec_time_window(rng, c)
-    cands = [spec_time_mismatch(rng, c, pred, core), spec_contact(rng, c), spec_in_window(rng, c),
+    cands = [spec_time_mismatch(rng, c, pred), spec_contact(rng, c), spec_in_window(rng, c),
              spec_plain(rng, c, pred, core, plain_why(c))]  # fmt: skip
     return c, siblings(rng, lead, cands, 0.6, 2)
 
@@ -91,9 +92,12 @@ def sc_dst(rng: random.Random, slot: int) -> Result:
     """Records at the US daylight-saving changes, where the local clock reading decides."""
     f = fact_pool(slot, ru=0.1)
     day = rng.choice((SPRING_DST, FALL_DST))
-    if free_days(f) and day.weekday() not in free_days(f):
-        # Both changes fall on a Sunday: a record that says "on sunday" never does.
-        f = rng.choice([g for g in ALL_FACTS if not free_days(g) and g.lang == f.lang])
+    if day.weekday() in named_days(f) or month_days(f) >= day.day:
+        # Both changes fall on a Sunday early in the month: a record that says "on sunday" or
+        # "on the 8th" never does.
+        f = rng.choice(
+            [g for g in ALL_FACTS if not named_days(g) and not month_days(g) and g.lang == f.lang]
+        )
     st = setup(rng, f, day=day)
     st.tz = rng.choice(TZS_US)
     core = fx.stated(f, rng, st.vr, st.sender.end)
@@ -133,7 +137,8 @@ def sc_dst(rng: random.Random, slot: int) -> Result:
                f"{decides}{stamp} on {d}, inside the window.")  # fmt: skip
     # Same words and people at another clock reading: complicates (guide rule 23).
     gap = rng.choice(NOT_SHOWN_THEN)
-    mis = Spec("ovr_time_mismatch", K.TIME, cap(rng.choice(miss)), core,
+    # The answer rests on the record's time, so the quote is the record in full (rule 22).
+    mis = Spec("ovr_time_mismatch", K.TIME, cap(rng.choice(miss)), c.record.text,
                f"Same words and people, but {decides[0].lower()}{decides[1:]}{stamp} on {d}, "
                f"outside the time the assumption states; {gap}.")  # fmt: skip
     specs = [sup, mis]
@@ -166,7 +171,9 @@ def sc_special(rng: random.Random, slot: int) -> Result:
 
     before = [(w, fill(t)) for w, t in sp.before]
     after = [(w, fill(t)) for w, t in sp.after]
-    hours = (0, 1) if fam == "cpl_relative_time" else (7, 23)
+    # Relative-time records fall just after midnight (guide rule 17); a state's window runs two
+    # whole hours past the record's hour, so its record falls before 10 p.m.
+    hours = {"cpl_relative_time": (0, 1), "con_other_state": (7, 21)}.get(fam, (7, 23))
     # A joke's own marker must be the last word on it: no decoration after it and no filler
     # after the record (round-2 rule H).
     joke = fam == "ovr_joke"
@@ -176,12 +183,14 @@ def sc_special(rng: random.Random, slot: int) -> Result:
     hour = c.local.hour if c.local.minute else c.local.hour - 1
     slots = dict(S=c.sender.who, O=c.other.who, pron="they", poss="their", date=long_date(c.day),
                  prev=long_date(c.day - timedelta(days=1)), clock=clock12(c.local),
-                 hour=hour12(hour), next=long_date(c.day + timedelta(days=1)),
+                 hour=hour12(hour), later=hour12(min(c.local.hour + 2, 23)),
+                 next=long_date(c.day + timedelta(days=1)),
                  lastweek=long_date(c.day - timedelta(days=7)),
                  month=month_year(c.day))  # fmt: skip
-    lead = Spec(fam, kind_of(rng, fam), cap(fill(sp.claim).format(**slots)), fill(sp.quote),
+    claim = rng.choice(sp.claim.split(" || "))
+    lead = Spec(fam, kind_of(rng, fam), cap(fill(claim).format(**slots)), fill(sp.quote),
                 fill(sp.why).format(**slots))  # fmt: skip
-    irr = spec_irrelevant(rng, c, "irr_other_topic", rng.choice(ALL_FACTS), False)
+    irr = spec_irrelevant(rng, c, "irr_other_topic", ALL_FACTS, False)
     return c, siblings(rng, lead, [irr], 0.2, 1)
 
 
@@ -201,7 +210,7 @@ def sc_pleasantry(rng: random.Random, slot: int) -> Result:
                 and not set(re.findall(r"\w+", x.lower())) <= LAUGHS]  # fmt: skip
         core += rng.choice((" ", ", ")) + rng.choice(rest)
     c = finish(rng, st, core, do_wrap=False)
-    lead = spec_irrelevant(rng, c, "irr_pleasantry", rng.choice(ALL_FACTS), rng.random() < 0.7)
+    lead = spec_irrelevant(rng, c, "irr_pleasantry", ALL_FACTS, rng.random() < 0.7)
     why = "The record is a greeting or small talk with no bearing on the assumption."
     return c, [replace(lead, rationale=why)]
 
@@ -211,7 +220,7 @@ def sc_irrelevant(rng: random.Random, slot: int) -> Result:
     st = setup(rng, f)
     core = fx.stated(f, rng, st.vr, st.sender.end)
     c = finish(rng, st, core)
-    return c, [spec_irrelevant(rng, c, "irr_other_topic", other_fact(rng, f), False)]
+    return c, [spec_irrelevant(rng, c, "irr_other_topic", other_facts(f), False)]
 
 
 Scenario = Callable[[random.Random, int], Result]
