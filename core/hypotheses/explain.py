@@ -479,7 +479,10 @@ _NEGATED = re.compile(
 )
 
 
-_NUMBER_AFTER = re.compile(r"\s*(?:number|num|no\b|nr\b|#)", re.IGNORECASE)
+# "his phone number", "her phone call": a contact detail or a call, not the device.
+_NUMBER_AFTER = re.compile(
+    r"\s*(?:number|num|no\b|nr\b|#|(?:a\s+)?(?:calls?|ring)\b)", re.IGNORECASE
+)
 
 
 def _handoff(body: str, app: str, claimed_app: str) -> re.Match[str] | None:
@@ -498,7 +501,7 @@ def _handoff(body: str, app: str, claimed_app: str) -> re.Match[str] | None:
         else:  # an account, a login, signed in: only in a conversation on the same app
             ok = app.strip().casefold() == claimed_app.strip().casefold()
         if ok and _NUMBER_AFTER.match(body, m.end()) is None:
-            return m  # "used his phone number" names a contact detail, not a device
+            return m
     return None
 
 
@@ -512,22 +515,26 @@ def _handoff_fits(case: Case, claimed: list[Row]) -> tuple[list[tuple[Row, str]]
             continue
         lo, hi = c.ts_utc - pad, c.ts_utc + pad
         spans.append(f"{cite(c.source_id)} from {_day(lo)} to {_day(hi)} UTC")
+        # SQL narrows by julianday(), to the millisecond, with a second's slack; the exact
+        # bounds are checked on the parsed times below.
+        slack = timedelta(seconds=1)
         rows = case.conn.execute(
             "SELECT m.id, m.source_id, t.app, m.sender_account_id, m.ts_utc, m.ts_raw, m.body"
             " FROM messages m JOIN threads t ON t.id = m.thread_id"
             " WHERE m.source_id = ? AND julianday(m.ts_utc) BETWEEN julianday(?) AND julianday(?)"
             " ORDER BY julianday(m.ts_utc), m.id",
-            (c.source_id, _iso(lo), _iso(hi)),
+            (c.source_id, _iso(lo - slack), _iso(hi + slack)),
         )
         for mid, sid, app, sender, ts, raw, body in rows:
             if mid in out:
                 continue  # found already, near another claimed message
+            at = _parse(ts)
+            if at is None or not lo <= at <= hi:
+                continue
             m = _handoff(body or "", app, c.app)
             if m is None:
                 continue
-            row = Row(
-                mid, "message", sid, app, sender, _recipients(case, mid), _parse(ts), raw, body
-            )
+            row = Row(mid, "message", sid, app, sender, _recipients(case, mid), at, raw, body)
             out[mid] = (
                 row,
                 f"The message itself speaks of using another person's phone, account or login "
@@ -1145,7 +1152,9 @@ def _same_words(case: Case, assumptions: list[Assumption]) -> Alternative | None
     mine = [a for a in assumptions if a.template_id == "meaning" and a.params.quoted_text]
     pairs: list[tuple[Row, str]] = []
     used: list[str] = []
-    near: dict[str, float] = {}  # record id -> seconds from the nearest quoted message
+    # Copy key -> seconds from the nearest quoted message. Keyed by copy, not record id: copies
+    # share a line, and each copy's distance from its own phone's quote counts for the line.
+    near: dict[tuple[str, ...], float] = {}
     for a in mine:
         qt = a.params.quoted_text or ""
         words = _words(qt)
@@ -1191,13 +1200,15 @@ def _same_words(case: Case, assumptions: list[Assumption]) -> Alternative | None
                 (abs((r.ts_utc - t).total_seconds()) for t in quoted_at if r.ts_utc),
                 default=float("inf"),
             )
-            near[r.id] = min(gap, near.get(r.id, gap))
+            k = _copy_key(case.data, r)
+            near[k] = min(gap, near.get(k, gap))
         if rows:
             used.append(a.id)
     fits = _collapse(case, pairs)  # a message, or its copies, two statements share shows once
     # Nearest in time first across every statement, so one quote's far matches never crowd
     # out another quote's near ones.
-    fits.sort(key=lambda f: near.get(f.record_id, float("inf")))
+    key_of = {r.id: _copy_key(case.data, r) for r, _ in pairs}
+    fits.sort(key=lambda f: near.get(key_of[f.record_id], float("inf")))
     if not fits:
         return None
     return Alternative(

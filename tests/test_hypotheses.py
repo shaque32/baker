@@ -281,6 +281,8 @@ def test_report_lists_alternatives_under_their_claims(conn):
         ("I did not have a chance to use his phone", "SMS", "SMS", None),  # a longer denial
         ("never got around to using her account", "Instagram", "Instagram", None),
         ("no idea why but i used his phone", "SMS", "SMS", "used his phone"),  # a new clause
+        ("I took his phone call", "SMS", "SMS", None),  # a call, not the device
+        ("give her phone a call later", "SMS", "SMS", None),
     ],
 )
 def test_hand_off_words(body, app, claimed_app, found):
@@ -1153,3 +1155,70 @@ def test_the_quoted_message_itself_can_speak_of_a_hand_off(conn):
     assert alt is not None
     fit = next(f for f in alt.fits if f.record_id == quoted.id)
     assert fit.note.startswith("The message itself speaks of using another person's phone")
+
+
+# ---------------------------------------------------------------- fifteenth review
+
+
+def test_hand_off_search_keeps_to_the_exact_window(conn):
+    quote = _asm(conn, "C16", "sender").params.quoted_text
+    case = explain.load(conn)
+    a = _asm(conn, "C16", "authorship", quoted_text=quote, device_ids=("dev:item1",))
+    (quoted,) = explain._claimed_rows(case, [a])[a.id]
+    (thread,) = conn.execute("SELECT thread_id FROM messages WHERE id = ?", (quoted.id,)).fetchone()
+    edge = quoted.ts_utc + timedelta(days=explain.HANDOFF_DAYS)
+    for rid, at in (
+        ("msg:test:at-edge", edge),
+        ("msg:test:past-edge", edge + timedelta(microseconds=300)),
+    ):
+        conn.execute(
+            "INSERT INTO messages (id, source_id, locator, thread_id, direction, ts_utc, ts_raw,"
+            " body) VALUES (?, 'item1', ?, ?, 'incoming', ?, 'test', 'im using his phone')",
+            (rid, f"Test!{rid}", thread, explain._iso(at)),
+        )
+    found, _ = explain._handoff_fits(explain.load(conn), [quoted])
+    ids = {r.id for r, _ in found}
+    assert "msg:test:at-edge" in ids
+    assert "msg:test:past-edge" not in ids
+
+
+def test_same_words_nearness_follows_every_copy_of_a_line(conn):
+    meaning = next(a for a in claim_state(conn, "C13").assumptions if a.template_id == "meaning")
+    case = explain.load(conn)
+    word = explain._words(meaning.params.quoted_text or "")[0]
+    quoted = {r.source_id: r for r in explain._quoted_rows(case, meaning)}
+    assert {"item1", "item2"} <= set(quoted)
+    t0 = quoted["item1"].ts_utc
+
+    def add(r, rid: str, minutes: int, body: str) -> None:  # noqa: ANN001
+        (thread,) = conn.execute("SELECT thread_id FROM messages WHERE id = ?", (r.id,)).fetchone()
+        conn.execute(
+            "INSERT INTO messages (id, source_id, locator, thread_id, sender_account_id,"
+            " direction, ts_utc, ts_raw, body) VALUES (?, ?, ?, ?, ?, 'incoming', ?, 'test', ?)",
+            (rid, r.source_id, f"Test!{rid}", thread, r.sender,
+             (t0 + timedelta(minutes=minutes)).isoformat(), body),
+        )  # fmt: skip
+        for acct in r.recipients:
+            conn.execute(
+                "INSERT INTO message_recipients (message_id, account_id) VALUES (?, ?)",
+                (rid, acct),
+            )
+
+    for sid in ("item1", "item2"):  # one message on both phones, far from the first quote
+        add(quoted[sid], f"msg:{sid}:neighbor", 5000, f"we {word} later")
+    # On item2 only, the quote again a minute away from it; on item1, nearer matches.
+    add(quoted["item2"], "msg:item2:again", 5001, meaning.params.quoted_text or "")
+    for n in range(explain.MAX_FITS + 1):
+        add(quoted["item1"], f"msg:item1:filler{n}", 2 + n, f"so {word} ok")
+    scoped = [
+        meaning.model_copy(
+            update={
+                "id": f"asm:{d}",
+                "params": meaning.params.model_copy(update={"device_ids": (f"dev:{d}",)}),
+            }
+        )
+        for d in ("item1", "item2")
+    ]
+    alt = explain._same_words(explain.load(conn), scoped)
+    assert alt is not None
+    assert alt.fits[0].record_id == "msg:item1:neighbor"  # one minute from item2's quote
