@@ -4,17 +4,20 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from core.audit import context, invariants
-from core.audit.assumptions import instantiate
+from core.audit import context, invariants, readable
+from core.audit.assumptions import TEMPLATES, instantiate, parse_params
 from core.db import apply_schema
 from core.enrich.local_time import format_local, parse_utc
 from core.ingest.cellebrite_common import DateOrder, parse_time
+from core.review.actions import stipulate_device_owner
 from eval.stancedata import bakerform as bf
+from eval.stancedata import names as nm
 from eval.stancedata.chat import local_str
+from eval.stancedata.model import GenItem
 
 TZ = "America/Chicago"
 OWNER = ("Telegram", "5550147")
@@ -97,6 +100,101 @@ def test_sender_lines_follow_the_product_and_the_adapter(conn: sqlite3.Connectio
     )
     lines = context.build_context(conn, "contact:item1:Contacts:3#1")
     assert (lines[0].sender, lines[0].local_time) == (bf.CONTACT_SENDER, bf.CONTACT_TIME)
+
+
+NAMES = {bf.owner_person(1): "Daniel Petrov", bf.named_person("vance"): "Rita Vance"}
+
+
+def _named(conn: sqlite3.Connection) -> readable.CaseNames:
+    """The fixture's case once an expert stipulated item1's user and confirmed Rita Vance's
+    link to the other Telegram account."""
+    stipulate_device_owner(conn, "dev:item1", NAMES[bf.owner_person(1)], "expert:Test")
+    conn.execute(
+        "INSERT INTO persons VALUES ('person:vance', 'Rita Vance', 'govdoc:c1')",
+    )
+    conn.execute(
+        "INSERT INTO identity_links VALUES ('link:1', ?, 'person:vance', 'confirmed',"
+        " 'confirmed', 'test', 'expert:Test', '2026-05-10T00:00:00Z')",
+        (bf.account_id(1, *OTHER),),
+    )
+    return readable.case_names(conn)
+
+
+def test_readable_sender_lines_are_the_products(conn: sqlite3.Connection) -> None:
+    product = _named(conn)
+    generated = nm.case_names(NAMES)
+    owner_line = bf.sender_line(*OWNER, owner=True, persons=[bf.owner_person(1)])
+    assert nm.readable_sender(owner_line, generated) == product.sender(bf.account_id(1, *OWNER))
+    assert product.sender(bf.account_id(1, *OWNER)) == (
+        "Telegram 5550147 (owner) [Daniel Petrov (the user of item1)]"
+    )
+    other_line = bf.sender_line(*OTHER, persons=[bf.named_person("vance")], shown_as="Rita")
+    assert nm.readable_sender(other_line, generated) == product.sender(
+        bf.account_id(1, *OTHER), "Rita"
+    )
+    assert nm.readable_sender(bf.sender_line(*OTHER), generated) == bf.sender_line(*OTHER)
+
+
+def test_readable_assumptions_are_the_products(conn: sqlite3.Connection) -> None:
+    product = _named(conn)
+    params = parse_params(
+        "event",
+        {
+            "person_ids": (bf.owner_person(1), bf.named_person("vance")),
+            "account_ids": (bf.account_id(1, *OTHER), bf.account_id(1, "Phone", NUMBER_B)),
+            "window": bf.window(datetime(2026, 5, 1), datetime(2026, 5, 3), TZ, "May 1 to 2"),
+        },
+    )
+    generated = nm.case_names(NAMES, params.account_ids)
+    text = TEMPLATES["event"].render(params, generated)
+    assert text == TEMPLATES["event"].render(params, product)
+    assert text == (
+        "The event the claim states happened, involving Daniel Petrov (the user of item1) and"
+        ' Rita Vance and Telegram 5550163/Phone +13125550188 "May 1 to 2" (America/Chicago)'
+    )
+
+
+def test_items_read_by_name() -> None:
+    lines = [
+        bf.message_line(1, *OTHER, UTC_AT, TZ, "whats the code"),
+        bf.message_line(
+            1,
+            *OWNER,
+            UTC_AT + timedelta(minutes=1),
+            TZ,
+            "gate code 1190",
+            owner=True,
+            persons=[bf.owner_person(1)],
+        ),
+    ]
+    common = {
+        "probe_id": "T999999",
+        "family_id": "bk_sender_shown",
+        "source": "train_gen",
+        "generator": "eval.train test",
+        "lang": "en",
+        "template_id": "sender",
+        "params": {"quoted_text": "gate code 1190", "person_ids": [bf.owner_person(1)]},
+        "lines": lines,
+        "target": 1,
+        "quote": "gate code 1190",
+        "rationale": "The line's brackets show Daniel Petrov sent the quoted words.",
+        "device": "dev:item1",
+    }
+    item = bf.build_baker_item(**common, names=NAMES)
+    assert item.assumption == (
+        'The message "gate code 1190" was sent by Daniel Petrov (the user of item1)'
+    )
+    assert item.target.sender == "Telegram 5550147 (owner) [Daniel Petrov (the user of item1)]"
+    assert item.baker_names == {bf.owner_person(1): "Daniel Petrov"}
+    assert GenItem.model_validate(item.model_dump()) == item
+    with pytest.raises(ValueError, match="no name for person:dev:item1:owner"):
+        bf.build_baker_item(**common, names={})
+    leaked = item.model_dump() | {
+        "target": item.target.model_copy(update={"sender": lines[1].sender})
+    }
+    with pytest.raises(ValueError, match="an id shows where a name belongs"):
+        GenItem.model_validate(leaked)
 
 
 def test_local_time_matches_the_adapter() -> None:

@@ -21,9 +21,10 @@ from pydantic import Field, model_validator
 from core.audit.assumptions import TEMPLATES, parse_params
 from eval.probe_draft.model import ProbeItem
 from eval.stancedata.families import BANNED_WORDS, family
+from eval.stancedata.names import case_names
 
 # Fields only items in Baker's own wording carry; plain items leave them out of the file.
-BAKER_FIELDS = ("device_id", "baker_template", "baker_params", "baker_claim")
+BAKER_FIELDS = ("device_id", "baker_template", "baker_params", "baker_claim", "baker_names")
 # Templates whose text points to "the claim". Baker's stance step shows them the claim's own
 # text (stance prompt v1.1 in PROPOSED_CHANGES.md); their items carry it as baker_claim.
 CLAIM_TEMPLATES = ("meaning", "role", "event")
@@ -47,12 +48,15 @@ class GenItem(ProbeItem):
     group: str  # items built from one chat scenario share a group; split train/val by group
     # Baker's own wording (families with templates): the phone the record came from, the
     # product template the assumption is rendered from, and its parameters as AssumptionParams
-    # JSON. The assumption must be exactly the product's rendering of them. baker_claim is the
-    # claim's text as the government document states it, for CLAIM_TEMPLATES only.
+    # JSON. baker_names gives each person the item involves a name (person id -> name), and the
+    # assumption must be exactly the product's rendering of the parameters with those names
+    # (core/audit/readable.py). baker_claim is the claim's text as the government document
+    # states it, for CLAIM_TEMPLATES only.
     device_id: str | None = Field(default=None, pattern=r"^dev:item\d+$")
     baker_template: str | None = None
     baker_params: dict[str, Any] | None = None
     baker_claim: str | None = Field(default=None, min_length=1)
+    baker_names: dict[str, str] | None = None
 
     @model_validator(mode="after")
     def _matches_family(self) -> GenItem:
@@ -76,8 +80,18 @@ class GenItem(ProbeItem):
             if self.baker_params is None or self.device_id is None:
                 raise ValueError(f"{self.probe_id}: Baker wording needs its parameters and phone")
             t = TEMPLATES[self.baker_template]
-            if self.assumption != t.render(parse_params(t.id, self.baker_params)):
+            parsed = parse_params(t.id, self.baker_params)
+            names = (
+                None
+                if self.baker_names is None
+                else case_names(self.baker_names, parsed.account_ids)
+            )
+            if self.assumption != t.render(parsed, names):
                 raise ValueError(f"{self.probe_id}: assumption is not the product's rendering")
+            if names is not None:
+                shown = [self.assumption, *(ln.sender for ln in (self.target, *self.context))]
+                if any(i in x for x in shown for i in ("person:", "acct:", "dev:")):
+                    raise ValueError(f"{self.probe_id}: an id shows where a name belongs")
             if self.assumption_kind != t.kind:
                 raise ValueError(f"{self.probe_id}: kind differs from template {t.id}")
             if self.baker_claim is not None and t.id not in CLAIM_TEMPLATES:

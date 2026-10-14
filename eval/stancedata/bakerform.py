@@ -15,7 +15,7 @@ phone `person:dev:item1:owner`, and a person the document names `person:<surname
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -27,6 +27,7 @@ from eval.probe_draft.model import ProbeLine
 from eval.stancedata.chat import local_str
 from eval.stancedata.families import family
 from eval.stancedata.model import GenItem, generated_label
+from eval.stancedata.names import bracketed, case_names, readable_sender
 
 # Apps as Cellebrite reports spell them; calls and contact rows use "Phone".
 APPS = ("SMS", "WhatsApp", "Telegram", "Signal", "Instagram", "Phone")
@@ -99,7 +100,8 @@ def sender_line(
 ) -> str:
     """'<App> <identifier>', the source's sender text if it kept one, '(owner)' for the record's
     own phone's account, then the person ids Baker holds as confirmed for the account in
-    brackets: 'Telegram 5550147 (owner) [person:dev:item1:owner]'."""
+    brackets: 'Telegram 5550147 (owner) [person:dev:item1:owner]'. build_baker_item prints
+    them by name, as core.audit.readable does: '[Daniel Petrov (the user of item1)]'."""
     if app not in APPS:
         raise ValueError(f"unknown app {app!r}")
     out = f"{app} {identifier}"
@@ -225,13 +227,17 @@ def build_baker_item(
     disputed: str | None = None,
     labeled_by: str | None = None,
     claim: str | None = None,
+    names: Mapping[str, str] | None = None,
 ) -> GenItem:
     """Assemble and check one item in Baker's own wording. The assumption is the product's
     rendering of (template_id, params); the label comes from the family, as for plain items.
 
     lines are the excerpt in time order with the record at `target`; device is the phone the
     record came from ('dev:item3'); claim is the claim's text, shown only with the meaning, role
-    and event templates.
+    and event templates. names gives a name to every person the parameters or a line's
+    brackets name ('person:dev:item1:owner' -> 'Daniel Petrov'): the assumption and the sender
+    lines then read as core.audit.readable prints them for a case where an expert stipulated
+    each phone owner and the document named everyone else.
     """
     if not 0 <= target < len(lines):
         raise ValueError(f"{probe_id}: target {target} outside {len(lines)} lines")
@@ -245,15 +251,31 @@ def build_baker_item(
     parsed = parse_params(template_id, params)
     template = TEMPLATES[template_id]
     f = family(family_id)
-    probe_lines = [ProbeLine(sender=ln.sender, account_id=ln.account_id,
-                             local_time=ln.local_time, text=ln.text) for ln in lines]  # fmt: skip
+    readable = None
+    kept: dict[str, str] | None = None
+    if names is not None:
+        involved = {*parsed.person_ids, *(pid for ln in lines for pid in bracketed(ln.sender))}
+        missing = sorted(pid for pid in involved if not names.get(pid, "").strip())
+        if missing:
+            raise ValueError(f"{probe_id}: no name for {', '.join(missing)}")
+        kept = {pid: names[pid] for pid in sorted(involved)}
+        readable = case_names(kept, parsed.account_ids)
+    probe_lines = [
+        ProbeLine(
+            sender=ln.sender if readable is None else readable_sender(ln.sender, readable),
+            account_id=ln.account_id,
+            local_time=ln.local_time,
+            text=ln.text,
+        )
+        for ln in lines
+    ]
     return GenItem(
         probe_id=probe_id,
         category=f.category,
         trap=f.trap,
         lang=lang,
         assumption_kind=template.kind,
-        assumption=template.render(parsed),
+        assumption=template.render(parsed, readable),
         target=probe_lines[target],
         context=tuple(x for i, x in enumerate(probe_lines) if i != target),
         target_index=target,
@@ -271,4 +293,5 @@ def build_baker_item(
         baker_template=template_id,
         baker_params=parsed.model_dump(mode="json", exclude_defaults=True),
         baker_claim=claim,
+        baker_names=kept,
     )

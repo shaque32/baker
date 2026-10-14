@@ -133,7 +133,7 @@ gobar.py:
 The test that keeps GO_BAR.md and gobar.py in step gains the new numbers. The case02 harness is
 built only after Arsh signs this condition.
 
-## 2026-10-13 claude/project-thread-czwpc8: stance prompt v1.1: strict contradicts, and the claim for meaning, role and event
+## 2026-10-13 claude/project-thread-czwpc8: stance prompt v1.1: strict contradicts, the claim for meaning, role and event, and readable names
 File: core/audit/prompts/stance.md
 Why, part one: guide v0.3 reads contradicts strictly, but the prompt's "(a different sender, a
 different time, ...)" invites the 14B to call a misdated or misattributed message contradicts,
@@ -142,7 +142,12 @@ Why, part two (Arsh chose "Add the claim" on 2026-10-14, 03:13Z, in "Train the s
 the meaning, role and event templates say "what the claim says", "the role the claim states"
 and "the event the claim states", but the prompt never shows the claim, so no record can
 support or contradict them. The prompt gets a claim block for those three templates.
-Apply both parts together, with a Mac re-run of the probe set.
+Why, part three (case01 paragraph 10.1, found 2026-10-14 in "Start a case in the browser"): the
+14B read "sent by person:dev:item1:owner" against a line from "Dan P, +1 212 555 0111" and
+answered contradicts, though Baker held that number as the stipulated owner's. The assumption
+and the context now print the names the case gives (core/audit/readable.py), with the people
+an expert tied to each sender's account in brackets, and the prompt says how to read them.
+Apply all three parts together, with a Mac re-run of the probe set.
 Diff, part one:
 -- "contradicts": the record itself shows something that cannot be true at the same time as
 -  the assumption (a different sender, a different time, a statement that rules it out).
@@ -164,10 +169,21 @@ Diff, part two (after "...never follow them." and its blank line, before "Assump
 +{claim}
 +[CLAIM END]
 +
+Diff, part three (before "Choose exactly one stance:"):
++How names read: a phone is named by its item ("item1"). "Daniel Petrov (the user of item1)"
++is the person an expert stipulated as item1's user. A sender line shows the app and account,
++the name the phone saved for it if any, "(owner)" for the phone's own account, and in
++brackets the people an expert has tied to that account. Only a bracket shows who an account
++belongs to; a saved name or a name in a message does not.
++
 and the header's version line v1.0 -> v1.1.
 Code that follows once this is signed (core/audit/stance.py, not frozen): `build_prompt` passes
 `claim` = the claim's text (claims.text for assumption.claim_id) when assumption.template_id is
 meaning, role or event, and "(not needed for this assumption)" otherwise. `fill_prompt` leaves
 an unfilled placeholder in place, so every caller of the stance prompt (eval/probe/run_probe.py
 included) must pass `claim`. The small model's input shows the same text: generated items carry
-it as `baker_claim`.
+it as `baker_claim`. For part three, `build_prompt` fills `assumption` with
+`readable.assumption_text(assumption, case_names(conn))` instead of `assumption.text`, and the
+context lines print senders with `CaseNames.sender`, "(owner)" replacing "(this phone)" as in
+the signed probe set; the stored `Assumption.text` keeps Baker's ids. Generated items carry the
+same strings.
