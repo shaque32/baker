@@ -1151,8 +1151,9 @@ def setup_page(
         + _upload_form(
             page,
             "report",
-            "Cellebrite report (Excel .xlsx, PDF, or UFDR package .ufdr, unverified)",
-            ".xlsx,.pdf,.ufdr,.zip",
+            "Phone report: Cellebrite (Excel .xlsx, PDF, or UFDR package .ufdr, unverified) "
+            "or Magnet AXIOM (XML or Excel export, unverified)",
+            ".xlsx,.pdf,.ufdr,.zip,.xml",
             busy,
         )
     )

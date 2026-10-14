@@ -112,13 +112,10 @@ def cmd_init(a: argparse.Namespace) -> int:
 
 def cmd_import(a: argparse.Namespace) -> int:
     conn = _open(a.db)
-    if a.report.suffix.lower() == ".pdf":
-        from core.ingest.cellebrite_pdf import CellebritePdfImporter as Importer
-    elif a.report.suffix.lower() in (".ufdr", ".zip"):
-        from core.ingest.ufdr import UfdrImporter as Importer  # type: ignore[assignment]
-    else:
-        from core.ingest.cellebrite_excel import CellebriteExcelImporter as Importer
     from core.ingest.coverage import format_text, summary
+    from core.ingest.pick import report_importer
+
+    Importer = report_importer(a.report)  # noqa: N806 - a class
 
     src = Importer(source_id=a.source_id, date_order=a.date_order).import_source(a.report, conn)
     print(f"imported {src.file_name} as {src.id} ({src.fidelity.value}), sha256 {src.sha256}")
@@ -390,7 +387,11 @@ def parser() -> argparse.ArgumentParser:
         return sp
 
     add("init", cmd_init, "create a case database")
-    sp = add("import", cmd_import, "import a Cellebrite report (.xlsx, .pdf, or .ufdr/.zip)")
+    sp = add(
+        "import",
+        cmd_import,
+        "import a phone report: Cellebrite (.xlsx, .pdf, .ufdr/.zip) or Magnet AXIOM (.xml, .xlsx)",
+    )
     sp.add_argument("--report", type=Path, required=True)
     sp.add_argument("--source-id")
     sp.add_argument(

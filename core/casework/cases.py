@@ -39,6 +39,7 @@ from typing import BinaryIO
 
 from core import encryption, pipeline
 from core.db import OperationalError, apply_schema, connect
+from core.ingest.pick import REPORT_SUFFIXES
 from core.review import audit_log
 from core.review.actions import ReviewError, _expert
 
@@ -47,8 +48,6 @@ DEFAULT_HOME = Path.home() / "Baker" / "cases"
 DB_NAME = "case.db"
 UPLOAD_PREFIX = ".upload-"
 
-REPORT_SUFFIXES = (".xlsx", ".pdf", ".ufdr", ".zip")
-UFDR_SUFFIXES = (".ufdr", ".zip")
 GOVDOC_SUFFIXES = (".pdf",)
 
 Clock = Callable[[], datetime]
@@ -301,7 +300,8 @@ def import_upload(
     clock: Clock | None = None,
     date_order: str | None = None,
 ) -> Imported:
-    """Import one uploaded file: 'report' (Cellebrite Excel, PDF or UFDR) or 'govdoc' (PDF).
+    """Import one uploaded file: 'report' (Cellebrite Excel, PDF or UFDR, or Magnet AXIOM XML
+    or Excel) or 'govdoc' (PDF).
 
     `date_order` ('mdy' or 'dmy') is the report's date order when the expert states it; left
     out, the importer works it out from the report or leaves ambiguous dates unread.
@@ -314,7 +314,8 @@ def import_upload(
         suffix = Path(name).suffix.lower()
         if kind == "report" and suffix not in REPORT_SUFFIXES:
             raise ReviewError(
-                "a Cellebrite report is an Excel (.xlsx), PDF (.pdf) or UFDR (.ufdr or .zip) file"
+                "a phone report is a Cellebrite Excel (.xlsx), PDF (.pdf) or UFDR (.ufdr or .zip) "
+                "file, or a Magnet AXIOM XML (.xml) or Excel (.xlsx) report"
             )
         if kind == "govdoc" and suffix not in GOVDOC_SUFFIXES:
             raise ReviewError("the government document is imported from a PDF")
@@ -344,13 +345,10 @@ def import_upload(
             ocr = f", OCR on pages {list(result.ocr_pages)}" if result.ocr_pages else ""
             summary = f"{len(result.paragraphs)} paragraphs{ocr}"
         else:
-            if suffix == ".pdf":
-                from core.ingest.cellebrite_pdf import CellebritePdfImporter as Importer
-            elif suffix in UFDR_SUFFIXES:
-                from core.ingest.ufdr import UfdrImporter as Importer  # type: ignore[assignment]
-            else:
-                from core.ingest.cellebrite_excel import CellebriteExcelImporter as Importer
             from core.ingest.coverage import summary as coverage_summary
+            from core.ingest.pick import report_importer
+
+            Importer = report_importer(path)  # noqa: N806 - a class
 
             src = Importer(date_order=date_order).import_source(path, conn)
             summary = (

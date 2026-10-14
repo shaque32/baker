@@ -35,8 +35,9 @@ script, Apple silicon) or [docs/install.md](docs/install.md) (Windows installer)
 
 Opens Baker at `http://127.0.0.1:8765/`, served from this computer only, with no internet
 access and no scripts. The expert makes a case, imports the government document and the
-Cellebrite reports (copied into the case folder, read-only, SHA-256 hashed), settles the
-claims, confirms who used each phone, runs the audit in the background with progress, and
-reviews each claim as soon as it is labeled. See [docs/review-screen.md](docs/review-screen.md).
+phone reports (Cellebrite Excel, PDF or UFDR; Magnet AXIOM XML or Excel, unverified), copied
+into the case folder, read-only, SHA-256 hashed, then settles the claims, confirms who used
+each phone, runs the audit in the background with progress, and reviews each claim as soon as
+it is labeled. See [docs/review-screen.md](docs/review-screen.md).
 New cases are encrypted with a passphrase by default; older cases stay as they are until the
 expert encrypts them. See [docs/encryption.md](docs/encryption.md).

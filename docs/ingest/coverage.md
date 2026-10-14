@@ -1,6 +1,6 @@
 # Import coverage
 
-Every Cellebrite import (Excel, PDF or UFDR) records what it read and what it did not, so a real
+Every phone report import (Cellebrite Excel, PDF or UFDR; Magnet AXIOM XML or Excel) records what it read and what it did not, so a real
 report that Baker only partly understands is never mistaken for a complete one. The rule: the
 importer either reads a record correctly or says exactly what it skipped and why. It never drops
 records silently and never guesses a value it cannot read with confidence.
@@ -75,7 +75,7 @@ New in 0.2.0:
   `columns` (its first row, up to 12 cells cut to 40 characters), `section` (PDF heading);
 - each table: `skipped_locators`, `duplicate_columns` (`column`, `field`, `used`),
   `missing_key_fields`, `header_offsets`, `header_zone_names`, `date_order_basis` (`this table`,
-  `other tables in the report`, `stated at import`, `none`), `time_problems` and
+  `other tables in the report`, `stated at import`, `field name` (AXIOM), `none`), `time_problems` and
   `time_problem_locators`, `app_from_title`, `merged_cells_filled`,
   `merged_columns_not_filled`, `header_notes`, `flagged_locators`.
 
@@ -84,7 +84,8 @@ Invariant, checked by tests/test_ingest_variants.py on every variant: for each t
 either imported, skipped with a reason, or inside a sheet listed in `not_imported` with its count.
 
 UFDR imports add their own codes and a `ufdr` block to the payload, and list record types
-instead of sheets: docs/ingest/ufdr.md.
+instead of sheets: docs/ingest/ufdr.md. AXIOM imports list one table per artifact type and add an
+`axiom` block: docs/ingest/axiom.md.
 
 ## Where it is shown
 
