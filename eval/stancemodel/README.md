@@ -35,7 +35,9 @@ call or contact reads as Baker's record text. The record mark names the phone
 expert-confirmed device-owner stipulations and identity links, matched as Baker's checks match
 them (`core/audit/checks/_common.person_party`). For the meaning, role and event assumptions, whose
 text points at "the claim", the claim's own text comes first (`CLAIM: <text> || <assumption>`),
-on the assumption side, so a quote is never cut from it. Training items written in this form must
+on the assumption side, so a quote is never cut from it. A chat record's excerpt opens with the
+chat's members line ("Members seen in this chat's records: A; B"), which is never cut. Training
+items written in this form must
 match `case_item` exactly, so a change to it, or to its window of 3 messages, is agreed with
 the data generators first.
 

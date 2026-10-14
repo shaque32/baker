@@ -118,6 +118,23 @@ def test_the_claim_goes_before_the_assumption_and_never_in_the_excerpt() -> None
     )
 
 
+def test_the_members_line_opens_the_excerpt_and_is_never_dropped() -> None:
+    it = _item(["a", "b", "van is fixed, come by", "c", "d"], 2, "van is fixed")
+    it["device_id"] = "dev:item1"
+    plain = features.render(it)
+    it["baker_members"] = ["Signal +17185550122 Dante", "Signal +19175550123 (owner)"]
+    r = features.render(it)
+    head = (
+        "Members seen in this chat's records: Signal +17185550122 Dante; "
+        "Signal +19175550123 (owner)"
+    )
+    assert r.excerpt == head + features.LINE_SEP + plain.excerpt
+    assert r.excerpt[r.record_start : r.record_end] == "van is fixed, come by"
+    shortest = features.render(it, keep=set())
+    assert shortest.excerpt.startswith(head + features.LINE_SEP + "RECORD (item1): ")
+    assert shortest.excerpt[shortest.record_start : shortest.record_end] == "van is fixed, come by"
+
+
 def test_far_context_goes_first_and_the_record_never_goes() -> None:
     it = _item(["a1", "b2", "c3", "rec here", "d5", "e6"], 3, "rec here")
     assert features.drop_order(it) == [0, 5, 1, 4, 2]

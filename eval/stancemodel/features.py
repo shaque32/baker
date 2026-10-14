@@ -16,8 +16,11 @@ assumptions print the same numbers that way ("SMS +12125550111"). Nothing is inf
 the record's own fields in another spelling, and the text is untouched, so a quote cut from it is
 verbatim in the record.
 
+A Baker-form chat record's excerpt opens with the chat's members line ("Members seen in this
+chat's records: A; B", from baker_members), as Baker's stance context does.
+
 When a pair is too long for the model, context lines farthest from the record go first. The
-record line itself is never dropped.
+record line and the members line are never dropped.
 """
 
 from __future__ import annotations
@@ -28,11 +31,13 @@ from datetime import datetime
 from typing import Any
 
 # 1.1.0: the record mark names the phone; 1.2.0: the claim line (baker_claim); 1.3.0: the phone
-# reads as its source id, and Baker-form senders keep Baker's spelling
-VERSION = "1.3.0"
+# reads as its source id, and Baker-form senders keep Baker's spelling; 1.4.0: the members line
+# (baker_members)
+VERSION = "1.4.0"
 
 RECORD_MARK = "RECORD: "
 CLAIM_MARK = "CLAIM: "
+MEMBERS = "Members seen in this chat's records"  # core.audit.readable.MEMBERS
 LINE_SEP = " || "
 FIELD_SEP = " | "
 
@@ -99,6 +104,14 @@ def record_mark(item: dict[str, Any]) -> str:
     return f"RECORD ({phone_name(device)}): " if device else RECORD_MARK
 
 
+def members_line(item: dict[str, Any]) -> str | None:
+    """The chat's member accounts, as Baker's stance context opens a chat record's excerpt:
+    "Members seen in this chat's records: A; B" (core.audit.readable.members_line). None when the
+    item carries no members (calls, contact rows, plain items)."""
+    members = item.get("baker_members")
+    return f"{MEMBERS}: {'; '.join(sorted(set(members)))}" if members else None
+
+
 def ordered_lines(item: dict[str, Any]) -> tuple[list[dict[str, Any]], int]:
     lines = list(item["context"])
     lines.insert(item["target_index"], item["target"])
@@ -110,9 +123,10 @@ def render(item: dict[str, Any], keep: set[int] | None = None) -> Rendered:
     lines, t = ordered_lines(item)
     mark = record_mark(item)
     baker_form = bool(item.get("device_id"))
-    parts: list[str] = []
+    head = members_line(item)
+    parts: list[str] = [head] if head else []  # never dropped, like the record line
     record_start = record_end = -1
-    pos = 0
+    pos = len(head) if head else 0
     kept = 0
     for i, line in enumerate(lines):
         if i != t and keep is not None and i not in keep:
