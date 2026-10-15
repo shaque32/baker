@@ -82,7 +82,7 @@ def sc_handle(rng: random.Random, slot: int) -> Result:
     lead = spec_handle_owner(rng, c, pred, core, intro)
     if lead is None:  # never for the owner's own account; the sender here is always a contact
         return sc_stated(rng, slot)
-    cands = [spec_plain(rng, c, pred, core, plain_why(c)), spec_sender_mismatch(rng, c)]
+    cands = [spec_plain(rng, c, pred, core, plain_why(c)), spec_sender_mismatch(rng, c, pred)]
     return c, siblings(rng, lead, cands, 0.5, 1)
 
 
@@ -205,7 +205,9 @@ def sc_qa(rng: random.Random, slot: int) -> Result:
     a = frame(rng, c, clause, when=when, bare=True, answer=True)
     why = f'The owner asks "{q}" just before; read with that question, the answer states it.'
     lead = Spec("sup_answer", K.EVENT, a, core, why)
-    cands = [spec_sender_mismatch(rng, c)]
+    # A dated clause takes no time for the telling beside it, so its sender trap gives the
+    # words alone.
+    cands = [spec_sender_mismatch(rng, c, None if dated else clause, clause=True, answer=True)]
     if not dated:  # a telling on another date would report that day's count in the past tense
         cands.insert(0, spec_time_mismatch(rng, c, clause, clause=True, answer=True))
     return c, siblings(rng, lead, cands, 0.4, 1)

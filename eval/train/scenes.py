@@ -267,7 +267,7 @@ def sc_stated(rng: random.Random, slot: int) -> Result:
         if rng.random() < 0.3
         else spec_plain(rng, c, pred, core, plain_why(c))
     )
-    cands = [spec_time_mismatch(rng, c, pred), spec_sender_mismatch(rng, c),
+    cands = [spec_time_mismatch(rng, c, pred), spec_sender_mismatch(rng, c, pred),
              spec_handle_owner(rng, c, pred, core, False),
              spec_partial(rng, c, f, st.v, core, money), spec_count(rng, c, f, st.v, core, money),
              spec_time_window(rng, c), spec_contact(rng, c), spec_in_window(rng, c),
@@ -299,7 +299,8 @@ def sc_exact(rng: random.Random, slot: int) -> Result:
         lead = fact_lead(c, "con_other_value", kind, pred2, core, why)
     pred = fx.claim(f, st.v, money)
     cands = [spec_plain(rng, c, pred, core, plain_why(c)), spec_in_window(rng, c),
-             spec_handle_owner(rng, c, pred, core, False)]  # fmt: skip
+             spec_handle_owner(rng, c, pred, core, False),
+             spec_sender_mismatch(rng, c, pred)]  # fmt: skip
     return c, siblings(rng, lead, cands, 0.5, 2)
 
 

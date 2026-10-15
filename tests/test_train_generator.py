@@ -18,6 +18,7 @@ import pytest
 
 from core.audit.assumption_filler import check_window
 from eval.stancedata import bakerform as bf
+from eval.stancedata.chat import Account
 from eval.stancedata.families import FAMILIES
 from eval.stancedata.model import GenItem
 from eval.train import baker
@@ -32,7 +33,15 @@ from eval.train.baker_place import EDGE_FORMS, _edge_window
 from eval.train.baker_scene import render
 from eval.train.baker_text import words
 from eval.train.glossary import PAIRS, SLANG
-from eval.train.names import AREA_CODES, PEOPLE_EN, PEOPLE_RU
+from eval.train.names import (
+    AREA_CODES,
+    PEOPLE_EN,
+    PEOPLE_RU,
+    Party,
+    Person,
+    cast,
+    outside_account,
+)
 from eval.train.verbs import SUPPORT_VERBS_EN, SUPPORT_VERBS_RU
 from eval.train.when import clear_part, far_parts
 
@@ -1057,6 +1066,81 @@ def test_two_way_contact_denials_show_both_sides_writing(many: list[GenItem]) ->
         assert any(start <= _local(x) < end for x in other), (it.probe_id, it.assumption)
         seen[start == datetime.min] += 1
     assert seen[True] >= 5 and seen[False] >= 20, seen
+
+
+def _who(sender: str) -> str:
+    """How an assumption names the account a line's sender field shows (names.Party.who)."""
+    app, ident, *rest = sender.split(" ", 2)
+    owner = rest == ["(owner)"]
+    label = None if owner or not rest else rest[0]
+    return Party(Account(app, ident, label, owner=owner), Person("x", "they", "en")).who
+
+
+def _first_word(who: str) -> str | None:
+    """The first word of the name an account shows ("Ilya" in "the contact saved as Ilya
+    (work)"), or None for an account shown by its number, id or username alone."""
+    m = re.search(r"saved as (.+)$|\(shown as @?(.+)\)$", who)
+    return re.findall(r"[^\W\d_]+", (m[1] or m[2]).lower())[0] if m else None
+
+
+WRITER_WHY = re.compile(r"The words came from (.+), not (.+); the record does not show whether "
+                        r"\2 also wrote them\.")  # fmt: skip
+
+
+def test_sender_traps_name_another_account_in_the_supports_shapes(many: list[GenItem]) -> None:
+    # Guide rule 23: a sender trap's claimed sender never sent the record. It is the other side
+    # of the chat, or an account no line shows (names.outside_account), at times one whose name
+    # matches the chat contact's: the phone shows two accounts, and nothing merges them. Its
+    # shapes are the supports items' (frames.py): a report, the message as the subject, or the
+    # exact words.
+    seen: Counter[str] = Counter()
+    for it in many:
+        if it.family != "ovr_sender_mismatch":
+            continue
+        m = WRITER_WHY.fullmatch(it.rationale)
+        assert m and m[1] == it.target.sender, it.rationale
+        # Every chat on the phone is the owner's, shown or not.
+        claimed, members = m[2], {_who(ln.sender) for ln in it.lines()} | {"the owner"}
+        assert claimed != _who(it.target.sender), it.assumption
+        assert claimed in it.assumption or claimed[:1].upper() + claimed[1:] in it.assumption
+        if claimed in members:
+            seen["other side"] += 1
+        else:
+            seen["outside"] += 1
+            names = {_first_word(w) for w in members} - {None}
+            seen["namesake"] += _first_word(claimed) in names
+        a = it.assumption
+        seen["words" if it.target.text in a else "says" if " says " in a else "report"] += 1
+    total = seen["other side"] + seen["outside"]
+    assert 0.2 * total <= seen["outside"] <= 0.4 * total, seen
+    assert seen["namesake"] >= 5 and seen["says"] >= 5, seen
+    assert seen["report"] + seen["says"] >= 0.4 * total, seen
+
+
+def test_supports_keep_only_if(many: list[GenItem]) -> None:
+    # "only if jonah calls back will i pay" makes the condition needed, not enough on its own:
+    # a supports report that dropped "only" would say more than the record (rule 14).
+    seen = 0
+    for it in many:
+        if it.gold_stance == "supports" and re.search(r"\bonly if\b", it.target.text.lower()):
+            assert re.search(r"\bonly if\b", it.assumption), it.assumption
+            seen += 1
+    assert seen >= 3, seen
+
+
+def test_outside_accounts_are_never_members() -> None:
+    # names.outside_account: never a member's identifier or name as the phone shows it; half
+    # the time the first contact's own person behind another account.
+    rng, namesakes = random.Random(7), 0  # noqa: S311 - a seeded test sample
+    for i in range(2000):
+        app, owner, contacts = cast(rng, ("en", "ru")[i % 2], extra=i % 3 == 0)
+        members = [owner, *contacts]
+        x = outside_account(rng, app, members)
+        assert x.account.app == app and not x.account.owner
+        assert x.account.identifier not in {m.account.identifier for m in members}
+        assert x.who not in {m.who for m in members}
+        namesakes += x.person == contacts[0].person
+    assert 800 <= namesakes <= 1200, namesakes
 
 
 def test_surface_cues_are_balanced_across_labels(many: list[GenItem]) -> None:

@@ -36,8 +36,11 @@ from eval.train.writers import sentence
 # misses a record only by its widest reading ("the evening" runs to midnight), "the night of"
 # misses as well as holds, a range of dates no longer marks a time miss (only the contact
 # windows, which both answers state, use one), and no shape makes a message's words name one
-# message (rule 23); run 5 trained on 1.3.0.
-GENERATOR = "eval.train 1.3.1"
+# message (rule 23); run 5 trained on 1.3.0. 1.4.0: a sender trap reports the message in the
+# supports items' frames most of the time, not only in its exact words, at times names an
+# account outside the chat (one may show the same name as the chat's contact), and comes up in
+# the exact-value scene too; a report of "only if X will i Y" keeps "only".
+GENERATOR = "eval.train 1.4.0"
 SOURCE = "train_gen"
 
 
