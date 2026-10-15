@@ -60,7 +60,8 @@ Other agents and product tools read them, so they must match the code, not the p
 - Read `docs/PRODUCT_STATUS.md` before starting work.
 - A meaningful change is one that changes a capability, a model or its job, a verdict path,
   privacy or network use, a measured benchmark, or what Baker may claim to customers.
-  Refactors, test-only fixes and wording changes are not.
+  Refactors, test-only fixes and wording changes are not, unless they change a fact these docs
+  record (merge or CI state, readiness).
 - In the same PR as a meaningful change, update `docs/PRODUCT_STATUS.md` and add one entry at
   the top of `docs/CHANGELOG_AI.md` with: what changed and why; where it lives (main, a named
   branch or PR, or local only); what was tested; what is open or uncertain; and whether it
