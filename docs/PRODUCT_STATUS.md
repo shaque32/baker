@@ -58,7 +58,7 @@ screen in `ui/`.
 |---|---|---|---|
 | Qwen3-14B Q4_K_M (GGUF, Apache-2.0, sha256 `500a8806…81f0`, n_ctx 8192) | Expert's computer, llama-cpp-python, `flash` runtime | Claim proposal, assumption filling, stance labels (all cases on main; fallback on #68), optional AI review | main |
 | Claude Opus 5.5, medium effort | Anthropic API, expert's own key | Stance labels only, for cases the expert opted in | branch #68 (draft, not merged) |
-| mDeBERTa-v3-base classifier | Training on cloud CPU | Candidate small stance model | branch #50 (draft); run 5 is training (2026-10-15, no results yet); runs 1 to 4 did not pass the go bar |
+| mDeBERTa-v3-base classifier | Training on cloud CPU | Candidate small stance model | branch #50 (draft); run 5 is training (2026-10-15, no results yet) on data from the generators in #79; runs 1 to 4 did not pass the go bar |
 | Claude Sonnet 5.5, Haiku 5.5, Opus 5.5 | Anthropic API | Benchmarks only, in `eval/bench/` | main (eval only) |
 
 The local model file is pinned by SHA-256 and checked before loading (`core/audit/_local_model.py`,
@@ -216,8 +216,8 @@ report only) 0.90 accuracy, 0 false supported. See section 10 for today's run.
 Merged 2026-10-15: stricter stated time windows, "after <date>" starts the next day (#66; rules
 still 0.2.1 on main; the 0.2.2 bump is in PR #75, not merged), go-bar scorer fixes and the signed probe
 follow-up (#64), red-main test fix (#65), flaky encryption test fix (#67).
-Branch only: opt-in cloud Opus stance labels (#68), small stance model (#50). PR #70 is an empty
-Grok Product review PR, never merged.
+Branch only: opt-in cloud Opus stance labels (#68), small stance model (#50), run 5's
+training-data generators (#79). PR #70 is an empty Grok Product review PR, never merged.
 
 ## 9. Known limitations
 

@@ -19,6 +19,31 @@ Template:
 
 ---
 
+## 2026-10-15: Training data for the small model's run 5 (#79)
+- Changed: the training-data generators (`eval/train/`, `eval/stancedata/bakerform.py`) write
+  more varied wording, because run 4 fit its training wording better than the held-out wording
+  (on dev it showed 20 moved traps as supports). Supports items and the traps beside them now
+  share report frames and time phrases; contact supports and denials share verbs and window
+  shapes; Baker's window wording goes from 12 shapes to 218, each read back by Baker's own
+  window reader; attachment captions show as context lines. Generators `eval.train 1.3.0` and
+  `eval.train.baker 1.4.0`.
+- Where: branch `claude/project-thread-czwpc8`, PR #79, not merged.
+- Verified: this branch regenerates run 5's training file byte for byte (19,250 items, sha256
+  `00ceae8f…`), and the held-out files are unchanged (test `4f106386…`, dev `36cd0d79…`).
+  Overlap check against Baker's test data (the probe set and both synthetic cases): PASS, 0
+  flagged. Every Baker window passes main's window check, which since #66 starts "after May 2"
+  on May 3, as these generators already did. Blind reads of the new wording from the signed
+  guide alone: 59 of 60 agreed; the slips were fixed. `make check`: lint clean, 1,888 tests
+  passed, eval unchanged (case01 1.00, 0 false supported).
+- Open: run 5 is training on #50's branch, no result yet. Contact and call rows read as main's
+  quote check cites them, which is also the text #50's case items give the small model:
+  `<saved name> <number>` (539 items) and `outgoing call from … at …, 604s` (1,041 items) of
+  19,250. #76 moves the check to the text Baker shows the 14B (contacts `<saved name>:
+  <number>`; calls in progress there). Once it merges, run 5 meets the new text on those rows
+  only, and the next data drop writes it.
+- Affects: none in the product (eval only). It changes what the candidate small stance model
+  trains on.
+
 ## 2026-10-15: Audit-log chain verified when a case opens (#74)
 - Changed: opening a case now verifies the audit-log hash chain (before, only at report build or
   encryption). A broken chain fails closed: Cases shows "Review blocked" with the first entry
