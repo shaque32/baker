@@ -28,7 +28,7 @@ class CountCheck(TemplateCheck):
     """
 
     name = "count"
-    version = "1.0.0"
+    version = "1.0.1"
 
     def evaluate(self, assumption_id: str, p: AssumptionParams, data: CaseData) -> CheckResult:
         if p.window is None or p.expected_count is None or p.count_op is None:
@@ -72,7 +72,7 @@ class CountCheck(TemplateCheck):
         lines = [f"Counted {n}; the claim says {_OPS[op]} {want}"]
         deleted = sum(1 for r in counted if r.deleted)
         if deleted:
-            lines.append(f"{deleted} of them are flagged deleted")
+            lines.append(f"{deleted} of them carry the source's deletion flag")
         if no_time:
             lines.append(f"{len(no_time)} matching messages have no usable time")
         full = source.fidelity is Fidelity.FULL_EXTRACTION
