@@ -486,7 +486,8 @@ def check_window(
     """The time range must say what the document says. Raises Reject otherwise.
 
     - Its dates must be dates the claim states (with a year the claim or paragraph states).
-      "before X" may leave the start open and end at X; "after X" may leave the end open.
+      "before X" may leave the start open and end at X; "after X" may leave the end open and
+      starts at midnight the day after X ("on or after X" and "since X" start on X).
       For no_contact, "first ... on X" leaves the start open too.
     - With a time of day in the range's own words, each closed end is within 15 minutes of a
       stated time. Without one, the range is whole days (midnight to midnight).
@@ -518,7 +519,20 @@ def check_window(
             raise Reject("window start is not near the start of the stated time range")
         if not open_end and not _near(end, [rng[1]]):
             raise Reject("window end is not near the end of the stated time range")
-    if not open_start:
+    # "after March 3" leaves March 3 out: the range starts at midnight on March 4. "on or
+    # after" and "since" keep the day itself.
+    after = [
+        _DateMention(_MONTHS[m.group(1).lower()], int(m.group(2)), int(m.group(3) or 0) or None)
+        for m in _DATE_RE.finditer(as_written)
+        if re.search(r"\bafter\s+$", as_written[: m.start()], re.IGNORECASE)
+        and not re.search(r"\bon\s+or\s+after\s+$", as_written[: m.start()], re.IGNORECASE)
+    ]
+    if after and not times:
+        if start.time() != time(0, 0) or not _date_stated(
+            start.date() - timedelta(days=1), after, years
+        ):
+            raise Reject("a range 'after' a date starts at midnight the day after it")
+    elif not open_start:
         if not _date_stated(start.date(), mentions, years):
             raise Reject(f"window start {start.date()} is not a date the claim states")
         if times and not _near(start, times):
@@ -547,7 +561,9 @@ def check_window(
 
 
 ABOUT_MINUTES = 8  # "at about 7:58 p.m." is 7:50 to 8:05 (the signed case01 sheet, C09)
-_TIED = r"\s*,?\s*(?:on\s+)?$"  # the time is tied to the date right after it
+_WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+# the time is tied to the date right after it: "9 p.m. on March 3", "9 p.m. on Monday, March 3"
+_TIED = rf"\s*,?\s*(?:on\s+)?(?:(?P<wd>{'|'.join(_WEEKDAYS)}),?\s+)?$"
 _AT_TIME_RE = re.compile(
     rf"\b(?:at\s+)?(?P<about>about\s+|approximately\s+|around\s+)?{_clock_re('t')}{_TIED}",
     re.IGNORECASE,
@@ -616,6 +632,10 @@ def stated_windows(text: str, context: str = "") -> list[StatedWindow] | None:
         at = _AT_TIME_RE.search(before) if rng is None else None
         if (rng is not None or at is not None) and m.group(5):
             return None  # a time of day on a range of dates: leave it to the model
+        tied = rng or at
+        if tied is not None and tied.group("wd"):
+            if _WEEKDAYS.index(tied.group("wd").lower()) != d1.weekday():
+                return None  # the weekday does not match the date: never pick one
         if rng is not None:
             times = _time_range(rng)
             if times is None:

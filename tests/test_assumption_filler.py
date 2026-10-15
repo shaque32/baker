@@ -576,6 +576,48 @@ def test_stated_windows_skip_a_time_inside_quoted_words():
     assert (w.start.day, w.start.hour) == (11, 0)
 
 
+@pytest.mark.parametrize(
+    ("raw", "ok_day"),
+    [
+        ("after March 3, 2025", 4),  # March 3 itself is not after March 3
+        ("after Mar. 3rd, 2025", 4),
+        ("on or after March 3, 2025", 3),
+        ("since March 3, 2025", 3),
+    ],
+)
+def test_an_after_window_starts_the_day_after(raw, ok_day):
+    c = f"PETROV had no contact with REYES {raw}."
+    for day in (3, 4, 5):
+        if day == ok_day:
+            check_window(D(2025, 3, day), D(2025, 4, 1), raw, c, "", "no_contact")
+        else:
+            with pytest.raises(Reject):
+                check_window(D(2025, 3, day), D(2025, 4, 1), raw, c, "", "no_contact")
+    with pytest.raises(Reject):  # no time of day stated: midnight only
+        check_window(D(2025, 3, ok_day, 9), D(2025, 4, 1), raw, c, "", "no_contact")
+
+
+@pytest.mark.parametrize(
+    ("text", "start", "end"),
+    [
+        ("At 9 p.m. on Monday, March 3, 2025, PETROV texted REYES.", "21:00", "21:01"),
+        ("Between 9 and 11 p.m. on Monday, March 3, 2025, PETROV texted.", "21:00", "23:01"),
+    ],
+)
+def test_stated_windows_read_a_time_before_a_weekday_and_date(text, start, end):
+    from core.audit.assumption_filler import stated_windows
+
+    (w,) = stated_windows(text)
+    assert (w.start.strftime("%H:%M"), w.end.strftime("%H:%M")) == (start, end)
+    check_window(w.start, w.end, w.raw, text, "", "record_time")
+
+
+def test_stated_windows_refuse_a_weekday_that_is_not_the_dates():
+    from core.audit.assumption_filler import stated_windows
+
+    assert stated_windows("At 9 p.m. on Tuesday, March 3, 2025, PETROV texted REYES.") is None
+
+
 @pytest.mark.parametrize(("cid", "change", "why"), BAD)
 def test_bad_values_drop_the_proposal_and_the_claim_stays_unproven(conn, cid, change, why):
     assumptions, filler, _ = build(conn, cid, _one(cid, **change))
