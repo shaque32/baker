@@ -427,6 +427,12 @@ def test_a_sender_without_a_party_gets_the_writer_the_claim_names(conn):
         ("Someone posing as PETROV texted 'its done'.", "its done", None),
         ("A FRIEND OF PETROV TEXTED 'its done'.", "its done", None),
         ("Agent Daniel Petrov texted REYES 'its done'.", "its done", "PETROV"),
+        ("PETROV texted REYES at 2:31 p.m.: 'ok'.", "ok", "PETROV"),  # Codex on #77
+        ("PETROV texted REYES before midnight: 'ok'.", "ok", "PETROV"),
+        ("As PETROV texted REYES 'ok', officers watched.", "ok", "PETROV"),
+        ("Someone impersonating PETROV texted 'ok'.", "ok", None),
+        ("PETROV sent REYES two texts, 'ok' and 'bye'.", "ok", "PETROV"),  # a noun
+        ("PETROV texted REYES and read her replies: 'ok'.", "ok", None),
     ],
 )  # fmt: skip
 def test_stated_sender_is_the_writer_of_the_quoted_words(conn, text, quoted, writer):

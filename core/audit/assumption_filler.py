@@ -806,18 +806,26 @@ _QUOTING_RE = re.compile(
     re.IGNORECASE,
 )
 QUOTE_REACH = 80  # characters from the writer's verb to the quote
-# Between the writer's verb and the quote, anything that can hand the quote to someone else
-# names no writer: a sentence break ('PETROV messaged REYES. REYES: "ok"'), a relative or a
-# joined clause ('PETROV texted REYES, who responded "ok"', '..., and REYES ...'), or a
-# possessive ('PETROV replied to REYES's message "ok"').
-_HANDED_ON_RE = re.compile(
-    r"[.;!?]|['’]s\b|\b(?:who|whom|whose|which|and|but|or|then|while|after|before|until|"
-    r"because)\b",
+# "two texts", "her replies", "the answers": a quote word used as a noun is no verb.
+_NOUN_BEFORE = re.compile(
+    r"\b(?:a|an|the|his|her|their|its|my|our|your|this|these|those|some|several|many|few|"
+    r"two|three|four|five|six|seven|eight|nine|ten|\d+)\s*$",
     re.IGNORECASE,
 )
-# A name right after one of these is not the one who wrote: 'a friend of PETROV texted ...'.
+# Between the writer's verb and the quote, anything that can hand the quote to someone else
+# names no writer: a sentence break ('PETROV messaged REYES. REYES: "ok"'; a stop before a
+# capital, so "2:31 p.m.:" is no break), a relative or a joined clause ('PETROV texted REYES,
+# who responded "ok"', '..., and REYES ...'), or a possessive ('PETROV replied to REYES's
+# message "ok"'). Time words ("before midnight") hand nothing on.
+_HANDED_ON_RE = re.compile(
+    r"[;!?]|\.(?=\s+[A-Z])|['’]s\b|\b(?:who|whom|whose|which|and|but|or|then)\b",
+    re.IGNORECASE,
+)
+# A name right after one of these is not the one who wrote: 'a friend of PETROV texted ...',
+# 'someone posing as PETROV texted ...'. A plain "As PETROV texted ..." still names him.
 _NOT_THE_WRITER_BEFORE = re.compile(
-    r"(?:['’]s|\b(?:of|for|to|with|by|from|via|behind|about|like|as|than|posing))\s*$",
+    r"(?:['’]s|\b(?:of|for|to|with|by|from|via|behind|about|like|than|posing\s+as|"
+    r"pretending\s+to\s+be|impersonating))\s*$",
     re.IGNORECASE,
 )
 
@@ -1092,7 +1100,9 @@ class LocalAssumptionFiller:
         if at < 0:
             return None
         before = _nfc(claim.text)[:at]
-        verbs = list(_QUOTING_RE.finditer(before))
+        verbs = [
+            v for v in _QUOTING_RE.finditer(before) if not _NOUN_BEFORE.search(before[: v.start()])
+        ]
         if not verbs or at - verbs[-1].end() > QUOTE_REACH:
             return None
         last = verbs[-1]
