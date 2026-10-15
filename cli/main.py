@@ -249,6 +249,11 @@ def cmd_audit(a: argparse.Namespace) -> int:
     for d in result.decisions:
         tally[d.verdict.value] = tally.get(d.verdict.value, 0) + 1
     print(f"{result.run_id}{' (TEST RUN, stand-in components)' if result.fake else ''}: {tally}")
+    from core.casework.jobs import fallback_note
+
+    note = fallback_note(comps).strip()
+    if note:
+        print(f"audit: {note}", file=sys.stderr)
     return 0
 
 

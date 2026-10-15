@@ -126,8 +126,9 @@ readable.assumption_text(assumption, case_names(conn)), and ReviewContext in
 core/audit/context.py passes the same CaseNames to render_for, as the stance labeler does.
 
 ## 2026-10-15 claude/project-thread-a2fjkc: cloud first, local behind it (stance labeling only)
-AWAITING Arsh's "approved" in the thread "Cloud-first with offline fallback". The code on this
-branch relies on it (core/llm/cloud.py, core/casework/cloud.py, the stance labeler's fallback).
+SIGNED by Arsh on 2026-10-15 ("approve" at 04:16Z in the thread "Cloud-first Opus with offline
+fallback"). To apply to CLAUDE.md by a human; the code on this branch relies on it
+(core/llm/cloud.py, core/casework/cloud.py, the stance labeler's fallback).
 File: CLAUDE.md
 Why: Arsh chose cloud first with full offline fallback (2026-10-15 03:16Z, "go cloud first but
 have all fall back"). Opus 5.5 (signed v1.1 prompt, product layout) met the full cloud decision

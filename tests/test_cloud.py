@@ -131,7 +131,13 @@ def test_config_reads_the_key_from_the_environment_first(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "raw", [{}, {"api_key": "k", "effort": "turbo"}, {"api_key": "k", "base_url": "http://x"}]
+    "raw",
+    [
+        {},
+        {"api_key": "k", "effort": "turbo"},
+        {"api_key": "k", "base_url": "http://x"},
+        {"api_key": "k", "base_url": "https://proxy.example.com"},
+    ],
 )
 def test_bad_or_missing_config_is_refused(tmp_path, monkeypatch, raw):
     monkeypatch.delenv(cloud.KEY_ENV, raising=False)
@@ -415,3 +421,4 @@ def test_a_key_from_the_environment_is_not_silently_replaced(tmp_path, monkeypat
 def test_the_cli_audit_applies_the_case_choice():
     src = (Path(__file__).resolve().parents[1] / "cli" / "main.py").read_text(encoding="utf-8")
     assert "cloud=choice" in src and "cloud_policy.choose(conn)" in src
+    assert "fallback_note(comps)" in src  # and says when the local model labeled instead

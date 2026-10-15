@@ -15,8 +15,9 @@ from $BAKER_ANTHROPIC_API_KEY, else ~/.baker/cloud.json:
 
     {"api_key": "sk-ant-...", "model": "claude-opus-5-5", "effort": "medium"}
 
-The API address is pinned to https://api.anthropic.com unless the config names another one, so
-an ANTHROPIC_BASE_URL left in the environment can never redirect case data.
+The API address is pinned to https://api.anthropic.com, the recipient the expert's per-case
+consent names; a config naming any other host is refused, and an ANTHROPIC_BASE_URL left in the
+environment can never redirect case data.
 
 Failures never pass silently. A call that cannot be answered raises CloudError; the stance
 labeler then asks the local model instead (core/audit/_local_model.py, FallbackPort).
@@ -111,9 +112,9 @@ def load_config(path: Path | None = None) -> CloudConfig:
     effort = str(raw.get("effort") or DEFAULT_EFFORT).strip()
     if effort not in EFFORTS:
         raise CloudConfigError(f"bad cloud config {path}: effort must be one of {EFFORTS}")
-    base_url = str(raw.get("base_url") or API_BASE_URL).strip()
-    if not base_url.startswith("https://"):
-        raise CloudConfigError(f"bad cloud config {path}: base_url must be https")
+    base_url = str(raw.get("base_url") or API_BASE_URL).strip().rstrip("/")
+    if base_url != API_BASE_URL:  # the setup screen tells the expert the prompts go to Anthropic
+        raise CloudConfigError(f"bad cloud config {path}: base_url must be {API_BASE_URL}")
     return CloudConfig(api_key=key, model=model, effort=effort, base_url=base_url)
 
 
