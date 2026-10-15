@@ -67,7 +67,7 @@ import sys
 from pathlib import Path
 
 from core import pipeline
-from core.audit._llm_json import ModelUnavailable
+from core.audit._llm_json import CloudPaused, ModelUnavailable
 from core.audit._local_model import ModelConfigError
 from core.audit.invariants import InvariantViolation
 from core.contracts import ClaimStatus, ClaimType, EvidenceStatus, Verdict, VerdictDecision
@@ -219,8 +219,16 @@ def cmd_audit(a: argparse.Namespace) -> int:
 
         comps = fake_components()
     else:
+        import functools
+
+        from core.casework import cloud as cloud_policy
+        from core.llm import cloud as cloud_llm
+
+        load = functools.partial(cloud_llm.load_config, case_db=Path(a.db))
+        choice = cloud_policy.choose(conn, load)  # the case's saved cloud choice, as on the screen
+        print(f"audit: {choice.why}", file=sys.stderr)
         try:
-            comps = pipeline.real_components(conn, ai_review=a.ai_review)
+            comps = pipeline.real_components(conn, ai_review=a.ai_review, cloud=choice)
         except pipeline.ComponentsMissing as e:
             print(f"audit: {e}. Use --fake for a test run.", file=sys.stderr)
             return 2
@@ -234,6 +242,14 @@ def cmd_audit(a: argparse.Namespace) -> int:
 
     try:
         result = pipeline.run_audit(conn, comps, progress=progress)
+    except CloudPaused as e:
+        print(
+            f"audit paused: {e}. No claim was labeled by another model. Run it again to retry the"
+            " cloud model, or turn cloud AI off for this case and run it again to label the whole"
+            " case locally.",
+            file=sys.stderr,
+        )
+        return 1
     except (InvariantViolation, ModelUnavailable) as e:
         print(
             f"audit stopped before it finished, so none of its verdicts count: {e}. The model"

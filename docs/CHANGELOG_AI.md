@@ -151,25 +151,58 @@ Template:
 - Open: entries before 2026-10-13 are summarized by git only.
 - Affects: none (documentation).
 
+## 2026-10-15: Cloud stance labels gated on the signed stance test (#68)
+- Changed: a case uses the cloud model only if that model passed the signed stance test with
+  the current stance prompt (`PROBE_PASSED`, `core/llm/cloud.py`). The list ships empty, so every
+  case labels locally on #68 for now. Reason: Codex P1 on #68 and the signed-set run (Opus
+  contradicts precision 73%, bar 90%); an unreviewed "contradicts" on an event assumption can
+  make a claim CONTRADICTED (rule 1b), and Arsh's earlier decision was cloud "after a check".
+  Also from Codex round 6: nothing is logged as sent when the client cannot be built; a cloud
+  answer that failed its quote or format check is asked again on re-run; a damaged sealed key
+  reads as a config error; the "saved in this case" message checks the exact sealed path; the
+  key is dropped from memory when a cloud audit ends; the Mac install guide no longer promises
+  offline use for a cloud case.
+- Where: branch `claude/project-thread-a2fjkc`, PR #68, draft, not merged.
+- Verified: `make check` passes, 1940 tests; gates unchanged (case01 1.00, 0 false supported,
+  unreviewed 0.60, hostile PASS, case02 0.90); new tests for the gate, preflight, re-ask and a
+  damaged sealed key. No real API call.
+- Codex on 82090a4 (fixed): a gate entry names the effort too, so an untested effort never passes;
+  a client that cannot be built pauses the audit instead of dropping labels; the header pill
+  follows a running cloud audit even if the key file changes; the Windows installer text says
+  offline by default.
+- Open: adding an entry needs a signed prompt fix, a recorded passing run on the signed set and
+  on new held-out items not used to write the prompt, and Arsh's sign-off. The report already
+  shows each set_cloud entry (expert, time, attestation text) in its audit-log table; a test now
+  covers it.
+- Affects: capabilities (cloud labels off until a model passes), privacy (no case data leaves
+  the computer on #68 until then), customer-facing claims (do not offer cloud labeling yet).
+
 ## 2026-10-15: Cloud AI by per-case opt-in for stance labels (#68, 3c6c1ec)
 - Changed: Baker is local by default. A case uses Opus 5.5 for stance labels only after the
   expert attests the protective order allows it, the case has no CSAM flag, and they supply their
   own Anthropic key. If the cloud fails mid-case, the audit pauses and the expert retries or
   re-runs the whole case locally, so models are never mixed within a case. Every request is
   written to the hash-chained audit log (`cloud.sent`) before it is sent. The endpoint is pinned
-  to api.anthropic.com (120 s timeout, 2 retries). Claim proposal, assumption filling and the AI
-  reviewer stay local. Reason: Arsh chose "Opt-in cloud" (2026-10-15 07:10Z).
-- Where: branch `claude/project-thread-a2fjkc`, PR #68, draft, not merged.
+  to api.anthropic.com (120 s timeout, 2 retries). In an encrypted case, the key the expert saves
+  is sealed under the case key (`case.cloud-key`, AES-256-GCM) and unreadable while the case is
+  locked; a plain case keeps the owner-only `~/.baker/cloud.json`; the env var still wins.
+  Claim proposal, assumption filling and the AI reviewer stay local. Reason: Arsh chose
+  "Opt-in cloud" (2026-10-15 07:10Z).
+- Where: branch `claude/project-thread-a2fjkc`, PR #68, draft, not merged (main merged in after #71).
 - Verified (as reported by the owning thread; `cloud.sent` and the pause checked in
-  `core/audit/_local_model.py` on the branch): `make check` passes, 1893 tests; gates unchanged
+  `core/audit/_local_model.py` on the branch): `make check` passes, 1933 tests; gates unchanged
   (case01 1.00, 0 false supported, unreviewed 0.60, hostile PASS, case02 0.90); a simulated
-  outage pauses the run with the chain intact; Codex rounds 1 to 4 clean, re-review pending. No
-  real API call since this change.
+  outage pauses the run with the chain intact; logged retries (each send logged, SDK retries
+  off) and a log failure that blocks the send; an item relabeled by another model names the
+  latest; sealed-key tests (sealed, unreadable once
+  locked, refused in another case, env var and plain case unchanged); Codex rounds 1 to 4
+  clean, later commits under review. No real API call since this change.
 - Open: Opus fails the signed probe's contradicts bar (73%, entry below), so a signed prompt fix
-  should land first; the revised CLAUDE.md wording needs Arsh's "approved"; a fair 14B-vs-Opus
-  test of claim proposal and assumption filling waits on Arsh; an evidence row keeps the first
-  model's name when a later run gives an identical label (the per-run "Stance labels" row is
-  authoritative); the key file is owner-only, not encrypted with the case keys.
+  should land first; Arsh approved the revised CLAUDE.md wording (07:29Z), applied on the
+  branch at his request (14:00Z); a fair 14B-vs-Opus
+  test of claim proposal and assumption filling waits on Arsh; when a case switches models, an
+  evidence row names the latest run's model and rationale (the earlier answer stays in
+  model_calls); a key saved for a plain case stays an owner-only plain file.
 - Affects: capabilities (optional cloud labels per case), privacy (only the filled stance prompt
   leaves the computer, and every request is logged), performance (about 3 s per stance call; local 22 to 43 s per call was
   measured 2026-10-09/12 on older code, and no full local case is timed on current code), customer-facing claims ("local by default; cloud AI only when your
@@ -181,7 +214,10 @@ Template:
   `/mnt/project-files/baker/cloud-first/steps-check/RESULTS.md`.
 - Verified: claim recall 80% (bar 90%); sheet-free audit 60% accuracy, 0 false supported (bar
   80%). Both failed, so both steps stay local.
-- Open: none.
+- Open: the "Scoring audit" thread found most misses were grading artifacts
+  (`/mnt/project-files/baker/cloud-bench/2026-10-15/GRADING_AUDIT.md`): all 4 claim misses, and
+  60% becomes 70% with the contact quote fix (#76). The 14B has never been scored sheet-free, so
+  "stay local" has no baseline. A fair 14B-vs-Opus sheet-free test after #76 waits on Arsh.
 - Affects: performance (the 14B stays required).
 
 ## 2026-10-15: Opus 5.5 benchmark (eval only)

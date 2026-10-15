@@ -38,6 +38,7 @@ from core.report.html import CSS as REPORT_CSS
 from core.report.html import (
     STANCE_LABEL,
     audit_log_summary,
+    labelled_by,
     record_line,
     review_label,
     said,
@@ -100,6 +101,7 @@ class Page:
         busy: bool = False,
         many_cases: bool = False,
         path: str = "",
+        cloud: bool = False,
     ):
         self.token = token
         self.expert = expert
@@ -109,6 +111,7 @@ class Page:
         self.busy = busy  # an audit is running: no re-run of the verdicts
         self.many_cases = many_cases  # the screen was started on a cases folder
         self.path = path  # the page's own path, to mark its tab
+        self.cloud = cloud  # the open case sends stance questions to the cloud model
 
     def form(
         self, action: str, body: str, cls: str = "box", back: str = "", anchor: str = ""
@@ -179,8 +182,13 @@ class Page:
             "<header class='top'><div class='bar'>"
             f"<a class='brand' href='{'/' if self.case_name is not None else '/cases'}'>"
             f"{MARK}<span>Baker</span></a>{case}<div class='right'>"
-            "<span class='pill'>Offline · nothing leaves this computer</span>"
-            f"<span class='who'>{who}</span></div></div>"
+            + (
+                "<a class='pill' href='/setup#cloud'>Cloud labels on · one question at a time "
+                "goes to Anthropic</a>"
+                if self.cloud
+                else "<span class='pill'>Offline · nothing leaves this computer</span>"
+            )
+            + f"<span class='who'>{who}</span></div></div>"
             f"<nav class='tabs'>{links}</nav></header>"
             f"<main{' class=wide' if wide else ''}>{notice}{flash}{banner}{body}</main>"
             "</body></html>"
@@ -536,7 +544,8 @@ def evidence_card(
         f"<p>{record_line(conn, item.record_id)}<br>"
         f"<span class='mono'>{e(item.ref.source_id)} {e(item.ref.locator)} · "
         f"{e(item.record_id)}</span></p>"
-        f"<p class='muted'>Model rationale (inferred): {e(item.rationale)}</p>"
+        f"<p class='muted'>{e(labelled_by(conn, item.model_run_id))}. Model rationale "
+        f"(inferred): {e(item.rationale)}</p>"
         f"<p><strong>Review:</strong> {review_label(conn, item)} · "
         f"<a href='{e(link('/evidence', id=item.id))}'>See about 20 messages around it</a></p>"
         f"{_decide_form(page, item, last_kind == 'expert', back)}</div>"
@@ -1094,6 +1103,9 @@ def setup_page(
     resumable: str | None,
     protection: str = "plain",  # core.casework.protect.state
     recovery_key: str | None = None,
+    cloud: object | None = None,  # core.casework.cloud.CloudChoice
+    cloud_case: dict | None = None,  # the case's saved cloud settings
+    cloud_key: str | None = "",  # None: a key is set up; else why not
 ) -> str:
     busy = job_kind is not None
     audit_busy = job_kind == "audit"
@@ -1223,6 +1235,9 @@ def setup_page(
             )
             + "</ul>"
         )
+    if cloud is not None:
+        out.append(cloud_section(page, cloud, cloud_case or {}, cloud_key, job_kind == "audit"))
+        out.append("<h3>The local model</h3>")
     out.append(f"<p class='muted'>{e(model_note)}</p>")
     out.append(
         page.form(
@@ -1277,6 +1292,78 @@ def setup_page(
     # No refresh while the recovery key is on screen: it must not vanish mid-copy.
     refresh = 10 if busy and recovery_key is None else None
     return page.wrap("Set up and run", "".join(out), refresh=refresh)
+
+
+def cloud_section(
+    page: Page, choice: object, saved: dict, key_problem: str | None, busy: bool
+) -> str:
+    """Step 4's cloud part: which model labels this case, the per-case attestation, the key."""
+    from core.casework.cloud import ATTESTATION, CSAM_NOTE
+
+    use = bool(getattr(choice, "use", False))
+    why = str(getattr(choice, "why", ""))
+    off = " disabled" if busy else ""
+    allowed = saved.get("allowed") is True
+    csam = saved.get("csam") is True
+    out = [
+        "<div id='cloud'><h3>Cloud AI for this case</h3>",
+        f"<p><strong>{'Cloud AI on for this case' if use else 'Local only'}.</strong> {e(why)}</p>",
+        "<p class='muted'>Off by default: everything runs on this computer unless you opt in "
+        "for this case below.</p>",
+        "<p class='muted'>With cloud AI, Baker sends one question at a time to Anthropic under "
+        "your own key: the assumption being tested, one record, the messages around it, the "
+        "claim, and for a group chat its member list (up to 20 accounts, with the names you "
+        "confirmed for them). Never your files or the case database. The cloud model only "
+        "labels evidence; the verdict rules and your review are unchanged. A case's labels never "
+        "mix models: if the cloud model stops answering, the audit pauses and you choose to "
+        "retry it or turn cloud AI off here and run the whole case locally. Every request is "
+        "recorded in the case's audit log, with its time, before it is sent. How long Anthropic "
+        "keeps API data: <a href='https://privacy.claude.com/en/articles/7996866-how-long-do-you-"
+        "store-my-organization-s-data' rel='noreferrer'>Anthropic's commercial retention "
+        "policy</a>.</p>",
+        page.form(
+            "/cloud/case",
+            "<p><label><input type='checkbox' name='allowed' value='1'"
+            f"{' checked' if allowed else ''}> {e(ATTESTATION)}</label></p>"
+            "<p><label><input type='checkbox' name='csam' value='1'"
+            f"{' checked' if csam else ''}> {e(CSAM_NOTE)} This case then never uses cloud AI."
+            "</label></p>"
+            f"<button type='submit'{off}>Save the cloud choice</button> <span class='muted'>"
+            "Recorded in the case's audit log under your name.</span>",
+            back="/setup",
+            anchor="cloud",
+        ),
+    ]
+    from core.llm.cloud import KEY_ENV, key_from_environment
+
+    if key_problem is None and key_from_environment():
+        out.append(
+            f"<p>The Anthropic key in use comes from <span class='mono'>{e(KEY_ENV)}</span>. "
+            "Change or unset it there; a key saved here would not be used.</p></div>"
+        )
+        return "".join(out)
+    if key_problem is None:
+        out.append(
+            "<p>An Anthropic key is set up on this computer. Replace it below if you need to.</p>"
+        )
+    else:
+        out.append(f"<p><strong>No cloud key yet</strong> ({e(key_problem)}).</p>")
+    out.append(
+        page.form(
+            "/cloud/key",
+            "<input type='password' name='api_key' required autocomplete='off' "
+            "placeholder='sk-ant-...' aria-label='Your Anthropic API key'> "
+            f"<button type='submit'{off}>Save the key</button> <span class='muted'>Your own "
+            "key, from your firm's Anthropic account (ask for zero data retention). In an "
+            "encrypted case it is saved in the case, encrypted with the case's key; otherwise only "
+            "on this "
+            "computer, readable by your user account. It is never shown again.</span>",
+            back="/setup",
+            anchor="cloud",
+        )
+    )
+    out.append("</div>")
+    return "".join(out)
 
 
 def recovery_box(page: Page, key: str | None) -> str:

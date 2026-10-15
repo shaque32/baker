@@ -64,6 +64,12 @@ class ModelUnavailable(RuntimeError):
     never look like a run that found nothing."""
 
 
+class CloudPaused(ModelUnavailable):
+    """The cloud model stopped answering in a case that opted in to cloud AI. The audit pauses
+    and the expert chooses: resume to retry the cloud model, or turn cloud AI off for the case
+    and run it again to label the whole case locally. A case's labels never mix models."""
+
+
 class PromptMissingError(FileNotFoundError):
     """The signed prompt is not in core/audit/prompts/ yet. Drafts live in docs/prompts/."""
 

@@ -27,7 +27,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from core import pipeline
-from core.audit._llm_json import ModelUnavailable
+from core.audit._llm_json import CloudPaused, ModelUnavailable
 from core.audit._local_model import ModelConfigError
 from core.audit.invariants import InvariantViolation
 from core.casework.awake import keep_awake
@@ -36,7 +36,10 @@ from core.db import connect
 from core.review.actions import ReviewError
 
 DEFAULT_SECONDS_PER_CALL = 43.0  # Qwen3-14B Q4 on a 24 GB Mac (Wave 3, PR #28)
+# Opus 5.5 at medium effort on case01: 493 calls in 1,558 s (cloud bench 2026-10-14c).
+CLOUD_SECONDS_PER_CALL = 3.2
 CALLS_PER_CLAIM = 25  # synthetic case01 after PR #29: 495 model calls for 20 claims
+LOCAL_CALLS_PER_CLAIM = 1  # assumption filling, which stays local in a cloud case
 SPEED_FILE = Path.home() / ".baker" / "speed.json"
 MIN_CALLS_TO_MEASURE = 5
 
@@ -64,6 +67,7 @@ class Job:
     check: ModelCheck | None = None
     hashed: tuple[int, int] | None = None  # model check: bytes hashed of total
     components: pipeline.Components | None = None
+    cloud: bool = False  # an audit whose stance labels come from the cloud model
     stop: threading.Event = field(default_factory=threading.Event)
 
     @property
@@ -77,9 +81,8 @@ class Job:
 
     def seconds_per_call(self) -> float | None:
         """Mean seconds per new model call in this job so far, once a few calls are made."""
-        if self.components is None:
-            return None
-        return measured_seconds(self.components)
+        comps = self.components  # read once: a finished cloud job drops it
+        return None if comps is None else measured_seconds(comps)
 
 
 class Jobs:
@@ -118,7 +121,7 @@ _KIND = {"audit": "audit", "propose": "claim proposal", "model_check": "model ch
 # ---------------------------------------------------------------- estimates
 
 
-def _new_call_seconds(c: pipeline.Components) -> list[float]:
+def _new_call_seconds(c: pipeline.Components, local_only: bool = False) -> list[float]:
     ports = {
         id(p): p for p in (getattr(x, "model", None) for x in (c.labeler, c.reviewer, *c.recorders))
     }
@@ -128,6 +131,7 @@ def _new_call_seconds(c: pipeline.Components) -> list[float]:
         if isinstance(getattr(p, "stats", None), list)
         for s in p.stats
         if not getattr(s, "reused", False)
+        and (not local_only or getattr(s, "where", "local") == "local")
     ]
 
 
@@ -153,7 +157,8 @@ def seconds_per_call(speed_file: Path = SPEED_FILE) -> tuple[float, str]:
 
 
 def record_speed(c: pipeline.Components, speed_file: Path = SPEED_FILE) -> None:
-    secs = _new_call_seconds(c)
+    """The local model's measured speed, for later estimates. Cloud calls are not counted."""
+    secs = _new_call_seconds(c, local_only=True)
     if len(secs) < MIN_CALLS_TO_MEASURE:
         return
     try:
@@ -172,8 +177,13 @@ def record_speed(c: pipeline.Components, speed_file: Path = SPEED_FILE) -> None:
         pass
 
 
-def estimate_seconds(claims: int, spc: float) -> float:
-    return claims * CALLS_PER_CLAIM * spc
+def estimate_seconds(claims: int, spc: float, cloud_spc: float | None = None) -> float:
+    """spc is the local model's seconds per call. With cloud_spc, stance calls run at the cloud
+    rate and assumption filling stays on the local model."""
+    if cloud_spc is None:
+        return claims * CALLS_PER_CLAIM * spc
+    stance_calls = CALLS_PER_CLAIM - LOCAL_CALLS_PER_CLAIM
+    return claims * (LOCAL_CALLS_PER_CLAIM * spc + stance_calls * cloud_spc)
 
 
 def duration(seconds: float) -> str:
@@ -201,7 +211,11 @@ def audit_job(
     model_check: ModelCheckFn | None,
     ai_review: bool = False,
     label_all: bool = False,
+    cloud_opt_in: bool = False,
 ) -> Callable[[Job], None]:
+    """cloud_opt_in: the case's stance labels come from the cloud model. The local model check
+    still gates the start: assumption filling (and the AI reviewer) run on the local model."""
+
     def run(job: Job) -> None:
         conn = _open(job.db)
         try:
@@ -252,6 +266,13 @@ def audit_job(
                 f"Stopped after {job.done} of {job.total} claims. Finished claims keep their "
                 "work; resume to label the rest.",
             )
+        except CloudPaused as e:
+            job.end(
+                "stopped",
+                f"Paused after {job.done} of {job.total} claims: {e}. No claim was labeled by "
+                "another model. Resume to try the cloud model again, or turn cloud AI off for "
+                "this case in Setup and run the audit again to label the whole case locally.",
+            )
         except (pipeline.ComponentsMissing, ModelConfigError) as e:
             job.end("failed", f"The audit did not start: {e}.")
         except (InvariantViolation, ModelUnavailable) as e:
@@ -262,6 +283,8 @@ def audit_job(
             )
         finally:
             conn.close()
+            if cloud_opt_in:  # the cloud labeler holds the API key; locking must not leave it
+                job.components = None
 
     return run
 
