@@ -19,14 +19,14 @@ Template:
 
 ---
 
-## 2026-10-15: Count check no longer says "deleted" (#NN)
+## 2026-10-15: Count check no longer says "deleted" (#83)
 - Changed: the count check's detail now reads "N of them carry the source's deletion flag"
   instead of "N of them are flagged deleted"; check version 1.0.0 to 1.0.1. The old text broke
   the CLAUDE.md rule against Baker saying "deleted", and the report's forbidden-words check would
   stop the report build whenever a counted message had the source's deletion flag. Found by Codex
   on #82. A grep of core/ and ui/ found no other Baker-authored prose with a forbidden word;
   `baker ufdr-check` output names the package's own `deleted_state` field and was left as is.
-- Where: branch `claude/fix-count-deleted-wording-oxal24`, PR #NN, not merged.
+- Where: branch `claude/fix-count-deleted-wording-oxal24`, PR #83, not merged.
 - Verified: new unit test (fails on main, passes here) checks the detail and search text against
   FORBIDDEN_WORDS and `check_report_text`. `make check` passed 2026-10-15 in a Linux cloud
   container: 1884 passed, 6 skipped; case01 model-free accuracy 1.00, 0 false supported.
