@@ -82,8 +82,8 @@ Template:
   without a bump fails. A quote now verifies only if it takes in a letter or digit of the
   record's own fields: at a word-aligned place in the pipeline, whatever verifier a run is
   given (`cites_record`), and at any place in the stored re-check
-  (`core/audit/invariants.quote_is_verbatim`). "(no name)", "unknown" or "call from" alone
-  fail; "(no name): +1..." passes. `core/audit/quotes.record_text`, which still said calls had no
+  (`core/audit/invariants.quote_is_verbatim`), which holds evidence stored before #76 to the
+  check of its day. "(no name)", "unknown" or "call from" alone fail; "(no name): +1..." passes. `core/audit/quotes.record_text`, which still said calls had no
   citable text, now reads every record as the labeler sees it, as the pipeline already did.
 - Where: main once PR #76 merges (branch `claude/project-thread-01fybj`, from the "Audit our
   model scoring" thread). Includes the C17 font fix.

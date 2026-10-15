@@ -17,6 +17,7 @@ from core.audit.invariants import (
     check_evidence,
     check_report_text,
     record_text,
+    record_text_before_76,
 )
 from core.contracts import (
     EvidenceCandidate,
@@ -286,11 +287,9 @@ def test_evidence_stored_before_the_fix_still_passes_the_stored_quote_check(conn
             item.model_copy(update={"record_id": call, "quote": old_call}),
         ],
     )
-    for rid, quote in (
-        (item.record_id, "Marc Garage +1 212"),
-        (call, "outgoing call from"),
-        (call, "call from"),  # in the old text, but only its own words
-    ):
+    # Held to the check of its day (Codex): only Baker's words, but a substring of the old text.
+    check_evidence(conn, [item.model_copy(update={"record_id": call, "quote": "call from"})])
+    for rid, quote in ((item.record_id, "Marc Garage +1 212"), (call, "outgoing call from")):
         with pytest.raises(InvariantViolation, match="not verbatim"):
             check_evidence(conn, [item.model_copy(update={"record_id": rid, "quote": quote})])
 
@@ -358,11 +357,15 @@ def test_a_quote_of_only_bakers_words_or_a_placeholder_is_dropped(conn, other, q
     stored = [e for e in items(conn) if e.record_id == other]
     assert result.dropped_labels == (0 if kept else 1)
     assert [e.quote for e in stored] == ([quote] if kept else [])
-    # The stored re-check holds the same line: a placeholder quote never stands.
+    # The stored re-check holds the same line, except that evidence stored before #76 keeps the
+    # check of its day (Codex): "call from" was a substring of the old call text.
     (item,) = [e for e in items(conn) if e.stance == Stance.SUPPORTS]
-    if not kept:
+    stored = item.model_copy(update={"record_id": other, "quote": quote})
+    if kept or quote in record_text_before_76(conn, other):
+        check_evidence(conn, [stored])
+    else:
         with pytest.raises(InvariantViolation, match="not verbatim"):
-            check_evidence(conn, [item.model_copy(update={"record_id": other, "quote": quote})])
+            check_evidence(conn, [stored])
 
 
 @pytest.mark.parametrize(

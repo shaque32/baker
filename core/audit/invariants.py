@@ -11,7 +11,8 @@ Every decision:
 - cites only evidence, checks and stipulations that were given to the rule;
 - rests on evidence whose quotes are non-empty and verbatim (exact substring, no normalization)
   in the record's stored text, re-read from the database, and take in a letter or digit of the
-  record's own fields, not only Baker's words or a placeholder such as "(no name)";
+  record's own fields, not only Baker's words or a placeholder such as "(no name)" (evidence
+  stored before #76 is held to the check of its day);
 - sees each item's status as the database has it (the latest evidence_reviews row). 'accepted'
   comes from an expert row, 'ai_accepted' only sits on supporting items, and once an expert has
   decided an item no AI row comes after it.
@@ -87,26 +88,16 @@ def record_text(conn: sqlite3.Connection, record_id: str) -> str | None:
     return records.record_text(conn, record_id)
 
 
-def _stripped(text: str, own: tuple[records.Span, ...]) -> tuple[str, tuple[records.Span, ...]]:
-    lead = len(text) - len(text.lstrip())
-    out = text.strip()
-    spans = ((max(a - lead, 0), min(b - lead, len(out))) for a, b in own)
-    return out, tuple((a, b) for a, b in spans if a < b)
-
-
-def _line_before_76(
-    conn: sqlite3.Connection, record_id: str
-) -> tuple[str, tuple[records.Span, ...]] | None:
-    """How this check read a contact or a call before PR #76 (2026-10-15), with the spans of the
-    record's own fields in it."""
+def record_text_before_76(conn: sqlite3.Connection, record_id: str) -> str | None:
+    """How this check read a contact or a call before PR #76 (2026-10-15). Evidence stored before
+    then may quote it, and stays verified: it quotes the same stored fields. New labels are checked
+    against record_text only (core.pipeline), so nothing new is stored in this form."""
     kind = record_id.split(":", 1)[0]
     if kind == "contact":
         row = conn.execute(
             "SELECT name, identifier FROM contacts WHERE id = ?", (record_id,)
         ).fetchone()
-        if row is None:
-            return None
-        return _stripped(*records.join_parts([(row[0] or "", True), (" ", False), (row[1], True)]))
+        return f"{row[0] or ''} {row[1]}".strip() if row else None
     if kind == "call":
         row = conn.execute(
             "SELECT c.direction, fa.identifier, ta.identifier, c.ts_raw, c.duration_s"
@@ -117,33 +108,8 @@ def _line_before_76(
         if row is None:
             return None
         direction, frm, to, raw, dur = row
-
-        def field(value: str | None) -> records.Part:
-            return (value, True) if value else ("?", False)
-
-        return records.join_parts(
-            [
-                (direction, direction != records.UNKNOWN),
-                (" call from ", False),
-                field(frm),
-                (" to ", False),
-                field(to),
-                (" at ", False),
-                field(raw),
-                (", ", False),
-                (str(dur), dur is not None),
-                ("s", False),
-            ]
-        )
+        return f"{direction} call from {frm or '?'} to {to or '?'} at {raw or '?'}, {dur}s"
     return None
-
-
-def record_text_before_76(conn: sqlite3.Connection, record_id: str) -> str | None:
-    """How this check read a contact or a call before PR #76 (2026-10-15). Evidence stored before
-    then may quote it, and stays verified: it quotes the same stored fields. New labels are checked
-    against record_text only (core.pipeline), so nothing new is stored in this form."""
-    line = _line_before_76(conn, record_id)
-    return line[0] if line else None
 
 
 def _takes_in_own(quote: str, text: str, own: tuple[records.Span, ...]) -> bool:
@@ -157,17 +123,18 @@ def _takes_in_own(quote: str, text: str, own: tuple[records.Span, ...]) -> bool:
 
 
 def quote_is_verbatim(conn: sqlite3.Connection, quote: str, record_id: str) -> bool:
-    """A stored quote still stands in its record: in its text now, or, for evidence stored before
-    #76, in the contact or call text the check read then (a case audited earlier re-decides),
-    at a place that takes in a letter or digit of the record's own fields. A quote of only
-    Baker's words or a placeholder ("(no name)", "unknown", " call from ") does not stand."""
+    """A stored quote still stands in its record: in its text now, at a place that takes in a
+    letter or digit of the record's own fields, so a quote of only Baker's words or a placeholder
+    ("(no name)", "unknown", " call from ") does not stand. Evidence stored before #76 is held to
+    the check of its day (quote check 1.1.0): a substring of the contact or call text the check
+    read then, so a case audited earlier re-decides."""
     if not quote.strip():
         return False
     rec = records.get_record(conn, record_id)
-    lines = ((rec.text, rec.own) if rec else None, _line_before_76(conn, record_id))
-    return any(
-        line is not None and line[0] is not None and _takes_in_own(quote, *line) for line in lines
-    )
+    if rec is not None and rec.text is not None and _takes_in_own(quote, rec.text, rec.own):
+        return True
+    old = record_text_before_76(conn, record_id)
+    return old is not None and quote in old
 
 
 # ---------------------------------------------------------------- evidence
