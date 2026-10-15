@@ -107,7 +107,10 @@ def record_mark(item: dict[str, Any]) -> str:
 def members_line(item: dict[str, Any]) -> str | None:
     """The chat's member accounts, as Baker's stance context opens a chat record's excerpt:
     "Members seen in this chat's records: A; B" (core.audit.readable.members_line). None when the
-    item carries no members (calls, contact rows, plain items)."""
+    item carries no members (calls, contact rows, plain items). A case item (time_case01) carries
+    Baker's own line, which also bounds a big group (core.audit.context.MAX_MEMBERS)."""
+    if item.get("members_line"):
+        return str(item["members_line"])
     members = item.get("baker_members")
     return f"{MEMBERS}: {'; '.join(sorted(set(members)))}" if members else None
 

@@ -243,9 +243,9 @@ def test_item_weights_scale_only_the_stance_loss() -> None:
 
 
 def _two_phones(c: sqlite3.Connection) -> None:
-    """Phone A (dev:a, owner stipulated and confirmed as p:ann) and phone B (dev:b, owner only
-    proposed as p:ben). Carl's number is linked to p:carl (confirmed); Dee's only proposed."""
-    for src, dev, label in (("sa", "dev:a", "Phone A"), ("sb", "dev:b", "Phone B")):
+    """Phone sa (dev:sa, owner stipulated and confirmed as p:ann) and phone sb (dev:sb, owner
+    only proposed as p:ben). Carl's number is linked to p:carl (confirmed); Dee's only proposed."""
+    for src, dev, label in (("sa", "dev:sa", "Phone A"), ("sb", "dev:sb", "Phone B")):
         c.execute(
             "INSERT INTO sources VALUES (?, 'synthetic', 'curated_report', 'logical', ?, ?,"
             " NULL, NULL, NULL, '2026-03-01T00:00:00Z')",
@@ -256,19 +256,19 @@ def _two_phones(c: sqlite3.Connection) -> None:
             (dev, src, label),
         )
     accounts = [
-        ("acct:sa:SMS:+12125550111", "sa", "dev:a", "SMS", "+12125550111"),
-        ("acct:sa:Phone:+12125550111", "sa", "dev:a", "Phone", "+12125550111"),
+        ("acct:sa:SMS:+12125550111", "sa", "dev:sa", "SMS", "+12125550111"),
+        ("acct:sa:Phone:+12125550111", "sa", "dev:sa", "Phone", "+12125550111"),
         ("acct:sa:SMS:+12125550122", "sa", None, "SMS", "+12125550122"),
         ("acct:sa:SMS:+12125550133", "sa", None, "SMS", "+12125550133"),
         ("acct:sa:SMS:+12125550144", "sa", None, "SMS", "+12125550144"),
         ("acct:sa:Phone:+12125550133", "sa", None, "Phone", "+12125550133"),
-        ("acct:sb:SMS:+12125550122", "sb", "dev:b", "SMS", "+12125550122"),
+        ("acct:sb:SMS:+12125550122", "sb", "dev:sb", "SMS", "+12125550122"),
     ]
     for aid, src, dev, app, ident in accounts:
         c.execute(
             "INSERT INTO accounts VALUES (?, ?, 'x', ?, ?, ?, NULL)", (aid, src, dev, app, ident)
         )
-    c.execute("INSERT INTO threads VALUES ('thr:a', 'sa', 'Chats!1', 'dev:a', 'SMS', NULL)")
+    c.execute("INSERT INTO threads VALUES ('thr:a', 'sa', 'Chats!1', 'dev:sa', 'SMS', NULL)")
     msgs = [
         ("msg:sa:Chats!1", "acct:sa:SMS:+12125550122", "2026-03-10T15:00:00Z", "meet at the lot?"),
         ("msg:sa:Chats!2", "acct:sa:SMS:+12125550111", "2026-03-10T15:05:00Z", "ok works"),
@@ -283,22 +283,23 @@ def _two_phones(c: sqlite3.Connection) -> None:
             (mid, mid.split(":")[-1], sender, ts, ts, body),
         )
     c.execute(
-        "INSERT INTO calls VALUES ('call:sa:Call Log!3', 'sa', 'Call Log!3', 'dev:a', 'Phone',"
+        "INSERT INTO calls VALUES ('call:sa:Call Log!3', 'sa', 'Call Log!3', 'dev:sa', 'Phone',"
         " 'acct:sa:Phone:+12125550133', 'acct:sa:Phone:+12125550111', 'incoming',"
         " '2026-03-10T15:06:00Z', 0, '3/10/2026 3:06:00 PM(UTC+0)', 61, 0)"
     )
     c.execute(
-        "INSERT INTO contacts VALUES ('contact:sa:Contacts!3#1', 'sa', 'Contacts!3', 'dev:a',"
+        "INSERT INTO contacts VALUES ('contact:sa:Contacts!3#1', 'sa', 'Contacts!3', 'dev:sa',"
         " 'Carl Shop', '+12125550133')"
     )
-    for pid in ("p:ann", "p:ben", "p:carl", "p:dee"):
-        c.execute("INSERT INTO persons VALUES (?, ?, 'expert:test')", (pid, pid))
+    for pid, name in (("p:ann", "Ann Lee"), ("p:ben", "Ben Ode"), ("p:carl", "Carl Ruiz"),
+                      ("p:dee", "Dee Fox")):  # fmt: skip
+        c.execute("INSERT INTO persons VALUES (?, ?, 'expert:test')", (pid, name))
     c.execute(
-        "INSERT INTO stipulations VALUES ('stip:device_owner:dev:a', 'device_owner', 'dev:a',"
+        "INSERT INTO stipulations VALUES ('stip:device_owner:dev:sa', 'device_owner', 'dev:sa',"
         " 'p:ann', 'Phone A belongs to Ann', 'confirmed', 'expert:test', '2026-03-01T00:00:00Z')"
     )
     c.execute(
-        "INSERT INTO stipulations VALUES ('stip:device_owner:dev:b', 'device_owner', 'dev:b',"
+        "INSERT INTO stipulations VALUES ('stip:device_owner:dev:sb', 'device_owner', 'dev:sb',"
         " 'p:ben', 'Phone B belongs to Ben', 'proposed', NULL, NULL)"
     )
     for lid, aid, pid, status in (
@@ -330,22 +331,31 @@ def test_case_items_name_owners_confirmed_people_and_the_phone(case_db) -> None:
     senders = [r["sender"] for r in (*it["context"][:1], it["target"], *it["context"][1:])]
     assert senders == [
         "SMS +12125550122",  # Ben's phone is only proposed as his: no person
-        "SMS +12125550111 (owner) [p:ann]",
-        "SMS +12125550133 [p:carl]",
+        "SMS +12125550111 (owner) [Ann Lee (the user of sa)]",
+        "SMS +12125550133 [Carl Ruiz]",
         "SMS +12125550144",  # Dee's link is only proposed
     ]
-    assert it["device_id"] == "dev:a" and it["target"]["text"] == "ok works"
-    assert it["assumption"] == "Baker's assumption text"
+    assert it["device_id"] == "dev:sa" and it["target"]["text"] == "ok works"
+    assert it["assumption"] == "Baker's assumption text"  # not a stored assumption: kept as is
+    from core.audit.assumptions import parse_params
+
+    params = parse_params("sender", {"quoted_text": "ok works", "person_ids": ["p:ann"]})
+    stored = SimpleNamespace(text="... sent by p:ann", template_id="sender", params=params)
+    named = case_item(case_db, stored, SimpleNamespace(record_id="msg:sa:Chats!2", text=""), WINDOW)
+    assert named["assumption"] == 'The message "ok works" was sent by Ann Lee (the user of sa)'
+    head = "Members seen in this chat's records: "
+    assert it["members_line"] == head + "; ".join(sorted(senders))
+    assert features.render(it).excerpt.startswith(it["members_line"] + features.LINE_SEP)
     assert it["target"]["local_time"] == "2026-03-10 11:05:00 EDT"
     call = item("call:sa:Call Log!3")
-    assert call["target"]["sender"] == "Phone +12125550133 [p:carl]"  # same number as the link
+    assert call["target"]["sender"] == "Phone +12125550133 [Carl Ruiz]"  # same number as the link
     assert call["target"]["text"].startswith("incoming call from +12125550133")
     contact = item("contact:sa:Contacts!3#1")
-    assert contact["context"] == [] and contact["device_id"] == "dev:a"
+    assert contact["context"] == [] and contact["device_id"] == "dev:sa"
     target = {"sender": "contact list", "local_time": "no time in source"}
     assert contact["target"] == {**target, "text": "Carl Shop +12125550133"}
     r = features.render(contact)
-    assert r.excerpt == "RECORD (a): no time in source | contact list | Carl Shop +12125550133"
+    assert r.excerpt == "RECORD (sa): no time in source | contact list | Carl Shop +12125550133"
     assert "baker_claim" not in it  # only meaning, role and event assumptions carry the claim
     case_db.execute("INSERT INTO govdocs VALUES ('doc1', 'sa', 'Affidavit', 'affidavit')")
     case_db.execute(

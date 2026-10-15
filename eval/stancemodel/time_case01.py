@@ -28,9 +28,8 @@ from pathlib import Path
 from typing import Any
 
 from core import pipeline
-from core.audit import invariants
-from core.audit.checks._common import CaseData, person_party
-from core.audit.context import build_context
+from core.audit import invariants, readable
+from core.audit.context import _members_text, build_context, chat_members
 from core.contracts import Assumption, EvidenceCandidate, GoldClaim, ModelRun, Stance, StanceLabel
 from eval import run_pipeline as rp
 from eval.probe import time_case
@@ -48,23 +47,15 @@ _ZONE_NOTE = re.compile(r"\s*\(UTC[+-]\d\d:\d\d\)$")
 
 
 class Parties:
-    """Who an account is, as far as Baker's own checks know it: the persons an expert-confirmed
-    device_owner stipulation or an expert-confirmed identity link ties its app and identifier to
-    (core.audit.checks._common.person_party). Proposed and rejected ones never count, so nothing
-    here merges an identity the expert has not confirmed. Read once, when the labeler is built."""
+    """Who and where a case's records are, as Baker's model input names them
+    (core.audit.readable): accounts by app and identifier, people by name, and only the people an
+    expert-confirmed device_owner stipulation or identity link ties to an account. Proposed and
+    rejected ones never count, so nothing here merges an identity the expert has not confirmed.
+    Read once, when the labeler is built."""
 
     def __init__(self, conn: sqlite3.Connection) -> None:
         self.conn = conn
-        self.data = CaseData(conn)
-        pids = {pid for _, _, pid, status in self.data.stipulations if status == "confirmed"}
-        pids |= {pid for _, _, pid in self.data.links}
-        self.keys = {pid: person_party(self.data, pid).keys for pid in sorted(pids)}
-
-    def persons(self, account_id: str) -> list[str]:
-        acc = self.data.accounts.get(account_id)
-        if acc is None:
-            return []
-        return [pid for pid, keys in self.keys.items() if acc.key in keys]
+        self.names = readable.case_names(conn)
 
     def account_of(self, record_id: str) -> str | None:
         """The account a context line's record came from: a message's sender, a call's caller."""
@@ -79,22 +70,27 @@ class Parties:
         return row[0] if row else None
 
     def sender(self, line: Any) -> str:
-        """'<app> <id>[ <shown as>][ (owner)][ [<person ids>]]'. "(owner)" marks the phone's own
-        account (accounts are kept per phone, so only the record's phone's own); a line with no
-        account keeps Baker's text ("unknown sender", "contact list")."""
+        """core.audit.readable's sender line, '<App> <id>[ <shown as>][ (owner)][ [<people>]]';
+        a line with no account keeps Baker's text ("unknown sender", "contact list")."""
         aid = self.account_of(line.record_id)
-        acc = self.data.accounts.get(aid) if aid else None
-        if acc is None:
+        if aid is None or aid not in self.names.account_names:
             return str(line.sender)
-        out = f"{acc.app} {acc.identifier}"
-        if line.shown_as:
-            out += f" {line.shown_as}"
-        if acc.is_owner:
-            out += " (owner)"
-        persons = self.persons(acc.id)
-        if persons:
-            out += f" [{', '.join(persons)}]"
-        return out
+        return self.names.sender(aid, line.shown_as)
+
+    def assumption(self, assumption: Any) -> str:
+        """What a model reads for the assumption: readable.assumption_text, or the stored text
+        for an object that is not a stored assumption."""
+        if getattr(assumption, "params", None) is None:
+            return str(assumption.text)
+        return readable.assumption_text(assumption, self.names)
+
+    def members(self, record_id: str, window: int) -> str | None:
+        """The members line Baker's stance context opens a chat record's excerpt with
+        (core.audit.context.render_for), bounded the same way; None for a call or a contact."""
+        member_ids = chat_members(self.conn, record_id)
+        if not member_ids:
+            return None
+        return _members_text(self.conn, self.names, record_id, window, member_ids)
 
     def device_of(self, record_id: str) -> str | None:
         """The phone a record was extracted from."""
@@ -125,9 +121,11 @@ def case_item(
 ) -> dict[str, Any]:
     """One (assumption, record in context) pair from the case database, as the model reads it.
 
-    The assumption is Baker's own text. The lines are Baker's context lines (core.audit.context):
-    sender as Parties.sender writes it, the phone's local time without its "(UTC-05:00)" note,
-    the body as stored. The record's text is the text a quote is checked against
+    The assumption and the senders read by name, as core.audit.readable prints them (agreed with
+    the "Custom model for Baker" thread on 2026-10-14). The lines are Baker's context lines
+    (core.audit.context), each with the phone's local time without its "(UTC-05:00)" note, the
+    body as stored, and a chat record's excerpt opens with Baker's members line (members_line).
+    The record's text is the text a quote is checked against
     (core.audit.invariants): a contact reads "Name +1...", a call "outgoing call from ... to ...
     at ..., 123s", an attachment its file name (after its parent message's own line when that
     message has a caption). device_id names the phone the record was extracted from. For the
@@ -160,7 +158,7 @@ def case_item(
         rows, t = [{"sender": "unknown sender", "local_time": "time unknown", "text": text}], 0
     item: dict[str, Any] = {
         "probe_id": cand.record_id,
-        "assumption": assumption.text,
+        "assumption": parties.assumption(assumption),
         "target": rows[t],
         "context": rows[:t] + rows[t + 1 :],
         "target_index": t,
@@ -168,6 +166,9 @@ def case_item(
     device = parties.device_of(cand.record_id)
     if device:
         item["device_id"] = device
+    members = parties.members(cand.record_id, window)
+    if members:
+        item["members_line"] = members
     if getattr(assumption, "template_id", None) in CLAIM_TEMPLATES:
         row = conn.execute(
             "SELECT text FROM claims WHERE id = ?", (assumption.claim_id,)
