@@ -16,8 +16,8 @@ protect that, and must be much faster.
 
 1. **No overlap.** `python -m eval.stancedata.contamination` passes on the exact training file
    the model was trained on, against the probe set, case01, case02 and the held-out set.
-2. **Signed probe set.** On the gated items (P001 to P088, signed and undisputed: 78 items, 8
-   gold contradicts after the 2026-10-13 relabel), scored by `eval.probe.run_probe
+2. **Signed probe set.** On the gated items (P001 to P105, signed and undisputed: 95 items, 11
+   gold contradicts after the 2026-10-15 relabel), scored by `eval.probe.run_probe
    --stance-only` or `eval.stancedata.score`:
    - valid output 100%;
    - supports recall at least 90% (a label whose quote is not verbatim in the record is dropped
@@ -25,8 +25,8 @@ protect that, and must be much faster.
    - contradicts precision at least 90% (the model must say "contradicts" at least once, so the
      precision exists);
    - zero contradicting records shown as "supports";
-   - zero items of the trap families guide v0.3 moved to complicates (time_mismatch,
-     sender_mismatch, speaker_mismatch, later_correction) shown as "supports".
+   - zero items of the traps guide v0.3 moved to complicates (time_mismatch, sender_mismatch,
+     speaker_mismatch, later_correction, undated_denial, told_frame) shown as "supports".
 3. **Held-out test split.** The same four bars on its gated items: at least 1,000 items with at
    least 420 gold contradicts, so zero contradicting records shown as "supports" bounds that
    error rate under about 0.7% (95% confidence). The held-out items count as gated only after
@@ -82,3 +82,8 @@ and claim proposal" thread picks.
   and 3. The probe minimum drops from 16 to 8 gold contradicts with the 8 relabeled items.
   Condition 5 added because the case01 shakedown showed a model can pass bars 2 and 3 and
   still mislabel what Baker really sends it.
+- 2026-10-15 (Arsh, "approved" in the "Custom model for Baker" thread; no candidate had a test
+  result): guide v0.3 also reads P049 (a denial that names no time, rule 23) and P066 to P069
+  ("X told Y that ...", rules 12 and 23) as complicates, so they were relabeled and their traps,
+  undated_denial and told_frame, joined the moved-trap bar. P089 to P105 were signed, 8 of them
+  contradicts under v0.3, so the probe minimum rises to 95 gated items and 11 gold contradicts.

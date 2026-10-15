@@ -26,13 +26,14 @@ skips the reviewer items):
 - valid output 100%.
 Supports precision is reported as expert load (items the expert dismisses), not gated. These
 criteria were set before the 8B and 14B were re-run on them (Wave 3, 2026-10-08). Also reported:
-items of the trap families stance guide v0.3 moved from contradicts to complicates (MOVED_TRAPS)
-shown as supports, which the own-model go bar holds at zero (eval/stancedata/GO_BAR.md).
+items of the traps stance guide v0.3 moved from contradicts to complicates (MOVED_TRAPS) shown as
+supports, which the own-model go bar holds at zero (eval/stancedata/GO_BAR.md).
 
 `expert_confirms(...)["reported"]` (grading audit, 2026-10-14; reported, never gated): every
 gold complicates or irrelevant item shown as supports, contradicts precision on non-meaning
 assumptions, 95% intervals with the item counts behind them, and each later repeat scored on its
-own. With 8 gated gold contradicts, one wrong "contradicts" already puts precision under 90%.
+own. With 11 gated gold contradicts, two wrong "contradicts" put precision under 90%, and so does
+one once three of the 11 are missed.
 """
 
 from __future__ import annotations
@@ -70,10 +71,13 @@ BARS = {
     "overreach_false_accepts": 0,
     "repeat_identical": 1.0,
 }
-# Trap families stance guide v0.3 moved from contradicts to complicates (Arsh, 2026-10-14).
+# Traps stance guide v0.3 moved from contradicts to complicates (Arsh): four trap families on
+# 2026-10-14, and on 2026-10-15 the probe set's undated denials (P049) and told frames (P066 to
+# P069, P092 to P094), which the generators do not write (guide rules 12 and 23).
 MOVED_TRAPS = frozenset(
-    {"time_mismatch", "sender_mismatch", "speaker_mismatch", "later_correction"}
-)
+    {"time_mismatch", "sender_mismatch", "speaker_mismatch", "later_correction",
+     "undated_denial", "told_frame"}
+)  # fmt: skip
 
 
 def load_items(path: Path) -> list[dict[str, Any]]:
