@@ -124,3 +124,22 @@ and the header's version line v1.1 -> v1.2.
 Code that follows once this is signed (not frozen): core/audit/review.py fills {assumption} with
 readable.assumption_text(assumption, case_names(conn)), and ReviewContext in
 core/audit/context.py passes the same CaseNames to render_for, as the stance labeler does.
+
+## 2026-10-15 claude/project-thread-hz9jqt: say on the message that it was forwarded
+File: core/schema.sql (and the Message model in core/contracts.py, if it mirrors the columns)
+Why: a forwarded message is stored as the forwarder's message, and nothing on the record says it
+was forwarded or who first wrote it. PR #73 lists forwarded messages in coverage (attention), but
+the evidence screen, the stance labeler and the report still read the text as the forwarder's own
+words. With these columns the importers can mark it, the screen can show "Forwarded", and a claim
+that someone wrote the words cannot rest on it. Cellebrite reports carry the mark (UFDR `Labels`
+or a MessageLabel/QuotedMessageData "Forwarded"; the Excel report's Label column), and sometimes
+the original (UFDR EmbeddedInstantMessage).
+Diff:
+```
+     deleted_flag    INTEGER CHECK (deleted_flag IN (0, 1)),  -- NULL = source did not say
+-    bookmarked      INTEGER CHECK (bookmarked IN (0, 1))     -- examiner tag, for the selection audit
++    bookmarked      INTEGER CHECK (bookmarked IN (0, 1)),    -- examiner tag, for the selection audit
++    forwarded       INTEGER CHECK (forwarded IN (0, 1)),     -- NULL = source did not say
++    forwarded_from_raw TEXT          -- the original author as the source wrote it, when it says
+ );
+```

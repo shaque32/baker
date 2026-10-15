@@ -232,7 +232,7 @@ class Tally:
         self.calls: dict[str, CallRec] = {}
         self.contacts: dict[str, ContactRec] = {}
         self.user_accounts: dict[str, str | None] = {}  # locator -> expected identifier
-        self.owner_ids: set[str] = set()  # UserAccount usernames: the phone's own accounts
+        self.owner_ids: set[str] = set()  # UserAccount identifiers: the phone's own accounts
         self.ids: Counter[str] = Counter()  # model ids of messages and calls
         self.repeats: set[str] = set()  # locators whose model id an earlier record had
         self._capture: tuple[_Frame, str, list[str]] | None = None
@@ -396,11 +396,10 @@ class Tally:
             return
         if f.top and f.type == "UserAccount":
             u = _text(f.fields.get("username"))
-            if u is not None:
-                self.owner_ids.add(u)
             ident = u or next(iter(f.user_ids), None) or next(iter(f.entries), None)
             if ident is not None:  # one with no identifier is skipped, and listed
                 self.user_accounts[f.locator] = ident
+                self.owner_ids.add(ident)  # the importer marks this identifier as the owner's
         elif (f.top and f.type in TOP_MESSAGE_TYPES) or not f.top:
             self._message(f)
         elif f.type == "Call":

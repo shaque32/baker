@@ -645,3 +645,37 @@ def test_an_account_or_contact_never_takes_a_picture_link_as_an_identifier(tmp_p
     assert conn.execute("SELECT name, identifier FROM contacts").fetchall() == [
         ("Jo", "+15550100002")
     ]
+
+
+def test_a_forwarded_message_is_listed_and_never_shown_as_quietly_authored(tmp_path):
+    def labels(*vals: str) -> str:
+        inner = "".join(f'<value type="Label"><![CDATA[{v}]]></value>' for v in vals)
+        return f'<multiField name="Labels" type="Label">{inner}</multiField>'
+
+    embedded = model("InstantMessage", field("Body", "SYNTHETIC original words"))
+    base = [field("Source", "WhatsApp"), one("From", party(*OWNER)),
+            ts_field("TimeStamp", "2026-03-05T21:31:00.000-05:00")]  # fmt: skip
+    by_labels = model("InstantMessage", *base, field("Body", "SYNTHETIC passed on"),
+                      labels("Forwarded", "Edited"))  # fmt: skip
+    by_extra = model(
+        "InstantMessage",
+        *base,
+        many("MessageExtraData",
+             [model("MessageLabel", field("Label", "Forwarded", "Label"))],
+             "InstantMessageExtraData"),
+        many("EmbeddedInstantMessage", [embedded], "InstantMessage"),
+    )  # fmt: skip
+    plain = model("InstantMessage", *base, field("Body", "SYNTHETIC own words"), labels("Edited"))
+    path = write_package(
+        tmp_path / "p.ufdr", report_xml({"Chat": [_chat("c1", by_labels, by_extra, plain)]})
+    )
+    conn, s = _import(path)
+    item = next(i for i in s.items if i.code == "forwarded")
+    assert item.level == "attention"
+    assert item.locators == ("Chat[1]/Messages[1]", "Chat[1]/Messages[2]")
+    assert "does not record who first wrote" in item.plain
+    emb = next(i for i in s.items if i.code == "embedded_message_not_imported")
+    assert emb.locators == ("Chat[1]/Messages[2]",)
+    # the embedded original is not imported as the forwarder's words
+    bodies = [b for (b,) in conn.execute("SELECT body FROM messages ORDER BY locator")]
+    assert "SYNTHETIC original words" not in bodies

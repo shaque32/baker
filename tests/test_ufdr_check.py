@@ -561,3 +561,21 @@ def test_it_catches_a_wrong_account_identifier(tmp_path, monkeypatch):
     )
     d = ufdr_check.run(p).shareable
     assert _by(d, "phone's own accounts", "identifier")["differ"] == 1
+
+
+def test_direction_is_checked_for_an_owner_known_only_by_a_user_id(tmp_path, monkeypatch):
+    acct = model(
+        "UserAccount",
+        field("Source", "WhatsApp"),
+        many("Entries", [model("UserID", field("Value", OWNER[0]))], "ContactEntry"),
+    )
+    # neither party says IsPhoneOwner and no Direction is stated: only the account decides it
+    msg = _msg("hi", T, (OWNER[0], None, False), (JO,))
+    chat = model("Chat", field("Source", "WhatsApp"), field("Id", "c1"),
+                 many("Messages", [msg], "InstantMessage"))  # fmt: skip
+    p = write_package(tmp_path / "p.ufdr", report_xml({"Chat": [chat], "UserAccount": [acct]}))
+    d = ufdr_check.run(p).shareable
+    c = _by(d, "messages", "direction")
+    assert (c["compared"], c["differ"]) == (1, 0)
+    _broken(monkeypatch, "UPDATE messages SET direction = 'incoming'")
+    assert _by(ufdr_check.run(p).shareable, "messages", "direction")["differ"] == 1

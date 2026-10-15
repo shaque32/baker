@@ -142,7 +142,8 @@ read and where, tagged files, package files and how many were hashed, model coun
 the record states seen. Codes added: `format_unverified`, `carved`,
 `decoding_confidence_not_high`, `attachment_file_not_in_package`, `attachment_hash_differs`,
 `attachment_without_name`, `duration_unread`, `no_time`, `partial_extraction`,
-`rows_skipped_same_id_as_an_earlier_record` (attention);
+`rows_skipped_same_id_as_an_earlier_record`, `forwarded`,
+`embedded_message_not_imported` (attention);
 `several_extractions`, `unknown_namespace`, `package_files`, `tagged_files`, `record_states`,
 `attachment_files_hashed`, `attachment_files_encrypted_not_hashed`, `chats_without_messages`
 (info).
@@ -166,10 +167,12 @@ every record was compared by hand with report.xml. Neither is in the repo.
 | `test.ufdr` from FlorianRudolf/autopsy-udfr (LGPL-2.1, commit 6f8f66d, SHA-256 `43d5eedc...c812`) | Hand-made and anonymised by that project's author from a report version 5.3.1.0 package (German case fields) | 4 messages, 2 contacts, 1 attachment, an Email and 2 InstalledApplication (not imported) | An Attachment can name its file only through `file_id`, a `taggedFiles` entry and its `Local Path` (Windows separators). Baker did not follow it, so the file was never hashed. Fixed. |
 | IPED's UFED model fixtures (GPL-3, sepinf-inc/IPED commit 129ce8f) wrapped in a minimal report.xml shell | IPED's tests, one described as a synthetic sample of the PA 10.10 message model | 13 messages, 5 attachments, 2 UserAccounts | A UserAccount whose first entry is a `ProfilePicture` got the picture's link as the phone owner's account identifier. Fixed. |
 
-Not read yet, seen in these samples, and listed in coverage as fields not read: a quoted or
-forwarded message's content (`EmbeddedInstantMessage`, `MessageExtraData`) and message labels
-such as `Forwarded` (`Labels`). A forwarded message therefore shows as sent by the forwarder
-with no text. A system message ("You joined the group") is imported as a message from a party
+Forwarded messages: a message marked `Forwarded` (in its `Labels`, or on a `MessageLabel` or
+`QuotedMessageData` in its `MessageExtraData`) is listed for review (`forwarded`, attention): it
+is stored as the forwarder's message, and no canonical column can say it was forwarded or who
+first wrote it (proposed in PROPOSED_CHANGES.md). A message carrying a forwarded or quoted
+original (`EmbeddedInstantMessage`) is listed too (`embedded_message_not_imported`); the
+original's text and attachments are not imported, and never as the forwarder's words. A system message ("You joined the group") is imported as a message from a party
 named "System message". These samples are not Cellebrite output, so they move nothing to
 verified.
 

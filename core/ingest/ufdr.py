@@ -187,6 +187,7 @@ META_KEYS: dict[str, tuple[str, ...]] = {
 _TIMESPAN_RE = re.compile(r"^(?:(\d+)\.)?(\d{1,2}):(\d{2}):(\d{2})(?:\.\d+)?$")
 _TRUE = {"true", "1", "yes"}
 PICTURE_TYPE_RE = re.compile(r"picture|photo", re.IGNORECASE)
+FORWARDED_LABELS = {"forwarded", "forward", "autoforwarded"}
 
 
 def _key(name: str) -> str:
@@ -1078,6 +1079,14 @@ class _RecordMapper:
         if conf is not None and conf.strip().lower() != "high":
             self.cov.counters["records_decoding_confidence_not_high"] += 1
             self._flag(table, "decoding_confidence_not_high", locator)
+        if _forwarded(m):
+            # No canonical column says a message was forwarded or who wrote it first, so the
+            # message stays the forwarder's; the expert is told which ones before relying on them.
+            self.cov.counters["messages_marked_forwarded"] += 1
+            self._flag(table, "forwarded", locator)
+        if m.models("embeddedinstantmessage"):
+            self.cov.counters["messages_with_embedded_message_not_imported"] += 1
+            self._flag(table, "embedded_message_not_imported", locator)
         return state
 
     def _time(self, table: str, m: _Model, locator: str, names: tuple[str, ...]) -> str | None:
@@ -1284,6 +1293,15 @@ class _RecordMapper:
         aid = self.w.account(app, Party(ident, m.text("name"), True, None), el.locator, "")
         self.w.owner_idents.add((_slug(app), ident))
         self.w.mark_owner(aid)
+
+
+def _forwarded(m: _Model) -> bool:
+    """The package marks the message forwarded: a Forwarded label in its Labels, or on a model
+    in its MessageExtraData (MessageLabel, QuotedMessageData), as seen in public samples."""
+    labels = list(m.multi_values.get("labels", []))
+    labels += [x.text("label") or "" for x in m.models("messageextradata")]
+    labels += [v for x in m.models("messageextradata") for v in x.multi_values.get("labels", [])]
+    return any(_key(v) in FORWARDED_LABELS for v in labels)
 
 
 def _is_picture(m: _Model) -> bool:

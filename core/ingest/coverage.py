@@ -197,6 +197,17 @@ _FLAG_WORDS: dict[str, tuple[Level, str]] = {
         "attention",
         "{n} {have} an attachment with neither a file name nor a file, so it was not recorded.",
     ),
+    "forwarded": (
+        "attention",
+        "{n} {be} marked as forwarded in the {container}. Baker shows {them} as sent by whoever "
+        "forwarded {them} and does not record who first wrote {them}; check each one in {tool} "
+        "before saying who wrote {them}.",
+    ),
+    "embedded_message_not_imported": (
+        "attention",
+        "{n} {have} a forwarded or quoted message inside {them} whose text and attachments Baker "
+        "did not import; see {them} in {tool}.",
+    ),
     "duration_unread": ("attention", "{n} {have} a call duration Baker could not read."),
     "no_time": ("attention", "{n} {have} no time in the {container}, so no time was set."),
 }
