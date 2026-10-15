@@ -364,3 +364,39 @@ def test_the_hidden_case_bar_counts_false_contradicted_and_keeps_aggregates_only
                  "false_contradicted": 2}  # fmt: skip
     assert not passes(n)
     assert passes({**n, "false_contradicted": 0, "verdict_accuracy": 0.8})
+
+
+def test_a_captioned_attachment_follows_its_message_and_a_bare_one_replaces_it(case_db) -> None:
+    from types import SimpleNamespace
+
+    from eval.stancemodel.time_case01 import WINDOW, case_item
+
+    _two_phones(case_db)
+    case_db.execute(
+        "INSERT INTO messages (id, source_id, locator, thread_id, sender_account_id, direction,"
+        " ts_utc, ts_offset_min, ts_raw, body) VALUES ('msg:sa:Chats!5', 'sa', 'Chats!5',"
+        " 'thr:a', 'acct:sa:SMS:+12125550111', 'unknown', '2026-03-10T15:10:00Z', 0,"
+        " '2026-03-10T15:10:00Z', '')"
+    )
+    for aid, mid, name in (
+        ("att:sa:Att!1", "msg:sa:Chats!3", "IMG_0042.jpg"),
+        ("att:sa:Att!2", "msg:sa:Chats!5", "IMG_0043.jpg"),
+    ):
+        case_db.execute(
+            "INSERT INTO attachments VALUES (?, 'sa', ?, ?, ?, 'image/jpeg', NULL)",
+            (aid, aid.split(":")[-1], mid, name),
+        )
+    asm = SimpleNamespace(text="Baker's assumption text")
+
+    def lines(rid: str) -> list[tuple[str, str]]:
+        it = case_item(case_db, asm, SimpleNamespace(record_id=rid, text=""), WINDOW)
+        rows = [*it["context"][: it["target_index"]], it["target"]]
+        rows += it["context"][it["target_index"] :]
+        return [(r["text"], "*" if r is it["target"] else "") for r in rows]
+
+    captioned = lines("att:sa:Att!1")
+    i = captioned.index(("IMG_0042.jpg", "*"))
+    assert captioned[i - 1] == ("im there", "")  # the caption, as its own line, just before
+    assert [t for t, _ in captioned].count("im there") == 1
+    bare = lines("att:sa:Att!2")
+    assert bare[-1] == ("IMG_0043.jpg", "*") and ("", "") not in bare

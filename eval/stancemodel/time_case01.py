@@ -129,9 +129,11 @@ def case_item(
     sender as Parties.sender writes it, the phone's local time without its "(UTC-05:00)" note,
     the body as stored. The record's text is the text a quote is checked against
     (core.audit.invariants): a contact reads "Name +1...", a call "outgoing call from ... to ...
-    at ..., 123s". device_id names the phone the record was extracted from. For the meaning, role
-    and event templates, whose text points at "the claim", baker_claim carries the claim's text
-    (Arsh's decision of 2026-10-14; the 14B prompt gets the same once its change is signed).
+    at ..., 123s", an attachment its file name (after its parent message's own line when that
+    message has a caption). device_id names the phone the record was extracted from. For the
+    meaning, role and event templates, whose text points at "the claim", baker_claim carries the
+    claim's text (Arsh's decision of 2026-10-14; the 14B prompt gets the same once its change is
+    signed).
     The Baker-form training items (eval/train, eval/heldout) are written to match this exactly;
     tell the "Custom model for Baker" thread before changing it or WINDOW."""
     parties = parties or Parties(conn)
@@ -148,6 +150,11 @@ def case_item(
     targets = [i for i, ln in enumerate(lines) if ln.is_target]
     if targets:
         t = targets[0]
+        if cand.record_id.startswith("att:") and (lines[t].body or "").strip():
+            # A captioned attachment: the parent message reads as its own line, then the
+            # attachment, marked, with the same sender and time. Caption-less: one line.
+            rows.insert(t, dict(rows[t]))
+            t += 1
         rows[t]["text"] = text
     else:
         rows, t = [{"sender": "unknown sender", "local_time": "time unknown", "text": text}], 0
