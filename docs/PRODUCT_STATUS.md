@@ -269,11 +269,11 @@ Codex fixes, with CI pending on the new push.
 
 **Not pilot-ready for real case data yet.** The pass/fail gates are in
 [`docs/PILOT_GATES.md`](PILOT_GATES.md): 0 of 12 met on main as of 2026-10-15 (gate 12, the
-buyer documents, passes when PR #81 merges). Ready: the demo case, the review screen, encryption,
+buyer documents, passes when PR #82 merges). Ready: the demo case, the review screen, encryption,
 the Mac and Windows installers, and a pilot kit (data handling, limitations, agreement outline,
 feedback form, demo script, go/kill scorecard) in `/mnt/project-files/baker/pilot/`.
 
-Documents for pilots and buyers (PR #81, not merged): onboarding kit
+Documents for pilots and buyers (PR #82, not merged): onboarding kit
 (`docs/PILOT_ONBOARDING.md`), methods note an examiner can cite (`docs/METHODS.md`, no accuracy
 figures), and security and privacy pack with a data-flow diagram (`docs/SECURITY_PRIVACY.md`).
 Nobody outside the project has tried the onboarding kit yet (gate 11).
