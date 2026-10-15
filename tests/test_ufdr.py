@@ -560,3 +560,88 @@ def test_an_encrypted_case_imports_a_ufdr_through_decryption(case01, tmp_path):
             continue
         assert sorted(map(repr, conn.execute(sql))) == sorted(map(repr, plain.execute(sql))), name
     conn.close()
+
+
+# ---------------------------------------------------------------- shapes from third-party samples
+# Both shapes below were found by running ufdr-check on public third-party UFDR samples
+# (docs/ingest/ufdr.md, "Checked against public samples"). The samples are not in the repo.
+
+
+BACKSLASH_PATH = "files\\Image\\goat.jpg"  # as Physical Analyzer writes it on Windows
+
+
+def _tagged_file(fid: str, local_path: str) -> str:
+    return (
+        f'<file fs="Phone" path="/data/goat.jpg" id="{fid}">'
+        '<metadata section="File">'
+        f'<item name="Local Path"><![CDATA[{local_path}]]></item>'
+        '<item name="SHA256"><![CDATA[]]></item>'
+        "</metadata></file>"
+    )
+
+
+def test_an_attachment_that_names_its_file_only_through_file_id_is_hashed(tmp_path):
+    att = model(
+        "Attachment",
+        field("Filename", "goat.jpg"),
+        field("ContentType", "image/jpeg"),
+        file_id="tf-1",
+    )
+    msg = model(
+        "InstantMessage",
+        field("Source", "WhatsApp"),
+        one("From", party(*JO)),
+        field("Body", "look"),
+        ts_field("TimeStamp", "2026-03-05T21:31:00.000-05:00"),
+        many("Attachments", [att], "Attachment"),
+    )
+    body = b"SYNTHETIC goat bytes"
+    xml = report_xml(
+        {"Chat": [_chat("c1", msg)]},
+        # taggedFiles after the records: the link must not depend on document order
+        extra=f"<taggedFiles>{_tagged_file('tf-1', BACKSLASH_PATH)}</taggedFiles>",
+    )
+    path = write_package(tmp_path / "p.ufdr", xml, {"files/Image/goat.jpg": body})
+    conn, s = _import(path)
+    rows = conn.execute("SELECT file_name, sha256 FROM attachments").fetchall()
+    assert rows == [("goat.jpg", hashlib.sha256(body).hexdigest())]
+    assert "attachment_file_not_in_package" not in _codes(s)
+
+
+def test_an_account_or_contact_never_takes_a_picture_link_as_an_identifier(tmp_path):
+    pic = "https://cdn.example.invalid/SYNTHETIC/pic.jpg"
+    acct = model(
+        "UserAccount",
+        field("Source", "Instagram"),
+        field("Name", "Sam"),
+        many(
+            "Entries",
+            [
+                model("ProfilePicture", field("Value", pic)),
+                model("UserID", field("Value", "1212121212")),
+            ],
+            "ContactEntry",
+        ),
+    )
+    contact = model(
+        "Contact",
+        field("Name", "Jo"),
+        many(
+            "Entries",
+            [
+                model("ContactPhoto", field("Value", pic)),
+                model("PhoneNumber", field("Value", "+15550100002")),
+            ],
+            "ContactEntry",
+        ),
+    )
+    path = write_package(
+        tmp_path / "p.ufdr", report_xml({"UserAccount": [acct], "Contact": [contact]})
+    )
+    conn, _s = _import(path)
+    assert conn.execute(
+        "SELECT app, identifier FROM accounts WHERE locator = 'UserAccount[1]'"
+    ).fetchall() == [("Instagram", "1212121212")]
+    assert conn.execute("SELECT name, identifier FROM contacts").fetchall() == [
+        ("Jo", "+15550100002")
+    ]

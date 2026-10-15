@@ -512,3 +512,52 @@ def test_locators_in_the_shareable_report_are_sanitized(tmp_path):
     text = json.dumps(r.shareable) + ufdr_check.shareable_markdown(r.shareable)
     assert CANARY not in text
     assert ufdr_check.safe_locator(f"Chat[1]/Notes {CANARY}[1]") == "Chat[1]/(shape Aaaaa AAAA)[1]"
+
+
+def _third_party_shapes() -> str:
+    """The two shapes found in public third-party samples: an attachment that names its file
+    only through file_id (taggedFiles after the records), and an account whose first entry is
+    a picture link."""
+    att = model("Attachment", field("Filename", "goat.jpg"), file_id="tf-1")
+    acct = model(
+        "UserAccount",
+        field("Source", "Instagram"),
+        many(
+            "Entries",
+            [
+                model("ProfilePicture", field("Value", "https://cdn.example.invalid/p.jpg")),
+                model("UserID", field("Value", "1212121212")),
+            ],
+            "ContactEntry",
+        ),
+    )
+    tagged = (
+        '<taggedFiles><file id="tf-1"><metadata section="File">'
+        '<item name="Local Path"><![CDATA[files\\Image\\goat.jpg]]></item>'
+        "</metadata></file></taggedFiles>"
+    )
+    msg = _msg("look", T, JO, (OWNER,), many("Attachments", [att], "Attachment"))
+    chat = model("Chat", field("Source", "WhatsApp"), field("Id", "c1"),
+                 many("Messages", [msg], "InstantMessage"))  # fmt: skip
+    return report_xml({"Chat": [chat], "UserAccount": [acct]}, extra=tagged)
+
+
+def test_file_id_attachments_and_picture_entries_check_clean(tmp_path):
+    p = write_package(tmp_path / "p.ufdr", _third_party_shapes(), {"files/Image/goat.jpg": b"x"})
+    d = ufdr_check.run(p).shareable
+    assert d["differences"] == 0
+    files = _by(d, "messages", "attachment_files_hashed")
+    assert (files["compared"], files["differ"]) == (1, 0)
+    ident = _by(d, "phone's own accounts", "identifier")
+    assert (ident["compared"], ident["differ"]) == (1, 0)
+
+
+def test_it_catches_a_wrong_account_identifier(tmp_path, monkeypatch):
+    p = write_package(tmp_path / "p.ufdr", _third_party_shapes(), {"files/Image/goat.jpg": b"x"})
+    _broken(
+        monkeypatch,
+        "UPDATE accounts SET identifier = 'https://cdn.example.invalid/p.jpg'"
+        " WHERE locator = 'UserAccount[1]'",
+    )
+    d = ufdr_check.run(p).shareable
+    assert _by(d, "phone's own accounts", "identifier")["differ"] == 1
