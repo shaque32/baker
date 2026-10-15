@@ -9,8 +9,8 @@
 ;   1. already installed at %LOCALAPPDATA%\Baker\models\<file> (a reinstall, or the speed test)
 ;   2. next to Setup.exe (offline install: copy both files from a USB drive)
 ;   3. downloaded from Hugging Face, only if the person ticks that box (or /MERGETASKS=downloadmodel)
-; Every copy is checked against the pinned SHA-256 before Baker is told about it. Baker itself
-; never connects to the internet; this download is the only network use, and it is optional.
+; Every copy is checked against the pinned SHA-256 before Baker is told about it. Baker is
+; offline by default; the only other network use is a case the expert opts in to cloud AI.
 
 #ifndef Stage
   #define Stage "..\..\build\stage"
@@ -27,7 +27,7 @@ AppId={{6F0B3C1E-6A57-4D5B-9B9E-3C1A0B7E2D41}
 AppName=Baker
 AppVersion={#AppVersion}
 AppPublisher=Baker
-AppComments=Audits government claims about phone evidence. Runs offline.
+AppComments=Audits government claims about phone evidence. Offline by default; cloud AI only for a case you opt in.
 DefaultDirName={localappdata}\Programs\Baker
 DefaultGroupName=Baker
 DisableProgramGroupPage=yes

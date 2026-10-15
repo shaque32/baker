@@ -36,7 +36,8 @@ with the reason and the exact diff you want, then finish the rest of your task w
   Under rules 0.2.0 every SUPPORTED verdict is confirmed.
   ai_reviewed never displays or exports as confirmed, and a human decision always overrides it.
 - The AI reviewer only reviews evidence items. It never confirms identity links or claims.
-- The AI reviewer runs on the local model in core/. Cloud models may be used only in eval/, as benchmarks.
+- The AI reviewer runs on the local model in core/. Only the stance labeler may use a cloud model
+  in core/. The AI reviewer, claim proposal and assumption filling stay local.
 - An inference never becomes observed because another component consumed it.
 - Any quote attributed to evidence must be verified verbatim by code before it is stored.
   Unverified quotes are discarded, never stored.
@@ -48,7 +49,17 @@ with the reason and the exact diff you want, then finish the rest of your task w
 ## Data safety
 - Never use real case data. Synthetic data only, generated under `eval/`.
 - Never put real discovery material in the repo, in prompts, in tests or in fixtures.
-- No network calls anywhere in `core/`. No telemetry. Models load from local paths.
+- No network calls in `core/` except the stance labeler's cloud call in `core/llm/cloud.py`, to
+  the Anthropic API with the expert's own key. No telemetry. Local models load from local paths.
+- Baker is local by default. A case uses cloud AI only when the expert opts in at case setup,
+  attesting that the case's protective order allows it, and a key is set up. A case marked as
+  possibly containing CSAM never uses cloud.
+- A case's stance labels never mix models. If the cloud model fails mid-run, the audit pauses and
+  the expert chooses to retry the cloud model or run the whole case again locally.
+- Only the filled-in stance prompt is sent (assumption, record, nearby messages, claim, and a
+  group chat's member list), never input files or the case database. Every request is written
+  to the case's audit log, with its time, before it is sent. The report says which model
+  labelled the case.
 - Inputs are opened read-only and SHA-256 hashed on import.
 - case02 is the hidden held-out case. Never read `eval/synthetic/case02*`, `eval/gold/case02/`,
   `eval/out/case02/` or any test whose name contains `case02`, unless your task names case02.
