@@ -70,15 +70,16 @@ Template:
   `core/audit/quotes.py` and the small model's generated training items, so correct contact
   quotes are no longer discarded. The synthetic case01 affidavit PDF embeds DejaVu Sans for
   lines Helvetica can't draw ("Катя" read as boxes).
-- Where: PR #76 (from the "Audit our model scoring" thread), not merged. Includes the C17 font
-  fix.
-- Verified (as reported by the owning thread): 2 new regression tests; suite and lint pass except
-  the known #65 test; `make eval` same as main (case01 1.00, 0 false supported; case02 aggregate
-  0.90), hostile run keeps 15 more labels with 0 supported. Opus replay: case01 85% to 95%,
-  sheet-free 60% to 70%.
-- Open: calls still render differently for the model and the check (no case01 verdict changes);
-  signed guide rule 28 still writes contacts without the colon (needs Arsh); small-model run 5
-  trained on colon-less contact rows (train/product mismatch).
+- Where: main once PR #76 merges (branch `claude/project-thread-01fybj`, from the "Audit our
+  model scoring" thread). Includes the C17 font fix.
+- Verified: 2 new regression tests (each fails without the fix); `make check` green on the
+  branch (1885 passed, lint clean); `make eval` same as main (case01 1.00, 0 false supported;
+  case02 aggregate 0.90), hostile run keeps 15 more labels with 0 supported. Opus replay of
+  stored answers: case01 85% to 95%, sheet-free 60% to 70%, 0 false supported.
+- Open: calls still render differently for the model and the check (PRODUCT_STATUS section 9;
+  no case01 verdict changes in the replay); the signed guide (rule 28 and the bk_contact_row
+  examples) still writes contacts without the colon, proposed for Arsh in PROPOSED_CHANGES.md;
+  small-model run 5 trained on colon-less contact rows (train/product mismatch).
 - Affects: capabilities (more correct evidence kept, for Opus and the 14B). No privacy, network,
   performance or customer-claim change.
 

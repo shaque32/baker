@@ -221,14 +221,17 @@ Grok Product review PR, never merged.
 
 ## 9. Known limitations
 
-1. **Quote-check bug, issue #69 (open, on main).** The labeler sees a contact as
-   `Name: +number` (`core/enrich/records.py:81`), but the check renders it `Name +number`
-   (`core/audit/invariants.py:96`), so a correct quote is dropped as unverified. Calls differ the
-   same way. Hits the 14B and Opus alike. It drops labels of every stance, so a dropped
-   "contradicts" or "complicates" could let a claim with other accepted support go SUPPORTED.
-   No false supported appeared in the recorded runs and replays, but the code does not rule it out.
-   The model-free gate cannot catch it. Offline replay: Opus case01 85% becomes 95% once fixed.
-   Fix for contacts in PR #76 (not merged); calls still differ.
+1. **Quote check reads calls differently from the model (issue #69, contacts fixed by #76).**
+   A contact now reads `Name: +number` for the labeler and the check alike
+   (`core/enrich/records.py:54`, `contact_text`). A call still does not: the labeler sees
+   `outgoing Phone call from X to Y, duration N s` (`core/enrich/records.py:39`), the check
+   `outgoing call from X to Y at <time>, Ns` (`core/audit/invariants.py:109`), so a quote copied
+   from a call line can be dropped as unverified. It drops labels of every stance, so a dropped
+   "contradicts" or "complicates" could let a claim with other accepted support go SUPPORTED. No
+   false supported appeared in the recorded runs and replays, but the code does not rule it out,
+   and the model-free gate cannot catch it. Offline replay of Opus's stored answers: the contact
+   fix takes case01 from 85% to 95%; reading calls as shown too keeps 9 more labels on the
+   sheet-free run and changes no case01 verdict.
 2. **Opus's wrong "contradicts" on told-frame and undated denials** (section 7). Matters for
    #68: it would make wrong CONTRADICTED verdicts until a signed prompt fix lands.
 3. **Real-data formats unverified.** UFDR and AXIOM readers were built from documentation and
@@ -272,7 +275,8 @@ the Mac and Windows installers, and a pilot kit (data handling, limitations, agr
 feedback form, demo script, go/kill scorecard) in `/mnt/project-files/baker/pilot/`.
 
 Before a first real case:
-1. Fix issue #69 (quote check), then time a full local case01 on the Mac for a real runtime.
+1. Time a full local case01 on the Mac for a real runtime (the #69 contact fix is in; calls still
+   differ, section 9).
 2. Check a real UFDR and AXIOM export with `baker ufdr-check` (needs a pilot expert's closed case).
 3. Finish #68 (opt-in cloud, chosen by Arsh 2026-10-15 07:10Z): a signed told-frame prompt fix
    that passes on new items, Arsh's "approved" on its CLAUDE.md wording, then merge.
