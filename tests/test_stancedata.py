@@ -10,7 +10,9 @@ from pathlib import Path
 import pytest
 
 from core.contracts import AssumptionKind as K
+from core.contracts import ClaimType, GoldClaim, Prediction, SupportedBasis, Verdict
 from core.llm.runtime import GenerationParams, ModelOutput
+from eval import run_eval
 from eval.probe import prompts, run_probe
 from eval.probe.from_draft import convert
 from eval.stancedata import bakerform as bf
@@ -115,8 +117,9 @@ def reference_index() -> contamination.Index:
 
 def test_reference_data_covers_probe_case01_and_case02(reference_index) -> None:
     sources = [t.source for t in reference_index.texts]
-    assert sum(s.startswith("probe(signed)") and s.endswith("assumption") for s in sources) == 88
-    assert sum(s.startswith("probe(draft)") and s.endswith("assumption") for s in sources) == 97
+    assert sum(s.startswith("probe(signed)") and s.endswith("assumption") for s in sources) == 105
+    drafts = len(read_jsonl(ROOT / "eval" / "probe_draft" / "probe_draft.jsonl"))
+    assert sum(s.startswith("probe(draft)") and s.endswith("assumption") for s in sources) == drafts
     assert sum(s.startswith("case01 msg:") for s in sources) > 1500
     assert sum(s.startswith("case02 msg:") for s in sources) > 1000
     assert any(s.startswith("case01 gold C20") for s in sources)
@@ -237,10 +240,15 @@ def test_moved_traps_are_the_families_guide_v0_3_made_complicates() -> None:
     for f in FAMILIES:
         if f.trap in moved:
             moved[f.trap].add(f.stance.value)
-    assert set(moved) == run_probe.MOVED_TRAPS
+    # The four trap families v0.3 moved, and two probe-only traps (2026-10-15) that the
+    # generators never write: undated denials and told frames (guide rules 12 and 23).
+    assert set(moved) == set(TRAP_ORDER[:4])
+    assert run_probe.MOVED_TRAPS == set(TRAP_ORDER)
     assert all(stances == {"complicates"} for stances in moved.values()), moved
     probe = [it for it in read_jsonl(PROBE) if it["trap"] in run_probe.MOVED_TRAPS]
-    assert {it["probe_id"] for it in probe} == {*(f"P0{n}" for n in range(38, 45)), "P071"}
+    assert {it["probe_id"] for it in probe} == {
+        *(f"P0{n}" for n in (*range(38, 45), 49, *range(66, 70), 71, 92, 93, 94))
+    }
     assert {it["gold_stance"] for it in probe} == {"complicates"}
     one = probe[0]  # P038, a signed later correction
     pred = {"stance": "supports", "quote": one["proposed_quote"]}
@@ -351,7 +359,7 @@ def test_go_bar_decision() -> None:
         ({"heldout": bad_heldout}, "contradicts_shown_as_supports"),
         ({"probe": moved_probe}, "probe: moved_traps_shown_as_supports is 1"),
         ({"heldout": unscored}, "heldout: moved_traps_shown_as_supports is None"),
-        ({"probe": few_contradicts}, "fewer than 8 gold contradicts"),
+        ({"probe": few_contradicts}, "fewer than 11 gold contradicts"),
         ({"heldout": small}, "gated items"),
         ({"seconds_per_call": 4.6}, "speed"),
         ({"contamination_passed": False}, "overlap"),
@@ -377,6 +385,79 @@ def test_go_bar_decision() -> None:
                             seconds_per_call=1.0, contamination_passed=True).go  # fmt: skip
 
 
+def test_go_bar_scorer_fails_a_moved_trap_shown_as_supports() -> None:
+    # GO_BAR.md bars 2 and 3 hold moved traps at zero, so the go bar's scorer cannot report a
+    # pass with one shown as supports; run_probe's four Expert-confirms bars do not count it.
+    items = read_jsonl(PROBE)
+    preds = {it["probe_id"]: {"stance": it["gold_stance"], "quote": it["proposed_quote"]}
+             for it in items}  # fmt: skip
+    assert score.score(items, preds)["gated"]["passes_all"] is True
+    preds["P038"] = {"stance": "supports", "quote": preds["P038"]["quote"]}  # a moved trap
+    gated = score.score(items, preds)["gated"]
+    assert gated["moved_traps_shown_as_supports"] == 1
+    assert {bar for bar, ok in gated["bars"].items() if not ok} == {
+        "no_moved_traps_shown_as_supports"
+    }
+    assert gated["passes_all"] is False
+    st = score.StanceScore()
+    for it in items:
+        if run_probe.is_gated(it):
+            score.add_prediction(st, it, preds[it["probe_id"]])
+    assert run_probe.expert_confirms(st)["passes_all"] is True
+
+
+def test_go_bar_scorer_needs_one_contradicts_so_precision_exists() -> None:
+    # GO_BAR.md bar 2: a model that never says "contradicts" has no precision, and gobar.decide()
+    # rejects that, so the go bar's scorer cannot report a pass for it either.
+    items = read_jsonl(PROBE)
+    preds = {it["probe_id"]: {"stance": it["gold_stance"], "quote": it["proposed_quote"]}
+             for it in items}  # fmt: skip
+    for pid, pred in preds.items():
+        if pred["stance"] == "contradicts":
+            preds[pid] = {"stance": "complicates", "quote": pred["quote"]}
+    gated = score.score(items, preds)["gated"]
+    assert gated["contradicts_precision"] is None
+    assert {bar for bar, ok in gated["bars"].items() if not ok} == {
+        "contradicts_said_at_least_once"
+    }
+    assert gated["passes_all"] is False
+    d = gobar.decide(probe={"gated": gated}, heldout=_perfect("heldout"),
+                     case02=CASE02_OK, seconds_per_call=1.0, contamination_passed=True)  # fmt: skip
+    assert not d.go and "probe: contradicts_precision is None, needs >= 0.9" in d.reasons
+
+
+def _claim(cid: str, gold: Verdict) -> GoldClaim:
+    return GoldClaim(claim_id=cid, page=1, para_no=1, text="t", claim_type=ClaimType.EVENT,
+                     cross_device=False, gold_verdict=gold, core_assumptions=(),
+                     key_evidence=(), trap=None, rationale="r", labeled_by="test",
+                     labeled_at=datetime(2026, 10, 14, tzinfo=UTC))  # fmt: skip
+
+
+def _pred(cid: str, got: Verdict) -> Prediction:
+    basis = SupportedBasis.CONFIRMED if got == Verdict.SUPPORTED else None
+    return Prediction(claim_id=cid, verdict=got, supported_basis=basis)
+
+
+def test_go_bar_reads_case02_from_the_merge_gate_score() -> None:
+    # Condition 5 takes run_eval's own score, as an object or as the JSON it prints; run_eval
+    # has no false-contradicted count, so the go bar reads it from the confusion table.
+    s, c, u = Verdict.SUPPORTED, Verdict.CONTRADICTED, Verdict.UNPROVEN
+    pairs = [(s, s), (u, u), (c, c), (u, c), (s, s)]  # one unproven claim decided contradicted
+    gold = [_claim(f"C{n}", g) for n, (g, _) in enumerate(pairs)]
+    scores = run_eval.score(gold, [_pred(f"C{n}", p) for n, (_, p) in enumerate(pairs)])
+    printed = json.loads(json.dumps(scores.__dict__))
+    want = {"false_supported": 0, "false_contradicted": 1, "verdict_accuracy": 0.8}
+    assert gobar.case02_numbers(scores) == gobar.case02_numbers(printed) == want
+    assert gobar.case02_numbers(want) == want
+    args = dict(probe=_perfect("probe"), heldout=_perfect("heldout"), seconds_per_call=4.0,
+                contamination_passed=True)  # fmt: skip
+    for form in (scores, printed, want):
+        d = gobar.decide(case02=form, **args)
+        assert d.reasons == ["case02: false_contradicted is 1, needs <= 0"], d.reasons
+    clean = run_eval.score(gold, [_pred(f"C{n}", g) for n, (g, _) in enumerate(pairs)])
+    assert gobar.decide(case02=clean, **args).go
+
+
 def test_go_bar_file_states_the_coded_numbers() -> None:
     text = GO_BAR.read_text(encoding="utf-8")
     assert f"{gobar.MAX_SECONDS_PER_CALL:.2f} seconds" in text
@@ -393,7 +474,8 @@ def test_go_bar_file_states_the_coded_numbers() -> None:
     assert f"verdict accuracy of at least {gobar.CASE02_MIN_VERDICT_ACCURACY:.2f}" in flat
 
 
-TRAP_ORDER = ["time_mismatch", "sender_mismatch", "speaker_mismatch", "later_correction"]
+TRAP_ORDER = ["time_mismatch", "sender_mismatch", "speaker_mismatch", "later_correction",
+              "undated_denial", "told_frame"]  # fmt: skip
 
 
 def test_review_sample_is_fixed_and_spread_over_families() -> None:
