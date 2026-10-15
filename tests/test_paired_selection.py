@@ -13,6 +13,7 @@ import json
 import re
 import shutil
 import sqlite3
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -340,3 +341,72 @@ def test_times_show_on_the_phone_clock(conn) -> None:
     pp01 = next(pl for pl in planted.PLANTED if pl.msg.key == "pp01")
     assert eastern_offset_min(pp01.msg.at) == -240
     assert "2026-03-12 20:06:30 EDT" in html
+
+
+# ---------------------------------------------------------------- review findings (#78)
+
+
+def test_records_after_the_reports_extraction_are_never_counted_left_out(conn) -> None:
+    with conn:  # the report was made before ¶15's day; the larger source later
+        conn.execute(
+            "UPDATE sources SET extracted_at_utc = '2026-03-20T00:00:00Z' WHERE id = 'item1'"
+        )
+    p = _the_pair(conn)
+    late = {pl.msg.key: pl for pl in planted.PLANTED}
+    for key in ("pp06", "pp07"):  # 2026-03-25
+        fid = _full_id(p, late[key].msg.body, late[key].msg.at)
+        assert p.full_state[fid] == "not_compared" and p.may_be_why[fid] == "after_report"
+    pp01 = _full_id(p, late["pp01"].msg.body, late["pp01"].msg.at)
+    assert p.full_state[pp01] == "not_in_report"  # 2026-03-12, before it
+    chk = paired_check(conn, claim_states(conn), selection_audit(conn))
+    by = {c.claim_id: c for c in chk.claims}
+    assert by["C20"].total == 0 and by["C05"].total == 4
+    assert "dated after the report's extraction" in paired_html(chk)
+
+
+def test_a_report_with_no_extraction_time_lists_nothing(conn) -> None:
+    with conn:
+        conn.execute("UPDATE sources SET extracted_at_utc = NULL WHERE id = 'item1'")
+    p = _the_pair(conn)
+    assert not p.listed and "extraction time is not known" in (p.not_listed_why or "")
+    assert p.left_out("message") == []
+
+
+def test_a_shared_account_on_another_device_model_is_not_a_pair(conn) -> None:
+    with conn:  # the same accounts signed in on another phone
+        conn.execute("UPDATE devices SET model = 'Apple iPad Air' WHERE source_id = 'item1full'")
+    ps, unpaired, _ = pairs(conn)
+    assert ps == [] and "item1" in [s.id for s in unpaired]
+    assert "states the same device model" in paired_html(
+        paired_check(conn, claim_states(conn), selection_audit(conn))
+    )
+
+
+def test_claim_line_names_a_pair_that_lists_nothing_beside_one_that_does(conn) -> None:
+    chk = paired_check(conn, claim_states(conn), selection_audit(conn))
+    c10 = next(c for c in chk.claims if c.claim_id == "C10")
+    other = replace(
+        c10.pair, listed=False, not_listed_why="x", full=replace(c10.pair.full, file_name="b.ufdr")
+    )
+    line = claim_line(replace(chk, claims=(c10, replace(c10, pair=other))), "C10", "/x")
+    assert "holds nothing within an hour" in line
+    assert 'nothing is listed for <span class="q">b.ufdr</span>' in line
+
+
+def test_claim_ids_are_escaped_in_the_list_anchor(conn) -> None:
+    chk = paired_check(conn, claim_states(conn), selection_audit(conn))
+    c05 = next(c for c in chk.claims if c.claim_id == "C05")
+    odd = replace(c05, claim_id="C'5\" onclick=x", claim_name="C'5")
+    html = paired_html(replace(chk, claims=(odd,)))
+    assert "id='paired-C&#x27;5&quot; onclick=x'" in html and "onclick=x'" not in html.replace(
+        "&quot; onclick=x'", ""
+    )
+
+
+def test_a_removed_claim_page_has_no_link_to_a_missing_list(db, conn) -> None:
+    with conn:
+        conn.execute("UPDATE claims SET status = 'removed' WHERE id = 'C05'")
+    page = App(db, expert="Test Expert", port=8765).handle(
+        Request("GET", "/claim", {"id": "C05"}, dict(HOST))
+    )
+    assert page.status == 200 and "Curated report check:" not in page.text

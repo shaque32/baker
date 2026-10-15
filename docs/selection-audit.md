@@ -132,7 +132,12 @@ item1 with planted records against case01's own curated item1 report, and a smal
 (`eval/synthetic/paired.py`). No public Cellebrite-made UFDR exists to check it on (#73).
 
 - **Pairing.** A curated report is compared with a larger source when both list one of the
-  phone's own accounts (the same app and identifier). The page names those accounts.
+  phone's own accounts (the same app and identifier) and both state the same device model, since
+  an account can be signed in on more than one phone. The page names those accounts. This is
+  still not proof of one phone: no importer stores a serial number or IMEI to compare.
+- **Acquisition time.** Records the larger source dates after the report's extraction (a later
+  extraction of the phone), or holds with no time, are never counted as left out: the report
+  could not have held them. When the report's extraction time is not known, nothing is listed.
 - **Every report record gets one state.** Messages, calls and contacts are each *found once*,
   *found more than once* or *not found*. A message is found when a record of the larger source
   has the same app, direction and text (Unicode and spacing normalized; case and punctuation

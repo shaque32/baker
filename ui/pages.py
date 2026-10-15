@@ -577,8 +577,16 @@ def _selection_note(conn: sqlite3.Connection, st: ClaimState) -> str:
     larger source of the same phone holds near the claim's records that a curated report does
     not, if anything."""
     audit = selection_audit(conn, paragraph_id=st.claim.paragraph_id)
-    paired = claim_line(
-        paired_check(conn, [st], audit), st.claim.id, f"/selection#{paired_anchor(st.claim.id)}"
+    # The Selection tab lists the claims that are not removed, so a removed claim has no list
+    # to link to.
+    paired = (
+        ""
+        if st.claim.status.value == "removed"
+        else claim_line(
+            paired_check(conn, [st], audit),
+            st.claim.id,
+            f"/selection#{paired_anchor(st.claim.id)}",
+        )
     )
     units = audit.of("document")
     if not units:

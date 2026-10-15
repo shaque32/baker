@@ -28,13 +28,15 @@ Template:
   never counted; under 95% found lists nothing. Selection tab, report section (one renderer) and
   a line on each claim page. Never changes a verdict; nothing stored. (Grok Product item 9.)
 - Where: branch `claude/project-thread-y7z11i`, PR #78, not merged.
-- Verified: 15 tests on two synthetic pairs (case01 item1 report vs a UFDR with planted records;
+- Verified: 21 tests on two synthetic pairs (case01 item1 report vs a UFDR with planted records;
   a small new pair): planted omissions found per claim in the expected order, ambiguous and
   unmatched cases held back, screen and report list the same records, read-only. Headless-
   Chromium smoke passed (no external requests, Referrer-Policy same-origin). case02 not used:
   it is held out.
 - Open: not checked on real Cellebrite or AXIOM exports (no public UFDR, #73); Grok made this
-  depend on item 8. Pairing rests on a shared phone-owner account. Speed measured only on case01
+  depend on item 8. Pairing rests on a shared phone-owner account plus the same stated device
+  model (no serial number or IMEI is stored); records after the report's extraction are not
+  counted (Codex review). Speed measured only on case01
   size (about 0.2 s) and a 120,000-message in-memory match (about 1 s); not on a real case.
 - Affects: capabilities (new analysis, branch only); no privacy or network change; customer
   claims unchanged until merged and checked on real exports.

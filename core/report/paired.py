@@ -139,6 +139,12 @@ def _left_out(p: Pair) -> str:
             "could be one of several, or a report record not found is near it in the same app "
             "and direction, so it may be that record printed differently."
         )
+    later = sum(1 for s in p.full_state.values() if s == "not_compared")
+    if later:
+        line += (
+            f" Also not counted: {_n(later, 'record')} dated after the report's extraction, or "
+            "with no time to place before it: the report could not have held them."
+        )
     out = [line + "</p>"]
     if threads:
         rows = "".join(
@@ -166,7 +172,7 @@ def _claim(cn: ClaimNearby, claim_link: Callable[[str], str] | None,
     head += "two sources"
     if cn.untimed:
         head += f" ({_n(len(cn.untimed), 'has', 'have')} no time, so nothing is near it)"
-    div = f"<div class='pair-claim' id='{anchor(cn.claim_id)}' data-claim='{e(cn.claim_id)}'>"
+    div = f"<div class='pair-claim' id='{e(anchor(cn.claim_id))}' data-claim='{e(cn.claim_id)}'>"
     if not p.listed:
         return f"{div}{head}; nothing is listed for this pair (see above).</p></div>"
     total = cn.total
@@ -255,7 +261,7 @@ def paired_html(
     for s in check.unpaired if check.pairs or check.larger else ():
         out.append(
             f"<p>{q(s.file_name)} has no larger source in this case that lists one of the same "
-            "phone's own accounts, so it is not compared.</p>"
+            "phone's own accounts and states the same device model, so it is not compared.</p>"
         )
     for p in check.pairs:
         mine = [c for c in check.claims if c.pair is p]
@@ -292,9 +298,10 @@ def claim_line(check: PairedCheck, claim_id: str, href: str) -> str:
     if not mine:
         return ""
     listed = [c for c in mine if c.pair.listed]
+    unlisted = list(dict.fromkeys(c.pair.full.file_name for c in mine if not c.pair.listed))
     total = sum(c.total for c in listed)
     if not listed:
-        found = "the report and the larger source differ too much to list what was left out"
+        found = "nothing is listed for this claim; the list says why"
     elif total:
         names = list(dict.fromkeys(c.pair.full.file_name for c in listed if c.total))
         found = (
@@ -305,6 +312,11 @@ def claim_line(check: PairedCheck, claim_id: str, href: str) -> str:
     else:
         found = "the larger source holds nothing within an hour of this claim's records that "
         found += "the curated report does not"
+    if listed and unlisted:
+        found += (
+            f"; nothing is listed for {', '.join(q(n) for n in unlisted)}, so that source may "
+            "still hold records the report left out"
+        )
     return (
         f"<p class='caution'>Curated report check: {found}. "
         f"<a href='{e(href)}'>See the list</a>. This does not change the verdict.</p>"

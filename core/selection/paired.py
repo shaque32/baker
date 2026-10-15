@@ -5,8 +5,11 @@ source of the same phone (a UFDR, or any source not marked curated), code can sa
 of the larger source the report does not hold, and list those near each claim's messages.
 
 Pairing. A curated report is compared with a larger source when both list at least one of the
-phone's own accounts (the same app and identifier). The page names the shared accounts, so the
-expert can see why the two were read as one phone.
+phone's own accounts (the same app and identifier) and both state the same device model (an
+account can be signed in on more than one phone). The page names the shared accounts, so the
+expert can see why the two were read as one phone. Records the larger source dates after the
+report's extraction, or holds with no time, are never counted as left out; when the report's
+extraction time is not known, nothing is listed.
 
 Matching fails closed. Each record of the report is:
 - matched: exactly one record of the larger source has the same app, direction, text (Unicode
@@ -57,7 +60,7 @@ AGAINST_OR_FOR = ("supports", "contradicts", "complicates")
 
 Kind = Literal["message", "call", "contact"]
 State = Literal["matched", "ambiguous", "unmatched"]
-FullState = Literal["in_report", "may_be", "not_in_report"]
+FullState = Literal["in_report", "may_be", "not_in_report", "not_compared"]
 
 
 @dataclass(frozen=True)
@@ -92,6 +95,8 @@ class SourceLine:
     file_name: str
     fidelity: str
     zone: str | None  # the phone's time zone, for display
+    extracted_at: datetime | None = None  # when the source's extraction was made
+    models: tuple[str, ...] = ()  # the device models the source states, normalized
 
 
 @dataclass(frozen=True)
@@ -249,15 +254,30 @@ def _dir_ok(a: str, b: str) -> bool:
 
 def _sources(conn: sqlite3.Connection) -> list[SourceLine]:
     out = []
-    for sid, name, fidelity in conn.execute(
-        "SELECT id, file_name, fidelity FROM sources WHERE kind != 'govdoc' ORDER BY id"
+    for sid, name, fidelity, extracted in conn.execute(
+        "SELECT id, file_name, fidelity, extracted_at_utc FROM sources WHERE kind != 'govdoc'"
+        " ORDER BY id"
     ):
         zone = conn.execute(
             "SELECT timezone FROM devices WHERE source_id = ? AND timezone IS NOT NULL"
             " ORDER BY id LIMIT 1",
             (sid,),
         ).fetchone()
-        out.append(SourceLine(sid, name, fidelity, zone[0] if zone else None))
+        models = sorted(
+            {
+                norm(m).casefold()
+                for (m,) in conn.execute(
+                    "SELECT model FROM devices WHERE source_id = ? AND model IS NOT NULL", (sid,)
+                )
+                if norm(m)
+            }
+        )
+        out.append(
+            SourceLine(
+                sid, name, fidelity, zone[0] if zone else None, parse_utc(extracted),
+                tuple(models),
+            )
+        )  # fmt: skip
     return out
 
 
@@ -398,10 +418,29 @@ def _pair(conn: sqlite3.Connection, report: SourceLine, full: SourceLine,
           basis: tuple[str, ...]) -> Pair:  # fmt: skip
     rrecs, frecs = _records(conn, report.id), _records(conn, full.id)
     matches, state, why = match(rrecs, frecs)
+    # A record the larger source dates after the report's extraction did not exist when the
+    # report was made, so it is never counted as left out; nor is one with no time, which
+    # cannot be placed before it.
+    cut = report.extracted_at
+    if cut is not None:
+        for f in frecs:
+            if (
+                state[f.id] == "not_in_report"
+                and f.kind != "contact"
+                and (f.ts is None or f.ts > cut)
+            ):
+                state[f.id] = "not_compared"
+                why[f.id] = "after_report" if f.ts is not None else "no_time"
     timed = [m for m in matches if m.record.kind != "contact"]
     found = sum(1 for m in timed if m.state != "unmatched")
     listed, reason = True, None
-    if not timed:
+    if cut is None:
+        listed = False
+        reason = (
+            "The report's extraction time is not known, so records made after the report "
+            "cannot be told from records it left out; nothing is listed."
+        )
+    elif not timed:
         listed = False
         reason = "The report holds no messages or calls to compare, so nothing is listed."
     elif found < MIN_ALIGNED * len(timed):
@@ -428,7 +467,9 @@ def pairs(conn: sqlite3.Connection) -> tuple[list[Pair], list[SourceLine], list[
         mine = []
         for f in larger:
             shared = own[r.id] & own[f.id]
-            if shared:
+            # An account can be signed in on more than one phone, so a shared account alone
+            # does not make one phone: both sources must also state the same device model.
+            if shared and r.models and r.models == f.models:
                 mine.append(_pair(conn, r, f, _basis(conn, r.id, shared)))
         if mine:
             out += mine

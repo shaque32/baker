@@ -244,7 +244,8 @@ Grok Product review PR, never merged.
    14 of 20 claims depend on the expert finding or accepting key evidence.
 6. **Curated report against a larger source (branch only, not on main).** Lists what a UFDR of the
    same phone holds near each claim that a curated report does not. Tested only on synthetic
-   pairs; not checked on any real export. Pairing rests on a shared phone-owner account. The
+   pairs; not checked on any real export. Pairing rests on a shared phone-owner account and the
+   same stated device model; no serial number or IMEI is compared. The
    fail-closed rules are strict: a few report records not found hold back most nearby records as
    "may be in the report", and under 95% found lists nothing (`docs/selection-audit.md`).
 7. **Other gaps:** no translation in the pipeline; no embeddings; Windows installer unsigned; the
