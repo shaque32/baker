@@ -3,6 +3,7 @@ would (grading audit, 2026-10-14). No model, no network."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -18,6 +19,10 @@ from eval.probe.from_draft import PROBE_HEADER, convert, member
 ROOT = Path(__file__).resolve().parents[1]
 PROBE = ROOT / "eval" / "gold" / "probe" / "probe.jsonl"
 V1_1 = ROOT / "eval" / "probe" / "stance_v1_1_signed.md"
+# SHA-256 of the signed v1.1 prompt text (after the "prompt starts" line): stance prompt v1.0
+# with the three diff parts of PROPOSED_CHANGES.md applied, rebuilt while v1.0 was the product
+# prompt. Pinned so the check does not depend on the product prompt, which now holds v1.1.
+SIGNED_V1_1_BODY_SHA256 = "4c35f1cf01b0b2277135bafe52d996f903f3bca3fc5a37c8e8996aedc35a2034"
 
 
 def _rows() -> list[dict]:
@@ -171,22 +176,23 @@ def _signed_v1_1_from_proposed_changes() -> str | None:
     two = "".join(ln[1:] + "\n" for ln in two.splitlines() if ln.startswith("+"))
     three = section.split("Diff, part three", 1)[1].split("and the header's version line", 1)[0]
     three = "".join(ln[1:] + "\n" for ln in three.splitlines() if ln.startswith("+"))
-    if all(old not in body and new in body for old, new in pairs) and two in body and three in body:
-        return body  # the pipeline wiring (#62) applied v1.1 to the product prompt
+    if any(body.count(old) != 1 for old, _ in pairs):
+        return None  # the product prompt is no longer v1.0 (the wiring, #62, applied v1.1)
     for old, new in pairs:
-        assert body.count(old) == 1
         body = body.replace(old, new)
     body = body.replace("\nAssumption:\n", "\n" + two + "Assumption:\n", 1)
     return body.replace("Choose exactly one stance:", three + "Choose exactly one stance:", 1)
 
 
 def test_bench_copy_of_v1_1_is_the_signed_text():
+    body = prompts._body(V1_1)
+    # Any edit to the copy fails here, whatever the product prompt holds.
+    assert hashlib.sha256(body.encode("utf-8")).hexdigest() == SIGNED_V1_1_BODY_SHA256
     expected = _signed_v1_1_from_proposed_changes()
-    if expected is None:
-        pytest.skip("v1.1 applied; PROPOSED_CHANGES.md no longer holds its diff")
-    assert prompts._body(V1_1) == expected
+    if expected is not None:  # the product prompt is still v1.0: rebuild v1.1 from the diff too
+        assert body == expected
     assert prompts.has_placeholder(V1_1, "claim")
-    assert "a different sender, a different time" not in prompts._body(V1_1)
+    assert "a different sender, a different time" not in body
 
 
 def test_bench_dry_run_on_v1_1_stance_only(tmp_path):
