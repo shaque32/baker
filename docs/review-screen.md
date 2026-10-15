@@ -109,12 +109,60 @@ eval or re-decided.
 
 - Every change goes through `core/review/actions.py`, so the hash-chained audit log records it.
   The screen never sets a verdict; only `rules.py` does, through a full audit or a re-run.
+- Opening a case, every page, form and file upload while it is open (the report and its
+  download included), and encrypting it or changing its passphrase first check the audit log
+  (below). A failed
+  check fails closed: the case does not open, or an open one closes (a background audit or
+  claim proposal on it is told to stop after the claim or paragraph in hand, and an encrypted
+  case locks), no report is built, and nothing is written. The CLI refuses every command but
+  `verify-log` the same way, `report` and `encrypt` included (an encrypted case's log is inside
+  its database, so `passphrase` checks it after the current passphrase opens it).
 - Under rules 0.2.0 no claim is supported until an expert accepts its key evidence. An item the
   local AI reviewer accepted shows its tier as `ai_reviewed` ("AI-reviewed, not confirmed"); only
   an expert's acceptance shows as `confirmed`.
 - The screen and the report use the same labels (`core/review/status.py`).
 - Every page passes the same forbidden-word check as the report. Cited text and the
   expert's own reasons and notes are exempt; Baker's wording and a model's are not.
+
+## The audit log check
+
+Two checks, both in `core/review/audit_log.py` (`require_intact`):
+
+1. **The hash chain.** Each entry's hash covers the one before it, so changing or removing an
+   entry in the middle breaks the chain from that entry on. The Cases page says "Review blocked"
+   and names the first entry that does not match.
+2. **The anchors.** The chain alone cannot tell that entries were cut from its end: what is left
+   still verifies. So when a case opens, and when a report is built, Baker writes the newest
+   entry's number and hash to `case.db.anchors.jsonl` beside `case.db` (one line each time it
+   changed; entry numbers and hashes only: no case content, no times, no reasons, since the file
+   stays unencrypted beside an encrypted case). Every later check requires each
+   anchored entry to still be there with the same hash. A log cut back past an anchor, or
+   rewritten from there on, is blocked ("the audit log has no entry N ... so entries were removed
+   from the end of the log").
+
+A case folder Baker cannot write to (read-only media, a locked-down backup) does not open or
+report, since no anchor could be recorded: copy the folder somewhere writable and open the copy.
+
+What the anchors do not catch: entries added after the newest anchor and then cut again before
+the next open or report, and anyone who changes the database and the anchor file together. The
+report prints the last hash; keeping a saved copy of each report gives an anchor outside the
+case folder that no one can change. A case made before anchors is checked from its next open on.
+
+### When a case is blocked
+
+Nothing in Baker repairs a blocked case, because the record that would say what changed is the
+one that no longer verifies. The expert:
+
+1. Leaves the case folder as it is (it is evidence of what happened) and runs
+   `baker verify-log --db <case folder>/case.db` to record the reason.
+2. Restores the case folder from a backup made before the change, if there is one, and opens it.
+   The restored log must still hold every anchored entry: restore the folder whole, its
+   `case.db.anchors.jsonl` with its `case.db`. A restored log older than the anchor file beside it
+   is blocked.
+3. Otherwise makes a new case from the original files (the government document and the
+   extraction reports), settles the claims and runs the audit again. The SHA-256 of each
+   original matches the hashes in the old case's reports.
+4. Keeps the blocked folder, and notes for counsel why the case was rebuilt.
 
 ## Local-server protections
 

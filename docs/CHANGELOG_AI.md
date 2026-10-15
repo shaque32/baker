@@ -19,6 +19,38 @@ Template:
 
 ---
 
+## 2026-10-15: Audit log checked on open and before every report; cut-off entries caught (#74)
+- Changed: opening a case, and building or saving its report, now checks the audit log (before,
+  the chain was only verified at report build, which printed the result and exported anyway, and
+  at encryption). Two checks: the hash chain, and anchors: the newest entry's number and hash,
+  written to `case.db.anchors.jsonl` beside `case.db` when a case opens and when a report is built,
+  must still be in the log. Anchors catch entries cut from the end of the log, which the chain
+  alone cannot. The screen checks again on every page and upload while a case is open, and encrypting or
+  changing the passphrase checks first. A failed check fails closed: Cases shows "Review
+  blocked" with the reason, an open case closes (a background job on it is told to stop) and an
+  encrypted one locks, no report is built, CLI commands (`report` and `encrypt` included) stop
+  and write nothing; `verify-log` says why. `docs/review-screen.md` gives the
+  expert's steps when a case is blocked (keep the folder, restore a whole-folder backup, or
+  rebuild from the original files). (Grok Product item 5 on #70 and its follow-up on #80.)
+- Where: main, with PR #74.
+- Verified: 33 tests in `tests/test_chain_on_open.py` (chain, anchors: truncation, rewrite,
+  unreadable or non-text file, out-of-range anchor numbers, a last line missing its newline,
+  dedupe, numbers and hashes only; CLI and screen, report and log page and upload refusal,
+  non-text log values, a removed audit table, unwritable anchor file (found before anything is
+  written; a new case that cannot be anchored is not kept and the open case stays open), one
+  anchor file per database name, job stop, encrypt and passphrase refused, encrypted re-lock);
+  full suite passes;
+  headless-Chromium smoke (report refused after the newest entry was cut; intact report builds);
+  eval unchanged (case01 1.00, 0 false supported, hostile PASS).
+- Open: entries added after the newest anchor and cut before the next open or report are not
+  caught, nor a change to the database and the anchor file together; a saved report's last hash
+  is the anchor no one can change. Cases made before anchors are checked from their next open.
+- Affects: customer-facing claims (tamper evidence enforced on open and export, truncation
+  detected back to the newest anchor); a new unencrypted file per case holding entry numbers
+  and hashes only (no case content, no times); one hash pass over the log per page while a case
+  is open, per report and per Cases listing (2.3 ms for the 225-entry synthetic case01 log of a
+  cloud bench run, this cloud container, 2026-10-15; unmeasured on a large real case).
+
 ## 2026-10-15: Count check no longer says "deleted" (#83)
 - Changed: the count check's detail now reads "N of them carry the source's deletion flag"
   instead of "N of them are flagged deleted"; check version 1.0.0 to 1.0.1. The old text broke
@@ -33,20 +65,6 @@ Template:
 - Open: none known.
 - Affects: customer-facing text on the review screen and report (wording only); no verdict,
   privacy or performance change.
-
-## 2026-10-15: Audit-log chain verified when a case opens (#74)
-- Changed: opening a case now verifies the audit-log hash chain (before, only at report build or
-  encryption). A broken chain fails closed: Cases shows "Review blocked" with the first entry
-  that doesn't match, an encrypted case locks again, CLI review commands stop and write nothing.
-  `verify-log` and report still read the case. (Grok Product item 5.)
-- Where: branch `claude/project-thread-fjea4m`, PR #74, not merged.
-- Verified (as reported by the owning thread): 11 new tests, 9 fail on main; 1868 pass, only the
-  known test #65 fixes; headless-Chromium smoke passed; eval unchanged (case01 1.00, 0 false
-  supported, hostile PASS).
-- Open: removing the newest entries is still not detected (a truncated chain verifies); this
-  predates the PR.
-- Affects: customer-facing claims (tamper evidence enforced on open, not only shown in the
-  report); small performance cost on open; no privacy change.
 
 ## 2026-10-15: UFDR reader checked on public test files; forwarded messages fail closed (#73)
 - Changed: attachments linked only by file_id now resolve through taggedFiles and are hashed; a

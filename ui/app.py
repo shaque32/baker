@@ -34,6 +34,7 @@ import functools
 import hmac
 import re
 import secrets
+import shutil
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -61,7 +62,7 @@ from core.llm import cloud as cloud_llm
 from core.report.html import render_report
 from core.report.letter import request_letter
 from core.restore.store import ExhibitError, add_exhibit, match_exhibits, remove_exhibit
-from core.review import actions
+from core.review import actions, audit_log
 from core.review.actions import ReviewError
 from core.review.redecide import redecide
 from core.timeline import settings as timeline_settings
@@ -201,7 +202,10 @@ class App:
         if expert:
             self.set_expert(expert)
         if self.single is not None and not protect.is_locked(self.single):
-            self.open_case(self.single)
+            try:
+                self.open_case(self.single)
+            except audit_log.ChainBroken as err:  # the screen starts, the case stays shut
+                self.flash = (f"Not opened: {err}", True)
 
     def _open(self) -> cases.Case:
         if self.case is None:
@@ -216,12 +220,33 @@ class App:
         if protect.is_locked(case):
             raise CaseLocked("this case is locked: open it with its passphrase or recovery key")
         conn = connect(case.db)
+        anchors = audit_log.anchors_path(case.db)
         try:
-            pipeline.mark_stale_runs_stopped(conn)  # nothing in this process runs them
+            # a broken or cut-short log fails closed: no review, no writes
+            audit_log.require_intact(conn, anchors)
+            audit_log.anchor(conn, anchors)  # first, so an unwritable anchor changes nothing
+            if pipeline.mark_stale_runs_stopped(conn):  # nothing in this process runs them
+                audit_log.anchor(conn, anchors)
+        except audit_log.ChainBroken:
+            if self.case is not None and self.case.db == case.db:  # re-opened after tampering
+                self._close_broken(case)
+            raise
         finally:
             conn.close()
         self.case = case
         self.last_check = None
+
+    def _close_broken(self, case: cases.Case) -> None:
+        """Close the open case whose log no longer verifies, stop a background job on it (it
+        stops after the claim or paragraph in hand), and lock the case if it is encrypted."""
+        job = self.jobs.current
+        if job is not None and job.running and job.db == case.db:
+            job.stop.set()
+        self.case = None
+        self.recovery = None
+        self.last_check = None
+        if protect.state(case) != "plain":
+            protect.lock(case)
 
     # -- identity
 
@@ -288,6 +313,14 @@ class App:
             return self._redirect("/cases")
         except db.Error as err:
             return self._plain(500, f"cannot open the case database: {err}")
+        try:  # the log may have changed since the case opened: every page checks it again
+            audit_log.require_intact(conn, audit_log.anchors_path(self.case.db))
+        except audit_log.ChainBroken as err:
+            conn.close()
+            self._close_broken(self.case)
+            what = "No report" if req.path in ("/report", "/report.html") else "Case closed"
+            self.flash = (f"{what}: {err}", True)
+            return self._redirect("/cases")
         try:
             if req.method == "GET":
                 return self._get(conn, req)
@@ -378,6 +411,13 @@ class App:
         if p == "/log":
             return self._html(pages.log_page(conn, page, req.query.get("all") == "1"))
         if p in ("/report", "/report.html"):
+            case = self._open()
+            try:  # handle() checked the log; anchor its newest entry before the report goes out
+                audit_log.anchor(conn, audit_log.anchors_path(case.db))
+            except audit_log.ChainBroken as err:
+                self._close_broken(case)
+                self.flash = (f"No report: {err}", True)
+                return self._redirect("/cases")
             body = render_report(conn, timeline=self._timeline())
             download = req.query.get("download") == "1" or p == "/report.html"
             if not download:  # on screen, the vendored fonts; a saved copy uses system fonts
@@ -448,6 +488,7 @@ class App:
                 back = pages.link("/exhibit", id=self._added)
         except (
             ReviewError,
+            audit_log.ChainBroken,
             CaseLocked,
             EncryptionError,
             ExhibitError,
@@ -455,7 +496,15 @@ class App:
             ValueError,
             *db.IntegrityError,
         ) as err:
-            self.flash = (f"Not recorded: {err}", True)
+            verb = "Not opened" if req.path == "/case/open" else "Not recorded"
+            self.flash = (f"{verb}: {err}", True)
+            if (
+                isinstance(err, audit_log.ChainBroken)
+                and self.case is not None
+                and req.path not in ("/case/open", "/case/new")  # not the open case's log
+            ):
+                self._close_broken(self.case)  # e.g. encrypting a case blocked since it opened
+                back = "/cases"
         except db.OperationalError as err:  # the audit held the database too long
             self.flash = (f"Not recorded, the case database was busy ({err}). Try again.", True)
         return self._redirect(back)
@@ -588,8 +637,11 @@ class App:
         if self.home is None:
             single = self.single
             locked = single is not None and protect.is_locked(single)
+            blocked = None
+            if single is not None and not locked and self.case is None:
+                blocked = _chain_problem(single)
             return self._html(
-                pages.cases_page(page, None, [], str(single.db if single else ""), locked)
+                pages.cases_page(page, None, [], str(single.db if single else ""), locked, blocked)
             )
         rows = []
         for c in cases.list_cases(self.home):
@@ -600,7 +652,11 @@ class App:
                 else:
                     conn = connect(c.db)
                     try:
-                        state = cases.last_audit_line(conn)
+                        try:
+                            audit_log.require_intact(conn, audit_log.anchors_path(c.db))
+                            state = cases.last_audit_line(conn)
+                        except audit_log.ChainBroken as err:
+                            state = f"Review blocked: {err.problem}"
                     finally:
                         conn.close()
             except (*db.Error, InvariantViolation, CaseLocked, EncryptionError) as err:
@@ -617,7 +673,14 @@ class App:
             if passphrase != f.get("passphrase2", ""):
                 raise ReviewError("the two passphrases do not match")
         case = cases.create_case(self.home, f.get("name", ""), self.actor, passphrase=passphrase)
-        self.open_case(case)
+        try:
+            self.open_case(case)
+        except audit_log.ChainBroken as err:  # e.g. its anchor file cannot be written
+            cases.recovery_key_for(case)  # drop the key from memory with the case
+            if protect.state(case) != "plain":
+                protect.lock(case)
+            shutil.rmtree(case.folder, ignore_errors=True)  # made just now; nothing else in it
+            raise ReviewError(f"the case was not made, because {err.problem}") from err
         key = cases.recovery_key_for(case)
         if key is not None:
             self.recovery = (case.db, key)
@@ -642,7 +705,12 @@ class App:
             except encryption.WrongSecret as err:
                 raise ReviewError(str(err)) from err
             unlocked = True
-        self.open_case(target)
+        try:
+            self.open_case(target)
+        except audit_log.ChainBroken:
+            if unlocked:
+                protect.lock(target)  # not opened, so its key does not stay in memory
+            raise
         return f"Unlocked and opened {target.name}." if unlocked else f"Opened {target.name}."
 
     # -- encryption
@@ -957,6 +1025,20 @@ class App:
             self.flash = ("Open or make a case first.", True)
             return self._redirect("/cases")
         case = self.case
+        try:  # uploads skip handle(), so they check the log here, before a byte is written
+            conn = connect(case.db)
+            try:
+                audit_log.require_intact(conn, audit_log.anchors_path(case.db))
+            finally:
+                conn.close()
+        except (audit_log.ChainBroken, CaseLocked) as err:
+            if isinstance(err, audit_log.ChainBroken):  # stop a job first, then drain
+                self._close_broken(case)
+            else:
+                self.case = None
+            _drain(stream, length)
+            self.flash = (f"Not imported: {err}", True)
+            return self._redirect("/cases")
         counted = _Counting(stream)
         written: list[Path] = []
 
@@ -1119,6 +1201,21 @@ class App:
             message.encode("utf-8"),
             [("Content-Type", "text/plain; charset=utf-8"), *self._security_headers()],
         )
+
+
+def _chain_problem(case: cases.Case) -> str | None:
+    """Why this (unlocked) case cannot be opened for review, or None when its chain verifies."""
+    try:
+        conn = connect(case.db)
+    except (*db.Error, CaseLocked) as err:
+        return f"cannot read: {err}"
+    try:
+        audit_log.require_intact(conn, audit_log.anchors_path(case.db))
+    except (audit_log.ChainBroken, *db.Error) as err:
+        return str(err)
+    finally:
+        conn.close()
+    return None
 
 
 def _lock_state(case: cases.Case) -> str:

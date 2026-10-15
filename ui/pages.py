@@ -976,10 +976,12 @@ def cases_page(
     rows: list[tuple[str, str, str, str]],
     single: str | None,
     single_locked: bool = False,
+    single_blocked: str | None = None,
 ) -> str:
     """rows: (folder name, case name, one-line state, lock state: plain | locked | open).
     single: the database path when the screen was started on one case database (`--db`),
-    which has no cases folder; single_locked when that database is encrypted and locked."""
+    which has no cases folder; single_locked when that database is encrypted and locked;
+    single_blocked: why that database cannot be opened for review (a broken audit log)."""
     out = ["<h1>Cases</h1>"]
     if single is not None:
         out.append(
@@ -992,6 +994,10 @@ def cases_page(
             out.append(
                 "<p>This case is encrypted and locked.</p>"
                 + page.form("/case/open", _unlock_fields(""))
+            )
+        if single_blocked:
+            out.append(
+                f"<div class='flash err'><strong>Review blocked.</strong> {e(single_blocked)}</div>"
             )
         return page.wrap("Cases", "".join(out))
     out.append(name_form(page))
