@@ -113,6 +113,8 @@ def redecide(
         "fake": result.fake,
         "requested_by": requested_by,
     }
+    if isinstance(src["config"].get("cloud"), dict):
+        cfg["cloud"] = src["config"]["cloud"]  # the reused labels' cloud decision, for the report
     with conn:
         conn.execute(
             "INSERT INTO pipeline_runs (id, started_at_utc, finished_at_utc, status, baker_version,"

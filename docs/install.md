@@ -1,7 +1,9 @@
 # Installing Baker on Windows
 
-Baker runs on one Windows PC, offline. Nothing leaves the computer: Baker makes no network
-calls and sends no telemetry. The only download is the AI model, once, during setup, and you
+Baker runs on one Windows PC, offline by default. Nothing leaves the computer and Baker sends no
+telemetry, unless you opt a case in to cloud AI at case setup (only if its protective order
+allows it). Then, for that case only, one stance question at a time goes to Anthropic under your
+own key. The only download is the AI model, once, during setup, and you
 can skip it and copy the model from a USB drive instead.
 
 ## What you need
