@@ -93,10 +93,9 @@ the source could show. An examiner-curated report can never establish that somet
 can show records that are present (which can contradict an absence claim), never that none exist.
 
 Baker is built not to use the words guilty, innocent, leader or deleted in its own text, and the
-report's own text is checked for them (`core/audit/invariants.py`). One known exception on this
-version: when a count includes records the source flags as deleted, the count check's detail line
-on the review screen says they are "flagged deleted", reporting the source's flag. That wording is
-a bug; PR #83 (not merged) changes it to "carry the source's deletion flag". Text quoted from a source or typed by the examiner appears as written.
+report's own text is checked for them (`core/audit/invariants.py`). When a count includes records
+the source flags as deleted, the count check says they "carry the source's deletion flag" (#83).
+Text quoted from a source or typed by the examiner appears as written.
 
 ## 5. Provenance and hashing
 
