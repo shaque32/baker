@@ -19,6 +19,27 @@ Template:
 
 ---
 
+## 2026-10-15: Small stance model, run 5 and reading cases by name (#50)
+- Changed: run 5 trains mDeBERTa-v3-base from scratch on training data with more varied wording
+  and captioned attachments (train sha256 `00ceae8f…`), 3 epochs, trap items weighted 2x
+  (`--trap-weight`). Why: runs 3 and 4 learned the training wording rather than the rule. Inside
+  Baker, `eval/stancemodel/time_case01.case_item` now names accounts, people and phones through
+  `core/audit/readable.py` and opens chat records with Baker's bounded members line, as the 14B
+  reads them. `eval/stancemodel/hidden_case_bar.py` scores go-bar condition 5 (case02, aggregate
+  only, once per model) by `gobar`'s own limits.
+- Where: branch `claude/train-small-model-i04typ`, PR #50 (draft), not merged. Weights are local
+  to the training session, never in git.
+- Verified: run 5 overlap check 0 flags against the held-out sets and the signed probe set. Runs
+  3 and 4 measured on the v0.3 dev split only (scorer before #63): run 4 accuracy 0.81, supports
+  recall 0.89, contradicts precision 0.93, 2 contradicts and 20 moved traps shown as supports;
+  no policy clears the bars. Run 5: unverified, training (step 700 of 3,612 at 07:30Z). `make
+  check` passed on #50 after merging main through #63.
+- Open: run 5's dev results; probe, test-split and case02 scoring only for a candidate that
+  clears dev; speed bar timed on Arsh's Mac. After #69/#76 merges, case runs show contacts as
+  "Name: +1..." while run 5 trained on "Name +1..." (dev, test and probe files are unaffected).
+  Training data has no told-the-owner or undated-denial items, so expect misses there on the probe.
+- Affects: none in the product (eval only; the 14B stays the local stance model).
+
 ## 2026-10-15: Audit-log chain verified when a case opens (#74)
 - Changed: opening a case now verifies the audit-log hash chain (before, only at report build or
   encryption). A broken chain fails closed: Cases shows "Review blocked" with the first entry
