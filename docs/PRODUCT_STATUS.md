@@ -226,7 +226,9 @@ Grok Product review PR, never merged.
 2. **Opus's wrong "contradicts" on told-frame and undated denials** (section 7). Matters for
    #68: it would make wrong CONTRADICTED verdicts until a signed prompt fix lands.
 3. **Real-data formats unverified.** UFDR and AXIOM readers were built from documentation and
-   synthetic samples. No real extraction has been imported.
+   synthetic samples. No real extraction has been imported. No public Cellebrite-made UFDR with a
+   usable license exists; #73 checked the reader on two non-Cellebrite test files (27 of 27
+   records). Forwarded or quoted message content is not read (reported by #73).
 4. **Local runtime per case unknown on current code** (section 7). The local 14B also misses the
    probe's moved-trap bar.
 5. **Evidence recall is modest.** Opus case01 surfaced key evidence for 35% of claims needing it;

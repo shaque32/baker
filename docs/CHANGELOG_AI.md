@@ -19,6 +19,22 @@ Template:
 
 ---
 
+## 2026-10-15: UFDR reader checked on public test files (#73)
+- Changed: attachments linked only by file_id now resolve through taggedFiles and are hashed; a
+  phone-owner UserAccount no longer takes a ProfilePicture URL as its identifier; `ufdr-check`
+  mirrors both. (Grok Product item 8.)
+- Where: branch `claude/project-thread-hz9jqt`, PR #73, not merged.
+- Verified (as reported by the owning thread): 4 new tests; lint clean; 1860 pass, 2 known
+  failures (fixed on main by #65 and #67); eval unchanged (case01 1.00, 0 false supported). Hand
+  check 27 of 27 records match on autopsy-udfr `test.ufdr` (LGPL-2.1, hand-made) and IPED's UFED
+  fixtures (GPL-3); neither committed, hashes in `docs/ingest/ufdr.md`. No public Cellebrite-made
+  UFDR with a usable license exists; Digital Corpora and CFReDS return 403 from cloud sessions.
+- Open: neither sample is Cellebrite output; 27 records, not the 50 asked for; no Reader count
+  comparison; forwarded or quoted content is not read, so a forwarded message shows as written by
+  the forwarder with empty text.
+- Affects: capabilities (UFDR import). Customer-facing claims unchanged: UFDR and AXIOM stay
+  unverified. Next: a pilot examiner makes a UFDR from a public image and runs `ufdr-check`.
+
 ## 2026-10-15: Screen and report agree; reports are repeatable (#72)
 - Changed: `tests/test_report_consistency.py` checks that the screen and the report agree on
   status, verdict label and evidence ids at 7 points in a synthetic case01 review. A repeatability
