@@ -19,6 +19,20 @@ Template:
 
 ---
 
+## 2026-10-15: Audit-log chain verified when a case opens (#74)
+- Changed: opening a case now verifies the audit-log hash chain (before, only at report build or
+  encryption). A broken chain fails closed: Cases shows "Review blocked" with the first entry
+  that doesn't match, an encrypted case locks again, CLI review commands stop and write nothing.
+  `verify-log` and report still read the case. (Grok Product item 5.)
+- Where: branch `claude/project-thread-fjea4m`, PR #74, not merged.
+- Verified (as reported by the owning thread): 11 new tests, 9 fail on main; 1868 pass, only the
+  known test #65 fixes; headless-Chromium smoke passed; eval unchanged (case01 1.00, 0 false
+  supported, hostile PASS).
+- Open: removing the newest entries is still not detected (a truncated chain verifies); this
+  predates the PR.
+- Affects: customer-facing claims (tamper evidence enforced on open, not only shown in the
+  report); small performance cost on open; no privacy change.
+
 ## 2026-10-15: UFDR reader checked on public test files (#73)
 - Changed: attachments linked only by file_id now resolve through taggedFiles and are hashed; a
   phone-owner UserAccount no longer takes a ProfilePicture URL as its identifier; `ufdr-check`
