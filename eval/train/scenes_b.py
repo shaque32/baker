@@ -82,7 +82,8 @@ def sc_handle(rng: random.Random, slot: int) -> Result:
     lead = spec_handle_owner(rng, c, pred, core, intro)
     if lead is None:  # never for the owner's own account; the sender here is always a contact
         return sc_stated(rng, slot)
-    cands = [spec_plain(rng, c, pred, core, plain_why(c)), spec_sender_mismatch(rng, c, pred)]
+    cands = [spec_plain(rng, c, pred, core, plain_why(c)), spec_sender_mismatch(rng, c, pred),
+             spec_time_mismatch(rng, c, pred)]  # fmt: skip
     return c, siblings(rng, lead, cands, 0.5, 1)
 
 
@@ -107,7 +108,7 @@ def sc_group(rng: random.Random, slot: int) -> Result:
     lead = Spec("ovr_speaker_mismatch", kind_of(rng, "ovr_speaker_mismatch"), a, c.record.text,
                 why)  # fmt: skip
     plain = spec_plain(rng, c, pred, core, plain_why(c))
-    return c, siblings(rng, lead, [plain], 0.6, 1)
+    return c, siblings(rng, lead, [plain, spec_time_mismatch(rng, c, pred)], 0.6, 1)
 
 
 def sc_injection(rng: random.Random, slot: int) -> Result:

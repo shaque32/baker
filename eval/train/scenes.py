@@ -300,8 +300,8 @@ def sc_exact(rng: random.Random, slot: int) -> Result:
     pred = fx.claim(f, st.v, money)
     cands = [spec_plain(rng, c, pred, core, plain_why(c)), spec_in_window(rng, c),
              spec_handle_owner(rng, c, pred, core, False),
-             spec_sender_mismatch(rng, c, pred)]  # fmt: skip
-    return c, siblings(rng, lead, cands, 0.5, 2)
+             spec_sender_mismatch(rng, c, pred), spec_time_mismatch(rng, c, pred)]  # fmt: skip
+    return c, siblings(rng, lead, cands, 0.5, 3)
 
 
 # Acts done again and again (a shift's tips, laps, a sitter's pay, the rent each month) or at

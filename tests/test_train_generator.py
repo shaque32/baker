@@ -901,11 +901,12 @@ def test_parts_of_the_day_miss_only_by_their_widest_reading() -> None:
 
 def test_other_time_shapes_hold_or_miss_the_record(many: list[GenItem]) -> None:
     # A supports assumption's time holds the record's local time, whatever its shape; a time
-    # mismatch's plainly misses it: "about" a clock an hour or more away, a range 30 minutes
-    # or more away, a part of the day two hours or more from its widest reading, a bound or a
-    # range of dates that leaves the record's date out. No shape gives the answer away: "the
-    # night of" comes up on both sides, and a range of dates only in the contact windows,
-    # which sup_contact and con_in_window share, never in the time trap alone.
+    # mismatch's misses it: "about" a clock an hour or more away, a range whose nearest end is
+    # 3 minutes or more away (as near as a supports item's range holds it), a part of the day
+    # two hours or more from its widest reading, a bound or a range of dates that leaves the
+    # record's date out. No shape gives the answer away: "the night of" comes up on both
+    # sides, and a range of dates only in the contact windows, which sup_contact and
+    # con_in_window share, never in the time trap alone.
     assert PART_ON.findall("late in the evening on Friday, May 2, 2025") == [
         ("", "", "evening", "May", "2", "2025")]  # fmt: skip
     assert not _part_misses("evening", 23 * 60 + 3) and _part_misses("night", 10 * 60)
@@ -932,7 +933,7 @@ def test_other_time_shapes_hold_or_miss_the_record(many: list[GenItem]) -> None:
         for lo, hi, *d in WINDOW.findall(a):
             if _date(*d) == day:
                 lo, hi = _minute_of(lo), _minute_of(hi)
-                ok = lo < minute < hi if sup else minute < lo - 29 or minute > hi + 29
+                ok = lo + 2 < minute < hi - 2 if sup else minute < lo - 2 or minute > hi + 2
                 assert ok, (it.family, it.assumption, lt)
                 seen["range"] += 1
         for *parts, month, dd, year in PART_ON.findall(a):
@@ -954,6 +955,77 @@ def test_other_time_shapes_hold_or_miss_the_record(many: list[GenItem]) -> None:
             seen["date range", sup] += 1
     assert min(seen[k] for k in ("loose", "range", "part", "date bound")) >= 10, seen
     assert seen["night", True] and seen["night", False] and not seen["date range", False], seen
+
+
+EDGE_ON = re.compile(rf"\b(before|by|no later than|sometime before|after|no earlier than|"
+                     rf"sometime after) {CLOCK} on {WDAY}{LONG_DATE.pattern}", re.I)  # fmt: skip
+UPPER_WORDS = {"before", "by", "no later than", "sometime before"}
+UTC_STATED = re.compile(rf"{CLOCK} on {WDAY}{LONG_DATE.pattern}', its UTC time")
+
+
+def _record_minute(it: GenItem) -> tuple[date, int]:
+    lt = it.target.local_time
+    return date.fromisoformat(lt[:10]), int(lt[11:13]) * 60 + int(lt[14:16])
+
+
+def test_bounds_come_as_near_whether_they_hold_or_miss(many: list[GenItem]) -> None:
+    # A bound, or a range's nearest end, falls as near the record's minute in a supports item
+    # as in a time trap (when.edge_time, when.clock_range): run 6's supports items had bounds
+    # 3 to 14 minutes from the record and its time traps never missed by less than 15, so a
+    # near bound read as supports. Never nearer than 3 minutes, which would point at the
+    # message itself.
+    near: Counter[tuple[bool, bool]] = Counter()
+    for it in many:
+        day, minute = _record_minute(it)
+        sup, miss = it.gold_stance == "supports", it.family == "ovr_time_mismatch"
+        if not (sup or miss) or "daylight-saving" in it.rationale or it.family == "sup_contact":
+            continue  # sup_contact states its contact windows with when.span, as con_in_window
+        a = QUOTED.sub(" ", it.assumption)
+        gaps = [abs(_minute_of(t) - minute) for _, t, *d in EDGE_ON.findall(a) if _date(*d) == day]
+        gaps += [min(abs(_minute_of(lo) - minute), abs(_minute_of(hi) - minute))
+                 for lo, hi, *d in WINDOW.findall(a) if _date(*d) == day]  # fmt: skip
+        for gap in gaps:
+            assert gap >= 3, (it.family, it.assumption, it.target.local_time)
+            near[sup, gap < 15] += 1
+    share = {sup: near[sup, True] / (near[sup, True] + near[sup, False]) for sup in (True, False)}
+    assert near[False, True] >= 10 and abs(share[True] - share[False]) < 0.15, (near, share)
+
+
+def test_time_traps_miss_on_another_date_as_well(many: list[GenItem]) -> None:
+    # A time trap may hold the record's clock on another date, mostly the day before or after
+    # (or give the record's UTC clock on its UTC date); a bound then runs away from the
+    # record's date, before a time on an earlier date or after one on a later date, since the
+    # other bounds would take the record's date in, and "the night of" another date, which can
+    # run into the next, never comes up. A supports item's clock and part of the day are
+    # always on the record's own date.
+    seen: Counter[str] = Counter()
+    for it in many:
+        day = _record_minute(it)[0]
+        sup, miss = it.gold_stance == "supports", it.family == "ovr_time_mismatch"
+        if not (sup or miss) or "daylight-saving" in it.rationale:
+            continue
+        a = QUOTED.sub(" ", it.assumption)
+        for word, _, *d in EDGE_ON.findall(a):
+            if (other := _date(*d)) != day:
+                assert miss, (it.family, it.assumption, it.target.local_time)
+                assert (other < day) == (word.lower() in UPPER_WORDS), (it.assumption, day)
+                seen["bound"] += 1
+        for *parts, month, dd, year in PART_ON.findall(a):
+            if (other := _date(month, dd, year)) != day:
+                assert miss and abs((other - day).days) <= 3, (it.family, it.assumption)
+                assert parts[0].lower() != "night" and not parts[2], it.assumption
+                seen["part"] += 1
+        for _, _, *d in WINDOW.findall(a):
+            if _date(*d) != day:
+                assert miss, (it.family, it.assumption, it.target.local_time)
+                seen["range"] += 1
+        if miss and "its UTC time" in it.rationale:  # the record's UTC clock, on its UTC date
+            utc = _utc(it.target.local_time)[0]
+            ((t, *d),) = UTC_STATED.findall(it.rationale)
+            assert _date(*d) == utc.date() != day, (it.rationale, it.target.local_time)
+            assert abs(_minute_of(t) - utc.hour * 60 - utc.minute) <= 2, it.rationale
+            seen["utc"] += 1
+    assert min(seen[k] for k in ("bound", "part", "range")) >= 5 and seen["utc"], seen
 
 
 # Words that make a message's exact words name one message: a sender or time trap's record
