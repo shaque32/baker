@@ -29,14 +29,16 @@ Template:
   only, once per model) by `gobar`'s own limits.
 - Where: branch `claude/train-small-model-i04typ`, PR #50 (draft), not merged. Weights are local
   to the training session, never in git.
-- Verified: run 5 overlap check 0 flags against the held-out sets and the signed probe set. Runs
-  3 and 4 measured on the v0.3 dev split only (scorer before #63): run 4 accuracy 0.81, supports
-  recall 0.89, contradicts precision 0.93, 2 contradicts and 20 moved traps shown as supports;
-  no policy clears the bars. Run 5: unverified, training (step 700 of 3,612 at 07:30Z). `make
-  check` passed on #50 after merging main through #63.
-- Open: run 5's dev results; probe, test-split and case02 scoring only for a candidate that
-  clears dev; speed bar timed on Arsh's Mac. After #69/#76 merges, case runs show contacts as
-  "Name: +1..." while run 5 trained on "Name +1..." (dev, test and probe files are unaffected).
+- Verified: run 5 overlap check 0 flags against the held-out sets and the signed probe set. Dev
+  split only (913 undisputed items, scorer after #63/#64), default policy: run 5 supports recall
+  0.94, contradicts precision 0.98, 1 contradicts and 17 moved traps shown as supports, accuracy
+  0.85; run 4 was 0.89, 0.93, 11, 20, 0.81. No policy clears the bars (moved traps stay above 0
+  at any threshold that keeps supports recall at 0.90), so run 5 is not a candidate. `make
+  check` passed on #50 after merging main through #71.
+- Open: run 6 on the next data drop (#79); probe, test-split and case02 scoring only for a
+  candidate that clears dev; speed bar timed on Arsh's Mac. After #76 merges, case runs show
+  contact and call rows in the new text while run 5 trained on the old (dev, test and probe files
+  are unaffected).
   Training data has no told-the-owner or undated-denial items, so expect misses there on the probe.
 - Affects: none in the product (eval only; the 14B stays the local stance model).
 
