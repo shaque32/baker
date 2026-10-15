@@ -168,11 +168,23 @@ every record was compared by hand with report.xml. Neither is in the repo.
 | IPED's UFED model fixtures (GPL-3, sepinf-inc/IPED commit 129ce8f) wrapped in a minimal report.xml shell | IPED's tests, one described as a synthetic sample of the PA 10.10 message model | 13 messages, 5 attachments, 2 UserAccounts | A UserAccount whose first entry is a `ProfilePicture` got the picture's link as the phone owner's account identifier. Fixed. |
 
 Forwarded messages: a message marked `Forwarded` (in its `Labels`, or on a `MessageLabel` or
-`QuotedMessageData` in its `MessageExtraData`) is listed for review (`forwarded`, attention): it
-is stored as the forwarder's message, and no canonical column can say it was forwarded or who
-first wrote it (proposed in PROPOSED_CHANGES.md). A message carrying a forwarded or quoted
-original (`EmbeddedInstantMessage`) is listed too (`embedded_message_not_imported`); the
-original's text and attachments are not imported, and never as the forwarder's words. A system message ("You joined the group") is imported as a message from a party
+`QuotedMessageData` in its `MessageExtraData`) is listed for review (`forwarded`, attention). A
+message carrying a forwarded or quoted original (`EmbeddedInstantMessage`, nested or not) is
+listed too (`embedded_message_not_imported`); the original's text and attachments are not
+imported, and never as the forwarder's words. Every such message id goes, in full, into the
+coverage record under `forwarded_records`, and downstream fails closed
+(`core/ingest/forwarded.py`): the model's supports or contradicts on it is stored as
+complicates, a check resting on it is inconclusive, the sender check never names the forwarder
+as the writer, and the claim page and report warn. The Excel importer does the same for a
+`Label` cell reading Forwarded. The record's sender field still shows the forwarder until a
+schema change is signed (PROPOSED_CHANGES.md).
+
+Picture entries (`ProfilePicture`, `ContactPhoto`) are never identifiers; how many were skipped
+is counted (`picture_entries_not_identifiers`, info). A `taggedFiles` id listed twice with
+different paths links to no file: such attachments are not hashed and are listed
+(`tagged_file_ids_repeated`, `attachment_file_ambiguous`, attention, shown under Limitations).
+
+A system message ("You joined the group") is imported as a message from a party
 named "System message". These samples are not Cellebrite output, so they move nothing to
 verified.
 

@@ -34,10 +34,12 @@ from core.contracts import (
 )
 from core.hypotheses import explain
 from core.ingest import coverage as import_coverage
+from core.ingest import forwarded
 from core.report.html import CSS as REPORT_CSS
 from core.report.html import (
     STANCE_LABEL,
     audit_log_summary,
+    forwarded_warning,
     record_line,
     review_label,
     said,
@@ -525,7 +527,12 @@ def _decide_form(page: Page, item: EvidenceItem, decided: bool, back: str) -> st
 
 
 def evidence_card(
-    conn: sqlite3.Connection, page: Page, item: EvidenceItem, last_kind: str | None, back: str
+    conn: sqlite3.Connection,
+    page: Page,
+    item: EvidenceItem,
+    last_kind: str | None,
+    back: str,
+    found: dict[str, str] | None = None,
 ) -> str:
     stance_cls = "b-against" if item.stance in AGAINST else "b-open"
     return (
@@ -533,7 +540,7 @@ def evidence_card(
         f"<span class='badge {stance_cls}'>{e(STANCE_LABEL[item.stance])}</span>"
         f"{_tier_badge(item, last_kind)}"
         f"<blockquote>{q(item.quote)}</blockquote>"
-        f"<p>{record_line(conn, item.record_id)}<br>"
+        f"<p>{record_line(conn, item.record_id, found)}<br>"
         f"<span class='mono'>{e(item.ref.source_id)} {e(item.ref.locator)} · "
         f"{e(item.record_id)}</span></p>"
         f"<p class='muted'>Model rationale (inferred): {e(item.rationale)}</p>"
@@ -604,6 +611,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
     needs = st.needs()
     if needs:
         out.append("<ul>" + "".join(f"<li>{e(t)}</li>" for _, t in needs) + "</ul>")
+    out.append(forwarded_warning(conn, st))
     if d is not None:
         out.append(
             "<details><summary>Why (reasons from the verdict rules)</summary><ul>"
@@ -668,6 +676,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
     if not groups:
         out.append("<p class='muted'>No relevant evidence items were stored for this claim.</p>")
     by_assumption = {a.id: a for a in st.assumptions}
+    found = forwarded.affected(conn)
     for title, group in groups:
         out.append(f"<h3>{e(title)} ({len(group)})</h3>")
         shown_on = None
@@ -677,7 +686,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
             if a is not None and a.id != shown_on:
                 out.append(f"<p class='muted'>Assumption: {e(a.text)}</p>")
                 shown_on = a.id
-            out.append(evidence_card(conn, page, x, st.last_reviewer.get(x.id), back))
+            out.append(evidence_card(conn, page, x, st.last_reviewer.get(x.id), back, found))
     hidden = sum(1 for x in st.evidence if x.stance == Stance.IRRELEVANT)
     if hidden:
         out.append(f"<p class='muted'>{hidden} retrieved records were labeled irrelevant.</p>")

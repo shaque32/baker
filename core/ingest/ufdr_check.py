@@ -222,6 +222,7 @@ class Tally:
         self.meta_values: dict[str, str] = {}  # metadata name key -> value (kept in memory only)
         self.tagged_files = 0
         self.tagged_paths: dict[str, str] = {}  # taggedFiles file id -> its "Local Path"
+        self.tagged_conflicts: set[str] = set()  # ids listed twice with different paths
         self._tagged: tuple[str, list[str]] | None = None
         self._tagged_id: str | None = None
         self.kinds: dict[str, _Kind] = {}
@@ -333,7 +334,7 @@ class Tally:
         if local == "item" and self._tagged is not None:
             fid, parts = self._tagged
             if path := "".join(parts).strip():
-                self.tagged_paths.setdefault(fid, path)
+                ufdr._add_tagged(self.tagged_paths, self.tagged_conflicts, fid, path)
             self._tagged = None
             return
         if local == "file" and self._tagged_id is not None and "taggedFiles" in self.path[-1:]:

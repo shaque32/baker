@@ -579,3 +579,32 @@ def test_direction_is_checked_for_an_owner_known_only_by_a_user_id(tmp_path, mon
     assert (c["compared"], c["differ"]) == (1, 0)
     _broken(monkeypatch, "UPDATE messages SET direction = 'incoming'")
     assert _by(ufdr_check.run(p).shareable, "messages", "direction")["differ"] == 1
+
+
+def test_repeated_tagged_ids_and_nested_forwards_check_clean(tmp_path):
+    att = model("Attachment", field("Filename", "goat.jpg"), file_id="tf-1")
+    tagged = "".join(
+        f'<file id="tf-1"><metadata section="File"><item name="Local Path"><![CDATA[{p}]]>'
+        "</item></metadata></file>"
+        for p in ("files\\Image\\goat.jpg", "files\\Image\\other.jpg")
+    )
+    label = many(
+        "MessageExtraData",
+        [model("MessageLabel", field("Label", "Forwarded", "Label"))],
+        "InstantMessageExtraData",
+    )
+    inner = model("InstantMessage", field("Body", "SYNTHETIC inner"), label,
+                  many("EmbeddedInstantMessage", [model("InstantMessage", field("Body", "x"))],
+                       "InstantMessage"))  # fmt: skip
+    nested = _msg("SYNTHETIC outer", T, JO, (OWNER,), label,
+                  many("EmbeddedInstantMessage", [inner], "InstantMessage"))  # fmt: skip
+    msg = _msg("look", T, JO, (OWNER,), many("Attachments", [att], "Attachment"))
+    chat = model("Chat", field("Source", "WhatsApp"), field("Id", "c1"),
+                 many("Messages", [msg, nested], "InstantMessage"))  # fmt: skip
+    xml = report_xml({"Chat": [chat]}, extra=f"<taggedFiles>{tagged}</taggedFiles>")
+    p = write_package(
+        tmp_path / "p.ufdr", xml, {"files/Image/goat.jpg": b"a", "files/Image/other.jpg": b"b"}
+    )
+    d = ufdr_check.run(p).shareable
+    assert d["differences"] == 0
+    assert _by(d, "messages", "attachment_files_hashed")["differ"] == 0

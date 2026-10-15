@@ -117,6 +117,7 @@ from core.contracts import (
     review_id,
     verdict_id,
 )
+from core.ingest import forwarded
 from core.review import audit_log
 
 PIPELINE_VERSION = "0.1.0"
@@ -758,6 +759,7 @@ class _Run:
         # Rows a claim's model work produces wait here until the claim's model work is done,
         # so no write transaction is open while the model runs (see the module docstring).
         self.pending: list[tuple[str, tuple]] | None = None
+        self.forwarded = forwarded.affected(conn)
 
     def _write(self, sql: str, params: tuple) -> None:
         if self.pending is None:
@@ -825,6 +827,10 @@ class _Run:
         rationale = label.rationale
         if stance_ is not label.stance:  # the model call log keeps the raw label
             rationale = stance.NOT_THE_MESSAGE + rationale
+        if cand.record_id in self.forwarded and stance_ in (Stance.SUPPORTS, Stance.CONTRADICTS):
+            # fail closed: forwarded words can neither support nor contradict (forwarded.py)
+            rationale = f"{forwarded.STANCE_NOTE}{stance_.value}. {rationale}"
+            stance_ = Stance.COMPLICATES
         return EvidenceItem(
             id=evidence_id(a.id, cand.record_id, stance_, label.quote),
             assumption_id=a.id,

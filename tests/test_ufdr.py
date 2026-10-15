@@ -19,7 +19,7 @@ import pytest
 from cli.main import main as cli_main
 from core.audit.invariants import FORBIDDEN_WORDS, check_report_text
 from core.db import apply_schema
-from core.ingest import coverage, ufdr
+from core.ingest import coverage, forwarded, ufdr
 from core.ingest.cellebrite_excel import CellebriteExcelImporter
 from core.ingest.ufdr import UfdrImporter
 from core.report.html import render_report
@@ -679,3 +679,101 @@ def test_a_forwarded_message_is_listed_and_never_shown_as_quietly_authored(tmp_p
     # the embedded original is not imported as the forwarder's words
     bodies = [b for (b,) in conn.execute("SELECT body FROM messages ORDER BY locator")]
     assert "SYNTHETIC original words" not in bodies
+
+
+def _extra(label: str, type_: str = "MessageLabel") -> str:
+    return many(
+        "MessageExtraData",
+        [model(type_, field("Label", label, "Label"))],
+        "InstantMessageExtraData",
+    )
+
+
+def _embedded(*models: str) -> str:
+    return many("EmbeddedInstantMessage", list(models), "InstantMessage")
+
+
+def test_quoted_and_nested_forwards_are_listed_in_full_and_never_imported_as_the_senders(
+    tmp_path,
+):
+    base = [field("Source", "WhatsApp"), one("From", party(*OWNER)),
+            ts_field("TimeStamp", "2026-03-05T21:31:00.000-05:00")]  # fmt: skip
+    # a reply quoting Jo's message: not forwarded, but it carries someone else's words
+    quoted = model(
+        "InstantMessage",
+        *base,
+        field("Body", "SYNTHETIC my answer"),
+        _extra("Reply", "QuotedMessageData"),
+        _embedded(model("InstantMessage", field("Body", "SYNTHETIC Jo's question"))),
+    )
+    # a forward of a forward: the inner original is itself marked forwarded
+    inner = model(
+        "InstantMessage",
+        field("Body", "SYNTHETIC passed along twice"),
+        _extra("Forwarded"),
+        _embedded(model("InstantMessage", field("Body", "SYNTHETIC first author's words"))),
+    )
+    nested = model("InstantMessage", *base, _extra("Forwarded"), _embedded(inner))
+    plain = model("InstantMessage", *base, field("Body", "SYNTHETIC own words"))
+    path = write_package(
+        tmp_path / "p.ufdr", report_xml({"Chat": [_chat("c1", quoted, nested, plain)]})
+    )
+    conn, s = _import(path)
+    fwd = next(i for i in s.items if i.code == "forwarded")
+    assert fwd.locators == ("Chat[1]/Messages[2]",)
+    emb = next(i for i in s.items if i.code == "embedded_message_not_imported")
+    assert emb.locators == ("Chat[1]/Messages[1]", "Chat[1]/Messages[2]")
+    # neither embedded level becomes a message of its own, nor the phone owner's words
+    bodies = {b for (b,) in conn.execute("SELECT body FROM messages")}
+    assert not any(b and ("question" in b or "twice" in b or "first author" in b) for b in bodies)
+    assert conn.execute("SELECT COUNT(*) FROM messages").fetchone() == (3,)
+    # every affected message is listed by id for the fail-closed path downstream
+    found = forwarded.affected(conn)
+    ids = dict(conn.execute("SELECT locator, id FROM messages"))
+    assert found == {
+        ids["Chat[1]/Messages[1]"]: "embedded",
+        ids["Chat[1]/Messages[2]"]: "forwarded",
+    }
+
+
+def test_picture_entries_are_counted_in_coverage(tmp_path):
+    pic = "https://cdn.example.invalid/SYNTHETIC/pic.jpg"
+    contact = model(
+        "Contact",
+        field("Name", "Jo"),
+        many(
+            "Entries",
+            [
+                model("ContactPhoto", field("Value", pic)),
+                model("PhoneNumber", field("Value", "+15550100002")),
+            ],
+            "ContactEntry",
+        ),
+    )
+    path = write_package(tmp_path / "p.ufdr", report_xml({"Contact": [contact]}))
+    _conn, s = _import(path)
+    item = next(i for i in s.items if i.code == "picture_entries_not_identifiers")
+    assert item.level == "info"
+    assert item.plain.endswith("identifiers: 1.")
+
+
+def test_a_tagged_file_id_with_two_paths_links_to_neither(tmp_path):
+    att = model("Attachment", field("Filename", "goat.jpg"), file_id="tf-1")
+    msg = model(
+        "InstantMessage",
+        field("Source", "WhatsApp"),
+        one("From", party(*JO)),
+        field("Body", "look"),
+        ts_field("TimeStamp", "2026-03-05T21:31:00.000-05:00"),
+        many("Attachments", [att], "Attachment"),
+    )
+    tagged = _tagged_file("tf-1", BACKSLASH_PATH) + _tagged_file("tf-1", "files/Image/other.jpg")
+    xml = report_xml({"Chat": [_chat("c1", msg)]}, extra=f"<taggedFiles>{tagged}</taggedFiles>")
+    path = write_package(
+        tmp_path / "p.ufdr", xml, {"files/Image/goat.jpg": b"a", "files/Image/other.jpg": b"b"}
+    )
+    conn, s = _import(path)
+    assert conn.execute("SELECT sha256 FROM attachments").fetchall() == [(None,)]
+    codes = _codes(s)
+    assert codes["tagged_file_ids_repeated"] == "attention"
+    assert codes["attachment_file_ambiguous"] == "attention"
