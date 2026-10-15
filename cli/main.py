@@ -52,6 +52,10 @@ files; core/casework/protect.py), or finishes one that was interrupted, and prin
 key once. Nothing encrypts a case on its own. `passphrase` changes an encrypted case's
 passphrase. Every command on an encrypted case asks for its passphrase (or recovery key) in the
 terminal; it is never taken from an option or the environment.
+Every command but `verify-log` first verifies the case's audit-log hash chain, and that the log
+still holds every entry recorded in its anchor file (case.db.anchors.jsonl beside the database,
+written when a case opens and when a report is built), and stops, writing nothing, when either
+fails (the database was changed outside Baker). `verify-log` says which.
 `ufdr-check` compares what Baker imports from a UFDR with the package's own report.xml, record
 by record, without touching any case (docs/ingest/ufdr.md, "Before calling it verified"). It
 writes ufdr-check.md and .json, which hold no case content and can be sent back, and
@@ -67,7 +71,7 @@ import sys
 from pathlib import Path
 
 from core import pipeline
-from core.audit._llm_json import ModelUnavailable
+from core.audit._llm_json import CloudPaused, ModelUnavailable
 from core.audit._local_model import ModelConfigError
 from core.audit.invariants import InvariantViolation
 from core.contracts import ClaimStatus, ClaimType, EvidenceStatus, Verdict, VerdictDecision
@@ -99,11 +103,34 @@ def _unlock(path: Path) -> None:
     raise SystemExit("the case stays locked")
 
 
-def _open(path: Path, create: bool = False):  # -> sqlite3.Connection
+def _open(path: Path, create: bool = False, review: bool = True):  # -> sqlite3.Connection
+    """Open a case database. For review (every command but `verify-log`, which only reads and
+    says whether the log verifies) a broken audit-log hash chain, or a log cut short of an entry
+    in the case's anchor file, stops the command before anything is read or written: it fails
+    closed. Otherwise the newest entry is anchored outside the database."""
     if not create and not path.exists():
         raise SystemExit(f"no case database at {path}; run `init` first")
     _unlock(path)
-    return connect(path)
+    conn = connect(path)
+    if review and not create:
+        try:
+            audit_log.require_intact(conn, audit_log.anchors_path(path))
+            audit_log.anchor(conn, audit_log.anchors_path(path))
+        except audit_log.ChainBroken as err:  # AnchorUnwritable too
+            conn.close()
+            raise SystemExit(f"error: {err}") from err
+    return conn
+
+
+def _check_log(path: Path) -> None:
+    """The integrity gate alone, on a plain database (no anchor written)."""
+    conn = connect(path)
+    try:
+        audit_log.require_intact(conn, audit_log.anchors_path(path))
+    except audit_log.ChainBroken as err:
+        raise SystemExit(f"error: {err}") from err
+    finally:
+        conn.close()
 
 
 def cmd_init(a: argparse.Namespace) -> int:
@@ -219,8 +246,16 @@ def cmd_audit(a: argparse.Namespace) -> int:
 
         comps = fake_components()
     else:
+        import functools
+
+        from core.casework import cloud as cloud_policy
+        from core.llm import cloud as cloud_llm
+
+        load = functools.partial(cloud_llm.load_config, case_db=Path(a.db))
+        choice = cloud_policy.choose(conn, load)  # the case's saved cloud choice, as on the screen
+        print(f"audit: {choice.why}", file=sys.stderr)
         try:
-            comps = pipeline.real_components(conn, ai_review=a.ai_review)
+            comps = pipeline.real_components(conn, ai_review=a.ai_review, cloud=choice)
         except pipeline.ComponentsMissing as e:
             print(f"audit: {e}. Use --fake for a test run.", file=sys.stderr)
             return 2
@@ -234,6 +269,14 @@ def cmd_audit(a: argparse.Namespace) -> int:
 
     try:
         result = pipeline.run_audit(conn, comps, progress=progress)
+    except CloudPaused as e:
+        print(
+            f"audit paused: {e}. No claim was labeled by another model. Run it again to retry the"
+            " cloud model, or turn cloud AI off for this case and run it again to label the whole"
+            " case locally.",
+            file=sys.stderr,
+        )
+        return 1
     except (InvariantViolation, ModelUnavailable) as e:
         print(
             f"audit stopped before it finished, so none of its verdicts count: {e}. The model"
@@ -269,6 +312,7 @@ def cmd_report(a: argparse.Namespace) -> int:
     from core.casework.cases import Case
     from core.timeline.settings import from_case
 
+    # A broken or cut-short log stops the export (fail closed); _open anchors the newest entry.
     conn = _open(a.db)
     tl = from_case(Case(Path(a.db)).settings)  # the case's own timeline settings
     print(f"wrote {write_report(conn, a.out, tl)}")
@@ -276,9 +320,13 @@ def cmd_report(a: argparse.Namespace) -> int:
 
 
 def cmd_verify_log(a: argparse.Namespace) -> int:
-    ok = audit_log.verify_chain(_open(a.db))
-    print("audit log hash chain verified" if ok else "audit log hash chain FAILED")
-    return 0 if ok else 1
+    try:
+        audit_log.require_intact(_open(a.db, review=False), audit_log.anchors_path(a.db))
+    except audit_log.ChainBroken as err:
+        print(f"audit log FAILED: {err.problem}")
+        return 1
+    print("audit log hash chain verified, and it holds every anchored entry")
+    return 0
 
 
 def cmd_flags(a: argparse.Namespace) -> int:
@@ -372,6 +420,8 @@ def cmd_encrypt(a: argparse.Namespace) -> int:
     st = protect.state(case)
     if st == "encrypted":
         raise SystemExit(f"{a.db} is already encrypted")
+    if st == "plain":  # a blocked case is refused before any passphrase is asked for
+        _check_log(a.db)
     if st == "partial":
         print("This case's encryption did not finish; this finishes it.")
         secret, again = _ask("Passphrase chosen then, or the recovery key: "), None
@@ -561,7 +611,7 @@ def main(argv: list[str] | None = None) -> int:
     a = parser().parse_args(argv)
     try:
         return a.fn(a)
-    except (actions.ReviewError, CaseLocked) as e:
+    except (actions.ReviewError, CaseLocked, audit_log.ChainBroken) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
 
