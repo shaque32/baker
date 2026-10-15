@@ -1,9 +1,14 @@
 """Verbatim quote check. All text is invented."""
 
+import hashlib
+import json
+
 import pytest
 
+from core.audit import invariants, quotes
 from core.audit.quotes import find_quote, record_text, verify_quote, verify_record_quote
 from core.db import apply_schema, connect
+from core.enrich.records import get_record
 
 BODY = "the package will be at marcs"
 
@@ -102,6 +107,137 @@ def test_record_text_reads_original_body_not_translation() -> None:
     assert record_text(conn, "contact:s1:1") == "Marc Garage: +12125550122"
     assert verify_record_quote(conn, "contact:s1:1", "Marc Garage")
     assert not verify_record_quote(conn, "contact:s1:1", "Marc Gar")
-    assert record_text(conn, "call:s1:1") is None  # a call line is Baker's text, not evidence
-    assert not verify_record_quote(conn, "call:s1:1", "outgoing")
+    assert record_text(conn, "call:s1:1") == (
+        "outgoing Phone call from unknown to unknown, duration unknown"
+    )  # as the labeler is shown it (core.enrich.records)
+    assert verify_record_quote(conn, "call:s1:1", "outgoing")
+    assert not verify_record_quote(conn, "call:s1:1", "unknown")
     assert not verify_record_quote(conn, "msg:s1:404", "anything")
+
+
+def _records() -> object:
+    conn = connect(":memory:")
+    apply_schema(conn)
+    conn.executescript(
+        """
+        INSERT INTO sources VALUES ('s1', 'synthetic', 'full_extraction', 'logical', 'f', '0',
+            NULL, NULL, NULL, '2026-01-01T00:00:00Z');
+        INSERT INTO threads VALUES ('t1', 's1', 'x', NULL, 'SMS', NULL);
+        INSERT INTO messages (id, source_id, locator, thread_id, direction, body)
+            VALUES ('msg:s1:1', 's1', 'x', 't1', 'incoming', 'no name on the box, call from 9');
+        INSERT INTO accounts VALUES ('a1', 's1', 'x', NULL, 'Phone', '+12125550122', NULL);
+        INSERT INTO accounts VALUES ('a2', 's1', 'x', NULL, 'Phone', 'unknown', NULL);
+        INSERT INTO contacts VALUES ('contact:s1:1', 's1', 'x', NULL, 'Marc Garage',
+            '+12125550122');
+        INSERT INTO contacts VALUES ('contact:s1:2', 's1', 'x', NULL, NULL, '+12125550133');
+        INSERT INTO contacts VALUES ('contact:s1:3', 's1', 'x', NULL, 'no name', '+12125550144');
+        INSERT INTO calls (id, source_id, locator, app, direction, from_account_id,
+            to_account_id, duration_s)
+            VALUES ('call:s1:1', 's1', 'x', 'Phone', 'outgoing', 'a1', NULL, 84);
+        INSERT INTO calls (id, source_id, locator, app, direction, from_account_id)
+            VALUES ('call:s1:2', 's1', 'x', 'WhatsApp', 'unknown', 'a2');
+        INSERT INTO attachments (id, source_id, locator, message_id, file_name)
+            VALUES ('att:s1:1', 's1', 'x', 'msg:s1:1', 'invoice.pdf');
+        INSERT INTO attachments (id, source_id, locator, message_id, file_name)
+            VALUES ('att:s1:2', 's1', 'x', 'msg:s1:1', NULL);
+        """
+    )
+    return conn
+
+
+@pytest.mark.parametrize(
+    ("record_id", "quote", "passes"),
+    [
+        ("contact:s1:2", "(no name)", False),  # Grok review on #80, item 3
+        ("contact:s1:2", "no name", False),
+        ("contact:s1:2", "(no name): +12125550133", True),  # copied as shown: the number is its own
+        ("contact:s1:2", "+12125550133", True),
+        ("contact:s1:3", "no name", True),  # the contact's saved name really is "no name"
+        ("contact:s1:1", "Marc Garage: +12125550122", True),
+        ("call:s1:1", "call from", False),  # Baker's words in the call line
+        ("call:s1:1", "to unknown", False),  # "unknown": no account on the call
+        ("call:s1:1", "duration 84 s", True),
+        ("call:s1:1", "call from +12125550122", True),
+        ("call:s1:1", "unknown", False),
+        ("call:s1:2", "unknown", True),  # its caller's identifier really is "unknown"
+        ("call:s1:2", "unknown WhatsApp", True),
+        ("call:s1:2", "to unknown", False),
+        ("call:s1:2", "from unknown", True),  # an account whose identifier is "unknown"
+        ("att:s1:2", "(no file name)", False),
+        ("att:s1:1", "invoice.pdf", True),
+        ("msg:s1:1", "no name", True),  # a message's body is all its own
+        ("msg:s1:1", "call from", True),
+    ],
+)
+def test_a_quote_must_take_in_the_records_own_fields(record_id, quote, passes) -> None:
+    conn = _records()
+    rec = get_record(conn, record_id)
+    assert quote in rec.text
+    assert verify_record_quote(conn, record_id, quote) is passes
+    # The stored re-check (core.audit.invariants) reaches the same answer on its own.
+    assert invariants.quote_is_verbatim(conn, quote, record_id) is passes
+
+
+def test_the_verifier_must_accept_the_quote_where_it_takes_in_the_records_own_fields() -> None:
+    text, own = "outgoing Phone call from toby1 to unknown", ((0, 8), (9, 14), (25, 30))
+    # "to" is a word only in Baker's " to ", and inside "toby1" it cuts a word: no place passes.
+    assert verify_quote("to", text) and not quotes.cites_record("to", text, own)
+    assert quotes.cites_record("toby1", text, own)
+
+    # The pipeline passes its own QuoteVerifier; a looser one is still held to the own fields.
+    def plain(q: str, t: str) -> bool:
+        return q in t
+
+    assert quotes.cites_record("tob", text, own, plain)
+    assert not quotes.cites_record("call from", text, own, plain)
+
+
+# The quote check's answers on a fixed set, pinned to its version (Grok review on #80, item 3:
+# the behavior changed in #76 with no version bump). A change to which quotes pass, in
+# core/enrich/records.py, core/audit/quotes.py or the stored re-check, changes this digest: bump
+# core/audit/quotes.VERSION, pin the new digest beside it, and say so in docs/CHANGELOG_AI.md.
+PINNED = {"1.2.0": "fb8892aef8eb7b1881ae8741c785dcb246be044480464153dd953331f4bca376"}
+PROBES = [
+    "(no name)",
+    "no name",
+    "Marc Garage",
+    "Marc Garage +12125550122",
+    "Marc Garage: +12125550122",
+    "+12125550122",
+    "+1212",
+    "outgoing",
+    "outgoing Phone call",
+    "call from",
+    "call from +12125550122",
+    "to unknown",
+    "unknown",
+    "duration 84 s",
+    "84",
+    ", duration",
+    "invoice.pdf",
+    "(no file name)",
+    "on the box",
+    "?",
+]
+
+
+def test_the_quote_check_answers_are_pinned_to_its_version() -> None:
+    conn = _records()
+    rows: list[object] = []
+    for table in ("messages", "contacts", "calls", "attachments"):
+        for (rid,) in conn.execute(f"SELECT id FROM {table} ORDER BY id"):  # noqa: S608
+            rec = get_record(conn, rid)
+            rows.append([rid, rec.text, [list(span) for span in rec.own]])
+            for quote in PROBES:
+                rows.append(
+                    [
+                        quote,
+                        verify_record_quote(conn, rid, quote),
+                        invariants.quote_is_verbatim(conn, quote, rid),
+                    ]
+                )
+    digest = hashlib.sha256(json.dumps(rows, ensure_ascii=False).encode()).hexdigest()
+    assert PINNED.get(quotes.VERSION) == digest, (
+        f"the quote check's answers changed (digest {digest}): bump core/audit/quotes.VERSION "
+        "and pin the new digest here"
+    )

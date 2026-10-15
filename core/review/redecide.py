@@ -83,6 +83,8 @@ def redecide(
         "evidence_from_run": evidence_from,
         "fake": result.fake,
         "requested_by": requested_by,
+        # The labels re-used here were kept or dropped by the evidence run's quote check.
+        "quote_check": src["config"].get("quote_check"),
     }
     with conn:
         conn.execute(

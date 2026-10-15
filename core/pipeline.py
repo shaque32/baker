@@ -5,8 +5,11 @@ Every step is a component that implements a protocol from core/contracts.py. The
 only moves data between them, stores it, and refuses anything that breaks a rule:
 
 - A stance label whose quote fails verification is dropped and never stored as evidence. The
-  model calls components record (component.recorder.calls) are stored in model_calls, and the
-  call behind a failed quote is stored as quote_failed.
+  quote must pass Components.verify_quote at a place that takes in the record's own fields, not
+  only Baker's words or a placeholder such as "(no name)" (core.audit.quotes.cites_record).
+  The model calls components record (component.recorder.calls) are stored in model_calls, and
+  the call behind a failed quote is stored as quote_failed. Every run records the quote check's
+  version (core.audit.quotes.VERSION) in its config, as it records the rule version.
 - A label that names a different assumption or record than the one it was asked about is
   dropped.
 - The AI reviewer is optional and off by default (real_components(ai_review=False)): under
@@ -73,7 +76,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from core import db
-from core.audit import invariants, rules, stance
+from core.audit import invariants, quotes, rules, stance
 from core.audit._llm_json import ModelUnavailable
 from core.contracts import (
     CONTRACTS_VERSION,
@@ -117,6 +120,7 @@ from core.contracts import (
     review_id,
     verdict_id,
 )
+from core.enrich.records import get_record
 from core.review import audit_log
 
 PIPELINE_VERSION = "0.1.0"
@@ -816,8 +820,13 @@ class _Run:
         if label.assumption_id != a.id or label.record_id != cand.record_id:
             self.flush_calls()
             return self._drop()
-        text = invariants.record_text(self.conn, cand.record_id)
-        if text is None or not self.c.verify_quote(label.quote, text):
+        rec = get_record(self.conn, cand.record_id)
+        text = rec.text if rec else None
+        if (
+            rec is None
+            or text is None
+            or not quotes.cites_record(label.quote, text, rec.own, self.c.verify_quote)
+        ):
             self.flush_calls({label.model_call_id} if label.model_call_id else set())
             return self._drop()
         self.flush_calls()
@@ -1109,6 +1118,7 @@ def run_audit(
     cfg = {
         "k": components.k,
         "fake": result.fake,
+        "quote_check": quotes.VERSION,
         "label_settled": components.label_settled,
         "claim_order": [cl.id for cl in claims],
         "components": components.names(),

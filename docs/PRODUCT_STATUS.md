@@ -8,6 +8,8 @@ tests or recorded runs. Where something exists only on an unmerged branch, it sa
 - **Verified on:** main `7a14437` first, then re-checked after #64 to #67 merged (they changed
   only `core/audit/assumption_filler.py` in `core/`, plus tests and probe gold)
 - **Rule version:** 0.2.1 on main (`core/audit/rules.py`); 0.2.2 pending in PR #75. **Contracts:** 0.3.0 (`core/contracts.py`).
+- **Quote check:** 1.1.0 on main, not recorded with results; 1.2.0 in PR #76, which records it
+  on every run and prints it in the report (`core/audit/quotes.py`, `VERSION`).
 - **Signed prompts on main:** stance v1.1, reviewer v1.1, claims v1.0, assumptions v1.0
   (`core/audit/prompts/`)
 
@@ -34,7 +36,7 @@ coverage: one wrong "supported" is the failure that counts most.
 | 6. Checks | Deterministic checks: sender, identity, timing, weekday, count, absence | `core/audit/checks/` | No |
 | 7. Retrieval | Structured filters plus keyword ranking, with surrounding messages and the other phone's copy | `core/audit/retrieval.py` | No |
 | 8. Stance | Labels one record against one assumption: supports, contradicts, complicates or irrelevant | `core/audit/stance.py` | Local 14B (main); Opus 5.5, opt-in per case (branch #68, not merged) |
-| 9. Quote check | The label's quote must appear verbatim in the record, or the label is dropped | `core/audit/quotes.py` | No |
+| 9. Quote check | The label's quote must appear verbatim in the record, or the label is dropped. With #76 (version 1.2.0) the quote must also take in a letter or digit of the record's own fields: Baker's words in a rendered line ("call from") or a placeholder ("(no name)", "unknown") cannot verify it alone | `core/audit/quotes.py` | No |
 | 10. AI review | Optional second pass on supporting items; off by default | `core/audit/review.py` | Local 14B |
 | 11. Verdict | `decide_verdict` applies rules 0.2.1 | `core/audit/rules.py` | No |
 | 12. Invariants | Re-checks each decision against stored records; a violation rolls back the claim and fails the run | `core/audit/invariants.py` | No |
@@ -224,9 +226,10 @@ Grok Product review PR, never merged.
 1. **A label whose quote fails the check is lost, whatever its stance (issue #69).** The check
    runs before a label's stance is used, so a dropped "contradicts" or "complicates" could let a
    claim with other accepted support go SUPPORTED. The systematic cause is fixed by #76: contacts
-   and calls now read the same for the labeler and the check (`core/audit/invariants.py:77`,
+   and calls now read the same for the labeler and the check (`core/audit/invariants.py:78`,
    through `core.enrich.records`), and a test checks every case01 record. A label still drops
-   when its quote is not verbatim or has no letter or digit, and the report shows only a count.
+   when its quote is not verbatim, has no letter or digit, or takes in only Baker's words or a
+   placeholder such as "(no name)", and the report shows only a count.
    Replayed offline through the new check (2026-10-15, no model call): every supports,
    contradicts and complicates label of Opus's stored no-sheet case01 run passes (108); Sonnet
    and Haiku (2026-10-14) each lose 2, all on a message whose whole body is "?". The 14B's

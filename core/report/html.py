@@ -489,6 +489,12 @@ def audit_log_summary(conn: sqlite3.Connection) -> dict:
     }
 
 
+def _quote_check(run: dict) -> str:
+    """The quote check the run's evidence passed (core.audit.quotes.VERSION). Runs before 1.2.0
+    did not record it."""
+    return (run.get("config") or {}).get("quote_check") or "not recorded (1.1.0 or earlier)"
+
+
 def _versions(conn: sqlite3.Connection, run: dict | None) -> str:
     rows = [("Report", REPORT_VERSION), ("Other explanations (code)", explain.VERSION)]
     if run:
@@ -496,6 +502,7 @@ def _versions(conn: sqlite3.Connection, run: dict | None) -> str:
             ("Baker pipeline", run["baker_version"]),
             ("Contracts", run["contracts_version"]),
             ("Verdict rules", run["rule_version"]),
+            ("Quote check", _quote_check(run)),
         ]
     model_rows = list(
         conn.execute(
@@ -626,7 +633,7 @@ def render_report(conn: sqlite3.Connection, timeline: timeline_html.Settings | N
         parts.append(
             f"<p>Run {e(run['run_id'])}, started {e(run['started_at_utc'])}. Baker "
             f"{e(run['baker_version'])}, contracts {e(run['contracts_version'])}, rule version "
-            f"{e(run['rule_version'])}. "
+            f"{e(run['rule_version'])}, quote check {e(_quote_check(run))}. "
             f"{e(run['stored_items'])} evidence items stored; {e(run['dropped_labels'])} labels "
             f"discarded; {e(run['reviewer_failures'])} reviewer failures counted as dismissals."
             f"{mode}</p><table><thead><tr><th>Step</th><th>Component</th></tr></thead>"

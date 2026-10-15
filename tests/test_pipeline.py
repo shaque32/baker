@@ -11,6 +11,7 @@ import pytest
 
 from cli.main import main as cli_main
 from core import pipeline
+from core.audit import quotes
 from core.audit.invariants import (
     InvariantViolation,
     check_evidence,
@@ -284,9 +285,89 @@ def test_evidence_stored_before_the_fix_still_passes_the_stored_quote_check(conn
             item.model_copy(update={"record_id": call, "quote": old_call}),
         ],
     )
-    for rid, quote in ((item.record_id, "Marc Garage +1 212"), (call, "outgoing call from")):
+    for rid, quote in (
+        (item.record_id, "Marc Garage +1 212"),
+        (call, "outgoing call from"),
+        (call, "call from"),  # in the old text, but only its own words
+    ):
         with pytest.raises(InvariantViolation, match="not verbatim"):
             check_evidence(conn, [item.model_copy(update={"record_id": rid, "quote": quote})])
+
+
+NAMELESS = "contact:item1:Contacts!4#1"
+CALL = "call:item1:Call Log!10"
+
+
+@pytest.mark.parametrize(
+    ("other", "quote", "kept"),
+    [
+        (NAMELESS, "(no name)", False),
+        (NAMELESS, "no name", False),
+        (NAMELESS, "(no name): ", False),
+        (NAMELESS, "SHOWN", True),
+        (NAMELESS, "IDENTIFIER", True),
+        (CALL, "call from", False),
+        (CALL, ", duration", False),
+        (CALL, "SHOWN", True),
+        (CALL, "DIRECTION", True),
+    ],
+)
+def test_a_quote_of_only_bakers_words_or_a_placeholder_is_dropped(conn, other, quote, kept):
+    # Grok review on #80, item 3: once the check reads a record as the labeler sees it, a quote
+    # of "(no name)" or of a call line's own words ("call from") is a verbatim substring of
+    # nothing the record holds. It must not verify; a quote that reaches the record's fields does.
+    with conn:
+        conn.execute("UPDATE contacts SET name = NULL WHERE id = ?", (NAMELESS,))
+    table = {"contact": "contacts", "call": "calls"}[other.split(":", 1)[0]]
+    source_id, locator = conn.execute(
+        f"SELECT source_id, locator FROM {table} WHERE id = ?",  # noqa: S608
+        (other,),
+    ).fetchone()
+    shown = get_record(conn, other).text
+    quote = {"SHOWN": shown, "IDENTIFIER": shown.split(": ", 1)[-1]}.get(quote, quote)
+    quote = shown.split(" ", 1)[0] if quote == "DIRECTION" else quote
+    assert quote in shown
+
+    class PlusOther(QuotedPhraseRetriever):
+        def retrieve(self, assumption, conn, k):
+            extra = EvidenceCandidate(
+                record_id=other,
+                ref=SourceRef(source_id=source_id, locator=locator),
+                text=shown,
+                tier=ProvenanceTier.OBSERVED,
+                retrieval_score=0.5,
+            )
+            return [*super().retrieve(assumption, conn, k), extra]
+
+    class Contrarian(PhraseLabeler):
+        def label(self, assumption, candidate):
+            if candidate.record_id != other:
+                return super().label(assumption, candidate)
+            return StanceLabel(
+                assumption_id=assumption.id,
+                record_id=other,
+                stance=Stance.CONTRADICTS,
+                quote=quote,
+                rationale="test",
+                model_run_id="mr:fake-stance",
+            )
+
+    c = comps(retriever=PlusOther(), labeler=Contrarian())
+    result = pipeline.run_audit(conn, c, clock=_clock, claim_ids=["C01"])
+    stored = [e for e in items(conn) if e.record_id == other]
+    assert result.dropped_labels == (0 if kept else 1)
+    assert [e.quote for e in stored] == ([quote] if kept else [])
+    # The stored re-check holds the same line: a placeholder quote never stands.
+    (item,) = [e for e in items(conn) if e.stance == Stance.SUPPORTS]
+    if not kept:
+        with pytest.raises(InvariantViolation, match="not verbatim"):
+            check_evidence(conn, [item.model_copy(update={"record_id": other, "quote": quote})])
+
+
+def test_every_run_records_the_quote_check_version(conn):
+    pipeline.run_audit(conn, comps(), clock=_clock, claim_ids=["C01"])
+    assert pipeline.last_run(conn)["config"]["quote_check"] == quotes.VERSION == "1.2.0"
+    assert f"quote check {quotes.VERSION}" in render_report(conn)
 
 
 def test_reviewer_failure_is_a_dismissal_and_reviewer_never_sees_the_rationale(conn):
