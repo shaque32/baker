@@ -51,6 +51,13 @@ def call_text(
     )
 
 
+def contact_text(name: str | None, identifier: str) -> str:
+    """A contact as the labeler is shown it. A quote about a contact is checked against this same
+    text (core.audit.invariants.record_text, core.audit.quotes.record_text), so a quote copied
+    from what the labeler saw can pass."""
+    return f"{name or '(no name)'}: {identifier}"
+
+
 def get_record(conn: sqlite3.Connection, record_id: str) -> Record | None:
     kind = kind_of(record_id)
     if kind == "message":
@@ -77,7 +84,7 @@ def get_record(conn: sqlite3.Connection, record_id: str) -> Record | None:
             "SELECT source_id, locator, name, identifier FROM contacts WHERE id = ?", (record_id,)
         ).fetchone()
         if row:
-            text = f"{row[2] or '(no name)'}: {row[3]}"
+            text = contact_text(row[2], row[3])
             return Record(record_id, kind, SourceRef(source_id=row[0], locator=row[1]), text, None)
     elif kind == "attachment":
         row = conn.execute(

@@ -21,6 +21,8 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Callable
 
+from core.enrich.records import contact_text
+
 VERSION = "1.1.0"
 
 
@@ -70,9 +72,9 @@ def record_text(conn: sqlite3.Connection, record_id: str) -> str | None:
         ).fetchone()
     elif kind == "contact":
         row = conn.execute(
-            "SELECT coalesce(name, '(no name)') || ': ' || identifier FROM contacts WHERE id = ?",
-            (record_id,),
+            "SELECT name, identifier FROM contacts WHERE id = ?", (record_id,)
         ).fetchone()
+        return contact_text(row[0], row[1]) if row else None
     else:
         return None
     return row[0] if row and row[0] is not None else None

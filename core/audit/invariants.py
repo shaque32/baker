@@ -54,6 +54,7 @@ from core.contracts import (
     VerdictDecision,
     verdict_id,
 )
+from core.enrich.records import contact_text
 
 ACCEPTED_STATUSES = (EvidenceStatus.AI_ACCEPTED, EvidenceStatus.ACCEPTED)
 
@@ -78,7 +79,8 @@ def record_text(conn: sqlite3.Connection, record_id: str) -> str | None:
 
     Messages cite their original body and attachments their file name. Calls and contacts have
     no body, so their text is a fixed rendering of stored fields; a quote from them can only cite
-    those fields.
+    those fields. A contact reads "name: number", exactly as retrieval shows it to the labeler
+    (core.enrich.records.contact_text).
     """
     kind = record_id.split(":", 1)[0]
     if kind == "msg":
@@ -93,7 +95,7 @@ def record_text(conn: sqlite3.Connection, record_id: str) -> str | None:
         row = conn.execute(
             "SELECT name, identifier FROM contacts WHERE id = ?", (record_id,)
         ).fetchone()
-        return f"{row[0] or ''} {row[1]}".strip() if row else None
+        return contact_text(row[0], row[1]) if row else None
     if kind == "call":
         row = conn.execute(
             "SELECT c.direction, fa.identifier, ta.identifier, c.ts_raw, c.duration_s"

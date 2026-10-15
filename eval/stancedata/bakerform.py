@@ -23,6 +23,7 @@ from typing import Any
 from core.audit.assumptions import TEMPLATES, local_window, parse_params
 from core.audit.quotes import verify_quote
 from core.contracts import TimeWindow
+from core.enrich import records
 from eval.probe_draft.model import ProbeLine
 from eval.stancedata.chat import local_str
 from eval.stancedata.families import family
@@ -116,8 +117,9 @@ def sender_line(
 
 
 def contact_text(name: str | None, identifier: str) -> str:
-    """A contact row as core.audit.invariants.record_text cites it: '<name> <identifier>'."""
-    return f"{name or ''} {identifier}".strip()
+    """A contact row as Baker shows it and as core.audit.invariants.record_text cites it:
+    '<name>: <identifier>', or '(no name): <identifier>'."""
+    return records.contact_text(name, identifier)
 
 
 def call_text(

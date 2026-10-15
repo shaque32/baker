@@ -86,7 +86,7 @@ def test_call_and_contact_text_match_the_product(conn: sqlite3.Connection) -> No
     assert invariants.record_text(conn, "contact:item1:Contacts:3#1") == bf.contact_text(
         "Gus Tires", NUMBER_B
     )
-    assert bf.contact_text(None, NUMBER_B) == NUMBER_B
+    assert bf.contact_text(None, NUMBER_B) == f"(no name): {NUMBER_B}"
 
 
 def test_sender_lines_follow_the_product_and_the_adapter(conn: sqlite3.Connection) -> None:

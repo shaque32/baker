@@ -26,6 +26,7 @@ from core.contracts import (
     verdict_id,
 )
 from core.db import connect
+from core.enrich.records import get_record
 from core.report.html import SUPPORTED_AI, SUPPORTED_EXPERT, render_report, write_report
 from core.review import actions, audit_log
 from eval import run_pipeline
@@ -185,6 +186,24 @@ def test_label_for_another_record_is_dropped(conn):
 
     result = pipeline.run_audit(conn, comps(labeler=Wrong()), clock=_clock, claim_ids=["C01"])
     assert result.stored_items == 0 and result.dropped_labels >= 1
+
+
+def test_a_quote_copied_from_the_contact_as_shown_is_kept(conn):
+    # Regression (scoring audit, 2026-10-15): retrieval shows the labeler a contact as
+    # "Marc Garage: +12125550122", but the quote check read it as "Marc Garage +12125550122",
+    # so a model that copied what it saw had its right answer dropped.
+    class CopiesWhatItSaw(PhraseLabeler):
+        def label(self, assumption, candidate):
+            real = super().label(assumption, candidate)
+            if not candidate.record_id.startswith("contact:"):
+                return real
+            shown = get_record(conn, candidate.record_id).text
+            return real.model_copy(update={"stance": Stance.SUPPORTS, "quote": shown})
+
+    pipeline.run_audit(conn, comps(labeler=CopiesWhatItSaw()), clock=_clock, claim_ids=["C01"])
+    (kept,) = [e for e in items(conn) if e.record_id.startswith("contact:")]
+    assert kept.quote == "Marc Garage: +12125550122" and kept.stance == Stance.SUPPORTS
+    assert record_text(conn, kept.record_id) == get_record(conn, kept.record_id).text
 
 
 def test_reviewer_failure_is_a_dismissal_and_reviewer_never_sees_the_rationale(conn):
