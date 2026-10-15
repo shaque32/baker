@@ -399,8 +399,14 @@ class App:
         if p == "/log":
             return self._html(pages.log_page(conn, page, req.query.get("all") == "1"))
         if p in ("/report", "/report.html"):
-            body = render_report(conn, timeline=self._timeline())  # handle() checked the log
-            audit_log.anchor(conn, audit_log.anchors_path(self._open().db))
+            case = self._open()
+            try:  # handle() checked the log; anchor its newest entry before the report goes out
+                audit_log.anchor(conn, audit_log.anchors_path(case.db))
+            except audit_log.ChainBroken as err:
+                self._close_broken(case)
+                self.flash = (f"No report: {err}", True)
+                return self._redirect("/cases")
+            body = render_report(conn, timeline=self._timeline())
             download = req.query.get("download") == "1" or p == "/report.html"
             if not download:  # on screen, the vendored fonts; a saved copy uses system fonts
                 body = body.replace("<style>", f"<style>{theme.FONT_CSS}", 1)
@@ -912,11 +918,11 @@ class App:
             finally:
                 conn.close()
         except (audit_log.ChainBroken, CaseLocked) as err:
-            _drain(stream, length)
-            if isinstance(err, audit_log.ChainBroken):
+            if isinstance(err, audit_log.ChainBroken):  # stop a job first, then drain
                 self._close_broken(case)
             else:
                 self.case = None
+            _drain(stream, length)
             self.flash = (f"Not imported: {err}", True)
             return self._redirect("/cases")
         counted = _Counting(stream)

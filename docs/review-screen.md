@@ -131,12 +131,15 @@ Two checks, both in `core/review/audit_log.py` (`require_intact`):
    and names the first entry that does not match.
 2. **The anchors.** The chain alone cannot tell that entries were cut from its end: what is left
    still verifies. So when a case opens, and when a report is built, Baker writes the newest
-   entry's number and hash to `case.anchors.jsonl` beside `case.db` (one line each time it
+   entry's number and hash to `case.db.anchors.jsonl` beside `case.db` (one line each time it
    changed; entry numbers and hashes only: no case content, no times, no reasons, since the file
    stays unencrypted beside an encrypted case). Every later check requires each
    anchored entry to still be there with the same hash. A log cut back past an anchor, or
    rewritten from there on, is blocked ("the audit log has no entry N ... so entries were removed
    from the end of the log").
+
+A case folder Baker cannot write to (read-only media, a locked-down backup) does not open or
+report, since no anchor could be recorded: copy the folder somewhere writable and open the copy.
 
 What the anchors do not catch: entries added after the newest anchor and then cut again before
 the next open or report, and anyone who changes the database and the anchor file together. The
@@ -152,7 +155,7 @@ one that no longer verifies. The expert:
    `baker verify-log --db <case folder>/case.db` to record the reason.
 2. Restores the case folder from a backup made before the change, if there is one, and opens it.
    The restored log must still hold every anchored entry: restore the folder whole, its
-   `case.anchors.jsonl` with its `case.db`. A restored log older than the anchor file beside it
+   `case.db.anchors.jsonl` with its `case.db`. A restored log older than the anchor file beside it
    is blocked.
 3. Otherwise makes a new case from the original files (the government document and the
    extraction reports), settles the claims and runs the audit again. The SHA-256 of each

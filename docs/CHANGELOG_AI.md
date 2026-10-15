@@ -23,7 +23,7 @@ Template:
 - Changed: opening a case, and building or saving its report, now checks the audit log (before,
   the chain was only verified at report build, which printed the result and exported anyway, and
   at encryption). Two checks: the hash chain, and anchors: the newest entry's number and hash,
-  written to `case.anchors.jsonl` beside `case.db` when a case opens and when a report is built,
+  written to `case.db.anchors.jsonl` beside `case.db` when a case opens and when a report is built,
   must still be in the log. Anchors catch entries cut from the end of the log, which the chain
   alone cannot. The screen checks again on every page and upload while a case is open, and encrypting or
   changing the passphrase checks first. A failed check fails closed: Cases shows "Review
@@ -33,9 +33,10 @@ Template:
   expert's steps when a case is blocked (keep the folder, restore a whole-folder backup, or
   rebuild from the original files). (Grok Product item 5 on #70 and its follow-up on #80.)
 - Where: main, with PR #74.
-- Verified: 26 tests in `tests/test_chain_on_open.py` (chain, anchors: truncation, rewrite,
+- Verified: 28 tests in `tests/test_chain_on_open.py` (chain, anchors: truncation, rewrite,
   unreadable or non-text file, dedupe, numbers and hashes only; CLI and screen, report and log
-  page and upload refusal, non-text log values, job stop, encrypt and passphrase refused,
+  page and upload refusal, non-text log values, unwritable anchor file, one anchor file per
+  database name, job stop, encrypt and passphrase refused,
   encrypted re-lock); full suite passes;
   headless-Chromium smoke (report refused after the newest entry was cut; intact report builds);
   eval unchanged (case01 1.00, 0 false supported, hostile PASS).

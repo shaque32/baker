@@ -151,7 +151,7 @@ def anchored_db(tmp_path) -> Path:
 
 def test_opening_anchors_the_newest_entry_once(anchored_db):
     anchors = audit_log.anchors_path(anchored_db)
-    assert anchors.name == "case.anchors.jsonl"
+    assert anchors.name == "case.db.anchors.jsonl"
     assert cli_main(["claims", "--db", str(anchored_db), "list"]) == 0
     lines = anchors.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 1  # the same newest entry is not anchored twice
@@ -188,7 +188,7 @@ def test_an_unreadable_anchor_file_is_refused(anchored_db):
 
 def test_an_anchor_file_that_is_not_text_is_refused(anchored_db):
     audit_log.anchors_path(anchored_db).write_bytes(b"\xff\xfe\x00garbage")
-    with pytest.raises(SystemExit, match="anchor file case.anchors.jsonl cannot be read"):
+    with pytest.raises(SystemExit, match="anchor file case.db.anchors.jsonl cannot be read"):
         cli_main(["claims", "--db", str(anchored_db), "list"])
 
 
@@ -421,3 +421,23 @@ def test_an_upload_to_a_case_blocked_since_it_opened_is_refused(tmp_path):
     assert case.db.read_bytes() == before
     assert not any(case.inputs.iterdir()) if case.inputs.exists() else True
     assert "Not imported: the audit log" in get(app, "/cases").text
+
+
+def test_databases_sharing_a_stem_get_their_own_anchor_files(tmp_path):
+    assert audit_log.anchors_path(tmp_path / "matter.db") != audit_log.anchors_path(
+        tmp_path / "matter.sqlite"
+    )
+
+
+def test_an_anchor_that_cannot_be_written_is_a_clear_error(anchored_db, monkeypatch):
+    conn = connect(anchored_db)
+    audit_log.append(conn, AT, EXPERT, "test.entry", {"n": 9})  # a new newest entry
+    conn.commit()
+    conn.close()
+
+    def refuse(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+        raise PermissionError("read-only media")
+
+    monkeypatch.setattr("builtins.open", refuse)
+    with pytest.raises(SystemExit, match="cannot write case.db.anchors.jsonl"):
+        cli_main(["claims", "--db", str(anchored_db), "list"])

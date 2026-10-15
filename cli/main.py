@@ -53,7 +53,7 @@ key once. Nothing encrypts a case on its own. `passphrase` changes an encrypted 
 passphrase. Every command on an encrypted case asks for its passphrase (or recovery key) in the
 terminal; it is never taken from an option or the environment.
 Every command but `verify-log` first verifies the case's audit-log hash chain, and that the log
-still holds every entry recorded in its anchor file (case.anchors.jsonl beside the database,
+still holds every entry recorded in its anchor file (case.db.anchors.jsonl beside the database,
 written when a case opens and when a report is built), and stops, writing nothing, when either
 fails (the database was changed outside Baker). `verify-log` says which.
 `ufdr-check` compares what Baker imports from a UFDR with the package's own report.xml, record
@@ -115,10 +115,10 @@ def _open(path: Path, create: bool = False, review: bool = True):  # -> sqlite3.
     if review and not create:
         try:
             audit_log.require_intact(conn, audit_log.anchors_path(path))
-        except audit_log.ChainBroken as err:
+            audit_log.anchor(conn, audit_log.anchors_path(path))
+        except audit_log.ChainBroken as err:  # AnchorUnwritable too
             conn.close()
             raise SystemExit(f"error: {err}") from err
-        audit_log.anchor(conn, audit_log.anchors_path(path))
     return conn
 
 
@@ -296,10 +296,10 @@ def cmd_report(a: argparse.Namespace) -> int:
     from core.casework.cases import Case
     from core.timeline.settings import from_case
 
-    conn = _open(a.db)  # a broken or cut-short log stops the export (fail closed)
+    # A broken or cut-short log stops the export (fail closed); _open anchors the newest entry.
+    conn = _open(a.db)
     tl = from_case(Case(Path(a.db)).settings)  # the case's own timeline settings
     print(f"wrote {write_report(conn, a.out, tl)}")
-    audit_log.anchor(conn, audit_log.anchors_path(a.db))
     return 0
 
 

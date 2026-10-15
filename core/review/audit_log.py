@@ -43,7 +43,7 @@ def append(
     )
 
 
-ANCHORS_SUFFIX = ".anchors.jsonl"
+ANCHORS_SUFFIX = ".anchors.jsonl"  # added to the database's full name: case.db.anchors.jsonl
 
 BLOCKED = (
     "the case database was changed outside Baker, so this case cannot be opened for review or "
@@ -61,6 +61,20 @@ class ChainBroken(Exception):
         self.seq = seq
         self.problem = problem or f"the audit log's hash chain is broken at entry {seq}"
         super().__init__(f"{self.problem}: {BLOCKED}")
+
+
+class AnchorUnwritable(ChainBroken):
+    """Baker cannot record the anchor beside the database (read-only media, permissions). The
+    case is not opened or reported, because the next check could not see a cut from here on."""
+
+    def __init__(self, anchors: Path, err: OSError) -> None:
+        self.seq = 0
+        self.problem = f"Baker cannot write {anchors.name} beside the case database ({err})"
+        Exception.__init__(
+            self,
+            f"{self.problem}. Nothing was changed. Copy the case folder somewhere Baker can "
+            "write, then open the copy.",
+        )
 
 
 def first_break(conn: sqlite3.Connection) -> int | None:
@@ -86,9 +100,11 @@ def verify_chain(conn: sqlite3.Connection) -> bool:
 
 
 def anchors_path(db: Path) -> Path:
-    """The case's anchor file beside its database (case.db -> case.anchors.jsonl). It holds
-    entry numbers and hashes only, no case content."""
-    return Path(db).with_suffix(ANCHORS_SUFFIX)
+    """The case's anchor file beside its database (case.db -> case.db.anchors.jsonl; the full
+    name, so matter.db and matter.sqlite never share one). It holds entry numbers and hashes
+    only, no case content."""
+    db = Path(db)
+    return db.with_name(db.name + ANCHORS_SUFFIX)
 
 
 def require_intact(conn: sqlite3.Connection, anchors: Path | None = None) -> None:
@@ -150,13 +166,16 @@ def anchor(conn: sqlite3.Connection, anchors: Path) -> None:
         pass  # no file yet; an unreadable one was already refused by require_intact
     line = json.dumps({"seq": seq, "hash": h}, sort_keys=True) + "\n"
     created = not anchors.exists()
-    with open(anchors, "a", encoding="utf-8") as f:
-        f.write(line)
-        f.flush()
-        os.fsync(f.fileno())
-    if created and os.name == "posix":  # make the new file's directory entry durable too
-        fd = os.open(anchors.parent, os.O_RDONLY)
-        try:
-            os.fsync(fd)
-        finally:
-            os.close(fd)
+    try:
+        with open(anchors, "a", encoding="utf-8") as f:
+            f.write(line)
+            f.flush()
+            os.fsync(f.fileno())
+        if created and os.name == "posix":  # make the new file's directory entry durable too
+            fd = os.open(anchors.parent, os.O_RDONLY)
+            try:
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+    except OSError as err:
+        raise AnchorUnwritable(anchors, err) from err
