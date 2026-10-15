@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from core.audit import stance as stance_mod
-from core.audit._llm_json import ModelUnavailable
+from core.audit._llm_json import CloudPaused, ModelUnavailable
 from core.casework import cloud as cloud_policy
 from core.contracts import EvidenceCandidate, ProvenanceTier, SourceRef
 from core.llm import cloud
@@ -62,6 +62,9 @@ class FakeCloud:
         default_factory=lambda: cloud.CloudParams("claude-opus-5-5", "medium")
     )
     prompts: list[str] = field(default_factory=list)
+
+    def request(self, prompt, schema):  # noqa: ANN001, ANN201
+        return {"model": self.name, "messages": [{"role": "user", "content": prompt}]}
 
     def generate_json(self, prompt, schema, params=None):  # noqa: ANN001, ANN201
         self.prompts.append(prompt)
@@ -111,10 +114,10 @@ def _cand(rid: str = "msg:7") -> EvidenceCandidate:
     )
 
 
-def _runs(lab) -> tuple:  # noqa: ANN001
-    cloud_run, local_run = lab.model_runs
-    assert cloud_run.model_sha256.startswith("api:") and local_run.model_sha256 == SHA
-    return cloud_run, local_run
+def _cloud_run(lab):  # noqa: ANN001, ANN202
+    (run,) = lab.model_runs  # a cloud case has one stance run: labels never mix models
+    assert run.model_sha256.startswith("api:")
+    return run
 
 
 # ---------------------------------------------------------------- config and key
@@ -197,76 +200,91 @@ def test_the_api_address_is_pinned_whatever_the_environment_says(monkeypatch):
     assert str(client.base_url).startswith("https://api.anthropic.com")
 
 
-# ---------------------------------------------------------------- the labeler and fallback
+# ---------------------------------------------------------------- the labeler: no mixed labels
 
 
-def test_cloud_labels_first_and_the_item_names_the_cloud_run(case_db, fake_context):
+def test_cloud_labels_and_the_item_names_the_cloud_run(case_db, fake_context):
     up, local = FakeCloud([SUPPORTS]), FakeLocal([])
     lab = stance_mod.create(case_db, model=local, cloud_model=up)
-    cloud_run, _ = _runs(lab)
+    run = _cloud_run(lab)
     label = lab.label(make_assumption("They met at the garage."), _cand())
-    assert label.model_run_id == cloud_run.id and not local.prompts
+    assert label.model_run_id == run.id and not local.prompts
     assert ">> CONTEXT FOR msg:7" in up.prompts[0]
 
 
-def test_a_sticky_failure_sends_this_and_every_later_call_to_the_local_model(case_db, fake_context):
+def test_a_sticky_failure_pauses_the_run_and_never_asks_the_local_model(case_db, fake_context):
     up = FakeCloud([cloud.CloudError("ConnectionError: down", sticky=True)])
-    local = FakeLocal([SUPPORTS, SUPPORTS])
+    local = FakeLocal([SUPPORTS])
     lab = stance_mod.create(case_db, model=local, cloud_model=up)
-    cloud_run, local_run = _runs(lab)
-    a = make_assumption("They met at the garage.")
-    first = lab.label(a, _cand("msg:1"))
-    second = lab.label(a, _cand("msg:2"))
-    assert first.model_run_id == local_run.id == second.model_run_id
-    assert len(up.prompts) == 1 and len(local.prompts) == 2  # the cloud is not asked again
-    assert up.prompts[0] == local.prompts[0]  # the same question, word for word
-    calls = [(c.model_run_id, c.outcome.value) for c in lab.recorder.calls]
-    assert calls == [(cloud_run.id, "error"), (local_run.id, "ok"), (local_run.id, "ok")]
-    assert lab.model.fell_back == "ConnectionError: down"
+    with pytest.raises(CloudPaused, match="stopped answering"):
+        lab.label(make_assumption("They met at the garage."), _cand())
+    assert not local.prompts
+    assert isinstance(CloudPaused("x"), ModelUnavailable)  # the pipeline stops, never drops
 
 
-def test_a_refusal_sends_only_that_call_to_the_local_model(case_db, fake_context):
+def test_a_refusal_drops_that_label_and_the_next_call_stays_on_the_cloud(case_db, fake_context):
     up = FakeCloud([cloud.CloudError("declined", sticky=False), SUPPORTS])
     local = FakeLocal([SUPPORTS])
     lab = stance_mod.create(case_db, model=local, cloud_model=up)
-    cloud_run, local_run = _runs(lab)
+    run = _cloud_run(lab)
     a = make_assumption("They met at the garage.")
-    assert lab.label(a, _cand("msg:1")).model_run_id == local_run.id
-    assert lab.label(a, _cand("msg:2")).model_run_id == cloud_run.id
-    assert lab.model.fell_back is None
+    first = lab.try_label(a, _cand("msg:1"))
+    assert first.label is None and first.call.outcome.value == "error"
+    assert lab.label(a, _cand("msg:2")).model_run_id == run.id
+    assert not local.prompts
 
 
-def test_a_cloud_answer_that_fails_validation_is_asked_again_locally(case_db, fake_context):
-    long = '{"stance": "supports", "quote": "garage", "rationale": "' + "x" * 1001 + '"}'
-    up = FakeCloud([long, SUPPORTS])
-    local = FakeLocal([SUPPORTS])
-    lab = stance_mod.create(case_db, model=local, cloud_model=up)
-    cloud_run, local_run = _runs(lab)
-    a = make_assumption("They met at the garage.")
-    assert lab.label(a, _cand("msg:1")).model_run_id == local_run.id
-    assert lab.label(a, _cand("msg:2")).model_run_id == cloud_run.id
-    outcomes = [(c.model_run_id, c.outcome.value) for c in lab.recorder.calls]
-    assert outcomes[0] == (cloud_run.id, "invalid_output")
-
-
-def test_a_cloud_label_whose_quote_fails_is_asked_again_locally(case_db, fake_context, monkeypatch):
+def test_a_cloud_label_whose_quote_fails_is_dropped_not_relabeled(
+    case_db, fake_context, monkeypatch
+):
     from core import pipeline
 
     made_up = '{"stance": "supports", "quote": "at the warehouse", "rationale": "Says so."}'
-    lab = stance_mod.create(case_db, model=FakeLocal([SUPPORTS]), cloud_model=FakeCloud([made_up]))
-    cloud_run, local_run = _runs(lab)
+    local = FakeLocal([SUPPORTS])
+    lab = stance_mod.create(case_db, model=local, cloud_model=FakeCloud([made_up]))
     monkeypatch.setattr(
         pipeline.invariants, "record_text", lambda conn, rid: "meet me at the garage"
     )
     run = pipeline._Run.__new__(pipeline._Run)
     run.conn, run.result = case_db, types.SimpleNamespace(dropped_labels=0)
     run.c = types.SimpleNamespace(labeler=lab, verify_quote=lambda q, text: q in text)
-    failed: list[set] = []
-    run.flush_calls = lambda quote_failed=frozenset(): failed.append(set(quote_failed))
-    item = run._label(make_assumption("They met at the garage."), _cand())
-    assert item is not None and item.model_run_id == local_run.id and item.quote == "garage"
-    assert run.result.dropped_labels == 0 and len(failed[0]) == 1  # the cloud call: quote_failed
-    assert lab.recorder.calls[0].model_run_id == cloud_run.id
+    run.flush_calls = lambda quote_failed=frozenset(): None
+    assert run._label(make_assumption("They met at the garage."), _cand()) is None
+    assert run.result.dropped_labels == 1 and not local.prompts
+
+
+def test_a_cloud_case_needs_no_local_stance_model(case_db, fake_context, monkeypatch):
+    monkeypatch.setenv("BAKER_MODEL_CONFIG", "/nonexistent/model.json")
+    lab = stance_mod.create(case_db, cloud_model=FakeCloud([SUPPORTS]))
+    run = _cloud_run(lab)
+    assert lab.label(make_assumption("They met at the garage."), _cand()).model_run_id == run.id
+
+
+def test_every_request_is_in_the_audit_log_before_it_is_sent(case_db, fake_context):
+    from core.audit._local_model import SENT_ACTION
+    from core.review.audit_log import verify_chain
+
+    up = FakeCloud([SUPPORTS, cloud.CloudError("ConnectionError: down", sticky=True)])
+    lab = stance_mod.create(case_db, cloud_model=up)
+    a = make_assumption("They met at the garage.")
+    lab.label(a, _cand("msg:1"))
+    with pytest.raises(CloudPaused):
+        lab.label(a, _cand("msg:2"))  # a request that got no answer was still sent
+    rows = case_db.execute(
+        "SELECT actor, payload_json FROM audit_log WHERE action = ? ORDER BY seq", (SENT_ACTION,)
+    ).fetchall()
+    assert len(rows) == 2 and verify_chain(case_db)
+    sent = [json.loads(p)["request"]["messages"][0]["content"] for _, p in rows]
+    assert sent == up.prompts and all(actor == "system" for actor, _ in rows)
+    assert KEY not in json.dumps([p for _, p in rows])
+
+
+def test_without_cloud_the_labeler_is_the_local_model_alone(case_db, fake_context):
+    local = FakeLocal([SUPPORTS])
+    lab = stance_mod.create(case_db, model=local)
+    (run,) = lab.model_runs
+    assert lab.label(make_assumption("They met at the garage."), _cand()).model_run_id == run.id
+    assert not case_db.execute("SELECT 1 FROM audit_log WHERE action = 'cloud.sent'").fetchall()
 
 
 def test_a_rules_only_redecide_keeps_the_cloud_decision_for_the_report():
@@ -287,24 +305,6 @@ def test_a_cloud_estimate_keeps_assumption_filling_at_the_local_speed():
 
 def test_a_stalled_cloud_request_gives_up_in_minutes():
     assert cloud.REQUEST_TIMEOUT_SECONDS * (cloud.MAX_RETRIES + 1) <= 6 * 60
-
-
-def test_with_no_local_model_a_cloud_failure_stops_the_run(case_db, fake_context, monkeypatch):
-    monkeypatch.setenv("BAKER_MODEL_CONFIG", "/nonexistent/model.json")
-    up = FakeCloud([cloud.CloudError("ConnectionError: down", sticky=True)])
-    lab = stance_mod.create(case_db, cloud_model=up)
-    (only,) = lab.model_runs
-    assert only.model_sha256.startswith("api:")
-    with pytest.raises(ModelUnavailable, match="no local model is set up"):
-        lab.label(make_assumption("They met at the garage."), _cand())
-
-
-def test_without_cloud_the_labeler_is_the_local_model_alone(case_db, fake_context):
-    local = FakeLocal([SUPPORTS])
-    lab = stance_mod.create(case_db, model=local)
-    (run,) = lab.model_runs
-    assert lab.label(make_assumption("They met at the garage."), _cand()).model_run_id == run.id
-    assert not hasattr(lab.model, "retry_locally")
 
 
 # ---------------------------------------------------------------- the case's choice
@@ -378,16 +378,17 @@ def test_only_a_named_expert_sets_the_choice(case_db):
 
 
 def test_each_item_says_which_model_labeled_it(case_db, fake_context):
-    lab = stance_mod.create(case_db, model=FakeLocal([]), cloud_model=FakeCloud([]))
+    up = stance_mod.create(case_db, model=FakeLocal([]), cloud_model=FakeCloud([]))
+    down = stance_mod.create(case_db, model=FakeLocal([]))
     case_db.execute("PRAGMA foreign_keys = OFF")
-    for m in lab.model_runs:
+    for m in (*up.model_runs, *down.model_runs):
         case_db.execute(
             "INSERT INTO model_runs (id, pipeline_run_id, purpose, model_name, model_sha256,"
             " prompt_version, prompt_sha256, params_json, seed, started_at_utc)"
             " VALUES (?, 'run:x', 'stance', ?, ?, 'v', 's', '{}', NULL, '2026-10-15T00:00:00Z')",
             (m.id, m.model_name, m.model_sha256),
         )
-    cloud_run, local_run = _runs(lab)
+    cloud_run, (local_run,) = _cloud_run(up), down.model_runs
     assert labelled_by(case_db, cloud_run.id) == "Labeled by claude-opus-5-5 (cloud)"
     assert labelled_by(case_db, local_run.id) == "Labeled by fake-14b (local)"
 
@@ -461,4 +462,32 @@ def test_a_key_from_the_environment_is_not_silently_replaced(tmp_path, monkeypat
 def test_the_cli_audit_applies_the_case_choice():
     src = (Path(__file__).resolve().parents[1] / "cli" / "main.py").read_text(encoding="utf-8")
     assert "cloud=choice" in src and "cloud_policy.choose(conn)" in src
-    assert "fallback_note(comps)" in src  # and says when the local model labeled instead
+    assert "except CloudPaused" in src  # a cloud failure pauses with the expert's choices
+
+
+def test_a_real_audit_pauses_on_a_cloud_failure_with_every_request_logged(tmp_path):
+    """Synthetic case01 through the real pipeline: the run stops as failed with the reason, no
+    claim after the failure is labeled by anything else, and the log holds every request."""
+    from core import pipeline
+    from core.audit._local_model import SENT_ACTION
+    from core.contracts import GoldClaim
+    from core.review.audit_log import verify_chain
+    from eval import run_pipeline as rp
+    from eval.run_eval import load_jsonl
+
+    conn = rp.build_case("case01", tmp_path / "case01.db")
+    gold = load_jsonl(rp.gold_path("case01"), GoldClaim)
+    comps = rp.model_free_components(conn, rp.assumption_sheet("case01"), gold)
+    unrelated = '{"stance": "unrelated", "quote": "", "rationale": "No."}'
+    up = FakeCloud([unrelated] * 40 + [cloud.CloudError("ConnectionError: down", sticky=True)])
+    comps.labeler = stance_mod.create(conn, cloud_model=up)
+    comps.model_runs = (
+        *[m for m in comps.model_runs if m.purpose != "stance"],
+        *comps.labeler.model_runs,
+    )
+    with pytest.raises(CloudPaused):
+        pipeline.run_audit(conn, comps)
+    status, note = conn.execute("SELECT status, note FROM pipeline_runs").fetchone()
+    assert status == "failed" and "stopped answering" in note
+    sent = conn.execute("SELECT COUNT(*) FROM audit_log WHERE action = ?", (SENT_ACTION,))
+    assert sent.fetchone()[0] == len(up.prompts) == 41 and verify_chain(conn)

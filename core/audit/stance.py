@@ -37,10 +37,9 @@ from core.audit._llm_json import (
     run_json_call,
 )
 from core.audit._local_model import (
-    FallbackPort,
+    CloudPort,
     LocalModel,
-    ModelConfigError,
-    OpenedRun,
+    SentLog,
     open_run,
 )
 from core.audit.quotes import find_quote
@@ -48,7 +47,6 @@ from core.contracts import (
     Assumption,
     EvidenceCandidate,
     ModelCall,
-    ModelCallOutcome,
     ModelRun,
     Stance,
     StanceLabel,
@@ -225,19 +223,7 @@ class LocalStanceLabeler:
         )
 
     def try_label(self, assumption: Assumption, candidate: EvidenceCandidate) -> StanceResult:
-        result = self._try_label(assumption, candidate)
-        # A cloud case (FallbackPort): a cloud call that got no answer is asked again once, on
-        # the local model. Both calls are recorded, each under the run that made it.
-        retry = getattr(self.model, "retry_locally", None)
-        if (
-            result.label is None
-            and result.call is not None
-            and result.call.outcome in (ModelCallOutcome.ERROR, ModelCallOutcome.INVALID_OUTPUT)
-            and callable(retry)
-            and retry(result.call.model_run_id)
-        ):
-            return self._try_label(assumption, candidate)
-        return result
+        return self._try_label(assumption, candidate)
 
     def _try_label(self, assumption: Assumption, candidate: EvidenceCandidate) -> StanceResult:
         run_id = model_run_id(self.model)
@@ -312,9 +298,9 @@ def create(
     the speed test's draft prompts only (eval/probe/time_case.py); the product passes none.
 
     `cloud` (a case whose cloud choice allows it, core/casework/cloud.py) makes the cloud model
-    the labeler, with the local model behind it for any call the cloud cannot answer
-    (FallbackPort). With no local model set up the cloud labels alone, and a cloud failure then
-    stops the run. `cloud_model` stands in for the API in tests."""
+    the only stance labeler for the case (CloudPort): no local model is needed for stance, a
+    sticky cloud failure pauses the run, and every request is logged in the case's audit log
+    before it is sent (SentLog). `cloud_model` stands in for the API in tests."""
     from core.audit.context import render_for  # retrieval and context thread
     from core.audit.readable import assumption_text, case_names
 
@@ -330,16 +316,9 @@ def create(
 
             assert cloud is not None  # noqa: S101 - narrowed by the branch
             cloud_model = ClaudeModel(cloud)
-        up = open_run(conn, "stance", template, model=cloud_model, schema=STANCE_SCHEMA)
-        local: OpenedRun | None = None
-        missing = ""
-        try:
-            local = open_run(conn, "stance", template, model=model, schema=STANCE_SCHEMA)
-        except ModelConfigError as e:
-            missing = f"no local model is set up to fall back on ({e})"
-        port = FallbackPort(up, local, missing)
-        recorder = up.recorder  # one recorder; each call is numbered within its own run
-        runs = (up.run,) if local is None else (up.run, local.run)
+        logged = SentLog(cloud_model, conn)
+        up = open_run(conn, "stance", template, model=logged, schema=STANCE_SCHEMA)
+        port, recorder, runs = CloudPort(up), up.recorder, (up.run,)
     names = case_names(conn)
 
     def claim_text(claim_id: str) -> str | None:

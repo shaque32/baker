@@ -821,7 +821,10 @@ class App:
         if entry["csam"]:
             return "Saved: this case may contain CSAM, so it runs on the local model only."
         if entry["allowed"]:
-            return "Saved: this case may use cloud AI. The local model answers any call it cannot."
+            return (
+                "Saved: this case may use cloud AI. If the cloud model stops answering, the audit"
+                " pauses."
+            )
         return "Saved: this case runs on the local model only."
 
     def _cloud_key(self, f: dict[str, str]) -> str:

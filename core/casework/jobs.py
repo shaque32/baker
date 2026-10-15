@@ -27,7 +27,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from core import pipeline
-from core.audit._llm_json import ModelUnavailable
+from core.audit._llm_json import CloudPaused, ModelUnavailable
 from core.audit._local_model import ModelConfigError
 from core.audit.invariants import InvariantViolation
 from core.casework.awake import keep_awake
@@ -119,21 +119,6 @@ _KIND = {"audit": "audit", "propose": "claim proposal", "model_check": "model ch
 
 
 # ---------------------------------------------------------------- estimates
-
-
-def fallback_note(c: pipeline.Components) -> str:
-    """A sentence for the finish message when the cloud labeler handed calls to the local model."""
-    port = getattr(c.labeler, "model", None)
-    why = getattr(port, "fell_back", None)
-    n = int(getattr(port, "local_calls_after_cloud_failure", 0) or 0)
-    if why:
-        return (
-            f" The cloud model stopped answering ({why}), so the local model labeled the rest "
-            f"({n} calls); each item says which model labeled it."
-        )
-    if n:
-        return f" The local model answered {n} call(s) the cloud model could not."
-    return ""
 
 
 def _new_call_seconds(c: pipeline.Components, local_only: bool = False) -> list[float]:
@@ -273,14 +258,20 @@ def audit_job(
             job.end(
                 "done",
                 f"The audit finished all {len(result.decisions)} claims ({words}). Review them in "
-                "the claims queue; no claim is supported until you accept its key evidence."
-                + fallback_note(comps),
+                "the claims queue; no claim is supported until you accept its key evidence.",
             )
         except pipeline.RunStopped:
             job.end(
                 "stopped",
                 f"Stopped after {job.done} of {job.total} claims. Finished claims keep their "
                 "work; resume to label the rest.",
+            )
+        except CloudPaused as e:
+            job.end(
+                "stopped",
+                f"Paused after {job.done} of {job.total} claims: {e}. No claim was labeled by "
+                "another model. Resume to try the cloud model again, or turn cloud AI off for "
+                "this case in Setup and run the audit again to label the whole case locally.",
             )
         except (pipeline.ComponentsMissing, ModelConfigError) as e:
             job.end("failed", f"The audit did not start: {e}.")

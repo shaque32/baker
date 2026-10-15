@@ -19,8 +19,9 @@ The API address is pinned to https://api.anthropic.com, the recipient the expert
 consent names; a config naming any other host is refused, and an ANTHROPIC_BASE_URL left in the
 environment can never redirect case data.
 
-Failures never pass silently. A call that cannot be answered raises CloudError; the stance
-labeler then asks the local model instead (core/audit/_local_model.py, FallbackPort).
+Failures never pass silently. A call that cannot be answered raises CloudError. A case's labels
+never mix models: a sticky failure pauses the audit (core/audit/_local_model.py, CloudPort), and
+the expert chooses to retry the cloud model or run the whole case locally.
 """
 
 from __future__ import annotations
@@ -45,7 +46,7 @@ DEFAULT_EFFORT = "medium"
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 API_BASE_URL = "https://api.anthropic.com"
 # One stance answer takes seconds (about 4 s on synthetic case01), so a stalled request gives up
-# after two minutes and at most two retries, then the local model answers instead.
+# after two minutes and at most two retries, then the audit pauses (CloudPort).
 REQUEST_TIMEOUT_SECONDS = 120.0
 MAX_RETRIES = 2
 SHA_PREFIX = "api:"  # model_runs.model_sha256 of a cloud model: there is no file to hash
@@ -186,7 +187,8 @@ class ClaudeModel:
     """The local runtime's generate_json surface, backed by the Claude API.
 
     Unlike core.llm.runtime, a call that gets no answer raises CloudError instead of returning
-    an empty output, so the caller can ask the local model instead of dropping the item.
+    an empty output: a sticky one pauses the audit (core/audit/_local_model.py, CloudPort), so a
+    failure is never mistaken for a run that found nothing.
     """
 
     where = "cloud"
@@ -214,19 +216,23 @@ class ClaudeModel:
             )
         return self._client
 
+    def request(self, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
+        """The request body sent to the API, exactly (the key travels in a header, not here)."""
+        return {
+            "model": self.cfg.model,
+            "max_tokens": self.params.max_tokens,
+            "output_config": {
+                "effort": self.cfg.effort,
+                "format": {"type": "json_schema", "schema": api_schema(schema)},
+            },
+            "messages": [{"role": "user", "content": prompt}],
+        }
+
     def generate_json(self, prompt: str, schema: dict[str, Any], params: Any = None) -> ModelOutput:
         client = self._get_client()
         start = time.perf_counter()
         try:
-            resp = client.messages.create(
-                model=self.cfg.model,
-                max_tokens=self.params.max_tokens,
-                output_config={
-                    "effort": self.cfg.effort,
-                    "format": {"type": "json_schema", "schema": api_schema(schema)},
-                },
-                messages=[{"role": "user", "content": prompt}],
-            )
+            resp = client.messages.create(**self.request(prompt, schema))
         except Exception as e:  # noqa: BLE001 - network, key, rate limit, server: all sticky
             raise CloudError(f"{type(e).__name__}: {e}", sticky=True) from e
         elapsed = time.perf_counter() - start

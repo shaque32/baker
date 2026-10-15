@@ -7,8 +7,10 @@ only when all of these hold, and otherwise the local model labels it, exactly as
    government's control (18 U.S.C. 3509(m)), so a marked case never uses cloud, whatever (1) says.
 3. An Anthropic key is set up on this computer (the expert's own; Baker runs no server).
 
-Even then, any failed cloud call falls back to the local model (core/audit/_local_model.py,
-FallbackPort), and every evidence item records which model labelled it.
+Then every stance label in the case comes from the cloud model; labels never mix models. If
+the cloud model stops answering, the audit pauses (core/audit/_local_model.py, CloudPort) and
+the expert resumes to retry it, or turns cloud AI off here and runs the case again locally.
+Every request is logged in the case's audit log before it is sent (SentLog).
 
 The choice lives only in the case's hash-chained audit log (inside the case database, so an
 encrypted case keeps it encrypted): the latest set_cloud entry by an expert, with who made it,
@@ -101,8 +103,8 @@ def choose(
     when = str(c["attested_at"])[:10]
     return CloudChoice(
         True,
-        f"Cloud model {cfg.model} ({cfg.effort} effort), attested by {who} on {when}; the "
-        "local model answers any call the cloud cannot.",
+        f"Cloud model {cfg.model} ({cfg.effort} effort), attested by {who} on {when}; if it "
+        "stops answering, the audit pauses rather than mix in local labels.",
         cfg,
     )
 

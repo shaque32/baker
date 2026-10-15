@@ -305,73 +305,78 @@ def open_run(
     return OpenedRun(RunPort(model, run_id, stored), run, recorder, model.name)
 
 
-class FallbackPort:
-    """The stance labeler's port for a case that opted in to cloud AI: cloud model, local behind it.
+SENT_ACTION = "cloud.sent"
 
-    run_id names the run that will answer the next call, so every call is recorded under the
-    model that actually answered it, and each evidence item's model_run_id says which model
-    labelled it. A cloud call that fails raises (call_model records it as an error under the
-    cloud run); the labeler then asks again, and this port sends that call to the local run:
-    - a sticky failure (no network, a rejected key, the API down after its retries) sends the
-      rest of this run to the local model;
-    - any other failure (a refusal, an answer cut off) sends only the next call.
-    With no local model set up, a sticky failure stops the run (ModelUnavailable), so an audit
-    can never look like one that found nothing.
+
+class SentLog:
+    """Wraps the cloud model so every request is written to the case's hash-chained audit log
+    (action "cloud.sent") before it is sent: the time, the endpoint and the request body exactly
+    as sent (the key travels in a header and is never logged). A stored output answered without
+    a request writes nothing. If the entry cannot be written, nothing is sent."""
+
+    def __init__(
+        self, model: Any, conn: sqlite3.Connection, clock: Callable[[], datetime] | None = None
+    ) -> None:
+        self._model = model
+        self._conn = conn
+        self._clock = clock or (lambda: datetime.now(UTC))
+        self.name, self.sha256 = model.name, model.sha256
+        self.params, self.where = model.params, getattr(model, "where", "cloud")
+
+    def generate_json(self, prompt: str, schema: Any, params: Any = None) -> Any:
+        from core.review import audit_log
+
+        request = self._model.request(prompt, schema)
+        payload = {
+            "endpoint": getattr(self.params, "endpoint", ""),
+            "request": request,
+            "request_sha256": hashlib.sha256(canonical_json(request).encode()).hexdigest(),
+        }
+        if self._conn.in_transaction:  # the pipeline holds no write transaction during model work
+            raise RuntimeError("cannot log a cloud request inside an open write transaction")
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            audit_log.append(self._conn, self._clock(), "system", SENT_ACTION, payload)
+        except BaseException:
+            self._conn.rollback()
+            raise
+        self._conn.commit()
+        return self._model.generate_json(prompt, schema, params)
+
+
+class CloudPort:
+    """The stance labeler's port for a case that opted in to cloud AI.
+
+    Every stance label in the case comes from the cloud model, so a case's labels never mix
+    models. A sticky failure (no network, a rejected key, the API down after its retries)
+    pauses the run (CloudPaused): the expert then resumes to retry the cloud model, or turns
+    cloud AI off for the case and runs it again, which labels the whole case locally (stored
+    outputs are keyed by model, so no cloud label is reused). Any other failure (a refusal, an
+    answer cut off) is recorded and that label dropped, as a local model's bad answer is.
     """
 
-    def __init__(self, cloud: OpenedRun, local: OpenedRun | None, local_missing: str = "") -> None:
+    def __init__(self, cloud: OpenedRun) -> None:
         self.cloud = cloud
-        self.local = local
-        self.local_missing = local_missing
-        self.fell_back: str | None = None  # why the rest of the run is local, once it is
-        self.local_calls_after_cloud_failure = 0
-        self._next_local = False
 
     @property
     def stats(self) -> list[CallStat]:
-        return [*self.cloud.port.stats, *(self.local.port.stats if self.local else [])]
+        return self.cloud.port.stats
 
     @property
     def reused(self) -> int:
         return sum(s.reused for s in self.stats)
 
-    def _use_local(self) -> bool:
-        return self.fell_back is not None or self._next_local
-
     @property
     def run_id(self) -> str:
-        if self._use_local() and self.local is not None:
-            return self.local.port.run_id
         return self.cloud.port.run_id
 
     def generate(self, prompt: str, json_schema: Mapping[str, Any]) -> str:
+        from core.audit._llm_json import CloudPaused
         from core.llm.cloud import CloudError  # no network library is imported here
 
-        if self._use_local():
-            if self.local is None:
-                raise self._unavailable(str(self.fell_back))
-            self._next_local = False
-            self.local_calls_after_cloud_failure += 1
-            return self.local.port.generate(prompt, json_schema)
         try:
             return self.cloud.port.generate(prompt, json_schema)
         except CloudError as e:
             if e.sticky:
-                self.fell_back = e.reason
-                if self.local is None:
-                    raise self._unavailable(e.reason) from e
-            raise  # recorded as an error; the labeler then asks retry_locally
-
-    def _unavailable(self, reason: str) -> ModelUnavailable:
-        why = self.local_missing or "no local model is set up"
-        return ModelUnavailable(f"the cloud model failed ({reason}) and {why}")
-
-    def retry_locally(self, failed_run_id: str) -> bool:
-        """After a cloud call gave nothing usable (no answer, or an answer that failed
-        validation), route the next call to the local model. False when there is no local
-        model, or the failed call was already the local model's: the drop then stands."""
-        if self.local is None or failed_run_id != self.cloud.port.run_id:
-            return False
-        if self.fell_back is None:
-            self._next_local = True
-        return True
+                raise CloudPaused(f"the cloud model stopped answering ({e.reason})") from e
+            raise  # recorded as an error; the label is dropped

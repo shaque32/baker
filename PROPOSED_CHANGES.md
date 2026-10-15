@@ -125,18 +125,18 @@ Code that follows once this is signed (not frozen): core/audit/review.py fills {
 readable.assumption_text(assumption, case_names(conn)), and ReviewContext in
 core/audit/context.py passes the same CaseNames to render_for, as the stance labeler does.
 
-## 2026-10-15 claude/project-thread-a2fjkc: cloud AI by per-case opt-in, local behind it (stance labeling only)
-Positioning since 2026-10-15 07:10Z (Arsh): local by default, cloud AI only when the case allows it
-and the expert opts in. The signed wording below already says that ("off until the expert attests").
-SIGNED by Arsh on 2026-10-15 ("approve" at 04:16Z in the thread "Cloud-first Opus with offline
-fallback"). To apply to CLAUDE.md by a human; the code on this branch relies on it
-(core/llm/cloud.py, core/casework/cloud.py, the stance labeler's fallback).
+## 2026-10-15 claude/project-thread-a2fjkc: cloud AI by per-case opt-in, no mixed labels (stance labeling only)
+AWAITING Arsh's "approved" on this revision in the thread "Cloud-first Opus with offline
+fallback". It replaces the version he signed at 04:16Z, which was never applied: since then he
+chose "local by default, cloud only by opt-in" (07:10Z) and "Stop and ask" on a cloud failure
+mid-case (07:12Z, Grok Product critique 3 on PR #70), so the fallback sentence changed. The code
+on this branch relies on it (core/llm/cloud.py, core/casework/cloud.py, CloudPort and SentLog in
+core/audit/_local_model.py).
 File: CLAUDE.md
-Why: Arsh chose cloud first with full offline fallback (2026-10-15 03:16Z, "go cloud first but
-have all fall back"). Opus 5.5 (signed v1.1 prompt, product layout) met the full cloud decision
-rule: every probe bar, 0 traps shown as support, case01 85% with 0 false supported
-(cloud-bench 2026-10-14c). CLAUDE.md forbids any network call in core/. Verdict rules 0.2.1,
-the signed prompts and gold labels are unchanged.
+Why: CLAUDE.md forbids any network call in core/. Opus 5.5 (signed v1.1 prompt, product layout)
+met the full cloud decision rule: every probe bar, 0 traps shown as support, case01 85% with 0
+false supported (cloud-bench 2026-10-14c). Verdict rules 0.2.1, the signed prompts and gold
+labels are unchanged.
 Diff:
 -- The AI reviewer runs on the local model in core/. Cloud models may be used only in eval/, as benchmarks.
 +- The AI reviewer runs on the local model in core/. Only the stance labeler may use a cloud model
@@ -144,10 +144,12 @@ Diff:
 -- No network calls anywhere in `core/`. No telemetry. Models load from local paths.
 +- No network calls in `core/` except the stance labeler's cloud call in `core/llm/cloud.py`, to
 +  the Anthropic API with the expert's own key. No telemetry. Local models load from local paths.
-+- Cloud is per case and off until the expert attests at case setup that the case's protective
-+  order allows cloud AI. A case marked as possibly containing CSAM never uses cloud. Without that
-+  attestation, a key or the network, and on any API error, the stance labeler falls back to the
-+  local model. If no local model is set up either, the audit stops rather than drop labels.
++- Baker is local by default. A case uses cloud AI only when the expert opts in at case setup,
++  attesting that the case's protective order allows it, and a key is set up. A case marked as
++  possibly containing CSAM never uses cloud.
++- A case's stance labels never mix models. If the cloud model fails mid-run, the audit pauses and
++  the expert chooses to retry the cloud model or run the whole case again locally.
 +- Only the filled-in stance prompt is sent (assumption, record, nearby messages, claim, and a
-+  group chat's member list), never input files or the case database. Every evidence item records which model labelled it, and the
-+  report shows it.
++  group chat's member list), never input files or the case database. Every request is written
++  to the case's audit log, with its time, before it is sent. The report says which model
++  labelled the case.

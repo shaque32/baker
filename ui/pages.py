@@ -1314,9 +1314,13 @@ def cloud_section(
         "your own key: the assumption being tested, one record, the messages around it, the "
         "claim, and for a group chat its member list (up to 20 accounts, with the names you "
         "confirmed for them). Never your files or the case database. The cloud model only "
-        "labels evidence; the verdict rules and your review are unchanged. Any call it cannot "
-        "answer goes to the local model, and each evidence item says which model labeled it."
-        "</p>",
+        "labels evidence; the verdict rules and your review are unchanged. A case's labels never "
+        "mix models: if the cloud model stops answering, the audit pauses and you choose to "
+        "retry it or turn cloud AI off here and run the whole case locally. Every request is "
+        "recorded in the case's audit log, with its time, before it is sent. How long Anthropic "
+        "keeps API data: <a href='https://privacy.claude.com/en/articles/7996866-how-long-do-you-"
+        "store-my-organization-s-data' rel='noreferrer'>Anthropic's commercial retention "
+        "policy</a>.</p>",
         page.form(
             "/cloud/case",
             "<p><label><input type='checkbox' name='allowed' value='1'"

@@ -132,11 +132,29 @@ group chat's member list). The
 answer is checked like the local model's: strict JSON, quote verified verbatim by code. The
 verdict rules, the signed prompt and the expert's review are unchanged.
 
-Fallback (`core/audit/_local_model.py` FallbackPort): a cloud call with no answer is asked
-again on the local model, and both calls are logged under their own model runs. No network, a
-rejected key or the API down sends the rest of the run local; a refusal or a cut-off answer
-sends that one call. With no local model set up, a cloud failure stops the run. Each evidence
-item's model run says which model labeled it ("Labeled by claude-opus-5-5 (cloud)").
+No mixed labels (`core/audit/_local_model.py` CloudPort). In a case that opted in, every
+stance label comes from the cloud model. No network, a rejected key or the API down (after a
+120-second timeout and two retries) pauses the audit. The expert then resumes to retry the
+cloud model, or turns cloud AI off for the case and runs it again, which labels the whole case
+locally (stored outputs are keyed by model, so no cloud label is reused). A refusal or a
+cut-off answer drops that one label, as a local model's bad answer is. The report's "Stance
+labels" row and each item's "Labeled by" line name the model. Assumption filling and the
+optional AI reviewer stay local.
+
+What was sent (`SentLog`). Before each request, Baker writes it to the case's hash-chained
+audit log (action `cloud.sent`): the time, the endpoint and the request body exactly as sent.
+The key is in a header and never logged. An answer reused from stored outputs sends nothing.
+
+Retention at Anthropic. Baker sends to the Claude API (`api.anthropic.com`) under the expert's
+own key, so Anthropic's terms for that account apply. Read them rather than our summary:
+[commercial data retention policy](https://privacy.claude.com/en/articles/7996866-how-long-do-you-store-my-organization-s-data),
+[API and data retention, including zero data retention](https://platform.claude.com/docs/en/manage-claude/api-and-data-retention),
+and the [Commercial Terms](https://www.anthropic.com/legal/commercial-terms) ("Anthropic may not
+train models on Customer Content from Services"). Two points from those pages matter here.
+Content flagged by Anthropic's trust and safety systems may be kept for up to 2 years even
+under zero data retention. With structured outputs, only the JSON schema is cached; Baker's
+schema is fixed and holds no case data. Zero data retention is arranged with Anthropic per
+organization; Baker cannot turn it on.
 
 ## Not in scope
 Acquisition or extraction, deleted-file recovery, broad artifact coverage, automatic
