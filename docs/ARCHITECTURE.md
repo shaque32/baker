@@ -143,8 +143,16 @@ labels" row and each item's "Labeled by" line name the model. Assumption filling
 optional AI reviewer stay local.
 
 What was sent (`SentLog`). Before each request, Baker writes it to the case's hash-chained
-audit log (action `cloud.sent`): the time, the endpoint and the request body exactly as sent.
-The key is in a header and never logged. An answer reused from stored outputs sends nothing.
+audit log (action `cloud.sent`): the time, the endpoint, the attempt number and the request body
+exactly as sent. The key is in a header and never logged. Baker retries a retryable failure (no
+connection, a timeout, 408, 409, 429, 5xx) itself, up to twice, logging each send; the SDK's
+own retries are off. If the entry cannot be written, the request is not sent and the audit
+pauses. An answer reused from stored outputs sends nothing.
+
+Which model labeled an item. Evidence ids come from content (assumption, record, stance,
+quote), so a case that switches between cloud and local can produce the same item twice. The
+row then names the model of the latest run that produced it, with that run's rationale; the
+expert's reviews of that content carry over, as on any re-run.
 
 Retention at Anthropic. Baker sends to the Claude API (`api.anthropic.com`) under the expert's
 own key, so Anthropic's terms for that account apply. Read them rather than our summary:

@@ -1022,6 +1022,13 @@ class _Run:
                         item.model_run_id,
                     ),
                 )
+                # The same item (assumption, record, stance, quote) from another model, as when a
+                # case switches between cloud and local: the row names the model of this run.
+                self._write(
+                    "UPDATE evidence_items SET model_run_id = ?, rationale = ?"
+                    " WHERE id = ? AND model_run_id IS NOT ?",
+                    (item.model_run_id, item.rationale, item.id, item.model_run_id),
+                )
                 self._review(a, item.model_copy(update={"status": evidence_status(conn, item.id)}))
                 evidence_ids.append(item.id)
                 self.result.stored_items += 1

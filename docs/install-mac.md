@@ -1,7 +1,9 @@
 # Installing Baker on a Mac
 
-Baker runs on your own Mac, offline. Nothing about your cases leaves the computer: Baker makes
-no network calls and sends no telemetry. The installer downloads three things, once: a Python
+Baker runs on your own Mac, offline by default. Nothing about your cases leaves the computer
+and Baker sends no telemetry, unless you opt a case in to cloud AI at case setup (only if its
+protective order allows it). Then, for that case only, one stance question at a time goes to
+Anthropic under your own key (see "Cloud AI for this case" on the setup screen). The installer downloads three things, once: a Python
 installer (uv), the model runtime's source, and the AI model (9 GB). After that you can
 disconnect from the internet.
 

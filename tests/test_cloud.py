@@ -542,3 +542,105 @@ def test_a_real_audit_pauses_on_a_cloud_failure_with_every_request_logged(tmp_pa
     assert status == "failed" and "stopped answering" in note
     sent = conn.execute("SELECT COUNT(*) FROM audit_log WHERE action = ?", (SENT_ACTION,))
     assert sent.fetchone()[0] == len(up.prompts) == 41 and verify_chain(conn)
+
+
+class _Quoter:
+    """Answers "supports" quoting the first three words of the record, like any model would."""
+
+    def __init__(self, base: object) -> None:
+        self.base = base
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self.base, name)
+
+    def generate_json(self, prompt, schema, params=None):  # noqa: ANN001, ANN201
+        record = prompt.split("[RECORD START]\n", 1)[1].split("\n[RECORD END]", 1)[0]
+        quote = " ".join(record.split()[:3])
+        self.base.prompts.append(prompt)
+        return _Out(json.dumps({"stance": "supports", "quote": quote, "rationale": self.why}))
+
+
+def test_an_item_relabeled_by_another_model_names_the_model_of_the_latest_run(tmp_path):
+    from core import pipeline
+    from core.contracts import GoldClaim
+    from eval import run_pipeline as rp
+    from eval.run_eval import load_jsonl
+
+    conn = rp.build_case("case01", tmp_path / "case01.db")
+    gold = load_jsonl(rp.gold_path("case01"), GoldClaim)
+    claims = [g.claim_id for g in gold][:3]
+
+    def audit(labeler) -> None:  # noqa: ANN001
+        comps = rp.model_free_components(conn, rp.assumption_sheet("case01"), gold)
+        comps.labeler = labeler
+        comps.model_runs = (
+            *[m for m in comps.model_runs if m.purpose != "stance"],
+            *labeler.model_runs,
+        )
+        pipeline.run_audit(conn, comps, claim_ids=claims)
+
+    local = _Quoter(FakeLocal([]))
+    local.why = "local"
+    audit(stance_mod.create(conn, model=local))
+    up = _Quoter(FakeCloud([]))
+    up.why = "cloud"
+    cloud_lab = stance_mod.create(conn, cloud_model=up)
+    audit(cloud_lab)
+    rows = conn.execute("SELECT model_run_id, rationale FROM evidence_items").fetchall()
+    assert rows and {r for r in rows} == {(_cloud_run(cloud_lab).id, "cloud")}
+
+
+def test_a_retryable_failure_is_sent_again_and_every_send_is_logged(case_db):
+    from core.audit._local_model import SENT_ACTION, SentLog
+
+    down = cloud.CloudError("APIConnectionError: reset", sticky=True, retryable=True)
+    up = FakeCloud([down, down, SUPPORTS])
+    waits: list[float] = []
+    log = SentLog(up, case_db, sleep=waits.append)
+    assert log.generate_json("the prompt", {"type": "object"}).raw_text == SUPPORTS
+    attempts = [
+        json.loads(p)["attempt"]
+        for (p,) in case_db.execute(
+            "SELECT payload_json FROM audit_log WHERE action = ? ORDER BY seq", (SENT_ACTION,)
+        )
+    ]
+    assert attempts == [1, 2, 3] and len(up.prompts) == 3 and waits == [2.0, 4.0]
+    up = FakeCloud([down, down, down])
+    with pytest.raises(cloud.CloudError):  # the third failure ends the retries
+        SentLog(up, case_db, sleep=waits.append).generate_json("p", {"type": "object"})
+    assert len(up.prompts) == 3
+
+
+def test_a_request_that_cannot_be_logged_is_not_sent(case_db):
+    from core.audit._local_model import SentLog
+
+    up = FakeCloud([SUPPORTS])
+    case_db.execute("BEGIN")  # an open write transaction: the log entry cannot be written
+    with pytest.raises(CloudPaused, match="was not sent"):
+        SentLog(up, case_db).generate_json("p", {"type": "object"})
+    assert not up.prompts
+
+
+@pytest.mark.parametrize(
+    ("status", "name", "retry"),
+    [
+        (429, "RateLimitError", True),
+        (529, "OverloadedError", True),
+        (408, "X", True),
+        (401, "AuthenticationError", False),
+        (400, "BadRequestError", False),
+        (None, "APIConnectionError", True),
+        (None, "APITimeoutError", True),
+        (None, "ValueError", False),
+    ],  # fmt: skip
+)
+def test_which_failures_are_retried(status, name, retry):
+    err = type(name, (Exception,), {"status_code": status})()
+    assert cloud.is_retryable(err) is retry
+
+
+def test_the_sdk_does_not_retry_unlogged():
+    model, _ = _model(_resp())
+    model._client = None
+    pytest.importorskip("anthropic")
+    assert model._get_client().max_retries == 0

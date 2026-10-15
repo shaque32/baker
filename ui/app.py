@@ -883,8 +883,8 @@ class App:
             ),
         )
         where = (
-            f" Stance labels come from the cloud model ({choice.config.model}), with the local "
-            "model behind it."
+            f" Stance labels come from the cloud model ({choice.config.model}); if it stops "
+            "answering, the audit pauses. The local model does the other steps."
             if choice.use and choice.config is not None
             else ""
         )

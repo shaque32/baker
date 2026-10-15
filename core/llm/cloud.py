@@ -48,7 +48,7 @@ DEFAULT_EFFORT = "medium"
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 API_BASE_URL = "https://api.anthropic.com"
 # One stance answer takes seconds (about 4 s on synthetic case01), so a stalled request gives up
-# after two minutes and at most two retries, then the audit pauses (CloudPort).
+# after two minutes and at most two retries (SentLog sends and logs each), then the audit pauses.
 REQUEST_TIMEOUT_SECONDS = 120.0
 MAX_RETRIES = 2
 SHA_PREFIX = "api:"  # model_runs.model_sha256 of a cloud model: there is no file to hash
@@ -76,13 +76,27 @@ class CloudConfigError(RuntimeError):
 
 class CloudError(RuntimeError):
     """A cloud call that produced no answer. `sticky` failures (no network, a rejected key, the
-    API down after its retries) send the rest of the run to the local model; the others (a
-    refusal, an answer cut off) send only this call."""
+    API down) pause the audit; the others (a refusal, an answer cut off) drop this label only.
+    `retryable` ones (no connection, a timeout, 408, 409, 429, 5xx) may be sent again; Baker
+    retries them itself (core/audit/_local_model.py SentLog), so every send is logged first."""
 
-    def __init__(self, reason: str, *, sticky: bool) -> None:
+    def __init__(self, reason: str, *, sticky: bool, retryable: bool = False) -> None:
         super().__init__(reason)
         self.reason = reason
         self.sticky = sticky
+        self.retryable = retryable
+
+
+RETRY_STATUS = frozenset({408, 409, 429})
+
+
+def is_retryable(e: BaseException) -> bool:
+    """The failures Anthropic's SDK would retry: no connection, a timeout, 408/409/429, 5xx."""
+    status = getattr(e, "status_code", None)
+    if isinstance(status, int):
+        return status in RETRY_STATUS or status >= 500
+    name = type(e).__name__
+    return "Connection" in name or "Timeout" in name
 
 
 @dataclass(frozen=True)
@@ -243,7 +257,7 @@ class ClaudeModel:
                 api_key=self.cfg.api_key,
                 base_url=self.cfg.base_url,
                 timeout=REQUEST_TIMEOUT_SECONDS,
-                max_retries=MAX_RETRIES,
+                max_retries=0,  # Baker retries itself, logging each send (SentLog)
             )
         return self._client
 
@@ -265,7 +279,9 @@ class ClaudeModel:
         try:
             resp = client.messages.create(**self.request(prompt, schema))
         except Exception as e:  # noqa: BLE001 - network, key, rate limit, server: all sticky
-            raise CloudError(f"{type(e).__name__}: {e}", sticky=True) from e
+            raise CloudError(
+                f"{type(e).__name__}: {e}", sticky=True, retryable=is_retryable(e)
+            ) from e
         elapsed = time.perf_counter() - start
         if resp.stop_reason == "refusal":
             raise CloudError("the cloud model declined to answer", sticky=False)

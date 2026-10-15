@@ -12,7 +12,8 @@
 #   5. downloads the model (Qwen3-14B Q4, 9 GB) to ~/Baker/models and checks its SHA-256
 #   6. writes ~/.baker/model.json (only if there is none), runs the model check and builds the
 #      demo case, and puts two launchers on the Desktop: "Baker" and "Baker demo"
-# Downloads happen only here, at install time. Baker itself makes no network calls.
+# Downloads happen only here, at install time. Baker itself makes no network calls, except for a
+# case the expert opts in to cloud AI (stance questions to Anthropic, on the expert's own key).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

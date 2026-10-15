@@ -310,38 +310,68 @@ SENT_ACTION = "cloud.sent"
 
 class SentLog:
     """Wraps the cloud model so every request is written to the case's hash-chained audit log
-    (action "cloud.sent") before it is sent: the time, the endpoint and the request body exactly
-    as sent (the key travels in a header and is never logged). A stored output answered without
-    a request writes nothing. If the entry cannot be written, nothing is sent."""
+    (action "cloud.sent") before it is sent: the time, the endpoint, the attempt and the request
+    body exactly as sent (the key travels in a header and is never logged). Baker retries a
+    retryable failure itself (the SDK's own retries are off), logging each send. A stored output
+    answered without a request writes nothing. If the entry cannot be written, nothing is sent
+    and the audit pauses (CloudPaused), so no send is ever missing from the log."""
 
     def __init__(
-        self, model: Any, conn: sqlite3.Connection, clock: Callable[[], datetime] | None = None
+        self,
+        model: Any,
+        conn: sqlite3.Connection,
+        clock: Callable[[], datetime] | None = None,
+        sleep: Callable[[float], None] = time.sleep,
+        retries: int | None = None,
     ) -> None:
+        from core.llm.cloud import MAX_RETRIES
+
         self._model = model
         self._conn = conn
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._sleep = sleep
+        self._retries = MAX_RETRIES if retries is None else retries
         self.name, self.sha256 = model.name, model.sha256
         self.params, self.where = model.params, getattr(model, "where", "cloud")
 
-    def generate_json(self, prompt: str, schema: Any, params: Any = None) -> Any:
+    def _log(self, request: dict, attempt: int) -> None:
+        from core.audit._llm_json import CloudPaused
         from core.review import audit_log
 
-        request = self._model.request(prompt, schema)
         payload = {
             "endpoint": getattr(self.params, "endpoint", ""),
+            "attempt": attempt,
             "request": request,
             "request_sha256": hashlib.sha256(canonical_json(request).encode()).hexdigest(),
         }
-        if self._conn.in_transaction:  # the pipeline holds no write transaction during model work
-            raise RuntimeError("cannot log a cloud request inside an open write transaction")
-        self._conn.execute("BEGIN IMMEDIATE")
         try:
-            audit_log.append(self._conn, self._clock(), "system", SENT_ACTION, payload)
-        except BaseException:
-            self._conn.rollback()
-            raise
-        self._conn.commit()
-        return self._model.generate_json(prompt, schema, params)
+            if self._conn.in_transaction:  # the pipeline holds none during model work
+                raise RuntimeError("an open write transaction")
+            self._conn.execute("BEGIN IMMEDIATE")
+            try:
+                audit_log.append(self._conn, self._clock(), "system", SENT_ACTION, payload)
+            except BaseException:
+                self._conn.rollback()
+                raise
+            self._conn.commit()
+        except Exception as e:  # noqa: BLE001 - any failure to log stops the send
+            raise CloudPaused(
+                f"the request could not be recorded in the audit log ({e}), so it was not sent"
+            ) from e
+
+    def generate_json(self, prompt: str, schema: Any, params: Any = None) -> Any:
+        from core.llm.cloud import CloudError
+
+        request = self._model.request(prompt, schema)
+        for attempt in range(1, self._retries + 2):
+            self._log(request, attempt)
+            try:
+                return self._model.generate_json(prompt, schema, params)
+            except CloudError as e:
+                if not getattr(e, "retryable", False) or attempt > self._retries:
+                    raise
+                self._sleep(min(2.0**attempt, 30.0))
+        raise AssertionError("unreachable")  # pragma: no cover
 
 
 class CloudPort:

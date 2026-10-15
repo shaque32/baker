@@ -148,17 +148,19 @@ Template:
   "Opt-in cloud" (2026-10-15 07:10Z).
 - Where: branch `claude/project-thread-a2fjkc`, PR #68, draft, not merged (main merged in after #71).
 - Verified (as reported by the owning thread; `cloud.sent` and the pause checked in
-  `core/audit/_local_model.py` on the branch): `make check` passes, 1893 tests; gates unchanged
+  `core/audit/_local_model.py` on the branch): `make check` passes, 1933 tests; gates unchanged
   (case01 1.00, 0 false supported, unreviewed 0.60, hostile PASS, case02 0.90); a simulated
-  outage pauses the run with the chain intact; sealed-key tests (sealed, unreadable once
+  outage pauses the run with the chain intact; logged retries (each send logged, SDK retries
+  off) and a log failure that blocks the send; an item relabeled by another model names the
+  latest; sealed-key tests (sealed, unreadable once
   locked, refused in another case, env var and plain case unchanged); Codex rounds 1 to 4
   clean, later commits under review. No real API call since this change.
 - Open: Opus fails the signed probe's contradicts bar (73%, entry below), so a signed prompt fix
   should land first; Arsh approved the revised CLAUDE.md wording (07:29Z) and pastes it on the
   branch himself, since agents are blocked from editing CLAUDE.md; a fair 14B-vs-Opus
-  test of claim proposal and assumption filling waits on Arsh; an evidence row keeps the first
-  model's name when a later run gives an identical label (the per-run "Stance labels" row is
-  authoritative); a key saved for a plain case stays an owner-only plain file.
+  test of claim proposal and assumption filling waits on Arsh; when a case switches models, an
+  evidence row names the latest run's model and rationale (the earlier answer stays in
+  model_calls); a key saved for a plain case stays an owner-only plain file.
 - Affects: capabilities (optional cloud labels per case), privacy (only the filled stance prompt
   leaves the computer, and every request is logged), performance (about 3 s per stance call; local 22 to 43 s per call was
   measured 2026-10-09/12 on older code, and no full local case is timed on current code), customer-facing claims ("local by default; cloud AI only when your
