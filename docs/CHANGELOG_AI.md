@@ -19,7 +19,7 @@ Template:
 
 ---
 
-## 2026-10-15: Writer read from the claim fails closed when the quote is handed on (#PRNUM)
+## 2026-10-15: Writer read from the claim fails closed when the quote is handed on (#77)
 - Changed: `stated_sender` (from #53) fills a sender assumption the 14B left without a person by
   reading the writer before the quote. It took the nearest writing verb's subject even when the
   quote belonged to someone else ("PETROV texted REYES, who responded 'ok'", "PETROV replied to
@@ -28,7 +28,7 @@ Template:
   between the verb and the quote names no writer; so does a name after "of", "for", "posing as"
   and the like; and "answered", "responded", "replies" and similar now count as quote verbs.
   Found by the independent review on #57. No signed file touched.
-- Where: branch `claude/project-thread-c6qjp9`, PR #PRNUM, not merged.
+- Where: branch `claude/project-thread-c6qjp9`, PR #77, not merged.
 - Verified: 11 new cases in `tests/test_assumption_filler.py`, 8 fail on main; make check
   passes (1894 tests); eval unchanged (case01 1.00, 0 false supported; hostile PASS; case02
   aggregate 0.90, 0 false supported).

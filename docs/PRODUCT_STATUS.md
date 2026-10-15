@@ -246,7 +246,7 @@ Grok Product review PR, never merged.
    is handed on after the verb: "PETROV texted REYES, who responded 'ok'" gives PETROV, so the
    sender check tests the wrong person (inferred, not measured: a wrong CONTRADICTED, or a wrong
    pass if PETROV sent those words). 5 of 6 such phrasings did this. Branch `claude/project-thread-c6qjp9` (PR
-   #PRNUM) fails closed on them; the claim then stays without a writer and is refused as before.
+   #77) fails closed on them; the claim then stays without a writer and is refused as before.
    The eval did not move (case01 has no such phrasing).
 7. **Other gaps:** no translation in the pipeline; no embeddings; Windows installer unsigned; the
    cloud key on #68 is an owner-only plain file, not encrypted with the case keys; experts still
