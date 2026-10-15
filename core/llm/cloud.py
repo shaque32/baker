@@ -49,17 +49,18 @@ EFFORTS = ("low", "medium", "high", "xhigh", "max")
 API_BASE_URL = "https://api.anthropic.com"
 # One stance answer takes seconds (about 4 s on synthetic case01), so a stalled request gives up
 # after two minutes and at most two retries (SentLog sends and logs each), then the audit pauses.
-# (model, stance prompt version) pairs that passed the signed stance probe set: supports
-# recall >= 90%, contradicts precision >= 90%, nothing contradicting labeled supports. A case
-# uses the cloud model only for a pair listed here (core/casework/cloud.py). Adding a pair needs
-# a recorded, preregistered run of that exact model and prompt version that meets those bars on
+# (model, effort, stance prompt version) entries that passed the signed stance probe set:
+# supports recall >= 90%, contradicts precision >= 90%, nothing contradicting labeled supports.
+# A case uses the cloud model only with an entry listed here (core/casework/cloud.py). Adding
+# one needs a recorded, preregistered run of that exact model, effort and prompt version that
+# meets those bars on
 # the signed set AND on new held-out items nobody used to write or tune the prompt, plus Arsh's
 # sign-off on the entry (its comment names the results file).
 # EMPTY: on the signed set (2026-10-15) Opus 5.5 scored 73%
 # contradicts precision (bar 90%), and an unreviewed "contradicts" on an event assumption can
 # make a claim CONTRADICTED (rules 0.2.1, rule 1b). Cloud labeling waits for the signed prompt
 # fix and a passing re-run (docs/PRODUCT_STATUS.md).
-PROBE_PASSED: frozenset[tuple[str, str]] = frozenset()
+PROBE_PASSED: frozenset[tuple[str, str, str]] = frozenset()
 REQUEST_TIMEOUT_SECONDS = 120.0
 MAX_RETRIES = 2
 SHA_PREFIX = "api:"  # model_runs.model_sha256 of a cloud model: there is no file to hash
@@ -264,12 +265,18 @@ class ClaudeModel:
                 raise CloudError(
                     'the Anthropic client is not installed (pip install ".[cloud]")', sticky=True
                 ) from e
-            self._client = anthropic.Anthropic(
-                api_key=self.cfg.api_key,
-                base_url=self.cfg.base_url,
-                timeout=REQUEST_TIMEOUT_SECONDS,
-                max_retries=0,  # Baker retries itself, logging each send (SentLog)
-            )
+            try:
+                self._client = anthropic.Anthropic(
+                    api_key=self.cfg.api_key,
+                    base_url=self.cfg.base_url,
+                    timeout=REQUEST_TIMEOUT_SECONDS,
+                    max_retries=0,  # Baker retries itself, logging each send (SentLog)
+                )
+            except Exception as e:  # noqa: BLE001 - a bad local proxy or HTTP setting
+                raise CloudError(
+                    f"the Anthropic client could not be set up ({type(e).__name__}: {e})",
+                    sticky=True,
+                ) from e
         return self._client
 
     def prepare(self) -> None:

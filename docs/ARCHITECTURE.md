@@ -125,7 +125,7 @@ the expert attested at case setup that its protective order allows cloud AI; the
 marked as possibly containing CSAM; the expert's own Anthropic key is set up: `$BAKER_ANTHROPIC_API_KEY`; or, in an encrypted case,
 the key saved in that case (`case.cloud-key`, AES-256-GCM under the case key, so it is unreadable
 while the case is locked); or `~/.baker/cloud.json` (owner-only), in that order; and the model
-passed the signed stance test with the current stance prompt (`PROBE_PASSED` in
+passed the signed stance test at its configured effort with the current stance prompt (`PROBE_PASSED` in
 `core/llm/cloud.py`, empty until one does; an entry needs a recorded pass on the signed
 set and on new held-out items, and Arsh's sign-off). Otherwise the local model
 labels the case, exactly as before. The choice is the latest `set_cloud` entry in the case's

@@ -794,6 +794,9 @@ class App:
         """For the header pill: does the open case send stance questions to the cloud?"""
         if self.case is None:
             return False
+        job = self._job("audit")
+        if job is not None and job.running and job.cloud:
+            return True  # the running audit keeps the choice it started with
         try:
             conn = connect(self.case.db)
         except (*db.Error, CaseLocked, EncryptionError):
@@ -860,6 +863,7 @@ class App:
         spc, _ = jobs.seconds_per_call()
         job = jobs.Job("audit", case.db, total=len(order))
         choice = self._cloud_choice(conn)
+        job.cloud = choice.use
         cloud_spc = jobs.CLOUD_SECONDS_PER_CALL if choice.use else None
         job.estimate_seconds = jobs.estimate_seconds(len(order), spc, cloud_spc)
         check = self.model_check

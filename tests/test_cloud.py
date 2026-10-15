@@ -102,7 +102,9 @@ def probe_passed(monkeypatch):  # noqa: ANN001, ANN201
     """These tests cover what happens once a model passes the signed stance test; the gate
     itself is tested on its own (PROBE_PASSED is empty in the product)."""
     version = cloud_policy._stance_prompt_version()
-    monkeypatch.setattr(cloud, "PROBE_PASSED", frozenset({(cloud.DEFAULT_MODEL, version)}))
+    monkeypatch.setattr(
+        cloud, "PROBE_PASSED", frozenset({(cloud.DEFAULT_MODEL, cloud.DEFAULT_EFFORT, version)})
+    )
 
 
 @pytest.fixture
@@ -423,7 +425,7 @@ def test_no_model_has_passed_the_signed_stance_test_yet():
     # Opus 5.5 scored 73% contradicts precision on the signed set (bar 90%), 2026-10-15.
     # The fixture patches PROBE_PASSED, so read the shipped value from the source.
     src = Path(cloud.__file__).read_text(encoding="utf-8")
-    assert "PROBE_PASSED: frozenset[tuple[str, str]] = frozenset()" in src
+    assert "PROBE_PASSED: frozenset[tuple[str, str, str]] = frozenset()" in src
 
 
 def test_a_model_that_has_not_passed_the_signed_test_labels_locally(case_db, monkeypatch):
@@ -435,9 +437,28 @@ def test_a_model_that_has_not_passed_the_signed_test_labels_locally(case_db, mon
 
 
 def test_a_pass_on_another_stance_prompt_does_not_count(case_db, monkeypatch):
-    monkeypatch.setattr(cloud, "PROBE_PASSED", frozenset({(cloud.DEFAULT_MODEL, "sha256:old")}))
+    old = (cloud.DEFAULT_MODEL, cloud.DEFAULT_EFFORT, "sha256:old")
+    monkeypatch.setattr(cloud, "PROBE_PASSED", frozenset({old}))
     cloud_policy.set_cloud(case_db, "expert:Ana", allowed=True, csam=False)
     assert not cloud_policy.choose(case_db, _key).use
+
+
+def test_a_pass_at_another_effort_does_not_count(case_db):
+    cloud_policy.set_cloud(case_db, "expert:Ana", allowed=True, csam=False)
+    low = cloud.CloudConfig(api_key=KEY, effort="low")
+    choice = cloud_policy.choose(case_db, lambda: low)
+    assert not choice.use and "low effort" in choice.why
+
+
+def test_a_client_that_cannot_be_built_pauses_rather_than_drops(monkeypatch):
+    def broken(**kw):  # noqa: ANN003, ANN202
+        raise ValueError("bad proxy URL")
+
+    monkeypatch.setitem(sys.modules, "anthropic", types.SimpleNamespace(Anthropic=broken))
+    model = cloud.ClaudeModel(cloud.CloudConfig(api_key=KEY))
+    with pytest.raises(cloud.CloudError, match="could not be set up") as err:
+        model.prepare()
+    assert err.value.sticky
 
 
 def _log(conn, actor: str, payload: dict) -> None:  # noqa: ANN001
@@ -747,3 +768,18 @@ def test_the_sdk_does_not_retry_unlogged():
     model._client = None
     pytest.importorskip("anthropic")
     assert model._get_client().max_retries == 0
+
+
+def test_the_pill_stays_on_while_a_cloud_audit_runs_after_the_key_goes(tmp_path, monkeypatch):
+    from core.casework import jobs
+
+    app, get, post = _screen(tmp_path, monkeypatch)
+    post("/cloud/key", api_key=KEY)
+    post("/cloud/case", allowed="1")
+    job = jobs.Job("audit", app.case.db)
+    job.cloud = True
+    app.jobs.current = job  # a cloud audit started with the key in place
+    (tmp_path / "cloud.json").unlink()  # then the key file goes
+    assert "Cloud labels on" in get("/setup").text
+    job.end("done", "finished")
+    assert "Offline" in get("/setup").text

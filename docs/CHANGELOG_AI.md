@@ -166,6 +166,10 @@ Template:
 - Verified: `make check` passes, 1940 tests; gates unchanged (case01 1.00, 0 false supported,
   unreviewed 0.60, hostile PASS, case02 0.90); new tests for the gate, preflight, re-ask and a
   damaged sealed key. No real API call.
+- Codex on 82090a4 (fixed): a gate entry names the effort too, so an untested effort never passes;
+  a client that cannot be built pauses the audit instead of dropping labels; the header pill
+  follows a running cloud audit even if the key file changes; the Windows installer text says
+  offline by default.
 - Open: adding an entry needs a signed prompt fix, a recorded passing run on the signed set and
   on new held-out items not used to write the prompt, and Arsh's sign-off. The report already
   shows each set_cloud entry (expert, time, attestation text) in its audit-log table; a test now

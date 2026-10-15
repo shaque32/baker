@@ -67,6 +67,7 @@ class Job:
     check: ModelCheck | None = None
     hashed: tuple[int, int] | None = None  # model check: bytes hashed of total
     components: pipeline.Components | None = None
+    cloud: bool = False  # an audit whose stance labels come from the cloud model
     stop: threading.Event = field(default_factory=threading.Event)
 
     @property

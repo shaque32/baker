@@ -85,7 +85,7 @@ There is no model judge of verdicts in Baker. The word "judge" does not name any
 - **When Opus is used (branch #68).** Opt-in per case, local by default (Arsh chose "Opt-in cloud",
   2026-10-15 07:10Z). Only when all hold: the expert attested for this case that
   the protective order allows cloud AI; the case is not marked as possibly containing CSAM; a key
-  is set up; and the model passed the signed stance test with the current stance prompt
+  is set up; and the model passed the signed stance test at its configured effort with the current stance prompt
   (`PROBE_PASSED` in `core/llm/cloud.py`). That list is **empty**: Opus 5.5 fails the signed
   set's contradicts bar (below), so on #68 every case still labels locally until a signed prompt
   fix passes a recorded re-run (the signed set plus new held-out items not used to write the
