@@ -7,6 +7,7 @@ import pytest
 
 from core.audit.assumptions import instantiate
 from core.audit.checks import CHECKS, run_checks
+from core.audit.invariants import FORBIDDEN_WORDS, check_report_text
 from core.contracts import CheckOutcome, Claim, ClaimStatus, ClaimType
 from core.db import apply_schema, connect
 from tests.checks.helpers import check, stipulate, window
@@ -179,6 +180,18 @@ def test_count_and_its_limits() -> None:
     assert check(conn, "message_count", expected_count=5, count_op="le", **common).outcome is (
         CheckOutcome.PASS
     )
+
+
+def test_count_detail_never_uses_forbidden_words() -> None:
+    # Baker reports the source's deletion flag; it never says a record was deleted.
+    conn = build()
+    conn.execute("UPDATE messages SET deleted_flag = 1 WHERE id = 'msg:p1:2'")
+    r = check(conn, "message_count", person_ids=[A, B], device_ids=["dev:p1"], window=MARCH,
+              expected_count=2, count_op="eq")  # fmt: skip
+    assert "1 of them carry the source's deletion flag" in r.detail
+    assert not FORBIDDEN_WORDS.search(r.detail), r.detail
+    assert not FORBIDDEN_WORDS.search(r.searched), r.searched
+    check_report_text(f"<td>{r.detail}</td>")  # the report renders the detail as Baker's text
 
 
 def test_count_on_a_phone_in_no_source_is_inconclusive() -> None:

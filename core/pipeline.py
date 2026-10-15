@@ -751,6 +751,7 @@ class _Run:
         self.conn = conn
         self.c = c
         self.now = now
+        self.clock = clock
         self.progress = _Progress(conn, result.run_id, c, clock)
         self.result = result
         self.run_id = result.run_id
@@ -1034,6 +1035,8 @@ class _Run:
             )
         else:
             decision = c.rule(claim, assumptions, evidence, checks, stipulations, self.run_id)  # type: ignore[call-arg]
+            # rules.py stamps the wall clock; the run's clock decides, so a run is repeatable.
+            decision = decision.model_copy(update={"decided_at_utc": _now(self.clock)})
         invariants.check_decision(
             conn, claim, assumptions, evidence, checks, stipulations, decision, self.run_id
         )
