@@ -905,6 +905,20 @@ class App:
             self.flash = ("Open or make a case first.", True)
             return self._redirect("/cases")
         case = self.case
+        try:  # uploads skip handle(), so they check the log here, before a byte is written
+            conn = connect(case.db)
+            try:
+                audit_log.require_intact(conn, audit_log.anchors_path(case.db))
+            finally:
+                conn.close()
+        except (audit_log.ChainBroken, CaseLocked) as err:
+            _drain(stream, length)
+            if isinstance(err, audit_log.ChainBroken):
+                self._close_broken(case)
+            else:
+                self.case = None
+            self.flash = (f"Not imported: {err}", True)
+            return self._redirect("/cases")
         counted = _Counting(stream)
         written: list[Path] = []
 

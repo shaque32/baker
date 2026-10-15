@@ -107,8 +107,9 @@ eval or re-decided.
 
 - Every change goes through `core/review/actions.py`, so the hash-chained audit log records it.
   The screen never sets a verdict; only `rules.py` does, through a full audit or a re-run.
-- Opening a case, every page and form while it is open (the report and its download included),
-  and encrypting it or changing its passphrase first check the audit log (below). A failed
+- Opening a case, every page, form and file upload while it is open (the report and its
+  download included), and encrypting it or changing its passphrase first check the audit log
+  (below). A failed
   check fails closed: the case does not open, or an open one closes (a background audit or
   claim proposal on it is told to stop after the claim or paragraph in hand, and an encrypted
   case locks), no report is built, and nothing is written. The CLI refuses every command but

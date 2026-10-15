@@ -8,6 +8,7 @@ still read it, and both state the failed chain themselves. Synthetic data only.
 
 from __future__ import annotations
 
+import io
 import json
 import sqlite3
 import threading
@@ -381,3 +382,42 @@ def test_changing_the_passphrase_of_a_blocked_case_changes_nothing(tmp_path):
         protect.change_passphrase(case, PASS, "another long passphrase", "another long passphrase",
                                   EXPERT)  # fmt: skip
     assert (case.folder / "case.key").read_bytes() == key_before
+
+
+def test_a_non_text_value_in_a_logged_row_is_a_broken_chain(broken_db):
+    conn = connect(broken_db)
+    conn.execute("UPDATE audit_log SET actor = ? WHERE seq = 1", (b"\x00bytes",))
+    conn.commit()
+    assert audit_log.first_break(conn) == 1
+    conn.close()
+    with pytest.raises(SystemExit, match="broken at entry 1"):
+        cli_main(["claims", "--db", str(broken_db), "list"])
+
+
+def test_an_upload_to_a_case_blocked_since_it_opened_is_refused(tmp_path):
+    app = App(home=tmp_path / "cases", port=PORT, model_check=None)
+    post(app, "/expert", name="Test Expert")
+    post(app, "/case/new", name="Synthetic upload case")
+    case = app.case
+    assert case is not None
+    conn = connect(case.db)
+    log_three(conn)
+    tamper(conn, 2)
+    conn.close()
+    before = case.db.read_bytes()
+    b = "baker-test-boundary-chain"
+    body = (
+        f'--{b}\r\nContent-Disposition: form-data; name="token"\r\n\r\n{app.token}\r\n'
+        f'--{b}\r\nContent-Disposition: form-data; name="kind"\r\n\r\nreport\r\n'
+        f'--{b}\r\nContent-Disposition: form-data; name="file"; filename="x.xlsx"\r\n'
+        "Content-Type: application/octet-stream\r\n\r\nnot a report\r\n"
+        f"--{b}--\r\n"
+    ).encode()
+    req = Request(
+        "POST", "/case/import", {}, {**HOST, "content-type": f"multipart/form-data; boundary={b}"}
+    )
+    r = app.handle_upload(req, io.BytesIO(body), len(body))
+    assert r.header("Location") == "/cases" and app.case is None
+    assert case.db.read_bytes() == before
+    assert not any(case.inputs.iterdir()) if case.inputs.exists() else True
+    assert "Not imported: the audit log" in get(app, "/cases").text

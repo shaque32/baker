@@ -71,7 +71,11 @@ def first_break(conn: sqlite3.Connection) -> int | None:
         " ORDER BY seq"
     )
     for seq, at, actor, action, payload_json, prev_hash, h in rows:
-        if prev_hash != prev or entry_hash(prev_hash, at, actor, action, payload_json) != h:
+        try:
+            ok = prev_hash == prev and entry_hash(prev_hash, at, actor, action, payload_json) == h
+        except (TypeError, ValueError):  # a non-text value stored by an edit outside Baker
+            ok = False
+        if not ok:
             return seq
         prev = h
     return None
