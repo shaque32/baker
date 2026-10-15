@@ -51,6 +51,21 @@ Template:
   is open, per report and per Cases listing (2.3 ms for the 225-entry synthetic case01 log of a
   cloud bench run, this cloud container, 2026-10-15; unmeasured on a large real case).
 
+## 2026-10-15: Count check no longer says "deleted" (#83)
+- Changed: the count check's detail now reads "N of them carry the source's deletion flag"
+  instead of "N of them are flagged deleted"; check version 1.0.0 to 1.0.1. The old text broke
+  the CLAUDE.md rule against Baker saying "deleted", and the report's forbidden-words check would
+  stop the report build whenever a counted message had the source's deletion flag. Found by Codex
+  on #82. A grep of core/ and ui/ found no other Baker-authored prose with a forbidden word;
+  `baker ufdr-check` output names the package's own `deleted_state` field and was left as is.
+- Where: branch `claude/fix-count-deleted-wording-oxal24`, PR #83, not merged.
+- Verified: new unit test (fails on main, passes here) checks the detail and search text against
+  FORBIDDEN_WORDS and `check_report_text`. `make check` passed 2026-10-15 in a Linux cloud
+  container: 1884 passed, 6 skipped; case01 model-free accuracy 1.00, 0 false supported.
+- Open: none known.
+- Affects: customer-facing text on the review screen and report (wording only); no verdict,
+  privacy or performance change.
+
 ## 2026-10-15: UFDR reader checked on public test files (#73)
 - Changed: attachments linked only by file_id now resolve through taggedFiles and are hashed; a
   phone-owner UserAccount no longer takes a ProfilePicture URL as its identifier; `ufdr-check`
@@ -71,7 +86,8 @@ Template:
 - Changed: `tests/test_report_consistency.py` checks that the screen and the report agree on
   status, verdict label and evidence ids at 7 points in a synthetic case01 review. A repeatability
   test checks that the same inputs, versions and expert decisions give a byte-identical report
-  with clocks pinned, and the same SHA-256 across times once 6 documented time fields are masked.
+  with clocks pinned, and the same SHA-256 across times once the time fields documented in
+  `core/report/html.py` are masked (8, including stipulation and identity-link times; Codex).
   Bug fixed: the verdict "decided" time came from the wall clock, not the run's clock; the
   pipeline and re-decide now stamp the run's clock. Report evidence rows carry evidence-id
   anchors. `core/audit/rules.py` unchanged. (Grok Product items 6 and 7.)
