@@ -19,6 +19,22 @@ Template:
 
 ---
 
+## 2026-10-15: Screen and report agree; reports are repeatable (#72)
+- Changed: `tests/test_report_consistency.py` checks that the screen and the report agree on
+  status, verdict label and evidence ids at 7 points in a synthetic case01 review. A repeatability
+  test checks that the same inputs, versions and expert decisions give a byte-identical report
+  with clocks pinned, and the same SHA-256 across times once 6 documented time fields are masked.
+  Bug fixed: the verdict "decided" time came from the wall clock, not the run's clock; the
+  pipeline and re-decide now stamp the run's clock. Report evidence rows carry evidence-id
+  anchors. `core/audit/rules.py` unchanged. (Grok Product items 6 and 7.)
+- Where: branch `claude/project-thread-kq0r95`, PR #72, not merged.
+- Verified (as reported by the owning thread): ruff clean; 1862 tests pass, 1 fails (the known
+  test #65 fixes); eval case01 1.00, 0 false supported, hostile PASS, case02 aggregate 0.90; no
+  verdict changed.
+- Open: synthetic case01 only, not real exports; does not compare every rendered sentence.
+- Affects: customer-facing claims (supports "reproducible audit packet", on synthetic data with
+  time fields masked). No privacy or performance change.
+
 ## 2026-10-15: Quote check reads contacts as the model sees them (fixes #69; PR not open yet)
 - Changed: one function now renders a contact ("Name: +1...") for retrieval, the quote check,
   `core/audit/quotes.py` and the small model's generated training items, so correct contact
