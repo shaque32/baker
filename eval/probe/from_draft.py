@@ -10,7 +10,7 @@ Baker shows a case's records: each sender as core.audit.readable prints it, with
 internal account id, a chat record's context opening with its members line, and the claim
 carried for a stance prompt that has a {claim} slot (eval/probe/run_probe.py).
 
-Any other item (the signed probe set, P001 to P088) is shown in the product's layout
+Any other item (the signed probe set, P001 to P105) is shown in the product's layout
 (layout="product", the default since 2026-10-14): the RECORD is the message text alone, as
 core/audit/stance.default_record sends it, and the context is laid out as
 core/audit/context.render_context lays it out, with its header line ("Times are the phone's local

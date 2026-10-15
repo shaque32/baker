@@ -34,6 +34,8 @@ REQUIRED_TRAPS = {
     "translation_dependence",
     "shared_account",
     "prompt_injection",
+    "undated_denial",
+    "told_frame",
 }
 ZONES = {"EST": "America/New_York", "EDT": "America/New_York", "MSK": "Europe/Moscow"}
 
@@ -63,8 +65,8 @@ def test_jsonl_round_trips():
     signed = {
         json.loads(x)["probe_id"] for x in lines if json.loads(x)["labeled_by"] in SIGNED_LABELS
     }
-    assert signed == {f"P{n:03d}" for n in range(1, 89)}
-    assert all(json.loads(x)["labeled_by"].startswith("DRAFT") for x in lines[88:])
+    assert signed == {f"P{n:03d}" for n in range(1, 106)}
+    assert not any(json.loads(x)["labeled_by"].startswith("DRAFT") for x in lines)
 
 
 def test_disputed_items_are_signed_and_known():
@@ -78,7 +80,7 @@ def test_ids_unique_and_sequential():
 
 def test_counts_within_targets():
     cats = Counter(i.category for i in ITEMS)
-    assert 80 <= len(ITEMS) <= 100
+    assert 80 <= len(ITEMS) <= 110
     assert cats[ProbeCategory.OVERREACH] >= 25
     assert cats[ProbeCategory.CLEAR_SUPPORT] >= 24
     assert cats[ProbeCategory.CONTRADICTS] >= 8

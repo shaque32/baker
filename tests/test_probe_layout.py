@@ -3,6 +3,7 @@ would (grading audit, 2026-10-14). No model, no network."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -18,6 +19,10 @@ from eval.probe.from_draft import PROBE_HEADER, convert, member
 ROOT = Path(__file__).resolve().parents[1]
 PROBE = ROOT / "eval" / "gold" / "probe" / "probe.jsonl"
 V1_1 = ROOT / "eval" / "probe" / "stance_v1_1_signed.md"
+# SHA-256 of the signed v1.1 prompt text (after the "prompt starts" line): stance prompt v1.0
+# with the three diff parts of PROPOSED_CHANGES.md applied, rebuilt while v1.0 was the product
+# prompt. Pinned so the check does not depend on the product prompt, which now holds v1.1.
+SIGNED_V1_1_BODY_SHA256 = "4c35f1cf01b0b2277135bafe52d996f903f3bca3fc5a37c8e8996aedc35a2034"
 
 
 def _rows() -> list[dict]:
@@ -124,12 +129,12 @@ def test_one_answer_per_item_reports_no_repeat_agreement():
 
 
 def test_overreach_count_is_part_of_the_trap_count():
-    # P049 is an overreach item whose gold is contradicts: a supports there is not a trap shown
+    # P098 is an overreach item whose gold is contradicts: a supports there is not a trap shown
     # as supports (contradicts_shown_as_supports counts it), so neither count moves.
-    item = _item("P049")
+    item = _item("P098")
     assert item["category"] == "overreach" and item["gold_stance"] == "contradicts"
     sup = {"stance": "supports", "quote": item["target"]["text"], "rationale": "r"}
-    _, ec = _score({"P049": [sup, sup]}, ["P049"])
+    _, ec = _score({"P098": [sup, sup]}, ["P098"])
     assert ec["reported"]["traps_shown_as_supports"] == 0
     assert ec["reported"]["overreach_shown_as_supports"] == 0
     assert ec["contradicts_shown_as_supports"] == 1
@@ -163,26 +168,31 @@ def _signed_v1_1_from_proposed_changes() -> str | None:
     body = prompts._body(ROOT / "core" / "audit" / "prompts" / "stance.md")
     one = section.split("Diff, part one:\n", 1)[1].split("Diff, part two", 1)[0]
     # Part one: runs of removed lines, each followed by the lines that replace them.
-    for old, new in re.findall(r"((?:^-.*\n)+)((?:^\+.*\n)+)", one, re.M):
-        old = "".join(ln[1:] + "\n" for ln in old.splitlines())
-        new = "".join(ln[1:] + "\n" for ln in new.splitlines())
-        assert body.count(old) == 1
-        body = body.replace(old, new)
+    pairs = [
+        tuple("".join(ln[1:] + "\n" for ln in run.splitlines()) for run in pair)
+        for pair in re.findall(r"((?:^-.*\n)+)((?:^\+.*\n)+)", one, re.M)
+    ]
     two = section.split("Diff, part two", 1)[1].split("Diff, part three", 1)[0]
     two = "".join(ln[1:] + "\n" for ln in two.splitlines() if ln.startswith("+"))
     three = section.split("Diff, part three", 1)[1].split("and the header's version line", 1)[0]
     three = "".join(ln[1:] + "\n" for ln in three.splitlines() if ln.startswith("+"))
+    if any(body.count(old) != 1 for old, _ in pairs):
+        return None  # the product prompt is no longer v1.0 (the wiring, #62, applied v1.1)
+    for old, new in pairs:
+        body = body.replace(old, new)
     body = body.replace("\nAssumption:\n", "\n" + two + "Assumption:\n", 1)
     return body.replace("Choose exactly one stance:", three + "Choose exactly one stance:", 1)
 
 
 def test_bench_copy_of_v1_1_is_the_signed_text():
+    body = prompts._body(V1_1)
+    # Any edit to the copy fails here, whatever the product prompt holds.
+    assert hashlib.sha256(body.encode("utf-8")).hexdigest() == SIGNED_V1_1_BODY_SHA256
     expected = _signed_v1_1_from_proposed_changes()
-    if expected is None:
-        pytest.skip("v1.1 applied; PROPOSED_CHANGES.md no longer holds its diff")
-    assert prompts._body(V1_1) == expected
+    if expected is not None:  # the product prompt is still v1.0: rebuild v1.1 from the diff too
+        assert body == expected
     assert prompts.has_placeholder(V1_1, "claim")
-    assert "a different sender, a different time" not in prompts._body(V1_1)
+    assert "a different sender, a different time" not in body
 
 
 def test_bench_dry_run_on_v1_1_stance_only(tmp_path):

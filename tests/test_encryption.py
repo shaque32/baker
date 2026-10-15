@@ -64,7 +64,8 @@ def test_the_key_file_opens_with_the_passphrase_or_the_recovery_key_only(tmp_pat
     assert encryption.open_key_file(kf, recovery) == dek
     typed = recovery.lower().replace("-", " ")  # as someone types it back off paper
     assert encryption.open_key_file(kf, typed) == dek
-    for wrong in ("correct horse battery stapler", "", recovery[:-1] + "A"):
+    last = "B" if recovery.endswith("A") else "A"  # one character off, never the real key
+    for wrong in ("correct horse battery stapler", "", recovery[:-1] + last):
         with pytest.raises(WrongSecret):
             encryption.open_key_file(kf, wrong)
     text = json.dumps(kf.model_dump(mode="json"))
