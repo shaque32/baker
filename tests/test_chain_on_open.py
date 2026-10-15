@@ -441,3 +441,67 @@ def test_an_anchor_that_cannot_be_written_is_a_clear_error(anchored_db, monkeypa
     monkeypatch.setattr("builtins.open", refuse)
     with pytest.raises(SystemExit, match="cannot write case.db.anchors.jsonl"):
         cli_main(["claims", "--db", str(anchored_db), "list"])
+
+
+def test_an_anchor_number_too_large_to_read_is_refused(anchored_db):
+    audit_log.anchors_path(anchored_db).write_text('{"hash": "x", "seq": 1e999}\n', "utf-8")
+    with pytest.raises(SystemExit, match="line 1 of the audit log's anchor file"):
+        cli_main(["claims", "--db", str(anchored_db), "list"])
+
+
+def test_a_removed_audit_table_is_a_blocked_case_not_a_crash(anchored_db):
+    conn = connect(anchored_db)
+    conn.execute("DROP TABLE audit_log")
+    conn.commit()
+    conn.close()
+    with pytest.raises(SystemExit, match="the audit log cannot be read"):
+        cli_main(["claims", "--db", str(anchored_db), "list"])
+    app = App(db_path=anchored_db, port=PORT, model_check=None)  # the screen still starts
+    assert app.case is None
+    assert "Not opened: the audit log cannot be read" in (app.flash or ("", False))[0]
+
+
+def test_an_anchor_file_missing_its_last_newline_gets_one_before_the_next_anchor(anchored_db):
+    anchors = audit_log.anchors_path(anchored_db)
+    anchors.write_text(anchors.read_text("utf-8").rstrip("\n"), "utf-8")  # a cut-off append
+    conn = connect(anchored_db)
+    audit_log.append(conn, AT, EXPERT, "test.entry", {"n": 9})
+    conn.commit()
+    conn.close()
+    assert cli_main(["claims", "--db", str(anchored_db), "list"]) == 0
+    assert cli_main(["claims", "--db", str(anchored_db), "list"]) == 0  # still reads cleanly
+    seqs = [json.loads(x)["seq"] for x in anchors.read_text("utf-8").splitlines()]
+    assert seqs == [3, 4]
+
+
+def _refuse_anchor(conn, anchors):  # noqa: ANN001, ANN202
+    raise audit_log.AnchorUnwritable(anchors, PermissionError("read-only media"))
+
+
+def test_an_unwritable_anchor_is_found_before_stale_runs_are_changed(tmp_path, monkeypatch):
+    home = tmp_path / "cases"
+    app = App(home=home, port=PORT, model_check=None)
+    post(app, "/expert", name="Test Expert")
+    post(app, "/case/new", name="Synthetic stale-run case")
+    case = app.case
+    assert case is not None
+    app.case = None
+    marked: list[object] = []
+    monkeypatch.setattr("ui.app.pipeline.mark_stale_runs_stopped", lambda c: marked.append(c))
+    monkeypatch.setattr(audit_log, "anchor", _refuse_anchor)
+    post(app, "/case/open", case=case.folder.name)
+    assert app.case is None and marked == []  # refused before anything was written
+
+
+def test_a_new_case_that_cannot_be_anchored_leaves_the_open_case_alone(tmp_path, monkeypatch):
+    home = tmp_path / "cases"
+    app = App(home=home, port=PORT, model_check=None)
+    post(app, "/expert", name="Test Expert")
+    post(app, "/case/new", name="Synthetic case A")
+    first = app.case
+    assert first is not None
+    monkeypatch.setattr(audit_log, "anchor", _refuse_anchor)
+    post(app, "/case/new", name="Synthetic case B")
+    assert app.case == first  # case A stays open
+    assert [c.name for c in cases.list_cases(home)] == ["Synthetic case A"]  # B was not kept
+    assert "the case was not made" in (app.flash or ("", False))[0]

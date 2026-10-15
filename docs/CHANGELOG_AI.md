@@ -33,11 +33,13 @@ Template:
   expert's steps when a case is blocked (keep the folder, restore a whole-folder backup, or
   rebuild from the original files). (Grok Product item 5 on #70 and its follow-up on #80.)
 - Where: main, with PR #74.
-- Verified: 28 tests in `tests/test_chain_on_open.py` (chain, anchors: truncation, rewrite,
-  unreadable or non-text file, dedupe, numbers and hashes only; CLI and screen, report and log
-  page and upload refusal, non-text log values, unwritable anchor file, one anchor file per
-  database name, job stop, encrypt and passphrase refused,
-  encrypted re-lock); full suite passes;
+- Verified: 33 tests in `tests/test_chain_on_open.py` (chain, anchors: truncation, rewrite,
+  unreadable or non-text file, out-of-range anchor numbers, a last line missing its newline,
+  dedupe, numbers and hashes only; CLI and screen, report and log page and upload refusal,
+  non-text log values, a removed audit table, unwritable anchor file (found before anything is
+  written; a new case that cannot be anchored is not kept and the open case stays open), one
+  anchor file per database name, job stop, encrypt and passphrase refused, encrypted re-lock);
+  full suite passes;
   headless-Chromium smoke (report refused after the newest entry was cut; intact report builds);
   eval unchanged (case01 1.00, 0 false supported, hostile PASS).
 - Open: entries added after the newest anchor and cut before the next open or report are not

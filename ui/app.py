@@ -33,6 +33,7 @@ from __future__ import annotations
 import hmac
 import re
 import secrets
+import shutil
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -214,8 +215,9 @@ class App:
         try:
             # a broken or cut-short log fails closed: no review, no writes
             audit_log.require_intact(conn, anchors)
-            pipeline.mark_stale_runs_stopped(conn)  # nothing in this process runs them
-            audit_log.anchor(conn, anchors)
+            audit_log.anchor(conn, anchors)  # first, so an unwritable anchor changes nothing
+            if pipeline.mark_stale_runs_stopped(conn):  # nothing in this process runs them
+                audit_log.anchor(conn, anchors)
         except audit_log.ChainBroken:
             if self.case is not None and self.case.db == case.db:  # re-opened after tampering
                 self._close_broken(case)
@@ -487,7 +489,7 @@ class App:
             if (
                 isinstance(err, audit_log.ChainBroken)
                 and self.case is not None
-                and req.path != "/case/open"  # open_case closes only the case it refused
+                and req.path not in ("/case/open", "/case/new")  # not the open case's log
             ):
                 self._close_broken(self.case)  # e.g. encrypting a case blocked since it opened
                 back = "/cases"
@@ -659,7 +661,14 @@ class App:
             if passphrase != f.get("passphrase2", ""):
                 raise ReviewError("the two passphrases do not match")
         case = cases.create_case(self.home, f.get("name", ""), self.actor, passphrase=passphrase)
-        self.open_case(case)
+        try:
+            self.open_case(case)
+        except audit_log.ChainBroken as err:  # e.g. its anchor file cannot be written
+            cases.recovery_key_for(case)  # drop the key from memory with the case
+            if protect.state(case) != "plain":
+                protect.lock(case)
+            shutil.rmtree(case.folder, ignore_errors=True)  # made just now; nothing else in it
+            raise ReviewError(f"the case was not made, because {err.problem}") from err
         key = cases.recovery_key_for(case)
         if key is not None:
             self.recovery = (case.db, key)

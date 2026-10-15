@@ -9,6 +9,7 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
+from core import db
 from core.contracts import AuditLogEntry
 
 
@@ -112,6 +113,15 @@ def require_intact(conn: sqlite3.Connection, anchors: Path | None = None) -> Non
     the anchor file. The chain alone cannot tell that entries were cut from its end; the
     anchors, kept outside the database, can (back to the newest anchor). Every path that opens
     or reports a case calls this first (the review screen and the CLI), so it fails closed."""
+    try:
+        _require_intact(conn, anchors)
+    except db.DatabaseError as err:  # the table or a column was removed, or the file is damaged
+        if isinstance(err, db.OperationalError) and "locked" in str(err):
+            raise  # another writer holds the database for now; that is not a broken log
+        raise ChainBroken(0, f"the audit log cannot be read ({err})") from err
+
+
+def _require_intact(conn: sqlite3.Connection, anchors: Path | None) -> None:
     seq = first_break(conn)
     if seq is not None:
         raise ChainBroken(seq)
@@ -129,7 +139,7 @@ def require_intact(conn: sqlite3.Connection, anchors: Path | None = None) -> Non
         try:
             a = json.loads(line)
             seq, want = int(a["seq"]), str(a["hash"])
-        except (ValueError, KeyError, TypeError) as err:
+        except (ValueError, KeyError, TypeError, OverflowError) as err:  # 1e999 -> inf
             raise ChainBroken(
                 0, f"line {n} of the audit log's anchor file {anchors.name} is unreadable"
             ) from err
@@ -166,6 +176,14 @@ def anchor(conn: sqlite3.Connection, anchors: Path) -> None:
         pass  # no file yet; an unreadable one was already refused by require_intact
     line = json.dumps({"seq": seq, "hash": h}, sort_keys=True) + "\n"
     created = not anchors.exists()
+    try:  # an append cut off before its newline would join two anchors on one line
+        if not created and anchors.stat().st_size:
+            with open(anchors, "rb") as f:
+                f.seek(-1, os.SEEK_END)
+                if f.read(1) != b"\n":
+                    line = "\n" + line
+    except OSError as err:
+        raise AnchorUnwritable(anchors, err) from err
     try:
         with open(anchors, "a", encoding="utf-8") as f:
             f.write(line)
