@@ -39,8 +39,8 @@ Template:
   quote check cites them, which is also the text #50's case items give the small model:
   `<saved name> <number>` (539 items) and `outgoing call from … at …, 604s` (1,041 items) of
   19,250. #76 moves the check to the text Baker shows the 14B (contacts `<saved name>:
-  <number>`; calls in progress there). Once it merges, run 5 meets the new text on those rows
-  only, and the next data drop writes it.
+  <number>`, calls `outgoing Phone call from … to …, duration 604 s`). Once it merges, run 5
+  meets the new text on those rows only, and the next data drop writes it.
 - Affects: none in the product (eval only). It changes what the candidate small stance model
   trains on.
 
