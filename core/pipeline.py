@@ -1118,11 +1118,11 @@ def run_audit(
     cfg = {
         "k": components.k,
         "fake": result.fake,
-        "quote_check": quotes.VERSION,
         "label_settled": components.label_settled,
         "claim_order": [cl.id for cl in claims],
         "components": components.names(),
         **(config or {}),
+        "quote_check": quotes.VERSION,  # the check that ran; a caller's config cannot restate it
     }
     with conn:
         conn.execute(

@@ -365,7 +365,9 @@ def test_a_quote_of_only_bakers_words_or_a_placeholder_is_dropped(conn, other, q
 
 
 def test_every_run_records_the_quote_check_version(conn):
-    pipeline.run_audit(conn, comps(), clock=_clock, claim_ids=["C01"])
+    # Codex on #76: a caller's config must not overwrite the version of the check that ran.
+    c = comps()
+    pipeline.run_audit(conn, c, clock=_clock, claim_ids=["C01"], config={"quote_check": "9.9.9"})
     assert pipeline.last_run(conn)["config"]["quote_check"] == quotes.VERSION == "1.2.0"
     assert f"quote check {quotes.VERSION}" in render_report(conn)
 
