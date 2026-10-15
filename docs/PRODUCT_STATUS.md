@@ -267,11 +267,18 @@ Codex fixes, with CI pending on the new push.
 
 ## 11. Pilot readiness
 
-**Not pilot-ready for real case data yet.** Ready: the demo case, the review screen, encryption,
+**Not pilot-ready for real case data yet.** The pass/fail gates are in
+[`docs/PILOT_GATES.md`](PILOT_GATES.md): 0 of 12 met on main as of 2026-10-15 (gate 12, the
+buyer documents, passes when PR #81 merges). Ready: the demo case, the review screen, encryption,
 the Mac and Windows installers, and a pilot kit (data handling, limitations, agreement outline,
 feedback form, demo script, go/kill scorecard) in `/mnt/project-files/baker/pilot/`.
 
-Before a first real case:
+Documents for pilots and buyers (PR #81, not merged): onboarding kit
+(`docs/PILOT_ONBOARDING.md`), methods note an examiner can cite (`docs/METHODS.md`, no accuracy
+figures), and security and privacy pack with a data-flow diagram (`docs/SECURITY_PRIVACY.md`).
+Nobody outside the project has tried the onboarding kit yet (gate 11).
+
+Before a first real case (the full list is the gates file):
 1. Fix issue #69 (quote check), then time a full local case01 on the Mac for a real runtime.
 2. Check a real UFDR and AXIOM export with `baker ufdr-check` (needs a pilot expert's closed case).
 3. Finish #68 (opt-in cloud, chosen by Arsh 2026-10-15 07:10Z): a signed told-frame prompt fix

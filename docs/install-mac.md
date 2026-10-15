@@ -14,8 +14,8 @@ disconnect from the internet.
 | Disk | 15 GB free | SSD (every Apple silicon Mac has one) |
 | macOS | 13 Ventura or later | the latest |
 
-How long a case takes: the synthetic test case (20 claims, about 500 model calls) took about
-6 to 8 hours on an M4 Mac with 24 GB. Start a case in the evening and review it the next
+How long a case takes: the synthetic test case (20 claims) took about 6 to 8 hours on an M4 Mac
+with 24 GB on an earlier version (2026-10-12). The current version has not been timed yet. Start a case in the evening and review it the next
 morning. A run can stop and resume: finished claims are kept.
 
 ## Install (about 30 minutes, most of it waiting)
