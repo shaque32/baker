@@ -818,11 +818,11 @@ _NOUN_BEFORE = re.compile(
 # names no writer: a sentence break ('PETROV messaged REYES. REYES: "ok"'; a stop before a
 # capital, so "2:31 p.m.:" is no break), a relative or a joined clause ('PETROV texted REYES,
 # who responded "ok"', '..., and REYES shot back ...'), or a possessive ('PETROV replied to
-# REYES's message "ok"'). "and" joins a clause only before a pronoun or a name with words of
-# its own: 'PETROV texted REYES and SMITH: "ok"' is one writer, two recipients. Time words
-# ("before midnight") hand nothing on.
+# REYES's message "ok"', "... JONES' reply ..."). "and" joins a clause only before a pronoun
+# or a name with words of its own: 'PETROV texted REYES and SMITH: "ok"' is one writer, two
+# recipients. Time words ("before midnight") hand nothing on.
 _HANDED_ON_RE = re.compile(
-    r"[;!?]|\.(?=\s+[A-Z])|['’]s\b|\b(?:who|whom|whose|which)\b"
+    r"[;!?]|\.(?=\s+[A-Z])|['’]s\b|s['’](?=\s)|\b(?:who|whom|whose|which)\b"
     r"|\b(?:and|but|or|then)\s+(?:(?:he|she|they|it|we|i)\b|(?-i:(?:[A-Z][\w'.-]*\s+){1,3}[a-z]))",
     re.IGNORECASE,
 )

@@ -421,6 +421,7 @@ def test_a_sender_without_a_party_gets_the_writer_the_claim_names(conn):
         ("PETROV replied to REYES's message 'ok see you'.", "ok see you", None),
         ("PETROV messaged REYES. REYES: 'ok see you'.", "ok see you", None),
         ("PETROV emailed REYES, whose reply was 'ok see you'.", "ok see you", None),
+        ("PETROV texted JONES, with JONES' reply being 'ok see you'.", "ok see you", None),
         ("PETROV texted REYES and REYES wrote back 'ok see you'.", "ok see you", "REYES"),
         ("PETROV texted REYES that 'the van is ready'.", "the van is ready", "PETROV"),
         ("A friend of PETROV texted REYES 'its done'.", "its done", None),

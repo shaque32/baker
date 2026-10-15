@@ -30,8 +30,8 @@ Template:
   and the like; and "answered", "responded", "replies" and similar now count as quote verbs.
   Found by the independent review on #57. No signed file touched.
 - Where: branch `claude/project-thread-c6qjp9`, PR #77, not merged.
-- Verified: 24 new cases in `tests/test_assumption_filler.py`, 10 fail on main; make check
-  passes (1907 tests); eval unchanged (case01 1.00, 0 false supported; hostile PASS; case02
+- Verified: 25 new cases in `tests/test_assumption_filler.py`, 11 fail on main; make check
+  passes (1908 tests); eval unchanged (case01 1.00, 0 false supported; hostile PASS; case02
   aggregate 0.90, 0 false supported).
 - Open: a phrasing-based guard, not a parser; a new phrasing could still slip through. It only
   matters when the 14B leaves the sender's person out (seen on the Mac run, ¶6.1). Fails closed:
