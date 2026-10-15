@@ -243,6 +243,11 @@ Grok Product review PR, never merged.
 6. **Other gaps:** no translation in the pipeline; no embeddings; Windows installer unsigned; the
    cloud key on #68 is an owner-only plain file, not encrypted with the case keys; experts still
    need the 14B installed even with cloud on.
+7. **Count check said "deleted" (fixed in PR #83, not merged).** On main the count check's
+   detail reads "N of them are flagged deleted" when counted messages carry the source's deletion
+   flag. That breaks the rule that Baker never says "deleted", and the report's forbidden-words
+   check (`core/audit/invariants.py:60`) would refuse to build a report containing it. #83
+   rewords it to "N of them carry the source's deletion flag" (count check 1.0.1).
 
 ## 10. Tests and results (main `7a14437`, before #64 to #67)
 
