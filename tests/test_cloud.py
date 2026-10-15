@@ -365,6 +365,18 @@ def test_a_rules_only_redecide_keeps_the_cloud_decision_for_the_report():
     assert 'cfg["cloud"] = src["config"]["cloud"]' in src
 
 
+def test_the_report_shows_who_attested_and_the_words_they_agreed_to(tmp_path):
+    from core.report.html import render_report
+    from eval import run_pipeline as rp
+
+    conn = rp.build_case("case01", tmp_path / "case01.db")
+    cloud_policy.set_cloud(conn, "expert:Ana", allowed=True, csam=False)
+    page = render_report(conn)
+    assert "expert:Ana" in page and "set_cloud" in page
+    assert "allows its evidence to be sent to a cloud AI service under my firm" in page
+    assert "informed consent" in page
+
+
 def test_a_cloud_estimate_keeps_assumption_filling_at_the_local_speed():
     from core.casework import jobs
 

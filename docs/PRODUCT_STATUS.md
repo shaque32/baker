@@ -88,7 +88,8 @@ There is no model judge of verdicts in Baker. The word "judge" does not name any
   is set up; and the model passed the signed stance test with the current stance prompt
   (`PROBE_PASSED` in `core/llm/cloud.py`). That list is **empty**: Opus 5.5 fails the signed
   set's contradicts bar (below), so on #68 every case still labels locally until a signed prompt
-  fix passes a recorded re-run and Arsh signs the entry. The choice is stored in the case's
+  fix passes a recorded re-run (the signed set plus new held-out items not used to write the
+  prompt) and Arsh signs the entry. The choice is stored in the case's
   hash-chained audit log. Otherwise the local 14B labels the case, as on main.
 - **Failure handling (branch #68).** If the cloud fails mid-case, the audit pauses
   (`CloudPaused`, `core/audit/_local_model.py`); the expert retries the cloud or re-runs the

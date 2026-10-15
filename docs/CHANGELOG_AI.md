@@ -150,7 +150,10 @@ Template:
 - Verified: `make check` passes, 1940 tests; gates unchanged (case01 1.00, 0 false supported,
   unreviewed 0.60, hostile PASS, case02 0.90); new tests for the gate, preflight, re-ask and a
   damaged sealed key. No real API call.
-- Open: adding an entry needs a signed prompt fix, a recorded passing run and Arsh's sign-off.
+- Open: adding an entry needs a signed prompt fix, a recorded passing run on the signed set and
+  on new held-out items not used to write the prompt, and Arsh's sign-off. The report already
+  shows each set_cloud entry (expert, time, attestation text) in its audit-log table; a test now
+  covers it.
 - Affects: capabilities (cloud labels off until a model passes), privacy (no case data leaves
   the computer on #68 until then), customer-facing claims (do not offer cloud labeling yet).
 

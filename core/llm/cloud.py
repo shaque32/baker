@@ -52,7 +52,10 @@ API_BASE_URL = "https://api.anthropic.com"
 # (model, stance prompt version) pairs that passed the signed stance probe set: supports
 # recall >= 90%, contradicts precision >= 90%, nothing contradicting labeled supports. A case
 # uses the cloud model only for a pair listed here (core/casework/cloud.py). Adding a pair needs
-# Arsh's sign-off and a recorded run. EMPTY: on the signed set (2026-10-15) Opus 5.5 scored 73%
+# a recorded, preregistered run of that exact model and prompt version that meets those bars on
+# the signed set AND on new held-out items nobody used to write or tune the prompt, plus Arsh's
+# sign-off on the entry (its comment names the results file).
+# EMPTY: on the signed set (2026-10-15) Opus 5.5 scored 73%
 # contradicts precision (bar 90%), and an unreviewed "contradicts" on an event assumption can
 # make a claim CONTRADICTED (rules 0.2.1, rule 1b). Cloud labeling waits for the signed prompt
 # fix and a passing re-run (docs/PRODUCT_STATUS.md).
