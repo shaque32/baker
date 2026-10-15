@@ -25,22 +25,27 @@ Template:
   at encryption). Two checks: the hash chain, and anchors: the newest entry's number and hash,
   written to `case.anchors.jsonl` beside `case.db` when a case opens and when a report is built,
   must still be in the log. Anchors catch entries cut from the end of the log, which the chain
-  alone cannot. A failed check fails closed: Cases shows "Review blocked" with the reason, an
-  open case closes and an encrypted one locks, no report is built, CLI commands (`report`
-  included) stop and write nothing; `verify-log` says why. `docs/review-screen.md` gives the
+  alone cannot. The screen checks again on every page while a case is open, and encrypting or
+  changing the passphrase checks first. A failed check fails closed: Cases shows "Review
+  blocked" with the reason, an open case closes (a background job on it is told to stop) and an
+  encrypted one locks, no report is built, CLI commands (`report` and `encrypt` included) stop
+  and write nothing; `verify-log` says why. `docs/review-screen.md` gives the
   expert's steps when a case is blocked (keep the folder, restore a whole-folder backup, or
   rebuild from the original files). (Grok Product item 5 on #70 and its follow-up on #80.)
 - Where: main, with PR #74.
-- Verified: 19 tests in `tests/test_chain_on_open.py` (chain, anchors: truncation, rewrite,
-  unreadable file, dedupe; CLI and screen, report refusal, encrypted re-lock); full suite passes;
+- Verified: 24 tests in `tests/test_chain_on_open.py` (chain, anchors: truncation, rewrite,
+  unreadable or non-text file, dedupe, numbers and hashes only; CLI and screen, report and log
+  page refusal, job stop, encrypt and passphrase refused, encrypted re-lock); full suite passes;
   headless-Chromium smoke (report refused after the newest entry was cut; intact report builds);
   eval unchanged (case01 1.00, 0 false supported, hostile PASS).
 - Open: entries added after the newest anchor and cut before the next open or report are not
   caught, nor a change to the database and the anchor file together; a saved report's last hash
   is the anchor no one can change. Cases made before anchors are checked from their next open.
 - Affects: customer-facing claims (tamper evidence enforced on open and export, truncation
-  detected back to the newest anchor); a new plain file per case holding hashes only (no case
-  content); one hash pass over the log per open, report and Cases listing.
+  detected back to the newest anchor); a new unencrypted file per case holding entry numbers
+  and hashes only (no case content, no times); one hash pass over the log per page while a case
+  is open, per report and per Cases listing (2.3 ms for the 225-entry synthetic case01 log of a
+  cloud bench run, this cloud container, 2026-10-15; unmeasured on a large real case).
 
 ## 2026-10-15: UFDR reader checked on public test files (#73)
 - Changed: attachments linked only by file_id now resolve through taggedFiles and are hashed; a

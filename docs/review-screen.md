@@ -107,10 +107,13 @@ eval or re-decided.
 
 - Every change goes through `core/review/actions.py`, so the hash-chained audit log records it.
   The screen never sets a verdict; only `rules.py` does, through a full audit or a re-run.
-- Opening a case, and building or saving its report, first checks the audit log (below). A
-  failed check fails closed: the case does not open (an open one closes, and an encrypted one
-  locks), no report is built, and nothing is written. The CLI refuses every command but
-  `verify-log` the same way, `report` included.
+- Opening a case, every page and form while it is open (the report and its download included),
+  and encrypting it or changing its passphrase first check the audit log (below). A failed
+  check fails closed: the case does not open, or an open one closes (a background audit or
+  claim proposal on it is told to stop after the claim or paragraph in hand, and an encrypted
+  case locks), no report is built, and nothing is written. The CLI refuses every command but
+  `verify-log` the same way, `report` and `encrypt` included (an encrypted case's log is inside
+  its database, so `passphrase` checks it after the current passphrase opens it).
 - Under rules 0.2.0 no claim is supported until an expert accepts its key evidence. An item the
   local AI reviewer accepted shows its tier as `ai_reviewed` ("AI-reviewed, not confirmed"); only
   an expert's acceptance shows as `confirmed`.
@@ -128,7 +131,8 @@ Two checks, both in `core/review/audit_log.py` (`require_intact`):
 2. **The anchors.** The chain alone cannot tell that entries were cut from its end: what is left
    still verifies. So when a case opens, and when a report is built, Baker writes the newest
    entry's number and hash to `case.anchors.jsonl` beside `case.db` (one line each time it
-   changed; entry numbers and hashes only, no case content). Every later check requires each
+   changed; entry numbers and hashes only: no case content, no times, no reasons, since the file
+   stays unencrypted beside an encrypted case). Every later check requires each
    anchored entry to still be there with the same hash. A log cut back past an anchor, or
    rewritten from there on, is blocked ("the audit log has no entry N ... so entries were removed
    from the end of the log").

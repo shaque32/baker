@@ -215,7 +215,7 @@ class App:
             # a broken or cut-short log fails closed: no review, no writes
             audit_log.require_intact(conn, anchors)
             pipeline.mark_stale_runs_stopped(conn)  # nothing in this process runs them
-            audit_log.anchor(conn, anchors, "opened", datetime.now(UTC))
+            audit_log.anchor(conn, anchors)
         except audit_log.ChainBroken:
             if self.case is not None and self.case.db == case.db:  # re-opened after tampering
                 self._close_broken(case)
@@ -226,7 +226,11 @@ class App:
         self.last_check = None
 
     def _close_broken(self, case: cases.Case) -> None:
-        """Close the open case whose log no longer verifies, and lock it if it is encrypted."""
+        """Close the open case whose log no longer verifies, stop a background job on it (it
+        stops after the claim or paragraph in hand), and lock the case if it is encrypted."""
+        job = self.jobs.current
+        if job is not None and job.running and job.db == case.db:
+            job.stop.set()
         self.case = None
         self.recovery = None
         self.last_check = None
@@ -298,6 +302,14 @@ class App:
             return self._redirect("/cases")
         except db.Error as err:
             return self._plain(500, f"cannot open the case database: {err}")
+        try:  # the log may have changed since the case opened: every page checks it again
+            audit_log.require_intact(conn, audit_log.anchors_path(self.case.db))
+        except audit_log.ChainBroken as err:
+            conn.close()
+            self._close_broken(self.case)
+            what = "No report" if req.path in ("/report", "/report.html") else "Case closed"
+            self.flash = (f"{what}: {err}", True)
+            return self._redirect("/cases")
         try:
             if req.method == "GET":
                 return self._get(conn, req)
@@ -387,16 +399,8 @@ class App:
         if p == "/log":
             return self._html(pages.log_page(conn, page, req.query.get("all") == "1"))
         if p in ("/report", "/report.html"):
-            case = self._open()
-            anchors = audit_log.anchors_path(case.db)
-            try:  # the log may have changed since the case opened: check again, fail closed
-                audit_log.require_intact(conn, anchors)
-            except audit_log.ChainBroken as err:
-                self._close_broken(case)
-                self.flash = (f"No report: {err}", True)
-                return self._redirect("/cases")
-            body = render_report(conn, timeline=self._timeline())
-            audit_log.anchor(conn, anchors, "report", datetime.now(UTC))
+            body = render_report(conn, timeline=self._timeline())  # handle() checked the log
+            audit_log.anchor(conn, audit_log.anchors_path(self._open().db))
             download = req.query.get("download") == "1" or p == "/report.html"
             if not download:  # on screen, the vendored fonts; a saved copy uses system fonts
                 body = body.replace("<style>", f"<style>{theme.FONT_CSS}", 1)
@@ -474,6 +478,13 @@ class App:
         ) as err:
             verb = "Not opened" if req.path == "/case/open" else "Not recorded"
             self.flash = (f"{verb}: {err}", True)
+            if (
+                isinstance(err, audit_log.ChainBroken)
+                and self.case is not None
+                and req.path != "/case/open"  # open_case closes only the case it refused
+            ):
+                self._close_broken(self.case)  # e.g. encrypting a case blocked since it opened
+                back = "/cases"
         except db.OperationalError as err:  # the audit held the database too long
             self.flash = (f"Not recorded, the case database was busy ({err}). Try again.", True)
         return self._redirect(back)

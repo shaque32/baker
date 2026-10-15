@@ -8,15 +8,19 @@ still read it, and both state the failed chain themselves. Synthetic data only.
 
 from __future__ import annotations
 
+import json
 import sqlite3
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from cli.main import main as cli_main
 from core import encryption
 from core.casework import cases, protect
+from core.casework.cases import Case
 from core.db import connect
 from core.review import audit_log
 from ui.app import App, Request
@@ -26,6 +30,16 @@ HOST = {"host": f"127.0.0.1:{PORT}"}
 AT = datetime(2026, 10, 15, tzinfo=UTC)
 PASS = "correct horse battery staple"
 EXPERT = "expert:Test Expert"
+
+
+class _AnyHash(str):
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, str) and len(other) == 64
+
+    __hash__ = str.__hash__
+
+
+ANY_HASH = _AnyHash()
 
 
 def get(app: App, path: str, **query: str):  # noqa: ANN201
@@ -140,7 +154,7 @@ def test_opening_anchors_the_newest_entry_once(anchored_db):
     assert cli_main(["claims", "--db", str(anchored_db), "list"]) == 0
     lines = anchors.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 1  # the same newest entry is not anchored twice
-    assert '"seq": 3' in lines[0] and '"why": "opened"' in lines[0]
+    assert json.loads(lines[0]) == {"seq": 3, "hash": ANY_HASH}  # no times, no reasons
 
 
 def test_a_log_cut_short_of_its_anchor_is_refused(anchored_db, tmp_path, capsys):
@@ -169,6 +183,28 @@ def test_an_unreadable_anchor_file_is_refused(anchored_db):
     audit_log.anchors_path(anchored_db).write_text("not json\n", encoding="utf-8")
     with pytest.raises(SystemExit, match="line 1 of the audit log's anchor file"):
         cli_main(["claims", "--db", str(anchored_db), "list"])
+
+
+def test_an_anchor_file_that_is_not_text_is_refused(anchored_db):
+    audit_log.anchors_path(anchored_db).write_bytes(b"\xff\xfe\x00garbage")
+    with pytest.raises(SystemExit, match="anchor file case.anchors.jsonl cannot be read"):
+        cli_main(["claims", "--db", str(anchored_db), "list"])
+
+
+def test_cli_encrypt_refuses_a_blocked_case_before_asking_for_a_passphrase(anchored_db):
+    cut_tail(anchored_db, keep=2)
+    with pytest.raises(SystemExit, match="no entry 3"):  # not "needs a passphrase typed..."
+        cli_main(["encrypt", "--db", str(anchored_db), "--by", EXPERT])
+    assert not (anchored_db.parent / "case.key").exists()
+
+
+def test_encrypting_a_blocked_case_writes_nothing(anchored_db):
+    cut_tail(anchored_db, keep=2)
+    before = anchored_db.read_bytes()
+    with pytest.raises(audit_log.ChainBroken, match="no entry 3"):
+        protect.encrypt_case(Case(anchored_db), PASS, EXPERT, again=PASS)
+    assert not (anchored_db.parent / "case.key").exists()
+    assert anchored_db.read_bytes() == before
 
 
 # ---------------------------------------------------------------- the review screen
@@ -258,10 +294,10 @@ def test_reopening_the_open_case_after_tampering_closes_it(tmp_path, encrypt):
     tamper(conn, 2)
     conn.close()
 
-    post(app, "/case/open", case=case.folder.name)
+    post(app, "/case/open", case=case.folder.name)  # the request's own check closes it
     assert app.case is None
+    assert "Case closed: the audit log" in get(app, "/cases").text
     assert get(app, "/claims").header("Location") == "/cases"
-    assert "Not opened: the audit log" in get(app, "/cases").text
     assert protect.is_locked(case) == encrypt
 
 
@@ -308,3 +344,40 @@ def test_screen_blocks_a_case_whose_log_was_cut_short(tmp_path):
     post(fresh, "/case/open", case=case.folder.name)
     assert fresh.case is None
     assert "removed from the end of the log" in get(fresh, "/cases").text
+
+
+def test_every_page_rechecks_the_log_and_stops_a_job_on_the_case(tmp_path):
+    app = App(home=tmp_path / "cases", port=PORT, model_check=None)
+    post(app, "/expert", name="Test Expert")
+    post(app, "/case/new", name="Synthetic log page case")
+    case = app.case
+    assert case is not None
+    assert "Hash chain verified" in get(app, "/log").text
+    newest = connect(case.db).execute("SELECT MAX(seq) FROM audit_log").fetchone()[0]
+    cut_tail(case.db, keep=newest - 1)  # the chain left still verifies on its own
+    job = SimpleNamespace(running=True, db=case.db, stop=threading.Event(), kind="audit")
+    app.jobs.current = job  # type: ignore[assignment]
+
+    r = get(app, "/log")
+    assert r.header("Location") == "/cases" and app.case is None
+    assert job.stop.is_set()
+    app.jobs.current = None
+    assert f"Case closed: the audit log has no entry {newest}" in get(app, "/cases").text
+
+
+def test_changing_the_passphrase_of_a_blocked_case_changes_nothing(tmp_path):
+    app = App(home=tmp_path / "cases", port=PORT, model_check=None)
+    post(app, "/expert", name="Test Expert")
+    post(app, "/case/new", name="Synthetic sealed blocked case", encrypt="1", passphrase=PASS,
+         passphrase2=PASS)  # fmt: skip
+    case = app.case
+    assert case is not None
+    conn = connect(case.db)
+    log_three(conn)
+    tamper(conn, 2)
+    conn.close()
+    key_before = (case.folder / "case.key").read_bytes()
+    with pytest.raises(audit_log.ChainBroken, match="broken at entry 2"):
+        protect.change_passphrase(case, PASS, "another long passphrase", "another long passphrase",
+                                  EXPERT)  # fmt: skip
+    assert (case.folder / "case.key").read_bytes() == key_before

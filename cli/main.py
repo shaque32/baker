@@ -68,7 +68,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import UTC, datetime
 from pathlib import Path
 
 from core import pipeline
@@ -119,8 +118,19 @@ def _open(path: Path, create: bool = False, review: bool = True):  # -> sqlite3.
         except audit_log.ChainBroken as err:
             conn.close()
             raise SystemExit(f"error: {err}") from err
-        audit_log.anchor(conn, audit_log.anchors_path(path), "opened", datetime.now(UTC))
+        audit_log.anchor(conn, audit_log.anchors_path(path))
     return conn
+
+
+def _check_log(path: Path) -> None:
+    """The integrity gate alone, on a plain database (no anchor written)."""
+    conn = connect(path)
+    try:
+        audit_log.require_intact(conn, audit_log.anchors_path(path))
+    except audit_log.ChainBroken as err:
+        raise SystemExit(f"error: {err}") from err
+    finally:
+        conn.close()
 
 
 def cmd_init(a: argparse.Namespace) -> int:
@@ -289,7 +299,7 @@ def cmd_report(a: argparse.Namespace) -> int:
     conn = _open(a.db)  # a broken or cut-short log stops the export (fail closed)
     tl = from_case(Case(Path(a.db)).settings)  # the case's own timeline settings
     print(f"wrote {write_report(conn, a.out, tl)}")
-    audit_log.anchor(conn, audit_log.anchors_path(a.db), "report", datetime.now(UTC))
+    audit_log.anchor(conn, audit_log.anchors_path(a.db))
     return 0
 
 
@@ -362,6 +372,8 @@ def cmd_encrypt(a: argparse.Namespace) -> int:
     st = protect.state(case)
     if st == "encrypted":
         raise SystemExit(f"{a.db} is already encrypted")
+    if st == "plain":  # a blocked case is refused before any passphrase is asked for
+        _check_log(a.db)
     if st == "partial":
         print("This case's encryption did not finish; this finishes it.")
         secret, again = _ask("Passphrase chosen then, or the recovery key: "), None
@@ -540,7 +552,7 @@ def main(argv: list[str] | None = None) -> int:
     a = parser().parse_args(argv)
     try:
         return a.fn(a)
-    except (actions.ReviewError, CaseLocked) as e:
+    except (actions.ReviewError, CaseLocked, audit_log.ChainBroken) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
 

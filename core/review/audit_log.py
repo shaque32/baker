@@ -99,7 +99,7 @@ def require_intact(conn: sqlite3.Connection, anchors: Path | None = None) -> Non
         return  # a case made before anchors, or a test database
     try:
         lines = anchors.read_text(encoding="utf-8").splitlines()
-    except OSError as err:
+    except (OSError, UnicodeDecodeError) as err:
         raise ChainBroken(
             0, f"the audit log's anchor file {anchors.name} cannot be read ({err})"
         ) from err
@@ -114,24 +114,25 @@ def require_intact(conn: sqlite3.Connection, anchors: Path | None = None) -> Non
                 0, f"line {n} of the audit log's anchor file {anchors.name} is unreadable"
             ) from err
         row = conn.execute("SELECT hash FROM audit_log WHERE seq = ?", (seq,)).fetchone()
-        when = f"{a.get('at', '?')} ({a.get('why', '?')})"
         if row is None:
             raise ChainBroken(
                 seq,
-                f"the audit log has no entry {seq}, which Baker recorded outside the database "
-                f"on {when}, so entries were removed from the end of the log",
+                f"the audit log has no entry {seq}, which Baker recorded outside the database, "
+                "so entries were removed from the end of the log",
             )
         if row[0] != want:
             raise ChainBroken(
                 seq,
                 f"entry {seq} of the audit log does not match the hash Baker recorded outside "
-                f"the database on {when}",
+                "the database",
             )
 
 
-def anchor(conn: sqlite3.Connection, anchors: Path, why: str, at_utc: datetime) -> None:
+def anchor(conn: sqlite3.Connection, anchors: Path) -> None:
     """Record the newest entry's number and hash in the anchor file (append-only), unless the
-    newest anchor already names it. Called when a case opens and when a report is built."""
+    newest anchor already names it. Called when a case opens and when a report is built. The
+    file holds numbers and hashes only: no times and no reasons, since it stays unencrypted
+    beside an encrypted case."""
     last = conn.execute("SELECT seq, hash FROM audit_log ORDER BY seq DESC LIMIT 1").fetchone()
     if last is None:
         return
@@ -143,9 +144,15 @@ def anchor(conn: sqlite3.Connection, anchors: Path, why: str, at_utc: datetime) 
             return
     except (OSError, ValueError, AttributeError):
         pass  # no file yet; an unreadable one was already refused by require_intact
-    at = at_utc.replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    line = json.dumps({"seq": seq, "hash": h, "at": at, "why": why}, sort_keys=True) + "\n"
+    line = json.dumps({"seq": seq, "hash": h}, sort_keys=True) + "\n"
+    created = not anchors.exists()
     with open(anchors, "a", encoding="utf-8") as f:
         f.write(line)
         f.flush()
         os.fsync(f.fileno())
+    if created and os.name == "posix":  # make the new file's directory entry durable too
+        fd = os.open(anchors.parent, os.O_RDONLY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
