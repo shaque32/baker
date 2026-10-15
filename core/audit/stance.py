@@ -20,7 +20,7 @@ import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictStr, ValidationError
 
@@ -36,7 +36,12 @@ from core.audit._llm_json import (
     required_placeholders,
     run_json_call,
 )
-from core.audit._local_model import LocalModel, open_run
+from core.audit._local_model import (
+    CloudPort,
+    LocalModel,
+    SentLog,
+    open_run,
+)
 from core.audit.quotes import find_quote
 from core.contracts import (
     Assumption,
@@ -46,6 +51,9 @@ from core.contracts import (
     Stance,
     StanceLabel,
 )
+
+if TYPE_CHECKING:
+    from core.llm.cloud import CloudConfig
 
 PROMPT_FILE = "stance.md"
 PLACEHOLDERS = frozenset({"assumption", "record", "context", "claim"})
@@ -215,6 +223,9 @@ class LocalStanceLabeler:
         )
 
     def try_label(self, assumption: Assumption, candidate: EvidenceCandidate) -> StanceResult:
+        return self._try_label(assumption, candidate)
+
+    def _try_label(self, assumption: Assumption, candidate: EvidenceCandidate) -> StanceResult:
         run_id = model_run_id(self.model)
         if run_id is None:
             return self._result(assumption, candidate, None, None, "model has no run id", None)
@@ -270,7 +281,12 @@ class LocalStanceLabeler:
 
 
 def create(
-    conn: sqlite3.Connection, *, model: LocalModel | None = None, template: str | None = None
+    conn: sqlite3.Connection,
+    *,
+    model: LocalModel | None = None,
+    template: str | None = None,
+    cloud: CloudConfig | None = None,
+    cloud_model: LocalModel | None = None,
 ) -> LocalStanceLabeler:
     """The pipeline's stance labeler: the signed prompt, the configured local model, and the
     context thread's renderer, which shows the record's own line (sender, account, device-local
@@ -279,13 +295,32 @@ def create(
 
     The case's names are read once, here: the pipeline builds its components per audit, after
     the expert's stipulations and identity decisions for that audit are in. `template` is for
-    the speed test's draft prompts only (eval/probe/time_case.py); the product passes none."""
+    the speed test's draft prompts only (eval/probe/time_case.py); the product passes none.
+
+    `cloud` (a case whose cloud choice allows it, core/casework/cloud.py) makes the cloud model
+    the only stance labeler for the case (CloudPort): no local model is needed for stance, a
+    sticky cloud failure pauses the run, and every request is logged in the case's audit log
+    before it is sent (SentLog). `cloud_model` stands in for the API in tests."""
     from core.audit.context import render_for  # retrieval and context thread
     from core.audit.readable import assumption_text, case_names
 
     if template is None:
         template = load_prompt(PROMPT_FILE)
-    opened = open_run(conn, "stance", template, model=model, schema=STANCE_SCHEMA)
+    port: JsonModel
+    if cloud is None and cloud_model is None:
+        opened = open_run(conn, "stance", template, model=model, schema=STANCE_SCHEMA)
+        port, recorder, runs = opened.port, opened.recorder, (opened.run,)
+    else:
+        if cloud_model is None:
+            from core.llm.cloud import ClaudeModel
+
+            assert cloud is not None  # noqa: S101 - narrowed by the branch
+            cloud_model = ClaudeModel(cloud)
+        logged = SentLog(cloud_model, conn)
+        up = open_run(
+            conn, "stance", template, model=logged, schema=STANCE_SCHEMA, reuse_unusable=False
+        )
+        port, recorder, runs = CloudPort(up), up.recorder, (up.run,)
     names = case_names(conn)
 
     def claim_text(claim_id: str) -> str | None:
@@ -293,12 +328,12 @@ def create(
         return row[0] if row else None
 
     labeler = LocalStanceLabeler(
-        opened.port,
+        port,
         template=template,
         render_context=lambda c: render_for(conn, c.record_id, names=names),
         render_assumption=lambda a: assumption_text(a, names),
         claim_text=claim_text,
-        recorder=opened.recorder,
+        recorder=recorder,
     )
-    labeler.model_runs = (opened.run,)
+    labeler.model_runs = runs
     return labeler
