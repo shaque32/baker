@@ -33,7 +33,7 @@ coverage: one wrong "supported" is the failure that counts most.
 | 5. Assumptions | Fills fixed templates per claim type; values must be tied to the document or case data, or the proposal is refused | `core/audit/assumption_filler.py` | Local 14B |
 | 6. Checks | Deterministic checks: sender, identity, timing, weekday, count, absence | `core/audit/checks/` | No |
 | 7. Retrieval | Structured filters plus keyword ranking, with surrounding messages and the other phone's copy | `core/audit/retrieval.py` | No |
-| 8. Stance | Labels one record against one assumption: supports, contradicts, complicates or irrelevant | `core/audit/stance.py` | Local 14B (main, and every case on #68 today); Opus 5.5, opt-in per case once it passes the signed stance test (branch #68, not merged; none has) |
+| 8. Stance | Labels one record against one assumption: supports, contradicts, complicates or irrelevant | `core/audit/stance.py` | Local 14B (every case today); Opus 5.5, opt-in per case once it passes the signed stance test (on main since #68; none has) |
 | 9. Quote check | The label's quote must appear verbatim in the record, or the label is dropped | `core/audit/quotes.py` | No |
 | 10. AI review | Optional second pass on supporting items; off by default | `core/audit/review.py` | Local 14B |
 | 11. Verdict | `decide_verdict` applies rules 0.2.1 | `core/audit/rules.py` | No |
@@ -56,8 +56,8 @@ screen in `ui/`.
 
 | Model | Where it runs | Jobs | Status |
 |---|---|---|---|
-| Qwen3-14B Q4_K_M (GGUF, Apache-2.0, sha256 `500a8806…81f0`, n_ctx 8192) | Expert's computer, llama-cpp-python, `flash` runtime | Claim proposal, assumption filling, stance labels (every case, on main and on #68 until a cloud model passes the signed stance test), optional AI review | main |
-| Claude Opus 5.5, medium effort | Anthropic API, expert's own key | Stance labels only, for cases the expert opted in, once it passes the signed stance test (not yet: `PROBE_PASSED` is empty) | branch #68 (draft, not merged) |
+| Qwen3-14B Q4_K_M (GGUF, Apache-2.0, sha256 `500a8806…81f0`, n_ctx 8192) | Expert's computer, llama-cpp-python, `flash` runtime | Claim proposal, assumption filling, stance labels (every case, until a cloud model passes the signed stance test), optional AI review | main |
+| Claude Opus 5.5, medium effort | Anthropic API, expert's own key | Stance labels only, for cases the expert opted in, once it passes the signed stance test (not yet: `PROBE_PASSED` is empty) | main (#68, merged 2026-10-15 22:35Z), gated off |
 | mDeBERTa-v3-base classifier | Training on cloud CPU | Candidate small stance model | branch #50 (draft); run 5 is training (2026-10-15, no results yet); runs 1 to 4 did not pass the go bar |
 | Claude Sonnet 5.5, Haiku 5.5, Opus 5.5 | Anthropic API | Benchmarks only, in `eval/bench/` | main (eval only) |
 
@@ -74,7 +74,7 @@ There is no model judge of verdicts in Baker. The word "judge" does not name any
   `baker verdict --set`), which `core/review/actions.py` `override_verdict` writes directly,
   without the rules, under the expert's name in the audit log. No model, local or cloud, writes a
   verdict, an identity link or a confirmation.
-- **What Opus would do (branch #68 only, once it passes the signed stance test).** It is the stance labeler: for one (assumption, record)
+- **What Opus would do (on main since #68, once it passes the signed stance test).** It is the stance labeler: for one (assumption, record)
   pair it returns a label, a quote and a rationale. It is a remote HTTPS call to
   `api.anthropic.com` (`core/llm/cloud.py`), pinned so a stray `ANTHROPIC_BASE_URL` cannot
   redirect it, using the expert's own key from `$BAKER_ANTHROPIC_API_KEY`; in an encrypted
@@ -82,16 +82,16 @@ There is no model judge of verdicts in Baker. The word "judge" does not name any
   `~/.baker/cloud.json` (owner-only file). Only the filled-in stance prompt is sent: assumption,
   record, nearby messages, claim text and a group chat's member list. Input files and the case
   database are never sent.
-- **When Opus is used (branch #68).** Opt-in per case, local by default (Arsh chose "Opt-in cloud",
+- **When Opus is used.** Opt-in per case, local by default (Arsh chose "Opt-in cloud",
   2026-10-15 07:10Z). Only when all hold: the expert attested for this case that
   the protective order allows cloud AI; the case is not marked as possibly containing CSAM; a key
   is set up; and the model passed the signed stance test at its configured effort with the current stance prompt
   (`PROBE_PASSED` in `core/llm/cloud.py`). That list is **empty**: Opus 5.5 fails the signed
-  set's contradicts bar (below), so on #68 every case still labels locally until a signed prompt
+  set's contradicts bar (below), so every case still labels locally until a signed prompt
   fix passes a recorded re-run (the signed set plus new held-out items not used to write the
   prompt) and Arsh signs the entry. The choice is stored in the case's
   hash-chained audit log. Otherwise the local 14B labels the case, as on main.
-- **Failure handling (branch #68).** If the cloud fails mid-case, the audit pauses
+- **Failure handling.** If the cloud fails mid-case, the audit pauses
   (`CloudPaused`, `core/audit/_local_model.py`); the expert retries the cloud or re-runs the
   whole case locally, so one case never mixes models. Every request body is written to the
   case's hash-chained audit log (`cloud.sent`) before it is sent, and nothing is logged as sent if
@@ -114,17 +114,18 @@ There is no model judge of verdicts in Baker. The word "judge" does not name any
   recall 80% vs 90%; sheet-free audit 60% accuracy vs 80%), recorded in
   `/mnt/project-files/baker/cloud-first/steps-check/RESULTS.md`.
 
-**Merge state:** #68 is a draft (main merged in after #71). Arsh approved its
-revised CLAUDE.md wording (2026-10-15 07:29Z, recorded in `PROPOSED_CHANGES.md`); it is applied
-on the branch at his request (14:00Z). Main keeps "no network calls in core/" until #68 merges.
+**Merge state:** #68 merged to main 2026-10-15 22:35Z (`ed0a3a8`), with the CLAUDE.md wording
+Arsh approved (07:29Z, recorded in `PROPOSED_CHANGES.md`). Cloud stays off for every case until
+a gate entry is signed.
 
 ## 5. External services
 
-- **main:** `core/` makes no network calls. No telemetry. The UI serves only 127.0.0.1. The
+- **main:** `core/` makes no network calls except the opt-in stance labeler below. No telemetry. The UI serves only 127.0.0.1. The
   installers download the pinned model file once at install time (`packaging/`).
-- **branch #68:** one network integration in `core/`: one HTTPS request to the Anthropic API per
-  (assumption, record) stance pair (493 requests in the Opus case01 run).
-- **eval only:** `eval/bench/claude_bench.py` and `eval/bench/cloud_steps.py` (branch #68) call
+- **main (#68):** one network integration in `core/`: one HTTPS request to the Anthropic API per
+  (assumption, record) stance pair (493 requests in the Opus case01 run), only for an opted-in
+  case once a gate entry is signed; today no case can use it (`PROBE_PASSED` is empty).
+- **eval only:** `eval/bench/claude_bench.py` and `eval/bench/cloud_steps.py` call
   the Anthropic API on synthetic data, as benchmarks.
 
 ## 6. Rules and models together
@@ -224,7 +225,8 @@ report only) 0.90 accuracy, 0 false supported. See section 10 for today's run.
 Merged 2026-10-15: stricter stated time windows, "after <date>" starts the next day (#66; rules
 still 0.2.1 on main; the 0.2.2 bump is in PR #75, not merged), go-bar scorer fixes and the signed probe
 follow-up (#64), red-main test fix (#65), flaky encryption test fix (#67).
-Branch only: opt-in cloud Opus stance labels (#68), small stance model (#50). PR #70 is an empty
+Merged 2026-10-15 22:35Z: opt-in cloud Opus stance labels (#68), gated off until a signed
+gate entry. Branch only: small stance model (#50). PR #70 is an empty
 Grok Product review PR, never merged.
 
 ## 9. Known limitations
@@ -238,7 +240,8 @@ Grok Product review PR, never merged.
    The model-free gate cannot catch it. Offline replay: Opus case01 85% becomes 95% once fixed.
    Fix for contacts in PR #76 (not merged); calls still differ.
 2. **Opus's wrong "contradicts" on told-frame and undated denials** (section 7). Matters for
-   #68: it would make wrong CONTRADICTED verdicts until a signed prompt fix lands.
+   cloud labels (#68): it would make wrong CONTRADICTED verdicts, so cloud stays gated off until
+   a signed prompt fix passes.
 3. **Real-data formats unverified.** UFDR and AXIOM readers were built from documentation and
    synthetic samples. No real extraction has been imported. No public Cellebrite-made UFDR with a
    usable license exists; #73 checked the reader on two non-Cellebrite test files (27 of 27
@@ -248,7 +251,7 @@ Grok Product review PR, never merged.
    prompt v1.0, and has not been run on prompt v1.1 or the signed 105-item set.
 5. **Evidence recall is modest.** Opus case01 surfaced key evidence for 35% of claims needing it;
    14 of 20 claims depend on the expert finding or accepting key evidence.
-6. **Other gaps:** no translation in the pipeline; no embeddings; Windows installer unsigned; on #68 a
+6. **Other gaps:** no translation in the pipeline; no embeddings; Windows installer unsigned; a
    key saved for a plain (unencrypted) case, or before a case is open, is an owner-only plain
    file (an encrypted case seals its own key under the case key); experts still need the 14B
    installed even with cloud on.
@@ -288,9 +291,8 @@ feedback form, demo script, go/kill scorecard) in `/mnt/project-files/baker/pilo
 Before a first real case:
 1. Fix issue #69 (quote check), then time a full local case01 on the Mac for a real runtime.
 2. Check a real UFDR and AXIOM export with `baker ufdr-check` (needs a pilot expert's closed case).
-3. Finish #68 (opt-in cloud, chosen by Arsh 2026-10-15 07:10Z): a signed told-frame prompt fix
-   that passes on new items (line signed 13:45Z), then a gate entry Arsh signs; merge #68 first
-   (its CLAUDE.md wording is applied on the branch).
+3. Turn on opt-in cloud (chosen by Arsh 2026-10-15 07:10Z) only if it passes: a signed told-frame prompt fix
+   that passes on new items (line signed 13:45Z), then a gate entry Arsh signs (#68 merged 2026-10-15 22:35Z).
 4. Sign the Windows installer (Azure code signing pending).
 
 No pilot has started and no expert has used Baker on a real case (per project records; this
@@ -309,7 +311,7 @@ supported until your expert accepts it; runs locally with no network calls."
 | 3 | "Not found" says what was searched | **True for absence and count findings** | The absence check states what it searched and why the sources can or cannot show an absence (`core/audit/checks/absence.py:1-6`, `:40`, `:112-135`); a curated report can never pass an absence (`core/audit/checks/absence.py:123`); the report has a "Searches and coverage" section (`core/report/html.py:440-470`). An UNPROVEN claim with no evidence names the uncovered assumptions, not a search log. | "When Baker finds no contact or counts records, it says what it searched and what the source could show" |
 | 4 | The selection audit shows what was left out around each quote | **Partly true** | Shows each quoted, exhibit or examiner-tagged message in its exchange, with the messages not picked (`core/selection/audit.py:1-29`). Limits: a quote is placed only when its words fit one message, otherwise it is listed as found N times and nothing around it is counted as left out (`core/selection/picks.py:17-23`); names and quotes under two words are not looked up (`core/selection/picks.py:5-11`); messages an examiner left out of a curated report are not in the case to show (`core/selection/audit.py:27-29`). | "...around each quote it can place in the extraction" |
 | 5 | Every report has an audit packet: source hashes, model, prompt and rule versions, tamper-evident log | **True, with one nuance** | Sources with SHA-256 (`core/report/html.py:606-614`), versions and model runs with model SHA-256, prompt version, parameters and seed (`core/report/html.py:617`, `:649-663`), rule version (`core/report/html.py:639`), audit-log summary with hash-chain result, last hash and expert actions (`core/report/html.py:665-683`, `core/review/audit_log.py:47-199`). Nuance: the report shows a summary and the expert entries, not every log entry. The chain detects edits to entries; anchors (`case.db.anchors.jsonl`, the newest entry's number and hash, written when a case opens and when a report is built) detect entries cut from the end back to the newest anchor. Neither catches a change to the database and the anchor file together, or entries added and cut between two anchors; there is no signature or external anchor beyond a saved report's last hash. The log is checked when a case opens, on every page while it is open (report and download included), and before encrypting or changing the passphrase; a failed check blocks review and reporting in the screen and the CLI (fail closed; `core/review/audit_log.py` `require_intact`, `ui/app.py` `open_case` and `/report`, `cli/main.py` `_open`; #74). | "A hash-chained audit log; the report prints its last hash" |
-| 6 | Runs locally with no network calls | **Depends on #68** | main: true. `core/` makes no network calls, the screen binds only 127.0.0.1 (`ui/server.py:19`); the installers download the pinned model once at install. #68 adds the opt-in Opus stance integration, one HTTPS request per stance pair to api.anthropic.com (`core/llm/cloud.py:1`, `:47` on the branch). Cloud stays off until the expert attests per case, so "local by default" stays true. "No network calls" would not be true for opted-in cases. | Today: "runs locally, no network calls". If #68 merges: "local by default; cloud AI only when your case allows it and you opt in" (Arsh's choice, 2026-10-15 07:10Z) |
+| 6 | Runs locally with no network calls | **True today; "local by default" once cloud is enabled** | The screen binds only 127.0.0.1 (`ui/server.py:19`); the installers download the pinned model once at install. #68 (merged 2026-10-15 22:35Z) adds the opt-in Opus stance integration, one HTTPS request per stance pair to api.anthropic.com (`core/llm/cloud.py:49`). No case can use it yet: `PROBE_PASSED` is empty (`core/llm/cloud.py:63`). Once an entry is signed, cloud stays off until the expert attests per case, so "local by default" stays true; "no network calls" would not be true for opted-in cases. | Today: "runs locally, no network calls". Once a gate entry is signed: "local by default; cloud AI only when your case allows it and you opt in" (Arsh's choice, 2026-10-15 07:10Z) |
 
 Claims Baker should not make yet: any speed figure for local runs (not measured on current code,
 section 7), any accuracy figure on real data (all numbers are synthetic), and that UFDR or AXIOM

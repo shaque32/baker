@@ -19,6 +19,16 @@ Template:
 
 ---
 
+## 2026-10-15: Status docs record #68 as merged
+- Changed: PRODUCT_STATUS and the two #68 entries below described opt-in cloud stance labels as
+  an unmerged branch. #68 merged 2026-10-15 22:35Z (`ed0a3a8`); the docs now say so, and that
+  cloud stays off for every case (`PROBE_PASSED` empty in `core/llm/cloud.py`).
+- Where: this PR (docs only).
+- Verified: merge commit `ed0a3a8` on main; `PROBE_PASSED` read on main. No code change.
+- Open: a gate entry still needs stance prompt v1.2, a recorded passing Opus run on the signed set
+  and new held-out items, and Arsh's sign-off.
+- Affects: customer-facing claims (claim 6 wording), privacy (records the integration on main).
+
 ## 2026-10-15: Audit log checked on open and before every report; cut-off entries caught (#74)
 - Changed: opening a case, and building or saving its report, now checks the audit log (before,
   the chain was only verified at report build, which printed the result and exported anyway, and
@@ -180,7 +190,7 @@ Template:
   reads as a config error; the "saved in this case" message checks the exact sealed path; the
   key is dropped from memory when a cloud audit ends; the Mac install guide no longer promises
   offline use for a cloud case.
-- Where: branch `claude/project-thread-a2fjkc`, PR #68, draft, not merged.
+- Where: main, PR #68 merged 2026-10-15 22:35Z (`ed0a3a8`).
 - Verified: `make check` passes, 1940 tests; gates unchanged (case01 1.00, 0 false supported,
   unreviewed 0.60, hostile PASS, case02 0.90); new tests for the gate, preflight, re-ask and a
   damaged sealed key. No real API call.
@@ -206,7 +216,7 @@ Template:
   locked; a plain case keeps the owner-only `~/.baker/cloud.json`; the env var still wins.
   Claim proposal, assumption filling and the AI reviewer stay local. Reason: Arsh chose
   "Opt-in cloud" (2026-10-15 07:10Z).
-- Where: branch `claude/project-thread-a2fjkc`, PR #68, draft, not merged (main merged in after #71).
+- Where: main, PR #68 merged 2026-10-15 22:35Z (`ed0a3a8`).
 - Verified (as reported by the owning thread; `cloud.sent` and the pause checked in
   `core/audit/_local_model.py` on the branch): `make check` passes, 1933 tests; gates unchanged
   (case01 1.00, 0 false supported, unreviewed 0.60, hostile PASS, case02 0.90); a simulated
