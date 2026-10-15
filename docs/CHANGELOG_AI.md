@@ -65,13 +65,13 @@ Template:
 - Affects: customer-facing claims (supports "reproducible audit packet", on synthetic data with
   time fields masked). No privacy or performance change.
 
-## 2026-10-15: Quote check reads contacts as the model sees them (fixes #69; PR not open yet)
+## 2026-10-15: Quote check reads contacts as the model sees them (#76, fixes #69)
 - Changed: one function now renders a contact ("Name: +1...") for retrieval, the quote check,
   `core/audit/quotes.py` and the small model's generated training items, so correct contact
   quotes are no longer discarded. The synthetic case01 affidavit PDF embeds DejaVu Sans for
   lines Helvetica can't draw ("Катя" read as boxes).
-- Where: local only, committed in the "Audit our model scoring" thread, not pushed; expected as
-  its own PR (number not yet assigned; #71 is this docs PR). Not checked in the repo by this doc's owner.
+- Where: PR #76 (from the "Audit our model scoring" thread), not merged. Includes the C17 font
+  fix.
 - Verified (as reported by the owning thread): 2 new regression tests; suite and lint pass except
   the known #65 test; `make eval` same as main (case01 1.00, 0 false supported; case02 aggregate
   0.90), hostile run keeps 15 more labels with 0 supported. Opus replay: case01 85% to 95%,
@@ -99,7 +99,7 @@ Template:
   found the quote check renders contacts and calls differently from what the model is shown.
 - Where: results in `/mnt/project-files/baker/cloud-bench/2026-10-15/` (RESULTS.md,
   GRADING_AUDIT.md); signed labels on main via #64; bug is on main, open
-  as issue #69 (no fix PR yet).
+  as issue #69 (fix in PR #76).
 - Verified: preregistered run ($5.21); blind readers 12/12 with the signed labels; offline replay
   shows the #69 fix lifts Opus case01 from 85% to 95%, 0 false supported.
 - Open: a signed stance prompt line for told-frame and undated denials; the #69 fix; the local
@@ -155,8 +155,8 @@ Template:
   model's name when a later run gives an identical label (the per-run "Stance labels" row is
   authoritative); the key file is owner-only, not encrypted with the case keys.
 - Affects: capabilities (optional cloud labels per case), privacy (only the filled stance prompt
-  leaves the computer, and every request is logged), performance (about 3 s per stance call vs
-  tens of seconds locally), customer-facing claims ("local by default; cloud AI only when your
+  leaves the computer, and every request is logged), performance (about 3 s per stance call; local 22 to 43 s per call was
+  measured 2026-10-09/12 on older code, and no full local case is timed on current code), customer-facing claims ("local by default; cloud AI only when your
   case allows it and you opt in"; never "no network calls" without that qualifier).
 
 ## 2026-10-15: Opus on claim proposal and assumption filling (eval only)

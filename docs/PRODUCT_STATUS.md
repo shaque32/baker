@@ -26,7 +26,7 @@ coverage: one wrong "supported" is the failure that counts most.
 
 | Step | What happens | Code | Model? |
 |---|---|---|---|
-| 1. Import | Copies each input into the case folder, read-only, SHA-256 hashed | `core/ingest/`, `core/casework/cases.py` | No |
+| 1. Import | Opens each input read-only and SHA-256 hashes it. The browser case workflow also copies it into the case folder; `baker import` on the CLI reads the original path and keeps no copy | `core/ingest/`, `core/casework/cases.py`, `cli/main.py` | No |
 | 2. Normalize | Writes canonical rows; every row has a `source_ref`; times stored UTC with the original offset and raw value | `core/ingest/`, `core/schema.sql` | No |
 | 3. Enrich | Full-text search, local time, derived record text | `core/enrich/` | No |
 | 4. Claims | Splits the document into paragraphs; the local model proposes atomic claims; the expert edits the list | `core/claims/` | Local 14B |
@@ -69,9 +69,11 @@ parameters and seed, and identical calls reuse stored output.
 
 There is no model judge of verdicts in Baker. The word "judge" does not name any component.
 
-- **Verdicts come from code.** `core/audit/rules.py` (`decide_verdict`, rules 0.2.1) is the only
-  place a claim gets a verdict. No model, local or cloud, writes a verdict, an identity link or a
-  confirmation.
+- **Verdicts come from code or the expert.** `core/audit/rules.py` (`decide_verdict`, rules
+  0.2.1) is the only automated verdict path. The expert can also override a verdict (screen or
+  `baker verdict --set`), which `core/review/actions.py` `override_verdict` writes directly,
+  without the rules, under the expert's name in the audit log. No model, local or cloud, writes a
+  verdict, an identity link or a confirmation.
 - **What Opus does (branch #68 only).** It is the stance labeler: for one (assumption, record)
   pair it returns a label, a quote and a rationale. It is a remote HTTPS call to
   `api.anthropic.com` (`core/llm/cloud.py`), pinned so a stray `ANTHROPIC_BASE_URL` cannot
@@ -105,14 +107,15 @@ There is no model judge of verdicts in Baker. The word "judge" does not name any
   `/mnt/project-files/baker/cloud-first/steps-check/RESULTS.md`.
 
 **Merge state:** #68 is a draft (head `3c6c1ec`, retitled "Cloud AI by per-case opt-in for stance labels"). Its revised CLAUDE.md change (allowing this
-one network call in `core/`) needs Arsh's "approved". CLAUDE.md is not yet changed, so the rule "no network calls in core/" still stands on main and on
+cloud integration in `core/`) needs Arsh's "approved". CLAUDE.md is not yet changed, so the rule "no network calls in core/" still stands on main and on
 the branch's CLAUDE.md.
 
 ## 5. External services
 
 - **main:** `core/` makes no network calls. No telemetry. The UI serves only 127.0.0.1. The
   installers download the pinned model file once at install time (`packaging/`).
-- **branch #68:** one network call in `core/`, the Opus stance call above.
+- **branch #68:** one network integration in `core/`: one HTTPS request to the Anthropic API per
+  (assumption, record) stance pair (493 requests in the Opus case01 run).
 - **eval only:** `eval/bench/claude_bench.py` and `eval/bench/cloud_steps.py` (branch #68) call
   the Anthropic API on synthetic data, as benchmarks.
 
@@ -206,7 +209,8 @@ report only) 0.90 accuracy, 0 false supported. See section 10 for today's run.
    out), Context Restore (find pasted exhibit quotes, draft the full-extraction request), Other
    explanations per claim.
 5. **Case safety and delivery:** encryption at rest by passphrase (SQLCipher plus AES-256-GCM;
-   new cases encrypted by default), hash-chained audit log, HTML report, `baker demo`, Mac
+   new cases from the browser form encrypted by default, the box can be unticked; `baker init` on
+   the CLI makes a plain case), hash-chained audit log, HTML report, `baker demo`, Mac
    install script, Windows installer (unsigned), `baker model-check`.
 
 Merged 2026-10-15: stricter stated time windows, "after <date>" starts the next day (#66; rules
@@ -220,17 +224,20 @@ Grok Product review PR, never merged.
 1. **Quote-check bug, issue #69 (open, on main).** The labeler sees a contact as
    `Name: +number` (`core/enrich/records.py:81`), but the check renders it `Name +number`
    (`core/audit/invariants.py:96`), so a correct quote is dropped as unverified. Calls differ the
-   same way. Hits the 14B and Opus alike; it only loses evidence, never makes a false supported.
+   same way. Hits the 14B and Opus alike. It drops labels of every stance, so a dropped
+   "contradicts" or "complicates" could let a claim with other accepted support go SUPPORTED.
+   No false supported appeared in the recorded runs and replays, but the code does not rule it out.
    The model-free gate cannot catch it. Offline replay: Opus case01 85% becomes 95% once fixed.
-   A fix for contacts is committed locally in another thread, not pushed (calls still differ).
+   Fix for contacts in PR #76 (not merged); calls still differ.
 2. **Opus's wrong "contradicts" on told-frame and undated denials** (section 7). Matters for
    #68: it would make wrong CONTRADICTED verdicts until a signed prompt fix lands.
 3. **Real-data formats unverified.** UFDR and AXIOM readers were built from documentation and
    synthetic samples. No real extraction has been imported. No public Cellebrite-made UFDR with a
    usable license exists; #73 checked the reader on two non-Cellebrite test files (27 of 27
    records). Forwarded or quoted message content is not read (reported by #73).
-4. **Local runtime per case unknown on current code** (section 7). The local 14B also misses the
-   probe's moved-trap bar.
+4. **Local runtime per case unknown on current code** (section 7). The local 14B's probe result
+   is also unverified on current code: it missed the moved-trap bar on 2026-10-07 answers with
+   prompt v1.0, and has not been run on prompt v1.1 or the signed 105-item set.
 5. **Evidence recall is modest.** Opus case01 surfaced key evidence for 35% of claims needing it;
    14 of 20 claims depend on the expert finding or accepting key evidence.
 6. **Other gaps:** no translation in the pipeline; no embeddings; Windows installer unsigned; the
@@ -282,12 +289,12 @@ supported until your expert accepts it; runs locally with no network calls."
 
 | # | Claim | Status | Evidence | Safe wording |
 |---|---|---|---|---|
-| 1 | Verdicts come from versioned rules | **True** | `decide_verdict` is the only verdict path (`core/audit/rules.py:1`); `RULE_VERSION = "0.2.1"` (`core/audit/rules.py:104`) is stored on every decision (`core/audit/rules.py:304`) and printed in the report (`core/report/html.py:348`). Models only label evidence. | As proposed |
+| 1 | Verdicts come from versioned rules | **True** | `decide_verdict` is the only automated verdict path (`core/audit/rules.py:1`); an expert override is written directly by `override_verdict` (`core/review/actions.py`), as the expert's decision; `RULE_VERSION = "0.2.1"` (`core/audit/rules.py:104`) is stored on every decision (`core/audit/rules.py:304`) and printed in the report (`core/report/html.py:348`). Models only label evidence. | "Versioned rules decide verdicts; your expert can override" |
 | 2 | Nothing is Supported until the expert accepts it | **True** | SUPPORTED needs an expert-accepted support on an observed record (`core/audit/rules.py:113`, `:285`); AI acceptance covers nothing (`_AI_MAY_COVER` empty, `core/audit/rules.py:110`); the invariants re-check every SUPPORTED and fail the run otherwise (`core/audit/invariants.py:220-270`). The expert can also set a verdict directly (`baker verdict --set`), which is still the expert's act. Note: a model "contradicts" can make a claim CONTRADICTED without an expert step (section 4). | As proposed; do not extend it to "contradicted" |
-| 3 | "Not found" says what was searched | **True for absence and count findings** | The absence check states what it searched and why the sources can or cannot show an absence (`core/audit/checks/absence.py:1-6`, `:40`, `:112-135`); a curated report can never pass an absence (`core/audit/checks/absence.py:123`); the report has a "Searches and coverage" section (`core/report/html.py:427-457`). An UNPROVEN claim with no evidence names the uncovered assumptions, not a search log. | "When Baker finds nothing, it says what it searched and what the source could show" |
+| 3 | "Not found" says what was searched | **True for absence and count findings** | The absence check states what it searched and why the sources can or cannot show an absence (`core/audit/checks/absence.py:1-6`, `:40`, `:112-135`); a curated report can never pass an absence (`core/audit/checks/absence.py:123`); the report has a "Searches and coverage" section (`core/report/html.py:427-457`). An UNPROVEN claim with no evidence names the uncovered assumptions, not a search log. | "When Baker finds no contact or counts records, it says what it searched and what the source could show" |
 | 4 | The selection audit shows what was left out around each quote | **Partly true** | Shows each quoted, exhibit or examiner-tagged message in its exchange, with the messages not picked (`core/selection/audit.py:1-29`). Limits: a quote is placed only when its words fit one message, otherwise it is listed as found N times and nothing around it is counted as left out (`core/selection/picks.py:17-23`); names and quotes under two words are not looked up (`core/selection/picks.py:5-11`); messages an examiner left out of a curated report are not in the case to show (`core/selection/audit.py:27-29`). | "...around each quote it can place in the extraction" |
 | 5 | Every report has an audit packet: source hashes, model, prompt and rule versions, tamper-evident log | **True, with one nuance** | Sources with SHA-256 (`core/report/html.py:593-601`), versions and model runs with model SHA-256, prompt version, parameters and seed (`core/report/html.py:604`, `:636-650`), rule version (`core/report/html.py:626`), audit-log summary with hash-chain result, last hash and expert actions (`core/report/html.py:652-670`, `core/review/audit_log.py:44-54`). Nuance: the report shows a summary and the expert entries, not every log entry, and the chain detects edits to entries, but not a rewrite of the whole chain or removal of the newest entries unless someone kept the last hash (inferred from `core/review/audit_log.py`: no signature or external anchor; truncation confirmed by #74). On main the chain is checked at report build and encryption; #74 (not merged) also checks it when a case opens and blocks review if it fails. | "A hash-chained audit log; the report prints its last hash" |
-| 6 | Runs locally with no network calls | **Depends on #68** | main: true. `core/` makes no network calls, the screen binds only 127.0.0.1 (`ui/server.py:19`); the installers download the pinned model once at install. #68 adds one network call, the opt-in Opus stance call to api.anthropic.com (`core/llm/cloud.py:1`, `:47` on the branch). Cloud stays off until the expert attests per case, so "local by default" stays true. "No network calls" would not be true for opted-in cases. | Today: "runs locally, no network calls". If #68 merges: "local by default; cloud AI only when your case allows it and you opt in" (Arsh's choice, 2026-10-15 07:10Z) |
+| 6 | Runs locally with no network calls | **Depends on #68** | main: true. `core/` makes no network calls, the screen binds only 127.0.0.1 (`ui/server.py:19`); the installers download the pinned model once at install. #68 adds the opt-in Opus stance integration, one HTTPS request per stance pair to api.anthropic.com (`core/llm/cloud.py:1`, `:47` on the branch). Cloud stays off until the expert attests per case, so "local by default" stays true. "No network calls" would not be true for opted-in cases. | Today: "runs locally, no network calls". If #68 merges: "local by default; cloud AI only when your case allows it and you opt in" (Arsh's choice, 2026-10-15 07:10Z) |
 
 Claims Baker should not make yet: any speed figure for local runs (not measured on current code,
 section 7), any accuracy figure on real data (all numbers are synthetic), and that UFDR or AXIOM
