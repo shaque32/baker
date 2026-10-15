@@ -126,8 +126,8 @@ readable.assumption_text(assumption, case_names(conn)), and ReviewContext in
 core/audit/context.py passes the same CaseNames to render_for, as the stance labeler does.
 
 ## 2026-10-15 claude/project-thread-a2fjkc: cloud AI by per-case opt-in, no mixed labels (stance labeling only)
-AWAITING Arsh's "approved" on this revision in the thread "Cloud-first Opus with offline
-fallback". It replaces the version he signed at 04:16Z, which was never applied: since then he
+SIGNED by Arsh on 2026-10-15 ("aproved" at 07:29Z in the thread "Cloud-first Opus with offline
+fallback"); to be applied to CLAUDE.md by a human on this branch. It replaces the version he signed at 04:16Z, which was never applied: since then he
 chose "local by default, cloud only by opt-in" (07:10Z) and "Stop and ask" on a cloud failure
 mid-case (07:12Z, Grok Product critique 3 on PR #70), so the fallback sentence changed. The code
 on this branch relies on it (core/llm/cloud.py, core/casework/cloud.py, CloudPort and SentLog in
