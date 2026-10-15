@@ -25,10 +25,10 @@ from typing import Any
 from core.contracts import GoldClaim, Prediction
 from eval import run_pipeline as rp
 from eval.run_eval import load_jsonl, score
+from eval.stancedata.gobar import CASE02_AT_MOST, CASE02_MIN_VERDICT_ACCURACY
 
 CASE = "case02"
 OUT = Path("eval/out/case02/stancemodel")
-MIN_VERDICT_ACCURACY = 0.80
 
 
 def bar_numbers(gold: list[GoldClaim], preds: list[Prediction]) -> dict[str, Any]:
@@ -47,10 +47,10 @@ def bar_numbers(gold: list[GoldClaim], preds: list[Prediction]) -> dict[str, Any
 
 
 def passes(n: dict[str, Any]) -> bool:
+    """GO_BAR condition 5 by gobar's own limits; bar.json is what gobar.decide takes as case02."""
     return (
-        n["false_supported"] == 0
-        and n["false_contradicted"] == 0
-        and n["verdict_accuracy"] >= MIN_VERDICT_ACCURACY
+        all(n[key] <= most for key, most in CASE02_AT_MOST.items())
+        and n["verdict_accuracy"] >= CASE02_MIN_VERDICT_ACCURACY
     )
 
 
