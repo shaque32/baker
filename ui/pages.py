@@ -46,6 +46,9 @@ from core.report.html import (
 )
 from core.report.hypotheses import CSS as ALTERNATIVES_CSS
 from core.report.hypotheses import alternatives_html
+from core.report.paired import CSS as PAIRED_CSS
+from core.report.paired import anchor as paired_anchor
+from core.report.paired import claim_line
 from core.report.restore import CSS as RESTORE_CSS
 from core.report.selection import CSS as SELECTION_CSS
 from core.report.selection import anchor as selection_anchor
@@ -61,6 +64,7 @@ from core.review.status import (
     queue,
 )
 from core.selection.audit import selection_audit
+from core.selection.paired import paired_check
 from ui.theme import FONT_CSS, MARK, THEME_CSS
 
 CONTEXT_WINDOW = 10  # messages either side: about 20 messages of context
@@ -174,7 +178,7 @@ class Page:
             "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
             f"<meta name='viewport' content='width=device-width, initial-scale=1'>{meta}"
             f"<title>{e(title)} · Baker</title>"
-            f"<style>{FONT_CSS}{REPORT_CSS}{RESTORE_CSS}{SELECTION_CSS}{ALTERNATIVES_CSS}{UI_CSS}{THEME_CSS}</style>"
+            f"<style>{FONT_CSS}{REPORT_CSS}{RESTORE_CSS}{SELECTION_CSS}{PAIRED_CSS}{ALTERNATIVES_CSS}{UI_CSS}{THEME_CSS}</style>"
             "</head><body>"
             "<header class='top'><div class='bar'>"
             f"<a class='brand' href='{'/' if self.case_name is not None else '/cases'}'>"
@@ -568,13 +572,19 @@ def _groups(st: ClaimState) -> list[tuple[str, list[EvidenceItem]]]:
     return [(k, v) for k, v in groups.items() if v]
 
 
-def _selection_note(conn: sqlite3.Connection, paragraph_id: str) -> str:
-    """What the selection audit found around the quotes of the claim's paragraph, if anything."""
-    audit = selection_audit(conn, paragraph_id=paragraph_id)
+def _selection_note(conn: sqlite3.Connection, st: ClaimState) -> str:
+    """What the selection audit found around the quotes of the claim's paragraph, and what a
+    larger source of the same phone holds near the claim's records that a curated report does
+    not, if anything."""
+    audit = selection_audit(conn, paragraph_id=st.claim.paragraph_id)
+    paired = claim_line(
+        paired_check(conn, [st], audit), st.claim.id, f"/selection#{paired_anchor(st.claim.id)}"
+    )
     units = audit.of("document")
     if not units:
-        return ""
-    return claim_note(units[0], f"/selection#{selection_anchor(units[0].id)}", audit.same) or ""
+        return paired
+    note = claim_note(units[0], f"/selection#{selection_anchor(units[0].id)}", audit.same)
+    return (note or "") + paired
 
 
 def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | None:
@@ -596,7 +606,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
             f"<details><summary>Paragraph as printed ({e(st.where)})</summary>"
             f"<blockquote>{q(st.paragraph_text)}</blockquote></details>"
         )
-        out.append(_selection_note(conn, c.paragraph_id))
+        out.append(_selection_note(conn, st))
     out.append(
         "<div class='card' id='verdict'><div class='in'><div class='eyebrow'>Verdict</div>"
         f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span>"

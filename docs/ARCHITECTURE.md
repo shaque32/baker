@@ -62,7 +62,9 @@ core/
   restore/            Context Restore: find pasted exhibit quotes in the extraction (code only)
   selection/          selection audit: each message the document quotes, an exhibit quotes or the
                       examiner tagged, in its exchange with the messages around it that were not
-                      picked (code only, derived each time, never changes a verdict)
+                      picked (code only, derived each time, never changes a verdict);
+                      paired.py: a curated report against a larger source of the same phone,
+                      what the report left out near each claim (fails closed, never a verdict)
   identity/           propose account -> person links from names in the data (code only);
                       the expert confirms or rejects each one on the Identities page
   review/             expert actions + audit log

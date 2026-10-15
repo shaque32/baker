@@ -19,6 +19,26 @@ Template:
 
 ---
 
+## 2026-10-15: Curated report against a larger source of the same phone (PR pending)
+- Changed: when a case holds an examiner-curated report and a larger source of the same phone
+  (a UFDR), each report message, call and contact is found once, found more than once, or not
+  found in the larger source; what the larger source holds that the report does not is listed
+  near each claim, by conversation then time distance, with no model ranking. Fails closed:
+  ambiguous candidates, and records near a report record not found, are "may be in the report",
+  never counted; under 95% found lists nothing. Selection tab, report section (one renderer) and
+  a line on each claim page. Never changes a verdict; nothing stored. (Grok Product item 9.)
+- Where: branch `claude/project-thread-y7z11i`, not merged.
+- Verified: 15 tests on two synthetic pairs (case01 item1 report vs a UFDR with planted records;
+  a small new pair): planted omissions found per claim in the expected order, ambiguous and
+  unmatched cases held back, screen and report list the same records, read-only. Headless-
+  Chromium smoke passed (no external requests, Referrer-Policy same-origin). case02 not used:
+  it is held out.
+- Open: not checked on real Cellebrite or AXIOM exports (no public UFDR, #73); Grok made this
+  depend on item 8. Pairing rests on a shared phone-owner account. Speed measured only on case01
+  size (about 0.2 s) and a 120,000-message in-memory match (about 1 s); not on a real case.
+- Affects: capabilities (new analysis, branch only); no privacy or network change; customer
+  claims unchanged until merged and checked on real exports.
+
 ## 2026-10-15: Audit-log chain verified when a case opens (#74)
 - Changed: opening a case now verifies the audit-log hash chain (before, only at report build or
   encryption). A broken chain fails closed: Cases shows "Review blocked" with the first entry

@@ -54,6 +54,7 @@ from core.contracts import (
 from core.hypotheses import explain
 from core.ingest import coverage as import_coverage
 from core.report import hypotheses as alternatives_html
+from core.report import paired as paired_html
 from core.report import restore as restore_html
 from core.report import selection as selection_html
 from core.report import timeline as timeline_html
@@ -526,7 +527,7 @@ def render_report(conn: sqlite3.Connection, timeline: timeline_html.Settings | N
         "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
         "<title>Baker claims report</title>"
-        f"<style>{CSS}{restore_html.CSS}{timeline_html.CSS}{selection_html.CSS}"
+        f"<style>{CSS}{restore_html.CSS}{timeline_html.CSS}{selection_html.CSS}{paired_html.CSS}"
         f"{alternatives_html.CSS}</style>"
         "</head><body>",
         "<h1>Baker claims report</h1>",
