@@ -217,7 +217,7 @@ Merged 2026-10-15: stricter stated time windows, "after <date>" starts the next 
 still 0.2.1 on main; the 0.2.2 bump is in PR #75, not merged), go-bar scorer fixes and the signed probe
 follow-up (#64), red-main test fix (#65), flaky encryption test fix (#67).
 Branch only: opt-in cloud Opus stance labels (#68), small stance model (#50), curated report
-against a larger source of the same phone (branch `claude/project-thread-y7z11i`, PR pending;
+against a larger source of the same phone (branch `claude/project-thread-y7z11i`, PR #78;
 synthetic data only, see section 9). PR #70 is an empty
 Grok Product review PR, never merged.
 

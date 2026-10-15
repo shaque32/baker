@@ -19,7 +19,7 @@ Template:
 
 ---
 
-## 2026-10-15: Curated report against a larger source of the same phone (PR pending)
+## 2026-10-15: Curated report against a larger source of the same phone (#78)
 - Changed: when a case holds an examiner-curated report and a larger source of the same phone
   (a UFDR), each report message, call and contact is found once, found more than once, or not
   found in the larger source; what the larger source holds that the report does not is listed
@@ -27,7 +27,7 @@ Template:
   ambiguous candidates, and records near a report record not found, are "may be in the report",
   never counted; under 95% found lists nothing. Selection tab, report section (one renderer) and
   a line on each claim page. Never changes a verdict; nothing stored. (Grok Product item 9.)
-- Where: branch `claude/project-thread-y7z11i`, not merged.
+- Where: branch `claude/project-thread-y7z11i`, PR #78, not merged.
 - Verified: 15 tests on two synthetic pairs (case01 item1 report vs a UFDR with planted records;
   a small new pair): planted omissions found per claim in the expected order, ambiguous and
   unmatched cases held back, screen and report list the same records, read-only. Headless-
