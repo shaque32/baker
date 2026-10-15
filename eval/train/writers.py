@@ -19,9 +19,25 @@ from eval.stancedata.families import family
 from eval.train import facts as fx
 from eval.train.facts import Fact
 from eval.train.facts import claim as fact_claim
+from eval.train.frames import contact, contact_by, first_contact, none_before, report, sent, words
 from eval.train.names import AREA_CODES, Party, full_name, person, telegram_id, username
-from eval.train.scenario import MOSCOW, Chat, clock12, decorate, hour12
+from eval.train.scenario import Chat, clock12, decorate
 from eval.train.topics import topic_stems
+from eval.train.when import (
+    act_clock,
+    bound_time,
+    clock_of,
+    date_bound,
+    fit_when,
+    later_time,
+    miss_when,
+    part_phrase,
+    prior_word,
+    say_day,
+    span,
+    telling_when,
+    when_sent,
+)
 
 
 @dataclass(frozen=True)
@@ -84,39 +100,6 @@ def act_minute(pred: str, day: date) -> int:
     return h * 60 + int(m.group(2) or 0)
 
 
-def clock_of(minute: int) -> str:
-    """'noon', '2 p.m.', '2:05 p.m.' for a minute of the day."""
-    h, m = divmod(minute, 60)
-    return hour12(h) if m == 0 else f"{h % 12 or 12}:{m:02d} {'a.m.' if h < 12 else 'p.m.'}"
-
-
-def bound_time(rng: random.Random, c: Chat, after: bool = False, floor: int = -1) -> str | None:
-    """A whole local hour before the record's clock ('noon', '2 p.m.'), by which a past act was
-    done; with `after`, a reading later than the record's ('11 p.m.', '9:40 p.m.').
-
-    Never the record's own minute: a bound at the very minute a message was sent reads as a
-    pointer to that message (and gives the answer away). The reading is never before `floor`,
-    the minute by which the act's own time has passed ("by 10 a.m., had landed at noon" makes
-    no sense); None when no reading fits.
-    """
-    h, now, roll = c.local.hour, c.local.hour * 60 + c.local.minute, rng.random()
-    last = 23 * 60 + 59
-    if after:
-        if roll < 0.25 and h + 2 <= 23:
-            t = (h + 2) * 60
-        elif roll < 0.7:
-            t = min(now + 20 + int(roll * 140), last)  # 20 to 117 minutes later
-        else:
-            t = (h + 1) * 60 if h + 1 <= 23 else last
-        return clock_of(t) if t > now and t >= floor else None
-    top = h * 60 if c.local.minute else (h - 1) * 60  # the last whole hour before the record
-    t = top - 60 if roll < 0.35 and top - 60 >= 6 * 60 else top
-    if t < floor <= top:
-        t = top
-    # Never "by midnight", which could be either end of the date.
-    return clock_of(t) if t >= max(floor, 60) else None
-
-
 def bounded(rng: random.Random, c: Chat, subj: str, pred: str, after: bool = False,
             simple: bool = False) -> str:  # fmt: skip
     """The fact `subj pred`, bounded by a local time on the record's date.
@@ -129,9 +112,9 @@ def bounded(rng: random.Random, c: Chat, subj: str, pred: str, after: bool = Fal
     """
     t = bound_time(rng, c, after, act_minute(pred, c.day))
     if t is None:
-        d = long_date(c.day + timedelta(days=1 if after else 0))
-        return cap(rng.choice([f"before {d}, {subj} {pred}", f"{subj} {pred} before {d}"]))
-    d = long_date(c.day)
+        d = f"{prior_word(rng)} {day_of(rng, c.day + timedelta(days=1 if after else 0), pred)}"
+        return cap(rng.choice([f"{d}, {subj} {pred}", f"{subj} {pred} {d}"]))
+    d = day_of(rng, c.day, pred)
     forms = [f"before {t} on {d}, {subj} {pred}", f"by {t} on {d}, {subj} {perfect(pred)}",
              f"{subj} {perfect(pred)} by {t} on {d}"]  # fmt: skip
     # "had had the plumber come" is grammatical but reads as a slip.
@@ -143,6 +126,13 @@ WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", 
 # the uhaul for Monday", whose day may still be ahead).
 ON_WEEKDAY = re.compile(rf"\bon ({'|'.join(WEEKDAYS)})\b")
 FOR_WEEKDAY = re.compile(rf"\bfor ({'|'.join(WEEKDAYS)})\b")
+WEEKDAY_WORD = re.compile(rf"\b({'|'.join(WEEKDAYS)})\b", re.I)
+
+
+def day_of(rng: random.Random, d: date, pred: str) -> str:
+    """A date for the act `pred` (when.say_day), without a weekday when the act names its own
+    ("booked the uhaul for Saturday"): two weekdays would muddle which day is meant."""
+    return long_date(d) if WEEKDAY_WORD.search(pred) else say_day(rng, d)
 
 
 def last_weekday(day: date, weekday: int) -> date:
@@ -188,13 +178,18 @@ def pin(c: Chat, pred: str, ahead: bool = False) -> str | None:
     return None
 
 
+def some_minute(rng: random.Random, lo: int = 8 * 60, hi: int = 21 * 60) -> int:
+    """A minute of the day people write: a whole hour, a quarter hour or an odd minute."""
+    if rng.random() < 0.5:
+        return rng.randrange(lo, hi + 1, 60)
+    if rng.random() < 0.5:
+        return rng.randrange(lo, hi + 1, 15)
+    return rng.randrange(lo, hi + 1)
+
+
 def some_clock(rng: random.Random, lo: int = 8 * 60, hi: int = 21 * 60) -> str:
-    """A clock reading people write: a whole hour, a quarter hour or an odd minute."""
-    if rng.random() < 0.5:
-        return clock_of(rng.randrange(lo, hi + 1, 60))
-    if rng.random() < 0.5:
-        return clock_of(rng.randrange(lo, hi + 1, 15))
-    return clock_of(rng.randrange(lo, hi + 1))
+    """A clock reading people write (see some_minute)."""
+    return clock_of(some_minute(rng, lo, hi))
 
 
 def act_before(rng: random.Random, c: Chat, subj: str, pred: str, clock: float = 0.0,
@@ -209,17 +204,19 @@ def act_before(rng: random.Random, c: Chat, subj: str, pred: str, clock: float =
     weekday's next date ("before May 7, 2025, ... booked the uhaul for Monday, May 12, 2025");
     any other act falls `back` days earlier, at a clock time with probability `clock`.
     """
-    rec = long_date(c.day)
+    rec = f"{prior_word(rng)} {day_of(rng, c.day, pred)}"
     if FOR_WEEKDAY.search(pred):
-        return cap(f"before {rec}, {subj} {pin(c, pred)}")
+        return cap(f"{rec}, {subj} {pin(c, pred)}")
     if pinned := pin(c, pred):
         return cap(f"{subj} {pinned}")
-    d = long_date(c.day - timedelta(days=rng.randint(*back)))
+    d = day_of(rng, c.day - timedelta(days=rng.randint(*back)), pred)
     if ACT_CLOCK.search(pred) is None and rng.random() < clock:
-        t = some_clock(rng)
-        return cap(rng.choice([f"at {t} on {d}, {subj} {pred}", f"{subj} {pred} at {t} on {d}"]))
-    forms = [f"on {d}, {subj} {pred}", f"{subj} {pred} on {d}", f"before {rec}, {subj} {pred}",
-             f"{subj} {pred} before {rec}"]  # fmt: skip
+        # A closed time on the earlier date: at a minute, about it, a range or a part of the
+        # day, never an open bound that could run past the record.
+        t = act_clock(rng, some_minute(rng), d, closed=True)
+        return cap(rng.choice([f"{t}, {subj} {pred}", f"{subj} {pred} {t}"]))
+    forms = [f"on {d}, {subj} {pred}", f"{subj} {pred} on {d}", f"{rec}, {subj} {pred}",
+             f"{subj} {pred} {rec}"]  # fmt: skip
     return cap(rng.choice(forms))
 
 
@@ -247,68 +244,22 @@ def wrap(rng: random.Random, core: str, lang: str) -> str:
     return decorate(rng, core, lang, 0.5, laughs=False)
 
 
-PARTS = ((5, 12, "morning"), (12, 17, "afternoon"), (17, 21, "evening"), (21, 24, "night"))
-
-
-def part_of_day(hour: int) -> str | None:
-    """The part of the day an hour falls in; None in the small hours, where "the night of"
-    could name either date."""
-    return next((p for lo, hi, p in PARTS if lo <= hour < hi), None)
-
-
-def telling_when(rng: random.Random, c: Chat, date: float = 0.62,
-                 clock: float = 0.2) -> str | None:  # fmt: skip
-    """When the record was sent, as a supports or message-level assumption may say it.
-
-    With probability `date` the phrase names the record's local date: plainly ("on May 2,
-    2025"), by the part of the day, or (with probability `clock`) as a bound after or before
-    the record's clock, never its own minute (see bound_time). None leaves the time out. A
-    date on a message makes no cue for any answer: trap and contradicts assumptions carry dates
-    as often.
-    """
-    roll, d = rng.random(), long_date(c.day)
-    if roll >= date:
-        return None
-    if roll < clock:
-        if rng.random() < 0.55 and (t := bound_time(rng, c, after=True)):
-            return f"before {t} on {d}"
-        if t := bound_time(rng, c):
-            return f"after {t} on {d}"
-    elif roll < clock + 0.07 and (part := part_of_day(c.local.hour)):
-        return f"on the {part} of {d}"
-    return f"on {d}"
-
-
 def frame(rng: random.Random, c: Chat, pred: str, *, when: str | None = None,
-          meaning: bool = False, bare: bool = False) -> str:  # fmt: skip
-    """'{S} wrote that they {pred}' in one of several frames that report the message (guide
-    rule 14); `when` (see telling_when) dates the telling, never the act.
+          meaning: bool = False, bare: bool = False, who: str | None = None,
+          answer: bool = False) -> str:  # fmt: skip
+    """'{S} wrote that they {pred}' in one of the frames that report the message (guide rule
+    14, frames.report); `when` (see when.py) dates the telling, never the act.
 
     In a chat that shows one non-owner account the message went to the owner; a group chat
     frame names the group and never a recipient (rule 11). With `bare`, the predicate carries
-    its own subject ("Lina said they ...") and no pronoun is put before it.
+    its own subject ("Lina said they ...") and no pronoun is put before it. `who` names
+    another sender than the record's (the speaker trap); `answer` adds the frames for a reply
+    to a question.
     """
-    s, o = c.sender.who, c.other.who
     pp = pred if bare else f"{c.sender.pron} {pred}"
-    if meaning and rng.random() < 0.3:
-        # The date belongs to the sending: "the message X sent on May 2, 2025 says that ...".
-        to = " to the group" if c.is_group() else ""
-        sent = f"the message {s} sent{to} {when}" if when else f"the message from {s}{to}"
-        return cap(f"{sent} says that {pp}")
-    if c.is_group():
-        forms = [f"{s} wrote in the group chat that {pp}", f"{s} told the group that {pp}"]
-    else:
-        forms = [
-            f"{s} wrote that {pp}",
-            f"{s} wrote that {pp}",
-            f"{s} wrote that {pp}",
-            f"{s} texted that {pp}",
-            f"{s} said {pp}",
-        ]
-        if not c.sender.account.owner:  # "told the owner"; a contact's saved name runs long
-            forms.append(f"{s} told {o} that {pp}")
-    a = rng.choice(forms)
-    return cap(f"{when}, {a}" if when else a)
+    s = c.sender.who if who is None else who
+    return cap(report(rng, s, c.other.who, pp, group=c.is_group(), when=when, meaning=meaning,
+                      answer=answer))  # fmt: skip
 
 
 def spec_plain(rng: random.Random, c: Chat, pred: str, quote: str, why: str,
@@ -316,45 +267,25 @@ def spec_plain(rng: random.Random, c: Chat, pred: str, quote: str, why: str,
     """A supports assumption that reports what the message communicates (guide rule 14);
     told_only skips the "the message says that" frames for plans and reports."""
     kind = kind_of(rng, "sup_plain")
-    text = frame(rng, c, pred, when=telling_when(rng, c, date=0.7, clock=0.15), bare=bare,
+    text = frame(rng, c, pred, when=telling_when(rng, c, date=0.65, clock=0.12), bare=bare,
                  meaning=kind == K.MEANING and not told_only)  # fmt: skip
     return Spec("sup_plain", kind, text, quote, why)
 
 
 def spec_verbatim(rng: random.Random, c: Chat) -> Spec:
-    s, o, text = c.sender.who, c.other.who, c.record.text
     when = telling_when(rng, c, date=0.7)
-    if c.is_group():
-        forms = [f'{s} wrote "{text}" in the group chat', f'{s} sent "{text}" to the group']
-    else:
-        forms = [f'{s} sent {o} the message "{text}"', f'{s} wrote "{text}" to {o}',
-                 f'{s} texted {o} "{text}"', f'the message "{text}" was sent by {s} to {o}',
-                 f'{s} sent the message "{text}"']  # fmt: skip
-    a = rng.choice(forms)
+    a = words(rng, c.sender.who, c.other.who, c.record.text, group=c.is_group(), when=when)
     why = f"The record is that message, from {c.record.account.sender} at {c.stamp}."
-    return Spec("sup_verbatim", K.TIME if when else K.EVENT, cap(f"{when}, {a}" if when else a),
-                text, why)  # fmt: skip
+    return Spec("sup_verbatim", K.TIME if when else K.EVENT, cap(a), c.record.text, why)
 
 
 def spec_time_window(rng: random.Random, c: Chat) -> Spec:
-    loc, s, o, d = c.local, c.sender.who, c.other.who, long_date(c.day)
-    h, m = loc.hour, loc.minute
-    now, gap = h * 60 + m, rng.randint(5, 50)
-    opts = [f"{s} sent {o} a message on {d}", f"at {clock12(loc)} on {d}, {s} sent {o} a message"]
-    if now + gap <= 23 * 60 + 59:
-        opts.append(f"before {clock_of(now + gap)} on {d}, {s} texted {o}")
-    if now - gap >= 0:
-        opts.append(f"after {clock_of(now - gap)} on {d}, {s} sent {o} a message")
-    if m <= 49 and h + 1 <= 23:
-        opts.append(f"before {hour12(h + 1)} on {d}, {s} texted {o}")
-    if m >= 10:
-        opts.append(f"after {hour12(h)} on {d}, {s} sent {o} a message")
-    if 10 <= m <= 49 and h + 2 <= 23:
-        opts.append(f"between {hour12(h)} and {hour12(h + 2)} on {d}, {s} messaged {o}")
-    if part := part_of_day(h):
-        opts.append(f"{s} messaged {o} on the {part} of {d}")
+    """That the record's sender messaged the other side within a window that plainly holds
+    the record's local time, in the shapes the time trap's windows take (when.fit_when)."""
+    when = fit_when(rng, c, date=1.0, clock=0.65, part=0.1) or f"on {long_date(c.day)}"
+    a = sent(rng, c.sender.who, c.other.who, when, group=c.is_group())
     why = f"The record's local time is {c.stamp}, inside the window the assumption states."
-    return Spec("sup_time_window", K.TIME, cap(rng.choice(opts)), c.record.text, why)
+    return Spec("sup_time_window", K.TIME, cap(a), c.record.text, why)
 
 
 NOT_SHOWN_THEN = ("the record does not show whether a matching message was also sent then",
@@ -362,53 +293,23 @@ NOT_SHOWN_THEN = ("the record does not show whether a matching message was also 
                   "whether the same words were also sent then is not shown")  # fmt: skip
 
 
-def spec_time_mismatch(rng: random.Random, c: Chat, pred: str, clause: bool = False) -> Spec:
+def spec_time_mismatch(rng: random.Random, c: Chat, pred: str, clause: bool = False,
+                       answer: bool = False) -> Spec:  # fmt: skip
     """Same words and people, another local date or clock: complicates (guide rule 23).
 
     The record shows when these words were sent; it cannot show that no matching message was
     sent at the time the assumption states. The answer rests on the record's time, so the
-    quote is the record in full (rule 22). `clause` means pred has its own subject.
+    quote is the record in full (rule 22). `clause` means pred has its own subject. The
+    assumption reports the message in the frames the supports items use (frames.py), or gives
+    its exact words; the time phrase plainly misses the record's (when.miss_when).
     """
-    loc, s, o = c.local, c.sender.who, c.other.who
-    h, m, d = loc.hour, loc.minute, long_date(c.day)
-    if not clause:
-        pred = f"{c.sender.pron} {pred}"
-    told = "wrote in the group chat that" if c.is_group() else f"told {o} that"
-    clock = rng.random() < 0.4
-    gap = rng.choice(NOT_SHOWN_THEN)
-    # A whole hour, or a minute 15 to 90 minutes away from the record's.
-    now, k, exact = h * 60 + m, rng.randint(15, 90), rng.random() < 0.5
-    later = now + k if exact else (h + 1) * 60 if m <= 49 else -1
-    earlier = now - k if exact else h * 60 if m >= 10 else -1
-    if clock and 0 <= later <= 23 * 60 + 59:
-        a = f"after {clock_of(later)} on {d}, {s} {told} {pred}"
-        why = (f"Same words and people, but sent at {clock12(loc)} on {d}, not after "
-               f"{clock_of(later)}; {gap}.")  # fmt: skip
-    elif clock and earlier >= 60:
-        a = f"before {clock_of(earlier)} on {d}, {s} {told} {pred}"
-        why = (f"Same words and people, but sent at {clock12(loc)} on {d}, not before "
-               f"{clock_of(earlier)}; {gap}.")  # fmt: skip
+    when, miss = miss_when(rng, c)
+    if rng.random() < 0.25:
+        a = words(rng, c.sender.who, c.other.who, c.record.text, group=c.is_group(), when=when)
     else:
-        if c.tz == MOSCOW and h <= 2:
-            wrong = c.day - timedelta(days=1)  # the UTC date
-        elif c.tz != MOSCOW and h >= 20:
-            wrong = c.day + timedelta(days=1)  # the UTC date
-        else:
-            wrong = c.day + timedelta(days=rng.choice((-3, -2, -1, 1, 2, 3)))
-        w = long_date(wrong)
-        a = rng.choice([f"on {w}, {s} {told} {pred}", f"{s} wrote to {o} on {w} that {pred}",
-                        f"{s} {told} {pred}, in a message sent on {w}"])  # fmt: skip
-        why = (f"Same words and people, but sent on {d} local time ({c.stamp}), not on {w}; "
-               f"{gap}.")  # fmt: skip
+        a = frame(rng, c, pred, when=when, bare=clause, answer=answer)
+    why = f"Same words and people, but {miss}; {rng.choice(NOT_SHOWN_THEN)}."
     return Spec("ovr_time_mismatch", K.TIME, cap(a), c.record.text, why)
-
-
-def when_sent(rng: random.Random, c: Chat) -> str | None:
-    """A time that fits the record's: its own minute, which picks out the message, or a
-    telling_when phrase (None for no time)."""
-    if rng.random() < 0.3:
-        return f"at {clock12(c.local)} on {long_date(c.day)}"
-    return telling_when(rng, c, date=0.55, clock=0.25)
 
 
 def other_writer_why(shown: str, claimed: str, group: bool = False) -> str:
@@ -419,14 +320,11 @@ def other_writer_why(shown: str, claimed: str, group: bool = False) -> str:
 
 
 def spec_sender_mismatch(rng: random.Random, c: Chat) -> Spec:
+    """The record's words, said to come from the other side of the chat."""
     text, s = c.record.text, c.sender.who
     claimed = c.contacts[0].who if c.sender.account.owner else "the owner"
-    forms = [f'{claimed} wrote "{text}" to {s}', f'the message "{text}" was sent by {claimed}',
-             f'{claimed} sent {s} the message "{text}"',
-             f'{claimed} texted {s}: "{text}"']  # fmt: skip
-    a = rng.choice(forms)
-    if when := when_sent(rng, c):  # the time may fit; the sender still does not
-        a = f"{when}, {a}"
+    # The time may fit; the sender still does not.
+    a = words(rng, claimed, s, text, when=when_sent(rng, c))
     why = other_writer_why(c.record.account.sender, claimed)
     return Spec("ovr_sender_mismatch", kind_of(rng, "ovr_sender_mismatch"), cap(a), text, why)
 
@@ -454,11 +352,11 @@ def done_by(rng: random.Random, c: Chat, subj: str, pred: str, p: float = 0.65,
         return cap(f"{subj} {pred}")
     if m := ON_WEEKDAY.search(pred):
         return cap(f"{subj} {with_date(pred, m, last_weekday(c.day, WEEKDAYS.index(m[1])))}")
-    nxt = long_date(c.day + timedelta(days=1))
+    nxt = day_of(rng, c.day + timedelta(days=1), pred)
     t = bound_time(rng, c, after=True, floor=act_minute(pred, c.day))
     if t is None or FOR_WEEKDAY.search(pred) or ACT_DAY.search(pred) or rng.random() < 0.4:
-        return cap(f"before {nxt}, {subj} {pred}")
-    d = long_date(c.day)
+        return cap(f"{prior_word(rng)} {nxt}, {subj} {pred}")
+    d = day_of(rng, c.day, pred)
     forms = [f"before {t} on {d}, {subj} {pred}", f"by {t} on {d}, {subj} {perfect(pred)}"]
     return cap(rng.choice(forms[:1] if simple or pred.startswith("had ") else forms))
 
@@ -477,7 +375,7 @@ def dated_act(rng: random.Random, c: Chat, subj: str, pred: str, *, ahead: bool 
     if rng.random() >= p:
         return cap(f"{subj} {pred}")
     k = rng.randint(0, 4)
-    d = long_date(c.day + timedelta(days=k if ahead else -k))
+    d = day_of(rng, c.day + timedelta(days=k if ahead else -k), pred)
     if FOR_WEEKDAY.search(pred) or ACT_CLOCK.search(pred):
         return cap(f"on {d}, {subj} {pred}")  # the act keeps its own day or time
     if rng.random() < clock:
@@ -535,66 +433,62 @@ def spec_count(rng: random.Random, c: Chat, f: Fact, v: str, quote: str,
 
 
 def spec_contact(rng: random.Random, c: Chat) -> Spec | None:
-    other = c.other
-    replied = any(m.account == other.account and c.local_of(i).date() == c.day
-                  for i, m in enumerate(c.msgs) if i != c.target)  # fmt: skip
-    if not replied or c.is_group():
+    """The owner and the other side were in contact in a window that holds the record and a
+    reply from the other side the same day, so the two did exchange messages there. Said with
+    the verbs and windows con_in_window says the opposite with (frames.contact, when.span)."""
+    if c.is_group():
         return None
-    who, d = c.contacts[0].who, long_date(c.day)
-    d1 = long_date(c.day - timedelta(days=rng.randint(0, 5)))
-    d2 = long_date(c.day + timedelta(days=rng.randint(0, 5)))
-    # "From ... through ..." includes both ends: no reader has to decide what "between" covers.
-    forms = [f"the owner and {who} exchanged messages on {d}",
-             f"the owner and {who} were in contact on {d}",
-             f"from {d1} through {d2}, the owner and {who} exchanged messages"]  # fmt: skip
-    why = (f"The record is a message between them at {c.stamp}, and the other side also "
-           "writes the same day.")  # fmt: skip
-    return Spec(
-        "sup_contact", kind_of(rng, "sup_contact"), cap(rng.choice(forms)), c.record.text, why
-    )
-
-
-def _no_contact(rng: random.Random, who: str, span: str) -> str:
-    return rng.choice([f"there was no contact between the owner and {who} {span}",
-                       f"the owner and {who} did not message each other {span}",
-                       f"no message passed between the owner and {who} {span}"])  # fmt: skip
+    other = c.other
+    replies = [i for i, m in enumerate(c.msgs) if i != c.target and m.account == other.account
+               and c.local_of(i).date() == c.day]  # fmt: skip
+    if not replies:
+        return None
+    reply = min(replies, key=lambda i: abs(c.local_of(i) - c.local))
+    now, back = c.local.hour * 60 + c.local.minute, c.local_of(reply)
+    lo, hi = sorted((now, back.hour * 60 + back.minute))
+    who = c.contacts[0].who
+    if rng.random() < 0.12:
+        a = contact_by(rng, who, long_date(c.day + timedelta(days=rng.randint(1, 20))))
+    else:
+        a = contact(rng, who, span(rng, c, lo, hi, clock=0.6), yes=True)
+    why = (f"The record is a message between them at {c.stamp}, and the other side also writes "
+           f"in that chat at {clock12(back)} the same day, inside the window.")  # fmt: skip
+    return Spec("sup_contact", kind_of(rng, "sup_contact"), cap(a), c.record.text, why)
 
 
 def spec_in_window(rng: random.Random, c: Chat) -> Spec:
-    """No contact in a window that holds the record, or a first contact after it.
-
-    Windows of dates say "from ... through ..." or "on ... or ...", so no reader has to decide
-    whether "between" includes its ends (and no window ends at the record's own minute).
-    """
-    who, d, roll = c.contacts[0].who, long_date(c.day), rng.random()
-    lo, hi = bound_time(rng, c), bound_time(rng, c, after=True)
-    inside = f"The record is a message between them at {c.stamp}, inside that window."
-    if roll < 0.3 and lo and hi:
-        span = rng.choice([f"from {lo} to {hi} on {d}", f"after {lo} on {d}"])
-        text, why = _no_contact(rng, who, span), inside
-    elif roll < 0.4 and hi:
-        text = rng.choice(
-            [
-                f"the owner and {who} had no contact before {hi} on {d}",
-                f"the owner and {who} first messaged each other after {hi} on {d}",
-            ]
-        )
+    """No contact in a window that holds the record, or a first contact after it, in the
+    words and windows sup_contact uses the other way (frames.contact, when.span). The window
+    also holds the other side's nearest message that day when there is one, as sup_contact's
+    does; only then may the denial use the verbs that need both sides ("did not exchange
+    messages"), and likewise before a first contact."""
+    who, roll = c.contacts[0].who, rng.random()
+    now = c.local.hour * 60 + c.local.minute
+    theirs = [i for i, m in enumerate(c.msgs) if i != c.target and m.account == c.other.account]
+    replies = [i for i in theirs if c.local_of(i).date() == c.day]
+    earlier = any(c.local_of(i) <= c.local for i in theirs)  # both sides wrote by the record
+    if roll < 0.7:
+        lo = hi = now
+        why = f"The record is a message between them at {c.stamp}, inside that window."
+        if replies:
+            back = c.local_of(min(replies, key=lambda i: abs(c.local_of(i) - c.local)))
+            lo, hi = sorted((now, back.hour * 60 + back.minute))
+            why = (f"The record is a message between them at {c.stamp}, inside that window, and "
+                   f"the other side also writes in it at {clock12(back)}.")  # fmt: skip
+        text = contact(rng, who, span(rng, c, lo, hi, clock=0.6), yes=False,
+                       two_way=bool(replies))  # fmt: skip
+    elif roll < 0.8 and (t := later_time(rng, c)):
+        if rng.random() < 0.5:
+            text = first_contact(rng, who, f"after {t}", two_way=earlier)
+        else:
+            text = none_before(rng, who, t, two_way=earlier)
         why = f"The record is a message between them at {c.stamp}, earlier than that time."
-    elif roll < 0.75:
-        a, b = rng.randint(1, 6), rng.randint(1, 6)
-        d1, d2 = long_date(c.day - timedelta(days=a)), long_date(c.day + timedelta(days=b))
-        k = rng.choice((-1, 1))
-        near = long_date(c.day + timedelta(days=k))
-        pair = f"on {near} or {d}" if k < 0 else f"on {d} or {near}"
-        span = rng.choice([f"on {d}", f"from {d1} through {d2}", pair])
-        text, why = _no_contact(rng, who, span), inside
     else:
-        first = long_date(c.day + timedelta(days=rng.randint(1, 30)))
-        text = rng.choice([
-            f"the owner and {who} had no contact before {first}",
-            f"no message between the owner and {who} predates {first}",
-            f"the owner and {who} first messaged each other on {first}",
-        ])  # fmt: skip
+        first = say_day(rng, c.day + timedelta(days=rng.randint(1, 30)))
+        if rng.random() < 0.5:
+            text = first_contact(rng, who, f"on {first}", two_way=earlier)
+        else:
+            text = none_before(rng, who, first, two_way=earlier)
         why = f"The record is a message between them at {c.stamp}, earlier than that date."
     return Spec("con_in_window", kind_of(rng, "con_in_window"), cap(text), c.record.text, why)
 
@@ -664,12 +558,14 @@ def own_words(claim: str) -> str | None:
 
 
 def chat_topics(c: Chat) -> set[str]:
-    """The topic stems of every line of the chat and of every name it shows."""
+    """The topic stems of every line of the chat and of every name it shows: how an assumption
+    names each party, and the saved name and handle its lines print ("garage_x", the owner's
+    own included)."""
     out: set[str] = set()
     for m in c.msgs:
         out |= topic_stems(m.text)
     for p in [c.owner, *c.contacts]:
-        out |= topic_stems(p.who)
+        out |= topic_stems(f"{p.who} {p.account.label or ''} {p.account.identifier}")
     return out
 
 
@@ -696,19 +592,19 @@ def spec_irrelevant(rng: random.Random, c: Chat, fam: str, pool: Sequence[Fact],
     if kind == K.TIME:
         events = [e for e in TIME_EVENTS if not topic_stems(e[0]) & seen]
         event, parts = rng.choice(events or list(TIME_EVENTS))
-        d, part = long_date(c.day + timedelta(days=rng.randint(-3, 3))), rng.choice(parts)
+        d, part = say_day(rng, c.day + timedelta(days=rng.randint(-3, 3))), rng.choice(parts)
         if rng.random() < 0.45:
             lo, hi = HOURS[part]
-            t = clock_of(rng.randrange(lo * 60, hi * 60 + 60, rng.choice((1, 5, 15, 60))))
-            a = cap(f"{subj} {event} at {t} on {d}")
+            t = act_clock(rng, rng.randrange(lo * 60, hi * 60 + 60, rng.choice((1, 5, 15, 60))), d)
         else:
-            a = cap(f"{subj} {event} on the {part} of {d}")
+            t = part_phrase(rng, part, d)
+        a = cap(f"{subj} {event} {t}" if rng.random() < 0.75 else f"{t}, {subj} {event}")
     else:
         claims = [w for g in pool for w, topics in own_claims(g) if not topics & seen]
         if not claims:  # never on the current pools; a plain unrelated event instead
             claims = ["went for a run"]
         pred, roll = rng.choice(claims), rng.random()
-        d = long_date(c.day + timedelta(days=rng.randint(-4, 2)))
+        d = day_of(rng, c.day + timedelta(days=rng.randint(-4, 2)), pred)
         if not FOR_WEEKDAY.search(pred) and (pinned := pin(c, pred)):
             a = cap(f"{subj} {pinned}")  # "on Monday" or "on the 3rd" gets its own date
         elif FOR_WEEKDAY.search(pred) or ACT_CLOCK.search(pred):
@@ -717,7 +613,10 @@ def spec_irrelevant(rng: random.Random, c: Chat, fam: str, pool: Sequence[Fact],
             a = cap(f"on {d}, {subj} {pred}") if roll < 0.5 else cap(f"{subj} {pred}")
         elif roll < 0.12:
             a = bounded(rng, c, subj, pred, after=rng.random() < 0.5)
-        elif roll < 0.5:
+        elif roll < 0.2 and not WEEKDAY_WORD.search(pred):
+            t = date_bound(rng, c.day + timedelta(days=rng.randint(-4, 2)), rng.random() < 0.5)[0]
+            a = cap(f"{t}, {subj} {pred}" if rng.random() < 0.6 else f"{subj} {pred} {t}")
+        elif roll < 0.45:  # with the time events, about as many dated as in other families
             a = _on(rng, subj, pred, d)
         else:
             a = cap(f"{subj} {pred}")

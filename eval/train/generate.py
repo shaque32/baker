@@ -30,8 +30,10 @@ from eval.train.writers import sentence
 # 1.1.0: labels follow guide draft v0.3 (strict contradicts). 1.2.0: wording only; a record's
 # act carries its subject when its verb could be an instruction ("i put 200 in savings"), a bare
 # "no" only answers a question shown, and a record that says where its sender is meets no filler
-# that puts anyone somewhere.
-GENERATOR = "eval.train 1.2.0"
+# that puts anyone somewhere. 1.3.0: wording only; families whose labels differ share one bank
+# of report frames (eval/train/frames.py) and one of time phrases (eval/train/when.py), so a
+# label rests on the facts, never on how the assumption is worded.
+GENERATOR = "eval.train 1.3.0"
 SOURCE = "train_gen"
 
 

@@ -1,7 +1,9 @@
 """Placing a record against a stated window: plainly inside, plainly outside or on a zone edge.
 
 Each function draws a date, a window wording and a record time, and keeps the first draw whose
-margins pass the checks in baker_time, so a returned pair holds by construction.
+margins pass the checks in baker_time, so a returned pair holds by construction. A share of the
+"on" windows read "on or about" (`fuzzy`), for the templates where that reads naturally; a zone
+edge never falls on a day a reader may leave out (baker_time).
 """
 
 from __future__ import annotations
@@ -39,99 +41,113 @@ def _days(n: int) -> timedelta:
     return timedelta(days=n)
 
 
-def _around(rng: random.Random, form: str, w: datetime, tz: str) -> Win | None:
+def _around(rng: random.Random, form: str, w: datetime, tz: str, fuzzy: float) -> Win | None:
     """A window of this form that holds the wall-clock reading w (in tz) well inside."""
     d = w.date()
     if form in ("on", "On"):
-        return win_on(d, tz, form == "On")
+        return win_on(d, tz, form == "On", rng, rng.random() < fuzzy)
     if form == "through":
         d1, d2 = d - _days(rng.randint(0, 4)), d + _days(rng.randint(0, 4))
         d2 = d2 + DAY if d1 == d2 else d2
-        return win_through(d1, d2, tz) if d1.year == d2.year else None
+        return win_through(d1, d2, tz, rng) if d1.year == d2.year else None
     if form == "before":
-        return win_before(rng, d + _days(rng.randint(1, 12)), tz)
+        return win_before(rng, d + _days(rng.randint(1, 12)), tz, vary=True)
     if form == "after":
-        return win_after(rng, d - _days(rng.randint(1, 12)), tz)
+        return win_after(rng, d - _days(rng.randint(1, 12)), tz, vary=True)
     h1, h2 = w.hour - rng.randint(1, 3), w.hour + rng.randint(2, 4)
-    return win_between(d, h1, h2, tz) if {h1, h2} <= set(CLOCK_HOURS) else None
+    return win_between(d, h1, h2, tz, rng) if {h1, h2} <= set(CLOCK_HOURS) else None
 
 
 def inside(
-    rng: random.Random, phone_zone: str, tz: str, forms: tuple[str, ...] = ALL_FORMS
+    rng: random.Random,
+    phone_zone: str,
+    tz: str,
+    forms: tuple[str, ...] = ALL_FORMS,
+    fuzzy: float = 0.0,
 ) -> tuple[Win, datetime]:
-    """A window in tz and a record time plainly inside it in both readings."""
+    """A window in tz and a record time plainly inside it in both readings; `fuzzy` is the
+    share of "on" windows that read "on or about"."""
     for _ in range(400):
         form, day = rng.choice(forms), pick_day(rng)
         if form == "about":
             if tz != phone_zone:
                 continue
-            win = win_about(day, rng.choice(CLOCK_HOURS), rng.choice((0, 30)), tz)
+            win = win_about(day, rng.choice(CLOCK_HOURS), rng.choice((0, 30)), tz, rng)
             assert win.about is not None  # noqa: S101 - an "about" window has its clock time
             utc = at_wall(win.about + timedelta(seconds=rng.randint(-290, 290)), tz)
         else:
             utc = at(day, rng.randint(7, 22), rng.randrange(60), rng.randrange(60), phone_zone)
-            win = _around(rng, form, wall(utc, tz), tz)
+            win = _around(rng, form, wall(utc, tz), tz, fuzzy)
         if win is not None and plainly_inside(win, utc, phone_zone):
             return win, utc
     raise RuntimeError("no inside window found")
 
 
-def _away(rng: random.Random, form: str, w: datetime, tz: str) -> Win | None:
+def _away(rng: random.Random, form: str, w: datetime, tz: str, fuzzy: float) -> Win | None:
     """A window of this form that the wall-clock reading w (in tz) falls well outside."""
     d, sign = w.date(), rng.choice((-1, 1))
     if form in ("on", "On"):
-        return win_on(d + sign * _days(rng.randint(2, 8)), tz, form == "On")
+        if rng.random() < fuzzy:  # "on or about": three weeks off at least (baker_time.FUZZ)
+            return win_on(d + sign * _days(rng.randint(22, 70)), tz, form == "On", rng, True)
+        return win_on(d + sign * _days(rng.randint(2, 8)), tz, form == "On", rng)
     if form == "through":
         span, gap = _days(rng.randint(1, 5)), _days(rng.randint(2, 6))
         d1, d2 = (d - gap - span, d - gap) if sign < 0 else (d + gap, d + gap + span)
-        return win_through(d1, d2, tz) if d1.year == d2.year else None
+        return win_through(d1, d2, tz, rng) if d1.year == d2.year else None
     if form == "before":
-        return win_before(rng, d - _days(rng.randint(1, 8)), tz)
+        return win_before(rng, d - _days(rng.randint(1, 8)), tz, vary=True)
     if form == "after":
-        return win_after(rng, d + _days(rng.randint(1, 8)), tz)
+        return win_after(rng, d + _days(rng.randint(1, 8)), tz, vary=True)
     same_day = rng.random() < 0.5
     day = d if same_day else d + sign * _days(rng.randint(1, 6))
     if form == "about":
         h = w.hour + sign * rng.randint(3, 8) if same_day else rng.choice(CLOCK_HOURS)
-        return win_about(day, h, rng.choice((0, 30)), tz) if h in CLOCK_HOURS else None
+        return win_about(day, h, rng.choice((0, 30)), tz, rng) if h in CLOCK_HOURS else None
     if same_day and sign < 0:
         h2 = w.hour - rng.randint(3, 5)
         h1 = h2 - rng.randint(3, 5)
     else:
         h1 = w.hour + rng.randint(3, 5) if same_day else rng.choice(CLOCK_HOURS)
         h2 = h1 + rng.randint(3, 5)
-    return win_between(day, h1, h2, tz) if {h1, h2} <= set(CLOCK_HOURS) else None
+    return win_between(day, h1, h2, tz, rng) if {h1, h2} <= set(CLOCK_HOURS) else None
 
 
 def outside(
-    rng: random.Random, phone_zone: str, tz: str, forms: tuple[str, ...] = ALL_FORMS
+    rng: random.Random,
+    phone_zone: str,
+    tz: str,
+    forms: tuple[str, ...] = ALL_FORMS,
+    fuzzy: float = 0.0,
 ) -> tuple[Win, datetime]:
     """A window in tz and a record time plainly outside it in both readings."""
     for _ in range(400):
         form, day = rng.choice(forms), pick_day(rng)
         utc = at(day, rng.randint(7, 22), rng.randrange(60), rng.randrange(60), phone_zone)
-        win = _away(rng, form, wall(utc, tz), tz)
+        win = _away(rng, form, wall(utc, tz), tz, fuzzy)
         if win is not None and plainly_outside(win, utc, phone_zone):
             return win, utc
     raise RuntimeError("no outside window found")
 
 
 def _edge_window(rng: random.Random, form: str, tz: str) -> tuple[Win, tuple[datetime, ...]]:
+    """A window and the edges a zone-edge record may sit at: never a day a reader may leave
+    out ("from May 1 to May 9" keeps its start)."""
     day = pick_day(rng)
     if form in ("on", "On"):
-        win = win_on(day, tz, form == "On")
+        win = win_on(day, tz, form == "On", rng)
     elif form == "through":
-        win = win_through(day, day + _days(rng.randint(1, 6)), tz)
+        win = win_through(day, day + _days(rng.randint(1, 6)), tz, rng)
     elif form == "before":
-        win = win_before(rng, day, tz)
+        win = win_before(rng, day, tz, vary=True)
         return win, (win.end,)
     elif form == "after":
-        win = win_after(rng, day, tz)
-        return win, (win.start,)
+        win = win_after(rng, day, tz, vary=True)
+        return win, () if win.loose_first else (win.start,)
     else:
         h1 = rng.choice(CLOCK_HOURS[:-3])
-        win = win_between(day, h1, min(h1 + rng.randint(3, 5), CLOCK_HOURS[-1]), tz)
-    return win, (win.start, win.end)
+        win = win_between(day, h1, min(h1 + rng.randint(3, 5), CLOCK_HOURS[-1]), tz, rng)
+    starts = () if win.loose_first else (win.start,)
+    return win, (*starts, *(() if win.loose_last else (win.end,)))
 
 
 def edge(
@@ -142,6 +158,8 @@ def edge(
     for _ in range(600):
         tz = rng.choice([z for z in bf.ZONES if z != phone_zone])
         win, edges = _edge_window(rng, rng.choice(forms), tz)
+        if not edges:
+            continue
         e = rng.choice(edges)
         utc_e = at_wall(e, phone_zone)
         delta = timedelta(minutes=offset_min(utc_e, tz) - offset_min(utc_e, phone_zone))
