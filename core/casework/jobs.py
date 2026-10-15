@@ -222,8 +222,8 @@ def audit_job(
     label_all: bool = False,
     cloud_first: bool = False,
 ) -> Callable[[Job], None]:
-    """cloud_first: the case's stance labels come from the cloud model, so a failed local model
-    check does not stop the audit; it only means no local model stands behind the cloud."""
+    """cloud_first: the case's stance labels come from the cloud model. The local model check
+    still gates the start: assumption filling (and the AI reviewer) run on the local model."""
 
     def run(job: Job) -> None:
         conn = _open(job.db)
@@ -237,7 +237,7 @@ def audit_job(
                     job.hashed = (done, total)
 
                 job.check = model_check(progress=hashed)
-                if not job.check.ok and not cloud_first:
+                if not job.check.ok:
                     job.end("failed", f"The audit did not start. {job.check.summary}")
                     return
             comps = components_for(conn, ai_review)

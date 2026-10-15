@@ -145,6 +145,6 @@ Diff:
 +  order allows cloud AI. A case marked as possibly containing CSAM never uses cloud. Without that
 +  attestation, a key or the network, and on any API error, the stance labeler falls back to the
 +  local model. If no local model is set up either, the audit stops rather than drop labels.
-+- Only the filled-in stance prompt is sent (assumption, record, nearby messages, claim), never
-+  input files or the case database. Every evidence item records which model labelled it, and the
++- Only the filled-in stance prompt is sent (assumption, record, nearby messages, claim, and a
++  group chat's member list), never input files or the case database. Every evidence item records which model labelled it, and the
 +  report shows it.

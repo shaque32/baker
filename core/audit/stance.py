@@ -228,13 +228,13 @@ class LocalStanceLabeler:
         result = self._try_label(assumption, candidate)
         # A cloud case (FallbackPort): a cloud call that got no answer is asked again once, on
         # the local model. Both calls are recorded, each under the run that made it.
-        retry_on = getattr(self.model, "retry_run_id", None)
+        retry = getattr(self.model, "retry_locally", None)
         if (
             result.label is None
             and result.call is not None
-            and result.call.outcome is ModelCallOutcome.ERROR
-            and isinstance(retry_on, str)
-            and retry_on != result.model_run_id
+            and result.call.outcome in (ModelCallOutcome.ERROR, ModelCallOutcome.INVALID_OUTPUT)
+            and callable(retry)
+            and retry(result.call.model_run_id)
         ):
             return self._try_label(assumption, candidate)
         return result

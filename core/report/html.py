@@ -509,6 +509,9 @@ def _versions(conn: sqlite3.Connection, run: dict | None) -> str:
             ("Contracts", run["contracts_version"]),
             ("Verdict rules", run["rule_version"]),
         ]
+        cloud = (run.get("config") or {}).get("cloud")
+        if isinstance(cloud, dict):
+            rows.append(("Stance labels", str(cloud.get("why", ""))))
     model_rows = list(
         conn.execute(
             "SELECT purpose, model_name, model_sha256, prompt_version FROM model_runs"

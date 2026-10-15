@@ -1309,10 +1309,12 @@ def cloud_section(
         "<div id='cloud'><h3>Cloud AI for this case</h3>",
         f"<p><strong>{'Cloud first' if use else 'Local only'}.</strong> {e(why)}</p>",
         "<p class='muted'>With cloud AI, Baker sends one question at a time to Anthropic under "
-        "your own key: the assumption being tested, one record, the messages around it and the "
-        "claim. Never your files or the case database. The cloud model only labels evidence; "
-        "the verdict rules and your review are unchanged. Any call it cannot answer goes to the "
-        "local model, and each evidence item says which model labeled it.</p>",
+        "your own key: the assumption being tested, one record, the messages around it, the "
+        "claim, and for a group chat its member list (up to 20 accounts, with the names you "
+        "confirmed for them). Never your files or the case database. The cloud model only "
+        "labels evidence; the verdict rules and your review are unchanged. Any call it cannot "
+        "answer goes to the local model, and each evidence item says which model labeled it."
+        "</p>",
         page.form(
             "/cloud/case",
             "<p><label><input type='checkbox' name='allowed' value='1'"

@@ -360,15 +360,18 @@ class FallbackPort:
                 self.fell_back = e.reason
                 if self.local is None:
                     raise self._unavailable(e.reason) from e
-            else:
-                self._next_local = self.local is not None
-            raise
+            raise  # recorded as an error; the labeler then asks retry_locally
 
     def _unavailable(self, reason: str) -> ModelUnavailable:
         why = self.local_missing or "no local model is set up"
         return ModelUnavailable(f"the cloud model failed ({reason}) and {why}")
 
-    @property
-    def retry_run_id(self) -> str | None:
-        """The run a failed cloud call should be asked again on, or None to keep the drop."""
-        return self.local.port.run_id if self.local is not None and self._use_local() else None
+    def retry_locally(self, failed_run_id: str) -> bool:
+        """After a cloud call gave nothing usable (no answer, or an answer that failed
+        validation), route the next call to the local model. False when there is no local
+        model, or the failed call was already the local model's: the drop then stands."""
+        if self.local is None or failed_run_id != self.cloud.port.run_id:
+            return False
+        if self.fell_back is None:
+            self._next_local = True
+        return True

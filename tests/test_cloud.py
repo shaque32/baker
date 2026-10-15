@@ -230,6 +230,19 @@ def test_a_refusal_sends_only_that_call_to_the_local_model(case_db, fake_context
     assert lab.model.fell_back is None
 
 
+def test_a_cloud_answer_that_fails_validation_is_asked_again_locally(case_db, fake_context):
+    long = '{"stance": "supports", "quote": "garage", "rationale": "' + "x" * 1001 + '"}'
+    up = FakeCloud([long, SUPPORTS])
+    local = FakeLocal([SUPPORTS])
+    lab = stance_mod.create(case_db, model=local, cloud_model=up)
+    cloud_run, local_run = _runs(lab)
+    a = make_assumption("They met at the garage.")
+    assert lab.label(a, _cand("msg:1")).model_run_id == local_run.id
+    assert lab.label(a, _cand("msg:2")).model_run_id == cloud_run.id
+    outcomes = [(c.model_run_id, c.outcome.value) for c in lab.recorder.calls]
+    assert outcomes[0] == (cloud_run.id, "invalid_output")
+
+
 def test_with_no_local_model_a_cloud_failure_stops_the_run(case_db, fake_context, monkeypatch):
     monkeypatch.setenv("BAKER_MODEL_CONFIG", "/nonexistent/model.json")
     up = FakeCloud([cloud.CloudError("ConnectionError: down", sticky=True)])
@@ -245,7 +258,7 @@ def test_without_cloud_the_labeler_is_the_local_model_alone(case_db, fake_contex
     lab = stance_mod.create(case_db, model=local)
     (run,) = lab.model_runs
     assert lab.label(make_assumption("They met at the garage."), _cand()).model_run_id == run.id
-    assert not hasattr(lab.model, "retry_run_id")
+    assert not hasattr(lab.model, "retry_locally")
 
 
 # ---------------------------------------------------------------- the case's choice
@@ -260,41 +273,51 @@ def _no_key() -> cloud.CloudConfig:
 
 
 @pytest.mark.parametrize(
-    ("saved", "load", "use"),
+    ("entries", "load", "use"),
     [
-        ({}, _key, False),  # never attested
-        ({"allowed": True}, _key, True),
-        ({"allowed": True, "csam": True}, _key, False),  # CSAM wins over the attestation
-        ({"allowed": True}, _no_key, False),  # no key: local
-        ({"allowed": "yes"}, _key, False),  # only a real True counts
+        ([], _key, False),  # never attested
+        ([{"allowed": True, "csam": False}], _key, True),
+        ([{"allowed": True, "csam": True}], _key, False),  # CSAM wins over the attestation
+        ([{"allowed": True, "csam": False}], _no_key, False),  # no key: local
+        ([{"allowed": True, "csam": False}, {"allowed": False, "csam": False}], _key, False),
     ],
 )
-def test_cloud_is_used_only_when_attested_not_csam_and_keyed(saved, load, use):
-    choice = cloud_policy.choose({"cloud": saved}, load)
+def test_cloud_is_used_only_when_attested_not_csam_and_keyed(case_db, entries, load, use):
+    for e in entries:
+        cloud_policy.set_cloud(case_db, "expert:Ana", **e)
+    choice = cloud_policy.choose(case_db, load)
     assert choice.use is use
     assert choice.why.startswith("Cloud model" if use else "Local model")
 
 
-class _Case:
-    def __init__(self) -> None:
-        self.settings: dict = {}
+def _log(conn, actor: str, payload: dict) -> None:  # noqa: ANN001
+    from core.review import audit_log
 
-    def save_settings(self, **changes: object) -> None:
-        self.settings = {**self.settings, **changes}
+    audit_log.append(conn, datetime(2026, 10, 15, tzinfo=UTC), actor, "set_cloud", payload)
 
 
-def test_the_choice_is_saved_and_logged_under_the_expert(case_db):
-    case = _Case()
+def test_a_bare_allowed_flag_without_the_attestation_is_not_cloud(case_db):
+    _log(case_db, "expert:Ana", {"allowed": True, "csam": False})  # no attestation text
+    assert not cloud_policy.choose(case_db, _key).use
+    _log(case_db, "system", {"allowed": True, "csam": False,
+                             "attestation": cloud_policy.ATTESTATION})  # fmt: skip
+    assert not cloud_policy.choose(case_db, _key).use  # only an expert attests
+
+
+def test_the_choice_is_logged_under_the_expert_and_nowhere_readable(case_db):
     at = datetime(2026, 10, 15, tzinfo=UTC)
     entry = cloud_policy.set_cloud(
-        case, case_db, "expert:Ana", allowed=True, csam=False, clock=lambda: at
+        case_db, "expert:Ana", allowed=True, csam=False, clock=lambda: at
     )
-    assert entry["allowed"] and entry["attested_by"] == "expert:Ana"
-    assert case.settings["cloud"]["attestation"] == cloud_policy.ATTESTATION
-    entry = cloud_policy.set_cloud(case, case_db, "expert:Ana", allowed=True, csam=True)
+    assert entry == {"allowed": True, "csam": False, "attested_by": "expert:Ana",
+                     "attested_at": "2026-10-15T00:00:00Z"}  # fmt: skip
+    choice = cloud_policy.choose(case_db, _key)
+    assert "attested by Ana on 2026-10-15" in choice.why
+    entry = cloud_policy.set_cloud(case_db, "expert:Ana", allowed=True, csam=True)
     assert entry == {"allowed": False, "csam": True}
     rows = case_db.execute("SELECT actor, action, payload_json FROM audit_log").fetchall()
     assert [(a, b) for a, b, _ in rows] == [("expert:Ana", "set_cloud")] * 2
+    assert json.loads(rows[0][2])["attestation"] == cloud_policy.ATTESTATION
     assert json.loads(rows[1][2])["csam"] is True
 
 
@@ -302,7 +325,7 @@ def test_only_a_named_expert_sets_the_choice(case_db):
     from core.review.actions import ReviewError
 
     with pytest.raises(ReviewError):
-        cloud_policy.set_cloud(_Case(), case_db, "system", allowed=True, csam=False)
+        cloud_policy.set_cloud(case_db, "system", allowed=True, csam=False)
 
 
 # ---------------------------------------------------------------- what the expert reads
@@ -370,9 +393,10 @@ def test_the_setup_page_attests_per_case_and_keeps_the_key_local(tmp_path, monke
     assert KEY not in page and "An Anthropic key is set up" in page
 
     post("/cloud/case", allowed="1")
-    assert app.case.settings["cloud"]["attested_by"] == "expert:Test Expert"
-    assert "Cloud first" in get("/setup").text
+    assert "cloud" not in app.case.settings  # kept in the case database, not case.json
+    page = get("/setup").text
+    assert "Cloud first" in page and "Cloud labels on" in page
 
     post("/cloud/case", allowed="1", csam="1")
-    assert app.case.settings["cloud"] == {"allowed": False, "csam": True}
-    assert "Local only" in get("/setup").text
+    page = get("/setup").text
+    assert "Local only" in page and "Offline" in page

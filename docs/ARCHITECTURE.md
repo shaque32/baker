@@ -122,9 +122,11 @@ Stance labels come from Claude (Opus 5.5, medium effort by default) for a case w
 the expert attested at case setup that its protective order allows cloud AI; the case is not
 marked as possibly containing CSAM; the expert's own Anthropic key is on this computer
 (`~/.baker/cloud.json`, owner-only, or `$BAKER_ANTHROPIC_API_KEY`). Otherwise the local model
-labels the case, exactly as before. The choice is in `case.json` and the audit log.
+labels the case, exactly as before. The choice is the latest `set_cloud` entry in the case's
+audit log (inside the case database, so an encrypted case keeps it encrypted).
 
-Only the filled-in stance prompt goes out (assumption, record, nearby messages, claim). The
+Only the filled-in stance prompt goes out (assumption, record, nearby messages, claim, and a
+group chat's member list). The
 answer is checked like the local model's: strict JSON, quote verified verbatim by code. The
 verdict rules, the signed prompt and the expert's review are unchanged.
 

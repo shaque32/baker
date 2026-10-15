@@ -10,22 +10,25 @@ when all of these hold, and otherwise the local model labels it, exactly as befo
 Even then, any failed cloud call falls back to the local model (core/audit/_local_model.py,
 FallbackPort), and every evidence item records which model labelled it.
 
-The choice lives in the case's settings file (case.json) under "cloud", and every change is an
-entry in the case's hash-chained audit log, with who made it and the words they agreed to.
+The choice lives only in the case's hash-chained audit log (inside the case database, so an
+encrypted case keeps it encrypted): the latest set_cloud entry by an expert, with who made it,
+when, and the words they agreed to. Nothing about it is written to the readable case.json.
 """
 
 from __future__ import annotations
 
+import json
 import sqlite3
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from core import db
 from core.llm import cloud as cloud_llm
 from core.review.actions import _expert
 
-SETTINGS_KEY = "cloud"
+ACTION = "set_cloud"
 ATTESTATION = (
     "This case's protective order (or the court or the government's consent) allows its "
     "evidence to be sent to a cloud AI service under my firm's account, and my client has "
@@ -48,17 +51,42 @@ class CloudChoice:
         return out
 
 
-def case_cloud(settings: Mapping[str, Any]) -> dict[str, Any]:
-    raw = settings.get(SETTINGS_KEY)
-    return raw if isinstance(raw, dict) else {}
+def case_cloud(conn: sqlite3.Connection) -> dict[str, Any]:
+    """The case's current cloud choice: the latest set_cloud entry an expert made in its audit
+    log, or {} if there is none. Cloud counts as allowed only when that entry carries the
+    attestation text word for word; anything else reads as not allowed."""
+    try:
+        row = conn.execute(
+            "SELECT at_utc, actor, payload_json FROM audit_log WHERE action = ?"
+            " AND actor LIKE 'expert:%' ORDER BY seq DESC LIMIT 1",
+            (ACTION,),
+        ).fetchone()
+    except db.OperationalError:
+        return {}
+    if row is None:
+        return {}
+    try:
+        payload = json.loads(row[2])
+    except ValueError:
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    csam = payload.get("csam") is True
+    allowed = payload.get("allowed") is True and not csam
+    allowed = allowed and payload.get("attestation") == ATTESTATION
+    out: dict[str, Any] = {"allowed": allowed, "csam": csam}
+    if allowed:
+        out["attested_by"] = row[1]
+        out["attested_at"] = row[0]
+    return out
 
 
 def choose(
-    settings: Mapping[str, Any],
+    conn: sqlite3.Connection,
     load: Callable[[], cloud_llm.CloudConfig] = cloud_llm.load_config,
 ) -> CloudChoice:
-    """The cloud decision for one case, from its settings and the expert's key."""
-    c = case_cloud(settings)
+    """The cloud decision for one case, from its audit log and the expert's key."""
+    c = case_cloud(conn)
     if c.get("csam") is True:
         return CloudChoice(False, "Local model: the case is marked as possibly containing CSAM, "
                                   "so it never uses cloud AI.")  # fmt: skip
@@ -69,8 +97,8 @@ def choose(
         cfg = load()
     except cloud_llm.CloudConfigError as e:
         return CloudChoice(False, f"Local model: cloud AI is allowed for this case, but {e}.")
-    who = str(c.get("attested_by", "?")).removeprefix("expert:")
-    when = str(c.get("attested_at", "?"))[:10]
+    who = str(c["attested_by"]).removeprefix("expert:")
+    when = str(c["attested_at"])[:10]
     return CloudChoice(
         True,
         f"Cloud model {cfg.model} ({cfg.effort} effort), attested by {who} on {when}; the "
@@ -80,7 +108,6 @@ def choose(
 
 
 def set_cloud(
-    case: Any,
     conn: sqlite3.Connection,
     actor: str,
     *,
@@ -88,20 +115,15 @@ def set_cloud(
     csam: bool,
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> dict[str, Any]:
-    """Record the expert's cloud choice for a case: in its settings and in its audit log.
-    `case` is a core.casework.cases.Case (anything with settings and save_settings)."""
+    """Record the expert's cloud choice for a case in its audit log (inside the case database,
+    so an encrypted case keeps it encrypted; nothing goes in the readable case.json)."""
     from core.casework.cases import _logged
 
     _expert(actor)
-    at = clock()
-    entry: dict[str, Any] = {"allowed": bool(allowed) and not csam, "csam": bool(csam)}
-    if entry["allowed"]:
-        entry["attested_by"] = actor
-        entry["attested_at"] = at.astimezone(UTC).isoformat().replace("+00:00", "Z")
-        entry["attestation"] = ATTESTATION
-    payload = {k: v for k, v in entry.items() if k != "attested_at"}
+    payload: dict[str, Any] = {"allowed": bool(allowed) and not csam, "csam": bool(csam)}
+    if payload["allowed"]:
+        payload["attestation"] = ATTESTATION
     if csam:
         payload["csam_note"] = CSAM_NOTE
-    _logged(conn, at, actor, "set_cloud", payload)
-    case.save_settings(**{SETTINGS_KEY: entry})
-    return entry
+    _logged(conn, clock(), actor, ACTION, payload)
+    return case_cloud(conn)

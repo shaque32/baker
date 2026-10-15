@@ -48,7 +48,17 @@ SHA_PREFIX = "api:"  # model_runs.model_sha256 of a cloud model: there is no fil
 # JSON Schema keywords the API's structured outputs do not take. They are dropped from the
 # schema sent; the full schema is still checked here on the answer.
 UNSUPPORTED_SCHEMA_KEYS = frozenset(
-    {"minLength", "maxLength", "pattern", "minimum", "maximum", "multipleOf", "format"}
+    {
+        "minLength",
+        "maxLength",
+        "pattern",
+        "minimum",
+        "maximum",
+        "multipleOf",
+        "format",
+        "minItems",
+        "maxItems",
+    }  # fmt: skip
 )
 
 
@@ -151,10 +161,11 @@ class CloudParams:
     effort: str
     max_tokens: int = 16000
     seed: int | None = None  # the API takes no seed
+    endpoint: str = API_BASE_URL  # part of the run's identity: another service never reuses
 
     def as_record(self) -> dict[str, str | int | float | bool]:
         return {"api_model": self.model, "effort": self.effort, "max_tokens": self.max_tokens,
-                "grammar": "json_schema", "where": "cloud"}  # fmt: skip
+                "grammar": "json_schema", "where": "cloud", "endpoint": self.endpoint}  # fmt: skip
 
 
 class ClaudeModel:
@@ -170,7 +181,7 @@ class ClaudeModel:
         self.cfg = cfg
         self.name = cfg.model
         self.sha256 = f"{SHA_PREFIX}{cfg.model}"
-        self.params = CloudParams(cfg.model, cfg.effort)
+        self.params = CloudParams(cfg.model, cfg.effort, endpoint=cfg.base_url)
         self._client = client
 
     def _get_client(self) -> Any:

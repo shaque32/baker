@@ -328,7 +328,7 @@ class App:
             busy=busy,
             many_cases=self.home is not None,
             path=self.path,
-            cloud=self.case is not None and self._cloud_choice(self.case).use,
+            cloud=self._case_uses_cloud(),
         )
 
     def _get(self, conn: sqlite3.Connection, req: Request) -> Response:
@@ -709,7 +709,7 @@ class App:
             done, total = job.hashed
             note = f"Checking: SHA-256 of the model file, {done * 100 // max(total, 1)}%."
         spc, source = jobs.seconds_per_call()
-        if self._cloud_choice(case).use:
+        if self._cloud_choice(conn).use:
             spc, source = jobs.CLOUD_SECONDS_PER_CALL, "the cloud model on synthetic case01"
         n = len(order)
         estimate = (
@@ -744,8 +744,8 @@ class App:
             resumable=resumable,
             protection=protect.state(case),
             recovery_key=self._recovery_for_open(),
-            cloud=self._cloud_choice(case),
-            cloud_case=cloud_policy.case_cloud(case.settings),
+            cloud=self._cloud_choice(conn),
+            cloud_case=cloud_policy.case_cloud(conn),
             cloud_key=self._cloud_key_state(),
         )
 
@@ -780,8 +780,21 @@ class App:
     def _cloud_load(self) -> cloud_llm.CloudConfig:
         return cloud_llm.load_config(self.cloud_config)
 
-    def _cloud_choice(self, case: cases.Case) -> cloud_policy.CloudChoice:
-        return cloud_policy.choose(case.settings, self._cloud_load)
+    def _cloud_choice(self, conn: sqlite3.Connection) -> cloud_policy.CloudChoice:
+        return cloud_policy.choose(conn, self._cloud_load)
+
+    def _case_uses_cloud(self) -> bool:
+        """For the header pill: does the open case send stance questions to the cloud?"""
+        if self.case is None:
+            return False
+        try:
+            conn = connect(self.case.db)
+        except (*db.Error, CaseLocked, EncryptionError):
+            return False
+        try:
+            return self._cloud_choice(conn).use
+        finally:
+            conn.close()
 
     def _cloud_key_state(self) -> str | None:
         """None when a key is set up; otherwise why not, in a few words."""
@@ -792,8 +805,8 @@ class App:
         return None
 
     def _cloud_case(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        _ = self._open()
         entry = cloud_policy.set_cloud(
-            self._open(),
             conn,
             self.actor,
             allowed=f.get("allowed") == "1",
@@ -825,7 +838,7 @@ class App:
         order = cases.claim_order(case, conn)
         spc, _ = jobs.seconds_per_call()
         job = jobs.Job("audit", case.db, total=len(order))
-        choice = self._cloud_choice(case)
+        choice = self._cloud_choice(conn)
         if choice.use:
             spc = jobs.CLOUD_SECONDS_PER_CALL
         job.estimate_seconds = jobs.estimate_seconds(len(order), spc)
