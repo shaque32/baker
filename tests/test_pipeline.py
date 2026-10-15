@@ -206,6 +206,55 @@ def test_a_quote_copied_from_the_contact_as_shown_is_kept(conn):
     assert record_text(conn, kept.record_id) == get_record(conn, kept.record_id).text
 
 
+def test_a_contact_that_contradicts_quoted_as_shown_keeps_the_claim_from_supported(conn):
+    # Regression (#69): the quote check drops a label before its stance is used. While it read
+    # contacts differently from what the labeler saw, a "contradicts" copied from a contact was
+    # dropped, and a claim with other expert-accepted support could go SUPPORTED.
+    other = "contact:item1:Contacts!4#1"
+    source_id, locator = conn.execute(
+        "SELECT source_id, locator FROM contacts WHERE id = ?", (other,)
+    ).fetchone()
+
+    class PlusContact(QuotedPhraseRetriever):
+        def retrieve(self, assumption, conn, k):
+            extra = EvidenceCandidate(
+                record_id=other,
+                ref=SourceRef(source_id=source_id, locator=locator),
+                text=get_record(conn, other).text,
+                tier=ProvenanceTier.OBSERVED,
+                retrieval_score=0.5,
+            )
+            return [*super().retrieve(assumption, conn, k), extra]
+
+    class Contrarian(PhraseLabeler):
+        def label(self, assumption, candidate):
+            if candidate.record_id != other:
+                return super().label(assumption, candidate)
+            return StanceLabel(
+                assumption_id=assumption.id,
+                record_id=other,
+                stance=Stance.CONTRADICTS,
+                quote=get_record(conn, other).text,
+                rationale="test",
+                model_run_id="mr:fake-stance",
+            )
+
+    def run():
+        c = comps(retriever=PlusContact(), labeler=Contrarian())
+        return pipeline.run_audit(conn, c, clock=_clock, claim_ids=["C01"])
+
+    run()
+    (support,) = [e for e in items(conn) if e.stance == Stance.SUPPORTS]
+    actions.decide_evidence(conn, support.id, EvidenceStatus.ACCEPTED, EXPERT, "Seen in the sheet.")
+    result = run()
+    (against,) = [e for e in items(conn) if e.stance == Stance.CONTRADICTS]
+    assert against.record_id == other and result.dropped_labels == 0
+    assert result.decisions[0].verdict == Verdict.CONTRADICTED
+    # The contact is all that stands between this claim and SUPPORTED: only an expert removes it.
+    actions.decide_evidence(conn, against.id, EvidenceStatus.DISMISSED, EXPERT, "Another person.")
+    assert run().decisions[0].verdict == Verdict.SUPPORTED
+
+
 def test_reviewer_failure_is_a_dismissal_and_reviewer_never_sees_the_rationale(conn):
     seen: list[str] = []
 

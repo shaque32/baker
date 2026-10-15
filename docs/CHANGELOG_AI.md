@@ -72,16 +72,18 @@ Template:
   lines Helvetica can't draw ("Катя" read as boxes).
 - Where: main once PR #76 merges (branch `claude/project-thread-01fybj`, from the "Audit our
   model scoring" thread). Includes the C17 font fix.
-- Verified: 2 new regression tests (each fails without the fix); `make check` green on the
-  branch (1885 passed, lint clean); `make eval` same as main (case01 1.00, 0 false supported;
+- Verified: 3 new regression tests (each fails without the fix; one shows a contact's
+  "contradicts" was dropped and C01 went SUPPORTED, now CONTRADICTED); `make check` green on the
+  branch (1886 passed, lint clean); `make eval` same as main (case01 1.00, 0 false supported;
   case02 aggregate 0.90), hostile run keeps 15 more labels with 0 supported. Opus replay of
   stored answers: case01 85% to 95%, sheet-free 60% to 70%, 0 false supported.
 - Open: calls still render differently for the model and the check (PRODUCT_STATUS section 9;
   no case01 verdict changes in the replay); the signed guide (rule 28 and the bk_contact_row
   examples) still writes contacts without the colon, proposed for Arsh in PROPOSED_CHANGES.md;
   small-model run 5 trained on colon-less contact rows (train/product mismatch).
-- Affects: capabilities (more correct evidence kept, for Opus and the 14B). No privacy, network,
-  performance or customer-claim change.
+- Affects: capabilities (more correct evidence kept, for Opus and the 14B); closes, for contacts,
+  a path where a dropped "contradicts" or "complicates" let a claim go SUPPORTED (calls keep it).
+  No privacy, network, performance or customer-claim change.
 
 ## 2026-10-15: Stricter reading of stated time windows (#66, 9d24024)
 - Changed: "after March 3" now starts on March 4 (it started on March 3, which could produce a
