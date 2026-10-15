@@ -164,6 +164,9 @@ class Components:
     # Label claims a failed core check already decides (rule 1a) too. Off: their labels could
     # not change the verdict, so they are skipped to save model calls.
     label_settled: bool = False
+    # The case's cloud choice (core/casework/cloud.py CloudChoice.record()), kept in the run's
+    # config so the report says why this run's stance labels came from where they did.
+    cloud: dict[str, object] | None = None
 
     def names(self) -> dict[str, str]:
         def name(obj: object) -> str:
@@ -208,6 +211,7 @@ def real_components(
     replace: dict[str, object] | None = None,
     filler: object | None = None,
     ai_review: bool = False,
+    cloud: object | None = None,
 ) -> Components:
     """The product's components. Each module exposes create(conn).
 
@@ -221,8 +225,17 @@ def real_components(
     expert's (or the signed eval spec's) entries. With none given, the local model's filler
     from core.audit.assumption_filler is used; it resolves names only to persons already in
     the case, so the expert records device-owner stipulations before the audit runs.
+
+    cloud is the case's CloudChoice (core/casework/cloud.py). When it allows cloud, the stance
+    labeler is the cloud model with the local model behind it (core/audit/stance.py create);
+    every other part stays local.
     """
     built: dict[str, object] = dict(replace or {})
+    use_cloud = cloud is not None and bool(getattr(cloud, "use", False))
+    if use_cloud and "labeler" not in built:
+        from core.audit import stance as stance_mod
+
+        built["labeler"] = stance_mod.create(conn, cloud=getattr(cloud, "config", None))
     if not ai_review:
         built.setdefault("reviewer", None)
     missing: list[str] = []
@@ -269,6 +282,7 @@ def real_components(
         ),
         reviewable=reviewable,
         recorders=(filler,) if hasattr(filler, "recorder") else (),
+        cloud=cloud.record() if cloud is not None and hasattr(cloud, "record") else None,
     )
 
 
@@ -1112,6 +1126,7 @@ def run_audit(
         "label_settled": components.label_settled,
         "claim_order": [cl.id for cl in claims],
         "components": components.names(),
+        **({"cloud": components.cloud} if components.cloud is not None else {}),
         **(config or {}),
     }
     with conn:

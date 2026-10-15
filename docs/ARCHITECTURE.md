@@ -1,7 +1,8 @@
 # Baker architecture
 
-Baker is a local-first desktop app. A Python core does all the work offline; a Tauri UI comes
-later, after the audit engine scores well on the eval set. A CLI comes first.
+Baker is a local-first desktop app. A Python core does the work on the expert's computer; a
+Tauri UI comes later, after the audit engine scores well on the eval set. A CLI comes first.
+One step may go to the cloud, per case: stance labeling (see "Cloud first, local behind it").
 
 ## Pipeline
 
@@ -27,7 +28,7 @@ later, after the audit engine scores well on the eval set. A CLI comes first.
 |---|---|---|
 | Claim extraction | Proposes claims | Expert edits the list; every claim keeps its page and paragraph |
 | Assumptions | Fills claim-type templates | Templates are fixed per claim type; tier starts at inferred |
-| Stance | Labels one evidence item against one assumption | Quote verified verbatim by code; label is input to rules, never a verdict; SUPPORTED needs the supporting label accepted by an expert (rules 0.2.0); an unreviewed "contradicts" cannot overrule a check that passed, it only complicates (rules 0.2.1) |
+| Stance | Labels one evidence item against one assumption; the cloud model for a case the expert allowed, else the local model | Quote verified verbatim by code; label is input to rules, never a verdict; SUPPORTED needs the supporting label accepted by an expert (rules 0.2.0); an unreviewed "contradicts" cannot overrule a check that passed, it only complicates (rules 0.2.1) |
 | Review | Local model accepts or dismisses one verified supporting item | Separate human-owned prompt; a sorting aid for the expert that never makes a claim SUPPORTED under rules 0.2.0; tier becomes ai_reviewed, never confirmed; a human decision overrides it; cloud models only in eval/ as benchmarks |
 | Translation | ru -> en | Original text stays the citable text |
 
@@ -70,9 +71,12 @@ core/
                       hypotheses.py (other explanations, shared with the claim page)
   review/status.py    what each claim needs from the expert (shared by screen and report)
   review/redecide.py  re-run the verdict rules after expert review, no model
+  llm/                runtime.py: the local GGUF runtime; cloud.py: the cloud stance model
+                      (the only network call in core/), on the expert's own Anthropic key
   casework/           case folders and imports, background audit and claim-proposal jobs,
                       the model check, keeping the computer awake (used by the screen)
                       protect.py: encrypting an existing case, passphrase changes
+                      cloud.py: the per-case cloud choice (attestation, CSAM flag, key)
   timeline/           Timeline check (stated times vs record times) and quiet stretches;
                       derived by code on demand, never stored, never touches verdicts
   hypotheses/         other explanations per claim, with the records that fit each (someone
@@ -112,6 +116,25 @@ tests/
   prompt version, parameters and seed. Outputs are stored, not regenerated.
 - **Audit log.** Append-only; each entry hashes the previous entry's hash plus its own payload.
 
+## Cloud first, local behind it
+
+Stance labels come from Claude (Opus 5.5, medium effort by default) for a case where all hold:
+the expert attested at case setup that its protective order allows cloud AI; the case is not
+marked as possibly containing CSAM; the expert's own Anthropic key is on this computer
+(`~/.baker/cloud.json`, owner-only, or `$BAKER_ANTHROPIC_API_KEY`). Otherwise the local model
+labels the case, exactly as before. The choice is in `case.json` and the audit log.
+
+Only the filled-in stance prompt goes out (assumption, record, nearby messages, claim). The
+answer is checked like the local model's: strict JSON, quote verified verbatim by code. The
+verdict rules, the signed prompt and the expert's review are unchanged.
+
+Fallback (`core/audit/_local_model.py` FallbackPort): a cloud call with no answer is asked
+again on the local model, and both calls are logged under their own model runs. No network, a
+rejected key or the API down sends the rest of the run local; a refusal or a cut-off answer
+sends that one call. With no local model set up, a cloud failure stops the run. Each evidence
+item's model run says which model labeled it ("Labeled by claude-opus-5-5 (cloud)").
+
 ## Not in scope
 Acquisition or extraction, deleted-file recovery, broad artifact coverage, automatic
-leader/follower labels, AI-written expert opinions, cloud processing, audio and video.
+leader/follower labels, AI-written expert opinions, cloud processing beyond stance labeling,
+audio and video.

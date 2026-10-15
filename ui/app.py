@@ -30,6 +30,7 @@ Local-server protections. Another web page open in the same browser can send req
 
 from __future__ import annotations
 
+import functools
 import hmac
 import re
 import secrets
@@ -43,6 +44,7 @@ from typing import BinaryIO
 from core import db, encryption, pipeline
 from core.audit.invariants import InvariantViolation, check_report_text
 from core.casework import cases, jobs, protect
+from core.casework import cloud as cloud_policy
 from core.casework.model_check import ModelCheck, check_model
 from core.contracts import (
     ClaimStatus,
@@ -55,6 +57,7 @@ from core.contracts import (
 from core.db import CaseLocked, connect
 from core.encryption import EncryptionError
 from core.identity.links import propose_links
+from core.llm import cloud as cloud_llm
 from core.report.html import render_report
 from core.report.letter import request_letter
 from core.restore.store import ExhibitError, add_exhibit, match_exhibits, remove_exhibit
@@ -90,6 +93,8 @@ NEEDS_NO_JOB: dict[str, tuple[str, ...]] = {
     "/claims/propose": ("audit", "propose", "model_check"),
     "/model/check": ("audit", "propose", "model_check"),
     "/audit/start": ("audit", "propose", "model_check"),
+    "/cloud/case": ("audit",),
+    "/cloud/key": ("audit",),
     "/case/import": ("audit", "propose", "model_check"),
     "/case/new": ("audit", "propose", "model_check"),
     "/case/open": ("audit", "propose", "model_check"),
@@ -103,8 +108,10 @@ NO_CASE_POST = {"/expert", "/case/new", "/case/open"}
 OWN_DB_POST = {"/case/encrypt", "/case/lock", "/case/recovery/done"}
 
 
-def _real_components(conn: sqlite3.Connection, ai_review: bool) -> pipeline.Components:
-    return pipeline.real_components(conn, ai_review=ai_review)
+def _real_components(
+    conn: sqlite3.Connection, ai_review: bool, cloud: cloud_policy.CloudChoice | None = None
+) -> pipeline.Components:
+    return pipeline.real_components(conn, ai_review=ai_review, cloud=cloud)
 
 
 def _real_extractor(conn: sqlite3.Connection) -> object:
@@ -169,6 +176,7 @@ class App:
         components_for: jobs.ComponentsFor | None = None,
         extractor_for: jobs.ExtractorFor | None = None,
         model_check: jobs.ModelCheckFn | None = check_model,
+        cloud_config: Path | None = None,
     ) -> None:
         if db_path is None and home is None:
             raise ValueError("give a case database or a cases folder")
@@ -189,6 +197,7 @@ class App:
         self.extractor_for = extractor_for or _real_extractor
         self.model_check = model_check
         self.last_check: ModelCheck | None = None
+        self.cloud_config = cloud_config  # None: $BAKER_CLOUD_CONFIG, else ~/.baker/cloud.json
         if expert:
             self.set_expert(expert)
         if self.single is not None and not protect.is_locked(self.single):
@@ -319,6 +328,7 @@ class App:
             busy=busy,
             many_cases=self.home is not None,
             path=self.path,
+            cloud=self.case is not None and self._cloud_choice(self.case).use,
         )
 
     def _get(self, conn: sqlite3.Connection, req: Request) -> Response:
@@ -412,6 +422,8 @@ class App:
             "/model/check": lambda: self._check_model(),
             "/audit/start": lambda: self._start_audit(conn, f),  # type: ignore[arg-type]
             "/audit/stop": lambda: self._stop_audit(),
+            "/cloud/case": lambda: self._cloud_case(conn, f),  # type: ignore[arg-type]
+            "/cloud/key": lambda: self._cloud_key(f),
             "/exhibit/add": lambda: self._add_exhibit(conn, f),  # type: ignore[arg-type]
             "/exhibit/remove": lambda: self._remove_exhibit(conn, f),  # type: ignore[arg-type]
             "/exhibit/rematch": lambda: self._rematch(conn, f),  # type: ignore[arg-type]
@@ -697,6 +709,8 @@ class App:
             done, total = job.hashed
             note = f"Checking: SHA-256 of the model file, {done * 100 // max(total, 1)}%."
         spc, source = jobs.seconds_per_call()
+        if self._cloud_choice(case).use:
+            spc, source = jobs.CLOUD_SECONDS_PER_CALL, "the cloud model on synthetic case01"
         n = len(order)
         estimate = (
             f"Rough estimate for {n} claims: {jobs.duration(jobs.estimate_seconds(n, spc))} "
@@ -730,6 +744,9 @@ class App:
             resumable=resumable,
             protection=protect.state(case),
             recovery_key=self._recovery_for_open(),
+            cloud=self._cloud_choice(case),
+            cloud_case=cloud_policy.case_cloud(case.settings),
+            cloud_key=self._cloud_key_state(),
         )
 
     def _move_claim(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
@@ -758,6 +775,44 @@ class App:
         self.jobs.start(jobs.Job("model_check", self._open().db), run)
         return "Checking the model in the background. This page updates itself."
 
+    # -- cloud
+
+    def _cloud_load(self) -> cloud_llm.CloudConfig:
+        return cloud_llm.load_config(self.cloud_config)
+
+    def _cloud_choice(self, case: cases.Case) -> cloud_policy.CloudChoice:
+        return cloud_policy.choose(case.settings, self._cloud_load)
+
+    def _cloud_key_state(self) -> str | None:
+        """None when a key is set up; otherwise why not, in a few words."""
+        try:
+            self._cloud_load()
+        except cloud_llm.CloudConfigError as err:
+            return str(err)
+        return None
+
+    def _cloud_case(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        entry = cloud_policy.set_cloud(
+            self._open(),
+            conn,
+            self.actor,
+            allowed=f.get("allowed") == "1",
+            csam=f.get("csam") == "1",
+        )
+        if entry["csam"]:
+            return "Saved: this case may contain CSAM, so it runs on the local model only."
+        if entry["allowed"]:
+            return "Saved: this case may use cloud AI. The local model answers any call it cannot."
+        return "Saved: this case runs on the local model only."
+
+    def _cloud_key(self, f: dict[str, str]) -> str:
+        _ = self.actor  # a named expert sets the key
+        key = f.get("api_key", "").strip()
+        if not key.startswith("sk-ant-") or len(key) < 20 or any(c.isspace() for c in key):
+            raise ReviewError("that does not look like an Anthropic API key (it starts sk-ant-)")
+        cloud_llm.save_key(key, self.cloud_config)
+        return "Saved your Anthropic key on this computer, readable by your user account only."
+
     def _start_audit(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         case = self._open()
         actor = self.actor
@@ -770,8 +825,14 @@ class App:
         order = cases.claim_order(case, conn)
         spc, _ = jobs.seconds_per_call()
         job = jobs.Job("audit", case.db, total=len(order))
+        choice = self._cloud_choice(case)
+        if choice.use:
+            spc = jobs.CLOUD_SECONDS_PER_CALL
         job.estimate_seconds = jobs.estimate_seconds(len(order), spc)
         check = self.model_check
+        components_for = self.components_for
+        if components_for is _real_components:
+            components_for = functools.partial(_real_components, cloud=choice)
 
         def model_check_once(progress: object = None) -> ModelCheck:
             result = check(progress=progress)  # type: ignore[misc]
@@ -783,15 +844,22 @@ class App:
             jobs.audit_job(
                 actor=actor,
                 order=order,
-                components_for=self.components_for,
+                components_for=components_for,
                 model_check=model_check_once if check is not None else None,
+                cloud_first=choice.use,
                 ai_review=f.get("ai_review") == "1",
                 label_all=f.get("label_all") == "1",
             ),
         )
+        where = (
+            f" Stance labels come from the cloud model ({choice.config.model}), with the local "
+            "model behind it."
+            if choice.use and choice.config is not None
+            else ""
+        )
         return (
             f"The audit started on {len(order)} claims, {jobs.duration(job.estimate_seconds)} by "
-            "a rough estimate. Each claim appears for review as soon as it is labeled."
+            f"a rough estimate.{where} Each claim appears for review as soon as it is labeled."
         )
 
     def _stop_audit(self) -> str:

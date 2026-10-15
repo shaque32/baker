@@ -124,3 +124,27 @@ and the header's version line v1.1 -> v1.2.
 Code that follows once this is signed (not frozen): core/audit/review.py fills {assumption} with
 readable.assumption_text(assumption, case_names(conn)), and ReviewContext in
 core/audit/context.py passes the same CaseNames to render_for, as the stance labeler does.
+
+## 2026-10-15 claude/project-thread-a2fjkc: cloud first, local behind it (stance labeling only)
+AWAITING Arsh's "approved" in the thread "Cloud-first with offline fallback". The code on this
+branch relies on it (core/llm/cloud.py, core/casework/cloud.py, the stance labeler's fallback).
+File: CLAUDE.md
+Why: Arsh chose cloud first with full offline fallback (2026-10-15 03:16Z, "go cloud first but
+have all fall back"). Opus 5.5 (signed v1.1 prompt, product layout) met the full cloud decision
+rule: every probe bar, 0 traps shown as support, case01 85% with 0 false supported
+(cloud-bench 2026-10-14c). CLAUDE.md forbids any network call in core/. Verdict rules 0.2.1,
+the signed prompts and gold labels are unchanged.
+Diff:
+-- The AI reviewer runs on the local model in core/. Cloud models may be used only in eval/, as benchmarks.
++- The AI reviewer runs on the local model in core/. Only the stance labeler may use a cloud model
++  in core/. The AI reviewer, claim proposal and assumption filling stay local.
+-- No network calls anywhere in `core/`. No telemetry. Models load from local paths.
++- No network calls in `core/` except the stance labeler's cloud call in `core/llm/cloud.py`, to
++  the Anthropic API with the expert's own key. No telemetry. Local models load from local paths.
++- Cloud is per case and off until the expert attests at case setup that the case's protective
++  order allows cloud AI. A case marked as possibly containing CSAM never uses cloud. Without that
++  attestation, a key or the network, and on any API error, the stance labeler falls back to the
++  local model. If no local model is set up either, the audit stops rather than drop labels.
++- Only the filled-in stance prompt is sent (assumption, record, nearby messages, claim), never
++  input files or the case database. Every evidence item records which model labelled it, and the
++  report shows it.

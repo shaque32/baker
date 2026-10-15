@@ -53,6 +53,7 @@ from core.contracts import (
 )
 from core.hypotheses import explain
 from core.ingest import coverage as import_coverage
+from core.llm.cloud import is_cloud_sha
 from core.report import hypotheses as alternatives_html
 from core.report import restore as restore_html
 from core.report import selection as selection_html
@@ -182,6 +183,19 @@ def e(text: object) -> str:
 def verdict_label(decision: VerdictDecision, awaiting: bool = False) -> tuple[str, str]:
     """(display text, css class). Kept here for callers of the report module."""
     return _verdict_label(decision, awaiting)
+
+
+def labelled_by(conn: sqlite3.Connection, model_run_id: str | None) -> str:
+    """Which model labeled an evidence item, in plain words: its name, cloud or local."""
+    if not model_run_id:
+        return "Labeled without a model"
+    row = conn.execute(
+        "SELECT model_name, model_sha256 FROM model_runs WHERE id = ?", (model_run_id,)
+    ).fetchone()
+    if row is None:
+        return "Labeled by an unrecorded model run"
+    where = "cloud" if is_cloud_sha(row[1]) else "local"
+    return f"Labeled by {row[0]} ({where})"
 
 
 def review_label(conn: sqlite3.Connection, item: EvidenceItem) -> str:
@@ -401,7 +415,8 @@ def _claim_block(conn: sqlite3.Connection, st: ClaimState, case: explain.Case) -
         for x in shown:
             out.append(
                 f"<tr><td><blockquote>{q(x.quote)}</blockquote>{record_line(conn, x.record_id)}"
-                f"<br><span class='muted'>Model rationale (inferred): {e(x.rationale)}</span>"
+                f"<br><span class='muted'>{e(labelled_by(conn, x.model_run_id))}. Model "
+                f"rationale (inferred): {e(x.rationale)}</span>"
                 f"</td><td>{STANCE_LABEL[x.stance]}</td><td>{display_tier(x).value}</td>"
                 f"<td>{review_label(conn, x)}</td>"
                 f"<td class='mono'>{e(x.ref.source_id)} {e(x.ref.locator)}<br>{e(x.record_id)}"

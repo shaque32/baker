@@ -77,7 +77,7 @@ if [ "$HERE" != "$APP/baker" ]; then
 fi
 LLAMA_VERSION="$(pin "['llama_cpp_python']['version']")"
 CMAKE_ARGS="-DGGML_METAL=on" uv pip install --python "$APP/.venv/bin/python" \
-  -e "$APP/baker[synthetic,local]" "llama-cpp-python==$LLAMA_VERSION"
+  -e "$APP/baker[synthetic,local,cloud]" "llama-cpp-python==$LLAMA_VERSION"
 BAKER="$APP/.venv/bin/baker"
 "$BAKER" --help >/dev/null || stop "Baker did not install"
 echo "Installed Baker in $APP."

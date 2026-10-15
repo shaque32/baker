@@ -36,6 +36,8 @@ from core.db import connect
 from core.review.actions import ReviewError
 
 DEFAULT_SECONDS_PER_CALL = 43.0  # Qwen3-14B Q4 on a 24 GB Mac (Wave 3, PR #28)
+# Opus 5.5 at medium effort on case01: 493 calls in 1,558 s (cloud bench 2026-10-14c).
+CLOUD_SECONDS_PER_CALL = 3.2
 CALLS_PER_CLAIM = 25  # synthetic case01 after PR #29: 495 model calls for 20 claims
 SPEED_FILE = Path.home() / ".baker" / "speed.json"
 MIN_CALLS_TO_MEASURE = 5
@@ -118,7 +120,22 @@ _KIND = {"audit": "audit", "propose": "claim proposal", "model_check": "model ch
 # ---------------------------------------------------------------- estimates
 
 
-def _new_call_seconds(c: pipeline.Components) -> list[float]:
+def fallback_note(c: pipeline.Components) -> str:
+    """A sentence for the finish message when the cloud labeler handed calls to the local model."""
+    port = getattr(c.labeler, "model", None)
+    why = getattr(port, "fell_back", None)
+    n = int(getattr(port, "local_calls_after_cloud_failure", 0) or 0)
+    if why:
+        return (
+            f" The cloud model stopped answering ({why}), so the local model labeled the rest "
+            f"({n} calls); each item says which model labeled it."
+        )
+    if n:
+        return f" The local model answered {n} call(s) the cloud model could not."
+    return ""
+
+
+def _new_call_seconds(c: pipeline.Components, local_only: bool = False) -> list[float]:
     ports = {
         id(p): p for p in (getattr(x, "model", None) for x in (c.labeler, c.reviewer, *c.recorders))
     }
@@ -128,6 +145,7 @@ def _new_call_seconds(c: pipeline.Components) -> list[float]:
         if isinstance(getattr(p, "stats", None), list)
         for s in p.stats
         if not getattr(s, "reused", False)
+        and (not local_only or getattr(s, "where", "local") == "local")
     ]
 
 
@@ -153,7 +171,8 @@ def seconds_per_call(speed_file: Path = SPEED_FILE) -> tuple[float, str]:
 
 
 def record_speed(c: pipeline.Components, speed_file: Path = SPEED_FILE) -> None:
-    secs = _new_call_seconds(c)
+    """The local model's measured speed, for later estimates. Cloud calls are not counted."""
+    secs = _new_call_seconds(c, local_only=True)
     if len(secs) < MIN_CALLS_TO_MEASURE:
         return
     try:
@@ -201,7 +220,11 @@ def audit_job(
     model_check: ModelCheckFn | None,
     ai_review: bool = False,
     label_all: bool = False,
+    cloud_first: bool = False,
 ) -> Callable[[Job], None]:
+    """cloud_first: the case's stance labels come from the cloud model, so a failed local model
+    check does not stop the audit; it only means no local model stands behind the cloud."""
+
     def run(job: Job) -> None:
         conn = _open(job.db)
         try:
@@ -214,7 +237,7 @@ def audit_job(
                     job.hashed = (done, total)
 
                 job.check = model_check(progress=hashed)
-                if not job.check.ok:
+                if not job.check.ok and not cloud_first:
                     job.end("failed", f"The audit did not start. {job.check.summary}")
                     return
             comps = components_for(conn, ai_review)
@@ -244,7 +267,8 @@ def audit_job(
             job.end(
                 "done",
                 f"The audit finished all {len(result.decisions)} claims ({words}). Review them in "
-                "the claims queue; no claim is supported until you accept its key evidence.",
+                "the claims queue; no claim is supported until you accept its key evidence."
+                + fallback_note(comps),
             )
         except pipeline.RunStopped:
             job.end(

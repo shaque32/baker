@@ -164,6 +164,7 @@ class CallStat:
     prompt_tokens: int
     completion_tokens: int
     reused: bool
+    where: str = "local"  # "cloud" for the cloud stance labeler; the speed estimate is local only
 
 
 StoredOutput = Callable[[str], str | None]
@@ -179,6 +180,7 @@ class RunPort:
         self._run_id = run_id
         self._stored = stored
         self.stats: list[CallStat] = []
+        self._where = str(getattr(model, "where", "local"))
 
     @property
     def run_id(self) -> str:
@@ -192,7 +194,7 @@ class RunPort:
         if self._stored is not None:
             raw = self._stored(prompt)
             if raw is not None:
-                self.stats.append(CallStat(0.0, 0, 0, True))
+                self.stats.append(CallStat(0.0, 0, 0, True, self._where))
                 return raw
         start = time.perf_counter()
         out = self._model.generate_json(prompt, json_schema)
@@ -202,6 +204,7 @@ class RunPort:
                 prompt_tokens=int(getattr(out, "prompt_tokens", 0)),
                 completion_tokens=int(getattr(out, "completion_tokens", 0)),
                 reused=False,
+                where=self._where,
             )
         )
         return out.raw_text
@@ -300,3 +303,72 @@ def open_run(
     recorder = CallRecorder(clock=clock, start_seq=lambda rid: next_call_seq(conn, rid))
     stored = stored_output_lookup(conn, run) if reuse else None
     return OpenedRun(RunPort(model, run_id, stored), run, recorder, model.name)
+
+
+class FallbackPort:
+    """Cloud first, local model behind it: the stance labeler's port for a cloud case.
+
+    run_id names the run that will answer the next call, so every call is recorded under the
+    model that actually answered it, and each evidence item's model_run_id says which model
+    labelled it. A cloud call that fails raises (call_model records it as an error under the
+    cloud run); the labeler then asks again, and this port sends that call to the local run:
+    - a sticky failure (no network, a rejected key, the API down after its retries) sends the
+      rest of this run to the local model;
+    - any other failure (a refusal, an answer cut off) sends only the next call.
+    With no local model set up, a sticky failure stops the run (ModelUnavailable), so an audit
+    can never look like one that found nothing.
+    """
+
+    def __init__(self, cloud: OpenedRun, local: OpenedRun | None, local_missing: str = "") -> None:
+        self.cloud = cloud
+        self.local = local
+        self.local_missing = local_missing
+        self.fell_back: str | None = None  # why the rest of the run is local, once it is
+        self.local_calls_after_cloud_failure = 0
+        self._next_local = False
+
+    @property
+    def stats(self) -> list[CallStat]:
+        return [*self.cloud.port.stats, *(self.local.port.stats if self.local else [])]
+
+    @property
+    def reused(self) -> int:
+        return sum(s.reused for s in self.stats)
+
+    def _use_local(self) -> bool:
+        return self.fell_back is not None or self._next_local
+
+    @property
+    def run_id(self) -> str:
+        if self._use_local() and self.local is not None:
+            return self.local.port.run_id
+        return self.cloud.port.run_id
+
+    def generate(self, prompt: str, json_schema: Mapping[str, Any]) -> str:
+        from core.llm.cloud import CloudError  # no network library is imported here
+
+        if self._use_local():
+            if self.local is None:
+                raise self._unavailable(str(self.fell_back))
+            self._next_local = False
+            self.local_calls_after_cloud_failure += 1
+            return self.local.port.generate(prompt, json_schema)
+        try:
+            return self.cloud.port.generate(prompt, json_schema)
+        except CloudError as e:
+            if e.sticky:
+                self.fell_back = e.reason
+                if self.local is None:
+                    raise self._unavailable(e.reason) from e
+            else:
+                self._next_local = self.local is not None
+            raise
+
+    def _unavailable(self, reason: str) -> ModelUnavailable:
+        why = self.local_missing or "no local model is set up"
+        return ModelUnavailable(f"the cloud model failed ({reason}) and {why}")
+
+    @property
+    def retry_run_id(self) -> str | None:
+        """The run a failed cloud call should be asked again on, or None to keep the drop."""
+        return self.local.port.run_id if self.local is not None and self._use_local() else None

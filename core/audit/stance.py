@@ -20,7 +20,7 @@ import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictStr, ValidationError
 
@@ -36,16 +36,26 @@ from core.audit._llm_json import (
     required_placeholders,
     run_json_call,
 )
-from core.audit._local_model import LocalModel, open_run
+from core.audit._local_model import (
+    FallbackPort,
+    LocalModel,
+    ModelConfigError,
+    OpenedRun,
+    open_run,
+)
 from core.audit.quotes import find_quote
 from core.contracts import (
     Assumption,
     EvidenceCandidate,
     ModelCall,
+    ModelCallOutcome,
     ModelRun,
     Stance,
     StanceLabel,
 )
+
+if TYPE_CHECKING:
+    from core.llm.cloud import CloudConfig
 
 PROMPT_FILE = "stance.md"
 PLACEHOLDERS = frozenset({"assumption", "record", "context", "claim"})
@@ -215,6 +225,21 @@ class LocalStanceLabeler:
         )
 
     def try_label(self, assumption: Assumption, candidate: EvidenceCandidate) -> StanceResult:
+        result = self._try_label(assumption, candidate)
+        # A cloud case (FallbackPort): a cloud call that got no answer is asked again once, on
+        # the local model. Both calls are recorded, each under the run that made it.
+        retry_on = getattr(self.model, "retry_run_id", None)
+        if (
+            result.label is None
+            and result.call is not None
+            and result.call.outcome is ModelCallOutcome.ERROR
+            and isinstance(retry_on, str)
+            and retry_on != result.model_run_id
+        ):
+            return self._try_label(assumption, candidate)
+        return result
+
+    def _try_label(self, assumption: Assumption, candidate: EvidenceCandidate) -> StanceResult:
         run_id = model_run_id(self.model)
         if run_id is None:
             return self._result(assumption, candidate, None, None, "model has no run id", None)
@@ -270,7 +295,12 @@ class LocalStanceLabeler:
 
 
 def create(
-    conn: sqlite3.Connection, *, model: LocalModel | None = None, template: str | None = None
+    conn: sqlite3.Connection,
+    *,
+    model: LocalModel | None = None,
+    template: str | None = None,
+    cloud: CloudConfig | None = None,
+    cloud_model: LocalModel | None = None,
 ) -> LocalStanceLabeler:
     """The pipeline's stance labeler: the signed prompt, the configured local model, and the
     context thread's renderer, which shows the record's own line (sender, account, device-local
@@ -279,13 +309,37 @@ def create(
 
     The case's names are read once, here: the pipeline builds its components per audit, after
     the expert's stipulations and identity decisions for that audit are in. `template` is for
-    the speed test's draft prompts only (eval/probe/time_case.py); the product passes none."""
+    the speed test's draft prompts only (eval/probe/time_case.py); the product passes none.
+
+    `cloud` (a case whose cloud choice allows it, core/casework/cloud.py) makes the cloud model
+    the labeler, with the local model behind it for any call the cloud cannot answer
+    (FallbackPort). With no local model set up the cloud labels alone, and a cloud failure then
+    stops the run. `cloud_model` stands in for the API in tests."""
     from core.audit.context import render_for  # retrieval and context thread
     from core.audit.readable import assumption_text, case_names
 
     if template is None:
         template = load_prompt(PROMPT_FILE)
-    opened = open_run(conn, "stance", template, model=model, schema=STANCE_SCHEMA)
+    port: JsonModel
+    if cloud is None and cloud_model is None:
+        opened = open_run(conn, "stance", template, model=model, schema=STANCE_SCHEMA)
+        port, recorder, runs = opened.port, opened.recorder, (opened.run,)
+    else:
+        if cloud_model is None:
+            from core.llm.cloud import ClaudeModel
+
+            assert cloud is not None  # noqa: S101 - narrowed by the branch
+            cloud_model = ClaudeModel(cloud)
+        up = open_run(conn, "stance", template, model=cloud_model, schema=STANCE_SCHEMA)
+        local: OpenedRun | None = None
+        missing = ""
+        try:
+            local = open_run(conn, "stance", template, model=model, schema=STANCE_SCHEMA)
+        except ModelConfigError as e:
+            missing = f"no local model is set up to fall back on ({e})"
+        port = FallbackPort(up, local, missing)
+        recorder = up.recorder  # one recorder; each call is numbered within its own run
+        runs = (up.run,) if local is None else (up.run, local.run)
     names = case_names(conn)
 
     def claim_text(claim_id: str) -> str | None:
@@ -293,12 +347,12 @@ def create(
         return row[0] if row else None
 
     labeler = LocalStanceLabeler(
-        opened.port,
+        port,
         template=template,
         render_context=lambda c: render_for(conn, c.record_id, names=names),
         render_assumption=lambda a: assumption_text(a, names),
         claim_text=claim_text,
-        recorder=opened.recorder,
+        recorder=recorder,
     )
-    labeler.model_runs = (opened.run,)
+    labeler.model_runs = runs
     return labeler
