@@ -7,7 +7,7 @@ tests or recorded runs. Where something exists only on an unmerged branch, it sa
 - **main:** `ae8f24e` (merges of #64, #65, #66, #67, 2026-10-15 07:22Z)
 - **Verified on:** main `7a14437` first, then re-checked after #64 to #67 merged (they changed
   only `core/audit/assumption_filler.py` in `core/`, plus tests and probe gold)
-- **Rule version:** 0.2.1 (`core/audit/rules.py`). **Contracts:** 0.3.0 (`core/contracts.py`).
+- **Rule version:** 0.2.1 on main (`core/audit/rules.py`); 0.2.2 pending in PR #75. **Contracts:** 0.3.0 (`core/contracts.py`).
 - **Signed prompts on main:** stance v1.1, reviewer v1.1, claims v1.0, assumptions v1.0
   (`core/audit/prompts/`)
 
@@ -84,9 +84,10 @@ There is no model judge of verdicts in Baker. The word "judge" does not name any
   the protective order allows cloud AI; the case is not marked as possibly containing CSAM; a key
   is set up. The choice is stored in the case's hash-chained audit log. Otherwise the local 14B
   labels the case, as on main.
-- **Fallback (branch #68).** A failed cloud call is retried once on the local model, and both
-  calls are logged. Network, key or API-down failures send the rest of the run local. With no
-  local model installed, a cloud failure stops the run rather than dropping labels.
+- **Failure handling (branch #68, `3c6c1ec`).** If the cloud fails mid-case, the audit pauses
+  (`CloudPaused`, `core/audit/_local_model.py`); the expert retries the cloud or re-runs the
+  whole case locally, so one case never mixes models. Every request body is written to the
+  case's hash-chained audit log (`cloud.sent`) before it is sent. Timeout 120 s, 2 retries.
 - **Opus's influence on verdicts.** Indirect, through its labels, and bounded by the rules:
   - A "supports" label never makes a claim SUPPORTED by itself. An expert must accept it.
   - A "contradicts" label on an observed or derived record can make a claim CONTRADICTED
@@ -103,9 +104,8 @@ There is no model judge of verdicts in Baker. The word "judge" does not name any
   recall 80% vs 90%; sheet-free audit 60% accuracy vs 80%), recorded in
   `/mnt/project-files/baker/cloud-first/steps-check/RESULTS.md`.
 
-**Merge state:** #68 is a draft with CI green on `24eda3e`. Its CLAUDE.md change (allowing this
-one network call in `core/`) is written in `PROPOSED_CHANGES.md` on that branch. CLAUDE.md on the
-branch is not yet changed, so the rule "no network calls in core/" still stands on main and on
+**Merge state:** #68 is a draft (head `3c6c1ec`, retitled "Cloud AI by per-case opt-in for stance labels"). Its revised CLAUDE.md change (allowing this
+one network call in `core/`) needs Arsh's "approved". CLAUDE.md is not yet changed, so the rule "no network calls in core/" still stands on main and on
 the branch's CLAUDE.md.
 
 ## 5. External services
@@ -210,7 +210,7 @@ report only) 0.90 accuracy, 0 false supported. See section 10 for today's run.
    install script, Windows installer (unsigned), `baker model-check`.
 
 Merged 2026-10-15: stricter stated time windows, "after <date>" starts the next day (#66; rules
-still 0.2.1, a 0.2.2 bump is proposed and unsigned), go-bar scorer fixes and the signed probe
+still 0.2.1 on main; the 0.2.2 bump is in PR #75, not merged), go-bar scorer fixes and the signed probe
 follow-up (#64), red-main test fix (#65), flaky encryption test fix (#67).
 Branch only: opt-in cloud Opus stance labels (#68), small stance model (#50). PR #70 is an empty
 Grok Product review PR, never merged.
@@ -276,7 +276,7 @@ cannot be checked from code).
 
 ## 12. Customer-facing claims
 
-Checked 2026-10-15 against main `7a14437` (line numbers unchanged on `ae8f24e`) and branch #68 (`24eda3e`), for the proposed line:
+Checked 2026-10-15 against main `7a14437` (line numbers unchanged on `ae8f24e`) and branch #68 (`3c6c1ec`), for the proposed line:
 "Baker tests the government's specific claims; versioned rules decide verdicts; nothing is
 supported until your expert accepts it; runs locally with no network calls."
 
@@ -287,7 +287,7 @@ supported until your expert accepts it; runs locally with no network calls."
 | 3 | "Not found" says what was searched | **True for absence and count findings** | The absence check states what it searched and why the sources can or cannot show an absence (`core/audit/checks/absence.py:1-6`, `:40`, `:112-135`); a curated report can never pass an absence (`core/audit/checks/absence.py:123`); the report has a "Searches and coverage" section (`core/report/html.py:427-457`). An UNPROVEN claim with no evidence names the uncovered assumptions, not a search log. | "When Baker finds nothing, it says what it searched and what the source could show" |
 | 4 | The selection audit shows what was left out around each quote | **Partly true** | Shows each quoted, exhibit or examiner-tagged message in its exchange, with the messages not picked (`core/selection/audit.py:1-29`). Limits: a quote is placed only when its words fit one message, otherwise it is listed as found N times and nothing around it is counted as left out (`core/selection/picks.py:17-23`); names and quotes under two words are not looked up (`core/selection/picks.py:5-11`); messages an examiner left out of a curated report are not in the case to show (`core/selection/audit.py:27-29`). | "...around each quote it can place in the extraction" |
 | 5 | Every report has an audit packet: source hashes, model, prompt and rule versions, tamper-evident log | **True, with one nuance** | Sources with SHA-256 (`core/report/html.py:593-601`), versions and model runs with model SHA-256, prompt version, parameters and seed (`core/report/html.py:604`, `:636-650`), rule version (`core/report/html.py:626`), audit-log summary with hash-chain result, last hash and expert actions (`core/report/html.py:652-670`, `core/review/audit_log.py:44-54`). Nuance: the report shows a summary and the expert entries, not every log entry, and the chain detects edits to entries, but not a rewrite of the whole chain or removal of the newest entries unless someone kept the last hash (inferred from `core/review/audit_log.py`: no signature or external anchor; truncation confirmed by #74). On main the chain is checked at report build and encryption; #74 (not merged) also checks it when a case opens and blocks review if it fails. | "A hash-chained audit log; the report prints its last hash" |
-| 6 | Runs locally with no network calls | **Depends on #68** | main: true. `core/` makes no network calls, the screen binds only 127.0.0.1 (`ui/server.py:19`); the installers download the pinned model once at install. #68 adds one network call, the opt-in Opus stance call to api.anthropic.com (`core/llm/cloud.py:1-22`, `:45` on the branch). Cloud stays off until the expert attests per case, so "local by default" stays true. "No network calls" would not be true for opted-in cases. | Today: "runs locally, no network calls". If #68 merges: "local by default; cloud AI only when your case allows it and you opt in" (Arsh's choice, 2026-10-15 07:10Z) |
+| 6 | Runs locally with no network calls | **Depends on #68** | main: true. `core/` makes no network calls, the screen binds only 127.0.0.1 (`ui/server.py:19`); the installers download the pinned model once at install. #68 adds one network call, the opt-in Opus stance call to api.anthropic.com (`core/llm/cloud.py:1`, `:47` on the branch). Cloud stays off until the expert attests per case, so "local by default" stays true. "No network calls" would not be true for opted-in cases. | Today: "runs locally, no network calls". If #68 merges: "local by default; cloud AI only when your case allows it and you opt in" (Arsh's choice, 2026-10-15 07:10Z) |
 
 Claims Baker should not make yet: any speed figure for local runs (not measured on current code,
 section 7), any accuracy figure on real data (all numbers are synthetic), and that UFDR or AXIOM

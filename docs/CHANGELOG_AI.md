@@ -89,8 +89,8 @@ Template:
 - Where: main (merged 2026-10-15 07:22Z, `6b859fe`).
 - Verified: new tests in `tests/test_assumption_filler.py`; all 3 Codex findings fixed (per the
   owning thread); CI green before merge.
-- Open: the owning thread proposes rules version 0.2.2 (no rule logic change), pending Arsh's
-  sign-off; the branch still says 0.2.1. Verdicts decided under 0.2.1 can differ after this.
+- Open: main still says rules 0.2.1; the 0.2.2 bump (no rule logic change) is in PR #75, not
+  merged, pending Arsh's sign-off. Verdicts decided under 0.2.1 can differ after this change.
 - Affects: capabilities (which claims get a time window), verdicts on time-bound claims.
 
 ## 2026-10-15: Opus fails the signed probe; quote-check bug found (issue #69)
@@ -135,22 +135,29 @@ Template:
 - Open: entries before 2026-10-13 are summarized by git only.
 - Affects: none (documentation).
 
-## 2026-10-15: Opt-in cloud stance labels, local by default (#68, 24eda3e)
-- Changed: Opus 5.5 (medium) labels stance only for cases where the expert attests the
-  protective order allows cloud AI and opts in, on the expert's own Anthropic key; the local
-  Qwen3-14B labels every other case and catches every failed cloud call. Reason: Opus is the
-  first model to pass the full cloud bench rule. Arsh chose "Opt-in cloud" as the positioning
-  (2026-10-15 07:10Z), replacing the earlier "cloud first" wording.
-- Where: branch #68, draft, not merged.
-- Verified: CI green on 24eda3e (Ubuntu, Windows, installer, Mac clean install). 25 new tests in
-  `tests/test_cloud.py`. Model-free gate unchanged (the gate does not exercise the cloud path).
-  Opus case01: 85%, 0 false supported, 26 min, $7.83.
-- Open: Opus failed the signed probe's contradicts bar (entry above), so a signed prompt fix
-  should land first; CLAUDE.md wording in `PROPOSED_CHANGES.md` awaits application on the branch; the key file
-  is not encrypted with the case keys; no real-case cost measured (tens of dollars, inferred).
-- Affects: capabilities, privacy (case records leave the computer for opted-in cases),
-  performance (26 min vs hours locally), customer-facing claims ("fully offline" is no longer
-  true for opted-in cases once merged).
+## 2026-10-15: Cloud AI by per-case opt-in for stance labels (#68, 3c6c1ec)
+- Changed: Baker is local by default. A case uses Opus 5.5 for stance labels only after the
+  expert attests the protective order allows it, the case has no CSAM flag, and they supply their
+  own Anthropic key. If the cloud fails mid-case, the audit pauses and the expert retries or
+  re-runs the whole case locally, so models are never mixed within a case. Every request is
+  written to the hash-chained audit log (`cloud.sent`) before it is sent. The endpoint is pinned
+  to api.anthropic.com (120 s timeout, 2 retries). Claim proposal, assumption filling and the AI
+  reviewer stay local. Reason: Arsh chose "Opt-in cloud" (2026-10-15 07:10Z).
+- Where: branch `claude/project-thread-a2fjkc`, PR #68, draft, not merged.
+- Verified (as reported by the owning thread; `cloud.sent` and the pause checked in
+  `core/audit/_local_model.py` on the branch): `make check` passes, 1893 tests; gates unchanged
+  (case01 1.00, 0 false supported, unreviewed 0.60, hostile PASS, case02 0.90); a simulated
+  outage pauses the run with the chain intact; Codex rounds 1 to 4 clean, re-review pending. No
+  real API call since this change.
+- Open: Opus fails the signed probe's contradicts bar (73%, entry below), so a signed prompt fix
+  should land first; the revised CLAUDE.md wording needs Arsh's "approved"; a fair 14B-vs-Opus
+  test of claim proposal and assumption filling waits on Arsh; an evidence row keeps the first
+  model's name when a later run gives an identical label (the per-run "Stance labels" row is
+  authoritative); the key file is owner-only, not encrypted with the case keys.
+- Affects: capabilities (optional cloud labels per case), privacy (only the filled stance prompt
+  leaves the computer, and every request is logged), performance (about 3 s per stance call vs
+  tens of seconds locally), customer-facing claims ("local by default; cloud AI only when your
+  case allows it and you opt in"; never "no network calls" without that qualifier).
 
 ## 2026-10-15: Opus on claim proposal and assumption filling (eval only)
 - Changed: nothing in the product. A preregistered check of moving two more steps to Opus.
