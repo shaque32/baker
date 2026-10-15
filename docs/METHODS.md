@@ -118,9 +118,12 @@ regenerated, so re-running the rules on the same case reproduces the same verdic
 
 **Audit log.** An append-only log in the case database where each entry includes the hash of the
 entry before it. Editing or removing an entry in the middle breaks the chain, and the report prints
-whether the chain verified and its last hash. Keep the last hash from each report you deliver: the
-chain alone does not detect removal of the newest entries or a rewrite of the whole log, but
-comparing against a hash you kept does.
+whether the chain verified and its last hash. Baker also keeps the newest entry's number and hash
+in a file beside the database (`case.db.anchors.jsonl`) and checks both when a case opens and
+before every report; a failed check blocks review and reports. This catches entries cut from the
+end back to the newest anchor. It does not catch entries added after the newest anchor and cut
+before the next check, or the database and the anchor file changed together. Keep the last hash
+from each report you deliver: that is the anchor no one can change.
 
 ## 6. Known limitations
 

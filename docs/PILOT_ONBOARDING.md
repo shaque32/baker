@@ -122,14 +122,14 @@ Tell the Baker team about every mismatch. It is the most useful thing a pilot ca
 
 ## 6. When a case is blocked
 
-Every action is written to a hash-chained audit log inside the case. If an entry was changed, the
-chain no longer verifies.
+Every action is written to a hash-chained audit log inside the case, and the newest entry's number
+and hash are also kept in `case.db.anchors.jsonl` beside the database. If an entry was changed, or
+entries were cut from the end, the check fails.
 
-- **On today's version**, the report prints "Hash chain FAILED VERIFICATION", and
-  `baker verify-log --db <case folder>/case.db` says the same. Encrypting a case also refuses a
-  broken chain.
-- **Once PR #74 merges**, opening such a case shows **Review blocked**, names the first entry that
-  doesn't match, and refuses any change. You can still read the case and build its report.
+Baker checks the log when a case opens, on every page while it is open, and before every report.
+A failed check shows **Review blocked** on the Cases page with the reason, closes the case (an
+encrypted case locks), and refuses any change or report. `baker verify-log --db <case
+folder>/case.db` says why. `docs/review-screen.md` ("When a case is blocked") has the same steps.
 
 What to do:
 

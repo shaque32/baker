@@ -1,16 +1,18 @@
 # Security and privacy
 
 For firms, examiners and counsel deciding whether to install Baker. As of 2026-10-15, `main`
-`8ed89f9`. Statements about the opt-in cloud option describe PR #68, which is **not merged**; they
-are marked "#68".
+`19d8461` (after #68 and #74 merged).
 
-**Baker is local by default; cloud AI only when your case allows it and you opt in.** The version
-on `main` has no cloud option: nothing from a case leaves the computer.
+**Baker is local by default; cloud AI only when your case allows it and you opt in.** The opt-in
+cloud option (#68) is in the code, but it is gated on a model passing Baker's signed stance test,
+and **no model has** (`PROBE_PASSED` in `core/llm/cloud.py` is empty). So today every case labels
+locally and nothing from a case leaves the computer. Statements about what an opted-in case would
+send are marked "opted-in case".
 
 ## 1. Data flow
 
 ```
- Expert's computer (everything on main happens here)
+ Expert's computer (everything happens here today)
  ┌─────────────────────────────────────────────────────────────────────────────┐
  │                                                                             │
  │  Original files ──read-only, SHA-256──▶ Case folder                          │
@@ -29,14 +31,14 @@ on `main` has no cloud option: nothing from a case leaves the computer.
  │  Report (plain HTML) ◀── saved only when the expert downloads it             │
  │                                                                             │
  └───────────────────────────────┬─────────────────────────────────────────────┘
-                                 │ #68 only, not merged, off unless the expert
-                                 │ opts this case in: one HTTPS request per
-                                 │ (assumption, record) stance pair
+                                 │ Opted-in case only (none can be today: no
+                                 │ model has passed the gate): one HTTPS request
+                                 │ per (assumption, record) stance pair
                                  ▼
                      api.anthropic.com (Claude, the expert's own key)
 ```
 
-| Data | main | #68, case opted in |
+| Data | Every case today | Opted-in case, once a model passes the gate |
 |---|---|---|
 | Original evidence files | Stay on the computer, never modified | Same. Never sent |
 | Case database (all records, claims, decisions, audit log) | Stays on the computer | Same. Never sent |
@@ -90,7 +92,7 @@ Full design: `docs/encryption.md`.
 - **Passphrase entry.** The command line asks for it in the terminal. It is never read from an
   option or an environment variable, so it stays out of shell history.
 - **Lost both passphrase and recovery key.** Nobody can open the case, Baker included.
-- **Cloud API key (#68).** The expert's own Anthropic key; Baker runs no server and holds no key of
+- **Cloud API key (opted-in case).** The expert's own Anthropic key; Baker runs no server and holds no key of
   its own. It is read from `$BAKER_ANTHROPIC_API_KEY`; or, in an encrypted case, from the key saved
   in that case, sealed with AES-256-GCM under the case key, so it is unreadable while the case is
   locked; or from `~/.baker/cloud.json`, an owner-only (0600) plain file. The key travels in a
@@ -102,15 +104,16 @@ Full design: `docs/encryption.md`.
 it. Baker has no "delete case" button: delete the case folder (under `~/Baker/cases` by default),
 plus any backups of it and any downloaded reports. Outside the case folders Baker writes only small
 settings under `~/.baker`: `model.json` (which model file to use), `model-check.json` (the model
-file's checked hash), `speed.json` (seconds per model call) and, under #68, `cloud.json`. None holds
-case content, except an Anthropic key in `cloud.json` under #68.
+file's checked hash), `speed.json` (seconds per model call) and, if the expert saves an Anthropic key outside a case,
+`cloud.json`. None holds case content; `cloud.json` holds the key. Each case folder also has
+`case.db.anchors.jsonl`, unencrypted, beside `case.db` (audit-log entry numbers and hashes, no case content).
 
 For an encrypted case, first lock it ("Lock this case now") or stop Baker, because a running Baker
 keeps an unlocked case's key in memory. Then destroy `case.key` and every copy of the recovery key,
 and check that the case no longer opens. The data is then unreadable. The old plain files of a case encrypted after it was made may remain in free SSD blocks;
 disk encryption covers that.
 
-**At Anthropic (#68 only).** Requests go to the Claude API under the expert's own account, so
+**At Anthropic (opted-in case only).** Requests go to the Claude API under the expert's own account, so
 Anthropic's terms for that account apply, not Baker's. Read them rather than our summary:
 
 - [How long Anthropic stores an organization's data](https://privacy.claude.com/en/articles/7996866-how-long-do-you-store-my-organization-s-data)
@@ -124,7 +127,7 @@ by Anthropic's trust and safety systems, inputs and outputs may be kept for up t
 Commercial Terms say Anthropic may not train models on customer content from its services. Check
 the current pages before relying on any of this.
 
-## 5. Cloud policy (#68)
+## 5. Cloud policy
 
 A case uses cloud stance labels only when **all** of these hold, and otherwise runs fully local:
 
@@ -137,10 +140,10 @@ A case uses cloud stance labels only when **all** of these hold, and otherwise r
    whatever the attestation says.
 3. The expert's own Anthropic key is set up.
 4. The model passed Baker's signed stance test with the current prompt. **No model has.** Opus 5.5
-   scored 73% contradicts precision against a 90% bar on 2026-10-15, so even if #68 merged today,
-   every case would label locally until a signed prompt fix passes.
+   scored 73% contradicts precision against a 90% bar on 2026-10-15, so every case labels locally
+   until a signed prompt fix passes and Arsh signs a gate entry for that model, effort and prompt.
 
-Further rules on #68:
+Further rules for an opted-in case:
 
 - **No mixed labels.** In an opted-in case every stance label comes from the cloud. If the cloud
   fails, the audit pauses; the expert retries, or turns cloud off and the whole case runs locally.
@@ -154,25 +157,27 @@ Further rules on #68:
 Whether cloud AI may be used is a decision for the case's protective order and counsel. This
 document is not legal advice.
 
-## 6. How to verify the no-network claim (main)
+## 6. How to verify the network claim
 
 **Read the tests.** These run on every CI push, on Ubuntu and Windows:
 
 | Test | What it checks |
 |---|---|
 | `tests/test_govdoc.py::test_core_makes_no_network_imports` | No file in `core/` imports `socket`, `ssl`, `urllib`, `http`, `requests`, `httpx`, `aiohttp`, `ftplib` or `smtplib` |
-| `tests/test_llm_runtime.py::test_core_llm_has_no_network_imports` | No file in `core/` imports `anthropic`, `requests`, `httpx`, `urllib`, `socket` or `huggingface_hub` |
+| `tests/test_llm_runtime.py::test_core_llm_has_no_network_imports` | No file in `core/` imports `requests`, `httpx`, `urllib`, `socket` or `huggingface_hub`, and only `core/llm/cloud.py` may import `anthropic` |
+| `tests/test_cloud.py::test_only_the_cloud_file_in_core_imports_a_network_client` | `core/llm/cloud.py` is the only file in `core/` that imports the Anthropic client |
 | `tests/test_review_screen.py::test_screen_code_imports_no_network_client` | The screen and report code import no network client |
 | `tests/test_review_screen.py::test_the_whole_flow_makes_no_network_call` | A full review, re-decide and report download with every socket connect and DNS lookup made to fail: none is attempted |
 | `tests/test_review_screen.py::test_server_binds_loopback_only_and_answers` | The screen binds 127.0.0.1 only |
 | `tests/test_packaging.py::test_no_network_tool_ships_in_core` | The only download in the Windows installer is the optional model step |
 
-Run them yourself from a source checkout (6 passed on 2026-10-15, Linux, main `8ed89f9`):
+Run them yourself from a source checkout (7 passed on 2026-10-15, Linux, main `19d8461` plus #82):
 
 ```
 python -m pytest -q \
   tests/test_govdoc.py::test_core_makes_no_network_imports \
   tests/test_llm_runtime.py::test_core_llm_has_no_network_imports \
+  tests/test_cloud.py::test_only_the_cloud_file_in_core_imports_a_network_client \
   tests/test_review_screen.py::test_screen_code_imports_no_network_client \
   tests/test_review_screen.py::test_the_whole_flow_makes_no_network_call \
   tests/test_review_screen.py::test_server_binds_loopback_only_and_answers \
@@ -193,7 +198,7 @@ python -m pytest -q \
 `baker serve --open` asks the operating system to open your browser at the local address; that is
 the browser's connection to 127.0.0.1, not an outside one.
 
-Under #68, an opted-in case adds HTTPS connections to `api.anthropic.com`, and only those; each
+Once a model passes the gate, an opted-in case would add HTTPS connections to `api.anthropic.com`, and only those; each
 appears in the case's audit log as `cloud.sent`.
 
 ## 7. Other safeguards
@@ -203,7 +208,8 @@ appears in the case's audit log as `cloud.sent`.
 - The local model file is checked against its pinned SHA-256 before loading.
 - The screen accepts requests only from the same computer and loads nothing from outside: no
   scripts, no CDN.
-- Every examiner action is written to a hash-chained audit log; the report prints whether the chain
-  verified and its last hash (see `docs/METHODS.md` for what the chain does and doesn't detect).
+- Every examiner action is written to a hash-chained audit log, anchored in a file beside the
+  database; the log is checked on open and before every report, and a failure blocks the case. The
+  report prints the result and the last hash (see `docs/METHODS.md` for what the chain does and doesn't detect).
 - The Windows installer is **not code-signed yet**. Check its SHA-256 before running it
   (`docs/install.md`).
