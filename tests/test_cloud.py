@@ -400,3 +400,18 @@ def test_the_setup_page_attests_per_case_and_keeps_the_key_local(tmp_path, monke
     post("/cloud/case", allowed="1", csam="1")
     page = get("/setup").text
     assert "Local only" in page and "Offline" in page
+
+
+def test_a_key_from_the_environment_is_not_silently_replaced(tmp_path, monkeypatch):
+    app, get, post = _screen(tmp_path, monkeypatch)
+    monkeypatch.setenv(cloud.KEY_ENV, "sk-ant-env-0123456789abcdef")
+    assert "comes from" in get("/setup").text
+    post("/cloud/key", api_key=KEY)
+    assert not (tmp_path / "cloud.json").exists()
+    with pytest.raises(cloud.CloudConfigError):
+        cloud.save_key(KEY, tmp_path / "cloud.json")
+
+
+def test_the_cli_audit_applies_the_case_choice():
+    src = (Path(__file__).resolve().parents[1] / "cli" / "main.py").read_text(encoding="utf-8")
+    assert "cloud=choice" in src and "cloud_policy.choose(conn)" in src

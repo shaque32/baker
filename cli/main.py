@@ -219,8 +219,12 @@ def cmd_audit(a: argparse.Namespace) -> int:
 
         comps = fake_components()
     else:
+        from core.casework import cloud as cloud_policy
+
+        choice = cloud_policy.choose(conn)  # the case's saved cloud choice, as on the screen
+        print(f"audit: {choice.why}", file=sys.stderr)
         try:
-            comps = pipeline.real_components(conn, ai_review=a.ai_review)
+            comps = pipeline.real_components(conn, ai_review=a.ai_review, cloud=choice)
         except pipeline.ComponentsMissing as e:
             print(f"audit: {e}. Use --fake for a test run.", file=sys.stderr)
             return 2

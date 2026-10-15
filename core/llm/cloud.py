@@ -117,8 +117,17 @@ def load_config(path: Path | None = None) -> CloudConfig:
     return CloudConfig(api_key=key, model=model, effort=effort, base_url=base_url)
 
 
+def key_from_environment() -> bool:
+    return bool(os.environ.get(KEY_ENV, "").strip())
+
+
 def save_key(api_key: str, path: Path | None = None) -> Path:
-    """Write the key to the expert's cloud config, readable by this user only."""
+    """Write the key to the expert's cloud config, readable by this user only. Refused while
+    $BAKER_ANTHROPIC_API_KEY is set: that key wins, so a saved one would never be used."""
+    if key_from_environment():
+        raise CloudConfigError(
+            f"the key in {KEY_ENV} is the one in use; change or unset it there instead"
+        )
     path = path or config_path()
     key = api_key.strip()
     if not key:

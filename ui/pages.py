@@ -1328,6 +1328,14 @@ def cloud_section(
             anchor="cloud",
         ),
     ]
+    from core.llm.cloud import KEY_ENV, key_from_environment
+
+    if key_problem is None and key_from_environment():
+        out.append(
+            f"<p>The Anthropic key in use comes from <span class='mono'>{e(KEY_ENV)}</span>. "
+            "Change or unset it there; a key saved here would not be used.</p></div>"
+        )
+        return "".join(out)
     if key_problem is None:
         out.append(
             "<p>An Anthropic key is set up on this computer. Replace it below if you need to.</p>"

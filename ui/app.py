@@ -823,7 +823,10 @@ class App:
         key = f.get("api_key", "").strip()
         if not key.startswith("sk-ant-") or len(key) < 20 or any(c.isspace() for c in key):
             raise ReviewError("that does not look like an Anthropic API key (it starts sk-ant-)")
-        cloud_llm.save_key(key, self.cloud_config)
+        try:
+            cloud_llm.save_key(key, self.cloud_config)
+        except cloud_llm.CloudConfigError as err:
+            raise ReviewError(str(err)) from err
         return "Saved your Anthropic key on this computer, readable by your user account only."
 
     def _start_audit(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
