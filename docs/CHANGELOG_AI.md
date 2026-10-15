@@ -19,6 +19,36 @@ Template:
 
 ---
 
+## 2026-10-15: Stance prompt v1.2, the told-frame sentences (#PRNUM)
+- Changed: `core/audit/prompts/stance.md` is v1.2, signed by Arsh on 2026-10-15 ("approved" in
+  "Audit our model scoring"). Two sentences in the "contradicts" entry teach stance guide v0.3
+  rules 12 and 23: a reply in which X says the opposite does not rule out "X told the owner that
+  ...", since another message could still have said it, so it is "complicates"; a denial that
+  names no time rules out only an act dated before it. Why: with v1.1, Opus 5.5 called those
+  "contradicts" on the signed probe set (contradicts precision 73%, bar 90%), and an unreviewed
+  "contradicts" on an event assumption can make a claim CONTRADICTED with no expert step. No code
+  changes; the recorded prompt version becomes `sha256:2863d8dbf66960f6` (was
+  `sha256:4c35f1cf01b0b227`).
+- Where: branch `claude/project-thread-01fybj`, PR #PRNUM, not merged.
+- Verified: the v1.2 body is byte for byte the text the preregistered Opus runs sent (tests pin
+  its SHA-256 and check it is v1.1 plus the two sentences only). Opus 5.5 on the signed set,
+  high and medium: contradicts precision 10/10, supports recall 33/33, 0 contradicting shown as
+  supports, contradicts recall 10/11 (misses P065). New items: wrong contradicts 2 to 0 (24
+  items, high) and 1 to 0 (26 items, medium), controls kept. $8.59 of API spend, synthetic data
+  only (`/mnt/project-files/baker/cloud-bench/2026-10-15/told-frame-line/`). `make check`:
+  MAKECHECK.
+- Open: the local 14B reads this prompt and has not been run on it; Arsh runs the probe on the
+  Mac (`python -m eval.probe.run_probe --models eval/probe/models.local.json --probe-set
+  eval/gold/probe/probe.jsonl --stance-only --repeat 2 --layout product_members --out
+  eval/out/probe_v12_14b`). #68's `PROBE_PASSED` list needs an entry for Opus with v1.2, signed
+  by Arsh, before cloud labels can run. P065 is missed by Opus with v1.2; "Custom model for
+  Baker" notes rule 23 may make its own label complicates (a separate sign-off). Stored v1.1
+  answers are not reused, so a re-run of an existing case labels again.
+- Affects: capabilities (stance labels for every model that reads the signed prompt: fewer wrong
+  "contradicts", so fewer wrong CONTRADICTED verdicts; a claim it changes goes UNPROVEN, never
+  SUPPORTED); performance (one full re-label per existing case). No privacy change. No new
+  customer-facing claim until the 14B is measured.
+
 ## 2026-10-16: Training data for the small model's runs 6 to 8: harder sender and time traps (#87)
 - Changed: the training-data generators (`eval/train/`) write harder traps, because the small
   model kept calling some of them supports. Run 6's data (`eval.train 1.4.0`): run 5 showed 10 of

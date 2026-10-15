@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -22,7 +23,7 @@ from tests.fake_model import FakeModel, make_assumption
 SIGNED = prompt_body(
     (Path(__file__).parents[1] / "core/audit/prompts/stance.md").read_text("utf-8")
 )
-DRAFT = SIGNED  # the tests below fill the signed prompt (v1.1)
+DRAFT = SIGNED  # the tests below fill the signed prompt (v1.2)
 
 ASSUMPTION = make_assumption("The sender asked to meet at the garage on March 5.")
 CANDIDATE = EvidenceCandidate(
@@ -233,12 +234,41 @@ def test_the_assumption_renderer_is_used():
     assert ASSUMPTION.text not in model.prompts[0]
 
 
-def test_the_signed_prompt_is_v1_1():
+# v1.2 (signed 2026-10-15, "Audit our model scoring") is v1.1 with these two sentences in the
+# "contradicts" entry, after "no contact between").", and nothing else.
+TOLD_FRAME = (
+    "Likewise, when the assumption is that someone told, wrote or asked something, a message of"
+    " theirs saying the opposite shows only what that message says; another message could still"
+    ' have said it, so it is "complicates". A denial that names no time ("i never got it") covers'
+    " only the time before it was sent: it rules out an assumption dated before the message and"
+    " leaves an undated one open."
+)
+# SHA-256 of the body the told-frame bench runs sent to Opus 5.5 on 2026-10-15
+# (stance_v1_1_told_frame_draft.md, file sha256 ba603d12..., in the shared cloud-bench folder),
+# so the signed text is the tested text.
+SIGNED_V1_2_BODY_SHA256 = "2863d8dbf66960f6de732ccb136c5ff29ceff0f202924a71ef58c56ab93bdc95"
+
+
+def test_the_signed_prompt_is_v1_2():
     head = (Path(__file__).parents[1] / "core/audit/prompts/stance.md").read_text("utf-8")
-    assert "\nv1.1, signed by Arsh on 2026-10-14" in head
+    assert "\nv1.2, signed by Arsh on 2026-10-15" in head
+    assert hashlib.sha256(SIGNED.encode("utf-8")).hexdigest() == SIGNED_V1_2_BODY_SHA256
     for part in ("[CLAIM START]", "How names read:", "with no unstated fact needed",
                  "the same words on another date or from another"):  # fmt: skip
         assert part in SIGNED
+
+
+def test_v1_2_is_v1_1_with_the_told_frame_sentences_only():
+    v1_1 = prompt_body(
+        (Path(__file__).parents[1] / "eval/probe/stance_v1_1_signed.md").read_text("utf-8")
+    )
+    words = " ".join(SIGNED.split())
+    assert words.count(TOLD_FRAME) == 1
+    assert words.replace(TOLD_FRAME + " ", "") == " ".join(v1_1.split())
+    # In the "contradicts" entry, between the exclusion rule and the closing "more likely" line.
+    entry = words.split('- "contradicts":', 1)[1].split('- "complicates":', 1)[0]
+    assert entry.index('"no contact between"). ') < entry.index(TOLD_FRAME)
+    assert entry.index(TOLD_FRAME) < entry.index("A record that only makes another reading")
 
 
 def test_only_the_named_message_can_contradict_a_one_message_assumption():

@@ -11,7 +11,8 @@ tests or recorded runs. Where something exists only on an unmerged branch, it sa
 - **Quote check:** 1.1.0 on main, not recorded with results; 1.2.0 in PR #76, which records it
   on every run and prints it in the report (`core/audit/quotes.py`, `VERSION`).
 - **Signed prompts on main:** stance v1.1, reviewer v1.1, claims v1.0, assumptions v1.0
-  (`core/audit/prompts/`)
+  (`core/audit/prompts/`). Stance v1.2 (v1.1 plus the told-frame sentences) was signed by Arsh
+  on 2026-10-15 and is in PR #PRNUM, not merged.
 
 Status labels used below: **main** (merged), **branch #N** (open PR, not merged), **unverified**
 (built or claimed, not measured).
@@ -111,7 +112,11 @@ There is no model judge of verdicts in Baker. The word "judge" does not name any
   - **Known risk:** on the signed probe set (P001-P105), Opus calls same-day "X told the owner..."
     denials and undated denials "contradicts" (4 of 15 contradicts wrong in each arm). Each is an
     event assumption, so in a real case each would be a wrong CONTRADICTED with no expert step,
-    until a signed prompt line fixes it (section 7).
+    until a signed prompt line fixes it (section 7). Arsh signed that line as stance v1.2 on
+    2026-10-15 (PR #PRNUM, not merged); with it Opus made no wrong "contradicts" on the signed
+    set or on new items. #68 uses Opus only for a (model, effort, prompt version) on its
+    `PROBE_PASSED` list (`core/llm/cloud.py`), which is empty; Opus with v1.2 needs an entry
+    signed by Arsh.
 - **Claim proposal and assumption filling stay local.** Opus missed both pre-set bars (claim
   recall 80% vs 90%; sheet-free audit 60% accuracy vs 80%), recorded in
   `/mnt/project-files/baker/cloud-first/steps-check/RESULTS.md`.
@@ -172,6 +177,27 @@ So **Opus no longer passes the full cloud rule.** Every wrong answer is a told-f
 denial (P049, P066-P069, P092, P093). Blind readers sided with the signed labels 12 of 12. The
 planned fix is a stance prompt line for guide rules 12 and 23, signed by Arsh and tested on new
 items. The local 14B has not been run on the signed set.
+
+**Stance prompt v1.2 (the told-frame sentences), signed by Arsh 2026-10-15, PR #PRNUM (not merged).**
+Preregistered, sentences written once from guide rules 12 and 23 before any call, Opus 5.5 stance
+only, layout product_members, first answers scored
+(`/mnt/project-files/baker/cloud-bench/2026-10-15/told-frame-line/RESULTS.md` and
+`RESULTS-medium.md`, $8.59 in all):
+
+| Bar (95 gated items) | Opus high, v1.2 | Opus medium, v1.2 |
+|---|---|---|
+| Supports recall (>= 90%) | 33/33 | 33/33 |
+| Contradicts precision (>= 90%) | **10/10, passes** | **10/10, passes** |
+| Contradicting shown as supports (0) | 0 | 0 |
+| Contradicts recall | 10/11 (misses P065) | 10/11 (misses P065) |
+
+On new items written for the test and never used to write the sentences, wrong "contradicts" on
+told-frame and undated items went from 2 to 0 (24 items by this thread, high; 0 at medium too)
+and from 1 to 0 (26 items by "Custom model for Baker", medium); every contradicts and supports
+control held. The local 14B reads the same prompt and has **not** been run on v1.2 (needs the
+Mac). A "contradicts" that becomes "complicates" can leave a claim UNPROVEN instead of
+CONTRADICTED, never SUPPORTED: an open complicating label blocks SUPPORTED
+(`core/audit/rules.py:56`, `:280-286`).
 
 **case01, real pipeline, simulated expert**
 
@@ -245,7 +271,9 @@ training-data generators (#79). PR #70 is an empty Grok Product review PR, never
    The small model's generated call rows still print the report's time (guide rule 28), unlike
    the product; #50 is not merged, and aligning them is the "Custom model for Baker" thread's.
 2. **Opus's wrong "contradicts" on told-frame and undated denials** (section 7). Matters for
-   #68: it would make wrong CONTRADICTED verdicts until a signed prompt fix lands.
+   #68: it would make wrong CONTRADICTED verdicts. Stance v1.2 (signed 2026-10-15, PR #PRNUM,
+   not merged) removed every such answer in the Opus tests; main still sends v1.1 until it
+   merges. With v1.2 Opus missed one real contradiction (P065), which leaves a claim UNPROVEN.
 3. **Real-data formats unverified.** UFDR and AXIOM readers were built from documentation and
    synthetic samples. No real extraction has been imported. No public Cellebrite-made UFDR with a
    usable license exists; #73 checked the reader on two non-Cellebrite test files (27 of 27
@@ -255,7 +283,7 @@ training-data generators (#79). PR #70 is an empty Grok Product review PR, never
    forwarder until a schema change Arsh signs (PROPOSED_CHANGES.md); originals are not imported.
 4. **Local runtime per case unknown on current code** (section 7). The local 14B's probe result
    is also unverified on current code: it missed the moved-trap bar on 2026-10-07 answers with
-   prompt v1.0, and has not been run on prompt v1.1 or the signed 105-item set.
+   prompt v1.0, and has not been run on prompt v1.1, v1.2 or the signed 105-item set.
 5. **Evidence recall is modest.** Opus case01 surfaced key evidence for 35% of claims needing it;
    14 of 20 claims depend on the expert finding or accepting key evidence.
 6. **Other gaps:** no translation in the pipeline; no embeddings; Windows installer unsigned; on #68 a
@@ -299,9 +327,10 @@ Before a first real case:
 1. Time a full local case01 on the Mac for a real runtime (after #76 merges, so the 14B's
    contact and call quotes pass the check, section 9).
 2. Check a real UFDR and AXIOM export with `baker ufdr-check` (needs a pilot expert's closed case).
-3. Finish #68 (opt-in cloud, chosen by Arsh 2026-10-15 07:10Z): a signed told-frame prompt fix
-   that passes on new items (line signed 13:45Z), then a gate entry Arsh signs; merge #68 first
-   (its CLAUDE.md wording is applied on the branch).
+3. Turn on opt-in cloud (#68, on main; chosen by Arsh 2026-10-15 07:10Z): the told-frame fix is
+   stance v1.2 (PR #PRNUM, not merged), which passed on new items with Opus. Still needed: the
+   14B's probe on v1.2 on the Mac, merge it, then an entry for Opus with v1.2 in
+   `core/llm/cloud.py` `PROBE_PASSED`, signed by Arsh.
 4. Sign the Windows installer (Azure code signing pending).
 
 No pilot has started and no expert has used Baker on a real case (per project records; this
