@@ -15,8 +15,8 @@ Baker is local by default; cloud AI only when your case allows it and you opt in
 | Computer | Apple silicon (M1 or later); M3 or M4 recommended | Windows 10 or 11, 64-bit, x64 processor with AVX2 |
 | Memory | 16 GB minimum, 24 GB or more recommended | 16 GB minimum, 32 GB recommended |
 | Graphics | built in | An NVIDIA card with 12 GB or more is strongly recommended (estimate, not measured) |
-| Disk | 15 GB free (the model is 9 GB) | 15 GB free, SSD |
-| Internet | Once, during install | Once, during install, or none (copy the model from a USB drive) |
+| Disk | 15 GB for Baker and the model (9 GB), plus about twice the size of your case files | Same, SSD |
+| Internet | Once, during install | Once, during install, or none (put the model next to the installer) |
 
 How long a case takes is **not yet measured on the current version**. Older measurements on a
 24 GB M4 Mac were 22 to 56 seconds per model call, which put the 20-claim synthetic case at
@@ -30,8 +30,9 @@ Turn on your computer's disk encryption first (FileVault on a Mac, BitLocker on 
 **Mac (about 30 minutes, mostly waiting).** Full guide: `docs/install-mac.md`.
 
 1. Unzip the Baker folder you were sent into Downloads.
-2. Double-click **Install Baker.command** in it. The first time, macOS may make you right-click it
-   and choose **Open**. If asked to install Apple's command line tools, click **Install**, then
+2. In the Baker folder, open `packaging`, then `mac`, and double-click **Install Baker.command**.
+   The first time, macOS may make you right-click it and choose **Open**. (Or open Terminal, type
+   `bash ` with a space, drag `packaging/mac/install.sh` into the window and press Return.) If asked to install Apple's command line tools, click **Install**, then
    run the installer again.
 3. Wait for **Done**. Two icons appear on your Desktop: **Baker** and **Baker demo**.
 4. Check it: in Terminal, run `~/Baker/app/.venv/bin/baker model-check`. It says whether the model
@@ -44,7 +45,10 @@ Turn on your computer's disk encryption first (FileVault on a Mac, BitLocker on 
    with the `.sha256` file. Stop if they differ.
 3. Run the installer. **It is not code-signed yet**, so Windows warns that the publisher is
    unknown. Choose **More info**, then **Run anyway**, only after the hash matched.
-4. Leave **Download the AI model** ticked, or untick it and copy the model in from a USB drive.
+4. Leave **Download the AI model** ticked. For an offline computer, untick it and put
+   `Qwen3-14B-Q4_K_M.gguf` in the same folder as the installer **before** running it; Setup
+   checks its SHA-256 and copies it. If you add the model later, put it next to the installer and
+   run Setup again (`docs/install.md`).
 5. Check it: open **Baker command prompt** from the Start menu and run `baker model-check`.
 
 ## 3. First run: the demo (15 minutes)
@@ -133,8 +137,10 @@ What to do:
 2. Make a copy of the whole case folder as it is, for examination.
 3. If you have a backup of the case folder from before the problem, restore it to a new folder and
    check it with `baker verify-log`.
-4. Otherwise start a new case from your original files. Their SHA-256 values must match the ones
-   in the old case's report, which proves you imported the same files. Then repeat your review.
+4. Otherwise start a new case from your original files and repeat your review. To show they are
+   the same files, compare their SHA-256 values with a report you delivered or saved **before** the
+   problem, or another record kept outside the case. A match with the broken case's own report is
+   only a consistency check, since that case's database may have been changed.
 5. Tell the Baker team what happened, with the `verify-log` output.
 
 Baker does not make backups for you. Copy the case folder after each review session (an

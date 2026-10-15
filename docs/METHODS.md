@@ -46,7 +46,10 @@ keyword ranking, with the surrounding messages and the other phone's copy where 
 language model labels each (assumption, record) pair: supports, contradicts, complicates or
 irrelevant, with a quote and a short rationale. **The quote must appear character for character in
 the record's original text** (no normalization, whole words only), or the label is discarded and
-never stored. Translations and text Baker rendered itself are never citable.
+never stored. Translations are never citable. Contacts, calls and attachments have no message
+body, so Baker cites a fixed rendering of their stored fields instead (a contact's name and number;
+a call's direction, parties, time as printed and duration; an attachment's file name). A quote from
+such a record cites only those fields, each of which keeps its `source_ref`.
 
 **Rules.** A fixed, versioned program (`core/audit/rules.py`) turns the checks, the evidence and
 the examiner's decisions into a verdict. No model decides a verdict. In brief (rules 0.2.1):
@@ -89,8 +92,11 @@ decision, not as a rule outcome.
 the source could show. An examiner-curated report can never establish that something is absent: it
 can show records that are present (which can contradict an absence claim), never that none exist.
 
-Baker never uses the words guilty, innocent, leader or deleted in its own text. Text quoted from a
-source or typed by the examiner appears as written.
+Baker is built not to use the words guilty, innocent, leader or deleted in its own text, and the
+report's own text is checked for them (`core/audit/invariants.py`). One known exception on this
+version: when a count includes records the source flags as deleted, the count check's detail line
+on the review screen says they are "flagged deleted", reporting the source's flag. That wording is
+a bug to be fixed. Text quoted from a source or typed by the examiner appears as written.
 
 ## 5. Provenance and hashing
 

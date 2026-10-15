@@ -11,7 +11,7 @@ the case's recovery key.
 | `case.db` (every message, call, claim, finding and the audit log) | Yes | SQLCipher 4: AES-256 per page with an HMAC-SHA512 check per page; its journal too |
 | `inputs/` (the copies of the imported reports and government document) | Yes | AES-256-GCM in 1 MiB chunks, each chunk authenticated |
 | `case.key` (the case's key, wrapped) | Holds no usable key | AES-256-GCM wraps under scrypt-derived keys |
-| `case.json` (the case name, the claim order) | No | So the case list can name a locked case. Do not put a client's name in the case name if that matters |
+| `case.json` (the case name, when and by whom it was made, the claim order, timeline settings) | No | So the case list can name a locked case. Do not put a client's name in the case name if that matters |
 
 Not covered: a report or request letter the expert downloads (saved wherever they choose, as a
 plain file), the expert's original evidence files (Baker never changes them), and anything on

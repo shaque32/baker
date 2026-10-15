@@ -20,7 +20,7 @@ on `main` has no cloud option: nothing from a case leaves the computer.
  │   never modified                        │            decisions, audit log    │
  │                                         │            (SQLCipher if encrypted)│
  │                                         ├─ case.key  case key, wrapped       │
- │                                         └─ case.json case name (plain)       │
+ │                                         └─ case.json case name etc. (plain)  │
  │                                                ▲                             │
  │  Local model (Qwen3-14B, pinned SHA-256) ◀──────┤ claims, assumptions,       │
  │                                                 │ stance labels, AI review   │
@@ -45,10 +45,22 @@ on `main` has no cloud option: nothing from a case leaves the computer.
 | Report | Written only where the expert saves it | Same |
 | Telemetry, analytics, crash reports, accounts, license server | None | None |
 
-Install-time downloads, before any case exists: the Mac installer fetches a Python installer (uv),
-the model runtime's source and the model file; the Windows installer optionally downloads the model
-file. Every download is pinned by SHA-256 (`packaging/windows/pins.json`). An offline computer can
-take the model from a USB drive.
+Install-time downloads, before any case exists:
+
+- **Model file (both platforms):** checked against its pinned SHA-256 before use; a file with any
+  other hash is refused.
+- **Windows:** Python and Baker's packages ship inside the installer, so Setup itself downloads
+  only the optional model. The installer is built in CI: the embedded Python and the model runtime's
+  source are pinned by SHA-256 (`packaging/windows/pins.json`); the CUDA toolkit is pinned by
+  version only, and Baker's other Python packages come from PyPI without hash pinning. Check the installer's own SHA-256 before
+  running it.
+- **Mac:** the installer runs uv's install script from astral.sh, lets uv fetch Python 3.12, and
+  installs Baker's Python packages and the model runtime (`llama-cpp-python`, version pinned) from
+  the package index. **These are not hash-pinned**: they trust astral.sh, the Python download
+  source and PyPI over HTTPS. A firm that needs more can install on a separate computer and copy the
+  finished `~/Baker` folder, or wait for a signed Mac package (not built yet).
+
+An offline computer can take the model from a USB drive.
 
 ## 2. Encryption at rest
 
@@ -59,9 +71,10 @@ Full design: `docs/encryption.md`.
 - **Default.** New cases made in the browser are encrypted by default (the box can be unticked).
   `baker init` on the command line and the synthetic demo make plain cases. An existing plain case
   is never encrypted silently; the expert presses "Encrypt this case" or runs `baker encrypt`.
-- **Not encrypted.** `case.json` (the case name and claim order, so a locked case can be listed:
-  don't put a client's name in the case name if that matters), downloaded reports, and anything on
-  screen while a case is unlocked.
+- **Not encrypted.** `case.json`, so a locked case can be listed. It holds the case name, when the
+  case was made, who made it (the name entered on the screen), the claim order (claim ids only) and
+  the timeline tolerance and gap settings. Don't put a client's name in the case name if that
+  matters. Also not encrypted: downloaded reports, and anything on screen while a case is unlocked.
 - **Hashes** are of the plain bytes, so a file's SHA-256 matches the original whether or not the
   case is encrypted.
 - Use the computer's own disk encryption too (FileVault, BitLocker). Python cannot guarantee memory
@@ -92,8 +105,9 @@ settings under `~/.baker`: `model.json` (which model file to use), `model-check.
 file's checked hash), `speed.json` (seconds per model call) and, under #68, `cloud.json`. None holds
 case content, except an Anthropic key in `cloud.json` under #68.
 
-For an encrypted case, destroying `case.key` and every copy of the recovery key leaves the data
-unreadable. The old plain files of a case encrypted after it was made may remain in free SSD blocks;
+For an encrypted case, first lock it ("Lock this case now") or stop Baker, because a running Baker
+keeps an unlocked case's key in memory. Then destroy `case.key` and every copy of the recovery key,
+and check that the case no longer opens. The data is then unreadable. The old plain files of a case encrypted after it was made may remain in free SSD blocks;
 disk encryption covers that.
 
 **At Anthropic (#68 only).** Requests go to the Claude API under the expert's own account, so

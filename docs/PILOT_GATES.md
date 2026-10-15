@@ -7,8 +7,9 @@ Each gate is pass or fail. Partial progress is "not met". A gate passes only whe
 exists on `main` (or, for a human step, in a recorded result someone can open). Update this file in
 the same PR that changes a gate's state, along with `docs/PRODUCT_STATUS.md` section 11.
 
-- **As of:** 2026-10-15, main `8ed89f9`. Open PRs are named but not counted.
-- **Result today:** 0 of 12 gates met on main; gate 12 passes when this PR merges. **Not pilot-ready.**
+- **As of:** 2026-10-15, main `8ed89f9` plus PR #82, which adds this file. Open PRs are named but not
+  counted.
+- **Result:** 1 of 12 gates met (gate 12, met by #82). **Not pilot-ready.**
 
 ## The gates
 
@@ -25,7 +26,7 @@ the same PR that changes a gate's state, along with `docs/PRODUCT_STATUS.md` sec
 | 9 | Local runtime measured | A full local case01 run on current main, timed with `eval/probe/time_case.py` on the 24 GB Mac, with commit, hardware and date recorded | **Not met** | Last full run predates today's pipeline. Per-call figures are from 2026-10-09 and 2026-10-12 |
 | 10 | Signed Windows installer | The Windows installer is code-signed (only for a Windows pilot) | **Not met** | Unsigned. Azure code signing pending (`docs/code-signing.md`) |
 | 11 | Outside install test | One person outside the project installs Baker on a clean Mac, runs the demo and opens a case using only `docs/PILOT_ONBOARDING.md`, without help, and the result is written down | **Not met** | Needs a person. The kit exists (this PR); nobody outside the project has tried it |
-| 12 | Buyer documents | Onboarding kit, methods note and security and privacy pack are on main and match the code | **Met when this PR merges** | `docs/PILOT_ONBOARDING.md`, `docs/METHODS.md`, `docs/SECURITY_PRIVACY.md` |
+| 12 | Buyer documents | Onboarding kit, methods note and security and privacy pack are on main and match the code | **Met** (#82) | `docs/PILOT_ONBOARDING.md`, `docs/METHODS.md`, `docs/SECURITY_PRIVACY.md` |
 
 Also required on the release commit, as for every merge: `make check` passes (lint, tests, the
 model-free eval with 0 false supported on case01, hostile red-team PASS).

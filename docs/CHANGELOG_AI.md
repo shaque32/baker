@@ -28,15 +28,17 @@ Template:
   provenance and hashing, and limits, with no accuracy figures; `docs/SECURITY_PRIVACY.md` has the
   data-flow diagram (main local only; #68 opt-in, not merged), encryption, key handling, retention
   and deletion with Anthropic's pages linked, the cloud policy with the CSAM rule, and how to verify
-  the no-network claim. `install-mac.md` and `demo.md` no longer state the 6 to 8 h runtime as
+  the no-network claim. Codex round 1 (9 findings) fixed. `install-mac.md` and `demo.md` no longer state the 6 to 8 h runtime as
   current. PRODUCT_STATUS section 11 links the gates.
-- Where: branch `claude/project-thread-390z80`, PR #82, not merged.
+- Where: branch `claude/project-thread-390z80`, PR #82 (main once merged).
 - Verified: each statement checked against main `8ed89f9` code and docs, and #68 head `de219c1`
   for cloud facts; the 6 no-network tests named in the pack pass (Linux, 2026-10-15); Anthropic's
   API retention page and Commercial Terms read 2026-10-15 (the privacy-center article did not load
   from the cloud session and was not re-read).
-- Open: gate 11 (an outside person completes the kit on a clean Mac) needs a human; 0 of 12 gates
-  are met on main; the docs must be updated as #72 to #76 and #68 land.
+- Open: gate 11 (an outside person completes the kit on a clean Mac) needs a human; 1 of 12 gates
+  is met (gate 12, by this PR); the Mac installer's uv, Python and PyPI downloads are not
+  hash-pinned (disclosed in the pack); a count check writes "flagged deleted" on the screen, against
+  the forbidden-word rule (disclosed, not fixed here); the docs must be updated as #72 to #76 and #68 land.
 - Affects: customer-facing claims (what buyers and examiners are told, all checked against code);
   no capability, privacy or performance change.
 
