@@ -8,9 +8,10 @@ malformed line counts as invalid output. This is how a model that is not a llama
 (the small classifier) is scored. Every rule matches eval.probe.run_probe.score_stance and its
 "Expert confirms" bars exactly (a test runs both on the same outputs): a quote that is not
 verbatim in the record drops the label, so it can never count as "supports"; an irrelevant label
-needs no quote. `passes_all` here is the go bar's (GO_BAR.md, bars 2 and 3): those four bars and
-zero moved traps shown as supports. run_probe's own `passes_all` keeps the four, which decide the
-prompted models (eval/probe/README.md).
+needs no quote. `passes_all` here is the go bar's (GO_BAR.md, bars 2 and 3): those four bars, at
+least one "contradicts" so the precision exists, and zero moved traps shown as supports.
+run_probe's own `passes_all` keeps the four, which decide the prompted models
+(eval/probe/README.md).
 
 Gated items are signed and undisputed (run_probe.is_gated). Generated items carry a DRAFT label
 until Arsh signs a sample, so before that the held-out bars are reported as provisional, on the
@@ -61,9 +62,14 @@ def score(items: list[dict[str, Any]], preds: dict[str, dict[str, Any]]) -> dict
             shown_by_item[it["probe_id"]] = add_prediction(s, it, preds.get(it["probe_id"]))
         m = expert_confirms(s) if subset else {"passes_all": None}
         if subset:
-            # GO_BAR.md bars 2 and 3 add zero moved traps shown as supports (Arsh, 2026-10-14).
-            moved_ok = m["moved_traps_shown_as_supports"] == 0
-            m["bars"] = {**m["bars"], "no_moved_traps_shown_as_supports": moved_ok}
+            # GO_BAR.md bars 2 and 3 add zero moved traps shown as supports (Arsh, 2026-10-14),
+            # and bar 2 needs one "contradicts" at least, so the precision exists: run_probe's
+            # precision bar passes a missing precision, which gobar.decide() rejects.
+            m["bars"] = {
+                **m["bars"],
+                "contradicts_said_at_least_once": m["contradicts_precision"] is not None,
+                "no_moved_traps_shown_as_supports": m["moved_traps_shown_as_supports"] == 0,
+            }
             m["passes_all"] = all(m["bars"].values())
         m["n"] = len(subset)
         overreach = [i for i in subset if i["category"] == "overreach"]

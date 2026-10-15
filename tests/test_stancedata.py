@@ -400,6 +400,26 @@ def test_go_bar_scorer_fails_a_moved_trap_shown_as_supports() -> None:
     assert run_probe.expert_confirms(st)["passes_all"] is True
 
 
+def test_go_bar_scorer_needs_one_contradicts_so_precision_exists() -> None:
+    # GO_BAR.md bar 2: a model that never says "contradicts" has no precision, and gobar.decide()
+    # rejects that, so the go bar's scorer cannot report a pass for it either.
+    items = read_jsonl(PROBE)
+    preds = {it["probe_id"]: {"stance": it["gold_stance"], "quote": it["proposed_quote"]}
+             for it in items}  # fmt: skip
+    for pid, pred in preds.items():
+        if pred["stance"] == "contradicts":
+            preds[pid] = {"stance": "complicates", "quote": pred["quote"]}
+    gated = score.score(items, preds)["gated"]
+    assert gated["contradicts_precision"] is None
+    assert {bar for bar, ok in gated["bars"].items() if not ok} == {
+        "contradicts_said_at_least_once"
+    }
+    assert gated["passes_all"] is False
+    d = gobar.decide(probe={"gated": gated}, heldout=_perfect("heldout"),
+                     case02=CASE02_OK, seconds_per_call=1.0, contamination_passed=True)  # fmt: skip
+    assert not d.go and "probe: contradicts_precision is None, needs >= 0.9" in d.reasons
+
+
 def _claim(cid: str, gold: Verdict) -> GoldClaim:
     return GoldClaim(claim_id=cid, page=1, para_no=1, text="t", claim_type=ClaimType.EVENT,
                      cross_device=False, gold_verdict=gold, core_assumptions=(),
