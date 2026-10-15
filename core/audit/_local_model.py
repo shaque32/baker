@@ -164,6 +164,7 @@ class CallStat:
     prompt_tokens: int
     completion_tokens: int
     reused: bool
+    where: str = "local"  # "cloud" for the cloud stance labeler; the speed estimate is local only
 
 
 StoredOutput = Callable[[str], str | None]
@@ -179,6 +180,7 @@ class RunPort:
         self._run_id = run_id
         self._stored = stored
         self.stats: list[CallStat] = []
+        self._where = str(getattr(model, "where", "local"))
 
     @property
     def run_id(self) -> str:
@@ -192,7 +194,7 @@ class RunPort:
         if self._stored is not None:
             raw = self._stored(prompt)
             if raw is not None:
-                self.stats.append(CallStat(0.0, 0, 0, True))
+                self.stats.append(CallStat(0.0, 0, 0, True, self._where))
                 return raw
         start = time.perf_counter()
         out = self._model.generate_json(prompt, json_schema)
@@ -202,6 +204,7 @@ class RunPort:
                 prompt_tokens=int(getattr(out, "prompt_tokens", 0)),
                 completion_tokens=int(getattr(out, "completion_tokens", 0)),
                 reused=False,
+                where=self._where,
             )
         )
         return out.raw_text
@@ -211,11 +214,16 @@ def _reuse_key(params: Mapping[str, Any]) -> str:
     return canonical_json({k: v for k, v in params.items() if k != REUSE_PARAM})
 
 
-def stored_output_lookup(conn: sqlite3.Connection, run: ModelRun) -> StoredOutput:
+def stored_output_lookup(
+    conn: sqlite3.Connection, run: ModelRun, *, reuse_unusable: bool = True
+) -> StoredOutput:
     """Find a raw output this case database already holds for the same prompt, model file,
-    prompt file, output schema and settings. Outputs of failed calls ('error') never count;
-    unusable output ('invalid_output', 'quote_failed') is reused, and fails the same way."""
+    prompt file, output schema and settings. Outputs of failed calls ('error') never count.
+    Unusable output ('invalid_output', 'quote_failed') is reused and fails the same way, as a
+    seeded local model would answer the same again; with reuse_unusable=False (the cloud model,
+    which may answer differently) it is asked again instead."""
     key = _reuse_key(run.params)
+    skip = ("error",) * 3 if reuse_unusable else ("error", "invalid_output", "quote_failed")
 
     def lookup(prompt: str) -> str | None:
         try:
@@ -223,9 +231,9 @@ def stored_output_lookup(conn: sqlite3.Connection, run: ModelRun) -> StoredOutpu
                 "SELECT mc.raw_output, mr.params_json FROM model_calls mc"
                 " JOIN model_runs mr ON mr.id = mc.model_run_id"
                 " WHERE mr.purpose = ? AND mr.model_sha256 = ? AND mr.prompt_sha256 = ?"
-                " AND mc.prompt = ? AND mc.outcome != 'error'"
+                " AND mc.prompt = ? AND mc.outcome NOT IN (?, ?, ?)"
                 " ORDER BY mc.at_utc, mc.id",
-                (run.purpose, run.model_sha256, run.prompt_sha256, prompt),
+                (run.purpose, run.model_sha256, run.prompt_sha256, prompt, *skip),
             ).fetchall()
         except db.OperationalError:  # schema without model_calls (pre-v0.2)
             return None
@@ -264,11 +272,13 @@ def open_run(
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     schema: Mapping[str, Any] | None = None,
     reuse: bool = True,
+    reuse_unusable: bool = True,
 ) -> OpenedRun:
     """One ModelRun per pass per pipeline run. Its id is unique per process start time, and
     call numbering continues from any calls already stored for it. `schema` (the pass's output
     schema) is recorded by hash, so a schema change never reuses older outputs. `reuse` turns
-    stored-output reuse on (the default) or off (the speed test's cold run)."""
+    stored-output reuse on (the default) or off (the speed test's cold run); `reuse_unusable`
+    False asks again where a stored answer was unusable (stored_output_lookup)."""
     if model is None:
         model = load_model(load_config())
     started = clock()
@@ -298,5 +308,115 @@ def open_run(
         started_at_utc=started,
     )
     recorder = CallRecorder(clock=clock, start_seq=lambda rid: next_call_seq(conn, rid))
-    stored = stored_output_lookup(conn, run) if reuse else None
+    stored = stored_output_lookup(conn, run, reuse_unusable=reuse_unusable) if reuse else None
     return OpenedRun(RunPort(model, run_id, stored), run, recorder, model.name)
+
+
+SENT_ACTION = "cloud.sent"
+
+
+class SentLog:
+    """Wraps the cloud model so every request is written to the case's hash-chained audit log
+    (action "cloud.sent") before it is sent: the time, the endpoint, the attempt and the request
+    body exactly as sent (the key travels in a header and is never logged). Baker retries a
+    retryable failure itself (the SDK's own retries are off), logging each send. A stored output
+    answered without a request writes nothing. If the entry cannot be written, nothing is sent
+    and the audit pauses (CloudPaused), so no send is ever missing from the log."""
+
+    def __init__(
+        self,
+        model: Any,
+        conn: sqlite3.Connection,
+        clock: Callable[[], datetime] | None = None,
+        sleep: Callable[[float], None] = time.sleep,
+        retries: int | None = None,
+    ) -> None:
+        from core.llm.cloud import MAX_RETRIES
+
+        self._model = model
+        self._conn = conn
+        self._clock = clock or (lambda: datetime.now(UTC))
+        self._sleep = sleep
+        self._retries = MAX_RETRIES if retries is None else retries
+        self.name, self.sha256 = model.name, model.sha256
+        self.params, self.where = model.params, getattr(model, "where", "cloud")
+
+    def _log(self, request: dict, attempt: int) -> None:
+        from core.audit._llm_json import CloudPaused
+        from core.review import audit_log
+
+        payload = {
+            "endpoint": getattr(self.params, "endpoint", ""),
+            "attempt": attempt,
+            "request": request,
+            "request_sha256": hashlib.sha256(canonical_json(request).encode()).hexdigest(),
+        }
+        try:
+            if self._conn.in_transaction:  # the pipeline holds none during model work
+                raise RuntimeError("an open write transaction")
+            self._conn.execute("BEGIN IMMEDIATE")
+            try:
+                audit_log.append(self._conn, self._clock(), "system", SENT_ACTION, payload)
+            except BaseException:
+                self._conn.rollback()
+                raise
+            self._conn.commit()
+        except Exception as e:  # noqa: BLE001 - any failure to log stops the send
+            raise CloudPaused(
+                f"the request could not be recorded in the audit log ({e}), so it was not sent"
+            ) from e
+
+    def generate_json(self, prompt: str, schema: Any, params: Any = None) -> Any:
+        from core.llm.cloud import CloudError
+
+        request = self._model.request(prompt, schema)
+        prepare = getattr(self._model, "prepare", None)
+        if prepare is not None:
+            prepare()  # a missing client fails here, before anything is logged as sent
+        for attempt in range(1, self._retries + 2):
+            self._log(request, attempt)
+            try:
+                return self._model.generate_json(prompt, schema, params)
+            except CloudError as e:
+                if not getattr(e, "retryable", False) or attempt > self._retries:
+                    raise
+                self._sleep(min(2.0**attempt, 30.0))
+        raise AssertionError("unreachable")  # pragma: no cover
+
+
+class CloudPort:
+    """The stance labeler's port for a case that opted in to cloud AI.
+
+    Every stance label in the case comes from the cloud model, so a case's labels never mix
+    models. A sticky failure (no network, a rejected key, the API down after its retries)
+    pauses the run (CloudPaused): the expert then resumes to retry the cloud model, or turns
+    cloud AI off for the case and runs it again, which labels the whole case locally (stored
+    outputs are keyed by model, so no cloud label is reused). Any other failure (a refusal, an
+    answer cut off) is recorded and that label dropped, as a local model's bad answer is.
+    """
+
+    def __init__(self, cloud: OpenedRun) -> None:
+        self.cloud = cloud
+
+    @property
+    def stats(self) -> list[CallStat]:
+        return self.cloud.port.stats
+
+    @property
+    def reused(self) -> int:
+        return sum(s.reused for s in self.stats)
+
+    @property
+    def run_id(self) -> str:
+        return self.cloud.port.run_id
+
+    def generate(self, prompt: str, json_schema: Mapping[str, Any]) -> str:
+        from core.audit._llm_json import CloudPaused
+        from core.llm.cloud import CloudError  # no network library is imported here
+
+        try:
+            return self.cloud.port.generate(prompt, json_schema)
+        except CloudError as e:
+            if e.sticky:
+                raise CloudPaused(f"the cloud model stopped answering ({e.reason})") from e
+            raise  # recorded as an error; the label is dropped

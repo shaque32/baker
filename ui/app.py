@@ -30,9 +30,11 @@ Local-server protections. Another web page open in the same browser can send req
 
 from __future__ import annotations
 
+import functools
 import hmac
 import re
 import secrets
+import shutil
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -43,6 +45,7 @@ from typing import BinaryIO
 from core import db, encryption, pipeline
 from core.audit.invariants import InvariantViolation, check_report_text
 from core.casework import cases, jobs, protect
+from core.casework import cloud as cloud_policy
 from core.casework.model_check import ModelCheck, check_model
 from core.contracts import (
     ClaimStatus,
@@ -55,10 +58,11 @@ from core.contracts import (
 from core.db import CaseLocked, connect
 from core.encryption import EncryptionError
 from core.identity.links import propose_links
+from core.llm import cloud as cloud_llm
 from core.report.html import render_report
 from core.report.letter import request_letter
 from core.restore.store import ExhibitError, add_exhibit, match_exhibits, remove_exhibit
-from core.review import actions
+from core.review import actions, audit_log
 from core.review.actions import ReviewError
 from core.review.redecide import redecide
 from core.timeline import settings as timeline_settings
@@ -90,6 +94,8 @@ NEEDS_NO_JOB: dict[str, tuple[str, ...]] = {
     "/claims/propose": ("audit", "propose", "model_check"),
     "/model/check": ("audit", "propose", "model_check"),
     "/audit/start": ("audit", "propose", "model_check"),
+    "/cloud/case": ("audit",),
+    "/cloud/key": ("audit",),
     "/case/import": ("audit", "propose", "model_check"),
     "/case/new": ("audit", "propose", "model_check"),
     "/case/open": ("audit", "propose", "model_check"),
@@ -103,8 +109,10 @@ NO_CASE_POST = {"/expert", "/case/new", "/case/open"}
 OWN_DB_POST = {"/case/encrypt", "/case/lock", "/case/recovery/done"}
 
 
-def _real_components(conn: sqlite3.Connection, ai_review: bool) -> pipeline.Components:
-    return pipeline.real_components(conn, ai_review=ai_review)
+def _real_components(
+    conn: sqlite3.Connection, ai_review: bool, cloud: cloud_policy.CloudChoice | None = None
+) -> pipeline.Components:
+    return pipeline.real_components(conn, ai_review=ai_review, cloud=cloud)
 
 
 def _real_extractor(conn: sqlite3.Connection) -> object:
@@ -169,6 +177,7 @@ class App:
         components_for: jobs.ComponentsFor | None = None,
         extractor_for: jobs.ExtractorFor | None = None,
         model_check: jobs.ModelCheckFn | None = check_model,
+        cloud_config: Path | None = None,
     ) -> None:
         if db_path is None and home is None:
             raise ValueError("give a case database or a cases folder")
@@ -189,10 +198,14 @@ class App:
         self.extractor_for = extractor_for or _real_extractor
         self.model_check = model_check
         self.last_check: ModelCheck | None = None
+        self.cloud_config = cloud_config  # None: $BAKER_CLOUD_CONFIG, else ~/.baker/cloud.json
         if expert:
             self.set_expert(expert)
         if self.single is not None and not protect.is_locked(self.single):
-            self.open_case(self.single)
+            try:
+                self.open_case(self.single)
+            except audit_log.ChainBroken as err:  # the screen starts, the case stays shut
+                self.flash = (f"Not opened: {err}", True)
 
     def _open(self) -> cases.Case:
         if self.case is None:
@@ -207,12 +220,33 @@ class App:
         if protect.is_locked(case):
             raise CaseLocked("this case is locked: open it with its passphrase or recovery key")
         conn = connect(case.db)
+        anchors = audit_log.anchors_path(case.db)
         try:
-            pipeline.mark_stale_runs_stopped(conn)  # nothing in this process runs them
+            # a broken or cut-short log fails closed: no review, no writes
+            audit_log.require_intact(conn, anchors)
+            audit_log.anchor(conn, anchors)  # first, so an unwritable anchor changes nothing
+            if pipeline.mark_stale_runs_stopped(conn):  # nothing in this process runs them
+                audit_log.anchor(conn, anchors)
+        except audit_log.ChainBroken:
+            if self.case is not None and self.case.db == case.db:  # re-opened after tampering
+                self._close_broken(case)
+            raise
         finally:
             conn.close()
         self.case = case
         self.last_check = None
+
+    def _close_broken(self, case: cases.Case) -> None:
+        """Close the open case whose log no longer verifies, stop a background job on it (it
+        stops after the claim or paragraph in hand), and lock the case if it is encrypted."""
+        job = self.jobs.current
+        if job is not None and job.running and job.db == case.db:
+            job.stop.set()
+        self.case = None
+        self.recovery = None
+        self.last_check = None
+        if protect.state(case) != "plain":
+            protect.lock(case)
 
     # -- identity
 
@@ -279,6 +313,14 @@ class App:
             return self._redirect("/cases")
         except db.Error as err:
             return self._plain(500, f"cannot open the case database: {err}")
+        try:  # the log may have changed since the case opened: every page checks it again
+            audit_log.require_intact(conn, audit_log.anchors_path(self.case.db))
+        except audit_log.ChainBroken as err:
+            conn.close()
+            self._close_broken(self.case)
+            what = "No report" if req.path in ("/report", "/report.html") else "Case closed"
+            self.flash = (f"{what}: {err}", True)
+            return self._redirect("/cases")
         try:
             if req.method == "GET":
                 return self._get(conn, req)
@@ -319,6 +361,7 @@ class App:
             busy=busy,
             many_cases=self.home is not None,
             path=self.path,
+            cloud=self._case_uses_cloud(),
         )
 
     def _get(self, conn: sqlite3.Connection, req: Request) -> Response:
@@ -368,6 +411,13 @@ class App:
         if p == "/log":
             return self._html(pages.log_page(conn, page, req.query.get("all") == "1"))
         if p in ("/report", "/report.html"):
+            case = self._open()
+            try:  # handle() checked the log; anchor its newest entry before the report goes out
+                audit_log.anchor(conn, audit_log.anchors_path(case.db))
+            except audit_log.ChainBroken as err:
+                self._close_broken(case)
+                self.flash = (f"No report: {err}", True)
+                return self._redirect("/cases")
             body = render_report(conn, timeline=self._timeline())
             download = req.query.get("download") == "1" or p == "/report.html"
             if not download:  # on screen, the vendored fonts; a saved copy uses system fonts
@@ -412,6 +462,8 @@ class App:
             "/model/check": lambda: self._check_model(),
             "/audit/start": lambda: self._start_audit(conn, f),  # type: ignore[arg-type]
             "/audit/stop": lambda: self._stop_audit(),
+            "/cloud/case": lambda: self._cloud_case(conn, f),  # type: ignore[arg-type]
+            "/cloud/key": lambda: self._cloud_key(f),
             "/exhibit/add": lambda: self._add_exhibit(conn, f),  # type: ignore[arg-type]
             "/exhibit/remove": lambda: self._remove_exhibit(conn, f),  # type: ignore[arg-type]
             "/exhibit/rematch": lambda: self._rematch(conn, f),  # type: ignore[arg-type]
@@ -436,6 +488,7 @@ class App:
                 back = pages.link("/exhibit", id=self._added)
         except (
             ReviewError,
+            audit_log.ChainBroken,
             CaseLocked,
             EncryptionError,
             ExhibitError,
@@ -443,7 +496,15 @@ class App:
             ValueError,
             *db.IntegrityError,
         ) as err:
-            self.flash = (f"Not recorded: {err}", True)
+            verb = "Not opened" if req.path == "/case/open" else "Not recorded"
+            self.flash = (f"{verb}: {err}", True)
+            if (
+                isinstance(err, audit_log.ChainBroken)
+                and self.case is not None
+                and req.path not in ("/case/open", "/case/new")  # not the open case's log
+            ):
+                self._close_broken(self.case)  # e.g. encrypting a case blocked since it opened
+                back = "/cases"
         except db.OperationalError as err:  # the audit held the database too long
             self.flash = (f"Not recorded, the case database was busy ({err}). Try again.", True)
         return self._redirect(back)
@@ -576,8 +637,11 @@ class App:
         if self.home is None:
             single = self.single
             locked = single is not None and protect.is_locked(single)
+            blocked = None
+            if single is not None and not locked and self.case is None:
+                blocked = _chain_problem(single)
             return self._html(
-                pages.cases_page(page, None, [], str(single.db if single else ""), locked)
+                pages.cases_page(page, None, [], str(single.db if single else ""), locked, blocked)
             )
         rows = []
         for c in cases.list_cases(self.home):
@@ -588,7 +652,11 @@ class App:
                 else:
                     conn = connect(c.db)
                     try:
-                        state = cases.last_audit_line(conn)
+                        try:
+                            audit_log.require_intact(conn, audit_log.anchors_path(c.db))
+                            state = cases.last_audit_line(conn)
+                        except audit_log.ChainBroken as err:
+                            state = f"Review blocked: {err.problem}"
                     finally:
                         conn.close()
             except (*db.Error, InvariantViolation, CaseLocked, EncryptionError) as err:
@@ -605,7 +673,14 @@ class App:
             if passphrase != f.get("passphrase2", ""):
                 raise ReviewError("the two passphrases do not match")
         case = cases.create_case(self.home, f.get("name", ""), self.actor, passphrase=passphrase)
-        self.open_case(case)
+        try:
+            self.open_case(case)
+        except audit_log.ChainBroken as err:  # e.g. its anchor file cannot be written
+            cases.recovery_key_for(case)  # drop the key from memory with the case
+            if protect.state(case) != "plain":
+                protect.lock(case)
+            shutil.rmtree(case.folder, ignore_errors=True)  # made just now; nothing else in it
+            raise ReviewError(f"the case was not made, because {err.problem}") from err
         key = cases.recovery_key_for(case)
         if key is not None:
             self.recovery = (case.db, key)
@@ -630,7 +705,12 @@ class App:
             except encryption.WrongSecret as err:
                 raise ReviewError(str(err)) from err
             unlocked = True
-        self.open_case(target)
+        try:
+            self.open_case(target)
+        except audit_log.ChainBroken:
+            if unlocked:
+                protect.lock(target)  # not opened, so its key does not stay in memory
+            raise
         return f"Unlocked and opened {target.name}." if unlocked else f"Opened {target.name}."
 
     # -- encryption
@@ -697,11 +777,19 @@ class App:
             done, total = job.hashed
             note = f"Checking: SHA-256 of the model file, {done * 100 // max(total, 1)}%."
         spc, source = jobs.seconds_per_call()
+        cloud_spc = jobs.CLOUD_SECONDS_PER_CALL if self._cloud_choice(conn).use else None
         n = len(order)
+        if cloud_spc is None:
+            calls = f"about {jobs.CALLS_PER_CLAIM} model calls per claim at {spc:.0f} s per call"
+        else:
+            calls = (
+                f"per claim, about {jobs.CALLS_PER_CLAIM - jobs.LOCAL_CALLS_PER_CLAIM} cloud calls"
+                f" at {cloud_spc:.0f} s and {jobs.LOCAL_CALLS_PER_CLAIM} local call at {spc:.0f} s"
+            )
         estimate = (
-            f"Rough estimate for {n} claims: {jobs.duration(jobs.estimate_seconds(n, spc))} "
-            f"(about {jobs.CALLS_PER_CLAIM} model calls per claim at {spc:.0f} s per call, "
-            f"{source}). Claims labeled before reuse their stored outputs and take seconds."
+            f"Rough estimate for {n} claims: "
+            f"{jobs.duration(jobs.estimate_seconds(n, spc, cloud_spc))} ({calls}, {source}). "
+            "Claims labeled before reuse their stored outputs and take seconds."
             if n
             else ""
         )
@@ -730,6 +818,9 @@ class App:
             resumable=resumable,
             protection=protect.state(case),
             recovery_key=self._recovery_for_open(),
+            cloud=self._cloud_choice(conn),
+            cloud_case=cloud_policy.case_cloud(conn),
+            cloud_key=self._cloud_key_state(),
         )
 
     def _move_claim(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
@@ -758,6 +849,75 @@ class App:
         self.jobs.start(jobs.Job("model_check", self._open().db), run)
         return "Checking the model in the background. This page updates itself."
 
+    # -- cloud
+
+    def _cloud_load(self) -> cloud_llm.CloudConfig:
+        case_db = self.case.db if self.case is not None else None
+        return cloud_llm.load_config(self.cloud_config, case_db=case_db)
+
+    def _cloud_choice(self, conn: sqlite3.Connection) -> cloud_policy.CloudChoice:
+        return cloud_policy.choose(conn, self._cloud_load)
+
+    def _case_uses_cloud(self) -> bool:
+        """For the header pill: does the open case send stance questions to the cloud?"""
+        if self.case is None:
+            return False
+        job = self._job("audit")
+        if job is not None and job.running and job.cloud:
+            return True  # the running audit keeps the choice it started with
+        try:
+            conn = connect(self.case.db)
+        except (*db.Error, CaseLocked, EncryptionError):
+            return False
+        try:
+            return self._cloud_choice(conn).use
+        finally:
+            conn.close()
+
+    def _cloud_key_state(self) -> str | None:
+        """None when a key is set up; otherwise why not, in a few words."""
+        try:
+            self._cloud_load()
+        except cloud_llm.CloudConfigError as err:
+            return str(err)
+        return None
+
+    def _cloud_case(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        _ = self._open()
+        entry = cloud_policy.set_cloud(
+            conn,
+            self.actor,
+            allowed=f.get("allowed") == "1",
+            csam=f.get("csam") == "1",
+        )
+        if entry["csam"]:
+            return "Saved: this case may contain CSAM, so it runs on the local model only."
+        if entry["allowed"]:
+            return (
+                "Saved: this case may use cloud AI. If the cloud model stops answering, the audit"
+                " pauses."
+            )
+        return "Saved: this case runs on the local model only."
+
+    def _cloud_key(self, f: dict[str, str]) -> str:
+        _ = self.actor  # a named expert sets the key
+        key = f.get("api_key", "").strip()
+        if not key.startswith("sk-ant-") or len(key) < 20 or any(c.isspace() for c in key):
+            raise ReviewError("that does not look like an Anthropic API key (it starts sk-ant-)")
+        case_db = self.case.db if self.case is not None else None
+        try:
+            where = cloud_llm.save_key(key, self.cloud_config, case_db=case_db)
+        except cloud_llm.CloudConfigError as err:
+            raise ReviewError(str(err)) from err
+        if case_db is not None and where == encryption.secret_path(
+            Path(case_db), cloud_llm.CASE_SECRET
+        ):
+            return (
+                "Saved your Anthropic key in this case, encrypted with the case's key: it can be"
+                " read only while the case is unlocked."
+            )
+        return "Saved your Anthropic key on this computer, readable by your user account only."
+
     def _start_audit(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         case = self._open()
         actor = self.actor
@@ -770,8 +930,14 @@ class App:
         order = cases.claim_order(case, conn)
         spc, _ = jobs.seconds_per_call()
         job = jobs.Job("audit", case.db, total=len(order))
-        job.estimate_seconds = jobs.estimate_seconds(len(order), spc)
+        choice = self._cloud_choice(conn)
+        job.cloud = choice.use
+        cloud_spc = jobs.CLOUD_SECONDS_PER_CALL if choice.use else None
+        job.estimate_seconds = jobs.estimate_seconds(len(order), spc, cloud_spc)
         check = self.model_check
+        components_for = self.components_for
+        if components_for is _real_components:
+            components_for = functools.partial(_real_components, cloud=choice)
 
         def model_check_once(progress: object = None) -> ModelCheck:
             result = check(progress=progress)  # type: ignore[misc]
@@ -783,15 +949,22 @@ class App:
             jobs.audit_job(
                 actor=actor,
                 order=order,
-                components_for=self.components_for,
+                components_for=components_for,
                 model_check=model_check_once if check is not None else None,
+                cloud_opt_in=choice.use,
                 ai_review=f.get("ai_review") == "1",
                 label_all=f.get("label_all") == "1",
             ),
         )
+        where = (
+            f" Stance labels come from the cloud model ({choice.config.model}); if it stops "
+            "answering, the audit pauses. The local model does the other steps."
+            if choice.use and choice.config is not None
+            else ""
+        )
         return (
             f"The audit started on {len(order)} claims, {jobs.duration(job.estimate_seconds)} by "
-            "a rough estimate. Each claim appears for review as soon as it is labeled."
+            f"a rough estimate.{where} Each claim appears for review as soon as it is labeled."
         )
 
     def _stop_audit(self) -> str:
@@ -852,6 +1025,20 @@ class App:
             self.flash = ("Open or make a case first.", True)
             return self._redirect("/cases")
         case = self.case
+        try:  # uploads skip handle(), so they check the log here, before a byte is written
+            conn = connect(case.db)
+            try:
+                audit_log.require_intact(conn, audit_log.anchors_path(case.db))
+            finally:
+                conn.close()
+        except (audit_log.ChainBroken, CaseLocked) as err:
+            if isinstance(err, audit_log.ChainBroken):  # stop a job first, then drain
+                self._close_broken(case)
+            else:
+                self.case = None
+            _drain(stream, length)
+            self.flash = (f"Not imported: {err}", True)
+            return self._redirect("/cases")
         counted = _Counting(stream)
         written: list[Path] = []
 
@@ -1014,6 +1201,21 @@ class App:
             message.encode("utf-8"),
             [("Content-Type", "text/plain; charset=utf-8"), *self._security_headers()],
         )
+
+
+def _chain_problem(case: cases.Case) -> str | None:
+    """Why this (unlocked) case cannot be opened for review, or None when its chain verifies."""
+    try:
+        conn = connect(case.db)
+    except (*db.Error, CaseLocked) as err:
+        return f"cannot read: {err}"
+    try:
+        audit_log.require_intact(conn, audit_log.anchors_path(case.db))
+    except (audit_log.ChainBroken, *db.Error) as err:
+        return str(err)
+    finally:
+        conn.close()
+    return None
 
 
 def _lock_state(case: cases.Case) -> str:
