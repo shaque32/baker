@@ -240,7 +240,15 @@ Grok Product review PR, never merged.
    prompt v1.0, and has not been run on prompt v1.1 or the signed 105-item set.
 5. **Evidence recall is modest.** Opus case01 surfaced key evidence for 35% of claims needing it;
    14 of 20 claims depend on the expert finding or accepting key evidence.
-6. **Other gaps:** no translation in the pipeline; no embeddings; Windows installer unsigned; the
+6. **Writer read from the claim's words (fixed on branch, not merged).** When the 14B leaves a
+   sender assumption without a person, code reads the writer from the claim (`stated_sender`,
+   `core/audit/assumption_filler.py`, from #53). On main it names the wrong person when the quote
+   is handed on after the verb: "PETROV texted REYES, who responded 'ok'" gives PETROV, so the
+   sender check tests the wrong person (inferred, not measured: a wrong CONTRADICTED, or a wrong
+   pass if PETROV sent those words). 5 of 6 such phrasings did this. Branch `claude/project-thread-c6qjp9` (PR
+   #PRNUM) fails closed on them; the claim then stays without a writer and is refused as before.
+   The eval did not move (case01 has no such phrasing).
+7. **Other gaps:** no translation in the pipeline; no embeddings; Windows installer unsigned; the
    cloud key on #68 is an owner-only plain file, not encrypted with the case keys; experts still
    need the 14B installed even with cloud on.
 

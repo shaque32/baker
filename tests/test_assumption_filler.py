@@ -415,6 +415,18 @@ def test_a_sender_without_a_party_gets_the_writer_the_claim_names(conn):
         ("ALEXANDER SOKOLOV wrote 'its done'.", "its done", None),  # no such person
         ("The message 'its done' was sent at 2:31 a.m.", "its done", None),  # no writer
         ("PETROV wrote 'its done'.", "not in the claim", None),
+        # The quote is handed on to someone else after the writer's verb (#57 review).
+        ("PETROV sent REYES a photo, and REYES answered 'ok see you'.", "ok see you", None),
+        ("PETROV texted REYES, who responded 'ok see you'.", "ok see you", None),
+        ("PETROV replied to REYES's message 'ok see you'.", "ok see you", None),
+        ("PETROV messaged REYES. REYES: 'ok see you'.", "ok see you", None),
+        ("PETROV emailed REYES, whose reply was 'ok see you'.", "ok see you", None),
+        ("PETROV texted REYES and REYES wrote back 'ok see you'.", "ok see you", "REYES"),
+        ("PETROV texted REYES that 'the van is ready'.", "the van is ready", "PETROV"),
+        ("A friend of PETROV texted REYES 'its done'.", "its done", None),
+        ("Someone posing as PETROV texted 'its done'.", "its done", None),
+        ("A FRIEND OF PETROV TEXTED 'its done'.", "its done", None),
+        ("Agent Daniel Petrov texted REYES 'its done'.", "its done", "PETROV"),
     ],
 )  # fmt: skip
 def test_stated_sender_is_the_writer_of_the_quoted_words(conn, text, quoted, writer):

@@ -800,10 +800,26 @@ _WRITER_RE = re.compile(
 # 'PETROV wrote a report quoting REYES: "ok"' it is "quoting", so PETROV is not the writer.
 _QUOTING_RE = re.compile(
     rf"\b(?:{_WRITER_VERBS}|said|says|asked|posted|quoted|quoting|quotes|forwarded|forwarding|"
-    r"stated|saying|according|reads|read)\b",
+    r"stated|states|stating|saying|according|reads|read|answered|answers|answering|responded|"
+    r"responds|responding|replies|replying|writes|writing|texts|texting|sends|sending|tells|"
+    r"telling|typed|types|typing)\b",
     re.IGNORECASE,
 )
 QUOTE_REACH = 80  # characters from the writer's verb to the quote
+# Between the writer's verb and the quote, anything that can hand the quote to someone else
+# names no writer: a sentence break ('PETROV messaged REYES. REYES: "ok"'), a relative or a
+# joined clause ('PETROV texted REYES, who responded "ok"', '..., and REYES ...'), or a
+# possessive ('PETROV replied to REYES's message "ok"').
+_HANDED_ON_RE = re.compile(
+    r"[.;!?]|['’]s\b|\b(?:who|whom|whose|which|and|but|or|then|while|after|before|until|"
+    r"because)\b",
+    re.IGNORECASE,
+)
+# A name right after one of these is not the one who wrote: 'a friend of PETROV texted ...'.
+_NOT_THE_WRITER_BEFORE = re.compile(
+    r"(?:['’]s|\b(?:of|for|to|with|by|from|via|behind|about|like|as|than|posing))\s*$",
+    re.IGNORECASE,
+)
 
 
 def coverage_gap(claim: Claim, proposals: list[Proposal]) -> str | None:
@@ -1065,8 +1081,11 @@ class LocalAssumptionFiller:
 
         The verb nearest before the quote must be a verb of writing with a name right before
         it ("PETROV wrote to @northstar: ..."), at most QUOTE_REACH characters from the quote,
-        and the name must match exactly one person the expert created. Anything else (no
-        quote, "quoting", "said", a name that is no person) names no writer."""
+        and the name must match exactly one person the expert created. Nothing between the
+        verb and the quote may hand the quote on (a sentence break, "who", "and", a
+        possessive), and the name must not follow "of", "for", "posing as" and the like.
+        Anything else (no quote, "quoting", "said", "answered", a name that is no person)
+        names no writer."""
         if not quoted or not quoted.strip():
             return None
         at = _nfc(claim.text).find(_nfc(quoted.strip()))
@@ -1080,8 +1099,14 @@ class LocalAssumptionFiller:
         match = next((m for m in _WRITER_RE.finditer(before) if m.end() == last.end()), None)
         if match is None:
             return None
+        if _HANDED_ON_RE.search(before[last.end() :]):
+            return None  # the quote may be someone else's: fail closed, as for no writer
         words = match.group(1).split()
         for i in range(len(words)):
+            # What comes before this form of the name, capitalised words included ("A FRIEND
+            # OF PETROV TEXTED"), must not make it someone else's.
+            if _NOT_THE_WRITER_BEFORE.search(" ".join([before[: match.start()], *words[:i]])):
+                return None
             try:
                 return self._person(" ".join(words[i:]))  # the longest form that names a person
             except Reject:
