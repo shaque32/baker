@@ -58,7 +58,7 @@ from core.identity.links import propose_links
 from core.report.html import render_report
 from core.report.letter import request_letter
 from core.restore.store import ExhibitError, add_exhibit, match_exhibits, remove_exhibit
-from core.review import actions
+from core.review import actions, audit_log
 from core.review.actions import ReviewError
 from core.review.redecide import redecide
 from core.timeline import settings as timeline_settings
@@ -192,7 +192,10 @@ class App:
         if expert:
             self.set_expert(expert)
         if self.single is not None and not protect.is_locked(self.single):
-            self.open_case(self.single)
+            try:
+                self.open_case(self.single)
+            except audit_log.ChainBroken as err:  # the screen starts, the case stays shut
+                self.flash = (f"Not opened: {err}", True)
 
     def _open(self) -> cases.Case:
         if self.case is None:
@@ -208,6 +211,7 @@ class App:
             raise CaseLocked("this case is locked: open it with its passphrase or recovery key")
         conn = connect(case.db)
         try:
+            audit_log.require_intact(conn)  # a broken chain fails closed: no review, no writes
             pipeline.mark_stale_runs_stopped(conn)  # nothing in this process runs them
         finally:
             conn.close()
@@ -436,6 +440,7 @@ class App:
                 back = pages.link("/exhibit", id=self._added)
         except (
             ReviewError,
+            audit_log.ChainBroken,
             CaseLocked,
             EncryptionError,
             ExhibitError,
@@ -443,7 +448,8 @@ class App:
             ValueError,
             *db.IntegrityError,
         ) as err:
-            self.flash = (f"Not recorded: {err}", True)
+            verb = "Not opened" if req.path == "/case/open" else "Not recorded"
+            self.flash = (f"{verb}: {err}", True)
         except db.OperationalError as err:  # the audit held the database too long
             self.flash = (f"Not recorded, the case database was busy ({err}). Try again.", True)
         return self._redirect(back)
@@ -576,8 +582,11 @@ class App:
         if self.home is None:
             single = self.single
             locked = single is not None and protect.is_locked(single)
+            blocked = None
+            if single is not None and not locked and self.case is None:
+                blocked = _chain_problem(single)
             return self._html(
-                pages.cases_page(page, None, [], str(single.db if single else ""), locked)
+                pages.cases_page(page, None, [], str(single.db if single else ""), locked, blocked)
             )
         rows = []
         for c in cases.list_cases(self.home):
@@ -588,7 +597,13 @@ class App:
                 else:
                     conn = connect(c.db)
                     try:
-                        state = cases.last_audit_line(conn)
+                        seq = audit_log.first_break(conn)
+                        state = (
+                            cases.last_audit_line(conn)
+                            if seq is None
+                            else f"Review blocked: the audit log's hash chain is broken at "
+                            f"entry {seq}"
+                        )
                     finally:
                         conn.close()
             except (*db.Error, InvariantViolation, CaseLocked, EncryptionError) as err:
@@ -630,7 +645,12 @@ class App:
             except encryption.WrongSecret as err:
                 raise ReviewError(str(err)) from err
             unlocked = True
-        self.open_case(target)
+        try:
+            self.open_case(target)
+        except audit_log.ChainBroken:
+            if unlocked:
+                protect.lock(target)  # not opened, so its key does not stay in memory
+            raise
         return f"Unlocked and opened {target.name}." if unlocked else f"Opened {target.name}."
 
     # -- encryption
@@ -1014,6 +1034,21 @@ class App:
             message.encode("utf-8"),
             [("Content-Type", "text/plain; charset=utf-8"), *self._security_headers()],
         )
+
+
+def _chain_problem(case: cases.Case) -> str | None:
+    """Why this (unlocked) case cannot be opened for review, or None when its chain verifies."""
+    try:
+        conn = connect(case.db)
+    except (*db.Error, CaseLocked) as err:
+        return f"cannot read: {err}"
+    try:
+        audit_log.require_intact(conn)
+    except (audit_log.ChainBroken, *db.Error) as err:
+        return str(err)
+    finally:
+        conn.close()
+    return None
 
 
 def _lock_state(case: cases.Case) -> str:

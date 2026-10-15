@@ -41,14 +41,39 @@ def append(
     )
 
 
-def verify_chain(conn: sqlite3.Connection) -> bool:
+class ChainBroken(Exception):
+    """A case whose audit log no longer verifies. Opening it for review fails closed."""
+
+    def __init__(self, seq: int) -> None:
+        self.seq = seq
+        super().__init__(
+            f"the audit log's hash chain is broken at entry {seq}: the case database was "
+            "changed outside Baker, so this case cannot be opened for review. Nothing was "
+            "changed. The commands baker verify-log and baker report still read it."
+        )
+
+
+def first_break(conn: sqlite3.Connection) -> int | None:
+    """The seq of the first entry that does not match the chain, or None when it verifies."""
     prev = ""
     rows = conn.execute(
         "SELECT seq, at_utc, actor, action, payload_json, prev_hash, hash FROM audit_log"
         " ORDER BY seq"
     )
-    for _seq, at, actor, action, payload_json, prev_hash, h in rows:
+    for seq, at, actor, action, payload_json, prev_hash, h in rows:
         if prev_hash != prev or entry_hash(prev_hash, at, actor, action, payload_json) != h:
-            return False
+            return seq
         prev = h
-    return True
+    return None
+
+
+def verify_chain(conn: sqlite3.Connection) -> bool:
+    return first_break(conn) is None
+
+
+def require_intact(conn: sqlite3.Connection) -> None:
+    """Raise ChainBroken unless the audit log verifies. Every path that opens a case for
+    review calls this first (the review screen and the CLI), so a tampered case fails closed."""
+    seq = first_break(conn)
+    if seq is not None:
+        raise ChainBroken(seq)

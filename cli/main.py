@@ -52,6 +52,8 @@ files; core/casework/protect.py), or finishes one that was interrupted, and prin
 key once. Nothing encrypts a case on its own. `passphrase` changes an encrypted case's
 passphrase. Every command on an encrypted case asks for its passphrase (or recovery key) in the
 terminal; it is never taken from an option or the environment.
+Every command but `verify-log` and `report` first verifies the case's audit-log hash chain
+and stops, writing nothing, when it is broken (the database was changed outside Baker).
 `ufdr-check` compares what Baker imports from a UFDR with the package's own report.xml, record
 by record, without touching any case (docs/ingest/ufdr.md, "Before calling it verified"). It
 writes ufdr-check.md and .json, which hold no case content and can be sent back, and
@@ -99,11 +101,21 @@ def _unlock(path: Path) -> None:
     raise SystemExit("the case stays locked")
 
 
-def _open(path: Path, create: bool = False):  # -> sqlite3.Connection
+def _open(path: Path, create: bool = False, review: bool = True):  # -> sqlite3.Connection
+    """Open a case database. For review (every command but `report` and `verify-log`, which
+    only read and say whether the chain verifies) a broken audit-log hash chain stops the
+    command before anything is read or written: it fails closed."""
     if not create and not path.exists():
         raise SystemExit(f"no case database at {path}; run `init` first")
     _unlock(path)
-    return connect(path)
+    conn = connect(path)
+    if review and not create:
+        try:
+            audit_log.require_intact(conn)
+        except audit_log.ChainBroken as err:
+            conn.close()
+            raise SystemExit(f"error: {err}") from err
+    return conn
 
 
 def cmd_init(a: argparse.Namespace) -> int:
@@ -269,14 +281,14 @@ def cmd_report(a: argparse.Namespace) -> int:
     from core.casework.cases import Case
     from core.timeline.settings import from_case
 
-    conn = _open(a.db)
+    conn = _open(a.db, review=False)  # the report states the chain result itself
     tl = from_case(Case(Path(a.db)).settings)  # the case's own timeline settings
     print(f"wrote {write_report(conn, a.out, tl)}")
     return 0
 
 
 def cmd_verify_log(a: argparse.Namespace) -> int:
-    ok = audit_log.verify_chain(_open(a.db))
+    ok = audit_log.verify_chain(_open(a.db, review=False))
     print("audit log hash chain verified" if ok else "audit log hash chain FAILED")
     return 0 if ok else 1
 

@@ -106,6 +106,10 @@ eval or re-decided.
 ## Rules the screen keeps
 
 - Every change goes through `core/review/actions.py`, so the hash-chained audit log records it.
+- Opening a case verifies its audit log's hash chain first. A broken chain (the database was
+  changed outside Baker) fails closed: the case does not open, the Cases page says "Review
+  blocked" and names the first entry that does not match, and nothing is written. The CLI
+  refuses every review command on it the same way; `verify-log` and `report` still read it.
   The screen never sets a verdict; only `rules.py` does, through a full audit or a re-run.
 - Under rules 0.2.0 no claim is supported until an expert accepts its key evidence. An item the
   local AI reviewer accepted shows its tier as `ai_reviewed` ("AI-reviewed, not confirmed"); only
