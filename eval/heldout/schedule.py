@@ -4,12 +4,19 @@ The test split has the exact composition below; the dev split has half of every 
 one family are spread through the file, Russian records fall on a fixed pattern (about one item
 in five, plus one in fifteen with mixed-language context) and each item's record template is
 claimed from the shared walk in schedule order, test split first, so no record text repeats.
+
+Volume (GO_BAR.md): the test split keeps at least 1,000 gated items and at least 440 gold
+contradicts (the bar needs 420; ovr_translation items are disputed and never gated). Under guide
+v0.3 contradicts come only from con_denial, con_other_value, con_other_state, con_in_window,
+con_correction and ovr_negation; the time, sender, speaker and later-correction traps are
+complicates.
 """
 
 from __future__ import annotations
 
 import functools
-from collections.abc import Callable
+import re
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 from eval.heldout.data_complicates import DISPUTES, HEARSAY, HEDGES, INFERENCES, RELATIVE
@@ -39,15 +46,16 @@ COMPOSITION: dict[str, int] = {
     "sup_contact": 26,
     "sup_account_shared": 22,
     "sup_injection": 30,
-    "con_denial": 64,
-    "con_other_value": 70,
-    "con_other_state": 56,
-    "con_in_window": 56,
-    "con_other_speaker": 54,
-    "ovr_time_mismatch": 40,
-    "ovr_sender_mismatch": 34,
-    "ovr_later_correction": 32,
-    "ovr_negation": 34,
+    "con_denial": 70,
+    "con_other_value": 100,
+    "con_other_state": 40,
+    "con_in_window": 80,
+    "con_correction": 100,
+    "ovr_negation": 60,
+    "ovr_time_mismatch": 32,
+    "ovr_sender_mismatch": 28,
+    "ovr_speaker_mismatch": 30,
+    "ovr_later_correction": 30,
     "ovr_handle_owner": 14,
     "ovr_shared_account": 12,
     "ovr_pronoun": 12,
@@ -84,11 +92,12 @@ POOL_TAGS: dict[str, tuple[str, ...]] = {
     "con_other_value": ("value",),
     "con_other_state": ("state",),
     "con_in_window": ("any",),
-    "con_other_speaker": ("stmt",),
+    "con_correction": ("corr",),
+    "ovr_negation": ("neg",),
     "ovr_time_mismatch": ("any",),
     "ovr_sender_mismatch": ("any",),
+    "ovr_speaker_mismatch": ("stmt",),
     "ovr_later_correction": ("corr",),
-    "ovr_negation": ("neg",),
     "ovr_handle_owner": ("stmt",),
     "ovr_shared_account": ("stmt",),
     "ovr_pronoun": ("pron",),
@@ -112,12 +121,60 @@ POOL_TAGS: dict[str, tuple[str, ...]] = {
     "irr_pleasantry": ("pleas",),
 }
 
+# An answer that opens on a bare "no," (or ends on one) denies a question; a family that shows
+# the record without that question never draws it, so no denial stands with nothing to deny.
+_BARE_DENIAL = re.compile(r"^\s*(?:no|nope|nah|нет|неа)\s*,|,\s*(?:no|nope|нет)\W*$", re.IGNORECASE)
+
+
+def _no_bare_denial(t: Tpl) -> bool:
+    return not _BARE_DENIAL.search(t.text)
+
+
 PREDICATES: dict[str, Callable[[Tpl], bool]] = {
-    "con_other_speaker": lambda t: bool(t.vp),  # the act must be attributable to a member
+    "ovr_speaker_mismatch": lambda t: bool(t.vp),  # the act must be attributable to a member
     "sup_account_shared": lambda t: bool(t.that or t.vp),
+    "sup_verbatim": _no_bare_denial,
+    "con_in_window": _no_bare_denial,
+    "ovr_time_mismatch": _no_bare_denial,
+    "ovr_sender_mismatch": _no_bare_denial,
 }
 
-FOUR_TRAPS = ("ovr_time_mismatch", "ovr_sender_mismatch", "ovr_later_correction", "ovr_negation")
+
+def _fact(e: Entry) -> list[str]:
+    return ["fact: " + (e.that() if e.tpl.that else e.vp())]
+
+
+def _fix_and_fact(e: Entry) -> list[str]:
+    return [e.part("fix"), *_fact(e)]
+
+
+# More texts a claimed entry uses up (registry.Walk.claim): the correcting message, which is a
+# record for con_correction, and the fact a plain-fact assumption states, which carries no date
+# or account of its own when the record names none ("7 bags were dropped at the Halsted site").
+KEYS: dict[str, Callable[[Entry], Iterable[str]]] = {
+    "con_denial": _fact,
+    "con_other_value": _fact,
+    "con_correction": _fix_and_fact,
+    "ovr_negation": _fact,
+    "ovr_later_correction": _fix_and_fact,
+}
+
+# The four traps whose record has the assumption's words but leaves it open (guide v0.3): the
+# proposed deciding bar is zero of them shown as supports, on both test sets.
+MISMATCH_TRAPS = (
+    "ovr_time_mismatch",
+    "ovr_sender_mismatch",
+    "ovr_speaker_mismatch",
+    "ovr_later_correction",
+)
+CONTRADICTS_FAMILIES = (
+    "con_denial",
+    "con_other_value",
+    "con_other_state",
+    "con_in_window",
+    "con_correction",
+    "ovr_negation",
+)
 
 
 def _misc_templates() -> list[Tpl]:
@@ -214,6 +271,7 @@ def schedule() -> dict[str, list[Slot]]:
         for slot in slots:
             tags = POOL_TAGS[slot.family]
             pred = PREDICATES.get(slot.family)
-            slot.entry = walk.claim(slot.record_lang, tags, slot.family, pred)
+            keys = KEYS.get(slot.family)
+            slot.entry = walk.claim(slot.record_lang, tags, slot.family, pred, keys)
         out[split] = slots
     return out

@@ -1,9 +1,11 @@
-"""The stance prompt v1.1 draft (eval/probe/stance_v1_1_draft.md) is the signed v1.0 wording in
-a different order, so that consecutive model calls share a long prompt prefix.
+"""Speed round 2's draft (eval/probe/stance_v1_1_draft.md) is the signed v1.0 wording in a
+different order, so that consecutive model calls share a long prompt prefix. It was not signed.
 
-These tests hold the draft to that: the same lines, the fixed instructions before the case
-data, and a prefix that two calls on the same assumption share up to the record. The product
-keeps using the signed core/audit/prompts/stance.md until Arsh signs the draft.
+These tests hold the draft to that: the same lines as v1.0 (whose body is docs/prompts/stance.md
+draft v0.1), the fixed instructions before the case data, and a prefix that two calls on the
+same assumption share up to the record. The product uses the signed v1.1 (2026-10-14), which
+adds {claim}; its labeler refuses this draft, and the speed test times only drafts with v1.1's
+slots.
 
 SYNTHETIC. Fake model only.
 """
@@ -18,17 +20,22 @@ from pathlib import Path
 import pytest
 
 from core.audit import stance
-from core.audit._llm_json import fill_prompt, load_prompt, prompt_body
+from core.audit._llm_json import fill_prompt, prompt_body
 from core.db import connect
 from core.llm.runtime import FakeModel
 from eval import run_pipeline as rp
 from eval.probe import time_case
 
 DRAFT = Path("eval/probe/stance_v1_1_draft.md")
+V1_0 = Path("docs/prompts/stance.md")  # draft v0.1, signed word for word as v1.0
 
 
 def _bodies() -> tuple[str, str]:
-    return load_prompt(stance.PROMPT_FILE), prompt_body(DRAFT.read_text(encoding="utf-8"))
+    """v1.0's body and the reordered draft's."""
+    return (
+        prompt_body(V1_0.read_text(encoding="utf-8")),
+        prompt_body(DRAFT.read_text(encoding="utf-8")),
+    )
 
 
 def test_the_draft_has_the_signed_wording_line_for_line():
@@ -75,12 +82,20 @@ def conn(tmp_path_factory, tmp_path):
     db.close()
 
 
-def test_the_speed_test_can_time_the_draft(conn):
+def test_the_speed_test_can_time_a_draft_with_v1_1s_slots(conn, tmp_path):
     spec = Path("eval/probe_draft/case01_assumptions.jsonl")
     model = FakeModel(respond=lambda p: '{"stance": "irrelevant", "quote": "", "rationale": "n"}')
     signed = time_case._components(conn, model, spec, False)
-    draft = time_case._components(conn, model, spec, False, DRAFT)
-    assert draft.labeler.template == _bodies()[1]
+    signed_text = (stance.PROMPTS_DIR / stance.PROMPT_FILE).read_text(encoding="utf-8")
+    draft_file = tmp_path / "draft.md"
+    draft_file.write_text(signed_text.replace("Choose exactly one stance:", "Pick one:"), "utf-8")
+    draft = time_case._components(conn, model, spec, False, draft_file)
+    assert draft.labeler.template == prompt_body(draft_file.read_text(encoding="utf-8"))
     assert draft.labeler.prompt_version != signed.labeler.prompt_version
     (s_run,), (d_run,) = signed.labeler.model_runs, draft.labeler.model_runs
     assert s_run.prompt_sha256 != d_run.prompt_sha256  # outputs are never reused across prompts
+    # The draft goes through the product's wiring: names and the claim slot, as signed.
+    assert draft.labeler.claim_text("C02") == signed.labeler.claim_text("C02") is not None
+    # Round 2's reordered v1.0 has no {claim}; the product's wiring refuses it.
+    with pytest.raises(ValueError, match=r"lacks placeholders: \['claim'\]"):
+        time_case._components(conn, model, spec, False, DRAFT)

@@ -53,9 +53,9 @@ PRONOUNS: tuple[Tpl, ...] = (
     tpl(
         "sneaker",
         "en",
-        "they want 2 more of those by {day}",
+        "the buyers want 2 more of those by {day}",
         *_P,
-        that="{s} said buyers wanted two more guns by {day}",
+        that="{s} said the buyers wanted two more guns by {day}",
     ),
     tpl(
         "market",
@@ -141,9 +141,9 @@ PRONOUNS: tuple[Tpl, ...] = (
     tpl(
         "storage",
         "en",
-        "they found it in the unit",
+        "{name} found it in the unit",
         *_P,
-        that="the police found the drugs in the unit",
+        that="{name} found the drugs in the unit",
     ),
     tpl(
         "boat",
@@ -202,9 +202,9 @@ PRONOUNS: tuple[Tpl, ...] = (
     tpl(
         "sneaker",
         "ru",
-        "им нужно ещё две таких к {day}",
+        "покупателям нужно ещё две таких {day_for}",
         *_P,
-        that="{s} said buyers wanted two more guns by {day}",
+        that="{s} said the buyers wanted two more guns for {day}",
     ),
     tpl(
         "market",
@@ -493,7 +493,7 @@ CODEWORDS: tuple[Tpl, ...] = (
     tpl(
         "cater",
         "ru",
-        "подносы готовы, {n} штук",
+        "подносы готовы, {n:штука|штуки|штук}",
         *_C,
         n=(2, 12),
         word="подносы",
@@ -546,7 +546,7 @@ CODEWORDS: tuple[Tpl, ...] = (
     tpl(
         "tutor",
         "ru",
-        "{n:пакет|пакета|пакетов} на {day}, как в прошлый раз",
+        "{n:пакет|пакета|пакетов} {day_for}, как в прошлый раз",
         *_C,
         n=(2, 12),
         word="пакетов",
@@ -558,12 +558,12 @@ CODEWORDS: tuple[Tpl, ...] = (
         "ключи от квартиры нужны сегодня вечером",
         *_C,
         word="ключи",
-        that="{s} asked for the kilos stored at the condo",
+        that="{s} asked for the kilos stored at the apartment",
     ),
     tpl(
         "nurse",
         "ru",
-        "простыни пришли, {n} штук",
+        "простыни пришли, {n:штука|штуки|штук}",
         *_C,
         n=(2, 12),
         word="простыни",
@@ -625,7 +625,7 @@ TOPICS: tuple[Tpl, ...] = (
         *_T,
         c1="whats the running order for {place}",
         c2="{name} opens, then u, then the headliner",
-        that="a drug drop was scheduled for 11 p.m.",
+        that="a drug drop was scheduled for 11",
         quote="the drop is at 11",
     ),
     tpl(
@@ -658,7 +658,7 @@ TOPICS: tuple[Tpl, ...] = (
         n=(1, 4),
         c1="what are we baking for the sale at {place}",
         c2="brownies and the lemon bars",
-        that="{s} made {n}00 cannabis brownies for Saturday",
+        that="the special batch of {n}00 brownies for Saturday contained cannabis",
         quote="the special batch",
     ),
     tpl(
@@ -728,7 +728,7 @@ TOPICS: tuple[Tpl, ...] = (
         n=(2, 9),
         c1="how many flats of strawberries did we get",
         c2="{n}0, from the farm in michigan",
-        that="{s} was selling drugs at the market",
+        that="{s} was selling drugs",
         quote="moving the strawberries fast",
     ),
     tpl(
@@ -749,7 +749,7 @@ TOPICS: tuple[Tpl, ...] = (
         n=(2, 9),
         c1="pantry delivery today?",
         c2="food bank truck comes at {t}",
-        that="{s} moved {n}0 pounds of drugs to the basement",
+        that="{s} and others moved {n}0 pounds of drugs to the basement",
         quote="moving it to the basement",
     ),
     tpl(
@@ -781,7 +781,7 @@ TOPICS: tuple[Tpl, ...] = (
         *_T,
         c1="какой порядок выступлений?",
         c2="{name} открывает, потом ты, потом хедлайнер",
-        that="a drug drop was scheduled for 11 p.m.",
+        that="a drug drop was set for 11",
         quote="дроп в 11",
     ),
     tpl(
@@ -814,7 +814,7 @@ TOPICS: tuple[Tpl, ...] = (
         n=(1, 4),
         c1="что печём на ярмарку?",
         c2="брауни и лимонные",
-        that="{s} made {n}00 cannabis brownies for Saturday",
+        that="the special batch of {n}00 brownies for Saturday contained cannabis",
         quote="особая партия",
     ),
     tpl(
@@ -901,9 +901,9 @@ CONDITIONS: tuple[Tpl, ...] = (
     tpl(
         "tutor",
         "en",
-        "if her mom pays by {day} ill keep the slot",
+        "if {name}'s mom pays by {day} ill keep the slot",
         *_CO,
-        vp="kept the slot for the student",
+        vp="kept the slot for {name}",
     ),
     tpl(
         "nurse",
@@ -917,7 +917,7 @@ CONDITIONS: tuple[Tpl, ...] = (
         "en",
         "if the weather holds we're going out at 5",
         *_CO,
-        that="the boat went out at 5",
+        that="{s} and others went out at 5",
     ),
     tpl(
         "sneaker",
@@ -937,7 +937,7 @@ CONDITIONS: tuple[Tpl, ...] = (
     tpl(
         "church",
         "en",
-        "we'll set up {n}0 chairs if the choir needs the gym",
+        "ill set up {n}0 chairs if the choir needs the gym",
         *_CO,
         n=(4, 20),
         vp="set up {n}0 chairs",
@@ -973,7 +973,7 @@ CONDITIONS: tuple[Tpl, ...] = (
         n=(4, 40),
         vp="took route {n}",
     ),
-    tpl("dog", "en", "if the vet clears him he gets a long walk", *_CO, that="Rex got a long walk"),
+    tpl("dog", "en", "if the vet clears rex he gets a long walk", *_CO, that="Rex got a long walk"),
     tpl(
         "cater",
         "en",
@@ -1002,9 +1002,9 @@ CONDITIONS: tuple[Tpl, ...] = (
     tpl(
         "tutor",
         "ru",
-        "если мама оплатит на этой неделе, оставлю слот",
+        "если мама {name_g} оплатит на этой неделе, оставлю слот",
         *_CO,
-        vp="kept the slot for the student",
+        vp="kept the slot for {name}",
     ),
     tpl(
         "nurse",
@@ -1013,7 +1013,9 @@ CONDITIONS: tuple[Tpl, ...] = (
         *_CO,
         vp="covered {name}'s shift",
     ),
-    tpl("boat", "ru", "если погода позволит, выходим в 5", *_CO, that="the boat went out at 5"),
+    tpl(
+        "boat", "ru", "если погода позволит, выходим в 5", *_CO, that="{s} and others went out at 5"
+    ),
     tpl(
         "sneaker",
         "ru",
@@ -1032,7 +1034,7 @@ CONDITIONS: tuple[Tpl, ...] = (
     tpl(
         "church",
         "ru",
-        "если хору нужен спортзал, поставим {n}0 стульев",
+        "если хору нужен спортзал, поставлю {n}0 стульев",
         *_CO,
         n=(4, 20),
         vp="set up {n}0 chairs",
@@ -1086,7 +1088,7 @@ PLANS: tuple[Tpl, ...] = (
         "we're doing {n}0 plates for {place} tmrw",
         *_PL,
         n=(5, 30),
-        vp="served {n}0 plates at {place}",
+        that="{s} and others served {n}0 plates at {place}",
     ),
     tpl(
         "nurse",
@@ -1098,9 +1100,9 @@ PLANS: tuple[Tpl, ...] = (
     tpl(
         "gig",
         "en",
-        "set at {place} starts at {t} tmrw",
+        "my set at {place} starts at {t} tmrw",
         *_PL,
-        that="the band played {place} at {t}",
+        that="{s} played {place} at {t}",
     ),
     tpl(
         "market",
@@ -1115,7 +1117,7 @@ PLANS: tuple[Tpl, ...] = (
         "en",
         "session with {name} at {t} at {place} tmrw",
         *_PL,
-        vp="tutored {name} at {t} at {place}",
+        vp="had a session with {name} at {t} at {place}",
     ),
     tpl(
         "warehouse",
@@ -1146,7 +1148,7 @@ PLANS: tuple[Tpl, ...] = (
         "en",
         "gonna go out from {place} at 5, back by noon",
         *_PL,
-        that="the boat went out from {place} at 5",
+        that="{s} went out from {place} at 5",
     ),
     tpl(
         "sneaker",
@@ -1215,10 +1217,10 @@ PLANS: tuple[Tpl, ...] = (
     tpl(
         "cater",
         "ru",
-        "делаем {n}0 порций на банкет завтра",
+        "делаю {n}0 порций на банкет завтра",
         *_PL,
         n=(5, 30),
-        vp="served {n}0 portions at the banquet",
+        vp="made {n}0 portions for the banquet",
     ),
     tpl(
         "nurse",
@@ -1230,9 +1232,9 @@ PLANS: tuple[Tpl, ...] = (
     tpl(
         "gig",
         "ru",
-        "сет в пуласки-рум завтра начинается в {t}",
+        "мой сет в пуласки-рум завтра начинается в {t}",
         *_PL,
-        that="the band played the Pulaski Room at {t}",
+        that="{s} played the Pulaski Room at {t}",
     ),
     tpl(
         "market",
@@ -1247,7 +1249,7 @@ PLANS: tuple[Tpl, ...] = (
         "ru",
         "завтра занятие с {name_i} в {t} в библиотеке",
         *_PL,
-        vp="tutored {name} at {t} at the library",
+        vp="had a session with {name} at {t} at the library",
     ),
     tpl(
         "warehouse",
@@ -1263,12 +1265,12 @@ PLANS: tuple[Tpl, ...] = (
         "ru",
         "завтра показ на милуоки в {t}",
         *_PL,
-        vp="showed the Milwaukee Avenue condo at {t}",
+        that="the showing on Milwaukee took place at {t}",
     ),
     tpl(
         "church",
         "ru",
-        "будем ставить {n}0 стульев в зале сегодня вечером",
+        "буду ставить {n}0 стульев в зале сегодня вечером",
         *_PL,
         n=(4, 20),
         vp="set up {n}0 chairs in the hall that night",
@@ -1278,7 +1280,7 @@ PLANS: tuple[Tpl, ...] = (
         "ru",
         "завтра выходим с причала в 5, вернёмся к полудню",
         *_PL,
-        that="the boat went out at 5",
+        that="{s} and others went out from the dock at 5",
     ),
     tpl(
         "sneaker",
@@ -1340,10 +1342,10 @@ QUESTIONS: tuple[Tpl, ...] = (
     tpl(
         "tutor",
         "en",
-        "did her mom pay for the {n} sessions?",
+        "did {name}'s mom pay for the {n} sessions?",
         *_AS,
         n=(3, 9),
-        that="the student's mother paid for {n} sessions",
+        that="the mother of {name} paid for the {n} sessions",
     ),
     tpl(
         "warehouse",
@@ -1372,7 +1374,7 @@ QUESTIONS: tuple[Tpl, ...] = (
         "en",
         "u guys went out from {place} this morning?",
         *_AS,
-        that="the boat went out from {place} that morning",
+        that="{r} and others went out from {place} that morning",
     ),
     tpl("sneaker", "en", "did u ship {name}'s dunks?", *_AS, that="{r} shipped {name}'s Dunks"),
     tpl(
@@ -1405,7 +1407,13 @@ QUESTIONS: tuple[Tpl, ...] = (
         that="the truck reached {place} by {t}",
     ),
     tpl("storage", "en", "u cleared out {place} yet?", *_AS, that="{r} cleared out {place}"),
-    tpl("nurse", "en", "did {name} do the {t} med pass?", *_AS, that="{name} did the {t} med pass"),
+    tpl(
+        "nurse",
+        "en",
+        "did {name} do the {t} med pass?",
+        *_AS,
+        that="{name} did the med pass at {t}",
+    ),
     tpl(
         "cater",
         "ru",
@@ -1442,15 +1450,15 @@ QUESTIONS: tuple[Tpl, ...] = (
     tpl(
         "tutor",
         "ru",
-        "её мама оплатила {n:занятие|занятия|занятий}?",
+        "мама {name_g} уже оплатила {n:занятие|занятия|занятий}?",
         *_AS,
         n=(3, 9),
-        that="the student's mother paid for {n} sessions",
+        that="the mother of {name} paid for {n} sessions",
     ),
     tpl(
         "warehouse",
         "ru",
-        "ты паллеты на четвёртом отсканировал?",
+        "ты паллеты на четвёртом доке отсканировал?",
         *_AS,
         g="m",
         that="{r} scanned the pallets at dock 4",
@@ -1475,9 +1483,9 @@ QUESTIONS: tuple[Tpl, ...] = (
     tpl(
         "boat",
         "ru",
-        "вы сегодня утром выходили с причала?",
+        "вы с ребятами сегодня утром выходили с причала?",
         *_AS,
-        that="the boat went out that morning",
+        that="{r} and others went out from the dock that morning",
     ),
     tpl(
         "sneaker",
@@ -1518,7 +1526,7 @@ QUESTIONS: tuple[Tpl, ...] = (
         that="the truck reached Elmhurst by {t}",
     ),
     tpl("storage", "ru", "ты бокс уже освободил?", *_AS, g="m", that="{r} cleared out the unit"),
-    tpl("nurse", "ru", "обход в {t} за {name_i}?", *_AS, that="{name} did the {t} med round"),
+    tpl("nurse", "ru", "обход в {t} за {name_i}?", *_AS, that="{name} did the med round at {t}"),
 )
 
 _J = ("joke",)
@@ -1537,7 +1545,7 @@ JOKES: tuple[Tpl, ...] = (
     tpl(
         "site",
         "en",
-        "sold it for beer money obviously 🙄 jk its in {name}'s truck",
+        "sold it for beer money obviously 🙄",
         *_J,
         setup="where did the generator go",
         reply="lol ok",
@@ -1561,7 +1569,7 @@ JOKES: tuple[Tpl, ...] = (
         *_J,
         setup="how was the showing at {place}",
         reply="hahaha ok",
-        that="the buyers agreed to move into {place} that night",
+        that="the buyers were moving into {place} on {xdate}",
         quote="they're moving in tonight",
     ),
     tpl(
@@ -1577,12 +1585,12 @@ JOKES: tuple[Tpl, ...] = (
     tpl(
         "dog",
         "en",
-        "angel. only ate one mailman 😂",
+        "angel. only bit one mailman 😂",
         *_J,
         setup="did rex behave",
         reply="lol poor guy",
         that="Rex bit a mail carrier",
-        quote="only ate one mailman",
+        quote="only bit one mailman",
     ),
     tpl(
         "site",
@@ -1601,7 +1609,7 @@ JOKES: tuple[Tpl, ...] = (
         *_J,
         setup="how many admits last night on {place}",
         reply="lol stop",
-        that="{place} had 400 admissions that night",
+        that="{place} had 400 admissions on the night of {xprev}",
         quote="like 400",
     ),
     tpl(
@@ -1617,7 +1625,7 @@ JOKES: tuple[Tpl, ...] = (
     tpl(
         "storage",
         "en",
-        "ya and found a dead body in it, cops are here now 😂 jk just old chairs",
+        "ya and found a dead body in it, cops are here now 😂",
         *_J,
         setup="did u clear out {place}",
         reply="lol u scared me",
@@ -1627,20 +1635,20 @@ JOKES: tuple[Tpl, ...] = (
     tpl(
         "boat",
         "en",
-        "caught a 300 pound marlin in lake michigan lol",
+        "i caught a 300 pound marlin in lake michigan lol",
         *_J,
         setup="how was the boat",
         reply="😂 sure u did",
         vp="caught a 300 pound marlin",
-        quote="caught a 300 pound marlin",
+        quote="i caught a 300 pound marlin",
     ),
     tpl(
         "tutor",
         "en",
-        "100%, hes basically a genius now 😂",
+        "100%, basically a genius now 😂",
         *_J,
         setup="did {name} pass the practice test",
-        reply="lol sure he is",
+        reply="lol sure",
         that="{name} scored 100% on the practice test",
         quote="100%",
     ),
@@ -1661,7 +1669,7 @@ JOKES: tuple[Tpl, ...] = (
         *_J,
         setup="did the client pay",
         reply="lol great",
-        that="the client paid for the event",
+        that="the client paid",
         quote="paid us in hugs and good vibes",
     ),
     tpl(
@@ -1681,7 +1689,7 @@ JOKES: tuple[Tpl, ...] = (
         *_J,
         setup="whats the setlist",
         reply="lmao no",
-        that="the band planned indoor fireworks",
+        that="{s} planned to set off fireworks indoors",
         quote="fireworks indoors",
     ),
     tpl(
@@ -1690,7 +1698,7 @@ JOKES: tuple[Tpl, ...] = (
         "ага, я всё забрал и купил яхту 😂",
         *_J,
         g="m",
-        setup="касса опять не сошлась??",
+        setup="в кассе опять недостача??",
         reply="ахаха, ну ты даёшь",
         vp="took the missing money from the register",
         quote="я всё забрал и купил яхту",
@@ -1712,7 +1720,7 @@ JOKES: tuple[Tpl, ...] = (
         *_J,
         setup="как показ?",
         reply="ахаха, класс",
-        that="the buyers agreed to move in that night",
+        that="the buyers were moving in on {xdate}",
         quote="они въезжают сегодня",
     ),
     tpl(
@@ -1728,12 +1736,12 @@ JOKES: tuple[Tpl, ...] = (
     tpl(
         "dog",
         "ru",
-        "ангел. съел всего одного почтальона 😂",
+        "ангел. укусил всего одного почтальона 😂",
         *_J,
         setup="рекс как себя вёл?",
         reply="лол, бедняга",
         that="Rex bit a mail carrier",
-        quote="съел всего одного почтальона",
+        quote="укусил всего одного почтальона",
     ),
     tpl(
         "nurse",
@@ -1741,9 +1749,9 @@ JOKES: tuple[Tpl, ...] = (
         "штук 400, я лично всех спасла 😂",
         *_J,
         g="f",
-        setup="сколько поступлений за ночь?",
+        setup="сколько поступлений было прошлой ночью в реанимации?",
         reply="лол хватит",
-        that="the floor had 400 admissions that night",
+        that="the ICU had 400 admissions on the night of {xprev}",
         quote="штук 400",
     ),
     tpl(
@@ -1753,7 +1761,7 @@ JOKES: tuple[Tpl, ...] = (
         *_J,
         setup="как лодка?",
         reply="😂 ну конечно",
-        vp="caught a 150 kilo marlin",
+        that="{s} and others caught a 150 kilo marlin",
         quote="поймали марлина на 150 кило",
     ),
     tpl(
@@ -1773,7 +1781,7 @@ JOKES: tuple[Tpl, ...] = (
         *_J,
         setup="клиент заплатил?",
         reply="лол супер",
-        that="the client paid for the event",
+        that="the client paid",
         quote="заплатил обнимашками и хорошим настроением",
     ),
     tpl(
@@ -1819,12 +1827,12 @@ PARTIALS: tuple[Tpl, ...] = (
         "en",
         "picked up {name}'s shift {day}",
         *_PA,
-        that="{s} picked up {name}'s shift on {day} and gave the {t} dose early",
+        that="{s} picked up {name}'s shift on {day} and gave the dose due at {t} early",
     ),
     tpl(
         "gig",
         "en",
-        "played {place} {day}, 2 sets",
+        "i played {place} {day}, 2 sets",
         *_PA,
         n=(2, 15),
         that="{s} played {place} on {day} and was paid {n}00 in cash",
@@ -1840,7 +1848,7 @@ PARTIALS: tuple[Tpl, ...] = (
     tpl(
         "tutor",
         "en",
-        "had {name} for 2 hours at {place}",
+        "tutored {name} for 2 hours at {place}",
         *_PA,
         that="{s} tutored {name} for two hours at {place} and charged double",
     ),
@@ -1871,7 +1879,7 @@ PARTIALS: tuple[Tpl, ...] = (
     tpl(
         "church",
         "en",
-        "set up {n}0 chairs in {place}",
+        "got {n}0 chairs set up in {place}",
         *_PA,
         n=(4, 20),
         that="{s} set up {n}0 chairs in {place} and took money from the collection",
@@ -1881,7 +1889,7 @@ PARTIALS: tuple[Tpl, ...] = (
         "en",
         "we left {place} at {t}",
         *_PA,
-        that="the boat left {place} at {t} and {s} sold the catch at the dock",
+        that="{s} and others left {place} at {t} and {s} sold the catch at the dock",
     ),
     tpl(
         "sneaker",
@@ -1933,7 +1941,7 @@ PARTIALS: tuple[Tpl, ...] = (
         "ru",
         "фургон стоит у парка",
         *_PA,
-        that="the truck was parked at the park and {s} sold food without a permit",
+        that="the van was parked at the park and {s} sold food without a permit",
     ),
     tpl(
         "nurse",
@@ -1941,7 +1949,7 @@ PARTIALS: tuple[Tpl, ...] = (
         "взяла смену {name_g} {day}",
         *_PA,
         g="f",
-        that="{s} took {name}'s shift on {day} and gave the {t} dose early",
+        that="{s} took {name}'s shift on {day} and gave the dose due at {t} early",
     ),
     tpl(
         "gig",
@@ -1949,20 +1957,24 @@ PARTIALS: tuple[Tpl, ...] = (
         "отыграли два сета в пуласки-рум {day}",
         *_PA,
         n=(2, 15),
-        that="{s} played two sets at the Pulaski Room on {day} and was paid {n}00 in cash",
+        that=(
+            "{s} and others played two sets at the Pulaski Room on {day} and were paid {n}00 "
+            "in cash"
+        ),
     ),
     tpl(
         "market",
         "ru",
-        "продали {n:банку|банки|банок} на рынке",
+        "продал {n:банку|банки|банок} на рынке",
         *_PA,
         n=(5, 40),
+        g="m",
         that="{s} sold {n} jars at the market and did not report the income",
     ),
     tpl(
         "warehouse",
         "ru",
-        "сгрузил {n:паллету|паллеты|паллет} на четвёртом",
+        "сгрузил {n:паллету|паллеты|паллет} на четвёртом доке",
         *_PA,
         n=(2, 30),
         g="m",
@@ -1984,7 +1996,7 @@ PARTIALS: tuple[Tpl, ...] = (
         *_PA,
         n=(2, 9),
         g="m",
-        that="{s} showed the Milwaukee Avenue condo at {t} and took {n}00 from the buyers",
+        that="{s} showed the apartment on Milwaukee at {t} and took {n}00 from the buyers",
     ),
     tpl(
         "church",
@@ -1998,9 +2010,9 @@ PARTIALS: tuple[Tpl, ...] = (
     tpl(
         "boat",
         "ru",
-        "вышли с причала в {t}",
+        "мы вышли с причала в {t}",
         *_PA,
-        that="the boat left the dock at {t} and {s} sold the catch at the dock",
+        that="{s} and others left the dock at {t} and {s} sold the catch at the dock",
     ),
     tpl(
         "sneaker",
@@ -2020,23 +2032,25 @@ PARTIALS: tuple[Tpl, ...] = (
     ),
 )
 
+# Counts: one occasion against "every" or "always". The generalization names no period of its
+# own ("that month" can end before the occasion it generalizes, or start after it).
 _CN = ("count",)
 
 COUNTS: tuple[Tpl, ...] = (
     tpl(
         "warehouse",
         "en",
-        "{n} crates again this tuesday",
+        "delivered {n} crates again tuesday",
         *_CN,
         n=(2, 12),
-        that="{s} delivered {n} crates every Tuesday that month",
+        that="{s} delivered {n} crates every Tuesday",
     ),
     tpl(
         "warehouse",
         "en",
         "took the 6am route again",
         *_CN,
-        that="{s} drove the 6 a.m. route every day that week",
+        that="{s} drove the 6 a.m. route every day",
     ),
     tpl(
         "site",
@@ -2051,20 +2065,24 @@ COUNTS: tuple[Tpl, ...] = (
         "en",
         "another night on {place}",
         *_CN,
-        that="{s} worked every night on {place} that month",
+        that="{s} worked every night on {place}",
     ),
     tpl(
         "gig",
         "en",
-        "played {place} again, same deal",
+        "we played {place} again, same deal",
         *_CN,
-        that="{s} played {place} every weekend",
-        quote="played {place} again",
+        that="{s} and others played {place} every weekend",
+        quote="we played {place} again",
     ),
     tpl(
-        "market", "en", "sold out again lol", *_CN, that="{s} sold out at every market that season"
+        "market",
+        "en",
+        "we sold out at the market again lol",
+        *_CN,
+        that="{s} and others sold out at the market every week",
     ),
-    tpl("tutor", "en", "{name} was late again", *_CN, that="{name} was late to every session"),
+    tpl("tutor", "en", "{name} was late again", *_CN, that="{name} was late every time"),
     tpl(
         "dog",
         "en",
@@ -2083,23 +2101,23 @@ COUNTS: tuple[Tpl, ...] = (
     tpl(
         "church",
         "en",
-        "pantry delivery came again this friday",
+        "pantry delivery came again friday",
         *_CN,
-        that="the pantry received a delivery every Friday that year",
+        that="the pantry received a delivery every Friday",
     ),
     tpl(
         "boat",
         "en",
-        "out from {place} at 5 again",
+        "i was out from {place} at 5 again",
         *_CN,
-        that="the boat went out from {place} at 5 every day",
+        that="{s} went out from {place} at 5 every day",
     ),
     tpl(
         "sneaker",
         "en",
-        "flipped another pair to {name}",
+        "flipped another pair of dunks to {name}",
         *_CN,
-        that="{s} sold {name} sneakers every week",
+        that="{s} sold {name} a pair of Dunks every week",
     ),
     tpl(
         "storage",
@@ -2107,13 +2125,13 @@ COUNTS: tuple[Tpl, ...] = (
         "paid {place} again, same {n}0",
         *_CN,
         n=(6, 30),
-        that="{s} paid {n}0 for {place} every month that year",
+        that="{s} paid {n}0 for {place} every month",
         quote="paid {place} again",
     ),
     tpl(
         "boat",
         "en",
-        "{n} keepers again out there",
+        "i got {n} keepers again out there",
         *_CN,
         n=(2, 20),
         that="{s} caught {n} keepers on every trip",
@@ -2130,22 +2148,23 @@ COUNTS: tuple[Tpl, ...] = (
         "en",
         "tuesday session with {name} again",
         *_CN,
-        that="{name} tutored every Tuesday",
+        that="{s} had a session with {name} every Tuesday",
     ),
     tpl(
         "nurse",
         "en",
         "did the {t} med pass again",
         *_CN,
-        that="{s} did the {t} med pass every night",
+        that="{s} did the med pass at {t} every day",
     ),
     tpl(
         "warehouse",
         "ru",
-        "ещё {n:ящик|ящика|ящиков} в этот вторник",
+        "опять привёз {n:ящик|ящика|ящиков} во вторник",
         *_CN,
         n=(2, 12),
-        that="{s} delivered {n} crates every Tuesday that month",
+        g="m",
+        that="{s} delivered {n} crates every Tuesday",
     ),
     tpl(
         "warehouse",
@@ -2153,7 +2172,7 @@ COUNTS: tuple[Tpl, ...] = (
         "опять взял маршрут на 6 утра",
         *_CN,
         g="m",
-        that="{s} drove the 6 a.m. route every day that week",
+        that="{s} drove the 6 a.m. route every day",
     ),
     tpl(
         "site",
@@ -2173,26 +2192,26 @@ COUNTS: tuple[Tpl, ...] = (
     tpl(
         "nurse",
         "ru",
-        "ещё одна ночь на четвёртом",
+        "ещё одна ночь на четвёртом этаже",
         *_CN,
-        that="{s} worked every night on the fourth floor that month",
+        that="{s} worked every night on the fourth floor",
     ),
     tpl(
         "gig",
         "ru",
         "опять играли в пуласки-рум, те же условия",
         *_CN,
-        that="{s} played the Pulaski Room every weekend",
+        that="{s} and others played the Pulaski Room every weekend",
         quote="опять играли в пуласки-рум",
     ),
     tpl(
         "market",
         "ru",
-        "опять всё распродали лол",
+        "мы опять всё распродали на рынке лол",
         *_CN,
-        that="{s} sold out at every market that season",
+        that="{s} and others sold out at the market every week",
     ),
-    tpl("tutor", "ru", "{name} опять опаздывает", *_CN, that="{name} was late to every session"),
+    tpl("tutor", "ru", "{name} опять опаздывает", *_CN, that="{name} was late every time"),
     tpl(
         "dog",
         "ru",
@@ -2205,28 +2224,29 @@ COUNTS: tuple[Tpl, ...] = (
         "ru",
         "ещё один показ на милуоки, та же пара",
         *_CN,
-        that="the couple viewed the Milwaukee Avenue condo every week",
+        that="the couple came to a showing on Milwaukee every week",
     ),
     tpl(
         "church",
         "ru",
-        "доставка для раздачи опять пришла в пятницу",
+        "продукты для раздачи опять привезли в пятницу",
         *_CN,
-        that="the pantry received a delivery every Friday that year",
+        that="food for the giveaway was delivered every Friday",
     ),
     tpl(
         "boat",
         "ru",
         "опять вышли в 5",
         *_CN,
-        that="the boat went out at 5 every day",
+        that="{s} and others went out at 5 every day",
     ),
     tpl(
         "boat",
         "ru",
-        "опять {n:зачётная|зачётных|зачётных} там",
+        "опять взял {n:зачётную|зачётных|зачётных}",
         *_CN,
         n=(2, 20),
+        g="m",
         that="{s} caught {n} keepers on every trip",
     ),
     tpl(
@@ -2247,7 +2267,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "он меня развёл на двести",
         *_ID,
         that="someone stole 200 from {s}",
-        lit="'развёл' is slang for talked into or conned; the literal sense is 'separated'",
+        lit="'развёл на двести' can mean conned out of 200 or just talked into spending 200",
+        reads="theft",
     ),
     tpl(
         "site",
@@ -2255,15 +2276,20 @@ IDIOMS: tuple[Tpl, ...] = (
         "мы его сдали",
         *_ID,
         that="{s} and others reported someone to the police",
-        lit="'сдали' is literally 'handed in' and can mean turned in, gave up or returned",
+        lit=(
+            "'сдали' can mean turned someone in, but also handed something in, returned it or "
+            "passed it"
+        ),
+        reads="a report to the police",
     ),
     tpl(
         "gig",
         "ru",
         "он слился в последний момент",
         *_ID,
-        that="someone fled the city at the last moment",
-        lit="'слился' is literally 'drained away' and colloquially means backed out",
+        that="someone fled at the last moment",
+        lit="'слился' is slang for backed out or dropped out",
+        reads="fleeing",
     ),
     tpl(
         "tutor",
@@ -2271,8 +2297,9 @@ IDIOMS: tuple[Tpl, ...] = (
         "я всё слил {name_d}",
         *_ID,
         g="m",
-        that="{s} leaked confidential documents to {name}",
-        lit="'слил' is literally 'poured out' and colloquially leaked, dumped or lost",
+        that="{s} leaked confidential information to {name}",
+        lit="'слил' can mean passed on, leaked, dumped or lost",
+        reads="leaking confidential information",
     ),
     tpl(
         "site",
@@ -2280,15 +2307,17 @@ IDIOMS: tuple[Tpl, ...] = (
         "нас спалили на объекте",
         *_ID,
         that="the police caught {s} and others at the site",
-        lit="'спалили' is literally 'burned' and colloquially means noticed or caught, by anyone",
+        lit="'спалили' is slang for noticed or caught out, by anyone",
+        reads="caught by the police",
     ),
     tpl(
         "market",
         "ru",
         "замутили тему с {name_i}",
         *_ID,
-        that="{s} set up a drug deal with {name}",
-        lit="'замутили тему' is literally 'stirred up a topic' and means started some project",
+        that="{s} and others set up a drug deal with {name}",
+        lit="'замутили тему' is slang for started something together, of any kind",
+        reads="a drug deal",
     ),
     tpl(
         "storage",
@@ -2296,7 +2325,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "он на бабки попал",
         *_ID,
         that="someone was robbed",
-        lit="'попал на бабки' is slang for ended up owing money",
+        lit="'попал на бабки' is slang for ended up owing or losing money",
+        reads="a robbery",
     ),
     tpl(
         "warehouse",
@@ -2305,7 +2335,8 @@ IDIOMS: tuple[Tpl, ...] = (
         *_ID,
         g="m",
         that="{s} planted evidence on someone",
-        lit="'подставил' is literally 'put under' and colloquially set up or let down",
+        lit="'подставил' can mean set someone up, let someone down or got someone in trouble",
+        reads="planting evidence",
     ),
     tpl(
         "cater",
@@ -2313,7 +2344,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "она его бортанула",
         *_ID,
         that="someone got fired",
-        lit="'бортанула' is slang for rejected or dumped",
+        lit="'бортанула' is slang for turned down or dumped",
+        reads="a firing",
     ),
     tpl(
         "boat",
@@ -2321,7 +2353,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "меня крутили два часа",
         *_ID,
         that="{s} was detained by police for two hours",
-        lit="'крутили' is literally 'twisted' and slang for grilled or hassled, by anyone",
+        lit="'крутили' can mean questioned, hassled or kept busy, by anyone",
+        reads="a police detention",
     ),
     tpl(
         "showing",
@@ -2329,7 +2362,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "у него там крыша",
         *_ID,
         that="someone there is protected by corrupt police",
-        lit="'крыша' is literally 'roof' and slang for protection of any kind",
+        lit="'крыша' can be a literal roof or, as slang, protection or backing of any kind",
+        reads="corrupt police",
     ),
     tpl(
         "site",
@@ -2338,7 +2372,8 @@ IDIOMS: tuple[Tpl, ...] = (
         *_ID,
         g="m",
         that="{s} promised {r} a bribe",
-        lit="'отстегну' is literally 'unfasten' and slang for giving someone a share of money",
+        lit="'отстегну' is slang for paying someone a share, for any reason",
+        reads="a bribe",
     ),
     tpl(
         "sneaker",
@@ -2346,16 +2381,21 @@ IDIOMS: tuple[Tpl, ...] = (
         "закинул ему косарь",
         *_ID,
         g="m",
-        that="{s} paid someone a thousand for drugs",
-        lit="'закинул косарь' is slang for sent a thousand of some currency",
+        that="{s} sent someone a thousand",
+        lit="'закинул косарь' is literally threw a mower and, as slang, sent someone a thousand",
+        reads="sending a thousand",
     ),
     tpl(
         "gig",
         "ru",
         "он меня слил ментам",
         *_ID,
-        that="someone reported {s} to the police",
-        lit="'слил ментам' is slang for gave up to the cops; literally 'poured to the cops'",
+        that="someone gave the police a formal statement against {s}",
+        lit=(
+            "'слил ментам' is slang for gave someone away to the cops, anything from a hint to a "
+            "name"
+        ),
+        reads="a formal statement",
     ),
     tpl(
         "church",
@@ -2363,7 +2403,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "мы её тормознули у входа",
         *_ID,
         that="{s} and others detained someone at the entrance",
-        lit="'тормознули' is literally 'braked' and colloquially stopped someone to talk",
+        lit="'тормознули' is slang for stopped someone, often just to talk",
+        reads="detaining",
     ),
     tpl(
         "showing",
@@ -2371,7 +2412,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "он пробил мой номер",
         *_ID,
         that="someone illegally searched a police database for the number of {s}",
-        lit="'пробил' is literally 'punched through' and slang for looked up",
+        lit="'пробил' is slang for looked up or checked, by any means",
+        reads="an illegal police database search",
     ),
     tpl(
         "nurse",
@@ -2379,7 +2421,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "она его прикрыла",
         *_ID,
         that="someone was hidden from the police",
-        lit="'прикрыла' is literally 'covered' and colloquially covered for or shut down",
+        lit="'прикрыла' can mean covered for someone, shielded them or shut something down",
+        reads="hiding someone from the police",
     ),
     tpl(
         "warehouse",
@@ -2388,7 +2431,8 @@ IDIOMS: tuple[Tpl, ...] = (
         *_ID,
         g="m",
         that="{s} assaulted someone on {xprev}",
-        lit="'вломил' is slang for hit; the literal verb means broke in",
+        lit="'вломил' is slang that can mean hit someone or gave someone a hard time",
+        reads="an assault",
     ),
     tpl(
         "storage",
@@ -2396,7 +2440,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "его закрыли на трое суток",
         *_ID,
         that="someone was jailed for three days",
-        lit="'закрыли' is literally 'closed' and slang for locked up, or for shutting a business",
+        lit="'закрыли' can mean locked up, but also shut down, as a shop or an account",
+        reads="jail",
     ),
     tpl(
         "gig",
@@ -2404,7 +2449,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "мы с ним замутили на выходных",
         *_ID,
         that="{s} bought drugs with someone that weekend",
-        lit="'замутили' is slang for got something going, often a party or a scheme",
+        lit="'замутили' is slang for got something going, a party, a plan or a romance",
+        reads="buying drugs",
     ),
     tpl(
         "warehouse",
@@ -2413,7 +2459,8 @@ IDIOMS: tuple[Tpl, ...] = (
         *_ID,
         g="m",
         that="{s} quit the criminal scheme",
-        lit="'соскочил' is literally 'jumped off' and slang for backed out of anything",
+        lit="'соскочил с темы' is slang for backed out of something, of any kind",
+        reads="quitting a criminal scheme",
     ),
     tpl(
         "tutor",
@@ -2421,31 +2468,35 @@ IDIOMS: tuple[Tpl, ...] = (
         "он мне должен по жизни",
         *_ID,
         that="someone owes {s} money",
-        lit="'должен по жизни' is slang for owes a favor, not money",
+        lit="'должен по жизни' is slang for owing someone big, a favor as much as money",
+        reads="a money debt",
     ),
     tpl(
         "boat",
         "ru",
-        "{name} нас подставил с грузом",
+        "из-за {name_g} нас подставили с грузом",
         *_ID,
-        that="{name} informed the police about their shipment",
-        lit="'подставил' is slang for let down or set up; nothing says police",
+        that="{name} informed the police about the shipment",
+        lit="'подставили' can mean let someone down, set them up or got them in trouble",
+        reads="informing the police",
     ),
     tpl(
         "sneaker",
         "ru",
         "я на нуле, скинь косарь",
         *_ID,
-        that="{s} asked {r} for a thousand",
-        lit="'косарь' is slang for a thousand of any currency and 'на нуле' for broke",
+        that="the bank account of {s} was empty",
+        lit="'я на нуле' is slang for being out of money, or just worn out",
+        reads="an empty bank account",
     ),
     tpl(
         "site",
         "ru",
         "мы с {name_i} всё порешали",
         *_ID,
-        that="{s} and {name} settled a debt by force",
+        that="{s} and {name} settled things by force",
         lit="'порешали' is slang for sorted things out, by any means",
+        reads="settling things by force",
     ),
     tpl(
         "gig",
@@ -2453,7 +2504,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "он опять на измене",
         *_ID,
         that="someone was under the influence of drugs again",
-        lit="'на измене' is slang for paranoid or anxious; literally 'on betrayal'",
+        lit="'на измене' is slang for paranoid or on edge, for any reason",
+        reads="being on drugs",
     ),
     tpl(
         "storage",
@@ -2461,7 +2513,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "нас приняли у склада",
         *_ID,
         that="{s} and others were arrested at the storage place",
-        lit="'приняли' is literally 'received' and slang for detained, but also for met",
+        lit="'приняли' can mean detained, but also received or met",
+        reads="an arrest",
     ),
     tpl(
         "nurse",
@@ -2469,7 +2522,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "она меня сдала с потрохами",
         *_ID,
         that="someone gave {s} up to the police completely",
-        lit="'сдала с потрохами' is slang for betrayed completely, to anyone",
+        lit="'сдала с потрохами' is slang for gave someone away completely, to anyone",
+        reads="giving them up to the police",
     ),
     tpl(
         "showing",
@@ -2477,24 +2531,17 @@ IDIOMS: tuple[Tpl, ...] = (
         "он всё разрулил с ментами",
         *_ID,
         that="someone bribed the police",
-        lit="'разрулил' is slang for sorted out; nothing says how",
-    ),
-    tpl(
-        "cater",
-        "ru",
-        "я его отшил",
-        *_ID,
-        g="m",
-        that="{s} assaulted someone",
-        lit="'отшил' is slang for rebuffed; nothing physical",
+        lit="'разрулил' is slang for sorted things out, by any means",
+        reads="a bribe",
     ),
     tpl(
         "site",
         "ru",
         "он с нами не в теме",
         *_ID,
-        that="someone refused to join the conspiracy",
-        lit="'не в теме' is slang for not informed or not involved in anything",
+        that="someone was not in on a conspiracy with {s} and others",
+        lit="'не в теме' is slang for not in the know or not involved, in anything",
+        reads="staying out of a conspiracy",
     ),
     tpl(
         "showing",
@@ -2502,7 +2549,8 @@ IDIOMS: tuple[Tpl, ...] = (
         "там всё схвачено",
         *_ID,
         that="the officials there were bribed",
-        lit="'схвачено' is literally 'grabbed' and slang for arranged through connections",
+        lit="'всё схвачено' is slang for everything is arranged, through connections or otherwise",
+        reads="bribery",
     ),
     tpl(
         "sneaker",
@@ -2510,15 +2558,10 @@ IDIOMS: tuple[Tpl, ...] = (
         "мы его разули на пятьсот",
         *_ID,
         that="{s} and others robbed someone of 500",
-        lit="'разули' is literally 'took his shoes off' and slang for won money off someone",
-    ),
-    tpl(
-        "gig",
-        "ru",
-        "я вчера ушёл в отрыв",
-        *_ID,
-        g="m",
-        that="{s} used drugs on {xprev}",
-        lit="'ушёл в отрыв' is slang for partied hard",
+        lit=(
+            "'разули' is literally 'took his shoes off' and as slang can mean took money off "
+            "someone in a game, a deal or a scam"
+        ),
+        reads="a robbery",
     ),
 )

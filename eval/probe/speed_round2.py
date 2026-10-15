@@ -53,6 +53,9 @@ from typing import Any
 
 from eval.probe.run_probe import EXPERT_CONFIRMS_BARS
 
+# Round 2 ran on 2026-10-12 against v1.0. core/audit/prompts/stance.md is v1.1 since 2026-10-14
+# and the product's labeler refuses a prompt without {claim}, so this round no longer re-runs
+# as is; its results are in eval/probe/README.md.
 PROMPTS = {
     "v1_0": Path("core/audit/prompts/stance.md"),
     "v1_1": Path("eval/probe/stance_v1_1_draft.md"),

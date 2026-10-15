@@ -1,6 +1,7 @@
-"""Scenarios built from a Fact, part 2: plans, conditions, questions, hedges, hearsay and later
-corrections. Every lead states the fact (guide rule 12); the supports sibling reports what the
-message says, in the third person and with no qualifier the record lacks."""
+"""Scenarios built from a Fact, part 2: plans, conditions, questions, hedges, hearsay and
+corrections (the corrected record and the correcting one). Every lead states the fact (guide
+rule 12); the supports sibling reports what the message says, in the third person and with no
+qualifier the record lacks."""
 
 from __future__ import annotations
 
@@ -9,20 +10,36 @@ import random
 from core.contracts import AssumptionKind as K
 from eval.train import facts as fx
 from eval.train import filler
+from eval.train.facts import Fact
 from eval.train.scenario import Line
 from eval.train.scenes import (
     Result,
+    Setup,
     fact_lead,
     fact_pool,
     finish,
     marked,
-    other_fact,
+    other_facts,
     other_value,
     plain_why,
     setup,
     siblings,
 )
-from eval.train.writers import Spec, cap, spec_irrelevant, spec_plain
+from eval.train.writers import (
+    ACT_DAY,
+    Spec,
+    act_before,
+    cap,
+    dated_act,
+    done_by,
+    pin,
+    quoted,
+    spec_in_window,
+    spec_irrelevant,
+    spec_plain,
+    spec_sender_mismatch,
+    spec_verbatim,
+)  # fmt: skip
 
 
 def sc_plan(rng: random.Random, slot: int) -> Result:
@@ -32,7 +49,10 @@ def sc_plan(rng: random.Random, slot: int) -> Result:
     c = finish(rng, st, core, safe_after=True)
     money = fx.has_marker(core)
     why = "The record states a plan or intention; nothing shown says the act happened."
-    lead = fact_lead(c, "ovr_plan", K.EVENT, fx.claim(f, st.v, money), core, why)
+    # A planned act is dated on or after the record's date: a plan does not rule out an act
+    # before it, but an assumption dated there would read as if it might.
+    a = dated_act(rng, c, c.sender.who, fx.claim(f, st.v, money), ahead=True)
+    lead = Spec("ovr_plan", K.EVENT, a, core, why)
     plain = spec_plain(rng, c, f"would {fx.claim_base(f, st.v, money)}", core, plain_why(c),
                        told_only=True)  # fmt: skip
     return c, siblings(rng, lead, [plain], 0.5, 1)
@@ -40,11 +60,12 @@ def sc_plan(rng: random.Random, slot: int) -> Result:
 
 def sc_cond(rng: random.Random, slot: int) -> Result:
     f = fact_pool(slot)
-    st = setup(rng, f)
+    cnd, said = rng.choice(fx.CONDITIONS)
+    # "if i get paid friday" is never sent on a Friday.
+    st = setup(rng, f, texts=(cnd,) if f.lang == "en" else (*f.cond, *fx.CONDITIONS_RU))
     third = st.third(rng)
-    rep: str | None = None
+    rep: str | None = said if f.lang == "en" else None
     if f.lang == "en":
-        cnd, rep = rng.choice(fx.CONDITIONS)
         cnd, act = cnd.format(n=third.name.lower()), f.act.format(v=st.vr)
         core = rng.choice([f"if {cnd} ill {act}", f"ill {act} if {cnd}",
                            f"only if {cnd} will i {act}", f"if {cnd} then ill {act}"])  # fmt: skip
@@ -54,7 +75,8 @@ def sc_cond(rng: random.Random, slot: int) -> Result:
     money = fx.has_marker(core)
     why = ("The record makes the act conditional; nothing shown says the condition was met or "
            "the act done.")  # fmt: skip
-    lead = fact_lead(c, "ovr_hypothetical", K.EVENT, fx.claim(f, st.v, money), core, why)
+    a = dated_act(rng, c, c.sender.who, fx.claim(f, st.v, money), ahead=True)
+    lead = Spec("ovr_hypothetical", K.EVENT, a, core, why)
     if rep is None:
         return c, [lead]
     rep = rep.format(N=third.name, p="they", poss="their", o=c.other.who)
@@ -71,7 +93,8 @@ def sc_question(rng: random.Random, slot: int) -> Result:
     money = fx.has_marker(core)
     o, pred = c.other.who, fx.claim(f, st.v, money)
     why = "The record is a question, not a statement; nothing shown answers it."
-    lead = Spec("ovr_question", K.EVENT, cap(f"{o} {pred}"), core, why)
+    # Any date or bound before or after the record: a question settles none (guide rule 23).
+    lead = Spec("ovr_question", K.EVENT, dated_act(rng, c, o, pred), core, why)
     asked = cap(f"{c.sender.who} asked {o} whether they {pred}")
     plain = Spec(
         "sup_plain", K.EVENT, asked, core, "The record is that question, restated plainly."
@@ -87,7 +110,7 @@ def sc_hedge(rng: random.Random, slot: int) -> Result:
     money = fx.has_marker(core)
     pred = fx.claim(f, st.v, money)
     why = "The sender hedges the statement rather than asserting it; it is not stated as certain."
-    lead = fact_lead(c, "cpl_hedge", K.EVENT, pred, core, why)
+    lead = Spec("cpl_hedge", K.EVENT, dated_act(rng, c, c.sender.who, pred), core, why)
     plain = spec_plain(rng, c, f"thought they {pred}, without being sure", core, plain_why(c),
                        told_only=True)  # fmt: skip
     return c, siblings(rng, lead, [plain], 0.5, 1)
@@ -101,7 +124,10 @@ def sc_hear(rng: random.Random, slot: int) -> Result:
     c = finish(rng, st, core)
     money = fx.has_marker(core)
     n, pred = third.name, fx.claim(f, st.v, money)
-    a = rng.choice([f"{n} {pred}", f"{n}, whom the chat mentions, {pred}"])
+    if rng.random() < 0.15:
+        a = f"{n}, whom the chat mentions, {pin(c, pred) or pred}"
+    else:
+        a = dated_act(rng, c, n, pred, p=0.8)
     why = (f"The sender only reports what {third.name.lower()} said; nothing shown confirms it "
            "first hand.")  # fmt: skip
     lead = Spec("cpl_hearsay", K.EVENT, cap(a), core, why)
@@ -112,25 +138,98 @@ def sc_hear(rng: random.Random, slot: int) -> Result:
     return c, siblings(rng, lead, [plain], 0.5, 1)
 
 
+INTERJECTIONS_EN = ("ok", "k", "?", "wait what")
+INTERJECTIONS_RU = ("ок", "ага", "?", "в смысле")
+
+
+def _settles(f: Fact, v: str) -> str:
+    """What a correction leaves unsettled, in a rationale's words."""
+    if f.money:
+        return "the amount"
+    if fx.is_day(f, v):
+        return "the day"
+    return "which value is right"
+
+
+def _correction(rng: random.Random, f: Fact, st: Setup, v2: str,
+                quotable: bool) -> tuple[str, str | None]:  # fmt: skip
+    """The same sender's correction of st.vr to v2, and the words that state the replacement."""
+    pool = filler.CORRECTIONS_RU if f.lang == "ru" else filler.CORRECTIONS_EN
+    text, quote = rng.choice([p for p in pool if p[1] is not None or not quotable])
+    slots = dict(v1=st.vr, v2=marked(st, v2), c=st.sender.end)
+    return text.format(**slots), quote.format(**slots) if quote else None
+
+
+def _interjection(rng: random.Random, st: Setup) -> Line:
+    """The other party's short reaction between a statement and its correction."""
+    pool = INTERJECTIONS_RU if st.f.lang == "ru" else INTERJECTIONS_EN
+    return ("c" if st.who == "o" else "o", rng.choice(pool))
+
+
 def sc_correction(rng: random.Random, slot: int) -> Result:
+    """The record states a value; the same sender corrects it minutes later (guide rule 22).
+
+    The record is complicates: the correcting message, not the record, carries the
+    contradiction, and the rationale names it.
+    """
     f = fact_pool(slot)
     st = setup(rng, f)
     v1, v2 = st.v, other_value(rng, st, st.v)
     core = fx.stated(f, rng, st.vr, st.sender.end)
-    corr = rng.choice(filler.CORRECTIONS_RU if f.lang == "ru" else filler.CORRECTIONS_EN)
-    corr = corr.format(v1=st.vr, v2=marked(st, v2), c=st.sender.end)
+    corr, _ = _correction(rng, f, st, v2, quotable=False)
     after: list[Line] = [(st.who, corr)]
     if rng.random() < 0.4:
-        other_who = "c" if st.who == "o" else "o"
-        after.insert(0, (other_who, rng.choice(("ok", "k", "?", "wait what") if f.lang == "en"
-                                               else ("ок", "ага", "?", "в смысле"))))  # fmt: skip
-    c = finish(rng, st, core, after=after)
+        after.insert(0, _interjection(rng, st))
+    c = finish(rng, st, core, after=after, quick=True)
     money = fx.has_marker(core)
-    s1, s2 = fx.shown(f, v1), fx.shown(f, v2)
-    why = (
-        f"The same sender's later message replaces {s1} with {s2}, "
-        "so the record's figure does not stand."
-    )
-    lead = fact_lead(c, "ovr_later_correction", K.EVENT, fx.claim(f, v1, money), core, why)
-    irr = spec_irrelevant(rng, c, "irr_other_topic", other_fact(rng, f), False)
+    why = (f"The record says {quoted(st.vr)}, but the same sender corrects it to "
+           f"{quoted(marked(st, v2))} later in the chat ({quoted(corr)}), so the record alone does "
+           f"not settle {_settles(f, v1)}.")  # fmt: skip
+    pred = fx.claim(f, v1, money)
+    # Dated only as far as the record shows the act, so the correction is the one open point.
+    a = done_by(rng, c, c.sender.who, pred, p=0.75)
+    lead = Spec("ovr_later_correction", K.EVENT, a, core, why)
+    irr = spec_irrelevant(rng, c, "irr_other_topic", other_facts(f), False)
     return c, siblings(rng, lead, [irr], 0.3, 1)
+
+
+def sc_corrected(rng: random.Random, slot: int) -> Result:
+    """The record is the same sender's correction of a value given just before (guide rule 19).
+
+    The assumption states the original value as a plain fact (rule 12) and the quote is the
+    correcting words, which state the replacement: contradicts, the mirror of
+    ovr_later_correction, where the corrected statement is the record.
+    """
+    f = fact_pool(slot)
+    st = setup(rng, f)
+    v1, v2 = st.v, other_value(rng, st, st.v)
+    first = fx.stated(f, rng, st.vr, st.sender.end)
+    corr, quote = _correction(rng, f, st, v2, quotable=True)
+    if quote is None:  # _correction(quotable=True) never draws an unquotable correction
+        raise ValueError(f"no quotable correction for {f.key}")
+    before: list[Line] = [(st.who, first)]
+    if rng.random() < 0.3:
+        before.append(_interjection(rng, st))
+    # The correction is quoted as written: no decoration, so no "lol" can make it read as a
+    # joke (rule 24).
+    c = finish(rng, st, corr, before=before, do_wrap=False, quick=True)
+    money = fx.has_marker(first)
+    why = rng.choice([
+        f"The record is the sender's own correction of the earlier {quoted(first)}: "
+        f"{quoted(quote)}. What it states cannot be true together with the assumption, which "
+        "keeps the earlier value; whether the correction is right is for the expert.",
+        f"Minutes after writing {quoted(first)}, the same sender corrects it: {quoted(quote)}. "
+        "What the correction states cannot be true together with the assumption; whether it is "
+        "right is for the expert.",
+    ])  # fmt: skip
+    pred = fx.claim(f, v1, money)
+    # A weekday or a day of the month could come round again after the message, so an
+    # assumption about one dates the act before the record's date (guide rule 23); other values
+    # need no date.
+    if fx.names_day(pred) or ACT_DAY.search(pred):
+        lead = Spec("con_correction", K.EVENT, act_before(rng, c, c.sender.who, pred), quote, why)
+    else:
+        lead = fact_lead(c, "con_correction", K.EVENT, pred, quote, why)
+    cands = [spec_verbatim(rng, c), spec_in_window(rng, c), spec_sender_mismatch(rng, c),
+             spec_irrelevant(rng, c, "irr_other_topic", other_facts(f), False)]  # fmt: skip
+    return c, siblings(rng, lead, cands, 0.5, 2)

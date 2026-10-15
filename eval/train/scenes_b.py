@@ -11,12 +11,13 @@ from eval.stancedata.chat import long_date
 from eval.train import facts as fx
 from eval.train import filler
 from eval.train.facts import Fact
-from eval.train.scenario import Line, fill_ends
+from eval.train.scenario import Line, fill_ends, pick_day
 from eval.train.scenes import (
     Result,
+    days_free_of,
     fact_pool,
     finish,
-    other_fact,
+    other_facts,
     plain_why,
     sc_stated,
     setup,
@@ -25,13 +26,17 @@ from eval.train.scenes import (
 from eval.train.writers import (
     Spec,
     cap,
+    done_by,
     frame,
     kind_of,
+    other_writer_why,
     spec_handle_owner,
     spec_irrelevant,
     spec_plain,
     spec_sender_mismatch,
     spec_time_mismatch,
+    telling_when,
+    when_sent,
 )  # fmt: skip
 
 
@@ -45,16 +50,24 @@ def sc_shared(rng: random.Random, slot: int) -> Result:
                                     c=usual.end, x=guest.end)  # fmt: skip
     core = fx.stated(f, rng, st.vr, guest.end)  # the guest is typing
     c = finish(rng, st, core, before=[("c", intro)])
-    text, s, d = c.record.text, c.sender.who, long_date(c.day)
+    text, s = c.record.text, c.sender.who
     a = rng.choice([f'{usual.name} personally typed "{text}" to the owner',
                     f'{usual.name}, the usual user of {s}, typed "{text}"',
                     f'{usual.name}, not someone else, typed "{text}" to the owner'])  # fmt: skip
+    if when := telling_when(rng, c, date=0.65):
+        a = f"{when}, {a}"
     why = (f"A line in the chat says {guest.name.lower()} is typing on that phone, so who wrote "
            "the record is open.")  # fmt: skip
     lead = Spec("ovr_shared_account", K.IDENTITY, cap(a), text, why)
-    b = rng.choice([f'{s} sent the owner the message "{text}" on {d}',
-                    f'the message "{text}" came from {s}',
-                    f'on {d}, {s} sent the owner "{text}"'])  # fmt: skip
+    b = rng.choice(
+        [
+            f'{s} sent the owner the message "{text}"',
+            f'the message "{text}" came from {s}',
+            f'{s} sent the owner "{text}"',
+        ]
+    )
+    if when := telling_when(rng, c, date=0.7):
+        b = f"{when}, {b}"
     why_b = ("The assumption is about the account only; the record shows that account sent it, "
              "whoever typed.")  # fmt: skip
     sup = Spec("sup_account_shared", kind_of(rng, "sup_account_shared"), cap(b), text, why_b)
@@ -77,20 +90,28 @@ def sc_handle(rng: random.Random, slot: int) -> Result:
     if lead is None:  # never for the owner's own account; the sender here is always a contact
         return sc_stated(rng, slot)
     cands = [spec_plain(rng, c, pred, core, plain_why(c)), spec_sender_mismatch(rng, c)]
-    return c, siblings(rng, lead, cands, 0.6, 2)
+    return c, siblings(rng, lead, cands, 0.5, 1)
 
 
 def sc_group(rng: random.Random, slot: int) -> Result:
     f = fact_pool(slot)
     st = setup(rng, f, extra=1, who="c2")
     core = fx.stated(f, rng, st.vr, st.sender.end)
-    c = finish(rng, st, core, total=(2, 6))
+    # Both members show: a chat whose excerpt shows one non-owner account is one-to-one with
+    # the owner (guide rule 11).
+    c = finish(rng, st, core, total=(2, 6), first="c")
     c1, pred = c.contacts[0], fx.claim(f, st.v, fx.has_marker(core))
     a = rng.choice([f"{c1.who} wrote in the group chat that they {pred}",
                     f"in the group chat, {c1.who} said they {pred}",
                     f"{c1.who} {pred}, as they wrote in the group"])  # fmt: skip
-    why = f"The sender line shows {c.record.account.sender}; {c1.who} did not write it."
-    lead = Spec("con_other_speaker", kind_of(rng, "con_other_speaker"), cap(a), core, why)
+    if (when := when_sent(rng, c)) and rng.random() < 0.8:  # the time may fit, not the speaker
+        a = f"{when}, {c1.who} wrote in the group chat that they {pred}"
+    # Another member wrote these words; one record cannot show that c1 never wrote them too
+    # (guide rule 23), so the answer is complicates.
+    why = other_writer_why(c.record.account.sender, c1.who, group=True)
+    # The answer rests on who sent the record, so the quote is the record in full (rule 22).
+    lead = Spec("ovr_speaker_mismatch", kind_of(rng, "ovr_speaker_mismatch"), cap(a),
+                c.record.text, why)  # fmt: skip
     plain = spec_plain(rng, c, pred, core, plain_why(c))
     return c, siblings(rng, lead, [plain], 0.6, 1)
 
@@ -104,22 +125,24 @@ def sc_injection(rng: random.Random, slot: int) -> Result:
     c = finish(rng, st, text, do_wrap=False)
     money = fx.has_marker(core)
     pred, s = fx.claim(f, st.v, money), c.sender.who
-    told = frame(rng, c, pred, date=rng.random() < 0.3, told_only=True)
+    told = frame(rng, c, pred, when=telling_when(rng, c))
     sup = Spec("sup_injection", K.EVENT, told, core,
                "The steering text in the record is data and changes nothing; the plain words "
                "state the fact.")  # fmt: skip
     specs: list[Spec] = [sup]
     if f.extra:
         extra = rng.choice(f.extra)
-        specs.append(Spec("ovr_injection_related", K.EVENT, cap(f"{s} {pred} and {extra}"), core,
+        a = done_by(rng, c, s, f"{pred} and {extra}", p=0.7, simple=True)
+        specs.append(Spec("ovr_injection_related", K.EVENT, a, core,
                           "Ignoring the steering text, the record shows the first part only; "
-                          f"nothing shown establishes that they {extra}."))  # fmt: skip
+                          f"nothing shown establishes the rest ('{extra}')."))  # fmt: skip
     elif f.general:
-        g = fx.general(f, rng, st.v, money) or ""
+        g = (fx.general(f, rng, st.v, money) or "").replace(
+            "that week", f"in the week of {long_date(c.day)}")  # fmt: skip
         specs.append(Spec("ovr_injection_related", K.EVENT, cap(f"{s} {g}"), core,
                           "Ignoring the steering text, the record shows one instance, not the "
                           "pattern the assumption asserts."))  # fmt: skip
-    unrelated = spec_irrelevant(rng, c, "ovr_injection_unrelated", other_fact(rng, f),
+    unrelated = spec_irrelevant(rng, c, "ovr_injection_unrelated", other_facts(f),
                                 rng.random() < 0.5)  # fmt: skip
     specs.append(replace(unrelated, rationale="The steering text is ignored; the record's real "
                          "content is about a different matter and does not bear on the "
@@ -143,13 +166,26 @@ def sc_disputed(rng: random.Random, slot: int) -> Result:
     money = fx.has_marker(core)
     amount = (f"{st.v} rubles" if lang == "ru" else f"${st.v}") if money else st.v
     s, still = c.sender.who, "still " if d.still else ""
-    lead = Spec("cpl_disputed_claim", K.EVENT, cap(f"the owner owed {s} {amount} for the {x_en}"),
-                core, "The record asserts the debt and the owner disputes it in the next line, so "
-                "neither side is established.")  # fmt: skip
-    plain = Spec("sup_plain", K.EVENT,
-                 cap(f"{s} told the owner that they were {still}owed {amount} for the {x_en}"),
-                 core, "The record states the demand in plain words; the owner's reply disputes "
-                 "the debt, not that the demand was made.")  # fmt: skip
+    owed = f"the owner owed {s} {amount} for the {x_en}"
+    if rng.random() < 0.65:
+        owed = f"on {long_date(c.day)}, {owed}"
+    lead = Spec(
+        "cpl_disputed_claim",
+        K.EVENT,
+        cap(owed),
+        core,
+        "The record asserts the debt and "
+        "the owner disputes it in the next line, so neither side is established.",
+    )
+    said = frame(rng, c, f"were {still}owed {amount} for the {x_en}", when=telling_when(rng, c))
+    plain = Spec(
+        "sup_plain",
+        K.EVENT,
+        said,
+        core,
+        "The record states the demand in plain words; "
+        "the owner's reply disputes the debt, not that the demand was made.",
+    )
     return c, siblings(rng, lead, [plain], 0.6, 1)
 
 
@@ -157,18 +193,29 @@ def sc_qa(rng: random.Random, slot: int) -> Result:
     lang = "ru" if rng.random() < 0.2 else "en"
     qa = rng.choice([q for q in filler.QAS if q.lang == lang])
     f = Fact("qa", "qa", lang, "", "", qa.claim, qa.claim, qa.values)
-    st = setup(rng, f, who="c")
+    # "how many people r coming saturday" is never asked or answered on a Saturday.
+    st = setup(rng, f, who="c", day=pick_day(rng, days_free_of(qa.question, *qa.answers)))
     q = fill_ends(qa.question, st.owner, st.contacts[0])
     core = fill_ends(rng.choice(qa.answers).replace("{v}", st.v), st.owner, st.contacts[0])
-    c = finish(rng, st, core, before=[("o", q)], do_wrap=False, total=(1, 4))
+    # "today" in the question is the question's local date (guide rule 20); the clause then
+    # carries its own date, and no other date for the telling is set beside it. A day's count
+    # is asked for once the day is under way.
+    dated = "{day}" in qa.claim
+    c = finish(rng, st, core, before=[("o", q)], do_wrap=False, total=(1, 4),
+               hours=(15, 23) if dated else (7, 23))  # fmt: skip
     money = fx.has_marker(q) or fx.has_marker(core)
     template = qa.claim if money else qa.claim.replace("${v}", "{v}").replace("{v} rubles", "{v}")
-    clause = template.format(v=st.v, p="they", poss="their")
+    asked = long_date(c.local_of(c.target - 1).date())
+    clause = template.format(v=st.v, p="they", poss="their", day=f"on {asked}")
     s = c.sender.who
     a = rng.choice([f"{s} told the owner that {clause}",
-                    f"in answer to the owner's question, {s} said {clause}",
+                    f"answering the owner, {s} said {clause}",
                     f"{s} confirmed to the owner that {clause}"])  # fmt: skip
+    if not dated and (when := telling_when(rng, c)):
+        a = f"{when}, {a}"
     why = f'The owner asks "{q}" just before; read with that question, the answer states it.'
     lead = Spec("sup_answer", K.EVENT, cap(a), core, why)
-    cands = [spec_time_mismatch(rng, c, clause, core, clause=True), spec_sender_mismatch(rng, c)]
-    return c, siblings(rng, lead, cands, 0.5, 2)
+    cands = [spec_sender_mismatch(rng, c)]
+    if not dated:  # a telling on another date would report that day's count in the past tense
+        cands.insert(0, spec_time_mismatch(rng, c, clause, clause=True))
+    return c, siblings(rng, lead, cands, 0.4, 1)

@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from core.contracts import AssumptionKind as K
+from eval.stancedata.chat import long_date
 from eval.train import facts as fx
 from eval.train.facts import Fact
 from eval.train.facts_en_a import FACTS_A
@@ -28,15 +29,21 @@ from eval.train.scenario import (
     Chat,
     Line,
     assemble,
+    clock12,
     filler_lines,
+    named_weekdays,
     pick_day,
     pick_tz,
     record_time,
+    weekday_clash,
 )  # fmt: skip
 from eval.train.writers import (
+    ACT_DAY,
     Spec,
+    act_before,
     cap,
     kind_of,
+    quoted,
     spec_contact,
     spec_count,
     spec_handle_owner,
@@ -70,8 +77,9 @@ def fact_pool(slot: int, ru: float = 0.2) -> Fact:
     return pool[min(int(t * len(pool)), len(pool) - 1)]
 
 
-def other_fact(rng: random.Random, f: Fact) -> Fact:
-    return rng.choice([g for g in ALL_FACTS if g.scene != f.scene])
+def other_facts(f: Fact) -> list[Fact]:
+    """The facts of every other scene, for an irrelevant assumption beside a record of f."""
+    return [g for g in ALL_FACTS if g.scene != f.scene]
 
 
 @dataclass
@@ -97,7 +105,11 @@ class Setup:
 
 
 def other_value(rng: random.Random, st: Setup, v: str) -> str:
-    return rng.choice([x for x in st.values if x != v])
+    """Another of the fact's values; a weekday that is the record's own is never one (a
+    correction to "monday" is never sent on a Monday)."""
+    rest = [x for x in st.values if x != v]
+    fit = [x for x in rest if st.day.weekday() not in named_weekdays(fx.claim(st.f, x))]
+    return rng.choice(fit or rest)
 
 
 def marked(st: Setup, v: str) -> str:
@@ -106,8 +118,42 @@ def marked(st: Setup, v: str) -> str:
     return fx.mark(st.f, v) if st.vr != st.v else v
 
 
+def free_days(f: Fact) -> tuple[int, ...]:
+    """The weekdays (0 = Monday) that none of the fact's values names, or () if none names one.
+
+    A record that says "on monday" (or a correction to it) is never sent on a Monday, where the
+    word would mean that very day; a dated assumption about a named weekday then has one natural
+    date (guide rule 24 and the round-4 weekday rule).
+    """
+    named = named_days(f)
+    return tuple(d for d in range(7) if d not in named) if named else ()
+
+
+def named_days(f: Fact) -> set[int]:
+    """The weekdays (0 = Monday) that any of the fact's values names."""
+    return {fx.DAY_NAMES.index(w.lower()) for v in f.values
+            for w in fx.DAY_WORD.findall(fx.claim(f, v))}  # fmt: skip
+
+
+def month_days(f: Fact) -> int:
+    """The latest day of the month any of the fact's values names ("paid the rent on the 8th"),
+    or 0. The record is sent later in that month, so each value's day has one natural date,
+    in the record's month and before it."""
+    return max((int(m[1]) for v in f.values if (m := ACT_DAY.search(fx.claim(f, v)))),
+               default=0)  # fmt: skip
+
+
+def days_free_of(*texts: str) -> tuple[int, ...]:
+    """The weekdays none of the texts names as one particular day, or () if none names one: a
+    line such as "whats the plan for sat" is never sent on that day."""
+    named: set[int] = set().union(*(named_weekdays(t) for t in texts))
+    return tuple(d for d in range(7) if d not in named) if named else ()
+
+
 def setup(rng: random.Random, f: Fact, *, extra: int = 0, who: str | None = None,
-          day: date | None = None) -> Setup:  # fmt: skip
+          day: date | None = None, texts: tuple[str, ...] = ()) -> Setup:  # fmt: skip
+    """The cast, the value and the record's local date. The date is never a weekday that the
+    fact's values or `texts` (lines the scenario will add) name as one particular day."""
     app, owner, contacts = cast(rng, f.lang, extra)
     tz = pick_tz(rng, f.lang)
     if who is None:
@@ -121,21 +167,45 @@ def setup(rng: random.Random, f: Fact, *, extra: int = 0, who: str | None = None
     if len(values) < 2:
         values = f.values
     v = rng.choice(values)
+    if day is None:
+        # A fact whose values name every weekday leaves none free; the record's value decides.
+        fits = set(free_days(f) or days_free_of(fx.claim(f, v)) or range(7))
+        fits &= set(days_free_of(*texts) or range(7))
+        day = pick_day(rng, tuple(sorted(fits)), after_mday=month_days(f))
     vr = fx.mark(f, v) if f.money and rng.random() < 0.4 else v
-    return Setup(f, app, owner, contacts, tz, day or pick_day(rng), who, sender, other, v, vr,
-                 values)  # fmt: skip
+    return Setup(f, app, owner, contacts, tz, day, who, sender, other, v, vr, values)
 
 
 def finish(rng: random.Random, st: Setup, core: str, *, before: list[Line] | None = None,
            after: list[Line] | None = None, hours: tuple[int, int] = (7, 23), fold: int = 0,
            do_wrap: bool = True, after_fill: bool = True, safe_after: bool = False,
-           total: tuple[int, int] = (1, 6)) -> Chat:  # fmt: skip
+           total: tuple[int, int] = (1, 6), quick: bool = False,
+           first: str | None = None, placed: bool = False) -> Chat:  # fmt: skip
     """Pad the scenario lines with small talk, time them and assemble the Chat.
 
-    A non-owner line is always on screen (guide rule 11). With `safe_after`, no filler after
-    the record can read as an answer or a confirmation (guide rule 13).
+    A non-owner line is always on screen (guide rule 11); `first` makes the first small-talk
+    line come from that party ("c" in a group chat, so both members show). With `safe_after`, no
+    filler after the record can read as an answer or a confirmation (guide rule 13). With
+    `quick`, the scenario's own lines sit within minutes of the record (a correction and what it
+    corrects). With `placed` (a record that says where its sender is), no filler puts anyone
+    anywhere ("im outside", "be there in 20"). Lines whose weekday words clash with their own
+    date ("whats the plan for sat" sent on a Saturday) are drawn again.
     """
+    for _ in range(60):
+        chat = _finish_once(rng, st, core, before, after, hours, fold, do_wrap, after_fill,
+                            safe_after, total, quick, first, placed)  # fmt: skip
+        if not any(weekday_clash(m.text, chat.local_of(i).date())
+                   for i, m in enumerate(chat.msgs)):  # fmt: skip
+            return chat
+    raise ValueError(f"no chat whose weekday words fit its dates for {core!r} on {st.day}")
+
+
+def _finish_once(rng: random.Random, st: Setup, core: str, before: list[Line] | None,
+                 after: list[Line] | None, hours: tuple[int, int], fold: int, do_wrap: bool,
+                 after_fill: bool, safe_after: bool, total: tuple[int, int], quick: bool,
+                 first: str | None, placed: bool) -> Chat:  # fmt: skip
     before, after = list(before or []), list(after or [])
+    near = (len(before), len(after)) if quick else (0, 0)
     rec_lang = st.f.lang
     ctx_lang = rec_lang
     if rng.random() < (0.12 if rec_lang == "ru" else 0.03):
@@ -148,14 +218,16 @@ def finish(rng: random.Random, st: Setup, core: str, *, before: list[Line] | Non
     n_before = need if not after_fill else rng.randint(0, need)
     extra_before, extra_after = filler_lines(
         rng, ctx_lang, n_before, need - n_before, st.owner, st.contacts, whos,
-        scene=st.f.scene, safe_after=safe_after, first=None if has_contact else "c",
+        scene=st.f.scene, safe_after=safe_after, first=first or (None if has_contact else "c"),
+        placed=placed,
     ) if need else ([], [])  # fmt: skip
     before, after = extra_before + before, after + extra_after
     lang = "mixed" if need and ctx_lang != rec_lang else rec_lang
     text = wrap(rng, core, rec_lang) if do_wrap else core
     when = record_time(rng, st.day, st.tz, hours, fold)
     return assemble(rng, tz=st.tz, app=st.app, owner=st.owner, contacts=st.contacts, lang=lang,
-                    before=before, record=(st.who, text), after=after, when=when)  # fmt: skip
+                    before=before, record=(st.who, text), after=after, when=when,
+                    quick=near)  # fmt: skip
 
 
 def siblings(rng: random.Random, lead: Spec, cands: list[Spec | None], p: float,
@@ -195,11 +267,11 @@ def sc_stated(rng: random.Random, slot: int) -> Result:
         if rng.random() < 0.3
         else spec_plain(rng, c, pred, core, plain_why(c))
     )
-    cands = [spec_time_mismatch(rng, c, pred, core), spec_sender_mismatch(rng, c),
+    cands = [spec_time_mismatch(rng, c, pred), spec_sender_mismatch(rng, c),
              spec_handle_owner(rng, c, pred, core, False),
              spec_partial(rng, c, f, st.v, core, money), spec_count(rng, c, f, st.v, core, money),
              spec_time_window(rng, c), spec_contact(rng, c), spec_in_window(rng, c),
-             spec_irrelevant(rng, c, "irr_other_topic", other_fact(rng, f), False),
+             spec_irrelevant(rng, c, "irr_other_topic", other_facts(f), False),
              spec_plain(rng, c, pred, core, plain_why(c))]  # fmt: skip
     return c, siblings(rng, lead, cands, 0.6)
 
@@ -213,33 +285,87 @@ def sc_exact(rng: random.Random, slot: int) -> Result:
     c = finish(rng, st, core)
     money = fx.has_marker(core)
     v2 = other_value(rng, st, st.v)
-    why = (f"The record gives {fx.shown(f, st.v)} and rules out any other value; the "
-           f"assumption says {fx.shown(f, v2)}.")  # fmt: skip
-    lead = fact_lead(c, "con_other_value", kind_of(rng, "con_other_value"),
-                     fx.claim(f, v2, money), core, why)  # fmt: skip
+    # Values are quoted: a weekday the record names is never read as the record's own date.
+    why = (f"The record gives {quoted(st.vr)} and rules out any other value; the assumption "
+           f"says {quoted(fx.claim_value(f, v2, money))}.")  # fmt: skip
+    pred2 = fx.claim(f, v2, money)
+    kind = kind_of(rng, "con_other_value")
+    if fx.names_day(pred2) or ACT_DAY.search(pred2):
+        # "the only day he came was tuesday" rules out a Wednesday before the message, not a
+        # later one: the assumption dates the act before the record's date (guide rule 23).
+        why += " The assumption dates the act before the message."
+        lead = Spec("con_other_value", kind, act_before(rng, c, c.sender.who, pred2), core, why)
+    else:
+        lead = fact_lead(c, "con_other_value", kind, pred2, core, why)
     pred = fx.claim(f, st.v, money)
-    cands = [spec_plain(rng, c, pred, core, plain_why(c)), spec_time_mismatch(rng, c, pred, core),
+    cands = [spec_plain(rng, c, pred, core, plain_why(c)), spec_in_window(rng, c),
              spec_handle_owner(rng, c, pred, core, False)]  # fmt: skip
     return c, siblings(rng, lead, cands, 0.5, 2)
 
 
-def _neg_pair(
-    rng: random.Random, c: Chat, f: Fact, v: str, core: str, fam: str, why: str
-) -> Result:
+# Acts done again and again (a shift's tips, laps, a sitter's pay, the rent each month) or at
+# their own clock time ("closed the bar at 1"): "didnt" denies one occasion without naming it,
+# so an assumption dated to another occasion would stay open. Their denials and negations say
+# "never", which covers every occasion before the message.
+REPEATED = frozenset({
+    "tips", "close", "games", "court", "pickup", "clients", "poker", "landed", "rent", "gas",
+    "tank", "hours", "paycheck", "tipout", "sessions", "laps", "lostgames", "sitter", "tutor",
+    "groceries", "atm", "lashes", "braids", "color", "blowout", "haircut", "kidscuts",
+    "extrashifts", "tabs", "tables", "bench", "trail", "savings", "tomom", "boston", "chicago",
+    "checkin", "daycare", "trainer", "gym", "chair", "utilities", "phonebill", "loan",
+    "insurance", "renters", "parkpass", "yoga", "copay", "oilchange", "storage", "landlord",
+    "meds", "supplies", "developer", "booth", "bartab", "miles", "swap", "dentist", "airport",
+    "lent", "ru_parking", "ru_gas", "ru_tips", "ru_close", "ru_kids", "ru_shift", "ru_hours",
+    "ru_wash", "ru_sitter", "ru_haircut", "ru_manicure", "ru_color", "ru_lashes", "ru_rent",
+    "ru_landed", "ru_utilities", "ru_gym", "ru_pool", "ru_meds", "ru_sister", "ru_lent",
+    "ru_trainer", "ru_yoga", "ru_fine",
+})  # fmt: skip
+
+
+def _neg_pair(rng: random.Random, c: Chat, f: Fact, v: str, core: str, fam: str) -> Result:
+    """A denial or a negated statement against the act it negates, dated before the record.
+
+    The sender's words rule the act out only up to the moment they were sent (guide rule 23),
+    so the assumption dates the act before the record's date, never by the record's own
+    minute. When the words cover the time themselves ("never", a named day), the assumption is
+    a plain date-level fact with no clock. The rationale says what the words state conflicts
+    with the assumption; whether they are true is for the expert (rule 24).
+    """
     money = fx.has_marker(core)
-    lead = fact_lead(c, fam, K.EVENT, fx.claim(f, v, money), core, why)
-    plain = spec_plain(rng, c, f"did not {fx.claim_base(f, v, money)}", core, plain_why(c),
-                       told_only=True)  # fmt: skip
-    return c, siblings(rng, lead, [plain], 0.5, 1)
+    q, t, d = quoted(core), clock12(c.local), long_date(c.day)
+    pred = fx.claim(f, v, money)
+    plain = fx.NEVER.search(core) is not None or fx.names_day(pred)
+    a = act_before(rng, c, c.sender.who, pred, clock=0.0 if plain else 0.4)
+    if fam == "con_denial":
+        why = rng.choice([
+            f"Asked directly, the sender answers {q} at {t} on {d}; what those words state "
+            "cannot be true together with the assumption, which dates the act before the "
+            "answer. Whether the denial is true is for the expert.",
+            f"The sender's answer, sent at {t} on {d}, is {q}. What it states cannot be true "
+            "together with the assumption, which places the act before the answer. Whether "
+            "the answer is true is for the expert.",
+        ])  # fmt: skip
+    else:
+        why = rng.choice([
+            f"The assumption's act appears in the record inside a negation ({q}, sent at {t} on "
+            f"{d}). What the sender's words state cannot be true together with the assumption, "
+            "which dates the act before the message; whether they are true is for the expert.",
+            f"On {d} the sender writes {q}, the assumption's act inside a negation. What those "
+            "words state cannot be true together with the assumption, which places the act "
+            "before the message; whether they are true is for the expert.",
+        ])  # fmt: skip
+    lead = Spec(fam, K.EVENT, a, core, why)
+    plain_sib = spec_plain(rng, c, f"did not {fx.claim_base(f, v, money)}", core, plain_why(c),
+                           told_only=True)  # fmt: skip
+    return c, siblings(rng, lead, [plain_sib], 0.5, 1)
 
 
 def sc_neg(rng: random.Random, slot: int) -> Result:
     f = fact_pool(slot)
     st = setup(rng, f)
-    core = fx.negated(f, rng, st.vr, st.sender.end)
+    core = fx.negated(f, rng, st.vr, st.sender.end, never=f.key in REPEATED)
     c = finish(rng, st, core)
-    why = "The assumption's words appear inside a negation: the record says the act did not happen."
-    return _neg_pair(rng, c, f, st.v, core, "ovr_negation", why)
+    return _neg_pair(rng, c, f, st.v, core, "ovr_negation")
 
 
 def sc_denial(rng: random.Random, slot: int) -> Result:
@@ -247,7 +373,6 @@ def sc_denial(rng: random.Random, slot: int) -> Result:
     st = setup(rng, f)
     q = fx.asked(f, rng, st.vr, st.sender.end)
     other_who = "c" if st.who == "o" else "o"
-    core = fx.negated(f, rng, st.vr, st.sender.end)
-    c = finish(rng, st, core, before=[(other_who, q)])
-    why = "Asked directly, the sender denies it in plain words."
-    return _neg_pair(rng, c, f, st.v, core, "con_denial", why)
+    core = fx.negated(f, rng, st.vr, st.sender.end, never=f.key in REPEATED, answer=True)
+    c = finish(rng, st, core, before=[(other_who, q)], quick=True)
+    return _neg_pair(rng, c, f, st.v, core, "con_denial")

@@ -117,6 +117,10 @@ jobs:
     needs: [pins, llama-runtime]
     runs-on: windows-latest
     timeout-minutes: 60
+    # id-token: signing logs in to Azure with GitHub's OIDC token, so no Azure password is stored.
+    permissions:
+      contents: read
+      id-token: write
     defaults:
       run:
         shell: pwsh
@@ -168,11 +172,76 @@ jobs:
             "/DModelName=$($m.name)" "/DModelSizeGB=$gb" "/DModelNCtx=$($m.n_ctx)" `
             "/O$PWD\build\installer" packaging/windows/baker.iss
           if ($LASTEXITCODE) { throw 'ISCC failed' }
+      # Code signing (Microsoft Artifact Signing). Builds of main sign once the Azure secrets and
+      # variables exist (docs/code-signing.md); everything else, pull requests included, builds
+      # unsigned with a warning. The hash below is of the file as shipped, signed or not.
+      - id: signing
+        name: Code signing configured?
+        env:
+          CLIENT: ${{ secrets.AZURE_CLIENT_ID }}
+          TENANT: ${{ secrets.AZURE_TENANT_ID }}
+          ENDPOINT: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
+          ACCOUNT: ${{ vars.ARTIFACT_SIGNING_ACCOUNT }}
+          PROFILE: ${{ vars.ARTIFACT_SIGNING_PROFILE }}
+        run: |
+          $missing = @('CLIENT', 'TENANT', 'ENDPOINT', 'ACCOUNT', 'PROFILE') |
+            Where-Object { -not [Environment]::GetEnvironmentVariable($_) }
+          $main = "${{ github.event_name }}" -ne 'pull_request' -and "${{ github.ref }}" -eq 'refs/heads/main'
+          if ($missing) {
+            Write-Host "::warning title=Installer not signed::Code signing is not set up (missing: $($missing -join ', ')). See docs/code-signing.md."
+            'sign=false' | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          } elseif (-not $main) {
+            Write-Host "::notice title=Installer not signed::Only builds of main are signed; this one is not."
+            'sign=false' | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          } else {
+            'sign=true' | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
+      - name: Azure login (OIDC, no stored password)
+        if: steps.signing.outputs.sign == 'true'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          # The app may sign and nothing else: it holds no role on the subscription itself.
+          allow-no-subscriptions: true
+      - name: Sign the installer
+        if: steps.signing.outputs.sign == 'true'
+        uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.ARTIFACT_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\build\installer
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          exclude-environment-credential: true
+          exclude-workload-identity-credential: true
+          exclude-managed-identity-credential: true
+          exclude-shared-token-cache-credential: true
+          exclude-visual-studio-credential: true
+          exclude-visual-studio-code-credential: true
+          exclude-azure-cli-credential: false
+          exclude-azure-powershell-credential: true
+          exclude-azure-developer-cli-credential: true
+          exclude-interactive-browser-credential: true
+      - name: Check the signature and hash the installer
+        run: |
+          $exe = Get-ChildItem build/installer -Filter *.exe | Select-Object -First 1
+          $sig = Get-AuthenticodeSignature $exe.FullName
+          if ('${{ steps.signing.outputs.sign }}' -eq 'true') {
+            if ($sig.Status -ne 'Valid') { throw "signing ran but the signature is $($sig.Status): $($sig.StatusMessage)" }
+            $signed = "signed by $($sig.SignerCertificate.Subject)"
+          } else {
+            $signed = 'unsigned'
+          }
+          Write-Host "$($exe.Name): $signed"
           $exe = Get-ChildItem build/installer -Filter *.exe | Select-Object -First 1
           $sha = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
           "$sha  $($exe.Name)" | Out-File "$($exe.FullName).sha256" -Encoding ascii
           Copy-Item build/stage/BUILD_INFO.json, packaging/windows/speedtest.ps1 build/installer/
-          "### Installer`n`n``$($exe.Name)`` ($([math]::Round($exe.Length / 1MB)) MB)`n`nSHA-256 ``$sha``" |
+          "### Installer`n`n``$($exe.Name)`` ($([math]::Round($exe.Length / 1MB)) MB, $signed)`n`nSHA-256 ``$sha``" |
             Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
       - uses: actions/upload-artifact@v4
         with:
@@ -185,7 +254,7 @@ jobs:
     # A Windows runner that has never seen this repo's Python: install, then use the installed copy.
     needs: installer
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     defaults:
       run:
         shell: pwsh
@@ -194,6 +263,18 @@ jobs:
         with:
           name: baker-installer
           path: dist
+      - name: Check the download as docs/install.md says (SHA-256, then the signature)
+        run: |
+          $exe = Get-ChildItem dist -Filter *.exe | Select-Object -First 1
+          $want = ((Get-Content "$($exe.FullName).sha256" -Raw) -split '\s+')[0]
+          $got = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
+          if ($got -ne $want) { throw "SHA-256 $got does not match the .sha256 file ($want)" }
+          $sig = Get-AuthenticodeSignature $exe.FullName
+          switch ($sig.Status) {
+            'Valid' { Write-Host "Signed by $($sig.SignerCertificate.Subject)" }
+            'NotSigned' { Write-Host '::warning title=Installer not signed::Windows will say "Unknown publisher" (docs/code-signing.md).' }
+            default { throw "the installer's signature is $($sig.Status): $($sig.StatusMessage)" }
+          }
       - name: Install silently (CPU runtime, no model)
         run: |
           $exe = Get-ChildItem dist -Filter *.exe | Select-Object -First 1
@@ -218,6 +299,52 @@ jobs:
           if ($LASTEXITCODE) { throw 'pipeline failed' }
           & $py -X utf8 -m eval.run_eval --predictions eval/out/case01/model_free/predictions.jsonl
           if ($LASTEXITCODE) { throw 'gate failed on the installed copy' }
+      - name: The demo case, built by the installed copy
+        run: |
+          & "$env:LOCALAPPDATA\Programs\Baker\baker.cmd" demo --build-only
+          if ($LASTEXITCODE) { throw 'baker demo --build-only failed' }
+      # The browser test's own Python and Chromium, set up only after Baker has run without them.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: packaging/smoke_ui.py
+          sparse-checkout-cone-mode: false
+          path: src
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # One step: Windows ends the processes a step started when that step ends.
+      - name: Start Baker and the demo, then headless Chromium on both
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          python -m pip install --quiet playwright==1.56.0
+          python -m playwright install chromium
+          $baker = "$env:LOCALAPPDATA\Programs\Baker\baker.cmd"
+          $ui = "$env:RUNNER_TEMP\ui"
+          New-Item -ItemType Directory -Force $ui | Out-Null
+          $serve = Start-Process $baker -ArgumentList 'serve' -WindowStyle Hidden -PassThru `
+            -RedirectStandardOutput "$ui\serve.log" -RedirectStandardError "$ui\serve.err.log"
+          $demo = Start-Process $baker -ArgumentList 'demo', '--no-open' -WindowStyle Hidden -PassThru `
+            -RedirectStandardOutput "$ui\demo.log" -RedirectStandardError "$ui\demo.err.log"
+          python src/packaging/smoke_ui.py --serve http://127.0.0.1:8765 --demo http://127.0.0.1:8766 --screenshots $ui
+          $failed = $LASTEXITCODE
+          foreach ($p in @($serve, $demo)) {
+            if ($p.HasExited) { "baker process $($p.Id) exited with code $($p.ExitCode)" } else { "baker process $($p.Id) still running" }
+          }
+          Get-ChildItem "$ui\*.log" | ForEach-Object { "--- $($_.Name)"; Get-Content $_ }
+          if ($failed) { throw 'browser smoke test failed' }
+      - name: Stop Baker
+        if: always()
+        run: |
+          Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" |
+            Where-Object { $_.CommandLine -match '-m cli (serve|demo)' } |
+            ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-clean-install-screens
+          path: ${{ runner.temp }}/ui
+          retention-days: 14
       - name: Uninstall leaves no program files
         run: |
           $app = "$env:LOCALAPPDATA\Programs\Baker"

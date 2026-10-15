@@ -3,9 +3,12 @@
 SYNTHETIC. HUMAN-OWNED (Arsh). Agents: do not modify.
 
 `probe.jsonl` holds probe items P001 to P088, signed by Arsh on 2026-10-07
-(`labeled_by: "Arsh, 2026-10-07"`). Each line is copied byte for byte from
-`eval/probe_draft/probe_draft.jsonl`; a test checks that the two still match and that no
-unsigned item is here.
+(`labeled_by: "Arsh, 2026-10-07"`). On 2026-10-14 ("approved" in the "Custom model for Baker"
+thread) he relabeled P038 to P044 and P071 from contradicts to complicates under stance guide
+v0.3's strict contradicts (`labeled_by: "Arsh, 2026-10-14"`; each item's rationale gives the
+new reason), so 8 of the 78 signed, undisputed items are gold contradicts, down from 16. Each
+line is copied byte for byte from `eval/probe_draft/probe_draft.jsonl`; a test checks that the
+two still match and that no unsigned item is here.
 
 - P089 to P097 are drafts and stay in `eval/probe_draft/` until Arsh signs them.
 - `disputed` is set on 10 items where a reasonable expert could pick another label. Model

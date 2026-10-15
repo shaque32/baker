@@ -32,6 +32,7 @@ from core.contracts import (
     Verdict,
     display_tier,
 )
+from core.hypotheses import explain
 from core.ingest import coverage as import_coverage
 from core.report.html import CSS as REPORT_CSS
 from core.report.html import (
@@ -43,6 +44,8 @@ from core.report.html import (
     sources,
     stand_in_banner,
 )
+from core.report.hypotheses import CSS as ALTERNATIVES_CSS
+from core.report.hypotheses import alternatives_html
 from core.report.restore import CSS as RESTORE_CSS
 from core.report.selection import CSS as SELECTION_CSS
 from core.report.selection import anchor as selection_anchor
@@ -171,7 +174,7 @@ class Page:
             "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
             f"<meta name='viewport' content='width=device-width, initial-scale=1'>{meta}"
             f"<title>{e(title)} · Baker</title>"
-            f"<style>{FONT_CSS}{REPORT_CSS}{RESTORE_CSS}{SELECTION_CSS}{UI_CSS}{THEME_CSS}</style>"
+            f"<style>{FONT_CSS}{REPORT_CSS}{RESTORE_CSS}{SELECTION_CSS}{ALTERNATIVES_CSS}{UI_CSS}{THEME_CSS}</style>"
             "</head><body>"
             "<header class='top'><div class='bar'>"
             f"<a class='brand' href='{'/' if self.case_name is not None else '/cases'}'>"
@@ -614,6 +617,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
             out.append(f"<p>{e(d.confirmed_by)} {kind} this verdict.{note}</p>")
         out.append(f"</div><div class='in'>{_verdict_forms(page, st, back)}")
     out.append("</div></div>")
+    out.append(_alternatives(conn, st))
 
     coverage = {cv.assumption_id: cv for cv in (d.coverage if d else ())}
     if st.assumptions:
@@ -686,6 +690,28 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
     )
     body = f"<div class='split'>{side}<div>{''.join(out)}</div></div>"
     return page.wrap(st.name, body, run_banner(conn, page, back), wide=True)
+
+
+def _context_link(f: explain.Fit) -> str | None:
+    return link("/selection/context", id=f.record_id) if f.record_id.startswith("msg:") else None
+
+
+def _alternatives(conn: sqlite3.Connection, st: ClaimState) -> str:
+    """Other explanations the records raise (core/hypotheses/); never part of the verdict."""
+    if st.incomplete or not st.assumptions:
+        return ""
+    if st.edited_after_run:
+        return (
+            "<p class='muted'>Other explanations are worked out from the audited claim. The claim "
+            "text changed after this audit, so they show again after a re-run.</p>"
+        )
+    alts = explain.alternatives(explain.load(conn), st.assumptions)
+    if not alts:
+        return ""
+    return (
+        f"<h2 id='alternatives'>Other explanations to check ({len(alts)})</h2>"
+        + alternatives_html(alts, _context_link)
+    )
 
 
 def _verdict_forms(page: Page, st: ClaimState, back: str) -> str:
@@ -1125,8 +1151,9 @@ def setup_page(
         + _upload_form(
             page,
             "report",
-            "Cellebrite report (Excel .xlsx, PDF, or UFDR package .ufdr, unverified)",
-            ".xlsx,.pdf,.ufdr,.zip",
+            "Phone report: Cellebrite (Excel .xlsx, PDF, or UFDR package .ufdr, unverified) "
+            "or Magnet AXIOM (XML or Excel export, unverified)",
+            ".xlsx,.pdf,.ufdr,.zip,.xml",
             busy,
         )
     )

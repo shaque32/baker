@@ -5,10 +5,12 @@ Usage:
       No model. Counts the calls a real run makes (stance calls do not depend on the model).
   python -m eval.probe.time_case --models eval/probe/models.local.json [--claims C02,C05]
       [--n-ctx 4096] [--ai-review] [--case case01] [--out eval/out/speed]
-      [--stance-prompt eval/probe/stance_v1_1_draft.md] [--runtime flash] [--chat-template no-think]
+      [--stance-prompt <draft.md>] [--runtime flash] [--chat-template no-think]
 
 --stance-prompt times a draft stance prompt instead of the signed one (the product only ever
 uses the signed core/audit/prompts/stance.md). Compare the two on the same machine and claims.
+The draft goes through the product's wiring, so it needs signed v1.1's slots, {claim} included;
+eval/probe/stance_v1_1_draft.md (round 2's reordered v1.0) lacks it and is refused.
 --runtime and --chat-template load the model with other speed settings (core/llm/runtime.py).
 
 For each model in the models file (the probe's file; a null sha256 is computed here):
@@ -90,19 +92,9 @@ def _stance_labeler(conn: sqlite3.Connection, model: Any, prompt: Path | None) -
     if prompt is None:
         return stance_mod.create(conn, model=model)
     from core.audit._llm_json import prompt_body
-    from core.audit._local_model import open_run
-    from core.audit.context import render_for
 
     template = prompt_body(prompt.read_text(encoding="utf-8"))
-    opened = open_run(conn, "stance", template, model=model, schema=stance_mod.STANCE_SCHEMA)
-    labeler = stance_mod.LocalStanceLabeler(
-        opened.port,
-        template=template,
-        render_context=lambda c: render_for(conn, c.record_id),
-        recorder=opened.recorder,
-    )
-    labeler.model_runs = (opened.run,)
-    return labeler
+    return stance_mod.create(conn, model=model, template=template)
 
 
 def _components(  # noqa: ANN202

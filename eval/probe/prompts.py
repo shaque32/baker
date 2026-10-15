@@ -93,8 +93,27 @@ def reviewer_prompt(assumption: str, quote: str, context: str, path: Path = REVI
     return render(path, assumption=assumption, quote=quote, context=context)
 
 
-def stance_prompt(assumption: str, record: str, context: str, path: Path = STANCE_DRAFT) -> str:
-    return render(path, assumption=assumption, record=record, context=context)
+# What a stance prompt with a {claim} slot (v1.1) shows for an assumption that needs no claim,
+# as core/audit/stance.py fills it (stance.NO_CLAIM; tests/test_stance.py keeps the two equal).
+NO_CLAIM = "(not needed for this assumption)"
+
+
+def has_placeholder(path: Path, name: str) -> bool:
+    return "{" + name + "}" in _body(path)
+
+
+def stance_prompt(
+    assumption: str,
+    record: str,
+    context: str,
+    path: Path = STANCE_DRAFT,
+    claim: str | None = None,
+) -> str:
+    """The stance prompt; claim fills a {claim} slot, which only a prompt that has one takes."""
+    fields = {"assumption": assumption, "record": record, "context": context}
+    if claim is not None:
+        fields["claim"] = claim
+    return render(path, **fields)
 
 
 def record_line(record_text: str, context: str) -> str:

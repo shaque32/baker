@@ -302,6 +302,22 @@ MENTIONED_RU = (
     ("Таня", "Тани", "Тане", "Таней", "Tanya"),
 )
 
+# Cities a record can name as where someone or something is (con_other_state): the English
+# record form, the Russian record form with its preposition, and the name assumptions use. Real
+# city names, invented people (guide rule 8). Two different cities cannot both hold at once.
+CITIES = (
+    ("denver", "в денвере", "Denver"),
+    ("phoenix", "в фениксе", "Phoenix"),
+    ("boston", "в бостоне", "Boston"),
+    ("dallas", "в далласе", "Dallas"),
+    ("atlanta", "в атланте", "Atlanta"),
+    ("seattle", "в сиэтле", "Seattle"),
+    ("detroit", "в детройте", "Detroit"),
+    ("houston", "в хьюстоне", "Houston"),
+    ("tampa", "в тампе", "Tampa"),
+    ("omaha", "в омахе", "Omaha"),
+)
+
 # Casual clock values that read the same in a record and in an assumption ("at 6:30").
 CLOCKS = (
     "6",
@@ -335,6 +351,17 @@ WEEKDAYS_RU = (
     "в пятницу",
     "в субботу",
     "в воскресенье",
+)
+# "for Tuesday" ("перенёс на вторник"): a plan's day after a verb that takes "на", never
+# "на во вторник".
+FOR_RU = (
+    "на понедельник",
+    "на вторник",
+    "на среду",
+    "на четверг",
+    "на пятницу",
+    "на субботу",
+    "на воскресенье",
 )
 # "since Tuesday": the preposition changes with the noun, so the whole phrase is stored.
 SINCE_EN = tuple(f"since {d}" for d in WEEKDAYS_EN)
@@ -393,10 +420,10 @@ PLACES: dict[str, tuple[str, ...]] = {
         "the Logan Square patio",
     ),
     "market": (
-        "the Lincoln Park Sunday market",
+        "the Lincoln Park green market",
         "the Oak Park market",
         "the Evanston market",
-        "the Pilsen Saturday market",
+        "the Pilsen farmers market",
         "the Wicker Park stand",
         "the Daley Plaza market",
     ),
@@ -748,18 +775,15 @@ NEUTRAL_RU = (
 )
 NEUTRAL_MIXED = ("ok буду в 7", "спс, see u tmrw", "ок ок, call me", "yeah давай", "ладно, k")
 
-# Greetings, thanks and small talk: records for irr_pleasantry.
+# Greetings, thanks and small talk: records for irr_pleasantry. None presupposes an event
+# (an illness, a trip, good news, a favor, a day named), which an unrelated fact could
+# seem to answer.
 PLEASANTRY_EN = (
     "happy thanksgiving!!",
     "merry christmas to u and the kids",
     "happy new year 🎉",
-    "congrats on the new place!",
-    "thx again for yesterday",
     "good morning ☀️",
     "have a good one",
-    "safe travels",
-    "hope ur feeling better",
-    "say hi to ur mom for me",
     "haha nice",
     "hey hows it going",
     "long time no talk",
@@ -770,28 +794,20 @@ PLEASANTRY_EN = (
     "ok ttyl",
     "take care",
     "happy friday",
-    "good luck tmrw",
     "thinking of u",
     "lmk if u need anything",
     "hope the weekend was good",
     "thanks a ton",
     "ur the best",
-    "welcome back",
-    "get well soon",
     "cheers man",
-    "see u sunday 🙏",
     "haha same",
     "appreciate u",
     "no worries at all",
     "happy 4th",
     "happy easter",
-    "congrats!!! so happy for u",
-    "wishing u a great trip",
     "hugs, thanks again",
     "you too!",
     "lol same here",
-    "how was the party",
-    "hows ur dad doing",
     "big thanks",
     "nice one",
     "all good",
@@ -802,43 +818,35 @@ PLEASANTRY_EN = (
     "stay warm out there",
     "happy mothers day",
     "thanks for checking in",
-    "rest up",
-    "glad ur ok",
     "ok have fun",
+    "talk soon",
+    "much appreciated",
+    "u rock",
+    "catch u later",
+    "ty so much",
+    "hope all is well",
+    "always a pleasure",
 )
 PLEASANTRY_RU = (
     "с праздником!",
     "с днём рождения!!",
     "с новым годом 🎉",
-    "спасибо за вчера",
     "доброе утро",
     "хорошего дня",
-    "удачи завтра",
     "привет, как дела",
     "давно не виделись",
-    "передавай привет маме",
-    "выздоравливай скорее",
     "спокойной ночи",
     "до связи",
-    "счастливого пути",
     "с наступающим",
     "береги себя",
     "обнимаю крепко",
     "спасибо огромное",
-    "как отдохнули?",
     "хороших выходных",
-    "рад за тебя",
     "ты лучший",
     "ок, пока",
-    "как отец?",
     "спасибо, взаимно",
     "с пасхой!",
-    "ура!! наконец-то",
-    "поздравляю!!! молодец",
-    "как прошло?",
     "ничего страшного",
-    "отдыхай давай",
-    "рада, что всё хорошо",
 )
 
 # Substantive messages about something else entirely: records for irr_other_topic. None of the
@@ -1312,4 +1320,28 @@ NEUTRAL_RU = NEUTRAL_RU + (
     "ничего страшного, бывает",
     "сейчас не могу",
     "ясно, ок",
+)
+
+# Small talk that puts its sender somewhere else or on the way. The record's own sender never
+# gets one, so no line of theirs says "on my way" beside a record that says where they are.
+AWAY = frozenset(
+    {
+        "running late",
+        "on my way",
+        "cant talk now, in a meeting",
+        "be there in 10",
+        "немного опаздываю",
+        "уже еду",
+        "не могу говорить, на встрече",
+        "буду через 10",
+        "ща буду",
+        "ok буду в 7",
+    }
+)
+
+# Small talk that reacts to the line before it: a laugh, surprise or doubt. Such a line never
+# follows a record (scene.Chat.filler, `calm`): after a record it would read as a laughing or
+# doubting reply, which leaves the record's sincerity open (guide rule 24).
+REACTIONS = frozenset(
+    {"lol same", "haha ok", "wait what", "for real?", "лол, ладно", "серьёзно, что ли?"}
 )

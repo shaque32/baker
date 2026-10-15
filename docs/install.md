@@ -42,9 +42,10 @@ run then stops with an error and nothing is decided from it. Reinstall with
    The hash must match the one in the `.sha256` file and the one published with the release.
    Do not run the installer if they differ.
 3. Run the installer. It installs for your Windows user only and needs no administrator rights.
-   Windows may warn that the publisher is unknown: until Baker has a code-signing certificate,
-   the installer is unsigned. Choose **More info**, then **Run anyway**, only after the hash
-   check in step 2 matched.
+   A signed installer names its publisher (right-click > **Properties** > **Digital
+   Signatures**). An unsigned one makes Windows warn that the publisher is unknown: choose
+   **More info**, then **Run anyway**, only after the hash check in step 2 matched. Signing
+   is described in docs/code-signing.md.
 4. Setup picks the model runtime for you: the NVIDIA (CUDA) build if the PC has an NVIDIA
    driver, otherwise the processor build. If you add an NVIDIA card later, run Setup again.
 5. Leave **Download the AI model** ticked to download it now (9 GB, from Hugging Face), or untick

@@ -1,0 +1,127 @@
+# A first pilot's Mac install, from scratch, on a fresh Apple silicon runner: the Baker folder as
+# GitHub's zip, unzipped by macOS; "Install Baker.command" as docs/install-mac.md says; a second
+# run (the update path); then both Desktop launchers and a headless-Chromium look at the start
+# screen and the demo case. The fresh Windows install is the smoke-test job in
+# windows-installer.yml.
+#
+# The real model is 9 GB, so this installs a 1 MB stub served from 127.0.0.1 through the same
+# download, SHA-256 check and settings steps (BAKER_PINS). The runner has 7 GB of memory, so the
+# 16 GB floor is lowered for the test (BAKER_MIN_MEMORY_GB). Every case here is synthetic.
+name: clean-install
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "packaging/**"
+      - "docs/install*.md"
+      - "pyproject.toml"
+      - "cli/**"
+      - "ui/**"
+      - "eval/demo.py"
+      - ".github/workflows/clean-install.yml"
+  # Weekly as well: uv, Python and the runtime's build tools change under an unchanged repo.
+  schedule:
+    - cron: "17 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clean-install-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mac:
+    runs-on: macos-15 # Apple silicon, like every Mac Baker supports (macos-14 retires 2026-11-02)
+    timeout-minutes: 60
+    env:
+      # A pilot's Mac has no Python 3.12; make uv fetch its own, as it does there.
+      UV_PYTHON_PREFERENCE: only-managed
+      # A pilot's Mac has only Apple's tools: no Homebrew, and Apple's bash 3.2.
+      PILOT_PATH: /usr/bin:/bin:/usr/sbin:/sbin
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The Baker folder as a pilot gets it (GitHub's zip, unzipped by macOS)
+        run: |
+          git archive --format=zip --prefix=baker-main/ -o "$RUNNER_TEMP/baker-main.zip" HEAD
+          mkdir -p ~/Downloads
+          ditto -x -k "$RUNNER_TEMP/baker-main.zip" ~/Downloads
+          ls -l ~/Downloads/baker-main/packaging/mac
+          test -x "$HOME/Downloads/baker-main/packaging/mac/Install Baker.command"
+          echo "uv already here: $(command -v uv || echo no)"
+          test ! -e ~/Baker && test ! -e ~/.baker
+
+      - name: A 1 MB stub model, served on this machine
+        run: |
+          mkdir -p "$RUNNER_TEMP/stub" "$RUNNER_TEMP/ui"
+          head -c 1048576 /dev/urandom > "$RUNNER_TEMP/stub/stub-model.gguf"
+          sha=$(shasum -a 256 "$RUNNER_TEMP/stub/stub-model.gguf" | cut -d' ' -f1)
+          jq --arg sha "$sha" '.model.file = "stub-model.gguf" | .model.sha256 = $sha
+            | .model.size = 1048576 | .model.url = "http://127.0.0.1:8899/stub-model.gguf"' \
+            packaging/windows/pins.json > "$RUNNER_TEMP/stub-pins.json"
+          cd "$RUNNER_TEMP/stub"
+          nohup python3 -m http.server 8899 --bind 127.0.0.1 > "$RUNNER_TEMP/ui/stub-http.log" 2>&1 &
+          for i in $(seq 30); do curl -sfI http://127.0.0.1:8899/stub-model.gguf >/dev/null && break; sleep 1; done
+
+      - name: Install, as a double-click on "Install Baker.command" does
+        env:
+          BAKER_PINS: ${{ runner.temp }}/stub-pins.json
+          BAKER_MIN_MEMORY_GB: "4"
+        run: |
+          export PATH="$PILOT_PATH"
+          bash --version | head -1
+          echo | "$HOME/Downloads/baker-main/packaging/mac/Install Baker.command" 2>&1 |
+            tee "$RUNNER_TEMP/ui/install-1.log"
+          test "${PIPESTATUS[1]}" = 0
+
+      - name: What the install left
+        run: |
+          set -x
+          ~/Baker/app/.venv/bin/baker --help >/dev/null
+          test -f ~/Baker/models/stub-model.gguf
+          test ! -e ~/Baker/models/stub-model.gguf.part
+          grep -q '"path": "'"$HOME"'/Baker/models/stub-model.gguf"' ~/.baker/model.json
+          test -x ~/Desktop/Baker.command && test -x ~/Desktop/"Baker demo.command"
+          ls ~/Baker/demo/cases
+          ~/Baker/app/.venv/bin/python -c "import llama_cpp; print('llama-cpp-python', llama_cpp.__version__)"
+          # The settings chain end to end: config found, file found, SHA-256 matches, runtime loads.
+          ~/Baker/app/.venv/bin/baker model-check
+
+      - name: Run the installer again (how a pilot updates)
+        env:
+          BAKER_PINS: ${{ runner.temp }}/stub-pins.json
+          BAKER_MIN_MEMORY_GB: "4"
+        run: |
+          export PATH="$PILOT_PATH"
+          bash ~/Downloads/baker-main/packaging/mac/install.sh 2>&1 | tee "$RUNNER_TEMP/ui/install-2.log"
+          test "${PIPESTATUS[0]}" = 0
+          grep -q "Already here, SHA-256 checked." "$RUNNER_TEMP/ui/install-2.log"
+          grep -q "Keeping the model setting you already have" "$RUNNER_TEMP/ui/install-2.log"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Both Desktop launchers, then headless Chromium on the start screen and the demo case
+        run: |
+          PATH="$PILOT_PATH" nohup bash ~/Desktop/Baker.command > "$RUNNER_TEMP/ui/serve.log" 2>&1 &
+          PATH="$PILOT_PATH" nohup bash ~/Desktop/"Baker demo.command" > "$RUNNER_TEMP/ui/demo.log" 2>&1 &
+          python -m pip install --quiet playwright==1.56.0
+          python -m playwright install chromium
+          python packaging/smoke_ui.py --serve http://127.0.0.1:8765 --demo http://127.0.0.1:8766 \
+            --screenshots "$RUNNER_TEMP/ui"
+
+      - name: Logs
+        if: always()
+        run: tail -n 40 "$RUNNER_TEMP"/ui/*.log || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mac-clean-install
+          path: ${{ runner.temp }}/ui
+          retention-days: 14

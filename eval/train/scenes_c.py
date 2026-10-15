@@ -14,13 +14,25 @@ from eval.stancedata.chat import long_date
 from eval.train import facts as fx
 from eval.train import filler, special, special_b, special_ru
 from eval.train.facts import Fact
-from eval.train.scenario import FALL_DST, SPRING_DST, TZS_US, clock12, fill_ends, month_year
+from eval.train.scenario import (
+    FALL_DST,
+    SPRING_DST,
+    TZS_US,
+    clock12,
+    fill_ends,
+    hour12,
+    month_year,
+    pick_day,
+)  # fmt: skip
 from eval.train.scenes import (
     ALL_FACTS,
     Result,
+    days_free_of,
     fact_pool,
     finish,
-    other_fact,
+    month_days,
+    named_days,
+    other_facts,
     plain_why,
     sc_denial,
     sc_exact,
@@ -30,8 +42,17 @@ from eval.train.scenes import (
     siblings,
 )  # fmt: skip
 from eval.train.scenes_b import sc_disputed, sc_group, sc_handle, sc_injection, sc_qa, sc_shared
-from eval.train.scenes_d import sc_cond, sc_correction, sc_hear, sc_hedge, sc_plan, sc_question
+from eval.train.scenes_d import (
+    sc_cond,
+    sc_corrected,
+    sc_correction,
+    sc_hear,
+    sc_hedge,
+    sc_plan,
+    sc_question,
+)  # fmt: skip
 from eval.train.writers import (
+    NOT_SHOWN_THEN,
     Spec,
     cap,
     kind_of,
@@ -51,7 +72,7 @@ SPECIALS = (special.PRONOUN + special.CODE_WORD + special.DIFFERENT_TOPIC + spec
             + special_ru.TRANSLATION_RU)  # fmt: skip
 SPECIAL_WEIGHTS = {"ovr_pronoun": 1.2, "ovr_code_word": 1.3, "ovr_different_topic": 1.2,
                    "ovr_joke": 1.0, "ovr_count": 0.8, "cpl_inference": 1.0,
-                   "cpl_relative_time": 0.9, "con_other_state": 1.3,
+                   "cpl_relative_time": 0.9, "con_other_state": 3.0,
                    "ovr_translation": 1.0}  # fmt: skip
 
 
@@ -62,15 +83,21 @@ def sc_time(rng: random.Random, slot: int) -> Result:
     c = finish(rng, st, core)
     pred = fx.claim(f, st.v, fx.has_marker(core))
     lead = spec_time_window(rng, c)
-    cands = [spec_time_mismatch(rng, c, pred, core), spec_contact(rng, c), spec_in_window(rng, c),
+    cands = [spec_time_mismatch(rng, c, pred), spec_contact(rng, c), spec_in_window(rng, c),
              spec_plain(rng, c, pred, core, plain_why(c))]  # fmt: skip
-    return c, siblings(rng, lead, cands, 0.6, 3)
+    return c, siblings(rng, lead, cands, 0.6, 2)
 
 
 def sc_dst(rng: random.Random, slot: int) -> Result:
     """Records at the US daylight-saving changes, where the local clock reading decides."""
     f = fact_pool(slot, ru=0.1)
     day = rng.choice((SPRING_DST, FALL_DST))
+    if day.weekday() in named_days(f) or month_days(f) >= day.day:
+        # Both changes fall on a Sunday early in the month: a record that says "on sunday" or
+        # "on the 8th" never does.
+        f = rng.choice(
+            [g for g in ALL_FACTS if not named_days(g) and not month_days(g) and g.lang == f.lang]
+        )
     st = setup(rng, f, day=day)
     st.tz = rng.choice(TZS_US)
     core = fx.stated(f, rng, st.vr, st.sender.end)
@@ -108,8 +135,12 @@ def sc_dst(rng: random.Random, slot: int) -> Result:
     decides = "At the daylight-saving change the local clock reading decides: the record reads "
     sup = Spec("sup_time_window", K.TIME, cap(rng.choice(win)), c.record.text,
                f"{decides}{stamp} on {d}, inside the window.")  # fmt: skip
-    mis = Spec("ovr_time_mismatch", K.TIME, cap(rng.choice(miss)), core,
-               f"{decides}{stamp} on {d}, outside what the assumption states.")  # fmt: skip
+    # Same words and people at another clock reading: complicates (guide rule 23).
+    gap = rng.choice(NOT_SHOWN_THEN)
+    # The answer rests on the record's time, so the quote is the record in full (rule 22).
+    mis = Spec("ovr_time_mismatch", K.TIME, cap(rng.choice(miss)), c.record.text,
+               f"Same words and people, but {decides[0].lower()}{decides[1:]}{stamp} on {d}, "
+               f"outside the time the assumption states; {gap}.")  # fmt: skip
     specs = [sup, mis]
     rng.shuffle(specs)
     return c, specs
@@ -121,7 +152,10 @@ def sc_special(rng: random.Random, slot: int) -> Result:
     lang = "ru" if fam == "ovr_translation" or rng.random() < 0.2 else "en"
     sp = rng.choice([x for x in SPECIALS if x.family == fam and x.lang == lang])
     f = Fact("special", "special", lang, "", "", "", "", ("x", "y"))
-    st = setup(rng, f, who=sp.rec_who)
+    # A record that names a weekday ("same as every friday") is sent on a day that fits it, and
+    # no line names the weekday it is sent on ("catering for sat is set" on a Saturday).
+    days = sp.days or days_free_of(sp.record, *(t for _, t in sp.before + sp.after))
+    st = setup(rng, f, who=sp.rec_who, day=pick_day(rng, days))
     # Slot values that are names never name a chat member.
     cast_names = {n.lower() for n in st.names()}
     if sp.xs and sp.ys and len(sp.xs) == len(sp.ys):
@@ -137,16 +171,29 @@ def sc_special(rng: random.Random, slot: int) -> Result:
 
     before = [(w, fill(t)) for w, t in sp.before]
     after = [(w, fill(t)) for w, t in sp.after]
-    hours = (0, 1) if fam == "cpl_relative_time" else (7, 23)
-    # A joke's own marker must be the last word on it: no filler follows it (round-2 rule H).
+    # Relative-time records fall just after midnight (guide rule 17); a state's window runs two
+    # whole hours past the record's hour, so its record falls before 10 p.m.
+    hours = {"cpl_relative_time": (0, 1), "con_other_state": (7, 21)}.get(fam, (7, 23))
+    # A joke's own marker must be the last word on it: no decoration after it and no filler
+    # after the record (round-2 rule H).
+    joke = fam == "ovr_joke"
+    # A record that says where its sender is ("still in denver") meets no filler that puts
+    # anyone somewhere ("im outside", "be there in 20").
     c = finish(rng, st, fill(sp.record), before=before, after=after, hours=hours,
-               do_wrap=rng.random() < 0.7, after_fill=fam != "ovr_joke")  # fmt: skip
+               do_wrap=not joke and rng.random() < 0.7, after_fill=not joke,
+               placed=fam == "con_other_state")  # fmt: skip
+    # {hour} is the last whole hour before the record's clock, never its own minute.
+    hour = c.local.hour if c.local.minute else c.local.hour - 1
     slots = dict(S=c.sender.who, O=c.other.who, pron="they", poss="their", date=long_date(c.day),
                  prev=long_date(c.day - timedelta(days=1)), clock=clock12(c.local),
-                 next=long_date(c.day + timedelta(days=1)), month=month_year(c.day))  # fmt: skip
-    lead = Spec(fam, kind_of(rng, fam), cap(fill(sp.claim).format(**slots)), fill(sp.quote),
+                 hour=hour12(hour), later=hour12(min(c.local.hour + 2, 23)),
+                 next=long_date(c.day + timedelta(days=1)),
+                 lastweek=long_date(c.day - timedelta(days=7)),
+                 month=month_year(c.day))  # fmt: skip
+    claim = rng.choice(sp.claim.split(" || "))
+    lead = Spec(fam, kind_of(rng, fam), cap(fill(claim).format(**slots)), fill(sp.quote),
                 fill(sp.why).format(**slots))  # fmt: skip
-    irr = spec_irrelevant(rng, c, "irr_other_topic", rng.choice(ALL_FACTS), False)
+    irr = spec_irrelevant(rng, c, "irr_other_topic", ALL_FACTS, False)
     return c, siblings(rng, lead, [irr], 0.2, 1)
 
 
@@ -166,7 +213,7 @@ def sc_pleasantry(rng: random.Random, slot: int) -> Result:
                 and not set(re.findall(r"\w+", x.lower())) <= LAUGHS]  # fmt: skip
         core += rng.choice((" ", ", ")) + rng.choice(rest)
     c = finish(rng, st, core, do_wrap=False)
-    lead = spec_irrelevant(rng, c, "irr_pleasantry", rng.choice(ALL_FACTS), rng.random() < 0.7)
+    lead = spec_irrelevant(rng, c, "irr_pleasantry", ALL_FACTS, rng.random() < 0.7)
     why = "The record is a greeting or small talk with no bearing on the assumption."
     return c, [replace(lead, rationale=why)]
 
@@ -176,15 +223,20 @@ def sc_irrelevant(rng: random.Random, slot: int) -> Result:
     st = setup(rng, f)
     core = fx.stated(f, rng, st.vr, st.sender.end)
     c = finish(rng, st, core)
-    return c, [spec_irrelevant(rng, c, "irr_other_topic", other_fact(rng, f), False)]
+    return c, [spec_irrelevant(rng, c, "irr_other_topic", other_facts(f), False)]
 
 
 Scenario = Callable[[random.Random, int], Result]
+# Under guide v0.3 the time, sender, speaker and later-correction traps are complicates, so
+# contradicts comes from denials, negations, other values and states, corrections and contact
+# windows; these weights keep the label mix near the v0.2 set (about 31% supports, 25%
+# contradicts, 34% complicates, 10% irrelevant).
 SCENARIOS: tuple[tuple[Scenario, float], ...] = (
-    (sc_stated, 11), (sc_exact, 6), (sc_neg, 4), (sc_denial, 4), (sc_plan, 5), (sc_cond, 4),
-    (sc_question, 4), (sc_hedge, 4), (sc_hear, 4), (sc_correction, 4), (sc_shared, 4),
-    (sc_handle, 5), (sc_group, 4), (sc_injection, 5), (sc_disputed, 3), (sc_qa, 4), (sc_time, 4),
-    (sc_dst, 2), (sc_special, 30), (sc_pleasantry, 4), (sc_irrelevant, 2),
+    (sc_stated, 17), (sc_exact, 13), (sc_neg, 10), (sc_denial, 10), (sc_plan, 5), (sc_cond, 4),
+    (sc_question, 4), (sc_hedge, 4), (sc_hear, 4), (sc_correction, 3), (sc_corrected, 10),
+    (sc_shared, 4), (sc_handle, 3), (sc_group, 3), (sc_injection, 5), (sc_disputed, 3),
+    (sc_qa, 4), (sc_time, 4), (sc_dst, 2), (sc_special, 30), (sc_pleasantry, 4),
+    (sc_irrelevant, 3),
 )  # fmt: skip
 
 

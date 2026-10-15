@@ -6,7 +6,7 @@ later, after the audit engine scores well on the eval set. A CLI comes first.
 ## Pipeline
 
 ```
-1. INGEST     extraction report (UFDR, Cellebrite Excel/PDF/HTML, later AXIOM, raw ZIP)
+1. INGEST     extraction report (UFDR, Cellebrite Excel/PDF/HTML, AXIOM XML/Excel, raw ZIP)
               + government document PDF -> SHA-256 every input, read-only
 2. NORMALIZE  importers write canonical rows (core/schema.sql); every row has source_ref,
               times are UTC + original offset + raw source value
@@ -45,12 +45,15 @@ core/
   db.py               open a case database (plain or encrypted), apply schema
   encryption.py       case keys, encrypted copies of inputs, the keyring of unlocked cases
   ingest/             one file per input format; implements EvidenceImporter or GovDocIngester
+                      ufdr_check.py: offline check of a UFDR import against its report.xml
   enrich/             search index, embeddings, translation, gap detection
   claims/             ClaimExtractor
   audit/
     assumptions.py    AssumptionBuilder
     retrieval.py      Retriever
     stance.py         StanceLabeler (wires the human-owned prompt to the local model)
+    readable.py       names a model reads ("Daniel Petrov (the user of item1)"), never ids
+    context.py        surrounding messages; for stance, sender lines and the chat's members
     review.py         EvidenceReviewer (second local pass; ai_accepted or dismissed)
     quotes.py         verify_quote
     checks/           DeterministicCheck implementations
@@ -63,7 +66,8 @@ core/
   identity/           propose account -> person links from names in the data (code only);
                       the expert confirms or rejects each one on the Identities page
   review/             expert actions + audit log
-  report/             ReportRenderer; restore.py, selection.py, letter.py (full-extraction request)
+  report/             ReportRenderer; restore.py, selection.py, letter.py (full-extraction request),
+                      hypotheses.py (other explanations, shared with the claim page)
   review/status.py    what each claim needs from the expert (shared by screen and report)
   review/redecide.py  re-run the verdict rules after expert review, no model
   casework/           case folders and imports, background audit and claim-proposal jobs,
@@ -71,6 +75,10 @@ core/
                       protect.py: encrypting an existing case, passphrase changes
   timeline/           Timeline check (stated times vs record times) and quiet stretches;
                       derived by code on demand, never stored, never touches verdicts
+  hypotheses/         other explanations per claim, with the records that fit each (someone
+                      else used the account or phone, another clock, the day boundary, another
+                      app, a whole app quiet, a curated report, the same words elsewhere);
+                      code only, derived on demand, never stored, never touches verdicts
 cli/                  `baker import`, `baker claims`, `baker audit`, `baker report`, `baker serve`
 ui/                   the expert's screen on 127.0.0.1 (stdlib server, no scripts): start a case,
                       run the audit in the background, review
@@ -94,7 +102,8 @@ tests/
   (for example `msg:<source_id>:<locator>`), so re-importing gives the same ids and gold labels
   can point at specific messages.
 - **source_ref.** `source_id` plus a `locator` string whose meaning depends on the source kind:
-  an XML path for UFDR, `sheet!row` for Excel, `page:para` for PDF.
+  an XML path for UFDR, `sheet!row` for Excel, `page:para` for PDF, `Artifact[n]/Hit[m]` for an
+  AXIOM XML report.
 - **Fidelity.** Every source records whether it is a full extraction or a curated report.
   Absence checks and the selection audit read this; a curated report can never support an absence claim.
 - **Two-stage evidence.** `StanceLabel` is raw, untrusted model output. It becomes an
