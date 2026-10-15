@@ -100,12 +100,75 @@ def test_cli_review_commands_refuse_a_broken_chain_and_write_nothing(broken_db, 
     assert broken_db.read_bytes() == before
 
 
-def test_cli_verify_log_and_report_still_read_it(broken_db, tmp_path, capsys):
-    assert cli_main(["verify-log", "--db", str(broken_db)]) == 1
-    assert "FAILED" in capsys.readouterr().out
+def test_cli_report_refuses_a_broken_chain_and_verify_log_says_why(broken_db, tmp_path, capsys):
     out = tmp_path / "report.html"
-    assert cli_main(["report", "--db", str(broken_db), "--out", str(out)]) == 0
-    assert "FAILED VERIFICATION" in out.read_text(encoding="utf-8")
+    with pytest.raises(SystemExit, match="hash chain is broken at entry 2"):
+        cli_main(["report", "--db", str(broken_db), "--out", str(out)])
+    assert not out.exists()  # nothing exported
+    assert cli_main(["verify-log", "--db", str(broken_db)]) == 1
+    assert "FAILED: the audit log's hash chain is broken at entry 2" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------- anchors outside the database
+
+
+def cut_tail(db: Path, keep: int) -> None:
+    """Remove the newest entries the way an edit outside Baker would. The chain that is left
+    still verifies on its own."""
+    conn = connect(db)
+    conn.execute("DROP TRIGGER audit_log_no_delete")
+    conn.execute("DELETE FROM audit_log WHERE seq > ?", (keep,))
+    conn.commit()
+    assert audit_log.verify_chain(conn)
+    conn.close()
+
+
+@pytest.fixture
+def anchored_db(tmp_path) -> Path:
+    db = tmp_path / "case.db"
+    assert cli_main(["init", "--db", str(db)]) == 0
+    conn = connect(db)
+    log_three(conn)
+    conn.close()
+    assert cli_main(["claims", "--db", str(db), "list"]) == 0  # opening anchors entry 3
+    return db
+
+
+def test_opening_anchors_the_newest_entry_once(anchored_db):
+    anchors = audit_log.anchors_path(anchored_db)
+    assert anchors.name == "case.anchors.jsonl"
+    assert cli_main(["claims", "--db", str(anchored_db), "list"]) == 0
+    lines = anchors.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1  # the same newest entry is not anchored twice
+    assert '"seq": 3' in lines[0] and '"why": "opened"' in lines[0]
+
+
+def test_a_log_cut_short_of_its_anchor_is_refused(anchored_db, tmp_path, capsys):
+    cut_tail(anchored_db, keep=2)
+    with pytest.raises(SystemExit, match="no entry 3.*removed from the end of the log"):
+        cli_main(["claims", "--db", str(anchored_db), "list"])
+    out = tmp_path / "report.html"
+    with pytest.raises(SystemExit, match="no entry 3"):
+        cli_main(["report", "--db", str(anchored_db), "--out", str(out)])
+    assert not out.exists()
+    assert cli_main(["verify-log", "--db", str(anchored_db)]) == 1
+    assert "FAILED: the audit log has no entry 3" in capsys.readouterr().out
+
+
+def test_a_log_rewritten_after_its_anchor_is_refused(anchored_db):
+    cut_tail(anchored_db, keep=2)
+    conn = connect(anchored_db)
+    audit_log.append(conn, AT, EXPERT, "test.rewritten", {"n": 99})  # a new entry 3
+    conn.commit()
+    conn.close()
+    with pytest.raises(SystemExit, match="entry 3 of the audit log does not match"):
+        cli_main(["claims", "--db", str(anchored_db), "list"])
+
+
+def test_an_unreadable_anchor_file_is_refused(anchored_db):
+    audit_log.anchors_path(anchored_db).write_text("not json\n", encoding="utf-8")
+    with pytest.raises(SystemExit, match="line 1 of the audit log's anchor file"):
+        cli_main(["claims", "--db", str(anchored_db), "list"])
 
 
 # ---------------------------------------------------------------- the review screen
@@ -200,3 +263,48 @@ def test_reopening_the_open_case_after_tampering_closes_it(tmp_path, encrypt):
     assert get(app, "/claims").header("Location") == "/cases"
     assert "Not opened: the audit log" in get(app, "/cases").text
     assert protect.is_locked(case) == encrypt
+
+
+def test_screen_refuses_a_report_when_the_log_changed_after_opening(tmp_path):
+    app = App(home=tmp_path / "cases", port=PORT, model_check=None)
+    post(app, "/expert", name="Test Expert")
+    post(app, "/case/new", name="Synthetic reported case")
+    case = app.case
+    assert case is not None
+    assert get(app, "/report").status == 200  # intact: the report builds
+    conn = connect(case.db)
+    log_three(conn)
+    tamper(conn, 2)
+    conn.close()
+
+    for path in ("/report", "/report.html"):
+        if app.case is None:
+            post(app, "/case/open", case=case.folder.name)  # refused: still closed
+        r = get(app, path)
+        assert r.header("Location") == "/cases"
+        assert app.case is None
+    assert "broken at entry 2" in get(app, "/cases").text
+
+
+def test_screen_blocks_a_case_whose_log_was_cut_short(tmp_path):
+    home = tmp_path / "cases"
+    app = App(home=home, port=PORT, model_check=None)
+    post(app, "/expert", name="Test Expert")
+    post(app, "/case/new", name="Synthetic cut case")
+    case = app.case
+    assert case is not None
+    conn = connect(case.db)
+    log_three(conn)
+    conn.close()
+    app.case = None
+    post(app, "/case/open", case=case.folder.name)  # anchors the newest entry
+    assert app.case == case
+    newest = connect(case.db).execute("SELECT MAX(seq) FROM audit_log").fetchone()[0]
+    cut_tail(case.db, keep=newest - 1)
+
+    fresh = App(home=home, port=PORT, model_check=None)
+    post(fresh, "/expert", name="Test Expert")
+    assert f"Review blocked: the audit log has no entry {newest}" in get(fresh, "/cases").text
+    post(fresh, "/case/open", case=case.folder.name)
+    assert fresh.case is None
+    assert "removed from the end of the log" in get(fresh, "/cases").text

@@ -210,21 +210,28 @@ class App:
         if protect.is_locked(case):
             raise CaseLocked("this case is locked: open it with its passphrase or recovery key")
         conn = connect(case.db)
+        anchors = audit_log.anchors_path(case.db)
         try:
-            audit_log.require_intact(conn)  # a broken chain fails closed: no review, no writes
+            # a broken or cut-short log fails closed: no review, no writes
+            audit_log.require_intact(conn, anchors)
             pipeline.mark_stale_runs_stopped(conn)  # nothing in this process runs them
+            audit_log.anchor(conn, anchors, "opened", datetime.now(UTC))
         except audit_log.ChainBroken:
             if self.case is not None and self.case.db == case.db:  # re-opened after tampering
-                self.case = None
-                self.recovery = None
-                self.last_check = None
-                if protect.state(case) != "plain":
-                    protect.lock(case)
+                self._close_broken(case)
             raise
         finally:
             conn.close()
         self.case = case
         self.last_check = None
+
+    def _close_broken(self, case: cases.Case) -> None:
+        """Close the open case whose log no longer verifies, and lock it if it is encrypted."""
+        self.case = None
+        self.recovery = None
+        self.last_check = None
+        if protect.state(case) != "plain":
+            protect.lock(case)
 
     # -- identity
 
@@ -380,7 +387,16 @@ class App:
         if p == "/log":
             return self._html(pages.log_page(conn, page, req.query.get("all") == "1"))
         if p in ("/report", "/report.html"):
+            case = self._open()
+            anchors = audit_log.anchors_path(case.db)
+            try:  # the log may have changed since the case opened: check again, fail closed
+                audit_log.require_intact(conn, anchors)
+            except audit_log.ChainBroken as err:
+                self._close_broken(case)
+                self.flash = (f"No report: {err}", True)
+                return self._redirect("/cases")
             body = render_report(conn, timeline=self._timeline())
+            audit_log.anchor(conn, anchors, "report", datetime.now(UTC))
             download = req.query.get("download") == "1" or p == "/report.html"
             if not download:  # on screen, the vendored fonts; a saved copy uses system fonts
                 body = body.replace("<style>", f"<style>{theme.FONT_CSS}", 1)
@@ -605,13 +621,11 @@ class App:
                 else:
                     conn = connect(c.db)
                     try:
-                        seq = audit_log.first_break(conn)
-                        state = (
-                            cases.last_audit_line(conn)
-                            if seq is None
-                            else f"Review blocked: the audit log's hash chain is broken at "
-                            f"entry {seq}"
-                        )
+                        try:
+                            audit_log.require_intact(conn, audit_log.anchors_path(c.db))
+                            state = cases.last_audit_line(conn)
+                        except audit_log.ChainBroken as err:
+                            state = f"Review blocked: {err.problem}"
                     finally:
                         conn.close()
             except (*db.Error, InvariantViolation, CaseLocked, EncryptionError) as err:
@@ -1051,7 +1065,7 @@ def _chain_problem(case: cases.Case) -> str | None:
     except (*db.Error, CaseLocked) as err:
         return f"cannot read: {err}"
     try:
-        audit_log.require_intact(conn)
+        audit_log.require_intact(conn, audit_log.anchors_path(case.db))
     except (audit_log.ChainBroken, *db.Error) as err:
         return str(err)
     finally:

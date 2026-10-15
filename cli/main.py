@@ -52,8 +52,10 @@ files; core/casework/protect.py), or finishes one that was interrupted, and prin
 key once. Nothing encrypts a case on its own. `passphrase` changes an encrypted case's
 passphrase. Every command on an encrypted case asks for its passphrase (or recovery key) in the
 terminal; it is never taken from an option or the environment.
-Every command but `verify-log` and `report` first verifies the case's audit-log hash chain
-and stops, writing nothing, when it is broken (the database was changed outside Baker).
+Every command but `verify-log` first verifies the case's audit-log hash chain, and that the log
+still holds every entry recorded in its anchor file (case.anchors.jsonl beside the database,
+written when a case opens and when a report is built), and stops, writing nothing, when either
+fails (the database was changed outside Baker). `verify-log` says which.
 `ufdr-check` compares what Baker imports from a UFDR with the package's own report.xml, record
 by record, without touching any case (docs/ingest/ufdr.md, "Before calling it verified"). It
 writes ufdr-check.md and .json, which hold no case content and can be sent back, and
@@ -66,6 +68,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 from core import pipeline
@@ -102,19 +105,21 @@ def _unlock(path: Path) -> None:
 
 
 def _open(path: Path, create: bool = False, review: bool = True):  # -> sqlite3.Connection
-    """Open a case database. For review (every command but `report` and `verify-log`, which
-    only read and say whether the chain verifies) a broken audit-log hash chain stops the
-    command before anything is read or written: it fails closed."""
+    """Open a case database. For review (every command but `verify-log`, which only reads and
+    says whether the log verifies) a broken audit-log hash chain, or a log cut short of an entry
+    in the case's anchor file, stops the command before anything is read or written: it fails
+    closed. Otherwise the newest entry is anchored outside the database."""
     if not create and not path.exists():
         raise SystemExit(f"no case database at {path}; run `init` first")
     _unlock(path)
     conn = connect(path)
     if review and not create:
         try:
-            audit_log.require_intact(conn)
+            audit_log.require_intact(conn, audit_log.anchors_path(path))
         except audit_log.ChainBroken as err:
             conn.close()
             raise SystemExit(f"error: {err}") from err
+        audit_log.anchor(conn, audit_log.anchors_path(path), "opened", datetime.now(UTC))
     return conn
 
 
@@ -281,16 +286,21 @@ def cmd_report(a: argparse.Namespace) -> int:
     from core.casework.cases import Case
     from core.timeline.settings import from_case
 
-    conn = _open(a.db, review=False)  # the report states the chain result itself
+    conn = _open(a.db)  # a broken or cut-short log stops the export (fail closed)
     tl = from_case(Case(Path(a.db)).settings)  # the case's own timeline settings
     print(f"wrote {write_report(conn, a.out, tl)}")
+    audit_log.anchor(conn, audit_log.anchors_path(a.db), "report", datetime.now(UTC))
     return 0
 
 
 def cmd_verify_log(a: argparse.Namespace) -> int:
-    ok = audit_log.verify_chain(_open(a.db, review=False))
-    print("audit log hash chain verified" if ok else "audit log hash chain FAILED")
-    return 0 if ok else 1
+    try:
+        audit_log.require_intact(_open(a.db, review=False), audit_log.anchors_path(a.db))
+    except audit_log.ChainBroken as err:
+        print(f"audit log FAILED: {err.problem}")
+        return 1
+    print("audit log hash chain verified, and it holds every anchored entry")
+    return 0
 
 
 def cmd_redecide(a: argparse.Namespace) -> int:

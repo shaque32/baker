@@ -12,6 +12,7 @@ the case's recovery key.
 | `inputs/` (the copies of the imported reports and government document) | Yes | AES-256-GCM in 1 MiB chunks, each chunk authenticated |
 | `case.key` (the case's key, wrapped) | Holds no usable key | AES-256-GCM wraps under scrypt-derived keys |
 | `case.json` (the case name, the claim order) | No | So the case list can name a locked case. Do not put a client's name in the case name if that matters |
+| `case.anchors.jsonl` (audit-log entry numbers and hashes, [review-screen.md](review-screen.md#the-audit-log-check)) | No | Holds no case content: entry numbers and hashes only |
 
 Not covered: a report or request letter the expert downloads (saved wherever they choose, as a
 plain file), the expert's original evidence files (Baker never changes them), and anything on
