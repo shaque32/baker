@@ -4,7 +4,7 @@ Baker audits government claims about phone evidence for the criminal defense.
 Each claim ends up supported, contradicted or unproven, with cited evidence.
 Correctness is the product. One wrong "supported" in front of an expert destroys trust.
 
-Read `docs/ARCHITECTURE.md` before writing code.
+Read `docs/ARCHITECTURE.md` and `docs/PRODUCT_STATUS.md` before writing code.
 
 ## Stack
 - Python 3.12, type hints everywhere, pydantic v2 for data models.
@@ -54,7 +54,24 @@ with the reason and the exact diff you want, then finish the rest of your task w
   `eval/out/case02/` or any test whose name contains `case02`, unless your task names case02.
   `make eval` reports it as aggregate numbers only; never tune anything to them.
 
+## Product status docs
+`docs/PRODUCT_STATUS.md` and `docs/CHANGELOG_AI.md` are the source of truth for what Baker does.
+Other agents and product tools read them, so they must match the code, not the plan.
+- Read `docs/PRODUCT_STATUS.md` before starting work.
+- A meaningful change is one that changes a capability, a model or its job, a verdict path,
+  privacy or network use, a measured benchmark, or what Baker may claim to customers.
+  Refactors, test-only fixes and wording changes are not.
+- In the same PR as a meaningful change, update `docs/PRODUCT_STATUS.md` and add one entry at
+  the top of `docs/CHANGELOG_AI.md` with: what changed and why; where it lives (main, a named
+  branch or PR, or local only); what was tested; what is open or uncertain; and whether it
+  affects capabilities, privacy, performance or customer-facing claims.
+- Check every statement against code, tests or a recorded run. Mark anything not measured as
+  unverified, and say which hardware and date a number comes from.
+- Never put secrets, API keys or real case data in these files, and nothing about case02
+  beyond the aggregate numbers `make eval` prints.
+
 ## Before you finish
 - `make check` must pass (lint, tests, eval).
 - Report the eval numbers in the PR description.
 - If an eval metric got worse, say so plainly. Do not tune tests or gold data to make it pass.
+- For a meaningful change, `docs/PRODUCT_STATUS.md` and `docs/CHANGELOG_AI.md` are updated.
