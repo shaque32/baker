@@ -97,7 +97,7 @@ def test_summary_is_redacted(conn):
     assert s["flag_counts"] == {"missed_record": 1, "verdict": 1, "wrong_label": 1}
     assert s["exported_on"] == "2026-10-15" and s["audit_log_chain_ok"]
     assert s["denominators"]["claims_with_verdict"] > 0
-    assert s["denominators"]["evidence_items_shown"] > 0
+    assert s["denominators"]["evidence_items_labeled"] > 0
     # no case content: notes, records, ids, claim text, quotes, names, file names, hashes
     leaks = [NOTE, "ZZ412", "item1", eid, "C05", "C06", "expert:", "Test Expert"]
     leaks += [c.text for c in (claim_state(conn, "C05").claim, claim_state(conn, "C06").claim)]
@@ -118,12 +118,17 @@ def test_error_log_combines_pilots(conn):
     flags.add_flag(conn, "C06", flags.VERDICT, EXPERT, should_be="contradicted")
     a = flags.summary(conn, "Pilot A")
     b = flags.summary(conn, "Pilot B | x")
-    rows = flags.error_log([a, a, b])
+    log = flags.error_log([a, a, b, {**b, "audit_log_chain_ok": False}])
+    rows = log.rows
+    assert log.left_out == 1
     assert [r.pilot for r in rows] == ["Pilot A", "Pilot B | x"]
     assert rows[0].cases == 2 and rows[0].wrong_label == 2 and rows[0].verdict == 2
-    md = flags.error_log_markdown(rows)
+    md = flags.error_log_markdown(log)
     assert "lower bound" in md and "| Pilot B / x |" in md
-    assert "Label supports flagged, expert says irrelevant: 2" in md
+    assert (
+        "Label supports flagged, expert says irrelevant (model test-stance, prompt none): 2" in md
+    )
+    assert "Left out: 1 summary" in md and "stance test-stance prompt none" in md
     with pytest.raises(ValueError):
         flags.error_log([{"format": "other"}])
 
@@ -201,3 +206,36 @@ def test_cli_export_and_log(db, tmp_path, capsys):
     md = tmp_path / "log.md"
     assert cli_main(["flag-log", str(out), str(out), "--out", str(md)]) == 0
     assert "| P1 | 2 |" in md.read_text()
+
+
+def test_counted_flags_match_the_run_they_are_divided_by(conn):
+    """Flags from an earlier run, or repeats on one target, never push a rate past 100%."""
+    eid = key_items(conn, "C05")[0]
+    flags.add_flag(conn, "C06", flags.VERDICT, EXPERT, should_be="contradicted")
+    flags.add_flag(conn, "C06", flags.VERDICT, EXPERT, should_be="supported")  # changed mind
+    flags.add_flag(conn, "C05", flags.WRONG_LABEL, EXPERT, eid, "irrelevant")
+    flags.add_flag(conn, "C05", flags.WRONG_LABEL, EXPERT, eid, "contradicts")
+    flags.add_flag(conn, "C05", flags.MISSED_RECORD, EXPERT)
+    s = flags.summary(conn)
+    assert s["flag_counts"] == {"missed_record": 1, "verdict": 1, "wrong_label": 1}
+    assert s["not_counted"] == 2
+    assert {f["should_be"] for f in s["flags"]} >= {"supported", "contradicts"}
+
+    redecide(conn, EXPERT)  # a new run: new verdicts, the same evidence items
+    s = flags.summary(conn)
+    assert s["flag_counts"] == {"wrong_label": 1} and s["not_counted"] == 4
+
+
+def test_irrelevant_records_can_be_flagged_on_their_own_page(db, conn):
+    conn.execute(
+        "UPDATE evidence_items SET stance = 'irrelevant' WHERE id = ?", (key_items(conn, "C05")[0],)
+    )
+    conn.commit()
+    eid = next(x.id for x in claim_state(conn, "C05").evidence if x.stance.value == "irrelevant")
+    app = App(db, expert="Test Expert", port=PORT)
+    page = get(app, "/claim", id="C05").text
+    assert "labeled irrelevant</summary>" in page and "Open, or flag this label" in page
+    ev = get(app, "/evidence", id=eid).text
+    assert "Flag this label" in ev
+    post(app, "/flag/add", claim="C05", kind="wrong_label", evidence=eid, should_be="supports")
+    assert flags.summary(conn)["flag_counts"] == {"wrong_label": 1}

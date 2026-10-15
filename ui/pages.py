@@ -651,6 +651,22 @@ def _flag_missed_form(page: Page, st: ClaimState, back: str) -> str:
     )
 
 
+def _irrelevant_list(conn: sqlite3.Connection, items: list[EvidenceItem], flagged: set) -> str:
+    """Records the model labeled irrelevant, folded away; each opens on its own page, where a
+    wrong 'irrelevant' can be flagged."""
+    rows = "".join(
+        f"<li>{q(x.quote)} · {record_line(conn, x.record_id)} · "
+        f"<a href='{e(link('/evidence', id=x.id))}'>Open, or flag this label</a>"
+        + (" <span class='badge b-flag'>flagged by you</span>" if x.id in flagged else "")
+        + "</li>"
+        for x in items
+    )
+    return (
+        f"<details id='irrelevant'><summary>{len(items)} retrieved records were labeled "
+        f"irrelevant</summary><ul>{rows}</ul></details>"
+    )
+
+
 def _flag_target(f: F.Flag) -> str:
     if f.kind == F.WRONG_LABEL:
         was = e(f.at_flag.get("stance") or "?")
@@ -663,7 +679,7 @@ def _flag_target(f: F.Flag) -> str:
     return f"record: {said(f.record)}" if f.record else "a record (place not given)"
 
 
-def _flags_section(page: Page, items: list[F.Flag], back: str) -> str:
+def _flags_section(page: Page, items: list[F.Flag], back: str, run_id: str | None) -> str:
     if not items:
         return ""
     rows = []
@@ -672,7 +688,9 @@ def _flags_section(page: Page, items: list[F.Flag], back: str) -> str:
         rows.append(
             f"<li><strong>{e(F.KINDS[f.kind])}</strong>: "
             + _flag_target(f)
-            + f".{note} <span class='muted'>{e(f.actor)}, {e(f.at_utc)}</span>"
+            + f".{note} <span class='muted'>{e(f.actor)}, {e(f.at_utc)}"
+            + (", made on an earlier run" if f.at_flag.get("run_id") != run_id else "")
+            + "</span>"
             + page.form(
                 "/flag/withdraw",
                 f"<input type='hidden' name='flag' value='{e(f.id)}'>"
@@ -851,11 +869,11 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
                     conn, page, x, st.last_reviewer.get(x.id), back, c.id, x.id in flagged
                 )
             )
-    hidden = sum(1 for x in st.evidence if x.stance == Stance.IRRELEVANT)
+    hidden = [x for x in st.evidence if x.stance == Stance.IRRELEVANT]
     if hidden:
-        out.append(f"<p class='muted'>{hidden} retrieved records were labeled irrelevant.</p>")
+        out.append(_irrelevant_list(conn, hidden, flagged))
     out.append(_flag_missed_form(page, st, back))
-    out.append(_flags_section(page, claim_flags, back))
+    out.append(_flags_section(page, claim_flags, back, st.run_id))
 
     out.append(_edit_claim_form(page, st, back))
     states = claim_states(conn)
@@ -981,7 +999,18 @@ def evidence_page(conn: sqlite3.Connection, page: Page, evidence_id: str) -> str
             f"<p>Claim <a href='{e(link('/claim', id=claim_id[0]))}'>{e(claim_id[0])}</a>. "
             f"Assumption: {e(claim_id[1])}</p>"
         )
-    out.append(evidence_card(conn, page, item, last_kind[0] if last_kind else None, back))
+    flagged = any(f.evidence_id == item.id for f in F.active_flags(conn))
+    out.append(
+        evidence_card(
+            conn,
+            page,
+            item,
+            last_kind[0] if last_kind else None,
+            back,
+            claim_id[0] if claim_id else None,
+            flagged,
+        )
+    )
     out.append("<h2>Context</h2>")
     lines = build_context(conn, item.record_id, CONTEXT_WINDOW)
     if lines:

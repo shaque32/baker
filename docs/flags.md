@@ -29,14 +29,25 @@ The case page has "Download the redacted summary" (`/flags/summary.json`), and t
 `baker flags --db case.db export --pilot "Pilot A" --out flags.json`. The file holds counts, enum
 labels and versions only: flag kinds, the label or verdict at flag time and what the expert says
 it should be, claim types, record kinds, model file name and prompt version, and denominators
-(claims with a verdict, evidence items shown). It leaves out claim text, quotes, notes, names,
+(claims with a verdict, evidence items labeled, irrelevant ones included). It leaves out claim text, quotes, notes, names,
 record references, ids, file names, input hashes and every time except the export date.
+
+The summary counts only flags that belong to the run on screen, so no rate can pass 100%: a
+wrong-label flag counts while its item is still in that run (a rules-only re-run keeps the
+items); a verdict or missed-record flag counts only on the run it was made on; of several flags
+on one item or one claim's verdict, the latest counts. The rest are reported as `not_counted`.
+
+Records the model labeled irrelevant are folded under "N retrieved records were labeled
+irrelevant" on the claim page; each opens on its own evidence page, which has the same "Flag this
+label" form.
 
 Nothing is sent. The expert reads the file and decides whether to share it.
 
 ## The measured error log
 
 `baker flag-log a.json b.json ... [--out error-log.md]` combines summaries into one row per pilot:
-wrong labels per evidence item shown, verdict disagreements per verdict, missed records, plus the
-label and verdict pairs flagged. Flagging is optional, so every rate is a lower bound on what the
+wrong labels per evidence item labeled, verdict disagreements per verdict, missed records, plus
+the label pairs flagged per stance model and prompt version, the verdict pairs, and the versions
+and models each pilot ran. A summary whose case audit log failed its hash-chain check is left
+out, and the log says how many were. Flagging is optional, so every rate is a lower bound on what the
 expert found wrong, not a measured error rate.

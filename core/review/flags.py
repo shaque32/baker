@@ -38,7 +38,7 @@ Clock = Callable[[], datetime]
 ADD = "flag.add"
 WITHDRAW = "flag.withdraw"
 FORMAT = "baker-flag-summary"
-FORMAT_VERSION = "1"
+FORMAT_VERSION = "2"
 
 WRONG_LABEL = "wrong_label"
 MISSED_RECORD = "missed_record"
@@ -261,31 +261,60 @@ def active_flags(conn: sqlite3.Connection, claim_id: str | None = None) -> list[
 # ---------------------------------------------------------------- redacted summary
 
 
-def _denominators(conn: sqlite3.Connection) -> dict:
-    """What the expert could have flagged, in the run on screen: counts only."""
+def _denominators(conn: sqlite3.Connection) -> tuple[dict, set[str], set[str]]:
+    """What the expert could have flagged in the run on screen: counts, plus the evidence ids
+    and the claims with a verdict in that run (used to pick the flags that count)."""
     from core.review.status import claim_states
 
     states = claim_states(conn)
     verdicts: Counter[str] = Counter()
     stances: Counter[str] = Counter()
     expert_decisions: Counter[str] = Counter()
+    evidence_ids: set[str] = set()
+    decided: set[str] = set()
     for st in states:
         if st.decision is not None:
             verdicts[st.decision.verdict.value] += 1
-        for x in st.evidence:
-            if x.stance == Stance.IRRELEVANT:
-                continue
+            decided.add(st.claim.id)
+        for x in st.evidence:  # irrelevant items included: they can be flagged too
+            evidence_ids.add(x.id)
             stances[x.stance.value] += 1
             if st.last_reviewer.get(x.id) == "expert":
                 expert_decisions[x.status.value] += 1
-    return {
+    counts = {
         "claims": len(states),
         "claims_with_verdict": sum(verdicts.values()),
         "verdicts": dict(sorted(verdicts.items())),
-        "evidence_items_shown": sum(stances.values()),
+        "evidence_items_labeled": sum(stances.values()),
         "evidence_by_stance": dict(sorted(stances.items())),
         "expert_evidence_decisions": dict(sorted(expert_decisions.items())),
     }
+    return counts, evidence_ids, decided
+
+
+def _counted(
+    active: list[Flag], run_id: str | None, evidence_ids: set[str], decided: set[str]
+) -> list[Flag]:
+    """The flags that belong to the run the denominators count, at most one per target.
+
+    A wrong-label flag counts while its item is still in the run on screen (a rules-only re-run
+    keeps the items). A verdict or missed-record flag counts only on the run it was made on,
+    since a new run makes new verdicts and a new search. Of several flags on one item, or on
+    one claim's verdict, the latest counts. So no rate can pass 100%."""
+    latest: dict[tuple, Flag] = {}
+    for f in active:
+        if f.kind == WRONG_LABEL:
+            if f.evidence_id not in evidence_ids:
+                continue
+            key: tuple = (f.kind, f.evidence_id)
+        else:
+            if run_id is None or f.at_flag.get("run_id") != run_id:
+                continue
+            if f.kind == VERDICT and f.claim_id not in decided:
+                continue
+            key = (f.kind, f.claim_id) if f.kind == VERDICT else (f.kind, f.id)
+        latest[key] = f
+    return sorted(latest.values(), key=lambda f: f.seq)
 
 
 def _redacted(f: Flag) -> dict:
@@ -314,6 +343,8 @@ def summary(conn: sqlite3.Connection, pilot: str = "", clock: Clock | None = Non
     all_flags = flags(conn)
     active = [f for f in all_flags if f.active]
     run = pipeline.view_run(conn)
+    denominators, evidence_ids, decided = _denominators(conn)
+    counted = _counted(active, run["run_id"] if run else None, evidence_ids, decided)
     models = sorted(
         {
             (r[0], re.split(r"[\\/]", r[1])[-1], r[2])
@@ -330,10 +361,11 @@ def summary(conn: sqlite3.Connection, pilot: str = "", clock: Clock | None = Non
         "rule_version": run["rule_version"] if run else None,
         "models": [{"purpose": p, "model": m, "prompt_version": v} for p, m, v in models],
         "audit_log_chain_ok": audit_log.verify_chain(conn),
-        "denominators": _denominators(conn),
-        "flag_counts": dict(sorted(Counter(f.kind for f in active).items())),
+        "denominators": denominators,
+        "flag_counts": dict(sorted(Counter(f.kind for f in counted).items())),
         "withdrawn": len(all_flags) - len(active),
-        "flags": [_redacted(f) for f in active],
+        "not_counted": len(active) - len(counted),  # earlier runs, or repeats on one target
+        "flags": [_redacted(f) for f in counted],
         "left_out": (
             "claim text, quotes, notes, names, record references, ids, file names, input "
             "hashes and times other than the export date"
@@ -353,15 +385,16 @@ class PilotRow:
     pilot: str
     cases: int = 0
     claims_with_verdict: int = 0
-    evidence_items_shown: int = 0
+    evidence_items_labeled: int = 0
     wrong_label: int = 0
     missed_record: int = 0
     verdict: int = 0
-    # (label the model gave, label the expert says it should be) -> count
+    # (stance model, prompt version, label the model gave, label the expert says) -> count
     label_pairs: Counter = field(default_factory=Counter)
     # verdict at flag -> count
     verdict_disagreements: Counter = field(default_factory=Counter)
     versions: set = field(default_factory=set)
+    models: set = field(default_factory=set)  # (purpose, model file name, prompt version)
 
     @staticmethod
     def _rate(n: int, d: int) -> str:
@@ -369,7 +402,7 @@ class PilotRow:
 
     @property
     def label_rate(self) -> str:
-        return self._rate(self.wrong_label, self.evidence_items_shown)
+        return self._rate(self.wrong_label, self.evidence_items_labeled)
 
     @property
     def verdict_rate(self) -> str:
@@ -383,42 +416,69 @@ def _check(s: dict) -> None:
         raise ValueError(f"unsupported flag summary version {s.get('format_version')!r}")
 
 
-def error_log(summaries: Iterable[dict]) -> list[PilotRow]:
-    """One row per pilot: flags against what was there to flag, summed over that pilot's cases."""
+@dataclass
+class ErrorLog:
+    rows: list[PilotRow]
+    left_out: int = 0  # summaries whose case audit log failed its hash-chain check
+
+
+def error_log(summaries: Iterable[dict]) -> ErrorLog:
+    """One row per pilot: flags against what was there to flag, summed over that pilot's cases.
+    A summary from a case whose audit-log chain failed is left out and counted as such."""
     rows: dict[str, PilotRow] = {}
+    left_out = 0
     for s in summaries:
         _check(s)
+        if s.get("audit_log_chain_ok") is not True:
+            left_out += 1
+            continue
         name = s.get("pilot") or "(no pilot named)"
         row = rows.setdefault(name, PilotRow(name))
         den = s.get("denominators", {})
         row.cases += 1
         row.claims_with_verdict += int(den.get("claims_with_verdict", 0))
-        row.evidence_items_shown += int(den.get("evidence_items_shown", 0))
+        row.evidence_items_labeled += int(den.get("evidence_items_labeled", 0))
         row.versions.add((s.get("baker_version"), s.get("rule_version")))
+        for m in s.get("models", []):
+            row.models.add((m.get("purpose"), m.get("model"), m.get("prompt_version")))
         for f in s.get("flags", []):
             kind = f.get("kind")
             if kind == WRONG_LABEL:
                 row.wrong_label += 1
-                row.label_pairs[(f.get("stance_at_flag"), f.get("should_be"))] += 1
+                row.label_pairs[
+                    (
+                        f.get("model"),
+                        f.get("prompt_version"),
+                        f.get("stance_at_flag"),
+                        f.get("should_be"),
+                    )
+                ] += 1
             elif kind == MISSED_RECORD:
                 row.missed_record += 1
             elif kind == VERDICT:
                 row.verdict += 1
                 row.verdict_disagreements[(f.get("verdict_at_flag"), f.get("should_be"))] += 1
-    return [rows[k] for k in sorted(rows)]
+    return ErrorLog([rows[k] for k in sorted(rows)], left_out)
 
 
-def error_log_markdown(rows: list[PilotRow]) -> str:
+def error_log_markdown(log: ErrorLog) -> str:
+    rows = log.rows
     out = [
         "# Baker measured error log",
         "",
         "From expert flags in redacted pilot summaries. Flagging is optional, so each rate is a "
         "lower bound on what the expert found wrong, not a measured error rate.",
         "",
-        "| Pilot | Cases | Wrong labels / items shown | Verdict disagreements / verdicts "
+        "| Pilot | Cases | Wrong labels / items labeled | Verdict disagreements / verdicts "
         "| Missed records |",
         "|---|---|---|---|---|",
     ]
+    if log.left_out:
+        out[3:3] = [
+            f"Left out: {log.left_out} summary(ies) whose case audit log failed its hash-chain "
+            "check. Their flags and counts are not in the table.",
+            "",
+        ]
     for r in rows:
         out.append(
             f"| {r.pilot.replace('|', '/')} | {r.cases} | {r.label_rate} | {r.verdict_rate} "
@@ -428,12 +488,18 @@ def error_log_markdown(rows: list[PilotRow]) -> str:
         if not (r.label_pairs or r.verdict_disagreements):
             continue
         out += ["", f"## {r.pilot}", ""]
-        for (was, should), n in sorted(r.label_pairs.items(), key=lambda kv: (-kv[1], kv[0])):
-            out.append(f"- Label {was} flagged, expert says {should}: {n}")
+        for (model, prompt, was, should), n in sorted(
+            r.label_pairs.items(), key=lambda kv: (-kv[1], [str(k) for k in kv[0]])
+        ):
+            out.append(
+                f"- Label {was} flagged, expert says {should} (model {model}, prompt {prompt}): {n}"
+            )
         for (was, should), n in sorted(
-            r.verdict_disagreements.items(), key=lambda kv: (-kv[1], kv[0])
+            r.verdict_disagreements.items(), key=lambda kv: (-kv[1], [str(k) for k in kv[0]])
         ):
             out.append(f"- Verdict {was} flagged, expert says {should}: {n}")
         versions = ", ".join(f"Baker {b} rules {v}" for b, v in sorted(r.versions, key=str))
         out.append(f"- Versions: {versions}")
+        models = ", ".join(f"{p} {m} prompt {v}" for p, m, v in sorted(r.models, key=str))
+        out.append(f"- Models: {models or 'none recorded'}")
     return "\n".join(out) + "\n"
