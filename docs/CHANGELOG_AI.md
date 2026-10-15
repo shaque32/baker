@@ -19,6 +19,20 @@ Template:
 
 ---
 
+## 2026-10-15: Rules 0.2.2 for the stricter time windows (#75)
+- Changed: `RULE_VERSION` 0.2.1 -> 0.2.2 with no rule logic change; it marks #66's new reading of
+  stated time windows, so verdicts decided under 0.2.1 can differ. "Re-run verdicts" now refuses
+  an audit made under rules older than 0.2.2 and asks for a full audit, since its stored
+  assumptions were built the old way (`core/review/redecide.py`, `INPUTS_CHANGED_AT`).
+- Where: branch `claude/project-thread-ia32bq`, PR #75, not merged. Arsh approved the bump
+  2026-10-15 07:20Z.
+- Verified: `make check` green; new redecide test; eval unchanged (case01 1.00, 0 false
+  supported; case02 0.90, 0 false supported; hostile PASS). Codex's one finding fixed.
+- Open: an existing case audited before 0.2.2 needs a full audit (hours on a laptop) before its
+  verdicts can be re-run.
+- Affects: verdicts on time-bound claims; the version printed on reports; the re-run button for
+  older cases.
+
 ## 2026-10-15: Audit-log chain verified when a case opens (#74)
 - Changed: opening a case now verifies the audit-log hash chain (before, only at report build or
   encryption). A broken chain fails closed: Cases shows "Review blocked" with the first entry
@@ -89,8 +103,8 @@ Template:
 - Where: main (merged 2026-10-15 07:22Z, `6b859fe`).
 - Verified: new tests in `tests/test_assumption_filler.py`; all 3 Codex findings fixed (per the
   owning thread); CI green before merge.
-- Open: main still says rules 0.2.1; the 0.2.2 bump (no rule logic change) is in PR #75, not
-  merged, pending Arsh's sign-off. Verdicts decided under 0.2.1 can differ after this change.
+- Open: the 0.2.2 bump (no rule logic change) is in PR #75 (Arsh approved it 2026-10-15).
+  Verdicts decided under 0.2.1 can differ after this change.
 - Affects: capabilities (which claims get a time window), verdicts on time-bound claims.
 
 ## 2026-10-15: Opus fails the signed probe; quote-check bug found (issue #69)
