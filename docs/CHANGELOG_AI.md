@@ -106,7 +106,7 @@ Template:
 - Verified: new regression tests (each fails without its fix), among them a contact and a call
   labeled "contradicts" and quoted as shown: before, the label was dropped and C01 went
   SUPPORTED; now CONTRADICTED. A test checks every case01 record reads the same for the labeler
-  and the check. `make check` green on the branch (1923 passed, lint clean); `make eval` same as
+  and the check. `make check` green on the branch with main at 3b33820 merged in (1929 passed, lint clean); `make eval` same as
   main (case01 1.00, 0 false supported; case02 aggregate 0.90); hostile run keeps 494 items and
   drops 4 labels (main 462 and 36), 0 supported. Offline, on stored answers: Opus case01 85% to
   95% (signed sheet), 60% to 70% (no sheet), 0 false supported; replayed through the new check,
