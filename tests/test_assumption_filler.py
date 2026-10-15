@@ -583,6 +583,7 @@ def test_stated_windows_skip_a_time_inside_quoted_words():
         ("after Mar. 3rd, 2025", 4),
         ("on or after March 3, 2025", 3),
         ("since March 3, 2025", 3),
+        ("after Monday, March 3, 2025", 4),  # a weekday between "after" and the date
     ],
 )
 def test_an_after_window_starts_the_day_after(raw, ok_day):
@@ -616,6 +617,29 @@ def test_stated_windows_refuse_a_weekday_that_is_not_the_dates():
     from core.audit.assumption_filler import stated_windows
 
     assert stated_windows("At 9 p.m. on Tuesday, March 3, 2025, PETROV texted REYES.") is None
+    assert stated_windows("On Tuesday, March 3, 2025, PETROV texted REYES.") is None
+    assert stated_windows("On Monday, March 3, 2025, PETROV texted REYES.")[0].start.day == 3
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "after Tuesday, March 3, 2025",  # March 3, 2025 is a Monday
+        "On Tuesday, March 3, 2025",
+        "at 9 p.m. on Tuesday, March 3, 2025",
+    ],
+)
+def test_check_window_refuses_a_weekday_that_is_not_the_dates(raw):
+    for start in (D(2025, 3, 3), D(2025, 3, 3, 21), D(2025, 3, 4)):
+        with pytest.raises(Reject):
+            check_window(start, D(2025, 3, 5), raw, raw, "", "no_contact")
+
+
+@pytest.mark.parametrize("raw", ["two days after March 3, 2025", "shortly after March 3, 2025"])
+def test_check_window_refuses_a_range_offset_from_a_date(raw):
+    for day in (3, 4, 5):
+        with pytest.raises(Reject):
+            check_window(D(2025, 3, day), D(2025, 4, 1), raw, raw, "", "no_contact")
 
 
 @pytest.mark.parametrize(("cid", "change", "why"), BAD)

@@ -340,6 +340,8 @@ _DATE_RE = re.compile(
     rf"(?:,?\s+(\d{{4}}))?)?",
     re.IGNORECASE,
 )
+_WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+_WD_RE = "|".join(_WEEKDAYS)
 _NUM_DATE_RE = re.compile(r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b")
 _YEAR_RE = re.compile(r"\b(19\d\d|20\d\d)\b")
 _TIME_RE = re.compile(r"\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)(?![a-z])", re.IGNORECASE)
@@ -466,6 +468,35 @@ def _date_stated(d: date, mentions: list[_DateMention], years: set[int]) -> bool
     return False
 
 
+_WD_BEFORE_RE = re.compile(rf"\b({_WD_RE}),?\s+$", re.IGNORECASE)
+# "two days after", "shortly after": the range is offset from the date by words code does
+# not read
+_OFFSET_AFTER_RE = re.compile(
+    r"\b(?:minutes?|hours?|days?|nights?|weeks?|months?|years?|shortly|soon|"
+    r"right|just|immediately|sometime|long)\s+after\s+$",
+    re.IGNORECASE,
+)
+
+
+def weekday_mismatch(text: str, years: set[int]) -> bool:
+    """True when the text gives a weekday beside a date ("Tuesday, March 3, 2025") that is
+    not that date's weekday. A date whose year is not plain is not judged."""
+    for m in _DATE_RE.finditer(text):
+        wd = _WD_BEFORE_RE.search(text[max(0, m.start() - 12) : m.start()])
+        if wd is None:
+            continue
+        y = int(m.group(3) or m.group(6) or 0) or (next(iter(years)) if len(years) == 1 else 0)
+        if not y:
+            continue
+        try:
+            d = date(y, _MONTHS[m.group(1).lower()], int(m.group(2)))
+        except ValueError:
+            return True
+        if _WEEKDAYS.index(wd.group(1).lower()) != d.weekday():
+            return True
+    return False
+
+
 def _near(t: datetime, times: list[time]) -> bool:
     for x in times:
         cand = t.replace(hour=x.hour, minute=x.minute, second=0, microsecond=0)
@@ -521,12 +552,22 @@ def check_window(
             raise Reject("window end is not near the end of the stated time range")
     # "after March 3" leaves March 3 out: the range starts at midnight on March 4. "on or
     # after" and "since" keep the day itself.
-    after = [
-        _DateMention(_MONTHS[m.group(1).lower()], int(m.group(2)), int(m.group(3) or 0) or None)
-        for m in _DATE_RE.finditer(as_written)
-        if re.search(r"\bafter\s+$", as_written[: m.start()], re.IGNORECASE)
-        and not re.search(r"\bon\s+or\s+after\s+$", as_written[: m.start()], re.IGNORECASE)
-    ]
+    if weekday_mismatch(as_written, years) or weekday_mismatch(claim, years):
+        raise Reject("a weekday the document gives is not that date's weekday")
+    after = []
+    for m in _DATE_RE.finditer(as_written):
+        head = as_written[: m.start()]
+        wd = _WD_BEFORE_RE.search(head)
+        if wd is not None:
+            head = head[: wd.start()]  # "after Monday, March 3"
+        if not re.search(r"\bafter\s+$", head, re.IGNORECASE):
+            continue
+        if _OFFSET_AFTER_RE.search(head):
+            raise Reject("a range offset from a date ('two days after') is not read")
+        if re.search(r"\bon\s+or\s+after\s+$", head, re.IGNORECASE):
+            continue
+        y = int(m.group(3) or m.group(6) or 0) or None
+        after.append(_DateMention(_MONTHS[m.group(1).lower()], int(m.group(2)), y))
     if after and not times:
         if start.time() != time(0, 0) or not _date_stated(
             start.date() - timedelta(days=1), after, years
@@ -561,9 +602,8 @@ def check_window(
 
 
 ABOUT_MINUTES = 8  # "at about 7:58 p.m." is 7:50 to 8:05 (the signed case01 sheet, C09)
-_WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 # the time is tied to the date right after it: "9 p.m. on March 3", "9 p.m. on Monday, March 3"
-_TIED = rf"\s*,?\s*(?:on\s+)?(?:(?P<wd>{'|'.join(_WEEKDAYS)}),?\s+)?$"
+_TIED = rf"\s*,?\s*(?:on\s+)?(?:(?P<wd>{_WD_RE}),?\s+)?$"
 _AT_TIME_RE = re.compile(
     rf"\b(?:at\s+)?(?P<about>about\s+|approximately\s+|around\s+)?{_clock_re('t')}{_TIED}",
     re.IGNORECASE,
@@ -606,6 +646,8 @@ def stated_windows(text: str, context: str = "") -> list[StatedWindow] | None:
     years = {int(y) for y in _YEAR_RE.findall(text + " " + context)}
     out: list[StatedWindow] = []
     plain = _unquoted(text)  # a date or time in quoted words is the message's, not the claim's
+    if weekday_mismatch(plain, years):
+        return None  # a weekday that is not the date's: never pick one
     for m in _DATE_RE.finditer(plain):
         before = plain[max(0, m.start() - 64) : m.start()]
         if any(_has_word(before[-12:], w) for w in (*OPEN_START, *OPEN_END)):
