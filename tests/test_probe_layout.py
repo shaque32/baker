@@ -129,12 +129,12 @@ def test_one_answer_per_item_reports_no_repeat_agreement():
 
 
 def test_overreach_count_is_part_of_the_trap_count():
-    # P049 is an overreach item whose gold is contradicts: a supports there is not a trap shown
+    # P098 is an overreach item whose gold is contradicts: a supports there is not a trap shown
     # as supports (contradicts_shown_as_supports counts it), so neither count moves.
-    item = _item("P049")
+    item = _item("P098")
     assert item["category"] == "overreach" and item["gold_stance"] == "contradicts"
     sup = {"stance": "supports", "quote": item["target"]["text"], "rationale": "r"}
-    _, ec = _score({"P049": [sup, sup]}, ["P049"])
+    _, ec = _score({"P098": [sup, sup]}, ["P098"])
     assert ec["reported"]["traps_shown_as_supports"] == 0
     assert ec["reported"]["overreach_shown_as_supports"] == 0
     assert ec["contradicts_shown_as_supports"] == 1

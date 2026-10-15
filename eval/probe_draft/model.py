@@ -29,7 +29,10 @@ SIGNED_LABEL = "Arsh, 2026-10-07"
 # Arsh, 2026-10-14 in the "Custom model for Baker" thread: "approved", relabeling 8 signed items
 # under stance guide v0.3's strict contradicts (items.RELABELED).
 RELABEL_LABEL = "Arsh, 2026-10-14"
-SIGNED_LABELS = frozenset({SIGNED_LABEL, RELABEL_LABEL})
+# Arsh, 2026-10-15 in the "Custom model for Baker" thread: "approved", relabeling 5 more signed
+# items under guide v0.3 (items.RELABELED_2) and signing P089 to P105.
+SIGNED_2_LABEL = "Arsh, 2026-10-15"
+SIGNED_LABELS = frozenset({SIGNED_LABEL, RELABEL_LABEL, SIGNED_2_LABEL})
 
 
 class ProbeCategory(StrEnum):
