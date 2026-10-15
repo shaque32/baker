@@ -15,7 +15,7 @@ _spec.loader.exec_module(changelog)
 GOOD = """## {date}: {title} (#90)
 - Changed: something, and why it
   needed changing.
-- Where: PR #90
+- Where: {where}
 - Verified: tests
 - Open: nothing known
 - Affects: none
@@ -23,8 +23,12 @@ GOOD = """## {date}: {title} (#90)
 """
 
 
-def _write(d: Path, name: str, date: str, title: str = "A change", status: str = "no change"):
-    (d / name).write_text(GOOD.format(date=date, title=title, status=status), encoding="utf-8")
+def _good(date="2026-10-16", title="t", status="no change", where="PR #90"):
+    return GOOD.format(date=date, title=title, status=status, where=where)
+
+
+def _write(d: Path, name: str, date: str, title="A change", status="no change", where="PR #90"):
+    (d / name).write_text(_good(date, title, status, where), encoding="utf-8")
 
 
 def test_repo_entries_are_well_formed():
@@ -51,20 +55,23 @@ def test_newest_first_by_date_then_name(tmp_path):
     ("name", "text", "needle"),
     [
         ("Bad_Name.md", "", "name must be"),
-        ("2026-10-16-x.md", GOOD.format(date="2026-10-15", title="t", status="no change"), "first"),
+        ("2026-10-16-x.md", _good(date="2026-10-15"), "first"),
         (
             "2026-10-16-x.md",
-            GOOD.format(date="2026-10-16", title="t", status="no change").replace(
-                "- Open: nothing known\n", ""
-            ),
+            _good().replace("- Open: nothing known\n", ""),
             "'- Open:'",
         ),
-        ("2026-10-16-x.md", GOOD.format(date="2026-10-16", title="t", status="maybe"), "Status"),
+        ("2026-10-16-x.md", _good(status="maybe"), "Status"),
         (
             "2026-10-16-x.md",
-            GOOD.format(date="2026-10-16", title="t", status="no change") * 2,
+            _good() * 2,
             "one entry per file",
         ),
+        ("2026-13-40-x.md", _good(date="2026-13-40"), "not a calendar date"),
+        ("2026-10-16-x.md", _good(status="pending"), "Status doc"),
+        ("2026-10-16-x.md", _good(status="pending:"), "Status doc"),
+        ("2026-10-16-x.md", _good(status="pending some text"), "Status doc"),
+        ("2026-10-16-x.md", _good(status="applied 2026-02-30"), "Status doc"),
     ],
 )
 def test_malformed_entries_are_reported(tmp_path, name, text, needle):
@@ -81,7 +88,8 @@ def test_build_puts_entries_between_preface_and_archive(tmp_path):
     entries.mkdir()
     _write(entries, "2026-10-16-new.md", "2026-10-16", title="New entry")
     out = changelog.build(entries, archive)
-    assert out.index("Preface.") < out.index("New entry") < out.index("Old entry")
+    assert "Preface." not in out, "the archive's old-workflow preface is left out"
+    assert out.index("docs/changelog/README.md") < out.index("New entry") < out.index("Old entry")
 
 
 def test_build_of_the_repo_keeps_every_archive_entry():
@@ -92,13 +100,16 @@ def test_build_of_the_repo_keeps_every_archive_entry():
             assert line in out
 
 
-def test_pending_lists_only_pending(tmp_path, capsys):
-    _write(tmp_path, "2026-10-16-a.md", "2026-10-16", status="pending: §8 add a row")
-    _write(tmp_path, "2026-10-16-b.md", "2026-10-16", status="applied 2026-10-17")
-    _write(tmp_path, "2026-10-16-c.md", "2026-10-16", status="no change")
+def test_pending_lists_status_edits_and_merge_state(tmp_path, capsys):
+    main = "main (#90, merged 2026-10-17)"
+    _write(tmp_path, "2026-10-16-a.md", "2026-10-16", status="pending: §8 add a row", where=main)
+    _write(tmp_path, "2026-10-16-b.md", "2026-10-16", status="applied 2026-10-17", where=main)
+    _write(tmp_path, "2026-10-16-c.md", "2026-10-16", status="no change", where=main)
+    _write(tmp_path, "2026-10-16-d.md", "2026-10-16", status="no change", where="PR #91")
     assert changelog.main(["pending", "--dir", str(tmp_path)]) == 0
     out = capsys.readouterr().out
-    assert "2026-10-16-a.md" in out
+    assert "2026-10-16-a.md: apply its Status doc edit" in out
+    assert "2026-10-16-d.md: set Where to main" in out
     assert "-b.md" not in out and "-c.md" not in out
 
 

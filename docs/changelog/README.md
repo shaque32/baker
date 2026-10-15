@@ -22,6 +22,8 @@ entry, except to correct it or to apply its status edit (below).
 - Status doc: no change | pending: <the exact edits docs/PRODUCT_STATUS.md needs, by section>
 ```
 
+`pending:` must be followed by the edits themselves; a bare `pending` fails the check.
+
 A bullet may run over several lines; indent the continuation lines. `make test` checks the
 name, the heading date and that every field is present.
 
@@ -30,8 +32,10 @@ name, the heading date and that every field is present.
 `docs/PRODUCT_STATUS.md` stays one file, but feature PRs no longer edit it, because every PR
 editing it is what made open PRs conflict after each merge. Instead the entry's `Status doc:`
 line says exactly what to change. After PRs merge, one status refresh PR (started by the
-coordinator) applies every pending edit to `docs/PRODUCT_STATUS.md` and changes those lines to
-`Status doc: applied YYYY-MM-DD`. `python tools/changelog.py pending` lists what is waiting.
+coordinator) works from main: it applies every pending edit to `docs/PRODUCT_STATUS.md`, changes
+those lines to `Status doc: applied YYYY-MM-DD`, and sets `Where:` to `main (#N, merged
+YYYY-MM-DD)` on every entry that still names a PR or branch, since anything on main is merged.
+`python tools/changelog.py pending` lists every entry with something left to do.
 
 Until then, a merged entry marked `pending` is newer than `docs/PRODUCT_STATUS.md` and wins
 where they differ; the status file's header says so.

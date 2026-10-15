@@ -7,10 +7,10 @@ up to 2026-10-15 and is no longer edited; `docs/changelog/README.md` has the cur
 One entry per meaningful change, newest first. Each entry is the handoff for that change and
 answers five questions: what changed and why; where it lives (local, branch or main); what was
 tested; what is open; what it affects (capabilities, privacy, performance, customer-facing
-claims). Add the entry in the same PR as the change, and update `docs/PRODUCT_STATUS.md` with it.
-Earlier history (PRs #1 to #43) is in git; this log starts with the 2026-10-13 build wave.
+claims). Earlier history (PRs #1 to #43) is in git; this log starts with the 2026-10-13 build
+wave. The old workflow (edit this file and `docs/PRODUCT_STATUS.md` in each PR) is retired.
 
-Template:
+Archive entry format (new entries use the one in `docs/changelog/README.md`):
 
 ```
 ## YYYY-MM-DD: <change> (#PR, commit)

@@ -5,12 +5,13 @@ each other after every merge. docs/changelog/README.md gives the format.
 
     python tools/changelog.py check      # every entry file is well formed (run by the tests)
     python tools/changelog.py build      # the whole log, newest first, entry files then archive
-    python tools/changelog.py pending    # entries whose PRODUCT_STATUS edit is not applied yet
+    python tools/changelog.py pending    # entries the status refresh still has to apply
 """
 
 from __future__ import annotations
 
 import argparse
+import datetime
 import re
 import sys
 from dataclasses import dataclass
@@ -22,7 +23,7 @@ ARCHIVE = ROOT / "docs" / "CHANGELOG_AI.md"
 
 NAME_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
 FIELDS = ("Changed", "Where", "Verified", "Open", "Affects", "Status doc")
-STATUS_RE = re.compile(r"^(no change|pending|applied \d{4}-\d{2}-\d{2})\b")
+STATUS_RE = re.compile(r"^(?:no change\b.*|pending: *\S.*|applied (\d{4}-\d{2}-\d{2})\b.*)$")
 ARCHIVE_MARKER = "\n---\n"
 
 
@@ -32,6 +33,7 @@ class Entry:
     date: str
     text: str
     status: str
+    where: str
 
 
 def _field_lines(text: str) -> dict[str, str]:
@@ -51,6 +53,8 @@ def parse(path: Path) -> tuple[Entry | None, list[str]]:
     if not m:
         return None, [f"{path.name}: name must be YYYY-MM-DD-short-name.md (lowercase, hyphens)"]
     date = m.group(1)
+    if not _is_date(date):
+        return None, [f"{path.name}: {date} is not a calendar date"]
     text = path.read_text(encoding="utf-8").strip() + "\n"
     lines = text.splitlines()
     if not lines[0].startswith(f"## {date}: "):
@@ -62,14 +66,33 @@ def parse(path: Path) -> tuple[Entry | None, list[str]]:
         if not fields.get(name):
             errors.append(f"{path.name}: missing or empty '- {name}:' line")
     status = fields.get("Status doc", "")
-    if status and not STATUS_RE.match(status):
+    sm = STATUS_RE.match(status)
+    if status and (not sm or (sm.group(1) and not _is_date(sm.group(1)))):
         errors.append(
-            f"{path.name}: '- Status doc:' must start with 'no change', 'pending' or "
+            f"{path.name}: '- Status doc:' must be 'no change', 'pending: <the edits>' or "
             "'applied YYYY-MM-DD'"
         )
     if errors:
         return None, errors
-    return Entry(path=path, date=date, text=text, status=status), []
+    return Entry(path=path, date=date, text=text, status=status, where=fields["Where"]), []
+
+
+def _is_date(value: str) -> bool:
+    try:
+        datetime.date.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
+
+
+def todo(entry: Entry) -> list[str]:
+    """What the status refresh on main still has to do for this entry."""
+    out = []
+    if entry.status.startswith("pending"):
+        out.append("apply its Status doc edit")
+    if not entry.where.startswith("main"):
+        out.append("set Where to main")
+    return out
 
 
 def load(entry_dir: Path = ENTRY_DIR) -> tuple[list[Entry], list[str]]:
@@ -87,16 +110,27 @@ def load(entry_dir: Path = ENTRY_DIR) -> tuple[list[Entry], list[str]]:
     return entries, errors
 
 
+PREFACE = """# Baker AI changelog
+
+One entry per meaningful change, newest first: the entry files in `docs/changelog/`, then the
+archive `docs/CHANGELOG_AI.md` (entries up to 2026-10-15). How to add an entry, and how
+`docs/PRODUCT_STATUS.md` is kept current, is in `docs/changelog/README.md`.
+"""
+
+
 def build(entry_dir: Path = ENTRY_DIR, archive: Path = ARCHIVE) -> str:
-    """The whole log in one view: the archive's preface, the entry files, the archive's entries."""
+    """The whole log in one view: a preface, the entry files, then the archive's entries.
+
+    The archive's own preface describes the old workflow, so it is left out.
+    """
     entries, errors = load(entry_dir)
     if errors:
         raise ValueError("\n".join(errors))
     text = archive.read_text(encoding="utf-8")
-    head, sep, rest = text.partition(ARCHIVE_MARKER)
+    _, sep, rest = text.partition(ARCHIVE_MARKER)
     if not sep:
-        head, rest = "", text
-    parts = [head.rstrip() + "\n" + ARCHIVE_MARKER] if head else []
+        rest = text
+    parts = [PREFACE + ARCHIVE_MARKER]
     parts += [e.text for e in entries]
     parts.append(rest.lstrip("\n"))
     return "\n".join(p.rstrip("\n") + "\n" for p in parts)
@@ -117,8 +151,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{len(entries)} changelog entries OK")
     elif args.command == "pending":
         for e in entries:
-            if e.status.startswith("pending"):
-                print(e.path.relative_to(ROOT) if e.path.is_relative_to(ROOT) else e.path)
+            if steps := todo(e):
+                name = e.path.relative_to(ROOT) if e.path.is_relative_to(ROOT) else e.path
+                print(f"{name}: {'; '.join(steps)}")
     else:
         out = build(args.dir)
         if args.out:

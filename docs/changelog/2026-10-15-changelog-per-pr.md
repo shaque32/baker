@@ -5,7 +5,7 @@
   edits after merges. Why: every open PR edited the same two files, so each merge left the rest
   conflicting (seen in the 2026-10-15 merge round). `docs/CHANGELOG_AI.md` is kept as the archive;
   `make changelog` prints the whole log in one view, newest first.
-- Where: PR (branch `claude/changelog-per-pr-ewuqbu`), not merged. The matching CLAUDE.md wording
+- Where: PR #84 (branch `claude/changelog-per-pr-ewuqbu`). The matching CLAUDE.md wording
   needs Arsh's signature and is not in this PR until Arsh applies it.
 - Verified: `tests/test_changelog.py` (entry format, ordering, assembled view, pending list);
   `make check` on this branch.
