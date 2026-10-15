@@ -180,3 +180,23 @@ def test_an_encrypted_broken_case_is_locked_again_after_the_refused_open(tmp_pat
     assert not encryption.is_unlocked(case.db)  # its key did not stay in memory
     assert "Not opened: the audit log" in get(app, "/cases").text
     assert cases.list_cases(home) == [case]
+
+
+@pytest.mark.parametrize("encrypt", [False, True])
+def test_reopening_the_open_case_after_tampering_closes_it(tmp_path, encrypt):
+    app = App(home=tmp_path / "cases", port=PORT, model_check=None)
+    post(app, "/expert", name="Test Expert")
+    extra = {"encrypt": "1", "passphrase": PASS, "passphrase2": PASS} if encrypt else {}
+    post(app, "/case/new", name="Synthetic open case", **extra)
+    case = app.case
+    assert case is not None
+    conn = connect(case.db)
+    log_three(conn)
+    tamper(conn, 2)
+    conn.close()
+
+    post(app, "/case/open", case=case.folder.name)
+    assert app.case is None
+    assert get(app, "/claims").header("Location") == "/cases"
+    assert "Not opened: the audit log" in get(app, "/cases").text
+    assert protect.is_locked(case) == encrypt

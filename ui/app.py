@@ -213,6 +213,14 @@ class App:
         try:
             audit_log.require_intact(conn)  # a broken chain fails closed: no review, no writes
             pipeline.mark_stale_runs_stopped(conn)  # nothing in this process runs them
+        except audit_log.ChainBroken:
+            if self.case is not None and self.case.db == case.db:  # re-opened after tampering
+                self.case = None
+                self.recovery = None
+                self.last_check = None
+                if protect.state(case) != "plain":
+                    protect.lock(case)
+            raise
         finally:
             conn.close()
         self.case = case
