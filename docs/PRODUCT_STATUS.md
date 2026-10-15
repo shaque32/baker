@@ -33,7 +33,7 @@ coverage: one wrong "supported" is the failure that counts most.
 | 5. Assumptions | Fills fixed templates per claim type; values must be tied to the document or case data, or the proposal is refused | `core/audit/assumption_filler.py` | Local 14B |
 | 6. Checks | Deterministic checks: sender, identity, timing, weekday, count, absence | `core/audit/checks/` | No |
 | 7. Retrieval | Structured filters plus keyword ranking, with surrounding messages and the other phone's copy | `core/audit/retrieval.py` | No |
-| 8. Stance | Labels one record against one assumption: supports, contradicts, complicates or irrelevant | `core/audit/stance.py` | Local 14B (main); Opus 5.5, opt-in per case (branch #68, not merged) |
+| 8. Stance | Labels one record against one assumption: supports, contradicts, complicates or irrelevant | `core/audit/stance.py` | Local 14B (main, and every case on #68 today); Opus 5.5, opt-in per case once it passes the signed stance test (branch #68, not merged; none has) |
 | 9. Quote check | The label's quote must appear verbatim in the record, or the label is dropped | `core/audit/quotes.py` | No |
 | 10. AI review | Optional second pass on supporting items; off by default | `core/audit/review.py` | Local 14B |
 | 11. Verdict | `decide_verdict` applies rules 0.2.1 | `core/audit/rules.py` | No |
@@ -56,8 +56,8 @@ screen in `ui/`.
 
 | Model | Where it runs | Jobs | Status |
 |---|---|---|---|
-| Qwen3-14B Q4_K_M (GGUF, Apache-2.0, sha256 `500a8806…81f0`, n_ctx 8192) | Expert's computer, llama-cpp-python, `flash` runtime | Claim proposal, assumption filling, stance labels (all cases on main; on #68, every case not opted in to cloud), optional AI review | main |
-| Claude Opus 5.5, medium effort | Anthropic API, expert's own key | Stance labels only, for cases the expert opted in | branch #68 (draft, not merged) |
+| Qwen3-14B Q4_K_M (GGUF, Apache-2.0, sha256 `500a8806…81f0`, n_ctx 8192) | Expert's computer, llama-cpp-python, `flash` runtime | Claim proposal, assumption filling, stance labels (every case, on main and on #68 until a cloud model passes the signed stance test), optional AI review | main |
+| Claude Opus 5.5, medium effort | Anthropic API, expert's own key | Stance labels only, for cases the expert opted in, once it passes the signed stance test (not yet: `PROBE_PASSED` is empty) | branch #68 (draft, not merged) |
 | mDeBERTa-v3-base classifier | Training on cloud CPU | Candidate small stance model | branch #50 (draft); run 5 is training (2026-10-15, no results yet); runs 1 to 4 did not pass the go bar |
 | Claude Sonnet 5.5, Haiku 5.5, Opus 5.5 | Anthropic API | Benchmarks only, in `eval/bench/` | main (eval only) |
 
@@ -74,7 +74,7 @@ There is no model judge of verdicts in Baker. The word "judge" does not name any
   `baker verdict --set`), which `core/review/actions.py` `override_verdict` writes directly,
   without the rules, under the expert's name in the audit log. No model, local or cloud, writes a
   verdict, an identity link or a confirmation.
-- **What Opus does (branch #68 only).** It is the stance labeler: for one (assumption, record)
+- **What Opus would do (branch #68 only, once it passes the signed stance test).** It is the stance labeler: for one (assumption, record)
   pair it returns a label, a quote and a rationale. It is a remote HTTPS call to
   `api.anthropic.com` (`core/llm/cloud.py`), pinned so a stray `ANTHROPIC_BASE_URL` cannot
   redirect it, using the expert's own key from `$BAKER_ANTHROPIC_API_KEY`; in an encrypted

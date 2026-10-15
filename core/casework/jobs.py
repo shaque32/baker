@@ -80,9 +80,8 @@ class Job:
 
     def seconds_per_call(self) -> float | None:
         """Mean seconds per new model call in this job so far, once a few calls are made."""
-        if self.components is None:
-            return None
-        return measured_seconds(self.components)
+        comps = self.components  # read once: a finished cloud job drops it
+        return None if comps is None else measured_seconds(comps)
 
 
 class Jobs:
