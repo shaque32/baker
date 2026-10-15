@@ -120,7 +120,7 @@ def redecide(
                 evidence = pipeline.load_evidence(conn, items["evidence"])
                 decision = rules.decide_verdict(
                     claim, assumptions, evidence, checks, stipulations, result.run_id
-                )
+                ).model_copy(update={"decided_at_utc": now})  # the run's clock, not rules.py's
                 invariants.check_decision(
                     conn,
                     claim,

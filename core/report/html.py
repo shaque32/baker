@@ -30,6 +30,18 @@ Display rules:
   each. Found by code, shown as leads for the expert; they never change a verdict.
 - The report carries source hashes, Baker, contract, rule, report and model versions, and an
   audit-log summary with the hash-chain result.
+- Each evidence row carries the evidence item's id (<tr id=...>), the same id the review screen
+  gives its evidence card, so the two can be compared item by item.
+
+Reproducible: the same case inputs, versions and expert decisions, made at the same clock
+times, render byte-identical HTML (tests/test_report_consistency.py). Made at other times, the
+report differs only in these fields, which the reproducibility test masks before hashing:
+- a verdict's decision time ("decided <time> in <run>"),
+- pipeline run ids, which are named for the run's start time ("run:20261007T000000Z"),
+- the Run section's start time,
+- the audit log's first and last entry times, its last hash (the hash chain covers each
+  entry's time) and the When column of the expert actions,
+- when each device-owner stipulation was made and each identity link confirmed (Limitations).
 """
 
 from __future__ import annotations
@@ -414,7 +426,8 @@ def _claim_block(conn: sqlite3.Connection, st: ClaimState, case: explain.Case) -
         )
         for x in shown:
             out.append(
-                f"<tr><td><blockquote>{q(x.quote)}</blockquote>{record_line(conn, x.record_id)}"
+                f"<tr id='{e(x.id)}'><td><blockquote>{q(x.quote)}</blockquote>"
+                f"{record_line(conn, x.record_id)}"
                 f"<br><span class='muted'>{e(labelled_by(conn, x.model_run_id))}. Model "
                 f"rationale (inferred): {e(x.rationale)}</span>"
                 f"</td><td>{STANCE_LABEL[x.stance]}</td><td>{display_tier(x).value}</td>"
