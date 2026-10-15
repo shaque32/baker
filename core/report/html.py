@@ -40,7 +40,8 @@ report differs only in these fields, which the reproducibility test masks before
 - pipeline run ids, which are named for the run's start time ("run:20261007T000000Z"),
 - the Run section's start time,
 - the audit log's first and last entry times, its last hash (the hash chain covers each
-  entry's time) and the When column of the expert actions.
+  entry's time) and the When column of the expert actions,
+- when each device-owner stipulation was made and each identity link confirmed (Limitations).
 """
 
 from __future__ import annotations

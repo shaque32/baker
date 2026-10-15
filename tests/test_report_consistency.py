@@ -100,7 +100,8 @@ def _audit(
 
 def _review(conn: sqlite3.Connection, start: datetime) -> None:
     """One expert's review, each step at its own time after start: accept C05's key evidence,
-    dismiss a supporting item on C06, re-run the verdicts, confirm C05, override C07."""
+    dismiss a supporting item on C06, re-run the verdicts, confirm C05, override C07, restate
+    a device-owner stipulation and link an account to a person (both print their time)."""
     at = lambda h: lambda: start + timedelta(hours=h)  # noqa: E731
     for eid in key_items(conn, "C05"):
         actions.decide_evidence(conn, eid, EvidenceStatus.ACCEPTED, EXPERT, "Matches.", at(1))
@@ -109,6 +110,10 @@ def _review(conn: sqlite3.Connection, start: datetime) -> None:
     redecide(conn, EXPERT, at(2))
     actions.confirm_verdict(conn, "C05", EXPERT, clock=at(3))
     actions.override_verdict(conn, "C07", Verdict.CONTRADICTED, EXPERT, "Reads x.", clock=at(3))
+    actions.stipulate_device_owner(conn, "dev:item1", "Daniel Petrov", EXPERT, at(3))
+    actions.link_account(
+        conn, "acct:item1:Instagram:m.reyes.auto", "person:dev:item2:owner", EXPERT, "Bio.", at(3)
+    )
 
 
 def _build(path: Path, start: datetime) -> sqlite3.Connection:
@@ -240,6 +245,8 @@ MASKS = (
     (re.compile(rf"entries from {TIME} to {TIME}\."), "entries from <time> to <time>."),
     (re.compile(r"Last hash <span class='mono'>[0-9a-f]{64}</span>"), "Last hash <hash>"),
     (re.compile(rf"<tr><td>(\d+)</td><td>{TIME}</td>"), r"<tr><td>\1</td><td><time></td>"),
+    (re.compile(rf" stipulated on {TIME}:"), " stipulated on <time>:"),  # limitations
+    (re.compile(rf" confirmed on {TIME} that "), " confirmed on <time> that "),  # limitations
 )
 
 
