@@ -19,6 +19,22 @@ Template:
 
 ---
 
+## 2026-10-15: Small stance model, run 6; tune.py checks the moved-traps bar (#50)
+- Changed: run 6 trains run 5's weights 1 more epoch on new training data (train sha256
+  `6637a9ef…`, 19,244 items with more varied sender traps), trap items weighted 3x. tune.py's
+  policy rule now also requires 0 moved traps shown as supports, the GO_BAR bar guide v0.3 added;
+  the rule predated it, so it had picked a policy that still showed 7 such traps. The change only
+  rejects more policies.
+- Where: branch `claude/train-small-model-i04typ`, PR #50 (draft), not merged.
+- Verified: overlap check 0 flags on the run 6 training file. Dev split only (913 undisputed
+  items, cloud CPU, 2026-10-15), default policy: supports recall 0.97, contradicts precision 0.98,
+  1 contradicts and 9 moved traps shown as supports (run 5: 17), accuracy 0.88. No policy clears
+  the bars, so run 6 is not a candidate. New tune.py test passes.
+- Open: the remaining moved traps are mostly time traps (5 of 40 on dev); a run 7 needs more
+  varied time traps from the data thread. Probe, test-split and case02 scoring only for a
+  candidate.
+- Affects: none in the product (eval only).
+
 ## 2026-10-15: Small stance model, run 5 and reading cases by name (#50)
 - Changed: run 5 trains mDeBERTa-v3-base from scratch on training data with more varied wording
   and captioned attachments (train sha256 `00ceae8f…`), 3 epochs, trap items weighted 2x

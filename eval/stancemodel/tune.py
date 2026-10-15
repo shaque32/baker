@@ -7,9 +7,10 @@ Reads the four probabilities predict.py stored per item and replays every policy
 through eval.stancedata.score, so a policy is scored exactly as the go bar scores it. The rule,
 fixed before any dev result was seen:
 
-1. Keep the policies that clear the go bar's three accuracy bars on the dev split with a margin:
-   zero contradicting records shown as "supports", supports recall at least 95% and contradicts
-   precision at least 95% (the bars are 90%).
+1. Keep the policies that clear the go bar's accuracy bars on the dev split with a margin:
+   zero contradicting records shown as "supports", zero items of the trap families guide v0.3
+   moved to complicates shown as "supports" (the go bar's moved-traps bar, signed 2026-10-14),
+   supports recall at least 95% and contradicts precision at least 95% (the bars are 90%).
 2. Among those, take the strictest "supports": the highest supports_min, then the lowest
    supports_max_contradicts. Then the highest contradicts_min that keeps contradicts recall
    within 2 points of its best among the kept policies.
@@ -48,14 +49,15 @@ def replay(
         rows[it["probe_id"]] = {"stance": stance, "quote": quote}
     m = score(items, rows)["undisputed"]
     keep = ("supports_recall", "contradicts_precision", "contradicts_recall",
-            "contradicts_shown_as_supports", "overreach_shown_as_supports",
-            "expert_load_precision")  # fmt: skip
+            "contradicts_shown_as_supports", "moved_traps_shown_as_supports",
+            "overreach_shown_as_supports", "expert_load_precision")  # fmt: skip
     return {k: m.get(k) for k in keep}
 
 
 def feasible(m: dict[str, Any]) -> bool:
     return (
         m["contradicts_shown_as_supports"] == 0
+        and m["moved_traps_shown_as_supports"] == 0
         and (m["supports_recall"] or 0) >= MARGIN["supports_recall"]
         and (m["contradicts_precision"] or 0) >= MARGIN["contradicts_precision"]
     )

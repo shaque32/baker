@@ -428,3 +428,12 @@ def test_a_captioned_attachment_follows_its_message_and_a_bare_one_replaces_it(c
     assert [t for t, _ in captioned].count("im there") == 1
     bare = lines("att:sa:Att!2")
     assert bare[-1] == ("IMG_0043.jpg", "*") and ("", "") not in bare
+
+
+def test_tune_rejects_a_policy_that_shows_moved_traps_as_supports() -> None:
+    from eval.stancemodel.tune import feasible
+
+    ok = {"contradicts_shown_as_supports": 0, "moved_traps_shown_as_supports": 0,
+          "supports_recall": 0.96, "contradicts_precision": 0.99}  # fmt: skip
+    assert feasible(ok)
+    assert not feasible({**ok, "moved_traps_shown_as_supports": 1})
