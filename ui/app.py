@@ -838,7 +838,9 @@ class App:
             where = cloud_llm.save_key(key, self.cloud_config, case_db=case_db)
         except cloud_llm.CloudConfigError as err:
             raise ReviewError(str(err)) from err
-        if case_db is not None and where.parent == Path(case_db).parent:
+        if case_db is not None and where == encryption.secret_path(
+            Path(case_db), cloud_llm.CASE_SECRET
+        ):
             return (
                 "Saved your Anthropic key in this case, encrypted with the case's key: it can be"
                 " read only while the case is unlocked."

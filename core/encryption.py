@@ -422,7 +422,7 @@ def open_secret(db: Path, name: str) -> str | None:
     aad = f"{SECRET_FORMAT}|{key_id}|{name}".encode()
     try:
         return _aesgcm(dek).decrypt(_unb64(s.nonce), _unb64(s.sealed), aad).decode("utf-8")
-    except _invalid_tag() as err:
+    except (_invalid_tag(), ValueError) as err:  # ValueError: bad base64, nonce or UTF-8
         raise EncryptionError(f"{path.name} was altered and cannot be opened") from err
 
 

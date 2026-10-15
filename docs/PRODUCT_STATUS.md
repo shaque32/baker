@@ -85,12 +85,18 @@ There is no model judge of verdicts in Baker. The word "judge" does not name any
 - **When Opus is used (branch #68).** Opt-in per case, local by default (Arsh chose "Opt-in cloud",
   2026-10-15 07:10Z). Only when all hold: the expert attested for this case that
   the protective order allows cloud AI; the case is not marked as possibly containing CSAM; a key
-  is set up. The choice is stored in the case's hash-chained audit log. Otherwise the local 14B
-  labels the case, as on main.
-- **Failure handling (branch #68, `3c6c1ec`).** If the cloud fails mid-case, the audit pauses
+  is set up; and the model passed the signed stance test with the current stance prompt
+  (`PROBE_PASSED` in `core/llm/cloud.py`). That list is **empty**: Opus 5.5 fails the signed
+  set's contradicts bar (below), so on #68 every case still labels locally until a signed prompt
+  fix passes a recorded re-run and Arsh signs the entry. The choice is stored in the case's
+  hash-chained audit log. Otherwise the local 14B labels the case, as on main.
+- **Failure handling (branch #68).** If the cloud fails mid-case, the audit pauses
   (`CloudPaused`, `core/audit/_local_model.py`); the expert retries the cloud or re-runs the
   whole case locally, so one case never mixes models. Every request body is written to the
-  case's hash-chained audit log (`cloud.sent`) before it is sent. Timeout 120 s, 2 retries.
+  case's hash-chained audit log (`cloud.sent`) before it is sent, and nothing is logged as sent if
+  the client cannot be built. Timeout 120 s, 2 retries. A cloud answer that failed its quote or
+  format check is asked again on a re-run rather than reused. The decrypted key is dropped from
+  memory when a cloud audit ends.
 - **Opus's influence on verdicts.** Indirect, through its labels, and bounded by the rules:
   - A "supports" label never makes a claim SUPPORTED by itself. An expert must accept it.
   - A "contradicts" label on an observed or derived record can make a claim CONTRADICTED
@@ -107,7 +113,7 @@ There is no model judge of verdicts in Baker. The word "judge" does not name any
   recall 80% vs 90%; sheet-free audit 60% accuracy vs 80%), recorded in
   `/mnt/project-files/baker/cloud-first/steps-check/RESULTS.md`.
 
-**Merge state:** #68 is a draft (code at `3c6c1ec`, main merged in after #71). Arsh approved its
+**Merge state:** #68 is a draft (main merged in after #71). Arsh approved its
 revised CLAUDE.md wording (2026-10-15 07:29Z, recorded in `PROPOSED_CHANGES.md`). He pastes it on
 the branch himself, because agents are blocked from editing CLAUDE.md. Until then the rule "no
 network calls in core/" still stands on main and in the branch's CLAUDE.md.

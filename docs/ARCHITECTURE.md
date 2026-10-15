@@ -124,7 +124,9 @@ Stance labels come from Claude (Opus 5.5, medium effort by default) for a case w
 the expert attested at case setup that its protective order allows cloud AI; the case is not
 marked as possibly containing CSAM; the expert's own Anthropic key is set up: `$BAKER_ANTHROPIC_API_KEY`; or, in an encrypted case,
 the key saved in that case (`case.cloud-key`, AES-256-GCM under the case key, so it is unreadable
-while the case is locked); or `~/.baker/cloud.json` (owner-only), in that order. Otherwise the local model
+while the case is locked); or `~/.baker/cloud.json` (owner-only), in that order; and the model
+passed the signed stance test with the current stance prompt (`PROBE_PASSED` in
+`core/llm/cloud.py`, empty until one does). Otherwise the local model
 labels the case, exactly as before. The choice is the latest `set_cloud` entry in the case's
 audit log (inside the case database, so an encrypted case keeps it encrypted).
 
@@ -147,7 +149,8 @@ audit log (action `cloud.sent`): the time, the endpoint, the attempt number and 
 exactly as sent. The key is in a header and never logged. Baker retries a retryable failure (no
 connection, a timeout, 408, 409, 429, 5xx) itself, up to twice, logging each send; the SDK's
 own retries are off. If the entry cannot be written, the request is not sent and the audit
-pauses. An answer reused from stored outputs sends nothing.
+pauses; if the client cannot be built, nothing is logged. An answer reused from stored outputs
+sends nothing; a stored cloud answer that failed its quote or format check is not reused.
 
 Which model labeled an item. Evidence ids come from content (assumption, record, stance,
 quote), so a case that switches between cloud and local can produce the same item twice. The

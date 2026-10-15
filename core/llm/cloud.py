@@ -49,6 +49,14 @@ EFFORTS = ("low", "medium", "high", "xhigh", "max")
 API_BASE_URL = "https://api.anthropic.com"
 # One stance answer takes seconds (about 4 s on synthetic case01), so a stalled request gives up
 # after two minutes and at most two retries (SentLog sends and logs each), then the audit pauses.
+# (model, stance prompt version) pairs that passed the signed stance probe set: supports
+# recall >= 90%, contradicts precision >= 90%, nothing contradicting labeled supports. A case
+# uses the cloud model only for a pair listed here (core/casework/cloud.py). Adding a pair needs
+# Arsh's sign-off and a recorded run. EMPTY: on the signed set (2026-10-15) Opus 5.5 scored 73%
+# contradicts precision (bar 90%), and an unreviewed "contradicts" on an event assumption can
+# make a claim CONTRADICTED (rules 0.2.1, rule 1b). Cloud labeling waits for the signed prompt
+# fix and a passing re-run (docs/PRODUCT_STATUS.md).
+PROBE_PASSED: frozenset[tuple[str, str]] = frozenset()
 REQUEST_TIMEOUT_SECONDS = 120.0
 MAX_RETRIES = 2
 SHA_PREFIX = "api:"  # model_runs.model_sha256 of a cloud model: there is no file to hash
@@ -260,6 +268,11 @@ class ClaudeModel:
                 max_retries=0,  # Baker retries itself, logging each send (SentLog)
             )
         return self._client
+
+    def prepare(self) -> None:
+        """Build the client (CloudError if it cannot be), so nothing is logged as sent unless a
+        request can actually go out."""
+        self._get_client()
 
     def request(self, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
         """The request body sent to the API, exactly (the key travels in a header, not here)."""

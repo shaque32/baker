@@ -214,11 +214,16 @@ def _reuse_key(params: Mapping[str, Any]) -> str:
     return canonical_json({k: v for k, v in params.items() if k != REUSE_PARAM})
 
 
-def stored_output_lookup(conn: sqlite3.Connection, run: ModelRun) -> StoredOutput:
+def stored_output_lookup(
+    conn: sqlite3.Connection, run: ModelRun, *, reuse_unusable: bool = True
+) -> StoredOutput:
     """Find a raw output this case database already holds for the same prompt, model file,
-    prompt file, output schema and settings. Outputs of failed calls ('error') never count;
-    unusable output ('invalid_output', 'quote_failed') is reused, and fails the same way."""
+    prompt file, output schema and settings. Outputs of failed calls ('error') never count.
+    Unusable output ('invalid_output', 'quote_failed') is reused and fails the same way, as a
+    seeded local model would answer the same again; with reuse_unusable=False (the cloud model,
+    which may answer differently) it is asked again instead."""
     key = _reuse_key(run.params)
+    skip = ("error",) * 3 if reuse_unusable else ("error", "invalid_output", "quote_failed")
 
     def lookup(prompt: str) -> str | None:
         try:
@@ -226,9 +231,9 @@ def stored_output_lookup(conn: sqlite3.Connection, run: ModelRun) -> StoredOutpu
                 "SELECT mc.raw_output, mr.params_json FROM model_calls mc"
                 " JOIN model_runs mr ON mr.id = mc.model_run_id"
                 " WHERE mr.purpose = ? AND mr.model_sha256 = ? AND mr.prompt_sha256 = ?"
-                " AND mc.prompt = ? AND mc.outcome != 'error'"
+                " AND mc.prompt = ? AND mc.outcome NOT IN (?, ?, ?)"
                 " ORDER BY mc.at_utc, mc.id",
-                (run.purpose, run.model_sha256, run.prompt_sha256, prompt),
+                (run.purpose, run.model_sha256, run.prompt_sha256, prompt, *skip),
             ).fetchall()
         except db.OperationalError:  # schema without model_calls (pre-v0.2)
             return None
@@ -267,11 +272,13 @@ def open_run(
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     schema: Mapping[str, Any] | None = None,
     reuse: bool = True,
+    reuse_unusable: bool = True,
 ) -> OpenedRun:
     """One ModelRun per pass per pipeline run. Its id is unique per process start time, and
     call numbering continues from any calls already stored for it. `schema` (the pass's output
     schema) is recorded by hash, so a schema change never reuses older outputs. `reuse` turns
-    stored-output reuse on (the default) or off (the speed test's cold run)."""
+    stored-output reuse on (the default) or off (the speed test's cold run); `reuse_unusable`
+    False asks again where a stored answer was unusable (stored_output_lookup)."""
     if model is None:
         model = load_model(load_config())
     started = clock()
@@ -301,7 +308,7 @@ def open_run(
         started_at_utc=started,
     )
     recorder = CallRecorder(clock=clock, start_seq=lambda rid: next_call_seq(conn, rid))
-    stored = stored_output_lookup(conn, run) if reuse else None
+    stored = stored_output_lookup(conn, run, reuse_unusable=reuse_unusable) if reuse else None
     return OpenedRun(RunPort(model, run_id, stored), run, recorder, model.name)
 
 
@@ -363,6 +370,9 @@ class SentLog:
         from core.llm.cloud import CloudError
 
         request = self._model.request(prompt, schema)
+        prepare = getattr(self._model, "prepare", None)
+        if prepare is not None:
+            prepare()  # a missing client fails here, before anything is logged as sent
         for attempt in range(1, self._retries + 2):
             self._log(request, attempt)
             try:

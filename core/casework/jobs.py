@@ -283,6 +283,8 @@ def audit_job(
             )
         finally:
             conn.close()
+            if cloud_opt_in:  # the cloud labeler holds the API key; locking must not leave it
+                job.components = None
 
     return run
 

@@ -6,6 +6,8 @@ only when all of these hold, and otherwise the local model labels it, exactly as
 2. The expert did not mark the case as possibly containing CSAM. Such material stays in the
    government's control (18 U.S.C. 3509(m)), so a marked case never uses cloud, whatever (1) says.
 3. An Anthropic key is set up on this computer (the expert's own; Baker runs no server).
+4. The configured model passed Baker's signed stance test with the current stance prompt
+   (core/llm/cloud.py, PROBE_PASSED). None has yet, so for now every case labels locally.
 
 Then every stance label in the case comes from the cloud model; labels never mix models. If
 the cloud model stops answering, the audit pauses (core/audit/_local_model.py, CloudPort) and
@@ -99,6 +101,14 @@ def choose(
         cfg = load()
     except cloud_llm.CloudConfigError as e:
         return CloudChoice(False, f"Local model: cloud AI is allowed for this case, but {e}.")
+    version = _stance_prompt_version()
+    if (cfg.model, version) not in cloud_llm.PROBE_PASSED:
+        return CloudChoice(
+            False,
+            f"Local model: cloud AI is allowed for this case, but {cfg.model} has not passed "
+            "Baker's signed stance test with the current stance prompt, so the local model "
+            "labels it.",
+        )
     who = str(c["attested_by"]).removeprefix("expert:")
     when = str(c["attested_at"])[:10]
     return CloudChoice(
@@ -107,6 +117,16 @@ def choose(
         "stops answering, the audit pauses rather than mix in local labels.",
         cfg,
     )
+
+
+def _stance_prompt_version() -> str | None:
+    from core.audit._llm_json import PromptMissingError, load_prompt, prompt_version
+    from core.audit.stance import PROMPT_FILE
+
+    try:
+        return prompt_version(load_prompt(PROMPT_FILE))
+    except PromptMissingError:
+        return None
 
 
 def set_cloud(

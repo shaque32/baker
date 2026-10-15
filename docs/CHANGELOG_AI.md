@@ -135,6 +135,25 @@ Template:
 - Open: entries before 2026-10-13 are summarized by git only.
 - Affects: none (documentation).
 
+## 2026-10-15: Cloud stance labels gated on the signed stance test (#68)
+- Changed: a case uses the cloud model only if that model passed the signed stance test with
+  the current stance prompt (`PROBE_PASSED`, `core/llm/cloud.py`). The list ships empty, so every
+  case labels locally on #68 for now. Reason: Codex P1 on #68 and the signed-set run (Opus
+  contradicts precision 73%, bar 90%); an unreviewed "contradicts" on an event assumption can
+  make a claim CONTRADICTED (rule 1b), and Arsh's earlier decision was cloud "after a check".
+  Also from Codex round 6: nothing is logged as sent when the client cannot be built; a cloud
+  answer that failed its quote or format check is asked again on re-run; a damaged sealed key
+  reads as a config error; the "saved in this case" message checks the exact sealed path; the
+  key is dropped from memory when a cloud audit ends; the Mac install guide no longer promises
+  offline use for a cloud case.
+- Where: branch `claude/project-thread-a2fjkc`, PR #68, draft, not merged.
+- Verified: `make check` passes, 1940 tests; gates unchanged (case01 1.00, 0 false supported,
+  unreviewed 0.60, hostile PASS, case02 0.90); new tests for the gate, preflight, re-ask and a
+  damaged sealed key. No real API call.
+- Open: adding an entry needs a signed prompt fix, a recorded passing run and Arsh's sign-off.
+- Affects: capabilities (cloud labels off until a model passes), privacy (no case data leaves
+  the computer on #68 until then), customer-facing claims (do not offer cloud labeling yet).
+
 ## 2026-10-15: Cloud AI by per-case opt-in for stance labels (#68, 3c6c1ec)
 - Changed: Baker is local by default. A case uses Opus 5.5 for stance labels only after the
   expert attests the protective order allows it, the case has no CSAM flag, and they supply their

@@ -317,7 +317,9 @@ def create(
             assert cloud is not None  # noqa: S101 - narrowed by the branch
             cloud_model = ClaudeModel(cloud)
         logged = SentLog(cloud_model, conn)
-        up = open_run(conn, "stance", template, model=logged, schema=STANCE_SCHEMA)
+        up = open_run(
+            conn, "stance", template, model=logged, schema=STANCE_SCHEMA, reuse_unusable=False
+        )
         port, recorder, runs = CloudPort(up), up.recorder, (up.run,)
     names = case_names(conn)
 

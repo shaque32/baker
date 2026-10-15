@@ -97,6 +97,14 @@ def _resp(text: str = SUPPORTS, stop: str = "end_turn") -> object:
     return _Obj(stop_reason=stop, content=[_Obj(type="text", text=text)], usage=usage)
 
 
+@pytest.fixture(autouse=True)
+def probe_passed(monkeypatch):  # noqa: ANN001, ANN201
+    """These tests cover what happens once a model passes the signed stance test; the gate
+    itself is tested on its own (PROBE_PASSED is empty in the product)."""
+    version = cloud_policy._stance_prompt_version()
+    monkeypatch.setattr(cloud, "PROBE_PASSED", frozenset({(cloud.DEFAULT_MODEL, version)}))
+
+
 @pytest.fixture
 def fake_context(monkeypatch):  # noqa: ANN001, ANN201
     ctx = types.ModuleType("core.audit.context")
@@ -199,6 +207,18 @@ def test_a_sealed_key_from_another_case_is_refused(tmp_path, monkeypatch):
     a.with_suffix(".cloud-key").replace(b.with_suffix(".cloud-key"))
     with pytest.raises(cloud.CloudConfigError, match="does not belong"):
         cloud.load_config(tmp_path / "cloud.json", case_db=b)
+
+
+@pytest.mark.parametrize("field", ["nonce", "sealed"])
+def test_a_damaged_sealed_key_reads_as_a_config_error(tmp_path, monkeypatch, field):
+    monkeypatch.delenv(cloud.KEY_ENV, raising=False)
+    dbp = _encrypted_case(tmp_path)
+    where = cloud.save_key(KEY, tmp_path / "cloud.json", case_db=dbp)
+    data = json.loads(where.read_text(encoding="utf-8"))
+    data[field] = "not base64!"
+    where.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(cloud.CloudConfigError, match="altered"):
+        cloud.load_config(tmp_path / "cloud.json", case_db=dbp)
 
 
 def test_saved_key_is_readable_by_its_owner_only(tmp_path, monkeypatch):
@@ -385,6 +405,27 @@ def test_cloud_is_used_only_when_attested_not_csam_and_keyed(case_db, entries, l
     choice = cloud_policy.choose(case_db, load)
     assert choice.use is use
     assert choice.why.startswith("Cloud model" if use else "Local model")
+
+
+def test_no_model_has_passed_the_signed_stance_test_yet():
+    # Opus 5.5 scored 73% contradicts precision on the signed set (bar 90%), 2026-10-15.
+    # The fixture patches PROBE_PASSED, so read the shipped value from the source.
+    src = Path(cloud.__file__).read_text(encoding="utf-8")
+    assert "PROBE_PASSED: frozenset[tuple[str, str]] = frozenset()" in src
+
+
+def test_a_model_that_has_not_passed_the_signed_test_labels_locally(case_db, monkeypatch):
+    monkeypatch.setattr(cloud, "PROBE_PASSED", frozenset())
+    cloud_policy.set_cloud(case_db, "expert:Ana", allowed=True, csam=False)
+    choice = cloud_policy.choose(case_db, _key)
+    assert not choice.use
+    assert "has not passed Baker's signed stance test" in choice.why
+
+
+def test_a_pass_on_another_stance_prompt_does_not_count(case_db, monkeypatch):
+    monkeypatch.setattr(cloud, "PROBE_PASSED", frozenset({(cloud.DEFAULT_MODEL, "sha256:old")}))
+    cloud_policy.set_cloud(case_db, "expert:Ana", allowed=True, csam=False)
+    assert not cloud_policy.choose(case_db, _key).use
 
 
 def _log(conn, actor: str, payload: dict) -> None:  # noqa: ANN001
@@ -588,6 +629,56 @@ def test_an_item_relabeled_by_another_model_names_the_model_of_the_latest_run(tm
     audit(cloud_lab)
     rows = conn.execute("SELECT model_run_id, rationale FROM evidence_items").fetchall()
     assert rows and {r for r in rows} == {(_cloud_run(cloud_lab).id, "cloud")}
+
+
+class _Misquoter(_Quoter):
+    """Answers "supports" with a quote that is not in the record."""
+
+    def generate_json(self, prompt, schema, params=None):  # noqa: ANN001, ANN201
+        self.base.prompts.append(prompt)
+        bad = {"stance": "supports", "quote": "words nobody wrote", "rationale": "x"}
+        return _Out(json.dumps(bad))
+
+
+def test_a_cloud_answer_that_failed_its_quote_check_is_asked_again(tmp_path):
+    from core import pipeline
+    from core.contracts import GoldClaim
+    from eval import run_pipeline as rp
+    from eval.run_eval import load_jsonl
+
+    conn = rp.build_case("case01", tmp_path / "case01.db")
+    gold = load_jsonl(rp.gold_path("case01"), GoldClaim)
+    claims = [g.claim_id for g in gold][:3]
+
+    def audit(labeler) -> None:  # noqa: ANN001
+        comps = rp.model_free_components(conn, rp.assumption_sheet("case01"), gold)
+        comps.labeler = labeler
+        comps.model_runs = (
+            *[m for m in comps.model_runs if m.purpose != "stance"],
+            *labeler.model_runs,
+        )
+        pipeline.run_audit(conn, comps, claim_ids=claims)
+
+    bad = _Misquoter(FakeCloud([]))
+    audit(stance_mod.create(conn, cloud_model=bad))
+    assert bad.base.prompts
+    assert not conn.execute("SELECT 1 FROM evidence_items").fetchone()
+    good = _Quoter(FakeCloud([]))
+    good.why = "second try"
+    audit(stance_mod.create(conn, cloud_model=good))
+    assert len(good.base.prompts) == len(bad.base.prompts)  # asked again, nothing reused
+    assert conn.execute("SELECT 1 FROM evidence_items").fetchone()
+
+
+def test_nothing_is_logged_as_sent_when_the_client_cannot_be_built(case_db, monkeypatch):
+    from core.audit._local_model import SENT_ACTION, SentLog
+
+    monkeypatch.setitem(sys.modules, "anthropic", None)  # the cloud extra is not installed
+    model = cloud.ClaudeModel(cloud.CloudConfig(api_key=KEY))
+    with pytest.raises(cloud.CloudError, match="not installed"):
+        SentLog(model, case_db).generate_json("p", {"type": "object"})
+    sent = case_db.execute("SELECT 1 FROM audit_log WHERE action = ?", (SENT_ACTION,))
+    assert sent.fetchone() is None
 
 
 def test_a_retryable_failure_is_sent_again_and_every_send_is_logged(case_db):
