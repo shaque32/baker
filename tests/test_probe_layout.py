@@ -163,15 +163,19 @@ def _signed_v1_1_from_proposed_changes() -> str | None:
     body = prompts._body(ROOT / "core" / "audit" / "prompts" / "stance.md")
     one = section.split("Diff, part one:\n", 1)[1].split("Diff, part two", 1)[0]
     # Part one: runs of removed lines, each followed by the lines that replace them.
-    for old, new in re.findall(r"((?:^-.*\n)+)((?:^\+.*\n)+)", one, re.M):
-        old = "".join(ln[1:] + "\n" for ln in old.splitlines())
-        new = "".join(ln[1:] + "\n" for ln in new.splitlines())
-        assert body.count(old) == 1
-        body = body.replace(old, new)
+    pairs = [
+        tuple("".join(ln[1:] + "\n" for ln in run.splitlines()) for run in pair)
+        for pair in re.findall(r"((?:^-.*\n)+)((?:^\+.*\n)+)", one, re.M)
+    ]
     two = section.split("Diff, part two", 1)[1].split("Diff, part three", 1)[0]
     two = "".join(ln[1:] + "\n" for ln in two.splitlines() if ln.startswith("+"))
     three = section.split("Diff, part three", 1)[1].split("and the header's version line", 1)[0]
     three = "".join(ln[1:] + "\n" for ln in three.splitlines() if ln.startswith("+"))
+    if all(old not in body and new in body for old, new in pairs) and two in body and three in body:
+        return body  # the pipeline wiring (#62) applied v1.1 to the product prompt
+    for old, new in pairs:
+        assert body.count(old) == 1
+        body = body.replace(old, new)
     body = body.replace("\nAssumption:\n", "\n" + two + "Assumption:\n", 1)
     return body.replace("Choose exactly one stance:", three + "Choose exactly one stance:", 1)
 
