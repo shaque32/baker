@@ -13,8 +13,8 @@ Conventions every item follows (PROBE_REVIEW.md repeats them for the signer):
   whose words exclude other messages ("first contact on"), and a later correction contradicts
   through the correcting message (stance guide v0.3, rules 22 and 23). Guide v0.3 also leaves
   open an undated assumption against a denial that names no time (P049) and "X told Y that ..."
-  against a statement of the opposite (P066 to P069; drafts P092 to P094); those five signed
-  items keep their contradicts until Arsh signs the relabel in PROPOSED_CHANGES.md.
+  against a statement of the opposite (P066 to P069, P092 to P094); Arsh relabeled P049 and
+  P066 to P069 on 2026-10-15.
   complicates = it bears on the assumption but neither establishes it nor asserts the
   opposite. irrelevant = it does not bear on the assumption.
 - case01 items copy records verbatim from eval/synthetic/case01 (record_id set on every line).
@@ -25,7 +25,13 @@ from __future__ import annotations
 
 from core.contracts import AssumptionKind as K
 from core.contracts import Stance as S
-from eval.probe_draft.model import RELABEL_LABEL, SIGNED_LABEL, ProbeItem, ProbeLine
+from eval.probe_draft.model import (
+    RELABEL_LABEL,
+    SIGNED_2_LABEL,
+    SIGNED_LABEL,
+    ProbeItem,
+    ProbeLine,
+)
 from eval.probe_draft.model import ProbeCategory as C
 
 
@@ -181,7 +187,7 @@ MARISA = ("SMS +19175550139 Marisa", "sms:+19175550139")
 
 
 # P001-P088. Arsh signed these on 2026-10-07 ("yes sign it"), adopting the second outside review,
-# and relabeled the RELABELED items on 2026-10-14.
+# relabeled the RELABELED items on 2026-10-14 and the RELABELED_2 items on 2026-10-15.
 _SIGNED: list[ProbeItem] = [
     # ============================================================ clear_support
     item(
@@ -1187,7 +1193,7 @@ _SIGNED: list[ProbeItem] = [
     item(
         "P049",
         C.OVERREACH,
-        "negation",
+        "undated_denial",
         "en",
         K.EVENT,
         "The contact saved as Dee received an envelope from Sal.",
@@ -1202,8 +1208,10 @@ _SIGNED: list[ProbeItem] = [
         ],
         1,
         "got the envelope from sal",
-        S.CONTRADICTS,
-        "The quoted words sit inside 'i never got the envelope from sal'. Dee denies it.",
+        S.COMPLICATES,
+        "Dee writes 'i never got the envelope from sal', a denial that names no time, answering "
+        "a question that names none. It covers the time before Dee wrote it and says nothing "
+        "about later, and the assumption gives no time, so the record leaves it open (rule 23).",
     ),
     item(
         "P050",
@@ -1549,8 +1557,8 @@ _SIGNED: list[ProbeItem] = [
     ),
     item(
         "P066",
-        C.CONTRADICTS,
-        None,
+        C.OVERREACH,
+        "told_frame",
         "en",
         K.EVENT,
         "On March 1, 2026, the contact saved as Pam told the owner that the heat had been fixed.",
@@ -1565,13 +1573,15 @@ _SIGNED: list[ProbeItem] = [
         ],
         1,
         "still broken",
-        S.CONTRADICTS,
-        "Pam answers 'no, still broken'.",
+        S.COMPLICATES,
+        "Pam answers 'no, still broken', the opposite of what the assumption says Pam told the "
+        "owner. That does not rule out that Pam said the heat had been fixed in another message "
+        "that day; one record cannot show that no other message exists (rules 12 and 23).",
     ),
     item(
         "P067",
-        C.CONTRADICTS,
-        None,
+        C.OVERREACH,
+        "told_frame",
         "en",
         K.EVENT,
         "On March 15, 2026, the contact saved as Wes told the owner that he was still out of the "
@@ -1587,14 +1597,15 @@ _SIGNED: list[ProbeItem] = [
         ],
         1,
         "been back since tues",
-        S.CONTRADICTS,
-        "Wes says he has been back since Tuesday and is on Flatbush, the opposite of the "
-        "assumption.",
+        S.COMPLICATES,
+        "Wes writes 'been back since tues', the opposite of what the assumption says Wes told "
+        "the owner. That does not rule out that Wes said otherwise in another message that day; "
+        "one record cannot show that no other message exists (rules 12 and 23).",
     ),
     item(
         "P068",
-        C.CONTRADICTS,
-        None,
+        C.OVERREACH,
+        "told_frame",
         "ru",
         K.EVENT,
         "The contact saved as Нина told the owner that the apartment had been sold.",
@@ -1609,14 +1620,16 @@ _SIGNED: list[ProbeItem] = [
         ],
         1,
         "квартиру не продали",
-        S.CONTRADICTS,
+        S.COMPLICATES,
         "'квартиру не продали, покупатель отказался' = 'the apartment wasn't sold, the buyer "
-        "backed out'.",
+        "backed out', the opposite of what the assumption says Нина told the owner. That does "
+        "not rule out that Нина said otherwise in another message; one record cannot show that "
+        "no other message exists (rules 12 and 23).",
     ),
     item(
         "P069",
-        C.CONTRADICTS,
-        None,
+        C.OVERREACH,
+        "told_frame",
         "ru",
         K.EVENT,
         "On March 3, 2026, the owner told the contact saved as Боря that he was in Moscow.",
@@ -1631,9 +1644,11 @@ _SIGNED: list[ProbeItem] = [
         ],
         1,
         "в Москву лечу только в мае",
-        S.CONTRADICTS,
+        S.COMPLICATES,
         "'нет, я в Бруклине. в Москву лечу только в мае' = 'no, I'm in Brooklyn. I only fly to "
-        "Moscow in May'.",
+        "Moscow in May', the opposite of what the assumption says the owner told Боря. That does "
+        "not rule out that the owner said otherwise in another message that day; one record "
+        "cannot show that no other message exists (rules 12 and 23).",
     ),
     item(
         "P070",
@@ -2031,23 +2046,32 @@ DISPUTED: dict[str, str] = {
 # correction, leaves the record open, since one record cannot show that no other message exists.
 RELABELED = {"P038", "P039", "P040", "P041", "P042", "P043", "P044", "P071"}
 
+# Relabeled from contradicts to complicates by Arsh on 2026-10-15 ("approved" in the same thread):
+# under guide v0.3 a denial that names no time leaves an assumption that names none open (P049,
+# rule 23), and "X told Y that ..." stays open against a statement of the opposite, since X could
+# have said it in another message (P066 to P069, rules 12 and 23).
+RELABELED_2 = {"P049", "P066", "P067", "P068", "P069"}
 
-def _signed(it: ProbeItem) -> ProbeItem:
-    label = RELABEL_LABEL if it.probe_id in RELABELED else SIGNED_LABEL
+
+def _signed(it: ProbeItem, label: str = SIGNED_LABEL) -> ProbeItem:
+    if it.probe_id in RELABELED:
+        label = RELABEL_LABEL
+    elif it.probe_id in RELABELED_2:
+        label = SIGNED_2_LABEL
     return ProbeItem.model_validate(
         {**it.model_dump(), "labeled_by": label, "disputed": DISPUTED.get(it.probe_id)}
     )
 
 
-# P089-P105. DRAFT until Arsh signs them. P089-P097 were added after the second outside review to
-# break label cues: plainly supported messages about crimes, look-alikes of supported items that
-# do not support, and supported messages that carry an injected instruction. P092-P094 are
-# "told_frame" traps: "X told Y that ..." against a statement of the opposite stays open, since X
-# could have said it in another message (stance guide v0.3, rules 12 and 23). P098-P105 are
-# contradicts under guide v0.3 (rules 22 and 23), one for each way the guide allows: a denial that
-# covers a dated act, another value, another place, a message inside a no-contact window, contact
-# before a stated first contact, and a correcting message. Assumptions follow guide rule 20 and
-# call a contact or the owner "they".
+# P089-P105. Arsh signed these on 2026-10-15 ("approved" in the "Custom model for Baker" thread).
+# P089-P097 were added after the second outside review to break label cues: plainly supported
+# messages about crimes, look-alikes of supported items that do not support, and supported messages
+# that carry an injected instruction. P092-P094 are "told_frame" traps: "X told Y that ..." against
+# a statement of the opposite stays open, since X could have said it in another message (stance
+# guide v0.3, rules 12 and 23). P098-P105 are contradicts under guide v0.3 (rules 22 and 23), one
+# for each way the guide allows: a denial that covers a dated act, another value, another place, a
+# message inside a no-contact window, contact before a stated first contact, and a correcting
+# message. Assumptions follow guide rule 20 and call a contact or the owner "they".
 SIG1 = ("Signal +17185550126 (owner)", "signal:+17185550126")
 DARIO = ("SMS +16465550197 Dario", "sms:+16465550197")
 GOSHA = ("Telegram 7718236 Гоша", "tg:7718236")
@@ -2058,7 +2082,7 @@ RHEA = ("WhatsApp +19175550187 Rhea", "wa:+19175550187")
 GENA = ("Telegram 7718262 Гена", "tg:7718262")
 VIK = ("SMS +16465550171 Vik", "sms:+16465550171")
 
-_DRAFT: list[ProbeItem] = [
+_SIGNED_2: list[ProbeItem] = [
     item(
         "P089",
         C.CLEAR_SUPPORT,
@@ -2407,4 +2431,6 @@ _DRAFT: list[ProbeItem] = [
     ),
 ]
 
-ITEMS: list[ProbeItem] = [_signed(i) for i in _SIGNED] + _DRAFT
+ITEMS: list[ProbeItem] = [_signed(i) for i in _SIGNED] + [
+    _signed(i, SIGNED_2_LABEL) for i in _SIGNED_2
+]

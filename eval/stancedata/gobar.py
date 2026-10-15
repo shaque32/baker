@@ -21,8 +21,8 @@ MIN_SPEEDUP = 5.0
 MAX_SECONDS_PER_CALL = BASELINE_SECONDS_PER_CALL / MIN_SPEEDUP  # 4.52 s
 
 # The four "Expert confirms" bars (eval/probe/README.md), applied to both test sets, and, since
-# guide v0.3 (Arsh, 2026-10-14), zero items of the trap families it moved to complicates shown as
-# supports (eval.probe.run_probe.MOVED_TRAPS).
+# guide v0.3 (Arsh, 2026-10-14), zero items of the traps it moved to complicates shown as supports
+# (eval.probe.run_probe.MOVED_TRAPS).
 BARS: dict[str, float] = {
     "stance_valid_output": 1.0,  # at least
     "supports_recall": 0.90,  # at least
@@ -33,8 +33,8 @@ BARS: dict[str, float] = {
 AT_MOST = {"contradicts_shown_as_supports", "moved_traps_shown_as_supports"}
 
 # A test set counts only with enough gated items for its zero-error bar to mean something.
-MIN_GATED = {"probe": 78, "heldout": 1000}
-MIN_GOLD_CONTRADICTS = {"probe": 8, "heldout": 420}
+MIN_GATED = {"probe": 95, "heldout": 1000}
+MIN_GOLD_CONTRADICTS = {"probe": 11, "heldout": 420}
 
 # Condition 5: Baker's real pipeline on the hidden case02, aggregate numbers only.
 CASE02_AT_MOST = {"false_supported": 0, "false_contradicted": 0}

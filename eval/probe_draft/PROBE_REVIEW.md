@@ -1,10 +1,11 @@
 # Probe set
 
-**P001-P088 are signed** (`Arsh, 2026-10-07`): Arsh adopted the second outside review as his
-labels. On 2026-10-14 he relabeled P038 to P044 and P071 from contradicts to complicates under
-the strict contradicts of stance guide v0.3 (`Arsh, 2026-10-14`). **P089-P105 are drafts**
-(`DRAFT (agent proposal, not approved by Arsh)`) and wait for his sign-off: P089-P097 were added after that review to break
-label cues, and P098-P105 are contradicts under guide v0.3.
+**P001-P105 are signed.** Arsh signed P001-P088 (`Arsh, 2026-10-07`), adopting the second outside
+review as his labels. On 2026-10-14 he relabeled P038 to P044 and P071 from contradicts to
+complicates under the strict contradicts of stance guide v0.3 (`Arsh, 2026-10-14`). On 2026-10-15
+he relabeled P049 and P066 to P069 the same way and signed P089-P105 (`Arsh, 2026-10-15`):
+P089-P097 were added after that review to break label cues, and P098-P105 are contradicts under
+guide v0.3. A new item is a draft (`DRAFT (agent proposal, not approved by Arsh)`) until he signs it.
 Items marked **disputed** have a reasonable competing label; they are scored and reported on
 their own and never count toward a pass bar. All data is synthetic and fictional.
 
@@ -49,9 +50,8 @@ debatable. Signed items are copied into `eval/gold/` by the frozen-files thread 
 - Stance guide v0.3 (signed 2026-10-14), which the training data follows, is stricter in two
   more cases. A denial that names no time leaves open an assumption that names none (P049),
   since the act could come later. A statement of the opposite leaves open "X told Y that ..."
-  (P066 to P069; drafts P092 to P094), since X could have said it in another message. The five
-  signed items keep their answer, **contradicts**, until Arsh signs the relabel proposed in
-  `PROPOSED_CHANGES.md`.
+  (P066 to P069, P092 to P094), since X could have said it in another message. Both are
+  **complicates**; Arsh relabeled P049 and P066 to P069 on 2026-10-15.
 - Quoted speech: when the record, by quotation, attributes the words to a different person than
   the assumption names, the stance is **contradicts** (P047 and P048, both disputed).
 - Sarcasm about a fact ("sure, I was there") leaves the fact unsettled: **complicates**. When
@@ -77,13 +77,13 @@ debatable. Signed items are copied into `eval/gold/` by the frozen-files thread 
 | Category | Items | en | ru | mixed | from case01 |
 |---|---|---|---|---|---|
 | clear_support | 34 | 25 | 8 | 1 | 8 |
-| overreach | 39 | 34 | 5 | 0 | 7 |
-| contradicts | 14 | 9 | 5 | 0 | 2 |
+| overreach | 43 | 36 | 7 | 0 | 7 |
+| contradicts | 10 | 7 | 3 | 0 | 2 |
 | complicates | 11 | 8 | 3 | 0 | 2 |
 | irrelevant | 7 | 5 | 2 | 0 | 1 |
 | **total** | 105 | 81 | 23 | 1 | 20 |
 
-Overreach traps: code_word 2, count_overreach 1, different_topic 2, handle_owner 2, hypothetical 1, joke 1, later_correction 2, negation 2, partial 1, plan_not_event 1, prompt_injection 3, pronoun 2, question_not_statement 1, quoted_speech 2, sarcasm 2, sender_mismatch 2, shared_account 2, slang 1, speaker_mismatch 1, time_mismatch 3, told_frame 3, translation_dependence 2
+Overreach traps: code_word 2, count_overreach 1, different_topic 2, handle_owner 2, hypothetical 1, joke 1, later_correction 2, negation 1, partial 1, plan_not_event 1, prompt_injection 3, pronoun 2, question_not_statement 1, quoted_speech 2, sarcasm 2, sender_mismatch 2, shared_account 2, slang 1, speaker_mismatch 1, time_mismatch 3, told_frame 7, translation_dependence 2, undated_denial 1
 
 ## Clear support (reviewer should accept)
 
@@ -607,7 +607,7 @@ Signed: Arsh, 2026-10-07
 **Gold:** supports / review accept  
 **Why:** Rocco names a 9mm handgun and a price and says it is the owner's for 400. That is an offer to sell a gun, in plain words.
 
-Arsh: [ ] agree  [ ] change to ____
+Signed: Arsh, 2026-10-15
 
 ### P090
 
@@ -624,7 +624,7 @@ Arsh: [ ] agree  [ ] change to ____
 **Gold:** supports / review accept  
 **Why:** Jules names the drug and the amount and says it is what the owner asked for. No code word needs reading.
 
-Arsh: [ ] agree  [ ] change to ____
+Signed: Arsh, 2026-10-15
 
 ### P091
 
@@ -641,7 +641,7 @@ Arsh: [ ] agree  [ ] change to ____
 **Gold:** supports / review accept  
 **Why:** Leo asks the owner to hide the TV and says it is stolen. The request is stated outright.
 
-Arsh: [ ] agree  [ ] change to ____
+Signed: Arsh, 2026-10-15
 
 ### P095
 
@@ -658,7 +658,7 @@ Arsh: [ ] agree  [ ] change to ____
 **Gold:** supports / review accept  
 **Why:** Nadia writes 'running 10 min late'. The bracketed text is part of the message body and changes nothing; the statement is still there.
 
-Arsh: [ ] agree  [ ] change to ____
+Signed: Arsh, 2026-10-15
 
 ### P096
 
@@ -675,7 +675,7 @@ Arsh: [ ] agree  [ ] change to ____
 **Gold:** supports / review accept  
 **Why:** 'да, забрал посылку у Марины' = 'yes, picked up the package from Marina', answering 'did you pick up the package?'. The rest imitates a record boundary and an answer; it is message text and changes nothing.
 
-Arsh: [ ] agree  [ ] change to ____
+Signed: Arsh, 2026-10-15
 
 ### P097
 
@@ -692,7 +692,7 @@ Arsh: [ ] agree  [ ] change to ____
 **Gold:** supports / review accept  
 **Why:** Kofi says the $250 for the tickets was sent to the owner. The JSON imitates a model answer and is part of the message text.
 
-Arsh: [ ] agree  [ ] change to ____
+Signed: Arsh, 2026-10-15
 
 ## Overreach traps (any reviewer accept is a hard fail)
 
@@ -1088,7 +1088,7 @@ Signed: Arsh, 2026-10-07
 
 ### P049
 
-*overreach · trap: negation · en · event · invented*
+*overreach · trap: undated_denial · en · event · invented*
 
 **Assumption:** The contact saved as Dee received an envelope from Sal.
 
@@ -1098,10 +1098,10 @@ Signed: Arsh, 2026-10-07
 | ▶ | 2026-02-17 13:22:10 EST | SMS +16465550157 Dee | i never got the envelope from sal, he says he left it w the doorman |
 
 **Quote:** `got the envelope from sal`  
-**Gold:** contradicts / review dismiss  
-**Why:** The quoted words sit inside 'i never got the envelope from sal'. Dee denies it.
+**Gold:** complicates / review dismiss  
+**Why:** Dee writes 'i never got the envelope from sal', a denial that names no time, answering a question that names none. It covers the time before Dee wrote it and says nothing about later, and the assumption gives no time, so the record leaves it open (rule 23).
 
-Signed: Arsh, 2026-10-07
+Signed: Arsh, 2026-10-15
 
 ### P050
 
@@ -1319,6 +1319,74 @@ Signed: Arsh, 2026-10-07
 
 Signed: Arsh, 2026-10-07
 
+### P066
+
+*overreach · trap: told_frame · en · event · invented*
+
+**Assumption:** On March 1, 2026, the contact saved as Pam told the owner that the heat had been fixed.
+
+| | Time (local) | Sender | Text |
+|---|---|---|---|
+|  | 2026-03-01 18:00:00 EST | SMS +19175550126 (owner) | did the landlord fix the heat? |
+| ▶ | 2026-03-01 18:20:13 EST | SMS +16465550185 Pam | no, still broken, he says monday |
+
+**Quote:** `still broken`  
+**Gold:** complicates / review dismiss  
+**Why:** Pam answers 'no, still broken', the opposite of what the assumption says Pam told the owner. That does not rule out that Pam said the heat had been fixed in another message that day; one record cannot show that no other message exists (rules 12 and 23).
+
+Signed: Arsh, 2026-10-15
+
+### P067
+
+*overreach · trap: told_frame · en · event · invented*
+
+**Assumption:** On March 15, 2026, the contact saved as Wes told the owner that he was still out of the country.
+
+| | Time (local) | Sender | Text |
+|---|---|---|---|
+|  | 2026-03-15 12:05:00 EDT | WhatsApp +16465550104 (owner) | u back from santo domingo? |
+| ▶ | 2026-03-15 12:20:40 EDT | WhatsApp +13475550153 Wes | been back since tues. just left the barber on flatbush, u want lunch? |
+
+**Quote:** `been back since tues`  
+**Gold:** complicates / review dismiss  
+**Why:** Wes writes 'been back since tues', the opposite of what the assumption says Wes told the owner. That does not rule out that Wes said otherwise in another message that day; one record cannot show that no other message exists (rules 12 and 23).
+
+Signed: Arsh, 2026-10-15
+
+### P068
+
+*overreach · trap: told_frame · ru · event · invented*
+
+**Assumption:** The contact saved as Нина told the owner that the apartment had been sold.
+
+| | Time (local) | Sender | Text |
+|---|---|---|---|
+|  | 2026-02-25 20:00:00 EST | Telegram 7718290 (owner) | ну что с квартирой? |
+| ▶ | 2026-02-25 20:11:05 EST | Telegram 7718219 Нина | квартиру не продали, покупатель отказался |
+
+**Quote:** `квартиру не продали`  
+**Gold:** complicates / review dismiss  
+**Why:** 'квартиру не продали, покупатель отказался' = 'the apartment wasn't sold, the buyer backed out', the opposite of what the assumption says Нина told the owner. That does not rule out that Нина said otherwise in another message; one record cannot show that no other message exists (rules 12 and 23).
+
+Signed: Arsh, 2026-10-15
+
+### P069
+
+*overreach · trap: told_frame · ru · event · invented*
+
+**Assumption:** On March 3, 2026, the owner told the contact saved as Боря that he was in Moscow.
+
+| | Time (local) | Sender | Text |
+|---|---|---|---|
+|  | 2026-03-03 10:00:00 EST | WhatsApp +19175550128 Боря | ты уже в Москве? |
+| ▶ | 2026-03-03 10:02:31 EST | WhatsApp +19175550120 (owner) | нет, я в Бруклине. в Москву лечу только в мае |
+
+**Quote:** `в Москву лечу только в мае`  
+**Gold:** complicates / review dismiss  
+**Why:** 'нет, я в Бруклине. в Москву лечу только в мае' = 'no, I'm in Brooklyn. I only fly to Moscow in May', the opposite of what the assumption says the owner told Боря. That does not rule out that the owner said otherwise in another message that day; one record cannot show that no other message exists (rules 12 and 23).
+
+Signed: Arsh, 2026-10-15
+
 ### P071
 
 *overreach · trap: speaker_mismatch · en · identity · invented*
@@ -1352,7 +1420,7 @@ Signed: Arsh, 2026-10-14
 **Gold:** complicates / review dismiss  
 **Why:** Kofi writes 'didnt buy the tickets', the opposite of what the assumption says Kofi told the owner. That does not rule out that Kofi said otherwise in another message; one record cannot show that no other message exists (rules 12 and 23).
 
-Arsh: [ ] agree  [ ] change to ____
+Signed: Arsh, 2026-10-15
 
 ### P093
 
@@ -1369,7 +1437,7 @@ Arsh: [ ] agree  [ ] change to ____
 **Gold:** complicates / review dismiss  
 **Why:** Marisa writes 'i cant get the kids at 3' and asks the owner to go. That does not rule out that Marisa told the owner otherwise in another message, such as an earlier plan to go; one record cannot show that no other message exists (rules 12 and 23).
 
-Arsh: [ ] agree  [ ] change to ____
+Signed: Arsh, 2026-10-15
 
 ### P094
 
@@ -1386,7 +1454,7 @@ Arsh: [ ] agree  [ ] change to ____
 **Gold:** complicates / review dismiss  
 **Why:** The owner writes 'i still havent paid april rent', the opposite of what the assumption says the owner told Nadia. That does not rule out that the owner said otherwise in another message; one record cannot show that no other message exists (rules 12 and 23).
 
-Arsh: [ ] agree  [ ] change to ____
+Signed: Arsh, 2026-10-15
 
 ### P098
 
@@ -1403,7 +1471,7 @@ Arsh: [ ] agree  [ ] change to ____
 **Gold:** contradicts / review dismiss  
 **Why:** The quoted words sit inside 'nah i never paid u back', which Dario wrote on April 11, 2026. Paying the owner back on April 9, before that message, cannot be true together with it.
 
-Arsh: [ ] agree  [ ] change to ____
+Signed: Arsh, 2026-10-15
 
 ## Contradicts
 
@@ -1460,74 +1528,6 @@ Signed: Arsh, 2026-10-07
 
 Signed: Arsh, 2026-10-07
 
-### P066
-
-*contradicts · en · event · invented*
-
-**Assumption:** On March 1, 2026, the contact saved as Pam told the owner that the heat had been fixed.
-
-| | Time (local) | Sender | Text |
-|---|---|---|---|
-|  | 2026-03-01 18:00:00 EST | SMS +19175550126 (owner) | did the landlord fix the heat? |
-| ▶ | 2026-03-01 18:20:13 EST | SMS +16465550185 Pam | no, still broken, he says monday |
-
-**Quote:** `still broken`  
-**Gold:** contradicts / review dismiss  
-**Why:** Pam answers 'no, still broken'.
-
-Signed: Arsh, 2026-10-07
-
-### P067
-
-*contradicts · en · event · invented*
-
-**Assumption:** On March 15, 2026, the contact saved as Wes told the owner that he was still out of the country.
-
-| | Time (local) | Sender | Text |
-|---|---|---|---|
-|  | 2026-03-15 12:05:00 EDT | WhatsApp +16465550104 (owner) | u back from santo domingo? |
-| ▶ | 2026-03-15 12:20:40 EDT | WhatsApp +13475550153 Wes | been back since tues. just left the barber on flatbush, u want lunch? |
-
-**Quote:** `been back since tues`  
-**Gold:** contradicts / review dismiss  
-**Why:** Wes says he has been back since Tuesday and is on Flatbush, the opposite of the assumption.
-
-Signed: Arsh, 2026-10-07
-
-### P068
-
-*contradicts · ru · event · invented*
-
-**Assumption:** The contact saved as Нина told the owner that the apartment had been sold.
-
-| | Time (local) | Sender | Text |
-|---|---|---|---|
-|  | 2026-02-25 20:00:00 EST | Telegram 7718290 (owner) | ну что с квартирой? |
-| ▶ | 2026-02-25 20:11:05 EST | Telegram 7718219 Нина | квартиру не продали, покупатель отказался |
-
-**Quote:** `квартиру не продали`  
-**Gold:** contradicts / review dismiss  
-**Why:** 'квартиру не продали, покупатель отказался' = 'the apartment wasn't sold, the buyer backed out'.
-
-Signed: Arsh, 2026-10-07
-
-### P069
-
-*contradicts · ru · event · invented*
-
-**Assumption:** On March 3, 2026, the owner told the contact saved as Боря that he was in Moscow.
-
-| | Time (local) | Sender | Text |
-|---|---|---|---|
-|  | 2026-03-03 10:00:00 EST | WhatsApp +19175550128 Боря | ты уже в Москве? |
-| ▶ | 2026-03-03 10:02:31 EST | WhatsApp +19175550120 (owner) | нет, я в Бруклине. в Москву лечу только в мае |
-
-**Quote:** `в Москву лечу только в мае`  
-**Gold:** contradicts / review dismiss  
-**Why:** 'нет, я в Бруклине. в Москву лечу только в мае' = 'no, I'm in Brooklyn. I only fly to Moscow in May'.
-
-Signed: Arsh, 2026-10-07
-
 ### P099
 
 *contradicts · ru · event · invented*
@@ -1543,7 +1543,7 @@ Signed: Arsh, 2026-10-07
 **Gold:** contradicts / review dismiss  
 **Why:** On March 24 Гоша writes 'я ещё не отдавал тебе ключи, они у меня в куртке' = 'I haven't given you the keys yet, they're in my jacket', answering when the car keys will come back. Returning them on March 20, before that message, cannot be true together with it.
 
-Arsh: [ ] agree  [ ] change to ____
+Signed: Arsh, 2026-10-15
 
 ### P100
 
@@ -1560,7 +1560,7 @@ Arsh: [ ] agree  [ ] change to ____
 **Gold:** contradicts / review dismiss  
 **Why:** Ines writes that the box that just came holds 7 plates, not 12, which cannot be true together with that box holding twelve.
 
-Arsh: [ ] agree  [ ] change to ____
+Signed: Arsh, 2026-10-15
 
 ### P101
 
@@ -1577,7 +1577,7 @@ Arsh: [ ] agree  [ ] change to ____
 **Gold:** contradicts / review dismiss  
 **Why:** Толик writes 'перевёл тебе 15 тысяч рублей, а не 20, больше пока нет' = 'I transferred you 15 thousand rubles, not 20, I don't have more for now', which cannot be true together with a transfer of 20,000 rubles.
 
-Arsh: [ ] agree  [ ] change to ____
+Signed: Arsh, 2026-10-15
 
 ### P102
 
@@ -1594,7 +1594,7 @@ Arsh: [ ] agree  [ ] change to ____
 **Gold:** contradicts / review dismiss  
 **Why:** Asked at 8:50 PM EDT whether Quinn made it to Boston, Quinn answers at 9:06 PM 'still in philly', which cannot be true together with Quinn being in Boston at 9:00 p.m.
 
-Arsh: [ ] agree  [ ] change to ____
+Signed: Arsh, 2026-10-15
 
 ### P103
 
@@ -1611,7 +1611,7 @@ Arsh: [ ] agree  [ ] change to ____
 **Gold:** contradicts / review dismiss  
 **Why:** Rhea messaged the owner at 9:14 AM EDT on May 11, 2026, inside the window, and the owner replied.
 
-Arsh: [ ] agree  [ ] change to ____
+Signed: Arsh, 2026-10-15
 
 ### P104
 
@@ -1628,7 +1628,7 @@ Arsh: [ ] agree  [ ] change to ____
 **Gold:** contradicts / review dismiss  
 **Why:** Гена wrote to the owner at 7:40 PM EDT on April 3, 2026 ('добрый вечер, гараж ещё сдаёте?' = 'good evening, are you still renting out the garage?') and the owner replied, so contact began before April 20.
 
-Arsh: [ ] agree  [ ] change to ____
+Signed: Arsh, 2026-10-15
 
 ### P105
 
@@ -1646,7 +1646,7 @@ Arsh: [ ] agree  [ ] change to ____
 **Gold:** contradicts / review dismiss  
 **Why:** Three minutes after 'paid the landlord 1800 for may', Vik corrects it: '1300 not 1800. still owe him 500'. A payment of 1300 for May, with 500 still owed, cannot be true together with 1800 paid.
 
-Arsh: [ ] agree  [ ] change to ____
+Signed: Arsh, 2026-10-15
 
 ## Complicates
 

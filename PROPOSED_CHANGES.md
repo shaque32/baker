@@ -126,9 +126,9 @@ readable.assumption_text(assumption, case_names(conn)), and ReviewContext in
 core/audit/context.py passes the same CaseNames to render_for, as the stance labeler does.
 
 ## 2026-10-15 claude/project-thread-czwpc8: probe set: relabel P049 and P066 to P069 under guide v0.3, sign P089 to P105, go bar counts
-NOT SIGNED. Until Arsh signs it, the five items keep their signed contradicts, P089 to P105 stay
-drafts, and the go bar reads as it does now. Apply it before any candidate's test result is known
-(GO_BAR.md, "Rules"). `<date>` below is the UTC date of Arsh's signature.
+SIGNED by Arsh on 2026-10-15 ("approved" in the "Custom model for Baker" thread, 04:14 UTC),
+before any candidate had a test result. APPLIED in the same PR (#64), with `<date>` below read as
+2026-10-15, together with the tests that follow.
 Files: eval/gold/probe/probe.jsonl, eval/gold/probe/README.md, and the go bar Arsh owns
 (eval/stancedata/GO_BAR.md, eval/stancedata/gobar.py, MOVED_TRAPS in eval/probe/run_probe.py),
 with eval/probe_draft/ and the tests that pin them.

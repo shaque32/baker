@@ -6,10 +6,9 @@ from the generator's own judgment. LABELING_GUIDE.md explains every family for t
 test checks the two stay in step.
 
 Conventions follow stance guide v0.3 (LABELING_GUIDE.md, signed 2026-10-14) and stance prompt
-v1.1, signed with it, which the pipeline wiring PR (#62) applies. Where the signed probe set
-(eval/gold/probe, P001-P088) reads contradicts more broadly than the guide (P049 and P066 to
-P069; eval/probe_draft/PROBE_REVIEW.md), the families follow the guide; PROPOSED_CHANGES.md
-proposes relabeling those five.
+v1.1, signed with it, which the pipeline wiring PR (#62) applies. Since 2026-10-15, when Arsh
+relabeled P049 and P066 to P069, the signed probe set (eval/gold/probe, P001-P105) reads
+contradicts as the guide does.
 
 Families marked `new` brought a convention the signed probe set did not show when they were
 added; Arsh decided each one when he signed the first guide that had it (v0.2 on 2026-10-12,

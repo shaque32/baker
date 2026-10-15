@@ -117,7 +117,7 @@ def reference_index() -> contamination.Index:
 
 def test_reference_data_covers_probe_case01_and_case02(reference_index) -> None:
     sources = [t.source for t in reference_index.texts]
-    assert sum(s.startswith("probe(signed)") and s.endswith("assumption") for s in sources) == 88
+    assert sum(s.startswith("probe(signed)") and s.endswith("assumption") for s in sources) == 105
     drafts = len(read_jsonl(ROOT / "eval" / "probe_draft" / "probe_draft.jsonl"))
     assert sum(s.startswith("probe(draft)") and s.endswith("assumption") for s in sources) == drafts
     assert sum(s.startswith("case01 msg:") for s in sources) > 1500
@@ -240,10 +240,15 @@ def test_moved_traps_are_the_families_guide_v0_3_made_complicates() -> None:
     for f in FAMILIES:
         if f.trap in moved:
             moved[f.trap].add(f.stance.value)
-    assert set(moved) == run_probe.MOVED_TRAPS
+    # The four trap families v0.3 moved, and two probe-only traps (2026-10-15) that the
+    # generators never write: undated denials and told frames (guide rules 12 and 23).
+    assert set(moved) == set(TRAP_ORDER[:4])
+    assert run_probe.MOVED_TRAPS == set(TRAP_ORDER)
     assert all(stances == {"complicates"} for stances in moved.values()), moved
     probe = [it for it in read_jsonl(PROBE) if it["trap"] in run_probe.MOVED_TRAPS]
-    assert {it["probe_id"] for it in probe} == {*(f"P0{n}" for n in range(38, 45)), "P071"}
+    assert {it["probe_id"] for it in probe} == {
+        *(f"P0{n}" for n in (*range(38, 45), 49, *range(66, 70), 71, 92, 93, 94))
+    }
     assert {it["gold_stance"] for it in probe} == {"complicates"}
     one = probe[0]  # P038, a signed later correction
     pred = {"stance": "supports", "quote": one["proposed_quote"]}
@@ -354,7 +359,7 @@ def test_go_bar_decision() -> None:
         ({"heldout": bad_heldout}, "contradicts_shown_as_supports"),
         ({"probe": moved_probe}, "probe: moved_traps_shown_as_supports is 1"),
         ({"heldout": unscored}, "heldout: moved_traps_shown_as_supports is None"),
-        ({"probe": few_contradicts}, "fewer than 8 gold contradicts"),
+        ({"probe": few_contradicts}, "fewer than 11 gold contradicts"),
         ({"heldout": small}, "gated items"),
         ({"seconds_per_call": 4.6}, "speed"),
         ({"contamination_passed": False}, "overlap"),
@@ -469,7 +474,8 @@ def test_go_bar_file_states_the_coded_numbers() -> None:
     assert f"verdict accuracy of at least {gobar.CASE02_MIN_VERDICT_ACCURACY:.2f}" in flat
 
 
-TRAP_ORDER = ["time_mismatch", "sender_mismatch", "speaker_mismatch", "later_correction"]
+TRAP_ORDER = ["time_mismatch", "sender_mismatch", "speaker_mismatch", "later_correction",
+              "undated_denial", "told_frame"]  # fmt: skip
 
 
 def test_review_sample_is_fixed_and_spread_over_families() -> None:
