@@ -150,6 +150,57 @@ def test_bad_or_missing_config_is_refused(tmp_path, monkeypatch, raw):
         cloud.load_config(p)
 
 
+def _encrypted_case(tmp_path: Path, name: str = "a") -> Path:
+    from core import encryption
+
+    dbp = tmp_path / name / "case.db"
+    dbp.parent.mkdir()
+    encryption.create_key(dbp, "correct horse battery staple")
+    return dbp
+
+
+def test_an_encrypted_case_keeps_the_key_sealed_under_the_case_key(tmp_path, monkeypatch):
+    from core import encryption
+
+    monkeypatch.delenv(cloud.KEY_ENV, raising=False)
+    plain = tmp_path / "cloud.json"
+    dbp = _encrypted_case(tmp_path)
+    where = cloud.save_key(KEY, plain, case_db=dbp)
+    assert where == dbp.with_suffix(".cloud-key") and not plain.exists()
+    assert KEY.encode() not in where.read_bytes()
+    assert stat.S_IMODE(os.stat(where).st_mode) == 0o600 or os.name == "nt"
+    assert cloud.load_config(plain, case_db=dbp).api_key == KEY
+    encryption.forget_all()  # Baker stopped: every case is locked
+    with pytest.raises(cloud.CloudConfigError, match="cannot be read"):
+        cloud.load_config(plain, case_db=dbp)
+
+
+def test_a_plain_case_and_the_environment_keep_their_old_behaviour(tmp_path, monkeypatch):
+    monkeypatch.delenv(cloud.KEY_ENV, raising=False)
+    plain = tmp_path / "cloud.json"
+    (tmp_path / "p").mkdir()
+    plain_case = tmp_path / "p" / "case.db"
+    assert cloud.save_key(KEY, plain, case_db=plain_case) == plain
+    assert cloud.load_config(plain, case_db=plain_case).api_key == KEY
+    dbp = _encrypted_case(tmp_path)
+    assert cloud.load_config(plain, case_db=dbp).api_key == KEY  # none sealed: the file's
+    cloud.save_key("sk-ant-sealed-0123456789", plain, case_db=dbp)
+    assert cloud.load_config(plain, case_db=dbp).api_key == "sk-ant-sealed-0123456789"
+    monkeypatch.setenv(cloud.KEY_ENV, "sk-ant-env-0123456789abcdef")
+    assert cloud.load_config(plain, case_db=dbp).api_key == "sk-ant-env-0123456789abcdef"
+    with pytest.raises(cloud.CloudConfigError, match="is the one in use"):
+        cloud.save_key(KEY, plain, case_db=dbp)
+
+
+def test_a_sealed_key_from_another_case_is_refused(tmp_path, monkeypatch):
+    monkeypatch.delenv(cloud.KEY_ENV, raising=False)
+    a, b = _encrypted_case(tmp_path, "a"), _encrypted_case(tmp_path, "b")
+    cloud.save_key(KEY, tmp_path / "cloud.json", case_db=a)
+    a.with_suffix(".cloud-key").replace(b.with_suffix(".cloud-key"))
+    with pytest.raises(cloud.CloudConfigError, match="does not belong"):
+        cloud.load_config(tmp_path / "cloud.json", case_db=b)
+
+
 def test_saved_key_is_readable_by_its_owner_only(tmp_path, monkeypatch):
     monkeypatch.delenv(cloud.KEY_ENV, raising=False)
     p = cloud.save_key(KEY, tmp_path / "cloud.json")
@@ -461,7 +512,7 @@ def test_a_key_from_the_environment_is_not_silently_replaced(tmp_path, monkeypat
 
 def test_the_cli_audit_applies_the_case_choice():
     src = (Path(__file__).resolve().parents[1] / "cli" / "main.py").read_text(encoding="utf-8")
-    assert "cloud=choice" in src and "cloud_policy.choose(conn)" in src
+    assert "cloud=choice" in src and "cloud_policy.choose(conn, load)" in src
     assert "except CloudPaused" in src  # a cloud failure pauses with the expert's choices
 
 

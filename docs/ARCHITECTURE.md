@@ -122,8 +122,9 @@ Baker runs entirely on the expert's computer unless the expert opts a case in to
 
 Stance labels come from Claude (Opus 5.5, medium effort by default) for a case where all hold:
 the expert attested at case setup that its protective order allows cloud AI; the case is not
-marked as possibly containing CSAM; the expert's own Anthropic key is on this computer
-(`~/.baker/cloud.json`, owner-only, or `$BAKER_ANTHROPIC_API_KEY`). Otherwise the local model
+marked as possibly containing CSAM; the expert's own Anthropic key is set up: `$BAKER_ANTHROPIC_API_KEY`; or, in an encrypted case,
+the key saved in that case (`case.cloud-key`, AES-256-GCM under the case key, so it is unreadable
+while the case is locked); or `~/.baker/cloud.json` (owner-only), in that order. Otherwise the local model
 labels the case, exactly as before. The choice is the latest `set_cloud` entry in the case's
 audit log (inside the case database, so an encrypted case keeps it encrypted).
 

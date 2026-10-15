@@ -77,7 +77,8 @@ There is no model judge of verdicts in Baker. The word "judge" does not name any
 - **What Opus does (branch #68 only).** It is the stance labeler: for one (assumption, record)
   pair it returns a label, a quote and a rationale. It is a remote HTTPS call to
   `api.anthropic.com` (`core/llm/cloud.py`), pinned so a stray `ANTHROPIC_BASE_URL` cannot
-  redirect it, using the expert's own key from `$BAKER_ANTHROPIC_API_KEY` or
+  redirect it, using the expert's own key from `$BAKER_ANTHROPIC_API_KEY`; in an encrypted
+  case, the key saved in the case, encrypted under the case key (`case.cloud-key`); else
   `~/.baker/cloud.json` (owner-only file). Only the filled-in stance prompt is sent: assumption,
   record, nearby messages, claim text and a group chat's member list. Input files and the case
   database are never sent.
@@ -241,9 +242,10 @@ Grok Product review PR, never merged.
    prompt v1.0, and has not been run on prompt v1.1 or the signed 105-item set.
 5. **Evidence recall is modest.** Opus case01 surfaced key evidence for 35% of claims needing it;
    14 of 20 claims depend on the expert finding or accepting key evidence.
-6. **Other gaps:** no translation in the pipeline; no embeddings; Windows installer unsigned; the
-   cloud key on #68 is an owner-only plain file, not encrypted with the case keys; experts still
-   need the 14B installed even with cloud on.
+6. **Other gaps:** no translation in the pipeline; no embeddings; Windows installer unsigned; on #68 a
+   key saved for a plain (unencrypted) case, or before a case is open, is an owner-only plain
+   file (an encrypted case seals its own key under the case key); experts still need the 14B
+   installed even with cloud on.
 
 ## 10. Tests and results (main `7a14437`, before #64 to #67)
 

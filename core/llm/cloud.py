@@ -11,7 +11,9 @@ database. What comes back is checked exactly like the local model's answer: stri
 quote that code verifies verbatim before anything is stored.
 
 The key is the expert's own Anthropic key (bring your own key; Baker runs no server). It is read
-from $BAKER_ANTHROPIC_API_KEY, else ~/.baker/cloud.json:
+from $BAKER_ANTHROPIC_API_KEY; else, for an encrypted case, from the key saved in that case,
+sealed under the case key (core/encryption.py seal_secret), so it is unreadable while the case is
+locked; else from ~/.baker/cloud.json (owner-only), which also holds the other settings:
 
     {"api_key": "sk-ant-...", "model": "claude-opus-5-5", "effort": "medium"}
 
@@ -99,8 +101,24 @@ def config_path() -> Path:
     return Path(env).expanduser() if env else DEFAULT_CONFIG
 
 
-def load_config(path: Path | None = None) -> CloudConfig:
-    """The expert's cloud settings. The key in $BAKER_ANTHROPIC_API_KEY wins over the file's."""
+CASE_SECRET = "cloud-key"  # case.db -> case.cloud-key
+
+
+def case_key(case_db: Path | None) -> str | None:
+    """The key saved in an encrypted case, or None (no case, a plain case, or none saved)."""
+    from core import encryption
+
+    if case_db is None or not encryption.is_encrypted_case(case_db):
+        return None
+    try:
+        return encryption.open_secret(case_db, CASE_SECRET)
+    except (encryption.CaseLocked, encryption.EncryptionError) as e:
+        raise CloudConfigError(f"the case's saved key cannot be read: {e}") from None
+
+
+def load_config(path: Path | None = None, case_db: Path | None = None) -> CloudConfig:
+    """The expert's cloud settings. The key in $BAKER_ANTHROPIC_API_KEY wins; then, for an
+    encrypted case, the key sealed in it; then the config file's."""
     path = path or config_path()
     raw: dict[str, Any] = {}
     if path.is_file():
@@ -110,7 +128,11 @@ def load_config(path: Path | None = None) -> CloudConfig:
             raise CloudConfigError(f"bad cloud config {path}: {e}") from None
         if not isinstance(raw, dict):
             raise CloudConfigError(f"bad cloud config {path}: not a JSON object")
-    key = os.environ.get(KEY_ENV, "").strip() or str(raw.get("api_key") or "").strip()
+    key = (
+        os.environ.get(KEY_ENV, "").strip()
+        or (case_key(case_db) or "").strip()
+        or str(raw.get("api_key") or "").strip()
+    )
     if not key:
         raise CloudConfigError(f"no Anthropic key: set {KEY_ENV} or put api_key in {path}")
     model = str(raw.get("model") or DEFAULT_MODEL).strip()
@@ -127,17 +149,26 @@ def key_from_environment() -> bool:
     return bool(os.environ.get(KEY_ENV, "").strip())
 
 
-def save_key(api_key: str, path: Path | None = None) -> Path:
-    """Write the key to the expert's cloud config, readable by this user only. Refused while
-    $BAKER_ANTHROPIC_API_KEY is set: that key wins, so a saved one would never be used."""
+def save_key(api_key: str, path: Path | None = None, case_db: Path | None = None) -> Path:
+    """Save the key. In an encrypted case it is sealed under the case key, beside the case,
+    and the plain config file is not touched; otherwise it goes in the expert's cloud config,
+    readable by this user only. Refused while $BAKER_ANTHROPIC_API_KEY is set: that key wins,
+    so a saved one would never be used."""
+    from core import encryption
+
     if key_from_environment():
         raise CloudConfigError(
             f"the key in {KEY_ENV} is the one in use; change or unset it there instead"
         )
-    path = path or config_path()
     key = api_key.strip()
     if not key:
         raise CloudConfigError("empty key")
+    if case_db is not None and encryption.is_encrypted_case(case_db):
+        try:
+            return encryption.seal_secret(case_db, CASE_SECRET, key)
+        except (encryption.CaseLocked, encryption.EncryptionError) as e:
+            raise CloudConfigError(f"could not save the key in this case: {e}") from None
+    path = path or config_path()
     data: dict[str, Any] = {}
     if path.is_file():
         try:

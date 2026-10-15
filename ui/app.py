@@ -784,7 +784,8 @@ class App:
     # -- cloud
 
     def _cloud_load(self) -> cloud_llm.CloudConfig:
-        return cloud_llm.load_config(self.cloud_config)
+        case_db = self.case.db if self.case is not None else None
+        return cloud_llm.load_config(self.cloud_config, case_db=case_db)
 
     def _cloud_choice(self, conn: sqlite3.Connection) -> cloud_policy.CloudChoice:
         return cloud_policy.choose(conn, self._cloud_load)
@@ -832,10 +833,16 @@ class App:
         key = f.get("api_key", "").strip()
         if not key.startswith("sk-ant-") or len(key) < 20 or any(c.isspace() for c in key):
             raise ReviewError("that does not look like an Anthropic API key (it starts sk-ant-)")
+        case_db = self.case.db if self.case is not None else None
         try:
-            cloud_llm.save_key(key, self.cloud_config)
+            where = cloud_llm.save_key(key, self.cloud_config, case_db=case_db)
         except cloud_llm.CloudConfigError as err:
             raise ReviewError(str(err)) from err
+        if case_db is not None and where.parent == Path(case_db).parent:
+            return (
+                "Saved your Anthropic key in this case, encrypted with the case's key: it can be"
+                " read only while the case is unlocked."
+            )
         return "Saved your Anthropic key on this computer, readable by your user account only."
 
     def _start_audit(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:

@@ -141,20 +141,24 @@ Template:
   own Anthropic key. If the cloud fails mid-case, the audit pauses and the expert retries or
   re-runs the whole case locally, so models are never mixed within a case. Every request is
   written to the hash-chained audit log (`cloud.sent`) before it is sent. The endpoint is pinned
-  to api.anthropic.com (120 s timeout, 2 retries). Claim proposal, assumption filling and the AI
-  reviewer stay local. Reason: Arsh chose "Opt-in cloud" (2026-10-15 07:10Z).
+  to api.anthropic.com (120 s timeout, 2 retries). In an encrypted case, the key the expert saves
+  is sealed under the case key (`case.cloud-key`, AES-256-GCM) and unreadable while the case is
+  locked; a plain case keeps the owner-only `~/.baker/cloud.json`; the env var still wins.
+  Claim proposal, assumption filling and the AI reviewer stay local. Reason: Arsh chose
+  "Opt-in cloud" (2026-10-15 07:10Z).
 - Where: branch `claude/project-thread-a2fjkc`, PR #68, draft, not merged (main merged in after #71).
 - Verified (as reported by the owning thread; `cloud.sent` and the pause checked in
   `core/audit/_local_model.py` on the branch): `make check` passes, 1893 tests; gates unchanged
   (case01 1.00, 0 false supported, unreviewed 0.60, hostile PASS, case02 0.90); a simulated
-  outage pauses the run with the chain intact; Codex rounds 1 to 4 clean, its review of
-  `3c6c1ec` pending. No real API call since this change.
+  outage pauses the run with the chain intact; sealed-key tests (sealed, unreadable once
+  locked, refused in another case, env var and plain case unchanged); Codex rounds 1 to 4
+  clean, later commits under review. No real API call since this change.
 - Open: Opus fails the signed probe's contradicts bar (73%, entry below), so a signed prompt fix
   should land first; Arsh approved the revised CLAUDE.md wording (07:29Z) and pastes it on the
   branch himself, since agents are blocked from editing CLAUDE.md; a fair 14B-vs-Opus
   test of claim proposal and assumption filling waits on Arsh; an evidence row keeps the first
   model's name when a later run gives an identical label (the per-run "Stance labels" row is
-  authoritative); the key file is owner-only, not encrypted with the case keys.
+  authoritative); a key saved for a plain case stays an owner-only plain file.
 - Affects: capabilities (optional cloud labels per case), privacy (only the filled stance prompt
   leaves the computer, and every request is logged), performance (about 3 s per stance call; local 22 to 43 s per call was
   measured 2026-10-09/12 on older code, and no full local case is timed on current code), customer-facing claims ("local by default; cloud AI only when your

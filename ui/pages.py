@@ -1354,8 +1354,10 @@ def cloud_section(
             "<input type='password' name='api_key' required autocomplete='off' "
             "placeholder='sk-ant-...' aria-label='Your Anthropic API key'> "
             f"<button type='submit'{off}>Save the key</button> <span class='muted'>Your own "
-            "key, from your firm's Anthropic account (ask for zero data retention). It is saved "
-            "only on this computer, readable by your user account, and never shown again.</span>",
+            "key, from your firm's Anthropic account (ask for zero data retention). In an "
+            "encrypted case it is saved in the case, encrypted with the case's key; otherwise only "
+            "on this "
+            "computer, readable by your user account. It is never shown again.</span>",
             back="/setup",
             anchor="cloud",
         )
