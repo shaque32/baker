@@ -39,6 +39,7 @@ DEFAULT_SECONDS_PER_CALL = 43.0  # Qwen3-14B Q4 on a 24 GB Mac (Wave 3, PR #28)
 # Opus 5.5 at medium effort on case01: 493 calls in 1,558 s (cloud bench 2026-10-14c).
 CLOUD_SECONDS_PER_CALL = 3.2
 CALLS_PER_CLAIM = 25  # synthetic case01 after PR #29: 495 model calls for 20 claims
+LOCAL_CALLS_PER_CLAIM = 1  # assumption filling, which stays local in a cloud case
 SPEED_FILE = Path.home() / ".baker" / "speed.json"
 MIN_CALLS_TO_MEASURE = 5
 
@@ -191,8 +192,13 @@ def record_speed(c: pipeline.Components, speed_file: Path = SPEED_FILE) -> None:
         pass
 
 
-def estimate_seconds(claims: int, spc: float) -> float:
-    return claims * CALLS_PER_CLAIM * spc
+def estimate_seconds(claims: int, spc: float, cloud_spc: float | None = None) -> float:
+    """spc is the local model's seconds per call. With cloud_spc, stance calls run at the cloud
+    rate and assumption filling stays on the local model."""
+    if cloud_spc is None:
+        return claims * CALLS_PER_CLAIM * spc
+    stance_calls = CALLS_PER_CLAIM - LOCAL_CALLS_PER_CLAIM
+    return claims * (LOCAL_CALLS_PER_CLAIM * spc + stance_calls * cloud_spc)
 
 
 def duration(seconds: float) -> str:

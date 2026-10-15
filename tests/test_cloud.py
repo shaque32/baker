@@ -249,6 +249,46 @@ def test_a_cloud_answer_that_fails_validation_is_asked_again_locally(case_db, fa
     assert outcomes[0] == (cloud_run.id, "invalid_output")
 
 
+def test_a_cloud_label_whose_quote_fails_is_asked_again_locally(case_db, fake_context, monkeypatch):
+    from core import pipeline
+
+    made_up = '{"stance": "supports", "quote": "at the warehouse", "rationale": "Says so."}'
+    lab = stance_mod.create(case_db, model=FakeLocal([SUPPORTS]), cloud_model=FakeCloud([made_up]))
+    cloud_run, local_run = _runs(lab)
+    monkeypatch.setattr(
+        pipeline.invariants, "record_text", lambda conn, rid: "meet me at the garage"
+    )
+    run = pipeline._Run.__new__(pipeline._Run)
+    run.conn, run.result = case_db, types.SimpleNamespace(dropped_labels=0)
+    run.c = types.SimpleNamespace(labeler=lab, verify_quote=lambda q, text: q in text)
+    failed: list[set] = []
+    run.flush_calls = lambda quote_failed=frozenset(): failed.append(set(quote_failed))
+    item = run._label(make_assumption("They met at the garage."), _cand())
+    assert item is not None and item.model_run_id == local_run.id and item.quote == "garage"
+    assert run.result.dropped_labels == 0 and len(failed[0]) == 1  # the cloud call: quote_failed
+    assert lab.recorder.calls[0].model_run_id == cloud_run.id
+
+
+def test_a_rules_only_redecide_keeps_the_cloud_decision_for_the_report():
+    src = (Path(__file__).resolve().parents[1] / "core" / "review" / "redecide.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'cfg["cloud"] = src["config"]["cloud"]' in src
+
+
+def test_a_cloud_estimate_keeps_assumption_filling_at_the_local_speed():
+    from core.casework import jobs
+
+    local_only = jobs.estimate_seconds(20, 40.0)
+    mixed = jobs.estimate_seconds(20, 40.0, jobs.CLOUD_SECONDS_PER_CALL)
+    stance_calls = jobs.CALLS_PER_CLAIM - jobs.LOCAL_CALLS_PER_CLAIM
+    assert mixed == 20 * (40.0 + stance_calls * jobs.CLOUD_SECONDS_PER_CALL) < local_only
+
+
+def test_a_stalled_cloud_request_gives_up_in_minutes():
+    assert cloud.REQUEST_TIMEOUT_SECONDS * (cloud.MAX_RETRIES + 1) <= 6 * 60
+
+
 def test_with_no_local_model_a_cloud_failure_stops_the_run(case_db, fake_context, monkeypatch):
     monkeypatch.setenv("BAKER_MODEL_CONFIG", "/nonexistent/model.json")
     up = FakeCloud([cloud.CloudError("ConnectionError: down", sticky=True)])

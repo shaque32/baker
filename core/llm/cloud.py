@@ -44,6 +44,10 @@ DEFAULT_MODEL = "claude-opus-5-5"
 DEFAULT_EFFORT = "medium"
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 API_BASE_URL = "https://api.anthropic.com"
+# One stance answer takes seconds (about 4 s on synthetic case01), so a stalled request gives up
+# after two minutes and at most two retries, then the local model answers instead.
+REQUEST_TIMEOUT_SECONDS = 120.0
+MAX_RETRIES = 2
 SHA_PREFIX = "api:"  # model_runs.model_sha256 of a cloud model: there is no file to hash
 
 # JSON Schema keywords the API's structured outputs do not take. They are dropped from the
@@ -203,7 +207,10 @@ class ClaudeModel:
                     'the Anthropic client is not installed (pip install ".[cloud]")', sticky=True
                 ) from e
             self._client = anthropic.Anthropic(
-                api_key=self.cfg.api_key, base_url=self.cfg.base_url, max_retries=6
+                api_key=self.cfg.api_key,
+                base_url=self.cfg.base_url,
+                timeout=REQUEST_TIMEOUT_SECONDS,
+                max_retries=MAX_RETRIES,
             )
         return self._client
 

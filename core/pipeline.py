@@ -833,6 +833,12 @@ class _Run:
         text = invariants.record_text(self.conn, cand.record_id)
         if text is None or not self.c.verify_quote(label.quote, text):
             self.flush_calls({label.model_call_id} if label.model_call_id else set())
+            # A cloud label whose quote fails is asked again once, on the local model, as a
+            # cloud call with no usable answer is (FallbackPort.retry_locally). A local label
+            # never retries, so this recurses at most once.
+            retry = getattr(getattr(self.c.labeler, "model", None), "retry_locally", None)
+            if text is not None and callable(retry) and retry(label.model_run_id):
+                return self._label(a, cand)
             return self._drop()
         self.flush_calls()
         stance_ = stance.subject_stance(a, text, label.stance)

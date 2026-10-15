@@ -709,13 +709,19 @@ class App:
             done, total = job.hashed
             note = f"Checking: SHA-256 of the model file, {done * 100 // max(total, 1)}%."
         spc, source = jobs.seconds_per_call()
-        if self._cloud_choice(conn).use:
-            spc, source = jobs.CLOUD_SECONDS_PER_CALL, "the cloud model on synthetic case01"
+        cloud_spc = jobs.CLOUD_SECONDS_PER_CALL if self._cloud_choice(conn).use else None
         n = len(order)
+        if cloud_spc is None:
+            calls = f"about {jobs.CALLS_PER_CLAIM} model calls per claim at {spc:.0f} s per call"
+        else:
+            calls = (
+                f"per claim, about {jobs.CALLS_PER_CLAIM - jobs.LOCAL_CALLS_PER_CLAIM} cloud calls"
+                f" at {cloud_spc:.0f} s and {jobs.LOCAL_CALLS_PER_CLAIM} local call at {spc:.0f} s"
+            )
         estimate = (
-            f"Rough estimate for {n} claims: {jobs.duration(jobs.estimate_seconds(n, spc))} "
-            f"(about {jobs.CALLS_PER_CLAIM} model calls per claim at {spc:.0f} s per call, "
-            f"{source}). Claims labeled before reuse their stored outputs and take seconds."
+            f"Rough estimate for {n} claims: "
+            f"{jobs.duration(jobs.estimate_seconds(n, spc, cloud_spc))} ({calls}, {source}). "
+            "Claims labeled before reuse their stored outputs and take seconds."
             if n
             else ""
         )
@@ -842,9 +848,8 @@ class App:
         spc, _ = jobs.seconds_per_call()
         job = jobs.Job("audit", case.db, total=len(order))
         choice = self._cloud_choice(conn)
-        if choice.use:
-            spc = jobs.CLOUD_SECONDS_PER_CALL
-        job.estimate_seconds = jobs.estimate_seconds(len(order), spc)
+        cloud_spc = jobs.CLOUD_SECONDS_PER_CALL if choice.use else None
+        job.estimate_seconds = jobs.estimate_seconds(len(order), spc, cloud_spc)
         check = self.model_check
         components_for = self.components_for
         if components_for is _real_components:
