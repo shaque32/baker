@@ -6,9 +6,10 @@
 
 Two checks, both by script, nothing by eye:
 1. Generated items (training and held-out) against the reference test data: the probe set
-   P001-P097 and the older smoke items, case01 (messages, signed gold claims, assumption sheets,
-   affidavit) and case02 (messages, draft key, affidavit). The generators never read any of it;
-   this script is the only code in eval/stancedata, eval/train or eval/heldout that does.
+   (signed items and drafts) and the older smoke items, case01 (messages, signed gold claims,
+   assumption sheets, affidavit) and case02 (messages, draft key, affidavit). The generators never
+   read any of it; this script is the only code in eval/stancedata, eval/train or eval/heldout
+   that does.
 2. Training items against the held-out set, so the exam shares no text with the lessons.
 
 Every free text of an item (assumption, record, context lines, rationale, and the claim an item

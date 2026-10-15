@@ -6,7 +6,7 @@
 set -euo pipefail
 
 MODELS="${MODELS:-eval/probe/models.local.json}"
-# The signed probe set (P001-P088) lives in eval/gold/probe/; older checkouts have the drafts file.
+# The signed probe set (P001-P105) lives in eval/gold/probe/; older checkouts have the drafts file.
 if [ -f eval/gold/probe/probe.jsonl ]; then DEFAULT_PROBE=eval/gold/probe/probe.jsonl
 else DEFAULT_PROBE=eval/probe_draft/probe_draft.jsonl; fi
 PROBE_SET="${PROBE_SET:-$DEFAULT_PROBE}"

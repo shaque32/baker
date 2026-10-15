@@ -1,0 +1,302 @@
+# Baker product status
+
+The technical source of truth for what Baker does today. Every statement is checked against code,
+tests or recorded runs. Where something exists only on an unmerged branch, it says so.
+
+- **As of:** 2026-10-15 07:20Z (updated as other threads report changes)
+- **main:** `ae8f24e` (merges of #64, #65, #66, #67, 2026-10-15 07:22Z)
+- **Verified on:** main `7a14437` first, then re-checked after #64 to #67 merged (they changed
+  only `core/audit/assumption_filler.py` in `core/`, plus tests and probe gold)
+- **Rule version:** 0.2.1 on main (`core/audit/rules.py`); 0.2.2 pending in PR #75. **Contracts:** 0.3.0 (`core/contracts.py`).
+- **Signed prompts on main:** stance v1.1, reviewer v1.1, claims v1.0, assumptions v1.0
+  (`core/audit/prompts/`)
+
+Status labels used below: **main** (merged), **branch #N** (open PR, not merged), **unverified**
+(built or claimed, not measured).
+
+## 1. What Baker is
+
+Baker is a local app for defense forensic experts. It reads a government document (affidavit or
+report) and the phone extraction reports. It splits the document into claims and marks each
+claim supported, contradicted or unproven, with cited evidence. The expert runs it in a browser
+on their own computer (`baker serve`, http://127.0.0.1:8765). Correctness matters more than
+coverage: one wrong "supported" is the failure that counts most.
+
+## 2. Pipeline (main)
+
+| Step | What happens | Code | Model? |
+|---|---|---|---|
+| 1. Import | Opens each input read-only and SHA-256 hashes it. The browser case workflow also copies it into the case folder; `baker import` on the CLI reads the original path and keeps no copy | `core/ingest/`, `core/casework/cases.py`, `cli/main.py` | No |
+| 2. Normalize | Writes canonical rows; every row has a `source_ref`; times stored UTC with the original offset and raw value | `core/ingest/`, `core/schema.sql` | No |
+| 3. Enrich | Full-text search, local time, derived record text | `core/enrich/` | No |
+| 4. Claims | Splits the document into paragraphs; the local model proposes atomic claims; the expert edits the list | `core/claims/` | Local 14B |
+| 5. Assumptions | Fills fixed templates per claim type; values must be tied to the document or case data, or the proposal is refused | `core/audit/assumption_filler.py` | Local 14B |
+| 6. Checks | Deterministic checks: sender, identity, timing, weekday, count, absence | `core/audit/checks/` | No |
+| 7. Retrieval | Structured filters plus keyword ranking, with surrounding messages and the other phone's copy | `core/audit/retrieval.py` | No |
+| 8. Stance | Labels one record against one assumption: supports, contradicts, complicates or irrelevant | `core/audit/stance.py` | Local 14B (main); Opus 5.5, opt-in per case (branch #68, not merged) |
+| 9. Quote check | The label's quote must appear verbatim in the record, or the label is dropped | `core/audit/quotes.py` | No |
+| 10. AI review | Optional second pass on supporting items; off by default | `core/audit/review.py` | Local 14B |
+| 11. Verdict | `decide_verdict` applies rules 0.2.1 | `core/audit/rules.py` | No |
+| 12. Invariants | Re-checks each decision against stored records; a violation rolls back the claim and fails the run | `core/audit/invariants.py` | No |
+| 13. Review | Expert accepts, dismisses or reopens evidence and confirms verdicts; hash-chained audit log | `core/review/` | No |
+| 14. Report | HTML report with findings, limitations, source hashes, model runs and rule version | `core/report/` | No |
+
+Each claim is committed when it finishes, so the expert can review early claims while the audit
+runs, and a stopped run resumes from stored model outputs (`core/pipeline.py`,
+`core/audit/_local_model.py`). Claims whose core check already failed are not sent to the stance
+model, because their verdict cannot change.
+
+Correction to older docs: `docs/ARCHITECTURE.md` lists embeddings and translation under Enrich.
+On main, retrieval uses no embeddings, and the translator (`core/audit/translation.py`) is not
+called by the pipeline, the CLI or the UI. Non-Latin quotes are flagged for a human reader
+instead. ARCHITECTURE.md also says a Tauri UI comes later; the shipped UI is the local browser
+screen in `ui/`.
+
+## 3. Models and their exact jobs
+
+| Model | Where it runs | Jobs | Status |
+|---|---|---|---|
+| Qwen3-14B Q4_K_M (GGUF, Apache-2.0, sha256 `500a8806…81f0`, n_ctx 8192) | Expert's computer, llama-cpp-python, `flash` runtime | Claim proposal, assumption filling, stance labels (all cases on main; on #68, every case not opted in to cloud), optional AI review | main |
+| Claude Opus 5.5, medium effort | Anthropic API, expert's own key | Stance labels only, for cases the expert opted in | branch #68 (draft, not merged) |
+| mDeBERTa-v3-base classifier | Training on cloud CPU | Candidate small stance model | branch #50 (draft); run 5 is training (2026-10-15, no results yet); runs 1 to 4 did not pass the go bar |
+| Claude Sonnet 5.5, Haiku 5.5, Opus 5.5 | Anthropic API | Benchmarks only, in `eval/bench/` | main (eval only) |
+
+The local model file is pinned by SHA-256 and checked before loading (`core/audit/_local_model.py`,
+`packaging/windows/pins.json`). Every model call is stored with model hash, prompt hash,
+parameters and seed, and identical calls reuse stored output.
+
+## 4. The "judge": how Opus is used
+
+There is no model judge of verdicts in Baker. The word "judge" does not name any component.
+
+- **Verdicts come from code or the expert.** `core/audit/rules.py` (`decide_verdict`, rules
+  0.2.1) is the only automated verdict path. The expert can also override a verdict (screen or
+  `baker verdict --set`), which `core/review/actions.py` `override_verdict` writes directly,
+  without the rules, under the expert's name in the audit log. No model, local or cloud, writes a
+  verdict, an identity link or a confirmation.
+- **What Opus does (branch #68 only).** It is the stance labeler: for one (assumption, record)
+  pair it returns a label, a quote and a rationale. It is a remote HTTPS call to
+  `api.anthropic.com` (`core/llm/cloud.py`), pinned so a stray `ANTHROPIC_BASE_URL` cannot
+  redirect it, using the expert's own key from `$BAKER_ANTHROPIC_API_KEY` or
+  `~/.baker/cloud.json` (owner-only file). Only the filled-in stance prompt is sent: assumption,
+  record, nearby messages, claim text and a group chat's member list. Input files and the case
+  database are never sent.
+- **When Opus is used (branch #68).** Opt-in per case, local by default (Arsh chose "Opt-in cloud",
+  2026-10-15 07:10Z). Only when all hold: the expert attested for this case that
+  the protective order allows cloud AI; the case is not marked as possibly containing CSAM; a key
+  is set up. The choice is stored in the case's hash-chained audit log. Otherwise the local 14B
+  labels the case, as on main.
+- **Failure handling (branch #68, `3c6c1ec`).** If the cloud fails mid-case, the audit pauses
+  (`CloudPaused`, `core/audit/_local_model.py`); the expert retries the cloud or re-runs the
+  whole case locally, so one case never mixes models. Every request body is written to the
+  case's hash-chained audit log (`cloud.sent`) before it is sent. Timeout 120 s, 2 retries.
+- **Opus's influence on verdicts.** Indirect, through its labels, and bounded by the rules:
+  - A "supports" label never makes a claim SUPPORTED by itself. An expert must accept it.
+  - A "contradicts" label on an observed or derived record can make a claim CONTRADICTED
+    without an expert step (rule 1b), except on a meaning assumption, and except where every
+    deterministic check on that assumption passed. In those two cases it only counts as
+    "complicates". An expert can dismiss any label, and a dismissed label stops counting.
+  - In the Opus case01 run, all 5 CONTRADICTED verdicts came from failed code checks; none came
+    from a model label alone.
+  - **Known risk:** on the signed probe set (P001-P105), Opus calls same-day "X told the owner..."
+    denials and undated denials "contradicts" (4 of 15 contradicts wrong in each arm). Each is an
+    event assumption, so in a real case each would be a wrong CONTRADICTED with no expert step,
+    until a signed prompt line fixes it (section 7).
+- **Claim proposal and assumption filling stay local.** Opus missed both pre-set bars (claim
+  recall 80% vs 90%; sheet-free audit 60% accuracy vs 80%), recorded in
+  `/mnt/project-files/baker/cloud-first/steps-check/RESULTS.md`.
+
+**Merge state:** #68 is a draft (code at `3c6c1ec`, main merged in after #71). Arsh approved its
+revised CLAUDE.md wording (2026-10-15 07:29Z, recorded in `PROPOSED_CHANGES.md`). He pastes it on
+the branch himself, because agents are blocked from editing CLAUDE.md. Until then the rule "no
+network calls in core/" still stands on main and in the branch's CLAUDE.md.
+
+## 5. External services
+
+- **main:** `core/` makes no network calls. No telemetry. The UI serves only 127.0.0.1. The
+  installers download the pinned model file once at install time (`packaging/`).
+- **branch #68:** one network integration in `core/`: one HTTPS request to the Anthropic API per
+  (assumption, record) stance pair (493 requests in the Opus case01 run).
+- **eval only:** `eval/bench/claude_bench.py` and `eval/bench/cloud_steps.py` (branch #68) call
+  the Anthropic API on synthetic data, as benchmarks.
+
+## 6. Rules and models together
+
+| Outcome | What it needs (rules 0.2.1) |
+|---|---|
+| SUPPORTED | Every core assumption covered (a passing check, or support an expert accepted); at least one expert-accepted support on an observed record; no open complicating or contradicting item; the claim type's key assumption present |
+| CONTRADICTED | A failed deterministic check, or a counting "contradicts" (see section 4) |
+| UNPROVEN | Anything else, with the uncovered assumptions named |
+
+AI review alone covers nothing in the alpha (`_AI_MAY_COVER` is empty), so every SUPPORTED
+verdict is expert-confirmed. Display tiers: observed, derived, inferred, ai_reviewed, confirmed.
+
+## 7. Benchmarks and hardware
+
+All on synthetic data. The probe is the signed stance set (`eval/gold/probe/`: 105 items on main since #64); case01 is the 20-claim synthetic case with signed gold.
+
+**Stance labelers, old 88-item probe (v0.3 labels before the follow-up, prompt v1.1, product layout)**
+Source: `/mnt/project-files/baker/cloud-bench/2026-10-14c/RESULTS.md`, preregistered.
+
+| Model | Supports recall | Contradicts precision | Traps shown as support | Passes all bars |
+|---|---|---|---|---|
+| Opus 5.5 medium | 27/27 | 6/6 | 0 | yes |
+| Opus 5.5 high | 27/27 | 4/4 | 0 | yes |
+| Sonnet 5.5 high | 27/27 | 8/16 | 1 | no |
+| Haiku 5.5 medium | 18/27 | 8/10 | 0 | no |
+| Qwen3-14B (re-scored from 2026-10-07 answers, prompt v1.0) | 100% | 7/8 | 5 moved traps | no (moved-trap bar) |
+
+The table above used the old 88-item set with only 8 gold contradicts. **Superseded** by the
+signed follow-up (P049, P066-P069 relabeled complicates; P089-P105 added; 95 gated items, 11 real
+contradicts), signed by Arsh 2026-10-15 and merged in #64.
+Opus on that set (`/mnt/project-files/baker/cloud-bench/2026-10-15/RESULTS.md`, preregistered,
+$5.21):
+
+| Bar (95 gated items) | Opus high | Opus medium |
+|---|---|---|
+| Supports recall (>= 90%) | 33/33 | 33/33 |
+| Contradicts precision (>= 90%) | **11/15, 73%, fails** | **11/15, 73%, fails** |
+| Contradicting shown as supports (0) | 0 | 0 |
+| Contradicts recall | 11/11 | 11/11 |
+
+So **Opus no longer passes the full cloud rule.** Every wrong answer is a told-frame or undated
+denial (P049, P066-P069, P092, P093). Blind readers sided with the signed labels 12 of 12. The
+planned fix is a stance prompt line for guide rules 12 and 23, signed by Arsh and tested on new
+items. The local 14B has not been run on the signed set.
+
+**case01, real pipeline, simulated expert**
+
+| Labeler | Accuracy (bar 80%) | False supported (bar 0) | Wall time | Cost | Hardware | Date |
+|---|---|---|---|---|---|---|
+| Opus 5.5 medium | 85% (95% with the #69 fix, replayed offline) | 0 | 26 min (493 calls, 3.2 s each) | $7.83 | Anthropic API | 2026-10-15 |
+| Sonnet 5.5 medium (prompt v1.0) | 80% | 0 | 16 min | $2.84 | Anthropic API | 2026-10-14 |
+| Qwen3-14B Q4 | not measured end to end on current code | | see below | $0 | MacBook Air M4, 24 GB | |
+
+Opus case01 detail: key evidence surfaced for 35% of claims that need it; 6 of 14 such claims
+were ready for the expert; 381 of 493 labels were dropped before storage (this count includes
+"irrelevant" answers, which carry no quote; the split is not broken out, inferred from
+`core/pipeline.py`).
+
+**Local 14B speed (unverified for today's code)**
+- Measured 2026-10-09: 43.0 s per stance call (plain runtime), MacBook Air M4 24 GB.
+- Measured 2026-10-12: `flash` runtime, 22.5 s vs 28.3 s per probe call, same output on all 88
+  probe items (`core/llm/runtime.py`).
+- The often-quoted 6 to 8 hours per case01 is a projection from those per-call numbers and an
+  older call count (about 613 calls). Since then the pipeline skips claims already settled by a
+  failed check, prompts changed (v1.1, names, members line), and the Opus run made 493 calls.
+  A full local case01 run on current main has not been timed. Treat any local runtime as
+  **unverified** until `eval/probe/time_case.py` is re-run on the Mac.
+- Windows and NVIDIA speed: not measured.
+
+**Merge gate (model-free, `make eval`)**
+The gate swaps the model for a stand-in that labels every retrieved record and a simulated
+expert that accepts only signed key evidence. It tests retrieval, checks, assumption sheet,
+rules and invariants, not model quality. Last recorded: case01 accuracy 1.00, 0 false
+supported; unreviewed run 0.60 (report only); hostile red-team PASS; case02 (hidden, aggregate,
+report only) 0.90 accuracy, 0 false supported. See section 10 for today's run.
+
+## 8. Implemented features (main unless marked)
+
+1. **Import:** Cellebrite Excel and PDF; Cellebrite UFDR (unverified on real samples); Magnet
+   AXIOM XML and Excel (unverified); government PDF with local OCR (Tesseract). Unverified
+   readers say so on screen and in the report. `baker ufdr-check` compares a UFDR import with
+   its own report.xml, offline.
+2. **Audit:** claims, assumptions, checks, retrieval, stance, quote check, rules, invariants, with
+   background runs, progress, per-claim commits and resume.
+3. **Expert review screen** (`ui/`, local only, no scripts): claims, evidence accept or dismiss,
+   "Support found: do you agree?" before confirmation, verdict confirm or override, notes.
+4. **Analysis pages (code only, never change verdicts):** Identities (proposed account-to-person
+   links, expert confirms), Timeline check and Gaps, Selection audit (what the document left
+   out), Context Restore (find pasted exhibit quotes, draft the full-extraction request), Other
+   explanations per claim.
+5. **Case safety and delivery:** encryption at rest by passphrase (SQLCipher plus AES-256-GCM;
+   new cases from the browser form encrypted by default, the box can be unticked; `baker init` on
+   the CLI makes a plain case), hash-chained audit log, HTML report, `baker demo`, Mac
+   install script, Windows installer (unsigned), `baker model-check`.
+
+Merged 2026-10-15: stricter stated time windows, "after <date>" starts the next day (#66; rules
+still 0.2.1 on main; the 0.2.2 bump is in PR #75, not merged), go-bar scorer fixes and the signed probe
+follow-up (#64), red-main test fix (#65), flaky encryption test fix (#67).
+Branch only: opt-in cloud Opus stance labels (#68), small stance model (#50). PR #70 is an empty
+Grok Product review PR, never merged.
+
+## 9. Known limitations
+
+1. **Quote-check bug, issue #69 (open, on main).** The labeler sees a contact as
+   `Name: +number` (`core/enrich/records.py:81`), but the check renders it `Name +number`
+   (`core/audit/invariants.py:96`), so a correct quote is dropped as unverified. Calls differ the
+   same way. Hits the 14B and Opus alike. It drops labels of every stance, so a dropped
+   "contradicts" or "complicates" could let a claim with other accepted support go SUPPORTED.
+   No false supported appeared in the recorded runs and replays, but the code does not rule it out.
+   The model-free gate cannot catch it. Offline replay: Opus case01 85% becomes 95% once fixed.
+   Fix for contacts in PR #76 (not merged); calls still differ.
+2. **Opus's wrong "contradicts" on told-frame and undated denials** (section 7). Matters for
+   #68: it would make wrong CONTRADICTED verdicts until a signed prompt fix lands.
+3. **Real-data formats unverified.** UFDR and AXIOM readers were built from documentation and
+   synthetic samples. No real extraction has been imported. No public Cellebrite-made UFDR with a
+   usable license exists; #73 checked the reader on two non-Cellebrite test files (27 of 27
+   records). Forwarded or quoted message content is not read (reported by #73).
+4. **Local runtime per case unknown on current code** (section 7). The local 14B's probe result
+   is also unverified on current code: it missed the moved-trap bar on 2026-10-07 answers with
+   prompt v1.0, and has not been run on prompt v1.1 or the signed 105-item set.
+5. **Evidence recall is modest.** Opus case01 surfaced key evidence for 35% of claims needing it;
+   14 of 20 claims depend on the expert finding or accepting key evidence.
+6. **Other gaps:** no translation in the pipeline; no embeddings; Windows installer unsigned; the
+   cloud key on #68 is an owner-only plain file, not encrypted with the case keys; experts still
+   need the 14B installed even with cloud on.
+
+## 10. Tests and results (main `7a14437`, before #64 to #67)
+
+Run 2026-10-15 in a Linux cloud container (Python 3.13; the project targets 3.12):
+
+| Check | Result |
+|---|---|
+| Lint and format (`ruff`) | clean, 385 files |
+| Tests (`pytest`, 63 test files plus subfolders) | 1857 passed, 6 skipped, **1 failed**: `tests/test_probe_layout.py::test_bench_copy_of_v1_1_is_the_signed_text`, the known red-main test that #65 fixes |
+| case01 model-free gate | PASS: accuracy 1.00, 0 false supported |
+| case01 unreviewed (report only) | accuracy 0.60, 0 supported by design |
+| Hostile red team | PASS: none of the 7 structural claims went supported |
+| case02 hidden case (aggregate, report only) | accuracy 0.90, 0 false supported |
+
+`make check` stops at the failing test, so the eval was run separately with `make eval`. #65
+(merged) fixes that test. A full local re-run on `ae8f24e` was not done; CI on PR #71 (main plus
+docs) is the current check.
+
+CI (GitHub Actions `checks`, Ubuntu and Windows, local clock set to Pacific), checked
+06:35Z: #50, #64, #65, #67 and #68 were green on their heads; #66 was green before its latest
+Codex fixes, with CI pending on the new push.
+
+## 11. Pilot readiness
+
+**Not pilot-ready for real case data yet.** Ready: the demo case, the review screen, encryption,
+the Mac and Windows installers, and a pilot kit (data handling, limitations, agreement outline,
+feedback form, demo script, go/kill scorecard) in `/mnt/project-files/baker/pilot/`.
+
+Before a first real case:
+1. Fix issue #69 (quote check), then time a full local case01 on the Mac for a real runtime.
+2. Check a real UFDR and AXIOM export with `baker ufdr-check` (needs a pilot expert's closed case).
+3. Finish #68 (opt-in cloud, chosen by Arsh 2026-10-15 07:10Z): a signed told-frame prompt fix
+   that passes on new items, and Arsh's paste of the CLAUDE.md wording he approved (07:29Z), then merge.
+4. Sign the Windows installer (Azure code signing pending).
+
+No pilot has started and no expert has used Baker on a real case (per project records; this
+cannot be checked from code).
+
+## 12. Customer-facing claims
+
+Checked 2026-10-15 against main `7a14437` (line numbers unchanged on `ae8f24e`) and branch #68 (`3c6c1ec`), for the proposed line:
+"Baker tests the government's specific claims; versioned rules decide verdicts; nothing is
+supported until your expert accepts it; runs locally with no network calls."
+
+| # | Claim | Status | Evidence | Safe wording |
+|---|---|---|---|---|
+| 1 | Verdicts come from versioned rules | **True** | `decide_verdict` is the only automated verdict path (`core/audit/rules.py:1`); an expert override is written directly by `override_verdict` (`core/review/actions.py`), as the expert's decision; `RULE_VERSION = "0.2.1"` (`core/audit/rules.py:104`) is stored on every decision (`core/audit/rules.py:304`) and printed in the report (`core/report/html.py:348`). Models only label evidence. | "Versioned rules decide verdicts; your expert can override" |
+| 2 | Nothing is Supported until the expert accepts it | **True** | SUPPORTED needs an expert-accepted support on an observed record (`core/audit/rules.py:113`, `:285`); AI acceptance covers nothing (`_AI_MAY_COVER` empty, `core/audit/rules.py:110`); the invariants re-check every SUPPORTED and fail the run otherwise (`core/audit/invariants.py:220-270`). The expert can also set a verdict directly (`baker verdict --set`), which is still the expert's act. Note: a model "contradicts" can make a claim CONTRADICTED without an expert step (section 4). | As proposed; do not extend it to "contradicted" |
+| 3 | "Not found" says what was searched | **True for absence and count findings** | The absence check states what it searched and why the sources can or cannot show an absence (`core/audit/checks/absence.py:1-6`, `:40`, `:112-135`); a curated report can never pass an absence (`core/audit/checks/absence.py:123`); the report has a "Searches and coverage" section (`core/report/html.py:427-457`). An UNPROVEN claim with no evidence names the uncovered assumptions, not a search log. | "When Baker finds no contact or counts records, it says what it searched and what the source could show" |
+| 4 | The selection audit shows what was left out around each quote | **Partly true** | Shows each quoted, exhibit or examiner-tagged message in its exchange, with the messages not picked (`core/selection/audit.py:1-29`). Limits: a quote is placed only when its words fit one message, otherwise it is listed as found N times and nothing around it is counted as left out (`core/selection/picks.py:17-23`); names and quotes under two words are not looked up (`core/selection/picks.py:5-11`); messages an examiner left out of a curated report are not in the case to show (`core/selection/audit.py:27-29`). | "...around each quote it can place in the extraction" |
+| 5 | Every report has an audit packet: source hashes, model, prompt and rule versions, tamper-evident log | **True, with one nuance** | Sources with SHA-256 (`core/report/html.py:593-601`), versions and model runs with model SHA-256, prompt version, parameters and seed (`core/report/html.py:604`, `:636-650`), rule version (`core/report/html.py:626`), audit-log summary with hash-chain result, last hash and expert actions (`core/report/html.py:652-670`, `core/review/audit_log.py:44-54`). Nuance: the report shows a summary and the expert entries, not every log entry, and the chain detects edits to entries, but not a rewrite of the whole chain or removal of the newest entries unless someone kept the last hash (inferred from `core/review/audit_log.py`: no signature or external anchor; truncation confirmed by #74). On main the chain is checked at report build and encryption; #74 (not merged) also checks it when a case opens and blocks review if it fails. | "A hash-chained audit log; the report prints its last hash" |
+| 6 | Runs locally with no network calls | **Depends on #68** | main: true. `core/` makes no network calls, the screen binds only 127.0.0.1 (`ui/server.py:19`); the installers download the pinned model once at install. #68 adds the opt-in Opus stance integration, one HTTPS request per stance pair to api.anthropic.com (`core/llm/cloud.py:1`, `:47` on the branch). Cloud stays off until the expert attests per case, so "local by default" stays true. "No network calls" would not be true for opted-in cases. | Today: "runs locally, no network calls". If #68 merges: "local by default; cloud AI only when your case allows it and you opt in" (Arsh's choice, 2026-10-15 07:10Z) |
+
+Claims Baker should not make yet: any speed figure for local runs (not measured on current code,
+section 7), any accuracy figure on real data (all numbers are synthetic), and that UFDR or AXIOM
+imports are verified.

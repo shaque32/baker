@@ -6,16 +6,16 @@ from the generator's own judgment. LABELING_GUIDE.md explains every family for t
 test checks the two stay in step.
 
 Conventions follow stance guide v0.3 (LABELING_GUIDE.md, signed 2026-10-14) and stance prompt
-v1.1, signed with it, which the pipeline wiring applies. Where the signed probe set
-(eval/gold/probe, P001-P088) reads contradicts more broadly than the guide (P049 and P066 to
-P069; eval/probe_draft/PROBE_REVIEW.md), the families follow the guide.
+v1.1, signed with it, which the pipeline wiring PR (#62) applies. Since 2026-10-15, when Arsh
+relabeled P049 and P066 to P069, the signed probe set (eval/gold/probe, P001-P105) reads
+contradicts as the guide does.
 
 Families marked `new` brought a convention the signed probe set did not show when they were
-added; Arsh decided each one when he signed the guide that added it (v0.2 on 2026-10-12, v0.3 on
-2026-10-14). Since the 2026-10-14 relabel, probe items P038 to P044 and P071 show the four trap
-families v0.3 moved to complicates. Families marked `disputed` follow a signed label that the
-probe set itself marks disputed; they are generated for training, and the held-out set marks
-their items disputed so they never count toward a bar.
+added; Arsh decided each one when he signed the first guide that had it (v0.2 on 2026-10-12,
+v0.3 on 2026-10-14). Since the 2026-10-14 relabel, probe items P038 to P044 and P071 show the
+four trap families v0.3 moved to complicates. Families marked `disputed` follow a signed label
+that the probe set itself marks disputed; they are generated for training, and the held-out set
+marks their items disputed so they never count toward a bar.
 """
 
 from __future__ import annotations
@@ -71,7 +71,9 @@ FAMILIES: tuple[Family, ...] = (
        "establish the assumption; the injected text changes nothing."),
     # Contradicts: the record itself shows something that cannot be true with the assumption.
     _F("con_denial", C.CONTRADICTS, S.CONTRADICTS, None, (K.EVENT,),
-       "The record's sender plainly denies the assumed event or state."),
+       "The record's sender plainly denies the assumed event or state, for a time the denial "
+       "covers: a denial that names no time covers only the time before it was sent, so the "
+       "assumption dates the act before the message (rule 23)."),
     _F("con_other_value", C.CONTRADICTS, S.CONTRADICTS, None, (K.EVENT, K.COMPLETENESS),
        "The record states a different count, amount, day, place or object than the assumption, "
        "in a way that cannot both be true."),
@@ -88,7 +90,8 @@ FAMILIES: tuple[Family, ...] = (
        "quote is the correcting words.", new=True),
     # Overreach with gold contradicts: the record's own words rule the assumption out.
     _F("ovr_negation", C.OVERREACH, S.CONTRADICTS, "negation", (K.EVENT,),
-       "The assumption's words appear in the record inside a negated statement."),
+       "The assumption's words appear in the record inside a negated statement that covers the "
+       "assumption's time (rule 23)."),
     # Overreach whose gold changed to complicates in v0.3: the record's words match the
     # assumption, but its date, sender or a later correction leaves the assumption open, and one
     # record cannot show that no other message exists.
