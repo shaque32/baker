@@ -131,12 +131,18 @@ def outside(
 
 def _edge_window(rng: random.Random, form: str, tz: str) -> tuple[Win, tuple[datetime, ...]]:
     """A window and the edges a zone-edge record may sit at: never a day a reader may leave
-    out ("from May 1 to May 9" keeps its start)."""
+    out ("from May 1 to May 9" keeps its start). Both dates of a range share a year, as in
+    _around and _away ("from December 31 through January 5, 2025" leaves the start's year to a
+    guess), and a clock range never ends at noon (CLOCK_HOURS)."""
     day = pick_day(rng)
     if form in ("on", "On"):
         win = win_on(day, tz, form == "On", rng)
     elif form == "through":
-        win = win_through(day, day + _days(rng.randint(1, 6)), tz, rng)
+        k = rng.randint(1, 6)
+        first, last = day, day + _days(k)
+        if last.year != first.year:
+            first, last = day - _days(k), day
+        win = win_through(first, last, tz, rng)
     elif form == "before":
         win = win_before(rng, day, tz, vary=True)
         return win, (win.end,)
@@ -145,7 +151,8 @@ def _edge_window(rng: random.Random, form: str, tz: str) -> tuple[Win, tuple[dat
         return win, () if win.loose_first else (win.start,)
     else:
         h1 = rng.choice(CLOCK_HOURS[:-3])
-        win = win_between(day, h1, min(h1 + rng.randint(3, 5), CLOCK_HOURS[-1]), tz, rng)
+        h2 = min(h1 + rng.randint(3, 5), CLOCK_HOURS[-1])
+        win = win_between(day, h1, h2 + (h2 not in CLOCK_HOURS), tz, rng)
     starts = () if win.loose_first else (win.start,)
     return win, (*starts, *(() if win.loose_last else (win.end,)))
 

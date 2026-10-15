@@ -41,12 +41,27 @@ def clear_part(minute: int, margin: int = 30) -> str | None:
     return next((p for lo, hi, p in PARTS if lo * 60 + margin <= minute <= hi * 60 - margin), None)
 
 
+# The widest everyday reading of a part of the day, in minutes, for a time that plainly misses
+# a record: "3 in the morning" and "11 in the evening" are both said, and part_phrase calls
+# 9:30 to 11:30 p.m. "late in the evening", so the evening runs to midnight. "The night of May
+# 2" can mean its small hours or its evening ("Friday night at 6" is said too); it misses only
+# the daytime between them.
+WIDE_PARTS = (
+    ("morning", 0, 12 * 60),
+    ("afternoon", 12 * 60, 17 * 60),
+    ("evening", 17 * 60, LAST + 1),
+)
+NIGHT_GAP = (6 * 60, 18 * 60)
+
+
 def far_parts(minute: int, gap: int = 120) -> list[str]:
-    """The parts of the day that end or start at least `gap` minutes away from the minute,
-    for a time that plainly misses it. Never "night": "the night of May 2" can take in the
-    evening before it or the small hours after it, so it plainly misses no minute."""
-    return [p for lo, hi, p in PARTS
-            if p != "night" and (minute <= lo * 60 - gap or minute >= hi * 60 + gap)]  # fmt: skip
+    """The parts of the day that plainly miss the minute: at least `gap` minutes from the
+    part's widest reading (WIDE_PARTS), and "night" for a daytime minute at least `gap` from
+    both ends of NIGHT_GAP."""
+    out = [p for p, lo, hi in WIDE_PARTS if minute <= lo - gap or minute >= hi + gap]
+    if NIGHT_GAP[0] + gap <= minute <= NIGHT_GAP[1] - gap:
+        out.append("night")
+    return out
 
 
 def now_of(c: Chat) -> int:
@@ -196,7 +211,8 @@ def fit_when(rng: random.Random, c: Chat, date: float = 0.62, clock: float = 0.2
     2025"), by a part of the day well inside it, by a bound of dates that holds it (with
     probability `bound`), or (with probability `clock`) by a clock phrase that holds the
     record's minute (fit_clock). None leaves the time out. A date on a message makes no cue for
-    any answer: trap and contradicts assumptions carry dates as often.
+    any answer: trap and contradicts assumptions carry dates as often, and the time trap's
+    misses (miss_when) take the same shapes.
     """
     roll, d = rng.random(), say_day(rng, c.day)
     if roll >= date:
@@ -273,8 +289,9 @@ def miss_clock(rng: random.Random, c: Chat) -> str | None:
 
 def miss_when(rng: random.Random, c: Chat) -> tuple[str, str]:
     """A time phrase that plainly misses the record's local time, and the rationale's account
-    of the miss: a clock phrase or part of the day on the record's date (50%), another date, a
-    range of dates that leaves it out (8%) or a bound of dates that does (10%)."""
+    of the miss: a clock phrase or part of the day on the record's date (50%), a bound of dates
+    that leaves it out (10%) or another date, in the shapes fit_when holds a record with (a
+    range of dates only in the contact windows, which both sides of an answer state)."""
     loc, d = c.local, long_date(c.day)
     roll = rng.random()
     if roll < 0.5:
@@ -282,14 +299,7 @@ def miss_when(rng: random.Random, c: Chat) -> tuple[str, str]:
             phrase = t.replace("{d}", say_day(rng, c.day))
             stated = t.replace("{d}", d)
             return phrase, f"sent at {clock12(loc)} on {d}, outside the time stated ('{stated}')"
-    elif roll < 0.58:
-        gap, width = rng.randint(1, 6), rng.randint(1, 5)
-        ahead = rng.random() < 0.5
-        lo = c.day + timedelta(days=gap) if ahead else c.day - timedelta(days=gap + width)
-        hi = lo + timedelta(days=width)
-        phrase = f"from {long_date(lo)} through {long_date(hi)}"
-        return phrase, f"sent on {d} local time ({c.stamp}), not {phrase}"
-    elif roll < 0.68:
+    elif roll < 0.6:
         phrase, plain = date_bound(rng, c.day, fits=False)
         return phrase, f"sent on {d} local time ({c.stamp}), not {plain}"
     w = _other_day(rng, c)

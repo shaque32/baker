@@ -25,22 +25,34 @@ Template:
   (on dev it showed 20 moved traps as supports). Supports items and the traps beside them now
   share report frames and time phrases; contact supports and denials share verbs and window
   shapes; Baker's window wording goes from 12 shapes to 218, each read back by Baker's own
-  window reader; attachment captions show as context lines. Generators `eval.train 1.3.0` and
-  `eval.train.baker 1.4.0`.
+  window reader; attachment captions show as context lines. Run 5 trained on the first commit
+  (56e0da4: `eval.train 1.3.0`, `eval.train.baker 1.4.0`). A full review of that commit (Codex
+  had no credits) found label and wording problems, fixed in `eval.train 1.3.1` and
+  `eval.train.baker 1.4.1`: a part of the day missed a record by its narrow reading ("the
+  evening" against a late-evening record); "the night of" only ever held a record and a range
+  of dates only ever missed one, so the wording hinted at the answer; some sender and time
+  traps said "the message "x" was sent by ...", words that name one message, which leaves
+  their label unclear under guide rule 23; a zone-edge window could cross New Year or end at
+  "12 p.m.". New tests check each one; 5 of them fail on the first commit.
 - Where: branch `claude/project-thread-czwpc8`, PR #79, not merged.
-- Verified: this branch regenerates run 5's training file byte for byte (19,250 items, sha256
-  `00ceae8f…`), and the held-out files are unchanged (test `4f106386…`, dev `36cd0d79…`).
-  Overlap check against Baker's test data (the probe set and both synthetic cases): PASS, 0
-  flagged. Every Baker window passes main's window check, which since #66 starts "after May 2"
-  on May 3, as these generators already did. Blind reads of the new wording from the signed
-  guide alone: 59 of 60 agreed; the slips were fixed. `make check`: lint clean, 1,888 tests
-  passed, eval unchanged (case01 1.00, 0 false supported).
-- Open: run 5 is training on #50's branch, no result yet. Contact and call rows read as main's
-  quote check cites them, which is also the text #50's case items give the small model:
-  `<saved name> <number>` (539 items) and `outgoing call from … at …, 604s` (1,041 items) of
-  19,250. #76 moves the check to the text Baker shows the 14B (contacts `<saved name>:
-  <number>`, calls `outgoing Phone call from … to …, duration 604 s`). Once it merges, run 5
-  meets the new text on those rows only, and the next data drop writes it.
+- Verified: 56e0da4 regenerates run 5's training file byte for byte (19,250 items, sha256
+  `00ceae8f…`); the head writes `c4031e1f…`, with the same counts by family and label. The
+  held-out files are unchanged (test `4f106386…`, dev `36cd0d79…`). Overlap check on both
+  training files against Baker's test data (the probe set and both synthetic cases) and the
+  held-out files: PASS, 0 flagged. Every Baker window passes main's window check. Blind reads
+  of the new wording from the signed guide alone: 59 of 60 agreed; the slips were fixed.
+  `make check` on the head: lint clean, 1,891 tests passed, eval unchanged (case01 1.00, 0
+  false supported).
+- Open: run 5 is training on #50's branch, no result yet. What its data holds from the review:
+  0 wrong labels from the narrow part-of-day reading, 0 New Year windows, 1 window ending "12
+  p.m.", 6 time traps with a range of dates, 9 supports with "the night of" or "late in the
+  evening", and 118 items (59 traps, 59 supports) whose words name one message. The next data
+  drop uses the head. Contact and call rows read as main's quote check cites them, which is
+  also the text #50's case items give the small model: `<saved name> <number>` (539 items) and
+  `outgoing call from … at …, 604s` (1,041 items) of 19,250. #76 moves the check to the text
+  Baker shows the 14B (contacts `<saved name>: <number>`, calls `outgoing Phone call from … to
+  …, duration 604 s`). Once it merges, run 5 meets the new text on those rows only, and the
+  next data drop writes it.
 - Affects: none in the product (eval only). It changes what the candidate small stance model
   trains on.
 

@@ -44,9 +44,10 @@ from eval.train.baker_kit import Draft, finish
 # day's weekday is sent before 10 a.m.; the Russian own-usage frame is "так я называю". 1.4.0:
 # windows read as documents word them ("prior to", "on or after", "between 9 and 11 p.m.",
 # "on or about"), none resting a label on a day a reader may leave out, and 40% of attachment
-# records follow their message's caption, as Baker's small-model adapter shows them. A new
-# version draws every Baker item afresh.
-GENERATOR = "eval.train.baker 1.4.0"
+# records follow their message's caption, as Baker's small-model adapter shows them. 1.4.1:
+# a zone-edge range keeps both dates in one year and never ends at noon; run 5 trained on
+# 1.4.0. A new version draws every Baker item afresh.
+GENERATOR = "eval.train.baker 1.4.1"
 ATTEMPTS = 40
 
 Writer = Callable[[random.Random, int], Draft]

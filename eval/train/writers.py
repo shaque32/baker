@@ -557,6 +557,13 @@ def own_words(claim: str) -> str | None:
     return None if _UNANCHORED.search(out) else out
 
 
+def own_weekday(d: str, day: date, seen: set[str]) -> str:
+    """The date d says for `day`, without its weekday when a line of the chat uses that word
+    ("on Wednesday, January 14, 2026" beside "booked the photographer for wednesday"): an
+    irrelevant assumption shares no word with the chat (guide rule 21)."""
+    return long_date(day) if d != long_date(day) and topic_stems(f"{day:%A}") & seen else d
+
+
 def chat_topics(c: Chat) -> set[str]:
     """The topic stems of every line of the chat and of every name it shows: how an assumption
     names each party, and the saved name and handle its lines print ("garage_x", the owner's
@@ -592,7 +599,8 @@ def spec_irrelevant(rng: random.Random, c: Chat, fam: str, pool: Sequence[Fact],
     if kind == K.TIME:
         events = [e for e in TIME_EVENTS if not topic_stems(e[0]) & seen]
         event, parts = rng.choice(events or list(TIME_EVENTS))
-        d, part = say_day(rng, c.day + timedelta(days=rng.randint(-3, 3))), rng.choice(parts)
+        day = c.day + timedelta(days=rng.randint(-3, 3))
+        d, part = own_weekday(say_day(rng, day), day, seen), rng.choice(parts)
         if rng.random() < 0.45:
             lo, hi = HOURS[part]
             t = act_clock(rng, rng.randrange(lo * 60, hi * 60 + 60, rng.choice((1, 5, 15, 60))), d)
@@ -604,7 +612,8 @@ def spec_irrelevant(rng: random.Random, c: Chat, fam: str, pool: Sequence[Fact],
         if not claims:  # never on the current pools; a plain unrelated event instead
             claims = ["went for a run"]
         pred, roll = rng.choice(claims), rng.random()
-        d = day_of(rng, c.day + timedelta(days=rng.randint(-4, 2)), pred)
+        day = c.day + timedelta(days=rng.randint(-4, 2))
+        d = own_weekday(day_of(rng, day, pred), day, seen)
         if not FOR_WEEKDAY.search(pred) and (pinned := pin(c, pred)):
             a = cap(f"{subj} {pinned}")  # "on Monday" or "on the 3rd" gets its own date
         elif FOR_WEEKDAY.search(pred) or ACT_CLOCK.search(pred):

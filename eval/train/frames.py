@@ -117,32 +117,27 @@ def says(rng: random.Random, s: str, o: str, p: str, *, group: bool = False,
 Words = tuple[Callable[[str, str, str], str], float]
 
 # A message's exact words, as (b, t, x) -> text, b sent the words x to t, with a weight: the
-# short shapes come up most.
+# short shapes come up most. No shape makes the words name one message ("the message "x" was
+# sent by b", "b was the one who wrote "x""): the sender and time traps say these words came
+# from another account or at another time, and words that exclude other messages are ruled
+# out by that, not left open (guide rule 23).
 WORDS_ONE_TO_ONE: tuple[Words, ...] = (
     (lambda b, t, x: f'{b} sent {t} the message "{x}"', 2),
     (lambda b, t, x: f'{b} wrote "{x}" to {t}', 2),
     (lambda b, t, x: f'{b} texted {t} "{x}"', 2),
     (lambda b, t, x: f'{b} texted {t}: "{x}"', 1),
-    (lambda b, t, x: f'the message "{x}" was sent by {b} to {t}', 0.6),
-    (lambda b, t, x: f'the message "{x}" was sent by {b}', 1),
     (lambda b, t, x: f'{b} sent the message "{x}"', 1.5),
     (lambda b, t, x: f'{b} messaged {t}: "{x}"', 1),
     (lambda b, t, x: f'{b} wrote to {t}: "{x}"', 1),
     (lambda b, t, x: f'{b} sent {t} a text saying "{x}"', 0.4),
     (lambda b, t, x: f'{t} got the message "{x}" from {b}', 0.4),
-    (lambda b, t, x: f'the text "{x}" came from {b}', 0.8),
-    (lambda b, t, x: f'{b} was the one who sent {t} "{x}"', 0.4),
     (lambda b, t, x: f'in a message to {t}, {b} wrote "{x}"', 0.4),
-    (lambda b, t, x: f'the words "{x}" were sent by {b} to {t}', 0.4),
 )
 WORDS_GROUP: tuple[Words, ...] = (
     (lambda b, t, x: f'{b} wrote "{x}" in the group chat', 2),
     (lambda b, t, x: f'{b} sent "{x}" to the group', 2),
     (lambda b, t, x: f'in the group chat, {b} wrote "{x}"', 1),
     (lambda b, t, x: f'{b} posted "{x}" in the group chat', 1),
-    (lambda b, t, x: f'the message "{x}" in the group chat came from {b}', 0.5),
-    (lambda b, t, x: f'{b} was the one who wrote "{x}" in the group chat', 0.4),
-    (lambda b, t, x: f'the words "{x}" were sent to the group by {b}', 0.4),
 )
 
 
