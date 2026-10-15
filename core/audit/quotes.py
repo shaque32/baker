@@ -71,29 +71,17 @@ def verify_quote(quote: str, record_text: str) -> bool:
     return find_quote(quote, record_text) is not None
 
 
-def cites_record(
-    quote: str,
-    record_text: str,
-    own: Sequence[records.Span],
-    verify: Callable[[str, str], bool] = verify_quote,
-) -> bool:
-    """True if verify accepts the quote at a place in record_text that takes in a letter or digit
-    of the record's own fields (own: their (start, end) spans in record_text). A quote of only
-    Baker's words or a placeholder, such as "(no name)", fails.
-
-    verify is the pipeline's QuoteVerifier. It sees each exact occurrence with one character on
-    either side, enough for verify_quote's word-boundary rule to judge that occurrence alone."""
-    if not quote:
-        return False
-    start = record_text.find(quote)
-    while start != -1:
-        end = start + len(quote)
-        if any(
-            record_text[i].isalnum() for a, b in own for i in range(max(a, start), min(b, end))
-        ) and verify(quote, record_text[max(start - 1, 0) : end + 1]):
-            return True
-        start = record_text.find(quote, start + 1)
-    return False
+def cites_record(quote: str, record_text: str, own: Sequence[records.Span]) -> bool:
+    """True if the quote matches record_text verbatim and word-aligned (find_quotes) at a place
+    that takes in a letter or digit of the record's own fields (own: their (start, end) spans in
+    record_text). A quote of only Baker's words or a placeholder, such as "(no name)", fails.
+    Passing here implies passing verify_quote."""
+    return any(
+        record_text[i].isalnum()
+        for start, end in find_quotes(quote, record_text)
+        for a, b in own
+        for i in range(max(a, start), min(b, end))
+    )
 
 
 def record_text(conn: sqlite3.Connection, record_id: str) -> str | None:

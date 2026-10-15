@@ -77,18 +77,20 @@ Template:
   Helvetica can't draw ("Катя" read as boxes).
   Grok review on #80, item 3: the quote check now has a version. `core/audit/quotes.VERSION`
   1.1.0 -> 1.2.0 is stored in every audit run's config (a rules-only re-run carries its evidence
-  run's) and printed in the report beside the rule version; a test pins the check's answers to
-  it, so a change without a bump fails. A quote now verifies only if it takes in a letter or digit
-  of the record's own fields (`cites_record`, and the stored re-check in
-  `core/audit/invariants.quote_is_verbatim`): "(no name)", "unknown" or "call from" alone fail,
-  "(no name): +1..." passes. `core/audit/quotes.record_text`, which still said calls had no
+  run's; a run with another quote verifier, such as the eval's stand-ins, names it) and printed
+  in the report beside the rule version; a test pins the check's answers to it, so a change
+  without a bump fails. A quote now verifies only if it takes in a letter or digit of the
+  record's own fields: at a word-aligned place in the pipeline, whatever verifier a run is
+  given (`cites_record`), and at any place in the stored re-check
+  (`core/audit/invariants.quote_is_verbatim`). "(no name)", "unknown" or "call from" alone
+  fail; "(no name): +1..." passes. `core/audit/quotes.record_text`, which still said calls had no
   citable text, now reads every record as the labeler sees it, as the pipeline already did.
 - Where: main once PR #76 merges (branch `claude/project-thread-01fybj`, from the "Audit our
   model scoring" thread). Includes the C17 font fix.
 - Verified: new regression tests (each fails without its fix), among them a contact and a call
   labeled "contradicts" and quoted as shown: before, the label was dropped and C01 went
   SUPPORTED; now CONTRADICTED. A test checks every case01 record reads the same for the labeler
-  and the check. `make check` green on the branch (1921 passed, lint clean); `make eval` same as
+  and the check. `make check` green on the branch (1923 passed, lint clean); `make eval` same as
   main (case01 1.00, 0 false supported; case02 aggregate 0.90); hostile run keeps 494 items and
   drops 4 labels (main 462 and 36), 0 supported. Offline, on stored answers: Opus case01 85% to
   95% (signed sheet), 60% to 70% (no sheet), 0 false supported; replayed through the new check,

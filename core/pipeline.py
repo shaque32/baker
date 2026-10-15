@@ -5,11 +5,12 @@ Every step is a component that implements a protocol from core/contracts.py. The
 only moves data between them, stores it, and refuses anything that breaks a rule:
 
 - A stance label whose quote fails verification is dropped and never stored as evidence. The
-  quote must pass Components.verify_quote at a place that takes in the record's own fields, not
-  only Baker's words or a placeholder such as "(no name)" (core.audit.quotes.cites_record).
-  The model calls components record (component.recorder.calls) are stored in model_calls, and
-  the call behind a failed quote is stored as quote_failed. Every run records the quote check's
-  version (core.audit.quotes.VERSION) in its config, as it records the rule version.
+  quote must pass Components.verify_quote and, whatever that verifier is, the product's own
+  rule: verbatim and word-aligned at a place that takes in the record's own fields, not only
+  Baker's words or a placeholder such as "(no name)" (core.audit.quotes.cites_record). The model
+  calls components record (component.recorder.calls) are stored in model_calls, and the call
+  behind a failed quote is stored as quote_failed. Every run records the quote check that ran
+  in its config, as it records the rule version (quote_check_version).
 - A label that names a different assumption or record than the one it was asked about is
   dropped.
 - The AI reviewer is optional and off by default (real_components(ai_review=False)): under
@@ -194,6 +195,15 @@ class Components:
 
     def rules_pending(self) -> bool:
         return self.rule is rules.decide_verdict and rules.RULE_VERSION.endswith("-stub")
+
+
+def quote_check_version(components: Components) -> str:
+    """The quote check a run applies: core.audit.quotes.VERSION with the product's verifier.
+    Another verifier (the eval's stand-ins) runs beside quotes.cites_record, which already
+    implies quotes.verify_quote, so it can only refuse more quotes; the version names it."""
+    if components.verify_quote is quotes.verify_quote:
+        return quotes.VERSION
+    return f"{quotes.VERSION} and {components.names()['verify_quote']}"
 
 
 REAL_MODULES = {
@@ -825,7 +835,8 @@ class _Run:
         if (
             rec is None
             or text is None
-            or not quotes.cites_record(label.quote, text, rec.own, self.c.verify_quote)
+            or not self.c.verify_quote(label.quote, text)
+            or not quotes.cites_record(label.quote, text, rec.own)
         ):
             self.flush_calls({label.model_call_id} if label.model_call_id else set())
             return self._drop()
@@ -1122,7 +1133,7 @@ def run_audit(
         "claim_order": [cl.id for cl in claims],
         "components": components.names(),
         **(config or {}),
-        "quote_check": quotes.VERSION,  # the check that ran; a caller's config cannot restate it
+        "quote_check": quote_check_version(components),  # a caller's config cannot restate it
     }
     with conn:
         conn.execute(

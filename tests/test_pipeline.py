@@ -40,6 +40,7 @@ from eval.pipeline_fakes import (
     InconclusiveCheck,
     PhraseLabeler,
     QuotedPhraseRetriever,
+    exact_substring,
     fake_components,
 )
 
@@ -364,12 +365,30 @@ def test_a_quote_of_only_bakers_words_or_a_placeholder_is_dropped(conn, other, q
             check_evidence(conn, [item.model_copy(update={"record_id": other, "quote": quote})])
 
 
-def test_every_run_records_the_quote_check_version(conn):
-    # Codex on #76: a caller's config must not overwrite the version of the check that ran.
-    c = comps()
+@pytest.mark.parametrize(
+    ("verifier", "recorded"),
+    [
+        (quotes.verify_quote, "1.2.0"),
+        (exact_substring, "1.2.0 and eval.pipeline_fakes.exact_substring"),
+    ],
+)
+def test_every_run_records_the_quote_check_that_ran(conn, verifier, recorded):
+    # Codex on #76: a caller's config must not overwrite the check that ran, and a run with
+    # another verifier must not claim the product's alone.
+    c = comps(verify_quote=verifier)
     pipeline.run_audit(conn, c, clock=_clock, claim_ids=["C01"], config={"quote_check": "9.9.9"})
-    assert pipeline.last_run(conn)["config"]["quote_check"] == quotes.VERSION == "1.2.0"
-    assert f"quote check {quotes.VERSION}" in render_report(conn)
+    assert quotes.VERSION == "1.2.0"
+    assert pipeline.last_run(conn)["config"]["quote_check"] == recorded
+    assert f"quote check {recorded}" in render_report(conn)
+
+
+def test_another_verifier_cannot_pass_a_quote_the_product_refuses(conn):
+    # The eval's stand-in matches inside words; the product's own rule still runs beside it.
+    shown = get_record(conn, CALL).text
+    cut = shown[1:9]  # starts and ends inside a word
+    assert exact_substring(cut, shown) and not quotes.verify_quote(cut, shown)
+    rec = get_record(conn, CALL)
+    assert not quotes.cites_record(cut, rec.text, rec.own)
 
 
 def test_reviewer_failure_is_a_dismissal_and_reviewer_never_sees_the_rationale(conn):
@@ -424,7 +443,7 @@ def test_supported_with_open_contradiction_stops_the_run(conn):
                 assumption_id=assumption.id,
                 record_id=candidate.record_id,
                 stance=Stance.CONTRADICTS,
-                quote=candidate.text[:5],
+                quote=candidate.text,  # the whole record: the product's quote rule runs too
                 rationale="test",
                 model_run_id="mr:fake-stance",
             )

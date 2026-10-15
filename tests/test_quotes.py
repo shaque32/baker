@@ -178,18 +178,12 @@ def test_a_quote_must_take_in_the_records_own_fields(record_id, quote, passes) -
     assert invariants.quote_is_verbatim(conn, quote, record_id) is passes
 
 
-def test_the_verifier_must_accept_the_quote_where_it_takes_in_the_records_own_fields() -> None:
+def test_the_quote_must_be_word_aligned_where_it_takes_in_the_records_own_fields() -> None:
     text, own = "outgoing Phone call from toby1 to unknown", ((0, 8), (9, 14), (25, 30))
     # "to" is a word only in Baker's " to ", and inside "toby1" it cuts a word: no place passes.
     assert verify_quote("to", text) and not quotes.cites_record("to", text, own)
     assert quotes.cites_record("toby1", text, own)
-
-    # The pipeline passes its own QuoteVerifier; a looser one is still held to the own fields.
-    def plain(q: str, t: str) -> bool:
-        return q in t
-
-    assert quotes.cites_record("tob", text, own, plain)
-    assert not quotes.cites_record("call from", text, own, plain)
+    assert not quotes.cites_record("tob", text, own)
 
 
 # The quote check's answers on a fixed set, pinned to its version (Grok review on #80, item 3:
