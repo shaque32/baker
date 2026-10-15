@@ -673,18 +673,25 @@ def render_report(conn: sqlite3.Connection, timeline: timeline_html.Settings | N
         for r in expert_rows:
             parts.append(
                 f"<tr><td>{r[0]}</td><td>{e(r[1])}</td><td>{e(r[2])}</td><td>{e(r[3])}</td>"
-                f"<td>{q(_compact(r[4]))}</td></tr>"
+                f"<td>{q(_compact(r[4], r[3]))}</td></tr>"
             )
         parts.append("</table>")
     parts.append("</body></html>")
     return "".join(parts)
 
 
-def _compact(payload_json: str) -> str:
+# Expert flags (core/review/flags.py) are feedback about Baker, not findings: the report names
+# each one but leaves out the expert's note, the record they named and the snapshot.
+FLAG_FIELDS_IN_REPORT = ("flag_id", "claim_id", "kind", "evidence_id", "should_be")
+
+
+def _compact(payload_json: str, action: str = "") -> str:
     try:
         p = json.loads(payload_json)
     except ValueError:
         return payload_json
+    if action.startswith("flag.") and isinstance(p, dict):
+        p = {k: p[k] for k in FLAG_FIELDS_IN_REPORT if k in p}
     return "; ".join(f"{k}: {v}" for k, v in p.items() if v not in (None, ""))
 
 

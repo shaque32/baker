@@ -19,6 +19,27 @@ Template:
 
 ---
 
+## 2026-10-15: Expert flags on the claim page and a pilot error log (Grok item 12)
+- Changed: an expert can flag a wrong label, a missed record or a verdict they disagree with, right
+  on the claim page (one click to open, one to save; no reason required). Flags are `flag.add` and
+  `flag.withdraw` entries in the hash-chained audit log, so no schema change. They never change a
+  verdict, an evidence status or anything the rules read. The case page downloads a redacted
+  summary (counts, enum labels, versions; no text, ids, names, notes or record references);
+  `baker flags export` writes the same file and `baker flag-log` combines summaries into a
+  per-pilot error log. The report lists flags without the expert's note. Why: Grok Product
+  review #80 item 12; pilots need a measured error record. Details in `docs/flags.md`.
+- Where: branch `claude/project-thread-hjfvlv`, PR not merged.
+- Verified: 8 new tests (`tests/test_flags.py`): no verdict, review or claim row changes, chain
+  still verifies, redaction checked against claim text, quotes, ids, names, file names and hashes,
+  refused cross-site posts, report hides notes, CLI export and log. Headless-Chromium smoke on
+  synthetic case01: flag, list, withdraw, download; no outside requests, Referrer-Policy
+  same-origin. `make check` results are in the PR description.
+- Open: no pilot has used it; rates are lower bounds because flagging is optional. Notes stay in
+  the case database and audit log, which are case content.
+- Affects: capabilities (expert feedback, error log). Privacy: nothing sent; the summary is
+  shared only by hand. Performance: none. Customer-facing claims: may say experts can flag
+  errors locally; no error-rate figure exists yet.
+
 ## 2026-10-15: Audit-log chain verified when a case opens (#74)
 - Changed: opening a case now verifies the audit-log hash chain (before, only at report build or
   encryption). A broken chain fails closed: Cases shows "Review blocked" with the first entry

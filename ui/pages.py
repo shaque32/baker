@@ -50,6 +50,7 @@ from core.report.restore import CSS as RESTORE_CSS
 from core.report.selection import CSS as SELECTION_CSS
 from core.report.selection import anchor as selection_anchor
 from core.report.selection import claim_note
+from core.review import flags as F
 from core.review.status import (
     AGAINST,
     HOLDINGS,
@@ -359,6 +360,7 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
         "<p class='muted'>A full audit (new evidence search and model labels) runs from "
         "<a href='/setup'>Set up and run</a>, in the background.</p>"
     )
+    out.append(flags_overview(conn))
     summary = audit_log_summary(conn)
     out.append(
         f"<h2>Audit log</h2><p>{summary['entries']} entries. Hash chain "
@@ -525,21 +527,183 @@ def _decide_form(page: Page, item: EvidenceItem, decided: bool, back: str) -> st
 
 
 def evidence_card(
-    conn: sqlite3.Connection, page: Page, item: EvidenceItem, last_kind: str | None, back: str
+    conn: sqlite3.Connection,
+    page: Page,
+    item: EvidenceItem,
+    last_kind: str | None,
+    back: str,
+    claim_id: str | None = None,
+    flagged: bool = False,
 ) -> str:
+    """claim_id: the claim page shows the card; it then carries the optional label flag."""
     stance_cls = "b-against" if item.stance in AGAINST else "b-open"
+    flag = ""
+    if claim_id is not None:
+        flag = _flag_label_form(page, claim_id, item, back)
     return (
         f"<div class='item' id='{e(item.id)}'>"
         f"<span class='badge {stance_cls}'>{e(STANCE_LABEL[item.stance])}</span>"
         f"{_tier_badge(item, last_kind)}"
-        f"<blockquote>{q(item.quote)}</blockquote>"
+        + ("<span class='badge b-flag'>flagged by you</span>" if flagged else "")
+        + f"<blockquote>{q(item.quote)}</blockquote>"
         f"<p>{record_line(conn, item.record_id)}<br>"
         f"<span class='mono'>{e(item.ref.source_id)} {e(item.ref.locator)} · "
         f"{e(item.record_id)}</span></p>"
         f"<p class='muted'>Model rationale (inferred): {e(item.rationale)}</p>"
         f"<p><strong>Review:</strong> {review_label(conn, item)} · "
         f"<a href='{e(link('/evidence', id=item.id))}'>See about 20 messages around it</a></p>"
-        f"{_decide_form(page, item, last_kind == 'expert', back)}</div>"
+        f"{_decide_form(page, item, last_kind == 'expert', back)}{flag}</div>"
+    )
+
+
+# ---------------------------------------------------------------- flags (optional feedback)
+
+FLAG_HELP = (
+    "Optional. A flag goes into your flag summary for Baker's error log. It changes no "
+    "verdict and nothing is sent."
+)
+
+
+def _choices(values: Iterable[str], labels: dict[str, str]) -> str:
+    return "".join(f"<option value='{e(v)}'>{e(labels.get(v, v))}</option>" for v in values)
+
+
+def _flag_fields(claim_id: str, kind: str) -> str:
+    return (
+        f"<input type='hidden' name='claim' value='{e(claim_id)}'>"
+        f"<input type='hidden' name='kind' value='{e(kind)}'>"
+    )
+
+
+def _note_field() -> str:
+    return (
+        f"<input type='text' class='wide' name='note' maxlength='{F.NOTE_MAX}' "
+        "placeholder='Note (optional)'><br>"
+    )
+
+
+def _flag_label_form(page: Page, claim_id: str, item: EvidenceItem, back: str) -> str:
+    labels = {**{s.value: STANCE_LABEL[s] for s in Stance}, F.NOT_SURE: "Not sure"}
+    return (
+        "<details class='flag'><summary>Flag this label</summary>"
+        + page.form(
+            "/flag/add",
+            _flag_fields(claim_id, F.WRONG_LABEL)
+            + f"<input type='hidden' name='evidence' value='{e(item.id)}'>"
+            "It should be: <select name='should_be'>"
+            + _choices(
+                [
+                    F.NOT_SURE,
+                    *(v for v in F.STANCE_CHOICES if v not in (item.stance.value, F.NOT_SURE)),
+                ],
+                labels,
+            )
+            + "</select> "
+            + _note_field()
+            + f"<button type='submit'>Save flag</button> <span class='muted'>{e(FLAG_HELP)}"
+            "</span>",
+            back=back,
+            anchor=item.id,
+        )
+        + "</details>"
+    )
+
+
+def _flag_verdict_form(page: Page, st: ClaimState, back: str) -> str:
+    now = st.decision.verdict.value if st.decision is not None else None
+    labels = {v.value: v.value.capitalize() for v in Verdict} | {F.NOT_SURE: "Not sure"}
+    return (
+        "<details class='flag'><summary>Flag: I disagree with this verdict</summary>"
+        + page.form(
+            "/flag/add",
+            _flag_fields(st.claim.id, F.VERDICT)
+            + "It should be: <select name='should_be'>"
+            + _choices(
+                [F.NOT_SURE, *(v for v in F.VERDICT_CHOICES if v not in (now, F.NOT_SURE))],
+                labels,
+            )
+            + "</select> "
+            + _note_field()
+            + f"<button type='submit'>Save flag</button> <span class='muted'>{e(FLAG_HELP)}"
+            "</span>",
+            back=back,
+            anchor="verdict",
+        )
+        + "</details>"
+    )
+
+
+def _flag_missed_form(page: Page, st: ClaimState, back: str) -> str:
+    return (
+        "<details class='flag' id='flag-missed'><summary>Flag a record Baker missed</summary>"
+        + page.form(
+            "/flag/add",
+            _flag_fields(st.claim.id, F.MISSED_RECORD)
+            + f"<input type='text' class='wide' name='record' maxlength='{F.RECORD_MAX}' "
+            "placeholder='Where it is, for example the file and row (optional)'><br>"
+            + _note_field()
+            + f"<button type='submit'>Save flag</button> <span class='muted'>{e(FLAG_HELP)}"
+            "</span>",
+            back=back,
+            anchor="flag-missed",
+        )
+        + "</details>"
+    )
+
+
+def _flag_target(f: F.Flag) -> str:
+    if f.kind == F.WRONG_LABEL:
+        was = e(f.at_flag.get("stance") or "?")
+        return (
+            f"label {was} on <a href='#{e(f.evidence_id)}'>this item</a>, should be "
+            f"{e(f.should_be)}"
+        )
+    if f.kind == F.VERDICT:
+        return f"verdict {e(f.at_flag.get('verdict') or 'none')}, should be {e(f.should_be)}"
+    return f"record: {said(f.record)}" if f.record else "a record (place not given)"
+
+
+def _flags_section(page: Page, items: list[F.Flag], back: str) -> str:
+    if not items:
+        return ""
+    rows = []
+    for f in items:
+        note = f" Note: {said(f.note)}" if f.note else ""
+        rows.append(
+            f"<li><strong>{e(F.KINDS[f.kind])}</strong>: "
+            + _flag_target(f)
+            + f".{note} <span class='muted'>{e(f.actor)}, {e(f.at_utc)}</span>"
+            + page.form(
+                "/flag/withdraw",
+                f"<input type='hidden' name='flag' value='{e(f.id)}'>"
+                "<button type='submit'>Withdraw</button>",
+                cls="inline",
+                back=back,
+                anchor="flags",
+            )
+            + "</li>"
+        )
+    return (
+        f"<h2 id='flags'>Your flags on this claim ({len(items)})</h2>"
+        f"<p class='muted'>{e(FLAG_HELP)}</p><ul class='flags'>{''.join(rows)}</ul>"
+    )
+
+
+def flags_overview(conn: sqlite3.Connection) -> str:
+    """The case page's flag line and the redacted summary download."""
+    active = F.active_flags(conn)
+    by_kind = Counter(f.kind for f in active)
+    counts = ", ".join(f"{F.KINDS[k].lower()} {n}" for k, n in sorted(by_kind.items()))
+    return (
+        "<h2 id='flags'>Flags for Baker's error log</h2>"
+        f"<p>{len(active)} flag(s){': ' + e(counts) if counts else ''}. Flag a wrong label, a "
+        "missed record or a verdict you disagree with on any claim page.</p>"
+        "<form method='get' action='/flags/summary.json' class='box'>"
+        "<input type='text' name='pilot' maxlength='60' placeholder='Pilot name (optional)'> "
+        "<button type='submit'>Download the redacted summary</button>"
+        "<p class='muted'>Nothing is sent. The file holds counts, labels and versions only: no "
+        "claim text, quotes, notes, names, record references or ids. Read it before you share "
+        "it.</p></form>"
     )
 
 
@@ -615,7 +779,10 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
             note = f" Note: {said(d.override_note)}" if d.override_note else ""
             kind = "overrode" if d.override_note is not None else "confirmed"
             out.append(f"<p>{e(d.confirmed_by)} {kind} this verdict.{note}</p>")
-        out.append(f"</div><div class='in'>{_verdict_forms(page, st, back)}")
+        out.append(
+            f"</div><div class='in'>{_verdict_forms(page, st, back)}"
+            f"{_flag_verdict_form(page, st, back)}"
+        )
     out.append("</div></div>")
     out.append(_alternatives(conn, st))
 
@@ -653,6 +820,8 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
         out.append("</table>")
 
     out.append("<h2>Evidence</h2>")
+    claim_flags = F.active_flags(conn, c.id)
+    flagged = {f.evidence_id for f in claim_flags if f.evidence_id}
     if st.unlabeled:
         out.append(f"<p class='muted'>{e(st.unlabeled)}</p>")
     if st.untested:
@@ -677,10 +846,16 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
             if a is not None and a.id != shown_on:
                 out.append(f"<p class='muted'>Assumption: {e(a.text)}</p>")
                 shown_on = a.id
-            out.append(evidence_card(conn, page, x, st.last_reviewer.get(x.id), back))
+            out.append(
+                evidence_card(
+                    conn, page, x, st.last_reviewer.get(x.id), back, c.id, x.id in flagged
+                )
+            )
     hidden = sum(1 for x in st.evidence if x.stance == Stance.IRRELEVANT)
     if hidden:
         out.append(f"<p class='muted'>{hidden} retrieved records were labeled irrelevant.</p>")
+    out.append(_flag_missed_form(page, st, back))
+    out.append(_flags_section(page, claim_flags, back))
 
     out.append(_edit_claim_form(page, st, back))
     states = claim_states(conn)

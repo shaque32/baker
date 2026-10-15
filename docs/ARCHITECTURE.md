@@ -69,6 +69,8 @@ core/
   report/             ReportRenderer; restore.py, selection.py, letter.py (full-extraction request),
                       hypotheses.py (other explanations, shared with the claim page)
   review/status.py    what each claim needs from the expert (shared by screen and report)
+  review/flags.py     optional expert flags (wrong label, missed record, verdict disagreement):
+                      audit-log entries only, never touch verdicts; redacted summary and error log
   review/redecide.py  re-run the verdict rules after expert review, no model
   casework/           case folders and imports, background audit and claim-proposal jobs,
                       the model check, keeping the computer awake (used by the screen)

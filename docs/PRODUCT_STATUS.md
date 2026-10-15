@@ -204,6 +204,10 @@ report only) 0.90 accuracy, 0 false supported. See section 10 for today's run.
    background runs, progress, per-claim commits and resume.
 3. **Expert review screen** (`ui/`, local only, no scripts): claims, evidence accept or dismiss,
    "Support found: do you agree?" before confirmation, verdict confirm or override, notes.
+   Branch only (Grok item 12, PR from `claude/project-thread-hjfvlv`, not merged): optional
+   expert flags on the claim page (wrong label, missed record, verdict disagreement), stored as
+   audit-log entries, never changing a verdict; a redacted summary download and `baker flag-log`
+   for a per-pilot error log (`docs/flags.md`). Nothing is sent.
 4. **Analysis pages (code only, never change verdicts):** Identities (proposed account-to-person
    links, expert confirms), Timeline check and Gaps, Selection audit (what the document left
    out), Context Restore (find pasted exhibit quotes, draft the full-extraction request), Other
@@ -277,6 +281,10 @@ Before a first real case:
 3. Finish #68 (opt-in cloud, chosen by Arsh 2026-10-15 07:10Z): a signed told-frame prompt fix
    that passes on new items, Arsh's "approved" on its CLAUDE.md wording, then merge.
 4. Sign the Windows installer (Azure code signing pending).
+
+Measuring errors in a pilot: on the flags branch (not merged), experts can flag wrong labels,
+missed records and verdicts they disagree with; a redacted summary they choose to share feeds a
+per-pilot error log. Rates from it are lower bounds, since flagging is optional. Unused so far.
 
 No pilot has started and no expert has used Baker on a real case (per project records; this
 cannot be checked from code).
