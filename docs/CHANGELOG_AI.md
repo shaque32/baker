@@ -19,7 +19,7 @@ Template:
 
 ---
 
-## 2026-10-15: Expert flags on the claim page and a pilot error log (Grok item 12)
+## 2026-10-15: Expert flags on the claim page and a pilot error log (#81, Grok item 12)
 - Changed: an expert can flag a wrong label, a missed record or a verdict they disagree with, right
   on the claim page (one click to open, one to save; no reason required). Flags are `flag.add` and
   `flag.withdraw` entries in the hash-chained audit log, so no schema change. They never change a
@@ -28,7 +28,7 @@ Template:
   `baker flags export` writes the same file and `baker flag-log` combines summaries into a
   per-pilot error log. The report lists flags without the expert's note. Why: Grok Product
   review #80 item 12; pilots need a measured error record. Details in `docs/flags.md`.
-- Where: branch `claude/project-thread-hjfvlv`, PR not merged.
+- Where: branch `claude/project-thread-hjfvlv`, PR #81, not merged.
 - Verified: 8 new tests (`tests/test_flags.py`): no verdict, review or claim row changes, chain
   still verifies, redaction checked against claim text, quotes, ids, names, file names and hashes,
   refused cross-site posts, report hides notes, CLI export and log. Headless-Chromium smoke on

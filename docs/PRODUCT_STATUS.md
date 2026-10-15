@@ -204,7 +204,7 @@ report only) 0.90 accuracy, 0 false supported. See section 10 for today's run.
    background runs, progress, per-claim commits and resume.
 3. **Expert review screen** (`ui/`, local only, no scripts): claims, evidence accept or dismiss,
    "Support found: do you agree?" before confirmation, verdict confirm or override, notes.
-   Branch only (Grok item 12, PR from `claude/project-thread-hjfvlv`, not merged): optional
+   Branch only (Grok item 12, PR #81, not merged): optional
    expert flags on the claim page (wrong label, missed record, verdict disagreement), stored as
    audit-log entries, never changing a verdict; a redacted summary download and `baker flag-log`
    for a per-pilot error log (`docs/flags.md`). Nothing is sent.
@@ -282,7 +282,7 @@ Before a first real case:
    that passes on new items, Arsh's "approved" on its CLAUDE.md wording, then merge.
 4. Sign the Windows installer (Azure code signing pending).
 
-Measuring errors in a pilot: on the flags branch (not merged), experts can flag wrong labels,
+Measuring errors in a pilot: on PR #81 (not merged), experts can flag wrong labels,
 missed records and verdicts they disagree with; a redacted summary they choose to share feeds a
 per-pilot error log. Rates from it are lower bounds, since flagging is optional. Unused so far.
 
