@@ -44,6 +44,9 @@ def call_text(
     to_id: str | None,
     duration_s: int | None,
 ) -> str:
+    """A call as the labeler is shown it; its time is on its context line. A quote about a call
+    is checked against this same text (core.audit.invariants.record_text), so a quote copied from
+    what the labeler saw can pass."""
     dur = "unknown" if duration_s is None else f"{duration_s} s"
     return (
         f"{direction} {app} call from {_ident(conn, from_id)} to {_ident(conn, to_id)},"

@@ -319,6 +319,9 @@ def record_line(conn: sqlite3.Connection, record_id: str) -> str:
                 f"as printed {q(r[1] or 'not given')}"
             )
     text = invariants.record_text(conn, record_id)
+    if text is not None and record_id.startswith("call:"):
+        r = conn.execute("SELECT ts_utc, ts_raw FROM calls WHERE id = ?", (record_id,)).fetchone()
+        return f"{q(text)}; UTC {e(r[0] or 'not given')}, as printed {q(r[1] or 'not given')}"
     return q(text) if text is not None else "record not found"
 
 

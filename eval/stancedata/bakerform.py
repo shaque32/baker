@@ -2,7 +2,8 @@
 
 Baker's stance step reads `Assumption.text`, rendered by the product's fixed templates
 (core/audit/assumptions.py), and each record as its database stores it: a message body, a call
-or contact row rendered by core/audit/invariants.record_text, or an attachment's file name. The
+or contact row rendered by core/audit/invariants.record_text, or an attachment's file name (a
+call row here still follows guide rule 28, see call_text). The
 small model reads them through eval/stancemodel's adapter, which turns core/audit/context lines
 into item lines. These helpers write the same strings, so a generated item in Baker's wording
 matches what the adapter builds from a real case database; tests/test_bakerform.py checks each
@@ -125,7 +126,10 @@ def contact_text(name: str | None, identifier: str) -> str:
 def call_text(
     direction: str, frm: str | None, to: str | None, ts_raw: str | None, duration_s: int | None
 ) -> str:
-    """A call as core.audit.invariants.record_text cites it."""
+    """A call row as the signed guide's rule 28 writes it, with the time as the report printed it.
+    Since #76 Baker shows and checks a call as core.enrich.records.call_text instead ("outgoing
+    Phone call from ... to ..., duration 84 s"); aligning these rows is for the "Custom model for
+    Baker" thread."""
     return f"{direction} call from {frm or '?'} to {to or '?'} at {ts_raw or '?'}, {duration_s}s"
 
 

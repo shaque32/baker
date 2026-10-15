@@ -54,7 +54,7 @@ from core.contracts import (
     VerdictDecision,
     verdict_id,
 )
-from core.enrich.records import contact_text
+from core.enrich.records import get_record
 
 ACCEPTED_STATUSES = (EvidenceStatus.AI_ACCEPTED, EvidenceStatus.ACCEPTED)
 
@@ -79,8 +79,9 @@ def record_text(conn: sqlite3.Connection, record_id: str) -> str | None:
 
     Messages cite their original body and attachments their file name. Calls and contacts have
     no body, so their text is a fixed rendering of stored fields; a quote from them can only cite
-    those fields. A contact reads "name: number", exactly as retrieval shows it to the labeler
-    (core.enrich.records.contact_text).
+    those fields. Both read exactly as retrieval shows them to the labeler (core.enrich.records):
+    a contact "name: number", a call "outgoing Phone call from +1... to +1..., duration 84 s",
+    whose time is on its context line, not in this text.
     """
     kind = record_id.split(":", 1)[0]
     if kind == "msg":
@@ -91,22 +92,9 @@ def record_text(conn: sqlite3.Connection, record_id: str) -> str | None:
             "SELECT file_name FROM attachments WHERE id = ?", (record_id,)
         ).fetchone()
         return row[0] if row else None
-    if kind == "contact":
-        row = conn.execute(
-            "SELECT name, identifier FROM contacts WHERE id = ?", (record_id,)
-        ).fetchone()
-        return contact_text(row[0], row[1]) if row else None
-    if kind == "call":
-        row = conn.execute(
-            "SELECT c.direction, fa.identifier, ta.identifier, c.ts_raw, c.duration_s"
-            " FROM calls c LEFT JOIN accounts fa ON fa.id = c.from_account_id"
-            " LEFT JOIN accounts ta ON ta.id = c.to_account_id WHERE c.id = ?",
-            (record_id,),
-        ).fetchone()
-        if row is None:
-            return None
-        direction, frm, to, raw, dur = row
-        return f"{direction} call from {frm or '?'} to {to or '?'} at {raw or '?'}, {dur}s"
+    if kind in ("contact", "call"):
+        rec = get_record(conn, record_id)
+        return rec.text if rec else None
     return None
 
 

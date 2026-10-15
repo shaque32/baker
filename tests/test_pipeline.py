@@ -206,13 +206,21 @@ def test_a_quote_copied_from_the_contact_as_shown_is_kept(conn):
     assert record_text(conn, kept.record_id) == get_record(conn, kept.record_id).text
 
 
-def test_a_contact_that_contradicts_quoted_as_shown_keeps_the_claim_from_supported(conn):
+def test_every_record_reads_the_same_for_the_labeler_and_the_quote_check(conn):
+    for table in ("messages", "calls", "contacts", "attachments"):
+        for (rid,) in conn.execute(f"SELECT id FROM {table}"):  # noqa: S608
+            assert record_text(conn, rid) == get_record(conn, rid).text, rid
+
+
+@pytest.mark.parametrize("other", ["contact:item1:Contacts!4#1", "call:item1:Call Log!10"])
+def test_a_record_that_contradicts_quoted_as_shown_keeps_the_claim_from_supported(conn, other):
     # Regression (#69): the quote check drops a label before its stance is used. While it read
-    # contacts differently from what the labeler saw, a "contradicts" copied from a contact was
-    # dropped, and a claim with other expert-accepted support could go SUPPORTED.
-    other = "contact:item1:Contacts!4#1"
+    # contacts and calls differently from what the labeler saw, a "contradicts" copied from one
+    # was dropped, and a claim with other expert-accepted support could go SUPPORTED.
+    table = {"contact": "contacts", "call": "calls"}[other.split(":", 1)[0]]
     source_id, locator = conn.execute(
-        "SELECT source_id, locator FROM contacts WHERE id = ?", (other,)
+        f"SELECT source_id, locator FROM {table} WHERE id = ?",  # noqa: S608
+        (other,),
     ).fetchone()
 
     class PlusContact(QuotedPhraseRetriever):
@@ -250,7 +258,7 @@ def test_a_contact_that_contradicts_quoted_as_shown_keeps_the_claim_from_support
     (against,) = [e for e in items(conn) if e.stance == Stance.CONTRADICTS]
     assert against.record_id == other and result.dropped_labels == 0
     assert result.decisions[0].verdict == Verdict.CONTRADICTED
-    # The contact is all that stands between this claim and SUPPORTED: only an expert removes it.
+    # The record is all that stands between this claim and SUPPORTED: only an expert removes it.
     actions.decide_evidence(conn, against.id, EvidenceStatus.DISMISSED, EXPERT, "Another person.")
     assert run().decisions[0].verdict == Verdict.SUPPORTED
 
