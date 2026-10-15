@@ -125,7 +125,9 @@ Code that follows once this is signed (not frozen): core/audit/review.py fills {
 readable.assumption_text(assumption, case_names(conn)), and ReviewContext in
 core/audit/context.py passes the same CaseNames to render_for, as the stance labeler does.
 
-## 2026-10-15 claude/project-thread-a2fjkc: cloud first, local behind it (stance labeling only)
+## 2026-10-15 claude/project-thread-a2fjkc: cloud AI by per-case opt-in, local behind it (stance labeling only)
+Positioning since 2026-10-15 07:10Z (Arsh): local by default, cloud AI only when the case allows it
+and the expert opts in. The signed wording below already says that ("off until the expert attests").
 SIGNED by Arsh on 2026-10-15 ("approve" at 04:16Z in the thread "Cloud-first Opus with offline
 fallback"). To apply to CLAUDE.md by a human; the code on this branch relies on it
 (core/llm/cloud.py, core/casework/cloud.py, the stance labeler's fallback).

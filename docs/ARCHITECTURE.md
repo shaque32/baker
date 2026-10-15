@@ -2,7 +2,7 @@
 
 Baker is a local-first desktop app. A Python core does the work on the expert's computer; a
 Tauri UI comes later, after the audit engine scores well on the eval set. A CLI comes first.
-One step may go to the cloud, per case: stance labeling (see "Cloud first, local behind it").
+One step may go to the cloud, per case: stance labeling (see "Local by default, cloud by opt-in").
 
 ## Pipeline
 
@@ -116,7 +116,9 @@ tests/
   prompt version, parameters and seed. Outputs are stored, not regenerated.
 - **Audit log.** Append-only; each entry hashes the previous entry's hash plus its own payload.
 
-## Cloud first, local behind it
+## Local by default, cloud by opt-in
+
+Baker runs entirely on the expert's computer unless the expert opts a case in to cloud AI.
 
 Stance labels come from Claude (Opus 5.5, medium effort by default) for a case where all hold:
 the expert attested at case setup that its protective order allows cloud AI; the case is not

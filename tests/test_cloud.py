@@ -1,4 +1,4 @@
-"""Cloud first, local behind it: the cloud stance labeler, its fallback and the per-case choice.
+"""Cloud AI by per-case opt-in: the cloud stance labeler, its fallback and the per-case choice.
 
 No network: the API is a stand-in client and the local model a scripted fake.
 """
@@ -441,7 +441,7 @@ def test_the_setup_page_attests_per_case_and_keeps_the_key_local(tmp_path, monke
     post("/cloud/case", allowed="1")
     assert "cloud" not in app.case.settings  # kept in the case database, not case.json
     page = get("/setup").text
-    assert "Cloud first" in page and "Cloud labels on" in page
+    assert "Cloud AI on for this case" in page and "Cloud labels on" in page
 
     post("/cloud/case", allowed="1", csam="1")
     page = get("/setup").text

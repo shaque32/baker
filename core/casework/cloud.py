@@ -1,7 +1,7 @@
 """Whether a case's stance labels may come from the cloud model, decided per case.
 
-Cloud first, never cloud only. A case uses the cloud stance labeler (core/llm/cloud.py) only
-when all of these hold, and otherwise the local model labels it, exactly as before:
+Local by default; cloud only by opt-in. A case uses the cloud stance labeler (core/llm/cloud.py)
+only when all of these hold, and otherwise the local model labels it, exactly as before:
 1. The expert attested, for this case, that its protective order allows cloud AI.
 2. The expert did not mark the case as possibly containing CSAM. Such material stays in the
    government's control (18 U.S.C. 3509(m)), so a marked case never uses cloud, whatever (1) says.

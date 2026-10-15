@@ -306,7 +306,7 @@ def open_run(
 
 
 class FallbackPort:
-    """Cloud first, local model behind it: the stance labeler's port for a cloud case.
+    """The stance labeler's port for a case that opted in to cloud AI: cloud model, local behind it.
 
     run_id names the run that will answer the next call, so every call is recorded under the
     model that actually answered it, and each evidence item's model_run_id says which model

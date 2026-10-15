@@ -226,9 +226,9 @@ def audit_job(
     model_check: ModelCheckFn | None,
     ai_review: bool = False,
     label_all: bool = False,
-    cloud_first: bool = False,
+    cloud_opt_in: bool = False,
 ) -> Callable[[Job], None]:
-    """cloud_first: the case's stance labels come from the cloud model. The local model check
+    """cloud_opt_in: the case's stance labels come from the cloud model. The local model check
     still gates the start: assumption filling (and the AI reviewer) run on the local model."""
 
     def run(job: Job) -> None:

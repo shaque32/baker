@@ -1307,7 +1307,9 @@ def cloud_section(
     csam = saved.get("csam") is True
     out = [
         "<div id='cloud'><h3>Cloud AI for this case</h3>",
-        f"<p><strong>{'Cloud first' if use else 'Local only'}.</strong> {e(why)}</p>",
+        f"<p><strong>{'Cloud AI on for this case' if use else 'Local only'}.</strong> {e(why)}</p>",
+        "<p class='muted'>Off by default: everything runs on this computer unless you opt in "
+        "for this case below.</p>",
         "<p class='muted'>With cloud AI, Baker sends one question at a time to Anthropic under "
         "your own key: the assumption being tested, one record, the messages around it, the "
         "claim, and for a group chat its member list (up to 20 accounts, with the names you "

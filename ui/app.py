@@ -867,7 +867,7 @@ class App:
                 order=order,
                 components_for=components_for,
                 model_check=model_check_once if check is not None else None,
-                cloud_first=choice.use,
+                cloud_opt_in=choice.use,
                 ai_review=f.get("ai_review") == "1",
                 label_all=f.get("label_all") == "1",
             ),
