@@ -23,10 +23,11 @@ Template:
 - Changed: opening a case now verifies the audit-log hash chain (before, only at report build or
   encryption). A broken chain fails closed: Cases shows "Review blocked" with the first entry
   that doesn't match, an encrypted case locks again, CLI review commands stop and write nothing.
-  `verify-log` and report still read the case. (Grok Product item 5.)
-- Where: branch `claude/project-thread-fjea4m`, PR #74, not merged.
-- Verified (as reported by the owning thread): 11 new tests, 9 fail on main; 1868 pass, only the
-  known test #65 fixes; headless-Chromium smoke passed; eval unchanged (case01 1.00, 0 false
+  `verify-log` and report still read the case. Re-opening the case already open after it was
+  tampered with closes it (Codex finding). (Grok Product item 5.)
+- Where: main, with PR #74.
+- Verified: 13 new tests (`tests/test_chain_on_open.py`), 11 fail on main; full suite passes but
+  for the known test #65 fixes; headless-Chromium smoke passed; eval unchanged (case01 1.00, 0 false
   supported, hostile PASS).
 - Open: removing the newest entries is still not detected (a truncated chain verifies); this
   predates the PR.
