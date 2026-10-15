@@ -224,6 +224,24 @@ def test_micro_batches_cover_the_batch_within_the_token_budget() -> None:
     assert micro_batches([0, 1], [400, 500], 100) == [[0], [1]]  # one item always fits alone
 
 
+def test_item_weights_scale_only_the_stance_loss() -> None:
+    torch = pytest.importorskip("torch")
+    from eval.stancemodel.model import loss_sums
+
+    logits = torch.tensor([[2.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0]])
+    start = end = torch.zeros((2, 5))
+    batch = {"labels": torch.tensor([1, 1]), "span_start": torch.tensor([-100, 2]),
+             "span_end": torch.tensor([-100, 3])}  # fmt: skip
+    plain_stance, plain_span = loss_sums(logits, start, end, batch)
+    weighted_stance, weighted_span = loss_sums(
+        logits, start, end, {**batch, "weights": torch.tensor([1.0, 3.0])}
+    )
+    per_item = torch.nn.functional.cross_entropy(logits, batch["labels"], reduction="none")
+    assert torch.isclose(plain_stance, per_item.sum())
+    assert torch.isclose(weighted_stance, per_item[0] + 3 * per_item[1])
+    assert torch.equal(plain_span, weighted_span)
+
+
 def _two_phones(c: sqlite3.Connection) -> None:
     """Phone A (dev:a, owner stipulated and confirmed as p:ann) and phone B (dev:b, owner only
     proposed as p:ben). Carl's number is linked to p:carl (confirmed); Dee's only proposed."""

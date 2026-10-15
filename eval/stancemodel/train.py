@@ -111,6 +111,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--warmup", type=float, default=0.06)
     ap.add_argument("--weight-decay", type=float, default=0.01)
     ap.add_argument("--span-weight", type=float, default=0.5)
+    ap.add_argument(
+        "--trap-weight", type=float, default=1.0,
+        help="scale the stance loss of trap items (items whose trap field is set)",
+    )  # fmt: skip
     ap.add_argument("--dropout", type=float, default=0.1)
     ap.add_argument("--max-len", type=int, default=384)
     ap.add_argument("--max-tokens", type=int, default=2048, help="padded tokens per micro-batch")
@@ -158,6 +162,7 @@ def main(argv: list[str] | None = None) -> int:
     train_enc = [encode(it, tok, args.max_len) for it in train_items]
     dev_enc = [encode(it, tok, args.max_len) for it in dev_items]
     lengths = [len(e.input_ids) for e in train_enc]
+    item_weight = [args.trap_weight if it.get("trap") else 1.0 for it in train_items]
     plan = batch_plan(lengths, args.batch, args.epochs, args.seed)
     total = len(plan)
     per_epoch = math.ceil(len(train_enc) / args.batch)
@@ -225,6 +230,8 @@ def main(argv: list[str] | None = None) -> int:
         stance_total = span_total = 0.0
         for piece in micro_batches(idx, lengths, args.max_tokens):
             batch = collate([train_enc[i] for i in piece], tok.pad_token_id)
+            if args.trap_weight != 1.0:
+                batch["weights"] = torch.tensor([item_weight[i] for i in piece])
             logits, start, end = model(
                 batch["input_ids"], batch["attention_mask"], batch["record_mask"]
             )

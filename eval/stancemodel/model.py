@@ -92,8 +92,12 @@ def loss_sums(
     batch: dict[str, torch.Tensor],
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Summed stance loss over the items, and summed span loss over the items that have a
-    quote (the mean of its start and end losses), so micro-batches add up to one batch."""
-    stance = nn.functional.cross_entropy(logits, batch["labels"], reduction="sum")
+    quote (the mean of its start and end losses), so micro-batches add up to one batch. A
+    "weights" entry in the batch scales each item's stance loss."""
+    per_item = nn.functional.cross_entropy(logits, batch["labels"], reduction="none")
+    if "weights" in batch:
+        per_item = per_item * batch["weights"]
+    stance = per_item.sum()
     has_span = batch["span_start"] != NO_SPAN
     if has_span.any():
         span = 0.5 * (
