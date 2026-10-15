@@ -25,7 +25,7 @@ Template:
   quotes are no longer discarded. The synthetic case01 affidavit PDF embeds DejaVu Sans for
   lines Helvetica can't draw ("Катя" read as boxes).
 - Where: local only, committed in the "Audit our model scoring" thread, not pushed; expected as
-  its own PR (likely #71). Not checked in the repo by this doc's owner.
+  its own PR (number not yet assigned; #71 is this docs PR). Not checked in the repo by this doc's owner.
 - Verified (as reported by the owning thread): 2 new regression tests; suite and lint pass except
   the known #65 test; `make eval` same as main (case01 1.00, 0 false supported; case02 aggregate
   0.90), hostile run keeps 15 more labels with 0 supported. Opus replay: case01 85% to 95%,
@@ -82,7 +82,7 @@ Template:
 ## 2026-10-15: Source-of-truth docs (this change)
 - Changed: added `docs/PRODUCT_STATUS.md`, this log, and a CLAUDE.md rule to keep both current,
   so Grok Product and coding agents read one verified description of Baker.
-- Where: branch `claude/project-thread-d7xp9z`, PR open (not merged). CLAUDE.md wording signed by
+- Where: PR #71 (branch `claude/project-thread-d7xp9z`, not merged). CLAUDE.md wording signed by
   Arsh ("approved", 2026-10-15 07:19Z).
 - Verified: facts checked against main `7a14437`, open PR branches and recorded bench runs.
   Section 12 checks the six claims in the proposed positioning line, with file:line.
