@@ -4,9 +4,9 @@ The technical source of truth for what Baker does today. Every statement is chec
 tests or recorded runs. Where something exists only on an unmerged branch, it says so.
 
 - **As of:** 2026-10-15 07:20Z (updated as other threads report changes)
-- **main:** `7a14437` (merge of #63, 2026-10-14 23:28Z)
-- **Verified on:** a clean checkout of main (branch `claude/project-thread-d7xp9z`, identical to
-  main, no local changes)
+- **main:** `ae8f24e` (merges of #64, #65, #66, #67, 2026-10-15 07:22Z)
+- **Verified on:** main `7a14437` first, then re-checked after #64 to #67 merged (they changed
+  only `core/audit/assumption_filler.py` in `core/`, plus tests and probe gold)
 - **Rule version:** 0.2.1 (`core/audit/rules.py`). **Contracts:** 0.3.0 (`core/contracts.py`).
 - **Signed prompts on main:** stance v1.1, reviewer v1.1, claims v1.0, assumptions v1.0
   (`core/audit/prompts/`)
@@ -129,8 +129,7 @@ verdict is expert-confirmed. Display tiers: observed, derived, inferred, ai_revi
 
 ## 7. Benchmarks and hardware
 
-All on synthetic data. The probe is the signed stance set (`eval/gold/probe/`: 88 items on main,
-105 on branch #64); case01 is the 20-claim synthetic case with signed gold.
+All on synthetic data. The probe is the signed stance set (`eval/gold/probe/`: 105 items on main since #64); case01 is the 20-claim synthetic case with signed gold.
 
 **Stance labelers, old 88-item probe (v0.3 labels before the follow-up, prompt v1.1, product layout)**
 Source: `/mnt/project-files/baker/cloud-bench/2026-10-14c/RESULTS.md`, preregistered.
@@ -145,7 +144,7 @@ Source: `/mnt/project-files/baker/cloud-bench/2026-10-14c/RESULTS.md`, preregist
 
 The table above used the old 88-item set with only 8 gold contradicts. **Superseded** by the
 signed follow-up (P049, P066-P069 relabeled complicates; P089-P105 added; 95 gated items, 11 real
-contradicts), signed by Arsh 2026-10-15 and committed on branch #64 (`737a0ce`, not merged).
+contradicts), signed by Arsh 2026-10-15 and merged in #64.
 Opus on that set (`/mnt/project-files/baker/cloud-bench/2026-10-15/RESULTS.md`, preregistered,
 $5.21):
 
@@ -210,9 +209,11 @@ report only) 0.90 accuracy, 0 false supported. See section 10 for today's run.
    new cases encrypted by default), hash-chained audit log, HTML report, `baker demo`, Mac
    install script, Windows installer (unsigned), `baker model-check`.
 
-Branch only: opt-in cloud Opus stance labels (#68), "after <date>" window fix and stricter time ranges (#66; proposes rules 0.2.2, unsigned), go-bar scorer
-fixes and the signed probe follow-up (#64), red-main test fix (#65), flaky encryption test fix
-(#67), small stance model (#50). PR #70 is an empty Grok Product review PR, never merged.
+Merged 2026-10-15: stricter stated time windows, "after <date>" starts the next day (#66; rules
+still 0.2.1, a 0.2.2 bump is proposed and unsigned), go-bar scorer fixes and the signed probe
+follow-up (#64), red-main test fix (#65), flaky encryption test fix (#67).
+Branch only: opt-in cloud Opus stance labels (#68), small stance model (#50). PR #70 is an empty
+Grok Product review PR, never merged.
 
 ## 9. Known limitations
 
@@ -224,19 +225,17 @@ fixes and the signed probe follow-up (#64), red-main test fix (#65), flaky encry
    A fix for contacts is committed locally in another thread, not pushed (calls still differ).
 2. **Opus's wrong "contradicts" on told-frame and undated denials** (section 7). Matters for
    #68: it would make wrong CONTRADICTED verdicts until a signed prompt fix lands.
-3. **Main CI is red** since #63 merged: one test, `test_bench_copy_of_v1_1_is_the_signed_text`
-   (test only, no product effect). #65 fixes it; #66, #67 and #68 carry the same fix.
-4. **Real-data formats unverified.** UFDR and AXIOM readers were built from documentation and
+3. **Real-data formats unverified.** UFDR and AXIOM readers were built from documentation and
    synthetic samples. No real extraction has been imported.
-5. **Local runtime per case unknown on current code** (section 7). The local 14B also misses the
+4. **Local runtime per case unknown on current code** (section 7). The local 14B also misses the
    probe's moved-trap bar.
-6. **Evidence recall is modest.** Opus case01 surfaced key evidence for 35% of claims needing it;
+5. **Evidence recall is modest.** Opus case01 surfaced key evidence for 35% of claims needing it;
    14 of 20 claims depend on the expert finding or accepting key evidence.
-7. **Other gaps:** no translation in the pipeline; no embeddings; Windows installer unsigned; the
+6. **Other gaps:** no translation in the pipeline; no embeddings; Windows installer unsigned; the
    cloud key on #68 is an owner-only plain file, not encrypted with the case keys; experts still
    need the 14B installed even with cloud on.
 
-## 10. Tests and results (this verification, main `7a14437`)
+## 10. Tests and results (main `7a14437`, before #64 to #67)
 
 Run 2026-10-15 in a Linux cloud container (Python 3.13; the project targets 3.12):
 
@@ -249,7 +248,9 @@ Run 2026-10-15 in a Linux cloud container (Python 3.13; the project targets 3.12
 | Hostile red team | PASS: none of the 7 structural claims went supported |
 | case02 hidden case (aggregate, report only) | accuracy 0.90, 0 false supported |
 
-`make check` stops at the failing test, so the eval was run separately with `make eval`.
+`make check` stops at the failing test, so the eval was run separately with `make eval`. #65
+(merged) fixes that test. A full local re-run on `ae8f24e` was not done; CI on PR #71 (main plus
+docs) is the current check.
 
 CI (GitHub Actions `checks`, Ubuntu and Windows, local clock set to Pacific), checked
 06:35Z: #50, #64, #65, #67 and #68 were green on their heads; #66 was green before its latest
@@ -262,19 +263,18 @@ the Mac and Windows installers, and a pilot kit (data handling, limitations, agr
 feedback form, demo script, go/kill scorecard) in `/mnt/project-files/baker/pilot/`.
 
 Before a first real case:
-1. Merge #65, then the remaining green PRs, so main is green.
-2. Fix issue #69 (quote check), then time a full local case01 on the Mac for a real runtime.
-3. Check a real UFDR and AXIOM export with `baker ufdr-check` (needs a pilot expert's closed case).
-4. Finish #68 (opt-in cloud, chosen by Arsh 2026-10-15 07:10Z): a signed told-frame prompt fix
+1. Fix issue #69 (quote check), then time a full local case01 on the Mac for a real runtime.
+2. Check a real UFDR and AXIOM export with `baker ufdr-check` (needs a pilot expert's closed case).
+3. Finish #68 (opt-in cloud, chosen by Arsh 2026-10-15 07:10Z): a signed told-frame prompt fix
    that passes on new items, Arsh's "approved" on its CLAUDE.md wording, then merge.
-5. Sign the Windows installer (Azure code signing pending).
+4. Sign the Windows installer (Azure code signing pending).
 
 No pilot has started and no expert has used Baker on a real case (per project records; this
 cannot be checked from code).
 
 ## 12. Customer-facing claims
 
-Checked 2026-10-15 against main `7a14437` and branch #68 (`24eda3e`), for the proposed line:
+Checked 2026-10-15 against main `7a14437` (line numbers unchanged on `ae8f24e`) and branch #68 (`24eda3e`), for the proposed line:
 "Baker tests the government's specific claims; versioned rules decide verdicts; nothing is
 supported until your expert accepts it; runs locally with no network calls."
 

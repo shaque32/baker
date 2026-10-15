@@ -40,9 +40,9 @@ Template:
 - Changed: "after March 3" now starts on March 4 (it started on March 3, which could produce a
   false contradicted). Offsets like "two days after", and weekdays that don't match the date, are
   refused, so those claims stay unproven. Code: `core/audit/assumption_filler.py`.
-- Where: branch #66, not merged.
+- Where: main (merged 2026-10-15 07:22Z, `6b859fe`).
 - Verified: new tests in `tests/test_assumption_filler.py`; all 3 Codex findings fixed (per the
-  owning thread); CI pending on the latest push.
+  owning thread); CI green before merge.
 - Open: the owning thread proposes rules version 0.2.2 (no rule logic change), pending Arsh's
   sign-off; the branch still says 0.2.1. Verdicts decided under 0.2.1 can differ after this.
 - Affects: capabilities (which claims get a time window), verdicts on time-bound claims.
@@ -52,7 +52,7 @@ Template:
   precision 73% (bar 90%) in both arms, every miss a told-frame or undated denial. A grading audit
   found the quote check renders contacts and calls differently from what the model is shown.
 - Where: results in `/mnt/project-files/baker/cloud-bench/2026-10-15/` (RESULTS.md,
-  GRADING_AUDIT.md); signed labels on branch #64 (`737a0ce`, not merged); bug is on main, open
+  GRADING_AUDIT.md); signed labels on main via #64; bug is on main, open
   as issue #69 (no fix PR yet).
 - Verified: preregistered run ($5.21); blind readers 12/12 with the signed labels; offline replay
   shows the #69 fix lifts Opus case01 from 85% to 95%, 0 false supported.
@@ -124,13 +124,13 @@ Template:
   precision until a prompt fix (not yet re-run).
 - Affects: none until #68 merges.
 
-## 2026-10-15: Fixes waiting to merge (#64, #65, #67)
+## 2026-10-15: Fixes merged (#64, #65, #67)
 - Changed: #65 fixes main's red test (test only). #67 fixes a flaky recovery-key test. (#66 has
   its own entry above.) #64 fixes the
   go-bar scorer and holds the probe follow-up proposal for guide v0.3.
-- Where: branches, not merged. All CI green.
+- Where: main (merged 2026-10-15 07:21Z to 07:22Z). #65 fixes the v1.1 test that turned main red.
 - Verified: CI green on each head.
-- Open: #64's signed probe relabels are not yet applied to `eval/gold/probe/`.
+- Open: none. The signed probe (105 items) is on main via #64.
 - Affects: test or eval only.
 
 ## 2026-10-14: Prompt v1.1 with readable names, members line and the claim (#62, 53268d9)
