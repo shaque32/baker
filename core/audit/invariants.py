@@ -98,9 +98,37 @@ def record_text(conn: sqlite3.Connection, record_id: str) -> str | None:
     return None
 
 
+def record_text_before_76(conn: sqlite3.Connection, record_id: str) -> str | None:
+    """How this check read a contact or a call before PR #76 (2026-10-15). Evidence stored before
+    then may quote it, and stays verified: it quotes the same stored fields. New labels are checked
+    against record_text only (core.pipeline), so nothing new is stored in this form."""
+    kind = record_id.split(":", 1)[0]
+    if kind == "contact":
+        row = conn.execute(
+            "SELECT name, identifier FROM contacts WHERE id = ?", (record_id,)
+        ).fetchone()
+        return f"{row[0] or ''} {row[1]}".strip() if row else None
+    if kind == "call":
+        row = conn.execute(
+            "SELECT c.direction, fa.identifier, ta.identifier, c.ts_raw, c.duration_s"
+            " FROM calls c LEFT JOIN accounts fa ON fa.id = c.from_account_id"
+            " LEFT JOIN accounts ta ON ta.id = c.to_account_id WHERE c.id = ?",
+            (record_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        direction, frm, to, raw, dur = row
+        return f"{direction} call from {frm or '?'} to {to or '?'} at {raw or '?'}, {dur}s"
+    return None
+
+
 def quote_is_verbatim(conn: sqlite3.Connection, quote: str, record_id: str) -> bool:
-    text = record_text(conn, record_id)
-    return bool(quote.strip()) and text is not None and quote in text
+    """A stored quote still stands in its record: in its text now, or, for evidence stored before
+    #76, in the contact or call text the check read then (a case audited earlier re-decides)."""
+    if not quote.strip():
+        return False
+    texts = (record_text(conn, record_id), record_text_before_76(conn, record_id))
+    return any(text is not None and quote in text for text in texts)
 
 
 # ---------------------------------------------------------------- evidence

@@ -71,8 +71,9 @@ Template:
   as retrieval shows them to the labeler (`core.enrich.records`), so correct quotes are no longer
   discarded. Why it matters: the check drops a label before its stance is used, so a dropped
   "contradicts" or "complicates" could let a claim with other accepted support go SUPPORTED.
-  The report still shows a call's time beside its line. The small model's generated contact rows
-  follow the product too. The synthetic case01 affidavit PDF embeds DejaVu Sans for lines
+  The report still shows a call's time beside its line. Evidence stored before #76 still passes
+  the stored-quote re-check in the contact or call text of its day, so an older case re-decides.
+  The small model's generated contact rows follow the product too. The synthetic case01 affidavit PDF embeds DejaVu Sans for lines
   Helvetica can't draw ("Катя" read as boxes).
 - Where: main once PR #76 merges (branch `claude/project-thread-01fybj`, from the "Audit our
   model scoring" thread). Includes the C17 font fix.

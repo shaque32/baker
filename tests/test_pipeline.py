@@ -11,7 +11,12 @@ import pytest
 
 from cli.main import main as cli_main
 from core import pipeline
-from core.audit.invariants import InvariantViolation, check_report_text, record_text
+from core.audit.invariants import (
+    InvariantViolation,
+    check_evidence,
+    check_report_text,
+    record_text,
+)
 from core.contracts import (
     EvidenceCandidate,
     EvidenceStatus,
@@ -261,6 +266,27 @@ def test_a_record_that_contradicts_quoted_as_shown_keeps_the_claim_from_supporte
     # The record is all that stands between this claim and SUPPORTED: only an expert removes it.
     actions.decide_evidence(conn, against.id, EvidenceStatus.DISMISSED, EXPERT, "Another person.")
     assert run().decisions[0].verdict == Verdict.SUPPORTED
+
+
+def test_evidence_stored_before_the_fix_still_passes_the_stored_quote_check(conn):
+    # Codex on #76: a case audited before #76 holds contact and call quotes in the check's old
+    # text. Re-deciding it (core.review.redecide) re-checks them and must not stop on them.
+    pipeline.run_audit(conn, comps(), clock=_clock, claim_ids=["C01"])
+    (item,) = [e for e in items(conn) if e.record_id.startswith("contact:")]
+    call = "call:item1:Call Log!10"
+    old_call = (
+        "incoming call from +12125550133 to +12125550111 at 3/10/2026 8:30:17 PM(UTC+0), 434s"
+    )
+    check_evidence(
+        conn,
+        [
+            item.model_copy(update={"quote": "Marc Garage +12125550122"}),
+            item.model_copy(update={"record_id": call, "quote": old_call}),
+        ],
+    )
+    for rid, quote in ((item.record_id, "Marc Garage +1 212"), (call, "outgoing call from")):
+        with pytest.raises(InvariantViolation, match="not verbatim"):
+            check_evidence(conn, [item.model_copy(update={"record_id": rid, "quote": quote})])
 
 
 def test_reviewer_failure_is_a_dismissal_and_reviewer_never_sees_the_rationale(conn):
