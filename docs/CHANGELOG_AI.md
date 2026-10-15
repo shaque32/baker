@@ -53,7 +53,8 @@ Template:
 - Changed: `tests/test_report_consistency.py` checks that the screen and the report agree on
   status, verdict label and evidence ids at 7 points in a synthetic case01 review. A repeatability
   test checks that the same inputs, versions and expert decisions give a byte-identical report
-  with clocks pinned, and the same SHA-256 across times once 6 documented time fields are masked.
+  with clocks pinned, and the same SHA-256 across times once the time fields documented in
+  `core/report/html.py` are masked (8, including stipulation and identity-link times; Codex).
   Bug fixed: the verdict "decided" time came from the wall clock, not the run's clock; the
   pipeline and re-decide now stamp the run's clock. Report evidence rows carry evidence-id
   anchors. `core/audit/rules.py` unchanged. (Grok Product items 6 and 7.)
