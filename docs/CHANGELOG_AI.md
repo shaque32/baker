@@ -178,8 +178,8 @@ Template:
   locked, refused in another case, env var and plain case unchanged); Codex rounds 1 to 4
   clean, later commits under review. No real API call since this change.
 - Open: Opus fails the signed probe's contradicts bar (73%, entry below), so a signed prompt fix
-  should land first; Arsh approved the revised CLAUDE.md wording (07:29Z) and pastes it on the
-  branch himself, since agents are blocked from editing CLAUDE.md; a fair 14B-vs-Opus
+  should land first; Arsh approved the revised CLAUDE.md wording (07:29Z), applied on the
+  branch at his request (14:00Z); a fair 14B-vs-Opus
   test of claim proposal and assumption filling waits on Arsh; when a case switches models, an
   evidence row names the latest run's model and rationale (the earlier answer stays in
   model_calls); a key saved for a plain case stays an owner-only plain file.

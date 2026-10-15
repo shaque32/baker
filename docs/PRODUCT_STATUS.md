@@ -115,9 +115,8 @@ There is no model judge of verdicts in Baker. The word "judge" does not name any
   `/mnt/project-files/baker/cloud-first/steps-check/RESULTS.md`.
 
 **Merge state:** #68 is a draft (main merged in after #71). Arsh approved its
-revised CLAUDE.md wording (2026-10-15 07:29Z, recorded in `PROPOSED_CHANGES.md`). He pastes it on
-the branch himself, because agents are blocked from editing CLAUDE.md. Until then the rule "no
-network calls in core/" still stands on main and in the branch's CLAUDE.md.
+revised CLAUDE.md wording (2026-10-15 07:29Z, recorded in `PROPOSED_CHANGES.md`); it is applied
+on the branch at his request (14:00Z). Main keeps "no network calls in core/" until #68 merges.
 
 ## 5. External services
 
@@ -285,7 +284,8 @@ Before a first real case:
 1. Fix issue #69 (quote check), then time a full local case01 on the Mac for a real runtime.
 2. Check a real UFDR and AXIOM export with `baker ufdr-check` (needs a pilot expert's closed case).
 3. Finish #68 (opt-in cloud, chosen by Arsh 2026-10-15 07:10Z): a signed told-frame prompt fix
-   that passes on new items, and Arsh's paste of the CLAUDE.md wording he approved (07:29Z), then merge.
+   that passes on new items (line signed 13:45Z), then a gate entry Arsh signs; merge #68 first
+   (its CLAUDE.md wording is applied on the branch).
 4. Sign the Windows installer (Azure code signing pending).
 
 No pilot has started and no expert has used Baker on a real case (per project records; this
