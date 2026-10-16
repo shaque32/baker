@@ -36,15 +36,17 @@ Template:
   (Arsh agreed): gates 13 to 18 added (integrity fixes #86 and #88, signed case02 answer key,
   stopped runs, pilot agreement, one-pager and support, feedback form); runtime gate names the
   24 GB Mac and AWS g5 (A10G); real-export gate covers Cellebrite, UFDR and AXIOM. After #76 merged, gates 2 and 3 are met;
-  gate 14 is met by the case02 key Arsh signed 2026-10-12: 9 of 18. Codex round 4 (5) fixed. `install-mac.md` and `demo.md` no longer state the 6 to 8 h runtime as
+  gate 14 is met by the case02 key Arsh signed 2026-10-12. Codex round 4 (5) fixed;
+  round 5 found the printed Baker version is a constant, not the build, so gate 3 is back to not
+  met: 8 of 18. `install-mac.md` and `demo.md` no longer state the 6 to 8 h runtime as
   current. PRODUCT_STATUS section 11 links the gates.
 - Where: branch `claude/project-thread-390z80`, PR #82 (main once merged).
 - Verified: each statement checked against main `8ed89f9` code and docs, and #68 head `de219c1`
   for cloud facts; the 6 no-network tests named in the pack pass (Linux, 2026-10-15); Anthropic's
   API retention page and Commercial Terms read 2026-10-15 (the privacy-center article did not load
   from the cloud session and was not re-read).
-- Open: gate 11 (an outside person completes the kit on a clean Mac) needs a human; 9 of 18 gates
-  are met (gates 2, 3 by #76 with #75; gate 14 by the case02 key signed 2026-10-12; gates 6, 7, 8 by #72, #74, #68; gate 12 by this PR; gates 15 and 18 already in place); the Mac installer's uv, Python and
+- Open: gate 11 (an outside person completes the kit on a clean Mac) needs a human; 8 of 18 gates
+  are met (gate 2 by #76; gate 14 by the case02 key signed 2026-10-12; gates 6, 7, 8 by #72, #74, #68; gate 12 by this PR; gates 15 and 18 already in place); the Mac installer's uv, Python and
   PyPI downloads are not hash-pinned (disclosed in the pack); gate 4 waits on #89 (signed
   forwarded-message schema); gate 13 on #86 and #88.
 - Affects: customer-facing claims (what buyers and examiners are told, all checked against code);

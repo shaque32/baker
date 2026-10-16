@@ -23,9 +23,11 @@ it rests on and the reasons, in words.
 government PDF) is opened read-only and SHA-256 hashed. Every record Baker stores carries a
 `source_ref` pointing to where it came from in that file (a sheet and row, a page and table cell,
 or an XML locator). Times are stored in UTC with the original offset and the raw value as printed.
-Each import records its **coverage**: whether the source is a full extraction or an
+Each phone-report import records its **coverage**: whether the source is a full extraction or an
 examiner-curated report, and complete counts of what the importer skipped or could not read, with
 the locations of up to 50 per reason (a longer list is cut off, and the count shows by how much).
+The government PDF has no coverage record (the setup page shows "not applicable"): text the
+reader drops, such as page furniture, is not counted.
 
 **Claims.** The local language model proposes atomic claims, one paragraph at a time. The examiner
 accepts, edits or removes each one and may add their own. The audit cannot start while a proposal
@@ -42,7 +44,9 @@ document or the case data, or the proposal is refused.
 (with time zones), the weekday, counts, and absence. A check passes, fails or is inconclusive, and
 records what it examined. No model is involved.
 
-**Evidence.** For each assumption Baker retrieves candidate records with structured filters and
+**Evidence.** A claim the checks already settle (a failed check on a core assumption) skips this
+step: no records are retrieved or labeled for it, and its verdict rests on the recorded checks. For
+each assumption of every other claim, Baker retrieves candidate records with structured filters and
 keyword ranking, with the surrounding messages and the other phone's copy where one exists. A
 language model labels each (assumption, record) pair: supports, contradicts, complicates or
 irrelevant, with a quote and a short rationale. **The quote must appear character for character in

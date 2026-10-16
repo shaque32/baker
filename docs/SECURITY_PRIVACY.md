@@ -79,7 +79,9 @@ Full design: `docs/encryption.md`.
 - **Not encrypted.** `case.json`, so a locked case can be listed. It holds the case name, when the
   case was made, who made it (the name entered on the screen), the claim order (claim ids only) and
   the timeline tolerance and gap settings. Don't put a client's name in the case name if that
-  matters. Also not encrypted: downloaded reports, and anything on screen while a case is unlocked.
+  matters. Also not encrypted: the file names under `inputs/` (each upload keeps its original
+  name, so rename files that identify a client or exhibit before uploading), downloaded reports,
+  and anything on screen while a case is unlocked.
 - **Hashes** are of the plain bytes, so a file's SHA-256 matches the original whether or not the
   case is encrypted.
 - Use the computer's own disk encryption too (FileVault, BitLocker). Python cannot guarantee memory

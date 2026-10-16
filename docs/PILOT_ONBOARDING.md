@@ -143,7 +143,9 @@ folder>/case.db` says why. `docs/review-screen.md` ("When a case is blocked") ha
 What to do:
 
 1. Stop working in that case. Don't try to repair the database.
-2. Make a copy of the whole case folder as it is, for examination.
+2. Stop Baker (close the window that started it) and wait for it to exit, so an audit running in
+   the background cannot write mid-copy. Then copy the whole case folder as it is, for
+   examination.
 3. If you have a backup of the case folder from before the problem, restore it to a new folder and
    check it with `baker verify-log`.
 4. Otherwise start a new case from your original files and repeat your review. To show they are
