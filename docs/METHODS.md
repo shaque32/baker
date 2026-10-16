@@ -2,7 +2,7 @@
 
 How Baker reaches each finding, for an examiner who uses it and may need to describe it. This note
 describes Baker as it is on `main` (verdict rules 0.2.2, as of 2026-10-16). Every report names the
-rule version, prompt versions and model file that produced it; read this note against those.
+rule version, quote-check version, prompt versions and model file that produced it; read this note against those.
 
 Baker is a tool that helps an examiner check claims. It does not replace the examiner's own review
 of the source data, and nothing in a Baker report is an opinion. Any opinion is the examiner's.
@@ -46,7 +46,8 @@ records what it examined. No model is involved.
 keyword ranking, with the surrounding messages and the other phone's copy where one exists. A
 language model labels each (assumption, record) pair: supports, contradicts, complicates or
 irrelevant, with a quote and a short rationale. **The quote must appear character for character in
-the record's original text** (no normalization, whole words only), or the label is discarded and
+the record's original text** (no normalization, whole words only) and take in at least one letter or digit of the
+record's own fields, or the label is discarded and
 never stored. Translations are never citable. Contacts, calls and attachments have no message
 body, so Baker cites a fixed rendering of their stored fields instead (a contact's name and number;
 a call's direction, parties, time as printed and duration; an attachment's file name). A quote from
@@ -139,9 +140,9 @@ from each report you deliver: that is the anchor no one can change.
    forwarded, or that carries a forwarded or quoted original, can neither support nor contradict a
    claim, checks resting on it are inconclusive, and the claim page and report warn. Its sender
    field still shows the forwarder, and the embedded original is not imported.
-3. **Quote check and contacts (issue #69).** On this version the quote check renders contacts and
-   calls differently from what the model is shown, so some correct labels are discarded. That
-   loses evidence of every kind, including contradicting evidence. A fix for contacts is pending.
+3. **Quote check on older runs.** Since #76 (quote check 1.2.0) the check reads contacts and calls
+   exactly as the model is shown them. An audit run before that may have discarded correct
+   labels on contacts and calls, including contradicting ones; run a new full audit on such a case.
 4. **Evidence recall is limited.** Retrieval is keyword and filter based, with no embeddings.
    Baker can miss a relevant record. The examiner should search beyond what Baker surfaces.
 5. **Model labels can be wrong.** Each label is checked for a verbatim quote, but not for

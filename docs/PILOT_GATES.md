@@ -7,10 +7,10 @@ Each gate is pass or fail. Partial progress is "not met". A gate passes only whe
 exists on `main` (or, for a human step, in a recorded result someone can open). Update this file in
 the same PR that changes a gate's state, along with `docs/PRODUCT_STATUS.md` section 11.
 
-- **As of:** 2026-10-16, main `79ad922` (after #83, #72, #68, #74, #73 and #75) plus PR #82, which adds this file. Open PRs are named but not
+- **As of:** 2026-10-16, main `966be8f` (after #83, #72, #68, #74, #73, #75, #79, #85, #76 and #87) plus PR #82, which adds this file. Open PRs are named but not
   counted.
-- **Result:** 6 of 18 gates met (gate 6 by #72, gate 7 by #74, gate 8 by merging #68, gate 12 by
-  #82, gates 15 and 18 already in place). Gates 13 to 18 come from Grok's pilot-ready list
+- **Result:** 8 of 18 gates met (gates 2 and 3 by #76 with #75, gate 6 by #72, gate 7 by #74, gate 8 by
+  merging #68, gate 12 by #82, gates 15 and 18 already in place). Gates 13 to 18 come from Grok's pilot-ready list
   (2026-10-16), which Arsh agreed to fold in here. **Not pilot-ready.**
 
 ## The gates
@@ -18,8 +18,8 @@ the same PR that changes a gate's state, along with `docs/PRODUCT_STATUS.md` sec
 | # | Gate | Pass when | State (2026-10-16) | Evidence or what's missing |
 |---|---|---|---|---|
 | 1 | CI green 3 times | The `checks` workflow (Ubuntu and Windows) passes on 3 consecutive pushes to `main`, with no re-runs | **Not met** | 1 green: `8ed89f9` (run 327). The run before it on `ae8f24e` was cancelled, and main was red earlier the same day until #65 |
-| 2 | Quote check matches what the model sees (issue #69) | Contacts and calls render the same way for the labeler and the quote check, on main | **Not met** | Contacts fixed in PR #76 (open). Calls still differ. A dropped "contradicts" could in theory let a claim go SUPPORTED |
-| 3 | Versions stamped on every result | `RULE_VERSION` on main includes every merged rule-reading change (0.2.2, PR #75), and every report records the model file's SHA-256, seed, Baker version, rule version and the quote-check version | **Not met** | Rule half done: main says 0.2.2 (#75, merged 2026-10-16), and "Re-run verdicts" refuses an audit made under older rules. The report already prints each model run's SHA-256, parameters and seed, and the Baker, contracts and rule versions (`core/report/html.py`). Still missing: `core/audit/quotes.py` has `VERSION = "1.1.0"`, but no result or report records it (Grok #80 item 3) |
+| 2 | Quote check matches what the model sees (issue #69) | Contacts and calls render the same way for the labeler and the quote check, on main | **Met** | #76 (merged 2026-10-16, `8abaeea`): `core/audit/invariants.record_text` reads a contact and a call exactly as retrieval shows them to the labeler, so correct quotes, including contradicting ones, are no longer discarded |
+| 3 | Versions stamped on every result | `RULE_VERSION` on main includes every merged rule-reading change (0.2.2, PR #75), and every report records the model file's SHA-256, seed, Baker version, rule version and the quote-check version | **Met** | Rules 0.2.2 (#75). Quote check 1.2.0 is stored in every audit run's config and printed in the report beside the rule version (#76, merged 2026-10-16); a test pins the check's answers to its version. The report also prints each model run's SHA-256, parameters and seed, and the Baker, contracts and rule versions (`core/report/html.py`) |
 | 4 | Forwarded and quoted messages | The UFDR importer stores original author, forwarder and text as separate fields with `source_ref`; the sender check never credits forwarded content to the forwarder; until then affected claims fail closed to Unproven with a visible warning | **Not met** | Fail-closed half done (#73, merged 2026-10-16): messages marked forwarded or carrying a forwarded or quoted original are listed in coverage, can neither support nor contradict, make checks resting on them inconclusive, and are warned on the claim page and in the report; SenderCheck never names the forwarder as the writer. Rest pending PR #89 (open), which applies the schema change Arsh signed on 2026-10-16: each forwarded record is marked, and the original author is stored as written when the UFDR names exactly one. Still open after #89: the original text is not imported, and AXIOM does not read forwarded marks. Grok #80 item 1 |
 | 5 | Real exports checked | Real-format exports that are not case data (Cellebrite Excel, a UFDR, and an AXIOM XML and Excel export, for example from a public test image) import from start to finish, `baker ufdr-check` passes on the UFDR, counts match the vendor tool, and the report matches the screen | **Not met** | Readers built from documentation and synthetic samples. #73 checked 27 records on two non-Cellebrite UFDR files. UFDR and AXIOM stay "unverified" on screen and in reports. Needs a pilot examiner or a public test image |
 | 6 | Reproducible reports | A test shows the screen and the report agree, and the same inputs, versions and expert decisions give the same report apart from its time fields (times, run ids and the audit log's last hash, which follow from the times) | **Met** | `tests/test_report_consistency.py` (#72, merged 2026-10-15): screen and report agree at 7 points; same inputs give a byte-identical report with clocks pinned, and reports made at other times differ only in those time fields. Baker does not yet print a hash with the time fields masked, so an outside reader comparing two real reports must compare them field by field |
@@ -50,8 +50,7 @@ model-free eval with 0 false supported on case01, hostile red-team PASS).
 
 ## Order
 
-Gate 2 is an open PR (#76) waiting on review and merge. Gate 3 needs the quote-check version
-stamped on results. Gate 4 waits on PR #89 (schema signed). Gate 13 is two open PRs (#86,
+Gate 4 waits on PR #89 (schema signed). Gate 13 is two open PRs (#86,
 #88). Gates 14 and 16 need Arsh: signing case02's answer key, and a lawyer for the agreement.
 Gate 17 is writing. Gates 5, 9 and 11 need a person: a pilot examiner or public test image, runs on the Mac and the
 AWS g5, and an outside tester.

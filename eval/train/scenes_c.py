@@ -77,15 +77,20 @@ SPECIAL_WEIGHTS = {"ovr_pronoun": 1.2, "ovr_code_word": 1.3, "ovr_different_topi
 
 
 def sc_time(rng: random.Random, slot: int) -> Result:
+    """A record against a time that holds it and, most of the time, one that misses it, in the
+    same frames and shapes and as near the record's minute either way (when.py): only whether
+    the time fits tells them apart."""
     f = fact_pool(slot)
     st = setup(rng, f)
     core = fx.stated(f, rng, st.vr, st.sender.end)
     c = finish(rng, st, core)
     pred = fx.claim(f, st.v, fx.has_marker(core))
-    lead = spec_time_window(rng, c)
-    cands = [spec_time_mismatch(rng, c, pred), spec_contact(rng, c), spec_in_window(rng, c),
-             spec_plain(rng, c, pred, core, plain_why(c))]  # fmt: skip
-    return c, siblings(rng, lead, cands, 0.6, 2)
+    window = spec_time_window(rng, c)
+    told = spec_plain(rng, c, pred, core, plain_why(c), date=1.0, clock=0.6)
+    lead, other = (window, told) if rng.random() < 0.5 else (told, window)
+    trap = spec_time_mismatch(rng, c, pred)
+    rest = siblings(rng, lead, [other, spec_contact(rng, c), spec_in_window(rng, c)], 0.4, 1)
+    return c, [lead, *([trap] if rng.random() < 0.85 else []), *rest[1:]]
 
 
 def sc_dst(rng: random.Random, slot: int) -> Result:
@@ -235,7 +240,7 @@ SCENARIOS: tuple[tuple[Scenario, float], ...] = (
     (sc_stated, 17), (sc_exact, 13), (sc_neg, 10), (sc_denial, 10), (sc_plan, 5), (sc_cond, 4),
     (sc_question, 4), (sc_hedge, 4), (sc_hear, 4), (sc_correction, 3), (sc_corrected, 10),
     (sc_shared, 4), (sc_handle, 3), (sc_group, 3), (sc_injection, 5), (sc_disputed, 3),
-    (sc_qa, 4), (sc_time, 4), (sc_dst, 2), (sc_special, 30), (sc_pleasantry, 4),
+    (sc_qa, 4), (sc_time, 7), (sc_dst, 2), (sc_special, 30), (sc_pleasantry, 4),
     (sc_irrelevant, 3),
 )  # fmt: skip
 
