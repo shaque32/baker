@@ -27,12 +27,14 @@ from core.contracts import (
     SourceKind,
     Timestamp,
 )
+from core.ingest import forwarded
 from core.ingest.source_file import SourceFile
 from core.review import audit_log
 
 IMPORTER_VERSION = "0.2.0"
 HEADER_SCAN_ROWS = 10
 MAX_LISTED = 50  # cap on ids listed in a coverage payload
+FORWARDED_LABEL_RE = re.compile(r"\b(?:auto-?)?forward(?:ed)?\b", re.IGNORECASE)
 
 EXCEL_CELL_LIMIT = 32767  # characters; Excel truncates longer cell text
 
@@ -254,6 +256,7 @@ _MSG = {
     "status": ["status"],
     "owner_account": ["account", "owner account"],
     "tag": ["tag", "tags", "bookmark", "bookmarked"],
+    "label": ["label", "labels", "message label"],
 }
 FIELD_ALIASES: dict[RecordKind, dict[str, list[str]]] = {
     RecordKind.CHATS: {
@@ -1000,6 +1003,12 @@ class Row:
 # ---------------------------------------------------------------- coverage
 
 
+def is_forwarded_label(label: str | None) -> bool:
+    """A message label cell or value that marks the message as forwarded ("Forwarded",
+    "Forwarded, Starred")."""
+    return bool(label) and bool(FORWARDED_LABEL_RE.search(label or ""))
+
+
 def _listed(d: dict[str, list[str]], key: str, value: str) -> None:
     """Append to a capped list of locators in a coverage payload."""
     items = d.setdefault(key, [])
@@ -1056,6 +1065,7 @@ class TableCoverage:
     merged_columns_not_filled: list[str] = field(default_factory=list)
     header_notes: list[str] = field(default_factory=list)
     flagged_locators: dict[str, list[str]] = field(default_factory=dict)
+    flag_counts: Counter[str] = field(default_factory=Counter)  # flagged_locators is capped
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -1081,6 +1091,7 @@ class TableCoverage:
             "merged_columns_not_filled": self.merged_columns_not_filled,
             "header_notes": self.header_notes,
             "flagged_locators": self.flagged_locators,
+            **({"flag_counts": dict(self.flag_counts)} if self.flag_counts else {}),
         }
 
 
@@ -1094,6 +1105,8 @@ class Coverage:
     summary_found: bool = True
     hidden_sheets: list[str] = field(default_factory=list)
     multi_name_accounts: list[str] = field(default_factory=list)
+    # message ids by reason, in full (core/ingest/forwarded.py reads them downstream)
+    forwarded_records: dict[str, list[str]] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------- writer
@@ -1387,6 +1400,11 @@ def _messages(
         tid = w.thread(app, chat_key, r.locator, title)
         ts = _row_time(r, tctx, cov)
         mid = f"msg:{w.src}:{r.locator}"
+        if is_forwarded_label(r.text("label")):
+            cov.forwarded_records.setdefault("forwarded", []).append(mid)
+            cov.counters["messages_marked_forwarded"] += 1
+            tc.flag_counts["forwarded"] += 1
+            _listed(tc.flagged_locators, "forwarded", r.locator)
         body = body_text(r.get("body"))
         if len(body) >= EXCEL_CELL_LIMIT:
             cov.counters["bodies_at_excel_cell_limit"] += 1
@@ -1801,7 +1819,7 @@ def coverage_payload(
 ) -> dict[str, object]:
     """The coverage record for one import. Shape: docs/ingest/coverage.md."""
     read = set(kinds_read or [])
-    return {
+    payload: dict[str, object] = {
         "importer": importer,
         "importer_version": IMPORTER_VERSION,
         "source_id": source.id,
@@ -1827,3 +1845,8 @@ def coverage_payload(
         "unmapped_direction_values": dict(cov.unmapped_direction_values),
         "notes": cov.notes,
     }
+    if cov.forwarded_records:
+        payload[forwarded.PAYLOAD_KEY] = {
+            k: list(dict.fromkeys(v)) for k, v in sorted(cov.forwarded_records.items())
+        }
+    return payload

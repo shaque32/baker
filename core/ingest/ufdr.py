@@ -58,6 +58,7 @@ from core.ingest.cellebrite_common import (
     _slug,
     _Writer,
     coverage_payload,
+    is_forwarded_label,
     norm,
     parse_time,
 )
@@ -186,6 +187,7 @@ META_KEYS: dict[str, tuple[str, ...]] = {
 
 _TIMESPAN_RE = re.compile(r"^(?:(\d+)\.)?(\d{1,2}):(\d{2}):(\d{2})(?:\.\d+)?$")
 _TRUE = {"true", "1", "yes"}
+PICTURE_TYPE_RE = re.compile(r"picture|photo", re.IGNORECASE)
 
 
 def _key(name: str) -> str:
@@ -309,6 +311,12 @@ class _Reader:
         self.extractions: list[dict[str, str]] = []
         self.metadata: list[tuple[str, str, str, str]] = []  # (section, name, value, locator)
         self.tagged_files = 0
+        # taggedFiles file id -> its "Local Path" in the package; an Attachment may name its
+        # file only through file_id (seen in a third-party sample, docs/ingest/ufdr.md)
+        self.tagged_paths: dict[str, str] = {}
+        self.tagged_conflicts: set[str] = set()  # ids listed twice with different paths
+        self._tagged: tuple[str, list[str]] | None = None
+        self._tagged_id: str | None = None
         self.votes: dict[str, DateOrder] = {}
         self._top_type: str | None = None
         self._ts_text: list[str] | None = None
@@ -347,6 +355,10 @@ class _Reader:
             self.extractions.append(dict(attrs))
         elif local == "file" and parent == "taggedFiles":
             self.tagged_files += 1
+            self._tagged_id = attrs.get("id") or None
+        elif local == "item" and "taggedFiles" in self.path and "decodedData" not in self.path:
+            if self._tagged_id and _key(attrs.get("name", "")) == "localpath":
+                self._tagged = (self._tagged_id, [])
         elif local == "item" and "decodedData" not in self.path and "taggedFiles" not in self.path:
             section = next(
                 (a.get("section", "") for a in reversed(self.attr_stack) if "section" in a), ""
@@ -384,6 +396,14 @@ class _Reader:
             return
         if local == "model" and self.path and self.path[-1] == "modelType":
             self._top_type = None
+        elif local == "item" and self._tagged is not None:
+            fid, parts = self._tagged
+            path = "".join(parts).strip()
+            if path:
+                _add_tagged(self.tagged_paths, self.tagged_conflicts, fid, path)
+            self._tagged = None
+        elif local == "file" and self._tagged_id is not None:
+            self._tagged_id = None
         elif local == "item" and self._item is not None:
             section, nm, parts = self._item
             n = len(self.metadata) + 1
@@ -401,6 +421,8 @@ class _Reader:
                 top.text.append(data)
         elif self._item is not None:
             self._item[2].append(data)
+        elif self._tagged is not None:
+            self._tagged[1].append(data)
         elif self._ts_text is not None:
             self._ts_text.append(data)
 
@@ -718,6 +740,8 @@ class _Scan:
     extractions: list[dict[str, str]]
     metadata: list[tuple[str, str, str, str]]
     tagged_files: int
+    tagged_paths: dict[str, str]
+    tagged_conflicts: set[str]
     votes: dict[str, DateOrder]
     accounts: list[_El]
 
@@ -864,7 +888,9 @@ class UfdrImporter:
 
         w = _StreamWriter(conn, src, dev, cov)
         pkg = _Package(z, report)
-        rd = _RecordMapper(w, pkg, tables, tctx)
+        rd = _RecordMapper(w, pkg, tables, tctx, scan.tagged_paths, scan.tagged_conflicts)
+        if scan.tagged_conflicts:
+            cov.counters["tagged_file_ids_repeated"] = len(scan.tagged_conflicts)
         with conn:
             conn.execute(
                 "INSERT INTO sources (id, kind, fidelity, extraction_type, file_name, sha256,"
@@ -977,6 +1003,8 @@ def _scan(z: zipfile.ZipFile, report: zipfile.ZipInfo) -> _Scan:
         extractions=reader.extractions,
         metadata=reader.metadata,
         tagged_files=reader.tagged_files,
+        tagged_paths=reader.tagged_paths,
+        tagged_conflicts=reader.tagged_conflicts,
         votes=reader.votes,
         accounts=accounts,
     )
@@ -992,9 +1020,13 @@ class _RecordMapper:
         pkg: _Package,
         tables: dict[str, TableCoverage],
         tctx: dict[str, TimeContext],
+        tagged_paths: dict[str, str] | None = None,
+        tagged_conflicts: set[str] | None = None,
     ) -> None:
         self.w = w
         self.pkg = pkg
+        self.tagged_paths = tagged_paths or {}
+        self.tagged_conflicts = tagged_conflicts or set()
         self.tables = tables
         self.tctx = tctx
         self.cov = w.cov
@@ -1017,6 +1049,11 @@ class _RecordMapper:
         tc.rows_skipped["same_id_as_an_earlier_record"] += 1
         _listed(tc.skipped_locators, "same_id_as_an_earlier_record", locator)
         return True
+
+    def _count_pictures(self, m: _Model) -> None:
+        n = sum(1 for e in m.models("entries") if _is_picture(e))
+        if n:
+            self.cov.counters["picture_entries_not_identifiers"] += n
 
     def _flag(self, table: str, reason: str, locator: str) -> None:
         """A record the expert should open: counted per record type, first locators listed."""
@@ -1054,6 +1091,19 @@ class _RecordMapper:
         if conf is not None and conf.strip().lower() != "high":
             self.cov.counters["records_decoding_confidence_not_high"] += 1
             self._flag(table, "decoding_confidence_not_high", locator)
+        if table != "Contact" and table != "Call":
+            # No canonical column says a message was forwarded or who wrote it first, so the
+            # message stays the forwarder's; core/ingest/forwarded.py keeps it from supporting
+            # or contradicting a claim, and the expert is told which ones.
+            mid = f"msg:{self.w.src}:{locator}"
+            if _forwarded(m):
+                self.cov.counters["messages_marked_forwarded"] += 1
+                self.cov.forwarded_records.setdefault("forwarded", []).append(mid)
+                self._flag(table, "forwarded", locator)
+            if m.models("embeddedinstantmessage"):
+                self.cov.counters["messages_with_embedded_message_not_imported"] += 1
+                self.cov.forwarded_records.setdefault("embedded", []).append(mid)
+                self._flag(table, "embedded_message_not_imported", locator)
         return state
 
     def _time(self, table: str, m: _Model, locator: str, names: tuple[str, ...]) -> str | None:
@@ -1164,7 +1214,14 @@ class _RecordMapper:
         the writer under the attachment id the mapper will give it."""
         names: list[str] = []
         for a in m.models("attachments", "attachment"):
+            fid = a.attrs.get("file_id", "")
             path = a.text(*ATT_PATH_FIELDS)
+            if path is None and fid in self.tagged_conflicts:
+                # the package names two files for this id: link neither, never guess
+                self.cov.counters["attachments_with_ambiguous_file_id"] += 1
+                self._flag(table, "attachment_file_ambiguous", locator)
+            elif path is None:
+                path = self.tagged_paths.get(fid)
             info = self.pkg.lookup(path) if path else None
             name = a.text(*ATT_NAME_FIELDS) or (
                 PurePosixPath(_norm_member(path)).name if path else None
@@ -1235,6 +1292,7 @@ class _RecordMapper:
         tc = self.tables["Contact"]
         tc.rows_read += 1
         tc.rows_imported += 1
+        self._count_pictures(m)
         idents = _entries(m)
         if not idents:
             idents = [""]
@@ -1250,7 +1308,8 @@ class _RecordMapper:
         self._fields("UserAccount", "UserAccount", m)
         tc = self.tables["UserAccount"]
         tc.rows_read += 1
-        ident = m.text("username") or next(iter(_entries(m)), None)
+        self._count_pictures(m)
+        ident = m.text("username") or _account_identifier(m)
         if not ident:
             tc.rows_skipped["account_without_identifier"] += 1
             _listed(tc.skipped_locators, "account_without_identifier", el.locator)
@@ -1262,11 +1321,50 @@ class _RecordMapper:
         self.w.mark_owner(aid)
 
 
+def _add_tagged(paths: dict[str, str], conflicts: set[str], fid: str, path: str) -> None:
+    """Record a taggedFiles id's Local Path; an id given two different paths links to neither."""
+    if fid in conflicts:
+        return
+    if fid in paths and paths[fid] != path:
+        del paths[fid]
+        conflicts.add(fid)
+    else:
+        paths.setdefault(fid, path)
+
+
+def _forwarded(m: _Model) -> bool:
+    """The package marks the message forwarded: a Forwarded label in its Labels, or on a model
+    in its MessageExtraData (MessageLabel, QuotedMessageData), as seen in public samples."""
+    labels = list(m.multi_values.get("labels", []))
+    labels += [x.text("label") or "" for x in m.models("messageextradata")]
+    labels += [v for x in m.models("messageextradata") for v in x.multi_values.get("labels", [])]
+    return any(is_forwarded_label(v) for v in labels)
+
+
+def _is_picture(m: _Model) -> bool:
+    """A picture entry (ProfilePicture, ContactPhoto): its value is an image link, never an
+    identifier of the person or account."""
+    return bool(PICTURE_TYPE_RE.search(m.type))
+
+
+def _account_identifier(m: _Model) -> str | None:
+    """A UserAccount without a Username: its first UserID entry, else its first other
+    identifier entry."""
+    user_ids = [e for e in m.models("entries") if _key(e.type) == "userid"]
+    for e in user_ids:
+        v = e.text("value", "identifier", "number", "address")
+        if v:
+            return v
+    return next(iter(_entries(m)), None)
+
+
 def _entries(m: _Model) -> list[str]:
     """Identifiers in a contact's or account's Entries (phone numbers, emails, user ids), as
-    written, first seen first."""
+    written, first seen first. Picture entries are not identifiers and are skipped."""
     out: list[str] = []
     for e in m.models("entries"):
+        if _is_picture(e):
+            continue
         v = e.text("value", "identifier", "number", "address")
         if v and v not in out:
             out.append(v)
