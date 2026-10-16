@@ -24,7 +24,8 @@ government PDF) is opened read-only and SHA-256 hashed. Every record Baker store
 `source_ref` pointing to where it came from in that file (a sheet and row, a page and table cell,
 or an XML locator). Times are stored in UTC with the original offset and the raw value as printed.
 Each import records its **coverage**: whether the source is a full extraction or an
-examiner-curated report, and everything the importer skipped or could not read, with locations.
+examiner-curated report, and complete counts of what the importer skipped or could not read, with
+the locations of up to 50 per reason (a longer list is cut off, and the count shows by how much).
 
 **Claims.** The local language model proposes atomic claims, one paragraph at a time. The examiner
 accepts, edits or removes each one and may add their own. The audit cannot start while a proposal
@@ -70,21 +71,24 @@ the claim's results are rolled back and the run stops.
 
 ## 3. The expert gate
 
-Nothing is Supported on a model's label. A claim becomes Supported only after the examiner accepts
-its supporting evidence. Until then the screen asks "Support found: do you agree?". An optional
+Nothing is Supported on a model's label. Under the rules, a claim becomes Supported only after the
+examiner accepts its supporting evidence. Until then the screen asks "Support found: do you agree?". An optional
 local AI reviewer may sort evidence for the examiner, but in this version its acceptance covers
 nothing and never makes a claim Supported. Identity links between accounts and people stay
 proposed until the examiner confirms them. Every examiner action (accept, dismiss, reopen, confirm,
-override, a typed reason) is written to the audit log under the examiner's name.
+override) is written to the hash-chained audit log under the examiner's name, an override with its
+note. The reason typed for an evidence decision is stored with the decision but is not itself
+covered by the chain.
 
-The examiner can also override any verdict directly. An override is recorded as the examiner's
-decision, not as a rule outcome.
+The examiner can also override any verdict directly, including to Supported. An override bypasses
+the rule prerequisites above: it needs a note, and the screen and report show it as the examiner's
+own decision with that note, not as a rule outcome.
 
 ## 4. What each verdict means, and doesn't
 
 | Verdict | Means | Does not mean |
 |---|---|---|
-| **Supported** | Every core assumption is covered by a passed check or by evidence the examiner accepted, and nothing open complicates or contradicts it | That the claim is true beyond the data imported, that the data is complete, or that Baker formed an opinion |
+| **Supported** | From the rules: every core assumption is covered by a passed check or by evidence the examiner accepted, and nothing open complicates or contradicts it | That the claim is true beyond the data imported, that the data is complete, or that Baker formed an opinion. An examiner override to Supported is the examiner's decision and is labeled as one |
 | **Contradicted** | A deterministic check failed, or a counting "contradicts" label stands on an observed or derived record, as cited | That the person did not do something, or any conclusion about guilt. A model-labeled contradiction the examiner has not reviewed should be reviewed before it is relied on |
 | **Unproven** | Baker could not cover every core assumption with the data it had; the uncovered ones are named | That the claim is false, or that the event did not happen |
 

@@ -5,8 +5,9 @@ run the synthetic demo, then open your first case. Baker is alpha software and i
 pilot-ready for real case data** (`docs/PILOT_GATES.md`). Until it is, use the demo and synthetic
 cases only, unless the Baker team has told you in writing that your pilot has started.
 
-Baker is local by default; cloud AI only when your case allows it and you opt in. The version on
-`main` has no cloud option at all: every step runs on your computer.
+Baker is local by default; cloud AI only when your case allows it and you opt in. The case setup
+page has a cloud option, but it is gated off: no cloud model has passed Baker's stance test, so
+every step runs on your computer for every case.
 
 ## 1. Check your computer (5 minutes)
 
@@ -92,7 +93,9 @@ demo to a clean copy.
    5. **Run the audit.** It runs in the background and keeps the computer awake. Claims appear for
       review as each one finishes.
 4. **Review.** For each claim, accept or dismiss the evidence, then confirm or override the
-   verdict. Your name and reason go into the hash-chained audit log.
+   verdict. Each decision goes into the hash-chained audit log under your name, with an
+   override's note. The reason you type for an evidence decision is stored with that decision but
+   is not itself covered by the chain.
 5. **Report.** Download it from the case. The downloaded report is a plain, unencrypted file:
    store it as you would any case work product.
 
@@ -125,7 +128,9 @@ Tell the Baker team about every mismatch. It is the most useful thing a pilot ca
 
 Every action is written to a hash-chained audit log inside the case, and the newest entry's number
 and hash are also kept in `case.db.anchors.jsonl` beside the database. If an entry was changed, or
-entries were cut from the end, the check fails.
+entries were cut from the end back to the newest anchor, the check fails. Entries added after the
+newest anchor and cut again before the next check are not caught, and neither is the database
+changed together with the anchor file. Keep the last hash from each report you deliver.
 
 Baker checks the log when a case opens, on every page while it is open, and before every report.
 A failed check shows **Review blocked** on the Cases page with the reason, closes the case (an

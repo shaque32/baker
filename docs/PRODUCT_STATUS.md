@@ -114,9 +114,9 @@ There is no model judge of verdicts in Baker. The word "judge" does not name any
   recall 80% vs 90%; sheet-free audit 60% accuracy vs 80%), recorded in
   `/mnt/project-files/baker/cloud-first/steps-check/RESULTS.md`.
 
-**Merge state:** #68 is a draft (main merged in after #71). Arsh approved its
-revised CLAUDE.md wording (2026-10-15 07:29Z, recorded in `PROPOSED_CHANGES.md`); it is applied
-on the branch at his request (14:00Z). Main keeps "no network calls in core/" until #68 merges.
+**Merge state:** #68 merged to main 2026-10-15 (`ed0a3a8`), with the CLAUDE.md wording Arsh
+approved (07:29Z). `PROBE_PASSED` is empty, so no case can use the cloud yet. Other lines in this
+file that still say "branch #68" describe code that is now on main, gated off.
 
 ## 5. External services
 
@@ -298,9 +298,9 @@ Nobody outside the project has tried the onboarding kit yet (gate 11).
 Before a first real case (the full list is the gates file):
 1. Fix issue #69 (quote check), then time a full local case01 on the Mac for a real runtime.
 2. Check a real UFDR and AXIOM export with `baker ufdr-check` (needs a pilot expert's closed case).
-3. Finish #68 (opt-in cloud, chosen by Arsh 2026-10-15 07:10Z): a signed told-frame prompt fix
-   that passes on new items (line signed 13:45Z), then a gate entry Arsh signs; merge #68 first
-   (its CLAUDE.md wording is applied on the branch).
+3. Opt-in cloud (#68, merged 2026-10-15, chosen by Arsh 07:10Z) stays gated off until a signed
+   told-frame prompt fix passes on new items (line signed 13:45Z) and Arsh signs a gate entry.
+   Pilots run local only until then.
 4. Sign the Windows installer (Azure code signing pending).
 
 No pilot has started and no expert has used Baker on a real case (per project records; this

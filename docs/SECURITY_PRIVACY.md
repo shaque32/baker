@@ -32,8 +32,10 @@ send are marked "opted-in case".
  │                                                                             │
  └───────────────────────────────┬─────────────────────────────────────────────┘
                                  │ Opted-in case only (none can be today: no
-                                 │ model has passed the gate): one HTTPS request
-                                 │ per (assumption, record) stance pair
+                                 │ model has passed the gate): one stance question
+                                 │ per (assumption, record) pair, sent up to 3
+                                 │ times on a network error, timeout, 408, 409,
+                                 │ 429 or 5xx; each send logged first
                                  ▼
                      api.anthropic.com (Claude, the expert's own key)
 ```
@@ -43,7 +45,7 @@ send are marked "opted-in case".
 | Original evidence files | Stay on the computer, never modified | Same. Never sent |
 | Case database (all records, claims, decisions, audit log) | Stays on the computer | Same. Never sent |
 | Claim proposal, assumption filling, optional AI review | Local model | Local model |
-| Stance labels (does this record support, contradict or complicate this assumption?) | Local model | Claude Opus 5.5. Each request holds the filled-in stance prompt: the assumption, one record, its nearby messages, the claim text and, for a group chat, the member list |
+| Stance labels (does this record support, contradict or complicate this assumption?) | Local model | Claude Opus 5.5. Each request holds the filled-in stance prompt: the assumption, one record, its nearby messages, the claim text and, for a group chat, the member list. A send that fails on a network error, timeout, 408, 409, 429 or 5xx is sent again, up to 3 sends in all, each logged before it goes |
 | Report | Written only where the expert saves it | Same |
 | Telemetry, analytics, crash reports, accounts, license server | None | None |
 
@@ -59,8 +61,9 @@ Install-time downloads, before any case exists:
 - **Mac:** the installer runs uv's install script from astral.sh, lets uv fetch Python 3.12, and
   installs Baker's Python packages and the model runtime (`llama-cpp-python`, version pinned) from
   the package index. **These are not hash-pinned**: they trust astral.sh, the Python download
-  source and PyPI over HTTPS. A firm that needs more can install on a separate computer and copy the
-  finished `~/Baker` folder, or wait for a signed Mac package (not built yet).
+  source and PyPI over HTTPS. A firm that needs more can read `packaging/mac/install.sh` before running it, or wait
+  for a signed Mac package (not built yet). Copying an installed `~/Baker` folder to another Mac is
+  not supported: the environment and launchers hold paths from the computer that installed it.
 
 An offline computer can take the model from a USB drive.
 
