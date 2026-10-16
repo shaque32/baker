@@ -48,8 +48,10 @@ def _n(n: int, word: str, plural: str | None = None) -> str:
 
 
 def anchor(claim_id: str, pair_index: int = 0) -> str:
-    """The page anchor of one claim's list on one pair (its index in PairedCheck.pairs)."""
-    return f"paired-{claim_id}" if pair_index == 0 else f"paired-{claim_id}-{pair_index + 1}"
+    """The page anchor of one claim's list on one pair (its index in PairedCheck.pairs). The
+    pair number comes first and ends at the first '-', so no two (claim, pair) share an anchor
+    whatever the claim id holds."""
+    return f"paired-{pair_index + 1}-{claim_id}"
 
 
 def tag(value: str) -> str:
@@ -133,9 +135,7 @@ def _unsure(p: Pair) -> str:
 def _left_out(p: Pair) -> str:
     if not p.listed:
         return f"<p class='caution'>{e(p.not_listed_why)}</p>"
-    msgs, calls, contacts = (
-        p.full_count(k, "not_in_report") for k in ("message", "call", "contact")
-    )
+    msgs, calls = (p.full_count(k, "not_in_report") for k in ("message", "call"))
     threads = p.missing_threads()
     whole = sum(1 for t in threads if t[4])
     may_be = sum(1 for s in p.full_state.values() if s == "may_be")
@@ -143,7 +143,7 @@ def _left_out(p: Pair) -> str:
         f"<p><strong>{_source(p, True)} holds {_n(msgs, 'message')} in "
         f"{_n(len(threads), 'conversation')}"
         + (f" ({whole:,} of them not in the report at all)" if whole else "")
-        + f", {_n(calls, 'call')} and {_n(contacts, 'contact')} that the report does not.</strong>"
+        + f" and {_n(calls, 'call')} that the report does not.</strong>"
     )
     if may_be:
         line += (
@@ -155,12 +155,13 @@ def _left_out(p: Pair) -> str:
     if later:
         line += (
             f" Also not counted: {_n(later, 'record')} dated after the report's extraction, or "
-            "with no time to place before it: the report could not have held them."
+            "with no time to place before it (every contact), so the report may not have been "
+            "able to hold them."
         )
     out = [line + "</p>"]
     if threads:
         rows = "".join(
-            f"<tr><td>{q(title or tid)}</td><td>{e(app)}</td><td>{n:,}</td>"
+            f"<tr><td>{q(title or tid)}</td><td>{q(app)}</td><td>{n:,}</td>"
             f"<td>{'Not in the report at all' if none else 'Partly in the report'}</td></tr>"
             for tid, title, app, n, none in threads[:SHOW_THREADS]
         )
@@ -220,7 +221,7 @@ def _claim(cn: ClaimNearby, index: int, claim_link: Callable[[str], str] | None,
         if g.thread_id is None:
             label = "Calls"
         else:
-            label = f"{q(g.title or g.thread_id)} · {e(g.app)}"
+            label = f"{q(g.title or g.thread_id)} · {q(g.app)}"
             if g.has_anchor:
                 label += " · the claim's own conversation"
             if g.whole:

@@ -8,8 +8,8 @@ Pairing. A curated report is compared with a larger source when both list at lea
 phone's own accounts (the same app and identifier) and both state the same device model (an
 account can be signed in on more than one phone). The page names the shared accounts, so the
 expert can see why the two were read as one phone. Records the larger source dates after the
-report's extraction, or holds with no time, are never counted as left out; when the report's
-extraction time is not known, nothing is listed.
+report's extraction, or holds with no time (every contact), are never counted as left out;
+when the report's extraction time is not known, nothing is listed.
 
 Matching fails closed. Each record of the report is:
 - matched: exactly one record of the larger source has the same app, direction, text (Unicode
@@ -430,15 +430,11 @@ def _pair(conn: sqlite3.Connection, report: SourceLine, full: SourceLine,
     matches, state, why = match(rrecs, frecs)
     # A record the larger source dates after the report's extraction did not exist when the
     # report was made, so it is never counted as left out; nor is one with no time, which
-    # cannot be placed before it.
+    # cannot be placed before it. Contacts carry no time, so no contact is ever counted.
     cut = report.extracted_at
     if cut is not None:
         for f in frecs:
-            if (
-                state[f.id] == "not_in_report"
-                and f.kind != "contact"
-                and (f.ts is None or f.ts > cut)
-            ):
+            if state[f.id] == "not_in_report" and (f.ts is None or f.ts > cut):
                 state[f.id] = "not_compared"
                 why[f.id] = "after_report" if f.ts is not None else "no_time"
     timed = [m for m in matches if m.record.kind != "contact"]

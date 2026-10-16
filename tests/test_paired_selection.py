@@ -153,7 +153,12 @@ def test_planted_records_are_found_as_planted(conn) -> None:
     assert left == {
         _full_id(p, pl.msg.body, pl.msg.at) for pl in planted.PLANTED if pl.state == "not_in_report"
     }
-    assert [r.text for r in p.left_out("contact")] == ["Kevin S"]
+    # contacts carry no time, so the planted contact is never counted left out
+    kevin = next(
+        r.id for r in p.full_records.values() if r.kind == "contact" and r.text == "Kevin S"
+    )
+    assert p.full_state[kevin] == "not_compared" and p.may_be_why[kevin] == "no_time"
+    assert p.left_out("contact") == []
     whole = [t for t in p.missing_threads() if t[4]]
     assert [t[1] for t in whole] == ["Kevin S"]  # the only conversation not in the report at all
 
@@ -333,7 +338,7 @@ def test_claim_page_says_what_the_larger_source_holds_near_it(db, conn) -> None:
         Request("GET", "/claim", {"id": "C05"}, dict(HOST))
     )
     assert page.status == 200
-    assert "Curated report check:" in page.text and "/selection#paired-C05" in page.text
+    assert "Curated report check:" in page.text and "/selection#paired-1-C05" in page.text
 
 
 def test_times_show_on_the_phone_clock(conn) -> None:
@@ -398,7 +403,7 @@ def test_claim_ids_are_escaped_in_the_list_anchor(conn) -> None:
     c05 = next(c for c in chk.claims if c.claim_id == "C05")
     odd = replace(c05, claim_id="C'5\" onclick=x", claim_name="C'5")
     html = paired_html(replace(chk, claims=(odd,)))
-    assert "id='paired-C&#x27;5&quot; onclick=x'" in html and "onclick=x'" not in html.replace(
+    assert "id='paired-1-C&#x27;5&quot; onclick=x'" in html and "onclick=x'" not in html.replace(
         "&quot; onclick=x'", ""
     )
 
@@ -490,3 +495,21 @@ def test_each_pair_has_its_own_claim_anchor_and_the_claim_line_links_to_the_reco
     assert f"id='{anchor('C05')}'" in html and f"id='{anchor('C05', 1)}'" in html
     assert anchor("C05") != anchor("C05", 1)
     assert f"/selection#{anchor('C05', 1)}" in claim_line(two, "C05", "/selection")
+
+
+# ---------------------------------------------------------------- Codex review of 3643945
+
+
+def test_claim_anchors_never_collide_across_claims_and_pairs() -> None:
+    assert anchor("foo-2", 0) != anchor("foo", 1)
+    ids = {anchor(c, i) for c in ("foo", "foo-2", "2-foo", "1-foo") for i in range(3)}
+    assert len(ids) == 12
+
+
+def test_source_app_names_are_cited_not_read_as_baker_words(small) -> None:
+    chk = paired_check(small, claim_states(small), selection_audit(small))
+    p = chk.pairs[0]
+    recs = {k: replace(r, app="Deleted Chats") for k, r in p.full_records.items()}
+    html = paired_html(replace(chk, pairs=(replace(p, full_records=recs),), claims=()))
+    assert "Deleted Chats" in html
+    check_report_text(html)
