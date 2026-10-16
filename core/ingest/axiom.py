@@ -928,16 +928,19 @@ class AxiomImporter:
 
     def import_source(self, path: Path, conn: sqlite3.Connection) -> Source:
         if path.suffix.lower() == ".xml":
+            if self.expected_sha256 is not None:  # refuse other bytes before parsing them
+                require_sha256(path.name, self.expected_sha256, sha256_file(path))
             report, sha = read_xml(path)
         else:
             with open_input(path) as f:
                 data = f.read()
             sha = hashlib.sha256(data).hexdigest()
+            require_sha256(path.name, self.expected_sha256, sha)
             try:
                 report = read_workbook(data)
             except Exception as err:  # noqa: BLE001 - say what the file is not
                 raise ValueError(f"{path.name} is not an Excel workbook Baker can read") from err
-        require_sha256(path.name, self.expected_sha256, sha)
+        require_sha256(path.name, self.expected_sha256, sha)  # the XML parsed is the XML checked
         return self._write(path, sha, conn, report)
 
     def _write(self, path: Path, sha: str, conn: sqlite3.Connection, rep: ReadReport) -> Source:

@@ -30,9 +30,9 @@ class InputChanged(ValueError):
 
 
 def require_sha256(name: str, expected: str | None, actual: str) -> None:
-    """Refuse to store a file whose parsed bytes do not hash to `expected` (when given). Each
-    importer calls this after hashing what it parsed and before its one write transaction, so a
-    changed copy leaves no records behind."""
+    """Refuse a file whose bytes do not hash to `expected` (when given). Each importer calls
+    this after hashing the file and before parsing it, so a changed copy is neither parsed nor
+    stored; an importer that streams its parse checks the parsed bytes again before writing."""
     if expected is not None and actual != expected:
         raise InputChanged(name, expected, actual)
 

@@ -126,3 +126,15 @@ def test_each_importer_refuses_other_bytes_before_writing(files, key):
     assert not conn.in_transaction
     _importer(key, _sha(files[key]))(files[key], conn)
     assert _counts(conn)["sources"] == 1
+
+
+@pytest.mark.parametrize("key", [k for k, _ in KINDS])
+def test_a_changed_copy_is_refused_before_it_is_parsed(tmp_path, files, key):
+    """Bytes that no parser could read still say the copy changed, not that it is malformed."""
+    broken = tmp_path / files[key].name
+    broken.write_bytes(b"not a report")
+    conn = sqlite3.connect(":memory:")
+    apply_schema(conn)
+    with pytest.raises(InputChanged, match="nothing was stored"):
+        _importer(key, _sha(files[key]))(broken, conn)
+    assert set(_counts(conn).values()) == {0}

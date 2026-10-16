@@ -483,6 +483,7 @@ class PdfGovDocIngester:
     def parse(self, path: Path) -> GovDocIngestResult:
         """Parse without touching a database."""
         data, sha = read_input(path)
+        require_sha256(path.name, self.expected_sha256, sha)  # before parsing or OCR
         try:
             pdf = pdfium.PdfDocument(data)
         except pdfium.PdfiumError as e:
@@ -553,8 +554,7 @@ class PdfGovDocIngester:
         Re-importing the same file returns what is stored if today's parse matches it,
         and raises AlreadyImportedError if it does not (the parser changed).
         """
-        result = self.parse(path)
-        require_sha256(path.name, self.expected_sha256, result.source.sha256)
+        result = self.parse(path)  # refuses bytes other than expected_sha256 before parsing
         stored = load(conn, result.govdoc.id)
         if stored is not None:
             govdoc, paragraphs = stored
