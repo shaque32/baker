@@ -9,6 +9,7 @@ from typing import ClassVar
 from core.audit.assumptions import template_of
 from core.audit.checks._common import CaseData, result
 from core.contracts import Assumption, AssumptionParams, CheckOutcome, CheckResult
+from core.ingest import forwarded
 
 
 class TemplateCheck:
@@ -37,7 +38,16 @@ class TemplateCheck:
                 f"Not checked: template {assumption.template_id!r} with these parameters is not "
                 f"one the {self.name} check tests.",
             )
-        return self.evaluate(assumption.id, assumption.params, CaseData(conn))
+        data = CaseData(conn)
+        r = self.evaluate(assumption.id, assumption.params, data)
+        # Fail closed: an outcome resting on a forwarded message (or one carrying a forwarded
+        # or quoted message) is inconclusive, since who first wrote the words is not recorded.
+        note = forwarded.check_note(data.forwarded, r.record_ids)
+        if note and r.outcome is not CheckOutcome.INCONCLUSIVE:
+            r = r.model_copy(
+                update={"outcome": CheckOutcome.INCONCLUSIVE, "detail": f"{r.detail} {note}"}
+            )
+        return r
 
     def evaluate(self, assumption_id: str, p: AssumptionParams, data: CaseData) -> CheckResult:
         raise NotImplementedError

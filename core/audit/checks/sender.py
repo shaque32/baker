@@ -60,6 +60,14 @@ class SenderCheck(TemplateCheck):
         good, bad, unknown, lines = [], [], [], []
         for row in rows:
             acc = data.accounts.get(row.sender or "")
+            if row.id in data.forwarded:
+                # never credit forwarded or quoted words to whoever forwarded them
+                unknown.append(row.id)
+                lines.append(
+                    f"{row.id} on {row.app} is marked as forwarded or as carrying a forwarded "
+                    "or quoted message; who first wrote the words is not recorded"
+                )
+                continue
             if acc is None:
                 unknown.append(row.id)
                 lines.append(f"{row.id} on {row.app} has no recorded sender")
