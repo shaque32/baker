@@ -434,6 +434,13 @@ def test_a_sender_without_a_party_gets_the_writer_the_claim_names(conn):
         ("Someone impersonating PETROV texted 'ok'.", "ok", None),
         ("PETROV sent REYES two texts, 'ok' and 'bye'.", "ok", "PETROV"),  # a noun
         ("PETROV texted REYES that it's 'ok see you'.", "ok see you", "PETROV"),  # contraction
+        ("PETROV wrote a report with two quotes attributed to REYES: 'ok'.", "ok", None),
+        ("PETROV TEXTED REYES, AND REYES SHOT BACK 'OK SEE YOU'.", "OK SEE YOU", None),
+        ("PETROV TEXTED REYES AND SMITH: 'OK SEE YOU'.", "OK SEE YOU", "PETROV"),
+        ("PETROV texted REYES, writing 'ok see you'.", "ok see you", "PETROV"),
+        ("PETROV texted REYES, with REYES writing 'ok see you'.", "ok see you", None),
+        ("PETROV texted REYES from his brother's phone: 'ok see you'.", "ok see you", "PETROV"),
+        ("PETROV texted Dr. Reyes: 'ok see you'.", "ok see you", "PETROV"),
         ("PETROV wrote a report with the quotes from REYES, 'ok see you'.", "ok see you", None),
         ("PETROV texted REYES and read her replies: 'ok'.", "ok", None),
         ("PETROV texted REYES and SMITH: 'ok'.", "ok", "PETROV"),  # Codex round 2
