@@ -83,7 +83,9 @@ from core.review.status import (
 )
 from core.review.status import verdict_label as _verdict_label
 
-REPORT_VERSION = "0.3.0"
+# 0.4.0 (#76): a "Quote check" row in Versions and the run line, and a call's UTC and printed
+# time beside its line (the review screen shows the same line, through record_line).
+REPORT_VERSION = "0.4.0"
 
 __all__ = [
     "AWAITING_EXPERT",

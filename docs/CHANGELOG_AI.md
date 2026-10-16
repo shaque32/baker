@@ -137,8 +137,9 @@ Template:
   as retrieval shows them to the labeler (`core.enrich.records`), so correct quotes are no longer
   discarded. Why it matters: the check drops a label before its stance is used, so a dropped
   "contradicts" or "complicates" could let a claim with other accepted support go SUPPORTED.
-  The report still shows a call's time beside its line. Evidence stored before #76 still passes
-  the stored-quote re-check in the contact or call text of its day, so an older case re-decides.
+  The report still shows a call's time beside its line. Evidence a run stored before #76 still
+  passes the stored-quote re-check in the contact or call text of its day, so an older case
+  re-decides; a run that records a quote-check version gets no such fallback (fails closed).
   The small model's generated contact rows follow the product too. The synthetic case01 affidavit PDF embeds DejaVu Sans for lines
   Helvetica can't draw ("Катя" read as boxes).
   Grok review on #80, item 3: the quote check now has a version. `core/audit/quotes.VERSION`
@@ -148,15 +149,18 @@ Template:
   without a bump fails. A quote now verifies only if it takes in a letter or digit of the
   record's own fields: at a word-aligned place in the pipeline, whatever verifier a run is
   given (`cites_record`), and at any place in the stored re-check
-  (`core/audit/invariants.quote_is_verbatim`), which holds evidence stored before #76 to the
-  check of its day. "(no name)", "unknown" or "call from" alone fail; "(no name): +1..." passes. `core/audit/quotes.record_text`, which still said calls had no
+  (`core/audit/invariants.quote_is_verbatim`), which holds evidence to the check of its day only
+  for a run that records no quote-check version (Grok merge-bot review on #76). "(no name)", "unknown" or "call from" alone fail; "(no name): +1..." passes. `core/audit/quotes.record_text`, which still said calls had no
   citable text, now reads every record as the labeler sees it, as the pipeline already did.
 - Where: main once PR #76 merges (branch `claude/project-thread-01fybj`, from the "Audit our
   model scoring" thread). Includes the C17 font fix.
 - Verified: new regression tests (each fails without its fix), among them a contact and a call
   labeled "contradicts" and quoted as shown: before, the label was dropped and C01 went
   SUPPORTED; now CONTRADICTED. A test checks every case01 record reads the same for the labeler
-  and the check. `make check` green on the branch with main at 79ad922 merged in (2043 passed, lint clean); `make eval` same as
+  and the check. A stored "call from" on a run recording 1.2.0 stops a re-run of the verdicts;
+  the same case with no recorded version re-decides. A test checks that the claim page shows each
+  call with the same UTC and printed time as the report (both use `record_line`).
+  `make check` green on the branch with main at 79ad922 merged in (2045 passed, lint clean); `make eval` same as
   main (case01 1.00, 0 false supported; case02 aggregate 0.90); hostile run keeps 494 items and
   drops 4 labels (main 462 and 36), 0 supported. Offline, on stored answers: Opus case01 85% to
   95% (signed sheet), 60% to 70% (no sheet), 0 false supported; replayed through the new check,
@@ -172,7 +176,8 @@ Template:
   colon (proposed for Arsh in PROPOSED_CHANGES.md); small-model run 5 trained on the old rows.
 - Affects: capabilities (more correct evidence kept, for Opus and the 14B); closes, for contacts
   and calls, a path where a dropped "contradicts" or "complicates" let a claim go SUPPORTED.
-  Report: a call's line shows its UTC and printed time, and the versions show the quote check.
+  Report 0.3.0 -> 0.4.0 (`core/report/html.REPORT_VERSION`): a call's line shows its UTC and
+  printed time, as on the review screen, and the versions show the quote check.
   No privacy, network, performance or customer-claim change.
 
 ## 2026-10-15: Stricter reading of stated time windows (#66, 9d24024)

@@ -175,9 +175,12 @@ def test_a_quote_must_take_in_the_records_own_fields(record_id, quote, passes) -
     assert quote in rec.text
     assert verify_record_quote(conn, record_id, quote) is passes
     # The stored re-check (core.audit.invariants) reaches the same answer on its own, except that
-    # evidence stored before #76 keeps the check of its day: a substring of the old text.
+    # evidence a run stored before #76 keeps the check of its day: a substring of the old text.
+    assert invariants.quote_is_verbatim(conn, quote, record_id) is passes
     legacy = quote in (invariants.record_text_before_76(conn, record_id) or "")
-    assert invariants.quote_is_verbatim(conn, quote, record_id) is (passes or legacy)
+    assert invariants.quote_is_verbatim(conn, quote, record_id, before_76=True) is (
+        passes or legacy
+    )
 
 
 def test_the_quote_must_be_word_aligned_where_it_takes_in_the_records_own_fields() -> None:
@@ -192,7 +195,7 @@ def test_the_quote_must_be_word_aligned_where_it_takes_in_the_records_own_fields
 # the behavior changed in #76 with no version bump). A change to which quotes pass, in
 # core/enrich/records.py, core/audit/quotes.py or the stored re-check, changes this digest: bump
 # core/audit/quotes.VERSION, pin the new digest beside it, and say so in docs/CHANGELOG_AI.md.
-PINNED = {"1.2.0": "87ebb757764e9fffd26b1b80fba176bdc3914a98d0f1b866812618bc506f05e6"}
+PINNED = {"1.2.0": "0e0fd1342a64cc337445ba5dbd89dc7ed37d61cd8d65e292ad892f9a26e3077c"}
 PROBES = [
     "(no name)",
     "no name",
@@ -230,6 +233,7 @@ def test_the_quote_check_answers_are_pinned_to_its_version() -> None:
                         quote,
                         verify_record_quote(conn, rid, quote),
                         invariants.quote_is_verbatim(conn, quote, rid),
+                        invariants.quote_is_verbatim(conn, quote, rid, before_76=True),
                     ]
                 )
     digest = hashlib.sha256(json.dumps(rows, ensure_ascii=False).encode()).hexdigest()

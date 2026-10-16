@@ -16,6 +16,7 @@ from core.audit.invariants import (
     InvariantViolation,
     check_evidence,
     check_report_text,
+    pre_76_run,
     record_text,
     record_text_before_76,
 )
@@ -30,6 +31,7 @@ from core.contracts import (
     SupportedBasis,
     Verdict,
     VerdictDecision,
+    canonical_json,
     verdict_id,
 )
 from core.db import connect
@@ -280,18 +282,50 @@ def test_evidence_stored_before_the_fix_still_passes_the_stored_quote_check(conn
     old_call = (
         "incoming call from +12125550133 to +12125550111 at 3/10/2026 8:30:17 PM(UTC+0), 434s"
     )
-    check_evidence(
-        conn,
-        [
-            item.model_copy(update={"quote": "Marc Garage +12125550122"}),
-            item.model_copy(update={"record_id": call, "quote": old_call}),
-        ],
-    )
-    # Held to the check of its day (Codex): only Baker's words, but a substring of the old text.
-    check_evidence(conn, [item.model_copy(update={"record_id": call, "quote": "call from"})])
+    old = [
+        item.model_copy(update={"quote": "Marc Garage +12125550122"}),
+        item.model_copy(update={"record_id": call, "quote": old_call}),
+        # Held to the check of its day (Codex): only Baker's words, but in the old text.
+        item.model_copy(update={"record_id": call, "quote": "call from"}),
+    ]
+    check_evidence(conn, old, before_76=True)
+    # From a run that records a quote-check version, none of them stands (Grok review on #76).
+    for stored in old:
+        with pytest.raises(InvariantViolation, match="not verbatim"):
+            check_evidence(conn, [stored])
     for rid, quote in ((item.record_id, "Marc Garage +1 212"), (call, "outgoing call from")):
         with pytest.raises(InvariantViolation, match="not verbatim"):
-            check_evidence(conn, [item.model_copy(update={"record_id": rid, "quote": quote})])
+            stored = item.model_copy(update={"record_id": rid, "quote": quote})
+            check_evidence(conn, [stored], before_76=True)
+
+
+def test_only_a_run_made_before_the_fix_re_decides_on_the_old_quote_text(conn):
+    # Grok review on #76: the pre-#76 text is accepted only for a run that records no quote-check
+    # version. A stored "call from" (Baker's words) on a run recording 1.2.0 stops the re-run.
+    from core.review.redecide import redecide
+
+    pipeline.run_audit(conn, comps(), clock=_clock, claim_ids=["C01"])
+    run = pipeline.last_run(conn)
+    assert run["config"]["quote_check"] and not pre_76_run(conn, run["run_id"])
+    assert not pre_76_run(conn, "run:unknown")  # fails closed
+    (item,) = [e for e in items(conn) if e.record_id.startswith("contact:")]
+    with conn:
+        conn.execute(
+            "UPDATE evidence_items SET record_id = ?, quote = 'call from' WHERE id = ?",
+            ("call:item1:Call Log!10", item.id),
+        )
+    with pytest.raises(InvariantViolation, match="not verbatim"):
+        redecide(conn, EXPERT)
+    # The same case audited before #76: its run recorded no version, so its labels re-decide.
+    config = {k: v for k, v in run["config"].items() if k != "quote_check"}
+    with conn:
+        conn.execute(
+            "UPDATE pipeline_runs SET config_json = ? WHERE id = ?",
+            (canonical_json(config), run["run_id"]),
+        )
+    assert pre_76_run(conn, run["run_id"])
+    result = redecide(conn, EXPERT)
+    assert result.decisions and pre_76_run(conn, result.run_id)
 
 
 NAMELESS = "contact:item1:Contacts!4#1"
@@ -357,15 +391,16 @@ def test_a_quote_of_only_bakers_words_or_a_placeholder_is_dropped(conn, other, q
     stored = [e for e in items(conn) if e.record_id == other]
     assert result.dropped_labels == (0 if kept else 1)
     assert [e.quote for e in stored] == ([quote] if kept else [])
-    # The stored re-check holds the same line, except that evidence stored before #76 keeps the
-    # check of its day (Codex): "call from" was a substring of the old call text.
+    # The stored re-check holds the same line, except that evidence a run stored before #76 keeps
+    # the check of its day (Codex): "call from" was a substring of the old call text.
     (item,) = [e for e in items(conn) if e.stance == Stance.SUPPORTS]
     stored = item.model_copy(update={"record_id": other, "quote": quote})
-    if kept or quote in record_text_before_76(conn, other):
-        check_evidence(conn, [stored])
-    else:
-        with pytest.raises(InvariantViolation, match="not verbatim"):
-            check_evidence(conn, [stored])
+    for before_76 in (False, True):
+        if kept or (before_76 and quote in record_text_before_76(conn, other)):
+            check_evidence(conn, [stored], before_76=before_76)
+        else:
+            with pytest.raises(InvariantViolation, match="not verbatim"):
+                check_evidence(conn, [stored], before_76=before_76)
 
 
 @pytest.mark.parametrize(
