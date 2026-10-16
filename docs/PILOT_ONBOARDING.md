@@ -41,9 +41,12 @@ Turn on your computer's disk encryption first (FileVault on a Mac, BitLocker on 
 
 **Windows.** Full guide: `docs/install.md`.
 
-1. Get `Baker-Setup-<version>.exe` and its `.sha256` file.
+1. Get `Baker-Setup-<version>.exe`, and get its SHA-256 value **by a different route** from the
+   installer: for example, read it back with the Baker team by phone. A `.sha256` file that came
+   in the same email, download or shared folder proves nothing, since whoever could swap the
+   installer could swap that file too.
 2. In PowerShell, run `Get-FileHash .\Baker-Setup-<version>.exe -Algorithm SHA256` and compare it
-   with the `.sha256` file. Stop if they differ.
+   with that value. Stop if they differ.
 3. Run the installer. **It is not code-signed yet**, so Windows warns that the publisher is
    unknown. Choose **More info**, then **Run anyway**, only after the hash matched.
 4. Leave **Download the AI model** ticked. For an offline computer, untick it and put
@@ -149,8 +152,9 @@ What to do:
    only a consistency check, since that case's database may have been changed.
 5. Tell the Baker team what happened, with the `verify-log` output.
 
-Baker does not make backups for you. Copy the case folder after each review session (an
-encrypted case stays encrypted in the copy).
+Baker does not make backups for you. After each review session, wait until no audit is running,
+stop Baker (close the window that started it), then copy the whole case folder. A copy taken while
+Baker is writing may not restore. An encrypted case stays encrypted in the copy.
 
 A case can also refuse to open because it is **locked**: enter its passphrase or recovery key. A
 case that says **Encryption did not finish** finishes when you repeat the encryption step with the

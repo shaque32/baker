@@ -105,7 +105,9 @@ Full design: `docs/encryption.md`.
 
 **On the computer.** Baker deletes nothing on a schedule. A case is kept until the expert deletes
 it. Baker has no "delete case" button: delete the case folder (under `~/Baker/cases` by default),
-plus any backups of it and any downloaded reports. Outside the case folders Baker writes only small
+plus any backups of it, any downloaded reports, any request draft downloaded from the case
+(`baker-request-draft.txt`: file names, device labels, extraction details, hashes) and any
+`baker ufdr-check` output folder (`ufdr-check-private.md` holds sample records). Outside the case folders Baker writes only small
 settings under `~/.baker`: `model.json` (which model file to use), `model-check.json` (the model
 file's checked hash), `speed.json` (seconds per model call) and, if the expert saves an Anthropic key outside a case,
 `cloud.json`. None holds case content; `cloud.json` holds the key. Each case folder also has
@@ -207,7 +209,9 @@ appears in the case's audit log as `cloud.sent`.
 ## 7. Other safeguards
 
 - Inputs are opened read-only and SHA-256 hashed on import. In the browser workflow, a mismatch
-  between the uploaded copy's hash and the bytes parsed stores nothing.
+  between the uploaded copy's hash and the bytes parsed is refused with an error and the copy is
+  deleted. Known bug in this version: records already parsed from the changed copy can stay in the
+  case database (reported for a fix). If you ever see that error, start a new case.
 - The local model file is checked against its pinned SHA-256 before loading.
 - The screen accepts requests only from the same computer and loads nothing from outside: no
   scripts, no CDN.

@@ -30,7 +30,9 @@ Template:
   and deletion with Anthropic's pages linked, the cloud policy with the CSAM rule, and how to verify
   the no-network claim. Codex rounds 1 (10 findings) and 2 (8: overrides bypass the rule
   prerequisites, evidence reasons not hash-chained, coverage locators capped at 50, cloud retries,
-  no copying of an installed Mac folder, gated cloud option, anchor limits, #68 merge state) fixed. `install-mac.md` and `demo.md` no longer state the 6 to 8 h runtime as
+  no copying of an installed Mac folder, gated cloud option, anchor limits, #68 merge state) and 3 (5: checksum by a separate route, stop Baker before a
+  backup copy, request draft and ufdr-check output in deletion, gate 6 scoped to time fields, the
+  import-mismatch bug disclosed) fixed. `install-mac.md` and `demo.md` no longer state the 6 to 8 h runtime as
   current. PRODUCT_STATUS section 11 links the gates.
 - Where: branch `claude/project-thread-390z80`, PR #82 (main once merged).
 - Verified: each statement checked against main `8ed89f9` code and docs, and #68 head `de219c1`
