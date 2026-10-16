@@ -258,6 +258,41 @@ def test_chat_members_are_the_products(conn: sqlite3.Connection) -> None:
         GenItem.model_validate(missing)
 
 
+def test_a_caption_alone_shares_its_attachments_time() -> None:
+    """Baker's small-model adapter shows a captioned attachment as its message's own line, then
+    the file name, marked, with the same sender and time (eval/stancemodel's case_item); no other
+    two lines share a time."""
+    owner = [bf.owner_person(1)]
+    sent = UTC_AT + timedelta(minutes=1)
+    ask = bf.message_line(1, *OTHER, UTC_AT, TZ, "send me the pic")
+    caption = bf.message_line(1, *OWNER, sent, TZ, "here", owner=True, persons=owner)
+    photo = bf.message_line(1, *OWNER, sent, TZ, "IMG_4410.JPG", owner=True, persons=owner)
+    common = {
+        "probe_id": "T999996",
+        "family_id": "bk_sender_shown",
+        "source": "train_gen",
+        "generator": "eval.train test",
+        "lang": "en",
+        "template_id": "sender",
+        "params": {"quoted_text": "IMG_4410.JPG", "person_ids": owner},
+        "target": 2,
+        "quote": "IMG_4410.JPG",
+        "rationale": "The line's brackets show Daniel Petrov sent the file.",
+        "device": "dev:item1",
+        "names": NAMES,
+    }
+    item = bf.build_baker_item(**common, lines=[ask, caption, photo], captioned=True)
+    assert [ln.text for ln in item.lines()] == ["send me the pic", "here", "IMG_4410.JPG"]
+    assert item.context[1].local_time == item.target.local_time
+    with pytest.raises(ValueError, match="strictly increasing"):
+        bf.build_baker_item(**common, lines=[ask, caption, photo])
+    other = bf.message_line(1, *OTHER, sent, TZ, "here")
+    blank = bf.message_line(1, *OWNER, sent, TZ, " ", owner=True, persons=owner)
+    for lines in ([ask, other, photo], [ask, blank, photo]):
+        with pytest.raises(ValueError, match="a caption is its attachment's message"):
+            bf.build_baker_item(**common, lines=lines, captioned=True)
+
+
 def test_only_a_chat_record_carries_members() -> None:
     call = bf.call_line(1, UTC_AT, TZ, "outgoing", NUMBER_A, NUMBER_B, 84, owner=True)
     contact = bf.contact_line(1, "Gus Tires", NUMBER_B)
