@@ -19,7 +19,7 @@ Template:
 
 ---
 
-## 2026-10-15: Stance prompt v1.2, the told-frame sentences (#PRNUM)
+## 2026-10-16: Stance prompt v1.2, the told-frame sentences, and its Mac check (#PRNUM)
 - Changed: `core/audit/prompts/stance.md` is v1.2, signed by Arsh on 2026-10-15 ("approved" in
   "Audit our model scoring"). Two sentences in the "contradicts" entry teach stance guide v0.3
   rules 12 and 23: a reply in which X says the opposite does not rule out "X told the owner that
@@ -28,7 +28,12 @@ Template:
   "contradicts" on the signed probe set (contradicts precision 73%, bar 90%), and an unreviewed
   "contradicts" on an event assumption can make a claim CONTRADICTED with no expert step. No code
   changes; the recorded prompt version becomes `sha256:2863d8dbf66960f6` (was
-  `sha256:4c35f1cf01b0b227`).
+  `sha256:4c35f1cf01b0b227`). Also eval only: `eval/probe/mac_v12.sh`, one Mac run for the 14B's
+  probe on v1.2 and its half of the 14B-vs-Opus test Arsh chose on 2026-10-15 ("Test after
+  fixes"), and `eval/bench/fair_steps.py`, which runs that test for either model at one commit:
+  claim proposal (scored by the committed matcher and a split-aware one, since the claims prompt
+  asks for splitting), the case01 audit without the assumption sheet, and the same fills with a
+  perfect labeler, replayed with no model call.
 - Where: branch `claude/project-thread-01fybj`, PR #PRNUM, not merged.
 - Verified: the v1.2 body is byte for byte the text the preregistered Opus runs sent (tests pin
   its SHA-256 and check it is v1.1 plus the two sentences only). Opus 5.5 on the signed set,
@@ -37,10 +42,11 @@ Template:
   items, high) and 1 to 0 (26 items, medium), controls kept. $8.59 of API spend, synthetic data
   only (`/mnt/project-files/baker/cloud-bench/2026-10-15/told-frame-line/`). `make check`:
   MAKECHECK.
-- Open: the local 14B reads this prompt and has not been run on it; Arsh runs the probe on the
-  Mac (`python -m eval.probe.run_probe --models eval/probe/models.local.json --probe-set
-  eval/gold/probe/probe.jsonl --stance-only --repeat 2 --layout product_members --out
-  eval/out/probe_v12_14b`). #68's `PROBE_PASSED` list needs an entry for Opus with v1.2, signed
+- Open: the local 14B reads this prompt and has not been run on it; Arsh runs
+  `bash eval/probe/mac_v12.sh` on the Mac (the probe, then the test's 14B half). The test's plan
+  and decision rule were written before any call
+  (`/mnt/project-files/baker/cloud-bench/2026-10-16/fair-14b-vs-opus/PREREGISTERED.md`); no result
+  yet. #68's `PROBE_PASSED` list needs an entry for Opus with v1.2, signed
   by Arsh, before cloud labels can run. P065 is missed by Opus with v1.2; "Custom model for
   Baker" notes rule 23 may make its own label complicates (a separate sign-off). Stored v1.1
   answers are not reused, so a re-run of an existing case labels again.

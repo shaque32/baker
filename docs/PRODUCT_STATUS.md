@@ -119,7 +119,10 @@ There is no model judge of verdicts in Baker. The word "judge" does not name any
     signed by Arsh.
 - **Claim proposal and assumption filling stay local.** Opus missed both pre-set bars (claim
   recall 80% vs 90%; sheet-free audit 60% accuracy vs 80%), recorded in
-  `/mnt/project-files/baker/cloud-first/steps-check/RESULTS.md`.
+  `/mnt/project-files/baker/cloud-first/steps-check/RESULTS.md`. Those bars were unfair to Opus
+  (the matcher penalizes the splitting the claims prompt asks for; the 14B was never scored
+  without the sheet), so Arsh chose a same-test comparison (2026-10-15, "Test after fixes"):
+  `eval/bench/fair_steps.py` and `eval/probe/mac_v12.sh` in PR #PRNUM. Not run yet.
 
 **Merge state:** #68 is a draft (main merged in after #71). Arsh approved its
 revised CLAUDE.md wording (2026-10-15 07:29Z, recorded in `PROPOSED_CHANGES.md`); it is applied
