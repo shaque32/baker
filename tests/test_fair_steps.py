@@ -1,5 +1,5 @@
-"""The 14B-vs-Opus test's own scoring (eval/bench/fair_steps.py): the split-aware claim matcher
-and the replay of a first audit's fills. No model is called."""
+"""The 14B-vs-Opus test's own scoring (eval/bench/fair_steps.py): the split-aware claim matcher,
+the replay of a first audit's fills and the cloud retry. No model is called."""
 
 from __future__ import annotations
 
@@ -11,7 +11,16 @@ import pytest
 
 from core.contracts import ClaimType, GoldClaim, Verdict
 from core.db import apply_schema, connect
-from eval.bench.fair_steps import Proposal, ReplayModel, main, pick_entry, split_match
+from core.llm.cloud import CloudError
+from eval.bench.fair_steps import (
+    Proposal,
+    ReplayModel,
+    Retried,
+    main,
+    pick_entry,
+    split_match,
+    summary,
+)
 
 
 def gold(cid: str, para: int, text: str) -> GoldClaim:
@@ -105,3 +114,52 @@ def test_the_local_arm_and_the_mac_probe_pick_the_same_one_model() -> None:
 def test_an_unknown_effort_is_refused_before_any_call() -> None:
     with pytest.raises(SystemExit):
         main(["--arm", "opus", "--effort", "medum"])
+
+
+class Flaky:
+    """A stand-in cloud model that raises the given failures, then answers."""
+
+    name, sha256, params, where = "claude-opus-5-5", "x", None, "cloud"
+
+    def __init__(self, *failures: CloudError) -> None:
+        self.failures, self.sent = list(failures), 0
+
+    def generate_json(self, prompt: str, schema: object, params: object = None) -> str:
+        self.sent += 1
+        if self.failures:
+            raise self.failures.pop(0)
+        return "ok"
+
+    def usage(self) -> dict[str, int]:
+        return {"calls": self.sent}
+
+
+def timeout() -> CloudError:
+    return CloudError("APITimeoutError", sticky=True, retryable=True)
+
+
+def test_a_retryable_failure_is_sent_again_as_the_product_does() -> None:
+    m = Retried(Flaky(timeout(), timeout()), sleep=lambda _s: None)
+    assert m.generate_json("p", {}) == "ok"
+    assert (m.failure, m.usage()) == (None, {"calls": 3})
+
+
+def test_a_failure_left_after_the_retries_makes_the_run_invalid() -> None:
+    inner = Flaky(timeout(), timeout(), timeout())
+    m = Retried(inner, sleep=lambda _s: None)
+    with pytest.raises(CloudError):
+        m.generate_json("p", {})
+    assert m.failure == "APITimeoutError"
+    with pytest.raises(CloudError):  # later calls are not sent at all
+        m.generate_json("q", {})
+    assert inner.sent == 3
+    res = {"arm": "opus", "model": m.name, "invalid": "a cloud call failed"}
+    assert "INVALID, do not score" in summary(res)
+
+
+def test_a_refusal_is_the_models_own_dropped_label_not_an_invalid_run() -> None:
+    m = Retried(Flaky(CloudError("declined", sticky=False)), sleep=lambda _s: None)
+    with pytest.raises(CloudError):
+        m.generate_json("p", {})
+    assert m.failure is None
+    assert m.generate_json("q", {}) == "ok"

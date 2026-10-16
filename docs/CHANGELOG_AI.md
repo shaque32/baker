@@ -33,7 +33,9 @@ Template:
   fixes"), and `eval/bench/fair_steps.py`, which runs that test for either model at one commit:
   claim proposal (scored by the committed matcher and a split-aware one, since the claims prompt
   asks for splitting), the case01 audit without the assumption sheet, and the same fills with a
-  perfect labeler, replayed with no model call.
+  perfect labeler, replayed with no model call. Its Opus arm retries a failed send as the
+  product does, and a cloud call still failing after that marks the run invalid rather than
+  counting as the model's dropped label.
 - Where: branch `claude/project-thread-01fybj`, PR #93, not merged.
 - Verified: the v1.2 body is byte for byte the text the preregistered Opus runs sent (tests pin
   its SHA-256 and check it is v1.1 plus the two sentences only). Opus 5.5 on the signed set,
@@ -41,7 +43,7 @@ Template:
   supports, contradicts recall 10/11 (misses P065). New items: wrong contradicts 2 to 0 (24
   items, high) and 1 to 0 (26 items, medium), controls kept. $8.59 of API spend, synthetic data
   only (`/mnt/project-files/baker/cloud-bench/2026-10-15/told-frame-line/`). `make check`:
-  green on the branch with main at 966be8f (2064 passed, 6 skipped, lint clean; eval unchanged:
+  green on the branch with main at 966be8f (2069 passed, 6 skipped, lint clean; eval unchanged:
   case01 1.00 with 0 false supported, unreviewed 0.60, hostile PASS, case02 aggregate 0.90).
 - Open: the local 14B reads this prompt and has not been run on it; Arsh runs
   `bash eval/probe/mac_v12.sh` on the Mac (the probe, then the test's 14B half). The test's plan

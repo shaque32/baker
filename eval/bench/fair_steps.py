@@ -258,6 +258,44 @@ def local_model(models: Path, name: str | None) -> Any:
     return LazyModel(ModelConfig(name=entry["name"], path=path, sha256=sha, n_ctx=8192))
 
 
+class Retried:
+    """The cloud model under the product's retry policy (core/audit/_local_model.py SentLog:
+    MAX_RETRIES more sends of a retryable failure, backing off). A sticky failure left after
+    that (no network, a rejected key, the API down) pauses the product's audit; here it makes
+    the run invalid, since a label dropped that way is not the model's answer, and every later
+    call fails at once without a send. A refusal or a cut-off answer is the model's own failure
+    and is dropped and counted, as in the product."""
+
+    def __init__(self, model: Any, retries: int | None = None, sleep: Any = time.sleep) -> None:
+        from core.llm.cloud import MAX_RETRIES
+
+        self._m, self._sleep = model, sleep
+        self._retries = MAX_RETRIES if retries is None else retries
+        self.name, self.sha256 = model.name, model.sha256
+        self.params, self.where = model.params, model.where
+        self.failure: str | None = None
+
+    def generate_json(self, prompt: str, schema: Any, params: Any = None) -> Any:
+        from core.llm.cloud import CloudError
+
+        if self.failure is not None:
+            raise CloudError(f"not sent: an earlier call failed ({self.failure})", sticky=True)
+        for attempt in range(1, self._retries + 2):
+            try:
+                return self._m.generate_json(prompt, schema, params)
+            except CloudError as e:
+                if e.retryable and attempt <= self._retries:
+                    self._sleep(min(2.0**attempt, 30.0))
+                    continue
+                if e.sticky:
+                    self.failure = e.reason[:300]
+                raise
+        raise AssertionError("unreachable")  # pragma: no cover
+
+    def usage(self) -> dict[str, Any]:
+        return self._m.usage()
+
+
 def cloud_model(effort: str) -> Any:
     from core.llm import cloud
     from eval.bench.claude_bench import check_case
@@ -265,13 +303,15 @@ def cloud_model(effort: str) -> Any:
 
     check_case(CASE)
     cfg = cloud.load_config()
-    return Metered(cloud.ClaudeModel(cloud.CloudConfig(
-        api_key=cfg.api_key, model=cloud.DEFAULT_MODEL, effort=effort)))  # fmt: skip
+    return Retried(Metered(cloud.ClaudeModel(cloud.CloudConfig(
+        api_key=cfg.api_key, model=cloud.DEFAULT_MODEL, effort=effort))))  # fmt: skip
 
 
 def summary(res: dict[str, Any]) -> str:
     c, a, f = res.get("claims"), res.get("audit"), res.get("fills_only")
     lines = [f"# 14B vs Opus, {res['arm']} arm ({res['model']})", ""]
+    if res.get("invalid"):
+        lines += [f"**INVALID, do not score: {res['invalid']}. Run it again.**", ""]
     if c:
         missed = [r["claim_id"] for r in c["split_rows"] if not r["found"]]
         lines.append(
@@ -323,12 +363,14 @@ def main(argv: list[str] | None = None) -> int:
     res["fills_only"] = fills_only_step(out / "audit", out / "fills_only")
     if hasattr(model, "usage"):
         res["usage"] = model.usage()
+    if getattr(model, "failure", None):
+        res["invalid"] = f"a cloud call failed after its retries ({model.failure})"
     (out / "result.json").write_text(json.dumps(res, indent=2, default=str) + "\n",
                                      encoding="utf-8")  # fmt: skip
     md = summary(res)
     (out / "summary.md").write_text(md, encoding="utf-8")
     print(md)
-    return 0
+    return 1 if res.get("invalid") else 0
 
 
 if __name__ == "__main__":
