@@ -242,7 +242,10 @@ Grok Product review PR, never merged.
 3. **Real-data formats unverified.** UFDR and AXIOM readers were built from documentation and
    synthetic samples. No real extraction has been imported. No public Cellebrite-made UFDR with a
    usable license exists; #73 checked the reader on two non-Cellebrite test files (27 of 27
-   records). Forwarded or quoted message content is not read (reported by #73).
+   records). Forwarded messages, and messages carrying a forwarded or quoted original, fail
+   closed (#73, not merged): they can neither support nor contradict a claim, checks resting on
+   them are inconclusive, and the claim page and report warn. Their sender field still shows the
+   forwarder until a schema change Arsh signs (PROPOSED_CHANGES.md); originals are not imported.
 4. **Local runtime per case unknown on current code** (section 7). The local 14B's probe result
    is also unverified on current code: it missed the moved-trap bar on 2026-10-07 answers with
    prompt v1.0, and has not been run on prompt v1.1 or the signed 105-item set.

@@ -24,6 +24,7 @@ from core.contracts import (
     TimeWindow,
     check_id,
 )
+from core.ingest import forwarded as forwarded_records
 
 # Accounts are matched across phones by (namespace, identifier). SMS and phone calls share a
 # number space; every other app is its own.
@@ -111,6 +112,11 @@ class CaseData:
                 "SELECT id, source_id, device_id, app, identifier, display_name FROM accounts"
             )
         }
+        # message id -> 'forwarded' or 'embedded' (core/ingest/forwarded.py): who first wrote
+        # those words is not recorded, so no check may rest on them
+        self.forwarded: dict[str, str] = (
+            forwarded_records.affected(conn) if "source_coverage" in tables else {}
+        )
         self.has_sender_raw = any(
             r[1] == "sender_raw" for r in conn.execute("PRAGMA table_info(messages)")
         )

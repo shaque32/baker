@@ -292,3 +292,20 @@ def test_split_date_time_columns_and_excel_datetime_cells(make_xlsx, case_db):
     assert rows["Chats!3"] == ("2026-03-14T06:15:00Z", 60, "2026-03-14 07:15:00(UTC+1)")
     # Excel datetime cell, no report time zone: raw kept, no UTC guessed.
     assert rows["SMS Messages!2"] == (None, None, "2026-03-06 09:00:00")
+
+
+def test_a_forwarded_label_lists_the_message_for_the_fail_closed_path(make_xlsx, case_db):
+    from core.ingest import forwarded
+    from tests.conftest import SUMMARY
+
+    chats = [
+        ["#", "Chat #", "Source", "From", "To", "Body", "Timestamp", "Label"],
+        [1, "c1", "WhatsApp", "+15550000002 Alex", "+15550000001 Dana (owner)", "SYNTHETIC a",
+         "3/5/2026 9:31:00 PM(UTC-5)", "Forwarded"],
+        [2, "c1", "WhatsApp", "+15550000002 Alex", "+15550000001 Dana (owner)", "SYNTHETIC b",
+         "3/5/2026 9:32:00 PM(UTC-5)", "Reply"],
+    ]  # fmt: skip
+    run(case_db, make_xlsx({"Summary": SUMMARY, "Chats": chats}))
+    ids = dict(case_db.execute("SELECT body, id FROM messages"))
+    assert forwarded.affected(case_db) == {ids["SYNTHETIC a"]: "forwarded"}
+    assert coverage(case_db)["counts"]["messages_marked_forwarded"] == 1

@@ -29,7 +29,8 @@ records of each kind go in the private sample (default 20). Nothing is added to 
      time, worked out separately from the importer for every ISO 8601 time with an offset;
      sender; recipients; direction (when the package states it, or the owner sent or received
      it); deleted state; number of attachments and attachment files hashed; call caller,
-     callee, direction and duration; contact entries and name.
+     callee, direction and duration; contact entries and name; the identifier of each of the
+     phone's own accounts.
    A check that cannot be made for a record (no stated sender, a time without an offset) is
    counted as "not checked", never as a match.
 

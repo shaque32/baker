@@ -66,21 +66,39 @@ Template:
 - Affects: customer-facing text on the review screen and report (wording only); no verdict,
   privacy or performance change.
 
-## 2026-10-15: UFDR reader checked on public test files (#73)
+## 2026-10-15: UFDR reader checked on public test files; forwarded messages fail closed (#73)
 - Changed: attachments linked only by file_id now resolve through taggedFiles and are hashed; a
   phone-owner UserAccount no longer takes a ProfilePicture URL as its identifier; `ufdr-check`
-  mirrors both. (Grok Product item 8.)
+  mirrors both and checks owner account identifiers, and its direction check counts UserID-only
+  owners (fallback ids count as the owner's, per Codex). (Grok Product item 8.)
+  Forwarded messages fail closed (Grok #80 item 1): the UFDR and Excel importers list every
+  message marked Forwarded (UFDR Labels or MessageExtraData; Excel Label column) or carrying an
+  embedded forwarded or quoted original, by id, in the import's coverage record
+  (`core/ingest/forwarded.py`). Downstream, a model's supports or contradicts on such a message
+  is stored as complicates, so a claim resting on it stays Unproven; any check resting on it is
+  inconclusive; SenderCheck never names the forwarder as the writer; the claim page and the
+  report warn on the claim and on each record. The embedded original is never stored as the
+  forwarder's words. Coverage (Grok #80 item 6): picture entries skipped as identifiers are
+  counted (info); a taggedFiles id listed with two different paths links to no file and is
+  listed under Limitations (attention). Rules 0.2.x untouched; full author and forwarder columns
+  proposed in PROPOSED_CHANGES.md (needs Arsh's signature).
 - Where: branch `claude/project-thread-hz9jqt`, PR #73, not merged.
-- Verified (as reported by the owning thread): 4 new tests; lint clean; 1860 pass, 2 known
-  failures (fixed on main by #65 and #67); eval unchanged (case01 1.00, 0 false supported). Hand
-  check 27 of 27 records match on autopsy-udfr `test.ufdr` (LGPL-2.1, hand-made) and IPED's UFED
-  fixtures (GPL-3); neither committed, hashes in `docs/ingest/ufdr.md`. No public Cellebrite-made
-  UFDR with a usable license exists; Digital Corpora and CFReDS return 403 from cloud sessions.
+- Verified: 6 tests for the sample bugs and 13 for item 1 and 6 (forwarded, quoted and nested
+  forwards, Excel label, fail-closed stance after an expert accept, inconclusive checks,
+  SenderCheck, claim-page and report warnings, picture count, repeated tagged ids, ufdr-check
+  clean); lint clean; full suite and eval in the PR description (case01 1.00, 0 false supported
+  before this change). Hand check 27 of 27 records match on autopsy-udfr `test.ufdr`
+  (LGPL-2.1, hand-made) and IPED's UFED fixtures (GPL-3); neither committed, hashes in
+  `docs/ingest/ufdr.md`. No public Cellebrite-made UFDR with a usable license exists; Digital
+  Corpora and CFReDS return 403 from cloud sessions.
 - Open: neither sample is Cellebrite output; 27 records, not the 50 asked for; no Reader count
-  comparison; forwarded or quoted content is not read, so a forwarded message shows as written by
-  the forwarder with empty text.
-- Affects: capabilities (UFDR import). Customer-facing claims unchanged: UFDR and AXIOM stay
-  unverified. Next: a pilot examiner makes a UFDR from a public image and runs `ufdr-check`.
+  comparison. Until the schema change is signed, a forwarded message's sender field still shows
+  the forwarder (with a warning beside it), and only labels Baker recognises ("Forwarded",
+  "Auto-forwarded") are caught; a forward the extraction does not label is not detected.
+- Affects: capabilities (UFDR import, forwarded handling) and verdict paths (fails closed only:
+  can turn Supported or Contradicted into Unproven, never the reverse). Customer-facing claims
+  unchanged: UFDR and AXIOM stay unverified. Next: a pilot examiner makes a UFDR from a public
+  image and runs `ufdr-check`.
 
 ## 2026-10-15: Screen and report agree; reports are repeatable (#72)
 - Changed: `tests/test_report_consistency.py` checks that the screen and the report agree on
