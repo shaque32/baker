@@ -26,7 +26,7 @@ coverage: one wrong "supported" is the failure that counts most.
 
 | Step | What happens | Code | Model? |
 |---|---|---|---|
-| 1. Import | Opens each input read-only and SHA-256 hashes it. The browser case workflow also copies it into the case folder; `baker import` on the CLI reads the original path and keeps no copy | `core/ingest/`, `core/casework/cases.py`, `cli/main.py` | No |
+| 1. Import | Opens each input read-only and SHA-256 hashes it. The browser case workflow also copies it into the case folder, and the importer refuses to store a copy whose bytes no longer match the upload's hash (nothing is stored; `tests/test_import_changed.py`, #88); `baker import` on the CLI reads the original path and keeps no copy | `core/ingest/`, `core/casework/cases.py`, `cli/main.py` | No |
 | 2. Normalize | Writes canonical rows; every row has a `source_ref`; times stored UTC with the original offset and raw value | `core/ingest/`, `core/schema.sql` | No |
 | 3. Enrich | Full-text search, local time, derived record text | `core/enrich/` | No |
 | 4. Claims | Splits the document into paragraphs; the local model proposes atomic claims; the expert edits the list | `core/claims/` | Local 14B |
