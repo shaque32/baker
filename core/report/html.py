@@ -52,7 +52,7 @@ import sqlite3
 from collections import Counter
 from pathlib import Path
 
-from core import pipeline
+from core import build, pipeline
 from core.audit import invariants
 from core.contracts import (
     AssumptionKind,
@@ -85,8 +85,8 @@ from core.review.status import verdict_label as _verdict_label
 
 # 0.4.0 (#76): a "Quote check" row in Versions and the run line, and a call's UTC and printed
 # time beside its line (the review screen shows the same line, through record_line).
-# 0.5.0 (#91): the top line names the Baker, rule and quote-check versions, and Versions gives
-# each model's seed beside its SHA-256.
+# 0.5.0 (#91): the top line names the Baker release and git commit, the pipeline, rule and
+# quote-check versions; Versions gives the build and each model's seed beside its SHA-256.
 REPORT_VERSION = "0.5.0"
 
 __all__ = [
@@ -553,10 +553,17 @@ def quote_check_label(run: dict) -> str:
     return (run.get("config") or {}).get("quote_check") or "not recorded (1.1.0 or earlier)"
 
 
+def build_label(run: dict) -> str:
+    """The Baker release and git commit the run used (core.build). Runs before #91 did not
+    record them; their "Baker pipeline" version alone cannot tell two builds apart."""
+    return build.label((run.get("config") or {}).get("build"))
+
+
 def _versions(conn: sqlite3.Connection, run: dict | None) -> str:
     rows = [("Report", REPORT_VERSION), ("Other explanations (code)", explain.VERSION)]
     if run:
         rows += [
+            ("Baker build", build_label(run)),
             ("Baker pipeline", run["baker_version"]),
             ("Contracts", run["contracts_version"]),
             ("Verdict rules", run["rule_version"]),
@@ -606,7 +613,8 @@ def render_report(conn: sqlite3.Connection, timeline: timeline_html.Settings | N
         + (" · ".join(q(t) for t in govdocs) or "No government document imported")
         + f" · report {REPORT_VERSION}"
         + (
-            f" · Baker {e(run['baker_version'])} · rules {e(run['rule_version'])}"
+            f" · Baker {e(build_label(run))} · pipeline {e(run['baker_version'])}"
+            f" · rules {e(run['rule_version'])}"
             f" · quote check {e(quote_check_label(run))}"
             if run
             else ""
@@ -699,7 +707,8 @@ def render_report(conn: sqlite3.Connection, timeline: timeline_html.Settings | N
                 )
         parts.append(
             f"<p>Run {e(run['run_id'])}, started {e(run['started_at_utc'])}. Baker "
-            f"{e(run['baker_version'])}, contracts {e(run['contracts_version'])}, rule version "
+            f"{e(build_label(run))}, pipeline {e(run['baker_version'])}, contracts "
+            f"{e(run['contracts_version'])}, rule version "
             f"{e(run['rule_version'])}, quote check {e(quote_check_label(run))}. "
             f"{e(run['stored_items'])} evidence items stored; {e(run['dropped_labels'])} labels "
             f"discarded; {e(run['reviewer_failures'])} reviewer failures counted as dismissals."

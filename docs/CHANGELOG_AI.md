@@ -23,18 +23,28 @@ Template:
 - Changed: closes the rest of pilot gate 3 ("versions stamped on every result",
   `docs/PILOT_GATES.md` in #82). PR #76 records the quote-check version (1.2.0) on every run
   and prints it in the report's versions table and Run section. This PR adds what was still
-  missing: the report's top line now reads "Baker <v> · rules <v> · quote check <v>" (it
-  showed only the rules), the versions table gives each model's seed beside its SHA-256, the
-  case overview screen names the quote check beside the rule version, and the eval's
-  `run.json` carries a `versions` block (Baker, rules, quote check, each model's SHA-256,
-  prompt and seed). `REPORT_VERSION` 0.4.0 -> 0.5.0, since the report's output changes
+  missing. The "Baker version" reports printed was `PIPELINE_VERSION`, a fixed "0.1.0"; every
+  run now also records the release (`pyproject.toml`) and the git commit that ran, flagged when
+  tracked files had uncommitted changes (`core/build.py`, stored as `build` in the run's config,
+  no schema change). An installed copy has no `.git`, so it reads the commit from the
+  installer's `BUILD_INFO.json`; the Mac installer now writes one, as the Windows one already
+  did. The report's top line now reads "Baker <release>, commit <12 hex> · pipeline <v> · rules
+  <v> · quote check <v>" (it showed only the rules), the versions table gives the build and each
+  model's seed beside its SHA-256, the case overview screen names the build and the quote check,
+  and the eval's `run.json` carries a `versions` block (build, pipeline, rules, quote check, each
+  model's SHA-256, prompt and seed). `REPORT_VERSION` 0.4.0 -> 0.5.0, since the report's output changes
   (merge audit). No frozen file changes; nothing new is stored.
 - Where: branch `claude/quote-check-version-stamp-6sdy2b`, PR #91 (not merged); #76 is on main.
 - Verified: `test_the_report_and_the_screen_stamp_every_version_a_result_depends_on`
-  (`tests/test_report_consistency.py`, synthetic case01); `make check` results in the PR.
+  (`tests/test_report_consistency.py`, synthetic case01) and `tests/test_build.py` (a git
+  checkout, clean and with changes; an installed copy with `BUILD_INFO.json` beside or inside
+  the source); `make check` results in the PR. The Mac installer's new lines were checked for
+  syntax only (`bash -n`), not by a real install.
 - Open: the per-claim "Rule version ..." line on the claim page and in the report does not
   repeat the quote-check version (the run's is in the report's top line and Run section).
-  Gate 3 counts as met once this PR is on main.
+  Runs made before this PR show "release and commit not recorded". The release is still
+  0.0.1 in `pyproject.toml`; nothing bumps it per release yet. Gate 3 counts as met once this PR
+  is on main.
 - Affects: customer-facing claims (the audit packet names the quote check that ran);
   no capability, privacy or performance change.
 

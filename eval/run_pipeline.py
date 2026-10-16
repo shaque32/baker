@@ -361,11 +361,12 @@ def model_free_components(conn, spec: Path, gold) -> pipeline.Components:  # noq
 
 
 def run_versions(conn) -> dict:  # noqa: ANN001
-    """What a result depends on, as the report stamps it: the latest run's Baker, rule and
-    quote-check versions and every model run's file SHA-256 and seed."""
+    """What a result depends on, as the report stamps it: the latest run's Baker release and git
+    commit, pipeline, rule and quote-check versions and every model run's file SHA-256 and seed."""
     run = pipeline.last_run(conn) or {}
     return {
-        "baker": run.get("baker_version"),
+        "build": (run.get("config") or {}).get("build"),
+        "pipeline": run.get("baker_version"),
         "rules": run.get("rule_version"),
         "quote_check": quote_check_label(run),
         "models": [

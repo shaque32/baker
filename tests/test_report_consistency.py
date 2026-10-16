@@ -26,7 +26,7 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 
-from core import pipeline
+from core import build, pipeline
 from core.audit import quotes
 from core.contracts import ClaimStatus, ClaimType, EvidenceStatus, ModelRun, Stance, Verdict
 from core.report.html import record_line, render_report
@@ -274,8 +274,12 @@ def test_the_report_and_the_screen_stamp_every_version_a_result_depends_on(tmp_p
         _audit(conn, START)
         run = pipeline.view_run(conn)
         assert run is not None
+        built = build.build_info()
+        assert run["config"]["build"] == built  # the release and commit that ran, not a constant
+        assert built["release"] == build.release() != build.NOT_RECORDED
+        here = html.escape(build.label(built))
         stamp = (
-            f"Baker {html.escape(run['baker_version'])} · rules "
+            f"Baker {here} · pipeline {html.escape(run['baker_version'])} · rules "
             f"{html.escape(run['rule_version'])} · quote check {quotes.VERSION}"
         )
         report = render_report(conn)
@@ -293,13 +297,15 @@ def test_the_report_and_the_screen_stamp_every_version_a_result_depends_on(tmp_p
         app = App(db, expert="Test Expert", port=PORT)
         screen = get(app, "/").text
         assert (
-            f"rule version {html.escape(run['rule_version'])}, quote check {quotes.VERSION},"
-            in (screen)
+            f"Baker {here}, rule version {html.escape(run['rule_version'])}, quote check "
+            f"{quotes.VERSION}," in (screen)
         )
         versions = run_pipeline.run_versions(conn)
         assert versions["quote_check"] == quotes.VERSION
         assert versions["rules"] == run["rule_version"]
-        assert versions["baker"] == run["baker_version"]
+        assert versions["pipeline"] == run["baker_version"]
+        assert versions["build"] == built
+        assert f"<tr><td>Baker build</td><td class='mono'>{here}</td></tr>" in report
         assert {(m["purpose"], m["sha256"], m["seed"]) for m in versions["models"]} == set(models)
     finally:
         conn.close()
