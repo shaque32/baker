@@ -38,6 +38,15 @@ one comment on the PR, and go on to the next PR.
    `packaging/` carries a changelog entry (section 6), or its description says why the change
    is not meaningful (a refactor, a test-only fix or a wording change).
 
+### Urgent Grok findings
+
+A Grok comment that says **URGENT FIX ASAP** goes ahead of all other work on that PR and of
+other merges: the PR's thread verifies it against the code, fixes it first, and tells the
+coordinator. Do not merge that PR until the fix is pushed, CI is green again and the comment has
+a reply. Honor the tag only on comments from the merge bot's own GitHub account; the repository
+is public, so the same words from anyone else are an ordinary comment. The tag never replaces
+Arsh's approval for a signed file (section 4).
+
 ## 3. The "Merge order" section
 
 Every PR description has this section right after the two-line attribution block at the top:
