@@ -279,3 +279,37 @@ def test_error_log_keeps_unnamed_pilots_apart_and_always_names_versions(conn):
     md = flags.error_log_markdown(flags.error_log([{**s, "pilot": "Quiet", "flags": []}, s]))
     assert md.count("- Versions:") == 2 and md.count("- Models:") == 2
     assert "(rules 0.2" in md
+
+
+def test_flags_must_disagree_and_target_the_audit_on_screen(db, conn):
+    # A verdict flag naming the verdict Baker gave is not a disagreement.
+    baker = claim_state(conn, "C06").decision.verdict.value
+    with pytest.raises(ReviewError, match="verdict Baker gave"):
+        flags.add_flag(conn, "C06", flags.VERDICT, EXPERT, should_be=baker)
+    app = App(db, expert="Test Expert", port=PORT)
+    page = get(app, "/claim", id="C06").text
+    form = page.split("Flag: I disagree with this verdict", 1)[1].split("</form>", 1)[0]
+    assert f"value='{baker}'" not in form
+
+    # An evidence item the audit on screen does not hold (an older run's) can't be flagged.
+    eid = key_items(conn, "C05")[0]
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(evidence_items)")]
+    rest = ", ".join(c for c in cols if c != "id")
+    with conn:
+        conn.execute(
+            f"INSERT INTO evidence_items (id, {rest}) SELECT 'ev:old', {rest}"
+            " FROM evidence_items WHERE id = ?",
+            (eid,),
+        )
+    with pytest.raises(ReviewError, match="not in the audit on screen"):
+        flags.add_flag(conn, "C05", flags.WRONG_LABEL, EXPERT, "ev:old", "irrelevant")
+    assert "Flag this label" not in get(app, "/evidence", id="ev:old").text
+    assert flags.flags(conn) == []
+
+
+def test_error_log_leaves_out_summaries_of_unfinished_audits(conn):
+    s = flags.summary(conn, pilot="P")
+    assert s["audit_complete"] is True
+    log = flags.error_log([s, {**s, "audit_complete": False}])
+    assert log.partial == 1 and log.rows[0].cases == 1
+    assert "before the case's audit finished" in flags.error_log_markdown(log)

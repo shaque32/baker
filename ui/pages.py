@@ -626,8 +626,10 @@ def _flag_label_form(
     )
 
 
-def _flag_verdict_form(page: Page, st: ClaimState, back: str) -> str:
+def _flag_verdict_form(conn: sqlite3.Connection, page: Page, st: ClaimState, back: str) -> str:
     labels = {v.value: v.value.capitalize() for v in Verdict} | {F.NOT_SURE: "Not sure"}
+    d = st.decision
+    gave = F.baker_verdict(conn, st.claim.id, st.run_id, d.verdict.value) if d else None
     return (
         "<details class='flag'><summary>Flag: I disagree with this verdict</summary>"
         + page.form(
@@ -635,7 +637,7 @@ def _flag_verdict_form(page: Page, st: ClaimState, back: str) -> str:
             _flag_fields(st.claim.id, F.VERDICT, st.run_id)
             + "It should be: <select name='should_be'>"
             + _choices(
-                [F.NOT_SURE, *(v for v in F.VERDICT_CHOICES if v != F.NOT_SURE)],
+                [F.NOT_SURE, *(v for v in F.VERDICT_CHOICES if v not in (F.NOT_SURE, gave))],
                 labels,
             )
             + "</select> "
@@ -816,7 +818,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
             out.append(f"<p>{e(d.confirmed_by)} {kind} this verdict.{note}</p>")
         out.append(
             f"</div><div class='in'>{_verdict_forms(page, st, back)}"
-            f"{_flag_verdict_form(page, st, back)}"
+            f"{_flag_verdict_form(conn, page, st, back)}"
         )
     out.append("</div></div>")
     out.append(_alternatives(conn, st))
@@ -1027,6 +1029,11 @@ def evidence_page(conn: sqlite3.Connection, page: Page, evidence_id: str) -> str
             f"Assumption: {e(claim_id[1])}</p>"
         )
     flagged = any(f.evidence_id == item.id for f in F.active_flags(conn))
+    # Flag only an item in the audit on screen; one an older run dropped is not counted.
+    st = claim_state(conn, claim_id[0]) if claim_id else None
+    on_screen = (
+        st is not None and st.decision is not None and item.id in {x.id for x in st.evidence}
+    )
     out.append(
         evidence_card(
             conn,
@@ -1034,9 +1041,9 @@ def evidence_page(conn: sqlite3.Connection, page: Page, evidence_id: str) -> str
             item,
             last_kind[0] if last_kind else None,
             back,
-            claim_id=claim_id[0] if claim_id else None,
+            claim_id=claim_id[0] if on_screen else None,
             flagged=flagged,
-            run_id=(pipeline.view_run(conn) or {}).get("run_id"),
+            run_id=st.run_id if on_screen else None,
         )
     )
     out.append("<h2>Context</h2>")

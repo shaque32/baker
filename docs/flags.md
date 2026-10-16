@@ -26,7 +26,10 @@ One click opens the form, one click saves it. No reason is required and nothing 
   showed; if the audit on screen changed before the expert saved, the flag is refused with
   "reload and flag again", so it is never counted against output the expert did not see.
 - After an expert override, a verdict flag records Baker's verdict (the one the rules gave,
-  from the `verdict.override` log entry), not the expert's replacement.
+  from the `verdict.override` log entry), not the expert's replacement. The verdict form does not
+  offer Baker's own verdict, and a flag naming it is refused.
+- A label flag needs an item in the audit on screen. An item a later audit dropped still opens on
+  its evidence page, but without the flag form, and a flag on it is refused.
 
 ## The redacted summary
 
@@ -55,5 +58,6 @@ wrong labels per evidence item labeled, verdict disagreements per verdict, misse
 the label pairs flagged per stance model and prompt version, the verdict pairs, and the versions
 and models each pilot ran (printed for every pilot). Verdict pairs carry the rule version.
 Summaries with no pilot name are never pooled: each gets its own row. A summary whose case audit log failed its hash-chain check is left
-out, and the log says how many were. Flagging is optional, so every rate is a lower bound on what the
+out, and the log says how many were. So is a summary exported while an audit was still running
+(`audit_complete` is false), since it counts only the claims that audit had finished. Flagging is optional, so every rate is a lower bound on what the
 expert found wrong, not a measured error rate.

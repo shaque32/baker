@@ -110,16 +110,17 @@ def _model(conn: sqlite3.Connection, model_run_id: str | None) -> dict | None:
     return {"purpose": r[0], "model": re.split(r"[\\/]", r[1])[-1], "prompt_version": r[2]}
 
 
-def _baker_verdict(conn: sqlite3.Connection, claim_id: str, run_id: str | None) -> str | None:
-    """The rules' verdict before the first expert override on this run, if there was one."""
+def baker_verdict(conn: sqlite3.Connection, claim_id: str, run_id: str | None, stored: str) -> str:
+    """Baker's own verdict on this run: the rules' verdict before the first expert override,
+    or the stored verdict when nobody overrode it."""
     vid = f"vd:{claim_id}@{run_id}"
     for (payload_json,) in conn.execute(
         "SELECT payload_json FROM audit_log WHERE action = 'verdict.override' ORDER BY seq"
     ):
         p = json.loads(payload_json)
-        if p.get("verdict_id") == vid:
-            return p.get("was")
-    return None
+        if p.get("verdict_id") == vid and p.get("was"):
+            return p["was"]
+    return stored
 
 
 def _snapshot(conn: sqlite3.Connection, claim_id: str, evidence_id: str | None) -> dict:
@@ -128,13 +129,15 @@ def _snapshot(conn: sqlite3.Connection, claim_id: str, evidence_id: str | None) 
 
     st = claim_state(conn, claim_id)
     snap: dict = {"claim_type": None, "verdict": None, "rule_version": None, "run_id": None}
+    # Not stored: the items on this claim in the run on screen, for add_flag's check.
+    snap["_evidence_ids"] = {x.id for x in st.evidence} if st is not None else set()
     if st is not None:
         snap["claim_type"] = st.claim.claim_type.value
         snap["run_id"] = st.run_id
         if st.decision is not None:
             d = st.decision
             # After an override the stored verdict is the expert's; the flag is about Baker's.
-            snap["verdict"] = _baker_verdict(conn, claim_id, st.run_id) or d.verdict.value
+            snap["verdict"] = baker_verdict(conn, claim_id, st.run_id, d.verdict.value)
             snap["expert_override"] = d.override_note is not None
             snap["rule_version"] = d.rule_version
             snap["expert_decided_verdict"] = d.confirmed_by is not None
@@ -205,12 +208,19 @@ def add_flag(
     now = _now(clock)
     with conn:
         snap = _snapshot(conn, claim_id, evidence_id)
+        on_screen = snap.pop("_evidence_ids")
         if snap["verdict"] is None:
             raise ReviewError("this claim has no verdict on the audit on screen yet; flag it after")
         if seen_run is not None and snap["run_id"] != seen_run:
             raise ReviewError(
                 "the audit on screen changed since this page opened; reload and flag again"
             )
+        if kind == WRONG_LABEL and evidence_id not in on_screen:
+            raise ReviewError(
+                "this evidence item is not in the audit on screen; flag it on the current page"
+            )
+        if kind == VERDICT and should_be == snap["verdict"]:
+            raise ReviewError("that is the verdict Baker gave; pick the one it should be")
         flag_id = _next_id(conn)
         payload = {
             "flag_id": flag_id,
@@ -388,6 +398,8 @@ def summary(conn: sqlite3.Connection, pilot: str = "", clock: Clock | None = Non
         "rule_version": run["rule_version"] if run else None,
         "models": [{"purpose": p, "model": m, "prompt_version": v} for p, m, v in models],
         "audit_log_chain_ok": audit_log.verify_chain(conn),
+        # A partial run counts only the claims it finished, so flag-log leaves it out.
+        "audit_complete": run is not None and not run.get("partial"),
         "denominators": denominators,
         "flag_counts": dict(sorted(Counter(f.kind for f in counted).items())),
         "withdrawn": len(all_flags) - len(active),
@@ -447,17 +459,22 @@ def _check(s: dict) -> None:
 class ErrorLog:
     rows: list[PilotRow]
     left_out: int = 0  # summaries whose case audit log failed its hash-chain check
+    partial: int = 0  # summaries exported while an audit was unfinished
 
 
 def error_log(summaries: Iterable[dict]) -> ErrorLog:
     """One row per pilot: flags against what was there to flag, summed over that pilot's cases.
-    A summary from a case whose audit-log chain failed is left out and counted as such."""
+    A summary from a case whose audit-log chain failed, or exported before its audit finished,
+    is left out and counted as such."""
     rows: dict[str, PilotRow] = {}
-    left_out = unnamed = 0
+    left_out = partial = unnamed = 0
     for s in summaries:
         _check(s)
         if s.get("audit_log_chain_ok") is not True:
             left_out += 1
+            continue
+        if s.get("audit_complete") is not True:
+            partial += 1
             continue
         name = s.get("pilot") or ""
         if not name:  # never pool summaries nobody named: they may be different pilots
@@ -490,7 +507,7 @@ def error_log(summaries: Iterable[dict]) -> ErrorLog:
                 row.verdict_disagreements[
                     (f.get("rule_version"), f.get("verdict_at_flag"), f.get("should_be"))
                 ] += 1
-    return ErrorLog([rows[k] for k in sorted(rows)], left_out)
+    return ErrorLog([rows[k] for k in sorted(rows)], left_out, partial)
 
 
 def error_log_markdown(log: ErrorLog) -> str:
@@ -509,6 +526,12 @@ def error_log_markdown(log: ErrorLog) -> str:
         out[3:3] = [
             f"Left out: {log.left_out} summary(ies) whose case audit log failed its hash-chain "
             "check. Their flags and counts are not in the table.",
+            "",
+        ]
+    if log.partial:
+        out[3:3] = [
+            f"Left out: {log.partial} summary(ies) exported before the case's audit finished. "
+            "Export again once the audit is complete.",
             "",
         ]
     for r in rows:
