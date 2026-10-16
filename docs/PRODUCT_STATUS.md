@@ -243,9 +243,12 @@ training-data generators (#79). PR #70 is an empty Grok Product review PR, never
    synthetic samples. No real extraction has been imported. No public Cellebrite-made UFDR with a
    usable license exists; #73 checked the reader on two non-Cellebrite test files (27 of 27
    records). Forwarded messages, and messages carrying a forwarded or quoted original, fail
-   closed (#73, not merged): they can neither support nor contradict a claim, checks resting on
-   them are inconclusive, and the claim page and report warn. Their sender field still shows the
-   forwarder until a schema change Arsh signs (PROPOSED_CHANGES.md); originals are not imported.
+   closed (#73, on main): they can neither support nor contradict a claim, checks resting on
+   them are inconclusive, and the claim page and report warn. With the schema change Arsh signed
+   on 2026-10-16 (branch `claude/project-thread-hz9jqt`, not merged) the record itself says
+   forwarded, with the original author when the extraction names one; the sender field still
+   shows the forwarder, and originals' text is not imported. Cases made before then keep only the
+   coverage list (same fail-closed behaviour, no author).
 4. **Local runtime per case unknown on current code** (section 7). The local 14B's probe result
    is also unverified on current code: it missed the moved-trap bar on 2026-10-07 answers with
    prompt v1.0, and has not been run on prompt v1.1 or the signed 105-item set.
