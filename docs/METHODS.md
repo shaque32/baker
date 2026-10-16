@@ -14,8 +14,9 @@ figure will be published until it has been measured on real extractions.
 
 Baker reads a government document (an affidavit or a report) and the phone extraction reports it
 relies on. It splits the document into individual factual claims and tests each one against the
-extraction data. Each claim ends **Supported**, **Contradicted** or **Unproven**, with the records
-it rests on and the reasons, in words.
+extraction data. Each claim the audit finishes ends **Supported**, **Contradicted** or **Unproven**,
+with the records it rests on and the reasons, in words. A claim a stopped or crashed run did not
+finish has no verdict and shows "Labeling incomplete" until the run resumes.
 
 ## 2. The flow: claim, assumption, check, rules
 
@@ -108,7 +109,8 @@ Text quoted from a source or typed by the examiner appears as written.
 
 ## 5. Provenance and hashing
 
-Every displayed item carries one provenance tier:
+Every source record, evidence item, assumption and identity link carries one provenance tier.
+Check results and claims carry none; a check result names the records it searched instead.
 
 | Tier | Meaning |
 |---|---|

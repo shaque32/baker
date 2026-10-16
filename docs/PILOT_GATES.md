@@ -10,7 +10,7 @@ the same PR that changes a gate's state, along with `docs/PRODUCT_STATUS.md` sec
 - **As of:** 2026-10-16, main `966be8f` (after #83, #72, #68, #74, #73, #75, #79, #85, #76 and #87) plus PR #82, which adds this file. Open PRs are named but not
   counted.
 - **Result:** 8 of 18 gates met (gate 2 by #76, gate 14 by the case02 key Arsh signed, gate 6 by #72, gate 7 by #74, gate 8 by
-  merging #68, gate 12 by #82, gates 15 and 18 already in place). Gates 13 to 18 come from Grok's pilot-ready list
+  merging #68, gate 12 by #82, gate 15 already in place, gate 18 by the feedback form #82 publishes). Gates 13 to 18 come from Grok's pilot-ready list
   (2026-10-16), which Arsh agreed to fold in here. **Not pilot-ready.**
 
 ## The gates
@@ -34,7 +34,7 @@ the same PR that changes a gate's state, along with `docs/PRODUCT_STATUS.md` sec
 | 15 | Stopped or crashed runs | A stopped or crashed audit never looks complete, and the examiner can resume it | **Met** | Stop button stores the run as stopped (`core/casework/jobs.py`); a run left running by a crash is marked stopped on next start; unfinished claims show and print "Labeling incomplete" with no verdict, and the report carries a banner; resuming reuses finished claims' stored outputs (`tests/test_start_case.py` stop and resume, `tests/test_fewer_calls.py` killed run). Starting over from scratch means a new case |
 | 16 | Pilot agreement | A signed short agreement: data stays on the examiner's machine, Baker never sees it, deletion whenever they want, output advisory only | **Not met** | An outline for a lawyer exists (`/mnt/project-files/baker/pilot/03-pilot-agreement-outline.md`), with bracketed decisions open; no company or lawyer yet |
 | 17 | One-page explainer and support | A one-page "what Baker does and doesn't do", a named support contact, and a way to send a bug report with no case data | **Not met** | Pieces exist: methods note (2 to 4 pages), limitations sheet in the pilot kit, and the `baker verify-log` output, `ufdr-check.md` and `ufdr-check.json`, which hold no case content (onboarding section 7; `ufdr-check-private.md` is case content and is never sent). No one-pager, no named contact, no general bug-report export |
-| 18 | Feedback form | A form records where Baker was wrong, where it saved time and what was missing | **Met** | `/mnt/project-files/baker/pilot/04-feedback-form.md` (wrong citations, time saved, what was missing) |
+| 18 | Feedback form | A form records where Baker was wrong, where it saved time and what was missing | **Met** | [`docs/PILOT_FEEDBACK_FORM.md`](PILOT_FEEDBACK_FORM.md) (wrong verdicts and citations, time saved, what was missing), filled in with no case content |
 
 Also required on the release commit, as for every merge: `make check` passes (lint, tests, the
 model-free eval with 0 false supported on case01, hostile red-team PASS).

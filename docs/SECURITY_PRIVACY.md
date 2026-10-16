@@ -117,7 +117,9 @@ file's checked hash), `speed.json` (seconds per model call) and, if the expert s
 
 For an encrypted case, first lock it ("Lock this case now") or stop Baker, because a running Baker
 keeps an unlocked case's key in memory. Then destroy `case.key` and every copy of the recovery key,
-and check that the case no longer opens. The data is then unreadable. The old plain files of a case encrypted after it was made may remain in free SSD blocks;
+and check that the case no longer opens. The case database and the input file contents are then
+unreadable. `case.json` (case name, examiner name, times) and the input file names under `inputs/`
+stay readable, so delete the case folder and every backup of it to remove those too. The old plain files of a case encrypted after it was made may remain in free SSD blocks;
 disk encryption covers that.
 
 **At Anthropic (opted-in case only).** Requests go to the Claude API under the expert's own account, so
@@ -176,7 +178,7 @@ document is not legal advice.
 | `tests/test_review_screen.py::test_screen_code_imports_no_network_client` | The screen and report code import no network client |
 | `tests/test_review_screen.py::test_the_whole_flow_makes_no_network_call` | A full review, re-decide and report download with every socket connect and DNS lookup made to fail: none is attempted |
 | `tests/test_review_screen.py::test_server_binds_loopback_only_and_answers` | The screen binds 127.0.0.1 only |
-| `tests/test_packaging.py::test_no_network_tool_ships_in_core` | The only download in the Windows installer is the optional model step |
+| `tests/test_packaging.py::test_no_network_tool_ships_in_core` | The Windows installer script downloads with the model's pinned SHA-256 (`DownloadTemporaryFile`, `ModelSha256`), and no `core/` file names Hugging Face. The test does not prove the model is the installer's only download; that comes from reading `packaging/windows/baker.iss`, whose two download calls (lines 161 and 244, interactive and silent) both fetch the model and only when the expert ticks the box |
 
 Run them yourself from a source checkout (7 passed on 2026-10-15, Linux, main `19d8461` plus #82):
 

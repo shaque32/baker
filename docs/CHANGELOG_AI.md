@@ -38,7 +38,11 @@ Template:
   24 GB Mac and AWS g5 (A10G); real-export gate covers Cellebrite, UFDR and AXIOM. After #76 merged, gates 2 and 3 are met;
   gate 14 is met by the case02 key Arsh signed 2026-10-12. Codex round 4 (5) fixed;
   round 5 found the printed Baker version is a constant, not the build, so gate 3 is back to not
-  met: 8 of 18. `install-mac.md` and `demo.md` no longer state the 6 to 8 h runtime as
+  met: 8 of 18. Round 6 (5) fixed: verdicts scoped to finished claims, provenance tiers scoped
+  to the objects that carry them, the installer-download test described as what it checks, key
+  destruction leaves `case.json` and input names readable, and the feedback form published as
+  `docs/PILOT_FEEDBACK_FORM.md` (pricing question left out of the public repo) so gate 18 has
+  evidence on main. `install-mac.md` and `demo.md` no longer state the 6 to 8 h runtime as
   current. PRODUCT_STATUS section 11 links the gates.
 - Where: branch `claude/project-thread-390z80`, PR #82 (main once merged).
 - Verified: each statement checked against main `8ed89f9` code and docs, and #68 head `de219c1`
@@ -46,7 +50,7 @@ Template:
   API retention page and Commercial Terms read 2026-10-15 (the privacy-center article did not load
   from the cloud session and was not re-read).
 - Open: gate 11 (an outside person completes the kit on a clean Mac) needs a human; 8 of 18 gates
-  are met (gate 2 by #76; gate 14 by the case02 key signed 2026-10-12; gates 6, 7, 8 by #72, #74, #68; gate 12 by this PR; gates 15 and 18 already in place); the Mac installer's uv, Python and
+  are met (gate 2 by #76; gate 14 by the case02 key signed 2026-10-12; gates 6, 7, 8 by #72, #74, #68; gate 12 by this PR; gate 15 already in place; gate 18 by the form this PR publishes); the Mac installer's uv, Python and
   PyPI downloads are not hash-pinned (disclosed in the pack); gate 4 waits on #89 (signed
   forwarded-message schema); gate 13 on #86 and #88.
 - Affects: customer-facing claims (what buyers and examiners are told, all checked against code);
