@@ -321,3 +321,22 @@ tests/adversarial/test_probe_draft.py (signed set P001 to P105, no draft left; R
 gains undated_denial and told_frame), tests/test_stancedata.py (the moved traps with a family
 are the four; the moved probe items are P038 to P044, P071, P049, P066 to P069 and P092 to P094;
 TRAP_ORDER gains undated_denial and told_frame).
+
+## 2026-10-15 claude/project-thread-hz9jqt: say on the message that it was forwarded
+File: core/schema.sql (and the Message model in core/contracts.py, if it mirrors the columns)
+Why: a forwarded message is stored as the forwarder's message, and nothing on the record says it
+was forwarded or who first wrote it. PR #73 lists forwarded messages in coverage (attention), but
+the evidence screen, the stance labeler and the report still read the text as the forwarder's own
+words. With these columns the importers can mark it, the screen can show "Forwarded", and a claim
+that someone wrote the words cannot rest on it. Cellebrite reports carry the mark (UFDR `Labels`
+or a MessageLabel/QuotedMessageData "Forwarded"; the Excel report's Label column), and sometimes
+the original (UFDR EmbeddedInstantMessage).
+Diff:
+```
+     deleted_flag    INTEGER CHECK (deleted_flag IN (0, 1)),  -- NULL = source did not say
+-    bookmarked      INTEGER CHECK (bookmarked IN (0, 1))     -- examiner tag, for the selection audit
++    bookmarked      INTEGER CHECK (bookmarked IN (0, 1)),    -- examiner tag, for the selection audit
++    forwarded       INTEGER CHECK (forwarded IN (0, 1)),     -- NULL = source did not say
++    forwarded_from_raw TEXT          -- the original author as the source wrote it, when it says
+ );
+```

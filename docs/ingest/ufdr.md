@@ -57,7 +57,7 @@ entities are ever read). Field names are matched case-insensitively.
 | `Contact` | `contacts`, one row per entry | `Name`, `Entries` (each entry's `Value`) |
 | `UserAccount` | the phone's own `accounts` | `Source`, `Username` (else the first entry), `Name` |
 | `Party` | accounts | `Identifier`, `Name`, `IsPhoneOwner`, `Role` |
-| `Attachment` | `attachments` | `Filename`, `ContentType` (MIME type), a path to the file in the package (`attachment_extracted_path`, `LocalPath`), a stated `SHA256` |
+| `Attachment` | `attachments` | `Filename`, `ContentType` (MIME type), a path to the file in the package (`attachment_extracted_path`, `LocalPath`, else the `Local Path` of the `taggedFiles` file its `file_id` names), a stated `SHA256` |
 
 A message's `Type` is not read for direction (it names the content kind), nor is an MMS
 `Subject`. Other field names are listed in coverage as fields Baker does not read.
@@ -79,7 +79,10 @@ display string. From there the rules are the Excel importer's (docs/ingest/celle
 direction from a stated value first, else from the owner flag; recipients from `To`, else the
 chat's participants other than the sender; an SMS thread per counterpart; a name-only party is
 scoped to its chat; first display name seen is kept; the phone's own accounts come from
-`UserAccount` and `IsPhoneOwner`.
+`UserAccount` and `IsPhoneOwner`. A `UserAccount` without a `Username` takes its first `UserID`
+entry, else its first other entry. Picture entries (`ProfilePicture`, `ContactPhoto`: any entry
+type naming a picture or photo) hold an image link, so they are never an account's or a
+contact's identifier.
 
 Times: UFDR times are ISO 8601 with an offset (`2026-03-05T21:31:00.000-05:00`); the offset is
 kept, the time stored in UTC, and the value as written kept in `ts_raw`. A time with no offset
@@ -139,7 +142,8 @@ read and where, tagged files, package files and how many were hashed, model coun
 the record states seen. Codes added: `format_unverified`, `carved`,
 `decoding_confidence_not_high`, `attachment_file_not_in_package`, `attachment_hash_differs`,
 `attachment_without_name`, `duration_unread`, `no_time`, `partial_extraction`,
-`rows_skipped_same_id_as_an_earlier_record` (attention);
+`rows_skipped_same_id_as_an_earlier_record`, `forwarded`,
+`embedded_message_not_imported` (attention);
 `several_extractions`, `unknown_namespace`, `package_files`, `tagged_files`, `record_states`,
 `attachment_files_hashed`, `attachment_files_encrypted_not_hashed`, `chats_without_messages`
 (info).
@@ -149,6 +153,40 @@ the record states seen. Codes added: `format_unverified`, `carved`,
 Tagged files and examiner tags or bookmarks (`bookmarked` stays NULL), locations, emails, web
 history and the other types above, message language, files not attached to a message, and the
 `source_index`/`extractionId` link from a record to its extraction.
+
+## Checked against public samples (2026-10-15)
+
+No public UFDR made by Cellebrite with a license that allows this use could be found or reached.
+Public phone images (Josh Hickman's on Digital Corpora, NIST CFReDS, the Cellebrite CTFs) are raw
+extractions, not Reader reports: making a UFDR from them needs Physical Analyzer, which needs a
+Cellebrite license and Windows. Two third-party samples were run through `baker ufdr-check` and
+every record was compared by hand with report.xml. Neither is in the repo.
+
+| Sample | Where it is from | Records | What it showed |
+|---|---|---|---|
+| `test.ufdr` from FlorianRudolf/autopsy-udfr (LGPL-2.1, commit 6f8f66d, SHA-256 `43d5eedc...c812`) | Hand-made and anonymised by that project's author from a report version 5.3.1.0 package (German case fields) | 4 messages, 2 contacts, 1 attachment, an Email and 2 InstalledApplication (not imported) | An Attachment can name its file only through `file_id`, a `taggedFiles` entry and its `Local Path` (Windows separators). Baker did not follow it, so the file was never hashed. Fixed. |
+| IPED's UFED model fixtures (GPL-3, sepinf-inc/IPED commit 129ce8f) wrapped in a minimal report.xml shell | IPED's tests, one described as a synthetic sample of the PA 10.10 message model | 13 messages, 5 attachments, 2 UserAccounts | A UserAccount whose first entry is a `ProfilePicture` got the picture's link as the phone owner's account identifier. Fixed. |
+
+Forwarded messages: a message marked `Forwarded` (in its `Labels`, or on a `MessageLabel` or
+`QuotedMessageData` in its `MessageExtraData`) is listed for review (`forwarded`, attention). A
+message carrying a forwarded or quoted original (`EmbeddedInstantMessage`, nested or not) is
+listed too (`embedded_message_not_imported`); the original's text and attachments are not
+imported, and never as the forwarder's words. Every such message id goes, in full, into the
+coverage record under `forwarded_records`, and downstream fails closed
+(`core/ingest/forwarded.py`): the model's supports or contradicts on it is stored as
+complicates, a check resting on it is inconclusive, the sender check never names the forwarder
+as the writer, and the claim page and report warn. The Excel importer does the same for a
+`Label` cell reading Forwarded. The record's sender field still shows the forwarder until a
+schema change is signed (PROPOSED_CHANGES.md).
+
+Picture entries (`ProfilePicture`, `ContactPhoto`) are never identifiers; how many were skipped
+is counted (`picture_entries_not_identifiers`, info). A `taggedFiles` id listed twice with
+different paths links to no file: such attachments are not hashed and are listed
+(`tagged_file_ids_repeated`, `attachment_file_ambiguous`, attention, shown under Limitations).
+
+A system message ("You joined the group") is imported as a message from a party
+named "System message". These samples are not Cellebrite output, so they move nothing to
+verified.
 
 ## Before calling it verified
 
