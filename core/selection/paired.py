@@ -20,7 +20,8 @@ Matching fails closed. Each record of the report is:
 - unmatched: no record of the larger source could be it. A record of the larger source with the
   same app and direction within NEAR of an unmatched report record (or with the same text, or
   with no time on either side) may be that record changed by a format, so it is "may be in the
-  report" too, never counted left out.
+  report" too, never counted left out. While any contact of the report is not found, every
+  contact of the larger source not matched may be it.
 
 A record of the larger source is "not in the report" only when none of the above applies. When
 fewer than MIN_ALIGNED of the report's messages and calls are matched or ambiguous, the two may
@@ -157,11 +158,12 @@ class Pair:
     @cached_property
     def whole_threads(self) -> frozenset[str]:
         """Conversations of the larger source none of whose messages is in the report or may
-        be in it."""
+        be in it. A message not compared (dated after the report, or untimed) is no sign the
+        report holds part of the conversation."""
         seen: dict[str, bool] = {}
         for rid, r in self.full_records.items():
             if r.kind == "message" and r.thread_id:
-                out = self.full_state[rid] == "not_in_report"
+                out = self.full_state[rid] in ("not_in_report", "not_compared")
                 seen[r.thread_id] = seen.get(r.thread_id, True) and out
         return frozenset(t for t, all_out in seen.items() if all_out)
 
@@ -411,6 +413,14 @@ def match(
         if any(_dir_ok(r.direction, f.direction) for r in close):
             state[f.id] = "may_be"
             why[f.id] = "near_unmatched"
+    # Contacts have no time to be near. Two exports can print one contact differently (a number
+    # spaced or not, a name's case), so while any report contact is not found, every contact of
+    # the larger source may be it, and none is counted left out.
+    if any(m.state == "unmatched" and m.record.kind == "contact" for m in matches):
+        for f in full:
+            if f.kind == "contact" and state[f.id] == "not_in_report":
+                state[f.id] = "may_be"
+                why[f.id] = "near_unmatched"
     return matches, state, why
 
 

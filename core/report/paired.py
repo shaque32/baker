@@ -13,6 +13,7 @@ is involved, and nothing here sets or changes a verdict.
 
 from __future__ import annotations
 
+import hashlib
 import html
 from collections.abc import Callable
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -25,6 +26,7 @@ from core.selection.paired import ClaimNearby, Nearby, Pair, PairedCheck, Rec
 
 SHOW = 25  # records listed per claim and pair; the rest are counted
 SHOW_RECORDS = 50  # report records not found or found more than once, listed per pair
+SHOW_THREADS = 50  # conversations with records not in the report, listed per pair
 
 CSS = """
 .pair { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
@@ -45,9 +47,19 @@ def _n(n: int, word: str, plural: str | None = None) -> str:
     return f"{n:,} {word if n == 1 else plural or word + 's'}"
 
 
-def anchor(claim_id: str) -> str:
-    """The page anchor of one claim's list."""
-    return f"paired-{claim_id}"
+def anchor(claim_id: str, pair_index: int = 0) -> str:
+    """The page anchor of one claim's list on one pair (its index in PairedCheck.pairs)."""
+    return f"paired-{claim_id}" if pair_index == 0 else f"paired-{claim_id}-{pair_index + 1}"
+
+
+def tag(value: str) -> str:
+    """A record or source id as a data attribute. Ids carry source text (a sheet or file name),
+    which is not the tool's words, so attributes hold a digest the forbidden-word check passes."""
+    return hashlib.sha256(value.encode()).hexdigest()[:16]
+
+
+def _index(check: PairedCheck, p: Pair) -> int:
+    return next((i for i, x in enumerate(check.pairs) if x is p), 0)
 
 
 def _when(r: Rec, zone: str | None) -> str:
@@ -104,11 +116,11 @@ def _unsure(p: Pair) -> str:
             else f"found {len(m.candidates):,} times, or another report record could be the same "
             "one, so code does not decide which"
         )
-        where = f"{e(r.kind)} {e(r.locator)}"
+        where = f"{e(r.kind)} {q(r.locator)}"
         if r.kind != "contact":
             where += f", {e(_when(r, p.report.zone))}"
         text = q(f"{r.text} ({r.party})") if r.kind == "contact" else _what(r)
-        items.append(f"<li data-odd='{e(r.id)}'>{where}: {text}: {state}.</li>")
+        items.append(f"<li data-odd='{tag(r.id)}'>{where}: {text}: {state}.</li>")
     more = len(odd) - min(len(odd), SHOW_RECORDS)
     return (
         f"<details><summary>{_n(len(odd), 'report record')} not found or found more than once"
@@ -150,17 +162,20 @@ def _left_out(p: Pair) -> str:
         rows = "".join(
             f"<tr><td>{q(title or tid)}</td><td>{e(app)}</td><td>{n:,}</td>"
             f"<td>{'Not in the report at all' if none else 'Partly in the report'}</td></tr>"
-            for tid, title, app, n, none in threads
+            for tid, title, app, n, none in threads[:SHOW_THREADS]
         )
+        more = len(threads) - min(len(threads), SHOW_THREADS)
         out.append(
             "<details><summary>Conversations with messages not in the report</summary><table>"
             "<thead><tr><th>Conversation</th><th>App</th><th>Not in the report</th><th></th>"
-            f"</tr></thead>{rows}</table></details>"
+            f"</tr></thead>{rows}</table>"
+            + (f"<p class='muted'>{_n(more, 'more conversation')} not shown.</p>" if more else "")
+            + "</details>"
         )
     return "".join(out)
 
 
-def _claim(cn: ClaimNearby, claim_link: Callable[[str], str] | None,
+def _claim(cn: ClaimNearby, index: int, claim_link: Callable[[str], str] | None,
            context: Callable[[str], str] | None) -> str:  # fmt: skip
     p = cn.pair
     name = (
@@ -172,7 +187,10 @@ def _claim(cn: ClaimNearby, claim_link: Callable[[str], str] | None,
     head += "two sources"
     if cn.untimed:
         head += f" ({_n(len(cn.untimed), 'has', 'have')} no time, so nothing is near it)"
-    div = f"<div class='pair-claim' id='{e(anchor(cn.claim_id))}' data-claim='{e(cn.claim_id)}'>"
+    div = (
+        f"<div class='pair-claim' id='{e(anchor(cn.claim_id, index))}' "
+        f"data-claim='{e(cn.claim_id)}'>"
+    )
     if not p.listed:
         return f"{div}{head}; nothing is listed for this pair (see above).</p></div>"
     total = cn.total
@@ -217,7 +235,7 @@ def _claim(cn: ClaimNearby, claim_link: Callable[[str], str] | None,
             if context and r.kind == "message":
                 what += f" <a href='{e(context(r.id))}'>open</a>"
             rows.append(
-                f"<tr data-rec='{e(r.id)}'><td class='mono'>{e(_when(r, p.full.zone))}</td>"
+                f"<tr data-rec='{tag(r.id)}'><td class='mono'>{e(_when(r, p.full.zone))}</td>"
                 f"<td>{e(_distance(n, times.get(n.anchor_id)))}</td>"
                 f"<td>{q(r.party) if r.party else ''}"
                 f"{' (outgoing)' if r.direction == 'outgoing' else ''}</td><td>{what}</td></tr>"
@@ -263,10 +281,10 @@ def paired_html(
             f"<p>{q(s.file_name)} has no larger source in this case that lists one of the same "
             "phone's own accounts and states the same device model, so it is not compared.</p>"
         )
-    for p in check.pairs:
+    for i, p in enumerate(check.pairs):
         mine = [c for c in check.claims if c.pair is p]
         out.append(
-            f"<div class='pair' data-pair='{e(p.report.id)}|{e(p.full.id)}'>"
+            f"<div class='pair' data-pair='{tag(p.report.id + '|' + p.full.id)}'>"
             f"<h4>{_source(p, False)} against {_source(p, True)}</h4>"
             "<p class='where'>Read as the same phone because both list the phone's own "
             f"{'account' if len(p.basis) == 1 else 'accounts'} "
@@ -277,7 +295,7 @@ def paired_html(
             + _unsure(p)
             + "<h4>Near each claim</h4>"
             + (
-                "".join(_claim(c, claim_link, context) for c in mine)
+                "".join(_claim(c, i, claim_link, context) for c in mine)
                 or "<p>No claim's records are on these two sources.</p>"
             )
             + "</div>"
@@ -292,11 +310,19 @@ def paired_html(
     return "".join(out)
 
 
-def claim_line(check: PairedCheck, claim_id: str, href: str) -> str:
-    """One line for a claim page: what the larger sources hold near the claim's records."""
+def claim_line(check: PairedCheck, claim_id: str, page: str) -> str:
+    """One line for a claim page: what the larger sources hold near the claim's records. page
+    is where the lists are; the link goes to the first list with records near the claim, else to
+    the first list that holds nothing, else to the first."""
     mine = [c for c in check.claims if c.claim_id == claim_id]
     if not mine:
         return ""
+    target = (
+        next((c for c in mine if c.pair.listed and c.total), None)
+        or next((c for c in mine if not c.pair.listed), None)
+        or mine[0]
+    )
+    href = f"{page}#{anchor(claim_id, _index(check, target.pair))}"
     listed = [c for c in mine if c.pair.listed]
     unlisted = list(dict.fromkeys(c.pair.full.file_name for c in mine if not c.pair.listed))
     total = sum(c.total for c in listed)

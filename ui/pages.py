@@ -50,7 +50,6 @@ from core.report.html import (
 from core.report.hypotheses import CSS as ALTERNATIVES_CSS
 from core.report.hypotheses import alternatives_html
 from core.report.paired import CSS as PAIRED_CSS
-from core.report.paired import anchor as paired_anchor
 from core.report.paired import claim_line
 from core.report.restore import CSS as RESTORE_CSS
 from core.report.selection import CSS as SELECTION_CSS
@@ -601,7 +600,7 @@ def _selection_note(conn: sqlite3.Connection, st: ClaimState) -> str:
         else claim_line(
             paired_check(conn, [st], audit),
             st.claim.id,
-            f"/selection#{paired_anchor(st.claim.id)}",
+            "/selection",
         )
     )
     units = audit.of("document")

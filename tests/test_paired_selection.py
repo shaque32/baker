@@ -24,10 +24,10 @@ from core.db import apply_schema, connect
 from core.ingest.cellebrite_excel import CellebriteExcelImporter
 from core.ingest.ufdr import UfdrImporter
 from core.report.html import render_report
-from core.report.paired import claim_line, paired_html
+from core.report.paired import SHOW_THREADS, anchor, claim_line, paired_html, tag
 from core.review.status import claim_states
 from core.selection.audit import selection_audit
-from core.selection.paired import Pair, near_claim, paired_check, pairs
+from core.selection.paired import Pair, Rec, match, near_claim, paired_check, pairs
 from eval import run_pipeline
 from eval.synthetic import paired as planted
 from eval.synthetic.case01_story import eastern_offset_min
@@ -317,7 +317,7 @@ def test_screen_and_report_list_the_same_records_in_the_same_order(db, conn) -> 
     check_report_text(page.text)
     shown, printed = _paired_part(page.text), _paired_part(report)
     assert shown == printed
-    assert ("pair", "item1|item1full") in shown
+    assert ("pair", tag("item1|item1full")) in shown
     assert sum(1 for k, _ in shown if k == "rec") == 10  # C05 and C06: 4 each; C20: 2
     assert [v for k, v in shown if k == "claim"] == [
         "C05", "C06", "C10", "C11", "C12", "C13", "C16", "C20"
@@ -410,3 +410,83 @@ def test_a_removed_claim_page_has_no_link_to_a_missing_list(db, conn) -> None:
         Request("GET", "/claim", {"id": "C05"}, dict(HOST))
     )
     assert page.status == 200 and "Curated report check:" not in page.text
+
+
+# ---------------------------------------------------------------- Codex review of db8c30e
+
+
+def _contact(rid: str, name: str, ident: str) -> Rec:
+    return Rec(rid, "contact", "s", rid, "", "unknown", None, None, name, ident)
+
+
+def test_a_reformatted_contact_is_never_counted_left_out() -> None:
+    report = [_contact("r1", "Kevin S", "+1 212 555 0162")]
+    full = [_contact("f1", "Kevin S", "+12125550162"), _contact("f2", "Ann", "+12125550100")]
+    matches, state, why = match(report, full)
+    assert [m.state for m in matches] == ["unmatched"]
+    assert state == {"f1": "may_be", "f2": "may_be"} and why["f1"] == "near_unmatched"
+
+
+def test_contacts_are_counted_when_every_report_contact_is_found() -> None:
+    report = [_contact("r1", "Kevin S", "+12125550162")]
+    full = [_contact("f1", "Kevin S", "+12125550162"), _contact("f2", "Ann", "+12125550100")]
+    _, state, _ = match(report, full)
+    assert state == {"f1": "in_report", "f2": "not_in_report"}
+
+
+def test_a_message_not_compared_does_not_make_a_conversation_partly_reported(small) -> None:
+    p = _the_pair(small)
+    tid = next(r.thread_id for r in p.full_records.values() if r.text == "running late")
+    later = next(r.id for r in p.full_records.values() if r.thread_id == tid and r.text == "ok")
+    state = dict(p.full_state)
+    for rid, r in p.full_records.items():
+        if r.thread_id == tid:
+            state[rid] = "not_in_report"
+    state[later] = "not_compared"
+    assert tid in replace(p, full_state=state).whole_threads
+
+
+def test_the_conversation_list_is_capped(small) -> None:
+    p = _the_pair(small)
+    base = next(r for r in p.full_records.values() if r.text == "running late")
+    extra = {
+        f"x{i}": replace(base, id=f"x{i}", thread_id=f"tx{i}", thread_title=f"T{i}")
+        for i in range(SHOW_THREADS + 7)
+    }
+    big = replace(
+        p,
+        full_records={**p.full_records, **extra},
+        full_state={**p.full_state, **dict.fromkeys(extra, "not_in_report")},
+    )
+    chk = paired_check(small, claim_states(small), selection_audit(small))
+    html = paired_html(replace(chk, pairs=(big,), claims=()))
+    assert (
+        html.count("<td>Not in the report at all</td>")
+        + html.count("<td>Partly in the report</td>")
+        == SHOW_THREADS
+    )
+    assert "more conversations not shown" in html
+
+
+def test_source_text_in_ids_and_locators_is_not_read_as_baker_words(conn) -> None:
+    chk = paired_check(conn, claim_states(conn), selection_audit(conn))
+    p = chk.pairs[0]
+    m = next(m for m in p.matches if m.state != "matched")
+    odd = replace(m, record=replace(m.record, id="msg:item1:Deleted Messages!1",
+                                    locator="Deleted Messages!1"))  # fmt: skip
+    rest = tuple(x for x in p.matches if x is not m)
+    html = paired_html(replace(chk, pairs=(replace(p, matches=(odd, *rest)),)))
+    assert "Deleted Messages!1" in html
+    check_report_text(html)
+
+
+def test_each_pair_has_its_own_claim_anchor_and_the_claim_line_links_to_the_records(conn) -> None:
+    chk = paired_check(conn, claim_states(conn), selection_audit(conn))
+    c05 = next(c for c in chk.claims if c.claim_id == "C05")
+    first = replace(c05.pair, full=replace(c05.pair.full, id="other", file_name="b.ufdr"))
+    empty = replace(c05, pair=first, groups=())
+    two = replace(chk, pairs=(first, c05.pair), claims=(empty, c05))
+    html = paired_html(two)
+    assert f"id='{anchor('C05')}'" in html and f"id='{anchor('C05', 1)}'" in html
+    assert anchor("C05") != anchor("C05", 1)
+    assert f"/selection#{anchor('C05', 1)}" in claim_line(two, "C05", "/selection")

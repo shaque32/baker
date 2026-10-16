@@ -148,7 +148,8 @@ item1 with planted records against case01's own curated item1 report, and a smal
   the report*, never counted as left out. A record of the larger source with the same kind, app
   and direction within an hour of a report record not found (or with the same text at any time,
   or with no time on either side) may be that record printed differently, so it is also *may be
-  in the report*. When fewer than 95% of the report's messages and calls are found, the two may
+  in the report*. Contacts have no time, so while any contact of the report is not found, every
+  contact of the larger source not matched *may be in the report*. When fewer than 95% of the report's messages and calls are found, the two may
   not be the same phone, or a format may be read differently, and nothing is listed as left out.
   These rules are strict: on random synthetic data with 3% of the report's texts changed, most
   records of the larger source were held back as *may be in the report*.
@@ -160,7 +161,8 @@ item1 with planted records against case01's own curated item1 report, and a smal
   either source are named once.
 - **Totals.** Per pair: report records by state, records only in the larger source (messages,
   calls, contacts), and the conversations with messages not in the report, marked when the report
-  holds none of the conversation. Locations and other record types are not compared.
+  holds none of the conversation (a message dated after the report, or untimed, does not count
+  as the report holding part of it). Up to 50 conversations are shown, the rest counted. Locations and other record types are not compared.
 
 ## Tiers
 
