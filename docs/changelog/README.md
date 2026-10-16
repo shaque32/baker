@@ -2,8 +2,8 @@
 
 One file per change, so open PRs never edit the same changelog file. Read the log in one view
 with `make changelog` (or `python tools/changelog.py build`): these files newest first, then the
-older entries in `docs/CHANGELOG_AI.md`, which is the archive up to 2026-10-15 and is no longer
-edited.
+older entries in `docs/CHANGELOG_AI.md`, the archive up to 2026-10-15. It takes no new entries;
+the status refresh may still correct its `Where:` lines.
 
 ## Adding an entry
 
@@ -34,7 +34,9 @@ editing it is what made open PRs conflict after each merge. Instead the entry's 
 line says exactly what to change. After PRs merge, one status refresh PR (started by the
 coordinator) works from main: it applies every pending edit to `docs/PRODUCT_STATUS.md`, changes
 those lines to `Status doc: applied YYYY-MM-DD`, and sets `Where:` to `main (#N, merged
-YYYY-MM-DD)` on every entry that still names a PR or branch, since anything on main is merged.
+YYYY-MM-DD)` on every entry that still names a PR or branch, since anything on main is merged
+(entries marked `local only` stay as they are). It also corrects stale `Where:` lines in the
+archive.
 `python tools/changelog.py pending` lists every entry with something left to do.
 
 Until then, a merged entry marked `pending` is newer than `docs/PRODUCT_STATUS.md` and wins

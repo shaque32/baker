@@ -72,6 +72,11 @@ def test_newest_first_by_date_then_name(tmp_path):
         ("2026-10-16-x.md", _good(status="pending:"), "Status doc"),
         ("2026-10-16-x.md", _good(status="pending some text"), "Status doc"),
         ("2026-10-16-x.md", _good(status="applied 2026-02-30"), "Status doc"),
+        (
+            "2026-10-16-x.md",
+            _good() + "- Status doc: pending: §2 add a row\n",
+            "appears more than once",
+        ),
     ],
 )
 def test_malformed_entries_are_reported(tmp_path, name, text, needle):
@@ -106,11 +111,14 @@ def test_pending_lists_status_edits_and_merge_state(tmp_path, capsys):
     _write(tmp_path, "2026-10-16-b.md", "2026-10-16", status="applied 2026-10-17", where=main)
     _write(tmp_path, "2026-10-16-c.md", "2026-10-16", status="no change", where=main)
     _write(tmp_path, "2026-10-16-d.md", "2026-10-16", status="no change", where="PR #91")
+    _write(tmp_path, "2026-10-16-e.md", "2026-10-16", status="no change", where="local only")
+    _write(tmp_path, "2026-10-16-f.md", "2026-10-16", status="no change", where="branch x")
     assert changelog.main(["pending", "--dir", str(tmp_path)]) == 0
     out = capsys.readouterr().out
     assert "2026-10-16-a.md: apply its Status doc edit" in out
     assert "2026-10-16-d.md: set Where to main" in out
-    assert "-b.md" not in out and "-c.md" not in out
+    assert "2026-10-16-f.md: set Where to main" in out
+    assert "-b.md" not in out and "-c.md" not in out and "-e.md" not in out
 
 
 def test_check_fails_on_a_bad_entry(tmp_path):

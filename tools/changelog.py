@@ -25,6 +25,8 @@ NAME_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
 FIELDS = ("Changed", "Where", "Verified", "Open", "Affects", "Status doc")
 STATUS_RE = re.compile(r"^(?:no change\b.*|pending: *\S.*|applied (\d{4}-\d{2}-\d{2})\b.*)$")
 ARCHIVE_MARKER = "\n---\n"
+# A Where line naming a PR or branch; on main that change is merged. "local only" is left alone.
+UNMERGED_RE = re.compile(r"^(?:PR\b|branch\b|#\d)", re.IGNORECASE)
 
 
 @dataclass
@@ -36,14 +38,18 @@ class Entry:
     where: str
 
 
-def _field_lines(text: str) -> dict[str, str]:
-    """The first line of each '- Field:' bullet, by field name."""
+def _field_lines(text: str) -> tuple[dict[str, str], list[str]]:
+    """The first line of each '- Field:' bullet, by field name, and any field given twice."""
     out: dict[str, str] = {}
+    repeated: list[str] = []
     for line in text.splitlines():
         m = re.match(r"^- ([A-Za-z ]+): ?(.*)$", line)
-        if m and m.group(1) in FIELDS and m.group(1) not in out:
-            out[m.group(1)] = m.group(2).strip()
-    return out
+        if m and m.group(1) in FIELDS:
+            if m.group(1) in out:
+                repeated.append(m.group(1))
+            else:
+                out[m.group(1)] = m.group(2).strip()
+    return out, repeated
 
 
 def parse(path: Path) -> tuple[Entry | None, list[str]]:
@@ -61,7 +67,9 @@ def parse(path: Path) -> tuple[Entry | None, list[str]]:
         errors.append(f"{path.name}: first line must be '## {date}: <change> (#PR)'")
     if sum(1 for line in lines if line.startswith("## ")) != 1:
         errors.append(f"{path.name}: one entry per file (exactly one '## ' heading)")
-    fields = _field_lines(text)
+    fields, repeated = _field_lines(text)
+    for name in repeated:
+        errors.append(f"{path.name}: '- {name}:' appears more than once")
     for name in FIELDS:
         if not fields.get(name):
             errors.append(f"{path.name}: missing or empty '- {name}:' line")
@@ -90,7 +98,7 @@ def todo(entry: Entry) -> list[str]:
     out = []
     if entry.status.startswith("pending"):
         out.append("apply its Status doc edit")
-    if not entry.where.startswith("main"):
+    if UNMERGED_RE.match(entry.where):
         out.append("set Where to main")
     return out
 
