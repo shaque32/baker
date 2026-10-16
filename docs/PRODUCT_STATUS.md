@@ -7,7 +7,7 @@ tests or recorded runs. Where something exists only on an unmerged branch, it sa
 - **main:** `ae8f24e` (merges of #64, #65, #66, #67, 2026-10-15 07:22Z)
 - **Verified on:** main `7a14437` first, then re-checked after #64 to #67 merged (they changed
   only `core/audit/assumption_filler.py` in `core/`, plus tests and probe gold)
-- **Rule version:** 0.2.1 on main (`core/audit/rules.py`); 0.2.2 pending in PR #75. **Contracts:** 0.3.0 (`core/contracts.py`).
+- **Rule version:** 0.2.2 (`core/audit/rules.py`, PR #75; on main once #75 merges). **Contracts:** 0.3.0 (`core/contracts.py`).
 - **Signed prompts on main:** stance v1.1, reviewer v1.1, claims v1.0, assumptions v1.0
   (`core/audit/prompts/`)
 
@@ -36,7 +36,7 @@ coverage: one wrong "supported" is the failure that counts most.
 | 8. Stance | Labels one record against one assumption: supports, contradicts, complicates or irrelevant | `core/audit/stance.py` | Local 14B (main, and every case on #68 today); Opus 5.5, opt-in per case once it passes the signed stance test (branch #68, not merged; none has) |
 | 9. Quote check | The label's quote must appear verbatim in the record, or the label is dropped | `core/audit/quotes.py` | No |
 | 10. AI review | Optional second pass on supporting items; off by default | `core/audit/review.py` | Local 14B |
-| 11. Verdict | `decide_verdict` applies rules 0.2.1 | `core/audit/rules.py` | No |
+| 11. Verdict | `decide_verdict` applies rules 0.2.2 | `core/audit/rules.py` | No |
 | 12. Invariants | Re-checks each decision against stored records; a violation rolls back the claim and fails the run | `core/audit/invariants.py` | No |
 | 13. Review | Expert accepts, dismisses or reopens evidence and confirms verdicts; hash-chained audit log | `core/review/` | No |
 | 14. Report | HTML report with findings, limitations, source hashes, model runs and rule version. Same inputs, versions and expert decisions give the same report hash, time fields masked; it agrees with the review screen on each claim's status, verdict and evidence ids (`tests/test_report_consistency.py`, synthetic case01) | `core/report/` | No |
@@ -70,7 +70,7 @@ parameters and seed, and identical calls reuse stored output.
 There is no model judge of verdicts in Baker. The word "judge" does not name any component.
 
 - **Verdicts come from code or the expert.** `core/audit/rules.py` (`decide_verdict`, rules
-  0.2.1) is the only automated verdict path. The expert can also override a verdict (screen or
+  0.2.2) is the only automated verdict path. The expert can also override a verdict (screen or
   `baker verdict --set`), which `core/review/actions.py` `override_verdict` writes directly,
   without the rules, under the expert's name in the audit log. No model, local or cloud, writes a
   verdict, an identity link or a confirmation.
@@ -129,7 +129,7 @@ on the branch at his request (14:00Z). Main keeps "no network calls in core/" un
 
 ## 6. Rules and models together
 
-| Outcome | What it needs (rules 0.2.1) |
+| Outcome | What it needs (rules 0.2.2) |
 |---|---|
 | SUPPORTED | Every core assumption covered (a passing check, or support an expert accepted); at least one expert-accepted support on an observed record; no open complicating or contradicting item; the claim type's key assumption present |
 | CONTRADICTED | A failed deterministic check, or a counting "contradicts" (see section 4) |
@@ -222,7 +222,7 @@ report only) 0.90 accuracy, 0 false supported. See section 10 for today's run.
    install script, Windows installer (unsigned), `baker model-check`.
 
 Merged 2026-10-15: stricter stated time windows, "after <date>" starts the next day (#66; rules
-still 0.2.1 on main; the 0.2.2 bump is in PR #75, not merged), go-bar scorer fixes and the signed probe
+0.2.2 with PR #75, which also refuses a rules-only re-run of an older audit), go-bar scorer fixes and the signed probe
 follow-up (#64), red-main test fix (#65), flaky encryption test fix (#67).
 Branch only: opt-in cloud Opus stance labels (#68), small stance model (#50). PR #70 is an empty
 Grok Product review PR, never merged.
@@ -307,7 +307,7 @@ supported until your expert accepts it; runs locally with no network calls."
 
 | # | Claim | Status | Evidence | Safe wording |
 |---|---|---|---|---|
-| 1 | Verdicts come from versioned rules | **True** | `decide_verdict` is the only automated verdict path (`core/audit/rules.py:1`); an expert override is written directly by `override_verdict` (`core/review/actions.py`), as the expert's decision; `RULE_VERSION = "0.2.1"` (`core/audit/rules.py:104`) is stored on every decision (`core/audit/rules.py:304`) and printed in the report (`core/report/html.py:360`). Models only label evidence. | "Versioned rules decide verdicts; your expert can override" |
+| 1 | Verdicts come from versioned rules | **True** | `decide_verdict` is the only automated verdict path (`core/audit/rules.py:1`); an expert override is written directly by `override_verdict` (`core/review/actions.py`), as the expert's decision; `RULE_VERSION = "0.2.2"` (`core/audit/rules.py:108`) is stored on every decision (`core/audit/rules.py:304`) and printed in the report (`core/report/html.py:374`). Models only label evidence. | "Versioned rules decide verdicts; your expert can override" |
 | 2 | Nothing is Supported until the expert accepts it | **True** | SUPPORTED needs an expert-accepted support on an observed record (`core/audit/rules.py:113`, `:285`); AI acceptance covers nothing (`_AI_MAY_COVER` empty, `core/audit/rules.py:110`); the invariants re-check every SUPPORTED and fail the run otherwise (`core/audit/invariants.py:220-270`). The expert can also set a verdict directly (`baker verdict --set`), which is still the expert's act. Note: a model "contradicts" can make a claim CONTRADICTED without an expert step (section 4). | As proposed; do not extend it to "contradicted" |
 | 3 | "Not found" says what was searched | **True for absence and count findings** | The absence check states what it searched and why the sources can or cannot show an absence (`core/audit/checks/absence.py:1-6`, `:40`, `:112-135`); a curated report can never pass an absence (`core/audit/checks/absence.py:123`); the report has a "Searches and coverage" section (`core/report/html.py:440-470`). An UNPROVEN claim with no evidence names the uncovered assumptions, not a search log. | "When Baker finds no contact or counts records, it says what it searched and what the source could show" |
 | 4 | The selection audit shows what was left out around each quote | **Partly true** | Shows each quoted, exhibit or examiner-tagged message in its exchange, with the messages not picked (`core/selection/audit.py:1-29`). Limits: a quote is placed only when its words fit one message, otherwise it is listed as found N times and nothing around it is counted as left out (`core/selection/picks.py:17-23`); names and quotes under two words are not looked up (`core/selection/picks.py:5-11`); messages an examiner left out of a curated report are not in the case to show (`core/selection/audit.py:27-29`). | "...around each quote it can place in the extraction" |
