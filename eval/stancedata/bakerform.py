@@ -234,6 +234,7 @@ def build_baker_item(
     labeled_by: str | None = None,
     claim: str | None = None,
     names: Mapping[str, str] | None = None,
+    captioned: bool = False,
 ) -> GenItem:
     """Assemble and check one item in Baker's own wording. The assumption is the product's
     rendering of (template_id, params); the label comes from the family, as for plain items.
@@ -244,6 +245,10 @@ def build_baker_item(
     brackets name ('person:dev:item1:owner' -> 'Daniel Petrov'): the assumption and the sender
     lines then read as core.audit.readable prints them for a case where an expert stipulated
     each phone owner and the document named everyone else.
+
+    captioned says the record is an attachment whose message has a caption: the line before it
+    is that message, with the same sender and time and the caption as its text, as the small
+    model's adapter shows it (eval/stancemodel/time_case01.case_item).
 
     A message or attachment record's excerpt is its own chat, as Baker's context is, and the
     item carries the chat's members for the line the context opens with
@@ -256,7 +261,16 @@ def build_baker_item(
     timed = [ln.utc for ln in lines if ln.utc is not None]
     if len(timed) != len(lines) and len(lines) != 1:
         raise ValueError(f"{probe_id}: a line without a time (a contact row) stands alone")
-    if any(b <= a for a, b in zip(timed, timed[1:], strict=False)):
+    tie = -1  # the one pair of lines that may share a time: a caption and its attachment
+    if captioned:
+        cap, rec = lines[target - 1] if target else None, lines[target]
+        if cap is None or rec.kind != "message" or not cap.text.strip() or (
+            (cap.sender, cap.account_id, cap.utc, cap.kind) != (rec.sender, rec.account_id,
+                                                                rec.utc, rec.kind)
+        ):  # fmt: skip
+            raise ValueError(f"{probe_id}: a caption is its attachment's message, just before it")
+        tie = target - 1
+    if any(b <= a and i != tie for i, (a, b) in enumerate(zip(timed, timed[1:], strict=False))):
         raise ValueError(f"{probe_id}: lines must be in strictly increasing UTC order")
     if quote.strip() != quote or not verify_quote(quote, lines[target].text):
         raise ValueError(f"{probe_id}: quote is not a word-aligned verbatim part of the record")
