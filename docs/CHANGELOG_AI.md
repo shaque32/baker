@@ -19,13 +19,13 @@ Template:
 
 ---
 
-## 2026-10-16: The expert's reason for an evidence decision is in the audit log
+## 2026-10-16: The expert's reason for an evidence decision is in the audit log (#86)
 - Changed: the `evidence.decide` log entry now carries the reason the expert typed (before, only
   the evidence id, review id and status), as verdict, identity and override notes already did.
   The audit log check (`require_intact`) also compares each logged reason with the one stored in
   `evidence_reviews`; a reason edited in the database after it was logged blocks the case like a
   broken chain. Found by the Pilot docs pack thread (#82 disclosed the gap).
-- Where: branch `claude/project-thread-fjea4m`, new PR (not merged).
+- Where: branch `claude/project-thread-fjea4m`, PR #86 (not merged).
 - Verified: 3 new tests in `tests/test_chain_on_open.py` (reason logged; an edited reason blocks
   the CLI and `verify-log` names it; a decision logged without a reason still verifies). The 118
   tests that touch evidence decisions pass; lint clean; full `make check` left to CI.
