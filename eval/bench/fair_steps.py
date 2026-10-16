@@ -20,13 +20,15 @@ Three measures, each through the product's own code:
    alone can take the verdicts, whatever the labeler. It is lenient: that stand-in labels every
    retrieved record the gold way and the simulated expert accepts a key record on any of the
    claim's assumptions, so a vague or wrong fill that retrieves a key record still scores.
-4. The fills against the signed assumption sheet, with no labeler: a claim counts when its
-   fills hold every signed core template as often as the sheet does. A vague fill cannot pass;
-   parameters (windows, counts) are not compared.
+4. The fills against the signed assumption sheet, with no labeler. 4a: a claim counts when its
+   fills hold every signed core template as often as the sheet does. 4b: each signed core
+   assumption also needs its own fill with the same value for every parameter the sheet states.
 
-Measures 1 (strict) and 4 were added after Codex's review of PR #93 (2026-10-16 16:46Z), after
-the opus arm ran and before the local arm; `--rescore` adds them to a finished arm from its
-stored databases with no model call. PREREGISTERED.md says how they enter the decision.
+Measures 1 strict and 4 were added after Codex's reviews of PR #93 (2026-10-16 16:46Z and
+17:00Z), after the opus arm ran and before the local arm; `--rescore` adds them to a finished
+arm from its stored databases with no model call. Each result records the commit it ran at, and
+`--compare LOCAL OPUS` applies the decision rule to two results. PREREGISTERED.md (with its
+amendments) says how each measure enters the decision.
 
 The plan and decision rule were written down before any call (PREREGISTERED.md beside the
 results). Opus at medium effort is not deterministic and each arm runs once, so a one-claim
@@ -43,13 +45,16 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
 import sqlite3
+import subprocess
 import sys
 import time
 from collections import Counter
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -62,6 +67,8 @@ from eval.run_eval import load_jsonl, score
 
 CASE = "case01"
 _DIGITS = re.compile(r"\d+")
+MIN_FRAGMENT_WORDS = 3  # a strict fragment states something: "PETROV" or "March 6" does not
+_LIST_PARAMS = frozenset({"account_ids", "person_ids", "device_ids", "handles", "channels"})
 
 
 # 1. Claim proposal ------------------------------------------------------------------------
@@ -81,14 +88,17 @@ def split_match(
     that holds the largest share of the proposal's content words (ties: the lower claim id),
     so a proposal never counts twice. A gold claim is found when its proposals together hold at
     least MATCH_AT of its content words and every number in it. As preregistered, a proposal
-    sharing any one word counts; `strict` counts it only when at least MATCH_AT of its own
-    words are in that gold claim, so unrelated fragments of a paragraph cannot pool words."""
+    sharing any one word counts; `strict` counts it only when it has at least
+    MIN_FRAGMENT_WORDS content words and at least MATCH_AT of them are in that gold claim, so
+    neither unrelated fragments of a paragraph nor bare keywords can pool words."""
     by_para: dict[str, list[GoldClaim]] = {}
     for g in gold:
         by_para.setdefault(str(g.para_no), []).append(g)
     assigned: dict[str, list[Proposal]] = {g.claim_id: [] for g in gold}
     for p in proposals:
         pw = words(p.text)
+        if strict and len(pw) < MIN_FRAGMENT_WORDS:
+            continue
         best: tuple[float, str] | None = None
         for g in sorted(by_para.get(p.para_no, []), key=lambda g: g.claim_id):
             share = len(pw & words(g.text)) / len(pw) if pw else 0.0
@@ -255,31 +265,89 @@ def fills_only_step(audit_out: Path, out: Path) -> dict[str, Any]:
     return audit_result(gold, preds, out)
 
 
-def sheet_coverage(sheet: list[dict[str, Any]], fills: list[tuple[str, str]]) -> dict[str, Any]:
-    """Measure 4. `sheet` is the signed sheet's rows, `fills` the (claim id, template id) of each
-    core assumption the filler wrote. A claim is covered when its fills hold every signed core
-    template at least as often as the sheet does; extra fills are listed, not penalized (an
-    extra core assumption can only hold a claim back)."""
-    want: dict[str, Counter[str]] = {}
+def _utc(value: Any) -> Any:
+    try:
+        return datetime.fromisoformat(str(value))
+    except ValueError:
+        return value
+
+
+def params_match(signed: dict[str, Any], filled: dict[str, Any]) -> bool:
+    """Every parameter the signed row states has the same value in the fill: lists as sets, the
+    window by its start and end, quoted text with case and whitespace folded. A parameter the
+    sheet leaves empty is not compared."""
+    for key, want in signed.items():
+        if want in (None, "", []):
+            continue
+        got = filled.get(key)
+        if key in _LIST_PARAMS:
+            ok = set(want) == set(got or ())
+        elif key == "window":
+            ok = isinstance(got, dict) and all(
+                _utc(want.get(k)) == _utc(got.get(k)) for k in ("start_utc", "end_utc")
+            )
+        elif key == "quoted_text":
+            ok = isinstance(got, str) and " ".join(want.casefold().split()) == " ".join(
+                got.casefold().split()
+            )
+        elif key == "duration_s":
+            ok = got is not None and list(want) == list(got)
+        else:  # expected_count, count_op
+            ok = want == got
+        if not ok:
+            return False
+    return True
+
+
+def sheet_coverage(
+    sheet: list[dict[str, Any]], fills: list[tuple[str, str, dict[str, Any]]]
+) -> dict[str, Any]:
+    """Measure 4. `sheet` is the signed sheet's rows, `fills` the (claim id, template id, params)
+    of each core assumption the filler wrote. 4a: a claim is covered when its fills hold every
+    signed core template at least as often as the sheet does. 4b: each signed core row also has
+    its own fill of that template whose parameters match (first match taken, in sheet order).
+    Extra fills are listed, not penalized (an extra core assumption can only hold a claim back)."""
+    want: dict[str, list[dict[str, Any]]] = {}
     for r in sheet:
         if r.get("is_core"):
-            want.setdefault(r["claim_id"], Counter())[r["template_id"]] += 1
-    have: dict[str, Counter[str]] = {}
-    for cid, tid in fills:
-        have.setdefault(cid, Counter())[tid] += 1
+            want.setdefault(r["claim_id"], []).append(r)
+    have: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+    for cid, tid, params in fills:
+        have.setdefault(cid, []).append((tid, params))
     rows = []
     for cid in sorted(want):
-        got = have.get(cid, Counter())
-        missing, extra = want[cid] - got, got - want[cid]
+        mine = have.get(cid, [])
+        signed = Counter(r["template_id"] for r in want[cid])
+        got = Counter(t for t, _ in mine)
+        missing, extra = signed - got, got - signed
+        free = list(range(len(mine)))
+        wrong = []
+        for r in want[cid]:
+            hit = next(
+                (i for i in free if mine[i][0] == r["template_id"]
+                 and params_match(r.get("params", {}), mine[i][1])),
+                None,
+            )  # fmt: skip
+            if hit is None:
+                wrong.append(r["template_id"])
+            else:
+                free.remove(hit)
         rows.append(
             {
                 "claim_id": cid,
                 "covered": not missing,
+                "params_covered": not wrong,
                 "missing": sorted(missing.elements()),
+                "params_missed": sorted(wrong),
                 "extra": sorted(extra.elements()),
             }
         )
-    return {"covered": sum(r["covered"] for r in rows), "claims": len(rows), "rows": rows}
+    return {
+        "covered": sum(r["covered"] for r in rows),
+        "params_covered": sum(r["params_covered"] for r in rows),
+        "claims": len(rows),
+        "rows": rows,
+    }
 
 
 def sheet_step(audit_db: Path) -> dict[str, Any]:
@@ -289,10 +357,26 @@ def sheet_step(audit_db: Path) -> dict[str, Any]:
     sheet = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
     conn = sqlite3.connect(audit_db)
     try:
-        fills = conn.execute("SELECT claim_id, template_id FROM assumptions WHERE is_core = 1")
-        return sheet_coverage(sheet, [(c, t) for c, t in fills.fetchall()])
+        rows = conn.execute(
+            "SELECT claim_id, template_id, params_json FROM assumptions WHERE is_core = 1"
+        ).fetchall()
     finally:
         conn.close()
+    return sheet_coverage(sheet, [(c, t, json.loads(pj or "{}")) for c, t, pj in rows])
+
+
+def revision() -> dict[str, Any]:
+    """The commit this code ran at, and whether tracked files had uncommitted changes."""
+    git = shutil.which("git")
+    if git is None:
+        return {"commit": None, "dirty": None}
+
+    def run(*args: str) -> str:
+        done = subprocess.run([git, *args], capture_output=True, text=True, check=False)  # noqa: S603 - fixed arguments
+        return done.stdout.strip() if done.returncode == 0 else ""
+
+    commit = run("rev-parse", "HEAD") or None
+    return {"commit": commit, "dirty": bool(run("status", "--porcelain", "--untracked-files=no"))}
 
 
 # The arms ---------------------------------------------------------------------------------
@@ -401,8 +485,20 @@ def summary(res: dict[str, Any]) -> str:
     if sh:
         short = [f"{r['claim_id']} ({', '.join(r['missing'])})" for r in sh["rows"] if r["missing"]]
         lines.append(
-            f"- Fills against the signed sheet: {sh['covered']} of {sh['claims']} claims hold every"
-            f" signed core template (missing: {'; '.join(short) or 'none'})"
+            f"- Fills against the signed sheet, templates (4a): {sh['covered']} of {sh['claims']}"
+            f" claims hold every signed core template (missing: {'; '.join(short) or 'none'})"
+        )
+        if "params_covered" in sh:
+            off = [f"{r['claim_id']} ({', '.join(r['params_missed'])})"
+                   for r in sh["rows"] if r["params_missed"]]  # fmt: skip
+            lines.append(
+                f"- Fills against the signed sheet, with parameters (4b): {sh['params_covered']}"
+                f" of {sh['claims']} (not matched: {'; '.join(off) or 'none'})"
+            )
+    rev = res.get("revision")
+    if rev:
+        lines.append(
+            f"- Ran at {rev['commit']}" + (" with uncommitted changes" if rev["dirty"] else "")
         )
     if a and f:
         lines += ["", "| claim | full audit | fills only |", "|---|---|---|"]
@@ -415,7 +511,7 @@ def summary(res: dict[str, Any]) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--arm", choices=("local", "opus"), required=True)
+    ap.add_argument("--arm", choices=("local", "opus"))
     ap.add_argument("--models", type=Path, default=Path("eval/probe/models.local.json"))
     ap.add_argument("--model-name", default=None, help="local arm: the entry to use (default: 14B)")
     ap.add_argument("--effort", default="medium", choices=EFFORTS, help="opus arm: API effort")
@@ -424,8 +520,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--rescore", action="store_true", help="add measures 1 strict and 4 to a finished --out"
     )
+    ap.add_argument("--compare", nargs=2, type=Path, metavar=("LOCAL", "OPUS"),
+                    help="apply the decision rule to two result files, no model call")  # fmt: skip
     args = ap.parse_args(argv)
-    out = args.out or Path("eval/out/fair_steps") / args.arm
+    if args.compare is None and args.arm is None:
+        ap.error("give --arm, or --compare LOCAL OPUS")
+    out = args.out or Path("eval/out/fair_steps") / (args.arm or "")
+    if args.compare:
+        local, opus = (json.loads(p.read_text(encoding="utf-8")) for p in args.compare)
+        print(compare(local, opus))
+        return 0
     if args.rescore:
         return rescore(out)
     model = (
@@ -433,7 +537,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.arm == "local"
         else cloud_model(args.effort)
     )
-    res: dict[str, Any] = {"arm": args.arm, "model": model.name}
+    res: dict[str, Any] = {"arm": args.arm, "model": model.name, "revision": revision()}
     if args.arm == "opus":
         res["effort"] = args.effort
     out.mkdir(parents=True, exist_ok=True)
@@ -457,13 +561,74 @@ def main(argv: list[str] | None = None) -> int:
     return 1 if res.get("invalid") else 0
 
 
+MARGIN = 2  # claims of 20 a step needs to move toward Opus (PREREGISTERED.md)
+STEPS = (
+    ("Claim proposal", ("1 split-aware", "1 strict")),
+    ("Assumption filling", ("3 fills, lenient", "4b fills vs sheet")),
+)
+
+
+def decision_counts(res: dict[str, Any]) -> dict[str, int | None]:
+    """The decision measures of one arm, as claims of 20."""
+    c, f, sh = res.get("claims") or {}, res.get("fills_only") or {}, res.get("sheet") or {}
+    n = sh.get("claims") or 20
+    acc = f.get("verdict_accuracy")
+    return {
+        "1 split-aware": len(c["split_found"]) if "split_found" in c else None,
+        "1 strict": len(c["split_found_strict"]) if "split_found_strict" in c else None,
+        "3 fills, lenient": round(acc * n) if acc is not None else None,
+        "4b fills vs sheet": sh.get("params_covered"),
+    }
+
+
+def compare(local: dict[str, Any], opus: dict[str, Any]) -> str:
+    """The decision rule (PREREGISTERED.md, amendments 1 and 2) on two arms' results: a step
+    moves toward Opus only if Opus wins by MARGIN on both of its measures with 0 false
+    supported. Anything that makes the two runs not comparable is listed first."""
+    checks = []
+    for name, r in (("local", local), ("opus", opus)):
+        if r.get("invalid"):
+            checks.append(f"{name} arm is INVALID: {r['invalid']}")
+        rev = r.get("revision") or {}
+        if not rev.get("commit"):
+            checks.append(f"{name} arm recorded no commit")
+        elif rev.get("dirty"):
+            checks.append(f"{name} arm ran with uncommitted changes")
+    a, b = (r.get("revision", {}).get("commit") for r in (local, opus))
+    if a and b and a != b:
+        checks.append(f"the arms ran at different commits: list `git diff --stat {b} {a}`")
+    lo, op = decision_counts(local), decision_counts(opus)
+    false_sup = {
+        name: sum((r.get(k) or {}).get("n_false_supported", 0) for k in ("audit", "fills_only"))
+        for name, r in (("local", local), ("opus", opus))
+    }
+    lines = ["# 14B vs Opus, the decision", ""]
+    lines += [f"- CHECK: {c}" for c in checks] or ["- Both arms recorded a clean commit."]
+    lines += ["", "| measure | 14B | Opus |", "|---|---|---|"]
+    lines += [f"| {k} | {lo[k]} | {op[k]} |" for k in lo]
+    lines += [f"| false supported (2 and 3) | {false_sup['local']} | {false_sup['opus']} |", ""]
+    for step, keys in STEPS:
+        known = all(lo[k] is not None and op[k] is not None for k in keys)
+        wins = known and all(op[k] - lo[k] >= MARGIN for k in keys)  # type: ignore[operator]
+        clean = false_sup["local"] == 0 and false_sup["opus"] == 0
+        verdict = (
+            "not decided: a measure is missing" if not known
+            else "moves toward Opus (a person reads the matched rows first)" if wins and clean
+            else "stays local"
+        )  # fmt: skip
+        lines.append(f"- {step}: {verdict}")
+    return "\n".join(lines) + "\n"
+
+
 def rescore(out: Path) -> int:
     """Measures 1 strict and 4 for an arm that ran before they existed, from its stored
-    databases. Writes result.rescored.json and summary.rescored.md beside the originals."""
+    databases. Writes result.rescored.json and summary.rescored.md beside the originals, with
+    the commit the rescoring ran at."""
     res = json.loads((out / "result.json").read_text(encoding="utf-8"))
     if res.get("claims"):
         res["claims"].update(strict_split(out / "claims" / f"{CASE}.db"))
     res["sheet"] = sheet_step(out / "audit" / f"{CASE}.db")
+    res["rescored_at"] = revision()
     (out / "result.rescored.json").write_text(json.dumps(res, indent=2, default=str) + "\n",
                                               encoding="utf-8")  # fmt: skip
     md = summary(res)

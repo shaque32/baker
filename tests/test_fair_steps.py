@@ -16,8 +16,10 @@ from eval.bench.fair_steps import (
     Proposal,
     ReplayModel,
     Retried,
+    compare,
     main,
     pick_entry,
+    revision,
     sheet_coverage,
     split_match,
     summary,
@@ -86,12 +88,83 @@ def test_fills_cover_a_claim_only_with_every_signed_core_template() -> None:
         {"claim_id": "C02", "template_id": "record_time", "is_core": True},
         {"claim_id": "C02", "template_id": "meaning", "is_core": False},
     ]
-    fills = [("C01", "contact_entry"), ("C01", "event"), ("C02", "event"), ("C02", "record_time")]
+    fills = [
+        ("C01", "contact_entry", {}),
+        ("C01", "event", {}),
+        ("C02", "event", {}),
+        ("C02", "record_time", {}),
+    ]
     res = sheet_coverage(sheet, fills)
     assert (res["covered"], res["claims"]) == (1, 2)
     c02 = res["rows"][1]
     assert (c02["missing"], c02["extra"]) == (["record_time", "same_account"], ["event"])
     assert res["rows"][0]["extra"] == ["event"]  # listed, not held against the claim
+
+
+WINDOW = {"start_utc": "2026-03-10T04:00:00Z", "end_utc": "2026-04-01T03:59:59.999999Z"}
+SIGNED = {"handles": ["@northstar"], "expected_count": 13, "count_op": "eq", "window": WINDOW}
+
+
+def test_a_fill_with_the_right_template_and_a_wrong_value_does_not_match_the_sheet() -> None:
+    sheet = [{"claim_id": "C03", "template_id": "message_count", "is_core": True,
+              "params": SIGNED}]  # fmt: skip
+    right = {**SIGNED, "window": {**WINDOW, "raw": "March 10-31", "tz": "America/New_York"},
+             "channels": ["Telegram"], "quoted_text": None}  # fmt: skip
+    res = sheet_coverage(sheet, [("C03", "message_count", right)])
+    assert (res["covered"], res["params_covered"]) == (1, 1)
+    for wrong in ({"expected_count": 12}, {"handles": ["@northstar", "@alex92"]},
+                  {"window": {**WINDOW, "end_utc": "2026-03-31T03:59:59Z"}}):  # fmt: skip
+        res = sheet_coverage(sheet, [("C03", "message_count", {**right, **wrong})])
+        assert (res["covered"], res["params_covered"]) == (1, 0)
+        assert res["rows"][0]["params_missed"] == ["message_count"]
+
+
+def test_two_signed_rows_need_two_fills() -> None:
+    a = {"quoted_text": "hey its sasha"}
+    b = {"quoted_text": "not now"}
+    row = {"claim_id": "C02", "template_id": "record_time", "is_core": True}
+    sheet = [{**row, "params": a}, {**row, "params": b}]
+    one = sheet_coverage(sheet, [("C02", "record_time", {"quoted_text": "Hey  its Sasha"})])
+    assert one["rows"][0]["params_missed"] == ["record_time"]
+    both = [("C02", "record_time", {"quoted_text": "Hey  its Sasha"}),
+            ("C02", "record_time", b)]  # fmt: skip
+    assert sheet_coverage(sheet, both)["params_covered"] == 1
+
+
+def test_strict_matching_needs_fragments_that_state_something() -> None:
+    keywords = [Proposal(f"p{i}", "4", w) for i, w in
+                enumerate(["PETROV", "Telegram 3", "REYES", "March 6, 2026"])]  # fmt: skip
+    assert found(split_match([G1], keywords)) == {"C01": True}  # the registered matcher
+    assert found(split_match([G1], keywords, strict=True)) == {"C01": False}
+
+
+def arm(split: int, strict: int, fills: float, sheet: int, commit: str = "abc") -> dict:
+    return {
+        "revision": {"commit": commit, "dirty": False},
+        "claims": {"split_found": ["C"] * split, "split_found_strict": ["C"] * strict},
+        "audit": {"n_false_supported": 0},
+        "fills_only": {"verdict_accuracy": fills, "n_false_supported": 0},
+        "sheet": {"claims": 20, "params_covered": sheet},
+    }
+
+
+def test_the_decision_needs_a_win_on_both_measures_of_a_step() -> None:
+    out = compare(arm(17, 17, 0.60, 5), arm(19, 19, 0.75, 6))
+    assert "- Claim proposal: moves toward Opus" in out
+    assert "- Assumption filling: stays local" in out  # 4b won by 1 only
+    assert "CHECK" not in out
+    assert "- Claim proposal: stays local" in compare(arm(17, 18, 0.6, 5), arm(19, 19, 0.6, 5))
+
+
+def test_the_decision_flags_runs_that_are_not_comparable() -> None:
+    opus = arm(19, 19, 0.75, 9, commit="def")
+    opus["revision"]["dirty"] = True
+    out = compare(arm(17, 17, 0.6, 5), opus)
+    assert "CHECK: opus arm ran with uncommitted changes" in out
+    assert "CHECK: the arms ran at different commits" in out
+    bad = arm(17, 17, 0.6, 5)
+    bad["fills_only"]["n_false_supported"] = 1
+    assert "moves toward Opus" not in compare(bad, arm(20, 20, 1.0, 20))
 
 
 def _db_with_call(path: Path, prompt: str, raw: str, outcome: str = "ok") -> None:
@@ -195,3 +268,9 @@ def test_a_refusal_is_the_models_own_dropped_label_not_an_invalid_run() -> None:
         m.generate_json("p", {})
     assert m.failure is None
     assert m.generate_json("q", {}) == "ok"
+
+
+def test_each_result_records_the_commit_it_ran_at() -> None:
+    rev = revision()
+    assert set(rev) == {"commit", "dirty"}
+    assert rev["commit"] is None or len(rev["commit"]) == 40
