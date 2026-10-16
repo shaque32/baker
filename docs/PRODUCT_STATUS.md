@@ -7,7 +7,9 @@ tests or recorded runs. Where something exists only on an unmerged branch, it sa
 - **main:** `ae8f24e` (merges of #64, #65, #66, #67, 2026-10-15 07:22Z)
 - **Verified on:** main `7a14437` first, then re-checked after #64 to #67 merged (they changed
   only `core/audit/assumption_filler.py` in `core/`, plus tests and probe gold)
-- **Rule version:** 0.2.2 (`core/audit/rules.py`, PR #75; on main once #75 merges). **Contracts:** 0.3.0 (`core/contracts.py`).
+- **Rule version:** 0.2.2 on main (`core/audit/rules.py`, PR #75). **Contracts:** 0.3.0 (`core/contracts.py`).
+- **Quote check:** 1.1.0 on main, not recorded with results; 1.2.0 in PR #76, which records it
+  on every run and prints it in the report (`core/audit/quotes.py`, `VERSION`).
 - **Signed prompts on main:** stance v1.1, reviewer v1.1, claims v1.0, assumptions v1.0
   (`core/audit/prompts/`)
 
@@ -37,8 +39,8 @@ coverage: one wrong "supported" is the failure that counts most.
 | 5. Assumptions | Fills fixed templates per claim type; values must be tied to the document or case data, or the proposal is refused | `core/audit/assumption_filler.py` | Local 14B |
 | 6. Checks | Deterministic checks: sender, identity, timing, weekday, count, absence | `core/audit/checks/` | No |
 | 7. Retrieval | Structured filters plus keyword ranking, with surrounding messages and the other phone's copy | `core/audit/retrieval.py` | No |
-| 8. Stance | Labels one record against one assumption: supports, contradicts, complicates or irrelevant | `core/audit/stance.py` | Local 14B (main, and every case on #68 today); Opus 5.5, opt-in per case once it passes the signed stance test (branch #68, not merged; none has) |
-| 9. Quote check | The label's quote must appear verbatim in the record, or the label is dropped | `core/audit/quotes.py` | No |
+| 8. Stance | Labels one record against one assumption: supports, contradicts, complicates or irrelevant | `core/audit/stance.py` | Local 14B by default; Opus 5.5, opt-in per case once it passes the signed stance test (#68, on main; none has: `core/llm/cloud.py` `PROBE_PASSED` is empty) |
+| 9. Quote check | The label's quote must appear verbatim in the record, or the label is dropped. With #76 (version 1.2.0) the quote must also take in a letter or digit of the record's own fields: Baker's words in a rendered line ("call from") or a placeholder ("(no name)", "unknown") cannot verify it alone | `core/audit/quotes.py` | No |
 | 10. AI review | Optional second pass on supporting items; off by default | `core/audit/review.py` | Local 14B |
 | 11. Verdict | `decide_verdict` applies rules 0.2.2 | `core/audit/rules.py` | No |
 | 12. Invariants | Re-checks each decision against stored records; a violation rolls back the claim and fails the run | `core/audit/invariants.py` | No |
@@ -62,7 +64,7 @@ screen in `ui/`.
 |---|---|---|---|
 | Qwen3-14B Q4_K_M (GGUF, Apache-2.0, sha256 `500a8806…81f0`, n_ctx 8192) | Expert's computer, llama-cpp-python, `flash` runtime | Claim proposal, assumption filling, stance labels (every case, on main and on #68 until a cloud model passes the signed stance test), optional AI review | main |
 | Claude Opus 5.5, medium effort | Anthropic API, expert's own key | Stance labels only, for cases the expert opted in, once it passes the signed stance test (not yet: `PROBE_PASSED` is empty) | branch #68 (draft, not merged) |
-| mDeBERTa-v3-base classifier | Training on cloud CPU | Candidate small stance model | branch #50 (draft); runs 5 and 6 (2026-10-15) trained on data from #79's generators and are not candidates on dev; runs 1 to 4 did not pass the go bar |
+| mDeBERTa-v3-base classifier | Training on cloud CPU | Candidate small stance model | branch #50 (draft); runs 5 to 7 (2026-10-15 and 16) trained on data from #79's generators and #87's (not merged), and none is a candidate on dev; run 8's data, a fresh draw of run 7's generator, is delivered; runs 1 to 4 did not pass the go bar |
 | Claude Sonnet 5.5, Haiku 5.5, Opus 5.5 | Anthropic API | Benchmarks only, in `eval/bench/` | main (eval only) |
 
 The local model file is pinned by SHA-256 and checked before loading (`core/audit/_local_model.py`,
@@ -233,14 +235,19 @@ training-data generators (#79). PR #70 is an empty Grok Product review PR, never
 
 ## 9. Known limitations
 
-1. **Quote-check bug, issue #69 (open, on main).** The labeler sees a contact as
-   `Name: +number` (`core/enrich/records.py:81`), but the check renders it `Name +number`
-   (`core/audit/invariants.py:96`), so a correct quote is dropped as unverified. Calls differ the
-   same way. Hits the 14B and Opus alike. It drops labels of every stance, so a dropped
-   "contradicts" or "complicates" could let a claim with other accepted support go SUPPORTED.
-   No false supported appeared in the recorded runs and replays, but the code does not rule it out.
-   The model-free gate cannot catch it. Offline replay: Opus case01 85% becomes 95% once fixed.
-   Fix for contacts in PR #76 (not merged); calls still differ.
+1. **A label whose quote fails the check is lost, whatever its stance (issue #69).** The check
+   runs before a label's stance is used, so a dropped "contradicts" or "complicates" could let a
+   claim with other accepted support go SUPPORTED. The systematic cause is fixed by #76: contacts
+   and calls now read the same for the labeler and the check (`core/audit/invariants.py:81`,
+   through `core.enrich.records`), and a test checks every case01 record. A label still drops
+   when its quote is not verbatim, has no letter or digit, or takes in only Baker's words or a
+   placeholder such as "(no name)", and the report shows only a count.
+   Replayed offline through the new check (2026-10-15, no model call): every supports,
+   contradicts and complicates label of Opus's stored no-sheet case01 run passes (108); Sonnet
+   and Haiku (2026-10-14) each lose 2, all on a message whose whole body is "?". The 14B's
+   stored runs were not replayed. Opus replay: case01 85% to 95% (sheet), 60% to 70% (no sheet).
+   The small model's generated call rows still print the report's time (guide rule 28), unlike
+   the product; #50 is not merged, and aligning them is the "Custom model for Baker" thread's.
 2. **Opus's wrong "contradicts" on told-frame and undated denials** (section 7). Matters for
    #68: it would make wrong CONTRADICTED verdicts until a signed prompt fix lands.
 3. **Real-data formats unverified.** UFDR and AXIOM readers were built from documentation and
@@ -262,7 +269,7 @@ training-data generators (#79). PR #70 is an empty Grok Product review PR, never
 7. **Count check said "deleted" (fixed in PR #83, not merged).** On main the count check's
    detail reads "N of them are flagged deleted" when counted messages carry the source's deletion
    flag. That breaks the rule that Baker never says "deleted", and the report's forbidden-words
-   check (`core/audit/invariants.py:60`) would refuse to build a report containing it. #83
+   check (`core/audit/invariants.py:65`) would refuse to build a report containing it. #83
    rewords it to "N of them carry the source's deletion flag" (count check 1.0.1).
 
 ## 10. Tests and results (main `7a14437`, before #64 to #67)
@@ -293,7 +300,8 @@ the Mac and Windows installers, and a pilot kit (data handling, limitations, agr
 feedback form, demo script, go/kill scorecard) in `/mnt/project-files/baker/pilot/`.
 
 Before a first real case:
-1. Fix issue #69 (quote check), then time a full local case01 on the Mac for a real runtime.
+1. Time a full local case01 on the Mac for a real runtime (after #76 merges, so the 14B's
+   contact and call quotes pass the check, section 9).
 2. Check a real UFDR and AXIOM export with `baker ufdr-check` (needs a pilot expert's closed case).
 3. Finish #68 (opt-in cloud, chosen by Arsh 2026-10-15 07:10Z): a signed told-frame prompt fix
    that passes on new items (line signed 13:45Z), then a gate entry Arsh signs; merge #68 first
@@ -305,17 +313,17 @@ cannot be checked from code).
 
 ## 12. Customer-facing claims
 
-Checked 2026-10-15 against main `7a14437` (line numbers unchanged on `ae8f24e`) and branch #68 (`3c6c1ec`), for the proposed line:
+Checked 2026-10-15 against main `7a14437` (line numbers unchanged on `ae8f24e`; `core/audit/rules.py`, `core/audit/invariants.py` and `core/report/html.py` lines re-checked 2026-10-16 on #76 with main `79ad922` merged in, since #76 shifts the last two) and branch #68 (`3c6c1ec`), for the proposed line:
 "Baker tests the government's specific claims; versioned rules decide verdicts; nothing is
 supported until your expert accepts it; runs locally with no network calls."
 
 | # | Claim | Status | Evidence | Safe wording |
 |---|---|---|---|---|
-| 1 | Verdicts come from versioned rules | **True** | `decide_verdict` is the only automated verdict path (`core/audit/rules.py:1`); an expert override is written directly by `override_verdict` (`core/review/actions.py`), as the expert's decision; `RULE_VERSION = "0.2.2"` (`core/audit/rules.py:108`) is stored on every decision (`core/audit/rules.py:304`) and printed in the report (`core/report/html.py:374`). Models only label evidence. | "Versioned rules decide verdicts; your expert can override" |
-| 2 | Nothing is Supported until the expert accepts it | **True** | SUPPORTED needs an expert-accepted support on an observed record (`core/audit/rules.py:113`, `:285`); AI acceptance covers nothing (`_AI_MAY_COVER` empty, `core/audit/rules.py:110`); the invariants re-check every SUPPORTED and fail the run otherwise (`core/audit/invariants.py:220-270`). The expert can also set a verdict directly (`baker verdict --set`), which is still the expert's act. Note: a model "contradicts" can make a claim CONTRADICTED without an expert step (section 4). | As proposed; do not extend it to "contradicted" |
-| 3 | "Not found" says what was searched | **True for absence and count findings** | The absence check states what it searched and why the sources can or cannot show an absence (`core/audit/checks/absence.py:1-6`, `:40`, `:112-135`); a curated report can never pass an absence (`core/audit/checks/absence.py:123`); the report has a "Searches and coverage" section (`core/report/html.py:440-470`). An UNPROVEN claim with no evidence names the uncovered assumptions, not a search log. | "When Baker finds no contact or counts records, it says what it searched and what the source could show" |
+| 1 | Verdicts come from versioned rules | **True** | `decide_verdict` is the only automated verdict path (`core/audit/rules.py:1`); an expert override is written directly by `override_verdict` (`core/review/actions.py`), as the expert's decision; `RULE_VERSION = "0.2.2"` (`core/audit/rules.py:108`) is stored on every decision (`core/audit/rules.py:308`) and printed in the report (`core/report/html.py:405`). Models only label evidence. | "Versioned rules decide verdicts; your expert can override" |
+| 2 | Nothing is Supported until the expert accepts it | **True** | SUPPORTED needs an expert-accepted support on an observed record (`core/audit/rules.py:117`, `:289`); AI acceptance covers nothing (`_AI_MAY_COVER` empty, `core/audit/rules.py:114`); the invariants re-check every SUPPORTED and fail the run otherwise (`core/audit/invariants.py:270-320`). The expert can also set a verdict directly (`baker verdict --set`), which is still the expert's act. Note: a model "contradicts" can make a claim CONTRADICTED without an expert step (section 4). | As proposed; do not extend it to "contradicted" |
+| 3 | "Not found" says what was searched | **True for absence and count findings** | The absence check states what it searched and why the sources can or cannot show an absence (`core/audit/checks/absence.py:1-6`, `:40`, `:112-135`); a curated report can never pass an absence (`core/audit/checks/absence.py:123`); the report has a "Searches and coverage" section (`core/report/html.py:486-516`). An UNPROVEN claim with no evidence names the uncovered assumptions, not a search log. | "When Baker finds no contact or counts records, it says what it searched and what the source could show" |
 | 4 | The selection audit shows what was left out around each quote | **Partly true** | Shows each quoted, exhibit or examiner-tagged message in its exchange, with the messages not picked (`core/selection/audit.py:1-29`). Limits: a quote is placed only when its words fit one message, otherwise it is listed as found N times and nothing around it is counted as left out (`core/selection/picks.py:17-23`); names and quotes under two words are not looked up (`core/selection/picks.py:5-11`); messages an examiner left out of a curated report are not in the case to show (`core/selection/audit.py:27-29`). | "...around each quote it can place in the extraction" |
-| 5 | Every report has an audit packet: source hashes, model, prompt and rule versions, tamper-evident log | **True, with one nuance** | Sources with SHA-256 (`core/report/html.py:606-614`), versions and model runs with model SHA-256, prompt version, parameters and seed (`core/report/html.py:617`, `:649-663`), rule version (`core/report/html.py:639`), audit-log summary with hash-chain result, last hash and expert actions (`core/report/html.py:665-683`, `core/review/audit_log.py:47-199`). Nuance: the report shows a summary and the expert entries, not every log entry. The chain detects edits to entries; anchors (`case.db.anchors.jsonl`, the newest entry's number and hash, written when a case opens and when a report is built) detect entries cut from the end back to the newest anchor. Neither catches a change to the database and the anchor file together, or entries added and cut between two anchors; there is no signature or external anchor beyond a saved report's last hash. The log is checked when a case opens, on every page while it is open (report and download included), and before encrypting or changing the passphrase; a failed check blocks review and reporting in the screen and the CLI (fail closed; `core/review/audit_log.py` `require_intact`, `ui/app.py` `open_case` and `/report`, `cli/main.py` `_open`; #74). | "A hash-chained audit log; the report prints its last hash" |
+| 5 | Every report has an audit packet: source hashes, model, prompt and rule versions, tamper-evident log | **True, with one nuance** | Sources with SHA-256 (`core/report/html.py:662-670`), versions and model runs with model SHA-256, prompt version, parameters and seed (`core/report/html.py:673`, `:705-719`), rule version (`core/report/html.py:695`), audit-log summary with hash-chain result, last hash and expert actions (`core/report/html.py:721-739`, `core/review/audit_log.py:47-199`). Nuance: the report shows a summary and the expert entries, not every log entry. The chain detects edits to entries; anchors (`case.db.anchors.jsonl`, the newest entry's number and hash, written when a case opens and when a report is built) detect entries cut from the end back to the newest anchor. Neither catches a change to the database and the anchor file together, or entries added and cut between two anchors; there is no signature or external anchor beyond a saved report's last hash. The log is checked when a case opens, on every page while it is open (report and download included), and before encrypting or changing the passphrase; a failed check blocks review and reporting in the screen and the CLI (fail closed; `core/review/audit_log.py` `require_intact`, `ui/app.py` `open_case` and `/report`, `cli/main.py` `_open`; #74). | "A hash-chained audit log; the report prints its last hash" |
 | 6 | Runs locally with no network calls | **Depends on #68** | main: true. `core/` makes no network calls, the screen binds only 127.0.0.1 (`ui/server.py:19`); the installers download the pinned model once at install. #68 adds the opt-in Opus stance integration, one HTTPS request per stance pair to api.anthropic.com (`core/llm/cloud.py:1`, `:47` on the branch). Cloud stays off until the expert attests per case, so "local by default" stays true. "No network calls" would not be true for opted-in cases. | Today: "runs locally, no network calls". If #68 merges: "local by default; cloud AI only when your case allows it and you opt in" (Arsh's choice, 2026-10-15 07:10Z) |
 
 Claims Baker should not make yet: any speed figure for local runs (not measured on current code,

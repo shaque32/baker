@@ -22,7 +22,7 @@ import pytest
 
 from core import contracts as c
 from core import pipeline
-from core.audit import rules, stance
+from core.audit import quotes, rules, stance
 from core.contracts import AssumptionKind as K
 from core.contracts import CheckOutcome as O
 from core.contracts import EvidenceStatus as S
@@ -200,6 +200,8 @@ def test_redecide_keeps_the_reason(conn):
     redecide(conn, "expert:test")
     run = pipeline.last_run(conn)
     assert run["mode"] == "rules_only" and set(run["unlabeled"]) == {"C04"}
+    # The labels it re-uses passed the evidence run's quote check, and the run says which.
+    assert run["config"]["quote_check"] == quotes.VERSION
 
 
 def test_redecide_refuses_a_run_whose_assumptions_were_built_by_older_rules(conn):
