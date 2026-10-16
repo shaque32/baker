@@ -820,9 +820,14 @@ _NOUN_BEFORE = re.compile(
 # who responded "ok"', '..., and REYES shot back ...'), or a possessive ('PETROV replied to
 # REYES's message "ok"', "... JONES' reply ..."). "and" joins a clause only before a pronoun
 # or a name with words of its own: 'PETROV texted REYES and SMITH: "ok"' is one writer, two
-# recipients. Time words ("before midnight") hand nothing on.
+# recipients. Time words ("before midnight") hand nothing on, nor does a contraction ("that
+# it's"). Words said to come from someone else hand it on too ('PETROV wrote a report with
+# the quotes from REYES, "ok"').
 _HANDED_ON_RE = re.compile(
-    r"[;!?]|\.(?=\s+[A-Z])|['’]s\b|s['’](?=\s)|\b(?:who|whom|whose|which)\b"
+    r"[;!?]|\.(?=\s+[A-Z])|s['’](?=\s)|\b(?:who|whom|whose|which)\b"
+    r"|\b(?!(?:it|that|he|she|what|there|here|where|how|this|let)['’]s\b)\w+['’]s\b"
+    r"|\b(?:texts?|repl(?:y|ies)|answers?|quotes?|messages?|words|statements?|remarks?)"
+    r"\s+(?:from|of|by)\b"
     r"|\b(?:and|but|or|then)\s+(?:(?:he|she|they|it|we|i)\b|(?-i:(?:[A-Z][\w'.-]*\s+){1,3}[a-z]))",
     re.IGNORECASE,
 )
