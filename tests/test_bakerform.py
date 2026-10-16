@@ -78,15 +78,25 @@ def conn() -> sqlite3.Connection:
     return c
 
 
-def test_call_and_contact_text_match_the_product(conn: sqlite3.Connection) -> None:
-    raw = bf.report_time(UTC_AT)
-    assert invariants.record_text(conn, "call:item1:Calls:7") == bf.call_text(
-        "outgoing", NUMBER_A, NUMBER_B, raw, 84
-    )
+def test_contact_text_matches_the_product(conn: sqlite3.Connection) -> None:
     assert invariants.record_text(conn, "contact:item1:Contacts:3#1") == bf.contact_text(
         "Gus Tires", NUMBER_B
     )
-    assert bf.contact_text(None, NUMBER_B) == NUMBER_B
+    assert bf.contact_text(None, NUMBER_B) == f"(no name): {NUMBER_B}"
+
+
+def test_call_rows_follow_guide_rule_28_not_yet_the_product(conn: sqlite3.Connection) -> None:
+    # Baker shows and checks a call as core.enrich.records.call_text, without the report's time
+    # (#76). Generated call rows still follow the signed guide's rule 28, with the time as the
+    # report printed it. Aligning them changes the training data and the guide, so it is the
+    # "Custom model for Baker" thread's change; then this test pins equality again.
+    raw = bf.report_time(UTC_AT)
+    assert bf.call_text("outgoing", NUMBER_A, NUMBER_B, raw, 84) == (
+        f"outgoing call from {NUMBER_A} to {NUMBER_B} at {raw}, 84s"
+    )
+    assert invariants.record_text(conn, "call:item1:Calls:7") == (
+        f"outgoing Phone call from {NUMBER_A} to {NUMBER_B}, duration 84 s"
+    )
 
 
 def test_sender_lines_follow_the_product_and_the_adapter(conn: sqlite3.Connection) -> None:
