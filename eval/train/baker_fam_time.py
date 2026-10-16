@@ -39,6 +39,7 @@ from eval.train.baker_scene import render
 from eval.train.baker_time import Win, wall
 
 T = "record_time"
+FUZZY = 0.35  # the share of "on" windows that read "on or about", inside and outside alike
 
 
 def other_zone(rng: random.Random, zone: str) -> str:
@@ -61,9 +62,9 @@ def _message(
     s = setup(rng, pick_kind(rng), lang=lang)
     tz = other_zone(rng, s.phone.zone) if place == "edge" or rng.random() < 0.2 else s.phone.zone
     if place == "inside":
-        win, utc = inside(rng, s.phone.zone, tz)
+        win, utc = inside(rng, s.phone.zone, tz, fuzzy=FUZZY)
     elif place == "outside":
-        win, utc = outside(rng, s.phone.zone, tz)
+        win, utc = outside(rng, s.phone.zone, tz, fuzzy=FUZZY)
     else:
         win, utc = edge(rng, s.phone.zone, side)
     quoted = quoted_words(rng, text, core)
@@ -88,9 +89,9 @@ def _call(
     s = setup(rng, pick_kind(rng, (3, 3, 4)))
     tz = other_zone(rng, s.phone.zone) if place == "edge" or rng.random() < 0.15 else s.phone.zone
     if place == "inside":
-        win, utc = inside(rng, s.phone.zone, tz)
+        win, utc = inside(rng, s.phone.zone, tz, fuzzy=FUZZY)
     elif place == "outside":
-        win, utc = outside(rng, s.phone.zone, tz)
+        win, utc = outside(rng, s.phone.zone, tz, fuzzy=FUZZY)
     else:
         win, utc = edge(rng, s.phone.zone, side)
     stated: tuple[int, int] | None = None
