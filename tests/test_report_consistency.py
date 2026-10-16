@@ -28,7 +28,7 @@ import pytest
 
 from core import pipeline
 from core.contracts import ClaimStatus, ClaimType, EvidenceStatus, ModelRun, Stance, Verdict
-from core.report.html import render_report
+from core.report.html import record_line, render_report
 from core.review import actions
 from core.review.redecide import redecide
 from core.review.status import (
@@ -230,6 +230,34 @@ def test_screen_and_report_agree_on_every_claim_through_a_review(tmp_path):
             _audit(conn, START + timedelta(hours=6), progress=stop_after_two)
         assert pipeline.view_run(conn).get("partial")
         assert _assert_agree(app, conn)[LABELING_INCOMPLETE] > 0
+    finally:
+        conn.close()
+
+
+def test_the_screen_and_the_report_show_a_call_with_the_same_times(tmp_path):
+    # Grok review on #76: the report shows a call's UTC and printed time beside its line, and the
+    # claim page must show the same. Both render it with core.report.html.record_line.
+    db = tmp_path / "case01.db"
+    conn = run_pipeline.build_case("case01", db)
+    try:
+        _audit(conn, START)
+        app = App(db, expert="Test Expert", port=PORT)
+        report = render_report(conn)
+        calls = conn.execute(
+            "SELECT DISTINCT e.record_id, a.claim_id FROM evidence_items e"
+            " JOIN assumptions a ON a.id = e.assumption_id WHERE e.record_id LIKE 'call:%'"
+            " ORDER BY e.record_id, a.claim_id"
+        ).fetchall()
+        assert calls
+        for record_id, claim_id in calls:
+            line = record_line(conn, record_id)
+            utc, raw = conn.execute(
+                "SELECT ts_utc, ts_raw FROM calls WHERE id = ?", (record_id,)
+            ).fetchone()
+            assert f"UTC {html.escape(utc)}" in line and html.escape(raw) in line
+            assert line in report, f"{record_id}: not in the report as {line!r}"
+            page = get(app, "/claim", id=claim_id).text
+            assert line in page, f"{record_id}: the claim page for {claim_id} shows it otherwise"
     finally:
         conn.close()
 
