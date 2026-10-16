@@ -41,9 +41,13 @@ from eval.train.baker_kit import Draft, finish
 # such day, never a week later, and another meaning contradicts only a claim that names its
 # user; with no user named it is bk_claim_open. 1.3.0: a plan for the date's weekday sent after
 # the date is bk_weekday_after (complicates, rule 23), no longer contradicts; a plan for the send
-# day's weekday is sent before 10 a.m.; the Russian own-usage frame is "так я называю". A new
-# version draws every Baker item afresh.
-GENERATOR = "eval.train.baker 1.3.0"
+# day's weekday is sent before 10 a.m.; the Russian own-usage frame is "так я называю". 1.4.0:
+# windows read as documents word them ("prior to", "on or after", "between 9 and 11 p.m.",
+# "on or about"), none resting a label on a day a reader may leave out, and 40% of attachment
+# records follow their message's caption, as Baker's small-model adapter shows them. 1.4.1:
+# a zone-edge range keeps both dates in one year and never ends at noon; run 5 trained on
+# 1.4.0. A new version draws every Baker item afresh.
+GENERATOR = "eval.train.baker 1.4.1"
 ATTEMPTS = 40
 
 Writer = Callable[[random.Random, int], Draft]

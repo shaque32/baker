@@ -140,9 +140,15 @@ def uses(q: str, acc: Acc) -> str:
     return f"{last(q)} used the number {number_text(acc.ident)}."
 
 
-def tidy(text: str) -> str:
-    """An appositive's closing comma gives way to the punctuation after it."""
-    return re.sub(r",([.:;])", r"\1", text)
+def tidy(text: str, raw: str = "") -> str:
+    """An appositive's closing comma gives way to the punctuation after it, and a window that
+    ends a sentence on "p.m." takes no second full stop."""
+    return re.sub(r",([.:;])", r"\1", stop(text, raw))
+
+
+def stop(text: str, raw: str) -> str:
+    """'... between 10 a.m. and 5 p.m.' ends its sentence with its own full stop."""
+    return text.replace(f"{raw}.", raw) if raw.endswith(".") else text
 
 
 def _did(act: str, q: str, street: str) -> str:
@@ -175,7 +181,7 @@ def act_claim(
                       "{P} {did}. This took place {t}.")  # fmt: skip
         if raw.startswith(("from", "before", "after")):
             frames.append("During the period {t}, {P} {did}.")
-        out = timed(rng, frames, raw).format(P=P, Pl=Pl, did=did, T=raw, t=raw)
+        out = stop(timed(rng, frames, raw).format(P=P, Pl=Pl, did=did, T=raw, t=raw), raw)
     return f"{out} {uses(q, q_acc)}" if q_acc else out
 
 
@@ -207,7 +213,7 @@ def message_claim(
     within the window."""
     frames = MESSAGE_FRAMES + APP_FRAMES.get(app, ())
     Q = reach(full(q), q_acc)
-    return tidy(timed(rng, frames, raw).format(P=full(p), Q=Q, x=text, T=raw, t=raw))
+    return tidy(timed(rng, frames, raw).format(P=full(p), Q=Q, x=text, T=raw, t=raw), raw)
 
 
 def code_claim(
@@ -223,10 +229,10 @@ def code_claim(
     """p sent q the code `what` is, in other words than the message's own."""
     frames = CODE_FRAMES + (("{T}, {P} texted the {k}, {c}, to {Q}.",) if app == "SMS" else ())
     Q = reach(full(q), q_acc)
-    return tidy(timed(rng, frames, raw).format(P=full(p), Q=Q, k=what, c=code, T=raw, t=raw))
+    return tidy(timed(rng, frames, raw).format(P=full(p), Q=Q, k=what, c=code, T=raw, t=raw), raw)
 
 
 def call_claim(rng: random.Random, p: str, q: str, raw: str, q_acc: Acc | None = None) -> str:
     """p called q (at `q_acc`, if the claim gives it) within the window."""
     Q = reach(full(q), q_acc)
-    return tidy(timed(rng, CALL_FRAMES, raw).format(P=full(p), Q=Q, T=raw, t=raw))
+    return tidy(timed(rng, CALL_FRAMES, raw).format(P=full(p), Q=Q, T=raw, t=raw), raw)

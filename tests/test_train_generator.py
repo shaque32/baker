@@ -8,7 +8,7 @@ import json
 import random
 import re
 from collections import Counter, defaultdict
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from core.audit.assumption_filler import check_window
 from eval.stancedata import bakerform as bf
 from eval.stancedata.families import FAMILIES
 from eval.stancedata.model import GenItem
@@ -27,11 +28,13 @@ from eval.train.baker_claim_words import EXPLAIN, OPENERS, OWN, TAILS
 from eval.train.baker_cues import SURNAMES
 from eval.train.baker_fam_denied import DENY_OPENERS, DENY_TAILS, QUESTIONS
 from eval.train.baker_fam_sender import NICKS, NICKS_RU
+from eval.train.baker_place import EDGE_FORMS, _edge_window
 from eval.train.baker_scene import render
 from eval.train.baker_text import words
 from eval.train.glossary import PAIRS, SLANG
 from eval.train.names import AREA_CODES, PEOPLE_EN, PEOPLE_RU
 from eval.train.verbs import SUPPORT_VERBS_EN, SUPPORT_VERBS_RU
+from eval.train.when import clear_part, far_parts
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "eval" / "train"
@@ -167,9 +170,11 @@ def test_every_excerpt_shows_a_non_owner_line(items: list[GenItem]) -> None:
 
 
 def test_supports_assumptions_report_the_message(items: list[GenItem]) -> None:
-    # Guide rule 14: a supports assumption says what the message communicates.
+    # Guide rule 14: a supports assumption says what the message communicates, in the verbs
+    # the message-level traps share (eval/train/frames.py).
     says = re.compile(r"\b(told|wrote|texted|sent|says|said|states|message|messaged|messages|"
-                      r"in contact|confirmed|answer|asked)\b")  # fmt: skip
+                      r"in contact|replied|answer|asked|posted|mentioned|let .+ know|in touch|"
+                      r"communicated|had contact|contact between|text)\b", re.I)  # fmt: skip
     for it in items:
         if it.gold_stance == "supports":
             assert says.search(it.assumption), it.assumption
@@ -205,7 +210,8 @@ def test_handle_owner_names_fit_the_account(items: list[GenItem]) -> None:
         if it.family != "ovr_handle_owner":
             continue
         # The named person follows any leading date phrase ("Before May 25, 2025, Dina ...").
-        lead = re.match(rf"(?:(?:Before|By) (?:{CLOCK} on )?{LONG_DATE.pattern}, )?", it.assumption)
+        lead = re.match(rf"(?:(?:Before|By|Prior to) (?:{CLOCK} on )?{WDAY}{LONG_DATE.pattern}, )?",
+                        it.assumption)  # fmt: skip
         first = it.assumption[lead.end() if lead else 0 :].split()[0].rstrip(",").lower()
         assert not re.search(rf"\b{first}\b", it.target.text.lower()), it.assumption
         app, ident, *label = it.target.sender.split(" ")
@@ -389,7 +395,12 @@ FRAME = set(
     "before after morning afternoon evening night states group chat answer question confirmed "
     "according telegram user shown instagram account saved personally typed usual someone else "
     "noon midnight into than with january february march april may june july august september "
-    "october november december".split()
+    "october november december "
+    # The report and contact frames (eval/train/frames.py) and time phrases (eval/train/when.py).
+    "mentioned know text saying posted answering reply replied words each other touch "
+    "communicated "
+    "traded passed been there later earlier sometime about around approximately during late prior "
+    "monday tuesday wednesday thursday friday saturday sunday".split()
 )
 IRREGULAR = {"paid": "pay", "sold": "sell", "sent": "send", "lent": "lend", "bought": "buy",
              "brought": "bring", "made": "make", "took": "take", "came": "come", "won": "win",
@@ -570,11 +581,13 @@ MONTHS = ("January", "February", "March", "April", "May", "June", "July", "Augus
           "September", "October", "November", "December")  # fmt: skip
 LONG_DATE = re.compile(rf"\b({'|'.join(MONTHS)}) (\d{{1,2}}), (\d{{4}})")
 CLOCK = r"(noon|midnight|\d{1,2}(?::\d{2})? [ap]\.m\.)"
+# A date's own weekday may go before it ("Friday, May 2, 2025", eval/train/when.py say_day).
+WDAY = r"(?:(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), )?"
 # A clock on a date ("by 2 p.m. on March 3, 2026", "at 9:12 a.m. on March 3, 2026"), and a
 # bound that is a date alone ("before March 3, 2026": the days before it).
-CLOCK_ON = re.compile(rf"\b(?:by|before|at) {CLOCK} on {LONG_DATE.pattern}", re.I)
-CLOCK_BOUND = re.compile(rf"\b(?:by|before) {CLOCK} on {LONG_DATE.pattern}", re.I)
-BEFORE_DATE = re.compile(rf"\bbefore {LONG_DATE.pattern}", re.I)
+CLOCK_ON = re.compile(rf"\b(?:by|before|at) {CLOCK} on {WDAY}{LONG_DATE.pattern}", re.I)
+CLOCK_BOUND = re.compile(rf"\b(?:by|before) {CLOCK} on {WDAY}{LONG_DATE.pattern}", re.I)
+BEFORE_DATE = re.compile(rf"\b(?:before|prior to) {WDAY}{LONG_DATE.pattern}", re.I)
 # An act with its own clock time or day of the month ("landed in Chicago at noon").
 ACT_AT = re.compile(r"\bat (noon|midnight|\d{1,2})(?::(\d{2}))?(?![\w:]| [ap]\.m\.)")
 ACT_TRAIN = re.compile(r"\b(\d{1,2})(am|pm) train\b")
@@ -689,8 +702,9 @@ def test_corrections_mark_the_right_message(many: list[GenItem]) -> None:
 # uhaul for Monday, May 12, 2025"), and a window of clock times on a date.
 FOR_DAY = re.compile(rf"\bfor ({'|'.join(d.capitalize() for d in WEEKDAY_NAMES[:7])}), "
                      rf"{LONG_DATE.pattern}")  # fmt: skip
-WINDOW = re.compile(rf"\bfrom {CLOCK} to {CLOCK} on {LONG_DATE.pattern}", re.I)
-ALL_DAY = re.compile(rf"\ball day on {LONG_DATE.pattern}")
+WINDOW = re.compile(rf"\b(?:from|between) {CLOCK} (?:to|and) {CLOCK} on {WDAY}{LONG_DATE.pattern}",
+                    re.I)  # fmt: skip
+ALL_DAY = re.compile(rf"\ball day on {WDAY}{LONG_DATE.pattern}")
 NEVER = re.compile(r"\bnever\b|ни разу|никогда")
 
 
@@ -735,7 +749,11 @@ def test_contradicts_assumptions_end_by_the_record(many: list[GenItem]) -> None:
             assert dates, (a, lt)
             assert all(d < day or d in before for d in dates), (a, lt)
             assert all(d < day for _, d in clocks), (a, lt)
-            if NEVER.search(it.target.text.lower()) or EN_WEEKDAY.search(a):
+            # The act's own weekday is one the record names; a date's weekday alone (when.py
+            # say_day) leaves the act at any time that day.
+            own_day = {WEEKDAY_NAMES.index(w.lower()) for w in EN_WEEKDAY.findall(a)}
+            own_day &= set(_weekday_mentions(it.target.text))
+            if NEVER.search(it.target.text.lower()) or own_day:
                 # The act's own clock ("never closed the bar at midnight") is not an added time.
                 own = it.target.text.lower()
                 added = [t for t, *_ in CLOCK_ON.findall(rest) if f"at {t}" not in own]
@@ -802,7 +820,7 @@ def test_writer_bounds_never_cut_into_the_act_at_any_minute() -> None:
     assert seen["own time"] > 100 and seen["plain"] > 100, seen
 
 
-TIME_ON = re.compile(rf"\b(by|before|after|at) {CLOCK} on {LONG_DATE.pattern}", re.I)
+TIME_ON = re.compile(rf"\b(by|before|after|at) {CLOCK} on {WDAY}{LONG_DATE.pattern}", re.I)
 
 
 def test_stated_times_hold_or_miss_the_record(many: list[GenItem]) -> None:
@@ -823,12 +841,123 @@ def test_stated_times_hold_or_miss_the_record(many: list[GenItem]) -> None:
                 ok = {"before": t > minute, "after": t < minute, "at": t == minute,
                       "by": t >= minute}[word]  # fmt: skip
             elif mismatch:
-                ok = {"before": t <= minute, "after": t > minute}.get(word, True)
+                ok = {"before": t <= minute, "after": t > minute, "at": t != minute,
+                      "by": t < minute}[word]  # fmt: skip
             else:
                 ok = True
             assert ok, (it.family, it.assumption, lt)
             seen[it.gold_stance] += 1
     assert seen["supports"] > 100 and seen["complicates"] > 100, seen
+
+
+# The other shapes eval/train/when.py gives a time: a looser bound or "about" a clock on a
+# date, a range of clock times, a part of the day, and a bound of dates.
+LOOSE_ON = re.compile(rf"\b(no later than|no earlier than|sometime before|sometime after|"
+                      rf"at about|at around|around|at approximately) {CLOCK} on "
+                      rf"{WDAY}{LONG_DATE.pattern}", re.I)  # fmt: skip
+PART_ON = re.compile(rf"\b(?:(?:on|during) the (morning|afternoon|evening|night) of|"
+                     rf"in the (morning|afternoon|evening) on|late in the (evening) on) "
+                     rf"{WDAY}{LONG_DATE.pattern}", re.I)  # fmt: skip
+DATE_BOUND = re.compile(rf"\b(on or before|on or after|before|prior to|after) "
+                        rf"{WDAY}{LONG_DATE.pattern}", re.I)  # fmt: skip
+DATE_RANGE = re.compile(
+    rf"\bfrom {WDAY}{LONG_DATE.pattern} through {WDAY}{LONG_DATE.pattern}", re.I
+)
+# A part of the day holds a supports item's record (PART_SPAN), and misses a time trap's by
+# two hours from its widest reading: "3 in the morning", "11 in the evening" (the supports
+# items say "late in the evening" until 11:30 p.m.), and "the night of May 2", which can mean
+# its small hours or its late evening, misses only the daytime between them.
+PART_SPAN = {"morning": (300, 720), "afternoon": (720, 1020), "evening": (1020, 1260),
+             "night": (1260, 1440)}  # fmt: skip
+PART_WIDE = {"morning": (0, 720), "afternoon": (720, 1020), "evening": (1020, 1440)}
+
+
+def _part_misses(part: str, minute: int) -> bool:
+    if part == "night":
+        return 360 + 120 <= minute <= 1080 - 120
+    lo, hi = PART_WIDE[part]
+    return minute <= lo - 120 or minute >= hi + 120
+
+
+def test_parts_of_the_day_miss_only_by_their_widest_reading() -> None:
+    # Every minute of the day: a part the time trap offers as a miss (when.far_parts) is two
+    # hours from its widest reading, so "the evening" never misses 11:03 p.m., which a
+    # supports item may call "late in the evening".
+    for minute in range(24 * 60):
+        for part in far_parts(minute):
+            assert _part_misses(part, minute) and part != clear_part(minute), (part, minute)
+    assert "evening" not in far_parts(23 * 60 + 3) and "night" in far_parts(10 * 60)
+    assert "night" not in far_parts(17 * 60)  # "Friday night at 6" is said
+
+
+def test_other_time_shapes_hold_or_miss_the_record(many: list[GenItem]) -> None:
+    # A supports assumption's time holds the record's local time, whatever its shape; a time
+    # mismatch's plainly misses it: "about" a clock an hour or more away, a range 30 minutes
+    # or more away, a part of the day two hours or more from its widest reading, a bound or a
+    # range of dates that leaves the record's date out. No shape gives the answer away: "the
+    # night of" comes up on both sides, and a range of dates only in the contact windows,
+    # which sup_contact and con_in_window share, never in the time trap alone.
+    assert PART_ON.findall("late in the evening on Friday, May 2, 2025") == [
+        ("", "", "evening", "May", "2", "2025")]  # fmt: skip
+    assert not _part_misses("evening", 23 * 60 + 3) and _part_misses("night", 10 * 60)
+    seen: Counter[object] = Counter()
+    for it in many:
+        lt = it.target.local_time
+        day, minute = date.fromisoformat(lt[:10]), int(lt[11:13]) * 60 + int(lt[14:16])
+        sup, miss = it.gold_stance == "supports", it.family == "ovr_time_mismatch"
+        if not (sup or miss) or "daylight-saving" in it.rationale:
+            continue
+        a = QUOTED.sub(" ", it.assumption)
+        for word, t, *d in LOOSE_ON.findall(a):
+            if _date(*d) != day:
+                continue
+            t, word = _minute_of(t), word.lower()
+            if word in ("no later than", "sometime before"):
+                ok = t >= minute if sup else t < minute
+            elif word in ("no earlier than", "sometime after"):
+                ok = t <= minute if sup else t > minute
+            else:
+                ok = abs(t - minute) <= 5 if sup else abs(t - minute) >= 60
+            assert ok, (it.family, it.assumption, lt)
+            seen["loose"] += 1
+        for lo, hi, *d in WINDOW.findall(a):
+            if _date(*d) == day:
+                lo, hi = _minute_of(lo), _minute_of(hi)
+                ok = lo < minute < hi if sup else minute < lo - 29 or minute > hi + 29
+                assert ok, (it.family, it.assumption, lt)
+                seen["range"] += 1
+        for *parts, month, dd, year in PART_ON.findall(a):
+            if _date(month, dd, year) == day:
+                part = ("night" if parts[2] else parts[0] or parts[1]).lower()
+                lo, hi = PART_SPAN[part]
+                ok = lo <= minute < hi if sup else _part_misses(part, minute)
+                assert ok, (it.family, it.assumption, lt)
+                seen["part"] += 1
+                seen["night", sup] += part == "night"
+        for word, *d in DATE_BOUND.findall(a):
+            b, word = _date(*d), word.lower()
+            holds = {"before": day < b, "prior to": day < b, "on or before": day <= b,
+                     "after": day > b, "on or after": day >= b}[word]  # fmt: skip
+            assert holds == sup, (it.family, it.assumption, lt)
+            seen["date bound"] += 1
+        for d in DATE_RANGE.findall(a):
+            assert (_date(*d[:3]) <= day <= _date(*d[3:])) == sup, (it.family, it.assumption, lt)
+            seen["date range", sup] += 1
+    assert min(seen[k] for k in ("loose", "range", "part", "date bound")) >= 10, seen
+    assert seen["night", True] and seen["night", False] and not seen["date range", False], seen
+
+
+# Words that make a message's exact words name one message: a sender or time trap's record
+# would rule these out (guide rule 23), so no family uses them (eval/train/frames.py).
+ONE_MESSAGE = re.compile(r'\bwas the one who\b|\bthe (?:message|text|words) "[^"]*" '
+                         r'(?:was|were|came|in the group)')  # fmt: skip
+
+
+def test_no_assumption_makes_the_words_name_one_message(many: list[GenItem]) -> None:
+    assert ONE_MESSAGE.search('the text "ok" came from Bo')
+    assert not ONE_MESSAGE.search('Bo sent the owner the message "ok"')
+    for it in many:
+        assert not ONE_MESSAGE.search(it.assumption), (it.family, it.assumption)
 
 
 def test_other_state_names_the_place(many: list[GenItem]) -> None:
@@ -856,6 +985,78 @@ def _cues(rows: list[str]) -> tuple[float, float, float, float]:
 def test_every_assumption_ends_with_a_period(many: list[GenItem]) -> None:
     for it in many:
         assert it.assumption.endswith("."), it.assumption
+
+
+# Verbs that need both sides to have written (frames.CONTACT_NO and the shapes beside it).
+TWO_WAY = re.compile(r"\bexchang|\beach other\b|\btraded?\b|\bcommunicat")
+# The windows a contact assumption states (eval/train/when.py span), and a first contact's
+# time (frames.first_contact, frames.none_before).
+CUTOFF = re.compile(r"\bfirst\b|\bbegan\b|had not exchanged any messages before")
+CONTACT_CLOCK = re.compile(rf"\b(after|before) {CLOCK} on {WDAY}{LONG_DATE.pattern}", re.I)
+CONTACT_DATE = re.compile(
+    rf"\b(on or before|on or after|before|after|on) {WDAY}{LONG_DATE.pattern}", re.I
+)
+OR_DATES = re.compile(rf"\bon {LONG_DATE.pattern} or {LONG_DATE.pattern}", re.I)
+IN_MONTH = re.compile(rf"\b(?:in|during) ({'|'.join(MONTHS)}) (\d{{4}})\b", re.I)
+
+
+def _contact_window(a: str) -> tuple[datetime, datetime]:
+    """The local [start, end) a contact assumption states; for a first contact, the time
+    before which it denies any, from datetime.min."""
+
+    def at(month: str, dd: str, year: str, minute: int = 0) -> datetime:
+        return datetime.combine(_date(month, dd, year), time()) + timedelta(minutes=minute)
+
+    one = timedelta(days=1)
+    if CUTOFF.search(a):
+        if m := CONTACT_CLOCK.search(a):
+            return datetime.min, at(*m.groups()[2:], _minute_of(m[2]))
+        m = CONTACT_DATE.search(a)
+        assert m and m[1].lower() in ("on", "before"), a
+        return datetime.min, at(*m.groups()[1:])
+    if m := WINDOW.search(a):
+        return at(*m.groups()[2:], _minute_of(m[1])), at(*m.groups()[2:], _minute_of(m[2]))
+    if m := CONTACT_CLOCK.search(a):
+        d = at(*m.groups()[2:])
+        t = d + timedelta(minutes=_minute_of(m[2]))
+        return (t, d + one) if m[1].lower() == "after" else (d, t)
+    if m := PART_ON.search(a):
+        lo, hi = PART_SPAN[("night" if m[3] else m[1] or m[2]).lower()]
+        d = at(*m.groups()[3:])
+        return d + timedelta(minutes=lo), d + timedelta(minutes=hi)
+    if (m := DATE_RANGE.search(a)) or (m := OR_DATES.search(a)):
+        return at(*m.groups()[:3]), at(*m.groups()[3:]) + one
+    if m := IN_MONTH.search(a):
+        first = date(int(m[2]), MONTHS.index(m[1].capitalize()) + 1, 1)
+        after = date(first.year + first.month // 12, first.month % 12 + 1, 1)
+        return datetime.combine(first, time()), datetime.combine(after, time())
+    m = CONTACT_DATE.search(a)
+    assert m, a
+    d = at(*m.groups()[1:])
+    return {"on": (d, d + one), "before": (datetime.min, d),
+            "on or before": (datetime.min, d + one), "after": (d + one, datetime.max),
+            "on or after": (d, datetime.max)}[m[1].lower()]  # fmt: skip
+
+
+def test_two_way_contact_denials_show_both_sides_writing(many: list[GenItem]) -> None:
+    # One message alone leaves "did not exchange messages" open (strict contradicts), so a
+    # denial in those verbs states a window that holds the record and a line from the other
+    # side, and a first contact in them comes after a line from each side. And an answer is
+    # never "confirmed": "55 so far" gives a number, not a settled one.
+    assert _contact_window("the owner and Bo first texted each other after 9 p.m. on May 2, "
+                           "2025") == (datetime.min, datetime(2025, 5, 2, 21))  # fmt: skip
+    seen: Counter[bool] = Counter()
+    for it in many:
+        if it.family == "sup_answer":
+            assert "confirmed" not in it.assumption, it.assumption
+        if it.family != "con_in_window" or not TWO_WAY.search(it.assumption):
+            continue
+        start, end = _contact_window(QUOTED.sub(" ", it.assumption))
+        assert start <= _local(it.target) < end, (it.probe_id, it.assumption, it.target)
+        other = [x for x in it.context if x.account_id != it.target.account_id]
+        assert any(start <= _local(x) < end for x in other), (it.probe_id, it.assumption)
+        seen[start == datetime.min] += 1
+    assert seen[True] >= 5 and seen[False] >= 20, seen
 
 
 def test_surface_cues_are_balanced_across_labels(many: list[GenItem]) -> None:
@@ -896,10 +1097,18 @@ def _weekday_mentions(text: str) -> list[int]:
     return out
 
 
+# Families whose dates need not be an act's: a message sent on another date, a window of
+# contact, an unrelated event.
+ANY_DAY = {"ovr_time_mismatch", "con_in_window", "irr_other_topic", "irr_pleasantry",
+           "ovr_injection_unrelated"}  # fmt: skip
+
+
 def test_weekday_words_fit_each_lines_date(many: list[GenItem]) -> None:
     # Shape 4: no line names its own weekday as a particular day ("whats the plan for sat" is
     # never sent on a Saturday); a weekday an assumption dates is that date's weekday, a past
-    # act's date falls before the record, and a plan's or a booking's after it.
+    # act's date falls before the record, and a plan's or a booking's after it. A date may
+    # carry its weekday anywhere (eval/train/when.py say_day): the record's own date, or any
+    # date in the families above.
     assert _weekday_mentions("whats the plan for sat") == [5]
     assert _weekday_mentions("every friday, the thursday league, fridays") == []
     assert _weekday_mentions("вернул в среду, по средам нет") == [2]
@@ -912,10 +1121,13 @@ def test_weekday_words_fit_each_lines_date(many: list[GenItem]) -> None:
         for word, weekday, *m in WEEKDAY_ON_DATE.findall(it.assumption):
             d = _date(*m)
             assert d.strftime("%A") == weekday, it.assumption
+            if d == day or it.family in ANY_DAY:
+                seen["any"] += 1
+                continue
             ahead = word == "for" or it.family in ("ovr_plan", "ovr_hypothetical")
             assert d > day if ahead else d < day, (it.family, it.assumption, it.target.local_time)
             seen["ahead" if ahead else "past"] += 1
-    assert seen["past"] >= 100 and seen["ahead"] >= 20, seen
+    assert seen["past"] >= 100 and seen["ahead"] >= 20 and seen["any"] >= 20, seen
 
 
 BETWEEN_DATES = re.compile(rf"\bbetween {LONG_DATE.pattern} and {LONG_DATE.pattern}")
@@ -1081,7 +1293,7 @@ BK_DAY_RU = ("понедельник", "вторник", "сред", "четве
 BK_EN_DAY = re.compile(rf"\b(next |this )?({'|'.join(BK_DAY)})\b")
 BK_LETTERS = set("abcdefghijklm")
 PEOPLE_NAMES = {p.name for p in (*PEOPLE_EN, *PEOPLE_RU)}
-MINUTE, HOUR = timedelta(minutes=1), timedelta(hours=1)
+MINUTE, HOUR, DAY = timedelta(minutes=1), timedelta(hours=1), timedelta(days=1)
 
 
 @pytest.fixture(scope="module")
@@ -1126,11 +1338,15 @@ def _window(it: GenItem) -> tuple[datetime, datetime, str, str]:
     return start, end.astimezone(tz).replace(tzinfo=None), w["tz"], w["raw"]
 
 
-def _margins(it: GenItem, line: Any) -> dict[str, timedelta]:
+def _margins(
+    it: GenItem, line: Any, bounds: tuple[datetime, datetime] | None = None
+) -> dict[str, timedelta]:
     """How far inside (+) or outside (-) the window a line is, read in the window's zone and in
-    the phone's: the smaller of the wall-clock and the elapsed distance to the nearest edge."""
+    the phone's: the smaller of the wall-clock and the elapsed distance to the nearest edge.
+    `bounds` replaces the window's own wall-clock start and end."""
     utc, phone = _utc(line.local_time)
     start, end, tz, _ = _window(it)
+    start, end = bounds or (start, end)
     out = {}
     for zone in dict.fromkeys((tz, phone)):
         z = ZoneInfo(zone)
@@ -1179,6 +1395,7 @@ def test_baker_claims_show_on_meaning_role_and_event_only(bk: list[Any]) -> None
             continue
         seen[it.baker_template] += 1
         assert claim.endswith(".") and claim[0].isupper() and "{" not in claim, claim
+        assert not re.search(r"[ap]\.m\.\.", QUOTED.sub('""', claim)), claim  # one full stop
         if it.baker_template == "meaning":
             assert f'"{p["quoted_text"]}"' in claim, it.probe_id
         elif "window" in p:
@@ -1240,10 +1457,43 @@ def test_baker_brackets_follow_the_scene(bk: list[Any]) -> None:
                 assert names[pid] in line.sender, (it.probe_id, line.sender)
 
 
+def _captioned(it: GenItem) -> bool:
+    """The record follows a line with its own sender and time: its message's caption."""
+    t = it.target_index
+    cap = it.context[t - 1] if t else None
+    return cap is not None and (cap.sender, cap.local_time) == (it.target.sender,
+                                                                it.target.local_time)  # fmt: skip
+
+
 def test_baker_excerpts_show_a_non_owner_line(bk: list[Any]) -> None:
     for it, _, _ in bk:
         assert any("(owner)" not in ln.sender for ln in it.lines()), it.probe_id
-        assert len(it.context) <= 6
+        assert len(it.context) <= (7 if _captioned(it) else 6)
+
+
+def test_baker_captioned_attachments_follow_their_message(bk: list[Any]) -> None:
+    # As Baker's small-model adapter shows one (eval/stancemodel's case_item): the attachment's
+    # message, captioned, as its own line, then the file name, marked, with the same sender and
+    # time; up to three lines before the message, as before any record. Nothing else shares a
+    # line's time, and a caption-less attachment is its one marked line.
+    seen: Counter[bool] = Counter()
+    for it, d, _ in bk:
+        t, rec = it.target_index, d.evs[d.target]
+        times = [ln.local_time for ln in it.lines() if ln.local_time != "no time in source"]
+        if not _captioned(it):
+            assert len(set(times)) == len(times) and t <= 3, it.probe_id
+            seen[False] += rec.kind == "att"
+            continue
+        seen[True] += 1
+        cap = it.context[t - 1]
+        assert rec.kind == "att" and d.evs[d.target - 1].kind == "msg", it.probe_id
+        assert bk_file(it.target.text) and cap.text.strip() and not bk_file(cap.text)
+        assert len(set(times)) == len(times) - 1 and t <= 4, it.probe_id
+    assert 0.25 < seen[True] / (seen[True] + seen[False]) < 0.55, seen
+
+
+def bk_file(text: str) -> bool:
+    return bool(re.fullmatch(r"(?:IMG|VID|PXL|Screenshot)_[\w-]+\.\w+", text))
 
 
 def test_baker_chat_records_carry_their_chats_members(bk: list[Any]) -> None:
@@ -1262,33 +1512,86 @@ def test_baker_chat_records_carry_their_chats_members(bk: list[Any]) -> None:
         assert it.baker_members == tuple(sorted({ln.sender for ln in it.lines()})), it.probe_id
 
 
+# Window words careful readers could take either way, read from the words alone: "since May
+# 1" may or may not hold the 1st, "between May 1 and May 9" the 1st and the 9th, "from May 1 to
+# May 9" and "May 1–9" the 9th; "on or about May 2" may reach days either side.
+BK_LOOSE_FIRST = re.compile(r"^(?:since|between [A-Z])")
+BK_LOOSE_LAST = re.compile(
+    r"^(?:between [A-Z]|from [A-Z][a-z]+\.? \d+ to |during [A-Z][a-z]+\.? \d+–)"
+)
+BK_FUZZY = re.compile(r"\bon or about\b", re.IGNORECASE)
+BK_ABOUT = re.compile(r"\b(?:at about|at approximately|at around|around) \d")
+# A window's clock is never noon or midnight, in any spelling ("12 p.m." reads either way).
+BK_NOON = re.compile(r"\bnoon\b|\bmidnight\b|\b12(?::00)? ?(?:[ap]\.m\.|[AP]M)(?!\w)")
+
+
 def test_baker_windows_hold_or_miss_their_records(bk: list[Any]) -> None:
     seen: Counter[str] = Counter()
     for it, _, _ in bk:
         timed = it.family in BK_INSIDE | BK_OUTSIDE | {"bk_zone_edge"}
         if "window" not in it.baker_params or not timed:
             continue
-        raw = it.baker_params["window"]["raw"]
+        start, end, tz, raw = _window(it)
         m = _margins(it, it.target)
-        if raw.startswith("at about"):
-            # Baker reads "at about 9 p.m." as 8:52 to 9:08 (core/audit/assumption_filler.py).
-            start, end, _, _ = _window(it)
-            assert end - start == 16 * MINUTE and "noon" not in raw, (it.probe_id, raw)
-        if it.family in BK_INSIDE and raw.startswith("at about"):
+        about = end - start == 16 * MINUTE
+        clock = start.time() != time() or end.time() != time()
+        # Baker reads "at about 9 p.m." as 8:52 to 9:08, and "around" or "at approximately"
+        # the same way (core/audit/assumption_filler.py).
+        assert about == bool(BK_ABOUT.search(raw)) and not BK_NOON.search(raw), (it.probe_id, raw)
+        if it.family in BK_INSIDE and about:
             utc, phone = _utc(it.target.local_time)
-            start, end, tz, _ = _window(it)
             wall = utc.astimezone(ZoneInfo(tz)).replace(tzinfo=None)
             assert tz == phone and abs(wall - (start + (end - start) / 2)) <= 5 * MINUTE
-        elif it.family in BK_INSIDE:
-            assert min(m.values()) >= HOUR, (it.probe_id, raw, m)
+        elif it.family in BK_INSIDE:  # never on a day a reader may leave out
+            firm = (start + DAY if BK_LOOSE_FIRST.search(raw) else start,
+                    end - DAY if BK_LOOSE_LAST.search(raw) else end)  # fmt: skip
+            assert min(_margins(it, it.target, firm).values()) >= HOUR, (it.probe_id, raw, m)
         elif it.family in BK_OUTSIDE:
-            need = 2 * HOUR if raw.startswith(("between", "at about")) else 24 * HOUR
+            need = 2 * HOUR if clock else 21 * DAY if BK_FUZZY.search(raw) else DAY
             assert max(m.values()) <= -need, (it.probe_id, raw, m)
         else:
             assert len(m) == 2 and sorted(v > timedelta(0) for v in m.values()) == [False, True]
             assert min(abs(v) for v in m.values()) >= 10 * MINUTE, (it.probe_id, m)
+            utc, _ = _utc(it.target.local_time)
+            wall = utc.astimezone(ZoneInfo(tz)).replace(tzinfo=None)
+            near_start = abs(wall - start) < abs(wall - end)
+            loose = BK_LOOSE_FIRST if near_start else BK_LOOSE_LAST
+            assert not BK_FUZZY.search(raw) and not loose.search(raw), (it.probe_id, raw)
         seen[it.family] += 1
     assert set(seen) == BK_INSIDE | BK_OUTSIDE | {"bk_zone_edge"}
+
+
+def test_baker_windows_pass_bakers_own_window_check(bk: list[Any]) -> None:
+    # Every window is one Baker's filler could hold for its words (check_window): "after May 2"
+    # starts at midnight on May 3, as the words mean and as the check reads it since #66.
+    shapes: Counter[str] = Counter()
+    for it, _, _ in bk:
+        if "window" not in it.baker_params or it.baker_template == "weekday_date":
+            continue
+        start, end, _, raw = _window(it)
+        check_window(start, end, raw, raw, raw, it.baker_template)
+        shapes[re.sub(r"[A-Z][a-z]+\.?|\d+(?:st|nd|rd|th)?", "_", raw)] += 1
+    assert len(shapes) >= 60, shapes.most_common()
+
+
+def test_zone_edge_windows_pass_bakers_own_window_check() -> None:
+    # A range across New Year or a clock range ending at noon comes up about once in tens of
+    # thousands of items, too rarely for the bk sample, so the zone-edge windows are drawn here
+    # many times: both dates of a range share a year, no clock is noon, and Baker's filler
+    # could hold every window for its words.
+    assert BK_NOON.search("between 9 a.m. and 12 p.m. on May 2, 2025")
+    seen: Counter[object] = Counter()
+    for i in range(30000):
+        form = EDGE_FORMS[i % len(EDGE_FORMS)]
+        rng = random.Random(i)  # noqa: S311 - synthetic data, not security
+        win, _ = _edge_window(rng, form, "America/Chicago")
+        assert not BK_NOON.search(win.raw), win.raw
+        if form == "through":
+            assert win.start.year == (win.end - DAY).year, win.raw
+            seen["through", win.start.month == 12 and win.end.month == 1] += 1
+        check_window(win.start, win.end, win.raw, win.raw, win.raw, "")
+        seen[form] += 1
+    assert seen["through", True] >= 5 and seen["between"] >= 3000, seen
 
 
 def _weekday(quoted: str) -> tuple[int, str]:
@@ -1419,8 +1722,8 @@ def test_baker_sender_families_name_the_right_party(bk: list[Any]) -> None:
             assert all(unshown[0] not in _brackets(ln.sender) for ln in ids)
             called = re.search(r'addresses \S+ \S+ as "([^"]+)"', it.rationale)
             if called:  # the owner calls the record's sender by name, just before the record
-                seen["called"] += 1
-                lead = d.evs[d.target - 1]
+                seen["called"] += 1  # (before its caption, for a captioned attachment)
+                lead = d.evs[d.target - (2 if _captioned(it) else 1)]
                 assert lead.frm in d.phone.own and called.group(1) in lead.text, it.probe_id
                 assert rec.frm not in d.phone.own and not _rec_ids(d), it.probe_id
     assert seen["elsewhere"] >= 30 and seen["called"] >= 30, seen

@@ -41,7 +41,15 @@ from eval.train.baker_kit import (
 from eval.train.baker_parties import RANGES, call_context, call_event, name_account, strangers
 from eval.train.baker_scene import MSG_APPS, Acc, Ev, render
 from eval.train.baker_text import fill, words
-from eval.train.baker_time import wall, win_day, win_on
+from eval.train.baker_time import (
+    CLOCK_HOURS,
+    wall,
+    win_about,
+    win_between,
+    win_day,
+    win_on,
+    win_through,
+)
 from eval.train.names import PEOPLE_EN, STEMS
 
 FAMILY = "bk_unrelated"
@@ -72,10 +80,20 @@ class Ctx:
             return date(2025, 6, 2) + timedelta(days=self.k % 400)  # a contact row has no time
         return wall(utc, self.s.phone.zone).date()
 
-    def window(self, rng: random.Random) -> Any:
-        """A date window near the record's day; where the record falls does not matter."""
+    def window(self, rng: random.Random, fuzzy: bool = True) -> Any:
+        """A window near the record's day; where the record falls does not matter. `fuzzy`
+        lets an "on" window read "on or about"."""
         d = self.day + timedelta(days=rng.choice((0, 0, -3, 2, 9)))
-        return win_on(d, self.s.phone.zone, rng.random() < 0.2).tw
+        zone, roll = self.s.phone.zone, rng.random()
+        if roll < 0.15 and (d + timedelta(days=6)).year == d.year:
+            return win_through(d, d + timedelta(days=rng.randint(1, 6)), zone, rng).tw
+        if roll < 0.28:
+            h1 = rng.choice(CLOCK_HOURS[:-3])
+            h2 = rng.choice([h for h in CLOCK_HOURS if h1 + 2 <= h <= h1 + 5])
+            return win_between(d, h1, h2, zone, rng).tw
+        if roll < 0.36:
+            return win_about(d, rng.choice(CLOCK_HOURS), rng.choice((0, 30)), zone, rng).tw
+        return win_on(d, zone, rng.random() < 0.2, rng, fuzzy and rng.random() < 0.1).tw
 
     def shows(self, ident: str) -> bool:
         return any(ident in f"{ln.sender} {ln.account_id} {ln.text}" for ln in self.lines)
@@ -222,7 +240,7 @@ def unrelated(rng: random.Random, k: int) -> Draft:
         rationale = (f'{what} does not contain "{params["quoted_text"]}", and no line shown uses '
                      "those words, so the record has no bearing on the assumption.")  # fmt: skip
     elif template in ("message_count", "no_contact"):
-        params = _pair(rng, c) | {"window": c.window(rng)}
+        params = _pair(rng, c) | {"window": c.window(rng, fuzzy=False)}
         acct = params["account_ids"][0]
         if template == "message_count":
             params |= {"device_ids": (c.s.phone.dev,), "count_op": rng.choice(("eq", "ge", "le")),

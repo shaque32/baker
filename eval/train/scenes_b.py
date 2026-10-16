@@ -11,6 +11,7 @@ from eval.stancedata.chat import long_date
 from eval.train import facts as fx
 from eval.train import filler
 from eval.train.facts import Fact
+from eval.train.frames import words
 from eval.train.scenario import Line, fill_ends, pick_day
 from eval.train.scenes import (
     Result,
@@ -59,15 +60,7 @@ def sc_shared(rng: random.Random, slot: int) -> Result:
     why = (f"A line in the chat says {guest.name.lower()} is typing on that phone, so who wrote "
            "the record is open.")  # fmt: skip
     lead = Spec("ovr_shared_account", K.IDENTITY, cap(a), text, why)
-    b = rng.choice(
-        [
-            f'{s} sent the owner the message "{text}"',
-            f'the message "{text}" came from {s}',
-            f'{s} sent the owner "{text}"',
-        ]
-    )
-    if when := telling_when(rng, c, date=0.7):
-        b = f"{when}, {b}"
+    b = words(rng, s, "the owner", text, when=telling_when(rng, c, date=0.7))
     why_b = ("The assumption is about the account only; the record shows that account sent it, "
              "whoever typed.")  # fmt: skip
     sup = Spec("sup_account_shared", kind_of(rng, "sup_account_shared"), cap(b), text, why_b)
@@ -101,17 +94,18 @@ def sc_group(rng: random.Random, slot: int) -> Result:
     # the owner (guide rule 11).
     c = finish(rng, st, core, total=(2, 6), first="c")
     c1, pred = c.contacts[0], fx.claim(f, st.v, fx.has_marker(core))
-    a = rng.choice([f"{c1.who} wrote in the group chat that they {pred}",
-                    f"in the group chat, {c1.who} said they {pred}",
-                    f"{c1.who} {pred}, as they wrote in the group"])  # fmt: skip
-    if (when := when_sent(rng, c)) and rng.random() < 0.8:  # the time may fit, not the speaker
-        a = f"{when}, {c1.who} wrote in the group chat that they {pred}"
+    # The supports items' frames, with another member as the speaker; the time may fit.
+    when = when_sent(rng, c)
+    if rng.random() < 0.2:
+        a = cap(words(rng, c1.who, c.owner.who, c.record.text, group=True, when=when))
+    else:
+        a = frame(rng, c, pred, when=when, who=c1.who)
     # Another member wrote these words; one record cannot show that c1 never wrote them too
     # (guide rule 23), so the answer is complicates.
     why = other_writer_why(c.record.account.sender, c1.who, group=True)
     # The answer rests on who sent the record, so the quote is the record in full (rule 22).
-    lead = Spec("ovr_speaker_mismatch", kind_of(rng, "ovr_speaker_mismatch"), cap(a),
-                c.record.text, why)  # fmt: skip
+    lead = Spec("ovr_speaker_mismatch", kind_of(rng, "ovr_speaker_mismatch"), a, c.record.text,
+                why)  # fmt: skip
     plain = spec_plain(rng, c, pred, core, plain_why(c))
     return c, siblings(rng, lead, [plain], 0.6, 1)
 
@@ -207,15 +201,11 @@ def sc_qa(rng: random.Random, slot: int) -> Result:
     template = qa.claim if money else qa.claim.replace("${v}", "{v}").replace("{v} rubles", "{v}")
     asked = long_date(c.local_of(c.target - 1).date())
     clause = template.format(v=st.v, p="they", poss="their", day=f"on {asked}")
-    s = c.sender.who
-    a = rng.choice([f"{s} told the owner that {clause}",
-                    f"answering the owner, {s} said {clause}",
-                    f"{s} confirmed to the owner that {clause}"])  # fmt: skip
-    if not dated and (when := telling_when(rng, c)):
-        a = f"{when}, {a}"
+    when = None if dated else telling_when(rng, c)
+    a = frame(rng, c, clause, when=when, bare=True, answer=True)
     why = f'The owner asks "{q}" just before; read with that question, the answer states it.'
-    lead = Spec("sup_answer", K.EVENT, cap(a), core, why)
+    lead = Spec("sup_answer", K.EVENT, a, core, why)
     cands = [spec_sender_mismatch(rng, c)]
     if not dated:  # a telling on another date would report that day's count in the past tense
-        cands.insert(0, spec_time_mismatch(rng, c, clause, clause=True))
+        cands.insert(0, spec_time_mismatch(rng, c, clause, clause=True, answer=True))
     return c, siblings(rng, lead, cands, 0.4, 1)

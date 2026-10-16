@@ -57,6 +57,7 @@ TELL = ("", "ok ", "update: ", "so ", "btw ", "heads up, ")
 ASK = ("", "hey ", "quick q, ", "yo ", "so ", "ok ")
 ACT_FORMS = {"role": ("through", "through", "before"),
              "event": ("on", "On", "through", "between", "about")}  # fmt: skip
+FUZZY = 0.15  # the share of "on" windows that read "on or about"
 
 
 def shown(s: Setup, acc: Acc) -> str:
@@ -105,7 +106,7 @@ def open_act(rng: random.Random, j: int, template: str, family: str) -> Draft:
     win = None
     if rng.random() < 0.7:
         tz = other_zone(rng, s.phone.zone) if rng.random() < 0.2 else s.phone.zone
-        win, utc = inside(rng, s.phone.zone, tz, ACT_FORMS[template])
+        win, utc = inside(rng, s.phone.zone, tz, ACT_FORMS[template], FUZZY)
     else:
         utc = any_time(rng, s.phone.zone)
     evs, target = chat(rng, s, text, utc, p_owner != to_p, "en")
@@ -157,7 +158,7 @@ def event_is_record(rng: random.Random, k: int) -> Draft:
     p = s.phone.person if from_me else s.you_pid
     other = s.you_pid if from_me else s.phone.person
     tz = other_zone(rng, s.phone.zone) if rng.random() < 0.2 else s.phone.zone
-    win, utc = inside(rng, s.phone.zone, tz, ("on", "On", "between", "about"))
+    win, utc = inside(rng, s.phone.zone, tz, ("on", "On", "between", "about"), FUZZY)
     evs, target = steady_chat(rng, s, text, utc, from_me, lang, avoid=text)
     rec = evs[target]
     if rec.to is None:
@@ -193,7 +194,8 @@ def _call(rng: random.Random, family: str) -> Draft:
     p_owner = s.you_pid is None or rng.random() < 0.55
     p = s.phone.person if p_owner else s.you_pid
     other = s.you_pid if p_owner else s.phone.person
-    win, utc = inside(rng, s.phone.zone, s.phone.zone, ("about", "about", "on", "On", "between"))
+    win, utc = inside(rng, s.phone.zone, s.phone.zone, ("about", "about", "on", "On", "between"),
+                      FUZZY)  # fmt: skip
     call = call_event(rng, s, utc, p_owner, rng.randint(20, 1500))
     lang = "ru" if rng.random() < 0.1 else "en"
     evs, target = call_context(rng, s, call, lang, with_partner=rng.random() < 0.5)
