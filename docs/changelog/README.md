@@ -10,8 +10,11 @@ first by date. The archive takes no new entries; the status refresh may still co
 
 In the same PR as a meaningful change (CLAUDE.md, "Product status docs"), add one new file
 here named `YYYY-MM-DD-<short-name>.md`: the date you write it, then a few lowercase words
-joined by hyphens (for example `2026-10-16-stated-time-windows.md`). Never edit another PR's
-entry, except to correct it or to apply its status edit (below).
+joined by hyphens (for example `2026-10-16-stated-time-windows.md`). Make the short name
+specific to your change, such as your branch's own words, not a generic one like `fix-report`:
+two PRs that pick the same name on the same day collide. If the name is already on main or in
+another open PR, pick another. Never edit another PR's entry, except to correct it or to apply
+its status edit (below).
 
 ```
 ## YYYY-MM-DD: <change> (#PR)

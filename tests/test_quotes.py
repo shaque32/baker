@@ -194,7 +194,8 @@ def test_the_quote_must_be_word_aligned_where_it_takes_in_the_records_own_fields
 # The quote check's answers on a fixed set, pinned to its version (Grok review on #80, item 3:
 # the behavior changed in #76 with no version bump). A change to which quotes pass, in
 # core/enrich/records.py, core/audit/quotes.py or the stored re-check, changes this digest: bump
-# core/audit/quotes.VERSION, pin the new digest beside it, and say so in docs/CHANGELOG_AI.md.
+# core/audit/quotes.VERSION, pin the new digest beside it, and say so in the PR's own
+# docs/changelog/ entry.
 PINNED = {"1.2.0": "0e0fd1342a64cc337445ba5dbd89dc7ed37d61cd8d65e292ad892f9a26e3077c"}
 PROBES = [
     "(no name)",
