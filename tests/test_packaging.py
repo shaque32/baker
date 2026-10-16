@@ -30,6 +30,7 @@ def test_case02_and_the_cloud_benchmark_are_never_shipped():
         "tests/test_synthetic_case02.py",
         "eval/bench/claude_bench.py",
         "eval/stancedata/score.py",
+        "eval/stancemodel/train.py",
         "eval/out/case01/case01.db",
         "CLAUDE.md",
     ):

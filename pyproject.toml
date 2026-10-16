@@ -35,6 +35,16 @@ cloud = [
 bench = [
     "anthropic>=1.0,<2",  # eval/bench: the cloud benchmark (MIT)
 ]
+train = [
+    # eval/stancemodel only: Baker's own small stance model; never imported by core/.
+    # On Linux, install torch's CPU wheel first (eval/stancemodel/README.md).
+    "torch>=2.4",  # (BSD-3)
+    "transformers>=5",  # (Apache-2.0)
+    "safetensors>=0.4",  # (Apache-2.0)
+    "sentencepiece>=0.2",  # reads the base model's spm.model once, at training (Apache-2.0)
+    "protobuf>=4",  # the same conversion (BSD-3)
+    "huggingface_hub>=0.25",  # one-time download of the base model, outside any run (Apache-2.0)
+]
 
 [build-system]
 requires = ["setuptools>=69"]

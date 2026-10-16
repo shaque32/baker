@@ -43,6 +43,7 @@ EXCLUDE = (
     "eval/stancedata/",  # small-model track, not part of the product yet
     "eval/train/",
     "eval/heldout/",
+    "eval/stancemodel/",
     "eval/out/",  # run outputs (git ignores them too)
 )
 

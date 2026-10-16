@@ -19,6 +19,79 @@ Template:
 
 ---
 
+## 2026-10-16: Small stance model, run 8: no-go on the probe set, parked (#50)
+- Changed: run 8 trains run 7's weights 1 more epoch on a fresh draw of run 7's data generator
+  (seed 4, train sha256 `226374eb…`, 19,244 items, none repeating run 7's). No code change. It
+  was the last cheap try agreed with Arsh; the small model is now parked.
+- Where: branch `claude/train-small-model-i04typ`, PR #50 (draft), not merged. Weights stay out
+  of git (model sha256 `6f3eb176…`).
+- Verified: overlap check 0 flags on the run 8 training file. Dev split (913 undisputed items,
+  cloud CPU, 2026-10-16): default policy supports recall 0.97, contradicts precision 0.97, 1
+  contradicts and 1 moved trap shown as supports. tune.py's pre-set margin is met at "supports"
+  p >= 0.98: recall 0.96, precision 0.99, 0 and 0, so run 8 became the first candidate. Signed
+  probe set, scored once with that policy (95 gated items, cloud CPU, 2026-10-16): valid output
+  100%, supports recall 0.82 (bar 0.90), contradicts precision 0.67 (bar 0.90), 0 contradicts
+  shown as supports, 7 moved traps shown as supports (6 told-frame, 1 time), 8 of 37 overreach
+  traps shown as supports. Go bar condition 2 fails, so the answer is no-go. The test split and
+  case02 were not scored: no result there could change the answer, and each scoring spends one
+  of a limited number.
+- Open: the dev split overstates the model, since it comes from the same generators as the
+  training data; the probe set's wording is different. Training data has no told-frame items.
+  Any further run needs a new data plan and Arsh's go-ahead. Speed on the Mac unmeasured.
+- Affects: none in the product (eval only; the 14B stays the local stance model).
+
+## 2026-10-16: Small stance model, run 7 (#50)
+- Changed: run 7 trains run 6's weights 1 more epoch on new training data with more varied time
+  traps (train sha256 `3e40b3b3…`, 19,247 items; time traps 355 to 823). No code change.
+- Where: branch `claude/train-small-model-i04typ`, PR #50 (draft), not merged.
+- Verified: overlap check 0 flags on the run 7 training file. Dev split only (913 undisputed
+  items, cloud CPU, 2026-10-16): default policy supports recall 0.98, contradicts precision 0.99,
+  1 contradicts and 4 moved traps shown as supports (run 6: 9). With "supports" needing p >= 0.99:
+  recall 0.92, precision 0.995, 0 and 0, which meets the go-bar levels on dev but not tune.py's
+  pre-set margin (recall 0.95), so no policy is written and run 7 is not a candidate.
+- Open: run 8 on a fresh draw of the same data; probe, test-split and case02 scoring only for a
+  candidate.
+- Affects: none in the product (eval only).
+
+## 2026-10-15: Small stance model, run 6; tune.py checks the moved-traps bar (#50)
+- Changed: run 6 trains run 5's weights 1 more epoch on new training data (train sha256
+  `6637a9ef…`, 19,244 items with more varied sender traps), trap items weighted 3x. tune.py's
+  policy rule now also requires 0 moved traps shown as supports, the GO_BAR bar guide v0.3 added;
+  the rule predated it, so it had picked a policy that still showed 7 such traps. The change only
+  rejects more policies.
+- Where: branch `claude/train-small-model-i04typ`, PR #50 (draft), not merged.
+- Verified: overlap check 0 flags on the run 6 training file. Dev split only (913 undisputed
+  items, cloud CPU, 2026-10-15), default policy: supports recall 0.97, contradicts precision 0.98,
+  1 contradicts and 9 moved traps shown as supports (run 5: 17), accuracy 0.88. No policy clears
+  the bars, so run 6 is not a candidate. New tune.py test passes.
+- Open: the remaining moved traps are mostly time traps (5 of 40 on dev); a run 7 needs more
+  varied time traps from the data thread. Probe, test-split and case02 scoring only for a
+  candidate.
+- Affects: none in the product (eval only).
+
+## 2026-10-15: Small stance model, run 5 and reading cases by name (#50)
+- Changed: run 5 trains mDeBERTa-v3-base from scratch on training data with more varied wording
+  and captioned attachments (train sha256 `00ceae8f…`), 3 epochs, trap items weighted 2x
+  (`--trap-weight`). Why: runs 3 and 4 learned the training wording rather than the rule. Inside
+  Baker, `eval/stancemodel/time_case01.case_item` now names accounts, people and phones through
+  `core/audit/readable.py` and opens chat records with Baker's bounded members line, as the 14B
+  reads them. `eval/stancemodel/hidden_case_bar.py` scores go-bar condition 5 (case02, aggregate
+  only, once per model) by `gobar`'s own limits.
+- Where: branch `claude/train-small-model-i04typ`, PR #50 (draft), not merged. Weights are local
+  to the training session, never in git.
+- Verified: run 5 overlap check 0 flags against the held-out sets and the signed probe set. Dev
+  split only (913 undisputed items, scorer after #63/#64), default policy: run 5 supports recall
+  0.94, contradicts precision 0.98, 1 contradicts and 17 moved traps shown as supports, accuracy
+  0.85; run 4 was 0.89, 0.93, 11, 20, 0.81. No policy clears the bars (moved traps stay above 0
+  at any threshold that keeps supports recall at 0.90), so run 5 is not a candidate. `make
+  check` passed on #50 after merging main through #71.
+- Open: run 6 on the next data drop (#79); probe, test-split and case02 scoring only for a
+  candidate that clears dev; speed bar timed on Arsh's Mac. After #76 merges, case runs show
+  contact and call rows in the new text while run 5 trained on the old (dev, test and probe files
+  are unaffected).
+  Training data has no told-the-owner or undated-denial items, so expect misses there on the probe.
+- Affects: none in the product (eval only; the 14B stays the local stance model).
+
 ## 2026-10-15: Training data for the small model's run 5 (#79)
 - Changed: the training-data generators (`eval/train/`, `eval/stancedata/bakerform.py`) write
   more varied wording, because run 4 fit its training wording better than the held-out wording
