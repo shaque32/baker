@@ -65,8 +65,18 @@ from core.restore.store import ExhibitError, add_exhibit, match_exhibits, remove
 from core.review import actions, audit_log
 from core.review.actions import ReviewError
 from core.review.redecide import redecide
+from core.support import bug_report
 from core.timeline import settings as timeline_settings
-from ui import identity_pages, pages, restore_pages, selection_pages, theme, timeline_pages, upload
+from ui import (
+    help_pages,
+    identity_pages,
+    pages,
+    restore_pages,
+    selection_pages,
+    theme,
+    timeline_pages,
+    upload,
+)
 
 CSP = (
     "default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; img-src 'none'; "
@@ -103,6 +113,7 @@ NEEDS_NO_JOB: dict[str, tuple[str, ...]] = {
     "/case/lock": ("audit", "propose", "model_check"),
 }
 NO_CASE_GET = {"/cases"}
+HELP_GET = {"/help", "/help/bug-report.json"}  # with or without a case open
 NO_CASE_POST = {"/expert", "/case/new", "/case/open"}
 # Posts that must not have the case database open while they run: encrypting replaces the
 # database file (Windows cannot replace an open file), and locking forgets its key.
@@ -289,6 +300,8 @@ class App:
             or not hmac.compare_digest(req.form.get("token", ""), self.token)
         ):
             return self._plain(403, "This form did not come from this review screen.")
+        if req.method == "GET" and req.path in HELP_GET:
+            return self._help(req.path)
         if self.case is None:
             if req.method == "GET" and req.path not in NO_CASE_GET:
                 return self._redirect("/cases")
@@ -1150,6 +1163,64 @@ class App:
         if result.skipped:
             msg += " Needs a full audit: " + ", ".join(sorted(result.skipped)) + "."
         return msg
+
+    # -- help and the bug report
+
+    def _bug_report(self) -> str:
+        """The bug report text for this screen, checked clean (raises NotClean)."""
+        case = self.case if self.case is not None and not protect.is_locked(self.case) else None
+        conn = None
+        if case is not None:
+            try:
+                conn = connect(case.db)
+                conn.execute("PRAGMA busy_timeout = 10000")
+            except (*db.Error, CaseLocked, EncryptionError):
+                conn = None
+        try:
+            job = self.jobs.current
+            count = None
+            if self.home is not None:
+                try:
+                    count = len(cases.list_cases(self.home))
+                except OSError:
+                    count = None
+            report = bug_report.build(
+                case=case,
+                conn=conn,
+                job=job,
+                last_check=self.last_check,
+                cloud_key_ready=self._cloud_key_state() is None,
+                many_cases=self.home is not None,
+                case_count=count,
+            )
+            return bug_report.render(report, bug_report.sensitive_values(case, conn))
+        finally:
+            if conn is not None:
+                conn.close()
+
+    def _help(self, path: str) -> Response:
+        try:
+            text, withheld = self._bug_report(), None
+        except bug_report.NotClean as err:
+            text, withheld = None, str(err)
+        if path == "/help/bug-report.json":
+            if text is None:
+                return self._plain(500, f"Bug report withheld: {withheld}. Nothing was saved.")
+            stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+            return Response(
+                200,
+                text.encode("utf-8"),
+                [
+                    ("Content-Type", "application/json; charset=utf-8"),
+                    (
+                        "Content-Disposition",
+                        f'attachment; filename="baker-bug-report-{stamp}.json"',
+                    ),
+                    *self._security_headers(),
+                ],
+            )
+        page = self._page()
+        return self._html(help_pages.help_page(page, text, withheld, self.case is not None))
 
     # -- responses
 

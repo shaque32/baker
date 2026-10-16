@@ -220,6 +220,17 @@ report only) 0.90 accuracy, 0 false supported. See section 10 for today's run.
    new cases from the browser form encrypted by default, the box can be unticked; `baker init` on
    the CLI makes a plain case), hash-chained audit log, HTML report, `baker demo`, Mac
    install script, Windows installer (unsigned), `baker model-check`.
+6. **Pilot support (branch, PR "Pilot explainer, support and bug report", not merged):** a
+   **Help** tab on every screen page (with or without a case open) with the support contact, a
+   short "what Baker does and doesn't do", and a bug report shown in full before it is saved
+   (`/help/bug-report.json`, `baker bug-report`). The report is built from an allowlist
+   (versions, system and model setup, last job, recent error types with Baker file and line,
+   and the open case's counts and states) and withheld if it holds a long hex run or the open
+   case's name, folder, file names or input hashes (`core/support/`, `tests/test_bug_report.py`).
+   Baker keeps recent unexpected errors in memory only, without their messages; it writes no log
+   file. The support address `support@baker.example` is a placeholder until Arsh sets the real
+   one (`core/support/contact.py`). One-page explainer: `docs/WHAT_BAKER_DOES.md`; details:
+   `docs/SUPPORT.md`.
 
 Merged 2026-10-15: stricter stated time windows, "after <date>" starts the next day (#66; rules
 0.2.2 with PR #75, which also refuses a rules-only re-run of an older audit), go-bar scorer fixes and the signed probe
@@ -295,6 +306,8 @@ Before a first real case:
    that passes on new items (line signed 13:45Z), then a gate entry Arsh signs; merge #68 first
    (its CLAUDE.md wording is applied on the branch).
 4. Sign the Windows installer (Azure code signing pending).
+5. Set the real support address (pilot gate 17; the explainer, Help tab and bug report are on
+   the "Pilot explainer, support and bug report" PR, not merged).
 
 No pilot has started and no expert has used Baker on a real case (per project records; this
 cannot be checked from code).
