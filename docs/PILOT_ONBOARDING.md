@@ -114,8 +114,9 @@ sources "unverified".
    extraction.
 4. Until the counts match, confirm any finding that rests on that source in the original tool
    before you rely on it.
-5. Forwarded or quoted messages in a UFDR are not read yet. A forwarded message can appear as
-   written by the forwarder with empty text. Check authorship of any forwarded message in the
+5. Forwarded or quoted messages fail closed: Baker warns on them and never lets them support or
+   contradict a claim, but their sender field still shows the forwarder and the original text is
+   not imported. Check authorship and content of any forwarded message in the
    original tool.
 
 Tell the Baker team about every mismatch. It is the most useful thing a pilot can send us.

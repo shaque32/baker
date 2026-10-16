@@ -1,7 +1,7 @@
 # Baker: methods note
 
 How Baker reaches each finding, for an examiner who uses it and may need to describe it. This note
-describes Baker as it is on `main` (verdict rules 0.2.1, as of 2026-10-15). Every report names the
+describes Baker as it is on `main` (verdict rules 0.2.2, as of 2026-10-16). Every report names the
 rule version, prompt versions and model file that produced it; read this note against those.
 
 Baker is a tool that helps an examiner check claims. It does not replace the examiner's own review
@@ -52,7 +52,7 @@ a call's direction, parties, time as printed and duration; an attachment's file 
 such a record cites only those fields, each of which keeps its `source_ref`.
 
 **Rules.** A fixed, versioned program (`core/audit/rules.py`) turns the checks, the evidence and
-the examiner's decisions into a verdict. No model decides a verdict. In brief (rules 0.2.1):
+the examiner's decisions into a verdict. No model decides a verdict. In brief (rules 0.2.2):
 
 - **Contradicted** if any core assumption has a failed check, or a "contradicts" label that counts.
   A model's "contradicts" on a meaning assumption counts only once the examiner accepts it, and it
@@ -131,8 +131,10 @@ from each report you deliver: that is the anchor no one can change.
    synthetic samples and have not been checked against a real export. The screen and the report
    mark these sources "unverified". The Cellebrite Excel and PDF readers have also been tested only
    on synthetic reports.
-2. **Forwarded and quoted messages** in a UFDR are not read. A forwarded message can appear as
-   written by the forwarder, with empty text.
+2. **Forwarded and quoted messages** fail closed. A message the UFDR or Excel report marks as
+   forwarded, or that carries a forwarded or quoted original, can neither support nor contradict a
+   claim, checks resting on it are inconclusive, and the claim page and report warn. Its sender
+   field still shows the forwarder, and the embedded original is not imported.
 3. **Quote check and contacts (issue #69).** On this version the quote check renders contacts and
    calls differently from what the model is shown, so some correct labels are discarded. That
    loses evidence of every kind, including contradicting evidence. A fix for contacts is pending.

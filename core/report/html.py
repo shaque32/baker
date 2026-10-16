@@ -65,6 +65,7 @@ from core.contracts import (
 )
 from core.hypotheses import explain
 from core.ingest import coverage as import_coverage
+from core.ingest import forwarded
 from core.llm.cloud import is_cloud_sha
 from core.report import hypotheses as alternatives_html
 from core.report import restore as restore_html
@@ -124,6 +125,9 @@ h3 { font-size: 15px; font-weight: 600; }
 .banner { background: var(--unp-bg); border: 1px solid var(--unp-line); border-radius: 10px;
   padding: 12px 16px; margin: 16px 0; color: #4a3608; }
 .banner strong { font-size: 15px; }
+p.warn { background: var(--unp-bg); border: 1px solid var(--unp-line); border-radius: 10px;
+  padding: 10px 14px; color: #4a3608; }
+strong.warn { color: var(--unp); }
 table { border-collapse: separate; border-spacing: 0; width: 100%; margin: 10px 0;
   font-size: 13px; background: var(--card); border: 1px solid var(--line); border-radius: 10px;
   overflow: hidden; }
@@ -329,7 +333,27 @@ def _limitations(conn: sqlite3.Connection, srcs: list[tuple]) -> str:
     return "<h2>Limitations</h2><ul>" + "".join(items) + "</ul>"
 
 
-def record_line(conn: sqlite3.Connection, record_id: str) -> str:
+def claim_record_ids(st: ClaimState) -> list[str]:
+    """The records a claim's shown evidence and its checks rest on."""
+    ids = [x.record_id for x in st.evidence if x.stance != Stance.IRRELEVANT]
+    return ids + [r for c in st.checks for r in c.record_ids]
+
+
+def forwarded_warning(conn: sqlite3.Connection, st: ClaimState) -> str:
+    """A warning when the claim rests on forwarded messages (core/ingest/forwarded.py)."""
+    text = forwarded.claim_warning(forwarded.affected(conn), claim_record_ids(st))
+    return f"<p class='warn'><strong>Forwarded messages.</strong> {e(text)}</p>" if text else ""
+
+
+def record_line(
+    conn: sqlite3.Connection, record_id: str, found: dict[str, str] | None = None
+) -> str:
+    note = (found or {}).get(record_id)
+    if note:
+        return (
+            f"{record_line(conn, record_id)}<br><strong class='warn'>"
+            f"{e(forwarded.RECORD_NOTE[note])}</strong>"
+        )
     if record_id.startswith("msg:"):
         r = conn.execute(
             "SELECT m.ts_utc, m.ts_raw, a.identifier, a.display_name, t.app, t.title"
@@ -360,6 +384,8 @@ def _claim_block(conn: sqlite3.Connection, st: ClaimState, case: explain.Case) -
     out.append(f"<p class='muted'>Claim id <span class='mono'>{e(claim.id)}</span></p>")
     nt = " v-nt" if st.untested else ""
     out.append(f'<p><span class="verdict {st.css}{nt}">{e(st.label)}</span></p>')
+    out.append(forwarded_warning(conn, st))
+    found = forwarded.affected(conn)
     if st.awaiting_expert:
         out.append(
             f"<p>Baker found supporting evidence: {st.ai_accepted} item(s) accepted by the local "
@@ -427,7 +453,7 @@ def _claim_block(conn: sqlite3.Connection, st: ClaimState, case: explain.Case) -
         for x in shown:
             out.append(
                 f"<tr id='{e(x.id)}'><td><blockquote>{q(x.quote)}</blockquote>"
-                f"{record_line(conn, x.record_id)}"
+                f"{record_line(conn, x.record_id, found)}"
                 f"<br><span class='muted'>{e(labelled_by(conn, x.model_run_id))}. Model "
                 f"rationale (inferred): {e(x.rationale)}</span>"
                 f"</td><td>{STANCE_LABEL[x.stance]}</td><td>{display_tier(x).value}</td>"
