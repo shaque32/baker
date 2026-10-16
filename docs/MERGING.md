@@ -23,7 +23,9 @@ one comment on the PR, and go on to the next PR.
    finished and passed. Required: the `checks` workflow (`make check` on Linux and Windows:
    lint, tests and the eval gate, which needs case01 accuracy of at least 0.80 and zero false
    supported). When a PR touches installer files, `clean-install` and `windows-installer` run
-   too and must pass. Pending checks mean wait, not merge.
+   too and must pass. Pending checks mean wait, not merge. A `make-check` run from the
+   `pull_request` event shows as skipped on purpose (a branch of this repository is checked by
+   its `push` run); it is the `push` run on the same commit that must pass.
 3. **No conflict with main.** GitHub shows the branch can merge cleanly. Never resolve a
    conflict yourself: the PR's own thread does it (section 5).
 4. **Every review finding answered.** Each Codex comment and each Grok comment on the PR has
