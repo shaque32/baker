@@ -129,7 +129,7 @@ Tell the Baker team about every mismatch. It is the most useful thing a pilot ca
 
 ## 6. When a case is blocked
 
-Every action is written to a hash-chained audit log inside the case, and the newest entry's number
+Every review decision is written to a hash-chained audit log inside the case, and the newest entry's number
 and hash are also kept in `case.db.anchors.jsonl` beside the database. If an entry was changed, or
 entries were cut from the end back to the newest anchor, the check fails. Entries added after the
 newest anchor and cut again before the next check are not caught, and neither is the database
@@ -163,8 +163,9 @@ same passphrase.
 ## 7. Getting help
 
 Write down what you did, what you saw and the case's rule version (from the report). Never send
-case content, screenshots of evidence or the case database. Send the `verify-log` or `ufdr-check`
-output and a description instead.
+case content, screenshots of evidence or the case database. Send the `verify-log` output, or `ufdr-check.md` and
+`ufdr-check.json`, and a description instead. Never send `ufdr-check-private.md`: it holds
+sample records and is case content.
 
 ## Not covered yet
 

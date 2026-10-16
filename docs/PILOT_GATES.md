@@ -9,7 +9,7 @@ the same PR that changes a gate's state, along with `docs/PRODUCT_STATUS.md` sec
 
 - **As of:** 2026-10-16, main `966be8f` (after #83, #72, #68, #74, #73, #75, #79, #85, #76 and #87) plus PR #82, which adds this file. Open PRs are named but not
   counted.
-- **Result:** 8 of 18 gates met (gates 2 and 3 by #76 with #75, gate 6 by #72, gate 7 by #74, gate 8 by
+- **Result:** 9 of 18 gates met (gates 2 and 3 by #76 with #75, gate 14 by the case02 key Arsh signed, gate 6 by #72, gate 7 by #74, gate 8 by
   merging #68, gate 12 by #82, gates 15 and 18 already in place). Gates 13 to 18 come from Grok's pilot-ready list
   (2026-10-16), which Arsh agreed to fold in here. **Not pilot-ready.**
 
@@ -30,7 +30,7 @@ the same PR that changes a gate's state, along with `docs/PRODUCT_STATUS.md` sec
 | 11 | Outside install test | One person outside the project installs Baker on a clean Mac, runs the demo and opens a case using only `docs/PILOT_ONBOARDING.md`, without help, and the result is written down | **Not met** | Needs a person. The kit exists (this PR); nobody outside the project has tried it |
 | 12 | Buyer documents | Onboarding kit, methods note and security and privacy pack are on main and match the code | **Met** (#82) | `docs/PILOT_ONBOARDING.md`, `docs/METHODS.md`, `docs/SECURITY_PRIVACY.md` |
 | 13 | Known integrity bugs fixed | An upload whose hash changes between copy and import leaves nothing in the case (PR #88), and the reason typed for an evidence decision is in the hash-chained audit entry (PR #86); both merged and CI green on main | **Not met** | Both open. Found by Codex on this PR; `docs/SECURITY_PRIVACY.md` and `docs/METHODS.md` disclose them until then |
-| 14 | Held-out error rate | The existing hidden case02 has an answer key Arsh has signed, and `make eval` scores it blind, so its error rate can be quoted with the date and commit | **Not met** | `make eval` already scores case02 blind (aggregate only; 0.90, 0 false supported on 2026-10-16) but its answer key is not signed, so the number is not quotable. Agents never read case02 |
+| 14 | Held-out error rate | The existing hidden case02 has an answer key Arsh has signed, and `make eval` scores it blind, so its error rate can be quoted as a synthetic held-out result with the date and commit | **Met** | Arsh signed case02's key and assumption sheet on 2026-10-12 (commit `99a752a`); `make eval` scores it blind and prints aggregates only: accuracy 0.90, 0 false supported (Linux, 2026-10-16, this PR's head). Synthetic data only: it is not an accuracy figure for real cases. Agents never read case02 |
 | 15 | Stopped or crashed runs | A stopped or crashed audit never looks complete, and the examiner can resume it | **Met** | Stop button stores the run as stopped (`core/casework/jobs.py`); a run left running by a crash is marked stopped on next start; unfinished claims show and print "Labeling incomplete" with no verdict, and the report carries a banner; resuming reuses finished claims' stored outputs (`tests/test_start_case.py` stop and resume, `tests/test_fewer_calls.py` killed run). Starting over from scratch means a new case |
 | 16 | Pilot agreement | A signed short agreement: data stays on the examiner's machine, Baker never sees it, deletion whenever they want, output advisory only | **Not met** | An outline for a lawyer exists (`/mnt/project-files/baker/pilot/03-pilot-agreement-outline.md`), with bracketed decisions open; no company or lawyer yet |
 | 17 | One-page explainer and support | A one-page "what Baker does and doesn't do", a named support contact, and a way to send a bug report with no case data | **Not met** | Pieces exist: methods note (2 to 4 pages), limitations sheet in the pilot kit, and `baker verify-log` and `ufdr-check` outputs that hold no case content (onboarding section 7). No one-pager, no named contact, no general bug-report export |
@@ -51,7 +51,7 @@ model-free eval with 0 false supported on case01, hostile red-team PASS).
 ## Order
 
 Gate 4 waits on PR #89 (schema signed). Gate 13 is two open PRs (#86,
-#88). Gates 14 and 16 need Arsh: signing case02's answer key, and a lawyer for the agreement.
+#88). Gate 16 needs Arsh and a lawyer for the agreement.
 Gate 17 is writing. Gates 5, 9 and 11 need a person: a pilot examiner or public test image, runs on the Mac and the
 AWS g5, and an outside tester.
 Gates 1 and 12 follow from merging.

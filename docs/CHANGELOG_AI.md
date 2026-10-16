@@ -21,7 +21,7 @@ Template:
 
 ## 2026-10-15: Pilot gates, onboarding kit, methods note, security pack (#82)
 - Changed: four documents, no code (Grok Product review #80 items 9, 10, 11, 13).
-  `docs/PILOT_GATES.md` defines pilot-ready as 12 pass/fail gates with today's state;
+  `docs/PILOT_GATES.md` defines pilot-ready as pass/fail gates (12, then 18 after Grok's pilot-ready list) with today's state;
   `docs/PILOT_ONBOARDING.md` covers hardware, Mac and Windows install (Windows unsigned), the
   `baker demo` walkthrough, a first case, unverified imports and blocked cases;
   `docs/METHODS.md` describes claim, assumption, check and rules, the expert gate, verdict meanings,
@@ -35,19 +35,18 @@ Template:
   import-mismatch bug disclosed) fixed. On 2026-10-16 Grok's pilot-ready list was folded in
   (Arsh agreed): gates 13 to 18 added (integrity fixes #86 and #88, signed case02 answer key,
   stopped runs, pilot agreement, one-pager and support, feedback form); runtime gate names the
-  24 GB Mac and AWS g5 (A10G); real-export gate covers Cellebrite, UFDR and AXIOM. After #76 merged, gates 2 and 3 are met:
-  8 of 18. `install-mac.md` and `demo.md` no longer state the 6 to 8 h runtime as
+  24 GB Mac and AWS g5 (A10G); real-export gate covers Cellebrite, UFDR and AXIOM. After #76 merged, gates 2 and 3 are met;
+  gate 14 is met by the case02 key Arsh signed 2026-10-12: 9 of 18. Codex round 4 (5) fixed. `install-mac.md` and `demo.md` no longer state the 6 to 8 h runtime as
   current. PRODUCT_STATUS section 11 links the gates.
 - Where: branch `claude/project-thread-390z80`, PR #82 (main once merged).
 - Verified: each statement checked against main `8ed89f9` code and docs, and #68 head `de219c1`
   for cloud facts; the 6 no-network tests named in the pack pass (Linux, 2026-10-15); Anthropic's
   API retention page and Commercial Terms read 2026-10-15 (the privacy-center article did not load
   from the cloud session and was not re-read).
-- Open: gate 11 (an outside person completes the kit on a clean Mac) needs a human; 8 of 18 gates
-  are met (gates 2, 3 by #76 with #75; gates 6, 7, 8 by #72, #74, #68; gate 12 by this PR; gates 15 and 18 already in place); the Mac installer's uv, Python and
-  PyPI downloads are not hash-pinned (disclosed in the pack); after #73 and #75 merged, gates 3 and 4
-  are each half done (quote-check version unstamped; forwarded-message fields need a signed schema
-  change); the docs must be updated as #76 lands.
+- Open: gate 11 (an outside person completes the kit on a clean Mac) needs a human; 9 of 18 gates
+  are met (gates 2, 3 by #76 with #75; gate 14 by the case02 key signed 2026-10-12; gates 6, 7, 8 by #72, #74, #68; gate 12 by this PR; gates 15 and 18 already in place); the Mac installer's uv, Python and
+  PyPI downloads are not hash-pinned (disclosed in the pack); gate 4 waits on #89 (signed
+  forwarded-message schema); gate 13 on #86 and #88.
 - Affects: customer-facing claims (what buyers and examiners are told, all checked against code);
   no capability, privacy or performance change.
 

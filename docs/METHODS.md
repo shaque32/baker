@@ -50,7 +50,7 @@ the record's original text** (no normalization, whole words only) and take in at
 record's own fields, or the label is discarded and
 never stored. Translations are never citable. Contacts, calls and attachments have no message
 body, so Baker cites a fixed rendering of their stored fields instead (a contact's name and number;
-a call's direction, parties, time as printed and duration; an attachment's file name). A quote from
+a call's direction, app, parties and duration, with its time shown beside it but not citable; an attachment's file name). A quote from
 such a record cites only those fields, each of which keeps its `source_ref`.
 
 **Rules.** A fixed, versioned program (`core/audit/rules.py`) turns the checks, the evidence and

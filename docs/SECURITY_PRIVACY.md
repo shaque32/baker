@@ -215,8 +215,9 @@ appears in the case's audit log as `cloud.sent`.
 - The local model file is checked against its pinned SHA-256 before loading.
 - The screen accepts requests only from the same computer and loads nothing from outside: no
   scripts, no CDN.
-- Every examiner action is written to a hash-chained audit log, anchored in a file beside the
-  database; the log is checked on open and before every report, and a failure blocks the case. The
+- Every review decision (evidence, verdicts, claims, stipulations) is written to a hash-chained
+  audit log under the examiner's name, anchored in a file beside the database. The claim order
+  on the setup page is saved in `case.json` and is not logged. The log is checked on open and before every report, and a failure blocks the case. The
   report prints the result and the last hash (see `docs/METHODS.md` for what the chain does and doesn't detect).
 - The Windows installer is **not code-signed yet**. Check its SHA-256 before running it
   (`docs/install.md`).
