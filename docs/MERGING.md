@@ -22,16 +22,24 @@ one comment on the PR, and go on to the next PR.
 2. **CI green on the latest commit.** Every check run on the PR's current head commit has
    finished and passed. Required: the `checks` workflow (`make check` on Linux and Windows:
    lint, tests and the eval gate, which needs case01 accuracy of at least 0.80 and zero false
-   supported). When a PR touches installer files, `clean-install` and `windows-installer` run
-   too and must pass. Pending checks mean wait, not merge. A `make-check` run from the
-   `pull_request` event shows as skipped on purpose (a branch of this repository is checked by
-   its `push` run); it is the `push` run on the same commit that must pass.
-3. **No conflict with main.** GitHub shows the branch can merge cleanly. Never resolve a
-   conflict yourself: the PR's own thread does it (section 5).
+   supported). `clean-install` and `windows-installer` run only when the PR touches the paths
+   in their workflow files' `paths:` filters; when GitHub scheduled one on the head commit, it
+   must pass, and when it did not, do not wait for it. Pending checks mean wait, not merge. A
+   `make-check` run from the `pull_request` event shows as skipped on purpose (a branch of this
+   repository is checked by its `push` run); it is the `push` run on the same commit that must
+   pass.
+3. **Up to date with main, no conflict.** The PR's head commit contains `main`'s current
+   commit (GitHub does not show the branch as behind), and GitHub shows it can merge cleanly.
+   CI on a branch tests only the branch, so a PR that is behind `main` was never tested with
+   the PRs merged since; skip it until its thread merges `main` into the branch and the new
+   `push` run passes. Never resolve a conflict yourself: the PR's own thread does it
+   (section 5).
 4. **Every review finding answered.** Each Codex comment and each Grok comment on the PR has
    either a fix pushed and a reply saying what changed, or a reply explaining why not. A Grok
    point the author disagreed with is settled only when the reply says the tie-break is done;
-   until then the PR says so under Hold.
+   until then the PR says so under Hold. No human reviewer's latest review on the PR is
+   "Changes requested"; that clears only when the same reviewer approves or the review is
+   dismissed by them or by Arsh.
 5. **Merge order allows it.** Every PR under "Merge after" is merged, and "Hold" says `none`.
 6. **Signed files approved.** If the PR changes an Arsh-signed file (section 4), Arsh has
    approved it on the PR itself: an approving review, or a comment saying "approved", from
@@ -77,7 +85,9 @@ Every PR description has this section right after the two-line attribution block
   dependency and re-check the PR.
 
 When several PRs are ready, merge them in ascending PR number unless a "Merge after" line says
-otherwise.
+otherwise. One exception: a PR whose URGENT FIX ASAP finding (section 2) has been fixed and
+answered merges first, ahead of lower-numbered PRs, as long as its own "Merge after" PRs are
+merged.
 
 ## 4. Arsh-signed files
 
@@ -92,6 +102,8 @@ every finding answered:
 - anything under `eval/gold/` (gold labels, the signed stance guide and the mock affidavit)
 - the `PROBE_PASSED` entries in `core/llm/cloud.py` (they decide whether a cloud model may label
   a case)
+- the gate thresholds in `eval/run_eval.py` (`MIN_VERDICT_ACCURACY`, `MAX_FALSE_SUPPORTED_RATE`,
+  `MAX_FALSE_SUPPORTED`), which the eval gate in checklist line 2 depends on
 
 Check the PR's changed-files list against this list yourself; do not rely on the description
 alone. A PR that only adds a request to `PROPOSED_CHANGES.md` does not change a signed file.
@@ -104,8 +116,9 @@ alone. A PR that only adds a request to `PROPOSED_CHANGES.md` does not change a 
 - Merge one PR at a time. After each merge, `main` runs its own checks. If a check on `main`
   goes red, stop merging, comment on the PR you just merged with the failing check, and tell
   Arsh. Nothing else merges until `main` is green.
-- Other open PRs may now conflict with `main`. Skip them; each PR's own thread merges `main`
-  into its branch, fixes the conflict and pushes, and CI runs again.
+- Every other open PR is now behind `main` (checklist line 3). Skip them; each PR's own
+  thread merges `main` into its branch, fixes any conflict and pushes, and CI runs again on
+  the combined code.
 - After a merge, update the "Merge after" and "Hold" lines that named it, or leave a comment
   so the author does.
 
