@@ -22,6 +22,11 @@ One click opens the form, one click saves it. No reason is required and nothing 
 - The report lists each flag in its audit-log table with its kind, claim and evidence item, but
   leaves out the expert's note and the record they named.
 - Withdrawing a flag adds a `flag.withdraw` entry; the original entry stays in the log.
+- A flag needs a claim with a verdict on the audit on screen. Each form carries the run it
+  showed; if the audit on screen changed before the expert saved, the flag is refused with
+  "reload and flag again", so it is never counted against output the expert did not see.
+- After an expert override, a verdict flag records Baker's verdict (the one the rules gave,
+  from the `verdict.override` log entry), not the expert's replacement.
 
 ## The redacted summary
 
@@ -48,6 +53,7 @@ Nothing is sent. The expert reads the file and decides whether to share it.
 `baker flag-log a.json b.json ... [--out error-log.md]` combines summaries into one row per pilot:
 wrong labels per evidence item labeled, verdict disagreements per verdict, missed records, plus
 the label pairs flagged per stance model and prompt version, the verdict pairs, and the versions
-and models each pilot ran. A summary whose case audit log failed its hash-chain check is left
+and models each pilot ran (printed for every pilot). Verdict pairs carry the rule version.
+Summaries with no pilot name are never pooled: each gets its own row. A summary whose case audit log failed its hash-chain check is left
 out, and the log says how many were. Flagging is optional, so every rate is a lower bound on what the
 expert found wrong, not a measured error rate.

@@ -649,6 +649,7 @@ class App:
             should_be=f.get("should_be", flags.NOT_SURE),
             record=f.get("record", ""),
             note=f.get("note", ""),
+            seen_run=f.get("seen_run") if "seen_run" in f else None,
         )
         return "Flag saved for your error log. It changes no verdict and nothing is sent."
 

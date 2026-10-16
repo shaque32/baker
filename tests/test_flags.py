@@ -239,3 +239,43 @@ def test_irrelevant_records_can_be_flagged_on_their_own_page(db, conn):
     assert "Flag this label" in ev
     post(app, "/flag/add", claim="C05", kind="wrong_label", evidence=eid, should_be="supports")
     assert flags.summary(conn)["flag_counts"] == {"wrong_label": 1}
+
+
+def test_flag_records_bakers_verdict_after_an_override(conn):
+    from core.contracts import Verdict
+    from core.review import actions
+
+    actions.override_verdict(conn, "C06", Verdict.CONTRADICTED, EXPERT, "Reads otherwise.")
+    f = flags.add_flag(conn, "C06", flags.VERDICT, EXPERT, should_be="contradicted")
+    assert f.at_flag["verdict"] == "unproven" and f.at_flag["expert_override"]
+    s = flags.summary(conn)
+    assert s["flags"][0]["verdict_at_flag"] == "unproven"
+    assert s["flags"][0]["expert_override_at_flag"]
+
+
+def test_stale_or_unaudited_flags_are_refused(conn):
+    run = claim_state(conn, "C05").run_id
+    with pytest.raises(ReviewError, match="changed"):
+        flags.add_flag(conn, "C05", flags.MISSED_RECORD, EXPERT, seen_run="run:older")
+    flags.add_flag(conn, "C05", flags.MISSED_RECORD, EXPERT, seen_run=run)
+    para = conn.execute("SELECT paragraph_id FROM claims WHERE id = 'C05'").fetchone()[0]
+    from core.contracts import ClaimType
+    from core.review import actions
+
+    actions.add_claim(conn, "C99", para, 'Sent "ok".', ClaimType.EVENT, EXPERT)
+    with pytest.raises(ReviewError, match="no verdict"):
+        flags.add_flag(conn, "C99", flags.MISSED_RECORD, EXPERT)
+    assert len(flags.flags(conn)) == 1
+
+
+def test_error_log_keeps_unnamed_pilots_apart_and_always_names_versions(conn):
+    flags.add_flag(conn, "C06", flags.VERDICT, EXPERT, should_be="contradicted")
+    s = flags.summary(conn)
+    log = flags.error_log([s, s])
+    assert [r.pilot for r in log.rows] == [
+        "(no pilot named, file 1)",
+        "(no pilot named, file 2)",
+    ]
+    md = flags.error_log_markdown(flags.error_log([{**s, "pilot": "Quiet", "flags": []}, s]))
+    assert md.count("- Versions:") == 2 and md.count("- Models:") == 2
+    assert "(rules 0.2" in md

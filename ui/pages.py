@@ -545,12 +545,13 @@ def evidence_card(
     found: dict[str, str] | None = None,
     claim_id: str | None = None,
     flagged: bool = False,
+    run_id: str | None = None,
 ) -> str:
     """claim_id: the claim page shows the card; it then carries the optional label flag."""
     stance_cls = "b-against" if item.stance in AGAINST else "b-open"
     flag = ""
     if claim_id is not None:
-        flag = _flag_label_form(page, claim_id, item, back)
+        flag = _flag_label_form(page, claim_id, item, back, run_id)
     return (
         f"<div class='item' id='{e(item.id)}'>"
         f"<span class='badge {stance_cls}'>{e(STANCE_LABEL[item.stance])}</span>"
@@ -580,10 +581,12 @@ def _choices(values: Iterable[str], labels: dict[str, str]) -> str:
     return "".join(f"<option value='{e(v)}'>{e(labels.get(v, v))}</option>" for v in values)
 
 
-def _flag_fields(claim_id: str, kind: str) -> str:
+def _flag_fields(claim_id: str, kind: str, run_id: str | None) -> str:
+    """run_id: the audit this page shows; a flag sent after it changed is refused."""
     return (
         f"<input type='hidden' name='claim' value='{e(claim_id)}'>"
         f"<input type='hidden' name='kind' value='{e(kind)}'>"
+        f"<input type='hidden' name='seen_run' value='{e(run_id or '')}'>"
     )
 
 
@@ -594,13 +597,15 @@ def _note_field() -> str:
     )
 
 
-def _flag_label_form(page: Page, claim_id: str, item: EvidenceItem, back: str) -> str:
+def _flag_label_form(
+    page: Page, claim_id: str, item: EvidenceItem, back: str, run_id: str | None
+) -> str:
     labels = {**{s.value: STANCE_LABEL[s] for s in Stance}, F.NOT_SURE: "Not sure"}
     return (
         "<details class='flag'><summary>Flag this label</summary>"
         + page.form(
             "/flag/add",
-            _flag_fields(claim_id, F.WRONG_LABEL)
+            _flag_fields(claim_id, F.WRONG_LABEL, run_id)
             + f"<input type='hidden' name='evidence' value='{e(item.id)}'>"
             "It should be: <select name='should_be'>"
             + _choices(
@@ -622,16 +627,15 @@ def _flag_label_form(page: Page, claim_id: str, item: EvidenceItem, back: str) -
 
 
 def _flag_verdict_form(page: Page, st: ClaimState, back: str) -> str:
-    now = st.decision.verdict.value if st.decision is not None else None
     labels = {v.value: v.value.capitalize() for v in Verdict} | {F.NOT_SURE: "Not sure"}
     return (
         "<details class='flag'><summary>Flag: I disagree with this verdict</summary>"
         + page.form(
             "/flag/add",
-            _flag_fields(st.claim.id, F.VERDICT)
+            _flag_fields(st.claim.id, F.VERDICT, st.run_id)
             + "It should be: <select name='should_be'>"
             + _choices(
-                [F.NOT_SURE, *(v for v in F.VERDICT_CHOICES if v not in (now, F.NOT_SURE))],
+                [F.NOT_SURE, *(v for v in F.VERDICT_CHOICES if v != F.NOT_SURE)],
                 labels,
             )
             + "</select> "
@@ -650,7 +654,7 @@ def _flag_missed_form(page: Page, st: ClaimState, back: str) -> str:
         "<details class='flag' id='flag-missed'><summary>Flag a record Baker missed</summary>"
         + page.form(
             "/flag/add",
-            _flag_fields(st.claim.id, F.MISSED_RECORD)
+            _flag_fields(st.claim.id, F.MISSED_RECORD, st.run_id)
             + f"<input type='text' class='wide' name='record' maxlength='{F.RECORD_MAX}' "
             "placeholder='Where it is, for example the file and row (optional)'><br>"
             + _note_field()
@@ -888,12 +892,14 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
                     found,
                     claim_id=c.id,
                     flagged=x.id in flagged,
+                    run_id=st.run_id,
                 )
             )
     hidden = [x for x in st.evidence if x.stance == Stance.IRRELEVANT]
     if hidden:
         out.append(_irrelevant_list(conn, hidden, flagged))
-    out.append(_flag_missed_form(page, st, back))
+    if d is not None:  # a flag is about an audited claim
+        out.append(_flag_missed_form(page, st, back))
     out.append(_flags_section(page, claim_flags, back, st.run_id))
 
     out.append(_edit_claim_form(page, st, back))
@@ -1030,6 +1036,7 @@ def evidence_page(conn: sqlite3.Connection, page: Page, evidence_id: str) -> str
             back,
             claim_id=claim_id[0] if claim_id else None,
             flagged=flagged,
+            run_id=(pipeline.view_run(conn) or {}).get("run_id"),
         )
     )
     out.append("<h2>Context</h2>")

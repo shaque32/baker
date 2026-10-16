@@ -110,6 +110,18 @@ def _model(conn: sqlite3.Connection, model_run_id: str | None) -> dict | None:
     return {"purpose": r[0], "model": re.split(r"[\\/]", r[1])[-1], "prompt_version": r[2]}
 
 
+def _baker_verdict(conn: sqlite3.Connection, claim_id: str, run_id: str | None) -> str | None:
+    """The rules' verdict before the first expert override on this run, if there was one."""
+    vid = f"vd:{claim_id}@{run_id}"
+    for (payload_json,) in conn.execute(
+        "SELECT payload_json FROM audit_log WHERE action = 'verdict.override' ORDER BY seq"
+    ):
+        p = json.loads(payload_json)
+        if p.get("verdict_id") == vid:
+            return p.get("was")
+    return None
+
+
 def _snapshot(conn: sqlite3.Connection, claim_id: str, evidence_id: str | None) -> dict:
     """What the expert was looking at: enums and versions only."""
     from core.review.status import claim_state  # status imports pipeline; keep import light
@@ -121,7 +133,9 @@ def _snapshot(conn: sqlite3.Connection, claim_id: str, evidence_id: str | None) 
         snap["run_id"] = st.run_id
         if st.decision is not None:
             d = st.decision
-            snap["verdict"] = d.verdict.value
+            # After an override the stored verdict is the expert's; the flag is about Baker's.
+            snap["verdict"] = _baker_verdict(conn, claim_id, st.run_id) or d.verdict.value
+            snap["expert_override"] = d.override_note is not None
             snap["rule_version"] = d.rule_version
             snap["expert_decided_verdict"] = d.confirmed_by is not None
             snap["supported_basis"] = (
@@ -159,8 +173,13 @@ def add_flag(
     record: str = "",
     note: str = "",
     clock: Clock | None = None,
+    seen_run: str | None = None,
 ) -> Flag:
-    """Record one flag in the audit log. Changes nothing else in the case."""
+    """Record one flag in the audit log. Changes nothing else in the case.
+
+    seen_run: the run the expert's page showed. If the run on screen changed since (an audit
+    finished or moved on), the flag is refused, so it is never counted against output the
+    expert did not see. Every flag needs a claim with a verdict on the run on screen."""
     _expert(actor)
     if kind not in KINDS:
         raise ReviewError(f"unknown flag kind {kind!r}")
@@ -185,6 +204,13 @@ def add_flag(
             should_be = NOT_SURE
     now = _now(clock)
     with conn:
+        snap = _snapshot(conn, claim_id, evidence_id)
+        if snap["verdict"] is None:
+            raise ReviewError("this claim has no verdict on the audit on screen yet; flag it after")
+        if seen_run is not None and snap["run_id"] != seen_run:
+            raise ReviewError(
+                "the audit on screen changed since this page opened; reload and flag again"
+            )
         flag_id = _next_id(conn)
         payload = {
             "flag_id": flag_id,
@@ -194,7 +220,7 @@ def add_flag(
             "should_be": should_be,
             "record": record,
             "note": note,
-            "at_flag": _snapshot(conn, claim_id, evidence_id),
+            "at_flag": snap,
         }
         entry = audit_log.append(conn, now, actor, ADD, payload)
     return Flag(
@@ -326,6 +352,7 @@ def _redacted(f: Flag) -> dict:
         "claim_type": a.get("claim_type"),
         "verdict_at_flag": a.get("verdict"),
         "verdict_decided_by_expert": bool(a.get("expert_decided_verdict")),
+        "expert_override_at_flag": bool(a.get("expert_override")),
         "rule_version": a.get("rule_version"),
         "stance_at_flag": a.get("stance"),
         "evidence_status_at_flag": a.get("evidence_status"),
@@ -426,13 +453,16 @@ def error_log(summaries: Iterable[dict]) -> ErrorLog:
     """One row per pilot: flags against what was there to flag, summed over that pilot's cases.
     A summary from a case whose audit-log chain failed is left out and counted as such."""
     rows: dict[str, PilotRow] = {}
-    left_out = 0
+    left_out = unnamed = 0
     for s in summaries:
         _check(s)
         if s.get("audit_log_chain_ok") is not True:
             left_out += 1
             continue
-        name = s.get("pilot") or "(no pilot named)"
+        name = s.get("pilot") or ""
+        if not name:  # never pool summaries nobody named: they may be different pilots
+            unnamed += 1
+            name = f"(no pilot named, file {unnamed})"
         row = rows.setdefault(name, PilotRow(name))
         den = s.get("denominators", {})
         row.cases += 1
@@ -457,7 +487,9 @@ def error_log(summaries: Iterable[dict]) -> ErrorLog:
                 row.missed_record += 1
             elif kind == VERDICT:
                 row.verdict += 1
-                row.verdict_disagreements[(f.get("verdict_at_flag"), f.get("should_be"))] += 1
+                row.verdict_disagreements[
+                    (f.get("rule_version"), f.get("verdict_at_flag"), f.get("should_be"))
+                ] += 1
     return ErrorLog([rows[k] for k in sorted(rows)], left_out)
 
 
@@ -485,8 +517,6 @@ def error_log_markdown(log: ErrorLog) -> str:
             f"| {r.missed_record} |"
         )
     for r in rows:
-        if not (r.label_pairs or r.verdict_disagreements):
-            continue
         out += ["", f"## {r.pilot}", ""]
         for (model, prompt, was, should), n in sorted(
             r.label_pairs.items(), key=lambda kv: (-kv[1], [str(k) for k in kv[0]])
@@ -494,10 +524,10 @@ def error_log_markdown(log: ErrorLog) -> str:
             out.append(
                 f"- Label {was} flagged, expert says {should} (model {model}, prompt {prompt}): {n}"
             )
-        for (was, should), n in sorted(
+        for (rules, was, should), n in sorted(
             r.verdict_disagreements.items(), key=lambda kv: (-kv[1], [str(k) for k in kv[0]])
         ):
-            out.append(f"- Verdict {was} flagged, expert says {should}: {n}")
+            out.append(f"- Verdict {was} flagged, expert says {should} (rules {rules}): {n}")
         versions = ", ".join(f"Baker {b} rules {v}" for b, v in sorted(r.versions, key=str))
         out.append(f"- Versions: {versions}")
         models = ", ".join(f"{p} {m} prompt {v}" for p, m, v in sorted(r.models, key=str))
