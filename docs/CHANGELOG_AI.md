@@ -43,6 +43,20 @@ Template:
   shared only by hand. Performance: none. Customer-facing claims: may say experts can flag
   errors locally; no error-rate figure exists yet.
 
+## 2026-10-15: Rules 0.2.2 for the stricter time windows (#75)
+- Changed: `RULE_VERSION` 0.2.1 -> 0.2.2 with no rule logic change; it marks #66's new reading of
+  stated time windows, so verdicts decided under 0.2.1 can differ. "Re-run verdicts" now refuses
+  an audit made under rules older than 0.2.2 and asks for a full audit, since its stored
+  assumptions were built the old way (`core/review/redecide.py`, `INPUTS_CHANGED_AT`).
+- Where: branch `claude/project-thread-ia32bq`, PR #75, not merged. Arsh approved the bump
+  2026-10-15 07:20Z.
+- Verified: `make check` green; new redecide test; eval unchanged (case01 1.00, 0 false
+  supported; case02 0.90, 0 false supported; hostile PASS). Codex's one finding fixed.
+- Open: an existing case audited before 0.2.2 needs a full audit (hours on a laptop) before its
+  verdicts can be re-run.
+- Affects: verdicts on time-bound claims; the version printed on reports; the re-run button for
+  older cases.
+
 ## 2026-10-15: Audit log checked on open and before every report; cut-off entries caught (#74)
 - Changed: opening a case, and building or saving its report, now checks the audit log (before,
   the chain was only verified at report build, which printed the result and exported anyway, and
@@ -90,21 +104,39 @@ Template:
 - Affects: customer-facing text on the review screen and report (wording only); no verdict,
   privacy or performance change.
 
-## 2026-10-15: UFDR reader checked on public test files (#73)
+## 2026-10-15: UFDR reader checked on public test files; forwarded messages fail closed (#73)
 - Changed: attachments linked only by file_id now resolve through taggedFiles and are hashed; a
   phone-owner UserAccount no longer takes a ProfilePicture URL as its identifier; `ufdr-check`
-  mirrors both. (Grok Product item 8.)
+  mirrors both and checks owner account identifiers, and its direction check counts UserID-only
+  owners (fallback ids count as the owner's, per Codex). (Grok Product item 8.)
+  Forwarded messages fail closed (Grok #80 item 1): the UFDR and Excel importers list every
+  message marked Forwarded (UFDR Labels or MessageExtraData; Excel Label column) or carrying an
+  embedded forwarded or quoted original, by id, in the import's coverage record
+  (`core/ingest/forwarded.py`). Downstream, a model's supports or contradicts on such a message
+  is stored as complicates, so a claim resting on it stays Unproven; any check resting on it is
+  inconclusive; SenderCheck never names the forwarder as the writer; the claim page and the
+  report warn on the claim and on each record. The embedded original is never stored as the
+  forwarder's words. Coverage (Grok #80 item 6): picture entries skipped as identifiers are
+  counted (info); a taggedFiles id listed with two different paths links to no file and is
+  listed under Limitations (attention). Rules 0.2.x untouched; full author and forwarder columns
+  proposed in PROPOSED_CHANGES.md (needs Arsh's signature).
 - Where: branch `claude/project-thread-hz9jqt`, PR #73, not merged.
-- Verified (as reported by the owning thread): 4 new tests; lint clean; 1860 pass, 2 known
-  failures (fixed on main by #65 and #67); eval unchanged (case01 1.00, 0 false supported). Hand
-  check 27 of 27 records match on autopsy-udfr `test.ufdr` (LGPL-2.1, hand-made) and IPED's UFED
-  fixtures (GPL-3); neither committed, hashes in `docs/ingest/ufdr.md`. No public Cellebrite-made
-  UFDR with a usable license exists; Digital Corpora and CFReDS return 403 from cloud sessions.
+- Verified: 6 tests for the sample bugs and 13 for item 1 and 6 (forwarded, quoted and nested
+  forwards, Excel label, fail-closed stance after an expert accept, inconclusive checks,
+  SenderCheck, claim-page and report warnings, picture count, repeated tagged ids, ufdr-check
+  clean); lint clean; full suite and eval in the PR description (case01 1.00, 0 false supported
+  before this change). Hand check 27 of 27 records match on autopsy-udfr `test.ufdr`
+  (LGPL-2.1, hand-made) and IPED's UFED fixtures (GPL-3); neither committed, hashes in
+  `docs/ingest/ufdr.md`. No public Cellebrite-made UFDR with a usable license exists; Digital
+  Corpora and CFReDS return 403 from cloud sessions.
 - Open: neither sample is Cellebrite output; 27 records, not the 50 asked for; no Reader count
-  comparison; forwarded or quoted content is not read, so a forwarded message shows as written by
-  the forwarder with empty text.
-- Affects: capabilities (UFDR import). Customer-facing claims unchanged: UFDR and AXIOM stay
-  unverified. Next: a pilot examiner makes a UFDR from a public image and runs `ufdr-check`.
+  comparison. Until the schema change is signed, a forwarded message's sender field still shows
+  the forwarder (with a warning beside it), and only labels Baker recognises ("Forwarded",
+  "Auto-forwarded") are caught; a forward the extraction does not label is not detected.
+- Affects: capabilities (UFDR import, forwarded handling) and verdict paths (fails closed only:
+  can turn Supported or Contradicted into Unproven, never the reverse). Customer-facing claims
+  unchanged: UFDR and AXIOM stay unverified. Next: a pilot examiner makes a UFDR from a public
+  image and runs `ufdr-check`.
 
 ## 2026-10-15: Screen and report agree; reports are repeatable (#72)
 - Changed: `tests/test_report_consistency.py` checks that the screen and the report agree on
@@ -147,8 +179,8 @@ Template:
 - Where: main (merged 2026-10-15 07:22Z, `6b859fe`).
 - Verified: new tests in `tests/test_assumption_filler.py`; all 3 Codex findings fixed (per the
   owning thread); CI green before merge.
-- Open: main still says rules 0.2.1; the 0.2.2 bump (no rule logic change) is in PR #75, not
-  merged, pending Arsh's sign-off. Verdicts decided under 0.2.1 can differ after this change.
+- Open: the 0.2.2 bump (no rule logic change) is in PR #75 (Arsh approved it 2026-10-15).
+  Verdicts decided under 0.2.1 can differ after this change.
 - Affects: capabilities (which claims get a time window), verdicts on time-bound claims.
 
 ## 2026-10-15: Opus fails the signed probe; quote-check bug found (issue #69)

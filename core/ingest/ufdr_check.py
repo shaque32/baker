@@ -144,8 +144,10 @@ class _Frame:
     top: bool
     fields: dict[str, str] = field(default_factory=dict)  # lowercased name -> first value
     parties: dict[str, list[tuple[str | None, str | None, str, bool]]] = field(default_factory=dict)
-    attachments: list[tuple[bool, str | None]] = field(default_factory=list)  # (named, path)
+    # (named, path, file_id): a file_id is resolved through taggedFiles once the read ends
+    attachments: list[tuple[bool, str | None, str | None]] = field(default_factory=list)
     entries: list[str] = field(default_factory=list)
+    user_ids: list[str] = field(default_factory=list)  # UserID entries, for a UserAccount
     msg_seen: Counter[str] = field(default_factory=Counter)
 
 
@@ -177,8 +179,9 @@ class MessageRec:
     folder: str | None
     status: str | None
     state: str | None
-    attachments: int
-    attachment_files: int  # attachments naming a path that is in the package
+    att_refs: list[tuple[bool, str | None, str | None]]
+    attachments: int = 0  # set when the read ends (file ids need taggedFiles)
+    attachment_files: int = 0  # attachments naming a path that is in the package
 
 
 @dataclass
@@ -218,6 +221,10 @@ class Tally:
         self.metadata_names: set[str] = set()
         self.meta_values: dict[str, str] = {}  # metadata name key -> value (kept in memory only)
         self.tagged_files = 0
+        self.tagged_paths: dict[str, str] = {}  # taggedFiles file id -> its "Local Path"
+        self.tagged_conflicts: set[str] = set()  # ids listed twice with different paths
+        self._tagged: tuple[str, list[str]] | None = None
+        self._tagged_id: str | None = None
         self.kinds: dict[str, _Kind] = {}
         self.top_counts: Counter[str] = Counter()
         self.shapes: dict[str, Counter[str]] = {}  # 'InstantMessage.TimeStamp' -> shape counts
@@ -225,8 +232,8 @@ class Tally:
         self.messages: dict[str, MessageRec] = {}
         self.calls: dict[str, CallRec] = {}
         self.contacts: dict[str, ContactRec] = {}
-        self.user_accounts: dict[str, str | None] = {}  # locator -> username
-        self.owner_ids: set[str] = set()  # UserAccount usernames: the phone's own accounts
+        self.user_accounts: dict[str, str | None] = {}  # locator -> expected identifier
+        self.owner_ids: set[str] = set()  # UserAccount identifiers: the phone's own accounts
         self.ids: Counter[str] = Counter()  # model ids of messages and calls
         self.repeats: set[str] = set()  # locators whose model id an earlier record had
         self._capture: tuple[_Frame, str, list[str]] | None = None
@@ -306,6 +313,10 @@ class Tally:
                 self.partial_extractions += 1
         elif local == "file" and parent == "taggedFiles":
             self.tagged_files += 1
+            self._tagged_id = attrs.get("id") or None
+        elif local == "item" and "taggedFiles" in self.path:
+            if self._tagged_id and ufdr._key(attrs.get("name", "")) == "localpath":
+                self._tagged = (self._tagged_id, [])
         elif local == "item" and "decodedData" not in self.path and "taggedFiles" not in self.path:
             self.metadata_items += 1
             self._item, self._item_name = [], attrs.get("name", "")
@@ -319,6 +330,15 @@ class Tally:
                 frame.fields.setdefault(fname.lower(), "".join(parts))
                 self._observe(frame, fname, "".join(parts))
                 self._capture = None
+            return
+        if local == "item" and self._tagged is not None:
+            fid, parts = self._tagged
+            if path := "".join(parts).strip():
+                ufdr._add_tagged(self.tagged_paths, self.tagged_conflicts, fid, path)
+            self._tagged = None
+            return
+        if local == "file" and self._tagged_id is not None and "taggedFiles" in self.path[-1:]:
+            self._tagged_id = None
             return
         if local == "item" and self._item is not None:
             key = ufdr._key(self._item_name)
@@ -336,6 +356,8 @@ class Tally:
             self._capture[2].append(data)
         elif self._item is not None:
             self._item.append(data)
+        elif self._tagged is not None:
+            self._tagged[1].append(data)
 
     # records -------------------------------------------------------------
 
@@ -352,12 +374,16 @@ class Tally:
         if parent is not None and holder in ("attachments", "attachment"):
             name = _first(f.fields, ATT_NAME)
             path = _first(f.fields, ATT_PATH)
-            parent.attachments.append((bool(name) or bool(path), path))
+            parent.attachments.append((bool(name) or bool(path), path, f.attrs.get("file_id")))
             return
         if parent is not None and holder == "entries":
+            if ufdr.PICTURE_TYPE_RE.search(f.type):  # an image link, not an identifier
+                return
             v = _first(f.fields, ("value", "identifier", "number", "address"))
             if v and v not in parent.entries:
                 parent.entries.append(v)
+            if v and ufdr._key(f.type) == "userid":
+                parent.user_ids.append(v)
             return
         if parent is not None and (f.type == "Party" or holder in PARTY_HOLDERS):
             ident = _text(f.fields.get("identifier"))
@@ -371,10 +397,10 @@ class Tally:
             return
         if f.top and f.type == "UserAccount":
             u = _text(f.fields.get("username"))
-            if u is not None:
-                self.owner_ids.add(u)
-            if u is not None or f.entries:  # one with no identifier is skipped, and listed
-                self.user_accounts[f.locator] = u
+            ident = u or next(iter(f.user_ids), None) or next(iter(f.entries), None)
+            if ident is not None:  # one with no identifier is skipped, and listed
+                self.user_accounts[f.locator] = ident
+                self.owner_ids.add(ident)  # the importer marks this identifier as the owner's
         elif (f.top and f.type in TOP_MESSAGE_TYPES) or not f.top:
             self._message(f)
         elif f.type == "Call":
@@ -419,9 +445,20 @@ class Tally:
             folder=_text(f.fields.get("folder")),
             status=_text(f.fields.get("status")),
             state=_state(f),
-            attachments=sum(1 for named, _p in f.attachments if named),
-            attachment_files=sum(1 for _n, p in f.attachments if p and _member(p) in self.members),
+            att_refs=list(f.attachments),
         )
+
+    def _finish(self) -> None:
+        """Count each message's attachments once taggedFiles (which may follow the records)
+        has been read: an attachment may name its file only through file_id."""
+        for x in self.messages.values():
+            paths = [
+                p or (self.tagged_paths.get(fid) if fid else None) for _n, p, fid in x.att_refs
+            ]
+            x.attachments = sum(
+                1 for (named, _p, _f), p in zip(x.att_refs, paths, strict=True) if named or p
+            )
+            x.attachment_files = sum(1 for p in paths if p and _member(p) in self.members)
 
     def _call(self, f: _Frame) -> None:
         if f.locator is None:
@@ -462,6 +499,7 @@ class Tally:
             p.Parse(b"", True)
         except expat.ExpatError as err:
             raise ValueError(f"report.xml is not well-formed XML ({err})") from err
+        self._finish()
 
 
 def _state(f: _Frame) -> str | None:
@@ -794,13 +832,20 @@ def compare(t: Tally, conn: sqlite3.Connection, src: str) -> tuple[list[Count], 
         k_entries.see(len(stored) == max(1, x.entries), loc)
         k_name.see(all(_digest(n) == x.name for n in stored), loc)
 
-    accounts = {
-        loc
-        for (loc,) in conn.execute(
-            "SELECT locator FROM accounts WHERE source_id = ? AND locator LIKE 'UserAccount[%'",
-            (src,),
-        )
-    }
+    accounts: set[str] = set()
+    acct_ident = check(
+        "phone's own accounts",
+        "identifier",
+        "Username, else the first UserID entry, else the first entry that is not a picture",
+    )
+    for loc, ident in conn.execute(
+        "SELECT locator, identifier FROM accounts WHERE source_id = ? AND locator LIKE"
+        " 'UserAccount[%'",
+        (src,),
+    ):
+        accounts.add(loc)
+        if (want := t.user_accounts.get(loc)) is not None:
+            acct_ident.see(ident == want, loc)
     counts = [
         _counts("messages", t.messages, db_msgs, t.repeats),
         _counts("calls", t.calls, db_calls, t.repeats),

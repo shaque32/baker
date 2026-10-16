@@ -34,10 +34,12 @@ from core.contracts import (
 )
 from core.hypotheses import explain
 from core.ingest import coverage as import_coverage
+from core.ingest import forwarded
 from core.report.html import CSS as REPORT_CSS
 from core.report.html import (
     STANCE_LABEL,
     audit_log_summary,
+    forwarded_warning,
     labelled_by,
     record_line,
     review_label,
@@ -540,6 +542,7 @@ def evidence_card(
     item: EvidenceItem,
     last_kind: str | None,
     back: str,
+    found: dict[str, str] | None = None,
     claim_id: str | None = None,
     flagged: bool = False,
 ) -> str:
@@ -554,7 +557,7 @@ def evidence_card(
         f"{_tier_badge(item, last_kind)}"
         + ("<span class='badge b-flag'>flagged by you</span>" if flagged else "")
         + f"<blockquote>{q(item.quote)}</blockquote>"
-        f"<p>{record_line(conn, item.record_id)}<br>"
+        f"<p>{record_line(conn, item.record_id, found)}<br>"
         f"<span class='mono'>{e(item.ref.source_id)} {e(item.ref.locator)} · "
         f"{e(item.record_id)}</span></p>"
         f"<p class='muted'>{e(labelled_by(conn, item.model_run_id))}. Model rationale "
@@ -795,6 +798,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
     needs = st.needs()
     if needs:
         out.append("<ul>" + "".join(f"<li>{e(t)}</li>" for _, t in needs) + "</ul>")
+    out.append(forwarded_warning(conn, st))
     if d is not None:
         out.append(
             "<details><summary>Why (reasons from the verdict rules)</summary><ul>"
@@ -864,6 +868,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
     if not groups:
         out.append("<p class='muted'>No relevant evidence items were stored for this claim.</p>")
     by_assumption = {a.id: a for a in st.assumptions}
+    found = forwarded.affected(conn)
     for title, group in groups:
         out.append(f"<h3>{e(title)} ({len(group)})</h3>")
         shown_on = None
@@ -875,7 +880,14 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
                 shown_on = a.id
             out.append(
                 evidence_card(
-                    conn, page, x, st.last_reviewer.get(x.id), back, c.id, x.id in flagged
+                    conn,
+                    page,
+                    x,
+                    st.last_reviewer.get(x.id),
+                    back,
+                    found,
+                    claim_id=c.id,
+                    flagged=x.id in flagged,
                 )
             )
     hidden = [x for x in st.evidence if x.stance == Stance.IRRELEVANT]
@@ -1016,8 +1028,8 @@ def evidence_page(conn: sqlite3.Connection, page: Page, evidence_id: str) -> str
             item,
             last_kind[0] if last_kind else None,
             back,
-            claim_id[0] if claim_id else None,
-            flagged,
+            claim_id=claim_id[0] if claim_id else None,
+            flagged=flagged,
         )
     )
     out.append("<h2>Context</h2>")
