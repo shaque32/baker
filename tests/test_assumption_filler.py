@@ -441,6 +441,8 @@ def test_a_sender_without_a_party_gets_the_writer_the_claim_names(conn):
         ("PETROV texted REYES, with REYES writing 'ok see you'.", "ok see you", None),
         ("PETROV texted REYES from his brother's phone: 'ok see you'.", "ok see you", "PETROV"),
         ("PETROV texted Dr. Reyes: 'ok see you'.", "ok see you", "PETROV"),
+        ("PETROV texted REYES as REYES shot back 'ok see you'.", "ok see you", None),
+        ("PETROV texted REYES about Exhibit A. REYES shot back 'ok see you'.", "ok see you", None),
         ("PETROV wrote a report with the quotes from REYES, 'ok see you'.", "ok see you", None),
         ("PETROV texted REYES and read her replies: 'ok'.", "ok", None),
         ("PETROV texted REYES and SMITH: 'ok'.", "ok", "PETROV"),  # Codex round 2

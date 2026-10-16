@@ -844,7 +844,8 @@ _POSSESSIVE_OF_QUOTE = (
     r"(?:\b(?!(?:it|that|he|she|what|there|here|where|how|this|let)['’]s\b)\w+['’]s\b|\w+s['’](?=\s))"
     rf"(?=(?:\s+[\w-]+){{0,2}}?\s+{_QUOTE_NOUNS}\b|[\s,:\"'“‘”’-]*$)"
 )
-# A stop after a title or an initial ("Dr. Reyes", "J. Reyes") is no sentence break.
+# A stop after a title ("Dr. Reyes") is no sentence break. A single letter is not excused:
+# "Exhibit A. REYES shot back" is a break, so "J. Reyes" fails closed.
 _NOT_A_TITLE = "".join(
     rf"(?<!\b{t})"
     for t in (
@@ -869,6 +870,12 @@ _NOT_A_TITLE = "".join(
         "No",
     )
 )
+# Words that can start a new clause with its own subject: "and REYES shot back", "as REYES
+# shot back", "while he typed".
+_JOINS = (
+    r"(?:and|but|or|then|as|while|when|whereas|although|though|because|since|until|after|"
+    r"before|so)"
+)
 # Between the writer's verb and the quote, anything that can hand the quote to someone else
 # names no writer: a sentence break ('PETROV messaged REYES. REYES: "ok"'; a stop before a
 # capital, so "2:31 p.m.:" and "Dr. Reyes" are no break), a relative or a joined clause
@@ -880,14 +887,14 @@ _NOT_A_TITLE = "".join(
 # checked by _CAPS_CLAUSE_RE). Time words ("before midnight") hand nothing on, nor does a
 # contraction ("that it's").
 _HANDED_ON_RE = re.compile(
-    rf"[;!?]|{_NOT_A_TITLE}(?<!\b\w)\.(?=\s+[A-Z])|{_POSSESSIVE_OF_QUOTE}"
+    rf"[;!?]|{_NOT_A_TITLE}\.(?=\s+[A-Z])|{_POSSESSIVE_OF_QUOTE}"
     r"|\b(?:who|whom|whose|which)\b"
     rf"|\b{_QUOTE_NOUNS}\s+(?:from|of|by)\b"
-    r"|\b(?:and|but|or|then)\s+(?:(?:he|she|they|it|we|i)\b|(?-i:(?:[A-Z][\w'.-]*\s+){1,3}[a-z]))",
+    rf"|\b{_JOINS}\s+(?:(?:he|she|they|it|we|i)\b|(?-i:(?:[A-Z][\w'.-]*\s+){{1,3}}[a-z]))",
     re.IGNORECASE,
 )
 # The same joined clause in an all-caps claim: "AND REYES SHOT BACK", not "AND SMITH:".
-_CAPS_CLAUSE_RE = re.compile(r"\b(?:AND|BUT|OR|THEN)\s+(?:[A-Z][A-Z'.-]*\s+){1,3}[A-Z]")
+_CAPS_CLAUSE_RE = re.compile(rf"\b(?i:{_JOINS})\s+(?:[A-Z][A-Z'.-]*\s+){{1,3}}[A-Z]")
 # A name right after one of these is not the one who wrote: 'a friend of PETROV texted ...',
 # 'someone posing as PETROV texted ...'. A plain "As PETROV texted ..." still names him.
 _POSSESSIVE_BEFORE = re.compile(r"['’]s\s*$", re.IGNORECASE)
