@@ -8,11 +8,11 @@ tests or recorded runs. Where something exists only on an unmerged branch, it sa
 - **Verified on:** main `7a14437` first, then re-checked after #64 to #67 merged (they changed
   only `core/audit/assumption_filler.py` in `core/`, plus tests and probe gold)
 - **Rule version:** 0.2.2 on main (`core/audit/rules.py`, PR #75). **Contracts:** 0.3.0 (`core/contracts.py`).
-- **Quote check:** 1.1.0 on main, not recorded with results; 1.2.0 in PR #76, which records it
-  on every run and prints it in the report (`core/audit/quotes.py`, `VERSION`).
+- **Quote check:** 1.2.0 on main (PR #76, merged 2026-10-16), recorded on every run and printed
+  in the report (`core/audit/quotes.py`, `VERSION`); runs from before it show "not recorded".
 - **Signed prompts on main:** stance v1.1, reviewer v1.1, claims v1.0, assumptions v1.0
   (`core/audit/prompts/`). Stance v1.2 (v1.1 plus the told-frame sentences) was signed by Arsh
-  on 2026-10-15 and is in PR #PRNUM, not merged.
+  on 2026-10-15 and is in PR #93, not merged.
 
 Status labels used below: **main** (merged), **branch #N** (open PR, not merged), **unverified**
 (built or claimed, not measured).
@@ -37,7 +37,7 @@ coverage: one wrong "supported" is the failure that counts most.
 | 6. Checks | Deterministic checks: sender, identity, timing, weekday, count, absence | `core/audit/checks/` | No |
 | 7. Retrieval | Structured filters plus keyword ranking, with surrounding messages and the other phone's copy | `core/audit/retrieval.py` | No |
 | 8. Stance | Labels one record against one assumption: supports, contradicts, complicates or irrelevant | `core/audit/stance.py` | Local 14B by default; Opus 5.5, opt-in per case once it passes the signed stance test (#68, on main; none has: `core/llm/cloud.py` `PROBE_PASSED` is empty) |
-| 9. Quote check | The label's quote must appear verbatim in the record, or the label is dropped. With #76 (version 1.2.0) the quote must also take in a letter or digit of the record's own fields: Baker's words in a rendered line ("call from") or a placeholder ("(no name)", "unknown") cannot verify it alone | `core/audit/quotes.py` | No |
+| 9. Quote check | The label's quote must appear verbatim in the record, or the label is dropped. Since #76 (version 1.2.0, on main) the quote must also take in a letter or digit of the record's own fields: Baker's words in a rendered line ("call from") or a placeholder ("(no name)", "unknown") cannot verify it alone | `core/audit/quotes.py` | No |
 | 10. AI review | Optional second pass on supporting items; off by default | `core/audit/review.py` | Local 14B |
 | 11. Verdict | `decide_verdict` applies rules 0.2.2 | `core/audit/rules.py` | No |
 | 12. Invariants | Re-checks each decision against stored records; a violation rolls back the claim and fails the run | `core/audit/invariants.py` | No |
@@ -113,7 +113,7 @@ There is no model judge of verdicts in Baker. The word "judge" does not name any
     denials and undated denials "contradicts" (4 of 15 contradicts wrong in each arm). Each is an
     event assumption, so in a real case each would be a wrong CONTRADICTED with no expert step,
     until a signed prompt line fixes it (section 7). Arsh signed that line as stance v1.2 on
-    2026-10-15 (PR #PRNUM, not merged); with it Opus made no wrong "contradicts" on the signed
+    2026-10-15 (PR #93, not merged); with it Opus made no wrong "contradicts" on the signed
     set or on new items. #68 uses Opus only for a (model, effort, prompt version) on its
     `PROBE_PASSED` list (`core/llm/cloud.py`), which is empty; Opus with v1.2 needs an entry
     signed by Arsh.
@@ -122,7 +122,7 @@ There is no model judge of verdicts in Baker. The word "judge" does not name any
   `/mnt/project-files/baker/cloud-first/steps-check/RESULTS.md`. Those bars were unfair to Opus
   (the matcher penalizes the splitting the claims prompt asks for; the 14B was never scored
   without the sheet), so Arsh chose a same-test comparison (2026-10-15, "Test after fixes"):
-  `eval/bench/fair_steps.py` and `eval/probe/mac_v12.sh` in PR #PRNUM. Not run yet.
+  `eval/bench/fair_steps.py` and `eval/probe/mac_v12.sh` in PR #93. Not run yet.
 
 **Merge state:** #68 is a draft (main merged in after #71). Arsh approved its
 revised CLAUDE.md wording (2026-10-15 07:29Z, recorded in `PROPOSED_CHANGES.md`); it is applied
@@ -181,7 +181,7 @@ denial (P049, P066-P069, P092, P093). Blind readers sided with the signed labels
 planned fix is a stance prompt line for guide rules 12 and 23, signed by Arsh and tested on new
 items. The local 14B has not been run on the signed set.
 
-**Stance prompt v1.2 (the told-frame sentences), signed by Arsh 2026-10-15, PR #PRNUM (not merged).**
+**Stance prompt v1.2 (the told-frame sentences), signed by Arsh 2026-10-15, PR #93 (not merged).**
 Preregistered, sentences written once from guide rules 12 and 23 before any call, Opus 5.5 stance
 only, layout product_members, first answers scored
 (`/mnt/project-files/baker/cloud-bench/2026-10-15/told-frame-line/RESULTS.md` and
@@ -274,7 +274,7 @@ training-data generators (#79). PR #70 is an empty Grok Product review PR, never
    The small model's generated call rows still print the report's time (guide rule 28), unlike
    the product; #50 is not merged, and aligning them is the "Custom model for Baker" thread's.
 2. **Opus's wrong "contradicts" on told-frame and undated denials** (section 7). Matters for
-   #68: it would make wrong CONTRADICTED verdicts. Stance v1.2 (signed 2026-10-15, PR #PRNUM,
+   #68: it would make wrong CONTRADICTED verdicts. Stance v1.2 (signed 2026-10-15, PR #93,
    not merged) removed every such answer in the Opus tests; main still sends v1.1 until it
    merges. With v1.2 Opus missed one real contradiction (P065), which leaves a claim UNPROVEN.
 3. **Real-data formats unverified.** UFDR and AXIOM readers were built from documentation and
@@ -327,11 +327,11 @@ the Mac and Windows installers, and a pilot kit (data handling, limitations, agr
 feedback form, demo script, go/kill scorecard) in `/mnt/project-files/baker/pilot/`.
 
 Before a first real case:
-1. Time a full local case01 on the Mac for a real runtime (after #76 merges, so the 14B's
-   contact and call quotes pass the check, section 9).
+1. Time a full local case01 on the Mac for a real runtime (#76 is merged, so the 14B's contact
+   and call quotes now pass the check, section 9).
 2. Check a real UFDR and AXIOM export with `baker ufdr-check` (needs a pilot expert's closed case).
 3. Turn on opt-in cloud (#68, on main; chosen by Arsh 2026-10-15 07:10Z): the told-frame fix is
-   stance v1.2 (PR #PRNUM, not merged), which passed on new items with Opus. Still needed: the
+   stance v1.2 (PR #93, not merged), which passed on new items with Opus. Still needed: the
    14B's probe on v1.2 on the Mac, merge it, then an entry for Opus with v1.2 in
    `core/llm/cloud.py` `PROBE_PASSED`, signed by Arsh.
 4. Sign the Windows installer (Azure code signing pending).
