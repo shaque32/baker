@@ -82,10 +82,11 @@ def _contact(
     if family == "bk_other_phone":
         s = with_other_phone(rng, s)
     tz = other_zone(rng, s.phone.zone) if rng.random() < 0.2 else s.phone.zone
+    fuzzy = 0.25 if template == "no_contact" else 0.0  # a count needs firm bounds
     if place == "inside":
-        win, utc = inside(rng, s.phone.zone, tz)
+        win, utc = inside(rng, s.phone.zone, tz, fuzzy=fuzzy)
     elif place == "outside":
-        win, utc = outside(rng, s.phone.zone, tz)
+        win, utc = outside(rng, s.phone.zone, tz, fuzzy=fuzzy)
     else:
         win, utc = edge(rng, s.phone.zone, side)
     w = wall(utc, win.tz)

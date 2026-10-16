@@ -181,7 +181,7 @@ def party_unshown(rng: random.Random, k: int) -> Draft:
         utc = any_time(rng, s.phone.zone)
     else:
         tz = other_zone(rng, s.phone.zone) if rng.random() < 0.2 else s.phone.zone
-        win, utc = inside(rng, s.phone.zone, tz)
+        win, utc = inside(rng, s.phone.zone, tz, fuzzy=0.25 if template == "record_time" else 0.0)
     by_message = template in ("sender", "record_time")
     lead = n = ""
     if named:
