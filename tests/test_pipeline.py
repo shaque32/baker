@@ -11,7 +11,15 @@ import pytest
 
 from cli.main import main as cli_main
 from core import pipeline
-from core.audit.invariants import InvariantViolation, check_report_text, record_text
+from core.audit import quotes
+from core.audit.invariants import (
+    InvariantViolation,
+    check_evidence,
+    check_report_text,
+    pre_76_run,
+    record_text,
+    record_text_before_76,
+)
 from core.contracts import (
     EvidenceCandidate,
     EvidenceStatus,
@@ -23,9 +31,11 @@ from core.contracts import (
     SupportedBasis,
     Verdict,
     VerdictDecision,
+    canonical_json,
     verdict_id,
 )
 from core.db import connect
+from core.enrich.records import get_record
 from core.report.html import SUPPORTED_AI, SUPPORTED_EXPERT, render_report, write_report
 from core.review import actions, audit_log
 from eval import run_pipeline
@@ -33,6 +43,7 @@ from eval.pipeline_fakes import (
     InconclusiveCheck,
     PhraseLabeler,
     QuotedPhraseRetriever,
+    exact_substring,
     fake_components,
 )
 
@@ -187,6 +198,237 @@ def test_label_for_another_record_is_dropped(conn):
     assert result.stored_items == 0 and result.dropped_labels >= 1
 
 
+def test_a_quote_copied_from_the_contact_as_shown_is_kept(conn):
+    # Regression (scoring audit, 2026-10-15): retrieval shows the labeler a contact as
+    # "Marc Garage: +12125550122", but the quote check read it as "Marc Garage +12125550122",
+    # so a model that copied what it saw had its right answer dropped.
+    class CopiesWhatItSaw(PhraseLabeler):
+        def label(self, assumption, candidate):
+            real = super().label(assumption, candidate)
+            if not candidate.record_id.startswith("contact:"):
+                return real
+            shown = get_record(conn, candidate.record_id).text
+            return real.model_copy(update={"stance": Stance.SUPPORTS, "quote": shown})
+
+    pipeline.run_audit(conn, comps(labeler=CopiesWhatItSaw()), clock=_clock, claim_ids=["C01"])
+    (kept,) = [e for e in items(conn) if e.record_id.startswith("contact:")]
+    assert kept.quote == "Marc Garage: +12125550122" and kept.stance == Stance.SUPPORTS
+    assert record_text(conn, kept.record_id) == get_record(conn, kept.record_id).text
+
+
+def test_every_record_reads_the_same_for_the_labeler_and_the_quote_check(conn):
+    for table in ("messages", "calls", "contacts", "attachments"):
+        for (rid,) in conn.execute(f"SELECT id FROM {table}"):  # noqa: S608
+            assert record_text(conn, rid) == get_record(conn, rid).text, rid
+
+
+@pytest.mark.parametrize("other", ["contact:item1:Contacts!4#1", "call:item1:Call Log!10"])
+def test_a_record_that_contradicts_quoted_as_shown_keeps_the_claim_from_supported(conn, other):
+    # Regression (#69): the quote check drops a label before its stance is used. While it read
+    # contacts and calls differently from what the labeler saw, a "contradicts" copied from one
+    # was dropped, and a claim with other expert-accepted support could go SUPPORTED.
+    table = {"contact": "contacts", "call": "calls"}[other.split(":", 1)[0]]
+    source_id, locator = conn.execute(
+        f"SELECT source_id, locator FROM {table} WHERE id = ?",  # noqa: S608
+        (other,),
+    ).fetchone()
+
+    class PlusContact(QuotedPhraseRetriever):
+        def retrieve(self, assumption, conn, k):
+            extra = EvidenceCandidate(
+                record_id=other,
+                ref=SourceRef(source_id=source_id, locator=locator),
+                text=get_record(conn, other).text,
+                tier=ProvenanceTier.OBSERVED,
+                retrieval_score=0.5,
+            )
+            return [*super().retrieve(assumption, conn, k), extra]
+
+    class Contrarian(PhraseLabeler):
+        def label(self, assumption, candidate):
+            if candidate.record_id != other:
+                return super().label(assumption, candidate)
+            return StanceLabel(
+                assumption_id=assumption.id,
+                record_id=other,
+                stance=Stance.CONTRADICTS,
+                quote=get_record(conn, other).text,
+                rationale="test",
+                model_run_id="mr:fake-stance",
+            )
+
+    def run():
+        c = comps(retriever=PlusContact(), labeler=Contrarian())
+        return pipeline.run_audit(conn, c, clock=_clock, claim_ids=["C01"])
+
+    run()
+    (support,) = [e for e in items(conn) if e.stance == Stance.SUPPORTS]
+    actions.decide_evidence(conn, support.id, EvidenceStatus.ACCEPTED, EXPERT, "Seen in the sheet.")
+    result = run()
+    (against,) = [e for e in items(conn) if e.stance == Stance.CONTRADICTS]
+    assert against.record_id == other and result.dropped_labels == 0
+    assert result.decisions[0].verdict == Verdict.CONTRADICTED
+    # The record is all that stands between this claim and SUPPORTED: only an expert removes it.
+    actions.decide_evidence(conn, against.id, EvidenceStatus.DISMISSED, EXPERT, "Another person.")
+    assert run().decisions[0].verdict == Verdict.SUPPORTED
+
+
+def test_evidence_stored_before_the_fix_still_passes_the_stored_quote_check(conn):
+    # Codex on #76: a case audited before #76 holds contact and call quotes in the check's old
+    # text. Re-deciding it (core.review.redecide) re-checks them and must not stop on them.
+    pipeline.run_audit(conn, comps(), clock=_clock, claim_ids=["C01"])
+    (item,) = [e for e in items(conn) if e.record_id.startswith("contact:")]
+    call = "call:item1:Call Log!10"
+    old_call = (
+        "incoming call from +12125550133 to +12125550111 at 3/10/2026 8:30:17 PM(UTC+0), 434s"
+    )
+    old = [
+        item.model_copy(update={"quote": "Marc Garage +12125550122"}),
+        item.model_copy(update={"record_id": call, "quote": old_call}),
+        # Held to the check of its day (Codex): only Baker's words, but in the old text.
+        item.model_copy(update={"record_id": call, "quote": "call from"}),
+    ]
+    check_evidence(conn, old, before_76=True)
+    # From a run that records a quote-check version, none of them stands (Grok review on #76).
+    for stored in old:
+        with pytest.raises(InvariantViolation, match="not verbatim"):
+            check_evidence(conn, [stored])
+    for rid, quote in ((item.record_id, "Marc Garage +1 212"), (call, "outgoing call from")):
+        with pytest.raises(InvariantViolation, match="not verbatim"):
+            stored = item.model_copy(update={"record_id": rid, "quote": quote})
+            check_evidence(conn, [stored], before_76=True)
+
+
+def test_only_a_run_made_before_the_fix_re_decides_on_the_old_quote_text(conn):
+    # Grok review on #76: the pre-#76 text is accepted only for a run that records no quote-check
+    # version. A stored "call from" (Baker's words) on a run recording 1.2.0 stops the re-run.
+    from core.review.redecide import redecide
+
+    pipeline.run_audit(conn, comps(), clock=_clock, claim_ids=["C01"])
+    run = pipeline.last_run(conn)
+    assert run["config"]["quote_check"] and not pre_76_run(conn, run["run_id"])
+    assert not pre_76_run(conn, "run:unknown")  # fails closed
+    (item,) = [e for e in items(conn) if e.record_id.startswith("contact:")]
+    with conn:
+        conn.execute(
+            "UPDATE evidence_items SET record_id = ?, quote = 'call from' WHERE id = ?",
+            ("call:item1:Call Log!10", item.id),
+        )
+    with pytest.raises(InvariantViolation, match="not verbatim"):
+        redecide(conn, EXPERT)
+    # The same case audited before #76: its run recorded no version, so its labels re-decide.
+    config = {k: v for k, v in run["config"].items() if k != "quote_check"}
+    with conn:
+        conn.execute(
+            "UPDATE pipeline_runs SET config_json = ? WHERE id = ?",
+            (canonical_json(config), run["run_id"]),
+        )
+    assert pre_76_run(conn, run["run_id"])
+    result = redecide(conn, EXPERT)
+    assert result.decisions and pre_76_run(conn, result.run_id)
+
+
+NAMELESS = "contact:item1:Contacts!4#1"
+CALL = "call:item1:Call Log!10"
+
+
+@pytest.mark.parametrize(
+    ("other", "quote", "kept"),
+    [
+        (NAMELESS, "(no name)", False),
+        (NAMELESS, "no name", False),
+        (NAMELESS, "(no name): ", False),
+        (NAMELESS, "SHOWN", True),
+        (NAMELESS, "IDENTIFIER", True),
+        (CALL, "call from", False),
+        (CALL, ", duration", False),
+        (CALL, "SHOWN", True),
+        (CALL, "DIRECTION", True),
+    ],
+)
+def test_a_quote_of_only_bakers_words_or_a_placeholder_is_dropped(conn, other, quote, kept):
+    # Grok review on #80, item 3: once the check reads a record as the labeler sees it, a quote
+    # of "(no name)" or of a call line's own words ("call from") is a verbatim substring of
+    # nothing the record holds. It must not verify; a quote that reaches the record's fields does.
+    with conn:
+        conn.execute("UPDATE contacts SET name = NULL WHERE id = ?", (NAMELESS,))
+    table = {"contact": "contacts", "call": "calls"}[other.split(":", 1)[0]]
+    source_id, locator = conn.execute(
+        f"SELECT source_id, locator FROM {table} WHERE id = ?",  # noqa: S608
+        (other,),
+    ).fetchone()
+    shown = get_record(conn, other).text
+    quote = {"SHOWN": shown, "IDENTIFIER": shown.split(": ", 1)[-1]}.get(quote, quote)
+    quote = shown.split(" ", 1)[0] if quote == "DIRECTION" else quote
+    assert quote in shown
+
+    class PlusOther(QuotedPhraseRetriever):
+        def retrieve(self, assumption, conn, k):
+            extra = EvidenceCandidate(
+                record_id=other,
+                ref=SourceRef(source_id=source_id, locator=locator),
+                text=shown,
+                tier=ProvenanceTier.OBSERVED,
+                retrieval_score=0.5,
+            )
+            return [*super().retrieve(assumption, conn, k), extra]
+
+    class Contrarian(PhraseLabeler):
+        def label(self, assumption, candidate):
+            if candidate.record_id != other:
+                return super().label(assumption, candidate)
+            return StanceLabel(
+                assumption_id=assumption.id,
+                record_id=other,
+                stance=Stance.CONTRADICTS,
+                quote=quote,
+                rationale="test",
+                model_run_id="mr:fake-stance",
+            )
+
+    c = comps(retriever=PlusOther(), labeler=Contrarian())
+    result = pipeline.run_audit(conn, c, clock=_clock, claim_ids=["C01"])
+    stored = [e for e in items(conn) if e.record_id == other]
+    assert result.dropped_labels == (0 if kept else 1)
+    assert [e.quote for e in stored] == ([quote] if kept else [])
+    # The stored re-check holds the same line, except that evidence a run stored before #76 keeps
+    # the check of its day (Codex): "call from" was a substring of the old call text.
+    (item,) = [e for e in items(conn) if e.stance == Stance.SUPPORTS]
+    stored = item.model_copy(update={"record_id": other, "quote": quote})
+    for before_76 in (False, True):
+        if kept or (before_76 and quote in record_text_before_76(conn, other)):
+            check_evidence(conn, [stored], before_76=before_76)
+        else:
+            with pytest.raises(InvariantViolation, match="not verbatim"):
+                check_evidence(conn, [stored], before_76=before_76)
+
+
+@pytest.mark.parametrize(
+    ("verifier", "recorded"),
+    [
+        (quotes.verify_quote, "1.2.0"),
+        (exact_substring, "1.2.0 and eval.pipeline_fakes.exact_substring"),
+    ],
+)
+def test_every_run_records_the_quote_check_that_ran(conn, verifier, recorded):
+    # Codex on #76: a caller's config must not overwrite the check that ran, and a run with
+    # another verifier must not claim the product's alone.
+    c = comps(verify_quote=verifier)
+    pipeline.run_audit(conn, c, clock=_clock, claim_ids=["C01"], config={"quote_check": "9.9.9"})
+    assert quotes.VERSION == "1.2.0"
+    assert pipeline.last_run(conn)["config"]["quote_check"] == recorded
+    assert f"quote check {recorded}" in render_report(conn)
+
+
+def test_another_verifier_cannot_pass_a_quote_the_product_refuses(conn):
+    # The eval's stand-in matches inside words; the product's own rule still runs beside it.
+    shown = get_record(conn, CALL).text
+    cut = shown[1:9]  # starts and ends inside a word
+    assert exact_substring(cut, shown) and not quotes.verify_quote(cut, shown)
+    rec = get_record(conn, CALL)
+    assert not quotes.cites_record(cut, rec.text, rec.own)
+
+
 def test_reviewer_failure_is_a_dismissal_and_reviewer_never_sees_the_rationale(conn):
     seen: list[str] = []
 
@@ -239,7 +481,7 @@ def test_supported_with_open_contradiction_stops_the_run(conn):
                 assumption_id=assumption.id,
                 record_id=candidate.record_id,
                 stance=Stance.CONTRADICTS,
-                quote=candidate.text[:5],
+                quote=candidate.text,  # the whole record: the product's quote rule runs too
                 rationale="test",
                 model_run_id="mr:fake-stance",
             )

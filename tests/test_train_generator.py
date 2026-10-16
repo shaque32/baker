@@ -1683,7 +1683,7 @@ def test_baker_contact_rows_sit_on_the_named_phone(bk: list[Any]) -> None:
         assert p["device_ids"] == [it.device_id]
         assert p["account_ids"][0].startswith(it.device_id.replace("dev:", "acct:") + ":Phone:")
         number = p["account_ids"][0].rsplit(":", 1)[1]
-        name, row_number = it.target.text.rsplit(" ", 1)
+        name, row_number = it.target.text.rsplit(": ", 1)
         if it.family == "bk_contact_row":
             assert (name, row_number) == (p["quoted_text"], number)
         elif name == p["quoted_text"]:

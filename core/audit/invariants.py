@@ -10,7 +10,10 @@ Every decision:
 - belongs to this claim and this pipeline run, under the contract's verdict id;
 - cites only evidence, checks and stipulations that were given to the rule;
 - rests on evidence whose quotes are non-empty and verbatim (exact substring, no normalization)
-  in the record's stored text, re-read from the database;
+  in the record's stored text, re-read from the database, and take in a letter or digit of the
+  record's own fields, not only Baker's words or a placeholder such as "(no name)" (only a run
+  that records no quote-check version, made before #76 or re-deciding one, holds its evidence to
+  the check of its day);
 - sees each item's status as the database has it (the latest evidence_reviews row). 'accepted'
   comes from an expert row, 'ai_accepted' only sits on supporting items, and once an expert has
   decided an item no AI row comes after it.
@@ -32,6 +35,7 @@ said by the tool.
 
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 
@@ -54,6 +58,7 @@ from core.contracts import (
     VerdictDecision,
     verdict_id,
 )
+from core.enrich import records
 
 ACCEPTED_STATUSES = (EvidenceStatus.AI_ACCEPTED, EvidenceStatus.ACCEPTED)
 
@@ -74,21 +79,23 @@ class InvariantViolation(Exception):
 
 
 def record_text(conn: sqlite3.Connection, record_id: str) -> str | None:
-    """The citable text of a record, exactly as stored. None if the record does not exist.
+    """The citable text of a record, exactly as retrieval shows it to the labeler
+    (core.enrich.records). None if the record does not exist.
 
-    Messages cite their original body and attachments their file name. Calls and contacts have
-    no body, so their text is a fixed rendering of stored fields; a quote from them can only cite
-    those fields.
+    Messages cite their original body. Calls, contacts and attachments have no words of their
+    own, so their text is a fixed rendering of stored fields: a contact "name: number", a call
+    "outgoing Phone call from +1... to +1..., duration 84 s" (its time is on its context line,
+    not in this text), an attachment its file name. A quote from them can only cite those fields.
     """
+    return records.record_text(conn, record_id)
+
+
+def record_text_before_76(conn: sqlite3.Connection, record_id: str) -> str | None:
+    """How this check read a contact or a call before PR #76 (2026-10-15). Evidence stored before
+    then may quote it, and stays verified: it quotes the same stored fields. New labels are checked
+    against record_text only (core.pipeline), so nothing new is stored in this form, and only a
+    run that records no quote-check version accepts it (pre_76_run)."""
     kind = record_id.split(":", 1)[0]
-    if kind == "msg":
-        row = conn.execute("SELECT body FROM messages WHERE id = ?", (record_id,)).fetchone()
-        return row[0] if row else None
-    if kind == "att":
-        row = conn.execute(
-            "SELECT file_name FROM attachments WHERE id = ?", (record_id,)
-        ).fetchone()
-        return row[0] if row else None
     if kind == "contact":
         row = conn.execute(
             "SELECT name, identifier FROM contacts WHERE id = ?", (record_id,)
@@ -108,9 +115,44 @@ def record_text(conn: sqlite3.Connection, record_id: str) -> str | None:
     return None
 
 
-def quote_is_verbatim(conn: sqlite3.Connection, quote: str, record_id: str) -> bool:
-    text = record_text(conn, record_id)
-    return bool(quote.strip()) and text is not None and quote in text
+def _takes_in_own(quote: str, text: str, own: tuple[records.Span, ...]) -> bool:
+    start = text.find(quote)
+    while start != -1:
+        end = start + len(quote)
+        if any(text[i].isalnum() for a, b in own for i in range(max(a, start), min(b, end))):
+            return True
+        start = text.find(quote, start + 1)
+    return False
+
+
+def pre_76_run(conn: sqlite3.Connection, pipeline_run_id: str) -> bool:
+    """True for a recorded run whose config holds no quote-check version: an audit made before #76,
+    or a rules-only re-run of one (it carries its evidence run's, core/review/redecide.py). Every
+    audit since records one (core/pipeline.py). An unknown run is not pre-#76: it fails closed."""
+    row = conn.execute(
+        "SELECT config_json FROM pipeline_runs WHERE id = ?", (pipeline_run_id,)
+    ).fetchone()
+    return row is not None and not json.loads(row[0]).get("quote_check")
+
+
+def quote_is_verbatim(
+    conn: sqlite3.Connection, quote: str, record_id: str, *, before_76: bool = False
+) -> bool:
+    """A stored quote still stands in its record: in its text now, at a place that takes in a
+    letter or digit of the record's own fields, so a quote of only Baker's words or a placeholder
+    ("(no name)", "unknown", " call from ") does not stand. With before_76, for evidence a run
+    made before #76 stored (quote check 1.1.0 or earlier, no version recorded), a quote is held to
+    the check of its day instead: a substring of the contact or call text the check read then, so
+    a case audited earlier re-decides. Otherwise it fails closed (Grok review on #76)."""
+    if not quote.strip():
+        return False
+    rec = records.get_record(conn, record_id)
+    if rec is not None and rec.text is not None and _takes_in_own(quote, rec.text, rec.own):
+        return True
+    if not before_76:
+        return False
+    old = record_text_before_76(conn, record_id)
+    return old is not None and quote in old
 
 
 # ---------------------------------------------------------------- evidence
@@ -126,11 +168,18 @@ def _reviews(conn: sqlite3.Connection, evidence_id: str) -> list[tuple[str, str]
     )
 
 
-def check_evidence(conn: sqlite3.Connection, evidence: list[EvidenceItem]) -> None:
+def check_evidence(
+    conn: sqlite3.Connection, evidence: list[EvidenceItem], *, before_76: bool = False
+) -> None:
+    """Each item's quote and status, as the database has them. before_76: the items come from a
+    run that records no quote-check version (quote_is_verbatim)."""
     for e in evidence:
-        if not e.quote_verified or not quote_is_verbatim(conn, e.quote, e.record_id):
+        if not e.quote_verified or not quote_is_verbatim(
+            conn, e.quote, e.record_id, before_76=before_76
+        ):
             raise InvariantViolation(
-                f"{e.id}: quote is not verbatim in {e.record_id}; unverified quotes are not stored"
+                f"{e.id}: quote is not verbatim in {e.record_id}'s own fields; unverified quotes"
+                " are not stored"
             )
         rows = _reviews(conn, e.id)
         stored = EvidenceStatus(rows[-1][1]) if rows else EvidenceStatus.OPEN
@@ -215,7 +264,8 @@ def check_decision(
     unknown += [i for i in decision.cited_stipulation_ids if i not in {s.id for s in stipulations}]
     if unknown:
         raise InvariantViolation(f"{claim.id}: decision cites ids it was not given: {unknown}")
-    check_evidence(conn, evidence)
+    # Only a run that records no quote-check version holds its evidence to the pre-#76 check.
+    check_evidence(conn, evidence, before_76=pre_76_run(conn, pipeline_run_id))
 
     if decision.verdict != Verdict.SUPPORTED:
         return

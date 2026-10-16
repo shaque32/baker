@@ -1555,7 +1555,7 @@ def test_bk_contact_rows_sit_on_the_named_phone(
         if it.target.sender != "contact list":
             continue
         params = it.baker_params or {}
-        name, number = it.target.text.rsplit(" ", 1)
+        name, number = it.target.text.rsplit(": ", 1)
         if it.baker_template != "contact_entry":
             assert it.family == "bk_unrelated" and it.baker_template in ("role", "event")
             continue
