@@ -505,3 +505,76 @@ def test_a_new_case_that_cannot_be_anchored_leaves_the_open_case_alone(tmp_path,
     assert app.case == first  # case A stays open
     assert [c.name for c in cases.list_cases(home)] == ["Synthetic case A"]  # B was not kept
     assert "the case was not made" in (app.flash or ("", False))[0]
+
+
+# ---------------------------------------------------------------- the expert's typed reason
+
+SEED_EVIDENCE = """
+INSERT INTO sources VALUES ('item1','synthetic','full_extraction','logical','f',
+    'x','t',NULL,NULL,'2026-01-01T00:00:00Z');
+INSERT INTO govdocs VALUES ('g','item1','t','affidavit');
+INSERT INTO govdoc_paragraphs VALUES ('p','g',1,1,'1',0,1,'t',0);
+INSERT INTO claims VALUES ('C1','p','t','identity','accepted',NULL);
+INSERT INTO assumptions VALUES ('a1','C1','identity','t','1','{}','t',1,'inferred');
+INSERT INTO pipeline_runs VALUES ('run:1','2026-01-01T00:00:00Z',NULL,'stopped',
+    '0.0.1','0.2.0','0.1.0','{}',NULL);
+INSERT INTO model_runs VALUES ('m1','run:1','review','m','h','1',NULL,'{}',0,
+    '2026-01-01T00:00:00Z');
+INSERT INTO evidence_items VALUES ('e1','a1','item1','Chats!1','msg:item1:Chats!1',
+    'supports','q','r','observed','m1');
+"""
+
+
+@pytest.fixture
+def decided_db(tmp_path) -> Path:
+    from core.contracts import EvidenceStatus
+    from core.review import actions
+
+    db = tmp_path / "case.db"
+    assert cli_main(["init", "--db", str(db)]) == 0
+    conn = connect(db)
+    conn.executescript(SEED_EVIDENCE)
+    conn.commit()
+    actions.decide_evidence(conn, "e1", EvidenceStatus.ACCEPTED, EXPERT, "Matches the record.")
+    conn.close()
+    return db
+
+
+def test_the_logged_decision_carries_the_experts_reason(decided_db):
+    conn = connect(decided_db)
+    (payload,) = conn.execute(
+        "SELECT payload_json FROM audit_log WHERE action = 'evidence.decide'"
+    ).fetchone()
+    conn.close()
+    assert json.loads(payload)["reason"] == "Matches the record."
+    assert cli_main(["claims", "--db", str(decided_db), "list"]) == 0
+
+
+def test_a_reason_edited_after_it_was_logged_blocks_the_case(decided_db, capsys):
+    conn = connect(decided_db)
+    conn.execute("DROP TRIGGER evidence_reviews_no_update")
+    conn.execute("UPDATE evidence_reviews SET reason = 'Does not match.'")
+    conn.commit()
+    conn.close()
+    with pytest.raises(SystemExit, match="reason for evidence decision .* was changed"):
+        cli_main(["claims", "--db", str(decided_db), "list"])
+    assert cli_main(["verify-log", "--db", str(decided_db)]) == 1
+    assert "was changed after it was logged" in capsys.readouterr().out
+
+
+def test_a_decision_logged_before_reasons_were_still_verifies(tmp_path):
+    db = tmp_path / "case.db"
+    assert cli_main(["init", "--db", str(db)]) == 0
+    conn = connect(db)
+    conn.executescript(SEED_EVIDENCE)
+    conn.execute(
+        "INSERT INTO evidence_reviews VALUES ('rv:e1#1','e1',1,'expert',?,'accepted',"
+        "'Old reason.',NULL,NULL,'2026-01-01T00:00:00Z')",
+        (EXPERT,),
+    )
+    old = {"evidence_id": "e1", "review_id": "rv:e1#1", "status": "accepted"}  # no reason
+    audit_log.append(conn, AT, EXPERT, "evidence.decide", old)
+    conn.commit()
+    assert audit_log.first_changed_reason(conn) is None
+    conn.close()
+    assert cli_main(["claims", "--db", str(db), "list"]) == 0

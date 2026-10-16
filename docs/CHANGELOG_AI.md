@@ -19,6 +19,23 @@ Template:
 
 ---
 
+## 2026-10-16: The expert's reason for an evidence decision is in the audit log (#86)
+- Changed: the `evidence.decide` log entry now carries the reason the expert typed (before, only
+  the evidence id, review id and status), as verdict, identity and override notes already did.
+  The audit log check (`require_intact`) also compares each logged reason with the one stored in
+  `evidence_reviews`; a reason edited in the database after it was logged blocks the case like a
+  broken chain. Found by the Pilot docs pack thread (#82 disclosed the gap).
+- Where: branch `claude/project-thread-fjea4m`, PR #86 (not merged).
+- Verified: 3 new tests in `tests/test_chain_on_open.py` (reason logged; an edited reason blocks
+  the CLI and `verify-log` names it; a decision logged without a reason still verifies). The 118
+  tests that touch evidence decisions pass; lint clean; full `make check` left to CI.
+- Open: decisions logged before this change carry no reason in the log, so their reasons are not
+  compared. Someone who edits the reason, the log and the anchor file together is not caught
+  (same limit as the rest of the log).
+- Affects: customer-facing claims (an expert's reasons are now tamper-evident); the report's
+  expert-actions table and the screen's Log page now show the reason; no privacy change (the
+  reason stays inside the case database, not the anchor file).
+
 ## 2026-10-16: Training data for the small model's runs 6 to 8: harder sender and time traps (#87)
 - Changed: the training-data generators (`eval/train/`) write harder traps, because the small
   model kept calling some of them supports. Run 6's data (`eval.train 1.4.0`): run 5 showed 10 of

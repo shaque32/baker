@@ -126,7 +126,7 @@ eval or re-decided.
 
 ## The audit log check
 
-Two checks, both in `core/review/audit_log.py` (`require_intact`):
+Three checks, all in `core/review/audit_log.py` (`require_intact`):
 
 1. **The hash chain.** Each entry's hash covers the one before it, so changing or removing an
    entry in the middle breaks the chain from that entry on. The Cases page says "Review blocked"
@@ -139,6 +139,12 @@ Two checks, both in `core/review/audit_log.py` (`require_intact`):
    anchored entry to still be there with the same hash. A log cut back past an anchor, or
    rewritten from there on, is blocked ("the audit log has no entry N ... so entries were removed
    from the end of the log").
+
+3. **The expert's reasons.** Each evidence decision's log entry carries the reason the expert
+   typed. A reason changed in the case database after it was logged no longer matches, and the
+   case is blocked ("an expert's reason for evidence decision N ... was changed after it was
+   logged"). Decisions logged before this check carry no reason in the log, so their reasons
+   are not compared; the rest of the chain still covers them.
 
 A case folder Baker cannot write to (read-only media, a locked-down backup) does not open or
 report, since no anchor could be recorded: copy the folder somewhere writable and open the copy.
