@@ -335,7 +335,7 @@ def _neg_pair(rng: random.Random, c: Chat, f: Fact, v: str, core: str, fam: str)
     q, t, d = quoted(core), clock12(c.local), long_date(c.day)
     pred = fx.claim(f, v, money)
     plain = fx.NEVER.search(core) is not None or fx.names_day(pred)
-    a = act_before(rng, c, c.sender.who, pred, clock=0.0 if plain else 0.4)
+    a = act_before(rng, c, c.sender.who, pred, clock=0.0 if plain else 0.55)
     if fam == "con_denial":
         why = rng.choice([
             f"Asked directly, the sender answers {q} at {t} on {d}; what those words state "
