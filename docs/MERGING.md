@@ -32,11 +32,15 @@ one comment on the PR, and go on to the next PR.
    until then the PR says so under Hold.
 5. **Merge order allows it.** Every PR under "Merge after" is merged, and "Hold" says `none`.
 6. **Signed files approved.** If the PR changes an Arsh-signed file (section 4), Arsh has
-   approved it: either Arsh commented "approved" on the PR, or the Hold line, which said it
-   needed his approval, has been changed to `none` by the PR's author after he approved.
+   approved it on the PR itself: an approving review, or a comment saying "approved", from
+   Arsh's GitHub account `arshNY`, posted after the PR's latest change to a signed file. A
+   Hold line edited to `none`, or a comment from any other account (agents post as
+   `shaque32`), does not count.
 7. **Changelog entry if needed.** A PR that changes code under `core/`, `cli/`, `ui/` or
-   `packaging/` carries a changelog entry (section 6), or its description says why the change
-   is not meaningful (a refactor, a test-only fix or a wording change).
+   `packaging/`, or that changes a fact the status docs record or a customer-facing claim (in
+   any file, docs included), carries a changelog entry (section 6), or its description says
+   why the change is not meaningful (a refactor, a test-only fix or a wording change that
+   changes no recorded fact).
 
 ### Urgent Grok findings
 
@@ -65,8 +69,10 @@ Every PR description has this section right after the two-line attribution block
 - **Hold** names anything else that blocks the merge, for example "needs Arsh's approval of
   CLAUDE.md", "waits for the merge round to finish" or "Grok tie-break pending".
 - Independent PRs say `none` on all three lines and can merge in any order once green.
-- The author keeps the section current. If it names a PR that is already merged or closed, treat
-  that line as satisfied and say so in a comment.
+- The author keeps the section current. If it names a PR that is already merged, treat that
+  line as satisfied and say so in a comment. If it names a PR that was closed without merging,
+  the dependency never reached `main`: skip the PR and ask the author to remove or replace the
+  dependency and re-check the PR.
 
 When several PRs are ready, merge them in ascending PR number unless a "Merge after" line says
 otherwise.
@@ -107,7 +113,8 @@ Rule today (until #84 merges): a PR that changes behavior, capabilities, privacy
 performance, benchmarks or customer-facing claims updates `docs/PRODUCT_STATUS.md` and adds one
 entry at the top of `docs/CHANGELOG_AI.md` in the same PR. Because many PRs edit these two
 files, they often conflict after a merge; that is a section 5 skip, not a reason to fix it here.
-Docs-only and test-only PRs need no entry.
+Test-only PRs, and docs-only PRs that change no recorded fact or customer-facing claim, need
+no entry.
 
 Once #84 merges (it is on hold for Arsh's approval of its `CLAUDE.md` wording):
 
