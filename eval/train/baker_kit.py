@@ -44,6 +44,14 @@ ORDINARY = {"en": HOME + OUT, "ru": HOME_RU}
 VAGUE_BY = {"en": VAGUE, "ru": VAGUE_RU}
 QUOTING = ("sender", "record_time", "weekday_date", "meaning")
 USED_BEFORE = ("bk_meaning_said", "bk_meaning_other")  # the words' user wrote them earlier too
+# What a photo's or a file's own message may say: plain words that bear on nothing. Baker's
+# adapter shows that message as its own line just before the attachment's file name.
+CAPTIONS = {
+    "en": ("here", "this one", "pic", "look", "see this", "here u go", "this", "check it",
+           "sending now", "the photo", "📷", "lol look", "one more", "and this"),
+    "ru": ("вот", "смотри", "фото", "держи", "вот это", "глянь", "лови", "ещё одно"),
+}  # fmt: skip
+CAPTIONED = 0.4  # the share of attachment records whose message has a caption
 
 
 @dataclass
@@ -109,6 +117,15 @@ def finish(d: Draft, probe_id: str, generator: str, rng: random.Random) -> GenIt
         lang=lang_of(lines, d.target), template_id=d.template, params=d.params, lines=lines,
         target=d.target, quote=d.quote, rationale=readable(d.rationale, names),
         device=d.phone.dev, claim=fill_claim(d.claim, names) or None, names=names,
+        captioned=captioned(d.evs, d.target),
+    )  # fmt: skip
+
+
+def captioned(evs: list[Ev], target: int) -> bool:
+    """Whether the record is an attachment shown after its message's caption (chat())."""
+    rec, cap = evs[target], evs[target - 1] if target else None
+    return rec.kind == "att" and cap is not None and cap.kind == "msg" and (
+        (cap.utc, cap.frm, cap.to) == (rec.utc, rec.frm, rec.to)
     )  # fmt: skip
 
 
@@ -275,7 +292,8 @@ def chat(
     lead: str = "",
 ) -> tuple[list[Ev], int]:
     """The record (from the owner's side or the partner's) in its own chat; `lead`, if given,
-    is a line from the other end just before the record."""
+    is a line from the other end just before the record. An attachment's message may carry a
+    caption, its own line just before the attachment, at the same time."""
     frm, to = (s.me, s.you) if from_me else (s.you, s.me)
     nb = rng.randint(1, 3) if n_before is None else n_before
     na = rng.randint(0, 3) if n_after is None else n_after
@@ -288,6 +306,13 @@ def chat(
         while target > 3:  # at most three lines before the record
             evs.pop(0)
             target -= 1
+    if kind == "att" and rng.random() < CAPTIONED:  # three lines before the caption, at most
+        while True:
+            cap = rng.choice(CAPTIONS[lang]) if rng.random() < 0.7 else chatter(rng, lang, 1)[0]
+            if not avoid or avoid.casefold() not in cap.casefold():
+                break
+        evs.insert(target, Ev(utc, frm, cap, to=to))
+        target += 1
     return evs, target
 
 

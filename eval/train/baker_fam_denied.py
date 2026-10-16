@@ -112,20 +112,20 @@ def _window(rng: random.Random, template: str, kind: str, zone: str) -> Win:
         if template == "role":
             end = d + timedelta(days=rng.randint(14, 120))
             ok = end.year == d.year and rng.random() < 0.7
-            return win_through(d, end, zone) if ok else win_before(rng, d, zone)
+            return win_through(d, end, zone, rng) if ok else win_before(rng, d, zone, vary=True)
         if kind == "span" or (kind == "never" and rng.random() < 0.25):
             end = d + timedelta(days=rng.randint(1, 8))
             if end.year == d.year:
-                return win_through(d, end, zone)
+                return win_through(d, end, zone, rng)
             continue
         form = rng.choice(("on", "On", "between", "about"))
         if form == "between":
             h1 = rng.choice(CLOCK_HOURS[:-2])
             h2 = rng.choice([h for h in CLOCK_HOURS if h1 + 2 <= h <= h1 + 5])
-            return win_between(d, h1, h2, zone)
+            return win_between(d, h1, h2, zone, rng)
         if form == "about":
-            return win_about(d, rng.choice(CLOCK_HOURS), rng.choice((0, 30)), zone)
-        return win_on(d, zone, form == "On")
+            return win_about(d, rng.choice(CLOCK_HOURS), rng.choice((0, 30)), zone, rng)
+        return win_on(d, zone, form == "On", rng)
     raise RuntimeError("no window found")
 
 
