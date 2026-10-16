@@ -19,6 +19,24 @@ Template:
 
 ---
 
+## 2026-10-16: Versions stamped on every result (#91, after #76)
+- Changed: closes the rest of pilot gate 3 ("versions stamped on every result",
+  `docs/PILOT_GATES.md` in #82). PR #76 records the quote-check version (1.2.0) on every run
+  and prints it in the report's versions table and Run section. This PR adds what was still
+  missing: the report's top line now reads "Baker <v> · rules <v> · quote check <v>" (it
+  showed only the rules), the versions table gives each model's seed beside its SHA-256, the
+  case overview screen names the quote check beside the rule version, and the eval's
+  `run.json` carries a `versions` block (Baker, rules, quote check, each model's SHA-256,
+  prompt and seed). No frozen file changes; nothing new is stored.
+- Where: branch `claude/quote-check-version-stamp-6sdy2b`, PR #91 (not merged), built on #76.
+- Verified: `test_the_report_and_the_screen_stamp_every_version_a_result_depends_on`
+  (`tests/test_report_consistency.py`, synthetic case01); `make check` results in the PR.
+- Open: the per-claim "Rule version ..." line on the claim page and in the report does not
+  repeat the quote-check version (the run's is in the report's top line and Run section).
+  Gate 3 counts as met only once #76 and this PR are both on main.
+- Affects: customer-facing claims (the audit packet names the quote check that ran);
+  no capability, privacy or performance change.
+
 ## 2026-10-15: Training data for the small model's run 5 (#79)
 - Changed: the training-data generators (`eval/train/`, `eval/stancedata/bakerform.py`) write
   more varied wording, because run 4 fit its training wording better than the held-out wording

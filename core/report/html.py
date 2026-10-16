@@ -545,7 +545,7 @@ def audit_log_summary(conn: sqlite3.Connection) -> dict:
     }
 
 
-def _quote_check(run: dict) -> str:
+def quote_check_label(run: dict) -> str:
     """The quote check the run's evidence passed (core.audit.quotes.VERSION). Runs before 1.2.0
     did not record it."""
     return (run.get("config") or {}).get("quote_check") or "not recorded (1.1.0 or earlier)"
@@ -558,23 +558,24 @@ def _versions(conn: sqlite3.Connection, run: dict | None) -> str:
             ("Baker pipeline", run["baker_version"]),
             ("Contracts", run["contracts_version"]),
             ("Verdict rules", run["rule_version"]),
-            ("Quote check", _quote_check(run)),
+            ("Quote check", quote_check_label(run)),
         ]
         cloud = (run.get("config") or {}).get("cloud")
         if isinstance(cloud, dict):
             rows.append(("Stance labels", str(cloud.get("why", ""))))
     model_rows = list(
         conn.execute(
-            "SELECT purpose, model_name, model_sha256, prompt_version FROM model_runs"
+            "SELECT purpose, model_name, model_sha256, prompt_version, seed FROM model_runs"
             " ORDER BY purpose, id"
         )
     )
     out = ["<table><thead><tr><th>Part</th><th>Version</th></tr></thead>"]
     out += [f"<tr><td>{e(k)}</td><td class='mono'>{e(v)}</td></tr>" for k, v in rows]
-    for purpose, name, sha, prompt in model_rows:
+    for purpose, name, sha, prompt, seed in model_rows:
         out.append(
             f"<tr><td>Model for {e(purpose)}</td><td class='mono'>{e(name)}, prompt "
-            f"{e(prompt)}, SHA-256 {e(sha)}</td></tr>"
+            f"{e(prompt)}, SHA-256 {e(sha)}, seed "
+            f"{e(seed) if seed is not None else 'not recorded'}</td></tr>"
         )
     if not model_rows:
         out.append("<tr><td>Models</td><td>No model run is recorded.</td></tr>")
@@ -602,7 +603,12 @@ def render_report(conn: sqlite3.Connection, timeline: timeline_html.Settings | N
         "<p class='muted'>"
         + (" · ".join(q(t) for t in govdocs) or "No government document imported")
         + f" · report {REPORT_VERSION}"
-        + (f" · rules {e(run['rule_version'])}" if run else "")
+        + (
+            f" · Baker {e(run['baker_version'])} · rules {e(run['rule_version'])}"
+            f" · quote check {e(quote_check_label(run))}"
+            if run
+            else ""
+        )
         + "</p>",
     ]
     if run is None:
@@ -692,7 +698,7 @@ def render_report(conn: sqlite3.Connection, timeline: timeline_html.Settings | N
         parts.append(
             f"<p>Run {e(run['run_id'])}, started {e(run['started_at_utc'])}. Baker "
             f"{e(run['baker_version'])}, contracts {e(run['contracts_version'])}, rule version "
-            f"{e(run['rule_version'])}, quote check {e(_quote_check(run))}. "
+            f"{e(run['rule_version'])}, quote check {e(quote_check_label(run))}. "
             f"{e(run['stored_items'])} evidence items stored; {e(run['dropped_labels'])} labels "
             f"discarded; {e(run['reviewer_failures'])} reviewer failures counted as dismissals."
             f"{mode}</p><table><thead><tr><th>Step</th><th>Component</th></tr></thead>"

@@ -27,6 +27,7 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 
 from core import pipeline
+from core.audit import quotes
 from core.contracts import ClaimStatus, ClaimType, EvidenceStatus, ModelRun, Stance, Verdict
 from core.report.html import record_line, render_report
 from core.review import actions
@@ -258,6 +259,48 @@ def test_the_screen_and_the_report_show_a_call_with_the_same_times(tmp_path):
             assert line in report, f"{record_id}: not in the report as {line!r}"
             page = get(app, "/claim", id=claim_id).text
             assert line in page, f"{record_id}: the claim page for {claim_id} shows it otherwise"
+    finally:
+        conn.close()
+
+
+def test_the_report_and_the_screen_stamp_every_version_a_result_depends_on(tmp_path):
+    # Pilot gate 3 (docs/PILOT_GATES.md): every report records each model file's SHA-256 and
+    # seed, the Baker version, the rule version and the quote-check version. The report's top
+    # line carries the run's versions so a printed first page names them; the screen says the
+    # same; the eval's run.json stamps them too.
+    db = tmp_path / "case01.db"
+    conn = run_pipeline.build_case("case01", db)
+    try:
+        _audit(conn, START)
+        run = pipeline.view_run(conn)
+        assert run is not None
+        stamp = (
+            f"Baker {html.escape(run['baker_version'])} · rules "
+            f"{html.escape(run['rule_version'])} · quote check {quotes.VERSION}"
+        )
+        report = render_report(conn)
+        top = report.split("<h1>Baker claims report</h1>", 1)[1].split("</p>", 1)[0]
+        assert stamp in top
+        assert f"<tr><td>Quote check</td><td class='mono'>{quotes.VERSION}</td></tr>" in report
+        models = conn.execute("SELECT purpose, model_sha256, seed FROM model_runs").fetchall()
+        assert models
+        for purpose, sha, seed in models:
+            assert re.search(
+                rf"<tr><td>Model for {re.escape(purpose)}</td><td class='mono'>[^<]*"
+                rf"SHA-256 {sha}, seed {seed if seed is not None else 'not recorded'}</td></tr>",
+                report,
+            ), purpose
+        app = App(db, expert="Test Expert", port=PORT)
+        screen = get(app, "/").text
+        assert (
+            f"rule version {html.escape(run['rule_version'])}, quote check {quotes.VERSION},"
+            in (screen)
+        )
+        versions = run_pipeline.run_versions(conn)
+        assert versions["quote_check"] == quotes.VERSION
+        assert versions["rules"] == run["rule_version"]
+        assert versions["baker"] == run["baker_version"]
+        assert {(m["purpose"], m["sha256"], m["seed"]) for m in versions["models"]} == set(models)
     finally:
         conn.close()
 
