@@ -164,6 +164,7 @@ class Page:
                 ("/log", "Audit log"),
                 ("/setup", "Set up and run"),
             ]
+        tabs.append(("/help", "Help"))
         links = "".join(
             f"<a href='{href}'{' class=on' if _tab(self.path) == href else ''}>{label}</a>"
             for href, label in tabs

@@ -10,14 +10,21 @@ case folder, never held in memory (ui/upload.py).
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import parse_qsl, urlsplit
 
+from core.support import errors as support_errors
 from ui.app import MAX_BODY, App, Request, Response
 
 HOST = "127.0.0.1"  # never anything else: the screen is for this computer only
 DEFAULT_PORT = 8765
+_SECURITY = App._security_headers()
+UNEXPECTED = (
+    "Baker hit an unexpected error and did not finish this request. Open /help to save a bug "
+    "report (it holds no case data) and send it to support."
+)
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -53,11 +60,31 @@ class _Handler(BaseHTTPRequestHandler):
             self.wfile.write(resp.body)
 
     def do_GET(self) -> None:  # noqa: N802 - http.server naming
+        self._guarded(self._get, "screen")
+
+    def do_POST(self) -> None:  # noqa: N802 - http.server naming
+        multipart = (self.headers.get("Content-Type") or "").lower().startswith("multipart/")
+        self._guarded(self._post, "upload" if multipart else "screen")
+
+    def _guarded(self, answer: Callable[[], None], where: str) -> None:
+        """Answer; an unexpected error is kept for the bug report (type and Baker's file and
+        line, never its message) and the browser gets a plain 500 that says where to go."""
+        try:
+            answer()
+        except Exception as err:  # noqa: BLE001 - one bad request never stops the screen
+            support_errors.note(where, err)
+            try:
+                headers = [("Content-Type", "text/plain; charset=utf-8")]
+                self._send(Response(500, UNEXPECTED.encode("utf-8"), headers + _SECURITY))
+            except OSError:
+                pass  # the browser went away
+
+    def _get(self) -> None:
         req = self._request("GET")
         if req is not None:
             self._send(self.app.handle(req))
 
-    def do_POST(self) -> None:  # noqa: N802 - http.server naming
+    def _post(self) -> None:
         ctype = self.headers.get("Content-Type") or ""
         if ctype.lower().startswith("multipart/form-data"):
             parts = urlsplit(self.path)
