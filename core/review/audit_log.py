@@ -96,6 +96,25 @@ def first_break(conn: sqlite3.Connection) -> int | None:
     return None
 
 
+def first_changed_reason(conn: sqlite3.Connection) -> int | None:
+    """The seq of the first evidence decision whose stored reason no longer matches the reason
+    logged with it, or None. Entries logged before the reason was (#74 follow-up) carry none
+    and are not compared; their chain still verifies."""
+    stored = dict(conn.execute("SELECT id, reason FROM evidence_reviews"))
+    rows = conn.execute(
+        "SELECT seq, payload_json FROM audit_log WHERE action = 'evidence.decide' ORDER BY seq"
+    )
+    for seq, payload_json in rows:
+        try:
+            p = json.loads(payload_json)
+            logged, review = p.get("reason"), p.get("review_id")
+        except (ValueError, AttributeError, TypeError):
+            return seq
+        if logged is not None and stored.get(review) != logged:
+            return seq
+    return None
+
+
 def verify_chain(conn: sqlite3.Connection) -> bool:
     return first_break(conn) is None
 
@@ -125,6 +144,13 @@ def _require_intact(conn: sqlite3.Connection, anchors: Path | None) -> None:
     seq = first_break(conn)
     if seq is not None:
         raise ChainBroken(seq)
+    seq = first_changed_reason(conn)
+    if seq is not None:
+        raise ChainBroken(
+            seq,
+            f"an expert's reason for evidence decision {seq} of the audit log was changed after "
+            "it was logged",
+        )
     if anchors is None or not anchors.exists():
         return  # a case made before anchors, or a test database
     try:
