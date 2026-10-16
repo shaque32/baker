@@ -36,8 +36,17 @@ from eval.train.writers import sentence
 # misses a record only by its widest reading ("the evening" runs to midnight), "the night of"
 # misses as well as holds, a range of dates no longer marks a time miss (only the contact
 # windows, which both answers state, use one), and no shape makes a message's words name one
-# message (rule 23); run 5 trained on 1.3.0.
-GENERATOR = "eval.train 1.3.1"
+# message (rule 23); run 5 trained on 1.3.0. 1.4.0: a sender trap reports the message in the
+# supports items' frames most of the time, not only in its exact words, at times names an
+# account outside the chat (one may show the same name as the chat's contact), and comes up in
+# the exact-value scene too; a report of "only if X will i Y" keeps "only". 1.5.0: a time
+# trap's bound or range misses the record by as little as 3 minutes, as near as a supports
+# item's bound or range holds it (both draw the distance alike); a miss may hold the record's
+# clock on another date, most often the day before or after, or give its UTC reading, and a
+# part of the day misses more often; the time trap reports the message as the subject too,
+# comes up in more scenes, and the time scene sets most records against a time that holds
+# them and one that misses them; half the irrelevant assumptions carry a time (from 35%).
+GENERATOR = "eval.train 1.5.0"
 SOURCE = "train_gen"
 
 

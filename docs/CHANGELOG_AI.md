@@ -19,6 +19,47 @@ Template:
 
 ---
 
+## 2026-10-16: Training data for the small model's runs 6 to 8: harder sender and time traps (#87)
+- Changed: the training-data generators (`eval/train/`) write harder traps, because the small
+  model kept calling some of them supports. Run 6's data (`eval.train 1.4.0`): run 5 showed 10 of
+  26 dev sender traps as supports; in its data every sender trap gave the record's exact words
+  while every supports item reported the message, so the frame alone said supports. Now half the
+  sender traps use the supports items' report frames, 3 in 10 name an account outside the chat
+  (some with the same first name as the chat's contact), and the exact-value scene draws one too
+  (400 to 515 sender traps); a report of "only if X will I Y" keeps "only". Run 7's data
+  (`eval.train 1.5.0`): run 6 still showed 5 of 40 dev time traps as supports; in its data no
+  time trap missed by under 15 minutes while 11% of supports bounds were that close, so closeness
+  said supports. Now a bound, or a range's nearest end, lands 3 to 14 minutes from the record
+  about as often whether it holds or misses (run 8's clock bounds: 33% of supports items', 40%
+  of time traps'); time traps also miss at the record's own clock on the day before or after, at
+  its UTC clock, and by a part of the day; the time scene pairs a time that holds with one that
+  misses; time traps go from 355 to 823; irrelevant items carry a time half the time (from 35%),
+  so a clock reading does not point away from irrelevant.
+  Run 8's data is the same code drawn with seed 4. The Baker-wording items are unchanged
+  (`eval.train.baker 1.4.1`); the guide is unchanged (signed v0.3).
+- Where: branch `claude/project-thread-czwpc8`, PR #87, not merged. The data drops are in
+  `/mnt/project-files/baker/stancedata/run6/`, `run7/` and `run8/`, each with its README, sha256
+  and overlap reports.
+- Verified: this head writes run 7's and run 8's generator output byte for byte (seed 1
+  `6358fbc4…`, seed 4 `c292c424…`), and its run 6 commit (c16018e) writes run 6's (`4627aa11…`).
+  Held-out files unchanged (test `4f106386…`, dev `36cd0d79…`). Overlap check on each delivered
+  file against Baker's test data, the held-out files and the told-frame test sets: PASS, 0
+  flagged, after dropping the 6, 3 and 6 chance matches the check flagged in the generator's
+  output (listed in each drop's README). Blind reads from the signed guide alone: two readers each
+  agreed with all 26 run 6 items (18 sender traps, 8 supports controls) and all 32 run 7 items (22
+  time traps, 10 supports controls). New tests: frame-shaped and outside-account sender traps;
+  bounds and ranges come as near the record whether they hold or miss, never nearer than 3
+  minutes; another date's bound runs away from the record's date; a UTC miss gives the record's
+  UTC clock. `make check`: lint clean, 2,014 tests passed, eval unchanged (case01 1.00, 0 false
+  supported).
+- Open: on dev, run 6 showed 9 moved traps as supports and run 7 showed 4 (3 time traps, 1 later
+  correction). With supports needing p >= 0.99, run 7 meets every go-bar level on dev but misses
+  tune.py's pre-set recall margin (0.95), so there is no candidate yet; run 8's result is
+  pending. Contact and call rows still use the signed guide's rule 28 format (`<saved name>
+  <number>`, `outgoing call from … at …, 604s`), not #76's text.
+- Affects: none in the product (eval only). It changes what the candidate small stance model
+  trains on.
+
 ## 2026-10-15: Training data for the small model's run 5 (#79)
 - Changed: the training-data generators (`eval/train/`, `eval/stancedata/bakerform.py`) write
   more varied wording, because run 4 fit its training wording better than the held-out wording
