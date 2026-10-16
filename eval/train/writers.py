@@ -20,7 +20,15 @@ from eval.train import facts as fx
 from eval.train.facts import Fact
 from eval.train.facts import claim as fact_claim
 from eval.train.frames import contact, contact_by, first_contact, none_before, report, sent, words
-from eval.train.names import AREA_CODES, Party, full_name, person, telegram_id, username
+from eval.train.names import (
+    AREA_CODES,
+    Party,
+    full_name,
+    outside_account,
+    person,
+    telegram_id,
+    username,
+)
 from eval.train.scenario import Chat, clock12, decorate
 from eval.train.topics import topic_stems
 from eval.train.when import (
@@ -263,11 +271,13 @@ def frame(rng: random.Random, c: Chat, pred: str, *, when: str | None = None,
 
 
 def spec_plain(rng: random.Random, c: Chat, pred: str, quote: str, why: str,
-               told_only: bool = False, bare: bool = False) -> Spec:  # fmt: skip
+               told_only: bool = False, bare: bool = False, date: float = 0.65,
+               clock: float = 0.12) -> Spec:  # fmt: skip
     """A supports assumption that reports what the message communicates (guide rule 14);
-    told_only skips the "the message says that" frames for plans and reports."""
+    told_only skips the "the message says that" frames for plans and reports. `date` and
+    `clock` are how often the telling is dated, and by a clock phrase (when.fit_when)."""
     kind = kind_of(rng, "sup_plain")
-    text = frame(rng, c, pred, when=telling_when(rng, c, date=0.65, clock=0.12), bare=bare,
+    text = frame(rng, c, pred, when=telling_when(rng, c, date=date, clock=clock), bare=bare,
                  meaning=kind == K.MEANING and not told_only)  # fmt: skip
     return Spec("sup_plain", kind, text, quote, why)
 
@@ -300,14 +310,16 @@ def spec_time_mismatch(rng: random.Random, c: Chat, pred: str, clause: bool = Fa
     The record shows when these words were sent; it cannot show that no matching message was
     sent at the time the assumption states. The answer rests on the record's time, so the
     quote is the record in full (rule 22). `clause` means pred has its own subject. The
-    assumption reports the message in the frames the supports items use (frames.py), or gives
-    its exact words; the time phrase plainly misses the record's (when.miss_when).
+    assumption reports the message in the frames the supports items use (frames.py), the
+    message as the subject among them, or gives its exact words; the time phrase misses the
+    record's (when.miss_when).
     """
     when, miss = miss_when(rng, c)
     if rng.random() < 0.25:
         a = words(rng, c.sender.who, c.other.who, c.record.text, group=c.is_group(), when=when)
     else:
-        a = frame(rng, c, pred, when=when, bare=clause, answer=answer)
+        a = frame(rng, c, pred, when=when, bare=clause, answer=answer,
+                  meaning=rng.random() < 0.5)  # fmt: skip
     why = f"Same words and people, but {miss}; {rng.choice(NOT_SHOWN_THEN)}."
     return Spec("ovr_time_mismatch", K.TIME, cap(a), c.record.text, why)
 
@@ -319,12 +331,36 @@ def other_writer_why(shown: str, claimed: str, group: bool = False) -> str:
             f"{claimed} also wrote them.")  # fmt: skip
 
 
-def spec_sender_mismatch(rng: random.Random, c: Chat) -> Spec:
-    """The record's words, said to come from the other side of the chat."""
-    text, s = c.record.text, c.sender.who
-    claimed = c.contacts[0].who if c.sender.account.owner else "the owner"
-    # The time may fit; the sender still does not.
-    a = words(rng, claimed, s, text, when=when_sent(rng, c))
+# How often a sender trap names an account outside the chat rather than its other side.
+OUTSIDE = 0.3
+
+
+def spec_sender_mismatch(rng: random.Random, c: Chat, pred: str | None = None,
+                         clause: bool = False, answer: bool = False) -> Spec:  # fmt: skip
+    """The record's words, or what they say, from an account that did not send them:
+    complicates (guide rule 23).
+
+    The claimed sender is the other side of the chat, or now and then an account outside it
+    (names.outside_account), at times one with the same first name as the chat's contact: a
+    phone can show two accounts for one name, and nothing merges them. Given pred, the
+    assumption most often reports the message in the frames the supports items use
+    (frames.py), the message as the subject among them; else it gives the record's exact
+    words. The time may fit; the sender still does not. The answer rests on who sent the
+    record, so the quote is the record in full (rule 22). `clause` means pred has its own
+    subject; `answer` adds the frames for a reply to a question.
+    """
+    text = c.record.text
+    if rng.random() < OUTSIDE:
+        claimed, to = outside_account(rng, c.app, [c.owner, *c.contacts]).who, "the owner"
+    else:
+        claimed, to = c.other.who, c.sender.who
+    when, group = when_sent(rng, c), c.is_group()
+    if pred is not None and rng.random() < 0.75:
+        pp = pred if clause else f"they {pred}"
+        a = report(rng, claimed, to, pp, group=group, when=when, meaning=rng.random() < 0.5,
+                   answer=answer)  # fmt: skip
+    else:
+        a = words(rng, claimed, to, text, group=group, when=when)
     why = other_writer_why(c.record.account.sender, claimed)
     return Spec("ovr_sender_mismatch", kind_of(rng, "ovr_sender_mismatch"), cap(a), text, why)
 
@@ -593,7 +629,9 @@ def spec_irrelevant(rng: random.Random, c: Chat, fam: str, pool: Sequence[Fact],
     place or a time), never a contact pattern or an identity link, which the excerpt itself could
     bear on (guide rule 21). Its words share no topic with any line of the chat or any name the
     chat shows, and it names nothing whose referent the chat would have to show."""
-    kind = K.TIME if K.TIME in family(fam).kinds and rng.random() < 0.35 else K.EVENT
+    # Half carry a time, as many trap and supports assumptions do, so neither a clock reading
+    # nor the length a time phrase adds points away from irrelevant.
+    kind = K.TIME if K.TIME in family(fam).kinds and rng.random() < 0.5 else K.EVENT
     subj = c.sender.who if same_person else other_party(rng, c)[0]
     seen = chat_topics(c)
     if kind == K.TIME:

@@ -25,8 +25,8 @@ Template:
   found in the larger source; the messages and calls the larger source holds that the report
   does not are listed near each claim, by conversation then time distance, with no model
   ranking. Fails closed: ambiguous candidates, and records near a report record not found, are
-  "may be in the report", never counted; under 95% found lists nothing. Selection tab, report section (one renderer) and
-  a line on each claim page. Never changes a verdict; nothing stored. (Grok Product item 9.)
+  "may be in the report", never counted; under 95% found lists nothing. Selection tab, report
+  section (one renderer) and a line on each claim page. Never changes a verdict; nothing stored. (Grok Product item 9.)
 - Where: branch `claude/project-thread-y7z11i`, PR #78, not merged.
 - Verified: 29 tests on two synthetic pairs (case01 item1 report vs a UFDR with planted records;
   a small new pair): planted omissions found per claim in the expected order, ambiguous and
@@ -41,6 +41,47 @@ Template:
   1 s); not on a real case.
 - Affects: capabilities (new analysis, branch only); no privacy or network change; customer
   claims unchanged until merged and checked on real exports.
+
+## 2026-10-16: Training data for the small model's runs 6 to 8: harder sender and time traps (#87)
+- Changed: the training-data generators (`eval/train/`) write harder traps, because the small
+  model kept calling some of them supports. Run 6's data (`eval.train 1.4.0`): run 5 showed 10 of
+  26 dev sender traps as supports; in its data every sender trap gave the record's exact words
+  while every supports item reported the message, so the frame alone said supports. Now half the
+  sender traps use the supports items' report frames, 3 in 10 name an account outside the chat
+  (some with the same first name as the chat's contact), and the exact-value scene draws one too
+  (400 to 515 sender traps); a report of "only if X will I Y" keeps "only". Run 7's data
+  (`eval.train 1.5.0`): run 6 still showed 5 of 40 dev time traps as supports; in its data no
+  time trap missed by under 15 minutes while 11% of supports bounds were that close, so closeness
+  said supports. Now a bound, or a range's nearest end, lands 3 to 14 minutes from the record
+  about as often whether it holds or misses (run 8's clock bounds: 33% of supports items', 40%
+  of time traps'); time traps also miss at the record's own clock on the day before or after, at
+  its UTC clock, and by a part of the day; the time scene pairs a time that holds with one that
+  misses; time traps go from 355 to 823; irrelevant items carry a time half the time (from 35%),
+  so a clock reading does not point away from irrelevant.
+  Run 8's data is the same code drawn with seed 4. The Baker-wording items are unchanged
+  (`eval.train.baker 1.4.1`); the guide is unchanged (signed v0.3).
+- Where: branch `claude/project-thread-czwpc8`, PR #87, not merged. The data drops are in
+  `/mnt/project-files/baker/stancedata/run6/`, `run7/` and `run8/`, each with its README, sha256
+  and overlap reports.
+- Verified: this head writes run 7's and run 8's generator output byte for byte (seed 1
+  `6358fbc4…`, seed 4 `c292c424…`), and its run 6 commit (c16018e) writes run 6's (`4627aa11…`).
+  Held-out files unchanged (test `4f106386…`, dev `36cd0d79…`). Overlap check on each delivered
+  file against Baker's test data, the held-out files and the told-frame test sets: PASS, 0
+  flagged, after dropping the 6, 3 and 6 chance matches the check flagged in the generator's
+  output (listed in each drop's README). Blind reads from the signed guide alone: two readers each
+  agreed with all 26 run 6 items (18 sender traps, 8 supports controls) and all 32 run 7 items (22
+  time traps, 10 supports controls). New tests: frame-shaped and outside-account sender traps;
+  bounds and ranges come as near the record whether they hold or miss, never nearer than 3
+  minutes; another date's bound runs away from the record's date; a UTC miss gives the record's
+  UTC clock. `make check`: lint clean, 2,014 tests passed, eval unchanged (case01 1.00, 0 false
+  supported).
+- Open: on dev, run 6 showed 9 moved traps as supports and run 7 showed 4 (3 time traps, 1 later
+  correction). With supports needing p >= 0.99, run 7 meets every go-bar level on dev but misses
+  tune.py's pre-set recall margin (0.95), so there is no candidate yet; run 8's result is
+  pending. Contact and call rows still use the signed guide's rule 28 format (`<saved name>
+  <number>`, `outgoing call from … at …, 604s`), not #76's text.
+- Affects: none in the product (eval only). It changes what the candidate small stance model
+  trains on.
 
 ## 2026-10-15: Training data for the small model's run 5 (#79)
 - Changed: the training-data generators (`eval/train/`, `eval/stancedata/bakerform.py`) write
@@ -192,22 +233,54 @@ Template:
 - Affects: customer-facing claims (supports "reproducible audit packet", on synthetic data with
   time fields masked). No privacy or performance change.
 
-## 2026-10-15: Quote check reads contacts as the model sees them (#76, fixes #69)
-- Changed: one function now renders a contact ("Name: +1...") for retrieval, the quote check,
-  `core/audit/quotes.py` and the small model's generated training items, so correct contact
-  quotes are no longer discarded. The synthetic case01 affidavit PDF embeds DejaVu Sans for
-  lines Helvetica can't draw ("Катя" read as boxes).
-- Where: PR #76 (from the "Audit our model scoring" thread), not merged. Includes the C17 font
-  fix.
-- Verified (as reported by the owning thread): 2 new regression tests; suite and lint pass except
-  the known #65 test; `make eval` same as main (case01 1.00, 0 false supported; case02 aggregate
-  0.90), hostile run keeps 15 more labels with 0 supported. Opus replay: case01 85% to 95%,
-  sheet-free 60% to 70%.
-- Open: calls still render differently for the model and the check (no case01 verdict changes);
-  signed guide rule 28 still writes contacts without the colon (needs Arsh); small-model run 5
-  trained on colon-less contact rows (train/product mismatch).
-- Affects: capabilities (more correct evidence kept, for Opus and the 14B). No privacy, network,
-  performance or customer-claim change.
+## 2026-10-15: Quote check reads contacts and calls as the model sees them (#76, fixes #69)
+- Changed: the quote check (`core/audit/invariants.record_text`) now reads a contact
+  ("Name: +1...") and a call ("outgoing Phone call from +1... to +1..., duration 84 s") exactly
+  as retrieval shows them to the labeler (`core.enrich.records`), so correct quotes are no longer
+  discarded. Why it matters: the check drops a label before its stance is used, so a dropped
+  "contradicts" or "complicates" could let a claim with other accepted support go SUPPORTED.
+  The report still shows a call's time beside its line. Evidence a run stored before #76 still
+  passes the stored-quote re-check in the contact or call text of its day, so an older case
+  re-decides; a run that records a quote-check version gets no such fallback (fails closed).
+  The small model's generated contact rows follow the product too. The synthetic case01 affidavit PDF embeds DejaVu Sans for lines
+  Helvetica can't draw ("Катя" read as boxes).
+  Grok review on #80, item 3: the quote check now has a version. `core/audit/quotes.VERSION`
+  1.1.0 -> 1.2.0 is stored in every audit run's config (a rules-only re-run carries its evidence
+  run's; a run with another quote verifier, such as the eval's stand-ins, names it) and printed
+  in the report beside the rule version; a test pins the check's answers to it, so a change
+  without a bump fails. A quote now verifies only if it takes in a letter or digit of the
+  record's own fields: at a word-aligned place in the pipeline, whatever verifier a run is
+  given (`cites_record`), and at any place in the stored re-check
+  (`core/audit/invariants.quote_is_verbatim`), which holds evidence to the check of its day only
+  for a run that records no quote-check version (Grok merge-bot review on #76). "(no name)", "unknown" or "call from" alone fail; "(no name): +1..." passes. `core/audit/quotes.record_text`, which still said calls had no
+  citable text, now reads every record as the labeler sees it, as the pipeline already did.
+- Where: main once PR #76 merges (branch `claude/project-thread-01fybj`, from the "Audit our
+  model scoring" thread). Includes the C17 font fix.
+- Verified: new regression tests (each fails without its fix), among them a contact and a call
+  labeled "contradicts" and quoted as shown: before, the label was dropped and C01 went
+  SUPPORTED; now CONTRADICTED. A test checks every case01 record reads the same for the labeler
+  and the check. A stored "call from" on a run recording 1.2.0 stops a re-run of the verdicts;
+  the same case with no recorded version re-decides. A test checks that the claim page shows each
+  call with the same UTC and printed time as the report (both use `record_line`).
+  `make check` green on the branch with main at 79ad922 merged in (2045 passed, lint clean); `make eval` same as
+  main (case01 1.00, 0 false supported; case02 aggregate 0.90); hostile run keeps 494 items and
+  drops 4 labels (main 462 and 36), 0 supported. Offline, on stored answers: Opus case01 85% to
+  95% (signed sheet), 60% to 70% (no sheet), 0 false supported; replayed through the new check,
+  every Opus supports, contradicts and complicates label of the no-sheet run passes (108), and
+  Sonnet and Haiku (2026-10-14) each lose 2, all on a message whose whole body is "?".
+- Open: a label whose quote is not verbatim, has no letter or digit, or takes in only Baker's
+  words or a placeholder is still dropped whatever its stance, and the report shows only a count
+  of dropped labels. Runs from before #76 show "not recorded (1.1.0 or earlier)" for the quote
+  check; re-running only their verdicts does not bring back labels the old check dropped, a
+  full audit does (it reuses stored model answers). Generated call rows
+  for the small model still print the report's time (signed guide rule 28), unlike the product;
+  aligning them is for the "Custom model for Baker" thread. The guide's contact rows lack the
+  colon (proposed for Arsh in PROPOSED_CHANGES.md); small-model run 5 trained on the old rows.
+- Affects: capabilities (more correct evidence kept, for Opus and the 14B); closes, for contacts
+  and calls, a path where a dropped "contradicts" or "complicates" let a claim go SUPPORTED.
+  Report 0.3.0 -> 0.4.0 (`core/report/html.REPORT_VERSION`): a call's line shows its UTC and
+  printed time, as on the review screen, and the versions show the quote check.
+  No privacy, network, performance or customer-claim change.
 
 ## 2026-10-15: Stricter reading of stated time windows (#66, 9d24024)
 - Changed: "after March 3" now starts on March 4 (it started on March 3, which could produce a

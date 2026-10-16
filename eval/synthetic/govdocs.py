@@ -25,11 +25,19 @@ from pathlib import Path
 
 import pypdfium2 as pdfium
 from reportlab.lib.utils import ImageReader
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
 PAGE_W, PAGE_H = 612.0, 792.0  # US Letter
 LEFT, TOP, BOTTOM = 72.0, 90.0, 720.0
 FONT, SIZE, LEADING = "Helvetica", 10.0, 13.0
+# Helvetica, a standard PDF font, has only the cp1252 characters; reportlab draws any other as a
+# box, and a text extractor reads the box. A line with such a character (the Cyrillic contact
+# name in the case01 affidavit) is drawn in DejaVu Sans, embedded; the whole line, because an
+# extractor splits a line at each font change and the ingester joins the pieces with a space.
+# License: fonts/LICENSE.
+UNICODE_FONT, UNICODE_FONT_FILE = "DejaVuSans", Path(__file__).with_name("fonts") / "DejaVuSans.ttf"
 WRAP = 92  # characters per line at 10pt Helvetica inside the margins
 PARA_GAP = 8.0
 
@@ -209,10 +217,29 @@ def _canvas(target, title: str, producer: str) -> canvas.Canvas:
     return c
 
 
+def _in_helvetica(text: str) -> bool:
+    try:
+        text.encode("cp1252")
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
+def _unicode_font() -> str:
+    if UNICODE_FONT not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(TTFont(UNICODE_FONT, str(UNICODE_FONT_FILE)))
+    return UNICODE_FONT
+
+
 def _draw_lines(c: canvas.Canvas, lines: list[tuple[float, float, str]]) -> None:
     c.setFont(FONT, SIZE)
     for x, y, text in lines:
+        if _in_helvetica(text):
+            c.drawString(x, PAGE_H - y, text)
+            continue
+        c.setFont(_unicode_font(), SIZE)
         c.drawString(x, PAGE_H - y, text)
+        c.setFont(FONT, SIZE)
 
 
 def _layout(
