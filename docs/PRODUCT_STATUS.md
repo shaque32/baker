@@ -285,8 +285,10 @@ Codex fixes, with CI pending on the new push.
 ## 11. Pilot readiness
 
 **Not pilot-ready for real case data yet.** The pass/fail gates are in
-[`docs/PILOT_GATES.md`](PILOT_GATES.md): 4 of 12 met as of 2026-10-16 (gate 6 by #72, gate 7 by #74,
-gate 8 by merging #68, gate 12, the buyer documents, by #82). Ready: the demo case, the review screen, encryption,
+[`docs/PILOT_GATES.md`](PILOT_GATES.md): 6 of 18 met as of 2026-10-16 (gate 6 by #72, gate 7 by #74,
+gate 8 by merging #68, gate 12, the buyer documents, by #82; gates 15, stopped runs never look
+complete, and 18, the feedback form, were already in place). Gates 13 to 18 fold in Grok's
+pilot-ready list. Ready: the demo case, the review screen, encryption,
 the Mac and Windows installers, and a pilot kit (data handling, limitations, agreement outline,
 feedback form, demo script, go/kill scorecard) in `/mnt/project-files/baker/pilot/`.
 
