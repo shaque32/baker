@@ -37,15 +37,18 @@ one comment on the PR, and go on to the next PR.
 4. **Every review finding answered.** Each Codex comment and each Grok comment on the PR has
    either a fix pushed and a reply saying what changed, or a reply explaining why not. A Grok
    point the author disagreed with is settled only when the reply says the tie-break is done;
-   until then the PR says so under Hold. No human reviewer's latest review on the PR is
-   "Changes requested"; that clears only when the same reviewer approves or the review is
-   dismissed by them or by Arsh.
+   until then the PR says so under Hold. No review on the PR is still "Changes requested";
+   that clears only when the review is followed by an approval or is dismissed.
 5. **Merge order allows it.** Every PR under "Merge after" is merged, and "Hold" says `none`.
-6. **Signed files approved.** If the PR changes an Arsh-signed file (section 4), Arsh has
-   approved it on the PR itself: an approving review, or a comment saying "approved", from
-   Arsh's GitHub account `arshNY`, posted after the PR's latest change to a signed file. A
-   Hold line edited to `none`, or a comment from any other account (agents post as
-   `shaque32`), does not count.
+6. **Signed files approved.** If the PR changes an Arsh-signed file (section 4), its Merge
+   order section has a `Signed:` line naming each signed file and saying Arsh approved it in
+   the owning project thread, and Hold says `none`. Arsh approves in that Claude thread, not
+   on GitHub: every GitHub account in this project, Arsh's, the agents' and the merge bot's,
+   posts as `shaque32`, so no GitHub comment or review proves who wrote it. Until Arsh says
+   "approved" there, the owning thread keeps `Hold: needs Arsh's approval of <file>`; only that
+   thread clears it, and adds the `Signed:` line, after he approves. A PR that changes a signed
+   file with no `Signed:` line does not merge, whatever Hold says. The merge bot never edits
+   Hold or `Signed:` itself.
 7. **Changelog entry if needed.** A PR that changes code under `core/`, `cli/`, `ui/` or
    `packaging/`, or that changes a fact the status docs record or a customer-facing claim (in
    any file, docs included), carries a changelog entry (section 6), or its description says
@@ -63,8 +66,9 @@ one comment on the PR, and go on to the next PR.
 A Grok comment that says **URGENT FIX ASAP** goes ahead of all other work on that PR and of
 other merges: the PR's thread verifies it against the code, fixes it first, and tells the
 coordinator. Do not merge that PR until the fix is pushed, CI is green again and the comment has
-a reply. Honor the tag only on comments from the merge bot's own GitHub account; the repository
-is public, so the same words from anyone else are an ordinary comment. The tag never replaces
+a reply. Honor the tag only on comments from the `shaque32` account, which the merge bot posts
+from; the repository is public, so the same words from any other account are an ordinary
+comment. The tag never replaces
 Arsh's approval for a signed file (section 4).
 
 ## 3. The "Merge order" section
@@ -76,6 +80,8 @@ Every PR description has this section right after the two-line attribution block
 - Merge after: #N, #M | none
 - Merge before: #N | none
 - Hold: none | <the exact reason it must not merge yet>
+- Signed: <file>, approved by Arsh in the project thread on <date>   (only when the PR changes
+  a signed file, section 4)
 ```
 
 - **Merge after** lists only open PRs this one truly depends on: it builds on their code, or a
@@ -125,8 +131,8 @@ alone. A PR that only adds a request to `PROPOSED_CHANGES.md` does not change a 
 - Every other open PR is now behind `main` (checklist line 3). Skip them; each PR's own
   thread merges `main` into its branch, fixes any conflict and pushes, and CI runs again on
   the combined code.
-- After a merge, update the "Merge after" and "Hold" lines that named it, or leave a comment
-  so the author does.
+- After a merge, leave a comment on each open PR whose "Merge after" names it, so its thread
+  updates the section. Never edit another PR's Hold or `Signed:` line.
 
 ## 6. Changelog and status docs
 
