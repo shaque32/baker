@@ -343,3 +343,19 @@ Diff:
 +    forwarded_from_raw TEXT          -- the original author as the source wrote it, when it says
  );
 ```
+
+## 2026-10-15 claude/project-thread-01fybj: the guide's contact rows read "<saved name>: <number>"
+File: eval/gold/stancedata/LABELING_GUIDE.md, and its draft eval/stancedata/LABELING_GUIDE.md
+(pinned by SHA-256 in tests/test_gold_stancedata.py)
+Why: the contact-quote fix makes the quote check read a contact as the labeler is shown it,
+"Marc Garage: +12125550122" (core.enrich.records.contact_text), and generated stance items follow
+(eval/stancedata/bakerform.contact_text). Rule 28 still describes the old check's text, without the
+colon, and so do the bk_contact_row and bk_contact_row_differs examples in the family table.
+Nothing breaks without this change; the guide just shows contact rows one character wrong.
+Diff (both files, then re-pin the draft's SHA-256 in tests/test_gold_stancedata.py):
+-    local time decides. A contact row reads "<saved name> <number>", has no time, and belongs to
++    local time decides. A contact row reads "<saved name>: <number>", has no time, and belongs to
+-... Record on item1: "Gus Tires +13125550177". |
++... Record on item1: "Gus Tires: +13125550177". |
+-| `bk_contact_row_differs` | ... | Record on item1: "Gus Tires +13125550190". |
++| `bk_contact_row_differs` | ... | Record on item1: "Gus Tires: +13125550190". |

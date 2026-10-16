@@ -49,6 +49,8 @@ include = ["core*", "eval*", "cli*", "ui*"]
 core = ["schema.sql"]
 "core.audit" = ["prompts/*.md"]
 ui = ["**/*.css", "**/*.html", "**/*.js", "**/*.svg", "**/*.png", "**/*.ico", "**/*.woff2", "static/**/*.txt"]
+# The font eval/synthetic/govdocs.py draws non-Latin lines of the case01 affidavit in.
+"eval.synthetic" = ["fonts/*.ttf", "fonts/LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
