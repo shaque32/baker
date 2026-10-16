@@ -11,7 +11,7 @@ import pytest
 
 from core.contracts import ClaimType, GoldClaim, Verdict
 from core.db import apply_schema, connect
-from eval.bench.fair_steps import Proposal, ReplayModel, split_match
+from eval.bench.fair_steps import Proposal, ReplayModel, main, pick_entry, split_match
 
 
 def gold(cid: str, para: int, text: str) -> GoldClaim:
@@ -89,3 +89,19 @@ def test_the_replay_skips_failed_calls(tmp_path: Path) -> None:
     with pytest.raises(LookupError):
         ReplayModel(db, "stance")
     assert sqlite3.connect(db).execute("SELECT count(*) FROM model_calls").fetchone() == (1,)
+
+
+def test_the_local_arm_and_the_mac_probe_pick_the_same_one_model() -> None:
+    two = [{"name": "qwen3-8b-q4_k_m"}, {"name": "qwen3-14b-q4_k_m"}]
+    assert pick_entry(two, None)["name"] == "qwen3-14b-q4_k_m"
+    assert pick_entry(two, "qwen3-8b-q4_k_m")["name"] == "qwen3-8b-q4_k_m"
+    assert pick_entry([{"name": "other"}], None)["name"] == "other"
+    with pytest.raises(SystemExit):
+        pick_entry([{"name": "a"}, {"name": "b"}], None)
+    with pytest.raises(SystemExit):
+        pick_entry(two, "missing")
+
+
+def test_an_unknown_effort_is_refused_before_any_call() -> None:
+    with pytest.raises(SystemExit):
+        main(["--arm", "opus", "--effort", "medum"])

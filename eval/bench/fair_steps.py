@@ -44,6 +44,7 @@ from pathlib import Path
 from typing import Any
 
 from core.contracts import GoldClaim
+from core.llm.cloud import EFFORTS
 from core.llm.runtime import ModelOutput
 from eval import run_pipeline as rp
 from eval.probe.claim_recall import MATCH_AT, recall_for, words
@@ -232,16 +233,26 @@ def fills_only_step(audit_out: Path, out: Path) -> dict[str, Any]:
 # The arms ---------------------------------------------------------------------------------
 
 
+def pick_entry(entries: list[dict[str, Any]], name: str | None) -> dict[str, Any]:
+    """The models-file entry the local arm uses: the one named, else the only one, else the one
+    whose name says 14B. eval/probe/mac_v12.sh probes the same entry."""
+    if name:
+        pick = [e for e in entries if e["name"] == name]
+    elif len(entries) == 1:
+        pick = entries
+    else:
+        pick = [e for e in entries if "14b" in e["name"].lower()]
+    if len(pick) != 1:
+        names = ", ".join(e["name"] for e in entries)
+        raise SystemExit(f"name one model with --model-name or MODEL_NAME (have: {names})")
+    return pick[0]
+
+
 def local_model(models: Path, name: str | None) -> Any:
     from core.audit._local_model import LazyModel, ModelConfig
     from core.llm.runtime import sha256_file
 
-    entries = json.loads(models.read_text(encoding="utf-8"))
-    pick = [e for e in entries if (e["name"] == name if name else "14b" in e["name"].lower())]
-    if len(pick) != 1:
-        names = ", ".join(e["name"] for e in entries)
-        raise SystemExit(f"{models}: name one model with --model-name (have: {names})")
-    entry = pick[0]
+    entry = pick_entry(json.loads(models.read_text(encoding="utf-8")), name)
     path = Path(entry["path"]).expanduser()
     sha = entry.get("sha256") or sha256_file(path)
     return LazyModel(ModelConfig(name=entry["name"], path=path, sha256=sha, n_ctx=8192))
@@ -289,7 +300,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--arm", choices=("local", "opus"), required=True)
     ap.add_argument("--models", type=Path, default=Path("eval/probe/models.local.json"))
     ap.add_argument("--model-name", default=None, help="local arm: the entry to use (default: 14B)")
-    ap.add_argument("--effort", default="medium", help="opus arm: the API effort")
+    ap.add_argument("--effort", default="medium", choices=EFFORTS, help="opus arm: API effort")
     ap.add_argument("--skip-claims", action="store_true")
     ap.add_argument("--out", type=Path, default=None)
     args = ap.parse_args(argv)

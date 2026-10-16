@@ -6,8 +6,14 @@
 set -euo pipefail
 
 MODELS="${MODELS:-eval/probe/models.local.json}"
-OUT="${OUT:-eval/out/mac_v12}"
+# A fresh folder per run: the probe appends to its call log, so a reused folder would mix runs.
+OUT="${OUT:-eval/out/mac_v12/$(date -u +%Y%m%dT%H%M%SZ)}"
+if [ -e "$OUT" ]; then echo "$OUT already exists; set OUT to a new folder" >&2; exit 1; fi
 mkdir -p "$OUT"
+# Both steps use the same one model: the 14B, or the entry MODEL_NAME names.
+python -c 'import json, sys; from eval.bench.fair_steps import pick_entry
+json.dump([pick_entry(json.load(open(sys.argv[1])), sys.argv[2] or None)], open(sys.argv[3], "w"), indent=2)' \
+  "$MODELS" "${MODEL_NAME:-}" "$OUT/model.json"
 {
   echo "commit $(git rev-parse --short HEAD)"
   python -c "import llama_cpp, platform; print('llama-cpp-python', llama_cpp.__version__, platform.platform())"
@@ -15,11 +21,11 @@ mkdir -p "$OUT"
 } > "$OUT/versions.txt"
 
 echo "1/2 the 14B on the signed probe set with stance prompt v1.2 (stance only, 2 answers per item)"
-python -m eval.probe.run_probe --models "$MODELS" --probe-set eval/gold/probe/probe.jsonl \
+python -m eval.probe.run_probe --models "$OUT/model.json" --probe-set eval/gold/probe/probe.jsonl \
   --stance-only --repeat 2 --layout product_members --out "$OUT/probe"
 
 echo "2/2 the 14B half of the 14B-vs-Opus test (claims, case01 audit without the sheet)"
-python -m eval.bench.fair_steps --arm local --models "$MODELS" --out "$OUT/fair"
+python -m eval.bench.fair_steps --arm local --models "$OUT/model.json" --out "$OUT/fair"
 
 {
   echo "# Mac results, stance v1.2 and the 14B-vs-Opus test ($(date -u +%Y-%m-%dT%H:%MZ))"
