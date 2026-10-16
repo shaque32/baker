@@ -30,8 +30,14 @@ from eval.train.writers import sentence
 # 1.1.0: labels follow guide draft v0.3 (strict contradicts). 1.2.0: wording only; a record's
 # act carries its subject when its verb could be an instruction ("i put 200 in savings"), a bare
 # "no" only answers a question shown, and a record that says where its sender is meets no filler
-# that puts anyone somewhere.
-GENERATOR = "eval.train 1.2.0"
+# that puts anyone somewhere. 1.3.0: wording only; families whose labels differ share one bank
+# of report frames (eval/train/frames.py) and one of time phrases (eval/train/when.py), so a
+# label rests on the facts, never on how the assumption is worded. 1.3.1: a part of the day
+# misses a record only by its widest reading ("the evening" runs to midnight), "the night of"
+# misses as well as holds, a range of dates no longer marks a time miss (only the contact
+# windows, which both answers state, use one), and no shape makes a message's words name one
+# message (rule 23); run 5 trained on 1.3.0.
+GENERATOR = "eval.train 1.3.1"
 SOURCE = "train_gen"
 
 
