@@ -19,6 +19,28 @@ Template:
 
 ---
 
+## 2026-10-16: Forwarded messages marked on the record (signed schema change)
+- Changed: Arsh signed the `messages.forwarded` and `messages.forwarded_from_raw` columns
+  (PROPOSED_CHANGES.md, "approved" 2026-10-16 02:53Z in the UFDR thread), applied to
+  `core/schema.sql` and the `Message` model in `core/contracts.py`. The UFDR and Excel importers
+  now mark each message the extraction labels Forwarded; the UFDR importer records the original
+  author when the package embeds the original and names exactly one sender, as written. The
+  claim page and report name that author in the record's warning ("which Baker has not checked").
+  Fail-closed handling from #73 is unchanged: a forwarded message still cannot support or
+  contradict a claim, checks resting on it stay inconclusive, and SenderCheck never credits the
+  forwarder. Cases made before the columns keep working from the coverage list.
+- Where: branch `claude/project-thread-hz9jqt` (fresh from main), PR #89, not merged.
+- Verified: 3 new or extended tests (UFDR marks with and without a named author, quote not a
+  forward; Excel label; a case made on the old schema still fails closed); full `make check` and
+  eval in the PR description.
+- Open: AXIOM does not read forwarded marks yet; only forwards the extraction labels are caught;
+  the original author is the extraction's claim, not checked. The stance prompt is not told the
+  message was forwarded (prompts are signed); the stored stance is still downgraded. No schema
+  version bump: an existing case database is not upgraded in place, so its messages lack the
+  columns and keep the coverage-list behaviour.
+- Affects: capabilities (forwarded marked on the record and shown with its author). No verdict,
+  privacy or performance change. Customer-facing claims unchanged; UFDR stays unverified.
+
 ## 2026-10-16: Training data for the small model's runs 6 to 8: harder sender and time traps (#87)
 - Changed: the training-data generators (`eval/train/`) write harder traps, because the small
   model kept calling some of them supports. Run 6's data (`eval.train 1.4.0`): run 5 showed 10 of
@@ -175,7 +197,7 @@ Template:
   counted (info); a taggedFiles id listed with two different paths links to no file and is
   listed under Limitations (attention). Rules 0.2.x untouched; full author and forwarder columns
   proposed in PROPOSED_CHANGES.md (needs Arsh's signature).
-- Where: branch `claude/project-thread-hz9jqt`, PR #73, not merged.
+- Where: main (PR #73, merge 7655056).
 - Verified: 6 tests for the sample bugs and 13 for item 1 and 6 (forwarded, quoted and nested
   forwards, Excel label, fail-closed stance after an expert accept, inconclusive checks,
   SenderCheck, claim-page and report warnings, picture count, repeated tagged ids, ufdr-check

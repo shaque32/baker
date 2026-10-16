@@ -267,6 +267,8 @@ class Message(Model):
     lang: str | None = None
     deleted_flag: bool | None = None  # None = source did not say
     bookmarked: bool | None = None
+    forwarded: bool | None = None  # None = source did not say
+    forwarded_from_raw: str | None = None  # the original author as the source wrote it
 
 
 class SourceCoverage(Model):

@@ -1,9 +1,10 @@
 """Messages the extraction marks as forwarded, or that carry a forwarded or quoted original.
 
-The canonical tables cannot say a message was forwarded or who first wrote it (that needs a
-schema change Arsh signs: PROPOSED_CHANGES.md). Until then each importer lists such messages,
-in full, in its coverage payload under `forwarded_records`, and everything downstream reads them
-from here and fails closed:
+Each importer lists such messages, in full, in its coverage payload under `forwarded_records`.
+Where the case database has the signed `messages.forwarded` and `messages.forwarded_from_raw`
+columns (schema change signed by Arsh 2026-10-16), the importer also marks the message there,
+with the original author when the source names one. A case made before those columns existed
+still has the coverage list. Everything downstream reads them from here and fails closed:
 
 - the pipeline stores a model's "supports" or "contradicts" on one as "complicates", so it can
   neither make a claim supported nor contradicted, and keeps it in front of the expert;
@@ -38,6 +39,12 @@ RECORD_NOTE = {
 }
 
 
+def has_columns(conn: sqlite3.Connection) -> bool:
+    """The case database has the signed forwarded columns (a case made before them does not)."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(messages)")}
+    return {"forwarded", "forwarded_from_raw"} <= cols
+
+
 def affected(conn: sqlite3.Connection) -> dict[str, str]:
     """Record id -> reason ('forwarded' wins over 'embedded') for every import in the case."""
     out: dict[str, str] = {}
@@ -49,7 +56,42 @@ def affected(conn: sqlite3.Connection) -> dict[str, str]:
         for reason in reversed(REASONS):
             for rid in listed.get(reason, []):
                 out[rid] = reason
+    if has_columns(conn):
+        for (rid,) in conn.execute("SELECT id FROM messages WHERE forwarded = 1"):
+            out[rid] = "forwarded"
     return out
+
+
+def mark(conn: sqlite3.Connection, listed: dict[str, list[str]], authors: dict[str, str]) -> None:
+    """Mark the importer's forwarded messages in the signed columns, when the case has them.
+    `authors` maps a message id to its original author as the source wrote it."""
+    if not has_columns(conn):
+        return
+    conn.executemany(
+        "UPDATE messages SET forwarded = 1, forwarded_from_raw = ? WHERE id = ?",
+        [(authors.get(mid), mid) for mid in dict.fromkeys(listed.get("forwarded", []))],
+    )
+
+
+def original_author(conn: sqlite3.Connection, record_id: str) -> str | None:
+    """Who first wrote a forwarded message, as the source wrote it; None when it does not say."""
+    if not has_columns(conn):
+        return None
+    row = conn.execute(
+        "SELECT forwarded_from_raw FROM messages WHERE id = ?", (record_id,)
+    ).fetchone()
+    return row[0] if row else None
+
+
+def record_note(conn: sqlite3.Connection, record_id: str, reason: str) -> str:
+    """The warning shown on one record, naming the original author when the source does."""
+    author = original_author(conn, record_id) if reason == "forwarded" else None
+    if author:
+        return (
+            f"Forwarded: shown as sent by whoever forwarded it; the extraction names {author} as "
+            "the original author, which Baker has not checked."
+        )
+    return RECORD_NOTE[reason]
 
 
 def among(found: dict[str, str], record_ids: Iterable[str]) -> list[str]:

@@ -354,7 +354,7 @@ def record_line(
     if note:
         return (
             f"{record_line(conn, record_id)}<br><strong class='warn'>"
-            f"{e(forwarded.RECORD_NOTE[note])}</strong>"
+            f"{e(forwarded.record_note(conn, record_id, note))}</strong>"
         )
     if record_id.startswith("msg:"):
         r = conn.execute(

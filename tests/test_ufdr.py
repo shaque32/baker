@@ -777,3 +777,64 @@ def test_a_tagged_file_id_with_two_paths_links_to_neither(tmp_path):
     codes = _codes(s)
     assert codes["tagged_file_ids_repeated"] == "attention"
     assert codes["attachment_file_ambiguous"] == "attention"
+
+
+def test_a_forwarded_message_is_marked_on_the_record_with_its_original_author(tmp_path):
+    base = [field("Source", "WhatsApp"), one("From", party(*OWNER)),
+            ts_field("TimeStamp", "2026-03-05T21:31:00.000-05:00")]  # fmt: skip
+    original = model(
+        "InstantMessage", one("From", party(*JO)), field("Body", "SYNTHETIC Jo's words")
+    )
+    named = model("InstantMessage", *base, field("Body", "SYNTHETIC passed on"),
+                  _extra("Forwarded"), _embedded(original))  # fmt: skip
+    unnamed = model("InstantMessage", *base, field("Body", "SYNTHETIC passed on too"),
+                    _extra("Forwarded"))  # fmt: skip
+    quoted = model("InstantMessage", *base, field("Body", "SYNTHETIC my answer"),
+                   _embedded(original))  # fmt: skip
+    plain = model("InstantMessage", *base, field("Body", "SYNTHETIC own words"))
+    path = write_package(
+        tmp_path / "p.ufdr", report_xml({"Chat": [_chat("c1", named, unnamed, quoted, plain)]})
+    )
+    conn, _s = _import(path)
+    rows = conn.execute(
+        "SELECT locator, forwarded, forwarded_from_raw FROM messages ORDER BY locator"
+    ).fetchall()
+    assert rows == [
+        ("Chat[1]/Messages[1]", 1, "+15550100002 Jo"),
+        ("Chat[1]/Messages[2]", 1, None),  # the package names no original author
+        ("Chat[1]/Messages[3]", None, None),  # a quote is not a forward
+        ("Chat[1]/Messages[4]", None, None),
+    ]
+    from core.report.html import record_line
+
+    mid = conn.execute("SELECT id FROM messages WHERE locator = 'Chat[1]/Messages[1]'").fetchone()
+    line = record_line(conn, mid[0], forwarded.affected(conn))
+    assert "names +15550100002 Jo as the original author" in line
+
+
+def test_a_case_made_before_the_forwarded_columns_still_fails_closed(tmp_path):
+    msg = model("InstantMessage", field("Source", "WhatsApp"), one("From", party(*OWNER)),
+                field("Body", "SYNTHETIC passed on"), _extra("Forwarded"))  # fmt: skip
+    path = write_package(tmp_path / "p.ufdr", report_xml({"Chat": [_chat("c1", msg)]}))
+    conn = sqlite3.connect(":memory:")
+    conn.execute("PRAGMA foreign_keys = ON")
+    schema = (Path(__file__).parents[1] / "core" / "schema.sql").read_text(encoding="utf-8")
+    old = schema.replace(
+        "    bookmarked      INTEGER CHECK (bookmarked IN (0, 1)),",
+        "    bookmarked      INTEGER CHECK (bookmarked IN (0, 1))",
+    )
+    old = old.replace(
+        "    forwarded       INTEGER CHECK (forwarded IN (0, 1)),"
+        "     -- NULL = source did not say\n",
+        "",
+    ).replace(
+        "    forwarded_from_raw TEXT          -- the original author as the source wrote it, "
+        "when it says\n",
+        "",
+    )
+    conn.executescript(old)
+    assert not forwarded.has_columns(conn)
+    UfdrImporter(source_id="u1").import_source(path, conn)
+    (mid,) = conn.execute("SELECT id FROM messages").fetchone()
+    assert forwarded.affected(conn) == {mid: "forwarded"}
+    assert forwarded.original_author(conn, mid) is None

@@ -674,7 +674,7 @@ def test_two_identical_records_on_one_phone_both_show_on_the_clock(conn):
     conn.execute(
         "INSERT INTO messages SELECT 'msg:item1:twin', source_id, 'Test!7', thread_id,"
         " sender_account_id, sender_raw, direction, ts_utc, ts_offset_min, ts_raw, body, lang,"
-        " deleted_flag, bookmarked FROM messages WHERE id = ?",
+        " deleted_flag, bookmarked, forwarded, forwarded_from_raw FROM messages WHERE id = ?",
         (rid,),
     )
     conn.execute(
@@ -749,7 +749,7 @@ def test_an_identical_row_of_the_quoted_message_is_itself_a_quoted_row(conn):
     conn.execute(
         "INSERT INTO messages SELECT 'msg:test:twin', source_id, 'Test!9', thread_id,"
         " sender_account_id, sender_raw, direction, ts_utc, ts_offset_min, ts_raw, body, lang,"
-        " deleted_flag, bookmarked FROM messages WHERE id = ?",
+        " deleted_flag, bookmarked, forwarded, forwarded_from_raw FROM messages WHERE id = ?",
         (claimed.id,),
     )
     conn.execute(
@@ -993,7 +993,7 @@ def _twin(conn, rid: str, new: str) -> None:  # noqa: ANN001
     conn.execute(
         "INSERT INTO messages SELECT ?, source_id, 'Test!40', thread_id, sender_account_id,"
         " sender_raw, direction, ts_utc, ts_offset_min, ts_raw, body, lang, deleted_flag,"
-        " bookmarked FROM messages WHERE id = ?",
+        " bookmarked, forwarded, forwarded_from_raw FROM messages WHERE id = ?",
         (new, rid),
     )
     conn.execute(
