@@ -76,7 +76,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from core import db
+from core import build, db
 from core.audit import invariants, quotes, rules, stance
 from core.audit._llm_json import ModelUnavailable
 from core.contracts import (
@@ -1165,6 +1165,7 @@ def run_audit(
         **({"cloud": components.cloud} if components.cloud is not None else {}),
         **(config or {}),
         "quote_check": quote_check_version(components),  # a caller's config cannot restate it
+        "build": build.build_info(),  # release and git commit; nor this
     }
     with conn:
         conn.execute(

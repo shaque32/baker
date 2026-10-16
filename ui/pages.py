@@ -39,8 +39,10 @@ from core.report.html import CSS as REPORT_CSS
 from core.report.html import (
     STANCE_LABEL,
     audit_log_summary,
+    build_label,
     forwarded_warning,
     labelled_by,
+    quote_check_label,
     record_line,
     review_label,
     said,
@@ -341,8 +343,9 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
         )
         out.append(
             f"<p>Latest run <span class='mono'>{e(run['run_id'])}</span> ({mode}), started "
-            f"{e(run['started_at_utc'])}, rule version {e(run['rule_version'])}, contracts "
-            f"{e(run['contracts_version'])}.</p>"
+            f"{e(run['started_at_utc'])}, Baker {e(build_label(run))}, rule version "
+            f"{e(run['rule_version'])}, quote check "
+            f"{e(quote_check_label(run))}, contracts {e(run['contracts_version'])}.</p>"
         )
         states = claim_states(conn, run=run)
         tally = Counter(st.label for st in states)
