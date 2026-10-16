@@ -85,7 +85,9 @@ from core.review.status import verdict_label as _verdict_label
 
 # 0.4.0 (#76): a "Quote check" row in Versions and the run line, and a call's UTC and printed
 # time beside its line (the review screen shows the same line, through record_line).
-REPORT_VERSION = "0.4.0"
+# 0.5.0 (#91): the top line names the Baker, rule and quote-check versions, and Versions gives
+# each model's seed beside its SHA-256.
+REPORT_VERSION = "0.5.0"
 
 __all__ = [
     "AWAITING_EXPERT",

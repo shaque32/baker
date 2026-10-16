@@ -5,11 +5,15 @@ The supports families and the time trap take their time phrases from the same sh
 (some of the time with its weekday), a part of the day, a bound ("before 9:40 p.m.", "by",
 "no later than", "sometime after"), the record's own minute, "about" a minute, or a range of
 clock times or dates. `fit_when` gives a phrase that holds the record's local time; `miss_when`
-one that plainly misses it, by at least 15 minutes for a bound, 20 for a minute, an hour for
-"about" or a part of the day, 30 minutes beyond a range, and a day for a date. So neither the
-shape nor its place in the sentence tells the answer; only whether the time fits does. `span`
-gives the windows the contact families state around the record (and, for sup_contact, around
-the reply that makes it an exchange).
+one that misses it. A bound, or a range's nearest end, falls as near the record's minute on
+either side: from 3 minutes to two and a half hours away, drawn alike (edge_time,
+clock_range), so how close a time comes tells nothing. The looser shapes miss plainly: by 20
+minutes for a minute, an hour for "about", two hours from a part of the day's widest reading,
+and a day for a date. A miss may also hold the record's clock on another date, most often the
+day before or after, or give its UTC reading. So neither the shape nor its place in the
+sentence tells the answer; only whether the time fits does. `span` gives the windows the
+contact families state around the record (and, for sup_contact, around the reply that makes
+it an exchange).
 """
 
 from __future__ import annotations
@@ -18,7 +22,7 @@ import random
 from datetime import date, timedelta
 
 from eval.stancedata.chat import long_date
-from eval.train.scenario import MOSCOW, Chat, clock12, hour12
+from eval.train.scenario import Chat, clock12, hour12
 
 PARTS = ((5, 12, "morning"), (12, 17, "afternoon"), (17, 21, "evening"), (21, 24, "night"))
 LAST = 23 * 60 + 59
@@ -135,8 +139,53 @@ def clock_around(rng: random.Random, lo: int, hi: int, d: str) -> str | None:
     return _range(rng, a, b, d)
 
 
+# How far a bound, or a range's nearest end, falls from the record's minute (in minutes), and
+# how often: one draw for a time that holds the record and one that misses it.
+BANDS = ((3, 14), (15, 59), (60, 150))
+BAND_WEIGHTS = (0.35, 0.4, 0.25)
+# What a bound reads: a whole, half or quarter hour, or now and then any minute.
+GRIDS = (60, 30, 15, 1)
+GRID_WEIGHTS = (0.45, 0.25, 0.15, 0.15)
+UPPER = ("before", "before", "before", "by", "by", "no later than", "sometime before")
+LOWER = ("after", "after", "after", "no earlier than", "sometime after")
+WIDTHS = (60, 90, 120, 180, 240)
+
+
+def edge_time(rng: random.Random, now: int, side: int) -> int | None:
+    """A clock reading `side` of the minute `now` (1 later, -1 earlier) for a bound: its
+    distance drawn from BANDS and its reading from GRIDS (any minute when the grid has none at
+    that distance). A bound that holds the record and one that misses it draw it alike, so a
+    bound 5 minutes away says nothing about the answer. Never the record's own minute, which
+    would point at the message, never before 1 a.m., and never midnight, which could be
+    either end of the date; None if no reading fits."""
+    lo, hi = rng.choices(BANDS, BAND_WEIGHTS)[0]
+    for step in (rng.choices(GRIDS, GRID_WEIGHTS)[0], 1):
+        ts = [t for k in range(lo, hi + 1) if (t := now + side * k) % step == 0 and 60 <= t <= LAST]
+        if ts:
+            return rng.choice(ts)
+    return None
+
+
+def clock_range(rng: random.Random, now: int, d: str, inside: bool) -> str | None:
+    """A range of clock times on d that holds the minute now (`inside`) or misses it, its ends
+    on whole or half hours (quarter hours when none fit). Its nearest end falls a BANDS
+    distance from now, at most half its width, and the width comes from WIDTHS, the same way
+    either side, so neither tells a range that holds the record from one that misses it. It
+    runs from 1 a.m. at the earliest to 11:30 p.m. at the latest; None when none fits."""
+    lo, hi = rng.choices(BANDS, BAND_WEIGHTS)[0]
+    for step in dict.fromkeys((rng.choice((30, 60)), 30, 15)):
+        w = rng.choice([w for w in WIDTHS if w % step == 0 and w >= 2 * lo])
+        ends = [(a, a + w) for a in range(60, 23 * 60 + 31 - w, step)
+                if lo <= min(abs(a - now), abs(a + w - now)) <= min(hi, w // 2)
+                and (a < now < a + w) == inside]  # fmt: skip
+        if ends:
+            return _range(rng, *rng.choice(ends), d)
+    return None
+
+
 def fit_clock(rng: random.Random, c: Chat, d: str) -> str | None:
-    """A clock phrase on the record's date that holds its local minute."""
+    """A clock phrase on the record's date that holds its local minute: a bound or a range as
+    near as a time trap's misses (edge_time, clock_range), the minute itself, or about it."""
     now, shape = now_of(c), rng.choice(("later", "later", "earlier", "earlier", "at", "about",
                                         "range"))  # fmt: skip
     if shape == "at":
@@ -145,17 +194,11 @@ def fit_clock(rng: random.Random, c: Chat, d: str) -> str | None:
         t = _round(now + 2, 5, up=False)
         return _about(rng, t, d) if 5 <= t <= 23 * 60 + 55 else None
     if shape == "range":
-        return clock_around(rng, now, now, d)
-    if shape == "later":
-        if (t := bound_time(rng, c, after=True)) is None:
-            return None
-        lead = rng.choice(("before", "before", "before", "by", "by", "no later than",
-                           "sometime before"))  # fmt: skip
-        return f"{lead} {t} on {d}"
-    if (t := bound_time(rng, c)) is None:
+        return clock_range(rng, now, d, inside=True)
+    up = shape == "later"
+    if (t := edge_time(rng, now, 1 if up else -1)) is None:
         return None
-    lead = rng.choice(("after", "after", "after", "no earlier than", "sometime after"))
-    return f"{lead} {t} on {d}"
+    return f"{rng.choice(UPPER if up else LOWER)} {clock_of(t)} on {d}"
 
 
 def act_clock(rng: random.Random, minute: int, d: str, closed: bool = False) -> str:
@@ -244,28 +287,26 @@ def when_sent(rng: random.Random, c: Chat) -> str | None:
 
 def _other_day(rng: random.Random, c: Chat) -> date:
     """A local date other than the record's: some of the time its UTC date, which a reader who
-    skips the zone would take for it."""
-    h = c.local.hour
-    if c.tz == MOSCOW and h <= 2 and rng.random() < 0.7:
-        return c.day - timedelta(days=1)  # the UTC date
-    if c.tz != MOSCOW and h >= 20 and rng.random() < 0.7:
-        return c.day + timedelta(days=1)  # the UTC date
-    return c.day + timedelta(days=rng.choice((-3, -2, -1, 1, 2, 3)))
+    skips the zone would take for it, and else most often the day before or after."""
+    if (utc := c.record.utc.date()) != c.day and rng.random() < 0.7:
+        return utc
+    k = rng.choices((1, 2, 3), (0.6, 0.25, 0.15))[0]
+    return c.day + timedelta(days=rng.choice((-1, 1)) * k)
 
 
 def miss_clock(rng: random.Random, c: Chat) -> str | None:
-    """A clock phrase with {d} for the record's date that plainly misses the record's minute."""
-    now, h, m = now_of(c), c.local.hour, c.local.minute
-    shape = rng.choice(("after", "after", "before", "before", "at", "about", "range", "part"))
-    k, exact = rng.randint(15, 90), rng.random() < 0.5
-    if shape == "after":
-        t = now + k if exact else (h + 1) * 60 if m <= 45 else -1
-        lead = rng.choice(("after", "after", "no earlier than", "sometime after"))
-        return f"{lead} {clock_of(t)} on {{d}}" if now < t <= LAST else None
-    if shape == "before":
-        t = now - k if exact else h * 60 if m >= 15 else -1
-        lead = rng.choice(("before", "before", "by", "no later than", "sometime before"))
-        return f"{lead} {clock_of(t)} on {{d}}" if 60 <= t < now else None
+    """A clock phrase with {d} for the record's date that misses the record's minute: a bound
+    or a range as near as a supports item's hold it or farther (edge_time, clock_range), a
+    minute 20 or more minutes away, "about" a minute an hour or more away, or a part of the
+    day two hours from its widest reading (far_parts)."""
+    now = now_of(c)
+    shape = rng.choice(("after", "after", "before", "before", "at", "about", "range", "part",
+                        "part"))  # fmt: skip
+    if shape in ("after", "before"):
+        up = shape == "before"
+        if (t := edge_time(rng, now, -1 if up else 1)) is None:
+            return None
+        return f"{rng.choice(UPPER if up else LOWER)} {clock_of(t)} on {{d}}"
     if shape == "at":
         t = now + rng.choice((-1, 1)) * rng.randint(20, 240)
         return f"at {clock_of(t)} on {{d}}" if 60 <= t <= LAST else None
@@ -273,33 +314,60 @@ def miss_clock(rng: random.Random, c: Chat) -> str | None:
         t = _round(now + rng.choice((-1, 1)) * rng.randint(65, 300), 5, up=False)
         return f"{rng.choice(ABOUT)} {clock_of(t)} on {{d}}" if 60 <= t <= 23 * 60 + 55 else None
     if shape == "range":
-        width = rng.choice((60, 120, 180))
-        if rng.random() < 0.5:
-            b = _round(now - rng.randint(30, 240), 30, up=False)
-            a = b - width
-        else:
-            a = _round(now + rng.randint(30, 240), 30, up=True)
-            b = a + width
-        if a < 60 or b > 23 * 60 + 30:
-            return None
-        return _range(rng, a, b, "{d}")
+        return clock_range(rng, now, "{d}", inside=False)
     parts = far_parts(now)
     return part_phrase(rng, rng.choice(parts), "{d}") if parts else None
 
 
+def miss_day_clock(rng: random.Random, c: Chat) -> tuple[str, date] | None:
+    """A phrase with {d} that would hold the record's local minute on another date
+    (_other_day), and that date: the minute, about it, a range or a part of the day around
+    it, or a bound that runs away from the record's date, before a time on an earlier date or
+    after one on a later date (the other bounds would take the record's date in). Never "the
+    night of" another date, which can run into the small hours of the next."""
+    w, now = _other_day(rng, c), now_of(c)
+    shape = rng.choice(("at", "about", "range", "part", "bound", "bound"))
+    t: str | None = None
+    if shape == "at":
+        t = f"at {clock12(c.local)} on {{d}}"
+    elif shape == "about":
+        m = _round(now + 2, 5, up=False)
+        t = _about(rng, m, "{d}") if 5 <= m <= 23 * 60 + 55 else None
+    elif shape == "range":
+        t = clock_range(rng, now, "{d}", inside=True)
+    elif shape == "part":
+        p = clear_part(now)
+        t = part_phrase(rng, p, "{d}") if p is not None and p != "night" else None
+    elif (m := edge_time(rng, now, -1 if w > c.day else 1)) is not None:
+        t = f"{rng.choice(LOWER if w > c.day else UPPER)} {clock_of(m)} on {{d}}"
+    return (t, w) if t else None
+
+
 def miss_when(rng: random.Random, c: Chat) -> tuple[str, str]:
-    """A time phrase that plainly misses the record's local time, and the rationale's account
-    of the miss: a clock phrase or part of the day on the record's date (50%), a bound of dates
-    that leaves it out (10%) or another date, in the shapes fit_when holds a record with (a
-    range of dates only in the contact windows, which both sides of an answer state)."""
-    loc, d = c.local, long_date(c.day)
+    """A time phrase that misses the record's local time, and the rationale's account of the
+    miss: a clock phrase or part of the day on the record's date (42%), a phrase that would
+    hold the record's clock on another date (15%), the record's UTC clock and date where its
+    UTC date is another (5%), a bound of dates that leaves it out (10%) or another date, in
+    the shapes fit_when holds a record with (a range of dates only in the contact windows,
+    which both sides of an answer state)."""
+    loc, d, utc = c.local, long_date(c.day), c.record.utc
+    outside = f"sent at {clock12(loc)} on {d}, outside the time stated"
     roll = rng.random()
-    if roll < 0.5:
+    if roll < 0.42:
         if t := miss_clock(rng, c):
-            phrase = t.replace("{d}", say_day(rng, c.day))
-            stated = t.replace("{d}", d)
-            return phrase, f"sent at {clock12(loc)} on {d}, outside the time stated ('{stated}')"
-    elif roll < 0.6:
+            return t.replace("{d}", say_day(rng, c.day)), f"{outside} ('{t.replace('{d}', d)}')"
+    elif roll < 0.57:
+        if got := miss_day_clock(rng, c):
+            t, w = got
+            stated = t.replace("{d}", long_date(w))
+            return t.replace("{d}", say_day(rng, w)), f"{outside} ('{stated}')"
+    elif roll < 0.62:
+        m = _round(utc.hour * 60 + utc.minute + 2, 5, up=False)
+        if utc.date() != c.day and 5 <= m <= 23 * 60 + 55:
+            u = f"at {clock12(utc)}" if rng.random() < 0.5 else f"{rng.choice(ABOUT)} {clock_of(m)}"
+            stated = f"{u} on {long_date(utc.date())}"
+            return f"{u} on {say_day(rng, utc.date())}", f"{outside} ('{stated}', its UTC time)"
+    elif roll < 0.72:
         phrase, plain = date_bound(rng, c.day, fits=False)
         return phrase, f"sent on {d} local time ({c.stamp}), not {plain}"
     w = _other_day(rng, c)

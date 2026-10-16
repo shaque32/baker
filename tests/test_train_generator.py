@@ -18,6 +18,7 @@ import pytest
 
 from core.audit.assumption_filler import check_window
 from eval.stancedata import bakerform as bf
+from eval.stancedata.chat import Account
 from eval.stancedata.families import FAMILIES
 from eval.stancedata.model import GenItem
 from eval.train import baker
@@ -32,7 +33,15 @@ from eval.train.baker_place import EDGE_FORMS, _edge_window
 from eval.train.baker_scene import render
 from eval.train.baker_text import words
 from eval.train.glossary import PAIRS, SLANG
-from eval.train.names import AREA_CODES, PEOPLE_EN, PEOPLE_RU
+from eval.train.names import (
+    AREA_CODES,
+    PEOPLE_EN,
+    PEOPLE_RU,
+    Party,
+    Person,
+    cast,
+    outside_account,
+)
 from eval.train.verbs import SUPPORT_VERBS_EN, SUPPORT_VERBS_RU
 from eval.train.when import clear_part, far_parts
 
@@ -892,11 +901,12 @@ def test_parts_of_the_day_miss_only_by_their_widest_reading() -> None:
 
 def test_other_time_shapes_hold_or_miss_the_record(many: list[GenItem]) -> None:
     # A supports assumption's time holds the record's local time, whatever its shape; a time
-    # mismatch's plainly misses it: "about" a clock an hour or more away, a range 30 minutes
-    # or more away, a part of the day two hours or more from its widest reading, a bound or a
-    # range of dates that leaves the record's date out. No shape gives the answer away: "the
-    # night of" comes up on both sides, and a range of dates only in the contact windows,
-    # which sup_contact and con_in_window share, never in the time trap alone.
+    # mismatch's misses it: "about" a clock an hour or more away, a range whose nearest end is
+    # 3 minutes or more away (as near as a supports item's range holds it), a part of the day
+    # two hours or more from its widest reading, a bound or a range of dates that leaves the
+    # record's date out. No shape gives the answer away: "the night of" comes up on both
+    # sides, and a range of dates only in the contact windows, which sup_contact and
+    # con_in_window share, never in the time trap alone.
     assert PART_ON.findall("late in the evening on Friday, May 2, 2025") == [
         ("", "", "evening", "May", "2", "2025")]  # fmt: skip
     assert not _part_misses("evening", 23 * 60 + 3) and _part_misses("night", 10 * 60)
@@ -923,7 +933,7 @@ def test_other_time_shapes_hold_or_miss_the_record(many: list[GenItem]) -> None:
         for lo, hi, *d in WINDOW.findall(a):
             if _date(*d) == day:
                 lo, hi = _minute_of(lo), _minute_of(hi)
-                ok = lo < minute < hi if sup else minute < lo - 29 or minute > hi + 29
+                ok = lo + 2 < minute < hi - 2 if sup else minute < lo - 2 or minute > hi + 2
                 assert ok, (it.family, it.assumption, lt)
                 seen["range"] += 1
         for *parts, month, dd, year in PART_ON.findall(a):
@@ -945,6 +955,77 @@ def test_other_time_shapes_hold_or_miss_the_record(many: list[GenItem]) -> None:
             seen["date range", sup] += 1
     assert min(seen[k] for k in ("loose", "range", "part", "date bound")) >= 10, seen
     assert seen["night", True] and seen["night", False] and not seen["date range", False], seen
+
+
+EDGE_ON = re.compile(rf"\b(before|by|no later than|sometime before|after|no earlier than|"
+                     rf"sometime after) {CLOCK} on {WDAY}{LONG_DATE.pattern}", re.I)  # fmt: skip
+UPPER_WORDS = {"before", "by", "no later than", "sometime before"}
+UTC_STATED = re.compile(rf"{CLOCK} on {WDAY}{LONG_DATE.pattern}', its UTC time")
+
+
+def _record_minute(it: GenItem) -> tuple[date, int]:
+    lt = it.target.local_time
+    return date.fromisoformat(lt[:10]), int(lt[11:13]) * 60 + int(lt[14:16])
+
+
+def test_bounds_come_as_near_whether_they_hold_or_miss(many: list[GenItem]) -> None:
+    # A bound, or a range's nearest end, falls as near the record's minute in a supports item
+    # as in a time trap (when.edge_time, when.clock_range): run 6's supports items had bounds
+    # 3 to 14 minutes from the record and its time traps never missed by less than 15, so a
+    # near bound read as supports. Never nearer than 3 minutes, which would point at the
+    # message itself.
+    near: Counter[tuple[bool, bool]] = Counter()
+    for it in many:
+        day, minute = _record_minute(it)
+        sup, miss = it.gold_stance == "supports", it.family == "ovr_time_mismatch"
+        if not (sup or miss) or "daylight-saving" in it.rationale or it.family == "sup_contact":
+            continue  # sup_contact states its contact windows with when.span, as con_in_window
+        a = QUOTED.sub(" ", it.assumption)
+        gaps = [abs(_minute_of(t) - minute) for _, t, *d in EDGE_ON.findall(a) if _date(*d) == day]
+        gaps += [min(abs(_minute_of(lo) - minute), abs(_minute_of(hi) - minute))
+                 for lo, hi, *d in WINDOW.findall(a) if _date(*d) == day]  # fmt: skip
+        for gap in gaps:
+            assert gap >= 3, (it.family, it.assumption, it.target.local_time)
+            near[sup, gap < 15] += 1
+    share = {sup: near[sup, True] / (near[sup, True] + near[sup, False]) for sup in (True, False)}
+    assert near[False, True] >= 10 and abs(share[True] - share[False]) < 0.15, (near, share)
+
+
+def test_time_traps_miss_on_another_date_as_well(many: list[GenItem]) -> None:
+    # A time trap may hold the record's clock on another date, mostly the day before or after
+    # (or give the record's UTC clock on its UTC date); a bound then runs away from the
+    # record's date, before a time on an earlier date or after one on a later date, since the
+    # other bounds would take the record's date in, and "the night of" another date, which can
+    # run into the next, never comes up. A supports item's clock and part of the day are
+    # always on the record's own date.
+    seen: Counter[str] = Counter()
+    for it in many:
+        day = _record_minute(it)[0]
+        sup, miss = it.gold_stance == "supports", it.family == "ovr_time_mismatch"
+        if not (sup or miss) or "daylight-saving" in it.rationale:
+            continue
+        a = QUOTED.sub(" ", it.assumption)
+        for word, _, *d in EDGE_ON.findall(a):
+            if (other := _date(*d)) != day:
+                assert miss, (it.family, it.assumption, it.target.local_time)
+                assert (other < day) == (word.lower() in UPPER_WORDS), (it.assumption, day)
+                seen["bound"] += 1
+        for *parts, month, dd, year in PART_ON.findall(a):
+            if (other := _date(month, dd, year)) != day:
+                assert miss and abs((other - day).days) <= 3, (it.family, it.assumption)
+                assert parts[0].lower() != "night" and not parts[2], it.assumption
+                seen["part"] += 1
+        for _, _, *d in WINDOW.findall(a):
+            if _date(*d) != day:
+                assert miss, (it.family, it.assumption, it.target.local_time)
+                seen["range"] += 1
+        if miss and "its UTC time" in it.rationale:  # the record's UTC clock, on its UTC date
+            utc = _utc(it.target.local_time)[0]
+            ((t, *d),) = UTC_STATED.findall(it.rationale)
+            assert _date(*d) == utc.date() != day, (it.rationale, it.target.local_time)
+            assert abs(_minute_of(t) - utc.hour * 60 - utc.minute) <= 2, it.rationale
+            seen["utc"] += 1
+    assert min(seen[k] for k in ("bound", "part", "range")) >= 5 and seen["utc"], seen
 
 
 # Words that make a message's exact words name one message: a sender or time trap's record
@@ -1057,6 +1138,81 @@ def test_two_way_contact_denials_show_both_sides_writing(many: list[GenItem]) ->
         assert any(start <= _local(x) < end for x in other), (it.probe_id, it.assumption)
         seen[start == datetime.min] += 1
     assert seen[True] >= 5 and seen[False] >= 20, seen
+
+
+def _who(sender: str) -> str:
+    """How an assumption names the account a line's sender field shows (names.Party.who)."""
+    app, ident, *rest = sender.split(" ", 2)
+    owner = rest == ["(owner)"]
+    label = None if owner or not rest else rest[0]
+    return Party(Account(app, ident, label, owner=owner), Person("x", "they", "en")).who
+
+
+def _first_word(who: str) -> str | None:
+    """The first word of the name an account shows ("Ilya" in "the contact saved as Ilya
+    (work)"), or None for an account shown by its number, id or username alone."""
+    m = re.search(r"saved as (.+)$|\(shown as @?(.+)\)$", who)
+    return re.findall(r"[^\W\d_]+", (m[1] or m[2]).lower())[0] if m else None
+
+
+WRITER_WHY = re.compile(r"The words came from (.+), not (.+); the record does not show whether "
+                        r"\2 also wrote them\.")  # fmt: skip
+
+
+def test_sender_traps_name_another_account_in_the_supports_shapes(many: list[GenItem]) -> None:
+    # Guide rule 23: a sender trap's claimed sender never sent the record. It is the other side
+    # of the chat, or an account no line shows (names.outside_account), at times one whose name
+    # matches the chat contact's: the phone shows two accounts, and nothing merges them. Its
+    # shapes are the supports items' (frames.py): a report, the message as the subject, or the
+    # exact words.
+    seen: Counter[str] = Counter()
+    for it in many:
+        if it.family != "ovr_sender_mismatch":
+            continue
+        m = WRITER_WHY.fullmatch(it.rationale)
+        assert m and m[1] == it.target.sender, it.rationale
+        # Every chat on the phone is the owner's, shown or not.
+        claimed, members = m[2], {_who(ln.sender) for ln in it.lines()} | {"the owner"}
+        assert claimed != _who(it.target.sender), it.assumption
+        assert claimed in it.assumption or claimed[:1].upper() + claimed[1:] in it.assumption
+        if claimed in members:
+            seen["other side"] += 1
+        else:
+            seen["outside"] += 1
+            names = {_first_word(w) for w in members} - {None}
+            seen["namesake"] += _first_word(claimed) in names
+        a = it.assumption
+        seen["words" if it.target.text in a else "says" if " says " in a else "report"] += 1
+    total = seen["other side"] + seen["outside"]
+    assert 0.2 * total <= seen["outside"] <= 0.4 * total, seen
+    assert seen["namesake"] >= 5 and seen["says"] >= 5, seen
+    assert seen["report"] + seen["says"] >= 0.4 * total, seen
+
+
+def test_supports_keep_only_if(many: list[GenItem]) -> None:
+    # "only if jonah calls back will i pay" makes the condition needed, not enough on its own:
+    # a supports report that dropped "only" would say more than the record (rule 14).
+    seen = 0
+    for it in many:
+        if it.gold_stance == "supports" and re.search(r"\bonly if\b", it.target.text.lower()):
+            assert re.search(r"\bonly if\b", it.assumption), it.assumption
+            seen += 1
+    assert seen >= 3, seen
+
+
+def test_outside_accounts_are_never_members() -> None:
+    # names.outside_account: never a member's identifier or name as the phone shows it; half
+    # the time the first contact's own person behind another account.
+    rng, namesakes = random.Random(7), 0  # noqa: S311 - a seeded test sample
+    for i in range(2000):
+        app, owner, contacts = cast(rng, ("en", "ru")[i % 2], extra=i % 3 == 0)
+        members = [owner, *contacts]
+        x = outside_account(rng, app, members)
+        assert x.account.app == app and not x.account.owner
+        assert x.account.identifier not in {m.account.identifier for m in members}
+        assert x.who not in {m.who for m in members}
+        namesakes += x.person == contacts[0].person
+    assert 800 <= namesakes <= 1200, namesakes
 
 
 def test_surface_cues_are_balanced_across_labels(many: list[GenItem]) -> None:
