@@ -122,7 +122,12 @@ There is no model judge of verdicts in Baker. The word "judge" does not name any
   `/mnt/project-files/baker/cloud-first/steps-check/RESULTS.md`. Those bars were unfair to Opus
   (the matcher penalizes the splitting the claims prompt asks for; the 14B was never scored
   without the sheet), so Arsh chose a same-test comparison (2026-10-15, "Test after fixes"):
-  `eval/bench/fair_steps.py` and `eval/probe/mac_v12.sh` in PR #93. Not run yet.
+  `eval/bench/fair_steps.py` and `eval/probe/mac_v12.sh` in PR #93. The Opus half ran on
+  2026-10-16 at medium effort ($5.23, 0 call errors, cloud container): claim splitting 95%
+  (strict matcher too), the audit without the sheet 70%, fills alone 75% with a lenient
+  labeler, fills holding every signed core template 12 of 20, 0 false supported. The 14B half
+  (Mac) has not run, so there is no comparison yet; one Opus run is not a measure of Opus.
+  Results: `/mnt/project-files/baker/cloud-bench/2026-10-16/fair-14b-vs-opus/`.
 
 **Merge state:** #68 is a draft (main merged in after #71). Arsh approved its
 revised CLAUDE.md wording (2026-10-15 07:29Z, recorded in `PROPOSED_CHANGES.md`); it is applied

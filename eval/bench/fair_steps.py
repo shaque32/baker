@@ -17,7 +17,16 @@ Three measures, each through the product's own code:
    (core/audit/assumption_filler.py) and labels stance, then the simulated expert decides.
 3. Assumption filling alone: measure 2's fills, replayed from its database with no model call,
    with the merge gate's gold-direction stand-in as the labeler. It shows how far the fills
-   alone can take the verdicts, whatever the labeler.
+   alone can take the verdicts, whatever the labeler. It is lenient: that stand-in labels every
+   retrieved record the gold way and the simulated expert accepts a key record on any of the
+   claim's assumptions, so a vague or wrong fill that retrieves a key record still scores.
+4. The fills against the signed assumption sheet, with no labeler: a claim counts when its
+   fills hold every signed core template as often as the sheet does. A vague fill cannot pass;
+   parameters (windows, counts) are not compared.
+
+Measures 1 (strict) and 4 were added after Codex's review of PR #93 (2026-10-16 16:46Z), after
+the opus arm ran and before the local arm; `--rescore` adds them to a finished arm from its
+stored databases with no model call. PREREGISTERED.md says how they enter the decision.
 
 The plan and decision rule were written down before any call (PREREGISTERED.md beside the
 results). Opus at medium effort is not deterministic and each arm runs once, so a one-claim
@@ -37,6 +46,7 @@ import re
 import sqlite3
 import sys
 import time
+from collections import Counter
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -64,11 +74,15 @@ class Proposal:
     text: str
 
 
-def split_match(gold: list[GoldClaim], proposals: list[Proposal]) -> list[dict[str, Any]]:
+def split_match(
+    gold: list[GoldClaim], proposals: list[Proposal], strict: bool = False
+) -> list[dict[str, Any]]:
     """One row per gold claim. Each proposal counts toward the one gold claim of its paragraph
     that holds the largest share of the proposal's content words (ties: the lower claim id),
     so a proposal never counts twice. A gold claim is found when its proposals together hold at
-    least MATCH_AT of its content words and every number in it."""
+    least MATCH_AT of its content words and every number in it. As preregistered, a proposal
+    sharing any one word counts; `strict` counts it only when at least MATCH_AT of its own
+    words are in that gold claim, so unrelated fragments of a paragraph cannot pool words."""
     by_para: dict[str, list[GoldClaim]] = {}
     for g in gold:
         by_para.setdefault(str(g.para_no), []).append(g)
@@ -78,7 +92,7 @@ def split_match(gold: list[GoldClaim], proposals: list[Proposal]) -> list[dict[s
         best: tuple[float, str] | None = None
         for g in sorted(by_para.get(p.para_no, []), key=lambda g: g.claim_id):
             share = len(pw & words(g.text)) / len(pw) if pw else 0.0
-            if share > 0 and (best is None or share > best[0]):
+            if (share >= MATCH_AT if strict else share > 0) and (best is None or share > best[0]):
                 best = (share, g.claim_id)
         if best is not None:
             assigned[best[1]].append(p)
@@ -113,6 +127,16 @@ def proposals_in(db: Path) -> list[Proposal]:
     return [Proposal(id=r[0], para_no=str(r[1]), text=r[2]) for r in rows]
 
 
+def strict_split(db: Path) -> dict[str, Any]:
+    gold = load_jsonl(rp.gold_path(CASE), GoldClaim)
+    rows = split_match(gold, proposals_in(db), strict=True)
+    return {
+        "split_recall_strict": round(sum(r["found"] for r in rows) / len(gold), 3),
+        "split_found_strict": [r["claim_id"] for r in rows if r["found"]],
+        "split_rows_strict": rows,
+    }
+
+
 def claims_step(model: Any, out: Path) -> dict[str, Any]:
     gold = load_jsonl(rp.gold_path(CASE), GoldClaim)
     res = recall_for(model, CASE, out)
@@ -126,6 +150,7 @@ def claims_step(model: Any, out: Path) -> dict[str, Any]:
         "split_recall": round(found / len(gold), 3),
         "split_found": [r["claim_id"] for r in split if r["found"]],
         "split_rows": split,
+        **strict_split(out / f"{CASE}.db"),
         "wall_seconds": res["wall_seconds"],
         "model_calls": res["model_calls"],
     }
@@ -230,6 +255,46 @@ def fills_only_step(audit_out: Path, out: Path) -> dict[str, Any]:
     return audit_result(gold, preds, out)
 
 
+def sheet_coverage(sheet: list[dict[str, Any]], fills: list[tuple[str, str]]) -> dict[str, Any]:
+    """Measure 4. `sheet` is the signed sheet's rows, `fills` the (claim id, template id) of each
+    core assumption the filler wrote. A claim is covered when its fills hold every signed core
+    template at least as often as the sheet does; extra fills are listed, not penalized (an
+    extra core assumption can only hold a claim back)."""
+    want: dict[str, Counter[str]] = {}
+    for r in sheet:
+        if r.get("is_core"):
+            want.setdefault(r["claim_id"], Counter())[r["template_id"]] += 1
+    have: dict[str, Counter[str]] = {}
+    for cid, tid in fills:
+        have.setdefault(cid, Counter())[tid] += 1
+    rows = []
+    for cid in sorted(want):
+        got = have.get(cid, Counter())
+        missing, extra = want[cid] - got, got - want[cid]
+        rows.append(
+            {
+                "claim_id": cid,
+                "covered": not missing,
+                "missing": sorted(missing.elements()),
+                "extra": sorted(extra.elements()),
+            }
+        )
+    return {"covered": sum(r["covered"] for r in rows), "claims": len(rows), "rows": rows}
+
+
+def sheet_step(audit_db: Path) -> dict[str, Any]:
+    path = rp.assumption_sheet(CASE)
+    if path is None:
+        raise SystemExit(f"no assumption sheet for {CASE}")
+    sheet = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
+    conn = sqlite3.connect(audit_db)
+    try:
+        fills = conn.execute("SELECT claim_id, template_id FROM assumptions WHERE is_core = 1")
+        return sheet_coverage(sheet, [(c, t) for c, t in fills.fetchall()])
+    finally:
+        conn.close()
+
+
 # The arms ---------------------------------------------------------------------------------
 
 
@@ -319,13 +384,26 @@ def summary(res: dict[str, Any]) -> str:
             f"{c['committed_recall']:.0%}, split-aware {c['split_recall']:.0%} "
             f"(missed: {', '.join(missed) or 'none'}); {c['wall_seconds']} s"
         )
-    for label, r in (("Full audit, no sheet", a), ("Fills only, perfect labeler", f)):
+        if "split_recall_strict" in c:
+            lost = [r["claim_id"] for r in c["split_rows_strict"] if not r["found"]]
+            lines.append(
+                f"- Claim proposal, strict split-aware (each fragment must match): "
+                f"{c['split_recall_strict']:.0%} (missed: {', '.join(lost) or 'none'})"
+            )
+    for label, r in (("Full audit, no sheet", a), ("Fills only, lenient labeler", f)):
         if r:
             lines.append(
                 f"- {label}: accuracy {r['verdict_accuracy']:.0%}, false supported "
                 f"{r['n_false_supported']}, dropped labels {r['dropped_labels']}"
                 + (f", {r['wall_seconds']} s" if "wall_seconds" in r else "")
             )
+    sh = res.get("sheet")
+    if sh:
+        short = [f"{r['claim_id']} ({', '.join(r['missing'])})" for r in sh["rows"] if r["missing"]]
+        lines.append(
+            f"- Fills against the signed sheet: {sh['covered']} of {sh['claims']} claims hold every"
+            f" signed core template (missing: {'; '.join(short) or 'none'})"
+        )
     if a and f:
         lines += ["", "| claim | full audit | fills only |", "|---|---|---|"]
         lines += [f"| {k} | {a['per_claim'].get(k)} | {f['per_claim'].get(k)} |"
@@ -343,8 +421,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--effort", default="medium", choices=EFFORTS, help="opus arm: API effort")
     ap.add_argument("--skip-claims", action="store_true")
     ap.add_argument("--out", type=Path, default=None)
+    ap.add_argument(
+        "--rescore", action="store_true", help="add measures 1 strict and 4 to a finished --out"
+    )
     args = ap.parse_args(argv)
     out = args.out or Path("eval/out/fair_steps") / args.arm
+    if args.rescore:
+        return rescore(out)
     model = (
         local_model(args.models, args.model_name)
         if args.arm == "local"
@@ -361,6 +444,7 @@ def main(argv: list[str] | None = None) -> int:
     res["audit"] = audit_step(model, out / "audit")
     print("3/3 the same fills with a perfect labeler (no model call)", file=sys.stderr, flush=True)
     res["fills_only"] = fills_only_step(out / "audit", out / "fills_only")
+    res["sheet"] = sheet_step(out / "audit" / f"{CASE}.db")
     if hasattr(model, "usage"):
         res["usage"] = model.usage()
     if getattr(model, "failure", None):
@@ -371,6 +455,21 @@ def main(argv: list[str] | None = None) -> int:
     (out / "summary.md").write_text(md, encoding="utf-8")
     print(md)
     return 1 if res.get("invalid") else 0
+
+
+def rescore(out: Path) -> int:
+    """Measures 1 strict and 4 for an arm that ran before they existed, from its stored
+    databases. Writes result.rescored.json and summary.rescored.md beside the originals."""
+    res = json.loads((out / "result.json").read_text(encoding="utf-8"))
+    if res.get("claims"):
+        res["claims"].update(strict_split(out / "claims" / f"{CASE}.db"))
+    res["sheet"] = sheet_step(out / "audit" / f"{CASE}.db")
+    (out / "result.rescored.json").write_text(json.dumps(res, indent=2, default=str) + "\n",
+                                              encoding="utf-8")  # fmt: skip
+    md = summary(res)
+    (out / "summary.rescored.md").write_text(md, encoding="utf-8")
+    print(md)
+    return 0
 
 
 if __name__ == "__main__":

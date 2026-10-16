@@ -35,7 +35,10 @@ Template:
   asks for splitting), the case01 audit without the assumption sheet, and the same fills with a
   perfect labeler, replayed with no model call. Its Opus arm retries a failed send as the
   product does, and a cloud call still failing after that marks the run invalid rather than
-  counting as the model's dropped label.
+  counting as the model's dropped label. After Codex's second review it also reports a strict
+  split matcher (each fragment must match its gold claim) and the fills against the signed
+  sheet's core templates, since the registered measures can over-credit; a step moves toward
+  Opus only if it wins on both the registered and the added measure.
 - Where: branch `claude/project-thread-01fybj`, PR #93, not merged.
 - Verified: the v1.2 body is byte for byte the text the preregistered Opus runs sent (tests pin
   its SHA-256 and check it is v1.1 plus the two sentences only). Opus 5.5 on the signed set,
@@ -43,13 +46,14 @@ Template:
   supports, contradicts recall 10/11 (misses P065). New items: wrong contradicts 2 to 0 (24
   items, high) and 1 to 0 (26 items, medium), controls kept. $8.59 of API spend, synthetic data
   only (`/mnt/project-files/baker/cloud-bench/2026-10-15/told-frame-line/`). `make check`:
-  green on the branch with main at 966be8f (2069 passed, 6 skipped, lint clean; eval unchanged:
+  green on the branch with main at 966be8f (2071 passed, 6 skipped, lint clean; eval unchanged:
   case01 1.00 with 0 false supported, unreviewed 0.60, hostile PASS, case02 aggregate 0.90).
 - Open: the local 14B reads this prompt and has not been run on it; Arsh runs
   `bash eval/probe/mac_v12.sh` on the Mac (the probe, then the test's 14B half). The test's plan
   and decision rule were written before any call
-  (`/mnt/project-files/baker/cloud-bench/2026-10-16/fair-14b-vs-opus/PREREGISTERED.md`); no result
-  yet. #68's `PROBE_PASSED` list needs an entry for Opus with v1.2, signed
+  (`/mnt/project-files/baker/cloud-bench/2026-10-16/fair-14b-vs-opus/PREREGISTERED.md`, with
+  Amendment 1 for the added measures). Only the Opus half has run (2026-10-16, $5.23, cloud
+  container), so there is no comparison yet. #68's `PROBE_PASSED` list needs an entry for Opus with v1.2, signed
   by Arsh, before cloud labels can run. P065 is missed by Opus with v1.2; "Custom model for
   Baker" notes rule 23 may make its own label complicates (a separate sign-off). Stored v1.1
   answers are not reused, so a re-run of an existing case labels again.

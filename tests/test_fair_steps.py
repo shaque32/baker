@@ -18,6 +18,7 @@ from eval.bench.fair_steps import (
     Retried,
     main,
     pick_entry,
+    sheet_coverage,
     split_match,
     summary,
 )
@@ -60,6 +61,37 @@ def test_every_number_must_be_kept_and_the_paragraph_must_match() -> None:
     assert found(split_match([G1], [no_date])) == {"C01": False}
     elsewhere = Proposal("p1", "5", G1.text)
     assert found(split_match([G1], [elsewhere])) == {"C01": False}
+
+
+def test_strict_matching_stops_unrelated_fragments_pooling_their_words() -> None:
+    bits = [
+        Proposal("p1", "4", "PETROV owns a garage in Queens"),
+        Proposal("p2", "4", "Telegram was installed on 3 phones"),
+        Proposal("p3", "4", "REYES moved house in March 2026 and 6 cats came"),
+    ]
+    assert found(split_match([G1], bits)) == {"C01": True}  # the registered matcher
+    assert found(split_match([G1], bits, strict=True)) == {"C01": False}
+    real = [
+        Proposal("p1", "4", "PETROV sent 3 Telegram messages to REYES."),
+        Proposal("p2", "4", "PETROV's messages to REYES were sent on March 6, 2026."),
+    ]
+    assert found(split_match([G1], real, strict=True)) == {"C01": True}
+
+
+def test_fills_cover_a_claim_only_with_every_signed_core_template() -> None:
+    sheet = [
+        {"claim_id": "C01", "template_id": "contact_entry", "is_core": True},
+        {"claim_id": "C02", "template_id": "same_account", "is_core": True},
+        {"claim_id": "C02", "template_id": "record_time", "is_core": True},
+        {"claim_id": "C02", "template_id": "record_time", "is_core": True},
+        {"claim_id": "C02", "template_id": "meaning", "is_core": False},
+    ]
+    fills = [("C01", "contact_entry"), ("C01", "event"), ("C02", "event"), ("C02", "record_time")]
+    res = sheet_coverage(sheet, fills)
+    assert (res["covered"], res["claims"]) == (1, 2)
+    c02 = res["rows"][1]
+    assert (c02["missing"], c02["extra"]) == (["record_time", "same_account"], ["event"])
+    assert res["rows"][0]["extra"] == ["event"]  # listed, not held against the claim
 
 
 def _db_with_call(path: Path, prompt: str, raw: str, outcome: str = "ok") -> None:
