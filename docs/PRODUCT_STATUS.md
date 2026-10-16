@@ -58,7 +58,7 @@ screen in `ui/`.
 |---|---|---|---|
 | Qwen3-14B Q4_K_M (GGUF, Apache-2.0, sha256 `500a8806…81f0`, n_ctx 8192) | Expert's computer, llama-cpp-python, `flash` runtime | Claim proposal, assumption filling, stance labels (all cases on main; fallback on #68), optional AI review | main |
 | Claude Opus 5.5, medium effort | Anthropic API, expert's own key | Stance labels only, for cases the expert opted in | branch #68 (draft, not merged) |
-| mDeBERTa-v3-base classifier (eval only; the product never loads it) | Trained on cloud CPU | Candidate small stance model; reads a case by name as the 14B does | branch #50 (draft). Not working yet: no run has cleared the dev bars. Best so far, run 6 (2026-10-15, cloud CPU, dev split only): supports recall 0.97, contradicts precision 0.98, 1 contradicts and 9 moved traps shown as supports (bar: 0). No model has been scored on the probe set, the test split or case02 |
+| mDeBERTa-v3-base classifier (eval only; the product never loads it) | Trained on cloud CPU | Candidate small stance model; reads a case by name as the 14B does | branch #50 (draft). Not working yet: no run has cleared the dev bars with the margin set in advance. Best so far, run 7 (2026-10-16, cloud CPU, dev split only): at its strictest setting supports recall 0.92, contradicts precision 0.995, 0 contradicts and 0 moved traps shown as supports; the pre-set margin needs recall 0.95. No model has been scored on the probe set, the test split or case02 |
 | Claude Sonnet 5.5, Haiku 5.5, Opus 5.5 | Anthropic API | Benchmarks only, in `eval/bench/` | main (eval only) |
 
 The local model file is pinned by SHA-256 and checked before loading (`core/audit/_local_model.py`,

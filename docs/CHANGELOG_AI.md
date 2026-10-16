@@ -19,6 +19,19 @@ Template:
 
 ---
 
+## 2026-10-16: Small stance model, run 7 (#50)
+- Changed: run 7 trains run 6's weights 1 more epoch on new training data with more varied time
+  traps (train sha256 `3e40b3b3…`, 19,247 items; time traps 355 to 823). No code change.
+- Where: branch `claude/train-small-model-i04typ`, PR #50 (draft), not merged.
+- Verified: overlap check 0 flags on the run 7 training file. Dev split only (913 undisputed
+  items, cloud CPU, 2026-10-16): default policy supports recall 0.98, contradicts precision 0.99,
+  1 contradicts and 4 moved traps shown as supports (run 6: 9). With "supports" needing p >= 0.99:
+  recall 0.92, precision 0.995, 0 and 0, which meets the go-bar levels on dev but not tune.py's
+  pre-set margin (recall 0.95), so no policy is written and run 7 is not a candidate.
+- Open: run 8 on a fresh draw of the same data; probe, test-split and case02 scoring only for a
+  candidate.
+- Affects: none in the product (eval only).
+
 ## 2026-10-15: Small stance model, run 6; tune.py checks the moved-traps bar (#50)
 - Changed: run 6 trains run 5's weights 1 more epoch on new training data (train sha256
   `6637a9ef…`, 19,244 items with more varied sender traps), trap items weighted 3x. tune.py's
