@@ -258,15 +258,23 @@ training-data generators (#79). PR #70 is an empty Grok Product review PR, never
    prompt v1.0, and has not been run on prompt v1.1 or the signed 105-item set.
 5. **Evidence recall is modest.** Opus case01 surfaced key evidence for 35% of claims needing it;
    14 of 20 claims depend on the expert finding or accepting key evidence.
-6. **Other gaps:** no translation in the pipeline; no embeddings; Windows installer unsigned; on #68 a
-   key saved for a plain (unencrypted) case, or before a case is open, is an owner-only plain
-   file (an encrypted case seals its own key under the case key); experts still need the 14B
-   installed even with cloud on.
+6. **Writer read from the claim's words (fixed on branch, not merged).** When the 14B leaves a
+   sender assumption without a person, code reads the writer from the claim (`stated_sender`,
+   `core/audit/assumption_filler.py`, from #53). On main it names the wrong person when the quote
+   is handed on after the verb: "PETROV texted REYES, who responded 'ok'" gives PETROV, so the
+   sender check tests the wrong person (inferred, not measured: a wrong CONTRADICTED, or a wrong
+   pass if PETROV sent those words). 5 of 6 such phrasings did this. Branch `claude/project-thread-c6qjp9` (PR
+   #77) fails closed on them; the claim then stays without a writer and is refused as before.
+   The eval did not move (case01 has no such phrasing).
 7. **Count check said "deleted" (fixed in PR #83, not merged).** On main the count check's
    detail reads "N of them are flagged deleted" when counted messages carry the source's deletion
    flag. That breaks the rule that Baker never says "deleted", and the report's forbidden-words
    check (`core/audit/invariants.py:65`) would refuse to build a report containing it. #83
    rewords it to "N of them carry the source's deletion flag" (count check 1.0.1).
+8. **Other gaps:** no translation in the pipeline; no embeddings; Windows installer unsigned; on #68 a
+   key saved for a plain (unencrypted) case, or before a case is open, is an owner-only plain
+   file (an encrypted case seals its own key under the case key); experts still need the 14B
+   installed even with cloud on.
 
 ## 10. Tests and results (main `7a14437`, before #64 to #67)
 

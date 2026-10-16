@@ -799,11 +799,110 @@ _WRITER_RE = re.compile(
 # Any verb that can introduce a quote. The one nearest before the quote governs it: in
 # 'PETROV wrote a report quoting REYES: "ok"' it is "quoting", so PETROV is not the writer.
 _QUOTING_RE = re.compile(
-    rf"\b(?:{_WRITER_VERBS}|said|says|asked|posted|quoted|quoting|quotes|forwarded|forwarding|"
-    r"stated|saying|according|reads|read)\b",
+    rf"(?<!@)\b(?:{_WRITER_VERBS}|said|says|asked|posted|quoted|quoting|quotes|forwarded|forwarding|"
+    r"stated|states|stating|saying|according|reads|read|answered|answers|answering|responded|"
+    r"responds|responding|replies|replying|writes|writing|texts|texting|sends|sending|tells|"
+    r"telling|typed|types|typing)\b",
     re.IGNORECASE,
 )
 QUOTE_REACH = 80  # characters from the writer's verb to the quote
+# "two texts", "her replies", "the answers": a quote word that can be a noun is no verb after
+# one of these, but only when nothing but punctuation follows it up to the quote. Only such
+# words: "the quoted statement" still governs the quote, and so does a noun phrase that says
+# whose words they are ("two quotes attributed to REYES: 'ok'").
+_NOUN_FORMS = frozenset({"texts", "replies", "answers", "types", "quotes", "reads"})
+_NOUN_BEFORE = re.compile(
+    r"\b(?:a|an|the|his|her|their|its|my|our|your|this|these|those|some|several|many|few|"
+    r"two|three|four|five|six|seven|eight|nine|ten|\d+)\s*$",
+    re.IGNORECASE,
+)
+# 'PETROV texted REYES, writing "ok"': a participle right after a comma (or "and", "then")
+# has the same subject as the verb before it, so it does not govern the quote.
+_SAME_SUBJECT_FORMS = frozenset(
+    {
+        "writing",
+        "texting",
+        "sending",
+        "typing",
+        "telling",
+        "saying",
+        "stating",
+        "replying",
+        "answering",
+        "responding",
+    }
+)
+_SAME_SUBJECT_BEFORE = re.compile(r"(?:,|\b(?:and|then))\s*$", re.IGNORECASE)
+# Words that carry a quote: a possessive hands the quote on only before one of these
+# ("REYES's message", "JONES' reply") or right before the quote, not in "from his brother's
+# phone".
+_QUOTE_NOUNS = (
+    r"(?:texts?|messages?|repl(?:y|ies)|answers?|responses?|quotes?|words|statements?|remarks?|"
+    r"posts?|emails?|notes?|comments?|tweets?|captions?|lines?|chats?|dms?|voicemails?)"
+)
+_POSSESSIVE_OF_QUOTE = (
+    r"(?:\b(?!(?:it|that|he|she|what|there|here|where|how|this|let)['’]s\b)\w+['’]s\b|\w+s['’](?=\s))"
+    rf"(?=(?:\s+[\w-]+){{0,2}}?\s+{_QUOTE_NOUNS}\b|[\s,:\"'“‘”’-]*$)"
+)
+# A stop after a title ("Dr. Reyes") is no sentence break. A single letter is not excused:
+# "Exhibit A. REYES shot back" is a break, so "J. Reyes" fails closed.
+_NOT_A_TITLE = "".join(
+    rf"(?<!\b{t})"
+    for t in (
+        "Dr",
+        "Mr",
+        "Mrs",
+        "Ms",
+        "Sgt",
+        "Det",
+        "Lt",
+        "St",
+        "Jr",
+        "Sr",
+        "Ofc",
+        "Cpl",
+        "Capt",
+        "Prof",
+        "Gen",
+        "Col",
+        "Insp",
+        "Agt",
+        "No",
+    )
+)
+# Words that can start a new clause with its own subject: "and REYES shot back", "as REYES
+# shot back", "while he typed".
+_JOINS = (
+    r"(?:and|but|or|then|as|while|when|whereas|although|though|because|since|until|after|"
+    r"before|so)"
+)
+# Between the writer's verb and the quote, anything that can hand the quote to someone else
+# names no writer: a sentence break ('PETROV messaged REYES. REYES: "ok"'; a stop before a
+# capital, so "2:31 p.m.:" and "Dr. Reyes" are no break), a relative or a joined clause
+# ('PETROV texted REYES, who responded "ok"', '..., and REYES shot back ...'), a possessive of
+# the quoted words ('PETROV replied to REYES's message "ok"', "... JONES' reply ..."), or
+# words said to come from someone else ('PETROV wrote a report with the quotes from REYES,
+# "ok"'). "and" joins a clause only before a pronoun or a name with words of its own:
+# 'PETROV texted REYES and SMITH: "ok"' is one writer, two recipients (an all-caps claim is
+# checked by _CAPS_CLAUSE_RE). Time words ("before midnight") hand nothing on, nor does a
+# contraction ("that it's").
+_HANDED_ON_RE = re.compile(
+    rf"[;!?]|{_NOT_A_TITLE}\.(?=\s+[A-Z])|{_POSSESSIVE_OF_QUOTE}"
+    r"|\b(?:who|whom|whose|which)\b"
+    rf"|\b{_QUOTE_NOUNS}\s+(?:from|of|by)\b"
+    rf"|\b{_JOINS}\s+(?:(?:he|she|they|it|we|i)\b|(?-i:(?:[A-Z][\w'.-]*\s+){{1,3}}[a-z]))",
+    re.IGNORECASE,
+)
+# The same joined clause in an all-caps claim: "AND REYES SHOT BACK", not "AND SMITH:".
+_CAPS_CLAUSE_RE = re.compile(rf"\b(?i:{_JOINS})\s+(?:[A-Z][A-Z'.-]*\s+){{1,3}}[A-Z]")
+# A name right after one of these is not the one who wrote: 'a friend of PETROV texted ...',
+# 'someone posing as PETROV texted ...'. A plain "As PETROV texted ..." still names him.
+_POSSESSIVE_BEFORE = re.compile(r"['’]s\s*$", re.IGNORECASE)
+_NOT_THE_WRITER_BEFORE = re.compile(
+    r"(?:\b(?:of|for|to|with|by|from|via|behind|about|like|than|posing\s+as|"
+    r"pretending\s+to\s+be|impersonating))\s*$",
+    re.IGNORECASE,
+)
 
 
 def coverage_gap(claim: Claim, proposals: list[Proposal]) -> str | None:
@@ -1060,28 +1159,53 @@ class LocalAssumptionFiller:
         params = {k: v for k, v in sender.items() if k in allowed} | {"window": window}
         return [*out, Proposal("record_time", params, is_core=True)]
 
+    @staticmethod
+    def _passes_quote_on(before: str, verb: re.Match[str]) -> bool:
+        """True when this quote word is a noun or a same-subject participle, so the verb
+        before it still governs the quote."""
+        word, ahead = verb.group(0).casefold(), before[: verb.start()]
+        if word in _NOUN_FORMS and _NOUN_BEFORE.search(ahead):
+            return not re.search(r"\w", before[verb.end() :])
+        return word in _SAME_SUBJECT_FORMS and bool(_SAME_SUBJECT_BEFORE.search(ahead))
+
     def stated_sender(self, claim: Claim, quoted: str | None) -> str | None:
         """The person the claim names as the writer of the quoted words, or None.
 
         The verb nearest before the quote must be a verb of writing with a name right before
         it ("PETROV wrote to @northstar: ..."), at most QUOTE_REACH characters from the quote,
-        and the name must match exactly one person the expert created. Anything else (no
-        quote, "quoting", "said", a name that is no person) names no writer."""
+        and the name must match exactly one person the expert created. Nothing between the
+        verb and the quote may hand the quote on (a sentence break, "who", "and", a
+        possessive), and the name must not follow "of", "for", "posing as" and the like.
+        Anything else (no quote, "quoting", "said", "answered", a name that is no person)
+        names no writer."""
         if not quoted or not quoted.strip():
             return None
         at = _nfc(claim.text).find(_nfc(quoted.strip()))
         if at < 0:
             return None
         before = _nfc(claim.text)[:at]
-        verbs = list(_QUOTING_RE.finditer(before))
+        verbs = [v for v in _QUOTING_RE.finditer(before) if not self._passes_quote_on(before, v)]
         if not verbs or at - verbs[-1].end() > QUOTE_REACH:
             return None
         last = verbs[-1]
         match = next((m for m in _WRITER_RE.finditer(before) if m.end() == last.end()), None)
         if match is None:
             return None
+        between = before[last.end() :]
+        if _HANDED_ON_RE.search(between) or (
+            not re.search(r"[a-z]", between) and _CAPS_CLAUSE_RE.search(between)
+        ):
+            return None  # the quote may be someone else's: fail closed, as for no writer
         words = match.group(1).split()
         for i in range(len(words)):
+            # What comes before this form of the name, capitalised words included ("A FRIEND
+            # OF PETROV TEXTED"), must not make it someone else's. After a possessive a later
+            # form may still name the writer ("PETROV'S ASSISTANT REYES TEXTED": REYES).
+            prefix = " ".join([before[: match.start()], *words[:i]])
+            if _NOT_THE_WRITER_BEFORE.search(prefix):
+                return None
+            if _POSSESSIVE_BEFORE.search(prefix):
+                continue
             try:
                 return self._person(" ".join(words[i:]))  # the longest form that names a person
             except Reject:
