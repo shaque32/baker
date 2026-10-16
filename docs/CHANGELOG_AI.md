@@ -71,6 +71,52 @@ Template:
   Training data has no told-the-owner or undated-denial items, so expect misses there on the probe.
 - Affects: none in the product (eval only; the 14B stays the local stance model).
 
+## 2026-10-15: Rules 0.2.2 for the stricter time windows (#75)
+- Changed: `RULE_VERSION` 0.2.1 -> 0.2.2 with no rule logic change; it marks #66's new reading of
+  stated time windows, so verdicts decided under 0.2.1 can differ. "Re-run verdicts" now refuses
+  an audit made under rules older than 0.2.2 and asks for a full audit, since its stored
+  assumptions were built the old way (`core/review/redecide.py`, `INPUTS_CHANGED_AT`).
+- Where: branch `claude/project-thread-ia32bq`, PR #75, not merged. Arsh approved the bump
+  2026-10-15 07:20Z.
+- Verified: `make check` green; new redecide test; eval unchanged (case01 1.00, 0 false
+  supported; case02 0.90, 0 false supported; hostile PASS). Codex's one finding fixed.
+- Open: an existing case audited before 0.2.2 needs a full audit (hours on a laptop) before its
+  verdicts can be re-run.
+- Affects: verdicts on time-bound claims; the version printed on reports; the re-run button for
+  older cases.
+
+## 2026-10-15: Audit log checked on open and before every report; cut-off entries caught (#74)
+- Changed: opening a case, and building or saving its report, now checks the audit log (before,
+  the chain was only verified at report build, which printed the result and exported anyway, and
+  at encryption). Two checks: the hash chain, and anchors: the newest entry's number and hash,
+  written to `case.db.anchors.jsonl` beside `case.db` when a case opens and when a report is built,
+  must still be in the log. Anchors catch entries cut from the end of the log, which the chain
+  alone cannot. The screen checks again on every page and upload while a case is open, and encrypting or
+  changing the passphrase checks first. A failed check fails closed: Cases shows "Review
+  blocked" with the reason, an open case closes (a background job on it is told to stop) and an
+  encrypted one locks, no report is built, CLI commands (`report` and `encrypt` included) stop
+  and write nothing; `verify-log` says why. `docs/review-screen.md` gives the
+  expert's steps when a case is blocked (keep the folder, restore a whole-folder backup, or
+  rebuild from the original files). (Grok Product item 5 on #70 and its follow-up on #80.)
+- Where: main, with PR #74.
+- Verified: 33 tests in `tests/test_chain_on_open.py` (chain, anchors: truncation, rewrite,
+  unreadable or non-text file, out-of-range anchor numbers, a last line missing its newline,
+  dedupe, numbers and hashes only; CLI and screen, report and log page and upload refusal,
+  non-text log values, a removed audit table, unwritable anchor file (found before anything is
+  written; a new case that cannot be anchored is not kept and the open case stays open), one
+  anchor file per database name, job stop, encrypt and passphrase refused, encrypted re-lock);
+  full suite passes;
+  headless-Chromium smoke (report refused after the newest entry was cut; intact report builds);
+  eval unchanged (case01 1.00, 0 false supported, hostile PASS).
+- Open: entries added after the newest anchor and cut before the next open or report are not
+  caught, nor a change to the database and the anchor file together; a saved report's last hash
+  is the anchor no one can change. Cases made before anchors are checked from their next open.
+- Affects: customer-facing claims (tamper evidence enforced on open and export, truncation
+  detected back to the newest anchor); a new unencrypted file per case holding entry numbers
+  and hashes only (no case content, no times); one hash pass over the log per page while a case
+  is open, per report and per Cases listing (2.3 ms for the 225-entry synthetic case01 log of a
+  cloud bench run, this cloud container, 2026-10-15; unmeasured on a large real case).
+
 ## 2026-10-15: Count check no longer says "deleted" (#83)
 - Changed: the count check's detail now reads "N of them carry the source's deletion flag"
   instead of "N of them are flagged deleted"; check version 1.0.0 to 1.0.1. The old text broke
@@ -86,35 +132,39 @@ Template:
 - Affects: customer-facing text on the review screen and report (wording only); no verdict,
   privacy or performance change.
 
-## 2026-10-15: Audit-log chain verified when a case opens (#74)
-- Changed: opening a case now verifies the audit-log hash chain (before, only at report build or
-  encryption). A broken chain fails closed: Cases shows "Review blocked" with the first entry
-  that doesn't match, an encrypted case locks again, CLI review commands stop and write nothing.
-  `verify-log` and report still read the case. (Grok Product item 5.)
-- Where: branch `claude/project-thread-fjea4m`, PR #74, not merged.
-- Verified (as reported by the owning thread): 11 new tests, 9 fail on main; 1868 pass, only the
-  known test #65 fixes; headless-Chromium smoke passed; eval unchanged (case01 1.00, 0 false
-  supported, hostile PASS).
-- Open: removing the newest entries is still not detected (a truncated chain verifies); this
-  predates the PR.
-- Affects: customer-facing claims (tamper evidence enforced on open, not only shown in the
-  report); small performance cost on open; no privacy change.
-
-## 2026-10-15: UFDR reader checked on public test files (#73)
+## 2026-10-15: UFDR reader checked on public test files; forwarded messages fail closed (#73)
 - Changed: attachments linked only by file_id now resolve through taggedFiles and are hashed; a
   phone-owner UserAccount no longer takes a ProfilePicture URL as its identifier; `ufdr-check`
-  mirrors both. (Grok Product item 8.)
+  mirrors both and checks owner account identifiers, and its direction check counts UserID-only
+  owners (fallback ids count as the owner's, per Codex). (Grok Product item 8.)
+  Forwarded messages fail closed (Grok #80 item 1): the UFDR and Excel importers list every
+  message marked Forwarded (UFDR Labels or MessageExtraData; Excel Label column) or carrying an
+  embedded forwarded or quoted original, by id, in the import's coverage record
+  (`core/ingest/forwarded.py`). Downstream, a model's supports or contradicts on such a message
+  is stored as complicates, so a claim resting on it stays Unproven; any check resting on it is
+  inconclusive; SenderCheck never names the forwarder as the writer; the claim page and the
+  report warn on the claim and on each record. The embedded original is never stored as the
+  forwarder's words. Coverage (Grok #80 item 6): picture entries skipped as identifiers are
+  counted (info); a taggedFiles id listed with two different paths links to no file and is
+  listed under Limitations (attention). Rules 0.2.x untouched; full author and forwarder columns
+  proposed in PROPOSED_CHANGES.md (needs Arsh's signature).
 - Where: branch `claude/project-thread-hz9jqt`, PR #73, not merged.
-- Verified (as reported by the owning thread): 4 new tests; lint clean; 1860 pass, 2 known
-  failures (fixed on main by #65 and #67); eval unchanged (case01 1.00, 0 false supported). Hand
-  check 27 of 27 records match on autopsy-udfr `test.ufdr` (LGPL-2.1, hand-made) and IPED's UFED
-  fixtures (GPL-3); neither committed, hashes in `docs/ingest/ufdr.md`. No public Cellebrite-made
-  UFDR with a usable license exists; Digital Corpora and CFReDS return 403 from cloud sessions.
+- Verified: 6 tests for the sample bugs and 13 for item 1 and 6 (forwarded, quoted and nested
+  forwards, Excel label, fail-closed stance after an expert accept, inconclusive checks,
+  SenderCheck, claim-page and report warnings, picture count, repeated tagged ids, ufdr-check
+  clean); lint clean; full suite and eval in the PR description (case01 1.00, 0 false supported
+  before this change). Hand check 27 of 27 records match on autopsy-udfr `test.ufdr`
+  (LGPL-2.1, hand-made) and IPED's UFED fixtures (GPL-3); neither committed, hashes in
+  `docs/ingest/ufdr.md`. No public Cellebrite-made UFDR with a usable license exists; Digital
+  Corpora and CFReDS return 403 from cloud sessions.
 - Open: neither sample is Cellebrite output; 27 records, not the 50 asked for; no Reader count
-  comparison; forwarded or quoted content is not read, so a forwarded message shows as written by
-  the forwarder with empty text.
-- Affects: capabilities (UFDR import). Customer-facing claims unchanged: UFDR and AXIOM stay
-  unverified. Next: a pilot examiner makes a UFDR from a public image and runs `ufdr-check`.
+  comparison. Until the schema change is signed, a forwarded message's sender field still shows
+  the forwarder (with a warning beside it), and only labels Baker recognises ("Forwarded",
+  "Auto-forwarded") are caught; a forward the extraction does not label is not detected.
+- Affects: capabilities (UFDR import, forwarded handling) and verdict paths (fails closed only:
+  can turn Supported or Contradicted into Unproven, never the reverse). Customer-facing claims
+  unchanged: UFDR and AXIOM stay unverified. Next: a pilot examiner makes a UFDR from a public
+  image and runs `ufdr-check`.
 
 ## 2026-10-15: Screen and report agree; reports are repeatable (#72)
 - Changed: `tests/test_report_consistency.py` checks that the screen and the report agree on
@@ -157,8 +207,8 @@ Template:
 - Where: main (merged 2026-10-15 07:22Z, `6b859fe`).
 - Verified: new tests in `tests/test_assumption_filler.py`; all 3 Codex findings fixed (per the
   owning thread); CI green before merge.
-- Open: main still says rules 0.2.1; the 0.2.2 bump (no rule logic change) is in PR #75, not
-  merged, pending Arsh's sign-off. Verdicts decided under 0.2.1 can differ after this change.
+- Open: the 0.2.2 bump (no rule logic change) is in PR #75 (Arsh approved it 2026-10-15).
+  Verdicts decided under 0.2.1 can differ after this change.
 - Affects: capabilities (which claims get a time window), verdicts on time-bound claims.
 
 ## 2026-10-15: Opus fails the signed probe; quote-check bug found (issue #69)
@@ -203,25 +253,58 @@ Template:
 - Open: entries before 2026-10-13 are summarized by git only.
 - Affects: none (documentation).
 
+## 2026-10-15: Cloud stance labels gated on the signed stance test (#68)
+- Changed: a case uses the cloud model only if that model passed the signed stance test with
+  the current stance prompt (`PROBE_PASSED`, `core/llm/cloud.py`). The list ships empty, so every
+  case labels locally on #68 for now. Reason: Codex P1 on #68 and the signed-set run (Opus
+  contradicts precision 73%, bar 90%); an unreviewed "contradicts" on an event assumption can
+  make a claim CONTRADICTED (rule 1b), and Arsh's earlier decision was cloud "after a check".
+  Also from Codex round 6: nothing is logged as sent when the client cannot be built; a cloud
+  answer that failed its quote or format check is asked again on re-run; a damaged sealed key
+  reads as a config error; the "saved in this case" message checks the exact sealed path; the
+  key is dropped from memory when a cloud audit ends; the Mac install guide no longer promises
+  offline use for a cloud case.
+- Where: branch `claude/project-thread-a2fjkc`, PR #68, draft, not merged.
+- Verified: `make check` passes, 1940 tests; gates unchanged (case01 1.00, 0 false supported,
+  unreviewed 0.60, hostile PASS, case02 0.90); new tests for the gate, preflight, re-ask and a
+  damaged sealed key. No real API call.
+- Codex on 82090a4 (fixed): a gate entry names the effort too, so an untested effort never passes;
+  a client that cannot be built pauses the audit instead of dropping labels; the header pill
+  follows a running cloud audit even if the key file changes; the Windows installer text says
+  offline by default.
+- Open: adding an entry needs a signed prompt fix, a recorded passing run on the signed set and
+  on new held-out items not used to write the prompt, and Arsh's sign-off. The report already
+  shows each set_cloud entry (expert, time, attestation text) in its audit-log table; a test now
+  covers it.
+- Affects: capabilities (cloud labels off until a model passes), privacy (no case data leaves
+  the computer on #68 until then), customer-facing claims (do not offer cloud labeling yet).
+
 ## 2026-10-15: Cloud AI by per-case opt-in for stance labels (#68, 3c6c1ec)
 - Changed: Baker is local by default. A case uses Opus 5.5 for stance labels only after the
   expert attests the protective order allows it, the case has no CSAM flag, and they supply their
   own Anthropic key. If the cloud fails mid-case, the audit pauses and the expert retries or
   re-runs the whole case locally, so models are never mixed within a case. Every request is
   written to the hash-chained audit log (`cloud.sent`) before it is sent. The endpoint is pinned
-  to api.anthropic.com (120 s timeout, 2 retries). Claim proposal, assumption filling and the AI
-  reviewer stay local. Reason: Arsh chose "Opt-in cloud" (2026-10-15 07:10Z).
-- Where: branch `claude/project-thread-a2fjkc`, PR #68, draft, not merged.
+  to api.anthropic.com (120 s timeout, 2 retries). In an encrypted case, the key the expert saves
+  is sealed under the case key (`case.cloud-key`, AES-256-GCM) and unreadable while the case is
+  locked; a plain case keeps the owner-only `~/.baker/cloud.json`; the env var still wins.
+  Claim proposal, assumption filling and the AI reviewer stay local. Reason: Arsh chose
+  "Opt-in cloud" (2026-10-15 07:10Z).
+- Where: branch `claude/project-thread-a2fjkc`, PR #68, draft, not merged (main merged in after #71).
 - Verified (as reported by the owning thread; `cloud.sent` and the pause checked in
-  `core/audit/_local_model.py` on the branch): `make check` passes, 1893 tests; gates unchanged
+  `core/audit/_local_model.py` on the branch): `make check` passes, 1933 tests; gates unchanged
   (case01 1.00, 0 false supported, unreviewed 0.60, hostile PASS, case02 0.90); a simulated
-  outage pauses the run with the chain intact; Codex rounds 1 to 4 clean, re-review pending. No
-  real API call since this change.
+  outage pauses the run with the chain intact; logged retries (each send logged, SDK retries
+  off) and a log failure that blocks the send; an item relabeled by another model names the
+  latest; sealed-key tests (sealed, unreadable once
+  locked, refused in another case, env var and plain case unchanged); Codex rounds 1 to 4
+  clean, later commits under review. No real API call since this change.
 - Open: Opus fails the signed probe's contradicts bar (73%, entry below), so a signed prompt fix
-  should land first; the revised CLAUDE.md wording needs Arsh's "approved"; a fair 14B-vs-Opus
-  test of claim proposal and assumption filling waits on Arsh; an evidence row keeps the first
-  model's name when a later run gives an identical label (the per-run "Stance labels" row is
-  authoritative); the key file is owner-only, not encrypted with the case keys.
+  should land first; Arsh approved the revised CLAUDE.md wording (07:29Z), applied on the
+  branch at his request (14:00Z); a fair 14B-vs-Opus
+  test of claim proposal and assumption filling waits on Arsh; when a case switches models, an
+  evidence row names the latest run's model and rationale (the earlier answer stays in
+  model_calls); a key saved for a plain case stays an owner-only plain file.
 - Affects: capabilities (optional cloud labels per case), privacy (only the filled stance prompt
   leaves the computer, and every request is logged), performance (about 3 s per stance call; local 22 to 43 s per call was
   measured 2026-10-09/12 on older code, and no full local case is timed on current code), customer-facing claims ("local by default; cloud AI only when your
@@ -233,7 +316,10 @@ Template:
   `/mnt/project-files/baker/cloud-first/steps-check/RESULTS.md`.
 - Verified: claim recall 80% (bar 90%); sheet-free audit 60% accuracy, 0 false supported (bar
   80%). Both failed, so both steps stay local.
-- Open: none.
+- Open: the "Scoring audit" thread found most misses were grading artifacts
+  (`/mnt/project-files/baker/cloud-bench/2026-10-15/GRADING_AUDIT.md`): all 4 claim misses, and
+  60% becomes 70% with the contact quote fix (#76). The 14B has never been scored sheet-free, so
+  "stay local" has no baseline. A fair 14B-vs-Opus sheet-free test after #76 waits on Arsh.
 - Affects: performance (the 14B stays required).
 
 ## 2026-10-15: Opus 5.5 benchmark (eval only)

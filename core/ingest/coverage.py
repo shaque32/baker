@@ -91,6 +91,10 @@ def _fill(template: str, count: int, **extra: str) -> str:
 _KEY_DUPLICATE_FIELDS = {"ts", "ts_date", "ts_time", "body", "from", "to", "parties", "duration"}
 # Counters whose rows lost information; each is something the expert must see.
 _ATTENTION_COUNTERS = {
+    "tagged_file_ids_repeated": (
+        "File ids listed more than once in taggedFiles with different paths; attachments naming "
+        "them were not linked to any file, so those files were not hashed"
+    ),
     "calls_with_extra_parties_dropped": (
         "Calls listing more than one caller or callee, where only the first of each was kept"
     ),
@@ -114,6 +118,10 @@ _ATTENTION_COUNTERS = {
     ),
 }
 _INFO_COUNTERS = {
+    "picture_entries_not_identifiers": (
+        "Picture entries (profile pictures, contact photos) in accounts and contacts, not used "
+        "as identifiers"
+    ),
     "times_offset_from_report_settings": (
         "Times read with the report's fixed time zone setting, having no offset of their own"
     ),
@@ -196,6 +204,22 @@ _FLAG_WORDS: dict[str, tuple[Level, str]] = {
     "attachment_without_name": (
         "attention",
         "{n} {have} an attachment with neither a file name nor a file, so it was not recorded.",
+    ),
+    "forwarded": (
+        "attention",
+        "{n} {be} marked as forwarded. Baker shows {them} as sent by whoever forwarded {them} and "
+        "does not record who first wrote {them}, so {them} cannot support or contradict a claim; "
+        "check each one in {tool} before saying who wrote {them}.",
+    ),
+    "embedded_message_not_imported": (
+        "attention",
+        "{n} {have} a forwarded or quoted message inside {them} whose text and attachments Baker "
+        "did not import, so {them} cannot support or contradict a claim; see {them} in {tool}.",
+    ),
+    "attachment_file_ambiguous": (
+        "attention",
+        "{n} {have} an attachment whose file id taggedFiles lists more than once with different "
+        "paths, so it was not linked to a file or hashed.",
     ),
     "duration_unread": ("attention", "{n} {have} a call duration Baker could not read."),
     "no_time": ("attention", "{n} {have} no time in the {container}, so no time was set."),

@@ -324,3 +324,36 @@ def test_weekday_uses_the_phones_date_not_utc() -> None:
     assert check(conn, "weekday_date", quoted_text="brunch saturday", window=day).outcome is (
         CheckOutcome.PASS
     )
+
+
+def _forwarded(conn: sqlite3.Connection, source_id: str, *ids: str, reason: str = "forwarded"):
+    """What an importer writes for messages the extraction marks as forwarded."""
+    import json
+
+    conn.execute(
+        "INSERT INTO source_coverage VALUES (?, 'synthetic', '0', ?)",
+        (source_id, json.dumps({"forwarded_records": {reason: list(ids)}})),
+    )
+    return conn
+
+
+@pytest.mark.parametrize("reason", ["forwarded", "embedded"])
+def test_sender_never_credits_forwarded_words_to_the_forwarder(reason: str) -> None:
+    args = {"quoted_text": "see you at noon", "person_ids": [B], "device_ids": ["dev:p2"]}
+    assert check(build(), "sender", **args).outcome is CheckOutcome.PASS
+    r = check(_forwarded(build(), "p2", "msg:p2:2", reason=reason), "sender", **args)
+    assert r.outcome is CheckOutcome.INCONCLUSIVE
+    assert "msg:p2:2 on SMS is marked as forwarded" in r.detail
+    assert "was sent by" not in r.detail
+
+
+def test_any_check_resting_on_a_forwarded_message_is_inconclusive() -> None:
+    w = window(D(2026, 3, 10, 11), D(2026, 3, 10, 12), "11 a.m. New York time")
+    args = {"quoted_text": "see you at noon", "person_ids": [A, B], "window": w}
+    assert check(build(), "record_time", **args).outcome is CheckOutcome.PASS
+    r = check(_forwarded(build(), "p1", "msg:p1:2"), "record_time", **args)
+    assert r.outcome is CheckOutcome.INCONCLUSIVE
+    assert "Inconclusive (forwarded rule 1)" in r.detail and "msg:p1:2" in r.detail
+    # a forwarded message the outcome does not rest on changes nothing
+    other = check(_forwarded(build(), "p1", "msg:p1:6"), "record_time", **args)
+    assert other.outcome is CheckOutcome.PASS

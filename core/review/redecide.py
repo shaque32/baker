@@ -11,6 +11,8 @@ reviews evidence, so this re-decides instead:
   since the run count. Stipulations are read again too.
 - core/audit/rules.py decides every verdict and core/audit/invariants.py re-checks each one,
   exactly as in a full run. A violation rolls back and marks the run failed.
+- A run audited under rules older than one in INPUTS_CHANGED_AT is refused: its assumptions
+  were built the old way, so only a full audit can give a verdict under the current rules.
 - Claims removed since the run are skipped. Claims whose text the expert edited since the run,
   and claims added since, are left out with a reason: their assumptions were built from other
   text, or never built, so only a full audit can check them.
@@ -37,6 +39,27 @@ from core.review.status import edited_after
 
 Clock = Callable[[], datetime]
 MODE = "rules_only"
+# Rule versions that changed how assumptions are built, not only how verdicts are decided:
+# a run audited before one of these must be audited again, since its stored assumptions were
+# built the old way. 0.2.2: "after X" starts the day after X, offset and wrong-weekday ranges
+# are refused (core/audit/assumption_filler.py).
+INPUTS_CHANGED_AT = ("0.2.2",)
+
+
+def _version(v: str) -> tuple[int, ...]:
+    return tuple(int(x) for x in v.split("-")[0].split("."))
+
+
+def inputs_stale(from_version: str, to_version: str = rules.RULE_VERSION) -> str | None:
+    """The version, between a run's rules and the current rules, that changed how assumptions
+    are built, or None. An unreadable version counts as stale."""
+    try:
+        old, new = _version(from_version), _version(to_version)
+        return next((v for v in INPUTS_CHANGED_AT if old < _version(v) <= new), None)
+    except ValueError:
+        return from_version
+
+
 RULE_COMPONENT = f"{rules.decide_verdict.__module__}.{rules.decide_verdict.__qualname__}"
 
 
@@ -72,6 +95,12 @@ def redecide(
     src = pipeline.last_run(conn)
     if src is None:
         raise ReviewError("no completed audit to re-decide; run the audit first")
+    stale = inputs_stale(str(src.get("rule_version") or ""))
+    if stale is not None:
+        raise ReviewError(
+            f"this audit ran under rules {src.get('rule_version')}; rules {stale} build "
+            "assumptions differently, so run the full audit instead of re-running the verdicts"
+        )
     now = (clock or (lambda: datetime.now(UTC)))()
     result = RedecideResult(
         run_id=_new_run_id(conn, now), from_run=src["run_id"], fake=bool(src.get("fake"))
@@ -84,6 +113,8 @@ def redecide(
         "fake": result.fake,
         "requested_by": requested_by,
     }
+    if isinstance(src["config"].get("cloud"), dict):
+        cfg["cloud"] = src["config"]["cloud"]  # the reused labels' cloud decision, for the report
     with conn:
         conn.execute(
             "INSERT INTO pipeline_runs (id, started_at_utc, finished_at_utc, status, baker_version,"

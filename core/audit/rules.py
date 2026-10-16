@@ -72,6 +72,10 @@ Rule 3. SUPPORTED needs all of:
 Rule 4. Otherwise UNPROVEN, with a reason naming each core assumption left uncovered.
 
 Rules are versioned. Bump RULE_VERSION on every change; every VerdictDecision records it.
+0.2.2 (Arsh, 2026-10-15, PR #66) changes no rule above. It marks that time ranges are read
+differently (core/audit/assumption_filler.py): "after March 3" starts on March 4, and offsets
+("two days after") and weekdays that are not the date's are refused. Verdicts decided under
+0.2.1 can differ.
 """
 
 from __future__ import annotations
@@ -101,7 +105,7 @@ from core.contracts import (
     verdict_id,
 )
 
-RULE_VERSION = "0.2.1"
+RULE_VERSION = "0.2.2"
 
 _CITABLE_RECORD = frozenset({ProvenanceTier.OBSERVED, ProvenanceTier.DERIVED})
 _REVIEWED = frozenset({EvidenceStatus.AI_ACCEPTED, EvidenceStatus.ACCEPTED})

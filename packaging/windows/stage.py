@@ -83,10 +83,12 @@ def md5_file(path: Path) -> str:
 
 def runtime_requirements(root: Path = ROOT) -> list[str]:
     """Baker's dependencies plus the `synthetic` extra: the installer ships eval/ so an expert's
-    PC can run the case01 gate and the speed test, and those render the synthetic case PDFs."""
+    PC can run the case01 gate and the speed test, and those render the synthetic case PDFs.
+    Plus the `cloud` extra, the client for a case the expert allows to use cloud AI."""
     data = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
     project = data["project"]
-    return [*project["dependencies"], *project["optional-dependencies"]["synthetic"]]
+    extras = project["optional-dependencies"]
+    return [*project["dependencies"], *extras["synthetic"], *extras["cloud"]]
 
 
 def pip_target(target: Path, *args: str) -> None:

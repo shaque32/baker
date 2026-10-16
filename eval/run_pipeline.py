@@ -380,6 +380,29 @@ def _verdict_counts(preds: list[Prediction]) -> dict[str, int]:
     return dict(sorted(counts.items()))
 
 
+class _ReplayableFiller:
+    """A model filler for a two-pass eval run: the first pass asks the model, the replay pass
+    (after the simulated expert) gets the same proposals back with no model call, so both
+    passes test the same assumptions."""
+
+    def __init__(self, filler: object) -> None:
+        self.filler = filler
+        self.recorder = getattr(filler, "recorder", None)
+        self.model_runs = getattr(filler, "model_runs", ())
+        self.replaying = False
+        self._seen: dict[str, object] = {}
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self.filler, name)
+
+    def __call__(self, claim, allowed):  # noqa: ANN001, ANN204
+        if self.replaying and claim.id in self._seen:
+            return self._seen[claim.id]
+        out = self.filler(claim, allowed)  # type: ignore[operator]
+        self._seen[claim.id] = out
+        return out
+
+
 def run_once(
     case: str,
     mode: str,
@@ -390,11 +413,13 @@ def run_once(
     labeler_model: object | None = None,
     claim_ids: list[str] | None = None,
     labeler_factory: Callable[[Any], object] | None = None,
+    filler_model: object | None = None,
 ) -> list[Prediction]:
     """One audit of a case. labeler_model (real mode only) is the stance labeler's model in
     place of the configured local one: the cloud benchmark (eval/bench) passes Claude here.
     labeler_factory (real mode only) builds a whole stance labeler on the case database instead,
-    as Baker's own small stance model needs (eval/stancemodel). claim_ids audits just those
+    as Baker's own small stance model needs (eval/stancemodel). filler_model (real mode, no
+    assumption sheet) is the assumption filler's model the same way. claim_ids audits just those
     claims."""
     from eval.simulated_expert import GoldKey, RecordingRetriever, ReplayLabeler
     from eval.simulated_expert import readiness as key_readiness
@@ -421,9 +446,12 @@ def run_once(
                 from core.audit import stance as stance_mod
 
                 replace["labeler"] = stance_mod.create(conn, model=labeler_model)  # type: ignore[arg-type]
-            comps = pipeline.real_components(
-                conn, replace=replace, filler=spec_filler(spec, conn) if spec else None
-            )
+            filler = spec_filler(spec, conn) if spec else None
+            if filler is None and filler_model is not None:
+                from core.audit import assumption_filler
+
+                filler = _ReplayableFiller(assumption_filler.create(conn, model=filler_model))  # type: ignore[arg-type]
+            comps = pipeline.real_components(conn, replace=replace, filler=filler)
             if reviewer == "none":
                 from eval.pipeline_fakes import FakeReviewer
 
@@ -462,6 +490,10 @@ def run_once(
         # Second pass: the same retrieval, checks and assumptions, the first pass's stored
         # labels (no model call), and the rules on the expert's decisions.
         comps.labeler = ReplayLabeler(conn)
+        for f in comps.recorders:  # a model filler answers the replay from its first answers
+            if isinstance(f, _ReplayableFiller):
+                f.replaying = True
+        comps.recorders = ()  # the first pass stored every call already
         second = pipeline.run_audit(
             conn,
             comps,
