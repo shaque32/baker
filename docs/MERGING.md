@@ -51,6 +51,12 @@ one comment on the PR, and go on to the next PR.
    any file, docs included), carries a changelog entry (section 6), or its description says
    why the change is not meaningful (a refactor, a test-only fix or a wording change that
    changes no recorded fact).
+8. **Clean Codex pass.** Codex has reviewed the PR's latest change to its own files (a later
+   commit that only merges `main` needs no new pass) and found nothing: Codex reacted 👍, or
+   its review summary comment shows the review completed on that commit with no findings.
+   A pass with findings is not clean; after the fixes, a new Codex review must come back clean.
+   While Codex is out of usage, Grok audits instead and its findings get fixed as usual, but
+   a Grok audit never replaces the Codex pass: wait for Codex, do not merge.
 
 ### Urgent Grok findings
 
