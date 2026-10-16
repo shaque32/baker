@@ -356,3 +356,38 @@ Diff (both files, then re-pin the draft's SHA-256 in tests/test_gold_stancedata.
 +... Record on item1: "Gus Tires: +13125550177". |
 -| `bk_contact_row_differs` | ... | Record on item1: "Gus Tires +13125550190". |
 +| `bk_contact_row_differs` | ... | Record on item1: "Gus Tires: +13125550190". |
+
+## 2026-10-15 claude/project-thread-01fybj: stance prompt v1.2: told-frame and undated-denial sentences in "contradicts"
+SIGNED by Arsh on 2026-10-15 ("approved" in the "Audit our model scoring" thread, 13:45Z, with
+"Sign it" on the card that quoted the two sentences). APPLIED word for word in the same PR.
+File: core/audit/prompts/stance.md
+Why: stance guide v0.3 rules 12 and 23 (signed 2026-10-14) read a same-day "X told the owner
+that ..." answered by X saying the opposite, and an undated act against a denial that names no
+time, as complicates; the signed probe set was relabeled to match (#64). Prompt v1.1 does not
+say so, and Opus 5.5 answered contradicts on 4 of its 15 contradicts (P049, P066 to P069, P092,
+P093), 73% precision against the 90% bar, at high and at medium effort. A "contradicts" on an
+event assumption can make a claim CONTRADICTED with no expert step (rules.py rule 1b).
+Test, preregistered before any call (/mnt/project-files/baker/cloud-bench/2026-10-15/
+told-frame-line/, PREREGISTERED.md and PREREGISTERED-medium.md): the sentences were written once
+from rules 12 and 23 and not edited after any answer. With them, Opus 5.5's contradicts
+precision on the signed set is 10 of 10 at high and at medium, supports recall 33 of 33,
+nothing contradicting shown as supports; it misses one real contradiction (P065, contradicts
+recall 10 of 11). On items written for the test and never used to write the sentences (24 from
+this thread, three blind readers agreeing on 22; 26 from "Custom model for Baker", written
+before that thread saw the sentences), wrong contradicts on the told-frame and undated items
+went from 2 to 0 on the 24 (high; 0 at medium too) and from 1 to 0 on the 26 (medium), with every
+contradicts and supports control kept. The text sent was stance_v1_1_told_frame_draft.md
+(file sha256 ba603d12...); its body is byte for byte the v1.2 body (sha256 2863d8db...,
+tests/test_stance.py). The local 14B reads the same prompt and has not been run with it.
+Diff (the "contradicts" entry; the header's version line v1.1 -> v1.2):
+-  between"). A record that only makes another reading more likely is not "contradicts".
++  between"). Likewise, when the assumption is that someone told, wrote or asked something, a
++  message of theirs saying the opposite shows only what that message says; another message
++  could still have said it, so it is "complicates". A denial that names no time ("i never got
++  it") covers only the time before it was sent: it rules out an assumption dated before the
++  message and leaves an undated one open. A record that only makes another reading more likely
++  is not "contradicts".
+Code that follows: none. The labeler fills the same slots. The prompt version every model run
+records changes (sha256:4c35f1cf01b0b227 -> sha256:2863d8dbf66960f6), so stored v1.1 answers are
+not reused and a re-run labels again. Next: the 14B's probe run on the Mac, and, for #68, an
+entry for (claude-opus-5-5, the v1.2 version) in core/llm/cloud.PROBE_PASSED, with Arsh's sign-off.

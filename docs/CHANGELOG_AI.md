@@ -19,6 +19,51 @@ Template:
 
 ---
 
+## 2026-10-16: Stance prompt v1.2, the told-frame sentences, and its Mac check (#93)
+- Changed: `core/audit/prompts/stance.md` is v1.2, signed by Arsh on 2026-10-15 ("approved" in
+  "Audit our model scoring"). Two sentences in the "contradicts" entry teach stance guide v0.3
+  rules 12 and 23: a reply in which X says the opposite does not rule out "X told the owner that
+  ...", since another message could still have said it, so it is "complicates"; a denial that
+  names no time rules out only an act dated before it. Why: with v1.1, Opus 5.5 called those
+  "contradicts" on the signed probe set (contradicts precision 73%, bar 90%), and an unreviewed
+  "contradicts" on an event assumption can make a claim CONTRADICTED with no expert step. No code
+  changes; the recorded prompt version becomes `sha256:2863d8dbf66960f6` (was
+  `sha256:4c35f1cf01b0b227`). Also eval only: `eval/probe/mac_v12.sh`, one Mac run for the 14B's
+  probe on v1.2 and its half of the 14B-vs-Opus test Arsh chose on 2026-10-15 ("Test after
+  fixes"), and `eval/bench/fair_steps.py`, which runs that test for either model at one commit:
+  claim proposal (scored by the committed matcher and a split-aware one, since the claims prompt
+  asks for splitting), the case01 audit without the assumption sheet, and the same fills with a
+  perfect labeler, replayed with no model call. Its Opus arm retries a failed send as the
+  product does, and a cloud call still failing after that marks the run invalid rather than
+  counting as the model's dropped label. After Codex's second review it also reports a strict
+  split matcher (each fragment must state something and match its gold claim) and the fills
+  against the signed sheet's core templates and the parameters it states, since the
+  registered measures can over-credit; a step moves toward Opus only if it wins on both the
+  registered and the added measure. Each result records its commit, and `--compare` applies
+  the rule to two results.
+- Where: branch `claude/project-thread-01fybj`, PR #93, not merged.
+- Verified: the v1.2 body is byte for byte the text the preregistered Opus runs sent (tests pin
+  its SHA-256 and check it is v1.1 plus the two sentences only). Opus 5.5 on the signed set,
+  high and medium: contradicts precision 10/10, supports recall 33/33, 0 contradicting shown as
+  supports, contradicts recall 10/11 (misses P065). New items: wrong contradicts 2 to 0 (24
+  items, high) and 1 to 0 (26 items, medium), controls kept. $8.59 of API spend, synthetic data
+  only (`/mnt/project-files/baker/cloud-bench/2026-10-15/told-frame-line/`). `make check`:
+  green on the branch with main at 966be8f (2077 passed, 6 skipped, lint clean; eval unchanged:
+  case01 1.00 with 0 false supported, unreviewed 0.60, hostile PASS, case02 aggregate 0.90).
+- Open: the local 14B reads this prompt and has not been run on it; Arsh runs
+  `bash eval/probe/mac_v12.sh` on the Mac (the probe, then the test's 14B half). The test's plan
+  and decision rule were written before any call
+  (`/mnt/project-files/baker/cloud-bench/2026-10-16/fair-14b-vs-opus/PREREGISTERED.md`, with
+  Amendment 1 for the added measures). Only the Opus half has run (2026-10-16, $5.23, cloud
+  container), so there is no comparison yet. #68's `PROBE_PASSED` list needs an entry for Opus with v1.2, signed
+  by Arsh, before cloud labels can run. P065 is missed by Opus with v1.2; "Custom model for
+  Baker" notes rule 23 may make its own label complicates (a separate sign-off). Stored v1.1
+  answers are not reused, so a re-run of an existing case labels again.
+- Affects: capabilities (stance labels for every model that reads the signed prompt: fewer wrong
+  "contradicts", so fewer wrong CONTRADICTED verdicts; a claim it changes goes UNPROVEN, never
+  SUPPORTED); performance (one full re-label per existing case). No privacy change. No new
+  customer-facing claim until the 14B is measured.
+
 ## 2026-10-16: Training data for the small model's runs 6 to 8: harder sender and time traps (#87)
 - Changed: the training-data generators (`eval/train/`) write harder traps, because the small
   model kept calling some of them supports. Run 6's data (`eval.train 1.4.0`): run 5 showed 10 of
@@ -231,8 +276,8 @@ Template:
   (`core/audit/invariants.quote_is_verbatim`), which holds evidence to the check of its day only
   for a run that records no quote-check version (Grok merge-bot review on #76). "(no name)", "unknown" or "call from" alone fail; "(no name): +1..." passes. `core/audit/quotes.record_text`, which still said calls had no
   citable text, now reads every record as the labeler sees it, as the pipeline already did.
-- Where: main once PR #76 merges (branch `claude/project-thread-01fybj`, from the "Audit our
-  model scoring" thread). Includes the C17 font fix.
+- Where: main (PR #76, merged 2026-10-16; branch `claude/project-thread-01fybj`, from the "Audit
+  our model scoring" thread). Includes the C17 font fix.
 - Verified: new regression tests (each fails without its fix), among them a contact and a call
   labeled "contradicts" and quoted as shown: before, the label was dropped and C01 went
   SUPPORTED; now CONTRADICTED. A test checks every case01 record reads the same for the labeler
