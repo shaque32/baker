@@ -1,9 +1,9 @@
 # Baker AI changelog
 
-**New entries are files in `docs/changelog/`, one per PR; read them first (newest first by file
-name), then this archive.** `make changelog` prints both as one log. This file holds the entries
-up to 2026-10-15 and takes no new entries (the status refresh may still correct its `Where:`
-lines); `docs/changelog/README.md` has the current format.
+**New entries are files in `docs/changelog/`, one per PR; read them together with this
+archive.** `make changelog` prints both as one log, merged newest first by date. This file holds
+the entries written before the per-PR rule and takes no new entries (the status refresh may still
+correct its `Where:` lines); `docs/changelog/README.md` has the current format.
 
 One entry per meaningful change, newest first. Each entry is the handoff for that change and
 answers five questions: what changed and why; where it lives (local, branch or main); what was

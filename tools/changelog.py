@@ -23,10 +23,13 @@ ARCHIVE = ROOT / "docs" / "CHANGELOG_AI.md"
 
 NAME_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
 FIELDS = ("Changed", "Where", "Verified", "Open", "Affects", "Status doc")
-STATUS_RE = re.compile(r"^(?:no change\b.*|pending: *\S.*|applied (\d{4}-\d{2}-\d{2})\b.*)$")
+STATUS_RE = re.compile(r"^(?:no change|pending: *\S.*|applied (\d{4}-\d{2}-\d{2}))$")
 ARCHIVE_MARKER = "\n---\n"
+# The forms a Where line may start with; anything after them is free text.
+WHERE_RE = re.compile(r"^(?:main|local only|PR #\d+|branch|#\d+)\b")
 # A Where line naming a PR or branch; on main that change is merged. "local only" is left alone.
-UNMERGED_RE = re.compile(r"^(?:PR\b|branch\b|#\d)", re.IGNORECASE)
+UNMERGED_RE = re.compile(r"^(?:PR #\d+|branch|#\d+)\b")
+ARCHIVE_HEADING_RE = re.compile(r"^## (\d{4}-\d{2}-\d{2}):", re.MULTILINE)
 
 
 @dataclass
@@ -80,6 +83,12 @@ def parse(path: Path) -> tuple[Entry | None, list[str]]:
             f"{path.name}: '- Status doc:' must be 'no change', 'pending: <the edits>' or "
             "'applied YYYY-MM-DD'"
         )
+    where = fields.get("Where", "")
+    if where and not WHERE_RE.match(where):
+        errors.append(
+            f"{path.name}: '- Where:' must start with 'main', 'local only', 'PR #N', 'branch' "
+            "or '#N'"
+        )
     if errors:
         return None, errors
     return Entry(path=path, date=date, text=text, status=status, where=fields["Where"]), []
@@ -120,16 +129,17 @@ def load(entry_dir: Path = ENTRY_DIR) -> tuple[list[Entry], list[str]]:
 
 PREFACE = """# Baker AI changelog
 
-One entry per meaningful change, newest first: the entry files in `docs/changelog/`, then the
-archive `docs/CHANGELOG_AI.md` (entries up to 2026-10-15). How to add an entry, and how
-`docs/PRODUCT_STATUS.md` is kept current, is in `docs/changelog/README.md`.
+One entry per meaningful change, newest first by date: the entry files in `docs/changelog/` and
+the archive `docs/CHANGELOG_AI.md` (entries written before the per-PR rule), merged. How to add
+an entry, and how `docs/PRODUCT_STATUS.md` is kept current, is in `docs/changelog/README.md`.
 """
 
 
 def build(entry_dir: Path = ENTRY_DIR, archive: Path = ARCHIVE) -> str:
-    """The whole log in one view: a preface, the entry files, then the archive's entries.
+    """The whole log in one view: a preface, then every entry newest first by date.
 
-    The archive's own preface describes the old workflow, so it is left out.
+    Entry files and archive entries are merged by date; on the same date the entry files come
+    first. The archive's own preface describes the old workflow, so it is left out.
     """
     entries, errors = load(entry_dir)
     if errors:
@@ -138,9 +148,17 @@ def build(entry_dir: Path = ENTRY_DIR, archive: Path = ARCHIVE) -> str:
     _, sep, rest = text.partition(ARCHIVE_MARKER)
     if not sep:
         rest = text
-    parts = [PREFACE + ARCHIVE_MARKER]
-    parts += [e.text for e in entries]
-    parts.append(rest.lstrip("\n"))
+    starts = [m.start() for m in ARCHIVE_HEADING_RE.finditer(rest)]
+    archived = [
+        (ARCHIVE_HEADING_RE.match(rest, s).group(1), rest[s:end])
+        for s, end in zip(starts, starts[1:] + [len(rest)], strict=True)
+    ]
+    # Each list is already newest first; sorting on date alone is stable, so ties keep the files
+    # ahead of the archive and each source's own order.
+    merged = sorted(
+        [(e.date, e.text) for e in entries] + archived, key=lambda d: d[0], reverse=True
+    )
+    parts = [PREFACE + ARCHIVE_MARKER] + [body for _, body in merged]
     return "\n".join(p.rstrip("\n") + "\n" for p in parts)
 
 

@@ -77,6 +77,10 @@ def test_newest_first_by_date_then_name(tmp_path):
             _good() + "- Status doc: pending: §2 add a row\n",
             "appears more than once",
         ),
+        ("2026-10-16-x.md", _good(status="no change pending: §2 add a row"), "Status doc"),
+        ("2026-10-16-x.md", _good(status="applied 2026-10-17 maybe"), "Status doc"),
+        ("2026-10-16-x.md", _good(where="PRR #91"), "'- Where:'"),
+        ("2026-10-16-x.md", _good(where="merged"), "'- Where:'"),
     ],
 )
 def test_malformed_entries_are_reported(tmp_path, name, text, needle):
@@ -88,21 +92,30 @@ def test_malformed_entries_are_reported(tmp_path, name, text, needle):
 
 def test_build_puts_entries_between_preface_and_archive(tmp_path):
     archive = tmp_path / "CHANGELOG_AI.md"
-    archive.write_text("# Log\n\nPreface.\n\n---\n\n## 2026-10-01: Old entry\n- x\n")
+    archive.write_text(
+        "# Log\n\nPreface.\n\n---\n\n## 2026-10-17: Late archive entry\n- x\n\n"
+        "## 2026-10-16: Same-day archive entry\n- x\n\n## 2026-10-01: Old entry\n- x\n"
+    )
     entries = tmp_path / "entries"
     entries.mkdir()
     _write(entries, "2026-10-16-new.md", "2026-10-16", title="New entry")
     out = changelog.build(entries, archive)
     assert "Preface." not in out, "the archive's old-workflow preface is left out"
-    assert out.index("docs/changelog/README.md") < out.index("New entry") < out.index("Old entry")
+    order = [
+        "docs/changelog/README.md",
+        "Late archive entry",
+        "New entry",
+        "Same-day archive entry",
+        "Old entry",
+    ]
+    assert [out.index(s) for s in order] == sorted(out.index(s) for s in order)
 
 
 def test_build_of_the_repo_keeps_every_archive_entry():
     out = changelog.build()
     archive = (ROOT / "docs" / "CHANGELOG_AI.md").read_text(encoding="utf-8")
-    for line in archive.splitlines():
-        if line.startswith("## 20"):
-            assert line in out
+    for line in archive.split("\n---\n", 1)[1].splitlines():
+        assert line in out
 
 
 def test_pending_lists_status_edits_and_merge_state(tmp_path, capsys):

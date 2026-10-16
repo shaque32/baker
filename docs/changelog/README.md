@@ -1,9 +1,10 @@
 # AI changelog entries
 
 One file per change, so open PRs never edit the same changelog file. Read the log in one view
-with `make changelog` (or `python tools/changelog.py build`): these files newest first, then the
-older entries in `docs/CHANGELOG_AI.md`, the archive up to 2026-10-15. It takes no new entries;
-the status refresh may still correct its `Where:` lines.
+with `make changelog` (or `python tools/changelog.py build`): these files and the entries in
+`docs/CHANGELOG_AI.md` (the archive of entries written before the per-PR rule), merged newest
+first by date. The archive takes no new entries; the status refresh may still correct its
+`Where:` lines.
 
 ## Adding an entry
 
