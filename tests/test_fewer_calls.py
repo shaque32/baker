@@ -204,6 +204,22 @@ def test_redecide_keeps_the_reason(conn):
     assert run["config"]["quote_check"] == quotes.VERSION
 
 
+def test_redecide_refuses_a_run_whose_assumptions_were_built_by_older_rules(conn):
+    from core.review.actions import ReviewError
+    from core.review.redecide import inputs_stale, redecide
+
+    assert inputs_stale("0.2.1", "0.2.2") == "0.2.2"
+    assert inputs_stale("0.2.2", "0.2.2") is None
+    assert inputs_stale("0.2.2", "0.2.3") is None
+    assert inputs_stale("", "0.2.2") == ""
+    model = FakeModel(respond=lambda p: IRRELEVANT)
+    pipeline.run_audit(conn, _components(conn, model), claim_ids=["C04"])
+    with conn:
+        conn.execute("UPDATE pipeline_runs SET rule_version = '0.2.1'")
+    with pytest.raises(ReviewError, match="run the full audit"):
+        redecide(conn, "expert:test")
+
+
 # ---------------------------------------------------------------- stop and resume
 
 

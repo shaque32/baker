@@ -1,4 +1,4 @@
-"""Verdict rules 0.2.1 (core/audit/rules.py). Every rule in its docstring has a test here.
+"""Verdict rules 0.2.2 (core/audit/rules.py). Every rule in its docstring has a test here.
 
 SYNTHETIC. The claims echo case01 (C06, C16, C17, C18, C20) only to name the trap each tests.
 """

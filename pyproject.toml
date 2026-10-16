@@ -29,8 +29,11 @@ synthetic = [
 local = [
     "llama-cpp-python>=0.3.16",  # local GGUF runtime (MIT); install the CUDA build on the GPU PC
 ]
+cloud = [
+    "anthropic>=1.0,<2",  # the cloud stance labeler (core/llm/cloud.py), the expert's own key (MIT)
+]
 bench = [
-    "anthropic>=1.0,<2",  # eval/bench only: cloud upper bound, never imported by core/ (MIT)
+    "anthropic>=1.0,<2",  # eval/bench: the cloud benchmark (MIT)
 ]
 
 [build-system]

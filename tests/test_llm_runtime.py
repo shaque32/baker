@@ -116,9 +116,14 @@ def test_invalid_reviewer_output_counts_as_dismissal(tmp_path):
     assert not res["bars"]["valid_output_100"]
 
 
+# The one network call core/ may make (CLAUDE.md, signed by Arsh): the cloud stance labeler.
+CLOUD_FILE = ROOT / "core" / "llm" / "cloud.py"
+
+
 def test_core_llm_has_no_network_imports():
     banned = {"anthropic", "requests", "httpx", "httpx2", "urllib", "socket", "huggingface_hub"}
     for path in (ROOT / "core").rglob("*.py"):
+        allowed = {"anthropic"} if path == CLOUD_FILE else set()
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             names = []
             if isinstance(node, ast.Import):
@@ -126,7 +131,8 @@ def test_core_llm_has_no_network_imports():
             elif isinstance(node, ast.ImportFrom) and node.module:
                 names = [node.module]
             for n in names:
-                assert n.split(".")[0] not in banned, f"{path}: imports {n}"
+                top = n.split(".")[0]
+                assert top not in banned - allowed, f"{path}: imports {n}"
 
 
 def test_json_model_port_returns_raw_text_and_run_id():

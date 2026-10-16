@@ -605,3 +605,64 @@ def test_the_named_message_itself_still_contradicts(conn):
     assert named.stance == Stance.CONTRADICTS
     assert other.stance == Stance.COMPLICATES
     assert decision.verdict == Verdict.CONTRADICTED
+
+
+# ---------------------------------------------------------------- forwarded messages fail closed
+
+
+def _mark_forwarded(conn, record_id: str, reason: str = "forwarded") -> None:
+    """What an importer writes for a message the extraction marks as forwarded."""
+    import json
+
+    sid = record_id.split(":")[1]
+    (raw,) = conn.execute(
+        "SELECT payload_json FROM source_coverage WHERE source_id = ?", (sid,)
+    ).fetchone()
+    p = json.loads(raw)
+    p.setdefault("forwarded_records", {}).setdefault(reason, []).append(record_id)
+    conn.execute(
+        "UPDATE source_coverage SET payload_json = ? WHERE source_id = ?", (json.dumps(p), sid)
+    )
+
+
+@pytest.mark.parametrize("contradict_named", [False, True])
+@pytest.mark.parametrize("reason", ["forwarded", "embedded"])
+def test_a_forwarded_message_can_neither_support_nor_contradict(conn, contradict_named, reason):
+    from core.ingest import forwarded
+
+    (named,) = conn.execute(
+        "SELECT id FROM messages WHERE body = 'need 2 more by friday'"
+    ).fetchone()
+    _mark_forwarded(conn, named, reason)
+    decision, named_item, _other = _one_message_case(conn, contradict_named=contradict_named)
+    assert named_item.stance == Stance.COMPLICATES
+    assert named_item.rationale.startswith(forwarded.STANCE_NOTE)
+    assert decision.verdict == Verdict.UNPROVEN  # fails closed either way
+    # an expert accepting it cannot make the claim supported: it is stored as complicates
+    actions.decide_evidence(conn, named_item.id, EvidenceStatus.ACCEPTED, EXPERT, "Read it.")
+    from core.review.redecide import redecide
+
+    redecide(conn, EXPERT)
+    assert pipeline.load_verdict(conn, "C05", pipeline.last_run(conn)["run_id"]).verdict != (
+        Verdict.SUPPORTED
+    )
+
+
+def test_forwarded_messages_are_flagged_on_the_claim_page_and_in_the_report(conn, tmp_path):
+    from core.ingest import forwarded
+    from ui.app import App, Request
+
+    (named,) = conn.execute(
+        "SELECT id FROM messages WHERE body = 'need 2 more by friday'"
+    ).fetchone()
+    _mark_forwarded(conn, named)
+    _one_message_case(conn, contradict_named=False)
+    conn.commit()
+    html = render_report(conn)
+    assert "<strong>Forwarded messages.</strong>" in html
+    assert forwarded.RECORD_NOTE["forwarded"] in html
+    check_report_text(html)
+    app = App(tmp_path / "case.db", expert="Test Expert", port=8765)
+    page = app.handle(Request("GET", "/claim", {"id": "C05"}, {"host": "127.0.0.1:8765"})).text
+    assert "<strong>Forwarded messages.</strong>" in page
+    assert forwarded.RECORD_NOTE["forwarded"] in page

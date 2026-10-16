@@ -206,12 +206,16 @@ def encrypt_case(
                 "this case's encryption did not finish; enter the passphrase chosen then, or "
                 "its recovery key, to finish it"
             ) from err
+        if not plain:
+            _require_intact(casedb.connect(dbp), dbp)
     else:
         try:
             encryption.check_new_passphrase(passphrase, again)
         except ValueError as err:
             raise ReviewError(str(err)) from err
 
+    if plain:
+        _require_intact(sqlite3.connect(dbp), dbp)  # a blocked case is not touched
     conn = sqlite3.connect(dbp) if plain else None  # a plain file: the standard module
     try:
         if conn is not None:
@@ -297,12 +301,25 @@ def change_passphrase(
         raise ReviewError("this case is not encrypted")
     try:
         encryption.check_new_passphrase(new, again)
+        encryption.unlock(case.db, current)  # the log is inside the database: open it first
+    except (ValueError, encryption.WrongSecret) as err:
+        raise ReviewError(str(err)) from err
+    _require_intact(casedb.connect(case.db), case.db)  # a blocked case is not touched
+    try:
         encryption.change_passphrase(case.db, current, new, kdf)
     except (ValueError, encryption.WrongSecret) as err:
         raise ReviewError(str(err)) from err
     conn = casedb.connect(case.db)
     try:
         _logged(conn, _now(clock), actor, "case.passphrase", {"changed": "passphrase"})
+    finally:
+        conn.close()
+
+
+def _require_intact(conn: sqlite3.Connection, dbp: Path) -> None:
+    """The audit-log gate (core/review/audit_log.py); closes the connection either way."""
+    try:
+        audit_log.require_intact(conn, audit_log.anchors_path(dbp))
     finally:
         conn.close()
 

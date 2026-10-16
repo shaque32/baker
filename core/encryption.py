@@ -5,6 +5,8 @@ What is encrypted. An encrypted case keeps three things on disk:
     case.db       SQLCipher 4 (AES-256 per page, HMAC-SHA512 per page); its journal is too
     case.key      the case key, wrapped (below); no key in it is usable without a secret
     inputs/*      each copied file in Baker's own format: AES-256-GCM in 1 MiB chunks
+    case.cloud-key  only if the expert saved an Anthropic key in this case: that key,
+                  AES-256-GCM under the case key (seal_secret), so it opens only with the case
 
 case.json (the case name, the expert's claim order) stays readable, so the case list can name a
 locked case. Nothing else in the folder holds case data.
@@ -361,6 +363,67 @@ def unlocked_key(key_id: str) -> bytes | None:
 
 
 # ---------------------------------------------------------------- a case's key
+
+
+# ---------------------------------------------------------------- small secrets under the case key
+
+SECRET_FORMAT = "baker-case-secret/1"
+
+
+class SealedSecret(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    format: str = SECRET_FORMAT
+    key_id: str
+    name: str
+    nonce: str
+    sealed: str
+
+
+def secret_path(db: Path, name: str) -> Path:
+    """case.db, "cloud-key" -> case.cloud-key, beside the case key."""
+    return Path(db).with_suffix(f".{name}")
+
+
+def seal_secret(db: Path, name: str, value: str) -> Path:
+    """Store a small secret (an API key) beside an unlocked case, AES-256-GCM under the case
+    key, so it is as unreadable as the case while the case is locked. CaseLocked otherwise."""
+    key_id, dek = case_key(db)
+    nonce = secrets.token_bytes(NONCE)
+    aad = f"{SECRET_FORMAT}|{key_id}|{name}".encode()
+    ct = _aesgcm(dek).encrypt(nonce, value.encode("utf-8"), aad)
+    s = SealedSecret(key_id=key_id, name=name, nonce=_b64(nonce), sealed=_b64(ct))
+    path = secret_path(db, name)
+    tmp = path.with_name(f".{path.name}.{secrets.token_hex(4)}")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(json.dumps(s.model_dump(mode="json"), indent=2) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+    return path
+
+
+def open_secret(db: Path, name: str) -> str | None:
+    """The secret seal_secret stored for this case, or None if there is none. CaseLocked while
+    the case is locked; EncryptionError if the file was altered or belongs to another case."""
+    path = secret_path(db, name)
+    if not path.is_file():
+        return None
+    try:
+        s = SealedSecret.model_validate_json(path.read_bytes())
+    except ValueError as err:
+        raise EncryptionError(f"{path.name} is not a sealed Baker secret ({err})") from err
+    key_id, dek = case_key(db)
+    if s.format != SECRET_FORMAT or s.key_id != key_id or s.name != name:
+        raise EncryptionError(f"{path.name} does not belong to this case")
+    aad = f"{SECRET_FORMAT}|{key_id}|{name}".encode()
+    try:
+        return _aesgcm(dek).decrypt(_unb64(s.nonce), _unb64(s.sealed), aad).decode("utf-8")
+    except (_invalid_tag(), ValueError) as err:  # ValueError: bad base64, nonce or UTF-8
+        raise EncryptionError(f"{path.name} was altered and cannot be opened") from err
 
 
 def is_encrypted_case(db: Path) -> bool:

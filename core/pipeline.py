@@ -122,6 +122,7 @@ from core.contracts import (
     verdict_id,
 )
 from core.enrich.records import get_record
+from core.ingest import forwarded
 from core.review import audit_log
 
 PIPELINE_VERSION = "0.1.0"
@@ -169,6 +170,9 @@ class Components:
     # Label claims a failed core check already decides (rule 1a) too. Off: their labels could
     # not change the verdict, so they are skipped to save model calls.
     label_settled: bool = False
+    # The case's cloud choice (core/casework/cloud.py CloudChoice.record()), kept in the run's
+    # config so the report says why this run's stance labels came from where they did.
+    cloud: dict[str, object] | None = None
 
     def names(self) -> dict[str, str]:
         def name(obj: object) -> str:
@@ -222,6 +226,7 @@ def real_components(
     replace: dict[str, object] | None = None,
     filler: object | None = None,
     ai_review: bool = False,
+    cloud: object | None = None,
 ) -> Components:
     """The product's components. Each module exposes create(conn).
 
@@ -235,8 +240,17 @@ def real_components(
     expert's (or the signed eval spec's) entries. With none given, the local model's filler
     from core.audit.assumption_filler is used; it resolves names only to persons already in
     the case, so the expert records device-owner stipulations before the audit runs.
+
+    cloud is the case's CloudChoice (core/casework/cloud.py). When it allows cloud, the stance
+    labeler is the cloud model with the local model behind it (core/audit/stance.py create);
+    every other part stays local.
     """
     built: dict[str, object] = dict(replace or {})
+    use_cloud = cloud is not None and bool(getattr(cloud, "use", False))
+    if use_cloud and "labeler" not in built:
+        from core.audit import stance as stance_mod
+
+        built["labeler"] = stance_mod.create(conn, cloud=getattr(cloud, "config", None))
     if not ai_review:
         built.setdefault("reviewer", None)
     missing: list[str] = []
@@ -283,6 +297,7 @@ def real_components(
         ),
         reviewable=reviewable,
         recorders=(filler,) if hasattr(filler, "recorder") else (),
+        cloud=cloud.record() if cloud is not None and hasattr(cloud, "record") else None,
     )
 
 
@@ -773,6 +788,7 @@ class _Run:
         # Rows a claim's model work produces wait here until the claim's model work is done,
         # so no write transaction is open while the model runs (see the module docstring).
         self.pending: list[tuple[str, tuple]] | None = None
+        self.forwarded = forwarded.affected(conn)
 
     def _write(self, sql: str, params: tuple) -> None:
         if self.pending is None:
@@ -846,6 +862,10 @@ class _Run:
         rationale = label.rationale
         if stance_ is not label.stance:  # the model call log keeps the raw label
             rationale = stance.NOT_THE_MESSAGE + rationale
+        if cand.record_id in self.forwarded and stance_ in (Stance.SUPPORTS, Stance.CONTRADICTS):
+            # fail closed: forwarded words can neither support nor contradict (forwarded.py)
+            rationale = f"{forwarded.STANCE_NOTE}{stance_.value}. {rationale}"
+            stance_ = Stance.COMPLICATES
         return EvidenceItem(
             id=evidence_id(a.id, cand.record_id, stance_, label.quote),
             assumption_id=a.id,
@@ -1029,6 +1049,13 @@ class _Run:
                         item.model_run_id,
                     ),
                 )
+                # The same item (assumption, record, stance, quote) from another model, as when a
+                # case switches between cloud and local: the row names the model of this run.
+                self._write(
+                    "UPDATE evidence_items SET model_run_id = ?, rationale = ?"
+                    " WHERE id = ? AND model_run_id IS NOT ?",
+                    (item.model_run_id, item.rationale, item.id, item.model_run_id),
+                )
                 self._review(a, item.model_copy(update={"status": evidence_status(conn, item.id)}))
                 evidence_ids.append(item.id)
                 self.result.stored_items += 1
@@ -1135,6 +1162,7 @@ def run_audit(
         "label_settled": components.label_settled,
         "claim_order": [cl.id for cl in claims],
         "components": components.names(),
+        **({"cloud": components.cloud} if components.cloud is not None else {}),
         **(config or {}),
         "quote_check": quote_check_version(components),  # a caller's config cannot restate it
     }
