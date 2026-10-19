@@ -48,7 +48,7 @@ Template:
   supports, contradicts recall 10/11 (misses P065). New items: wrong contradicts 2 to 0 (24
   items, high) and 1 to 0 (26 items, medium), controls kept. $8.59 of API spend, synthetic data
   only (`/mnt/project-files/baker/cloud-bench/2026-10-15/told-frame-line/`). `make check`:
-  green on the branch with main at 966be8f (2078 passed, 6 skipped, lint clean; eval unchanged:
+  green on the branch with main at 97c7daa (2107 passed, 6 skipped, lint clean; eval unchanged:
   case01 1.00 with 0 false supported, unreviewed 0.60, hostile PASS, case02 aggregate 0.90).
 - Open: the local 14B reads this prompt and has not been run on it; Arsh runs
   `bash eval/probe/mac_v12.sh` on the Mac (the probe, then the test's 14B half). The test's plan
@@ -63,6 +63,29 @@ Template:
   "contradicts", so fewer wrong CONTRADICTED verdicts; a claim it changes goes UNPROVEN, never
   SUPPORTED); performance (one full re-label per existing case). No privacy change. No new
   customer-facing claim until the 14B is measured.
+
+## 2026-10-15: Curated report against a larger source of the same phone (#78)
+- Changed: when a case holds an examiner-curated report and a larger source of the same phone
+  (a UFDR), each report message, call and contact is found once, found more than once, or not
+  found in the larger source; the messages and calls the larger source holds that the report
+  does not are listed near each claim, by conversation then time distance, with no model
+  ranking. Fails closed: ambiguous candidates, and records near a report record not found, are
+  "may be in the report", never counted; under 95% found lists nothing. Selection tab, report
+  section (one renderer) and a line on each claim page. Never changes a verdict; nothing stored. (Grok Product item 9.)
+- Where: branch `claude/project-thread-y7z11i`, PR #78, not merged.
+- Verified: 29 tests on two synthetic pairs (case01 item1 report vs a UFDR with planted records;
+  a small new pair): planted omissions found per claim in the expected order, ambiguous and
+  unmatched cases held back, screen and report list the same records, read-only. Headless-
+  Chromium smoke passed (no external requests, Referrer-Policy same-origin). case02 not used:
+  it is held out.
+- Open: not checked on real Cellebrite or AXIOM exports (no public UFDR, #73); Grok made this
+  depend on item 8. Pairing rests on a shared phone-owner account plus the same stated device
+  model (no serial number or IMEI is stored); records after the report's extraction are not
+  counted, and contacts (which carry no time) are never counted (Codex review). Speed
+  measured only on case01 size (about 0.2 s) and a 120,000-message in-memory match (about
+  1 s); not on a real case.
+- Affects: capabilities (new analysis, branch only); no privacy or network change; customer
+  claims unchanged until merged and checked on real exports.
 
 ## 2026-10-16: Training data for the small model's runs 6 to 8: harder sender and time traps (#87)
 - Changed: the training-data generators (`eval/train/`) write harder traps, because the small
