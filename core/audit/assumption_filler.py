@@ -851,7 +851,7 @@ _SAME_SUBJECT_FORMS = frozenset(
 # quote is the subject of what follows, so the words may be someone else's.
 _QUOTE_ENDS_CLAUSE = re.compile(r"^[^\w]*?(?:[,.;!?]|$)")
 _SUBJECT_AFTER = re.compile(
-    r"^[^\w,]*,\s*(?:(?:he|she|they|it|we|i)\b|(?-i:[A-Z])|@)", re.IGNORECASE
+    r"^[^\w,]*,\s*(?:(?:he|she|they|it|we|i|you)\b|(?-i:[A-Z])|@)", re.IGNORECASE
 )
 # Words that carry a quote: a possessive hands the quote on only before one of these
 # ("REYES's message", "JONES' reply") or right before the quote, not in "from his brother's
@@ -904,11 +904,11 @@ _JOINS = _JOINS_WORDS
 # checked by _CAPS_CLAUSE_RE). Time words ("before midnight") hand nothing on, nor does a
 # contraction ("that it's").
 _HANDED_ON_RE = re.compile(
-    rf"[;!?]|{_NOT_A_TITLE}\.(?=\s+[A-Z@])|{_POSSESSIVE_OF_QUOTE}"
+    rf"[;!?]|{_NOT_A_TITLE}\.(?=\s+[(\[\"'“‘]*[A-Z@])|{_POSSESSIVE_OF_QUOTE}"
     r"|\b(?:who|whom|whose|which|where)\b"
     rf"|\b{_QUOTE_NOUNS}\s+(?:from|of|by)\b"
     rf"|\b(?:his|her|their|its|my|our|your)\s+(?:[\w-]+\s+){{0,2}}?{_QUOTE_NOUNS}\b"
-    rf"|\b{_JOINS}\s+(?:(?:he|she|they|it|we|i)\b"
+    rf"|\b{_JOINS}\s+(?:(?:he|she|they|it|we|i|you)\b"
     r"|(?-i:(?:(?:[A-Z][\w'.-]*|@[\w.-]+)\s+){1,3}[a-z]))",
     re.IGNORECASE,
 )
@@ -1281,16 +1281,22 @@ class LocalAssumptionFiller:
             for part in _nfc(full).casefold().split()
         }
         mixed_case = bool(re.search(r"[a-z]", between))
-        last_end, last_capital = -1, False  # the word before: where it ends, and its kind
+        last_end, last_capital = 0, False  # the word before: where it ends, and its kind
+        last_digit = False
         for m in re.finditer(r"@[\w.-]+|\w[\w'’.-]*", between):
             word = m.group(0)
             w = re.sub(r"['’]s$", "", word.casefold()).strip(".'’-")
+            # Between words only spaces and commas ("2:31" aside): a dash, a bracket or a
+            # colon can set a new label on the quote ("REYES — @northstar: 'ok'").
+            gap = between[last_end : m.start()]
+            if not (re.fullmatch(r"[\s,]*", gap) or (gap == ":" and last_digit and w.isdigit())):
+                return False
             known = (
                 word.startswith("@")
                 or w.isdigit()
                 or w in _BETWEEN_WORDS
                 or w in _TITLES
-                or w in names
+                or (w in names and word[0].isupper())  # "Will", not the word "will"
             )
             # A capitalised word that is no created person may be a name, but not right after
             # another capitalised word: "REYES SHOT BACK" is a clause of its own.
@@ -1298,6 +1304,7 @@ class LocalAssumptionFiller:
             if not known and not (mixed_case and word[0].isupper() and not right_after):
                 return False
             last_end, last_capital = m.end(), word[0].isupper() and w not in _TITLES
+            last_digit = w.isdigit()
         return True
 
     def _person(self, name: str) -> str:

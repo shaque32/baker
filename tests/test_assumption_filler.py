@@ -482,6 +482,10 @@ def test_a_sender_without_a_party_gets_the_writer_the_claim_names(conn):
         ("PETROV texted REYES, and REYES SHOT BACK 'OK'.", "OK", None),
         ("PETROV texted REYES, REYES SHOT BACK 'OK'.", "OK", None),
         ("PETROV texted REYES. @northstar: 'ok'.", "ok", None),
+        ("PETROV texted REYES, replying 'ok', you ended the exchange.", "ok", None),
+        ("PETROV texted REYES. (REYES: 'ok')", "ok", None),
+        ("PETROV texted REYES — @northstar: 'ok'.", "ok", None),
+        ("PETROV texted REYES (REYES: 'ok').", "ok", None),
     ],
 )  # fmt: skip
 def test_stated_sender_is_the_writer_of_the_quoted_words(conn, text, quoted, writer):
@@ -490,6 +494,18 @@ def test_stated_sender_is_the_writer_of_the_quoted_words(conn, text, quoted, wri
               status=ClaimStatus.ACCEPTED)  # fmt: skip
     got = filler.stated_sender(c, quoted)
     assert got == (filler._person(writer) if writer else None)
+
+
+def test_a_name_word_counts_only_written_as_a_name(conn):
+    # Codex round 13: with a person named Will, the modal "will" must not pass as a name.
+    conn.execute("INSERT INTO persons VALUES ('person:will', 'Will Turner', 'expert:test')")
+    try:
+        filler = LocalAssumptionFiller(FakeModel(by_claim(GOOD)), conn, template=DRAFT)
+        c = Claim(id="X", paragraph_id="para:1", text="PETROV texted REYES, REYES will text 'ok'.",
+                  claim_type=ClaimType.COMMUNICATION, status=ClaimStatus.ACCEPTED)  # fmt: skip
+        assert filler.stated_sender(c, "ok") is None
+    finally:
+        conn.execute("DELETE FROM persons WHERE id = 'person:will'")
 
 
 def test_a_phone_scope_does_not_stop_the_writer_from_being_read(conn):
