@@ -62,7 +62,7 @@ one comment on the PR, and go on to the next PR.
    a Grok audit never replaces the Codex pass: wait for Codex, do not merge.
 
    **One-time exception (Arsh, 2026-10-19).** For these PRs only: #77, #78, #81, #82, #86,
-   #88, #89, #91 and #93, a Grok audit stands in for the Codex pass when it covers the PR's
+   #88, #89, #91, #93 and #94 (this exception itself), a Grok audit stands in for the Codex pass when it covers the PR's
    latest change to its own files and reports no blocking findings, and every finding it did
    raise is fixed or answered (line 4). Every other line of this checklist still applies to
    them, including Arsh's approval of signed files. No other PR, including #84 and any PR
