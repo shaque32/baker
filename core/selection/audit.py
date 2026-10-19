@@ -26,7 +26,8 @@ difference between the two exchanges is counted.
 
 Everything here is arithmetic over stored rows: positions, times, senders and text. It never says
 why a message was not picked, and a message an examiner left out of a curated report is not in
-the case to show.
+the case to show (core/selection/paired.py compares such a report with a larger source of the
+same phone, when the case holds one).
 """
 
 from __future__ import annotations

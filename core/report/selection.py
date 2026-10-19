@@ -19,6 +19,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from core.report.letter import letter_body
+from core.report.paired import paired_html
 from core.report.restore import METHOD_WORDS, context_table, highlighted, q
 from core.restore.store import FIDELITY_WORDS
 from core.review.status import ClaimState, claim_states
@@ -35,6 +36,7 @@ from core.selection.audit import (
     selection_audit,
     summary,
 )
+from core.selection.paired import paired_check
 from core.selection.picks import Lookup
 from core.timeline.settings import Settings
 
@@ -626,6 +628,7 @@ def selection_section(
     return (
         "<h2 id='selection-audit'>Selection audit</h2>"
         + selection_html(audit, claims=states)
+        + paired_html(paired_check(conn, states, audit))
         + "<h3 id='full-extraction-request'>Request for the full extraction</h3>"
         + letter_body(conn)
     )
