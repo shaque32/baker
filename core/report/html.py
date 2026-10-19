@@ -90,7 +90,9 @@ from core.review.status import verdict_label as _verdict_label
 # quote-check versions; Versions gives the build and each model's seed beside its SHA-256.
 # 0.6.0 (#89): a forwarded record's warning names its original author, as a cited span, when the
 # extraction names one.
-REPORT_VERSION = "0.6.0"
+# 0.7.0: Versions says whether forwarded marks are on the record or, in a case made before
+# contracts 0.4.0, only in the coverage list (no original author is named there).
+REPORT_VERSION = "0.7.0"
 
 __all__ = [
     "AWAITING_EXPERT",
@@ -566,6 +568,22 @@ def build_label(run: dict) -> str:
     return build.run_label(run.get("config") or {})
 
 
+def forwarded_label(conn: sqlite3.Connection) -> str:
+    """Where the case keeps forwarded marks. A case made before contracts 0.4.0 has no forwarded
+    columns: forwarded messages its imports listed still fail closed, from the coverage list, but
+    no original author is named. An import made before that list existed (#73) recorded no list,
+    and nothing tells it apart from an import that found no forwarded messages, so the label
+    says so rather than promise the fail-closed path."""
+    if forwarded.has_columns(conn):
+        return "on the record, with the original author when the extraction names one"
+    return (
+        "coverage list only (case made before contracts 0.4.0): listed forwarded messages fail "
+        "closed, but no original author is named. A source imported before Baker listed "
+        "forwarded messages (#73) has no list, so its forwarded messages are not marked; "
+        "re-import it to check"
+    )
+
+
 def _versions(conn: sqlite3.Connection, run: dict | None) -> str:
     rows = [("Report", REPORT_VERSION), ("Other explanations (code)", explain.VERSION)]
     if run:
@@ -579,6 +597,7 @@ def _versions(conn: sqlite3.Connection, run: dict | None) -> str:
         cloud = (run.get("config") or {}).get("cloud")
         if isinstance(cloud, dict):
             rows.append(("Stance labels", str(cloud.get("why", ""))))
+    rows.append(("Forwarded marks", forwarded_label(conn)))
     model_rows = list(
         conn.execute(
             "SELECT purpose, model_name, model_sha256, prompt_version, seed FROM model_runs"
