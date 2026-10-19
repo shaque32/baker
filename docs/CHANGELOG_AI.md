@@ -31,7 +31,10 @@ Template:
   `core/schema.sql` header, as that file's own rule asks); report 0.4.0 -> 0.6.0 (0.5.0 is #91's).
   Fail-closed handling from #73 is unchanged: a forwarded message still cannot support or
   contradict a claim, checks resting on it stay inconclusive, and SenderCheck never credits the
-  forwarder. Cases made before the columns keep working from the coverage list.
+  forwarder. Cases made before the columns keep working from the coverage list. After Codex
+  review: no author is recorded when the embedded message is itself forwarded (it would name an
+  intermediate forwarder), and the claim, stance, check and coverage notes now say Baker "has not
+  verified" who first wrote the words, which stays true when the extraction names an author.
 - Where: branch `claude/project-thread-hz9jqt` (fresh from main), PR #89, not merged.
 - Verified: 4 new or extended tests (UFDR marks with and without a named author, quote not a
   forward; Excel label; a case made on the old schema still fails closed; an author named

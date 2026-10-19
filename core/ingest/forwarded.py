@@ -28,7 +28,8 @@ RULE_VERSION = "1"  # how forwarded records are handled; named in every note bel
 
 STANCE_NOTE = (
     "Recorded as complicates: the extraction marks this message as forwarded or as carrying a "
-    "forwarded or quoted message, and Baker does not record who first wrote the words, so it "
+    "forwarded or quoted message, and Baker has not verified who first wrote the words (even "
+    "where the extraction names an original author), so it "
     f"cannot support or contradict the claim (forwarded rule {RULE_VERSION}). Model's label: "
 )
 RECORD_NOTE = {
@@ -108,7 +109,8 @@ def claim_warning(found: dict[str, str], record_ids: Iterable[str]) -> str | Non
         f"{n} record{'s' if n != 1 else ''} this claim's evidence or checks rest on "
         f"{'is a message' if n == 1 else 'are messages'} the extraction marks as forwarded or "
         f"as carrying a forwarded or quoted message. Baker shows {these} as sent by whoever "
-        "forwarded or quoted, and does not record who first wrote the words, so "
+        "forwarded or quoted, and has not verified who first wrote the words, even where the "
+        "extraction names an original author, so "
         f"{'it' if n == 1 else 'they'} cannot support or contradict this claim. Check "
         f"{'it' if n == 1 else 'each'} in the extraction tool."
     )
@@ -122,5 +124,5 @@ def check_note(found: dict[str, str], record_ids: Iterable[str]) -> str | None:
     return (
         f"Inconclusive (forwarded rule {RULE_VERSION}): the outcome rests on "
         f"{', '.join(hit)}, which the extraction marks as forwarded or as carrying a forwarded "
-        "or quoted message; who first wrote those words is not recorded."
+        "or quoted message; Baker has not verified who first wrote those words."
     )

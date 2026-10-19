@@ -673,7 +673,7 @@ def test_a_forwarded_message_is_listed_and_never_shown_as_quietly_authored(tmp_p
     item = next(i for i in s.items if i.code == "forwarded")
     assert item.level == "attention"
     assert item.locators == ("Chat[1]/Messages[1]", "Chat[1]/Messages[2]")
-    assert "does not record who first wrote" in item.plain
+    assert "has not verified who first wrote" in item.plain
     emb = next(i for i in s.items if i.code == "embedded_message_not_imported")
     assert emb.locators == ("Chat[1]/Messages[2]",)
     # the embedded original is not imported as the forwarder's words
@@ -792,9 +792,13 @@ def test_a_forwarded_message_is_marked_on_the_record_with_its_original_author(tm
     quoted = model("InstantMessage", *base, field("Body", "SYNTHETIC my answer"),
                    _embedded(original))  # fmt: skip
     plain = model("InstantMessage", *base, field("Body", "SYNTHETIC own words"))
-    path = write_package(
-        tmp_path / "p.ufdr", report_xml({"Chat": [_chat("c1", named, unnamed, quoted, plain)]})
-    )
+    # a forward of a forward: the embedded sender is only an intermediate forwarder
+    relayed = model("InstantMessage", one("From", party(*JO)), field("Body", "SYNTHETIC relayed"),
+                    _extra("Forwarded"))  # fmt: skip
+    nested = model("InstantMessage", *base, field("Body", "SYNTHETIC passed on again"),
+                   _extra("Forwarded"), _embedded(relayed))  # fmt: skip
+    chat = _chat("c1", named, unnamed, quoted, plain, nested)
+    path = write_package(tmp_path / "p.ufdr", report_xml({"Chat": [chat]}))
     conn, _s = _import(path)
     rows = conn.execute(
         "SELECT locator, forwarded, forwarded_from_raw FROM messages ORDER BY locator"
@@ -804,6 +808,7 @@ def test_a_forwarded_message_is_marked_on_the_record_with_its_original_author(tm
         ("Chat[1]/Messages[2]", 1, None),  # the package names no original author
         ("Chat[1]/Messages[3]", None, None),  # a quote is not a forward
         ("Chat[1]/Messages[4]", None, None),
+        ("Chat[1]/Messages[5]", 1, None),  # never the intermediate forwarder
     ]
     from core.report.html import record_line
 

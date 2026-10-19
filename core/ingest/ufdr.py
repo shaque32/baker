@@ -1348,12 +1348,12 @@ def _forwarded(m: _Model) -> bool:
 
 def _original_author(m: _Model) -> str | None:
     """The sender of the forwarded original, when the package embeds it and names exactly one
-    (as written); never guessed."""
-    authors = {
-        _party_text(p)
-        for e in m.models("embeddedinstantmessage")
-        for p, _r in _parties(e.models("from"))
-    }
+    (as written); never guessed. An embedded message that is itself forwarded names only an
+    intermediate forwarder, so then no author is recorded."""
+    embedded = m.models("embeddedinstantmessage")
+    if any(_forwarded(e) for e in embedded):
+        return None
+    authors = {_party_text(p) for e in embedded for p, _r in _parties(e.models("from"))}
     authors.discard("")
     return authors.pop() if len(authors) == 1 else None
 
