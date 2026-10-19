@@ -56,6 +56,7 @@ from core.contracts import (
     SourceKind,
 )
 from core.encryption import open_input
+from core.ingest.source_file import require_sha256
 
 PARSER_VERSION = "govdoc-pdf/3"
 
@@ -468,10 +469,12 @@ class PdfGovDocIngester:
         ocr_language: str = "eng",
         tesseract_cmd: str = "tesseract",
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        expected_sha256: str | None = None,
     ) -> None:
         self.doc_kind = doc_kind  # None: classify from the title and opening text
         self.ocr = Tesseract(tesseract_cmd, tessdata, ocr_language)  # None: Tesseract's default
         self.clock = clock
+        self.expected_sha256 = expected_sha256  # refuse other bytes (source_file.require_sha256)
 
     def ingest(self, path: Path, conn: sqlite3.Connection) -> tuple[GovDoc, list[GovDocParagraph]]:
         result = self.ingest_full(path, conn)
@@ -480,6 +483,7 @@ class PdfGovDocIngester:
     def parse(self, path: Path) -> GovDocIngestResult:
         """Parse without touching a database."""
         data, sha = read_input(path)
+        require_sha256(path.name, self.expected_sha256, sha)  # before parsing or OCR
         try:
             pdf = pdfium.PdfDocument(data)
         except pdfium.PdfiumError as e:
@@ -550,7 +554,7 @@ class PdfGovDocIngester:
         Re-importing the same file returns what is stored if today's parse matches it,
         and raises AlreadyImportedError if it does not (the parser changed).
         """
-        result = self.parse(path)
+        result = self.parse(path)  # refuses bytes other than expected_sha256 before parsing
         stored = load(conn, result.govdoc.id)
         if stored is not None:
             govdoc, paragraphs = stored

@@ -212,10 +212,11 @@ appears in the case's audit log as `cloud.sent`.
 
 ## 7. Other safeguards
 
-- Inputs are opened read-only and SHA-256 hashed on import. In the browser workflow, a mismatch
-  between the uploaded copy's hash and the bytes parsed is refused with an error and the copy is
-  deleted. Known bug in this version: records already parsed from the changed copy can stay in the
-  case database (reported for a fix). If you ever see that error, start a new case.
+- Inputs are opened read-only and SHA-256 hashed on import. In the browser workflow, a copy whose
+  bytes no longer match the upload's hash is refused before anything parses or stores it: the
+  screen says the file changed, with both hashes, the copy is deleted and the case database is
+  unchanged (#88). Nothing should change a copied input, so if you see that error, check the case
+  folder.
 - The local model file is checked against its pinned SHA-256 before loading.
 - The screen accepts requests only from the same computer and loads nothing from outside: no
   scripts, no CDN.
