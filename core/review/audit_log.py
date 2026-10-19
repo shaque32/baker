@@ -97,41 +97,49 @@ def first_break(conn: sqlite3.Connection) -> int | None:
 
 
 def decision_problem(conn: sqlite3.Connection) -> tuple[int, str] | None:
-    """(seq, why) for the first expert evidence decision that the log no longer vouches for, or
-    None. Two cases: a stored reason that differs from the one logged with it, and an expert
-    review row with no evidence.decide entry at all (added to the database outside Baker).
-    Entries logged before reasons were (#86) carry none, so only their presence is checked.
-    One statement reads both tables, so a decision committed meanwhile by another Baker
-    process is seen whole or not at all."""
-    logged: dict[str, tuple[int, str | None]] = {}
-    expert: list[tuple[str, str]] = []
+    """(seq, why) for the first expert evidence decision that the log and the stored reviews no
+    longer agree on, or None. Each evidence.decide entry must have its expert review row, with
+    the status (and, from #86 on, the reason) it logged, and each expert review row must have
+    its entry. So a row edited, added or removed outside Baker is caught. Entries logged before
+    #86 carry no reason, so their reasons are not compared. One statement reads both tables,
+    so a decision committed meanwhile by another Baker process is seen whole or not at all."""
+    logged: dict[str, tuple[int, str | None, str | None]] = {}
+    stored: dict[str, tuple[str, str]] = {}
     rows = conn.execute(
-        "SELECT 'log', seq, payload_json, NULL FROM audit_log WHERE action = 'evidence.decide'"
-        " UNION ALL SELECT 'review', NULL, id, reason FROM evidence_reviews"
+        "SELECT 'log', seq, payload_json, NULL, NULL FROM audit_log"
+        " WHERE action = 'evidence.decide'"
+        " UNION ALL SELECT 'review', NULL, id, reason, status FROM evidence_reviews"
         " WHERE reviewer_kind = 'expert'"
     )
-    for kind, seq, text, reason in rows:
+    for kind, seq, text, reason, status in rows:
         if kind == "review":
-            expert.append((text, reason))
+            stored[text] = (reason, status)
             continue
         try:
             p = json.loads(text)
-            review, why = p.get("review_id"), p.get("reason")
+            review, why, was = p.get("review_id"), p.get("reason"), p.get("status")
         except (ValueError, AttributeError, TypeError):
             return seq, f"evidence decision {seq} of the audit log cannot be read"
-        if isinstance(review, str):
-            logged.setdefault(review, (seq, why))
-    for review, reason in expert:
+        if not isinstance(review, str):
+            return seq, f"evidence decision {seq} of the audit log names no review"
+        logged.setdefault(review, (seq, why, was))
+    for review, (seq, why, was) in sorted(logged.items(), key=lambda kv: kv[1][0]):
+        if review not in stored:
+            return seq, (
+                f"evidence decision {seq} of the audit log has no matching expert review in the "
+                "case database, so it was removed outside Baker"
+            )
+        reason, status = stored[review]
+        if (why is not None and why != reason) or (was is not None and was != status):
+            return seq, (
+                f"the expert's decision or reason for evidence decision {seq} of the audit log "
+                "was changed after it was logged"
+            )
+    for review in stored:
         if review not in logged:
             return 0, (
                 f"the expert review {review} is in the case database but not in the audit log, "
                 "so it was added outside Baker"
-            )
-        seq, why = logged[review]
-        if why is not None and why != reason:
-            return seq, (
-                f"an expert's reason for evidence decision {seq} of the audit log was changed "
-                "after it was logged"
             )
     return None
 

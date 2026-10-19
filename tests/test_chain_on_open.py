@@ -556,7 +556,7 @@ def test_a_reason_edited_after_it_was_logged_blocks_the_case(decided_db, capsys)
     conn.execute("UPDATE evidence_reviews SET reason = 'Does not match.'")
     conn.commit()
     conn.close()
-    with pytest.raises(SystemExit, match="reason for evidence decision .* was changed"):
+    with pytest.raises(SystemExit, match="decision or reason for evidence decision .* was changed"):
         cli_main(["claims", "--db", str(decided_db), "list"])
     assert cli_main(["verify-log", "--db", str(decided_db)]) == 1
     assert "was changed after it was logged" in capsys.readouterr().out
@@ -602,3 +602,23 @@ def test_ai_reviews_need_no_log_entry(decided_db):
     conn.commit()
     assert audit_log.decision_problem(conn) is None
     conn.close()
+
+
+def test_a_removed_expert_review_blocks_the_case(decided_db):
+    conn = connect(decided_db)
+    conn.execute("DROP TRIGGER evidence_reviews_no_delete")
+    conn.execute("DELETE FROM evidence_reviews")
+    conn.commit()
+    conn.close()
+    with pytest.raises(SystemExit, match="has no matching expert review .* removed outside"):
+        cli_main(["claims", "--db", str(decided_db), "list"])
+
+
+def test_a_changed_decision_status_blocks_the_case(decided_db):
+    conn = connect(decided_db)
+    conn.execute("DROP TRIGGER evidence_reviews_no_update")
+    conn.execute("UPDATE evidence_reviews SET status = 'dismissed'")
+    conn.commit()
+    conn.close()
+    with pytest.raises(SystemExit, match="decision or reason for evidence decision"):
+        cli_main(["claims", "--db", str(decided_db), "list"])
