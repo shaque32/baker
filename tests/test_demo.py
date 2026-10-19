@@ -171,12 +171,15 @@ def test_the_demo_absence_claim_stays_unproven_because_a_curated_report_cannot_s
 
 
 def test_paired_demo_shows_what_the_curated_report_left_out_and_keeps_the_verdicts(root, tmp_path):
-    plain = _verdicts(connect(_case(root).db))
+    conn = connect(_case(root).db)
+    plain = _verdicts(conn)
+    conn.close()  # Windows cannot delete an open database
     case, kind = demo.reset(root, paired=True)
     assert kind == "scripted-paired" and case.settings["paired"] is True
     conn = connect(case.db)
     assert _verdicts(conn) == plain
     files = {f for (f,) in conn.execute("SELECT file_name FROM sources WHERE kind != 'govdoc'")}
+    conn.close()
     assert files == {"item1.xlsx", "item2.xlsx", "item1-full.ufdr"}
     app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
     app.open_case(case)
