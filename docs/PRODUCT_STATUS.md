@@ -25,8 +25,7 @@ tests or recorded runs. Where something exists only on an unmerged branch, it sa
   files cannot be rechecked). A rules-only re-run also names the build its evidence came from.
   GitHub's own "Download ZIP" should fill `core/BUILD_COMMIT` in the same way; not checked.
 - **Signed prompts on main:** stance v1.1, reviewer v1.1, claims v1.0, assumptions v1.0
-  (`core/audit/prompts/`). Stance v1.2 (v1.1 plus the told-frame sentences) was signed by Arsh
-  on 2026-10-15 and is in PR #93, not merged.
+  (`core/audit/prompts/`)
 
 **Newer changes:** merged entries in `docs/changelog/` marked `Status doc: pending` are not yet
 applied here and win where they differ (`python tools/changelog.py pending` lists them). One
@@ -55,7 +54,7 @@ coverage: one wrong "supported" is the failure that counts most.
 | 6. Checks | Deterministic checks: sender, identity, timing, weekday, count, absence | `core/audit/checks/` | No |
 | 7. Retrieval | Structured filters plus keyword ranking, with surrounding messages and the other phone's copy | `core/audit/retrieval.py` | No |
 | 8. Stance | Labels one record against one assumption: supports, contradicts, complicates or irrelevant | `core/audit/stance.py` | Local 14B by default; Opus 5.5, opt-in per case once it passes the signed stance test (#68, on main; none has: `core/llm/cloud.py` `PROBE_PASSED` is empty) |
-| 9. Quote check | The label's quote must appear verbatim in the record, or the label is dropped. Since #76 (version 1.2.0, on main) the quote must also take in a letter or digit of the record's own fields: Baker's words in a rendered line ("call from") or a placeholder ("(no name)", "unknown") cannot verify it alone | `core/audit/quotes.py` | No |
+| 9. Quote check | The label's quote must appear verbatim in the record, or the label is dropped. With #76 (version 1.2.0) the quote must also take in a letter or digit of the record's own fields: Baker's words in a rendered line ("call from") or a placeholder ("(no name)", "unknown") cannot verify it alone | `core/audit/quotes.py` | No |
 | 10. AI review | Optional second pass on supporting items; off by default | `core/audit/review.py` | Local 14B |
 | 11. Verdict | `decide_verdict` applies rules 0.2.2 | `core/audit/rules.py` | No |
 | 12. Invariants | Re-checks each decision against stored records; a violation rolls back the claim and fails the run | `core/audit/invariants.py` | No |
@@ -130,29 +129,10 @@ There is no model judge of verdicts in Baker. The word "judge" does not name any
   - **Known risk:** on the signed probe set (P001-P105), Opus calls same-day "X told the owner..."
     denials and undated denials "contradicts" (4 of 15 contradicts wrong in each arm). Each is an
     event assumption, so in a real case each would be a wrong CONTRADICTED with no expert step,
-    until a signed prompt line fixes it (section 7). Arsh signed that line as stance v1.2 on
-    2026-10-15 (PR #93, not merged); with it Opus made no wrong "contradicts" on the signed
-    set or on new items. #68 uses Opus only for a (model, effort, prompt version) on its
-    `PROBE_PASSED` list (`core/llm/cloud.py`), which is empty; Opus with v1.2 needs an entry
-    signed by Arsh.
+    until a signed prompt line fixes it (section 7).
 - **Claim proposal and assumption filling stay local.** Opus missed both pre-set bars (claim
   recall 80% vs 90%; sheet-free audit 60% accuracy vs 80%), recorded in
-  `/mnt/project-files/baker/cloud-first/steps-check/RESULTS.md`. Those bars were unfair to Opus
-  (the matcher penalizes the splitting the claims prompt asks for; the 14B was never scored
-  without the sheet), so Arsh chose a same-test comparison (2026-10-15, "Test after fixes"):
-  `eval/bench/fair_steps.py` and `eval/probe/mac_v12.sh` in PR #93. The Opus half ran on
-  2026-10-16 at medium effort ($5.23, 0 call errors, cloud container): claim splitting 95%
-  (strict matcher too), the audit without the sheet 70%, fills alone 75% with a lenient
-  labeler, fills holding every signed core template 12 of 20 but matching the sheet's stated
-  values on only 3 (the other claims miss a template, or differ in a person, account, quoted
-  text or time window), 0 false supported. The 14B half ran on Arsh's 24 GB MacBook Air at
-  eee8d15 (2026-10-19, finished 17:10Z): claim splitting 90% (strict too), the audit without
-  the sheet 55%, fills alone 60% (lenient), 6 of 20 by template and 4 of 20 with the sheet's
-  values, 0 false supported. With the Opus arm rescored at the same commit, both steps **stay
-  local** under the written rule: Opus is ahead by 1 claim on both claim measures (the rule
-  needs 2), and ahead on lenient fills (+3) but behind on the sheet's values (-1). Scored by
-  hand from the two summaries (`DECISION.md`); one run per arm.
-  Results: `/mnt/project-files/baker/cloud-bench/2026-10-16/fair-14b-vs-opus/`.
+  `/mnt/project-files/baker/cloud-first/steps-check/RESULTS.md`.
 
 **Merge state:** #68 merged to main 2026-10-15 (`ed0a3a8`), with the CLAUDE.md wording Arsh
 approved (07:29Z). `PROBE_PASSED` is empty, so no case can use the cloud yet. Other lines in this
@@ -210,44 +190,6 @@ So **Opus no longer passes the full cloud rule.** Every wrong answer is a told-f
 denial (P049, P066-P069, P092, P093). Blind readers sided with the signed labels 12 of 12. The
 planned fix is a stance prompt line for guide rules 12 and 23, signed by Arsh and tested on new
 items. The local 14B has not been run on the signed set.
-
-**Stance prompt v1.2 (the told-frame sentences), signed by Arsh 2026-10-15, PR #93 (not merged).**
-Preregistered, sentences written once from guide rules 12 and 23 before any call, Opus 5.5 stance
-only, layout product_members, first answers scored
-(`/mnt/project-files/baker/cloud-bench/2026-10-15/told-frame-line/RESULTS.md` and
-`RESULTS-medium.md`, $8.59 in all):
-
-| Bar (95 gated items) | Opus high, v1.2 | Opus medium, v1.2 |
-|---|---|---|
-| Supports recall (>= 90%) | 33/33 | 33/33 |
-| Contradicts precision (>= 90%) | **10/10, passes** | **10/10, passes** |
-| Contradicting shown as supports (0) | 0 | 0 |
-| Contradicts recall | 10/11 (misses P065) | 10/11 (misses P065) |
-
-On new items written for the test and never used to write the sentences, wrong "contradicts" on
-told-frame and undated items went from 2 to 0 (24 items by this thread, high; 0 at medium too)
-and from 1 to 0 (26 items by "Custom model for Baker", medium); every contradicts and supports
-control held.
-
-The local 14B reads the same prompt. On Arsh's Mac (2026-10-19, eee8d15, first answers, the
-signed set) it did **not** pass the hold Grok Product set for #93 (v1.2 at or above v1.1 on
-supports recall and contradicts precision, 0 moved traps shown as supports):
-
-| 14B, signed set | v1.1 (main) | v1.2 (#93) |
-|---|---|---|
-| Supports recall | 100% | 100% |
-| Contradicts precision (bar 90%) | 58% (11 of 19) | 50% (11 of 22) |
-| Contradicts recall | 100% | 100% |
-| Moved traps shown as supports (bar 0) | 6 | 6 |
-| Contradicting shown as supports | 0 | 0 |
-
-The counts are inferred from the percentages (all 11 real contradicts found in both runs). So
-v1.2 gives the 14B 3 more wrong "contradicts", and #93 stays held. Under either prompt the 14B
-misses the 90% contradicts-precision bar. Source:
-`/mnt/project-files/baker/cloud-bench/2026-10-16/fair-14b-vs-opus/local-arm/RESULTS.md` and
-`DECISION.md`. A "contradicts" that becomes "complicates" can leave a claim UNPROVEN instead of
-CONTRADICTED, never SUPPORTED: an open complicating label blocks SUPPORTED
-(`core/audit/rules.py:56`, `:280-286`).
 
 **case01, real pipeline, simulated expert**
 
@@ -323,9 +265,7 @@ an empty Grok Product review PR, never merged.
    The small model's generated call rows still print the report's time (guide rule 28), unlike
    the product; #50 is not merged, and aligning them is the "Custom model for Baker" thread's.
 2. **Opus's wrong "contradicts" on told-frame and undated denials** (section 7). Matters for
-   #68: it would make wrong CONTRADICTED verdicts. Stance v1.2 (signed 2026-10-15, PR #93,
-   not merged) removed every such answer in the Opus tests; main still sends v1.1 until it
-   merges. With v1.2 Opus missed one real contradiction (P065), which leaves a claim UNPROVEN.
+   #68: it would make wrong CONTRADICTED verdicts until a signed prompt fix lands.
 3. **Real-data formats unverified.** UFDR and AXIOM readers were built from documentation and
    synthetic samples. No real extraction has been imported. No public Cellebrite-made UFDR with a
    usable license exists; #73 checked the reader on two non-Cellebrite test files (27 of 27
@@ -336,13 +276,9 @@ an empty Grok Product review PR, never merged.
    forwarded, with the original author when the extraction names one; the sender field still
    shows the forwarder, and originals' text is not imported. Cases made before then keep only the
    coverage list (same fail-closed behaviour, no author).
-4. **Local runtime per case unknown on current code** (section 7). **The local 14B's stance
-   labels miss the signed bars.** On the signed set with v1.1, the prompt on main (Mac,
-   2026-10-19), 8 of its 19 "contradicts" are wrong (precision 58%, bar 90%) and it shows 6
-   moved traps as supports. Under rule 1b a model's "contradicts" on an assumption that is not
-   a meaning and has no passed check can make a claim CONTRADICTED with no expert step, so a
-   local case can show a wrong CONTRADICTED until the expert dismisses the label. Not yet
-   measured on a full case: how many of these wrong labels land on such assumptions.
+4. **Local runtime per case unknown on current code** (section 7). The local 14B's probe result
+   is also unverified on current code: it missed the moved-trap bar on 2026-10-07 answers with
+   prompt v1.0, and has not been run on prompt v1.1 or the signed 105-item set.
 5. **Evidence recall is modest.** Opus case01 surfaced key evidence for 35% of claims needing it;
    14 of 20 claims depend on the expert finding or accepting key evidence.
 6. **Curated report against a larger source (branch only, not on main).** Lists what a UFDR of the
@@ -402,12 +338,9 @@ Before a first real case (the full list is the gates file):
 1. Time a full local case01 on the Mac for a real runtime (#76 merged, so the 14B's
    contact and call quotes pass the check, section 9).
 2. Check a real UFDR and AXIOM export with `baker ufdr-check` (needs a pilot expert's closed case).
-3. Opt-in cloud (#68, merged 2026-10-15, chosen by Arsh 07:10Z) stays gated off. The signed
-   told-frame fix (line signed 13:45Z) is stance v1.2 (PR #93, not merged), which passed on new
-   items with Opus. The 14B did worse on v1.2 than on v1.1 (Mac, 2026-10-19), so #93 is held
-   and Arsh chooses the next step. Then an entry for
-   Opus with v1.2 in `core/llm/cloud.py` `PROBE_PASSED`, signed by Arsh. Pilots run local only
-   until then.
+3. Opt-in cloud (#68, merged 2026-10-15, chosen by Arsh 07:10Z) stays gated off until a signed
+   told-frame prompt fix passes on new items (line signed 13:45Z) and Arsh signs a gate entry.
+   Pilots run local only until then.
 4. Sign the Windows installer (Azure code signing pending).
 
 No pilot has started and no expert has used Baker on a real case (per project records; this

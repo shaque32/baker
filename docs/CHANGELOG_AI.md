@@ -24,61 +24,6 @@ Archive entry format (new entries use the one in `docs/changelog/README.md`):
 
 ---
 
-## 2026-10-16: Stance prompt v1.2, the told-frame sentences, and its Mac check (#93)
-- Changed: `core/audit/prompts/stance.md` is v1.2, signed by Arsh on 2026-10-15 ("approved" in
-  "Audit our model scoring"). Two sentences in the "contradicts" entry teach stance guide v0.3
-  rules 12 and 23: a reply in which X says the opposite does not rule out "X told the owner that
-  ...", since another message could still have said it, so it is "complicates"; a denial that
-  names no time rules out only an act dated before it. Why: with v1.1, Opus 5.5 called those
-  "contradicts" on the signed probe set (contradicts precision 73%, bar 90%), and an unreviewed
-  "contradicts" on an event assumption can make a claim CONTRADICTED with no expert step. No code
-  changes; the recorded prompt version becomes `sha256:2863d8dbf66960f6` (was
-  `sha256:4c35f1cf01b0b227`). Also eval only: `eval/probe/mac_v12.sh`, one Mac run for the 14B's
-  probe on v1.2, the same probe on v1.1 as its baseline, and its half of the 14B-vs-Opus test Arsh chose on 2026-10-15 ("Test after
-  fixes"), and `eval/bench/fair_steps.py`, which runs that test for either model at one commit:
-  claim proposal (scored by the committed matcher and a split-aware one, since the claims prompt
-  asks for splitting), the case01 audit without the assumption sheet, and the same fills with a
-  perfect labeler, replayed with no model call. Its Opus arm retries a failed send as the
-  product does, and a cloud call still failing after that marks the run invalid rather than
-  counting as the model's dropped label. After Codex's second review it also reports a strict
-  split matcher (each fragment must state something and match its gold claim) and the fills
-  against the signed sheet's core templates and the parameters it states, since the
-  registered measures can over-credit; a step moves toward Opus only if it wins on both the
-  registered and the added measure. Each result records its commit, model hash and effort;
-  `--rescore` scores a finished arm again from its stored databases with no model call, and
-  `--compare` applies the rule to two results, deciding nothing when they are not comparable
-  (an invalid arm, Opus not at medium effort, a dirty tree, different commits, or arms scored
-  at different commits).
-- Where: branch `claude/project-thread-01fybj`, PR #93, not merged.
-- Verified: the v1.2 body is byte for byte the text the preregistered Opus runs sent (tests pin
-  its SHA-256 and check it is v1.1 plus the two sentences only). Opus 5.5 on the signed set,
-  high and medium: contradicts precision 10/10, supports recall 33/33, 0 contradicting shown as
-  supports, contradicts recall 10/11 (misses P065). New items: wrong contradicts 2 to 0 (24
-  items, high) and 1 to 0 (26 items, medium), controls kept. $8.59 of API spend, synthetic data
-  only (`/mnt/project-files/baker/cloud-bench/2026-10-15/told-frame-line/`). `make check`:
-  green on the branch with main at e6e34f8 (2267 passed, 6 skipped, lint clean; eval unchanged:
-  case01 1.00 with 0 false supported, unreviewed 0.60, hostile PASS, case02 aggregate 0.90).
-- Open: the local 14B reads this prompt too, and on Arsh's Mac (`bash eval/probe/mac_v12.sh` at
-  eee8d15, 2026-10-19, 24 GB MacBook Air) it did worse with v1.2 than with v1.1 on the signed
-  set: contradicts precision 50% (11 of 22) against 58% (11 of 19), supports recall 100% in
-  both, 6 moved traps shown as supports in both. That misses the hold Grok Product set (v1.2 at
-  or above v1.1, 0 moved traps), so this PR is held and Arsh chooses the next step. The test's
-  14B half ran in the same run: with the Opus arm rescored at eee8d15, claim proposal and
-  assumption filling both stay local under the written rule
-  (`/mnt/project-files/baker/cloud-bench/2026-10-16/fair-14b-vs-opus/DECISION.md`). The test's plan
-  and decision rule were written before any call
-  (`/mnt/project-files/baker/cloud-bench/2026-10-16/fair-14b-vs-opus/PREREGISTERED.md`, with
-  Amendments 1 to 4 for the added measures and checks). The Opus half ran on 2026-10-16 ($5.23, cloud
-  container). #68's `PROBE_PASSED` list needs an entry for Opus with v1.2, signed
-  by Arsh, before cloud labels can run. P065 is missed by Opus with v1.2; "Custom model for
-  Baker" notes rule 23 may make its own label complicates (a separate sign-off). Stored v1.1
-  answers are not reused, so a re-run of an existing case labels again.
-- Affects: capabilities (stance labels for every model that reads the signed prompt: for Opus,
-  fewer wrong "contradicts" and so fewer wrong CONTRADICTED verdicts; for the local 14B, 3 more
-  wrong "contradicts" on the signed set, the reason for the hold; a claim it changes goes
-  UNPROVEN or CONTRADICTED, never SUPPORTED); performance (one full re-label per existing case).
-  No privacy change. No new customer-facing claim.
-
 ## 2026-10-16: Forwarded messages marked on the record (signed schema change)
 - Changed: Arsh signed the `messages.forwarded` and `messages.forwarded_from_raw` columns
   (PROPOSED_CHANGES.md, "approved" 2026-10-16 02:53Z in the UFDR thread), applied to
@@ -156,7 +101,6 @@ Archive entry format (new entries use the one in `docs/changelog/README.md`):
   unchanged (case01 model-free 1.00, 0 false supported).
 - Open: Codex was out of credits; self-reviewed only.
 - Affects: capabilities (import integrity); privacy, performance and claims unchanged.
-
 ## 2026-10-16: The expert's reason for an evidence decision is in the audit log (#86)
 - Changed: the `evidence.decide` log entry now carries the reason the expert typed (before, only
   the evidence id, review id and status), as verdict, identity and override notes already did.
@@ -451,8 +395,8 @@ Archive entry format (new entries use the one in `docs/changelog/README.md`):
   (`core/audit/invariants.quote_is_verbatim`), which holds evidence to the check of its day only
   for a run that records no quote-check version (Grok merge-bot review on #76). "(no name)", "unknown" or "call from" alone fail; "(no name): +1..." passes. `core/audit/quotes.record_text`, which still said calls had no
   citable text, now reads every record as the labeler sees it, as the pipeline already did.
-- Where: main (PR #76, merged 2026-10-16; branch `claude/project-thread-01fybj`, from the "Audit
-  our model scoring" thread). Includes the C17 font fix.
+- Where: main once PR #76 merges (branch `claude/project-thread-01fybj`, from the "Audit our
+  model scoring" thread). Includes the C17 font fix.
 - Verified: new regression tests (each fails without its fix), among them a contact and a call
   labeled "contradicts" and quoted as shown: before, the label was dropped and C01 went
   SUPPORTED; now CONTRADICTED. A test checks every case01 record reads the same for the labeler
