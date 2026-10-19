@@ -7,7 +7,7 @@ Each gate is pass or fail. Partial progress is "not met". A gate passes only whe
 exists on `main` (or, for a human step, in a recorded result someone can open). Update this file in
 the same PR that changes a gate's state, along with `docs/PRODUCT_STATUS.md` section 11.
 
-- **As of:** 2026-10-16, main `966be8f` (after #83, #72, #68, #74, #73, #75, #79, #85, #76 and #87) plus PR #82, which adds this file. Open PRs are named but not
+- **As of:** 2026-10-16, main `97c7daa` (after #83, #72, #68, #74, #73, #75, #79, #85, #76, #87 and #78) plus PR #82, which adds this file. Open PRs are named but not
   counted.
 - **Result:** 8 of 18 gates met (gate 2 by #76, gate 14 by the case02 key Arsh signed, gate 6 by #72, gate 7 by #74, gate 8 by
   merging #68, gate 12 by #82, gate 15 already in place, gate 18 by the feedback form #82 publishes). Gates 13 to 18 come from Grok's pilot-ready list
