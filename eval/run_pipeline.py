@@ -64,7 +64,7 @@ from core.contracts import ClaimType, DocKind, GoldClaim, GovDocParagraph, Predi
 from core.db import apply_schema, connect
 from core.ingest.cellebrite_excel import CellebriteExcelImporter
 from core.ingest.govdoc import PdfGovDocIngester
-from core.report.html import write_report
+from core.report.html import quote_check_label, write_report
 from core.review import actions
 from eval.run_eval import load_jsonl
 
@@ -360,8 +360,29 @@ def model_free_components(conn, spec: Path, gold) -> pipeline.Components:  # noq
     return comps
 
 
+def run_versions(conn) -> dict:  # noqa: ANN001
+    """What a result depends on, as the report stamps it: the latest run's Baker release and git
+    commit, pipeline, rule and quote-check versions and every model run's file SHA-256 and seed."""
+    run = pipeline.last_run(conn) or {}
+    return {
+        "build": (run.get("config") or {}).get("build"),
+        "evidence_build": (run.get("config") or {}).get("evidence_build"),
+        "pipeline": run.get("baker_version"),
+        "rules": run.get("rule_version"),
+        "quote_check": quote_check_label(run),
+        "models": [
+            {"purpose": r[0], "model": r[1], "sha256": r[2], "prompt": r[3], "seed": r[4]}
+            for r in conn.execute(
+                "SELECT purpose, model_name, model_sha256, prompt_version, seed FROM model_runs"
+                " ORDER BY purpose, id"
+            )
+        ],
+    }
+
+
 def write_outputs(conn, out: Path, summary: dict) -> list[Prediction]:  # noqa: ANN001
     out.mkdir(parents=True, exist_ok=True)
+    summary["versions"] = run_versions(conn)
     preds = pipeline.predictions(conn)
     (out / "predictions.jsonl").write_text(
         "".join(p.model_dump_json() + "\n" for p in preds), encoding="utf-8"
