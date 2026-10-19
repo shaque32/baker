@@ -56,11 +56,18 @@ def _verdicts(conn: sqlite3.Connection) -> dict[str, str]:
     )
 
 
+def _claim_ids() -> list[str]:
+    return [*demo.load_gold(), *(d["claim_id"] for d in demo.load_demo_claims())]
+
+
 def test_demo_matches_the_answer_key_except_the_claim_left_for_the_demo(root):
     gold = {g.claim_id: g.gold_verdict.value for g in demo.load_gold().values()}
     conn = connect(_case(root).db)
     got = _verdicts(conn)
-    assert set(got) == set(gold)
+    extra = {d["claim_id"] for d in demo.load_demo_claims()}
+    assert set(got) == set(gold) | extra and not extra & set(gold)
+    for claim_id in extra:
+        del got[claim_id]
     for claim_id in demo.LEFT_OPEN:
         assert got[claim_id] == "unproven"
     assert {c: v for c, v in got.items() if c not in demo.LEFT_OPEN} == {
@@ -108,7 +115,7 @@ def test_every_claim_page_and_the_report_render(root):
     case = _case(root)
     app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
     app.open_case(case)
-    for claim_id in demo.load_gold():
+    for claim_id in _claim_ids():
         resp = app.handle(Request("GET", "/claim", {"id": claim_id}, dict(HOST)))
         assert resp.status == 200, (claim_id, resp.body[:200])
     assert app.handle(Request("GET", "/report", {}, dict(HOST))).status == 200
@@ -130,7 +137,7 @@ def test_an_experts_own_reason_with_a_blocked_word_shows_as_written(root):
     conn.close()
     app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
     app.open_case(case)
-    pages = [("/claim", {"id": c}) for c in demo.load_gold()]
+    pages = [("/claim", {"id": c}) for c in _claim_ids()]
     pages += [("/evidence", {"id": first}), ("/evidence", {"id": second}), ("/report", {})]
     shown = ""
     for path, query in pages:
@@ -139,6 +146,48 @@ def test_an_experts_own_reason_with_a_blocked_word_shows_as_written(root):
         shown += resp.body.decode()
     assert f'<span class="said">{reason}</span>' in shown
     assert "Not the leader;" in shown
+
+
+def test_the_demo_absence_claim_stays_unproven_because_a_curated_report_cannot_show_absence(
+    root,
+):
+    """D01 (demo only): no WhatsApp record falls in the window, yet the check is inconclusive and
+    the verdict unproven, because the searched reports are curated and cannot show absence."""
+    conn = connect(_case(root).db)
+    assert _verdicts(conn)["D01"] == "unproven"
+    outcome, detail = conn.execute(
+        "SELECT c.outcome, c.detail FROM check_results c JOIN assumptions a"
+        " ON a.id = c.assumption_id WHERE a.claim_id = 'D01' AND c.check_name = 'absence'"
+    ).fetchone()
+    assert outcome == "inconclusive"
+    assert detail.startswith("Found none.")
+    assert "curated report, which cannot show that something is absent" in detail
+    assert "Not found does not mean there was no contact" in detail
+    reasons = conn.execute(
+        "SELECT reasons_json FROM verdicts WHERE claim_id = 'D01' AND pipeline_run_id = ?",
+        (pipeline.last_run(conn)["run_id"],),
+    ).fetchone()[0]
+    assert "is not covered" in reasons
+
+
+def test_paired_demo_shows_what_the_curated_report_left_out_and_keeps_the_verdicts(root, tmp_path):
+    plain = _verdicts(connect(_case(root).db))
+    case, kind = demo.reset(root, paired=True)
+    assert kind == "scripted-paired" and case.settings["paired"] is True
+    conn = connect(case.db)
+    assert _verdicts(conn) == plain
+    files = {f for (f,) in conn.execute("SELECT file_name FROM sources WHERE kind != 'govdoc'")}
+    assert files == {"item1.xlsx", "item2.xlsx", "item1-full.ufdr"}
+    app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
+    app.open_case(case)
+    page = app.handle(Request("GET", "/selection", {}, dict(HOST))).body.decode()
+    assert "Curated report against a larger source of the same phone" in page
+    assert "or sunday works too" in page  # planted in the UFDR, left out of the curated report
+    claim = app.handle(Request("GET", "/claim", {"id": "C05"}, dict(HOST))).body.decode()
+    assert "within an hour of this claim" in claim
+    _, kind = demo.reset(root)
+    assert kind == "scripted"
+    assert not _case(root).settings.get("paired")
 
 
 def test_inputs_are_read_only_hashed_copies_and_the_log_verifies(root):
@@ -207,3 +256,13 @@ def test_cli_demo_build_only(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "demo case ready" in out and "scripted labels" in out
     assert len(cases.list_cases(tmp_path / "demo" / "cases")) == 1
+
+
+def test_cli_demo_paired_build_only(tmp_path, monkeypatch, capsys):
+    from cli.main import main
+
+    monkeypatch.setenv(demo.DEMO_ROOT_ENV, str(tmp_path / "demo"))
+    assert main(["demo", "--build-only", "--paired"]) == 0
+    assert "paired audit" in capsys.readouterr().out
+    (case,) = cases.list_cases(tmp_path / "demo" / "cases")
+    assert case.settings["paired"] is True

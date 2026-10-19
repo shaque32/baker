@@ -15,6 +15,16 @@ report say so on every page:
   dismisses the rest, giving the answer key's rationale as the reason, on every claim except
   LEFT_OPEN. Those wait for the person giving the demo (docs/demo.md says what to do on each).
 
+Two additions that are not in the answer key:
+
+- The demo claims in eval/demo_claims.jsonl. D01 is an absence claim read from paragraph 11 ("no
+  WhatsApp messages March 20 to 23"). Nothing contradicts it, but Item 1 is a curated report,
+  which cannot show that something is absent, so the absence check is inconclusive and the rules
+  leave the claim unproven. It shows Baker declining to call silence an absence.
+- `--paired` (build_scripted(paired=True)) also imports a UFDR of Item 1 that holds records the
+  curated report left out (eval/synthetic/paired.py), so the Selection tab shows the paired
+  selection audit: what the curated report holds against the larger source of the same phone.
+
 Everything is synthetic. The demo lives in its own cases folder (~/Baker/demo/cases), so a
 screen share never shows another case. `--from-case` saves a finished synthetic case01 audit (for
 example a real local-model run) as the demo instead; reset then restores that copy.
@@ -53,6 +63,7 @@ from core.review.redecide import redecide
 EVAL_DIR = Path(__file__).resolve().parent
 GOLD = EVAL_DIR / "gold" / "case01" / "gold.jsonl"
 SHEET = EVAL_DIR / "gold" / "case01" / "assumptions.jsonl"
+DEMO_CLAIMS = EVAL_DIR / "demo_claims.jsonl"  # demo-only claims, not signed gold
 CASE_META = EVAL_DIR / "synthetic" / "case01" / "case.json"
 
 DEMO_ROOT_ENV = "BAKER_DEMO"
@@ -102,6 +113,15 @@ def cases_dir(root: Path) -> Path:
 
 def snapshot_dir(root: Path) -> Path:
     return root / "snapshot"
+
+
+def load_demo_claims() -> list[dict]:
+    """The demo-only claims (eval/demo_claims.jsonl), each with its one assumption."""
+    return [
+        json.loads(line)
+        for line in DEMO_CLAIMS.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
 
 
 def load_gold() -> dict[str, GoldClaim]:
@@ -158,14 +178,14 @@ def _import(case: cases.Case, conn: sqlite3.Connection, path: Path, kind: str) -
     cases.import_upload(case, conn, upload, _sha256(upload), path.name, kind, SETUP_ACTOR)
 
 
-def _paragraph(conn: sqlite3.Connection, g: GoldClaim) -> str:
+def _paragraph(conn: sqlite3.Connection, claim_id: str, para_no: int, page: int) -> str:
     rows = conn.execute(
         "SELECT id, page FROM govdoc_paragraphs WHERE label = ? ORDER BY page, para_no",
-        (str(g.para_no),),
+        (str(para_no),),
     ).fetchall()
-    on_page = [r for r in rows if r[1] == g.page]
+    on_page = [r for r in rows if r[1] == page]
     if not (on_page or rows):
-        raise SystemExit(f"demo: no paragraph printed as {g.para_no} for {g.claim_id}")
+        raise SystemExit(f"demo: no paragraph printed as {para_no} for {claim_id}")
     return (on_page or rows)[0][0]
 
 
@@ -173,10 +193,11 @@ def _components(conn: sqlite3.Connection, gold: dict[str, GoldClaim]) -> pipelin
     from eval.pipeline_fakes import FakeReviewer
     from eval.run_pipeline import spec_filler
 
+    signed, extra = spec_filler(SHEET, conn), spec_filler(DEMO_CLAIMS, conn)
     comps = pipeline.real_components(
         conn,
         replace={"labeler": ScriptedLabeler(conn, gold), "reviewer": FakeReviewer(False)},
-        filler=spec_filler(SHEET, conn),
+        filler=lambda claim, allowed: signed(claim, allowed) or extra(claim, allowed),
     )
     comps.reviewable = lambda item: False  # no AI reviewer in the demo: the expert decides
     comps.model_runs = (*comps.model_runs, DEMO_RUN)
@@ -205,9 +226,12 @@ def _scripted_review(conn: sqlite3.Connection, gold: dict[str, GoldClaim], run: 
     return decided
 
 
-def build_scripted(home: Path) -> cases.Case:
-    """Build the scripted demo case as a new case folder in home."""
+def build_scripted(home: Path, paired: bool = False) -> cases.Case:
+    """Build the scripted demo case as a new case folder in home. With paired, the case also
+    holds a UFDR of Item 1 with records the curated report left out, imported after the audit
+    so the verdicts are the same as without it."""
     from eval.run_pipeline import render_affidavit_pdf
+    from eval.synthetic import paired as planted
     from eval.synthetic.generate import generate
 
     meta = json.loads(CASE_META.read_text(encoding="utf-8"))
@@ -228,9 +252,14 @@ def build_scripted(home: Path) -> cases.Case:
             for s in meta["sources"]:
                 _import(case, conn, work / "reports" / s["file"], "report")
             for g in gold.values():
-                para = _paragraph(conn, g)
+                para = _paragraph(conn, g.claim_id, g.para_no, g.page)
                 actions.add_claim(
                     conn, g.claim_id, para, g.text, ClaimType(g.claim_type), SETUP_ACTOR
+                )
+            for d in load_demo_claims():
+                para = _paragraph(conn, d["claim_id"], d["para_no"], d["page"])
+                actions.add_claim(
+                    conn, d["claim_id"], para, d["text"], ClaimType(d["claim_type"]), SETUP_ACTOR
                 )
             for d in meta["devices"]:
                 actions.stipulate_device_owner(
@@ -242,9 +271,12 @@ def build_scripted(home: Path) -> cases.Case:
                 raise SystemExit("demo: the scripted audit did not finish")
             _scripted_review(conn, gold, run)
             redecide(conn, SETUP_ACTOR)
+            if paired:
+                full = planted.write(work / "paired")["item1-full.ufdr"]
+                _import(case, conn, full, "report")
         finally:
             conn.close()
-    case.save_settings(demo="scripted", left_open=list(LEFT_OPEN))
+    case.save_settings(demo="scripted", left_open=list(LEFT_OPEN), paired=paired)
     return case
 
 
@@ -333,10 +365,12 @@ def drop_snapshot(root: Path) -> None:
     _remove(snapshot_dir(root))
 
 
-def reset(root: Path) -> tuple[cases.Case, str]:
+def reset(root: Path, paired: bool = False) -> tuple[cases.Case, str]:
     """Replace the demo case with a clean copy: the saved snapshot if there is one, else the
-    scripted build. Returns the case and which one it is. Only demo cases are deleted; any
-    other case folder in the demo's cases folder is left alone and stops the reset."""
+    scripted build. With paired, always the scripted build with Item 1's UFDR added (a saved
+    snapshot is kept for the next plain reset). Returns the case and which one it is. Only demo
+    cases are deleted; any other case folder in the demo's cases folder is left alone and stops
+    the reset."""
     home = cases_dir(root)
     home.mkdir(parents=True, exist_ok=True)
     others = [c.folder.name for c in cases.list_cases(home) if not _is_demo(c.folder)]
@@ -347,6 +381,8 @@ def reset(root: Path) -> tuple[cases.Case, str]:
         )
     for c in cases.list_cases(home):
         _remove(c.folder)
+    if paired:
+        return build_scripted(home, paired=True), "scripted-paired"
     snap = snapshot_dir(root)
     if (snap / cases.DB_NAME).is_file():
         folder = home / DEMO_FOLDER
