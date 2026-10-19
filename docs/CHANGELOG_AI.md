@@ -19,6 +19,28 @@ Template:
 
 ---
 
+## 2026-10-16: The expert's reason for an evidence decision is in the audit log (#86)
+- Changed: the `evidence.decide` log entry now carries the reason the expert typed (before, only
+  the evidence id, review id and status), as verdict, identity and override notes already did.
+  The audit log check (`require_intact`) also compares each logged reason with the one stored in
+  `evidence_reviews`; a reason or status edited in the database after it was logged, or an
+  expert review row added or removed without its log entry, blocks the case like a broken chain. Both tables are read in one
+  statement, so a decision another Baker process commits meanwhile never looks like tampering.
+  Found by the Pilot docs pack thread (#82 disclosed the gap).
+- Where: branch `claude/project-thread-fjea4m`, PR #86 (not merged).
+- Verified: 7 new tests in `tests/test_chain_on_open.py` (reason logged; an edited reason or
+  status blocks the CLI and `verify-log` names it; an expert review added or removed outside
+  Baker is blocked; AI reviews need no entry; a decision logged without a reason still
+  verifies). `make check` passed 2026-10-19 in a Linux cloud container with main `97c7daa`
+  merged in: 2092 passed,
+  8 skipped; case01 model-free accuracy 1.00, 0 false supported; hostile PASS.
+- Open: decisions logged before this change carry no reason in the log, so their reasons are not
+  compared. Someone who edits the reason, the log and the anchor file together is not caught
+  (same limit as the rest of the log).
+- Affects: customer-facing claims (an expert's reasons are now tamper-evident); the report's
+  expert-actions table and the screen's Log page now show the reason; no privacy change (the
+  reason stays inside the case database, not the anchor file).
+
 ## 2026-10-15: Pilot gates, onboarding kit, methods note, security pack (#82)
 - Changed: four documents, no code (Grok Product review #80 items 9, 10, 11, 13).
   `docs/PILOT_GATES.md` defines pilot-ready as pass/fail gates (12, then 18 after Grok's pilot-ready list) with today's state;
