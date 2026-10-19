@@ -810,30 +810,29 @@ _JOINS_WORDS = (
     r"(?:and|but|or|then|as|while|when|whereas|although|though|because|since|until|after|"
     r"before|so)"
 )
-# "two texts", "the answers": a quote word that can be a noun is no verb after one of these,
-# but only when nothing but punctuation follows it up to the quote. Only such words: "the
+# "two texts", "the answers": a quote word that can be a noun is no verb when it is the direct
+# object of the verb before it (below), and only when nothing but punctuation follows it up to
+# the quote. Only such words: "the
 # quoted statement" still governs the quote, and so does a noun phrase that says whose words
 # they are ("two quotes attributed to REYES: 'ok'"). A possessive ("her replies") may name
 # someone else's words, so the noun then stays and names no writer.
 _NOUN_FORMS = frozenset({"texts", "replies", "answers", "types", "quotes", "reads"})
-_NOUN_BEFORE = re.compile(
-    r"\b(?:a|an|the|this|these|those|some|several|many|few|"
-    r"two|three|four|five|six|seven|eight|nine|ten|\d+)\s*$",
-    re.IGNORECASE,
+# What may stand between the verb before a noun or participle and that word for the verb to
+# keep the quote: only the recipient, named ("REYES", "REYES and SMITH", "Dr. Reyes", "@x").
+# Anything else ("a report listing the replies", "about all the replies", "REYES while SMITH,
+# replying") may make the words someone else's, so the word governs and names no writer.
+_RECIPIENT = r"(?:@[\w.-]+|[A-Z][\w'.-]*)(?:\s+(?:and\s+)?(?:@[\w.-]+|[A-Z][\w'.-]*)){0,3}"
+_DETERMINERS = (
+    r"(?:a|an|the|these|those|some|several|two|three|four|five|six|seven|eight|nine|ten|\d+)"
 )
-# "about the replies", "about all the replies": a preposition anywhere between the verb before
-# the noun and the noun means the noun phrase may be someone else's words, so the noun stays and
-# names no writer. Only a direct object ("sent REYES two texts") is skipped as a noun.
-_PREP_BEFORE_NOUN = re.compile(
-    r"\b(?:about|regarding|concerning|re|on|of|to|with|from|over|in|for|by|at|among|between|"
-    r"including|into|onto|toward|towards|against|after|before|during|under|via|through|per|"
-    r"like|than|without|within|across|behind|beside|besides|despite|except|upon)\b",
-    re.IGNORECASE,
+_DIRECT_OBJECT = re.compile(
+    rf"^\s+(?:(?-i:{_RECIPIENT})\s+)?(?:{_DETERMINERS}\s+){{1,2}}$", re.IGNORECASE
 )
-# 'PETROV texted REYES, writing "ok"': a participle right after a comma (or "and", "then")
-# has the same subject as the verb before it, so it does not govern the quote. Not when it is
-# set in after a join ("and, replying 'ok', SMITH ended ...") or a new subject follows the
-# quote: that subject may be the one replying.
+_SAME_CLAUSE = re.compile(rf"^\s+(?-i:{_RECIPIENT})\s*(?:,|\s(?:and|then))\s*$", re.IGNORECASE)
+# 'PETROV texted REYES, writing "ok"': a participle right after the recipient and a comma (or
+# "and", "then") has the same subject as the verb before it, so it does not govern the quote.
+# Not when a new subject follows the quote ("..., replying 'ok', SMITH left"): that subject may
+# be the one replying.
 _SAME_SUBJECT_FORMS = frozenset(
     {
         "writing",
@@ -848,8 +847,6 @@ _SAME_SUBJECT_FORMS = frozenset(
         "responding",
     }
 )
-_SAME_SUBJECT_BEFORE = re.compile(r"(?:,|\b(?:and|then))\s*$", re.IGNORECASE)
-_SET_IN_BEFORE = re.compile(rf"\b{_JOINS_WORDS}\s*,\s*$", re.IGNORECASE)
 _SUBJECT_AFTER = re.compile(r"^[^\w,]*,\s*(?:(?:he|she|they|it|we|i)\b|(?-i:[A-Z]))", re.IGNORECASE)
 # Words that carry a quote: a possessive hands the quote on only before one of these
 # ("REYES's message", "JONES' reply") or right before the quote, not in "from his brother's
@@ -1184,16 +1181,12 @@ class LocalAssumptionFiller:
         """True when this quote word is a noun or a same-subject participle, so the verb
         before it still governs the quote. `after` is the claim's text after the quote."""
         word, ahead = verb.group(0).casefold(), before[: verb.start()]
-        if (
-            word in _NOUN_FORMS
-            and _NOUN_BEFORE.search(ahead)
-            and not _PREP_BEFORE_NOUN.search(ahead[_last_end(_QUOTING_RE, ahead) :])
-        ):
+        span = ahead[_last_end(_QUOTING_RE, ahead) :] if _QUOTING_RE.search(ahead) else ""
+        if word in _NOUN_FORMS and _DIRECT_OBJECT.match(span):
             return not re.search(r"\w", before[verb.end() :])
         return (
             word in _SAME_SUBJECT_FORMS
-            and bool(_SAME_SUBJECT_BEFORE.search(ahead))
-            and not _SET_IN_BEFORE.search(ahead)
+            and bool(_SAME_CLAUSE.match(span))
             and not _SUBJECT_AFTER.search(after)
         )
 
