@@ -904,7 +904,7 @@ _JOINS = _JOINS_WORDS
 # checked by _CAPS_CLAUSE_RE). Time words ("before midnight") hand nothing on, nor does a
 # contraction ("that it's").
 _HANDED_ON_RE = re.compile(
-    rf"[;!?]|{_NOT_A_TITLE}\.(?=\s+[A-Z])|{_POSSESSIVE_OF_QUOTE}"
+    rf"[;!?]|{_NOT_A_TITLE}\.(?=\s+[A-Z@])|{_POSSESSIVE_OF_QUOTE}"
     r"|\b(?:who|whom|whose|which|where)\b"
     rf"|\b{_QUOTE_NOUNS}\s+(?:from|of|by)\b"
     rf"|\b(?:his|her|their|its|my|our|your)\s+(?:[\w-]+\s+){{0,2}}?{_QUOTE_NOUNS}\b"
@@ -1252,9 +1252,7 @@ class LocalAssumptionFiller:
         if match is None:
             return None
         between = before[last.end() :]
-        if _HANDED_ON_RE.search(between) or (
-            not re.search(r"[a-z]", between) and _CAPS_CLAUSE_RE.search(between)
-        ):
+        if _HANDED_ON_RE.search(between) or (_CAPS_CLAUSE_RE.search(between)):
             return None  # the quote may be someone else's: fail closed, as for no writer
         if not self._plain_between(between):
             return None
@@ -1283,17 +1281,23 @@ class LocalAssumptionFiller:
             for part in _nfc(full).casefold().split()
         }
         mixed_case = bool(re.search(r"[a-z]", between))
-        for word in re.findall(r"@[\w.-]+|\w[\w'’.-]*", between):
+        last_end, last_capital = -1, False  # the word before: where it ends, and its kind
+        for m in re.finditer(r"@[\w.-]+|\w[\w'’.-]*", between):
+            word = m.group(0)
             w = re.sub(r"['’]s$", "", word.casefold()).strip(".'’-")
-            if not (
+            known = (
                 word.startswith("@")
                 or w.isdigit()
                 or w in _BETWEEN_WORDS
                 or w in _TITLES
                 or w in names
-                or (mixed_case and word[0].isupper())
-            ):
+            )
+            # A capitalised word that is no created person may be a name, but not right after
+            # another capitalised word: "REYES SHOT BACK" is a clause of its own.
+            right_after = last_capital and not between[last_end : m.start()].strip()
+            if not known and not (mixed_case and word[0].isupper() and not right_after):
                 return False
+            last_end, last_capital = m.end(), word[0].isupper() and w not in _TITLES
         return True
 
     def _person(self, name: str) -> str:
