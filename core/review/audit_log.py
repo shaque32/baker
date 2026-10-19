@@ -96,22 +96,43 @@ def first_break(conn: sqlite3.Connection) -> int | None:
     return None
 
 
-def first_changed_reason(conn: sqlite3.Connection) -> int | None:
-    """The seq of the first evidence decision whose stored reason no longer matches the reason
-    logged with it, or None. Entries logged before the reason was (#74 follow-up) carry none
-    and are not compared; their chain still verifies."""
-    stored = dict(conn.execute("SELECT id, reason FROM evidence_reviews"))
+def decision_problem(conn: sqlite3.Connection) -> tuple[int, str] | None:
+    """(seq, why) for the first expert evidence decision that the log no longer vouches for, or
+    None. Two cases: a stored reason that differs from the one logged with it, and an expert
+    review row with no evidence.decide entry at all (added to the database outside Baker).
+    Entries logged before reasons were (#86) carry none, so only their presence is checked.
+    One statement reads both tables, so a decision committed meanwhile by another Baker
+    process is seen whole or not at all."""
+    logged: dict[str, tuple[int, str | None]] = {}
+    expert: list[tuple[str, str]] = []
     rows = conn.execute(
-        "SELECT seq, payload_json FROM audit_log WHERE action = 'evidence.decide' ORDER BY seq"
+        "SELECT 'log', seq, payload_json, NULL FROM audit_log WHERE action = 'evidence.decide'"
+        " UNION ALL SELECT 'review', NULL, id, reason FROM evidence_reviews"
+        " WHERE reviewer_kind = 'expert'"
     )
-    for seq, payload_json in rows:
+    for kind, seq, text, reason in rows:
+        if kind == "review":
+            expert.append((text, reason))
+            continue
         try:
-            p = json.loads(payload_json)
-            logged, review = p.get("reason"), p.get("review_id")
+            p = json.loads(text)
+            review, why = p.get("review_id"), p.get("reason")
         except (ValueError, AttributeError, TypeError):
-            return seq
-        if logged is not None and stored.get(review) != logged:
-            return seq
+            return seq, f"evidence decision {seq} of the audit log cannot be read"
+        if isinstance(review, str):
+            logged.setdefault(review, (seq, why))
+    for review, reason in expert:
+        if review not in logged:
+            return 0, (
+                f"the expert review {review} is in the case database but not in the audit log, "
+                "so it was added outside Baker"
+            )
+        seq, why = logged[review]
+        if why is not None and why != reason:
+            return seq, (
+                f"an expert's reason for evidence decision {seq} of the audit log was changed "
+                "after it was logged"
+            )
     return None
 
 
@@ -144,13 +165,9 @@ def _require_intact(conn: sqlite3.Connection, anchors: Path | None) -> None:
     seq = first_break(conn)
     if seq is not None:
         raise ChainBroken(seq)
-    seq = first_changed_reason(conn)
-    if seq is not None:
-        raise ChainBroken(
-            seq,
-            f"an expert's reason for evidence decision {seq} of the audit log was changed after "
-            "it was logged",
-        )
+    found = decision_problem(conn)
+    if found is not None:
+        raise ChainBroken(*found)
     if anchors is None or not anchors.exists():
         return  # a case made before anchors, or a test database
     try:

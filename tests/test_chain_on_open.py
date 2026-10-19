@@ -575,6 +575,30 @@ def test_a_decision_logged_before_reasons_were_still_verifies(tmp_path):
     old = {"evidence_id": "e1", "review_id": "rv:e1#1", "status": "accepted"}  # no reason
     audit_log.append(conn, AT, EXPERT, "evidence.decide", old)
     conn.commit()
-    assert audit_log.first_changed_reason(conn) is None
+    assert audit_log.decision_problem(conn) is None
     conn.close()
     assert cli_main(["claims", "--db", str(db), "list"]) == 0
+
+
+def test_an_expert_review_added_outside_baker_blocks_the_case(decided_db):
+    conn = connect(decided_db)
+    conn.execute(
+        "INSERT INTO evidence_reviews VALUES ('rv:e1#2','e1',2,'expert',?,'dismissed',"
+        "'Planted.',NULL,NULL,'2026-01-02T00:00:00Z')",
+        (EXPERT,),
+    )
+    conn.commit()
+    conn.close()
+    with pytest.raises(SystemExit, match="expert review rv:e1#2 is in the case database but not"):
+        cli_main(["claims", "--db", str(decided_db), "list"])
+
+
+def test_ai_reviews_need_no_log_entry(decided_db):
+    conn = connect(decided_db)
+    conn.execute(
+        "INSERT INTO evidence_reviews VALUES ('rv:e1#2','e1',2,'ai','ai:m','dismissed',"
+        "'Model said no.','m1',NULL,'2026-01-02T00:00:00Z')"
+    )
+    conn.commit()
+    assert audit_log.decision_problem(conn) is None
+    conn.close()

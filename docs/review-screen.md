@@ -143,8 +143,10 @@ Three checks, all in `core/review/audit_log.py` (`require_intact`):
 3. **The expert's reasons.** Each evidence decision's log entry carries the reason the expert
    typed. A reason changed in the case database after it was logged no longer matches, and the
    case is blocked ("an expert's reason for evidence decision N ... was changed after it was
-   logged"). Decisions logged before this check carry no reason in the log, so their reasons
-   are not compared; the rest of the chain still covers them.
+   logged"). An expert review added to the database with no log entry at all is blocked too
+   ("the expert review ... is in the case database but not in the audit log"). Decisions logged
+   before this check carry no reason in the log, so only their presence is checked; the rest of
+   the chain still covers them.
 
 A case folder Baker cannot write to (read-only media, a locked-down backup) does not open or
 report, since no anchor could be recorded: copy the folder somewhere writable and open the copy.
