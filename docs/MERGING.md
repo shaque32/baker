@@ -136,17 +136,19 @@ alone. A PR that only adds a request to `PROPOSED_CHANGES.md` does not change a 
 
 ## 6. Changelog and status docs
 
-Rule today (until #84 merges): a PR that changes behavior, capabilities, privacy,
-performance, benchmarks or customer-facing claims updates `docs/PRODUCT_STATUS.md` and adds one
-entry at the top of `docs/CHANGELOG_AI.md` in the same PR. Because many PRs edit these two
-files, they often conflict after a merge; that is a section 5 skip, not a reason to fix it here.
-Test-only PRs, and docs-only PRs that change no recorded fact or customer-facing claim, need
-no entry.
+A PR that changes behavior, capabilities, privacy, performance, benchmarks or customer-facing
+claims adds its own entry file in `docs/changelog/` (format in `docs/changelog/README.md`) and
+does not edit `docs/CHANGELOG_AI.md` (the archive) or `docs/PRODUCT_STATUS.md`. Its entry's
+`Status doc:` line lists the status edits it needs. `make test` checks the entry's format.
+Test-only PRs, and docs-only PRs that change no recorded fact or customer-facing claim, need no
+entry.
 
-Once #84 merges (it is on hold for Arsh's approval of its `CLAUDE.md` wording):
+After a round of merges, one status refresh PR applies the pending edits to
+`docs/PRODUCT_STATUS.md`, marks those entries applied and sets their `Where:` to main
+(`python tools/changelog.py pending` lists what is left). Merge it last in the round, after the
+PRs whose entries it applies.
 
-- A meaningful PR adds its own file in `docs/changelog/` and does not edit
-  `docs/CHANGELOG_AI.md` or `docs/PRODUCT_STATUS.md`. Its entry's `Status doc:` line lists the
-  status edits it needs. `make test` checks the entry's format.
-- After a round of merges, one status refresh PR applies the pending edits to
-  `docs/PRODUCT_STATUS.md`. Merge it last in the round, after the PRs whose entries it applies.
+A PR opened before #84 merged may still edit `docs/CHANGELOG_AI.md` or `docs/PRODUCT_STATUS.md`;
+if that conflicts after a merge, it is a section 5 skip, not a reason to fix it here. When its
+owning thread syncs it, it moves that entry into its own `docs/changelog/` file and its status edits
+into `Status doc: pending: ...`, so it stops conflicting with the other open PRs.
