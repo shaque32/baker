@@ -847,6 +847,9 @@ _SAME_SUBJECT_FORMS = frozenset(
         "responding",
     }
 )
+# The participle's quote must end its clause: in "saying 'ok' was what SMITH had written" the
+# quote is the subject of what follows, so the words may be someone else's.
+_QUOTE_ENDS_CLAUSE = re.compile(r"^[^\w]*?(?:[,.;!?]|$)")
 _SUBJECT_AFTER = re.compile(
     r"^[^\w,]*,\s*(?:(?:he|she|they|it|we|i)\b|(?-i:[A-Z])|@)", re.IGNORECASE
 )
@@ -911,6 +914,33 @@ _HANDED_ON_RE = re.compile(
 )
 # The same joined clause in an all-caps claim: "AND REYES SHOT BACK", not "AND SMITH:".
 _CAPS_CLAUSE_RE = re.compile(rf"\b(?i:{_JOINS})\s+(?:(?:[A-Z][A-Z'.-]*|@[\w.-]+)\s+){{1,3}}[A-Z]")
+# Besides the checks above, every word between the writer's verb and the quote must be one
+# that cannot hand the quote on: a person the expert created, an "@" handle, a title, a
+# number, a capitalised word in a claim that is not all caps (a name; in an all-caps claim
+# only a person the expert created counts), or one of these words (recipients, times, "two
+# texts", a same-subject participle).
+# Any other word ("annoyed", "REPORT", "shot") names no writer: the guard above lists
+# phrasings that hand a quote on, and this one keeps a phrasing it does not know from
+# naming the wrong person.
+_BETWEEN_WORDS = frozenset(
+    {
+        *_SAME_SUBJECT_FORMS,
+        *_NOUN_FORMS,
+        "to", "and", "then", "that", "it", "back", "at", "on", "before", "after", "around",
+        "a", "an", "the", "these", "those", "some", "several", "two", "three", "four",
+        "five", "six", "seven", "eight", "nine", "ten",
+        "text", "message", "messages", "email", "emails", "dm", "dms", "note", "notes",
+        "a.m", "p.m", "am", "pm", "midnight", "noon", "morning", "afternoon", "evening",
+        "night", "today", "yesterday", "monday", "tuesday", "wednesday", "thursday",
+        "friday", "saturday", "sunday", "january", "february", "march", "april", "may",
+        "june", "july", "august", "september", "october", "november", "december",
+    }
+)  # fmt: skip
+_TITLES = frozenset(
+    t.casefold()
+    for t in ("Dr", "Mr", "Mrs", "Ms", "Sgt", "Det", "Lt", "Ofc", "Cpl", "Capt", "Prof",
+              "Gen", "Col", "Insp", "Agt", "Agent", "Officer", "Detective")
+)  # fmt: skip
 # A name right after one of these is not the one who wrote: 'a friend of PETROV texted ...',
 # 'someone posing as PETROV texted ...'. A plain "As PETROV texted ..." still names him.
 _POSSESSIVE_BEFORE = re.compile(r"['’]s\s*$", re.IGNORECASE)
@@ -1192,6 +1222,7 @@ class LocalAssumptionFiller:
             word in _SAME_SUBJECT_FORMS
             and bool(_SAME_CLAUSE.match(span))
             and not _SUBJECT_AFTER.search(after)
+            and bool(_QUOTE_ENDS_CLAUSE.match(after))
         )
 
     def stated_sender(self, claim: Claim, quoted: str | None) -> str | None:
@@ -1225,6 +1256,8 @@ class LocalAssumptionFiller:
             not re.search(r"[a-z]", between) and _CAPS_CLAUSE_RE.search(between)
         ):
             return None  # the quote may be someone else's: fail closed, as for no writer
+        if not self._plain_between(between):
+            return None
         words = match.group(1).split()
         for i in range(len(words)):
             # What comes before this form of the name, capitalised words included ("A FRIEND
@@ -1240,6 +1273,28 @@ class LocalAssumptionFiller:
             except Reject:
                 continue
         return None
+
+    def _plain_between(self, between: str) -> bool:
+        """True when every word between the writer's verb and the quote is on the list that
+        cannot hand the quote on (see _BETWEEN_WORDS)."""
+        names = {
+            part
+            for (full,) in self.conn.execute("SELECT name FROM persons")
+            for part in _nfc(full).casefold().split()
+        }
+        mixed_case = bool(re.search(r"[a-z]", between))
+        for word in re.findall(r"@[\w.-]+|\w[\w'’.-]*", between):
+            w = re.sub(r"['’]s$", "", word.casefold()).strip(".'’-")
+            if not (
+                word.startswith("@")
+                or w.isdigit()
+                or w in _BETWEEN_WORDS
+                or w in _TITLES
+                or w in names
+                or (mixed_case and word[0].isupper())
+            ):
+                return False
+        return True
 
     def _person(self, name: str) -> str:
         n = _nfc(name.strip()).casefold()

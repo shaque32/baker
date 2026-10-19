@@ -436,10 +436,10 @@ def test_a_sender_without_a_party_gets_the_writer_the_claim_names(conn):
         ("PETROV texted REYES that it's 'ok see you'.", "ok see you", "PETROV"),  # contraction
         ("PETROV wrote a report with two quotes attributed to REYES: 'ok'.", "ok", None),
         ("PETROV TEXTED REYES, AND REYES SHOT BACK 'OK SEE YOU'.", "OK SEE YOU", None),
-        ("PETROV TEXTED REYES AND SMITH: 'OK SEE YOU'.", "OK SEE YOU", "PETROV"),
+        ("PETROV TEXTED REYES AND SMITH: 'OK SEE YOU'.", "OK SEE YOU", None),
         ("PETROV texted REYES, writing 'ok see you'.", "ok see you", "PETROV"),
         ("PETROV texted REYES, with REYES writing 'ok see you'.", "ok see you", None),
-        ("PETROV texted REYES from his brother's phone: 'ok see you'.", "ok see you", "PETROV"),
+        ("PETROV texted REYES from his brother's phone: 'ok see you'.", "ok see you", None),
         ("PETROV texted Dr. Reyes: 'ok see you'.", "ok see you", "PETROV"),
         ("PETROV texted REYES as REYES shot back 'ok see you'.", "ok see you", None),
         ("PETROV texted REYES about Exhibit A. REYES shot back 'ok see you'.", "ok see you", None),
@@ -475,6 +475,10 @@ def test_a_sender_without_a_party_gets_the_writer_the_claim_names(conn):
         ("PETROV texted REYES, and @northstar shot back 'ok'.", "ok", None),
         ("PETROV TEXTED REYES, AND @NORTHSTAR SHOT BACK 'OK'.", "OK", None),
         ("PETROV texted REYES and @smith: 'ok'.", "ok", "PETROV"),
+        ("PETROV texted REYES, and REYES, annoyed, shot back 'ok'.", "ok", None),
+        ("PETROV texted REYES, saying 'ok' was what SMITH had written.", "ok", None),
+        ("PETROV WROTE A REPORT WITH THE QUOTES: 'OK'.", "OK", None),
+        ("PETROV TEXTED MARCUS REYES: 'OK'.", "OK", "PETROV"),
     ],
 )  # fmt: skip
 def test_stated_sender_is_the_writer_of_the_quoted_words(conn, text, quoted, writer):
