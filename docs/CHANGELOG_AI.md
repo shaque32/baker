@@ -53,22 +53,26 @@ Template:
   only (`/mnt/project-files/baker/cloud-bench/2026-10-15/told-frame-line/`). `make check`:
   green on the branch with main at fe65aa1 (2147 passed, 6 skipped, lint clean; eval unchanged:
   case01 1.00 with 0 false supported, unreviewed 0.60, hostile PASS, case02 aggregate 0.90).
-- Open: the local 14B reads this prompt and has not been run on it; Arsh runs
-  `bash eval/probe/mac_v12.sh` on the Mac (the probe on v1.2 and on v1.1, then the test's 14B
-  half). This PR is held until that run shows v1.2 keeps the 14B's supports recall and contradicts
-  precision at its v1.1 level with 0 moved traps shown as supports (Grok Product, 2026-10-19).
-  The test's plan
+- Open: the local 14B reads this prompt too, and on Arsh's Mac (`bash eval/probe/mac_v12.sh` at
+  eee8d15, 2026-10-19, 24 GB MacBook Air) it did worse with v1.2 than with v1.1 on the signed
+  set: contradicts precision 50% (11 of 22) against 58% (11 of 19), supports recall 100% in
+  both, 6 moved traps shown as supports in both. That misses the hold Grok Product set (v1.2 at
+  or above v1.1, 0 moved traps), so this PR is held and Arsh chooses the next step. The test's
+  14B half ran in the same run: with the Opus arm rescored at eee8d15, claim proposal and
+  assumption filling both stay local under the written rule
+  (`/mnt/project-files/baker/cloud-bench/2026-10-16/fair-14b-vs-opus/DECISION.md`). The test's plan
   and decision rule were written before any call
   (`/mnt/project-files/baker/cloud-bench/2026-10-16/fair-14b-vs-opus/PREREGISTERED.md`, with
-  Amendments 1 to 4 for the added measures and checks). Only the Opus half has run (2026-10-16, $5.23, cloud
-  container), so there is no comparison yet. #68's `PROBE_PASSED` list needs an entry for Opus with v1.2, signed
+  Amendments 1 to 4 for the added measures and checks). The Opus half ran on 2026-10-16 ($5.23, cloud
+  container). #68's `PROBE_PASSED` list needs an entry for Opus with v1.2, signed
   by Arsh, before cloud labels can run. P065 is missed by Opus with v1.2; "Custom model for
   Baker" notes rule 23 may make its own label complicates (a separate sign-off). Stored v1.1
   answers are not reused, so a re-run of an existing case labels again.
-- Affects: capabilities (stance labels for every model that reads the signed prompt: fewer wrong
-  "contradicts", so fewer wrong CONTRADICTED verdicts; a claim it changes goes UNPROVEN, never
-  SUPPORTED); performance (one full re-label per existing case). No privacy change. No new
-  customer-facing claim until the 14B is measured.
+- Affects: capabilities (stance labels for every model that reads the signed prompt: for Opus,
+  fewer wrong "contradicts" and so fewer wrong CONTRADICTED verdicts; for the local 14B, 3 more
+  wrong "contradicts" on the signed set, the reason for the hold; a claim it changes goes
+  UNPROVEN or CONTRADICTED, never SUPPORTED); performance (one full re-label per existing case).
+  No privacy change. No new customer-facing claim.
 
 ## 2026-10-16: Versions stamped on every result (#91, after #76)
 - Changed: closes the rest of pilot gate 3 ("versions stamped on every result",

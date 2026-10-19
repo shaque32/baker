@@ -141,8 +141,13 @@ There is no model judge of verdicts in Baker. The word "judge" does not name any
   (strict matcher too), the audit without the sheet 70%, fills alone 75% with a lenient
   labeler, fills holding every signed core template 12 of 20 but matching the sheet's stated
   values on only 3 (the other claims miss a template, or differ in a person, account, quoted
-  text or time window), 0 false supported. The 14B half (Mac) has not run, so
-  there is no comparison yet; one Opus run is not a measure of Opus.
+  text or time window), 0 false supported. The 14B half ran on Arsh's 24 GB MacBook Air at
+  eee8d15 (2026-10-19, finished 17:10Z): claim splitting 90% (strict too), the audit without
+  the sheet 55%, fills alone 60% (lenient), 6 of 20 by template and 4 of 20 with the sheet's
+  values, 0 false supported. With the Opus arm rescored at the same commit, both steps **stay
+  local** under the written rule: Opus is ahead by 1 claim on both claim measures (the rule
+  needs 2), and ahead on lenient fills (+3) but behind on the sheet's values (-1). Scored by
+  hand from the two summaries (`DECISION.md`); one run per arm.
   Results: `/mnt/project-files/baker/cloud-bench/2026-10-16/fair-14b-vs-opus/`.
 
 **Merge state:** #68 merged to main 2026-10-15 (`ed0a3a8`), with the CLAUDE.md wording Arsh
@@ -218,10 +223,25 @@ only, layout product_members, first answers scored
 On new items written for the test and never used to write the sentences, wrong "contradicts" on
 told-frame and undated items went from 2 to 0 (24 items by this thread, high; 0 at medium too)
 and from 1 to 0 (26 items by "Custom model for Baker", medium); every contradicts and supports
-control held. The local 14B reads the same prompt and has **not** been run on v1.2 (needs the
-Mac). #93 is held until it has: v1.2 must keep the 14B's supports recall and contradicts
-precision at its v1.1 level, measured in the same Mac run, with 0 moved traps shown as supports
-(Grok Product, 2026-10-19). A "contradicts" that becomes "complicates" can leave a claim UNPROVEN instead of
+control held.
+
+The local 14B reads the same prompt. On Arsh's Mac (2026-10-19, eee8d15, first answers, the
+signed set) it did **not** pass the hold Grok Product set for #93 (v1.2 at or above v1.1 on
+supports recall and contradicts precision, 0 moved traps shown as supports):
+
+| 14B, signed set | v1.1 (main) | v1.2 (#93) |
+|---|---|---|
+| Supports recall | 100% | 100% |
+| Contradicts precision (bar 90%) | 58% (11 of 19) | 50% (11 of 22) |
+| Contradicts recall | 100% | 100% |
+| Moved traps shown as supports (bar 0) | 6 | 6 |
+| Contradicting shown as supports | 0 | 0 |
+
+The counts are inferred from the percentages (all 11 real contradicts found in both runs). So
+v1.2 gives the 14B 3 more wrong "contradicts", and #93 stays held. Under either prompt the 14B
+misses the 90% contradicts-precision bar. Source:
+`/mnt/project-files/baker/cloud-bench/2026-10-16/fair-14b-vs-opus/local-arm/RESULTS.md` and
+`DECISION.md`. A "contradicts" that becomes "complicates" can leave a claim UNPROVEN instead of
 CONTRADICTED, never SUPPORTED: an open complicating label blocks SUPPORTED
 (`core/audit/rules.py:56`, `:280-286`).
 
@@ -309,9 +329,13 @@ an empty Grok Product review PR, never merged.
    closed (#73, merged 2026-10-16): they can neither support nor contradict a claim, checks resting on
    them are inconclusive, and the claim page and report warn. Their sender field still shows the
    forwarder until a schema change Arsh signs (PROPOSED_CHANGES.md); originals are not imported.
-4. **Local runtime per case unknown on current code** (section 7). The local 14B's probe result
-   is also unverified on current code: it missed the moved-trap bar on 2026-10-07 answers with
-   prompt v1.0, and has not been run on prompt v1.1, v1.2 or the signed 105-item set.
+4. **Local runtime per case unknown on current code** (section 7). **The local 14B's stance
+   labels miss the signed bars.** On the signed set with v1.1, the prompt on main (Mac,
+   2026-10-19), 8 of its 19 "contradicts" are wrong (precision 58%, bar 90%) and it shows 6
+   moved traps as supports. Under rule 1b a model's "contradicts" on an assumption that is not
+   a meaning and has no passed check can make a claim CONTRADICTED with no expert step, so a
+   local case can show a wrong CONTRADICTED until the expert dismisses the label. Not yet
+   measured on a full case: how many of these wrong labels land on such assumptions.
 5. **Evidence recall is modest.** Opus case01 surfaced key evidence for 35% of claims needing it;
    14 of 20 claims depend on the expert finding or accepting key evidence.
 6. **Curated report against a larger source (branch only, not on main).** Lists what a UFDR of the
@@ -373,8 +397,8 @@ Before a first real case (the full list is the gates file):
 2. Check a real UFDR and AXIOM export with `baker ufdr-check` (needs a pilot expert's closed case).
 3. Opt-in cloud (#68, merged 2026-10-15, chosen by Arsh 07:10Z) stays gated off. The signed
    told-frame fix (line signed 13:45Z) is stance v1.2 (PR #93, not merged), which passed on new
-   items with Opus. Still needed: the 14B's probe on v1.2 and v1.1 on the Mac (#93 is held until
-   v1.2 is no worse for the 14B), merge it, then an entry for
+   items with Opus. The 14B did worse on v1.2 than on v1.1 (Mac, 2026-10-19), so #93 is held
+   and Arsh chooses the next step. Then an entry for
    Opus with v1.2 in `core/llm/cloud.py` `PROBE_PASSED`, signed by Arsh. Pilots run local only
    until then.
 4. Sign the Windows installer (Azure code signing pending).
