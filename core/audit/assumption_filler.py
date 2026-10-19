@@ -806,18 +806,25 @@ _QUOTING_RE = re.compile(
     re.IGNORECASE,
 )
 QUOTE_REACH = 80  # characters from the writer's verb to the quote
-# "two texts", "her replies", "the answers": a quote word that can be a noun is no verb after
-# one of these, but only when nothing but punctuation follows it up to the quote. Only such
-# words: "the quoted statement" still governs the quote, and so does a noun phrase that says
-# whose words they are ("two quotes attributed to REYES: 'ok'").
+_JOINS_WORDS = (
+    r"(?:and|but|or|then|as|while|when|whereas|although|though|because|since|until|after|"
+    r"before|so)"
+)
+# "two texts", "the answers": a quote word that can be a noun is no verb after one of these,
+# but only when nothing but punctuation follows it up to the quote. Only such words: "the
+# quoted statement" still governs the quote, and so does a noun phrase that says whose words
+# they are ("two quotes attributed to REYES: 'ok'"). A possessive ("her replies") may name
+# someone else's words, so the noun then stays and names no writer.
 _NOUN_FORMS = frozenset({"texts", "replies", "answers", "types", "quotes", "reads"})
 _NOUN_BEFORE = re.compile(
-    r"\b(?:a|an|the|his|her|their|its|my|our|your|this|these|those|some|several|many|few|"
+    r"\b(?:a|an|the|this|these|those|some|several|many|few|"
     r"two|three|four|five|six|seven|eight|nine|ten|\d+)\s*$",
     re.IGNORECASE,
 )
 # 'PETROV texted REYES, writing "ok"': a participle right after a comma (or "and", "then")
-# has the same subject as the verb before it, so it does not govern the quote.
+# has the same subject as the verb before it, so it does not govern the quote. Not when it is
+# set in after a join ("and, replying 'ok', SMITH ended ...") or a new subject follows the
+# quote: that subject may be the one replying.
 _SAME_SUBJECT_FORMS = frozenset(
     {
         "writing",
@@ -833,6 +840,8 @@ _SAME_SUBJECT_FORMS = frozenset(
     }
 )
 _SAME_SUBJECT_BEFORE = re.compile(r"(?:,|\b(?:and|then))\s*$", re.IGNORECASE)
+_SET_IN_BEFORE = re.compile(rf"\b{_JOINS_WORDS}\s*,\s*$", re.IGNORECASE)
+_SUBJECT_AFTER = re.compile(r"^[^\w,]*,\s*(?:(?:he|she|they|it|we|i)\b|(?-i:[A-Z]))", re.IGNORECASE)
 # Words that carry a quote: a possessive hands the quote on only before one of these
 # ("REYES's message", "JONES' reply") or right before the quote, not in "from his brother's
 # phone".
@@ -872,10 +881,7 @@ _NOT_A_TITLE = "".join(
 )
 # Words that can start a new clause with its own subject: "and REYES shot back", "as REYES
 # shot back", "while he typed".
-_JOINS = (
-    r"(?:and|but|or|then|as|while|when|whereas|although|though|because|since|until|after|"
-    r"before|so)"
-)
+_JOINS = _JOINS_WORDS
 # Between the writer's verb and the quote, anything that can hand the quote to someone else
 # names no writer: a sentence break ('PETROV messaged REYES. REYES: "ok"'; a stop before a
 # capital, so "2:31 p.m.:" and "Dr. Reyes" are no break), a relative or a joined clause
@@ -1160,13 +1166,18 @@ class LocalAssumptionFiller:
         return [*out, Proposal("record_time", params, is_core=True)]
 
     @staticmethod
-    def _passes_quote_on(before: str, verb: re.Match[str]) -> bool:
+    def _passes_quote_on(before: str, verb: re.Match[str], after: str) -> bool:
         """True when this quote word is a noun or a same-subject participle, so the verb
-        before it still governs the quote."""
+        before it still governs the quote. `after` is the claim's text after the quote."""
         word, ahead = verb.group(0).casefold(), before[: verb.start()]
         if word in _NOUN_FORMS and _NOUN_BEFORE.search(ahead):
             return not re.search(r"\w", before[verb.end() :])
-        return word in _SAME_SUBJECT_FORMS and bool(_SAME_SUBJECT_BEFORE.search(ahead))
+        return (
+            word in _SAME_SUBJECT_FORMS
+            and bool(_SAME_SUBJECT_BEFORE.search(ahead))
+            and not _SET_IN_BEFORE.search(ahead)
+            and not _SUBJECT_AFTER.search(after)
+        )
 
     def stated_sender(self, claim: Claim, quoted: str | None) -> str | None:
         """The person the claim names as the writer of the quoted words, or None.
@@ -1184,7 +1195,10 @@ class LocalAssumptionFiller:
         if at < 0:
             return None
         before = _nfc(claim.text)[:at]
-        verbs = [v for v in _QUOTING_RE.finditer(before) if not self._passes_quote_on(before, v)]
+        after = _nfc(claim.text)[at + len(_nfc(quoted.strip())) :]
+        verbs = [
+            v for v in _QUOTING_RE.finditer(before) if not self._passes_quote_on(before, v, after)
+        ]
         if not verbs or at - verbs[-1].end() > QUOTE_REACH:
             return None
         last = verbs[-1]
