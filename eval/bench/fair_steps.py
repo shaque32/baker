@@ -584,19 +584,22 @@ def decision_counts(res: dict[str, Any]) -> dict[str, int | None]:
 def compare(local: dict[str, Any], opus: dict[str, Any]) -> str:
     """The decision rule (PREREGISTERED.md, amendments 1 and 2) on two arms' results: a step
     moves toward Opus only if Opus wins by MARGIN on both of its measures with 0 false
-    supported. Anything that makes the two runs not comparable is listed first."""
-    checks = []
+    supported. Anything that makes the two runs not comparable is listed first; an INVALID
+    arm, a dirty tree or two different recorded commits leave every step undecided. A missing
+    commit (an arm that predates the field) is listed and does not block, as the plan says."""
+    checks, blocking = [], []
     for name, r in (("local", local), ("opus", opus)):
         if r.get("invalid"):
-            checks.append(f"{name} arm is INVALID: {r['invalid']}")
+            blocking.append(f"{name} arm is INVALID: {r['invalid']}")
         rev = r.get("revision") or {}
         if not rev.get("commit"):
             checks.append(f"{name} arm recorded no commit")
         elif rev.get("dirty"):
-            checks.append(f"{name} arm ran with uncommitted changes")
+            blocking.append(f"{name} arm ran with uncommitted changes")
     a, b = (r.get("revision", {}).get("commit") for r in (local, opus))
     if a and b and a != b:
-        checks.append(f"the arms ran at different commits: list `git diff --stat {b} {a}`")
+        blocking.append(f"the arms ran at different commits: list `git diff --stat {b} {a}`")
+    checks = blocking + checks
     lo, op = decision_counts(local), decision_counts(opus)
     false_sup = {
         name: sum((r.get(k) or {}).get("n_false_supported", 0) for k in ("audit", "fills_only"))
@@ -612,7 +615,8 @@ def compare(local: dict[str, Any], opus: dict[str, Any]) -> str:
         wins = known and all(op[k] - lo[k] >= MARGIN for k in keys)  # type: ignore[operator]
         clean = false_sup["local"] == 0 and false_sup["opus"] == 0
         verdict = (
-            "not decided: a measure is missing" if not known
+            "not decided: runs not comparable" if blocking
+            else "not decided: a measure is missing" if not known
             else "moves toward Opus (a person reads the matched rows first)" if wins and clean
             else "stays local"
         )  # fmt: skip

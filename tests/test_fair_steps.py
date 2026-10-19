@@ -162,6 +162,21 @@ def test_the_decision_flags_runs_that_are_not_comparable() -> None:
     out = compare(arm(17, 17, 0.6, 5), opus)
     assert "CHECK: opus arm ran with uncommitted changes" in out
     assert "CHECK: the arms ran at different commits" in out
+    assert out.count("not decided: runs not comparable") == 2
+
+
+def test_an_invalid_arm_or_another_commit_decides_nothing() -> None:
+    invalid = arm(20, 20, 1.0, 20)
+    invalid["invalid"] = "a cloud call failed after its retries"
+    for opus in (invalid, arm(20, 20, 1.0, 20, commit="def")):
+        out = compare(arm(10, 10, 0.5, 2), opus)
+        assert out.count("not decided: runs not comparable") == 2
+        assert "moves toward Opus" not in out and "stays local" not in out
+    no_commit = arm(20, 20, 1.0, 20)
+    no_commit["revision"] = {}
+    out = compare(arm(10, 10, 0.5, 2), no_commit)  # listed, as the plan says, but decides
+    assert "CHECK: opus arm recorded no commit" in out
+    assert out.count("moves toward Opus") == 2
     bad = arm(17, 17, 0.6, 5)
     bad["fills_only"]["n_false_supported"] = 1
     assert "moves toward Opus" not in compare(bad, arm(20, 20, 1.0, 20))

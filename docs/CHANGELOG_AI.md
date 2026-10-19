@@ -48,7 +48,7 @@ Template:
   supports, contradicts recall 10/11 (misses P065). New items: wrong contradicts 2 to 0 (24
   items, high) and 1 to 0 (26 items, medium), controls kept. $8.59 of API spend, synthetic data
   only (`/mnt/project-files/baker/cloud-bench/2026-10-15/told-frame-line/`). `make check`:
-  green on the branch with main at 966be8f (2077 passed, 6 skipped, lint clean; eval unchanged:
+  green on the branch with main at 966be8f (2078 passed, 6 skipped, lint clean; eval unchanged:
   case01 1.00 with 0 false supported, unreviewed 0.60, hostile PASS, case02 aggregate 0.90).
 - Open: the local 14B reads this prompt and has not been run on it; Arsh runs
   `bash eval/probe/mac_v12.sh` on the Mac (the probe, then the test's 14B half). The test's plan
