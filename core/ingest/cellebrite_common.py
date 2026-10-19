@@ -1107,6 +1107,8 @@ class Coverage:
     multi_name_accounts: list[str] = field(default_factory=list)
     # message ids by reason, in full (core/ingest/forwarded.py reads them downstream)
     forwarded_records: dict[str, list[str]] = field(default_factory=dict)
+    # forwarded message id -> its original author as the source wrote it, when it says
+    forwarded_from: dict[str, str] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------- writer
@@ -1791,6 +1793,7 @@ def write_report(
                 else:
                     _messages(w, rkind, rows, tctx, app_hint)
         w.flush()
+        forwarded.mark(conn, cov.forwarded_records, cov.forwarded_from)
         payload = coverage_payload(
             source, importer_name, tz_raw, rep_off, cov, sorted(grouped), report_order, date_order
         )

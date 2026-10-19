@@ -88,7 +88,11 @@ from core.review.status import verdict_label as _verdict_label
 # time beside its line (the review screen shows the same line, through record_line).
 # 0.5.0 (#91): the top line names the Baker release and git commit, the pipeline, rule and
 # quote-check versions; Versions gives the build and each model's seed beside its SHA-256.
-REPORT_VERSION = "0.5.0"
+# 0.6.0 (#89): a forwarded record's warning names its original author, as a cited span, when the
+# extraction names one.
+# 0.7.0: Versions says whether forwarded marks are on the record or, in a case made before
+# contracts 0.4.0, only in the coverage list (no original author is named there).
+REPORT_VERSION = "0.7.0"
 
 __all__ = [
     "AWAITING_EXPERT",
@@ -355,10 +359,13 @@ def record_line(
 ) -> str:
     note = (found or {}).get(record_id)
     if note:
-        return (
-            f"{record_line(conn, record_id)}<br><strong class='warn'>"
-            f"{e(forwarded.RECORD_NOTE[note])}</strong>"
-        )
+        author = forwarded.original_author(conn, record_id) if note == "forwarded" else None
+        if author:
+            before, after = forwarded.AUTHOR_NOTE
+            warning = f"{e(before)}{q(author)}{e(after)}"  # the author is the source's text
+        else:
+            warning = e(forwarded.RECORD_NOTE[note])
+        return f"{record_line(conn, record_id)}<br><strong class='warn'>{warning}</strong>"
     if record_id.startswith("msg:"):
         r = conn.execute(
             "SELECT m.ts_utc, m.ts_raw, a.identifier, a.display_name, t.app, t.title"
@@ -561,6 +568,22 @@ def build_label(run: dict) -> str:
     return build.run_label(run.get("config") or {})
 
 
+def forwarded_label(conn: sqlite3.Connection) -> str:
+    """Where the case keeps forwarded marks. A case made before contracts 0.4.0 has no forwarded
+    columns: forwarded messages its imports listed still fail closed, from the coverage list, but
+    no original author is named. An import made before that list existed (#73) recorded no list,
+    and nothing tells it apart from an import that found no forwarded messages, so the label
+    says so rather than promise the fail-closed path."""
+    if forwarded.has_columns(conn):
+        return "on the record, with the original author when the extraction names one"
+    return (
+        "coverage list only (case made before contracts 0.4.0): listed forwarded messages fail "
+        "closed, but no original author is named. A source imported before Baker listed "
+        "forwarded messages (#73) has no list, so its forwarded messages are not marked; "
+        "re-import it to check"
+    )
+
+
 def _versions(conn: sqlite3.Connection, run: dict | None) -> str:
     rows = [("Report", REPORT_VERSION), ("Other explanations (code)", explain.VERSION)]
     if run:
@@ -574,6 +597,7 @@ def _versions(conn: sqlite3.Connection, run: dict | None) -> str:
         cloud = (run.get("config") or {}).get("cloud")
         if isinstance(cloud, dict):
             rows.append(("Stance labels", str(cloud.get("why", ""))))
+    rows.append(("Forwarded marks", forwarded_label(conn)))
     model_rows = list(
         conn.execute(
             "SELECT purpose, model_name, model_sha256, prompt_version, seed FROM model_runs"
@@ -761,18 +785,25 @@ def render_report(conn: sqlite3.Connection, timeline: timeline_html.Settings | N
         for r in expert_rows:
             parts.append(
                 f"<tr><td>{r[0]}</td><td>{e(r[1])}</td><td>{e(r[2])}</td><td>{e(r[3])}</td>"
-                f"<td>{q(_compact(r[4]))}</td></tr>"
+                f"<td>{q(_compact(r[4], r[3]))}</td></tr>"
             )
         parts.append("</table>")
     parts.append("</body></html>")
     return "".join(parts)
 
 
-def _compact(payload_json: str) -> str:
+# Expert flags (core/review/flags.py) are feedback about Baker, not findings: the report names
+# each one but leaves out the expert's note, the record they named and the snapshot.
+FLAG_FIELDS_IN_REPORT = ("flag_id", "claim_id", "kind", "evidence_id", "should_be")
+
+
+def _compact(payload_json: str, action: str = "") -> str:
     try:
         p = json.loads(payload_json)
     except ValueError:
         return payload_json
+    if action.startswith("flag.") and isinstance(p, dict):
+        p = {k: p[k] for k in FLAG_FIELDS_IN_REPORT if k in p}
     return "; ".join(f"{k}: {v}" for k, v in p.items() if v not in (None, ""))
 
 

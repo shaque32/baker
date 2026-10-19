@@ -415,6 +415,86 @@ def test_a_sender_without_a_party_gets_the_writer_the_claim_names(conn):
         ("ALEXANDER SOKOLOV wrote 'its done'.", "its done", None),  # no such person
         ("The message 'its done' was sent at 2:31 a.m.", "its done", None),  # no writer
         ("PETROV wrote 'its done'.", "not in the claim", None),
+        # The quote is handed on to someone else after the writer's verb (#57 review).
+        ("PETROV sent REYES a photo, and REYES answered 'ok see you'.", "ok see you", None),
+        ("PETROV texted REYES, who responded 'ok see you'.", "ok see you", None),
+        ("PETROV replied to REYES's message 'ok see you'.", "ok see you", None),
+        ("PETROV messaged REYES. REYES: 'ok see you'.", "ok see you", None),
+        ("PETROV emailed REYES, whose reply was 'ok see you'.", "ok see you", None),
+        ("PETROV texted JONES, with JONES' reply being 'ok see you'.", "ok see you", None),
+        ("PETROV texted REYES and REYES wrote back 'ok see you'.", "ok see you", "REYES"),
+        ("PETROV texted REYES that 'the van is ready'.", "the van is ready", "PETROV"),
+        ("A friend of PETROV texted REYES 'its done'.", "its done", None),
+        ("Someone posing as PETROV texted 'its done'.", "its done", None),
+        ("A FRIEND OF PETROV TEXTED 'its done'.", "its done", None),
+        ("Agent Daniel Petrov texted REYES 'its done'.", "its done", "PETROV"),
+        ("PETROV texted REYES at 2:31 p.m.: 'ok'.", "ok", "PETROV"),  # Codex on #77
+        ("PETROV texted REYES before midnight: 'ok'.", "ok", "PETROV"),
+        ("As PETROV texted REYES 'ok', officers watched.", "ok", "PETROV"),
+        ("Someone impersonating PETROV texted 'ok'.", "ok", None),
+        ("PETROV sent REYES two texts, 'ok' and 'bye'.", "ok", "PETROV"),  # a noun
+        ("PETROV texted REYES that it's 'ok see you'.", "ok see you", "PETROV"),  # contraction
+        ("PETROV wrote a report with two quotes attributed to REYES: 'ok'.", "ok", None),
+        ("PETROV TEXTED REYES, AND REYES SHOT BACK 'OK SEE YOU'.", "OK SEE YOU", None),
+        ("PETROV TEXTED REYES AND SMITH: 'OK SEE YOU'.", "OK SEE YOU", None),
+        ("PETROV texted REYES, writing 'ok see you'.", "ok see you", "PETROV"),
+        ("PETROV texted REYES, with REYES writing 'ok see you'.", "ok see you", None),
+        ("PETROV texted REYES from his brother's phone: 'ok see you'.", "ok see you", None),
+        ("PETROV texted Dr. Reyes: 'ok see you'.", "ok see you", "PETROV"),
+        ("PETROV texted REYES as REYES shot back 'ok see you'.", "ok see you", None),
+        ("PETROV texted REYES about Exhibit A. REYES shot back 'ok see you'.", "ok see you", None),
+        ("PETROV wrote a report with the quotes from REYES, 'ok see you'.", "ok see you", None),
+        ("PETROV texted REYES and read her replies: 'ok'.", "ok", None),
+        ("PETROV texted REYES and SMITH: 'ok'.", "ok", "PETROV"),  # Codex round 2
+        ("PETROV texted REYES and he replied 'ok'.", "ok", None),
+        ("PETROV texted REYES, and REYES shot back 'ok'.", "ok", None),
+        ("PETROV texted @writes: 'ok'.", "ok", "PETROV"),
+        ("PETROV texted REYES about the quoted statement 'ok'.", "ok", None),
+        ("PETROV'S ASSISTANT REYES TEXTED 'ok'.", "ok", "REYES"),
+        ("REYES's friend PETROV texted 'ok'.", "ok", "PETROV"),
+        # Codex round 6
+        ("PETROV wrote a report about REYES and her replies: 'ok'.", "ok", None),
+        ("PETROV texted REYES and, replying 'ok', SMITH ended the exchange.", "ok", None),
+        ("PETROV texted REYES, replying 'ok', and REYES left.", "ok", None),
+        ("PETROV texted REYES, writing 'ok', SMITH watching.", "ok", None),
+        # Grok audit of 2ddc302
+        ("PETROV texted REYES about the replies: 'ok'.", "ok", None),
+        ("PETROV texted REYES about the answers, 'ok'.", "ok", None),
+        ("PETROV texted REYES regarding the texts: 'ok'.", "ok", None),
+        # Codex round 7
+        ("PETROV wrote a report about all the replies: 'ok'.", "ok", None),
+        ("PETROV texted REYES about both of the answers: 'ok'.", "ok", None),
+        ("PETROV sent REYES the two texts: 'ok'.", "ok", "PETROV"),
+        # Codex round 8
+        ("PETROV wrote a report listing the replies: 'ok'.", "ok", None),
+        ("PETROV texted REYES while SMITH, replying 'ok', left.", "ok", None),
+        ("PETROV texted REYES in the group chat, where REYES shot back 'ok'.", "ok", None),
+        ("PETROV texted REYES, and her reply was 'ok'.", "ok", None),
+        ("PETROV texted REYES, replying 'ok', @northstar ended the exchange.", "ok", None),
+        ("PETROV texted REYES from Main St. REYES shot back 'ok'.", "ok", None),
+        ("PETROV texted REYES, and @northstar shot back 'ok'.", "ok", None),
+        ("PETROV TEXTED REYES, AND @NORTHSTAR SHOT BACK 'OK'.", "OK", None),
+        ("PETROV texted REYES and @smith: 'ok'.", "ok", "PETROV"),
+        ("PETROV texted REYES, and REYES, annoyed, shot back 'ok'.", "ok", None),
+        ("PETROV texted REYES, saying 'ok' was what SMITH had written.", "ok", None),
+        ("PETROV WROTE A REPORT WITH THE QUOTES: 'OK'.", "OK", None),
+        ("PETROV TEXTED MARCUS REYES: 'OK'.", "OK", "PETROV"),
+        ("PETROV texted REYES, and REYES SHOT BACK 'OK'.", "OK", None),
+        ("PETROV texted REYES, REYES SHOT BACK 'OK'.", "OK", None),
+        ("PETROV texted REYES. @northstar: 'ok'.", "ok", None),
+        ("PETROV texted REYES, replying 'ok', you ended the exchange.", "ok", None),
+        ("PETROV texted REYES. (REYES: 'ok')", "ok", None),
+        ("PETROV texted REYES — @northstar: 'ok'.", "ok", None),
+        ("PETROV texted REYES (REYES: 'ok').", "ok", None),
+        ("PETROV texted REYES, replying 'ok', an annoyed SMITH ended it.", "ok", None),
+        ("PETROV texted REYES\nSMITH: 'ok'", "ok", None),
+        ("After PETROV texted REYES, REYES messages back 'ok'.", "ok", None),
+        ("PETROV texted REYES, replying 'ok'.", "ok", "PETROV"),
+        ("PETROV TEXTED REYES, @northstar SHOT BACK 'OK'.", "OK", None),
+        ("PETROV texted REYES, then REYES: 'ok'.", "ok", None),
+        ("PETROV texted REYES, and REYES: 'ok'.", "ok", None),
+        ("PETROV texted REYES then @northstar: 'ok'.", "ok", None),
+        ("PETROV texted REYES and @northstar: 'ok'.", "ok", "PETROV"),
     ],
 )  # fmt: skip
 def test_stated_sender_is_the_writer_of_the_quoted_words(conn, text, quoted, writer):
@@ -423,6 +503,18 @@ def test_stated_sender_is_the_writer_of_the_quoted_words(conn, text, quoted, wri
               status=ClaimStatus.ACCEPTED)  # fmt: skip
     got = filler.stated_sender(c, quoted)
     assert got == (filler._person(writer) if writer else None)
+
+
+def test_a_name_word_counts_only_written_as_a_name(conn):
+    # Codex round 13: with a person named Will, the modal "will" must not pass as a name.
+    conn.execute("INSERT INTO persons VALUES ('person:will', 'Will Turner', 'expert:test')")
+    try:
+        filler = LocalAssumptionFiller(FakeModel(by_claim(GOOD)), conn, template=DRAFT)
+        c = Claim(id="X", paragraph_id="para:1", text="PETROV texted REYES, REYES will text 'ok'.",
+                  claim_type=ClaimType.COMMUNICATION, status=ClaimStatus.ACCEPTED)  # fmt: skip
+        assert filler.stated_sender(c, "ok") is None
+    finally:
+        conn.execute("DELETE FROM persons WHERE id = 'person:will'")
 
 
 def test_a_phone_scope_does_not_stop_the_writer_from_being_read(conn):

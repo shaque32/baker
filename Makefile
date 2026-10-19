@@ -1,6 +1,6 @@
 PY ?= python3
 
-.PHONY: install lint fmt test eval eval-model-free eval-case02 eval-fake eval-real eval-hostile check synth fixtures report stancedata
+.PHONY: install lint fmt test changelog eval eval-model-free eval-case02 eval-fake eval-real eval-hostile check synth fixtures report stancedata
 
 install:
 	$(PY) -m pip install -e ".[dev]"
@@ -15,6 +15,10 @@ fmt:
 
 test:
 	$(PY) -m pytest -q
+
+# The AI changelog in one view: docs/changelog/ entries newest first, then docs/CHANGELOG_AI.md.
+changelog:
+	$(PY) tools/changelog.py build
 
 # The case01 assumption sheet: the signed copy once Arsh signs it, else the draft. Every run
 # prints which one it used.

@@ -1,4 +1,5 @@
--- Baker canonical schema v0.3.0 (matches CONTRACTS_VERSION in core/contracts.py).
+-- Baker canonical schema v0.4.0 (matches CONTRACTS_VERSION in core/contracts.py).
+-- 0.4.0: messages.forwarded and messages.forwarded_from_raw (signed by Arsh 2026-10-16).
 -- A case database made under an older version is not upgraded in place: the CHECK on
 -- pipeline_runs.status changed in 0.3.0, so re-create the case (stored inputs re-import).
 -- HUMAN-OWNED. Agents: propose changes in PROPOSED_CHANGES.md.
@@ -102,7 +103,9 @@ CREATE TABLE messages (
     body            TEXT NOT NULL,   -- original text; the only citable text
     lang            TEXT,
     deleted_flag    INTEGER CHECK (deleted_flag IN (0, 1)),  -- NULL = source did not say
-    bookmarked      INTEGER CHECK (bookmarked IN (0, 1))     -- examiner tag, for the selection audit
+    bookmarked      INTEGER CHECK (bookmarked IN (0, 1)),    -- examiner tag, for the selection audit
+    forwarded       INTEGER CHECK (forwarded IN (0, 1)),     -- NULL = source did not say
+    forwarded_from_raw TEXT          -- the original author as the source wrote it, when it says
 );
 
 CREATE TABLE message_recipients (

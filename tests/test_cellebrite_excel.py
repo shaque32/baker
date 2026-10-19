@@ -309,3 +309,7 @@ def test_a_forwarded_label_lists_the_message_for_the_fail_closed_path(make_xlsx,
     ids = dict(case_db.execute("SELECT body, id FROM messages"))
     assert forwarded.affected(case_db) == {ids["SYNTHETIC a"]: "forwarded"}
     assert coverage(case_db)["counts"]["messages_marked_forwarded"] == 1
+    marked = case_db.execute(
+        "SELECT body, forwarded, forwarded_from_raw FROM messages ORDER BY body"
+    ).fetchall()
+    assert marked == [("SYNTHETIC a", 1, None), ("SYNTHETIC b", None, None)]

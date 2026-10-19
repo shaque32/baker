@@ -1,12 +1,17 @@
 # Baker AI changelog
 
+**New entries are files in `docs/changelog/`, one per PR; read them together with this
+archive.** `make changelog` prints both as one log, merged newest first by date. This file holds
+the entries written before the per-PR rule and takes no new entries (the status refresh may still
+correct its `Where:` lines); `docs/changelog/README.md` has the current format.
+
 One entry per meaningful change, newest first. Each entry is the handoff for that change and
 answers five questions: what changed and why; where it lives (local, branch or main); what was
 tested; what is open; what it affects (capabilities, privacy, performance, customer-facing
-claims). Add the entry in the same PR as the change, and update `docs/PRODUCT_STATUS.md` with it.
-Earlier history (PRs #1 to #43) is in git; this log starts with the 2026-10-13 build wave.
+claims). Earlier history (PRs #1 to #43) is in git; this log starts with the 2026-10-13 build
+wave. The old workflow (edit this file and `docs/PRODUCT_STATUS.md` in each PR) is retired.
 
-Template:
+Archive entry format (new entries use the one in `docs/changelog/README.md`):
 
 ```
 ## YYYY-MM-DD: <change> (#PR, commit)
@@ -51,7 +56,7 @@ Template:
   supports, contradicts recall 10/11 (misses P065). New items: wrong contradicts 2 to 0 (24
   items, high) and 1 to 0 (26 items, medium), controls kept. $8.59 of API spend, synthetic data
   only (`/mnt/project-files/baker/cloud-bench/2026-10-15/told-frame-line/`). `make check`:
-  green on the branch with main at fe65aa1 (2147 passed, 6 skipped, lint clean; eval unchanged:
+  green on the branch with main at e6e34f8 (2267 passed, 6 skipped, lint clean; eval unchanged:
   case01 1.00 with 0 false supported, unreviewed 0.60, hostile PASS, case02 aggregate 0.90).
 - Open: the local 14B reads this prompt too, and on Arsh's Mac (`bash eval/probe/mac_v12.sh` at
   eee8d15, 2026-10-19, 24 GB MacBook Air) it did worse with v1.2 than with v1.1 on the signed
@@ -73,6 +78,37 @@ Template:
   wrong "contradicts" on the signed set, the reason for the hold; a claim it changes goes
   UNPROVEN or CONTRADICTED, never SUPPORTED); performance (one full re-label per existing case).
   No privacy change. No new customer-facing claim.
+
+## 2026-10-16: Forwarded messages marked on the record (signed schema change)
+- Changed: Arsh signed the `messages.forwarded` and `messages.forwarded_from_raw` columns
+  (PROPOSED_CHANGES.md, "approved" 2026-10-16 02:53Z in the UFDR thread), applied to
+  `core/schema.sql` and the `Message` model in `core/contracts.py`. The UFDR and Excel importers
+  now mark each message the extraction labels Forwarded; the UFDR importer records the original
+  author when the package embeds the original and names exactly one sender, as written. The
+  claim page and report name that author in the record's warning ("which Baker has not checked"),
+  as a cited span: it is the source's text, never Baker's words, so a name such as "Deleted
+  Account" passes the forbidden-word check. Contracts 0.3.0 -> 0.4.0 (`core/contracts.py` and the
+  `core/schema.sql` header, as that file's own rule asks); report 0.4.0 -> 0.6.0 (0.5.0 is #91's).
+  Fail-closed handling from #73 is unchanged: a forwarded message still cannot support or
+  contradict a claim, checks resting on it stay inconclusive, and SenderCheck never credits the
+  forwarder. Cases made before the columns keep working from the coverage list. After Codex
+  review: no author is recorded when the embedded message is itself forwarded (it would name an
+  intermediate forwarder), and the claim, stance, check and coverage notes now say Baker "has not
+  verified" who first wrote the words, which stays true when the extraction names an author.
+- Where: branch `claude/project-thread-hz9jqt` (fresh from main), PR #89, not merged.
+- Verified: 4 new or extended tests (UFDR marks with and without a named author, quote not a
+  forward; Excel label; a case made on the old schema still fails closed; an author named
+  "Deleted Account" renders cited in the report and on the claim page, which pass the
+  forbidden-word check); full `make check` and eval in the PR description. Grok's audit of
+  31f2993 (standing in for Codex, Arsh 2026-10-19) found the cited-span and version issues,
+  fixed here.
+- Open: AXIOM does not read forwarded marks yet; only forwards the extraction labels are caught;
+  the original author is the extraction's claim, not checked. The stance prompt is not told the
+  message was forwarded (prompts are signed); the stored stance is still downgraded. No in-place
+  migration: an existing case database is not upgraded, so its messages lack the
+  columns and keep the coverage-list behaviour.
+- Affects: capabilities (forwarded marked on the record and shown with its author). No verdict,
+  privacy or performance change. Customer-facing claims unchanged; UFDR stays unverified.
 
 ## 2026-10-16: Versions stamped on every result (#91, after #76)
 - Changed: closes the rest of pilot gate 3 ("versions stamped on every result",
@@ -359,7 +395,7 @@ Template:
   counted (info); a taggedFiles id listed with two different paths links to no file and is
   listed under Limitations (attention). Rules 0.2.x untouched; full author and forwarder columns
   proposed in PROPOSED_CHANGES.md (needs Arsh's signature).
-- Where: branch `claude/project-thread-hz9jqt`, PR #73, not merged.
+- Where: main (PR #73, merge 7655056).
 - Verified: 6 tests for the sample bugs and 13 for item 1 and 6 (forwarded, quoted and nested
   forwards, Excel label, fail-closed stance after an expert accept, inconclusive checks,
   SenderCheck, claim-page and report warnings, picture count, repeated tagged ids, ufdr-check
