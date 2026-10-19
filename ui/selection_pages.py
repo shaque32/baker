@@ -11,11 +11,13 @@ from __future__ import annotations
 
 import sqlite3
 
+from core.report.paired import paired_html
 from core.report.restore import view_block
 from core.report.selection import Links, mark_html, selection_html
 from core.restore.view import context_view
 from core.review.status import claim_states
 from core.selection.audit import selection_audit
+from core.selection.paired import paired_check
 from core.timeline.settings import Settings
 from ui.pages import Page, link
 
@@ -31,9 +33,15 @@ def _links() -> Links:
 def selection_page(conn: sqlite3.Connection, page: Page, timeline: Settings) -> str:
     """timeline: the case's timeline settings, for the quiet stretches the Gaps tab lists."""
     audit = selection_audit(conn, timeline=timeline)
+    states = claim_states(conn)
     body = (
         "<h1>Selection audit</h1>"
-        + selection_html(audit, _links(), claim_states(conn))
+        + selection_html(audit, _links(), states)
+        + paired_html(
+            paired_check(conn, states, audit),
+            claim_link=lambda cid: link("/claim", id=cid),
+            context=lambda rid: link("/selection/context", id=rid),
+        )
         + "<p><a href='/request-letter'>Draft request for the full extraction</a></p>"
     )
     return page.wrap("Selection audit", body)

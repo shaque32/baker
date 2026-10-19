@@ -113,9 +113,57 @@ each document's counts under its title, and paragraphs and marks name their docu
 ## What it cannot show
 
 A message the examiner left out of a curated report is not in the case, so it cannot be shown or
-counted. The section says which sources are curated reports and ends with the draft request for
-the full extraction. Quoted means put in quotation marks: a paragraph may still describe a
+counted, unless the case also holds a larger source of the same phone (see "Curated report
+against a larger source" below). The section says which sources are curated reports and ends
+with the draft request for the full extraction. Quoted means put in quotation marks: a paragraph may still describe a
 message without quoting it, and such a paragraph is not placed.
+
+## Curated report against a larger source (`core/selection/paired.py`)
+
+When the case holds an examiner-curated report and a larger source of the same phone (a UFDR, or
+any source not marked curated), every record of the report is looked for in the larger source,
+and what the larger source holds that the report does not is listed near each claim. The
+Selection tab and the report's Selection audit section show it with the same renderer
+(`core/report/paired.py`), and each claim page has one line linking to its list. Code does all
+of it; no model ranks anything; it never sets or changes a verdict, and nothing is stored.
+
+**Not checked on real exports.** It is built and tested on synthetic data only: a UFDR of case01's
+item1 with planted records against case01's own curated item1 report, and a small new pair
+(`eval/synthetic/paired.py`). No public Cellebrite-made UFDR exists to check it on (#73).
+
+- **Pairing.** A curated report is compared with a larger source when both list one of the
+  phone's own accounts (the same app and identifier) and both state the same device model, since
+  an account can be signed in on more than one phone. The page names those accounts. This is
+  still not proof of one phone: no importer stores a serial number or IMEI to compare.
+- **Acquisition time.** Records the larger source dates after the report's extraction (a later
+  extraction of the phone), or holds with no time, are never counted as left out: the report
+  could not have held them. When the report's extraction time is not known, nothing is listed.
+- **Every report record gets one state.** Messages, calls and contacts are each *found once*,
+  *found more than once* or *not found*. A message is found when a record of the larger source
+  has the same app, direction and text (Unicode and spacing normalized; case and punctuation
+  count) and a time at most 60 s apart (a record with no time could be any record). Calls compare
+  app, direction, duration and time; contacts compare name and identifier.
+- **Fails closed.** A report record found more than once, or one another report record could
+  also be, is *found more than once*: code does not decide which, and every candidate *may be in
+  the report*, never counted as left out. A record of the larger source with the same kind, app
+  and direction within an hour of a report record not found (or with the same text at any time,
+  or with no time on either side) may be that record printed differently, so it is also *may be
+  in the report*. Contacts have no time, so no contact of the larger source is ever counted as
+  left out: one may have been saved after the report was made. When fewer than 95% of the
+  report's messages and calls are found, the two may not be the same phone, or a format may be read differently, and nothing is listed as left out.
+  These rules are strict: on random synthetic data with 3% of the report's texts changed, most
+  records of the larger source were held back as *may be in the report*.
+- **Near each claim.** A claim's records are the messages its paragraph quotes (as placed above)
+  and its evidence records that support, contradict or complicate. Records of the larger source
+  not in the report within an hour of one of them are listed per claim: the claim's own
+  conversations first, then other conversations, then calls; inside each, by time from the
+  nearest claim record. Up to 25 per claim are shown, the rest counted. Claims with no record on
+  either source are named once.
+- **Totals.** Per pair: report records by state, records only in the larger source (messages
+  and calls), and the conversations with messages not in the report, marked when the report
+  holds none of the conversation (a message dated after the report, or untimed, does not count
+  as the report holding part of it). Up to 50 conversations are shown, the rest counted.
+  Locations and other record types are not compared.
 
 ## Tiers
 
