@@ -360,9 +360,37 @@ def sheet_step(audit_db: Path) -> dict[str, Any]:
         rows = conn.execute(
             "SELECT claim_id, template_id, params_json FROM assumptions WHERE is_core = 1"
         ).fetchall()
+        people = rp.sheet_people(conn)
     finally:
         conn.close()
-    return sheet_coverage(sheet, [(c, t, json.loads(pj or "{}")) for c, t, pj in rows])
+    return sheet_coverage(canonical_people(sheet, people),
+                          [(c, t, json.loads(pj or "{}")) for c, t, pj in rows])  # fmt: skip
+
+
+def canonical_people(sheet: list[dict[str, Any]], people: dict[str, str]) -> list[dict[str, Any]]:
+    """The sheet names people by surname ('person:petrov'); the case and the filler use the
+    stipulated owner's id. Map them as the eval's own sheet path does (run_pipeline.spec_filler),
+    so a fill that names the right person is not counted wrong."""
+    out = []
+    for r in sheet:
+        params = dict(r.get("params", {}))
+        if params.get("person_ids"):
+            params["person_ids"] = [people.get(p, p) for p in params["person_ids"]]
+        out.append({**r, "params": params})
+    return out
+
+
+def run_model_sha(db: Path) -> str | None:
+    """The model hash the case database recorded for its stance run."""
+    conn = sqlite3.connect(db)
+    try:
+        row = conn.execute(
+            "SELECT model_sha256 FROM model_runs WHERE purpose = 'stance'"
+            " AND model_name NOT LIKE 'gold-direction%' ORDER BY started_at_utc LIMIT 1"
+        ).fetchone()
+    finally:
+        conn.close()
+    return row[0] if row else None
 
 
 def revision() -> dict[str, Any]:
@@ -537,7 +565,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.arm == "local"
         else cloud_model(args.effort)
     )
-    res: dict[str, Any] = {"arm": args.arm, "model": model.name, "revision": revision()}
+    res: dict[str, Any] = {
+        "arm": args.arm, "model": model.name, "model_sha256": model.sha256, "revision": revision()
+    }  # fmt: skip
     if args.arm == "opus":
         res["effort"] = args.effort
     out.mkdir(parents=True, exist_ok=True)
@@ -589,6 +619,10 @@ def compare(local: dict[str, Any], opus: dict[str, Any]) -> str:
     commit (an arm that predates the field) is listed and does not block, as the plan says."""
     checks, blocking = [], []
     for name, r in (("local", local), ("opus", opus)):
+        if r.get("arm") != name:
+            blocking.append(f"the {name} file is the {r.get('arm')!r} arm: give LOCAL then OPUS")
+        if not r.get("model_sha256"):
+            (blocking if name == "local" else checks).append(f"{name} arm recorded no model hash")
         if r.get("invalid"):
             blocking.append(f"{name} arm is INVALID: {r['invalid']}")
         rev = r.get("revision") or {}
@@ -607,6 +641,8 @@ def compare(local: dict[str, Any], opus: dict[str, Any]) -> str:
     }
     lines = ["# 14B vs Opus, the decision", ""]
     lines += [f"- CHECK: {c}" for c in checks] or ["- Both arms recorded a clean commit."]
+    lines += [f"- Models: 14B {local.get('model')} ({local.get('model_sha256')}), "
+              f"Opus {opus.get('model')} ({opus.get('model_sha256')})"]  # fmt: skip
     lines += ["", "| measure | 14B | Opus |", "|---|---|---|"]
     lines += [f"| {k} | {lo[k]} | {op[k]} |" for k in lo]
     lines += [f"| false supported (2 and 3) | {false_sup['local']} | {false_sup['opus']} |", ""]
@@ -632,6 +668,7 @@ def rescore(out: Path) -> int:
     if res.get("claims"):
         res["claims"].update(strict_split(out / "claims" / f"{CASE}.db"))
     res["sheet"] = sheet_step(out / "audit" / f"{CASE}.db")
+    res.setdefault("model_sha256", run_model_sha(out / "audit" / f"{CASE}.db"))
     res["rescored_at"] = revision()
     (out / "result.rescored.json").write_text(json.dumps(res, indent=2, default=str) + "\n",
                                               encoding="utf-8")  # fmt: skip

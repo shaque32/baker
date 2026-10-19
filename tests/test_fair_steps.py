@@ -16,6 +16,7 @@ from eval.bench.fair_steps import (
     Proposal,
     ReplayModel,
     Retried,
+    canonical_people,
     compare,
     main,
     pick_entry,
@@ -148,18 +149,24 @@ def arm(split: int, strict: int, fills: float, sheet: int, commit: str = "abc") 
     }
 
 
+def decide(local: dict, opus: dict) -> str:
+    """compare() on two arms built by arm(), each marked with its own arm and a model hash."""
+    return compare({"arm": "local", "model_sha256": "14b", **local},
+                   {"arm": "opus", "model_sha256": "opus", **opus})  # fmt: skip
+
+
 def test_the_decision_needs_a_win_on_both_measures_of_a_step() -> None:
-    out = compare(arm(17, 17, 0.60, 5), arm(19, 19, 0.75, 6))
+    out = decide(arm(17, 17, 0.60, 5), arm(19, 19, 0.75, 6))
     assert "- Claim proposal: moves toward Opus" in out
     assert "- Assumption filling: stays local" in out  # 4b won by 1 only
     assert "CHECK" not in out
-    assert "- Claim proposal: stays local" in compare(arm(17, 18, 0.6, 5), arm(19, 19, 0.6, 5))
+    assert "- Claim proposal: stays local" in decide(arm(17, 18, 0.6, 5), arm(19, 19, 0.6, 5))
 
 
 def test_the_decision_flags_runs_that_are_not_comparable() -> None:
     opus = arm(19, 19, 0.75, 9, commit="def")
     opus["revision"]["dirty"] = True
-    out = compare(arm(17, 17, 0.6, 5), opus)
+    out = decide(arm(17, 17, 0.6, 5), opus)
     assert "CHECK: opus arm ran with uncommitted changes" in out
     assert "CHECK: the arms ran at different commits" in out
     assert out.count("not decided: runs not comparable") == 2
@@ -169,17 +176,17 @@ def test_an_invalid_arm_or_another_commit_decides_nothing() -> None:
     invalid = arm(20, 20, 1.0, 20)
     invalid["invalid"] = "a cloud call failed after its retries"
     for opus in (invalid, arm(20, 20, 1.0, 20, commit="def")):
-        out = compare(arm(10, 10, 0.5, 2), opus)
+        out = decide(arm(10, 10, 0.5, 2), opus)
         assert out.count("not decided: runs not comparable") == 2
         assert "moves toward Opus" not in out and "stays local" not in out
     no_commit = arm(20, 20, 1.0, 20)
     no_commit["revision"] = {}
-    out = compare(arm(10, 10, 0.5, 2), no_commit)  # listed, as the plan says, but decides
+    out = decide(arm(10, 10, 0.5, 2), no_commit)  # listed, as the plan says, but decides
     assert "CHECK: opus arm recorded no commit" in out
     assert out.count("moves toward Opus") == 2
     bad = arm(17, 17, 0.6, 5)
     bad["fills_only"]["n_false_supported"] = 1
-    assert "moves toward Opus" not in compare(bad, arm(20, 20, 1.0, 20))
+    assert "moves toward Opus" not in decide(bad, arm(20, 20, 1.0, 20))
 
 
 def _db_with_call(path: Path, prompt: str, raw: str, outcome: str = "ok") -> None:
@@ -283,6 +290,32 @@ def test_a_refusal_is_the_models_own_dropped_label_not_an_invalid_run() -> None:
         m.generate_json("p", {})
     assert m.failure is None
     assert m.generate_json("q", {}) == "ok"
+
+
+def test_the_files_must_be_given_local_then_opus_with_a_14b_hash() -> None:
+    lo, op = arm(10, 10, 0.5, 2), arm(20, 20, 1.0, 20)
+    out = compare(
+        {"arm": "opus", "model_sha256": "x", **op}, {"arm": "local", "model_sha256": "y", **lo}
+    )
+    assert "CHECK: the local file is the 'opus' arm" in out
+    assert out.count("not decided: runs not comparable") == 2
+    out = compare({"arm": "local", **lo}, {"arm": "opus", **op})
+    assert "CHECK: local arm recorded no model hash" in out
+    assert out.count("not decided: runs not comparable") == 2
+
+
+def test_the_sheet_names_people_the_way_the_case_does_before_comparing() -> None:
+    sheet = [{"claim_id": "C09", "template_id": "record_time", "is_core": True,
+              "params": {"person_ids": ["person:petrov"], "quoted_text": "ok"}}]  # fmt: skip
+    mapped = canonical_people(sheet, {"person:petrov": "person:dev:item1:owner"})
+    assert mapped[0]["params"]["person_ids"] == ["person:dev:item1:owner"]
+    assert sheet[0]["params"]["person_ids"] == ["person:petrov"]  # the signed rows are not changed
+    fill = ("C09", "record_time", {"person_ids": ["person:dev:item1:owner"], "quoted_text": "ok"})
+    assert sheet_coverage(mapped, [fill])["params_covered"] == 1
+    third = canonical_people(
+        [{**sheet[0], "params": {"person_ids": ["person:sokolov"]}}], {"person:petrov": "x"}
+    )
+    assert third[0]["params"]["person_ids"] == ["person:sokolov"]  # no owner: unchanged
 
 
 def test_each_result_records_the_commit_it_ran_at() -> None:
