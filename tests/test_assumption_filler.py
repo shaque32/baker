@@ -468,6 +468,9 @@ def test_a_sender_without_a_party_gets_the_writer_the_claim_names(conn):
         # Codex round 8
         ("PETROV wrote a report listing the replies: 'ok'.", "ok", None),
         ("PETROV texted REYES while SMITH, replying 'ok', left.", "ok", None),
+        ("PETROV texted REYES in the group chat, where REYES shot back 'ok'.", "ok", None),
+        ("PETROV texted REYES, and her reply was 'ok'.", "ok", None),
+        ("PETROV texted REYES, replying 'ok', @northstar ended the exchange.", "ok", None),
     ],
 )  # fmt: skip
 def test_stated_sender_is_the_writer_of_the_quoted_words(conn, text, quoted, writer):

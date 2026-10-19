@@ -847,7 +847,9 @@ _SAME_SUBJECT_FORMS = frozenset(
         "responding",
     }
 )
-_SUBJECT_AFTER = re.compile(r"^[^\w,]*,\s*(?:(?:he|she|they|it|we|i)\b|(?-i:[A-Z]))", re.IGNORECASE)
+_SUBJECT_AFTER = re.compile(
+    r"^[^\w,]*,\s*(?:(?:he|she|they|it|we|i)\b|(?-i:[A-Z])|@)", re.IGNORECASE
+)
 # Words that carry a quote: a possessive hands the quote on only before one of these
 # ("REYES's message", "JONES' reply") or right before the quote, not in "from his brother's
 # phone".
@@ -891,8 +893,9 @@ _JOINS = _JOINS_WORDS
 # Between the writer's verb and the quote, anything that can hand the quote to someone else
 # names no writer: a sentence break ('PETROV messaged REYES. REYES: "ok"'; a stop before a
 # capital, so "2:31 p.m.:" and "Dr. Reyes" are no break), a relative or a joined clause
-# ('PETROV texted REYES, who responded "ok"', '..., and REYES shot back ...'), a possessive of
-# the quoted words ('PETROV replied to REYES's message "ok"', "... JONES' reply ..."), or
+# ('PETROV texted REYES, who responded "ok"', '..., where REYES shot back', '..., and REYES
+# shot back ...'), a possessive of the quoted words ('PETROV replied to REYES's message "ok"',
+# "... JONES' reply ...", "..., and her reply was"), or
 # words said to come from someone else ('PETROV wrote a report with the quotes from REYES,
 # "ok"'). "and" joins a clause only before a pronoun or a name with words of its own:
 # 'PETROV texted REYES and SMITH: "ok"' is one writer, two recipients (an all-caps claim is
@@ -900,8 +903,9 @@ _JOINS = _JOINS_WORDS
 # contraction ("that it's").
 _HANDED_ON_RE = re.compile(
     rf"[;!?]|{_NOT_A_TITLE}\.(?=\s+[A-Z])|{_POSSESSIVE_OF_QUOTE}"
-    r"|\b(?:who|whom|whose|which)\b"
+    r"|\b(?:who|whom|whose|which|where)\b"
     rf"|\b{_QUOTE_NOUNS}\s+(?:from|of|by)\b"
+    rf"|\b(?:his|her|their|its|my|our|your)\s+(?:[\w-]+\s+){{0,2}}?{_QUOTE_NOUNS}\b"
     rf"|\b{_JOINS}\s+(?:(?:he|she|they|it|we|i)\b|(?-i:(?:[A-Z][\w'.-]*\s+){{1,3}}[a-z]))",
     re.IGNORECASE,
 )
