@@ -8,7 +8,7 @@
   eval/synthetic/paired.py, so the Selection tab and claim pages show the paired selection audit
   (#78) in one command. The UFDR is imported after the audit, so verdicts match the plain demo.
   Why: Grok Product's two demo fixes; Arsh chose "Build both" (2026-10-19).
-- Where: PR #96 (branch `claude/demo-inconclusive-and-paired-c0jsf7`)
+- Where: main (PR #96, merge e6e34f8, 2026-10-19).
 - Verified: tests/test_demo.py (D01 unproven with an inconclusive absence check naming the
   curated reports; paired demo keeps every verdict, Selection tab lists the planted "or sunday
   works too", C05's page names 4 nearby records; CLI `--paired`); `make check` on this branch.
@@ -18,5 +18,4 @@
   demo case cannot be saved as the demo with `--from-case` (its UFDR is not one of case01's
   reports). No signed file changed; no rules, prompt, schema or gold change.
 - Affects: capabilities (demo only); no privacy, performance or customer-facing claims change.
-- Status doc: pending: §8 item 5, change "`baker demo`" to "`baker demo` (with a demo-only
-  inconclusive absence claim, and `--paired` for the paired selection audit)".
+- Status doc: applied 2026-10-19
