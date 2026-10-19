@@ -134,6 +134,10 @@ button[value=dismissed], button[value=removed] { color: var(--con); }
   background: rgb(29 53 87 / 0.06); }
 .b-open { color: var(--fg); }
 .b-against { color: var(--con); border-color: var(--con-line); background: var(--con-bg); }
+.b-flag { color: var(--muted); border-style: dashed; background: transparent; }
+details.flag { margin-top: 6px; }
+details.flag > summary { font-size: 13px; color: var(--muted); cursor: pointer; }
+ul.flags form.inline button { margin-left: 8px; }
 
 /* claims ledger: the queue, and the column beside a claim */
 .tally { display: flex; height: 6px; border-radius: 999px; overflow: hidden;

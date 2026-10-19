@@ -62,7 +62,7 @@ from core.llm import cloud as cloud_llm
 from core.report.html import render_report
 from core.report.letter import request_letter
 from core.restore.store import ExhibitError, add_exhibit, match_exhibits, remove_exhibit
-from core.review import actions, audit_log
+from core.review import actions, audit_log, flags
 from core.review.actions import ReviewError
 from core.review.redecide import redecide
 from core.timeline import settings as timeline_settings
@@ -408,6 +408,17 @@ class App:
             return self._html(timeline_pages.gaps_page(conn, page, self._timeline()))
         if p == "/request-letter.txt":
             return self._letter_text(conn, page)
+        if p == "/flags/summary.json":
+            body = flags.summary_json(conn, req.query.get("pilot", ""))
+            return Response(
+                200,
+                body.encode("utf-8"),
+                [
+                    ("Content-Type", "application/json; charset=utf-8"),
+                    ("Content-Disposition", 'attachment; filename="baker-flag-summary.json"'),
+                    *self._security_headers(),
+                ],
+            )
         if p == "/log":
             return self._html(pages.log_page(conn, page, req.query.get("all") == "1"))
         if p in ("/report", "/report.html"):
@@ -468,6 +479,8 @@ class App:
             "/exhibit/remove": lambda: self._remove_exhibit(conn, f),  # type: ignore[arg-type]
             "/exhibit/rematch": lambda: self._rematch(conn, f),  # type: ignore[arg-type]
             "/timeline/settings": lambda: self._timeline_settings(conn, f),  # type: ignore[arg-type]
+            "/flag/add": lambda: self._add_flag(conn, f),  # type: ignore[arg-type]
+            "/flag/withdraw": lambda: self._withdraw_flag(conn, f),  # type: ignore[arg-type]
         }
         handler = handlers.get(req.path)
         if handler is None:
@@ -625,6 +638,24 @@ class App:
             f"Looked again: {len(found.added)} new proposal(s), {len(found.removed)} withdrawn "
             "because the names no longer match."
         )
+
+    def _add_flag(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        flags.add_flag(
+            conn,
+            f.get("claim", ""),
+            f.get("kind", ""),
+            self.actor,
+            evidence_id=f.get("evidence") or None,
+            should_be=f.get("should_be", flags.NOT_SURE),
+            record=f.get("record", ""),
+            note=f.get("note", ""),
+            seen_run=f.get("seen_run") if "seen_run" in f else None,
+        )
+        return "Flag saved for your error log. It changes no verdict and nothing is sent."
+
+    def _withdraw_flag(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        flags.withdraw_flag(conn, f.get("flag", ""), self.actor)
+        return "Flag withdrawn. It stays in the audit log and no longer counts."
 
     def _withdraw(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         actions.withdraw_stipulation(conn, f.get("id", ""), self.actor)
