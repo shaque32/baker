@@ -53,6 +53,18 @@ Template:
   is on main.
 - Affects: customer-facing claims (the audit packet names the quote check that ran);
 
+## 2026-10-16: A changed upload stores nothing (#88)
+- Changed: if a case-folder copy changed between upload and import, the browser said the import
+  failed but every record parsed from the changed copy stayed in the case database (found by a
+  Codex review on #82). Each importer (Cellebrite Excel and PDF, UFDR, AXIOM, govdoc PDF) now
+  takes the upload's SHA-256 and refuses other bytes before parsing them; the screen
+  says the file changed, with both hashes. The CLI path passes no hash and is unchanged.
+- Where: branch `claude/project-thread-xnmp7v`, PR #88, not merged.
+- Verified: `tests/test_import_changed.py` (synthetic case01, all five input kinds) fails on
+  main with records left behind and passes here; `make check` 2104 passed, 8 skipped; eval
+  unchanged (case01 model-free 1.00, 0 false supported).
+- Open: Codex was out of credits; self-reviewed only.
+- Affects: capabilities (import integrity); privacy, performance and claims unchanged.
 ## 2026-10-16: The expert's reason for an evidence decision is in the audit log (#86)
 - Changed: the `evidence.decide` log entry now carries the reason the expert typed (before, only
   the evidence id, review id and status), as verdict, identity and override notes already did.

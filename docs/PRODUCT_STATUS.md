@@ -42,7 +42,7 @@ coverage: one wrong "supported" is the failure that counts most.
 
 | Step | What happens | Code | Model? |
 |---|---|---|---|
-| 1. Import | Opens each input read-only and SHA-256 hashes it. The browser case workflow also copies it into the case folder; `baker import` on the CLI reads the original path and keeps no copy | `core/ingest/`, `core/casework/cases.py`, `cli/main.py` | No |
+| 1. Import | Opens each input read-only and SHA-256 hashes it. The browser case workflow also copies it into the case folder, and the importer refuses to store a copy whose bytes no longer match the upload's hash (nothing is stored; `tests/test_import_changed.py`, #88); `baker import` on the CLI reads the original path and keeps no copy | `core/ingest/`, `core/casework/cases.py`, `cli/main.py` | No |
 | 2. Normalize | Writes canonical rows; every row has a `source_ref`; times stored UTC with the original offset and raw value | `core/ingest/`, `core/schema.sql` | No |
 | 3. Enrich | Full-text search, local time, derived record text | `core/enrich/` | No |
 | 4. Claims | Splits the document into paragraphs; the local model proposes atomic claims; the expert edits the list | `core/claims/` | Local 14B |
@@ -314,8 +314,8 @@ Codex fixes, with CI pending on the new push.
 ## 11. Pilot readiness
 
 **Not pilot-ready for real case data yet.** The pass/fail gates are in
-[`docs/PILOT_GATES.md`](PILOT_GATES.md): 9 of 18 met once #91 merges (gate 2 by #76, gate 3 by #91, gate 14 by the case02 key signed 2026-10-12, gate 6 by #72, gate 7 by #74,
-gate 8 by merging #68, gate 12, the buyer documents, by #82; gate 15, stopped runs never look
+[`docs/PILOT_GATES.md`](PILOT_GATES.md): 10 of 18 met once #91 merges (gate 2 by #76, gate 3 by #91, gate 14 by the case02 key signed 2026-10-12, gate 6 by #72, gate 7 by #74,
+gate 8 by merging #68, gate 12, the buyer documents, by #82; gate 13, the known integrity bugs, by #86 and #88; gate 15, stopped runs never look
 complete, was already in place; 18 by the feedback form #82 publishes as
 `docs/PILOT_FEEDBACK_FORM.md`). Gates 13 to 18 fold in Grok's
 pilot-ready list. Ready: the demo case, the review screen, encryption,
