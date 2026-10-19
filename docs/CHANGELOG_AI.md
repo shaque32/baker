@@ -24,20 +24,6 @@ Archive entry format (new entries use the one in `docs/changelog/README.md`):
 
 ---
 
-## 2026-10-19: Report says where a case keeps forwarded marks (follow-up to #89)
-- Changed: a case made before contracts 0.4.0 has no forwarded columns, so it fails closed from
-  the coverage list but cannot name an original author, and nothing said so (Grok Product
-  follow-up on #89). The report's Versions table now has a "Forwarded marks" row: "on the
-  record" or "coverage list only (case made before contracts 0.4.0)". Report 0.6.0 -> 0.7.0.
-  PILOT_GATES gate 4 and PRODUCT_STATUS now record #89 as merged.
-- Where: branch `claude/project-thread-hz9jqt`, not merged.
-- Verified: the old-schema test in `tests/test_ufdr.py` now checks both labels; `make check` and
-  eval in the PR description.
-- Open: AXIOM does not read forwarded marks (parked until a public sample has the field); the
-  original text of a forward is not imported.
-- Affects: customer-facing report output (one Versions row). No verdict, privacy or performance
-  change.
-
 ## 2026-10-16: Forwarded messages marked on the record (signed schema change)
 - Changed: Arsh signed the `messages.forwarded` and `messages.forwarded_from_raw` columns
   (PROPOSED_CHANGES.md, "approved" 2026-10-16 02:53Z in the UFDR thread), applied to
@@ -54,7 +40,7 @@ Archive entry format (new entries use the one in `docs/changelog/README.md`):
   review: no author is recorded when the embedded message is itself forwarded (it would name an
   intermediate forwarder), and the claim, stance, check and coverage notes now say Baker "has not
   verified" who first wrote the words, which stays true when the extraction names an author.
-- Where: main (PR #89, merge 4513a4a, 2026-10-19).
+- Where: branch `claude/project-thread-hz9jqt` (fresh from main), PR #89, not merged.
 - Verified: 4 new or extended tests (UFDR marks with and without a named author, quote not a
   forward; Excel label; a case made on the old schema still fails closed; an author named
   "Deleted Account" renders cited in the report and on the claim page, which pass the
