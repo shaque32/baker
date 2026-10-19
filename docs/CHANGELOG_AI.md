@@ -452,7 +452,7 @@ Archive entry format (new entries use the one in `docs/changelog/README.md`):
 - Changed: Arsh agreed to position Baker as a verification layer on Cellebrite and AXIOM for
   forensic examiners, and chose "Opt-in cloud" (07:10Z): local by default, cloud AI only when the
   case allows it and the expert opts in. PRODUCT_STATUS section 12 checks each claim in the line.
-- Where: decision only; #68 still a draft.
+- Where: decision only; carried out by #68 (main, merge ed0a3a8, 2026-10-15), gated off.
 - Verified: claims 1, 2, 5 true; 3 true for absence and count findings; 4 partly true; 6 depends
   on #68.
 - Open: none.
