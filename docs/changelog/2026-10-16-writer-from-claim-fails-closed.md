@@ -12,7 +12,7 @@
   phrasing the guard does not know names no writer. Found by the independent review on #57.
   No signed file touched.
 - Where: PR #77
-- Verified: 67 new cases in `tests/test_assumption_filler.py`, 42 fail on main; make check
+- Verified: 71 new cases in `tests/test_assumption_filler.py`, 46 fail on main; make check
   passes; eval unchanged (case01 1.00, 0 false supported; hostile PASS; case02
   aggregate 0.90, 0 false supported).
 - Open: a phrasing-based guard with an allowlist, not a parser; a new phrasing built only from

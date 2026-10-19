@@ -455,7 +455,7 @@ def test_a_sender_without_a_party_gets_the_writer_the_claim_names(conn):
         # Codex round 6
         ("PETROV wrote a report about REYES and her replies: 'ok'.", "ok", None),
         ("PETROV texted REYES and, replying 'ok', SMITH ended the exchange.", "ok", None),
-        ("PETROV texted REYES, replying 'ok', and REYES left.", "ok", "PETROV"),
+        ("PETROV texted REYES, replying 'ok', and REYES left.", "ok", None),
         ("PETROV texted REYES, writing 'ok', SMITH watching.", "ok", None),
         # Grok audit of 2ddc302
         ("PETROV texted REYES about the replies: 'ok'.", "ok", None),
@@ -486,6 +486,10 @@ def test_a_sender_without_a_party_gets_the_writer_the_claim_names(conn):
         ("PETROV texted REYES. (REYES: 'ok')", "ok", None),
         ("PETROV texted REYES — @northstar: 'ok'.", "ok", None),
         ("PETROV texted REYES (REYES: 'ok').", "ok", None),
+        ("PETROV texted REYES, replying 'ok', an annoyed SMITH ended it.", "ok", None),
+        ("PETROV texted REYES\nSMITH: 'ok'", "ok", None),
+        ("After PETROV texted REYES, REYES messages back 'ok'.", "ok", None),
+        ("PETROV texted REYES, replying 'ok'.", "ok", "PETROV"),
     ],
 )  # fmt: skip
 def test_stated_sender_is_the_writer_of_the_quoted_words(conn, text, quoted, writer):

@@ -847,9 +847,10 @@ _SAME_SUBJECT_FORMS = frozenset(
         "responding",
     }
 )
-# The participle's quote must end its clause: in "saying 'ok' was what SMITH had written" the
-# quote is the subject of what follows, so the words may be someone else's.
-_QUOTE_ENDS_CLAUSE = re.compile(r"^[^\w]*?(?:[,.;!?]|$)")
+# The participle's quote must end the sentence: in "saying 'ok' was what SMITH had written"
+# the quote is the subject of what follows, and in "replying 'ok', an annoyed SMITH left" the
+# one replying may be SMITH, so the words may be someone else's.
+_QUOTE_ENDS_CLAUSE = re.compile(r"^[^\w]*$|^[^\w]*?[.!?](?:\s|$)")
 _SUBJECT_AFTER = re.compile(
     r"^[^\w,]*,\s*(?:(?:he|she|they|it|we|i|you)\b|(?-i:[A-Z])|@)", re.IGNORECASE
 )
@@ -929,7 +930,6 @@ _BETWEEN_WORDS = frozenset(
         "to", "and", "then", "that", "it", "back", "at", "on", "before", "after", "around",
         "a", "an", "the", "these", "those", "some", "several", "two", "three", "four",
         "five", "six", "seven", "eight", "nine", "ten",
-        "text", "message", "messages", "email", "emails", "dm", "dms", "note", "notes",
         "a.m", "p.m", "am", "pm", "midnight", "noon", "morning", "afternoon", "evening",
         "night", "today", "yesterday", "monday", "tuesday", "wednesday", "thursday",
         "friday", "saturday", "sunday", "january", "february", "march", "april", "may",
@@ -1280,6 +1280,8 @@ class LocalAssumptionFiller:
             for (full,) in self.conn.execute("SELECT name FROM persons")
             for part in _nfc(full).casefold().split()
         }
+        if "\n" in between or "\r" in between:
+            return False  # a new line can carry a new label ("REYES\nSMITH: 'ok'")
         mixed_case = bool(re.search(r"[a-z]", between))
         last_end, last_capital = 0, False  # the word before: where it ends, and its kind
         last_digit = False
