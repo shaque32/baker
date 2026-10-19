@@ -139,6 +139,7 @@ def _snapshot(conn: sqlite3.Connection, claim_id: str, evidence_id: str | None) 
     if st is not None:
         snap["claim_type"] = st.claim.claim_type.value
         snap["run_id"] = st.run_id
+        snap["search_run"] = _search_run(pipeline.view_run(conn), st.run_id)
         if st.decision is not None:
             d = st.decision
             # After an override the stored verdict is the expert's; the flag is about Baker's.
@@ -306,12 +307,22 @@ def active_flags(conn: sqlite3.Connection, claim_id: str | None = None) -> list[
 # ---------------------------------------------------------------- redacted summary
 
 
-def _denominators(conn: sqlite3.Connection) -> tuple[dict, set[str], set[str]]:
-    """What the expert could have flagged in the run on screen: counts, plus the evidence ids
-    and the claims with a verdict in that run (used to pick the flags that count)."""
+def _search_run(run: dict | None, run_id: str | None) -> str | None:
+    """The run whose search found this run's records: a rules-only re-run reuses an earlier
+    run's evidence (evidence_from_run), so a missed record there is still missed here."""
+    if run is None or run.get("run_id") != run_id:
+        return run_id
+    return run.get("evidence_from_run") or run_id
+
+
+def _denominators(conn: sqlite3.Connection, run: dict | None) -> tuple[dict, set[str], set[str]]:
+    """What the expert could have flagged in the given run (the one on screen): counts, plus
+    the evidence ids and the claims with a verdict in that run (used to pick the flags that
+    count). The caller passes the run so the summary reads one run throughout."""
     from core.review.status import claim_states
 
-    states = claim_states(conn)
+    # {} means "no run": claim_states would otherwise read the run again.
+    states = claim_states(conn, run=run if run is not None else {})
     verdicts: Counter[str] = Counter()
     stances: Counter[str] = Counter()
     expert_decisions: Counter[str] = Counter()
@@ -338,15 +349,16 @@ def _denominators(conn: sqlite3.Connection) -> tuple[dict, set[str], set[str]]:
 
 
 def _counted(
-    active: list[Flag], run_id: str | None, evidence_ids: set[str], decided: set[str]
+    active: list[Flag], run: dict | None, evidence_ids: set[str], decided: set[str]
 ) -> list[Flag]:
     """The flags that belong to the run the denominators count, at most one per target.
     Flags on a claim removed since are never counted (it is out of the denominators).
 
     A wrong-label flag counts while its item is still in the run on screen (a rules-only re-run
-    keeps the items). A verdict or missed-record flag counts only on the run it was made on,
-    since a new run makes new verdicts and a new search. Of several flags on one item, or on
-    one claim's verdict, the latest counts. So no rate can pass 100%."""
+    keeps the items). A verdict flag counts only on the run it was made on, since a new run
+    makes new verdicts. A missed-record flag counts while the run on screen uses the same
+    search (a rules-only re-run reuses it); a full audit makes a new search. Of several flags
+    on one item, or on one claim's verdict, the latest counts. So no rate can pass 100%."""
     latest: dict[tuple, Flag] = {}
     for f in active:
         if f.kind == WRONG_LABEL:
@@ -354,7 +366,14 @@ def _counted(
                 continue
             key: tuple = (f.kind, f.evidence_id)
         else:
-            if run_id is None or f.at_flag.get("run_id") != run_id:
+            if run is None:
+                continue
+            if f.kind == VERDICT:
+                if f.at_flag.get("run_id") != run["run_id"]:
+                    continue
+            elif (f.at_flag.get("search_run") or f.at_flag.get("run_id")) != _search_run(
+                run, run["run_id"]
+            ):
                 continue
             if f.claim_id not in decided:  # a removed claim's flags never count
                 continue
@@ -390,8 +409,8 @@ def summary(conn: sqlite3.Connection, pilot: str = "", clock: Clock | None = Non
     all_flags = flags(conn)
     active = [f for f in all_flags if f.active]
     run = pipeline.view_run(conn)
-    denominators, evidence_ids, decided = _denominators(conn)
-    counted = _counted(active, run["run_id"] if run else None, evidence_ids, decided)
+    denominators, evidence_ids, decided = _denominators(conn, run)
+    counted = _counted(active, run, evidence_ids, decided)
     models = sorted(
         {
             (r[0], re.split(r"[\\/]", r[1])[-1], r[2])

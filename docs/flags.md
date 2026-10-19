@@ -44,7 +44,8 @@ record references, ids, file names, input hashes and every time except the expor
 
 The summary counts only flags that belong to the run on screen, so no rate can pass 100%: a
 wrong-label flag counts while its item is still in that run (a rules-only re-run keeps the
-items); a verdict or missed-record flag counts only on the run it was made on; of several flags
+items); a verdict flag counts only on the run it was made on; a missed-record flag counts while
+the run on screen uses the same search (a rules-only re-run reuses it, a full audit does not); of several flags
 on one item or one claim's verdict, the latest counts. The rest are reported as `not_counted`.
 
 Records the model labeled irrelevant are folded under "N retrieved records were labeled

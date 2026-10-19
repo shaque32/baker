@@ -221,9 +221,10 @@ def test_counted_flags_match_the_run_they_are_divided_by(conn):
     assert s["not_counted"] == 2
     assert {f["should_be"] for f in s["flags"]} >= {"supported", "contradicts"}
 
-    redecide(conn, EXPERT)  # a new run: new verdicts, the same evidence items
+    redecide(conn, EXPERT)  # a new run: new verdicts, the same evidence items and search
     s = flags.summary(conn)
-    assert s["flag_counts"] == {"wrong_label": 1} and s["not_counted"] == 4
+    assert s["flag_counts"] == {"missed_record": 1, "wrong_label": 1}
+    assert s["not_counted"] == 3
 
 
 def test_irrelevant_records_can_be_flagged_on_their_own_page(db, conn):
@@ -335,3 +336,21 @@ def test_no_op_label_flags_and_removed_claims_are_refused_and_never_counted(conn
     assert s["flag_counts"] == {"verdict": 1} and s["not_counted"] == 2
     with pytest.raises(ReviewError, match="was removed"):
         flags.add_flag(conn, "C05", flags.MISSED_RECORD, EXPERT)
+
+
+def test_summary_reads_one_run_throughout(conn, monkeypatch):
+    """A run that changes mid-export must not mix two runs' counts and flags."""
+    from core import pipeline
+
+    flags.add_flag(conn, "C06", flags.VERDICT, EXPERT, should_be="contradicted")
+    real = pipeline.view_run
+    calls = []
+
+    def once_then_gone(c):  # noqa: ANN001, ANN202
+        calls.append(1)
+        return real(c) if len(calls) == 1 else None
+
+    monkeypatch.setattr(pipeline, "view_run", once_then_gone)
+    s = flags.summary(conn)
+    assert s["audit_complete"] is True and s["flag_counts"] == {"verdict": 1}
+    assert s["denominators"]["claims_with_verdict"] > 0

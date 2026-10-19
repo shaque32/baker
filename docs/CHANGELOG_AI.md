@@ -26,7 +26,8 @@ Template:
   verdict, an evidence status or anything the rules read. The case page downloads a redacted
   summary (counts, enum labels, versions; no text, ids, names, notes or record references);
   `baker flags export` writes the same file and `baker flag-log` combines summaries into a
-  per-pilot error log (only flags on the run on screen count, one per target; label pairs are
+  per-pilot error log (only flags on the run on screen count, one per target, read from one run
+  snapshot; a missed-record flag survives a rules-only re-run; label pairs are
   kept per model and prompt; a summary from a case with a broken audit-log chain, or exported
   before its audit finished, is left out).
   Records labeled irrelevant are listed on the claim page and can be flagged on their own page.
@@ -37,7 +38,7 @@ Template:
   The report lists flags without the expert's note. Why: Grok Product
   review #80 item 12; pilots need a measured error record. Details in `docs/flags.md`.
 - Where: branch `claude/project-thread-hjfvlv`, PR #81, not merged.
-- Verified: 16 new tests (`tests/test_flags.py`): no verdict, review or claim row changes, chain
+- Verified: 17 new tests (`tests/test_flags.py`): no verdict, review or claim row changes, chain
   still verifies, redaction checked against claim text, quotes, ids, names, file names and hashes,
   refused cross-site posts, report hides notes, CLI export and log. Headless-Chromium smoke on
   synthetic case01: flag, list, withdraw, download; no outside requests, Referrer-Policy
