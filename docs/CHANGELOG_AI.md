@@ -31,7 +31,7 @@ Template:
   Found by the independent review on #57. No signed file touched.
 - Where: branch `claude/project-thread-c6qjp9`, PR #77, not merged.
 - Verified: 43 new cases in `tests/test_assumption_filler.py`, 21 fail on main; make check
-  passes (2125 tests); eval unchanged (case01 1.00, 0 false supported; hostile PASS; case02
+  passes (2128 tests); eval unchanged (case01 1.00, 0 false supported; hostile PASS; case02
   aggregate 0.90, 0 false supported).
 - Open: a phrasing-based guard, not a parser; a new phrasing could still slip through. It only
   matters when the 14B leaves the sender's person out (seen on the Mac run, ¶6.1). Fails closed:
@@ -39,6 +39,43 @@ Template:
 - Affects: verdict inputs, only on claims with these phrasings: no wrong person checked, so no
   wrong CONTRADICTED or wrong pass from it (inferred, not measured).
   No privacy, performance or customer-facing claim change.
+
+## 2026-10-15: Pilot gates, onboarding kit, methods note, security pack (#82)
+- Changed: four documents, no code (Grok Product review #80 items 9, 10, 11, 13).
+  `docs/PILOT_GATES.md` defines pilot-ready as pass/fail gates (12, then 18 after Grok's pilot-ready list) with today's state;
+  `docs/PILOT_ONBOARDING.md` covers hardware, Mac and Windows install (Windows unsigned), the
+  `baker demo` walkthrough, a first case, unverified imports and blocked cases;
+  `docs/METHODS.md` describes claim, assumption, check and rules, the expert gate, verdict meanings,
+  provenance and hashing, and limits, with no accuracy figures; `docs/SECURITY_PRIVACY.md` has the
+  data-flow diagram (local today; #68's opt-in cloud gated, no model passed), encryption, key handling, retention
+  and deletion with Anthropic's pages linked, the cloud policy with the CSAM rule, and how to verify
+  the no-network claim. Codex rounds 1 (10 findings) and 2 (8: overrides bypass the rule
+  prerequisites, evidence reasons not hash-chained, coverage locators capped at 50, cloud retries,
+  no copying of an installed Mac folder, gated cloud option, anchor limits, #68 merge state) and 3 (5: checksum by a separate route, stop Baker before a
+  backup copy, request draft and ufdr-check output in deletion, gate 6 scoped to time fields, the
+  import-mismatch bug disclosed) fixed. On 2026-10-16 Grok's pilot-ready list was folded in
+  (Arsh agreed): gates 13 to 18 added (integrity fixes #86 and #88, signed case02 answer key,
+  stopped runs, pilot agreement, one-pager and support, feedback form); runtime gate names the
+  24 GB Mac and AWS g5 (A10G); real-export gate covers Cellebrite, UFDR and AXIOM. After #76 merged, gates 2 and 3 are met;
+  gate 14 is met by the case02 key Arsh signed 2026-10-12. Codex round 4 (5) fixed;
+  round 5 found the printed Baker version is a constant, not the build, so gate 3 is back to not
+  met: 8 of 18. Round 6 (5) fixed: verdicts scoped to finished claims, provenance tiers scoped
+  to the objects that carry them, the installer-download test described as what it checks, key
+  destruction leaves `case.json` and input names readable, and the feedback form published as
+  `docs/PILOT_FEEDBACK_FORM.md` (pricing question left out of the public repo) so gate 18 has
+  evidence on main. `install-mac.md` and `demo.md` no longer state the 6 to 8 h runtime as
+  current. PRODUCT_STATUS section 11 links the gates.
+- Where: branch `claude/project-thread-390z80`, PR #82 (main once merged).
+- Verified: each statement checked against main `8ed89f9` code and docs, and #68 head `de219c1`
+  for cloud facts; the 6 no-network tests named in the pack pass (Linux, 2026-10-15); Anthropic's
+  API retention page and Commercial Terms read 2026-10-15 (the privacy-center article did not load
+  from the cloud session and was not re-read).
+- Open: gate 11 (an outside person completes the kit on a clean Mac) needs a human; 8 of 18 gates
+  are met (gate 2 by #76; gate 14 by the case02 key signed 2026-10-12; gates 6, 7, 8 by #72, #74, #68; gate 12 by this PR; gate 15 already in place; gate 18 by the form this PR publishes); the Mac installer's uv, Python and
+  PyPI downloads are not hash-pinned (disclosed in the pack); gate 4 waits on #89 (signed
+  forwarded-message schema); gate 13 on #86 and #88.
+- Affects: customer-facing claims (what buyers and examiners are told, all checked against code);
+  no capability, privacy or performance change.
 
 ## 2026-10-15: Curated report against a larger source of the same phone (#78)
 - Changed: when a case holds an examiner-curated report and a larger source of the same phone
