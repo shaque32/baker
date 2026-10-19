@@ -150,9 +150,10 @@ def arm(split: int, strict: int, fills: float, sheet: int, commit: str = "abc") 
 
 
 def decide(local: dict, opus: dict) -> str:
-    """compare() on two arms built by arm(), each marked with its own arm and a model hash."""
+    """compare() on two arms built by arm(), each marked with its own arm and a model hash, the
+    opus arm at medium effort."""
     return compare({"arm": "local", "model_sha256": "14b", **local},
-                   {"arm": "opus", "model_sha256": "opus", **opus})  # fmt: skip
+                   {"arm": "opus", "model_sha256": "opus", "effort": "medium", **opus})  # fmt: skip
 
 
 def test_the_decision_needs_a_win_on_both_measures_of_a_step() -> None:
@@ -187,6 +188,30 @@ def test_an_invalid_arm_or_another_commit_decides_nothing() -> None:
     bad = arm(17, 17, 0.6, 5)
     bad["fills_only"]["n_false_supported"] = 1
     assert "moves toward Opus" not in decide(bad, arm(20, 20, 1.0, 20))
+
+
+def test_an_opus_arm_not_at_medium_effort_decides_nothing() -> None:
+    for effort in ("high", None):
+        opus = {**arm(20, 20, 1.0, 20), "effort": effort}
+        out = decide(arm(10, 10, 0.5, 2), opus)
+        assert f"CHECK: the opus arm ran at effort {effort!r}" in out
+        assert out.count("not decided: runs not comparable") == 2
+
+
+def test_a_rescored_arm_must_be_scored_cleanly_at_the_other_arms_commit() -> None:
+    local = arm(10, 10, 0.5, 2, commit="new")
+    opus = arm(20, 20, 1.0, 20)
+    opus["revision"] = {}  # the opus arm predates the field, as it did
+    opus["rescored_at"] = {"commit": "new", "dirty": False}
+    assert decide(local, opus).count("moves toward Opus") == 2
+    for rescored, check in (
+        ({"commit": "other", "dirty": False}, "the arms were scored at different commits"),
+        ({"commit": "new", "dirty": True}, "opus arm was rescored with uncommitted changes"),
+        ({"commit": None, "dirty": None}, "opus arm was rescored with uncommitted changes"),
+    ):
+        out = decide(local, {**opus, "rescored_at": rescored})
+        assert f"CHECK: {check}" in out
+        assert out.count("not decided: runs not comparable") == 2
 
 
 def _db_with_call(path: Path, prompt: str, raw: str, outcome: str = "ok") -> None:

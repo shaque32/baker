@@ -25,8 +25,9 @@ Three measures, each through the product's own code:
    assumption also needs its own fill with the same value for every parameter the sheet states.
 
 Measures 1 strict and 4 were added after Codex's reviews of PR #93 (2026-10-16 16:46Z and
-17:00Z), after the opus arm ran and before the local arm; `--rescore` adds them to a finished
-arm from its stored databases with no model call. Each result records the commit it ran at, and
+17:00Z), after the opus arm ran and before the local arm. `--rescore` computes every decision
+measure of a finished arm again from its stored databases with no model call, so both arms can
+be scored at one commit. Each result records the commit it ran (and was rescored) at, and
 `--compare LOCAL OPUS` applies the decision rule to two results. PREREGISTERED.md (with its
 amendments) says how each measure enters the decision.
 
@@ -137,30 +138,26 @@ def proposals_in(db: Path) -> list[Proposal]:
     return [Proposal(id=r[0], para_no=str(r[1]), text=r[2]) for r in rows]
 
 
-def strict_split(db: Path) -> dict[str, Any]:
+def split_scores(db: Path) -> dict[str, Any]:
+    """Measures 1 and 1 strict on the proposals stored in a claims database."""
     gold = load_jsonl(rp.gold_path(CASE), GoldClaim)
-    rows = split_match(gold, proposals_in(db), strict=True)
-    return {
-        "split_recall_strict": round(sum(r["found"] for r in rows) / len(gold), 3),
-        "split_found_strict": [r["claim_id"] for r in rows if r["found"]],
-        "split_rows_strict": rows,
-    }
+    proposals, out = proposals_in(db), {}
+    for strict, tag in ((False, ""), (True, "_strict")):
+        rows = split_match(gold, proposals, strict=strict)
+        out[f"split_recall{tag}"] = round(sum(r["found"] for r in rows) / len(gold), 3)
+        out[f"split_found{tag}"] = [r["claim_id"] for r in rows if r["found"]]
+        out[f"split_rows{tag}"] = rows
+    return out
 
 
 def claims_step(model: Any, out: Path) -> dict[str, Any]:
-    gold = load_jsonl(rp.gold_path(CASE), GoldClaim)
     res = recall_for(model, CASE, out)
-    split = split_match(gold, proposals_in(out / f"{CASE}.db"))
-    found = sum(r["found"] for r in split)
     return {
         "proposed": res["proposed"],
         "dropped": res["dropped"],
         "committed_recall": res["recall"],
         "committed_found": [r["claim_id"] for r in res["rows"] if r["matched"]],
-        "split_recall": round(found / len(gold), 3),
-        "split_found": [r["claim_id"] for r in split if r["found"]],
-        "split_rows": split,
-        **strict_split(out / f"{CASE}.db"),
+        **split_scores(out / f"{CASE}.db"),
         "wall_seconds": res["wall_seconds"],
         "model_calls": res["model_calls"],
     }
@@ -612,11 +609,12 @@ def decision_counts(res: dict[str, Any]) -> dict[str, int | None]:
 
 
 def compare(local: dict[str, Any], opus: dict[str, Any]) -> str:
-    """The decision rule (PREREGISTERED.md, amendments 1 and 2) on two arms' results: a step
+    """The decision rule (PREREGISTERED.md, amendments 1 to 4) on two arms' results: a step
     moves toward Opus only if Opus wins by MARGIN on both of its measures with 0 false
     supported. Anything that makes the two runs not comparable is listed first; an INVALID
-    arm, a dirty tree or two different recorded commits leave every step undecided. A missing
-    commit (an arm that predates the field) is listed and does not block, as the plan says."""
+    arm, an opus arm not at medium effort, a dirty tree or rescoring, or two different run or
+    scoring commits leave every step undecided. A missing run commit (an arm that predates the
+    field) is listed and does not block, as the plan says."""
     checks, blocking = [], []
     for name, r in (("local", local), ("opus", opus)):
         if r.get("arm") != name:
@@ -630,9 +628,20 @@ def compare(local: dict[str, Any], opus: dict[str, Any]) -> str:
             checks.append(f"{name} arm recorded no commit")
         elif rev.get("dirty"):
             blocking.append(f"{name} arm ran with uncommitted changes")
-    a, b = (r.get("revision", {}).get("commit") for r in (local, opus))
+        sc = r.get("rescored_at")
+        if sc is not None and (not sc.get("commit") or sc.get("dirty")):
+            blocking.append(f"{name} arm was rescored with uncommitted changes or no commit")
+    if opus.get("effort") != "medium":
+        blocking.append(f"the opus arm ran at effort {opus.get('effort')!r}: the plan is medium")
+    a, b = ((r.get("revision") or {}).get("commit") for r in (local, opus))
     if a and b and a != b:
         blocking.append(f"the arms ran at different commits: list `git diff --stat {b} {a}`")
+    # A rescored arm's decision measures come from the code at its rescoring commit.
+    sa, sb = ((r.get("rescored_at") or r.get("revision") or {}).get("commit")
+              for r in (local, opus))  # fmt: skip
+    if sa and sb and sa != sb and (sa, sb) != (a, b):
+        blocking.append(f"the arms were scored at different commits ({sa[:7]}, {sb[:7]}): "
+                        "rescore at one commit")  # fmt: skip
     checks = blocking + checks
     lo, op = decision_counts(local), decision_counts(opus)
     false_sup = {
@@ -661,12 +670,18 @@ def compare(local: dict[str, Any], opus: dict[str, Any]) -> str:
 
 
 def rescore(out: Path) -> int:
-    """Measures 1 strict and 4 for an arm that ran before they existed, from its stored
-    databases. Writes result.rescored.json and summary.rescored.md beside the originals, with
-    the commit the rescoring ran at."""
+    """Every decision measure of a finished arm again, from its stored databases with no model
+    call, so both arms can be scored by the code at one commit (PREREGISTERED.md, amendment 4):
+    1 and 1 strict from the stored proposals, 3 by replaying the stored fills, 4 from the
+    stored fills. Measure 2 needs model calls and stays from the run. Writes
+    result.rescored.json and summary.rescored.md beside the originals, with the commit the
+    rescoring ran at."""
     res = json.loads((out / "result.json").read_text(encoding="utf-8"))
     if res.get("claims"):
-        res["claims"].update(strict_split(out / "claims" / f"{CASE}.db"))
+        res["claims"].update(split_scores(out / "claims" / f"{CASE}.db"))
+    replayed = out / "fills_only.rescored"
+    shutil.rmtree(replayed, ignore_errors=True)
+    res["fills_only"] = fills_only_step(out / "audit", replayed)
     res["sheet"] = sheet_step(out / "audit" / f"{CASE}.db")
     res.setdefault("model_sha256", run_model_sha(out / "audit" / f"{CASE}.db"))
     res["rescored_at"] = revision()
