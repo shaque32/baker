@@ -1,12 +1,17 @@
 # Baker AI changelog
 
+**New entries are files in `docs/changelog/`, one per PR; read them together with this
+archive.** `make changelog` prints both as one log, merged newest first by date. This file holds
+the entries written before the per-PR rule and takes no new entries (the status refresh may still
+correct its `Where:` lines); `docs/changelog/README.md` has the current format.
+
 One entry per meaningful change, newest first. Each entry is the handoff for that change and
 answers five questions: what changed and why; where it lives (local, branch or main); what was
 tested; what is open; what it affects (capabilities, privacy, performance, customer-facing
-claims). Add the entry in the same PR as the change, and update `docs/PRODUCT_STATUS.md` with it.
-Earlier history (PRs #1 to #43) is in git; this log starts with the 2026-10-13 build wave.
+claims). Earlier history (PRs #1 to #43) is in git; this log starts with the 2026-10-13 build
+wave. The old workflow (edit this file and `docs/PRODUCT_STATUS.md` in each PR) is retired.
 
-Template:
+Archive entry format (new entries use the one in `docs/changelog/README.md`):
 
 ```
 ## YYYY-MM-DD: <change> (#PR, commit)
