@@ -131,9 +131,9 @@ There is no model judge of verdicts in Baker. The word "judge" does not name any
   there is no comparison yet; one Opus run is not a measure of Opus.
   Results: `/mnt/project-files/baker/cloud-bench/2026-10-16/fair-14b-vs-opus/`.
 
-**Merge state:** #68 is a draft (main merged in after #71). Arsh approved its
-revised CLAUDE.md wording (2026-10-15 07:29Z, recorded in `PROPOSED_CHANGES.md`); it is applied
-on the branch at his request (14:00Z). Main keeps "no network calls in core/" until #68 merges.
+**Merge state:** #68 merged to main 2026-10-15 (`ed0a3a8`), with the CLAUDE.md wording Arsh
+approved (07:29Z). `PROBE_PASSED` is empty, so no case can use the cloud yet. Other lines in this
+file that still say "branch #68" describe code that is now on main, gated off.
 
 ## 5. External services
 
@@ -290,7 +290,7 @@ an empty Grok Product review PR, never merged.
    synthetic samples. No real extraction has been imported. No public Cellebrite-made UFDR with a
    usable license exists; #73 checked the reader on two non-Cellebrite test files (27 of 27
    records). Forwarded messages, and messages carrying a forwarded or quoted original, fail
-   closed (#73, not merged): they can neither support nor contradict a claim, checks resting on
+   closed (#73, merged 2026-10-16): they can neither support nor contradict a claim, checks resting on
    them are inconclusive, and the claim page and report warn. Their sender field still shows the
    forwarder until a schema change Arsh signs (PROPOSED_CHANGES.md); originals are not imported.
 4. **Local runtime per case unknown on current code** (section 7). The local 14B's probe result
@@ -337,18 +337,29 @@ Codex fixes, with CI pending on the new push.
 
 ## 11. Pilot readiness
 
-**Not pilot-ready for real case data yet.** Ready: the demo case, the review screen, encryption,
+**Not pilot-ready for real case data yet.** The pass/fail gates are in
+[`docs/PILOT_GATES.md`](PILOT_GATES.md): 8 of 18 met as of 2026-10-16 (gate 2 by #76, gate 14 by the case02 key signed 2026-10-12, gate 6 by #72, gate 7 by #74,
+gate 8 by merging #68, gate 12, the buyer documents, by #82; gate 15, stopped runs never look
+complete, was already in place; 18 by the feedback form #82 publishes as
+`docs/PILOT_FEEDBACK_FORM.md`). Gates 13 to 18 fold in Grok's
+pilot-ready list. Ready: the demo case, the review screen, encryption,
 the Mac and Windows installers, and a pilot kit (data handling, limitations, agreement outline,
 feedback form, demo script, go/kill scorecard) in `/mnt/project-files/baker/pilot/`.
 
-Before a first real case:
-1. Time a full local case01 on the Mac for a real runtime (#76 is merged, so the 14B's contact
-   and call quotes now pass the check, section 9).
+Documents for pilots and buyers (PR #82): onboarding kit
+(`docs/PILOT_ONBOARDING.md`), methods note an examiner can cite (`docs/METHODS.md`, no accuracy
+figures), and security and privacy pack with a data-flow diagram (`docs/SECURITY_PRIVACY.md`).
+Nobody outside the project has tried the onboarding kit yet (gate 11).
+
+Before a first real case (the full list is the gates file):
+1. Time a full local case01 on the Mac for a real runtime (#76 merged, so the 14B's
+   contact and call quotes pass the check, section 9).
 2. Check a real UFDR and AXIOM export with `baker ufdr-check` (needs a pilot expert's closed case).
-3. Turn on opt-in cloud (#68, on main; chosen by Arsh 2026-10-15 07:10Z): the told-frame fix is
-   stance v1.2 (PR #93, not merged), which passed on new items with Opus. Still needed: the
-   14B's probe on v1.2 on the Mac, merge it, then an entry for Opus with v1.2 in
-   `core/llm/cloud.py` `PROBE_PASSED`, signed by Arsh.
+3. Opt-in cloud (#68, merged 2026-10-15, chosen by Arsh 07:10Z) stays gated off. The signed
+   told-frame fix (line signed 13:45Z) is stance v1.2 (PR #93, not merged), which passed on new
+   items with Opus. Still needed: the 14B's probe on v1.2 on the Mac, merge it, then an entry for
+   Opus with v1.2 in `core/llm/cloud.py` `PROBE_PASSED`, signed by Arsh. Pilots run local only
+   until then.
 4. Sign the Windows installer (Azure code signing pending).
 
 No pilot has started and no expert has used Baker on a real case (per project records; this
