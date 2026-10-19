@@ -109,7 +109,13 @@ def decide_evidence(
             now,
             actor,
             "evidence.decide",
-            {"evidence_id": evidence_id, "review_id": d.id, "status": status.value},
+            # the reason too, so editing it in evidence_reviews no longer matches the log
+            {
+                "evidence_id": evidence_id,
+                "review_id": d.id,
+                "status": status.value,
+                "reason": reason,
+            },
         )
     return d
 

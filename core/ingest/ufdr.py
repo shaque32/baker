@@ -63,6 +63,7 @@ from core.ingest.cellebrite_common import (
     norm,
     parse_time,
 )
+from core.ingest.source_file import require_sha256
 from core.review import audit_log
 
 IMPORTER_NAME = "ufdr"
@@ -759,6 +760,7 @@ class UfdrImporter:
         source_id: str | None = None,
         now: datetime | None = None,
         date_order: str | None = None,
+        expected_sha256: str | None = None,
     ) -> None:
         """`date_order` ('mdy' or 'dmy'): the day/month order a person states for times that
         are not ISO 8601. UFDR times are normally ISO 8601 (year first), which is never
@@ -768,9 +770,13 @@ class UfdrImporter:
         self.source_id = source_id
         self.now = now
         self.date_order = date_order
+        self.expected_sha256 = expected_sha256  # refuse other bytes (source_file.require_sha256)
 
     def import_source(self, path: Path, conn: sqlite3.Connection) -> Source:
         sha = sha256_file(path)
+        # The package is read again below; _write re-hashes it before committing, so the
+        # bytes stored are these.
+        require_sha256(path.name, self.expected_sha256, sha)
         with open_input(path) as raw:
             if not zipfile.is_zipfile(raw):
                 raise ValueError(f"{path.name} is not a zip package, so it is not a UFDR")
