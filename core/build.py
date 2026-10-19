@@ -6,14 +6,17 @@ of the source that ran, with whether that source had uncommitted changes.
 
 The commit comes from, in order: the source checkout's git (a developer's or a cloned install),
 then BUILD_INFO.json written by the installer (packaging/windows/stage.py puts it beside the
-source folder; packaging/mac/install.sh inside it). Neither: "not recorded". Local only: git runs
-with fixed arguments on this folder and nothing leaves the machine.
+source folder; packaging/mac/install.sh inside it, when it is run from a checkout), then
+core/BUILD_COMMIT, which `git archive` fills in (export-subst in .gitattributes), so the zipped
+folder the Mac install guide starts from names its commit too. None of them: "not recorded".
+Local only: git runs with fixed arguments on this folder and nothing leaves the machine.
 """
 
 from __future__ import annotations
 
 import functools
 import json
+import re
 import shutil
 import subprocess  # noqa: S404 - git only, fixed arguments, local repository
 import tomllib
@@ -68,6 +71,12 @@ def commit(root: Path = ROOT) -> tuple[str, bool | None]:
         if isinstance(got, str) and got:
             dirty = data.get("dirty")
             return got, dirty if isinstance(dirty, bool) else None
+    try:  # "$Format:%H$" in a checkout; the commit in an archive. Unzipped files may be edited.
+        archived = (root / "core" / "BUILD_COMMIT").read_text(encoding="utf-8").strip()
+    except OSError:
+        archived = ""
+    if re.fullmatch(r"[0-9a-f]{40}", archived):
+        return archived, None
     return NOT_RECORDED, None
 
 

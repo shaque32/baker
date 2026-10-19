@@ -19,7 +19,10 @@ tests or recorded runs. Where something exists only on an unmerged branch, it sa
   prints them in the report, on the overview screen and in `run.json`. An installed copy has no
   `.git`: it reads the commit from the installer's `BUILD_INFO.json` (Windows already writes
   one; #91 makes the Mac installer write one, with whether the copied files differed from the
-  commit). Where that is unknown (Windows), the stamp says "uncommitted changes not checked".
+  commit). A folder made by `git archive` (the zip the Mac guide starts from) names its commit
+  in `core/BUILD_COMMIT`. Where changed files are unknown (Windows, an unzipped archive), the
+  stamp says "uncommitted changes not checked". GitHub's own "Download ZIP" should fill it in the
+  same way; not checked.
 - **Signed prompts on main:** stance v1.1, reviewer v1.1, claims v1.0, assumptions v1.0
   (`core/audit/prompts/`)
 

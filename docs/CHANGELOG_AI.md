@@ -29,7 +29,9 @@ Template:
   no schema change). An installed copy has no `.git`, so it reads the commit from the
   installer's `BUILD_INFO.json`; the Mac installer now writes one (with whether the copied
   tracked files differed from the commit, since it copies uncommitted edits too), as the Windows
-  one already did. When that is unknown, the stamp says "uncommitted changes not checked" (Grok
+  one already did. The zipped folder the Mac install guide starts from has no `.git`, so
+  `core/BUILD_COMMIT` is filled in by `git archive` (`export-subst` in `.gitattributes`; Codex).
+  When whether files changed is unknown, the stamp says "uncommitted changes not checked" (Grok
   audit). The report's top line now reads "Baker <release>, commit <12 hex> · pipeline <v> · rules
   <v> · quote check <v>" (it showed only the rules), the versions table gives the build and each
   model's seed beside its SHA-256, the case overview screen names the build and the quote check,

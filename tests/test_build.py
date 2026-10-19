@@ -6,6 +6,7 @@ import json
 import shutil
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -111,6 +112,48 @@ def test_a_checkout_records_its_commit_and_whether_tracked_files_changed(tmp_pat
     assert build.label(build.build_info.__wrapped__(tmp_path)) == (
         f"9.8.8, commit {head[:12]}, with uncommitted changes"
     )
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="needs git")
+def test_a_git_archive_names_its_commit_without_a_git_folder(tmp_path):
+    # Codex on #91: the Mac guide starts from a zipped folder (clean-install.yml uses
+    # `git archive`), which has no .git; export-subst writes the commit into core/BUILD_COMMIT.
+    git = shutil.which("git")
+    repo, out = tmp_path / "repo", tmp_path / "out"
+    (repo / "core").mkdir(parents=True)
+    out.mkdir()
+    shutil.copyfile(ROOT / "core" / "BUILD_COMMIT", repo / "core" / "BUILD_COMMIT")
+    shutil.copyfile(ROOT / ".gitattributes", repo / ".gitattributes")
+    _pyproject(repo)
+
+    def run(*args: str) -> str:
+        return subprocess.run(  # noqa: S603
+            [git, "-c", "user.name=t", "-c", "user.email=t@t", *args],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+
+    run("init", "-q")
+    run("add", "-A")
+    run("commit", "-q", "-m", "x")
+    head = run("rev-parse", "HEAD")
+    assert build.commit(repo) == (head, False)  # a checkout still reads git, not the file
+    run("archive", "--format=tar", "-o", str(tmp_path / "a.tar"), "HEAD")
+    with tarfile.open(tmp_path / "a.tar") as tar:
+        tar.extractall(out, filter="data")
+    assert not (out / ".git").exists()
+    assert build.commit(out) == (head, None)
+    assert build.label(build.build_info.__wrapped__(out)) == (
+        f"9.8.7, commit {head[:12]}, uncommitted changes not checked"
+    )
+
+
+def test_the_unfilled_archive_placeholder_is_not_a_commit(tmp_path):
+    (tmp_path / "core").mkdir()
+    shutil.copyfile(ROOT / "core" / "BUILD_COMMIT", tmp_path / "core" / "BUILD_COMMIT")
+    assert build.commit(tmp_path) == (build.NOT_RECORDED, None)
 
 
 def test_a_run_made_before_the_build_was_recorded_says_so():
