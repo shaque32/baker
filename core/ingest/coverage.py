@@ -208,7 +208,7 @@ _FLAG_WORDS: dict[str, tuple[Level, str]] = {
     "forwarded": (
         "attention",
         "{n} {be} marked as forwarded. Baker shows {them} as sent by whoever forwarded {them} and "
-        "does not record who first wrote {them}, so {them} cannot support or contradict a claim; "
+        "has not verified who first wrote {them}, so {them} cannot support or contradict a claim; "
         "check each one in {tool} before saying who wrote {them}.",
     ),
     "embedded_message_not_imported": (

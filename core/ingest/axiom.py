@@ -68,6 +68,7 @@ from core.ingest.cellebrite_common import (
     parse_time,
     text,
 )
+from core.ingest.source_file import require_sha256
 from core.review import audit_log
 
 IMPORTER_NAME = "axiom"
@@ -913,6 +914,7 @@ class AxiomImporter:
         source_id: str | None = None,
         now: datetime | None = None,
         date_order: str | None = None,
+        expected_sha256: str | None = None,
     ) -> None:
         """`date_order` ('mdy' or 'dmy'): the day/month order a person states. Without it, the
         order comes from the date format in each time field's name, then from values that
@@ -922,18 +924,23 @@ class AxiomImporter:
         self.source_id = source_id
         self.now = now
         self.date_order = date_order
+        self.expected_sha256 = expected_sha256  # refuse other bytes (source_file.require_sha256)
 
     def import_source(self, path: Path, conn: sqlite3.Connection) -> Source:
         if path.suffix.lower() == ".xml":
+            if self.expected_sha256 is not None:  # refuse other bytes before parsing them
+                require_sha256(path.name, self.expected_sha256, sha256_file(path))
             report, sha = read_xml(path)
         else:
             with open_input(path) as f:
                 data = f.read()
             sha = hashlib.sha256(data).hexdigest()
+            require_sha256(path.name, self.expected_sha256, sha)
             try:
                 report = read_workbook(data)
             except Exception as err:  # noqa: BLE001 - say what the file is not
                 raise ValueError(f"{path.name} is not an Excel workbook Baker can read") from err
+        require_sha256(path.name, self.expected_sha256, sha)  # the XML parsed is the XML checked
         return self._write(path, sha, conn, report)
 
     def _write(self, path: Path, sha: str, conn: sqlite3.Connection, rep: ReadReport) -> Source:

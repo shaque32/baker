@@ -24,6 +24,105 @@ Archive entry format (new entries use the one in `docs/changelog/README.md`):
 
 ---
 
+## 2026-10-16: Forwarded messages marked on the record (signed schema change)
+- Changed: Arsh signed the `messages.forwarded` and `messages.forwarded_from_raw` columns
+  (PROPOSED_CHANGES.md, "approved" 2026-10-16 02:53Z in the UFDR thread), applied to
+  `core/schema.sql` and the `Message` model in `core/contracts.py`. The UFDR and Excel importers
+  now mark each message the extraction labels Forwarded; the UFDR importer records the original
+  author when the package embeds the original and names exactly one sender, as written. The
+  claim page and report name that author in the record's warning ("which Baker has not checked"),
+  as a cited span: it is the source's text, never Baker's words, so a name such as "Deleted
+  Account" passes the forbidden-word check. Contracts 0.3.0 -> 0.4.0 (`core/contracts.py` and the
+  `core/schema.sql` header, as that file's own rule asks); report 0.4.0 -> 0.6.0 (0.5.0 is #91's).
+  Fail-closed handling from #73 is unchanged: a forwarded message still cannot support or
+  contradict a claim, checks resting on it stay inconclusive, and SenderCheck never credits the
+  forwarder. Cases made before the columns keep working from the coverage list. After Codex
+  review: no author is recorded when the embedded message is itself forwarded (it would name an
+  intermediate forwarder), and the claim, stance, check and coverage notes now say Baker "has not
+  verified" who first wrote the words, which stays true when the extraction names an author.
+- Where: branch `claude/project-thread-hz9jqt` (fresh from main), PR #89, not merged.
+- Verified: 4 new or extended tests (UFDR marks with and without a named author, quote not a
+  forward; Excel label; a case made on the old schema still fails closed; an author named
+  "Deleted Account" renders cited in the report and on the claim page, which pass the
+  forbidden-word check); full `make check` and eval in the PR description. Grok's audit of
+  31f2993 (standing in for Codex, Arsh 2026-10-19) found the cited-span and version issues,
+  fixed here.
+- Open: AXIOM does not read forwarded marks yet; only forwards the extraction labels are caught;
+  the original author is the extraction's claim, not checked. The stance prompt is not told the
+  message was forwarded (prompts are signed); the stored stance is still downgraded. No in-place
+  migration: an existing case database is not upgraded, so its messages lack the
+  columns and keep the coverage-list behaviour.
+- Affects: capabilities (forwarded marked on the record and shown with its author). No verdict,
+  privacy or performance change. Customer-facing claims unchanged; UFDR stays unverified.
+
+## 2026-10-16: Versions stamped on every result (#91, after #76)
+- Changed: closes the rest of pilot gate 3 ("versions stamped on every result",
+  `docs/PILOT_GATES.md` in #82). PR #76 records the quote-check version (1.2.0) on every run
+  and prints it in the report's versions table and Run section. This PR adds what was still
+  missing. The "Baker version" reports printed was `PIPELINE_VERSION`, a fixed "0.1.0"; every
+  run now also records the release (`pyproject.toml`) and the git commit that ran, flagged when
+  tracked files had uncommitted changes (`core/build.py`, stored as `build` in the run's config,
+  no schema change). An installed copy has no `.git`, so it reads the commit from the
+  installer's `BUILD_INFO.json`; the Mac installer now writes one (with whether the copied
+  tracked files differed from the commit, since it copies uncommitted edits too), as the Windows
+  one already did. The zipped folder the Mac install guide starts from has no `.git`, so
+  `core/BUILD_COMMIT` is filled in by `git archive` (`export-subst` in `.gitattributes`; Codex).
+  When whether files changed is unknown, the stamp says "uncommitted changes not checked" (Grok
+  audit); an installed copy recorded as clean also reads that way, since its files cannot be
+  rechecked later (Codex). A rules-only re-run also names the build its reused evidence and labels
+  came from, when that differs, through chained re-runs (`evidence_build`; Codex). The report's top line now reads "Baker <release>, commit <12 hex> · pipeline <v> · rules
+  <v> · quote check <v>" (it showed only the rules), the versions table gives the build and each
+  model's seed beside its SHA-256, the case overview screen names the build and the quote check,
+  and the eval's `run.json` carries a `versions` block (build, pipeline, rules, quote check, each
+  model's SHA-256, prompt and seed). `REPORT_VERSION` 0.4.0 -> 0.5.0, since the report's output changes
+  (merge audit). No frozen file changes; nothing new is stored.
+- Where: branch `claude/quote-check-version-stamp-6sdy2b`, PR #91 (not merged); #76 is on main.
+- Verified: `test_the_report_and_the_screen_stamp_every_version_a_result_depends_on`
+  (`tests/test_report_consistency.py`, synthetic case01) and `tests/test_build.py` (a git
+  checkout, clean and with changes; an installed copy with `BUILD_INFO.json` beside or inside
+  the source); `make check` results in the PR. The Mac installer's new lines were checked for
+  syntax only (`bash -n`), not by a real install.
+- Open: the per-claim "Rule version ..." line on the claim page and in the report does not
+  repeat the quote-check version (the run's is in the report's top line and Run section).
+  Runs made before this PR show "release and commit not recorded". The release is still
+  0.0.1 in `pyproject.toml`; nothing bumps it per release yet. Gate 3 counts as met once this PR
+  is on main.
+- Affects: customer-facing claims (the audit packet names the quote check that ran);
+
+## 2026-10-16: A changed upload stores nothing (#88)
+- Changed: if a case-folder copy changed between upload and import, the browser said the import
+  failed but every record parsed from the changed copy stayed in the case database (found by a
+  Codex review on #82). Each importer (Cellebrite Excel and PDF, UFDR, AXIOM, govdoc PDF) now
+  takes the upload's SHA-256 and refuses other bytes before parsing them; the screen
+  says the file changed, with both hashes. The CLI path passes no hash and is unchanged.
+- Where: branch `claude/project-thread-xnmp7v`, PR #88, not merged.
+- Verified: `tests/test_import_changed.py` (synthetic case01, all five input kinds) fails on
+  main with records left behind and passes here; `make check` 2104 passed, 8 skipped; eval
+  unchanged (case01 model-free 1.00, 0 false supported).
+- Open: Codex was out of credits; self-reviewed only.
+- Affects: capabilities (import integrity); privacy, performance and claims unchanged.
+## 2026-10-16: The expert's reason for an evidence decision is in the audit log (#86)
+- Changed: the `evidence.decide` log entry now carries the reason the expert typed (before, only
+  the evidence id, review id and status), as verdict, identity and override notes already did.
+  The audit log check (`require_intact`) also compares each logged reason with the one stored in
+  `evidence_reviews`; a reason or status edited in the database after it was logged, or an
+  expert review row added or removed without its log entry, blocks the case like a broken chain. Both tables are read in one
+  statement, so a decision another Baker process commits meanwhile never looks like tampering.
+  Found by the Pilot docs pack thread (#82 disclosed the gap).
+- Where: branch `claude/project-thread-fjea4m`, PR #86 (not merged).
+- Verified: 7 new tests in `tests/test_chain_on_open.py` (reason logged; an edited reason or
+  status blocks the CLI and `verify-log` names it; an expert review added or removed outside
+  Baker is blocked; AI reviews need no entry; a decision logged without a reason still
+  verifies). `make check` passed 2026-10-19 in a Linux cloud container with main `97c7daa`
+  merged in: 2092 passed,
+  8 skipped; case01 model-free accuracy 1.00, 0 false supported; hostile PASS.
+- Open: decisions logged before this change carry no reason in the log, so their reasons are not
+  compared. Someone who edits the reason, the log and the anchor file together is not caught
+  (same limit as the rest of the log).
+- Affects: customer-facing claims (an expert's reasons are now tamper-evident); the report's
+  expert-actions table and the screen's Log page now show the reason; no privacy change (the
+  reason stays inside the case database, not the anchor file).
+
 ## 2026-10-15: Pilot gates, onboarding kit, methods note, security pack (#82)
 - Changed: four documents, no code (Grok Product review #80 items 9, 10, 11, 13).
   `docs/PILOT_GATES.md` defines pilot-ready as pass/fail gates (12, then 18 after Grok's pilot-ready list) with today's state;
@@ -240,7 +339,7 @@ Archive entry format (new entries use the one in `docs/changelog/README.md`):
   counted (info); a taggedFiles id listed with two different paths links to no file and is
   listed under Limitations (attention). Rules 0.2.x untouched; full author and forwarder columns
   proposed in PROPOSED_CHANGES.md (needs Arsh's signature).
-- Where: branch `claude/project-thread-hz9jqt`, PR #73, not merged.
+- Where: main (PR #73, merge 7655056).
 - Verified: 6 tests for the sample bugs and 13 for item 1 and 6 (forwarded, quoted and nested
   forwards, Excel label, fail-closed stance after an expert accept, inconclusive checks,
   SenderCheck, claim-page and report warnings, picture count, repeated tagged ids, ufdr-check

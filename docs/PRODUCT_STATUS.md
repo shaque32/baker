@@ -7,9 +7,23 @@ tests or recorded runs. Where something exists only on an unmerged branch, it sa
 - **main:** `ae8f24e` (merges of #64, #65, #66, #67, 2026-10-15 07:22Z)
 - **Verified on:** main `7a14437` first, then re-checked after #64 to #67 merged (they changed
   only `core/audit/assumption_filler.py` in `core/`, plus tests and probe gold)
-- **Rule version:** 0.2.2 on main (`core/audit/rules.py`, PR #75). **Contracts:** 0.3.0 (`core/contracts.py`).
-- **Quote check:** 1.1.0 on main, not recorded with results; 1.2.0 in PR #76, which records it
-  on every run and prints it in the report (`core/audit/quotes.py`, `VERSION`).
+- **Rule version:** 0.2.2 on main (`core/audit/rules.py`, PR #75). **Contracts:** 0.3.0 on main (`core/contracts.py`); 0.4.0 in PR #89 (forwarded columns).
+- **Quote check:** 1.2.0 on main (#76), recorded on every run and printed in the report
+  (`core/audit/quotes.py`, `VERSION`). PR #91 (not merged) also puts it, with the Baker and
+  rule versions, in the report's top line (report 0.5.0), on the case overview screen and in
+  the eval's `run.json`, and adds each model run's seed to the report's versions table.
+- **Build stamp:** on main, the "Baker" version a report prints is `PIPELINE_VERSION` ("0.1.0",
+  `core/pipeline.py`), a constant that cannot tell two builds apart. PR #91 (not merged) also
+  records each run's release (`pyproject.toml`, 0.0.1 today) and git commit, with a flag when
+  tracked files had uncommitted changes, in the run's config as `build` (`core/build.py`), and
+  prints them in the report, on the overview screen and in `run.json`. An installed copy has no
+  `.git`: it reads the commit from the installer's `BUILD_INFO.json` (Windows already writes
+  one; #91 makes the Mac installer write one, with whether the copied files differed from the
+  commit). A folder made by `git archive` (the zip the Mac guide starts from) names its commit
+  in `core/BUILD_COMMIT`. Where changed files are unknown (Windows, an unzipped archive), the
+  stamp says "uncommitted changes not checked", as does an installed copy recorded clean (its
+  files cannot be rechecked). A rules-only re-run also names the build its evidence came from.
+  GitHub's own "Download ZIP" should fill `core/BUILD_COMMIT` in the same way; not checked.
 - **Signed prompts on main:** stance v1.1, reviewer v1.1, claims v1.0, assumptions v1.0
   (`core/audit/prompts/`)
 
@@ -32,7 +46,7 @@ coverage: one wrong "supported" is the failure that counts most.
 
 | Step | What happens | Code | Model? |
 |---|---|---|---|
-| 1. Import | Opens each input read-only and SHA-256 hashes it. The browser case workflow also copies it into the case folder; `baker import` on the CLI reads the original path and keeps no copy | `core/ingest/`, `core/casework/cases.py`, `cli/main.py` | No |
+| 1. Import | Opens each input read-only and SHA-256 hashes it. The browser case workflow also copies it into the case folder, and the importer refuses to store a copy whose bytes no longer match the upload's hash (nothing is stored; `tests/test_import_changed.py`, #88); `baker import` on the CLI reads the original path and keeps no copy | `core/ingest/`, `core/casework/cases.py`, `cli/main.py` | No |
 | 2. Normalize | Writes canonical rows; every row has a `source_ref`; times stored UTC with the original offset and raw value | `core/ingest/`, `core/schema.sql` | No |
 | 3. Enrich | Full-text search, local time, derived record text | `core/enrich/` | No |
 | 4. Claims | Splits the document into paragraphs; the local model proposes atomic claims; the expert edits the list | `core/claims/` | Local 14B |
@@ -257,8 +271,11 @@ an empty Grok Product review PR, never merged.
    usable license exists; #73 checked the reader on two non-Cellebrite test files (27 of 27
    records). Forwarded messages, and messages carrying a forwarded or quoted original, fail
    closed (#73, merged 2026-10-16): they can neither support nor contradict a claim, checks resting on
-   them are inconclusive, and the claim page and report warn. Their sender field still shows the
-   forwarder until a schema change Arsh signs (PROPOSED_CHANGES.md); originals are not imported.
+   them are inconclusive, and the claim page and report warn. With the schema change Arsh signed
+   on 2026-10-16 (PR #89, not merged) the record itself says
+   forwarded, with the original author when the extraction names one; the sender field still
+   shows the forwarder, and originals' text is not imported. Cases made before then keep only the
+   coverage list (same fail-closed behaviour, no author).
 4. **Local runtime per case unknown on current code** (section 7). The local 14B's probe result
    is also unverified on current code: it missed the moved-trap bar on 2026-10-07 answers with
    prompt v1.0, and has not been run on prompt v1.1 or the signed 105-item set.
@@ -304,8 +321,8 @@ Codex fixes, with CI pending on the new push.
 ## 11. Pilot readiness
 
 **Not pilot-ready for real case data yet.** The pass/fail gates are in
-[`docs/PILOT_GATES.md`](PILOT_GATES.md): 8 of 18 met as of 2026-10-16 (gate 2 by #76, gate 14 by the case02 key signed 2026-10-12, gate 6 by #72, gate 7 by #74,
-gate 8 by merging #68, gate 12, the buyer documents, by #82; gate 15, stopped runs never look
+[`docs/PILOT_GATES.md`](PILOT_GATES.md): 10 of 18 met once #91 merges (gate 2 by #76, gate 3 by #91, gate 14 by the case02 key signed 2026-10-12, gate 6 by #72, gate 7 by #74,
+gate 8 by merging #68, gate 12, the buyer documents, by #82; gate 13, the known integrity bugs, by #86 and #88; gate 15, stopped runs never look
 complete, was already in place; 18 by the feedback form #82 publishes as
 `docs/PILOT_FEEDBACK_FORM.md`). Gates 13 to 18 fold in Grok's
 pilot-ready list. Ready: the demo case, the review screen, encryption,
@@ -337,11 +354,11 @@ supported until your expert accepts it; runs locally with no network calls."
 
 | # | Claim | Status | Evidence | Safe wording |
 |---|---|---|---|---|
-| 1 | Verdicts come from versioned rules | **True** | `decide_verdict` is the only automated verdict path (`core/audit/rules.py:1`); an expert override is written directly by `override_verdict` (`core/review/actions.py`), as the expert's decision; `RULE_VERSION = "0.2.2"` (`core/audit/rules.py:108`) is stored on every decision (`core/audit/rules.py:308`) and printed in the report (`core/report/html.py:405`). Models only label evidence. | "Versioned rules decide verdicts; your expert can override" |
+| 1 | Verdicts come from versioned rules | **True** | `decide_verdict` is the only automated verdict path (`core/audit/rules.py:1`); an expert override is written directly by `override_verdict` (`core/review/actions.py`), as the expert's decision; `RULE_VERSION = "0.2.2"` (`core/audit/rules.py:108`) is stored on every decision (`core/audit/rules.py:308`) and printed in the report (`core/report/html.py:408`). Models only label evidence. | "Versioned rules decide verdicts; your expert can override" |
 | 2 | Nothing is Supported until the expert accepts it | **True** | SUPPORTED needs an expert-accepted support on an observed record (`core/audit/rules.py:117`, `:289`); AI acceptance covers nothing (`_AI_MAY_COVER` empty, `core/audit/rules.py:114`); the invariants re-check every SUPPORTED and fail the run otherwise (`core/audit/invariants.py:270-320`). The expert can also set a verdict directly (`baker verdict --set`), which is still the expert's act. Note: a model "contradicts" can make a claim CONTRADICTED without an expert step (section 4). | As proposed; do not extend it to "contradicted" |
-| 3 | "Not found" says what was searched | **True for absence and count findings** | The absence check states what it searched and why the sources can or cannot show an absence (`core/audit/checks/absence.py:1-6`, `:40`, `:112-135`); a curated report can never pass an absence (`core/audit/checks/absence.py:123`); the report has a "Searches and coverage" section (`core/report/html.py:486-516`). An UNPROVEN claim with no evidence names the uncovered assumptions, not a search log. | "When Baker finds no contact or counts records, it says what it searched and what the source could show" |
+| 3 | "Not found" says what was searched | **True for absence and count findings** | The absence check states what it searched and why the sources can or cannot show an absence (`core/audit/checks/absence.py:1-6`, `:40`, `:112-135`); a curated report can never pass an absence (`core/audit/checks/absence.py:123`); the report has a "Searches and coverage" section (`core/report/html.py:489-519`). An UNPROVEN claim with no evidence names the uncovered assumptions, not a search log. | "When Baker finds no contact or counts records, it says what it searched and what the source could show" |
 | 4 | The selection audit shows what was left out around each quote | **Partly true** | Shows each quoted, exhibit or examiner-tagged message in its exchange, with the messages not picked (`core/selection/audit.py:1-29`). Limits: a quote is placed only when its words fit one message, otherwise it is listed as found N times and nothing around it is counted as left out (`core/selection/picks.py:17-23`); names and quotes under two words are not looked up (`core/selection/picks.py:5-11`); messages an examiner left out of a curated report are not in the case to show (`core/selection/audit.py:27-29`); the branch comparing a curated report with a larger source of the same phone (not merged, synthetic data only) does not change this on main. | "...around each quote it can place in the extraction" |
-| 5 | Every report has an audit packet: source hashes, model, prompt and rule versions, tamper-evident log | **True, with one nuance** | Sources with SHA-256 (`core/report/html.py:662-670`), versions and model runs with model SHA-256, prompt version, parameters and seed (`core/report/html.py:673`, `:705-719`), rule version (`core/report/html.py:695`), audit-log summary with hash-chain result, last hash and expert actions (`core/report/html.py:721-739`, `core/review/audit_log.py:47-199`). Nuance: the report shows a summary and the expert entries, not every log entry. The chain detects edits to entries; anchors (`case.db.anchors.jsonl`, the newest entry's number and hash, written when a case opens and when a report is built) detect entries cut from the end back to the newest anchor. Neither catches a change to the database and the anchor file together, or entries added and cut between two anchors; there is no signature or external anchor beyond a saved report's last hash. The log is checked when a case opens, on every page while it is open (report and download included), and before encrypting or changing the passphrase; a failed check blocks review and reporting in the screen and the CLI (fail closed; `core/review/audit_log.py` `require_intact`, `ui/app.py` `open_case` and `/report`, `cli/main.py` `_open`; #74). | "A hash-chained audit log; the report prints its last hash" |
+| 5 | Every report has an audit packet: source hashes, model, prompt and rule versions, tamper-evident log | **True, with one nuance** | Sources with SHA-256 (`core/report/html.py:678-688`), versions and model runs with model SHA-256, prompt version, parameters and seed (`core/report/html.py:690-691`, `:557-593`, `:723-737`), Baker build (release and git commit), pipeline, rule and quote-check versions in the report's top line and its Run section (`core/report/html.py:612-623`, `:709-713`; PR #91 for the build, the top line and the seed in the versions table), audit-log summary with hash-chain result, last hash and expert actions (`core/report/html.py:738-764`, `core/review/audit_log.py:47-225`). Nuance: the report shows a summary and the expert entries, not every log entry. The chain detects edits to entries; anchors (`case.db.anchors.jsonl`, the newest entry's number and hash, written when a case opens and when a report is built) detect entries cut from the end back to the newest anchor. Evidence decisions log the expert's typed reason, and a stored reason or status that no longer matches its log entry, or an expert review added or removed without one, blocks the case (PR #86, merged; decisions logged before it carry no reason and are not compared). Neither catches a change to the database and the anchor file together, or entries added and cut between two anchors; there is no signature or external anchor beyond a saved report's last hash. The log is checked when a case opens, on every page while it is open (report and download included), and before encrypting or changing the passphrase; a failed check blocks review and reporting in the screen and the CLI (fail closed; `core/review/audit_log.py` `require_intact`, `ui/app.py` `open_case` and `/report`, `cli/main.py` `_open`; #74). | "A hash-chained audit log; the report prints its last hash" |
 | 6 | Runs locally with no network calls | **Depends on #68** | main: true. `core/` makes no network calls, the screen binds only 127.0.0.1 (`ui/server.py:19`); the installers download the pinned model once at install. #68 adds the opt-in Opus stance integration, one HTTPS request per stance pair to api.anthropic.com (`core/llm/cloud.py:1`, `:47` on the branch). Cloud stays off until the expert attests per case, so "local by default" stays true. "No network calls" would not be true for opted-in cases. | Today: "runs locally, no network calls". If #68 merges: "local by default; cloud AI only when your case allows it and you opt in" (Arsh's choice, 2026-10-15 07:10Z) |
 
 Claims Baker should not make yet: any speed figure for local runs (not measured on current code,

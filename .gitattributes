@@ -5,3 +5,6 @@
 *.cmd text eol=crlf
 *.bat text eol=crlf
 *.iss text eol=crlf
+# git archive (and a GitHub "Download ZIP") writes the commit into this file, so an unzipped
+# copy with no .git can still stamp its reports with the commit it came from (core/build.py).
+core/BUILD_COMMIT export-subst
