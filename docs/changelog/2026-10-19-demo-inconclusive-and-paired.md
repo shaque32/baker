@@ -1,4 +1,4 @@
-## 2026-10-19: Demo shows an inconclusive absence claim and, with `--paired`, the paired selection audit
+## 2026-10-19: Demo shows an inconclusive absence claim and, with `--paired`, the paired selection audit (#96)
 - Changed: `baker demo` adds one demo-only absence claim, D01 ("PETROV and REYES exchanged no
   WhatsApp messages between March 20 and March 23, 2026", from paragraph 11; eval/demo_claims.jsonl,
   not in the signed answer key). No WhatsApp record falls in the window, but both phones are
@@ -8,7 +8,7 @@
   eval/synthetic/paired.py, so the Selection tab and claim pages show the paired selection audit
   (#78) in one command. The UFDR is imported after the audit, so verdicts match the plain demo.
   Why: Grok Product's two demo fixes; Arsh chose "Build both" (2026-10-19).
-- Where: branch `claude/demo-inconclusive-and-paired-c0jsf7`
+- Where: PR #96 (branch `claude/demo-inconclusive-and-paired-c0jsf7`)
 - Verified: tests/test_demo.py (D01 unproven with an inconclusive absence check naming the
   curated reports; paired demo keeps every verdict, Selection tab lists the planted "or sunday
   works too", C05's page names 4 nearby records; CLI `--paired`); `make check` on this branch.
