@@ -701,3 +701,28 @@ def test_forwarded_messages_are_flagged_on_the_claim_page_and_in_the_report(conn
     page = app.handle(Request("GET", "/claim", {"id": "C05"}, {"host": "127.0.0.1:8765"})).text
     assert "<strong>Forwarded messages.</strong>" in page
     assert forwarded.RECORD_NOTE["forwarded"] in page
+
+
+def test_an_original_author_is_cited_never_written_as_bakers_words(conn, tmp_path):
+    from core.ingest import forwarded
+    from ui.app import App, Request
+
+    (named,) = conn.execute(
+        "SELECT id FROM messages WHERE body = 'need 2 more by friday'"
+    ).fetchone()
+    # the source's own name for the author, holding a word Baker never says itself
+    conn.execute(
+        "UPDATE messages SET forwarded = 1, forwarded_from_raw = 'Deleted Account' WHERE id = ?",
+        (named,),
+    )
+    _one_message_case(conn, contradict_named=False)
+    conn.commit()
+    assert forwarded.affected(conn) == {named: "forwarded"}
+    cited = '<span class="q">Deleted Account</span>'
+    html = render_report(conn)
+    check_report_text(html)
+    assert forwarded.AUTHOR_NOTE[0] in html and cited in html
+    app = App(tmp_path / "case.db", expert="Test Expert", port=8765)
+    page = app.handle(Request("GET", "/claim", {"id": "C05"}, {"host": "127.0.0.1:8765"})).text
+    check_report_text(page)
+    assert cited in page

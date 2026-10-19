@@ -7,7 +7,7 @@ tests or recorded runs. Where something exists only on an unmerged branch, it sa
 - **main:** `ae8f24e` (merges of #64, #65, #66, #67, 2026-10-15 07:22Z)
 - **Verified on:** main `7a14437` first, then re-checked after #64 to #67 merged (they changed
   only `core/audit/assumption_filler.py` in `core/`, plus tests and probe gold)
-- **Rule version:** 0.2.2 on main (`core/audit/rules.py`, PR #75). **Contracts:** 0.3.0 (`core/contracts.py`).
+- **Rule version:** 0.2.2 on main (`core/audit/rules.py`, PR #75). **Contracts:** 0.3.0 on main (`core/contracts.py`); 0.4.0 in PR #89 (forwarded columns).
 - **Quote check:** 1.2.0 on main (#76), recorded on every run and printed in the report
   (`core/audit/quotes.py`, `VERSION`). PR #91 (not merged) also puts it, with the Baker and
   rule versions, in the report's top line (report 0.5.0), on the case overview screen and in
@@ -271,8 +271,11 @@ an empty Grok Product review PR, never merged.
    usable license exists; #73 checked the reader on two non-Cellebrite test files (27 of 27
    records). Forwarded messages, and messages carrying a forwarded or quoted original, fail
    closed (#73, merged 2026-10-16): they can neither support nor contradict a claim, checks resting on
-   them are inconclusive, and the claim page and report warn. Their sender field still shows the
-   forwarder until a schema change Arsh signs (PROPOSED_CHANGES.md); originals are not imported.
+   them are inconclusive, and the claim page and report warn. With the schema change Arsh signed
+   on 2026-10-16 (PR #89, not merged) the record itself says
+   forwarded, with the original author when the extraction names one; the sender field still
+   shows the forwarder, and originals' text is not imported. Cases made before then keep only the
+   coverage list (same fail-closed behaviour, no author).
 4. **Local runtime per case unknown on current code** (section 7). The local 14B's probe result
    is also unverified on current code: it missed the moved-trap bar on 2026-10-07 answers with
    prompt v1.0, and has not been run on prompt v1.1 or the signed 105-item set.
