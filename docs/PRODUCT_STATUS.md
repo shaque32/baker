@@ -231,7 +231,9 @@ Merged 2026-10-15: stricter stated time windows, "after <date>" starts the next 
 0.2.2 with PR #75, which also refuses a rules-only re-run of an older audit), go-bar scorer fixes and the signed probe
 follow-up (#64), red-main test fix (#65), flaky encryption test fix (#67).
 Branch only: opt-in cloud Opus stance labels (#68), small stance model (#50), run 5's
-training-data generators (#79). PR #70 is an empty Grok Product review PR, never merged.
+training-data generators (#79), curated report against a larger source of the same phone
+(branch `claude/project-thread-y7z11i`, PR #78; synthetic data only, see section 9). PR #70 is
+an empty Grok Product review PR, never merged.
 
 ## 9. Known limitations
 
@@ -262,11 +264,17 @@ training-data generators (#79). PR #70 is an empty Grok Product review PR, never
    prompt v1.0, and has not been run on prompt v1.1 or the signed 105-item set.
 5. **Evidence recall is modest.** Opus case01 surfaced key evidence for 35% of claims needing it;
    14 of 20 claims depend on the expert finding or accepting key evidence.
-6. **Other gaps:** no translation in the pipeline; no embeddings; Windows installer unsigned; on #68 a
+6. **Curated report against a larger source (branch only, not on main).** Lists what a UFDR of the
+   same phone holds near each claim that a curated report does not. Tested only on synthetic
+   pairs; not checked on any real export. Pairing rests on a shared phone-owner account and the
+   same stated device model; no serial number or IMEI is compared. The
+   fail-closed rules are strict: a few report records not found hold back most nearby records as
+   "may be in the report", and under 95% found lists nothing (`docs/selection-audit.md`).
+7. **Other gaps:** no translation in the pipeline; no embeddings; Windows installer unsigned; on #68 a
    key saved for a plain (unencrypted) case, or before a case is open, is an owner-only plain
    file (an encrypted case seals its own key under the case key); experts still need the 14B
    installed even with cloud on.
-7. **Count check said "deleted" (fixed in PR #83, not merged).** On main the count check's
+8. **Count check said "deleted" (fixed in PR #83, not merged).** On main the count check's
    detail reads "N of them are flagged deleted" when counted messages carry the source's deletion
    flag. That breaks the rule that Baker never says "deleted", and the report's forbidden-words
    check (`core/audit/invariants.py:65`) would refuse to build a report containing it. #83
@@ -322,7 +330,7 @@ supported until your expert accepts it; runs locally with no network calls."
 | 1 | Verdicts come from versioned rules | **True** | `decide_verdict` is the only automated verdict path (`core/audit/rules.py:1`); an expert override is written directly by `override_verdict` (`core/review/actions.py`), as the expert's decision; `RULE_VERSION = "0.2.2"` (`core/audit/rules.py:108`) is stored on every decision (`core/audit/rules.py:308`) and printed in the report (`core/report/html.py:405`). Models only label evidence. | "Versioned rules decide verdicts; your expert can override" |
 | 2 | Nothing is Supported until the expert accepts it | **True** | SUPPORTED needs an expert-accepted support on an observed record (`core/audit/rules.py:117`, `:289`); AI acceptance covers nothing (`_AI_MAY_COVER` empty, `core/audit/rules.py:114`); the invariants re-check every SUPPORTED and fail the run otherwise (`core/audit/invariants.py:270-320`). The expert can also set a verdict directly (`baker verdict --set`), which is still the expert's act. Note: a model "contradicts" can make a claim CONTRADICTED without an expert step (section 4). | As proposed; do not extend it to "contradicted" |
 | 3 | "Not found" says what was searched | **True for absence and count findings** | The absence check states what it searched and why the sources can or cannot show an absence (`core/audit/checks/absence.py:1-6`, `:40`, `:112-135`); a curated report can never pass an absence (`core/audit/checks/absence.py:123`); the report has a "Searches and coverage" section (`core/report/html.py:486-516`). An UNPROVEN claim with no evidence names the uncovered assumptions, not a search log. | "When Baker finds no contact or counts records, it says what it searched and what the source could show" |
-| 4 | The selection audit shows what was left out around each quote | **Partly true** | Shows each quoted, exhibit or examiner-tagged message in its exchange, with the messages not picked (`core/selection/audit.py:1-29`). Limits: a quote is placed only when its words fit one message, otherwise it is listed as found N times and nothing around it is counted as left out (`core/selection/picks.py:17-23`); names and quotes under two words are not looked up (`core/selection/picks.py:5-11`); messages an examiner left out of a curated report are not in the case to show (`core/selection/audit.py:27-29`). | "...around each quote it can place in the extraction" |
+| 4 | The selection audit shows what was left out around each quote | **Partly true** | Shows each quoted, exhibit or examiner-tagged message in its exchange, with the messages not picked (`core/selection/audit.py:1-29`). Limits: a quote is placed only when its words fit one message, otherwise it is listed as found N times and nothing around it is counted as left out (`core/selection/picks.py:17-23`); names and quotes under two words are not looked up (`core/selection/picks.py:5-11`); messages an examiner left out of a curated report are not in the case to show (`core/selection/audit.py:27-29`); the branch comparing a curated report with a larger source of the same phone (not merged, synthetic data only) does not change this on main. | "...around each quote it can place in the extraction" |
 | 5 | Every report has an audit packet: source hashes, model, prompt and rule versions, tamper-evident log | **True, with one nuance** | Sources with SHA-256 (`core/report/html.py:662-670`), versions and model runs with model SHA-256, prompt version, parameters and seed (`core/report/html.py:673`, `:705-719`), rule version (`core/report/html.py:695`), audit-log summary with hash-chain result, last hash and expert actions (`core/report/html.py:721-739`, `core/review/audit_log.py:47-199`). Nuance: the report shows a summary and the expert entries, not every log entry. The chain detects edits to entries; anchors (`case.db.anchors.jsonl`, the newest entry's number and hash, written when a case opens and when a report is built) detect entries cut from the end back to the newest anchor. Neither catches a change to the database and the anchor file together, or entries added and cut between two anchors; there is no signature or external anchor beyond a saved report's last hash. The log is checked when a case opens, on every page while it is open (report and download included), and before encrypting or changing the passphrase; a failed check blocks review and reporting in the screen and the CLI (fail closed; `core/review/audit_log.py` `require_intact`, `ui/app.py` `open_case` and `/report`, `cli/main.py` `_open`; #74). | "A hash-chained audit log; the report prints its last hash" |
 | 6 | Runs locally with no network calls | **Depends on #68** | main: true. `core/` makes no network calls, the screen binds only 127.0.0.1 (`ui/server.py:19`); the installers download the pinned model once at install. #68 adds the opt-in Opus stance integration, one HTTPS request per stance pair to api.anthropic.com (`core/llm/cloud.py:1`, `:47` on the branch). Cloud stays off until the expert attests per case, so "local by default" stays true. "No network calls" would not be true for opted-in cases. | Today: "runs locally, no network calls". If #68 merges: "local by default; cloud AI only when your case allows it and you opt in" (Arsh's choice, 2026-10-15 07:10Z) |
 
