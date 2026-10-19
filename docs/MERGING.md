@@ -149,4 +149,6 @@ After a round of merges, one status refresh PR applies the pending edits to
 PRs whose entries it applies.
 
 A PR opened before #84 merged may still edit `docs/CHANGELOG_AI.md` or `docs/PRODUCT_STATUS.md`;
-if that conflicts after a merge, it is a section 5 skip, not a reason to fix it here.
+if that conflicts after a merge, it is a section 5 skip, not a reason to fix it here. When its
+owning thread syncs it, it moves that entry into its own `docs/changelog/` file and its status edits
+into `Status doc: pending: ...`, so it stops conflicting with the other open PRs.
