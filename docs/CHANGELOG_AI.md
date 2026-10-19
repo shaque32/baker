@@ -487,7 +487,8 @@ Archive entry format (new entries use the one in `docs/changelog/README.md`):
   reads as a config error; the "saved in this case" message checks the exact sealed path; the
   key is dropped from memory when a cloud audit ends; the Mac install guide no longer promises
   offline use for a cloud case.
-- Where: branch `claude/project-thread-a2fjkc`, PR #68, draft, not merged.
+- Where: main (PR #68, merge ed0a3a8, 2026-10-15), gated off until a model passes the signed
+  stance test.
 - Verified: `make check` passes, 1940 tests; gates unchanged (case01 1.00, 0 false supported,
   unreviewed 0.60, hostile PASS, case02 0.90); new tests for the gate, preflight, re-ask and a
   damaged sealed key. No real API call.
@@ -513,7 +514,8 @@ Archive entry format (new entries use the one in `docs/changelog/README.md`):
   locked; a plain case keeps the owner-only `~/.baker/cloud.json`; the env var still wins.
   Claim proposal, assumption filling and the AI reviewer stay local. Reason: Arsh chose
   "Opt-in cloud" (2026-10-15 07:10Z).
-- Where: branch `claude/project-thread-a2fjkc`, PR #68, draft, not merged (main merged in after #71).
+- Where: main (PR #68, merge ed0a3a8, 2026-10-15), gated off until a model passes the signed
+  stance test.
 - Verified (as reported by the owning thread; `cloud.sent` and the pause checked in
   `core/audit/_local_model.py` on the branch): `make check` passes, 1933 tests; gates unchanged
   (case01 1.00, 0 false supported, unreviewed 0.60, hostile PASS, case02 0.90); a simulated
@@ -535,7 +537,7 @@ Archive entry format (new entries use the one in `docs/changelog/README.md`):
 
 ## 2026-10-15: Opus on claim proposal and assumption filling (eval only)
 - Changed: nothing in the product. A preregistered check of moving two more steps to Opus.
-- Where: `eval/bench/cloud_steps.py` on branch #68; results in
+- Where: `eval/bench/cloud_steps.py` on main (PR #68); results in
   `/mnt/project-files/baker/cloud-first/steps-check/RESULTS.md`.
 - Verified: claim recall 80% (bar 90%); sheet-free audit 60% accuracy, 0 false supported (bar
   80%). Both failed, so both steps stay local.

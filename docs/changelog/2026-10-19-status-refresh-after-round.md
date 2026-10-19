@@ -5,14 +5,13 @@
   the local 14B had not been run on the signed set: with stance prompt v1.1 it scores
   contradicts precision 58% (11 of 19, bar 90%) and shows 6 moved traps as supports (Arsh's
   24 GB MacBook Air, commit `eee8d15`, 2026-10-19; from the "Audit our model scoring" thread).
-  The archive's stale `Where:` lines now name each PR's merge. Section 10 has a fresh
+  The archive's stale `Where:` lines, #68's included, now name each PR's merge. Section 10 has a fresh
   `make check` run on main.
 - Where: PR #97 (branch `claude/changelog-per-pr-ewuqbu`)
 - Verified: each merge commit checked against `git log` on main; the 14B figures checked
   against `/mnt/project-files/baker/cloud-bench/2026-10-16/fair-14b-vs-opus/local-arm/RESULTS.md`;
   `make check` on this branch.
-- Open: #68's own archive lines (still "draft, not merged") are left for the Cloud-first
-  thread's branch. Line numbers in section 12 were not re-checked. The same Mac run also timed a
+- Open: line numbers in section 12 were not re-checked. The same Mac run also timed a
   full local case01 (no sheet, 55% accuracy, 0 false supported); that is not recorded here and
   stays with the "Audit our model scoring" thread.
 - Affects: customer-facing claims (the local model's measured stance quality is now stated;
