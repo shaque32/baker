@@ -490,6 +490,9 @@ def test_a_sender_without_a_party_gets_the_writer_the_claim_names(conn):
         ("PETROV texted REYES\nSMITH: 'ok'", "ok", None),
         ("After PETROV texted REYES, REYES messages back 'ok'.", "ok", None),
         ("PETROV texted REYES, replying 'ok'.", "ok", "PETROV"),
+        ("PETROV TEXTED REYES, @northstar SHOT BACK 'OK'.", "OK", None),
+        ("PETROV texted REYES, then REYES: 'ok'.", "ok", None),
+        ("PETROV texted REYES, and REYES: 'ok'.", "ok", None),
     ],
 )  # fmt: skip
 def test_stated_sender_is_the_writer_of_the_quoted_words(conn, text, quoted, writer):

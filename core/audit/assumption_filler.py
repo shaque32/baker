@@ -927,7 +927,7 @@ _BETWEEN_WORDS = frozenset(
     {
         *_SAME_SUBJECT_FORMS,
         *_NOUN_FORMS,
-        "to", "and", "then", "that", "it", "back", "at", "on", "before", "after", "around",
+        "to", "and", "that", "it", "back", "at", "on", "before", "after", "around",
         "a", "an", "the", "these", "those", "some", "several", "two", "three", "four",
         "five", "six", "seven", "eight", "nine", "ten",
         "a.m", "p.m", "am", "pm", "midnight", "noon", "morning", "afternoon", "evening",
@@ -1282,7 +1282,7 @@ class LocalAssumptionFiller:
         }
         if "\n" in between or "\r" in between:
             return False  # a new line can carry a new label ("REYES\nSMITH: 'ok'")
-        mixed_case = bool(re.search(r"[a-z]", between))
+        mixed_case = bool(re.search(r"[a-z]", re.sub(r"@[\w.-]+", "", between)))
         last_end, last_capital = 0, False  # the word before: where it ends, and its kind
         last_digit = False
         for m in re.finditer(r"@[\w.-]+|\w[\w'’.-]*", between):
@@ -1305,9 +1305,15 @@ class LocalAssumptionFiller:
             right_after = last_capital and not between[last_end : m.start()].strip()
             if not known and not (mixed_case and word[0].isupper() and not right_after):
                 return False
-            last_end, last_capital = m.end(), word[0].isupper() and w not in _TITLES
+            last_end = m.end()
+            last_capital = (word[0].isupper() and w not in _TITLES) or word.startswith("@")
             last_digit = w.isdigit()
-        return True
+        # After the last word only a comma or a colon, then the quote's opening mark. A colon
+        # after a list ("REYES, then REYES: 'ok'") may label the quote, so not both.
+        tail = between[last_end:]
+        if not re.fullmatch(r"\s*[,:]?\s*[\"'“‘]*\s*", tail):
+            return False
+        return not (":" in tail and "," in between[:last_end])
 
     def _person(self, name: str) -> str:
         n = _nfc(name.strip()).casefold()
