@@ -861,8 +861,10 @@ _POSSESSIVE_OF_QUOTE = (
     r"(?:\b(?!(?:it|that|he|she|what|there|here|where|how|this|let)['’]s\b)\w+['’]s\b|\w+s['’](?=\s))"
     rf"(?=(?:\s+[\w-]+){{0,2}}?\s+{_QUOTE_NOUNS}\b|[\s,:\"'“‘”’-]*$)"
 )
-# A stop after a title ("Dr. Reyes") is no sentence break. A single letter is not excused:
-# "Exhibit A. REYES shot back" is a break, so "J. Reyes" fails closed.
+# A stop after a title ("Dr. Reyes") is no sentence break. Only titles that stand before a
+# name: "St.", "Jr.", "No." can end a sentence ("from Main St. REYES shot back"), so they
+# break. A single letter is not excused: "Exhibit A. REYES shot back" is a break, so
+# "J. Reyes" fails closed.
 _NOT_A_TITLE = "".join(
     rf"(?<!\b{t})"
     for t in (
@@ -873,9 +875,6 @@ _NOT_A_TITLE = "".join(
         "Sgt",
         "Det",
         "Lt",
-        "St",
-        "Jr",
-        "Sr",
         "Ofc",
         "Cpl",
         "Capt",
@@ -884,7 +883,6 @@ _NOT_A_TITLE = "".join(
         "Col",
         "Insp",
         "Agt",
-        "No",
     )
 )
 # Words that can start a new clause with its own subject: "and REYES shot back", "as REYES
@@ -894,8 +892,9 @@ _JOINS = _JOINS_WORDS
 # names no writer: a sentence break ('PETROV messaged REYES. REYES: "ok"'; a stop before a
 # capital, so "2:31 p.m.:" and "Dr. Reyes" are no break), a relative or a joined clause
 # ('PETROV texted REYES, who responded "ok"', '..., where REYES shot back', '..., and REYES
-# shot back ...'), a possessive of the quoted words ('PETROV replied to REYES's message "ok"',
-# "... JONES' reply ...", "..., and her reply was"), or
+# shot back ...', '..., and @northstar shot back'), a possessive of the quoted words
+# ('PETROV replied to REYES's message "ok"', "... JONES' reply ...", "..., and her reply
+# was"), or
 # words said to come from someone else ('PETROV wrote a report with the quotes from REYES,
 # "ok"'). "and" joins a clause only before a pronoun or a name with words of its own:
 # 'PETROV texted REYES and SMITH: "ok"' is one writer, two recipients (an all-caps claim is
@@ -906,11 +905,12 @@ _HANDED_ON_RE = re.compile(
     r"|\b(?:who|whom|whose|which|where)\b"
     rf"|\b{_QUOTE_NOUNS}\s+(?:from|of|by)\b"
     rf"|\b(?:his|her|their|its|my|our|your)\s+(?:[\w-]+\s+){{0,2}}?{_QUOTE_NOUNS}\b"
-    rf"|\b{_JOINS}\s+(?:(?:he|she|they|it|we|i)\b|(?-i:(?:[A-Z][\w'.-]*\s+){{1,3}}[a-z]))",
+    rf"|\b{_JOINS}\s+(?:(?:he|she|they|it|we|i)\b"
+    r"|(?-i:(?:(?:[A-Z][\w'.-]*|@[\w.-]+)\s+){1,3}[a-z]))",
     re.IGNORECASE,
 )
 # The same joined clause in an all-caps claim: "AND REYES SHOT BACK", not "AND SMITH:".
-_CAPS_CLAUSE_RE = re.compile(rf"\b(?i:{_JOINS})\s+(?:[A-Z][A-Z'.-]*\s+){{1,3}}[A-Z]")
+_CAPS_CLAUSE_RE = re.compile(rf"\b(?i:{_JOINS})\s+(?:(?:[A-Z][A-Z'.-]*|@[\w.-]+)\s+){{1,3}}[A-Z]")
 # A name right after one of these is not the one who wrote: 'a friend of PETROV texted ...',
 # 'someone posing as PETROV texted ...'. A plain "As PETROV texted ..." still names him.
 _POSSESSIVE_BEFORE = re.compile(r"['’]s\s*$", re.IGNORECASE)
