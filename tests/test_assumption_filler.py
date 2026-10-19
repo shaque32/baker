@@ -457,6 +457,10 @@ def test_a_sender_without_a_party_gets_the_writer_the_claim_names(conn):
         ("PETROV texted REYES and, replying 'ok', SMITH ended the exchange.", "ok", None),
         ("PETROV texted REYES, replying 'ok', and REYES left.", "ok", "PETROV"),
         ("PETROV texted REYES, writing 'ok', SMITH watching.", "ok", None),
+        # Grok audit of 2ddc302
+        ("PETROV texted REYES about the replies: 'ok'.", "ok", None),
+        ("PETROV texted REYES about the answers, 'ok'.", "ok", None),
+        ("PETROV texted REYES regarding the texts: 'ok'.", "ok", None),
     ],
 )  # fmt: skip
 def test_stated_sender_is_the_writer_of_the_quoted_words(conn, text, quoted, writer):

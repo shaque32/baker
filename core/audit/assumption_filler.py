@@ -821,6 +821,14 @@ _NOUN_BEFORE = re.compile(
     r"two|three|four|five|six|seven|eight|nine|ten|\d+)\s*$",
     re.IGNORECASE,
 )
+# "about the replies": after a preposition the noun phrase may be someone else's words, so
+# the noun stays and names no writer. "sent REYES two texts" (a direct object) is still a noun.
+_PREP_BEFORE_NOUN = re.compile(
+    r"\b(?:about|regarding|concerning|re|on|of|to|with|from|over|in|for|by|at)\s+"
+    r"(?:a|an|the|this|these|those|some|several|many|few|"
+    r"two|three|four|five|six|seven|eight|nine|ten|\d+)\s*$",
+    re.IGNORECASE,
+)
 # 'PETROV texted REYES, writing "ok"': a participle right after a comma (or "and", "then")
 # has the same subject as the verb before it, so it does not govern the quote. Not when it is
 # set in after a join ("and, replying 'ok', SMITH ended ...") or a new subject follows the
@@ -1170,7 +1178,11 @@ class LocalAssumptionFiller:
         """True when this quote word is a noun or a same-subject participle, so the verb
         before it still governs the quote. `after` is the claim's text after the quote."""
         word, ahead = verb.group(0).casefold(), before[: verb.start()]
-        if word in _NOUN_FORMS and _NOUN_BEFORE.search(ahead):
+        if (
+            word in _NOUN_FORMS
+            and _NOUN_BEFORE.search(ahead)
+            and not _PREP_BEFORE_NOUN.search(ahead)
+        ):
             return not re.search(r"\w", before[verb.end() :])
         return (
             word in _SAME_SUBJECT_FORMS
