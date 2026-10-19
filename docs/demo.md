@@ -25,7 +25,8 @@ Say this if asked; the yellow banner on every page says the same.
 | The quote check, the verdict rules (0.2.2), the hash-chained audit log, the report | |
 
 On a real case the local model (Qwen3-14B, on the expert's own computer) labels the evidence and
-the expert decides every item. A full case01 run takes about 6 to 8 hours on a 24 GB Mac.
+the expert decides every item. A full case01 run took about 6 to 8 hours on a 24 GB Mac on an
+earlier version; the current version has not been timed.
 
 To demo real model labels instead, save a finished synthetic case01 audit as the demo once:
 
