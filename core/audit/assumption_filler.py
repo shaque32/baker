@@ -821,12 +821,13 @@ _NOUN_BEFORE = re.compile(
     r"two|three|four|five|six|seven|eight|nine|ten|\d+)\s*$",
     re.IGNORECASE,
 )
-# "about the replies": after a preposition the noun phrase may be someone else's words, so
-# the noun stays and names no writer. "sent REYES two texts" (a direct object) is still a noun.
+# "about the replies", "about all the replies": a preposition anywhere between the verb before
+# the noun and the noun means the noun phrase may be someone else's words, so the noun stays and
+# names no writer. Only a direct object ("sent REYES two texts") is skipped as a noun.
 _PREP_BEFORE_NOUN = re.compile(
-    r"\b(?:about|regarding|concerning|re|on|of|to|with|from|over|in|for|by|at)\s+"
-    r"(?:a|an|the|this|these|those|some|several|many|few|"
-    r"two|three|four|five|six|seven|eight|nine|ten|\d+)\s*$",
+    r"\b(?:about|regarding|concerning|re|on|of|to|with|from|over|in|for|by|at|among|between|"
+    r"including|into|onto|toward|towards|against|after|before|during|under|via|through|per|"
+    r"like|than|without|within|across|behind|beside|besides|despite|except|upon)\b",
     re.IGNORECASE,
 )
 # 'PETROV texted REYES, writing "ok"': a participle right after a comma (or "and", "then")
@@ -917,6 +918,11 @@ _NOT_THE_WRITER_BEFORE = re.compile(
     r"pretending\s+to\s+be|impersonating))\s*$",
     re.IGNORECASE,
 )
+
+
+def _last_end(pattern: re.Pattern[str], text: str) -> int:
+    """Where the last match of the pattern in the text ends, or 0 when there is none."""
+    return max((m.end() for m in pattern.finditer(text)), default=0)
 
 
 def coverage_gap(claim: Claim, proposals: list[Proposal]) -> str | None:
@@ -1181,7 +1187,7 @@ class LocalAssumptionFiller:
         if (
             word in _NOUN_FORMS
             and _NOUN_BEFORE.search(ahead)
-            and not _PREP_BEFORE_NOUN.search(ahead)
+            and not _PREP_BEFORE_NOUN.search(ahead[_last_end(_QUOTING_RE, ahead) :])
         ):
             return not re.search(r"\w", before[verb.end() :])
         return (

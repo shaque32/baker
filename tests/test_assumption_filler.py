@@ -461,6 +461,10 @@ def test_a_sender_without_a_party_gets_the_writer_the_claim_names(conn):
         ("PETROV texted REYES about the replies: 'ok'.", "ok", None),
         ("PETROV texted REYES about the answers, 'ok'.", "ok", None),
         ("PETROV texted REYES regarding the texts: 'ok'.", "ok", None),
+        # Codex round 7
+        ("PETROV wrote a report about all the replies: 'ok'.", "ok", None),
+        ("PETROV texted REYES about both of the answers: 'ok'.", "ok", None),
+        ("PETROV sent REYES the two texts: 'ok'.", "ok", "PETROV"),
     ],
 )  # fmt: skip
 def test_stated_sender_is_the_writer_of_the_quoted_words(conn, text, quoted, writer):
