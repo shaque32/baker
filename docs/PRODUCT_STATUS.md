@@ -193,8 +193,8 @@ denial (P049, P066-P069, P092, P093). Blind readers sided with the signed labels
 planned fix is a stance prompt line for guide rules 12 and 23, signed by Arsh and tested on new
 items. The local 14B's stance labels also miss the signed bars: on the signed set with v1.1, the
 prompt on main (Arsh's 24 GB MacBook Air, commit `eee8d15` on #76's branch, 2026-10-19), its
-contradicts precision is 58% (11 of 19, bar 90%) and it shows 6 moved traps as supports
-(contradicts recall 100%, supports recall 100%, 0 contradicting shown as supports). Source:
+contradicts precision is 58% (11 of 19, bar 90%; the count is derived from 100% recall of the
+11 gold contradicts) and it shows 6 moved traps as supports (contradicts recall 100%, supports recall 100%, 0 contradicting shown as supports). Source:
 `/mnt/project-files/baker/cloud-bench/2026-10-16/fair-14b-vs-opus/local-arm/RESULTS.md`.
 
 **case01, real pipeline, simulated expert**
@@ -226,7 +226,7 @@ The gate swaps the model for a stand-in that labels every retrieved record and a
 expert that accepts only signed key evidence. It tests retrieval, checks, assumption sheet,
 rules and invariants, not model quality. Last recorded: case01 accuracy 1.00, 0 false
 supported; unreviewed run 0.60 (report only); hostile red-team PASS; case02 (hidden, aggregate,
-report only) 0.90 accuracy, 0 false supported. See section 10 for today's run.
+report only) 0.90 accuracy, 0 false supported. See section 10 for the latest run.
 
 ## 8. Implemented features (main unless marked)
 
@@ -297,9 +297,9 @@ PRs, never merged.
 4. **Local runtime per case unknown on current code** (section 7). **The local 14B's stance
    labels miss the signed bars:** on the signed set with v1.1, the prompt on main (Arsh's 24 GB
    MacBook Air, `eee8d15`, 2026-10-19), its contradicts precision is 58% (11 of 19, bar 90%) and
-   it shows 6 moved traps as supports. Under rule 1b a model's "contradicts" on an assumption that
-   is not a meaning and has no passed check can make a claim CONTRADICTED with no expert step,
-   until the expert dismisses it. Source:
+   it shows 6 moved traps as supports. Under rule 1b a model's "contradicts" on an observed or
+   derived record can make a claim CONTRADICTED with no expert step, unless the assumption is a
+   meaning or every deterministic check on it passed, until the expert dismisses it. Source:
    `/mnt/project-files/baker/cloud-bench/2026-10-16/fair-14b-vs-opus/local-arm/RESULTS.md`.
 5. **Evidence recall is modest.** Opus case01 surfaced key evidence for 35% of claims needing it;
    14 of 20 claims depend on the expert finding or accepting key evidence.
@@ -325,26 +325,22 @@ PRs, never merged.
    deletion flag, which breaks the rule that Baker never says "deleted". It now reads "N of them
    carry the source's deletion flag" (count check 1.0.1).
 
-## 10. Tests and results (main `7a14437`, before #64 to #67)
+## 10. Tests and results (main `e6e34f8`)
 
-Run 2026-10-15 in a Linux cloud container (Python 3.13; the project targets 3.12):
+Run 2026-10-19 in a Linux cloud container (Python 3.13; the project targets 3.12), on main's code
+(the working copy differed from `e6e34f8` only in this refresh's docs):
 
 | Check | Result |
 |---|---|
-| Lint and format (`ruff`) | clean, 385 files |
-| Tests (`pytest`, 63 test files plus subfolders) | 1857 passed, 6 skipped, **1 failed**: `tests/test_probe_layout.py::test_bench_copy_of_v1_1_is_the_signed_text`, the known red-main test that #65 fixes |
+| Lint and format (`ruff`) | clean, 420 files |
+| Tests (`pytest`) | 2241 passed, 8 skipped |
 | case01 model-free gate | PASS: accuracy 1.00, 0 false supported |
 | case01 unreviewed (report only) | accuracy 0.60, 0 supported by design |
 | Hostile red team | PASS: none of the 7 structural claims went supported |
 | case02 hidden case (aggregate, report only) | accuracy 0.90, 0 false supported |
 
-`make check` stops at the failing test, so the eval was run separately with `make eval`. #65
-(merged) fixes that test. A full local re-run on `ae8f24e` was not done; CI on PR #71 (main plus
-docs) is the current check.
-
-CI (GitHub Actions `checks`, Ubuntu and Windows, local clock set to Pacific), checked
-06:35Z: #50, #64, #65, #67 and #68 were green on their heads; #66 was green before its latest
-Codex fixes, with CI pending on the new push.
+CI (GitHub Actions `checks`, Ubuntu and Windows, local clock set to Pacific) runs the same
+`make check` on every push.
 
 ## 11. Pilot readiness
 
