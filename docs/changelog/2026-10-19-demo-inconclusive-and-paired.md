@@ -12,7 +12,9 @@
 - Verified: tests/test_demo.py (D01 unproven with an inconclusive absence check naming the
   curated reports; paired demo keeps every verdict, Selection tab lists the planted "or sunday
   works too", C05's page names 4 nearby records; CLI `--paired`); `make check` on this branch.
-- Open: synthetic data only. The demo queue now shows 21 claims (7 unproven, was 6). A paired
+- Open: synthetic data only. The scripted demo queue now shows 21 claims (7 unproven, was 6).
+  D01 is in the scripted build only: a demo saved with `--from-case` is restored as audited,
+  with the 20 answer-key claims. A paired
   demo case cannot be saved as the demo with `--from-case` (its UFDR is not one of case01's
   reports). No signed file changed; no rules, prompt, schema or gold change.
 - Affects: capabilities (demo only); no privacy, performance or customer-facing claims change.

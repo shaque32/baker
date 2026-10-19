@@ -38,7 +38,10 @@ baker demo --scripted                                     # back to the scripted
 
 ## Demo-only claim D01 and `--paired`
 
-Two parts of the demo are not in the signed answer key, and are synthetic like the rest:
+Two parts of the scripted demo are not in the signed answer key, and are synthetic like the
+rest. Both come only with the scripted build: a saved audit (`--from-case`) is restored as it
+was run, so it holds the 20 answer-key claims and no D01 (`--paired` always builds the scripted
+case).
 
 - **D01** (eval/demo_claims.jsonl), an absence claim read from paragraph 11: "PETROV and REYES
   exchanged no WhatsApp messages between March 20 and March 23, 2026." Baker finds no WhatsApp
@@ -63,7 +66,7 @@ records, and nothing counts as supported until you accept it yourself."
 1. **Cases, then the case.** One case, nothing else on the screen. Open it. The setup page
    shows the three imported files, each with its SHA-256, and "curated report (examiner-selected;
    cannot show absence)".
-2. **Claims queue.** 20 claims from the affidavit plus the demo's D01: 7 supported
+2. **Claims queue.** 20 claims from the affidavit plus the scripted demo's D01: 7 supported
    (expert-confirmed), 6 contradicted, 7 unproven, and C05 at the top: "Support found: do you agree?".
 3. **Live: the expert decides (C05).** Open C05, "need 2 more by friday". The model-side label
    says supports, yet the verdict is unproven: no claim is supported until an expert accepts its

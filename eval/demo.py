@@ -15,7 +15,8 @@ report say so on every page:
   dismisses the rest, giving the answer key's rationale as the reason, on every claim except
   LEFT_OPEN. Those wait for the person giving the demo (docs/demo.md says what to do on each).
 
-Two additions that are not in the answer key:
+Two additions that are not in the answer key, both in the scripted build only (a saved snapshot
+is restored as it was audited, without them):
 
 - The demo claims in eval/demo_claims.jsonl. D01 is an absence claim read from paragraph 11 ("no
   WhatsApp messages March 20 to 23"). Nothing contradicts it, but Item 1 is a curated report,
