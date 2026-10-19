@@ -11,7 +11,7 @@
   handles, titles, numbers, times, "to", "and", "that", "two texts" and the like), so a
   phrasing the guard does not know names no writer. Found by the independent review on #57.
   No signed file touched.
-- Where: PR #77
+- Where: main (PR #77, merge 9a33351, 2026-10-19).
 - Verified: 76 new cases in `tests/test_assumption_filler.py`, 50 fail on main; make check
   passes; eval unchanged (case01 1.00, 0 false supported; hostile PASS; case02
   aggregate 0.90, 0 false supported).
@@ -23,11 +23,4 @@
 - Affects: verdict inputs, only on claims with these phrasings: no wrong person checked, so no
   wrong CONTRADICTED or wrong pass from it (inferred, not measured).
   No privacy, performance or customer-facing claim change.
-- Status doc: pending: section 9 (known limitations), add an item after 5: "**Writer read from
-  the claim's words (fixed in #77).** When the 14B leaves a sender assumption without a person,
-  code reads the writer from the claim (`stated_sender`, `core/audit/assumption_filler.py`,
-  from #53). Before #77 it named the wrong person when the quote was handed on after the verb
-  ("PETROV texted REYES, who responded 'ok'" gave PETROV), so the sender check tested the wrong
-  person (inferred, not measured). #77 fails closed on these phrasings: the claim stays without
-  a writer and is refused (UNPROVEN). It is a phrasing guard with an allowlist, not a parser. The eval did not
-  move (case01 has no such phrasing)." Renumber the items after it.
+- Status doc: applied 2026-10-19
