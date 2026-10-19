@@ -331,6 +331,38 @@ def cmd_verify_log(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_flags(a: argparse.Namespace) -> int:
+    from core.review import flags
+
+    conn = _open(a.db)
+    if a.action == "export":
+        if a.out is None:
+            print("export needs --out", file=sys.stderr)
+            return 2
+        a.out.write_text(flags.summary_json(conn, a.pilot or ""), encoding="utf-8")
+        print(f"wrote {a.out} (redacted: counts, labels and versions only; nothing was sent)")
+        return 0
+    for f in flags.flags(conn):
+        state = "active" if f.active else f"withdrawn by {f.withdrawn_by}"
+        print(f"{f.id}  {f.kind}  {f.claim_id}  {f.evidence_id or ''}  {state}")
+    return 0
+
+
+def cmd_flag_log(a: argparse.Namespace) -> int:
+    import json
+
+    from core.review import flags
+
+    summaries = [json.loads(path.read_text(encoding="utf-8")) for path in a.summaries]
+    text = flags.error_log_markdown(flags.error_log(summaries))
+    if a.out:
+        a.out.write_text(text, encoding="utf-8")
+        print(f"wrote {a.out}")
+    else:
+        print(text, end="")
+    return 0
+
+
 def cmd_redecide(a: argparse.Namespace) -> int:
     from core.review.redecide import redecide
 
@@ -537,6 +569,17 @@ def parser() -> argparse.ArgumentParser:
     sp = add("report", cmd_report, "write the HTML claims report")
     sp.add_argument("--out", type=Path, required=True)
     add("verify-log", cmd_verify_log, "verify the audit log hash chain")
+
+    sp = add("flags", cmd_flags, "list expert flags, or export the redacted flag summary")
+    sp.add_argument("action", choices=("list", "export"))
+    sp.add_argument("--out", type=Path, help="export: where to write the summary (.json)")
+    sp.add_argument("--pilot", help="export: the pilot's name, as you want it in the error log")
+    sp = sub.add_parser(
+        "flag-log", help="combine redacted flag summaries into the per-pilot error log"
+    )
+    sp.set_defaults(fn=cmd_flag_log)
+    sp.add_argument("summaries", type=Path, nargs="+", help="baker-flag-summary .json files")
+    sp.add_argument("--out", type=Path, help="write Markdown here instead of printing it")
 
     sp = add("redecide", cmd_redecide, "re-run the verdict rules after expert review (no model)")
     sp.add_argument("--by", required=True)

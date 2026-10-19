@@ -72,6 +72,8 @@ core/
   report/             ReportRenderer; restore.py, selection.py, letter.py (full-extraction request),
                       hypotheses.py (other explanations, shared with the claim page)
   review/status.py    what each claim needs from the expert (shared by screen and report)
+  review/flags.py     optional expert flags (wrong label, missed record, verdict disagreement):
+                      audit-log entries only, never touch verdicts; redacted summary and error log
   review/redecide.py  re-run the verdict rules after expert review, no model
   llm/                runtime.py: the local GGUF runtime; cloud.py: the cloud stance model
                       (the only network call in core/), on the expert's own Anthropic key
