@@ -29,7 +29,7 @@ Template:
   "contradicts" on an event assumption can make a claim CONTRADICTED with no expert step. No code
   changes; the recorded prompt version becomes `sha256:2863d8dbf66960f6` (was
   `sha256:4c35f1cf01b0b227`). Also eval only: `eval/probe/mac_v12.sh`, one Mac run for the 14B's
-  probe on v1.2 and its half of the 14B-vs-Opus test Arsh chose on 2026-10-15 ("Test after
+  probe on v1.2, the same probe on v1.1 as its baseline, and its half of the 14B-vs-Opus test Arsh chose on 2026-10-15 ("Test after
   fixes"), and `eval/bench/fair_steps.py`, which runs that test for either model at one commit:
   claim proposal (scored by the committed matcher and a split-aware one, since the claims prompt
   asks for splitting), the case01 audit without the assumption sheet, and the same fills with a
@@ -54,7 +54,10 @@ Template:
   green on the branch with main at 80bf0df (2118 passed, 6 skipped, lint clean; eval unchanged:
   case01 1.00 with 0 false supported, unreviewed 0.60, hostile PASS, case02 aggregate 0.90).
 - Open: the local 14B reads this prompt and has not been run on it; Arsh runs
-  `bash eval/probe/mac_v12.sh` on the Mac (the probe, then the test's 14B half). The test's plan
+  `bash eval/probe/mac_v12.sh` on the Mac (the probe on v1.2 and on v1.1, then the test's 14B
+  half). This PR is held until that run shows v1.2 keeps the 14B's supports recall and contradicts
+  precision at its v1.1 level with 0 moved traps shown as supports (Grok Product, 2026-10-19).
+  The test's plan
   and decision rule were written before any call
   (`/mnt/project-files/baker/cloud-bench/2026-10-16/fair-14b-vs-opus/PREREGISTERED.md`, with
   Amendments 1 to 4 for the added measures and checks). Only the Opus half has run (2026-10-16, $5.23, cloud

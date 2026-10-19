@@ -205,7 +205,9 @@ On new items written for the test and never used to write the sentences, wrong "
 told-frame and undated items went from 2 to 0 (24 items by this thread, high; 0 at medium too)
 and from 1 to 0 (26 items by "Custom model for Baker", medium); every contradicts and supports
 control held. The local 14B reads the same prompt and has **not** been run on v1.2 (needs the
-Mac). A "contradicts" that becomes "complicates" can leave a claim UNPROVEN instead of
+Mac). #93 is held until it has: v1.2 must keep the 14B's supports recall and contradicts
+precision at its v1.1 level, measured in the same Mac run, with 0 moved traps shown as supports
+(Grok Product, 2026-10-19). A "contradicts" that becomes "complicates" can leave a claim UNPROVEN instead of
 CONTRADICTED, never SUPPORTED: an open complicating label blocks SUPPORTED
 (`core/audit/rules.py:56`, `:280-286`).
 
@@ -357,7 +359,8 @@ Before a first real case (the full list is the gates file):
 2. Check a real UFDR and AXIOM export with `baker ufdr-check` (needs a pilot expert's closed case).
 3. Opt-in cloud (#68, merged 2026-10-15, chosen by Arsh 07:10Z) stays gated off. The signed
    told-frame fix (line signed 13:45Z) is stance v1.2 (PR #93, not merged), which passed on new
-   items with Opus. Still needed: the 14B's probe on v1.2 on the Mac, merge it, then an entry for
+   items with Opus. Still needed: the 14B's probe on v1.2 and v1.1 on the Mac (#93 is held until
+   v1.2 is no worse for the 14B), merge it, then an entry for
    Opus with v1.2 in `core/llm/cloud.py` `PROBE_PASSED`, signed by Arsh. Pilots run local only
    until then.
 4. Sign the Windows installer (Azure code signing pending).

@@ -20,11 +20,19 @@ json.dump([pick_entry(json.load(open(sys.argv[1])), sys.argv[2] or None)], open(
   echo "$(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1073741824 )) GB"
 } > "$OUT/versions.txt"
 
-echo "1/2 the 14B on the signed probe set with stance prompt v1.2 (stance only, 2 answers per item)"
+echo "1/3 the 14B on the signed probe set with stance prompt v1.2 (stance only, 2 answers per item)"
 python -m eval.probe.run_probe --models "$OUT/model.json" --probe-set eval/gold/probe/probe.jsonl \
   --stance-only --repeat 2 --layout product_members --out "$OUT/probe"
 
-echo "2/2 the 14B half of the 14B-vs-Opus test (claims, case01 audit without the sheet)"
+# The 14B has never run v1.1 on this set, and #93 merges only if v1.2 holds supports recall and
+# contradicts precision at v1.1's level with 0 moved traps shown as supports. Same set, layout and
+# machine; the first answer decides in both runs, so one answer per item is enough here.
+echo "2/3 the same probe with stance prompt v1.1 (the body on main today), the baseline"
+python -m eval.probe.run_probe --models "$OUT/model.json" --probe-set eval/gold/probe/probe.jsonl \
+  --stance-only --repeat 1 --layout product_members --stance-prompt eval/probe/stance_v1_1_signed.md \
+  --out "$OUT/probe_v1_1"
+
+echo "3/3 the 14B half of the 14B-vs-Opus test (claims, case01 audit without the sheet)"
 python -m eval.bench.fair_steps --arm local --models "$OUT/model.json" --out "$OUT/fair"
 
 {
@@ -32,7 +40,11 @@ python -m eval.bench.fair_steps --arm local --models "$OUT/model.json" --out "$O
   echo
   cat "$OUT/versions.txt"
   echo
+  echo "## Stance prompt v1.2"
   cat "$OUT/probe/summary.md"
+  echo
+  echo "## Stance prompt v1.1 (baseline)"
+  cat "$OUT/probe_v1_1/summary.md"
   echo
   cat "$OUT/fair/summary.md"
 } > "$OUT/RESULTS.md"
