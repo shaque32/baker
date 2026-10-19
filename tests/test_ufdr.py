@@ -673,7 +673,7 @@ def test_a_forwarded_message_is_listed_and_never_shown_as_quietly_authored(tmp_p
     item = next(i for i in s.items if i.code == "forwarded")
     assert item.level == "attention"
     assert item.locators == ("Chat[1]/Messages[1]", "Chat[1]/Messages[2]")
-    assert "does not record who first wrote" in item.plain
+    assert "has not verified who first wrote" in item.plain
     emb = next(i for i in s.items if i.code == "embedded_message_not_imported")
     assert emb.locators == ("Chat[1]/Messages[2]",)
     # the embedded original is not imported as the forwarder's words
@@ -777,3 +777,69 @@ def test_a_tagged_file_id_with_two_paths_links_to_neither(tmp_path):
     codes = _codes(s)
     assert codes["tagged_file_ids_repeated"] == "attention"
     assert codes["attachment_file_ambiguous"] == "attention"
+
+
+def test_a_forwarded_message_is_marked_on_the_record_with_its_original_author(tmp_path):
+    base = [field("Source", "WhatsApp"), one("From", party(*OWNER)),
+            ts_field("TimeStamp", "2026-03-05T21:31:00.000-05:00")]  # fmt: skip
+    original = model(
+        "InstantMessage", one("From", party(*JO)), field("Body", "SYNTHETIC Jo's words")
+    )
+    named = model("InstantMessage", *base, field("Body", "SYNTHETIC passed on"),
+                  _extra("Forwarded"), _embedded(original))  # fmt: skip
+    unnamed = model("InstantMessage", *base, field("Body", "SYNTHETIC passed on too"),
+                    _extra("Forwarded"))  # fmt: skip
+    quoted = model("InstantMessage", *base, field("Body", "SYNTHETIC my answer"),
+                   _embedded(original))  # fmt: skip
+    plain = model("InstantMessage", *base, field("Body", "SYNTHETIC own words"))
+    # a forward of a forward: the embedded sender is only an intermediate forwarder
+    relayed = model("InstantMessage", one("From", party(*JO)), field("Body", "SYNTHETIC relayed"),
+                    _extra("Forwarded"))  # fmt: skip
+    nested = model("InstantMessage", *base, field("Body", "SYNTHETIC passed on again"),
+                   _extra("Forwarded"), _embedded(relayed))  # fmt: skip
+    chat = _chat("c1", named, unnamed, quoted, plain, nested)
+    path = write_package(tmp_path / "p.ufdr", report_xml({"Chat": [chat]}))
+    conn, _s = _import(path)
+    rows = conn.execute(
+        "SELECT locator, forwarded, forwarded_from_raw FROM messages ORDER BY locator"
+    ).fetchall()
+    assert rows == [
+        ("Chat[1]/Messages[1]", 1, "+15550100002 Jo"),
+        ("Chat[1]/Messages[2]", 1, None),  # the package names no original author
+        ("Chat[1]/Messages[3]", None, None),  # a quote is not a forward
+        ("Chat[1]/Messages[4]", None, None),
+        ("Chat[1]/Messages[5]", 1, None),  # never the intermediate forwarder
+    ]
+    from core.report.html import record_line
+
+    mid = conn.execute("SELECT id FROM messages WHERE locator = 'Chat[1]/Messages[1]'").fetchone()
+    line = record_line(conn, mid[0], forwarded.affected(conn))
+    assert 'names <span class="q">+15550100002 Jo</span> as the original author' in line
+
+
+def test_a_case_made_before_the_forwarded_columns_still_fails_closed(tmp_path):
+    msg = model("InstantMessage", field("Source", "WhatsApp"), one("From", party(*OWNER)),
+                field("Body", "SYNTHETIC passed on"), _extra("Forwarded"))  # fmt: skip
+    path = write_package(tmp_path / "p.ufdr", report_xml({"Chat": [_chat("c1", msg)]}))
+    conn = sqlite3.connect(":memory:")
+    conn.execute("PRAGMA foreign_keys = ON")
+    schema = (Path(__file__).parents[1] / "core" / "schema.sql").read_text(encoding="utf-8")
+    old = schema.replace(
+        "    bookmarked      INTEGER CHECK (bookmarked IN (0, 1)),",
+        "    bookmarked      INTEGER CHECK (bookmarked IN (0, 1))",
+    )
+    old = old.replace(
+        "    forwarded       INTEGER CHECK (forwarded IN (0, 1)),"
+        "     -- NULL = source did not say\n",
+        "",
+    ).replace(
+        "    forwarded_from_raw TEXT          -- the original author as the source wrote it, "
+        "when it says\n",
+        "",
+    )
+    conn.executescript(old)
+    assert not forwarded.has_columns(conn)
+    UfdrImporter(source_id="u1").import_source(path, conn)
+    (mid,) = conn.execute("SELECT id FROM messages").fetchone()
+    assert forwarded.affected(conn) == {mid: "forwarded"}
+    assert forwarded.original_author(conn, mid) is None

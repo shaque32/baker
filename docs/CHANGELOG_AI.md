@@ -19,6 +19,37 @@ Template:
 
 ---
 
+## 2026-10-16: Forwarded messages marked on the record (signed schema change)
+- Changed: Arsh signed the `messages.forwarded` and `messages.forwarded_from_raw` columns
+  (PROPOSED_CHANGES.md, "approved" 2026-10-16 02:53Z in the UFDR thread), applied to
+  `core/schema.sql` and the `Message` model in `core/contracts.py`. The UFDR and Excel importers
+  now mark each message the extraction labels Forwarded; the UFDR importer records the original
+  author when the package embeds the original and names exactly one sender, as written. The
+  claim page and report name that author in the record's warning ("which Baker has not checked"),
+  as a cited span: it is the source's text, never Baker's words, so a name such as "Deleted
+  Account" passes the forbidden-word check. Contracts 0.3.0 -> 0.4.0 (`core/contracts.py` and the
+  `core/schema.sql` header, as that file's own rule asks); report 0.4.0 -> 0.6.0 (0.5.0 is #91's).
+  Fail-closed handling from #73 is unchanged: a forwarded message still cannot support or
+  contradict a claim, checks resting on it stay inconclusive, and SenderCheck never credits the
+  forwarder. Cases made before the columns keep working from the coverage list. After Codex
+  review: no author is recorded when the embedded message is itself forwarded (it would name an
+  intermediate forwarder), and the claim, stance, check and coverage notes now say Baker "has not
+  verified" who first wrote the words, which stays true when the extraction names an author.
+- Where: branch `claude/project-thread-hz9jqt` (fresh from main), PR #89, not merged.
+- Verified: 4 new or extended tests (UFDR marks with and without a named author, quote not a
+  forward; Excel label; a case made on the old schema still fails closed; an author named
+  "Deleted Account" renders cited in the report and on the claim page, which pass the
+  forbidden-word check); full `make check` and eval in the PR description. Grok's audit of
+  31f2993 (standing in for Codex, Arsh 2026-10-19) found the cited-span and version issues,
+  fixed here.
+- Open: AXIOM does not read forwarded marks yet; only forwards the extraction labels are caught;
+  the original author is the extraction's claim, not checked. The stance prompt is not told the
+  message was forwarded (prompts are signed); the stored stance is still downgraded. No in-place
+  migration: an existing case database is not upgraded, so its messages lack the
+  columns and keep the coverage-list behaviour.
+- Affects: capabilities (forwarded marked on the record and shown with its author). No verdict,
+  privacy or performance change. Customer-facing claims unchanged; UFDR stays unverified.
+
 ## 2026-10-16: Versions stamped on every result (#91, after #76)
 - Changed: closes the rest of pilot gate 3 ("versions stamped on every result",
   `docs/PILOT_GATES.md` in #82). PR #76 records the quote-check version (1.2.0) on every run
@@ -303,7 +334,7 @@ Template:
   counted (info); a taggedFiles id listed with two different paths links to no file and is
   listed under Limitations (attention). Rules 0.2.x untouched; full author and forwarder columns
   proposed in PROPOSED_CHANGES.md (needs Arsh's signature).
-- Where: branch `claude/project-thread-hz9jqt`, PR #73, not merged.
+- Where: main (PR #73, merge 7655056).
 - Verified: 6 tests for the sample bugs and 13 for item 1 and 6 (forwarded, quoted and nested
   forwards, Excel label, fail-closed stance after an expert accept, inconclusive checks,
   SenderCheck, claim-page and report warnings, picture count, repeated tagged ids, ufdr-check

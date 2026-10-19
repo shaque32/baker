@@ -323,6 +323,11 @@ are the four; the moved probe items are P038 to P044, P071, P049, P066 to P069 a
 TRAP_ORDER gains undated_denial and told_frame).
 
 ## 2026-10-15 claude/project-thread-hz9jqt: say on the message that it was forwarded
+SIGNED by Arsh on 2026-10-16 ("just sign the schema" in the project chat, 02:50Z, then
+"approved" in the UFDR importer thread, 02:53Z). APPLIED on branch
+claude/project-thread-hz9jqt, fresh from main, with the Message model in core/contracts.py.
+With it, as both files' own header rule asks, CONTRACTS_VERSION 0.3.0 -> 0.4.0 and the schema
+header line (PR #89, after Grok's audit of 31f2993).
 File: core/schema.sql (and the Message model in core/contracts.py, if it mirrors the columns)
 Why: a forwarded message is stored as the forwarder's message, and nothing on the record says it
 was forwarded or who first wrote it. PR #73 lists forwarded messages in coverage (attention), but
