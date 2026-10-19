@@ -21,8 +21,9 @@ tests or recorded runs. Where something exists only on an unmerged branch, it sa
   one; #91 makes the Mac installer write one, with whether the copied files differed from the
   commit). A folder made by `git archive` (the zip the Mac guide starts from) names its commit
   in `core/BUILD_COMMIT`. Where changed files are unknown (Windows, an unzipped archive), the
-  stamp says "uncommitted changes not checked". GitHub's own "Download ZIP" should fill it in the
-  same way; not checked.
+  stamp says "uncommitted changes not checked", as does an installed copy recorded clean (its
+  files cannot be rechecked). A rules-only re-run also names the build its evidence came from.
+  GitHub's own "Download ZIP" should fill `core/BUILD_COMMIT` in the same way; not checked.
 - **Signed prompts on main:** stance v1.1, reviewer v1.1, claims v1.0, assumptions v1.0
   (`core/audit/prompts/`)
 

@@ -115,6 +115,8 @@ def redecide(
         # The labels re-used here were kept or dropped by the evidence run's quote check.
         "quote_check": src["config"].get("quote_check"),
         "build": build.build_info(),  # the build that re-ran the rules
+        # ...and the one that made the reused assumptions, checks and labels (Codex on #91).
+        "evidence_build": src["config"].get("evidence_build", src["config"].get("build")),
     }
     if isinstance(src["config"].get("cloud"), dict):
         cfg["cloud"] = src["config"]["cloud"]  # the reused labels' cloud decision, for the report

@@ -556,8 +556,9 @@ def quote_check_label(run: dict) -> str:
 
 def build_label(run: dict) -> str:
     """The Baker release and git commit the run used (core.build). Runs before #91 did not
-    record them; their "Baker pipeline" version alone cannot tell two builds apart."""
-    return build.label((run.get("config") or {}).get("build"))
+    record them; their "Baker pipeline" version alone cannot tell two builds apart. A rules-only
+    re-run also names the build its evidence came from, when that differs."""
+    return build.run_label(run.get("config") or {})
 
 
 def _versions(conn: sqlite3.Connection, run: dict | None) -> str:

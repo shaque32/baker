@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import html
+import json
 import re
 import sqlite3
 from collections import Counter
@@ -307,6 +308,30 @@ def test_the_report_and_the_screen_stamp_every_version_a_result_depends_on(tmp_p
         assert versions["build"] == built
         assert f"<tr><td>Baker build</td><td class='mono'>{here}</td></tr>" in report
         assert {(m["purpose"], m["sha256"], m["seed"]) for m in versions["models"]} == set(models)
+    finally:
+        conn.close()
+
+
+def test_a_rules_only_rerun_on_a_newer_build_names_the_build_its_evidence_came_from(tmp_path):
+    # Codex on #91: the re-run reuses the full audit's labels, so its stamp names that build too.
+    conn = run_pipeline.build_case("case01", tmp_path / "case01.db")
+    try:
+        _audit(conn, START)
+        old = {"release": "0.0.0", "commit": "a" * 40, "dirty": False}
+        with conn:  # as if the full audit had run on an older build
+            conn.execute(
+                "UPDATE pipeline_runs SET config_json = json_set(config_json, '$.build', json(?))",
+                (json.dumps(old),),
+            )
+        redecide(conn, EXPERT, lambda: START + timedelta(hours=1))
+        run = pipeline.view_run(conn)
+        assert run["config"]["mode"] == "rules_only"
+        assert run["config"]["build"] == build.build_info()
+        assert run["config"]["evidence_build"] == old
+        here = html.escape(build.label(build.build_info()))
+        stamp = f"Baker {here}; its evidence and labels from 0.0.0, commit {'a' * 12} · pipeline"
+        assert stamp in render_report(conn)
+        assert run_pipeline.run_versions(conn)["evidence_build"] == old
     finally:
         conn.close()
 

@@ -366,6 +366,7 @@ def run_versions(conn) -> dict:  # noqa: ANN001
     run = pipeline.last_run(conn) or {}
     return {
         "build": (run.get("config") or {}).get("build"),
+        "evidence_build": (run.get("config") or {}).get("evidence_build"),
         "pipeline": run.get("baker_version"),
         "rules": run.get("rule_version"),
         "quote_check": quote_check_label(run),

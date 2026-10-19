@@ -40,11 +40,31 @@ def test_an_installed_copy_reads_the_commit_from_the_installers_build_info(tmp_p
     assert build.label(build.build_info.__wrapped__(src)) == (
         "9.8.7, commit bbbbbbbbbbbb, uncommitted changes not checked"
     )
-    # The Mac installer records it (rsync copies uncommitted edits too).
-    for dirty, note in ((False, ""), (True, ", with uncommitted changes")):
+    # The Mac installer records whether the copy differed (rsync copies uncommitted edits too).
+    # Changed at install stays changed; clean at install is not rechecked later, since the files
+    # may be edited after (Codex on #91), so it reads as unknown.
+    for dirty, seen, note in (
+        (False, None, ", uncommitted changes not checked"),
+        (True, True, ", with uncommitted changes"),
+    ):
         (src / "BUILD_INFO.json").write_text(json.dumps({"git_commit": "b" * 40, "dirty": dirty}))
-        assert build.commit(src) == ("b" * 40, dirty)
+        assert build.commit(src) == ("b" * 40, seen)
         assert build.label(build.build_info.__wrapped__(src)) == f"9.8.7, commit {'b' * 12}{note}"
+
+
+def test_a_rules_only_rerun_names_the_build_its_evidence_came_from():
+    # Codex on #91: a re-run on a newer build reuses the older run's assumptions, checks and
+    # labels, so the report names both builds; chained re-runs keep the first evidence build.
+    old = {"release": "0.0.1", "commit": "a" * 40, "dirty": False}
+    new = {"release": "0.0.2", "commit": "c" * 40, "dirty": False}
+    assert build.run_label({"build": old}) == f"0.0.1, commit {'a' * 12}"
+    assert build.run_label({"build": new, "evidence_build": new}) == f"0.0.2, commit {'c' * 12}"
+    assert build.run_label({"build": new, "evidence_build": old}) == (
+        f"0.0.2, commit {'c' * 12}; its evidence and labels from 0.0.1, commit {'a' * 12}"
+    )
+    assert build.run_label({"build": new, "evidence_build": None}) == (
+        f"0.0.2, commit {'c' * 12}; its evidence and labels from release and commit not recorded"
+    )
 
 
 @pytest.mark.skipif(

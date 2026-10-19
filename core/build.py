@@ -56,8 +56,8 @@ def _git(root: Path, *args: str) -> str | None:
 
 def commit(root: Path = ROOT) -> tuple[str, bool | None]:
     """(commit, dirty). dirty is True when tracked files differ from the commit, None when
-    unknown (an installed copy whose BUILD_INFO.json does not say; the Windows one hashes the
-    staged files instead)."""
+    unknown. An installed copy has no .git to recheck: its files may have changed since it was
+    installed, so the installer's "dirty": true is kept but "dirty": false reads as unknown."""
     head = _git(root, "rev-parse", "HEAD")
     if head and head.strip():
         status = _git(root, "status", "--porcelain", "--untracked-files=no")
@@ -69,8 +69,7 @@ def commit(root: Path = ROOT) -> tuple[str, bool | None]:
         except (OSError, ValueError, AttributeError):
             continue
         if isinstance(got, str) and got:
-            dirty = data.get("dirty")
-            return got, dirty if isinstance(dirty, bool) else None
+            return got, (True if data.get("dirty") is True else None)
     try:  # "$Format:%H$" in a checkout; the commit in an archive. Unzipped files may be edited.
         archived = (root / "core" / "BUILD_COMMIT").read_text(encoding="utf-8").strip()
     except OSError:
@@ -86,6 +85,17 @@ def build_info(root: Path = ROOT) -> dict:
     the code loaded at start, so later edits to the files must not change what is recorded."""
     sha, dirty = commit(root)
     return {"release": release(root), "commit": sha, "dirty": dirty}
+
+
+def run_label(config: dict) -> str:
+    """The build a run's stored config names. A rules-only re-run (core/review/redecide.py)
+    reuses an earlier run's assumptions, checks and labels, so when those came from another build
+    it names that one too."""
+    own = label(config.get("build"))
+    if "evidence_build" not in config or config["evidence_build"] == config.get("build"):
+        return own
+    evidence = config["evidence_build"]  # None: made before builds were recorded
+    return f"{own}; its evidence and labels from {label(evidence)}"
 
 
 def label(build: object) -> str:
