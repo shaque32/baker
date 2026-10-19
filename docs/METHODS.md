@@ -83,8 +83,9 @@ local AI reviewer may sort evidence for the examiner, but in this version its ac
 nothing and never makes a claim Supported. Identity links between accounts and people stay
 proposed until the examiner confirms them. Every examiner action (accept, dismiss, reopen, confirm,
 override) is written to the hash-chained audit log under the examiner's name, an override with its
-note. The reason typed for an evidence decision is stored with the decision but is not itself
-covered by the chain.
+note. The reason typed for an evidence decision is logged with it, and a stored reason or status
+that no longer matches its log entry blocks the case (decisions logged before #86 carry no reason
+in the log, so only their status and presence are checked).
 
 The examiner can also override any verdict directly, including to Supported. An override bypasses
 the rule prerequisites above: it needs a note, and the screen and report show it as the examiner's

@@ -29,7 +29,7 @@ the same PR that changes a gate's state, along with `docs/PRODUCT_STATUS.md` sec
 | 10 | Signed Windows installer | The Windows installer is code-signed (only for a Windows pilot) | **Not met** | Unsigned. Azure code signing pending (`docs/code-signing.md`) |
 | 11 | Outside install test | One person outside the project installs Baker on a clean Mac, runs the demo and opens a case using only `docs/PILOT_ONBOARDING.md`, without help, and the result is written down | **Not met** | Needs a person. The kit exists (this PR); nobody outside the project has tried it |
 | 12 | Buyer documents | Onboarding kit, methods note and security and privacy pack are on main and match the code | **Met** (#82) | `docs/PILOT_ONBOARDING.md`, `docs/METHODS.md`, `docs/SECURITY_PRIVACY.md` |
-| 13 | Known integrity bugs fixed | An upload whose hash changes between copy and import leaves nothing in the case (PR #88), and the reason typed for an evidence decision is in the hash-chained audit entry (PR #86); both merged and CI green on main | **Not met** | Both open. Found by Codex on this PR; `docs/SECURITY_PRIVACY.md` and `docs/METHODS.md` disclose them until then |
+| 13 | Known integrity bugs fixed | An upload whose hash changes between copy and import leaves nothing in the case (PR #88), and the reason typed for an evidence decision is in the hash-chained audit entry (PR #86); both merged and CI green on main | **Not met** | #86 merged 2026-10-19 (`80bf0df`); #88 open. Found by Codex on this PR; `docs/SECURITY_PRIVACY.md` and `docs/METHODS.md` disclose them until then |
 | 14 | Held-out error rate | The existing hidden case02 has an answer key Arsh has signed, and `make eval` scores it blind, so its error rate can be quoted as a synthetic held-out result with the date and commit | **Met** | Arsh signed case02's key and assumption sheet on 2026-10-12 (commit `99a752a`); `make eval` scores it blind and prints aggregates only: accuracy 0.90, 0 false supported (Linux, 2026-10-16, this PR's head). Synthetic data only: it is not an accuracy figure for real cases. Agents never read case02 |
 | 15 | Stopped or crashed runs | A stopped or crashed audit never looks complete, and the examiner can resume it | **Met** | Stop button stores the run as stopped (`core/casework/jobs.py`); a run left running by a crash is marked stopped on next start; unfinished claims show and print "Labeling incomplete" with no verdict, and the report carries a banner; resuming reuses finished claims' stored outputs (`tests/test_start_case.py` stop and resume, `tests/test_fewer_calls.py` killed run). Starting over from scratch means a new case |
 | 16 | Pilot agreement | A signed short agreement: data stays on the examiner's machine, Baker never sees it, deletion whenever they want, output advisory only | **Not met** | An outline for a lawyer exists (`/mnt/project-files/baker/pilot/03-pilot-agreement-outline.md`), with bracketed decisions open; no company or lawyer yet |
@@ -50,8 +50,8 @@ model-free eval with 0 false supported on case01, hostile red-team PASS).
 
 ## Order
 
-Gate 4 waits on PR #89 (schema signed). Gate 13 is two open PRs (#86,
-#88). Gate 16 needs Arsh and a lawyer for the agreement.
+Gate 4 waits on PR #89 (schema signed). Gate 13 waits on PR #88
+(#86 merged). Gate 16 needs Arsh and a lawyer for the agreement.
 Gate 17 is writing. Gates 5, 9 and 11 need a person: a pilot examiner or public test image, runs on the Mac and the
 AWS g5, and an outside tester.
 Gates 1 and 12 follow from merging.
