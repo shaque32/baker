@@ -44,8 +44,8 @@ Template:
   fixed here.
 - Open: AXIOM does not read forwarded marks yet; only forwards the extraction labels are caught;
   the original author is the extraction's claim, not checked. The stance prompt is not told the
-  message was forwarded (prompts are signed); the stored stance is still downgraded. No schema
-  version bump: an existing case database is not upgraded in place, so its messages lack the
+  message was forwarded (prompts are signed); the stored stance is still downgraded. No in-place
+  migration: an existing case database is not upgraded, so its messages lack the
   columns and keep the coverage-list behaviour.
 - Affects: capabilities (forwarded marked on the record and shown with its author). No verdict,
   privacy or performance change. Customer-facing claims unchanged; UFDR stays unverified.
