@@ -53,18 +53,21 @@ def _git(root: Path, *args: str) -> str | None:
 
 def commit(root: Path = ROOT) -> tuple[str, bool | None]:
     """(commit, dirty). dirty is True when tracked files differ from the commit, None when
-    unknown (an installed copy, whose files the installer's BUILD_INFO.json hashes instead)."""
+    unknown (an installed copy whose BUILD_INFO.json does not say; the Windows one hashes the
+    staged files instead)."""
     head = _git(root, "rev-parse", "HEAD")
     if head and head.strip():
         status = _git(root, "status", "--porcelain", "--untracked-files=no")
         return head.strip(), (bool(status.strip()) if status is not None else None)
     for info in (root / "BUILD_INFO.json", root.parent / "BUILD_INFO.json"):
         try:
-            got = json.loads(info.read_text(encoding="utf-8")).get("git_commit")
+            data = json.loads(info.read_text(encoding="utf-8"))
+            got = data.get("git_commit")
         except (OSError, ValueError, AttributeError):
             continue
         if isinstance(got, str) and got:
-            return got, None
+            dirty = data.get("dirty")
+            return got, dirty if isinstance(dirty, bool) else None
     return NOT_RECORDED, None
 
 
@@ -77,11 +80,20 @@ def build_info(root: Path = ROOT) -> dict:
 
 
 def label(build: object) -> str:
-    """'0.0.1, commit 1a2b3c4d5e6f' (', with uncommitted changes' when dirty). Runs made before
-    the build was recorded say so."""
+    """'0.0.1, commit 1a2b3c4d5e6f', then ', with uncommitted changes' when dirty, or ',
+    uncommitted changes not checked' when that is unknown, so an unchecked copy never reads as a
+    clean build of the commit. Runs made before the build was recorded say so."""
     if not isinstance(build, dict):
         return "release and commit not recorded"
     sha = str(build.get("commit") or NOT_RECORDED)
     short = sha[:12] if sha != NOT_RECORDED else sha
-    dirty = ", with uncommitted changes" if build.get("dirty") else ""
-    return f"{build.get('release') or NOT_RECORDED}, commit {short}{dirty}"
+    dirty = build.get("dirty")
+    if sha == NOT_RECORDED:
+        note = ""
+    elif dirty is True:
+        note = ", with uncommitted changes"
+    elif dirty is False:
+        note = ""
+    else:
+        note = ", uncommitted changes not checked"
+    return f"{build.get('release') or NOT_RECORDED}, commit {short}{note}"

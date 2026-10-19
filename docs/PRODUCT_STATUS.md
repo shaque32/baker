@@ -18,7 +18,8 @@ tests or recorded runs. Where something exists only on an unmerged branch, it sa
   tracked files had uncommitted changes, in the run's config as `build` (`core/build.py`), and
   prints them in the report, on the overview screen and in `run.json`. An installed copy has no
   `.git`: it reads the commit from the installer's `BUILD_INFO.json` (Windows already writes
-  one; #91 makes the Mac installer write one) and cannot tell whether files changed since.
+  one; #91 makes the Mac installer write one, with whether the copied files differed from the
+  commit). Where that is unknown (Windows), the stamp says "uncommitted changes not checked".
 - **Signed prompts on main:** stance v1.1, reviewer v1.1, claims v1.0, assumptions v1.0
   (`core/audit/prompts/`)
 
