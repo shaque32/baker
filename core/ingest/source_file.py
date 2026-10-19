@@ -37,6 +37,16 @@ def require_sha256(name: str, expected: str | None, actual: str) -> None:
         raise InputChanged(name, expected, actual)
 
 
+def sha256_input(path: Path, chunk: int = 1 << 20) -> str:
+    """SHA-256 of an input's plain bytes, streamed (decrypted as read in an encrypted case),
+    without parsing anything."""
+    h = hashlib.sha256()
+    with open_input(path) as f:
+        while block := f.read(chunk):
+            h.update(block)
+    return h.hexdigest()
+
+
 def read_source(path: Path) -> SourceFile:
     """Open read-only, read all bytes, SHA-256 them. Parsers work on `data`, never on `path`,
     so the hash always describes what was parsed. A copy in an encrypted case is decrypted as

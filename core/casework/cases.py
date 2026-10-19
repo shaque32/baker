@@ -40,7 +40,7 @@ from typing import BinaryIO
 from core import encryption, pipeline
 from core.db import OperationalError, apply_schema, connect
 from core.ingest.pick import REPORT_SUFFIXES
-from core.ingest.source_file import InputChanged
+from core.ingest.source_file import InputChanged, require_sha256, sha256_input
 from core.review import audit_log
 from core.review.actions import ReviewError, _expert
 
@@ -352,6 +352,8 @@ def import_upload(
             from core.ingest.coverage import summary as coverage_summary
             from core.ingest.pick import report_importer
 
+            # An .xlsx is told apart by opening it, so check the copy before anything reads it.
+            require_sha256(name, upload_sha256, sha256_input(path))
             Importer = report_importer(path)  # noqa: N806 - a class
 
             src = Importer(date_order=date_order, expected_sha256=upload_sha256).import_source(

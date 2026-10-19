@@ -138,3 +138,28 @@ def test_a_changed_copy_is_refused_before_it_is_parsed(tmp_path, files, key):
     with pytest.raises(InputChanged, match="nothing was stored"):
         _importer(key, _sha(files[key]))(broken, conn)
     assert set(_counts(conn).values()) == {0}
+
+
+@pytest.mark.parametrize("key", ["excel", "ufdr", "axiom_xml", "axiom_xlsx"])
+def test_a_changed_report_is_refused_before_its_importer_is_picked(
+    tmp_path, files, key, monkeypatch
+):
+    """Picking the importer opens an .xlsx; a changed copy never gets that far."""
+    from core.ingest import pick
+
+    def no_pick(path: Path):  # noqa: ANN202
+        raise AssertionError(f"{path.name} was opened before its hash was checked")
+
+    monkeypatch.setattr(pick, "report_importer", no_pick)
+    src = files[key]
+    case = cases.create_case(tmp_path, "Synthetic changed copy", EXPERT, clock=lambda: NOW)
+    conn = connect(case.db)
+    try:
+        with pytest.raises(ReviewError, match="changed between upload and import"):
+            cases.import_upload(
+                case, conn, _upload(case, src), OTHER, src.name, "report", EXPERT, clock=lambda: NOW
+            )
+        assert set(_counts(conn).values()) == {0}
+        assert list(case.inputs.iterdir()) == []
+    finally:
+        conn.close()
