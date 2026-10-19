@@ -51,7 +51,7 @@ Template:
   supports, contradicts recall 10/11 (misses P065). New items: wrong contradicts 2 to 0 (24
   items, high) and 1 to 0 (26 items, medium), controls kept. $8.59 of API spend, synthetic data
   only (`/mnt/project-files/baker/cloud-bench/2026-10-15/told-frame-line/`). `make check`:
-  green on the branch with main at 213d2ca (2111 passed, 6 skipped, lint clean; eval unchanged:
+  green on the branch with main at 80bf0df (2118 passed, 6 skipped, lint clean; eval unchanged:
   case01 1.00 with 0 false supported, unreviewed 0.60, hostile PASS, case02 aggregate 0.90).
 - Open: the local 14B reads this prompt and has not been run on it; Arsh runs
   `bash eval/probe/mac_v12.sh` on the Mac (the probe, then the test's 14B half). The test's plan
@@ -66,6 +66,28 @@ Template:
   "contradicts", so fewer wrong CONTRADICTED verdicts; a claim it changes goes UNPROVEN, never
   SUPPORTED); performance (one full re-label per existing case). No privacy change. No new
   customer-facing claim until the 14B is measured.
+
+## 2026-10-16: The expert's reason for an evidence decision is in the audit log (#86)
+- Changed: the `evidence.decide` log entry now carries the reason the expert typed (before, only
+  the evidence id, review id and status), as verdict, identity and override notes already did.
+  The audit log check (`require_intact`) also compares each logged reason with the one stored in
+  `evidence_reviews`; a reason or status edited in the database after it was logged, or an
+  expert review row added or removed without its log entry, blocks the case like a broken chain. Both tables are read in one
+  statement, so a decision another Baker process commits meanwhile never looks like tampering.
+  Found by the Pilot docs pack thread (#82 disclosed the gap).
+- Where: branch `claude/project-thread-fjea4m`, PR #86 (not merged).
+- Verified: 7 new tests in `tests/test_chain_on_open.py` (reason logged; an edited reason or
+  status blocks the CLI and `verify-log` names it; an expert review added or removed outside
+  Baker is blocked; AI reviews need no entry; a decision logged without a reason still
+  verifies). `make check` passed 2026-10-19 in a Linux cloud container with main `97c7daa`
+  merged in: 2092 passed,
+  8 skipped; case01 model-free accuracy 1.00, 0 false supported; hostile PASS.
+- Open: decisions logged before this change carry no reason in the log, so their reasons are not
+  compared. Someone who edits the reason, the log and the anchor file together is not caught
+  (same limit as the rest of the log).
+- Affects: customer-facing claims (an expert's reasons are now tamper-evident); the report's
+  expert-actions table and the screen's Log page now show the reason; no privacy change (the
+  reason stays inside the case database, not the anchor file).
 
 ## 2026-10-15: Pilot gates, onboarding kit, methods note, security pack (#82)
 - Changed: four documents, no code (Grok Product review #80 items 9, 10, 11, 13).
