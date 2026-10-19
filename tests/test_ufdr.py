@@ -843,3 +843,13 @@ def test_a_case_made_before_the_forwarded_columns_still_fails_closed(tmp_path):
     (mid,) = conn.execute("SELECT id FROM messages").fetchone()
     assert forwarded.affected(conn) == {mid: "forwarded"}
     assert forwarded.original_author(conn, mid) is None
+    # the report says which mode the case is in, so the weaker one is never silent
+    from core.report.html import forwarded_label
+
+    label = forwarded_label(conn)
+    assert label.startswith("coverage list only (case made before contracts")
+    # an import from before the list existed is not promised the fail-closed path
+    assert "imported before Baker listed forwarded messages (#73)" in label
+    new_case = sqlite3.connect(":memory:")
+    new_case.executescript(schema)
+    assert forwarded_label(new_case).startswith("on the record")
