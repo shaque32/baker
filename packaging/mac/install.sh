@@ -75,6 +75,13 @@ if [ "$HERE" != "$APP/baker" ]; then
   mkdir -p "$APP/baker"
   rsync -a --delete --exclude .git --exclude .venv --exclude 'eval/out' \
     --exclude 'eval/synthetic/case02*' --exclude 'eval/gold/case02' "$HERE/" "$APP/baker/"
+  # The copy has no .git, so record the commit it came from and whether the copied tracked
+  # files differed from it (rsync copies uncommitted edits too); reports stamp both (core/build.py).
+  if COMMIT="$(git -C "$HERE" rev-parse HEAD 2>/dev/null)"; then
+    DIRTY=false
+    [ -n "$(git -C "$HERE" status --porcelain --untracked-files=no)" ] && DIRTY=true
+    printf '{"git_commit": "%s", "dirty": %s}\n' "$COMMIT" "$DIRTY" > "$APP/baker/BUILD_INFO.json"
+  fi
 fi
 LLAMA_VERSION="$(pin "['llama_cpp_python']['version']")"
 CMAKE_ARGS="-DGGML_METAL=on" uv pip install --python "$APP/.venv/bin/python" \

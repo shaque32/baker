@@ -19,6 +19,40 @@ Template:
 
 ---
 
+## 2026-10-16: Versions stamped on every result (#91, after #76)
+- Changed: closes the rest of pilot gate 3 ("versions stamped on every result",
+  `docs/PILOT_GATES.md` in #82). PR #76 records the quote-check version (1.2.0) on every run
+  and prints it in the report's versions table and Run section. This PR adds what was still
+  missing. The "Baker version" reports printed was `PIPELINE_VERSION`, a fixed "0.1.0"; every
+  run now also records the release (`pyproject.toml`) and the git commit that ran, flagged when
+  tracked files had uncommitted changes (`core/build.py`, stored as `build` in the run's config,
+  no schema change). An installed copy has no `.git`, so it reads the commit from the
+  installer's `BUILD_INFO.json`; the Mac installer now writes one (with whether the copied
+  tracked files differed from the commit, since it copies uncommitted edits too), as the Windows
+  one already did. The zipped folder the Mac install guide starts from has no `.git`, so
+  `core/BUILD_COMMIT` is filled in by `git archive` (`export-subst` in `.gitattributes`; Codex).
+  When whether files changed is unknown, the stamp says "uncommitted changes not checked" (Grok
+  audit); an installed copy recorded as clean also reads that way, since its files cannot be
+  rechecked later (Codex). A rules-only re-run also names the build its reused evidence and labels
+  came from, when that differs, through chained re-runs (`evidence_build`; Codex). The report's top line now reads "Baker <release>, commit <12 hex> · pipeline <v> · rules
+  <v> · quote check <v>" (it showed only the rules), the versions table gives the build and each
+  model's seed beside its SHA-256, the case overview screen names the build and the quote check,
+  and the eval's `run.json` carries a `versions` block (build, pipeline, rules, quote check, each
+  model's SHA-256, prompt and seed). `REPORT_VERSION` 0.4.0 -> 0.5.0, since the report's output changes
+  (merge audit). No frozen file changes; nothing new is stored.
+- Where: branch `claude/quote-check-version-stamp-6sdy2b`, PR #91 (not merged); #76 is on main.
+- Verified: `test_the_report_and_the_screen_stamp_every_version_a_result_depends_on`
+  (`tests/test_report_consistency.py`, synthetic case01) and `tests/test_build.py` (a git
+  checkout, clean and with changes; an installed copy with `BUILD_INFO.json` beside or inside
+  the source); `make check` results in the PR. The Mac installer's new lines were checked for
+  syntax only (`bash -n`), not by a real install.
+- Open: the per-claim "Rule version ..." line on the claim page and in the report does not
+  repeat the quote-check version (the run's is in the report's top line and Run section).
+  Runs made before this PR show "release and commit not recorded". The release is still
+  0.0.1 in `pyproject.toml`; nothing bumps it per release yet. Gate 3 counts as met once this PR
+  is on main.
+- Affects: customer-facing claims (the audit packet names the quote check that ran);
+
 ## 2026-10-16: A changed upload stores nothing (#88)
 - Changed: if a case-folder copy changed between upload and import, the browser said the import
   failed but every record parsed from the changed copy stayed in the case database (found by a
