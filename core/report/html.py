@@ -570,13 +570,17 @@ def build_label(run: dict) -> str:
 
 def forwarded_label(conn: sqlite3.Connection) -> str:
     """Where the case keeps forwarded marks. A case made before contracts 0.4.0 has no forwarded
-    columns: it still fails closed on forwarded messages, from the coverage list, but cannot name
-    an original author."""
+    columns: forwarded messages its imports listed still fail closed, from the coverage list, but
+    no original author is named. An import made before that list existed (#73) recorded no list,
+    and nothing tells it apart from an import that found no forwarded messages, so the label
+    says so rather than promise the fail-closed path."""
     if forwarded.has_columns(conn):
         return "on the record, with the original author when the extraction names one"
     return (
-        "coverage list only (case made before contracts 0.4.0): forwarded messages still fail "
-        "closed, but no original author is named"
+        "coverage list only (case made before contracts 0.4.0): listed forwarded messages fail "
+        "closed, but no original author is named. A source imported before Baker listed "
+        "forwarded messages (#73) has no list, so its forwarded messages are not marked; "
+        "re-import it to check"
     )
 
 
