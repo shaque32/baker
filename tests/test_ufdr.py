@@ -809,7 +809,7 @@ def test_a_forwarded_message_is_marked_on_the_record_with_its_original_author(tm
 
     mid = conn.execute("SELECT id FROM messages WHERE locator = 'Chat[1]/Messages[1]'").fetchone()
     line = record_line(conn, mid[0], forwarded.affected(conn))
-    assert "names +15550100002 Jo as the original author" in line
+    assert 'names <span class="q">+15550100002 Jo</span> as the original author' in line
 
 
 def test_a_case_made_before_the_forwarded_columns_still_fails_closed(tmp_path):

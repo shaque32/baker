@@ -85,7 +85,9 @@ from core.review.status import verdict_label as _verdict_label
 
 # 0.4.0 (#76): a "Quote check" row in Versions and the run line, and a call's UTC and printed
 # time beside its line (the review screen shows the same line, through record_line).
-REPORT_VERSION = "0.4.0"
+# 0.6.0 (#89): a forwarded record's warning names its original author, as a cited span, when the
+# extraction names one. (0.5.0 is #91's.)
+REPORT_VERSION = "0.6.0"
 
 __all__ = [
     "AWAITING_EXPERT",
@@ -352,10 +354,13 @@ def record_line(
 ) -> str:
     note = (found or {}).get(record_id)
     if note:
-        return (
-            f"{record_line(conn, record_id)}<br><strong class='warn'>"
-            f"{e(forwarded.record_note(conn, record_id, note))}</strong>"
-        )
+        author = forwarded.original_author(conn, record_id) if note == "forwarded" else None
+        if author:
+            before, after = forwarded.AUTHOR_NOTE
+            warning = f"{e(before)}{q(author)}{e(after)}"  # the author is the source's text
+        else:
+            warning = e(forwarded.RECORD_NOTE[note])
+        return f"{record_line(conn, record_id)}<br><strong class='warn'>{warning}</strong>"
     if record_id.startswith("msg:"):
         r = conn.execute(
             "SELECT m.ts_utc, m.ts_raw, a.identifier, a.display_name, t.app, t.title"

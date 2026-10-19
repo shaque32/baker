@@ -7,7 +7,7 @@ tests or recorded runs. Where something exists only on an unmerged branch, it sa
 - **main:** `ae8f24e` (merges of #64, #65, #66, #67, 2026-10-15 07:22Z)
 - **Verified on:** main `7a14437` first, then re-checked after #64 to #67 merged (they changed
   only `core/audit/assumption_filler.py` in `core/`, plus tests and probe gold)
-- **Rule version:** 0.2.2 on main (`core/audit/rules.py`, PR #75). **Contracts:** 0.3.0 (`core/contracts.py`).
+- **Rule version:** 0.2.2 on main (`core/audit/rules.py`, PR #75). **Contracts:** 0.3.0 on main (`core/contracts.py`); 0.4.0 in PR #89 (forwarded columns).
 - **Quote check:** 1.1.0 on main, not recorded with results; 1.2.0 in PR #76, which records it
   on every run and prints it in the report (`core/audit/quotes.py`, `VERSION`).
 - **Signed prompts on main:** stance v1.1, reviewer v1.1, claims v1.0, assumptions v1.0

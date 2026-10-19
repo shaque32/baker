@@ -83,15 +83,13 @@ def original_author(conn: sqlite3.Connection, record_id: str) -> str | None:
     return row[0] if row else None
 
 
-def record_note(conn: sqlite3.Connection, record_id: str, reason: str) -> str:
-    """The warning shown on one record, naming the original author when the source does."""
-    author = original_author(conn, record_id) if reason == "forwarded" else None
-    if author:
-        return (
-            f"Forwarded: shown as sent by whoever forwarded it; the extraction names {author} as "
-            "the original author, which Baker has not checked."
-        )
-    return RECORD_NOTE[reason]
+# The warning on a forwarded record whose original author the source names. The author is the
+# source's text, so callers render it as a cited span between these two parts, never as Baker's
+# own words (it can be anything, such as Telegram's "Deleted Account").
+AUTHOR_NOTE = (
+    "Forwarded: shown as sent by whoever forwarded it; the extraction names ",
+    " as the original author, which Baker has not checked.",
+)
 
 
 def among(found: dict[str, str], record_ids: Iterable[str]) -> list[str]:

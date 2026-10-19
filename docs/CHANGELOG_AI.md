@@ -25,14 +25,20 @@ Template:
   `core/schema.sql` and the `Message` model in `core/contracts.py`. The UFDR and Excel importers
   now mark each message the extraction labels Forwarded; the UFDR importer records the original
   author when the package embeds the original and names exactly one sender, as written. The
-  claim page and report name that author in the record's warning ("which Baker has not checked").
+  claim page and report name that author in the record's warning ("which Baker has not checked"),
+  as a cited span: it is the source's text, never Baker's words, so a name such as "Deleted
+  Account" passes the forbidden-word check. Contracts 0.3.0 -> 0.4.0 (`core/contracts.py` and the
+  `core/schema.sql` header, as that file's own rule asks); report 0.4.0 -> 0.6.0 (0.5.0 is #91's).
   Fail-closed handling from #73 is unchanged: a forwarded message still cannot support or
   contradict a claim, checks resting on it stay inconclusive, and SenderCheck never credits the
   forwarder. Cases made before the columns keep working from the coverage list.
 - Where: branch `claude/project-thread-hz9jqt` (fresh from main), PR #89, not merged.
-- Verified: 3 new or extended tests (UFDR marks with and without a named author, quote not a
-  forward; Excel label; a case made on the old schema still fails closed); full `make check` and
-  eval in the PR description.
+- Verified: 4 new or extended tests (UFDR marks with and without a named author, quote not a
+  forward; Excel label; a case made on the old schema still fails closed; an author named
+  "Deleted Account" renders cited in the report and on the claim page, which pass the
+  forbidden-word check); full `make check` and eval in the PR description. Grok's audit of
+  31f2993 (standing in for Codex, Arsh 2026-10-19) found the cited-span and version issues,
+  fixed here.
 - Open: AXIOM does not read forwarded marks yet; only forwards the extraction labels are caught;
   the original author is the extraction's claim, not checked. The stance prompt is not told the
   message was forwarded (prompts are signed); the stored stance is still downgraded. No schema
