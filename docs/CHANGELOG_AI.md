@@ -40,7 +40,7 @@ Archive entry format (new entries use the one in `docs/changelog/README.md`):
   review: no author is recorded when the embedded message is itself forwarded (it would name an
   intermediate forwarder), and the claim, stance, check and coverage notes now say Baker "has not
   verified" who first wrote the words, which stays true when the extraction names an author.
-- Where: branch `claude/project-thread-hz9jqt` (fresh from main), PR #89, not merged.
+- Where: main (PR #89, merge 4513a4a, 2026-10-19).
 - Verified: 4 new or extended tests (UFDR marks with and without a named author, quote not a
   forward; Excel label; a case made on the old schema still fails closed; an author named
   "Deleted Account" renders cited in the report and on the claim page, which pass the
@@ -76,7 +76,7 @@ Archive entry format (new entries use the one in `docs/changelog/README.md`):
   and the eval's `run.json` carries a `versions` block (build, pipeline, rules, quote check, each
   model's SHA-256, prompt and seed). `REPORT_VERSION` 0.4.0 -> 0.5.0, since the report's output changes
   (merge audit). No frozen file changes; nothing new is stored.
-- Where: branch `claude/quote-check-version-stamp-6sdy2b`, PR #91 (not merged); #76 is on main.
+- Where: main (PR #91, merge fe65aa1, 2026-10-18).
 - Verified: `test_the_report_and_the_screen_stamp_every_version_a_result_depends_on`
   (`tests/test_report_consistency.py`, synthetic case01) and `tests/test_build.py` (a git
   checkout, clean and with changes; an installed copy with `BUILD_INFO.json` beside or inside
@@ -95,7 +95,7 @@ Archive entry format (new entries use the one in `docs/changelog/README.md`):
   Codex review on #82). Each importer (Cellebrite Excel and PDF, UFDR, AXIOM, govdoc PDF) now
   takes the upload's SHA-256 and refuses other bytes before parsing them; the screen
   says the file changed, with both hashes. The CLI path passes no hash and is unchanged.
-- Where: branch `claude/project-thread-xnmp7v`, PR #88, not merged.
+- Where: main (PR #88, merge 691d898, 2026-10-18).
 - Verified: `tests/test_import_changed.py` (synthetic case01, all five input kinds) fails on
   main with records left behind and passes here; `make check` 2104 passed, 8 skipped; eval
   unchanged (case01 model-free 1.00, 0 false supported).
@@ -109,7 +109,7 @@ Archive entry format (new entries use the one in `docs/changelog/README.md`):
   expert review row added or removed without its log entry, blocks the case like a broken chain. Both tables are read in one
   statement, so a decision another Baker process commits meanwhile never looks like tampering.
   Found by the Pilot docs pack thread (#82 disclosed the gap).
-- Where: branch `claude/project-thread-fjea4m`, PR #86 (not merged).
+- Where: main (PR #86, merge 80bf0df, 2026-10-18).
 - Verified: 7 new tests in `tests/test_chain_on_open.py` (reason logged; an edited reason or
   status blocks the CLI and `verify-log` names it; an expert review added or removed outside
   Baker is blocked; AI reviews need no entry; a decision logged without a reason still
@@ -148,7 +148,7 @@ Archive entry format (new entries use the one in `docs/changelog/README.md`):
   `docs/PILOT_FEEDBACK_FORM.md` (pricing question left out of the public repo) so gate 18 has
   evidence on main. `install-mac.md` and `demo.md` no longer state the 6 to 8 h runtime as
   current. PRODUCT_STATUS section 11 links the gates.
-- Where: branch `claude/project-thread-390z80`, PR #82 (main once merged).
+- Where: main (PR #82, merge 213d2ca, 2026-10-18).
 - Verified: each statement checked against main `8ed89f9` code and docs, and #68 head `de219c1`
   for cloud facts; the 6 no-network tests named in the pack pass (Linux, 2026-10-15); Anthropic's
   API retention page and Commercial Terms read 2026-10-15 (the privacy-center article did not load
@@ -168,7 +168,7 @@ Archive entry format (new entries use the one in `docs/changelog/README.md`):
   ranking. Fails closed: ambiguous candidates, and records near a report record not found, are
   "may be in the report", never counted; under 95% found lists nothing. Selection tab, report
   section (one renderer) and a line on each claim page. Never changes a verdict; nothing stored. (Grok Product item 9.)
-- Where: branch `claude/project-thread-y7z11i`, PR #78, not merged.
+- Where: main (PR #78, merge 97c7daa, 2026-10-18).
 - Verified: 29 tests on two synthetic pairs (case01 item1 report vs a UFDR with planted records;
   a small new pair): planted omissions found per claim in the expected order, ambiguous and
   unmatched cases held back, screen and report list the same records, read-only. Headless-
@@ -201,7 +201,7 @@ Archive entry format (new entries use the one in `docs/changelog/README.md`):
   so a clock reading does not point away from irrelevant.
   Run 8's data is the same code drawn with seed 4. The Baker-wording items are unchanged
   (`eval.train.baker 1.4.1`); the guide is unchanged (signed v0.3).
-- Where: branch `claude/project-thread-czwpc8`, PR #87, not merged. The data drops are in
+- Where: main (PR #87, merge 966be8f, 2026-10-16). The data drops are in
   `/mnt/project-files/baker/stancedata/run6/`, `run7/` and `run8/`, each with its README, sha256
   and overlap reports.
 - Verified: this head writes run 7's and run 8's generator output byte for byte (seed 1
@@ -239,7 +239,7 @@ Archive entry format (new entries use the one in `docs/changelog/README.md`):
   traps said "the message "x" was sent by ...", words that name one message, which leaves
   their label unclear under guide rule 23; a zone-edge window could cross New Year or end at
   "12 p.m.". New tests check each one; 5 of them fail on the first commit.
-- Where: branch `claude/project-thread-czwpc8`, PR #79, not merged.
+- Where: main (PR #79, merge e99a288, 2026-10-15).
 - Verified: 56e0da4 regenerates run 5's training file byte for byte (19,250 items, sha256
   `00ceae8f…`); the head writes `c4031e1f…`, with the same counts by family and label. The
   held-out files are unchanged (test `4f106386…`, dev `36cd0d79…`). Overlap check on both
@@ -267,7 +267,7 @@ Archive entry format (new entries use the one in `docs/changelog/README.md`):
   stated time windows, so verdicts decided under 0.2.1 can differ. "Re-run verdicts" now refuses
   an audit made under rules older than 0.2.2 and asks for a full audit, since its stored
   assumptions were built the old way (`core/review/redecide.py`, `INPUTS_CHANGED_AT`).
-- Where: branch `claude/project-thread-ia32bq`, PR #75, not merged. Arsh approved the bump
+- Where: main (PR #75, merge 79ad922, 2026-10-15). Arsh approved the bump
   2026-10-15 07:20Z.
 - Verified: `make check` green; new redecide test; eval unchanged (case01 1.00, 0 false
   supported; case02 0.90, 0 false supported; hostile PASS). Codex's one finding fixed.
@@ -315,7 +315,7 @@ Archive entry format (new entries use the one in `docs/changelog/README.md`):
   stop the report build whenever a counted message had the source's deletion flag. Found by Codex
   on #82. A grep of core/ and ui/ found no other Baker-authored prose with a forbidden word;
   `baker ufdr-check` output names the package's own `deleted_state` field and was left as is.
-- Where: branch `claude/fix-count-deleted-wording-oxal24`, PR #83, not merged.
+- Where: main (PR #83, merge 275f97a, 2026-10-15).
 - Verified: new unit test (fails on main, passes here) checks the detail and search text against
   FORBIDDEN_WORDS and `check_report_text`. `make check` passed 2026-10-15 in a Linux cloud
   container: 1884 passed, 6 skipped; case01 model-free accuracy 1.00, 0 false supported.
@@ -366,7 +366,7 @@ Archive entry format (new entries use the one in `docs/changelog/README.md`):
   Bug fixed: the verdict "decided" time came from the wall clock, not the run's clock; the
   pipeline and re-decide now stamp the run's clock. Report evidence rows carry evidence-id
   anchors. `core/audit/rules.py` unchanged. (Grok Product items 6 and 7.)
-- Where: branch `claude/project-thread-kq0r95`, PR #72, not merged.
+- Where: main (PR #72, merge 3b33820, 2026-10-15).
 - Verified (as reported by the owning thread): ruff clean; 1862 tests pass, 1 fails (the known
   test #65 fixes); eval case01 1.00, 0 false supported, hostile PASS, case02 aggregate 0.90; no
   verdict changed.
@@ -395,8 +395,8 @@ Archive entry format (new entries use the one in `docs/changelog/README.md`):
   (`core/audit/invariants.quote_is_verbatim`), which holds evidence to the check of its day only
   for a run that records no quote-check version (Grok merge-bot review on #76). "(no name)", "unknown" or "call from" alone fail; "(no name): +1..." passes. `core/audit/quotes.record_text`, which still said calls had no
   citable text, now reads every record as the labeler sees it, as the pipeline already did.
-- Where: main once PR #76 merges (branch `claude/project-thread-01fybj`, from the "Audit our
-  model scoring" thread). Includes the C17 font fix.
+- Where: main (PR #76, merge 8abaeea, 2026-10-16), from the "Audit our model scoring" thread.
+  Includes the C17 font fix.
 - Verified: new regression tests (each fails without its fix), among them a contact and a call
   labeled "contradicts" and quoted as shown: before, the label was dropped and C01 went
   SUPPORTED; now CONTRADICTED. A test checks every case01 record reads the same for the labeler
@@ -469,7 +469,7 @@ Archive entry format (new entries use the one in `docs/changelog/README.md`):
 ## 2026-10-15: Source-of-truth docs (this change)
 - Changed: added `docs/PRODUCT_STATUS.md`, this log, and a CLAUDE.md rule to keep both current,
   so Grok Product and coding agents read one verified description of Baker.
-- Where: PR #71 (branch `claude/project-thread-d7xp9z`, not merged). CLAUDE.md wording signed by
+- Where: main (PR #71, merge 8ed89f9, 2026-10-15). CLAUDE.md wording signed by
   Arsh ("approved", 2026-10-15 07:19Z).
 - Verified: facts checked against main `7a14437`, open PR branches and recorded bench runs.
   Section 12 checks the six claims in the proposed positioning line, with file:line.

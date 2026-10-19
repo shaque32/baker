@@ -15,7 +15,7 @@
   audit on screen and a label other than its own; a removed claim takes no flags and its earlier
   flags don't count. The report lists flags without the expert's note. Why: Grok Product review
   #80 item 12; pilots need a measured error record. Details in `docs/flags.md`.
-- Where: PR #81 (branch `claude/project-thread-hjfvlv`).
+- Where: main (PR #81, merge 0dc55dc, 2026-10-19).
 - Verified: 17 new tests (`tests/test_flags.py`): no verdict, review or claim row changes, chain
   still verifies, redaction checked against claim text, quotes, ids, names, file names and hashes,
   refused cross-site posts, report hides notes, CLI export and log. Headless-Chromium smoke on
@@ -26,11 +26,4 @@
 - Affects: capabilities (expert feedback, error log). Privacy: nothing sent; the summary is
   shared only by hand. Performance: none. Customer-facing claims: may say experts can flag
   errors locally; no error-rate figure exists yet.
-- Status doc: pending: section 8, item 3 (Expert review screen), append: "Optional expert flags
-  on the claim page (wrong label, missed record, verdict disagreement), stored as audit-log
-  entries, never changing a verdict; a redacted summary download and `baker flag-log` for a
-  per-pilot error log (`docs/flags.md`). Nothing is sent." Section 11, after the numbered list of
-  steps before a first real case, add a paragraph: "Measuring errors in a pilot: experts can flag
-  wrong labels, missed records and verdicts they disagree with; a redacted summary they choose to
-  share feeds a per-pilot error log. Rates from it are lower bounds, since flagging is optional.
-  Unused so far."
+- Status doc: applied 2026-10-19
