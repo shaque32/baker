@@ -7,7 +7,7 @@
   24 GB MacBook Air, commit `eee8d15`, 2026-10-19; from the "Audit our model scoring" thread).
   The archive's stale `Where:` lines now name each PR's merge. Section 10 has a fresh
   `make check` run on main.
-- Where: branch `claude/changelog-per-pr-ewuqbu`
+- Where: PR #97 (branch `claude/changelog-per-pr-ewuqbu`)
 - Verified: each merge commit checked against `git log` on main; the 14B figures checked
   against `/mnt/project-files/baker/cloud-bench/2026-10-16/fair-14b-vs-opus/local-arm/RESULTS.md`;
   `make check` on this branch.
