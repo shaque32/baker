@@ -90,7 +90,9 @@ from core.review.status import verdict_label as _verdict_label
 # quote-check versions; Versions gives the build and each model's seed beside its SHA-256.
 # 0.6.0 (#89): a forwarded record's warning names its original author, as a cited span, when the
 # extraction names one.
-REPORT_VERSION = "0.6.0"
+# 0.7.0: Versions says whether forwarded marks are on the record or, in a case made before
+# contracts 0.4.0, only in the coverage list (no original author is named there).
+REPORT_VERSION = "0.7.0"
 
 __all__ = [
     "AWAITING_EXPERT",
@@ -566,6 +568,18 @@ def build_label(run: dict) -> str:
     return build.run_label(run.get("config") or {})
 
 
+def forwarded_label(conn: sqlite3.Connection) -> str:
+    """Where the case keeps forwarded marks. A case made before contracts 0.4.0 has no forwarded
+    columns: it still fails closed on forwarded messages, from the coverage list, but cannot name
+    an original author."""
+    if forwarded.has_columns(conn):
+        return "on the record, with the original author when the extraction names one"
+    return (
+        "coverage list only (case made before contracts 0.4.0): forwarded messages still fail "
+        "closed, but no original author is named"
+    )
+
+
 def _versions(conn: sqlite3.Connection, run: dict | None) -> str:
     rows = [("Report", REPORT_VERSION), ("Other explanations (code)", explain.VERSION)]
     if run:
@@ -579,6 +593,7 @@ def _versions(conn: sqlite3.Connection, run: dict | None) -> str:
         cloud = (run.get("config") or {}).get("cloud")
         if isinstance(cloud, dict):
             rows.append(("Stance labels", str(cloud.get("why", ""))))
+    rows.append(("Forwarded marks", forwarded_label(conn)))
     model_rows = list(
         conn.execute(
             "SELECT purpose, model_name, model_sha256, prompt_version, seed FROM model_runs"
