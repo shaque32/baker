@@ -313,3 +313,25 @@ def test_error_log_leaves_out_summaries_of_unfinished_audits(conn):
     log = flags.error_log([s, {**s, "audit_complete": False}])
     assert log.partial == 1 and log.rows[0].cases == 1
     assert "before the case's audit finished" in flags.error_log_markdown(log)
+
+
+def test_no_op_label_flags_and_removed_claims_are_refused_and_never_counted(conn):
+    from core.contracts import ClaimStatus
+    from core.review import actions
+
+    eid = key_items(conn, "C05")[0]
+    with pytest.raises(ReviewError, match="label the item has"):
+        flags.add_flag(conn, "C05", flags.WRONG_LABEL, EXPERT, eid, "supports")
+    flags.add_flag(conn, "C05", flags.WRONG_LABEL, EXPERT, eid, "irrelevant")
+    flags.add_flag(conn, "C05", flags.MISSED_RECORD, EXPERT)
+    flags.add_flag(conn, "C06", flags.VERDICT, EXPERT, should_be="contradicted")
+    assert flags.summary(conn)["flag_counts"] == {
+        "missed_record": 1,
+        "verdict": 1,
+        "wrong_label": 1,
+    }
+    actions.set_claim_status(conn, "C05", ClaimStatus.REMOVED, EXPERT)
+    s = flags.summary(conn)
+    assert s["flag_counts"] == {"verdict": 1} and s["not_counted"] == 2
+    with pytest.raises(ReviewError, match="was removed"):
+        flags.add_flag(conn, "C05", flags.MISSED_RECORD, EXPERT)

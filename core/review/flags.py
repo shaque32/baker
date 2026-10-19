@@ -89,6 +89,11 @@ def _claim_exists(conn: sqlite3.Connection, claim_id: str) -> bool:
     return conn.execute("SELECT 1 FROM claims WHERE id = ?", (claim_id,)).fetchone() is not None
 
 
+def _claim_removed(conn: sqlite3.Connection, claim_id: str) -> bool:
+    r = conn.execute("SELECT status FROM claims WHERE id = ?", (claim_id,)).fetchone()
+    return r is not None and r[0] == "removed"
+
+
 def _evidence_claim(conn: sqlite3.Connection, evidence_id: str) -> str | None:
     r = conn.execute(
         "SELECT a.claim_id FROM evidence_items e JOIN assumptions a ON a.id = e.assumption_id"
@@ -188,6 +193,8 @@ def add_flag(
         raise ReviewError(f"unknown flag kind {kind!r}")
     if not _claim_exists(conn, claim_id):
         raise ReviewError(f"no claim {claim_id}")
+    if _claim_removed(conn, claim_id):
+        raise ReviewError(f"claim {claim_id} was removed; a removed claim's flags never count")
     note, record = note.strip(), record.strip()
     should_be = should_be or NOT_SURE
     if len(note) > NOTE_MAX or len(record) > RECORD_MAX:
@@ -221,6 +228,8 @@ def add_flag(
             )
         if kind == VERDICT and should_be == snap["verdict"]:
             raise ReviewError("that is the verdict Baker gave; pick the one it should be")
+        if kind == WRONG_LABEL and should_be == snap.get("stance"):
+            raise ReviewError("that is the label the item has; pick the one it should be")
         flag_id = _next_id(conn)
         payload = {
             "flag_id": flag_id,
@@ -332,6 +341,7 @@ def _counted(
     active: list[Flag], run_id: str | None, evidence_ids: set[str], decided: set[str]
 ) -> list[Flag]:
     """The flags that belong to the run the denominators count, at most one per target.
+    Flags on a claim removed since are never counted (it is out of the denominators).
 
     A wrong-label flag counts while its item is still in the run on screen (a rules-only re-run
     keeps the items). A verdict or missed-record flag counts only on the run it was made on,
@@ -346,7 +356,7 @@ def _counted(
         else:
             if run_id is None or f.at_flag.get("run_id") != run_id:
                 continue
-            if f.kind == VERDICT and f.claim_id not in decided:
+            if f.claim_id not in decided:  # a removed claim's flags never count
                 continue
             key = (f.kind, f.claim_id) if f.kind == VERDICT else (f.kind, f.id)
         latest[key] = f

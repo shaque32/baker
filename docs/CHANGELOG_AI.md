@@ -32,11 +32,12 @@ Template:
   Records labeled irrelevant are listed on the claim page and can be flagged on their own page.
   A flag needs a verdict on the audit on screen and is refused if that audit changed since the
   page opened; after an override it records Baker's verdict, not the expert's. A verdict flag
-  must name a verdict other than Baker's, and a label flag an item in the audit on screen.
+  must name a verdict other than Baker's, and a label flag an item in the audit on screen and a
+  label other than its own; a removed claim takes no flags and its earlier flags don't count.
   The report lists flags without the expert's note. Why: Grok Product
   review #80 item 12; pilots need a measured error record. Details in `docs/flags.md`.
 - Where: branch `claude/project-thread-hjfvlv`, PR #81, not merged.
-- Verified: 15 new tests (`tests/test_flags.py`): no verdict, review or claim row changes, chain
+- Verified: 16 new tests (`tests/test_flags.py`): no verdict, review or claim row changes, chain
   still verifies, redaction checked against claim text, quotes, ids, names, file names and hashes,
   refused cross-site posts, report hides notes, CLI export and log. Headless-Chromium smoke on
   synthetic case01: flag, list, withdraw, download; no outside requests, Referrer-Policy

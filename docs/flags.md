@@ -28,6 +28,8 @@ One click opens the form, one click saves it. No reason is required and nothing 
 - After an expert override, a verdict flag records Baker's verdict (the one the rules gave,
   from the `verdict.override` log entry), not the expert's replacement. The verdict form does not
   offer Baker's own verdict, and a flag naming it is refused.
+- A label flag must name a label other than the item's own. A claim the expert removed takes no
+  new flags, and flags made on it before it was removed are not counted.
 - A label flag needs an item in the audit on screen. An item a later audit dropped still opens on
   its evidence page, but without the flag form, and a flag on it is refused.
 
