@@ -247,8 +247,9 @@ report only) 0.90 accuracy, 0 false supported. See section 10 for the latest run
    explanations per claim.
 5. **Case safety and delivery:** encryption at rest by passphrase (SQLCipher plus AES-256-GCM;
    new cases from the browser form encrypted by default, the box can be unticked; `baker init` on
-   the CLI makes a plain case), hash-chained audit log, HTML report, `baker demo` (with a demo-only
-   inconclusive absence claim, and `--paired` for the paired selection audit, #96), Mac
+   the CLI makes a plain case), hash-chained audit log, HTML report, `baker demo` (the scripted demo
+   has a demo-only inconclusive absence claim, which a saved `--from-case` snapshot lacks, and
+   `--paired` runs the paired selection audit, #96), Mac
    install script, Windows installer (unsigned), `baker model-check`.
 
 Merged 2026-10-15: stricter stated time windows, "after <date>" starts the next day (#66; rules
