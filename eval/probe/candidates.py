@@ -15,7 +15,9 @@ Stage 1 pass, on either prompt (signed, undisputed items): all four Expert-confi
 valid output) and 0 moved traps shown as supports. Picking the better of two prompts is a small
 advantage, so a pass only earns stage 2 (a repeat run with identical output, then case01 with
 >= 80% accuracy and 0 false supported), which this file does not run. Among models that pass
-stage 2 the fastest wins. Switching the product's local model is a separate PR and Arsh's call.
+stage 2 the fastest wins. Both the probe and case01 help pick, so before any swap the pick is
+confirmed on fresh held-out items it was not chosen on. Switching the product's local model is a
+separate PR and Arsh's call.
 
 Usage (from the repo root; eval/probe/mac_candidates.sh runs all of it):
   python -m eval.probe.candidates download --dir ~/baker-models [NAME ...]
@@ -140,41 +142,108 @@ def _pct(v: object) -> str:
     return "n/a" if v is None else f"{v:.0%}" if isinstance(v, float) else str(v)
 
 
+def _with_ci(rate: object, n: object, ci: object) -> str:
+    """ "95% of 40 [83-99%]": the rate, its denominator and its Wilson 95% interval."""
+    if rate is None:
+        return f"n/a of {n}"
+    text = f"{_pct(rate)} of {n}"
+    if isinstance(ci, list | tuple) and len(ci) == 2:
+        text += f" [{ci[0]:.0%}-{ci[1]:.0%}]"
+    return text
+
+
+def _predicted_contradicts(ec: dict[str, Any]) -> int:
+    return sum(row.get("contradicts", 0) for row in (ec.get("confusion") or {}).values())
+
+
+def _misses(row: dict[str, Any]) -> str:
+    """The gated items the model got wrong, as id (expected -> got), for bucketing by hand."""
+    out = []
+    for f in row.get("stance_failures") or []:
+        if "expected" in f:
+            out.append(f"{f['id']} ({f['expected']} -> {f['got']})")
+        else:
+            out.append(f"{f['id']} (no valid answer: {f.get('error')})")
+    return ", ".join(out) or "none"
+
+
 def verdict(out: Path) -> str:
-    """RESULTS.md for a finished screen: one row per model and prompt, then stage 1."""
+    """RESULTS.md for a finished screen: one row per model and prompt, stage 1, the items each
+    run got wrong, and what each run ran on."""
     lines = [
+        "Supports recall and contradicts precision on signed, undisputed items: rate, of n,"
+        " [Wilson 95% interval].",
+        "",
         "| model | prompt | supports recall | contradicts precision | contradicts as supports"
-        " | moved traps as supports | valid output | s/call | stage 1 |",
-        "|---|---|---|---|---|---|---|---|---|",
+        " | moved traps as supports | valid output | s/call | tokens/s | stage 1 |",
+        "|---|---|---|---|---|---|---|---|---|---|",
     ]
     passed: dict[str, list[str]] = {}
+    unfinished: list[str] = []
+    misses: list[str] = []
+    runs: list[str] = []
     for c in CANDIDATES:
         for version in PROMPTS:
             summary = out / c.name / version / "summary.json"
             if not summary.is_file():
-                lines.append(f"| {c.name} | {version} | not run | | | | | | |")
+                lines.append(f"| {c.name} | {version} | not run | | | | | | | |")
+                unfinished.append(f"{c.name} {version}")
                 continue
             for row in json.loads(summary.read_text(encoding="utf-8")):
                 ok, missed = stage1(row)
                 ec = row.get("expert_confirms") or {}
+                rep = ec.get("reported") or {}
                 cells = [
-                    _pct(ec.get("supports_recall")),
-                    _pct(ec.get("contradicts_precision")),
+                    _with_ci(
+                        ec.get("supports_recall"),
+                        rep.get("gold_supports"),
+                        rep.get("supports_recall_95ci"),
+                    ),
+                    _with_ci(
+                        ec.get("contradicts_precision"),
+                        _predicted_contradicts(ec),
+                        rep.get("contradicts_precision_95ci"),
+                    ),
                     _pct(ec.get("contradicts_shown_as_supports")),
                     _pct(ec.get("moved_traps_shown_as_supports")),
                     _pct(ec.get("stance_valid_output")),
                     str(row.get("mean_seconds_per_stance_call") or "n/a"),
+                    str(row.get("tokens_per_second") or "n/a"),
                     "pass" if ok else "misses: " + "; ".join(missed),
                 ]
                 lines.append(f"| {c.name} | {version} | " + " | ".join(cells) + " |")
                 if ok:
                     passed.setdefault(c.name, []).append(version)
+                if row.get("load_error"):
+                    unfinished.append(f"{c.name} {version}")
+                else:
+                    misses.append(f"- {c.name} {version}: {_misses(row)}")
+                    params = row.get("params") or {}
+                    runs.append(
+                        f"- {c.name} {version}: sha256 {row.get('sha256')}, seed"
+                        f" {params.get('seed')}, temperature {params.get('temperature')},"
+                        f" n_ctx {params.get('n_ctx')}, chat template"
+                        f" {params.get('chat_template', 'gguf')}, prompt"
+                        f" {row.get('stance_prompt')}, GPU memory used"
+                        f" {row.get('vram_used_mib', 'n/a')} MiB"
+                    )
     lines.append("")
     if passed:
         for name, versions in passed.items():
-            lines.append(f"Stage 1 PASS: {name} with {', '.join(versions)}; it goes to stage 2.")
+            lines.append(
+                f"Stage 1 PASS: {name} with {', '.join(versions)}. It goes to stage 2 (repeat"
+                " run, then case01). The probe and case01 both helped pick it, so a swap also"
+                " needs fresh held-out items it was not picked on."
+            )
+    elif unfinished:
+        lines.append(
+            f"Stage 1 INCOMPLETE: {', '.join(unfinished)} did not run or load, and nothing that"
+            " ran passes. No decision until those runs finish."
+        )
     else:
         lines.append("Stage 1: no candidate passes. The 14B stays the local model.")
+    lines += ["", "## Items each run got wrong (gated)", "", *misses]
+    lines += ["", "## What each run ran on", "", *runs]
     return "\n".join(lines) + "\n"
 
 

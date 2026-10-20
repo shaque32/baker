@@ -19,6 +19,14 @@ def row(moved: int = 0, **bars: bool) -> dict:
     return {
         "model": "m",
         "mean_seconds_per_stance_call": 9.5,
+        "tokens_per_second": 21.3,
+        "sha256": "ab" * 32,
+        "params": {"seed": 1234, "temperature": 0.0, "n_ctx": 8192},
+        "stance_prompt": "stance_cloud.md@1.2",
+        "stance_failures": [
+            {"id": "P039", "category": "c", "expected": "complicates", "got": "contradicts"},
+            {"id": "P050", "error": "bad_json", "raw": ""},
+        ],
         "expert_confirms": {
             "supports_recall": 0.95,
             "contradicts_precision": 1.0,
@@ -26,6 +34,12 @@ def row(moved: int = 0, **bars: bool) -> dict:
             "moved_traps_shown_as_supports": moved,
             "stance_valid_output": 1.0,
             "bars": {**BARS_MET, **bars},
+            "confusion": {"contradicts": {"contradicts": 9}, "complicates": {"contradicts": 1}},
+            "reported": {
+                "gold_supports": 40,
+                "supports_recall_95ci": [0.83, 0.99],
+                "contradicts_precision_95ci": [0.6, 0.98],
+            },
         },
     }
 
@@ -74,9 +88,25 @@ def test_verdict_names_the_passing_model_and_prompt(tmp_path):
     assert f"Stage 1 PASS: {first} with v1.2" in text
     assert f"| {second} | v1.1 | n/a" in text and "did not load: no such file" in text
     assert f"| {second} | v1.2 | not run |" in text
-    assert "9.5" in text
+    assert "| 95% of 40 [83%-99%] | 100% of 10 [60%-98%] |" in text
+    assert "9.5 | 21.3 |" in text
+    wrong = "P039 (complicates -> contradicts), P050 (no valid answer: bad_json)"
+    assert f"- {first} v1.1: {wrong}" in text
+    assert "sha256 " + "ab" * 32 + ", seed 1234" in text
+    assert "fresh held-out items" in text
 
 
 def test_verdict_says_plainly_when_nothing_passes(tmp_path):
-    write(tmp_path, cand.CANDIDATES[0].name, "v1.1", [row(supports_recall_90=False)])
+    for c in cand.CANDIDATES:
+        for version in cand.PROMPTS:
+            write(tmp_path, c.name, version, [row(supports_recall_90=False)])
     assert "no candidate passes. The 14B stays the local model." in cand.verdict(tmp_path)
+
+
+def test_an_unfinished_screen_decides_nothing(tmp_path):
+    first, second = cand.CANDIDATES[0].name, cand.CANDIDATES[1].name
+    write(tmp_path, first, "v1.1", [row(supports_recall_90=False)])
+    write(tmp_path, second, "v1.1", [{"model": second, "load_error": "boom"}])
+    text = cand.verdict(tmp_path)
+    assert "Stage 1 INCOMPLETE" in text and f"{first} v1.2" in text and f"{second} v1.1" in text
+    assert "The 14B stays" not in text

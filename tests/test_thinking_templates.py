@@ -115,3 +115,65 @@ def test_llama_cpp_renders_the_same_endings():
     refuse_open_thinking(_FakeLlama(GEMMA4))
     with pytest.raises(ValueError, match="no-think"):
         refuse_open_thinking(_FakeLlama(QWEN3_8))
+
+
+def fake_llama_cpp(monkeypatch, template: str) -> None:
+    """Stand-ins for llama_cpp.Llama and its Jinja2ChatFormatter, so the load path runs in CI."""
+    import sys
+    import types
+
+    class Rendered:
+        def __init__(self, prompt: str) -> None:
+            self.prompt = prompt
+
+    class Formatter:
+        def __init__(self, template: str, eos_token: str, bos_token: str, **_: object) -> None:
+            self.template = template
+
+        def __call__(self, *, messages: list, **kwargs: object) -> Rendered:
+            env = jinja2.Environment()  # noqa: S701 - chat templates render text, not HTML
+            return Rendered(
+                env.from_string(self.template).render(
+                    messages=messages, add_generation_prompt=True, **kwargs
+                )
+            )
+
+        def to_chat_handler(self) -> object:
+            return self
+
+    class Llama(_FakeLlama):
+        def __init__(self, **_: object) -> None:
+            super().__init__(template)
+            self.chat_handler = None
+
+    chat_format = types.ModuleType("llama_cpp.llama_chat_format")
+    chat_format.Jinja2ChatFormatter = Formatter
+    module = types.ModuleType("llama_cpp")
+    module.Llama = Llama
+    module.llama_chat_format = chat_format
+    monkeypatch.setitem(sys.modules, "llama_cpp", module)
+    monkeypatch.setitem(sys.modules, "llama_cpp.llama_chat_format", chat_format)
+
+
+def load(tmp_path, chat_template: str = "gguf", chat_format: str | None = None):
+    from core.llm.runtime import GenerationParams, LlamaCppModel, ModelSpec
+
+    path = tmp_path / "m.gguf"
+    path.write_bytes(b"GGUF")
+    spec = ModelSpec(name="m", path=path, chat_format=chat_format)
+    return LlamaCppModel(spec, GenerationParams(chat_template=chat_template))
+
+
+def test_load_refuses_a_template_that_opens_thinking(monkeypatch, tmp_path):
+    fake_llama_cpp(monkeypatch, QWEN3_8)
+    with pytest.raises(ValueError, match="no-think"):
+        load(tmp_path)
+    model = load(tmp_path, chat_template="no-think")
+    assert model._llm.chat_handler is not None
+    load(tmp_path, chat_format="chatml")  # a named format never uses the file's template
+
+
+@pytest.mark.parametrize("template", [QWEN3, GEMMA4])
+def test_load_keeps_templates_that_answer_without_thinking(monkeypatch, tmp_path, template):
+    fake_llama_cpp(monkeypatch, template)
+    assert load(tmp_path)._llm.chat_handler is None
