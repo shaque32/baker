@@ -1,4 +1,4 @@
-## 2026-10-20: Screen for newer local stance models, and a guard for thinking templates (#PR)
+## 2026-10-20: Screen for newer local stance models, and a guard for thinking templates (#105)
 - Changed: Arsh asked whether Qwen3-14B is the best local model. This PR adds a Mac screen
   (`eval/probe/candidates.py`, `eval/probe/mac_candidates.sh`) of three newer Apache-2.0 models
   that fit 24 GB: Gemma 4 26B-A4B and Gemma 4 12B (Google's QAT q4_0 GGUFs) and Qwen3.8-27B
@@ -10,7 +10,7 @@
   for Qwen3.8, drop the effort system turn). A model whose own template ends the generation
   prompt inside an open thinking block now refuses to load on the "gguf" template, instead of
   labelling with its answer inside that block.
-- Where: branch claude/project-thread-k8ywo4
+- Where: PR #105
 - Verified: unit tests for both template shapes and the guard. Checked through
   llama-cpp-python 0.3.36's own formatter against the chat templates embedded in the four GGUF
   files (Qwen3-14B Q4_K_M: loads and no-think unchanged; Qwen3.8-27B: refused on "gguf", loads
