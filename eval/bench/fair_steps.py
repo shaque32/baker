@@ -600,6 +600,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 MARGIN = 2  # claims of 20 a step needs to move toward Opus (PREREGISTERED.md)
+OPUS_MODEL = "claude-opus-5-5"  # the test's cloud arm; the local arm is the entry named 14B
 STEPS = (
     ("Claim proposal", ("1 split-aware", "1 strict")),
     ("Assumption filling", ("3 fills, lenient", "4b fills vs sheet")),
@@ -623,8 +624,9 @@ def compare(local: dict[str, Any], opus: dict[str, Any]) -> str:
     """The decision rule (PREREGISTERED.md, amendments 1 to 4) on two arms' results: a step
     moves toward Opus only if Opus wins by MARGIN on both of its measures with 0 false
     supported. Anything that makes the two runs not comparable is listed first; an INVALID
-    arm, an opus arm not at medium effort, a dirty tree or rescoring, or two different run or
-    scoring commits leave every step undecided. A missing run commit (an arm that predates the
+    arm, a local arm that is not the 14B, an opus arm that is not OPUS_MODEL at medium effort,
+    a dirty tree or rescoring, or two different run or scoring commits leave every step
+    undecided. A missing run commit (an arm that predates the
     field) is listed and does not block, as the plan says."""
     checks, blocking = [], []
     for name, r in (("local", local), ("opus", opus)):
@@ -642,6 +644,10 @@ def compare(local: dict[str, Any], opus: dict[str, Any]) -> str:
         sc = r.get("rescored_at")
         if sc is not None and (not sc.get("commit") or sc.get("dirty")):
             blocking.append(f"{name} arm was rescored with uncommitted changes or no commit")
+    if "14b" not in str(local.get("model") or "").lower():
+        blocking.append(f"the local arm is {local.get('model')!r}: the test is for the 14B")
+    if opus.get("model") != OPUS_MODEL:
+        blocking.append(f"the opus arm is {opus.get('model')!r}: the test is for {OPUS_MODEL}")
     if opus.get("effort") != "medium":
         blocking.append(f"the opus arm ran at effort {opus.get('effort')!r}: the plan is medium")
     a, b = ((r.get("revision") or {}).get("commit") for r in (local, opus))

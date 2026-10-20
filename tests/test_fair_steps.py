@@ -158,8 +158,21 @@ def arm(split: int, strict: int, fills: float, sheet: int, commit: str = "abc") 
 def decide(local: dict, opus: dict) -> str:
     """compare() on two arms built by arm(), each marked with its own arm and a model hash, the
     opus arm at medium effort."""
-    return compare({"arm": "local", "model_sha256": "14b", **local},
-                   {"arm": "opus", "model_sha256": "opus", "effort": "medium", **opus})  # fmt: skip
+    return compare({"arm": "local", "model": "qwen3-14b-q4_k_m", "model_sha256": "14b", **local},
+                   {"arm": "opus", "model": "claude-opus-5-5", "model_sha256": "opus",
+                    "effort": "medium", **opus})  # fmt: skip
+
+
+def test_the_local_arm_must_be_the_14b_and_the_opus_arm_opus_5_5() -> None:
+    win = arm(split=20, strict=20, fills=0.9, sheet=10)
+    lose = arm(split=10, strict=10, fills=0.5, sheet=2)
+    assert "moves toward Opus" in decide(lose, win)
+    eight_b = decide({**lose, "model": "qwen3-8b-q4_k_m"}, win)
+    assert "the local arm is 'qwen3-8b-q4_k_m'" in eight_b
+    assert "moves toward Opus" not in eight_b
+    other = decide(lose, {**win, "model": "claude-sonnet-5-5"})
+    assert "the opus arm is 'claude-sonnet-5-5'" in other
+    assert "moves toward Opus" not in other
 
 
 def test_the_decision_needs_a_win_on_both_measures_of_a_step() -> None:
