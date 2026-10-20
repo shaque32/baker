@@ -67,7 +67,7 @@ from core.ingest.source_file import require_sha256
 from core.review import audit_log
 
 IMPORTER_NAME = "ufdr"
-IMPORTER_VERSION = "0.1.1"
+IMPORTER_VERSION = "0.2.0"
 # Becomes "verified" only after a real UFDR has been checked against Cellebrite Reader
 # (docs/ingest/ufdr.md, "Before calling it verified"). Every import records it.
 FORMAT_SUPPORT = "unverified"
@@ -1111,7 +1111,7 @@ class _RecordMapper:
                 # always forwarded (someone else passed these words on), with its own sender as
                 # the original author only when it names exactly one and is not itself forwarded.
                 self.cov.counters["embedded_messages_imported"] += 1
-                self.cov.forwarded_records.setdefault("forwarded", []).append(mid)
+                self.cov.forwarded_records.setdefault("embedded_copy", []).append(mid)
                 author = None if _forwarded(m) else _sole_sender(m)
                 if author:
                     self.cov.forwarded_from[mid] = author
@@ -1234,7 +1234,9 @@ class _RecordMapper:
             "chat_name": chat.text(*CHAT_NAME_FIELDS) if chat else None,
             "participants": "\n".join(_party_text(p) for p in participants) or None,
             "body": m.raw(*BODY_FIELDS),
-            "ts": self._time(table, m, locator, TS_FIELDS),
+            # an embedded copy takes no time: the original's time is not when this phone held
+            # it, and it must not sit on the timeline as if sent then
+            "ts": None if embedded_in is not None else self._time(table, m, locator, TS_FIELDS),
             # an embedded original never takes a stated direction: the shared mapper decides
             "direction": None if embedded_in is not None else m.text("direction"),
             "folder": m.text("folder"),
@@ -1401,7 +1403,7 @@ def _forwarded(m: _Model) -> bool:
     return any(is_forwarded_label(v) for v in labels)
 
 
-EMBEDDED_STEP = "/Embedded["  # locator step of a message embedded in another
+EMBEDDED_STEP = forwarded.COPY_STEP  # locator step of a message embedded in another
 
 
 def _sole_sender(m: _Model) -> str | None:

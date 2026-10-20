@@ -266,9 +266,10 @@ def resolve_handle(data: CaseData, handle: str, app: str | None) -> Party:
         if not _same_text(title, handle):
             continue
         for (aid,) in data.conn.execute(
-            "SELECT sender_account_id FROM messages WHERE thread_id = ?"
-            " AND sender_account_id IS NOT NULL"
-            " UNION SELECT r.account_id FROM message_recipients r"
+            "SELECT sender_account_id FROM messages WHERE thread_id = ?"  # noqa: S608  (constant SQL; values are bound)
+            " AND sender_account_id IS NOT NULL AND "
+            + NOT_COPY.replace("m.", "")
+            + " UNION SELECT r.account_id FROM message_recipients r"
             " JOIN messages m ON m.id = r.message_id WHERE m.thread_id = ? ORDER BY 1",
             (tid, tid),
         ):
@@ -278,8 +279,10 @@ def resolve_handle(data: CaseData, handle: str, app: str | None) -> Party:
     # The sender text a report printed on each row, where the importer kept it.
     if data.has_sender_raw:
         for mid, aid, raw in data.conn.execute(
-            "SELECT id, sender_account_id, sender_raw FROM messages"
-            " WHERE sender_raw IS NOT NULL AND sender_account_id IS NOT NULL ORDER BY id"
+            "SELECT id, sender_account_id, sender_raw FROM messages"  # noqa: S608  (constant SQL; values are bound)
+            " WHERE sender_raw IS NOT NULL AND sender_account_id IS NOT NULL AND "
+            + NOT_COPY.replace("m.", "")
+            + " ORDER BY id"
         ):
             acc = data.accounts.get(aid)
             if acc is not None and _ends_with_name(raw, handle):
@@ -338,6 +341,11 @@ def _ts(value: str | None) -> datetime | None:
     return t if t.tzinfo else t.replace(tzinfo=UTC)
 
 
+# A forwarded or quoted copy imported from inside another message (core/ingest/forwarded.py,
+# embedded_copy) is left out of every check's inputs: its words fail closed anyway, and counting
+# it beside the message that carried it, or beside its own standalone record, would count twice.
+NOT_COPY = f"m.locator NOT LIKE '{forwarded_records.COPY_LIKE}'"
+
 _MSG_SQL = (
     "SELECT m.id, m.source_id, t.app, m.sender_account_id, m.ts_utc, m.ts_raw, m.body,"
     " m.deleted_flag, (SELECT json_group_array(r.account_id) FROM message_recipients r"
@@ -369,9 +377,10 @@ def messages_for_accounts(data: CaseData, account_ids: set[str]) -> list[Row]:
     ids = json.dumps(sorted(account_ids))
     rows = data.conn.execute(
         _MSG_SQL  # noqa: S608  (constant SQL; values are bound)
-        + " WHERE m.sender_account_id IN (SELECT value FROM json_each(?))"
+        + " WHERE (m.sender_account_id IN (SELECT value FROM json_each(?))"  # noqa: S608  (constant SQL; values are bound)
         " OR m.id IN (SELECT r.message_id FROM message_recipients r"
-        "  WHERE r.account_id IN (SELECT value FROM json_each(?))) ORDER BY m.id",
+        "  WHERE r.account_id IN (SELECT value FROM json_each(?))))"
+        f" AND {NOT_COPY} ORDER BY m.id",
         (ids, ids),
     )
     return [_message_row(r) for r in rows]
@@ -379,7 +388,9 @@ def messages_for_accounts(data: CaseData, account_ids: set[str]) -> list[Row]:
 
 def messages_with_text(data: CaseData, text: str) -> list[Row]:
     """Messages whose original body contains the text verbatim and word-aligned."""
-    rows = data.conn.execute(_MSG_SQL + " WHERE instr(m.body, ?) > 0 ORDER BY m.id", (text,))
+    rows = data.conn.execute(
+        _MSG_SQL + f" WHERE instr(m.body, ?) > 0 AND {NOT_COPY} ORDER BY m.id", (text,)
+    )
     return [row for row in map(_message_row, rows) if find_quote(text, row.text or "")]
 
 

@@ -750,9 +750,9 @@ def test_quoted_and_nested_forwards_are_listed_in_full_and_one_level_is_imported
     ids = dict(conn.execute("SELECT locator, id FROM messages"))
     assert found == {
         ids["Chat[1]/Messages[1]"]: "embedded",
-        ids["Chat[1]/Messages[1]/Embedded[1]"]: "forwarded",
+        ids["Chat[1]/Messages[1]/Embedded[1]"]: "embedded_copy",
         ids["Chat[1]/Messages[2]"]: "forwarded",
-        ids["Chat[1]/Messages[2]/Embedded[1]"]: "forwarded",
+        ids["Chat[1]/Messages[2]/Embedded[1]"]: "embedded_copy",
     }
 
 
@@ -914,7 +914,7 @@ def test_an_embedded_original_is_its_own_record_with_its_author_as_written(tmp_p
     ).fetchone()
     assert sender == ("+15550100002",)  # Jo, never the forwarder or the phone owner
     assert emb[3] != "outgoing"  # never the phone owner's words
-    assert emb[4] == "2026-03-01T10:00:00.000-05:00"
+    assert emb[4] is None  # the original's time is kept off the record and the timeline
     assert emb[5:7] == (1, "+15550100002 Jo")
     assert emb[7] == parent[7]  # same thread
     assert _codes(s)["embedded_messages_imported"] == "info"
@@ -973,3 +973,90 @@ def test_an_embedded_copy_before_its_standalone_record_never_takes_its_id(tmp_pa
     ).fetchall()
     # the standalone record imports normally, not marked forwarded
     assert rows == [("Chat[1]/Messages[1]/Embedded[1]", 1), ("Chat[2]/Messages[1]", None)]
+
+
+def _copy_case(tmp_path, *embedded: str):
+    fwd = model(
+        "InstantMessage",
+        field("Source", "WhatsApp"),
+        one("From", party(*OWNER)),
+        field("Body", "SYNTHETIC look at this"),
+        ts_field("TimeStamp", "2026-03-05T21:31:00.000-05:00"),
+        _extra("Forwarded"),
+        _embedded(*embedded),
+    )
+    path = write_package(tmp_path / "p.ufdr", report_xml({"Chat": [_chat("c1", fwd)]}))
+    conn, _s = _import(path)
+    ids = dict(conn.execute("SELECT locator, id FROM messages"))
+    return conn, ids
+
+
+def test_the_note_on_an_embedded_copy_with_a_named_sender_is_true(tmp_path):
+    from core.report.html import record_line
+
+    original = model("InstantMessage", one("From", party(*JO)), field("Body", "SYNTHETIC hi"))
+    conn, ids = _copy_case(tmp_path, original)
+    parent, copy = ids["Chat[1]/Messages[1]"], ids["Chat[1]/Messages[1]/Embedded[1]"]
+    found = forwarded.affected(conn)
+    assert found[copy] == "embedded_copy" and found[parent] == "forwarded"
+    assert forwarded.record_note_text(conn, copy, found[copy]) == (
+        f"Forwarded or quoted copy carried inside record {parent}, imported as its own record. "
+        'The sender shown, "+15550100002 (Jo)", is the one the extraction names for the embedded '
+        'message, not verified; the message that carried it was sent by "+15550100001".'
+    )
+    line = record_line(conn, copy, found)
+    assert "whoever forwarded" not in line
+    assert '<span class="q">+15550100002 (Jo)</span>' in line
+
+
+def test_the_note_on_an_embedded_copy_with_no_sender_is_true(tmp_path):
+    original = model("InstantMessage", field("Body", "SYNTHETIC no one named"))
+    conn, ids = _copy_case(tmp_path, original)
+    parent, copy = ids["Chat[1]/Messages[1]"], ids["Chat[1]/Messages[1]/Embedded[1]"]
+    assert forwarded.record_note_text(conn, copy, "embedded_copy") == (
+        f"Forwarded or quoted copy carried inside record {parent}, imported as its own record. "
+        "The extraction names no sender for the embedded message; the message that carried it "
+        'was sent by "+15550100001".'
+    )
+
+
+def test_a_claim_warning_over_a_forward_and_an_embedded_copy_names_each_kind():
+    found = {"msg:s:a": "forwarded", "msg:s:a/Embedded[1]": "embedded_copy"}
+    assert forwarded.claim_warning(found, ["msg:s:a", "msg:s:a/Embedded[1]", "msg:s:z"]) == (
+        "2 records this claim's evidence or checks rest on are affected. 1 is a message the "
+        "extraction marks as forwarded or as carrying a forwarded or quoted message, which "
+        "Baker shows as sent by whoever forwarded or quoted; 1 is a forwarded or quoted copy "
+        "carried inside another message, imported as its own record, shown with the sender the "
+        "extraction names for the embedded message. Baker has not verified who first wrote any "
+        "of these words, even where the extraction names an original author, so they cannot "
+        "support or contradict this claim. Check each in the extraction tool."
+    )
+    assert forwarded.claim_warning(
+        {"msg:s:a/Embedded[1]": "embedded_copy"}, ["msg:s:a/Embedded[1]"]
+    ) == (
+        "1 record this claim's evidence or checks rest on is a forwarded or quoted copy carried "
+        "inside another message, imported as its own record. Baker shows the sender the "
+        "extraction names for it, which it has not verified, so it cannot support or contradict "
+        "this claim. Check it in the extraction tool."
+    )
+
+
+def test_an_embedded_copy_is_labelled_in_its_conversation(tmp_path):
+    from core.report.restore import context_table
+    from core.restore.view import context_view
+
+    original = model("InstantMessage", one("From", party(*JO)), field("Body", "SYNTHETIC hi"))
+    conn, ids = _copy_case(tmp_path, original)
+    view = context_view(conn, ids["Chat[1]/Messages[1]/Embedded[1]"])
+    html_ = context_table(view.lines)
+    assert "Copy carried inside the message at Chat[1]/Messages[1]; not a message sent" in html_
+
+
+def test_the_report_names_the_ufdr_importer_version(tmp_path):
+    from core.ingest.ufdr import IMPORTER_VERSION
+    from core.report.html import render_report
+
+    original = model("InstantMessage", one("From", party(*JO)), field("Body", "SYNTHETIC hi"))
+    conn, _ids = _copy_case(tmp_path, original)
+    assert IMPORTER_VERSION == "0.2.0"
+    assert f"{ufdr.IMPORTER_NAME} 0.2.0</td>" in render_report(conn)

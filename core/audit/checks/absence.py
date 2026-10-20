@@ -9,6 +9,7 @@ searched and what the sources could and could not show.
 from __future__ import annotations
 
 from core.audit.checks._common import (
+    NOT_COPY,
     CaseData,
     Row,
     calls_for_accounts,
@@ -124,7 +125,8 @@ def _coverage_gaps(
             kind = info.fidelity.value.replace("_", " ")
             gaps.append(f"{sid} is a {kind}, which cannot show that something is absent")
         lo, hi = data.conn.execute(
-            "SELECT min(t), max(t) FROM (SELECT ts_utc AS t FROM messages WHERE source_id = ?"
+            "SELECT min(t), max(t) FROM (SELECT ts_utc AS t FROM messages m WHERE source_id = ?"  # noqa: S608  (constant SQL; values are bound)
+            f" AND {NOT_COPY}"
             " UNION ALL SELECT ts_utc FROM calls WHERE source_id = ?) WHERE t IS NOT NULL",
             (sid, sid),
         ).fetchone()
@@ -138,8 +140,9 @@ def _coverage_gaps(
                 ).fetchone()
             else:
                 (n,) = data.conn.execute(
-                    "SELECT (SELECT count(*) FROM messages m JOIN threads t ON t.id = m.thread_id"
-                    " WHERE m.source_id = ? AND lower(t.app) = lower(?))"
+                    "SELECT (SELECT count(*) FROM messages m JOIN threads t ON t.id = m.thread_id"  # noqa: S608  (constant SQL; values are bound)
+                    " WHERE m.source_id = ? AND lower(t.app) = lower(?)"
+                    f" AND {NOT_COPY})"
                     " + (SELECT count(*) FROM calls WHERE source_id = ? AND lower(app) = lower(?))",
                     (sid, app, sid, app),
                 ).fetchone()
