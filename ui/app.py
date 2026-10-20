@@ -1266,10 +1266,15 @@ class App:
                 conn.close()
 
     def _help(self, path: str) -> Response:
-        try:
-            text, withheld = self._bug_report(), None
-        except bug_report.NotClean as err:
-            text, withheld = None, str(err)
+        previewed = getattr(self, "_previewed_report", None)
+        if path == "/help/bug-report.json" and previewed and previewed[0] is self.case:
+            # save exactly the text the Help page showed, not a newer build of it
+            text, withheld = previewed[1], None
+        else:
+            try:
+                text, withheld = self._bug_report(), None
+            except bug_report.NotClean as err:
+                text, withheld = None, str(err)
         if path == "/help/bug-report.json":
             if text is None:
                 return self._plain(500, f"Bug report withheld: {withheld}. Nothing was saved.")
@@ -1286,6 +1291,7 @@ class App:
                     *self._security_headers(),
                 ],
             )
+        self._previewed_report = (self.case, text) if text is not None else None
         page = self._page()
         return self._html(help_pages.help_page(page, text, withheld, self.case is not None))
 

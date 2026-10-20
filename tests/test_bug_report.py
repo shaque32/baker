@@ -269,3 +269,37 @@ def test_support_code_imports_no_network_client():
             elif isinstance(node, ast.ImportFrom) and node.module:
                 names = [node.module]
             assert not set(names) & bad, f"{py}: imports {names}"
+
+
+def test_download_saves_the_report_the_help_page_showed(audited: App, monkeypatch):
+    shown = get(audited, "/help").text
+    real = bug_report.build
+
+    def changed(**kw):
+        out = real(**kw)
+        out["made_at_utc"] = "2099-01-01T00:00:00Z"
+        return out
+
+    monkeypatch.setattr(bug_report, "build", changed)
+    saved = get(audited, "/help/bug-report.json").text
+    assert "2099-01-01" not in saved
+    assert json.loads(saved)["made_at_utc"] in shown
+
+
+def test_unreadable_verdicts_still_give_a_report(audited: App):
+    conn = connect(audited.case.db)
+    try:
+        conn.execute("DROP TABLE verdicts")
+        out = bug_report.case_section(audited.case, conn)
+    finally:
+        conn.close()
+    assert out["latest_run_verdicts"] == {}
+
+
+def test_build_identity_comes_from_core_build(monkeypatch):
+    from core import build as baker_build
+
+    monkeypatch.setattr(baker_build, "commit", lambda root=None: ("a" * 40, None))
+    monkeypatch.setattr(baker_build, "release", lambda root=None: "9.9.9")
+    got = bug_report.baker_section()
+    assert got["commit"] == "a" * 12 and got["package"] == "9.9.9"

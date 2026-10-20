@@ -30,6 +30,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from core import build as baker_build
 from core import db
 from core.audit import _local_model, quotes, rules
 from core.audit._llm_json import PROMPTS_DIR, PromptMissingError, load_prompt, prompt_version
@@ -109,23 +110,17 @@ def _safe(value: object) -> str | None:
 # ---------------------------------------------------------------- sections
 
 
+def _release() -> str | None:
+    """The Baker release, read the way run records read it (source tree or installed package)."""
+    got = baker_build.release()
+    return None if got == baker_build.NOT_RECORDED else got
+
+
 def _commit() -> str | None:
-    """The git commit Baker runs from, short form, when it runs from a checkout."""
-    head = ROOT / ".git" / "HEAD"
-    try:
-        ref = head.read_text(encoding="utf-8").strip()
-        if ref.startswith("ref: "):
-            target = ROOT / ".git" / ref[5:]
-            if target.is_file():
-                ref = target.read_text(encoding="utf-8").strip()
-            else:  # a packed ref
-                packed = (ROOT / ".git" / "packed-refs").read_text(encoding="utf-8")
-                ref = next(
-                    (ln.split()[0] for ln in packed.splitlines() if ln.endswith(" " + ref[5:])), ""
-                )
-    except OSError:
-        return None
-    return ref[:12] if re.fullmatch(r"[0-9a-f]{40,64}", ref) else None
+    """The commit Baker runs from, short form, from a checkout or the installer's BUILD_INFO.json
+    (core/build.py). Short, so the report never holds a long hex run."""
+    sha, _dirty = baker_build.commit()
+    return sha[:12] if re.fullmatch(r"[0-9a-f]{7,40}", sha) else None
 
 
 def _package_version(name: str) -> str | None:
@@ -147,7 +142,7 @@ def shipped_prompts() -> dict[str, str | None]:
 
 def baker_section() -> dict[str, Any]:
     return {
-        "package": _package_version("baker"),
+        "package": _release(),
         "commit": _commit(),
         "pipeline": PIPELINE_VERSION,
         "contracts": CONTRACTS_VERSION,
@@ -304,11 +299,15 @@ def case_section(case: cases.Case, conn: sqlite3.Connection | None) -> dict[str,
     latest = _rows(conn, "SELECT id FROM pipeline_runs ORDER BY started_at_utc DESC LIMIT 1")
     verdicts: dict[str, int] = {}
     if latest:
-        for verdict, basis, n in conn.execute(
-            "SELECT verdict, supported_basis, COUNT(*) FROM verdicts WHERE pipeline_run_id = ?"
-            " GROUP BY verdict, supported_basis",
-            (latest[0][0],),
-        ):
+        try:
+            got = conn.execute(
+                "SELECT verdict, supported_basis, COUNT(*) FROM verdicts"
+                " WHERE pipeline_run_id = ? GROUP BY verdict, supported_basis",
+                (latest[0][0],),
+            ).fetchall()
+        except db.Error:
+            got = []  # a damaged or older case: report what else is readable
+        for verdict, basis, n in got:
             verdicts[verdict if basis is None else f"{verdict}:{basis}"] = n
     out["latest_run_verdicts"] = verdicts
     shipped = shipped_prompts()
