@@ -206,7 +206,7 @@ fix is stance v1.2 (#93), signed by Arsh 2026-10-15: with it Opus scored contrad
 (misses P065), at high and at medium, and its wrong contradicts on new items went from 2 to 0
 (24 items) and 1 to 0 (26 items) (`/mnt/project-files/baker/cloud-bench/2026-10-15/told-frame-line/`).
 It is the cloud model's prompt only (Arsh, "Opus only", 2026-10-19). The local 14B's stance labels also miss the signed bars: on the signed set with v1.1, the
-prompt on main (a macOS 15.6.1 arm64 machine, commit `eee8d15` on #76's branch, 2026-10-19; llama-cpp-python 0.3.36, Qwen3-14B Q4_K_M SHA-256 `500a8806…b81f0`), its
+prompt on main (Arsh's Mac, macOS 15.6.1 arm64, commit `eee8d15` on #76's branch, 2026-10-19; llama-cpp-python 0.3.36, Qwen3-14B Q4_K_M SHA-256 `500a8806…b81f0`), its
 contradicts precision is 58% (11 of 19, bar 90%; the count is derived from 100% recall of the
 11 gold contradicts) and it shows 6 moved traps as supports (contradicts recall 100%, supports recall 100%, 0 contradicting shown as supports). With v1.2 (same run) the 14B's contradicts precision fell
 to 50% (11 of 22) with the same 6 moved traps, which is why the local model keeps v1.1. Source:
@@ -318,8 +318,8 @@ PRs, never merged.
    coverage list (same fail-closed behaviour, no author); the report's Versions table says which
    mode a case is in ("Forwarded marks", #95).
 4. **Local runtime per case unknown on current code** (section 7). **The local 14B's stance
-   labels miss the signed bars:** on the signed set with v1.1, the prompt on main (a macOS 15.6.1
-   arm64 machine, `eee8d15`, 2026-10-19), its contradicts precision is 58% (11 of 19, bar 90%) and
+   labels miss the signed bars:** on the signed set with v1.1, the prompt on main (Arsh's Mac,
+   macOS 15.6.1 arm64, `eee8d15`, 2026-10-19), its contradicts precision is 58% (11 of 19, bar 90%) and
    it shows 6 moved traps as supports. Since rules 0.3.0 (#98) a model's "contradicts" never makes
    a claim CONTRADICTED without an expert's acceptance, so a wrong one cannot
    cause a wrong verdict on its own; it costs a review, and still risks one if the expert accepts it. Source:
