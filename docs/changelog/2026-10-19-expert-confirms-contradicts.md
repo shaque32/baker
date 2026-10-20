@@ -12,6 +12,8 @@
   and a rules bump. The report's Versions table prints it ("Model contradictions without an
   expert"). No confidence score. Rules 0.2.2 -> 0.3.0, report 0.7.0 -> 0.8.0. New pilot gate 19.
   METHODS, ARCHITECTURE, review-screen and demo docs updated to match.
+  Sign-off: comment 6278243303 on #90 records the approval; Arsh chose "Apply it" for the
+  rules change in the owning project thread on 2026-10-20, and final "approved" is pending.
 - Where: branch `claude/expert-confirms-contradicts-y6ti2f`, not merged. Holds for Arsh's
   approval of the rules change.
 - Verified: `tests/contract/test_rules.py` (unaccepted and AI-accepted contradictions never give
