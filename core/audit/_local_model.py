@@ -399,7 +399,7 @@ class SentLog:
             "stop_reason": getattr(out, "stop_reason", None),
             "input_tokens": getattr(out, "prompt_tokens", None),
             "output_tokens": getattr(out, "completion_tokens", None),
-            "raw_sha256": raw_sha256(str(getattr(out, "raw_text", ""))),
+            "raw_sha256": raw_sha256(getattr(out, "raw_text", None) or ""),
             # why Baker did not use an answer the API returned (another model, a refusal, a
             # cut-off answer); None for an answer it used
             "refused": refused,

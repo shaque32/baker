@@ -31,21 +31,22 @@
   on with the records they cite and the model runs they name (`rows_sha256`), one over the
   claim (`claim_sha256`) and the verdict's time; each `pipeline.run` entry records one SHA-256
   over the run's fixed columns (`run_sha256`), its finish time and the log position it read the
-  stipulations at; `claim.status` records the text an edit replaced; `claim.add` records the
+  stipulations at; `PIPELINE_VERSION` 0.2.0 (stored on each run's row) marks runs that write
+  this log format; `claim.status` records the text an edit replaced; `claim.add` records the
   claim type; `claims.proposed` records each proposed claim's SHA-256. No export while a newer audit is unfinished. Why: legal defensibility
   (Arsh's brief, 2026-10-20): equal access, authentication, hosted-model reproducibility.
 - Where: PR #104
-- Verified: tests/test_bundle.py (90: round trips on a reviewed case01 and a cloud-path case01
+- Verified: tests/test_bundle.py (91: round trips on a reviewed case01 and a cloud-path case01
   with a stand-in API, whole and scoped; 68 tampering and malformed-bundle cases fail without a
   crash, incl. a supporting item hidden behind its true hash, which fails the verdict check; a
   scoped bundle leaves out dismissed items, their decisions, other prompts, cloud.sent entries,
   the rest of the phone and an earlier run, and still verifies; an export whose bundle would
-  not verify writes nothing; an export
+  not verify writes nothing; a run records pipeline 0.2.0; an export
   holds the case still and never replaces a file; a refused
   cloud answer is logged with its ids; an answer that cannot be logged pauses the
   audit; a retried send logs one answer; no export without the confirmation; an encrypted case
   never exports in plain form; a failed write leaves no bundle and no success entry; partial
-  coverage never reads as fully verified); full suite 2372 passed, 8 skipped
+  coverage never reads as fully verified); full suite 2389 passed, 9 skipped
   (make check, 2026-10-20, Linux container);
   make eval unchanged (case01 1.00, 0 false supported; unreviewed 0.55; hostile PASS; case02
   aggregate 0.90, 0 false supported). Not tried on a real case or a real Anthropic answer.

@@ -132,7 +132,11 @@ from core.enrich.records import get_record, kind_of
 from core.ingest import forwarded
 from core.review import audit_log
 
-PIPELINE_VERSION = "0.1.0"
+# 0.2.0 (#104): the audit log records cloud.received per hosted answer, and pipeline.claim and
+# pipeline.run entries carry digests (model_calls and rows_sha256, hashes over per-item hashes;
+# claim_sha256, run_sha256) and decision times; each run's row stores this version, so a case
+# says which log format its runs wrote (core/bundle/verify.py).
+PIPELINE_VERSION = "0.2.0"
 RUN_ACTION = "pipeline.run"
 CLAIM_ACTION = "pipeline.claim"  # one per finished claim, written with the claim's rows
 HALT_ACTION = "pipeline.halted"

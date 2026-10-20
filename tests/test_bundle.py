@@ -1412,3 +1412,14 @@ def test_a_scoped_bundle_of_a_case_audited_twice_leaves_out_the_earlier_run(tmp_
     assert not failed(verify_bundle(full))
     assert len({r["pipeline_run_id"] for r in _member(full, f"{export.TABLES}verdicts.jsonl")}) == 2
     conn.close()
+
+
+def test_a_run_records_the_pipeline_version_that_writes_digests(hosted):
+    from core import pipeline
+
+    conn, path = hosted
+    assert pipeline.PIPELINE_VERSION == "0.2.0"
+    stored = {v for (v,) in conn.execute("SELECT baker_version FROM pipeline_runs")}
+    assert stored == {pipeline.PIPELINE_VERSION}
+    manifest = json.loads(zipfile.ZipFile(path).read(export.MANIFEST))
+    assert manifest["run"]["pipeline"] == pipeline.PIPELINE_VERSION
