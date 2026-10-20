@@ -90,11 +90,13 @@ Write-Host "$Installer sha256 $installerSha"
 if ($InstallerSha256 -and $installerSha -ne $InstallerSha256.ToLower()) {
     throw "Installer SHA-256 $installerSha is not the published $InstallerSha256"
 }
-$sig = Get-AuthenticodeSignature $Installer
-if ($sig.Status -eq 'Valid') {
-    Write-Host "Code signature: Valid, signed by $($sig.SignerCertificate.Subject)"
+$signature = Get-AuthenticodeSignature $Installer
+if ($signature.Status -eq 'Valid') {
+    $sig = "Valid, signed by $($signature.SignerCertificate.Subject)"
+    Write-Host "Code signature: $sig"
 } else {
-    Write-Host "Code signature: $($sig.Status) (builds of main are signed; pull request builds are not)"
+    $sig = "$($signature.Status)"
+    Write-Host "Code signature: $sig (builds of main are signed; pull request builds are not)"
 }
 Install-Baker $Installer (Join-Path $Out 'setup-1.log')
 $runtime = (Select-String -Path (Join-Path $Out 'setup-1.log') -Pattern 'Model runtime installed: (\w+)').Matches |
