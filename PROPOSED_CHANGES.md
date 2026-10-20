@@ -362,6 +362,77 @@ Diff (both files, then re-pin the draft's SHA-256 in tests/test_gold_stancedata.
 -| `bk_contact_row_differs` | ... | Record on item1: "Gus Tires +13125550190". |
 +| `bk_contact_row_differs` | ... | Record on item1: "Gus Tires: +13125550190". |
 
+## 2026-10-15 claude/project-thread-01fybj: stance prompt v1.2: told-frame and undated-denial sentences in "contradicts"
+SIGNED by Arsh on 2026-10-15 ("approved" in the "Audit our model scoring" thread, 13:45Z, with
+"Sign it" on the card that quoted the two sentences). APPLIED word for word in the same PR. On
+2026-10-19 Arsh chose to give this text to a cloud model only (the entry below).
+File: core/audit/prompts/stance.md
+Why: stance guide v0.3 rules 12 and 23 (signed 2026-10-14) read a same-day "X told the owner
+that ..." answered by X saying the opposite, and an undated act against a denial that names no
+time, as complicates; the signed probe set was relabeled to match (#64). Prompt v1.1 does not
+say so, and Opus 5.5 answered contradicts on 4 of its 15 contradicts (P049, P066 to P069, P092,
+P093), 73% precision against the 90% bar, at high and at medium effort. A "contradicts" on an
+event assumption can make a claim CONTRADICTED with no expert step (rules.py rule 1b).
+Test, preregistered before any call (/mnt/project-files/baker/cloud-bench/2026-10-15/
+told-frame-line/, PREREGISTERED.md and PREREGISTERED-medium.md): the sentences were written once
+from rules 12 and 23 and not edited after any answer. With them, Opus 5.5's contradicts
+precision on the signed set is 10 of 10 at high and at medium, supports recall 33 of 33,
+nothing contradicting shown as supports; it misses one real contradiction (P065, contradicts
+recall 10 of 11). On items written for the test and never used to write the sentences (24 from
+this thread, three blind readers agreeing on 22; 26 from "Custom model for Baker", written
+before that thread saw the sentences), wrong contradicts on the told-frame and undated items
+went from 2 to 0 on the 24 (high; 0 at medium too) and from 1 to 0 on the 26 (medium), with every
+contradicts and supports control kept. The text sent was stance_v1_1_told_frame_draft.md
+(file sha256 ba603d12...); its body is byte for byte the v1.2 body (sha256 2863d8db...,
+tests/test_stance.py). The local 14B reads the same prompt and has not been run with it.
+Diff (the "contradicts" entry; the header's version line v1.1 -> v1.2):
+-  between"). A record that only makes another reading more likely is not "contradicts".
++  between"). Likewise, when the assumption is that someone told, wrote or asked something, a
++  message of theirs saying the opposite shows only what that message says; another message
++  could still have said it, so it is "complicates". A denial that names no time ("i never got
++  it") covers only the time before it was sent: it rules out an assumption dated before the
++  message and leaves an undated one open. A record that only makes another reading more likely
++  is not "contradicts".
+Code that follows: none. The labeler fills the same slots. The prompt version every model run
+records changes (sha256:4c35f1cf01b0b227 -> sha256:2863d8dbf66960f6), so stored v1.1 answers are
+not reused and a re-run labels again. Next: the 14B's probe run on the Mac, and, for #68, an
+entry for (claude-opus-5-5, the v1.2 version) in core/llm/cloud.PROBE_PASSED, with Arsh's sign-off.
+
+## 2026-10-19 claude/project-thread-01fybj: stance v1.2 for a cloud model only ("Opus only")
+SIGNED by Arsh on 2026-10-20 ("Sign it" at 00:31Z on the card in the "Audit our model scoring"
+thread that asked "Sign stance_cloud.md, your v1.2 text, as the cloud model's own prompt file?").
+APPLIED word for word in the same PR.
+File: core/audit/prompts/stance.md, and a new core/audit/prompts/stance_cloud.md
+Why: Arsh chose "Opus only" on 2026-10-19 (decision card in "Audit our model scoring", 20:41Z:
+"The 14B keeps v1.1 unchanged; Opus gets v1.2 as its own signed prompt file, which you sign").
+On the signed probe set, Arsh's Mac run (eee8d15, 2026-10-19) took the local 14B's contradicts
+precision from 58% (11 of 19) with v1.1 to 50% (11 of 22) with v1.2, while Opus 5.5 met every
+bar only with v1.2 (the entry above). One prompt file cannot give each model its own text.
+Diff, part one: core/audit/prompts/stance.md goes back to main's v1.1, byte for byte (the PR no
+longer changes it; prompt version sha256:4c35f1cf01b0b227). This takes the entry above out of
+stance.md, so local cases label exactly as they do on main.
+Diff, part two: a new file core/audit/prompts/stance_cloud.md (file sha256 457bc966...): this
+header, then the line `<!-- prompt starts -->`, then the v1.2 body exactly as the entry above
+applied it (body sha256 2863d8db..., the text the preregistered Opus runs sent; prompt version
+sha256:2863d8dbf66960f6; tests/test_stance.py pins it).
++# Cloud stance prompt (HUMAN-OWNED, Arsh)
++
++v1.2, signed by Arsh on 2026-10-15 ("approved" in the "Audit our model scoring" thread): stance
++prompt v1.1 (stance.md) with the told-frame sentences in "contradicts", which teach stance guide
++v0.3 rules 12 and 23 (PROPOSED_CHANGES.md). Only a cloud model reads this file: Arsh chose on
++2026-10-19 ("Opus only", same thread) to keep v1.1 for the local model, since on the signed
++probe set v1.2 took the local 14B's contradicts precision from 58% to 50%.
++Arsh edits this wording; agents only wire it to the cloud model.
++Only the text after the next line is sent to the model.
++
++<!-- prompt starts -->
+Code that follows (in the same PR): core/audit/stance.py gives a cloud model the cloud prompt
+(CLOUD_PROMPT_FILE, prompt_file: the case's cloud labeler, and a cloud model the benchmarks pass
+in); core/casework/cloud.py checks PROBE_PASSED against the cloud prompt's version, the one a
+cloud case would send; eval/bench/claude_bench.py scores the cloud prompt by default. Next: an
+entry for (claude-opus-5-5, medium, sha256:2863d8dbf66960f6) in core/llm/cloud.PROBE_PASSED,
+with Arsh's sign-off.
+
 ## 2026-10-19 claude/expert-confirms-contradicts-y6ti2f: rules 0.3.0, an expert confirms every model contradiction
 File: core/audit/rules.py
 Why: Grok's URGENT FIX on PR #90 (comments 6277020650 and 6277367264): rule 1b lets an unreviewed

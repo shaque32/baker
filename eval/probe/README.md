@@ -8,8 +8,9 @@ machine that will run Baker. Everything here is synthetic.
   can run before the signed probe set exists. Rebuild with `python -m eval.probe.build_smoke`.
   Results on them are provisional; the signed probe set (thread 3, signed by Arsh) replaces them.
 - `stance_draft.md`: the old probe-only stance prompt, kept for comparison. The probe now scores
-  the signed product prompt `core/audit/prompts/stance.md` by default (`--stance-prompt` picks
-  another).
+  the signed product prompt `core/audit/prompts/stance.md` (the local model's) by default
+  (`--stance-prompt` picks another). The cloud bench (`eval/bench/claude_bench.py`) scores the
+  cloud model's own signed prompt, `core/audit/prompts/stance_cloud.md`, by default.
 - The reviewer prompt is read from `core/audit/prompts/reviewer.md` unchanged.
 - `stance_v1_1_draft.md`: the signed stance wording, line for line, reordered so every fixed
   instruction comes before the case data. Consecutive calls on one assumption then share the
