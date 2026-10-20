@@ -1,4 +1,4 @@
-## 2026-10-20: Windows installer signed with Artifact Signing (PR pending)
+## 2026-10-20: Windows installer signed with Artifact Signing (#106)
 - Changed: Arsh set up Microsoft Artifact Signing (Basic account `bakersigning`, individual
   identity validation, Public Trust profile `bakerpublic`, app `baker-github-signing` with a
   federated credential for main and the Certificate Profile Signer role, 2 GitHub secrets and 3
@@ -9,7 +9,7 @@
   federated credential with GitHub's ID-based subject (the GitHub scenario's subject fails with
   AADSTS70025), and search the app by name for the Signer role (missing role: 403). Pilot gate 10
   is met.
-- Where: branch `claude/project-thread-ainl97` (PR pending); the signing itself is live on main.
+- Where: PR #106 (branch `claude/project-thread-ainl97`); the signing itself is live on main.
 - Verified: windows-installer run 39496196827 on main `e8b373a` (GitHub windows-latest,
   2026-10-20): signed by `CN=Shayan Haque`, `Get-AuthenticodeSignature` Valid; smoke-test job
   installed the signed file on a fresh runner, case01 model-free gate PASS (accuracy 1.00, 0 false
