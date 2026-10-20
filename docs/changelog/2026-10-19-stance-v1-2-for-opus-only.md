@@ -27,7 +27,7 @@
   its stored databases with no model call, and `--compare` applies the written rule, deciding
   nothing when the arms are not comparable (an invalid arm, Opus not at medium effort, a dirty
   tree, different commits, or arms scored at different commits).
-- Where: PR #93 (branch `claude/project-thread-01fybj`), not merged.
+- Where: main (PR #93, merge 79fc398, 2026-10-20).
 - Verified: the cloud prompt's body is byte for byte the text the preregistered Opus runs sent,
   and `stance.md` is byte for byte main's v1.1 (tests pin both, check that v1.2 is v1.1 plus the
   two sentences only, and that a cloud model gets the cloud prompt's version while the local
@@ -53,39 +53,4 @@
 - Affects: capabilities (once Arsh signs its entry, Opus labels with v1.2: fewer wrong
   "contradicts" for the expert to dismiss; under rules 0.3.0 none becomes CONTRADICTED without
   the expert, and a claim it changes goes UNPROVEN, never SUPPORTED). No change for local cases. No privacy change. No new customer-facing claim.
-- Status doc: pending: header, "Signed prompts on main": replace "stance v1.1" with "stance v1.1
-  (local model) and v1.2 for a cloud model only (`stance_cloud.md`: v1.1 plus the told-frame
-  sentences, signed 2026-10-15, #93)". Section 4, "When Opus is used": replace "with the current
-  stance prompt" with "with the cloud stance prompt (`core/audit/prompts/stance_cloud.md`, v1.2,
-  which only a cloud model reads)", and replace "That list is **empty**: Opus 5.5 fails the
-  signed set's contradicts bar (below), so every case still labels locally until a signed prompt
-  fix passes a recorded re-run (the signed set plus new held-out items not used to write the
-  prompt) and Arsh signs the entry." with "That list is **empty**. With v1.2, Opus 5.5 met the
-  bars on the signed set and on new held-out items (section 7); every case labels locally until
-  Arsh signs an entry for it." Section 4, "Known risk": replace "Each is an event assumption,
-  so in a real case each would be a wrong CONTRADICTED with no expert step, until a signed prompt
-  line fixes it (section 7)." with "That was with stance v1.1. Since rules 0.3.0 (#98) such a
-  label no longer makes a claim CONTRADICTED on its own; the expert sees \"Contradiction found,
-  confirm to finalize\". The cloud prompt, v1.2 (#93), removed every such answer in the Opus
-  tests (section 7)." Section 4, "Claim proposal and assumption filling stay
-  local": add "The same-test comparison Arsh chose (2026-10-15, `eval/bench/fair_steps.py`) ran
-  in two halves: Opus (2026-10-16, medium, $5.23) claim splitting 95%, audit without the sheet
-  70%, lenient fills 75%, sheet values 3 of 20; the 14B (2026-10-19, Mac, eee8d15) 90%, 55%, 60%,
-  4 of 20; 0 false supported in both. Both steps stay local under the written rule
-  (`/mnt/project-files/baker/cloud-bench/2026-10-16/fair-14b-vs-opus/DECISION.md`); one run per
-  arm." Section 7: replace "The planned fix is a stance prompt line for guide rules 12 and 23,
-  signed by Arsh and tested on new items." with "The fix is stance v1.2 (#93), signed by Arsh
-  2026-10-15: with it Opus scored contradicts precision 10/10, supports recall 33/33, 0
-  contradicting shown as supports and contradicts recall 10/11 (misses P065), at high and at
-  medium, and its wrong contradicts on new items went from 2 to 0 (24 items) and 1 to 0 (26
-  items) (`/mnt/project-files/baker/cloud-bench/2026-10-15/told-frame-line/`). It is the cloud
-  model's prompt only (Arsh, \"Opus only\", 2026-10-19)." and after the 14B's v1.1 sentence add
-  "With v1.2 (same run) the 14B's contradicts precision fell to 50% (11 of 22) with the same 6
-  moved traps, which is why the local model keeps v1.1." Section 9, limitation 2: replace "it would
-  make wrong CONTRADICTED verdicts until a signed prompt fix lands." with "with stance v1.1 they
-  were wrong CONTRADICTED verdicts under rules 0.2.x; since rules 0.3.0 (#98) the expert confirms
-  each. The cloud prompt, v1.2 (#93), removed every such answer in the Opus tests; with it Opus
-  misses one real contradiction (P065), which leaves a claim UNPROVEN." Section 11, "Before a first real case" item 3: replace "until a signed
-  told-frame prompt fix passes on new items (line signed 13:45Z) and Arsh signs a gate entry."
-  with "until Arsh signs a `PROBE_PASSED` entry for Opus 5.5 with the cloud prompt, stance v1.2
-  (#93)."
+- Status doc: applied 2026-10-20
