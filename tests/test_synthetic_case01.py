@@ -9,7 +9,9 @@ import openpyxl
 import pytest
 
 from core.contracts import GoldClaim
+from core.ingest.govdoc import PdfGovDocIngester
 from eval.run_eval import load_jsonl
+from eval.run_pipeline import render_affidavit_pdf
 from eval.synthetic import case01_key as key
 from eval.synthetic import case01_story as story
 from eval.synthetic.generate import DEFAULT_OUT, affidavit_paragraphs, generate
@@ -174,6 +176,15 @@ def test_claims_are_verbatim_in_their_affidavit_paragraph(case, gold):
     for g in gold:
         assert g.text in paras[(g.page, g.para_no)], g.claim_id
         assert f"{g.para_no}. {paras[(g.page, g.para_no)]}" in md
+
+
+def test_the_affidavit_pdf_reads_back_every_paragraph_as_written(tmp_path):
+    # Regression (scoring audit, 2026-10-15): Helvetica has no Cyrillic, so paragraph 13's
+    # contact name "Катя" read back from the PDF as "■■■■" and no claim splitter could find it.
+    pdf = render_affidavit_pdf("case01", tmp_path / "affidavit.pdf")
+    read = {" ".join(p.text.split()) for p in PdfGovDocIngester().parse(pdf).paragraphs}
+    for _, no, text in affidavit_paragraphs():
+        assert f"{no}. {' '.join(text.split())}" in read, no
 
 
 def test_quoted_text_in_claims_matches_cited_records_verbatim(case, gold):

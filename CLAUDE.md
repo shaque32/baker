@@ -66,17 +66,22 @@ with the reason and the exact diff you want, then finish the rest of your task w
   `make eval` reports it as aggregate numbers only; never tune anything to them.
 
 ## Product status docs
-`docs/PRODUCT_STATUS.md` and `docs/CHANGELOG_AI.md` are the source of truth for what Baker does.
+`docs/PRODUCT_STATUS.md` and the AI changelog (the entry files in `docs/changelog/`, then the
+archive `docs/CHANGELOG_AI.md`) are the source of truth for what Baker does.
 Other agents and product tools read them, so they must match the code, not the plan.
 - Read `docs/PRODUCT_STATUS.md` before starting work.
 - A meaningful change is one that changes a capability, a model or its job, a verdict path,
   privacy or network use, a measured benchmark, or what Baker may claim to customers.
   Refactors, test-only fixes and wording changes are not, unless they change a fact these docs
   record (merge or CI state, readiness).
-- In the same PR as a meaningful change, update `docs/PRODUCT_STATUS.md` and add one entry at
-  the top of `docs/CHANGELOG_AI.md` with: what changed and why; where it lives (main, a named
-  branch or PR, or local only); what was tested; what is open or uncertain; and whether it
-  affects capabilities, privacy, performance or customer-facing claims.
+- In the same PR as a meaningful change, add one new entry file in `docs/changelog/` (format in
+  its README) with: what changed and why; where it lives (main, a named branch or PR, or local
+  only); what was tested; what is open or uncertain; whether it affects capabilities, privacy,
+  performance or customer-facing claims; and the exact edits `docs/PRODUCT_STATUS.md` needs
+  (`Status doc: pending: ...`, or `no change`). Do not edit `docs/CHANGELOG_AI.md` (the archive)
+  or `docs/PRODUCT_STATUS.md` in that PR: after merges, one status refresh PR applies every
+  pending edit to `docs/PRODUCT_STATUS.md`, marks those entries applied and sets their
+  `Where:` to main.
 - Check every statement against code, tests or a recorded run. Mark anything not measured as
   unverified, and say which hardware and date a number comes from.
 - Never put secrets, API keys or real case data in these files, and nothing about case02
@@ -86,4 +91,4 @@ Other agents and product tools read them, so they must match the code, not the p
 - `make check` must pass (lint, tests, eval).
 - Report the eval numbers in the PR description.
 - If an eval metric got worse, say so plainly. Do not tune tests or gold data to make it pass.
-- For a meaningful change, `docs/PRODUCT_STATUS.md` and `docs/CHANGELOG_AI.md` are updated.
+- For a meaningful change, a new `docs/changelog/` entry carries the change and its status edit.

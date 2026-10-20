@@ -12,7 +12,9 @@ ROOT = Path(__file__).resolve().parents[2]
 REVIEWER_PROMPT = ROOT / "core" / "audit" / "prompts" / "reviewer.md"
 STANCE_DRAFT = Path(__file__).with_name("stance_draft.md")  # probe-only draft, for comparison
 STANCE_SIGNED = ROOT / "core" / "audit" / "prompts" / "stance.md"
-# The probe scores the signed product prompt by default.
+# What the product sends a cloud model (Arsh's "Opus only", 2026-10-19); the cloud bench's default.
+STANCE_CLOUD = ROOT / "core" / "audit" / "prompts" / "stance_cloud.md"
+# The probe scores the signed product prompt by default (the local model's).
 STANCE_PROMPT = STANCE_SIGNED if STANCE_SIGNED.exists() else STANCE_DRAFT
 
 REVIEWER_SCHEMA = {

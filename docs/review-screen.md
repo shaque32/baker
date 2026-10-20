@@ -75,7 +75,12 @@ eval or re-decided.
 2. **Claims queue.** Claims sorted by what needs you: AI-accepted supporting evidence first, then
    supporting evidence nobody reviewed, then contradicting or complicating items, then verdicts to
    confirm. A claim whose supporting evidence no expert has decided shows as
-   **Support found: do you agree?**, never as supported. A claim Baker could not set up
+   **Support found: do you agree?**, never as supported. A claim with a model "contradicts" on
+   a core assumption that no expert has decided shows as **Contradiction found, confirm to
+   finalize** (rules 0.3.0), near the top of the queue: on the claim page, type a one-sentence
+   reason and click **Confirm contradiction** (or **Dismiss**). Baker records the decision and
+   its reason in the audit log and re-runs the verdicts at once, so the claim turns
+   contradicted. A claim Baker could not set up
    any check for (the assumption filler refused every proposal, for example a name that is no
    person in the case) shows as **Unproven, not tested**, with the refusals, at the top of the
    queue: no record was searched for it, so the expert checks it by hand. Its claim page and
@@ -126,7 +131,7 @@ eval or re-decided.
 
 ## The audit log check
 
-Two checks, both in `core/review/audit_log.py` (`require_intact`):
+Three checks, all in `core/review/audit_log.py` (`require_intact`):
 
 1. **The hash chain.** Each entry's hash covers the one before it, so changing or removing an
    entry in the middle breaks the chain from that entry on. The Cases page says "Review blocked"
@@ -139,6 +144,14 @@ Two checks, both in `core/review/audit_log.py` (`require_intact`):
    anchored entry to still be there with the same hash. A log cut back past an anchor, or
    rewritten from there on, is blocked ("the audit log has no entry N ... so entries were removed
    from the end of the log").
+
+3. **The expert's reasons.** Each evidence decision's log entry carries the reason the expert
+   typed. A reason changed in the case database after it was logged no longer matches, and the
+   case is blocked ("the expert's decision or reason for evidence decision N ... was changed
+   after it was logged"). The status the expert chose is compared the same way, and an expert review added
+   to or removed from the database with no matching log entry is blocked too. Decisions logged
+   before this check carry no reason in the log, so their reasons are not compared; their status
+   and presence still are.
 
 A case folder Baker cannot write to (read-only media, a locked-down backup) does not open or
 report, since no anchor could be recorded: copy the folder somewhere writable and open the copy.

@@ -12,6 +12,12 @@ the evidence that verdict was decided on. It never upgrades a verdict:
   claim has no expert decision yet (the AI reviewer accepted it, or nobody reviewed it). It reads
   as Baker's finding put to the expert, never as a verdict: the verdict stays unproven, and under
   rules 0.2.0 an AI acceptance alone never makes a claim supported; the expert decides.
+- "Contradiction found, confirm to finalize" when the verdict is unproven and a contradicting
+  item on a core assumption has no expert decision yet. Under rules 0.3.0 a model's
+  "contradicts" counts only once an expert accepts it, so this is the step that finalizes the
+  verdict: one confirm (with the expert's reason) makes the claim contradicted on the next
+  verdict run. It takes precedence over "Support found", since an open contradiction blocks
+  supported anyway.
 - "Labeling incomplete" when the run shown is an audit that has not finished (still running, or
   stopped) and has not finished this claim. Such a claim has no verdict and no evidence on
   screen or in the report; it appears for review only once all its candidates are labeled.
@@ -41,6 +47,13 @@ from core.contracts import (
 SUPPORTED_AI = "Supported (AI-reviewed)"
 SUPPORTED_EXPERT = "Supported (expert-confirmed)"
 AWAITING_EXPERT = "Support found: do you agree?"
+CONTRADICTION_FOUND = "Contradiction found, confirm to finalize"
+# what the expert does about it, worded the same on the screen and in the report
+CONFIRM_STEP = (
+    "Baker found {n} record(s) it reads as contradicting a core assumption. Confirm each one "
+    "you agree with, giving your reason, to finalize the verdict as contradicted; dismiss the "
+    "rest."
+)
 NOT_AUDITED = "Not audited"
 LABELING_INCOMPLETE = "Labeling incomplete"
 NOT_TESTED = "Unproven, not tested"
@@ -65,7 +78,9 @@ class ClaimState:
     ai_accepted: int = 0  # supporting items the AI reviewer accepted, no expert decision yet
     open_support: int = 0  # supporting items nobody has reviewed
     ai_dismissed: int = 0  # supporting items the AI reviewer dismissed, no expert decision yet
-    open_against: int = 0  # contradicting or complicating items with no expert decision
+    open_against: int = 0  # other contradicting or complicating items with no expert decision
+    # contradicting items on a core assumption with no expert decision (rule 1b, rules 0.3.0)
+    open_contradicts: int = 0
     expert_decided: int = 0
     decided_after_run: bool = False  # an expert decided one of its items after the run
     edited_after_run: bool = False  # the expert changed the claim text after the run
@@ -80,6 +95,24 @@ class ClaimState:
             and self.decision.verdict == Verdict.UNPROVEN
             and self.decision.override_note is None
             and (self.ai_accepted + self.open_support) > 0
+        )
+
+    def to_confirm(self, item: EvidenceItem) -> bool:
+        """A contradicting item on a core assumption with no expert decision: confirming it
+        (accepting it) finalizes the verdict as contradicted (rule 1b)."""
+        if item.stance != Stance.CONTRADICTS or item.status == EvidenceStatus.DISMISSED:
+            return False
+        if self.last_reviewer.get(item.id) == "expert" and item.status != EvidenceStatus.OPEN:
+            return False
+        return any(a.id == item.assumption_id and a.is_core for a in self.assumptions)
+
+    @property
+    def contradiction_found(self) -> bool:
+        return (
+            self.decision is not None
+            and self.decision.verdict == Verdict.UNPROVEN
+            and self.decision.override_note is None
+            and self.open_contradicts > 0
         )
 
     @property
@@ -97,13 +130,13 @@ class ClaimState:
             return LABELING_INCOMPLETE
         if self.untested:
             return NOT_TESTED
-        return verdict_label(self.decision, self.awaiting_expert)[0]
+        return verdict_label(self.decision, self.awaiting_expert, self.contradiction_found)[0]
 
     @property
     def css(self) -> str:
         if self.incomplete:
             return "v-unp"
-        return verdict_label(self.decision, self.awaiting_expert)[1]
+        return verdict_label(self.decision, self.awaiting_expert, self.contradiction_found)[1]
 
     @property
     def verdict_reviewed(self) -> bool:
@@ -133,6 +166,13 @@ class ClaimState:
                 )
             )
         more = self.decision.verdict == Verdict.SUPPORTED  # already carried; review is optional
+        if self.contradiction_found:
+            out.append(
+                (
+                    1,
+                    f"{CONTRADICTION_FOUND}. {CONFIRM_STEP.format(n=self.open_contradicts)}",
+                )
+            )
         if self.ai_accepted:
             out.append(
                 (
@@ -149,8 +189,9 @@ class ClaimState:
                     "one: accept the ones you agree with and dismiss the rest.",
                 )
             )
-        if self.open_against:
-            out.append((3, f"{self.open_against} contradicting or complicating item(s) to review."))
+        against = self.open_against + (0 if self.contradiction_found else self.open_contradicts)
+        if against:
+            out.append((3, f"{against} contradicting or complicating item(s) to review."))
         if self.decided_after_run:
             out.append((4, "You decided evidence after the last verdict run. Re-run verdicts."))
         if self.ai_dismissed:
@@ -171,8 +212,11 @@ class ClaimState:
         return n[0][0] if n else 9
 
 
-def verdict_label(decision: VerdictDecision | None, awaiting: bool = False) -> tuple[str, str]:
-    """(display text, css class) for a stored verdict."""
+def verdict_label(
+    decision: VerdictDecision | None, awaiting: bool = False, contradiction: bool = False
+) -> tuple[str, str]:
+    """(display text, css class) for a stored verdict. contradiction: an unproven claim has a
+    contradicting item on a core assumption that waits for the expert's confirm."""
     if decision is None:
         return NOT_AUDITED, "v-unp"
     if decision.override_note is not None:
@@ -183,6 +227,8 @@ def verdict_label(decision: VerdictDecision | None, awaiting: bool = False) -> t
         return SUPPORTED_AI, "v-supai"
     if pipeline.RULES_PENDING_REASON in decision.reasons:
         return RULES_PENDING, "v-unp"
+    if decision.verdict == Verdict.UNPROVEN and contradiction:
+        return CONTRADICTION_FOUND, "v-confirm"
     if decision.verdict == Verdict.UNPROVEN and awaiting:
         return AWAITING_EXPERT, "v-await"
     return decision.verdict.value.capitalize(), _css(decision.verdict)
@@ -332,7 +378,10 @@ def _state(
             else:
                 st.open_support += 1
         elif e.stance in AGAINST and e.status != EvidenceStatus.DISMISSED:
-            st.open_against += 1
+            if st.to_confirm(e):
+                st.open_contradicts += 1
+            else:
+                st.open_against += 1
     if st.evidence:
         marks = ",".join("?" * len(st.evidence))
         later = conn.execute(

@@ -80,7 +80,10 @@ def sc_cond(rng: random.Random, slot: int) -> Result:
     if rep is None:
         return c, [lead]
     rep = rep.format(N=third.name, p="they", poss="their", o=c.other.who)
-    plain = spec_plain(rng, c, f"would {fx.claim_base(f, st.v, money)} if {rep}", core,
+    # "only if jonah calls back will i pay" makes the condition needed, not enough on its own:
+    # a report that dropped "only" would say more than the record (guide rule 14).
+    only = "only " if core.startswith("only if") else ""
+    plain = spec_plain(rng, c, f"would {fx.claim_base(f, st.v, money)} {only}if {rep}", core,
                        plain_why(c), told_only=True)  # fmt: skip
     return c, siblings(rng, lead, [plain], 0.5, 1)
 

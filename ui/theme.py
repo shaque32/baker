@@ -134,6 +134,10 @@ button[value=dismissed], button[value=removed] { color: var(--con); }
   background: rgb(29 53 87 / 0.06); }
 .b-open { color: var(--fg); }
 .b-against { color: var(--con); border-color: var(--con-line); background: var(--con-bg); }
+.b-flag { color: var(--muted); border-style: dashed; background: transparent; }
+details.flag { margin-top: 6px; }
+details.flag > summary { font-size: 13px; color: var(--muted); cursor: pointer; }
+ul.flags form.inline button { margin-left: 8px; }
 
 /* claims ledger: the queue, and the column beside a claim */
 .tally { display: flex; height: 6px; border-radius: 999px; overflow: hidden;
@@ -141,6 +145,7 @@ button[value=dismissed], button[value=removed] { color: var(--con); }
 .tally span { display: block; border: 0; border-radius: 0; padding: 0; }
 .tally span::before { content: none; }
 .tally .v-sup { background: var(--sup); } .tally .v-con { background: var(--con); }
+.tally .v-confirm { background: #c98a7e; }
 .tally .v-unp, .tally .v-await { background: #c9a24a; } .tally .other { background: #aaa49a; }
 .counts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
 .counts .verdict { font-size: 12px; }

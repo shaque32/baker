@@ -39,8 +39,10 @@ from core.report.html import CSS as REPORT_CSS
 from core.report.html import (
     STANCE_LABEL,
     audit_log_summary,
+    build_label,
     forwarded_warning,
     labelled_by,
+    quote_check_label,
     record_line,
     review_label,
     said,
@@ -49,12 +51,16 @@ from core.report.html import (
 )
 from core.report.hypotheses import CSS as ALTERNATIVES_CSS
 from core.report.hypotheses import alternatives_html
+from core.report.paired import CSS as PAIRED_CSS
+from core.report.paired import claim_line
 from core.report.restore import CSS as RESTORE_CSS
 from core.report.selection import CSS as SELECTION_CSS
 from core.report.selection import anchor as selection_anchor
 from core.report.selection import claim_note
+from core.review import flags as F
 from core.review.status import (
     AGAINST,
+    CONTRADICTION_FOUND,
     HOLDINGS,
     ClaimState,
     case_holdings,
@@ -64,6 +70,7 @@ from core.review.status import (
     queue,
 )
 from core.selection.audit import selection_audit
+from core.selection.paired import paired_check
 from ui.theme import FONT_CSS, MARK, THEME_CSS
 
 CONTEXT_WINDOW = 10  # messages either side: about 20 messages of context
@@ -180,7 +187,7 @@ class Page:
             "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
             f"<meta name='viewport' content='width=device-width, initial-scale=1'>{meta}"
             f"<title>{e(title)} · Baker</title>"
-            f"<style>{FONT_CSS}{REPORT_CSS}{RESTORE_CSS}{SELECTION_CSS}{ALTERNATIVES_CSS}{UI_CSS}{THEME_CSS}</style>"
+            f"<style>{FONT_CSS}{REPORT_CSS}{RESTORE_CSS}{SELECTION_CSS}{PAIRED_CSS}{ALTERNATIVES_CSS}{UI_CSS}{THEME_CSS}</style>"
             "</head><body>"
             "<header class='top'><div class='bar'>"
             f"<a class='brand' href='{'/' if self.case_name is not None else '/cases'}'>"
@@ -342,8 +349,9 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
         )
         out.append(
             f"<p>Latest run <span class='mono'>{e(run['run_id'])}</span> ({mode}), started "
-            f"{e(run['started_at_utc'])}, rule version {e(run['rule_version'])}, contracts "
-            f"{e(run['contracts_version'])}.</p>"
+            f"{e(run['started_at_utc'])}, Baker {e(build_label(run))}, rule version "
+            f"{e(run['rule_version'])}, quote check "
+            f"{e(quote_check_label(run))}, contracts {e(run['contracts_version'])}.</p>"
         )
         states = claim_states(conn, run=run)
         tally = Counter(st.label for st in states)
@@ -370,6 +378,7 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
         "<p class='muted'>A full audit (new evidence search and model labels) runs from "
         "<a href='/setup'>Set up and run</a>, in the background.</p>"
     )
+    out.append(flags_overview(conn))
     summary = audit_log_summary(conn)
     out.append(
         f"<h2>Audit log</h2><p>{summary['entries']} entries. Hash chain "
@@ -454,7 +463,7 @@ def _tally(states: list[ClaimState]) -> str:
     """A bar split by finding, then one chip per finding with its count."""
     if not states:
         return ""
-    known = {"v-sup", "v-con", "v-unp", "v-await"}
+    known = {"v-sup", "v-con", "v-unp", "v-await", "v-confirm"}
     by_label = Counter((st.label, _vcls(st)) for st in states)
     bar = "".join(
         f"<span class='{css if css in known else 'other'}' "
@@ -535,6 +544,21 @@ def _decide_form(page: Page, item: EvidenceItem, decided: bool, back: str) -> st
     )
 
 
+def _confirm_form(page: Page, item: EvidenceItem, back: str) -> str:
+    """Rule 1b's finalizing step: one click accepts the contradiction with the expert's reason
+    and re-runs the verdicts, so the claim becomes contradicted at once."""
+    return page.form(
+        "/evidence/confirm",
+        f"<input type='hidden' name='id' value='{e(item.id)}'>"
+        "<input type='text' class='wide' name='reason' required maxlength='500' "
+        "placeholder='Why, in one sentence (recorded in the audit log)'><br>"
+        "<button type='submit' name='status' value='accepted'>Confirm contradiction</button>"
+        "<button type='submit' name='status' value='dismissed'>Dismiss</button>",
+        back=back,
+        anchor=item.id,
+    )
+
+
 def evidence_card(
     conn: sqlite3.Connection,
     page: Page,
@@ -542,13 +566,23 @@ def evidence_card(
     last_kind: str | None,
     back: str,
     found: dict[str, str] | None = None,
+    claim_id: str | None = None,
+    flagged: bool = False,
+    run_id: str | None = None,
+    confirm: bool = False,
 ) -> str:
+    """claim_id: the claim page shows the card; it then carries the optional label flag.
+    confirm: a contradiction waiting for the expert (rule 1b), shown with the confirm step."""
     stance_cls = "b-against" if item.stance in AGAINST else "b-open"
+    flag = ""
+    if claim_id is not None:
+        flag = _flag_label_form(page, claim_id, item, back, run_id)
     return (
         f"<div class='item' id='{e(item.id)}'>"
         f"<span class='badge {stance_cls}'>{e(STANCE_LABEL[item.stance])}</span>"
         f"{_tier_badge(item, last_kind)}"
-        f"<blockquote>{q(item.quote)}</blockquote>"
+        + ("<span class='badge b-flag'>flagged by you</span>" if flagged else "")
+        + f"<blockquote>{q(item.quote)}</blockquote>"
         f"<p>{record_line(conn, item.record_id, found)}<br>"
         f"<span class='mono'>{e(item.ref.source_id)} {e(item.ref.locator)} · "
         f"{e(item.record_id)}</span></p>"
@@ -556,12 +590,192 @@ def evidence_card(
         f"(inferred): {e(item.rationale)}</p>"
         f"<p><strong>Review:</strong> {review_label(conn, item)} · "
         f"<a href='{e(link('/evidence', id=item.id))}'>See about 20 messages around it</a></p>"
-        f"{_decide_form(page, item, last_kind == 'expert', back)}</div>"
+        + (
+            _confirm_form(page, item, back)
+            if confirm
+            else _decide_form(page, item, last_kind == "expert", back)
+        )
+        + f"{flag}</div>"
+    )
+
+
+# ---------------------------------------------------------------- flags (optional feedback)
+
+FLAG_HELP = (
+    "Optional. A flag goes into your flag summary for Baker's error log. It changes no "
+    "verdict and nothing is sent."
+)
+
+
+def _choices(values: Iterable[str], labels: dict[str, str]) -> str:
+    return "".join(f"<option value='{e(v)}'>{e(labels.get(v, v))}</option>" for v in values)
+
+
+def _flag_fields(claim_id: str, kind: str, run_id: str | None) -> str:
+    """run_id: the audit this page shows; a flag sent after it changed is refused."""
+    return (
+        f"<input type='hidden' name='claim' value='{e(claim_id)}'>"
+        f"<input type='hidden' name='kind' value='{e(kind)}'>"
+        f"<input type='hidden' name='seen_run' value='{e(run_id or '')}'>"
+    )
+
+
+def _note_field() -> str:
+    return (
+        f"<input type='text' class='wide' name='note' maxlength='{F.NOTE_MAX}' "
+        "placeholder='Note (optional)'><br>"
+    )
+
+
+def _flag_label_form(
+    page: Page, claim_id: str, item: EvidenceItem, back: str, run_id: str | None
+) -> str:
+    labels = {**{s.value: STANCE_LABEL[s] for s in Stance}, F.NOT_SURE: "Not sure"}
+    return (
+        "<details class='flag'><summary>Flag this label</summary>"
+        + page.form(
+            "/flag/add",
+            _flag_fields(claim_id, F.WRONG_LABEL, run_id)
+            + f"<input type='hidden' name='evidence' value='{e(item.id)}'>"
+            "It should be: <select name='should_be'>"
+            + _choices(
+                [
+                    F.NOT_SURE,
+                    *(v for v in F.STANCE_CHOICES if v not in (item.stance.value, F.NOT_SURE)),
+                ],
+                labels,
+            )
+            + "</select> "
+            + _note_field()
+            + f"<button type='submit'>Save flag</button> <span class='muted'>{e(FLAG_HELP)}"
+            "</span>",
+            back=back,
+            anchor=item.id,
+        )
+        + "</details>"
+    )
+
+
+def _flag_verdict_form(conn: sqlite3.Connection, page: Page, st: ClaimState, back: str) -> str:
+    labels = {v.value: v.value.capitalize() for v in Verdict} | {F.NOT_SURE: "Not sure"}
+    d = st.decision
+    gave = F.baker_verdict(conn, st.claim.id, st.run_id, d.verdict.value) if d else None
+    return (
+        "<details class='flag'><summary>Flag: I disagree with this verdict</summary>"
+        + page.form(
+            "/flag/add",
+            _flag_fields(st.claim.id, F.VERDICT, st.run_id)
+            + "It should be: <select name='should_be'>"
+            + _choices(
+                [F.NOT_SURE, *(v for v in F.VERDICT_CHOICES if v not in (F.NOT_SURE, gave))],
+                labels,
+            )
+            + "</select> "
+            + _note_field()
+            + f"<button type='submit'>Save flag</button> <span class='muted'>{e(FLAG_HELP)}"
+            "</span>",
+            back=back,
+            anchor="verdict",
+        )
+        + "</details>"
+    )
+
+
+def _flag_missed_form(page: Page, st: ClaimState, back: str) -> str:
+    return (
+        "<details class='flag' id='flag-missed'><summary>Flag a record Baker missed</summary>"
+        + page.form(
+            "/flag/add",
+            _flag_fields(st.claim.id, F.MISSED_RECORD, st.run_id)
+            + f"<input type='text' class='wide' name='record' maxlength='{F.RECORD_MAX}' "
+            "placeholder='Where it is, for example the file and row (optional)'><br>"
+            + _note_field()
+            + f"<button type='submit'>Save flag</button> <span class='muted'>{e(FLAG_HELP)}"
+            "</span>",
+            back=back,
+            anchor="flag-missed",
+        )
+        + "</details>"
+    )
+
+
+def _irrelevant_list(conn: sqlite3.Connection, items: list[EvidenceItem], flagged: set) -> str:
+    """Records the model labeled irrelevant, folded away; each opens on its own page, where a
+    wrong 'irrelevant' can be flagged."""
+    rows = "".join(
+        f"<li>{q(x.quote)} · {record_line(conn, x.record_id)} · "
+        f"<a href='{e(link('/evidence', id=x.id))}'>Open, or flag this label</a>"
+        + (" <span class='badge b-flag'>flagged by you</span>" if x.id in flagged else "")
+        + "</li>"
+        for x in items
+    )
+    return (
+        f"<details id='irrelevant'><summary>{len(items)} retrieved records were labeled "
+        f"irrelevant</summary><ul>{rows}</ul></details>"
+    )
+
+
+def _flag_target(f: F.Flag) -> str:
+    if f.kind == F.WRONG_LABEL:
+        was = e(f.at_flag.get("stance") or "?")
+        return (
+            f"label {was} on <a href='#{e(f.evidence_id)}'>this item</a>, should be "
+            f"{e(f.should_be)}"
+        )
+    if f.kind == F.VERDICT:
+        return f"verdict {e(f.at_flag.get('verdict') or 'none')}, should be {e(f.should_be)}"
+    return f"record: {said(f.record)}" if f.record else "a record (place not given)"
+
+
+def _flags_section(page: Page, items: list[F.Flag], back: str, run_id: str | None) -> str:
+    if not items:
+        return ""
+    rows = []
+    for f in items:
+        note = f" Note: {said(f.note)}" if f.note else ""
+        rows.append(
+            f"<li><strong>{e(F.KINDS[f.kind])}</strong>: "
+            + _flag_target(f)
+            + f".{note} <span class='muted'>{e(f.actor)}, {e(f.at_utc)}"
+            + (", made on an earlier run" if f.at_flag.get("run_id") != run_id else "")
+            + "</span>"
+            + page.form(
+                "/flag/withdraw",
+                f"<input type='hidden' name='flag' value='{e(f.id)}'>"
+                "<button type='submit'>Withdraw</button>",
+                cls="inline",
+                back=back,
+                anchor="flags",
+            )
+            + "</li>"
+        )
+    return (
+        f"<h2 id='flags'>Your flags on this claim ({len(items)})</h2>"
+        f"<p class='muted'>{e(FLAG_HELP)}</p><ul class='flags'>{''.join(rows)}</ul>"
+    )
+
+
+def flags_overview(conn: sqlite3.Connection) -> str:
+    """The case page's flag line and the redacted summary download."""
+    active = F.active_flags(conn)
+    by_kind = Counter(f.kind for f in active)
+    counts = ", ".join(f"{F.KINDS[k].lower()} {n}" for k, n in sorted(by_kind.items()))
+    return (
+        "<h2 id='flags'>Flags for Baker's error log</h2>"
+        f"<p>{len(active)} flag(s){': ' + e(counts) if counts else ''}. Flag a wrong label, a "
+        "missed record or a verdict you disagree with on any claim page.</p>"
+        "<form method='get' action='/flags/summary.json' class='box'>"
+        "<input type='text' name='pilot' maxlength='60' placeholder='Pilot name (optional)'> "
+        "<button type='submit'>Download the redacted summary</button>"
+        "<p class='muted'>Nothing is sent. The file holds counts, labels and versions only: no "
+        "claim text, quotes, notes, names, record references or ids. Read it before you share "
+        "it.</p></form>"
     )
 
 
 def _groups(st: ClaimState) -> list[tuple[str, list[EvidenceItem]]]:
     groups: dict[str, list[EvidenceItem]] = {
+        CONTRADICTION_FOUND: [],
         "AI-accepted, awaiting your decision": [],
         "Supporting, not reviewed": [],
         "Contradicting or complicating": [],
@@ -574,6 +788,8 @@ def _groups(st: ClaimState) -> list[tuple[str, list[EvidenceItem]]]:
         by_expert = st.last_reviewer.get(x.id) == "expert" and x.status != EvidenceStatus.OPEN
         if by_expert:
             groups["Decided by an expert"].append(x)
+        elif st.contradiction_found and st.to_confirm(x):
+            groups[CONTRADICTION_FOUND].append(x)
         elif x.stance in AGAINST:
             groups["Contradicting or complicating"].append(x)
         elif x.status == EvidenceStatus.AI_ACCEPTED:
@@ -585,13 +801,27 @@ def _groups(st: ClaimState) -> list[tuple[str, list[EvidenceItem]]]:
     return [(k, v) for k, v in groups.items() if v]
 
 
-def _selection_note(conn: sqlite3.Connection, paragraph_id: str) -> str:
-    """What the selection audit found around the quotes of the claim's paragraph, if anything."""
-    audit = selection_audit(conn, paragraph_id=paragraph_id)
+def _selection_note(conn: sqlite3.Connection, st: ClaimState) -> str:
+    """What the selection audit found around the quotes of the claim's paragraph, and what a
+    larger source of the same phone holds near the claim's records that a curated report does
+    not, if anything."""
+    audit = selection_audit(conn, paragraph_id=st.claim.paragraph_id)
+    # The Selection tab lists the claims that are not removed, so a removed claim has no list
+    # to link to.
+    paired = (
+        ""
+        if st.claim.status.value == "removed"
+        else claim_line(
+            paired_check(conn, [st], audit),
+            st.claim.id,
+            "/selection",
+        )
+    )
     units = audit.of("document")
     if not units:
-        return ""
-    return claim_note(units[0], f"/selection#{selection_anchor(units[0].id)}", audit.same) or ""
+        return paired
+    note = claim_note(units[0], f"/selection#{selection_anchor(units[0].id)}", audit.same)
+    return (note or "") + paired
 
 
 def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | None:
@@ -613,7 +843,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
             f"<details><summary>Paragraph as printed ({e(st.where)})</summary>"
             f"<blockquote>{q(st.paragraph_text)}</blockquote></details>"
         )
-        out.append(_selection_note(conn, c.paragraph_id))
+        out.append(_selection_note(conn, st))
     out.append(
         "<div class='card' id='verdict'><div class='in'><div class='eyebrow'>Verdict</div>"
         f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span>"
@@ -633,7 +863,10 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
             note = f" Note: {said(d.override_note)}" if d.override_note else ""
             kind = "overrode" if d.override_note is not None else "confirmed"
             out.append(f"<p>{e(d.confirmed_by)} {kind} this verdict.{note}</p>")
-        out.append(f"</div><div class='in'>{_verdict_forms(page, st, back)}")
+        out.append(
+            f"</div><div class='in'>{_verdict_forms(page, st, back)}"
+            f"{_flag_verdict_form(conn, page, st, back)}"
+        )
     out.append("</div></div>")
     out.append(_alternatives(conn, st))
 
@@ -671,6 +904,8 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
         out.append("</table>")
 
     out.append("<h2>Evidence</h2>")
+    claim_flags = F.active_flags(conn, c.id)
+    flagged = {f.evidence_id for f in claim_flags if f.evidence_id}
     if st.unlabeled:
         out.append(f"<p class='muted'>{e(st.unlabeled)}</p>")
     if st.untested:
@@ -696,10 +931,26 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
             if a is not None and a.id != shown_on:
                 out.append(f"<p class='muted'>Assumption: {e(a.text)}</p>")
                 shown_on = a.id
-            out.append(evidence_card(conn, page, x, st.last_reviewer.get(x.id), back, found))
-    hidden = sum(1 for x in st.evidence if x.stance == Stance.IRRELEVANT)
+            out.append(
+                evidence_card(
+                    conn,
+                    page,
+                    x,
+                    st.last_reviewer.get(x.id),
+                    back,
+                    found,
+                    claim_id=c.id,
+                    flagged=x.id in flagged,
+                    run_id=st.run_id,
+                    confirm=title == CONTRADICTION_FOUND,
+                )
+            )
+    hidden = [x for x in st.evidence if x.stance == Stance.IRRELEVANT]
     if hidden:
-        out.append(f"<p class='muted'>{hidden} retrieved records were labeled irrelevant.</p>")
+        out.append(_irrelevant_list(conn, hidden, flagged))
+    if d is not None:  # a flag is about an audited claim
+        out.append(_flag_missed_form(page, st, back))
+    out.append(_flags_section(page, claim_flags, back, st.run_id))
 
     out.append(_edit_claim_form(page, st, back))
     states = claim_states(conn)
@@ -825,7 +1076,24 @@ def evidence_page(conn: sqlite3.Connection, page: Page, evidence_id: str) -> str
             f"<p>Claim <a href='{e(link('/claim', id=claim_id[0]))}'>{e(claim_id[0])}</a>. "
             f"Assumption: {e(claim_id[1])}</p>"
         )
-    out.append(evidence_card(conn, page, item, last_kind[0] if last_kind else None, back))
+    flagged = any(f.evidence_id == item.id for f in F.active_flags(conn))
+    # Flag only an item in the audit on screen; one an older run dropped is not counted.
+    st = claim_state(conn, claim_id[0]) if claim_id else None
+    on_screen = (
+        st is not None and st.decision is not None and item.id in {x.id for x in st.evidence}
+    )
+    out.append(
+        evidence_card(
+            conn,
+            page,
+            item,
+            last_kind[0] if last_kind else None,
+            back,
+            claim_id=claim_id[0] if on_screen else None,
+            flagged=flagged,
+            run_id=st.run_id if on_screen else None,
+        )
+    )
     out.append("<h2>Context</h2>")
     lines = build_context(conn, item.record_id, CONTEXT_WINDOW)
     if lines:

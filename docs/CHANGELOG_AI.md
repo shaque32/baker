@@ -1,12 +1,17 @@
 # Baker AI changelog
 
+**New entries are files in `docs/changelog/`, one per PR; read them together with this
+archive.** `make changelog` prints both as one log, merged newest first by date. This file holds
+the entries written before the per-PR rule and takes no new entries (the status refresh may still
+correct its `Where:` lines); `docs/changelog/README.md` has the current format.
+
 One entry per meaningful change, newest first. Each entry is the handoff for that change and
 answers five questions: what changed and why; where it lives (local, branch or main); what was
 tested; what is open; what it affects (capabilities, privacy, performance, customer-facing
-claims). Add the entry in the same PR as the change, and update `docs/PRODUCT_STATUS.md` with it.
-Earlier history (PRs #1 to #43) is in git; this log starts with the 2026-10-13 build wave.
+claims). Earlier history (PRs #1 to #43) is in git; this log starts with the 2026-10-13 build
+wave. The old workflow (edit this file and `docs/PRODUCT_STATUS.md` in each PR) is retired.
 
-Template:
+Archive entry format (new entries use the one in `docs/changelog/README.md`):
 
 ```
 ## YYYY-MM-DD: <change> (#PR, commit)
@@ -19,30 +24,205 @@ Template:
 
 ---
 
-## 2026-10-16: Help tab, support contact and a bug report with no case data (pilot gate 17)
-- Changed: a Help tab on the review screen with the support contact, a short "what Baker does
-  and doesn't do", and a bug-report export (`/help/bug-report.json` and `baker bug-report`),
-  shown in full before it is saved. It holds versions, system and model setup, the last job,
-  recent error types with Baker file and line (never messages), and the open case's counts and
-  states; it leaves out case and file names, paths, any case text and every hash. Built from an
-  allowlist and re-checked before display (`core/support/`). The screen server now answers an
-  unexpected error with a plain 500 that points to Help, and keeps the error's type and frames in
-  memory for the report. New docs: `docs/WHAT_BAKER_DOES.md` (one-page explainer, no speed or
-  accuracy claims) and `docs/SUPPORT.md`. Why: pilot gate 17 in `docs/PILOT_GATES.md` (#82).
-- Where: branch `claude/pilot-support-bug-report-adz5vh`, not merged; merges after #82.
-- Verified: `tests/test_bug_report.py` (9 tests) on a synthetic case01 made on the screen with
-  marked values in the case name, expert name, uploaded file names, a claim, a job message and
-  an error message: none appears in the report, the Help page or the CLI output, nor any input
-  SHA-256 prefix or 32+ hex run. Headless-Chromium check of the Help tab and download. `make
-  check` results are in the PR description.
-- Open: the support address is a placeholder (`support@baker.example`) until Arsh sets it. Row
-  counts and source kinds are case metadata and are included; the docs say how to leave them
-  out. Gate 17 and onboarding section 7 are updated here once #82 merges.
-- Affects: capabilities (Help tab, bug report); privacy (a new export that holds no case data;
-  Baker still sends nothing); customer-facing claims (the explainer; no new speed or accuracy
-  claim).
+## 2026-10-16: Forwarded messages marked on the record (signed schema change)
+- Changed: Arsh signed the `messages.forwarded` and `messages.forwarded_from_raw` columns
+  (PROPOSED_CHANGES.md, "approved" 2026-10-16 02:53Z in the UFDR thread), applied to
+  `core/schema.sql` and the `Message` model in `core/contracts.py`. The UFDR and Excel importers
+  now mark each message the extraction labels Forwarded; the UFDR importer records the original
+  author when the package embeds the original and names exactly one sender, as written. The
+  claim page and report name that author in the record's warning ("which Baker has not checked"),
+  as a cited span: it is the source's text, never Baker's words, so a name such as "Deleted
+  Account" passes the forbidden-word check. Contracts 0.3.0 -> 0.4.0 (`core/contracts.py` and the
+  `core/schema.sql` header, as that file's own rule asks); report 0.4.0 -> 0.6.0 (0.5.0 is #91's).
+  Fail-closed handling from #73 is unchanged: a forwarded message still cannot support or
+  contradict a claim, checks resting on it stay inconclusive, and SenderCheck never credits the
+  forwarder. Cases made before the columns keep working from the coverage list. After Codex
+  review: no author is recorded when the embedded message is itself forwarded (it would name an
+  intermediate forwarder), and the claim, stance, check and coverage notes now say Baker "has not
+  verified" who first wrote the words, which stays true when the extraction names an author.
+- Where: main (PR #89, merge 4513a4a, 2026-10-19).
+- Verified: 4 new or extended tests (UFDR marks with and without a named author, quote not a
+  forward; Excel label; a case made on the old schema still fails closed; an author named
+  "Deleted Account" renders cited in the report and on the claim page, which pass the
+  forbidden-word check); full `make check` and eval in the PR description. Grok's audit of
+  31f2993 (standing in for Codex, Arsh 2026-10-19) found the cited-span and version issues,
+  fixed here.
+- Open: AXIOM does not read forwarded marks yet; only forwards the extraction labels are caught;
+  the original author is the extraction's claim, not checked. The stance prompt is not told the
+  message was forwarded (prompts are signed); the stored stance is still downgraded. No in-place
+  migration: an existing case database is not upgraded, so its messages lack the
+  columns and keep the coverage-list behaviour.
+- Affects: capabilities (forwarded marked on the record and shown with its author). No verdict,
+  privacy or performance change. Customer-facing claims unchanged; UFDR stays unverified.
 
----
+## 2026-10-16: Versions stamped on every result (#91, after #76)
+- Changed: closes the rest of pilot gate 3 ("versions stamped on every result",
+  `docs/PILOT_GATES.md` in #82). PR #76 records the quote-check version (1.2.0) on every run
+  and prints it in the report's versions table and Run section. This PR adds what was still
+  missing. The "Baker version" reports printed was `PIPELINE_VERSION`, a fixed "0.1.0"; every
+  run now also records the release (`pyproject.toml`) and the git commit that ran, flagged when
+  tracked files had uncommitted changes (`core/build.py`, stored as `build` in the run's config,
+  no schema change). An installed copy has no `.git`, so it reads the commit from the
+  installer's `BUILD_INFO.json`; the Mac installer now writes one (with whether the copied
+  tracked files differed from the commit, since it copies uncommitted edits too), as the Windows
+  one already did. The zipped folder the Mac install guide starts from has no `.git`, so
+  `core/BUILD_COMMIT` is filled in by `git archive` (`export-subst` in `.gitattributes`; Codex).
+  When whether files changed is unknown, the stamp says "uncommitted changes not checked" (Grok
+  audit); an installed copy recorded as clean also reads that way, since its files cannot be
+  rechecked later (Codex). A rules-only re-run also names the build its reused evidence and labels
+  came from, when that differs, through chained re-runs (`evidence_build`; Codex). The report's top line now reads "Baker <release>, commit <12 hex> · pipeline <v> · rules
+  <v> · quote check <v>" (it showed only the rules), the versions table gives the build and each
+  model's seed beside its SHA-256, the case overview screen names the build and the quote check,
+  and the eval's `run.json` carries a `versions` block (build, pipeline, rules, quote check, each
+  model's SHA-256, prompt and seed). `REPORT_VERSION` 0.4.0 -> 0.5.0, since the report's output changes
+  (merge audit). No frozen file changes; nothing new is stored.
+- Where: main (PR #91, merge fe65aa1, 2026-10-18).
+- Verified: `test_the_report_and_the_screen_stamp_every_version_a_result_depends_on`
+  (`tests/test_report_consistency.py`, synthetic case01) and `tests/test_build.py` (a git
+  checkout, clean and with changes; an installed copy with `BUILD_INFO.json` beside or inside
+  the source); `make check` results in the PR. The Mac installer's new lines were checked for
+  syntax only (`bash -n`), not by a real install.
+- Open: the per-claim "Rule version ..." line on the claim page and in the report does not
+  repeat the quote-check version (the run's is in the report's top line and Run section).
+  Runs made before this PR show "release and commit not recorded". The release is still
+  0.0.1 in `pyproject.toml`; nothing bumps it per release yet. Gate 3 counts as met once this PR
+  is on main.
+- Affects: customer-facing claims (the audit packet names the quote check that ran);
+
+## 2026-10-16: A changed upload stores nothing (#88)
+- Changed: if a case-folder copy changed between upload and import, the browser said the import
+  failed but every record parsed from the changed copy stayed in the case database (found by a
+  Codex review on #82). Each importer (Cellebrite Excel and PDF, UFDR, AXIOM, govdoc PDF) now
+  takes the upload's SHA-256 and refuses other bytes before parsing them; the screen
+  says the file changed, with both hashes. The CLI path passes no hash and is unchanged.
+- Where: main (PR #88, merge 691d898, 2026-10-18).
+- Verified: `tests/test_import_changed.py` (synthetic case01, all five input kinds) fails on
+  main with records left behind and passes here; `make check` 2104 passed, 8 skipped; eval
+  unchanged (case01 model-free 1.00, 0 false supported).
+- Open: Codex was out of credits; self-reviewed only.
+- Affects: capabilities (import integrity); privacy, performance and claims unchanged.
+## 2026-10-16: The expert's reason for an evidence decision is in the audit log (#86)
+- Changed: the `evidence.decide` log entry now carries the reason the expert typed (before, only
+  the evidence id, review id and status), as verdict, identity and override notes already did.
+  The audit log check (`require_intact`) also compares each logged reason with the one stored in
+  `evidence_reviews`; a reason or status edited in the database after it was logged, or an
+  expert review row added or removed without its log entry, blocks the case like a broken chain. Both tables are read in one
+  statement, so a decision another Baker process commits meanwhile never looks like tampering.
+  Found by the Pilot docs pack thread (#82 disclosed the gap).
+- Where: main (PR #86, merge 80bf0df, 2026-10-18).
+- Verified: 7 new tests in `tests/test_chain_on_open.py` (reason logged; an edited reason or
+  status blocks the CLI and `verify-log` names it; an expert review added or removed outside
+  Baker is blocked; AI reviews need no entry; a decision logged without a reason still
+  verifies). `make check` passed 2026-10-19 in a Linux cloud container with main `97c7daa`
+  merged in: 2092 passed,
+  8 skipped; case01 model-free accuracy 1.00, 0 false supported; hostile PASS.
+- Open: decisions logged before this change carry no reason in the log, so their reasons are not
+  compared. Someone who edits the reason, the log and the anchor file together is not caught
+  (same limit as the rest of the log).
+- Affects: customer-facing claims (an expert's reasons are now tamper-evident); the report's
+  expert-actions table and the screen's Log page now show the reason; no privacy change (the
+  reason stays inside the case database, not the anchor file).
+
+## 2026-10-15: Pilot gates, onboarding kit, methods note, security pack (#82)
+- Changed: four documents, no code (Grok Product review #80 items 9, 10, 11, 13).
+  `docs/PILOT_GATES.md` defines pilot-ready as pass/fail gates (12, then 18 after Grok's pilot-ready list) with today's state;
+  `docs/PILOT_ONBOARDING.md` covers hardware, Mac and Windows install (Windows unsigned), the
+  `baker demo` walkthrough, a first case, unverified imports and blocked cases;
+  `docs/METHODS.md` describes claim, assumption, check and rules, the expert gate, verdict meanings,
+  provenance and hashing, and limits, with no accuracy figures; `docs/SECURITY_PRIVACY.md` has the
+  data-flow diagram (local today; #68's opt-in cloud gated, no model passed), encryption, key handling, retention
+  and deletion with Anthropic's pages linked, the cloud policy with the CSAM rule, and how to verify
+  the no-network claim. Codex rounds 1 (10 findings) and 2 (8: overrides bypass the rule
+  prerequisites, evidence reasons not hash-chained, coverage locators capped at 50, cloud retries,
+  no copying of an installed Mac folder, gated cloud option, anchor limits, #68 merge state) and 3 (5: checksum by a separate route, stop Baker before a
+  backup copy, request draft and ufdr-check output in deletion, gate 6 scoped to time fields, the
+  import-mismatch bug disclosed) fixed. On 2026-10-16 Grok's pilot-ready list was folded in
+  (Arsh agreed): gates 13 to 18 added (integrity fixes #86 and #88, signed case02 answer key,
+  stopped runs, pilot agreement, one-pager and support, feedback form); runtime gate names the
+  24 GB Mac and AWS g5 (A10G); real-export gate covers Cellebrite, UFDR and AXIOM. After #76 merged, gates 2 and 3 are met;
+  gate 14 is met by the case02 key Arsh signed 2026-10-12. Codex round 4 (5) fixed;
+  round 5 found the printed Baker version is a constant, not the build, so gate 3 is back to not
+  met: 8 of 18. Round 6 (5) fixed: verdicts scoped to finished claims, provenance tiers scoped
+  to the objects that carry them, the installer-download test described as what it checks, key
+  destruction leaves `case.json` and input names readable, and the feedback form published as
+  `docs/PILOT_FEEDBACK_FORM.md` (pricing question left out of the public repo) so gate 18 has
+  evidence on main. `install-mac.md` and `demo.md` no longer state the 6 to 8 h runtime as
+  current. PRODUCT_STATUS section 11 links the gates.
+- Where: main (PR #82, merge 213d2ca, 2026-10-18).
+- Verified: each statement checked against main `8ed89f9` code and docs, and #68 head `de219c1`
+  for cloud facts; the 6 no-network tests named in the pack pass (Linux, 2026-10-15); Anthropic's
+  API retention page and Commercial Terms read 2026-10-15 (the privacy-center article did not load
+  from the cloud session and was not re-read).
+- Open: gate 11 (an outside person completes the kit on a clean Mac) needs a human; 8 of 18 gates
+  are met (gate 2 by #76; gate 14 by the case02 key signed 2026-10-12; gates 6, 7, 8 by #72, #74, #68; gate 12 by this PR; gate 15 already in place; gate 18 by the form this PR publishes); the Mac installer's uv, Python and
+  PyPI downloads are not hash-pinned (disclosed in the pack); gate 4 waits on #89 (signed
+  forwarded-message schema); gate 13 on #86 and #88.
+- Affects: customer-facing claims (what buyers and examiners are told, all checked against code);
+  no capability, privacy or performance change.
+
+## 2026-10-15: Curated report against a larger source of the same phone (#78)
+- Changed: when a case holds an examiner-curated report and a larger source of the same phone
+  (a UFDR), each report message, call and contact is found once, found more than once, or not
+  found in the larger source; the messages and calls the larger source holds that the report
+  does not are listed near each claim, by conversation then time distance, with no model
+  ranking. Fails closed: ambiguous candidates, and records near a report record not found, are
+  "may be in the report", never counted; under 95% found lists nothing. Selection tab, report
+  section (one renderer) and a line on each claim page. Never changes a verdict; nothing stored. (Grok Product item 9.)
+- Where: main (PR #78, merge 97c7daa, 2026-10-18).
+- Verified: 29 tests on two synthetic pairs (case01 item1 report vs a UFDR with planted records;
+  a small new pair): planted omissions found per claim in the expected order, ambiguous and
+  unmatched cases held back, screen and report list the same records, read-only. Headless-
+  Chromium smoke passed (no external requests, Referrer-Policy same-origin). case02 not used:
+  it is held out.
+- Open: not checked on real Cellebrite or AXIOM exports (no public UFDR, #73); Grok made this
+  depend on item 8. Pairing rests on a shared phone-owner account plus the same stated device
+  model (no serial number or IMEI is stored); records after the report's extraction are not
+  counted, and contacts (which carry no time) are never counted (Codex review). Speed
+  measured only on case01 size (about 0.2 s) and a 120,000-message in-memory match (about
+  1 s); not on a real case.
+- Affects: capabilities (new analysis, branch only); no privacy or network change; customer
+  claims unchanged until merged and checked on real exports.
+
+## 2026-10-16: Training data for the small model's runs 6 to 8: harder sender and time traps (#87)
+- Changed: the training-data generators (`eval/train/`) write harder traps, because the small
+  model kept calling some of them supports. Run 6's data (`eval.train 1.4.0`): run 5 showed 10 of
+  26 dev sender traps as supports; in its data every sender trap gave the record's exact words
+  while every supports item reported the message, so the frame alone said supports. Now half the
+  sender traps use the supports items' report frames, 3 in 10 name an account outside the chat
+  (some with the same first name as the chat's contact), and the exact-value scene draws one too
+  (400 to 515 sender traps); a report of "only if X will I Y" keeps "only". Run 7's data
+  (`eval.train 1.5.0`): run 6 still showed 5 of 40 dev time traps as supports; in its data no
+  time trap missed by under 15 minutes while 11% of supports bounds were that close, so closeness
+  said supports. Now a bound, or a range's nearest end, lands 3 to 14 minutes from the record
+  about as often whether it holds or misses (run 8's clock bounds: 33% of supports items', 40%
+  of time traps'); time traps also miss at the record's own clock on the day before or after, at
+  its UTC clock, and by a part of the day; the time scene pairs a time that holds with one that
+  misses; time traps go from 355 to 823; irrelevant items carry a time half the time (from 35%),
+  so a clock reading does not point away from irrelevant.
+  Run 8's data is the same code drawn with seed 4. The Baker-wording items are unchanged
+  (`eval.train.baker 1.4.1`); the guide is unchanged (signed v0.3).
+- Where: main (PR #87, merge 966be8f, 2026-10-16). The data drops are in
+  `/mnt/project-files/baker/stancedata/run6/`, `run7/` and `run8/`, each with its README, sha256
+  and overlap reports.
+- Verified: this head writes run 7's and run 8's generator output byte for byte (seed 1
+  `6358fbc4…`, seed 4 `c292c424…`), and its run 6 commit (c16018e) writes run 6's (`4627aa11…`).
+  Held-out files unchanged (test `4f106386…`, dev `36cd0d79…`). Overlap check on each delivered
+  file against Baker's test data, the held-out files and the told-frame test sets: PASS, 0
+  flagged, after dropping the 6, 3 and 6 chance matches the check flagged in the generator's
+  output (listed in each drop's README). Blind reads from the signed guide alone: two readers each
+  agreed with all 26 run 6 items (18 sender traps, 8 supports controls) and all 32 run 7 items (22
+  time traps, 10 supports controls). New tests: frame-shaped and outside-account sender traps;
+  bounds and ranges come as near the record whether they hold or miss, never nearer than 3
+  minutes; another date's bound runs away from the record's date; a UTC miss gives the record's
+  UTC clock. `make check`: lint clean, 2,014 tests passed, eval unchanged (case01 1.00, 0 false
+  supported).
+- Open: on dev, run 6 showed 9 moved traps as supports and run 7 showed 4 (3 time traps, 1 later
+  correction). With supports needing p >= 0.99, run 7 meets every go-bar level on dev but misses
+  tune.py's pre-set recall margin (0.95), so there is no candidate yet; run 8's result is
+  pending. Contact and call rows still use the signed guide's rule 28 format (`<saved name>
+  <number>`, `outgoing call from … at …, 604s`), not #76's text.
+- Affects: none in the product (eval only). It changes what the candidate small stance model
+  trains on.
 
 ## 2026-10-15: Training data for the small model's run 5 (#79)
 - Changed: the training-data generators (`eval/train/`, `eval/stancedata/bakerform.py`) write
@@ -59,7 +239,7 @@ Template:
   traps said "the message "x" was sent by ...", words that name one message, which leaves
   their label unclear under guide rule 23; a zone-edge window could cross New Year or end at
   "12 p.m.". New tests check each one; 5 of them fail on the first commit.
-- Where: branch `claude/project-thread-czwpc8`, PR #79, not merged.
+- Where: main (PR #79, merge e99a288, 2026-10-15).
 - Verified: 56e0da4 regenerates run 5's training file byte for byte (19,250 items, sha256
   `00ceae8f…`); the head writes `c4031e1f…`, with the same counts by family and label. The
   held-out files are unchanged (test `4f106386…`, dev `36cd0d79…`). Overlap check on both
@@ -87,7 +267,7 @@ Template:
   stated time windows, so verdicts decided under 0.2.1 can differ. "Re-run verdicts" now refuses
   an audit made under rules older than 0.2.2 and asks for a full audit, since its stored
   assumptions were built the old way (`core/review/redecide.py`, `INPUTS_CHANGED_AT`).
-- Where: branch `claude/project-thread-ia32bq`, PR #75, not merged. Arsh approved the bump
+- Where: main (PR #75, merge 79ad922, 2026-10-15). Arsh approved the bump
   2026-10-15 07:20Z.
 - Verified: `make check` green; new redecide test; eval unchanged (case01 1.00, 0 false
   supported; case02 0.90, 0 false supported; hostile PASS). Codex's one finding fixed.
@@ -135,7 +315,7 @@ Template:
   stop the report build whenever a counted message had the source's deletion flag. Found by Codex
   on #82. A grep of core/ and ui/ found no other Baker-authored prose with a forbidden word;
   `baker ufdr-check` output names the package's own `deleted_state` field and was left as is.
-- Where: branch `claude/fix-count-deleted-wording-oxal24`, PR #83, not merged.
+- Where: main (PR #83, merge 275f97a, 2026-10-15).
 - Verified: new unit test (fails on main, passes here) checks the detail and search text against
   FORBIDDEN_WORDS and `check_report_text`. `make check` passed 2026-10-15 in a Linux cloud
   container: 1884 passed, 6 skipped; case01 model-free accuracy 1.00, 0 false supported.
@@ -159,7 +339,7 @@ Template:
   counted (info); a taggedFiles id listed with two different paths links to no file and is
   listed under Limitations (attention). Rules 0.2.x untouched; full author and forwarder columns
   proposed in PROPOSED_CHANGES.md (needs Arsh's signature).
-- Where: branch `claude/project-thread-hz9jqt`, PR #73, not merged.
+- Where: main (PR #73, merge 7655056).
 - Verified: 6 tests for the sample bugs and 13 for item 1 and 6 (forwarded, quoted and nested
   forwards, Excel label, fail-closed stance after an expert accept, inconclusive checks,
   SenderCheck, claim-page and report warnings, picture count, repeated tagged ids, ufdr-check
@@ -186,7 +366,7 @@ Template:
   Bug fixed: the verdict "decided" time came from the wall clock, not the run's clock; the
   pipeline and re-decide now stamp the run's clock. Report evidence rows carry evidence-id
   anchors. `core/audit/rules.py` unchanged. (Grok Product items 6 and 7.)
-- Where: branch `claude/project-thread-kq0r95`, PR #72, not merged.
+- Where: main (PR #72, merge 3b33820, 2026-10-15).
 - Verified (as reported by the owning thread): ruff clean; 1862 tests pass, 1 fails (the known
   test #65 fixes); eval case01 1.00, 0 false supported, hostile PASS, case02 aggregate 0.90; no
   verdict changed.
@@ -194,22 +374,54 @@ Template:
 - Affects: customer-facing claims (supports "reproducible audit packet", on synthetic data with
   time fields masked). No privacy or performance change.
 
-## 2026-10-15: Quote check reads contacts as the model sees them (#76, fixes #69)
-- Changed: one function now renders a contact ("Name: +1...") for retrieval, the quote check,
-  `core/audit/quotes.py` and the small model's generated training items, so correct contact
-  quotes are no longer discarded. The synthetic case01 affidavit PDF embeds DejaVu Sans for
-  lines Helvetica can't draw ("Катя" read as boxes).
-- Where: PR #76 (from the "Audit our model scoring" thread), not merged. Includes the C17 font
-  fix.
-- Verified (as reported by the owning thread): 2 new regression tests; suite and lint pass except
-  the known #65 test; `make eval` same as main (case01 1.00, 0 false supported; case02 aggregate
-  0.90), hostile run keeps 15 more labels with 0 supported. Opus replay: case01 85% to 95%,
-  sheet-free 60% to 70%.
-- Open: calls still render differently for the model and the check (no case01 verdict changes);
-  signed guide rule 28 still writes contacts without the colon (needs Arsh); small-model run 5
-  trained on colon-less contact rows (train/product mismatch).
-- Affects: capabilities (more correct evidence kept, for Opus and the 14B). No privacy, network,
-  performance or customer-claim change.
+## 2026-10-15: Quote check reads contacts and calls as the model sees them (#76, fixes #69)
+- Changed: the quote check (`core/audit/invariants.record_text`) now reads a contact
+  ("Name: +1...") and a call ("outgoing Phone call from +1... to +1..., duration 84 s") exactly
+  as retrieval shows them to the labeler (`core.enrich.records`), so correct quotes are no longer
+  discarded. Why it matters: the check drops a label before its stance is used, so a dropped
+  "contradicts" or "complicates" could let a claim with other accepted support go SUPPORTED.
+  The report still shows a call's time beside its line. Evidence a run stored before #76 still
+  passes the stored-quote re-check in the contact or call text of its day, so an older case
+  re-decides; a run that records a quote-check version gets no such fallback (fails closed).
+  The small model's generated contact rows follow the product too. The synthetic case01 affidavit PDF embeds DejaVu Sans for lines
+  Helvetica can't draw ("Катя" read as boxes).
+  Grok review on #80, item 3: the quote check now has a version. `core/audit/quotes.VERSION`
+  1.1.0 -> 1.2.0 is stored in every audit run's config (a rules-only re-run carries its evidence
+  run's; a run with another quote verifier, such as the eval's stand-ins, names it) and printed
+  in the report beside the rule version; a test pins the check's answers to it, so a change
+  without a bump fails. A quote now verifies only if it takes in a letter or digit of the
+  record's own fields: at a word-aligned place in the pipeline, whatever verifier a run is
+  given (`cites_record`), and at any place in the stored re-check
+  (`core/audit/invariants.quote_is_verbatim`), which holds evidence to the check of its day only
+  for a run that records no quote-check version (Grok merge-bot review on #76). "(no name)", "unknown" or "call from" alone fail; "(no name): +1..." passes. `core/audit/quotes.record_text`, which still said calls had no
+  citable text, now reads every record as the labeler sees it, as the pipeline already did.
+- Where: main (PR #76, merge 8abaeea, 2026-10-16), from the "Audit our model scoring" thread.
+  Includes the C17 font fix.
+- Verified: new regression tests (each fails without its fix), among them a contact and a call
+  labeled "contradicts" and quoted as shown: before, the label was dropped and C01 went
+  SUPPORTED; now CONTRADICTED. A test checks every case01 record reads the same for the labeler
+  and the check. A stored "call from" on a run recording 1.2.0 stops a re-run of the verdicts;
+  the same case with no recorded version re-decides. A test checks that the claim page shows each
+  call with the same UTC and printed time as the report (both use `record_line`).
+  `make check` green on the branch with main at 79ad922 merged in (2045 passed, lint clean); `make eval` same as
+  main (case01 1.00, 0 false supported; case02 aggregate 0.90); hostile run keeps 494 items and
+  drops 4 labels (main 462 and 36), 0 supported. Offline, on stored answers: Opus case01 85% to
+  95% (signed sheet), 60% to 70% (no sheet), 0 false supported; replayed through the new check,
+  every Opus supports, contradicts and complicates label of the no-sheet run passes (108), and
+  Sonnet and Haiku (2026-10-14) each lose 2, all on a message whose whole body is "?".
+- Open: a label whose quote is not verbatim, has no letter or digit, or takes in only Baker's
+  words or a placeholder is still dropped whatever its stance, and the report shows only a count
+  of dropped labels. Runs from before #76 show "not recorded (1.1.0 or earlier)" for the quote
+  check; re-running only their verdicts does not bring back labels the old check dropped, a
+  full audit does (it reuses stored model answers). Generated call rows
+  for the small model still print the report's time (signed guide rule 28), unlike the product;
+  aligning them is for the "Custom model for Baker" thread. The guide's contact rows lack the
+  colon (proposed for Arsh in PROPOSED_CHANGES.md); small-model run 5 trained on the old rows.
+- Affects: capabilities (more correct evidence kept, for Opus and the 14B); closes, for contacts
+  and calls, a path where a dropped "contradicts" or "complicates" let a claim go SUPPORTED.
+  Report 0.3.0 -> 0.4.0 (`core/report/html.REPORT_VERSION`): a call's line shows its UTC and
+  printed time, as on the review screen, and the versions show the quote check.
+  No privacy, network, performance or customer-claim change.
 
 ## 2026-10-15: Stricter reading of stated time windows (#66, 9d24024)
 - Changed: "after March 3" now starts on March 4 (it started on March 3, which could produce a
@@ -240,7 +452,7 @@ Template:
 - Changed: Arsh agreed to position Baker as a verification layer on Cellebrite and AXIOM for
   forensic examiners, and chose "Opt-in cloud" (07:10Z): local by default, cloud AI only when the
   case allows it and the expert opts in. PRODUCT_STATUS section 12 checks each claim in the line.
-- Where: decision only; #68 still a draft.
+- Where: decision only; carried out by #68 (main, merge ed0a3a8, 2026-10-15), gated off.
 - Verified: claims 1, 2, 5 true; 3 true for absence and count findings; 4 partly true; 6 depends
   on #68.
 - Open: none.
@@ -257,7 +469,7 @@ Template:
 ## 2026-10-15: Source-of-truth docs (this change)
 - Changed: added `docs/PRODUCT_STATUS.md`, this log, and a CLAUDE.md rule to keep both current,
   so Grok Product and coding agents read one verified description of Baker.
-- Where: PR #71 (branch `claude/project-thread-d7xp9z`, not merged). CLAUDE.md wording signed by
+- Where: main (PR #71, merge 8ed89f9, 2026-10-15). CLAUDE.md wording signed by
   Arsh ("approved", 2026-10-15 07:19Z).
 - Verified: facts checked against main `7a14437`, open PR branches and recorded bench runs.
   Section 12 checks the six claims in the proposed positioning line, with file:line.
@@ -275,7 +487,8 @@ Template:
   reads as a config error; the "saved in this case" message checks the exact sealed path; the
   key is dropped from memory when a cloud audit ends; the Mac install guide no longer promises
   offline use for a cloud case.
-- Where: branch `claude/project-thread-a2fjkc`, PR #68, draft, not merged.
+- Where: main (PR #68, merge ed0a3a8, 2026-10-15), gated off until a model passes the signed
+  stance test.
 - Verified: `make check` passes, 1940 tests; gates unchanged (case01 1.00, 0 false supported,
   unreviewed 0.60, hostile PASS, case02 0.90); new tests for the gate, preflight, re-ask and a
   damaged sealed key. No real API call.
@@ -301,7 +514,8 @@ Template:
   locked; a plain case keeps the owner-only `~/.baker/cloud.json`; the env var still wins.
   Claim proposal, assumption filling and the AI reviewer stay local. Reason: Arsh chose
   "Opt-in cloud" (2026-10-15 07:10Z).
-- Where: branch `claude/project-thread-a2fjkc`, PR #68, draft, not merged (main merged in after #71).
+- Where: main (PR #68, merge ed0a3a8, 2026-10-15), gated off until a model passes the signed
+  stance test.
 - Verified (as reported by the owning thread; `cloud.sent` and the pause checked in
   `core/audit/_local_model.py` on the branch): `make check` passes, 1933 tests; gates unchanged
   (case01 1.00, 0 false supported, unreviewed 0.60, hostile PASS, case02 0.90); a simulated
@@ -323,7 +537,7 @@ Template:
 
 ## 2026-10-15: Opus on claim proposal and assumption filling (eval only)
 - Changed: nothing in the product. A preregistered check of moving two more steps to Opus.
-- Where: `eval/bench/cloud_steps.py` on branch #68; results in
+- Where: `eval/bench/cloud_steps.py` on main (PR #68); results in
   `/mnt/project-files/baker/cloud-first/steps-check/RESULTS.md`.
 - Verified: claim recall 80% (bar 90%); sheet-free audit 60% accuracy, 0 false supported (bar
   80%). Both failed, so both steps stay local.

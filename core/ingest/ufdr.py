@@ -42,6 +42,7 @@ from core.contracts import (
     SourceKind,
 )
 from core.encryption import open_input
+from core.ingest import forwarded
 from core.ingest.cellebrite_common import (
     MAX_LISTED,
     Cell,
@@ -62,6 +63,7 @@ from core.ingest.cellebrite_common import (
     norm,
     parse_time,
 )
+from core.ingest.source_file import require_sha256
 from core.review import audit_log
 
 IMPORTER_NAME = "ufdr"
@@ -758,6 +760,7 @@ class UfdrImporter:
         source_id: str | None = None,
         now: datetime | None = None,
         date_order: str | None = None,
+        expected_sha256: str | None = None,
     ) -> None:
         """`date_order` ('mdy' or 'dmy'): the day/month order a person states for times that
         are not ISO 8601. UFDR times are normally ISO 8601 (year first), which is never
@@ -767,9 +770,13 @@ class UfdrImporter:
         self.source_id = source_id
         self.now = now
         self.date_order = date_order
+        self.expected_sha256 = expected_sha256  # refuse other bytes (source_file.require_sha256)
 
     def import_source(self, path: Path, conn: sqlite3.Connection) -> Source:
         sha = sha256_file(path)
+        # The package is read again below; _write re-hashes it before committing, so the
+        # bytes stored are these.
+        require_sha256(path.name, self.expected_sha256, sha)
         with open_input(path) as raw:
             if not zipfile.is_zipfile(raw):
                 raise ValueError(f"{path.name} is not a zip package, so it is not a UFDR")
@@ -974,6 +981,7 @@ class UfdrImporter:
                     "deleted_state_values": dict(sorted(rd.deleted_states.items())),
                 },
             )
+            forwarded.mark(conn, cov.forwarded_records, cov.forwarded_from)
             payload["counts"] = dict(sorted(cov.counters.items()))
             payload["unmapped_direction_values"] = dict(cov.unmapped_direction_values)
             payload["notes"] = cov.notes
@@ -1092,13 +1100,16 @@ class _RecordMapper:
             self.cov.counters["records_decoding_confidence_not_high"] += 1
             self._flag(table, "decoding_confidence_not_high", locator)
         if table != "Contact" and table != "Call":
-            # No canonical column says a message was forwarded or who wrote it first, so the
-            # message stays the forwarder's; core/ingest/forwarded.py keeps it from supporting
-            # or contradicting a claim, and the expert is told which ones.
+            # The message stays the forwarder's (sender, direction); it is marked forwarded, with
+            # the original author when the package names one, and core/ingest/forwarded.py keeps
+            # it from supporting or contradicting a claim, and the expert is told which ones.
             mid = f"msg:{self.w.src}:{locator}"
             if _forwarded(m):
                 self.cov.counters["messages_marked_forwarded"] += 1
                 self.cov.forwarded_records.setdefault("forwarded", []).append(mid)
+                author = _original_author(m)
+                if author:
+                    self.cov.forwarded_from[mid] = author
                 self._flag(table, "forwarded", locator)
             if m.models("embeddedinstantmessage"):
                 self.cov.counters["messages_with_embedded_message_not_imported"] += 1
@@ -1339,6 +1350,18 @@ def _forwarded(m: _Model) -> bool:
     labels += [x.text("label") or "" for x in m.models("messageextradata")]
     labels += [v for x in m.models("messageextradata") for v in x.multi_values.get("labels", [])]
     return any(is_forwarded_label(v) for v in labels)
+
+
+def _original_author(m: _Model) -> str | None:
+    """The sender of the forwarded original, when the package embeds it and names exactly one
+    (as written); never guessed. An embedded message that is itself forwarded names only an
+    intermediate forwarder, so then no author is recorded."""
+    embedded = m.models("embeddedinstantmessage")
+    if any(_forwarded(e) for e in embedded):
+        return None
+    authors = {_party_text(p) for e in embedded for p, _r in _parties(e.models("from"))}
+    authors.discard("")
+    return authors.pop() if len(authors) == 1 else None
 
 
 def _is_picture(m: _Model) -> bool:

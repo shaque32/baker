@@ -52,8 +52,8 @@ import sqlite3
 from collections import Counter
 from pathlib import Path
 
-from core import pipeline
-from core.audit import invariants
+from core import build, pipeline
+from core.audit import invariants, rules
 from core.contracts import (
     AssumptionKind,
     EvidenceItem,
@@ -68,12 +68,15 @@ from core.ingest import coverage as import_coverage
 from core.ingest import forwarded
 from core.llm.cloud import is_cloud_sha
 from core.report import hypotheses as alternatives_html
+from core.report import paired as paired_html
 from core.report import restore as restore_html
 from core.report import selection as selection_html
 from core.report import timeline as timeline_html
 from core.review import audit_log
 from core.review.status import (
     AWAITING_EXPERT,
+    CONFIRM_STEP,
+    CONTRADICTION_FOUND,
     HOLDINGS,
     SUPPORTED_AI,
     SUPPORTED_EXPERT,
@@ -83,10 +86,22 @@ from core.review.status import (
 )
 from core.review.status import verdict_label as _verdict_label
 
-REPORT_VERSION = "0.3.0"
+# 0.4.0 (#76): a "Quote check" row in Versions and the run line, and a call's UTC and printed
+# time beside its line (the review screen shows the same line, through record_line).
+# 0.5.0 (#91): the top line names the Baker release and git commit, the pipeline, rule and
+# quote-check versions; Versions gives the build and each model's seed beside its SHA-256.
+# 0.6.0 (#89): a forwarded record's warning names its original author, as a cited span, when the
+# extraction names one.
+# 0.7.0: Versions says whether forwarded marks are on the record or, in a case made before
+# contracts 0.4.0, only in the coverage list (no original author is named there).
+# 0.8.0 (rules 0.3.0): a claim whose model contradiction waits for the expert prints
+# "Contradiction found, confirm to finalize", like the screen; Versions names the claim types
+# whose model contradictions count without an expert, and the probe run that qualified each.
+REPORT_VERSION = "0.8.0"
 
 __all__ = [
     "AWAITING_EXPERT",
+    "CONTRADICTION_FOUND",
     "SUPPORTED_AI",
     "SUPPORTED_EXPERT",
     "render_report",
@@ -157,6 +172,8 @@ th { background: var(--panel); font: 500 10.5px var(--mono); letter-spacing: 0.1
 .v-unp::before { content: "?"; }
 .v-await { color: var(--await); background: var(--unp-bg); border: 1px dashed var(--await); }
 .v-await::before { content: "?"; }
+.v-confirm { color: var(--con); background: var(--con-bg); border: 1px dashed var(--con); }
+.v-confirm::before { content: "✕"; }
 .verdict.v-nt { color: var(--muted); background: var(--panel); border: 1px dashed var(--muted); }
 .v-nt::before { content: "–"; }
 blockquote { margin: 10px 0; padding: 8px 14px; border-left: 2px solid var(--line-strong);
@@ -196,9 +213,11 @@ def e(text: object) -> str:
     return html.escape("" if text is None else str(text))
 
 
-def verdict_label(decision: VerdictDecision, awaiting: bool = False) -> tuple[str, str]:
+def verdict_label(
+    decision: VerdictDecision, awaiting: bool = False, contradiction: bool = False
+) -> tuple[str, str]:
     """(display text, css class). Kept here for callers of the report module."""
-    return _verdict_label(decision, awaiting)
+    return _verdict_label(decision, awaiting, contradiction)
 
 
 def labelled_by(conn: sqlite3.Connection, model_run_id: str | None) -> str:
@@ -320,6 +339,11 @@ def _limitations(conn: sqlite3.Connection, srcs: list[tuple]) -> str:
         "does, the verdict is unproven. The labels are model output and can be wrong, so the "
         "expert checks each item. The local AI reviewer's acceptances only sort evidence for "
         "the expert; they never make a claim supported.</li>",
+        f"<li><strong>{CONTRADICTION_FOUND}</strong> means Baker found records it reads as "
+        "contradicting a core assumption of the claim. A contradiction found by the stance "
+        "labeler counts once an expert confirms it, with a reason recorded in the audit log; "
+        "until then the verdict is unproven. A failed deterministic check contradicts a claim "
+        "without this step.</li>",
         "<li>Unproven means the evidence Baker reviewed does not establish the claim. It does "
         "not mean the claim is false.</li>",
         "<li>A search that finds nothing does not show that something did not happen. Each "
@@ -350,10 +374,13 @@ def record_line(
 ) -> str:
     note = (found or {}).get(record_id)
     if note:
-        return (
-            f"{record_line(conn, record_id)}<br><strong class='warn'>"
-            f"{e(forwarded.RECORD_NOTE[note])}</strong>"
-        )
+        author = forwarded.original_author(conn, record_id) if note == "forwarded" else None
+        if author:
+            before, after = forwarded.AUTHOR_NOTE
+            warning = f"{e(before)}{q(author)}{e(after)}"  # the author is the source's text
+        else:
+            warning = e(forwarded.RECORD_NOTE[note])
+        return f"{record_line(conn, record_id)}<br><strong class='warn'>{warning}</strong>"
     if record_id.startswith("msg:"):
         r = conn.execute(
             "SELECT m.ts_utc, m.ts_raw, a.identifier, a.display_name, t.app, t.title"
@@ -369,6 +396,9 @@ def record_line(
                 f"as printed {q(r[1] or 'not given')}"
             )
     text = invariants.record_text(conn, record_id)
+    if text is not None and record_id.startswith("call:"):
+        r = conn.execute("SELECT ts_utc, ts_raw FROM calls WHERE id = ?", (record_id,)).fetchone()
+        return f"{q(text)}; UTC {e(r[0] or 'not given')}, as printed {q(r[1] or 'not given')}"
     return q(text) if text is not None else "record not found"
 
 
@@ -392,6 +422,8 @@ def _claim_block(conn: sqlite3.Connection, st: ClaimState, case: explain.Case) -
             f"AI reviewer and {st.open_support} not reviewed, waiting for an expert to agree or "
             "disagree. Until an expert accepts the key evidence, the claim stays unproven.</p>"
         )
+    if st.contradiction_found:
+        out.append(f"<p>{e(CONFIRM_STEP.format(n=st.open_contradicts))}</p>")
     if st.edited_after_run:
         out.append("<p><strong>The claim text changed after this audit.</strong> Re-run it.</p>")
     if decision is not None:
@@ -540,29 +572,81 @@ def audit_log_summary(conn: sqlite3.Connection) -> dict:
     }
 
 
+def quote_check_label(run: dict) -> str:
+    """The quote check the run's evidence passed (core.audit.quotes.VERSION). Runs before 1.2.0
+    did not record it."""
+    return (run.get("config") or {}).get("quote_check") or "not recorded (1.1.0 or earlier)"
+
+
+def build_label(run: dict) -> str:
+    """The Baker release and git commit the run used (core.build). Runs before #91 did not
+    record them; their "Baker pipeline" version alone cannot tell two builds apart. A rules-only
+    re-run also names the build its evidence came from, when that differs."""
+    return build.run_label(run.get("config") or {})
+
+
+def forwarded_label(conn: sqlite3.Connection) -> str:
+    """Where the case keeps forwarded marks. A case made before contracts 0.4.0 has no forwarded
+    columns: forwarded messages its imports listed still fail closed, from the coverage list, but
+    no original author is named. An import made before that list existed (#73) recorded no list,
+    and nothing tells it apart from an import that found no forwarded messages, so the label
+    says so rather than promise the fail-closed path."""
+    if forwarded.has_columns(conn):
+        return "on the record, with the original author when the extraction names one"
+    return (
+        "coverage list only (case made before contracts 0.4.0): listed forwarded messages fail "
+        "closed, but no original author is named. A source imported before Baker listed "
+        "forwarded messages (#73) has no list, so its forwarded messages are not marked; "
+        "re-import it to check"
+    )
+
+
+def auto_contradict_label(run: dict | None) -> str:
+    """Which claim types a model's contradiction marks contradicted with no expert (rule 1b),
+    and the probe run that qualified each, under the current rules."""
+    auto = rules.auto_contradict()
+    if auto:
+        types = sorted(auto, key=lambda t: t.value)
+        text = "; ".join(f"{t.value} claims (qualified by {auto[t]})" for t in types)
+    else:
+        text = "none: every model contradiction counts once an expert confirms it"
+    text = f"{text} (rules {rules.RULE_VERSION})"
+    if run and run.get("rule_version") != rules.RULE_VERSION:
+        text += (
+            f". This audit was decided under rules {run.get('rule_version')}; re-run the verdicts "
+            "to apply the current rules"
+        )
+    return text
+
+
 def _versions(conn: sqlite3.Connection, run: dict | None) -> str:
     rows = [("Report", REPORT_VERSION), ("Other explanations (code)", explain.VERSION)]
     if run:
         rows += [
+            ("Baker build", build_label(run)),
             ("Baker pipeline", run["baker_version"]),
             ("Contracts", run["contracts_version"]),
             ("Verdict rules", run["rule_version"]),
+            ("Quote check", quote_check_label(run)),
         ]
         cloud = (run.get("config") or {}).get("cloud")
         if isinstance(cloud, dict):
             rows.append(("Stance labels", str(cloud.get("why", ""))))
+    rows.append(("Forwarded marks", forwarded_label(conn)))
+    rows.append(("Model contradictions without an expert", auto_contradict_label(run)))
     model_rows = list(
         conn.execute(
-            "SELECT purpose, model_name, model_sha256, prompt_version FROM model_runs"
+            "SELECT purpose, model_name, model_sha256, prompt_version, seed FROM model_runs"
             " ORDER BY purpose, id"
         )
     )
     out = ["<table><thead><tr><th>Part</th><th>Version</th></tr></thead>"]
     out += [f"<tr><td>{e(k)}</td><td class='mono'>{e(v)}</td></tr>" for k, v in rows]
-    for purpose, name, sha, prompt in model_rows:
+    for purpose, name, sha, prompt, seed in model_rows:
         out.append(
             f"<tr><td>Model for {e(purpose)}</td><td class='mono'>{e(name)}, prompt "
-            f"{e(prompt)}, SHA-256 {e(sha)}</td></tr>"
+            f"{e(prompt)}, SHA-256 {e(sha)}, seed "
+            f"{e(seed) if seed is not None else 'not recorded'}</td></tr>"
         )
     if not model_rows:
         out.append("<tr><td>Models</td><td>No model run is recorded.</td></tr>")
@@ -583,14 +667,20 @@ def render_report(conn: sqlite3.Connection, timeline: timeline_html.Settings | N
         "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
         "<title>Baker claims report</title>"
-        f"<style>{CSS}{restore_html.CSS}{timeline_html.CSS}{selection_html.CSS}"
+        f"<style>{CSS}{restore_html.CSS}{timeline_html.CSS}{selection_html.CSS}{paired_html.CSS}"
         f"{alternatives_html.CSS}</style>"
         "</head><body>",
         "<h1>Baker claims report</h1>",
         "<p class='muted'>"
         + (" · ".join(q(t) for t in govdocs) or "No government document imported")
         + f" · report {REPORT_VERSION}"
-        + (f" · rules {e(run['rule_version'])}" if run else "")
+        + (
+            f" · Baker {e(build_label(run))} · pipeline {e(run['baker_version'])}"
+            f" · rules {e(run['rule_version'])}"
+            f" · quote check {e(quote_check_label(run))}"
+            if run
+            else ""
+        )
         + "</p>",
     ]
     if run is None:
@@ -628,6 +718,13 @@ def render_report(conn: sqlite3.Connection, timeline: timeline_html.Settings | N
                 f"<div class='banner'><strong>{awaiting} claim(s): support found, waiting for "
                 "the expert to agree.</strong> They stay unproven until an expert accepts their "
                 "key evidence.</div>"
+            )
+        found = sum(1 for st in states if st.contradiction_found)
+        if found:
+            parts.append(
+                f"<div class='banner'><strong>{found} claim(s): {e(CONTRADICTION_FOUND)}."
+                "</strong> Each becomes contradicted once an expert confirms the contradicting "
+                "record.</div>"
             )
 
     parts.append("<h2>Summary</h2><table><thead><tr><th>Finding</th><th>Claims</th></tr></thead>")
@@ -679,8 +776,9 @@ def render_report(conn: sqlite3.Connection, timeline: timeline_html.Settings | N
                 )
         parts.append(
             f"<p>Run {e(run['run_id'])}, started {e(run['started_at_utc'])}. Baker "
-            f"{e(run['baker_version'])}, contracts {e(run['contracts_version'])}, rule version "
-            f"{e(run['rule_version'])}. "
+            f"{e(build_label(run))}, pipeline {e(run['baker_version'])}, contracts "
+            f"{e(run['contracts_version'])}, rule version "
+            f"{e(run['rule_version'])}, quote check {e(quote_check_label(run))}. "
             f"{e(run['stored_items'])} evidence items stored; {e(run['dropped_labels'])} labels "
             f"discarded; {e(run['reviewer_failures'])} reviewer failures counted as dismissals."
             f"{mode}</p><table><thead><tr><th>Step</th><th>Component</th></tr></thead>"
@@ -730,18 +828,25 @@ def render_report(conn: sqlite3.Connection, timeline: timeline_html.Settings | N
         for r in expert_rows:
             parts.append(
                 f"<tr><td>{r[0]}</td><td>{e(r[1])}</td><td>{e(r[2])}</td><td>{e(r[3])}</td>"
-                f"<td>{q(_compact(r[4]))}</td></tr>"
+                f"<td>{q(_compact(r[4], r[3]))}</td></tr>"
             )
         parts.append("</table>")
     parts.append("</body></html>")
     return "".join(parts)
 
 
-def _compact(payload_json: str) -> str:
+# Expert flags (core/review/flags.py) are feedback about Baker, not findings: the report names
+# each one but leaves out the expert's note, the record they named and the snapshot.
+FLAG_FIELDS_IN_REPORT = ("flag_id", "claim_id", "kind", "evidence_id", "should_be")
+
+
+def _compact(payload_json: str, action: str = "") -> str:
     try:
         p = json.loads(payload_json)
     except ValueError:
         return payload_json
+    if action.startswith("flag.") and isinstance(p, dict):
+        p = {k: p[k] for k in FLAG_FIELDS_IN_REPORT if k in p}
     return "; ".join(f"{k}: {v}" for k, v in p.items() if v not in (None, ""))
 
 

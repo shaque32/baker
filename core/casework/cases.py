@@ -40,6 +40,7 @@ from typing import BinaryIO
 from core import encryption, pipeline
 from core.db import OperationalError, apply_schema, connect
 from core.ingest.pick import REPORT_SUFFIXES
+from core.ingest.source_file import InputChanged, require_sha256, sha256_input
 from core.review import audit_log
 from core.review.actions import ReviewError, _expert
 
@@ -307,7 +308,8 @@ def import_upload(
     out, the importer works it out from the report or leaves ambiguous dates unread.
 
     `upload` is the file the screen just wrote into inputs/ and `upload_sha256` the hash taken
-    while writing it. On any error the upload is deleted and nothing is stored."""
+    while writing it. The importer refuses to store bytes with any other hash. On any error the
+    upload is deleted and nothing is stored."""
     _expert(actor)
     try:
         name = safe_file_name(original_name)
@@ -336,21 +338,28 @@ def import_upload(
         raise
 
     path = _place(case, upload, name)
+    stored_sha: str | None = None  # the hash a committed source was stored under
     try:
         if kind == "govdoc":
             from core.ingest.govdoc import PdfGovDocIngester
 
-            result = PdfGovDocIngester().ingest_full(path, conn)
+            result = PdfGovDocIngester(expected_sha256=upload_sha256).ingest_full(path, conn)
             src = result.source
+            stored_sha = src.sha256
             ocr = f", OCR on pages {list(result.ocr_pages)}" if result.ocr_pages else ""
             summary = f"{len(result.paragraphs)} paragraphs{ocr}"
         else:
             from core.ingest.coverage import summary as coverage_summary
             from core.ingest.pick import report_importer
 
+            # An .xlsx is told apart by opening it, so check the copy before anything reads it.
+            require_sha256(name, upload_sha256, sha256_input(path))
             Importer = report_importer(path)  # noqa: N806 - a class
 
-            src = Importer(date_order=date_order).import_source(path, conn)
+            src = Importer(date_order=date_order, expected_sha256=upload_sha256).import_source(
+                path, conn
+            )
+            stored_sha = src.sha256
             summary = (
                 "coverage not known"
                 if src.fidelity.value == "unknown"
@@ -359,13 +368,20 @@ def import_upload(
             cov = coverage_summary(conn, src.id)
             if cov is not None:
                 summary += f". {cov.headline.removesuffix('.')}"
-        if src.sha256 != upload_sha256:  # the bytes parsed are not the bytes received
+        if src.sha256 != upload_sha256:  # the importers refuse this first; kept as a backstop
             raise ReviewError(
                 f"{name} changed between upload and import (SHA-256 {upload_sha256} then "
                 f"{src.sha256}); nothing should change a copied input, so check the case folder"
             )
+    except InputChanged as err:  # refused before anything was stored
+        _forget(conn, path, {upload_sha256, stored_sha})
+        raise ReviewError(
+            f"{name} changed between upload and import (SHA-256 {err.expected} then "
+            f"{err.actual}); nothing was stored. Nothing should change a copied input, so check "
+            "the case folder"
+        ) from err
     except BaseException:
-        _forget(conn, path, upload_sha256)
+        _forget(conn, path, {upload_sha256, stored_sha})
         raise
     _logged(
         conn,
@@ -383,14 +399,18 @@ def import_upload(
     return Imported(src.id, path.name, src.sha256, path, summary)
 
 
-def _forget(conn: sqlite3.Connection, path: Path, sha: str) -> None:
+def _forget(conn: sqlite3.Connection, path: Path, shas: set[str | None]) -> None:
     """Undo a failed import: the copy is deleted. The importers store nothing until they have
-    parsed the whole file, so the database needs no clean-up unless a source row landed."""
+    parsed the whole file and checked its hash against the upload's, so the database needs no
+    clean-up. If a step after an importer's commit failed, the stored source still cites this
+    copy, so the copy is kept: `shas` holds the upload's hash and the stored source's, and no
+    source had the upload's hash before this import (import_upload refuses duplicates)."""
     if conn.in_transaction:
         conn.rollback()
-    row = conn.execute("SELECT id FROM sources WHERE sha256 = ?", (sha,)).fetchone()
-    if row is None:
-        discard(path)
+    for sha in shas - {None}:
+        if conn.execute("SELECT 1 FROM sources WHERE sha256 = ?", (sha,)).fetchone():
+            return
+    discard(path)
 
 
 def source_counts(conn: sqlite3.Connection) -> dict[str, int]:

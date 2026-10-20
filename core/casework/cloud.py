@@ -7,8 +7,8 @@ only when all of these hold, and otherwise the local model labels it, exactly as
    government's control (18 U.S.C. 3509(m)), so a marked case never uses cloud, whatever (1) says.
 3. An Anthropic key is set up on this computer (the expert's own; Baker runs no server).
 4. The configured model, at its configured effort, passed Baker's signed stance test with the
-   current stance prompt (core/llm/cloud.py, PROBE_PASSED). None has yet, so for now every
-   case labels locally.
+   cloud stance prompt it would read (core/audit/prompts/stance_cloud.md; core/llm/cloud.py,
+   PROBE_PASSED). None is listed yet, so for now every case labels locally.
 
 Then every stance label in the case comes from the cloud model; labels never mix models. If
 the cloud model stops answering, the audit pauses (core/audit/_local_model.py, CloudPort) and
@@ -108,7 +108,7 @@ def choose(
             False,
             f"Local model: cloud AI is allowed for this case, but {cfg.model} ({cfg.effort} "
             "effort) has not passed "
-            "Baker's signed stance test with the current stance prompt, so the local model "
+            "Baker's signed stance test with the cloud stance prompt, so the local model "
             "labels it.",
         )
     who = str(c["attested_by"]).removeprefix("expert:")
@@ -123,10 +123,10 @@ def choose(
 
 def _stance_prompt_version() -> str | None:
     from core.audit._llm_json import PromptMissingError, load_prompt, prompt_version
-    from core.audit.stance import PROMPT_FILE
+    from core.audit.stance import CLOUD_PROMPT_FILE
 
     try:
-        return prompt_version(load_prompt(PROMPT_FILE))
+        return prompt_version(load_prompt(CLOUD_PROMPT_FILE))
     except PromptMissingError:
         return None
 
