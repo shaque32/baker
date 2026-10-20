@@ -19,8 +19,9 @@
   no-go. The test split and case02 were not scored, and TEST_LOG.md is empty.
 - Open: dev overstates the model because it comes from the same generators as the training data.
   Training data has no told-frame items. A filter-only use (skip records the model is sure are
-  irrelevant, the 14B labels the rest) is a draft plan, not built or signed. Speed on the Mac is
-  unmeasured.
+  irrelevant, the 14B labels the rest) was checked on 2026-10-20 and fails: on case01's 498 real
+  stance pairs, at a cut fixed in advance, run 8 skips 36% (not the 60% needed), and 7 of the 12
+  relevant records it skips are signed key evidence. Speed on the Mac is unmeasured.
 - Affects: none in the product (eval only; the 14B stays the local stance model).
 - Status doc: pending: section 3, mDeBERTa row, Status cell becomes "branch #50 (draft), parked:
   no-go on the go bar. Run 8 (2026-10-16, cloud CPU, model `6f3eb176…`) cleared the dev bars

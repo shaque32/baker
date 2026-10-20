@@ -126,8 +126,9 @@ def case_item(
     (core.audit.context), each with the phone's local time without its "(UTC-05:00)" note, the
     body as stored, and a chat record's excerpt opens with Baker's members line (members_line).
     The record's text is the text a quote is checked against
-    (core.audit.invariants): a contact reads "Name +1...", a call "outgoing call from ... to ...
-    at ..., 123s", an attachment its file name (after its parent message's own line when that
+    (core.audit.invariants): since #76 a contact reads "Name: +1...", a call "outgoing Phone call
+    from ... to ..., duration 123 s" (the training data still uses guide rule 28's older rows), an
+    attachment its file name (after its parent message's own line when that
     message has a caption). device_id names the phone the record was extracted from. For the
     meaning, role and event templates, whose text points at "the claim", baker_claim carries the
     claim's text (Arsh's decision of 2026-10-14; the 14B prompt gets the same once its change is

@@ -349,13 +349,13 @@ def test_case_items_name_owners_confirmed_people_and_the_phone(case_db) -> None:
     assert it["target"]["local_time"] == "2026-03-10 11:05:00 EDT"
     call = item("call:sa:Call Log!3")
     assert call["target"]["sender"] == "Phone +12125550133 [Carl Ruiz]"  # same number as the link
-    assert call["target"]["text"].startswith("incoming call from +12125550133")
+    assert call["target"]["text"].startswith("incoming Phone call from +12125550133")  # #76
     contact = item("contact:sa:Contacts!3#1")
     assert contact["context"] == [] and contact["device_id"] == "dev:sa"
     target = {"sender": "contact list", "local_time": "no time in source"}
-    assert contact["target"] == {**target, "text": "Carl Shop +12125550133"}
+    assert contact["target"] == {**target, "text": "Carl Shop: +12125550133"}
     r = features.render(contact)
-    assert r.excerpt == "RECORD (sa): no time in source | contact list | Carl Shop +12125550133"
+    assert r.excerpt == "RECORD (sa): no time in source | contact list | Carl Shop: +12125550133"
     assert "baker_claim" not in it  # only meaning, role and event assumptions carry the claim
     case_db.execute("INSERT INTO govdocs VALUES ('doc1', 'sa', 'Affidavit', 'affidavit')")
     case_db.execute(
