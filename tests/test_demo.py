@@ -338,3 +338,35 @@ def test_a_claim_supported_on_ai_review_or_with_ai_dismissed_support_waits_on_th
     assert "id=C01" not in sup and "id=C02" not in sup
     assert html.escape(SUPPORTED_AI) not in sup
     assert "3 claims need you." in page and "18 of 21" in page
+
+
+def test_support_waiting_on_the_expert_is_not_a_gap_and_every_tile_has_a_destination(root):
+    """An uncovered assumption whose supporting record still waits on the expert is the expert's
+    step, not a gap the data leaves; and each count tile links to a section that exists."""
+    import dataclasses
+
+    from core.contracts import AssumptionKind as K
+    from core.contracts import EvidenceStatus as S
+    from core.review.status import claim_states
+
+    case = _case(root)
+    conn = connect(case.db)
+    st = next(s for s in claim_states(conn) if s.claim.id == "C06")
+    meaning = next(a.id for a in st.assumptions if a.kind == K.MEANING)
+    item = next(
+        x for x in st.evidence if x.assumption_id == meaning and x.stance == Stance.SUPPORTS
+    )
+    opened = [
+        x.model_copy(update={"status": S.OPEN}) if x.id == item.id else x for x in st.evidence
+    ]
+    reviewers = {k: v for k, v in st.last_reviewer.items() if k != item.id}
+    waiting = dataclasses.replace(st, evidence=opened, last_reviewer=reviewers)
+    assert st.gaps() == [K.MEANING] and waiting.gaps() == []
+
+    app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
+    app.open_case(case)
+    page = app.handle(Request("GET", "/claims", {}, dict(HOST))).body.decode()
+    hrefs = re.findall(r"<a class='tile [^']*' href='#([a-z]+)'>", page)
+    assert hrefs == ["next", "con", "unp", "sup"]
+    for h in hrefs:
+        assert f"id='{h}'>" in page

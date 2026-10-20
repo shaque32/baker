@@ -557,6 +557,18 @@ def _you_lines(st: ClaimState) -> list[str]:
     return lines
 
 
+def _tile(group: str, name: str, sub: str, n: int) -> str:
+    """A count; it links to its section when there is one (Needs you starts at the next-up card)."""
+    inner = (
+        f"<span class='name'>{e(name)}</span><span class='n'>{n}</span>"
+        f"<span class='sub'>{e(sub)}</span>"
+    )
+    if not n:
+        return f"<div class='tile t-{group} empty'>{inner}</div>"
+    href = "#next" if group == "you" else f"#{group}"
+    return f"<a class='tile t-{group}' href='{href}'>{inner}</a>"
+
+
 def _next_up(st: ClaimState) -> str:
     lines = _you_lines(st)
     return (
@@ -597,12 +609,7 @@ def claims_queue(conn: sqlite3.Connection, page: Page) -> str:
         )
         + "</div>",
         "<nav class='tiles'>"
-        + "".join(
-            f"<a class='tile t-{g}' href='#{g}'><span class='name'>{e(name)}</span>"
-            f"<span class='n'>{len(by[g])}</span><span class='sub'>{e(sub)}</span></a>"
-            for g, name, sub in GROUPS
-            if by[g] or g != "not"
-        )
+        + "".join(_tile(g, name, sub, len(by[g])) for g, name, sub in GROUPS if by[g] or g != "not")
         + "</nav>",
     ]
     if by["you"]:

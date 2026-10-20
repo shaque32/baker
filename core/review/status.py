@@ -74,10 +74,19 @@ GAP_TOPICS: dict[AssumptionKind, str] = {
     AssumptionKind.COMPLETENESS: "Search coverage",
 }
 GAP_TEXT: dict[AssumptionKind, str] = {
-    AssumptionKind.MEANING: "Nothing in the data shows the words mean what the claim says.",
-    AssumptionKind.IDENTITY: "No record ties the account to the person the claim names.",
-    AssumptionKind.EVENT: "No record shows the event or role the claim states.",
-    AssumptionKind.TIME: "No record places it at the time the claim states.",
+    AssumptionKind.MEANING: (
+        "No passing check or expert-accepted record shows the words mean what the claim says."
+    ),
+    AssumptionKind.IDENTITY: (
+        "No passing check, confirmed stipulation or expert-accepted record ties the account to "
+        "the person the claim names."
+    ),
+    AssumptionKind.EVENT: (
+        "No passing check or expert-accepted record shows the event or role the claim states."
+    ),
+    AssumptionKind.TIME: (
+        "No passing check or expert-accepted record places it at the time the claim states."
+    ),
     AssumptionKind.COMPLETENESS: (
         "The sources searched cannot show the absence the claim states; the claim page lists "
         "what was searched and each source's coverage."
@@ -149,7 +158,8 @@ class ClaimState:
 
     def gaps(self) -> list[AssumptionKind]:
         """The kinds of core assumption the rules found not covered, in claim order, for an
-        unproven verdict nobody overrode. Empty for any other claim."""
+        unproven verdict nobody overrode, leaving out an assumption whose supporting evidence
+        still waits on the expert. Empty for any other claim."""
         d = self.decision
         if (
             d is None
@@ -161,9 +171,17 @@ class ClaimState:
         ):
             return []
         uncovered = {cv.assumption_id for cv in d.coverage if not cv.covered}
+        # support still waiting on the expert is the expert's step ("Support found"), not a gap
+        pending = {
+            e.assumption_id
+            for e in self.evidence
+            if e.stance == Stance.SUPPORTS
+            and e.status != EvidenceStatus.DISMISSED
+            and not (self.last_reviewer.get(e.id) == "expert" and e.status != EvidenceStatus.OPEN)
+        }
         out: list[AssumptionKind] = []
         for a in self.assumptions:
-            if a.is_core and a.id in uncovered and a.kind not in out:
+            if a.is_core and a.id in uncovered and a.id not in pending and a.kind not in out:
                 out.append(a.kind)
         return out
 

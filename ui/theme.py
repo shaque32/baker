@@ -185,6 +185,9 @@ ul.flags form.inline button { margin-left: 8px; }
 .tile { display: flex; flex-direction: column; gap: 2px; padding: 16px 18px; border-radius: 16px;
   background: var(--card); border: 1px solid var(--line); color: var(--fg); text-decoration: none; }
 .tile:hover { border-color: var(--line-strong); }
+.tile.empty, .tile.t-you.empty { background: var(--card); border-color: var(--line);
+  color: var(--muted); }
+.tile.t-you.empty .sub { color: var(--muted); }
 .tile .name { font-size: 13px; font-weight: 600; }
 .tile .n { font: 400 42px/1.05 var(--serif); }
 .tile .sub { font-size: 12.5px; color: var(--muted); }
