@@ -3,8 +3,8 @@
 The technical source of truth for what Baker does today. Every statement is checked against code,
 tests or recorded runs. Where something exists only on an unmerged branch, it says so.
 
-- **As of:** 2026-10-20 (status refresh after #98 and #93)
-- **main:** `79fc398` (merge of #93, 2026-10-20)
+- **As of:** 2026-10-20 (status refresh after #101)
+- **main:** `75e75f1` (merge of #101, 2026-10-20)
 - **Verified on:** main `7a14437` first, then re-checked after #64 to #67 merged (they changed
   only `core/audit/assumption_filler.py` in `core/`, plus tests and probe gold). The 2026-10-19
   refresh applied the merged `docs/changelog/` entries and checked each PR's merge state against
@@ -57,7 +57,7 @@ coverage: one wrong "supported" is the failure that counts most.
 | 5. Assumptions | Fills fixed templates per claim type; values must be tied to the document or case data, or the proposal is refused | `core/audit/assumption_filler.py` | Local 14B |
 | 6. Checks | Deterministic checks: sender, identity, timing, weekday, count, absence | `core/audit/checks/` | No |
 | 7. Retrieval | Structured filters plus keyword ranking, with surrounding messages and the other phone's copy | `core/audit/retrieval.py` | No |
-| 8. Stance | Labels one record against one assumption: supports, contradicts, complicates or irrelevant | `core/audit/stance.py` | Local 14B by default; Opus 5.5, opt-in per case once it passes the signed stance test (#68, on main; none has: `core/llm/cloud.py` `PROBE_PASSED` is empty) |
+| 8. Stance | Labels one record against one assumption: supports, contradicts, complicates or irrelevant | `core/audit/stance.py` | Local 14B by default; Opus 5.5, opt-in per case (#68); `PROBE_PASSED` lists Opus 5.5 at medium effort with the cloud prompt, stance v1.2 (signed 2026-10-20, #101) |
 | 9. Quote check | The label's quote must appear verbatim in the record, or the label is dropped. With #76 (version 1.2.0) the quote must also take in a letter or digit of the record's own fields: Baker's words in a rendered line ("call from") or a placeholder ("(no name)", "unknown") cannot verify it alone | `core/audit/quotes.py` | No |
 | 10. AI review | Optional second pass on supporting items; off by default | `core/audit/review.py` | Local 14B |
 | 11. Verdict | `decide_verdict` applies rules 0.3.0 | `core/audit/rules.py` | No |
@@ -80,8 +80,8 @@ screen in `ui/`.
 
 | Model | Where it runs | Jobs | Status |
 |---|---|---|---|
-| Qwen3-14B Q4_K_M (GGUF, Apache-2.0, sha256 `500a8806…81f0`, n_ctx 8192) | Expert's computer, llama-cpp-python, `flash` runtime | Claim proposal, assumption filling, stance labels (every case, until a cloud model passes the signed stance test), optional AI review | main |
-| Claude Opus 5.5, medium effort | Anthropic API, expert's own key | Stance labels only, for cases the expert opted in, once it passes the signed stance test (not yet: `PROBE_PASSED` is empty) | main (#68, merged 2026-10-15), gated off |
+| Qwen3-14B Q4_K_M (GGUF, Apache-2.0, sha256 `500a8806…81f0`, n_ctx 8192) | Expert's computer, llama-cpp-python, `flash` runtime | Claim proposal, assumption filling, stance labels (every case not opted in to cloud), optional AI review | main |
+| Claude Opus 5.5, medium effort | Anthropic API, expert's own key | Stance labels only, for cases the expert opted in, with the cloud prompt, stance v1.2 (`PROBE_PASSED`, signed 2026-10-20) | main (#68; entry #101) |
 | mDeBERTa-v3-base classifier | Training on cloud CPU | Candidate small stance model | branch #50 (draft); runs 5 to 7 (2026-10-15 and 16) trained on data from #79's generators and #87's (both merged), and none is a candidate on dev; run 8's data, a fresh draw of run 7's generator, is delivered; runs 1 to 4 did not pass the go bar |
 | Claude Sonnet 5.5, Haiku 5.5, Opus 5.5 | Anthropic API | Benchmarks only, in `eval/bench/` | main (eval only) |
 
@@ -98,7 +98,7 @@ There is no model judge of verdicts in Baker. The word "judge" does not name any
   `baker verdict --set`), which `core/review/actions.py` `override_verdict` writes directly,
   without the rules, under the expert's name in the audit log. No model, local or cloud, writes a
   verdict, an identity link or a confirmation.
-- **What Opus would do (#68, on main, once it passes the signed stance test).** It is the stance labeler: for one (assumption, record)
+- **What Opus does (#68, on main; opted-in cases since #101).** It is the stance labeler: for one (assumption, record)
   pair it returns a label, a quote and a rationale. It is a remote HTTPS call to
   `api.anthropic.com` (`core/llm/cloud.py`), pinned so a stray `ANTHROPIC_BASE_URL` cannot
   redirect it, using the expert's own key from `$BAKER_ANTHROPIC_API_KEY`; in an encrypted
@@ -111,9 +111,8 @@ There is no model judge of verdicts in Baker. The word "judge" does not name any
   the protective order allows cloud AI; the case is not marked as possibly containing CSAM; a key
   is set up; and the model passed the signed stance test at its configured effort with the cloud stance prompt (`core/audit/prompts/stance_cloud.md`, v1.2,
   which only a cloud model reads)
-  (`PROBE_PASSED` in `core/llm/cloud.py`). That list is **empty**. With v1.2, Opus 5.5 met the
-  bars on the signed set and on new held-out items (section 7); every case labels locally until
-  Arsh signs an entry for it. The choice is stored in the case's
+  (`PROBE_PASSED` in `core/llm/cloud.py`). That list holds one entry: Opus 5.5 at medium effort with the cloud prompt (signed by Arsh 2026-10-20, #101). With v1.2, Opus 5.5 met the
+  bars on the signed set and on new held-out items (section 7); another model or effort labels locally. The choice is stored in the case's
   hash-chained audit log. Otherwise the local 14B labels the case, as on main.
 - **Failure handling (#68).** If the cloud fails mid-case, the audit pauses
   (`CloudPaused`, `core/audit/_local_model.py`); the expert retries the cloud or re-runs the
@@ -150,13 +149,13 @@ There is no model judge of verdicts in Baker. The word "judge" does not name any
   arm.
 
 **Merge state:** #68 merged to main 2026-10-15 (`ed0a3a8`), with the CLAUDE.md wording Arsh
-approved (07:29Z). `PROBE_PASSED` is empty, so no case can use the cloud yet.
+approved (07:29Z). `PROBE_PASSED` lists Opus 5.5 at medium (#101), so a case the expert opts in uses it.
 
 ## 5. External services
 
-- **main:** while cloud is gated off (below), `core/` makes no network calls. No telemetry. The UI serves only 127.0.0.1. The
+- **main:** `core/` makes no network calls except for a case the expert opted in to cloud AI (below). No telemetry. The UI serves only 127.0.0.1. The
   installers download the pinned model file once at install time (`packaging/`).
-- **#68 (on main, gated off):** one network integration in `core/`: one HTTPS request to the Anthropic API per
+- **#68 (on main; used for opted-in cases since #101):** one network integration in `core/`: one HTTPS request (up to three with retries) to the Anthropic API per
   (assumption, record) stance pair (493 requests in the Opus case01 run).
 - **eval only:** `eval/bench/claude_bench.py` and `eval/bench/cloud_steps.py` (#68) call
   the Anthropic API on synthetic data, as benchmarks.
@@ -207,7 +206,7 @@ fix is stance v1.2 (#93), signed by Arsh 2026-10-15: with it Opus scored contrad
 (misses P065), at high and at medium, and its wrong contradicts on new items went from 2 to 0
 (24 items) and 1 to 0 (26 items) (`/mnt/project-files/baker/cloud-bench/2026-10-15/told-frame-line/`).
 It is the cloud model's prompt only (Arsh, "Opus only", 2026-10-19). The local 14B's stance labels also miss the signed bars: on the signed set with v1.1, the
-prompt on main (a macOS 15.6.1 arm64 machine, commit `eee8d15` on #76's branch, 2026-10-19; llama-cpp-python 0.3.36, Qwen3-14B Q4_K_M SHA-256 `500a8806…b81f0`), its
+prompt on main (Arsh's Mac, macOS 15.6.1 arm64, commit `eee8d15` on #76's branch, 2026-10-19; llama-cpp-python 0.3.36, Qwen3-14B Q4_K_M SHA-256 `500a8806…b81f0`), its
 contradicts precision is 58% (11 of 19, bar 90%; the count is derived from 100% recall of the
 11 gold contradicts) and it shows 6 moved traps as supports (contradicts recall 100%, supports recall 100%, 0 contradicting shown as supports). With v1.2 (same run) the 14B's contradicts precision fell
 to 50% (11 of 22) with the same 6 moved traps, which is why the local model keeps v1.1. Source:
@@ -217,7 +216,8 @@ to 50% (11 of 22) with the same 6 moved traps, which is why the local model keep
 
 | Labeler | Accuracy (bar 80%) | False supported (bar 0) | Wall time | Cost | Hardware | Date |
 |---|---|---|---|---|---|---|
-| Opus 5.5 medium | 85% (95% with the #69 fix, replayed offline) | 0 | 26 min (493 calls, 3.2 s each) | $7.83 | Anthropic API | 2026-10-15 |
+| Opus 5.5 medium (prompt v1.1) | 85% (95% with the #69 fix, replayed offline) | 0 | 26 min (493 calls, 3.2 s each) | $7.83 | Anthropic API | 2026-10-15 |
+| Opus 5.5 medium, cloud prompt v1.2 | 95% | 0 | 29 min (493 calls, 3.5 s each) | $8.16 | Anthropic API | 2026-10-20 |
 | Sonnet 5.5 medium (prompt v1.0) | 80% | 0 | 16 min | $2.84 | Anthropic API | 2026-10-14 |
 | Qwen3-14B Q4 | not measured end to end on current code | | see below | $0 | MacBook Air M4, 24 GB | |
 
@@ -279,9 +279,9 @@ source of the same phone (#78, synthetic data only, see section 9), small-model 
 file per PR (#84), merge rulebook (#85), expert reason in the audit log (#86), changed upload
 stores nothing (#88), forwarded messages on the record (#89), versions stamped on every result
 (#91), forwarded-marks row in the report (#95), demo additions (#96); opt-in cloud Opus stance
-labels (#68), gated off; first status refresh (#97).
+labels (#68), gated off until #101; first status refresh (#97).
 Merged 2026-10-20: expert confirms every model contradiction, rules 0.3.0 and report 0.8.0 (#98);
-stance v1.2 for a cloud model only (#93).
+stance v1.2 for a cloud model only (#93); the Opus 5.5 entry in `PROBE_PASSED` (#101).
 Branch only: small stance model (#50, parked). PRs #70 and #80 are empty Grok Product review
 PRs, never merged.
 
@@ -318,8 +318,8 @@ PRs, never merged.
    coverage list (same fail-closed behaviour, no author); the report's Versions table says which
    mode a case is in ("Forwarded marks", #95).
 4. **Local runtime per case unknown on current code** (section 7). **The local 14B's stance
-   labels miss the signed bars:** on the signed set with v1.1, the prompt on main (a macOS 15.6.1
-   arm64 machine, `eee8d15`, 2026-10-19), its contradicts precision is 58% (11 of 19, bar 90%) and
+   labels miss the signed bars:** on the signed set with v1.1, the prompt on main (Arsh's Mac,
+   macOS 15.6.1 arm64, `eee8d15`, 2026-10-19), its contradicts precision is 58% (11 of 19, bar 90%) and
    it shows 6 moved traps as supports. Since rules 0.3.0 (#98) a model's "contradicts" never makes
    a claim CONTRADICTED without an expert's acceptance, so a wrong one cannot
    cause a wrong verdict on its own; it costs a review, and still risks one if the expert accepts it. Source:
@@ -340,7 +340,7 @@ PRs, never merged.
    fail-closed rules are strict: a few report records not found hold back most nearby records as
    "may be in the report", and under 95% found lists nothing (`docs/selection-audit.md`).
 8. **Other gaps:** no translation in the pipeline; no embeddings; Windows installer unsigned; with
-   cloud (#68, gated off) a key saved for a plain (unencrypted) case, or before a case is open, is an owner-only plain
+   cloud (#68) a key saved for a plain (unencrypted) case, or before a case is open, is an owner-only plain
    file (an encrypted case seals its own key under the case key); experts still need the 14B
    installed even with cloud on.
 9. **Count check said "deleted" (fixed in #83, merged 2026-10-15).** Before #83 the count
@@ -348,15 +348,15 @@ PRs, never merged.
    deletion flag, which breaks the rule that Baker never says "deleted". It now reads "N of them
    carry the source's deletion flag" (count check 1.0.1).
 
-## 10. Tests and results (main `79fc398`)
+## 10. Tests and results (main `75e75f1`)
 
 Run 2026-10-20 in a Linux cloud container (Python 3.13; the project targets 3.12), on main's code
-(the working copy differed from `79fc398` only in this refresh's docs and one docstring):
+(the working copy differed from `75e75f1` only in this refresh's docs):
 
 | Check | Result |
 |---|---|
-| Lint and format (`ruff`) | clean, 427 files |
-| Tests (`pytest`) | 2278 passed, 8 skipped |
+| Lint and format (`ruff`) | clean, 428 files |
+| Tests (`pytest`) | 2282 passed, 8 skipped |
 | case01 model-free gate | PASS: accuracy 1.00, 0 false supported |
 | case01 unreviewed (report only) | accuracy 0.55, 0 supported by design (0.60 before #98: one model-only Contradicted now waits for the expert) |
 | Hostile red team | PASS: none of the 7 structural claims went supported |
@@ -385,9 +385,8 @@ Before a first real case (the full list is the gates file):
 1. Time a full local case01 on the Mac for a real runtime (#76 merged, so the 14B's
    contact and call quotes pass the check, section 9).
 2. Check a real UFDR and AXIOM export with `baker ufdr-check` (needs a pilot expert's closed case).
-3. Opt-in cloud (#68, merged 2026-10-15, chosen by Arsh 07:10Z) stays gated off until Arsh signs
-   a `PROBE_PASSED` entry for Opus 5.5 with the cloud prompt, stance v1.2 (#93).
-   Pilots run local only until then.
+3. Opt-in cloud (#68) is available for a case whose protective order allows it: `PROBE_PASSED`
+   lists Opus 5.5 at medium (#101, signed 2026-10-20).
 4. Sign the Windows installer (Azure code signing pending).
 
 Measuring errors in a pilot: experts can flag wrong labels, missed records and verdicts they
@@ -402,6 +401,7 @@ cannot be checked from code).
 Rows 1 and 2 re-checked 2026-10-20 on main `477190d` (rules 0.3.0). Otherwise checked 2026-10-15 against main `7a14437` (line numbers unchanged on `ae8f24e`; `core/audit/rules.py`, `core/audit/invariants.py` and `core/report/html.py` lines re-checked 2026-10-16 on #76 with main `79ad922` merged in, since #76 shifts the last two) and branch #68 (`3c6c1ec`), for the proposed line:
 "Baker tests the government's specific claims; versioned rules decide verdicts; nothing is
 supported until your expert accepts it; runs locally with no network calls."
+Since #101 the last clause needs the opt-in qualifier for cloud cases; use row 6's safe wording.
 
 | # | Claim | Status | Evidence | Safe wording |
 |---|---|---|---|---|
@@ -410,7 +410,7 @@ supported until your expert accepts it; runs locally with no network calls."
 | 3 | "Not found" says what was searched | **True for absence and count findings** | The absence check states what it searched and why the sources can or cannot show an absence (`core/audit/checks/absence.py:1-6`, `:40`, `:112-135`); a curated report can never pass an absence (`core/audit/checks/absence.py:123`); the report has a "Searches and coverage" section (`core/report/html.py:489-519`). An UNPROVEN claim with no evidence names the uncovered assumptions, not a search log. | "When Baker finds no contact or counts records, it says what it searched and what the source could show" |
 | 4 | The selection audit shows what was left out around each quote | **Partly true** | Shows each quoted, exhibit or examiner-tagged message in its exchange, with the messages not picked (`core/selection/audit.py:1-29`). Limits: a quote is placed only when its words fit one message, otherwise it is listed as found N times and nothing around it is counted as left out (`core/selection/picks.py:17-23`); names and quotes under two words are not looked up (`core/selection/picks.py:5-11`); messages an examiner left out of a curated report are not in the case to show (`core/selection/audit.py:27-29`), unless the case also holds a larger source of the same phone: then the paired selection audit (#78, `core/selection/paired.py`, `docs/selection-audit.md`; tested on synthetic pairs only) lists that source's records the report does not hold near each claim, failing closed when matching is uncertain (section 9). | "...around each quote it can place in the extraction" |
 | 5 | Every report has an audit packet: source hashes, model, prompt and rule versions, tamper-evident log | **True, with one nuance** | Sources with SHA-256 (`core/report/html.py:678-688`), versions and model runs with model SHA-256, prompt version, parameters and seed (`core/report/html.py:690-691`, `:557-593`, `:723-737`), Baker build (release and git commit), pipeline, rule and quote-check versions in the report's top line and its Run section (`core/report/html.py:612-623`, `:709-713`; PR #91 for the build, the top line and the seed in the versions table), audit-log summary with hash-chain result, last hash and expert actions (`core/report/html.py:738-764`, `core/review/audit_log.py:47-225`). Nuance: the report shows a summary and the expert entries, not every log entry. The chain detects edits to entries; anchors (`case.db.anchors.jsonl`, the newest entry's number and hash, written when a case opens and when a report is built) detect entries cut from the end back to the newest anchor. Evidence decisions log the expert's typed reason, and a stored reason or status that no longer matches its log entry, or an expert review added or removed without one, blocks the case (PR #86, merged; decisions logged before it carry no reason and are not compared). Neither catches a change to the database and the anchor file together, or entries added and cut between two anchors; there is no signature or external anchor beyond a saved report's last hash. The log is checked when a case opens, on every page while it is open (report and download included), and before encrypting or changing the passphrase; a failed check blocks review and reporting in the screen and the CLI (fail closed; `core/review/audit_log.py` `require_intact`, `ui/app.py` `open_case` and `/report`, `cli/main.py` `_open`; #74). | "A hash-chained audit log; the report prints its last hash" |
-| 6 | Runs locally with no network calls | **True today; #68 merged, gated off** | main: true while `PROBE_PASSED` is empty. `core/` makes no network calls, the screen binds only 127.0.0.1 (`ui/server.py:19`); the installers download the pinned model once at install. #68 (merged 2026-10-15) adds the opt-in Opus stance integration, one HTTPS request per stance pair to api.anthropic.com (`core/llm/cloud.py`), gated off until a model passes the signed stance test. Cloud stays off until the expert attests per case, so "local by default" stays true. "No network calls" would not be true for opted-in cases. | "Local by default; cloud AI only when your case allows it and you opt in" (Arsh's choice, 2026-10-15 07:10Z); today no case can use cloud |
+| 6 | Runs locally with no network calls | **True for every case not opted in to cloud** | main: true for every case not opted in; `PROBE_PASSED` lists Opus 5.5 at medium (#101). `core/` makes no network calls, the screen binds only 127.0.0.1 (`ui/server.py:19`); the installers download the pinned model once at install. #68 (merged 2026-10-15) adds the opt-in Opus stance integration, one HTTPS request per stance pair (up to three with retries) to api.anthropic.com (`core/llm/cloud.py`), used only for a case the expert opts in. Cloud stays off until the expert attests per case, so "local by default" stays true. "No network calls" would not be true for opted-in cases. | "Local by default; cloud AI only when your case allows it and you opt in" (Arsh's choice, 2026-10-15 07:10Z) |
 
 Claims Baker should not make yet: any speed figure for local runs (not measured on current code,
 section 7), any accuracy figure on real data (all numbers are synthetic), and that UFDR or AXIOM
