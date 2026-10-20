@@ -13,7 +13,9 @@ still has the coverage list. Everything downstream reads them from here and fail
 - the claim page and the report put a warning on the claim and on the record.
 
 Two reasons are kept: `forwarded` (the extraction marks the message forwarded) and `embedded`
-(the message carries another message inside it, forwarded or quoted, which Baker did not import).
+(the message carries another message inside it, forwarded or quoted). The UFDR importer imports
+each embedded message (one level) as a record of its own, listed under `forwarded`; a message
+nested deeper is not imported.
 """
 
 from __future__ import annotations
@@ -35,8 +37,8 @@ STANCE_NOTE = (
 RECORD_NOTE = {
     "forwarded": "Forwarded: shown as sent by whoever forwarded it; who first wrote it is not "
     "recorded.",
-    "embedded": "Carries a forwarded or quoted message that Baker did not import; who wrote "
-    "which words is not recorded.",
+    "embedded": "Carries a forwarded or quoted message, imported separately as a record of its "
+    "own (a message nested deeper is not imported); who wrote which words is not verified.",
 }
 
 

@@ -674,11 +674,12 @@ def test_a_forwarded_message_is_listed_and_never_shown_as_quietly_authored(tmp_p
     assert item.level == "attention"
     assert item.locators == ("Chat[1]/Messages[1]", "Chat[1]/Messages[2]")
     assert "has not verified who first wrote" in item.plain
-    emb = next(i for i in s.items if i.code == "embedded_message_not_imported")
+    emb = next(i for i in s.items if i.code == "embedded_message_imported_separately")
     assert emb.locators == ("Chat[1]/Messages[2]",)
-    # the embedded original is not imported as the forwarder's words
-    bodies = [b for (b,) in conn.execute("SELECT body FROM messages ORDER BY locator")]
-    assert "SYNTHETIC original words" not in bodies
+    # the embedded original is its own record, never the forwarder's words
+    rows = dict(conn.execute("SELECT locator, body FROM messages"))
+    assert rows["Chat[1]/Messages[2]/Embedded[1]"] == "SYNTHETIC original words"
+    assert rows["Chat[1]/Messages[2]"] != "SYNTHETIC original words"
 
 
 def _extra(label: str, type_: str = "MessageLabel") -> str:
@@ -693,7 +694,7 @@ def _embedded(*models: str) -> str:
     return many("EmbeddedInstantMessage", list(models), "InstantMessage")
 
 
-def test_quoted_and_nested_forwards_are_listed_in_full_and_never_imported_as_the_senders(
+def test_quoted_and_nested_forwards_are_listed_in_full_and_one_level_is_imported_separately(
     tmp_path,
 ):
     base = [field("Source", "WhatsApp"), one("From", party(*OWNER)),
@@ -721,18 +722,37 @@ def test_quoted_and_nested_forwards_are_listed_in_full_and_never_imported_as_the
     conn, s = _import(path)
     fwd = next(i for i in s.items if i.code == "forwarded")
     assert fwd.locators == ("Chat[1]/Messages[2]",)
-    emb = next(i for i in s.items if i.code == "embedded_message_not_imported")
-    assert emb.locators == ("Chat[1]/Messages[1]", "Chat[1]/Messages[2]")
-    # neither embedded level becomes a message of its own, nor the phone owner's words
-    bodies = {b for (b,) in conn.execute("SELECT body FROM messages")}
-    assert not any(b and ("question" in b or "twice" in b or "first author" in b) for b in bodies)
-    assert conn.execute("SELECT COUNT(*) FROM messages").fetchone() == (3,)
+    sep = next(i for i in s.items if i.code == "embedded_message_imported_separately")
+    assert sep.locators == ("Chat[1]/Messages[1]", "Chat[1]/Messages[2]")
+    got = next(i for i in s.items if i.code == "embedded_original_imported")
+    assert got.locators == ("Chat[1]/Messages[1]/Embedded[1]", "Chat[1]/Messages[2]/Embedded[1]")
+    # the second level, nested inside an embedded message, is not imported
+    nested_item = next(i for i in s.items if i.code == "embedded_message_not_imported")
+    assert nested_item.locators == ("Chat[1]/Messages[2]/Embedded[1]",)
+    bodies = dict(conn.execute("SELECT locator, body FROM messages"))
+    assert bodies == {
+        "Chat[1]/Messages[1]": "SYNTHETIC my answer",
+        "Chat[1]/Messages[1]/Embedded[1]": "SYNTHETIC Jo's question",
+        "Chat[1]/Messages[2]": "",
+        "Chat[1]/Messages[2]/Embedded[1]": "SYNTHETIC passed along twice",
+        "Chat[1]/Messages[3]": "SYNTHETIC own words",
+    }
+    # the embedded originals are never the phone owner's words, and share the parent's thread
+    rows = conn.execute(
+        "SELECT direction, sender_raw, forwarded, forwarded_from_raw, thread_id FROM messages"
+        " WHERE locator LIKE '%/Embedded[%' ORDER BY locator"
+    ).fetchall()
+    tid = conn.execute("SELECT thread_id FROM messages WHERE locator = 'Chat[1]/Messages[1]'")
+    t = tid.fetchone()[0]
+    assert rows == [("unknown", None, 1, None, t), ("unknown", None, 1, None, t)]
     # every affected message is listed by id for the fail-closed path downstream
     found = forwarded.affected(conn)
     ids = dict(conn.execute("SELECT locator, id FROM messages"))
     assert found == {
         ids["Chat[1]/Messages[1]"]: "embedded",
+        ids["Chat[1]/Messages[1]/Embedded[1]"]: "forwarded",
         ids["Chat[1]/Messages[2]"]: "forwarded",
+        ids["Chat[1]/Messages[2]/Embedded[1]"]: "forwarded",
     }
 
 
@@ -805,10 +825,13 @@ def test_a_forwarded_message_is_marked_on_the_record_with_its_original_author(tm
     ).fetchall()
     assert rows == [
         ("Chat[1]/Messages[1]", 1, "+15550100002 Jo"),
+        ("Chat[1]/Messages[1]/Embedded[1]", 1, "+15550100002 Jo"),  # the original, own record
         ("Chat[1]/Messages[2]", 1, None),  # the package names no original author
         ("Chat[1]/Messages[3]", None, None),  # a quote is not a forward
+        ("Chat[1]/Messages[3]/Embedded[1]", 1, "+15550100002 Jo"),  # the quoted words
         ("Chat[1]/Messages[4]", None, None),
         ("Chat[1]/Messages[5]", 1, None),  # never the intermediate forwarder
+        ("Chat[1]/Messages[5]/Embedded[1]", 1, None),  # itself forwarded: author unknown
     ]
     from core.report.html import record_line
 
@@ -853,3 +876,100 @@ def test_a_case_made_before_the_forwarded_columns_still_fails_closed(tmp_path):
     new_case = sqlite3.connect(":memory:")
     new_case.executescript(schema)
     assert forwarded_label(new_case).startswith("on the record")
+
+
+def test_an_embedded_original_is_its_own_record_with_its_author_as_written(tmp_path):
+    original = model(
+        "InstantMessage",
+        one("From", party(*JO)),
+        field("Body", "  SYNTHETIC Jo's exact words\n"),
+        ts_field("TimeStamp", "2026-03-01T10:00:00.000-05:00"),
+    )
+    fwd = model(
+        "InstantMessage",
+        field("Source", "WhatsApp"),
+        one("From", party(*OWNER)),
+        one("To", party(*JO)),
+        field("Body", "SYNTHETIC look at this"),
+        field("Direction", "Outgoing"),
+        ts_field("TimeStamp", "2026-03-05T21:31:00.000-05:00"),
+        _extra("Forwarded"),
+        _embedded(original),
+    )
+    path = write_package(tmp_path / "p.ufdr", report_xml({"InstantMessage": [fwd]}))
+    conn, s = _import(path)
+    rows = conn.execute(
+        "SELECT locator, body, sender_raw, direction, ts_raw, forwarded, forwarded_from_raw,"
+        " thread_id FROM messages ORDER BY locator"
+    ).fetchall()
+    assert len(rows) == 2
+    parent, emb = rows
+    assert parent[0] == "InstantMessage[1]" and parent[3] == "outgoing"
+    assert emb[0] == "InstantMessage[1]/Embedded[1]"
+    assert emb[1] == "  SYNTHETIC Jo's exact words\n"  # verbatim
+    sender = conn.execute(
+        "SELECT a.identifier FROM messages m JOIN accounts a ON a.id = m.sender_account_id"
+        " WHERE m.locator = ?",
+        (emb[0],),
+    ).fetchone()
+    assert sender == ("+15550100002",)  # Jo, never the forwarder or the phone owner
+    assert emb[3] != "outgoing"  # never the phone owner's words
+    assert emb[4] == "2026-03-01T10:00:00.000-05:00"
+    assert emb[5:7] == (1, "+15550100002 Jo")
+    assert emb[7] == parent[7]  # same thread
+    assert _codes(s)["embedded_messages_imported"] == "info"
+
+
+def test_an_embedded_original_already_imported_by_id_is_not_duplicated(tmp_path):
+    original = model(
+        "InstantMessage",
+        one("From", party(*JO)),
+        field("Body", "SYNTHETIC said once"),
+        ts_field("TimeStamp", "2026-03-01T10:00:00.000-05:00"),
+        id="m-1",
+    )
+    fwd = model(
+        "InstantMessage",
+        field("Source", "WhatsApp"),
+        one("From", party(*OWNER)),
+        field("Body", "SYNTHETIC passing it on"),
+        ts_field("TimeStamp", "2026-03-05T21:31:00.000-05:00"),
+        _extra("Forwarded"),
+        _embedded(original),
+    )
+    path = write_package(tmp_path / "p.ufdr", report_xml({"Chat": [_chat("c1", original, fwd)]}))
+    conn, _s = _import(path)
+    bodies = [b for (b,) in conn.execute("SELECT body FROM messages")]
+    assert bodies.count("SYNTHETIC said once") == 1
+    assert conn.execute(
+        "SELECT COUNT(*) FROM messages WHERE locator LIKE '%Embedded%'"
+    ).fetchone() == (0,)
+
+
+def test_an_embedded_copy_before_its_standalone_record_never_takes_its_id(tmp_path):
+    original = model(
+        "InstantMessage",
+        one("From", party(*JO)),
+        field("Body", "SYNTHETIC said first"),
+        ts_field("TimeStamp", "2026-03-01T10:00:00.000-05:00"),
+        id="m-2",
+    )
+    fwd = model(
+        "InstantMessage",
+        field("Source", "WhatsApp"),
+        one("From", party(*OWNER)),
+        field("Body", "SYNTHETIC passing it on"),
+        ts_field("TimeStamp", "2026-03-05T21:31:00.000-05:00"),
+        _extra("Forwarded"),
+        _embedded(original),
+    )
+    path = write_package(
+        tmp_path / "p.ufdr", report_xml({"Chat": [_chat("c1", fwd), _chat("c2", original)]})
+    )
+    conn, _s = _import(path)
+    rows = conn.execute(
+        "SELECT locator, forwarded FROM messages WHERE body = 'SYNTHETIC said first'"
+        " ORDER BY locator"
+    ).fetchall()
+    # the standalone record imports normally, not marked forwarded
+    assert rows == [("Chat[1]/Messages[1]/Embedded[1]", 1), ("Chat[2]/Messages[1]", None)]
