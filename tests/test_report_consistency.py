@@ -260,6 +260,15 @@ def test_one_click_confirms_a_contradiction_the_same_on_screen_and_in_the_report
             assert word not in page.lower()
 
         eid = next(x.id for x in st.evidence if st.to_confirm(x))
+
+        def decisions() -> int:
+            return conn.execute(
+                "SELECT COUNT(*) FROM audit_log WHERE action = 'evidence.decide'"
+            ).fetchone()[0]
+
+        # a confirm needs a reason, like every expert decision
+        post(app, "/evidence/confirm", id=eid, status="accepted", reason=" ")
+        assert app.flash[1] is True and decisions() == 0
         r = post(app, "/evidence/confirm", id=eid, status="accepted", reason="Two people.")
         assert r.status == 303
         assert claim_state(conn, "C16").label == "Contradicted"
@@ -273,11 +282,36 @@ def test_one_click_confirms_a_contradiction_the_same_on_screen_and_in_the_report
         assert json.loads(payload)["reason"] == "Two people."
         assert json.loads(payload)["status"] == "accepted"
 
-        # a confirm needs a reason, like every expert decision
-        other = next((x.id for x in claim_state(conn, "C16").evidence if x.id != eid), None)
-        if other is not None:
-            post(app, "/evidence/confirm", id=other, status="accepted", reason=" ")
-            assert app.flash[1] is True
+        # an item no longer waiting (here the claim is already contradicted; a page left open
+        # across a later audit is the same) is refused, and nothing more is recorded (Codex)
+        before = decisions()
+        post(app, "/evidence/confirm", id=eid, status="accepted", reason="Again.")
+        assert app.flash[1] is True and "not waiting" in app.flash[0]
+        assert decisions() == before
+    finally:
+        conn.close()
+
+
+def test_a_confirm_whose_verdict_rerun_fails_still_says_it_was_recorded(tmp_path, monkeypatch):
+    """Codex on #98: the decision is committed before the re-run, so a failing re-run must not
+    read as "Not recorded", or a retry records the decision twice."""
+    from core.audit.invariants import InvariantViolation
+
+    db = tmp_path / "case01.db"
+    conn = run_pipeline.build_case("case01", db)
+    app = App(db, expert="Test Expert", port=PORT)
+    try:
+        _audit(conn, START, labeler=ContradictsOn("C16"))
+        st = claim_state(conn, "C16")
+        eid = next(x.id for x in st.evidence if st.to_confirm(x))
+
+        def broken(conn):  # noqa: ANN001, ANN202
+            raise InvariantViolation("stand-in failure")
+
+        monkeypatch.setattr(app, "_redecide", broken)
+        post(app, "/evidence/confirm", id=eid, status="accepted", reason="Two people.")
+        assert app.flash[1] is False
+        assert "recorded" in app.flash[0] and "not re-run" in app.flash[0]
     finally:
         conn.close()
 

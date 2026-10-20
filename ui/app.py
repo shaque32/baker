@@ -65,6 +65,7 @@ from core.restore.store import ExhibitError, add_exhibit, match_exhibits, remove
 from core.review import actions, audit_log, flags
 from core.review.actions import ReviewError
 from core.review.redecide import redecide
+from core.review.status import claim_state
 from core.timeline import settings as timeline_settings
 from ui import identity_pages, pages, restore_pages, selection_pages, theme, timeline_pages, upload
 
@@ -580,11 +581,27 @@ class App:
             raise ReviewError(
                 "the latest audit has not finished; resume it before confirming a contradiction"
             )
-        actions.decide_evidence(conn, f.get("id", ""), status, self.actor, f.get("reason", ""))
+        eid = f.get("id", "")
+        # A page left open across a later audit may post an item that is no longer the one
+        # waiting on this claim (Codex on #98): only an item the latest run shows as waiting.
+        row = conn.execute(
+            "SELECT a.claim_id FROM evidence_items e JOIN assumptions a ON a.id = e.assumption_id"
+            " WHERE e.id = ?",
+            (eid,),
+        ).fetchone()
+        st = claim_state(conn, row[0]) if row else None
+        item = next((x for x in st.evidence if x.id == eid), None) if st else None
+        if st is None or item is None or not (st.contradiction_found and st.to_confirm(item)):
+            raise ReviewError(
+                "this contradiction is not waiting for you in the latest audit; reload the claim"
+            )
+        actions.decide_evidence(conn, eid, status, self.actor, f.get("reason", ""))
         done = "Contradiction confirmed" if status == EvidenceStatus.ACCEPTED else "Dismissed"
         try:
             return f"{done}. {self._redecide(conn)}"
-        except ReviewError as err:  # the decision is recorded either way
+        except audit_log.ChainBroken:
+            raise  # _post closes the case
+        except Exception as err:  # noqa: BLE001 - the decision is recorded either way (Codex on #98)
             return f"{done} and recorded. The verdicts were not re-run: {err}."
 
     def _verdict(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
