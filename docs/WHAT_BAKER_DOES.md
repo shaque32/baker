@@ -47,8 +47,8 @@ the judgment.
 Local by default; cloud AI only when your case allows it and you opt in. Baker runs on your own
 computer and its screen answers only that computer. A case uses cloud AI only when you attest at
 setup that its protective order allows it and set up your own key, and never for a case marked
-as possibly containing CSAM. Today no cloud model has passed Baker's stance test, so every case
-runs fully on your computer. Cases can be encrypted with a passphrase.
+as possibly containing CSAM. Only a cloud model setup that passed Baker's stance test can be
+used; the report says which model labelled the case. Cases can be encrypted with a passphrase.
 
 ## Getting help
 

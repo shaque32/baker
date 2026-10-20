@@ -333,3 +333,37 @@ def test_a_browser_that_goes_away_is_not_kept_as_an_error(monkeypatch):
     handler = object.__new__(server._Handler)
     handler._guarded(gone, "screen")
     assert noted == []
+
+
+def test_only_known_baker_settings_are_named(monkeypatch):
+    monkeypatch.setenv("BAKER_CLIENT_SYNTHETICNAME", "1")
+    monkeypatch.setenv("BAKER_DEMO", "1")
+    got = bug_report.settings_section(None, None)["baker_env_set"]
+    assert "BAKER_DEMO" in got and not any("SYNTHETICNAME" in k for k in got)
+
+
+def test_an_unreadable_model_config_reads_as_not_found(monkeypatch):
+    from core.audit import _local_model
+
+    def boom():
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(_local_model, "load_config", boom)
+    assert bug_report.model_section(None)["config_found"] is False
+
+
+def test_unreadable_inputs_give_an_unavailable_encryption_state(audited: App, monkeypatch):
+    from core.casework import protect
+
+    def boom(case):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(protect, "state", boom)
+    assert bug_report.case_section(audited.case, None)["encryption"] == "unavailable"
+
+
+def test_help_never_creates_a_missing_case_database(audited: App):
+    db = audited.case.db
+    db.unlink()
+    get(audited, "/help/bug-report.json")
+    assert not db.exists()

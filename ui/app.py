@@ -1237,7 +1237,7 @@ class App:
         """The bug report text for this screen, checked clean (raises NotClean)."""
         case = self.case if self.case is not None and not protect.is_locked(self.case) else None
         conn = None
-        if case is not None:
+        if case is not None and case.db.exists():  # never create an empty database here
             try:
                 conn = connect(case.db)
                 conn.execute("PRAGMA busy_timeout = 10000")

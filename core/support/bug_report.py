@@ -176,8 +176,8 @@ def model_section(last_check: ModelCheck | None) -> dict[str, Any]:
     }
     try:
         cfg = _local_model.load_config()
-    except _local_model.ModelConfigError:
-        pass
+    except (_local_model.ModelConfigError, OSError):
+        pass  # missing, invalid or unreadable: reported as no config found
     else:
         out["config_found"] = True
         out["name"] = _safe(cfg.name)
@@ -207,12 +207,25 @@ def cloud_section(key_ready: bool | None) -> dict[str, Any]:
     }
 
 
+# The BAKER_* settings Baker reads. Any other name is left out: a name is user-chosen text and
+# could carry a client, case or secret.
+KNOWN_ENV = (
+    "BAKER_ANTHROPIC_API_KEY",
+    "BAKER_CASES",
+    "BAKER_CLOUD_CONFIG",
+    "BAKER_DEMO",
+    "BAKER_MIN_MEMORY_GB",
+    "BAKER_MODEL_CONFIG",
+    "BAKER_PINS",
+)
+
+
 def settings_section(many_cases: bool | None, case_count: int | None) -> dict[str, Any]:
     return {
         "screen_on_cases_folder": many_cases,
         "cases_in_folder": case_count,
         # names only: a value can be a path or a key
-        "baker_env_set": sorted(k for k in os.environ if k.startswith("BAKER_")),
+        "baker_env_set": sorted(k for k in KNOWN_ENV if k in os.environ),
     }
 
 
@@ -245,7 +258,11 @@ def _rows(conn: sqlite3.Connection, sql: str) -> list[tuple]:
 
 
 def case_section(case: cases.Case, conn: sqlite3.Connection | None) -> dict[str, Any]:
-    out: dict[str, Any] = {"encryption": protect.state(case)}
+    try:
+        encryption = protect.state(case)
+    except OSError:  # inputs unreadable: the report says so instead of failing
+        encryption = "unavailable"
+    out: dict[str, Any] = {"encryption": encryption}
     if conn is None:
         out["readable"] = False
         return out
