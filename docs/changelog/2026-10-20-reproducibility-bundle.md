@@ -11,8 +11,9 @@
   the model calls stored while it ran with one SHA-256 over them. Why: legal defensibility
   (Arsh's brief, 2026-10-20): equal access, authentication, hosted-model reproducibility.
 - Where: PR #104
-- Verified: tests/test_bundle.py (18: round trips on a reviewed case01 and a cloud-path case01
-  with a stand-in API; 11 tampering cases fail); full suite 2299 passed before a lint-only fix;
+- Verified: tests/test_bundle.py (20: round trips on a reviewed case01 and a cloud-path case01
+  with a stand-in API; 11 tampering cases fail; an answer that cannot be logged pauses the
+  audit; a retried send logs one answer); full suite 2299 passed before a lint-only fix;
   make eval unchanged (case01 1.00, 0 false supported; unreviewed 0.55; hostile PASS; case02
   aggregate 0.90, 0 false supported). Not tried on a real case or a real Anthropic answer.
 - Open: CLI only, no screen button. The anchor is the audit log's last hash printed on the

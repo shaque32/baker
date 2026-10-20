@@ -321,3 +321,50 @@ def test_each_cloud_answer_is_logged_with_the_api_ids_and_raw_hash(tmp_path):
     assert (got["message_id"], got["request_id"], got["model"]) == ("msg_01", "req_01", model.name)
     assert got["raw_sha256"] == raw_sha256(text)
     assert audit_log.verify_chain(conn)
+
+
+def _case(tmp_path: Path):  # noqa: ANN202
+    from core.db import apply_schema, connect
+
+    conn = connect(tmp_path / "c.db")
+    apply_schema(conn)
+    return conn
+
+
+def _logged(conn, action: str) -> list[dict]:  # noqa: ANN001
+    rows = conn.execute(
+        "SELECT payload_json FROM audit_log WHERE action = ? ORDER BY seq", (action,)
+    )
+    return [json.loads(p) for (p,) in rows]
+
+
+def test_an_answer_that_cannot_be_logged_is_not_used_and_the_audit_pauses(tmp_path):
+    from core.audit._llm_json import CloudPaused
+
+    conn = _case(tmp_path)
+
+    class Answers(FakeCloud):
+        def generate_json(self, prompt, schema, params=None):  # noqa: ANN001, ANN201
+            out = super().generate_json(prompt, schema, params)
+            conn.execute("BEGIN")  # an open write transaction: the answer cannot be logged
+            return out
+
+    up = Answers(['{"stance": "irrelevant", "quote": "", "rationale": "No."}'])
+    with pytest.raises(CloudPaused, match="not used"):
+        SentLog(up, conn).generate_json("p", {"type": "object"})
+    conn.rollback()
+    assert len(_logged(conn, SENT_ACTION)) == 1 and not _logged(conn, RECEIVED_ACTION)
+    assert not conn.execute("SELECT 1 FROM model_calls").fetchone()  # nothing stored
+
+
+def test_a_retried_send_logs_one_answer_for_the_attempt_that_succeeded(tmp_path):
+    conn = _case(tmp_path)
+    text = '{"stance": "irrelevant", "quote": "", "rationale": "No."}'
+    down = cloud.CloudError("APIConnectionError: reset", sticky=True, retryable=True)
+    up = FakeCloud([down, text])
+    assert SentLog(up, conn, sleep=lambda s: None).generate_json("p", {}).raw_text == text
+    sent, got = _logged(conn, SENT_ACTION), _logged(conn, RECEIVED_ACTION)
+    assert [s["attempt"] for s in sent] == [1, 2]
+    assert len(got) == 1 and got[0]["attempt"] == 2
+    assert got[0]["request_sha256"] == sent[1]["request_sha256"]
+    assert got[0]["raw_sha256"] == raw_sha256(text)
