@@ -427,3 +427,26 @@ def test_a_copy_carrying_the_quoted_words_makes_the_check_inconclusive(template,
     assert plain.outcome is CheckOutcome.PASS
     assert with_copies.outcome is CheckOutcome.INCONCLUSIVE
     assert "msg:p1:e1" in with_copies.record_ids
+
+
+def test_a_copy_recipient_is_not_a_participant_of_the_thread_that_carried_it() -> None:
+    """A thread titled with the handle names its real participants only: the recipient of an
+    embedded copy inside it is the copy's addressee, not someone in that conversation."""
+    from core.audit.checks._common import CaseData, resolve_handle
+
+    conn = build()
+    conn.execute("INSERT INTO threads VALUES ('t3', 'p1', 'x', NULL, 'SMS', 'Zed')")
+    for mid, loc, sender, to in (
+        ("msg:p1:z1", "x", "a:p1:c", "a:p1:own"),
+        ("msg:p1:z2", "x/Embedded[1]", "a:p1:own", "a:p1:b"),
+    ):
+        conn.execute(
+            "INSERT INTO messages (id, source_id, locator, thread_id, sender_account_id,"
+            " direction, body) VALUES (?, 'p1', ?, 't3', ?, 'unknown', 'hi')",
+            (mid, loc, sender),
+        )
+        conn.execute(
+            "INSERT INTO message_recipients (message_id, account_id) VALUES (?, ?)", (mid, to)
+        )
+    data = CaseData(conn)
+    assert resolve_handle(data, "Zed", None).keys == {data.accounts["a:p1:c"].key}
