@@ -63,7 +63,7 @@ from core.contracts import GoldClaim
 from core.llm.cloud import EFFORTS
 from core.llm.runtime import ModelOutput
 from eval import run_pipeline as rp
-from eval.probe.claim_recall import MATCH_AT, recall_for, words
+from eval.probe.claim_recall import _WORD, MATCH_AT, STOP, recall_for, words
 from eval.run_eval import load_jsonl, score
 
 CASE = "case01"
@@ -89,16 +89,16 @@ def split_match(
     that holds the largest share of the proposal's content words (ties: the lower claim id),
     so a proposal never counts twice. A gold claim is found when its proposals together hold at
     least MATCH_AT of its content words and every number in it. As preregistered, a proposal
-    sharing any one word counts; `strict` counts it only when it has at least
-    MIN_FRAGMENT_WORDS content words and at least MATCH_AT of them are in that gold claim, so
-    neither unrelated fragments of a paragraph nor bare keywords can pool words."""
+    sharing any one word counts; `strict` counts it only when it reads as a clause (has_clause)
+    and at least MATCH_AT of its content words are in that gold claim, so neither unrelated
+    fragments of a paragraph nor keyword lists can pool words."""
     by_para: dict[str, list[GoldClaim]] = {}
     for g in gold:
         by_para.setdefault(str(g.para_no), []).append(g)
     assigned: dict[str, list[Proposal]] = {g.claim_id: [] for g in gold}
     for p in proposals:
         pw = words(p.text)
-        if strict and len(pw) < MIN_FRAGMENT_WORDS:
+        if strict and not has_clause(p.text):
             continue
         best: tuple[float, str] | None = None
         for g in sorted(by_para.get(p.para_no, []), key=lambda g: g.claim_id):
@@ -124,6 +124,17 @@ def split_match(
             }
         )
     return rows
+
+
+def has_clause(text: str) -> bool:
+    """True when a fragment reads as a statement, not a keyword list: at least
+    MIN_FRAGMENT_WORDS content words and at least one function word (STOP) joining them.
+    "PETROV sent 3 messages to REYES" passes; "PETROV Telegram messages" and "REYES March 6" do
+    not. A bare "PETROV texted REYES" does not count either, which errs against both arms alike;
+    all 53 stored Opus proposals have a function word. Added after the 2026-10-16/19 arms were
+    scored (Codex on #93), for later runs (PREREGISTERED.md, Amendment 5)."""
+    toks = _WORD.findall(text.lower().replace("’", "'"))
+    return len(words(text)) >= MIN_FRAGMENT_WORDS and any(t in STOP for t in toks)
 
 
 def proposals_in(db: Path) -> list[Proposal]:

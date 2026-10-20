@@ -18,6 +18,7 @@ from eval.bench.fair_steps import (
     Retried,
     canonical_people,
     compare,
+    has_clause,
     main,
     pick_entry,
     revision,
@@ -137,6 +138,11 @@ def test_strict_matching_needs_fragments_that_state_something() -> None:
                 enumerate(["PETROV", "Telegram 3", "REYES", "March 6, 2026"])]  # fmt: skip
     assert found(split_match([G1], keywords)) == {"C01": True}  # the registered matcher
     assert found(split_match([G1], keywords, strict=True)) == {"C01": False}
+    three = [Proposal(f"p{i}", "4", w) for i, w in
+             enumerate(["PETROV Telegram messages", "REYES March 6", "sent 3 2026"])]  # fmt: skip
+    assert found(split_match([G1], three)) == {"C01": True}  # the registered matcher
+    assert found(split_match([G1], three, strict=True)) == {"C01": False}
+    assert not has_clause("REYES March 6") and has_clause("PETROV sent 3 messages to REYES")
 
 
 def arm(split: int, strict: int, fills: float, sheet: int, commit: str = "abc") -> dict:
