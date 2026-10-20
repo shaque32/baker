@@ -71,6 +71,8 @@ class _Handler(BaseHTTPRequestHandler):
         line, never its message) and the browser gets a plain 500 that says where to go."""
         try:
             answer()
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            return  # the browser went away mid-answer: not a Baker failure, kept out of the report
         except Exception as err:  # noqa: BLE001 - one bad request never stops the screen
             support_errors.note(where, err)
             try:

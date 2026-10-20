@@ -303,3 +303,33 @@ def test_build_identity_comes_from_core_build(monkeypatch):
     monkeypatch.setattr(baker_build, "release", lambda root=None: "9.9.9")
     got = bug_report.baker_section()
     assert got["commit"] == "a" * 12 and got["package"] == "9.9.9"
+
+
+def test_an_unreadable_model_file_reads_as_not_available(monkeypatch, tmp_path: Path):
+    from core.audit import _local_model
+
+    class Boom(type(tmp_path)):
+        def is_file(self):
+            raise PermissionError("denied")
+
+    class Cfg:
+        name = "synthetic-model"
+        path = Boom(tmp_path / "m.gguf")
+
+    monkeypatch.setattr(_local_model, "load_config", lambda: Cfg())
+    out = bug_report.model_section(None)
+    assert out["file_found"] is False and out["file_gb"] is None
+
+
+def test_a_browser_that_goes_away_is_not_kept_as_an_error(monkeypatch):
+    from ui import server
+
+    noted = []
+    monkeypatch.setattr(server.support_errors, "note", lambda *a: noted.append(a))
+
+    def gone():
+        raise BrokenPipeError
+
+    handler = object.__new__(server._Handler)
+    handler._guarded(gone, "screen")
+    assert noted == []

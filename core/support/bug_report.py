@@ -181,9 +181,13 @@ def model_section(last_check: ModelCheck | None) -> dict[str, Any]:
     else:
         out["config_found"] = True
         out["name"] = _safe(cfg.name)
-        out["file_found"] = cfg.path.is_file()
-        if out["file_found"]:
-            out["file_gb"] = round(cfg.path.stat().st_size / GB, 2)
+        try:
+            out["file_found"] = cfg.path.is_file()
+            if out["file_found"]:
+                out["file_gb"] = round(cfg.path.stat().st_size / GB, 2)
+        except OSError:  # unreadable or gone since the check: report it as not available
+            out["file_found"] = False
+            out["file_gb"] = None
     if last_check is None:
         out["last_check"] = None
     else:  # the result and how many lines of each level; the lines name paths and hashes
