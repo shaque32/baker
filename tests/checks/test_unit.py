@@ -255,7 +255,7 @@ def test_checks_never_write_to_the_database() -> None:
 def test_run_checks_ids_follow_the_contract() -> None:
     a = instantiate("C1", "no_contact", {"person_ids": [A, B], "window": MARCH})
     (r,) = run_checks(a, build())
-    assert r.id == f"chk:{a.id}|absence@1.0.0"
+    assert r.id == f"chk:{a.id}|absence@1.0.1"
     assert r.assumption_id == a.id and r.searched
 
 
@@ -450,3 +450,15 @@ def test_a_copy_recipient_is_not_a_participant_of_the_thread_that_carried_it() -
         )
     data = CaseData(conn)
     assert resolve_handle(data, "Zed", None).keys == {data.accounts["a:p1:c"].key}
+
+
+def test_handle_resolving_checks_record_the_version_that_skips_copy_recipients() -> None:
+    """Handle resolution changed (embedded copies' recipients are no longer thread
+    participants), so every check resolving handles records a bumped version."""
+    r = check(build(), "sender", quoted_text="see you at noon", person_ids=[B],
+              device_ids=["dev:p2"])  # fmt: skip
+    assert r.id.endswith("|sender@1.0.1")
+    assert {
+        CHECKS[n].version for n in ("absence", "sender", "time", "weekday", "same_account")
+    } == {"1.0.1"}
+    assert CHECKS["count"].version == "1.0.2"

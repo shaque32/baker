@@ -14,7 +14,7 @@ class SameAccountCheck(TemplateCheck):
     differ. Anything else is inconclusive. This is about accounts, never about people."""
 
     name = "same_account"
-    version = "1.0.0"
+    version = "1.0.1"
 
     def evaluate(self, assumption_id: str, p: AssumptionParams, data: CaseData) -> CheckResult:
         (app,) = p.channels
