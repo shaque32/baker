@@ -22,9 +22,11 @@
   API spend, synthetic data only): on the signed set (95 gated items) contradicts precision 10/10
   (Wilson 95% 0.722-1.0), supports recall 33/33 (0.896-1.0), nothing contradicting shown as
   supports, contradicts recall 10/11 (misses P065); on this thread's 24 new items, at medium,
-  no wrong contradicts and every control kept (22 scored; T022 and T023 were left out before any
-  call, as at high; the same items without v1.2's two sentences ran only at high, where 2 were
-  wrong); on 26 fresh items from "Custom model for Baker", at medium, no wrong
+  no wrong contradicts and every scored control kept (22 scored; the same items without v1.2's two
+  sentences ran only at high, where 2 were wrong). T022 and T023, both supports controls, are
+  not scored, under a rule written before any call: blind readers disagreed with their draft
+  labels. Opus still answered them (T022 complicates, T023 supports), and both rows are in the
+  results file. On 26 fresh items from "Custom model for Baker", at medium, no wrong
   contradicts, contradicts recall 8/8, supports recall 4/4. Every item's gold label and both
   answers, for all three sets: `eval/probe/results/2026-10-15-opus-5-5-medium-stance-v1-2.jsonl`
   (item ids and labels only, no item text; the new items' labels are drafts, not signed).
