@@ -387,10 +387,10 @@ def messages_for_accounts(data: CaseData, account_ids: set[str]) -> list[Row]:
 
 
 def messages_with_text(data: CaseData, text: str) -> list[Row]:
-    """Messages whose original body contains the text verbatim and word-aligned."""
-    rows = data.conn.execute(
-        _MSG_SQL + f" WHERE instr(m.body, ?) > 0 AND {NOT_COPY} ORDER BY m.id", (text,)
-    )
+    """Messages whose original body contains the text verbatim and word-aligned. Embedded copies
+    stay in: a copy carrying the words makes a quote-picked check rest on a forwarded record,
+    so it comes out inconclusive and names the copy, never a changed holds or fails."""
+    rows = data.conn.execute(_MSG_SQL + " WHERE instr(m.body, ?) > 0 ORDER BY m.id", (text,))
     return [row for row in map(_message_row, rows) if find_quote(text, row.text or "")]
 
 

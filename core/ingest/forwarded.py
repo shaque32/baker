@@ -32,7 +32,7 @@ PAYLOAD_KEY = "forwarded_records"
 REASONS = ("embedded_copy", "forwarded", "embedded")  # first wins
 COPY_STEP = "/Embedded["  # locator step of a copy imported from inside another message
 COPY_LIKE = "%/Embedded[%"  # the same, as an SQL LIKE pattern ('[' is literal in SQLite LIKE)
-RULE_VERSION = "1"  # how forwarded records are handled; named in every note below
+RULE_VERSION = "2"  # how forwarded records are handled; named in every note below
 
 STANCE_NOTE = (
     "Recorded as complicates: the extraction marks this message as forwarded or as carrying a "
