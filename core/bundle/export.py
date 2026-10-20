@@ -347,6 +347,13 @@ def _build(
             "a newer audit is running or has not finished; let it finish, or resume it, before "
             "exporting, so the bundle shows only verdicts the rules finished"
         )
+    if (run["rule_version"], run["contracts_version"]) != (rules.RULE_VERSION, CONTRACTS_VERSION):
+        raise ReviewError(
+            f"the latest audit was decided under rules {run['rule_version']} and contracts "
+            f"{run['contracts_version']}; this Baker has rules {rules.RULE_VERSION} and contracts "
+            f"{CONTRACTS_VERSION}, so its bundle could not be verified here. Re-run the verdicts "
+            "or the full audit first"
+        )
     changed, _unbound = changed_rows(conn, run)
     if changed:
         raise ReviewError(

@@ -18,14 +18,14 @@ memory, built from core/schema.sql, and checked in this order; any failure fails
    --inputs, files there are hashed and compared.
 7. Run and rows: the run's row is the one its pipeline.run entry recorded (run_sha256); the
    assumptions, check results, evidence items and AI reviews behind each verdict, the records
-   they cite and the model runs they name are the ones its claim's audit-log entry recorded
-   (pipeline.claim's rows_sha256).
+   they cite (with the rows shown beside them) and the model runs they name are the ones its
+   claim's audit-log entry recorded (pipeline.claim's rows_sha256).
 8. Labels: each evidence item's id still matches its content and it cites its record's source;
    its label is the model's answer as stored (tables/model_calls.jsonl), exactly or as the
    pipeline rewrites it, and its quote is found word for word in the record. Each AI review
    naming a stored reviewer answer says what that answer said; each expert review is on the
-   item, by the expert, at the time its evidence.decide entry names; each audited claim is the
-   one its entry recorded (claim_sha256) or what logged claim.status changes made of it.
+   item, by the expert, at the time its evidence.decide entry names; each claim is the one the
+   latest entry recording it logged or what logged claim.status changes made of it.
 9. Model calls: compared with the digests the audit log recorded for them (pipeline.claim's
    model_calls; cloud.received's raw_sha256 for the hosted answers those digests name).
 10. Stipulations and identity links: each is what the logged actions left.
@@ -55,17 +55,20 @@ from core.audit import review as review_mod
 from core.audit._llm_json import BadModelOutput, parse_json_object
 from core.audit._local_model import RECEIVED_ACTION
 from core.bundle import export, sealed
+from core.claims import propose as claims_propose
 from core.contracts import (
     CONTRACTS_VERSION,
     EvidenceStatus,
     Stance,
     Stipulation,
+    StipulationKind,
     StipulationStatus,
     SupportedBasis,
     Verdict,
     canonical_json,
     evidence_id,
     review_id,
+    stipulation_id,
 )
 from core.db import apply_schema
 from core.enrich.records import get_record
@@ -150,30 +153,56 @@ def verify_bundle(
         if conn is None:
             return out.items
         try:
-            # Every later check reads the log, so nothing runs on a log that failed.
-            if not _audit_log(conn, manifest, out):
-                return out.items
-            run = _run(conn, manifest, out)
-            if run is None:
-                return out.items
-            _manifest(conn, zf, manifest, run, out)
-            _inputs(conn, out, inputs_dir)
-            _rows(conn, run, out)
-            _labels(conn, run, out)
-            _ai_reviews(conn, out)
-            _expert_reviews(conn, out)
-            _claims(conn, run, out)
-            _calls(conn, out)
-            _stipulations(conn, out)
-            _identity(conn, out)
-            _verdicts(conn, run, out)
-            _report(conn, zf, manifest, out)
+            _checks(conn, zf, manifest, out, inputs_dir)
+        except Exception as e:  # noqa: BLE001 - a malformed row is a failure, never a crash
+            out.add(
+                FAIL, "tables", f"the bundle's rows cannot be checked ({type(e).__name__}: {e})"
+            )
         finally:
             conn.close()
     return out.items
 
 
+def _checks(
+    conn: sqlite3.Connection,
+    zf: zipfile.ZipFile,
+    manifest: dict[str, Any],
+    out: _Out,
+    inputs_dir: Path | None,
+) -> None:
+    """Checks 4 to 12, in order."""
+    # Every later check reads the log, so nothing runs on a log that failed.
+    if not _audit_log(conn, manifest, out):
+        return
+    run = _run(conn, manifest, out)
+    if run is None:
+        return
+    _manifest(conn, zf, manifest, run, out)
+    _inputs(conn, out, inputs_dir)
+    _rows(conn, run, out)
+    _labels(conn, run, out)
+    _ai_reviews(conn, out)
+    _expert_reviews(conn, out)
+    _claims(conn, run, out)
+    _calls(conn, out)
+    _stipulations(conn, out)
+    _identity(conn, out)
+    _verdicts(conn, run, out)
+    _report(conn, zf, manifest, out)
+
+
 # ---------------------------------------------------------------- 1. files
+
+
+MAX_UNPACKED = 4 << 30  # 4 GiB: far above a case's tables, far below a zip bomb's
+
+
+def _entry_sha256(zf: zipfile.ZipFile, name: str) -> str:
+    h = hashlib.sha256()
+    with zf.open(name) as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def _files(zf: zipfile.ZipFile, out: _Out) -> dict[str, Any] | None:
@@ -183,6 +212,16 @@ def _files(zf: zipfile.ZipFile, out: _Out) -> dict[str, Any] | None:
         return None
     if export.MANIFEST not in names:
         out.add(FAIL, "files", f"no {export.MANIFEST}: this is not a Baker bundle")
+        return None
+    unpacked = sum(i.file_size for i in zf.infolist())
+    if unpacked > MAX_UNPACKED:
+        # Sizes are as the zip declares them; reading stops there, so this bounds memory.
+        out.add(
+            FAIL,
+            "files",
+            f"the bundle would unpack to {unpacked:,} bytes, more than the {MAX_UNPACKED:,} a "
+            "verify reads; nothing was unpacked",
+        )
         return None
     try:
         manifest = json.loads(zf.read(export.MANIFEST).decode("utf-8"))
@@ -219,7 +258,7 @@ def _files(zf: zipfile.ZipFile, out: _Out) -> dict[str, Any] | None:
     for name, meta in sorted(listed.items()):
         if name not in names:
             out.add(FAIL, "files", f"{name} is listed but missing from the zip")
-        elif hashlib.sha256(zf.read(name)).hexdigest() != meta.get("sha256"):
+        elif _entry_sha256(zf, name) != meta.get("sha256"):
             out.add(FAIL, "files", f"{name} does not match its SHA-256 in {export.MANIFEST}")
     if not out.failed("files"):
         out.add(PASS, "files", f"{len(listed)} files match their SHA-256")
@@ -361,7 +400,11 @@ def _manifest(
     audit-log head) is recomputed and must match exactly; METHOD.md must be the note
     bundle.json gives. The export's time and exporter are as the exporter wrote them: the
     case's own log records the export (bundle.export) with the bundle's SHA-256."""
-    facts = export.derived(conn, run)
+    try:
+        facts = export.derived(conn, run)
+    except (ValueError, KeyError, TypeError, IndexError) as e:
+        out.add(FAIL, "bundle.json", f"what it lists cannot be recomputed from the tables ({e})")
+        return
     listed_inputs = [
         {k: v for k, v in i.items() if k != "case_copy_matches_at_export"}
         for i in manifest.get("inputs") or []
@@ -409,6 +452,9 @@ def _inputs(conn: sqlite3.Connection, out: _Out, inputs_dir: Path | None) -> Non
                 f"source {sid}: its stored hash differs from the one logged when it was imported",
             )
             bad = True
+    for sid in sorted(set(logged) - set(stored)):
+        out.add(FAIL, "inputs", f"source {sid}: its import is logged, but it is missing")
+        bad = True
     unlogged = sorted(set(stored) - set(logged))
     if not bad:
         out.add(PASS, "inputs", f"{len(stored)} input hashes match the import log")
@@ -747,34 +793,57 @@ def _expert_reviews(conn: sqlite3.Connection, out: _Out) -> None:
         out.add(PASS, "expert reviews", f"{n} expert reviews are the ones the audit log recorded")
 
 
+def _claim_origins(log: list) -> tuple[dict[str, tuple[int, str | dict]], set[str]]:
+    """(claim id -> (log position, what the latest entry that recorded the whole claim says:
+    a SHA-256 of its row, or for a claim the expert wrote, its fields), every claim id the log
+    says was stored). Entries that record a claim: pipeline.claim (claim_sha256), the
+    proposer's claims.proposed (claim_sha256) and claim.add."""
+    origins: dict[str, tuple[int, str | dict]] = {}
+    logged: set[str] = set()
+    for s, _a, _c, act, p in log:
+        if act == pipeline.CLAIM_ACTION and isinstance(p.get("claim_sha256"), str):
+            origins[p["claim_id"]] = (s, p["claim_sha256"])
+        elif act == claims_propose.PROPOSE_ACTION:
+            logged.update(str(c) for c in p.get("claims") or [])
+            digests = p.get("claim_sha256")
+            for cid, h in (digests if isinstance(digests, dict) else {}).items():
+                origins[cid] = (s, str(h))
+        elif act == "claim.add":
+            logged.add(str(p.get("claim_id")))
+            origins[str(p.get("claim_id"))] = (
+                s,
+                {
+                    "id": p.get("claim_id"),
+                    "paragraph_id": p.get("paragraph_id"),
+                    "text": p.get("text"),
+                    "claim_type": p.get("claim_type"),  # not logged by older Baker
+                    "status": "accepted",
+                    "model_run_id": None,
+                },
+            )
+    return origins, logged
+
+
 def _claims(conn: sqlite3.Connection, run: dict[str, Any], out: _Out) -> None:
-    """Each audited claim is the one its audit-log entry recorded (pipeline.claim's
-    claim_sha256), or what the expert's logged changes since then (claim.status) made of it."""
+    """Each claim, audited or not, is the one the latest entry recording it logged (the audit's
+    pipeline.claim, the proposer's claims.proposed or the expert's claim.add), or what the
+    expert's logged changes since then (claim.status) made of it; and no claim the log names
+    is missing."""
     log = _log(conn)
-    source = run.get("evidence_from_run", run["run_id"])
-    entries = {
-        p["claim_id"]: (s, p)
-        for s, _a, _c, act, p in log
-        if act == pipeline.CLAIM_ACTION and p.get("run_id") == source
-    }
+    origins, logged = _claim_origins(log)
     bad = unbound = edited = 0
-    for claim_id in sorted(run["manifest"]):
-        seq, entry = entries.get(claim_id, (None, {}))
-        want = entry.get("claim_sha256")
-        if seq is None or not isinstance(want, str):
+    stored = pipeline._stored(conn, "claims", "1 = 1 ORDER BY id", ())
+    for row in (dict(r) for r in stored):
+        claim_id = row["id"]
+        if claim_id not in origins:
             unbound += 1
             continue
+        seq, want = origins[claim_id]
         later = [
             p
             for s, _a, _c, act, p in log
             if act == "claim.status" and s > seq and p.get("claim_id") == claim_id
         ]
-        rows = pipeline._stored(conn, "claims", "id = ?", (claim_id,))
-        if not rows:
-            out.add(FAIL, "claims", f"{claim_id}: the audited claim is missing")
-            bad += 1
-            continue
-        row = dict(rows[0])
         if later:
             texts = [p["text"] for p in later if p.get("text") is not None]
             if row["status"] != later[-1].get("status") or (texts and row["text"] != texts[-1]):
@@ -783,26 +852,40 @@ def _claims(conn: sqlite3.Connection, run: dict[str, Any], out: _Out) -> None:
                 continue
             if texts:
                 if "was_text" not in later[0]:
-                    edited += 1  # its text at the audit is not recorded; the logged edit binds it
+                    edited += 1  # its earlier text is not recorded; the logged edit binds it
                     continue
-                row["text"] = later[0]["was_text"]  # the text the claim was audited with
+                row["text"] = later[0]["was_text"]  # the text the entry recorded
             row["status"] = later[0].get("was")
-        if pipeline._sha(canonical_json([row])) != want:
+        if isinstance(want, dict):
+            want = {**want, "claim_type": want["claim_type"] or row["claim_type"]}
+            same = want == row
+        else:
+            same = pipeline._sha(canonical_json([row])) == want
+        if not same:
             out.add(
-                FAIL, "claims", f"{claim_id}: changed after its audit, and no logged change says so"
+                FAIL,
+                "claims",
+                f"{claim_id}: changed after the log recorded it, and no logged change says so",
             )
             bad += 1
+    for claim_id in sorted(logged - {r["id"] for r in stored}):
+        out.add(FAIL, "claims", f"{claim_id}: the log records it, but it is missing")
+        bad += 1
     if unbound:
-        out.add(NOTE, "claims", f"{unbound} audited claims predate claim digests")
+        out.add(
+            NOTE,
+            "claims",
+            f"{unbound} claims predate claim digests in the log, so they are not bound to it",
+        )
     if edited:
         out.add(
             NOTE,
             "claims",
-            f"{edited} claims were edited after the audit: their current text is the logged "
-            "edit, but the text they were audited with is not recorded",
+            f"{edited} claims were edited by an older Baker: their current text is the logged "
+            "edit, but the text before it is not recorded",
         )
     if not bad:
-        out.add(PASS, "claims", "the audited claims are the ones the audit log recorded")
+        out.add(PASS, "claims", "the claims are the ones the audit log recorded")
 
 
 def _calls(conn: sqlite3.Connection, out: _Out) -> None:
@@ -881,16 +964,26 @@ def _stipulations(conn: sqlite3.Connection, out: _Out) -> None:
     """Each stored stipulation's status, decider, time and statement are what its latest
     logged expert action (stipulation.confirm or stipulation.withdraw) left them."""
     state: dict[str, tuple[str, str, str, Any]] = {}
+    person: dict[str, Any] = {}
     for _s, at, actor, act, p in _log(conn):
         if act == "stipulation.confirm":
             state[p.get("stipulation_id")] = ("confirmed", actor, at, p.get("statement"))
+            person[p.get("stipulation_id")] = p.get("person")
         elif act == "stipulation.withdraw":
             old = state.get(p.get("stipulation_id"), ("", "", "", None))
             state[p.get("stipulation_id")] = ("rejected", actor, at, old[3])
     bad = 0
     stored = pipeline.load_stipulations(conn)
+    names = dict(conn.execute("SELECT id, name FROM persons"))
     for st in stored:
         logged = state.get(st.id)
+        if st.id != stipulation_id(st.kind, st.subject_id) or (
+            st.kind == StipulationKind.DEVICE_OWNER
+            and st.person_id != f"person:{st.subject_id}:owner"
+        ):
+            out.add(FAIL, "stipulations", f"{st.id}: not about the device and person it names")
+            bad += 1
+            continue
         if logged is None:
             if st.status != StipulationStatus.PROPOSED:
                 out.add(FAIL, "stipulations", f"{st.id}: decided, but no expert action is logged")
@@ -902,9 +995,13 @@ def _stipulations(conn: sqlite3.Connection, out: _Out) -> None:
             or st.decided_by != actor
             or st.decided_at_utc != _dt(at)
             or (statement is not None and st.statement != statement)
+            or (person.get(st.id) is not None and names.get(st.person_id) != person[st.id])
         ):
             out.add(FAIL, "stipulations", f"{st.id}: it is not what the logged expert action left")
             bad += 1
+    for sid in sorted(set(state) - {st.id for st in stored}):
+        out.add(FAIL, "stipulations", f"{sid}: the log records it, but it is missing")
+        bad += 1
     if stored and not bad:
         out.add(
             PASS, "stipulations", f"{len(stored)} stipulations match the expert's logged actions"
@@ -1027,9 +1124,13 @@ def _stipulations_at(
     a verdict re-run when it decides."""
     full = run["config"].get("mode") != "rules_only"
     started = _dt(run["started_at_utc"])
+    read_at = run.get("stipulations_seq")  # the log position a full audit read them at
     state: dict[str, tuple[str, str, str, str]] = {}  # id -> (status, actor, at, statement)
     for s, at, actor, act, p in log:
-        if s >= position or (full and _dt(at) > started):
+        if full and isinstance(read_at, int):
+            if s > read_at:
+                continue
+        elif s >= position or (full and _dt(at) > started):
             continue
         if act == "stipulation.confirm":
             state[p["stipulation_id"]] = ("confirmed", actor, at, p.get("statement"))

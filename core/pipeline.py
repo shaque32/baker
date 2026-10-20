@@ -165,15 +165,29 @@ _RECORD_TABLES = {
 }
 
 
+_CHECK_TABLES = {"acct": "accounts", "thr": "threads"}  # also named by check results
+_LINKED = {"thread_id": "threads", "message_id": "messages"}  # and every *_account_id
+
+
 def _cited(conn: sqlite3.Connection, record_id: str) -> dict[str, object]:
-    """A cited record as stored (every column: body, sender, direction, times, locator) and as
-    the labeler and the report read it (text and time, which name accounts and, for an
-    attachment, its message)."""
-    table = _RECORD_TABLES.get(kind_of(record_id) or "")
+    """A cited record as stored (every column: body, sender, direction, times, locator), the
+    rows the report shows beside it (its accounts, thread and, for an attachment, message),
+    and the record as the labeler and the report read it (text and time)."""
+    table = _RECORD_TABLES.get(kind_of(record_id) or "") or _CHECK_TABLES.get(
+        record_id.split(":", 1)[0]
+    )
     rec = get_record(conn, record_id)
+    row = _stored(conn, table, "id = ?", (record_id,)) if table else []
+    linked = {
+        col: _stored(conn, _LINKED.get(col, "accounts"), "id = ?", (val,))
+        for r in row
+        for col, val in sorted(r.items())
+        if val is not None and (col in _LINKED or col.endswith("_account_id"))
+    }
     return {
         "id": record_id,
-        "row": _stored(conn, table, "id = ?", (record_id,)) if table else [],
+        "row": row,
+        "linked": linked,
         "text": rec.text if rec else None,
         "ts_utc": rec.ts_utc if rec else None,
     }
@@ -187,7 +201,8 @@ def claim_rows(
 ) -> dict[str, list]:
     """The rows a claim's verdict rests on, as stored: its assumptions, check results and
     evidence items (every column: text, parameters, outcomes, source and locator, rationale,
-    model run), the AI reviews of those items, the records the items cite, and the model runs
+    model run), the AI reviews of those items, the records the items and check results cite
+    (with the accounts, thread and message shown beside them), and the model runs
     (model, file hash, prompt, settings, seed) that the items, reviews, claim and the claim's
     model calls name. Expert decisions are bound by their own entries (evidence.decide)."""
     one = {
@@ -209,7 +224,10 @@ def claim_rows(
             (eid,),
         )
     ]
-    rows["records"] = [_cited(conn, str(e["record_id"])) for e in rows["evidence"]]
+    cited = [str(e["record_id"]) for e in rows["evidence"]] + [
+        str(rid) for c in rows["checks"] for rid in json.loads(c["record_ids_json"] or "[]")
+    ]
+    rows["records"] = [_cited(conn, rid) for rid in dict.fromkeys(cited)]
     calls = [r for cid in call_ids for r in _stored(conn, "model_calls", "id = ?", (cid,))]
     claim = _stored(conn, "claims", "id = ?", (claim_id,))
     named = {
@@ -1341,7 +1359,14 @@ def run_audit(
                         iso(m.started_at_utc),
                     ),
                 )
-        stipulations = load_stipulations(conn)
+        # The stipulations every verdict reads, with the audit-log position they stand at,
+        # read in one transaction so no expert action lands between the two.
+        conn.execute("BEGIN")
+        try:
+            stipulations = load_stipulations(conn)
+            stip_seq = conn.execute("SELECT COALESCE(MAX(seq), 0) FROM audit_log").fetchone()[0]
+        finally:
+            conn.commit()
         run = _Run(conn, components, now, result, clock)
         reused_before = _reused(components)
         for n, claim in enumerate(claims, 1):
@@ -1397,6 +1422,7 @@ def run_audit(
                     "run_id": result.run_id,
                     "run_sha256": run_digest(conn, result.run_id),
                     "finished_at_utc": finished,
+                    "stipulations_seq": stip_seq,
                     "fake": result.fake,
                     "rules_pending": components.rules_pending(),
                     "components": components.names(),

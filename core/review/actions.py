@@ -225,7 +225,12 @@ def add_claim(
             _now(clock),
             actor,
             "claim.add",
-            {"claim_id": claim_id, "paragraph_id": paragraph_id, "text": text},
+            {
+                "claim_id": claim_id,
+                "paragraph_id": paragraph_id,
+                "text": text,
+                "claim_type": claim_type.value,
+            },
         )
 
 

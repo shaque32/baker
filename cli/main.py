@@ -385,7 +385,11 @@ def cmd_verify_bundle(a: argparse.Namespace) -> int:
     from core.bundle import sealed
     from core.bundle.verify import FAIL, NOTE, PASS, outcome, verify_bundle
 
-    passphrase = _ask("Bundle passphrase: ") if sealed.is_sealed_file(a.bundle) else None
+    try:
+        encrypted = sealed.is_sealed_file(a.bundle)
+    except OSError:
+        encrypted = False  # verify_bundle reports why it cannot be read
+    passphrase = _ask("Bundle passphrase: ") if encrypted else None
     findings = verify_bundle(a.bundle, a.inputs, passphrase)
     for level, title in ((PASS, "VERIFIED"), (NOTE, "NOT VERIFIED"), (FAIL, "FAILED")):
         rows = [f for f in findings if f.level == level]

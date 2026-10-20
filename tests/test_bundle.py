@@ -947,3 +947,153 @@ def test_an_export_never_replaces_a_file_and_holds_the_case_still(reviewed, tmp_
     monkeypatch.setattr(export, "_publish", during)
     _export(conn, tmp_path, "held.zip")
     assert seen and "locked" in seen[0]
+
+
+# ---------------------------------------------------------------- Codex round 4 on #104
+
+
+def _record_table(record_id: str) -> str:
+    from core import pipeline
+    from core.enrich.records import kind_of
+
+    return (
+        pipeline._RECORD_TABLES.get(kind_of(record_id) or "")
+        or pipeline._CHECK_TABLES[record_id.split(":", 1)[0]]
+    )
+
+
+def test_the_thread_and_accounts_shown_beside_a_citation_are_bound(reviewed, tmp_path):
+    conn, path = reviewed
+    thread, sender = conn.execute(
+        "SELECT m.thread_id, m.sender_account_id FROM evidence_items e"
+        " JOIN messages m ON m.id = e.record_id WHERE m.sender_account_id IS NOT NULL LIMIT 1"
+    ).fetchone()
+    for table, rid, change in (
+        ("threads", thread, lambda r: r.update(title="Another chat")),
+        ("accounts", sender, lambda r: r.update(display_name="Someone else")),
+    ):
+        name, edit = _edit_row(table, lambda r, rid=rid: r["id"] == rid, change)
+        findings = verify_bundle(_rewrite(path, tmp_path / "b.zip", name, edit))
+        assert FAIL in _levels(findings, "rows"), (table, _fails(findings))
+
+
+def test_a_record_a_check_rests_on_is_bound(reviewed, tmp_path):
+    conn, path = reviewed
+    run = json.loads(zipfile.ZipFile(path).read(export.MANIFEST))["run"]
+    manifest = next(
+        json.loads(p)["manifest"]
+        for (p,) in conn.execute(
+            "SELECT payload_json FROM audit_log WHERE action = 'pipeline.run' ORDER BY seq DESC"
+        )
+        if json.loads(p)["run_id"] == run["run_id"]
+    )
+    checks = [c for items in manifest.values() for c in items["checks"]]
+    rid = next(
+        r
+        for c in checks
+        for (ids,) in conn.execute("SELECT record_ids_json FROM check_results WHERE id = ?", (c,))
+        for r in json.loads(ids)
+        if not conn.execute("SELECT 1 FROM evidence_items WHERE record_id = ?", (r,)).fetchone()
+    )
+    name, edit = _edit_row(
+        _record_table(rid), lambda r: r["id"] == rid, lambda r: r.update(locator="elsewhere")
+    )
+    findings = verify_bundle(_rewrite(path, tmp_path / "b.zip", name, edit))
+    assert FAIL in _levels(findings, "rows"), _fails(findings)
+
+
+def test_a_logged_stipulation_cannot_be_removed_or_given_to_another_person(reviewed, tmp_path):
+    conn, path = reviewed
+    sid, pid = conn.execute(
+        "SELECT id, person_id FROM stipulations WHERE status = 'confirmed' LIMIT 1"
+    ).fetchone()
+    gone = _rewrite(
+        path,
+        tmp_path / "b.zip",
+        f"{export.TABLES}stipulations.jsonl",
+        lambda t: "".join(x + "\n" for x in t.splitlines() if json.loads(x)["id"] != sid),
+    )
+    assert FAIL in _levels(verify_bundle(gone), "stipulations")
+    name, edit = _edit_row("persons", lambda r: r["id"] == pid, lambda r: r.update(name="X Y"))
+    findings = verify_bundle(_rewrite(path, tmp_path / "b.zip", name, edit))
+    assert FAIL in _levels(findings, "stipulations"), _fails(findings)
+
+
+def test_malformed_rows_fail_without_a_crash(hosted, tmp_path):
+    _conn, path = hosted
+    name, edit = _edit_row("model_runs", lambda r: True, lambda r: r.update(params_json="{"))
+    findings = verify_bundle(_rewrite(path, tmp_path / "b.zip", name, edit))
+    assert failed(findings)
+
+
+def test_a_logged_import_whose_source_is_missing_fails():
+    import sqlite3
+
+    from core.bundle import verify
+    from core.db import apply_schema
+
+    conn = sqlite3.connect(":memory:")
+    apply_schema(conn)
+    audit_log.append(conn, AT, EXPERT, "import", {"source_id": "src:gone", "sha256": "0" * 64})
+    out = verify._Out()
+    verify._inputs(conn, out, None)
+    assert any(f.level == FAIL and "src:gone" in f.detail for f in out.items)
+
+
+def test_the_cli_reports_an_unreadable_bundle_as_failed(tmp_path, capsys):
+    from cli.main import main
+
+    assert main(["verify-bundle", str(tmp_path / "missing.zip")]) == 1
+    assert main(["verify-bundle", str(tmp_path)]) == 1
+    assert "FAILED" in capsys.readouterr().out
+
+
+def test_claims_outside_the_audit_are_bound_too(tmp_path):
+    from core.contracts import ClaimType
+    from core.review.actions import add_claim
+
+    conn = _build(tmp_path / "case01.db", START)
+    para = conn.execute("SELECT paragraph_id FROM claims LIMIT 1").fetchone()[0]
+    add_claim(conn, "C99", para, "A new claim.", ClaimType.TIMING, EXPERT, clock=lambda: AT)
+    path = _export(conn, tmp_path)
+    assert not failed(verify_bundle(path)), _fails(verify_bundle(path))
+    name, edit = _edit_row(
+        "claims", lambda r: r["id"] == "C99", lambda r: r.update(text="Something else.")
+    )
+    assert FAIL in _levels(verify_bundle(_rewrite(path, tmp_path / "b.zip", name, edit)), "claims")
+    gone = _rewrite(
+        path,
+        tmp_path / "c.zip",
+        f"{export.TABLES}claims.jsonl",
+        lambda t: "".join(x + "\n" for x in t.splitlines() if json.loads(x)["id"] != "C99"),
+    )
+    assert FAIL in _levels(verify_bundle(gone), "claims")
+    conn.close()
+
+
+def test_an_audit_under_other_rules_is_not_exported(reviewed, tmp_path, monkeypatch):
+    conn, _path = reviewed
+    monkeypatch.setattr(rules, "RULE_VERSION", "9.9.9")
+    with pytest.raises(ReviewError, match="Re-run the verdicts"):
+        _export(conn, tmp_path, "old.zip")
+    assert not (tmp_path / "old.zip").exists()
+
+
+def test_a_full_audit_records_where_it_read_the_stipulations(reviewed):
+    conn, _path = reviewed
+    payloads = [
+        json.loads(p)
+        for (p,) in conn.execute("SELECT payload_json FROM audit_log WHERE action = 'pipeline.run'")
+    ]
+    full = [p for p in payloads if p.get("mode") != "rules_only"]
+    assert full and all(isinstance(p.get("stipulations_seq"), int) for p in full)
+
+
+def test_a_bundle_too_large_to_unpack_is_refused_before_reading(reviewed, monkeypatch):
+    from core.bundle import verify
+
+    _conn, path = reviewed
+    monkeypatch.setattr(verify, "MAX_UNPACKED", 1000)
+    findings = verify_bundle(path)
+    assert _levels(findings, "files") == {FAIL}
+    assert "unpack" in findings[0].detail
