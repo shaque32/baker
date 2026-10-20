@@ -92,9 +92,10 @@ class FakeClient:
         return self.reply
 
 
-def _resp(text: str = SUPPORTS, stop: str = "end_turn") -> object:
+def _resp(text: str = SUPPORTS, stop: str = "end_turn", model: str = "claude-opus-5-5") -> object:
     usage = _Obj(input_tokens=100, output_tokens=20)
-    return _Obj(stop_reason=stop, content=[_Obj(type="text", text=text)], usage=usage)
+    content = [_Obj(type="text", text=text)]
+    return _Obj(model=model, stop_reason=stop, content=content, usage=usage)
 
 
 @pytest.fixture(autouse=True)
@@ -255,6 +256,16 @@ def test_an_api_error_is_a_sticky_cloud_error():
     with pytest.raises(cloud.CloudError) as err:
         model.generate_json("p", stance_mod.STANCE_SCHEMA)
     assert err.value.sticky
+
+
+@pytest.mark.parametrize("served", ["another-model", None])
+def test_an_answer_from_any_other_model_pauses_the_run(served):
+    # claude-opus-5-5 is a pinned snapshot (Anthropic's models overview), and the API names the
+    # model that answered; anything else is never taken as a label.
+    model, _ = _model(_resp(model=served))
+    with pytest.raises(cloud.CloudError) as err:
+        model.generate_json("p", stance_mod.STANCE_SCHEMA)
+    assert err.value.sticky and repr(served) in err.value.reason
 
 
 @pytest.mark.parametrize("stop", ["refusal", "max_tokens"])

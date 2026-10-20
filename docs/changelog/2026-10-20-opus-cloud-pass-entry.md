@@ -8,10 +8,14 @@
   cloud AI, the case is not marked as possibly containing CSAM, and the expert's own key is set
   up; otherwise the local 14B labels it, as before. The entry is tied to the cloud prompt's
   version, so any change to that prompt turns cloud off again until it passes and is signed.
-  Another effort or model still labels locally. `docs/SECURITY_PRIVACY.md` (the opening, the
-  data-flow diagram and table, cloud policy item 4, the network check), `docs/install-mac.md`,
-  `docs/PILOT_ONBOARDING.md` (with the Internet row: an opted-in case needs internet while it is
-  audited), `docs/PILOT_GATES.md` (gate 8) and `docs/ARCHITECTURE.md` say so.
+  Another effort or model still labels locally. `ClaudeModel.generate_json` now also refuses an
+  answer whose `model` field is not the model it asked for (a sticky failure, so the audit
+  pauses): `claude-opus-5-5` is a pinned snapshot (Anthropic's models overview), so this guards
+  against mixed labels rather than a known path (Codex on #101). `docs/SECURITY_PRIVACY.md`
+  (the opening, the data-flow diagram and table, cloud policy item 4, the network check),
+  `docs/install-mac.md`, `docs/PILOT_ONBOARDING.md` (with the Internet row: an opted-in case
+  needs internet while it is audited), `docs/PILOT_GATES.md` (gate 8) and `docs/ARCHITECTURE.md`
+  say so.
 - Where: PR #101 (branch `claude/project-thread-01fybj`), not merged.
 - Verified: the evidence is the preregistered runs of 2026-10-15
   (`/mnt/project-files/baker/cloud-bench/2026-10-15/told-frame-line/RESULTS-medium.md`, $4.52 of
@@ -25,7 +29,9 @@
   answers, for all three sets: `eval/probe/results/2026-10-15-opus-5-5-medium-stance-v1-2.jsonl`
   (item ids and labels only, no item text; the new items' labels are drafts, not signed).
   Tests: the shipped list is exactly this entry and
-  matches the cloud prompt's version, and an attested case uses Opus at medium but not at high.
+  matches the cloud prompt's version, an attested case uses Opus at medium but not at high, and
+  an answer naming another model, or none, pauses the run. One API call on 2026-10-20 (18 input
+  and 4 output tokens) showed the API names `claude-opus-5-5` as the answering model.
   `make check` in the PR description. No new model run.
 - Open: the case01 audit with the signed assumption sheet was not run again with v1.2 (with
   v1.1: 85% accuracy, 0 false supported, 2026-10-15); the 14B-vs-Opus test's case01 audit

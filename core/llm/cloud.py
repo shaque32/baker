@@ -313,6 +313,11 @@ class ClaudeModel:
                 f"{type(e).__name__}: {e}", sticky=True, retryable=is_retryable(e)
             ) from e
         elapsed = time.perf_counter() - start
+        served = getattr(resp, "model", None)
+        if served != self.cfg.model:
+            # Only the model that passed the signed stance test may label, and a case's labels
+            # never mix models, so an answer from any other model pauses the run.
+            raise CloudError(f"the API answered as {served!r}, not {self.cfg.model!r}", sticky=True)
         if resp.stop_reason == "refusal":
             raise CloudError("the cloud model declined to answer", sticky=False)
         if resp.stop_reason == "max_tokens":
