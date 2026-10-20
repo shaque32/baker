@@ -360,7 +360,7 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
         for label, n in sorted(tally.items()):
             out.append(f"<tr><td>{e(label)}</td><td>{n}</td></tr>")
         out.append("</table>")
-        waiting = sum(1 for st in states if st.needs() and st.priority <= NEEDS_YOU)
+        waiting = sum(1 for st in states if needs_you(st))
         out.append(
             f"<p><a href='/claims'>{waiting} claim(s) need you</a>. Accepting or dismissing "
             "evidence does not change a verdict until you re-run the verdicts.</p>"
@@ -503,13 +503,22 @@ GROUPS = (
     ("sup", "Supported", "An expert accepted the evidence"),
     ("not", "Not audited", "No verdict yet"),
 )
-NEEDS_YOU = 4  # needs() priority at or below this waits on the expert (the case page counts it)
+NEEDS_YOU = 4  # needs() priority at or below this waits on the expert
+
+
+def needs_you(st: ClaimState) -> bool:
+    """The claim waits on the expert: an urgent need, a supported verdict that rests on the AI
+    reviewer rather than an expert, or support the AI reviewer dismissed that no expert has seen.
+    The overview and the case page count the same claims."""
+    if st.decision is None or st.incomplete:
+        return False
+    return st.priority <= NEEDS_YOU or st.css == "v-supai" or st.ai_dismissed > 0
 
 
 def _group(st: ClaimState) -> str:
     if st.decision is None or st.incomplete:
         return "not"
-    if st.priority <= NEEDS_YOU:
+    if needs_you(st):
         return "you"
     if st.css == "v-con":
         return "con"
@@ -522,7 +531,7 @@ def _claim_row(st: ClaimState, group: str) -> str:
     """One claim on the overview: what it needs from the expert, or why it is unproven. The
     standing "verdict not yet confirmed" reminder is left out here; the claim page shows it."""
     if group == "you":
-        lines = [t for p, t in st.needs() if p <= NEEDS_YOU]
+        lines = _you_lines(st)
         note = f"<div class='needs'>{e(' '.join(lines))}</div>" if lines else ""
     elif group == "unp":
         note = "".join(
@@ -539,8 +548,17 @@ def _claim_row(st: ClaimState, group: str) -> str:
     )
 
 
+def _you_lines(st: ClaimState) -> list[str]:
+    """What the claim needs from the expert, without the standing "verdict not yet confirmed"
+    reminder (priority 6) that every unreviewed verdict carries."""
+    lines = [t for p, t in st.needs() if p < 6]
+    if st.css == "v-supai":
+        lines.insert(0, "Supported on the AI reviewer's acceptance only; no expert decided.")
+    return lines
+
+
 def _next_up(st: ClaimState) -> str:
-    lines = [t for p, t in st.needs() if p <= NEEDS_YOU]
+    lines = _you_lines(st)
     return (
         "<section class='nextup' id='next'><div class='head'><span class='meta'>Next up · "
         f"<a href='{e(link('/claim', id=st.claim.id))}'>{e(st.name)}</a> · {e(st.where)}</span>"

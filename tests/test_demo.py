@@ -305,3 +305,36 @@ def test_cli_demo_paired_build_only(tmp_path, monkeypatch, capsys):
     assert "paired audit" in capsys.readouterr().out
     (case,) = cases.list_cases(tmp_path / "demo" / "cases")
     assert case.settings["paired"] is True
+
+
+def test_a_claim_supported_on_ai_review_or_with_ai_dismissed_support_waits_on_the_expert(
+    root, monkeypatch
+):
+    """Rules 0.3.0 never store an AI-reviewed supported verdict, but if a later rule version does,
+    the overview must not file it under "An expert accepted the evidence" or count it as done.
+    Support the AI reviewer dismissed, unseen by an expert, waits on the expert too."""
+    import dataclasses
+
+    from core.contracts import SupportedBasis
+    from core.review.status import SUPPORTED_AI, claim_states
+    from ui import pages
+
+    case = _case(root)
+    conn = connect(case.db)
+    states = claim_states(conn)
+    i = next(i for i, st in enumerate(states) if st.claim.id == "C01")
+    ai = states[i].decision.model_copy(update={"supported_basis": SupportedBasis.AI_REVIEWED})
+    states[i] = dataclasses.replace(states[i], decision=ai)
+    j = next(i for i, st in enumerate(states) if st.claim.id == "C02")
+    states[j] = dataclasses.replace(states[j], ai_dismissed=1)
+    assert states[i].label == SUPPORTED_AI
+    assert pages.needs_you(states[i]) and pages.needs_you(states[j])
+    monkeypatch.setattr(pages, "queue", lambda conn: sorted(states, key=lambda s: s.priority))
+
+    app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
+    app.open_case(case)
+    page = app.handle(Request("GET", "/claims", {}, dict(HOST))).body.decode()
+    sup = page.split("<section class='group' id='sup'>", 1)[1].split("</section>", 1)[0]
+    assert "id=C01" not in sup and "id=C02" not in sup
+    assert html.escape(SUPPORTED_AI) not in sup
+    assert "3 claims need you." in page and "18 of 21" in page
