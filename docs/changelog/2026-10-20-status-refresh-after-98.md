@@ -12,7 +12,7 @@
   `make check` (Linux, 2026-10-20): 2251 passed, case01 gated 1.00 / 0 false supported,
   unreviewed 0.55, hostile PASS, case02 0.90 / 0 false supported.
 - Open: #93 (stance v1.2 for cloud only) was not merged when this opened; its entry waits for
-  the next refresh. Section 12 line numbers were not re-checked.
+  the next refresh. Section 12 rows 1 and 2 line numbers re-checked on 0.3.0; rows 3-6 were not.
 - Affects: customer-facing claims (the status doc no longer says a model can mark a claim
   Contradicted alone). No capability, privacy or performance change.
 - Status doc: applied 2026-10-20
