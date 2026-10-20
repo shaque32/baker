@@ -353,7 +353,77 @@ def test_any_check_resting_on_a_forwarded_message_is_inconclusive() -> None:
     assert check(build(), "record_time", **args).outcome is CheckOutcome.PASS
     r = check(_forwarded(build(), "p1", "msg:p1:2"), "record_time", **args)
     assert r.outcome is CheckOutcome.INCONCLUSIVE
-    assert "Inconclusive (forwarded rule 1)" in r.detail and "msg:p1:2" in r.detail
+    assert "Inconclusive (forwarded rule 2)" in r.detail and "msg:p1:2" in r.detail
     # a forwarded message the outcome does not rest on changes nothing
     other = check(_forwarded(build(), "p1", "msg:p1:6"), "record_time", **args)
     assert other.outcome is CheckOutcome.PASS
+
+
+def _with_embedded_copies(conn: sqlite3.Connection) -> sqlite3.Connection:
+    """Copies the UFDR importer imports from inside other messages (locator .../Embedded[n]),
+    marked forwarded and listed as embedded_copy. Dated here on purpose, to show the checks
+    leave them out even when they carry a time."""
+    import json
+
+    copies = [
+        # a copy of "see you at noon" between A and B in March: would inflate the count
+        ("msg:p1:e1", "x/Embedded[1]", "a:p1:b", "2026-03-10T15:00:00Z", "see you at noon"),
+        # a copy dated in April between A and B: would break the absence
+        ("msg:p1:e2", "x/Embedded[2]", "a:p1:b", "2026-04-05T15:00:00Z", "ok"),
+    ]
+    for mid, loc, sender, ts, body in copies:
+        conn.execute(
+            "INSERT INTO messages (id, source_id, locator, thread_id, sender_account_id, direction,"
+            " ts_utc, body, forwarded) VALUES (?, 'p1', ?, 't1', ?, 'unknown', ?, ?, 1)",
+            (mid, loc, sender, ts, body),
+        )
+        conn.execute(
+            "INSERT INTO message_recipients (message_id, account_id) VALUES (?, 'a:p1:own')",
+            (mid,),
+        )
+    conn.execute(
+        "INSERT INTO source_coverage VALUES ('p1', 'synthetic', '0', ?)",
+        (json.dumps({"forwarded_records": {"embedded_copy": ["msg:p1:e1", "msg:p1:e2"]}}),),
+    )
+    return conn
+
+
+@pytest.mark.parametrize(
+    ("template", "params"),
+    [
+        ("message_count", dict(person_ids=[A, B], device_ids=["dev:p1"], window=MARCH,
+                               expected_count=2, count_op="eq")),
+        ("no_contact", dict(person_ids=[A, B], window=APRIL)),
+    ],
+)  # fmt: skip
+def test_embedded_copies_are_not_counted(template, params) -> None:
+    """A copy carried inside another message is never counted beside the message it copies:
+    count and absence outcomes and wording are the same as for the case without the copies."""
+    plain = check(without_undated_row(build()), template, **params)
+    with_copies = check(_with_embedded_copies(without_undated_row(build())), template, **params)
+    assert plain.outcome is CheckOutcome.PASS
+    assert with_copies.outcome is CheckOutcome.PASS
+    assert with_copies.detail == plain.detail
+    assert set(with_copies.record_ids) == set(plain.record_ids)
+    assert not {"msg:p1:e1", "msg:p1:e2"} & set(with_copies.record_ids)
+
+
+@pytest.mark.parametrize(
+    ("template", "params"),
+    [
+        ("record_time", dict(quoted_text="see you at noon", person_ids=[A, B],
+                             window=window(D(2026, 3, 10, 11), D(2026, 3, 10, 12),
+                                           "11 a.m. New York time"))),
+        # both phones: the copy sits on p1, and a sender check reads only the phones it names
+        ("sender", dict(quoted_text="see you at noon", person_ids=[B],
+                        device_ids=["dev:p1", "dev:p2"])),
+    ],
+)  # fmt: skip
+def test_a_copy_carrying_the_quoted_words_makes_the_check_inconclusive(template, params) -> None:
+    """A quote-picked check keeps a copy that carries the same words: the copy's sender and
+    time are not verified, so the outcome is inconclusive and names the copy."""
+    plain = check(without_undated_row(build()), template, **params)
+    with_copies = check(_with_embedded_copies(without_undated_row(build())), template, **params)
+    assert plain.outcome is CheckOutcome.PASS
+    assert with_copies.outcome is CheckOutcome.INCONCLUSIVE
+    assert "msg:p1:e1" in with_copies.record_ids

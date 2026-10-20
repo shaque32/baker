@@ -726,6 +726,11 @@ def compare(t: Tally, conn: sqlite3.Connection, src: str) -> tuple[list[Count], 
     att_files = check("messages", "attachment_files_hashed", "attachment files in the package")
     db_msgs: set[str] = set()
     for mid, loc, b, raw, utc, flag, dirn, ident, _dev in rows:
+        if ufdr.EMBEDDED_STEP in loc:
+            # a message embedded in another, imported as its own record: not one of the
+            # package's own records, so not compared here (the coverage count
+            # embedded_messages_imported lists how many)
+            continue
         db_msgs.add(loc)
         x = t.messages.get(loc)
         if x is None:
