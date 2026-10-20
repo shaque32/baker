@@ -227,6 +227,8 @@ class LlamaCppModel:
         )
         if self.params.chat_template == "no-think":
             self._llm.chat_handler = no_think_handler(self._llm)
+        elif spec.chat_format is None:
+            refuse_open_thinking(self._llm)
 
     def generate_json(
         self, prompt: str, schema: JsonSchema, params: GenerationParams | None = None
@@ -280,6 +282,57 @@ def speed_kwargs(params: GenerationParams) -> dict[str, Any]:
 
 
 NO_THINK_SUFFIX = "<think>\n\n</think>\n\n"
+OPEN_THINK = "<think>\n"
+# Generation prompts that end inside a thinking block: Qwen3.5 and later (Qwen3.6, Qwen3.8) open
+# one by default, Gemma 4 when thinking is on. The JSON grammar would then make the model write
+# its answer inside that block, which is not how it was trained to answer.
+OPEN_THINKING_ENDINGS = (OPEN_THINK, "<|channel>thought\n")
+SAMPLE_MESSAGES = [{"role": "user", "content": "x"}]
+
+
+def renders_without_thinking(plain: str, no_think: str) -> bool:
+    """True when `no_think` is `plain` with an empty thinking block where thinking would start.
+
+    Qwen3 adds the empty block after the assistant header. Qwen3.5 and later open a thinking
+    block by default and close it empty instead; Qwen3.8 also drops the system turn it adds to
+    set the thinking effort. Any other difference is refused.
+    """
+    if no_think == plain + NO_THINK_SUFFIX:
+        return True
+    if not (plain.endswith(OPEN_THINK) and no_think.endswith(NO_THINK_SUFFIX)):
+        return False
+    before, after = plain[: -len(OPEN_THINK)], no_think[: -len(NO_THINK_SUFFIX)]
+    if not before.endswith(after):
+        return False
+    dropped = before[: len(before) - len(after)]
+    return dropped == "" or (
+        dropped.startswith("<|im_start|>system\n")
+        and dropped.endswith("<|im_end|>\n")
+        and dropped.count("<|im_start|>") == 1
+    )
+
+
+def opens_thinking(prompt: str) -> bool:
+    return prompt.endswith(OPEN_THINKING_ENDINGS)
+
+
+def template_formatter(llm: Any, **fixed: Any) -> Any:
+    """The model file's own chat template as llama-cpp-python renders it, with `fixed` passed
+    to every render. None when the file has no template."""
+    from llama_cpp import llama_chat_format
+
+    template = llm.metadata.get("tokenizer.chat_template")
+    if not template:
+        return None
+    eos_id, bos_id = llm.token_eos(), llm.token_bos()
+    eos = llm._model.token_get_text(eos_id) if eos_id != -1 else ""
+    bos = llm._model.token_get_text(bos_id) if bos_id != -1 else ""
+
+    class Fixed(llama_chat_format.Jinja2ChatFormatter):
+        def __call__(self, **kwargs: Any) -> Any:
+            return super().__call__(**fixed, **kwargs)
+
+    return Fixed(template=template, eos_token=eos, bos_token=bos, stop_token_ids=[eos_id])
 
 
 def no_think_handler(llm: Any) -> Any:
@@ -289,30 +342,29 @@ def no_think_handler(llm: Any) -> Any:
     block: the same text plus an empty <think></think> block after the assistant header. The
     JSON grammar already stops the model from writing a thinking block, so this changes what
     the model reads, not how long it writes; its effect on labels is measured on the probe.
-    Refuses (raises) unless rendering differs from the plain template by exactly that block.
+    Qwen3.5 and later open a thinking block by default, so for them this is the only way to
+    load (see `refuse_open_thinking`). Refuses (raises) unless rendering differs from the plain
+    template by exactly that block (`renders_without_thinking`).
     """
-    from llama_cpp import llama_chat_format
-
     template = llm.metadata.get("tokenizer.chat_template")
     if not template or "enable_thinking" not in template:
         raise ValueError("chat_template 'no-think' needs a chat template with enable_thinking")
-    eos_id, bos_id = llm.token_eos(), llm.token_bos()
-    eos = llm._model.token_get_text(eos_id) if eos_id != -1 else ""
-    bos = llm._model.token_get_text(bos_id) if bos_id != -1 else ""
-
-    class NoThink(llama_chat_format.Jinja2ChatFormatter):
-        def __call__(self, **kwargs: Any) -> Any:
-            return super().__call__(enable_thinking=False, **kwargs)
-
-    plain = llama_chat_format.Jinja2ChatFormatter(
-        template=template, eos_token=eos, bos_token=bos, stop_token_ids=[eos_id]
-    )
-    no_think = NoThink(template=template, eos_token=eos, bos_token=bos, stop_token_ids=[eos_id])
-    sample = [{"role": "user", "content": "x"}]
-    if no_think(messages=sample).prompt != plain(messages=sample).prompt + NO_THINK_SUFFIX:
-        raise ValueError("chat_template 'no-think' did not render as the plain template plus "
+    plain = template_formatter(llm)
+    no_think = template_formatter(llm, enable_thinking=False)
+    sample_plain = plain(messages=SAMPLE_MESSAGES).prompt
+    if not renders_without_thinking(sample_plain, no_think(messages=SAMPLE_MESSAGES).prompt):
+        raise ValueError("chat_template 'no-think' did not render as the plain template with "
                          "an empty thinking block; refusing to guess")  # fmt: skip
     return no_think.to_chat_handler()
+
+
+def refuse_open_thinking(llm: Any) -> None:
+    """Raise when the model file's own template ends its generation prompt inside a thinking
+    block, so such a model never labels on the "gguf" template (it needs 'no-think')."""
+    plain = template_formatter(llm)
+    if plain is not None and opens_thinking(plain(messages=SAMPLE_MESSAGES).prompt):
+        raise ValueError("the model's chat template opens a thinking block before the answer; "
+                         "load it with chat_template 'no-think'")  # fmt: skip
 
 
 @dataclass
