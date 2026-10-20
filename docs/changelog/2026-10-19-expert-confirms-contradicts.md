@@ -33,5 +33,5 @@
   section 2 row 11 -> "`decide_verdict` applies rules 0.3.0"; section 6 Outcome table heading
   "(rules 0.3.0)" and CONTRADICTED -> "A failed deterministic check, or a "contradicts" an
   expert accepted; an unaccepted one shows "Contradiction found, confirm to finalize"";
-  section 11: add gate 19 (met once this PR merges) and "of 19 gates"; section 12 row 1:
+  section 11: add gate 19, met by #98, and "11 of 19 gates met"; section 12 row 1:
   `RULE_VERSION = "0.3.0"`.
