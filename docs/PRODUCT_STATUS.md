@@ -156,7 +156,7 @@ approved (07:29Z). `PROBE_PASSED` is empty, so no case can use the cloud yet.
 | Outcome | What it needs (rules 0.3.0) |
 |---|---|
 | SUPPORTED | Every core assumption covered (a passing check, or support an expert accepted); at least one expert-accepted support on an observed record; no open complicating or contradicting item; the claim type's key assumption present |
-| CONTRADICTED | A failed deterministic check, or a "contradicts" an expert accepted; an unaccepted one shows "Contradiction found, confirm to finalize" |
+| CONTRADICTED | A failed deterministic check on a core assumption, or a "contradicts" an expert accepted on a core assumption; an unaccepted one on a core assumption shows "Contradiction found, confirm to finalize". A "contradicts" on a non-core assumption never contradicts; while open it blocks SUPPORTED |
 | UNPROVEN | Anything else, with the uncovered assumptions named |
 
 AI review alone covers nothing in the alpha (`_AI_MAY_COVER` is empty), so every SUPPORTED
@@ -227,7 +227,7 @@ were ready for the expert; 381 of 493 labels were dropped before storage (this c
 The gate swaps the model for a stand-in that labels every retrieved record and a simulated
 expert that accepts only signed key evidence. It tests retrieval, checks, assumption sheet,
 rules and invariants, not model quality. Last recorded: case01 accuracy 1.00, 0 false
-supported; unreviewed run 0.60 (report only); hostile red-team PASS; case02 (hidden, aggregate,
+supported; unreviewed run 0.55 (report only; 0.60 before #98); hostile red-team PASS; case02 (hidden, aggregate,
 report only) 0.90 accuracy, 0 false supported. See section 10 for the latest run.
 
 ## 8. Implemented features (main unless marked)
