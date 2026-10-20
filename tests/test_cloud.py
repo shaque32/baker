@@ -326,6 +326,25 @@ def test_a_cloud_label_whose_quote_fails_is_dropped_not_relabeled(
     assert run.result.dropped_labels == 1 and not local.prompts
 
 
+def test_a_cloud_model_reads_the_cloud_prompt_and_the_local_model_keeps_its_own(
+    case_db, fake_context
+):
+    # Arsh's "Opus only" (2026-10-19): v1.2 for a cloud model, v1.1 for the local 14B.
+    from core.audit._llm_json import load_prompt, prompt_version
+
+    local_v = prompt_version(load_prompt(stance_mod.PROMPT_FILE))
+    cloud_v = prompt_version(load_prompt(stance_mod.CLOUD_PROMPT_FILE))
+    assert local_v != cloud_v
+    lab = stance_mod.create(case_db, cloud_model=FakeCloud([SUPPORTS]))
+    assert lab.prompt_version == _cloud_run(lab).prompt_version == cloud_v
+    assert stance_mod.create(case_db, model=FakeLocal([])).prompt_version == local_v
+    # The cloud benchmarks pass a cloud model as the labeler's model: it reads the cloud prompt.
+    assert stance_mod.create(case_db, model=FakeCloud([])).prompt_version == cloud_v
+    assert stance_mod.prompt_file(None) == stance_mod.PROMPT_FILE
+    # The gate checks the version a cloud case would send.
+    assert cloud_policy._stance_prompt_version() == cloud_v
+
+
 def test_a_cloud_case_needs_no_local_stance_model(case_db, fake_context, monkeypatch):
     monkeypatch.setenv("BAKER_MODEL_CONFIG", "/nonexistent/model.json")
     lab = stance_mod.create(case_db, cloud_model=FakeCloud([SUPPORTS]))

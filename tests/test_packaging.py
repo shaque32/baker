@@ -40,6 +40,7 @@ def test_the_product_and_case01_are_shipped():
     for path in (
         "core/schema.sql",
         "core/audit/prompts/stance.md",
+        "core/audit/prompts/stance_cloud.md",
         "cli/main.py",
         "ui/server.py",
         "eval/gold/case01/gold.jsonl",
