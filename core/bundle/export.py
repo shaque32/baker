@@ -30,7 +30,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from core import build, pipeline
+from core import build, db, pipeline
 from core.audit import invariants, quotes, rules
 from core.contracts import CONTRACTS_VERSION
 from core.db import apply_schema
@@ -98,7 +98,7 @@ def _dump(conn: sqlite3.Connection, table: str, cols: list[str]) -> bytes:
     sql = f"SELECT {', '.join(cols)} FROM {table} ORDER BY rowid"  # noqa: S608 - schema names
     try:
         rows = conn.execute(sql).fetchall()
-    except sqlite3.DatabaseError as e:  # SQLCipher's errors subclass the same names
+    except db.DatabaseError as e:  # plain SQLite or SQLCipher
         raise ReviewError(
             f"this case's {table} table does not match Baker's schema ({e}); a case made under "
             "an older schema cannot be exported"

@@ -35,7 +35,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from core import pipeline
+from core import db, pipeline
 from core.audit import quotes, rules, stance
 from core.audit._llm_json import BadModelOutput, parse_json_object
 from core.audit._local_model import RECEIVED_ACTION
@@ -223,7 +223,7 @@ def _tables(zf: zipfile.ZipFile, manifest: dict[str, Any], out: _Out) -> sqlite3
                 f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",  # noqa: S608
                 rows,
             )
-    except (ValueError, UnicodeDecodeError, sqlite3.DatabaseError) as e:
+    except (ValueError, UnicodeDecodeError, db.DatabaseError) as e:
         out.add(FAIL, "tables", f"the tables cannot be loaded ({e})")
     if not out.failed("tables"):
         broken = conn.execute("PRAGMA foreign_key_check").fetchall()
