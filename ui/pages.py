@@ -60,6 +60,7 @@ from core.report.selection import claim_note
 from core.review import flags as F
 from core.review.status import (
     AGAINST,
+    CONTRADICTION_FOUND,
     HOLDINGS,
     ClaimState,
     case_holdings,
@@ -461,7 +462,7 @@ def _tally(states: list[ClaimState]) -> str:
     """A bar split by finding, then one chip per finding with its count."""
     if not states:
         return ""
-    known = {"v-sup", "v-con", "v-unp", "v-await"}
+    known = {"v-sup", "v-con", "v-unp", "v-await", "v-confirm"}
     by_label = Counter((st.label, _vcls(st)) for st in states)
     bar = "".join(
         f"<span class='{css if css in known else 'other'}' "
@@ -542,6 +543,21 @@ def _decide_form(page: Page, item: EvidenceItem, decided: bool, back: str) -> st
     )
 
 
+def _confirm_form(page: Page, item: EvidenceItem, back: str) -> str:
+    """Rule 1b's finalizing step: one click accepts the contradiction with the expert's reason
+    and re-runs the verdicts, so the claim becomes contradicted at once."""
+    return page.form(
+        "/evidence/confirm",
+        f"<input type='hidden' name='id' value='{e(item.id)}'>"
+        "<input type='text' class='wide' name='reason' required maxlength='500' "
+        "placeholder='Why, in one sentence (recorded in the audit log)'><br>"
+        "<button type='submit' name='status' value='accepted'>Confirm contradiction</button>"
+        "<button type='submit' name='status' value='dismissed'>Dismiss</button>",
+        back=back,
+        anchor=item.id,
+    )
+
+
 def evidence_card(
     conn: sqlite3.Connection,
     page: Page,
@@ -552,8 +568,10 @@ def evidence_card(
     claim_id: str | None = None,
     flagged: bool = False,
     run_id: str | None = None,
+    confirm: bool = False,
 ) -> str:
-    """claim_id: the claim page shows the card; it then carries the optional label flag."""
+    """claim_id: the claim page shows the card; it then carries the optional label flag.
+    confirm: a contradiction waiting for the expert (rule 1b), shown with the confirm step."""
     stance_cls = "b-against" if item.stance in AGAINST else "b-open"
     flag = ""
     if claim_id is not None:
@@ -571,7 +589,12 @@ def evidence_card(
         f"(inferred): {e(item.rationale)}</p>"
         f"<p><strong>Review:</strong> {review_label(conn, item)} · "
         f"<a href='{e(link('/evidence', id=item.id))}'>See about 20 messages around it</a></p>"
-        f"{_decide_form(page, item, last_kind == 'expert', back)}{flag}</div>"
+        + (
+            _confirm_form(page, item, back)
+            if confirm
+            else _decide_form(page, item, last_kind == "expert", back)
+        )
+        + f"{flag}</div>"
     )
 
 
@@ -751,6 +774,7 @@ def flags_overview(conn: sqlite3.Connection) -> str:
 
 def _groups(st: ClaimState) -> list[tuple[str, list[EvidenceItem]]]:
     groups: dict[str, list[EvidenceItem]] = {
+        CONTRADICTION_FOUND: [],
         "AI-accepted, awaiting your decision": [],
         "Supporting, not reviewed": [],
         "Contradicting or complicating": [],
@@ -763,6 +787,8 @@ def _groups(st: ClaimState) -> list[tuple[str, list[EvidenceItem]]]:
         by_expert = st.last_reviewer.get(x.id) == "expert" and x.status != EvidenceStatus.OPEN
         if by_expert:
             groups["Decided by an expert"].append(x)
+        elif st.contradiction_found and st.to_confirm(x):
+            groups[CONTRADICTION_FOUND].append(x)
         elif x.stance in AGAINST:
             groups["Contradicting or complicating"].append(x)
         elif x.status == EvidenceStatus.AI_ACCEPTED:
@@ -915,6 +941,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
                     claim_id=c.id,
                     flagged=x.id in flagged,
                     run_id=st.run_id,
+                    confirm=title == CONTRADICTION_FOUND,
                 )
             )
     hidden = [x for x in st.evidence if x.stance == Stance.IRRELEVANT]

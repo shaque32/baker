@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 import pytest
 
 from cli.main import main as cli_main
+from core.audit.rules import RULE_VERSION
 from core.review import audit_log, flags
 from core.review.actions import ReviewError
 from core.review.redecide import redecide
@@ -279,7 +280,7 @@ def test_error_log_keeps_unnamed_pilots_apart_and_always_names_versions(conn):
     ]
     md = flags.error_log_markdown(flags.error_log([{**s, "pilot": "Quiet", "flags": []}, s]))
     assert md.count("- Versions:") == 2 and md.count("- Models:") == 2
-    assert "(rules 0.2" in md
+    assert f"(rules {RULE_VERSION})" in md
 
 
 def test_flags_must_disagree_and_target_the_audit_on_screen(db, conn):

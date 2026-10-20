@@ -1,7 +1,7 @@
 # Baker: methods note
 
 How Baker reaches each finding, for an examiner who uses it and may need to describe it. This note
-describes Baker as it is on `main` (verdict rules 0.2.2, as of 2026-10-16). Every report names the
+describes Baker as it is on `main` (verdict rules 0.3.0, as of 2026-10-19). Every report names the
 rule version, quote-check version, prompt versions and model file that produced it; read this note against those.
 
 Baker is a tool that helps an examiner check claims. It does not replace the examiner's own review
@@ -59,11 +59,14 @@ a call's direction, app, parties and duration, with its time shown beside it but
 such a record cites only those fields, each of which keeps its `source_ref`.
 
 **Rules.** A fixed, versioned program (`core/audit/rules.py`) turns the checks, the evidence and
-the examiner's decisions into a verdict. No model decides a verdict. In brief (rules 0.2.2):
+the examiner's decisions into a verdict. No model decides a verdict. In brief (rules 0.3.0):
 
-- **Contradicted** if any core assumption has a failed check, or a "contradicts" label that counts.
-  A model's "contradicts" on a meaning assumption counts only once the examiner accepts it, and it
-  cannot overrule a check that passed on the same assumption.
+- **Contradicted** if any core assumption has a failed check, or a "contradicts" label the
+  examiner accepted. A model's "contradicts" the examiner has not accepted keeps the claim
+  Unproven, shown as "Contradiction found, confirm to finalize"; the examiner confirms it in one
+  click with a one-sentence reason, which the audit log records. Automatic contradiction can
+  return one claim type at a time, only after the local labeler meets the signed stance bars for
+  that type and with sign-off; no claim type has it today, and every report says so.
 - **Supported** only if every core assumption is covered (by a passed check, or by support the
   examiner accepted on an observed or derived record), the examiner accepted at least one
   supporting record that was observed directly, nothing complicating or contradicting remains open,
@@ -96,7 +99,7 @@ own decision with that note, not as a rule outcome.
 | Verdict | Means | Does not mean |
 |---|---|---|
 | **Supported** | From the rules: every core assumption is covered by a passed check or by evidence the examiner accepted, and nothing open complicates or contradicts it | That the claim is true beyond the data imported, that the data is complete, or that Baker formed an opinion. An examiner override to Supported is the examiner's decision and is labeled as one |
-| **Contradicted** | A deterministic check failed, or a counting "contradicts" label stands on an observed or derived record, as cited | That the person did not do something, or any conclusion about guilt. A model-labeled contradiction the examiner has not reviewed should be reviewed before it is relied on |
+| **Contradicted** | A deterministic check failed, or the examiner accepted a "contradicts" label on the cited record | That the person did not do something, or any conclusion about guilt |
 | **Unproven** | Baker could not cover every core assumption with the data it had; the uncovered ones are named | That the claim is false, or that the event did not happen |
 
 **"Not found" never means "did not happen."** An absence finding states what was searched and what
@@ -153,8 +156,8 @@ from each report you deliver: that is the anchor no one can change.
 4. **Evidence recall is limited.** Retrieval is keyword and filter based, with no embeddings.
    Baker can miss a relevant record. The examiner should search beyond what Baker surfaces.
 5. **Model labels can be wrong.** Each label is checked for a verbatim quote, but not for
-   correctness. That is why Supported requires the examiner, and why model-labeled contradictions
-   should be reviewed.
+   correctness. That is why both Supported and a contradiction found by the model require the
+   examiner.
 6. **No translation.** Non-Latin text is quoted in the original and flagged for a human reader.
 7. **What was never imported cannot be seen.** Messages an examiner left out of a curated report
    are not in the case.

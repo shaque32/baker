@@ -267,7 +267,8 @@ def test_a_record_that_contradicts_quoted_as_shown_keeps_the_claim_from_supporte
     result = run()
     (against,) = [e for e in items(conn) if e.stance == Stance.CONTRADICTS]
     assert against.record_id == other and result.dropped_labels == 0
-    assert result.decisions[0].verdict == Verdict.CONTRADICTED
+    # rules 0.3.0: the model's contradiction keeps the claim unproven until an expert confirms it
+    assert result.decisions[0].verdict == Verdict.UNPROVEN
     # The record is all that stands between this claim and SUPPORTED: only an expert removes it.
     actions.decide_evidence(conn, against.id, EvidenceStatus.DISMISSED, EXPERT, "Another person.")
     assert run().decisions[0].verdict == Verdict.SUPPORTED
@@ -635,11 +636,17 @@ def test_another_message_never_contradicts_a_one_message_assumption(conn):
     assert raw == Stance.COMPLICATES.value
 
 
-def test_the_named_message_itself_still_contradicts(conn):
+def test_the_named_message_itself_still_contradicts_once_confirmed(conn):
+    from core.review.redecide import redecide
+
     decision, named, other = _one_message_case(conn, contradict_named=True)
     assert named.stance == Stance.CONTRADICTS
     assert other.stance == Stance.COMPLICATES
-    assert decision.verdict == Verdict.CONTRADICTED
+    assert decision.verdict == Verdict.UNPROVEN  # rules 0.3.0: waits for the expert
+    actions.decide_evidence(conn, named.id, EvidenceStatus.ACCEPTED, EXPERT, "Another sender.")
+    redecide(conn, EXPERT)
+    run_id = pipeline.last_run(conn)["run_id"]
+    assert pipeline.load_verdict(conn, "C05", run_id).verdict == Verdict.CONTRADICTED
 
 
 # ---------------------------------------------------------------- forwarded messages fail closed

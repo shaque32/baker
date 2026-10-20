@@ -35,6 +35,7 @@ from core.review import actions
 from core.review.redecide import redecide
 from core.review.status import (
     AWAITING_EXPERT,
+    CONTRADICTION_FOUND,
     LABELING_INCOMPLETE,
     NOT_AUDITED,
     NOT_TESTED,
@@ -51,6 +52,7 @@ from tests.test_review_screen import (
     _spec,
     get,
     key_items,
+    post,
 )
 from ui.app import App
 
@@ -218,10 +220,13 @@ def test_screen_and_report_agree_on_every_claim_through_a_review(tmp_path):
         assert labels[NOT_AUDITED] == 1 and "C03" not in _report_claims(render_report(conn))
 
         # a full audit again: the added claim has no assumption to check (not tested), and the
-        # model reads C16's records as contradicting it
+        # model reads C16's records as contradicting it: under rules 0.3.0 that waits for the
+        # expert, on the screen and in the report alike
         _audit(conn, START + timedelta(hours=5), labeler=ContradictsOn("C16"))
         labels = _assert_agree(app, conn)
-        assert labels[NOT_TESTED] == 1 and labels["Contradicted"] >= 1
+        assert labels[NOT_TESTED] == 1
+        assert claim_state(conn, "C16").label == CONTRADICTION_FOUND
+        assert CONTRADICTION_FOUND in get(app, "/claim", id="C16").text
 
         # an audit stopped after two claims: the rest print as labeling incomplete on both
         def stop_after_two(done, total, decision):  # noqa: ANN001, ANN202
@@ -232,6 +237,81 @@ def test_screen_and_report_agree_on_every_claim_through_a_review(tmp_path):
             _audit(conn, START + timedelta(hours=6), progress=stop_after_two)
         assert pipeline.view_run(conn).get("partial")
         assert _assert_agree(app, conn)[LABELING_INCOMPLETE] > 0
+    finally:
+        conn.close()
+
+
+def test_one_click_confirms_a_contradiction_the_same_on_screen_and_in_the_report(tmp_path):
+    """Rules 0.3.0: a model's contradiction waits for the expert. One click on the claim page
+    records the acceptance and its reason in the audit log and re-runs the verdicts."""
+    db = tmp_path / "case01.db"
+    conn = run_pipeline.build_case("case01", db)
+    app = App(db, expert="Test Expert", port=PORT)
+    try:
+        _audit(conn, START, labeler=ContradictsOn("C16"))
+        labels = _assert_agree(app, conn)
+        assert labels[CONTRADICTION_FOUND] >= 1
+        st = claim_state(conn, "C16")
+        assert st.label == CONTRADICTION_FOUND and st.decision.verdict == Verdict.UNPROVEN
+        page = get(app, "/claim", id="C16").text
+        assert "Confirm contradiction" in page
+        assert CONTRADICTION_FOUND in render_report(conn)
+        for word in ("uncertain", "low confidence", "confidence score"):
+            assert word not in page.lower()
+
+        eid = next(x.id for x in st.evidence if st.to_confirm(x))
+
+        def decisions() -> int:
+            return conn.execute(
+                "SELECT COUNT(*) FROM audit_log WHERE action = 'evidence.decide'"
+            ).fetchone()[0]
+
+        # a confirm needs a reason, like every expert decision
+        post(app, "/evidence/confirm", id=eid, status="accepted", reason=" ")
+        assert app.flash[1] is True and decisions() == 0
+        r = post(app, "/evidence/confirm", id=eid, status="accepted", reason="Two people.")
+        assert r.status == 303
+        assert claim_state(conn, "C16").label == "Contradicted"
+        labels = _assert_agree(app, conn)
+        assert labels["Contradicted"] >= 1
+        (payload,) = conn.execute(
+            "SELECT payload_json FROM audit_log WHERE action = 'evidence.decide'"
+            " AND payload_json LIKE ?",
+            (f'%"{eid}"%',),
+        ).fetchone()
+        assert json.loads(payload)["reason"] == "Two people."
+        assert json.loads(payload)["status"] == "accepted"
+
+        # an item no longer waiting (here the claim is already contradicted; a page left open
+        # across a later audit is the same) is refused, and nothing more is recorded (Codex)
+        before = decisions()
+        post(app, "/evidence/confirm", id=eid, status="accepted", reason="Again.")
+        assert app.flash[1] is True and "not waiting" in app.flash[0]
+        assert decisions() == before
+    finally:
+        conn.close()
+
+
+def test_a_confirm_whose_verdict_rerun_fails_still_says_it_was_recorded(tmp_path, monkeypatch):
+    """Codex on #98: the decision is committed before the re-run, so a failing re-run must not
+    read as "Not recorded", or a retry records the decision twice."""
+    from core.audit.invariants import InvariantViolation
+
+    db = tmp_path / "case01.db"
+    conn = run_pipeline.build_case("case01", db)
+    app = App(db, expert="Test Expert", port=PORT)
+    try:
+        _audit(conn, START, labeler=ContradictsOn("C16"))
+        st = claim_state(conn, "C16")
+        eid = next(x.id for x in st.evidence if st.to_confirm(x))
+
+        def broken(conn):  # noqa: ANN001, ANN202
+            raise InvariantViolation("stand-in failure")
+
+        monkeypatch.setattr(app, "_redecide", broken)
+        post(app, "/evidence/confirm", id=eid, status="accepted", reason="Two people.")
+        assert app.flash[1] is False
+        assert "recorded" in app.flash[0] and "not re-run" in app.flash[0]
     finally:
         conn.close()
 
