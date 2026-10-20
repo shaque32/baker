@@ -18,10 +18,10 @@ skips the reviewer items):
   the expert's queue;
 - contradicts precision >= 90%: since rules 0.3.0 a model's "contradicts" makes a claim
   CONTRADICTED only once an expert accepts it (rules.py rule 1b, unless its claim type is in
-  _AUTO_CONTRADICT, empty today), so a wrong one costs the expert a review. This bar is
-  aggregate over the whole set and does not by itself qualify a claim type for
-  _AUTO_CONTRADICT (rules.py names what an entry needs); the bar counts every kind, and
-  `reported` gives the precision on non-meaning assumptions;
+  _AUTO_CONTRADICT, empty today), so a wrong one costs the expert a review and is a wrong
+  verdict only if the expert accepts it. This bar is aggregate over the whole set and does not
+  by itself qualify a claim type for _AUTO_CONTRADICT (rules.py names what an entry needs);
+  the bar counts every kind, and `reported` gives the precision on non-meaning assumptions;
 - zero "supports" on an item whose gold is "contradicts": the expert would be shown
   contradicting evidence as support;
 - valid output 100%.

@@ -135,7 +135,8 @@ There is no model judge of verdicts in Baker. The word "judge" does not name any
   - **Known risk:** on the signed probe set (P001-P105), Opus calls same-day "X told the owner..."
     denials and undated denials "contradicts" (4 of 15 contradicts wrong in each arm). Each is an
     event assumption; since rules 0.3.0 each would wait for the expert as "Contradiction found,
-    confirm to finalize" rather than become a wrong CONTRADICTED (section 7).
+    confirm to finalize" rather than become a wrong CONTRADICTED on its own; an expert who
+    accepts one still makes the verdict wrong (section 7).
 - **Claim proposal and assumption filling stay local.** Opus missed both pre-set bars (claim
   recall 80% vs 90%; sheet-free audit 60% accuracy vs 80%), recorded in
   `/mnt/project-files/baker/cloud-first/steps-check/RESULTS.md`.
@@ -305,8 +306,8 @@ PRs, never merged.
    labels miss the signed bars:** on the signed set with v1.1, the prompt on main (Arsh's 24 GB
    MacBook Air, `eee8d15`, 2026-10-19), its contradicts precision is 58% (11 of 19, bar 90%) and
    it shows 6 moved traps as supports. Since rules 0.3.0 (#98) a model's "contradicts" never makes
-   a claim CONTRADICTED without an expert's acceptance, so a wrong one costs the expert a review,
-   not a verdict. Source:
+   a claim CONTRADICTED without an expert's acceptance, so a wrong one cannot
+   cause a wrong verdict on its own; it costs a review, and still risks one if the expert accepts it. Source:
    `/mnt/project-files/baker/cloud-bench/2026-10-16/fair-14b-vs-opus/local-arm/RESULTS.md`.
 5. **Evidence recall is modest.** Opus case01 surfaced key evidence for 35% of claims needing it;
    14 of 20 claims depend on the expert finding or accepting key evidence.
