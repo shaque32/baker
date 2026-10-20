@@ -91,6 +91,7 @@ NEEDS_NO_JOB: dict[str, tuple[str, ...]] = {
     "/identity/link": ("audit",),
     "/identity/look": ("audit",),
     "/redecide": ("audit",),
+    "/evidence/confirm": ("audit",),
     "/claims/propose": ("audit", "propose", "model_check"),
     "/model/check": ("audit", "propose", "model_check"),
     "/audit/start": ("audit", "propose", "model_check"),
@@ -457,6 +458,7 @@ class App:
             "/case/passphrase": lambda: self._change_passphrase(f),
             "/case/recovery/done": lambda: self._recovery_done(),
             "/evidence/decide": lambda: self._decide(conn, f),  # type: ignore[arg-type]
+            "/evidence/confirm": lambda: self._confirm(conn, f),  # type: ignore[arg-type]
             "/verdict": lambda: self._verdict(conn, f),  # type: ignore[arg-type]
             "/claim/edit": lambda: self._edit_claim(conn, f),  # type: ignore[arg-type]
             "/claim/add": lambda: self._add_claim(conn, f),  # type: ignore[arg-type]
@@ -567,6 +569,23 @@ class App:
             f"Recorded: {status.value}. Re-run the verdicts when you are ready; the verdict does "
             "not change until then."
         )
+
+    def _confirm(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        """Rule 1b's one-click step: decide a contradiction waiting for the expert, with the
+        expert's reason in the audit log, then re-run the verdicts so the claim shows the result."""
+        status = EvidenceStatus(f.get("status", ""))
+        if status not in (EvidenceStatus.ACCEPTED, EvidenceStatus.DISMISSED):
+            raise ReviewError("confirm or dismiss the contradiction")
+        if pipeline.view_run(conn) != pipeline.last_run(conn):
+            raise ReviewError(
+                "the latest audit has not finished; resume it before confirming a contradiction"
+            )
+        actions.decide_evidence(conn, f.get("id", ""), status, self.actor, f.get("reason", ""))
+        done = "Contradiction confirmed" if status == EvidenceStatus.ACCEPTED else "Dismissed"
+        try:
+            return f"{done}. {self._redecide(conn)}"
+        except ReviewError as err:  # the decision is recorded either way
+            return f"{done} and recorded. The verdicts were not re-run: {err}."
 
     def _verdict(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         claim = f.get("claim", "")

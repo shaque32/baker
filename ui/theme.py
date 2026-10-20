@@ -145,6 +145,7 @@ ul.flags form.inline button { margin-left: 8px; }
 .tally span { display: block; border: 0; border-radius: 0; padding: 0; }
 .tally span::before { content: none; }
 .tally .v-sup { background: var(--sup); } .tally .v-con { background: var(--con); }
+.tally .v-confirm { background: #c98a7e; }
 .tally .v-unp, .tally .v-await { background: #c9a24a; } .tally .other { background: #aaa49a; }
 .counts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
 .counts .verdict { font-size: 12px; }

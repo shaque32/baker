@@ -9,9 +9,10 @@ the same PR that changes a gate's state, along with `docs/PRODUCT_STATUS.md` sec
 
 - **As of:** 2026-10-19, main `0dc55dc` (after #83, #72, #68, #74, #73, #75, #79, #85, #76, #87, #78, #82, #86, #88, #91, #89, #84
   and #81). Since `80bf0df` only gate 4's row was rechecked (for #89). Open PRs are named but not counted.
-- **Result:** 10 of 18 gates met (gate 2 by #76, gate 3 by #91, gate 14 by the case02 key Arsh signed, gate 6 by #72, gate 7 by #74, gate 8 by
+- **Result:** 10 of 19 gates met (gate 2 by #76, gate 3 by #91, gate 14 by the case02 key Arsh signed, gate 6 by #72, gate 7 by #74, gate 8 by
   merging #68, gate 12 by #82, gate 13 by #86 and #88, gate 15 already in place, gate 18 by the feedback form #82 publishes). Gates 13 to 18 come from Grok's pilot-ready list
-  (2026-10-16), which Arsh agreed to fold in here. **Not pilot-ready.**
+  (2026-10-16), which Arsh agreed to fold in here. Gate 19 comes from Grok's URGENT FIX on #90
+  (2026-10-19). **Not pilot-ready.**
 
 ## The gates
 
@@ -35,6 +36,7 @@ the same PR that changes a gate's state, along with `docs/PRODUCT_STATUS.md` sec
 | 16 | Pilot agreement | A signed short agreement: data stays on the examiner's machine, Baker never sees it, deletion whenever they want, output advisory only | **Not met** | An outline for a lawyer exists (`/mnt/project-files/baker/pilot/03-pilot-agreement-outline.md`), with bracketed decisions open; no company or lawyer yet |
 | 17 | One-page explainer and support | A one-page "what Baker does and doesn't do", a named support contact, and a way to send a bug report with no case data | **Not met** | Pieces exist: methods note (2 to 4 pages), limitations sheet in the pilot kit, and the `baker verify-log` output, `ufdr-check.md` and `ufdr-check.json`, which hold no case content (onboarding section 7; `ufdr-check-private.md` is case content and is never sent). No one-pager, no named contact, no general bug-report export |
 | 18 | Feedback form | A form records where Baker was wrong, where it saved time and what was missing | **Met** | [`docs/PILOT_FEEDBACK_FORM.md`](PILOT_FEEDBACK_FORM.md) (wrong verdicts and citations, time saved, what was missing), filled in with no case content |
+| 19 | No model-only Contradicted | The local labeler meets the signed stance bars (supports recall >= 0.90, contradicts precision >= 0.90, 0 moved traps shown as supports), or CONTRADICTED requires expert acceptance | **Not met** (open PR) | Rules 0.3.0 on branch `claude/expert-confirms-contradicts-y6ti2f`: a model's or the AI reviewer's "contradicts" counts only once an expert accepts it, and the screen and report say "Contradiction found, confirm to finalize" until then. The per-claim-type allow-set `_AUTO_CONTRADICT` in `core/audit/rules.py` is empty. The 14B does not meet the bars today (Mac run 2026-10-19, `eee8d15`: 58% contradicts precision on v1.1). Met once the PR merges with Arsh's approval of the rules change |
 
 Also required on the release commit, as for every merge: `make check` passes (lint, tests, the
 model-free eval with 0 false supported on case01, hostile red-team PASS).
