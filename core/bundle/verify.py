@@ -43,6 +43,7 @@ import io
 import json
 import sqlite3
 import zipfile
+import zlib
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
@@ -132,6 +133,14 @@ def verify_bundle(
     """Every check's findings. An encrypted bundle (core/bundle/sealed.py) needs `passphrase`."""
     out = _Out()
     try:
+        size = Path(path).stat().st_size
+        if size > MAX_BUNDLE_BYTES:
+            out.add(
+                FAIL,
+                "files",
+                f"the bundle is {size:,} bytes, more than the {MAX_BUNDLE_BYTES:,} a verify reads",
+            )
+            return out.items
         data = Path(path).read_bytes()
         if sealed.is_sealed(data):
             if not passphrase:
@@ -144,7 +153,11 @@ def verify_bundle(
         out.add(FAIL, "files", f"the bundle cannot be read ({e})")
         return out.items
     with zf:
-        manifest = _files(zf, out)
+        try:
+            manifest = _files(zf, out)
+        except (zipfile.BadZipFile, OSError, EOFError, zlib.error) as e:
+            out.add(FAIL, "files", f"a file in the bundle cannot be read ({e})")
+            return out.items
         if manifest is None or out.failed():
             return out.items
         if not _versions(manifest, out):
@@ -195,6 +208,7 @@ def _checks(
 
 
 MAX_UNPACKED = 4 << 30  # 4 GiB: far above a case's tables, far below a zip bomb's
+MAX_BUNDLE_BYTES = MAX_UNPACKED  # the file itself, read before anything is unpacked
 
 
 def _entry_sha256(zf: zipfile.ZipFile, name: str) -> str:
@@ -324,7 +338,7 @@ def _tables(zf: zipfile.ZipFile, manifest: dict[str, Any], out: _Out) -> sqlite3
                 f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",  # noqa: S608
                 rows,
             )
-    except (ValueError, UnicodeDecodeError, *db.DatabaseError) as e:
+    except (ValueError, UnicodeDecodeError, zipfile.BadZipFile, zlib.error, *db.DatabaseError) as e:
         out.add(FAIL, "tables", f"the tables cannot be loaded ({e})")
     if not out.failed("tables"):
         broken = conn.execute("PRAGMA foreign_key_check").fetchall()
@@ -440,9 +454,11 @@ def _manifest(
 def _inputs(conn: sqlite3.Connection, out: _Out, inputs_dir: Path | None) -> None:
     stored = dict(conn.execute("SELECT id, sha256 FROM sources"))
     logged: dict[str, str] = {}
+    payloads: dict[str, dict[str, Any]] = {}
     for _seq, _at, _actor, action, p in _log(conn):
         if action == "import" and isinstance(p.get("source_id"), str):
             logged[p["source_id"]] = str(p.get("sha256"))
+            payloads[p["source_id"]] = p
     bad = False
     for sid, sha in sorted(stored.items()):
         if sid in logged and logged[sid] != sha:
@@ -450,6 +466,28 @@ def _inputs(conn: sqlite3.Connection, out: _Out, inputs_dir: Path | None) -> Non
                 FAIL,
                 "inputs",
                 f"source {sid}: its stored hash differs from the one logged when it was imported",
+            )
+            bad = True
+    for sid, payload in sorted(payloads.items()):
+        row = conn.execute(
+            "SELECT s.file_name, s.fidelity, c.payload_json FROM sources s"
+            " LEFT JOIN source_coverage c ON c.source_id = s.id WHERE s.id = ?",
+            (sid,),
+        ).fetchone()
+        if row is None:
+            continue
+        name, fidelity, coverage = row
+        if (
+            payload.get("file_name", name) != name
+            or payload.get("fidelity", fidelity) != fidelity
+            or coverage is None
+            or json.loads(coverage) != payload
+        ):
+            out.add(
+                FAIL,
+                "inputs",
+                f"source {sid}: its name, fidelity or coverage record is not the one its import "
+                "logged",
             )
             bad = True
     for sid in sorted(set(logged) - set(stored)):
@@ -1015,7 +1053,15 @@ def _identity(conn: sqlite3.Connection, out: _Out) -> None:
     Removals are logged too (identity.propose's removed, person.remove)."""
     state: dict[str, tuple[str, str | None, str | None, str | None]] = {}
     basis: dict[str, str] = {}
+    person_names: dict[str, Any] = {}  # person id -> the name its logged action gave
     for _s, at, actor, act, p in _log(conn):
+        if act == "person.add":
+            person_names[p.get("person_id")] = p.get("name")
+        elif act == "stipulation.confirm" and str(p.get("stipulation_id", "")).startswith(
+            "stip:device_owner:"
+        ):
+            device = str(p["stipulation_id"]).removeprefix("stip:device_owner:")
+            person_names[f"person:{device}:owner"] = p.get("person")
         if act == links.PROPOSE_ACTION:
             for lid in p.get("added") or []:
                 state.setdefault(lid, ("proposed", None, None, None))
@@ -1035,6 +1081,11 @@ def _identity(conn: sqlite3.Connection, out: _Out) -> None:
         "SELECT id, account_id, person_id, status, tier, basis, decided_by, decided_at_utc"
         " FROM identity_links ORDER BY id"
     ).fetchall()
+    names = dict(conn.execute("SELECT id, name FROM persons"))
+    for pid in sorted({r[2] for r in stored if r[3] == "confirmed"}):
+        if pid in person_names and names.get(pid) != person_names[pid]:
+            out.add(FAIL, "identity links", f"{pid}: not the name the expert's logged action gave")
+            bad += 1
     for lid, aid, pid, status, tier, why, by, at in stored:
         logged = state.get(lid)
         want_tier = "confirmed" if status == "confirmed" else "inferred"

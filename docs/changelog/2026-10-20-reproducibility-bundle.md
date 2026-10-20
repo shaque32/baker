@@ -14,8 +14,9 @@
   link, model call, stipulation, decision, input hash, log entry, verdict or its time, model
   identity, timeline setting, method note, report or added file fails, as does a claim added
   or changed outside the audit, a stipulation or logged source that went missing, or the
-  thread and accounts shown beside a citation. Malformed rows and oversized zips fail without
-  a crash. The export reads one snapshot (one transaction, through its log entry), never
+  thread and accounts shown beside a citation, a source's name, fidelity or coverage record,
+  or a confirmed link's person name. Malformed rows, damaged members and oversized files fail
+  without a crash. The export reads one snapshot (one transaction, through its log entry), never
   replaces an existing file, and refuses an audit decided under other rules or contracts. New audit-log content, no schema change: `cloud.received` per
   cloud answer, refused ones too (API-reported model, message and request ids, raw-output
   SHA-256, why refused), and each `pipeline.claim` entry names the model calls stored while it
@@ -27,18 +28,20 @@
   claim type; `claims.proposed` records each proposed claim's SHA-256. No export while a newer audit is unfinished. Why: legal defensibility
   (Arsh's brief, 2026-10-20): equal access, authentication, hosted-model reproducibility.
 - Where: PR #104
-- Verified: tests/test_bundle.py (72: round trips on a reviewed case01 and a cloud-path case01
-  with a stand-in API; 57 tampering and malformed-bundle cases fail without a crash; an export
+- Verified: tests/test_bundle.py (77: round trips on a reviewed case01 and a cloud-path case01
+  with a stand-in API; 61 tampering and malformed-bundle cases fail without a crash; an export
   holds the case still and never replaces a file; a refused
   cloud answer is logged with its ids; an answer that cannot be logged pauses the
   audit; a retried send logs one answer; no export without the confirmation; an encrypted case
   never exports in plain form; a failed write leaves no bundle and no success entry; partial
-  coverage never reads as fully verified); full suite 2354 passed, 8 skipped;
+  coverage never reads as fully verified); full suite 2359 passed, 8 skipped;
   make eval unchanged (case01 1.00, 0 false supported; unreviewed 0.55; hostile PASS; case02
   aggregate 0.90, 0 false supported). Not tried on a real case or a real Anthropic answer.
 - Open: CLI only, no screen button. The anchor is the audit log's last hash printed on the
   report; no signature or outside timestamp. Only the exported run's verdicts are re-derived.
-  Re-generating local labels untested, on the same machine or another (a 14B repeat-run
+  Identity changes after the audit reach checks only on the next full audit, while the report
+  shows current links (documented in docs/bundle.md; same as the screen). Re-generating local
+  labels untested, on the same machine or another (a 14B repeat-run
   check is planned). Default scope is the whole case;
   whether to export only what the verdicts rest on is Arsh's open decision (Baker Product
   review on #104).

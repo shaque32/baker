@@ -84,8 +84,8 @@ something could not be checked, and 1 when anything failed:
 1. **Files.** Each file matches its SHA-256 in `bundle.json`; the files listed are exactly a
    bundle's (`METHOD.md`, `report.html`, one file per table), nothing added or missing. An
    encrypted bundle whose header names other key-derivation settings than Baker writes fails
-   before any key is derived, and a bundle that would unpack to more than 4 GiB fails before
-   anything is unpacked.
+   before any key is derived; a bundle file over 4 GiB, or one that would unpack to more than
+   4 GiB, fails before it is read or unpacked; a damaged member fails without a crash.
 2. **Versions.** The rules and contracts that decided the verdicts are the ones in this copy of
    Baker. If not, it names the commit to verify with.
 3. **Tables.** Each row has exactly the schema's columns; every reference resolves.
@@ -97,8 +97,8 @@ something could not be checked, and 1 when anything failed:
 5. **bundle.json.** Its run, model identities, inputs, contents, timeline settings (as the
    log's `timeline.settings` entries set them) and log head are recomputed from the tables and
    must match exactly; `METHOD.md` must be the note `bundle.json` gives.
-6. **Inputs.** Each import entry in the log names the hash stored for that source, and every
-   logged import's source is there. With
+6. **Inputs.** Each import entry in the log names the hash, file name, fidelity and coverage
+   record stored for that source, and every logged import's source is there. With
    `--inputs`, the files there are hashed: a file of the same name with another hash fails, and
    a folder that does not exist fails.
 7. **Run and rows.** The audit run's row (start time, versions, configuration with build,
@@ -124,7 +124,8 @@ something could not be checked, and 1 when anything failed:
    logged action left, about the device and owner its id names, and none the log records is
    missing. Each identity link is what the logged actions left: proposed
    (`identity.propose`) and undecided, or decided (`identity.decide`, `identity.link`) with that
-   account, person, status, tier, expert and time; a link the log still holds is not missing.
+   account, person, status, tier, expert and time, and a confirmed link's person keeps the name
+   the expert's logged action gave; a link the log still holds is not missing.
 11. **Verdicts.** The rules, re-applied to the recorded labels, checks, stipulations and the
    expert decisions as they stood when each verdict was decided (a full audit's stipulations as
    of the log position it read them at), give every verdict exactly
@@ -152,6 +153,9 @@ government document's import (not logged), original files not supplied.
 - Regenerating a local model's labels needs the same model file, runtime and settings. Not tested
   across machines.
 - Only the verdicts of the exported audit are re-derived; older runs' rows are carried as stored.
+- An identity link or device owner the expert changes after the audit reaches the checks only
+  on the next full audit (as on the screen); the report, in the bundle as elsewhere, shows the
+  links as they stand at export. Run the full audit again before exporting after such a change.
 - Not bound to the log: a proposed identity link's basis text, the nearby messages and group
   members shown with a record, and imported rows no verdict or check cites. Imported rows are not
   re-parsed from the original files; `--inputs` checks the files' hashes.

@@ -424,7 +424,8 @@ def _publish(out: Path, data: bytes) -> None:
     """Write `out` whole or not at all, and never over a file already there, even one another
     export created a moment ago: the bytes go to a temporary file of this export's own, which is
     then hard-linked to `out` (refused if `out` exists). On a file system without hard links
-    (some USB drives), `out` is created exclusively and written in place."""
+    (some USB drives), `out` is first created empty and exclusively, then the temporary file
+    replaces it in one rename."""
     out.parent.mkdir(parents=True, exist_ok=True)
     fd, name = tempfile.mkstemp(prefix=f".{out.name}.", suffix=".partial", dir=out.parent)
     tmp = Path(name)
@@ -439,16 +440,14 @@ def _publish(out: Path, data: bytes) -> None:
             raise ReviewError(f"{out} already exists; choose a new file name") from None
         except OSError:
             try:
-                with open(out, "xb") as f:
-                    try:
-                        f.write(data)
-                        f.flush()
-                        os.fsync(f.fileno())
-                    except BaseException:
-                        out.unlink(missing_ok=True)
-                        raise
+                open(out, "xb").close()  # claim the name; only this export may replace it
             except FileExistsError:
                 raise ReviewError(f"{out} already exists; choose a new file name") from None
+            try:
+                os.replace(tmp, out)  # whole: the claimed name never holds a partial bundle
+            except BaseException:
+                out.unlink(missing_ok=True)
+                raise
     finally:
         tmp.unlink(missing_ok=True)
 
@@ -548,8 +547,9 @@ def labelled_by(manifest: dict[str, Any]) -> list[str]:
         if m["where"] == "cloud":
             lines.append(
                 f"- {m['purpose']}: {m['disclosure']} Effort: {m.get('effort')}. Prompt "
-                f"{m['prompt_version']}. Each request and answer is in the audit log "
-                "(cloud.sent, cloud.received: the API's message and request ids)."
+                f"{m['prompt_version']}. Baker logs each request and answer (cloud.sent, "
+                "cloud.received: the API's message and request ids); answers stored before it "
+                "did are listed as NOT VERIFIED by verify-bundle."
             )
         elif m.get("stand_in"):
             lines.append(

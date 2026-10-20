@@ -1097,3 +1097,71 @@ def test_a_bundle_too_large_to_unpack_is_refused_before_reading(reviewed, monkey
     findings = verify_bundle(path)
     assert _levels(findings, "files") == {FAIL}
     assert "unpack" in findings[0].detail
+
+
+def test_a_bundle_file_too_large_is_refused_before_it_is_read(reviewed, monkeypatch):
+    from core.bundle import verify
+
+    _conn, path = reviewed
+    monkeypatch.setattr(verify, "MAX_BUNDLE_BYTES", 1000)
+    findings = verify_bundle(path)
+    assert _levels(findings, "files") == {FAIL} and "bytes" in findings[0].detail
+
+
+def test_a_damaged_zip_member_fails_without_a_crash(reviewed, tmp_path):
+    _conn, path = reviewed
+    data = bytearray(path.read_bytes())
+    with zipfile.ZipFile(path) as zf:
+        info = zf.getinfo(export.REPORT)
+    start = info.header_offset + 30 + len(info.filename) + len(info.extra)
+    data[start + 10] ^= 0xFF  # inside the report's compressed bytes
+    bad = tmp_path / "b.zip"
+    bad.write_bytes(bytes(data))
+    assert _levels(verify_bundle(bad), "files") == {FAIL}
+
+
+def test_source_metadata_is_the_logged_imports(reviewed, tmp_path):
+    conn, path = reviewed
+    sid = conn.execute(
+        "SELECT source_id FROM source_coverage WHERE source_id IN"
+        " (SELECT json_extract(payload_json, '$.source_id') FROM audit_log WHERE action = 'import')"
+        " LIMIT 1"
+    ).fetchone()[0]
+    for table, change in (
+        ("sources", lambda r: r.update(file_name="other.xlsx")),
+        (
+            "source_coverage",
+            lambda r: r.update(payload_json=r["payload_json"].replace("{", '{"x": 1, ', 1)),
+        ),
+    ):
+        name, edit = _edit_row(
+            table, lambda r, k=table: r[{"sources": "id"}.get(k, "source_id")] == sid, change
+        )
+        findings = verify_bundle(_rewrite(path, tmp_path / "b.zip", name, edit))
+        assert FAIL in _levels(findings, "inputs"), (table, _fails(findings))
+
+
+def test_a_confirmed_links_person_keeps_the_logged_name(reviewed, tmp_path):
+    conn, path = reviewed
+    pid = conn.execute(
+        "SELECT person_id FROM identity_links WHERE status = 'confirmed'"
+    ).fetchone()[0]
+    name, edit = _edit_row("persons", lambda r: r["id"] == pid, lambda r: r.update(name="Q Z"))
+    findings = verify_bundle(_rewrite(path, tmp_path / "b.zip", name, edit))
+    assert FAIL in _levels(findings, "identity links"), _fails(findings)
+
+
+def test_the_fallback_publish_never_leaves_a_partial_file(tmp_path, monkeypatch):
+    import os
+
+    def no_links(*_a: object) -> None:
+        raise OSError(1, "hard links not supported")
+
+    def fail_replace(*_a: object) -> None:
+        raise OSError(28, "disk full")
+
+    monkeypatch.setattr(os, "link", no_links)
+    monkeypatch.setattr(os, "replace", fail_replace)
+    with pytest.raises(OSError):
+        export._publish(tmp_path / "usb.zip", b"bundle")
+    assert list(tmp_path.iterdir()) == []
