@@ -1,18 +1,19 @@
 # Security and privacy
 
-For firms, examiners and counsel deciding whether to install Baker. As of 2026-10-15, `main`
-`19d8461` (after #68 and #74 merged).
+For firms, examiners and counsel deciding whether to install Baker. As of 2026-10-20 (#101, the
+cloud gate's first entry; earlier text as of `main` `19d8461`, after #68 and #74).
 
 **Baker is local by default; cloud AI only when your case allows it and you opt in.** The opt-in
-cloud option (#68) is in the code, but it is gated on a model passing Baker's signed stance test,
-and **no model has** (`PROBE_PASSED` in `core/llm/cloud.py` is empty). So today every case labels
-locally and nothing from a case leaves the computer. Statements about what an opted-in case would
-send are marked "opted-in case".
+cloud option (#68) is gated on a model passing Baker's signed stance test. One has: Claude Opus
+5.5 at medium effort with the cloud stance prompt, stance v1.2 (`PROBE_PASSED` in
+`core/llm/cloud.py`, signed 2026-10-20). So a case the expert opts in sends its stance questions to
+Anthropic, as below; every other case labels locally and nothing from it leaves the computer.
+Statements about what an opted-in case sends are marked "opted-in case".
 
 ## 1. Data flow
 
 ```
- Expert's computer (everything happens here today)
+ Expert's computer (everything happens here, except an opted-in case's stance questions)
  ┌─────────────────────────────────────────────────────────────────────────────┐
  │                                                                             │
  │  Original files ──read-only, SHA-256──▶ Case folder                          │
@@ -31,8 +32,8 @@ send are marked "opted-in case".
  │  Report (plain HTML) ◀── saved only when the expert downloads it             │
  │                                                                             │
  └───────────────────────────────┬─────────────────────────────────────────────┘
-                                 │ Opted-in case only (none can be today: no
-                                 │ model has passed the gate): one stance question
+                                 │ Opted-in case only (Opus 5.5 at medium, the one
+                                 │ model that has passed the gate): one stance question
                                  │ per (assumption, record) pair, sent up to 3
                                  │ times on a network error, timeout, 408, 409,
                                  │ 429 or 5xx; each send logged first
@@ -40,7 +41,7 @@ send are marked "opted-in case".
                      api.anthropic.com (Claude, the expert's own key)
 ```
 
-| Data | Every case today | Opted-in case, once a model passes the gate |
+| Data | A case not opted in | Opted-in case |
 |---|---|---|
 | Original evidence files | Stay on the computer, never modified | Same. Never sent |
 | Case database (all records, claims, decisions, audit log) | Stays on the computer | Same. Never sent |
@@ -148,9 +149,11 @@ A case uses cloud stance labels only when **all** of these hold, and otherwise r
    stays in the government's control (18 U.S.C. 3509(m)), so a marked case never uses cloud,
    whatever the attestation says.
 3. The expert's own Anthropic key is set up.
-4. The model passed Baker's signed stance test with the current prompt. **No model has.** Opus 5.5
-   scored 73% contradicts precision against a 90% bar on 2026-10-15, so every case labels locally
-   until a signed prompt fix passes and Arsh signs a gate entry for that model, effort and prompt.
+4. The model passed Baker's signed stance test at its configured effort with the cloud stance
+   prompt, and Arsh signed its entry. One has: Claude Opus 5.5 at medium effort with stance v1.2
+   (signed 2026-10-20). With the earlier prompt, v1.1, it scored 73% contradicts precision against
+   a 90% bar (2026-10-15); with v1.2, 10 of 10 on the signed set, and no wrong contradicts on new
+   items. Another model, another effort or a changed cloud prompt labels locally.
 
 Further rules for an opted-in case:
 
@@ -207,8 +210,8 @@ python -m pytest -q \
 `baker serve --open` asks the operating system to open your browser at the local address; that is
 the browser's connection to 127.0.0.1, not an outside one.
 
-Once a model passes the gate, an opted-in case would add HTTPS connections to `api.anthropic.com`, and only those; each
-appears in the case's audit log as `cloud.sent`.
+An opted-in case adds HTTPS connections to `api.anthropic.com`, and only those; each appears in
+the case's audit log as `cloud.sent`.
 
 ## 7. Other safeguards
 

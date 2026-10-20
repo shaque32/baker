@@ -8,7 +8,7 @@ only when all of these hold, and otherwise the local model labels it, exactly as
 3. An Anthropic key is set up on this computer (the expert's own; Baker runs no server).
 4. The configured model, at its configured effort, passed Baker's signed stance test with the
    cloud stance prompt it would read (core/audit/prompts/stance_cloud.md; core/llm/cloud.py,
-   PROBE_PASSED). None is listed yet, so for now every case labels locally.
+   PROBE_PASSED). Opus 5.5 at medium effort is listed (signed by Arsh 2026-10-20).
 
 Then every stance label in the case comes from the cloud model; labels never mix models. If
 the cloud model stops answering, the audit pauses (core/audit/_local_model.py, CloudPort) and
