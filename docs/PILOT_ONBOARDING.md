@@ -19,7 +19,7 @@ not opt in, runs on your computer; a cloud case needs internet while it runs.
 | Memory | 16 GB minimum, 24 GB or more recommended | 16 GB minimum, 32 GB recommended |
 | Graphics | built in | An NVIDIA card with 12 GB or more is strongly recommended (estimate, not measured) |
 | Disk | 15 GB for Baker and the model (9 GB), plus about twice the size of your case files | Same, SSD |
-| Internet | Once, during install | Once, during install, or none (put the model next to the installer) |
+| Internet | Once, during install; and while a case you opted in to cloud AI is audited | Once, during install, or none (put the model next to the installer); and while a case you opted in to cloud AI is audited |
 
 How long a case takes is **not yet measured on the current version**. Older measurements on a
 24 GB M4 Mac were 22 to 56 seconds per model call, which put the 20-claim synthetic case at

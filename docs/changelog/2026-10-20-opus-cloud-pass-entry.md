@@ -8,8 +8,10 @@
   cloud AI, the case is not marked as possibly containing CSAM, and the expert's own key is set
   up; otherwise the local 14B labels it, as before. The entry is tied to the cloud prompt's
   version, so any change to that prompt turns cloud off again until it passes and is signed.
-  Another effort or model still labels locally. `docs/PILOT_ONBOARDING.md`,
-  `docs/PILOT_GATES.md` (gate 8) and `docs/ARCHITECTURE.md` say so.
+  Another effort or model still labels locally. `docs/SECURITY_PRIVACY.md` (the opening, the
+  data-flow diagram and table, cloud policy item 4, the network check), `docs/install-mac.md`,
+  `docs/PILOT_ONBOARDING.md` (with the Internet row: an opted-in case needs internet while it is
+  audited), `docs/PILOT_GATES.md` (gate 8) and `docs/ARCHITECTURE.md` say so.
 - Where: PR #101 (branch `claude/project-thread-01fybj`), not merged.
 - Verified: the evidence is the preregistered runs of 2026-10-15
   (`/mnt/project-files/baker/cloud-bench/2026-10-15/told-frame-line/RESULTS-medium.md`, $4.52 of
@@ -17,7 +19,8 @@
   (Wilson 95% 0.722-1.0), supports recall 33/33 (0.896-1.0), nothing contradicting shown as
   supports, contradicts recall 10/11 (misses P065); on this thread's 24 new items, at medium,
   no wrong contradicts and every control kept (22 scored; T022 and T023 were left out before any
-  call, as at high); on 26 fresh items from "Custom model for Baker", at medium, no wrong
+  call, as at high; the same items without v1.2's two sentences ran only at high, where 2 were
+  wrong); on 26 fresh items from "Custom model for Baker", at medium, no wrong
   contradicts, contradicts recall 8/8, supports recall 4/4. Every item's gold label and both
   answers, for all three sets: `eval/probe/results/2026-10-15-opus-5-5-medium-stance-v1-2.jsonl`
   (item ids and labels only, no item text; the new items' labels are drafts, not signed).
