@@ -19,6 +19,8 @@
                             --by expert:<name>
     python -m cli report    --db case.db --out report.html
     python -m cli verify-log --db case.db
+    python -m cli export-bundle --db case.db --out bundle.zip --by expert:<name>
+    python -m cli verify-bundle bundle.zip [--inputs <folder of original files>]
     python -m cli redecide  --db case.db --by expert:<name>
     python -m cli serve     [--cases <folder> | --db case.db] [--port 8765] [--expert "<name>"]
                             [--open]
@@ -58,6 +60,11 @@ Every command but `verify-log` first verifies the case's audit-log hash chain, a
 still holds every entry recorded in its anchor file (case.db.anchors.jsonl beside the database,
 written when a case opens and when a report is built), and stops, writing nothing, when either
 fails (the database was changed outside Baker). `verify-log` says which.
+`export-bundle` writes the case's reproducibility bundle (docs/bundle.md): input hashes,
+versions, model identity, every model call as stored, every label, expert decision and verdict,
+the full audit log and the report. Producing one is the examiner's choice on counsel's advice;
+it is never automatic, and the export is logged. `verify-bundle` checks a bundle offline,
+without the case, and re-derives every verdict from the recorded labels and decisions.
 `ufdr-check` compares what Baker imports from a UFDR with the package's own report.xml, record
 by record, without touching any case (docs/ingest/ufdr.md, "Before calling it verified"). It
 writes ufdr-check.md and .json, which hold no case content and can be sent back, and
@@ -321,6 +328,46 @@ def cmd_report(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_export_bundle(a: argparse.Namespace) -> int:
+    from core.bundle.export import NOTICE, export_bundle
+    from core.casework.cases import Case
+    from core.timeline.settings import from_case
+
+    # Fails closed like `report`: a broken or cut-short audit log stops the export.
+    conn = _open(a.db)
+    case = Case(Path(a.db))
+    print(NOTICE)
+    try:
+        r = export_bundle(
+            conn,
+            a.out,
+            a.by,
+            timeline=from_case(case.settings),
+            inputs_dir=case.inputs if case.inputs.is_dir() else None,
+        )
+    except actions.ReviewError as e:
+        raise SystemExit(f"error: {e}") from e
+    print(f"wrote {r.path}")
+    print(f"bundle SHA-256 {r.sha256}")
+    print(f"audit run {r.run_id}; audit log {r.audit_entries} entries, last hash {r.last_hash}")
+    return 0
+
+
+def cmd_verify_bundle(a: argparse.Namespace) -> int:
+    from core.bundle.verify import FAIL, failed, verify_bundle
+
+    findings = verify_bundle(a.bundle, a.inputs)
+    for f in findings:
+        print(f"{f.level.upper():5} {f.check}: {f.detail}")
+    if failed(findings):
+        print(f"bundle FAILED: {sum(f.level == FAIL for f in findings)} problems")
+        return 1
+    print(
+        "bundle verified: every verdict re-derives exactly from the recorded labels and decisions"
+    )
+    return 0
+
+
 def cmd_verify_log(a: argparse.Namespace) -> int:
     try:
         audit_log.require_intact(_open(a.db, review=False), audit_log.anchors_path(a.db))
@@ -569,6 +616,19 @@ def parser() -> argparse.ArgumentParser:
     sp = add("report", cmd_report, "write the HTML claims report")
     sp.add_argument("--out", type=Path, required=True)
     add("verify-log", cmd_verify_log, "verify the audit log hash chain")
+    sp = add(
+        "export-bundle",
+        cmd_export_bundle,
+        "write the case's reproducibility bundle (the examiner's choice, on counsel's advice)",
+    )
+    sp.add_argument("--out", type=Path, required=True, help="a new .zip file")
+    sp.add_argument("--by", required=True)
+    sp = sub.add_parser(
+        "verify-bundle", help="check a reproducibility bundle offline; re-derives every verdict"
+    )
+    sp.set_defaults(fn=cmd_verify_bundle)
+    sp.add_argument("bundle", type=Path, help="the bundle .zip")
+    sp.add_argument("--inputs", type=Path, help="a folder holding the original input files")
 
     sp = add("flags", cmd_flags, "list expert flags, or export the redacted flag summary")
     sp.add_argument("action", choices=("list", "export"))

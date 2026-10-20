@@ -334,4 +334,12 @@ class ClaudeModel:
             prompt_tokens=int(getattr(u, "input_tokens", 0) or 0),
             completion_tokens=int(getattr(u, "output_tokens", 0) or 0),
             seconds=elapsed,
+            served_model=served,
+            message_id=_text_or_none(getattr(resp, "id", None)),
+            request_id=_text_or_none(getattr(resp, "_request_id", None)),
+            stop_reason=_text_or_none(resp.stop_reason),
         )
+
+
+def _text_or_none(value: object) -> str | None:
+    return value if isinstance(value, str) and value else None

@@ -69,6 +69,7 @@ whose module is under eval/ marks the run as fake, which the report and the eval
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import json
 import sqlite3
@@ -129,6 +130,20 @@ PIPELINE_VERSION = "0.1.0"
 RUN_ACTION = "pipeline.run"
 CLAIM_ACTION = "pipeline.claim"  # one per finished claim, written with the claim's rows
 HALT_ACTION = "pipeline.halted"
+
+
+def calls_digest(calls: Sequence[tuple[str, str, str, str]]) -> dict[str, object]:
+    """What a claim's audit-log entry records about the model calls stored while it ran: their
+    ids and one SHA-256 over (id, outcome, prompt hash, raw output hash) for each, in order.
+    core/bundle/verify.py recomputes it from model_calls."""
+    rows = [[cid, outcome, _sha(prompt), _sha(raw)] for cid, outcome, prompt, raw in calls]
+    return {"ids": [r[0] for r in rows], "sha256": _sha(canonical_json(rows))}
+
+
+def _sha(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 RULES_PENDING_REASON = (
     "Verdict rules are not written yet (core/audit/rules.py is a stub). No verdict was decided; "
     "the claim stays unproven."
@@ -789,6 +804,9 @@ class _Run:
         # so no write transaction is open while the model runs (see the module docstring).
         self.pending: list[tuple[str, tuple]] | None = None
         self.forwarded = forwarded.affected(conn)
+        # The model calls stored while the current claim ran, bound into its audit-log entry
+        # (calls_digest), so a stored prompt or raw output edited later no longer matches.
+        self.claim_calls: list[tuple[str, str, str, str]] = []
 
     def _write(self, sql: str, params: tuple) -> None:
         if self.pending is None:
@@ -817,6 +835,7 @@ class _Run:
             for call in calls[done:]:
                 if call.id in quote_failed:
                     call = call.model_copy(update={"outcome": ModelCallOutcome.QUOTE_FAILED})
+                self.claim_calls.append((call.id, call.outcome.value, call.prompt, call.raw_output))
                 self._write(
                     "INSERT INTO model_calls (id, model_run_id, seq, subject_json, prompt,"
                     " raw_output, outcome, error, at_utc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -1213,6 +1232,7 @@ def run_audit(
         reused_before = _reused(components)
         for n, claim in enumerate(claims, 1):
             current = claim.id
+            run.claim_calls = []
             with conn:  # one claim per transaction: a stop keeps every finished claim's work
                 decision = run.claim(claim, stipulations)
                 audit_log.append(  # inside the claim's write transaction, after its rows
@@ -1233,6 +1253,7 @@ def run_audit(
                         "stored_items": result.stored_items,
                         "dropped_labels": result.dropped_labels,
                         "reviewer_failures": result.reviewer_failures,
+                        "model_calls": calls_digest(run.claim_calls),
                     },
                 )
             current = None
