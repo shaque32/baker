@@ -21,6 +21,7 @@ import sqlite3
 from collections.abc import Callable
 
 from core.contracts import Exhibit, ExhibitExcerpt, ExhibitMatch, MatchMethod
+from core.ingest import forwarded
 from core.restore.fold import differences
 from core.restore.match import MAX_MATCHES, omitted
 from core.restore.store import (
@@ -152,10 +153,12 @@ def context_table(lines: tuple[Line, ...] | list[Line]) -> str:
     for ln in lines:
         who = q(ln.sender) + (f"<br>shown as {q(ln.shown_as)}" if ln.shown_as else "")
         cls = " class='target'" if ln.is_target else ""
+        label = forwarded.copy_label(ln.locator)
+        body = q(ln.body) + (f"<br><strong class='warn'>{e(label)}</strong>" if label else "")
         out.append(
             f"<tr{cls}><td class='t'>{e(ln.utc)}</td><td class='t'>{e(ln.local)}</td>"
             f"<td>{q(ln.raw or 'not given')}</td><td>{who}</td><td>{e(ln.direction)}</td>"
-            f"<td>{q(ln.body)}</td><td>{e(ln.tier.value)}</td>"
+            f"<td>{body}</td><td>{e(ln.tier.value)}</td>"
             f"<td class='mono'>{e(ln.source_id)} {e(ln.locator)}</td></tr>"
         )
     out.append("</table>")

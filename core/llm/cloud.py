@@ -57,13 +57,19 @@ API_BASE_URL = "https://api.anthropic.com"
 # the signed set AND on new held-out items nobody used to write or tune the prompt, plus Arsh's
 # sign-off on the entry (its comment names the results file).
 # The prompt version is the cloud stance prompt's (core/audit/prompts/stance_cloud.md), the one
-# a cloud model reads. EMPTY: with stance prompt v1.1, on the signed set (2026-10-15), Opus 5.5
-# scored 73% contradicts precision (bar 90%); under rules 0.2.x an unreviewed "contradicts" on an
-# event assumption made a claim CONTRADICTED (rule 1b; since rules 0.3.0 an expert confirms each
-# one). The cloud prompt is v1.2, with which Opus 5.5 (high and medium) met those bars on the
-# signed set and on new items (cloud-bench 2026-10-15 told-frame-line); its entry waits for
-# Arsh's sign-off.
-PROBE_PASSED: frozenset[tuple[str, str, str]] = frozenset()
+# a cloud model reads, so any change to that prompt drops its entries until it passes again.
+# With stance prompt v1.1 (2026-10-15) Opus 5.5 scored 73% contradicts precision on the signed set
+# (bar 90%). With the cloud prompt, v1.2, at medium effort (preregistered, 2026-10-15): on the
+# signed set contradicts precision 10/10, supports recall 33/33, nothing contradicting labeled
+# supports; on 50 new items, both sets at medium (24, of which 22 were scored, and 26), no
+# wrong contradicts and every scored control kept; on synthetic case01 with the signed sheet,
+# 95% accuracy and 0 false supported (2026-10-20, cloud-bench/2026-10-20-case01-v12). Every
+# item's answers:
+# eval/probe/results/2026-10-15-opus-5-5-medium-stance-v1-2.jsonl. Signed by Arsh on
+# 2026-10-20 ("Sign the entry", 00:39Z, "Audit our model scoring").
+PROBE_PASSED: frozenset[tuple[str, str, str]] = frozenset(
+    {("claude-opus-5-5", "medium", "sha256:2863d8dbf66960f6")}
+)
 REQUEST_TIMEOUT_SECONDS = 120.0
 MAX_RETRIES = 2
 SHA_PREFIX = "api:"  # model_runs.model_sha256 of a cloud model: there is no file to hash
@@ -309,6 +315,11 @@ class ClaudeModel:
                 f"{type(e).__name__}: {e}", sticky=True, retryable=is_retryable(e)
             ) from e
         elapsed = time.perf_counter() - start
+        served = getattr(resp, "model", None)
+        if served != self.cfg.model:
+            # Only the model that passed the signed stance test may label, and a case's labels
+            # never mix models, so an answer from any other model pauses the run.
+            raise CloudError(f"the API answered as {served!r}, not {self.cfg.model!r}", sticky=True)
         if resp.stop_reason == "refusal":
             raise CloudError("the cloud model declined to answer", sticky=False)
         if resp.stop_reason == "max_tokens":

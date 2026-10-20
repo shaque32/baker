@@ -6,8 +6,10 @@ pilot-ready for real case data** (`docs/PILOT_GATES.md`). Until it is, use the d
 cases only, unless the Baker team has told you in writing that your pilot has started.
 
 Baker is local by default; cloud AI only when your case allows it and you opt in. The case setup
-page has a cloud option, but it is gated off: no cloud model has passed Baker's stance test, so
-every step runs on your computer for every case.
+page has a cloud option: for that case only, Claude Opus 5.5 labels the stance questions, under
+your own Anthropic key, after you attest that the case's protective order allows it. A case you
+mark as possibly containing CSAM never uses cloud AI. Every other step, and every case you do
+not opt in, runs on your computer; a cloud case needs internet while it runs.
 
 ## 1. Check your computer (5 minutes)
 
@@ -17,7 +19,7 @@ every step runs on your computer for every case.
 | Memory | 16 GB minimum, 24 GB or more recommended | 16 GB minimum, 32 GB recommended |
 | Graphics | built in | An NVIDIA card with 12 GB or more is strongly recommended (estimate, not measured) |
 | Disk | 15 GB for Baker and the model (9 GB), plus about twice the size of your case files | Same, SSD |
-| Internet | Once, during install | Once, during install, or none (put the model next to the installer) |
+| Internet | Once, during install; and while a case you opted in to cloud AI is audited | Once, during install, or none (put the model next to the installer); and while a case you opted in to cloud AI is audited |
 
 How long a case takes is **not yet measured on the current version**. Older measurements on a
 24 GB M4 Mac were 22 to 56 seconds per model call, which put the 20-claim synthetic case at

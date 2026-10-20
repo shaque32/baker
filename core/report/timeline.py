@@ -14,6 +14,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import timedelta
 
+from core.ingest import forwarded
 from core.timeline.check import (
     FLAGGED,
     STATUS_TEXT,
@@ -147,6 +148,9 @@ def _compared_line(c: Compared, data: CaseRecords) -> str:
         how += " <span class='d-flag'>(the document puts it on the other side)</span>"
     what = f"&ldquo;{q(r.what)}&rdquo;" if r.kind == "message" else q(r.what)
     printed = f", printed {q(r.ts_raw)}" if r.ts_raw else ""
+    label = forwarded.copy_label(r.locator)
+    if label:
+        what += f" <strong class='warn'>{e(label)}</strong>"
     return (
         f"<li>{e(r.when())}{printed}: {how}<br>{'Message' if r.kind == 'message' else 'Call'} "
         f"{what} <span class='meta'>{q(phone.file_name)} {e(r.locator)} · "
