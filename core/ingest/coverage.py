@@ -118,6 +118,14 @@ _ATTENTION_COUNTERS = {
     ),
 }
 _INFO_COUNTERS = {
+    "embedded_messages_imported": (
+        "Forwarded or quoted messages carried inside other messages, imported as records of their "
+        "own (not in the extraction's own message count)"
+    ),
+    "embedded_messages_already_imported": (
+        "Forwarded or quoted messages carried inside other messages that the extraction also "
+        "lists as records of their own (same model id), so imported once"
+    ),
     "picture_entries_not_identifiers": (
         "Picture entries (profile pictures, contact photos) in accounts and contacts, not used "
         "as identifiers"
@@ -211,10 +219,24 @@ _FLAG_WORDS: dict[str, tuple[Level, str]] = {
         "has not verified who first wrote {them}, so {them} cannot support or contradict a claim; "
         "check each one in {tool} before saying who wrote {them}.",
     ),
+    "embedded_message_imported_separately": (
+        "attention",
+        "{n} {have} a forwarded or quoted message inside {them}; Baker imported each such message "
+        "as a record of its own (at the locator plus /Embedded[n]), but who wrote which words is "
+        "not verified, so {them} cannot support or contradict a claim; see {them} in {tool}.",
+    ),
+    "embedded_original_imported": (
+        "attention",
+        "{n} {be} a forwarded or quoted message carried inside another message, imported "
+        "separately and marked forwarded. The sender shown is the one the extraction "
+        "names for the embedded message, not verified, so {them} cannot support or contradict a "
+        "claim. These records are not in the extraction's own message count.",
+    ),
     "embedded_message_not_imported": (
         "attention",
-        "{n} {have} a forwarded or quoted message inside {them} whose text and attachments Baker "
-        "did not import, so {them} cannot support or contradict a claim; see {them} in {tool}.",
+        "{n} {have} a forwarded or quoted message nested inside {them} (a second level) whose "
+        "text and attachments Baker did not import, so {them} cannot support or contradict a "
+        "claim; see {them} in {tool}.",
     ),
     "attachment_file_ambiguous": (
         "attention",

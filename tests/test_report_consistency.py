@@ -486,3 +486,41 @@ def test_the_screen_reads_the_case_without_writing_it(tmp_path):
         assert conn.execute("SELECT COUNT(*), MAX(seq) FROM audit_log").fetchone() == before
     finally:
         conn.close()
+
+
+def test_the_screen_and_the_report_show_an_embedded_copy_with_the_same_note(tmp_path):
+    # Grok review on #103: a forwarded or quoted copy imported from inside another message gets
+    # one note, rendered by record_line on the claim page and in the report alike.
+    from core.ingest import forwarded
+
+    db = tmp_path / "case01.db"
+    conn = run_pipeline.build_case("case01", db)
+    try:
+        _audit(conn, START)
+        record_id, claim_id = conn.execute(
+            "SELECT e.record_id, a.claim_id FROM evidence_items e"
+            " JOIN assumptions a ON a.id = e.assumption_id WHERE e.record_id LIKE 'msg:%'"
+            " AND e.stance != 'irrelevant' ORDER BY e.record_id, a.claim_id LIMIT 1"
+        ).fetchone()
+        sid, payload = conn.execute(
+            "SELECT c.source_id, c.payload_json FROM source_coverage c"
+            " JOIN messages m ON m.source_id = c.source_id WHERE m.id = ?",
+            (record_id,),
+        ).fetchone()
+        data = json.loads(payload)
+        data.setdefault(forwarded.PAYLOAD_KEY, {})["embedded_copy"] = [record_id]
+        with conn:
+            conn.execute(
+                "UPDATE source_coverage SET payload_json = ? WHERE source_id = ?",
+                (json.dumps(data), sid),
+            )
+        found = forwarded.affected(conn)
+        assert found[record_id] == "embedded_copy"
+        line = record_line(conn, record_id, found)
+        assert "Forwarded or quoted copy carried inside record" in line
+        assert "whoever forwarded" not in line
+        assert line in render_report(conn)
+        app = App(db, expert="Test Expert", port=PORT)
+        assert line in get(app, "/claim", id=claim_id).text
+    finally:
+        conn.close()
