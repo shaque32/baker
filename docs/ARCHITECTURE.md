@@ -28,7 +28,7 @@ One step may go to the cloud, per case: stance labeling (see "Local by default, 
 |---|---|---|
 | Claim extraction | Proposes claims | Expert edits the list; every claim keeps its page and paragraph |
 | Assumptions | Fills claim-type templates | Templates are fixed per claim type; tier starts at inferred |
-| Stance | Labels one evidence item against one assumption; the cloud model for a case the expert allowed, else the local model | Quote verified verbatim by code; label is input to rules, never a verdict; SUPPORTED needs the supporting label accepted by an expert (rules 0.2.0); an unreviewed "contradicts" cannot overrule a check that passed, it only complicates (rules 0.2.1) |
+| Stance | Labels one evidence item against one assumption; the cloud model for a case the expert allowed, else the local model | Quote verified verbatim by code; label is input to rules, never a verdict; SUPPORTED needs the supporting label accepted by an expert (rules 0.2.0); a "contradicts" counts only once an expert accepts it ("Contradiction found, confirm to finalize", rules 0.3.0) |
 | Review | Local model accepts or dismisses one verified supporting item | Separate human-owned prompt; a sorting aid for the expert that never makes a claim SUPPORTED under rules 0.2.0; tier becomes ai_reviewed, never confirmed; a human decision overrides it; cloud models only in eval/ as benchmarks |
 | Translation | ru -> en | Original text stays the citable text |
 

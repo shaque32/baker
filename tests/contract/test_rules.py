@@ -1,9 +1,10 @@
-"""Verdict rules 0.2.2 (core/audit/rules.py). Every rule in its docstring has a test here.
+"""Verdict rules 0.3.0 (core/audit/rules.py). Every rule in its docstring has a test here.
 
 SYNTHETIC. The claims echo case01 (C06, C16, C17, C18, C20) only to name the trap each tests.
 """
 
 from datetime import UTC, datetime
+from types import MappingProxyType
 
 import pytest
 
@@ -201,12 +202,54 @@ def test_failed_check_contradicts_despite_accepted_support():
     assert d.supported_basis is None
 
 
-def test_unreviewed_contradiction_on_observed_record_counts():
-    d = decide([EVENT], [ev(1, EVENT), ev(2, EVENT, Stance.CONTRADICTS, S.OPEN)])
+CONFIRM = "Contradiction found, confirm to finalize"
+PROBE = "cloud-bench/2026-11-01/probe-event (synthetic test entry)"
+
+
+@pytest.fixture
+def auto_event(monkeypatch):
+    """An allow-set entry for event claims, as a later signed rules version would add one."""
+    monkeypatch.setattr(rules, "_AUTO_CONTRADICT", MappingProxyType({c.ClaimType.EVENT: PROBE}))
+
+
+def test_0_3_0_allow_set_starts_empty():
+    assert rules.auto_contradict() == {}
+
+
+@pytest.mark.parametrize("status", [S.OPEN, S.AI_ACCEPTED])
+@pytest.mark.parametrize("tier", [T.OBSERVED, T.DERIVED])
+def test_0_3_0_unaccepted_model_contradiction_never_contradicts(status, tier):
+    """PR #90 URGENT FIX: a model's (or the AI reviewer's) 'contradicts' waits for the expert."""
+    against = ev(2, EVENT, Stance.CONTRADICTS, status, tier)
+    d = decide([EVENT], [ev(1, EVENT, status=S.ACCEPTED), against])
+    assert d.verdict is Verdict.UNPROVEN
+    assert d.cited_evidence_ids == ()
+    why = " ".join(d.reasons)
+    assert f"Rule 1b: {against.record_id} contradicts" in why and CONFIRM in why
+
+
+@pytest.mark.parametrize("before", [S.OPEN, S.AI_ACCEPTED])
+def test_0_3_0_expert_accepted_contradiction_contradicts(before):
+    against = ev(2, EVENT, Stance.CONTRADICTS, before)
+    accepted = against.model_copy(update={"status": S.ACCEPTED})
+    d = decide([EVENT], [ev(1, EVENT), accepted])
     assert d.verdict is Verdict.CONTRADICTED
+    assert d.cited_evidence_ids == (accepted.id,)
+    assert "accepted by an expert" in " ".join(d.reasons)
 
 
-def test_unreviewed_contradiction_on_inferred_record_only_complicates():
+def test_0_3_0_allow_set_restores_automation_for_its_claim_type_only(auto_event):
+    against = ev(2, EVENT, Stance.CONTRADICTS, S.OPEN)
+    assert decide([EVENT], [ev(1, EVENT), against]).verdict is Verdict.CONTRADICTED
+    who = asm(6, K.IDENTITY, template="person_identity")
+    d = decide(
+        [who], [ev(2, who, Stance.CONTRADICTS, S.OPEN)], claim=claim_of(c.ClaimType.IDENTITY)
+    )
+    assert d.verdict is Verdict.UNPROVEN
+    assert rules.auto_contradict() == {c.ClaimType.EVENT: PROBE}
+
+
+def test_unreviewed_contradiction_on_inferred_record_never_counts(auto_event):
     d = decide([EVENT], [ev(1, EVENT), ev(2, EVENT, Stance.CONTRADICTS, S.OPEN, T.INFERRED)])
     assert d.verdict is Verdict.UNPROVEN
 
@@ -220,12 +263,12 @@ def test_dismissed_contradiction_is_ignored():
 
 
 @pytest.mark.parametrize("status", [S.OPEN, S.AI_ACCEPTED])
-def test_decision_2_model_contradicts_on_meaning_only_complicates(status):
-    """C06, C13, C20: a model's 'contradicts' on a meaning stays unproven."""
+def test_decision_2_model_contradicts_on_meaning_waits_even_when_allowed(status, auto_event):
+    """C06, C13, C20: a model's 'contradicts' on a meaning stays unproven, allow-set or not."""
     meaning = asm(3, K.MEANING)
     d = decide([EVENT, meaning], [ev(1, EVENT), ev(2, meaning, Stance.CONTRADICTS, status)])
     assert d.verdict is Verdict.UNPROVEN
-    assert "complicates" in " ".join(d.reasons)
+    assert CONFIRM in " ".join(d.reasons)
 
 
 def test_decision_2_expert_accepted_contradiction_on_meaning_counts():
@@ -235,7 +278,7 @@ def test_decision_2_expert_accepted_contradiction_on_meaning_counts():
 
 
 @pytest.mark.parametrize("status", [S.OPEN, S.AI_ACCEPTED])
-def test_0_2_1_model_contradicts_cannot_overrule_a_passed_check(status):
+def test_0_2_1_model_contradicts_cannot_overrule_a_passed_check(status, auto_event):
     """Mac run ¶10.1 (C12): the sender check passed on the receiving phone's copy of the
     message, and the 14B labeled that same copy 'contradicts'. It only complicates."""
     sender = asm(6, K.IDENTITY, people=("person:petrov",))
@@ -243,7 +286,7 @@ def test_0_2_1_model_contradicts_cannot_overrule_a_passed_check(status):
     against = ev(2, sender, Stance.CONTRADICTS, status)
     d = decide([sender], [ev(1, sender, status=S.ACCEPTED), against], [passed], [stip()])
     assert d.verdict is Verdict.UNPROVEN
-    assert "complicates" in " ".join(d.reasons)
+    assert CONFIRM in " ".join(d.reasons)
     # The expert dismisses it, and the claim is supported.
     dismissed = against.model_copy(update={"status": S.DISMISSED})
     d = decide([sender], [ev(1, sender, status=S.ACCEPTED), dismissed], [passed], [stip()])
@@ -255,7 +298,8 @@ def test_0_2_1_expert_accepted_contradiction_still_beats_a_passed_check():
     assert d.verdict is Verdict.CONTRADICTED
 
 
-def test_0_2_1_model_contradicts_counts_when_a_check_did_not_pass():
+def test_0_2_1_model_contradicts_counts_when_a_check_did_not_pass(auto_event):
+    """Only for a claim type in the allow-set (rules 0.3.0)."""
     d = decide([TIME], [ev(2, TIME, Stance.CONTRADICTS, S.OPEN)], [chk(TIME, O.INCONCLUSIVE)])
     assert d.verdict is Verdict.CONTRADICTED
     passed, unsure = chk(TIME), chk(TIME, O.INCONCLUSIVE, name="other")
@@ -263,10 +307,15 @@ def test_0_2_1_model_contradicts_counts_when_a_check_did_not_pass():
     assert d.verdict is Verdict.CONTRADICTED
 
 
-def test_contradiction_on_non_core_assumption_blocks_support_only():
+@pytest.mark.parametrize("status", [S.OPEN, S.ACCEPTED])
+def test_contradiction_on_non_core_assumption_blocks_support_only(status):
     side = asm(9, core=False)
-    d = decide([EVENT, side], [ev(1, EVENT), ev(2, side, Stance.CONTRADICTS, S.OPEN)])
+    d = decide(
+        [EVENT, side], [ev(1, EVENT, status=S.ACCEPTED), ev(2, side, Stance.CONTRADICTS, status)]
+    )
     assert d.verdict is Verdict.UNPROVEN
+    assert "contradicts non-core 'assumption 9'" in " ".join(d.reasons)
+    assert CONFIRM not in " ".join(d.reasons)
 
 
 # ------------------------------------------------------------ rule 2: coverage
@@ -331,12 +380,15 @@ def test_accept_everything_reviewer_cannot_support_a_meaning_claim():
 
 
 @pytest.mark.parametrize("status", [S.OPEN, S.AI_ACCEPTED])
-def test_model_contradiction_can_contradict_identity(status):
-    """C19: 'who is alex turner?' contradicts 'one person' through stance, not a check."""
+def test_model_contradiction_can_contradict_identity_once_confirmed(status):
+    """C19: 'who is alex turner?' contradicts 'one person' through stance, not a check, once
+    the expert confirms it (rules 0.3.0)."""
     who = asm(6, K.IDENTITY, template="person_identity")
-    d = decide(
-        [who], [ev(2, who, Stance.CONTRADICTS, status)], claim=claim_of(c.ClaimType.IDENTITY)
-    )
+    against = ev(2, who, Stance.CONTRADICTS, status)
+    d = decide([who], [against], claim=claim_of(c.ClaimType.IDENTITY))
+    assert d.verdict is Verdict.UNPROVEN
+    confirmed = against.model_copy(update={"status": S.ACCEPTED})
+    d = decide([who], [confirmed], claim=claim_of(c.ClaimType.IDENTITY))
     assert d.verdict is Verdict.CONTRADICTED
 
 

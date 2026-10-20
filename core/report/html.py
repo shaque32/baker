@@ -53,7 +53,7 @@ from collections import Counter
 from pathlib import Path
 
 from core import build, pipeline
-from core.audit import invariants
+from core.audit import invariants, rules
 from core.contracts import (
     AssumptionKind,
     EvidenceItem,
@@ -75,6 +75,8 @@ from core.report import timeline as timeline_html
 from core.review import audit_log
 from core.review.status import (
     AWAITING_EXPERT,
+    CONFIRM_STEP,
+    CONTRADICTION_FOUND,
     HOLDINGS,
     SUPPORTED_AI,
     SUPPORTED_EXPERT,
@@ -92,10 +94,14 @@ from core.review.status import verdict_label as _verdict_label
 # extraction names one.
 # 0.7.0: Versions says whether forwarded marks are on the record or, in a case made before
 # contracts 0.4.0, only in the coverage list (no original author is named there).
-REPORT_VERSION = "0.7.0"
+# 0.8.0 (rules 0.3.0): a claim whose model contradiction waits for the expert prints
+# "Contradiction found, confirm to finalize", like the screen; Versions names the claim types
+# whose model contradictions count without an expert, and the probe run that qualified each.
+REPORT_VERSION = "0.8.0"
 
 __all__ = [
     "AWAITING_EXPERT",
+    "CONTRADICTION_FOUND",
     "SUPPORTED_AI",
     "SUPPORTED_EXPERT",
     "render_report",
@@ -166,6 +172,8 @@ th { background: var(--panel); font: 500 10.5px var(--mono); letter-spacing: 0.1
 .v-unp::before { content: "?"; }
 .v-await { color: var(--await); background: var(--unp-bg); border: 1px dashed var(--await); }
 .v-await::before { content: "?"; }
+.v-confirm { color: var(--con); background: var(--con-bg); border: 1px dashed var(--con); }
+.v-confirm::before { content: "✕"; }
 .verdict.v-nt { color: var(--muted); background: var(--panel); border: 1px dashed var(--muted); }
 .v-nt::before { content: "–"; }
 blockquote { margin: 10px 0; padding: 8px 14px; border-left: 2px solid var(--line-strong);
@@ -205,9 +213,11 @@ def e(text: object) -> str:
     return html.escape("" if text is None else str(text))
 
 
-def verdict_label(decision: VerdictDecision, awaiting: bool = False) -> tuple[str, str]:
+def verdict_label(
+    decision: VerdictDecision, awaiting: bool = False, contradiction: bool = False
+) -> tuple[str, str]:
     """(display text, css class). Kept here for callers of the report module."""
-    return _verdict_label(decision, awaiting)
+    return _verdict_label(decision, awaiting, contradiction)
 
 
 def labelled_by(conn: sqlite3.Connection, model_run_id: str | None) -> str:
@@ -329,6 +339,11 @@ def _limitations(conn: sqlite3.Connection, srcs: list[tuple]) -> str:
         "does, the verdict is unproven. The labels are model output and can be wrong, so the "
         "expert checks each item. The local AI reviewer's acceptances only sort evidence for "
         "the expert; they never make a claim supported.</li>",
+        f"<li><strong>{CONTRADICTION_FOUND}</strong> means Baker found records it reads as "
+        "contradicting a core assumption of the claim. A contradiction found by the stance "
+        "labeler counts once an expert confirms it, with a reason recorded in the audit log; "
+        "until then the verdict is unproven. A failed deterministic check contradicts a claim "
+        "without this step.</li>",
         "<li>Unproven means the evidence Baker reviewed does not establish the claim. It does "
         "not mean the claim is false.</li>",
         "<li>A search that finds nothing does not show that something did not happen. Each "
@@ -407,6 +422,8 @@ def _claim_block(conn: sqlite3.Connection, st: ClaimState, case: explain.Case) -
             f"AI reviewer and {st.open_support} not reviewed, waiting for an expert to agree or "
             "disagree. Until an expert accepts the key evidence, the claim stays unproven.</p>"
         )
+    if st.contradiction_found:
+        out.append(f"<p>{e(CONFIRM_STEP.format(n=st.open_contradicts))}</p>")
     if st.edited_after_run:
         out.append("<p><strong>The claim text changed after this audit.</strong> Re-run it.</p>")
     if decision is not None:
@@ -584,6 +601,24 @@ def forwarded_label(conn: sqlite3.Connection) -> str:
     )
 
 
+def auto_contradict_label(run: dict | None) -> str:
+    """Which claim types a model's contradiction marks contradicted with no expert (rule 1b),
+    and the probe run that qualified each, under the current rules."""
+    auto = rules.auto_contradict()
+    if auto:
+        types = sorted(auto, key=lambda t: t.value)
+        text = "; ".join(f"{t.value} claims (qualified by {auto[t]})" for t in types)
+    else:
+        text = "none: every model contradiction counts once an expert confirms it"
+    text = f"{text} (rules {rules.RULE_VERSION})"
+    if run and run.get("rule_version") != rules.RULE_VERSION:
+        text += (
+            f". This audit was decided under rules {run.get('rule_version')}; re-run the verdicts "
+            "to apply the current rules"
+        )
+    return text
+
+
 def _versions(conn: sqlite3.Connection, run: dict | None) -> str:
     rows = [("Report", REPORT_VERSION), ("Other explanations (code)", explain.VERSION)]
     if run:
@@ -598,6 +633,7 @@ def _versions(conn: sqlite3.Connection, run: dict | None) -> str:
         if isinstance(cloud, dict):
             rows.append(("Stance labels", str(cloud.get("why", ""))))
     rows.append(("Forwarded marks", forwarded_label(conn)))
+    rows.append(("Model contradictions without an expert", auto_contradict_label(run)))
     model_rows = list(
         conn.execute(
             "SELECT purpose, model_name, model_sha256, prompt_version, seed FROM model_runs"
@@ -682,6 +718,13 @@ def render_report(conn: sqlite3.Connection, timeline: timeline_html.Settings | N
                 f"<div class='banner'><strong>{awaiting} claim(s): support found, waiting for "
                 "the expert to agree.</strong> They stay unproven until an expert accepts their "
                 "key evidence.</div>"
+            )
+        found = sum(1 for st in states if st.contradiction_found)
+        if found:
+            parts.append(
+                f"<div class='banner'><strong>{found} claim(s): {e(CONTRADICTION_FOUND)}."
+                "</strong> Each becomes contradicted once an expert confirms the contradicting "
+                "record.</div>"
             )
 
     parts.append("<h2>Summary</h2><table><thead><tr><th>Finding</th><th>Claims</th></tr></thead>")

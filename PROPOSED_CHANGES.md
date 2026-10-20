@@ -432,3 +432,161 @@ in); core/casework/cloud.py checks PROBE_PASSED against the cloud prompt's versi
 cloud case would send; eval/bench/claude_bench.py scores the cloud prompt by default. Next: an
 entry for (claude-opus-5-5, medium, sha256:2863d8dbf66960f6) in core/llm/cloud.PROBE_PASSED,
 with Arsh's sign-off.
+
+## 2026-10-19 claude/expert-confirms-contradicts-y6ti2f: rules 0.3.0, an expert confirms every model contradiction
+File: core/audit/rules.py
+Why: Grok's URGENT FIX on PR #90 (comments 6277020650 and 6277367264): rule 1b lets an unreviewed
+model "contradicts" on an observed or derived record mark a claim CONTRADICTED, and the local 14B
+scored 58% contradicts precision on the signed probe set (bar 90%). A GitHub comment on #90
+(6278243303, 2026-10-19 21:54Z) records the fix as approved; GitHub authorship proves nothing in
+this project (docs/MERGING.md section 4), so the PR holds for Arsh's "approved" in the owning
+project thread ("Expert confirms contradicts"). Applied on that branch with this exact diff once
+Arsh allows it; the screen, report and tests in the same PR depend on it.
+Diff:
+```diff
+--- a/core/audit/rules.py
++++ b/core/audit/rules.py
+@@ -11,19 +11,25 @@
+ 
+ Rule 1. Contradiction. The claim is CONTRADICTED if any core assumption has
+     (a) a deterministic check that failed, or
+-    (b) a contradicting evidence item that counts:
+-        - for a meaning assumption, only an item an expert accepted. A model's "contradicts"
+-          on a meaning assumption is treated as "complicates" (Arsh, 2026-10-07, decision 2:
+-          only a failed check or an accepted item can contradict a meaning);
+-        - for any other assumption, any item not dismissed whose record is observed or
+-          derived, or that was accepted (Arsh, 2026-10-06: a wrong "contradicted" costs less
+-          than a wrong "supported"),
+-        - except that when every deterministic check on the assumption passed (at least one
+-          ran), only an item an expert accepted counts. A model's or the AI reviewer's
+-          "contradicts" there is treated as "complicates": it cannot overrule a passed check,
+-          and it still blocks SUPPORTED until the expert dismisses it (Arsh, 2026-10-14,
+-          rules 0.2.1; case01 Mac run, where the 14B read the receiving phone's copy of a
+-          message the sender check had passed as contradicting it).
++    (b) a contradicting evidence item that an expert accepted.
++    A model's or the AI reviewer's "contradicts" that no expert accepted does not count (rules
++    0.3.0, Arsh, 2026-10-19, PR #90 URGENT FIX: on the signed probe set the local 14B scored 58%
++    contradicts precision against a bar of 90%). The claim stays UNPROVEN, the item blocks
++    SUPPORTED until the expert dismisses it (rule 3d), and the screen and the report say
++    "Contradiction found, confirm to finalize". It counts once the expert accepts it.
++    The one way back for an unaccepted label is _AUTO_CONTRADICT, a versioned set of claim
++    types, EMPTY in 0.3.0. For a claim type in it, an item not dismissed whose record is
++    observed or derived, or that the AI reviewer accepted, counts again (the 0.2.2 rule), except
++        - on a meaning assumption (Arsh, 2026-10-07, decision 2: only a failed check or an
++          accepted item can contradict a meaning), and
++        - on an assumption whose deterministic checks all passed (at least one ran): a model
++          label cannot overrule a passed check (Arsh, 2026-10-14, rules 0.2.1; case01 Mac run,
++          where the 14B read the receiving phone's copy of a message the sender check had
++          passed as contradicting it).
++    A claim type enters _AUTO_CONTRADICT only after a recorded probe run of the local labeler
++    meets the signed bars for that type (contradicts precision >= 0.90, supports recall >= 0.90,
++    0 moved traps shown as supports, with Wilson intervals), and with Arsh's sign-off on the
++    entry. The entry names that probe run, and every report prints it.
+ 
+ Rule 2. Coverage of one core assumption. It is covered when, and only when, one of these holds:
+     (a) every deterministic check on it passed (at least one ran) -> tier derived;
+@@ -76,6 +82,9 @@
+ differently (core/audit/assumption_filler.py): "after March 3" starts on March 4, and offsets
+ ("two days after") and weekdays that are not the date's are refused. Verdicts decided under
+ 0.2.1 can differ.
++0.3.0 (Arsh, 2026-10-19) changes rule 1b as above: only an expert-accepted contradiction counts
++unless the claim type is in _AUTO_CONTRADICT. A claim decided CONTRADICTED under 0.2.x on an
++unaccepted label is UNPROVEN under 0.3.0 until the expert confirms the contradiction.
+ """
+ 
+ from __future__ import annotations
+@@ -83,6 +92,7 @@
+ from collections import defaultdict
+ from dataclasses import dataclass, field
+ from datetime import UTC, datetime
++from types import MappingProxyType
+ 
+ from core.contracts import (
+     Assumption,
+@@ -105,7 +115,7 @@
+     verdict_id,
+ )
+ 
+-RULE_VERSION = "0.2.2"
++RULE_VERSION = "0.3.0"
+ 
+ _CITABLE_RECORD = frozenset({ProvenanceTier.OBSERVED, ProvenanceTier.DERIVED})
+ _REVIEWED = frozenset({EvidenceStatus.AI_ACCEPTED, EvidenceStatus.ACCEPTED})
+@@ -115,6 +125,10 @@
+ # rule 3(c): review statuses whose supporting label can carry a SUPPORTED. AI_ACCEPTED counts
+ # only while AI review may cover something.
+ _SUPPORT_ACCEPTED = _REVIEWED if _AI_MAY_COVER else frozenset({EvidenceStatus.ACCEPTED})
++# rule 1(b): claim types whose unaccepted model "contradicts" may count, each mapped to the
++# recorded probe run that qualified it (its results file). EMPTY in 0.3.0: every model
++# contradiction waits for an expert. An entry needs Arsh's sign-off and a RULE_VERSION bump.
++_AUTO_CONTRADICT: MappingProxyType[ClaimType, str] = MappingProxyType({})
+ # rule 3(e): the assumption kind each claim type turns on
+ _REQUIRED_KIND = {
+     ClaimType.COMMUNICATION: AssumptionKind.IDENTITY,
+@@ -135,6 +149,7 @@
+     assumption: Assumption
+     failed_checks: list[CheckResult] = field(default_factory=list)
+     contradicting: list[EvidenceItem] = field(default_factory=list)  # counts under rule 1
++    unconfirmed: list[EvidenceItem] = field(default_factory=list)  # rule 1b: awaits an expert
+     complicating: list[EvidenceItem] = field(default_factory=list)  # blocks rule 3(d)
+     supports: list[EvidenceItem] = field(default_factory=list)  # accepted, observed (rule 3c)
+     # rule 2, for core assumptions only
+@@ -157,11 +172,21 @@
+         )
+ 
+ 
+-def _counts_as_contradiction(a: Assumption, e: EvidenceItem, checks_passed: bool) -> bool:
++def auto_contradict() -> dict[ClaimType, str]:
++    """Rule 1b: claim types whose unaccepted model contradiction counts, each with the probe
++    run that qualified it. Empty in 0.3.0. The report prints it."""
++    return dict(_AUTO_CONTRADICT)
++
++
++def _counts_as_contradiction(
++    claim_type: ClaimType, a: Assumption, e: EvidenceItem, checks_passed: bool
++) -> bool:
+     """Rule 1b, for an item whose stance is contradicts and which is not dismissed."""
+-    if a.kind is AssumptionKind.MEANING or checks_passed:
+-        return e.status is EvidenceStatus.ACCEPTED
+-    return e.status in _REVIEWED or e.tier in _CITABLE_RECORD
++    if e.status is EvidenceStatus.ACCEPTED:
++        return True
++    if claim_type not in _AUTO_CONTRADICT or a.kind is AssumptionKind.MEANING or checks_passed:
++        return False
++    return e.status is EvidenceStatus.AI_ACCEPTED or e.tier in _CITABLE_RECORD
+ 
+ 
+ def _unconfirmed_people(a: Assumption, stipulations: list[Stipulation]) -> list[str]:
+@@ -278,10 +303,10 @@
+             if e.status is EvidenceStatus.DISMISSED:
+                 continue
+             if e.stance is Stance.CONTRADICTS:
+-                if _counts_as_contradiction(a, e, checks_passed):
++                if _counts_as_contradiction(claim.claim_type, a, e, checks_passed):
+                     f.contradicting.append(e)
+                 else:
+-                    f.complicating.append(e)
++                    f.unconfirmed.append(e)
+             elif e.stance is Stance.COMPLICATES:
+                 f.complicating.append(e)
+             elif (
+@@ -375,6 +400,18 @@
+                 f"Rule 3d: {e.record_id} contradicts non-core '{f.assumption.text}' ({_how(e)})."
+                 for e in f.contradicting
+             ]
++        if f.assumption.is_core:
++            blockers += [
++                f"Rule 1b: {e.record_id} contradicts '{f.assumption.text}' ({_how(e)}). "
++                "Contradiction found, confirm to finalize: it counts once an expert accepts it."
++                for e in f.unconfirmed
++            ]
++        else:
++            blockers += [
++                f"Rule 3d: {e.record_id} contradicts non-core '{f.assumption.text}' "
++                f"({_how(e)}) and is not dismissed."
++                for e in f.unconfirmed
++            ]
+         blockers += [
+             f"Rule 3d: {e.record_id} complicates '{f.assumption.text}' and is not dismissed."
+             for e in f.complicating
+```
