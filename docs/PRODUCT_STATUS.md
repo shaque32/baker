@@ -401,6 +401,7 @@ cannot be checked from code).
 Rows 1 and 2 re-checked 2026-10-20 on main `477190d` (rules 0.3.0). Otherwise checked 2026-10-15 against main `7a14437` (line numbers unchanged on `ae8f24e`; `core/audit/rules.py`, `core/audit/invariants.py` and `core/report/html.py` lines re-checked 2026-10-16 on #76 with main `79ad922` merged in, since #76 shifts the last two) and branch #68 (`3c6c1ec`), for the proposed line:
 "Baker tests the government's specific claims; versioned rules decide verdicts; nothing is
 supported until your expert accepts it; runs locally with no network calls."
+Since #101 the last clause needs the opt-in qualifier for cloud cases; use row 6's safe wording.
 
 | # | Claim | Status | Evidence | Safe wording |
 |---|---|---|---|---|
