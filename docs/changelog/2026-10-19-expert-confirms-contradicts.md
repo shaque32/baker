@@ -1,4 +1,4 @@
-## 2026-10-19: An expert confirms every model contradiction (rules 0.3.0) (#PR)
+## 2026-10-19: An expert confirms every model contradiction (rules 0.3.0) (#98)
 - Changed: a model's or the AI reviewer's "contradicts" no longer marks a claim CONTRADICTED on
   its own (Grok's URGENT FIX on #90; the local 14B scored 58% contradicts precision on the signed
   probe set, bar 90%, Mac run 2026-10-19 at `eee8d15`). Rule 1b in `core/audit/rules.py` counts
@@ -14,7 +14,7 @@
   METHODS, ARCHITECTURE, review-screen and demo docs updated to match.
   Sign-off: comment 6278243303 on #90 records the approval; Arsh chose "Apply it" for the
   rules change in the owning project thread on 2026-10-20, and final "approved" is pending.
-- Where: branch `claude/expert-confirms-contradicts-y6ti2f`, not merged. Holds for Arsh's
+- Where: PR #98 (branch `claude/expert-confirms-contradicts-y6ti2f`), not merged. Holds for Arsh's
   approval of the rules change.
 - Verified: `tests/contract/test_rules.py` (unaccepted and AI-accepted contradictions never give
   CONTRADICTED; an expert-accepted one does; the allow-set restores automation for its claim
