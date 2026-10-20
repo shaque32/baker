@@ -1,4 +1,4 @@
-## 2026-10-20: Opus 5.5 at medium passes the cloud gate with the cloud prompt (#99)
+## 2026-10-20: Opus 5.5 at medium passes the cloud gate with the cloud prompt (#101)
 - Changed: `core/llm/cloud.PROBE_PASSED` lists one entry, (claude-opus-5-5, medium,
   `sha256:2863d8dbf66960f6`): Opus 5.5 at medium effort with the cloud stance prompt, stance
   v1.2 (`core/audit/prompts/stance_cloud.md`, #93). Arsh signed the entry on 2026-10-20 ("Sign
@@ -10,7 +10,7 @@
   version, so any change to that prompt turns cloud off again until it passes and is signed.
   Another effort or model still labels locally. `docs/PILOT_ONBOARDING.md`,
   `docs/PILOT_GATES.md` (gate 8) and `docs/ARCHITECTURE.md` say so.
-- Where: PR #99 (branch `claude/project-thread-01fybj`), not merged.
+- Where: PR #101 (branch `claude/project-thread-01fybj`), not merged.
 - Verified: the evidence is the preregistered runs of 2026-10-15
   (`/mnt/project-files/baker/cloud-bench/2026-10-15/told-frame-line/RESULTS-medium.md`, $4.52 of
   API spend, synthetic data only): on the signed set (95 gated items) contradicts precision 10/10
@@ -37,23 +37,23 @@
 - Status doc: pending: section 2, row 8: replace "opt-in per case once it passes the signed stance
   test (#68, on main; none has: `core/llm/cloud.py` `PROBE_PASSED` is empty)" with "opt-in per
   case (#68); `PROBE_PASSED` lists Opus 5.5 at medium effort with the cloud prompt, stance v1.2
-  (signed 2026-10-20, #99)". Section 3: in the Qwen3-14B row replace "(every case, until a
+  (signed 2026-10-20, #101)". Section 3: in the Qwen3-14B row replace "(every case, until a
   cloud model passes the signed stance test)" with "(every case not opted in to cloud)"; in the
   Opus row replace "once it passes the signed stance test (not yet: `PROBE_PASSED` is empty)"
   with "with the cloud prompt, stance v1.2 (`PROBE_PASSED`, signed 2026-10-20)" and its status
-  "main (#68, merged 2026-10-15), gated off" with "main (#68; entry #99)". Section 4, "When
+  "main (#68, merged 2026-10-15), gated off" with "main (#68; entry #101)". Section 4, "When
   Opus is used": replace the sentences on `PROBE_PASSED` being empty (and #93's sentence on an
   entry still to sign) with "That list holds one entry: Opus 5.5 at medium effort with the cloud
-  prompt (signed by Arsh 2026-10-20, #99). Another model or effort labels locally."; "Merge
+  prompt (signed by Arsh 2026-10-20, #101). Another model or effort labels locally."; "Merge
   state": replace "`PROBE_PASSED` is empty, so no case can use the cloud yet." with
-  "`PROBE_PASSED` lists Opus 5.5 at medium (#99), so a case the expert opts in uses it."
+  "`PROBE_PASSED` lists Opus 5.5 at medium (#101), so a case the expert opts in uses it."
   Section 5: replace "while cloud is gated off (below), `core/` makes no network calls." with
   "`core/` makes no network calls except for a case the expert opted in to cloud AI (below)."
   and "**#68 (on main, gated off):**" with "**#68 (on main; used for opted-in cases since
-  #99):**". Section 11, "Before a first real case" item 3: replace the item with "Opt-in
+  #101):**". Section 11, "Before a first real case" item 3: replace the item with "Opt-in
   cloud (#68) is available for a case whose protective order allows it: `PROBE_PASSED` lists
-  Opus 5.5 at medium (#99, signed 2026-10-20)." Section 12, row 6: replace "**True today;
+  Opus 5.5 at medium (#101, signed 2026-10-20)." Section 12, row 6: replace "**True today;
   #68 merged, gated off**" with "**True for every case not opted in to cloud**", "main: true
   while `PROBE_PASSED` is empty." with "main: true for every case not opted in; `PROBE_PASSED`
-  lists Opus 5.5 at medium (#99).", "gated off until a model passes the signed stance test"
+  lists Opus 5.5 at medium (#101).", "gated off until a model passes the signed stance test"
   with "used only for a case the expert opts in", and drop "; today no case can use cloud".
