@@ -42,7 +42,9 @@ only moves data between them, stores it, and refuses anything that breaks a rule
 Saving. Each claim is committed when it finishes, together with an audit-log entry naming
 what it considered (CLAIM_ACTION), with SHA-256 digests of the model calls stored for it
 (calls_digest), of the rows its verdict rests on, with the records they cite and the model runs
-they name (rows_digest), and of the claim (claim_digest), and the verdict's time. The run's
+they name (rows_digest), and of the claim (claim_digest), and the verdict's time. Each digest
+is a hash over per-item hashes (call_sha256, evidence_sha256), so a bundle that leaves an item
+out can list its hash and the digest still checks (core/bundle/export.py). The run's
 entry (RUN_ACTION) records a digest of its pipeline_runs row's fixed columns (run_digest).
 The model work for a claim (assumptions, labels, AI review) runs before anything is written, and
 the claim's rows are then written in one short transaction, so a long run never holds the
@@ -77,7 +79,7 @@ import hashlib
 import importlib
 import json
 import sqlite3
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
@@ -142,12 +144,24 @@ def _stored(conn: sqlite3.Connection, table: str, where: str, params: tuple) -> 
     return [dict(zip(cols, r, strict=True)) for r in cur]
 
 
-def calls_digest(conn: sqlite3.Connection, ids: Sequence[str]) -> dict[str, object]:
+def call_sha256(conn: sqlite3.Connection, call_id: str) -> str:
+    """One SHA-256 over a model call's whole stored row (model run, seq, subject, prompt, raw
+    output, outcome, error, time) and the model run it names. A bundle that leaves the call out
+    lists this instead (core/bundle/export.py), so the digests that name it still check."""
+    rows = _stored(conn, "model_calls", "id = ?", (call_id,))
+    runs = [r for c in rows for r in _stored(conn, "model_runs", "id = ?", (c["model_run_id"],))]
+    return _sha(canonical_json({"row": rows, "model_run": runs}))
+
+
+def calls_digest(
+    conn: sqlite3.Connection, ids: Sequence[str], known: Mapping[str, str] | None = None
+) -> dict[str, object]:
     """What a claim's audit-log entry records about the model calls stored while it ran: their
-    ids and one SHA-256 over each call's whole stored row (model run, seq, subject, prompt, raw
-    output, outcome, error, time), in order. core/bundle/verify.py recomputes it."""
-    rows = [r for cid in ids for r in _stored(conn, "model_calls", "id = ?", (cid,))]
-    return {"ids": list(ids), "sha256": _sha(canonical_json(rows))}
+    ids and one SHA-256 over each call's call_sha256, in order. core/bundle/verify.py
+    recomputes it; `known` gives the call_sha256 of calls a bundle left out."""
+    known = known or {}
+    shas = [known[cid] if cid in known else call_sha256(conn, cid) for cid in ids]
+    return {"ids": list(ids), "sha256": _sha(canonical_json(shas))}
 
 
 def claim_digest(conn: sqlite3.Connection, claim_id: str) -> str:
@@ -193,64 +207,89 @@ def _cited(conn: sqlite3.Connection, record_id: str) -> dict[str, object]:
     }
 
 
+def evidence_sha256(conn: sqlite3.Connection, evidence_id: str) -> str:
+    """One SHA-256 over an evidence item as stored (every column: stance, quote, rationale,
+    source and locator, model run), its AI reviews, the record it cites (_cited) and the model
+    runs the item and its reviews name. A bundle that leaves the item out lists this instead
+    (core/bundle/export.py), so its claim's rows_digest still checks."""
+    row = _stored(conn, "evidence_items", "id = ?", (evidence_id,))
+    reviews = _stored(
+        conn,
+        "evidence_reviews",
+        "evidence_id = ? AND reviewer_kind = 'ai' ORDER BY seq",
+        (evidence_id,),
+    )
+    named = {r["model_run_id"] for r in (*row, *reviews) if r.get("model_run_id")}
+    return _sha(
+        canonical_json(
+            {
+                "row": row,
+                "ai_reviews": reviews,
+                "records": [_cited(conn, str(r["record_id"])) for r in row],
+                "model_runs": [
+                    m
+                    for mid in sorted(named)
+                    for m in _stored(conn, "model_runs", "id = ?", (mid,))
+                ],
+            }
+        )
+    )
+
+
 def claim_rows(
     conn: sqlite3.Connection,
     manifest: dict[str, list[str]],
     claim_id: str,
-    call_ids: Sequence[str] = (),
+    known: Mapping[str, str] | None = None,
 ) -> dict[str, list]:
-    """The rows a claim's verdict rests on, as stored: its assumptions, check results and
-    evidence items (every column: text, parameters, outcomes, source and locator, rationale,
-    model run), the AI reviews of those items, the records the items and check results cite
-    (with the accounts, thread and message shown beside them), and the model runs
-    (model, file hash, prompt, settings, seed) that the items, reviews, claim and the claim's
-    model calls name. Expert decisions are bound by their own entries (evidence.decide)."""
-    one = {
-        "assumptions": "assumptions",
-        "checks": "check_results",
-        "evidence": "evidence_items",
-    }
-    rows: dict[str, list] = {
-        key: [r for i in manifest.get(key, []) for r in _stored(conn, table, "id = ?", (i,))]
-        for key, table in one.items()
-    }
-    rows["ai_reviews"] = [
+    """The rows a claim's verdict rests on, as stored: its assumptions and check results (every
+    column: text, parameters, outcomes) with the records each check cites, each evidence item
+    as evidence_sha256 (the item, its AI reviews, the record it cites with the accounts, thread
+    and message shown beside it, and the model runs they name) and the model run the claim
+    names. Model calls are bound by calls_digest, expert decisions by their own entries
+    (evidence.decide). `known` gives the evidence_sha256 of items a bundle left out
+    (core/bundle/export.py)."""
+    known = known or {}
+    checks = [
         r
-        for eid in manifest.get("evidence", [])
-        for r in _stored(
-            conn,
-            "evidence_reviews",
-            "evidence_id = ? AND reviewer_kind = 'ai' ORDER BY seq",
-            (eid,),
-        )
+        for i in manifest.get("checks", [])
+        for r in _stored(conn, "check_results", "id = ?", (i,))
     ]
-    cited = [str(e["record_id"]) for e in rows["evidence"]] + [
-        str(rid) for c in rows["checks"] for rid in json.loads(c["record_ids_json"] or "[]")
-    ]
-    rows["records"] = [_cited(conn, rid) for rid in dict.fromkeys(cited)]
-    calls = [r for cid in call_ids for r in _stored(conn, "model_calls", "id = ?", (cid,))]
     claim = _stored(conn, "claims", "id = ?", (claim_id,))
-    named = {
-        r["model_run_id"]
-        for r in (*rows["evidence"], *rows["ai_reviews"], *calls, *claim)
-        if r.get("model_run_id")
+    named = sorted({r["model_run_id"] for r in claim if r.get("model_run_id")})
+    return {
+        "assumptions": [
+            r
+            for i in manifest.get("assumptions", [])
+            for r in _stored(conn, "assumptions", "id = ?", (i,))
+        ],
+        "checks": [
+            {
+                "row": c,
+                "records": [
+                    _cited(conn, str(rid)) for rid in json.loads(c["record_ids_json"] or "[]")
+                ],
+            }
+            for c in checks
+        ],
+        "evidence": [
+            known[eid] if eid in known else evidence_sha256(conn, eid)
+            for eid in manifest.get("evidence", [])
+        ],
+        "model_runs": [m for mid in named for m in _stored(conn, "model_runs", "id = ?", (mid,))],
     }
-    rows["model_runs"] = [
-        r for mid in sorted(named) for r in _stored(conn, "model_runs", "id = ?", (mid,))
-    ]
-    return rows
 
 
 def rows_digest(
     conn: sqlite3.Connection,
     manifest: dict[str, list[str]],
     claim_id: str,
-    call_ids: Sequence[str] = (),
+    known: Mapping[str, str] | None = None,
 ) -> str:
     """One SHA-256 over claim_rows() when a claim's audit-log entry is written. The entry
     records it, so core/bundle/verify.py can tell a row edited later from the one the rules
     read."""
-    return _sha(canonical_json(claim_rows(conn, manifest, claim_id, call_ids)))
+    return _sha(canonical_json(claim_rows(conn, manifest, claim_id, known)))
 
 
 def run_digest(conn: sqlite3.Connection, run_id: str) -> str:
@@ -1393,9 +1432,7 @@ def run_audit(
                         "dropped_labels": result.dropped_labels,
                         "reviewer_failures": result.reviewer_failures,
                         "model_calls": calls_digest(conn, run.claim_calls),
-                        "rows_sha256": rows_digest(
-                            conn, result.manifest[claim.id], claim.id, run.claim_calls
-                        ),
+                        "rows_sha256": rows_digest(conn, result.manifest[claim.id], claim.id),
                         "decided_at_utc": iso(decision.decided_at_utc),
                         "claim_sha256": claim_digest(conn, claim.id),
                     },

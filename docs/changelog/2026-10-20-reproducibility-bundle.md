@@ -1,7 +1,14 @@
 ## 2026-10-20: reproducibility bundle, export and offline verify (#104)
 - Changed: `baker export-bundle` writes one zip per case (input hashes, build and versions,
-  model identity, every table incl. model calls with raw output, expert reviews, verdicts and
-  the full audit log, the report, a method note); producing one is the examiner's choice on
+  model identity, the rows the verdicts rest on, the audit log, the report, a method note). By
+  default it holds only what the latest audit's verdicts rest on (the items behind each
+  verdict, the records they cite, the model calls behind those items, the expert's decisions
+  on them); dismissed and irrelevant items, other prompts and every `cloud.sent` entry, the
+  rest of the phone, earlier runs and the expert's flags are opt-in (`--include`, or `all` for
+  the whole case; Baker Product must-fix 1 on #104). The log's digests became hashes over
+  per-item hashes, so `withheld.jsonl` lists left-out items, calls and log entries by hash and
+  the digests and chain still check; the export runs verify on its own bundle and refuses one
+  that fails. Producing one is the examiner's choice on
   counsel's advice: it lists what the bundle would hold and writes nothing without
   `--confirm-counsel-reviewed` and `--by expert:`; an encrypted case's bundle is encrypted
   (AES-256-GCM, scrypt bundle passphrase), never plain; the export is logged (`bundle.export`,
@@ -28,13 +35,18 @@
   claim type; `claims.proposed` records each proposed claim's SHA-256. No export while a newer audit is unfinished. Why: legal defensibility
   (Arsh's brief, 2026-10-20): equal access, authentication, hosted-model reproducibility.
 - Where: PR #104
-- Verified: tests/test_bundle.py (77: round trips on a reviewed case01 and a cloud-path case01
-  with a stand-in API; 61 tampering and malformed-bundle cases fail without a crash; an export
+- Verified: tests/test_bundle.py (90: round trips on a reviewed case01 and a cloud-path case01
+  with a stand-in API, whole and scoped; 68 tampering and malformed-bundle cases fail without a
+  crash, incl. a supporting item hidden behind its true hash, which fails the verdict check; a
+  scoped bundle leaves out dismissed items, their decisions, other prompts, cloud.sent entries,
+  the rest of the phone and an earlier run, and still verifies; an export whose bundle would
+  not verify writes nothing; an export
   holds the case still and never replaces a file; a refused
   cloud answer is logged with its ids; an answer that cannot be logged pauses the
   audit; a retried send logs one answer; no export without the confirmation; an encrypted case
   never exports in plain form; a failed write leaves no bundle and no success entry; partial
-  coverage never reads as fully verified); full suite 2359 passed, 8 skipped;
+  coverage never reads as fully verified); full suite 2372 passed, 8 skipped
+  (make check, 2026-10-20, Linux container);
   make eval unchanged (case01 1.00, 0 false supported; unreviewed 0.55; hostile PASS; case02
   aggregate 0.90, 0 false supported). Not tried on a real case or a real Anthropic answer.
 - Open: CLI only, no screen button. The anchor is the audit log's last hash printed on the
@@ -42,17 +54,18 @@
   Identity changes after the audit reach checks only on the next full audit, while the report
   shows current links (documented in docs/bundle.md; same as the screen). Re-generating local
   labels untested, on the same machine or another (a 14B repeat-run
-  check is planned). Default scope is the whole case;
-  whether to export only what the verdicts rest on is Arsh's open decision (Baker Product
-  review on #104).
+  check is planned). A scoped bundle verifies as partly verified (exit 2): what it left out,
+  and a left-out log entry's time, actor and action, cannot be checked from it; the prompts it
+  ships still quote nearby messages, and the log's manifests name left-out items by id.
 - Affects: capabilities (new export/verify); privacy (a bundle holds case content, plain only
-  for a plain case, and only when the examiner confirms one; nothing is sent); customer-facing claims (recorded
+  for a plain case, and only when the examiner confirms one; by default only what the verdicts
+  rest on; nothing is sent); customer-facing claims (recorded
   labels and rules are reproducible; cloud labels still cannot be regenerated).
 - Status doc: pending: §8 add item 6 "Reproducibility bundle (#104): `baker export-bundle`
   (examiner's choice after counsel review, logged with its SHA-256, encrypted for an encrypted case) and `baker verify-bundle` (offline; re-derives every
   verdict of the exported run from recorded labels and expert decisions; docs/bundle.md); CLI
   only"; §4 "Failure handling" add "each answer is logged as `cloud.received` (API-reported
   model, message and request ids, raw-output SHA-256)"; §12 row 5 add to Evidence "a
-  reproducibility bundle carries every table and log entry, and `baker verify-bundle`
-  re-derives the verdicts offline (#104)"; §3 last paragraph add "each claim's audit-log entry
+  reproducibility bundle carries what the verdicts rest on (the whole case on request), and
+  `baker verify-bundle` re-derives the verdicts offline (#104)"; §3 last paragraph add "each claim's audit-log entry
   binds its stored model calls by SHA-256 (#104)".

@@ -131,17 +131,29 @@ def verify_bundle(
     path: Path, inputs_dir: Path | None = None, passphrase: str | None = None
 ) -> list[Finding]:
     """Every check's findings. An encrypted bundle (core/bundle/sealed.py) needs `passphrase`."""
-    out = _Out()
     try:
         size = Path(path).stat().st_size
         if size > MAX_BUNDLE_BYTES:
-            out.add(
-                FAIL,
-                "files",
-                f"the bundle is {size:,} bytes, more than the {MAX_BUNDLE_BYTES:,} a verify reads",
-            )
-            return out.items
+            return [
+                Finding(
+                    FAIL,
+                    "files",
+                    f"the bundle is {size:,} bytes, more than the {MAX_BUNDLE_BYTES:,} a verify "
+                    "reads",
+                )
+            ]
         data = Path(path).read_bytes()
+    except OSError as e:
+        return [Finding(FAIL, "files", f"the bundle cannot be read ({e})")]
+    return verify_data(data, inputs_dir, passphrase)
+
+
+def verify_data(
+    data: bytes, inputs_dir: Path | None = None, passphrase: str | None = None
+) -> list[Finding]:
+    """verify_bundle() on a bundle's bytes (the export checks its own this way)."""
+    out = _Out()
+    try:
         if sealed.is_sealed(data):
             if not passphrase:
                 out.add(FAIL, "files", "the bundle is encrypted; give its passphrase")
@@ -165,8 +177,12 @@ def verify_bundle(
         conn = _tables(zf, manifest, out)
         if conn is None:
             return out.items
+        withheld = _withheld(conn, zf, manifest, out)
+        if withheld is None:
+            conn.close()
+            return out.items
         try:
-            _checks(conn, zf, manifest, out, inputs_dir)
+            _checks(conn, zf, manifest, out, inputs_dir, withheld)
         except Exception as e:  # noqa: BLE001 - a malformed row is a failure, never a crash
             out.add(
                 FAIL, "tables", f"the bundle's rows cannot be checked ({type(e).__name__}: {e})"
@@ -182,26 +198,28 @@ def _checks(
     manifest: dict[str, Any],
     out: _Out,
     inputs_dir: Path | None,
+    withheld: list[dict[str, Any]],
 ) -> None:
     """Checks 4 to 12, in order."""
     # Every later check reads the log, so nothing runs on a log that failed.
-    if not _audit_log(conn, manifest, out):
+    if not _audit_log(conn, manifest, out, withheld):
         return
     run = _run(conn, manifest, out)
     if run is None:
         return
-    _manifest(conn, zf, manifest, run, out)
+    known = export.withheld_known(withheld)
+    _manifest(conn, zf, manifest, run, out, withheld)
     _inputs(conn, out, inputs_dir)
-    _rows(conn, run, out)
-    _labels(conn, run, out)
+    _rows(conn, run, out, known)
+    _labels(conn, run, out, known)
     _ai_reviews(conn, out)
     _expert_reviews(conn, out)
     _claims(conn, run, out)
-    _calls(conn, out)
+    _calls(conn, out, known)
     _stipulations(conn, out)
     _identity(conn, out)
     _verdicts(conn, run, out)
-    _report(conn, zf, manifest, out)
+    _report(conn, zf, manifest, out, withheld)
 
 
 # ---------------------------------------------------------------- 1. files
@@ -259,7 +277,7 @@ def _files(zf: zipfile.ZipFile, out: _Out) -> dict[str, Any] | None:
             f"Baker reads ({export.BUNDLE_VERSION})",
         )
         return None
-    expected = {export.METHOD, export.REPORT} | {
+    expected = {export.METHOD, export.REPORT, export.WITHHELD} | {
         f"{export.TABLES}{t}.jsonl" for t, _cols in export.schema_tables()
     }
     for name in sorted(expected - set(listed)):
@@ -357,6 +375,100 @@ def _tables(zf: zipfile.ZipFile, manifest: dict[str, Any], out: _Out) -> sqlite3
     return conn
 
 
+# ---------------------------------------------------------------- scope
+
+
+_HEX = frozenset("0123456789abcdef")
+
+
+def _hash(value: Any) -> bool:
+    return isinstance(value, str) and len(value) == 64 and set(value) <= _HEX
+
+
+def _withheld_line(w: Any) -> bool:
+    if not isinstance(w, dict):
+        return False
+    if w.get("kind") in ("evidence", "model_call"):
+        return isinstance(w.get("id"), str) and _hash(w.get("sha256"))
+    if w.get("kind") == "audit_log":
+        return (
+            isinstance(w.get("seq"), int)
+            and not isinstance(w.get("seq"), bool)
+            and all(isinstance(w.get(k), str) for k in ("at_utc", "actor", "action"))
+            and _hash(w.get("hash"))
+            and (w.get("prev_hash") == "" or _hash(w.get("prev_hash")))
+        )
+    return False
+
+
+def _withheld(
+    conn: sqlite3.Connection, zf: zipfile.ZipFile, manifest: dict[str, Any], out: _Out
+) -> list[dict[str, Any]] | None:
+    """withheld.jsonl: what a scoped bundle left out that the audit log names. A full bundle's
+    is empty; a scoped one's names nothing the bundle also holds."""
+    try:
+        lines = [json.loads(x) for x in zf.read(export.WITHHELD).decode("utf-8").splitlines()]
+    except (ValueError, UnicodeDecodeError) as e:
+        out.add(FAIL, "scope", f"{export.WITHHELD} cannot be read ({e})")
+        return None
+    bad = next((n for n, w in enumerate(lines, 1) if not _withheld_line(w)), None)
+    if bad is not None:
+        out.add(FAIL, "scope", f"{export.WITHHELD} line {bad} is not a withheld item or entry")
+        return None
+    scope = manifest.get("scope")
+    if scope == export.FULL:
+        if lines:
+            out.add(FAIL, "scope", f"a full bundle's {export.WITHHELD} lists something left out")
+            return None
+        out.add(PASS, "scope", "the whole case: nothing is left out")
+        return lines
+    if (
+        not isinstance(scope, dict)
+        or not isinstance(scope.get("included"), list)
+        or not set(scope["included"]) <= set(export.PARTS)
+        or not isinstance(scope.get("left_out"), dict)
+        or not all(
+            isinstance(n, int) and not isinstance(n, bool) and n > 0
+            for n in scope["left_out"].values()
+        )
+    ):
+        out.add(FAIL, "scope", "bundle.json's scope is neither full nor a scope Baker writes")
+        return None
+    keys = [(w["kind"], w.get("id", w.get("seq"))) for w in lines]
+    if len(keys) != len(set(keys)):
+        out.add(FAIL, "scope", f"{export.WITHHELD} lists the same item twice")
+        return None
+    for kind, table, col in (
+        ("evidence", "evidence_items", "id"),
+        ("model_call", "model_calls", "id"),
+        ("audit_log", "audit_log", "seq"),
+    ):
+        for w in lines:
+            key = w.get("id", w.get("seq"))
+            if (
+                w["kind"] == kind
+                and conn.execute(
+                    f"SELECT 1 FROM {table} WHERE {col} = ?",  # noqa: S608
+                    (key,),
+                ).fetchone()
+            ):
+                out.add(FAIL, "scope", f"{kind} {key} is both left out and in the bundle")
+                return None
+    left = [p for p in export.PARTS if p not in scope["included"]]
+    n = {k: sum(w["kind"] == k for w in lines) for k in ("evidence", "model_call")}
+    out.add(
+        NOTE,
+        "scope",
+        "a scoped bundle: it holds what the verdicts rest on and leaves out "
+        + ", ".join(left)
+        + f" ({', '.join(f'{t} {c}' for t, c in sorted(scope['left_out'].items()))} rows, as "
+        f"the export counted them). {n['evidence']} evidence items and {n['model_call']} model "
+        "calls left out are checked only by the hashes the audit log's digests bind; what they "
+        "say is not verified",
+    )
+    return lines
+
+
 # ---------------------------------------------------------------- 4. audit log
 
 
@@ -370,8 +482,11 @@ def _log(conn: sqlite3.Connection) -> list[tuple[int, str, str, str, dict[str, A
     ]
 
 
-def _audit_log(conn: sqlite3.Connection, manifest: dict[str, Any], out: _Out) -> bool:
-    brk = audit_log.first_break(conn)
+def _audit_log(
+    conn: sqlite3.Connection, manifest: dict[str, Any], out: _Out, withheld: list[dict[str, Any]]
+) -> bool:
+    stubs = export.withheld_log(withheld)
+    brk = audit_log.first_break(conn, stubs)
     if brk is not None:
         out.add(FAIL, "audit log", f"the hash chain is broken at entry {brk}")
         return False
@@ -382,8 +497,8 @@ def _audit_log(conn: sqlite3.Connection, manifest: dict[str, Any], out: _Out) ->
         except ValueError as e:
             out.add(FAIL, "audit log", f"entry {seq}'s payload cannot be read ({e})")
             return False
-    head = conn.execute("SELECT seq, hash, actor, action FROM audit_log ORDER BY seq DESC LIMIT 1")
-    seq, h, _actor, _action = head.fetchone() or (0, "", "", "")
+    heads = conn.execute("SELECT seq, hash FROM audit_log ORDER BY seq DESC LIMIT 1").fetchall()
+    seq, h = max(heads + [(s, w["hash"]) for s, w in stubs.items()], default=(0, ""))
     want = manifest.get("audit_log") or {}
     if not isinstance(want, dict) or h != want.get("last_hash") or seq != want.get("last_seq"):
         out.add(
@@ -397,6 +512,18 @@ def _audit_log(conn: sqlite3.Connection, manifest: dict[str, Any], out: _Out) ->
         out.add(FAIL, "audit log", problem[1])
         return False
     out.add(PASS, "audit log", f"hash chain holds over {seq} entries; last hash {h}")
+    if stubs:
+        actions = defaultdict(int)
+        for w in stubs.values():
+            actions[w["action"]] += 1
+        out.add(
+            NOTE,
+            "audit log",
+            f"{len(stubs)} entries are left out by the bundle's scope ("
+            + ", ".join(f"{a} {n}" for a, n in sorted(actions.items()))
+            + "): the chain holds through their hashes, but what they say, and their time, "
+            "actor and action, are not verified",
+        )
     return True
 
 
@@ -409,13 +536,14 @@ def _manifest(
     manifest: dict[str, Any],
     run: dict[str, Any],
     out: _Out,
+    withheld: list[dict[str, Any]],
 ) -> None:
     """Everything bundle.json says that follows from the tables (contents, run, inputs, models,
     audit-log head) is recomputed and must match exactly; METHOD.md must be the note
     bundle.json gives. The export's time and exporter are as the exporter wrote them: the
     case's own log records the export (bundle.export) with the bundle's SHA-256."""
     try:
-        facts = export.derived(conn, run)
+        facts = export.derived(conn, run, withheld)
     except (ValueError, KeyError, TypeError, IndexError) as e:
         out.add(FAIL, "bundle.json", f"what it lists cannot be recomputed from the tables ({e})")
         return
@@ -600,11 +728,11 @@ def _run_rows(conn: sqlite3.Connection, run: dict[str, Any], out: _Out) -> None:
 # ---------------------------------------------------------------- 6. labels
 
 
-def _rows(conn: sqlite3.Connection, run: dict[str, Any], out: _Out) -> None:
+def _rows(conn: sqlite3.Connection, run: dict[str, Any], out: _Out, known: dict[str, str]) -> None:
     """The rows each verdict rests on (assumptions, check results, evidence items with their
     source and rationale, AI reviews) are the ones its claim's audit-log entry recorded a
     digest of (core/pipeline.py rows_digest)."""
-    changed, unbound = export.changed_rows(conn, run)
+    changed, unbound = export.changed_rows(conn, run, known)
     missing = sorted(set(run["manifest"]) - set(export.claim_entries(conn, run)))
     for claim_id in changed:
         out.add(
@@ -629,14 +757,22 @@ def _rows(conn: sqlite3.Connection, run: dict[str, Any], out: _Out) -> None:
             f"the rows behind {len(run['manifest']) - unbound} verdicts are the ones their "
             "audit-log entries recorded, with the records they cite and the model runs they name",
         )
-    covered = {
-        str(r["id"])
-        for claim_id, entry in export.claim_entries(conn, run).items()
-        if isinstance(entry.get("rows_sha256"), str)
-        for r in pipeline.claim_rows(conn, entry["manifest"], claim_id, export.entry_calls(entry))[
-            "model_runs"
-        ]
+    entries = {
+        c: e
+        for c, e in export.claim_entries(conn, run).items()
+        if isinstance(e.get("rows_sha256"), str)
     }
+    ev = [e for c in entries for e in run["manifest"][c]["evidence"]]
+    calls = [cid for e in entries.values() for cid in export.entry_calls(e)]
+    covered: set[str] = set()
+    for sql, ids in (
+        ("SELECT model_run_id FROM evidence_items WHERE id = ?", ev),
+        ("SELECT model_run_id FROM evidence_reviews WHERE evidence_id = ?", ev),
+        ("SELECT model_run_id FROM model_calls WHERE id = ?", calls),
+        ("SELECT model_run_id FROM claims WHERE id = ?", list(entries)),
+    ):
+        for i in ids:
+            covered.update(str(m) for (m,) in conn.execute(sql, (i,)) if m)
     other = [mid for (mid,) in conn.execute("SELECT id FROM model_runs ORDER BY rowid")]
     other = [mid for mid in other if mid not in covered]
     if other:
@@ -710,8 +846,10 @@ def _same_label(item: tuple, answer: Any) -> bool:
     )
 
 
-def _labels(conn: sqlite3.Connection, run: dict[str, Any], out: _Out) -> None:
-    ids = sorted({e for items in run["manifest"].values() for e in items["evidence"]})
+def _labels(
+    conn: sqlite3.Connection, run: dict[str, Any], out: _Out, known: dict[str, str]
+) -> None:
+    ids = sorted({e for items in run["manifest"].values() for e in items["evidence"]} - set(known))
     rows = _evidence_rows(conn, ids)
     if len(rows) != len(ids):
         out.add(FAIL, "labels", f"{len(ids) - len(rows)} evidence items the run names are missing")
@@ -926,7 +1064,7 @@ def _claims(conn: sqlite3.Connection, run: dict[str, Any], out: _Out) -> None:
         out.add(PASS, "claims", "the claims are the ones the audit log recorded")
 
 
-def _calls(conn: sqlite3.Connection, out: _Out) -> None:
+def _calls(conn: sqlite3.Connection, out: _Out, known: dict[str, str]) -> None:
     calls = {cid: raw for cid, raw in conn.execute("SELECT id, raw_output FROM model_calls")}
     bound: set[str] = set()
     unbound_claims = 0
@@ -939,12 +1077,12 @@ def _calls(conn: sqlite3.Connection, out: _Out) -> None:
         if not isinstance(digest, dict) or not isinstance(digest.get("ids"), list):
             unbound_claims += 1
             continue
-        missing = [cid for cid in digest["ids"] if cid not in calls]
+        missing = [cid for cid in digest["ids"] if cid not in calls and cid not in known]
         if missing:
             out.add(FAIL, "model calls", f"entry {seq} names model call {missing[0]}, missing")
             bad = True
             continue
-        if pipeline.calls_digest(conn, digest["ids"])["sha256"] != digest.get("sha256"):
+        if pipeline.calls_digest(conn, digest["ids"], known)["sha256"] != digest.get("sha256"):
             out.add(
                 FAIL,
                 "model calls",
@@ -952,7 +1090,7 @@ def _calls(conn: sqlite3.Connection, out: _Out) -> None:
                 "outcome, subject, model run or time)",
             )
             bad = True
-        bound.update(digest["ids"])
+        bound.update(cid for cid in digest["ids"] if cid in calls)
     received = {p.get("raw_sha256") for _s, _a, _c, action, p in log if action == RECEIVED_ACTION}
     hosted = {
         cid
@@ -1320,10 +1458,24 @@ def _compare(decision: Any, stored: Any, actions: list[tuple[str, str, dict]]) -
 
 
 def _report(
-    conn: sqlite3.Connection, zf: zipfile.ZipFile, manifest: dict[str, Any], out: _Out
+    conn: sqlite3.Connection,
+    zf: zipfile.ZipFile,
+    manifest: dict[str, Any],
+    out: _Out,
+    withheld: list[dict[str, Any]],
 ) -> None:
-    # The settings the audit log records, which bundle.json must also name (_manifest).
-    rendered = report_html.render_report(conn, export.logged_timeline(conn))
+    # The settings the audit log records, which bundle.json must also name (_manifest); the
+    # scope as bundle.json and withheld.jsonl give it (_withheld checked their form).
+    scope = manifest["scope"]
+    rendered = report_html.render_report(
+        conn,
+        export.logged_timeline(conn),
+        None
+        if scope == export.FULL
+        else report_html.BundleScope(
+            tuple(scope["included"]), dict(scope["left_out"]), export.withheld_log(withheld)
+        ),
+    )
     if rendered.encode("utf-8") != zf.read(export.REPORT):
         out.add(FAIL, "report", "the report in the bundle is not the one these tables render")
         return

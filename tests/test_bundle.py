@@ -28,9 +28,11 @@ EXPERT = "expert:Dana Reyes"
 AT = datetime(2026, 10, 20, 12, tzinfo=UTC)
 
 
-def _export(conn, tmp_path: Path, name: str = "bundle.zip") -> Path:  # noqa: ANN001
+def _export(conn, tmp_path: Path, name: str = "bundle.zip", include: str | None = "all") -> Path:  # noqa: ANN001
+    """The whole case by default: the tampering tests below change rows a scoped bundle may
+    leave out. Scoped bundles have their own tests (pass include=None)."""
     return export.export_bundle(
-        conn, tmp_path / name, EXPERT, counsel_confirmed=True, clock=lambda: AT
+        conn, tmp_path / name, EXPERT, counsel_confirmed=True, clock=lambda: AT, include=include
     ).path
 
 
@@ -1165,3 +1167,248 @@ def test_the_fallback_publish_never_leaves_a_partial_file(tmp_path, monkeypatch)
     with pytest.raises(OSError):
         export._publish(tmp_path / "usb.zip", b"bundle")
     assert list(tmp_path.iterdir()) == []
+
+
+# ---------------------------------------------------------------- scope (Baker Product must-fix 1)
+
+
+@pytest.fixture(scope="module")
+def scoped(reviewed, tmp_path_factory):  # noqa: ANN001, ANN201
+    """The reviewed case exported with the default scope: what the verdicts rest on."""
+    conn, _full = reviewed
+    return conn, _export(conn, tmp_path_factory.mktemp("bundle-scoped"), include=None)
+
+
+def _member(path: Path, name: str) -> list[dict]:
+    with zipfile.ZipFile(path) as zf:
+        return [json.loads(x) for x in zf.read(name).decode().splitlines()]
+
+
+def _rewrite_many(src: Path, dst: Path, edits: dict[str, Callable[[str], str]]) -> Path:
+    """_rewrite for several files at once, rehashing each, as a careful tamperer would."""
+    with zipfile.ZipFile(src) as zf:
+        files = {n: zf.read(n) for n in zf.namelist()}
+    manifest = json.loads(files[export.MANIFEST])
+    for name, edit in edits.items():
+        files[name] = edit(files[name].decode("utf-8")).encode("utf-8")
+        if name != export.MANIFEST:
+            manifest["files"][name]["sha256"] = hashlib.sha256(files[name]).hexdigest()
+    if export.MANIFEST not in edits:
+        files[export.MANIFEST] = json.dumps(manifest).encode()
+    with zipfile.ZipFile(dst, "w") as zf:
+        for n, data in files.items():
+            zf.writestr(n, data)
+    return dst
+
+
+def _lines(change: Callable[[list[dict]], list[dict]]) -> Callable[[str], str]:
+    def edit(text: str) -> str:
+        rows = change([json.loads(x) for x in text.splitlines()])
+        return "".join(json.dumps(r, ensure_ascii=False, sort_keys=True) + "\n" for r in rows)
+
+    return edit
+
+
+def test_a_bundle_by_default_holds_only_what_the_verdicts_rest_on(scoped):
+    conn, path = scoped
+    findings = verify_bundle(path)
+    assert not failed(findings), _fails(findings)
+    assert NOTE in _levels(findings, "scope") and PASS in _levels(findings, "verdicts")
+    assert PASS in _levels(findings, "report") and PASS in _levels(findings, "rows")
+    manifest = json.loads(zipfile.ZipFile(path).read(export.MANIFEST))
+    assert manifest["scope"]["included"] == []
+    dismissed = {
+        eid
+        for (eid,) in conn.execute(
+            "SELECT evidence_id FROM evidence_reviews r WHERE seq = (SELECT MAX(seq) FROM"
+            " evidence_reviews WHERE evidence_id = r.evidence_id) AND status = 'dismissed'"
+        )
+    }
+    shipped = {r["id"] for r in _member(path, f"{export.TABLES}evidence_items.jsonl")}
+    withheld = _member(path, export.WITHHELD)
+    left = {w["id"] for w in withheld if w["kind"] == "evidence"}
+    assert left and left <= dismissed and not left & shipped
+    # every item a verdict cites ships
+    cited = {
+        e
+        for (c,) in conn.execute("SELECT cited_json FROM verdicts")
+        for e in json.loads(c).get("evidence", [])
+    }
+    assert cited <= shipped
+    # the expert's decisions on left-out items are hashes only; the rest of the phone stays home
+    stubs = [w for w in withheld if w["kind"] == "audit_log"]
+    assert {w["action"] for w in stubs} == {"evidence.decide"}
+    logged = _member(path, f"{export.TABLES}audit_log.jsonl")
+    assert not {w["seq"] for w in stubs} & {r["seq"] for r in logged}
+    # only the audit's manifests name a left-out item, by its id (which names its record)
+    assert {r["action"] for r in logged for eid in left if eid in r["payload_json"]} <= {
+        "pipeline.claim",
+        "pipeline.run",
+    }
+    messages = len(_member(path, f"{export.TABLES}messages.jsonl"))
+    assert 0 < messages < conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
+    assert _member(path, f"{export.TABLES}message_recipients.jsonl") == []
+    report = zipfile.ZipFile(path).read(export.REPORT).decode()
+    assert "Scoped reproducibility bundle" in report and "left out of this bundle" in report
+    method = zipfile.ZipFile(path).read(export.METHOD).decode()
+    assert "## Scope" in method and "withheld.jsonl" in method
+
+
+def test_include_all_is_the_whole_case(reviewed):
+    _conn, path = reviewed
+    manifest = json.loads(zipfile.ZipFile(path).read(export.MANIFEST))
+    assert manifest["scope"] == export.FULL and _member(path, export.WITHHELD) == []
+    assert manifest["withheld"] == {"evidence": 0, "model_call": 0, "audit_log": 0}
+    assert PASS in _levels(verify_bundle(path), "scope")
+
+
+def test_a_scoped_hosted_case_leaves_out_the_prompts_it_does_not_rest_on(hosted, tmp_path):
+    conn, _full = hosted
+    path = _export(conn, tmp_path, include=None)
+    findings = verify_bundle(path)
+    assert not failed(findings), _fails(findings)
+    logged = _member(path, f"{export.TABLES}audit_log.jsonl")
+    stubs = [w for w in _member(path, export.WITHHELD) if w["kind"] == "audit_log"]
+    assert not any(r["action"] == SENT_ACTION for r in logged)
+    assert {w["action"] for w in stubs} >= {SENT_ACTION}
+    calls = {r["id"] for r in _member(path, f"{export.TABLES}model_calls.jsonl")}
+    behind = {
+        cid
+        for (cid,) in conn.execute(
+            "SELECT mc.id FROM model_calls mc JOIN evidence_items e"
+            " ON e.model_run_id = mc.model_run_id"
+            " AND mc.subject_json = json_array(e.assumption_id, e.record_id)"
+            " WHERE mc.outcome = 'ok' AND e.stance != 'irrelevant'"
+        )
+    }
+    assert behind and behind <= calls
+    assert calls < {r[0] for r in conn.execute("SELECT id FROM model_calls")}
+    assert PASS in _levels(findings, "labels") and PASS in _levels(findings, "model calls")
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        "evidence hash",  # a left-out item's hash changed: its claim's rows no longer check
+        "entry hash",  # a left-out entry's hash changed: the chain breaks
+        "entry dropped",  # a left-out entry no longer listed: the chain breaks
+        "listed twice",  # an item both left out and shipped
+        "said full",  # bundle.json calls a scoped bundle whole
+        "bad line",  # a withheld line that is not one
+    ],
+)
+def test_tampering_with_what_a_scoped_bundle_left_out_fails(scoped, tmp_path, tamper):
+    _conn, path = scoped
+    shipped = _member(path, f"{export.TABLES}evidence_items.jsonl")
+
+    def change(rows: list[dict]) -> list[dict]:
+        ev = next(r for r in rows if r["kind"] == "evidence")
+        entry = next(r for r in rows if r["kind"] == "audit_log")
+        if tamper == "evidence hash":
+            ev["sha256"] = "0" * 64
+        elif tamper == "entry hash":
+            entry["hash"] = "0" * 64
+        elif tamper == "entry dropped":
+            rows.remove(entry)
+        elif tamper == "listed twice":
+            rows.append({"kind": "evidence", "id": shipped[0]["id"], "sha256": "1" * 64})
+        elif tamper == "bad line":
+            rows.append({"kind": "audit_log", "seq": "7"})
+        return rows
+
+    edits: dict[str, Callable[[str], str]] = {export.WITHHELD: _lines(change)}
+    if tamper == "said full":
+        edits = {
+            export.MANIFEST: lambda t: json.dumps({**json.loads(t), "scope": export.FULL}),
+        }
+    findings = verify_bundle(_rewrite_many(path, tmp_path / "b.zip", edits))
+    assert failed(findings), tamper
+
+
+def test_hiding_an_item_a_verdict_rests_on_fails(scoped, tmp_path):
+    """A shipped item left out and listed by its true hash still fails: the rules, re-applied
+    without it, no longer give the stored verdict."""
+    conn, path = scoped
+    eid = next(
+        e
+        for (c,) in conn.execute("SELECT cited_json FROM verdicts ORDER BY id")
+        for e in json.loads(c).get("evidence", [])
+    )
+    from core import pipeline
+
+    sha = pipeline.evidence_sha256(conn, eid)
+    logged = _member(path, f"{export.TABLES}audit_log.jsonl")
+    decided = [
+        r
+        for r in logged
+        if r["action"] == "evidence.decide" and json.loads(r["payload_json"])["evidence_id"] == eid
+    ]
+    stubs = [
+        {"kind": "audit_log", **{k: r[k] for k in ("seq", "at_utc", "actor", "action")}}
+        | {"prev_hash": r["prev_hash"], "hash": r["hash"]}
+        for r in decided
+    ]
+    edits = {
+        f"{export.TABLES}evidence_items.jsonl": _lines(
+            lambda rs: [r for r in rs if r["id"] != eid]
+        ),
+        f"{export.TABLES}evidence_reviews.jsonl": _lines(
+            lambda rs: [r for r in rs if r["evidence_id"] != eid]
+        ),
+        f"{export.TABLES}audit_log.jsonl": _lines(lambda rs: [r for r in rs if r not in decided]),
+        export.WITHHELD: _lines(
+            lambda rs: [*rs, {"kind": "evidence", "id": eid, "sha256": sha}, *stubs]
+        ),
+    }
+    findings = verify_bundle(_rewrite_many(path, tmp_path / "b.zip", edits))
+    assert FAIL in _levels(findings, "verdicts"), _fails(findings)
+    assert FAIL not in _levels(findings, "rows")  # the hash alone does not give it away
+
+
+def test_an_unknown_part_is_refused_and_the_preview_names_what_stays_out(reviewed, tmp_path):
+    conn, _path = reviewed
+    with pytest.raises(ReviewError, match="unknown bundle part"):
+        export.export_bundle(
+            conn, tmp_path / "x.zip", EXPERT, counsel_confirmed=True, include="everything"
+        )
+    assert not (tmp_path / "x.zip").exists()
+    assert export.parts("all") == export.PARTS
+    assert export.parts("records, dismissed") == ("dismissed", "records")
+    text = export.preview(conn, ())
+    assert "Left out unless you include them" in text and "dismissed:" in text
+    assert "whole case" in export.preview(conn, export.PARTS)
+
+
+def test_an_export_whose_bundle_would_not_verify_writes_nothing(reviewed, tmp_path, monkeypatch):
+    from core.bundle import verify
+
+    conn, _path = reviewed
+    before = conn.execute("SELECT COUNT(*) FROM audit_log").fetchone()[0]
+    monkeypatch.setattr(
+        verify, "verify_data", lambda _data: [verify.Finding(FAIL, "verdicts", "C01: differs")]
+    )
+    with pytest.raises(ReviewError, match="would not pass verify-bundle"):
+        export.export_bundle(conn, tmp_path / "x.zip", EXPERT, counsel_confirmed=True)
+    assert not (tmp_path / "x.zip").exists()
+    assert conn.execute("SELECT COUNT(*) FROM audit_log").fetchone()[0] == before
+
+
+def test_a_scoped_bundle_of_a_case_audited_twice_leaves_out_the_earlier_run(tmp_path):
+    from core import pipeline
+    from eval import run_pipeline as rp
+    from eval.run_eval import load_jsonl
+
+    conn = rp.build_case("case01", tmp_path / "case01.db")
+    gold = load_jsonl(rp.gold_path("case01"), GoldClaim)
+    for _ in range(2):
+        comps = rp.model_free_components(conn, rp.assumption_sheet("case01"), gold)
+        pipeline.run_audit(conn, comps, claim_ids=[g.claim_id for g in gold][:3])
+    path = _export(conn, tmp_path, include=None)
+    findings = verify_bundle(path)
+    assert not failed(findings), _fails(findings)
+    runs = {r["pipeline_run_id"] for r in _member(path, f"{export.TABLES}verdicts.jsonl")}
+    assert len(runs) == 1 < conn.execute("SELECT COUNT(*) FROM pipeline_runs").fetchone()[0]
+    full = _export(conn, tmp_path, "full.zip", include="history")
+    assert not failed(verify_bundle(full))
+    assert len({r["pipeline_run_id"] for r in _member(full, f"{export.TABLES}verdicts.jsonl")}) == 2
+    conn.close()

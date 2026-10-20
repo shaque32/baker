@@ -20,6 +20,7 @@
     python -m cli report    --db case.db --out report.html
     python -m cli verify-log --db case.db
     python -m cli export-bundle --db case.db --out bundle.zip --by expert:<name>
+                            [--include dismissed,irrelevant,prompts,records,history,feedback|all]
                             [--confirm-counsel-reviewed]
     python -m cli verify-bundle bundle.zip [--inputs <folder of original files>]
     python -m cli redecide  --db case.db --by expert:<name>
@@ -62,10 +63,13 @@ still holds every entry recorded in its anchor file (case.db.anchors.jsonl besid
 written when a case opens and when a report is built), and stops, writing nothing, when either
 fails (the database was changed outside Baker). `verify-log` says which.
 `export-bundle` writes the case's reproducibility bundle (docs/bundle.md): input hashes,
-versions, model identity, every model call as stored, every label, expert decision and verdict,
-the full audit log and the report. Producing one is the examiner's choice on counsel's advice:
-it lists what the bundle would hold and writes nothing until run with
---confirm-counsel-reviewed. An encrypted case's bundle is encrypted under a bundle passphrase
+versions, model identity, and what the verdicts rest on: the labels and the model answers
+behind them, the records they cite, the expert's decisions, the verdicts, the audit log and the
+report. Dismissed and irrelevant items, other prompts, the rest of the phone, earlier runs and
+the expert's flags are left out unless --include names them (all: the whole case); the log's
+entries about them stay as hashes, so it still verifies. Producing one is the examiner's
+choice on counsel's advice: it lists what the bundle would hold and writes nothing until run
+with --confirm-counsel-reviewed. An encrypted case's bundle is encrypted under a bundle passphrase
 typed in the terminal. The export is logged, with the bundle's SHA-256, once the file is
 written. `verify-bundle` checks a bundle offline, without the case, and re-derives every verdict
 from the recorded labels and decisions. It exits 0 only when every check ran and passed, 2 when
@@ -335,7 +339,7 @@ def cmd_report(a: argparse.Namespace) -> int:
 
 def cmd_export_bundle(a: argparse.Namespace) -> int:
     from core import encryption
-    from core.bundle.export import NOTICE, contents, describe, export_bundle
+    from core.bundle.export import NOTICE, export_bundle, parts, preview
     from core.casework.cases import Case
     from core.timeline.settings import from_case
 
@@ -343,7 +347,11 @@ def cmd_export_bundle(a: argparse.Namespace) -> int:
     conn = _open(a.db)
     case = Case(Path(a.db))
     print(NOTICE)
-    print(describe(contents(conn)))
+    try:
+        include = parts(a.include)
+        print(preview(conn, include))
+    except actions.ReviewError as e:
+        raise SystemExit(f"error: {e}") from e
     if not a.confirm_counsel_reviewed:
         print(
             "Nothing was written. When counsel has reviewed this list, run the command again "
@@ -372,6 +380,7 @@ def cmd_export_bundle(a: argparse.Namespace) -> int:
             passphrase=passphrase,
             timeline=from_case(case.settings),
             inputs_dir=case.inputs if case.inputs.is_dir() else None,
+            include=include,
         )
     except actions.ReviewError as e:
         raise SystemExit(f"error: {e}") from e
@@ -657,6 +666,12 @@ def parser() -> argparse.ArgumentParser:
     )
     sp.add_argument("--out", type=Path, required=True, help="a new file (a .zip)")
     sp.add_argument("--by", required=True)
+    sp.add_argument(
+        "--include",
+        default="",
+        help="parts to add to what the verdicts rest on, comma separated: dismissed, irrelevant, "
+        "prompts, records, history, feedback; or all (the whole case)",
+    )
     sp.add_argument(
         "--confirm-counsel-reviewed",
         action="store_true",

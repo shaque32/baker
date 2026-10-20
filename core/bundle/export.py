@@ -4,13 +4,37 @@ Producing a bundle is the examiner's choice, made on counsel's advice: Baker nev
 sends one on its own. The CLI first lists what the bundle would hold (describe()) and writes
 nothing until the examiner confirms counsel reviewed it. The bundle holds the case as it stands:
 
-    bundle.json        format, versions, build, run, contents, inputs, models, audit-log head,
-                       file hashes
+    bundle.json        format, versions, build, run, scope, contents, inputs, models, audit-log
+                       head, file hashes
     METHOD.md          plain-English method note: what Baker did, who labelled, how to check it
     report.html        the claims report, rendered from exactly the rows in tables/
     tables/<t>.jsonl   every table core/schema.sql defines, one JSON object per row, in the
-                       database's own order: model calls with prompt and raw output as stored,
-                       evidence items, expert reviews, verdicts, the full audit log
+                       database's own order
+    withheld.jsonl     what the scope left out that a digest in the audit log names: each
+                       evidence item and model call by its hash, each audit-log entry by its
+                       time, actor, action and hashes (empty in a full bundle)
+
+Scope. By default a bundle holds only what the verdicts rest on: the latest audit's
+assumptions, check results and evidence items, the records they cite (with the thread and
+accounts shown beside them), the model calls behind those items and their AI reviews, the
+expert's decisions on them, the claims, stipulations, identity links, sources, models and
+every audit-log entry but the ones listed below. Each part below is left out unless the
+examiner includes it (PARTS; "all" is the whole case):
+
+    dismissed    evidence items dismissed when their verdict was decided and still dismissed,
+                 with their reviews and the expert's evidence.decide entries for them
+    irrelevant   evidence items the model labelled irrelevant, likewise
+    prompts      model calls no shipped item or AI review rests on, and every cloud.sent entry
+                 (they hold the prompts sent)
+    records      the rest of the phone: every record, thread and account no shipped row cites
+    history      earlier audit runs' assumptions, checks, evidence, reviews and verdicts
+    feedback     the expert's flags about Baker (flag.add, flag.withdraw entries)
+
+No verdict rests on what a scope leaves out: the rules skip dismissed and irrelevant items
+(core/audit/rules.py), and an export whose own bundle does not verify is refused. The audit
+log's digests are hashes over per-item hashes (core/pipeline.py), so withheld.jsonl lets them
+check without the items; a withheld log entry is kept in the chain by its hash, but what it
+says cannot be checked from the bundle.
 
 An encrypted case's bundle is encrypted under a bundle passphrase (core/bundle/sealed.py); it
 is never written in plain form. Only once the file is fully written is the export logged
@@ -18,7 +42,8 @@ is never written in plain form. Only once the file is fully written is the expor
 that entry cannot be written, the file is removed. Only the latest completed audit can be
 exported; an audit still running or stopped part way must finish first, so the bundle never
 shows a verdict the rules have not finished. The zip is deterministic in layout (sorted names,
-fixed timestamps). core/bundle/verify.py checks one offline.
+fixed timestamps). core/bundle/verify.py checks one offline, and the export runs that check on
+its own bundle before writing it.
 """
 
 from __future__ import annotations
@@ -30,8 +55,9 @@ import os
 import sqlite3
 import tempfile
 import zipfile
+from collections import defaultdict
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -39,8 +65,9 @@ from typing import Any
 from core import build, db, encryption, pipeline
 from core.audit import invariants, quotes, rules
 from core.bundle import sealed
-from core.contracts import CONTRACTS_VERSION
+from core.contracts import CONTRACTS_VERSION, EvidenceStatus, Stance, canonical_json
 from core.db import apply_schema
+from core.enrich.records import kind_of
 from core.llm import cloud
 from core.report import html as report_html
 from core.review import audit_log
@@ -54,6 +81,9 @@ MANIFEST = "bundle.json"
 METHOD = "METHOD.md"
 REPORT = "report.html"
 TABLES = "tables/"
+WITHHELD = "withheld.jsonl"
+PARTS = ("dismissed", "irrelevant", "prompts", "records", "history", "feedback")
+FULL = "full"
 ZIP_TIME = (1980, 1, 1, 0, 0, 0)
 NOTICE = (
     "Producing this bundle is the examiner's choice, made on counsel's advice. Baker never makes "
@@ -76,8 +106,8 @@ class ExportResult:
     run_id: str
     audit_entries: int
     last_hash: str
-    files: dict[str, str] = field(default_factory=dict)  # name -> sha256
     encrypted: bool = False
+    scope: str | dict[str, Any] = FULL
 
 
 def schema_tables() -> list[tuple[str, list[str]]]:
@@ -101,9 +131,12 @@ def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _dump(conn: sqlite3.Connection, table: str, cols: list[str]) -> bytes:
+def _dump(
+    conn: sqlite3.Connection, table: str, cols: list[str], keep: set[int] | None = None
+) -> bytes:
+    """The table's rows as JSON lines, in rowid order; only the rowids in `keep` when given."""
     lines = []
-    sql = f"SELECT {', '.join(cols)} FROM {table} ORDER BY rowid"  # noqa: S608 - schema names
+    sql = f"SELECT rowid, {', '.join(cols)} FROM {table} ORDER BY rowid"  # noqa: S608
     try:
         rows = conn.execute(sql).fetchall()
     except db.DatabaseError as e:  # plain SQLite or SQLCipher
@@ -111,7 +144,9 @@ def _dump(conn: sqlite3.Connection, table: str, cols: list[str]) -> bytes:
             f"this case's {table} table does not match Baker's schema ({e}); a case made under "
             "an older schema cannot be exported"
         ) from e
-    for row in rows:
+    for rowid, *row in rows:
+        if keep is not None and rowid not in keep:
+            continue
         for v in row:
             if isinstance(v, bytes | bytearray | memoryview):
                 raise ReviewError(f"{table} holds binary data, which a bundle cannot carry")
@@ -123,6 +158,243 @@ def _dump(conn: sqlite3.Connection, table: str, cols: list[str]) -> bytes:
 
 def _rows(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> list[tuple]:
     return conn.execute(sql, params).fetchall()
+
+
+# ---------------------------------------------------------------- scope
+
+
+@dataclass
+class Plan:
+    """What a bundle of the given scope ships and leaves out."""
+
+    included: tuple[str, ...]
+    keep: dict[str, set[int] | None]  # table -> the rowids shipped; None: every row
+    withheld: list[dict[str, Any]]  # the lines of withheld.jsonl
+    log: dict[int, dict[str, str]]  # withheld audit-log entries, by seq
+    left_out: dict[str, int]  # rows left out, by table
+
+    @property
+    def full(self) -> bool:
+        return set(PARTS) <= set(self.included)
+
+    def scope(self) -> report_html.BundleScope | None:
+        return (
+            None
+            if self.full
+            else report_html.BundleScope(self.included, dict(self.left_out), dict(self.log))
+        )
+
+    def describe_scope(self) -> str | dict[str, Any]:
+        """bundle.json's and the export entry's "scope"."""
+        if self.full:
+            return FULL
+        return {"included": list(self.included), "left_out": dict(sorted(self.left_out.items()))}
+
+
+def parts(include: str | list[str] | tuple[str, ...] | None) -> tuple[str, ...]:
+    """The opt-in parts named ("all" for every one), in PARTS order. Refuses an unknown one."""
+    names = include.split(",") if isinstance(include, str) else list(include or ())
+    names = [n.strip() for n in names if n.strip()]
+    if "all" in names:
+        return PARTS
+    unknown = sorted(set(names) - set(PARTS))
+    if unknown:
+        raise ReviewError(
+            f"unknown bundle part {', '.join(unknown)}; the parts are {', '.join(PARTS)} or all"
+        )
+    return tuple(p for p in PARTS if p in names)
+
+
+_RECORD_PARENTS = {  # a record table's columns naming another record row it is shown with
+    "messages": (("thread_id", "threads"), ("sender_account_id", "accounts")),
+    "calls": (("from_account_id", "accounts"), ("to_account_id", "accounts")),
+    "attachments": (("message_id", "messages"),),
+}
+_RECORD_ROWS = (
+    "messages",
+    "calls",
+    "contacts",
+    "attachments",
+    "locations",
+    "threads",
+    "accounts",
+    "message_recipients",
+    "translations",
+    "exhibit_matches",
+)
+
+
+def _table_of(record_id: str) -> str | None:
+    return pipeline._RECORD_TABLES.get(kind_of(record_id) or "") or pipeline._CHECK_TABLES.get(
+        record_id.split(":", 1)[0]
+    )
+
+
+def _ids(conn: sqlite3.Connection, table: str) -> dict[str, int]:
+    return {str(i): r for r, i in conn.execute(f"SELECT rowid, id FROM {table}")}  # noqa: S608
+
+
+def plan(conn: sqlite3.Connection, run: dict[str, Any], include: tuple[str, ...]) -> Plan:
+    """The rows and entries a bundle of this scope ships, read from the case."""
+    tables = [t for t, _cols in schema_tables()]
+    if set(PARTS) <= set(include):
+        return Plan(PARTS, dict.fromkeys(tables), [], {}, {})
+    from core.bundle import verify  # imports this module
+
+    inc = set(include)
+    log = verify._log(conn)
+    manifest = run["manifest"]
+    runs = {run["run_id"], run.get("evidence_from_run", run["run_id"])}
+
+    # Evidence: the audit's items, less those no verdict rests on.
+    positions = verify._positions(log, run)
+    left: dict[str, str] = {}
+    for claim_id, items in manifest.items():
+        at = verify._statuses_at(conn, log, positions[claim_id], items["evidence"])
+        for e in pipeline.load_evidence(conn, items["evidence"]):
+            if e.stance is Stance.IRRELEVANT and "irrelevant" not in inc:
+                left[e.id] = "irrelevant"
+            elif (
+                "dismissed" not in inc
+                and at.get(e.id) is EvidenceStatus.DISMISSED
+                and e.status is EvidenceStatus.DISMISSED
+            ):
+                left[e.id] = "dismissed"
+    named = {
+        key: {i for items in manifest.values() for i in items[key]}
+        for key in ("assumptions", "checks", "evidence")
+    }
+    history = "history" in inc
+    keep_ids = {
+        "assumptions": None if history else named["assumptions"],
+        "check_results": None if history else named["checks"],
+        "evidence_items": None if history else named["evidence"] - set(left),
+    }
+    if history:
+        keep_ids["evidence_items"] = set(_ids(conn, "evidence_items")) - set(left)
+    keep: dict[str, set[int] | None] = dict.fromkeys(tables)
+    for table, ids in keep_ids.items():
+        rowids = _ids(conn, table)
+        keep[table] = {r for i, r in rowids.items() if ids is None or i in ids}
+    kept_ev = {i for i, r in _ids(conn, "evidence_items").items() if r in keep["evidence_items"]}
+    reviews = [
+        (r, eid, call)
+        for r, eid, call in conn.execute(
+            "SELECT rowid, evidence_id, model_call_id FROM evidence_reviews"
+        )
+    ]
+    keep["evidence_reviews"] = {r for r, eid, _c in reviews if eid in kept_ev}
+    if not history:
+        for table in ("verdicts", "run_claims"):
+            keep[table] = {
+                r
+                for r, rid in conn.execute(f"SELECT rowid, pipeline_run_id FROM {table}")  # noqa: S608
+                if rid in runs
+            }
+
+    # Model calls: the answers the shipped items and AI reviews rest on.
+    calls = _ids(conn, "model_calls")
+    if "prompts" not in inc:
+        behind: set[str] = {str(c) for _r, eid, c in reviews if eid in kept_ev and c}
+        for e in pipeline.load_evidence(conn, sorted(kept_ev)):
+            behind.update(
+                cid
+                for (cid,) in conn.execute(
+                    "SELECT id FROM model_calls WHERE model_run_id = ? AND subject_json = ?"
+                    " AND outcome = 'ok'",
+                    (e.model_run_id, canonical_json([e.assumption_id, e.record_id])),
+                )
+            )
+        keep["model_calls"] = {r for i, r in calls.items() if i in behind}
+
+    # Records: those the shipped rows cite, with the rows shown beside them.
+    if "records" not in inc:
+        want: dict[str, set[str]] = defaultdict(set)
+        ev_rows = conn.execute("SELECT rowid, record_id FROM evidence_items").fetchall()
+        cited = [str(rid) for r, rid in ev_rows if r in keep["evidence_items"]]
+        ck_keep = keep["check_results"]
+        for r, ids_json in conn.execute("SELECT rowid, record_ids_json FROM check_results"):
+            if ck_keep is None or r in ck_keep:
+                cited += [str(x) for x in json.loads(ids_json or "[]")]
+        for rid in cited:
+            table = _table_of(rid)
+            if table:
+                want[table].add(rid)
+        want["accounts"].update(
+            str(a) for (a,) in conn.execute("SELECT account_id FROM identity_links")
+        )
+        for table in ("attachments", "messages", "calls"):  # children before their parents
+            cols = _RECORD_PARENTS[table]
+            for row in conn.execute(
+                f"SELECT id, {', '.join(c for c, _t in cols)} FROM {table}"  # noqa: S608
+            ):
+                if row[0] in want[table]:
+                    for (_c, parent), val in zip(cols, row[1:], strict=True):
+                        if val is not None:
+                            want[parent].add(str(val))
+        for table in ("messages", "calls", "contacts", "attachments", "threads", "accounts"):
+            keep[table] = {r for i, r in _ids(conn, table).items() if i in want[table]}
+        for table in ("locations", "message_recipients", "translations"):
+            keep[table] = set()
+        keep["exhibit_matches"] = {
+            r
+            for r, rid in conn.execute("SELECT rowid, record_id FROM exhibit_matches")
+            if rid in want["messages"]
+        }
+
+    # The audit log: every entry, less those about rows left out.
+    withheld_log: dict[int, dict[str, str]] = {}
+    for seq, at, actor, action, p in log:
+        why = None
+        if action == "cloud.sent" and "prompts" not in inc:
+            why = "prompts"
+        elif action == "evidence.decide" and p.get("evidence_id") not in kept_ev:
+            why = left.get(str(p.get("evidence_id")), "history")
+        elif action.startswith("flag.") and "feedback" not in inc:
+            why = "feedback"
+        if why is not None:
+            prev, h = conn.execute(
+                "SELECT prev_hash, hash FROM audit_log WHERE seq = ?", (seq,)
+            ).fetchone()
+            withheld_log[seq] = {
+                "at_utc": at,
+                "actor": actor,
+                "action": action,
+                "prev_hash": prev,
+                "hash": h,
+            }
+    keep["audit_log"] = {
+        r for r, seq in conn.execute("SELECT rowid, seq FROM audit_log") if seq not in withheld_log
+    }
+
+    # What the log's digests name and the bundle leaves out, by hash.
+    lines: list[dict[str, Any]] = [
+        {"kind": "evidence", "id": eid, "why": why, "sha256": pipeline.evidence_sha256(conn, eid)}
+        for eid, why in sorted(left.items())
+    ]
+    kept_calls = keep["model_calls"]
+    if kept_calls is not None:
+        digested = {
+            cid
+            for _s, _a, _c, act, p in log
+            if act == pipeline.CLAIM_ACTION
+            for cid in entry_calls(p)
+        }
+        lines += [
+            {"kind": "model_call", "id": cid, "sha256": pipeline.call_sha256(conn, cid)}
+            for cid in sorted(digested)
+            if cid in calls and calls[cid] not in kept_calls
+        ]
+    lines += [
+        {"kind": "audit_log", "seq": seq, **stub} for seq, stub in sorted(withheld_log.items())
+    ]
+    left_out = {}
+    for table in tables:
+        if keep[table] is not None:
+            total = int(conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])  # noqa: S608
+            if total - len(keep[table]):
+                left_out[table] = total - len(keep[table])
+    return Plan(tuple(include), keep, lines, withheld_log, left_out)
 
 
 def _inputs(conn: sqlite3.Connection) -> list[dict[str, Any]]:
@@ -256,11 +528,35 @@ def logged_timeline(conn: sqlite3.Connection) -> Settings:
     return Settings(tol, gap)
 
 
-def derived(conn: sqlite3.Connection, run: dict[str, Any]) -> dict[str, Any]:
-    """The parts of bundle.json that follow from the tables alone, so core/bundle/verify.py
-    recomputes them and requires an exact match."""
-    seq, last = _rows(conn, "SELECT seq, hash FROM audit_log ORDER BY seq DESC LIMIT 1")[0]
+def withheld_log(withheld: list[dict[str, Any]]) -> dict[int, dict[str, str]]:
+    """The audit-log entries withheld.jsonl lists, by seq."""
+    return {
+        int(w["seq"]): {k: w.get(k) for k in ("at_utc", "actor", "action", "prev_hash", "hash")}
+        for w in withheld
+        if w.get("kind") == "audit_log"
+    }
+
+
+def withheld_known(withheld: list[dict[str, Any]]) -> dict[str, str]:
+    """Evidence item and model call id -> the hash withheld.jsonl lists for it."""
+    return {
+        str(w["id"]): str(w["sha256"])
+        for w in withheld
+        if w.get("kind") in ("evidence", "model_call")
+    }
+
+
+def derived(
+    conn: sqlite3.Connection, run: dict[str, Any], withheld: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
+    """The parts of bundle.json that follow from the tables and withheld.jsonl alone, so
+    core/bundle/verify.py recomputes them and requires an exact match."""
+    withheld = withheld or []
+    heads = _rows(conn, "SELECT seq, hash FROM audit_log ORDER BY seq DESC LIMIT 1")
+    heads += [(seq, w["hash"]) for seq, w in withheld_log(withheld).items()]
+    seq, last = max(heads)
     tl = logged_timeline(conn)
+    kinds = [str(w.get("kind")) for w in withheld]
     return {
         "contents": contents(conn),
         "run": run_info(run),
@@ -268,6 +564,7 @@ def derived(conn: sqlite3.Connection, run: dict[str, Any]) -> dict[str, Any]:
         "models": models(conn),
         "timeline_settings": {"tolerance_min": tl.tolerance_min, "gap_hours": tl.gap_hours},
         "audit_log": {"entries": seq, "last_seq": seq, "last_hash": last},
+        "withheld": {k: kinds.count(k) for k in ("evidence", "model_call", "audit_log")},
     }
 
 
@@ -290,15 +587,18 @@ def entry_calls(entry: dict[str, Any]) -> list[str]:
     return [str(i) for i in ids] if isinstance(ids, list) else []
 
 
-def changed_rows(conn: sqlite3.Connection, run: dict[str, Any]) -> tuple[list[str], int]:
+def changed_rows(
+    conn: sqlite3.Connection, run: dict[str, Any], known: dict[str, str] | None = None
+) -> tuple[list[str], int]:
     """(claims whose rows differ from the digest their claim entry recorded, claims whose entry
-    records no digest). A row differs when it was edited after its claim was decided."""
+    records no digest). A row differs when it was edited after its claim was decided. `known`:
+    the hashes of evidence items a scoped bundle left out (withheld.jsonl)."""
     changed, unbound = [], 0
     for claim_id, entry in sorted(claim_entries(conn, run).items()):
         want = entry.get("rows_sha256")
         if not isinstance(want, str):
             unbound += 1
-        elif pipeline.rows_digest(conn, entry["manifest"], claim_id, entry_calls(entry)) != want:
+        elif pipeline.rows_digest(conn, entry["manifest"], claim_id, known) != want:
             changed.append(claim_id)
     return changed, unbound
 
@@ -312,15 +612,40 @@ def contents(conn: sqlite3.Connection) -> dict[str, int]:
     }
 
 
-def describe(counts: dict[str, int]) -> str:
-    """The contents in plain words, for the confirmation."""
+def describe(counts: dict[str, int], scope: Plan | None = None) -> str:
+    """What the bundle will hold, in plain words, for the confirmation."""
     rows = ", ".join(f"{t} {n}" for t, n in counts.items() if n)
-    return (
-        "The bundle will hold the whole case: every table (rows: " + rows + "), including every "
-        "record imported from the phones, every prompt sent to a model and its answer, every "
-        "evidence item (dismissed ones too) with the expert's reasons, the AI reviewer's output, "
-        "the full audit log, the report and a method note."
+    if scope is None or scope.full:
+        return (
+            "The bundle will hold the whole case: every table (rows: " + rows + "), including "
+            "every record imported from the phones, every prompt sent to a model and its answer, "
+            "every evidence item (dismissed ones too) with the expert's reasons, the AI "
+            "reviewer's output, the full audit log, the report and a method note."
+        )
+    shipped = ", ".join(
+        f"{t} {n - scope.left_out.get(t, 0)}"
+        for t, n in counts.items()
+        if n - scope.left_out.get(t, 0)
     )
+    out = [p for p in PARTS if p not in scope.included]
+    return (
+        "The bundle will hold what the latest audit's verdicts rest on (rows: " + shipped + "): "
+        "the claims, the assumptions, checks and evidence items behind each verdict, the records "
+        "they cite, the model answers behind those items with their prompts, the expert's "
+        "decisions and reasons on them, stipulations, identity links, sources, models, the "
+        "audit log (entries about rows left out are kept as hashes only), the report and a "
+        "method note. Left out unless you include them (--include): "
+        + "; ".join(f"{p}: {report_html.SCOPE_PARTS[p]}" for p in out)
+        + ". The prompts shipped still quote the nearby messages the model was shown."
+    )
+
+
+def preview(conn: sqlite3.Connection, include: tuple[str, ...]) -> str:
+    """describe() for an export of this scope, read from the case as it stands."""
+    run = pipeline.view_run(conn)
+    if run is None or run.get("partial"):
+        return describe(contents(conn))
+    return describe(contents(conn), plan(conn, run, include))
 
 
 def _build(
@@ -331,8 +656,9 @@ def _build(
     timeline: Settings | None,
     inputs_dir: Path | None,
     clock: Clock | None,
-) -> tuple[bytes, dict[str, Any], dict[str, Any], dict[str, int], dict[str, bytes], datetime]:
-    """(the bundle's bytes, run, audit-log head, contents, files, export time), read from the
+    include: tuple[str, ...],
+) -> tuple[bytes, dict[str, Any], dict[str, Any], dict[str, int], Plan, datetime]:
+    """(the bundle's bytes, run, audit-log head, contents, scope, export time), read from the
     case inside export_bundle's transaction. Refuses what cannot be exported."""
     run, last = pipeline.view_run(conn), pipeline.last_run(conn)
     if last is None:
@@ -369,12 +695,19 @@ def _build(
             "on the Timeline page before exporting"
         )
     now = (clock or (lambda: datetime.now(UTC)))()
-    facts = derived(conn, run)
+    scope = plan(conn, run, include)
 
     files: dict[str, bytes] = {}
     for table, cols in schema_tables():
-        files[f"{TABLES}{table}.jsonl"] = _dump(conn, table, cols)
-    report = report_html.render_report(conn, logged)
+        files[f"{TABLES}{table}.jsonl"] = _dump(conn, table, cols, scope.keep[table])
+    files[WITHHELD] = _jsonl(scope.withheld)
+    # Everything below is read from the bundle's own rows, as core/bundle/verify.py reads them.
+    mem = load(files)
+    try:
+        facts = derived(mem, run, scope.withheld)
+        report = report_html.render_report(mem, logged, scope.scope())
+    finally:
+        mem.close()
     invariants.check_report_text(report)
     files[REPORT] = report.encode("utf-8")
     if inputs_dir is not None:
@@ -386,7 +719,7 @@ def _build(
         "created_at_utc": pipeline.iso(now),
         "created_by": actor,
         "notice": NOTICE,
-        "scope": "full",
+        "scope": scope.describe_scope(),
         "counsel_confirmed": True,
         "exported_with": {
             "build": build.build_info(),
@@ -414,10 +747,46 @@ def _build(
             info.external_attr = 0o644 << 16
             zf.writestr(info, files[name])
     data = buf.getvalue()
+    _self_check(data)
     if encrypted_case:
         assert passphrase is not None  # noqa: S101 - checked by export_bundle
         data = sealed.seal(data, passphrase)
-    return data, run, facts["audit_log"], facts["contents"], files, now
+    return data, run, facts["audit_log"], facts["contents"], scope, now
+
+
+def _jsonl(rows: list[dict[str, Any]]) -> bytes:
+    lines = [json.dumps(r, ensure_ascii=False, sort_keys=True) for r in rows]
+    return ("\n".join(lines) + ("\n" if lines else "")).encode("utf-8")
+
+
+def load(files: dict[str, bytes]) -> sqlite3.Connection:
+    """A database in memory holding a bundle's tables (tables/<t>.jsonl), as core/bundle/
+    verify.py loads them: foreign keys off while loading. Raises on a row that does not fit."""
+    conn = sqlite3.connect(":memory:")
+    apply_schema(conn)
+    conn.execute("PRAGMA foreign_keys = OFF")
+    for table, cols in schema_tables():
+        rows = [json.loads(line) for line in files[f"{TABLES}{table}.jsonl"].decode().splitlines()]
+        conn.executemany(
+            f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",  # noqa: S608
+            [tuple(r[c] for c in cols) for r in rows],
+        )
+    return conn
+
+
+def _self_check(data: bytes) -> None:
+    """Refuse a bundle that does not pass Baker's own offline check: a scope that left out a
+    row a verdict rests on, or a case whose rows the export's checks above did not catch."""
+    from core.bundle import verify  # imports this module
+
+    fails = [f for f in verify.verify_data(data) if f.level == verify.FAIL]
+    if fails:
+        raise ReviewError(
+            "the bundle would not pass verify-bundle ("
+            + "; ".join(f"{f.check}: {f.detail}" for f in fails[:3])
+            + "); nothing was written. Export the whole case with --include all, or report this "
+            "as a Baker fault"
+        )
 
 
 def _publish(out: Path, data: bytes) -> None:
@@ -463,18 +832,22 @@ def export_bundle(
     timeline: Settings | None = None,
     inputs_dir: Path | None = None,
     clock: Clock | None = None,
+    include: str | list[str] | tuple[str, ...] | None = None,
 ) -> ExportResult:
     """Write the bundle for the latest completed audit to `out` (a new file). The caller has
     already checked the audit log (core/review/audit_log.require_intact), as every path that
     opens a case does.
 
     Never by default: `counsel_confirmed` must say the examiner confirmed, on counsel's review,
-    exporting exactly what describe() lists. An encrypted case's bundle is sealed under
+    exporting exactly what describe() lists. `include`: the opt-in parts (PARTS, or "all");
+    by default the bundle holds only what the verdicts rest on (the module's docstring). An
+    encrypted case's bundle is sealed under
     `passphrase` (core/bundle/sealed.py); without one it is refused, never written in plain
     form. The export is logged (bundle.export, with the bundle's SHA-256) only after the file
     is fully written; if that entry cannot be written the file is removed, so a failed export
     leaves neither a bundle nor a success entry."""
     _expert(actor)
+    chosen = parts(include)
     if not counsel_confirmed:
         raise ReviewError(
             "a bundle is exported only after the examiner confirms, on counsel's review, what it "
@@ -499,8 +872,8 @@ def export_bundle(
         ) from e
     published = False
     try:
-        data, run, head, counts, files, now = _build(
-            conn, actor, encrypted_case, passphrase, timeline, inputs_dir, clock
+        data, run, head, counts, scope, now = _build(
+            conn, actor, encrypted_case, passphrase, timeline, inputs_dir, clock, chosen
         )
         bundle_sha = sha256(data)
         _publish(out, data)
@@ -517,7 +890,7 @@ def export_bundle(
                 "bundle_sha256": bundle_sha,
                 "encrypted": encrypted_case,
                 "counsel_confirmed": True,
-                "scope": "full",
+                "scope": scope.describe_scope(),
                 "contents": counts,
                 "run_id": run["run_id"],
                 "audit_log_head": {"seq": head["last_seq"], "hash": head["last_hash"]},
@@ -535,8 +908,8 @@ def export_bundle(
         run_id=run["run_id"],
         audit_entries=head["last_seq"],
         last_hash=head["last_hash"],
-        files={name: sha256(d) for name, d in files.items()},
         encrypted=encrypted_case,
+        scope=scope.describe_scope(),
     )
 
 
@@ -565,6 +938,30 @@ def labelled_by(manifest: dict[str, Any]) -> list[str]:
     return lines or ["- No model ran in this case."]
 
 
+def scope_lines(manifest: dict[str, Any]) -> list[str]:
+    """What the bundle holds and leaves out, for the method note."""
+    scope = manifest["scope"]
+    if scope == FULL:
+        return ["The whole case: every row of every table and every audit-log entry."]
+    left = [p for p in PARTS if p not in scope["included"]]
+    w = manifest["withheld"]
+    return [
+        "What the latest audit's verdicts rest on, chosen by the examiner. Left out:",
+        "",
+        *(f"- {p}: {report_html.SCOPE_PARTS[p]}." for p in left),
+        "",
+        f"Rows left out, by table: {', '.join(f'{t} {n}' for t, n in scope['left_out'].items())}"
+        ". withheld.jsonl lists, by SHA-256, the "
+        f"{w['evidence']} evidence items and {w['model_call']} model calls left out that the "
+        f"audit log's digests name, and the {w['audit_log']} audit-log entries left out, by "
+        "time, actor, action and hash, so the hash chain and every digest still check. No "
+        "verdict rests on what was left out, and Baker refused to write this bundle unless "
+        "verify-bundle passed it. What a left-out entry or row says cannot be checked from "
+        "this bundle, and a left-out entry's time, actor and action are as the export listed "
+        "them; the full case, or a bundle exported with --include all, can show each one.",
+    ]
+
+
 def method_note(manifest: dict[str, Any]) -> str:
     run, built = manifest["run"], manifest["run"].get("build") or {}
     commit = built.get("commit", build.NOT_RECORDED)
@@ -581,6 +978,10 @@ def method_note(manifest: dict[str, Any]) -> str:
             f"{manifest['created_at_utc']} by {manifest['created_by']}.",
             test,
             manifest["notice"],
+            "",
+            "## Scope",
+            "",
+            *scope_lines(manifest),
             "",
             "## What Baker did",
             "",
