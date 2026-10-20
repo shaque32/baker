@@ -6,8 +6,10 @@ pilot-ready for real case data** (`docs/PILOT_GATES.md`). Until it is, use the d
 cases only, unless the Baker team has told you in writing that your pilot has started.
 
 Baker is local by default; cloud AI only when your case allows it and you opt in. The case setup
-page has a cloud option, but it is gated off: no cloud model has passed Baker's stance test, so
-every step runs on your computer for every case.
+page has a cloud option: for that case only, Claude Opus 5.5 labels the stance questions, under
+your own Anthropic key, after you attest that the case's protective order allows it. A case you
+mark as possibly containing CSAM never uses cloud AI. Every other step, and every case you do
+not opt in, runs on your computer; a cloud case needs internet while it runs.
 
 ## 1. Check your computer (5 minutes)
 
