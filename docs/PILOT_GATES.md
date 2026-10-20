@@ -7,7 +7,8 @@ Each gate is pass or fail. Partial progress is "not met". A gate passes only whe
 exists on `main` (or, for a human step, in a recorded result someone can open). Update this file in
 the same PR that changes a gate's state, along with `docs/PRODUCT_STATUS.md` section 11.
 
-- **As of:** 2026-10-19, main `0dc55dc` (after #83, #72, #68, #74, #73, #75, #79, #85, #76, #87, #78, #82, #86, #88, #91, #89, #84
+- **As of:** 2026-10-20, main `e8b373a` for gate 10 (signed build); the other rows were last
+  checked 2026-10-19 at main `0dc55dc` (after #83, #72, #68, #74, #73, #75, #79, #85, #76, #87, #78, #82, #86, #88, #91, #89, #84
   and #81). Since `80bf0df` only gate 4's row was rechecked (for #89). Open PRs are named but not counted.
 - **Result:** 12 of 19 gates met (gate 10 by the signed main build of 2026-10-20, gate 19 by #98, gate 2 by #76, gate 3 by #91, gate 14 by the case02 key Arsh signed, gate 6 by #72, gate 7 by #74, gate 8 by
   merging #68, gate 12 by #82, gate 13 by #86 and #88, gate 15 already in place, gate 18 by the feedback form #82 publishes). Gates 13 to 18 come from Grok's pilot-ready list
@@ -16,7 +17,7 @@ the same PR that changes a gate's state, along with `docs/PRODUCT_STATUS.md` sec
 
 ## The gates
 
-| # | Gate | Pass when | State (2026-10-16) | Evidence or what's missing |
+| # | Gate | Pass when | State (2026-10-16; gate 10 2026-10-20) | Evidence or what's missing |
 |---|---|---|---|---|
 | 1 | CI green 3 times | The `checks` workflow (Ubuntu and Windows) passes on 3 consecutive pushes to `main`, with no re-runs | **Not met** | 1 green: `8ed89f9` (run 327). The run before it on `ae8f24e` was cancelled, and main was red earlier the same day until #65 |
 | 2 | Quote check matches what the model sees (issue #69) | Contacts and calls render the same way for the labeler and the quote check, on main | **Met** | #76 (merged 2026-10-16, `8abaeea`): `core/audit/invariants.record_text` reads a contact and a call exactly as retrieval shows them to the labeler, so correct quotes, including contradicting ones, are no longer discarded |

@@ -1,9 +1,10 @@
 # Signing the Windows installer
 
-Until the installer is signed, Windows says "Unknown publisher" and an expert has to check the
-SHA-256 and choose **Run anyway** (docs/install.md). The build signs `Baker-Setup-<version>.exe`
-with Microsoft Artifact Signing (formerly Trusted Signing) as soon as the settings below exist.
-Until then it builds unsigned and the run shows the warning "Installer not signed".
+Builds of `main` sign `Baker-Setup-<version>.exe` with Microsoft Artifact Signing (formerly
+Trusted Signing), so Windows names the publisher (Shayan Haque, since 2026-10-20) instead of
+"Unknown publisher". A build of main whose signing settings below are missing fails rather than
+ship an unsigned file. Pull requests and other branches build unsigned, with the warning
+"Installer not signed".
 
 ## How the build signs
 

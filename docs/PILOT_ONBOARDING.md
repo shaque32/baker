@@ -49,8 +49,10 @@ Turn on your computer's disk encryption first (FileVault on a Mac, BitLocker on 
    installer could swap that file too.
 2. In PowerShell, run `Get-FileHash .\Baker-Setup-<version>.exe -Algorithm SHA256` and compare it
    with that value. Stop if they differ.
-3. Run the installer. **It is not code-signed yet**, so Windows warns that the publisher is
-   unknown. Choose **More info**, then **Run anyway**, only after the hash matched.
+3. Check the publisher: right-click the installer > **Properties** > **Digital Signatures**
+   must show **Shayan Haque**. Stop if it shows another name or no signature. Then run it. A new
+   signature can still get a SmartScreen warning at first; choose **More info**, then **Run
+   anyway**, only after the hash and the publisher both matched.
 4. Leave **Download the AI model** ticked. For an offline computer, untick it and put
    `Qwen3-14B-Q4_K_M.gguf` in the same folder as the installer **before** running it; Setup
    checks its SHA-256 and copies it. If you add the model later, put it next to the installer and
