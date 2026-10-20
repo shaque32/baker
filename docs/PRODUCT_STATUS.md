@@ -124,9 +124,10 @@ There is no model judge of verdicts in Baker. The word "judge" does not name any
   memory when a cloud audit ends.
 - **Opus's influence on verdicts.** Indirect, through its labels, and bounded by the rules:
   - A "supports" label never makes a claim SUPPORTED by itself. An expert must accept it.
-  - A "contradicts" label never makes a claim CONTRADICTED by itself (rules 0.3.0, #98). Until
-    an expert accepts it, the claim stays UNPROVEN and the screen and report say "Contradiction
-    found, confirm to finalize". The per-claim-type allow-set `_AUTO_CONTRADICT`
+  - A "contradicts" label never makes a claim CONTRADICTED by itself (rules 0.3.0, #98). On a core
+    assumption, until an expert accepts it, the claim stays UNPROVEN and the screen and report
+    say "Contradiction found, confirm to finalize". On a non-core assumption it never
+    contradicts, even accepted; while open it only blocks SUPPORTED. The per-claim-type allow-set `_AUTO_CONTRADICT`
     (`core/audit/rules.py`) is empty. An expert can dismiss any label, and a dismissed label
     stops counting.
   - In the Opus case01 run, all 5 CONTRADICTED verdicts came from failed code checks; none came
