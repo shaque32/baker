@@ -199,7 +199,7 @@ $5.21):
 | Contradicting shown as supports (0) | 0 | 0 |
 | Contradicts recall | 11/11 | 11/11 |
 
-So **Opus no longer passes the full cloud rule.** Every wrong answer is a told-frame or undated
+So **with stance v1.1, Opus no longer passes the full cloud rule** (v1.2 below meets it). Every wrong answer is a told-frame or undated
 denial (P049, P066-P069, P092, P093). Blind readers sided with the signed labels 12 of 12. The
 fix is stance v1.2 (#93), signed by Arsh 2026-10-15: with it Opus scored contradicts precision
 10/10, supports recall 33/33, 0 contradicting shown as supports and contradicts recall 10/11
@@ -299,11 +299,12 @@ PRs, never merged.
    stored runs were not replayed. Opus replay: case01 85% to 95% (sheet), 60% to 70% (no sheet).
    The small model's generated call rows still print the report's time (guide rule 28), unlike
    the product; #50 is not merged, and aligning them is the "Custom model for Baker" thread's.
-2. **Opus's wrong "contradicts" on told-frame and undated denials** (section 7). With stance
-   v1.1 they were wrong CONTRADICTED verdicts under rules 0.2.x; since rules 0.3.0 (#98) they
-   cannot make one on their own, though an expert who accepts one still does. The cloud prompt,
-   v1.2 (#93), removed every such answer in the Opus tests; with it Opus misses one real
-   contradiction (P065), which leaves a claim UNPROVEN.
+2. **Opus's wrong "contradicts" on told-frame and undated denials** (section 7). These are
+   probe labels, not measured verdicts. With stance v1.1, under rules 0.2.x, such a label on a
+   core assumption could have made a wrong CONTRADICTED; since rules 0.3.0 (#98) it cannot on
+   its own, though an expert who accepts one still could. The cloud prompt, v1.2 (#93), removed
+   every such answer in the Opus tests; with it Opus misses one real contradiction (P065), a
+   label that, absent a failed check or other evidence, could leave a claim UNPROVEN.
 3. **Real-data formats unverified.** UFDR and AXIOM readers were built from documentation and
    synthetic samples. No real extraction has been imported. No public Cellebrite-made UFDR with a
    usable license exists; #73 checked the reader on two non-Cellebrite test files (27 of 27
