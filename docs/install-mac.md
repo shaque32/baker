@@ -4,7 +4,12 @@ Mabillon runs on your own Mac, offline by default. Nothing about your cases leav
 Mabillon sends no telemetry, unless you opt a case in to cloud AI at case setup (only if its
 protective order allows it). Then, for that case only, one stance question at a time goes to
 Anthropic (Claude Opus 5.5) under your own key (see "Cloud AI for this case" on the setup
-screen). The installer downloads three
+screen): the claim, the assumption, the record and up to 20 messages either side, with their
+senders' handles, numbers and saved names, never a file or the case database. Its open limits
+(retention at Anthropic unverified by Mabillon, the key as a plain file outside an encrypted case,
+a self-certified attestation, labels that cannot be regenerated) are in
+[SECURITY_PRIVACY.md](SECURITY_PRIVACY.md), section 5. Where the tool's reliability may be
+challenged in court, keep the case local. The installer downloads three
 things, once: a Python installer (uv), the model runtime's source, and the AI model (9 GB).
 After that you can disconnect from the internet, except while a case that uses cloud AI is being
 audited.
