@@ -166,7 +166,7 @@ approved (07:29Z). `PROBE_PASSED` is empty, so no case can use the cloud yet.
 | Outcome | What it needs (rules 0.3.0) |
 |---|---|
 | SUPPORTED | Every core assumption covered (a passing check, or support an expert accepted); at least one expert-accepted support on an observed record; no open complicating or contradicting item; the claim type's key assumption present |
-| CONTRADICTED | A failed deterministic check on a core assumption, or a "contradicts" an expert accepted on a core assumption; an unaccepted one on a core assumption shows "Contradiction found, confirm to finalize". A failed check or "contradicts" on a non-core assumption never contradicts. A failed non-core check always blocks SUPPORTED; a non-core "contradicts" label blocks it until the expert dismisses it |
+| CONTRADICTED | A failed deterministic check on a core assumption, or a "contradicts" an expert accepted on a core assumption; an unaccepted one on a core assumption shows "Contradiction found, confirm to finalize" (unless a failed check or another accepted contradiction already decided the claim). A failed check or "contradicts" on a non-core assumption never contradicts. A failed non-core check always blocks SUPPORTED; a non-core "contradicts" label blocks it until the expert dismisses it |
 | UNPROVEN | Anything else, with the uncovered assumptions named |
 
 AI review alone covers nothing in the alpha (`_AI_MAY_COVER` is empty), so every SUPPORTED
