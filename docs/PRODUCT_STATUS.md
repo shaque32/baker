@@ -125,7 +125,8 @@ There is no model judge of verdicts in Baker. The word "judge" does not name any
 - **Opus's influence on verdicts.** Indirect, through its labels, and bounded by the rules:
   - A "supports" label never makes a claim SUPPORTED by itself. An expert must accept it.
   - A "contradicts" label never makes a claim CONTRADICTED by itself (rules 0.3.0, #98). On a core
-    assumption, until an expert accepts it, the claim stays UNPROVEN and the screen and report
+    assumption, until an expert accepts it (and unless a failed check or another accepted
+    contradiction already decided the claim CONTRADICTED), the claim stays UNPROVEN and the screen and report
     say "Contradiction found, confirm to finalize". On a non-core assumption it never
     contradicts, even accepted; until dismissed it blocks SUPPORTED. The per-claim-type allow-set `_AUTO_CONTRADICT`
     (`core/audit/rules.py`) is empty. An expert can dismiss any label, and a dismissed label
