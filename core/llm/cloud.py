@@ -61,8 +61,8 @@ API_BASE_URL = "https://api.anthropic.com"
 # With stance prompt v1.1 (2026-10-15) Opus 5.5 scored 73% contradicts precision on the signed set
 # (bar 90%). With the cloud prompt, v1.2, at medium effort (preregistered, 2026-10-15): on the
 # signed set contradicts precision 10/10, supports recall 33/33, nothing contradicting labeled
-# supports; on 50 new items (24 and 26, both at medium), no wrong contradicts and every scored
-# control kept. Every item's answers:
+# supports; on 50 new items, both sets at medium (24, of which 22 were scored, and 26), no
+# wrong contradicts and every scored control kept. Every item's answers:
 # eval/probe/results/2026-10-15-opus-5-5-medium-stance-v1-2.jsonl. Signed by Arsh on
 # 2026-10-20 ("Sign the entry", 00:39Z, "Audit our model scoring").
 PROBE_PASSED: frozenset[tuple[str, str, str]] = frozenset(
