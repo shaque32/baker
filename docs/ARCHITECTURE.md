@@ -28,7 +28,7 @@ One step may go to the cloud, per case: stance labeling (see "Local by default, 
 |---|---|---|
 | Claim extraction | Proposes claims | Expert edits the list; every claim keeps its page and paragraph |
 | Assumptions | Fills claim-type templates | Templates are fixed per claim type; tier starts at inferred |
-| Stance | Labels one evidence item against one assumption; the cloud model for a case the expert allowed, else the local model | Quote verified verbatim by code; label is input to rules, never a verdict; SUPPORTED needs the supporting label accepted by an expert (rules 0.2.0); an unreviewed "contradicts" cannot overrule a check that passed, it only complicates (rules 0.2.1) |
+| Stance | Labels one evidence item against one assumption; the cloud model for a case the expert allowed, else the local model | Quote verified verbatim by code; label is input to rules, never a verdict; SUPPORTED needs the supporting label accepted by an expert (rules 0.2.0); a "contradicts" counts only once an expert accepts it ("Contradiction found, confirm to finalize", rules 0.3.0) |
 | Review | Local model accepts or dismisses one verified supporting item | Separate human-owned prompt; a sorting aid for the expert that never makes a claim SUPPORTED under rules 0.2.0; tier becomes ai_reviewed, never confirmed; a human decision overrides it; cloud models only in eval/ as benchmarks |
 | Translation | ru -> en | Original text stays the citable text |
 
@@ -63,13 +63,17 @@ core/
   restore/            Context Restore: find pasted exhibit quotes in the extraction (code only)
   selection/          selection audit: each message the document quotes, an exhibit quotes or the
                       examiner tagged, in its exchange with the messages around it that were not
-                      picked (code only, derived each time, never changes a verdict)
+                      picked (code only, derived each time, never changes a verdict);
+                      paired.py: a curated report against a larger source of the same phone,
+                      what the report left out near each claim (fails closed, never a verdict)
   identity/           propose account -> person links from names in the data (code only);
                       the expert confirms or rejects each one on the Identities page
   review/             expert actions + audit log
   report/             ReportRenderer; restore.py, selection.py, letter.py (full-extraction request),
                       hypotheses.py (other explanations, shared with the claim page)
   review/status.py    what each claim needs from the expert (shared by screen and report)
+  review/flags.py     optional expert flags (wrong label, missed record, verdict disagreement):
+                      audit-log entries only, never touch verdicts; redacted summary and error log
   review/redecide.py  re-run the verdict rules after expert review, no model
   llm/                runtime.py: the local GGUF runtime; cloud.py: the cloud stance model
                       (the only network call in core/), on the expert's own Anthropic key
@@ -125,10 +129,11 @@ the expert attested at case setup that its protective order allows cloud AI; the
 marked as possibly containing CSAM; the expert's own Anthropic key is set up: `$BAKER_ANTHROPIC_API_KEY`; or, in an encrypted case,
 the key saved in that case (`case.cloud-key`, AES-256-GCM under the case key, so it is unreadable
 while the case is locked); or `~/.baker/cloud.json` (owner-only), in that order; and the model
-passed the signed stance test at its configured effort with the current stance prompt (`PROBE_PASSED` in
-`core/llm/cloud.py`, empty until one does; an entry needs a recorded pass on the signed
-set and on new held-out items, and Arsh's sign-off). Otherwise the local model
-labels the case, exactly as before. The choice is the latest `set_cloud` entry in the case's
+passed the signed stance test at its configured effort with the cloud stance prompt (`PROBE_PASSED` in
+`core/llm/cloud.py`, which lists Opus 5.5 at medium effort, signed by Arsh 2026-10-20; an entry
+needs a recorded pass on the signed set and on new held-out items, and Arsh's sign-off). Only a cloud model reads that prompt,
+`core/audit/prompts/stance_cloud.md` (v1.2); the local model keeps `stance.md` (v1.1). Otherwise
+the local model labels the case, exactly as before. The choice is the latest `set_cloud` entry in the case's
 audit log (inside the case database, so an encrypted case keeps it encrypted).
 
 Only the filled-in stance prompt goes out (assumption, record, nearby messages, claim, and a

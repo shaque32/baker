@@ -323,6 +323,11 @@ are the four; the moved probe items are P038 to P044, P071, P049, P066 to P069 a
 TRAP_ORDER gains undated_denial and told_frame).
 
 ## 2026-10-15 claude/project-thread-hz9jqt: say on the message that it was forwarded
+SIGNED by Arsh on 2026-10-16 ("just sign the schema" in the project chat, 02:50Z, then
+"approved" in the UFDR importer thread, 02:53Z). APPLIED on branch
+claude/project-thread-hz9jqt, fresh from main, with the Message model in core/contracts.py.
+With it, as both files' own header rule asks, CONTRACTS_VERSION 0.3.0 -> 0.4.0 and the schema
+header line (PR #89, after Grok's audit of 31f2993).
 File: core/schema.sql (and the Message model in core/contracts.py, if it mirrors the columns)
 Why: a forwarded message is stored as the forwarder's message, and nothing on the record says it
 was forwarded or who first wrote it. PR #73 lists forwarded messages in coverage (attention), but
@@ -339,4 +344,249 @@ Diff:
 +    forwarded       INTEGER CHECK (forwarded IN (0, 1)),     -- NULL = source did not say
 +    forwarded_from_raw TEXT          -- the original author as the source wrote it, when it says
  );
+```
+
+## 2026-10-15 claude/project-thread-01fybj: the guide's contact rows read "<saved name>: <number>"
+File: eval/gold/stancedata/LABELING_GUIDE.md, and its draft eval/stancedata/LABELING_GUIDE.md
+(pinned by SHA-256 in tests/test_gold_stancedata.py)
+Why: the contact-quote fix makes the quote check read a contact as the labeler is shown it,
+"Marc Garage: +12125550122" (core.enrich.records.contact_text), and generated stance items follow
+(eval/stancedata/bakerform.contact_text). Rule 28 still describes the old check's text, without the
+colon, and so do the bk_contact_row and bk_contact_row_differs examples in the family table.
+Nothing breaks without this change; the guide just shows contact rows one character wrong.
+Diff (both files, then re-pin the draft's SHA-256 in tests/test_gold_stancedata.py):
+-    local time decides. A contact row reads "<saved name> <number>", has no time, and belongs to
++    local time decides. A contact row reads "<saved name>: <number>", has no time, and belongs to
+-... Record on item1: "Gus Tires +13125550177". |
++... Record on item1: "Gus Tires: +13125550177". |
+-| `bk_contact_row_differs` | ... | Record on item1: "Gus Tires +13125550190". |
++| `bk_contact_row_differs` | ... | Record on item1: "Gus Tires: +13125550190". |
+
+## 2026-10-15 claude/project-thread-01fybj: stance prompt v1.2: told-frame and undated-denial sentences in "contradicts"
+SIGNED by Arsh on 2026-10-15 ("approved" in the "Audit our model scoring" thread, 13:45Z, with
+"Sign it" on the card that quoted the two sentences). APPLIED word for word in the same PR. On
+2026-10-19 Arsh chose to give this text to a cloud model only (the entry below).
+File: core/audit/prompts/stance.md
+Why: stance guide v0.3 rules 12 and 23 (signed 2026-10-14) read a same-day "X told the owner
+that ..." answered by X saying the opposite, and an undated act against a denial that names no
+time, as complicates; the signed probe set was relabeled to match (#64). Prompt v1.1 does not
+say so, and Opus 5.5 answered contradicts on 4 of its 15 contradicts (P049, P066 to P069, P092,
+P093), 73% precision against the 90% bar, at high and at medium effort. A "contradicts" on an
+event assumption can make a claim CONTRADICTED with no expert step (rules.py rule 1b).
+Test, preregistered before any call (/mnt/project-files/baker/cloud-bench/2026-10-15/
+told-frame-line/, PREREGISTERED.md and PREREGISTERED-medium.md): the sentences were written once
+from rules 12 and 23 and not edited after any answer. With them, Opus 5.5's contradicts
+precision on the signed set is 10 of 10 at high and at medium, supports recall 33 of 33,
+nothing contradicting shown as supports; it misses one real contradiction (P065, contradicts
+recall 10 of 11). On items written for the test and never used to write the sentences (24 from
+this thread, three blind readers agreeing on 22; 26 from "Custom model for Baker", written
+before that thread saw the sentences), wrong contradicts on the told-frame and undated items
+went from 2 to 0 on the 24 (high; 0 at medium too) and from 1 to 0 on the 26 (medium), with every
+contradicts and supports control kept. The text sent was stance_v1_1_told_frame_draft.md
+(file sha256 ba603d12...); its body is byte for byte the v1.2 body (sha256 2863d8db...,
+tests/test_stance.py). The local 14B reads the same prompt and has not been run with it.
+Diff (the "contradicts" entry; the header's version line v1.1 -> v1.2):
+-  between"). A record that only makes another reading more likely is not "contradicts".
++  between"). Likewise, when the assumption is that someone told, wrote or asked something, a
++  message of theirs saying the opposite shows only what that message says; another message
++  could still have said it, so it is "complicates". A denial that names no time ("i never got
++  it") covers only the time before it was sent: it rules out an assumption dated before the
++  message and leaves an undated one open. A record that only makes another reading more likely
++  is not "contradicts".
+Code that follows: none. The labeler fills the same slots. The prompt version every model run
+records changes (sha256:4c35f1cf01b0b227 -> sha256:2863d8dbf66960f6), so stored v1.1 answers are
+not reused and a re-run labels again. Next: the 14B's probe run on the Mac, and, for #68, an
+entry for (claude-opus-5-5, the v1.2 version) in core/llm/cloud.PROBE_PASSED, with Arsh's sign-off.
+
+## 2026-10-19 claude/project-thread-01fybj: stance v1.2 for a cloud model only ("Opus only")
+SIGNED by Arsh on 2026-10-20 ("Sign it" at 00:31Z on the card in the "Audit our model scoring"
+thread that asked "Sign stance_cloud.md, your v1.2 text, as the cloud model's own prompt file?").
+APPLIED word for word in the same PR.
+File: core/audit/prompts/stance.md, and a new core/audit/prompts/stance_cloud.md
+Why: Arsh chose "Opus only" on 2026-10-19 (decision card in "Audit our model scoring", 20:41Z:
+"The 14B keeps v1.1 unchanged; Opus gets v1.2 as its own signed prompt file, which you sign").
+On the signed probe set, Arsh's Mac run (eee8d15, 2026-10-19) took the local 14B's contradicts
+precision from 58% (11 of 19) with v1.1 to 50% (11 of 22) with v1.2, while Opus 5.5 met every
+bar only with v1.2 (the entry above). One prompt file cannot give each model its own text.
+Diff, part one: core/audit/prompts/stance.md goes back to main's v1.1, byte for byte (the PR no
+longer changes it; prompt version sha256:4c35f1cf01b0b227). This takes the entry above out of
+stance.md, so local cases label exactly as they do on main.
+Diff, part two: a new file core/audit/prompts/stance_cloud.md (file sha256 457bc966...): this
+header, then the line `<!-- prompt starts -->`, then the v1.2 body exactly as the entry above
+applied it (body sha256 2863d8db..., the text the preregistered Opus runs sent; prompt version
+sha256:2863d8dbf66960f6; tests/test_stance.py pins it).
++# Cloud stance prompt (HUMAN-OWNED, Arsh)
++
++v1.2, signed by Arsh on 2026-10-15 ("approved" in the "Audit our model scoring" thread): stance
++prompt v1.1 (stance.md) with the told-frame sentences in "contradicts", which teach stance guide
++v0.3 rules 12 and 23 (PROPOSED_CHANGES.md). Only a cloud model reads this file: Arsh chose on
++2026-10-19 ("Opus only", same thread) to keep v1.1 for the local model, since on the signed
++probe set v1.2 took the local 14B's contradicts precision from 58% to 50%.
++Arsh edits this wording; agents only wire it to the cloud model.
++Only the text after the next line is sent to the model.
++
++<!-- prompt starts -->
+Code that follows (in the same PR): core/audit/stance.py gives a cloud model the cloud prompt
+(CLOUD_PROMPT_FILE, prompt_file: the case's cloud labeler, and a cloud model the benchmarks pass
+in); core/casework/cloud.py checks PROBE_PASSED against the cloud prompt's version, the one a
+cloud case would send; eval/bench/claude_bench.py scores the cloud prompt by default. Next: an
+entry for (claude-opus-5-5, medium, sha256:2863d8dbf66960f6) in core/llm/cloud.PROBE_PASSED,
+with Arsh's sign-off.
+
+## 2026-10-19 claude/expert-confirms-contradicts-y6ti2f: rules 0.3.0, an expert confirms every model contradiction
+File: core/audit/rules.py
+Why: Grok's URGENT FIX on PR #90 (comments 6277020650 and 6277367264): rule 1b lets an unreviewed
+model "contradicts" on an observed or derived record mark a claim CONTRADICTED, and the local 14B
+scored 58% contradicts precision on the signed probe set (bar 90%). A GitHub comment on #90
+(6278243303, 2026-10-19 21:54Z) records the fix as approved; GitHub authorship proves nothing in
+this project (docs/MERGING.md section 4), so the PR holds for Arsh's "approved" in the owning
+project thread ("Expert confirms contradicts"). Applied on that branch with this exact diff once
+Arsh allows it; the screen, report and tests in the same PR depend on it.
+Diff:
+```diff
+--- a/core/audit/rules.py
++++ b/core/audit/rules.py
+@@ -11,19 +11,25 @@
+ 
+ Rule 1. Contradiction. The claim is CONTRADICTED if any core assumption has
+     (a) a deterministic check that failed, or
+-    (b) a contradicting evidence item that counts:
+-        - for a meaning assumption, only an item an expert accepted. A model's "contradicts"
+-          on a meaning assumption is treated as "complicates" (Arsh, 2026-10-07, decision 2:
+-          only a failed check or an accepted item can contradict a meaning);
+-        - for any other assumption, any item not dismissed whose record is observed or
+-          derived, or that was accepted (Arsh, 2026-10-06: a wrong "contradicted" costs less
+-          than a wrong "supported"),
+-        - except that when every deterministic check on the assumption passed (at least one
+-          ran), only an item an expert accepted counts. A model's or the AI reviewer's
+-          "contradicts" there is treated as "complicates": it cannot overrule a passed check,
+-          and it still blocks SUPPORTED until the expert dismisses it (Arsh, 2026-10-14,
+-          rules 0.2.1; case01 Mac run, where the 14B read the receiving phone's copy of a
+-          message the sender check had passed as contradicting it).
++    (b) a contradicting evidence item that an expert accepted.
++    A model's or the AI reviewer's "contradicts" that no expert accepted does not count (rules
++    0.3.0, Arsh, 2026-10-19, PR #90 URGENT FIX: on the signed probe set the local 14B scored 58%
++    contradicts precision against a bar of 90%). The claim stays UNPROVEN, the item blocks
++    SUPPORTED until the expert dismisses it (rule 3d), and the screen and the report say
++    "Contradiction found, confirm to finalize". It counts once the expert accepts it.
++    The one way back for an unaccepted label is _AUTO_CONTRADICT, a versioned set of claim
++    types, EMPTY in 0.3.0. For a claim type in it, an item not dismissed whose record is
++    observed or derived, or that the AI reviewer accepted, counts again (the 0.2.2 rule), except
++        - on a meaning assumption (Arsh, 2026-10-07, decision 2: only a failed check or an
++          accepted item can contradict a meaning), and
++        - on an assumption whose deterministic checks all passed (at least one ran): a model
++          label cannot overrule a passed check (Arsh, 2026-10-14, rules 0.2.1; case01 Mac run,
++          where the 14B read the receiving phone's copy of a message the sender check had
++          passed as contradicting it).
++    A claim type enters _AUTO_CONTRADICT only after a recorded probe run of the local labeler
++    meets the signed bars for that type (contradicts precision >= 0.90, supports recall >= 0.90,
++    0 moved traps shown as supports, with Wilson intervals), and with Arsh's sign-off on the
++    entry. The entry names that probe run, and every report prints it.
+ 
+ Rule 2. Coverage of one core assumption. It is covered when, and only when, one of these holds:
+     (a) every deterministic check on it passed (at least one ran) -> tier derived;
+@@ -76,6 +82,9 @@
+ differently (core/audit/assumption_filler.py): "after March 3" starts on March 4, and offsets
+ ("two days after") and weekdays that are not the date's are refused. Verdicts decided under
+ 0.2.1 can differ.
++0.3.0 (Arsh, 2026-10-19) changes rule 1b as above: only an expert-accepted contradiction counts
++unless the claim type is in _AUTO_CONTRADICT. A claim decided CONTRADICTED under 0.2.x on an
++unaccepted label is UNPROVEN under 0.3.0 until the expert confirms the contradiction.
+ """
+ 
+ from __future__ import annotations
+@@ -83,6 +92,7 @@
+ from collections import defaultdict
+ from dataclasses import dataclass, field
+ from datetime import UTC, datetime
++from types import MappingProxyType
+ 
+ from core.contracts import (
+     Assumption,
+@@ -105,7 +115,7 @@
+     verdict_id,
+ )
+ 
+-RULE_VERSION = "0.2.2"
++RULE_VERSION = "0.3.0"
+ 
+ _CITABLE_RECORD = frozenset({ProvenanceTier.OBSERVED, ProvenanceTier.DERIVED})
+ _REVIEWED = frozenset({EvidenceStatus.AI_ACCEPTED, EvidenceStatus.ACCEPTED})
+@@ -115,6 +125,10 @@
+ # rule 3(c): review statuses whose supporting label can carry a SUPPORTED. AI_ACCEPTED counts
+ # only while AI review may cover something.
+ _SUPPORT_ACCEPTED = _REVIEWED if _AI_MAY_COVER else frozenset({EvidenceStatus.ACCEPTED})
++# rule 1(b): claim types whose unaccepted model "contradicts" may count, each mapped to the
++# recorded probe run that qualified it (its results file). EMPTY in 0.3.0: every model
++# contradiction waits for an expert. An entry needs Arsh's sign-off and a RULE_VERSION bump.
++_AUTO_CONTRADICT: MappingProxyType[ClaimType, str] = MappingProxyType({})
+ # rule 3(e): the assumption kind each claim type turns on
+ _REQUIRED_KIND = {
+     ClaimType.COMMUNICATION: AssumptionKind.IDENTITY,
+@@ -135,6 +149,7 @@
+     assumption: Assumption
+     failed_checks: list[CheckResult] = field(default_factory=list)
+     contradicting: list[EvidenceItem] = field(default_factory=list)  # counts under rule 1
++    unconfirmed: list[EvidenceItem] = field(default_factory=list)  # rule 1b: awaits an expert
+     complicating: list[EvidenceItem] = field(default_factory=list)  # blocks rule 3(d)
+     supports: list[EvidenceItem] = field(default_factory=list)  # accepted, observed (rule 3c)
+     # rule 2, for core assumptions only
+@@ -157,11 +172,21 @@
+         )
+ 
+ 
+-def _counts_as_contradiction(a: Assumption, e: EvidenceItem, checks_passed: bool) -> bool:
++def auto_contradict() -> dict[ClaimType, str]:
++    """Rule 1b: claim types whose unaccepted model contradiction counts, each with the probe
++    run that qualified it. Empty in 0.3.0. The report prints it."""
++    return dict(_AUTO_CONTRADICT)
++
++
++def _counts_as_contradiction(
++    claim_type: ClaimType, a: Assumption, e: EvidenceItem, checks_passed: bool
++) -> bool:
+     """Rule 1b, for an item whose stance is contradicts and which is not dismissed."""
+-    if a.kind is AssumptionKind.MEANING or checks_passed:
+-        return e.status is EvidenceStatus.ACCEPTED
+-    return e.status in _REVIEWED or e.tier in _CITABLE_RECORD
++    if e.status is EvidenceStatus.ACCEPTED:
++        return True
++    if claim_type not in _AUTO_CONTRADICT or a.kind is AssumptionKind.MEANING or checks_passed:
++        return False
++    return e.status is EvidenceStatus.AI_ACCEPTED or e.tier in _CITABLE_RECORD
+ 
+ 
+ def _unconfirmed_people(a: Assumption, stipulations: list[Stipulation]) -> list[str]:
+@@ -278,10 +303,10 @@
+             if e.status is EvidenceStatus.DISMISSED:
+                 continue
+             if e.stance is Stance.CONTRADICTS:
+-                if _counts_as_contradiction(a, e, checks_passed):
++                if _counts_as_contradiction(claim.claim_type, a, e, checks_passed):
+                     f.contradicting.append(e)
+                 else:
+-                    f.complicating.append(e)
++                    f.unconfirmed.append(e)
+             elif e.stance is Stance.COMPLICATES:
+                 f.complicating.append(e)
+             elif (
+@@ -375,6 +400,18 @@
+                 f"Rule 3d: {e.record_id} contradicts non-core '{f.assumption.text}' ({_how(e)})."
+                 for e in f.contradicting
+             ]
++        if f.assumption.is_core:
++            blockers += [
++                f"Rule 1b: {e.record_id} contradicts '{f.assumption.text}' ({_how(e)}). "
++                "Contradiction found, confirm to finalize: it counts once an expert accepts it."
++                for e in f.unconfirmed
++            ]
++        else:
++            blockers += [
++                f"Rule 3d: {e.record_id} contradicts non-core '{f.assumption.text}' "
++                f"({_how(e)}) and is not dismissed."
++                for e in f.unconfirmed
++            ]
+         blockers += [
+             f"Rule 3d: {e.record_id} complicates '{f.assumption.text}' and is not dismissed."
+             for e in f.complicating
 ```

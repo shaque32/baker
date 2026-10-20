@@ -308,6 +308,25 @@ def third_party(rng: random.Random, lang: str, taken: set[str]) -> Person:
     return p
 
 
+def ident_on(rng: random.Random, app: str, p: Person) -> str:
+    """An identifier as `app` shows it: a Telegram id, an Instagram username or a number."""
+    if app == "Telegram":
+        return telegram_id(rng)
+    if app == "Instagram":
+        return username(rng, p)
+    return fictional_phone(rng, AREA_CODES)
+
+
+def label_on(rng: random.Random, app: str, p: Person) -> str | None:
+    """The label the owner's phone shows for p's account on `app`, or None."""
+    roll = rng.random()
+    if app == "Telegram":
+        return None if roll < 0.3 else handle(rng, p) if roll < 0.55 else p.name
+    if app == "Instagram":
+        return None if roll < 0.7 else p.name
+    return None if roll < 0.2 else saved_label(rng, p)
+
+
 def cast(rng: random.Random, lang: str, extra: int = 0) -> tuple[str, Party, list[Party]]:
     """The app, the owner and 1 + extra contacts of one chat, all on that app."""
     app = rng.choice(APPS_PHONE + ("Telegram", "Instagram", "WhatsApp", "SMS"))
@@ -316,12 +335,7 @@ def cast(rng: random.Random, lang: str, extra: int = 0) -> tuple[str, Party, lis
 
     def ident(p: Person) -> str:
         while True:
-            if app == "Telegram":
-                x = telegram_id(rng)
-            elif app == "Instagram":
-                x = username(rng, p)
-            else:
-                x = fictional_phone(rng, AREA_CODES)
+            x = ident_on(rng, app, p)
             if x not in taken:
                 taken.add(x)
                 return x
@@ -330,16 +344,27 @@ def cast(rng: random.Random, lang: str, extra: int = 0) -> tuple[str, Party, lis
     contacts: list[Party] = []
     labels: set[str] = set()
     for p in people[1:]:
-        roll = rng.random()
-        if app == "Telegram":
-            label = None if roll < 0.3 else handle(rng, p) if roll < 0.55 else p.name
-        elif app == "Instagram":
-            label = None if roll < 0.7 else p.name
-        else:
-            label = None if roll < 0.2 else saved_label(rng, p)
+        label = label_on(rng, app, p)
         if label in labels:  # two members never share a handle; fall back to the saved name
             label = p.name
         if label:
             labels.add(label)
         contacts.append(Party(Account(app, ident(p), label), p))
     return app, owner, contacts
+
+
+def outside_account(rng: random.Random, app: str, members: list[Party]) -> Party:
+    """An account on `app` that is none of the chat's members, as an assumption may name one:
+    half the time one with the same first name as the first contact (another saved contact,
+    handle or number: the phone shows two accounts, and nothing merges them), else another
+    person's. Never named as any member is."""
+    shown = {m.who for m in members}
+    ids = {m.account.identifier for m in members}
+    names = {m.person.name for m in members}
+    base = members[1] if len(members) > 1 and members[0].account.owner else members[0]
+    while True:
+        p = base.person if rng.random() < 0.5 else third_party(rng, base.person.lang, names)
+        x = ident_on(rng, app, p)
+        party = Party(Account(app, x, label_on(rng, app, p)), p)
+        if x not in ids and party.who not in shown:
+            return party

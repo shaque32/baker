@@ -56,9 +56,11 @@ include = ["core*", "eval*", "cli*", "ui*"]
 # Files core/ reads at run time. Without them a non-editable install (the Windows installer,
 # `pip install .`) cannot create a case database or load a signed prompt.
 [tool.setuptools.package-data]
-core = ["schema.sql"]
+core = ["schema.sql", "BUILD_COMMIT"]
 "core.audit" = ["prompts/*.md"]
 ui = ["**/*.css", "**/*.html", "**/*.js", "**/*.svg", "**/*.png", "**/*.ico", "**/*.woff2", "static/**/*.txt"]
+# The font eval/synthetic/govdocs.py draws non-Latin lines of the case01 affidavit in.
+"eval.synthetic" = ["fonts/*.ttf", "fonts/LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -62,9 +62,10 @@ from core.llm import cloud as cloud_llm
 from core.report.html import render_report
 from core.report.letter import request_letter
 from core.restore.store import ExhibitError, add_exhibit, match_exhibits, remove_exhibit
-from core.review import actions, audit_log
+from core.review import actions, audit_log, flags
 from core.review.actions import ReviewError
 from core.review.redecide import redecide
+from core.review.status import claim_state
 from core.timeline import settings as timeline_settings
 from ui import identity_pages, pages, restore_pages, selection_pages, theme, timeline_pages, upload
 
@@ -91,6 +92,7 @@ NEEDS_NO_JOB: dict[str, tuple[str, ...]] = {
     "/identity/link": ("audit",),
     "/identity/look": ("audit",),
     "/redecide": ("audit",),
+    "/evidence/confirm": ("audit",),
     "/claims/propose": ("audit", "propose", "model_check"),
     "/model/check": ("audit", "propose", "model_check"),
     "/audit/start": ("audit", "propose", "model_check"),
@@ -408,6 +410,17 @@ class App:
             return self._html(timeline_pages.gaps_page(conn, page, self._timeline()))
         if p == "/request-letter.txt":
             return self._letter_text(conn, page)
+        if p == "/flags/summary.json":
+            body = flags.summary_json(conn, req.query.get("pilot", ""))
+            return Response(
+                200,
+                body.encode("utf-8"),
+                [
+                    ("Content-Type", "application/json; charset=utf-8"),
+                    ("Content-Disposition", 'attachment; filename="baker-flag-summary.json"'),
+                    *self._security_headers(),
+                ],
+            )
         if p == "/log":
             return self._html(pages.log_page(conn, page, req.query.get("all") == "1"))
         if p in ("/report", "/report.html"):
@@ -446,6 +459,7 @@ class App:
             "/case/passphrase": lambda: self._change_passphrase(f),
             "/case/recovery/done": lambda: self._recovery_done(),
             "/evidence/decide": lambda: self._decide(conn, f),  # type: ignore[arg-type]
+            "/evidence/confirm": lambda: self._confirm(conn, f),  # type: ignore[arg-type]
             "/verdict": lambda: self._verdict(conn, f),  # type: ignore[arg-type]
             "/claim/edit": lambda: self._edit_claim(conn, f),  # type: ignore[arg-type]
             "/claim/add": lambda: self._add_claim(conn, f),  # type: ignore[arg-type]
@@ -468,6 +482,8 @@ class App:
             "/exhibit/remove": lambda: self._remove_exhibit(conn, f),  # type: ignore[arg-type]
             "/exhibit/rematch": lambda: self._rematch(conn, f),  # type: ignore[arg-type]
             "/timeline/settings": lambda: self._timeline_settings(conn, f),  # type: ignore[arg-type]
+            "/flag/add": lambda: self._add_flag(conn, f),  # type: ignore[arg-type]
+            "/flag/withdraw": lambda: self._withdraw_flag(conn, f),  # type: ignore[arg-type]
         }
         handler = handlers.get(req.path)
         if handler is None:
@@ -555,6 +571,39 @@ class App:
             "not change until then."
         )
 
+    def _confirm(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        """Rule 1b's one-click step: decide a contradiction waiting for the expert, with the
+        expert's reason in the audit log, then re-run the verdicts so the claim shows the result."""
+        status = EvidenceStatus(f.get("status", ""))
+        if status not in (EvidenceStatus.ACCEPTED, EvidenceStatus.DISMISSED):
+            raise ReviewError("confirm or dismiss the contradiction")
+        if pipeline.view_run(conn) != pipeline.last_run(conn):
+            raise ReviewError(
+                "the latest audit has not finished; resume it before confirming a contradiction"
+            )
+        eid = f.get("id", "")
+        # A page left open across a later audit may post an item that is no longer the one
+        # waiting on this claim (Codex on #98): only an item the latest run shows as waiting.
+        row = conn.execute(
+            "SELECT a.claim_id FROM evidence_items e JOIN assumptions a ON a.id = e.assumption_id"
+            " WHERE e.id = ?",
+            (eid,),
+        ).fetchone()
+        st = claim_state(conn, row[0]) if row else None
+        item = next((x for x in st.evidence if x.id == eid), None) if st else None
+        if st is None or item is None or not (st.contradiction_found and st.to_confirm(item)):
+            raise ReviewError(
+                "this contradiction is not waiting for you in the latest audit; reload the claim"
+            )
+        actions.decide_evidence(conn, eid, status, self.actor, f.get("reason", ""))
+        done = "Contradiction confirmed" if status == EvidenceStatus.ACCEPTED else "Dismissed"
+        try:
+            return f"{done}. {self._redecide(conn)}"
+        except audit_log.ChainBroken:
+            raise  # _post closes the case
+        except Exception as err:  # noqa: BLE001 - the decision is recorded either way (Codex on #98)
+            return f"{done} and recorded. The verdicts were not re-run: {err}."
+
     def _verdict(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         claim = f.get("claim", "")
         if f.get("action") == "confirm":
@@ -625,6 +674,24 @@ class App:
             f"Looked again: {len(found.added)} new proposal(s), {len(found.removed)} withdrawn "
             "because the names no longer match."
         )
+
+    def _add_flag(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        flags.add_flag(
+            conn,
+            f.get("claim", ""),
+            f.get("kind", ""),
+            self.actor,
+            evidence_id=f.get("evidence") or None,
+            should_be=f.get("should_be", flags.NOT_SURE),
+            record=f.get("record", ""),
+            note=f.get("note", ""),
+            seen_run=f.get("seen_run") if "seen_run" in f else None,
+        )
+        return "Flag saved for your error log. It changes no verdict and nothing is sent."
+
+    def _withdraw_flag(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        flags.withdraw_flag(conn, f.get("flag", ""), self.actor)
+        return "Flag withdrawn. It stays in the audit log and no longer counts."
 
     def _withdraw(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         actions.withdraw_stipulation(conn, f.get("id", ""), self.actor)

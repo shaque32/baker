@@ -33,7 +33,7 @@ from core.ingest.cellebrite_common import (
     text,
     write_report,
 )
-from core.ingest.source_file import read_source
+from core.ingest.source_file import read_source, require_sha256
 
 _COUNT_RE = re.compile(r"\s*\(\s*[\d,]+\s*\)$")
 # Excel stores characters XML cannot hold as text, such as the carriage return of a CRLF line
@@ -53,6 +53,7 @@ class CellebriteExcelImporter:
         source_id: str | None = None,
         now: datetime | None = None,
         date_order: str | None = None,
+        expected_sha256: str | None = None,
     ) -> None:
         """`date_order` ('mdy' or 'dmy'): the report's day/month order, when a person states
         it from the report's date format. Without it, dates like 3/4/2026 are read only if
@@ -60,9 +61,11 @@ class CellebriteExcelImporter:
         self.source_id = source_id
         self.now = now
         self.date_order = date_order
+        self.expected_sha256 = expected_sha256  # refuse other bytes (source_file.require_sha256)
 
     def import_source(self, path: Path, conn: sqlite3.Connection) -> Source:
         sf = read_source(path)
+        require_sha256(path.name, self.expected_sha256, sf.sha256)
         report = read_workbook(sf.data)
         return write_report(
             conn,

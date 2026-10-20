@@ -92,15 +92,16 @@ class FakeClient:
         return self.reply
 
 
-def _resp(text: str = SUPPORTS, stop: str = "end_turn") -> object:
+def _resp(text: str = SUPPORTS, stop: str = "end_turn", model: str = "claude-opus-5-5") -> object:
     usage = _Obj(input_tokens=100, output_tokens=20)
-    return _Obj(stop_reason=stop, content=[_Obj(type="text", text=text)], usage=usage)
+    content = [_Obj(type="text", text=text)]
+    return _Obj(model=model, stop_reason=stop, content=content, usage=usage)
 
 
 @pytest.fixture(autouse=True)
 def probe_passed(monkeypatch):  # noqa: ANN001, ANN201
     """These tests cover what happens once a model passes the signed stance test; the gate
-    itself is tested on its own (PROBE_PASSED is empty in the product)."""
+    itself, and the shipped list, are tested on their own."""
     version = cloud_policy._stance_prompt_version()
     monkeypatch.setattr(
         cloud, "PROBE_PASSED", frozenset({(cloud.DEFAULT_MODEL, cloud.DEFAULT_EFFORT, version)})
@@ -257,6 +258,16 @@ def test_an_api_error_is_a_sticky_cloud_error():
     assert err.value.sticky
 
 
+@pytest.mark.parametrize("served", ["another-model", None])
+def test_an_answer_from_any_other_model_pauses_the_run(served):
+    # claude-opus-5-5 is a pinned snapshot (Anthropic's models overview), and the API names the
+    # model that answered; anything else is never taken as a label.
+    model, _ = _model(_resp(model=served))
+    with pytest.raises(cloud.CloudError) as err:
+        model.generate_json("p", stance_mod.STANCE_SCHEMA)
+    assert err.value.sticky and repr(served) in err.value.reason
+
+
 @pytest.mark.parametrize("stop", ["refusal", "max_tokens"])
 def test_a_refusal_or_cut_off_answer_falls_back_for_that_call_only(stop):
     model, _ = _model(_resp("", stop))
@@ -324,6 +335,25 @@ def test_a_cloud_label_whose_quote_fails_is_dropped_not_relabeled(
     run.flush_calls = lambda quote_failed=frozenset(): None
     assert run._label(make_assumption("They met at the garage."), _cand()) is None
     assert run.result.dropped_labels == 1 and not local.prompts
+
+
+def test_a_cloud_model_reads_the_cloud_prompt_and_the_local_model_keeps_its_own(
+    case_db, fake_context
+):
+    # Arsh's "Opus only" (2026-10-19): v1.2 for a cloud model, v1.1 for the local 14B.
+    from core.audit._llm_json import load_prompt, prompt_version
+
+    local_v = prompt_version(load_prompt(stance_mod.PROMPT_FILE))
+    cloud_v = prompt_version(load_prompt(stance_mod.CLOUD_PROMPT_FILE))
+    assert local_v != cloud_v
+    lab = stance_mod.create(case_db, cloud_model=FakeCloud([SUPPORTS]))
+    assert lab.prompt_version == _cloud_run(lab).prompt_version == cloud_v
+    assert stance_mod.create(case_db, model=FakeLocal([])).prompt_version == local_v
+    # The cloud benchmarks pass a cloud model as the labeler's model: it reads the cloud prompt.
+    assert stance_mod.create(case_db, model=FakeCloud([])).prompt_version == cloud_v
+    assert stance_mod.prompt_file(None) == stance_mod.PROMPT_FILE
+    # The gate checks the version a cloud case would send.
+    assert cloud_policy._stance_prompt_version() == cloud_v
 
 
 def test_a_cloud_case_needs_no_local_stance_model(case_db, fake_context, monkeypatch):
@@ -421,11 +451,59 @@ def test_cloud_is_used_only_when_attested_not_csam_and_keyed(case_db, entries, l
     assert choice.why.startswith("Cloud model" if use else "Local model")
 
 
-def test_no_model_has_passed_the_signed_stance_test_yet():
-    # Opus 5.5 scored 73% contradicts precision on the signed set (bar 90%), 2026-10-15.
-    # The fixture patches PROBE_PASSED, so read the shipped value from the source.
-    src = Path(cloud.__file__).read_text(encoding="utf-8")
-    assert "PROBE_PASSED: frozenset[tuple[str, str, str]] = frozenset()" in src
+def _shipped_probe_passed() -> frozenset[tuple[str, str, str]]:
+    # The fixture patches PROBE_PASSED, so read the shipped value from the source:
+    # `PROBE_PASSED: ... = frozenset({...})` with a literal set inside.
+    import ast
+
+    tree = ast.parse(Path(cloud.__file__).read_text(encoding="utf-8"))
+    (node,) = [
+        n
+        for n in tree.body
+        if isinstance(n, ast.AnnAssign) and getattr(n.target, "id", None) == "PROBE_PASSED"
+    ]
+    assert isinstance(node.value, ast.Call) and getattr(node.value.func, "id", "") == "frozenset"
+    return frozenset(ast.literal_eval(node.value.args[0]) if node.value.args else ())
+
+
+def test_only_opus_at_medium_with_the_cloud_prompt_has_passed_the_signed_stance_test():
+    # Signed by Arsh 2026-10-20. A change to the cloud prompt changes its version, which drops
+    # this entry and fails here, until the new prompt passes again and Arsh signs a new entry.
+    version = cloud_policy._stance_prompt_version()
+    assert version == "sha256:2863d8dbf66960f6"
+    assert _shipped_probe_passed() == {(cloud.DEFAULT_MODEL, cloud.DEFAULT_EFFORT, version)}
+
+
+def test_the_entry_s_committed_answers_meet_the_signed_bars():
+    # The per-item answers behind the entry (core/llm/cloud.py names the file): the signed set
+    # as it is in the repo now, and both new sets with no wrong "contradicts".
+    import hashlib
+
+    root = Path(__file__).resolve().parents[1]
+    results = root / "eval/probe/results/2026-10-15-opus-5-5-medium-stance-v1-2.jsonl"
+    rows = [json.loads(line) for line in results.read_text(encoding="utf-8").splitlines()]
+    signed = [r for r in rows if r["set"] == "signed"]
+    probe = (root / "eval/gold/probe/probe.jsonl").read_bytes()
+    assert {r["set_sha256"] for r in signed} == {hashlib.sha256(probe).hexdigest()[:16]}
+    gated = [r for r in signed if r["scored"]]
+    assert len(gated) == 95
+    supports = [r for r in gated if r["gold"] == "supports"]
+    said = [r for r in gated if r["first"] == "contradicts"]
+    assert sum(r["first"] == "supports" for r in supports) == len(supports) == 33
+    assert sum(r["gold"] == "contradicts" for r in said) == len(said) == 10
+    assert not [r for r in gated if r["gold"] == "contradicts" and r["first"] == "supports"]
+    for name, n in (("new-24", 22), ("new-26", 26)):
+        new = [r for r in rows if r["set"] == name and r["scored"]]
+        assert len(new) == n
+        assert not [r for r in new if r["first"] == "contradicts" and r["gold"] != "contradicts"]
+
+
+def test_the_shipped_entry_lets_an_attested_case_use_opus_at_medium(case_db, monkeypatch):
+    monkeypatch.setattr(cloud, "PROBE_PASSED", _shipped_probe_passed())
+    cloud_policy.set_cloud(case_db, "expert:Ana", allowed=True, csam=False)
+    assert cloud_policy.choose(case_db, _key).use
+    high = cloud.CloudConfig(api_key=KEY, effort="high")
+    assert not cloud_policy.choose(case_db, lambda: high).use
 
 
 def test_a_model_that_has_not_passed_the_signed_test_labels_locally(case_db, monkeypatch):

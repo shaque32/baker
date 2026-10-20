@@ -1,7 +1,8 @@
 """StanceLabeler: one model label per (assumption, evidence candidate). Never a verdict.
 
-The prompt is human-owned (core/audit/prompts/stance.md). This module only fills it, asks the
-local model for JSON constrained to STANCE_SCHEMA, and validates the result. It fails closed:
+The prompt is human-owned (core/audit/prompts/stance.md; a cloud model reads its own signed
+stance_cloud.md). This module only fills it, asks the model for JSON constrained to
+STANCE_SCHEMA, and validates the result. It fails closed:
 output that is not exactly the expected object is dropped, with the raw text kept for the log.
 
 The model never supplies ids. assumption_id and record_id come from the inputs, and
@@ -9,9 +10,13 @@ model_run_id from the model. The quote is still untrusted here; core/audit/quote
 it verbatim before the label can become an EvidenceItem.
 
 Prompt v1.1 (signed 2026-10-14) shows the claim for the meaning, role and event templates, which
-say "the claim", and "(not needed for this assumption)" for the others. The model reads the
-case's names, never Baker's ids: the assumption through core/audit/readable.py and the context
-through core/audit/context.py with the same CaseNames. The stored Assumption.text keeps the ids.
+say "the claim", and "(not needed for this assumption)" for the others. The cloud prompt is v1.2
+(signed 2026-10-15): v1.1 with the told-frame sentences in "contradicts". Arsh chose on
+2026-10-19 to give it to the cloud model only ("Opus only", "Audit our model scoring"), since on
+the signed probe set it took the local 14B's contradicts precision from 58% to 50%. The model
+reads the case's names, never Baker's ids: the assumption through core/audit/readable.py and the
+context through core/audit/context.py with the same CaseNames. The stored Assumption.text keeps
+the ids.
 """
 
 from __future__ import annotations
@@ -55,7 +60,8 @@ from core.contracts import (
 if TYPE_CHECKING:
     from core.llm.cloud import CloudConfig
 
-PROMPT_FILE = "stance.md"
+PROMPT_FILE = "stance.md"  # the local model's prompt
+CLOUD_PROMPT_FILE = "stance_cloud.md"  # a cloud model's prompt (core/llm/cloud.py)
 PLACEHOLDERS = frozenset({"assumption", "record", "context", "claim"})
 # Templates whose wording says "the claim"; the prompt shows the claim's text for these only.
 CLAIM_TEMPLATES = frozenset({"meaning", "role", "event"})
@@ -280,6 +286,15 @@ class LocalStanceLabeler:
         return result.label
 
 
+def prompt_file(model: object | None) -> str:
+    """The signed prompt a stance model reads: CLOUD_PROMPT_FILE for a cloud model (its
+    model_sha256 starts "api:", as the cloud benchmarks pass one in), else PROMPT_FILE. None is
+    the configured local model."""
+    from core.llm.cloud import is_cloud_sha  # no network library is imported here
+
+    return CLOUD_PROMPT_FILE if is_cloud_sha(getattr(model, "sha256", None)) else PROMPT_FILE
+
+
 def create(
     conn: sqlite3.Connection,
     *,
@@ -300,12 +315,14 @@ def create(
     `cloud` (a case whose cloud choice allows it, core/casework/cloud.py) makes the cloud model
     the only stance labeler for the case (CloudPort): no local model is needed for stance, a
     sticky cloud failure pauses the run, and every request is logged in the case's audit log
-    before it is sent (SentLog). `cloud_model` stands in for the API in tests."""
+    before it is sent (SentLog). `cloud_model` stands in for the API in tests. A cloud model,
+    on either path, reads the cloud prompt (prompt_file)."""
     from core.audit.context import render_for  # retrieval and context thread
     from core.audit.readable import assumption_text, case_names
 
     if template is None:
-        template = load_prompt(PROMPT_FILE)
+        cloud_path = cloud is not None or cloud_model is not None
+        template = load_prompt(CLOUD_PROMPT_FILE if cloud_path else prompt_file(model))
     port: JsonModel
     if cloud is None and cloud_model is None:
         opened = open_run(conn, "stance", template, model=model, schema=STANCE_SCHEMA)

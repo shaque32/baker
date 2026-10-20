@@ -8,9 +8,15 @@ machine that will run Baker. Everything here is synthetic.
   can run before the signed probe set exists. Rebuild with `python -m eval.probe.build_smoke`.
   Results on them are provisional; the signed probe set (thread 3, signed by Arsh) replaces them.
 - `stance_draft.md`: the old probe-only stance prompt, kept for comparison. The probe now scores
-  the signed product prompt `core/audit/prompts/stance.md` by default (`--stance-prompt` picks
-  another).
+  the signed product prompt `core/audit/prompts/stance.md` (the local model's) by default
+  (`--stance-prompt` picks another). The cloud bench (`eval/bench/claude_bench.py`) scores the
+  cloud model's own signed prompt, `core/audit/prompts/stance_cloud.md`, by default.
 - The reviewer prompt is read from `core/audit/prompts/reviewer.md` unchanged.
+- `results/`: per-item answers behind a `PROBE_PASSED` entry (`core/llm/cloud.py`), one row per
+  item: set, the set file's sha256 (first 16 hex), item id, gold stance, whether it counts
+  (`scored`), first and second answer. Ids and labels only, no item text. `2026-10-15-opus-5-5-medium-stance-v1-2.jsonl`
+  is Opus 5.5 at medium with stance v1.2 on the signed set (`eval/gold/probe/probe.jsonl`) and
+  on the two new sets, from the preregistered runs of 2026-10-15.
 - `stance_v1_1_draft.md`: the signed stance wording, line for line, reordered so every fixed
   instruction comes before the case data. Consecutive calls on one assumption then share the
   whole prompt up to the record, which llama.cpp does not read again. On case01 (no model) the

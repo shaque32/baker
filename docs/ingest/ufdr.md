@@ -176,8 +176,12 @@ coverage record under `forwarded_records`, and downstream fails closed
 (`core/ingest/forwarded.py`): the model's supports or contradicts on it is stored as
 complicates, a check resting on it is inconclusive, the sender check never names the forwarder
 as the writer, and the claim page and report warn. The Excel importer does the same for a
-`Label` cell reading Forwarded. The record's sender field still shows the forwarder until a
-schema change is signed (PROPOSED_CHANGES.md).
+`Label` cell reading Forwarded. Since the schema change Arsh signed on 2026-10-16, both importers
+also set `messages.forwarded = 1` on such a message; the UFDR importer fills
+`messages.forwarded_from_raw` with the embedded original's sender, as written, when the package
+names exactly one (never guessed). A quote is not a forward: `forwarded` stays NULL. The sender
+field still shows the forwarder. The fail-closed handling is unchanged, and a case made before
+the columns existed keeps only the coverage list.
 
 Picture entries (`ProfilePicture`, `ContactPhoto`) are never identifiers; how many were skipped
 is counted (`picture_entries_not_identifiers`, info). A `taggedFiles` id listed twice with

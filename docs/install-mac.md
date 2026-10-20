@@ -2,9 +2,9 @@
 
 Baker runs on your own Mac, offline by default. Nothing about your cases leaves the computer and
 Baker sends no telemetry, unless you opt a case in to cloud AI at case setup (only if its
-protective order allows it). Then, for that case only and once the cloud model has passed
-Baker's signed stance test (none has yet), one stance question at a time goes to Anthropic under
-your own key (see "Cloud AI for this case" on the setup screen). The installer downloads three
+protective order allows it). Then, for that case only, one stance question at a time goes to
+Anthropic (Claude Opus 5.5) under your own key (see "Cloud AI for this case" on the setup
+screen). The installer downloads three
 things, once: a Python installer (uv), the model runtime's source, and the AI model (9 GB).
 After that you can disconnect from the internet, except while a case that uses cloud AI is being
 audited.
@@ -18,8 +18,8 @@ audited.
 | Disk | 15 GB free | SSD (every Apple silicon Mac has one) |
 | macOS | 13 Ventura or later | the latest |
 
-How long a case takes: the synthetic test case (20 claims, about 500 model calls) took about
-6 to 8 hours on an M4 Mac with 24 GB. Start a case in the evening and review it the next
+How long a case takes: the synthetic test case (20 claims) took about 6 to 8 hours on an M4 Mac
+with 24 GB on an earlier version (2026-10-12). The current version has not been timed yet. Start a case in the evening and review it the next
 morning. A run can stop and resume: finished claims are kept.
 
 ## Install (about 30 minutes, most of it waiting)

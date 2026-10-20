@@ -26,7 +26,7 @@
     python -m cli encrypt   --db case.db --by expert:<name>
     python -m cli passphrase --db case.db --by expert:<name>
     python -m cli demo      [--port 8766] [--expert "<name>"] [--no-open] [--build-only]
-                            [--from-case <case folder> | --scripted]
+                            [--from-case <case folder> | --scripted | --paired]
 
 `redecide` re-runs the verdict rules on the last audit's stored evidence after expert review;
 it calls no model. `serve` opens the expert's screen on http://127.0.0.1 only. Without --db it
@@ -47,6 +47,8 @@ verdict); `--label-all` labels them too.
 cases folder (~/Baker/demo/cases, or $BAKER_DEMO/cases), so each demo starts clean in seconds
 and a screen share shows no other case. `--from-case` saves a finished synthetic case01 audit
 (a real local-model run) as the demo from then on; `--scripted` goes back to the scripted one.
+`--paired` builds the scripted demo with a UFDR of Item 1 added, so the Selection tab shows the
+paired selection audit (what the curated report left out); the next plain `demo` drops it.
 `encrypt` encrypts a case made before encryption at rest (its database and the copies of its
 files; core/casework/protect.py), or finishes one that was interrupted, and prints its recovery
 key once. Nothing encrypts a case on its own. `passphrase` changes an encrypted case's
@@ -329,6 +331,38 @@ def cmd_verify_log(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_flags(a: argparse.Namespace) -> int:
+    from core.review import flags
+
+    conn = _open(a.db)
+    if a.action == "export":
+        if a.out is None:
+            print("export needs --out", file=sys.stderr)
+            return 2
+        a.out.write_text(flags.summary_json(conn, a.pilot or ""), encoding="utf-8")
+        print(f"wrote {a.out} (redacted: counts, labels and versions only; nothing was sent)")
+        return 0
+    for f in flags.flags(conn):
+        state = "active" if f.active else f"withdrawn by {f.withdrawn_by}"
+        print(f"{f.id}  {f.kind}  {f.claim_id}  {f.evidence_id or ''}  {state}")
+    return 0
+
+
+def cmd_flag_log(a: argparse.Namespace) -> int:
+    import json
+
+    from core.review import flags
+
+    summaries = [json.loads(path.read_text(encoding="utf-8")) for path in a.summaries]
+    text = flags.error_log_markdown(flags.error_log(summaries))
+    if a.out:
+        a.out.write_text(text, encoding="utf-8")
+        print(f"wrote {a.out}")
+    else:
+        print(text, end="")
+    return 0
+
+
 def cmd_redecide(a: argparse.Namespace) -> int:
     from core.review.redecide import redecide
 
@@ -438,8 +472,12 @@ def cmd_demo(a: argparse.Namespace) -> int:
         print(f"saved {a.from_case} as the demo; every reset restores it (copy in {snap})")
     elif a.scripted:
         demo.drop_snapshot(root)
-    case, kind = demo.reset(root)
-    what = "a saved audit" if kind == "snapshot" else "scripted labels, no model; see docs/demo.md"
+    case, kind = demo.reset(root, paired=a.paired)
+    what = {
+        "snapshot": "a saved audit",
+        "scripted-paired": "scripted labels, plus a UFDR of Item 1 for the Selection tab's paired"
+        " audit; see docs/demo.md",
+    }.get(kind, "scripted labels, no model; see docs/demo.md")
     print(f"demo case ready: {case.name} ({what}): {demo.summary(case)}")
     if a.build_only:
         return 0
@@ -532,6 +570,17 @@ def parser() -> argparse.ArgumentParser:
     sp.add_argument("--out", type=Path, required=True)
     add("verify-log", cmd_verify_log, "verify the audit log hash chain")
 
+    sp = add("flags", cmd_flags, "list expert flags, or export the redacted flag summary")
+    sp.add_argument("action", choices=("list", "export"))
+    sp.add_argument("--out", type=Path, help="export: where to write the summary (.json)")
+    sp.add_argument("--pilot", help="export: the pilot's name, as you want it in the error log")
+    sp = sub.add_parser(
+        "flag-log", help="combine redacted flag summaries into the per-pilot error log"
+    )
+    sp.set_defaults(fn=cmd_flag_log)
+    sp.add_argument("summaries", type=Path, nargs="+", help="baker-flag-summary .json files")
+    sp.add_argument("--out", type=Path, help="write Markdown here instead of printing it")
+
     sp = add("redecide", cmd_redecide, "re-run the verdict rules after expert review (no model)")
     sp.add_argument("--by", required=True)
 
@@ -561,6 +610,11 @@ def parser() -> argparse.ArgumentParser:
         "--from-case", type=Path, help="save this finished synthetic case01 audit as the demo"
     )
     g.add_argument("--scripted", action="store_true", help="forget a saved audit; use the script")
+    g.add_argument(
+        "--paired",
+        action="store_true",
+        help="scripted demo plus a UFDR of Item 1, to show what the curated report left out",
+    )
     return p
 
 

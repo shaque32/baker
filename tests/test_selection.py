@@ -216,7 +216,9 @@ def test_names_and_redactions_are_not_looked_up(conn) -> None:
     for label in ("¶4", "¶7", "¶13", "¶14"):
         unit = _unit(audit, label)
         assert not unit.passages and all(lk.skipped for lk in unit.lookups), label
-    assert _unit(audit, "¶13").lookups[0].skipped == "no letters or digits to look up"
+    # ¶13 quotes the contact name "Катя"; until the affidavit PDF embedded a Cyrillic font it read
+    # back as "■■■■", which was skipped for having no letters.
+    assert _unit(audit, "¶13").lookups[0].skipped == "a name in the case, not a quoted message"
 
 
 def test_a_message_that_is_just_a_quoted_single_word_is_never_counted_as_left_out(conn) -> None:
