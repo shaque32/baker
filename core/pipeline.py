@@ -40,13 +40,14 @@ only moves data between them, stores it, and refuses anything that breaks a rule
   Components.label_settled turns labeling back on for them (`baker audit --label-all`).
 
 Saving. Each claim is committed when it finishes, together with an audit-log entry naming
-what it considered (CLAIM_ACTION). The model work for a claim (assumptions, labels, AI review)
-runs before anything is written, and the claim's rows are then written in one short
-transaction, so a long run never holds the database locked while the model works: the expert
-can review finished claims on the screen while the audit runs. If a run stops part way (a
-crash, a closed laptop, a missing model, an invariant violation, the expert's Stop), the claims
-already finished keep their stored model outputs, so the next run reuses them
-(core/audit/_local_model.py) instead of calling the model again.
+what it considered (CLAIM_ACTION), with SHA-256 digests of the model calls stored for it
+(calls_digest) and of the rows its verdict rests on (rows_digest). The model work for a claim
+(assumptions, labels, AI review) runs before anything is written, and the claim's rows are then
+written in one short transaction, so a long run never holds the database locked while the
+model works: the expert can review finished claims on the screen while the audit runs. If a run
+stops part way (a crash, a closed laptop, a missing model, an invariant violation, the expert's
+Stop), the claims already finished keep their stored model outputs, so the next run reuses
+them (core/audit/_local_model.py) instead of calling the model again.
 
 Which run is read. Predictions, the eval and redecide read only completed runs (last_run()).
 The review screen and the report read view_run(): the latest completed run, unless a newer
@@ -132,12 +133,46 @@ CLAIM_ACTION = "pipeline.claim"  # one per finished claim, written with the clai
 HALT_ACTION = "pipeline.halted"
 
 
-def calls_digest(calls: Sequence[tuple[str, str, str, str]]) -> dict[str, object]:
+def _stored(conn: sqlite3.Connection, table: str, where: str, params: tuple) -> list[dict]:
+    cur = conn.execute(f"SELECT * FROM {table} WHERE {where}", params)  # noqa: S608 - fixed names
+    cols = [d[0] for d in cur.description]
+    return [dict(zip(cols, r, strict=True)) for r in cur]
+
+
+def calls_digest(conn: sqlite3.Connection, ids: Sequence[str]) -> dict[str, object]:
     """What a claim's audit-log entry records about the model calls stored while it ran: their
-    ids and one SHA-256 over (id, outcome, prompt hash, raw output hash) for each, in order.
-    core/bundle/verify.py recomputes it from model_calls."""
-    rows = [[cid, outcome, _sha(prompt), _sha(raw)] for cid, outcome, prompt, raw in calls]
-    return {"ids": [r[0] for r in rows], "sha256": _sha(canonical_json(rows))}
+    ids and one SHA-256 over each call's whole stored row (model run, seq, subject, prompt, raw
+    output, outcome, error, time), in order. core/bundle/verify.py recomputes it."""
+    rows = [r for cid in ids for r in _stored(conn, "model_calls", "id = ?", (cid,))]
+    return {"ids": list(ids), "sha256": _sha(canonical_json(rows))}
+
+
+def rows_digest(conn: sqlite3.Connection, manifest: dict[str, list[str]]) -> str:
+    """One SHA-256 over the rows a claim's verdict rests on, as stored when its audit-log entry
+    is written: its assumptions, check results and evidence items (every column: text,
+    parameters, outcomes, source and locator, rationale, model run) and the AI reviews of those
+    items. Expert decisions are bound by their own entries (evidence.decide). The entry records
+    it, so core/bundle/verify.py can tell a row edited later from the one the rules read."""
+    one = {
+        "assumptions": "assumptions",
+        "checks": "check_results",
+        "evidence": "evidence_items",
+    }
+    rows: dict[str, list[dict]] = {
+        key: [r for i in manifest.get(key, []) for r in _stored(conn, table, "id = ?", (i,))]
+        for key, table in one.items()
+    }
+    rows["ai_reviews"] = [
+        r
+        for eid in manifest.get("evidence", [])
+        for r in _stored(
+            conn,
+            "evidence_reviews",
+            "evidence_id = ? AND reviewer_kind = 'ai' ORDER BY seq",
+            (eid,),
+        )
+    ]
+    return _sha(canonical_json(rows))
 
 
 def _sha(text: str) -> str:
@@ -805,8 +840,8 @@ class _Run:
         self.pending: list[tuple[str, tuple]] | None = None
         self.forwarded = forwarded.affected(conn)
         # The model calls stored while the current claim ran, bound into its audit-log entry
-        # (calls_digest), so a stored prompt or raw output edited later no longer matches.
-        self.claim_calls: list[tuple[str, str, str, str]] = []
+        # (calls_digest), so a stored call edited later no longer matches.
+        self.claim_calls: list[str] = []
 
     def _write(self, sql: str, params: tuple) -> None:
         if self.pending is None:
@@ -835,7 +870,7 @@ class _Run:
             for call in calls[done:]:
                 if call.id in quote_failed:
                     call = call.model_copy(update={"outcome": ModelCallOutcome.QUOTE_FAILED})
-                self.claim_calls.append((call.id, call.outcome.value, call.prompt, call.raw_output))
+                self.claim_calls.append(call.id)
                 self._write(
                     "INSERT INTO model_calls (id, model_run_id, seq, subject_json, prompt,"
                     " raw_output, outcome, error, at_utc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -1253,7 +1288,8 @@ def run_audit(
                         "stored_items": result.stored_items,
                         "dropped_labels": result.dropped_labels,
                         "reviewer_failures": result.reviewer_failures,
-                        "model_calls": calls_digest(run.claim_calls),
+                        "model_calls": calls_digest(conn, run.claim_calls),
+                        "rows_sha256": rows_digest(conn, result.manifest[claim.id]),
                     },
                 )
             current = None

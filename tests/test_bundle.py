@@ -29,7 +29,9 @@ AT = datetime(2026, 10, 20, 12, tzinfo=UTC)
 
 
 def _export(conn, tmp_path: Path, name: str = "bundle.zip") -> Path:  # noqa: ANN001
-    return export.export_bundle(conn, tmp_path / name, EXPERT, clock=lambda: AT).path
+    return export.export_bundle(
+        conn, tmp_path / name, EXPERT, counsel_confirmed=True, clock=lambda: AT
+    ).path
 
 
 def _levels(findings, check: str) -> set[str]:  # noqa: ANN001
@@ -137,17 +139,26 @@ def test_a_hosted_case_binds_every_answer_to_the_log_and_says_it_cannot_be_regen
     assert stance_run["where"] == "cloud" and stance_run["effort"] == "medium"
 
 
-def test_the_bundle_holds_every_table_the_report_and_the_export_entry(reviewed):
+def test_the_export_is_logged_after_the_file_with_its_hash(reviewed):
     conn, path = reviewed
     with zipfile.ZipFile(path) as zf:
         names = set(zf.namelist())
         manifest = json.loads(zf.read(export.MANIFEST))
     assert {f"{export.TABLES}{t}.jsonl" for t, _ in export.schema_tables()} <= names
     assert {export.MANIFEST, export.METHOD, export.REPORT} <= names
-    last = conn.execute("SELECT actor, action, hash FROM audit_log ORDER BY seq DESC LIMIT 1")
-    actor, action, h = last.fetchone()
-    assert (actor, action) == (EXPERT, export.EXPORT_ACTION)
-    assert manifest["audit_log"]["last_hash"] == h
+    entries = conn.execute(
+        "SELECT seq, actor, payload_json, prev_hash FROM audit_log WHERE action = ?",
+        (export.EXPORT_ACTION,),
+    ).fetchall()
+    # the fixture's own export: other tests in this module export the same case again
+    seq, actor, payload, prev = next(e for e in entries if path.name in e[2])
+    logged = json.loads(payload)
+    assert actor == EXPERT and logged["counsel_confirmed"] is True
+    assert logged["bundle_sha256"] == hashlib.sha256(path.read_bytes()).hexdigest()
+    # the bundle holds the log as it stood just before its own export entry
+    assert manifest["audit_log"]["last_hash"] == prev == logged["audit_log_head"]["hash"]
+    assert manifest["audit_log"]["last_seq"] == seq - 1
+    assert manifest["contents"] == logged["contents"] and manifest["counsel_confirmed"] is True
     assert manifest["run"]["rule_version"] == rules.RULE_VERSION
     assert manifest["notice"] == export.NOTICE and "counsel" in export.NOTICE
 
@@ -155,9 +166,100 @@ def test_the_bundle_holds_every_table_the_report_and_the_export_entry(reviewed):
 def test_export_is_never_silent_or_partial(reviewed, tmp_path):
     conn, path = reviewed
     with pytest.raises(ReviewError, match="already exists"):
-        export.export_bundle(conn, path, EXPERT)
-    with pytest.raises(ReviewError):
-        export.export_bundle(conn, tmp_path / "x.zip", "system")  # an expert's act only
+        export.export_bundle(conn, path, EXPERT, counsel_confirmed=True)
+    with pytest.raises(ReviewError):  # an expert's act only
+        export.export_bundle(conn, tmp_path / "x.zip", "system", counsel_confirmed=True)
+
+
+def test_nothing_is_exported_without_the_counsel_confirmation(reviewed, tmp_path):
+    conn, _path = reviewed
+    before = conn.execute("SELECT COUNT(*) FROM audit_log").fetchone()[0]
+    with pytest.raises(ReviewError, match="counsel"):
+        export.export_bundle(conn, tmp_path / "x.zip", EXPERT, counsel_confirmed=False)
+    assert not (tmp_path / "x.zip").exists()
+    assert conn.execute("SELECT COUNT(*) FROM audit_log").fetchone()[0] == before
+    text = export.describe(export.contents(conn))
+    assert "dismissed ones too" in text and "every prompt" in text and "evidence_items" in text
+
+
+def test_the_cli_writes_nothing_without_the_confirmation(reviewed, tmp_path, capsys):
+    from cli.main import main
+
+    conn, _path = reviewed
+    db = Path(conn.execute("PRAGMA database_list").fetchone()[2])
+    assert main(["export-bundle", "--db", str(db), "--out", str(tmp_path / "x.zip"),
+                 "--by", EXPERT]) == 2  # fmt: skip
+    assert not (tmp_path / "x.zip").exists()
+    assert "--confirm-counsel-reviewed" in capsys.readouterr().err
+
+
+def test_an_encrypted_case_never_exports_in_plain_form(reviewed, tmp_path):
+    from core import encryption
+    from core.bundle import sealed
+
+    conn, _path = reviewed
+    with pytest.raises(ReviewError, match="encrypted"):
+        export.export_bundle(
+            conn, tmp_path / "x.zip", EXPERT, counsel_confirmed=True, encrypted_case=True
+        )
+    assert not (tmp_path / "x.zip").exists()
+    r = export.export_bundle(
+        conn,
+        tmp_path / "s.zip",
+        EXPERT,
+        counsel_confirmed=True,
+        encrypted_case=True,
+        passphrase="correct horse battery",
+    )
+    blob = r.path.read_bytes()
+    assert sealed.is_sealed(blob) and b"tables/" not in blob and r.encrypted
+    assert not zipfile.is_zipfile(r.path)
+    assert _levels(verify_bundle(r.path), "files") == {FAIL}  # no passphrase
+    assert _levels(verify_bundle(r.path, passphrase="wrong passphrase!"), "files") == {FAIL}
+    findings = verify_bundle(r.path, passphrase="correct horse battery")
+    assert not failed(findings), _fails(findings)
+    with pytest.raises(encryption.WrongSecret):
+        sealed.open_sealed(blob[:-1] + bytes([blob[-1] ^ 1]), "correct horse battery")
+
+
+def test_a_failed_write_leaves_no_bundle_and_no_success_entry(reviewed, tmp_path, monkeypatch):
+    conn, _path = reviewed
+    before = conn.execute("SELECT COUNT(*) FROM audit_log").fetchone()[0]
+
+    def full_disk(*a, **k):  # noqa: ANN002, ANN003, ANN202
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(export.os, "fsync", full_disk)
+    with pytest.raises(OSError):
+        export.export_bundle(conn, tmp_path / "x.zip", EXPERT, counsel_confirmed=True)
+    assert not list(tmp_path.iterdir())  # neither the bundle nor a partial file
+    assert conn.execute("SELECT COUNT(*) FROM audit_log").fetchone()[0] == before
+
+
+def test_a_bundle_the_log_cannot_record_is_removed(reviewed, tmp_path, monkeypatch):
+    conn, _path = reviewed
+
+    def refuse(*a, **k):  # noqa: ANN002, ANN003, ANN202
+        raise RuntimeError("log unwritable")
+
+    monkeypatch.setattr(export.audit_log, "append", refuse)
+    with pytest.raises(RuntimeError):
+        export.export_bundle(conn, tmp_path / "x.zip", EXPERT, counsel_confirmed=True)
+    assert not list(tmp_path.iterdir())
+
+
+def test_partial_coverage_never_reads_as_fully_verified(reviewed):
+    from core.bundle.verify import outcome
+
+    _conn, path = reviewed
+    findings = verify_bundle(path)  # stand-in labels, no original files given
+    code, line = outcome(findings)
+    assert code == 2 and "partly verified" in line and "every check ran" not in line
+    assert outcome([f for f in findings if f.level == PASS]) == (
+        0,
+        "bundle verified: every check ran and passed",
+    )
+    assert outcome([*findings, type(findings[0])(FAIL, "x", "y")])[0] == 1
 
 
 def test_an_unfinished_audit_cannot_be_exported(tmp_path):
@@ -166,14 +268,14 @@ def test_an_unfinished_audit_cannot_be_exported(tmp_path):
 
     conn = rp.build_case("case01", tmp_path / "case01.db")
     with pytest.raises(ReviewError, match="no completed audit"):
-        export.export_bundle(conn, tmp_path / "b.zip", EXPERT)
+        export.export_bundle(conn, tmp_path / "b.zip", EXPERT, counsel_confirmed=True)
     conn.execute(
         "INSERT INTO pipeline_runs (id, started_at_utc, status, baker_version, contracts_version,"
         " rule_version, config_json) VALUES ('run:x', ?, 'running', '0', '0', '0', '{}')",
         (pipeline.iso(AT),),
     )
     with pytest.raises(ReviewError):
-        export.export_bundle(conn, tmp_path / "b.zip", EXPERT)
+        export.export_bundle(conn, tmp_path / "b.zip", EXPERT, counsel_confirmed=True)
 
 
 # ---------------------------------------------------------------- tampering fails loudly
@@ -368,3 +470,230 @@ def test_a_retried_send_logs_one_answer_for_the_attempt_that_succeeded(tmp_path)
     assert len(got) == 1 and got[0]["attempt"] == 2
     assert got[0]["request_sha256"] == sent[1]["request_sha256"]
     assert got[0]["raw_sha256"] == raw_sha256(text)
+
+
+# ---------------------------------------------------------------- every row is bound to the log
+
+
+def _manifest_edit(change: Callable[[dict], None]) -> Callable[[str], str]:
+    def edit(text: str) -> str:
+        manifest = json.loads(text)
+        change(manifest)
+        return json.dumps(manifest)
+
+    return edit
+
+
+def _rehashed(src: Path, dst: Path, edits: dict[str, Callable[[str], str]]) -> Path:
+    """Several files edited, bundle.json's hashes updated for each."""
+    for name, edit in edits.items():
+        _rewrite(src, dst, name, edit)
+        src = dst
+    return dst
+
+
+def test_model_identities_in_bundle_json_must_match_the_tables(hosted, tmp_path):
+    _conn, path = hosted
+
+    def change(m: dict) -> None:
+        for model in m["models"]:
+            model["model_name"] = "some-other-model"
+
+    bad = _rewrite(path, tmp_path / "b.zip", export.MANIFEST, _manifest_edit(change), False)
+    assert FAIL in _levels(verify_bundle(bad), "bundle.json")
+
+
+def test_an_edited_method_note_fails_even_when_rehashed(reviewed, tmp_path):
+    _conn, path = reviewed
+    edit = lambda t: t.replace("## Limits", "## Limits\n\n- None.")  # noqa: E731
+    bad = _rewrite(path, tmp_path / "b.zip", export.METHOD, edit)
+    assert FAIL in _levels(verify_bundle(bad), "bundle.json")
+
+
+@pytest.mark.parametrize(
+    ("table", "match", "change"),
+    [
+        ("check_results", lambda r: True, lambda r: r.update(detail=r["detail"] + " (edited)")),
+        ("check_results", lambda r: r["outcome"] != "fail", lambda r: r.update(outcome="fail")),
+        ("assumptions", lambda r: True, lambda r: r.update(text=r["text"] + " (edited)")),
+        ("assumptions", lambda r: r["is_core"] == 1, lambda r: r.update(is_core=0)),
+        ("evidence_items", lambda r: True, lambda r: r.update(locator="elsewhere")),
+        ("evidence_items", lambda r: True, lambda r: r.update(rationale="Made up.")),
+    ],
+)
+def test_a_row_a_verdict_rests_on_cannot_be_edited(reviewed, tmp_path, table, match, change):
+    _conn, path = reviewed
+    name, edit = _edit_row(table, match, change)
+    findings = verify_bundle(_rewrite(path, tmp_path / "b.zip", name, edit))
+    assert FAIL in _levels(findings, "rows"), _fails(findings)
+
+
+def test_a_hosted_label_cannot_lose_its_model_run(hosted, tmp_path):
+    _conn, path = hosted
+    name, edit = _edit_row(
+        "evidence_items",
+        lambda r: r["model_run_id"] is not None,
+        lambda r: r.update(model_run_id=None, rationale="Made up."),
+    )
+    findings = verify_bundle(_rewrite(path, tmp_path / "b.zip", name, edit))
+    assert FAIL in _levels(findings, "rows")
+
+
+def test_an_item_naming_no_model_run_is_a_stand_in_only_in_a_test_run(hosted):
+    from core.bundle.verify import _stand_in
+
+    conn, _path = hosted
+    assert _stand_in(conn, None, test_run=True)
+    assert not _stand_in(conn, None, test_run=False)
+
+
+def test_an_evidence_item_must_cite_its_records_own_source(reviewed, tmp_path):
+    _conn, path = reviewed
+    name, edit = _edit_row("evidence_items", lambda r: True, lambda r: r.update(locator="x!1"))
+    findings = verify_bundle(_rewrite(path, tmp_path / "b.zip", name, edit))
+    assert FAIL in _levels(findings, "labels")
+
+
+def test_an_ai_review_cannot_be_reworded(reviewed, tmp_path):
+    _conn, path = reviewed
+    name, edit = _edit_row(
+        "evidence_reviews",
+        lambda r: r["reviewer_kind"] == "ai",
+        lambda r: r.update(reason="The reviewer said something else."),
+    )
+    findings = verify_bundle(_rewrite(path, tmp_path / "b.zip", name, edit))
+    assert FAIL in _levels(findings, "rows")
+
+
+def test_a_model_calls_subject_or_run_cannot_be_reattributed(hosted, tmp_path):
+    _conn, path = hosted
+    name, edit = _edit_row(
+        "model_calls",
+        lambda r: r["outcome"] == "ok",
+        lambda r: r.update(subject_json='["asm:x","msg:y"]'),
+    )
+    findings = verify_bundle(_rewrite(path, tmp_path / "b.zip", name, edit))
+    assert FAIL in _levels(findings, "model calls")
+
+
+def test_a_stipulation_must_say_what_the_expert_confirmed(reviewed, tmp_path):
+    _conn, path = reviewed
+    name, edit = _edit_row(
+        "stipulations",
+        lambda r: r["status"] == "confirmed",
+        lambda r: r.update(statement="Someone else used the phone."),
+    )
+    findings = verify_bundle(_rewrite(path, tmp_path / "b.zip", name, edit))
+    assert FAIL in _levels(findings, "stipulations")
+
+
+def test_a_rewritten_rationale_must_match_exactly():
+    from types import SimpleNamespace
+
+    from core.bundle.verify import _same_label
+    from core.ingest import forwarded
+
+    answer = SimpleNamespace(stance="contradicts", quote="q", rationale="Sent at 9.")
+
+    def item(stance: str, rationale: str) -> tuple:
+        return ("ev", "a", "r", stance, "q", rationale, "m", "s", "l")
+
+    assert _same_label(item("contradicts", "Sent at 9."), answer)
+    assert _same_label(item("complicates", stance_mod.NOT_THE_MESSAGE + "Sent at 9."), answer)
+    note = f"{forwarded.STANCE_NOTE}contradicts. Sent at 9."
+    assert _same_label(item("complicates", note), answer)
+    assert not _same_label(
+        item("complicates", stance_mod.NOT_THE_MESSAGE + "Invented. Sent at 9."), answer
+    )
+    assert not _same_label(item("complicates", "Invented. " + note), answer)
+
+
+# ------------------------------------------------------------ malformed bundles fail, not crash
+
+
+def test_a_malformed_files_list_fails_without_a_crash(reviewed, tmp_path):
+    _conn, path = reviewed
+    edit = _manifest_edit(lambda m: m.update(files=[]))
+    bad = _rewrite(path, tmp_path / "b.zip", export.MANIFEST, edit, rehash=False)
+    assert _levels(verify_bundle(bad), "files") == {FAIL}
+
+
+def test_an_unreadable_log_payload_fails_without_a_crash(reviewed, tmp_path):
+    _conn, path = reviewed
+    name, edit = _edit_row(
+        "audit_log", lambda r: r["action"] == "import", lambda r: r.update(payload_json="{")
+    )
+    findings = verify_bundle(_rewrite(path, tmp_path / "b.zip", name, edit))
+    assert FAIL in _levels(findings, "audit log")
+    assert not _levels(findings, "inputs")  # nothing ran on a log that failed
+
+
+def test_an_inputs_folder_that_does_not_exist_fails(reviewed, tmp_path):
+    _conn, path = reviewed
+    findings = verify_bundle(path, tmp_path / "no-such-folder")
+    assert FAIL in _levels(findings, "inputs")
+
+
+# ---------------------------------------------------------------- export preconditions
+
+
+def test_no_export_while_a_newer_audit_has_not_finished(reviewed, tmp_path):
+    from core import pipeline
+
+    conn, _path = reviewed
+    with conn:
+        conn.execute(
+            "INSERT INTO pipeline_runs (id, started_at_utc, status, baker_version,"
+            " contracts_version, rule_version, config_json)"
+            " VALUES ('run:newer', '2999-01-01T00:00:00Z', 'running', '0', '0', '0', '{}')"
+        )
+    try:
+        assert pipeline.latest_attempt(conn) is not None
+        with pytest.raises(ReviewError, match="newer audit"):
+            export.export_bundle(conn, tmp_path / "b.zip", EXPERT, counsel_confirmed=True)
+        assert not (tmp_path / "b.zip").exists()
+    finally:
+        with conn:
+            conn.execute("DELETE FROM pipeline_runs WHERE id = 'run:newer'")
+
+
+def test_an_encrypted_cases_copies_are_hashed_through_decryption(tmp_path, monkeypatch):
+    from core import encryption
+
+    folder = tmp_path / "inputs"
+    folder.mkdir()
+    (folder / "a.bin").write_bytes(b"ciphertext")
+    items = [{"sha256": "plain-sha"}, {"sha256": "other"}]
+    monkeypatch.setattr(export.encryption, "plain_sha256", lambda p: "plain-sha")
+    export._case_copies(items, folder)
+    assert [i["case_copy_matches_at_export"] for i in items] == [True, False]
+
+    def locked(p):  # noqa: ANN001, ANN202
+        raise encryption.CaseLocked("locked")
+
+    monkeypatch.setattr(export.encryption, "plain_sha256", locked)
+    export._case_copies(items, folder)
+    assert [i["case_copy_matches_at_export"] for i in items] == [None, None]
+
+
+def test_a_refused_cloud_answer_is_logged_with_its_ids(tmp_path):
+    conn = _case(tmp_path)
+    resp = _Obj(
+        id="msg_02",
+        _request_id="req_02",
+        model="claude-opus-5-5",
+        stop_reason="refusal",
+        content=[_Obj(type="text", text="I can't help with that.")],
+        usage=_Obj(input_tokens=10, output_tokens=5),
+    )
+    model = cloud.ClaudeModel(cloud.CloudConfig(api_key="sk-ant-x"), client=FakeClient(resp))
+    with pytest.raises(cloud.CloudError, match="declined"):
+        SentLog(model, conn).generate_json("p", {"type": "object"})
+    (got,) = _logged(conn, RECEIVED_ACTION)
+    assert (got["message_id"], got["request_id"], got["stop_reason"]) == (
+        "msg_02",
+        "req_02",
+        "refusal",
+    )
+    assert got["refused"] == "the cloud model declined to answer"
+    assert got["raw_sha256"] == raw_sha256("I can't help with that.")

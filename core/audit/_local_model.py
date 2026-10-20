@@ -332,8 +332,9 @@ class SentLog:
     Each answer is logged too (action "cloud.received"): the model the API reported, its message
     and request ids, the stop reason, the token counts and the SHA-256 of the raw text, so the
     stored raw output (model_calls) is tied to the hash-chained log and a reproducibility bundle
-    can name the exact request (core/bundle/). If that entry cannot be written, the answer is not
-    used and the audit pauses, as for a send."""
+    can name the exact request (core/bundle/). An answer Baker refuses (another model, a refusal,
+    a cut-off answer) is logged the same way, with the reason in "refused". If that entry cannot
+    be written, the answer is not used and the audit pauses, as for a send."""
 
     def __init__(
         self,
@@ -384,7 +385,9 @@ class SentLog:
             ) from e
         return request_sha
 
-    def _received(self, request_sha: str, attempt: int, out: Any) -> None:
+    def _received(
+        self, request_sha: str, attempt: int, out: Any, refused: str | None = None
+    ) -> None:
         from core.audit._llm_json import CloudPaused
 
         payload = {
@@ -397,6 +400,9 @@ class SentLog:
             "input_tokens": getattr(out, "prompt_tokens", None),
             "output_tokens": getattr(out, "completion_tokens", None),
             "raw_sha256": raw_sha256(str(getattr(out, "raw_text", ""))),
+            # why Baker did not use an answer the API returned (another model, a refusal, a
+            # cut-off answer); None for an answer it used
+            "refused": refused,
         }
         try:
             self._append(RECEIVED_ACTION, payload)
@@ -419,6 +425,8 @@ class SentLog:
                 self._received(request_sha, attempt, out)
                 return out
             except CloudError as e:
+                if getattr(e, "response", None) is not None:
+                    self._received(request_sha, attempt, e.response, refused=e.reason)
                 if not getattr(e, "retryable", False) or attempt > self._retries:
                     raise
                 self._sleep(min(2.0**attempt, 30.0))

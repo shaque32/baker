@@ -124,8 +124,9 @@ tests/
   prompt version, parameters and seed. Outputs are stored, not regenerated.
 - **Audit log.** Append-only; each entry hashes the previous entry's hash plus its own payload.
   Each claim's entry also names the model calls stored while it ran, with one SHA-256 over
-  them, and each cloud answer gets its own entry (`cloud.received`), so stored prompts and raw
-  outputs are tied to the chain.
+  their rows, and one SHA-256 over the rows its verdict rests on (assumptions, check results,
+  evidence items, AI reviews); each cloud answer gets its own entry (`cloud.received`, refused
+  answers too), so stored prompts, raw outputs and evidence are tied to the chain.
 
 ## Local by default, cloud by opt-in
 

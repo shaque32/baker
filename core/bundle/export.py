@@ -1,25 +1,30 @@
 """Write a case's reproducibility bundle (`baker export-bundle`).
 
 Producing a bundle is the examiner's choice, made on counsel's advice: Baker never makes or
-sends one on its own. The export is logged in the case's audit log (action bundle.export, by
-the expert), and the bundle then holds the case as it stands, that entry included:
+sends one on its own. The CLI first lists what the bundle would hold (describe()) and writes
+nothing until the examiner confirms counsel reviewed it. The bundle holds the case as it stands:
 
-    bundle.json        format, versions, build, run, inputs, models, audit-log head, file hashes
+    bundle.json        format, versions, build, run, contents, inputs, models, audit-log head,
+                       file hashes
     METHOD.md          plain-English method note: what Baker did, who labelled, how to check it
     report.html        the claims report, rendered from exactly the rows in tables/
     tables/<t>.jsonl   every table core/schema.sql defines, one JSON object per row, in the
                        database's own order: model calls with prompt and raw output as stored,
                        evidence items, expert reviews, verdicts, the full audit log
 
-Only the latest completed audit can be exported; an audit still running or stopped part way
-must finish first, so the bundle never shows a verdict the rules have not finished.
-The zip is deterministic in layout (sorted names, fixed timestamps), so its SHA-256, printed
-on export, names this exact bundle. core/bundle/verify.py checks one offline.
+An encrypted case's bundle is encrypted under a bundle passphrase (core/bundle/sealed.py); it
+is never written in plain form. Only once the file is fully written is the export logged
+(bundle.export, by the expert, with the bundle's SHA-256 and the audit-log head it holds); if
+that entry cannot be written, the file is removed. Only the latest completed audit can be
+exported; an audit still running or stopped part way must finish first, so the bundle never
+shows a verdict the rules have not finished. The zip is deterministic in layout (sorted names,
+fixed timestamps). core/bundle/verify.py checks one offline.
 """
 
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 import sqlite3
@@ -30,8 +35,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from core import build, db, pipeline
+from core import build, db, encryption, pipeline
 from core.audit import invariants, quotes, rules
+from core.bundle import sealed
 from core.contracts import CONTRACTS_VERSION
 from core.db import apply_schema
 from core.llm import cloud
@@ -50,9 +56,9 @@ TABLES = "tables/"
 ZIP_TIME = (1980, 1, 1, 0, 0, 0)
 NOTICE = (
     "Producing this bundle is the examiner's choice, made on counsel's advice. Baker never makes "
-    "or sends one on its own, and nothing is shared by default. The bundle is not encrypted and "
-    "holds case content (record text, prompts and model answers): handle it under the case's "
-    "protective order."
+    "or sends one on its own, and nothing is shared by default. The bundle holds case content "
+    "(record text, prompts and model answers, the expert's reasons); it is encrypted only when "
+    "the case is. Handle it under the case's protective order."
 )
 HOSTED = (
     "Labels from a hosted model ({vendor}, {model}). They cannot be regenerated exactly; the "
@@ -70,6 +76,7 @@ class ExportResult:
     audit_entries: int
     last_hash: str
     files: dict[str, str] = field(default_factory=dict)  # name -> sha256
+    encrypted: bool = False
 
 
 def schema_tables() -> list[tuple[str, list[str]]]:
@@ -117,18 +124,13 @@ def _rows(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> list[tuple]
     return conn.execute(sql, params).fetchall()
 
 
-def _inputs(conn: sqlite3.Connection, inputs_dir: Path | None) -> list[dict[str, Any]]:
+def _inputs(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     importers = {
         sid: (imp, ver)
         for sid, imp, ver in _rows(
             conn, "SELECT source_id, importer, importer_version FROM source_coverage"
         )
     }
-    on_disk: dict[str, list[str]] = {}
-    if inputs_dir is not None and inputs_dir.is_dir():
-        for p in sorted(inputs_dir.rglob("*")):
-            if p.is_file():
-                on_disk.setdefault(_file_sha256(p), []).append(p.name)
     out = []
     for sid, kind, fidelity, name, sha, tool, tool_ver, imported in _rows(
         conn,
@@ -136,22 +138,39 @@ def _inputs(conn: sqlite3.Connection, inputs_dir: Path | None) -> list[dict[str,
         " FROM sources ORDER BY id",
     ):
         imp = importers.get(sid)
-        item: dict[str, Any] = {
-            "source_id": sid,
-            "kind": kind,
-            "fidelity": fidelity,
-            "file_name": name,
-            "sha256": sha,
-            "tool": tool,
-            "tool_version": tool_ver,
-            "imported_at_utc": imported,
-            "importer": imp[0] if imp else None,
-            "importer_version": imp[1] if imp else None,
-        }
-        if inputs_dir is not None:
-            item["case_copy_matches_at_export"] = sha in on_disk
-        out.append(item)
+        out.append(
+            {
+                "source_id": sid,
+                "kind": kind,
+                "fidelity": fidelity,
+                "file_name": name,
+                "sha256": sha,
+                "tool": tool,
+                "tool_version": tool_ver,
+                "imported_at_utc": imported,
+                "importer": imp[0] if imp else None,
+                "importer_version": imp[1] if imp else None,
+            }
+        )
     return out
+
+
+def _case_copies(items: list[dict[str, Any]], inputs_dir: Path) -> None:
+    """Mark whether the case's own copy of each input still hashes to what was imported. An
+    encrypted case's copies are read back through decryption (they hold ciphertext); a copy
+    that cannot be read is marked None, not checked, never False."""
+    on_disk: set[str] = set()
+    unreadable = False
+    if inputs_dir.is_dir():
+        for p in sorted(inputs_dir.rglob("*")):
+            if p.is_file():
+                try:
+                    on_disk.add(encryption.plain_sha256(p))
+                except (OSError, encryption.EncryptionError, encryption.CaseLocked):
+                    unreadable = True
+    for item in items:
+        found = item["sha256"] in on_disk
+        item["case_copy_matches_at_export"] = True if found else (None if unreadable else False)
 
 
 def _file_sha256(path: Path) -> str:
@@ -187,54 +206,8 @@ def model_identity(row: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def export_bundle(
-    conn: sqlite3.Connection,
-    out: Path,
-    actor: str,
-    *,
-    timeline: Settings | None = None,
-    inputs_dir: Path | None = None,
-    clock: Clock | None = None,
-) -> ExportResult:
-    """Write the bundle for the latest completed audit to `out` (a new .zip). The caller has
-    already checked the audit log (core/review/audit_log.require_intact), as every path that
-    opens a case does."""
-    _expert(actor)
-    out = Path(out)
-    if out.exists():
-        raise ReviewError(f"{out} already exists; choose a new file name")
-    run, last = pipeline.view_run(conn), pipeline.last_run(conn)
-    if last is None:
-        raise ReviewError("no completed audit to export; run the audit first")
-    if run is None or run.get("partial") or run["run_id"] != last["run_id"]:
-        raise ReviewError(
-            "the latest audit has not finished; resume it (or re-run the verdicts) before "
-            "exporting, so the bundle shows only verdicts the rules finished"
-        )
-    timeline = timeline or Settings()
-    now = (clock or (lambda: datetime.now(UTC)))()
-    with conn:
-        audit_log.append(
-            conn,
-            now,
-            actor,
-            EXPORT_ACTION,
-            {
-                "format": FORMAT,
-                "bundle_version": BUNDLE_VERSION,
-                "file_name": out.name,
-                "notice": NOTICE,
-            },
-        )
-
-    files: dict[str, bytes] = {}
-    for table, cols in schema_tables():
-        files[f"{TABLES}{table}.jsonl"] = _dump(conn, table, cols)
-    report = report_html.render_report(conn, timeline)
-    invariants.check_report_text(report)
-    files[REPORT] = report.encode("utf-8")
-
-    head = _rows(conn, "SELECT seq, hash FROM audit_log ORDER BY seq DESC LIMIT 1")[0]
+def models(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    """Every model run of the case, as bundle.json lists them (model_identity)."""
     cols = [
         "id",
         "purpose",
@@ -245,16 +218,169 @@ def export_bundle(
         "params_json",
         "seed",
     ]
-    models = [
+    return [
         model_identity(dict(zip(cols, r, strict=True)))
         for r in _rows(conn, f"SELECT {', '.join(cols)} FROM model_runs ORDER BY rowid")  # noqa: S608
     ]
+
+
+def run_info(run: dict[str, Any]) -> dict[str, Any]:
+    """The exported audit run, as bundle.json describes it."""
+    return {
+        "run_id": run["run_id"],
+        "mode": run["config"].get("mode", "full"),
+        "evidence_from_run": run.get("evidence_from_run", run["run_id"]),
+        "started_at_utc": run["started_at_utc"],
+        "pipeline": run["baker_version"],
+        "contracts_version": run["contracts_version"],
+        "rule_version": run["rule_version"],
+        "quote_check": run["config"].get("quote_check"),
+        "build": run["config"].get("build"),
+        "evidence_build": run["config"].get("evidence_build", run["config"].get("build")),
+        "cloud": run["config"].get("cloud"),
+        "test_run": bool(run.get("fake")),
+        "claims": len(run["manifest"]),
+    }
+
+
+def derived(conn: sqlite3.Connection, run: dict[str, Any]) -> dict[str, Any]:
+    """The parts of bundle.json that follow from the tables alone, so core/bundle/verify.py
+    recomputes them and requires an exact match."""
+    seq, last = _rows(conn, "SELECT seq, hash FROM audit_log ORDER BY seq DESC LIMIT 1")[0]
+    return {
+        "contents": contents(conn),
+        "run": run_info(run),
+        "inputs": _inputs(conn),
+        "models": models(conn),
+        "audit_log": {"entries": seq, "last_seq": seq, "last_hash": last},
+    }
+
+
+def claim_entries(conn: sqlite3.Connection, run: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Claim id -> the pipeline.claim entry that wrote the rows the run's verdict for it rests
+    on: the run's own entries, or for a verdict re-run, those of the audit its evidence came
+    from. The latest such entry per claim."""
+    source = run.get("evidence_from_run", run["run_id"])
+    return {
+        p["claim_id"]: p
+        for p in pipeline.finished_claims(conn, source)
+        if p["claim_id"] in run["manifest"]
+    }
+
+
+def changed_rows(conn: sqlite3.Connection, run: dict[str, Any]) -> tuple[list[str], int]:
+    """(claims whose rows differ from the digest their claim entry recorded, claims whose entry
+    records no digest). A row differs when it was edited after its claim was decided."""
+    changed, unbound = [], 0
+    for claim_id, entry in sorted(claim_entries(conn, run).items()):
+        want = entry.get("rows_sha256")
+        if not isinstance(want, str):
+            unbound += 1
+        elif pipeline.rows_digest(conn, entry["manifest"]) != want:
+            changed.append(claim_id)
+    return changed, unbound
+
+
+def contents(conn: sqlite3.Connection) -> dict[str, int]:
+    """What a bundle of this case holds: every table and its row count. The export names it
+    before the examiner confirms, and bundle.json and the export's log entry record it."""
+    return {
+        table: int(conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])  # noqa: S608
+        for table, _cols in schema_tables()
+    }
+
+
+def describe(counts: dict[str, int]) -> str:
+    """The contents in plain words, for the confirmation."""
+    rows = ", ".join(f"{t} {n}" for t, n in counts.items() if n)
+    return (
+        "The bundle will hold the whole case: every table (rows: " + rows + "), including every "
+        "record imported from the phones, every prompt sent to a model and its answer, every "
+        "evidence item (dismissed ones too) with the expert's reasons, the AI reviewer's output, "
+        "the full audit log, the report and a method note."
+    )
+
+
+def export_bundle(
+    conn: sqlite3.Connection,
+    out: Path,
+    actor: str,
+    *,
+    counsel_confirmed: bool,
+    encrypted_case: bool = False,
+    passphrase: str | None = None,
+    timeline: Settings | None = None,
+    inputs_dir: Path | None = None,
+    clock: Clock | None = None,
+) -> ExportResult:
+    """Write the bundle for the latest completed audit to `out` (a new file). The caller has
+    already checked the audit log (core/review/audit_log.require_intact), as every path that
+    opens a case does.
+
+    Never by default: `counsel_confirmed` must say the examiner confirmed, on counsel's review,
+    exporting exactly what describe() lists. An encrypted case's bundle is sealed under
+    `passphrase` (core/bundle/sealed.py); without one it is refused, never written in plain
+    form. The export is logged (bundle.export, with the bundle's SHA-256) only after the file
+    is fully written; if that entry cannot be written the file is removed, so a failed export
+    leaves neither a bundle nor a success entry."""
+    _expert(actor)
+    if not counsel_confirmed:
+        raise ReviewError(
+            "a bundle is exported only after the examiner confirms, on counsel's review, what it "
+            "holds; nothing was written"
+        )
+    if encrypted_case and not passphrase:
+        raise ReviewError(
+            "this case is encrypted, so its bundle must be encrypted too: give a bundle "
+            "passphrase; nothing was written"
+        )
+    out = Path(out)
+    if out.exists():
+        raise ReviewError(f"{out} already exists; choose a new file name")
+    run, last = pipeline.view_run(conn), pipeline.last_run(conn)
+    if last is None:
+        raise ReviewError("no completed audit to export; run the audit first")
+    if (
+        run is None
+        or run.get("partial")
+        or run["run_id"] != last["run_id"]
+        or pipeline.latest_attempt(conn) is not None
+    ):
+        raise ReviewError(
+            "a newer audit is running or has not finished; let it finish, or resume it, before "
+            "exporting, so the bundle shows only verdicts the rules finished"
+        )
+    changed, _unbound = changed_rows(conn, run)
+    if changed:
+        raise ReviewError(
+            "the stored rows behind "
+            + ", ".join(changed)
+            + " are no longer the ones their verdicts were decided on (an audit that did not "
+            "finish rewrote them); run the full audit again before exporting"
+        )
+    timeline = timeline or Settings()
+    now = (clock or (lambda: datetime.now(UTC)))()
+    facts = derived(conn, run)
+    counts = facts["contents"]
+    head = facts["audit_log"]
+
+    files: dict[str, bytes] = {}
+    for table, cols in schema_tables():
+        files[f"{TABLES}{table}.jsonl"] = _dump(conn, table, cols)
+    report = report_html.render_report(conn, timeline)
+    invariants.check_report_text(report)
+    files[REPORT] = report.encode("utf-8")
+    if inputs_dir is not None:
+        _case_copies(facts["inputs"], inputs_dir)
+
     manifest: dict[str, Any] = {
         "format": FORMAT,
         "bundle_version": BUNDLE_VERSION,
         "created_at_utc": pipeline.iso(now),
         "created_by": actor,
         "notice": NOTICE,
+        "scope": "full",
+        "counsel_confirmed": True,
         "exported_with": {
             "build": build.build_info(),
             "pipeline": pipeline.PIPELINE_VERSION,
@@ -263,28 +389,11 @@ def export_bundle(
             "report": report_html.REPORT_VERSION,
             "quote_check": quotes.VERSION,
         },
-        "run": {
-            "run_id": run["run_id"],
-            "mode": run["config"].get("mode", "full"),
-            "evidence_from_run": run.get("evidence_from_run", run["run_id"]),
-            "started_at_utc": run["started_at_utc"],
-            "pipeline": run["baker_version"],
-            "contracts_version": run["contracts_version"],
-            "rule_version": run["rule_version"],
-            "quote_check": run["config"].get("quote_check"),
-            "build": run["config"].get("build"),
-            "evidence_build": run["config"].get("evidence_build", run["config"].get("build")),
-            "cloud": run["config"].get("cloud"),
-            "test_run": bool(run.get("fake")),
-            "claims": len(run["manifest"]),
-        },
-        "inputs": _inputs(conn, inputs_dir),
-        "models": models,
+        **facts,
         "timeline_settings": {
             "tolerance_min": timeline.tolerance_min,
             "gap_hours": timeline.gap_hours,
         },
-        "audit_log": {"entries": head[0], "last_seq": head[0], "last_hash": head[1]},
     }
     files[METHOD] = method_note(manifest).encode("utf-8")
     manifest["files"] = {
@@ -294,22 +403,61 @@ def export_bundle(
         json.dumps(manifest, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
     ).encode()
 
-    out.parent.mkdir(parents=True, exist_ok=True)
-    tmp = out.with_name(f".{out.name}.partial")
-    with zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for name in sorted(files):
             info = zipfile.ZipInfo(name, date_time=ZIP_TIME)
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o644 << 16
             zf.writestr(info, files[name])
-    os.replace(tmp, out)
+    data = buf.getvalue()
+    if encrypted_case:
+        assert passphrase is not None  # noqa: S101 - checked above
+        data = sealed.seal(data, passphrase)
+    bundle_sha = sha256(data)
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_name(f".{out.name}.partial")
+    try:
+        with open(tmp, "xb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, out)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+    try:
+        with conn:
+            audit_log.append(
+                conn,
+                now,
+                actor,
+                EXPORT_ACTION,
+                {
+                    "format": FORMAT,
+                    "bundle_version": BUNDLE_VERSION,
+                    "file_name": out.name,
+                    "bundle_sha256": bundle_sha,
+                    "encrypted": encrypted_case,
+                    "counsel_confirmed": True,
+                    "scope": "full",
+                    "contents": counts,
+                    "run_id": run["run_id"],
+                    "audit_log_head": {"seq": head["last_seq"], "hash": head["last_hash"]},
+                },
+            )
+    except BaseException:
+        out.unlink(missing_ok=True)  # an export the log does not record is not left behind
+        raise
     return ExportResult(
         path=out,
-        sha256=_file_sha256(out),
+        sha256=bundle_sha,
         run_id=run["run_id"],
-        audit_entries=head[0],
-        last_hash=head[1],
-        files={name: sha256(data) for name, data in files.items()},
+        audit_entries=head["last_seq"],
+        last_hash=head["last_hash"],
+        files={name: sha256(d) for name, d in files.items()},
+        encrypted=encrypted_case,
     )
 
 

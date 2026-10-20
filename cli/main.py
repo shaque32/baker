@@ -20,6 +20,7 @@
     python -m cli report    --db case.db --out report.html
     python -m cli verify-log --db case.db
     python -m cli export-bundle --db case.db --out bundle.zip --by expert:<name>
+                            [--confirm-counsel-reviewed]
     python -m cli verify-bundle bundle.zip [--inputs <folder of original files>]
     python -m cli redecide  --db case.db --by expert:<name>
     python -m cli serve     [--cases <folder> | --db case.db] [--port 8765] [--expert "<name>"]
@@ -62,9 +63,13 @@ written when a case opens and when a report is built), and stops, writing nothin
 fails (the database was changed outside Baker). `verify-log` says which.
 `export-bundle` writes the case's reproducibility bundle (docs/bundle.md): input hashes,
 versions, model identity, every model call as stored, every label, expert decision and verdict,
-the full audit log and the report. Producing one is the examiner's choice on counsel's advice;
-it is never automatic, and the export is logged. `verify-bundle` checks a bundle offline,
-without the case, and re-derives every verdict from the recorded labels and decisions.
+the full audit log and the report. Producing one is the examiner's choice on counsel's advice:
+it lists what the bundle would hold and writes nothing until run with
+--confirm-counsel-reviewed. An encrypted case's bundle is encrypted under a bundle passphrase
+typed in the terminal. The export is logged, with the bundle's SHA-256, once the file is
+written. `verify-bundle` checks a bundle offline, without the case, and re-derives every verdict
+from the recorded labels and decisions. It exits 0 only when every check ran and passed, 2 when
+nothing failed but something could not be checked, and 1 on any failure.
 `ufdr-check` compares what Baker imports from a UFDR with the package's own report.xml, record
 by record, without touching any case (docs/ingest/ufdr.md, "Before calling it verified"). It
 writes ufdr-check.md and .json, which hold no case content and can be sent back, and
@@ -329,7 +334,8 @@ def cmd_report(a: argparse.Namespace) -> int:
 
 
 def cmd_export_bundle(a: argparse.Namespace) -> int:
-    from core.bundle.export import NOTICE, export_bundle
+    from core import encryption
+    from core.bundle.export import NOTICE, contents, describe, export_bundle
     from core.casework.cases import Case
     from core.timeline.settings import from_case
 
@@ -337,35 +343,59 @@ def cmd_export_bundle(a: argparse.Namespace) -> int:
     conn = _open(a.db)
     case = Case(Path(a.db))
     print(NOTICE)
+    print(describe(contents(conn)))
+    if not a.confirm_counsel_reviewed:
+        print(
+            "Nothing was written. When counsel has reviewed this list, run the command again "
+            "with --confirm-counsel-reviewed.",
+            file=sys.stderr,
+        )
+        return 2
+    encrypted = encryption.is_encrypted_case(Path(a.db))
+    passphrase = None
+    if encrypted:
+        print("This case is encrypted, so the bundle will be encrypted too. Choose a bundle")
+        print("passphrase to give counsel by another channel (not with the file).")
+        try:
+            passphrase = encryption.check_new_passphrase(
+                _ask("Bundle passphrase: "), _ask("Again: ")
+            )
+        except ValueError as e:
+            raise SystemExit(f"error: {e}") from e
     try:
         r = export_bundle(
             conn,
             a.out,
             a.by,
+            counsel_confirmed=True,
+            encrypted_case=encrypted,
+            passphrase=passphrase,
             timeline=from_case(case.settings),
             inputs_dir=case.inputs if case.inputs.is_dir() else None,
         )
     except actions.ReviewError as e:
         raise SystemExit(f"error: {e}") from e
-    print(f"wrote {r.path}")
+    print(f"wrote {r.path}{' (encrypted)' if r.encrypted else ''}")
     print(f"bundle SHA-256 {r.sha256}")
     print(f"audit run {r.run_id}; audit log {r.audit_entries} entries, last hash {r.last_hash}")
     return 0
 
 
 def cmd_verify_bundle(a: argparse.Namespace) -> int:
-    from core.bundle.verify import FAIL, failed, verify_bundle
+    from core.bundle import sealed
+    from core.bundle.verify import FAIL, NOTE, PASS, outcome, verify_bundle
 
-    findings = verify_bundle(a.bundle, a.inputs)
-    for f in findings:
-        print(f"{f.level.upper():5} {f.check}: {f.detail}")
-    if failed(findings):
-        print(f"bundle FAILED: {sum(f.level == FAIL for f in findings)} problems")
-        return 1
-    print(
-        "bundle verified: every verdict re-derives exactly from the recorded labels and decisions"
-    )
-    return 0
+    passphrase = _ask("Bundle passphrase: ") if sealed.is_sealed_file(a.bundle) else None
+    findings = verify_bundle(a.bundle, a.inputs, passphrase)
+    for level, title in ((PASS, "VERIFIED"), (NOTE, "NOT VERIFIED"), (FAIL, "FAILED")):
+        rows = [f for f in findings if f.level == level]
+        if rows:
+            print(f"{title}:")
+            for f in rows:
+                print(f"  {f.check}: {f.detail}")
+    code, line = outcome(findings)
+    print(line)
+    return code
 
 
 def cmd_verify_log(a: argparse.Namespace) -> int:
@@ -621,8 +651,13 @@ def parser() -> argparse.ArgumentParser:
         cmd_export_bundle,
         "write the case's reproducibility bundle (the examiner's choice, on counsel's advice)",
     )
-    sp.add_argument("--out", type=Path, required=True, help="a new .zip file")
+    sp.add_argument("--out", type=Path, required=True, help="a new file (a .zip)")
     sp.add_argument("--by", required=True)
+    sp.add_argument(
+        "--confirm-counsel-reviewed",
+        action="store_true",
+        help="confirm counsel reviewed what the bundle holds; without it nothing is written",
+    )
     sp = sub.add_parser(
         "verify-bundle", help="check a reproducibility bundle offline; re-derives every verdict"
     )

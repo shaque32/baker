@@ -7,25 +7,33 @@ memory, built from core/schema.sql, and checked in this order; any failure fails
 2. Versions: the rules and contracts that decided the verdicts are this copy's; otherwise it
    names the Baker commit to verify with, since only those rules can reproduce them.
 3. Tables: each row has exactly the schema's columns, and every reference resolves.
-4. Audit log: the hash chain holds from the first entry, its last hash is the one bundle.json
-   names, the last entry is this export, and every expert evidence decision in the log matches
-   the stored review (and the other way round).
-5. Inputs: each import entry in the log names the file hash stored for that source; with
+4. Audit log: the hash chain holds from the first entry and every payload reads, its last hash
+   is the one bundle.json names, and every expert evidence decision in the log matches the
+   stored review (and the other way round). Nothing after this runs on a log that failed.
+5. bundle.json: what it says that follows from the tables (run, models, inputs, contents, log
+   head) is recomputed and must match; METHOD.md must be the note it gives.
+6. Inputs: each import entry in the log names the file hash stored for that source; with
    --inputs, files there are hashed and compared.
-6. Labels: each evidence item's id still matches its content, its label is the model's answer
-   as stored (tables/model_calls.jsonl), and its quote is found word for word in the record.
-   Model calls are compared with the digests the audit log recorded for them (pipeline.claim's
+7. Rows: the assumptions, check results, evidence items and AI reviews behind each verdict are
+   the ones its claim's audit-log entry recorded (pipeline.claim's rows_sha256).
+8. Labels: each evidence item's id still matches its content and it cites its record's source;
+   its label is the model's answer as stored (tables/model_calls.jsonl), exactly or as the
+   pipeline rewrites it, and its quote is found word for word in the record. Each AI review
+   naming a stored reviewer answer says what that answer said.
+9. Model calls: compared with the digests the audit log recorded for them (pipeline.claim's
    model_calls; cloud.received's raw_sha256 for a hosted model's answers).
-7. Verdicts: the verdict rules, re-applied to the recorded labels, checks, stipulations and the
+10. Stipulations: each is what the expert's latest logged action left.
+11. Verdicts: the verdict rules, re-applied to the recorded labels, checks, stipulations and the
    expert decisions as they stood when each verdict was decided, give every verdict exactly
    (verdict, basis, reasons, coverage, citations), and the expert's confirmations and
    overrides in the log replay to the stored outcome.
-8. Report: the report rendered from these tables is byte for byte the report in the bundle.
+12. Report: the report rendered from these tables is byte for byte the report in the bundle.
 """
 
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import sqlite3
 import zipfile
@@ -35,11 +43,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from core import db, pipeline
+from core import db, encryption, pipeline
 from core.audit import quotes, rules, stance
+from core.audit import review as review_mod
 from core.audit._llm_json import BadModelOutput, parse_json_object
 from core.audit._local_model import RECEIVED_ACTION
-from core.bundle import export
+from core.bundle import export, sealed
 from core.contracts import (
     CONTRACTS_VERSION,
     EvidenceStatus,
@@ -84,6 +93,21 @@ def failed(findings: list[Finding]) -> bool:
     return any(f.level == FAIL for f in findings)
 
 
+def outcome(findings: list[Finding]) -> tuple[int, str]:
+    """(exit code, one line): 0 only when every check ran and passed; 2 when nothing failed but
+    something could not be checked (each NOTE says what and why); 1 when anything failed."""
+    fails = sum(f.level == FAIL for f in findings)
+    gaps = sum(f.level == NOTE for f in findings)
+    if fails:
+        return 1, f"bundle FAILED: {fails} problems (and {gaps} things not verified)"
+    if gaps:
+        return 2, (
+            f"bundle partly verified: nothing failed, but {gaps} things were not verified (the "
+            "NOT VERIFIED lines say what and why)"
+        )
+    return 0, "bundle verified: every check ran and passed"
+
+
 def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
@@ -92,12 +116,22 @@ def _dt(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
-def verify_bundle(path: Path, inputs_dir: Path | None = None) -> list[Finding]:
+def verify_bundle(
+    path: Path, inputs_dir: Path | None = None, passphrase: str | None = None
+) -> list[Finding]:
+    """Every check's findings. An encrypted bundle (core/bundle/sealed.py) needs `passphrase`."""
     out = _Out()
     try:
-        zf = zipfile.ZipFile(path)
-    except (OSError, zipfile.BadZipFile) as e:
-        out.add(FAIL, "files", f"the bundle cannot be read as a zip ({e})")
+        data = Path(path).read_bytes()
+        if sealed.is_sealed(data):
+            if not passphrase:
+                out.add(FAIL, "files", "the bundle is encrypted; give its passphrase")
+                return out.items
+            data = sealed.open_sealed(data, passphrase)
+            out.add(PASS, "files", "the encrypted bundle opened with its passphrase, unaltered")
+        zf = zipfile.ZipFile(io.BytesIO(data))
+    except (OSError, zipfile.BadZipFile, encryption.EncryptionError, encryption.WrongSecret) as e:
+        out.add(FAIL, "files", f"the bundle cannot be read ({e})")
         return out.items
     with zf:
         manifest = _files(zf, out)
@@ -109,14 +143,21 @@ def verify_bundle(path: Path, inputs_dir: Path | None = None) -> list[Finding]:
         if conn is None:
             return out.items
         try:
-            _audit_log(conn, manifest, out)
-            _inputs(conn, manifest, out, inputs_dir)
+            # Every later check reads the log, so nothing runs on a log that failed.
+            if not _audit_log(conn, manifest, out):
+                return out.items
             run = _run(conn, manifest, out)
-            if run is not None:
-                _labels(conn, run, out)
-                _calls(conn, out)
-                _verdicts(conn, run, out)
-                _report(conn, zf, manifest, out)
+            if run is None:
+                return out.items
+            _manifest(conn, zf, manifest, run, out)
+            _inputs(conn, out, inputs_dir)
+            _rows(conn, run, out)
+            _labels(conn, run, out)
+            _ai_reviews(conn, out)
+            _calls(conn, out)
+            _stipulations(conn, out)
+            _verdicts(conn, run, out)
+            _report(conn, zf, manifest, out)
         finally:
             conn.close()
     return out.items
@@ -136,6 +177,10 @@ def _files(zf: zipfile.ZipFile, out: _Out) -> dict[str, Any] | None:
     try:
         manifest = json.loads(zf.read(export.MANIFEST).decode("utf-8"))
         listed: dict[str, dict[str, Any]] = manifest["files"]
+        if not isinstance(listed, dict) or not all(
+            isinstance(m, dict) and isinstance(m.get("sha256"), str) for m in listed.values()
+        ):
+            raise TypeError("its files list is not a map of names to SHA-256 hashes")
     except (ValueError, KeyError, TypeError, UnicodeDecodeError) as e:
         out.add(FAIL, "files", f"{export.MANIFEST} cannot be read ({e})")
         return None
@@ -246,6 +291,7 @@ def _tables(zf: zipfile.ZipFile, manifest: dict[str, Any], out: _Out) -> sqlite3
 
 
 def _log(conn: sqlite3.Connection) -> list[tuple[int, str, str, str, dict[str, Any]]]:
+    """The audit log's entries; read only after _audit_log passed (every payload parses)."""
     return [
         (seq, at, actor, action, json.loads(p))
         for seq, at, actor, action, p in conn.execute(
@@ -254,49 +300,91 @@ def _log(conn: sqlite3.Connection) -> list[tuple[int, str, str, str, dict[str, A
     ]
 
 
-def _audit_log(conn: sqlite3.Connection, manifest: dict[str, Any], out: _Out) -> None:
+def _audit_log(conn: sqlite3.Connection, manifest: dict[str, Any], out: _Out) -> bool:
     brk = audit_log.first_break(conn)
     if brk is not None:
         out.add(FAIL, "audit log", f"the hash chain is broken at entry {brk}")
-        return
+        return False
+    for seq, payload in conn.execute("SELECT seq, payload_json FROM audit_log ORDER BY seq"):
+        try:
+            if not isinstance(json.loads(payload), dict):
+                raise ValueError("not a JSON object")
+        except ValueError as e:
+            out.add(FAIL, "audit log", f"entry {seq}'s payload cannot be read ({e})")
+            return False
     head = conn.execute("SELECT seq, hash, actor, action FROM audit_log ORDER BY seq DESC LIMIT 1")
-    seq, h, actor, action = head.fetchone() or (0, "", "", "")
+    seq, h, _actor, _action = head.fetchone() or (0, "", "", "")
     want = manifest.get("audit_log") or {}
-    if h != want.get("last_hash") or seq != want.get("last_seq"):
+    if not isinstance(want, dict) or h != want.get("last_hash") or seq != want.get("last_seq"):
         out.add(
             FAIL,
             "audit log",
-            f"the log ends at entry {seq} ({h[:12]}...), not at the "
-            f"entry bundle.json names ({want.get('last_seq')})",
+            f"the log ends at entry {seq} ({h[:12]}...), not at the entry bundle.json names",
         )
-        return
-    if action != export.EXPORT_ACTION or actor != manifest.get("created_by"):
-        out.add(FAIL, "audit log", "the log's last entry is not this export")
-        return
+        return False
     problem = audit_log.decision_problem(conn)
     if problem is not None:
         out.add(FAIL, "audit log", problem[1])
-        return
+        return False
     out.add(PASS, "audit log", f"hash chain holds over {seq} entries; last hash {h}")
+    return True
+
+
+# ---------------------------------------------------------------- bundle.json and METHOD.md
+
+
+def _manifest(
+    conn: sqlite3.Connection,
+    zf: zipfile.ZipFile,
+    manifest: dict[str, Any],
+    run: dict[str, Any],
+    out: _Out,
+) -> None:
+    """Everything bundle.json says that follows from the tables (contents, run, inputs, models,
+    audit-log head) is recomputed and must match exactly; METHOD.md must be the note
+    bundle.json gives. The export's time and exporter are as the exporter wrote them: the
+    case's own log records the export (bundle.export) with the bundle's SHA-256."""
+    facts = export.derived(conn, run)
+    listed_inputs = [
+        {k: v for k, v in i.items() if k != "case_copy_matches_at_export"}
+        for i in manifest.get("inputs") or []
+        if isinstance(i, dict)
+    ]
+    bad = [
+        key
+        for key, want in facts.items()
+        if (listed_inputs if key == "inputs" else manifest.get(key)) != want
+    ]
+    for key in bad:
+        out.add(FAIL, "bundle.json", f"its {key} are not what the tables give")
+    try:
+        note = export.method_note(manifest)
+    except (KeyError, TypeError, AttributeError) as e:
+        out.add(FAIL, "bundle.json", f"it cannot be read as a method note's source ({e})")
+        return
+    if note.encode("utf-8") != zf.read(export.METHOD):
+        out.add(FAIL, "bundle.json", f"{export.METHOD} is not the note bundle.json gives")
+        bad.append(export.METHOD)
+    if not bad:
+        out.add(
+            PASS,
+            "bundle.json",
+            f"its run, models, inputs, contents and log head match the tables, and "
+            f"{export.METHOD} is the note they give",
+        )
 
 
 # ---------------------------------------------------------------- 5. inputs
 
 
-def _inputs(
-    conn: sqlite3.Connection, manifest: dict[str, Any], out: _Out, inputs_dir: Path | None
-) -> None:
+def _inputs(conn: sqlite3.Connection, out: _Out, inputs_dir: Path | None) -> None:
     stored = dict(conn.execute("SELECT id, sha256 FROM sources"))
     logged: dict[str, str] = {}
     for _seq, _at, _actor, action, p in _log(conn):
         if action == "import" and isinstance(p.get("source_id"), str):
             logged[p["source_id"]] = str(p.get("sha256"))
-    listed = {i["source_id"]: i["sha256"] for i in manifest.get("inputs", [])}
     bad = False
     for sid, sha in sorted(stored.items()):
-        if listed.get(sid) != sha:
-            out.add(FAIL, "inputs", f"source {sid}: bundle.json lists another hash than the case")
-            bad = True
         if sid in logged and logged[sid] != sha:
             out.add(
                 FAIL,
@@ -306,7 +394,7 @@ def _inputs(
             bad = True
     unlogged = sorted(set(stored) - set(logged))
     if not bad:
-        out.add(PASS, "inputs", f"{len(stored)} input hashes match the case and the import log")
+        out.add(PASS, "inputs", f"{len(stored)} input hashes match the import log")
     if unlogged:
         out.add(
             NOTE,
@@ -318,6 +406,9 @@ def _inputs(
         )
     if inputs_dir is None:
         out.add(NOTE, "inputs", "original files not checked (pass --inputs <folder>)")
+        return
+    if not Path(inputs_dir).is_dir():
+        out.add(FAIL, "inputs", f"{inputs_dir} is not a folder, so no original file was checked")
         return
     found: dict[str, str] = {}
     for p in sorted(Path(inputs_dir).rglob("*")):
@@ -348,7 +439,13 @@ def _run(conn: sqlite3.Connection, manifest: dict[str, Any], out: _Out) -> dict[
         out.add(FAIL, "run", f"the audit run cannot be read ({e})")
         return None
     want = (manifest.get("run") or {}).get("run_id")
-    if run is None or last is None or run.get("partial") or run["run_id"] != want:
+    if (
+        run is None
+        or last is None
+        or run.get("partial")
+        or run["run_id"] != want
+        or pipeline.latest_attempt(conn) is not None
+    ):
         out.add(FAIL, "run", f"the bundle's latest completed audit is not {want}")
         return None
     if run.get("fake"):
@@ -359,13 +456,44 @@ def _run(conn: sqlite3.Connection, manifest: dict[str, Any], out: _Out) -> dict[
 # ---------------------------------------------------------------- 6. labels
 
 
+def _rows(conn: sqlite3.Connection, run: dict[str, Any], out: _Out) -> None:
+    """The rows each verdict rests on (assumptions, check results, evidence items with their
+    source and rationale, AI reviews) are the ones its claim's audit-log entry recorded a
+    digest of (core/pipeline.py rows_digest)."""
+    changed, unbound = export.changed_rows(conn, run)
+    missing = sorted(set(run["manifest"]) - set(export.claim_entries(conn, run)))
+    for claim_id in changed:
+        out.add(
+            FAIL,
+            "rows",
+            f"{claim_id}: an assumption, check result, evidence item or AI review was "
+            "changed after the claim's audit-log entry recorded it",
+        )
+    for claim_id in missing:
+        out.add(FAIL, "rows", f"{claim_id}: no audit-log entry records the claim's rows")
+    if unbound:
+        out.add(
+            NOTE,
+            "rows",
+            f"{unbound} claim entries predate row digests, so their assumptions, checks, "
+            "evidence and AI reviews are not bound to the log",
+        )
+    if not changed and not missing:
+        out.add(
+            PASS,
+            "rows",
+            f"the rows behind {len(run['manifest']) - unbound} verdicts are the ones their "
+            "audit-log entries recorded",
+        )
+
+
 def _evidence_rows(conn: sqlite3.Connection, ids: list[str]) -> list[tuple]:
     return [
         r
         for eid in ids
         for r in conn.execute(
-            "SELECT id, assumption_id, record_id, stance, quote, rationale, model_run_id"
-            " FROM evidence_items WHERE id = ?",
+            "SELECT id, assumption_id, record_id, stance, quote, rationale, model_run_id,"
+            " source_id, locator FROM evidence_items WHERE id = ?",
             (eid,),
         )
     ]
@@ -384,12 +512,13 @@ def _answers(conn: sqlite3.Connection) -> dict[tuple[str, str], list[Any]]:
     return out
 
 
-def _stand_in(conn: sqlite3.Connection, model_run_id: str | None) -> bool:
+def _stand_in(conn: sqlite3.Connection, model_run_id: str | None, test_run: bool) -> bool:
     """A labeler that stored no model answers: the eval's stand-ins, or a test's. A real model
     run stores every call (core/pipeline.py flush_calls), and the claim entries' digests name
-    them, so removing a real run's calls fails the model-call check instead."""
+    them, so removing a real run's calls fails the model-call check instead. An item naming no
+    model run counts as a stand-in's only in a test run."""
     if model_run_id is None:
-        return True
+        return test_run
     r = conn.execute("SELECT params_json FROM model_runs WHERE id = ?", (model_run_id,)).fetchone()
     if r is not None and json.loads(r[0]).get("stand_in"):
         return True
@@ -400,15 +529,21 @@ def _stand_in(conn: sqlite3.Connection, model_run_id: str | None) -> bool:
 
 
 def _same_label(item: tuple, answer: Any) -> bool:
-    _id, _a, _r, stance_, quote, rationale, _m = item
-    if answer.quote != quote or not rationale.endswith(answer.rationale):
+    """The item is the model's answer exactly, or exactly as the pipeline rewrites one it
+    records as complicates (core/pipeline.py _Run._label): a "contradicts" on a record that is
+    not the message the assumption is about (core/audit/stance.py subject_stance), or a
+    "supports" or "contradicts" on forwarded words (core/ingest/forwarded.py)."""
+    stance_, quote, rationale = item[3], item[4], item[5]
+    if answer.quote != quote:
         return False
-    if str(Stance(answer.stance).value) == stance_:
+    model = Stance(answer.stance)
+    if model.value == stance_:
         return rationale == answer.rationale
-    # Code may record a model's label as complicates, and says why in front of its rationale
-    # (core/audit/stance.py subject_stance; core/ingest/forwarded.py).
-    return stance_ == Stance.COMPLICATES.value and rationale.startswith(
-        (stance.NOT_THE_MESSAGE, forwarded.STANCE_NOTE)
+    if stance_ != Stance.COMPLICATES.value or model not in (Stance.SUPPORTS, Stance.CONTRADICTS):
+        return False
+    return rationale in (
+        f"{forwarded.STANCE_NOTE}{model.value}. {answer.rationale}",
+        *((stance.NOT_THE_MESSAGE + answer.rationale,) if model is Stance.CONTRADICTS else ()),
     )
 
 
@@ -420,32 +555,39 @@ def _labels(conn: sqlite3.Connection, run: dict[str, Any], out: _Out) -> None:
         return
     answers = _answers(conn)
     same_quote_check = run["config"].get("quote_check") == quotes.VERSION
+    test_run = bool(run.get("fake"))
     stand_ins = 0
     bad = 0
     for item in rows:
-        eid, aid, rid, stance_, quote, _rat, mrid = item
+        eid, aid, rid, stance_, quote, _rat, mrid, source_id, locator = item
         if evidence_id(aid, rid, Stance(stance_), quote) != eid:
             out.add(FAIL, "labels", f"{eid}: its stance or quote was changed after it was stored")
             bad += 1
             continue
-        if _stand_in(conn, mrid):
+        rec = get_record(conn, rid)
+        if rec is None or (rec.ref.source_id, rec.ref.locator) != (source_id, locator):
+            out.add(FAIL, "labels", f"{eid}: its source or locator is not that of {rid}")
+            bad += 1
+            continue
+        if _stand_in(conn, mrid, test_run):
             stand_ins += 1
+        elif mrid is None:
+            out.add(FAIL, "labels", f"{eid}: it names no model run, and this is not a test run")
+            bad += 1
+            continue
         elif not any(
             _same_label(item, a) for a in answers.get((mrid, canonical_json([aid, rid])), [])
         ):
             out.add(FAIL, "labels", f"{eid}: no stored model answer gives this label")
             bad += 1
             continue
-        if same_quote_check:
-            rec = get_record(conn, rid)
-            if (
-                rec is None
-                or rec.text is None
-                or not quotes.verify_quote(quote, rec.text)
-                or not quotes.cites_record(quote, rec.text, rec.own)
-            ):
-                out.add(FAIL, "labels", f"{eid}: its quote is not found word for word in {rid}")
-                bad += 1
+        if same_quote_check and (
+            rec.text is None
+            or not quotes.verify_quote(quote, rec.text)
+            or not quotes.cites_record(quote, rec.text, rec.own)
+        ):
+            out.add(FAIL, "labels", f"{eid}: its quote is not found word for word in {rid}")
+            bad += 1
     if not same_quote_check:
         out.add(
             NOTE,
@@ -464,17 +606,37 @@ def _labels(conn: sqlite3.Connection, run: dict[str, Any], out: _Out) -> None:
         out.add(
             PASS,
             "labels",
-            f"{len(rows)} evidence items match their content and the answers as stored",
+            f"{len(rows)} evidence items match their content and their record's source"
+            + ("" if stand_ins == len(rows) else ", and the model's answers as stored"),
         )
+
+
+def _ai_reviews(conn: sqlite3.Connection, out: _Out) -> None:
+    """Each AI review that names a stored, well-formed reviewer answer says what it said: the
+    decision and the reason, exactly (core/audit/review.py)."""
+    checked = bad = 0
+    for rid, status, reason, raw in conn.execute(
+        "SELECT r.id, r.status, r.reason, mc.raw_output FROM evidence_reviews r"
+        " JOIN model_calls mc ON mc.id = r.model_call_id"
+        " WHERE r.reviewer_kind = 'ai' AND mc.outcome = 'ok' ORDER BY r.rowid"
+    ):
+        try:
+            answer = review_mod._validate(parse_json_object(raw))
+        except BadModelOutput:
+            continue  # not a reviewer answer; the review then says why it failed
+        checked += 1
+        want = (
+            EvidenceStatus.AI_ACCEPTED if answer.decision == "accept" else EvidenceStatus.DISMISSED
+        )
+        if (status, reason) != (want.value, answer.reason.strip()):
+            out.add(FAIL, "ai reviews", f"{rid}: it is not what the reviewer's stored answer says")
+            bad += 1
+    if checked and not bad:
+        out.add(PASS, "ai reviews", f"{checked} AI reviews say exactly what the reviewer answered")
 
 
 def _calls(conn: sqlite3.Connection, out: _Out) -> None:
-    calls = {
-        cid: (outcome, prompt, raw)
-        for cid, outcome, prompt, raw in conn.execute(
-            "SELECT id, outcome, prompt, raw_output FROM model_calls"
-        )
-    }
+    calls = {cid: raw for cid, raw in conn.execute("SELECT id, raw_output FROM model_calls")}
     bound: set[str] = set()
     unbound_claims = 0
     bad = False
@@ -483,20 +645,20 @@ def _calls(conn: sqlite3.Connection, out: _Out) -> None:
         if action != pipeline.CLAIM_ACTION:
             continue
         digest = p.get("model_calls")
-        if not isinstance(digest, dict):
+        if not isinstance(digest, dict) or not isinstance(digest.get("ids"), list):
             unbound_claims += 1
             continue
-        try:
-            got = pipeline.calls_digest([(cid, *calls[cid]) for cid in digest["ids"]])
-        except KeyError as e:
-            out.add(FAIL, "model calls", f"entry {seq} names model call {e} that is missing")
+        missing = [cid for cid in digest["ids"] if cid not in calls]
+        if missing:
+            out.add(FAIL, "model calls", f"entry {seq} names model call {missing[0]}, missing")
             bad = True
             continue
-        if got["sha256"] != digest.get("sha256"):
+        if pipeline.calls_digest(conn, digest["ids"])["sha256"] != digest.get("sha256"):
             out.add(
                 FAIL,
                 "model calls",
-                f"a prompt, answer or outcome recorded by entry {seq} was changed",
+                f"a model call recorded by entry {seq} was changed (its prompt, answer, "
+                "outcome, subject, model run or time)",
             )
             bad = True
         bound.update(digest["ids"])
@@ -511,7 +673,7 @@ def _calls(conn: sqlite3.Connection, out: _Out) -> None:
     }
     if received:
         for cid in sorted(hosted):
-            if _sha(calls[cid][2]) not in received:
+            if _sha(calls[cid]) not in received:
                 out.add(
                     FAIL,
                     "model calls",
@@ -540,6 +702,40 @@ def _calls(conn: sqlite3.Connection, out: _Out) -> None:
             "model calls",
             f"{len(bound)} model calls match the digests in the audit "
             f"log{f'; {unlisted} are not named by one' if unlisted else ''}",
+        )
+
+
+def _stipulations(conn: sqlite3.Connection, out: _Out) -> None:
+    """Each stored stipulation's status, decider, time and statement are what its latest
+    logged expert action (stipulation.confirm or stipulation.withdraw) left them."""
+    state: dict[str, tuple[str, str, str, Any]] = {}
+    for _s, at, actor, act, p in _log(conn):
+        if act == "stipulation.confirm":
+            state[p.get("stipulation_id")] = ("confirmed", actor, at, p.get("statement"))
+        elif act == "stipulation.withdraw":
+            old = state.get(p.get("stipulation_id"), ("", "", "", None))
+            state[p.get("stipulation_id")] = ("rejected", actor, at, old[3])
+    bad = 0
+    stored = pipeline.load_stipulations(conn)
+    for st in stored:
+        logged = state.get(st.id)
+        if logged is None:
+            if st.status != StipulationStatus.PROPOSED:
+                out.add(FAIL, "stipulations", f"{st.id}: decided, but no expert action is logged")
+                bad += 1
+            continue
+        status, actor, at, statement = logged
+        if (
+            st.status.value != status
+            or st.decided_by != actor
+            or st.decided_at_utc != _dt(at)
+            or (statement is not None and st.statement != statement)
+        ):
+            out.add(FAIL, "stipulations", f"{st.id}: it is not what the logged expert action left")
+            bad += 1
+    if stored and not bad:
+        out.add(
+            PASS, "stipulations", f"{len(stored)} stipulations match the expert's logged actions"
         )
 
 
