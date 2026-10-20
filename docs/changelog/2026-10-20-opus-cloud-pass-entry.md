@@ -15,9 +15,13 @@
   (`/mnt/project-files/baker/cloud-bench/2026-10-15/told-frame-line/RESULTS-medium.md`, $4.52 of
   API spend, synthetic data only): on the signed set (95 gated items) contradicts precision 10/10
   (Wilson 95% 0.722-1.0), supports recall 33/33 (0.896-1.0), nothing contradicting shown as
-  supports, contradicts recall 10/11 (misses P065); on 24 new items, no wrong contradicts and
-  every control kept; on 26 fresh items from "Custom model for Baker", no wrong contradicts,
-  contradicts recall 8/8, supports recall 4/4. Tests: the shipped list is exactly this entry and
+  supports, contradicts recall 10/11 (misses P065); on this thread's 24 new items, at medium,
+  no wrong contradicts and every control kept (22 scored; T022 and T023 were left out before any
+  call, as at high); on 26 fresh items from "Custom model for Baker", at medium, no wrong
+  contradicts, contradicts recall 8/8, supports recall 4/4. Every item's gold label and both
+  answers, for all three sets: `eval/probe/results/2026-10-15-opus-5-5-medium-stance-v1-2.jsonl`
+  (item ids and labels only, no item text; the new items' labels are drafts, not signed).
+  Tests: the shipped list is exactly this entry and
   matches the cloud prompt's version, and an attested case uses Opus at medium but not at high.
   `make check` in the PR description. No new model run.
 - Open: the case01 audit with the signed assumption sheet was not run again with v1.2 (with

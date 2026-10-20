@@ -463,6 +463,30 @@ def test_only_opus_at_medium_with_the_cloud_prompt_has_passed_the_signed_stance_
     assert _shipped_probe_passed() == {(cloud.DEFAULT_MODEL, cloud.DEFAULT_EFFORT, version)}
 
 
+def test_the_entry_s_committed_answers_meet_the_signed_bars():
+    # The per-item answers behind the entry (core/llm/cloud.py names the file): the signed set
+    # as it is in the repo now, and both new sets with no wrong "contradicts".
+    import hashlib
+
+    root = Path(__file__).resolve().parents[1]
+    results = root / "eval/probe/results/2026-10-15-opus-5-5-medium-stance-v1-2.jsonl"
+    rows = [json.loads(line) for line in results.read_text(encoding="utf-8").splitlines()]
+    signed = [r for r in rows if r["set"] == "signed"]
+    probe = (root / "eval/gold/probe/probe.jsonl").read_bytes()
+    assert {r["set_sha256"] for r in signed} == {hashlib.sha256(probe).hexdigest()[:16]}
+    gated = [r for r in signed if r["scored"]]
+    assert len(gated) == 95
+    supports = [r for r in gated if r["gold"] == "supports"]
+    said = [r for r in gated if r["first"] == "contradicts"]
+    assert sum(r["first"] == "supports" for r in supports) == len(supports) == 33
+    assert sum(r["gold"] == "contradicts" for r in said) == len(said) == 10
+    assert not [r for r in gated if r["gold"] == "contradicts" and r["first"] == "supports"]
+    for name, n in (("new-24", 22), ("new-26", 26)):
+        new = [r for r in rows if r["set"] == name and r["scored"]]
+        assert len(new) == n
+        assert not [r for r in new if r["first"] == "contradicts" and r["gold"] != "contradicts"]
+
+
 def test_the_shipped_entry_lets_an_attested_case_use_opus_at_medium(case_db, monkeypatch):
     monkeypatch.setattr(cloud, "PROBE_PASSED", _shipped_probe_passed())
     cloud_policy.set_cloud(case_db, "expert:Ana", allowed=True, csam=False)
