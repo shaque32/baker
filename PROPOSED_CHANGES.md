@@ -364,7 +364,8 @@ Diff (both files, then re-pin the draft's SHA-256 in tests/test_gold_stancedata.
 
 ## 2026-10-15 claude/project-thread-01fybj: stance prompt v1.2: told-frame and undated-denial sentences in "contradicts"
 SIGNED by Arsh on 2026-10-15 ("approved" in the "Audit our model scoring" thread, 13:45Z, with
-"Sign it" on the card that quoted the two sentences). APPLIED word for word in the same PR.
+"Sign it" on the card that quoted the two sentences). APPLIED word for word in the same PR. On
+2026-10-19 Arsh chose to give this text to a cloud model only (the entry below).
 File: core/audit/prompts/stance.md
 Why: stance guide v0.3 rules 12 and 23 (signed 2026-10-14) read a same-day "X told the owner
 that ..." answered by X saying the opposite, and an undated act against a denial that names no
@@ -396,3 +397,38 @@ Code that follows: none. The labeler fills the same slots. The prompt version ev
 records changes (sha256:4c35f1cf01b0b227 -> sha256:2863d8dbf66960f6), so stored v1.1 answers are
 not reused and a re-run labels again. Next: the 14B's probe run on the Mac, and, for #68, an
 entry for (claude-opus-5-5, the v1.2 version) in core/llm/cloud.PROBE_PASSED, with Arsh's sign-off.
+
+## 2026-10-19 claude/project-thread-01fybj: stance v1.2 for a cloud model only ("Opus only")
+SIGNED by Arsh on 2026-10-20 ("Sign it" at 00:31Z on the card in the "Audit our model scoring"
+thread that asked "Sign stance_cloud.md, your v1.2 text, as the cloud model's own prompt file?").
+APPLIED word for word in the same PR.
+File: core/audit/prompts/stance.md, and a new core/audit/prompts/stance_cloud.md
+Why: Arsh chose "Opus only" on 2026-10-19 (decision card in "Audit our model scoring", 20:41Z:
+"The 14B keeps v1.1 unchanged; Opus gets v1.2 as its own signed prompt file, which you sign").
+On the signed probe set, Arsh's Mac run (eee8d15, 2026-10-19) took the local 14B's contradicts
+precision from 58% (11 of 19) with v1.1 to 50% (11 of 22) with v1.2, while Opus 5.5 met every
+bar only with v1.2 (the entry above). One prompt file cannot give each model its own text.
+Diff, part one: core/audit/prompts/stance.md goes back to main's v1.1, byte for byte (the PR no
+longer changes it; prompt version sha256:4c35f1cf01b0b227). This takes the entry above out of
+stance.md, so local cases label exactly as they do on main.
+Diff, part two: a new file core/audit/prompts/stance_cloud.md (file sha256 457bc966...): this
+header, then the line `<!-- prompt starts -->`, then the v1.2 body exactly as the entry above
+applied it (body sha256 2863d8db..., the text the preregistered Opus runs sent; prompt version
+sha256:2863d8dbf66960f6; tests/test_stance.py pins it).
++# Cloud stance prompt (HUMAN-OWNED, Arsh)
++
++v1.2, signed by Arsh on 2026-10-15 ("approved" in the "Audit our model scoring" thread): stance
++prompt v1.1 (stance.md) with the told-frame sentences in "contradicts", which teach stance guide
++v0.3 rules 12 and 23 (PROPOSED_CHANGES.md). Only a cloud model reads this file: Arsh chose on
++2026-10-19 ("Opus only", same thread) to keep v1.1 for the local model, since on the signed
++probe set v1.2 took the local 14B's contradicts precision from 58% to 50%.
++Arsh edits this wording; agents only wire it to the cloud model.
++Only the text after the next line is sent to the model.
++
++<!-- prompt starts -->
+Code that follows (in the same PR): core/audit/stance.py gives a cloud model the cloud prompt
+(CLOUD_PROMPT_FILE, prompt_file: the case's cloud labeler, and a cloud model the benchmarks pass
+in); core/casework/cloud.py checks PROBE_PASSED against the cloud prompt's version, the one a
+cloud case would send; eval/bench/claude_bench.py scores the cloud prompt by default. Next: an
+entry for (claude-opus-5-5, medium, sha256:2863d8dbf66960f6) in core/llm/cloud.PROBE_PASSED,
+with Arsh's sign-off.

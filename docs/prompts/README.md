@@ -15,6 +15,10 @@ frozen-files thread puts them there, in a PR Arsh merges.
 | `translation.md` | `core/audit/prompts/translation.md` | `core/audit/translation.py` | `{text}` |
 | `reviewer-notes.md` | `core/audit/prompts/reviewer.md` (exists) | `core/audit/review.py` | `{assumption}`, `{quote}`, `{context}` |
 
+`core/audit/prompts/stance_cloud.md` has no draft here: it is stance v1.2 (v1.1 plus the told-frame
+sentences, signed 2026-10-15), which only a cloud model reads (`core/audit/stance.py`, `prompt_file`).
+The local model reads `stance.md` (v1.1).
+
 How the code uses a prompt file:
 
 - Only the text after a line that is exactly `<!-- prompt starts -->` is sent to the model.

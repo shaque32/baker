@@ -56,10 +56,12 @@ API_BASE_URL = "https://api.anthropic.com"
 # meets those bars on
 # the signed set AND on new held-out items nobody used to write or tune the prompt, plus Arsh's
 # sign-off on the entry (its comment names the results file).
-# EMPTY: on the signed set (2026-10-15) Opus 5.5 scored 73%
-# contradicts precision (bar 90%), and an unreviewed "contradicts" on an event assumption can
-# make a claim CONTRADICTED (rules 0.2.1, rule 1b). Cloud labeling waits for the signed prompt
-# fix and a passing re-run (docs/PRODUCT_STATUS.md).
+# The prompt version is the cloud stance prompt's (core/audit/prompts/stance_cloud.md), the one
+# a cloud model reads. EMPTY: with stance prompt v1.1, on the signed set (2026-10-15), Opus 5.5
+# scored 73% contradicts precision (bar 90%), and an unreviewed "contradicts" on an event
+# assumption can make a claim CONTRADICTED (rules 0.2.1, rule 1b). The cloud prompt is v1.2,
+# with which Opus 5.5 (high and medium) met those bars on the signed set and on new items
+# (cloud-bench 2026-10-15 told-frame-line); its entry waits for Arsh's sign-off.
 PROBE_PASSED: frozenset[tuple[str, str, str]] = frozenset()
 REQUEST_TIMEOUT_SECONDS = 120.0
 MAX_RETRIES = 2

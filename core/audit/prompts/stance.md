@@ -1,9 +1,8 @@
 # Stance prompt (HUMAN-OWNED, Arsh)
 
-v1.2, signed by Arsh on 2026-10-15 ("approved" in the "Audit our model scoring" thread): v1.1 with
-the told-frame sentences in "contradicts", which teach stance guide v0.3 rules 12 and 23
-(PROPOSED_CHANGES.md). v1.1 was signed on 2026-10-14 ("approved" in the "Custom model for Baker"
-thread, with stance guide v0.3); v1.0 on 2026-10-07 from the docs/prompts/stance.md draft v0.1.
+v1.1, signed by Arsh on 2026-10-14 ("approved" in the "Custom model for Baker" thread, with stance
+guide v0.3; PROPOSED_CHANGES.md). v1.0 was signed on 2026-10-07 from the docs/prompts/stance.md
+draft v0.1.
 Arsh edits this wording; agents only wire it to the local model.
 Only the text after the next line is sent to the model.
 
@@ -50,12 +49,7 @@ Choose exactly one stance:
 - "contradicts": what the record itself says cannot be true at the same time as the
   assumption, with no unstated fact needed. Matching words with a different date or sender
   rule out only an assumption that excludes other messages ("first contact on", "no contact
-  between"). Likewise, when the assumption is that someone told, wrote or asked something, a
-  message of theirs saying the opposite shows only what that message says; another message
-  could still have said it, so it is "complicates". A denial that names no time ("i never got
-  it") covers only the time before it was sent: it rules out an assumption dated before the
-  message and leaves an undated one open. A record that only makes another reading more likely
-  is not "contradicts".
+  between"). A record that only makes another reading more likely is not "contradicts".
 - "complicates": the record bears on the assumption but leaves it open: an ambiguous meaning,
   a joke or sarcasm, a later correction, the same words on another date or from another
   account, a handle whose owner is not shown, a time that depends on a time zone, or anything

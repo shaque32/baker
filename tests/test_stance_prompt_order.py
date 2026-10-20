@@ -3,9 +3,9 @@ different order, so that consecutive model calls share a long prompt prefix. It 
 
 These tests hold the draft to that: the same lines as v1.0 (whose body is docs/prompts/stance.md
 draft v0.1), the fixed instructions before the case data, and a prefix that two calls on the
-same assumption share up to the record. The product uses the signed v1.2 (2026-10-15); v1.1
-(2026-10-14) added {claim}, so its labeler refuses this draft, and the speed test times only
-drafts with v1.1's slots.
+same assumption share up to the record. The product uses the signed v1.1 (2026-10-14), which
+adds {claim}; its labeler refuses this draft, and the speed test times only drafts with v1.1's
+slots.
 
 SYNTHETIC. Fake model only.
 """

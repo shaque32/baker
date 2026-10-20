@@ -15,8 +15,9 @@ Usage:
   python -m eval.bench.claude_bench --dry-run
       No network: a stand-in client answers every call, to check the plumbing.
 
---stance-prompt scores the probe on another stance prompt file (the product prompt is used for
-case01 either way); --stance-only skips the reviewer items; --layout picks the probe input layout
+--stance-prompt scores the probe on another stance prompt file (by default the cloud stance
+prompt core/audit/prompts/stance_cloud.md, which the product sends a cloud model; case01 uses it
+either way); --stance-only skips the reviewer items; --layout picks the probe input layout
 (eval/probe/from_draft.py: "product", the default since 2026-10-14; "product_members", which adds
 the chat's members line as stance prompt v1.1's wiring will; or "legacy").
 
@@ -320,7 +321,7 @@ def run_probe(
     from eval.probe import prompts
     from eval.probe.run_probe import run_model
 
-    path = check_prompt_path(stance_prompt) if stance_prompt else prompts.STANCE_PROMPT
+    path = check_prompt_path(stance_prompt) if stance_prompt else prompts.STANCE_CLOUD
     reviewer, stance = probe_items(probe, layout)
     before = model.usage.copy()
     res = run_model(model, reviewer, stance, model.params, repeat, out,  # type: ignore[arg-type]

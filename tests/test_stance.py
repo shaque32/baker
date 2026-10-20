@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from core.audit._llm_json import PromptMissingError, prompt_body
+from core.audit._llm_json import PromptMissingError, prompt_body, prompt_version
 from core.audit.stance import (
     NO_CLAIM,
     STANCE_SCHEMA,
@@ -23,7 +23,10 @@ from tests.fake_model import FakeModel, make_assumption
 SIGNED = prompt_body(
     (Path(__file__).parents[1] / "core/audit/prompts/stance.md").read_text("utf-8")
 )
-DRAFT = SIGNED  # the tests below fill the signed prompt (v1.2)
+DRAFT = SIGNED  # the tests below fill the signed prompt (v1.1)
+CLOUD = prompt_body(
+    (Path(__file__).parents[1] / "core/audit/prompts/stance_cloud.md").read_text("utf-8")
+)
 
 ASSUMPTION = make_assumption("The sender asked to meet at the garage on March 5.")
 CANDIDATE = EvidenceCandidate(
@@ -235,7 +238,8 @@ def test_the_assumption_renderer_is_used():
 
 
 # v1.2 (signed 2026-10-15, "Audit our model scoring") is v1.1 with these two sentences in the
-# "contradicts" entry, after "no contact between").", and nothing else.
+# "contradicts" entry, after "no contact between").", and nothing else. Arsh chose on 2026-10-19
+# ("Opus only") to give it to a cloud model only, as its own file; the local model keeps v1.1.
 TOLD_FRAME = (
     "Likewise, when the assumption is that someone told, wrote or asked something, a message of"
     " theirs saying the opposite shows only what that message says; another message could still"
@@ -247,24 +251,29 @@ TOLD_FRAME = (
 # (stance_v1_1_told_frame_draft.md, file sha256 ba603d12..., in the shared cloud-bench folder),
 # so the signed text is the tested text.
 SIGNED_V1_2_BODY_SHA256 = "2863d8dbf66960f6de732ccb136c5ff29ceff0f202924a71ef58c56ab93bdc95"
+# The version every local stance run has recorded since v1.1 was signed (2026-10-14).
+SIGNED_V1_1_VERSION = "sha256:4c35f1cf01b0b227"
 
 
-def test_the_signed_prompt_is_v1_2():
+def test_the_signed_prompt_is_v1_1():
     head = (Path(__file__).parents[1] / "core/audit/prompts/stance.md").read_text("utf-8")
-    assert "\nv1.2, signed by Arsh on 2026-10-15" in head
-    assert hashlib.sha256(SIGNED.encode("utf-8")).hexdigest() == SIGNED_V1_2_BODY_SHA256
+    assert "\nv1.1, signed by Arsh on 2026-10-14" in head
+    assert prompt_version(SIGNED) == SIGNED_V1_1_VERSION
     for part in ("[CLAIM START]", "How names read:", "with no unstated fact needed",
                  "the same words on another date or from another"):  # fmt: skip
         assert part in SIGNED
 
 
+def test_the_cloud_prompt_is_v1_2():
+    head = (Path(__file__).parents[1] / "core/audit/prompts/stance_cloud.md").read_text("utf-8")
+    assert "\nv1.2, signed by Arsh on 2026-10-15" in head
+    assert hashlib.sha256(CLOUD.encode("utf-8")).hexdigest() == SIGNED_V1_2_BODY_SHA256
+
+
 def test_v1_2_is_v1_1_with_the_told_frame_sentences_only():
-    v1_1 = prompt_body(
-        (Path(__file__).parents[1] / "eval/probe/stance_v1_1_signed.md").read_text("utf-8")
-    )
-    words = " ".join(SIGNED.split())
+    words = " ".join(CLOUD.split())
     assert words.count(TOLD_FRAME) == 1
-    assert words.replace(TOLD_FRAME + " ", "") == " ".join(v1_1.split())
+    assert words.replace(TOLD_FRAME + " ", "") == " ".join(SIGNED.split())
     # In the "contradicts" entry, between the exclusion rule and the closing "more likely" line.
     entry = words.split('- "contradicts":', 1)[1].split('- "complicates":', 1)[0]
     assert entry.index('"no contact between"). ') < entry.index(TOLD_FRAME)
