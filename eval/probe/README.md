@@ -222,3 +222,17 @@ misses contradicts precision, which v1.0 meets, so it would make more claims con
 a wrong model label (rule 2). No-think is not adopted (rule 3). The cap stays at 1,024; the
 longest answer was 259 tokens (rule 4). The 6.2 h for flash with v1.0 is an estimate (A's
 audit time scaled by B's probe speed-up), not a measured run.
+
+## Repeat check: same question, same answer? (2026-10-20)
+
+`bash eval/probe/mac_repeat.sh` (or `python -m eval.probe.repeat_check --models ...`) asks the
+local stance model the same things again and compares the answers byte for byte and by label
+(stance and quote): A, the signed probe set twice with the model loaded once; B, once more in a
+fresh process; C, the first 20 items with no GPU offload; D, two case01 audits on six claims,
+each on a fresh database. `--model NAME` checks any models-file entry. `--dry-run` prints the
+calls per stage and a time estimate (about 3.7 hours on the 14B; unverified).
+
+What is known before it runs: on the 2026-10-19 Mac run (llama-cpp-python 0.3.36, flash runtime,
+model loaded once, stance prompt v1.2), 104 of 105 repeated probe answers were identical; on
+P104 the rationale's wording changed while the stance and quote held. Prompt v1.1 (the 14B's own)
+has not been asked twice. Nothing may say local labels regenerate exactly until this passes.
