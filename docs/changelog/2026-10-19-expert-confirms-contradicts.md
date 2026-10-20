@@ -14,7 +14,7 @@
   METHODS, ARCHITECTURE, review-screen and demo docs updated to match.
   Sign-off: comment 6278243303 on #90; Arsh approved the rules change in the owning project
   thread ("Expert confirms contradicts") on 2026-10-20.
-- Where: PR #98 (branch `claude/expert-confirms-contradicts-y6ti2f`), not merged.
+- Where: main (PR #98, merge 477190d, 2026-10-20).
 - Verified: `tests/contract/test_rules.py` (unaccepted and AI-accepted contradictions never give
   CONTRADICTED; an expert-accepted one does; the allow-set restores automation for its claim
   type only), `tests/test_report_consistency.py` (screen and report agree before and after a
@@ -28,9 +28,4 @@
 - Affects: capabilities (verdict path), customer-facing claims (model contradictions need the
   expert; Contradicted now always rests on a failed check or an expert's acceptance). No
   privacy or performance change.
-- Status doc: pending: header "Rule version" line -> 0.3.0 (`core/audit/rules.py`, this PR);
-  section 2 row 11 -> "`decide_verdict` applies rules 0.3.0"; section 6 Outcome table heading
-  "(rules 0.3.0)" and CONTRADICTED -> "A failed deterministic check, or a "contradicts" an
-  expert accepted; an unaccepted one shows "Contradiction found, confirm to finalize"";
-  section 11: add gate 19, met by #98, and "11 of 19 gates met"; section 12 row 1:
-  `RULE_VERSION = "0.3.0"`.
+- Status doc: applied 2026-10-20
