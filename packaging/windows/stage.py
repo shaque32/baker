@@ -44,6 +44,8 @@ EXCLUDE = (
     "eval/train/",
     "eval/heldout/",
     "eval/out/",  # run outputs (git ignores them too)
+    "eval/probe/candidates.py",  # Mac screen of other local models; downloads model files
+    "eval/probe/mac_candidates.sh",
 )
 
 
