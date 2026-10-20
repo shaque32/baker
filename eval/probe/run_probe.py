@@ -16,11 +16,11 @@ front of the expert. `expert_confirms` scores that, from the stance items alone 
 skips the reviewer items):
 - supports recall >= 90%: a true support the model misses, or quotes wrongly, never reaches
   the expert's queue;
-- contradicts precision >= 90%: a "contradicts" on an observed record makes the claim
-  CONTRADICTED with no expert step (rules.py rule 1b), so a wrong one is a wrong verdict. Rule
-  1b treats a model's contradicts on a meaning assumption, or on one whose checks all passed,
-  as complicates, so for those items a wrong one costs the expert a look, not a verdict; the
-  bar counts every kind, and `reported` gives the precision on the other kinds;
+- contradicts precision >= 90%: since rules 0.3.0 a model's "contradicts" makes a claim
+  CONTRADICTED only once an expert accepts it (rules.py rule 1b, unless its claim type is in
+  _AUTO_CONTRADICT, empty today), so a wrong one costs the expert a review, and the bar is what
+  a claim type must meet to be considered for automatic contradiction; the bar counts every
+  kind, and `reported` gives the precision on non-meaning assumptions;
 - zero "supports" on an item whose gold is "contradicts": the expert would be shown
   contradicting evidence as support;
 - valid output 100%.
