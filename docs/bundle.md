@@ -60,7 +60,8 @@ Model identity, per model run (`bundle.json` `models`, and `tables/model_runs.js
   error). Each claim's audit-log entry names the calls stored while it ran and one SHA-256 over
   their whole stored rows (`model_calls`), and one SHA-256 over the rows its verdict rests on:
   assumptions, check results, evidence items (with source, locator and rationale) and AI
-  reviews (`rows_sha256`), from this release on.
+  reviews (`rows_sha256`), and one over the claim itself (`claim_sha256`), from this release
+  on.
 - Every expert decision with its reason (`tables/evidence_reviews.jsonl`, `evidence.decide` in
   the log), every verdict confirmation and override (`verdict.confirm`, `verdict.override`), and
   the case's cloud choice with the attestation the expert agreed to (`set_cloud`).
@@ -76,7 +77,8 @@ tables into a database in memory and prints what it VERIFIED, what it did NOT VE
 and what FAILED. It exits 0 only when every check ran and passed, 2 when nothing failed but
 something could not be checked, and 1 when anything failed:
 
-1. **Files.** Each file matches its SHA-256 in `bundle.json`; nothing added or missing.
+1. **Files.** Each file matches its SHA-256 in `bundle.json`; nothing added or missing;
+   `METHOD.md` and `report.html` are there.
 2. **Versions.** The rules and contracts that decided the verdicts are the ones in this copy of
    Baker. If not, it names the commit to verify with.
 3. **Tables.** Each row has exactly the schema's columns; every reference resolves.
@@ -85,8 +87,9 @@ something could not be checked, and 1 when anything failed:
    in the log matches its stored review, and the other way round. The case's own log then
    records the export (`bundle.export`) with this bundle's SHA-256. If this check fails,
    nothing after it runs.
-5. **bundle.json.** Its run, model identities, inputs, contents and log head are recomputed
-   from the tables and must match exactly; `METHOD.md` must be the note `bundle.json` gives.
+5. **bundle.json.** Its run, model identities, inputs, contents, timeline settings (as the
+   log's `timeline.settings` entries set them) and log head are recomputed from the tables and
+   must match exactly; `METHOD.md` must be the note `bundle.json` gives.
 6. **Inputs.** Each import entry in the log names the hash stored for that source. With
    `--inputs`, the files there are hashed: a file of the same name with another hash fails, and
    a folder that does not exist fails.
@@ -96,7 +99,10 @@ something could not be checked, and 1 when anything failed:
    source and locator; its label and rationale are the model's answer as stored, exactly, or
    exactly as the pipeline rewrites one it records as complicates; its quote is found word for
    word in the record (when the audit's quote check is this copy's). Each AI review that names
-   a stored reviewer answer says exactly what it decided and why.
+   a stored reviewer answer says exactly what it decided and why. Each expert review is on the
+   evidence item, by the expert and at the time its `evidence.decide` entry names. Each audited
+   claim is the one its log entry recorded (`claim_sha256`), or what the expert's logged
+   changes since (`claim.status`) made of it.
 9. **Model calls.** Each claim's stored model calls (every column) match the digest its log
    entry recorded, and each hosted answer matches a `cloud.received` hash.
 10. **Stipulations.** Each stored stipulation is what the expert's latest logged action left.

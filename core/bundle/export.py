@@ -243,15 +243,29 @@ def run_info(run: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def logged_timeline(conn: sqlite3.Connection) -> Settings:
+    """The timeline settings as the audit log records them: the defaults, then each expert
+    change (timeline.settings, core/timeline/settings.py) in order."""
+    tol, gap = Settings().tolerance_min, Settings().gap_hours
+    for (payload,) in conn.execute(
+        "SELECT payload_json FROM audit_log WHERE action = 'timeline.settings' ORDER BY seq"
+    ):
+        p = json.loads(payload)
+        tol, gap = int(p["tolerance_min"][1]), int(p["gap_hours"][1])
+    return Settings(tol, gap)
+
+
 def derived(conn: sqlite3.Connection, run: dict[str, Any]) -> dict[str, Any]:
     """The parts of bundle.json that follow from the tables alone, so core/bundle/verify.py
     recomputes them and requires an exact match."""
     seq, last = _rows(conn, "SELECT seq, hash FROM audit_log ORDER BY seq DESC LIMIT 1")[0]
+    tl = logged_timeline(conn)
     return {
         "contents": contents(conn),
         "run": run_info(run),
         "inputs": _inputs(conn),
         "models": models(conn),
+        "timeline_settings": {"tolerance_min": tl.tolerance_min, "gap_hours": tl.gap_hours},
         "audit_log": {"entries": seq, "last_seq": seq, "last_hash": last},
     }
 
@@ -358,7 +372,13 @@ def export_bundle(
             + " are no longer the ones their verdicts were decided on (an audit that did not "
             "finish rewrote them); run the full audit again before exporting"
         )
-    timeline = timeline or Settings()
+    logged = logged_timeline(conn)
+    if timeline is not None and timeline != logged:
+        raise ReviewError(
+            "the case's timeline settings are not the ones its audit log records; set them again "
+            "on the Timeline page before exporting"
+        )
+    timeline = logged
     now = (clock or (lambda: datetime.now(UTC)))()
     facts = derived(conn, run)
     counts = facts["contents"]
@@ -390,10 +410,6 @@ def export_bundle(
             "quote_check": quotes.VERSION,
         },
         **facts,
-        "timeline_settings": {
-            "tolerance_min": timeline.tolerance_min,
-            "gap_hours": timeline.gap_hours,
-        },
     }
     files[METHOD] = method_note(manifest).encode("utf-8")
     manifest["files"] = {

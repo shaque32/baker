@@ -10,8 +10,9 @@ memory, built from core/schema.sql, and checked in this order; any failure fails
 4. Audit log: the hash chain holds from the first entry and every payload reads, its last hash
    is the one bundle.json names, and every expert evidence decision in the log matches the
    stored review (and the other way round). Nothing after this runs on a log that failed.
-5. bundle.json: what it says that follows from the tables (run, models, inputs, contents, log
-   head) is recomputed and must match; METHOD.md must be the note it gives.
+5. bundle.json: what it says that follows from the tables (run, models, inputs, contents, the
+   timeline settings the log records, log head) is recomputed and must match; METHOD.md must
+   be the note it gives.
 6. Inputs: each import entry in the log names the file hash stored for that source; with
    --inputs, files there are hashed and compared.
 7. Rows: the assumptions, check results, evidence items and AI reviews behind each verdict are
@@ -19,7 +20,9 @@ memory, built from core/schema.sql, and checked in this order; any failure fails
 8. Labels: each evidence item's id still matches its content and it cites its record's source;
    its label is the model's answer as stored (tables/model_calls.jsonl), exactly or as the
    pipeline rewrites it, and its quote is found word for word in the record. Each AI review
-   naming a stored reviewer answer says what that answer said.
+   naming a stored reviewer answer says what that answer said; each expert review is on the
+   item, by the expert, at the time its evidence.decide entry names; each audited claim is the
+   one its entry recorded (claim_sha256) or what logged claim.status changes made of it.
 9. Model calls: compared with the digests the audit log recorded for them (pipeline.claim's
    model_calls; cloud.received's raw_sha256 for a hosted model's answers).
 10. Stipulations: each is what the expert's latest logged action left.
@@ -59,6 +62,7 @@ from core.contracts import (
     Verdict,
     canonical_json,
     evidence_id,
+    review_id,
 )
 from core.db import apply_schema
 from core.enrich.records import get_record
@@ -66,7 +70,6 @@ from core.ingest import forwarded
 from core.llm import cloud
 from core.report import html as report_html
 from core.review import audit_log
-from core.timeline.settings import Settings
 
 PASS, FAIL, NOTE = "pass", "fail", "note"
 
@@ -154,6 +157,8 @@ def verify_bundle(
             _rows(conn, run, out)
             _labels(conn, run, out)
             _ai_reviews(conn, out)
+            _expert_reviews(conn, out)
+            _claims(conn, run, out)
             _calls(conn, out)
             _stipulations(conn, out)
             _verdicts(conn, run, out)
@@ -196,6 +201,9 @@ def _files(zf: zipfile.ZipFile, out: _Out) -> dict[str, Any] | None:
             f"Baker reads ({export.BUNDLE_VERSION})",
         )
         return None
+    for name in (export.METHOD, export.REPORT):
+        if name not in listed:
+            out.add(FAIL, "files", f"{name} is not listed in {export.MANIFEST}")
     for name in names:
         if name != export.MANIFEST and name not in listed:
             out.add(FAIL, "files", f"{name} is in the zip but not listed in {export.MANIFEST}")
@@ -635,6 +643,95 @@ def _ai_reviews(conn: sqlite3.Connection, out: _Out) -> None:
         out.add(PASS, "ai reviews", f"{checked} AI reviews say exactly what the reviewer answered")
 
 
+def _expert_reviews(conn: sqlite3.Connection, out: _Out) -> None:
+    """Each expert review is the one its evidence.decide entry logged: the same evidence item,
+    expert, time and place in the item's reviews (the log's status and reason are compared by
+    audit_log.decision_problem)."""
+    bad = n = 0
+    for _s, at, actor, act, p in _log(conn):
+        if act != "evidence.decide":
+            continue
+        row = conn.execute(
+            "SELECT evidence_id, seq, reviewer, decided_at_utc FROM evidence_reviews"
+            " WHERE id = ? AND reviewer_kind = 'expert'",
+            (p.get("review_id"),),
+        ).fetchone()
+        if row is None:
+            continue  # decision_problem has already failed the log for this
+        n += 1
+        eid, seq, reviewer, decided = row
+        if (
+            eid != p.get("evidence_id")
+            or p.get("review_id") != review_id(eid, seq)
+            or reviewer != actor
+            or _dt(decided) != _dt(at)
+        ):
+            out.add(
+                FAIL,
+                "expert reviews",
+                f"{p.get('review_id')}: not the evidence item, expert or time the log recorded",
+            )
+            bad += 1
+    if n and not bad:
+        out.add(PASS, "expert reviews", f"{n} expert reviews are the ones the audit log recorded")
+
+
+def _claims(conn: sqlite3.Connection, run: dict[str, Any], out: _Out) -> None:
+    """Each audited claim is the one its audit-log entry recorded (pipeline.claim's
+    claim_sha256), or what the expert's logged changes since then (claim.status) made of it."""
+    log = _log(conn)
+    source = run.get("evidence_from_run", run["run_id"])
+    entries = {
+        p["claim_id"]: (s, p)
+        for s, _a, _c, act, p in log
+        if act == pipeline.CLAIM_ACTION and p.get("run_id") == source
+    }
+    bad = unbound = edited = 0
+    for claim_id in sorted(run["manifest"]):
+        seq, entry = entries.get(claim_id, (None, {}))
+        want = entry.get("claim_sha256")
+        if seq is None or not isinstance(want, str):
+            unbound += 1
+            continue
+        later = [
+            p
+            for s, _a, _c, act, p in log
+            if act == "claim.status" and s > seq and p.get("claim_id") == claim_id
+        ]
+        rows = pipeline._stored(conn, "claims", "id = ?", (claim_id,))
+        if not rows:
+            out.add(FAIL, "claims", f"{claim_id}: the audited claim is missing")
+            bad += 1
+            continue
+        row = dict(rows[0])
+        if later:
+            texts = [p["text"] for p in later if p.get("text") is not None]
+            if row["status"] != later[-1].get("status") or (texts and row["text"] != texts[-1]):
+                out.add(FAIL, "claims", f"{claim_id}: not what the expert's logged changes left")
+                bad += 1
+                continue
+            if texts:
+                edited += 1  # its text at the audit is not recorded; the logged edit binds it
+                continue
+            row["status"] = later[0].get("was")
+        if pipeline._sha(canonical_json([row])) != want:
+            out.add(
+                FAIL, "claims", f"{claim_id}: changed after its audit, and no logged change says so"
+            )
+            bad += 1
+    if unbound:
+        out.add(NOTE, "claims", f"{unbound} audited claims predate claim digests")
+    if edited:
+        out.add(
+            NOTE,
+            "claims",
+            f"{edited} claims were edited after the audit: their current text is the logged "
+            "edit, but the text they were audited with is not recorded",
+        )
+    if not bad:
+        out.add(PASS, "claims", "the audited claims are the ones the audit log recorded")
+
+
 def _calls(conn: sqlite3.Connection, out: _Out) -> None:
     calls = {cid: raw for cid, raw in conn.execute("SELECT id, raw_output FROM model_calls")}
     bound: set[str] = set()
@@ -916,12 +1013,8 @@ def _compare(decision: Any, stored: Any, actions: list[tuple[str, str, dict]]) -
 def _report(
     conn: sqlite3.Connection, zf: zipfile.ZipFile, manifest: dict[str, Any], out: _Out
 ) -> None:
-    tl = manifest.get("timeline_settings") or {}
-    settings = Settings(
-        int(tl.get("tolerance_min", Settings.tolerance_min)),
-        int(tl.get("gap_hours", Settings.gap_hours)),
-    )
-    rendered = report_html.render_report(conn, settings)
+    # The settings the audit log records, which bundle.json must also name (_manifest).
+    rendered = report_html.render_report(conn, export.logged_timeline(conn))
     if rendered.encode("utf-8") != zf.read(export.REPORT):
         out.add(FAIL, "report", "the report in the bundle is not the one these tables render")
         return

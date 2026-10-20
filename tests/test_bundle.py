@@ -697,3 +697,73 @@ def test_a_refused_cloud_answer_is_logged_with_its_ids(tmp_path):
     )
     assert got["refused"] == "the cloud model declined to answer"
     assert got["raw_sha256"] == raw_sha256("I can't help with that.")
+
+
+# ---------------------------------------------------------------- claims, expert reviews, settings
+
+
+def test_an_audited_claim_cannot_be_reworded_or_hidden(reviewed, tmp_path):
+    _conn, path = reviewed
+    for change in (
+        lambda r: r.update(text="The defendant ran the group."),
+        lambda r: r.update(status="removed"),
+    ):
+        name, edit = _edit_row("claims", lambda r: r["status"] != "removed", change)
+        findings = verify_bundle(_rewrite(path, tmp_path / "b.zip", name, edit))
+        assert FAIL in _levels(findings, "claims"), _fails(findings)
+
+
+def test_a_claim_the_expert_changed_after_the_audit_still_verifies(tmp_path):
+    from core.contracts import ClaimStatus
+    from core.review.actions import set_claim_status
+
+    conn = _build(tmp_path / "case01.db", START)
+    claim_id = conn.execute("SELECT id FROM claims WHERE status = 'accepted' LIMIT 1").fetchone()
+    set_claim_status(conn, claim_id[0], ClaimStatus.ACCEPTED, EXPERT, clock=lambda: AT)
+    findings = verify_bundle(_export(conn, tmp_path))
+    assert PASS in _levels(findings, "claims") and not failed(findings), _fails(findings)
+    conn.close()
+
+
+def test_an_expert_decision_cannot_be_moved_to_other_evidence(reviewed, tmp_path):
+    conn, path = reviewed
+    rid, eid, seq = conn.execute(
+        "SELECT id, evidence_id, seq FROM evidence_reviews WHERE reviewer_kind = 'expert' LIMIT 1"
+    ).fetchone()
+    other = conn.execute(
+        "SELECT e.id FROM evidence_items e WHERE e.id != ? AND NOT EXISTS"
+        " (SELECT 1 FROM evidence_reviews r WHERE r.evidence_id = e.id AND r.seq = ?) LIMIT 1",
+        (eid, seq),
+    ).fetchone()[0]
+    name, edit = _edit_row(
+        "evidence_reviews", lambda r: r["id"] == rid, lambda r: r.update(evidence_id=other)
+    )
+    findings = verify_bundle(_rewrite(path, tmp_path / "b.zip", name, edit))
+    assert FAIL in _levels(findings, "expert reviews"), _fails(findings)
+
+
+def test_the_timeline_settings_are_the_logged_ones(reviewed, tmp_path):
+    conn, path = reviewed
+    edit = _manifest_edit(lambda m: m["timeline_settings"].update(gap_hours=1))
+    bad = _rewrite(path, tmp_path / "b.zip", export.MANIFEST, edit, rehash=False)
+    assert FAIL in _levels(verify_bundle(bad), "bundle.json")
+    from core.timeline.settings import Settings
+
+    with pytest.raises(ReviewError, match="timeline settings"):
+        export.export_bundle(
+            conn, tmp_path / "x.zip", EXPERT, counsel_confirmed=True, timeline=Settings(5, 1)
+        )
+
+
+def test_a_bundle_without_its_method_note_fails_without_a_crash(reviewed, tmp_path):
+    _conn, path = reviewed
+    with zipfile.ZipFile(path) as zf:
+        files = {n: zf.read(n) for n in zf.namelist() if n != export.METHOD}
+    manifest = json.loads(files[export.MANIFEST])
+    del manifest["files"][export.METHOD]
+    files[export.MANIFEST] = json.dumps(manifest).encode()
+    bad = tmp_path / "b.zip"
+    with zipfile.ZipFile(bad, "w") as zf:
+        for n, data in files.items():
+            zf.writestr(n, data)
+    assert _levels(verify_bundle(bad), "files") == {FAIL}

@@ -41,13 +41,14 @@ only moves data between them, stores it, and refuses anything that breaks a rule
 
 Saving. Each claim is committed when it finishes, together with an audit-log entry naming
 what it considered (CLAIM_ACTION), with SHA-256 digests of the model calls stored for it
-(calls_digest) and of the rows its verdict rests on (rows_digest). The model work for a claim
-(assumptions, labels, AI review) runs before anything is written, and the claim's rows are then
-written in one short transaction, so a long run never holds the database locked while the
-model works: the expert can review finished claims on the screen while the audit runs. If a run
-stops part way (a crash, a closed laptop, a missing model, an invariant violation, the expert's
-Stop), the claims already finished keep their stored model outputs, so the next run reuses
-them (core/audit/_local_model.py) instead of calling the model again.
+(calls_digest), of the rows its verdict rests on (rows_digest) and of the claim (claim_digest).
+The model work for a claim (assumptions, labels, AI review) runs before anything is written, and
+the claim's rows are then written in one short transaction, so a long run never holds the
+database locked while the model works: the expert can review finished claims on the screen
+while the audit runs. If a run stops part way (a crash, a closed laptop, a missing model, an
+invariant violation, the expert's Stop), the claims already finished keep their stored model
+outputs, so the next run reuses them (core/audit/_local_model.py) instead of calling the model
+again.
 
 Which run is read. Predictions, the eval and redecide read only completed runs (last_run()).
 The review screen and the report read view_run(): the latest completed run, unless a newer
@@ -145,6 +146,13 @@ def calls_digest(conn: sqlite3.Connection, ids: Sequence[str]) -> dict[str, obje
     output, outcome, error, time), in order. core/bundle/verify.py recomputes it."""
     rows = [r for cid in ids for r in _stored(conn, "model_calls", "id = ?", (cid,))]
     return {"ids": list(ids), "sha256": _sha(canonical_json(rows))}
+
+
+def claim_digest(conn: sqlite3.Connection, claim_id: str) -> str:
+    """One SHA-256 over the claim's stored row (text, type, status, paragraph, model run) when
+    its audit-log entry is written. A later change is the expert's and is logged (claim.status),
+    so core/bundle/verify.py can tell it from an edit made outside Baker."""
+    return _sha(canonical_json(_stored(conn, "claims", "id = ?", (claim_id,))))
 
 
 def rows_digest(conn: sqlite3.Connection, manifest: dict[str, list[str]]) -> str:
@@ -1290,6 +1298,7 @@ def run_audit(
                         "reviewer_failures": result.reviewer_failures,
                         "model_calls": calls_digest(conn, run.claim_calls),
                         "rows_sha256": rows_digest(conn, result.manifest[claim.id]),
+                        "claim_sha256": claim_digest(conn, claim.id),
                     },
                 )
             current = None
