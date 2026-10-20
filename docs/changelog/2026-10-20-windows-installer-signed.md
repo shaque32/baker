@@ -6,8 +6,8 @@
   publisher instead of "Unknown publisher". `windows-installer.yml` now fails a build of main
   whose signing settings are missing, and its smoke test fails an unsigned main build, instead of
   shipping an unsigned file with a warning (PRs and other branches still build unsigned).
-  `PILOT_ONBOARDING.md` step 3 and `SECURITY_PRIVACY.md` now say the installer is signed and to
-  check the publisher.
+  `PILOT_ONBOARDING.md` step 3, `SECURITY_PRIVACY.md` and `packaging/windows/README.md` now say
+  the installer is signed, and `speedtest.ps1` prints the signer instead of "unsigned until...".
   `docs/code-signing.md` now lists the steps the real setup needed: register
   `Microsoft.CodeSigning`, self-assign Identity Verifier, pick Individual, use an "Other issuer"
   federated credential with GitHub's ID-based subject (the GitHub scenario's subject fails with
