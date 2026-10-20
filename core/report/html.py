@@ -77,6 +77,8 @@ from core.review.status import (
     AWAITING_EXPERT,
     CONFIRM_STEP,
     CONTRADICTION_FOUND,
+    GAP_TEXT,
+    GAP_TOPICS,
     HOLDINGS,
     SUPPORTED_AI,
     SUPPORTED_EXPERT,
@@ -100,7 +102,9 @@ from core.review.status import verdict_label as _verdict_label
 # 0.9.0: Versions names each source's importer and its version; a forwarded or quoted copy
 # imported from inside another message gets its own note (core/ingest/forwarded.record_note),
 # and the conversation and timeline label it as a copy.
-REPORT_VERSION = "0.9.0"
+# 0.10.0: an unproven claim the expert has not overridden says why in plain words, one line per
+# kind of core assumption not covered (core/review/status.GAP_TEXT), the same lines as the screen.
+REPORT_VERSION = "0.10.0"
 
 __all__ = [
     "AWAITING_EXPERT",
@@ -414,6 +418,10 @@ def _claim_block(conn: sqlite3.Connection, st: ClaimState, case: explain.Case) -
     out.append(f"<p class='muted'>Claim id <span class='mono'>{e(claim.id)}</span></p>")
     nt = " v-nt" if st.untested else ""
     out.append(f'<p><span class="verdict {st.css}{nt}">{e(st.label)}</span></p>')
+    out.extend(
+        f"<p class='gap'><strong>{e(GAP_TOPICS[k])}:</strong> {e(GAP_TEXT[k])}</p>"
+        for k in st.gaps()
+    )
     out.append(forwarded_warning(conn, st))
     found = forwarded.affected(conn)
     if st.awaiting_expert:

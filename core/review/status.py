@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from core import pipeline
 from core.contracts import (
     Assumption,
+    AssumptionKind,
     CheckResult,
     Claim,
     EvidenceItem,
@@ -60,6 +61,28 @@ NOT_TESTED = "Unproven, not tested"
 RULES_PENDING = "Unproven (rules not written yet)"
 
 AGAINST = (Stance.CONTRADICTS, Stance.COMPLICATES)
+
+# Why an unproven claim is unproven, in plain words: one line per kind of core assumption the
+# rules found not covered. Read from the stored verdict's coverage; it decides nothing. The
+# overview and the report print the same words. Absence wording says the search could not show
+# it, never that something did not happen.
+GAP_TOPICS: dict[AssumptionKind, str] = {
+    AssumptionKind.MEANING: "Meaning of words",
+    AssumptionKind.IDENTITY: "Who is behind an account",
+    AssumptionKind.EVENT: "Event or role",
+    AssumptionKind.TIME: "Time",
+    AssumptionKind.COMPLETENESS: "Search coverage",
+}
+GAP_TEXT: dict[AssumptionKind, str] = {
+    AssumptionKind.MEANING: "Nothing in the data shows the words mean what the claim says.",
+    AssumptionKind.IDENTITY: "No record ties the account to the person the claim names.",
+    AssumptionKind.EVENT: "No record shows the event or role the claim states.",
+    AssumptionKind.TIME: "No record places it at the time the claim states.",
+    AssumptionKind.COMPLETENESS: (
+        "The sources searched cannot show the absence the claim states; the claim page lists "
+        "what was searched and each source's coverage."
+    ),
+}
 
 
 @dataclass
@@ -123,6 +146,26 @@ class ClaimState:
             and self.decision is not None
             and self.decision.override_note is None
         )
+
+    def gaps(self) -> list[AssumptionKind]:
+        """The kinds of core assumption the rules found not covered, in claim order, for an
+        unproven verdict nobody overrode. Empty for any other claim."""
+        d = self.decision
+        if (
+            d is None
+            or d.verdict != Verdict.UNPROVEN
+            or d.override_note is not None
+            or self.incomplete
+            or self.untested
+            or pipeline.RULES_PENDING_REASON in d.reasons
+        ):
+            return []
+        uncovered = {cv.assumption_id for cv in d.coverage if not cv.covered}
+        out: list[AssumptionKind] = []
+        for a in self.assumptions:
+            if a.is_core and a.id in uncovered and a.kind not in out:
+                out.append(a.kind)
+        return out
 
     @property
     def label(self) -> str:

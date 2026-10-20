@@ -61,6 +61,8 @@ from core.review import flags as F
 from core.review.status import (
     AGAINST,
     CONTRADICTION_FOUND,
+    GAP_TEXT,
+    GAP_TOPICS,
     HOLDINGS,
     ClaimState,
     case_holdings,
@@ -358,7 +360,7 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
         for label, n in sorted(tally.items()):
             out.append(f"<tr><td>{e(label)}</td><td>{n}</td></tr>")
         out.append("</table>")
-        waiting = sum(1 for st in states if st.needs() and st.priority <= 4)
+        waiting = sum(1 for st in states if st.needs() and st.priority <= NEEDS_YOU)
         out.append(
             f"<p><a href='/claims'>{waiting} claim(s) need you</a>. Accepting or dismissing "
             "evidence does not change a verdict until you re-run the verdicts.</p>"
@@ -493,16 +495,122 @@ def _ledger(states: list[ClaimState], current: str | None = None, compact: bool 
     return f"<ul class='ledger'>{''.join(rows)}</ul>"
 
 
+# where a claim sits on the overview: what waits on the expert first, then the findings
+GROUPS = (
+    ("you", "Needs you", "Waiting on your review"),
+    ("con", "Contradicted", "The records show otherwise"),
+    ("unp", "Unproven", "The claim says more than the data shows"),
+    ("sup", "Supported", "An expert accepted the evidence"),
+    ("not", "Not audited", "No verdict yet"),
+)
+NEEDS_YOU = 4  # needs() priority at or below this waits on the expert (the case page counts it)
+
+
+def _group(st: ClaimState) -> str:
+    if st.decision is None or st.incomplete:
+        return "not"
+    if st.priority <= NEEDS_YOU:
+        return "you"
+    if st.css == "v-con":
+        return "con"
+    if st.css in ("v-sup", "v-supai"):
+        return "sup"
+    return "unp"
+
+
+def _claim_row(st: ClaimState, group: str) -> str:
+    """One claim on the overview: what it needs from the expert, or why it is unproven. The
+    standing "verdict not yet confirmed" reminder is left out here; the claim page shows it."""
+    if group == "you":
+        lines = [t for p, t in st.needs() if p <= NEEDS_YOU]
+        note = f"<div class='needs'>{e(' '.join(lines))}</div>" if lines else ""
+    elif group == "unp":
+        note = "".join(
+            f"<div class='gap'><b>{e(GAP_TOPICS[k])}</b> {e(GAP_TEXT[k])}</div>" for k in st.gaps()
+        )
+    else:
+        note = ""
+    return (
+        "<li><div class='row'><div class='head'><span class='meta'>"
+        f"<a href='{e(link('/claim', id=st.claim.id))}'>{e(st.name)}</a> · {e(st.where)} · "
+        f"{e(st.claim.claim_type.value)}</span>"
+        f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span></div>"
+        f"<div class='text'>{q(st.claim.text)}</div>{note}</div></li>"
+    )
+
+
+def _next_up(st: ClaimState) -> str:
+    lines = [t for p, t in st.needs() if p <= NEEDS_YOU]
+    return (
+        "<section class='nextup' id='next'><div class='head'><span class='meta'>Next up · "
+        f"<a href='{e(link('/claim', id=st.claim.id))}'>{e(st.name)}</a> · {e(st.where)}</span>"
+        f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span></div>"
+        f"<blockquote class='claimtext'>{q(st.claim.text)}</blockquote>"
+        f"<p>{e(' '.join(lines))}</p>"
+        f"<a class='button primary' href='{e(link('/claim', id=st.claim.id))}'>Review it</a>"
+        "</section>"
+    )
+
+
 def claims_queue(conn: sqlite3.Connection, page: Page) -> str:
     states = queue(conn)
+    by: dict[str, list[ClaimState]] = {g: [] for g, _, _ in GROUPS}
+    for st in states:
+        by[_group(st)].append(st)
+    you, total = len(by["you"]), len(states)
+    done = total - you - len(by["not"])
+    if not total:
+        head = "No claims yet"
+    elif you:
+        head = f"{you} claim{'s' if you > 1 else ''} need{'' if you > 1 else 's'} you."
+    else:
+        head = "Nothing waits on you."
     out = [
-        "<div class='eyebrow'>Claims ledger</div>"
-        "<h1>Claims queue</h1><p class='muted'>Sorted by what needs you most. AI-accepted "
-        "evidence is a sorting aid: no claim becomes supported until you accept its key evidence "
-        "and re-run the verdicts.</p>",
-        _tally(states),
-        _ledger(states),
+        "<div class='eyebrow'>Claims</div>"
+        f"<div class='overview-head'><div><h1>{e(head)}</h1><p class='muted'>Nothing becomes "
+        "supported until you accept its key evidence and re-run the verdicts. AI-accepted "
+        "evidence only sorts the work.</p></div>"
+        + (
+            f"<div class='progress'><div class='lbl'><span>Nothing waiting on you"
+            f"</span><b>{done} of {total}</b></div><div class='track'>"
+            f"<span style='width:{100 * done / total:.2f}%'></span></div></div>"
+            if total
+            else ""
+        )
+        + "</div>",
+        "<nav class='tiles'>"
+        + "".join(
+            f"<a class='tile t-{g}' href='#{g}'><span class='name'>{e(name)}</span>"
+            f"<span class='n'>{len(by[g])}</span><span class='sub'>{e(sub)}</span></a>"
+            for g, name, sub in GROUPS
+            if by[g] or g != "not"
+        )
+        + "</nav>",
     ]
+    if by["you"]:
+        out.append(_next_up(by["you"][0]))
+    for g, name, sub in GROUPS:
+        rows = by[g][1:] if g == "you" else by[g]
+        if g == "you" and not rows:
+            continue
+        if not by[g]:
+            continue
+        title = "Also waiting on you" if g == "you" else name
+        extra = ""
+        if g == "unp":
+            kinds = Counter(k for st in rows for k in st.gaps())
+            extra = "".join(
+                f"<span class='stpill'>{e(GAP_TOPICS[k])} <b>{n}</b></span>"
+                for k, n in kinds.most_common()
+            )
+            sub = "What the data does not show. Not found never means it did not happen."
+        out.append(
+            f"<section class='group' id='{g}'><div class='ghead'><h2>{e(title)}</h2>"
+            f"<span class='muted'>{len(rows)} claim{'s' if len(rows) != 1 else ''} · {e(sub)}"
+            f"</span></div>"
+            + (f"<div class='kinds'>{extra}</div>" if extra else "")
+            + f"<ul class='ledger'>{''.join(_claim_row(st, g) for st in rows)}</ul></section>"
+        )
     removed = [c for c in pipeline.load_claims(conn, include_removed=True) if c.status == "removed"]
     if removed:
         out.append(

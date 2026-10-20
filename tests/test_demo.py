@@ -5,7 +5,9 @@ touches anything but a demo case."""
 
 from __future__ import annotations
 
+import html
 import json
+import re
 import shutil
 import sqlite3
 from pathlib import Path
@@ -119,6 +121,40 @@ def test_every_claim_page_and_the_report_render(root):
         resp = app.handle(Request("GET", "/claim", {"id": claim_id}, dict(HOST)))
         assert resp.status == 200, (claim_id, resp.body[:200])
     assert app.handle(Request("GET", "/report", {}, dict(HOST))).status == 200
+
+
+def test_overview_groups_claims_and_says_why_each_unproven_claim_is_unproven(root):
+    """The claims overview puts what waits on the expert first, then the findings, and gives each
+    unproven claim a plain gap line read from the stored coverage. The report prints the same
+    lines; no verdict changes."""
+    from core.contracts import AssumptionKind as K
+    from core.review.status import GAP_TEXT, GAP_TOPICS, claim_states
+
+    case = _case(root)
+    conn = connect(case.db)
+    states = {st.claim.id: st for st in claim_states(conn)}
+    assert states["C06"].gaps() == [K.MEANING]
+    assert states["C18"].gaps() == [K.IDENTITY]
+    assert states["D01"].gaps() == [K.COMPLETENESS]
+    assert states["C05"].gaps() == []  # waits on the expert; every core assumption is covered
+    assert all(not st.gaps() for st in states.values() if st.decision.verdict != Verdict.UNPROVEN)
+    before = _verdicts(conn)
+
+    app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
+    app.open_case(case)
+    page = app.handle(Request("GET", "/claims", {}, dict(HOST))).body.decode()
+    sections = re.findall(r"<section class='(?:group|nextup)' id='([a-z]+)'>", page)
+    assert sections == ["next", "con", "unp", "sup"]
+    unp = page.split("<section class='group' id='unp'>", 1)[1].split("</section>", 1)[0]
+    assert "id=C06" in unp and GAP_TEXT[K.MEANING] in unp
+    assert "id=C05" in page.split("<section class='nextup' id='next'>", 1)[1].split("</section>")[0]
+    assert "Verdict not yet confirmed" not in page
+    assert "20 of 21" in page
+    own = " ".join([*GAP_TEXT.values(), *GAP_TOPICS.values()]).lower()  # Baker's words, not claims'
+    assert not any(w in own for w in ("guilty", "innocent", "leader", "deleted"))
+    report = render_report(conn)
+    assert html.escape(GAP_TEXT[K.COMPLETENESS], quote=True) in report
+    assert _verdicts(conn) == before
 
 
 def test_an_experts_own_reason_with_a_blocked_word_shows_as_written(root):
