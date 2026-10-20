@@ -47,8 +47,10 @@ model-free eval with 0 false supported on case01, hostile red-team PASS).
   until it is measured on real exports (Grok #80, Defer).
 - **Paid pilots and case02.** Whether a pilot is paid, and the hidden case02 result, are business
   gates in the pilot kit's go/kill scorecard, not product gates.
-- **Gate 8 is a decision, not a pass.** Arsh merged #68 with no model allowed through the gate, so
-  pilots run local only until a model passes.
+- **Gate 8 is a decision, not a pass.** Arsh merged #68 with no model allowed through the gate.
+  Opus 5.5 at medium, with the cloud prompt, has since passed, and Arsh signed its entry
+  (2026-10-20, #101). A pilot case uses it only when the expert opts that case in; every other
+  case runs local only.
 
 ## Order
 

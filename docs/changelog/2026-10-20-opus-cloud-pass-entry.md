@@ -57,15 +57,17 @@
   Opus row replace "once it passes the signed stance test (not yet: `PROBE_PASSED` is empty)"
   with "with the cloud prompt, stance v1.2 (`PROBE_PASSED`, signed 2026-10-20)" and its status
   "main (#68, merged 2026-10-15), gated off" with "main (#68; entry #101)". Section 4, "When
-  Opus is used": replace the sentences on `PROBE_PASSED` being empty (and #93's sentence on an
-  entry still to sign) with "That list holds one entry: Opus 5.5 at medium effort with the cloud
-  prompt (signed by Arsh 2026-10-20, #101). Another model or effort labels locally."; "Merge
+  Opus is used": replace "That list is **empty**." with "That list holds one entry: Opus 5.5 at
+  medium effort with the cloud prompt (signed by Arsh 2026-10-20, #101)." and "every case labels
+  locally until Arsh signs an entry for it." with "another model or effort labels locally."; "Merge
   state": replace "`PROBE_PASSED` is empty, so no case can use the cloud yet." with
   "`PROBE_PASSED` lists Opus 5.5 at medium (#101), so a case the expert opts in uses it."
   Section 5: replace "while cloud is gated off (below), `core/` makes no network calls." with
   "`core/` makes no network calls except for a case the expert opted in to cloud AI (below)."
   and "**#68 (on main, gated off):**" with "**#68 (on main; used for opted-in cases since
-  #101):**". Section 11, "Before a first real case" item 3: replace the item with "Opt-in
+  #101):**". Section 8: add "; the Opus 5.5 entry in `PROBE_PASSED` (#101)" to the "Merged
+  2026-10-20" line. Section 9, limitation 8: replace "with cloud (#68, gated off)" with "with
+  cloud (#68)". Section 11, "Before a first real case" item 3: replace the item with "Opt-in
   cloud (#68) is available for a case whose protective order allows it: `PROBE_PASSED` lists
   Opus 5.5 at medium (#101, signed 2026-10-20)." Section 12, row 6: replace "**True today;
   #68 merged, gated off**" with "**True for every case not opted in to cloud**", "main: true
