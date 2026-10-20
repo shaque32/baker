@@ -16,7 +16,7 @@
   `docs/install-mac.md`, `docs/PILOT_ONBOARDING.md` (with the Internet row: an opted-in case
   needs internet while it is audited), `docs/PILOT_GATES.md` (gate 8) and `docs/ARCHITECTURE.md`
   say so.
-- Where: PR #101 (branch `claude/project-thread-01fybj`), not merged.
+- Where: main (PR #101, merge 75e75f1, 2026-10-20).
 - Verified: the evidence is the preregistered runs of 2026-10-15
   (`/mnt/project-files/baker/cloud-bench/2026-10-15/told-frame-line/RESULTS-medium.md`, $4.52 of
   API spend, synthetic data only): on the signed set (95 gated items) contradicts precision 10/10
@@ -53,30 +53,4 @@
   per stance pair, each logged before it is sent); customer-facing claims ("local by default;
   cloud AI only when your case allows it and you opt in" stays true; "no case can use cloud" is
   no longer true). No change for a case that is not opted in.
-- Status doc: pending: section 2, row 8: replace "opt-in per case once it passes the signed stance
-  test (#68, on main; none has: `core/llm/cloud.py` `PROBE_PASSED` is empty)" with "opt-in per case
-  (#68); `PROBE_PASSED` lists Opus 5.5 at medium effort with the cloud prompt, stance v1.2 (signed
-  2026-10-20, #101)". Section 3: in the Qwen3-14B row replace "(every case, until a cloud model
-  passes the signed stance test)" with "(every case not opted in to cloud)"; in the Opus row replace
-  "once it passes the signed stance test (not yet: `PROBE_PASSED` is empty)" with "with the cloud
-  prompt, stance v1.2 (`PROBE_PASSED`, signed 2026-10-20)" and its status "main (#68, merged
-  2026-10-15), gated off" with "main (#68; entry #101)". Section 4, "When Opus is used": replace
-  "That list is **empty**." with "That list holds one entry: Opus 5.5 at medium effort with the
-  cloud prompt (signed by Arsh 2026-10-20, #101)." and "every case labels locally until Arsh signs
-  an entry for it." with "another model or effort labels locally."; "Merge state": replace
-  "`PROBE_PASSED` is empty, so no case can use the cloud yet." with "`PROBE_PASSED` lists Opus 5.5
-  at medium (#101), so a case the expert opts in uses it." Section 5: replace "while cloud is gated
-  off (below), `core/` makes no network calls." with "`core/` makes no network calls except for a
-  case the expert opted in to cloud AI (below)." and "**#68 (on main, gated off):**" with "**#68 (on
-  main; used for opted-in cases since #101):**". Section 7, "case01, real pipeline, simulated
-  expert": label the Opus row "(prompt v1.1)" and add the row "| Opus 5.5 medium, cloud prompt v1.2
-  | 95% | 0 | 29 min (493 calls, 3.5 s each) | $8.16 | Anthropic API | 2026-10-20 |" (#101). Section
-  8: add "; the Opus 5.5 entry in `PROBE_PASSED` (#101)" to the "Merged 2026-10-20" line. Section 9,
-  limitation 8: replace "with cloud (#68, gated off)" with "with cloud (#68)". Section 11, "Before a
-  first real case" item 3: replace the item with "Opt-in cloud (#68) is available for a case whose
-  protective order allows it: `PROBE_PASSED` lists Opus 5.5 at medium (#101, signed 2026-10-20)."
-  Section 12, row 6: replace "**True today; #68 merged, gated off**" with "**True for every case not
-  opted in to cloud**", "main: true while `PROBE_PASSED` is empty." with "main: true for every case
-  not opted in; `PROBE_PASSED` lists Opus 5.5 at medium (#101).", "gated off until a model passes
-  the signed stance test" with "used only for a case the expert opts in", and drop "; today no case
-  can use cloud".
+- Status doc: applied 2026-10-20

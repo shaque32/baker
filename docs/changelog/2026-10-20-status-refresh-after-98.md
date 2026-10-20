@@ -8,7 +8,7 @@
   `eval/probe/run_probe.py` module docstring (comment only, no behavior change), and pilot gate 8
   in `docs/PILOT_GATES.md` for #93. Section 10 has
   a fresh `make check`. #97's and #98's entries now name their merges.
-- Where: branch `claude/status-refresh-after-98-u6nwod`, not merged.
+- Where: main (PR #99, merge 891f2a6, 2026-10-20).
 - Verified: each edit checked against `core/audit/rules.py` (`RULE_VERSION = "0.3.0"`,
   `_AUTO_CONTRADICT` empty), `core/review/status.py` and `docs/PILOT_GATES.md` on main;
   `make check` (Linux, 2026-10-20): 2278 passed (after merging #93), case01 gated 1.00 / 0 false supported,
