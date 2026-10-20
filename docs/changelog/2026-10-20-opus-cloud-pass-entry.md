@@ -34,12 +34,16 @@
   matches the cloud prompt's version, an attested case uses Opus at medium but not at high, and
   an answer naming another model, or none, pauses the run. One API call on 2026-10-20 (18 input
   and 4 output tokens) showed the API names `claude-opus-5-5` as the answering model.
-  `make check` in the PR description. No new model run.
-- Open: the case01 audit with the signed assumption sheet was not run again with v1.2 (with
-  v1.1: 85% accuracy, 0 false supported, 2026-10-15); the 14B-vs-Opus test's case01 audit
-  without the sheet labeled with v1.2 (70%, 0 false supported, 2026-10-16; its stance run
-  records `sha256:2863d8dbf66960f6`). Opus misses one real contradiction (P065), which leaves a
-  claim UNPROVEN.
+  `make check` in the PR description. case01, the second part of the bench's decision rule
+  (`eval/bench/claude_bench.py`, fixed 2026-10-13: 0 false supported, accuracy >= 80%), raised by
+  Codex on #101: with the signed assumption sheet and v1.2, Opus 5.5 at medium scored 95% (19
+  of 20), 0 false supported, 0 wrong contradicted, 493 calls, $8.16 (2026-10-20, run once, plan
+  written before any call: `/mnt/project-files/baker/cloud-bench/2026-10-20-case01-v12/`). The
+  one miss is C19 (gold contradicted, stayed unproven), a gold label the 2026-10-15 grading
+  audit had already questioned. With v1.1 the same run scored 85% (2026-10-15).
+- Open: the 14B-vs-Opus test's case01 audit without the sheet labeled with v1.2 (70%, 0 false
+  supported, 2026-10-16; its stance run records `sha256:2863d8dbf66960f6`). Opus misses one real
+  contradiction (P065), which leaves a claim UNPROVEN.
   Under rules 0.3.0 (#98) an Opus "contradicts" counts only once the expert confirms it, so a
   wrong one costs the expert a look, not a verdict.
   Real protective orders, the expert's key handling and the API's retention terms are the
@@ -50,27 +54,29 @@
   cloud AI only when your case allows it and you opt in" stays true; "no case can use cloud" is
   no longer true). No change for a case that is not opted in.
 - Status doc: pending: section 2, row 8: replace "opt-in per case once it passes the signed stance
-  test (#68, on main; none has: `core/llm/cloud.py` `PROBE_PASSED` is empty)" with "opt-in per
-  case (#68); `PROBE_PASSED` lists Opus 5.5 at medium effort with the cloud prompt, stance v1.2
-  (signed 2026-10-20, #101)". Section 3: in the Qwen3-14B row replace "(every case, until a
-  cloud model passes the signed stance test)" with "(every case not opted in to cloud)"; in the
-  Opus row replace "once it passes the signed stance test (not yet: `PROBE_PASSED` is empty)"
-  with "with the cloud prompt, stance v1.2 (`PROBE_PASSED`, signed 2026-10-20)" and its status
-  "main (#68, merged 2026-10-15), gated off" with "main (#68; entry #101)". Section 4, "When
-  Opus is used": replace "That list is **empty**." with "That list holds one entry: Opus 5.5 at
-  medium effort with the cloud prompt (signed by Arsh 2026-10-20, #101)." and "every case labels
-  locally until Arsh signs an entry for it." with "another model or effort labels locally."; "Merge
-  state": replace "`PROBE_PASSED` is empty, so no case can use the cloud yet." with
-  "`PROBE_PASSED` lists Opus 5.5 at medium (#101), so a case the expert opts in uses it."
-  Section 5: replace "while cloud is gated off (below), `core/` makes no network calls." with
-  "`core/` makes no network calls except for a case the expert opted in to cloud AI (below)."
-  and "**#68 (on main, gated off):**" with "**#68 (on main; used for opted-in cases since
-  #101):**". Section 8: add "; the Opus 5.5 entry in `PROBE_PASSED` (#101)" to the "Merged
-  2026-10-20" line. Section 9, limitation 8: replace "with cloud (#68, gated off)" with "with
-  cloud (#68)". Section 11, "Before a first real case" item 3: replace the item with "Opt-in
-  cloud (#68) is available for a case whose protective order allows it: `PROBE_PASSED` lists
-  Opus 5.5 at medium (#101, signed 2026-10-20)." Section 12, row 6: replace "**True today;
-  #68 merged, gated off**" with "**True for every case not opted in to cloud**", "main: true
-  while `PROBE_PASSED` is empty." with "main: true for every case not opted in; `PROBE_PASSED`
-  lists Opus 5.5 at medium (#101).", "gated off until a model passes the signed stance test"
-  with "used only for a case the expert opts in", and drop "; today no case can use cloud".
+  test (#68, on main; none has: `core/llm/cloud.py` `PROBE_PASSED` is empty)" with "opt-in per case
+  (#68); `PROBE_PASSED` lists Opus 5.5 at medium effort with the cloud prompt, stance v1.2 (signed
+  2026-10-20, #101)". Section 3: in the Qwen3-14B row replace "(every case, until a cloud model
+  passes the signed stance test)" with "(every case not opted in to cloud)"; in the Opus row replace
+  "once it passes the signed stance test (not yet: `PROBE_PASSED` is empty)" with "with the cloud
+  prompt, stance v1.2 (`PROBE_PASSED`, signed 2026-10-20)" and its status "main (#68, merged
+  2026-10-15), gated off" with "main (#68; entry #101)". Section 4, "When Opus is used": replace
+  "That list is **empty**." with "That list holds one entry: Opus 5.5 at medium effort with the
+  cloud prompt (signed by Arsh 2026-10-20, #101)." and "every case labels locally until Arsh signs
+  an entry for it." with "another model or effort labels locally."; "Merge state": replace
+  "`PROBE_PASSED` is empty, so no case can use the cloud yet." with "`PROBE_PASSED` lists Opus 5.5
+  at medium (#101), so a case the expert opts in uses it." Section 5: replace "while cloud is gated
+  off (below), `core/` makes no network calls." with "`core/` makes no network calls except for a
+  case the expert opted in to cloud AI (below)." and "**#68 (on main, gated off):**" with "**#68 (on
+  main; used for opted-in cases since #101):**". Section 7, "case01, real pipeline, simulated
+  expert": label the Opus row "(prompt v1.1)" and add the row "| Opus 5.5 medium, cloud prompt v1.2
+  | 95% | 0 | 29 min (493 calls, 3.5 s each) | $8.16 | Anthropic API | 2026-10-20 |" (#101). Section
+  8: add "; the Opus 5.5 entry in `PROBE_PASSED` (#101)" to the "Merged 2026-10-20" line. Section 9,
+  limitation 8: replace "with cloud (#68, gated off)" with "with cloud (#68)". Section 11, "Before a
+  first real case" item 3: replace the item with "Opt-in cloud (#68) is available for a case whose
+  protective order allows it: `PROBE_PASSED` lists Opus 5.5 at medium (#101, signed 2026-10-20)."
+  Section 12, row 6: replace "**True today; #68 merged, gated off**" with "**True for every case not
+  opted in to cloud**", "main: true while `PROBE_PASSED` is empty." with "main: true for every case
+  not opted in; `PROBE_PASSED` lists Opus 5.5 at medium (#101).", "gated off until a model passes
+  the signed stance test" with "used only for a case the expert opts in", and drop "; today no case
+  can use cloud".
