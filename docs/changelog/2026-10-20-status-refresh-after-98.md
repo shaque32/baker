@@ -5,7 +5,8 @@
   section 12 row 1) and fixes spots #98's entry missed that still said a model-only
   "contradicts" makes a claim CONTRADICTED: section 4 "Opus's influence on verdicts" (2nd
   bullet and the known-risk bullet), section 9 limitations 2 and 4, section 12 row 2, and the
-  `eval/probe/run_probe.py` module docstring, and pilot gate 8 in `docs/PILOT_GATES.md` for #93 (comment only, no behavior change). Section 10 has
+  `eval/probe/run_probe.py` module docstring (comment only, no behavior change), and pilot gate 8
+  in `docs/PILOT_GATES.md` for #93. Section 10 has
   a fresh `make check`. #97's and #98's entries now name their merges.
 - Where: branch `claude/status-refresh-after-98-u6nwod`, not merged.
 - Verified: each edit checked against `core/audit/rules.py` (`RULE_VERSION = "0.3.0"`,
