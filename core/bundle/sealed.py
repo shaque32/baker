@@ -53,7 +53,14 @@ def open_sealed(blob: bytes, passphrase: str) -> bytes:
         salt, nonce = encryption._unb64(h["salt"]), encryption._unb64(h["nonce"])
     except (ValueError, KeyError, TypeError) as e:
         raise encryption.EncryptionError(f"the bundle's header cannot be read ({e})") from e
-    key = encryption._derive(encryption.normalize_passphrase(passphrase), salt, kdf)
+    if kdf != encryption.DEFAULT_KDF or len(salt) != 16 or len(nonce) != 12:
+        # The header is read before anything is authenticated, so only the settings seal()
+        # writes are accepted: another file cannot make the key derivation fail or run long.
+        raise encryption.EncryptionError("the bundle's encryption settings are not ones Baker uses")
+    try:
+        key = encryption._derive(encryption.normalize_passphrase(passphrase), salt, kdf)
+    except (ValueError, MemoryError) as e:
+        raise encryption.EncryptionError(f"the bundle's key cannot be derived ({e})") from e
     try:
         return encryption._aesgcm(key).decrypt(nonce, body, header)
     except encryption._invalid_tag() as e:

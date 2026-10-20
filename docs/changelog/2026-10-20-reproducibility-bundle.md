@@ -10,21 +10,26 @@
   ran and passed, 2 when something could not be checked, 1 on any failure. `baker
   verify-bundle` checks it offline and re-derives every verdict of the exported run from the recorded labels and the expert decisions as they stood when each was
   decided; any edited file, label, rationale, source locator, assumption, check result, AI
-  review, expert review, claim, model call, stipulation, decision, input hash, log entry,
-  verdict, model identity, timeline setting, method note or report fails. New audit-log content, no schema change: `cloud.received` per
+  review, expert review, claim, cited record, model run, run version or setting, identity
+  link, model call, stipulation, decision, input hash, log entry, verdict or its time, model
+  identity, timeline setting, method note, report or added file fails. The export reads one
+  snapshot (one transaction, through its log entry) and never replaces an existing file. New audit-log content, no schema change: `cloud.received` per
   cloud answer, refused ones too (API-reported model, message and request ids, raw-output
   SHA-256, why refused), and each `pipeline.claim` entry names the model calls stored while it
   ran with one SHA-256 over their whole rows, plus one SHA-256 over the rows its verdict rests
-  on (`rows_sha256`) and one over the claim (`claim_sha256`). No export while a newer audit is
-  unfinished. Why: legal defensibility
+  on with the records they cite and the model runs they name (`rows_sha256`), one over the
+  claim (`claim_sha256`) and the verdict's time; each `pipeline.run` entry records one SHA-256
+  over the run's fixed columns (`run_sha256`) and its finish time; `claim.status` records the
+  text an edit replaced. No export while a newer audit is unfinished. Why: legal defensibility
   (Arsh's brief, 2026-10-20): equal access, authentication, hosted-model reproducibility.
 - Where: PR #104
-- Verified: tests/test_bundle.py (52: round trips on a reviewed case01 and a cloud-path case01
-  with a stand-in API; 32 tampering and malformed-bundle cases fail without a crash; a refused
+- Verified: tests/test_bundle.py (62: round trips on a reviewed case01 and a cloud-path case01
+  with a stand-in API; 47 tampering and malformed-bundle cases fail without a crash; an export
+  holds the case still and never replaces a file; a refused
   cloud answer is logged with its ids; an answer that cannot be logged pauses the
   audit; a retried send logs one answer; no export without the confirmation; an encrypted case
   never exports in plain form; a failed write leaves no bundle and no success entry; partial
-  coverage never reads as fully verified); full suite 2334 passed, 8 skipped;
+  coverage never reads as fully verified); full suite 2344 passed, 8 skipped;
   make eval unchanged (case01 1.00, 0 false supported; unreviewed 0.55; hostile PASS; case02
   aggregate 0.90, 0 false supported). Not tried on a real case or a real Anthropic answer.
 - Open: CLI only, no screen button. The anchor is the audit log's last hash printed on the

@@ -767,3 +767,183 @@ def test_a_bundle_without_its_method_note_fails_without_a_crash(reviewed, tmp_pa
         for n, data in files.items():
             zf.writestr(n, data)
     assert _levels(verify_bundle(bad), "files") == {FAIL}
+
+
+# ---------------------------------------------------------------- Codex round 3 on #104
+
+
+def test_a_model_run_cannot_be_reattributed(hosted, tmp_path):
+    _conn, path = hosted
+    name, edit = _edit_row(
+        "model_runs", lambda r: r["purpose"] == "stance", lambda r: r.update(model_name="other")
+    )
+    findings = verify_bundle(_rewrite(path, tmp_path / "b.zip", name, edit))
+    assert FAIL in _levels(findings, "rows"), _fails(findings)
+
+
+def test_a_cited_records_metadata_cannot_be_edited(reviewed, tmp_path):
+    conn, path = reviewed
+    rid = conn.execute(
+        "SELECT record_id FROM evidence_items WHERE record_id IN (SELECT id FROM messages) LIMIT 1"
+    ).fetchone()[0]
+    for change in (
+        lambda r: r.update(ts_raw="01/01/2020 00:00"),
+        lambda r: r.update(direction="unknown" if r["direction"] != "unknown" else "incoming"),
+        lambda r: r.update(body=r["body"] + " and more"),
+    ):
+        name, edit = _edit_row("messages", lambda r: r["id"] == rid, change)
+        findings = verify_bundle(_rewrite(path, tmp_path / "b.zip", name, edit))
+        assert FAIL in _levels(findings, "rows"), _fails(findings)
+
+
+def test_the_runs_versions_and_settings_are_bound_to_the_log(reviewed, tmp_path):
+    conn, path = reviewed
+    run_id = json.loads(zipfile.ZipFile(path).read(export.MANIFEST))["run"]["run_id"]
+    for change in (
+        lambda r: r.update(config_json=r["config_json"].replace("{", '{"extra":1,', 1)),
+        lambda r: r.update(finished_at_utc="2026-01-01T00:00:00Z"),
+    ):
+        name, edit = _edit_row("pipeline_runs", lambda r: r["id"] == run_id, change)
+        findings = verify_bundle(_rewrite(path, tmp_path / "b.zip", name, edit))
+        assert FAIL in _levels(findings, "run"), _fails(findings)
+
+
+def test_a_verdicts_time_is_bound_to_the_log(reviewed, tmp_path):
+    _conn, path = reviewed
+    run_id = json.loads(zipfile.ZipFile(path).read(export.MANIFEST))["run"]["run_id"]
+    name, edit = _edit_row(
+        "verdicts",
+        lambda r: r["pipeline_run_id"] == run_id,
+        lambda r: r.update(decided_at_utc="2026-01-01T00:00:00Z"),
+    )
+    findings = verify_bundle(_rewrite(path, tmp_path / "b.zip", name, edit))
+    assert FAIL in _levels(findings, "verdicts"), _fails(findings)
+
+
+def test_identity_links_are_what_the_logged_actions_left(reviewed, tmp_path):
+    _conn, path = reviewed
+    assert PASS in _levels(verify_bundle(path), "identity links")
+    for change in (
+        lambda r: r.update(status="rejected", tier="inferred"),
+        lambda r: r.update(decided_by="expert:Someone Else"),
+        lambda r: r.update(decided_at_utc="2026-01-01T00:00:00Z"),
+    ):
+        name, edit = _edit_row("identity_links", lambda r: r["status"] == "confirmed", change)
+        findings = verify_bundle(_rewrite(path, tmp_path / "b.zip", name, edit))
+        assert FAIL in _levels(findings, "identity links"), _fails(findings)
+    gone = _rewrite(
+        path,
+        tmp_path / "b.zip",
+        f"{export.TABLES}identity_links.jsonl",
+        lambda t: "".join(x + "\n" for x in t.splitlines() if '"confirmed"' not in x),
+    )
+    assert FAIL in _levels(verify_bundle(gone), "identity links")
+
+
+def test_a_claim_edited_after_the_audit_keeps_its_other_fields_bound(tmp_path):
+    from core.contracts import ClaimStatus
+    from core.review.actions import set_claim_status
+
+    conn = _build(tmp_path / "case01.db", START)
+    claim_id = conn.execute("SELECT id FROM claims WHERE status = 'accepted' LIMIT 1").fetchone()[0]
+    set_claim_status(conn, claim_id, ClaimStatus.EDITED, EXPERT, "Reworded.", clock=lambda: AT)
+    path = _export(conn, tmp_path)
+    findings = verify_bundle(path)
+    assert PASS in _levels(findings, "claims") and NOTE not in _levels(findings, "claims")
+    name, edit = _edit_row(
+        "claims",
+        lambda r: r["id"] == claim_id,
+        lambda r: r.update(claim_type="role" if r["claim_type"] != "role" else "count"),
+    )
+    findings = verify_bundle(_rewrite(path, tmp_path / "b.zip", name, edit))
+    assert FAIL in _levels(findings, "claims"), _fails(findings)
+    conn.close()
+
+
+def test_a_listed_file_outside_the_format_fails(reviewed, tmp_path):
+    _conn, path = reviewed
+    with zipfile.ZipFile(path) as zf:
+        files = {n: zf.read(n) for n in zf.namelist()}
+    files["extra.txt"] = b"x"
+    manifest = json.loads(files[export.MANIFEST])
+    manifest["files"]["extra.txt"] = {"sha256": hashlib.sha256(b"x").hexdigest(), "bytes": 1}
+    files[export.MANIFEST] = json.dumps(manifest).encode()
+    bad = tmp_path / "b.zip"
+    with zipfile.ZipFile(bad, "w") as zf:
+        for n, data in files.items():
+            zf.writestr(n, data)
+    assert FAIL in _levels(verify_bundle(bad), "files")
+
+
+def test_a_sealed_header_with_other_kdf_settings_fails_cleanly(reviewed, tmp_path):
+    from core import encryption
+    from core.bundle import sealed
+
+    _conn, path = reviewed
+    blob = sealed.seal(path.read_bytes(), "a long bundle passphrase")
+    rest = blob[len(sealed.MAGIC) :]
+    n = int.from_bytes(rest[:4], "big")
+    for kdf in ({"name": "scrypt", "n": 0, "r": 8, "p": 1}, {"name": "scrypt", "n": 1 << 30}):
+        header = json.loads(rest[4 : 4 + n])
+        header["kdf"] = kdf
+        h = json.dumps(header, sort_keys=True).encode()
+        bad = sealed.MAGIC + len(h).to_bytes(4, "big") + h + rest[4 + n :]
+        with pytest.raises(encryption.EncryptionError):
+            sealed.open_sealed(bad, "a long bundle passphrase")
+        (tmp_path / "b.zip").write_bytes(bad)
+        found = verify_bundle(tmp_path / "b.zip", passphrase="a long bundle passphrase")
+        assert _levels(found, "files") == {FAIL}
+
+
+def test_a_hosted_answer_no_digest_names_is_noted_not_failed(hosted, tmp_path):
+    _conn, path = hosted
+
+    def add_legacy(text: str) -> str:
+        rows = [json.loads(x) for x in text.splitlines()]
+        old = dict(next(r for r in rows if r["raw_output"]))
+        old.update(id=old["id"] + "-legacy", seq=10_000, raw_output=old["raw_output"] + " ")
+        return text + json.dumps(old, sort_keys=True) + "\n"
+
+    bad = _rewrite(path, tmp_path / "b.zip", f"{export.TABLES}model_calls.jsonl", add_legacy)
+    findings = verify_bundle(bad)
+    assert FAIL not in _levels(findings, "model calls"), _fails(findings)
+    assert NOTE in _levels(findings, "model calls")
+
+
+def test_an_export_never_replaces_a_file_and_holds_the_case_still(reviewed, tmp_path, monkeypatch):
+    import os
+    import sqlite3
+
+    conn, _path = reviewed
+    out = tmp_path / "taken.zip"
+    out.write_bytes(b"someone else's")
+    with pytest.raises(ReviewError, match="already exists"):
+        export._publish(out, b"bundle")
+    assert out.read_bytes() == b"someone else's"
+    assert [p.name for p in tmp_path.iterdir()] == ["taken.zip"]  # no temporary file left
+
+    def no_links(*_a: object) -> None:
+        raise OSError(1, "hard links not supported")
+
+    monkeypatch.setattr(os, "link", no_links)
+    export._publish(tmp_path / "usb.zip", b"bundle")
+    assert (tmp_path / "usb.zip").read_bytes() == b"bundle"
+    monkeypatch.undo()
+
+    db_path = conn.execute("PRAGMA database_list").fetchone()[2]
+    seen: list[str] = []
+    real = export._publish
+
+    def during(out: Path, data: bytes) -> None:
+        other = sqlite3.connect(db_path, timeout=0)
+        try:
+            other.execute("BEGIN IMMEDIATE")
+        except sqlite3.OperationalError as e:
+            seen.append(str(e))
+        finally:
+            other.close()
+        real(out, data)
+
+    monkeypatch.setattr(export, "_publish", during)
+    _export(conn, tmp_path, "held.zip")
+    assert seen and "locked" in seen[0]

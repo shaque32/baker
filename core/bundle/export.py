@@ -28,6 +28,7 @@ import io
 import json
 import os
 import sqlite3
+import tempfile
 import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -282,6 +283,13 @@ def claim_entries(conn: sqlite3.Connection, run: dict[str, Any]) -> dict[str, di
     }
 
 
+def entry_calls(entry: dict[str, Any]) -> list[str]:
+    """The model calls a claim entry names (pipeline.claim's model_calls)."""
+    digest = entry.get("model_calls")
+    ids = digest.get("ids") if isinstance(digest, dict) else None
+    return [str(i) for i in ids] if isinstance(ids, list) else []
+
+
 def changed_rows(conn: sqlite3.Connection, run: dict[str, Any]) -> tuple[list[str], int]:
     """(claims whose rows differ from the digest their claim entry recorded, claims whose entry
     records no digest). A row differs when it was edited after its claim was decided."""
@@ -290,7 +298,7 @@ def changed_rows(conn: sqlite3.Connection, run: dict[str, Any]) -> tuple[list[st
         want = entry.get("rows_sha256")
         if not isinstance(want, str):
             unbound += 1
-        elif pipeline.rows_digest(conn, entry["manifest"]) != want:
+        elif pipeline.rows_digest(conn, entry["manifest"], claim_id, entry_calls(entry)) != want:
             changed.append(claim_id)
     return changed, unbound
 
@@ -315,42 +323,17 @@ def describe(counts: dict[str, int]) -> str:
     )
 
 
-def export_bundle(
+def _build(
     conn: sqlite3.Connection,
-    out: Path,
     actor: str,
-    *,
-    counsel_confirmed: bool,
-    encrypted_case: bool = False,
-    passphrase: str | None = None,
-    timeline: Settings | None = None,
-    inputs_dir: Path | None = None,
-    clock: Clock | None = None,
-) -> ExportResult:
-    """Write the bundle for the latest completed audit to `out` (a new file). The caller has
-    already checked the audit log (core/review/audit_log.require_intact), as every path that
-    opens a case does.
-
-    Never by default: `counsel_confirmed` must say the examiner confirmed, on counsel's review,
-    exporting exactly what describe() lists. An encrypted case's bundle is sealed under
-    `passphrase` (core/bundle/sealed.py); without one it is refused, never written in plain
-    form. The export is logged (bundle.export, with the bundle's SHA-256) only after the file
-    is fully written; if that entry cannot be written the file is removed, so a failed export
-    leaves neither a bundle nor a success entry."""
-    _expert(actor)
-    if not counsel_confirmed:
-        raise ReviewError(
-            "a bundle is exported only after the examiner confirms, on counsel's review, what it "
-            "holds; nothing was written"
-        )
-    if encrypted_case and not passphrase:
-        raise ReviewError(
-            "this case is encrypted, so its bundle must be encrypted too: give a bundle "
-            "passphrase; nothing was written"
-        )
-    out = Path(out)
-    if out.exists():
-        raise ReviewError(f"{out} already exists; choose a new file name")
+    encrypted_case: bool,
+    passphrase: str | None,
+    timeline: Settings | None,
+    inputs_dir: Path | None,
+    clock: Clock | None,
+) -> tuple[bytes, dict[str, Any], dict[str, Any], dict[str, int], dict[str, bytes], datetime]:
+    """(the bundle's bytes, run, audit-log head, contents, files, export time), read from the
+    case inside export_bundle's transaction. Refuses what cannot be exported."""
     run, last = pipeline.view_run(conn), pipeline.last_run(conn)
     if last is None:
         raise ReviewError("no completed audit to export; run the audit first")
@@ -378,16 +361,13 @@ def export_bundle(
             "the case's timeline settings are not the ones its audit log records; set them again "
             "on the Timeline page before exporting"
         )
-    timeline = logged
     now = (clock or (lambda: datetime.now(UTC)))()
     facts = derived(conn, run)
-    counts = facts["contents"]
-    head = facts["audit_log"]
 
     files: dict[str, bytes] = {}
     for table, cols in schema_tables():
         files[f"{TABLES}{table}.jsonl"] = _dump(conn, table, cols)
-    report = report_html.render_report(conn, timeline)
+    report = report_html.render_report(conn, logged)
     invariants.check_report_text(report)
     files[REPORT] = report.encode("utf-8")
     if inputs_dir is not None:
@@ -428,43 +408,120 @@ def export_bundle(
             zf.writestr(info, files[name])
     data = buf.getvalue()
     if encrypted_case:
-        assert passphrase is not None  # noqa: S101 - checked above
+        assert passphrase is not None  # noqa: S101 - checked by export_bundle
         data = sealed.seal(data, passphrase)
-    bundle_sha = sha256(data)
+    return data, run, facts["audit_log"], facts["contents"], files, now
 
+
+def _publish(out: Path, data: bytes) -> None:
+    """Write `out` whole or not at all, and never over a file already there, even one another
+    export created a moment ago: the bytes go to a temporary file of this export's own, which is
+    then hard-linked to `out` (refused if `out` exists). On a file system without hard links
+    (some USB drives), `out` is created exclusively and written in place."""
     out.parent.mkdir(parents=True, exist_ok=True)
-    tmp = out.with_name(f".{out.name}.partial")
+    fd, name = tempfile.mkstemp(prefix=f".{out.name}.", suffix=".partial", dir=out.parent)
+    tmp = Path(name)
     try:
-        with open(tmp, "xb") as f:
+        with os.fdopen(fd, "wb") as f:
             f.write(data)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp, out)
-    except BaseException:
+        try:
+            os.link(tmp, out)
+        except FileExistsError:
+            raise ReviewError(f"{out} already exists; choose a new file name") from None
+        except OSError:
+            try:
+                with open(out, "xb") as f:
+                    try:
+                        f.write(data)
+                        f.flush()
+                        os.fsync(f.fileno())
+                    except BaseException:
+                        out.unlink(missing_ok=True)
+                        raise
+            except FileExistsError:
+                raise ReviewError(f"{out} already exists; choose a new file name") from None
+    finally:
         tmp.unlink(missing_ok=True)
-        raise
+
+
+def export_bundle(
+    conn: sqlite3.Connection,
+    out: Path,
+    actor: str,
+    *,
+    counsel_confirmed: bool,
+    encrypted_case: bool = False,
+    passphrase: str | None = None,
+    timeline: Settings | None = None,
+    inputs_dir: Path | None = None,
+    clock: Clock | None = None,
+) -> ExportResult:
+    """Write the bundle for the latest completed audit to `out` (a new file). The caller has
+    already checked the audit log (core/review/audit_log.require_intact), as every path that
+    opens a case does.
+
+    Never by default: `counsel_confirmed` must say the examiner confirmed, on counsel's review,
+    exporting exactly what describe() lists. An encrypted case's bundle is sealed under
+    `passphrase` (core/bundle/sealed.py); without one it is refused, never written in plain
+    form. The export is logged (bundle.export, with the bundle's SHA-256) only after the file
+    is fully written; if that entry cannot be written the file is removed, so a failed export
+    leaves neither a bundle nor a success entry."""
+    _expert(actor)
+    if not counsel_confirmed:
+        raise ReviewError(
+            "a bundle is exported only after the examiner confirms, on counsel's review, what it "
+            "holds; nothing was written"
+        )
+    if encrypted_case and not passphrase:
+        raise ReviewError(
+            "this case is encrypted, so its bundle must be encrypted too: give a bundle "
+            "passphrase; nothing was written"
+        )
+    out = Path(out)
+    if out.exists():
+        raise ReviewError(f"{out} already exists; choose a new file name")
     try:
-        with conn:
-            audit_log.append(
-                conn,
-                now,
-                actor,
-                EXPORT_ACTION,
-                {
-                    "format": FORMAT,
-                    "bundle_version": BUNDLE_VERSION,
-                    "file_name": out.name,
-                    "bundle_sha256": bundle_sha,
-                    "encrypted": encrypted_case,
-                    "counsel_confirmed": True,
-                    "scope": "full",
-                    "contents": counts,
-                    "run_id": run["run_id"],
-                    "audit_log_head": {"seq": head["last_seq"], "hash": head["last_hash"]},
-                },
-            )
+        # One write transaction from the first read to the bundle.export entry: the bundle is
+        # one snapshot of the case, and no decision the screen records can land between the
+        # rows it holds and the entry that logs it (the screen waits for the export).
+        conn.execute("BEGIN IMMEDIATE")
+    except db.DatabaseError as e:
+        raise ReviewError(
+            f"the case is busy saving something else ({e}); try the export again in a moment"
+        ) from e
+    published = False
+    try:
+        data, run, head, counts, files, now = _build(
+            conn, actor, encrypted_case, passphrase, timeline, inputs_dir, clock
+        )
+        bundle_sha = sha256(data)
+        _publish(out, data)
+        published = True
+        audit_log.append(
+            conn,
+            now,
+            actor,
+            EXPORT_ACTION,
+            {
+                "format": FORMAT,
+                "bundle_version": BUNDLE_VERSION,
+                "file_name": out.name,
+                "bundle_sha256": bundle_sha,
+                "encrypted": encrypted_case,
+                "counsel_confirmed": True,
+                "scope": "full",
+                "contents": counts,
+                "run_id": run["run_id"],
+                "audit_log_head": {"seq": head["last_seq"], "hash": head["last_hash"]},
+            },
+        )
+        conn.commit()
     except BaseException:
-        out.unlink(missing_ok=True)  # an export the log does not record is not left behind
+        conn.rollback()
+        if published:
+            out.unlink(missing_ok=True)  # an export the log does not record is not left behind
         raise
     return ExportResult(
         path=out,

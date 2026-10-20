@@ -256,7 +256,13 @@ def set_claim_status(
             _now(clock),
             actor,
             "claim.status",
-            {"claim_id": claim_id, "status": status.value, "was": row[0], "text": text},
+            {
+                "claim_id": claim_id,
+                "status": status.value,
+                "was": row[0],
+                "text": text,
+                "was_text": row[1],
+            },
         )
 
 

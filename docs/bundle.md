@@ -26,7 +26,9 @@ another channel. Baker never writes an encrypted case's bundle in plain form. A 
 bundle is a plain zip.
 
 It prints the bundle's SHA-256 (keep it: it names this exact file) and the audit log's last
-hash. Only after the file is fully written is the export logged in the case's audit log
+hash. The export reads the case in one transaction, so the bundle is one snapshot (a decision
+saved on the review screen meanwhile waits for it), and it never replaces a file already there,
+even one another export wrote a moment before. Only after the file is fully written is the export logged in the case's audit log
 (`bundle.export`, by you: the bundle's SHA-256, whether it is encrypted, your confirmation, what
 it holds and the log head it carries). If that entry cannot be written, the file is removed; a
 failed export leaves neither a bundle nor a success entry. The bundle holds the log as it stood
@@ -77,8 +79,10 @@ tables into a database in memory and prints what it VERIFIED, what it did NOT VE
 and what FAILED. It exits 0 only when every check ran and passed, 2 when nothing failed but
 something could not be checked, and 1 when anything failed:
 
-1. **Files.** Each file matches its SHA-256 in `bundle.json`; nothing added or missing;
-   `METHOD.md` and `report.html` are there.
+1. **Files.** Each file matches its SHA-256 in `bundle.json`; the files listed are exactly a
+   bundle's (`METHOD.md`, `report.html`, one file per table), nothing added or missing. An
+   encrypted bundle whose header names other key-derivation settings than Baker writes fails
+   before any key is derived.
 2. **Versions.** The rules and contracts that decided the verdicts are the ones in this copy of
    Baker. If not, it names the commit to verify with.
 3. **Tables.** Each row has exactly the schema's columns; every reference resolves.
@@ -93,8 +97,12 @@ something could not be checked, and 1 when anything failed:
 6. **Inputs.** Each import entry in the log names the hash stored for that source. With
    `--inputs`, the files there are hashed: a file of the same name with another hash fails, and
    a folder that does not exist fails.
-7. **Rows.** The assumptions, check results, evidence items and AI reviews behind each verdict
-   are the rows its claim's log entry recorded a digest of.
+7. **Run and rows.** The audit run's row (start time, versions, configuration with build,
+   cloud decision and quote check, finish time) is the one its `pipeline.run` entry recorded. The
+   assumptions, check results, evidence items and AI reviews behind each verdict, the records
+   they cite (every column: body, sender, direction, times) and the model runs the items,
+   reviews, claim and calls name (model, file hash, prompt, settings, seed) are the rows its
+   claim's log entry recorded a digest of.
 8. **Labels.** Each evidence item's id still matches its content and it cites its record's own
    source and locator; its label and rationale are the model's answer as stored, exactly, or
    exactly as the pipeline rewrites one it records as complicates; its quote is found word for
@@ -102,19 +110,24 @@ something could not be checked, and 1 when anything failed:
    a stored reviewer answer says exactly what it decided and why. Each expert review is on the
    evidence item, by the expert and at the time its `evidence.decide` entry names. Each audited
    claim is the one its log entry recorded (`claim_sha256`), or what the expert's logged
-   changes since (`claim.status`) made of it.
+   changes since (`claim.status`, which records the text it replaced) made of it; its other
+   fields stay bound after an edit.
 9. **Model calls.** Each claim's stored model calls (every column) match the digest its log
-   entry recorded, and each hosted answer matches a `cloud.received` hash.
-10. **Stipulations.** Each stored stipulation is what the expert's latest logged action left.
+   entry recorded, and each hosted answer a digest names matches a `cloud.received` hash.
+10. **Stipulations and identity links.** Each stored stipulation is what the expert's latest
+   logged action left. Each identity link is what the logged actions left: proposed
+   (`identity.propose`) and undecided, or decided (`identity.decide`, `identity.link`) with that
+   account, person, status, tier, expert and time; a link the log still holds is not missing.
 11. **Verdicts.** The rules, re-applied to the recorded labels, checks, stipulations and the
    expert decisions as they stood when each verdict was decided, give every verdict exactly
-   (verdict, basis, reasons, coverage, citations). Confirmations and overrides in the log
-   replay to the stored outcome.
+   (verdict, basis, reasons, coverage, citations), at the decision time the log recorded.
+   Confirmations and overrides in the log replay to the stored outcome.
 12. **Report.** The report rendered from the tables is byte for byte the one in the bundle.
 
 NOT VERIFIED lines say what could not be checked: a labeler that stored no model answers (the eval's
-stand-ins), cases audited before `cloud.received` or the claim and row digests existed, the government
-document's import (not logged), original files not supplied.
+stand-ins), cases audited before `cloud.received` or the run, claim and row digests existed,
+hosted answers no digest names, model runs no audited row names (an earlier audit's), the
+government document's import (not logged), original files not supplied.
 
 ## Limits
 
@@ -130,5 +143,8 @@ document's import (not logged), original files not supplied.
 - Regenerating a local model's labels needs the same model file, runtime and settings. Not tested
   across machines.
 - Only the verdicts of the exported audit are re-derived; older runs' rows are carried as stored.
+- Not bound to the log: a proposed identity link's basis text, the nearby messages and group
+  members shown with a record, and imported rows no verdict cites. Imported rows are not
+  re-parsed from the original files; `--inputs` checks the files' hashes.
 - Producing a bundle is no claim that Baker's results are correct or court-ready; it lets them
   be checked.

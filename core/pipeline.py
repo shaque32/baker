@@ -41,7 +41,9 @@ only moves data between them, stores it, and refuses anything that breaks a rule
 
 Saving. Each claim is committed when it finishes, together with an audit-log entry naming
 what it considered (CLAIM_ACTION), with SHA-256 digests of the model calls stored for it
-(calls_digest), of the rows its verdict rests on (rows_digest) and of the claim (claim_digest).
+(calls_digest), of the rows its verdict rests on, with the records they cite and the model runs
+they name (rows_digest), and of the claim (claim_digest), and the verdict's time. The run's
+entry (RUN_ACTION) records a digest of its pipeline_runs row's fixed columns (run_digest).
 The model work for a claim (assumptions, labels, AI review) runs before anything is written, and
 the claim's rows are then written in one short transaction, so a long run never holds the
 database locked while the model works: the expert can review finished claims on the screen
@@ -124,7 +126,7 @@ from core.contracts import (
     review_id,
     verdict_id,
 )
-from core.enrich.records import get_record
+from core.enrich.records import get_record, kind_of
 from core.ingest import forwarded
 from core.review import audit_log
 
@@ -155,18 +157,45 @@ def claim_digest(conn: sqlite3.Connection, claim_id: str) -> str:
     return _sha(canonical_json(_stored(conn, "claims", "id = ?", (claim_id,))))
 
 
-def rows_digest(conn: sqlite3.Connection, manifest: dict[str, list[str]]) -> str:
-    """One SHA-256 over the rows a claim's verdict rests on, as stored when its audit-log entry
-    is written: its assumptions, check results and evidence items (every column: text,
-    parameters, outcomes, source and locator, rationale, model run) and the AI reviews of those
-    items. Expert decisions are bound by their own entries (evidence.decide). The entry records
-    it, so core/bundle/verify.py can tell a row edited later from the one the rules read."""
+_RECORD_TABLES = {
+    "message": "messages",
+    "call": "calls",
+    "contact": "contacts",
+    "attachment": "attachments",
+}
+
+
+def _cited(conn: sqlite3.Connection, record_id: str) -> dict[str, object]:
+    """A cited record as stored (every column: body, sender, direction, times, locator) and as
+    the labeler and the report read it (text and time, which name accounts and, for an
+    attachment, its message)."""
+    table = _RECORD_TABLES.get(kind_of(record_id) or "")
+    rec = get_record(conn, record_id)
+    return {
+        "id": record_id,
+        "row": _stored(conn, table, "id = ?", (record_id,)) if table else [],
+        "text": rec.text if rec else None,
+        "ts_utc": rec.ts_utc if rec else None,
+    }
+
+
+def claim_rows(
+    conn: sqlite3.Connection,
+    manifest: dict[str, list[str]],
+    claim_id: str,
+    call_ids: Sequence[str] = (),
+) -> dict[str, list]:
+    """The rows a claim's verdict rests on, as stored: its assumptions, check results and
+    evidence items (every column: text, parameters, outcomes, source and locator, rationale,
+    model run), the AI reviews of those items, the records the items cite, and the model runs
+    (model, file hash, prompt, settings, seed) that the items, reviews, claim and the claim's
+    model calls name. Expert decisions are bound by their own entries (evidence.decide)."""
     one = {
         "assumptions": "assumptions",
         "checks": "check_results",
         "evidence": "evidence_items",
     }
-    rows: dict[str, list[dict]] = {
+    rows: dict[str, list] = {
         key: [r for i in manifest.get(key, []) for r in _stored(conn, table, "id = ?", (i,))]
         for key, table in one.items()
     }
@@ -180,7 +209,49 @@ def rows_digest(conn: sqlite3.Connection, manifest: dict[str, list[str]]) -> str
             (eid,),
         )
     ]
+    rows["records"] = [_cited(conn, str(e["record_id"])) for e in rows["evidence"]]
+    calls = [r for cid in call_ids for r in _stored(conn, "model_calls", "id = ?", (cid,))]
+    claim = _stored(conn, "claims", "id = ?", (claim_id,))
+    named = {
+        r["model_run_id"]
+        for r in (*rows["evidence"], *rows["ai_reviews"], *calls, *claim)
+        if r.get("model_run_id")
+    }
+    rows["model_runs"] = [
+        r for mid in sorted(named) for r in _stored(conn, "model_runs", "id = ?", (mid,))
+    ]
+    return rows
+
+
+def rows_digest(
+    conn: sqlite3.Connection,
+    manifest: dict[str, list[str]],
+    claim_id: str,
+    call_ids: Sequence[str] = (),
+) -> str:
+    """One SHA-256 over claim_rows() when a claim's audit-log entry is written. The entry
+    records it, so core/bundle/verify.py can tell a row edited later from the one the rules
+    read."""
+    return _sha(canonical_json(claim_rows(conn, manifest, claim_id, call_ids)))
+
+
+def run_digest(conn: sqlite3.Connection, run_id: str) -> str:
+    """One SHA-256 over a pipeline run's fixed columns (start time, versions, configuration
+    with build, cloud decision and quote check), which its pipeline.run entry records."""
+    rows = [
+        {k: r[k] for k in _RUN_FIXED} for r in _stored(conn, "pipeline_runs", "id = ?", (run_id,))
+    ]
     return _sha(canonical_json(rows))
+
+
+_RUN_FIXED = (
+    "id",
+    "started_at_utc",
+    "baker_version",
+    "contracts_version",
+    "rule_version",
+    "config_json",
+)
 
 
 def _sha(text: str) -> str:
@@ -1297,7 +1368,10 @@ def run_audit(
                         "dropped_labels": result.dropped_labels,
                         "reviewer_failures": result.reviewer_failures,
                         "model_calls": calls_digest(conn, run.claim_calls),
-                        "rows_sha256": rows_digest(conn, result.manifest[claim.id]),
+                        "rows_sha256": rows_digest(
+                            conn, result.manifest[claim.id], claim.id, run.claim_calls
+                        ),
+                        "decided_at_utc": iso(decision.decided_at_utc),
                         "claim_sha256": claim_digest(conn, claim.id),
                     },
                 )
@@ -1309,9 +1383,10 @@ def run_audit(
         with conn:
             # The UPDATE opens the write transaction before the log reads its last entry, so a
             # decision the expert records at the same moment cannot take the same log seq.
+            finished = iso(_now(clock))
             conn.execute(
                 "UPDATE pipeline_runs SET status = ?, finished_at_utc = ? WHERE id = ?",
-                (PipelineRunStatus.COMPLETED.value, iso(_now(clock)), result.run_id),
+                (PipelineRunStatus.COMPLETED.value, finished, result.run_id),
             )
             audit_log.append(
                 conn,
@@ -1320,6 +1395,8 @@ def run_audit(
                 RUN_ACTION,
                 {
                     "run_id": result.run_id,
+                    "run_sha256": run_digest(conn, result.run_id),
+                    "finished_at_utc": finished,
                     "fake": result.fake,
                     "rules_pending": components.rules_pending(),
                     "components": components.names(),

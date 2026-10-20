@@ -3,7 +3,8 @@
 Nothing here touches a case or the network. The bundle's tables are loaded into a database in
 memory, built from core/schema.sql, and checked in this order; any failure fails the bundle:
 
-1. Files: every file matches the SHA-256 bundle.json lists, and nothing is added or missing.
+1. Files: every file matches the SHA-256 bundle.json lists, and the files listed are exactly a
+   bundle's: nothing added or missing.
 2. Versions: the rules and contracts that decided the verdicts are this copy's; otherwise it
    names the Baker commit to verify with, since only those rules can reproduce them.
 3. Tables: each row has exactly the schema's columns, and every reference resolves.
@@ -15,8 +16,10 @@ memory, built from core/schema.sql, and checked in this order; any failure fails
    be the note it gives.
 6. Inputs: each import entry in the log names the file hash stored for that source; with
    --inputs, files there are hashed and compared.
-7. Rows: the assumptions, check results, evidence items and AI reviews behind each verdict are
-   the ones its claim's audit-log entry recorded (pipeline.claim's rows_sha256).
+7. Run and rows: the run's row is the one its pipeline.run entry recorded (run_sha256); the
+   assumptions, check results, evidence items and AI reviews behind each verdict, the records
+   they cite and the model runs they name are the ones its claim's audit-log entry recorded
+   (pipeline.claim's rows_sha256).
 8. Labels: each evidence item's id still matches its content and it cites its record's source;
    its label is the model's answer as stored (tables/model_calls.jsonl), exactly or as the
    pipeline rewrites it, and its quote is found word for word in the record. Each AI review
@@ -24,12 +27,12 @@ memory, built from core/schema.sql, and checked in this order; any failure fails
    item, by the expert, at the time its evidence.decide entry names; each audited claim is the
    one its entry recorded (claim_sha256) or what logged claim.status changes made of it.
 9. Model calls: compared with the digests the audit log recorded for them (pipeline.claim's
-   model_calls; cloud.received's raw_sha256 for a hosted model's answers).
-10. Stipulations: each is what the expert's latest logged action left.
+   model_calls; cloud.received's raw_sha256 for the hosted answers those digests name).
+10. Stipulations and identity links: each is what the logged actions left.
 11. Verdicts: the verdict rules, re-applied to the recorded labels, checks, stipulations and the
    expert decisions as they stood when each verdict was decided, give every verdict exactly
-   (verdict, basis, reasons, coverage, citations), and the expert's confirmations and
-   overrides in the log replay to the stored outcome.
+   (verdict, basis, reasons, coverage, citations) at the logged time, and the expert's
+   confirmations and overrides in the log replay to the stored outcome.
 12. Report: the report rendered from these tables is byte for byte the report in the bundle.
 """
 
@@ -66,6 +69,7 @@ from core.contracts import (
 )
 from core.db import apply_schema
 from core.enrich.records import get_record
+from core.identity import links
 from core.ingest import forwarded
 from core.llm import cloud
 from core.report import html as report_html
@@ -161,6 +165,7 @@ def verify_bundle(
             _claims(conn, run, out)
             _calls(conn, out)
             _stipulations(conn, out)
+            _identity(conn, out)
             _verdicts(conn, run, out)
             _report(conn, zf, manifest, out)
         finally:
@@ -201,9 +206,13 @@ def _files(zf: zipfile.ZipFile, out: _Out) -> dict[str, Any] | None:
             f"Baker reads ({export.BUNDLE_VERSION})",
         )
         return None
-    for name in (export.METHOD, export.REPORT):
-        if name not in listed:
-            out.add(FAIL, "files", f"{name} is not listed in {export.MANIFEST}")
+    expected = {export.METHOD, export.REPORT} | {
+        f"{export.TABLES}{t}.jsonl" for t, _cols in export.schema_tables()
+    }
+    for name in sorted(expected - set(listed)):
+        out.add(FAIL, "files", f"{name} is not listed in {export.MANIFEST}")
+    for name in sorted(set(listed) - expected):
+        out.add(FAIL, "files", f"{name} is listed but is not part of a Baker bundle")
     for name in names:
         if name != export.MANIFEST and name not in listed:
             out.add(FAIL, "files", f"{name} is in the zip but not listed in {export.MANIFEST}")
@@ -276,7 +285,7 @@ def _tables(zf: zipfile.ZipFile, manifest: dict[str, Any], out: _Out) -> sqlite3
                 f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",  # noqa: S608
                 rows,
             )
-    except (ValueError, UnicodeDecodeError, db.DatabaseError) as e:
+    except (ValueError, UnicodeDecodeError, *db.DatabaseError) as e:
         out.add(FAIL, "tables", f"the tables cannot be loaded ({e})")
     if not out.failed("tables"):
         broken = conn.execute("PRAGMA foreign_key_check").fetchall()
@@ -458,7 +467,50 @@ def _run(conn: sqlite3.Connection, manifest: dict[str, Any], out: _Out) -> dict[
         return None
     if run.get("fake"):
         out.add(NOTE, "run", "a test run with stand-in components: nothing in it is a finding")
+    _run_rows(conn, run, out)
     return run
+
+
+def _run_rows(conn: sqlite3.Connection, run: dict[str, Any], out: _Out) -> None:
+    """The run's pipeline_runs row (start, versions, configuration with build, cloud decision
+    and quote check) is the one its pipeline.run entry recorded (run_sha256), completed at the
+    time the entry names; and so is the row of the audit a verdict re-run took its evidence
+    from."""
+    entries = {
+        p.get("run_id"): p for _s, _a, _c, act, p in _log(conn) if act == pipeline.RUN_ACTION
+    }
+    unbound = 0
+    for run_id in dict.fromkeys((run["run_id"], run.get("evidence_from_run", run["run_id"]))):
+        entry = entries.get(run_id) or {}
+        want = entry.get("run_sha256")
+        if not isinstance(want, str):
+            unbound += 1
+            continue
+        row = conn.execute(
+            "SELECT status, finished_at_utc, note FROM pipeline_runs WHERE id = ?", (run_id,)
+        ).fetchone()
+        if (
+            pipeline.run_digest(conn, run_id) != want
+            or row is None
+            or row[0] != "completed"
+            or row[1] != entry.get("finished_at_utc")
+            or row[2] is not None
+        ):
+            out.add(
+                FAIL,
+                "run",
+                f"{run_id}: its versions, settings or times are not the ones its audit-log "
+                "entry recorded",
+            )
+    if unbound:
+        out.add(
+            NOTE,
+            "run",
+            f"{unbound} audit runs predate run digests, so their versions and settings are "
+            "not bound to the log",
+        )
+    elif not out.failed("run"):
+        out.add(PASS, "run", "the audit's versions and settings are the ones its log recorded")
 
 
 # ---------------------------------------------------------------- 6. labels
@@ -491,7 +543,26 @@ def _rows(conn: sqlite3.Connection, run: dict[str, Any], out: _Out) -> None:
             PASS,
             "rows",
             f"the rows behind {len(run['manifest']) - unbound} verdicts are the ones their "
-            "audit-log entries recorded",
+            "audit-log entries recorded, with the records they cite and the model runs they name",
+        )
+    covered = {
+        str(r["id"])
+        for claim_id, entry in export.claim_entries(conn, run).items()
+        if isinstance(entry.get("rows_sha256"), str)
+        for r in pipeline.claim_rows(conn, entry["manifest"], claim_id, export.entry_calls(entry))[
+            "model_runs"
+        ]
+    }
+    other = [mid for (mid,) in conn.execute("SELECT id FROM model_runs ORDER BY rowid")]
+    other = [mid for mid in other if mid not in covered]
+    if other:
+        out.add(
+            NOTE,
+            "rows",
+            f"{len(other)} model runs bundle.json lists are named by no audited row (e.g. an "
+            f"earlier audit's, or one whose answers were all reused), so their model, prompt "
+            f"and settings are not bound to the log: {', '.join(other[:5])}"
+            + (" ..." if len(other) > 5 else ""),
         )
 
 
@@ -711,8 +782,10 @@ def _claims(conn: sqlite3.Connection, run: dict[str, Any], out: _Out) -> None:
                 bad += 1
                 continue
             if texts:
-                edited += 1  # its text at the audit is not recorded; the logged edit binds it
-                continue
+                if "was_text" not in later[0]:
+                    edited += 1  # its text at the audit is not recorded; the logged edit binds it
+                    continue
+                row["text"] = later[0]["was_text"]  # the text the claim was audited with
             row["status"] = later[0].get("was")
         if pipeline._sha(canonical_json([row])) != want:
             out.add(
@@ -768,22 +841,24 @@ def _calls(conn: sqlite3.Connection, out: _Out) -> None:
             (cloud.SHA_PREFIX + "%",),
         )
     }
-    if received:
-        for cid in sorted(hosted):
-            if _sha(calls[cid]) not in received:
-                out.add(
-                    FAIL,
-                    "model calls",
-                    f"{cid}: this hosted model answer is not the one "
-                    "the API returned (cloud.received)",
-                )
-                bad = True
-    elif hosted:
+    # A call a claim entry's digest names was stored by a Baker that logs each hosted answer
+    # (cloud.received, from the same release as the digests); one no digest names may predate
+    # both, and is only noted.
+    for cid in sorted(hosted & bound):
+        if _sha(calls[cid]) not in received:
+            out.add(
+                FAIL,
+                "model calls",
+                f"{cid}: this hosted model answer is not the one the API returned (cloud.received)",
+            )
+            bad = True
+    if hosted - bound:
         out.add(
             NOTE,
             "model calls",
-            f"{len(hosted)} hosted model answers predate cloud.received "
-            "entries, so only the evidence ids bind them",
+            f"{len(hosted - bound)} hosted model answers are named by no claim entry's digest "
+            "(they predate digests and cloud.received entries), so only the evidence ids bind "
+            "them",
         )
     if unbound_claims:
         out.add(
@@ -834,6 +909,60 @@ def _stipulations(conn: sqlite3.Connection, out: _Out) -> None:
         out.add(
             PASS, "stipulations", f"{len(stored)} stipulations match the expert's logged actions"
         )
+
+
+def _identity(conn: sqlite3.Connection, out: _Out) -> None:
+    """Each identity link is what the logged actions left: proposed by the proposer
+    (identity.propose) and undecided, or decided by the expert (identity.decide, identity.link)
+    with that status, tier, expert and time; and a link the log still holds is not missing.
+    Removals are logged too (identity.propose's removed, person.remove)."""
+    state: dict[str, tuple[str, str | None, str | None, str | None]] = {}
+    basis: dict[str, str] = {}
+    for _s, at, actor, act, p in _log(conn):
+        if act == links.PROPOSE_ACTION:
+            for lid in p.get("added") or []:
+                state.setdefault(lid, ("proposed", None, None, None))
+            for lid in p.get("removed") or []:
+                state.pop(lid, None)
+        elif act == "identity.link":
+            lid = p.get("link_id")
+            state[lid] = ("confirmed", actor, at, None)
+            basis.setdefault(lid, f"Linked by {actor}: {str(p.get('note', '')).strip()}")
+        elif act == "identity.decide":
+            state[p.get("link_id")] = (str(p.get("status")), actor, at, None)
+        elif act == "person.remove":
+            for lid in p.get("links_removed") or []:
+                state.pop(lid, None)
+    bad = 0
+    stored = conn.execute(
+        "SELECT id, account_id, person_id, status, tier, basis, decided_by, decided_at_utc"
+        " FROM identity_links ORDER BY id"
+    ).fetchall()
+    for lid, aid, pid, status, tier, why, by, at in stored:
+        logged = state.get(lid)
+        want_tier = "confirmed" if status == "confirmed" else "inferred"
+        if (
+            logged is None
+            or lid != links.link_id(aid, pid)
+            or (status, by) != logged[:2]
+            or tier != want_tier
+            or (at is None) != (logged[2] is None)
+            or (at is not None and _dt(at) != _dt(str(logged[2])))
+            or (lid in basis and why != basis[lid])
+        ):
+            out.add(
+                FAIL,
+                "identity links",
+                f"{lid}: not the account, person, status, tier, expert or time the logged "
+                "actions left",
+            )
+            bad += 1
+    gone = sorted(set(state) - {r[0] for r in stored})
+    for lid in gone:
+        out.add(FAIL, "identity links", f"{lid}: removed, and no logged action removed it")
+        bad += 1
+    if stored and not bad:
+        out.add(PASS, "identity links", f"{len(stored)} identity links match the logged actions")
 
 
 # ---------------------------------------------------------------- 7. verdicts
@@ -939,7 +1068,8 @@ def _verdicts(conn: sqlite3.Connection, run: dict[str, Any], out: _Out) -> None:
     for _s, _a, actor, act, p in log:
         if act in ("verdict.override", "verdict.confirm"):
             actions[p.get("verdict_id")].append((actor, act, p))
-    n = overridden = 0
+    decided_at = _decided_at(log, run)
+    n = overridden = untimed = 0
     for claim_id, items in sorted(run["manifest"].items()):
         claim = claims.get(claim_id)
         if claim is None or claim_id not in positions:
@@ -963,14 +1093,41 @@ def _verdicts(conn: sqlite3.Connection, run: dict[str, Any], out: _Out) -> None:
             out.add(FAIL, "verdicts", f"{claim_id}: no stored verdict for the run")
             continue
         problem = _compare(decision, stored, actions.get(stored.id, []))
+        when = decided_at.get(claim_id)
+        if when is None:
+            untimed += 1
+        elif problem is None and stored.decided_at_utc != _dt(when):
+            problem = "its decision time is not the one the audit log recorded"
         if problem:
             out.add(FAIL, "verdicts", f"{claim_id}: {problem}")
             continue
         n += 1
         overridden += any(a == "verdict.override" for _x, a, _p in actions.get(stored.id, []))
+    if untimed:
+        out.add(
+            NOTE,
+            "verdicts",
+            f"{untimed} verdicts predate logged decision times, so their times are not bound to "
+            "the log",
+        )
     if not out.failed("verdicts"):
         extra = f"; {overridden} then set by the expert, as logged" if overridden else ""
         out.add(PASS, "verdicts", f"the rules give all {n} verdicts exactly{extra}")
+
+
+def _decided_at(log: list, run: dict[str, Any]) -> dict[str, str]:
+    """Claim id -> the verdict time the audit log recorded: the claim's entry in a full audit,
+    the run's entry in a verdict re-run."""
+    run_id = run["run_id"]
+    out: dict[str, str] = {}
+    for _s, _a, _c, act, p in log:
+        if p.get("run_id") != run_id or not isinstance(p.get("decided_at_utc"), str):
+            continue
+        if act == pipeline.CLAIM_ACTION:
+            out[p["claim_id"]] = p["decided_at_utc"]
+        elif act == pipeline.RUN_ACTION and run["config"].get("mode") == "rules_only":
+            out.update(dict.fromkeys(run["manifest"], p["decided_at_utc"]))
+    return out
 
 
 def _compare(decision: Any, stored: Any, actions: list[tuple[str, str, dict]]) -> str | None:
