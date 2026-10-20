@@ -67,7 +67,7 @@ from core.ingest.source_file import require_sha256
 from core.review import audit_log
 
 IMPORTER_NAME = "ufdr"
-IMPORTER_VERSION = "0.1.1"
+IMPORTER_VERSION = "0.2.0"
 # Becomes "verified" only after a real UFDR has been checked against Cellebrite Reader
 # (docs/ingest/ufdr.md, "Before calling it verified"). Every import records it.
 FORMAT_SUPPORT = "unverified"
@@ -1081,7 +1081,9 @@ class _RecordMapper:
             if all(d["column"] != n for d in tc.duplicate_columns):
                 tc.duplicate_columns.append({"column": n, "field": n.lower(), "used": n})
 
-    def _flags(self, table: str, m: _Model, locator: str) -> str | None:
+    def _flags(
+        self, table: str, m: _Model, locator: str, embedded_in: _Model | None = None
+    ) -> str | None:
         """The record's deleted state as the package wrote it, and its recovery flags."""
         state = m.attrs.get("deleted_state") or m.attrs.get("deleted")
         if state is None:
@@ -1104,7 +1106,17 @@ class _RecordMapper:
             # the original author when the package names one, and core/ingest/forwarded.py keeps
             # it from supporting or contradicting a claim, and the expert is told which ones.
             mid = f"msg:{self.w.src}:{locator}"
-            if _forwarded(m):
+            if embedded_in is not None:
+                # An original carried inside another message, imported as a record of its own:
+                # always forwarded (someone else passed these words on), with its own sender as
+                # the original author only when it names exactly one and is not itself forwarded.
+                self.cov.counters["embedded_messages_imported"] += 1
+                self.cov.forwarded_records.setdefault("embedded_copy", []).append(mid)
+                author = None if _forwarded(m) else _sole_sender(m)
+                if author:
+                    self.cov.forwarded_from[mid] = author
+                self._flag(table, "embedded_original_imported", locator)
+            elif _forwarded(m):
                 self.cov.counters["messages_marked_forwarded"] += 1
                 self.cov.forwarded_records.setdefault("forwarded", []).append(mid)
                 author = _original_author(m)
@@ -1112,9 +1124,15 @@ class _RecordMapper:
                     self.cov.forwarded_from[mid] = author
                 self._flag(table, "forwarded", locator)
             if m.models("embeddedinstantmessage"):
-                self.cov.counters["messages_with_embedded_message_not_imported"] += 1
                 self.cov.forwarded_records.setdefault("embedded", []).append(mid)
-                self._flag(table, "embedded_message_not_imported", locator)
+                if embedded_in is None:
+                    # one level is imported: see embedded_rows
+                    self.cov.counters["messages_with_embedded_message_imported_separately"] += 1
+                    self._flag(table, "embedded_message_imported_separately", locator)
+                else:
+                    # a message nested inside an embedded one is not imported
+                    self.cov.counters["messages_with_embedded_message_not_imported"] += 1
+                    self._flag(table, "embedded_message_not_imported", locator)
         return state
 
     def _time(self, table: str, m: _Model, locator: str, names: tuple[str, ...]) -> str | None:
@@ -1137,7 +1155,7 @@ class _RecordMapper:
             self.chat(el, m)
         elif t == "InstantMessage":
             if not self._repeat(t, m, el.locator):
-                self.messages(t, RecordKind.CHATS, [self.message_row(None, el.locator, m)])
+                self.messages(t, RecordKind.CHATS, self.message_rows(None, el.locator, m))
         elif t in ("SMS", "MMS"):
             if not self._repeat(t, m, el.locator):
                 self.messages(t, RecordKind.SMS, [self.sms_row(t, el.locator, m)])
@@ -1149,9 +1167,12 @@ class _RecordMapper:
         self._maybe_write()
 
     def messages(self, table: str, kind: RecordKind, rows: list[_ModelRow]) -> None:
+        # an embedded original is not one of the extraction's records: counted apart, in
+        # embedded_messages_imported, so these totals stay the extraction's own
+        n = sum(1 for r in rows if EMBEDDED_STEP not in r.locator)
         tc = self.tables[table]
-        tc.rows_read += len(rows)
-        tc.rows_imported += len(rows)
+        tc.rows_read += n
+        tc.rows_imported += n
         _messages(self.w, kind, rows, self.tctx[table], None)
 
     # chats ---------------------------------------------------------------
@@ -1163,14 +1184,35 @@ class _RecordMapper:
             self.cov.counters["chats_without_messages"] += 1
         pending = [(loc, m) for loc, m in pending if not self._repeat("Chat", m, loc)]
         for i in range(0, len(pending), BATCH):
-            rows = [self.message_row(chat, loc, m) for loc, m in pending[i : i + BATCH]]
+            rows = [r for loc, m in pending[i : i + BATCH] for r in self.message_rows(chat, loc, m)]
             self.messages("Chat", RecordKind.CHATS, rows)
             self._maybe_write()
 
-    def message_row(self, chat: _Model | None, locator: str, m: _Model) -> _ModelRow:
+    def message_rows(self, chat: _Model | None, locator: str, m: _Model) -> list[_ModelRow]:
+        """The message, then each message embedded in it (one level) as a row of its own in the
+        same thread, at locator + "/Embedded[n]". An embedded message whose model id an earlier
+        record already had is not imported twice."""
+        rows = [self.message_row(chat, locator, m)]
+        for n, e in enumerate(m.models("embeddedinstantmessage"), 1):
+            eloc = f"{locator}{EMBEDDED_STEP}{n}]"
+            mid = e.attrs.get("id")
+            if mid and mid in self.model_ids:
+                # the original is already a record of its own: not imported twice
+                self.cov.counters["embedded_messages_already_imported"] += 1
+                continue
+            # never claims the id: a later standalone record with it still imports
+            rows.append(self.message_row(chat, eloc, e, embedded_in=m))
+        return rows
+
+    def message_row(
+        self, chat: _Model | None, locator: str, m: _Model, embedded_in: _Model | None = None
+    ) -> _ModelRow:
+        """One message row. `embedded_in` is the message carrying this one: the row then takes
+        that message's app and, outside a chat, its parties as the thread's participants, so it
+        lands in the same thread; never its sender or direction."""
         table = "Chat" if chat is not None else "InstantMessage"
         self._fields(table, "message", m)
-        state = self._flags(table, m, locator)
+        state = self._flags(table, m, locator, embedded_in)
         senders = [p for p, _r in _parties(m.models("from"))]
         to = [p for p, _r in _parties(m.models("to"))]
         for p, role in _parties(m.models("parties")):
@@ -1179,15 +1221,24 @@ class _RecordMapper:
             elif role in ("to", "cc", "bcc"):
                 to.append(p)
         participants = [p for p, _r in _parties(chat.models("participants"))] if chat else []
-        app = m.text("source") or (chat.text("source") if chat else None)
+        if embedded_in is not None and chat is None:
+            participants = [p for p, _r in _parties(embedded_in.models("from", "to", "parties"))]
+        app = (
+            m.text("source")
+            or (embedded_in.text("source") if embedded_in is not None else None)
+            or (chat.text("source") if chat else None)
+        )
         values: dict[str, Cell] = {
             "app": app,
             "chat_id": chat.text(*CHAT_ID_FIELDS) if chat else None,
             "chat_name": chat.text(*CHAT_NAME_FIELDS) if chat else None,
             "participants": "\n".join(_party_text(p) for p in participants) or None,
             "body": m.raw(*BODY_FIELDS),
-            "ts": self._time(table, m, locator, TS_FIELDS),
-            "direction": m.text("direction"),
+            # an embedded copy takes no time: the original's time is not when this phone held
+            # it, and it must not sit on the timeline as if sent then
+            "ts": None if embedded_in is not None else self._time(table, m, locator, TS_FIELDS),
+            # an embedded original never takes a stated direction: the shared mapper decides
+            "direction": None if embedded_in is not None else m.text("direction"),
             "folder": m.text("folder"),
             "status": m.text("status"),
             "deleted": state,
@@ -1350,6 +1401,16 @@ def _forwarded(m: _Model) -> bool:
     labels += [x.text("label") or "" for x in m.models("messageextradata")]
     labels += [v for x in m.models("messageextradata") for v in x.multi_values.get("labels", [])]
     return any(is_forwarded_label(v) for v in labels)
+
+
+EMBEDDED_STEP = forwarded.COPY_STEP  # locator step of a message embedded in another
+
+
+def _sole_sender(m: _Model) -> str | None:
+    """The message's sender as written, when it names exactly one; never guessed."""
+    authors = {_party_text(p) for p, _r in _parties(m.models("from"))}
+    authors.discard("")
+    return authors.pop() if len(authors) == 1 else None
 
 
 def _original_author(m: _Model) -> str | None:

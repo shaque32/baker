@@ -98,9 +98,12 @@ from core.review.status import verdict_label as _verdict_label
 # 0.8.0 (rules 0.3.0): a claim whose model contradiction waits for the expert prints
 # "Contradiction found, confirm to finalize", like the screen; Versions names the claim types
 # whose model contradictions count without an expert, and the probe run that qualified each.
-# 0.9.0 (#104): a scoped reproducibility bundle's report says what the bundle left out, counts
+# 0.9.0: Versions names each source's importer and its version; a forwarded or quoted copy
+# imported from inside another message gets its own note (core/ingest/forwarded.record_note),
+# and the conversation and timeline label it as a copy.
+# 0.10.0 (#104): a scoped reproducibility bundle's report says what the bundle left out, counts
 # the items left out under each claim, and leaves out the sections that read the whole phone.
-REPORT_VERSION = "0.9.0"
+REPORT_VERSION = "0.10.0"
 
 
 @dataclass(frozen=True)
@@ -394,12 +397,9 @@ def record_line(
 ) -> str:
     note = (found or {}).get(record_id)
     if note:
-        author = forwarded.original_author(conn, record_id) if note == "forwarded" else None
-        if author:
-            before, after = forwarded.AUTHOR_NOTE
-            warning = f"{e(before)}{q(author)}{e(after)}"  # the author is the source's text
-        else:
-            warning = e(forwarded.RECORD_NOTE[note])
+        # cited parts are the source's text (a sender or author as written)
+        parts = forwarded.record_note(conn, record_id, note)
+        warning = "".join(q(t) if cited else e(t) for t, cited in parts)
         return f"{record_line(conn, record_id)}<br><strong class='warn'>{warning}</strong>"
     if record_id.startswith("msg:"):
         r = conn.execute(
@@ -676,6 +676,10 @@ def _versions(conn: sqlite3.Connection, run: dict | None) -> str:
         cloud = (run.get("config") or {}).get("cloud")
         if isinstance(cloud, dict):
             rows.append(("Stance labels", str(cloud.get("why", ""))))
+    for sid, name, version in conn.execute(
+        "SELECT source_id, importer, importer_version FROM source_coverage ORDER BY source_id"
+    ):
+        rows.append((f"Importer for {sid}", f"{name} {version}"))
     rows.append(("Forwarded marks", forwarded_label(conn)))
     rows.append(("Model contradictions without an expert", auto_contradict_label(run)))
     model_rows = list(
