@@ -18,8 +18,18 @@ Until then it builds unsigned and the run shows the warning "Installer not signe
 
 ## Setup (about 20 minutes, after Microsoft finishes the identity check)
 
-First create the Artifact Signing account (Basic tier), pass Microsoft's identity validation and
-create a **Public Trust** certificate profile, as in Microsoft's Artifact Signing quickstart.
+First, in Microsoft's Artifact Signing quickstart order (done for Baker 2026-10-19/20):
+
+- On the subscription (Pay-As-You-Go, billing account type **Individual** for a person, as on your
+  ID): **Settings** > **Resource providers** > register `Microsoft.CodeSigning`.
+- Create the Artifact Signing account (Basic tier, East US). Baker's is `bakersigning`.
+- In that account's **Access control (IAM)**, give yourself the role **Artifact Signing Identity
+  Verifier**. Without it, **New identity validation** stays greyed out even for the owner.
+- **Identity validations** > **New** > **Public**, then pick **Individual** (the form that opens
+  first asks for a company and a DUNS number). Individuals must be in the US or Canada. Finish the
+  email and ID check from Microsoft's link. Baker's took under a day.
+- **Certificate profiles** > **Create** > **Public Trust**, named `bakerpublic`, on that validation.
+
 Then:
 
 1. **App registration.** In <https://portal.azure.com> open **Microsoft Entra ID** > **App
@@ -27,13 +37,19 @@ Then:
    no redirect URI > **Register**. Copy the **Application (client) ID** and the **Directory
    (tenant) ID** from its overview page.
 2. **Trust GitHub's main branch.** In that app: **Certificates & secrets** > **Federated
-   credentials** > **Add credential** > scenario **GitHub Actions deploying Azure resources**.
-   Organization `shaque32`, repository `baker`, entity type **Branch**, branch `main`, name
-   `baker-main` > **Add**. (No client secret: leave that tab alone.)
+   credentials** > **Add credential** > scenario **Other issuer** (not "GitHub Actions deploying
+   Azure resources": that form writes the old subject `repo:shaque32/baker:ref:refs/heads/main`,
+   and this repository's tokens carry the newer one with owner and repository IDs, so login fails
+   with AADSTS70025). Issuer `https://token.actions.githubusercontent.com`, type **Explicit
+   subject identifier**, value `repo:shaque32@196110499/baker@1407810293:ref:refs/heads/main`,
+   audience `api://AzureADTokenExchange`, name `baker-main` > **Add**. The value is the
+   "subject claim" the **Azure login** step prints, if it ever changes. (No client secret: leave
+   that tab alone.)
 3. **Let the app sign.** Open your Artifact Signing account > **Access control (IAM)** > **Add
    role assignment** > role **Artifact Signing Certificate Profile Signer** (older screens:
-   Trusted Signing Certificate Profile Signer) > members: `baker-github-signing` > **Review +
-   assign**.
+   Trusted Signing Certificate Profile Signer) > **Select members** > type
+   `baker-github-signing` (apps appear only when searched by name) > **Review + assign**.
+   Without this role, login works but signing fails with `403 (Forbidden)`.
 4. **GitHub secrets.** In <https://github.com/shaque32/baker> > **Settings** > **Secrets and
    variables** > **Actions** > **Secrets** tab > **New repository secret**, twice:
    `AZURE_CLIENT_ID` (the client ID from step 1) and `AZURE_TENANT_ID` (the tenant ID).
