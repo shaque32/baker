@@ -21,7 +21,7 @@
   `IMPORTER_VERSION` 0.1.0 -> 0.2.0 (pinned in `tests/test_axiom.py`, and shown in the report's
   Versions table). No check version changed, since no check's behaviour did. No schema or
   contract change. Why: gate 4 needs AXIOM to read forwarded marks.
-- Where: branch claude/axiom-forwarded-marks
+- Where: PR #116
 - Verified: `tests/test_axiom.py` (XML and Excel: forwarded mark with author as written; flag
   values that mean no; unknown value fails closed; quoted copy verbatim at its own locator, no
   time, not outgoing, own sender, same thread, no extra thread, exact copy note with and without
