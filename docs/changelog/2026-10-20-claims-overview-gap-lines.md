@@ -7,8 +7,9 @@
   who is behind an account, event or role, time, search coverage), from
   `ClaimState.unproven_lines()` in `core/review/status.py`; a fully covered claim held by another
   rule gets one line pointing to that rule. The lines are read from the stored verdict's
-  coverage, decide nothing, and are left out while the verdict is stale or support waits on
-  the expert. AI-reviewed support and unseen AI-dismissed support count as Needs you. The overview no longer repeats "Verdict not yet
+  coverage and decide nothing; each says only that a part "is not established". When
+  anything the verdict rests on changed after the run, one "Not current" line asks for a
+  rules-only re-run instead. AI-reviewed support and unseen AI-dismissed support count as Needs you. The overview no longer repeats "Verdict not yet
   confirmed or overridden by you" on every row (the claim page still shows it). The report
   (0.10.0) prints the same gap lines under each unproven claim. Verdicts, rules, labels,
   contracts and schema are unchanged. Plan: /mnt/project-files/baker/plans/ui-redesign.md (PR 1 of 3).

@@ -340,9 +340,10 @@ def test_a_claim_supported_on_ai_review_or_with_ai_dismissed_support_waits_on_th
     assert "3 claims need you." in page and "18 of 21" in page
 
 
-def test_support_waiting_on_the_expert_is_not_a_gap_and_every_tile_has_a_destination(root):
-    """An uncovered assumption whose supporting record still waits on the expert is the expert's
-    step, not a gap the data leaves; and each count tile links to a section that exists."""
+def test_gap_lines_follow_the_stored_coverage_until_it_is_stale_and_tiles_have_destinations(root):
+    """A part the stored verdict left uncovered is "not established" even while support for it
+    waits on the expert; after a later change the line says the verdict is not current instead;
+    and each count tile links to a section that exists."""
     import dataclasses
 
     from core.contracts import AssumptionKind as K
@@ -361,19 +362,12 @@ def test_support_waiting_on_the_expert_is_not_a_gap_and_every_tile_has_a_destina
     ]
     reviewers = {k: v for k, v in st.last_reviewer.items() if k != item.id}
     waiting = dataclasses.replace(st, evidence=opened, last_reviewer=reviewers)
-    assert st.gaps() == [K.MEANING] and waiting.gaps() == []
-    # an inference waiting on the expert could never cover the assumption, so the gap stays
-    from core.contracts import ProvenanceTier
+    assert st.gaps() == [K.MEANING] and waiting.gaps() == [K.MEANING]
+    from core.review.status import STALE
 
-    inferred = [
-        x.model_copy(update={"tier": ProvenanceTier.INFERRED}) if x.id == item.id else x
-        for x in opened
-    ]
-    assert dataclasses.replace(waiting, evidence=inferred).gaps() == [K.MEANING]
-    # stale until verdicts re-run: no gap read from the old coverage
-    assert dataclasses.replace(st, decided_after_run=True).gaps() == []
-    assert dataclasses.replace(st, edited_after_run=True).gaps() == []
-    assert dataclasses.replace(st, stipulated_after_run=True).gaps() == []
+    for flag in ("decided_after_run", "edited_after_run", "case_changed_after_run"):
+        stale = dataclasses.replace(st, **{flag: True})
+        assert stale.gaps() == [] and stale.unproven_lines() == [STALE], flag
     # every core assumption covered, yet unproven by another rule: one line points to the rule
     from core.review.status import OTHER_RULE
 

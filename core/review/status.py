@@ -39,7 +39,6 @@ from core.contracts import (
     Claim,
     EvidenceItem,
     EvidenceStatus,
-    ProvenanceTier,
     Stance,
     SupportedBasis,
     Verdict,
@@ -80,6 +79,11 @@ OTHER_RULE = (
     "No coverage gap; another verdict rule keeps it unproven. The rule's reasons are listed "
     "with the claim.",
 )
+STALE = (
+    "Not current",
+    "Something this verdict rests on changed after the run. Re-run the verdicts (rules only, "
+    "no model) to see what is still not established.",
+)
 GAP_TEXT: dict[AssumptionKind, str] = {
     AssumptionKind.MEANING: "What the words mean, as the claim reads them, is not established.",
     AssumptionKind.IDENTITY: "The identity link the claim states is not established.",
@@ -114,7 +118,8 @@ class ClaimState:
     expert_decided: int = 0
     decided_after_run: bool = False  # an expert decided one of its items after the run
     edited_after_run: bool = False  # the expert changed the claim text after the run
-    stipulated_after_run: bool = False  # a stipulation was confirmed or withdrawn after the run
+    # a stipulation, person or identity-link decision was made after the run (case-wide)
+    case_changed_after_run: bool = False
     unlabeled: str | None = None  # why the run did not send this claim's evidence to the model
     not_tested: str | None = None  # why nothing was checked: the claim got no core assumption
     incomplete: bool = False  # the run shown has not finished labeling this claim
@@ -155,6 +160,13 @@ class ClaimState:
             and self.decision.override_note is None
         )
 
+    @property
+    def stale(self) -> bool:
+        """Something the verdict rests on changed after the run: an evidence decision, the claim
+        text, or a case-wide stipulation, person or identity-link decision. Case-wide changes
+        mark every claim, which only asks for a re-run that is cheap (rules only, no model)."""
+        return self.decided_after_run or self.edited_after_run or self.case_changed_after_run
+
     def _explainable(self) -> bool:
         """An unproven verdict nobody overrode, whose stored coverage is still current."""
         d = self.decision
@@ -164,35 +176,23 @@ class ClaimState:
             or d.override_note is not None
             or self.incomplete
             or self.untested
-            or self.decided_after_run  # the stored coverage is stale until verdicts re-run
-            or self.edited_after_run
-            or self.stipulated_after_run
+            or self.stale
             or pipeline.RULES_PENDING_REASON in d.reasons
         )
 
     def gaps(self) -> list[AssumptionKind]:
-        """The kinds of core assumption the rules found not covered, in claim order, for an
-        unproven verdict nobody overrode, leaving out an assumption whose supporting evidence
-        still waits on the expert. Empty for any other claim, and while the verdict is stale
-        (evidence decided, claim text or a stipulation changed after the run)."""
+        """The kinds of core assumption the stored verdict found not covered, in claim order, for
+        an unproven verdict nobody overrode. Each is "not established" whatever else waits on the
+        expert. Empty for any other claim, and while the verdict is stale."""
         if not self._explainable():
             return []
         d = self.decision
         if d is None:
             return []
         uncovered = {cv.assumption_id for cv in d.coverage if not cv.covered}
-        # support still waiting on the expert is the expert's step ("Support found"), not a gap
-        pending = {
-            e.assumption_id
-            for e in self.evidence
-            if e.stance == Stance.SUPPORTS
-            and e.tier != ProvenanceTier.INFERRED  # an inference never covers (rules.py)
-            and e.status != EvidenceStatus.DISMISSED
-            and not (self.last_reviewer.get(e.id) == "expert" and e.status != EvidenceStatus.OPEN)
-        }
         out: list[AssumptionKind] = []
         for a in self.assumptions:
-            if a.is_core and a.id in uncovered and a.id not in pending and a.kind not in out:
+            if a.is_core and a.id in uncovered and a.kind not in out:
                 out.append(a.kind)
         return out
 
@@ -200,6 +200,15 @@ class ClaimState:
         """(topic, text) lines saying why the claim is unproven, for the overview and the report:
         one per gap, or, when every core assumption is covered and nothing waits on the expert,
         one line pointing to the other rule that holds it."""
+        d = self.decision
+        if (
+            self.stale
+            and d is not None
+            and d.verdict == Verdict.UNPROVEN
+            and d.override_note is None
+            and not (self.incomplete or self.untested)
+        ):
+            return [STALE]
         kinds = self.gaps()
         if kinds:
             return [(GAP_TOPICS[k], GAP_TEXT[k]) for k in kinds]
@@ -438,9 +447,10 @@ def _state(
         st.incomplete = True
     if not items or decision is None:
         return st
-    st.stipulated_after_run = (
+    st.case_changed_after_run = (
         conn.execute(
-            "SELECT 1 FROM audit_log WHERE action LIKE 'stipulation.%' AND at_utc > ? LIMIT 1",
+            "SELECT 1 FROM audit_log WHERE (action LIKE 'stipulation.%' OR action LIKE "
+            "'identity.%' OR action LIKE 'person.%') AND at_utc > ? LIMIT 1",
             (run["started_at_utc"],),
         ).fetchone()
         is not None
