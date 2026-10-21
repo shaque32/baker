@@ -1535,7 +1535,7 @@ def activity_page(conn: sqlite3.Connection, page: Page, claim: str, show_all: bo
         "examiner's name, the page and the evidence it listed, beside the examiner's decisions. "
         "The hash chain covers these entries like every other. Nothing here leaves this "
         "computer.</p>",
-        "<p class='muted'>Time on page runs from opening a page to the next page or action. "
+        "<p class='muted'>Time on page runs from opening a page to the next page opened. "
         "The screen runs no scripts, so Baker cannot tell what was on screen or read; a "
         f"stretch over {idle} minutes may include time away, and a page whose end was not "
         "recorded (the screen closed, or the next step came from elsewhere) is not timed; both "

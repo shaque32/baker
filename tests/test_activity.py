@@ -134,17 +134,27 @@ def test_an_expert_action_ends_the_time_on_page_and_counts_on_its_claim(db, conn
     assert activity.by_claim([view, decision, back])["C05"].actions == 1
 
 
-def test_a_step_from_another_examiner_or_the_cli_does_not_time_a_page(db, conn):
+def test_an_action_from_elsewhere_does_not_end_a_page(db, conn):
     from core.review import actions
     from core.review.status import claim_state as state
 
+    app, clock = _app(db)
+    get(app, "/claim", id="C05")
+    clock.tick(seconds=30)
+    eid = state(conn, "C05").evidence[0].id
+    for by in ("expert:Someone Else", EXPERT):  # another examiner, or this one's command line
+        actions.decide_evidence(conn, eid, EvidenceStatus.DISMISSED, by, "Not relevant.")
+    clock.tick(seconds=20)
+    get(app, "/claim", id="C06")
+    view = next(s for s in activity.steps(conn) if s.is_view)
+    assert view.seconds == 50  # the page stayed open until the next page on this screen
+
+
+def test_a_page_with_no_later_page_on_its_screen_is_not_timed(db, conn):
     app, _ = _app(db)
     get(app, "/claim", id="C05")
-    eid = state(conn, "C05").evidence[0].id
-    actions.decide_evidence(
-        conn, eid, EvidenceStatus.DISMISSED, "expert:Someone Else", "Not relevant."
-    )
-    get(app, "/claim", id="C06")
+    other, _ = _app(db)  # a second screen on the case
+    get(other, "/claim", id="C06")
     view = next(s for s in activity.steps(conn) if s.is_view)
     assert view.seconds is None
     a = activity.by_claim(activity.steps(conn))["C05"]
@@ -272,7 +282,7 @@ def test_activity_page_csv_and_log_page(db, conn):
     get(app, "/claim", id="C05")
     clock.tick(seconds=12)
     page = get(app, "/activity").text
-    assert "Time on page runs from opening a page to the next page or action" in page
+    assert "Time on page runs from opening a page to the next page opened" in page
     # the Activity page is recorded before it renders, so it ends the claim page's time
     c05 = page.split("activity?claim=C05'>C05</a></td>")[1].split("</tr>")[0]
     assert c05.startswith("<td>1</td>") and "<td>12 s</td>" in c05
@@ -350,7 +360,7 @@ def test_a_view_that_cannot_be_written_breaks_the_refresh_check(db, conn, monkey
     assert [p["id"] for _, p in _views(conn)] == ["C05", "C05"]
 
 
-def test_a_report_switch_from_the_command_line_does_not_time_a_page(db, conn):
+def test_a_report_switch_from_the_command_line_does_not_end_a_page(db, conn):
     app, clock = _app(db)
     get(app, "/claim", id="C05")
     clock.tick(seconds=40)
@@ -362,7 +372,7 @@ def test_a_report_switch_from_the_command_line_does_not_time_a_page(db, conn):
     post(app, "/activity/report", include="0")  # the screen's own switch ends its page
     get(app, "/claims")
     views = [s for s in activity.steps(conn) if s.is_view]
-    assert views[0].payload["id"] == "C05" and views[0].seconds is None
+    assert views[0].payload["id"] == "C05" and views[0].seconds == 60
     assert views[2].payload["page"] == "/activity" and views[2].seconds == 10
 
 
@@ -390,27 +400,35 @@ def test_listed_evidence_reads_the_pages_links():
     assert listed_evidence(html_text) == ["ev:a|1", "ev:b"]
 
 
-def test_item_ids_are_kept_whole_and_cut_query_values_say_so(conn):
+def test_item_ids_are_kept_whole_and_only_the_pages_own_switches_are_kept(conn):
     long_id = "C" + "9" * 300
-    query = {"id": long_id, "claim": "y" * 300}
-    p = activity.view_payload(conn, "/activity", session="s", query=query)
+    p = activity.view_payload(conn, "/claim", session="s", query={"id": long_id})
     assert p["id"] == long_id
-    assert len(p["query"]["claim"]) == activity.MAX_VALUE and p["query_cut"] is True
+    p = activity.view_payload(
+        conn, "/activity", session="s", query={"id": "x", "claim": "C05", "all": "1"}
+    )
+    assert "id" not in p and p["query"] == {"all": "1", "claim": "C05"}
+    p = activity.view_payload(  # free text where an id or switch would go
+        conn, "/log", session="s", query={"claim": "Smith and Jones", "views": "yes", "all": "1"}
+    )
+    assert p["query"] == {"all": "1"} and p["query_left_out"] == 2
+    p = activity.view_payload(conn, "/activity", session="s", query={"claim": "Smith and Jones"})
+    assert "query" not in p and p["query_left_out"] == 1
 
 
 def test_free_text_in_the_address_is_counted_not_kept(db, conn):
     app, _ = _app(db)
-    get(app, "/flags/summary.json", pilot="Smith and Jones LLP", note="anything")
+    get(app, "/flags/summary.json", pilot="Smith and Jones LLP", id="Smith and Jones")
     _, p = _views(conn)[-1]
-    assert "query" not in p and p["query_left_out"] == 2
+    assert "query" not in p and "id" not in p and p["query_left_out"] == 2
     assert "Smith" not in json.dumps(p)
 
 
 def test_a_forbidden_word_in_the_address_never_breaks_the_activity_page(db, conn):
     app, _ = _app(db)
     assert get(app, "/activity", claim="deleted").status == 200
-    page = get(app, "/activity")  # the trail shows that address, as cited text
-    assert page.status == 200 and '<span class="q">deleted</span>' in page.text
+    page = get(app, "/activity")  # not a claim, so the trail does not keep it
+    assert page.status == 200 and "deleted" not in page.text
 
 
 def test_the_same_page_reloaded_after_a_minute_is_a_new_view(db, conn):

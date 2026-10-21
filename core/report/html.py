@@ -887,7 +887,7 @@ def activity_section(conn: sqlite3.Connection) -> str:
         f"<p>{total['views']} page views in {total['sessions']} screen session"
         f"{'s' if total['sessions'] != 1 else ''} by {e(', '.join(total['examiners']))}, from "
         f"{e(total['first_at'])} to {e(total['last_at'])}, recorded in the audit log above. "
-        "Time on page runs from opening a page to the examiner's next page or action; the "
+        "Time on page runs from opening a page to the next page opened on the same screen; the "
         "screen runs no scripts, so it does not show what was read. Stretches over "
         f"{idle} minutes may include time away, and pages whose end was not recorded are not "
         "timed; both are counted apart. The full trail is the "

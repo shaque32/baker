@@ -7,16 +7,16 @@ stance call sends only the filled-in stance prompt (core/llm/cloud.py), never th
 
 What a view records: the time (UTC), the examiner's name, the screen session, the page, the
 item it was opened on (a claim, an evidence item, an exhibit, a message), the page switches in
-its address (QUERY_KEPT; any other field is counted, not kept), the evidence items the page
+its address (SWITCHES; any other field is counted, not kept), the evidence items the page
 linked to, and for an evidence item its record and where that record sits in its source (source
 id and locator). It never records the page's text.
 
 What it cannot show. The screen runs no scripts, so Baker cannot tell what part of a page was
 on screen, whether a folded section was opened, or whether the examiner read it. "Time on
-page" is the time from opening a page to the examiner's next page or action in the same
-session: an upper bound on attention, never proof of reading. A stretch longer than IDLE is
-shown as such ("may include time away") and left out of totals. The last page of a session has
-no end time. Views never change a verdict and are not an expert decision.
+page" is the time from opening a page to the next page opened in the same screen session: an
+upper bound on attention, never proof of reading. A stretch longer than IDLE is shown as such
+("may include time away") and left out of totals. The last page of a session has no end time.
+Views never change a verdict and are not an expert decision.
 
 In the report. The report's Examiner activity table (core/report/html.py) is opt-in per case
 and off by default: the expert turns it on or off on the Activity page, and each change is an
@@ -43,10 +43,15 @@ REPORT_ACTION = "report.activity"  # the expert put the activity table in the re
 UNNAMED = "viewer:unnamed"  # a page opened before the examiner entered a name
 IDLE = timedelta(minutes=30)
 MAX_LISTED = 500  # evidence ids kept per view; a longer list says how many were left out
-MAX_VALUE = 200  # characters kept of a query value other than the item id, which is kept whole
-# The query fields a view keeps besides the id: page switches, never free text (a flag summary's
-# pilot name, say). Others are counted, not stored.
-QUERY_KEPT = frozenset({"all", "claim", "download", "views"})
+# The address fields a view keeps, per page: the item id on the pages that open one item, and
+# the page switches each page reads ("1" only; a claim filter only when it names a claim of the
+# case). Anything else, such as a flag summary's pilot name, is counted, never stored.
+ID_PAGES = frozenset({"/claim", "/evidence", "/exhibit", "/exhibit/match", "/selection/context"})
+SWITCHES = {
+    "/log": frozenset({"all", "views"}),
+    "/activity": frozenset({"all", "claim"}),
+    "/report": frozenset({"download"}),
+}
 REFRESH = timedelta(seconds=60)  # a reload of the same page this soon is the same view
 
 PAGES = {
@@ -93,16 +98,14 @@ def view_payload(
     from the case, so the trail says where the record sits without storing its text."""
     query = dict(query or {})
     p: dict = {"page": page, "session": session}
-    ident = query.pop("id", None)
+    ident = query.pop("id", None) if page in ID_PAGES else None
     if ident is not None:
         p["id"] = ident  # whole, so the trail names the very claim or evidence item opened
-    kept = {k: v for k, v in query.items() if k in QUERY_KEPT}
+    kept = {k: v for k, v in query.items() if _switch(conn, page, k, v)}
     if len(kept) < len(query):
-        p["query_left_out"] = len(query) - len(kept)  # fields that are not page switches
+        p["query_left_out"] = len(query) - len(kept)  # fields this page does not read
     if kept:
-        p["query"] = {k: v[:MAX_VALUE] for k, v in sorted(kept.items())}
-        if any(len(v) > MAX_VALUE for v in kept.values()):
-            p["query_cut"] = True  # a value was cut to MAX_VALUE characters
+        p["query"] = dict(sorted(kept.items()))
     if page == "/evidence" and ident is not None:
         row = conn.execute(
             "SELECT e.record_id, e.source_id, e.locator, a.claim_id FROM evidence_items e"
@@ -117,6 +120,15 @@ def view_payload(
         if len(items) > MAX_LISTED:
             p["listed_left_out"] = len(items) - MAX_LISTED
     return p
+
+
+def _switch(conn: sqlite3.Connection, page: str, key: str, value: str) -> bool:
+    """Whether an address field is a switch this page reads, with a value it takes."""
+    if key not in SWITCHES.get(page, ()):
+        return False
+    if key == "claim":
+        return conn.execute("SELECT 1 FROM claims WHERE id = ?", (value,)).fetchone() is not None
+    return value == "1"
 
 
 def record_view(
@@ -292,25 +304,14 @@ def steps(conn: sqlite3.Connection) -> list[Step]:
 
 
 def _end(raw: list[Step], i: int, next_view: list[int | None]) -> datetime | None:
-    """When the view raw[i] ended: at the next step, if that step is a view in the same screen
-    session, or an action by the same examiner that the same session's next view follows (the
-    page a form returns to). Otherwise unknown: the screen was closed, or the next step came
-    from another session, another examiner or the command line."""
-    view = raw[i]
-    session = view.payload.get("session")
-    if i + 1 >= len(raw):
+    """When the view raw[i] ended: when the next page was opened, if that page is in the same
+    screen session. Actions in between do not end it: a form the page posts returns to a page
+    at once, and an action from elsewhere (another examiner, the command line) says nothing
+    about this screen. Otherwise unknown: the next page came from another screen, or none came."""
+    j = next_view[i + 1]
+    if j is None or raw[j].payload.get("session") != raw[i].payload.get("session"):
         return None
-    nxt = raw[i + 1]
-    if nxt.is_view:
-        return _time(nxt.at_utc) if nxt.payload.get("session") == session else None
-    if nxt.actor != view.actor:
-        return None
-    if "session" in nxt.payload and nxt.payload["session"] != session:
-        return None  # an action that names its session (None: the command line) is not this page's
-    j = next_view[i + 2] if i + 2 <= len(raw) else None
-    if j is None or raw[j].payload.get("session") != session:
-        return None
-    return _time(nxt.at_utc)
+    return _time(raw[j].at_utc)
 
 
 def duration(seconds: float | None, away: bool = False) -> str:

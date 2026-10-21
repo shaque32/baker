@@ -10,11 +10,14 @@
   default (Arsh, 2026-10-21): the expert switches it on the Activity tab or with
   `baker activity --in-report on|off --by expert:<name>`, each change is an audit-log entry
   (`report.activity`), and when off the report says the table is not included. Page views stay
-  out of the report's expert-actions table and counts; the Audit log page hides views unless `/log?views=1`. Why: Yazen (forensic expert
-  advisor, via Arsh 2026-10-21) wants a trackable, timed record of what the examiner opened and
-  looked at, to answer a "rubber-stamped" challenge. No schema, rules, prompt or contract change.
+  out of the report's expert-actions table and counts; the Audit log page hides views unless
+  `/log?views=1`. A view keeps only the address fields its page reads (the item id, and
+  switches such as a claim filter); other fields are counted, not stored. Time on page runs to
+  the next page opened on the same screen. Why: Yazen (forensic expert advisor, via Arsh
+  2026-10-21) wants a trackable, timed record of what the examiner opened and looked at, to
+  answer a "rubber-stamped" challenge. No schema, rules, prompt or contract change.
 - Where: PR #111 (branch claude/project-thread-1wfsnn)
-- Verified: tests/test_activity.py (33 tests: logging, evidence location, refresh collapse, time
+- Verified: tests/test_activity.py (34 tests: logging, evidence location, refresh collapse, time
   on page and the 30-minute away mark, new session, unnamed viewer, verdicts unchanged, report
   section, Activity page, CSV hashes and formula guard, tampered view breaks the chain, a view
   that cannot be written is reported, cross-site requests and posts leave the trail alone, CLI,
@@ -24,9 +27,9 @@
   tests/test_report_consistency.py now checks the screen adds only `view` entries and the
   report adds none; tests/test_demo.py counts the tabs from `TAB_GROUPS`. Speed (Linux cloud
   container, 2026-10-21): with 20,000 view entries, the per-page log check took 0.17 s and
-  reading the trail 0.32 s. make check passed (2353 tests; case01 gate 1.00, 0 false
+  reading the trail 0.32 s. make check passed (2354 tests; case01 gate 1.00, 0 false
   supported; eval unchanged).
-- Open: time on page is time to the next page or action, not reading (no scripts); two screens
+- Open: time on page is time to the next page opened on the same screen, not reading (no scripts); two screens
   on one case at once would interleave and shorten it. Views after the newest anchor can be cut
   undetected, like any entry (docs/review-screen.md). The reproducibility bundle (#104) carries
   views as plain audit-log entries until a follow-up adds an opt-in "activity" part. CLI commands

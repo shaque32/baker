@@ -115,12 +115,13 @@ eval or re-decided.
    (source and locator), never the record's text. The Activity tab shows the trail per claim
    (times opened, first and last, time on its pages, evidence opened, your actions) and step by
    step, beside your decisions; `/activity.csv` and `baker activity --db case.db [--csv
-   out.csv]` export it with each entry's hash. Time on page runs from opening a page to your
-   next page or action in the same screen session. The screen runs no scripts, so it cannot tell
+   out.csv]` export it with each entry's hash. Time on page runs from opening a page to the
+   next page you open in the same screen session. The screen runs no scripts, so it cannot tell
    what was on screen or read; a stretch over 30 minutes may include time away and is counted
    apart, and a reload of the same page within a minute of the last load, with nothing done
-   between, is one view. Only page switches in the address (`all`, `claim`, `download`, `views`)
-   are kept; any other field, such as the flag summary's pilot name, is counted, not stored. The
+   between, is one view. Only the address fields a page reads are kept (the item id, and switches
+   such as `views=1` or a claim filter); any other field, such as the flag summary's pilot
+   name, is counted, not stored. The
    report leaves the activity table out unless you include it for the case (off by default): the
    switch is on the Activity tab, or `baker activity --db case.db --in-report on|off --by
    expert:<name>`, and each change is in the audit log with your name. Views change no verdict.
