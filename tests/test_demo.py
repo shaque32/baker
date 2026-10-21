@@ -462,3 +462,19 @@ def test_the_claim_page_leads_with_what_has_to_be_true_and_shows_records_in_conv
         text = re.sub(r"<[^>]+>", " ", truths).lower()
         for word in ("guilty", "innocent", "leader", "deleted"):
             assert word not in text, word
+
+
+def test_the_checklist_leads_the_alternatives_and_cards_share_one_read_per_thread(root):
+    from core.audit.context import build_context
+
+    case = _case(root)
+    app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
+    app.open_case(case)
+    c16 = app.handle(Request("GET", "/claim", {"id": "C16"}, dict(HOST))).body.decode()
+    assert "Other explanations" in c16
+    assert c16.index("<section class='truths'>") < c16.index("Other explanations")
+    conn = connect(case.db)
+    rid = conn.execute("SELECT id FROM messages ORDER BY id LIMIT 1").fetchone()[0]
+    threads: dict[str, list[str]] = {}
+    assert build_context(conn, rid, 1, threads=threads) == build_context(conn, rid, 1)
+    assert len(threads) == 1

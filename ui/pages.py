@@ -713,10 +713,12 @@ def evidence_card(
     run_id: str | None = None,
     confirm: bool = False,
     around: int = 0,
+    threads: dict[str, list[str]] | None = None,
 ) -> str:
     """claim_id: the claim page shows the card; it then carries the optional label flag.
     confirm: a contradiction waiting for the expert (rule 1b), shown with the confirm step.
-    around: messages shown either side of the record, as a conversation (0: the quote only)."""
+    around: messages shown either side of the record, as a conversation (0: the quote only).
+    threads: the page's cache of thread orders, so many cards read each thread once."""
     stance_cls = "b-against" if item.stance in AGAINST else "b-open"
     flag = ""
     if claim_id is not None:
@@ -726,7 +728,7 @@ def evidence_card(
         f"<span class='badge {stance_cls}'>{e(STANCE_LABEL[item.stance])}</span>"
         f"{_tier_badge(item, last_kind)}"
         + ("<span class='badge b-flag'>flagged by you</span>" if flagged else "")
-        + _conversation(conn, item, around)
+        + _conversation(conn, item, around, threads)
         + f"<p>{record_line(conn, item.record_id, found)}</p>"
         "<details class='more'><summary>Source and model note</summary>"
         f"<p><span class='mono'>{e(item.ref.source_id)} {e(item.ref.locator)} · "
@@ -744,10 +746,15 @@ def evidence_card(
     )
 
 
-def _conversation(conn: sqlite3.Connection, item: EvidenceItem, around: int) -> str:
+def _conversation(
+    conn: sqlite3.Connection,
+    item: EvidenceItem,
+    around: int,
+    threads: dict[str, list[str]] | None = None,
+) -> str:
     """The verified quote, and with around > 0 the record among its neighbours."""
     quote = f"<blockquote>{q(item.quote)}</blockquote>"
-    lines = build_context(conn, item.record_id, around) if around else []
+    lines = build_context(conn, item.record_id, around, threads=threads) if around else []
     if len(lines) < 2:  # no neighbours (a contact, a call): the quote says it all
         return quote
     return (
@@ -1039,9 +1046,9 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
             f"{_flag_verdict_form(conn, page, st, back)}"
         )
     out.append("</div></div>")
+    out.append(_must_be_true(st))
     out.append(_alternatives(conn, st))
 
-    out.append(_must_be_true(st))
     out.append("<h2 id='evidence'>Evidence</h2>")
     claim_flags = F.active_flags(conn, c.id)
     flagged = {f.evidence_id for f in claim_flags if f.evidence_id}
@@ -1061,6 +1068,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
         out.append("<p class='muted'>No relevant evidence items were stored for this claim.</p>")
     by_assumption = {a.id: a for a in st.assumptions}
     found = forwarded.affected(conn)
+    threads: dict[str, list[str]] = {}  # each thread read once for the page's cards
     for title, group in groups:
         out.append(f"<h3>{e(title)} ({len(group)})</h3>")
         shown_on = None
@@ -1083,6 +1091,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
                     run_id=st.run_id,
                     confirm=title == CONTRADICTION_FOUND,
                     around=AROUND,
+                    threads=threads,
                 )
             )
     hidden = [x for x in st.evidence if x.stance == Stance.IRRELEVANT]
