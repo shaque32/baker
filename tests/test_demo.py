@@ -478,3 +478,22 @@ def test_the_checklist_leads_the_alternatives_and_cards_share_one_read_per_threa
     threads: dict[str, list[str]] = {}
     assert build_context(conn, rid, 1, threads=threads) == build_context(conn, rid, 1)
     assert len(threads) == 1
+
+
+def test_tabs_come_in_three_groups_and_the_case_page_leads_with_the_audit(root):
+    """The review tabs first, then tools to look closer, then set-up; the case page opens on
+    what waits on the expert, with the custody hashes one click away."""
+    from ui import pages
+
+    case = _case(root)
+    app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
+    app.open_case(case)
+    home = app.handle(Request("GET", "/", {}, dict(HOST))).body.decode()
+    nav = home.split("<nav class='tabs'>", 1)[1].split("</nav>", 1)[0]
+    hrefs = re.findall(r"<a href='([^']*)'", nav)
+    assert hrefs[-11:] == [h for g in pages.TAB_GROUPS for h, _ in g]
+    assert nav.count("class='sep'") >= 2 and "class=on>Case</a>" in nav
+    assert home.index("<div class='casestatus'>") < home.index("<details class='custody'>")
+    custody = home.split("<details class='custody'>", 1)[1].split("</details>", 1)[0]
+    assert "<h2>Sources</h2>" in custody and "SHA-256" in custody
+    assert "claim(s) need you</a>" in home
