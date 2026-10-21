@@ -17,7 +17,7 @@ tests or recorded runs. Where something exists only on an unmerged branch, it sa
   0.10.0 on main (#95 added a "Forwarded marks" row; #98 added "Model contradictions without an
   expert"; #103 made it 0.9.0 with an "Importer for <source>" row in Versions; #108 made it 0.10.0
   with a plain gap line under each unproven claim). UFDR and Cellebrite `IMPORTER_VERSION` 0.2.0
-  (#103). Check versions since #107: identity, sender, timing, weekday and absence 1.0.1, count 1.0.2.
+  (#103). Check versions since #107: same_account, sender, time, weekday and absence 1.0.1, count 1.0.2, contact unchanged at 1.0.0.
 - **Build stamp:** before #91, the "Baker" version a report printed was `PIPELINE_VERSION`
   ("0.1.0", `core/pipeline.py`), a constant that cannot tell two builds apart. #91 (merged
   2026-10-18) also records each run's release (`pyproject.toml`, 0.0.1 today) and git commit, with a flag when
