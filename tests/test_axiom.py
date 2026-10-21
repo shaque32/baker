@@ -652,13 +652,14 @@ def test_a_quoted_message_is_its_own_record_like_a_ufdr_embedded_copy(tmp_path, 
     assert table["rows_imported"] == 1  # the export's own hits only
 
 
-def test_a_forwarded_hit_carrying_its_original_takes_the_copy_sender_as_author(tmp_path):
+def test_a_forwarded_hit_never_takes_a_quoted_sender_as_its_author(tmp_path):
     conn, _s = _fwd_case(
         tmp_path, "xml", Forwarded="True", **{"Quoted Message": "SYNTHETIC hi",
                                               "Quoted Message Sender": "15550100002@wa"}
     )  # fmt: skip
     parent, copy = _rows(conn)
-    assert parent[6:8] == (1, "15550100002@wa") and copy[6:8] == (1, "15550100002@wa")
+    # the quote's sender wrote the quote, not the forwarded text: the parent's author stays unknown
+    assert parent[6:8] == (1, None) and copy[6:8] == (1, "15550100002@wa")
 
 
 def test_a_quoted_message_with_no_sender_names_none(tmp_path):
@@ -727,3 +728,21 @@ def test_a_chat_table_without_forwarded_fields_says_so(tmp_path, ext):
     assert "no forwarded or quoted field" in notes(conn)
     conn, _s = _fwd_case(tmp_path / "b", ext, Forwarded="No")
     assert "no forwarded or quoted field" not in notes(conn)
+
+
+@pytest.mark.parametrize("ext", ["xml", "xlsx"])
+def test_a_hit_with_only_forwarded_metadata_is_skipped_as_empty(tmp_path, ext):
+    empty = _msg(
+        None,
+        None,
+        sender=None,
+        sender_name=None,
+        to=None,
+        Forwarded="No",
+        **{"Forwarded From": "15550100009@wa", "Quoted Message Sender": "x@wa"},
+    )
+    real = _msg("SYNTHETIC hello", "1/2/2026 10:00:00 AM")
+    path = _both(tmp_path, [OWNER_WA, _wa(real, empty)])[0 if ext == "xml" else 1]
+    conn, s = _import(path)
+    assert conn.execute("SELECT COUNT(*) FROM messages").fetchone() == (1,)
+    assert "rows_skipped_no_values_in_known_columns" in _codes(s)

@@ -243,6 +243,11 @@ _CHAT_FIELDS: dict[str, tuple[str, ...]] = {
     "quoted_from_id": ("quoted message sender", "quoted message author", "quoted sender"),
     "quoted_from_name": ("quoted message sender name", "quoted sender name"),
 }  # fmt: skip
+# Fields that alone do not make a hit a record: a forwarded flag (even "No") or an author with
+# no message text is metadata, so a hit holding only these is skipped as empty.
+_NOT_CONTENT = frozenset(
+    {"recovery", "forwarded", "forwarded_from", "quoted_from_id", "quoted_from_name"}
+)
 _SMS_FIELDS = {**_CHAT_FIELDS, "type": ("type", "message type")}
 _CALL_FIELDS: dict[str, tuple[str, ...]] = {
     "partner_id": ("partner", "partners", "phone number", "number", "partner(s)"),
@@ -735,7 +740,7 @@ class _Mapper:
             if all(
                 text(hit.get(fn.written)) is None and not isinstance(hit.get(fn.written), datetime)
                 for key, fn in used.items()
-                if key != "recovery"
+                if key not in _NOT_CONTENT
             ) and all(text(hit.get(fn.written)) is None for fn in ts_fields):
                 tc.rows_skipped["no_values_in_known_columns"] += 1
                 _listed(tc.skipped_locators, "no_values_in_known_columns", loc)
@@ -925,10 +930,9 @@ class _Mapper:
         if is_fwd:
             self.cov.counters["messages_marked_forwarded"] += 1
             self.marks.setdefault("forwarded", []).append(loc)
-            # the original author as written: the stated field, else the copy's one sender
+            # the original author as written, only from the stated field: a quoted message's
+            # sender is the author of the quote, not of the forwarded text
             author = text(get("forwarded_from"))
-            if author is None and has_copy:
-                author = _sole(get("quoted_from_id"), get("quoted_from_name"), copy_senders)
             if author is not None:
                 self.authors[loc] = author
             self._flag(artifact, tc, "forwarded", loc)

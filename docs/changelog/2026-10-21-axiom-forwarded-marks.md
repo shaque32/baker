@@ -4,7 +4,7 @@
   `core/ingest/forwarded.py` reasons and signed columns. A hit whose forwarded flag field
   (`Forwarded` or `Is Forwarded`) is set is marked `forwarded = 1` and listed under `forwarded`
   in `forwarded_records`, with `forwarded_from_raw` taken as written from `Forwarded From`,
-  `Original Sender` or `Original Author` (else from the quoted copy's one named sender). `No`,
+  `Original Sender` or `Original Author` only (a quoted sender wrote the quote, not the forwarded text). `No`,
   `False`, `0`, `Not forwarded` and blank mean not forwarded; any other value fails closed and
   marks it. A hit with a `Quoted Message`, `Quoted Message Body` or `Quoted Text` field is listed
   under `embedded`, and the quoted text is imported verbatim, one level deep, as its own message
