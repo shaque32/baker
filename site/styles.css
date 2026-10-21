@@ -60,6 +60,7 @@ html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 400 1.0625rem/1.6 var(--sans); text-rendering: optimizeLegibility; overflow-x: hidden; }
 a { color: var(--accent); text-underline-offset: 0.18em; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+.night :focus-visible, .site-foot :focus-visible { outline-color: var(--night-fg); }
 h1, h2, h3 { font-family: var(--serif); font-weight: 400; line-height: 1.04; letter-spacing: -0.015em; text-wrap: balance; margin: 0; }
 h1 { font-size: clamp(2.9rem, 7.4vw, 6rem); }
 h2 { font-size: clamp(2.2rem, 4.6vw, 3.5rem); }
