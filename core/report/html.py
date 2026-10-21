@@ -881,7 +881,8 @@ def activity_section(conn: sqlite3.Connection) -> str:
         f"{e(total['first_at'])} to {e(total['last_at'])}, recorded in the audit log above. "
         "Time on page runs from opening a page to the examiner's next page or action; the "
         "screen runs no scripts, so it does not show what was read. Stretches over "
-        f"{idle} minutes may include time away and are counted apart. The full trail is the "
+        f"{idle} minutes may include time away, and pages whose end was not recorded are not "
+        "timed; both are counted apart. The full trail is the "
         "review screen's Activity page and its CSV download.</p>"
     )
     per = activity.by_claim(trail)
@@ -902,10 +903,9 @@ def activity_section(conn: sqlite3.Connection) -> str:
                 f"<td>{a.actions if a else 0}</td></tr>"
             )
             continue
-        away = f", plus {a.away} over {idle} min" if a.away else ""
         out.append(
             f"<tr><td>{e(cid)}</td><td>{a.opened}</td><td>{e(a.first_at or '')}</td>"
-            f"<td>{e(a.last_at or '')}</td><td>{e(activity.duration(a.seconds))}{e(away)}</td>"
+            f"<td>{e(a.last_at or '')}</td><td>{e(activity.time_on_pages(a))}</td>"
             f"<td>{len(a.evidence_opened)}</td><td>{a.actions}</td></tr>"
         )
     out.append("</table>")

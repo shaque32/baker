@@ -11,7 +11,7 @@
   advisor, via Arsh 2026-10-21) wants a trackable, timed record of what the examiner opened and
   looked at, to answer a "rubber-stamped" challenge. No schema, rules, prompt or contract change.
 - Where: PR #111 (branch claude/project-thread-1wfsnn)
-- Verified: tests/test_activity.py (15 tests: logging, evidence location, refresh collapse, time
+- Verified: tests/test_activity.py (19 tests: logging, evidence location, refresh collapse, time
   on page and the 30-minute away mark, new session, unnamed viewer, verdicts unchanged, report
   section, Activity page, CSV hashes and formula guard, tampered view breaks the chain, a view
   that cannot be written is reported, CLI). Two existing tests changed because the screen now

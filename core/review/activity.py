@@ -186,6 +186,7 @@ def steps(conn: sqlite3.Connection) -> list[Step]:
         (VIEW,),
     ).fetchall()
     raw: list[Step] = []
+    flag_claim: dict[str, object] = {}  # a withdrawal names only its flag
     for seq, at, actor, action, payload_json, h in rows:
         try:
             p = json.loads(payload_json)
@@ -203,6 +204,10 @@ def steps(conn: sqlite3.Connection) -> list[Step]:
             claim = ev_claim.get(evidence)
         if claim is None and isinstance(p.get("verdict_id"), str):
             claim = vd_claim.get(p["verdict_id"])
+        if action == "flag.add" and isinstance(p.get("flag_id"), str):
+            flag_claim[p["flag_id"]] = claim
+        if claim is None and action == "flag.withdraw":
+            claim = flag_claim.get(p.get("flag_id"))
         raw.append(
             Step(
                 seq=seq,
@@ -218,15 +223,33 @@ def steps(conn: sqlite3.Connection) -> list[Step]:
     out: list[Step] = []
     for i, s in enumerate(raw):
         seconds = None
-        if s.is_view and i + 1 < len(raw):
-            nxt = raw[i + 1]
-            same = not nxt.is_view or nxt.payload.get("session") == s.payload.get("session")
-            start, end = _time(s.at_utc), _time(nxt.at_utc)
-            if same and start is not None and end is not None and end >= start:
-                seconds = (end - start).total_seconds()
+        end = _end(raw, i) if s.is_view else None
+        start = _time(s.at_utc)
+        if start is not None and end is not None and end >= start:
+            seconds = (end - start).total_seconds()
         away = seconds is not None and seconds > IDLE.total_seconds()
         out.append(replace(s, seconds=seconds, away=away))
     return out
+
+
+def _end(raw: list[Step], i: int) -> datetime | None:
+    """When the view raw[i] ended: at the next step, if that step is a view in the same screen
+    session, or an action by the same examiner that the same session's next view follows (the
+    page a form returns to). Otherwise unknown: the screen was closed, or the next step came
+    from another session, another examiner or the command line."""
+    view = raw[i]
+    session = view.payload.get("session")
+    if i + 1 >= len(raw):
+        return None
+    nxt = raw[i + 1]
+    if nxt.is_view:
+        return _time(nxt.at_utc) if nxt.payload.get("session") == session else None
+    if nxt.actor != view.actor:
+        return None
+    after = next((s for s in raw[i + 2 :] if s.is_view), None)
+    if after is None or after.payload.get("session") != session:
+        return None
+    return _time(nxt.at_utc)
 
 
 def duration(seconds: float | None, away: bool = False) -> str:
@@ -253,10 +276,12 @@ class ClaimActivity:
     opened: int = 0  # views of the claim's page
     first_at: str | None = None
     last_at: str | None = None
-    seconds: float = 0.0  # time on its pages, stretches over IDLE left out
+    seconds: float = 0.0  # time on its pages, stretches over IDLE and untimed views left out
     away: int = 0  # stretches over IDLE
+    untimed: int = 0  # views whose end Baker did not record
     evidence_opened: set[str] = field(default_factory=set)
     evidence_listed: set[str] = field(default_factory=set)
+    listed_capped: bool = False  # a view listed more than MAX_LISTED: evidence_listed is a floor
     actions: int = 0  # expert actions logged on the claim or its evidence
 
 
@@ -279,13 +304,32 @@ def by_claim(trail: list[Step]) -> dict[str, ClaimActivity]:
         if page == "/claim":
             a.opened += 1
             a.evidence_listed.update(x for x in s.payload.get("listed", []) if isinstance(x, str))
+            a.listed_capped |= bool(s.payload.get("listed_left_out"))
         elif s.evidence_id is not None:
             a.evidence_opened.add(s.evidence_id)
         if s.away:
             a.away += 1
-        elif s.seconds is not None:
+        elif s.seconds is None:
+            a.untimed += 1
+        else:
             a.seconds += s.seconds
     return out
+
+
+def time_on_pages(a: ClaimActivity) -> str:
+    """A claim's time on its pages in words, saying what the total leaves out."""
+    idle = int(IDLE.total_seconds() // 60)
+    out = duration(a.seconds)
+    if a.away:
+        out += f", plus {a.away} over {idle} min"
+    if a.untimed:
+        out += f", plus {a.untimed} not timed"
+    return out
+
+
+def listed_count(a: ClaimActivity) -> str:
+    n = len(a.evidence_listed)
+    return f"at least {n}" if a.listed_capped else str(n)
 
 
 def summary(trail: list[Step]) -> dict:

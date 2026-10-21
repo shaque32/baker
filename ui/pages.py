@@ -1499,7 +1499,9 @@ def activity_page(conn: sqlite3.Connection, page: Page, claim: str, show_all: bo
         "computer.</p>",
         "<p class='muted'>Time on page runs from opening a page to the next page or action. "
         "The screen runs no scripts, so Baker cannot tell what was on screen or read; a "
-        f"stretch over {idle} minutes may include time away and is left out of totals. "
+        f"stretch over {idle} minutes may include time away, and a page whose end was not "
+        "recorded (the screen closed, or the next step came from elsewhere) is not timed; both "
+        "are counted apart from totals. "
         "\u201cListed\u201d means the page linked to the item, not that it was opened.</p>",
         "<p><a href='/activity.csv'>Download the trail (CSV)</a></p>",
     ]
@@ -1526,12 +1528,11 @@ def activity_page(conn: sqlite3.Connection, page: Page, claim: str, show_all: bo
                 f"<td>{a.actions if a else 0}</td></tr>"
             )
             continue
-        away = f", plus {a.away} over {idle} min" if a.away else ""
         out.append(
             f"<tr><td><a href='{e(link('/activity', claim=cid))}'>{e(cid)}</a></td>"
             f"<td>{a.opened}</td><td>{e(a.first_at or '')}</td><td>{e(a.last_at or '')}</td>"
-            f"<td>{e(activity.duration(a.seconds))}{e(away)}</td>"
-            f"<td>{len(a.evidence_opened)}</td><td>{len(a.evidence_listed)}</td>"
+            f"<td>{e(activity.time_on_pages(a))}</td>"
+            f"<td>{len(a.evidence_opened)}</td><td>{e(activity.listed_count(a))}</td>"
             f"<td>{a.actions}</td></tr>"
         )
     out.append("</table>")

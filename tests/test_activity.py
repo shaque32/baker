@@ -14,6 +14,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from cli.main import main as cli_main
+from core.contracts import EvidenceStatus
 from core.report.html import render_report
 from core.review import activity, audit_log
 from core.review.status import claim_state, queue
@@ -125,10 +126,54 @@ def test_an_expert_action_ends_the_time_on_page_and_counts_on_its_claim(db, conn
     eid = key_items(conn, "C05")[0]
     get(app, "/evidence", id=eid)
     post(app, "/evidence/decide", id=eid, status="accepted", reason="Seen in the sheet.")
-    view, decision = activity.steps(conn)[-2:]
+    get(app, "/evidence", id=eid)  # the page the form returns to
+    view, decision, back = activity.steps(conn)[-3:]
     assert decision.action == "evidence.decide" and decision.claim_id == "C05"
     assert view.seconds is not None and view.seconds >= 0
-    assert activity.by_claim([view, decision])["C05"].actions == 1
+    assert activity.by_claim([view, decision, back])["C05"].actions == 1
+
+
+def test_a_step_from_another_examiner_or_the_cli_does_not_time_a_page(db, conn):
+    from core.review import actions
+    from core.review.status import claim_state as state
+
+    app, _ = _app(db)
+    get(app, "/claim", id="C05")
+    eid = state(conn, "C05").evidence[0].id
+    actions.decide_evidence(
+        conn, eid, EvidenceStatus.DISMISSED, "expert:Someone Else", "Not relevant."
+    )
+    get(app, "/claim", id="C06")
+    view = next(s for s in activity.steps(conn) if s.is_view)
+    assert view.seconds is None
+    a = activity.by_claim(activity.steps(conn))["C05"]
+    assert a.untimed == 1 and activity.time_on_pages(a) == "0 s, plus 1 not timed"
+
+
+def test_going_to_another_page_and_back_is_two_views(db, conn):
+    app, _ = _app(db)
+    get(app, "/claim", id="C05")
+    get(app, "/cases")  # not a case page, but the examiner left the claim
+    get(app, "/claim", id="C05")
+    assert [p["id"] for _, p in _views(conn)] == ["C05", "C05"]
+
+
+def test_a_capped_list_is_counted_as_a_floor():
+    s = activity.Step(
+        1, "2026-10-21T15:00:00Z", EXPERT, "view",
+        {"page": "/claim", "id": "C05", "listed": ["ev:a"], "listed_left_out": 3}, "h",
+        claim_id="C05",
+    )  # fmt: skip
+    assert activity.listed_count(activity.by_claim([s])["C05"]) == "at least 1"
+
+
+def test_a_withdrawn_flag_counts_on_its_claim(conn):
+    t = datetime(2026, 10, 21, tzinfo=UTC)
+    with conn:
+        audit_log.append(conn, t, EXPERT, "flag.add", {"flag_id": "fl:1", "claim_id": "C05"})
+        audit_log.append(conn, t, EXPERT, "flag.withdraw", {"flag_id": "fl:1"})
+    added, withdrawn = activity.steps(conn)[-2:]
+    assert (added.claim_id, withdrawn.claim_id) == ("C05", "C05")
 
 
 def test_a_new_screen_session_leaves_the_last_page_time_unknown(db, conn):

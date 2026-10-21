@@ -365,9 +365,10 @@ class App:
         or the log (resp None) is recorded before it renders, so it includes itself. A refresh
         of the same page, with nothing posted between, is the same view and is not recorded
         again (the audit progress page refreshes itself)."""
-        if resp is not None and resp.status != 200:
+        if (resp is not None and resp.status != 200) or req.path not in activity.PAGES:
+            self._last_view = None  # the examiner went elsewhere, so the next page is new
             return
-        if self.case is None or req.path not in activity.PAGES:
+        if self.case is None:
             return
         key = (str(self.case.db), self.expert, req.path, tuple(sorted(req.query.items())))
         if key == self._last_view:
