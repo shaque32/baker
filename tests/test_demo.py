@@ -491,7 +491,7 @@ def test_tabs_come_in_three_groups_and_the_case_page_leads_with_the_audit(root):
     home = app.handle(Request("GET", "/", {}, dict(HOST))).body.decode()
     nav = home.split("<nav class='tabs'>", 1)[1].split("</nav>", 1)[0]
     hrefs = re.findall(r"<a href='([^']*)'", nav)
-    assert hrefs[-11:] == [h for g in pages.TAB_GROUPS for h, _ in g]
+    assert hrefs[-12:] == [h for g in pages.TAB_GROUPS for h, _ in g] + ["/help"]
     assert nav.count("class='sep'") >= 2 and "class=on>Case</a>" in nav
     assert home.index("<div class='casestatus'>") < home.index("<details class='custody'>")
     custody = home.split("<details class='custody'>", 1)[1].split("</details>", 1)[0]
