@@ -368,17 +368,19 @@ def test_gap_lines_follow_the_stored_coverage_until_it_is_stale_and_tiles_have_d
 
     for flag in ("decided_after_run", "edited_after_run", "case_changed_after_run"):
         stale = dataclasses.replace(st, **{flag: True})
-        assert stale.gaps() == [] and stale.unproven_lines() == [STALE], flag
+        assert stale.gaps() == [] and stale.explain_lines() == [STALE], flag
         assert pages.needs_you(stale), flag
     c01 = next(s for s in claim_states(conn) if s.claim.id == "C01")  # supported by the rules
-    assert pages.needs_you(dataclasses.replace(c01, case_changed_after_run=True))
-    assert STALE[1] in pages._you_lines(dataclasses.replace(c01, case_changed_after_run=True))
+    c01_stale = dataclasses.replace(c01, case_changed_after_run=True)
+    assert pages.needs_you(c01_stale) and c01_stale.explain_lines() == [STALE]
+    assert STALE[1] in pages._claim_row(c01_stale, "you")
+    assert pages._group(c01_stale) == "you"
     # every core assumption covered, yet unproven by another rule: one line points to the rule
     from core.review.status import OTHER_RULE
 
     covered = tuple(cv.model_copy(update={"covered": True}) for cv in st.decision.coverage)
     full = dataclasses.replace(st, decision=st.decision.model_copy(update={"coverage": covered}))
-    assert full.gaps() == [] and full.unproven_lines() == [OTHER_RULE]
+    assert full.gaps() == [] and full.explain_lines() == [OTHER_RULE]
     # a claim that also waits on the expert still says what else leaves it unproven
     from core.review.status import GAP_TEXT
     from ui import pages

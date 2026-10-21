@@ -196,15 +196,15 @@ class ClaimState:
                 out.append(a.kind)
         return out
 
-    def unproven_lines(self) -> list[tuple[str, str]]:
-        """(topic, text) lines saying why the claim is unproven, for the overview and the report:
-        one per gap, or, when every core assumption is covered and nothing waits on the expert,
-        one line pointing to the other rule that holds it."""
+    def explain_lines(self) -> list[tuple[str, str]]:
+        """(topic, text) lines for the overview and the report: "Not current" for any verdict
+        nobody overrode that a later change made stale; else for an unproven claim one line per
+        gap, or, when every core assumption is covered and nothing waits on the expert, one line
+        pointing to the other rule that holds it."""
         d = self.decision
         if (
             self.stale
             and d is not None
-            and d.verdict == Verdict.UNPROVEN
             and d.override_note is None
             and not (self.incomplete or self.untested)
         ):
@@ -416,20 +416,40 @@ def claim_states(
     """One state per claim, in claim id order, against pipeline.view_run() unless run is given."""
     run = pipeline.view_run(conn) if run is None else run
     edited = edited_after(conn, run["started_at_utc"]) if run else set()
-    return [_state(conn, c, run, edited) for c in pipeline.load_claims(conn, include_removed)]
+    changed = case_changed_after(conn, run["started_at_utc"]) if run else False
+    return [
+        _state(conn, c, run, edited, changed) for c in pipeline.load_claims(conn, include_removed)
+    ]
 
 
 def claim_state(conn: sqlite3.Connection, claim_id: str) -> ClaimState | None:
     run = pipeline.view_run(conn)
     edited = edited_after(conn, run["started_at_utc"]) if run else set()
+    changed = case_changed_after(conn, run["started_at_utc"]) if run else False
     for c in pipeline.load_claims(conn, include_removed=True):
         if c.id == claim_id:
-            return _state(conn, c, run, edited)
+            return _state(conn, c, run, edited, changed)
     return None
 
 
+def case_changed_after(conn: sqlite3.Connection, since: str) -> bool:
+    """A stipulation, person or identity-link decision after the run: case-wide, read once."""
+    return (
+        conn.execute(
+            "SELECT 1 FROM audit_log WHERE (action LIKE 'stipulation.%' OR action LIKE "
+            "'identity.%' OR action LIKE 'person.%') AND at_utc > ? LIMIT 1",
+            (since,),
+        ).fetchone()
+        is not None
+    )
+
+
 def _state(
-    conn: sqlite3.Connection, claim: Claim, run: dict | None, edited: set[str]
+    conn: sqlite3.Connection,
+    claim: Claim,
+    run: dict | None,
+    edited: set[str],
+    changed: bool = False,
 ) -> ClaimState:
     where, ptext = _where(conn, claim.paragraph_id)
     items = (run or {}).get("manifest", {}).get(claim.id)
@@ -447,14 +467,7 @@ def _state(
         st.incomplete = True
     if not items or decision is None:
         return st
-    st.case_changed_after_run = (
-        conn.execute(
-            "SELECT 1 FROM audit_log WHERE (action LIKE 'stipulation.%' OR action LIKE "
-            "'identity.%' OR action LIKE 'person.%') AND at_utc > ? LIMIT 1",
-            (run["started_at_utc"],),
-        ).fetchone()
-        is not None
-    )
+    st.case_changed_after_run = changed
     st.unlabeled = (run or {}).get("unlabeled", {}).get(claim.id)
     st.assumptions = pipeline.load_assumptions(conn, items["assumptions"])
     if not any(a.is_core for a in st.assumptions):

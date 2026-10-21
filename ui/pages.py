@@ -517,16 +517,7 @@ def needs_you(st: ClaimState) -> bool:
         st.priority <= NEEDS_YOU
         or st.css == "v-supai"
         or st.ai_dismissed > 0
-        or st.unproven_lines() == [STALE]  # its explanation waits on a re-run
-        or _case_stale(st)
-    )
-
-
-def _case_stale(st: ClaimState) -> bool:
-    """A rule-decided verdict (no override) after a later stipulation, person or identity change:
-    every claim may rest on it, so every such verdict waits on a re-run."""
-    return (
-        st.case_changed_after_run and st.decision is not None and st.decision.override_note is None
+        or st.explain_lines() == [STALE]  # its verdict waits on a re-run
     )
 
 
@@ -563,7 +554,7 @@ def _claim_row(st: ClaimState, group: str) -> str:
 def _gap_lines(st: ClaimState) -> str:
     """Why the claim is unproven apart from what waits on the expert (same words as the report)."""
     return "".join(
-        f"<div class='gap'><b>{e(topic)}</b> {e(text)}</div>" for topic, text in st.unproven_lines()
+        f"<div class='gap'><b>{e(topic)}</b> {e(text)}</div>" for topic, text in st.explain_lines()
     )
 
 
@@ -571,8 +562,6 @@ def _you_lines(st: ClaimState) -> list[str]:
     """What the claim needs from the expert, without the standing "verdict not yet confirmed"
     reminder (priority 6) that every unreviewed verdict carries."""
     lines = [t for p, t in st.needs() if p < 6]
-    if _case_stale(st) and st.unproven_lines() != [STALE]:
-        lines.insert(0, STALE[1])
     if st.css == "v-supai":
         lines.insert(0, "Part of its support rests on AI review, not an expert's acceptance.")
     return lines

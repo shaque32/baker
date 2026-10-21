@@ -102,7 +102,8 @@ from core.review.status import verdict_label as _verdict_label
 # and the conversation and timeline label it as a copy.
 # 0.10.0: an unproven claim the expert has not overridden says why in plain words, one line per
 # kind of core assumption not covered, or a pointer to the other rule that holds it
-# (core/review/status.ClaimState.unproven_lines), the same lines as the screen.
+# (core/review/status.ClaimState.explain_lines), the same lines as the screen; any verdict a later
+# change made stale says "Not current".
 REPORT_VERSION = "0.10.0"
 
 __all__ = [
@@ -419,7 +420,7 @@ def _claim_block(conn: sqlite3.Connection, st: ClaimState, case: explain.Case) -
     out.append(f'<p><span class="verdict {st.css}{nt}">{e(st.label)}</span></p>')
     out.extend(
         f"<p class='gap'><strong>{e(topic)}:</strong> {e(text)}</p>"
-        for topic, text in st.unproven_lines()
+        for topic, text in st.explain_lines()
     )
     out.append(forwarded_warning(conn, st))
     found = forwarded.affected(conn)

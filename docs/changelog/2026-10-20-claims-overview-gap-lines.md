@@ -5,7 +5,7 @@
   Contradicted, Unproven, Supported (and Not audited when there are any). Each unproven claim
   gets one plain line per kind of core assumption the rules found not covered (meaning of words,
   who is behind an account, event or role, time, search coverage), from
-  `ClaimState.unproven_lines()` in `core/review/status.py`; a fully covered claim held by another
+  `ClaimState.explain_lines()` in `core/review/status.py`; a fully covered claim held by another
   rule gets one line pointing to that rule. The lines are read from the stored verdict's
   coverage and decide nothing; each says only that a part "is not established". When
   anything the verdict rests on changed after the run, one "Not current" line asks for a
