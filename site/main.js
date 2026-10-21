@@ -41,6 +41,9 @@
     });
   });
 
+  // Someone tabbing into the demo is reading it: stop changing it under them.
+  demo.addEventListener("focusin", () => { userTook = true; clearTimeout(timer); });
+
   if ("IntersectionObserver" in window) {
     new IntersectionObserver((entries) => {
       visible = entries[0].isIntersecting;
