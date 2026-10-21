@@ -395,3 +395,26 @@ def test_gap_lines_follow_the_stored_coverage_until_it_is_stale_and_tiles_have_d
     assert hrefs == ["next", "con", "unp", "sup"]
     for h in hrefs:
         assert f"id='{h}'>" in page
+
+
+def test_an_identity_change_stays_not_current_through_a_rules_only_rerun(root):
+    """A rules-only re-run reuses the full audit's checks and searches, so an identity or person
+    change after that audit keeps the verdicts not current; a stipulation it reloads does not."""
+    from datetime import UTC, datetime, timedelta
+
+    from core.review import audit_log
+    from core.review.status import case_changed_after
+
+    conn = connect(_case(root).db)
+    now = datetime.now(UTC)
+    with conn:
+        audit_log.append(conn, now, EXPERT, "stipulation.set", {"test": True})
+    assert case_changed_after(conn, pipeline.view_run(conn))
+    redecide(conn, EXPERT, clock=lambda: now + timedelta(minutes=1))
+    assert not case_changed_after(conn, pipeline.view_run(conn))
+    with conn:
+        audit_log.append(conn, now + timedelta(minutes=2), EXPERT, "identity.confirm", {})
+    redecide(conn, EXPERT, clock=lambda: now + timedelta(minutes=3))
+    run = pipeline.view_run(conn)
+    assert run["evidence_from_run"] != run["run_id"]
+    assert case_changed_after(conn, run)

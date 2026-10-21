@@ -416,7 +416,7 @@ def claim_states(
     """One state per claim, in claim id order, against pipeline.view_run() unless run is given."""
     run = pipeline.view_run(conn) if run is None else run
     edited = edited_after(conn, run["started_at_utc"]) if run else set()
-    changed = case_changed_after(conn, run["started_at_utc"]) if run else False
+    changed = case_changed_after(conn, run) if run else False
     return [
         _state(conn, c, run, edited, changed) for c in pipeline.load_claims(conn, include_removed)
     ]
@@ -425,20 +425,30 @@ def claim_states(
 def claim_state(conn: sqlite3.Connection, claim_id: str) -> ClaimState | None:
     run = pipeline.view_run(conn)
     edited = edited_after(conn, run["started_at_utc"]) if run else set()
-    changed = case_changed_after(conn, run["started_at_utc"]) if run else False
+    changed = case_changed_after(conn, run) if run else False
     for c in pipeline.load_claims(conn, include_removed=True):
         if c.id == claim_id:
             return _state(conn, c, run, edited, changed)
     return None
 
 
-def case_changed_after(conn: sqlite3.Connection, since: str) -> bool:
-    """A stipulation, person or identity-link decision after the run: case-wide, read once."""
+def case_changed_after(conn: sqlite3.Connection, run: dict) -> bool:
+    """A stipulation, person or identity-link decision the run's verdicts did not see: case-wide,
+    read once. A rules-only re-run reloads stipulations but reuses the checks and searches of
+    the full audit it came from, so identity and person changes count from that audit's start."""
+    since = run["started_at_utc"]
+    built = since
+    source = run.get("evidence_from_run")
+    if source and source != run.get("run_id"):
+        row = conn.execute(
+            "SELECT started_at_utc FROM pipeline_runs WHERE id = ?", (source,)
+        ).fetchone()
+        built = row[0] if row else since
     return (
         conn.execute(
-            "SELECT 1 FROM audit_log WHERE (action LIKE 'stipulation.%' OR action LIKE "
-            "'identity.%' OR action LIKE 'person.%') AND at_utc > ? LIMIT 1",
-            (since,),
+            "SELECT 1 FROM audit_log WHERE (action LIKE 'stipulation.%' AND at_utc > ?)"
+            " OR ((action LIKE 'identity.%' OR action LIKE 'person.%') AND at_utc > ?) LIMIT 1",
+            (since, built),
         ).fetchone()
         is not None
     )
