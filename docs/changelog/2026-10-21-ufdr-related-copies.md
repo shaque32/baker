@@ -1,4 +1,4 @@
-## 2026-10-21: UFDR import and ufdr-check read Reader 7.48 RelatedModels copies (#PR)
+## 2026-10-21: UFDR import and ufdr-check read Reader 7.48 RelatedModels copies (#117)
 - Changed: Baker Eval ran `baker ufdr-check` on three public Cellebrite Reader 7.48 UFDRs (Josh
   Hickman's images on Digital Corpora) and it reported chat messages missing partway through
   chats, plus smaller gaps in recipients, attachments and the phone's own accounts (Grok
@@ -25,7 +25,7 @@
   Synthetic fixture `related_package` in `eval/synthetic/ufdr.py`: chats of 60, 45 and 5
   messages, attachments, recipients, RelatedModels copies of chats, messages, calls and
   accounts, a repeated account, and the five unknown types. No Hickman or real data in the repo.
-- Where: PR #PR
+- Where: PR #117
 - Verified: new tests in `tests/test_ufdr.py` and `tests/test_ufdr_check.py`; `make check` and
   eval in the PR description. Run on the three public packages in a cloud container
   (2026-10-21), with report.xml only (attachment files left out); results kept in the project
@@ -37,4 +37,4 @@
 - Affects: capabilities (UFDR import coverage, ufdr-check). No verdict, privacy or network change.
 - Status doc: pending: §8 item 1, after "Cellebrite UFDR (unverified on real samples)" add
   "(importer 0.3.0 counts Reader 7.48 RelatedModels copies and lists any that match no record,
-  #PR)".
+  #117)".
