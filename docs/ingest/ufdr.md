@@ -1,6 +1,6 @@
 # Cellebrite UFDR import (unverified)
 
-Importer: `core/ingest/ufdr.py` (`UfdrImporter`, importer `ufdr` 0.1.1). It implements
+Importer: `core/ingest/ufdr.py` (`UfdrImporter`, importer `ufdr` 0.3.0). It implements
 `EvidenceImporter` and writes the same canonical rows as the Excel and PDF importers, through
 the same record mapping in `core/ingest/cellebrite_common.py`, so retrieval, checks, rules, the
 review screen and the report work unchanged.
@@ -41,6 +41,7 @@ project (xmlns http://pa.cellebrite.com/report/2.0, reportVersion, ...)
     modelField (name)/model                              one nested model (a Party)
     multiModelField (name)/model*                        nested models (Participants, Messages)
     any other named child (nodeField, ...)               not read; listed as a field not read
+    RelatedModels/model*                                 copies of other records (see below)
   taggedFiles/file                                        counted, not imported
 ```
 
@@ -63,6 +64,19 @@ A message's `Type` is not read for direction (it names the content kind), nor is
 `Subject`. Other field names are listed in coverage as fields Baker does not read.
 Known types not imported yet (`Location`, `Email`, `WebBookmark`, ... see `NOT_IMPORTED_TYPES`)
 are listed with their counts; any other type is listed for review as not recognised.
+
+**RelatedModels.** Public Cellebrite Reader 7.48 packages end many models (chats, messages,
+calls, contacts, accounts, locations, cookies) with a `RelatedModels` element holding other
+models of the same type, each with an id of its own. On the three public packages checked
+(2026-10-21) every message in one is a copy of a message listed on its own (same text, time
+and sender), and so is every call, contact and account but one call copy that lacks its
+duration. So a RelatedModels element is
+never read as part of the model holding it (its messages are not the chat's, its attachments and
+parties not the message's), and its models are not imported. Each copy of a message (also inside
+a copied chat), call, contact or account is counted (`related_copies`, info) and matched by
+content against the records read; one that matches no record is listed for review
+(`related_copy_unmatched`, attention, at the holder's locator plus `/Related[n]`). Copies are
+counted per type in `ufdr.related_copies_by_type`.
 
 Metadata items read (by name, letters and digits only, case-insensitive):
 `DeviceInfoExtractionStartDateTime` (extraction time), `DeviceInfoSelectedDeviceName` or
@@ -131,7 +145,10 @@ messages are held until the chat closes (so a chat's own fields can come after i
 nothing else is held but the account and thread lists. A 263 MB report.xml with 200,000 messages
 imported in about 40 seconds on the build machine; a 26 MB one peaked at about 11 MB of memory.
 The package is hashed again before the transaction commits; if it changed, nothing is stored.
-Both reads must count the same records of each type, or nothing is stored.
+Both reads must count the same records of each type, and the same messages in chats, and every
+message the second read counts must be imported or listed as skipped, or nothing is stored.
+report.xml states no count per type to compare with: the `ModelCount` attribute on `project`
+did not equal the number of records on the public packages, so it is not used.
 
 ## Coverage
 
@@ -143,10 +160,10 @@ the record states seen. Codes added: `format_unverified`, `carved`,
 `decoding_confidence_not_high`, `attachment_file_not_in_package`, `attachment_hash_differs`,
 `attachment_without_name`, `duration_unread`, `no_time`, `partial_extraction`,
 `rows_skipped_same_id_as_an_earlier_record`, `forwarded`,
-`embedded_message_not_imported` (attention);
+`embedded_message_not_imported`, `related_copy_unmatched` (attention);
 `several_extractions`, `unknown_namespace`, `package_files`, `tagged_files`, `record_states`,
-`attachment_files_hashed`, `attachment_files_encrypted_not_hashed`, `chats_without_messages`
-(info).
+`attachment_files_hashed`, `attachment_files_encrypted_not_hashed`, `chats_without_messages`,
+`related_copies`, `related_copies_matching_a_record` (info).
 
 ## Not imported yet
 

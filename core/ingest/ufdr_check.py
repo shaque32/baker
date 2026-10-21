@@ -45,7 +45,7 @@ from core.db import apply_schema
 from core.encryption import open_input
 from core.ingest import ufdr
 
-CHECK_VERSION = "0.1.0"
+CHECK_VERSION = "0.2.0"
 SHAREABLE_MD = "ufdr-check.md"
 SHAREABLE_JSON = "ufdr-check.json"
 PRIVATE_MD = "ufdr-check-private.md"
@@ -56,6 +56,7 @@ MAX_SCHEMA_FIELDS = 60  # field names listed per model kind
 
 PARTY_HOLDERS = {"from", "to", "parties", "participants"}  # fields holding parties, any type
 TOP_MESSAGE_TYPES = {"InstantMessage", "Message", "SMS", "MMS"}
+RELATED_RECORD = "message copies under RelatedModels (matched to an imported message)"
 CHAT_MESSAGE_TYPES = ufdr.MESSAGE_TYPES
 BODY = ("body", "text", "message", "content")
 TS = ("timestamp", "datetime")
@@ -149,6 +150,10 @@ class _Frame:
     entries: list[str] = field(default_factory=list)
     user_ids: list[str] = field(default_factory=list)  # UserID entries, for a UserAccount
     msg_seen: Counter[str] = field(default_factory=Counter)
+    related_seen: int = 0
+    # a copy under some record's RelatedModels, or inside one: never part of its holder, and
+    # never one of the package's own records (it is matched to them by content instead)
+    related: bool = False
 
 
 @dataclass
@@ -182,6 +187,10 @@ class MessageRec:
     att_refs: list[tuple[bool, str | None, str | None]]
     attachments: int = 0  # set when the read ends (file ids need taggedFiles)
     attachment_files: int = 0  # attachments naming a path that is in the package
+    # identifiers only: Baker links a party to the phone's own account by identifier, never by
+    # a name that happens to read like one
+    sender_ident: str | None = None
+    recipient_idents: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -234,8 +243,16 @@ class Tally:
         self.contacts: dict[str, ContactRec] = {}
         self.user_accounts: dict[str, str | None] = {}  # locator -> expected identifier
         self.owner_ids: set[str] = set()  # UserAccount identifiers: the phone's own accounts
+        # a UserAccount naming the same app and identifier as an earlier one: Baker keeps one
+        # account for both, at the earlier locator
+        self.account_repeats: set[str] = set()
+        self._account_keys: set[tuple[str, str]] = set()
         self.ids: Counter[str] = Counter()  # model ids of messages and calls
         self.repeats: set[str] = set()  # locators whose model id an earlier record had
+        self.related_roots: Counter[str] = Counter()  # models under RelatedModels, by type
+        # copies of messages under RelatedModels (at a record's locator + /Related[n]): matched
+        # by content to the package's own messages, never counted as one of them
+        self.related_messages: dict[str, MessageRec] = {}
         self._capture: tuple[_Frame, str, list[str]] | None = None
         self._item: list[str] | None = None
         self._item_name = ""
@@ -259,20 +276,28 @@ class Tally:
                 self.top_counts[mtype] += 1
                 f = _Frame(mtype, dict(attrs), depth, mtype, f"{mtype}[{self.top_counts[mtype]}]",
                            True)  # fmt: skip
+            elif frame is not None and parent == "RelatedModels":
+                # a copy of another record, kept by the package beside the record holding it
+                frame.related_seen += 1
+                loc = f"{frame.locator or frame.key}/Related[{frame.related_seen}]"
+                key = f"{frame.type}.RelatedModels>{mtype}"
+                f = _Frame(mtype, dict(attrs), depth, key, loc, False, related=True)
+                self.related_roots[mtype] += 1
             elif frame is not None and parent in ("modelField", "multiModelField"):
                 fname = self.attr_stack[-2].get("name", "")
                 loc = None
                 if (
-                    frame.top
+                    (frame.top or (frame.related and frame.key.endswith("RelatedModels>Chat")))
                     and frame.type == "Chat"
-                    and len(self.frames) == 1
+                    and frame is self.frames[-1]
                     and parent == "multiModelField"
+                    and depth == frame.depth + 2
                     and (fname.lower() == "messages" or mtype in CHAT_MESSAGE_TYPES)
                 ):
                     frame.msg_seen[fname] += 1
                     loc = f"{frame.locator}/{fname}[{frame.msg_seen[fname]}]"
                 key = f"{frame.type}.{fname}>{mtype}"
-                f = _Frame(mtype, dict(attrs), depth, key, loc, False)
+                f = _Frame(mtype, dict(attrs), depth, key, loc, False, related=frame.related)
             else:
                 return
             kind = self.kinds.setdefault(f.key, _Kind())
@@ -395,12 +420,20 @@ class Tally:
             return
         if f.locator is None:
             return
+        if f.related:
+            if f.type in TOP_MESSAGE_TYPES:
+                self.related_messages[f.locator] = self._message_rec(f)
+            return
         if f.top and f.type == "UserAccount":
             u = _text(f.fields.get("username"))
             ident = u or next(iter(f.user_ids), None) or next(iter(f.entries), None)
             if ident is not None:  # one with no identifier is skipped, and listed
                 self.user_accounts[f.locator] = ident
                 self.owner_ids.add(ident)  # the importer marks this identifier as the owner's
+                key = (ufdr._slug(_text(f.fields.get("source")) or "unknown"), ident)
+                if key in self._account_keys:
+                    self.account_repeats.add(f.locator)
+                self._account_keys.add(key)
         elif (f.top and f.type in TOP_MESSAGE_TYPES) or not f.top:
             self._message(f)
         elif f.type == "Call":
@@ -421,6 +454,9 @@ class Tally:
         if f.locator is None:
             return
         self._repeat(f)
+        self.messages[f.locator] = self._message_rec(f)
+
+    def _message_rec(self, f: _Frame) -> MessageRec:
         senders = list(f.parties.get("from", []))
         recips = list(f.parties.get("to", []))
         for p in f.parties.get("parties", []) + f.parties.get("participants", []):
@@ -430,8 +466,8 @@ class Tally:
                 recips.append(p)
         body = _first_raw(f.fields, BODY)
         s = senders[0] if senders else None
-        self.messages[f.locator] = MessageRec(
-            locator=f.locator,
+        return MessageRec(
+            locator=f.locator or "",
             type=f.type,
             model_id=f.attrs.get("id"),
             body=_digest(body),
@@ -441,6 +477,8 @@ class Tally:
             sender_owner=bool(s and s[3]),
             recipient_owner=any(p[3] for p in recips),
             recipients=[p[0] or p[1] or "" for p in recips],
+            sender_ident=s[0] if s else None,
+            recipient_idents=[p[0] for p in recips if p[0]],
             direction=_text(f.fields.get("direction")),
             folder=_text(f.fields.get("folder")),
             status=_text(f.fields.get("status")),
@@ -754,10 +792,10 @@ def compare(t: Tally, conn: sqlite3.Connection, src: str) -> tuple[list[Count], 
         stated = message_direction(x)
         if stated is not None:
             direction.see(dirn == stated, loc)
-        elif x.sender is not None and (x.sender_owner or x.sender in t.owner_ids):
+        elif x.sender is not None and (x.sender_owner or x.sender_ident in t.owner_ids):
             direction.see(dirn == "outgoing", loc)
         elif x.sender is not None and (
-            x.recipient_owner or any(r in t.owner_ids for r in x.recipients)
+            x.recipient_owner or any(r in t.owner_ids for r in x.recipient_idents)
         ):
             direction.see(dirn == "incoming", loc)
         else:
@@ -855,8 +893,17 @@ def compare(t: Tally, conn: sqlite3.Connection, src: str) -> tuple[list[Count], 
         _counts("messages", t.messages, db_msgs, t.repeats),
         _counts("calls", t.calls, db_calls, t.repeats),
         _counts("contacts", t.contacts, db_contacts, set()),
-        _counts("phone's own accounts (UserAccount)", t.user_accounts, accounts, set()),
+        _counts("phone's own accounts (UserAccount)", t.user_accounts, accounts, t.account_repeats),
     ]
+    # a copy under RelatedModels is matched by content (text, time, sender as written) to a
+    # message of the package's own that Baker imported; one that matches none is missing
+    own = {(x.body, x.ts_raw, x.sender) for x in t.messages.values() if x.locator in db_msgs}
+    unmatched = sorted(
+        (loc for loc, x in t.related_messages.items() if (x.body, x.ts_raw, x.sender) not in own),
+        key=_loc_key,
+    )
+    n_rel = len(t.related_messages)
+    counts.append(Count(RELATED_RECORD, n_rel, n_rel - len(unmatched), 0, unmatched, []))
     xml_atts = sum(m.attachments for m in t.messages.values() if m.locator in db_msgs)
     (db_atts,) = conn.execute(
         "SELECT COUNT(*) FROM attachments WHERE source_id = ?", (src,)
@@ -989,6 +1036,9 @@ def _shareable(
             "tagged_files": t.tagged_files,
         },  # fmt: skip
         "records": [c.as_dict() for c in counts],
+        "copies_under_related_models": {
+            _safe_name(k): v for k, v in sorted(t.related_roots.items())
+        },
         "checks": [c.as_dict() for c in checks],
         "value_shapes": {
             _safe_label(k): dict(v.most_common(MAX_SHAPES)) for k, v in sorted(t.shapes.items())
@@ -1189,6 +1239,11 @@ def shareable_markdown(d: dict) -> str:
         lines.append(
             f"| {r['record']} | {r['in_report_xml']} | {r['imported_by_baker']} | "
             f"{r['repeats_imported_once']} | {r['missing']} | {r['extra']} |"
+        )
+    if d.get("copies_under_related_models"):
+        lines.append(
+            "\nCopies under RelatedModels (records the package holds again inside another "
+            "record; not counted as its own records): " + _inline(d["copies_under_related_models"])
         )
     for r in d["records"]:
         for key, label in (("first_missing_locators", "missing"), ("first_extra_locators",

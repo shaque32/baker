@@ -33,6 +33,13 @@ records of each kind go in the private sample (default 20). Nothing is added to 
      phone's own accounts.
    A check that cannot be made for a record (no stated sender, a time without an offset) is
    counted as "not checked", never as a match.
+   Models under a `RelatedModels` element (copies of other records, as Reader 7.48 writes them)
+   are never counted as the holder's messages, attachments or parties. Each copied message is
+   matched by text, time and sender to a message Baker imported; one that matches none is
+   missing (row "message copies under RelatedModels"). Copies are counted per type
+   (`copies_under_related_models`). A second account with the same app and identifier is one
+   account in Baker and counts as a repeat, not as missing. Direction is expected from the
+   phone's own accounts by identifier only, as the importer links them.
 
 A test plants a wrong value in each field after import and shows the check catches it
 (tests/test_ufdr_check.py).

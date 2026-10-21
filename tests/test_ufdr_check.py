@@ -21,6 +21,7 @@ from eval.synthetic.ufdr import (
     model,
     one,
     party,
+    related_package,
     report_xml,
     ts_field,
     write_case01,
@@ -608,3 +609,27 @@ def test_repeated_tagged_ids_and_nested_forwards_check_clean(tmp_path):
     d = ufdr_check.run(p).shareable
     assert d["differences"] == 0
     assert _by(d, "messages", "attachment_files_hashed")["differ"] == 0
+
+
+def test_related_copies_and_repeated_accounts_check_clean(tmp_path):
+    """Copies under RelatedModels are matched to the package's own messages, never counted as a
+    record's messages, attachments or recipients; two accounts with one identifier are one."""
+    d = ufdr_check.run(related_package(tmp_path / "rel.ufdr")).shareable
+    assert d["differences"] == 0, d["records"]
+    msgs = _rec(d, "messages")
+    assert (msgs["in_report_xml"], msgs["imported_by_baker"], msgs["missing"]) == (110, 110, 0)
+    rel = _rec(d, ufdr_check.RELATED_RECORD)
+    assert (rel["in_report_xml"], rel["imported_by_baker"], rel["missing"]) == (80, 80, 0)
+    acct = _rec(d, "phone's own accounts (UserAccount)")
+    assert (acct["in_report_xml"], acct["repeats_imported_once"], acct["missing"]) == (3, 1, 0)
+    att = _rec(d, "attachments")
+    assert (att["in_report_xml"], att["imported_by_baker"]) == (13, 13)
+    assert d["copies_under_related_models"]["Chat"] == 3
+    assert "Copies under RelatedModels" in ufdr_check.shareable_markdown(d)
+
+
+def test_a_message_held_only_as_a_related_copy_is_a_difference(tmp_path):
+    d = ufdr_check.run(related_package(tmp_path / "rel.ufdr", unmatched=True)).shareable
+    rel = _rec(d, ufdr_check.RELATED_RECORD)
+    assert rel["first_missing_locators"] == ["Chat[1]/Related[1]/Messages[24]"]
+    assert d["differences"] == 1

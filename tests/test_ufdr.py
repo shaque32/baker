@@ -25,12 +25,14 @@ from core.ingest.ufdr import UfdrImporter
 from core.report.html import render_report
 from eval.synthetic.generate import generate
 from eval.synthetic.ufdr import (
+    UNKNOWN_TYPES,
     field,
     iso_local,
     many,
     model,
     one,
     party,
+    related_package,
     report_xml,
     ts_field,
     write_case01,
@@ -1058,5 +1060,81 @@ def test_the_report_names_the_ufdr_importer_version(tmp_path):
 
     original = model("InstantMessage", one("From", party(*JO)), field("Body", "SYNTHETIC hi"))
     conn, _ids = _copy_case(tmp_path, original)
-    assert IMPORTER_VERSION == "0.2.0"
-    assert f"{ufdr.IMPORTER_NAME} 0.2.0</td>" in render_report(conn)
+    assert IMPORTER_VERSION == "0.3.0"
+    assert f"{ufdr.IMPORTER_NAME} 0.3.0</td>" in render_report(conn)
+
+
+# ---------------------------------------------------------------- RelatedModels (Reader 7.48)
+
+
+def test_every_chat_message_imports_and_related_copies_never_add_records(tmp_path):
+    """Public Reader 7.48 packages hold copies of records under RelatedModels, after a record's
+    fields. A copy is never one of the record's messages, attachments or recipients."""
+    conn, s = _import(related_package(tmp_path / "rel.ufdr"))
+    locs = {r[0] for r in conn.execute("SELECT locator FROM messages")}
+    assert len(locs) == 60 + 45 + 5
+    assert {"Chat[1]/Messages[60]", "Chat[2]/Messages[45]", "Chat[3]/Messages[5]"} <= locs
+    assert not any("Related" in x for x in locs)
+    # Chat[1]/Messages[4] holds two copies of itself: one recipient, no attachment, still
+    (mid,) = conn.execute(
+        "SELECT id FROM messages WHERE locator = ?", ("Chat[1]/Messages[4]",)
+    ).fetchone()
+    assert conn.execute(
+        "SELECT COUNT(*) FROM message_recipients WHERE message_id = ?", (mid,)
+    ).fetchone() == (1,)
+    # one attachment on every ninth message from the fifth, each hashed from the package
+    assert conn.execute("SELECT COUNT(*), COUNT(sha256) FROM attachments").fetchone() == (13, 13)
+    assert conn.execute("SELECT COUNT(*) FROM calls").fetchone() == (4,)
+    counts = json.loads(conn.execute("SELECT payload_json FROM source_coverage").fetchone()[0])
+    # 56 chat messages copied in other chats, 24 self copies, 4 calls, 2 accounts
+    assert counts["counts"]["related_copies"] == 86
+    assert counts["counts"]["related_copies_matching_a_record"] == 86
+    assert counts["ufdr"]["related_copies_by_type"] == {
+        "Call": 4, "Chat": 3, "InstantMessage": 24, "UserAccount": 2
+    }  # fmt: skip
+    assert "related_copy_unmatched" not in _codes(s)
+    info = next(i for i in s.items if i.code == "related_copies")
+    assert info.level == "info"
+
+
+def test_model_types_baker_does_not_know_are_listed_on_screen_and_in_the_report(tmp_path):
+    conn, s = _import(related_package(tmp_path / "rel.ufdr"))
+    listed = {i.plain.split(" was not imported")[0]: i for i in s.items if i.code == "not_imported"}
+    assert set(listed) == set(UNKNOWN_TYPES)
+    assert all(i.level == "attention" and "(1 record)" in i.plain for i in listed.values())
+    html = render_report(conn)
+    limits = html.split("<h2>Limitations</h2>", 1)[1].split("<h2>", 1)[0]
+    for t in UNKNOWN_TYPES:
+        assert f'<span class="q">{t}</span> was not imported' in limits
+    check_report_text(html)
+
+
+def test_a_related_copy_matching_no_record_is_listed_and_shown_in_the_report(tmp_path):
+    conn, s = _import(related_package(tmp_path / "rel.ufdr", unmatched=True))
+    items = [i for i in s.items if i.code == "related_copy_unmatched"]
+    assert {i.locators for i in items} == {
+        ("Chat[1]/Related[1]/Messages[24]",),
+        ("Call[1]/Related[1]",),
+    }
+    assert all(i.level == "attention" for i in items)
+    assert "Baker did not import it" in items[0].plain
+    html = render_report(conn)
+    assert "held only as a related copy" in html.split("<h2>Limitations</h2>", 1)[1]
+    # the copy is not imported as a record, and nothing else changed
+    assert conn.execute("SELECT COUNT(*) FROM messages").fetchone() == (110,)
+
+
+def test_a_chat_message_skipped_between_the_two_reads_stores_nothing(tmp_path, monkeypatch):
+    path = related_package(tmp_path / "rel.ufdr")
+    real = ufdr._RecordMapper.chat
+
+    def drop_one(self, el, chat):
+        if el.pending:
+            el.pending.pop()
+        real(self, el, chat)
+
+    monkeypatch.setattr(ufdr._RecordMapper, "chat", drop_one)
+    conn = _db()
+    with pytest.raises(ValueError, match="chat messages on the first read"):
+        UfdrImporter(source_id="u1").import_source(path, conn)
+    assert conn.execute("SELECT COUNT(*) FROM messages").fetchone() == (0,)

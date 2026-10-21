@@ -277,6 +277,154 @@ def write_case01(out: Path) -> list[Path]:
     return paths
 
 
+# ---------------------------------------------------------------- related copies (Reader 7.48)
+
+# Model types public Reader 7.48 packages hold that Baker does not know (listed, not imported)
+UNKNOWN_TYPES = ("AppsUsageLog", "ActivitySensorData", "FileUpload", "RecognizedDevice", "Activity")
+OWNER = ("syn-owner-1", "Synthetic Owner", True)
+FRIENDS = [(f"syn-friend-{i}", f"Friend {i}", False) for i in range(1, 4)]
+_T0 = datetime(2026, 2, 1, 9, 0, tzinfo=UTC)
+
+
+def related(*models: str) -> str:
+    """RelatedModels as Reader 7.48 writes it, after a model's fields: copies of other records,
+    each with an id of its own. Baker never imports them as records."""
+    return f'<jumptargets name="" /><RelatedModels>{"".join(models)}</RelatedModels>'
+
+
+def _rel_msg(mid: str, body: str, ts: str, frm, to, att: str | None = None, *tail: str) -> str:
+    parts = [
+        field("Source", "Signal"),
+        one("From", party(*frm, role="From")),
+        many("To", [party(*p, role="To") for p in to]),
+        field("Body", body),
+        ts_field("TimeStamp", ts),
+    ]
+    if att is not None:
+        parts.append(
+            many(
+                "Attachments",
+                [
+                    model(
+                        "Attachment",
+                        field("Filename", att),
+                        field("ContentType", "image/png"),
+                        field("attachment_extracted_path", f"files/Image/{att}"),
+                        id=f"{mid}-att",
+                    )
+                ],
+                "Attachment",
+            )
+        )
+    return model("InstantMessage", *parts, *tail, id=mid)
+
+
+def _rel_chat(key: str, msgs: list[str], *tail: str, cid: str | None = None) -> str:
+    return model(
+        "Chat",
+        field("Source", "Signal"),
+        field("Id", key),
+        field("Name", f"Chat {key}"),
+        many("Participants", [party(*OWNER), *(party(*p) for p in FRIENDS)]),
+        many("Messages", msgs, "InstantMessage"),
+        *tail,
+        id=cid or f"chat-{key}",
+    )
+
+
+def _rel_call(cid: str, ts: str, duration: str | None) -> str:
+    parts = [
+        field("Source", "Phone"),
+        many("Parties", [party(*OWNER, role="From"), party(*FRIENDS[0], role="To")]),
+        ts_field("TimeStamp", ts),
+        field("Direction", "Outgoing"),
+    ]
+    if duration is not None:
+        parts.append(field("Duration", duration, "TimeSpan"))
+    return model("Call", *parts, id=cid)
+
+
+def _account(aid: str, username: str | None, app: str = "Signal", *tail: str) -> str:
+    return model("UserAccount", field("Source", app), field("Username", username), *tail, id=aid)
+
+
+def related_package(path: Path, unmatched: bool = False) -> Path:
+    """A synthetic package shaped like public Cellebrite Reader 7.48 UFDRs: long chats (past
+    the 30 messages after which copies begin), several chats, attachments and recipients, and
+    RelatedModels copies of chats, messages, calls and accounts after each record's fields.
+    Two accounts name the same app and identifier; one has no identifier. The five model types
+    Baker does not know are there too. With `unmatched`, one message and one call exist only
+    as related copies, matching no record of the package's own."""
+    files: dict[str, bytes] = {}
+
+    def ts(c: int, i: int) -> str:
+        return iso_local(_T0 + timedelta(days=c, minutes=7 * i), -300)
+
+    chats: list[tuple[str, list[tuple[str, str, str, tuple, list, str | None]]]] = []
+    for c, n in enumerate((60, 45, 5)):
+        rows = []
+        for i in range(n):
+            frm = OWNER if i % 3 == 0 else FRIENDS[i % len(FRIENDS)]
+            to = [p for p in (OWNER, *FRIENDS) if p != frm][: 1 + i % 3]
+            att = f"syn-{c}-{i}.png" if i % 9 == 4 else None
+            if att:
+                files[f"files/Image/{att}"] = f"synthetic image {c}-{i}".encode()
+            rows.append((f"m-{c}-{i}", f"synthetic message {c}-{i}", ts(c, i), frm, to, att))
+        chats.append((f"k{c}", rows))
+
+    def copies(c: int, picks: Iterable[int], tag: str) -> list[str]:
+        return [_rel_msg(f"{r[0]}-{tag}", *r[1:]) for r in (chats[c][1][i] for i in picks)]
+
+    out_chats = []
+    for c, (key, rows) in enumerate(chats):
+        msgs = []
+        for i, r in enumerate(rows):
+            # a message holding copies of itself, as Reader 7.48 writes some
+            tail = (related(_rel_msg(f"{r[0]}-self1", *r[1:]), _rel_msg(f"{r[0]}-self2", *r[1:])),)
+            msgs.append(_rel_msg(*r, *(tail if i % 10 == 3 else ())))
+        # each chat ends with copies of another chat (a second copy of some of its messages)
+        other = (c + 1) % len(chats)
+        copied = list(range(0, len(chats[other][1]), 2))
+        extra = copies(other, copied, f"rel{c}")
+        if unmatched and c == 0:
+            extra.append(
+                _rel_msg("only-a-copy", "synthetic message only in a copy", ts(9, 1), FRIENDS[1],
+                         [OWNER])
+            )  # fmt: skip
+        rel_chat = _rel_chat(chats[other][0], extra, cid=f"chat-{chats[other][0]}-rel{c}")
+        out_chats.append(_rel_chat(key, msgs, related(rel_chat)))
+    calls = []
+    for i in range(4):
+        t = ts(5, i)
+        copy = _rel_call(f"call-{i}-rel", t, "00:01:05")
+        if unmatched and i == 0:
+            copy = _rel_call("call-only-a-copy", ts(6, 0), "00:00:09")
+        calls.append(_with_tail(_rel_call(f"call-{i}", t, "00:01:05"), related(copy)))
+    accounts = [
+        _with_tail(_account("acct-1", "syn-owner-1"), related(_account("acct-1r", "syn-owner-1"))),
+        _account("acct-2", "syn-owner-1"),  # the same app and identifier again
+        _account("acct-3", "syn-owner-mail", "Mail"),
+        _with_tail(_account("acct-4", None, "Web"), related(_account("acct-4r", None, "Web"))),
+    ]
+    unknown = {
+        t: [_with_tail(model(t, field("Source", "Synthetic"), id=f"{t}-1"),
+                       related(model(t, field("Source", "Synthetic"), id=f"{t}-1-rel")))]
+        for t in UNKNOWN_TYPES
+    }  # fmt: skip
+    xml = report_xml(
+        {"Chat": out_chats, "Call": calls, "UserAccount": accounts, **unknown},
+        metadata=[("DeviceInfoSelectedDeviceName", "Synthetic Phone")],
+        project={"reportVersion": "7.48"},
+    )
+    return write_package(path, xml, files)
+
+
+def _with_tail(model_xml: str, tail: str) -> str:
+    """The model with `tail` (say, RelatedModels) as its last children."""
+    head, end = model_xml.rsplit("</model>", 1)
+    return f"{head}{tail}</model>{end}"
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--out", type=Path, default=Path("eval/out/ufdr"))
