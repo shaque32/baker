@@ -290,6 +290,10 @@ def test_cli_lists_and_exports_the_trail(db, tmp_path, capsys):
     target = tmp_path / "trail.csv"
     assert cli_main(["activity", "--db", str(db), "--csv", str(target)]) == 0
     assert target.read_text(encoding="utf-8").startswith("seq,at_utc,examiner")
+    one = tmp_path / "c06.csv"
+    assert cli_main(["activity", "--db", str(db), "--claim", "C06", "--csv", str(one)]) == 0
+    rows = list(csv.DictReader(io.StringIO(one.read_text(encoding="utf-8"))))
+    assert rows and {r["claim_id"] for r in rows} == {"C06"}
 
 
 def test_listed_evidence_reads_the_pages_links():
@@ -355,14 +359,28 @@ def test_a_report_that_cannot_be_anchored_records_no_view(db, conn, monkeypatch)
     assert conn.execute("SELECT MAX(seq) FROM audit_log").fetchone()[0] == before
 
 
-def test_an_upload_post_makes_the_next_page_a_new_view(db, conn):
-    import io
-
+def test_only_an_accepted_upload_makes_the_next_page_a_new_view(db, conn):
+    from tests.test_start_case import multipart
     from ui.app import Request
+
+    def upload(token: str) -> None:
+        body, ctype = multipart({"token": token, "kind": "govdoc"}, "a.pdf", b"%PDF-1.4")
+        req = Request("POST", "/case/import", {}, {"host": f"127.0.0.1:{PORT}",
+                      "content-type": ctype})  # fmt: skip
+        app.handle_upload(req, io.BytesIO(body), len(body))
 
     app, _ = _app(db)
     get(app, "/setup")
-    app.handle_upload(Request("POST", "/case/import", {}, {"host": f"127.0.0.1:{PORT}"}),
-                      io.BytesIO(b""), None)  # fmt: skip
+    upload("forged")  # another site cannot clear the refresh check
+    get(app, "/setup")
+    upload(app.token)
+    get(app, "/setup")
+    assert [p["page"] for _, p in _views(conn)] == ["/setup", "/setup"]
+
+
+def test_every_accepted_post_makes_the_next_page_a_new_view(db, conn):
+    app, _ = _app(db)
+    get(app, "/setup")
+    post(app, "/case/recovery/done")  # handled before the case database opens
     get(app, "/setup")
     assert [p["page"] for _, p in _views(conn)] == ["/setup", "/setup"]

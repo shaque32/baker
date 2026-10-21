@@ -314,6 +314,8 @@ class App:
             or not hmac.compare_digest(req.form.get("token", ""), self.token)
         ):
             return self._plain(403, "This form did not come from this review screen.")
+        if req.method == "POST":
+            self._last_view = None  # whatever the post did, the next page is a new view
         if self.case is None:
             if req.method == "GET" and req.path not in NO_CASE_GET:
                 return self._redirect("/cases")
@@ -354,7 +356,6 @@ class App:
                 resp = self._get(conn, req)
                 self._note_view(conn, req, resp)
                 return self._unrecorded_warning(resp)
-            self._last_view = None  # whatever the post did, the next page is a new view
             return self._post(conn, req)
         finally:
             conn.close()
@@ -1190,7 +1191,6 @@ class App:
 
     def handle_upload(self, req: Request, stream: BinaryIO, length: int | None) -> Response:
         """POST /case/import as multipart/form-data, streamed into the case's inputs folder."""
-        self._last_view = None  # a post, like any other: the page it returns to is a new view
         if req.headers.get("host") not in self.allowed_hosts():
             return self._plain(400, "This screen only answers requests from this computer.")
         if req.path != "/case/import":
@@ -1229,6 +1229,7 @@ class App:
         def before_file(fields: dict[str, str]) -> None:
             if not hmac.compare_digest(fields.get("token", ""), self.token):
                 raise _Refused
+            self._last_view = None  # an accepted post: the page it returns to is a new view
             self._guard("/case/import")
             _ = self.actor
 

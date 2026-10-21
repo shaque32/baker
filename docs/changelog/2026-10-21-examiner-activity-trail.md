@@ -11,15 +11,16 @@
   advisor, via Arsh 2026-10-21) wants a trackable, timed record of what the examiner opened and
   looked at, to answer a "rubber-stamped" challenge. No schema, rules, prompt or contract change.
 - Where: PR #111 (branch claude/project-thread-1wfsnn)
-- Verified: tests/test_activity.py (24 tests: logging, evidence location, refresh collapse, time
+- Verified: tests/test_activity.py (25 tests: logging, evidence location, refresh collapse, time
   on page and the 30-minute away mark, new session, unnamed viewer, verdicts unchanged, report
   section, Activity page, CSV hashes and formula guard, tampered view breaks the chain, a view
-  that cannot be written is reported, CLI). Two existing tests changed because the screen now
-  writes page views: tests/test_chain_on_open.py takes the newest anchored entry before opening
-  the log page; tests/test_report_consistency.py now checks the screen adds only `view` entries
-  and the report adds none. Speed (Linux cloud container, 2026-10-21): with 20,000 view entries,
-  the per-page log check took 0.17 s and reading the trail 0.32 s. make check passed (2334
-  tests; case01 gate 1.00, 0 false supported; eval unchanged).
+  that cannot be written is reported, cross-site requests and posts leave the trail alone, CLI).
+  Existing tests changed because the screen now writes page views or has one more tab:
+  tests/test_chain_on_open.py takes the newest anchored entry before opening the log page;
+  tests/test_report_consistency.py now checks the screen adds only `view` entries and the
+  report adds none; tests/test_demo.py counts the tabs from `TAB_GROUPS`. Speed (Linux cloud
+  container, 2026-10-21): with 20,000 view entries, the per-page log check took 0.17 s and
+  reading the trail 0.32 s. make check passed (2345 tests; case01 gate 1.00, 0 false supported; eval unchanged).
 - Open: time on page is time to the next page or action, not reading (no scripts); two screens
   on one case at once would interleave and shorten it. Views after the newest anchor can be cut
   undetected, like any entry (docs/review-screen.md). The reproducibility bundle (#104) carries

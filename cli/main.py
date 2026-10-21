@@ -338,13 +338,13 @@ def cmd_activity(a: argparse.Namespace) -> int:
     from core.review import activity
 
     trail = activity.steps(_open(a.db))
+    if a.claim:
+        trail = [s for s in trail if s.claim_id == a.claim]
     if a.csv is not None:
         a.csv.write_text(activity.csv_text(trail), encoding="utf-8")
         print(f"wrote {a.csv} ({len(trail)} rows; nothing was sent)")
         return 0
     for s in trail:
-        if a.claim and s.claim_id != a.claim:
-            continue
         item = s.payload.get("id", "") if s.is_view else (s.evidence_id or s.claim_id or "")
         took = activity.duration(s.seconds, s.away) if s.is_view else ""
         print(f"{s.seq}  {s.at_utc}  {s.examiner}  {s.where}  {item}  {took}".rstrip())
