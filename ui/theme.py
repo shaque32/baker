@@ -76,6 +76,14 @@ nav.tabs a { color: var(--muted); text-decoration: none; padding: 10px 0 9px;
   border-bottom: 2px solid transparent; white-space: nowrap; }
 nav.tabs a:hover { color: var(--fg); }
 nav.tabs a.on { color: var(--fg); font-weight: 500; border-bottom-color: var(--fg); }
+nav.tabs .sep { flex: none; width: 1px; margin: 12px 2px 10px; background: var(--line-strong); }
+.casestatus { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+.casestatus .findings { display: flex; flex-wrap: wrap; gap: 6px 14px; list-style: none;
+  padding: 0; margin: 0; }
+.casestatus .verdict { margin: 0 2px 0 0; }
+details.custody { margin: 18px 0; }
+details.custody > summary { font-size: 14px; color: var(--muted); }
 
 h1 { font-size: 40px; }
 .eyebrow { font: 500 11px var(--mono); letter-spacing: 0.14em; text-transform: uppercase;
