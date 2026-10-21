@@ -557,7 +557,7 @@ def _you_lines(st: ClaimState) -> list[str]:
     reminder (priority 6) that every unreviewed verdict carries."""
     lines = [t for p, t in st.needs() if p < 6]
     if st.css == "v-supai":
-        lines.insert(0, "Supported on the AI reviewer's acceptance only; no expert decided.")
+        lines.insert(0, "Part of its support rests on AI review, not an expert's acceptance.")
     return lines
 
 
