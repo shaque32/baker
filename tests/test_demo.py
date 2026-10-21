@@ -439,3 +439,42 @@ def test_an_identity_change_stays_not_current_through_a_rules_only_rerun(root):
     run = pipeline.view_run(conn)
     assert run["evidence_from_run"] != run["run_id"]
     assert case_changed_after(conn, run)
+
+
+def test_the_claim_page_leads_with_what_has_to_be_true_and_shows_records_in_conversation(root):
+    """The checklist reads the stored coverage, records show among their neighbours with the
+    verified quote, and the rules' tables stay on the page, folded."""
+    case = _case(root)
+    app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
+    app.open_case(case)
+    c06 = app.handle(Request("GET", "/claim", {"id": "C06"}, dict(HOST))).body.decode()
+    truths = c06.split("<section class='truths'>", 1)[1].split("</section>", 1)[0]
+    assert "What has to be true" in truths and "<li class='no'>" in truths
+    assert "Meaning of words" in truths and "Not established" in truths
+    assert c06.index("<section class='truths'>") < c06.index("<h2 id='evidence'>")
+    working = c06.split("<details class='working'>", 1)[1].split("</details>", 1)[0]
+    assert "Covered (computed by the rules)" in working and "What was searched" in working
+    c05 = app.handle(Request("GET", "/claim", {"id": "C05"}, dict(HOST))).body.decode()
+    assert "<div class='thread mini'>" in c05 and "UNDER REVIEW" in c05
+    assert "Records found (derived)" in c05 and "Quoted:" in c05
+    for page in (c05, c06):  # Baker's own words in the checklist
+        truths = page.split("<section class='truths'>", 1)[1].split("</section>", 1)[0]
+        text = re.sub(r"<[^>]+>", " ", truths).lower()
+        for word in ("guilty", "innocent", "leader", "deleted"):
+            assert word not in text, word
+
+
+def test_the_checklist_leads_the_alternatives_and_cards_share_one_read_per_thread(root):
+    from core.audit.context import build_context
+
+    case = _case(root)
+    app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
+    app.open_case(case)
+    c16 = app.handle(Request("GET", "/claim", {"id": "C16"}, dict(HOST))).body.decode()
+    assert "Other explanations" in c16
+    assert c16.index("<section class='truths'>") < c16.index("Other explanations")
+    conn = connect(case.db)
+    rid = conn.execute("SELECT id FROM messages ORDER BY id LIMIT 1").fetchone()[0]
+    threads: dict[str, list[str]] = {}
+    assert build_context(conn, rid, 1, threads=threads) == build_context(conn, rid, 1)
+    assert len(threads) == 1

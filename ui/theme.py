@@ -215,6 +215,23 @@ section.group { margin: 30px 0; }
   padding: 0; }
 .ghead .muted { font-size: 13.5px; }
 .kinds { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 10px; }
+/* claim page: what has to be true, the evidence as a conversation, the working folded */
+.truths .checklist { list-style: none; padding: 0; margin: 8px 0 18px; background: var(--card);
+  border: 1px solid var(--line); border-radius: 12px; }
+.checklist li { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 10px;
+  align-items: start; padding: 10px 14px; border-top: 1px solid var(--line); }
+.checklist li:first-child { border-top: 0; }
+.checklist .mark { width: 14px; height: 14px; margin-top: 3px; border-radius: 50%;
+  border: 1.5px solid var(--line-strong); }
+.checklist li.ok .mark { background: var(--sup); border-color: var(--sup); }
+.checklist li.no .mark { border-color: var(--unp); border-style: dashed; }
+.checklist .meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.checklist .said { font: 500 11px var(--mono); color: var(--muted); white-space: nowrap; }
+.checklist li.ok .said { color: var(--sup); } .checklist li.no .said { color: var(--unp); }
+.thread.mini { padding: 10px; margin: 6px 0; gap: 6px; background: var(--bg); }
+.item .quoted { font-size: 13px; margin: 4px 0; }
+details.more summary, details.working summary { font-size: 13px; color: var(--muted); }
+details.working { margin: 18px 0; }
 .ledger .gap, .nextup .gap, #verdict .gap { margin-top: 6px; font-size: 13px; color: var(--muted); }
 .ledger .gap b, .nextup .gap b, #verdict .gap b {
   color: var(--unp); font-weight: 600; margin-right: 6px; }

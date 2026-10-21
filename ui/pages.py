@@ -21,7 +21,7 @@ from collections.abc import Iterable
 from urllib.parse import quote as urlquote
 
 from core import pipeline
-from core.audit.context import build_context
+from core.audit.context import ContextLine, build_context
 from core.contracts import (
     ClaimType,
     EvidenceItem,
@@ -712,9 +712,13 @@ def evidence_card(
     flagged: bool = False,
     run_id: str | None = None,
     confirm: bool = False,
+    around: int = 0,
+    threads: dict[str, list[str]] | None = None,
 ) -> str:
     """claim_id: the claim page shows the card; it then carries the optional label flag.
-    confirm: a contradiction waiting for the expert (rule 1b), shown with the confirm step."""
+    confirm: a contradiction waiting for the expert (rule 1b), shown with the confirm step.
+    around: messages shown either side of the record, as a conversation (0: the quote only).
+    threads: the page's cache of thread orders, so many cards read each thread once."""
     stance_cls = "b-against" if item.stance in AGAINST else "b-open"
     flag = ""
     if claim_id is not None:
@@ -724,12 +728,13 @@ def evidence_card(
         f"<span class='badge {stance_cls}'>{e(STANCE_LABEL[item.stance])}</span>"
         f"{_tier_badge(item, last_kind)}"
         + ("<span class='badge b-flag'>flagged by you</span>" if flagged else "")
-        + f"<blockquote>{q(item.quote)}</blockquote>"
-        f"<p>{record_line(conn, item.record_id, found)}<br>"
-        f"<span class='mono'>{e(item.ref.source_id)} {e(item.ref.locator)} · "
+        + _conversation(conn, item, around, threads)
+        + f"<p>{record_line(conn, item.record_id, found)}</p>"
+        "<details class='more'><summary>Source and model note</summary>"
+        f"<p><span class='mono'>{e(item.ref.source_id)} {e(item.ref.locator)} · "
         f"{e(item.record_id)}</span></p>"
         f"<p class='muted'>{e(labelled_by(conn, item.model_run_id))}. Model rationale "
-        f"(inferred): {e(item.rationale)}</p>"
+        f"(inferred): {e(item.rationale)}</p></details>"
         f"<p><strong>Review:</strong> {review_label(conn, item)} · "
         f"<a href='{e(link('/evidence', id=item.id))}'>See about 20 messages around it</a></p>"
         + (
@@ -738,6 +743,36 @@ def evidence_card(
             else _decide_form(page, item, last_kind == "expert", back)
         )
         + f"{flag}</div>"
+    )
+
+
+def _conversation(
+    conn: sqlite3.Connection,
+    item: EvidenceItem,
+    around: int,
+    threads: dict[str, list[str]] | None = None,
+) -> str:
+    """The verified quote, and with around > 0 the record among its neighbours."""
+    quote = f"<blockquote>{q(item.quote)}</blockquote>"
+    lines = build_context(conn, item.record_id, around, threads=threads) if around else []
+    if len(lines) < 2:  # no neighbours (a contact, a call): the quote says it all
+        return quote
+    return (
+        f"<div class='thread mini'>{''.join(_msg(ln) for ln in lines)}</div>"
+        f"<p class='quoted'><span class='muted'>Quoted:</span> {q(item.quote)}</p>"
+    )
+
+
+def _msg(ln: ContextLine) -> str:
+    """One message as a chat bubble; the record under review is highlighted."""
+    shown = f" (shown as {q(ln.shown_as)})" if ln.shown_as else ""
+    side = " out" if ln.direction == "outgoing" else ""
+    tag = "<span class='cited'>UNDER REVIEW</span>" if ln.is_target else ""
+    return (
+        f"<div class='msg{side}{' target' if ln.is_target else ''}'>"
+        f"<div class='who2'>{q(ln.sender)}{shown} · {e(ln.direction)}</div>"
+        f"<div class='body'>{q(ln.body)}</div>"
+        f"<div class='t'>{tag}{e(ln.local_time)}</div></div>"
     )
 
 
@@ -1011,42 +1046,10 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
             f"{_flag_verdict_form(conn, page, st, back)}"
         )
     out.append("</div></div>")
+    out.append(_must_be_true(st))
     out.append(_alternatives(conn, st))
 
-    coverage = {cv.assumption_id: cv for cv in (d.coverage if d else ())}
-    if st.assumptions:
-        out.append(
-            "<h2>Assumptions</h2><table><thead><tr><th>Assumption</th><th>Kind</th><th>Core</th>"
-            "<th>Covered (computed by the rules)</th></tr></thead>"
-        )
-        for a in st.assumptions:
-            cv = coverage.get(a.id)
-            cov = (
-                "not computed"
-                if cv is None
-                else f"yes, at {cv.tier.value if cv.tier else '?'}"
-                if cv.covered
-                else "no"
-            )
-            out.append(
-                f"<tr><td>{e(a.text)}</td><td>{e(a.kind.value)}</td>"
-                f"<td>{'yes' if a.is_core else 'no'}</td><td>{e(cov)}</td></tr>"
-            )
-        out.append("</table>")
-    if st.checks:
-        out.append(
-            "<h2>Checks</h2><table><thead><tr><th>Check</th><th>Outcome</th>"
-            "<th>What was searched</th><th>Detail</th></tr></thead>"
-        )
-        for ch in st.checks:
-            out.append(
-                f"<tr><td>{e(ch.check_name)} {e(ch.check_version)}</td>"
-                f"<td>{e(ch.outcome.value)}</td><td>{e(ch.searched)}</td><td>{e(ch.detail)}</td>"
-                "</tr>"
-            )
-        out.append("</table>")
-
-    out.append("<h2>Evidence</h2>")
+    out.append("<h2 id='evidence'>Evidence</h2>")
     claim_flags = F.active_flags(conn, c.id)
     flagged = {f.evidence_id for f in claim_flags if f.evidence_id}
     if st.unlabeled:
@@ -1065,6 +1068,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
         out.append("<p class='muted'>No relevant evidence items were stored for this claim.</p>")
     by_assumption = {a.id: a for a in st.assumptions}
     found = forwarded.affected(conn)
+    threads: dict[str, list[str]] = {}  # each thread read once for the page's cards
     for title, group in groups:
         out.append(f"<h3>{e(title)} ({len(group)})</h3>")
         shown_on = None
@@ -1086,11 +1090,14 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
                     flagged=x.id in flagged,
                     run_id=st.run_id,
                     confirm=title == CONTRADICTION_FOUND,
+                    around=AROUND,
+                    threads=threads,
                 )
             )
     hidden = [x for x in st.evidence if x.stance == Stance.IRRELEVANT]
     if hidden:
         out.append(_irrelevant_list(conn, hidden, flagged))
+    out.append(_working(st))
     if d is not None:  # a flag is about an audited claim
         out.append(_flag_missed_form(page, st, back))
     out.append(_flags_section(page, claim_flags, back, st.run_id))
@@ -1103,6 +1110,86 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
     )
     body = f"<div class='split'>{side}<div>{''.join(out)}</div></div>"
     return page.wrap(st.name, body, run_banner(conn, page, back), wide=True)
+
+
+AROUND = 1  # messages either side of each evidence record on the claim page
+
+
+def _must_be_true(st: ClaimState) -> str:
+    """What has to be true for the claim, one line per assumption, core ones first, with what the
+    verdict rules found. Read from the stored coverage; it decides nothing."""
+    if not st.assumptions:
+        return ""
+    d = st.decision
+    coverage = {cv.assumption_id: cv for cv in (d.coverage if d else ())}
+    current = d is not None and not st.stale
+    rows = []
+    for a in sorted(st.assumptions, key=lambda a: not a.is_core):
+        cv = coverage.get(a.id) if current else None
+        if cv is None:
+            mark, said_ = "na", "Not current" if d is not None and st.stale else "Not computed"
+        elif cv.covered:
+            tier = cv.tier.value if cv.tier else "?"
+            mark, said_ = "ok", f"Records found ({tier.replace('_', ' ')})"
+        else:
+            mark, said_ = "no", "Not established"
+        role = "core" if a.is_core else "context, not needed for the verdict"
+        rows.append(
+            f"<li class='{mark}'><span class='mark'></span><div><div>{e(a.text)}</div>"
+            f"<div class='meta'>{e(GAP_TOPICS[a.kind])} · {e(role)}</div></div>"
+            f"<span class='said'>{e(said_)}</span></li>"
+        )
+    return (
+        "<section class='truths'><h2>What has to be true</h2>"
+        "<p class='muted'>Each part of the claim the records would have to show, and what the "
+        f"verdict rules found.</p><ul class='checklist'>{''.join(rows)}</ul></section>"
+    )
+
+
+def _working(st: ClaimState) -> str:
+    """The rules' working: the assumption and check tables, folded."""
+    d = st.decision
+    out: list[str] = []
+    coverage = {cv.assumption_id: cv for cv in (d.coverage if d else ())}
+    if st.assumptions:
+        out.append(
+            "<h3>Assumptions</h3><table><thead><tr><th>Assumption</th><th>Kind</th><th>Core</th>"
+            "<th>Covered (computed by the rules)</th></tr></thead>"
+        )
+        for a in st.assumptions:
+            cv = coverage.get(a.id)
+            cov = (
+                "not computed"
+                if cv is None
+                else f"yes, at {cv.tier.value if cv.tier else '?'}"
+                if cv.covered
+                else "no"
+            )
+            out.append(
+                f"<tr><td>{e(a.text)}</td><td>{e(a.kind.value)}</td>"
+                f"<td>{'yes' if a.is_core else 'no'}</td><td>{e(cov)}</td></tr>"
+            )
+        out.append("</table>")
+    if st.checks:
+        out.append(
+            "<h3>Checks</h3><table><thead><tr><th>Check</th><th>Outcome</th>"
+            "<th>What was searched</th><th>Detail</th></tr></thead>"
+        )
+        for ch in st.checks:
+            out.append(
+                f"<tr><td>{e(ch.check_name)} {e(ch.check_version)}</td>"
+                f"<td>{e(ch.outcome.value)}</td><td>{e(ch.searched)}</td><td>{e(ch.detail)}</td>"
+                "</tr>"
+            )
+        out.append("</table>")
+
+    if not out:
+        return ""
+    return (
+        "<details class='working'><summary>Show the rules' working: assumptions, checks and "
+        "what was searched"
+        f"</summary>{''.join(out)}</details>"
+    )
 
 
 def _context_link(f: explain.Fit) -> str | None:
@@ -1244,16 +1331,7 @@ def evidence_page(conn: sqlite3.Connection, page: Page, evidence_id: str) -> str
             "<p class='muted'>Messages around the record, in time order. Times are the phone's "
             "local time. The record under review is highlighted.</p><div class='thread'>"
         )
-        for ln in lines:
-            shown = f" (shown as {q(ln.shown_as)})" if ln.shown_as else ""
-            side = " out" if ln.direction == "outgoing" else ""
-            tag = "<span class='cited'>UNDER REVIEW</span>" if ln.is_target else ""
-            out.append(
-                f"<div class='msg{side}{' target' if ln.is_target else ''}'>"
-                f"<div class='who2'>{q(ln.sender)}{shown} · {e(ln.direction)}</div>"
-                f"<div class='body'>{q(ln.body)}</div>"
-                f"<div class='t'>{tag}{e(ln.local_time)}</div></div>"
-            )
+        out.extend(_msg(ln) for ln in lines)
         out.append("</div>")
     else:
         out.append("<p class='muted'>No surrounding messages for this kind of record.</p>")
