@@ -35,6 +35,7 @@ import json
 import re
 import sqlite3
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -45,6 +46,7 @@ from openpyxl import load_workbook
 
 from core.contracts import Fidelity, Source, SourceKind
 from core.encryption import open_input
+from core.ingest import forwarded
 from core.ingest.cellebrite_common import (
     HEADER_SCAN_ROWS,
     Cell,
@@ -72,7 +74,7 @@ from core.ingest.source_file import require_sha256
 from core.review import audit_log
 
 IMPORTER_NAME = "axiom"
-IMPORTER_VERSION = "0.1.0"
+IMPORTER_VERSION = "0.2.0"  # 0.2.0: forwarded and quoted messages marked, copies imported
 # Becomes "verified" only after a real AXIOM export has been checked against AXIOM Examine
 # (docs/ingest/axiom.md, "Before calling it verified"). Every import records it.
 FORMAT_SUPPORT = "unverified"
@@ -226,6 +228,20 @@ _CHAT_FIELDS: dict[str, tuple[str, ...]] = {
     "attachment": ("attachment", "attachments", "attachment(s)", "attachment name",
                    "attachment file name", "attachment name(s)"),
     "recovery": ("recovery method",),
+    # Forwarded and quoted messages (pilot gate 4). ASSUMED names, conservative: no real AXIOM
+    # export has been checked (docs/ingest/axiom.md). AXIOM's chat artifacts are described as
+    # carrying a forwarded flag and, for a reply, the quoted message's text and sender; Baker
+    # reads only these exact names (lowercased):
+    # - a flag that the message was forwarded ('Yes', 'True', '1', 'Forwarded'; 'No', 'False',
+    #   '0' and 'Not forwarded' mean not; any other value fails closed and marks it forwarded);
+    "forwarded": ("forwarded", "is forwarded"),
+    # - the forwarded message's original author, stored as written, never resolved;
+    "forwarded_from": ("forwarded from", "original sender", "original author"),
+    # - the quoted (replied-to) or forwarded original carried inside the message, imported one
+    #   level deep as its own record at '<locator>/Embedded[1]', with its own sender as written.
+    "quoted_body": ("quoted message", "quoted message body", "quoted text"),
+    "quoted_from_id": ("quoted message sender", "quoted message author", "quoted sender"),
+    "quoted_from_name": ("quoted message sender name", "quoted sender name"),
 }  # fmt: skip
 _SMS_FIELDS = {**_CHAT_FIELDS, "type": ("type", "message type")}
 _CALL_FIELDS: dict[str, tuple[str, ...]] = {
@@ -592,6 +608,11 @@ class _Mapper:
         self.device: dict[str, tuple[str, str]] = {}  # key -> (value, locator)
         self.artifact_counts: dict[str, int] = {}
         self.device_fields_not_read: dict[str, list[str]] = {}
+        # forwarded and quoted marks by locator (core/ingest/forwarded.py): reason -> locators,
+        # and locator -> the original author as written
+        self.marks: dict[str, list[str]] = {}
+        self.authors: dict[str, str] = {}
+        self.copies: list[Row] = []  # embedded copies of the artifact being mapped
 
     def _resolve(
         self, art: Artifact, kind: str, tc: TableCoverage
@@ -701,6 +722,8 @@ class _Mapper:
             elif fn.zone is not None:
                 tc.header_zone_names[fn.written] = fn.zone
         rows: dict[str, list[Row]] = {fn.written: [] for fn in ts_fields} or {"": []}
+        self.copies = []
+        n_copies = 0
         for loc, hit in art.hits:
             if all(
                 text(hit.get(fn.written)) is None and not isinstance(hit.get(fn.written), datetime)
@@ -715,9 +738,14 @@ class _Mapper:
                 ts_fields[0] if ts_fields else None,
             )
             row = self._row(art.name, rkind, tc, used, ts_used, loc, hit)
-            rows[ts_used.written if ts_used else ""].append(row)
+            group = rows[ts_used.written if ts_used else ""]
+            group.append(row)
+            group.extend(self.copies)  # its embedded copy, after it, in the same group
+            n_copies += len(self.copies)
+            self.copies = []
         tc.rows_read = len(art.hits)
-        tc.rows_imported = sum(len(r) for r in rows.values())
+        # embedded copies are not the export's own hits: counted apart (embedded_messages_imported)
+        tc.rows_imported = sum(len(r) for r in rows.values()) - n_copies
         tc.missing_key_fields = [
             k
             for k, f in (("time", "ts"), ("body", "body"), ("from", "from_id"), ("name", "name"))
@@ -826,6 +854,7 @@ class _Mapper:
                 and not isinstance(values["ts"], datetime)
             ):
                 self._flag(artifact, tc, "no_time", loc)
+            self._forwarded(artifact, tc, loc, get, values)
         elif kind is RecordKind.CALLS:
             partner = _parties(get("partner_id"), get("partner_name"))
             parties = {
@@ -871,6 +900,79 @@ class _Mapper:
             list(range(len(values), len(cells))),
             party_lists=parties,
         )
+
+    def _forwarded(
+        self,
+        artifact: str,
+        tc: TableCoverage,
+        loc: str,
+        get: Callable[[str], Cell],
+        values: dict[str, Cell],
+    ) -> None:
+        """Mark a forwarded or quoting hit the way the UFDR importer does (core/ingest/forwarded.py)
+        and queue its quoted original, one level deep, as a copy at loc + '/Embedded[1]'."""
+        is_fwd = _forwarded_value(get("forwarded"))
+        quoted = get("quoted_body")
+        copy_senders = _parties(get("quoted_from_id"), get("quoted_from_name"))
+        has_copy = text(quoted) is not None
+        if is_fwd:
+            self.cov.counters["messages_marked_forwarded"] += 1
+            self.marks.setdefault("forwarded", []).append(loc)
+            # the original author as written: the stated field, else the copy's one sender
+            author = text(get("forwarded_from"))
+            if author is None and has_copy:
+                author = _sole(get("quoted_from_id"), get("quoted_from_name"), copy_senders)
+            if author is not None:
+                self.authors[loc] = author
+            self._flag(artifact, tc, "forwarded", loc)
+        if not has_copy:
+            return
+        self.marks.setdefault("embedded", []).append(loc)
+        self.cov.counters["messages_with_embedded_message_imported_separately"] += 1
+        self._flag(artifact, tc, "embedded_message_imported_separately", loc)
+        eloc = f"{loc}{forwarded.COPY_STEP}1]"
+        self.cov.counters["embedded_messages_imported"] += 1
+        self.marks.setdefault("embedded_copy", []).append(eloc)
+        author = _sole(get("quoted_from_id"), get("quoted_from_name"), copy_senders)
+        if author is not None:
+            self.authors[eloc] = author
+        self._flag(artifact, tc, "embedded_original_imported", eloc)
+        # Its body verbatim, its own sender as written, the parent's thread (fixed up in _write);
+        # no time (the original's time is not when this phone held it) and no stated direction.
+        cv: dict[str, Cell] = {
+            "chat_id": values["chat_id"],
+            "chat_name": values["chat_name"],
+            "body": quoted,
+            "ts": None,
+        }
+        self.copies.append(
+            _HitRow(
+                eloc,
+                list(cv.values()),
+                {k: i for i, k in enumerate(cv)},
+                [],
+                party_lists={"from": copy_senders},
+            )
+        )
+
+
+_FALSE_VALUES = {"no", "false", "0", "n", "not forwarded"}
+
+
+def _forwarded_value(v: Cell) -> bool:
+    """A forwarded flag field says the message was forwarded. Blank or a stated no is not;
+    any other value (Yes, True, 1, Forwarded, or one Baker does not know) fails closed."""
+    if isinstance(v, bool):
+        return v
+    t = text(v)
+    return t is not None and t.lower() not in _FALSE_VALUES
+
+
+def _sole(ident: Cell, name: Cell, parties: list[Party]) -> str | None:
+    """The one sender as written (identifier, else name); None unless exactly one is named."""
+    if len(parties) != 1:
+        return None
+    return text(ident) or text(name)
 
 
 _TIMESPAN_RE = re.compile(r"^(?:(\d+)[.:])?(\d{1,2}):(\d{2}):(\d{2})(?:\.\d+)?$")
@@ -1032,7 +1134,9 @@ class AxiomImporter:
                             _calls(w, rows, tctx, m.app)
                         else:
                             _messages(w, kind, rows, tctx, m.app)
+            _attach_copies(w, mp)
             w.flush()
+            forwarded.mark(conn, cov.forwarded_records, cov.forwarded_from)
             payload = coverage_payload(
                 source,
                 IMPORTER_NAME,
@@ -1100,6 +1204,27 @@ def _device_label(
     if model and make and not norm(model).startswith(norm(make)):
         return f"{make} {model}"
     return model
+
+
+def _attach_copies(w: _Writer, mp: _Mapper) -> None:
+    """Before the writer flushes: put each embedded copy in its parent's thread (a thread made
+    only for a copy is dropped), and list forwarded marks by record id for coverage and for
+    forwarded.mark, as the UFDR importer does."""
+    loc_i, tid_i = 2, 3  # positions in the writer's message tuple
+    by_loc = {m[loc_i]: m[tid_i] for m in w.messages}
+    for i, m in enumerate(w.messages):
+        loc = m[loc_i]
+        if forwarded.COPY_STEP in loc:
+            parent = by_loc.get(loc.rsplit(forwarded.COPY_STEP, 1)[0])
+            if parent is not None:
+                w.messages[i] = (*m[:tid_i], parent, *m[tid_i + 1 :])
+    used = {m[tid_i] for m in w.messages}
+    for tid in [t for t, v in w.threads.items() if t not in used and forwarded.COPY_STEP in v[0]]:
+        del w.threads[tid]
+    for reason, locs in mp.marks.items():
+        w.cov.forwarded_records.setdefault(reason, []).extend(f"msg:{w.src}:{loc}" for loc in locs)
+    for loc, author in mp.authors.items():
+        w.cov.forwarded_from[f"msg:{w.src}:{loc}"] = author
 
 
 def _table_dict(tc: TableCoverage, mp: _Mapper) -> dict[str, object]:

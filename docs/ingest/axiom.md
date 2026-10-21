@@ -125,6 +125,17 @@ A hit whose `Recovery method` mentions carving is imported and listed for review
 (`no_time`) and a call duration Baker cannot read (`duration_unread`) are listed. Baker never
 says a record was deleted; a `Deleted` field, when present, is stored as stated.
 
+Forwarded and quoted messages (assumed field names, importer 0.2.0): a `Forwarded` or
+`Is Forwarded` field marks the hit forwarded (`No`, `False`, `0` and `Not forwarded` do not;
+any other value does, failing closed), with `Forwarded From`, `Original Sender` or
+`Original Author` stored as the original author, as written. A `Quoted Message`,
+`Quoted Message Body` or `Quoted Text` field is imported, one level deep, as a record of its own
+at the hit's locator plus `/Embedded[1]`, in the same thread, with no time and with its own
+sender (`Quoted Message Sender`, `Quoted Message Author` or `Quoted Sender`, and
+`Quoted Message Sender Name` or `Quoted Sender Name`) as written. Both fail closed exactly as
+UFDR forwards and embedded copies do (core/ingest/forwarded.py). These names come from no real
+export; check them under "Before calling it verified".
+
 ## Ids and locators
 
 Ids follow the frozen scheme with the source id as file stem: `msg:`, `call:`, `contact:` ...
