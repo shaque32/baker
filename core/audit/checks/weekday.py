@@ -33,7 +33,7 @@ _QUALIFIED = re.compile(
 
 class WeekdayCheck(TemplateCheck):
     name = "weekday"
-    version = "1.0.0"
+    version = "1.0.1"
 
     def evaluate(self, assumption_id: str, p: AssumptionParams, data: CaseData) -> CheckResult:
         if p.window is None or not p.quoted_text:
