@@ -35,7 +35,7 @@ VIEW = "view"
 UNNAMED = "viewer:unnamed"  # a page opened before the examiner entered a name
 IDLE = timedelta(minutes=30)
 MAX_LISTED = 500  # evidence ids kept per view; a longer list says how many were left out
-MAX_VALUE = 200  # characters kept of a query value
+MAX_VALUE = 200  # characters kept of a query value other than the item id, which is kept whole
 
 PAGES = {
     "/": "Case overview",
@@ -82,9 +82,11 @@ def view_payload(
     p: dict = {"page": page, "session": session}
     ident = query.pop("id", None)
     if ident is not None:
-        p["id"] = ident[:MAX_VALUE]
+        p["id"] = ident  # whole, so the trail names the very claim or evidence item opened
     if query:
         p["query"] = {k[:MAX_VALUE]: v[:MAX_VALUE] for k, v in sorted(query.items())}
+        if any(len(k) > MAX_VALUE or len(v) > MAX_VALUE for k, v in query.items()):
+            p["query_cut"] = True  # a value was cut to MAX_VALUE characters
     if page == "/evidence" and ident is not None:
         row = conn.execute(
             "SELECT e.record_id, e.source_id, e.locator, a.claim_id FROM evidence_items e"

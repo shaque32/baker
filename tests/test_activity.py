@@ -298,3 +298,10 @@ def test_listed_evidence_reads_the_pages_links():
         " <a href='/evidence?id=ev%3Aa%7C1'>again</a> <a href='/claim?id=C01'>c</a>"
     )
     assert listed_evidence(html_text) == ["ev:a|1", "ev:b"]
+
+
+def test_item_ids_are_kept_whole_and_cut_query_values_say_so(conn):
+    long_id = "C" + "9" * 300
+    p = activity.view_payload(conn, "/claim", session="s", query={"id": long_id, "x": "y" * 300})
+    assert p["id"] == long_id
+    assert len(p["query"]["x"]) == activity.MAX_VALUE and p["query_cut"] is True
