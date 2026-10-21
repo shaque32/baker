@@ -61,7 +61,6 @@ from core.review import flags as F
 from core.review.status import (
     AGAINST,
     CONTRADICTION_FOUND,
-    GAP_TEXT,
     GAP_TOPICS,
     HOLDINGS,
     ClaimState,
@@ -498,9 +497,9 @@ def _ledger(states: list[ClaimState], current: str | None = None, compact: bool 
 # where a claim sits on the overview: what waits on the expert first, then the findings
 GROUPS = (
     ("you", "Needs you", "Waiting on your review"),
-    ("con", "Contradicted", "The records show otherwise"),
+    ("con", "Contradicted", "Decided contradicted with an expert"),
     ("unp", "Unproven", "The claim says more than the data shows"),
-    ("sup", "Supported", "An expert accepted the evidence"),
+    ("sup", "Supported", "Decided supported with an expert"),
     ("not", "Not audited", "No verdict yet"),
 )
 NEEDS_YOU = 4  # needs() priority at or below this waits on the expert
@@ -548,7 +547,7 @@ def _claim_row(st: ClaimState, group: str) -> str:
 def _gap_lines(st: ClaimState) -> str:
     """Why the claim is unproven apart from what waits on the expert (same words as the report)."""
     return "".join(
-        f"<div class='gap'><b>{e(GAP_TOPICS[k])}</b> {e(GAP_TEXT[k])}</div>" for k in st.gaps()
+        f"<div class='gap'><b>{e(topic)}</b> {e(text)}</div>" for topic, text in st.unproven_lines()
     )
 
 

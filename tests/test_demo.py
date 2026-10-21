@@ -365,6 +365,13 @@ def test_support_waiting_on_the_expert_is_not_a_gap_and_every_tile_has_a_destina
     # stale until verdicts re-run: no gap read from the old coverage
     assert dataclasses.replace(st, decided_after_run=True).gaps() == []
     assert dataclasses.replace(st, edited_after_run=True).gaps() == []
+    assert dataclasses.replace(st, stipulated_after_run=True).gaps() == []
+    # every core assumption covered, yet unproven by another rule: one line points to the rule
+    from core.review.status import OTHER_RULE
+
+    covered = tuple(cv.model_copy(update={"covered": True}) for cv in st.decision.coverage)
+    full = dataclasses.replace(st, decision=st.decision.model_copy(update={"coverage": covered}))
+    assert full.gaps() == [] and full.unproven_lines() == [OTHER_RULE]
     # a claim that also waits on the expert still says what else leaves it unproven
     from core.review.status import GAP_TEXT
     from ui import pages
