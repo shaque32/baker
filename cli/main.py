@@ -19,6 +19,7 @@
                             --by expert:<name>
     python -m cli report    --db case.db --out report.html
     python -m cli verify-log --db case.db
+    python -m cli activity  --db case.db [--claim C01] [--csv activity.csv]
     python -m cli redecide  --db case.db --by expert:<name>
     python -m cli serve     [--cases <folder> | --db case.db] [--port 8765] [--expert "<name>"]
                             [--open]
@@ -331,6 +332,25 @@ def cmd_verify_log(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_activity(a: argparse.Namespace) -> int:
+    """The examiner's activity trail (core/review/activity.py): every page view and logged
+    expert action, with time on page, read from the verified audit log."""
+    from core.review import activity
+
+    trail = activity.steps(_open(a.db))
+    if a.csv is not None:
+        a.csv.write_text(activity.csv_text(trail), encoding="utf-8")
+        print(f"wrote {a.csv} ({len(trail)} rows; nothing was sent)")
+        return 0
+    for s in trail:
+        if a.claim and s.claim_id != a.claim:
+            continue
+        item = s.payload.get("id", "") if s.is_view else (s.evidence_id or s.claim_id or "")
+        took = activity.duration(s.seconds, s.away) if s.is_view else ""
+        print(f"{s.seq}  {s.at_utc}  {s.examiner}  {s.where}  {item}  {took}".rstrip())
+    return 0
+
+
 def cmd_flags(a: argparse.Namespace) -> int:
     from core.review import flags
 
@@ -569,6 +589,9 @@ def parser() -> argparse.ArgumentParser:
     sp = add("report", cmd_report, "write the HTML claims report")
     sp.add_argument("--out", type=Path, required=True)
     add("verify-log", cmd_verify_log, "verify the audit log hash chain")
+    sp = add("activity", cmd_activity, "show or export the examiner's activity trail")
+    sp.add_argument("--claim", help="only steps on this claim")
+    sp.add_argument("--csv", type=Path, help="write the whole trail as CSV here")
 
     sp = add("flags", cmd_flags, "list expert flags, or export the redacted flag summary")
     sp.add_argument("action", choices=("list", "export"))

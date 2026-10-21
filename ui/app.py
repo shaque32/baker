@@ -18,6 +18,10 @@ the hash-chained audit log records it with the reviewing expert's name. "Re-run 
 through core/review/redecide.py, which calls core/audit/rules.py and the invariants; the screen
 never sets a verdict itself. Nothing here makes a network call.
 
+Each case page the examiner opens is recorded in the same audit log as a `view` entry, with the
+time, the examiner's name, the page and the evidence it listed (core/review/activity.py). The
+Activity page shows that trail with time on each page; a view never changes a verdict.
+
 Local-server protections. Another web page open in the same browser can send requests to
 127.0.0.1, so:
 - the Host header must name this server (127.0.0.1 or localhost on its port), which blocks DNS
@@ -39,8 +43,10 @@ import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from html import unescape
 from pathlib import Path
 from typing import BinaryIO
+from urllib.parse import parse_qs, urlsplit
 
 from core import db, encryption, pipeline
 from core.audit.invariants import InvariantViolation, check_report_text
@@ -62,7 +68,7 @@ from core.llm import cloud as cloud_llm
 from core.report.html import render_report
 from core.report.letter import request_letter
 from core.restore.store import ExhibitError, add_exhibit, match_exhibits, remove_exhibit
-from core.review import actions, audit_log, flags
+from core.review import actions, activity, audit_log, flags
 from core.review.actions import ReviewError
 from core.review.redecide import redecide
 from core.review.status import claim_state
@@ -109,6 +115,19 @@ NO_CASE_POST = {"/expert", "/case/new", "/case/open"}
 # Posts that must not have the case database open while they run: encrypting replaces the
 # database file (Windows cannot replace an open file), and locking forgets its key.
 OWN_DB_POST = {"/case/encrypt", "/case/lock", "/case/recovery/done"}
+
+
+_EVIDENCE_HREF = re.compile(r"""href=['"](/evidence\?[^'"]*)['"]""")
+
+
+def listed_evidence(html_text: str) -> list[str]:
+    """The evidence items a rendered page links to (its /evidence?id= links), in page order,
+    each once. A link stands for an item the page listed, not one the examiner opened."""
+    seen: dict[str, None] = {}
+    for m in _EVIDENCE_HREF.finditer(html_text):
+        for v in parse_qs(urlsplit(unescape(m.group(1))).query).get("id", []):
+            seen.setdefault(v, None)
+    return list(seen)
 
 
 def _real_components(
@@ -200,6 +219,9 @@ class App:
         self.extractor_for = extractor_for or _real_extractor
         self.model_check = model_check
         self.last_check: ModelCheck | None = None
+        self.session = secrets.token_hex(8)  # names this screen's page views in the trail
+        self._last_view: tuple | None = None
+        self.clock: Callable[[], datetime] = lambda: datetime.now(UTC)
         self.cloud_config = cloud_config  # None: $BAKER_CLOUD_CONFIG, else ~/.baker/cloud.json
         if expert:
             self.set_expert(expert)
@@ -325,10 +347,47 @@ class App:
             return self._redirect("/cases")
         try:
             if req.method == "GET":
-                return self._get(conn, req)
+                if req.path in activity.RECORD_FIRST:  # it shows the trail up to itself
+                    self._note_view(conn, req, None)
+                    return self._get(conn, req)
+                resp = self._get(conn, req)
+                self._note_view(conn, req, resp)
+                return resp
+            self._last_view = None  # whatever the post did, the next page is a new view
             return self._post(conn, req)
         finally:
             conn.close()
+
+    def _note_view(self, conn: sqlite3.Connection, req: Request, resp: Response | None) -> None:
+        """Record the page the examiner just opened in the case's audit log (core/review/
+        activity.py), with the evidence the rendered page links to. A page that shows the trail
+        or the log (resp None) is recorded before it renders, so it includes itself. A refresh
+        of the same page, with nothing posted between, is the same view and is not recorded
+        again (the audit progress page refreshes itself)."""
+        if resp is not None and resp.status != 200:
+            return
+        if self.case is None or req.path not in activity.PAGES:
+            return
+        key = (str(self.case.db), self.expert, req.path, tuple(sorted(req.query.items())))
+        if key == self._last_view:
+            return
+        listed: list[str] = []
+        if resp is not None and (resp.header("Content-Type") or "").startswith("text/html"):
+            listed = listed_evidence(resp.text)
+        try:
+            activity.record_view(
+                conn,
+                self.clock(),
+                f"expert:{self.expert}" if self.expert else None,
+                req.path,
+                session=self.session,
+                query=req.query,
+                listed=listed,
+            )
+        except db.Error as err:  # busy past the timeout, or a full disk: say so, never hide it
+            self.flash = (f"Baker could not record that you opened this page ({err}).", True)
+            return
+        self._last_view = key
 
     # -- GET
 
@@ -422,7 +481,26 @@ class App:
                 ],
             )
         if p == "/log":
-            return self._html(pages.log_page(conn, page, req.query.get("all") == "1"))
+            q = req.query
+            return self._html(
+                pages.log_page(conn, page, q.get("all") == "1", q.get("views") == "1")
+            )
+        if p == "/activity":
+            return self._html(
+                pages.activity_page(
+                    conn, page, req.query.get("claim", ""), req.query.get("all") == "1"
+                )
+            )
+        if p == "/activity.csv":
+            return Response(
+                200,
+                activity.csv_text(activity.steps(conn)).encode("utf-8"),
+                [
+                    ("Content-Type", "text/csv; charset=utf-8"),
+                    ("Content-Disposition", 'attachment; filename="baker-activity.csv"'),
+                    *self._security_headers(),
+                ],
+            )
         if p in ("/report", "/report.html"):
             case = self._open()
             try:  # handle() checked the log; anchor its newest entry before the report goes out

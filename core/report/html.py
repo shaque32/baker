@@ -41,7 +41,9 @@ report differs only in these fields, which the reproducibility test masks before
 - the Run section's start time,
 - the audit log's first and last entry times, its last hash (the hash chain covers each
   entry's time) and the When column of the expert actions,
-- when each device-owner stipulation was made and each identity link confirmed (Limitations).
+- when each device-owner stipulation was made and each identity link confirmed (Limitations),
+- the Examiner activity section's times and time on page, which come from when pages were
+  opened.
 """
 
 from __future__ import annotations
@@ -72,7 +74,7 @@ from core.report import paired as paired_html
 from core.report import restore as restore_html
 from core.report import selection as selection_html
 from core.report import timeline as timeline_html
-from core.review import audit_log
+from core.review import activity, audit_log
 from core.review.status import (
     AWAITING_EXPERT,
     CONFIRM_STEP,
@@ -104,7 +106,9 @@ from core.review.status import verdict_label as _verdict_label
 # kind of core assumption not covered, or a pointer to the other rule that holds it
 # (core/review/status.ClaimState.explain_lines), the same lines as the screen; any verdict a later
 # change made stale says "Not current".
-REPORT_VERSION = "0.10.0"
+# 0.11.0: an Examiner activity section (page views per claim, core/review/activity.py); page
+# views are left out of the expert-actions table and counts.
+REPORT_VERSION = "0.11.0"
 
 __all__ = [
     "AWAITING_EXPERT",
@@ -562,7 +566,11 @@ def audit_log_summary(conn: sqlite3.Connection) -> dict:
     first = conn.execute("SELECT at_utc FROM audit_log ORDER BY seq LIMIT 1").fetchone()
     last = conn.execute("SELECT at_utc, hash FROM audit_log ORDER BY seq DESC LIMIT 1").fetchone()
     by_action = Counter(
-        a for (a,) in conn.execute("SELECT action FROM audit_log WHERE actor LIKE 'expert:%'")
+        a
+        for (a,) in conn.execute(
+            "SELECT action FROM audit_log WHERE actor LIKE 'expert:%' AND action != ?",
+            (activity.VIEW,),
+        )
     )
     experts = sorted(
         {a for (a,) in conn.execute("SELECT actor FROM audit_log WHERE actor LIKE 'expert:%'")}
@@ -577,6 +585,9 @@ def audit_log_summary(conn: sqlite3.Connection) -> dict:
         "expert_actions": dict(sorted(by_action.items())),
         "experts": experts,
         "runs": dict(sorted(runs.items())),
+        "page_views": conn.execute(
+            "SELECT COUNT(*) FROM audit_log WHERE action = ?", (activity.VIEW,)
+        ).fetchone()[0],
     }
 
 
@@ -829,7 +840,8 @@ def render_report(conn: sqlite3.Connection, timeline: timeline_html.Settings | N
     expert_rows = list(
         conn.execute(
             "SELECT seq, at_utc, actor, action, payload_json FROM audit_log"
-            " WHERE actor LIKE 'expert:%' ORDER BY seq"
+            " WHERE actor LIKE 'expert:%' AND action != ? ORDER BY seq",
+            (activity.VIEW,),
         )
     )
     if expert_rows:
@@ -843,8 +855,61 @@ def render_report(conn: sqlite3.Connection, timeline: timeline_html.Settings | N
                 f"<td>{q(_compact(r[4], r[3]))}</td></tr>"
             )
         parts.append("</table>")
+    parts.append(activity_section(conn))
     parts.append("</body></html>")
     return "".join(parts)
+
+
+def activity_section(conn: sqlite3.Connection) -> str:
+    """The examiner's activity per claim, from the page views in the audit log
+    (core/review/activity.py): how often each claim and its evidence were opened, when, and time
+    on those pages. Read from the audit log alone, so a bundle's report renders it from the
+    rows it ships."""
+    trail = activity.steps(conn)
+    total = activity.summary(trail)
+    idle = int(activity.IDLE.total_seconds() // 60)
+    out = ["<h2>Examiner activity</h2>"]
+    if not total["views"]:
+        out.append(
+            "<p>No page views are recorded for this case: it was reviewed before Baker recorded "
+            "them, or only from the command line.</p>"
+        )
+        return "".join(out)
+    out.append(
+        f"<p>{total['views']} page views in {total['sessions']} screen session"
+        f"{'s' if total['sessions'] != 1 else ''} by {e(', '.join(total['examiners']))}, from "
+        f"{e(total['first_at'])} to {e(total['last_at'])}, recorded in the audit log above. "
+        "Time on page runs from opening a page to the examiner's next page or action; the "
+        "screen runs no scripts, so it does not show what was read. Stretches over "
+        f"{idle} minutes may include time away and are counted apart. The full trail is the "
+        "review screen's Activity page and its CSV download.</p>"
+    )
+    per = activity.by_claim(trail)
+    claims = [
+        cid
+        for (cid,) in conn.execute("SELECT id FROM claims WHERE status != 'removed' ORDER BY id")
+    ]
+    out.append(
+        "<table><thead><tr><th>Claim</th><th>Times opened</th><th>First opened (UTC)</th>"
+        "<th>Last opened (UTC)</th><th>Time on its pages</th><th>Evidence items opened</th>"
+        "<th>Expert actions</th></tr></thead>"
+    )
+    for cid in claims:
+        a = per.get(cid)
+        if a is None or not (a.opened or a.evidence_opened):
+            out.append(
+                f"<tr><td>{e(cid)}</td><td>0</td><td colspan='4'>not opened</td>"
+                f"<td>{a.actions if a else 0}</td></tr>"
+            )
+            continue
+        away = f", plus {a.away} over {idle} min" if a.away else ""
+        out.append(
+            f"<tr><td>{e(cid)}</td><td>{a.opened}</td><td>{e(a.first_at or '')}</td>"
+            f"<td>{e(a.last_at or '')}</td><td>{e(activity.duration(a.seconds))}{e(away)}</td>"
+            f"<td>{len(a.evidence_opened)}</td><td>{a.actions}</td></tr>"
+        )
+    out.append("</table>")
+    return "".join(out)
 
 
 # Expert flags (core/review/flags.py) are feedback about Baker, not findings: the report names

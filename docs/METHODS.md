@@ -90,6 +90,13 @@ note. The reason typed for an evidence decision is logged with it, and a stored 
 that no longer matches its log entry blocks the case (decisions logged before #86 carry no reason
 in the log, so only their status and presence are checked).
 
+The same log records each page the examiner opens on the review screen (a page view: time, name,
+page, the claim or evidence item, and the evidence items the page listed), so the examiner can
+show which claims and records they opened, when, and for how long before their next step. Time
+on a page is an upper bound on attention, not proof of reading: the screen runs no scripts and
+cannot tell what was read, and a stretch over 30 minutes may include time away. Page views
+change no verdict.
+
 The examiner can also override any verdict directly, including to Supported. An override bypasses
 the rule prerequisites above: it needs a note, and the screen and report show it as the examiner's
 own decision with that note, not as a rule outcome.
