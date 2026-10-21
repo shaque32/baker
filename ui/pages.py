@@ -530,21 +530,25 @@ def _group(st: ClaimState) -> str:
 def _claim_row(st: ClaimState, group: str) -> str:
     """One claim on the overview: what it needs from the expert, or why it is unproven. The
     standing "verdict not yet confirmed" reminder is left out here; the claim page shows it."""
+    note = ""
     if group == "you":
         lines = _you_lines(st)
         note = f"<div class='needs'>{e(' '.join(lines))}</div>" if lines else ""
-    elif group == "unp":
-        note = "".join(
-            f"<div class='gap'><b>{e(GAP_TOPICS[k])}</b> {e(GAP_TEXT[k])}</div>" for k in st.gaps()
-        )
-    else:
-        note = ""
+    if group in ("you", "unp"):
+        note += _gap_lines(st)
     return (
         "<li><div class='row'><div class='head'><span class='meta'>"
         f"<a href='{e(link('/claim', id=st.claim.id))}'>{e(st.name)}</a> · {e(st.where)} · "
         f"{e(st.claim.claim_type.value)}</span>"
         f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span></div>"
         f"<div class='text'>{q(st.claim.text)}</div>{note}</div></li>"
+    )
+
+
+def _gap_lines(st: ClaimState) -> str:
+    """Why the claim is unproven apart from what waits on the expert (same words as the report)."""
+    return "".join(
+        f"<div class='gap'><b>{e(GAP_TOPICS[k])}</b> {e(GAP_TEXT[k])}</div>" for k in st.gaps()
     )
 
 
@@ -576,7 +580,7 @@ def _next_up(st: ClaimState) -> str:
         f"<a href='{e(link('/claim', id=st.claim.id))}'>{e(st.name)}</a> · {e(st.where)}</span>"
         f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span></div>"
         f"<blockquote class='claimtext'>{q(st.claim.text)}</blockquote>"
-        f"<p>{e(' '.join(lines))}</p>"
+        f"<p>{e(' '.join(lines))}</p>{_gap_lines(st)}"
         f"<a class='button primary' href='{e(link('/claim', id=st.claim.id))}'>Review it</a>"
         "</section>"
     )

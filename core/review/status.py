@@ -78,8 +78,8 @@ GAP_TEXT: dict[AssumptionKind, str] = {
         "No passing check or expert-accepted record shows the words mean what the claim says."
     ),
     AssumptionKind.IDENTITY: (
-        "No passing check, confirmed stipulation or expert-accepted record ties the account to "
-        "the person the claim names."
+        "No passing check, confirmed stipulation or expert-accepted record establishes the "
+        "identity link the claim states."
     ),
     AssumptionKind.EVENT: (
         "No passing check or expert-accepted record shows the event or role the claim states."
@@ -88,8 +88,8 @@ GAP_TEXT: dict[AssumptionKind, str] = {
         "No passing check or expert-accepted record places it at the time the claim states."
     ),
     AssumptionKind.COMPLETENESS: (
-        "The sources searched cannot show the absence the claim states; the claim page lists "
-        "what was searched and each source's coverage."
+        "The search coverage is not enough to settle what the claim states; the claim page "
+        "lists what was searched and each source's coverage."
     ),
 }
 
@@ -159,7 +159,8 @@ class ClaimState:
     def gaps(self) -> list[AssumptionKind]:
         """The kinds of core assumption the rules found not covered, in claim order, for an
         unproven verdict nobody overrode, leaving out an assumption whose supporting evidence
-        still waits on the expert. Empty for any other claim."""
+        still waits on the expert. Empty for any other claim, and while the verdict is stale
+        (evidence decided or claim text changed after the run)."""
         d = self.decision
         if (
             d is None
@@ -167,6 +168,8 @@ class ClaimState:
             or d.override_note is not None
             or self.incomplete
             or self.untested
+            or self.decided_after_run  # the stored coverage is stale until verdicts re-run
+            or self.edited_after_run
             or pipeline.RULES_PENDING_REASON in d.reasons
         ):
             return []

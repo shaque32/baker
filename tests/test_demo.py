@@ -362,6 +362,15 @@ def test_support_waiting_on_the_expert_is_not_a_gap_and_every_tile_has_a_destina
     reviewers = {k: v for k, v in st.last_reviewer.items() if k != item.id}
     waiting = dataclasses.replace(st, evidence=opened, last_reviewer=reviewers)
     assert st.gaps() == [K.MEANING] and waiting.gaps() == []
+    # stale until verdicts re-run: no gap read from the old coverage
+    assert dataclasses.replace(st, decided_after_run=True).gaps() == []
+    assert dataclasses.replace(st, edited_after_run=True).gaps() == []
+    # a claim that also waits on the expert still says what else leaves it unproven
+    from core.review.status import GAP_TEXT
+    from ui import pages
+
+    row = pages._claim_row(dataclasses.replace(st, ai_dismissed=1), "you")
+    assert html.escape(GAP_TEXT[K.MEANING], quote=True) in row
 
     app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
     app.open_case(case)
