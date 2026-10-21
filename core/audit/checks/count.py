@@ -28,7 +28,7 @@ class CountCheck(TemplateCheck):
     """
 
     name = "count"
-    version = "1.0.1"
+    version = "1.0.2"
 
     def evaluate(self, assumption_id: str, p: AssumptionParams, data: CaseData) -> CheckResult:
         if p.window is None or p.expected_count is None or p.count_op is None:

@@ -172,9 +172,9 @@ jobs:
             "/DModelName=$($m.name)" "/DModelSizeGB=$gb" "/DModelNCtx=$($m.n_ctx)" `
             "/O$PWD\build\installer" packaging/windows/baker.iss
           if ($LASTEXITCODE) { throw 'ISCC failed' }
-      # Code signing (Microsoft Artifact Signing). Builds of main sign once the Azure secrets and
-      # variables exist (docs/code-signing.md); everything else, pull requests included, builds
-      # unsigned with a warning. The hash below is of the file as shipped, signed or not.
+      # Code signing (Microsoft Artifact Signing, docs/code-signing.md). Builds of main must sign:
+      # missing Azure settings fail them instead of shipping an unsigned file. Everything else,
+      # pull requests included, builds unsigned. The hash below is of the file as shipped.
       - id: signing
         name: Code signing configured?
         env:
@@ -187,12 +187,11 @@ jobs:
           $missing = @('CLIENT', 'TENANT', 'ENDPOINT', 'ACCOUNT', 'PROFILE') |
             Where-Object { -not [Environment]::GetEnvironmentVariable($_) }
           $main = "${{ github.event_name }}" -ne 'pull_request' -and "${{ github.ref }}" -eq 'refs/heads/main'
-          if ($missing) {
-            Write-Host "::warning title=Installer not signed::Code signing is not set up (missing: $($missing -join ', ')). See docs/code-signing.md."
-            'sign=false' | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
-          } elseif (-not $main) {
+          if (-not $main) {
             Write-Host "::notice title=Installer not signed::Only builds of main are signed; this one is not."
             'sign=false' | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          } elseif ($missing) {
+            throw "Builds of main must be signed, but code signing settings are missing: $($missing -join ', '). See docs/code-signing.md."
           } else {
             'sign=true' | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
           }
@@ -272,7 +271,10 @@ jobs:
           $sig = Get-AuthenticodeSignature $exe.FullName
           switch ($sig.Status) {
             'Valid' { Write-Host "Signed by $($sig.SignerCertificate.Subject)" }
-            'NotSigned' { Write-Host '::warning title=Installer not signed::Windows will say "Unknown publisher" (docs/code-signing.md).' }
+            'NotSigned' {
+              if ("${{ github.event_name }}" -ne 'pull_request' -and "${{ github.ref }}" -eq 'refs/heads/main') { throw 'a build of main must be signed' }
+              Write-Host '::warning title=Installer not signed::Windows will say "Unknown publisher" (docs/code-signing.md).'
+            }
             default { throw "the installer's signature is $($sig.Status): $($sig.StatusMessage)" }
           }
       - name: Install silently (CPU runtime, no model)

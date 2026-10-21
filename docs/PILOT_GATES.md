@@ -7,16 +7,17 @@ Each gate is pass or fail. Partial progress is "not met". A gate passes only whe
 exists on `main` (or, for a human step, in a recorded result someone can open). Update this file in
 the same PR that changes a gate's state, along with `docs/PRODUCT_STATUS.md` section 11.
 
-- **As of:** 2026-10-19, main `0dc55dc` (after #83, #72, #68, #74, #73, #75, #79, #85, #76, #87, #78, #82, #86, #88, #91, #89, #84
+- **As of:** 2026-10-20, main `e8b373a` for gate 10 (signed build); the other rows were last
+  checked 2026-10-19 at main `0dc55dc` (after #83, #72, #68, #74, #73, #75, #79, #85, #76, #87, #78, #82, #86, #88, #91, #89, #84
   and #81). Since `80bf0df` only gate 4's row was rechecked (for #89). Open PRs are named but not counted.
-- **Result:** 11 of 19 gates met (gate 19 by #98, gate 2 by #76, gate 3 by #91, gate 14 by the case02 key Arsh signed, gate 6 by #72, gate 7 by #74, gate 8 by
+- **Result:** 12 of 19 gates met (gate 10 by the signed main build of 2026-10-20, gate 19 by #98, gate 2 by #76, gate 3 by #91, gate 14 by the case02 key Arsh signed, gate 6 by #72, gate 7 by #74, gate 8 by
   merging #68, gate 12 by #82, gate 13 by #86 and #88, gate 15 already in place, gate 18 by the feedback form #82 publishes). Gates 13 to 18 come from Grok's pilot-ready list
   (2026-10-16), which Arsh agreed to fold in here. Gate 19 comes from Grok's URGENT FIX on #90
   (2026-10-19). **Not pilot-ready.**
 
 ## The gates
 
-| # | Gate | Pass when | State (2026-10-16) | Evidence or what's missing |
+| # | Gate | Pass when | State (2026-10-16; gate 10 2026-10-20) | Evidence or what's missing |
 |---|---|---|---|---|
 | 1 | CI green 3 times | The `checks` workflow (Ubuntu and Windows) passes on 3 consecutive pushes to `main`, with no re-runs | **Not met** | 1 green: `8ed89f9` (run 327). The run before it on `ae8f24e` was cancelled, and main was red earlier the same day until #65 |
 | 2 | Quote check matches what the model sees (issue #69) | Contacts and calls render the same way for the labeler and the quote check, on main | **Met** | #76 (merged 2026-10-16, `8abaeea`): `core/audit/invariants.record_text` reads a contact and a call exactly as retrieval shows them to the labeler, so correct quotes, including contradicting ones, are no longer discarded |
@@ -27,7 +28,7 @@ the same PR that changes a gate's state, along with `docs/PRODUCT_STATUS.md` sec
 | 7 | Audit-log chain enforced | The hash chain is checked when a case opens, before a report and before export, and a broken chain blocks review | **Met** | #74 (merged 2026-10-15): checked on open, on every page, before every report and before encryption; a failure blocks review. Anchors in `case.db.anchors.jsonl` catch entries cut from the end, back to the newest anchor (`tests/test_chain_on_open.py`) |
 | 8 | Cloud decision recorded | Arsh decides #68 (merge, hold or close) and the decision is on record | **Met** | #68 merged 2026-10-15 (`ed0a3a8`). With stance v1.1 Opus scored 73% contradicts precision (bar 90%), so `PROBE_PASSED` stayed empty; with the cloud prompt, stance v1.2 (#93), Opus 5.5 at medium passed on the signed set and on new items, and Arsh signed its entry on 2026-10-20, so a case the expert opts in can use it |
 | 9 | Runtime measured | A full local case01 run on current main, timed with `eval/probe/time_case.py` on Arsh's 24 GB Mac (a typical examiner machine) and on the rented AWS g5 (NVIDIA A10G), with commit, hardware and date recorded | **Not met** | Last full run predates today's pipeline. Per-call figures are from 2026-10-09 and 2026-10-12 |
-| 10 | Signed Windows installer | The Windows installer is code-signed (only for a Windows pilot) | **Not met** | Unsigned. Azure code signing pending (`docs/code-signing.md`) |
+| 10 | Signed Windows installer | The Windows installer is code-signed (only for a Windows pilot) | **Met** | Builds of main sign with Microsoft Artifact Signing (individual identity validation, Public Trust profile `bakerpublic`). Run 39496196827 on main `e8b373a` (2026-10-20): `Baker-Setup-0.0.1+e8b373a.exe` signed by `CN=Shayan Haque`, `Get-AuthenticodeSignature` Valid, then the fresh-runner install, case01 gate and browser smoke test passed on the signed file. A new signature may still get SmartScreen's reputation warning at first (`docs/code-signing.md`) |
 | 11 | Outside install test | One person outside the project installs Baker on a clean Mac, runs the demo and opens a case using only `docs/PILOT_ONBOARDING.md`, without help, and the result is written down | **Not met** | Needs a person. The kit exists (this PR); nobody outside the project has tried it |
 | 12 | Buyer documents | Onboarding kit, methods note and security and privacy pack are on main and match the code | **Met** (#82) | `docs/PILOT_ONBOARDING.md`, `docs/METHODS.md`, `docs/SECURITY_PRIVACY.md` |
 | 13 | Known integrity bugs fixed | An upload whose hash changes between copy and import leaves nothing in the case (PR #88), and the reason typed for an evidence decision is in the hash-chained audit entry (PR #86); both merged and CI green on main | **Met** (#86, #88) | #86 (merged 2026-10-19, `80bf0df`) logs and checks the reason; #88 refuses a changed upload before anything parses or stores it (`tests/test_import_changed.py`). Both found by Codex on #82. Main CI on #88's merge commit is the last check |

@@ -33,7 +33,7 @@ class TimeCheck(TemplateCheck):
     so a call outside the window could be a different call, and is never a fail."""
 
     name = "time"
-    version = "1.0.0"
+    version = "1.0.1"
 
     def evaluate(self, assumption_id: str, p: AssumptionParams, data: CaseData) -> CheckResult:
         if p.window is None:
