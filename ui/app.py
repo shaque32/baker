@@ -597,6 +597,7 @@ class App:
             "/timeline/settings": lambda: self._timeline_settings(conn, f),  # type: ignore[arg-type]
             "/flag/add": lambda: self._add_flag(conn, f),  # type: ignore[arg-type]
             "/flag/withdraw": lambda: self._withdraw_flag(conn, f),  # type: ignore[arg-type]
+            "/activity/report": lambda: self._activity_in_report(conn, f),  # type: ignore[arg-type]
         }
         handler = handlers.get(req.path)
         if handler is None:
@@ -669,6 +670,18 @@ class App:
             f"Saved: time tolerance {s.tolerance_min} min, shortest quiet stretch "
             f"{s.gap_hours} h. Findings only; no verdict changes."
         )
+
+    def _activity_in_report(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        include = f.get("include") == "1"
+        if not activity.set_in_report(conn, self.clock(), self.actor, include):
+            return (
+                "No change: the report already "
+                + ("includes" if include else "leaves out")
+                + (" examiner activity.")
+            )
+        if include:
+            return "The report now includes examiner activity, with time on page, for this case."
+        return "The report now leaves out examiner activity for this case."
 
     def _set_expert(self, f: dict[str, str]) -> str:
         self.set_expert(f.get("name", ""))

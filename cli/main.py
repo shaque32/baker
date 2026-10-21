@@ -20,6 +20,7 @@
     python -m cli report    --db case.db --out report.html
     python -m cli verify-log --db case.db
     python -m cli activity  --db case.db [--claim C01] [--csv activity.csv]
+                            [--in-report on|off --by expert:<name>]
     python -m cli redecide  --db case.db --by expert:<name>
     python -m cli serve     [--cases <folder> | --db case.db] [--port 8765] [--expert "<name>"]
                             [--open]
@@ -335,8 +336,19 @@ def cmd_verify_log(a: argparse.Namespace) -> int:
 def cmd_activity(a: argparse.Namespace) -> int:
     """The examiner's activity trail (core/review/activity.py): every page view and logged
     expert action, with time on page, read from the verified audit log."""
+    from datetime import UTC, datetime
+
     from core.review import activity
 
+    if a.in_report is not None:
+        if not a.by:
+            print("--in-report needs --by expert:<name>", file=sys.stderr)
+            return 2
+        include = a.in_report == "on"
+        changed = activity.set_in_report(_open(a.db), datetime.now(UTC), a.by, include)
+        verb = "includes" if include else "leaves out"
+        print(f"the report {verb} examiner activity{'' if changed else ' (no change)'}")
+        return 0
     trail = activity.steps(_open(a.db))
     if a.claim:
         trail = [s for s in trail if s.claim_id == a.claim]
@@ -592,6 +604,12 @@ def parser() -> argparse.ArgumentParser:
     sp = add("activity", cmd_activity, "show or export the examiner's activity trail")
     sp.add_argument("--claim", help="only steps on this claim")
     sp.add_argument("--csv", type=Path, help="write the whole trail as CSV here")
+    sp.add_argument(
+        "--in-report",
+        choices=("on", "off"),
+        help="put the activity table in this case's report, or leave it out (off by default)",
+    )
+    sp.add_argument("--by", help="with --in-report: expert:<name>, recorded in the audit log")
 
     sp = add("flags", cmd_flags, "list expert flags, or export the redacted flag summary")
     sp.add_argument("action", choices=("list", "export"))

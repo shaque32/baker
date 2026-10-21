@@ -118,8 +118,10 @@ eval or re-decided.
    export it with each entry's hash. Time on page runs from opening a page to your next page or
    action in the same screen session. The screen runs no scripts, so it cannot tell what was on
    screen or read; a stretch over 30 minutes may include time away and is counted apart, and a
-   refresh of the same page with nothing done between is one view. The report summarizes it per
-   claim. Views change no verdict. The Audit log page hides them unless you ask
+   refresh of the same page with nothing done between is one view. The report leaves the
+   activity table out unless you include it for the case (off by default): the switch is on the
+   Activity tab, or `baker activity --db case.db --in-report on|off --by expert:<name>`, and
+   each change is in the audit log with your name. Views change no verdict. The Audit log page hides them unless you ask
    (`/log?views=1`). Code: `core/review/activity.py`.
 
 ## Rules the screen keeps

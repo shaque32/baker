@@ -42,8 +42,8 @@ report differs only in these fields, which the reproducibility test masks before
 - the audit log's first and last entry times, its last hash (the hash chain covers each
   entry's time) and the When column of the expert actions,
 - when each device-owner stipulation was made and each identity link confirmed (Limitations),
-- the Examiner activity section's times and time on page, which come from when pages were
-  opened.
+- the Examiner activity section's times and time on page, when the case includes it, which
+  come from when pages were opened.
 """
 
 from __future__ import annotations
@@ -106,8 +106,9 @@ from core.review.status import verdict_label as _verdict_label
 # kind of core assumption not covered, or a pointer to the other rule that holds it
 # (core/review/status.ClaimState.explain_lines), the same lines as the screen; any verdict a later
 # change made stale says "Not current".
-# 0.11.0: an Examiner activity section (page views per claim, core/review/activity.py); page
-# views are left out of the expert-actions table and counts.
+# 0.11.0: an Examiner activity section (page views per claim, core/review/activity.py), its
+# table opt-in per case and off by default; page views are left out of the expert-actions table
+# and counts.
 REPORT_VERSION = "0.11.0"
 
 __all__ = [
@@ -863,12 +864,19 @@ def render_report(conn: sqlite3.Connection, timeline: timeline_html.Settings | N
 def activity_section(conn: sqlite3.Connection) -> str:
     """The examiner's activity per claim, from the page views in the audit log
     (core/review/activity.py): how often each claim and its evidence were opened, when, and time
-    on those pages. Read from the audit log alone, so a bundle's report renders it from the
-    rows it ships."""
+    on those pages, when the case includes it (activity.in_report, off by default). Read from
+    the audit log alone, so a bundle's report renders it from the rows it ships."""
+    out = ["<h2>Examiner activity</h2>"]
+    if not activity.in_report(conn):
+        out.append(
+            "<p>Not included. This case leaves examiner activity (pages opened and time on "
+            "them) out of the report, as Baker does unless the expert includes it. The audit "
+            "log keeps every page view.</p>"
+        )
+        return "".join(out)
     trail = activity.steps(conn)
     total = activity.summary(trail)
     idle = int(activity.IDLE.total_seconds() // 60)
-    out = ["<h2>Examiner activity</h2>"]
     if not total["views"]:
         out.append(
             "<p>No page views are recorded for this case: it was reviewed before Baker recorded "

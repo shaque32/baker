@@ -17,6 +17,7 @@ from cli.main import main as cli_main
 from core.contracts import EvidenceStatus
 from core.report.html import render_report
 from core.review import activity, audit_log
+from core.review.actions import ReviewError
 from core.review.status import claim_state, queue
 from tests.test_review_screen import (  # noqa: F401 (fixtures)
     EXPERT,
@@ -202,6 +203,8 @@ def test_views_change_no_verdict_and_stay_out_of_the_expert_actions(db, conn):
         get(app, "/claim", id=cid)
         clock.tick(seconds=30)
     assert [(s.claim.id, s.decision.verdict, s.label) for s in queue(conn)] == before
+    assert "page views in" not in render_report(conn)  # the table is off by default
+    post(app, "/activity/report", include="1")
     report = render_report(conn)
     assert "<h2>Examiner activity</h2>" in report and "3 page views in 1 screen session" in report
     assert "<td>view</td>" not in report  # not listed as an expert action
@@ -209,7 +212,59 @@ def test_views_change_no_verdict_and_stay_out_of_the_expert_actions(db, conn):
 
 
 def test_the_report_says_when_no_views_are_recorded(conn):
+    activity.set_in_report(conn, T0, EXPERT, True)
     assert "No page views are recorded for this case" in render_report(conn)
+
+
+def test_the_activity_table_is_in_the_report_only_when_the_expert_includes_it(db, conn):
+    app, clock = _app(db)
+    get(app, "/claim", id="C05")
+    clock.tick(seconds=40)
+    report = render_report(conn)
+    assert "<h2>Examiner activity</h2>" in report and "Not included." in report
+    assert "Time on its pages" not in report
+    page = get(app, "/activity").text
+    assert "In the report: left out</strong> (the default)" in page
+    assert "Include activity in the report" in page
+
+    assert post(app, "/activity/report", include="1").status == 303
+    assert activity.in_report(conn)
+    actor, payload = conn.execute(
+        "SELECT actor, payload_json FROM audit_log WHERE action = ? ORDER BY seq DESC",
+        (activity.REPORT_ACTION,),
+    ).fetchone()
+    assert actor == EXPERT and json.loads(payload) == {"include": True}
+    report = render_report(conn)
+    assert "Time on its pages" in report and "Not included." not in report
+    assert "report.activity" in report  # the choice is in the report's expert actions
+    assert "In the report: included." in get(app, "/activity").text
+
+    post(app, "/activity/report", include="1")  # already so: nothing more is logged
+    n = conn.execute(
+        "SELECT COUNT(*) FROM audit_log WHERE action = ?", (activity.REPORT_ACTION,)
+    ).fetchone()[0]
+    assert n == 1
+    post(app, "/activity/report", include="0")
+    assert not activity.in_report(conn) and "Not included." in render_report(conn)
+    audit_log.require_intact(conn)
+
+
+def test_only_a_named_expert_can_change_the_report_switch(db, conn):
+    app, _ = _app(db, name=None)
+    post(app, "/activity/report", include="1")
+    assert not activity.in_report(conn)
+    with pytest.raises(ReviewError, match="expert:<name>"):
+        activity.set_in_report(conn, T0, "viewer:unnamed", True)
+
+
+def test_the_cli_sets_the_report_switch(db, conn, capsys):
+    assert cli_main(["activity", "--db", str(db), "--in-report", "on"]) == 2
+    assert not activity.in_report(conn)
+    assert cli_main(["activity", "--db", str(db), "--in-report", "on", "--by", EXPERT]) == 0
+    assert "the report includes examiner activity" in capsys.readouterr().out
+    assert activity.in_report(conn)
+    assert cli_main(["activity", "--db", str(db), "--in-report", "off", "--by", EXPERT]) == 0
+    assert not activity.in_report(conn)
 
 
 def test_activity_page_csv_and_log_page(db, conn):

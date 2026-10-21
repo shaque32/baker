@@ -16,6 +16,11 @@ page" is the time from opening a page to the examiner's next page or action in t
 session: an upper bound on attention, never proof of reading. A stretch longer than IDLE is
 shown as such ("may include time away") and left out of totals. The last page of a session has
 no end time. Views never change a verdict and are not an expert decision.
+
+In the report. The report's Examiner activity table (core/report/html.py) is opt-in per case
+and off by default: the expert turns it on or off on the Activity page, and each change is an
+audit-log entry (action `report.activity`, with their name). The newest such entry decides, so
+a report rendered from the audit log alone, as a bundle's is, gets the same answer.
 """
 
 from __future__ import annotations
@@ -30,8 +35,10 @@ from datetime import datetime, timedelta
 
 from core.contracts import AuditLogEntry
 from core.review import audit_log
+from core.review.actions import _expert
 
 VIEW = "view"
+REPORT_ACTION = "report.activity"  # the expert put the activity table in the report, or not
 UNNAMED = "viewer:unnamed"  # a page opened before the examiner entered a name
 IDLE = timedelta(minutes=30)
 MAX_LISTED = 500  # evidence ids kept per view; a longer list says how many were left out
@@ -119,6 +126,33 @@ def record_view(
     payload = view_payload(conn, page, session=session, query=query, listed=listed)
     with conn:
         return audit_log.append(conn, at_utc, actor or UNNAMED, VIEW, payload)
+
+
+def in_report(conn: sqlite3.Connection) -> bool:
+    """Whether the report shows the Examiner activity table: the newest `report.activity`
+    entry says so; with none, it does not (off by default)."""
+    row = conn.execute(
+        "SELECT payload_json FROM audit_log WHERE action = ? ORDER BY seq DESC LIMIT 1",
+        (REPORT_ACTION,),
+    ).fetchone()
+    if row is None:
+        return False
+    try:
+        payload = json.loads(row[0])
+    except ValueError:
+        return False
+    return isinstance(payload, dict) and payload.get("include") is True
+
+
+def set_in_report(conn: sqlite3.Connection, at_utc: datetime, actor: str, include: bool) -> bool:
+    """The expert's choice to put the activity table in the report, or leave it out, as an
+    audit-log entry with their name. Returns False, and logs nothing, when it is already so."""
+    _expert(actor)
+    if in_report(conn) == include:
+        return False
+    with conn:
+        audit_log.append(conn, at_utc, actor, REPORT_ACTION, {"include": include})
+    return True
 
 
 # ---------------------------------------------------------------- reading the trail

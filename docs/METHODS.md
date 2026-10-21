@@ -95,7 +95,9 @@ page, the claim or evidence item, and the evidence items the page listed), so th
 show which claims and records they opened, when, and for how long before their next step. Time
 on a page is an upper bound on attention, not proof of reading: the screen runs no scripts and
 cannot tell what was read, and a stretch over 30 minutes may include time away. Page views
-change no verdict.
+change no verdict. The report shows the per-claim activity table only when the examiner
+includes it for the case (off by default); that choice is itself an audit-log entry, and the
+report says when the table is left out.
 
 The examiner can also override any verdict directly, including to Supported. An override bypasses
 the rule prerequisites above: it needs a note, and the screen and report show it as the examiner's

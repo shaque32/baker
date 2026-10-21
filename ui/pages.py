@@ -1495,6 +1495,28 @@ def _step_item(s: activity.Step) -> str:
     return "; ".join(bits)
 
 
+def _report_switch(conn: sqlite3.Connection, page: Page) -> str:
+    """The per-case switch for the report's Examiner activity table (off by default)."""
+    on = activity.in_report(conn)
+    state = (
+        "<strong>In the report: included.</strong> The report shows this case's activity per "
+        "claim, with time on its pages."
+        if on
+        else "<strong>In the report: left out</strong> (the default). The report says it is "
+        "not included; the audit log keeps every page view."
+    )
+    return page.form(
+        "/activity/report",
+        f"<p>{state} The choice is yours for this case, and the audit log records each change "
+        "with your name.</p>"
+        f"<input type='hidden' name='include' value='{'0' if on else '1'}'>"
+        "<button type='submit'>"
+        + ("Leave activity out of the report" if on else "Include activity in the report")
+        + "</button>",
+        back="/activity",
+    )
+
+
 def activity_page(conn: sqlite3.Connection, page: Page, claim: str, show_all: bool) -> str:
     """The examiner's activity trail: page views and logged actions, per claim and in order."""
     trail = activity.steps(conn)
@@ -1518,6 +1540,7 @@ def activity_page(conn: sqlite3.Connection, page: Page, claim: str, show_all: bo
         "are counted apart from totals. "
         "\u201cListed\u201d means the page linked to the item, not that it was opened.</p>",
         "<p><a href='/activity.csv'>Download the trail (CSV)</a></p>",
+        _report_switch(conn, page),
     ]
     if total["views"]:
         out.append(
