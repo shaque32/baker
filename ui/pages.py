@@ -160,25 +160,15 @@ class Page:
             # A toast: the page may open part-way down, at the item acted on.
             flash = f'<div class="flash toast{" err" if err else ""}" role="status">{e(msg)}</div>'
         meta = f"<meta http-equiv='refresh' content='{int(refresh)}'>" if refresh else ""
-        tabs = [("/cases", "Cases")] if self.many_cases else []
+        groups = [[("/cases", "Cases")]] if self.many_cases else []
         if self.case_name is not None:
-            tabs += [
-                ("/", "Case"),
-                ("/claims", "Claims queue"),
-                ("/claim/new", "Add a claim"),
-                ("/identities", "Identities"),
-                ("/exhibits", "Exhibits"),
-                ("/selection", "Selection"),
-                ("/timeline", "Timeline"),
-                ("/gaps", "Gaps"),
-                ("/report", "Report"),
-                ("/log", "Audit log"),
-                ("/activity", "Activity"),
-                ("/setup", "Set up and run"),
-            ]
-        links = "".join(
-            f"<a href='{href}'{' class=on' if _tab(self.path) == href else ''}>{label}</a>"
-            for href, label in tabs
+            groups += TAB_GROUPS
+        links = "<span class='sep' aria-hidden='true'></span>".join(
+            "".join(
+                f"<a href='{href}'{' class=on' if _tab(self.path) == href else ''}>{label}</a>"
+                for href, label in group
+            )
+            for group in groups
         )
         case = (
             f"<div class='casename'>{q(self.case_name)}<small>case open on this computer</small>"
@@ -207,6 +197,25 @@ class Page:
             f"<main{' class=wide' if wide else ''}>{notice}{flash}{banner}{body}</main>"
             "</body></html>"
         )
+
+
+# the top tabs in three groups: the review itself, tools to look closer, and the case's set-up
+TAB_GROUPS = [
+    [("/", "Case"), ("/claims", "Claims"), ("/report", "Report")],
+    [
+        ("/identities", "Identities"),
+        ("/exhibits", "Exhibits"),
+        ("/selection", "Selection"),
+        ("/timeline", "Timeline"),
+        ("/gaps", "Gaps"),
+    ],
+    [
+        ("/claim/new", "Add a claim"),
+        ("/setup", "Set up and run"),
+        ("/log", "Audit log"),
+        ("/activity", "Activity"),
+    ],
+]
 
 
 def _tab(path: str) -> str:
@@ -320,26 +329,6 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
             + "</details>"
         )
 
-    out.append("<h2>Government documents</h2>")
-    if govdocs:
-        out.append("<ul>" + "".join(f"<li>{q(t)} ({e(k)})</li>" for _, t, k in govdocs) + "</ul>")
-    else:
-        out.append("<p class='muted'>None imported.</p>")
-
-    out.append(
-        "<h2>Sources</h2><table><thead><tr><th>File</th><th>Kind</th><th>Coverage</th>"
-        "<th>Extraction</th><th>SHA-256</th><th>Tool</th><th>Imported (UTC)</th></tr></thead>"
-    )
-    for s in srcs:
-        out.append(
-            f"<tr><td>{q(s[4])}<br><span class='mono'>{e(s[0])}</span></td><td>{e(s[1])}</td>"
-            f"<td>{e(s[2])}</td><td>{e(s[3])}</td><td class='mono'>{e(s[5])}</td>"
-            f"<td>{e(s[6])} {e(s[7])}</td><td>{e(s[8])}</td></tr>"
-        )
-    out.append("</table>")
-
-    out.append(_devices(conn, page, "/"))
-
     out.append("<h2 id='audit'>Audit</h2>")
     if run is None:
         out.append("<p>No audit has run yet. <a href='/setup'>Set up and run the audit</a>.</p>")
@@ -358,15 +347,19 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
             f"{e(quote_check_label(run))}, contracts {e(run['contracts_version'])}.</p>"
         )
         states = claim_states(conn, run=run)
-        tally = Counter(st.label for st in states)
-        out.append("<table><thead><tr><th>Finding</th><th>Claims</th></tr></thead>")
-        for label, n in sorted(tally.items()):
-            out.append(f"<tr><td>{e(label)}</td><td>{n}</td></tr>")
-        out.append("</table>")
+        tally = Counter((st.label, _vcls(st)) for st in states)
         waiting = sum(1 for st in states if needs_you(st))
         out.append(
-            f"<p><a href='/claims'>{waiting} claim(s) need you</a>. Accepting or dismissing "
-            "evidence does not change a verdict until you re-run the verdicts.</p>"
+            "<div class='casestatus'>"
+            f"<a class='button primary' href='/claims'>{waiting} claim(s) need you</a>"
+            "<ul class='findings'>"
+            + "".join(
+                f"<li><span class='verdict {e(css)}'>{e(label)}</span> {n}</li>"
+                for (label, css), n in sorted(tally.items())
+            )
+            + "</ul></div>"
+            "<p class='muted'>Accepting or dismissing evidence does not change a verdict until "
+            "you re-run the verdicts.</p>"
         )
         if not run.get("partial") and not page.busy:
             out.append(
@@ -382,6 +375,27 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
         "<p class='muted'>A full audit (new evidence search and model labels) runs from "
         "<a href='/setup'>Set up and run</a>, in the background.</p>"
     )
+    out.append("<h2>Government documents</h2>")
+    if govdocs:
+        out.append("<ul>" + "".join(f"<li>{q(t)} ({e(k)})</li>" for _, t, k in govdocs) + "</ul>")
+    else:
+        out.append("<p class='muted'>None imported.</p>")
+
+    out.append(
+        "<details class='custody'><summary>Files and their SHA-256 hashes (chain of custody)"
+        "</summary><h2>Sources</h2><table><thead><tr><th>File</th><th>Kind</th><th>Coverage</th>"
+        "<th>Extraction</th><th>SHA-256</th><th>Tool</th><th>Imported (UTC)</th></tr></thead>"
+    )
+    for s in srcs:
+        out.append(
+            f"<tr><td>{q(s[4])}<br><span class='mono'>{e(s[0])}</span></td><td>{e(s[1])}</td>"
+            f"<td>{e(s[2])}</td><td>{e(s[3])}</td><td class='mono'>{e(s[5])}</td>"
+            f"<td>{e(s[6])} {e(s[7])}</td><td>{e(s[8])}</td></tr>"
+        )
+    out.append("</table></details>")
+
+    out.append(_devices(conn, page, "/"))
+
     out.append(flags_overview(conn))
     summary = audit_log_summary(conn)
     out.append(
