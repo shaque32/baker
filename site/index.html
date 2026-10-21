@@ -33,9 +33,10 @@
 <main>
   <section class="hero">
     <div class="wrap">
-      <span class="kicker">For defense forensic examiners · pilots opening soon</span>
+      <span class="kicker">Alpha · opening to a small number of pilot examiners</span>
       <h1>The government made claims about the phone. <em>Test every one.</em></h1>
-      <p class="lede">Mabillon is a verification layer on top of Cellebrite and AXIOM. It splits the
+      <p class="lede">Mabillon is a verification layer for defense forensic examiners, on top of Cellebrite and
+        AXIOM. It splits the
         affidavit into claims and checks each one against the extraction you already have.
         It takes the scrolling, not the judgment.</p>
       <div class="actions">
@@ -57,8 +58,8 @@
             <div class="doc">
               <div class="doc-title"><span class="eyebrow">Affidavit · page 6</span><span class="eyebrow">PDF</span></div>
               <p><b>¶ 14</b><mark data-for="a b" class="on">On March 3, 2025, at approximately 9:00 p.m., REYES sent PETROV a text message reading “bring it tonight.”</mark></p>
-              <p><b>¶ 15</b><mark data-for="c">Phone records show that REYES called PETROV on the morning of March 4, before 8:00 a.m.</mark></p>
-              <p><b>¶ 16</b>On March 5, PETROV replied “ok same place,” which your affiant believes confirmed the meeting.</p>
+              <p><b>¶ 15</b>Phone records show that REYES called PETROV on the morning of March 4.</p>
+              <p><b>¶ 16</b><mark data-for="c">On March 5, PETROV replied “ok same place,”</mark> which your affiant believes confirmed the meeting.</p>
             </div>
             <div class="audit">
               <div class="scan" aria-hidden="true"></div>
@@ -96,14 +97,15 @@
                 </div>
               </div>
 
-              <div class="scene n2" id="scene-c" role="tabpanel" aria-labelledby="tab-c" hidden>
-                <p class="claimtext">REYES called PETROV on the morning of March 4, before 8:00 a.m.</p>
+              <div class="scene n3" id="scene-c" role="tabpanel" aria-labelledby="tab-c" hidden>
+                <p class="claimtext">PETROV texted REYES “ok same place” on March 5.</p>
                 <ul class="checks">
-                  <li class="ok"><span class="ico">✓</span><span>Call record from REYES to PETROV</span><span class="badge sup">Found</span><span class="src">Calls, row 88 · outgoing · 0:00:47</span></li>
-                  <li class="bad"><span class="ico">✕</span><span>Time before 8:00 a.m. on March 4</span><span class="badge con">Failed</span><span class="src">08:42:10 at UTC−05:00 · raw “3/4/2025 8:42:10 AM(UTC-5)”</span></li>
+                  <li class="ok"><span class="ico">“</span><span>Message found word for word</span><span class="badge sup">1 copy</span><span class="src">“ok same place” · Chats, row 341 · no other copy in either source</span></li>
+                  <li class="ok"><span class="ico">✓</span><span>Sender account matches PETROV</span><span class="badge sup">Passed</span><span class="src">+1 410-555-0192 · link to PETROV confirmed by you</span></li>
+                  <li class="bad"><span class="ico">✕</span><span>Sent on March 5</span><span class="badge con">Failed</span><span class="src">the only copy: 10:02:55 on March 6 at UTC−05:00 · raw “3/6/2025 10:02:55 AM(UTC-5)”</span></li>
                 </ul>
                 <div class="verdict-row">
-                  <span class="why">A failed code check on a core fact of the claim contradicts it directly, with the check shown. You can still override it.</span>
+                  <span class="why">The quoted message exists, at another time. A failed code check on a core fact of the claim contradicts it directly, with the check shown. You can still override it.</span>
                   <span class="stamp con">Contradicted<small>by a failed check</small></span>
                 </div>
               </div>
@@ -260,7 +262,7 @@
         <h2>Early, and plain about it</h2>
       </div>
       <dl class="facts">
-        <dt>Stage</dt><dd>Alpha. No pilot has started yet; we are lining up a small number of pilot examiners.</dd>
+        <dt>Stage</dt><dd>Alpha, opening to a small number of pilot examiners. No pilot has started yet.</dd>
         <dt>Testing</dt><dd>Tested on synthetic cases only. No accuracy figure for real cases yet.</dd>
         <dt>Formats</dt><dd>The UFDR and AXIOM readers have not yet been checked on a real export. Mabillon says so on screen and in every report.</dd>
         <dt>Attorneys</dt><dd>Mabillon is built for the forensic expert you retain. To bring it into a case, ask us about a pilot together with your expert.</dd>

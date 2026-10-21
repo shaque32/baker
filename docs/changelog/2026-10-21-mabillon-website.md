@@ -7,8 +7,9 @@
   download. No app code changes.
 - Where: PR #113 (branch claude/project-thread-866ya3). Not deployed: Arsh connects Cloudflare
   Pages after merge (`site/README.md`).
-- Verified: every product statement copied from `docs/ONE_PAGER.md` (#92) and PRODUCT_STATUS
-  section 12 safe wording; rendered in headless Chromium at 1280 px and 390 px wide. Dark mode,
+- Verified: every product statement copied from `docs/ONE_PAGER.md` (on main since #92) and PRODUCT_STATUS
+  section 12 safe wording; the hero's contradicted example uses a message matched by its exact words
+  with its only copy outside the stated day, the one case where the time check (1.0.1) can fail; rendered in headless Chromium at 1280 px and 390 px wide. Dark mode,
   other browsers and the live Cloudflare headers are unverified until deploy.
 - Open: Arsh's sign-off on the copy; deploy and custom domain; the app itself still says Baker
   until the rename lands.

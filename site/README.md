@@ -7,7 +7,7 @@ requests. Fonts are the same OFL files as `ui/static/fonts` (licenses in `fonts/
 - `_headers` sets a strict Content-Security-Policy and security headers on Cloudflare Pages.
 
 Every statement must match the safe wording in `docs/PRODUCT_STATUS.md` section 12 and the
-one-pager, `docs/ONE_PAGER.md` (added by PR #92; read it there until #92 merges): no speed
+one-pager, `docs/ONE_PAGER.md`: no speed
 or accuracy figures, UFDR and AXIOM unverified on real exports, no logos, testimonials or
 "court-ready". Change the copy when those docs change.
 
