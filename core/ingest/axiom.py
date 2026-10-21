@@ -866,7 +866,7 @@ class _Mapper:
                 and not isinstance(values["ts"], datetime)
             ):
                 self._flag(artifact, tc, "no_time", loc)
-            self._forwarded(artifact, tc, loc, get, values)
+            self._forwarded(artifact, kind, tc, loc, get, values, parties)
         elif kind is RecordKind.CALLS:
             partner = _parties(get("partner_id"), get("partner_name"))
             parties = {
@@ -916,14 +916,18 @@ class _Mapper:
     def _forwarded(
         self,
         artifact: str,
+        kind: RecordKind,
         tc: TableCoverage,
         loc: str,
         get: Callable[[str], Cell],
         values: dict[str, Cell],
+        parties: dict[str, list[Party]],
     ) -> None:
         """Mark a forwarded or quoting hit the way the UFDR importer does (core/ingest/forwarded.py)
         and queue its quoted original, one level deep, as a copy at loc + '/Embedded[1]'."""
-        is_fwd = _forwarded_value(get("forwarded"))
+        # a stated original author marks the message forwarded too, whatever the flag says
+        # (fail closed: the words are someone else's, so never credit them to the sender)
+        is_fwd = _forwarded_value(get("forwarded")) or text(get("forwarded_from")) is not None
         quoted = get("quoted_body")
         copy_senders = _parties(get("quoted_from_id"), get("quoted_from_name"))
         has_copy = text(quoted) is not None
@@ -950,8 +954,16 @@ class _Mapper:
         self._flag(artifact, tc, "embedded_original_imported", eloc)
         # Its body verbatim, its own sender as written, the parent's thread (fixed up in _write);
         # no time (the original's time is not when this phone held it) and no stated direction.
+        # A chat hit with no chat id is threaded by its parties (cellebrite_common._messages):
+        # give the copy the parent's key, so its thread and the scope of a name-only sender's
+        # account are the parent's from the start, not a temporary thread of the copy's own.
+        chat_id = values["chat_id"]
+        if kind is RecordKind.CHATS and text(chat_id) is None:
+            ps = parties.get("participants") or parties.get("from", []) + parties.get("to", [])
+            ids = sorted(p.identifier or f"name:{p.name}" for p in ps)
+            chat_id = "participants:" + "|".join(ids) if ids else f"row:{loc}"
         cv: dict[str, Cell] = {
-            "chat_id": values["chat_id"],
+            "chat_id": chat_id,
             "chat_name": values["chat_name"],
             "body": quoted,
             "ts": None,

@@ -128,7 +128,8 @@ says a record was deleted; a `Deleted` field, when present, is stored as stated.
 Forwarded and quoted messages (assumed field names, importer 0.2.0): a `Forwarded` or
 `Is Forwarded` field marks the hit forwarded (`No`, `False`, `0` and `Not forwarded` do not;
 any other value does, failing closed), with `Forwarded From`, `Original Sender` or
-`Original Author` stored as the original author, as written. A `Quoted Message`,
+`Original Author` stored as the original author, as written. A nonempty original-author field
+alone also marks the hit forwarded. A `Quoted Message`,
 `Quoted Message Body` or `Quoted Text` field is imported, one level deep, as a record of its own
 at the hit's locator plus `/Embedded[1]`, in the same thread, with no time and with its own
 sender (`Quoted Message Sender`, `Quoted Message Author` or `Quoted Sender`, and

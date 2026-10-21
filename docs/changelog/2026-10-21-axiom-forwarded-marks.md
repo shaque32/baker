@@ -6,9 +6,11 @@
   in `forwarded_records`, with `forwarded_from_raw` taken as written from `Forwarded From`,
   `Original Sender` or `Original Author` only (a quoted sender wrote the quote, not the forwarded text). `No`,
   `False`, `0`, `Not forwarded` and blank mean not forwarded; any other value fails closed and
-  marks it. A hit with a `Quoted Message`, `Quoted Message Body` or `Quoted Text` field is listed
+  marks it. A nonempty original-author field marks the hit forwarded even when the flag is
+  absent, blank or no (fail closed). A hit with a `Quoted Message`, `Quoted Message Body` or `Quoted Text` field is listed
   under `embedded`, and the quoted text is imported verbatim, one level deep, as its own message
-  at `<locator>/Embedded[1]` in the parent's thread: no time, no stated direction, its own sender
+  at `<locator>/Embedded[1]` in the parent's thread (a chat hit with no chat id gives the copy its parties' thread key, so
+  a name-only quoted sender's account is scoped to the parent's thread from the start): no time, no stated direction, its own sender
   as written (`Quoted Message Sender`, `Quoted Message Author` or `Quoted Sender`, with
   `Quoted Message Sender Name` or `Quoted Sender Name`), marked forwarded with that sender as
   `forwarded_from_raw` when exactly one is named, and listed under `embedded_copy`. The flags and

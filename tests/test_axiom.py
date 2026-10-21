@@ -746,3 +746,64 @@ def test_a_hit_with_only_forwarded_metadata_is_skipped_as_empty(tmp_path, ext):
     conn, s = _import(path)
     assert conn.execute("SELECT COUNT(*) FROM messages").fetchone() == (1,)
     assert "rows_skipped_no_values_in_known_columns" in _codes(s)
+
+
+@pytest.mark.parametrize("ext", ["xml", "xlsx"])
+@pytest.mark.parametrize("field_", ["Forwarded From", "Original Sender", "Original Author"])
+def test_an_original_author_alone_marks_the_hit_forwarded(tmp_path, ext, field_):
+    # Codex on #116: a stated original author with the flag absent or blank fails closed
+    for flag in ({}, {"Forwarded": ""}):
+        conn, _s = _fwd_case(tmp_path / f"{len(flag)}", ext, **{field_: "Jo", **flag})
+        ((mid, *_r, fwd, author, _t),) = _rows(conn)
+        assert (fwd, author) == (1, "Jo")
+        from core.ingest import forwarded
+
+        assert forwarded.affected(conn) == {mid: "forwarded"}
+
+
+@pytest.mark.parametrize("ext", ["xml", "xlsx"])
+def test_a_name_only_quoted_sender_takes_the_parent_thread_scope(tmp_path, ext):
+    # Codex on #116: with no Chat ID, a name-only quoted sender's account is scoped to the
+    # parent's thread, never shared across conversations or doubled within one.
+    def hit(to: str | None, quoted: str, **extra: str) -> list:
+        return _msg(
+            "SYNTHETIC reply",
+            "3/10/2026 3:00:00 PM",
+            sender="15550100001@wa",
+            sender_name=None,
+            to=to,
+            **{"Quoted Message": quoted, "Quoted Message Sender Name": "Jo", **extra},
+        )
+
+    arts = [
+        OWNER_WA,
+        _wa(
+            hit("15550100002@wa", "SYNTHETIC one"),
+            hit("15550100003@wa", "SYNTHETIC two"),
+            # Jo, name only, writes in a third conversation and is quoted there
+            [("Sender Name", "Jo"), ("Recipient(s)", "15550100001@wa"),
+             ("Message", "SYNTHETIC Jo here"),
+             ("Message Date/Time - UTC+00:00 (M/d/yyyy)", "3/10/2026 3:01:00 PM")],
+            hit(None, "SYNTHETIC three", **{"Recipient Name": "Jo"}),
+        ),
+    ]  # fmt: skip
+    path = _both(tmp_path, arts)[0 if ext == "xml" else 1]
+    conn, _s = _import(path)
+    copies = conn.execute(
+        "SELECT m.thread_id, m.sender_account_id, p.thread_id FROM messages m"
+        " JOIN messages p ON p.source_id = m.source_id"
+        " AND m.locator = p.locator || '/Embedded[1]' ORDER BY m.locator"
+    ).fetchall()
+    assert len(copies) == 3
+    assert all(t == pt for t, _a, pt in copies)  # the parent's thread
+    accounts = [a for _t, a, _pt in copies]
+    assert len(set(accounts)) == 3  # one Jo per conversation, never collapsed
+    for tid, aid, _pt in copies:
+        key = tid.split(":", 3)[3]
+        assert aid.endswith(f":name:{key}:Jo")  # scoped to the parent's thread
+    assert conn.execute("SELECT COUNT(*) FROM threads").fetchone() == (3,)
+    # the Jo quoted in the third conversation is the Jo who wrote there, not a second account
+    (jo,) = conn.execute(
+        "SELECT sender_account_id FROM messages WHERE body = 'SYNTHETIC Jo here'"
+    ).fetchone()
+    assert accounts[2] == jo
