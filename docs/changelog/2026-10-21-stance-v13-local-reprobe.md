@@ -1,4 +1,4 @@
-## 2026-10-21: A Mac re-probe for the local 14B's told-frame and denial contradictions (stance v1.3 candidates)
+## 2026-10-21: A Mac re-probe for the local 14B's told-frame and denial contradictions (stance v1.3 candidates) (#120)
 - Changed: eval only. Two candidate wordings for the local model's stance prompt teach stance
   guide v0.3 rules 12 (told frames) and 23 (undated denials): `eval/probe/stance_v1_3a_draft.md`
   (two checks before answering "contradicts") and `eval/probe/stance_v1_3b_draft.md` (the checks
@@ -13,8 +13,7 @@
   answer, model SHA-256, Wilson intervals, time per call) and the v1.1 baseline's per-item file
   `eval/probe/results/2026-10-19-qwen3-14b-stance-v1-1.jsonl`. The product prompt
   (`core/audit/prompts/stance.md`, v1.1) is unchanged.
-- Where: branch `claude/expert-confirms-contradicts-y6ti2f` (PR2 of the "Expert confirms
-  contradicts" plan), not merged.
+- Where: PR #120 (branch `claude/expert-confirms-contradicts-y6ti2f`), not merged.
 - Verified: `tests/test_probe_v13.py` (each candidate is v1.1 word for word plus its blocks; the
   copied sets keep their 2026-10-15 SHA-256; the fresh set is well formed and fictional; the
   baseline file reproduces the 2026-10-19 numbers and every v1.1 prompt still renders byte for
