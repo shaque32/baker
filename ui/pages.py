@@ -340,7 +340,7 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
             f"{e(quote_check_label(run))}, contracts {e(run['contracts_version'])}.</p>"
         )
         states = claim_states(conn, run=run)
-        tally = Counter((st.label, st.css) for st in states)
+        tally = Counter((st.label, _vcls(st)) for st in states)
         waiting = sum(1 for st in states if needs_you(st))
         out.append(
             "<div class='casestatus'>"

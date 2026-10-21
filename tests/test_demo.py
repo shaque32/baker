@@ -497,3 +497,9 @@ def test_tabs_come_in_three_groups_and_the_case_page_leads_with_the_audit(root):
     custody = home.split("<details class='custody'>", 1)[1].split("</details>", 1)[0]
     assert "<h2>Sources</h2>" in custody and "SHA-256" in custody
     assert "claim(s) need you</a>" in home
+    from core.review.status import claim_states
+
+    status = home.split("<div class='casestatus'>", 1)[1].split("</div>", 1)[0]
+    for st in claim_states(connect(case.db)):  # the same pill styles as everywhere else
+        pill = f"<span class='verdict {pages._vcls(st)}'>{html.escape(st.label, quote=True)}"
+        assert pill in status, st.claim.id
