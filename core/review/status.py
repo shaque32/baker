@@ -82,7 +82,8 @@ OTHER_RULE = (
 STALE = (
     "Not current",
     "Something this verdict rests on changed after the run. Re-run the verdicts, or the full "
-    "audit after an identity or person change, to see what is still not established.",
+    "audit after a claim edit or an identity or person change, to see what is still not "
+    "established.",
 )
 GAP_TEXT: dict[AssumptionKind, str] = {
     AssumptionKind.MEANING: "What the words mean, as the claim reads them, is not established.",
@@ -437,7 +438,7 @@ def case_changed_after(conn: sqlite3.Connection, run: dict) -> bool:
     """A stipulation, person or identity-link decision the run's verdicts did not see: case-wide,
     read once. A rules-only re-run reloads stipulations but reuses the checks and searches of
     the full audit it came from, so identity and person changes count from that audit's start.
-    Proposed links stay inferred and feed no check, so a proposal alone changes nothing."""
+    A proposed link counts too: it confirms nothing, but it widens what the audit searches."""
     since = run["started_at_utc"]
     built = since
     source = run.get("evidence_from_run")
@@ -449,8 +450,7 @@ def case_changed_after(conn: sqlite3.Connection, run: dict) -> bool:
     return (
         conn.execute(
             "SELECT 1 FROM audit_log WHERE (action LIKE 'stipulation.%' AND at_utc > ?)"
-            " OR ((action LIKE 'identity.%' OR action LIKE 'person.%')"
-            " AND action != 'identity.propose' AND at_utc > ?) LIMIT 1",
+            " OR ((action LIKE 'identity.%' OR action LIKE 'person.%') AND at_utc > ?) LIMIT 1",
             (since, built),
         ).fetchone()
         is not None

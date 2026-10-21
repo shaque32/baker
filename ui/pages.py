@@ -511,8 +511,8 @@ def needs_you(st: ClaimState) -> bool:
     reviewer rather than an expert, support the AI reviewer dismissed that no expert has seen, or
     a verdict made stale by a later change.
     The overview and the case page count the same claims."""
-    if st.decision is None or st.incomplete:
-        return False
+    if st.decision is None or st.incomplete or pipeline.RULES_PENDING_REASON in st.decision.reasons:
+        return False  # no verdict was decided: Not audited, like _group()
     return (
         st.priority <= NEEDS_YOU
         or st.css == "v-supai"
