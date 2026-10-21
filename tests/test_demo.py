@@ -370,6 +370,9 @@ def test_gap_lines_follow_the_stored_coverage_until_it_is_stale_and_tiles_have_d
         stale = dataclasses.replace(st, **{flag: True})
         assert stale.gaps() == [] and stale.unproven_lines() == [STALE], flag
         assert pages.needs_you(stale), flag
+    c01 = next(s for s in claim_states(conn) if s.claim.id == "C01")  # supported by the rules
+    assert pages.needs_you(dataclasses.replace(c01, case_changed_after_run=True))
+    assert STALE[1] in pages._you_lines(dataclasses.replace(c01, case_changed_after_run=True))
     # every core assumption covered, yet unproven by another rule: one line points to the rule
     from core.review.status import OTHER_RULE
 

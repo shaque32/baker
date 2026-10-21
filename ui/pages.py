@@ -509,7 +509,7 @@ NEEDS_YOU = 4  # needs() priority at or below this waits on the expert
 def needs_you(st: ClaimState) -> bool:
     """The claim waits on the expert: an urgent need, a supported verdict that rests on the AI
     reviewer rather than an expert, support the AI reviewer dismissed that no expert has seen, or
-    an unproven verdict made stale by a later change.
+    a verdict made stale by a later change.
     The overview and the case page count the same claims."""
     if st.decision is None or st.incomplete:
         return False
@@ -518,6 +518,15 @@ def needs_you(st: ClaimState) -> bool:
         or st.css == "v-supai"
         or st.ai_dismissed > 0
         or st.unproven_lines() == [STALE]  # its explanation waits on a re-run
+        or _case_stale(st)
+    )
+
+
+def _case_stale(st: ClaimState) -> bool:
+    """A rule-decided verdict (no override) after a later stipulation, person or identity change:
+    every claim may rest on it, so every such verdict waits on a re-run."""
+    return (
+        st.case_changed_after_run and st.decision is not None and st.decision.override_note is None
     )
 
 
@@ -562,6 +571,8 @@ def _you_lines(st: ClaimState) -> list[str]:
     """What the claim needs from the expert, without the standing "verdict not yet confirmed"
     reminder (priority 6) that every unreviewed verdict carries."""
     lines = [t for p, t in st.needs() if p < 6]
+    if _case_stale(st) and st.unproven_lines() != [STALE]:
+        lines.insert(0, STALE[1])
     if st.css == "v-supai":
         lines.insert(0, "Part of its support rests on AI review, not an expert's acceptance.")
     return lines
