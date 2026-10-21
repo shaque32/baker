@@ -1589,9 +1589,9 @@ EMBEDDED_STEP = forwarded.COPY_STEP  # locator step of a message embedded in ano
 
 def _content_key(m: _Model) -> bytes:
     """What a record says, as one hash: a copy under RelatedModels with the same key says the
-    same thing. Messages: text, time, sender, recipients, deleted state and attachments (name
-    and path) as written; calls: time, duration, direction and parties; contacts: name and
-    entries; accounts: app and identifier."""
+    same thing. Messages: text, time, sender, recipients, deleted state and attachments (how
+    many, and their names) as written; calls: time, duration, direction and parties; contacts:
+    name and entries; accounts: app and identifier."""
     if m.type == "Call":
         parties = sorted(_party_text(p) for p, _r in _parties(m.models("from", "to", "parties")))
         key: tuple[object, ...] = (
@@ -1610,9 +1610,10 @@ def _content_key(m: _Model) -> bytes:
         senders += [_party_text(p) for p, r in _parties(m.models("parties")) if r == "from"]
         to = sorted(_party_text(p) for p, _r in _parties(m.models("to")))
         to += sorted(_party_text(p) for p, r in _parties(m.models("parties")) if r != "from")
+        # attachments by name as written: a copy decoded from another source points at its
+        # own file (another path or file id), so the reference is not compared
         attachments = sorted(
-            (a.raw(*ATT_NAME_FIELDS) or "", a.raw(*ATT_PATH_FIELDS) or "")
-            for a in m.models("attachments", "attachment")
+            a.raw(*ATT_NAME_FIELDS) or "" for a in m.models("attachments", "attachment")
         )
         key = (
             "message",

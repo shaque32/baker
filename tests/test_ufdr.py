@@ -1177,6 +1177,25 @@ def test_a_copy_differing_in_deleted_state_or_attachments_is_listed(tmp_path, ch
     assert d["differences"] == 0
 
 
+def test_a_copy_pointing_at_its_own_file_still_matches(tmp_path):
+    """A copy decoded from another source names the same attachment but points at its own file
+    (another path or file id): it says what the record says, so it is not listed."""
+    t = "2026-03-05T21:31:00.000-05:00"
+
+    def with_att(mid: str, path: str | None) -> str:
+        parts = [field("Filename", "x.png")]
+        if path:
+            parts.append(field("attachment_extracted_path", path))
+        head, end = _msg("ok", t, id=mid).rsplit("</model>", 1)
+        att = model("Attachment", *parts, id=f"{mid}-a", file_id=f"{mid}-f")
+        return f"{head}{many('Attachments', [att])}</model>{end}"
+
+    copy = _chat("k1", with_att("c1", None))
+    xml = report_xml({"Chat": [_chat("k1", with_att("m1", "files/x.png"), extra=(related(copy),))]})
+    conn, s = _import(write_package(tmp_path / "f.ufdr", xml))
+    assert "related_copy_unmatched" not in _codes(s)
+
+
 def test_a_chat_message_skipped_between_the_two_reads_stores_nothing(tmp_path, monkeypatch):
     path = related_package(tmp_path / "rel.ufdr")
     real = ufdr._RecordMapper.chat

@@ -19,7 +19,8 @@
   another source (Android 12: all 1,144 in-message copies equal their holder message but 21 that
   spell a recipient differently; the 674 messages of copied chats fit the holder chat's messages
   one to one). So a copied message must say what its holder says (text, time, sender,
-  recipients, deleted state, attachment names and paths), and a copied chat's messages are
+  recipients, deleted state, attachment count and names; paths and file ids are each source's
+  own reference, so not compared), and a copied chat's messages are
   matched one to one to the holder chat's, so a lone copy never hides behind a same-second twin
   (Baker Eval on #117).
   ufdr-check 0.1.0 -> 0.2.0: copies are matched to their holder the same way, in a row of their

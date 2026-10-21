@@ -77,7 +77,8 @@ the model holding it (its messages are not the chat's, its attachments and parti
 message's), and its models are not imported. Each copy of a message (also inside a copied chat,
 or inside a copy), call, contact or account is counted (`related_copies`, info) and matched to
 its holder: a copy must say what the record holding it says (messages: text, time, sender,
-recipients, deleted state and attachment names and paths as written), and a copied chat's
+recipients, deleted state, and attachments by count and name as written; a copy from another
+source points at its own file, so paths and file ids are not compared), and a copied chat's
 messages are matched one to one to the holder chat's messages, so two messages with the same
 words in the same second cover two copies, never three. A copy that does not match is listed for
 review (`related_copy_unmatched`, attention, at the holder's locator plus `/Related[n]`). Copies

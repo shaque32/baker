@@ -150,7 +150,7 @@ class _Frame:
     parties: dict[str, list[tuple[str | None, str | None, str, bool]]] = field(default_factory=dict)
     # (named, path, file_id): a file_id is resolved through taggedFiles once the read ends
     attachments: list[tuple[bool, str | None, str | None]] = field(default_factory=list)
-    att_written: list[tuple[str, str]] = field(default_factory=list)  # (name, path) as written
+    att_written: list[str] = field(default_factory=list)  # attachment names as written
     entries: list[str] = field(default_factory=list)
     user_ids: list[str] = field(default_factory=list)  # UserID entries, for a UserAccount
     msg_seen: Counter[str] = field(default_factory=Counter)
@@ -195,7 +195,7 @@ class MessageRec:
     # a name that happens to read like one
     sender_ident: str | None = None
     recipient_idents: list[str] = field(default_factory=list)
-    att_written: tuple[tuple[str, str], ...] = ()  # sorted (name, path) of each, as written
+    att_written: tuple[str, ...] = ()  # sorted attachment names, as written
 
 
 @dataclass
@@ -405,9 +405,7 @@ class Tally:
             name = _first(f.fields, ATT_NAME)
             path = _first(f.fields, ATT_PATH)
             parent.attachments.append((bool(name) or bool(path), path, f.attrs.get("file_id")))
-            parent.att_written.append(
-                (_first_raw(f.fields, ATT_NAME) or "", _first_raw(f.fields, ATT_PATH) or "")
-            )
+            parent.att_written.append(_first_raw(f.fields, ATT_NAME) or "")
             return
         if parent is not None and holder == "entries":
             if ufdr.PICTURE_TYPE_RE.search(f.type):  # an image link, not an identifier
@@ -954,9 +952,10 @@ def compare(t: Tally, conn: sqlite3.Connection, src: str) -> tuple[list[Count], 
     ]
 
     # a copy under RelatedModels is a copy of the record holding it: a copied message must say
-    # what its holder says (text, time, sender, recipients, deleted state and attachments as
-    # written), and the messages of a copied chat match the holder chat's imported messages
-    # one to one. One that does not must be one Baker lists for review (related_copy_unmatched);
+    # what its holder says (text, time, sender, recipients, deleted state, and attachments by
+    # count and name as written; a copy's file path or id is its own source's reference), and
+    # the messages of a copied chat match the holder chat's imported messages one to one. One
+    # that does not match must be one Baker lists for review (related_copy_unmatched);
     # otherwise it is missing
     def said(x: MessageRec) -> tuple[object, ...]:
         return (x.body, x.ts_raw, x.sender, tuple(sorted(x.recipients)), x.state, x.att_written)
