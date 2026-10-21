@@ -169,6 +169,73 @@ ul.flags form.inline button { margin-left: 8px; }
 .ledger .verdict { font-size: 11.5px; padding: 1px 8px 1px 6px; }
 .ledger .verdict::before { width: 12px; height: 12px; font-size: 8px; }
 
+/* claims overview: progress, one tile per group, the next claim up, then the groups */
+.overview-head { display: flex; flex-wrap: wrap; align-items: flex-end;
+  justify-content: space-between; gap: 18px 32px; }
+.overview-head > div:first-child { flex: 1 1 460px; }
+.overview-head h1 { font: 400 46px/1.08 var(--serif); letter-spacing: -0.015em; margin: 4px 0 8px; }
+.progress { flex: 0 1 300px; margin-bottom: 14px; }
+.progress .lbl { display: flex; justify-content: space-between; gap: 10px; font-size: 13px;
+  color: var(--muted); margin-bottom: 6px; }
+.progress .lbl b { color: var(--fg); font-weight: 600; }
+.progress .track { height: 8px; border-radius: 999px; background: var(--panel); overflow: hidden; }
+.progress .track span { display: block; height: 100%; background: var(--accent); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px;
+  margin: 22px 0 26px; }
+.tile { display: flex; flex-direction: column; gap: 2px; padding: 16px 18px; border-radius: 16px;
+  background: var(--card); border: 1px solid var(--line); color: var(--fg); text-decoration: none; }
+.tile:hover { border-color: var(--line-strong); }
+.tile.empty, .tile.t-you.empty { background: var(--card); border-color: var(--line);
+  color: var(--muted); }
+.tile.t-you.empty .sub { color: var(--muted); }
+.tile .name { font-size: 13px; font-weight: 600; }
+.tile .n { font: 400 42px/1.05 var(--serif); }
+.tile .sub { font-size: 12.5px; color: var(--muted); }
+.tile.t-you { background: var(--accent); border-color: var(--accent); color: #f7f5f0; }
+.tile.t-you .sub { color: rgb(247 245 240 / 0.82); }
+.tile.t-con .name { color: var(--con); } .tile.t-unp .name { color: var(--unp); }
+.tile.t-sup .name { color: var(--sup); }
+.nextup { background: var(--card); border: 1px solid var(--line-strong); border-radius: 20px;
+  padding: 20px 24px; margin: 0 0 30px;
+  box-shadow: 0 1px 2px rgb(20 20 20 / 0.04), 0 10px 26px -16px rgb(20 20 20 / 0.2); }
+.nextup .head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; }
+.nextup .meta a { color: inherit; }
+.nextup .meta { font: 500 11.5px var(--mono); letter-spacing: 0.06em; color: var(--muted);
+  text-transform: uppercase; }
+.nextup blockquote.claimtext { font-size: 28px; margin: 14px 0 6px; }
+.nextup p { color: var(--muted); margin: 6px 0 14px; }
+a.button { display: inline-flex; align-items: center; min-height: 40px; padding: 0 18px;
+  border-radius: 10px; text-decoration: none; font-weight: 600; }
+a.button.primary { background: var(--accent); color: #f7f5f0; }
+a.button.primary:hover { background: #142842; }
+section.group { margin: 30px 0; }
+.ghead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px;
+  margin-bottom: 10px; }
+.ghead h2 { font: 400 30px/1.15 var(--serif); letter-spacing: -0.01em; margin: 0; border: 0;
+  padding: 0; }
+.ghead .muted { font-size: 13.5px; }
+.kinds { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 10px; }
+/* claim page: what has to be true, the evidence as a conversation, the working folded */
+.truths .checklist { list-style: none; padding: 0; margin: 8px 0 18px; background: var(--card);
+  border: 1px solid var(--line); border-radius: 12px; }
+.checklist li { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 10px;
+  align-items: start; padding: 10px 14px; border-top: 1px solid var(--line); }
+.checklist li:first-child { border-top: 0; }
+.checklist .mark { width: 14px; height: 14px; margin-top: 3px; border-radius: 50%;
+  border: 1.5px solid var(--line-strong); }
+.checklist li.ok .mark { background: var(--sup); border-color: var(--sup); }
+.checklist li.no .mark { border-color: var(--unp); border-style: dashed; }
+.checklist .meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.checklist .said { font: 500 11px var(--mono); color: var(--muted); white-space: nowrap; }
+.checklist li.ok .said { color: var(--sup); } .checklist li.no .said { color: var(--unp); }
+.thread.mini { padding: 10px; margin: 6px 0; gap: 6px; background: var(--bg); }
+.item .quoted { font-size: 13px; margin: 4px 0; }
+details.more summary, details.working summary { font-size: 13px; color: var(--muted); }
+details.working { margin: 18px 0; }
+.ledger .gap, .nextup .gap, #verdict .gap { margin-top: 6px; font-size: 13px; color: var(--muted); }
+.ledger .gap b, .nextup .gap b, #verdict .gap b {
+  color: var(--unp); font-weight: 600; margin-right: 6px; }
+
 .split { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 32px;
   align-items: start; }
 aside.side { position: sticky; top: 112px; max-height: calc(100vh - 128px); overflow-y: auto; }

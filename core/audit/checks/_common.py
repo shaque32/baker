@@ -269,8 +269,9 @@ def resolve_handle(data: CaseData, handle: str, app: str | None) -> Party:
             "SELECT sender_account_id FROM messages WHERE thread_id = ?"  # noqa: S608  (constant SQL; values are bound)
             " AND sender_account_id IS NOT NULL AND "
             + NOT_COPY.replace("m.", "")
-            + " UNION SELECT r.account_id FROM message_recipients r"
-            " JOIN messages m ON m.id = r.message_id WHERE m.thread_id = ? ORDER BY 1",
+            + " UNION SELECT r.account_id FROM message_recipients r"  # noqa: S608  (constant SQL; values are bound)
+            " JOIN messages m ON m.id = r.message_id WHERE m.thread_id = ?"
+            f" AND {NOT_COPY} ORDER BY 1",
             (tid, tid),
         ):
             acc = data.accounts.get(aid)

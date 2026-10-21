@@ -153,7 +153,12 @@ def _report_claims(text: str) -> dict[str, dict]:
 
 def _screen_claims(app: App, conn: sqlite3.Connection) -> dict[str, dict]:
     """The same, read from the claims queue and each claim's page on the review screen."""
-    ledger = get(app, "/claims").text.split("<ul class='ledger'>", 1)[1].split("</ul>", 1)[0]
+    body = get(app, "/claims").text
+    # the overview's next-up card and every group's ledger, in page order
+    ledger = "".join(
+        re.findall(r"<section class='nextup' id='next'>.*?</section>", body)
+        + re.findall(r"<ul class='ledger'>.*?</ul>", body)
+    )
     out: dict[str, dict] = {}
     for href, css, label in re.findall(
         r"<a href='([^']*)'>[^<]*</a>.*?<span class='verdict ([^']*)'>(.*?)</span>", ledger

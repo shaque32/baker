@@ -101,9 +101,13 @@ from core.review.status import verdict_label as _verdict_label
 # 0.9.0: Versions names each source's importer and its version; a forwarded or quoted copy
 # imported from inside another message gets its own note (core/ingest/forwarded.record_note),
 # and the conversation and timeline label it as a copy.
-# 0.10.0 (#104): a scoped reproducibility bundle's report says what the bundle left out, counts
+# 0.10.0: an unproven claim the expert has not overridden says why in plain words, one line per
+# kind of core assumption not covered, or a pointer to the other rule that holds it
+# (core/review/status.ClaimState.explain_lines), the same lines as the screen; any verdict a later
+# change made stale says "Not current".
+# 0.11.0 (#104): a scoped reproducibility bundle's report says what the bundle left out, counts
 # the items left out under each claim, and leaves out the sections that read the whole phone.
-REPORT_VERSION = "0.10.0"
+REPORT_VERSION = "0.11.0"
 
 
 @dataclass(frozen=True)
@@ -442,6 +446,10 @@ def _claim_block(
     out.append(f"<p class='muted'>Claim id <span class='mono'>{e(claim.id)}</span></p>")
     nt = " v-nt" if st.untested else ""
     out.append(f'<p><span class="verdict {st.css}{nt}">{e(st.label)}</span></p>')
+    out.extend(
+        f"<p class='gap'><strong>{e(topic)}:</strong> {e(text)}</p>"
+        for topic, text in st.explain_lines()
+    )
     out.append(forwarded_warning(conn, st))
     found = forwarded.affected(conn)
     if st.awaiting_expert:

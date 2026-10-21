@@ -72,12 +72,20 @@ def _window(ordered: list[str], target: str, window: int, include_target: bool) 
     return before + ([target] if include_target else []) + after
 
 
-def _thread_message_ids(conn: sqlite3.Connection, thread_id: str) -> list[str]:
+def _thread_message_ids(
+    conn: sqlite3.Connection, thread_id: str, threads: dict[str, list[str]] | None = None
+) -> list[str]:
+    """A thread's message ids in time order. threads: a caller's cache, one read per thread."""
+    if threads is not None and thread_id in threads:
+        return threads[thread_id]
     rows = conn.execute(
         "SELECT id, ts_utc, locator FROM messages WHERE thread_id = ?", (thread_id,)
     ).fetchall()
     rows.sort(key=lambda r: _order_key(r[1], r[2], r[0]))
-    return [r[0] for r in rows]
+    ids = [r[0] for r in rows]
+    if threads is not None:
+        threads[thread_id] = ids
+    return ids
 
 
 def _source_messages_around(
@@ -104,6 +112,7 @@ def context_ids(
     record_id: str,
     window: int = DEFAULT_WINDOW,
     include_target: bool = False,
+    threads: dict[str, list[str]] | None = None,
 ) -> tuple[str, ...]:
     """Ids of the surrounding messages, in time order.
 
@@ -111,19 +120,21 @@ def context_ids(
     attachment: the same, around the message it is attached to (that message included).
     call: up to `window` messages either side on the same source, by time.
     contact or anything else: none.
+    threads: an optional cache of thread orders, for a caller that reads many records.
     """
     if record_id.startswith("msg:"):
         row = conn.execute("SELECT thread_id FROM messages WHERE id = ?", (record_id,)).fetchone()
         if row is None:
             return ()
-        return tuple(_window(_thread_message_ids(conn, row[0]), record_id, window, include_target))
+        order = _thread_message_ids(conn, row[0], threads)
+        return tuple(_window(order, record_id, window, include_target))
     if record_id.startswith("att:"):
         row = conn.execute(
             "SELECT message_id FROM attachments WHERE id = ?", (record_id,)
         ).fetchone()
         if row is None or row[0] is None:
             return ()
-        return context_ids(conn, row[0], window, include_target=True)
+        return context_ids(conn, row[0], window, include_target=True, threads=threads)
     if record_id.startswith("call:"):
         row = conn.execute(
             "SELECT source_id, ts_utc FROM calls WHERE id = ?", (record_id,)
@@ -182,12 +193,14 @@ def build_context(
     record_id: str,
     window: int = DEFAULT_WINDOW,
     names: CaseNames | None = None,
+    threads: dict[str, list[str]] | None = None,
 ) -> list[ContextLine]:
     """Context lines around a record, the target marked. Messages only; empty for a contact.
-    With names, each sender prints as its sender line, the source's own name for it included."""
+    With names, each sender prints as its sender line, the source's own name for it included.
+    threads: an optional cache of thread orders (context_ids)."""
     if record_id.startswith("contact:"):
         return _contact_line(conn, record_id)
-    ids = list(context_ids(conn, record_id, window, include_target=True))
+    ids = list(context_ids(conn, record_id, window, include_target=True, threads=threads))
     if not ids:
         return []
     target = record_id

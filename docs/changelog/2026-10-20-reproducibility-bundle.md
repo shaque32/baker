@@ -32,7 +32,7 @@
   claim (`claim_sha256`) and the verdict's time; each `pipeline.run` entry records one SHA-256
   over the run's fixed columns (`run_sha256`), its finish time and the log position it read the
   stipulations at; `PIPELINE_VERSION` 0.2.0 (stored on each run's row) marks runs that write
-  this log format; report 0.10.0 adds a scoped bundle's banner and per-claim counts;
+  this log format; report 0.11.0 adds a scoped bundle's banner and per-claim counts;
   `claim.status` records the text an edit replaced; `claim.add` records the
   claim type; `claims.proposed` records each proposed claim's SHA-256. No export while a newer audit is unfinished. Why: legal defensibility
   (Arsh's brief, 2026-10-20): equal access, authentication, hosted-model reproducibility.
