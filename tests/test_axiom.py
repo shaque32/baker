@@ -620,8 +620,7 @@ def test_a_quoted_message_is_its_own_record_like_a_ufdr_embedded_copy(tmp_path, 
     )
     parent, copy = _rows(conn)
     assert copy[1] == f"{parent[1]}/Embedded[1]" and copy[0] == f"msg:a1:{copy[1]}"
-    if ext == "xml":
-        assert copy[2] == "  SYNTHETIC Jo's exact words\n"  # verbatim
+    assert copy[2] == "  SYNTHETIC Jo's exact words\n"  # verbatim, in XML and Excel
     assert copy[3] is None and copy[4] is None  # no time: never on the timeline
     assert copy[5] != "outgoing" and parent[5] == "outgoing"  # never the owner's words
     assert copy[6:8] == (1, "15550100002@wa")  # marked, author as written
@@ -715,3 +714,16 @@ def test_the_report_names_the_axiom_importer_version(tmp_path):
     assert axiom.IMPORTER_VERSION == "0.2.0"
     html_ = render_report(conn)
     assert "axiom 0.2.0</td>" in html_
+
+
+@pytest.mark.parametrize("ext", ["xml", "xlsx"])
+def test_a_chat_table_without_forwarded_fields_says_so(tmp_path, ext):
+    def notes(conn):
+        tc = json.loads(conn.execute("SELECT payload_json FROM source_coverage").fetchone()[0])
+        (table,) = [t for t in tc["tables"] if t["kind"] == "chats"]
+        return " ".join(table.get("header_notes") or [])
+
+    conn, _s = _fwd_case(tmp_path / "a", ext)
+    assert "no forwarded or quoted field" in notes(conn)
+    conn, _s = _fwd_case(tmp_path / "b", ext, Forwarded="No")
+    assert "no forwarded or quoted field" not in notes(conn)

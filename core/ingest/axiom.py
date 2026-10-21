@@ -715,6 +715,13 @@ class _Mapper:
             tc.header_notes.append(
                 f"messages were grouped into threads by {used['chat_id'].written!r}."
             )
+        if rkind in (RecordKind.CHATS, RecordKind.SMS) and not (
+            {"forwarded", "forwarded_from", "quoted_body"} & set(used)
+        ):
+            tc.header_notes.append(
+                "no forwarded or quoted field Baker knows was found, so forwarded or quoted "
+                "messages in this table are not marked and may be credited to the forwarder."
+            )
         self.tables.append(tc)
         for fn in ts_fields:
             if fn.offset is not None:
