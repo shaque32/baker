@@ -352,9 +352,12 @@ def related_package(path: Path, unmatched: bool = False) -> Path:
     """A synthetic package shaped like public Cellebrite Reader 7.48 UFDRs: long chats (past
     the 30 messages after which copies begin), several chats, attachments and recipients, and
     RelatedModels copies of chats, messages, calls and accounts after each record's fields.
-    Two accounts name the same app and identifier; one has no identifier. The five model types
-    Baker does not know are there too. With `unmatched`, one message and one call exist only
-    as related copies, matching no record of the package's own."""
+    The last chat holds two messages with the same words, parties and second. Each copy is a
+    copy of the record holding it, as on the public packages: a chat's copy holds its own
+    messages again. Two accounts name the same app and identifier; one has no identifier. The
+    five model types Baker does not know are there too. With `unmatched`, one message and one
+    call exist only as related copies, and the last chat's copy holds the repeated message a
+    third time, so one copy matches no record of the package's own one to one."""
     files: dict[str, bytes] = {}
 
     def ts(c: int, i: int) -> str:
@@ -371,6 +374,8 @@ def related_package(path: Path, unmatched: bool = False) -> Path:
                 files[f"files/Image/{att}"] = f"synthetic image {c}-{i}".encode()
             rows.append((f"m-{c}-{i}", f"synthetic message {c}-{i}", ts(c, i), frm, to, att))
         chats.append((f"k{c}", rows))
+    same = ("synthetic same second", ts(2, 9), FRIENDS[0], [OWNER], None)
+    chats[2][1].extend([("m-2-same-a", *same), ("m-2-same-b", *same)])
 
     def copies(c: int, picks: Iterable[int], tag: str) -> list[str]:
         return [_rel_msg(f"{r[0]}-{tag}", *r[1:]) for r in (chats[c][1][i] for i in picks)]
@@ -382,16 +387,19 @@ def related_package(path: Path, unmatched: bool = False) -> Path:
             # a message holding copies of itself, as Reader 7.48 writes some
             tail = (related(_rel_msg(f"{r[0]}-self1", *r[1:]), _rel_msg(f"{r[0]}-self2", *r[1:])),)
             msgs.append(_rel_msg(*r, *(tail if i % 10 == 3 else ())))
-        # each chat ends with copies of another chat (a second copy of some of its messages)
-        other = (c + 1) % len(chats)
-        copied = list(range(0, len(chats[other][1]), 2))
-        extra = copies(other, copied, f"rel{c}")
+        # each chat ends with a copy of itself, holding some of its messages again
+        copied = list(range(0, len(rows), 2))
+        if c == 2:
+            copied = [*range(0, 5, 2), 5, 6]  # both messages of the same second
+        extra = copies(c, copied, f"rel{c}")
         if unmatched and c == 0:
             extra.append(
                 _rel_msg("only-a-copy", "synthetic message only in a copy", ts(9, 1), FRIENDS[1],
                          [OWNER])
             )  # fmt: skip
-        rel_chat = _rel_chat(chats[other][0], extra, cid=f"chat-{chats[other][0]}-rel{c}")
+        if unmatched and c == 2:
+            extra.append(_rel_msg("m-2-same-c-rel", *same))  # a third, held only as a copy
+        rel_chat = _rel_chat(key, extra, cid=f"chat-{key}-rel{c}")
         out_chats.append(_rel_chat(key, msgs, related(rel_chat)))
     calls = []
     for i in range(4):

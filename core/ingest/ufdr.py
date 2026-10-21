@@ -358,7 +358,9 @@ class _Reader:
             el = _El(local, attrs)
             if local == "value":
                 el.text = []
-            if local != "RelatedModels":  # handed over on its own when it closes
+            # a RelatedModels element is handed over on its own when it closes; one inside a
+            # copy stays with that copy, so the copy's own copies are matched to it
+            if local != "RelatedModels" or self._in_related():
                 self.building[-1].children.append(el)
             self.building.append(el)
             return
@@ -398,7 +400,7 @@ class _Reader:
         if self.building:
             el = self.building.pop()
             if el.tag == "RelatedModels":
-                if self.on_related is not None:
+                if self.on_related is not None and not self._in_related():
                     self.on_related(self._holder(), el)
                 return
             if not self.building:
@@ -453,6 +455,9 @@ class _Reader:
             self._tagged[1].append(data)
         elif self._ts_text is not None:
             self._ts_text.append(data)
+
+    def _in_related(self) -> bool:
+        return any(e.tag == "RelatedModels" for e in self.building)
 
     def _holder(self) -> str:
         """Locator of the model holding a RelatedModels element that just closed: the record,
@@ -773,6 +778,20 @@ class _StreamWriter(_Writer):
 
 
 # ---------------------------------------------------------------- the importer
+
+
+@dataclass
+class _Copies:
+    """Copies under one RelatedModels holder that must match it: `one` copies each say what
+    the record at `holder` says (or `want`, for copies inside a copy); `chat` copies are the
+    messages of a copied chat, matched one to one to the messages of the chat at `holder`."""
+
+    table: str
+    kind: str  # "one" or "chat"
+    holder: str
+    want: bytes | None
+    keys: list[tuple[bytes, str]]  # content key, locator of each copy
+    message: bool
 
 
 @dataclass
@@ -1106,10 +1125,11 @@ class _RecordMapper:
         self.flag_counts: dict[str, Counter[str]] = {}
         self.model_ids: set[str] = set()
         # Copies under RelatedModels: how many of each type, and for messages, calls, contacts
-        # and accounts their content key, matched against the records imported (_content_key)
+        # and accounts their content key (_content_key), matched to the record holding them
         self.related_counts: Counter[str] = Counter()
-        self.related_keys: list[tuple[bytes, str, str]] = []  # (key, locator, record type)
-        self.record_keys: set[bytes] = set()
+        self.related_copies: list[_Copies] = []
+        self.record_keys: dict[str, bytes] = {}  # locator -> content key of each record read
+        self.chat_keys: dict[str, list[bytes]] = {}  # chat locator -> its messages' keys
 
     def _repeat(self, table: str, m: _Model, locator: str) -> bool:
         """True for a message or call whose model id an earlier record already had: the same
@@ -1217,10 +1237,13 @@ class _RecordMapper:
     # copies under RelatedModels --------------------------------------------
 
     def related(self, holder: str, rel: _El) -> None:
-        """Models a record holds under RelatedModels. On public Reader 7.48 packages every one
-        is a copy of a record listed on its own (same text, time and sender), so none is
-        imported again; each is counted, and its content is matched against the records read once
-        the read ends (finish_related). One that matches nothing is listed for review."""
+        """Models a record holds under RelatedModels. On public Reader 7.48 packages each one is
+        a copy of the record holding it (the same record decoded again from another source:
+        same text, time, parties, deleted state and attachments, new id), so none is imported
+        again. Each is counted and, once the read ends (finish_related), matched to its holder:
+        a copied message, call, contact or account to the holder itself, and the messages of a
+        copied chat one to one to the holder chat's messages. One that does not match is
+        listed for review."""
         table = holder.split("[", 1)[0]
         models = [c for c in rel.children if c.tag == "model"]
         for i, el in enumerate(models, 1):
@@ -1230,28 +1253,73 @@ class _RecordMapper:
             m = _model(el)
             if t == "Chat":
                 written = {n.lower(): n for n in m.field_names}
-                for fname, ms in m.many.items():
-                    msgs = [x for x in ms if fname == "messages" or x.type in MESSAGE_TYPES]
+                keys: list[tuple[bytes, str]] = []
+                for f in el.children:
+                    if f.tag != "multiModelField":
+                        continue
+                    fname = f.attrs.get("name", "")
+                    msgs = [
+                        x for x in f.children if x.tag == "model"
+                        and (fname.lower() == "messages" or x.attrs.get("type") in MESSAGE_TYPES)
+                    ]  # fmt: skip
                     for j, x in enumerate(msgs, 1):
-                        where = f"{loc}/{written.get(fname, fname)}[{j}]"
-                        self.related_keys.append((_content_key(x), where, table))
+                        where = f"{loc}/{written.get(fname.lower(), fname)}[{j}]"
+                        xm = _model(x)
+                        keys.append((_content_key(xm), where))
+                        self._nested(table, where, xm, x)
+                self.related_copies.append(_Copies(table, "chat", holder, None, keys, True))
             elif t in MESSAGE_TYPES or t in ("Call", "Contact", "UserAccount"):
-                self.related_keys.append((_content_key(m), loc, table))
+                key = _content_key(m)
+                self.related_copies.append(
+                    _Copies(table, "one", holder, None, [(key, loc)], t in MESSAGE_TYPES)
+                )
+                self._nested(table, loc, m, el)
+
+    def _nested(self, table: str, loc: str, m: _Model, el: _El) -> None:
+        """Copies inside a copy (a RelatedModels element in a copied record): each must say
+        what that copy says."""
+        for rel in (c for c in el.children if c.tag == "RelatedModels"):
+            want = _content_key(m)
+            for i, x in enumerate((c for c in rel.children if c.tag == "model"), 1):
+                t = x.attrs.get("type", "")
+                self.related_counts[t] += 1
+                if t in MESSAGE_TYPES or t in ("Call", "Contact", "UserAccount"):
+                    self.related_copies.append(
+                        _Copies(table, "one", loc, want, [(_content_key(_model(x)),
+                                f"{loc}/Related[{i}]")], t in MESSAGE_TYPES)
+                    )  # fmt: skip
 
     def finish_related(self) -> None:
         if not self.related_counts:
             return
-        if self.related_keys:
-            self.cov.counters["related_copies"] = len(self.related_keys)
+        n = sum(len(c.keys) for c in self.related_copies)
+        if n:
+            self.cov.counters["related_copies"] = n
         matched = 0
-        for key, loc, table in self.related_keys:
-            if key in self.record_keys:
-                matched += 1
+        for c in self.related_copies:
+            if c.kind == "chat":
+                left = Counter(self.chat_keys.get(c.holder, ()))
             else:
+                want = c.want if c.want is not None else self.record_keys.get(c.holder)
+                left = Counter({want: len(c.keys)}) if want is not None else Counter()
+            for key, loc in c.keys:
+                if left[key] > 0:
+                    left[key] -= 1
+                    matched += 1
+                    continue
                 self.cov.counters["related_copies_matching_no_record"] += 1
-                self._flag(table, "related_copy_unmatched", loc)
+                if c.message:  # ufdr-check accounts for these by count past the listed ones
+                    self.cov.counters["related_message_copies_matching_no_record"] += 1
+                self._flag(c.table, "related_copy_unmatched", loc)
         if matched:
             self.cov.counters["related_copies_matching_a_record"] = matched
+
+    def _record_key(self, locator: str, m: _Model) -> None:
+        key = _content_key(m)
+        self.record_keys[locator] = key
+        chat, _, _ = locator.rpartition("/")
+        if chat:
+            self.chat_keys.setdefault(chat, []).append(key)
 
     # dispatch ------------------------------------------------------------
 
@@ -1352,7 +1420,7 @@ class _RecordMapper:
         }
         parties = {"from": senders, "to": to, "participants": participants}
         if embedded_in is None:
-            self.record_keys.add(_content_key(m))
+            self._record_key(locator, m)
         return _row(locator, values, parties, self.attachments(table, locator, m))
 
     def sms_row(self, table: str, locator: str, m: _Model) -> _ModelRow:
@@ -1378,7 +1446,7 @@ class _RecordMapper:
             "deleted": state,
         }
         parties = {"from": senders, "to": to, "parties": counterpart}
-        self.record_keys.add(_content_key(m))
+        self._record_key(locator, m)
         return _row(locator, values, parties, self.attachments(table, locator, m))
 
     def attachments(self, table: str, locator: str, m: _Model) -> list[str]:
@@ -1456,7 +1524,7 @@ class _RecordMapper:
         }
         tc.rows_read += 1
         tc.rows_imported += 1
-        self.record_keys.add(_content_key(m))
+        self._record_key(locator, m)
         _calls(self.w, [_row(locator, values, parties)], self.tctx["Call"], None)
 
     def contact(self, locator: str, m: _Model) -> None:
@@ -1465,7 +1533,7 @@ class _RecordMapper:
         tc = self.tables["Contact"]
         tc.rows_read += 1
         tc.rows_imported += 1
-        self.record_keys.add(_content_key(m))
+        self._record_key(locator, m)
         self._count_pictures(m)
         idents = _entries(m)
         if not idents:
@@ -1483,7 +1551,7 @@ class _RecordMapper:
         tc = self.tables["UserAccount"]
         tc.rows_read += 1
         self._count_pictures(m)
-        self.record_keys.add(_content_key(m))  # a copy of one skipped here is no new record
+        self._record_key(el.locator, m)  # a copy of one skipped here is no new record
         ident = m.text("username") or _account_identifier(m)
         if not ident:
             tc.rows_skipped["account_without_identifier"] += 1
@@ -1521,8 +1589,9 @@ EMBEDDED_STEP = forwarded.COPY_STEP  # locator step of a message embedded in ano
 
 def _content_key(m: _Model) -> bytes:
     """What a record says, as one hash: a copy under RelatedModels with the same key says the
-    same thing. Messages: text, time and sender as written; calls: time, duration, direction
-    and parties; contacts: name and entries; accounts: app and identifier."""
+    same thing. Messages: text, time, sender, recipients, deleted state and attachments (name
+    and path) as written; calls: time, duration, direction and parties; contacts: name and
+    entries; accounts: app and identifier."""
     if m.type == "Call":
         parties = sorted(_party_text(p) for p, _r in _parties(m.models("from", "to", "parties")))
         key: tuple[object, ...] = (
@@ -1539,7 +1608,21 @@ def _content_key(m: _Model) -> bytes:
     else:
         senders = [_party_text(p) for p, _r in _parties(m.models("from"))]
         senders += [_party_text(p) for p, r in _parties(m.models("parties")) if r == "from"]
-        key = ("message", m.raw(*BODY_FIELDS), m.raw(*TS_FIELDS), senders)
+        to = sorted(_party_text(p) for p, _r in _parties(m.models("to")))
+        to += sorted(_party_text(p) for p, r in _parties(m.models("parties")) if r != "from")
+        attachments = sorted(
+            (a.raw(*ATT_NAME_FIELDS) or "", a.raw(*ATT_PATH_FIELDS) or "")
+            for a in m.models("attachments", "attachment")
+        )
+        key = (
+            "message",
+            m.raw(*BODY_FIELDS),
+            m.raw(*TS_FIELDS),
+            senders,
+            to,
+            m.attrs.get("deleted_state"),
+            attachments,
+        )
     return hashlib.blake2b(repr(key).encode("utf-8", "surrogatepass"), digest_size=16).digest()
 
 

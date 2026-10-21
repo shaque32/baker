@@ -10,21 +10,30 @@
   identifier, which Baker keeps as one account.
   Importer `ufdr` 0.2.0 -> 0.3.0: a RelatedModels element is never read as part of its holder;
   every copied message (also inside a copied chat), call, contact and account is counted
-  (`related_copies`, info, per type in `ufdr.related_copies_by_type`) and matched by content to
-  the records read; a copy that matches none is listed for review (`related_copy_unmatched`,
+  (`related_copies`, info, per type in `ufdr.related_copies_by_type`) and matched to the record
+  holding it; a copy that does not match is listed for review (`related_copy_unmatched`,
   attention, on screen and in the report's Limitations) and not imported. Both reads of
   report.xml must now also count the same chat messages, and every one must be imported or
   listed as skipped, or nothing is stored.
-  ufdr-check 0.1.0 -> 0.2.0: copies are matched to imported messages in a row of their own
-  (one matching none is a difference), counted per type, and never added to a record; a
+  Matching follows what the public packages show: each copy is its holder decoded again from
+  another source (Android 12: all 1,144 in-message copies equal their holder message but 21 that
+  spell a recipient differently; the 674 messages of copied chats fit the holder chat's messages
+  one to one). So a copied message must say what its holder says (text, time, sender,
+  recipients, deleted state, attachment names and paths), and a copied chat's messages are
+  matched one to one to the holder chat's, so a lone copy never hides behind a same-second twin
+  (Baker Eval on #117).
+  ufdr-check 0.1.0 -> 0.2.0: copies are matched to their holder the same way, in a row of their
+  own (one that does not match must be one Baker lists for review, else it is a difference),
+  counted per type, and never added to a record; a
   repeated account counts as a repeat; direction from the phone's own accounts is expected by
   identifier only, as the importer links them.
   The five model types Baker does not know on these packages (AppsUsageLog, ActivitySensorData,
   FileUpload, RecognizedDevice, Activity) were already listed for review on screen and in the
   report ("model type not recognised"); a test now covers it.
-  Synthetic fixture `related_package` in `eval/synthetic/ufdr.py`: chats of 60, 45 and 5
-  messages, attachments, recipients, RelatedModels copies of chats, messages, calls and
-  accounts, a repeated account, and the five unknown types. No Hickman or real data in the repo.
+  Synthetic fixture `related_package` in `eval/synthetic/ufdr.py`: chats of 60, 45 and 7
+  messages (two with the same words in the same second), attachments, recipients,
+  RelatedModels copies of chats, messages, calls and accounts, a repeated account, and the five
+  unknown types. No Hickman or real data in the repo.
 - Where: PR #117
 - Verified: new tests in `tests/test_ufdr.py` and `tests/test_ufdr_check.py`; `make check` and
   eval in the PR description. Run on the three public packages in a cloud container

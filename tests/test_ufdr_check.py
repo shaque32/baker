@@ -21,6 +21,7 @@ from eval.synthetic.ufdr import (
     model,
     one,
     party,
+    related,
     related_package,
     report_xml,
     ts_field,
@@ -617,9 +618,9 @@ def test_related_copies_and_repeated_accounts_check_clean(tmp_path):
     d = ufdr_check.run(related_package(tmp_path / "rel.ufdr")).shareable
     assert d["differences"] == 0, d["records"]
     msgs = _rec(d, "messages")
-    assert (msgs["in_report_xml"], msgs["imported_by_baker"], msgs["missing"]) == (110, 110, 0)
+    assert (msgs["in_report_xml"], msgs["imported_by_baker"], msgs["missing"]) == (112, 112, 0)
     rel = _rec(d, ufdr_check.RELATED_RECORD)
-    assert (rel["in_report_xml"], rel["imported_by_baker"], rel["missing"]) == (80, 80, 0)
+    assert (rel["in_report_xml"], rel["imported_by_baker"], rel["missing"]) == (82, 82, 0)
     acct = _rec(d, "phone's own accounts (UserAccount)")
     assert (acct["in_report_xml"], acct["repeats_imported_once"], acct["missing"]) == (3, 1, 0)
     att = _rec(d, "attachments")
@@ -628,8 +629,39 @@ def test_related_copies_and_repeated_accounts_check_clean(tmp_path):
     assert "Copies under RelatedModels" in ufdr_check.shareable_markdown(d)
 
 
-def test_a_message_held_only_as_a_related_copy_is_a_difference(tmp_path):
-    d = ufdr_check.run(related_package(tmp_path / "rel.ufdr", unmatched=True)).shareable
+def test_a_message_held_only_as_a_related_copy_must_be_listed_by_baker(tmp_path, monkeypatch):
+    path = related_package(tmp_path / "rel.ufdr", unmatched=True)
+    d = ufdr_check.run(path).shareable
+    rel = _rec(d, ufdr_check.RELATED_RECORD)  # Baker lists it for review: accounted for
+    assert (rel["imported_by_baker"], rel["repeats_imported_once"], rel["missing"]) == (82, 2, 0)
+    assert d["differences"] == 0
+    # an importer that matched nothing and listed nothing is caught
+    monkeypatch.setattr(ufdr._RecordMapper, "finish_related", lambda self: None)
+    d = ufdr_check.run(path).shareable
     rel = _rec(d, ufdr_check.RELATED_RECORD)
-    assert rel["first_missing_locators"] == ["Chat[1]/Related[1]/Messages[24]"]
-    assert d["differences"] == 1
+    assert rel["first_missing_locators"] == [
+        "Chat[1]/Related[1]/Messages[31]",
+        "Chat[3]/Related[1]/Messages[6]",
+    ]
+    assert d["differences"] == 2
+
+
+def test_a_copy_to_another_recipient_is_not_matched_to_the_record(tmp_path):
+    other = ("+15550100003", "Sam", False)
+    copies = related(
+        model("Chat", many("Messages", [_msg("ok", T, JO, (OWNER,), id="c1")], "InstantMessage")),
+        model("Chat", many("Messages", [_msg("ok", T, JO, (other,), id="c2")], "InstantMessage")),
+    )
+    chat = model(
+        "Chat",
+        field("Source", "WhatsApp"),
+        many("Messages", [_msg("ok", T, JO, (OWNER,), id="m1")], "InstantMessage"),
+        copies,
+    )
+    path = write_package(tmp_path / "same.ufdr", report_xml({"Chat": [chat]}))
+    d = ufdr_check.run(path).shareable
+    rel = _rec(d, ufdr_check.RELATED_RECORD)  # not taken for the record: listed by Baker
+    assert (rel["in_report_xml"], rel["imported_by_baker"], rel["repeats_imported_once"]) == (
+        2, 1, 1
+    )  # fmt: skip
+    assert rel["missing"] == 0

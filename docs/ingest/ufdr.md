@@ -67,16 +67,21 @@ are listed with their counts; any other type is listed for review as not recogni
 
 **RelatedModels.** Public Cellebrite Reader 7.48 packages end many models (chats, messages,
 calls, contacts, accounts, locations, cookies) with a `RelatedModels` element holding other
-models of the same type, each with an id of its own. On the three public packages checked
-(2026-10-21) every message in one is a copy of a message listed on its own (same text, time
-and sender), and so is every call, contact and account but one call copy that lacks its
-duration. So a RelatedModels element is
-never read as part of the model holding it (its messages are not the chat's, its attachments and
-parties not the message's), and its models are not imported. Each copy of a message (also inside
-a copied chat), call, contact or account is counted (`related_copies`, info) and matched by
-content against the records read; one that matches no record is listed for review
-(`related_copy_unmatched`, attention, at the holder's locator plus `/Related[n]`). Copies are
-counted per type in `ufdr.related_copies_by_type`.
+models of the same type, each with an id of its own: the record holding it, decoded again from
+another source. On the three public packages checked (2026-10-21) every copied message has the
+same text, time, sender, deleted state and attachments as the message holding it, and the
+messages of every copied chat match the holder chat's messages one to one; a few spell a
+recipient's number differently. Calls, contacts and accounts are copies of their holder too, but
+for one call copy that lacks its duration. So a RelatedModels element is never read as part of
+the model holding it (its messages are not the chat's, its attachments and parties not the
+message's), and its models are not imported. Each copy of a message (also inside a copied chat,
+or inside a copy), call, contact or account is counted (`related_copies`, info) and matched to
+its holder: a copy must say what the record holding it says (messages: text, time, sender,
+recipients, deleted state and attachment names and paths as written), and a copied chat's
+messages are matched one to one to the holder chat's messages, so two messages with the same
+words in the same second cover two copies, never three. A copy that does not match is listed for
+review (`related_copy_unmatched`, attention, at the holder's locator plus `/Related[n]`). Copies
+are counted per type in `ufdr.related_copies_by_type`.
 
 Metadata items read (by name, letters and digits only, case-insensitive):
 `DeviceInfoExtractionStartDateTime` (extraction time), `DeviceInfoSelectedDeviceName` or

@@ -35,6 +35,7 @@ import re
 import sqlite3
 import zipfile
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -56,6 +57,8 @@ MAX_SCHEMA_FIELDS = 60  # field names listed per model kind
 
 PARTY_HOLDERS = {"from", "to", "parties", "participants"}  # fields holding parties, any type
 TOP_MESSAGE_TYPES = {"InstantMessage", "Message", "SMS", "MMS"}
+# "imported" counts copies matching a message Baker imported; "repeats" those matching none
+# that Baker lists for review instead
 RELATED_RECORD = "message copies under RelatedModels (matched to an imported message)"
 CHAT_MESSAGE_TYPES = ufdr.MESSAGE_TYPES
 BODY = ("body", "text", "message", "content")
@@ -147,6 +150,7 @@ class _Frame:
     parties: dict[str, list[tuple[str | None, str | None, str, bool]]] = field(default_factory=dict)
     # (named, path, file_id): a file_id is resolved through taggedFiles once the read ends
     attachments: list[tuple[bool, str | None, str | None]] = field(default_factory=list)
+    att_written: list[tuple[str, str]] = field(default_factory=list)  # (name, path) as written
     entries: list[str] = field(default_factory=list)
     user_ids: list[str] = field(default_factory=list)  # UserID entries, for a UserAccount
     msg_seen: Counter[str] = field(default_factory=Counter)
@@ -191,6 +195,7 @@ class MessageRec:
     # a name that happens to read like one
     sender_ident: str | None = None
     recipient_idents: list[str] = field(default_factory=list)
+    att_written: tuple[tuple[str, str], ...] = ()  # sorted (name, path) of each, as written
 
 
 @dataclass
@@ -400,6 +405,9 @@ class Tally:
             name = _first(f.fields, ATT_NAME)
             path = _first(f.fields, ATT_PATH)
             parent.attachments.append((bool(name) or bool(path), path, f.attrs.get("file_id")))
+            parent.att_written.append(
+                (_first_raw(f.fields, ATT_NAME) or "", _first_raw(f.fields, ATT_PATH) or "")
+            )
             return
         if parent is not None and holder == "entries":
             if ufdr.PICTURE_TYPE_RE.search(f.type):  # an image link, not an identifier
@@ -484,6 +492,7 @@ class Tally:
             status=_text(f.fields.get("status")),
             state=_state(f),
             att_refs=list(f.attachments),
+            att_written=tuple(sorted(f.att_written)),
         )
 
     def _finish(self) -> None:
@@ -712,6 +721,54 @@ def _counts(record: str, xml: dict, db: set[str], repeats: set[str]) -> Count:
     return Count(record, len(want), len(db), len(rep - db), missing, extra)
 
 
+def _listed_copies(conn: sqlite3.Connection, src: str) -> tuple[set[str], int]:
+    """The copies Baker's import listed for review as matching no record: the locators its
+    coverage record lists (capped, any type) and how many message copies there were."""
+    row = conn.execute(
+        "SELECT payload_json FROM source_coverage WHERE source_id = ?", (src,)
+    ).fetchone()
+    if row is None:
+        return set(), 0
+    p = json.loads(row[0])
+    listed = {
+        loc
+        for tb in p.get("tables", []) or []
+        if isinstance(tb, dict)
+        for loc in (tb.get("flagged_locators") or {}).get("related_copy_unmatched", [])
+    }
+    counts = p.get("counts") or {}
+    return listed, int(counts.get("related_message_copies_matching_no_record", 0))
+
+
+def _unmatched_copies(
+    t: Tally, db_msgs: set[str], said: Callable[[MessageRec], tuple[object, ...]]
+) -> list[str]:
+    """Locators of message copies that do not match their holder (see compare)."""
+    out: list[str] = []
+    chats: dict[str, list[str]] = {}  # copied chat -> its messages' locators, in order
+    for loc, x in t.related_messages.items():
+        head, _, last = loc.rpartition("/")
+        if last.startswith("Related["):  # a copy of the message (or copy) holding it
+            twin = t.messages.get(head) if head in db_msgs else t.related_messages.get(head)
+            if twin is None or said(twin) != said(x):
+                out.append(loc)
+        else:  # a message of a copied chat
+            chats.setdefault(head, []).append(loc)
+    for chat, locs in chats.items():
+        holder = chat.rpartition("/Related[")[0]
+        left = Counter(
+            said(x) for loc, x in t.messages.items()
+            if loc in db_msgs and loc.rpartition("/")[0] == holder
+        )  # fmt: skip
+        for loc in locs:
+            k = said(t.related_messages[loc])
+            if left[k] > 0:
+                left[k] -= 1
+            else:
+                out.append(loc)
+    return sorted(out, key=_loc_key)
+
+
 def _loc_key(loc: str) -> tuple[object, ...]:
     return tuple(int(p) if p.isdigit() else p for p in re.split(r"(\d+)", loc))
 
@@ -895,15 +952,25 @@ def compare(t: Tally, conn: sqlite3.Connection, src: str) -> tuple[list[Count], 
         _counts("contacts", t.contacts, db_contacts, set()),
         _counts("phone's own accounts (UserAccount)", t.user_accounts, accounts, t.account_repeats),
     ]
-    # a copy under RelatedModels is matched by content (text, time, sender as written) to a
-    # message of the package's own that Baker imported; one that matches none is missing
-    own = {(x.body, x.ts_raw, x.sender) for x in t.messages.values() if x.locator in db_msgs}
-    unmatched = sorted(
-        (loc for loc, x in t.related_messages.items() if (x.body, x.ts_raw, x.sender) not in own),
-        key=_loc_key,
-    )
+
+    # a copy under RelatedModels is a copy of the record holding it: a copied message must say
+    # what its holder says (text, time, sender, recipients, deleted state and attachments as
+    # written), and the messages of a copied chat match the holder chat's imported messages
+    # one to one. One that does not must be one Baker lists for review (related_copy_unmatched);
+    # otherwise it is missing
+    def said(x: MessageRec) -> tuple[object, ...]:
+        return (x.body, x.ts_raw, x.sender, tuple(sorted(x.recipients)), x.state, x.att_written)
+
+    unmatched = _unmatched_copies(t, db_msgs, said)
+    listed, n_listed = _listed_copies(conn, src)
+    rest = [loc for loc in unmatched if loc not in listed]
+    # the coverage record lists the first locators only; past that list, its count stands in
+    missing = rest[max(0, n_listed - len(listed & set(unmatched))) :]
     n_rel = len(t.related_messages)
-    counts.append(Count(RELATED_RECORD, n_rel, n_rel - len(unmatched), 0, unmatched, []))
+    counts.append(
+        Count(RELATED_RECORD, n_rel, n_rel - len(unmatched), len(unmatched) - len(missing),
+              missing, [])
+    )  # fmt: skip
     xml_atts = sum(m.attachments for m in t.messages.values() if m.locator in db_msgs)
     (db_atts,) = conn.execute(
         "SELECT COUNT(*) FROM attachments WHERE source_id = ?", (src,)
@@ -1239,6 +1306,11 @@ def shareable_markdown(d: dict) -> str:
         lines.append(
             f"| {r['record']} | {r['in_report_xml']} | {r['imported_by_baker']} | "
             f"{r['repeats_imported_once']} | {r['missing']} | {r['extra']} |"
+        )
+    if any(r["record"] == RELATED_RECORD for r in d["records"]):
+        lines.append(
+            '\nFor message copies under RelatedModels, "Repeats imported once" counts copies '
+            "that match no message and that Baker lists for review instead of importing."
         )
     if d.get("copies_under_related_models"):
         lines.append(

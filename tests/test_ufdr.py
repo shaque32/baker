@@ -19,7 +19,7 @@ import pytest
 from cli.main import main as cli_main
 from core.audit.invariants import FORBIDDEN_WORDS, check_report_text
 from core.db import apply_schema
-from core.ingest import coverage, forwarded, ufdr
+from core.ingest import coverage, forwarded, ufdr, ufdr_check
 from core.ingest.cellebrite_excel import CellebriteExcelImporter
 from core.ingest.ufdr import UfdrImporter
 from core.report.html import render_report
@@ -32,6 +32,7 @@ from eval.synthetic.ufdr import (
     model,
     one,
     party,
+    related,
     related_package,
     report_xml,
     ts_field,
@@ -1072,8 +1073,8 @@ def test_every_chat_message_imports_and_related_copies_never_add_records(tmp_pat
     fields. A copy is never one of the record's messages, attachments or recipients."""
     conn, s = _import(related_package(tmp_path / "rel.ufdr"))
     locs = {r[0] for r in conn.execute("SELECT locator FROM messages")}
-    assert len(locs) == 60 + 45 + 5
-    assert {"Chat[1]/Messages[60]", "Chat[2]/Messages[45]", "Chat[3]/Messages[5]"} <= locs
+    assert len(locs) == 60 + 45 + 7
+    assert {"Chat[1]/Messages[60]", "Chat[2]/Messages[45]", "Chat[3]/Messages[7]"} <= locs
     assert not any("Related" in x for x in locs)
     # Chat[1]/Messages[4] holds two copies of itself: one recipient, no attachment, still
     (mid,) = conn.execute(
@@ -1086,9 +1087,9 @@ def test_every_chat_message_imports_and_related_copies_never_add_records(tmp_pat
     assert conn.execute("SELECT COUNT(*), COUNT(sha256) FROM attachments").fetchone() == (13, 13)
     assert conn.execute("SELECT COUNT(*) FROM calls").fetchone() == (4,)
     counts = json.loads(conn.execute("SELECT payload_json FROM source_coverage").fetchone()[0])
-    # 56 chat messages copied in other chats, 24 self copies, 4 calls, 2 accounts
-    assert counts["counts"]["related_copies"] == 86
-    assert counts["counts"]["related_copies_matching_a_record"] == 86
+    # 58 chat messages in the chats' copies of themselves, 24 self copies, 4 calls, 2 accounts
+    assert counts["counts"]["related_copies"] == 88
+    assert counts["counts"]["related_copies_matching_a_record"] == 88
     assert counts["ufdr"]["related_copies_by_type"] == {
         "Call": 4, "Chat": 3, "InstantMessage": 24, "UserAccount": 2
     }  # fmt: skip
@@ -1113,15 +1114,67 @@ def test_a_related_copy_matching_no_record_is_listed_and_shown_in_the_report(tmp
     conn, s = _import(related_package(tmp_path / "rel.ufdr", unmatched=True))
     items = [i for i in s.items if i.code == "related_copy_unmatched"]
     assert {i.locators for i in items} == {
-        ("Chat[1]/Related[1]/Messages[24]",),
+        # the second: a third copy of two same-second twins
+        ("Chat[1]/Related[1]/Messages[31]", "Chat[3]/Related[1]/Messages[6]"),
         ("Call[1]/Related[1]",),
     }
     assert all(i.level == "attention" for i in items)
-    assert "Baker did not import it" in items[0].plain
+    assert {"Baker did not import it", "Baker did not import them"} <= {
+        i.plain.split("so ", 1)[1].split(";")[0] for i in items
+    }
     html = render_report(conn)
     assert "held only as a related copy" in html.split("<h2>Limitations</h2>", 1)[1]
     # the copy is not imported as a record, and nothing else changed
-    assert conn.execute("SELECT COUNT(*) FROM messages").fetchone() == (110,)
+    assert conn.execute("SELECT COUNT(*) FROM messages").fetchone() == (112,)
+
+
+def test_a_lone_copy_never_hides_behind_a_same_second_twin(tmp_path):
+    """Two messages with the same words, parties and second are two records. A copied chat
+    holding them three times holds one message no record has: copies match the holder chat's
+    messages one to one, so the third is listed, never absorbed by a twin (Baker Eval on #117)."""
+    t = "2026-03-05T21:31:00.000-05:00"
+    twins = [_msg("ok", t, id="m1"), _msg("ok", t, id="m2")]
+    copied = _chat("k1", *(_msg("ok", t, id=f"c{i}") for i in (1, 2, 3)))
+    xml = report_xml({"Chat": [_chat("k1", *twins, extra=(related(copied),))]})
+    conn, s = _import(write_package(tmp_path / "twins.ufdr", xml))
+    assert conn.execute("SELECT COUNT(*) FROM messages").fetchone() == (2,)
+    (item,) = [i for i in s.items if i.code == "related_copy_unmatched"]
+    assert item.locators == ("Chat[1]/Related[1]/Messages[3]",)
+    p = json.loads(conn.execute("SELECT payload_json FROM source_coverage").fetchone()[0])
+    assert (p["counts"]["related_copies"], p["counts"]["related_copies_matching_a_record"]) == (
+        3, 2
+    )  # fmt: skip
+    d = ufdr_check.run(write_package(tmp_path / "twins2.ufdr", xml)).shareable
+    assert d["differences"] == 0
+
+
+def test_a_copy_is_matched_to_its_own_holder_only(tmp_path):
+    """A copy of one message says what that message says; the same words, parties and time on
+    another record of the package do not make it a copy (each copy is a copy of its holder)."""
+    t = "2026-03-05T21:31:00.000-05:00"
+    a = _chat("k1", _msg("ok", t, id="m1"), extra=(related(_chat("k2", _msg("hi", t, id="c1"))),))
+    b = _chat("k2", _msg("hi", t, id="m2"))
+    conn, s = _import(write_package(tmp_path / "own.ufdr", report_xml({"Chat": [a, b]})))
+    (item,) = [i for i in s.items if i.code == "related_copy_unmatched"]
+    assert item.locators == ("Chat[1]/Related[1]/Messages[1]",)
+
+
+@pytest.mark.parametrize("change", ["deleted", "attachment"])
+def test_a_copy_differing_in_deleted_state_or_attachments_is_listed(tmp_path, change):
+    t = "2026-03-05T21:31:00.000-05:00"
+    if change == "deleted":
+        copy = _msg("ok", t, id="c1", deleted_state="Deleted")
+    else:
+        head, end = _msg("ok", t, id="c1").rsplit("</model>", 1)
+        att = model("Attachment", field("Filename", "x.png"), id="a1")
+        copy = f"{head}{many('Attachments', [att])}</model>{end}"
+    record = _msg("ok", t, id="m1", deleted_state="Intact")
+    xml = report_xml({"Chat": [_chat("k1", record, extra=(related(_chat("k1", copy)),))]})
+    conn, s = _import(write_package(tmp_path / "d.ufdr", xml))
+    (item,) = [i for i in s.items if i.code == "related_copy_unmatched"]
+    assert item.locators == ("Chat[1]/Related[1]/Messages[1]",)
+    d = ufdr_check.run(write_package(tmp_path / "d2.ufdr", xml)).shareable
+    assert d["differences"] == 0
 
 
 def test_a_chat_message_skipped_between_the_two_reads_stores_nothing(tmp_path, monkeypatch):
@@ -1138,3 +1191,22 @@ def test_a_chat_message_skipped_between_the_two_reads_stores_nothing(tmp_path, m
     with pytest.raises(ValueError, match="chat messages on the first read"):
         UfdrImporter(source_id="u1").import_source(path, conn)
     assert conn.execute("SELECT COUNT(*) FROM messages").fetchone() == (0,)
+
+
+def test_a_copy_saying_the_same_words_to_someone_else_is_not_taken_for_the_record(tmp_path):
+    """Same text, time and sender is not enough: a copy addressed to another person matches no
+    record, so it is listed, not silently counted as a copy (Baker Eval on #117)."""
+    t = "2026-03-05T21:31:00.000-05:00"
+    other = ("+15550100003", "Sam", False)
+    copies = related(
+        _chat("k1", _msg("ok", t, id="c1")),  # an exact copy of the record
+        _chat("k2", _msg("ok", t, to=(other,), id="c2")),  # the same words to someone else
+    )
+    xml = report_xml({"Chat": [_chat("k1", _msg("ok", t, id="m1"), extra=(copies,))]})
+    conn, s = _import(write_package(tmp_path / "same.ufdr", xml))
+    assert conn.execute("SELECT COUNT(*) FROM messages").fetchone() == (1,)
+    (item,) = [i for i in s.items if i.code == "related_copy_unmatched"]
+    assert item.locators == ("Chat[1]/Related[2]/Messages[1]",)
+    p = json.loads(conn.execute("SELECT payload_json FROM source_coverage").fetchone()[0])
+    assert p["counts"]["related_copies"] == 2
+    assert p["counts"]["related_copies_matching_a_record"] == 1
