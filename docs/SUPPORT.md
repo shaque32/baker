@@ -5,7 +5,7 @@
 **support@baker.example** — a placeholder. The Baker team sets the real address before any pilot
 by changing `SUPPORT_EMAIL` in `core/support/contact.py` and setting `SUPPORT_IS_PLACEHOLDER` to
 `False`, then the Help tab and the bug report show it. Update the address in this file and in
-`docs/WHAT_BAKER_DOES.md` in the same change, since they are static text. Until then the Help tab says
+`docs/ONE_PAGER.md` in the same change, since they are static text. Until then the Help tab says
 the address is a placeholder.
 
 When you write, say what you did, what you saw and what you expected. **Never send case

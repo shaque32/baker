@@ -227,5 +227,6 @@ the case's audit log as `cloud.sent`.
   audit log under the examiner's name, anchored in a file beside the database. The claim order
   on the setup page is saved in `case.json` and is not logged. The log is checked on open and before every report, and a failure blocks the case. The
   report prints the result and the last hash (see `docs/METHODS.md` for what the chain does and doesn't detect).
-- The Windows installer is **not code-signed yet**. Check its SHA-256 before running it
+- The Windows installer is code-signed (Microsoft Artifact Signing, publisher Shayan Haque);
+  only builds of `main` sign. Check its SHA-256 and the publisher before running it
   (`docs/install.md`).

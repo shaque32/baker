@@ -52,7 +52,7 @@ def help_page(page: Page, report_text: str | None, withheld: str | None, case_op
         + "</ul><h3>It does not</h3><ul>"
         + "".join(f"<li>{e(x)}</li>" for x in DOES_NOT)
         + "</ul><p class='muted'>The full one-page explainer is "
-        "<code>docs/WHAT_BAKER_DOES.md</code> in the Baker folder.</p></div>"
+        "<code>docs/ONE_PAGER.md</code> in the Baker folder.</p></div>"
     )
     scope = (
         "It describes this Baker install and the case open now (counts and states only)."

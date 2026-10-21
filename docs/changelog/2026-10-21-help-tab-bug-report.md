@@ -1,4 +1,4 @@
-## 2026-10-20: Help tab, support contact and a bug report with no case data (#92)
+## 2026-10-21: Help tab, support contact and a bug report with no case data (#92)
 - Changed: a Help tab on the review screen with the support contact, a short "what Baker does
   and doesn't do", and a bug-report export (`/help/bug-report.json` and `baker bug-report`),
   shown in full before it is saved. It holds versions, system and model setup, the last job,
@@ -6,7 +6,7 @@
   states; it leaves out case and file names, paths, any case text and every hash. Built from an
   allowlist and re-checked before display (`core/support/`). The screen server answers an
   unexpected error with a plain 500 that points to Help, and keeps the error's type and frames in
-  memory only. New docs: `docs/WHAT_BAKER_DOES.md` (one-page explainer, no speed or accuracy
+  memory only. New docs: `docs/ONE_PAGER.md` (one-page explainer, no speed or accuracy
   claims) and `docs/SUPPORT.md`. Why: pilot gate 17 in `docs/PILOT_GATES.md`.
 - Where: PR #92
 - Verified: `tests/test_bug_report.py` on a synthetic case01 with marked values in case name,
@@ -26,4 +26,4 @@
   only, without messages; no log file. The support address `support@baker.example` is a
   placeholder (`core/support/contact.py`)." In the open items, add "Set the real support address
   (pilot gate 17)." In docs/PILOT_GATES.md gate 17 evidence, note the one-pager
-  (`docs/WHAT_BAKER_DOES.md`) and bug report are on main and only the named contact is missing.
+  (`docs/ONE_PAGER.md`) and bug report are on main and only the named contact is missing.

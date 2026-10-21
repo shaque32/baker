@@ -367,3 +367,31 @@ def test_help_never_creates_a_missing_case_database(audited: App):
     db.unlink()
     get(audited, "/help/bug-report.json")
     assert not db.exists()
+
+
+def test_no_evidence_text_or_names_from_the_case_reach_the_report(audited: App, monkeypatch):
+    """Every message body, contact name, account identifier and thread title in the synthetic
+    case, and a canary in an unknown BAKER_ setting, is absent from the saved report."""
+    monkeypatch.setenv("BAKER_QUOKKALINE_CANARY", "Quokkaline-env-canary")
+    conn = connect(audited.case.db)  # type: ignore[union-attr]
+    try:
+        seen = [
+            v
+            for sql in (
+                "SELECT body FROM messages",
+                "SELECT name FROM contacts",
+                "SELECT identifier FROM accounts",
+                "SELECT display_name FROM accounts",
+                "SELECT title FROM threads",
+                "SELECT text FROM claims",
+            )
+            for (v,) in conn.execute(sql)
+            if isinstance(v, str) and len(v.strip()) >= 8
+        ]
+    finally:
+        conn.close()
+    assert len(seen) > 20
+    low = get(audited, "/help/bug-report.json").text.lower()
+    assert "quokkaline" not in low
+    leaked = [v for v in seen if v.strip().lower() in low]
+    assert leaked == []

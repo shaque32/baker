@@ -29,7 +29,7 @@ from core.contracts import AssumptionParams, CheckOutcome, CheckResult, Fidelity
 
 class AbsenceCheck(TemplateCheck):
     name = "absence"
-    version = "1.0.0"
+    version = "1.0.1"
 
     def evaluate(self, assumption_id: str, p: AssumptionParams, data: CaseData) -> CheckResult:
         if p.window is None:

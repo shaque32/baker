@@ -21,8 +21,11 @@ the judgment.
    records as supporting, contradicting or neither, and every quote it gives must appear word for
    word in the record or it is thrown away.
 4. **Gives each claim a status from fixed, versioned rules:** supported, contradicted or unproven,
-   with the records and reasons. **Nothing is supported until you accept its evidence.** The model
-   never decides a verdict.
+   with the records and reasons. **The model never decides a verdict.** Nothing is supported
+   until you accept its evidence, and a model's "contradicts" label counts only after you confirm
+   it (until then the claim shows "Contradiction found, confirm to finalize"). A code check that
+   fails, such as a wrong sender or a time outside the stated window, contradicts a claim
+   directly, with the failed check shown.
 5. **Shows you where to look.** The records behind each claim, the messages around each quote,
    gaps in the timeline, and what the document left out around a quote.
 6. **Keeps a record.** Every decision goes into a hash-chained audit log under your name. The
@@ -39,8 +42,9 @@ the judgment.
    curated report (the examiner's selection) can never show that something is absent.
 4. **It doesn't link identities on its own.** Links between a number, a handle and a person stay
    proposed until you confirm them.
-5. **It makes no speed or accuracy claim.** Baker has been measured on synthetic cases only, and no
-   figure is published until it is measured on real extractions.
+5. **It makes no speed or accuracy claim.** There is no accuracy figure for real cases: Baker has
+   been measured on synthetic cases only, and no figure is published until it is measured on real
+   extractions. UFDR and AXIOM support is unverified on real exports.
 
 ## Where your data goes
 

@@ -22,7 +22,7 @@ class SenderCheck(TemplateCheck):
     """
 
     name = "sender"
-    version = "1.0.0"
+    version = "1.0.1"
 
     def evaluate(self, assumption_id: str, p: AssumptionParams, data: CaseData) -> CheckResult:
         sources = data.sources_for(p.device_ids)
