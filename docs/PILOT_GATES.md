@@ -10,7 +10,7 @@ the same PR that changes a gate's state, along with `docs/PRODUCT_STATUS.md` sec
 - **As of:** 2026-10-20, main `e8b373a` for gate 10 (signed build); the other rows were last
   checked 2026-10-19 at main `0dc55dc` (after #83, #72, #68, #74, #73, #75, #79, #85, #76, #87, #78, #82, #86, #88, #91, #89, #84
   and #81). Since `80bf0df` only gate 4's row was rechecked (for #89). Open PRs are named but not counted.
-- **Result:** 12 of 19 gates met (gate 10 by the signed main build of 2026-10-20, gate 19 by #98, gate 2 by #76, gate 3 by #91, gate 14 by the case02 key Arsh signed, gate 6 by #72, gate 7 by #74, gate 8 by
+- **Result:** 13 of 19 gates met (gate 17 by #92, gate 10 by the signed main build of 2026-10-20, gate 19 by #98, gate 2 by #76, gate 3 by #91, gate 14 by the case02 key Arsh signed, gate 6 by #72, gate 7 by #74, gate 8 by
   merging #68, gate 12 by #82, gate 13 by #86 and #88, gate 15 already in place, gate 18 by the feedback form #82 publishes). Gates 13 to 18 come from Grok's pilot-ready list
   (2026-10-16), which Arsh agreed to fold in here. Gate 19 comes from Grok's URGENT FIX on #90
   (2026-10-19). **Not pilot-ready.**

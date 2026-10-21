@@ -414,3 +414,15 @@ def test_an_unreadable_cloud_setup_reads_as_no_key(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(app, "_cloud_load", boom)
     assert app._cloud_key_ready() is False
     assert get(app, "/help").status == 200
+
+
+def test_a_case_name_that_is_a_report_key_is_not_a_leak():
+    text = json.dumps({"pipeline": "1.0", "baker": {"rules": "0.3.0"}})
+    bug_report.check_clean(text, {"Pipeline"})
+    with pytest.raises(bug_report.NotClean):
+        bug_report.check_clean(json.dumps({"note": "Pipeline v. Smith"}), {"Pipeline"})
+
+
+def test_a_cloud_stance_run_counts_as_the_shipped_prompt():
+    shipped = bug_report.shipped_prompts()
+    assert shipped["stance_cloud"] and shipped["stance_cloud"] != shipped["stance"]

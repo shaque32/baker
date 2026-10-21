@@ -53,6 +53,7 @@ PROMPTS = {  # purpose in model_runs -> the prompt file Baker ships
     "review": "reviewer.md",
     "claims": "claims.md",
     "assumptions": "assumptions.md",
+    "stance_cloud": "stance_cloud.md",  # an opted-in cloud stance run is stored as "stance"
 }
 # Case tables counted (row counts only). Names are fixed here, never read from the database.
 COUNTED = (
@@ -340,7 +341,10 @@ def case_section(case: cases.Case, conn: sqlite3.Connection | None) -> dict[str,
         key = purpose if purpose in PROMPTS or _safe(purpose) else "other"
         row = model_runs.setdefault(key, {"runs": 0, "prompt_is_shipped_version": True})
         row["runs"] += n
-        if shipped.get(purpose) != prompt:
+        expected = {shipped.get(purpose)}
+        if purpose == "stance":
+            expected.add(shipped.get("stance_cloud"))
+        if prompt not in expected - {None}:
             row["prompt_is_shipped_version"] = False
     out["model_runs"] = model_runs
     out["model_call_outcomes"] = dict(
@@ -409,10 +413,23 @@ def sensitive_values(case: cases.Case | None, conn: sqlite3.Connection | None) -
 def check_clean(text: str, sensitive: set[str]) -> None:
     if _HEX_RUN.search(text):
         raise NotClean("it contains a long hex value, which may be a hash or a key")
-    lowered = text.lower()
+    # Only the values Baker filled in are checked, not the report's own keys: a case named
+    # "Pipeline" must not match the "pipeline" key. Text that is not JSON is checked whole.
+    try:
+        lowered = "\n".join(_strings(json.loads(text))).lower()
+    except ValueError:
+        lowered = text.lower()
     for s in sensitive:
         if s.lower() in lowered:
             raise NotClean("it contains a name or value from the open case")
+
+
+def _strings(value: Any) -> list[str]:
+    if isinstance(value, dict):
+        return [s for v in value.values() for s in _strings(v)]
+    if isinstance(value, list):
+        return [s for v in value for s in _strings(v)]
+    return [str(value)] if value is not None else []
 
 
 def render(report: dict[str, Any], sensitive: set[str] | None = None) -> str:
