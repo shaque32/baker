@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import functools
 import hmac
+import html
 import re
 import secrets
 import shutil
@@ -43,7 +44,6 @@ import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from html import unescape
 from pathlib import Path
 from typing import BinaryIO
 from urllib.parse import parse_qs, urlsplit
@@ -125,7 +125,7 @@ def listed_evidence(html_text: str) -> list[str]:
     each once. A link stands for an item the page listed, not one the examiner opened."""
     seen: dict[str, None] = {}
     for m in _EVIDENCE_HREF.finditer(html_text):
-        for v in parse_qs(urlsplit(unescape(m.group(1))).query).get("id", []):
+        for v in parse_qs(urlsplit(html.unescape(m.group(1))).query).get("id", []):
             seen.setdefault(v, None)
     return list(seen)
 
@@ -221,6 +221,7 @@ class App:
         self.last_check: ModelCheck | None = None
         self.session = secrets.token_hex(8)  # names this screen's page views in the trail
         self._last_view: tuple | None = None
+        self._unrecorded: list[str] = []  # views that could not be written, not yet shown
         self.clock: Callable[[], datetime] = lambda: datetime.now(UTC)
         self.cloud_config = cloud_config  # None: $BAKER_CLOUD_CONFIG, else ~/.baker/cloud.json
         if expert:
@@ -349,10 +350,10 @@ class App:
             if req.method == "GET":
                 if req.path in activity.RECORD_FIRST:  # it shows the trail up to itself
                     self._note_view(conn, req, None)
-                    return self._get(conn, req)
+                    return self._unrecorded_warning(self._get(conn, req))
                 resp = self._get(conn, req)
                 self._note_view(conn, req, resp)
-                return resp
+                return self._unrecorded_warning(resp)
             self._last_view = None  # whatever the post did, the next page is a new view
             return self._post(conn, req)
         finally:
@@ -385,9 +386,32 @@ class App:
                 listed=listed,
             )
         except db.Error as err:  # busy past the timeout, or a full disk: say so, never hide it
-            self.flash = (f"Baker could not record that you opened this page ({err}).", True)
+            page = activity.PAGES.get(req.path, req.path)
+            self._unrecorded.append(f"{page} ({err})")
             return
         self._last_view = key
+
+    def _unrecorded_warning(self, resp: Response) -> Response:
+        """Put the views Baker could not record at the top of this page, if it is a page shown
+        on screen; a download carries none, so the warning waits for the next page shown."""
+        if not self._unrecorded or resp.status != 200 or resp.header("Content-Disposition"):
+            return resp
+        if not (resp.header("Content-Type") or "").startswith("text/html"):
+            return resp
+        text = resp.text
+        at = text.find("<main")
+        at = text.find(">", at if at >= 0 else text.find("<body")) + 1
+        if at <= 0:
+            return resp
+        warning = (
+            "<div class='flash err' role='alert'>Baker could not record that you opened these "
+            "pages, so they are not in the activity trail: "
+            + html.escape("; ".join(self._unrecorded))
+            + ".</div>"
+        )
+        self._unrecorded = []
+        resp.body = (text[:at] + warning + text[at:]).encode("utf-8")
+        return resp
 
     # -- GET
 

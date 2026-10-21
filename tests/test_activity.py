@@ -217,13 +217,22 @@ def test_editing_a_view_breaks_the_chain(db, conn):
 
 def test_a_view_that_cannot_be_written_is_reported_not_hidden(db, conn, monkeypatch):
     app, _ = _app(db)
+    real = activity.record_view
 
     def busy(*a, **k):  # noqa: ANN002, ANN003, ANN202
         raise sqlite3.OperationalError("database is locked")
 
     monkeypatch.setattr(activity, "record_view", busy)
-    assert get(app, "/claim", id="C05").status == 200
-    assert "could not record that you opened this page" in get(app, "/").text
+    page = get(app, "/claim", id="C05")
+    assert page.status == 200
+    assert "could not record that you opened these pages" in page.text  # on the page itself
+    assert "Claim (database is locked)" in page.text
+    download = get(app, "/activity.csv")  # a download carries no warning, so it waits
+    assert "could not record" not in download.text
+    monkeypatch.setattr(activity, "record_view", real)
+    shown = get(app, "/").text
+    assert "Activity (download) (database is locked)" in shown
+    assert "could not record" not in get(app, "/claims").text  # shown once
 
 
 def test_cli_lists_and_exports_the_trail(db, tmp_path, capsys):
