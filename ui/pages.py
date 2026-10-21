@@ -497,9 +497,9 @@ def _ledger(states: list[ClaimState], current: str | None = None, compact: bool 
 # where a claim sits on the overview: what waits on the expert first, then the findings
 GROUPS = (
     ("you", "Needs you", "Waiting on your review"),
-    ("con", "Contradicted", "Decided contradicted with an expert"),
+    ("con", "Contradicted", "The verdict rules or an expert decided it"),
     ("unp", "Unproven", "The claim says more than the data shows"),
-    ("sup", "Supported", "Decided supported with an expert"),
+    ("sup", "Supported", "The verdict rules or an expert decided it"),
     ("not", "Not audited", "No verdict yet"),
 )
 NEEDS_YOU = 4  # needs() priority at or below this waits on the expert

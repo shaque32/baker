@@ -39,6 +39,7 @@ from core.contracts import (
     Claim,
     EvidenceItem,
     EvidenceStatus,
+    ProvenanceTier,
     Stance,
     SupportedBasis,
     Verdict,
@@ -64,8 +65,9 @@ AGAINST = (Stance.CONTRADICTS, Stance.COMPLICATES)
 
 # Why an unproven claim is unproven, in plain words: one line per kind of core assumption the
 # rules found not covered. Read from the stored verdict's coverage; it decides nothing. The
-# overview and the report print the same words. Absence wording says the search could not show
-# it, never that something did not happen.
+# overview and the report print the same words. Each line says only that the part is not
+# established, never why in detail (the rule reasons do that) and never that something did not
+# happen.
 GAP_TOPICS: dict[AssumptionKind, str] = {
     AssumptionKind.MEANING: "Meaning of words",
     AssumptionKind.IDENTITY: "Who is behind an account",
@@ -75,29 +77,17 @@ GAP_TOPICS: dict[AssumptionKind, str] = {
 }
 OTHER_RULE = (
     "Other verdict rule",
-    "No coverage gap; another verdict rule keeps it unproven. The claim page lists the rule's "
-    "reasons.",
+    "No coverage gap; another verdict rule keeps it unproven. The rule's reasons are listed "
+    "with the claim.",
 )
 GAP_TEXT: dict[AssumptionKind, str] = {
-    AssumptionKind.MEANING: (
-        "No passing check or qualifying expert-accepted record shows the words mean what the "
-        "claim says."
-    ),
-    AssumptionKind.IDENTITY: (
-        "No passing check, confirmed stipulation or qualifying expert-accepted record establishes "
-        "the identity link the claim states."
-    ),
-    AssumptionKind.EVENT: (
-        "No passing check or qualifying expert-accepted record shows the event or role the "
-        "claim states."
-    ),
-    AssumptionKind.TIME: (
-        "No passing check or qualifying expert-accepted record places it at the time the "
-        "claim states."
-    ),
+    AssumptionKind.MEANING: "What the words mean, as the claim reads them, is not established.",
+    AssumptionKind.IDENTITY: "The identity link the claim states is not established.",
+    AssumptionKind.EVENT: "The event or role the claim states is not established.",
+    AssumptionKind.TIME: "The time the claim states is not established.",
     AssumptionKind.COMPLETENESS: (
-        "The search coverage is not enough to settle what the claim states; the claim page "
-        "lists what was searched and each source's coverage."
+        "What the claim states about the records is not established by the searches; the "
+        "searches and each source's coverage are listed with the claim."
     ),
 }
 
@@ -196,6 +186,7 @@ class ClaimState:
             e.assumption_id
             for e in self.evidence
             if e.stance == Stance.SUPPORTS
+            and e.tier != ProvenanceTier.INFERRED  # an inference never covers (rules.py)
             and e.status != EvidenceStatus.DISMISSED
             and not (self.last_reviewer.get(e.id) == "expert" and e.status != EvidenceStatus.OPEN)
         }

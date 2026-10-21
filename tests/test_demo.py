@@ -362,6 +362,14 @@ def test_support_waiting_on_the_expert_is_not_a_gap_and_every_tile_has_a_destina
     reviewers = {k: v for k, v in st.last_reviewer.items() if k != item.id}
     waiting = dataclasses.replace(st, evidence=opened, last_reviewer=reviewers)
     assert st.gaps() == [K.MEANING] and waiting.gaps() == []
+    # an inference waiting on the expert could never cover the assumption, so the gap stays
+    from core.contracts import ProvenanceTier
+
+    inferred = [
+        x.model_copy(update={"tier": ProvenanceTier.INFERRED}) if x.id == item.id else x
+        for x in opened
+    ]
+    assert dataclasses.replace(waiting, evidence=inferred).gaps() == [K.MEANING]
     # stale until verdicts re-run: no gap read from the old coverage
     assert dataclasses.replace(st, decided_after_run=True).gaps() == []
     assert dataclasses.replace(st, edited_after_run=True).gaps() == []
