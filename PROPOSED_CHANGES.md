@@ -590,3 +590,19 @@ Diff:
              f"Rule 3d: {e.record_id} complicates '{f.assumption.text}' and is not dismissed."
              for e in f.complicating
 ```
+
+## 2026-10-21 claude/expert-confirms-contradicts-y6ti2f: stance prompt v1.3 for the local model (rules 12 and 23), pending the Mac re-probe
+NOT for signing yet. Which diff is proposed, if any, is decided by `bash eval/probe/mac_v13.sh`
+under the criteria in `eval/probe/v13/PREREGISTERED.md`, committed before any item or call.
+File: core/audit/prompts/stance.md
+Why: the local 14B calls told frames and undated denials "contradicts" (8 of its 19 on the
+signed probe set, precision 58%, bar 90%); v1.2's sentence, now the cloud prompt, fixed none of
+them for the 14B. Rules 0.3.0 already keep these from deciding a verdict, but each one asks the
+expert to reject a contradiction that should never have been shown as one.
+Diff, if v1.3a passes: insert the block that starts `Before you answer "contradicts", make two
+checks.` in `eval/probe/stance_v1_3a_draft.md`, word for word with its trailing blank line,
+directly above `If you are unsure between "supports" and anything else, do not choose
+"supports".`. If only v1.3b passes: the same, then its `Examples, invented and not from this
+case:` block from `eval/probe/stance_v1_3b_draft.md`. Header: "v1.3, signed by Arsh on <date>
+...". Nothing else in the prompt changes (tests/test_probe_v13.py). The tests that pin v1.1's
+SHA-256 (tests/test_stance.py, tests/test_probe_layout.py) move with it.

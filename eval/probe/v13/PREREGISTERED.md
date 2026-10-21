@@ -65,3 +65,18 @@ contradicts on non-meaning assumptions. A pass here does not add any claim type 
 ## Commitments
 No label, criterion or candidate edit after seeing any answer. All numbers published, including
 any that get worse. $0 API spend: everything runs on the Mac's local model.
+
+## Addendum, before any call (2026-10-21)
+- The fresh set has 32 items: A told frames H001 to H010 (3 Russian), B undated denials H011 to
+  H016 (2 dated after the message), C contradicts controls H017 to H026, D supports controls
+  H027 to H032. Written by a separate agent from the guide alone; it did not read eval/probe/.
+- H017 was written as a drill returned on June 3 and denied on June 5, close to v1.3b's fourth
+  example (a drill, June 4 and June 6). Before any reader answer was used and before any call,
+  its object and dates were changed to a tile saw, June 23 and June 25; its label and wording
+  are otherwise as written. No other item shares an example's names or objects, and no item
+  reuses a signed probe item's record text or contact name.
+- The blind readers labeled the drill version of H017; the label does not depend on the object.
+- Blind readers (before any call): all three gave all 32 fresh items their draft label, so none
+  is left out (`blind_readers.json`, `heldout_left_out.json`). On plain sense, two or three
+  readers would call each A item and four B items "contradicts"; the guide's answer, which
+  Arsh signed with v0.3, is "complicates", and the criteria score the guide's answer.
