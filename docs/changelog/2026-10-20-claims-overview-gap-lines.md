@@ -9,7 +9,7 @@
   rule gets one line pointing to that rule. The lines are read from the stored verdict's
   coverage and decide nothing; each says only that a part "is not established". When
   anything the verdict rests on changed after the run, one "Not current" line asks for a
-  rules-only re-run instead. AI-reviewed support and unseen AI-dismissed support count as Needs you. The overview no longer repeats "Verdict not yet
+  re-run (the full audit after an identity or person change) and the claim counts as Needs you. AI-reviewed support and unseen AI-dismissed support count as Needs you. The overview no longer repeats "Verdict not yet
   confirmed or overridden by you" on every row (the claim page still shows it). The report
   (0.10.0) prints the same gap lines under each unproven claim. Verdicts, rules, labels,
   contracts and schema are unchanged. Plan: /mnt/project-files/baker/plans/ui-redesign.md (PR 1 of 3).

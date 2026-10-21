@@ -63,6 +63,7 @@ from core.review.status import (
     CONTRADICTION_FOUND,
     GAP_TOPICS,
     HOLDINGS,
+    STALE,
     ClaimState,
     case_holdings,
     claim_name,
@@ -507,11 +508,17 @@ NEEDS_YOU = 4  # needs() priority at or below this waits on the expert
 
 def needs_you(st: ClaimState) -> bool:
     """The claim waits on the expert: an urgent need, a supported verdict that rests on the AI
-    reviewer rather than an expert, or support the AI reviewer dismissed that no expert has seen.
+    reviewer rather than an expert, support the AI reviewer dismissed that no expert has seen, or
+    an unproven verdict made stale by a later change.
     The overview and the case page count the same claims."""
     if st.decision is None or st.incomplete:
         return False
-    return st.priority <= NEEDS_YOU or st.css == "v-supai" or st.ai_dismissed > 0
+    return (
+        st.priority <= NEEDS_YOU
+        or st.css == "v-supai"
+        or st.ai_dismissed > 0
+        or st.unproven_lines() == [STALE]  # its explanation waits on a re-run
+    )
 
 
 def _group(st: ClaimState) -> str:

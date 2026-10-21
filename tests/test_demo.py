@@ -364,10 +364,12 @@ def test_gap_lines_follow_the_stored_coverage_until_it_is_stale_and_tiles_have_d
     waiting = dataclasses.replace(st, evidence=opened, last_reviewer=reviewers)
     assert st.gaps() == [K.MEANING] and waiting.gaps() == [K.MEANING]
     from core.review.status import STALE
+    from ui import pages
 
     for flag in ("decided_after_run", "edited_after_run", "case_changed_after_run"):
         stale = dataclasses.replace(st, **{flag: True})
         assert stale.gaps() == [] and stale.unproven_lines() == [STALE], flag
+        assert pages.needs_you(stale), flag
     # every core assumption covered, yet unproven by another rule: one line points to the rule
     from core.review.status import OTHER_RULE
 

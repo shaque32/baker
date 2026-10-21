@@ -81,8 +81,8 @@ OTHER_RULE = (
 )
 STALE = (
     "Not current",
-    "Something this verdict rests on changed after the run. Re-run the verdicts (rules only, "
-    "no model) to see what is still not established.",
+    "Something this verdict rests on changed after the run. Re-run the verdicts, or the full "
+    "audit after an identity or person change, to see what is still not established.",
 )
 GAP_TEXT: dict[AssumptionKind, str] = {
     AssumptionKind.MEANING: "What the words mean, as the claim reads them, is not established.",
