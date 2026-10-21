@@ -161,6 +161,7 @@ class Page:
         groups = [[("/cases", "Cases")]] if self.many_cases else []
         if self.case_name is not None:
             groups += TAB_GROUPS
+        groups.append([("/help", "Help")])
         links = "<span class='sep' aria-hidden='true'></span>".join(
             "".join(
                 f"<a href='{href}'{' class=on' if _tab(self.path) == href else ''}>{label}</a>"
