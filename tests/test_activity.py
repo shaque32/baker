@@ -341,3 +341,28 @@ def test_reading_a_long_trail_of_actions_is_linear(db, conn):
     trail = activity.steps(conn)
     assert time.perf_counter() - start < 5  # quadratic would take minutes here
     assert all(s.seconds == 0 for s in trail if s.is_view and s.seq < trail[-1].seq - 1)
+
+
+def test_a_report_that_cannot_be_anchored_records_no_view(db, conn, monkeypatch):
+    app, _ = _app(db)
+
+    def unwritable(*a, **k):  # noqa: ANN002, ANN003, ANN202
+        raise audit_log.AnchorUnwritable(audit_log.anchors_path(db), OSError("read-only"))
+
+    before = conn.execute("SELECT MAX(seq) FROM audit_log").fetchone()[0]
+    monkeypatch.setattr(audit_log, "anchor", unwritable)
+    assert get(app, "/report").status == 303  # no report, the case closes
+    assert conn.execute("SELECT MAX(seq) FROM audit_log").fetchone()[0] == before
+
+
+def test_an_upload_post_makes_the_next_page_a_new_view(db, conn):
+    import io
+
+    from ui.app import Request
+
+    app, _ = _app(db)
+    get(app, "/setup")
+    app.handle_upload(Request("POST", "/case/import", {}, {"host": f"127.0.0.1:{PORT}"}),
+                      io.BytesIO(b""), None)  # fmt: skip
+    get(app, "/setup")
+    assert [p["page"] for _, p in _views(conn)] == ["/setup", "/setup"]

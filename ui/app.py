@@ -1190,6 +1190,7 @@ class App:
 
     def handle_upload(self, req: Request, stream: BinaryIO, length: int | None) -> Response:
         """POST /case/import as multipart/form-data, streamed into the case's inputs folder."""
+        self._last_view = None  # a post, like any other: the page it returns to is a new view
         if req.headers.get("host") not in self.allowed_hosts():
             return self._plain(400, "This screen only answers requests from this computer.")
         if req.path != "/case/import":

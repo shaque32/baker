@@ -64,8 +64,9 @@ PAGES = {
 }
 
 # Pages that show the trail or the log: recorded before they render, so they include
-# themselves and end the time on the page before them.
-RECORD_FIRST = frozenset({"/activity", "/activity.csv", "/log", "/report", "/report.html"})
+# themselves and end the time on the page before them. Not the report: it anchors the log
+# first, and a report that cannot be anchored must leave the case unchanged.
+RECORD_FIRST = frozenset({"/activity", "/activity.csv", "/log"})
 
 
 def view_payload(
