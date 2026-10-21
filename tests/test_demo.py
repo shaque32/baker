@@ -414,6 +414,7 @@ def test_gap_lines_follow_the_stored_coverage_until_it_is_stale_and_tiles_have_d
         ),
     )
     assert pages._group(pending) == "not"
+    assert dataclasses.replace(pending, case_changed_after_run=True).explain_lines() == []
 
 
 def test_an_identity_change_stays_not_current_through_a_rules_only_rerun(root):
@@ -430,6 +431,9 @@ def test_an_identity_change_stays_not_current_through_a_rules_only_rerun(root):
         audit_log.append(conn, now, EXPERT, "stipulation.set", {"test": True})
     assert case_changed_after(conn, pipeline.view_run(conn))
     redecide(conn, EXPERT, clock=lambda: now + timedelta(minutes=1))
+    assert not case_changed_after(conn, pipeline.view_run(conn))
+    with conn:  # a proposed link stays inferred and feeds no check
+        audit_log.append(conn, now + timedelta(minutes=2), "system", "identity.propose", {})
     assert not case_changed_after(conn, pipeline.view_run(conn))
     with conn:
         audit_log.append(conn, now + timedelta(minutes=2), EXPERT, "identity.confirm", {})
