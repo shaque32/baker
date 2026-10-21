@@ -16,6 +16,7 @@ import re
 import shutil
 import threading
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -395,3 +396,21 @@ def test_no_evidence_text_or_names_from_the_case_reach_the_report(audited: App, 
     assert "quokkaline" not in low
     leaked = [v for v in seen if v.strip().lower() in low]
     assert leaked == []
+
+
+def test_the_report_leaves_out_a_job_from_a_case_that_is_not_open(tmp_path: Path):
+    app = App(home=tmp_path / "cases", port=PORT, model_check=None)
+    app.jobs.current = SimpleNamespace(kind="audit", db=tmp_path / "other.db")
+    text = app._bug_report()
+    assert json.loads(text)["last_job"] is None
+
+
+def test_an_unreadable_cloud_setup_reads_as_no_key(tmp_path: Path, monkeypatch):
+    app = App(home=tmp_path / "cases", port=PORT, model_check=None)
+
+    def boom(*a, **k):
+        raise OSError("unreadable")
+
+    monkeypatch.setattr(app, "_cloud_load", boom)
+    assert app._cloud_key_ready() is False
+    assert get(app, "/help").status == 200

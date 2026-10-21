@@ -962,6 +962,13 @@ class App:
             return str(err)
         return None
 
+    def _cloud_key_ready(self) -> bool:
+        """For the bug report: a broken or unreadable cloud setup reads as no key."""
+        try:
+            return self._cloud_key_state() is None
+        except OSError:
+            return False
+
     def _cloud_case(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         _ = self._open()
         entry = cloud_policy.set_cloud(
@@ -1244,7 +1251,7 @@ class App:
             except (*db.Error, CaseLocked, EncryptionError):
                 conn = None
         try:
-            job = self.jobs.current
+            job = self._job() if case is not None else None  # only the open case's job
             count = None
             if self.home is not None:
                 try:
@@ -1256,7 +1263,7 @@ class App:
                 conn=conn,
                 job=job,
                 last_check=self.last_check,
-                cloud_key_ready=self._cloud_key_state() is None,
+                cloud_key_ready=self._cloud_key_ready(),
                 many_cases=self.home is not None,
                 case_count=count,
             )

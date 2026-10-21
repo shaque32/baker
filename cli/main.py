@@ -477,7 +477,7 @@ def cmd_bug_report(a: argparse.Namespace) -> int:
         try:
             cloud_llm.load_config(case_db=None if case is None else case.db)
             key_ready = True
-        except cloud_llm.CloudConfigError:
+        except (cloud_llm.CloudConfigError, OSError):
             key_ready = False
         report = bug_report.build(case=case, conn=conn, cloud_key_ready=key_ready)
         try:
