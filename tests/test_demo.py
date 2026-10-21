@@ -5,7 +5,9 @@ touches anything but a demo case."""
 
 from __future__ import annotations
 
+import html
 import json
+import re
 import shutil
 import sqlite3
 from pathlib import Path
@@ -119,6 +121,40 @@ def test_every_claim_page_and_the_report_render(root):
         resp = app.handle(Request("GET", "/claim", {"id": claim_id}, dict(HOST)))
         assert resp.status == 200, (claim_id, resp.body[:200])
     assert app.handle(Request("GET", "/report", {}, dict(HOST))).status == 200
+
+
+def test_overview_groups_claims_and_says_why_each_unproven_claim_is_unproven(root):
+    """The claims overview puts what waits on the expert first, then the findings, and gives each
+    unproven claim a plain gap line read from the stored coverage. The report prints the same
+    lines; no verdict changes."""
+    from core.contracts import AssumptionKind as K
+    from core.review.status import GAP_TEXT, GAP_TOPICS, claim_states
+
+    case = _case(root)
+    conn = connect(case.db)
+    states = {st.claim.id: st for st in claim_states(conn)}
+    assert states["C06"].gaps() == [K.MEANING]
+    assert states["C18"].gaps() == [K.IDENTITY]
+    assert states["D01"].gaps() == [K.COMPLETENESS]
+    assert states["C05"].gaps() == []  # waits on the expert; every core assumption is covered
+    assert all(not st.gaps() for st in states.values() if st.decision.verdict != Verdict.UNPROVEN)
+    before = _verdicts(conn)
+
+    app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
+    app.open_case(case)
+    page = app.handle(Request("GET", "/claims", {}, dict(HOST))).body.decode()
+    sections = re.findall(r"<section class='(?:group|nextup)' id='([a-z]+)'>", page)
+    assert sections == ["next", "con", "unp", "sup"]
+    unp = page.split("<section class='group' id='unp'>", 1)[1].split("</section>", 1)[0]
+    assert "id=C06" in unp and GAP_TEXT[K.MEANING] in unp
+    assert "id=C05" in page.split("<section class='nextup' id='next'>", 1)[1].split("</section>")[0]
+    assert "Verdict not yet confirmed" not in page
+    assert "20 of 21" in page
+    own = " ".join([*GAP_TEXT.values(), *GAP_TOPICS.values()]).lower()  # Baker's words, not claims'
+    assert not any(w in own for w in ("guilty", "innocent", "leader", "deleted"))
+    report = render_report(conn)
+    assert html.escape(GAP_TEXT[K.COMPLETENESS], quote=True) in report
+    assert _verdicts(conn) == before
 
 
 def test_an_experts_own_reason_with_a_blocked_word_shows_as_written(root):
@@ -269,3 +305,137 @@ def test_cli_demo_paired_build_only(tmp_path, monkeypatch, capsys):
     assert "paired audit" in capsys.readouterr().out
     (case,) = cases.list_cases(tmp_path / "demo" / "cases")
     assert case.settings["paired"] is True
+
+
+def test_a_claim_supported_on_ai_review_or_with_ai_dismissed_support_waits_on_the_expert(
+    root, monkeypatch
+):
+    """Rules 0.3.0 never store an AI-reviewed supported verdict, but if a later rule version does,
+    the overview must not file it under "An expert accepted the evidence" or count it as done.
+    Support the AI reviewer dismissed, unseen by an expert, waits on the expert too."""
+    import dataclasses
+
+    from core.contracts import SupportedBasis
+    from core.review.status import SUPPORTED_AI, claim_states
+    from ui import pages
+
+    case = _case(root)
+    conn = connect(case.db)
+    states = claim_states(conn)
+    i = next(i for i, st in enumerate(states) if st.claim.id == "C01")
+    ai = states[i].decision.model_copy(update={"supported_basis": SupportedBasis.AI_REVIEWED})
+    states[i] = dataclasses.replace(states[i], decision=ai)
+    j = next(i for i, st in enumerate(states) if st.claim.id == "C02")
+    states[j] = dataclasses.replace(states[j], ai_dismissed=1)
+    assert states[i].label == SUPPORTED_AI
+    assert pages.needs_you(states[i]) and pages.needs_you(states[j])
+    monkeypatch.setattr(pages, "queue", lambda conn: sorted(states, key=lambda s: s.priority))
+
+    app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
+    app.open_case(case)
+    page = app.handle(Request("GET", "/claims", {}, dict(HOST))).body.decode()
+    sup = page.split("<section class='group' id='sup'>", 1)[1].split("</section>", 1)[0]
+    assert "id=C01" not in sup and "id=C02" not in sup
+    assert html.escape(SUPPORTED_AI) not in sup
+    assert "3 claims need you." in page and "18 of 21" in page
+
+
+def test_gap_lines_follow_the_stored_coverage_until_it_is_stale_and_tiles_have_destinations(root):
+    """A part the stored verdict left uncovered is "not established" even while support for it
+    waits on the expert; after a later change the line says the verdict is not current instead;
+    and each count tile links to a section that exists."""
+    import dataclasses
+
+    from core.contracts import AssumptionKind as K
+    from core.contracts import EvidenceStatus as S
+    from core.review.status import claim_states
+
+    case = _case(root)
+    conn = connect(case.db)
+    st = next(s for s in claim_states(conn) if s.claim.id == "C06")
+    meaning = next(a.id for a in st.assumptions if a.kind == K.MEANING)
+    item = next(
+        x for x in st.evidence if x.assumption_id == meaning and x.stance == Stance.SUPPORTS
+    )
+    opened = [
+        x.model_copy(update={"status": S.OPEN}) if x.id == item.id else x for x in st.evidence
+    ]
+    reviewers = {k: v for k, v in st.last_reviewer.items() if k != item.id}
+    waiting = dataclasses.replace(st, evidence=opened, last_reviewer=reviewers)
+    assert st.gaps() == [K.MEANING] and waiting.gaps() == [K.MEANING]
+    from core.review.status import STALE
+    from ui import pages
+
+    for flag in ("decided_after_run", "edited_after_run", "case_changed_after_run"):
+        stale = dataclasses.replace(st, **{flag: True})
+        assert stale.gaps() == [] and stale.explain_lines() == [STALE], flag
+        assert pages.needs_you(stale), flag
+    c01 = next(s for s in claim_states(conn) if s.claim.id == "C01")  # supported by the rules
+    c01_stale = dataclasses.replace(c01, case_changed_after_run=True)
+    assert pages.needs_you(c01_stale) and c01_stale.explain_lines() == [STALE]
+    assert STALE[1] in pages._claim_row(c01_stale, "you")
+    assert pages._group(c01_stale) == "you"
+    # every core assumption covered, yet unproven by another rule: one line points to the rule
+    from core.review.status import OTHER_RULE
+
+    covered = tuple(cv.model_copy(update={"covered": True}) for cv in st.decision.coverage)
+    full = dataclasses.replace(st, decision=st.decision.model_copy(update={"coverage": covered}))
+    assert full.gaps() == [] and full.explain_lines() == [OTHER_RULE]
+    # a claim that also waits on the expert still says what else leaves it unproven
+    from core.review.status import GAP_TEXT
+    from ui import pages
+
+    row = pages._claim_row(dataclasses.replace(st, ai_dismissed=1), "you")
+    assert html.escape(GAP_TEXT[K.MEANING], quote=True) in row
+
+    app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
+    app.open_case(case)
+    page = app.handle(Request("GET", "/claims", {}, dict(HOST))).body.decode()
+    hrefs = re.findall(r"<a class='tile [^']*' href='#([a-z]+)'>", page)
+    assert hrefs == ["next", "con", "unp", "sup"]
+    for h in hrefs:
+        assert f"id='{h}'>" in page
+    # the claim page shows the same lines, including "Not current" after an identity change
+    c06 = app.handle(Request("GET", "/claim", {"id": "C06"}, dict(HOST))).body.decode()
+    assert html.escape(GAP_TEXT[K.MEANING], quote=True) in c06
+    from datetime import UTC, datetime
+
+    from core.review import audit_log
+
+    with conn:
+        audit_log.append(conn, datetime.now(UTC), EXPERT, "identity.confirm", {})
+    c01_page = app.handle(Request("GET", "/claim", {"id": "C01"}, dict(HOST))).body.decode()
+    assert html.escape(STALE[1], quote=True) in c01_page
+    # a run without verdict rules decided nothing: not audited, not a gap in the data
+    pending = dataclasses.replace(
+        st,
+        decision=st.decision.model_copy(
+            update={"reasons": (*st.decision.reasons, pipeline.RULES_PENDING_REASON)}
+        ),
+    )
+    assert pages._group(pending) == "not"
+    assert not pages.needs_you(dataclasses.replace(pending, ai_dismissed=1))
+    assert dataclasses.replace(pending, case_changed_after_run=True).explain_lines() == []
+
+
+def test_an_identity_change_stays_not_current_through_a_rules_only_rerun(root):
+    """A rules-only re-run reuses the full audit's checks and searches, so an identity or person
+    change after that audit keeps the verdicts not current; a stipulation it reloads does not."""
+    from datetime import UTC, datetime, timedelta
+
+    from core.review import audit_log
+    from core.review.status import case_changed_after
+
+    conn = connect(_case(root).db)
+    now = datetime.now(UTC)
+    with conn:
+        audit_log.append(conn, now, EXPERT, "stipulation.set", {"test": True})
+    assert case_changed_after(conn, pipeline.view_run(conn))
+    redecide(conn, EXPERT, clock=lambda: now + timedelta(minutes=1))
+    assert not case_changed_after(conn, pipeline.view_run(conn))
+    with conn:  # a proposed link confirms nothing but widens what the audit searches
+        audit_log.append(conn, now + timedelta(minutes=2), "system", "identity.propose", {})
+    redecide(conn, EXPERT, clock=lambda: now + timedelta(minutes=3))
+    run = pipeline.view_run(conn)
+    assert run["evidence_from_run"] != run["run_id"]
+    assert case_changed_after(conn, run)

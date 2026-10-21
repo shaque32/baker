@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from core import pipeline
 from core.contracts import (
     Assumption,
+    AssumptionKind,
     CheckResult,
     Claim,
     EvidenceItem,
@@ -61,6 +62,40 @@ RULES_PENDING = "Unproven (rules not written yet)"
 
 AGAINST = (Stance.CONTRADICTS, Stance.COMPLICATES)
 
+# Why an unproven claim is unproven, in plain words: one line per kind of core assumption the
+# rules found not covered. Read from the stored verdict's coverage; it decides nothing. The
+# overview and the report print the same words. Each line says only that the part is not
+# established, never why in detail (the rule reasons do that) and never that something did not
+# happen.
+GAP_TOPICS: dict[AssumptionKind, str] = {
+    AssumptionKind.MEANING: "Meaning of words",
+    AssumptionKind.IDENTITY: "Who is behind an account",
+    AssumptionKind.EVENT: "Event or role",
+    AssumptionKind.TIME: "Time",
+    AssumptionKind.COMPLETENESS: "Search coverage",
+}
+OTHER_RULE = (
+    "Other verdict rule",
+    "No coverage gap; another verdict rule keeps it unproven. The rule's reasons are listed "
+    "with the claim.",
+)
+STALE = (
+    "Not current",
+    "Something this verdict rests on changed after the run. Re-run the verdicts, or the full "
+    "audit after a claim edit or an identity or person change, to see what is still not "
+    "established.",
+)
+GAP_TEXT: dict[AssumptionKind, str] = {
+    AssumptionKind.MEANING: "What the words mean, as the claim reads them, is not established.",
+    AssumptionKind.IDENTITY: "The identity link the claim states is not established.",
+    AssumptionKind.EVENT: "The event or role the claim states is not established.",
+    AssumptionKind.TIME: "The time the claim states is not established.",
+    AssumptionKind.COMPLETENESS: (
+        "What the claim states about the records is not established by the searches; the "
+        "searches and each source's coverage are listed with the claim."
+    ),
+}
+
 
 @dataclass
 class ClaimState:
@@ -84,6 +119,8 @@ class ClaimState:
     expert_decided: int = 0
     decided_after_run: bool = False  # an expert decided one of its items after the run
     edited_after_run: bool = False  # the expert changed the claim text after the run
+    # a stipulation, person or identity-link decision was made after the run (case-wide)
+    case_changed_after_run: bool = False
     unlabeled: str | None = None  # why the run did not send this claim's evidence to the model
     not_tested: str | None = None  # why nothing was checked: the claim got no core assumption
     incomplete: bool = False  # the run shown has not finished labeling this claim
@@ -123,6 +160,63 @@ class ClaimState:
             and self.decision is not None
             and self.decision.override_note is None
         )
+
+    @property
+    def stale(self) -> bool:
+        """Something the verdict rests on changed after the run: an evidence decision, the claim
+        text, or a case-wide stipulation, person or identity-link decision. Case-wide changes
+        mark every claim, which only asks for a re-run that is cheap (rules only, no model)."""
+        return self.decided_after_run or self.edited_after_run or self.case_changed_after_run
+
+    def _explainable(self) -> bool:
+        """An unproven verdict nobody overrode, whose stored coverage is still current."""
+        d = self.decision
+        return not (
+            d is None
+            or d.verdict != Verdict.UNPROVEN
+            or d.override_note is not None
+            or self.incomplete
+            or self.untested
+            or self.stale
+            or pipeline.RULES_PENDING_REASON in d.reasons
+        )
+
+    def gaps(self) -> list[AssumptionKind]:
+        """The kinds of core assumption the stored verdict found not covered, in claim order, for
+        an unproven verdict nobody overrode. Each is "not established" whatever else waits on the
+        expert. Empty for any other claim, and while the verdict is stale."""
+        if not self._explainable():
+            return []
+        d = self.decision
+        if d is None:
+            return []
+        uncovered = {cv.assumption_id for cv in d.coverage if not cv.covered}
+        out: list[AssumptionKind] = []
+        for a in self.assumptions:
+            if a.is_core and a.id in uncovered and a.kind not in out:
+                out.append(a.kind)
+        return out
+
+    def explain_lines(self) -> list[tuple[str, str]]:
+        """(topic, text) lines for the overview and the report: "Not current" for any verdict
+        nobody overrode that a later change made stale; else for an unproven claim one line per
+        gap, or, when every core assumption is covered and nothing waits on the expert, one line
+        pointing to the other rule that holds it."""
+        d = self.decision
+        if (
+            self.stale
+            and d is not None
+            and d.override_note is None
+            and not (self.incomplete or self.untested)
+            and pipeline.RULES_PENDING_REASON not in d.reasons  # nothing was decided
+        ):
+            return [STALE]
+        kinds = self.gaps()
+        if kinds:
+            return [(GAP_TOPICS[k], GAP_TEXT[k]) for k in kinds]
+        if self._explainable() and not (self.awaiting_expert or self.contradiction_found):
+            return [OTHER_RULE]
+        return []
 
     @property
     def label(self) -> str:
@@ -324,20 +418,51 @@ def claim_states(
     """One state per claim, in claim id order, against pipeline.view_run() unless run is given."""
     run = pipeline.view_run(conn) if run is None else run
     edited = edited_after(conn, run["started_at_utc"]) if run else set()
-    return [_state(conn, c, run, edited) for c in pipeline.load_claims(conn, include_removed)]
+    changed = case_changed_after(conn, run) if run else False
+    return [
+        _state(conn, c, run, edited, changed) for c in pipeline.load_claims(conn, include_removed)
+    ]
 
 
 def claim_state(conn: sqlite3.Connection, claim_id: str) -> ClaimState | None:
     run = pipeline.view_run(conn)
     edited = edited_after(conn, run["started_at_utc"]) if run else set()
+    changed = case_changed_after(conn, run) if run else False
     for c in pipeline.load_claims(conn, include_removed=True):
         if c.id == claim_id:
-            return _state(conn, c, run, edited)
+            return _state(conn, c, run, edited, changed)
     return None
 
 
+def case_changed_after(conn: sqlite3.Connection, run: dict) -> bool:
+    """A stipulation, person or identity-link decision the run's verdicts did not see: case-wide,
+    read once. A rules-only re-run reloads stipulations but reuses the checks and searches of
+    the full audit it came from, so identity and person changes count from that audit's start.
+    A proposed link counts too: it confirms nothing, but it widens what the audit searches."""
+    since = run["started_at_utc"]
+    built = since
+    source = run.get("evidence_from_run")
+    if source and source != run.get("run_id"):
+        row = conn.execute(
+            "SELECT started_at_utc FROM pipeline_runs WHERE id = ?", (source,)
+        ).fetchone()
+        built = row[0] if row else since
+    return (
+        conn.execute(
+            "SELECT 1 FROM audit_log WHERE (action LIKE 'stipulation.%' AND at_utc > ?)"
+            " OR ((action LIKE 'identity.%' OR action LIKE 'person.%') AND at_utc > ?) LIMIT 1",
+            (since, built),
+        ).fetchone()
+        is not None
+    )
+
+
 def _state(
-    conn: sqlite3.Connection, claim: Claim, run: dict | None, edited: set[str]
+    conn: sqlite3.Connection,
+    claim: Claim,
+    run: dict | None,
+    edited: set[str],
+    changed: bool = False,
 ) -> ClaimState:
     where, ptext = _where(conn, claim.paragraph_id)
     items = (run or {}).get("manifest", {}).get(claim.id)
@@ -355,6 +480,7 @@ def _state(
         st.incomplete = True
     if not items or decision is None:
         return st
+    st.case_changed_after_run = changed
     st.unlabeled = (run or {}).get("unlabeled", {}).get(claim.id)
     st.assumptions = pipeline.load_assumptions(conn, items["assumptions"])
     if not any(a.is_core for a in st.assumptions):
