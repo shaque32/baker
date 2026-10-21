@@ -8,6 +8,10 @@ sets no cookies. It is not part of the Mabillon app and makes no call from `core
 - From: `demo-form@getmabillon.com` (`FROM` in `wrangler.toml`). Reply-To is the visitor.
 - To: the secret `NOTIFY_TO`, a destination address already verified in Email Routing. It is
   a secret so the inbox address stays out of this public repo.
+- Origin: a post naming another site is refused. "null" or no Origin is accepted, because
+  browsers send that under some referrer and privacy settings.
+- Rate limit: 5 submits a minute per IP address (the `LIMITER` binding in `wrangler.toml`);
+  more get "Too many requests".
 - Tests: `node workers/demo-form/test.mjs` (no dependencies).
 
 ## Setup (Cloudflare dashboard, about 10 minutes)

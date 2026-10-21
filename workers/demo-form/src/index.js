@@ -34,6 +34,13 @@ export function validate(form) {
   return { fields: f, errors };
 }
 
+// A display name for an address header: an RFC 2047 encoded word outside ASCII, otherwise a
+// quoted string, so a comma, "<" or "@" in a name can never add a second address.
+export function displayName(text) {
+  if (!/^[\x20-\x7e]*$/.test(text)) return encodeHeader(text);
+  return `"${text.replace(/[\\"]/g, (c) => `\\${c}`)}"`;
+}
+
 function encodeHeader(text) {
   // RFC 2047 encoded word, so names outside ASCII survive.
   if (/^[\x20-\x7e]*$/.test(text)) return text;
@@ -60,7 +67,7 @@ export function buildMime(f, { from, to, now = new Date(), id = crypto.randomUUI
   return [
     `From: Mabillon demo form <${from}>`,
     `To: <${to}>`,
-    `Reply-To: ${encodeHeader(name)} <${f.email}>`,
+    `Reply-To: ${displayName(name)} <${f.email}>`,
     `Subject: ${encodeHeader(`Demo request: ${name}`)}`,
     `Date: ${now.toUTCString()}`,
     `Message-ID: <${id}@getmabillon.com>`,
@@ -88,9 +95,20 @@ export default {
     if (url.pathname !== "/demo") return new Response("Not found", { status: 404 });
     if (request.method !== "POST") return Response.redirect(`${site}/demo.html`, 303);
 
-    const origin = request.headers.get("origin") || "";
-    const allowed = [site, site.replace("https://", "https://www.")];
-    if (origin && !allowed.includes(origin)) return new Response("Forbidden", { status: 403 });
+    // A browser sends "null" or no Origin under some referrer and privacy settings, so only a
+    // named other site is refused. The honeypot and the rate limit handle the rest.
+    const origin = request.headers.get("origin") || "null";
+    const allowed = ["null", site, site.replace("https://", "https://www.")];
+    if (!allowed.includes(origin)) return new Response("Forbidden", { status: 403 });
+
+    // A few requests a minute per address (the LIMITER binding in wrangler.toml).
+    if (env.LIMITER) {
+      const ip = request.headers.get("cf-connecting-ip") || "unknown";
+      const { success } = await env.LIMITER.limit({ key: ip });
+      if (!success) {
+        return page(429, "Too many requests", "Please wait a minute and try again, or email support@getmabillon.com.", site);
+      }
+    }
 
     let form;
     try {

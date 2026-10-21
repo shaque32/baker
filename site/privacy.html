@@ -55,7 +55,9 @@
         <li>The form on the Book a demo page collects your first and last name, work email, role and
           what you write in the message box. The form sends nothing else.</li>
         <li>When you submit it, a small Cloudflare Worker on forms.getmabillon.com turns it into an
-          email to our team's Gmail inbox through Cloudflare Email Routing. The Worker keeps no copy.</li>
+          email to our team's Gmail inbox through Cloudflare Email Routing. The Worker keeps no copy.
+          Like any web request, Cloudflare sees your IP address and browser details (user agent) when
+          you submit, and the Worker uses your IP address only to limit repeat submissions.</li>
         <li>A hidden field filters out bots. There is no captcha, cookie or tracking script.</li>
         <li>Please don't put case details in the message.</li>
       </ul>

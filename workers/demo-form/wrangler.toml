@@ -12,6 +12,12 @@ routes = [{ pattern = "forms.getmabillon.com", custom_domain = true }]
 [[send_email]]
 name = "MAIL"
 
+# Per-address rate limit: 5 submits a minute (period must be 10 or 60 seconds).
+[[ratelimits]]
+name = "LIMITER"
+namespace_id = "1001"
+simple = { limit = 5, period = 60 }
+
 [vars]
 SITE = "https://getmabillon.com"
 FROM = "demo-form@getmabillon.com"
