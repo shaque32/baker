@@ -395,6 +395,25 @@ def test_gap_lines_follow_the_stored_coverage_until_it_is_stale_and_tiles_have_d
     assert hrefs == ["next", "con", "unp", "sup"]
     for h in hrefs:
         assert f"id='{h}'>" in page
+    # the claim page shows the same lines, including "Not current" after an identity change
+    c06 = app.handle(Request("GET", "/claim", {"id": "C06"}, dict(HOST))).body.decode()
+    assert html.escape(GAP_TEXT[K.MEANING], quote=True) in c06
+    from datetime import UTC, datetime
+
+    from core.review import audit_log
+
+    with conn:
+        audit_log.append(conn, datetime.now(UTC), EXPERT, "identity.confirm", {})
+    c01_page = app.handle(Request("GET", "/claim", {"id": "C01"}, dict(HOST))).body.decode()
+    assert html.escape(STALE[1], quote=True) in c01_page
+    # a run without verdict rules decided nothing: not audited, not a gap in the data
+    pending = dataclasses.replace(
+        st,
+        decision=st.decision.model_copy(
+            update={"reasons": (*st.decision.reasons, pipeline.RULES_PENDING_REASON)}
+        ),
+    )
+    assert pages._group(pending) == "not"
 
 
 def test_an_identity_change_stays_not_current_through_a_rules_only_rerun(root):

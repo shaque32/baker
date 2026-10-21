@@ -522,8 +522,8 @@ def needs_you(st: ClaimState) -> bool:
 
 
 def _group(st: ClaimState) -> str:
-    if st.decision is None or st.incomplete:
-        return "not"
+    if st.decision is None or st.incomplete or pipeline.RULES_PENDING_REASON in st.decision.reasons:
+        return "not"  # no verdict was decided: not a gap in the data
     if needs_you(st):
         return "you"
     if st.css == "v-con":
@@ -993,6 +993,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
     needs = st.needs()
     if needs:
         out.append("<ul>" + "".join(f"<li>{e(t)}</li>" for _, t in needs) + "</ul>")
+    out.append(_gap_lines(st))  # the same lines as the overview and the report
     out.append(forwarded_warning(conn, st))
     if d is not None:
         out.append(

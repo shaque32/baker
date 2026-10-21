@@ -215,8 +215,9 @@ section.group { margin: 30px 0; }
   padding: 0; }
 .ghead .muted { font-size: 13.5px; }
 .kinds { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 10px; }
-.ledger .gap, .nextup .gap { margin-top: 6px; font-size: 13px; color: var(--muted); }
-.ledger .gap b, .nextup .gap b { color: var(--unp); font-weight: 600; margin-right: 6px; }
+.ledger .gap, .nextup .gap, #verdict .gap { margin-top: 6px; font-size: 13px; color: var(--muted); }
+.ledger .gap b, .nextup .gap b, #verdict .gap b {
+  color: var(--unp); font-weight: 600; margin-right: 6px; }
 
 .split { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 32px;
   align-items: start; }
