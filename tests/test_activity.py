@@ -233,7 +233,7 @@ def test_the_activity_table_is_in_the_report_only_when_the_expert_includes_it(db
         "SELECT actor, payload_json FROM audit_log WHERE action = ? ORDER BY seq DESC",
         (activity.REPORT_ACTION,),
     ).fetchone()
-    assert actor == EXPERT and json.loads(payload) == {"include": True}
+    assert actor == EXPERT and json.loads(payload) == {"include": True, "session": app.session}
     report = render_report(conn)
     assert "Time on its pages" in report and "Not included." not in report
     assert "report.activity" in report  # the choice is in the report's expert actions
@@ -333,6 +333,37 @@ def test_a_view_that_cannot_be_written_is_reported_not_hidden(db, conn, monkeypa
     shown = get(app, "/").text
     assert "Activity (download) (database is locked)" in shown
     assert "could not record" not in get(app, "/claims").text  # shown once
+
+
+def test_a_view_that_cannot_be_written_breaks_the_refresh_check(db, conn, monkeypatch):
+    app, _ = _app(db)
+    real = activity.record_view
+    get(app, "/claim", id="C05")
+
+    def busy(*a, **k):  # noqa: ANN002, ANN003, ANN202
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(activity, "record_view", busy)
+    get(app, "/claim", id="C06")  # not recorded, but the examiner left C05
+    monkeypatch.setattr(activity, "record_view", real)
+    get(app, "/claim", id="C05")
+    assert [p["id"] for _, p in _views(conn)] == ["C05", "C05"]
+
+
+def test_a_report_switch_from_the_command_line_does_not_time_a_page(db, conn):
+    app, clock = _app(db)
+    get(app, "/claim", id="C05")
+    clock.tick(seconds=40)
+    activity.set_in_report(conn, clock(), EXPERT, True)  # baker activity --in-report on
+    clock.tick(seconds=20)
+    get(app, "/claim", id="C06")
+    get(app, "/activity")
+    clock.tick(seconds=10)
+    post(app, "/activity/report", include="0")  # the screen's own switch ends its page
+    get(app, "/claims")
+    views = [s for s in activity.steps(conn) if s.is_view]
+    assert views[0].payload["id"] == "C05" and views[0].seconds is None
+    assert views[2].payload["page"] == "/activity" and views[2].seconds == 10
 
 
 def test_cli_lists_and_exports_the_trail(db, tmp_path, capsys):

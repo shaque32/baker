@@ -392,6 +392,7 @@ class App:
         except db.Error as err:  # busy past the timeout, or a full disk: say so, never hide it
             page = activity.PAGES.get(req.path, req.path)
             self._unrecorded.append(f"{page} ({err})")
+            self._last_view = None  # the examiner left the last recorded page all the same
             return
         self._last_view = key
 
@@ -673,7 +674,9 @@ class App:
 
     def _activity_in_report(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         include = f.get("include") == "1"
-        if not activity.set_in_report(conn, self.clock(), self.actor, include):
+        if not activity.set_in_report(
+            conn, self.clock(), self.actor, include, session=self.session
+        ):
             return (
                 "No change: the report already "
                 + ("includes" if include else "leaves out")

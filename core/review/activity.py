@@ -144,14 +144,25 @@ def in_report(conn: sqlite3.Connection) -> bool:
     return isinstance(payload, dict) and payload.get("include") is True
 
 
-def set_in_report(conn: sqlite3.Connection, at_utc: datetime, actor: str, include: bool) -> bool:
+def set_in_report(
+    conn: sqlite3.Connection,
+    at_utc: datetime,
+    actor: str,
+    include: bool,
+    *,
+    session: str | None = None,
+) -> bool:
     """The expert's choice to put the activity table in the report, or leave it out, as an
-    audit-log entry with their name. Returns False, and logs nothing, when it is already so."""
+    audit-log entry with their name and the screen session it came from (None: the command
+    line), so a command never ends a page's time. Returns False, and logs nothing, when it is
+    already so."""
     _expert(actor)
     if in_report(conn) == include:
         return False
     with conn:
-        audit_log.append(conn, at_utc, actor, REPORT_ACTION, {"include": include})
+        audit_log.append(
+            conn, at_utc, actor, REPORT_ACTION, {"include": include, "session": session}
+        )
     return True
 
 
@@ -286,6 +297,8 @@ def _end(raw: list[Step], i: int, next_view: list[int | None]) -> datetime | Non
         return _time(nxt.at_utc) if nxt.payload.get("session") == session else None
     if nxt.actor != view.actor:
         return None
+    if "session" in nxt.payload and nxt.payload["session"] != session:
+        return None  # an action that names its session (None: the command line) is not this page's
     j = next_view[i + 2] if i + 2 <= len(raw) else None
     if j is None or raw[j].payload.get("session") != session:
         return None
