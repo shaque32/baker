@@ -365,6 +365,8 @@ class App:
         or the log (resp None) is recorded before it renders, so it includes itself. A refresh
         of the same page, with nothing posted between, is the same view and is not recorded
         again (the audit progress page refreshes itself)."""
+        if not self._opened_here(req):
+            return  # another site's request (an image tag, a fetch) is not the examiner's view
         if (resp is not None and resp.status != 200) or req.path not in activity.PAGES:
             self._last_view = None  # the examiner went elsewhere, so the next page is new
             return
@@ -391,6 +393,13 @@ class App:
             self._unrecorded.append(f"{page} ({err})")
             return
         self._last_view = key
+
+    def _opened_here(self, req: Request) -> bool:
+        """A page the examiner opened in this screen: a document load from this server, or one
+        typed or bookmarked. Browsers send Sec-Fetch headers; one that sends none is taken at
+        its word, as for the forms."""
+        dest = req.headers.get("sec-fetch-dest")
+        return self._origin_ok(req) and dest in (None, "document")
 
     def _unrecorded_warning(self, resp: Response) -> Response:
         """Put the views Baker could not record at the top of this page, if it is a page shown

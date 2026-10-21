@@ -222,10 +222,13 @@ def steps(conn: sqlite3.Connection) -> list[Step]:
                 evidence_id=evidence if isinstance(evidence, str) else None,
             )
         )
+    next_view: list[int | None] = [None] * (len(raw) + 1)  # the first view at or after i
+    for i in range(len(raw) - 1, -1, -1):
+        next_view[i] = i if raw[i].is_view else next_view[i + 1]
     out: list[Step] = []
     for i, s in enumerate(raw):
         seconds = None
-        end = _end(raw, i) if s.is_view else None
+        end = _end(raw, i, next_view) if s.is_view else None
         start = _time(s.at_utc)
         if start is not None and end is not None and end >= start:
             seconds = (end - start).total_seconds()
@@ -234,7 +237,7 @@ def steps(conn: sqlite3.Connection) -> list[Step]:
     return out
 
 
-def _end(raw: list[Step], i: int) -> datetime | None:
+def _end(raw: list[Step], i: int, next_view: list[int | None]) -> datetime | None:
     """When the view raw[i] ended: at the next step, if that step is a view in the same screen
     session, or an action by the same examiner that the same session's next view follows (the
     page a form returns to). Otherwise unknown: the screen was closed, or the next step came
@@ -248,8 +251,8 @@ def _end(raw: list[Step], i: int) -> datetime | None:
         return _time(nxt.at_utc) if nxt.payload.get("session") == session else None
     if nxt.actor != view.actor:
         return None
-    after = next((s for s in raw[i + 2 :] if s.is_view), None)
-    if after is None or after.payload.get("session") != session:
+    j = next_view[i + 2] if i + 2 <= len(raw) else None
+    if j is None or raw[j].payload.get("session") != session:
         return None
     return _time(nxt.at_utc)
 

@@ -305,3 +305,39 @@ def test_item_ids_are_kept_whole_and_cut_query_values_say_so(conn):
     p = activity.view_payload(conn, "/claim", session="s", query={"id": long_id, "x": "y" * 300})
     assert p["id"] == long_id
     assert len(p["query"]["x"]) == activity.MAX_VALUE and p["query_cut"] is True
+
+
+def test_another_sites_requests_are_not_recorded_as_views(db, conn):
+    from ui.app import Request
+
+    app, _ = _app(db)
+    for headers in (
+        {"sec-fetch-site": "cross-site", "sec-fetch-dest": "image"},
+        {"sec-fetch-site": "cross-site", "sec-fetch-dest": "document"},
+        {"sec-fetch-site": "same-origin", "sec-fetch-dest": "iframe"},
+    ):
+        app.handle(
+            Request("GET", "/claim", {"id": "C05"}, {"host": f"127.0.0.1:{PORT}", **headers})
+        )
+    assert _views(conn) == []
+    ok = {"sec-fetch-site": "same-origin", "sec-fetch-dest": "document"}
+    app.handle(Request("GET", "/claim", {"id": "C05"}, {"host": f"127.0.0.1:{PORT}", **ok}))
+    typed = {"sec-fetch-site": "none", "sec-fetch-dest": "document"}
+    app.handle(Request("GET", "/claim", {"id": "C06"}, {"host": f"127.0.0.1:{PORT}", **typed}))
+    assert [p["id"] for _, p in _views(conn)] == ["C05", "C06"]
+
+
+def test_reading_a_long_trail_of_actions_is_linear(db, conn):
+    import time
+
+    t = datetime(2026, 10, 21, tzinfo=UTC)
+    with conn:
+        for i in range(6000):
+            audit_log.append(
+                conn, t, EXPERT, "view", {"page": "/claim", "id": "C05", "session": "s"}
+            )
+            audit_log.append(conn, t, EXPERT, "note", {"claim_id": "C05", "n": i})
+    start = time.perf_counter()
+    trail = activity.steps(conn)
+    assert time.perf_counter() - start < 5  # quadratic would take minutes here
+    assert all(s.seconds == 0 for s in trail if s.is_view and s.seq < trail[-1].seq - 1)
