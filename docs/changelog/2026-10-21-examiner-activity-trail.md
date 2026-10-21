@@ -1,4 +1,4 @@
-## 2026-10-21: examiner activity trail, every page view in the audit log (#PR)
+## 2026-10-21: examiner activity trail, every page view in the audit log (#111)
 - Changed: each case page the examiner opens on the review screen is written to the case's
   hash-chained audit log as action `view` (core/review/activity.py, hook in ui/app.py): time
   (UTC), examiner name (or "viewer:unnamed" before a name is entered), screen session, page, the
@@ -10,7 +10,7 @@
   and counts; the Audit log page hides views unless `/log?views=1`. Why: Yazen (forensic expert
   advisor, via Arsh 2026-10-21) wants a trackable, timed record of what the examiner opened and
   looked at, to answer a "rubber-stamped" challenge. No schema, rules, prompt or contract change.
-- Where: branch claude/project-thread-1wfsnn
+- Where: PR #111 (branch claude/project-thread-1wfsnn)
 - Verified: tests/test_activity.py (15 tests: logging, evidence location, refresh collapse, time
   on page and the 30-minute away mark, new session, unnamed viewer, verdicts unchanged, report
   section, Activity page, CSV hashes and formula guard, tampered view breaks the chain, a view
@@ -18,7 +18,8 @@
   writes page views: tests/test_chain_on_open.py takes the newest anchored entry before opening
   the log page; tests/test_report_consistency.py now checks the screen adds only `view` entries
   and the report adds none. Speed (Linux cloud container, 2026-10-21): with 20,000 view entries,
-  the per-page log check took 0.17 s and reading the trail 0.32 s. make check: see the PR.
+  the per-page log check took 0.17 s and reading the trail 0.32 s. make check passed (2334
+  tests; case01 gate 1.00, 0 false supported; eval unchanged).
 - Open: time on page is time to the next page or action, not reading (no scripts); two screens
   on one case at once would interleave and shorten it. Views after the newest anchor can be cut
   undetected, like any entry (docs/review-screen.md). The reproducibility bundle (#104) carries
