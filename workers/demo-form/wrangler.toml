@@ -1,0 +1,17 @@
+# Mabillon "Book a demo" form handler. Receives the form on getmabillon.com/demo.html
+# and emails it to the team through Cloudflare Email Routing. Deployed by Workers Builds
+# from this folder (see README.md). Not part of the Mabillon app.
+name = "mabillon-demo-form"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+workers_dev = false
+routes = [{ pattern = "forms.getmabillon.com", custom_domain = true }]
+
+# Unrestricted on purpose: the inbox address is a secret (NOTIFY_TO), not in this public repo.
+# Email Routing only delivers to verified destination addresses on the account.
+[[send_email]]
+name = "MAIL"
+
+[vars]
+SITE = "https://getmabillon.com"
+FROM = "demo-form@getmabillon.com"
