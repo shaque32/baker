@@ -392,9 +392,37 @@ def test_listed_evidence_reads_the_pages_links():
 
 def test_item_ids_are_kept_whole_and_cut_query_values_say_so(conn):
     long_id = "C" + "9" * 300
-    p = activity.view_payload(conn, "/claim", session="s", query={"id": long_id, "x": "y" * 300})
+    query = {"id": long_id, "claim": "y" * 300}
+    p = activity.view_payload(conn, "/activity", session="s", query=query)
     assert p["id"] == long_id
-    assert len(p["query"]["x"]) == activity.MAX_VALUE and p["query_cut"] is True
+    assert len(p["query"]["claim"]) == activity.MAX_VALUE and p["query_cut"] is True
+
+
+def test_free_text_in_the_address_is_counted_not_kept(db, conn):
+    app, _ = _app(db)
+    get(app, "/flags/summary.json", pilot="Smith and Jones LLP", note="anything")
+    _, p = _views(conn)[-1]
+    assert "query" not in p and p["query_left_out"] == 2
+    assert "Smith" not in json.dumps(p)
+
+
+def test_a_forbidden_word_in_the_address_never_breaks_the_activity_page(db, conn):
+    app, _ = _app(db)
+    assert get(app, "/activity", claim="deleted").status == 200
+    page = get(app, "/activity")  # the trail shows that address, as cited text
+    assert page.status == 200 and '<span class="q">deleted</span>' in page.text
+
+
+def test_the_same_page_reloaded_after_a_minute_is_a_new_view(db, conn):
+    app, clock = _app(db)
+    get(app, "/run")
+    clock.tick(seconds=10)
+    get(app, "/run")  # the progress page refreshing itself
+    clock.tick(seconds=50)
+    get(app, "/run")  # 50 s after the last load, though 60 s after the first
+    clock.tick(minutes=5)
+    get(app, "/run")  # the screen closed and the page opened again
+    assert [p["page"] for _, p in _views(conn)] == ["/run", "/run"]
 
 
 def test_another_sites_requests_are_not_recorded_as_views(db, conn):

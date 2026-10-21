@@ -6,9 +6,10 @@ an encrypted case) and checked by `baker verify-log`. Nothing here is sent anywh
 stance call sends only the filled-in stance prompt (core/llm/cloud.py), never the audit log.
 
 What a view records: the time (UTC), the examiner's name, the screen session, the page, the
-item it was opened on (a claim, an evidence item, an exhibit, a message), the evidence items
-the page linked to, and for an evidence item its record and where that record sits in its
-source (source id and locator). It never records the page's text.
+item it was opened on (a claim, an evidence item, an exhibit, a message), the page switches in
+its address (QUERY_KEPT; any other field is counted, not kept), the evidence items the page
+linked to, and for an evidence item its record and where that record sits in its source (source
+id and locator). It never records the page's text.
 
 What it cannot show. The screen runs no scripts, so Baker cannot tell what part of a page was
 on screen, whether a folded section was opened, or whether the examiner read it. "Time on
@@ -43,6 +44,10 @@ UNNAMED = "viewer:unnamed"  # a page opened before the examiner entered a name
 IDLE = timedelta(minutes=30)
 MAX_LISTED = 500  # evidence ids kept per view; a longer list says how many were left out
 MAX_VALUE = 200  # characters kept of a query value other than the item id, which is kept whole
+# The query fields a view keeps besides the id: page switches, never free text (a flag summary's
+# pilot name, say). Others are counted, not stored.
+QUERY_KEPT = frozenset({"all", "claim", "download", "views"})
+REFRESH = timedelta(seconds=60)  # a reload of the same page this soon is the same view
 
 PAGES = {
     "/": "Case overview",
@@ -91,9 +96,12 @@ def view_payload(
     ident = query.pop("id", None)
     if ident is not None:
         p["id"] = ident  # whole, so the trail names the very claim or evidence item opened
-    if query:
-        p["query"] = {k[:MAX_VALUE]: v[:MAX_VALUE] for k, v in sorted(query.items())}
-        if any(len(k) > MAX_VALUE or len(v) > MAX_VALUE for k, v in query.items()):
+    kept = {k: v for k, v in query.items() if k in QUERY_KEPT}
+    if len(kept) < len(query):
+        p["query_left_out"] = len(query) - len(kept)  # fields that are not page switches
+    if kept:
+        p["query"] = {k: v[:MAX_VALUE] for k, v in sorted(kept.items())}
+        if any(len(v) > MAX_VALUE for v in kept.values()):
             p["query_cut"] = True  # a value was cut to MAX_VALUE characters
     if page == "/evidence" and ident is not None:
         row = conn.execute(

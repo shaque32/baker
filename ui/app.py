@@ -220,7 +220,7 @@ class App:
         self.model_check = model_check
         self.last_check: ModelCheck | None = None
         self.session = secrets.token_hex(8)  # names this screen's page views in the trail
-        self._last_view: tuple | None = None
+        self._last_view: tuple[tuple, datetime] | None = None  # the last page loaded, and when
         self._unrecorded: list[str] = []  # views that could not be written, not yet shown
         self.clock: Callable[[], datetime] = lambda: datetime.now(UTC)
         self.cloud_config = cloud_config  # None: $BAKER_CLOUD_CONFIG, else ~/.baker/cloud.json
@@ -363,9 +363,11 @@ class App:
     def _note_view(self, conn: sqlite3.Connection, req: Request, resp: Response | None) -> None:
         """Record the page the examiner just opened in the case's audit log (core/review/
         activity.py), with the evidence the rendered page links to. A page that shows the trail
-        or the log (resp None) is recorded before it renders, so it includes itself. A refresh
-        of the same page, with nothing posted between, is the same view and is not recorded
-        again (the audit progress page refreshes itself)."""
+        or the log (resp None) is recorded before it renders, so it includes itself. A reload of
+        the same page within activity.REFRESH of the last load, with nothing posted between, is
+        the same view and is not recorded again (the audit progress page refreshes itself every
+        few seconds); a later reload, such as the page reopened after the screen was closed, is
+        a new view."""
         if not self._opened_here(req):
             return  # another site's request (an image tag, a fetch) is not the examiner's view
         if (resp is not None and resp.status != 200) or req.path not in activity.PAGES:
@@ -374,15 +376,18 @@ class App:
         if self.case is None:
             return
         key = (str(self.case.db), self.expert, req.path, tuple(sorted(req.query.items())))
-        if key == self._last_view:
-            return
+        now = self.clock()
+        if self._last_view is not None and self._last_view[0] == key:
+            if now - self._last_view[1] <= activity.REFRESH:
+                self._last_view = (key, now)  # a page refreshing itself stays one view
+                return
         listed: list[str] = []
         if resp is not None and (resp.header("Content-Type") or "").startswith("text/html"):
             listed = listed_evidence(resp.text)
         try:
             activity.record_view(
                 conn,
-                self.clock(),
+                now,
                 f"expert:{self.expert}" if self.expert else None,
                 req.path,
                 session=self.session,
@@ -394,7 +399,7 @@ class App:
             self._unrecorded.append(f"{page} ({err})")
             self._last_view = None  # the examiner left the last recorded page all the same
             return
-        self._last_view = key
+        self._last_view = (key, now)
 
     def _opened_here(self, req: Request) -> bool:
         """A page the examiner opened in this screen: a document load from this server, or one

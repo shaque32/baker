@@ -1476,22 +1476,24 @@ def _step_item(s: activity.Step) -> str:
         return e(s.evidence_id or s.claim_id or "")
     bits = []
     ident = p.get("id")
+    # ids, locators and query values come from the address or the case, not Baker's own words,
+    # so they are shown as cited text (q), which the forbidden-word check leaves alone
     if p.get("page") == "/claim" and ident:
-        bits.append(f"<a href='{e(link('/claim', id=str(ident)))}'>{e(ident)}</a>")
+        bits.append(f"<a href='{e(link('/claim', id=str(ident)))}'>{q(str(ident))}</a>")
     elif p.get("page") == "/evidence" and ident:
-        bits.append(f"<a href='{e(link('/evidence', id=str(ident)))}'>{e(ident)}</a>")
+        bits.append(f"<a href='{e(link('/evidence', id=str(ident)))}'>{q(str(ident))}</a>")
         if p.get("record_id"):
             bits.append(
-                f"record {e(p['record_id'])} at {e(p.get('source_id', ''))} "
-                f"{e(p.get('locator', ''))}"
+                f"record {q(str(p['record_id']))} at {q(str(p.get('source_id', '')))} "
+                f"{q(str(p.get('locator', '')))}"
             )
     elif ident:
-        bits.append(e(ident))
+        bits.append(q(str(ident)))
     listed = len(p.get("listed", [])) + int(p.get("listed_left_out", 0) or 0)
     if listed:
         bits.append(f"listed {listed} evidence item{'s' if listed != 1 else ''}")
     for k, v in (p.get("query") or {}).items():
-        bits.append(f"{e(k)}={e(v)}")
+        bits.append(f"{e(k)}={q(str(v))}")
     return "; ".join(bits)
 
 
@@ -1575,13 +1577,18 @@ def activity_page(conn: sqlite3.Connection, page: Page, claim: str, show_all: bo
     out.append("</table>")
     shown = [s for s in trail if not claim or s.claim_id == claim]
     cut = 0 if show_all else max(0, len(shown) - ACTIVITY_NEWEST)
-    head = f"Trail for claim {e(claim)}" if claim else "Trail"
+    known = claim in claims  # an id typed into the address is shown as cited text, never linked
+    head = f"Trail for claim {e(claim) if known else q(claim)}" if claim else "Trail"
     out.append(f"<h2>{head}</h2>")
     if claim:
         out.append("<p><a href='/activity'>Show every claim</a>. ")
-        out.append(f"<a href='{e(link('/claim', id=claim))}'>Open claim {e(claim)}</a>.</p>")
+        if known:
+            out.append(f"<a href='{e(link('/claim', id=claim))}'>Open claim {e(claim)}</a>.")
+        else:
+            out.append("There is no such claim in this case.")
+        out.append("</p>")
     if cut:
-        more = {"claim": claim} if claim else {}
+        more = {"claim": claim} if known else {}
         out.append(
             f"<p>Newest {ACTIVITY_NEWEST} of {len(shown)} shown. "
             f"<a href='{e(link('/activity', all='1', **more))}'>Show all</a>.</p>"
