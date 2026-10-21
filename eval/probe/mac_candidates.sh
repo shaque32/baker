@@ -24,8 +24,20 @@ case " $NAMES " in
 esac
 
 python -m pip install -q "huggingface_hub>=0.34"
-# shellcheck disable=SC2086
-python -m eval.probe.candidates download --dir "$MODELS_DIR" $NAMES
+# Hugging Face's Xet transfer failed mid-file on the Mac (2026-10-21, "CAS Client Error"); the
+# plain HTTP download resumes a partial file instead. HF_HUB_DISABLE_XET=0 turns Xet back on.
+export HF_HUB_DISABLE_XET="${HF_HUB_DISABLE_XET:-1}"
+# A finished file is skipped (its sha256 is checked), so each retry only fetches what is missing.
+for attempt in 1 2 3; do
+  # shellcheck disable=SC2086
+  python -m eval.probe.candidates download --dir "$MODELS_DIR" $NAMES && break
+  if [ "$attempt" = 3 ]; then
+    echo "The download failed 3 times. Run the same command again to pick up where it stopped." >&2
+    exit 1
+  fi
+  echo "The download stopped (try $attempt of 3); trying again in 30 seconds." >&2
+  sleep 30
+done
 
 {
   echo "commit $(git rev-parse --short HEAD)"
