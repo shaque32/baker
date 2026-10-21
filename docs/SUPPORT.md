@@ -2,11 +2,9 @@
 
 ## Contact
 
-**support@baker.example** — a placeholder. The Baker team sets the real address before any pilot
-by changing `SUPPORT_EMAIL` in `core/support/contact.py` and setting `SUPPORT_IS_PLACEHOLDER` to
-`False`, then the Help tab and the bug report show it. Update the address in this file and in
-`docs/ONE_PAGER.md` in the same change, since they are static text. Until then the Help tab says
-the address is a placeholder.
+**support@getmabillon.com**, run by Mabillon, the company behind Baker. The Help tab and the bug
+report show it from `SUPPORT_EMAIL` in `core/support/contact.py`. If the address changes, update
+it there, in this file and in `docs/ONE_PAGER.md` in the same change, since these are static text.
 
 When you write, say what you did, what you saw and what you expected. **Never send case
 content**: no case files, case database, screenshots of evidence, or claim or message text.

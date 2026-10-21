@@ -160,7 +160,7 @@ def test_help_page_shows_contact_and_the_same_report_without_a_case(tmp_path: Pa
     r = get(app, "/help")
     assert r.status == 200, "Help opens with no case open"
     page = r.text
-    assert SUPPORT_EMAIL in page and "placeholder" in page
+    assert SUPPORT_EMAIL in page and "the Baker team sets the real address" not in page
     assert "/help/bug-report.json" in page and "Never send case content" in page
     assert "takes the scrolling, not the judgment" in page
     low = page.lower()

@@ -56,8 +56,7 @@ used; the report says which model labelled the case. Cases can be encrypted with
 
 ## Getting help
 
-- **Support:** support@baker.example (placeholder: the Baker team sets the real address before any
-  pilot). It is also on the **Help** tab in the app.
+- **Support:** support@getmabillon.com. It is also on the **Help** tab in the app.
 - **Bug report:** on the Help tab, save the bug report and attach it to your email. It holds
   Baker's versions, your computer's system and model setup and recent errors, with no case data:
   no case or file names, no text from the case, no hashes. Read it before you send it

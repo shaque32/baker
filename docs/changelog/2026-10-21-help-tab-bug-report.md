@@ -13,8 +13,9 @@
   expert name, file names, a claim, a job message and an error message: none appears in the
   report, the Help page or the CLI output, nor any input SHA-256 prefix or 32+ hex run.
   Headless-Chromium check of the Help tab and download.
-- Open: the support address is a placeholder (`support@baker.example`) until Arsh sets it, so
-  gate 17 stays not met until then. Row counts and source kinds are case metadata and are
+- Support address: support@getmabillon.com (set by Arsh 2026-10-21; Mabillon is the company,
+  Baker the product). It forwards to the team's inbox, so replies come from a different address.
+- Open: row counts and source kinds are case metadata and are
   included; the docs say how to leave them out.
 - Affects: capabilities (Help tab, bug report); privacy (a new export that holds no case data;
   Baker still sends nothing); customer-facing claims (the explainer; no new speed or accuracy
@@ -23,7 +24,6 @@
   page with the support contact, a short what-Baker-does, and a bug report shown in full before
   it is saved (`/help/bug-report.json`, `baker bug-report`), built from an allowlist with no case
   names, paths, text or hashes (`core/support/`). Recent unexpected errors are kept in memory
-  only, without messages; no log file. The support address `support@baker.example` is a
-  placeholder (`core/support/contact.py`)." In the open items, add "Set the real support address
-  (pilot gate 17)." In docs/PILOT_GATES.md gate 17 evidence, note the one-pager
-  (`docs/ONE_PAGER.md`) and bug report are on main and only the named contact is missing.
+  only, without messages; no log file. The support address is support@getmabillon.com
+  (`core/support/contact.py`)." Gate 17 is marked met in `docs/PILOT_GATES.md` in this PR; add
+  one to the met-gate count.
