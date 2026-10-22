@@ -1361,7 +1361,17 @@ class _RecordMapper:
                 t = x.attrs.get("type", "")
                 where = f"{loc}/Related[{i}]"
                 self.related_counts[t] += 1
-                if t in COPY_TYPES or t == el.attrs.get("type") or (message and t != "Chat"):
+                if t == "Chat":
+                    # a chat copied under another kind of record: none of its messages can
+                    # match one of the holder's, so each is listed, as at the top level
+                    msgs = list(_chat_copy_messages(where, x))
+                    ctx = _chat_context(_model(x))
+                    keys = [(_in_chat(ctx, k), w) for k, w, _el in msgs]
+                    self.related_copies.append(_Copies(table, "chat", loc, [], keys, True))
+                    for k, w, y in msgs:
+                        self._nested(table, w, k, y, True)
+                    self._nested_chats(table, where, [k for k, _w in keys], x)
+                elif t in COPY_TYPES or t == el.attrs.get("type") or message:
                     key = _content_key(_model(x))
                     is_message = t not in COPY_KINDS
                     self.related_copies.append(

@@ -1773,3 +1773,25 @@ def test_a_message_copied_under_a_copied_chat_is_listed_by_both(tmp_path):
     assert _listed(tmp_path, "msg-under-copy", report_xml({"Chat": [chat]})) == (
         "Chat[1]/Related[1]/Related[1]",
     )
+
+
+def test_a_chat_copied_under_a_message_copy_is_listed_by_both(tmp_path):
+    inner = _chat("k1", _msg("ok", T2, id="c1"))
+    copy = _with(_msg("ok", T2, id="m1r"), related(inner))
+    xml = report_xml({"InstantMessage": [_with(_msg("ok", T2, id="m1"), related(copy))]})
+    assert _listed(tmp_path, "chat-in-copy", xml) == (
+        "InstantMessage[1]/Related[1]/Related[1]/Messages[1]",
+    )
+
+
+def test_a_copy_whose_unnamed_attachment_names_only_its_own_file_id_matches(tmp_path):
+    """The shape of the public Android packages: a copy's unnamed attachment names only its own
+    file id where the holder's names the extracted path. Same message, so not listed."""
+
+    def msg(mid: str, att: str, *tail: str) -> str:
+        return _with(_msg("", T2, id=mid), many("Attachments", [att], "Attachment"), *tail)
+
+    copy = msg("m1r", model("Attachment", file_id="f2"))
+    held = msg("m1", model("Attachment", field("LocalPath", "files/a.cnt"), file_id="f1"),
+               related(copy))  # fmt: skip
+    assert _listed(tmp_path, "att-own-id", report_xml({"InstantMessage": [held]})) == ()

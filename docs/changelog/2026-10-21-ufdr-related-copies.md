@@ -41,7 +41,10 @@
   dropped when a message has two. Copies are matched as each record is mapped and then
   dropped, so memory never grows with the number of copies in the package. A contact copy's
   deleted state must match too, and a message or call held by a copied chat is listed, as one
-  held by a chat is. A copied chat
+  held by a chat is, and so are the messages of a chat copied inside a copy of another kind.
+  An unnamed attachment is compared by name as written, never by its file: on the public
+  Android packages a copy's unnamed attachment names only its own file id while its holder
+  names the extracted path, so comparing the file would list about 20 genuine copies per package. A copied chat
   must also say what the holder chat says around its messages (app, id, name, participants),
   and copies are numbered across all of a holder's RelatedModels elements. A copy marked
   forwarded where its holder is not (or the reverse) is listed. A copied chat with fewer
