@@ -1,9 +1,9 @@
-## 2026-10-21: Expiring download links for pilot installers (local only)
+## 2026-10-21: Expiring download links for pilot installers (PR pending)
 - Changed: Adds `tools/pilot_link.py`, which makes a presigned (AWS Signature Version 4) link
   to an installer in a private Cloudflare R2 bucket. The link works for up to 7 days (3 by
   default). Also adds `docs/pilot-links.md` with Arsh's R2 setup steps. This way pilot
   installers reach named examiners without a sign-in on the website.
-- Where: local only (branch claude/project-thread-866ya3 after #118 merges).
+- Where: branch claude/project-thread-866ya3 (PR pending).
 - Verified: `tests/test_pilot_link.py`. The signer reproduces the signature in AWS's published
   presigned-URL example. The R2 link uses path style with region `auto`, a link over 7 days is
   refused, and missing settings are named. Unverified against a real R2 bucket until Arsh
