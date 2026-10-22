@@ -24,6 +24,7 @@
     <nav class="site-nav" aria-label="Main">
       <a class="hide-sm" href="#how">How it works</a>
       <a class="hide-sm" href="#rules">Rules</a>
+      <a class="hide-sm" href="#scrutiny">Scrutiny</a>
       <a class="hide-sm" href="#data">Your data</a>
       <a class="cta-sm" href="#pilot">Request a pilot</a>
     </nav>
@@ -217,6 +218,24 @@
     </div>
   </section>
 
+  <section class="band" id="scrutiny">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">Built for scrutiny</p>
+        <h2>Designed so findings can be re-checked</h2>
+        <p>What is built today. Whether a finding holds up in your court is a question for your expert and counsel.</p>
+      </div>
+      <div class="bento">
+        <div class="tile w3"><h3>Rules decide, you confirm</h3><p>Verdicts come from versioned rules, never from a model. Nothing is supported until you accept the evidence behind it.</p></div>
+        <div class="tile w3"><h3>Inputs hashed on import</h3><p>Every file opens read-only, and its SHA-256 is recorded and printed in the report.</p></div>
+        <div class="tile w2"><h3>Tamper-evident log</h3><p>Every action goes into a hash-chained audit log. Mabillon checks the chain each time a case opens and stops if it is broken.</p></div>
+        <div class="tile w2"><h3>A bundle the other side can re-check</h3><p>Export the case as a bundle that opposing counsel's examiner can re-check offline, with no Mabillon account and no network.</p></div>
+        <div class="tile w2 wide-sm"><h3>Examiner activity trail</h3><p>A record of what you reviewed and when. It stays out of reports unless you turn it on for the case.</p></div>
+        <div class="tile w6"><h3>Local by default</h3><p>The case stays on your computer. Cloud AI runs only for a case you opt in, after you attest the protective order allows it.</p></div>
+      </div>
+    </div>
+  </section>
+
   <section class="night" id="data">
     <div class="wrap">
       <div class="section-head">
@@ -264,7 +283,7 @@
       <dl class="facts">
         <dt>Stage</dt><dd>Alpha, opening to a small number of pilot examiners. No pilot has started yet.</dd>
         <dt>Testing</dt><dd>Tested on synthetic cases only. No accuracy figure for real cases yet.</dd>
-        <dt>Formats</dt><dd>The UFDR and AXIOM readers have not yet been checked on a real export. Mabillon says so on screen and in every report.</dd>
+        <dt>Formats</dt><dd>Tested on real Cellebrite UFDR exports of public test phones (Digital Corpora Hickman images, Cellebrite Reader report 7.48): message, call and contact counts match Cellebrite's own report. Other Cellebrite versions are not yet tested. The Cellebrite Excel and AXIOM readers have not yet been tested on real exports.</dd>
         <dt>Attorneys</dt><dd>Mabillon is built for the forensic expert you retain. To bring it into a case, ask us about a pilot together with your expert.</dd>
       </dl>
     </div>
