@@ -1753,3 +1753,23 @@ def test_copies_are_matched_and_dropped_record_by_record(tmp_path, monkeypatch):
     assert max(held) == 2  # never more than one record's copies at a time
     p = json.loads(conn.execute("SELECT payload_json FROM source_coverage").fetchone()[0])
     assert p["counts"]["related_copies"] == p["counts"]["related_copies_matching_a_record"] == 12
+
+
+def test_a_contact_copy_with_another_deleted_state_is_listed(tmp_path):
+    def contact(cid: str, *tail: str, **attrs: str) -> str:
+        entries = many("Entries", [model("PhoneNumber", field("Value", JO[0]))], "ContactEntry")
+        return model("Contact", field("Name", "Jo"), entries, *tail, id=cid, **attrs)
+
+    copy = contact("p1r", deleted_state="Deleted")
+    xml = report_xml({"Contact": [contact("p1", related(copy), deleted_state="Intact")]})
+    conn, s = _import(write_package(tmp_path / "contact-state.ufdr", xml))
+    (item,) = [i for i in s.items if i.code == "related_copy_unmatched"]
+    assert item.locators == ("Contact[1]/Related[1]",)
+
+
+def test_a_message_copied_under_a_copied_chat_is_listed_by_both(tmp_path):
+    copy = _chat("k1", _msg("ok", T2, id="c1"), extra=(related(_msg("ok", T2, id="c2")),))
+    chat = _chat("k1", _msg("ok", T2, id="m1"), extra=(related(copy),))
+    assert _listed(tmp_path, "msg-under-copy", report_xml({"Chat": [chat]})) == (
+        "Chat[1]/Related[1]/Related[1]",
+    )

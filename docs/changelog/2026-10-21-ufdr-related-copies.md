@@ -39,7 +39,9 @@
   confidence other than High, where its holder is not (or the reverse), is listed. A message's
   embedded messages are read across all its embedded fields, in the order written, so none is
   dropped when a message has two. Copies are matched as each record is mapped and then
-  dropped, so memory never grows with the number of copies in the package. A copied chat
+  dropped, so memory never grows with the number of copies in the package. A contact copy's
+  deleted state must match too, and a message or call held by a copied chat is listed, as one
+  held by a chat is. A copied chat
   must also say what the holder chat says around its messages (app, id, name, participants),
   and copies are numbered across all of a holder's RelatedModels elements. A copy marked
   forwarded where its holder is not (or the reverse) is listed. A copied chat with fewer

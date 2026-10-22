@@ -1329,10 +1329,19 @@ class _RecordMapper:
         for rel in (c for c in chat.children if c.tag == "RelatedModels"):
             for x in (c for c in rel.children if c.tag == "model"):
                 i += 1
-                self.related_counts[x.attrs.get("type", "")] += 1
-                if x.attrs.get("type") != "Chat":
-                    continue  # never a copy of this chat: counted, not matched
+                t = x.attrs.get("type", "")
+                self.related_counts[t] += 1
                 where = f"{loc}/Related[{i}]"
+                if t != "Chat":
+                    if t in COPY_TYPES:  # another kind than the chat holding it: listed
+                        key = _content_key(_model(x))
+                        is_message = t not in COPY_KINDS
+                        own = _content_key(_model(chat))
+                        self.related_copies.append(
+                            _Copies(table, "one", loc, own, [(key, where)], is_message)
+                        )
+                        self._nested(table, where, key, x, is_message)
+                    continue
                 msgs = list(_chat_copy_messages(where, x))
                 ctx = _chat_context(_model(x))
                 keys = [(_in_chat(ctx, k), w) for k, w, _el in msgs]
@@ -1719,7 +1728,8 @@ def _content_key(m: _Model) -> bytes:
             _recovery(m.attrs, m.text("carved", "iscarved")),
         )
     elif m.type == "Contact":
-        key = (m.type, m.raw("name"), _entries(m), _recovery(m.attrs, m.text("carved", "iscarved")))
+        recovery = _recovery(m.attrs, m.text("carved", "iscarved"))
+        key = (m.type, m.raw("name"), _entries(m), _deleted_state(m), recovery)
     elif m.type == "UserAccount":
         key = (
             m.type,
