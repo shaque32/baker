@@ -1159,16 +1159,21 @@ def test_a_copy_is_matched_to_its_own_holder_only(tmp_path):
     assert item.locators == ("Chat[1]/Related[1]/Messages[1]",)
 
 
-@pytest.mark.parametrize("change", ["deleted", "attachment"])
+@pytest.mark.parametrize("change", ["deleted", "deleted_attr", "deleted_field", "attachment"])
 def test_a_copy_differing_in_deleted_state_or_attachments_is_listed(tmp_path, change):
     t = "2026-03-05T21:31:00.000-05:00"
     if change == "deleted":
         copy = _msg("ok", t, id="c1", deleted_state="Deleted")
+    elif change == "deleted_attr":  # the other forms of a deleted state the importer reads
+        copy = _msg("ok", t, id="c1", deleted_state=None, deleted="True")
+    elif change == "deleted_field":
+        head, end = _msg("ok", t, id="c1", deleted_state=None).rsplit("</model>", 1)
+        copy = f"{head}{field('RecordStatus', 'Deleted')}</model>{end}"
     else:
         head, end = _msg("ok", t, id="c1").rsplit("</model>", 1)
         att = model("Attachment", field("Filename", "x.png"), id="a1")
         copy = f"{head}{many('Attachments', [att])}</model>{end}"
-    record = _msg("ok", t, id="m1", deleted_state="Intact")
+    record = _msg("ok", t, id="m1", deleted_state=None if change != "deleted" else "Intact")
     xml = report_xml({"Chat": [_chat("k1", record, extra=(related(_chat("k1", copy)),))]})
     conn, s = _import(write_package(tmp_path / "d.ufdr", xml))
     (item,) = [i for i in s.items if i.code == "related_copy_unmatched"]
@@ -1194,6 +1199,73 @@ def test_a_copy_pointing_at_its_own_file_still_matches(tmp_path):
     xml = report_xml({"Chat": [_chat("k1", with_att("m1", "files/x.png"), extra=(related(copy),))]})
     conn, s = _import(write_package(tmp_path / "f.ufdr", xml))
     assert "related_copy_unmatched" not in _codes(s)
+
+
+def test_copies_inside_copies_are_matched_at_every_depth(tmp_path):
+    t = "2026-03-05T21:31:00.000-05:00"
+
+    def holding(mid: str, body: str, *tail: str) -> str:
+        head, end = _msg(body, t, id=mid).rsplit("</model>", 1)
+        return f"{head}{''.join(tail)}</model>{end}"
+
+    deepest = related(_msg("changed", t, id="c3"))  # under a copy of a copy
+    copy = holding("c1", "ok", related(holding("c2", "ok", deepest)))
+    xml = report_xml({"Chat": [_chat("k1", holding("m1", "ok", related(copy)))]})
+    conn, s = _import(write_package(tmp_path / "deep.ufdr", xml))
+    (item,) = [i for i in s.items if i.code == "related_copy_unmatched"]
+    assert item.locators == ("Chat[1]/Messages[1]/Related[1]/Related[1]/Related[1]",)
+    p = json.loads(conn.execute("SELECT payload_json FROM source_coverage").fetchone()[0])
+    assert (p["counts"]["related_copies"], p["counts"]["related_copies_matching_a_record"]) == (
+        3, 2
+    )  # fmt: skip
+
+
+def test_a_chat_copied_inside_a_copied_chat_matches_that_copy(tmp_path):
+    t = "2026-03-05T21:31:00.000-05:00"
+    inner = _chat("k1", _msg("ok", t, id="c2"), _msg("extra", t, id="c3"))
+    outer = _chat("k1", _msg("ok", t, id="c1"), extra=(related(inner),))
+    xml = report_xml({"Chat": [_chat("k1", _msg("ok", t, id="m1"), extra=(related(outer),))]})
+    conn, s = _import(write_package(tmp_path / "cc.ufdr", xml))
+    (item,) = [i for i in s.items if i.code == "related_copy_unmatched"]
+    assert item.locators == ("Chat[1]/Related[1]/Related[1]/Messages[2]",)
+
+
+def test_a_copied_chat_keeps_only_each_messages_key_while_reading():
+    """A long chat copied under RelatedModels is never held whole: each message is reduced to
+    its content key as it closes."""
+    t = "2026-03-05T21:31:00.000-05:00"
+    copied = _chat("k1", *(_msg(f"m{i}", t, id=f"c{i}") for i in range(50)))
+    xml = report_xml({"Chat": [_chat("k1", _msg("m0", t, id="m1"), extra=(related(copied),))]})
+    seen: list[ufdr._El] = []
+    reader = ufdr._Reader(
+        lambda t: t == "Chat", lambda el: None, True, lambda h, el: seen.append(el)
+    )
+    reader.read(io.BytesIO(xml.encode()))
+    (rel,) = seen
+    msgs = [m for f in rel.children[0].children if f.attrs.get("name") == "Messages"
+            for m in f.children if m.tag == "model"]  # fmt: skip
+    assert len(msgs) == 50
+    assert all(m.key is not None and m.children == [] for m in msgs)
+
+
+def test_a_call_copy_with_caller_and_callee_swapped_is_listed(tmp_path):
+    t = "2026-03-05T21:31:00.000-05:00"
+
+    def call(cid: str, frm, to, *tail: str) -> str:
+        return model(
+            "Call",
+            field("Source", "Phone"),
+            many("Parties", [party(*frm, role="From"), party(*to, role="To")]),
+            ts_field("TimeStamp", t),
+            field("Duration", "00:01:00", "TimeSpan"),
+            *tail,
+            id=cid,
+        )
+
+    xml = report_xml({"Call": [call("k1", OWNER, JO, related(call("k1r", JO, OWNER)))]})
+    conn, s = _import(write_package(tmp_path / "call.ufdr", xml))
+    (item,) = [i for i in s.items if i.code == "related_copy_unmatched"]
+    assert item.locators == ("Call[1]/Related[1]",)
 
 
 def test_a_chat_message_skipped_between_the_two_reads_stores_nothing(tmp_path, monkeypatch):

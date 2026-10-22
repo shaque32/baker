@@ -196,6 +196,8 @@ class MessageRec:
     sender_ident: str | None = None
     recipient_idents: list[str] = field(default_factory=list)
     att_written: tuple[str, ...] = ()  # sorted attachment names, as written
+    # every stated sender, then the sorted stated recipients, as (identifier, name) pairs
+    parties_written: tuple[tuple[tuple[str | None, str | None], ...], ...] = ()
 
 
 @dataclass
@@ -491,6 +493,10 @@ class Tally:
             state=_state(f),
             att_refs=list(f.attachments),
             att_written=tuple(sorted(f.att_written)),
+            parties_written=(
+                tuple((p[0], p[1]) for p in senders),
+                tuple(sorted(((p[0], p[1]) for p in recips), key=repr)),
+            ),
         )
 
     def _finish(self) -> None:
@@ -958,17 +964,22 @@ def compare(t: Tally, conn: sqlite3.Connection, src: str) -> tuple[list[Count], 
     # that does not match must be one Baker lists for review (related_copy_unmatched);
     # otherwise it is missing
     def said(x: MessageRec) -> tuple[object, ...]:
-        return (x.body, x.ts_raw, x.sender, tuple(sorted(x.recipients)), x.state, x.att_written)
+        return (x.body, x.ts_raw, x.parties_written, x.state, x.att_written)
 
     unmatched = _unmatched_copies(t, db_msgs, said)
     listed, n_listed = _listed_copies(conn, src)
+    listed &= set(t.related_messages)  # message copies only
+    # a copy Baker lists that matches here is a disagreement too (extra)
+    wrong = sorted(listed - set(unmatched), key=_loc_key)
     rest = [loc for loc in unmatched if loc not in listed]
-    # the coverage record lists the first locators only; past that list, its count stands in
-    missing = rest[max(0, n_listed - len(listed & set(unmatched))) :]
+    # the coverage record lists the first locators only; past that list (and only then), its
+    # count stands in for the rest
+    capped = len(listed) < n_listed
+    missing = rest[max(0, n_listed - len(listed & set(unmatched))) :] if capped else rest
     n_rel = len(t.related_messages)
     counts.append(
         Count(RELATED_RECORD, n_rel, n_rel - len(unmatched), len(unmatched) - len(missing),
-              missing, [])
+              missing, wrong)
     )  # fmt: skip
     xml_atts = sum(m.attachments for m in t.messages.values() if m.locator in db_msgs)
     (db_atts,) = conn.execute(

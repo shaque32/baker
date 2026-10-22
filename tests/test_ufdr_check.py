@@ -665,3 +665,39 @@ def test_a_copy_to_another_recipient_is_not_matched_to_the_record(tmp_path):
         2, 1, 1
     )  # fmt: skip
     assert rel["missing"] == 0
+
+
+def test_a_copy_with_a_second_sender_is_listed_by_both(tmp_path):
+    """The importer keys every sender; the check must too, or a copy Baker lists for a second
+    sender would read as matching here."""
+    two = _msg("ok", T, JO, (OWNER,), id="c1").replace(
+        "</modelField>", f"</modelField>{one('From', party('+15550100009', 'Al'))}", 1
+    )
+    copies = related(model("Chat", many("Messages", [two], "InstantMessage")))
+    chat = model(
+        "Chat",
+        field("Source", "WhatsApp"),
+        many("Messages", [_msg("ok", T, JO, (OWNER,), id="m1")], "InstantMessage"),
+        copies,
+    )
+    path = write_package(tmp_path / "two.ufdr", report_xml({"Chat": [chat]}))
+    d = ufdr_check.run(path).shareable
+    rel = _rec(d, ufdr_check.RELATED_RECORD)
+    assert (rel["imported_by_baker"], rel["repeats_imported_once"], rel["missing"]) == (0, 1, 0)
+    assert d["differences"] == 0
+
+
+def test_a_copy_baker_lists_that_matches_here_is_a_difference(tmp_path, monkeypatch):
+    path = related_package(tmp_path / "rel.ufdr")
+    real = ufdr._RecordMapper.finish_related
+
+    def list_one_more(self):
+        real(self)
+        self._flag("Chat", "related_copy_unmatched", "Chat[1]/Related[1]/Messages[1]")
+        self.cov.counters["related_message_copies_matching_no_record"] += 1
+
+    monkeypatch.setattr(ufdr._RecordMapper, "finish_related", list_one_more)
+    d = ufdr_check.run(path).shareable
+    rel = _rec(d, ufdr_check.RELATED_RECORD)
+    assert rel["extra"] == 1
+    assert d["differences"] == 1

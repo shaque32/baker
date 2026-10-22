@@ -22,7 +22,12 @@
   recipients, deleted state, attachment count and names; paths and file ids are each source's
   own reference, so not compared), and a copied chat's messages are
   matched one to one to the holder chat's, so a lone copy never hides behind a same-second twin
-  (Baker Eval on #117).
+  (Baker Eval on #117). After Codex's review on #117: a call copy matches only with each party
+  on the same side; a deleted state counts in every form the importer reads (attribute or
+  field); copies are matched at any depth (copies inside copies, chats copied inside a copied
+  chat); a copied chat's messages are reduced to their content key as each closes, so a long
+  copied chat is never held whole; ufdr-check compares every sender and flags a copy Baker
+  lists that matches there (`extra`), as well as one it fails to list.
   ufdr-check 0.1.0 -> 0.2.0: copies are matched to their holder the same way, in a row of their
   own (one that does not match must be one Baker lists for review, else it is a difference),
   counted per type, and never added to a record; a

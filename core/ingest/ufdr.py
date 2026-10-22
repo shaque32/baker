@@ -208,6 +208,7 @@ class _El:
     locator: str = ""
     pending: list[tuple[str, _Model]] | None = None  # a chat's messages, read as they close
     seen: dict[str, int] | None = None  # messages read so far per field of the chat
+    key: bytes | None = None  # content key of a copied chat's message, read as it closed
 
     def joined(self) -> str:
         return "".join(self.text or ())
@@ -423,6 +424,21 @@ class _Reader:
                 seen[fname] = seen.get(fname, 0) + 1
                 self.building[-1].children.pop()  # free the message's XML
                 pending.append((f"{self.building[0].locator}/{fname}[{seen[fname]}]", _model(el)))
+            elif (
+                el.tag == "model"
+                and len(self.building) >= 3
+                and self.building[-1].tag == "multiModelField"
+                and self.building[-2].attrs.get("type") == "Chat"
+                and self.building[-3].tag == "RelatedModels"
+                and (
+                    self.building[-1].attrs.get("name", "").lower() == "messages"
+                    or el.attrs.get("type") in MESSAGE_TYPES
+                )
+            ):
+                # a message of a copied chat: only its content key is kept (and any copies it
+                # holds), so a long copied chat is never held whole
+                el.key = _content_key(_model(el))
+                el.children = [c for c in el.children if c.tag == "RelatedModels"]
             return
         if local == "model" and self.path and self.path[-1] == "modelType":
             self._top_type = None
@@ -789,7 +805,7 @@ class _Copies:
     table: str
     kind: str  # "one" or "chat"
     holder: str
-    want: bytes | None
+    want: bytes | list[bytes] | None
     keys: list[tuple[bytes, str]]  # content key, locator of each copy
     message: bool
 
@@ -1173,9 +1189,7 @@ class _RecordMapper:
         self, table: str, m: _Model, locator: str, embedded_in: _Model | None = None
     ) -> str | None:
         """The record's deleted state as the package wrote it, and its recovery flags."""
-        state = m.attrs.get("deleted_state") or m.attrs.get("deleted")
-        if state is None:
-            state = m.text("deleted_state", "deletedstate", "recordstatus")
+        state = _deleted_state(m)
         if state is not None:
             self.deleted_states[state] += 1
         carved = any(
@@ -1252,42 +1266,43 @@ class _RecordMapper:
             self.related_counts[t] += 1
             m = _model(el)
             if t == "Chat":
-                written = {n.lower(): n for n in m.field_names}
                 keys: list[tuple[bytes, str]] = []
-                for f in el.children:
-                    if f.tag != "multiModelField":
-                        continue
-                    fname = f.attrs.get("name", "")
-                    msgs = [
-                        x for x in f.children if x.tag == "model"
-                        and (fname.lower() == "messages" or x.attrs.get("type") in MESSAGE_TYPES)
-                    ]  # fmt: skip
-                    for j, x in enumerate(msgs, 1):
-                        where = f"{loc}/{written.get(fname.lower(), fname)}[{j}]"
-                        xm = _model(x)
-                        keys.append((_content_key(xm), where))
-                        self._nested(table, where, xm, x)
+                for key, where, x in _chat_copy_messages(loc, el):
+                    keys.append((key, where))
+                    self._nested(table, where, key, x)
                 self.related_copies.append(_Copies(table, "chat", holder, None, keys, True))
+                self._nested_chats(table, loc, [k for k, _w in keys], el)
             elif t in MESSAGE_TYPES or t in ("Call", "Contact", "UserAccount"):
                 key = _content_key(m)
                 self.related_copies.append(
                     _Copies(table, "one", holder, None, [(key, loc)], t in MESSAGE_TYPES)
                 )
-                self._nested(table, loc, m, el)
+                self._nested(table, loc, key, el)
 
-    def _nested(self, table: str, loc: str, m: _Model, el: _El) -> None:
-        """Copies inside a copy (a RelatedModels element in a copied record): each must say
-        what that copy says."""
+    def _nested_chats(self, table: str, loc: str, want: list[bytes], chat: _El) -> None:
+        """Chats copied inside a copied chat: their messages match that copy's one to one."""
+        for rel in (c for c in chat.children if c.tag == "RelatedModels"):
+            for i, x in enumerate((c for c in rel.children if c.tag == "model"), 1):
+                self.related_counts[x.attrs.get("type", "")] += 1
+                if x.attrs.get("type") != "Chat":
+                    continue  # never a copy of this chat: counted, not matched
+                keys = [(k, w) for k, w, _el in _chat_copy_messages(f"{loc}/Related[{i}]", x)]
+                self.related_copies.append(_Copies(table, "chat", loc, want, keys, True))
+
+    def _nested(self, table: str, loc: str, want: bytes, el: _El) -> None:
+        """Copies inside a copy (a RelatedModels element in a copied record), at any depth:
+        each must say what the copy holding it says (`want`)."""
         for rel in (c for c in el.children if c.tag == "RelatedModels"):
-            want = _content_key(m)
             for i, x in enumerate((c for c in rel.children if c.tag == "model"), 1):
                 t = x.attrs.get("type", "")
+                where = f"{loc}/Related[{i}]"
                 self.related_counts[t] += 1
                 if t in MESSAGE_TYPES or t in ("Call", "Contact", "UserAccount"):
+                    key = _content_key(_model(x))
                     self.related_copies.append(
-                        _Copies(table, "one", loc, want, [(_content_key(_model(x)),
-                                f"{loc}/Related[{i}]")], t in MESSAGE_TYPES)
-                    )  # fmt: skip
+                        _Copies(table, "one", loc, want, [(key, where)], t in MESSAGE_TYPES)
+                    )
+                    self._nested(table, where, key, x)
 
     def finish_related(self) -> None:
         if not self.related_counts:
@@ -1298,7 +1313,9 @@ class _RecordMapper:
         matched = 0
         for c in self.related_copies:
             if c.kind == "chat":
-                left = Counter(self.chat_keys.get(c.holder, ()))
+                left = Counter(
+                    c.want if isinstance(c.want, list) else self.chat_keys.get(c.holder, ())
+                )
             else:
                 want = c.want if c.want is not None else self.record_keys.get(c.holder)
                 left = Counter({want: len(c.keys)}) if want is not None else Counter()
@@ -1593,7 +1610,12 @@ def _content_key(m: _Model) -> bytes:
     many, and their names) as written; calls: time, duration, direction and parties; contacts:
     name and entries; accounts: app and identifier."""
     if m.type == "Call":
-        parties = sorted(_party_text(p) for p, _r in _parties(m.models("from", "to", "parties")))
+        # each party with its side, so a copy that swaps caller and callee does not match
+        parties = sorted(
+            [("from", _party_text(p)) for p, _r in _parties(m.models("from"))]
+            + [("to", _party_text(p)) for p, _r in _parties(m.models("to"))]
+            + [(r, _party_text(p)) for p, r in _parties(m.models("parties"))]
+        )
         key: tuple[object, ...] = (
             m.type,
             m.raw(*CALL_TS_FIELDS),
@@ -1606,10 +1628,11 @@ def _content_key(m: _Model) -> bytes:
     elif m.type == "UserAccount":
         key = (m.type, m.raw("source"), m.text("username") or _account_identifier(m))
     else:
+        listed = list(_parties(m.models("parties", "participants")))
         senders = [_party_text(p) for p, _r in _parties(m.models("from"))]
-        senders += [_party_text(p) for p, r in _parties(m.models("parties")) if r == "from"]
-        to = sorted(_party_text(p) for p, _r in _parties(m.models("to")))
-        to += sorted(_party_text(p) for p, r in _parties(m.models("parties")) if r != "from")
+        senders += [_party_text(p) for p, r in listed if r == "from"]
+        to = [_party_text(p) for p, _r in _parties(m.models("to"))]
+        to = sorted(to + [_party_text(p) for p, r in listed if r in ("to", "cc", "bcc")])
         # attachments by name as written: a copy decoded from another source points at its
         # own file (another path or file id), so the reference is not compared
         attachments = sorted(
@@ -1621,10 +1644,29 @@ def _content_key(m: _Model) -> bytes:
             m.raw(*TS_FIELDS),
             senders,
             to,
-            m.attrs.get("deleted_state"),
+            _deleted_state(m),
             attachments,
         )
     return hashlib.blake2b(repr(key).encode("utf-8", "surrogatepass"), digest_size=16).digest()
+
+
+def _chat_copy_messages(loc: str, chat: _El) -> Iterator[tuple[bytes, str, _El]]:
+    """The messages of a copied chat, in order: content key, locator, element."""
+    for f in (c for c in chat.children if c.tag == "multiModelField"):
+        fname = f.attrs.get("name", "")
+        msgs = [
+            x for x in f.children if x.tag == "model"
+            and (fname.lower() == "messages" or x.attrs.get("type") in MESSAGE_TYPES)
+        ]  # fmt: skip
+        for j, x in enumerate(msgs, 1):
+            key = x.key if x.key is not None else _content_key(_model(x))
+            yield key, f"{loc}/{fname}[{j}]", x
+
+
+def _deleted_state(m: _Model) -> str | None:
+    """The record's deleted state as written: an attribute, else a field."""
+    state = m.attrs.get("deleted_state") or m.attrs.get("deleted")
+    return state if state is not None else m.text("deleted_state", "deletedstate", "recordstatus")
 
 
 def _sole_sender(m: _Model) -> str | None:
