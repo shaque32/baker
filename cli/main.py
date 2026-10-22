@@ -19,8 +19,11 @@
                             --by expert:<name>
     python -m cli report    --db case.db --out report.html
     python -m cli verify-log --db case.db
+    python -m cli activity  --db case.db [--claim C01] [--csv activity.csv]
+                            [--in-report on|off --by expert:<name>]
     python -m cli export-bundle --db case.db --out bundle.zip --by expert:<name>
-                            [--include dismissed,irrelevant,prompts,records,history,feedback|all]
+                            [--include dismissed,irrelevant,prompts,records,history,feedback,
+                                       activity|all]
                             [--confirm-counsel-reviewed]
     python -m cli verify-bundle bundle.zip [--inputs <folder of original files>]
     python -m cli redecide  --db case.db --by expert:<name>
@@ -421,6 +424,36 @@ def cmd_verify_log(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_activity(a: argparse.Namespace) -> int:
+    """The examiner's activity trail (core/review/activity.py): every page view and logged
+    expert action, with time on page, read from the verified audit log."""
+    from datetime import UTC, datetime
+
+    from core.review import activity
+
+    if a.in_report is not None:
+        if not a.by:
+            print("--in-report needs --by expert:<name>", file=sys.stderr)
+            return 2
+        include = a.in_report == "on"
+        changed = activity.set_in_report(_open(a.db), datetime.now(UTC), a.by, include)
+        verb = "includes" if include else "leaves out"
+        print(f"the report {verb} examiner activity{'' if changed else ' (no change)'}")
+        return 0
+    trail = activity.steps(_open(a.db))
+    if a.claim:
+        trail = [s for s in trail if s.claim_id == a.claim]
+    if a.csv is not None:
+        a.csv.write_text(activity.csv_text(trail), encoding="utf-8")
+        print(f"wrote {a.csv} ({len(trail)} rows; nothing was sent)")
+        return 0
+    for s in trail:
+        item = s.payload.get("id", "") if s.is_view else (s.evidence_id or s.claim_id or "")
+        took = activity.duration(s.seconds, s.away) if s.is_view else ""
+        print(f"{s.seq}  {s.at_utc}  {s.examiner}  {s.where}  {item}  {took}".rstrip())
+    return 0
+
+
 def cmd_flags(a: argparse.Namespace) -> int:
     from core.review import flags
 
@@ -692,6 +725,15 @@ def parser() -> argparse.ArgumentParser:
     sp = add("report", cmd_report, "write the HTML claims report")
     sp.add_argument("--out", type=Path, required=True)
     add("verify-log", cmd_verify_log, "verify the audit log hash chain")
+    sp = add("activity", cmd_activity, "show or export the examiner's activity trail")
+    sp.add_argument("--claim", help="only steps on this claim")
+    sp.add_argument("--csv", type=Path, help="write the whole trail as CSV here")
+    sp.add_argument(
+        "--in-report",
+        choices=("on", "off"),
+        help="put the activity table in this case's report, or leave it out (off by default)",
+    )
+    sp.add_argument("--by", help="with --in-report: expert:<name>, recorded in the audit log")
     sp = add(
         "export-bundle",
         cmd_export_bundle,
@@ -703,7 +745,7 @@ def parser() -> argparse.ArgumentParser:
         "--include",
         default="",
         help="parts to add to what the verdicts rest on, comma separated: dismissed, irrelevant, "
-        "prompts, records, history, feedback; or all (the whole case)",
+        "prompts, records, history, feedback, activity; or all (the whole case)",
     )
     sp.add_argument(
         "--confirm-counsel-reviewed",
