@@ -13,8 +13,9 @@ fmt:
 	ruff check --fix .
 	ruff format .
 
+# PYTEST_ARGS passes extra options, e.g. PYTEST_ARGS=--durations=40 (CI prints test timings).
 test:
-	$(PY) -m pytest -q
+	$(PY) -m pytest -q $(PYTEST_ARGS)
 
 # The AI changelog in one view: docs/changelog/ entries newest first, then docs/CHANGELOG_AI.md.
 changelog:
