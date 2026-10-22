@@ -234,6 +234,11 @@ def build_card(
     }
 
 
+def _cell(text: str) -> str:
+    """A value safe inside one Markdown table cell: no column break, no new row."""
+    return " ".join(text.split()).replace("|", "\\|")
+
+
 def _fmt(r: dict[str, Any]) -> str:
     """'0 of 12 (0%) [0-24%]'."""
     if r["rate"] is None:
@@ -268,7 +273,7 @@ def render_markdown(card: dict[str, Any]) -> str:
     if missing:
         lines.append(
             f"| No prediction (counted wrong; never false supported or false contradicted) | "
-            f"{len(missing)}: {', '.join(missing)} |"
+            f"{len(missing)}: {', '.join(_cell(m) for m in missing)} |"
         )
     for label, key in (
         ("False supported", "false_supported"),

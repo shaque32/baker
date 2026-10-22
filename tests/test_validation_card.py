@@ -101,6 +101,15 @@ def test_false_supported_and_false_contradicted_use_their_own_denominators():
     )
 
 
+def test_a_claim_id_cannot_break_the_no_prediction_row():
+    card = build_card([gold("C1|x\nC2", Verdict.SUPPORTED)], [])
+    row = [ln for ln in render_markdown(card).splitlines() if ln.startswith("| No prediction")]
+    assert row == [
+        "| No prediction (counted wrong; never false supported or false contradicted) |"
+        " 1: C1\\|x C2 |"
+    ]
+
+
 def test_a_card_with_every_claim_predicted_has_no_missing_row():
     card = build_card([gold("C1", Verdict.SUPPORTED)], [pred("C1", Verdict.SUPPORTED)])
     md = render_markdown(card)
