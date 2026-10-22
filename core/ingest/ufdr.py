@@ -441,7 +441,10 @@ class _Reader:
                 # a message of a copied chat: only its content key is kept (and any copies it
                 # holds), so a long copied chat is never held whole
                 el.key = _content_key(_model(el))
-                el.children = [c for c in el.children if c.tag == "RelatedModels"]
+                el.children = [
+                    c for c in el.children
+                    if c.tag == "RelatedModels" or _is_embedded_field(c)
+                ]  # fmt: skip
             return
         if local == "model" and self.path and self.path[-1] == "modelType":
             self._top_type = None
@@ -1331,6 +1334,10 @@ class _RecordMapper:
                         _Copies(table, "one", loc, want, [(key, where)], t not in COPY_KINDS)
                     )
                     self._nested(table, where, key, x)
+        # a message embedded in this one can hold copies too, at its /Embedded[n] locator
+        for f in (c for c in el.children if _is_embedded_field(c)):
+            for n, e in enumerate((c for c in f.children if c.tag == "model"), 1):
+                self._nested(table, f"{loc}{EMBEDDED_STEP}{n}]", _content_key(_model(e)), e)
 
     def finish_related(self) -> None:
         if not self.related_counts:
@@ -1687,7 +1694,7 @@ def _content_key(m: _Model) -> bytes:
             a.raw(*ATT_NAME_FIELDS) or "" for a in m.models("attachments", "attachment")
         )
         key = (
-            "message",
+            m.type,  # SMS and chat messages map differently
             m.raw("source"),
             m.raw(*BODY_FIELDS),
             m.raw(*TS_FIELDS),
@@ -1706,15 +1713,21 @@ def _content_key(m: _Model) -> bytes:
 
 def _chat_copy_messages(loc: str, chat: _El) -> Iterator[tuple[bytes, str, _El]]:
     """The messages of a copied chat, in order: content key, locator, element."""
+    seen: dict[str, int] = {}  # per field name, across the chat's fields, as the reader counts
     for f in (c for c in chat.children if c.tag == "multiModelField"):
         fname = f.attrs.get("name", "")
         msgs = [
             x for x in f.children if x.tag == "model"
             and (fname.lower() == "messages" or x.attrs.get("type") in MESSAGE_TYPES)
         ]  # fmt: skip
-        for j, x in enumerate(msgs, 1):
+        for x in msgs:
+            seen[fname] = seen.get(fname, 0) + 1
             key = x.key if x.key is not None else _content_key(_model(x))
-            yield key, f"{loc}/{fname}[{j}]", x
+            yield key, f"{loc}/{fname}[{seen[fname]}]", x
+
+
+def _is_embedded_field(el: _El) -> bool:
+    return el.tag != "model" and el.attrs.get("name", "").lower() == "embeddedinstantmessage"
 
 
 def _deleted_state(m: _Model) -> str | None:

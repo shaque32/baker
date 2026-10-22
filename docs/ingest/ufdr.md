@@ -77,7 +77,7 @@ the model holding it (its messages are not the chat's, its attachments and parti
 message's), and its models are not imported. Each copy of a message (also inside a copied chat,
 or inside a copy), call, contact or account is counted (`related_copies`, info) and matched to
 its holder: a copy must say what the record holding it says, in every field the record's mapper
-reads, as written (messages: app, text, time, Direction, Folder and Status, each party with its
+reads, as written (messages: model type, app, text, time, Direction, Folder and Status, each party with its
 side and IsPhoneOwner, parties with no sender or recipient role in order, deleted state,
 attachments by count and name, and any embedded message; calls: app, time, duration, Direction,
 Type and Status, parties with each side in order, and deleted state; contacts: name and entries;
@@ -91,7 +91,7 @@ on the same side (a copy that swaps caller and callee is listed). Copies are mat
 depth: copies inside copies, and chats copied inside a copied chat. A copied chat's messages are
 reduced to their content key as each one closes, so a long copied chat is never held whole, and
 a content key is kept only for a record that holds copies. A message embedded in another
-(`/Embedded[n]`) can hold copies too, matched to it.
+(`/Embedded[n]`), in a record or in a copy, can hold copies too, matched to it.
 
 Metadata items read (by name, letters and digits only, case-insensitive):
 `DeviceInfoExtractionStartDateTime` (extraction time), `DeviceInfoSelectedDeviceName` or

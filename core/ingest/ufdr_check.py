@@ -793,6 +793,7 @@ def _listed_copies(conn: sqlite3.Connection, src: str) -> tuple[set[str], int]:
 def _said(x: MessageRec) -> tuple[object, ...]:
     """What a message says, field by field as written (see compare)."""
     return (
+        x.type,
         x.body,
         x.body_written,
         x.ts_raw,

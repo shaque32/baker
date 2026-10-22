@@ -1536,6 +1536,51 @@ def test_content_keys_are_kept_only_for_records_holding_copies(tmp_path, monkeyp
     assert kept == {"records": 1, "chats": 0}
 
 
+def test_a_copy_of_another_message_kind_is_listed(tmp_path):
+    def msg(type_: str, mid: str, *tail: str) -> str:
+        parts = (field("Body", "ok"), ts_field("TimeStamp", T2), many("Parties", [party(*JO)]))
+        return model(type_, *parts, *tail, id=mid)
+
+    xml = report_xml({"SMS": [msg("SMS", "s1", related(msg("InstantMessage", "s1r")))]})
+    assert _listed(tmp_path, "kind", xml) == ("SMS[1]/Related[1]",)
+
+
+def test_copies_of_an_embedded_message_inside_a_copy_are_matched(tmp_path):
+    def holder(mid: str, inner: str, *tail: str) -> str:
+        return _with(_msg("ok", T2, id=mid), _embedded(inner), *tail)
+
+    exact = _with(_msg("inner", T2, id="e2"), related(_msg("inner", T2, id="e2r")))
+    differs = _with(_msg("inner", T2, id="e3"), related(_msg("not it", T2, id="e3r")))
+    copies = related(holder("m1r", exact), holder("m1s", differs))
+    top = holder("m1", _msg("inner", T2, id="e1"), copies)
+    chat = _chat(
+        "k1",
+        _msg("a", T2, id="m2"),
+        extra=(
+            related(
+                _chat("k1", holder("c1", differs.replace('"e3', '"e4'))),
+            ),
+        ),
+    )
+    xml = report_xml({"InstantMessage": [top], "Chat": [chat]})
+    assert sorted(_listed(tmp_path, "emb-in-copy", xml)) == [
+        "Chat[1]/Related[1]/Messages[1]",
+        "Chat[1]/Related[1]/Messages[1]/Embedded[1]/Related[1]",
+        "InstantMessage[1]/Related[2]/Embedded[1]/Related[1]",
+    ]
+
+
+def test_a_copied_chat_counts_messages_across_fields_of_one_name(tmp_path):
+    copy = _with(
+        _chat("k1", _msg("a", T2, id="c1")),
+        many("Messages", [_msg("not it", T2, id="c2")], "InstantMessage"),
+    )
+    chat = _chat("k1", _msg("a", T2, id="m1"), extra=(related(copy),))
+    assert _listed(tmp_path, "fields", report_xml({"Chat": [chat]})) == (
+        "Chat[1]/Related[1]/Messages[2]",
+    )
+
+
 def test_a_chat_message_skipped_between_the_two_reads_stores_nothing(tmp_path, monkeypatch):
     path = related_package(tmp_path / "rel.ufdr")
     real = ufdr._RecordMapper.chat
