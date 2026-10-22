@@ -1795,3 +1795,13 @@ def test_a_copy_whose_unnamed_attachment_names_only_its_own_file_id_matches(tmp_
     held = msg("m1", model("Attachment", field("LocalPath", "files/a.cnt"), file_id="f1"),
                related(copy))  # fmt: skip
     assert _listed(tmp_path, "att-own-id", report_xml({"InstantMessage": [held]})) == ()
+
+
+def test_a_copy_whose_attachment_has_another_mime_type_is_listed_by_both(tmp_path):
+    def msg(mid: str, mime: str, *tail: str) -> str:
+        att = model("Attachment", field("Filename", "a.jpg"), field("ContentType", mime))
+        return _with(_msg("ok", T2, id=mid), many("Attachments", [att], "Attachment"), *tail)
+
+    held = msg("m1", "image/jpeg", related(msg("m1r", "image/jpeg"), msg("m1s", "video/mp4")))
+    xml = report_xml({"InstantMessage": [held]})
+    assert _listed(tmp_path, "att-mime", xml) == ("InstantMessage[1]/Related[2]",)

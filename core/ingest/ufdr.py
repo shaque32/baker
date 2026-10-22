@@ -1713,7 +1713,7 @@ def _content_key(m: _Model) -> bytes:
     same thing. Every field the record's mapper reads is in it, as written: messages: app,
     text, time, direction, folder and status, parties (with their side and IsPhoneOwner;
     those with no sender or recipient role in order), deleted state, attachments (how many,
-    and their names), whether it is marked forwarded, and any message embedded in it;
+    their names and MIME types), whether it is marked forwarded, and any message embedded in it;
     calls: app, time, duration, direction, type and status, parties (each side in order) and
     deleted state; contacts: name and entries; accounts: app, identifier and name. Messages,
     calls and contacts also carry their recovery marks (carved, decoding confidence not High),
@@ -1757,11 +1757,13 @@ def _content_key(m: _Model) -> bytes:
         # a party with no sender or recipient role: an SMS's counterpart, say, in the order
         # written (the mapper takes the first one that is not the phone's owner)
         others = [(r, _party_key(p)) for p, r in listed if r not in ("from", "to", "cc", "bcc")]
-        # attachments by name as written: a copy decoded from another source points at its
-        # own file (another path or file id), so the reference is not compared
+        # attachments by name and MIME type as written: a copy decoded from another source
+        # points at its own file (another path or file id), so the reference is not compared
         attachments = sorted(
-            a.raw(*ATT_NAME_FIELDS) or "" for a in m.models("attachments", "attachment")
-        )
+            ((a.raw(*ATT_NAME_FIELDS) or "", a.raw(*ATT_MIME_FIELDS))
+             for a in m.models("attachments", "attachment")),
+            key=repr,
+        )  # fmt: skip
         key = (
             m.type,  # SMS and chat messages map differently
             m.raw("source"),

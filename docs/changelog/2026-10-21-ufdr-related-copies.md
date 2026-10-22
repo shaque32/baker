@@ -44,7 +44,8 @@
   held by a chat is, and so are the messages of a chat copied inside a copy of another kind.
   An unnamed attachment is compared by name as written, never by its file: on the public
   Android packages a copy's unnamed attachment names only its own file id while its holder
-  names the extracted path, so comparing the file would list about 20 genuine copies per package. A copied chat
+  names the extracted path, so comparing the file would list about 20 genuine copies per package.
+  An attachment's MIME type as written is compared with its name. A copied chat
   must also say what the holder chat says around its messages (app, id, name, participants),
   and copies are numbered across all of a holder's RelatedModels elements. A copy marked
   forwarded where its holder is not (or the reverse) is listed. A copied chat with fewer
@@ -72,6 +73,9 @@
   their holders are not read. report.xml states no count per type: `ModelCount` on `project`
   did not equal the number of records, so it is not compared. A message linked to the phone's
   owner only by a name that reads like an account identifier keeps an unknown direction.
+  ufdr-check verifies message copies only. Copies of calls, contacts and accounts are matched
+  by the importer alone, and on the public Android packages there are hundreds of them, so an
+  independent check for those kinds is the next ufdr-check change.
 - Affects: capabilities (UFDR import coverage, ufdr-check). No verdict, privacy or network change.
 - Status doc: pending: §8 item 1, after "Cellebrite UFDR (unverified on real samples)" add
   "(importer 0.3.0 counts Reader 7.48 RelatedModels copies and lists any that match no record,

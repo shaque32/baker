@@ -151,7 +151,8 @@ class _Frame:
     parties: dict[str, list[tuple[str | None, str | None, str, bool]]] = field(default_factory=dict)
     # (named, path, file_id): a file_id is resolved through taggedFiles once the read ends
     attachments: list[tuple[bool, str | None, str | None]] = field(default_factory=list)
-    att_written: list[str] = field(default_factory=list)  # attachment names as written
+    # attachment names and MIME types as written
+    att_written: list[tuple[str, str | None]] = field(default_factory=list)
     entries: list[str] = field(default_factory=list)
     user_ids: list[str] = field(default_factory=list)  # UserID entries, for a UserAccount
     msg_seen: Counter[str] = field(default_factory=Counter)
@@ -201,7 +202,7 @@ class MessageRec:
     # a name that happens to read like one
     sender_ident: str | None = None
     recipient_idents: list[str] = field(default_factory=list)
-    att_written: tuple[str, ...] = ()  # sorted attachment names, as written
+    att_written: tuple[tuple[str, str | None], ...] = ()  # sorted (name, MIME), as written
     # stated senders, sorted recipients (as (identifier, name, says phone owner)), then other
     # parties with role
     parties_written: tuple[object, ...] = ()
@@ -457,7 +458,9 @@ class Tally:
             name = _first(f.fields, ATT_NAME)
             path = _first(f.fields, ATT_PATH)
             parent.attachments.append((bool(name) or bool(path), path, f.attrs.get("file_id")))
-            parent.att_written.append(_first_raw(f.fields, ATT_NAME) or "")
+            # name and MIME type as written: the importer stores both for the record
+            written = _first_raw(f.fields, ATT_NAME) or ""
+            parent.att_written.append((written, _first_raw(f.fields, ufdr.ATT_MIME_FIELDS)))
             return
         if parent is not None and holder == "messageextradata":
             # labels the importer reads to mark its message forwarded
@@ -565,7 +568,7 @@ class Tally:
             status=_text(f.fields.get("status")),
             state=_state(f),
             att_refs=list(f.attachments),
-            att_written=tuple(sorted(f.att_written)),
+            att_written=tuple(sorted(f.att_written, key=repr)),
             body_written=body is not None,
             parties_written=(
                 tuple((p[0], p[1], p[3]) for p in senders),
