@@ -34,6 +34,7 @@ from core.casework.awake import keep_awake
 from core.casework.model_check import ModelCheck
 from core.db import connect
 from core.review.actions import ReviewError
+from core.support import errors as support_errors
 
 DEFAULT_SECONDS_PER_CALL = 43.0  # Qwen3-14B Q4 on a 24 GB Mac (Wave 3, PR #28)
 # Opus 5.5 at medium effort on case01: 493 calls in 1,558 s (cloud bench 2026-10-14c).
@@ -105,6 +106,7 @@ class Jobs:
             try:
                 target(job)
             except BaseException as e:  # noqa: BLE001 - a job never takes the screen down
+                support_errors.note(job.kind, e)  # type and Baker frames only, for a bug report
                 if job.running:
                     job.end("failed", f"Stopped on an unexpected error ({type(e).__name__}: {e}).")
             finally:
@@ -274,8 +276,10 @@ def audit_job(
                 "this case in Setup and run the audit again to label the whole case locally.",
             )
         except (pipeline.ComponentsMissing, ModelConfigError) as e:
+            support_errors.note("audit", e)
             job.end("failed", f"The audit did not start: {e}.")
         except (InvariantViolation, ModelUnavailable) as e:
+            support_errors.note("audit", e)
             job.end(
                 "failed",
                 f"The audit stopped after {job.done} of {job.total} claims: {e}. Finished claims "
@@ -314,6 +318,7 @@ def propose_job(*, extractor_for: ExtractorFor) -> Callable[[Job], None]:
             try:
                 extractor = extractor_for(conn)
             except (ValueError, ModelConfigError, PromptMissingError) as e:
+                support_errors.note("propose", e)
                 job.end("failed", f"Claim proposal did not start: {e}.")
                 return
             proposed = dropped = 0
@@ -342,6 +347,7 @@ def propose_job(*, extractor_for: ExtractorFor) -> Callable[[Job], None]:
                 + ". Accept, edit or remove each one.",
             )
         except ModelUnavailable as e:
+            support_errors.note("propose", e)
             job.end("failed", f"Claim proposal stopped after {job.done} paragraphs: {e}.")
         finally:
             conn.close()

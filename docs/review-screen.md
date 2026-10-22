@@ -195,6 +195,14 @@ one that no longer verifies. The expert:
    original matches the hashes in the old case's reports.
 4. Keeps the blocked folder, and notes for counsel why the case was rebuilt.
 
+## Help and bug reports
+
+The **Help** tab opens on every page, with or without a case open. It shows the support contact,
+a short "what Baker does and doesn't do" and the bug report in full, then saves the same text as
+a JSON file. The report holds no case data (`docs/SUPPORT.md`). An unexpected error on the screen
+answers with a plain message pointing to Help, and the error's type and Baker file and line (not
+its message) go into the next bug report.
+
 ## Local-server protections
 
 Another web page open in the same browser can send requests to `127.0.0.1`, so the server
