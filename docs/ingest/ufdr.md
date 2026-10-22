@@ -91,7 +91,10 @@ on the same side (a copy that swaps caller and callee is listed). Copies are mat
 depth: copies inside copies, and chats copied inside a copied chat. A copied chat's messages are
 reduced to their content key as each one closes, so a long copied chat is never held whole, and
 a content key is kept only for a record that holds copies. A message embedded in another
-(`/Embedded[n]`), in a record or in a copy, can hold copies too, matched to it.
+(`/Embedded[n]`), in a record or in a copy, can hold copies too, matched to it. A copied chat's
+messages match the holder chat's only when the two chats also say the same around them (app,
+id, name and participants, as the message mapper reads them). Copies are numbered across all of
+a holder's RelatedModels elements.
 
 Metadata items read (by name, letters and digits only, case-insensitive):
 `DeviceInfoExtractionStartDateTime` (extraction time), `DeviceInfoSelectedDeviceName` or

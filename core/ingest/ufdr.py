@@ -493,7 +493,12 @@ class _Reader:
             and inner[-1].tag == "model"
             and inner[-2].attrs.get("name", "").lower() == "embeddedinstantmessage"
         ):
-            n = sum(1 for c in inner[-2].children if c.tag == "model")
+            msg = inner[-3] if len(inner) >= 3 else top
+            # numbered across all of the message's embedded fields, as message_rows() does
+            n = sum(
+                1 for f in msg.children if _is_embedded_field(f)
+                for c in f.children if c.tag == "model"
+            )  # fmt: skip
             return f"{self._locator(top, inner[:-2])}{EMBEDDED_STEP}{n}]"
         if (
             len(inner) == 2
@@ -1163,6 +1168,8 @@ class _RecordMapper:
         # content keys only of records holding copies: a record's RelatedModels closes before
         # the record is mapped, so its holders are known by then and nothing else is kept
         self.holders: set[str] = set()
+        self.related_seen: dict[str, int] = {}  # holder -> copies numbered so far
+        self.chat_context: dict[str, bytes] = {}  # holder chat locator -> _chat_context
         self.record_keys: dict[str, bytes] = {}  # holder locator -> its content key
         self.chat_keys: dict[str, list[bytes]] = {}  # holder chat locator -> its messages' keys
 
@@ -1283,19 +1290,26 @@ class _RecordMapper:
         table = holder.split("[", 1)[0]
         self.holders.add(holder)
         models = [c for c in rel.children if c.tag == "model"]
-        for i, el in enumerate(models, 1):
+        for el in models:
+            # numbered across all of the holder's RelatedModels elements, as ufdr-check does
+            i = self.related_seen[holder] = self.related_seen.get(holder, 0) + 1
             t = el.attrs.get("type", "")
             loc = f"{holder}/Related[{i}]"
             self.related_counts[t] += 1
             m = _model(el)
             if t == "Chat":
                 keys: list[tuple[bytes, str]] = []
+                ctx = _chat_context(m)
                 for key, where, x in _chat_copy_messages(loc, el):
-                    keys.append((key, where))
+                    keys.append((_in_chat(ctx, key), where))
                     self._nested(table, where, key, x)
                 self.related_copies.append(_Copies(table, "chat", holder, None, keys, True))
                 self._nested_chats(table, loc, [k for k, _w in keys], el)
-            elif t in COPY_TYPES or _CHAT_MESSAGE_LOC.fullmatch(holder):
+            elif (
+                t in COPY_TYPES
+                or _CHAT_MESSAGE_LOC.fullmatch(holder)
+                or holder.rpartition("/")[2].startswith(EMBEDDED_STEP[1:])
+            ):
                 # a chat message's copy is a message whatever its type is named, as its holder
                 key = _content_key(m)
                 is_message = t not in COPY_KINDS
@@ -1306,25 +1320,29 @@ class _RecordMapper:
 
     def _nested_chats(self, table: str, loc: str, want: list[bytes], chat: _El) -> None:
         """Chats copied inside a copied chat: their messages match that copy's one to one."""
+        i = 0  # numbered across all of the copy's RelatedModels elements
         for rel in (c for c in chat.children if c.tag == "RelatedModels"):
-            for i, x in enumerate((c for c in rel.children if c.tag == "model"), 1):
+            for x in (c for c in rel.children if c.tag == "model"):
+                i += 1
                 self.related_counts[x.attrs.get("type", "")] += 1
                 if x.attrs.get("type") != "Chat":
                     continue  # never a copy of this chat: counted, not matched
                 where = f"{loc}/Related[{i}]"
                 msgs = list(_chat_copy_messages(where, x))
-                self.related_copies.append(
-                    _Copies(table, "chat", loc, want, [(k, w) for k, w, _el in msgs], True)
-                )
+                ctx = _chat_context(_model(x))
+                keys = [(_in_chat(ctx, k), w) for k, w, _el in msgs]
+                self.related_copies.append(_Copies(table, "chat", loc, want, keys, True))
                 for k, w, y in msgs:
                     self._nested(table, w, k, y)
-                self._nested_chats(table, where, [k for k, _w, _el in msgs], x)
+                self._nested_chats(table, where, [k for k, _w in keys], x)
 
     def _nested(self, table: str, loc: str, want: bytes, el: _El) -> None:
         """Copies inside a copy (a RelatedModels element in a copied record), at any depth:
         each must say what the copy holding it says (`want`)."""
+        i = 0  # numbered across all of the copy's RelatedModels elements
         for rel in (c for c in el.children if c.tag == "RelatedModels"):
-            for i, x in enumerate((c for c in rel.children if c.tag == "model"), 1):
+            for x in (c for c in rel.children if c.tag == "model"):
+                i += 1
                 t = x.attrs.get("type", "")
                 where = f"{loc}/Related[{i}]"
                 self.related_counts[t] += 1
@@ -1335,9 +1353,9 @@ class _RecordMapper:
                     )
                     self._nested(table, where, key, x)
         # a message embedded in this one can hold copies too, at its /Embedded[n] locator
-        for f in (c for c in el.children if _is_embedded_field(c)):
-            for n, e in enumerate((c for c in f.children if c.tag == "model"), 1):
-                self._nested(table, f"{loc}{EMBEDDED_STEP}{n}]", _content_key(_model(e)), e)
+        embedded = (e for f in el.children if _is_embedded_field(f) for e in f.children)
+        for n, e in enumerate((e for e in embedded if e.tag == "model"), 1):
+            self._nested(table, f"{loc}{EMBEDDED_STEP}{n}]", _content_key(_model(e)), e)
 
     def finish_related(self) -> None:
         if not self.related_counts:
@@ -1374,7 +1392,8 @@ class _RecordMapper:
         if locator in self.holders:
             self.record_keys[locator] = key
         if chat in self.holders:
-            self.chat_keys.setdefault(chat, []).append(key)
+            ctx = self.chat_context.get(chat, b"")
+            self.chat_keys.setdefault(chat, []).append(_in_chat(ctx, key))
 
     # dispatch ------------------------------------------------------------
 
@@ -1409,6 +1428,8 @@ class _RecordMapper:
 
     def chat(self, el: _El, chat: _Model) -> None:
         self._fields("Chat", "Chat", chat)
+        if el.locator in self.holders:
+            self.chat_context[el.locator] = _chat_context(chat)
         pending = el.pending or []
         if not pending:
             self.cov.counters["chats_without_messages"] += 1
@@ -1724,6 +1745,20 @@ def _chat_copy_messages(loc: str, chat: _El) -> Iterator[tuple[bytes, str, _El]]
             seen[fname] = seen.get(fname, 0) + 1
             key = x.key if x.key is not None else _content_key(_model(x))
             yield key, f"{loc}/{fname}[{seen[fname]}]", x
+
+
+def _chat_context(chat: _Model) -> bytes:
+    """What a chat says around its messages, as written: the message mapper reads its app,
+    id, name and participants."""
+    parts = [_party_key(p) for p, _r in _parties(chat.models("participants"))]
+    ctx = (chat.raw("source"), chat.raw(*CHAT_ID_FIELDS), chat.raw(*CHAT_NAME_FIELDS), parts)
+    return repr(ctx).encode("utf-8", "surrogatepass")
+
+
+def _in_chat(ctx: bytes, key: bytes) -> bytes:
+    """A chat message's key with its chat's context: a copied chat's messages match the holder
+    chat's only when the two chats also say the same around them."""
+    return hashlib.blake2b(ctx + key, digest_size=16).digest()
 
 
 def _is_embedded_field(el: _El) -> bool:

@@ -1581,6 +1581,34 @@ def test_a_copied_chat_counts_messages_across_fields_of_one_name(tmp_path):
     )
 
 
+def test_copies_are_numbered_across_sibling_related_models(tmp_path):
+    msg = _with(
+        _msg("ok", T2, id="m1"),
+        related(_msg("ok", T2, id="c1")),
+        related(_msg("not it", T2, id="c2")),
+    )
+    xml = report_xml({"InstantMessage": [msg]})
+    assert _listed(tmp_path, "siblings", xml) == ("InstantMessage[1]/Related[2]",)
+
+
+def test_a_copy_held_by_an_embedded_message_of_another_type_name_is_matched(tmp_path):
+    def custom(body: str, mid: str, *tail: str) -> str:
+        m = _msg(body, T2, id=mid).replace('type="InstantMessage"', 'type="ChatMessage"', 1)
+        return _with(m, *tail)
+
+    inner = custom("inner", "e1", related(custom("not it", "e1r")))
+    xml = report_xml({"InstantMessage": [_with(_msg("ok", T2, id="m1"), _embedded(inner))]})
+    assert _listed(tmp_path, "emb-type", xml) == ("InstantMessage[1]/Embedded[1]/Related[1]",)
+
+
+def test_a_copied_chat_saying_other_things_around_its_messages_is_listed(tmp_path):
+    copy = _chat("k9", _msg("ok", T2, id="c1"))  # another chat id and name
+    chat = _chat("k1", _msg("ok", T2, id="m1"), extra=(related(copy),))
+    assert _listed(tmp_path, "chat-ctx", report_xml({"Chat": [chat]})) == (
+        "Chat[1]/Related[1]/Messages[1]",
+    )
+
+
 def test_a_chat_message_skipped_between_the_two_reads_stores_nothing(tmp_path, monkeypatch):
     path = related_package(tmp_path / "rel.ufdr")
     real = ufdr._RecordMapper.chat

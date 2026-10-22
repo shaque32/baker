@@ -649,8 +649,16 @@ def test_a_message_held_only_as_a_related_copy_must_be_listed_by_baker(tmp_path,
 def test_a_copy_to_another_recipient_is_not_matched_to_the_record(tmp_path):
     other = ("+15550100003", "Sam", False)
     copies = related(
-        model("Chat", many("Messages", [_msg("ok", T, JO, (OWNER,), id="c1")], "InstantMessage")),
-        model("Chat", many("Messages", [_msg("ok", T, JO, (other,), id="c2")], "InstantMessage")),
+        model(
+            "Chat",
+            field("Source", "WhatsApp"),
+            many("Messages", [_msg("ok", T, JO, (OWNER,), id="c1")], "InstantMessage"),
+        ),
+        model(
+            "Chat",
+            field("Source", "WhatsApp"),
+            many("Messages", [_msg("ok", T, JO, (other,), id="c2")], "InstantMessage"),
+        ),
     )
     chat = model(
         "Chat",

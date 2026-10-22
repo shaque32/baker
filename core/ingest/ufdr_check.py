@@ -271,6 +271,8 @@ class Tally:
         self.related_messages: dict[str, MessageRec] = {}
         # messages embedded in a record's message (at its locator + /Embedded[n]), by content
         self.embedded: dict[str, MessageRec] = {}
+        # what each chat (or copied chat) says around its messages: app, id, name, participants
+        self.chat_context: dict[str, tuple[object, ...]] = {}
         self._capture: tuple[_Frame, str, list[str]] | None = None
         self._item: list[str] | None = None
         self._item_name = ""
@@ -301,7 +303,9 @@ class Tally:
                 key = f"{frame.type}.RelatedModels>{mtype}"
                 f = _Frame(mtype, dict(attrs), depth, key, loc, False, related=True)
                 # a copy of a message is a message, whatever its type is named, as its holder
-                f.is_message = mtype in TOP_MESSAGE_TYPES or (frame.is_message and mtype != "Chat")
+                f.is_message = mtype in TOP_MESSAGE_TYPES or (
+                    (frame.is_message or frame.embedded) and mtype != "Chat"
+                )
                 self.related_roots[mtype] += 1
             elif frame is not None and parent in ("modelField", "multiModelField"):
                 fname = self.attr_stack[-2].get("name", "")
@@ -461,6 +465,13 @@ class Tally:
             return
         if f.locator is None:
             return
+        if f.type == "Chat":
+            self.chat_context[f.locator] = (
+                _first_raw(f.fields, ("source",)),
+                _first_raw(f.fields, ufdr.CHAT_ID_FIELDS),
+                _first_raw(f.fields, ufdr.CHAT_NAME_FIELDS),
+                tuple((p[0], p[1], p[3]) for p in f.parties.get("participants", [])),
+            )
         if f.related:
             if f.is_message:
                 self.related_messages[f.locator] = self._message_rec(f)
@@ -835,9 +846,11 @@ def _unmatched_copies(
             own = [x for loc, x in t.messages.items()
                    if (loc in db_msgs or loc in t.repeats)
                    and loc.rpartition("/")[0] == holder]  # fmt: skip
-        left = Counter(said(x) for x in own)
+        # the two chats must also say the same around their messages
+        mine = t.chat_context.get(holder)
+        left = Counter((mine, said(x)) for x in own)
         for loc in locs:
-            k = said(t.related_messages[loc])
+            k = (t.chat_context.get(chat), said(t.related_messages[loc]))
             if left[k] > 0:
                 left[k] -= 1
             else:

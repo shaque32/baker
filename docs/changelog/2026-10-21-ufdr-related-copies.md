@@ -33,7 +33,9 @@
   IsPhoneOwner and parties with no sender or recipient role; a call's app, Type and Status; an
   account's name; then the order of an SMS's counterparts and of each side of a call, and a
   message's embedded messages and model type. Copies held by a message embedded in a copy are
-  matched too, and a copied chat counts messages across fields of one name. ufdr-check also matches copied chats against holder messages
+  matched too, and a copied chat counts messages across fields of one name. A copied chat
+  must also say what the holder chat says around its messages (app, id, name, participants),
+  and copies are numbered across all of a holder's RelatedModels elements. ufdr-check also matches copied chats against holder messages
   imported once under an earlier id, copies of embedded messages, and reads a blank
   deleted_state as the importer does. Content keys are kept only for records holding copies.
   ufdr-check 0.1.0 -> 0.2.0: copies are matched to their holder the same way, in a row of their
