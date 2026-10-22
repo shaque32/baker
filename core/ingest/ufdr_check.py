@@ -158,6 +158,7 @@ class _Frame:
     # a copy under some record's RelatedModels, or inside one: never part of its holder, and
     # never one of the package's own records (it is matched to them by content instead)
     related: bool = False
+    is_message: bool = False  # a message record: top-level, in a chat, or a copy of one
 
 
 @dataclass
@@ -198,6 +199,7 @@ class MessageRec:
     att_written: tuple[str, ...] = ()  # sorted attachment names, as written
     # every stated sender, then the sorted stated recipients, as (identifier, name) pairs
     parties_written: tuple[tuple[tuple[str | None, str | None], ...], ...] = ()
+    body_written: bool = False  # a body field is there, even an empty one
 
 
 @dataclass
@@ -282,13 +284,15 @@ class Tally:
                 mtype = mtype or self.attr_stack[-2].get("type", "")
                 self.top_counts[mtype] += 1
                 f = _Frame(mtype, dict(attrs), depth, mtype, f"{mtype}[{self.top_counts[mtype]}]",
-                           True)  # fmt: skip
+                           True, is_message=mtype in TOP_MESSAGE_TYPES)  # fmt: skip
             elif frame is not None and parent == "RelatedModels":
                 # a copy of another record, kept by the package beside the record holding it
                 frame.related_seen += 1
                 loc = f"{frame.locator or frame.key}/Related[{frame.related_seen}]"
                 key = f"{frame.type}.RelatedModels>{mtype}"
                 f = _Frame(mtype, dict(attrs), depth, key, loc, False, related=True)
+                # a copy of a message is a message, whatever its type is named, as its holder
+                f.is_message = mtype in TOP_MESSAGE_TYPES or (frame.is_message and mtype != "Chat")
                 self.related_roots[mtype] += 1
             elif frame is not None and parent in ("modelField", "multiModelField"):
                 fname = self.attr_stack[-2].get("name", "")
@@ -304,7 +308,8 @@ class Tally:
                     frame.msg_seen[fname] += 1
                     loc = f"{frame.locator}/{fname}[{frame.msg_seen[fname]}]"
                 key = f"{frame.type}.{fname}>{mtype}"
-                f = _Frame(mtype, dict(attrs), depth, key, loc, False, related=frame.related)
+                f = _Frame(mtype, dict(attrs), depth, key, loc, False, related=frame.related,
+                           is_message=loc is not None)  # fmt: skip
             else:
                 return
             kind = self.kinds.setdefault(f.key, _Kind())
@@ -429,7 +434,7 @@ class Tally:
         if f.locator is None:
             return
         if f.related:
-            if f.type in TOP_MESSAGE_TYPES:
+            if f.is_message:
                 self.related_messages[f.locator] = self._message_rec(f)
             return
         if f.top and f.type == "UserAccount":
@@ -493,6 +498,7 @@ class Tally:
             state=_state(f),
             att_refs=list(f.attachments),
             att_written=tuple(sorted(f.att_written)),
+            body_written=body is not None,
             parties_written=(
                 tuple((p[0], p[1]) for p in senders),
                 tuple(sorted(((p[0], p[1]) for p in recips), key=repr)),
@@ -760,10 +766,12 @@ def _unmatched_copies(
             chats.setdefault(head, []).append(loc)
     for chat, locs in chats.items():
         holder = chat.rpartition("/Related[")[0]
-        left = Counter(
-            said(x) for loc, x in t.messages.items()
-            if loc in db_msgs and loc.rpartition("/")[0] == holder
-        )  # fmt: skip
+        if "/Related[" in holder:  # a chat copied inside a copied chat: matches that copy
+            own = [x for loc, x in t.related_messages.items() if loc.rpartition("/")[0] == holder]
+        else:
+            own = [x for loc, x in t.messages.items()
+                   if loc in db_msgs and loc.rpartition("/")[0] == holder]  # fmt: skip
+        left = Counter(said(x) for x in own)
         for loc in locs:
             k = said(t.related_messages[loc])
             if left[k] > 0:
@@ -964,7 +972,7 @@ def compare(t: Tally, conn: sqlite3.Connection, src: str) -> tuple[list[Count], 
     # that does not match must be one Baker lists for review (related_copy_unmatched);
     # otherwise it is missing
     def said(x: MessageRec) -> tuple[object, ...]:
-        return (x.body, x.ts_raw, x.parties_written, x.state, x.att_written)
+        return (x.body, x.body_written, x.ts_raw, x.parties_written, x.state, x.att_written)
 
     unmatched = _unmatched_copies(t, db_msgs, said)
     listed, n_listed = _listed_copies(conn, src)

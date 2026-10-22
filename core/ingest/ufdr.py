@@ -94,6 +94,9 @@ TABLE_KIND: dict[str, RecordKind] = {
     "UserAccount": RecordKind.ACCOUNTS,
 }
 MESSAGE_TYPES = {"InstantMessage", "Message", "SMS", "MMS"}  # message models inside a chat
+COPY_KINDS = {"Call", "Contact", "UserAccount"}  # other records whose copies are matched
+COPY_TYPES = MESSAGE_TYPES | COPY_KINDS
+_CHAT_MESSAGE_LOC = re.compile(r"Chat\[\d+\]/[^/\[]+\[\d+\]")  # holder: a chat's message
 # Model types Baker knows and deliberately does not import (yet). Listed in coverage as
 # categories not imported; any other type is listed as not recognised.
 NOT_IMPORTED_TYPES = {
@@ -1156,6 +1159,7 @@ class _RecordMapper:
         if mid not in self.model_ids:
             self.model_ids.add(mid)
             return False
+        self._record_key(locator, m)  # its copies still match it, though not imported again
         tc = self.tables[table]
         tc.rows_read += 1
         tc.rows_skipped["same_id_as_an_earlier_record"] += 1
@@ -1272,10 +1276,12 @@ class _RecordMapper:
                     self._nested(table, where, key, x)
                 self.related_copies.append(_Copies(table, "chat", holder, None, keys, True))
                 self._nested_chats(table, loc, [k for k, _w in keys], el)
-            elif t in MESSAGE_TYPES or t in ("Call", "Contact", "UserAccount"):
+            elif t in COPY_TYPES or _CHAT_MESSAGE_LOC.fullmatch(holder):
+                # a chat message's copy is a message whatever its type is named, as its holder
                 key = _content_key(m)
+                is_message = t not in COPY_KINDS
                 self.related_copies.append(
-                    _Copies(table, "one", holder, None, [(key, loc)], t in MESSAGE_TYPES)
+                    _Copies(table, "one", holder, None, [(key, loc)], is_message)
                 )
                 self._nested(table, loc, key, el)
 
@@ -1286,8 +1292,14 @@ class _RecordMapper:
                 self.related_counts[x.attrs.get("type", "")] += 1
                 if x.attrs.get("type") != "Chat":
                     continue  # never a copy of this chat: counted, not matched
-                keys = [(k, w) for k, w, _el in _chat_copy_messages(f"{loc}/Related[{i}]", x)]
-                self.related_copies.append(_Copies(table, "chat", loc, want, keys, True))
+                where = f"{loc}/Related[{i}]"
+                msgs = list(_chat_copy_messages(where, x))
+                self.related_copies.append(
+                    _Copies(table, "chat", loc, want, [(k, w) for k, w, _el in msgs], True)
+                )
+                for k, w, y in msgs:
+                    self._nested(table, w, k, y)
+                self._nested_chats(table, where, [k for k, _w, _el in msgs], x)
 
     def _nested(self, table: str, loc: str, want: bytes, el: _El) -> None:
         """Copies inside a copy (a RelatedModels element in a copied record), at any depth:
@@ -1297,10 +1309,10 @@ class _RecordMapper:
                 t = x.attrs.get("type", "")
                 where = f"{loc}/Related[{i}]"
                 self.related_counts[t] += 1
-                if t in MESSAGE_TYPES or t in ("Call", "Contact", "UserAccount"):
+                if t in COPY_TYPES or t == el.attrs.get("type"):
                     key = _content_key(_model(x))
                     self.related_copies.append(
-                        _Copies(table, "one", loc, want, [(key, where)], t in MESSAGE_TYPES)
+                        _Copies(table, "one", loc, want, [(key, where)], t not in COPY_KINDS)
                     )
                     self._nested(table, where, key, x)
 
@@ -1612,9 +1624,10 @@ def _content_key(m: _Model) -> bytes:
     if m.type == "Call":
         # each party with its side, so a copy that swaps caller and callee does not match
         parties = sorted(
-            [("from", _party_text(p)) for p, _r in _parties(m.models("from"))]
-            + [("to", _party_text(p)) for p, _r in _parties(m.models("to"))]
-            + [(r, _party_text(p)) for p, r in _parties(m.models("parties"))]
+            [("from", _party_key(p)) for p, _r in _parties(m.models("from"))]
+            + [("to", _party_key(p)) for p, _r in _parties(m.models("to"))]
+            + [(r, _party_key(p)) for p, r in _parties(m.models("parties"))],
+            key=repr,
         )
         key: tuple[object, ...] = (
             m.type,
@@ -1622,6 +1635,7 @@ def _content_key(m: _Model) -> bytes:
             m.raw("duration"),
             m.raw("direction"),
             parties,
+            _deleted_state(m),
         )
     elif m.type == "Contact":
         key = (m.type, m.raw("name"), _entries(m))
@@ -1629,10 +1643,11 @@ def _content_key(m: _Model) -> bytes:
         key = (m.type, m.raw("source"), m.text("username") or _account_identifier(m))
     else:
         listed = list(_parties(m.models("parties", "participants")))
-        senders = [_party_text(p) for p, _r in _parties(m.models("from"))]
-        senders += [_party_text(p) for p, r in listed if r == "from"]
-        to = [_party_text(p) for p, _r in _parties(m.models("to"))]
-        to = sorted(to + [_party_text(p) for p, r in listed if r in ("to", "cc", "bcc")])
+        senders = [_party_key(p) for p, _r in _parties(m.models("from"))]
+        senders += [_party_key(p) for p, r in listed if r == "from"]
+        to = [_party_key(p) for p, _r in _parties(m.models("to"))]
+        to += [_party_key(p) for p, r in listed if r in ("to", "cc", "bcc")]
+        to.sort(key=repr)
         # attachments by name as written: a copy decoded from another source points at its
         # own file (another path or file id), so the reference is not compared
         attachments = sorted(
@@ -1716,6 +1731,11 @@ def _entries(m: _Model) -> list[str]:
         if v and v not in out:
             out.append(v)
     return out
+
+
+def _party_key(p: Party) -> tuple[str | None, str | None]:
+    """A party in a content key: identifier and name kept apart, as written."""
+    return (p.identifier, p.name)
 
 
 def _party_text(p: Party) -> str:

@@ -1268,6 +1268,91 @@ def test_a_call_copy_with_caller_and_callee_swapped_is_listed(tmp_path):
     assert item.locators == ("Call[1]/Related[1]",)
 
 
+T2 = "2026-03-05T21:31:00.000-05:00"
+
+
+def _listed(tmp_path, name: str, xml: str) -> tuple[str, ...]:
+    """Locators Baker lists as copies that do not match; ufdr-check must agree."""
+    conn, s = _import(write_package(tmp_path / f"{name}.ufdr", xml))
+    d = ufdr_check.run(write_package(tmp_path / f"{name}-check.ufdr", xml)).shareable
+    assert d["differences"] == 0, d["records"]
+    return tuple(loc for i in s.items if i.code == "related_copy_unmatched" for loc in i.locators)
+
+
+def _with(msg: str, *tail: str) -> str:
+    head, end = msg.rsplit("</model>", 1)
+    return f"{head}{''.join(tail)}</model>{end}"
+
+
+def test_a_chat_copied_three_levels_down_is_matched(tmp_path):
+    deepest = _chat("k1", _msg("ok", T2, id="c3"), _msg("extra", T2, id="c4"))
+    middle = _chat("k1", _msg("ok", T2, id="c2"), extra=(related(deepest),))
+    outer = _chat("k1", _msg("ok", T2, id="c1"), extra=(related(middle),))
+    xml = report_xml({"Chat": [_chat("k1", _msg("ok", T2, id="m1"), extra=(related(outer),))]})
+    assert _listed(tmp_path, "deep3", xml) == (
+        "Chat[1]/Related[1]/Related[1]/Related[1]/Messages[2]",
+    )
+
+
+def test_an_exact_chat_copy_inside_a_copied_chat_checks_clean(tmp_path):
+    middle = _chat("k1", _msg("ok", T2, id="c2"))
+    outer = _chat("k1", _msg("ok", T2, id="c1"), extra=(related(middle),))
+    xml = report_xml({"Chat": [_chat("k1", _msg("ok", T2, id="m1"), extra=(related(outer),))]})
+    assert _listed(tmp_path, "nested-ok", xml) == ()
+
+
+def test_a_copy_of_a_message_with_a_repeated_id_matches_it(tmp_path):
+    a = _chat("k1", _msg("ok", T2, id="m1"))
+    b = _chat("k2", _with(_msg("ok", T2, id="m1"), related(_msg("ok", T2, id="c1"))))
+    xml = report_xml({"Chat": [a, b]})
+    conn, s = _import(write_package(tmp_path / "rep.ufdr", xml))
+    assert "related_copy_unmatched" not in _codes(s)
+
+
+def test_a_copy_with_an_empty_text_where_the_record_has_none_is_listed(tmp_path):
+    record = _msg("ok", T2, id="m1").replace(field("Body", "ok"), "")
+    copy = _msg("", T2, id="c1")
+    assert field("Body", "") in copy and "Body" not in record
+    xml = report_xml({"Chat": [_chat("k1", _with(record, related(copy)))]})
+    assert _listed(tmp_path, "empty", xml) == ("Chat[1]/Messages[1]/Related[1]",)
+
+
+def test_a_copy_of_a_chat_message_of_another_type_name_is_matched(tmp_path):
+    record = model("ChatMessage", field("Body", "ok"), ts_field("TimeStamp", T2), id="m1")
+    copy = model("ChatMessage", field("Body", "changed"), ts_field("TimeStamp", T2), id="c1")
+    chat = model(
+        "Chat",
+        field("Source", "WhatsApp"),
+        many("Messages", [_with(record, related(copy))], "ChatMessage"),
+    )
+    xml = report_xml({"Chat": [chat]})
+    assert _listed(tmp_path, "type", xml) == ("Chat[1]/Messages[1]/Related[1]",)
+
+
+def test_party_identifier_and_name_are_never_run_together(tmp_path):
+    record = _msg("ok", T2, ("a", "b c", False), id="m1")
+    copy = _msg("ok", T2, ("a b", "c", False), id="c1")
+    xml = report_xml({"Chat": [_chat("k1", _with(record, related(copy)))]})
+    assert _listed(tmp_path, "pair", xml) == ("Chat[1]/Messages[1]/Related[1]",)
+
+
+def test_a_call_copy_differing_in_deleted_state_is_listed(tmp_path):
+    def call(cid: str, state: str, *tail: str) -> str:
+        return model(
+            "Call",
+            many("Parties", [party(*OWNER, role="From"), party(*JO, role="To")]),
+            ts_field("TimeStamp", T2),
+            *tail,
+            id=cid,
+            deleted_state=state,
+        )
+
+    xml = report_xml({"Call": [call("k1", "Intact", related(call("k1r", "Deleted")))]})
+    conn, s = _import(write_package(tmp_path / "cd.ufdr", xml))
+    (item,) = [i for i in s.items if i.code == "related_copy_unmatched"]
+    assert item.locators == ("Call[1]/Related[1]",)
+
+
 def test_a_chat_message_skipped_between_the_two_reads_stores_nothing(tmp_path, monkeypatch):
     path = related_package(tmp_path / "rel.ufdr")
     real = ufdr._RecordMapper.chat
