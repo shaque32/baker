@@ -230,7 +230,10 @@ local stance model the same things again and compares the answers byte for byte 
 (stance and quote): A, the signed probe set twice with the model loaded once; B, once more in a
 fresh process; C, the first 20 items with no GPU offload; D, two case01 audits on six claims,
 each on a fresh database. `--model NAME` checks any models-file entry. `--dry-run` prints the
-calls per stage and a time estimate (about 3.7 hours on the 14B; unverified).
+calls per stage and a time estimate (about 3.7 hours on the 14B; unverified). A failed
+generation or an answer that is not a stance object counts as failed, never as a match, and the
+script exits nonzero if any stage fails. The summary records the model file's digest as the run
+computed it and marks a commit with uncommitted changes.
 
 What is known before it runs: on the 2026-10-19 Mac run (llama-cpp-python 0.3.36, flash runtime,
 model loaded once, stance prompt v1.2), 104 of 105 repeated probe answers were identical; on

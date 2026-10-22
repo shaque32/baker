@@ -19,8 +19,11 @@ Each stage runs in its own process, so a fresh load is a fresh load:
      through the product's own wiring: stored model outputs and evidence rows compared
 
 For each comparison it reports how many answers are identical byte for byte, how many give the
-same stance and quote (the label), and lists every difference. Writes <out>/summary.md (paste
-it back) and <out>/summary.json, with the llama-cpp-python version, the machine and the commit.
+same stance and quote (the label), and lists every difference. A failed generation or an answer
+that is not a stance object never counts as a match: it is counted under "failed" instead.
+Writes <out>/summary.md (paste it back) and <out>/summary.json, with the llama-cpp-python
+version, the machine, the model file's digest and the commit (marked if the checkout had
+uncommitted changes).
 Synthetic data only; case02 is never read.
 """
 
@@ -58,14 +61,19 @@ def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def _label(raw: str) -> tuple[str | None, str | None]:
+def _label(raw: str | None) -> tuple[str | None, str | None]:
     try:
-        obj = json.loads(raw)
+        obj = json.loads(raw or "")
     except ValueError:
         return None, None
     if not isinstance(obj, dict):
         return None, None
     return obj.get("stance"), obj.get("quote")
+
+
+def _usable(row: dict[str, Any]) -> bool:
+    """An answer the model actually gave: no generation error, and a stance object."""
+    return not row.get("error") and _label(row.get("raw"))[0] is not None
 
 
 # ---------------------------------------------------------------- one stage, in its own process
@@ -136,11 +144,13 @@ def stage_probe(args: argparse.Namespace, stage: str) -> None:
                     "ask": ask,
                     "prompt_sha256": _sha(prompt),
                     "raw": res.raw_text,
+                    "error": res.error,
                     "seconds": round(time.perf_counter() - start, 2),
                 }
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
                 f.flush()
-    _meta(args, stage, entry, params.as_record(), len(items) * asks)
+    sha = getattr(model, "sha256", None) or entry.get("sha256")
+    _meta(args, stage, entry, sha, params.as_record(), len(items) * asks)
 
 
 def stage_case(args: argparse.Namespace, stage: str) -> None:
@@ -151,14 +161,8 @@ def stage_case(args: argparse.Namespace, stage: str) -> None:
 
     entry = _entry(args.models, args.model)
     path = Path(entry["path"]).expanduser()
-    model = LazyModel(
-        ModelConfig(
-            name=entry["name"],
-            path=path,
-            sha256=entry.get("sha256") or sha256_file(path),
-            n_ctx=args.n_ctx,
-        )
-    )
+    sha = entry.get("sha256") or sha256_file(path)
+    model = LazyModel(ModelConfig(name=entry["name"], path=path, sha256=sha, n_ctx=args.n_ctx))
     model.params = with_runtime(model.params, PRODUCT_RUNTIME, args.chat_template)
     conn = rp.build_case("case01", args.out / stage / "case01.db")
     try:
@@ -183,6 +187,8 @@ def stage_case(args: argparse.Namespace, stage: str) -> None:
                         "prompt_sha256": _sha(prompt),
                         "raw": raw,
                         "outcome": outcome,
+                        # quote_failed is a usable answer whose quote did not check out
+                        "error": outcome if outcome in ("invalid_output", "error") else None,
                     },
                     ensure_ascii=False,
                 )  # fmt: skip
@@ -192,12 +198,18 @@ def stage_case(args: argparse.Namespace, stage: str) -> None:
         for eid, stance, quote, rationale in evidence:
             row = {"id": eid, "stance": stance, "quote": quote, "rationale": rationale}
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
-    _meta(args, stage, entry, model.params.as_record(), len(rows))
+    _meta(args, stage, entry, sha, model.params.as_record(), len(rows))
 
 
 def _meta(
-    args: argparse.Namespace, stage: str, entry: dict[str, Any], params: dict, n: int
+    args: argparse.Namespace,
+    stage: str,
+    entry: dict[str, Any],
+    sha: str | None,
+    params: dict,
+    n: int,
 ) -> None:
+    """sha: the model file's digest as the run resolved it (computed when the entry has none)."""
     try:
         import llama_cpp
 
@@ -207,7 +219,7 @@ def _meta(
     meta = {
         "stage": stage,
         "model": entry["name"],
-        "model_sha256": entry.get("sha256"),
+        "model_sha256": sha,
         "params": params,
         "calls": n,
         "llama_cpp_python": llama,
@@ -226,27 +238,36 @@ def _read(path: Path) -> list[dict[str, Any]]:
 
 
 def compare(first: list[dict[str, Any]], second: list[dict[str, Any]]) -> dict[str, Any]:
-    """Answers matched by (key, prompt): identical bytes, same label, and every difference."""
-    a = {(r["key"], r["prompt_sha256"]): r["raw"] for r in first}
-    b = {(r["key"], r["prompt_sha256"]): r["raw"] for r in second}
+    """Answers matched by (key, prompt): identical bytes, same label, and every difference. A
+    pair where either answer failed (_usable) counts as failed, never as a match."""
+    a = {(r["key"], r["prompt_sha256"]): r for r in first}
+    b = {(r["key"], r["prompt_sha256"]): r for r in second}
     both = sorted(set(a) & set(b))
-    diffs = []
+    diffs, failures = [], []
     same_raw = same_label = 0
     for k in both:
-        if a[k] == b[k]:
+        ra, rb = a[k]["raw"] or "", b[k]["raw"] or ""
+        if not (_usable(a[k]) and _usable(b[k])):
+            failures.append(
+                {"key": k[0], "first": a[k].get("error") or ra, "second": b[k].get("error") or rb}
+            )
+            continue
+        if ra == rb:
             same_raw += 1
             same_label += 1
             continue
-        if _label(a[k]) == _label(b[k]):
+        if _label(ra) == _label(rb):
             same_label += 1
-        diffs.append({"key": k[0], "first": a[k], "second": b[k]})
+        diffs.append({"key": k[0], "first": ra, "second": rb})
     return {
         "compared": len(both),
         "only_in_first": len(set(a) - set(b)),
         "only_in_second": len(set(b) - set(a)),
+        "failed": len(failures),
         "raw_identical": same_raw,
         "label_identical": same_label,
         "differences": diffs,
+        "failures": failures,
     }
 
 
@@ -268,7 +289,7 @@ def summarize(out: Path) -> dict[str, Any]:
     a1 = [r for r in a if r["ask"] == 1]
     a2 = [{**r, "ask": 1} for r in a if r["ask"] == 2]
     result: dict[str, Any] = {"stages": {}}
-    for stage in STAGES:
+    for stage in ("A", "B", "C", "D1", "D2"):
         meta = out / f"{stage}.meta.json"
         result["stages"][stage] = json.loads(meta.read_text()) if meta.exists() else None
     if a:
@@ -290,8 +311,8 @@ def markdown(summary: dict[str, Any]) -> str:
     for key in ("commit", "machine", "model", "model_sha256", "llama_cpp_python",
                 "stance_prompt"):  # fmt: skip
         lines.append(f"- {key}: {summary.get(key)}")
-    lines += ["", "| comparison | compared | identical bytes | same label | differences |",
-              "|---|---|---|---|---|"]  # fmt: skip
+    lines += ["", "| comparison | compared | failed | identical bytes | same label | differences |",
+              "|---|---|---|---|---|---|"]  # fmt: skip
     names = {
         "A_same_process_repeat": "A: asked twice, model loaded once",
         "B_fresh_load_vs_A": "B: fresh load vs A",
@@ -301,10 +322,11 @@ def markdown(summary: dict[str, Any]) -> str:
     for key, title in names.items():
         c = summary.get(key)
         if c is None:
-            lines.append(f"| {title} | not run | | | |")
+            lines.append(f"| {title} | not run | | | | |")
             continue
         lines.append(
-            f"| {title} | {c['compared']} | {c['raw_identical']} | {c['label_identical']} "
+            f"| {title} | {c['compared']} | {c['failed']} | {c['raw_identical']} "
+            f"| {c['label_identical']} "
             f"| {len(c['differences'])} |"
         )
     ev = summary.get("D_case01_evidence")
@@ -312,10 +334,12 @@ def markdown(summary: dict[str, Any]) -> str:
         lines += ["", f"case01 evidence rows identical across the two audits: {ev['same_rows']} "
                   f"({ev['items_first']} vs {ev['items_second']} items)"]  # fmt: skip
     for key, title in names.items():
-        c = summary.get(key)
-        if c and c["differences"]:
-            lines += ["", f"## Differences, {title}", ""]
-            for d in c["differences"][:20]:
+        c = summary.get(key) or {}
+        for part, head in (("failures", "Failed answers"), ("differences", "Differences")):
+            if not c.get(part):
+                continue
+            lines += ["", f"## {head}, {title}", ""]
+            for d in c[part][:20]:
                 lines += [f"- {d['key']}", f"  - first:  {d['first'][:400]}",
                           f"  - second: {d['second'][:400]}"]  # fmt: skip
     return "\n".join(lines) + "\n"
@@ -324,15 +348,22 @@ def markdown(summary: dict[str, Any]) -> str:
 # ---------------------------------------------------------------- driver
 
 
+def _git(*args: str) -> str:
+    out = subprocess.run(  # noqa: S603 - fixed arguments
+        ["git", *args],  # noqa: S607
+        capture_output=True, text=True, check=True, timeout=10,
+    )  # fmt: skip
+    return out.stdout.strip()
+
+
 def _git_commit() -> str:
+    """The commit, marked when tracked files differ from it (the run is then not that commit)."""
     try:
-        out = subprocess.run(  # noqa: S603 - fixed arguments
-            ["git", "rev-parse", "--short", "HEAD"],  # noqa: S607
-            capture_output=True, text=True, check=True, timeout=10,
-        )  # fmt: skip
-        return out.stdout.strip()
+        commit = _git("rev-parse", "--short", "HEAD")
+        dirty = _git("status", "--porcelain", "--untracked-files=no")
     except (subprocess.SubprocessError, OSError):
         return "unknown"
+    return f"{commit} with uncommitted changes" if dirty else commit
 
 
 def estimate(cpu_items: int, claims: tuple[str, ...]) -> dict[str, Any]:
@@ -405,15 +436,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"stage {stage}: starting {datetime.now(UTC):%H:%M}Z", file=sys.stderr, flush=True)
         if subprocess.run(cmd, check=False).returncode != 0:  # noqa: S603 - this script
             failed.append(stage)
+    metas = [m for m in summarize(args.out)["stages"].values() if m]
     summary = {
         "run_at_utc": stamp,
         "commit": _git_commit(),
         "machine": platform.platform(),
         "model": entry["name"],
-        "model_sha256": entry.get("sha256"),
-        "llama_cpp_python": next(
-            (m["llama_cpp_python"] for m in summarize(args.out)["stages"].values() if m), None
-        ),
+        "model_sha256": next((m["model_sha256"] for m in metas), entry.get("sha256")),
+        "llama_cpp_python": next((m["llama_cpp_python"] for m in metas), None),
         "stance_prompt": f"{args.stance_prompt}@{prompts.prompt_version(args.stance_prompt)}",
         "failed_stages": failed,
         **summarize(args.out),

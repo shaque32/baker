@@ -12,10 +12,14 @@ OUT="${OUT:-eval/out/repeat/$(date -u +%Y%m%dT%H%M%SZ)}"
 if [ -e "$OUT" ]; then echo "$OUT already exists; set OUT to a new folder" >&2; exit 1; fi
 
 python -m eval.probe.repeat_check --dry-run
+status=0
 caffeinate -dimsu python -m eval.probe.repeat_check --models "$MODELS" \
-  ${MODEL_NAME:+--model "$MODEL_NAME"} --chat-template "${CHAT_TEMPLATE:-gguf}" --out "$OUT" || true
+  ${MODEL_NAME:+--model "$MODEL_NAME"} --chat-template "${CHAT_TEMPLATE:-gguf}" --out "$OUT" \
+  || status=$?
 
 echo
-echo "Done. Paste back the contents of $OUT/summary.md:"
+if [ "$status" -ne 0 ]; then echo "A stage failed (exit $status); the summary is partial."; fi
+echo "Paste back the contents of $OUT/summary.md:"
 echo
-cat "$OUT/summary.md"
+cat "$OUT/summary.md" || true
+exit "$status"

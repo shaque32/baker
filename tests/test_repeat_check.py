@@ -54,6 +54,20 @@ def test_compare_counts_identical_bytes_and_labels_apart():
     assert rc.compare(a, other)["compared"] == 0
 
 
+def test_failed_or_unparsed_answers_never_count_as_a_match():
+    """Empty answers from failed generations, or malformed text, are failures, not matches."""
+    a = [{"key": "P1", "prompt_sha256": "p", "raw": "", "error": "llama failed"},
+         {"key": "P2", "prompt_sha256": "p", "raw": "not json"},
+         {"key": "P3", "prompt_sha256": "p", "raw": ANSWER % "x"}]  # fmt: skip
+    b = [{"key": "P1", "prompt_sha256": "p", "raw": "", "error": "llama failed"},
+         {"key": "P2", "prompt_sha256": "p", "raw": "also not json"},
+         {"key": "P3", "prompt_sha256": "p", "raw": ANSWER % "x"}]  # fmt: skip
+    c = rc.compare(a, b)
+    assert (c["compared"], c["failed"], c["raw_identical"], c["label_identical"]) == (3, 2, 1, 1)
+    assert [f["key"] for f in c["failures"]] == ["P1", "P2"]
+    assert "Failed answers" in rc.markdown({"A_same_process_repeat": c})
+
+
 def test_a_deterministic_model_repeats_exactly(tmp_path, monkeypatch):
     _scripted(monkeypatch, lambda p: ANSWER % "same")
     rc.stage_probe(_args(tmp_path), "A")
@@ -112,6 +126,21 @@ def test_two_case01_audits_are_compared_by_stored_output(tmp_path, monkeypatch):
     assert s["D_case01_evidence"]["same_rows"]
     meta = json.loads((tmp_path / "D1.meta.json").read_text())
     assert meta["model"] == "qwen3-14b" and meta["calls"] == c["compared"]
+    assert s["stages"]["D1"] and s["stages"]["D2"]  # both audits' metadata is summarized
+
+
+def test_the_metadata_records_the_digest_the_run_computed(tmp_path, monkeypatch):
+    """An entry with no sha256 (models.example.json) records the digest the run worked out."""
+    import core.llm.runtime as runtime
+
+    models = tmp_path / "models.example.json"
+    models.write_text(json.dumps([{"name": "qwen3-14b", "path": "x.gguf", "sha256": None}]))
+    monkeypatch.setattr(runtime, "sha256_file", lambda path: "f" * 64)
+    import core.audit._local_model as lm
+
+    monkeypatch.setattr(lm, "LazyModel", _Lazy)
+    rc.stage_case(_args(tmp_path, models=models), "D1")
+    assert json.loads((tmp_path / "D1.meta.json").read_text())["model_sha256"] == "f" * 64
 
 
 def test_the_dry_run_estimates_without_a_model(capsys):
