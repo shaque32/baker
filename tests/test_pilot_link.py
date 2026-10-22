@@ -58,6 +58,15 @@ def test_longer_than_seven_days_is_refused():
         pilot_link.main(["a.exe", "--days", "8"])
 
 
+@pytest.mark.parametrize("span", [["--hours", "0"], ["--days", "0"], ["--days", "-1"]])
+def test_zero_or_negative_is_refused_not_defaulted(span, monkeypatch, capsys):
+    for k, v in ENV.items():
+        monkeypatch.setenv(k, v)
+    with pytest.raises(SystemExit):
+        pilot_link.main(["a.exe", *span])
+    assert "https://" not in capsys.readouterr().out
+
+
 def test_missing_settings_are_named(monkeypatch):
     for name in pilot_link.ENV:
         monkeypatch.delenv(name, raising=False)

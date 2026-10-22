@@ -13,8 +13,9 @@ makes the links on your own computer. It uses only Python's standard library.
    leave location on Automatic. Leave Public access off: the bucket must stay private.
 3. **Upload the installers** (about 2 min plus upload time). Open the bucket, click Upload, and
    add the signed Windows installer and the Mac package. Name the files with their version,
-   for example `Mabillon-Setup-0.1.0.exe`. The dashboard takes files up to 300 MB. For a larger
-   file, use `rclone` with the same key (step 4).
+   for example `Mabillon-Setup-0.1.0.exe`. The dashboard takes files up to 300 MB. A larger
+   file needs `rclone` with a separate key that has Object Read & Write on this bucket only;
+   delete that key once the upload is done. Never use the read-only key from step 4 for this.
 4. **Create a read-only key** (about 3 min). Go to R2 > Manage R2 API Tokens (API on the R2
    page) > Create API token.
    - Permission: Object Read only.

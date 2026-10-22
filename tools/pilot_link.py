@@ -98,7 +98,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--check", action="store_true", help="confirm the file is in the bucket")
     args = ap.parse_args(argv)
 
-    seconds = round(args.hours * 3600) if args.hours else round((args.days or 3) * 86400)
+    if args.hours is not None:
+        seconds = round(args.hours * 3600)
+    else:
+        seconds = round((3 if args.days is None else args.days) * 86400)
     if not 1 <= seconds <= MAX_SECONDS:
         ap.error("a link can last at most 7 days")
     now = datetime.datetime.now(datetime.UTC).replace(microsecond=0)
