@@ -197,8 +197,11 @@ class MessageRec:
     sender_ident: str | None = None
     recipient_idents: list[str] = field(default_factory=list)
     att_written: tuple[str, ...] = ()  # sorted attachment names, as written
-    # stated senders, sorted recipients (as (identifier, name)), then other parties with role
+    # stated senders, sorted recipients (as (identifier, name, says phone owner)), then other
+    # parties with role
     parties_written: tuple[object, ...] = ()
+    # app, then Direction, Folder and Status, each as written
+    meta_written: tuple[str | None, ...] = ()
     body_written: bool = False  # a body field is there, even an empty one
 
 
@@ -503,9 +506,12 @@ class Tally:
             att_written=tuple(sorted(f.att_written)),
             body_written=body is not None,
             parties_written=(
-                tuple((p[0], p[1]) for p in senders),
-                tuple(sorted(((p[0], p[1]) for p in recips), key=repr)),
-                tuple(sorted(((p[2], (p[0], p[1])) for p in others), key=repr)),
+                tuple((p[0], p[1], p[3]) for p in senders),
+                tuple(sorted(((p[0], p[1], p[3]) for p in recips), key=repr)),
+                tuple(sorted(((p[2], (p[0], p[1], p[3])) for p in others), key=repr)),
+            ),
+            meta_written=tuple(
+                _first_raw(f.fields, (n,)) for n in ("source", "direction", "folder", "status")
             ),
         )
 
@@ -777,8 +783,11 @@ def _unmatched_copies(
         if "/Related[" in holder:  # a chat copied inside a copied chat: matches that copy
             own = [x for loc, x in t.related_messages.items() if loc.rpartition("/")[0] == holder]
         else:
+            # the holder chat's messages Baker imported, and those it imported once under an
+            # earlier id (the importer keys those too)
             own = [x for loc, x in t.messages.items()
-                   if loc in db_msgs and loc.rpartition("/")[0] == holder]  # fmt: skip
+                   if (loc in db_msgs or loc in t.repeats)
+                   and loc.rpartition("/")[0] == holder]  # fmt: skip
         left = Counter(said(x) for x in own)
         for loc in locs:
             k = said(t.related_messages[loc])
@@ -980,7 +989,15 @@ def compare(t: Tally, conn: sqlite3.Connection, src: str) -> tuple[list[Count], 
     # that does not match must be one Baker lists for review (related_copy_unmatched);
     # otherwise it is missing
     def said(x: MessageRec) -> tuple[object, ...]:
-        return (x.body, x.body_written, x.ts_raw, x.parties_written, x.state, x.att_written)
+        return (
+            x.body,
+            x.body_written,
+            x.ts_raw,
+            x.meta_written,
+            x.parties_written,
+            x.state,
+            x.att_written,
+        )
 
     unmatched = _unmatched_copies(t, db_msgs, said)
     listed, n_listed = _listed_copies(conn, src)

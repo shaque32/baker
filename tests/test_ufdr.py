@@ -1392,6 +1392,71 @@ def test_a_repeated_id_message_and_its_copy_check_clean(tmp_path):
     assert _listed(tmp_path, "rep2", report_xml({"Chat": [a, b]})) == ()
 
 
+def _sms(mid: str, *tail: str, who=JO, app: str = "SMS") -> str:
+    return model(
+        "SMS",
+        field("Source", app),
+        field("Body", "ok"),
+        ts_field("TimeStamp", T2),
+        many("Parties", [party(*who)]),
+        *tail,
+        id=mid,
+    )
+
+
+@pytest.mark.parametrize("name", ["Direction", "Folder", "Status"])
+def test_a_message_copy_stating_another_direction_is_listed(tmp_path, name):
+    held = (field(name, "Incoming" if name != "Folder" else "Inbox"),)
+    copy = (field(name, "Outgoing" if name != "Folder" else "Sent"),)
+    xml = report_xml({"SMS": [_sms("s1", *held, related(_sms("s1r", *copy)))]})
+    assert _listed(tmp_path, f"dir-{name}", xml) == ("SMS[1]/Related[1]",)
+
+
+def test_a_copy_whose_party_says_another_phone_owner_flag_is_listed(tmp_path):
+    xml = report_xml({"SMS": [_sms("s1", related(_sms("s1r", who=(*JO[:2], True))))]})
+    assert _listed(tmp_path, "owner", xml) == ("SMS[1]/Related[1]",)
+
+
+def test_a_message_copy_from_another_app_is_listed(tmp_path):
+    xml = report_xml({"SMS": [_sms("s1", related(_sms("s1r", app="iMessage")))]})
+    assert _listed(tmp_path, "app", xml) == ("SMS[1]/Related[1]",)
+
+
+def test_a_call_copy_from_another_app_is_listed(tmp_path):
+    def call(cid: str, app: str, *tail: str) -> str:
+        return model(
+            "Call",
+            field("Source", app),
+            many("Parties", [party(*OWNER), party(*JO)]),
+            ts_field("TimeStamp", T2),
+            *tail,
+            id=cid,
+        )
+
+    xml = report_xml({"Call": [call("k1", "Phone", related(call("k1r", "WhatsApp")))]})
+    conn, s = _import(write_package(tmp_path / "capp.ufdr", xml))
+    (item,) = [i for i in s.items if i.code == "related_copy_unmatched"]
+    assert item.locators == ("Call[1]/Related[1]",)
+
+
+def test_an_account_copy_with_another_name_is_listed(tmp_path):
+    def acct(aid: str, name: str, *tail: str) -> str:
+        parts = (field("Source", "WhatsApp"), field("Username", OWNER[0]), field("Name", name))
+        return model("UserAccount", *parts, *tail, id=aid)
+
+    xml = report_xml({"UserAccount": [acct("a1", "Me", related(acct("a1r", "Jo")))]})
+    conn, s = _import(write_package(tmp_path / "acct.ufdr", xml))
+    (item,) = [i for i in s.items if i.code == "related_copy_unmatched"]
+    assert item.locators == ("UserAccount[1]/Related[1]",)
+
+
+def test_a_copied_chat_holding_a_repeated_id_message_checks_clean(tmp_path):
+    a = _chat("k1", _msg("ok", T2, id="m1"))
+    copy = _chat("k2", _msg("ok", T2, id="c1"), _msg("again", T2, id="c2"))
+    b = _chat("k2", _msg("ok", T2, id="m1"), _msg("again", T2, id="m2"), extra=(related(copy),))
+    assert _listed(tmp_path, "rep-chat", report_xml({"Chat": [a, b]})) == ()
+
+
 def test_a_chat_message_skipped_between_the_two_reads_stores_nothing(tmp_path, monkeypatch):
     path = related_package(tmp_path / "rel.ufdr")
     real = ufdr._RecordMapper.chat

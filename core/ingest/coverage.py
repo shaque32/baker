@@ -254,8 +254,9 @@ _FLAG_WORDS: dict[str, tuple[Level, str]] = {
     "related_copy_unmatched": (
         "attention",
         "{n} {be} held only as a related copy (under another record's RelatedModels) that "
-        "does not say what the record holding it says (text or duration, time, parties, "
-        "deleted state and attachments; a copied chat's messages one to one), so Baker did not "
+        "does not say what the record holding it says (app, text or duration, time, "
+        "direction, parties, deleted state and attachments; a copied chat's messages one to "
+        "one), so Baker did not "
         "import {them}; open each one in {tool}.",
     ),
     "duration_unread": ("attention", "{n} {have} a call duration Baker could not read."),

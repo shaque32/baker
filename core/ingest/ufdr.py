@@ -1618,9 +1618,11 @@ EMBEDDED_STEP = forwarded.COPY_STEP  # locator step of a message embedded in ano
 
 def _content_key(m: _Model) -> bytes:
     """What a record says, as one hash: a copy under RelatedModels with the same key says the
-    same thing. Messages: text, time, sender, recipients, deleted state and attachments (how
-    many, and their names) as written; calls: time, duration, direction and parties; contacts:
-    name and entries; accounts: app and identifier."""
+    same thing. Every field the record's mapper reads is in it, as written: messages: app,
+    text, time, direction, folder and status, parties (with their side and IsPhoneOwner),
+    deleted state and attachments (how many, and their names); calls: app, time, duration,
+    direction, type and status, parties and deleted state; contacts: name and entries;
+    accounts: app, identifier and name."""
     if m.type == "Call":
         # each party with its side, so a copy that swaps caller and callee does not match
         parties = sorted(
@@ -1631,6 +1633,7 @@ def _content_key(m: _Model) -> bytes:
         )
         key: tuple[object, ...] = (
             m.type,
+            m.raw("source"),
             m.raw(*CALL_TS_FIELDS),
             m.raw("duration"),
             # every field the call mapper reads a direction from (stated_call_direction)
@@ -1641,7 +1644,12 @@ def _content_key(m: _Model) -> bytes:
     elif m.type == "Contact":
         key = (m.type, m.raw("name"), _entries(m))
     elif m.type == "UserAccount":
-        key = (m.type, m.raw("source"), m.text("username") or _account_identifier(m))
+        key = (
+            m.type,
+            m.raw("source"),
+            m.text("username") or _account_identifier(m),
+            m.raw("name"),
+        )
     else:
         listed = list(_parties(m.models("parties", "participants")))
         senders = [_party_key(p) for p, _r in _parties(m.models("from"))]
@@ -1661,8 +1669,11 @@ def _content_key(m: _Model) -> bytes:
         )
         key = (
             "message",
+            m.raw("source"),
             m.raw(*BODY_FIELDS),
             m.raw(*TS_FIELDS),
+            # every field the message mapper reads a direction from (stated_message_direction)
+            (m.raw("direction"), m.raw("folder"), m.raw("status")),
             senders,
             to,
             others,
@@ -1740,9 +1751,10 @@ def _entries(m: _Model) -> list[str]:
     return out
 
 
-def _party_key(p: Party) -> tuple[str | None, str | None]:
-    """A party in a content key: identifier and name kept apart, as written."""
-    return (p.identifier, p.name)
+def _party_key(p: Party) -> tuple[str | None, str | None, bool]:
+    """A party in a content key: identifier and name kept apart, as written, and whether it
+    says it is the phone's owner (the mapper reads direction and accounts from that)."""
+    return (p.identifier, p.name, p.owner)
 
 
 def _party_text(p: Party) -> str:
