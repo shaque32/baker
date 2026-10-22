@@ -1183,8 +1183,7 @@ class _RecordMapper:
             self.model_ids.add(mid)
             return False
         self._record_key(locator, m)  # its copies still match it, though not imported again
-        for n, e in enumerate(m.models("embeddedinstantmessage"), 1):
-            self._record_key(f"{locator}{EMBEDDED_STEP}{n}]", e)
+        self._record_embedded(locator, m)
         tc = self.tables[table]
         tc.rows_read += 1
         tc.rows_skipped["same_id_as_an_earlier_record"] += 1
@@ -1395,6 +1394,14 @@ class _RecordMapper:
             ctx = self.chat_context.get(chat, b"")
             self.chat_keys.setdefault(chat, []).append(_in_chat(ctx, key))
 
+    def _record_embedded(self, locator: str, m: _Model) -> None:
+        """Keys of the messages embedded in a message, at every level, at their /Embedded[n]
+        locators: a copy one of them holds is matched to it."""
+        for n, e in enumerate(m.models("embeddedinstantmessage"), 1):
+            eloc = f"{locator}{EMBEDDED_STEP}{n}]"
+            self._record_key(eloc, e)
+            self._record_embedded(eloc, e)
+
     # dispatch ------------------------------------------------------------
 
     def model(self, el: _El) -> None:
@@ -1444,9 +1451,9 @@ class _RecordMapper:
         same thread, at locator + "/Embedded[n]". An embedded message whose model id an earlier
         record already had is not imported twice."""
         rows = [self.message_row(chat, locator, m)]
+        self._record_embedded(locator, m)  # their copies match them, imported here or not
         for n, e in enumerate(m.models("embeddedinstantmessage"), 1):
             eloc = f"{locator}{EMBEDDED_STEP}{n}]"
-            self._record_key(eloc, e)  # its copies match it, imported here or not
             mid = e.attrs.get("id")
             if mid and mid in self.model_ids:
                 # the original is already a record of its own: not imported twice
@@ -1669,9 +1676,9 @@ def _content_key(m: _Model) -> bytes:
     same thing. Every field the record's mapper reads is in it, as written: messages: app,
     text, time, direction, folder and status, parties (with their side and IsPhoneOwner;
     those with no sender or recipient role in order), deleted state, attachments (how many,
-    and their names) and any message embedded in it; calls: app, time, duration, direction,
-    type and status, parties (each side in order) and deleted state; contacts: name and
-    entries; accounts: app, identifier and name."""
+    and their names), whether it is marked forwarded, and any message embedded in it;
+    calls: app, time, duration, direction, type and status, parties (each side in order) and
+    deleted state; contacts: name and entries; accounts: app, identifier and name."""
     if m.type == "Call":
         # each party with its side, in the order written: the mapper takes the first party
         # on each side, so a copy that swaps caller and callee, or reorders one side, differs
@@ -1726,6 +1733,7 @@ def _content_key(m: _Model) -> bytes:
             others,
             _deleted_state(m),
             attachments,
+            _forwarded(m),  # the record is marked forwarded from this
             # a message embedded in it is imported as a row of its own
             [_content_key(e) for e in m.models("embeddedinstantmessage")],
         )

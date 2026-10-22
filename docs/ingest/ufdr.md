@@ -79,7 +79,8 @@ or inside a copy), call, contact or account is counted (`related_copies`, info) 
 its holder: a copy must say what the record holding it says, in every field the record's mapper
 reads, as written (messages: model type, app, text, time, Direction, Folder and Status, each party with its
 side and IsPhoneOwner, parties with no sender or recipient role in order, deleted state,
-attachments by count and name, and any embedded message; calls: app, time, duration, Direction,
+attachments by count and name, whether it is marked forwarded, and any embedded message (at
+every level); calls: app, time, duration, Direction,
 Type and Status, parties with each side in order, and deleted state; contacts: name and entries;
 accounts: app, identifier and name; a copy from another source points at its own file, so paths
 and file ids are not compared), and a copied chat's

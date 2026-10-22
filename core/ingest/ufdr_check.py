@@ -45,6 +45,7 @@ from xml.parsers import expat
 from core.db import apply_schema
 from core.encryption import open_input
 from core.ingest import ufdr
+from core.ingest.cellebrite_common import is_forwarded_label
 
 CHECK_VERSION = "0.2.0"
 SHAREABLE_MD = "ufdr-check.md"
@@ -162,6 +163,7 @@ class _Frame:
     embedded: bool = False  # a message embedded in a message (EmbeddedInstantMessage)
     embedded_seen: int = 0
     embedded_said: list[tuple[object, ...]] = field(default_factory=list)  # _said() of each
+    labels: list[str] = field(default_factory=list)  # Labels values, and MessageExtraData's
 
 
 @dataclass
@@ -206,6 +208,7 @@ class MessageRec:
     # app, then Direction, Folder and Status, each as written
     meta_written: tuple[str | None, ...] = ()
     embedded_written: tuple[tuple[object, ...], ...] = ()  # _said() of each embedded message
+    forwarded: bool = False  # a Forwarded label, as the importer reads one
     body_written: bool = False  # a body field is there, even an empty one
 
 
@@ -274,6 +277,7 @@ class Tally:
         # what each chat (or copied chat) says around its messages: app, id, name, participants
         self.chat_context: dict[str, tuple[object, ...]] = {}
         self._capture: tuple[_Frame, str, list[str]] | None = None
+        self._label: tuple[_Frame, list[str]] | None = None  # a Labels value being read
         self._item: list[str] | None = None
         self._item_name = ""
 
@@ -321,7 +325,7 @@ class Tally:
                     frame.msg_seen[fname] += 1
                     loc = f"{frame.locator}/{fname}[{frame.msg_seen[fname]}]"
                 embedded = (
-                    frame.is_message
+                    (frame.is_message or frame.embedded)
                     and frame is self.frames[-1]
                     and depth == frame.depth + 2
                     and fname.lower() == "embeddedinstantmessage"
@@ -365,6 +369,15 @@ class Tally:
             if fname.lower() not in frame.fields and self._capture is None:
                 self._capture = (frame, fname, [])
             return
+        if (
+            frame is not None
+            and local == "value"
+            and parent == "multiField"
+            and depth == frame.depth + 2
+            and self.attr_stack[-2].get("name", "").lower() == "labels"
+        ):
+            self._label = (frame, [])
+            return
         if frame is not None:
             return
 
@@ -385,6 +398,10 @@ class Tally:
     def end(self, name: str) -> None:
         local = self.path.pop()
         self.attr_stack.pop()
+        if self._label is not None and local == "value":
+            self._label[0].labels.append("".join(self._label[1]))
+            self._label = None
+            return
         if self._capture is not None and local == "value":
             frame, fname, parts = self._capture
             if len(self.path) == frame.depth + 1:
@@ -413,7 +430,9 @@ class Tally:
             self._close(f, holder.lower())
 
     def chars(self, data: str) -> None:
-        if self._capture is not None:
+        if self._label is not None:
+            self._label[1].append(data)
+        elif self._capture is not None:
             self._capture[2].append(data)
         elif self._item is not None:
             self._item.append(data)
@@ -437,6 +456,11 @@ class Tally:
             path = _first(f.fields, ATT_PATH)
             parent.attachments.append((bool(name) or bool(path), path, f.attrs.get("file_id")))
             parent.att_written.append(_first_raw(f.fields, ATT_NAME) or "")
+            return
+        if parent is not None and holder == "messageextradata":
+            # labels the importer reads to mark its message forwarded
+            parent.labels.append(_text(f.fields.get("label")) or "")
+            parent.labels.extend(f.labels)
             return
         if parent is not None and holder == "entries":
             if ufdr.PICTURE_TYPE_RE.search(f.type):  # an image link, not an identifier
@@ -548,6 +572,7 @@ class Tally:
                 tuple((p[2], (p[0], p[1], p[3])) for p in others),
             ),
             embedded_written=tuple(f.embedded_said),
+            forwarded=any(is_forwarded_label(v) for v in f.labels),
             meta_written=tuple(
                 _first_raw(f.fields, (n,)) for n in ("source", "direction", "folder", "status")
             ),
@@ -812,6 +837,7 @@ def _said(x: MessageRec) -> tuple[object, ...]:
         x.parties_written,
         x.state,
         x.att_written,
+        x.forwarded,
         x.embedded_written,
     )
 

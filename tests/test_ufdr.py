@@ -1609,6 +1609,36 @@ def test_a_copied_chat_saying_other_things_around_its_messages_is_listed(tmp_pat
     )
 
 
+@pytest.mark.parametrize("how", ["labels", "extra"])
+def test_a_copy_marked_forwarded_where_the_record_is_not_is_listed(tmp_path, how):
+    mark = (
+        '<multiField name="Labels" type="Label"><value type="Label">Forwarded</value></multiField>'
+        if how == "labels"
+        else _extra("Forwarded")
+    )
+    copy = _with(_msg("ok", T2, id="m1r"), mark)
+    xml = report_xml({"InstantMessage": [_with(_msg("ok", T2, id="m1"), related(copy))]})
+    assert _listed(tmp_path, f"fwd-{how}", xml) == ("InstantMessage[1]/Related[1]",)
+
+
+def test_a_copy_differing_two_embedded_levels_down_is_listed_by_both(tmp_path):
+    def msg(mid: str, deepest: str, *tail: str) -> str:
+        inner = _with(_msg("mid", T2, id=f"{mid}a"), _embedded(_msg(deepest, T2, id=f"{mid}b")))
+        return _with(_msg("ok", T2, id=mid), _embedded(inner), *tail)
+
+    xml = report_xml({"InstantMessage": [msg("m1", "deep", related(msg("m1r", "other")))]})
+    assert _listed(tmp_path, "emb2", xml) == ("InstantMessage[1]/Related[1]",)
+
+
+def test_copies_held_two_embedded_levels_down_are_matched(tmp_path):
+    deepest = _with(_msg("deep", T2, id="e2"), related(_msg("not it", T2, id="e2r")))
+    inner = _with(_msg("mid", T2, id="e1"), _embedded(deepest))
+    xml = report_xml({"InstantMessage": [_with(_msg("ok", T2, id="m1"), _embedded(inner))]})
+    assert _listed(tmp_path, "emb2-holder", xml) == (
+        "InstantMessage[1]/Embedded[1]/Embedded[1]/Related[1]",
+    )
+
+
 def test_a_chat_message_skipped_between_the_two_reads_stores_nothing(tmp_path, monkeypatch):
     path = related_package(tmp_path / "rel.ufdr")
     real = ufdr._RecordMapper.chat
