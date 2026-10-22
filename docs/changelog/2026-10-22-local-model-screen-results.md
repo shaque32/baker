@@ -1,10 +1,10 @@
-## 2026-10-22: Newer local stance models screened; none beats the 14B (#PR)
+## 2026-10-22: Newer local stance models screened; none beats the 14B (#123)
 - Changed: no code change. This records the result of the screen added in #105 (Arsh asked
   whether Qwen3-14B is the best local model). Gemma 4 26B-A4B, Gemma 4 12B and Qwen3.8-27B ran
   the signed probe set, stance only, with both signed stance prompts (v1.1 and v1.2), against
   the stage 1 rule fixed before the run (four Expert-confirms bars plus 0 moved traps shown as
   supports). No candidate passed, so none goes to stage 2 and Qwen3-14B stays the local model.
-- Where: branch claude/project-thread-k8ywo4
+- Where: PR #123
 - Verified: one run per model and prompt on Arsh's Mac (macOS 15.6.1 arm64, 24 GB, commit
   f9461b9, llama-cpp-python 0.3.36, GPU memory limit raised to 19456 MB), finished
   2026-10-22 12:55Z; RESULTS.md in /mnt/project-files/baker/local-model/. Every run failed the
