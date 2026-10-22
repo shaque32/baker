@@ -33,7 +33,9 @@
   IsPhoneOwner and parties with no sender or recipient role; a call's app, Type and Status; an
   account's name; then the order of an SMS's counterparts and of each side of a call, and a
   message's embedded messages and model type. Copies held by a message embedded in a copy are
-  matched too, and a copied chat counts messages across fields of one name. A copied chat
+  matched too (in an SMS or MMS as in a chat message), and a copied chat counts messages
+  across fields of one name. A copy held by a message inside a copy is a message whatever its
+  type is named, as at the top level. A copied chat
   must also say what the holder chat says around its messages (app, id, name, participants),
   and copies are numbered across all of a holder's RelatedModels elements. A copy marked
   forwarded where its holder is not (or the reverse) is listed. A copied chat with fewer

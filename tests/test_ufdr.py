@@ -1672,3 +1672,32 @@ def test_a_copy_saying_the_same_words_to_someone_else_is_not_taken_for_the_recor
     p = json.loads(conn.execute("SELECT payload_json FROM source_coverage").fetchone()[0])
     assert p["counts"]["related_copies"] == 2
     assert p["counts"]["related_copies_matching_a_record"] == 1
+
+
+def test_copies_held_by_a_message_embedded_in_an_sms_are_matched(tmp_path):
+    def sms(mid: str, *tail: str) -> str:
+        parts = (field("Body", "ok"), ts_field("TimeStamp", T2), many("Parties", [party(*JO)]))
+        return model("SMS", *parts, *tail, id=mid)
+
+    inner = _with(
+        _msg("inner", T2, id="e1"),
+        related(_msg("inner", T2, id="e1r"), _msg("not it", T2, id="e1s")),
+    )
+    xml = report_xml({"SMS": [sms("s1", _embedded(inner))]})
+    assert _listed(tmp_path, "sms-emb", xml) == ("SMS[1]/Embedded[1]/Related[2]",)
+
+
+def test_a_copy_of_another_custom_type_inside_a_copied_chat_is_listed_by_both(tmp_path):
+    """A message copied inside a copied chat's message is matched, and so listed, whatever its
+    type is named: here its type differs from the message holding it, so it matches nothing."""
+
+    def custom(type_: str, body: str, mid: str, *tail: str) -> str:
+        m = _msg(body, T2, id=mid).replace('type="InstantMessage"', f'type="{type_}"', 1)
+        return _with(m, *tail)
+
+    held = related(custom("ChatNote", "ok", "c1s"))
+    copy = _chat("k1", custom("ChatMessage", "ok", "c1", held))
+    chat = _chat("k1", custom("ChatMessage", "ok", "m1"), extra=(related(copy),))
+    assert _listed(tmp_path, "custom-nested", report_xml({"Chat": [chat]})) == (
+        "Chat[1]/Related[1]/Messages[1]/Related[1]",
+    )
