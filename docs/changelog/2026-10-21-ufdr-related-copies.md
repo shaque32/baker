@@ -31,8 +31,10 @@
   fields the mappers read but the match left out, so the match now covers every field each
   mapper reads, as written: a message's app, Direction, Folder and Status, each party's
   IsPhoneOwner and parties with no sender or recipient role; a call's app, Type and Status; an
-  account's name. ufdr-check also matches copied chats against holder messages imported once
-  under an earlier id.
+  account's name; then the order of an SMS's counterparts and of each side of a call, and a
+  message's embedded messages. ufdr-check also matches copied chats against holder messages
+  imported once under an earlier id, copies of embedded messages, and reads a blank
+  deleted_state as the importer does. Content keys are kept only for records holding copies.
   ufdr-check 0.1.0 -> 0.2.0: copies are matched to their holder the same way, in a row of their
   own (one that does not match must be one Baker lists for review, else it is a difference),
   counted per type, and never added to a record; a

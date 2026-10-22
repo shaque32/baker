@@ -1457,6 +1457,85 @@ def test_a_copied_chat_holding_a_repeated_id_message_checks_clean(tmp_path):
     assert _listed(tmp_path, "rep-chat", report_xml({"Chat": [a, b]})) == ()
 
 
+def test_a_blank_deleted_state_falls_through_to_deleted_in_both(tmp_path):
+    def sms(mid: str, *tail: str, **attrs: str) -> str:
+        parts = (field("Body", "ok"), ts_field("TimeStamp", T2), many("Parties", [party(*JO)]))
+        return model("SMS", *parts, *tail, id=mid, **attrs)
+
+    copy = sms("s1r", deleted_state="Deleted")
+    held = sms("s1", related(copy), deleted_state="", deleted="Deleted")
+    assert _listed(tmp_path, "blank-state", report_xml({"SMS": [held]})) == ()
+
+
+def test_an_sms_copy_with_its_counterparts_reversed_is_listed(tmp_path):
+    al = ("+15550100009", "Al", False)
+
+    def sms(mid: str, first, second, *tail: str) -> str:
+        return model(
+            "SMS",
+            field("Body", "ok"),
+            ts_field("TimeStamp", T2),
+            many("Parties", [party(*first), party(*second)]),
+            *tail,
+            id=mid,
+        )
+
+    xml = report_xml({"SMS": [sms("s1", JO, al, related(sms("s1r", al, JO)))]})
+    assert _listed(tmp_path, "order", xml) == ("SMS[1]/Related[1]",)
+
+
+def test_a_call_copy_with_one_side_reordered_is_listed(tmp_path):
+    al = ("+15550100009", "Al", False)
+
+    def call(cid: str, callers, *tail: str) -> str:
+        return model(
+            "Call",
+            many("From", [party(*p) for p in callers]),
+            one("To", party(*OWNER)),
+            ts_field("TimeStamp", T2),
+            *tail,
+            id=cid,
+        )
+
+    xml = report_xml({"Call": [call("k1", (JO, al), related(call("k1r", (al, JO))))]})
+    conn, s = _import(write_package(tmp_path / "cside.ufdr", xml))
+    (item,) = [i for i in s.items if i.code == "related_copy_unmatched"]
+    assert item.locators == ("Call[1]/Related[1]",)
+
+
+def test_a_copy_whose_embedded_message_differs_is_listed(tmp_path):
+    def msg(mid: str, inner: str, *tail: str) -> str:
+        return _with(_msg("ok", T2, id=mid), _embedded(_msg(inner, T2, id=f"{mid}e")), *tail)
+
+    xml = report_xml({"InstantMessage": [msg("m1", "first", related(msg("m1r", "other")))]})
+    assert _listed(tmp_path, "emb-diff", xml) == ("InstantMessage[1]/Related[1]",)
+
+
+def test_an_exact_copy_of_an_embedded_message_checks_clean(tmp_path):
+    inner = _with(_msg("inner", T2, id="e1"), related(_msg("inner", T2, id="e1r")))
+    chat = _chat("k1", _with(_msg("ok", T2, id="m1"), _embedded(inner)))
+    top = _with(_msg("top", T2, id="m2"), _embedded(inner.replace('"e1"', '"e2"')))
+    xml = report_xml({"Chat": [chat], "InstantMessage": [top]})
+    assert _listed(tmp_path, "emb-holder", xml) == ()
+
+
+def test_content_keys_are_kept_only_for_records_holding_copies(tmp_path, monkeypatch):
+    kept: dict[str, int] = {}
+    real = ufdr._RecordMapper.finish_related
+
+    def spy(self):
+        kept["records"], kept["chats"] = len(self.record_keys), len(self.chat_keys)
+        real(self)
+
+    monkeypatch.setattr(ufdr._RecordMapper, "finish_related", spy)
+    copy = _msg("ok", T2, id="c1")
+    chats = [_chat("k1", _msg("a", T2, id="m1"), _with(_msg("ok", T2, id="m2"), related(copy)))]
+    chats += [_chat(f"k{i}", _msg("b", T2, id=f"n{i}")) for i in range(2, 6)]
+    conn, s = _import(write_package(tmp_path / "keys.ufdr", report_xml({"Chat": chats})))
+    assert "related_copy_unmatched" not in _codes(s)
+    assert kept == {"records": 1, "chats": 0}
+
+
 def test_a_chat_message_skipped_between_the_two_reads_stores_nothing(tmp_path, monkeypatch):
     path = related_package(tmp_path / "rel.ufdr")
     real = ufdr._RecordMapper.chat

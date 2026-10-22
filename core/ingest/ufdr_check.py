@@ -159,6 +159,9 @@ class _Frame:
     # never one of the package's own records (it is matched to them by content instead)
     related: bool = False
     is_message: bool = False  # a message record: top-level, in a chat, or a copy of one
+    embedded: bool = False  # a message embedded in a message (EmbeddedInstantMessage)
+    embedded_seen: int = 0
+    embedded_said: list[tuple[object, ...]] = field(default_factory=list)  # _said() of each
 
 
 @dataclass
@@ -202,6 +205,7 @@ class MessageRec:
     parties_written: tuple[object, ...] = ()
     # app, then Direction, Folder and Status, each as written
     meta_written: tuple[str | None, ...] = ()
+    embedded_written: tuple[tuple[object, ...], ...] = ()  # _said() of each embedded message
     body_written: bool = False  # a body field is there, even an empty one
 
 
@@ -265,6 +269,8 @@ class Tally:
         # copies of messages under RelatedModels (at a record's locator + /Related[n]): matched
         # by content to the package's own messages, never counted as one of them
         self.related_messages: dict[str, MessageRec] = {}
+        # messages embedded in a record's message (at its locator + /Embedded[n]), by content
+        self.embedded: dict[str, MessageRec] = {}
         self._capture: tuple[_Frame, str, list[str]] | None = None
         self._item: list[str] | None = None
         self._item_name = ""
@@ -310,9 +316,20 @@ class Tally:
                 ):
                     frame.msg_seen[fname] += 1
                     loc = f"{frame.locator}/{fname}[{frame.msg_seen[fname]}]"
+                embedded = (
+                    frame.is_message
+                    and frame is self.frames[-1]
+                    and depth == frame.depth + 2
+                    and fname.lower() == "embeddedinstantmessage"
+                )
+                if embedded:
+                    frame.embedded_seen += 1
+                    if frame.locator is not None:
+                        loc = f"{frame.locator}{ufdr.EMBEDDED_STEP}{frame.embedded_seen}]"
                 key = f"{frame.type}.{fname}>{mtype}"
                 f = _Frame(mtype, dict(attrs), depth, key, loc, False, related=frame.related,
-                           is_message=loc is not None)  # fmt: skip
+                           is_message=loc is not None and not embedded,
+                           embedded=embedded)  # fmt: skip
             else:
                 return
             kind = self.kinds.setdefault(f.key, _Kind())
@@ -434,6 +451,14 @@ class Tally:
                 owner = (_text(f.fields.get("isphoneowner")) or "").lower() in _TRUE
                 parent.parties.setdefault(holder, []).append((ident, name, role, owner))
             return
+        if f.embedded:
+            # part of what its message says; a record of its own only to its copies
+            rec = self._message_rec(f)
+            if parent is not None:
+                parent.embedded_said.append(_said(rec))
+            if f.locator is not None:
+                self.embedded[f.locator] = rec
+            return
         if f.locator is None:
             return
         if f.related:
@@ -508,8 +533,10 @@ class Tally:
             parties_written=(
                 tuple((p[0], p[1], p[3]) for p in senders),
                 tuple(sorted(((p[0], p[1], p[3]) for p in recips), key=repr)),
-                tuple(sorted(((p[2], (p[0], p[1], p[3])) for p in others), key=repr)),
+                # in the order written: the mapper takes the first one not the phone's owner
+                tuple((p[2], (p[0], p[1], p[3])) for p in others),
             ),
+            embedded_written=tuple(f.embedded_said),
             meta_written=tuple(
                 _first_raw(f.fields, (n,)) for n in ("source", "direction", "folder", "status")
             ),
@@ -570,11 +597,14 @@ class Tally:
 
 
 def _state(f: _Frame) -> str | None:
-    """The record state as the package writes it: an attribute, else a field."""
-    for a in ("deleted_state", "deleted"):
-        if a in f.attrs:
-            return f.attrs[a]
-    return _first(f.fields, ("deleted_state", "deletedstate", "recordstatus"))
+    """The record state as the package writes it: an attribute, else a field, in the
+    importer's order (a blank deleted_state falls through to deleted)."""
+    state = f.attrs.get("deleted_state") or f.attrs.get("deleted")
+    return (
+        state
+        if state is not None
+        else _first(f.fields, ("deleted_state", "deletedstate", "recordstatus"))
+    )
 
 
 def _text(v: str | None) -> str | None:
@@ -760,6 +790,20 @@ def _listed_copies(conn: sqlite3.Connection, src: str) -> tuple[set[str], int]:
     return listed, int(counts.get("related_message_copies_matching_no_record", 0))
 
 
+def _said(x: MessageRec) -> tuple[object, ...]:
+    """What a message says, field by field as written (see compare)."""
+    return (
+        x.body,
+        x.body_written,
+        x.ts_raw,
+        x.meta_written,
+        x.parties_written,
+        x.state,
+        x.att_written,
+        x.embedded_written,
+    )
+
+
 def _unmatched_copies(
     t: Tally, db_msgs: set[str], said: Callable[[MessageRec], tuple[object, ...]]
 ) -> list[str]:
@@ -772,6 +816,8 @@ def _unmatched_copies(
             # the holder: a message Baker imported, or one it imported once under an earlier id
             if head in db_msgs or head in t.repeats:
                 twin = t.messages.get(head)
+            elif head in t.embedded:  # a message embedded in another
+                twin = t.embedded[head]
             else:
                 twin = t.related_messages.get(head)
             if twin is None or said(twin) != said(x):
@@ -988,18 +1034,7 @@ def compare(t: Tally, conn: sqlite3.Connection, src: str) -> tuple[list[Count], 
     # the messages of a copied chat match the holder chat's imported messages one to one. One
     # that does not match must be one Baker lists for review (related_copy_unmatched);
     # otherwise it is missing
-    def said(x: MessageRec) -> tuple[object, ...]:
-        return (
-            x.body,
-            x.body_written,
-            x.ts_raw,
-            x.meta_written,
-            x.parties_written,
-            x.state,
-            x.att_written,
-        )
-
-    unmatched = _unmatched_copies(t, db_msgs, said)
+    unmatched = _unmatched_copies(t, db_msgs, _said)
     listed, n_listed = _listed_copies(conn, src)
     listed &= set(t.related_messages)  # message copies only
     # a copy Baker lists that matches here is a disagreement too (extra)

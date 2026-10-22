@@ -36,8 +36,8 @@ records of each kind go in the private sample (default 20). Nothing is added to 
    Models under a `RelatedModels` element (copies of other records, as Reader 7.48 writes them)
    are never counted as the holder's messages, attachments or parties. Each copied message must
    say what the message holding it says (app, text, time, Direction, Folder and Status, each
-   party with its side and IsPhoneOwner, deleted state, and attachments by count and name, as
-   written), and a copied chat's messages are matched one to one to the holder chat's messages
+   party with its side and IsPhoneOwner, deleted state, attachments by count and name, and any
+   embedded message, as written; a copy of an embedded message is matched to it), and a copied chat's messages are matched one to one to the holder chat's messages
    Baker imported, or imported once under an earlier id; one that does not match must be one Baker lists
    for review (`related_copy_unmatched`), else it is missing (row "message copies under
    RelatedModels"). A copy Baker lists that matches here is a difference too (`extra`); only

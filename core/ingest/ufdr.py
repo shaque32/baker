@@ -480,8 +480,18 @@ class _Reader:
 
     def _holder(self) -> str:
         """Locator of the model holding a RelatedModels element that just closed: the record,
-        or the chat message being read (its place once it closes)."""
-        top, inner = self.building[0], self.building[1:]
+        the chat message being read (its place once it closes), or a message embedded in
+        either (its place as an imported row, at the message's locator + /Embedded[n])."""
+        return self._locator(self.building[0], self.building[1:])
+
+    def _locator(self, top: _El, inner: list[_El]) -> str:
+        if (
+            len(inner) >= 2
+            and inner[-1].tag == "model"
+            and inner[-2].attrs.get("name", "").lower() == "embeddedinstantmessage"
+        ):
+            n = sum(1 for c in inner[-2].children if c.tag == "model")
+            return f"{self._locator(top, inner[:-2])}{EMBEDDED_STEP}{n}]"
         if (
             len(inner) == 2
             and top.seen is not None
@@ -1012,10 +1022,10 @@ class UfdrImporter:
                     meta.get("device_time_zone", (None, ""))[0],
                 ),
             )
+            for holder, el in scan.related:  # first: the accounts holding copies are known
+                rd.related(holder, el)
             for el in scan.accounts:
                 rd.user_account(el)
-            for holder, el in scan.related:
-                rd.related(holder, el)
             reader = _Reader(
                 lambda t: t in TABLE_KIND and t != "UserAccount", rd.model, True, rd.related
             )
@@ -1147,8 +1157,11 @@ class _RecordMapper:
         # and accounts their content key (_content_key), matched to the record holding them
         self.related_counts: Counter[str] = Counter()
         self.related_copies: list[_Copies] = []
-        self.record_keys: dict[str, bytes] = {}  # locator -> content key of each record read
-        self.chat_keys: dict[str, list[bytes]] = {}  # chat locator -> its messages' keys
+        # content keys only of records holding copies: a record's RelatedModels closes before
+        # the record is mapped, so its holders are known by then and nothing else is kept
+        self.holders: set[str] = set()
+        self.record_keys: dict[str, bytes] = {}  # holder locator -> its content key
+        self.chat_keys: dict[str, list[bytes]] = {}  # holder chat locator -> its messages' keys
 
     def _repeat(self, table: str, m: _Model, locator: str) -> bool:
         """True for a message or call whose model id an earlier record already had: the same
@@ -1160,6 +1173,8 @@ class _RecordMapper:
             self.model_ids.add(mid)
             return False
         self._record_key(locator, m)  # its copies still match it, though not imported again
+        for n, e in enumerate(m.models("embeddedinstantmessage"), 1):
+            self._record_key(f"{locator}{EMBEDDED_STEP}{n}]", e)
         tc = self.tables[table]
         tc.rows_read += 1
         tc.rows_skipped["same_id_as_an_earlier_record"] += 1
@@ -1263,6 +1278,7 @@ class _RecordMapper:
         copied chat one to one to the holder chat's messages. One that does not match is
         listed for review."""
         table = holder.split("[", 1)[0]
+        self.holders.add(holder)
         models = [c for c in rel.children if c.tag == "model"]
         for i, el in enumerate(models, 1):
             t = el.attrs.get("type", "")
@@ -1344,10 +1360,13 @@ class _RecordMapper:
             self.cov.counters["related_copies_matching_a_record"] = matched
 
     def _record_key(self, locator: str, m: _Model) -> None:
-        key = _content_key(m)
-        self.record_keys[locator] = key
         chat, _, _ = locator.rpartition("/")
-        if chat:
+        if locator not in self.holders and chat not in self.holders:
+            return
+        key = _content_key(m)
+        if locator in self.holders:
+            self.record_keys[locator] = key
+        if chat in self.holders:
             self.chat_keys.setdefault(chat, []).append(key)
 
     # dispatch ------------------------------------------------------------
@@ -1399,6 +1418,7 @@ class _RecordMapper:
         rows = [self.message_row(chat, locator, m)]
         for n, e in enumerate(m.models("embeddedinstantmessage"), 1):
             eloc = f"{locator}{EMBEDDED_STEP}{n}]"
+            self._record_key(eloc, e)  # its copies match it, imported here or not
             mid = e.attrs.get("id")
             if mid and mid in self.model_ids:
                 # the original is already a record of its own: not imported twice
@@ -1619,17 +1639,18 @@ EMBEDDED_STEP = forwarded.COPY_STEP  # locator step of a message embedded in ano
 def _content_key(m: _Model) -> bytes:
     """What a record says, as one hash: a copy under RelatedModels with the same key says the
     same thing. Every field the record's mapper reads is in it, as written: messages: app,
-    text, time, direction, folder and status, parties (with their side and IsPhoneOwner),
-    deleted state and attachments (how many, and their names); calls: app, time, duration,
-    direction, type and status, parties and deleted state; contacts: name and entries;
-    accounts: app, identifier and name."""
+    text, time, direction, folder and status, parties (with their side and IsPhoneOwner;
+    those with no sender or recipient role in order), deleted state, attachments (how many,
+    and their names) and any message embedded in it; calls: app, time, duration, direction,
+    type and status, parties (each side in order) and deleted state; contacts: name and
+    entries; accounts: app, identifier and name."""
     if m.type == "Call":
-        # each party with its side, so a copy that swaps caller and callee does not match
-        parties = sorted(
-            [("from", _party_key(p)) for p, _r in _parties(m.models("from"))]
-            + [("to", _party_key(p)) for p, _r in _parties(m.models("to"))]
-            + [(r, _party_key(p)) for p, r in _parties(m.models("parties"))],
-            key=repr,
+        # each party with its side, in the order written: the mapper takes the first party
+        # on each side, so a copy that swaps caller and callee, or reorders one side, differs
+        parties = (
+            [_party_key(p) for p, _r in _parties(m.models("from"))],
+            [_party_key(p) for p, _r in _parties(m.models("to"))],
+            [(r, _party_key(p)) for p, r in _parties(m.models("parties"))],
         )
         key: tuple[object, ...] = (
             m.type,
@@ -1657,11 +1678,9 @@ def _content_key(m: _Model) -> bytes:
         to = [_party_key(p) for p, _r in _parties(m.models("to"))]
         to += [_party_key(p) for p, r in listed if r in ("to", "cc", "bcc")]
         to.sort(key=repr)
-        # a party with no sender or recipient role: an SMS's counterpart, say
-        others = sorted(
-            ((r, _party_key(p)) for p, r in listed if r not in ("from", "to", "cc", "bcc")),
-            key=repr,
-        )
+        # a party with no sender or recipient role: an SMS's counterpart, say, in the order
+        # written (the mapper takes the first one that is not the phone's owner)
+        others = [(r, _party_key(p)) for p, r in listed if r not in ("from", "to", "cc", "bcc")]
         # attachments by name as written: a copy decoded from another source points at its
         # own file (another path or file id), so the reference is not compared
         attachments = sorted(
@@ -1679,6 +1698,8 @@ def _content_key(m: _Model) -> bytes:
             others,
             _deleted_state(m),
             attachments,
+            # a message embedded in it is imported as a row of its own
+            [_content_key(e) for e in m.models("embeddedinstantmessage")],
         )
     return hashlib.blake2b(repr(key).encode("utf-8", "surrogatepass"), digest_size=16).digest()
 
