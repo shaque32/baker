@@ -7,7 +7,7 @@ Usage:
   python -m eval.probe.repeat_check --dry-run
       No model: prints the calls each stage makes and a time estimate.
 
-Baker records each local model run's file SHA-256, prompt, settings and seed, and decodes
+Mabillon records each local model run's file SHA-256, prompt, settings and seed, and decodes
 greedily (temperature 0, core/llm/runtime.py), so a repeat is expected to match. That is
 measured here, not assumed; until it passes, nothing may say local labels can be regenerated.
 Each stage runs in its own process, so a fresh load is a fresh load:
