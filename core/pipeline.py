@@ -72,6 +72,7 @@ from __future__ import annotations
 import importlib
 import json
 import sqlite3
+import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -127,6 +128,9 @@ from core.review import audit_log
 
 PIPELINE_VERSION = "0.1.0"
 RUN_ACTION = "pipeline.run"
+# The screen's labeled count is rewritten at most this often. Each write is a commit, and with a
+# fast labeler (model-free, rules-only, tests) per-item commits cost more than the labels did.
+PROGRESS_EVERY_S = 0.5
 CLAIM_ACTION = "pipeline.claim"  # one per finished claim, written with the claim's rows
 HALT_ACTION = "pipeline.halted"
 RULES_PENDING_REASON = (
@@ -715,8 +719,10 @@ class _Progress:
         self.conn, self.run_id, self.c, self.clock = conn, run_id, c, clock
         self.calls_at_start = 0
         self.total = 0
+        self.written = 0.0  # time.monotonic() of the last progress write
 
     def _update(self, claim_id: str, sql: str, params: tuple, commit: bool = True) -> None:
+        self.written = time.monotonic()
         try:
             self.conn.execute(
                 f"UPDATE run_claims SET {sql} WHERE pipeline_run_id = ? AND claim_id = ?",  # noqa: S608
@@ -739,6 +745,8 @@ class _Progress:
         self._update(claim_id, "candidates_total = ?", (total,))
 
     def labeled(self, claim_id: str, n: int) -> None:
+        if n < self.total and time.monotonic() - self.written < PROGRESS_EVERY_S:
+            return  # the last label, and the claim's 'done' row, always write the full count
         calls = _new_calls(self.c) - self.calls_at_start
         self._update(claim_id, "candidates_labeled = ?, model_calls = ?", (n, calls))
 
