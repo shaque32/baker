@@ -553,6 +553,39 @@ def cmd_model_check(a: argparse.Namespace) -> int:
     return 0 if result.ok else 1
 
 
+def cmd_bug_report(a: argparse.Namespace) -> int:
+    """A bug report with no case data (core/support/bug_report.py), for the support address."""
+    from core.casework import cases
+    from core.llm import cloud as cloud_llm
+    from core.support import bug_report
+
+    case = conn = None
+    if a.db is not None:
+        case = cases.Case(Path(a.db))
+        conn = _open(a.db, review=False)
+    try:
+        try:
+            cloud_llm.load_config(case_db=None if case is None else case.db)
+            key_ready = True
+        except (cloud_llm.CloudConfigError, OSError):
+            key_ready = False
+        report = bug_report.build(case=case, conn=conn, cloud_key_ready=key_ready)
+        try:
+            text = bug_report.render(report, bug_report.sensitive_values(case, conn))
+        except bug_report.NotClean as err:
+            print(f"bug report withheld: {err}. Nothing was written.", file=sys.stderr)
+            return 1
+    finally:
+        if conn is not None:
+            conn.close()
+    if a.out is None:
+        sys.stdout.write(text)
+    else:
+        a.out.write_text(text, encoding="utf-8")
+        print(f"bug report written to {a.out}. Read it, then email it to {report['support']}.")
+    return 0
+
+
 def cmd_demo(a: argparse.Namespace) -> int:
     from eval import demo
 
@@ -713,6 +746,10 @@ def parser() -> argparse.ArgumentParser:
     sp.add_argument("--open", action="store_true", help="open it in the default browser")
     sp = sub.add_parser("model-check", help="check the local model before a first audit")
     sp.set_defaults(fn=cmd_model_check)
+    sp = sub.add_parser("bug-report", help="write a bug report that holds no case data")
+    sp.set_defaults(fn=cmd_bug_report)
+    sp.add_argument("--db", type=Path, help="also describe this case (counts and states only)")
+    sp.add_argument("--out", type=Path, help="write it to this file (default: print it)")
     sp = sub.add_parser("demo", help="reset the synthetic demo case and open it")
     sp.set_defaults(fn=cmd_demo)
     sp.add_argument("--port", type=int, default=8766, help="default 8766, beside a real `serve`")

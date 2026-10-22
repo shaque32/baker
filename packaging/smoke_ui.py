@@ -83,7 +83,7 @@ def demo_case(page: Page, base: str) -> None:
     page.wait_for_load_state()
     need("Petrov" in page.inner_text("body"), "the demo case did not open")
     print(f"ok  demo case opened at {page.url}")
-    page.click("nav >> text=Claims queue")
+    page.click("nav a[href='/claims']")
     page.wait_for_load_state()
     body = page.inner_text("body")
     want = ("Support found: do you agree?", "Contradicted", "Supported (expert-confirmed)")
