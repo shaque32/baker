@@ -225,7 +225,12 @@ def add_claim(
             _now(clock),
             actor,
             "claim.add",
-            {"claim_id": claim_id, "paragraph_id": paragraph_id, "text": text},
+            {
+                "claim_id": claim_id,
+                "paragraph_id": paragraph_id,
+                "text": text,
+                "claim_type": claim_type.value,
+            },
         )
 
 
@@ -256,7 +261,13 @@ def set_claim_status(
             _now(clock),
             actor,
             "claim.status",
-            {"claim_id": claim_id, "status": status.value, "was": row[0], "text": text},
+            {
+                "claim_id": claim_id,
+                "status": status.value,
+                "was": row[0],
+                "text": text,
+                "was_text": row[1],
+            },
         )
 
 

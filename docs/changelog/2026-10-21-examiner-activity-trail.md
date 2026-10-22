@@ -5,7 +5,7 @@
   claim or evidence item, the evidence ids the page linked to, and for an evidence item its
   record id, source id and locator (never record text). New Activity tab (`/activity`, per claim
   and step by step, with time on page), `/activity.csv` (with each entry's hash) and
-  `baker activity --db case.db [--claim C01] [--csv out.csv]`. The report (0.11.0) gains an
+  `baker activity --db case.db [--claim C01] [--csv out.csv]`. The report (0.12.0, after #104's 0.11.0) gains an
   "Examiner activity" section; its per-claim table (time on page) is opt-in per case and off by
   default (Arsh, 2026-10-21): the expert switches it on the Activity tab or with
   `baker activity --in-report on|off --by expert:<name>`, each change is an audit-log entry
@@ -27,13 +27,17 @@
   tests/test_report_consistency.py now checks the screen adds only `view` entries and the
   report adds none; tests/test_demo.py counts the tabs from `TAB_GROUPS`. Speed (Linux cloud
   container, 2026-10-21): with 20,000 view entries, the per-page log check took 0.17 s and
-  reading the trail 0.32 s. make check passed (2354 tests; case01 gate 1.00, 0 false
+  reading the trail 0.32 s. make check passed (2479 tests; case01 gate 1.00, 0 false
   supported; eval unchanged).
-- Open: time on page is time to the next page opened on the same screen, not reading (no scripts); two screens
-  on one case at once would interleave and shorten it. Views after the newest anchor can be cut
-  undetected, like any entry (docs/review-screen.md). The reproducibility bundle (#104) carries
-  views as plain audit-log entries until a follow-up adds an opt-in "activity" part. CLI commands
-  are not logged as views. Unverified with a real examiner.
+  The reproducibility bundle (#104) gains an opt-in "activity" part: a view names the evidence
+  items and records its page listed, so a scoped bundle keeps only each view's hash in
+  withheld.jsonl unless the examiner includes the part (`--include activity`), and its report
+  says the page views were left out (tests/test_bundle.py
+  `test_page_views_ship_only_in_the_activity_part`).
+- Open: time on page is time to the next page opened on the same screen, not reading (no
+  scripts); two screens on one case at once each time only their own pages. Views after the
+  newest anchor can be cut undetected, like any entry (docs/review-screen.md). CLI commands are
+  not logged as views. Unverified with a real examiner.
 - Affects: capabilities (activity trail, report section); privacy (new data kept: page views,
   local only, in the case database, encrypted with an encrypted case, never sent);
   customer-facing claims (Baker can show which claims and records the examiner opened, and when;
@@ -41,6 +45,6 @@
 - Status doc: pending: §2 row 13 (Review): add "each page the examiner opens is logged as a page
   view; Activity tab, CSV and `baker activity` (core/review/activity.py)"; §8 item 3: add the
   Activity tab and the report's Examiner activity section (its table opt-in per case, off by
-  default); header: report version 0.11.0;
+  default); header: report version 0.12.0; the bundle's opt-in parts gain "activity";
   §12 row 5: add "page views (time, examiner, page, items) are in the same hash-chained log;
   time on page is not proof of reading".

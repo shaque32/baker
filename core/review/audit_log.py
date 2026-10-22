@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import sqlite3
+from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
 
@@ -78,16 +79,38 @@ class AnchorUnwritable(ChainBroken):
         )
 
 
-def first_break(conn: sqlite3.Connection) -> int | None:
-    """The seq of the first entry that does not match the chain, or None when it verifies."""
+def first_break(
+    conn: sqlite3.Connection, withheld: Mapping[int, Mapping[str, str]] | None = None
+) -> int | None:
+    """The seq of the first entry that does not match the chain, or None when it verifies.
+
+    `withheld`: entries a scoped reproducibility bundle left out (core/bundle/export.py), by
+    seq, each with its prev_hash and hash. Without its payload a withheld entry's own hash
+    cannot be recomputed, so it is taken as given; the entries after it still have to chain
+    from it, up to the last hash the report prints."""
+    withheld = withheld or {}
     prev = ""
     rows = conn.execute(
         "SELECT seq, at_utc, actor, action, payload_json, prev_hash, hash FROM audit_log"
         " ORDER BY seq"
     )
-    for seq, at, actor, action, payload_json, prev_hash, h in rows:
+    entries: list[tuple] = [
+        (seq, None, None, None, None, w.get("prev_hash"), w.get("hash"), True)
+        for seq, w in withheld.items()
+    ]
+    entries += [(*r, False) for r in rows]
+    entries.sort(key=lambda r: (r[0], r[7]))
+    expect = 1
+    for seq, at, actor, action, payload_json, prev_hash, h, stub in entries:
+        if withheld and seq != expect:  # a seq both withheld and present, or one missing
+            return seq if seq > expect else expect - 1
+        expect = seq + 1
         try:
-            ok = prev_hash == prev and entry_hash(prev_hash, at, actor, action, payload_json) == h
+            ok = prev_hash == prev and (
+                isinstance(h, str)
+                if stub
+                else entry_hash(prev_hash, at, actor, action, payload_json) == h
+            )
         except (TypeError, ValueError):  # a non-text value stored by an edit outside Baker
             ok = False
         if not ok:
@@ -144,8 +167,10 @@ def decision_problem(conn: sqlite3.Connection) -> tuple[int, str] | None:
     return None
 
 
-def verify_chain(conn: sqlite3.Connection) -> bool:
-    return first_break(conn) is None
+def verify_chain(
+    conn: sqlite3.Connection, withheld: Mapping[int, Mapping[str, str]] | None = None
+) -> bool:
+    return first_break(conn, withheld) is None
 
 
 def anchors_path(db: Path) -> Path:
