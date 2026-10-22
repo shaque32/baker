@@ -197,8 +197,8 @@ class MessageRec:
     sender_ident: str | None = None
     recipient_idents: list[str] = field(default_factory=list)
     att_written: tuple[str, ...] = ()  # sorted attachment names, as written
-    # every stated sender, then the sorted stated recipients, as (identifier, name) pairs
-    parties_written: tuple[tuple[tuple[str | None, str | None], ...], ...] = ()
+    # stated senders, sorted recipients (as (identifier, name)), then other parties with role
+    parties_written: tuple[object, ...] = ()
     body_written: bool = False  # a body field is there, even an empty one
 
 
@@ -472,11 +472,14 @@ class Tally:
     def _message_rec(self, f: _Frame) -> MessageRec:
         senders = list(f.parties.get("from", []))
         recips = list(f.parties.get("to", []))
+        others = []
         for p in f.parties.get("parties", []) + f.parties.get("participants", []):
             if p[2] == "from":
                 senders.append(p)
             elif p[2] in ("to", "cc", "bcc"):
                 recips.append(p)
+            else:
+                others.append(p)
         body = _first_raw(f.fields, BODY)
         s = senders[0] if senders else None
         return MessageRec(
@@ -502,6 +505,7 @@ class Tally:
             parties_written=(
                 tuple((p[0], p[1]) for p in senders),
                 tuple(sorted(((p[0], p[1]) for p in recips), key=repr)),
+                tuple(sorted(((p[2], (p[0], p[1])) for p in others), key=repr)),
             ),
         )
 
@@ -759,7 +763,11 @@ def _unmatched_copies(
     for loc, x in t.related_messages.items():
         head, _, last = loc.rpartition("/")
         if last.startswith("Related["):  # a copy of the message (or copy) holding it
-            twin = t.messages.get(head) if head in db_msgs else t.related_messages.get(head)
+            # the holder: a message Baker imported, or one it imported once under an earlier id
+            if head in db_msgs or head in t.repeats:
+                twin = t.messages.get(head)
+            else:
+                twin = t.related_messages.get(head)
             if twin is None or said(twin) != said(x):
                 out.append(loc)
         else:  # a message of a copied chat

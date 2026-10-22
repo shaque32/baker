@@ -1633,7 +1633,8 @@ def _content_key(m: _Model) -> bytes:
             m.type,
             m.raw(*CALL_TS_FIELDS),
             m.raw("duration"),
-            m.raw("direction"),
+            # every field the call mapper reads a direction from (stated_call_direction)
+            (m.raw("direction"), m.raw("type"), m.raw("status")),
             parties,
             _deleted_state(m),
         )
@@ -1648,6 +1649,11 @@ def _content_key(m: _Model) -> bytes:
         to = [_party_key(p) for p, _r in _parties(m.models("to"))]
         to += [_party_key(p) for p, r in listed if r in ("to", "cc", "bcc")]
         to.sort(key=repr)
+        # a party with no sender or recipient role: an SMS's counterpart, say
+        others = sorted(
+            ((r, _party_key(p)) for p, r in listed if r not in ("from", "to", "cc", "bcc")),
+            key=repr,
+        )
         # attachments by name as written: a copy decoded from another source points at its
         # own file (another path or file id), so the reference is not compared
         attachments = sorted(
@@ -1659,6 +1665,7 @@ def _content_key(m: _Model) -> bytes:
             m.raw(*TS_FIELDS),
             senders,
             to,
+            others,
             _deleted_state(m),
             attachments,
         )

@@ -1353,6 +1353,45 @@ def test_a_call_copy_differing_in_deleted_state_is_listed(tmp_path):
     assert item.locators == ("Call[1]/Related[1]",)
 
 
+def test_a_call_copy_with_another_type_direction_is_listed(tmp_path):
+    def call(cid: str, kind: str, *tail: str) -> str:
+        return model(
+            "Call",
+            many("Parties", [party(*OWNER), party(*JO)]),
+            ts_field("TimeStamp", T2),
+            field("Type", kind),
+            *tail,
+            id=cid,
+        )
+
+    xml = report_xml({"Call": [call("k1", "Incoming", related(call("k1r", "Outgoing")))]})
+    conn, s = _import(write_package(tmp_path / "ct.ufdr", xml))
+    (item,) = [i for i in s.items if i.code == "related_copy_unmatched"]
+    assert item.locators == ("Call[1]/Related[1]",)
+
+
+def test_an_sms_copy_with_another_counterpart_is_listed(tmp_path):
+    def sms(mid: str, who, *tail: str) -> str:
+        return model(
+            "SMS",
+            field("Body", "ok"),
+            ts_field("TimeStamp", T2),
+            many("Parties", [party(*who)]),
+            *tail,
+            id=mid,
+        )
+
+    other = ("+15550100009", "Al", False)
+    xml = report_xml({"SMS": [sms("s1", JO, related(sms("s1r", other)))]})
+    assert _listed(tmp_path, "sms", xml) == ("SMS[1]/Related[1]",)
+
+
+def test_a_repeated_id_message_and_its_copy_check_clean(tmp_path):
+    a = _chat("k1", _msg("ok", T2, id="m1"))
+    b = _chat("k2", _with(_msg("ok", T2, id="m1"), related(_msg("ok", T2, id="c1"))))
+    assert _listed(tmp_path, "rep2", report_xml({"Chat": [a, b]})) == ()
+
+
 def test_a_chat_message_skipped_between_the_two_reads_stores_nothing(tmp_path, monkeypatch):
     path = related_package(tmp_path / "rel.ufdr")
     real = ufdr._RecordMapper.chat
