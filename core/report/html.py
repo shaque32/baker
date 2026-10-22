@@ -50,6 +50,7 @@ import html
 import json
 import sqlite3
 from collections import Counter
+from dataclasses import dataclass
 from pathlib import Path
 
 from core import build, pipeline
@@ -104,7 +105,26 @@ from core.review.status import verdict_label as _verdict_label
 # kind of core assumption not covered, or a pointer to the other rule that holds it
 # (core/review/status.ClaimState.explain_lines), the same lines as the screen; any verdict a later
 # change made stale says "Not current".
-REPORT_VERSION = "0.10.0"
+# 0.11.0 (#104): a scoped reproducibility bundle's report says what the bundle left out, counts
+# the items left out under each claim, and leaves out the sections that read the whole phone.
+REPORT_VERSION = "0.11.0"
+
+
+@dataclass(frozen=True)
+class BundleScope:
+    """What a scoped reproducibility bundle (core/bundle/export.py) left out, so the report
+    rendered from its rows says so. `included`: the opt-in parts it holds (export.PARTS);
+    `left_out`: rows left out, by table; `withheld_log`: the audit-log entries left out, by
+    seq, each with its time, actor, action, prev_hash and hash (their payloads stay out)."""
+
+    included: tuple[str, ...]
+    left_out: dict[str, int]
+    withheld_log: dict[int, dict[str, str]]
+
+    @property
+    def whole_phone(self) -> bool:
+        return "records" in self.included
+
 
 __all__ = [
     "AWAITING_EXPERT",
@@ -406,7 +426,15 @@ def record_line(
     return q(text) if text is not None else "record not found"
 
 
-def _claim_block(conn: sqlite3.Connection, st: ClaimState, case: explain.Case) -> str:
+def _claim_block(
+    conn: sqlite3.Connection,
+    st: ClaimState,
+    case: explain.Case | None,
+    left_out: int = 0,
+) -> str:
+    """One claim. `case` is None in a scoped bundle's report that holds only the records the
+    verdicts cite, so the parts that read the whole phone are left out; `left_out` counts the
+    claim's evidence items that bundle left out."""
     claim, decision = st.claim, st.decision
     out = [f'<div class="claim" id="{e(claim.id)}">']
     out.append(
@@ -480,8 +508,9 @@ def _claim_block(conn: sqlite3.Connection, st: ClaimState, case: explain.Case) -
         out.append(f"<p class='muted'>{e(st.unlabeled)}</p>")
     if st.untested:
         out.append(f"<p><strong>{e(st.not_tested or '')}</strong></p>")
-        held = "".join(f"<li>{e(h)}</li>" for h in case_holdings(conn))
-        out.append(f"<p>{e(HOLDINGS)}</p><ul>{held or '<li>No extraction imported.</li>'}</ul>")
+        if case is not None:
+            held = "".join(f"<li>{e(h)}</li>" for h in case_holdings(conn))
+            out.append(f"<p>{e(HOLDINGS)}</p><ul>{held or '<li>No extraction imported.</li>'}</ul>")
 
     shown = [x for x in st.evidence if x.stance != Stance.IRRELEVANT]
     hidden = len(st.evidence) - len(shown)
@@ -506,9 +535,15 @@ def _claim_block(conn: sqlite3.Connection, st: ClaimState, case: explain.Case) -
         out.append("<p class='muted'>No relevant evidence items were stored for this claim.</p>")
     if hidden:
         out.append(f"<p class='muted'>{hidden} retrieved records were labeled irrelevant.</p>")
+    if left_out:
+        out.append(
+            f"<p class='muted'>{left_out} evidence items (dismissed, or labeled irrelevant) are "
+            "left out of this bundle by its scope. No verdict rests on them; the audit log's "
+            "digest still names each one by its hash.</p>"
+        )
     # Leads are worked out from the run's assumptions; after an edit they would describe the old
     # claim, so they wait for a re-run (the claim already says to re-run it).
-    if st.assumptions and not st.incomplete and not st.edited_after_run:
+    if case is not None and st.assumptions and not st.incomplete and not st.edited_after_run:
         alts = explain.alternatives(case, st.assumptions)
         if alts:
             out.append("<h4>Other explanations to check</h4>")
@@ -557,26 +592,35 @@ def searches_section(states: list[ClaimState], srcs: list[tuple]) -> str:
     return "".join(out)
 
 
-def audit_log_summary(conn: sqlite3.Connection) -> dict:
-    n = conn.execute("SELECT COUNT(*) FROM audit_log").fetchone()[0]
-    first = conn.execute("SELECT at_utc FROM audit_log ORDER BY seq LIMIT 1").fetchone()
-    last = conn.execute("SELECT at_utc, hash FROM audit_log ORDER BY seq DESC LIMIT 1").fetchone()
-    by_action = Counter(
-        a for (a,) in conn.execute("SELECT action FROM audit_log WHERE actor LIKE 'expert:%'")
-    )
-    experts = sorted(
-        {a for (a,) in conn.execute("SELECT actor FROM audit_log WHERE actor LIKE 'expert:%'")}
-    )
+def audit_log_summary(
+    conn: sqlite3.Connection, withheld: dict[int, dict[str, str]] | None = None
+) -> dict:
+    """The log in numbers. `withheld`: entries a scoped bundle left out (BundleScope), counted
+    by their time, actor and action, as the bundle lists them."""
+    withheld = withheld or {}
+    rows = [
+        (seq, at, actor, action, h)
+        for seq, at, actor, action, h in conn.execute(
+            "SELECT seq, at_utc, actor, action, hash FROM audit_log"
+        )
+    ]
+    rows += [
+        (seq, w.get("at_utc"), w.get("actor"), w.get("action"), w.get("hash"))
+        for seq, w in withheld.items()
+    ]
+    rows.sort(key=lambda r: r[0])
+    expert = [r for r in rows if str(r[2]).startswith("expert:")]
     runs = Counter(s for (s,) in conn.execute("SELECT status FROM pipeline_runs"))
     return {
-        "entries": n,
-        "first_at": first[0] if first else None,
-        "last_at": last[0] if last else None,
-        "last_hash": last[1] if last else "",
-        "chain_ok": audit_log.verify_chain(conn),
-        "expert_actions": dict(sorted(by_action.items())),
-        "experts": experts,
+        "entries": len(rows),
+        "first_at": rows[0][1] if rows else None,
+        "last_at": rows[-1][1] if rows else None,
+        "last_hash": rows[-1][4] if rows else "",
+        "chain_ok": audit_log.verify_chain(conn, withheld),
+        "expert_actions": dict(sorted(Counter(r[3] for r in expert).items())),
+        "experts": sorted({r[2] for r in expert}),
         "runs": dict(sorted(runs.items())),
+        "withheld": dict(sorted(Counter(str(w.get("action")) for w in withheld.values()).items())),
     }
 
 
@@ -666,8 +710,13 @@ def _versions(conn: sqlite3.Connection, run: dict | None) -> str:
     return "".join(out)
 
 
-def render_report(conn: sqlite3.Connection, timeline: timeline_html.Settings | None = None) -> str:
-    """timeline: the case's timeline settings (core/timeline/settings.py); defaults if None."""
+def render_report(
+    conn: sqlite3.Connection,
+    timeline: timeline_html.Settings | None = None,
+    scope: BundleScope | None = None,
+) -> str:
+    """timeline: the case's timeline settings (core/timeline/settings.py); defaults if None.
+    scope: set when rendering a scoped reproducibility bundle's rows (core/bundle/export.py)."""
     srcs = sources(conn)
     run = pipeline.view_run(conn)
     govdocs = [r[0] for r in conn.execute("SELECT title FROM govdocs ORDER BY id")]
@@ -739,6 +788,8 @@ def render_report(conn: sqlite3.Connection, timeline: timeline_html.Settings | N
                 "record.</div>"
             )
 
+    if scope is not None:
+        parts.append(scope_banner(scope))
     parts.append("<h2>Summary</h2><table><thead><tr><th>Finding</th><th>Claims</th></tr></thead>")
     for label, n in sorted(tally.items()):
         parts.append(f"<tr><td>{e(label)}</td><td>{n}</td></tr>")
@@ -746,14 +797,20 @@ def render_report(conn: sqlite3.Connection, timeline: timeline_html.Settings | N
 
     parts.append(_limitations(conn, srcs))
     parts.append("<h2>Claims</h2>")
-    case = explain.load(conn)
-    parts += [_claim_block(conn, st, case) for st in states]
+    whole = scope is None or scope.whole_phone
+    case = explain.load(conn) if whole else None
+    manifest = (run or {}).get("manifest", {})
+    for st in states:
+        named = len(set((manifest.get(st.claim.id) or {}).get("evidence", [])))
+        left = max(named - len(st.evidence), 0) if scope is not None and st.decision else 0
+        parts.append(_claim_block(conn, st, case, left))
 
     parts.append(searches_section(states, srcs))
     timeline = timeline or timeline_html.Settings()
-    parts.append(timeline_html.report_section(conn, timeline))
-    parts.append(restore_html.restore_section(conn))
-    parts.append(selection_html.selection_section(conn, states, timeline))
+    if whole:
+        parts.append(timeline_html.report_section(conn, timeline))
+        parts.append(restore_html.restore_section(conn))
+        parts.append(selection_html.selection_section(conn, states, timeline))
 
     parts.append(
         "<h2>Sources</h2><table><thead><tr><th>File</th><th>Kind</th><th>Coverage</th>"
@@ -815,7 +872,7 @@ def render_report(conn: sqlite3.Connection, timeline: timeline_html.Settings | N
             parts.append("<tr>" + "".join(f"<td class='mono'>{e(v)}</td>" for v in m) + "</tr>")
         parts.append("</table>")
 
-    summary = audit_log_summary(conn)
+    summary = audit_log_summary(conn, scope.withheld_log if scope else None)
     actions_done = ", ".join(f"{k} {v}" for k, v in summary["expert_actions"].items()) or "none"
     parts.append(
         f"<h2>Audit log</h2><p>{summary['entries']} entries from {e(summary['first_at'])} to "
@@ -826,6 +883,12 @@ def render_report(conn: sqlite3.Connection, timeline: timeline_html.Settings | N
         f"{e(actions_done)}. Pipeline runs: "
         f"{e(', '.join(f'{k} {v}' for k, v in summary['runs'].items()) or 'none')}.</p>"
     )
+    if summary["withheld"]:
+        parts.append(
+            "<p>Left out of this bundle by its scope, kept in the chain by their hashes: "
+            + e(", ".join(f"{k} {v}" for k, v in summary["withheld"].items()))
+            + ". The expert actions below are the ones the bundle holds.</p>"
+        )
     expert_rows = list(
         conn.execute(
             "SELECT seq, at_utc, actor, action, payload_json FROM audit_log"
@@ -860,6 +923,36 @@ def _compact(payload_json: str, action: str = "") -> str:
     if action.startswith("flag.") and isinstance(p, dict):
         p = {k: p[k] for k in FLAG_FIELDS_IN_REPORT if k in p}
     return "; ".join(f"{k}: {v}" for k, v in p.items() if v not in (None, ""))
+
+
+SCOPE_PARTS = {
+    "dismissed": "evidence items dismissed when their verdict was decided, with their reviews",
+    "irrelevant": "evidence items the model labeled irrelevant",
+    "prompts": "model prompts and answers no shown evidence item or AI review rests on",
+    "records": "the rest of the phone: records no verdict cites",
+    "history": "earlier audit runs' rows",
+    "feedback": "the expert's flags about Baker",
+}
+
+
+def scope_banner(scope: BundleScope) -> str:
+    """What a scoped bundle holds and leaves out, at the top of its report."""
+    out = [k for k in SCOPE_PARTS if k not in scope.included]
+    rows = ", ".join(f"{t} {n}" for t, n in sorted(scope.left_out.items()) if n)
+    return (
+        "<div class='banner'><strong>Scoped reproducibility bundle.</strong> This report is "
+        "rendered from the bundle's rows, which hold what the verdicts rest on. Left out by the "
+        "examiner's choice of scope: "
+        + e("; ".join(SCOPE_PARTS[k] for k in out) or "nothing")
+        + (f" (rows: {e(rows)})" if rows else "")
+        + (
+            ". The timeline, restore, selection, holdings and other-explanations sections read "
+            "the whole phone, so they are not shown"
+            if not scope.whole_phone
+            else ""
+        )
+        + ".</div>"
+    )
 
 
 def stand_in_banner(run: dict) -> str:
