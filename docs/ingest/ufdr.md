@@ -93,7 +93,10 @@ depth: copies inside copies, and chats copied inside a copied chat. A copied cha
 reduced to their content key as each one closes, so a long copied chat is never held whole, and
 a content key is kept only for a record that holds copies. A message embedded in another
 (`/Embedded[n]`), in a record (an SMS or MMS too) or in a copy, can hold copies too, matched
-to it. A copy held by a message inside a copy is a message whatever its type is named. A copied chat's
+to it, numbered across all of the message's embedded fields in the order written. A copy held
+by a message inside a copy is a message whatever its type is named. A copy's recovery marks
+(carved, decoding confidence) must match its holder's. Copies are matched as each record is
+mapped and then dropped. A copied chat's
 messages match the holder chat's only when the two chats also say the same around them (app,
 id, name and participants, as the message mapper reads them). Copies are numbered across all of
 a holder's RelatedModels elements.

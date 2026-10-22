@@ -270,6 +270,11 @@ def _model(el: _El) -> _Model:
         elif ch.tag == "multiField":
             m.field_names.append(name)
             m.multi_values[key] = [v.joined() for v in ch.children if v.tag == "value"]
+        elif ch.tag in ("modelField", "multiModelField") and key == "embeddedinstantmessage":
+            # every message embedded in this one, across all its embedded fields, in the order
+            # written: the reader numbers them that way (/Embedded[n])
+            m.field_names.append(name)
+            m.many.setdefault(key, []).extend(_model(c) for c in ch.children if c.tag == "model")
         elif ch.tag == "modelField":
             m.field_names.append(name)
             sub = [c for c in ch.children if c.tag == "model"]
@@ -1034,6 +1039,7 @@ class UfdrImporter:
                 rd.related(holder, el)
             for el in scan.accounts:
                 rd.user_account(el)
+            rd.settle_related()
             reader = _Reader(
                 lambda t: t in TABLE_KIND and t != "UserAccount", rd.model, True, rd.related
             )
@@ -1164,7 +1170,11 @@ class _RecordMapper:
         # Copies under RelatedModels: how many of each type, and for messages, calls, contacts
         # and accounts their content key (_content_key), matched to the record holding them
         self.related_counts: Counter[str] = Counter()
+        # the copies of the record being read: matched (settle_related) once it is mapped, and
+        # dropped, so nothing grows with the number of copies in the package
         self.related_copies: list[_Copies] = []
+        self.copies_seen = 0
+        self.copies_matched = 0
         # content keys only of records holding copies: a record's RelatedModels closes before
         # the record is mapped, so its holders are known by then and nothing else is kept
         self.holders: set[str] = set()
@@ -1220,15 +1230,11 @@ class _RecordMapper:
         state = _deleted_state(m)
         if state is not None:
             self.deleted_states[state] += 1
-        carved = any(
-            k.lower() in ("carved", "iscarved") and v.strip().lower() in _TRUE | {"carved"}
-            for k, v in m.attrs.items()
-        ) or (m.text("carved", "iscarved") or "").lower() in _TRUE | {"carved"}
+        carved, conf_not_high = _recovery(m.attrs, m.text("carved", "iscarved"))
         if carved:
             self.cov.counters["records_recovered_by_carving"] += 1
             self._flag(table, "carved", locator)
-        conf = m.attrs.get("decoding_confidence")
-        if conf is not None and conf.strip().lower() != "high":
+        if conf_not_high:
             self.cov.counters["records_decoding_confidence_not_high"] += 1
             self._flag(table, "decoding_confidence_not_high", locator)
         if table != "Contact" and table != "Call":
@@ -1359,13 +1365,17 @@ class _RecordMapper:
             self._nested(table, f"{loc}{EMBEDDED_STEP}{n}]", _content_key(_model(e)), e, True)
 
     def finish_related(self) -> None:
-        if not self.related_counts:
-            return
-        n = sum(len(c.keys) for c in self.related_copies)
-        if n:
-            self.cov.counters["related_copies"] = n
-        matched = 0
+        self.settle_related()
+        if self.copies_seen:
+            self.cov.counters["related_copies"] = self.copies_seen
+        if self.copies_matched:
+            self.cov.counters["related_copies_matching_a_record"] = self.copies_matched
+
+    def settle_related(self) -> None:
+        """Match the copies held so far to their holders, all of which are mapped by now (a
+        record's copies are all inside it), then drop the copies and the holders' keys."""
         for c in self.related_copies:
+            self.copies_seen += len(c.keys)
             if c.kind == "chat":
                 left = Counter(
                     c.want if isinstance(c.want, list) else self.chat_keys.get(c.holder, ())
@@ -1376,14 +1386,18 @@ class _RecordMapper:
             for key, loc in c.keys:
                 if left[key] > 0:
                     left[key] -= 1
-                    matched += 1
+                    self.copies_matched += 1
                     continue
                 self.cov.counters["related_copies_matching_no_record"] += 1
                 if c.message:  # ufdr-check accounts for these by count past the listed ones
                     self.cov.counters["related_message_copies_matching_no_record"] += 1
                 self._flag(c.table, "related_copy_unmatched", loc)
-        if matched:
-            self.cov.counters["related_copies_matching_a_record"] = matched
+        self.related_copies.clear()
+        self.holders.clear()
+        self.related_seen.clear()
+        self.chat_context.clear()
+        self.record_keys.clear()
+        self.chat_keys.clear()
 
     def _record_key(self, locator: str, m: _Model) -> None:
         chat, _, _ = locator.rpartition("/")
@@ -1422,6 +1436,7 @@ class _RecordMapper:
                 self.call(el.locator, m)
         elif t == "Contact":
             self.contact(el.locator, m)
+        self.settle_related()  # every holder in this record is mapped now
         self._maybe_write()
 
     def messages(self, table: str, kind: RecordKind, rows: list[_ModelRow]) -> None:
@@ -1681,7 +1696,9 @@ def _content_key(m: _Model) -> bytes:
     those with no sender or recipient role in order), deleted state, attachments (how many,
     and their names), whether it is marked forwarded, and any message embedded in it;
     calls: app, time, duration, direction, type and status, parties (each side in order) and
-    deleted state; contacts: name and entries; accounts: app, identifier and name."""
+    deleted state; contacts: name and entries; accounts: app, identifier and name. Messages,
+    calls and contacts also carry their recovery marks (carved, decoding confidence not High),
+    which the importer flags for review."""
     if m.type == "Call":
         # each party with its side, in the order written: the mapper takes the first party
         # on each side, so a copy that swaps caller and callee, or reorders one side, differs
@@ -1699,9 +1716,10 @@ def _content_key(m: _Model) -> bytes:
             (m.raw("direction"), m.raw("type"), m.raw("status")),
             parties,
             _deleted_state(m),
+            _recovery(m.attrs, m.text("carved", "iscarved")),
         )
     elif m.type == "Contact":
-        key = (m.type, m.raw("name"), _entries(m))
+        key = (m.type, m.raw("name"), _entries(m), _recovery(m.attrs, m.text("carved", "iscarved")))
     elif m.type == "UserAccount":
         key = (
             m.type,
@@ -1739,8 +1757,20 @@ def _content_key(m: _Model) -> bytes:
             _forwarded(m),  # the record is marked forwarded from this
             # a message embedded in it is imported as a row of its own
             [_content_key(e) for e in m.models("embeddedinstantmessage")],
+            _recovery(m.attrs, m.text("carved", "iscarved")),
         )
     return hashlib.blake2b(repr(key).encode("utf-8", "surrogatepass"), digest_size=16).digest()
+
+
+def _recovery(attrs: dict[str, str], carved_field: str | None) -> tuple[bool, bool]:
+    """Whether a record was recovered by carving, and whether its decoding confidence is stated
+    and not High: the reliability marks the importer flags for review."""
+    carved = any(
+        k.lower() in ("carved", "iscarved") and v.strip().lower() in _TRUE | {"carved"}
+        for k, v in attrs.items()
+    ) or (carved_field or "").lower() in _TRUE | {"carved"}
+    conf = attrs.get("decoding_confidence")
+    return carved, conf is not None and conf.strip().lower() != "high"
 
 
 def _chat_copy_messages(loc: str, chat: _El) -> Iterator[tuple[bytes, str, _El]]:

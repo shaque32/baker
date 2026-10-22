@@ -636,7 +636,7 @@ def test_a_message_held_only_as_a_related_copy_must_be_listed_by_baker(tmp_path,
     assert (rel["imported_by_baker"], rel["repeats_imported_once"], rel["missing"]) == (82, 2, 0)
     assert d["differences"] == 0
     # an importer that matched nothing and listed nothing is caught
-    monkeypatch.setattr(ufdr._RecordMapper, "finish_related", lambda self: None)
+    monkeypatch.setattr(ufdr._RecordMapper, "settle_related", lambda self: None)
     d = ufdr_check.run(path).shareable
     rel = _rec(d, ufdr_check.RELATED_RECORD)
     assert rel["first_missing_locators"] == [

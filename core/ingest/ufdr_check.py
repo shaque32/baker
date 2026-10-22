@@ -210,6 +210,8 @@ class MessageRec:
     embedded_written: tuple[tuple[object, ...], ...] = ()  # _said() of each embedded message
     forwarded: bool = False  # a Forwarded label, as the importer reads one
     body_written: bool = False  # a body field is there, even an empty one
+    # carved, and decoding confidence stated and not High: the marks the importer flags
+    recovery: tuple[bool, bool] = (False, False)
 
 
 @dataclass
@@ -573,6 +575,7 @@ class Tally:
             ),
             embedded_written=tuple(f.embedded_said),
             forwarded=any(is_forwarded_label(v) for v in f.labels),
+            recovery=ufdr._recovery(f.attrs, _first(f.fields, ("carved", "iscarved"))),
             meta_written=tuple(
                 _first_raw(f.fields, (n,)) for n in ("source", "direction", "folder", "status")
             ),
@@ -839,6 +842,7 @@ def _said(x: MessageRec) -> tuple[object, ...]:
         x.att_written,
         x.forwarded,
         x.embedded_written,
+        x.recovery,
     )
 
 

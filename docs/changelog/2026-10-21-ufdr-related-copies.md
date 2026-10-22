@@ -35,7 +35,11 @@
   message's embedded messages and model type. Copies held by a message embedded in a copy are
   matched too (in an SMS or MMS as in a chat message), and a copied chat counts messages
   across fields of one name. A copy held by a message inside a copy is a message whatever its
-  type is named, as at the top level. A copied chat
+  type is named, as at the top level. A copy recovered by carving, or with a decoding
+  confidence other than High, where its holder is not (or the reverse), is listed. A message's
+  embedded messages are read across all its embedded fields, in the order written, so none is
+  dropped when a message has two. Copies are matched as each record is mapped and then
+  dropped, so memory never grows with the number of copies in the package. A copied chat
   must also say what the holder chat says around its messages (app, id, name, participants),
   and copies are numbered across all of a holder's RelatedModels elements. A copy marked
   forwarded where its holder is not (or the reverse) is listed. A copied chat with fewer

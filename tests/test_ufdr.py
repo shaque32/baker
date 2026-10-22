@@ -1520,14 +1520,15 @@ def test_an_exact_copy_of_an_embedded_message_checks_clean(tmp_path):
 
 
 def test_content_keys_are_kept_only_for_records_holding_copies(tmp_path, monkeypatch):
-    kept: dict[str, int] = {}
-    real = ufdr._RecordMapper.finish_related
+    kept = {"records": 0, "chats": 0}
+    real = ufdr._RecordMapper.settle_related
 
     def spy(self):
-        kept["records"], kept["chats"] = len(self.record_keys), len(self.chat_keys)
+        kept["records"] = max(kept["records"], len(self.record_keys))
+        kept["chats"] = max(kept["chats"], len(self.chat_keys))
         real(self)
 
-    monkeypatch.setattr(ufdr._RecordMapper, "finish_related", spy)
+    monkeypatch.setattr(ufdr._RecordMapper, "settle_related", spy)
     copy = _msg("ok", T2, id="c1")
     chats = [_chat("k1", _msg("a", T2, id="m1"), _with(_msg("ok", T2, id="m2"), related(copy)))]
     chats += [_chat(f"k{i}", _msg("b", T2, id=f"n{i}")) for i in range(2, 6)]
@@ -1701,3 +1702,54 @@ def test_a_copy_of_another_custom_type_inside_a_copied_chat_is_listed_by_both(tm
     assert _listed(tmp_path, "custom-nested", report_xml({"Chat": [chat]})) == (
         "Chat[1]/Related[1]/Messages[1]/Related[1]",
     )
+
+
+def test_copies_held_by_a_message_in_an_earlier_of_two_embedded_fields_are_matched(tmp_path):
+    first = _with(_msg("first", T2, id="e1"), related(_msg("first", T2, id="e1r")))
+    msg = _with(_msg("ok", T2, id="m1"), _embedded(first), _embedded(_msg("second", T2, id="e2")))
+    xml = report_xml({"InstantMessage": [msg]})
+    assert _listed(tmp_path, "emb-fields", xml) == ()
+    conn, _s = _import(write_package(tmp_path / "emb-fields-rows.ufdr", xml))
+    bodies = {r[0] for r in conn.execute("SELECT body FROM messages")}
+    assert bodies == {"ok", "first", "second"}  # both embedded originals, in the order written
+
+
+@pytest.mark.parametrize("mark", [{"carved": "true"}, {"decoding_confidence": "Low"}])
+def test_a_copy_with_a_recovery_mark_its_record_lacks_is_listed(tmp_path, mark):
+    copy = _msg("ok", T2, id="m1r", **mark)
+    xml = report_xml({"InstantMessage": [_with(_msg("ok", T2, id="m1"), related(copy))]})
+    assert _listed(tmp_path, f"recovery-{next(iter(mark))}", xml) == (
+        "InstantMessage[1]/Related[1]",
+    )
+
+
+def test_a_call_copy_recovered_by_carving_is_listed(tmp_path):
+    def call(cid: str, *tail: str, **attrs: str) -> str:
+        parts = (one("From", party(*JO)), one("To", party(*OWNER)), ts_field("TimeStamp", T2))
+        return model("Call", *parts, *tail, id=cid, **attrs)
+
+    xml = report_xml({"Call": [call("k1", related(call("k1r", carved="true")))]})
+    conn, s = _import(write_package(tmp_path / "carved-call.ufdr", xml))
+    (item,) = [i for i in s.items if i.code == "related_copy_unmatched"]
+    assert item.locators == ("Call[1]/Related[1]",)
+
+
+def test_copies_are_matched_and_dropped_record_by_record(tmp_path, monkeypatch):
+    held: list[int] = []
+    real = ufdr._RecordMapper.settle_related
+
+    def spy(self):
+        held.append(sum(len(c.keys) for c in self.related_copies))
+        real(self)
+
+    monkeypatch.setattr(ufdr._RecordMapper, "settle_related", spy)
+    msgs = [
+        _with(_msg(f"m{i}", T2, id=f"m{i}"), related(_msg(f"m{i}", T2, id=f"m{i}r"),
+                                                     _msg(f"m{i}", T2, id=f"m{i}s")))
+        for i in range(6)
+    ]  # fmt: skip
+    conn, s = _import(write_package(tmp_path / "settle.ufdr", report_xml({"InstantMessage": msgs})))
+    assert "related_copy_unmatched" not in _codes(s)
+    assert max(held) == 2  # never more than one record's copies at a time
+    p = json.loads(conn.execute("SELECT payload_json FROM source_coverage").fetchone()[0])
+    assert p["counts"]["related_copies"] == p["counts"]["related_copies_matching_a_record"] == 12
