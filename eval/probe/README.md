@@ -237,4 +237,7 @@ two 2026-10-15 sets (`v13/told_frame_24.jsonl`, `v13/rules_12_23_26.jsonl`); v1.
 v1.3a fails. `python -m eval.probe.v13.score report <folder>` re-scores a finished folder. The
 v1.1 signed-set baseline is `results/2026-10-19-qwen3-14b-stance-v1-1.jsonl` (ids and labels,
 the model's and each prompt's SHA-256), reused only for the same model file and prompts.
-Neither candidate reaches the product until Arsh signs one into `core/audit/prompts/stance.md`.
+Result (Arsh's Mac, 2026-10-22, `v13/RESULTS-2026-10-22-mac.md`): both candidates fail, so
+the product keeps v1.1. The 14B called 41 of the 42 told-frame and undated-denial items on the
+new sets "contradicts" under every prompt. `MODEL_NAME=<entry> bash eval/probe/mac_v13.sh`
+runs the same test on another local model.

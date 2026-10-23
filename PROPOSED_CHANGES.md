@@ -592,8 +592,9 @@ Diff:
 ```
 
 ## 2026-10-21 claude/expert-confirms-contradicts-y6ti2f: stance prompt v1.3 for the local model (rules 12 and 23), pending the Mac re-probe
-NOT for signing yet. Which diff is proposed, if any, is decided by `bash eval/probe/mac_v13.sh`
-under the criteria in `eval/probe/v13/PREREGISTERED.md`, committed before any item or call.
+WITHDRAWN 2026-10-23: neither candidate met the preregistered criteria on Arsh's Mac run of
+2026-10-22 (`eval/probe/v13/RESULTS-2026-10-22-mac.md`), so no diff is proposed and
+`core/audit/prompts/stance.md` stays v1.1. Kept below as the record of what was tested.
 File: core/audit/prompts/stance.md
 Why: the local 14B calls told frames and undated denials "contradicts" (8 of its 19 on the
 signed probe set, precision 58%, bar 90%); v1.2's sentence, now the cloud prompt, fixed none of
