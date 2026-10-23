@@ -31,7 +31,7 @@ from __future__ import annotations
 import json
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -99,13 +99,18 @@ class CloudError(RuntimeError):
     """A cloud call that produced no answer. `sticky` failures (no network, a rejected key, the
     API down) pause the audit; the others (a refusal, an answer cut off) drop this label only.
     `retryable` ones (no connection, a timeout, 408, 409, 429, 5xx) may be sent again; Baker
-    retries them itself (core/audit/_local_model.py SentLog), so every send is logged first."""
+    retries them itself (core/audit/_local_model.py SentLog), so every send is logged first.
+    `response` is the API's answer when there was one that Baker refused (another model, a
+    refusal, a cut-off answer), so its ids and raw text are logged like any answer's."""
 
-    def __init__(self, reason: str, *, sticky: bool, retryable: bool = False) -> None:
+    def __init__(
+        self, reason: str, *, sticky: bool, retryable: bool = False, response: Any = None
+    ) -> None:
         super().__init__(reason)
         self.reason = reason
         self.sticky = sticky
         self.retryable = retryable
+        self.response = response
 
 
 RETRY_STATUS = frozenset({408, 409, 429})
@@ -316,22 +321,36 @@ class ClaudeModel:
             ) from e
         elapsed = time.perf_counter() - start
         served = getattr(resp, "model", None)
-        if served != self.cfg.model:
-            # Only the model that passed the signed stance test may label, and a case's labels
-            # never mix models, so an answer from any other model pauses the run.
-            raise CloudError(f"the API answered as {served!r}, not {self.cfg.model!r}", sticky=True)
-        if resp.stop_reason == "refusal":
-            raise CloudError("the cloud model declined to answer", sticky=False)
-        if resp.stop_reason == "max_tokens":
-            raise CloudError("the cloud model's answer was cut off", sticky=False)
-        text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
-        parsed, error = parse_json_output(text, schema)
-        u = resp.usage
-        return ModelOutput(
+        blocks = getattr(resp, "content", None) or ()
+        text = "".join(b.text for b in blocks if getattr(b, "type", "") == "text")
+        u = getattr(resp, "usage", None)
+        answer = ModelOutput(
             raw_text=text,
-            parsed=parsed,
-            error=error,
+            parsed=None,
+            error=None,
             prompt_tokens=int(getattr(u, "input_tokens", 0) or 0),
             completion_tokens=int(getattr(u, "output_tokens", 0) or 0),
             seconds=elapsed,
+            served_model=_text_or_none(served),
+            message_id=_text_or_none(getattr(resp, "id", None)),
+            request_id=_text_or_none(getattr(resp, "_request_id", None)),
+            stop_reason=_text_or_none(getattr(resp, "stop_reason", None)),
         )
+        if served != self.cfg.model:
+            # Only the model that passed the signed stance test may label, and a case's labels
+            # never mix models, so an answer from any other model pauses the run.
+            raise CloudError(
+                f"the API answered as {served!r}, not {self.cfg.model!r}",
+                sticky=True,
+                response=answer,
+            )
+        if resp.stop_reason == "refusal":
+            raise CloudError("the cloud model declined to answer", sticky=False, response=answer)
+        if resp.stop_reason == "max_tokens":
+            raise CloudError("the cloud model's answer was cut off", sticky=False, response=answer)
+        parsed, error = parse_json_output(text, schema)
+        return replace(answer, parsed=parsed, error=error)
+
+
+def _text_or_none(value: object) -> str | None:
+    return value if isinstance(value, str) and value else None

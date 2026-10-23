@@ -1,6 +1,6 @@
 PY ?= python3
 
-.PHONY: install lint fmt test changelog eval eval-model-free eval-case02 eval-fake eval-real eval-hostile check synth fixtures report stancedata
+.PHONY: install lint fmt test changelog eval eval-model-free eval-case02 eval-fake eval-real eval-hostile validation-card check synth fixtures report stancedata
 
 install:
 	$(PY) -m pip install -e ".[dev]"
@@ -13,8 +13,9 @@ fmt:
 	ruff check --fix .
 	ruff format .
 
+# PYTEST_ARGS passes extra options, e.g. PYTEST_ARGS=--durations=40 (CI prints test timings).
 test:
-	$(PY) -m pytest -q
+	$(PY) -m pytest -q $(PYTEST_ARGS)
 
 # The AI changelog in one view: docs/changelog/ entries newest first, then docs/CHANGELOG_AI.md.
 changelog:
@@ -60,6 +61,14 @@ eval-real:
 # Red team: real structure, worst-case model. Fails if a structurally blocked claim goes supported.
 eval-hostile:
 	$(PY) -m eval.run_pipeline --mode hostile --assumption-spec $(ASSUMPTION_SPEC)
+
+# Validation card for the last model-free case01 run: error rates with Wilson 95% intervals
+# (docs/validation/README.md). Report only; run `make eval-model-free` first.
+validation-card:
+	$(PY) -m eval.validation.card --gold eval/gold/case01/gold.jsonl \
+		--predictions eval/out/case01/model_free/predictions.jsonl \
+		--db eval/out/case01/model_free/case01.db \
+		--run-json eval/out/case01/model_free/run.json --out eval/out/case01/model_free/card
 
 # Offline HTML claims report for the last model-free run, after the simulated expert.
 report: eval-model-free

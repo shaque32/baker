@@ -353,8 +353,9 @@ def test_every_page_rechecks_the_log_and_stops_a_job_on_the_case(tmp_path):
     post(app, "/case/new", name="Synthetic log page case")
     case = app.case
     assert case is not None
-    assert "Hash chain verified" in get(app, "/log").text
+    # the newest anchored entry: opening the log page then adds a page view after it
     newest = connect(case.db).execute("SELECT MAX(seq) FROM audit_log").fetchone()[0]
+    assert "Hash chain verified" in get(app, "/log").text
     cut_tail(case.db, keep=newest - 1)  # the chain left still verifies on its own
     job = SimpleNamespace(running=True, db=case.db, stop=threading.Event(), kind="audit")
     app.jobs.current = job  # type: ignore[assignment]
