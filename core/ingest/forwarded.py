@@ -44,6 +44,7 @@ STANCE_NOTE = (
 # The same note as stored before the product was renamed: evidence labelled then keeps it, and
 # core/bundle/verify.py accepts either.
 BAKER_STANCE_NOTE = STANCE_NOTE.replace("Mabillon", "Baker")
+
 RECORD_NOTE = {
     "forwarded": "Forwarded: shown as sent by whoever forwarded it; who first wrote it is not "
     "recorded.",
@@ -52,6 +53,14 @@ RECORD_NOTE = {
     "embedded_copy": "Forwarded or quoted copy carried inside another message, imported as its "
     "own record; who first wrote it is not verified.",
 }
+
+
+def shown_rationale(rationale: str) -> str:
+    """A rationale as the screen and report show it: a note stored before the rename names the
+    product Mabillon there, while the stored text stays as it was for verify-bundle."""
+    if rationale.startswith(BAKER_STANCE_NOTE):
+        return STANCE_NOTE + rationale[len(BAKER_STANCE_NOTE) :]
+    return rationale
 
 
 def has_columns(conn: sqlite3.Connection) -> bool:

@@ -532,7 +532,7 @@ def _claim_block(
                 f"<tr id='{e(x.id)}'><td><blockquote>{q(x.quote)}</blockquote>"
                 f"{record_line(conn, x.record_id, found)}"
                 f"<br><span class='muted'>{e(labelled_by(conn, x.model_run_id))}. Model "
-                f"rationale (inferred): {e(x.rationale)}</span>"
+                f"rationale (inferred): {e(forwarded.shown_rationale(x.rationale))}</span>"
                 f"</td><td>{STANCE_LABEL[x.stance]}</td><td>{display_tier(x).value}</td>"
                 f"<td>{review_label(conn, x)}</td>"
                 f"<td class='mono'>{e(x.ref.source_id)} {e(x.ref.locator)}<br>{e(x.record_id)}"

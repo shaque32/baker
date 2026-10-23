@@ -630,6 +630,9 @@ def test_a_rewritten_rationale_must_match_exactly():
     # Evidence labelled before the rename keeps the note naming Baker.
     old = f"{forwarded.BAKER_STANCE_NOTE}contradicts. Sent at 9."
     assert "Baker has not verified" in old and _same_label(item("complicates", old), answer)
+    # The screen and report show it naming Mabillon; the stored text is left as it was.
+    assert forwarded.shown_rationale(old) == note
+    assert forwarded.shown_rationale("Sent at 9.") == "Sent at 9."
     assert not _same_label(
         item("complicates", stance_mod.NOT_THE_MESSAGE + "Invented. Sent at 9."), answer
     )

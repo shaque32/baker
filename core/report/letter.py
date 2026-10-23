@@ -16,7 +16,8 @@ from dataclasses import dataclass
 
 from core.restore.store import load_excerpts, load_exhibits
 
-LETTER_VERSION = "1.0.0"
+# 1.1.0: the draft names the product Mabillon (formerly Baker). Nothing else changed.
+LETTER_VERSION = "1.1.0"
 
 
 @dataclass(frozen=True)

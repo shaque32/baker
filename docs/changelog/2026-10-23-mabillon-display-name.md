@@ -7,7 +7,10 @@
   Bundle format 1.1.0: METHOD.md and the notice say Mabillon. `verify-bundle` now says when a
   bundle was exported with another report version (check 12) or bundle version (METHOD.md) and
   names the commit to verify it with, instead of a bare mismatch that reads like tampering (any
-  change to that text, this rename included, changes the bytes). Not changed here: the `baker` command, ~/Baker and
+  change to that text, this rename included, changes the bytes). The request draft's template
+  is version 1.1.0. Evidence labelled before the rename keeps its stored forwarded note naming
+  Baker: verify-bundle accepts it (check 8), and the screen and report show it naming Mabillon.
+  Not changed here: the `baker` command, ~/Baker and
   ~/.baker paths, BAKER_* variables, Desktop launchers and installer names (steps 2 and 3);
   file-format ids and the `baker_version` field, which never change (CLAUDE.md).
 - Where: PR #127

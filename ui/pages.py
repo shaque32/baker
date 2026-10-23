@@ -752,7 +752,7 @@ def evidence_card(
         f"<p><span class='mono'>{e(item.ref.source_id)} {e(item.ref.locator)} · "
         f"{e(item.record_id)}</span></p>"
         f"<p class='muted'>{e(labelled_by(conn, item.model_run_id))}. Model rationale "
-        f"(inferred): {e(item.rationale)}</p></details>"
+        f"(inferred): {e(forwarded.shown_rationale(item.rationale))}</p></details>"
         f"<p><strong>Review:</strong> {review_label(conn, item)} · "
         f"<a href='{e(link('/evidence', id=item.id))}'>See about 20 messages around it</a></p>"
         + (
