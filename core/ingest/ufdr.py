@@ -1319,10 +1319,12 @@ class _RecordMapper:
                 self._nested_chats(table, loc, [k for k, _w in keys], el)
             elif (
                 t in COPY_TYPES
+                or (table in MESSAGE_TYPES and "/" not in holder)
                 or _CHAT_MESSAGE_LOC.fullmatch(holder)
                 or holder.rpartition("/")[2].startswith(EMBEDDED_STEP[1:])
             ):
-                # a chat message's copy is a message whatever its type is named, as its holder
+                # a message's copy (top-level, in a chat or embedded) is a message whatever
+                # its type is named, as its holder
                 key = _content_key(m)
                 is_message = t not in COPY_KINDS
                 self.related_copies.append(

@@ -1704,6 +1704,27 @@ def test_a_copy_of_another_custom_type_inside_a_copied_chat_is_listed_by_both(tm
     )
 
 
+@pytest.mark.parametrize("top", ["InstantMessage", "SMS"])
+def test_a_custom_typed_copy_held_by_a_top_level_message_is_matched(tmp_path, top):
+    """A top-level message's copy is matched whatever its type is named, as a chat message's
+    is: its type differs from the message holding it, so it matches nothing and is listed."""
+
+    def custom(body: str, mid: str) -> str:
+        return _msg(body, T2, id=mid).replace('type="InstantMessage"', 'type="ChatMessage"', 1)
+
+    def msg(mid: str, *tail: str) -> str:
+        m = _msg("ok", T2, id=mid)
+        if top != "InstantMessage":
+            m = m.replace('type="InstantMessage"', f'type="{top}"', 1)
+        return _with(m, *tail)
+
+    xml = report_xml({top: [msg("m1", related(custom("ok", "m1r"), custom("other", "m1s")))]})
+    assert _listed(tmp_path, f"top-custom-{top}", xml) == (
+        f"{top}[1]/Related[1]",
+        f"{top}[1]/Related[2]",
+    )
+
+
 def test_copies_held_by_a_message_in_an_earlier_of_two_embedded_fields_are_matched(tmp_path):
     first = _with(_msg("first", T2, id="e1"), related(_msg("first", T2, id="e1r")))
     msg = _with(_msg("ok", T2, id="m1"), _embedded(first), _embedded(_msg("second", T2, id="e2")))

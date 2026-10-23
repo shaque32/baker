@@ -47,7 +47,10 @@
   names the extracted path, so comparing the file would list about 20 genuine copies per package.
   An attachment's MIME type as written is compared with its name.
   Every Labels field and every MessageExtraData field of a message is read, so a Forwarded mark
-  in an earlier of two such fields marks the message forwarded (it was dropped before). A copied chat
+  in an earlier of two such fields marks the message forwarded (it was dropped before).
+  A copy held by a top-level message (InstantMessage, Message, SMS or MMS) is matched whatever
+  its type is named, as a chat message's copy is; one of a custom type was counted but never
+  compared before, so it was not listed. A copied chat
   must also say what the holder chat says around its messages (app, id, name, participants),
   and copies are numbered across all of a holder's RelatedModels elements. A copy marked
   forwarded where its holder is not (or the reverse) is listed. A copied chat with fewer
