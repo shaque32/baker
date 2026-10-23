@@ -269,10 +269,17 @@ def _model(el: _El) -> _Model:
                 m.fields[key] = values[0].joined()
         elif ch.tag == "multiField":
             m.field_names.append(name)
-            m.multi_values[key] = [v.joined() for v in ch.children if v.tag == "value"]
-        elif ch.tag in ("modelField", "multiModelField") and key == "embeddedinstantmessage":
-            # every message embedded in this one, across all its embedded fields, in the order
-            # written: the reader numbers them that way (/Embedded[n])
+            values = [v.joined() for v in ch.children if v.tag == "value"]
+            if key == "labels":  # every Labels field: any of them can mark the message forwarded
+                m.multi_values.setdefault(key, []).extend(values)
+            else:
+                m.multi_values[key] = values
+        elif ch.tag in ("modelField", "multiModelField") and key in (
+            "embeddedinstantmessage",
+            "messageextradata",
+        ):
+            # every model of every field of this name, in the order written: the reader numbers
+            # embedded messages that way (/Embedded[n]), and any extra data can mark a forward
             m.field_names.append(name)
             m.many.setdefault(key, []).extend(_model(c) for c in ch.children if c.tag == "model")
         elif ch.tag == "modelField":

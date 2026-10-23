@@ -45,7 +45,9 @@
   An unnamed attachment is compared by name as written, never by its file: on the public
   Android packages a copy's unnamed attachment names only its own file id while its holder
   names the extracted path, so comparing the file would list about 20 genuine copies per package.
-  An attachment's MIME type as written is compared with its name. A copied chat
+  An attachment's MIME type as written is compared with its name.
+  Every Labels field and every MessageExtraData field of a message is read, so a Forwarded mark
+  in an earlier of two such fields marks the message forwarded (it was dropped before). A copied chat
   must also say what the holder chat says around its messages (app, id, name, participants),
   and copies are numbered across all of a holder's RelatedModels elements. A copy marked
   forwarded where its holder is not (or the reverse) is listed. A copied chat with fewer

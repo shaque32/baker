@@ -1805,3 +1805,25 @@ def test_a_copy_whose_attachment_has_another_mime_type_is_listed_by_both(tmp_pat
     held = msg("m1", "image/jpeg", related(msg("m1r", "image/jpeg"), msg("m1s", "video/mp4")))
     xml = report_xml({"InstantMessage": [held]})
     assert _listed(tmp_path, "att-mime", xml) == ("InstantMessage[1]/Related[2]",)
+
+
+@pytest.mark.parametrize("how", ["labels", "extra"])
+def test_a_forwarded_mark_in_an_earlier_of_two_fields_counts(tmp_path, how):
+    def labels(value: str) -> str:
+        value_xml = f'<value type="Label">{value}</value>'
+        return f'<multiField name="Labels" type="Label">{value_xml}</multiField>'
+
+    def marks(first: str) -> tuple[str, str]:
+        if how == "labels":
+            return labels(first), labels("Starred")
+        return _extra(first), _extra("Starred")
+
+    copy = _with(_msg("ok", T2, id="m1r"), *marks("Forwarded"))
+    held = _with(_msg("ok", T2, id="m1"), *marks("Read"), related(copy))
+    xml = report_xml({"InstantMessage": [held]})
+    assert _listed(tmp_path, f"fwd2-{how}", xml) == ("InstantMessage[1]/Related[1]",)
+    mine = _with(_msg("ok", T2, id="m2"), *marks("Forwarded"))
+    conn, s = _import(
+        write_package(tmp_path / f"fwd2-{how}-rec.ufdr", report_xml({"InstantMessage": [mine]}))
+    )
+    assert "forwarded" in _codes(s)
