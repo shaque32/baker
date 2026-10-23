@@ -63,7 +63,7 @@ def watch(page: Page, problems: list[str]) -> None:
 def start_screen(page: Page, base: str) -> None:
     page.goto(base + "/")
     need(page.url.endswith("/cases"), f"start screen went to {page.url}, not /cases")
-    need("Baker" in page.title(), page.title())
+    need("Mabillon" in page.title(), page.title())
     body = page.inner_text("body")
     for words in ("Offline", "Cases folder", "New case"):
         need(words in body, f"start screen lacks {words!r}")

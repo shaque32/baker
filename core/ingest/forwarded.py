@@ -41,6 +41,9 @@ STANCE_NOTE = (
     "where the extraction names an original author), so it "
     f"cannot support or contradict the claim (forwarded rule {RULE_VERSION}). Model's label: "
 )
+# The same note as stored before the product was renamed: evidence labelled then keeps it, and
+# core/bundle/verify.py accepts either.
+BAKER_STANCE_NOTE = STANCE_NOTE.replace("Mabillon", "Baker")
 RECORD_NOTE = {
     "forwarded": "Forwarded: shown as sent by whoever forwarded it; who first wrote it is not "
     "recorded.",

@@ -853,6 +853,7 @@ def _same_label(item: tuple, answer: Any) -> bool:
         return False
     return rationale in (
         f"{forwarded.STANCE_NOTE}{model.value}. {answer.rationale}",
+        f"{forwarded.BAKER_STANCE_NOTE}{model.value}. {answer.rationale}",
         *((stance.NOT_THE_MESSAGE + answer.rationale,) if model is Stance.CONTRADICTS else ()),
     )
 

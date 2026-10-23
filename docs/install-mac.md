@@ -37,8 +37,8 @@ morning. A run can stop and resume: finished claims are kept.
 
 When it says **Done**, two icons are on your Desktop:
 
-- **Mabillon** opens your cases in your browser.
-- **Mabillon demo** opens a ready-made, fully synthetic demo case (see docs/demo.md).
+- **Baker** opens your cases in your browser.
+- **Baker demo** opens a ready-made, fully synthetic demo case (see docs/demo.md).
 
 Each opens a Terminal window; closing that window stops Mabillon. Mabillon's address is
 `http://127.0.0.1:8765` (8766 for the demo), which only this Mac can open.
