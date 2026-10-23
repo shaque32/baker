@@ -1,6 +1,6 @@
-# Baker: rules for every agent
+# Mabillon: rules for every agent
 
-Baker audits government claims about phone evidence for the criminal defense.
+Mabillon audits government claims about phone evidence for the criminal defense.
 Each claim ends up supported, contradicted or unproven, with cited evidence.
 Correctness is the product. One wrong "supported" in front of an expert destroys trust.
 
@@ -51,7 +51,7 @@ with the reason and the exact diff you want, then finish the rest of your task w
 - Never put real discovery material in the repo, in prompts, in tests or in fixtures.
 - No network calls in `core/` except the stance labeler's cloud call in `core/llm/cloud.py`, to
   the Anthropic API with the expert's own key. No telemetry. Local models load from local paths.
-- Baker is local by default. A case uses cloud AI only when the expert opts in at case setup,
+- Mabillon is local by default. A case uses cloud AI only when the expert opts in at case setup,
   attesting that the case's protective order allows it, and a key is set up. A case marked as
   possibly containing CSAM never uses cloud.
 - A case's stance labels never mix models. If the cloud model fails mid-run, the audit pauses and
@@ -64,14 +64,16 @@ with the reason and the exact diff you want, then finish the rest of your task w
 - case02 is the hidden held-out case. Never read `eval/synthetic/case02*`, `eval/gold/case02/`,
   `eval/out/case02/` or any test whose name contains `case02`, unless your task names case02.
   `make eval` reports it as aggregate numbers only; never tune anything to them.
+- Mabillon was called Baker in development. File format ids, the `baker_version` field and the
+  `baker` command alias keep that name; never rename them.
 
 ## Product status docs
 `docs/PRODUCT_STATUS.md` and the AI changelog (the entry files in `docs/changelog/`, then the
-archive `docs/CHANGELOG_AI.md`) are the source of truth for what Baker does.
+archive `docs/CHANGELOG_AI.md`) are the source of truth for what Mabillon does.
 Other agents and product tools read them, so they must match the code, not the plan.
 - Read `docs/PRODUCT_STATUS.md` before starting work.
 - A meaningful change is one that changes a capability, a model or its job, a verdict path,
-  privacy or network use, a measured benchmark, or what Baker may claim to customers.
+  privacy or network use, a measured benchmark, or what Mabillon may claim to customers.
   Refactors, test-only fixes and wording changes are not, unless they change a fact these docs
   record (merge or CI state, readiness).
 - In the same PR as a meaningful change, add one new entry file in `docs/changelog/` (format in
