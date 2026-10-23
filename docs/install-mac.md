@@ -60,8 +60,8 @@ The installer itself still needs the internet once for Python and the runtime.
 |---|---|
 | Mabillon and its Python | `~/Baker/app` |
 | The model | `~/Baker/models` |
-| Your cases | `~/Baker/cases` (each case is one folder) |
-| The demo case | `~/Baker/demo` |
+| Your cases | `~/Mabillon/cases` (each case is one folder) |
+| The demo case | `~/Mabillon/demo` |
 | The model setting | `~/.baker/model.json` (an existing one is never overwritten) |
 
 ## Check the install

@@ -7,9 +7,9 @@
         case.key      only in an encrypted case: its wrapped key (core/encryption.py); the
                       database and every copy in inputs/ are then encrypted too
 
-The cases folder is $BAKER_CASES, else ~/Baker/cases. `baker serve --db some.db` works on a
-single database the same way: its settings sit beside it (some.json) and its copies in
-some-inputs/.
+The cases folder is $MABILLON_CASES, else ~/Mabillon/cases (core/paths.py: or the Baker-era
+$BAKER_CASES, ~/Baker/cases). `mabillon serve --db some.db` works on a single database the
+same way: its settings sit beside it (some.json) and its copies in some-inputs/.
 
 Importing a file. The upload is written into the case's inputs folder and SHA-256 hashed as it
 is written, then made read-only. The importer then opens that copy read-only and hashes exactly
@@ -37,15 +37,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import BinaryIO
 
-from core import encryption, pipeline
+from core import encryption, paths, pipeline
 from core.db import OperationalError, apply_schema, connect
 from core.ingest.pick import REPORT_SUFFIXES
 from core.ingest.source_file import InputChanged, require_sha256, sha256_input
 from core.review import audit_log
 from core.review.actions import ReviewError, _expert
 
-CASES_ENV = "BAKER_CASES"
-DEFAULT_HOME = Path.home() / "Baker" / "cases"
+CASES_ENV = "MABILLON_CASES"
+DEFAULT_HOME = paths.user_folder("cases")
 DB_NAME = "case.db"
 UPLOAD_PREFIX = ".upload-"
 
@@ -55,7 +55,7 @@ Clock = Callable[[], datetime]
 
 
 def cases_home() -> Path:
-    env = os.environ.get(CASES_ENV, "").strip()
+    env = paths.env("CASES")
     return Path(env).expanduser() if env else DEFAULT_HOME
 
 

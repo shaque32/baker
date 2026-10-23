@@ -89,7 +89,7 @@ instead of sheets: docs/ingest/ufdr.md. AXIOM imports list one table per artifac
 
 ## Where it is shown
 
-- `baker import` prints `format_text` after each import and takes `--date-order mdy|dmy`.
+- `mabillon import` prints `format_text` after each import and takes `--date-order mdy|dmy`.
 - The case screen's Files table shows each report's headline and its attention items, and the
   report upload form offers the date order (left to Mabillon by default).
 - The report lists, under Limitations, every source whose status is `needs_review`, with its

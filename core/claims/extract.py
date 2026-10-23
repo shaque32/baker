@@ -1,7 +1,7 @@
 """ClaimExtractor: the local model proposes atomic claims; the expert edits the list.
 
 Not on the alpha's critical path: the eval scores gold claims, and the expert can enter or
-edit claims by hand. `baker claims propose` (core/claims/propose.py) runs it so the expert
+edit claims by hand. `mabillon claims propose` (core/claims/propose.py) runs it so the expert
 starts from a proposed list. Fails closed per claim: a proposed claim is dropped unless it quotes a
 span of the paragraph verbatim (line breaks aside, see span_in) and every number in its text
 appears in the paragraph as written. A paragraph whose whole output is unusable yields no

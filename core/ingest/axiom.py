@@ -10,7 +10,7 @@ An examiner using Magnet AXIOM Examine hands over a report export. Mabillon read
 Both were built from public descriptions only: Magnet's documentation of its export formats and
 an open-source parser of AXIOM XML reports (casework/CASE-Implementation-AXIOM), which names the
 artifact types and fragments. Mabillon has never been given a real AXIOM export, so every
-import says it was read with an unverified reader, on the case screen, in `baker import` and in
+import says it was read with an unverified reader, on the case screen, in `mabillon import` and in
 the report's limitations. Layout assumptions and the steps to verify: docs/ingest/axiom.md.
 
 What it shares with the Cellebrite importers (core/ingest/cellebrite_common.py): the record

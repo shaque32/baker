@@ -208,9 +208,16 @@ def cloud_section(key_ready: bool | None) -> dict[str, Any]:
     }
 
 
-# The BAKER_* settings Mabillon reads. Any other name is left out: a name is user-chosen text and
-# could carry a client, case or secret.
+# The MABILLON_* settings Mabillon reads, and their Baker-era BAKER_* names (core/paths.py). Any
+# other name is left out: a name is user-chosen text and could carry a client, case or secret.
 KNOWN_ENV = (
+    "MABILLON_ANTHROPIC_API_KEY",
+    "MABILLON_CASES",
+    "MABILLON_CLOUD_CONFIG",
+    "MABILLON_DEMO",
+    "MABILLON_MIN_MEMORY_GB",
+    "MABILLON_MODEL_CONFIG",
+    "MABILLON_PINS",
     "BAKER_ANTHROPIC_API_KEY",
     "BAKER_CASES",
     "BAKER_CLOUD_CONFIG",

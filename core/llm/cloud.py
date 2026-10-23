@@ -11,9 +11,9 @@ database. What comes back is checked exactly like the local model's answer: stri
 quote that code verifies verbatim before anything is stored.
 
 The key is the expert's own Anthropic key (bring your own key; Mabillon runs no server). It is read
-from $BAKER_ANTHROPIC_API_KEY; else, for an encrypted case, from the key saved in that case,
+from $MABILLON_ANTHROPIC_API_KEY; else, for an encrypted case, from the key saved in that case,
 sealed under the case key (core/encryption.py seal_secret), so it is unreadable while the case is
-locked; else from ~/.baker/cloud.json (owner-only), which also holds the other settings:
+locked; else from ~/.mabillon/cloud.json (owner-only), which also holds the other settings:
 
     {"api_key": "sk-ant-...", "model": "claude-opus-5-5", "effort": "medium"}
 
@@ -35,11 +35,12 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
+from core import paths
 from core.llm.runtime import ModelOutput, parse_json_output
 
-KEY_ENV = "BAKER_ANTHROPIC_API_KEY"
-CONFIG_ENV = "BAKER_CLOUD_CONFIG"
-DEFAULT_CONFIG = Path.home() / ".baker" / "cloud.json"
+KEY_ENV = "MABILLON_ANTHROPIC_API_KEY"
+CONFIG_ENV = "MABILLON_CLOUD_CONFIG"
+DEFAULT_CONFIG = paths.settings_file("cloud.json")
 DEFAULT_MODEL = "claude-opus-5-5"
 # Opus 5.5 at medium effort is the setting the cloud bench measured on case01 (85% accuracy,
 # 0 false supported) with the signed v1.1 prompt (cloud-bench 2026-10-14c, "Audit our model
@@ -137,7 +138,7 @@ class CloudConfig:
 
 
 def config_path() -> Path:
-    env = os.environ.get(CONFIG_ENV, "").strip()
+    env = paths.env("CLOUD_CONFIG")
     return Path(env).expanduser() if env else DEFAULT_CONFIG
 
 
@@ -157,7 +158,7 @@ def case_key(case_db: Path | None) -> str | None:
 
 
 def load_config(path: Path | None = None, case_db: Path | None = None) -> CloudConfig:
-    """The expert's cloud settings. The key in $BAKER_ANTHROPIC_API_KEY wins; then, for an
+    """The expert's cloud settings. The key in $MABILLON_ANTHROPIC_API_KEY wins; then, for an
     encrypted case, the key sealed in it; then the config file's."""
     path = path or config_path()
     raw: dict[str, Any] = {}
@@ -169,7 +170,7 @@ def load_config(path: Path | None = None, case_db: Path | None = None) -> CloudC
         if not isinstance(raw, dict):
             raise CloudConfigError(f"bad cloud config {path}: not a JSON object")
     key = (
-        os.environ.get(KEY_ENV, "").strip()
+        paths.env("ANTHROPIC_API_KEY")
         or (case_key(case_db) or "").strip()
         or str(raw.get("api_key") or "").strip()
     )
@@ -186,19 +187,24 @@ def load_config(path: Path | None = None, case_db: Path | None = None) -> CloudC
 
 
 def key_from_environment() -> bool:
-    return bool(os.environ.get(KEY_ENV, "").strip())
+    return bool(paths.env("ANTHROPIC_API_KEY"))
+
+
+def key_env_in_use() -> str:
+    """The variable a key from the environment is read from (MABILLON_ or Baker-era BAKER_)."""
+    return paths.env_in_use("ANTHROPIC_API_KEY")
 
 
 def save_key(api_key: str, path: Path | None = None, case_db: Path | None = None) -> Path:
     """Save the key. In an encrypted case it is sealed under the case key, beside the case,
     and the plain config file is not touched; otherwise it goes in the expert's cloud config,
-    readable by this user only. Refused while $BAKER_ANTHROPIC_API_KEY is set: that key wins,
+    readable by this user only. Refused while $MABILLON_ANTHROPIC_API_KEY is set: that key wins,
     so a saved one would never be used."""
     from core import encryption
 
     if key_from_environment():
         raise CloudConfigError(
-            f"the key in {KEY_ENV} is the one in use; change or unset it there instead"
+            f"the key in {key_env_in_use()} is the one in use; change or unset it there instead"
         )
     key = api_key.strip()
     if not key:

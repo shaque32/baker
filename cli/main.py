@@ -37,7 +37,7 @@
 
 `redecide` re-runs the verdict rules on the last audit's stored evidence after expert review;
 it calls no model. `serve` opens the expert's screen on http://127.0.0.1 only. Without --db it
-works on a cases folder (--cases, else $BAKER_CASES, else ~/Baker/cases), where the expert
+works on a cases folder (--cases, else $MABILLON_CASES, else ~/Mabillon/cases), where the expert
 makes a case, imports its files, settles the claims and runs the audit in the background, all
 in the browser. `model-check` says whether the configured local model is there, is the pinned
 file (SHA-256) and fits in this computer's memory.
@@ -51,7 +51,7 @@ again: the finished claims' model outputs are reused, not recomputed. Claims a f
 check already contradicts are not sent to the model (their labels could not change the
 verdict); `--label-all` labels them too.
 `demo` resets the synthetic demo case (eval/demo.py) and opens it on its own port, from its own
-cases folder (~/Baker/demo/cases, or $BAKER_DEMO/cases), so each demo starts clean in seconds
+cases folder (~/Mabillon/demo/cases, or $MABILLON_DEMO/cases), so each demo starts clean in seconds
 and a screen share shows no other case. `--from-case` saves a finished synthetic case01 audit
 (a real local-model run) as the demo from then on; `--scripted` goes back to the scripted one.
 `--paired` builds the scripted demo with a UFDR of Item 1 added, so the Selection tab shows the
@@ -646,7 +646,7 @@ def cmd_demo(a: argparse.Namespace) -> int:
 
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="baker", description="Mabillon: audit claims about phone data."
+        prog="mabillon", description="Mabillon: audit claims about phone data."
     )
     sub = p.add_subparsers(dest="command", required=True)
 
@@ -784,7 +784,11 @@ def parser() -> argparse.ArgumentParser:
     sp.set_defaults(fn=cmd_serve)
     g = sp.add_mutually_exclusive_group()
     g.add_argument("--db", type=Path, help="one case database")
-    g.add_argument("--cases", type=Path, help="the cases folder (default ~/Baker/cases)")
+    g.add_argument(
+        "--cases",
+        type=Path,
+        help="the cases folder (default ~/Mabillon/cases, or ~/Baker/cases if only that exists)",
+    )
     sp.add_argument("--port", type=int, default=8765)
     sp.add_argument("--expert", help="your name, recorded with every decision")
     sp.add_argument("--open", action="store_true", help="open it in the default browser")
@@ -820,6 +824,15 @@ def main(argv: list[str] | None = None) -> int:
     except (actions.ReviewError, CaseLocked, audit_log.ChainBroken) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
+
+
+def baker_alias() -> int:
+    """The `baker` command, Mabillon's name in development: kept for a release so scripts, the
+    Desktop launchers and older notes keep working."""
+    print(
+        "note: `baker` is now `mabillon`; the old name will go in a later release", file=sys.stderr
+    )
+    return main()
 
 
 if __name__ == "__main__":

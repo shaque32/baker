@@ -1,12 +1,12 @@
 # UFDR self-check
 
-`baker ufdr-check` tells an expert, on their own computer and offline, whether Mabillon read a real
+`mabillon ufdr-check` tells an expert, on their own computer and offline, whether Mabillon read a real
 UFDR the way the package's own `report.xml` says it should be read. It is how Mabillon's UFDR reader
 (docs/ingest/ufdr.md, still **unverified**) gets checked against real packages without anyone
 sending a case file anywhere.
 
 ```
-baker ufdr-check --package "D:\Exports\item1.ufdr" --out "D:\Exports\item1-check"
+mabillon ufdr-check --package "D:\Exports\item1.ufdr" --out "D:\Exports\item1-check"
 ```
 
 On Windows run it from the "Baker command prompt" in the Start menu; on a Mac, from Terminal

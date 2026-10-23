@@ -2,7 +2,7 @@
 
 A page view is an audit-log entry with action `view` (core/review/audit_log.py), so it is
 hash-chained with the expert's decisions, kept inside the case database (encrypted with it in
-an encrypted case) and checked by `baker verify-log`. Nothing here is sent anywhere: the cloud
+an encrypted case) and checked by `mabillon verify-log`. Nothing here is sent anywhere: the cloud
 stance call sends only the filled-in stance prompt (core/llm/cloud.py), never the audit log.
 
 What a view records: the time (UTC), the examiner's name, the screen session, the page, the
@@ -435,7 +435,7 @@ def _cell(v: object) -> object:
 
 def csv_text(trail: list[Step]) -> str:
     """The trail as CSV, one row per step, with each entry's audit-log hash so a row can be
-    matched to the log `baker verify-log` checks."""
+    matched to the log `mabillon verify-log` checks."""
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator="\n")
     w.writerow(CSV_COLUMNS)

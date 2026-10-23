@@ -15,7 +15,8 @@ dependencies = [
 ]
 
 [project.scripts]
-baker = "cli.main:main"
+mabillon = "cli.main:main"
+baker = "cli.main:baker_alias"  # the development name, kept for a release
 
 [project.optional-dependencies]
 dev = [

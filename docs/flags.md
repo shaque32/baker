@@ -36,7 +36,7 @@ One click opens the form, one click saves it. No reason is required and nothing 
 ## The redacted summary
 
 The case page has "Download the redacted summary" (`/flags/summary.json`), and the CLI has
-`baker flags --db case.db export --pilot "Pilot A" --out flags.json`. The file holds counts, enum
+`mabillon flags --db case.db export --pilot "Pilot A" --out flags.json`. The file holds counts, enum
 labels and versions only: flag kinds, the label or verdict at flag time and what the expert says
 it should be, claim types, record kinds, model file name and prompt version, and denominators
 (claims with a verdict, evidence items labeled, irrelevant ones included). It leaves out claim text, quotes, notes, names,
@@ -56,7 +56,7 @@ Nothing is sent. The expert reads the file and decides whether to share it.
 
 ## The measured error log
 
-`baker flag-log a.json b.json ... [--out error-log.md]` combines summaries into one row per pilot:
+`mabillon flag-log a.json b.json ... [--out error-log.md]` combines summaries into one row per pilot:
 wrong labels per evidence item labeled, verdict disagreements per verdict, missed records, plus
 the label pairs flagged per stance model and prompt version, the verdict pairs, and the versions
 and models each pilot ran (printed for every pilot). Verdict pairs carry the rule version.
