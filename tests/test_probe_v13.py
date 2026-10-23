@@ -5,6 +5,7 @@ applies the written criteria. No model runs here; a stand-in answers."""
 import hashlib
 import json
 import re
+import shutil
 from pathlib import Path
 
 import pytest
@@ -105,7 +106,8 @@ class StandIn:
     """Answers every item with its gold label and quote, except the ones `wrong` names."""
 
     name = "stand-in"
-    sha256 = "0" * 64
+    # The 2026-10-19 file, so the reused signed-set baseline and the stand-in's runs agree.
+    sha256 = "500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0"
 
     def __init__(self, path: Path, set_name: str, wrong: dict[str, str] | None = None) -> None:
         self.by_prompt = {score.prompt_text(it, path): it for it in score.items(set_name)}
@@ -152,7 +154,7 @@ def test_a_candidate_that_answers_like_the_labels_is_recommended(out):
         _run(out, "a", s)
     assert score.passes(out, "a")
     ok, why = score.baseline_ok(out)
-    assert not ok and "model differs" in why  # the stand-in is not the 2026-10-19 file
+    assert ok, why
     text = score.report(out)
     assert "Recommendation: sign v1.3a." in text and "v1.3b: not run." in text
     assert "| fresh | H001 |" in text
@@ -180,4 +182,15 @@ def test_losing_true_contradicts_on_the_signed_set_fails(out):
 
 def test_a_candidate_that_has_not_run_everywhere_is_not_recommended(out):
     _run(out, "a", "signed")
+    assert not score.passes(out, "a")
+
+
+def test_runs_from_two_model_files_give_no_decision(out, monkeypatch):
+    for s in score.SETS:
+        _run(out, "a", s)
+    shutil.rmtree(out / "a_fresh")  # one step rerun with another model file at the same path
+    monkeypatch.setattr(StandIn, "sha256", "1" * 64)
+    _run(out, "a", "fresh")
+    res = score.criteria(out, "a")
+    assert res == [("all", "every run from one model file (found 2)", False)]
     assert not score.passes(out, "a")

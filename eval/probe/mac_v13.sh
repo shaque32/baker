@@ -42,7 +42,12 @@ set_file() {
 # starts over, since the probe appends to its call log.
 step() {
   local p="$1" s="$2" dir="$OUT/$1_$2"
-  if [ -f "$dir/summary.json" ]; then echo "  $1_$2 already done"; return; fi
+  # Done means a call log and a summary with no load error; a step whose model failed to load
+  # wrote a summary but no calls, and runs again.
+  if [ -f "$dir/summary.json" ] && ls "$dir"/*.calls.jsonl > /dev/null 2>&1 \
+    && ! grep -q '"load_error"' "$dir/summary.json"; then
+    echo "  $1_$2 already done"; return
+  fi
   rm -rf "$dir"
   echo "  $1_$2: $(prompt_file "$p") on $(set_file "$s")"
   python -m eval.probe.run_probe --models "$OUT/model.json" --probe-set "$(set_file "$s")" \

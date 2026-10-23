@@ -213,6 +213,11 @@ def criteria(out: Path, cand: str) -> list[tuple[str, str, bool]]:
             res.append((s, f"{missing} was run on this set", False))
     if any(not ok for *_, ok in res):
         return res
+    # A decision compares one model with itself: every run it reads, the reused 2026-10-19
+    # baseline included, must come from the same model file.
+    shas = {r.sha for r in [*base.values(), *runs.values()] if r is not None}
+    if len(shas) != 1:
+        return [("all", f"every run from one model file (found {len(shas)})", False)]
     sm, bm = signed_metrics(runs["signed"].labels), signed_metrics(base["signed"].labels)
     cp, cr = sm["contradicts_precision"], sm["contradicts_recall"]
     res += [
