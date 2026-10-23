@@ -387,10 +387,11 @@ def test_a_method_note_from_another_bundle_version_names_the_commit(
     _conn, path = reviewed
     edit = lambda t: t.replace("Mabillon", "Baker")  # noqa: E731
     old = _rewrite(path, tmp_path / "b.zip", export.METHOD, edit)
+    made = export.BUNDLE_VERSION
     monkeypatch.setattr(export, "BUNDLE_VERSION", "1.9.9")
     findings = verify_bundle(old)
     (f,) = [f for f in findings if f.check == "bundle.json" and f.level == FAIL]
-    assert "bundle format 1.1.0" in f.detail and "commit" in f.detail
+    assert f"bundle format {made}" in f.detail and "commit" in f.detail
 
 
 def test_other_rules_name_the_commit_to_verify_with(reviewed, monkeypatch):
