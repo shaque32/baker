@@ -22,14 +22,14 @@ HOST = "127.0.0.1"  # never anything else: the screen is for this computer only
 DEFAULT_PORT = 8765
 _SECURITY = App._security_headers()
 UNEXPECTED = (
-    "Baker hit an unexpected error and did not finish this request. Open /help to save a bug "
+    "Mabillon hit an unexpected error and did not finish this request. Open /help to save a bug "
     "report (it holds no case data) and send it to support."
 )
 
 
 class _Handler(BaseHTTPRequestHandler):
     app: App
-    server_version = "Baker"
+    server_version = "Mabillon"
     sys_version = ""
 
     def _request(self, method: str) -> Request | None:
@@ -67,12 +67,13 @@ class _Handler(BaseHTTPRequestHandler):
         self._guarded(self._post, "upload" if multipart else "screen")
 
     def _guarded(self, answer: Callable[[], None], where: str) -> None:
-        """Answer; an unexpected error is kept for the bug report (type and Baker's file and
+        """Answer; an unexpected error is kept for the bug report (type and Mabillon's file and
         line, never its message) and the browser gets a plain 500 that says where to go."""
         try:
             answer()
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
-            return  # the browser went away mid-answer: not a Baker failure, kept out of the report
+            # The browser went away mid-answer: not a Mabillon failure, kept out of the report.
+            return
         except Exception as err:  # noqa: BLE001 - one bad request never stops the screen
             support_errors.note(where, err)
             try:

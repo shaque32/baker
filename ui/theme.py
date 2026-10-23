@@ -3,7 +3,7 @@ report's base styles (core/report/html.py CSS).
 
 Fully offline. The three fonts (Inter, Instrument Serif, JetBrains Mono, SIL Open Font License)
 are vendored in ui/static/fonts and served by this screen at /static/fonts/; the font stacks fall
-back to system fonts. The Baker mark is inline SVG, so no image request is ever made.
+back to system fonts. The Mabillon mark is inline SVG, so no image request is ever made.
 """
 
 from __future__ import annotations

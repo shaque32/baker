@@ -445,7 +445,7 @@ def stipulate_device_owner(
 ) -> str:
     """The expert stipulates who used a device. Returns the stipulation id.
 
-    This is a case-level statement the expert makes, not a finding: Baker never verifies it.
+    This is a case-level statement the expert makes, not a finding: Mabillon never verifies it.
     Reports print every confirmed stipulation as a limitation.
     """
     _expert(actor)

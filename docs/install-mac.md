@@ -1,7 +1,7 @@
-# Installing Baker on a Mac
+# Installing Mabillon on a Mac
 
-Baker runs on your own Mac, offline by default. Nothing about your cases leaves the computer and
-Baker sends no telemetry, unless you opt a case in to cloud AI at case setup (only if its
+Mabillon runs on your own Mac, offline by default. Nothing about your cases leaves the computer and
+Mabillon sends no telemetry, unless you opt a case in to cloud AI at case setup (only if its
 protective order allows it). Then, for that case only, one stance question at a time goes to
 Anthropic (Claude Opus 5.5) under your own key (see "Cloud AI for this case" on the setup
 screen). The installer downloads three
@@ -24,9 +24,9 @@ morning. A run can stop and resume: finished claims are kept.
 
 ## Install (about 30 minutes, most of it waiting)
 
-1. Unzip the Baker folder you were sent (or downloaded) into your Downloads folder.
+1. Unzip the Mabillon folder you were sent (or downloaded) into your Downloads folder.
 2. Open **Terminal** (press Command and Space, type Terminal, press Return).
-3. Type `bash ` (with a space after it), drag the file `packaging/mac/install.sh` from the Baker
+3. Type `bash ` (with a space after it), drag the file `packaging/mac/install.sh` from the Mabillon
    folder into the Terminal window, and press Return. Or double-click
    **Install Baker.command** in the same folder; the first time, macOS may make you
    right-click it and choose **Open**.
@@ -37,10 +37,10 @@ morning. A run can stop and resume: finished claims are kept.
 
 When it says **Done**, two icons are on your Desktop:
 
-- **Baker** opens your cases in your browser.
-- **Baker demo** opens a ready-made, fully synthetic demo case (see docs/demo.md).
+- **Mabillon** opens your cases in your browser.
+- **Mabillon demo** opens a ready-made, fully synthetic demo case (see docs/demo.md).
 
-Each opens a Terminal window; closing that window stops Baker. Baker's address is
+Each opens a Terminal window; closing that window stops Mabillon. Mabillon's address is
 `http://127.0.0.1:8765` (8766 for the demo), which only this Mac can open.
 
 ## Offline computer
@@ -58,7 +58,7 @@ The installer itself still needs the internet once for Python and the runtime.
 
 | What | Where |
 |---|---|
-| Baker and its Python | `~/Baker/app` |
+| Mabillon and its Python | `~/Baker/app` |
 | The model | `~/Baker/models` |
 | Your cases | `~/Baker/cases` (each case is one folder) |
 | The demo case | `~/Baker/demo` |
@@ -74,6 +74,6 @@ It says whether the model is there, is the exact pinned file, and fits in this M
 
 ## Update or uninstall
 
-To update, unzip the new Baker folder and run the installer again; your cases, the model and
+To update, unzip the new Mabillon folder and run the installer again; your cases, the model and
 your settings stay. To uninstall, delete `~/Baker/app` and the two Desktop icons. Your cases
 and the model stay until you delete `~/Baker` and `~/.baker` yourself.

@@ -4,7 +4,7 @@ What is encrypted. An encrypted case keeps three things on disk:
 
     case.db       SQLCipher 4 (AES-256 per page, HMAC-SHA512 per page); its journal is too
     case.key      the case key, wrapped (below); no key in it is usable without a secret
-    inputs/*      each copied file in Baker's own format: AES-256-GCM in 1 MiB chunks
+    inputs/*      each copied file in Mabillon's own format: AES-256-GCM in 1 MiB chunks
     case.cloud-key  only if the expert saved an Anthropic key in this case: that key,
                   AES-256-GCM under the case key (seal_secret), so it opens only with the case
 
@@ -13,13 +13,13 @@ locked case. Nothing else in the folder holds case data.
 
 The key. Each case has one random 256-bit key. It is never stored in the clear: case.key holds
 it twice, once wrapped (AES-256-GCM) under a key derived from the expert's passphrase (scrypt)
-and once under a key derived from a random recovery key that Baker shows once, when the case
+and once under a key derived from a random recovery key that Mabillon shows once, when the case
 is encrypted. Either opens the case. Changing the passphrase re-wraps the case key; nothing is
 re-encrypted. A lost passphrase and a lost recovery key mean the case cannot be opened by
-anyone, Baker included; the expert's original evidence files are untouched either way.
+anyone, Mabillon included; the expert's original evidence files are untouched either way.
 
-While Baker runs, an unlocked case key lives in this process's memory only (the keyring
-below), so stopping Baker locks every case. Python cannot promise to wipe memory, so a copy
+While Mabillon runs, an unlocked case key lives in this process's memory only (the keyring
+below), so stopping Mabillon locks every case. Python cannot promise to wipe memory, so a copy
 may stay in freed memory until it is reused; the operating system's disk encryption
 (FileVault, BitLocker) is still recommended for the computer itself.
 
@@ -31,7 +31,7 @@ and every chunk is nonce (12) | ciphertext | tag (16), each holding `chunk size`
 except the last, which holds the rest (possibly none). Each chunk's associated data is the
 header, its index and whether it is the last, so a chunk cannot be moved, swapped in from
 another file, dropped from the end or have its end cut off without the read failing. The
-SHA-256 Baker records for an imported file is always of the plain bytes, so it still matches
+SHA-256 Mabillon records for an imported file is always of the plain bytes, so it still matches
 the expert's original file.
 
 `cryptography` and `sqlcipher3` are imported only when an encrypted case is used, so a case
@@ -81,7 +81,7 @@ class WrongSecret(Exception):
 
 
 class EncryptionError(Exception):
-    """An encrypted file or key file is damaged, cut short or not Baker's."""
+    """An encrypted file or key file is damaged, cut short or not Mabillon's."""
 
 
 def require() -> None:
@@ -91,8 +91,8 @@ def require() -> None:
         import sqlcipher3.dbapi2  # noqa: F401
     except ImportError as err:
         raise EncryptionError(
-            f"this install of Baker cannot encrypt cases ({err.name} is missing); run Baker's "
-            "installer again, or `pip install -e .` in its folder"
+            f"this install of Mabillon cannot encrypt cases ({err.name} is missing); run "
+            "Mabillon's installer again, or `pip install -e .` in its folder"
         ) from err
 
 
@@ -173,7 +173,7 @@ def _aesgcm(key: bytes):  # noqa: ANN202 - cryptography's AESGCM, imported only 
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     except ImportError as err:  # pragma: no cover - a broken install
         raise EncryptionError(
-            "encrypted cases need the 'cryptography' package; run Baker's installer again"
+            "encrypted cases need the 'cryptography' package; run Mabillon's installer again"
         ) from err
     return AESGCM(key)
 
@@ -197,7 +197,7 @@ class KeyFile(BaseModel):
     key_id: str
     created_at_utc: str
     database: str = "SQLCipher 4 (AES-256, HMAC-SHA512 per page), raw 256-bit key"
-    files: str = "AES-256-GCM, 1 MiB chunks, Baker format 1"
+    files: str = "AES-256-GCM, 1 MiB chunks, Mabillon format 1"
     wraps: list[Wrap] = Field(default_factory=list)
 
     def wrap(self, kind: str) -> Wrap | None:
@@ -284,7 +284,7 @@ def read_key_file(path: Path) -> KeyFile:
     try:
         kf = KeyFile.model_validate_json(path.read_bytes())
     except ValueError as err:
-        raise EncryptionError(f"{path.name} is not a Baker case key file ({err})") from err
+        raise EncryptionError(f"{path.name} is not a Mabillon case key file ({err})") from err
     if kf.format != KEY_FORMAT:
         raise EncryptionError(f"{path.name} is in an unknown format {kf.format!r}")
     return kf
@@ -415,7 +415,7 @@ def open_secret(db: Path, name: str) -> str | None:
     try:
         s = SealedSecret.model_validate_json(path.read_bytes())
     except ValueError as err:
-        raise EncryptionError(f"{path.name} is not a sealed Baker secret ({err})") from err
+        raise EncryptionError(f"{path.name} is not a sealed Mabillon secret ({err})") from err
     key_id, dek = case_key(db)
     if s.format != SECRET_FORMAT or s.key_id != key_id or s.name != name:
         raise EncryptionError(f"{path.name} does not belong to this case")
@@ -599,7 +599,7 @@ def _layout(f: BinaryIO, total: int) -> _Layout:
         raise EncryptionError("the encrypted file is cut short (no header)")
     magic, version, chunk, key_id, _file_id = _HEADER.unpack(header)
     if magic != MAGIC:
-        raise EncryptionError("not a Baker encrypted file")
+        raise EncryptionError("not a Mabillon encrypted file")
     if version != FILE_VERSION or not 1 <= chunk <= 1 << 30:
         raise EncryptionError(f"unknown encrypted file version {version}")
     body = total - HEADER_SIZE

@@ -366,9 +366,31 @@ def test_an_altered_log_entry_fails_the_chain(reviewed, tmp_path):
 
 def test_a_report_that_is_not_the_one_the_tables_render_fails(reviewed, tmp_path):
     _conn, path = reviewed
-    edit = lambda t: t.replace("Baker claims report</h1>", "Baker report</h1>")  # noqa: E731
+    edit = lambda t: t.replace("Mabillon claims report</h1>", "Mabillon report</h1>")  # noqa: E731
     findings = verify_bundle(_rewrite(path, tmp_path / "b.zip", export.REPORT, edit))
     assert _levels(findings, "report") == {FAIL}
+
+
+def test_another_report_version_names_the_commit_to_verify_with(reviewed, monkeypatch):
+    # A bundle exported before the rename to Mabillon (report 0.12.0) renders other bytes.
+    _conn, path = reviewed
+    monkeypatch.setattr(export.report_html, "REPORT_VERSION", "9.9.9")
+    findings = verify_bundle(path)
+    (f,) = [f for f in findings if f.check == "report"]
+    assert f.level == FAIL and "report 9.9.9" in f.detail and "commit" in f.detail
+
+
+def test_a_method_note_from_another_bundle_version_names_the_commit(
+    reviewed, tmp_path, monkeypatch
+):
+    # A bundle exported before the rename: its METHOD.md says Baker where this code says Mabillon.
+    _conn, path = reviewed
+    edit = lambda t: t.replace("Mabillon", "Baker")  # noqa: E731
+    old = _rewrite(path, tmp_path / "b.zip", export.METHOD, edit)
+    monkeypatch.setattr(export, "BUNDLE_VERSION", "1.9.9")
+    findings = verify_bundle(old)
+    (f,) = [f for f in findings if f.check == "bundle.json" and f.level == FAIL]
+    assert "bundle format 1.1.0" in f.detail and "commit" in f.detail
 
 
 def test_other_rules_name_the_commit_to_verify_with(reviewed, monkeypatch):

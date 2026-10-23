@@ -1,4 +1,4 @@
-"""Headless-browser smoke test of an installed Baker: the start screen and the demo case.
+"""Headless-browser smoke test of an installed Mabillon: the start screen and the demo case.
 
 Run after a fresh install, with `baker serve` on one port and `baker demo --no-open` on another:
 
@@ -7,7 +7,7 @@ Run after a fresh install, with `baker serve` on one port and `baker demo --no-o
 It drives a real Chromium the way a first-time expert would: the cases screen opens, the expert
 types a name, opens the synthetic demo case and sees its claims with their verdicts. Any page
 error, browser console error (a Content-Security-Policy block counts) or failed request fails
-it. Synthetic data only: the demo case is case01. Needs `playwright` (CI installs it; Baker does
+it. Synthetic data only: the demo case is case01. Needs `playwright` (CI installs it; Mabillon does
 not). --chrome uses the machine's Google Chrome instead of Playwright's own Chromium.
 """
 
@@ -31,7 +31,7 @@ def need(ok: bool, why: str) -> None:
 
 
 def wait_up(base: str, seconds: float = 90) -> None:
-    need(base.startswith("http://127.0.0.1:"), f"{base} is not a Baker on this computer")
+    need(base.startswith("http://127.0.0.1:"), f"{base} is not a Mabillon on this computer")
     deadline = time.monotonic() + seconds
     last = "no answer"
     while True:
@@ -73,7 +73,7 @@ def start_screen(page: Page, base: str) -> None:
 def demo_case(page: Page, base: str) -> None:
     page.goto(base + "/cases")
     name = page.locator("form[action='/expert'] input[name='name']")
-    if name.count():  # asked once per running Baker
+    if name.count():  # asked once per running Mabillon
         name.fill(EXPERT)
         page.click("form[action='/expert'] button[type='submit']")
         page.wait_for_load_state()

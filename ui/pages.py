@@ -181,12 +181,12 @@ class Page:
         return (
             "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
             f"<meta name='viewport' content='width=device-width, initial-scale=1'>{meta}"
-            f"<title>{e(title)} · Baker</title>"
+            f"<title>{e(title)} · Mabillon</title>"
             f"<style>{FONT_CSS}{REPORT_CSS}{RESTORE_CSS}{SELECTION_CSS}{PAIRED_CSS}{ALTERNATIVES_CSS}{UI_CSS}{THEME_CSS}</style>"
             "</head><body>"
             "<header class='top'><div class='bar'>"
             f"<a class='brand' href='{'/' if self.case_name is not None else '/cases'}'>"
-            f"{MARK}<span>Baker</span></a>{case}<div class='right'>"
+            f"{MARK}<span>Mabillon</span></a>{case}<div class='right'>"
             + (
                 "<a class='pill' href='/setup#cloud'>Cloud labels on · one question at a time "
                 "goes to Anthropic</a>"
@@ -343,7 +343,7 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
         )
         out.append(
             f"<p>Latest run <span class='mono'>{e(run['run_id'])}</span> ({mode}), started "
-            f"{e(run['started_at_utc'])}, Baker {e(build_label(run))}, rule version "
+            f"{e(run['started_at_utc'])}, Mabillon {e(build_label(run))}, rule version "
             f"{e(run['rule_version'])}, quote check "
             f"{e(quote_check_label(run))}, contracts {e(run['contracts_version'])}.</p>"
         )
@@ -797,7 +797,7 @@ def _msg(ln: ContextLine) -> str:
 # ---------------------------------------------------------------- flags (optional feedback)
 
 FLAG_HELP = (
-    "Optional. A flag goes into your flag summary for Baker's error log. It changes no "
+    "Optional. A flag goes into your flag summary for Mabillon's error log. It changes no "
     "verdict and nothing is sent."
 )
 
@@ -878,7 +878,7 @@ def _flag_verdict_form(conn: sqlite3.Connection, page: Page, st: ClaimState, bac
 
 def _flag_missed_form(page: Page, st: ClaimState, back: str) -> str:
     return (
-        "<details class='flag' id='flag-missed'><summary>Flag a record Baker missed</summary>"
+        "<details class='flag' id='flag-missed'><summary>Flag a record Mabillon missed</summary>"
         + page.form(
             "/flag/add",
             _flag_fields(st.claim.id, F.MISSED_RECORD, st.run_id)
@@ -956,7 +956,7 @@ def flags_overview(conn: sqlite3.Connection) -> str:
     by_kind = Counter(f.kind for f in active)
     counts = ", ".join(f"{F.KINDS[k].lower()} {n}" for k, n in sorted(by_kind.items()))
     return (
-        "<h2 id='flags'>Flags for Baker's error log</h2>"
+        "<h2 id='flags'>Flags for Mabillon's error log</h2>"
         f"<p>{len(active)} flag(s){': ' + e(counts) if counts else ''}. Flag a wrong label, a "
         "missed record or a verdict you disagree with on any claim page.</p>"
         "<form method='get' action='/flags/summary.json' class='box'>"
@@ -1425,7 +1425,7 @@ def log_page(conn: sqlite3.Connection, page: Page, show_all: bool, show_views: b
         "</div>"
         if summary["chain_ok"]
         else "<div class='flash err'><strong>Hash chain FAILED VERIFICATION.</strong> The log "
-        "was changed outside Baker.</div>"
+        "was changed outside Mabillon.</div>"
     )
     params = {"all": "1"} if show_all else {}
     if show_views:
@@ -1477,7 +1477,7 @@ def _step_item(s: activity.Step) -> str:
         return e(s.evidence_id or s.claim_id or "")
     bits = []
     ident = p.get("id")
-    # ids, locators and query values come from the address or the case, not Baker's own words,
+    # ids, locators and query values come from the address or the case, not Mabillon's own words,
     # so they are shown as cited text (q), which the forbidden-word check leaves alone
     if p.get("page") == "/claim" and ident:
         bits.append(f"<a href='{e(link('/claim', id=str(ident)))}'>{q(str(ident))}</a>")
@@ -1537,7 +1537,7 @@ def activity_page(conn: sqlite3.Connection, page: Page, claim: str, show_all: bo
         "The hash chain covers these entries like every other. Nothing here leaves this "
         "computer.</p>",
         "<p class='muted'>Time on page runs from opening a page to the next page opened. "
-        "The screen runs no scripts, so Baker cannot tell what was on screen or read; a "
+        "The screen runs no scripts, so Mabillon cannot tell what was on screen or read; a "
         f"stretch over {idle} minutes may include time away, and a page whose end was not "
         "recorded (the screen closed, or the next step came from elsewhere) is not timed; both "
         "are counted apart from totals. "
@@ -1627,8 +1627,8 @@ def error_page(page: Page, status: int, message: str) -> str:
 
 
 PASSPHRASE_HINT = (
-    "At least 12 characters; a few words is easiest. Baker cannot recover a lost passphrase: "
-    "keep it, or the recovery key Baker shows next, somewhere safe."
+    "At least 12 characters; a few words is easiest. Mabillon cannot recover a lost passphrase: "
+    "keep it, or the recovery key Mabillon shows next, somewhere safe."
 )
 LOCK_LABEL = {"plain": "Not encrypted", "locked": "Encrypted, locked", "open": "Encrypted"}
 
@@ -1754,7 +1754,7 @@ def _import_coverage(conn: sqlite3.Connection, source_id: str) -> str:
 def _date_order_choice(off: str) -> str:
     return (
         f"<p><label>Date order <select name='date_order'{off}>"
-        "<option value=''>let Baker work it out</option>"
+        "<option value=''>let Mabillon work it out</option>"
         "<option value='mdy'>month first (3/4 is 4 March)</option>"
         "<option value='dmy'>day first (3/4 is 3 April)</option>"
         "</select></label> <span class='muted'>Dates like 3/4/2026 that nothing in the report "
@@ -1836,9 +1836,9 @@ def setup_page(
         out.append("<p class='muted'>No files yet.</p>")
     out.append(
         "<p class='muted'>Each file is copied into "
-        f"<span class='mono'>{e(inputs_folder)}</span>, made read-only and SHA-256 hashed; Baker "
-        "reads only the copy, and the hash of what it parsed must match the hash of what it "
-        "received. Your original file is not changed.</p>"
+        f"<span class='mono'>{e(inputs_folder)}</span>, made read-only and SHA-256 hashed; "
+        "Mabillon reads only the copy, and the hash of what it parsed must match the hash of what "
+        "it received. Your original file is not changed.</p>"
     )
     out.append(
         _upload_form(
@@ -1998,7 +1998,7 @@ def cloud_section(
         f"<p><strong>{'Cloud AI on for this case' if use else 'Local only'}.</strong> {e(why)}</p>",
         "<p class='muted'>Off by default: everything runs on this computer unless you opt in "
         "for this case below.</p>",
-        "<p class='muted'>With cloud AI, Baker sends one question at a time to Anthropic under "
+        "<p class='muted'>With cloud AI, Mabillon sends one question at a time to Anthropic under "
         "your own key: the assumption being tested, one record, the messages around it, the "
         "claim, and for a group chat its member list (up to 20 accounts, with the names you "
         "confirmed for them). Never your files or the case database. The cloud model only "
@@ -2059,7 +2059,7 @@ def recovery_box(page: Page, key: str | None) -> str:
         return ""
     return (
         "<div class='flash' id='recovery'><p><strong>Write down this case's recovery key "
-        "now.</strong> It opens the case if the passphrase is lost. Baker shows it only this "
+        "now.</strong> It opens the case if the passphrase is lost. Mabillon shows it only this "
         "once and keeps no copy anywhere; keep it away from this computer (on paper, or in your "
         "password manager).</p>"
         f"<p class='mono' style='font-size:1.25em'>{e(key)}</p>"
@@ -2117,7 +2117,7 @@ def encryption_section(page: Page, protection: str, busy: bool) -> str:
     out.append(
         "<p>This case is <strong>encrypted</strong>: its database and the copies of its files "
         "cannot be read without the passphrase or the recovery key. It stays unlocked until you "
-        "lock it or stop Baker.</p>"
+        "lock it or stop Mabillon.</p>"
         + wait
         + page.form(
             "/case/lock",

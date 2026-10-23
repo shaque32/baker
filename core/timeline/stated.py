@@ -267,7 +267,7 @@ def _numeric_dates(text: str, quoted: list[tuple[int, int]]) -> list[_Date]:
                     m.start(),
                     m.end(),
                     readings=(md, dm),
-                    problem="numeric date that reads either way; Baker does not pick an order",
+                    problem="numeric date that reads either way; Mabillon does not pick an order",
                 )
             )
         elif (d := md or dm) is not None:
