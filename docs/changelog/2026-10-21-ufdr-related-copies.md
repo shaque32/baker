@@ -68,7 +68,8 @@
 - Verified: new tests in `tests/test_ufdr.py` and `tests/test_ufdr_check.py`; `make check` and
   eval in the PR description. Run on the three public packages in a cloud container
   (2026-10-21), with report.xml only (attachment files left out); results kept in the project
-  files, not yet signed off by Arsh. Baker Eval re-runs them before merge.
+  files, not yet signed off by Arsh. Arsh re-ran all three on a macOS 15.6.1 arm64 machine on
+  2026-10-23, on head a7728b7 (report.xml only): 0 differences on each.
 - Open: copies of types Baker does not import (locations, cookies, ...) are not counted, since
   their holders are not read. report.xml states no count per type: `ModelCount` on `project`
   did not equal the number of records, so it is not compared. A message linked to the phone's
