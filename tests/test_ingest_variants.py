@@ -44,7 +44,7 @@ def test_every_import_writes_one_source_coverage_row_matching_the_audit_log(tmp_
     rows = conn.execute(
         "SELECT source_id, importer, importer_version, payload_json FROM source_coverage"
     ).fetchall()
-    assert len(rows) == 1 and rows[0][:3] == ("s1", "cellebrite_excel", "0.2.0")
+    assert len(rows) == 1 and rows[0][:3] == ("s1", "cellebrite_excel", "0.3.0")
     (logged,) = conn.execute(
         "SELECT payload_json FROM audit_log WHERE action = 'import'"
     ).fetchone()
