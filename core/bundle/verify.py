@@ -1,4 +1,4 @@
-"""Check a reproducibility bundle offline (`baker verify-bundle`).
+"""Check a reproducibility bundle offline (`mabillon verify-bundle`).
 
 Nothing here touches a case or the network. The bundle's tables are loaded into a database in
 memory, built from core/schema.sql, and checked in this order; any failure fails the bundle:
@@ -6,7 +6,7 @@ memory, built from core/schema.sql, and checked in this order; any failure fails
 1. Files: every file matches the SHA-256 bundle.json lists, and the files listed are exactly a
    bundle's: nothing added or missing.
 2. Versions: the rules and contracts that decided the verdicts are this copy's; otherwise it
-   names the Baker commit to verify with, since only those rules can reproduce them.
+   names the Mabillon commit to verify with, since only those rules can reproduce them.
 3. Tables: each row has exactly the schema's columns, and every reference resolves.
 4. Audit log: the hash chain holds from the first entry and every payload reads, its last hash
    is the one bundle.json names, and every expert evidence decision in the log matches the
@@ -34,6 +34,7 @@ memory, built from core/schema.sql, and checked in this order; any failure fails
    (verdict, basis, reasons, coverage, citations) at the logged time, and the expert's
    confirmations and overrides in the log replay to the stored outcome.
 12. Report: the report rendered from these tables is byte for byte the report in the bundle.
+   A bundle exported with another report version names the commit to verify it with.
 """
 
 from __future__ import annotations
@@ -243,7 +244,7 @@ def _files(zf: zipfile.ZipFile, out: _Out) -> dict[str, Any] | None:
         out.add(FAIL, "files", "the zip holds the same file name twice")
         return None
     if export.MANIFEST not in names:
-        out.add(FAIL, "files", f"no {export.MANIFEST}: this is not a Baker bundle")
+        out.add(FAIL, "files", f"no {export.MANIFEST}: this is not a Mabillon bundle")
         return None
     unpacked = sum(i.file_size for i in zf.infolist())
     if unpacked > MAX_UNPACKED:
@@ -274,7 +275,7 @@ def _files(zf: zipfile.ZipFile, out: _Out) -> dict[str, Any] | None:
             FAIL,
             "files",
             f"bundle format {manifest.get('bundle_version')} is not one this "
-            f"Baker reads ({export.BUNDLE_VERSION})",
+            f"Mabillon reads ({export.BUNDLE_VERSION})",
         )
         return None
     expected = {export.METHOD, export.REPORT, export.WITHHELD} | {
@@ -283,7 +284,7 @@ def _files(zf: zipfile.ZipFile, out: _Out) -> dict[str, Any] | None:
     for name in sorted(expected - set(listed)):
         out.add(FAIL, "files", f"{name} is not listed in {export.MANIFEST}")
     for name in sorted(set(listed) - expected):
-        out.add(FAIL, "files", f"{name} is listed but is not part of a Baker bundle")
+        out.add(FAIL, "files", f"{name} is listed but is not part of a Mabillon bundle")
     for name in names:
         if name != export.MANIFEST and name not in listed:
             out.add(FAIL, "files", f"{name} is in the zip but not listed in {export.MANIFEST}")
@@ -309,8 +310,8 @@ def _versions(manifest: dict[str, Any], out: _Out) -> bool:
             FAIL,
             "versions",
             f"the verdicts were decided under rules "
-            f"{run.get('rule_version')}; this Baker has rules {rules.RULE_VERSION}. Verify "
-            f"with Baker at commit {commit}.",
+            f"{run.get('rule_version')}; this Mabillon has rules {rules.RULE_VERSION}. Verify "
+            f"with Mabillon at commit {commit}.",
         )
         ok = False
     if run.get("contracts_version") != CONTRACTS_VERSION:
@@ -318,8 +319,8 @@ def _versions(manifest: dict[str, Any], out: _Out) -> bool:
             FAIL,
             "versions",
             f"the case was made under contracts "
-            f"{run.get('contracts_version')}; this Baker has {CONTRACTS_VERSION}. Verify "
-            f"with Baker at commit {commit}.",
+            f"{run.get('contracts_version')}; this Mabillon has {CONTRACTS_VERSION}. Verify "
+            f"with Mabillon at commit {commit}.",
         )
         ok = False
     if ok:
@@ -432,7 +433,7 @@ def _withheld(
             for n in scope["left_out"].values()
         )
     ):
-        out.add(FAIL, "scope", "bundle.json's scope is neither full nor a scope Baker writes")
+        out.add(FAIL, "scope", "bundle.json's scope is neither full nor a scope Mabillon writes")
         return None
     keys = [(w["kind"], w.get("id", w.get("seq"))) for w in lines]
     if len(keys) != len(set(keys)):
@@ -565,7 +566,17 @@ def _manifest(
         out.add(FAIL, "bundle.json", f"it cannot be read as a method note's source ({e})")
         return
     if note.encode("utf-8") != zf.read(export.METHOD):
-        out.add(FAIL, "bundle.json", f"{export.METHOD} is not the note bundle.json gives")
+        if manifest.get("bundle_version") != export.BUNDLE_VERSION:
+            commit = ((manifest.get("exported_with") or {}).get("build") or {}).get("commit")
+            out.add(
+                FAIL,
+                "bundle.json",
+                f"{export.METHOD} was written by bundle format {manifest.get('bundle_version')}; "
+                f"this Mabillon writes {export.BUNDLE_VERSION}. Verify with Mabillon at commit "
+                f"{commit or 'the one in bundle.json'}.",
+            )
+        else:
+            out.add(FAIL, "bundle.json", f"{export.METHOD} is not the note bundle.json gives")
         bad.append(export.METHOD)
     if not bad:
         out.add(
@@ -842,6 +853,7 @@ def _same_label(item: tuple, answer: Any) -> bool:
         return False
     return rationale in (
         f"{forwarded.STANCE_NOTE}{model.value}. {answer.rationale}",
+        f"{forwarded.BAKER_STANCE_NOTE}{model.value}. {answer.rationale}",
         *((stance.NOT_THE_MESSAGE + answer.rationale,) if model is Stance.CONTRADICTS else ()),
     )
 
@@ -894,7 +906,7 @@ def _labels(
             NOTE,
             "labels",
             f"quotes not re-checked: the audit used quote check "
-            f"{run['config'].get('quote_check')}, this Baker has {quotes.VERSION}",
+            f"{run['config'].get('quote_check')}, this Mabillon has {quotes.VERSION}",
         )
     if stand_ins:
         out.add(
@@ -992,7 +1004,7 @@ def _claim_origins(log: list) -> tuple[dict[str, tuple[int, str | dict]], set[st
                     "id": p.get("claim_id"),
                     "paragraph_id": p.get("paragraph_id"),
                     "text": p.get("text"),
-                    "claim_type": p.get("claim_type"),  # not logged by older Baker
+                    "claim_type": p.get("claim_type"),  # not logged by older Mabillon
                     "status": "accepted",
                     "model_run_id": None,
                 },
@@ -1057,7 +1069,7 @@ def _claims(conn: sqlite3.Connection, run: dict[str, Any], out: _Out) -> None:
         out.add(
             NOTE,
             "claims",
-            f"{edited} claims were edited by an older Baker: their current text is the logged "
+            f"{edited} claims were edited by an older Mabillon: their current text is the logged "
             "edit, but the text before it is not recorded",
         )
     if not bad:
@@ -1100,7 +1112,7 @@ def _calls(conn: sqlite3.Connection, out: _Out, known: dict[str, str]) -> None:
             (cloud.SHA_PREFIX + "%",),
         )
     }
-    # A call a claim entry's digest names was stored by a Baker that logs each hosted answer
+    # A call a claim entry's digest names was stored by a Mabillon that logs each hosted answer
     # (cloud.received, from the same release as the digests); one no digest names may predate
     # both, and is only noted.
     for cid in sorted(hosted & bound):
@@ -1467,6 +1479,19 @@ def _report(
     # The settings the audit log records, which bundle.json must also name (_manifest); the
     # scope as bundle.json and withheld.jsonl give it (_withheld checked their form).
     scope = manifest["scope"]
+    made_with = (manifest.get("exported_with") or {}).get("report")
+    if made_with != report_html.REPORT_VERSION:
+        # Any report change, the rename from Baker included, changes its bytes: only the report
+        # code the bundle was exported with can render it again.
+        commit = ((manifest.get("exported_with") or {}).get("build") or {}).get("commit")
+        out.add(
+            FAIL,
+            "report",
+            f"the report was rendered by report {made_with}; this Mabillon renders report "
+            f"{report_html.REPORT_VERSION}. Verify with Mabillon at commit "
+            f"{commit or 'the one in bundle.json'}.",
+        )
+        return
     rendered = report_html.render_report(
         conn,
         export.logged_timeline(conn),

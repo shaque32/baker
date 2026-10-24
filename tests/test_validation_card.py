@@ -92,6 +92,29 @@ def test_false_supported_and_false_contradicted_use_their_own_denominators():
     timing = card["by_claim_type"]["timing"]
     assert timing["false_supported"]["k"] == 1 and timing["n"] == 1
     assert card["checks"] is None
+    assert card["predicted"] == 4 and card["not_predicted"] == ["C5"]
+    md = render_markdown(card)
+    assert "| Claims predicted | predicted 4 of 5 |" in md
+    assert (
+        "| No prediction (counted wrong; never false supported or false contradicted) | 1: C5 |"
+        in md
+    )
+
+
+def test_a_claim_id_cannot_break_the_no_prediction_row():
+    card = build_card([gold("C1|x\nC2", Verdict.SUPPORTED)], [])
+    row = [ln for ln in render_markdown(card).splitlines() if ln.startswith("| No prediction")]
+    assert row == [
+        "| No prediction (counted wrong; never false supported or false contradicted) |"
+        " 1: C1\\|x C2 |"
+    ]
+
+
+def test_a_card_with_every_claim_predicted_has_no_missing_row():
+    card = build_card([gold("C1", Verdict.SUPPORTED)], [pred("C1", Verdict.SUPPORTED)])
+    md = render_markdown(card)
+    assert card["not_predicted"] == [] and "predicted 1 of 1" in md
+    assert "No prediction" not in md
 
 
 def test_false_contradicted_by_accepted_evidence_and_override():

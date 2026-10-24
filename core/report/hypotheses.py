@@ -44,7 +44,7 @@ def _e(text: object) -> str:
 
 
 def note_html(note: str) -> str:
-    """Baker's words, with the case's own words inside shown as cited text."""
+    """Mabillon's words, with the case's own words inside shown as cited text."""
     out, rest = [], note
     while CITE_OPEN in rest:
         before, _, after = rest.partition(CITE_OPEN)
@@ -60,7 +60,7 @@ def _fit(f: Fit, href: Callable[[Fit], str | None]) -> str:
     target = href(f)
     look = f" · <a href='{_e(target)}'>See it in its conversation</a>" if target else ""
     when = f"{_e(f.when)} · " if f.when else ""
-    text = _q(f.quote) if f.quote else _e(f.label)  # a call's label is Baker's words, not cited
+    text = _q(f.quote) if f.quote else _e(f.label)  # a call's label is Mabillon's words, not cited
     return (
         f"<li>{text}<br>{note_html(f.note)}<br><span class='meta'>{when}{_e(ids)} · "
         f"{tier}</span>{look}</li>"

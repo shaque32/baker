@@ -10,7 +10,7 @@ the evidence that verdict was decided on. It never upgrades a verdict:
   but if a later rule version does, it never displays as confirmed.
 - "Support found: do you agree?" when the verdict is unproven and supporting evidence on the
   claim has no expert decision yet (the AI reviewer accepted it, or nobody reviewed it). It reads
-  as Baker's finding put to the expert, never as a verdict: the verdict stays unproven, and under
+  as Mabillon's finding put to the expert, never as a verdict: the verdict stays unproven, and under
   rules 0.2.0 an AI acceptance alone never makes a claim supported; the expert decides.
 - "Contradiction found, confirm to finalize" when the verdict is unproven and a contradicting
   item on a core assumption has no expert decision yet. Under rules 0.3.0 a model's
@@ -51,7 +51,7 @@ AWAITING_EXPERT = "Support found: do you agree?"
 CONTRADICTION_FOUND = "Contradiction found, confirm to finalize"
 # what the expert does about it, worded the same on the screen and in the report
 CONFIRM_STEP = (
-    "Baker found {n} record(s) it reads as contradicting a core assumption. Confirm each one "
+    "Mabillon found {n} record(s) it reads as contradicting a core assumption. Confirm each one "
     "you agree with, giving your reason, to finalize the verdict as contradicted; dismiss the "
     "rest."
 )
@@ -255,7 +255,7 @@ class ClaimState:
             out.append(
                 (
                     1,
-                    "Not tested: Baker could not set up what to check, so no record was "
+                    "Not tested: Mabillon could not set up what to check, so no record was "
                     "searched. Check this claim yourself, then confirm or override the verdict.",
                 )
             )
@@ -279,7 +279,7 @@ class ClaimState:
             out.append(
                 (
                     5 if more else 2,
-                    f"Baker found {self.open_support} record(s) it reads as support. Check each "
+                    f"Mabillon found {self.open_support} record(s) it reads as support. Check each "
                     "one: accept the ones you agree with and dismiss the rest.",
                 )
             )
@@ -382,7 +382,7 @@ def edited_after(conn: sqlite3.Connection, since: str) -> set[str]:
 
 
 HOLDINGS = (
-    "Baker checks claims against records on the phones. When it could not set up a check, "
+    "Mabillon checks claims against records on the phones. When it could not set up a check, "
     "compare the claim with what this case holds:"
 )
 
@@ -390,7 +390,7 @@ HOLDINGS = (
 def case_holdings(conn: sqlite3.Connection) -> list[str]:
     """One line per imported extraction source, with the devices it holds, exactly as imported.
 
-    Shown next to a claim Baker could not test, so the expert can check a claim about the
+    Shown next to a claim Mabillon could not test, so the expert can check a claim about the
     case's own material ("based on extraction reports for two phones") against it at a glance.
     """
     devices: dict[str, list[str]] = {}

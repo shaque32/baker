@@ -1,4 +1,4 @@
-"""`baker claims propose`: the local model proposes claims, the expert edits the list.
+"""`mabillon claims propose`: the local model proposes claims, the expert edits the list.
 
 Proposals go in as status 'proposed' with the model run that made them. Nothing here accepts
 a claim: the expert accepts, edits or removes each one (core/review/actions.py). A paragraph
@@ -148,7 +148,7 @@ def propose_claims(
                 "model_run_id": result.model_run_id,
                 "claims": [c.id for c in result.claims],
                 # Each stored row's SHA-256, so core/bundle/verify.py can tell a later edit made
-                # outside Baker from the expert's logged changes (claim.status).
+                # outside Mabillon from the expert's logged changes (claim.status).
                 "claim_sha256": {c.id: claim_digest(conn, c.id) for c in result.claims},
                 "paragraphs": [p.id for p in todo],
                 "skipped_paragraphs": result.skipped,

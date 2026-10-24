@@ -1,16 +1,17 @@
 # Expert review screen
 
-`baker serve` starts a local web server on `127.0.0.1` (port 8765 by default) and the expert
+`mabillon serve` starts a local web server on `127.0.0.1` (port 8765 by default) and the expert
 works in their own browser, from a new case to the exported report, without a terminal.
 Nothing leaves the computer unless the expert opts a case in to cloud AI (then that case's
-stance questions go to Anthropic, docs/ARCHITECTURE.md "Local by default, cloud by opt-in"): the
+stance questions go to Anthropic, docs/ARCHITECTURE.md "Local by default, cloud by opt-in"; what
+each one carries and the open limits are in docs/SECURITY_PRIVACY.md, section 5): the
 server binds the loopback address only, pages contain no scripts and load nothing from outside,
 and `core/`, `core/casework/`, `core/review/`, `core/report/` and `ui/` import no network client
 except `core/llm/cloud.py` (tests enforce it).
 
-- `baker serve` works on a cases folder (`--cases`, else `$BAKER_CASES`, else `~/Baker/cases`):
+- `mabillon serve` works on a cases folder (`--cases`, else `$MABILLON_CASES`, else `~/Mabillon/cases`):
   the expert makes and opens cases there.
-- `baker serve --db case.db` works on one existing case database, as before.
+- `mabillon serve --db case.db` works on one existing case database, as before.
 
 ## Starting a case
 
@@ -41,8 +42,8 @@ except `core/llm/cloud.py` (tests enforce it).
 4. **The model.** "Check the model" (and every audit, first) checks that the configured model
    file is on this computer, that its SHA-256 matches the config, that this computer has enough
    memory (the file's size plus 4 GB), and that the local runtime is installed, each with a plain
-   message. A passed hash is remembered for the unchanged file in `~/.baker/model-check.json`.
-   `baker model-check` does the same from the command line.
+   message. A passed hash is remembered for the unchanged file in `~/.mabillon/model-check.json`.
+   `mabillon model-check` does the same from the command line.
 5. **Run the audit.** It runs in the background, in the expert's claim order, with a rough
    upfront estimate (about 25 model calls per claim, from synthetic case01, at the seconds per
    call measured on this computer, else 43 s from a 24 GB Mac). The computer is kept awake while
@@ -78,9 +79,9 @@ eval or re-decided.
    **Support found: do you agree?**, never as supported. A claim with a model "contradicts" on
    a core assumption that no expert has decided shows as **Contradiction found, confirm to
    finalize** (rules 0.3.0), near the top of the queue: on the claim page, type a one-sentence
-   reason and click **Confirm contradiction** (or **Dismiss**). Baker records the decision and
+   reason and click **Confirm contradiction** (or **Dismiss**). Mabillon records the decision and
    its reason in the audit log and re-runs the verdicts at once, so the claim turns
-   contradicted. A claim Baker could not set up
+   contradicted. A claim Mabillon could not set up
    any check for (the assumption filler refused every proposal, for example a name that is no
    person in the case) shows as **Unproven, not tested**, with the refusals, at the top of the
    queue: no record was searched for it, so the expert checks it by hand. Its claim page and
@@ -93,7 +94,7 @@ eval or re-decided.
    it" shows the conversation around the record in the phone's local time.
 4. **Re-run verdicts.** Decisions do not change a verdict by themselves. "Re-run verdicts" runs
    `core/audit/rules.py` and the invariants again on the stored evidence with the current review
-   statuses (`core/review/redecide.py`, also `baker redecide`). No model is called, so it takes
+   statuses (`core/review/redecide.py`, also `mabillon redecide`). No model is called, so it takes
    seconds. Claims edited or added since the audit need a full audit (Set up and run).
 5. **Confirm or override** each verdict. An override needs a note and prints as an expert
    override.
@@ -114,7 +115,7 @@ eval or re-decided.
    it listed, and for an evidence item its record and where that record sits in its source
    (source and locator), never the record's text. The Activity tab shows the trail per claim
    (times opened, first and last, time on its pages, evidence opened, your actions) and step by
-   step, beside your decisions; `/activity.csv` and `baker activity --db case.db [--csv
+   step, beside your decisions; `/activity.csv` and `mabillon activity --db case.db [--csv
    out.csv]` export it with each entry's hash. Time on page runs from opening a page to the
    next page you open in the same screen session. The screen runs no scripts, so it cannot tell
    what was on screen or read; a stretch over 30 minutes may include time away and is counted
@@ -123,7 +124,7 @@ eval or re-decided.
    such as `views=1` or a claim filter); any other field, such as the flag summary's pilot
    name, is counted, not stored. The
    report leaves the activity table out unless you include it for the case (off by default): the
-   switch is on the Activity tab, or `baker activity --db case.db --in-report on|off --by
+   switch is on the Activity tab, or `mabillon activity --db case.db --in-report on|off --by
    expert:<name>`, and each change is in the audit log with your name. Views change no verdict.
    The Audit log page hides them unless you ask (`/log?views=1`). Code:
    `core/review/activity.py`.
@@ -145,7 +146,7 @@ eval or re-decided.
   an expert's acceptance shows as `confirmed`.
 - The screen and the report use the same labels (`core/review/status.py`).
 - Every page passes the same forbidden-word check as the report. Cited text and the
-  expert's own reasons and notes are exempt; Baker's wording and a model's are not.
+  expert's own reasons and notes are exempt; Mabillon's wording and a model's are not.
 
 ## The audit log check
 
@@ -155,7 +156,7 @@ Three checks, all in `core/review/audit_log.py` (`require_intact`):
    entry in the middle breaks the chain from that entry on. The Cases page says "Review blocked"
    and names the first entry that does not match.
 2. **The anchors.** The chain alone cannot tell that entries were cut from its end: what is left
-   still verifies. So when a case opens, and when a report is built, Baker writes the newest
+   still verifies. So when a case opens, and when a report is built, Mabillon writes the newest
    entry's number and hash to `case.db.anchors.jsonl` beside `case.db` (one line each time it
    changed; entry numbers and hashes only: no case content, no times, no reasons, since the file
    stays unencrypted beside an encrypted case). Every later check requires each
@@ -171,7 +172,7 @@ Three checks, all in `core/review/audit_log.py` (`require_intact`):
    before this check carry no reason in the log, so their reasons are not compared; their status
    and presence still are.
 
-A case folder Baker cannot write to (read-only media, a locked-down backup) does not open or
+A case folder Mabillon cannot write to (read-only media, a locked-down backup) does not open or
 report, since no anchor could be recorded: copy the folder somewhere writable and open the copy.
 
 What the anchors do not catch: entries added after the newest anchor and then cut again before
@@ -181,11 +182,11 @@ case folder that no one can change. A case made before anchors is checked from i
 
 ### When a case is blocked
 
-Nothing in Baker repairs a blocked case, because the record that would say what changed is the
+Nothing in Mabillon repairs a blocked case, because the record that would say what changed is the
 one that no longer verifies. The expert:
 
 1. Leaves the case folder as it is (it is evidence of what happened) and runs
-   `baker verify-log --db <case folder>/case.db` to record the reason.
+   `mabillon verify-log --db <case folder>/case.db` to record the reason.
 2. Restores the case folder from a backup made before the change, if there is one, and opens it.
    The restored log must still hold every anchored entry: restore the folder whole, its
    `case.db.anchors.jsonl` with its `case.db`. A restored log older than the anchor file beside it
@@ -198,9 +199,9 @@ one that no longer verifies. The expert:
 ## Help and bug reports
 
 The **Help** tab opens on every page, with or without a case open. It shows the support contact,
-a short "what Baker does and doesn't do" and the bug report in full, then saves the same text as
+a short "what Mabillon does and doesn't do" and the bug report in full, then saves the same text as
 a JSON file. The report holds no case data (`docs/SUPPORT.md`). An unexpected error on the screen
-answers with a plain message pointing to Help, and the error's type and Baker file and line (not
+answers with a plain message pointing to Help, and the error's type and Mabillon file and line (not
 its message) go into the next bug report.
 
 ## Local-server protections
@@ -223,6 +224,6 @@ already decides" labels them anyway. A real case can still miss a record retriev
 find; then the claim cannot reach supported on the screen, and the expert can override the
 verdict with a note, which prints as an expert override.
 
-The screen runs one background job at a time, and the audit runs inside the `baker serve`
+The screen runs one background job at a time, and the audit runs inside the `mabillon serve`
 process: closing it stops the audit (finished claims are kept; resume later). Running
-`baker audit` on the same case at the same time as the screen's audit is not supported.
+`mabillon audit` on the same case at the same time as the screen's audit is not supported.

@@ -43,7 +43,7 @@ def seal(data: bytes, passphrase: str, kdf: encryption.Kdf | None = None) -> byt
 def open_sealed(blob: bytes, passphrase: str) -> bytes:
     """The zip inside, or WrongSecret for a wrong passphrase or an altered file."""
     if not is_sealed(blob):
-        raise encryption.EncryptionError("not an encrypted Baker bundle")
+        raise encryption.EncryptionError("not an encrypted Mabillon bundle")
     rest = blob[len(MAGIC) :]
     n = int.from_bytes(rest[:4], "big")
     header, body = rest[4 : 4 + n], rest[4 + n :]
@@ -56,7 +56,9 @@ def open_sealed(blob: bytes, passphrase: str) -> bytes:
     if kdf != encryption.DEFAULT_KDF or len(salt) != 16 or len(nonce) != 12:
         # The header is read before anything is authenticated, so only the settings seal()
         # writes are accepted: another file cannot make the key derivation fail or run long.
-        raise encryption.EncryptionError("the bundle's encryption settings are not ones Baker uses")
+        raise encryption.EncryptionError(
+            "the bundle's encryption settings are not ones Mabillon uses"
+        )
     try:
         key = encryption._derive(encryption.normalize_passphrase(passphrase), salt, kdf)
     except (ValueError, MemoryError) as e:

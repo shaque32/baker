@@ -5,7 +5,8 @@ The model is a GGUF file on local disk, named in a small JSON config:
     {"name": "qwen2.5-14b-instruct-q4_k_m", "path": "/models/qwen.gguf", "sha256": "<64 hex>",
      "n_ctx": 4096}
 
-found at $BAKER_MODEL_CONFIG, else ~/.baker/model.json. The sha256 is required: a run must be
+found at $MABILLON_MODEL_CONFIG, else ~/.mabillon/model.json (core/paths.py reads the Baker-era
+$BAKER_MODEL_CONFIG and ~/.baker/model.json too). The sha256 is required: a run must be
 reproducible, so the exact model file is pinned and checked before loading. n_ctx is optional
 (a 14B model on a 16 GB laptop only fits with 4096). Nothing here makes network calls.
 core/llm/ (the model-runtime thread) loads the file; it is imported lazily so the rest of
@@ -26,7 +27,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 import sqlite3
 import time
@@ -36,12 +36,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
-from core import db
+from core import db, paths
 from core.audit._llm_json import CallRecorder, ModelUnavailable, prompt_version
 from core.contracts import ModelRun, canonical_json, short_hash
 
-MODEL_CONFIG_ENV = "BAKER_MODEL_CONFIG"
-DEFAULT_CONFIG = Path.home() / ".baker" / "model.json"
+MODEL_CONFIG_ENV = "MABILLON_MODEL_CONFIG"
 REUSE_PARAM = "reuse_stored_outputs"
 SCHEMA_PARAM = "output_schema"
 
@@ -69,8 +68,8 @@ class ModelConfig:
 
 
 def config_path() -> Path:
-    env = os.environ.get(MODEL_CONFIG_ENV, "").strip()
-    return Path(env) if env else DEFAULT_CONFIG
+    env = paths.env("MODEL_CONFIG")
+    return Path(env) if env else paths.settings_file("model.json")
 
 
 def load_config(path: Path | None = None) -> ModelConfig:
@@ -324,7 +323,7 @@ def raw_sha256(raw_text: str) -> str:
 class SentLog:
     """Wraps the cloud model so every request is written to the case's hash-chained audit log
     (action "cloud.sent") before it is sent: the time, the endpoint, the attempt and the request
-    body exactly as sent (the key travels in a header and is never logged). Baker retries a
+    body exactly as sent (the key travels in a header and is never logged). Mabillon retries a
     retryable failure itself (the SDK's own retries are off), logging each send. A stored output
     answered without a request writes nothing. If the entry cannot be written, nothing is sent
     and the audit pauses (CloudPaused), so no send is ever missing from the log.
@@ -332,7 +331,7 @@ class SentLog:
     Each answer is logged too (action "cloud.received"): the model the API reported, its message
     and request ids, the stop reason, the token counts and the SHA-256 of the raw text, so the
     stored raw output (model_calls) is tied to the hash-chained log and a reproducibility bundle
-    can name the exact request (core/bundle/). An answer Baker refuses (another model, a refusal,
+    can name the exact request (core/bundle/). An answer Mabillon refuses (another model, a refusal,
     a cut-off answer) is logged the same way, with the reason in "refused". If that entry cannot
     be written, the answer is not used and the audit pauses, as for a send."""
 
@@ -400,7 +399,7 @@ class SentLog:
             "input_tokens": getattr(out, "prompt_tokens", None),
             "output_tokens": getattr(out, "completion_tokens", None),
             "raw_sha256": raw_sha256(getattr(out, "raw_text", None) or ""),
-            # why Baker did not use an answer the API returned (another model, a refusal, a
+            # why Mabillon did not use an answer the API returned (another model, a refusal, a
             # cut-off answer); None for an answer it used
             "refused": refused,
         }

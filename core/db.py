@@ -1,7 +1,7 @@
 """Open a case database and apply the canonical schema.
 
 A plain case database (every case made before encryption at rest, and `--db` files made by
-`baker init`) opens with the standard library's sqlite3, exactly as before. An encrypted one
+`mabillon init`) opens with the standard library's sqlite3, exactly as before. An encrypted one
 (core/encryption.py) opens with SQLCipher, keyed from the case key this process unlocked; a
 locked one raises CaseLocked. Code that catches database errors uses the tuples below, not
 sqlite3's own classes, because SQLCipher raises its own classes of the same names.
@@ -65,8 +65,8 @@ def connect(path: Path | str) -> sqlite3.Connection:
 def open_encrypted(path: Path, dek: bytes) -> sqlite3.Connection:
     if _cipher is None:
         raise CaseLocked(
-            "this case is encrypted and this install of Baker cannot open encrypted cases "
-            "(the sqlcipher3 package is missing); run Baker's installer again"
+            "this case is encrypted and this install of Mabillon cannot open encrypted cases "
+            "(the sqlcipher3 package is missing); run Mabillon's installer again"
         )
     conn = _cipher.connect(str(path))
     try:

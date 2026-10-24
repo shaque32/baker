@@ -7,7 +7,7 @@ MIN_EXPECTED records in it, so a thread that is quiet most of the time does not 
 A thread's stretch that its whole app shares, or an app's stretch its whole phone shares, is
 listed once, at the widest level.
 
-A stretch is stated, never explained: Baker does not say why records are absent, and a missing
+A stretch is stated, never explained: Mabillon does not say why records are absent, and a missing
 record does not mean nothing happened. Each stretch says what was searched (the source and its
 coverage), how many records in the series have no usable time, what other phones hold in the
 same span, and which times the government document states inside it.

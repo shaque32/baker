@@ -5,10 +5,10 @@ A message's citable text is its original body. Calls, contacts and attachments h
 their text is a fixed rendering of observed fields; quote checks must verify against this same
 text, so this is the single place it is built.
 
-A rendering mixes the record's own fields with Baker's words (" call from ", ": ") and
+A rendering mixes the record's own fields with Mabillon's words (" call from ", ": ") and
 placeholders for a missing field ("(no name)", "unknown"). Record.own marks the spans that are
 the record's own fields; a quote must reach into one of them to cite the record
-(core.audit.quotes.cites_record), so text Baker wrote cannot verify a quote by itself.
+(core.audit.quotes.cites_record), so text Mabillon wrote cannot verify a quote by itself.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ UNKNOWN = "unknown"
 
 Span = tuple[int, int]
 # A piece of a rendered line: its text, and whether it is the record's own field (True) or
-# Baker's words or a placeholder (False).
+# Mabillon's words or a placeholder (False).
 Part = tuple[str, bool]
 
 
@@ -57,7 +57,7 @@ def _ident_part(conn: sqlite3.Connection, account_id: str | None) -> Part:
     if account_id is None:
         return UNKNOWN, False
     row = conn.execute("SELECT identifier FROM accounts WHERE id = ?", (account_id,)).fetchone()
-    return (row[0], True) if row else (account_id, False)  # Baker's own account id
+    return (row[0], True) if row else (account_id, False)  # Mabillon's own account id
 
 
 def call_parts(

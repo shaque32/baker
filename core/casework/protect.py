@@ -1,7 +1,7 @@
 """Encrypting a case that was made before encryption at rest, and changing its passphrase.
 
 Nothing here runs on its own: a plain case stays plain, and opens as before, until the expert
-asks for it to be encrypted (the case's setup page, or `baker encrypt`). Encrypting:
+asks for it to be encrypted (the case's setup page, or `mabillon encrypt`). Encrypting:
 
 1. refuses while an audit is recorded as running on the case;
 2. takes the database's write lock, so no other writer can change it until the end;
@@ -97,7 +97,7 @@ def _export(plain: Path, target: Path, dek: bytes) -> None:
     """SQLCipher's own copy of a plain database into a new encrypted one."""
     cipher = casedb._cipher
     if cipher is None:
-        raise ReviewError("this install of Baker cannot encrypt (sqlcipher3 is missing)")
+        raise ReviewError("this install of Mabillon cannot encrypt (sqlcipher3 is missing)")
     src = cipher.connect(str(plain))
     try:
         src.execute("PRAGMA cipher_log_level = NONE")
@@ -226,7 +226,8 @@ def encrypt_case(
             if running:
                 raise ReviewError(
                     "an audit is recorded as running on this case; let it finish or stop it, "
-                    "then encrypt (if Baker is not running, open the case in Baker once first)"
+                    "then encrypt (if Mabillon is not running, open the case in Mabillon once "
+                    "first)"
                 )
             conn.execute("BEGIN IMMEDIATE")  # no other writer until the encrypted copy is in
         if resumed:
