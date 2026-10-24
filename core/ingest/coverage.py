@@ -126,6 +126,14 @@ _INFO_COUNTERS = {
         "Forwarded or quoted messages carried inside other messages, imported as records of their "
         "own (not in the extraction's own message count)"
     ),
+    "related_copies": (
+        "Messages, calls, contacts and accounts the package holds a second time under another "
+        "record's RelatedModels (Cellebrite's related items), not imported again"
+    ),
+    "related_copies_matching_a_record": (
+        "Of those, copies that say what the record holding them says (text or duration, time, "
+        "parties, deleted state and attachments; a copied chat's messages one to one)"
+    ),
     "embedded_messages_already_imported": (
         "Forwarded or quoted messages carried inside other messages that the extraction also "
         "lists as records of their own (same model id), so imported once"
@@ -254,6 +262,14 @@ _FLAG_WORDS: dict[str, tuple[Level, str]] = {
         "attention",
         "{n} {have} an attachment whose file id taggedFiles lists more than once with different "
         "paths, so it was not linked to a file or hashed.",
+    ),
+    "related_copy_unmatched": (
+        "attention",
+        "{n} {be} held only as a related copy (under another record's RelatedModels) that "
+        "does not say what the record holding it says (app, text or duration, time, "
+        "direction, parties, deleted state and attachments; a copied chat's messages one to "
+        "one), so Mabillon did not "
+        "import {them}; open each one in {tool}.",
     ),
     "duration_unread": ("attention", "{n} {have} a call duration Mabillon could not read."),
     "no_time": ("attention", "{n} {have} no time in the {container}, so no time was set."),
