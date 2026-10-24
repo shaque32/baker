@@ -31,6 +31,6 @@
   cannot check the order or consents); hosted labels cannot be regenerated, only the recorded
   labels and rules re-checked." Section 11, "Before a first real case" item 3: append
   "Conditions before a first real case uses it: the expert has checked their Anthropic account's
-  retention (ZDR or not), the case is encrypted so the key is sealed under the case key, and
-  counsel has confirmed the protective order and the client's consent behind the attestation.
+  retention (ZDR or not), the key is saved into the encrypted case with
+  `$MABILLON_ANTHROPIC_API_KEY` and `~/.mabillon/cloud.json` unset, and counsel has confirmed the protective order and the client's consent behind the attestation.
   Where the tool's reliability may be challenged in court, run the case locally."
