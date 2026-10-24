@@ -78,7 +78,7 @@ MAX_FIELD_NAMES = 30  # field names listed per record type in coverage
 
 FIDELITY_REASON = (
     "UFDR package. A UFDR may hold a whole extraction or only what the examiner selected, and "
-    "Baker's UFDR reader is not yet verified against a real package, so its coverage is "
+    "Mabillon's UFDR reader is not yet verified against a real package, so its coverage is "
     "treated as not known: it cannot support a claim that something is absent from the device."
 )
 
@@ -97,7 +97,7 @@ MESSAGE_TYPES = {"InstantMessage", "Message", "SMS", "MMS"}  # message models in
 COPY_KINDS = {"Call", "Contact", "UserAccount"}  # other records whose copies are matched
 COPY_TYPES = MESSAGE_TYPES | COPY_KINDS
 _CHAT_MESSAGE_LOC = re.compile(r"Chat\[\d+\]/[^/\[]+\[\d+\]")  # holder: a chat's message
-# Model types Baker knows and deliberately does not import (yet). Listed in coverage as
+# Model types Mabillon knows and deliberately does not import (yet). Listed in coverage as
 # categories not imported; any other type is listed as not recognised.
 NOT_IMPORTED_TYPES = {
     "Location",
@@ -139,7 +139,7 @@ ATT_MIME_FIELDS = ("contenttype", "mimetype", "content type")
 ATT_PATH_FIELDS = ("attachment_extracted_path", "localpath", "local path", "extractedpath", "path")
 ATT_HASH_FIELDS = ("sha256", "sha-256", "hash")
 # Fields each type reads (beyond those above) or knowingly ignores; any other field name is
-# listed in coverage as a field Baker does not read.
+# listed in coverage as a field Mabillon does not read.
 _KNOWN = {
     "Chat": {
         *CHAT_ID_FIELDS, *CHAT_NAME_FIELDS, "source", "participants", "messages",
@@ -292,7 +292,7 @@ def _model(el: _El) -> _Model:
             m.many[key] = [_model(c) for c in ch.children if c.tag == "model"]
         elif name:
             # Any other named child (a nodeField, say) is not read; naming it puts it among the
-            # fields Baker does not read in coverage instead of passing it over in silence.
+            # fields Mabillon does not read in coverage instead of passing it over in silence.
             m.field_names.append(name)
     return m
 
@@ -545,16 +545,16 @@ class _Reader:
         if self.root != "project":
             raise ValueError(
                 f"report.xml has root element {self.root!r}, not 'project'; it is not a "
-                "Cellebrite UFDR report Baker can read"
+                "Cellebrite UFDR report Mabillon can read"
             )
 
 
 def _refuse_doctype(*_a: object) -> None:
-    raise ValueError("report.xml declares a document type; Baker does not read such XML")
+    raise ValueError("report.xml declares a document type; Mabillon does not read such XML")
 
 
 def _refuse_entity(*_a: object) -> None:
-    raise ValueError("report.xml declares an entity; Baker does not read such XML")
+    raise ValueError("report.xml declares an entity; Mabillon does not read such XML")
 
 
 class _HashingReader:
@@ -595,17 +595,17 @@ def find_report(z: zipfile.ZipFile) -> zipfile.ZipInfo:
         if not i.is_dir() and PurePosixPath(_norm_member(i.filename)).name.lower() == "report.xml"
     ]
     if not found:
-        raise ValueError("the package holds no report.xml, so it is not a UFDR Baker can read")
+        raise ValueError("the package holds no report.xml, so it is not a UFDR Mabillon can read")
     depth = min(_norm_member(i.filename).count("/") for i in found)
     top = [i for i in found if _norm_member(i.filename).count("/") == depth]
     if len(top) > 1:
         raise ValueError(
             "the package holds more than one report.xml at the same level ("
             + ", ".join(i.filename for i in top)
-            + "); Baker cannot tell which one is the report"
+            + "); Mabillon cannot tell which one is the report"
         )
     if top[0].flag_bits & 0x1:
-        raise ValueError("report.xml is encrypted in the package; Baker cannot read it")
+        raise ValueError("report.xml is encrypted in the package; Mabillon cannot read it")
     return top[0]
 
 
@@ -920,7 +920,7 @@ class UfdrImporter:
             raise ValueError(
                 "this UFDR holds extractions from more than one device ("
                 + ", ".join(repr(d) for d in devices)
-                + "); Baker imports one device per file, so its records cannot be attributed. "
+                + "); Mabillon imports one device per file, so its records cannot be attributed. "
                 "Ask for one package per device"
             )
 
@@ -1120,7 +1120,7 @@ class UfdrImporter:
             audit_log.append(conn, source.imported_at_utc, "system", "import", payload)
             if sha256_file(path) != sha:  # the package changed while it was read: store nothing
                 raise ValueError(
-                    f"{path.name} changed while Baker read it; nothing was imported. Nothing "
+                    f"{path.name} changed while Mabillon read it; nothing was imported. Nothing "
                     "should change a copied input, so check the case folder"
                 )
         return source
@@ -1914,7 +1914,7 @@ def _table_dict(tc: TableCoverage, rd: _RecordMapper) -> dict[str, object]:
 
 
 def _meta(items: list[tuple[str, str, str, str]]) -> dict[str, tuple[str, str]]:
-    """key -> (value, locator) for the metadata Baker reads, first alias present wins."""
+    """key -> (value, locator) for the metadata Mabillon reads, first alias present wins."""
     by_name: dict[str, tuple[str, str]] = {}
     for _section, name, value, loc in items:
         k = _key(name)

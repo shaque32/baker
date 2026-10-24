@@ -7,7 +7,7 @@ review screen and the report work unchanged. `core/ingest/pick.py` chooses it fo
 and for an `.xlsx` that carries AXIOM's marks (below); every other `.xlsx` stays a Cellebrite
 report.
 
-**Format support is unverified.** Baker has never been given a real AXIOM export. This importer
+**Format support is unverified.** Mabillon has never been given a real AXIOM export. This importer
 was built from public descriptions only (Magnet's documentation of the export formats, and the
 open-source AXIOM XML parser casework/CASE-Implementation-AXIOM, which names the artifact types
 and fragments of AXIOM XML reports) and tested on synthetic exports only
@@ -59,7 +59,7 @@ The kind comes from the end of the name; the app is what is left once a platform
 | `SMS`, `MMS`, `iMessage` anywhere (`Android SMS`, `iOS iMessage/SMS/MMS`) | SMS | `SMS` |
 
 An SMS artifact with a thread id field is grouped into threads by it, as chats are; without
-one, it gets one thread per counterpart. Known kinds Baker does not import (email, web history,
+one, it gets one thread per counterpart. Known kinds Mabillon does not import (email, web history,
 locations, media, ...: `NOT_IMPORTED_WORDS`) are listed in coverage with their counts; any other
 artifact is listed for review as not recognised. Excel cuts sheet names at 31 characters
 (`Android WhatsApp Accounts Infor`); such a name is matched on the start of its last word and
@@ -81,16 +81,16 @@ first name present wins; a second field for the same thing is listed in coverage
 Every artifact may carry `Source` (the file inside the image the hit came from, never the app),
 `Location`, `Evidence number`, `Item ID` and `Comments`; they are known and not read into the
 record. `Recovery method` is read for flags (below). Any other field is listed in coverage as a
-field Baker does not read.
+field Mabillon does not read.
 
 A message's time comes from `Message Date/Time`, `Message Sent Date/Time`, `Sent Date/Time`,
 `Message Received Date/Time`, `Received Date/Time`, `Created Date/Time` or `Date/Time`, in that
 order of preference, per hit: a hit whose first field is blank takes the next filled one, read
 with that field's own zone and date format. Coverage names the fields and the order.
 
-A hit with nothing in any field Baker reads is not imported; it is listed for review
-(`no_values_in_known_columns`). A device details artifact with no field Baker knows is listed as
-not imported, and device fields Baker does not read are named in the coverage record.
+A hit with nothing in any field Mabillon reads is not imported; it is listed for review
+(`no_values_in_known_columns`). A device details artifact with no field Mabillon knows is listed as
+not imported, and device fields Mabillon does not read are named in the coverage record.
 
 ### Times
 
@@ -122,7 +122,7 @@ calls have the partner as caller, outgoing calls as callee.
 
 A hit whose `Recovery method` mentions carving is imported and listed for review by locator
 (`carved`); every recovery method value seen is counted in coverage. A record with no time
-(`no_time`) and a call duration Baker cannot read (`duration_unread`) are listed. Baker never
+(`no_time`) and a call duration Mabillon cannot read (`duration_unread`) are listed. Mabillon never
 says a record was deleted; a `Deleted` field, when present, is stored as stated.
 
 ## Ids and locators
@@ -158,10 +158,10 @@ report (no public description says where an XML report keeps case details).
 
 1. Get one real AXIOM export (XML and Excel report of the same case) from a closed or training
    case, with the artifacts exported in full (never into the repo or a prompt).
-2. Import both on the expert's machine and read the coverage: every artifact and field Baker did
+2. Import both on the expert's machine and read the coverage: every artifact and field Mabillon did
    not read is listed there.
 3. Open 20 hits of each imported artifact in AXIOM Examine (or the portable case) and compare
-   sender, recipients, time and offset, text, direction and attachments with Baker's records.
+   sender, recipients, time and offset, text, direction and attachments with Mabillon's records.
 4. Fix what differs, add a synthetic variant that reproduces each difference, then set
    `FORMAT_SUPPORT = "verified"` in `core/ingest/axiom.py` in the same change and say which
    AXIOM versions were checked.

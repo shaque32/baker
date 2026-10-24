@@ -346,7 +346,7 @@ def test_coverage_lists_what_the_package_held_and_baker_did_not_read(edge):
     assert codes["tagged_files"] == "info" and codes["package_files"] == "info"
     assert codes["duration_unread"] == "attention"
     unknown = next(i for i in s.items if i.code == "unknown_columns")
-    assert "fields Baker does not read" in unknown.plain and ("Mood", True) in unknown.parts
+    assert "fields Mabillon does not read" in unknown.plain and ("Mood", True) in unknown.parts
 
 
 def test_coverage_own_words_never_use_forbidden_words(edge):
@@ -506,8 +506,8 @@ def test_report_limitations_say_the_ufdr_reader_is_unverified(case01, edge):
     assert limits.count("UFDR reader, which is not yet verified") == 2
     assert "The coverage of" in limits  # fidelity not known: no absence finding rests on it
     # item2 has nothing else to review; the edge package lists what it did not read
-    assert 'Baker did not read all of <span class="q">item2.ufdr' not in limits
-    assert 'Baker did not read all of <span class="q">edge.ufdr' in limits
+    assert 'Mabillon did not read all of <span class="q">item2.ufdr' not in limits
+    assert 'Mabillon did not read all of <span class="q">edge.ufdr' in limits
     check_report_text(html)
 
 
@@ -875,7 +875,7 @@ def test_a_case_made_before_the_forwarded_columns_still_fails_closed(tmp_path):
     label = forwarded_label(conn)
     assert label.startswith("coverage list only (case made before contracts")
     # an import from before the list existed is not promised the fail-closed path
-    assert "imported before Baker listed forwarded messages (#73)" in label
+    assert "imported before Mabillon listed forwarded messages (#73)" in label
     new_case = sqlite3.connect(":memory:")
     new_case.executescript(schema)
     assert forwarded_label(new_case).startswith("on the record")
@@ -1028,9 +1028,9 @@ def test_a_claim_warning_over_a_forward_and_an_embedded_copy_names_each_kind():
     assert forwarded.claim_warning(found, ["msg:s:a", "msg:s:a/Embedded[1]", "msg:s:z"]) == (
         "2 records this claim's evidence or checks rest on are affected. 1 is a message the "
         "extraction marks as forwarded or as carrying a forwarded or quoted message, which "
-        "Baker shows as sent by whoever forwarded or quoted; 1 is a forwarded or quoted copy "
+        "Mabillon shows as sent by whoever forwarded or quoted; 1 is a forwarded or quoted copy "
         "carried inside another message, imported as its own record, shown with the sender the "
-        "extraction names for the embedded message. Baker has not verified who first wrote any "
+        "extraction names for the embedded message. Mabillon has not verified who first wrote any "
         "of these words, even where the extraction names an original author, so they cannot "
         "support or contradict this claim. Check each in the extraction tool."
     )
@@ -1038,7 +1038,7 @@ def test_a_claim_warning_over_a_forward_and_an_embedded_copy_names_each_kind():
         {"msg:s:a/Embedded[1]": "embedded_copy"}, ["msg:s:a/Embedded[1]"]
     ) == (
         "1 record this claim's evidence or checks rest on is a forwarded or quoted copy carried "
-        "inside another message, imported as its own record. Baker shows the sender the "
+        "inside another message, imported as its own record. Mabillon shows the sender the "
         "extraction names for it, which it has not verified, so it cannot support or contradict "
         "this claim. Check it in the extraction tool."
     )
@@ -1119,7 +1119,7 @@ def test_a_related_copy_matching_no_record_is_listed_and_shown_in_the_report(tmp
         ("Call[1]/Related[1]",),
     }
     assert all(i.level == "attention" for i in items)
-    assert {"Baker did not import it", "Baker did not import them"} <= {
+    assert {"Mabillon did not import it", "Mabillon did not import them"} <= {
         i.plain.split("so ", 1)[1].split(";")[0] for i in items
     }
     html = render_report(conn)

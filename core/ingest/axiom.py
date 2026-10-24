@@ -1,6 +1,6 @@
 """Magnet AXIOM report export importer (XML and Excel). UNVERIFIED format support.
 
-An examiner using Magnet AXIOM Examine hands over a report export. Baker reads two of them:
+An examiner using Magnet AXIOM Examine hands over a report export. Mabillon reads two of them:
 
 - the XML report: `Artifact` elements (one per artifact type, named like 'Android WhatsApp
   Messages'), each holding `Hits/Hit` records made of named `Fragment` values;
@@ -9,9 +9,9 @@ An examiner using Magnet AXIOM Examine hands over a report export. Baker reads t
 
 Both were built from public descriptions only: Magnet's documentation of its export formats and
 an open-source parser of AXIOM XML reports (casework/CASE-Implementation-AXIOM), which names the
-artifact types and fragments. Baker has never been given a real AXIOM export, so every import says
-it was read with an unverified reader, on the case screen, in `baker import` and in the report's
-limitations. Layout assumptions and the steps to verify: docs/ingest/axiom.md.
+artifact types and fragments. Mabillon has never been given a real AXIOM export, so every
+import says it was read with an unverified reader, on the case screen, in `baker import` and in
+the report's limitations. Layout assumptions and the steps to verify: docs/ingest/axiom.md.
 
 What it shares with the Cellebrite importers (core/ingest/cellebrite_common.py): the record
 mapping for messages and calls (threads, senders, recipients, direction, owner accounts), time
@@ -99,7 +99,7 @@ _KIND_ENDINGS: list[tuple[str, tuple[str, ...]]] = [
     ("chats", ("chat messages", "direct messages", "messages", "chats", "chat")),
 ]
 _SMS_WORDS = ("sms", "mms", "imessage")
-# Artifact types Baker knows and deliberately does not import (yet), matched on words in the
+# Artifact types Mabillon knows and deliberately does not import (yet), matched on words in the
 # name. Listed in coverage as categories not imported; any other name is listed as not recognised.
 NOT_IMPORTED_WORDS = (
     "email", "mail", "web", "history", "bookmark", "cookie", "search", "location", "locations",
@@ -116,7 +116,7 @@ EXCEL_SHEET_NAME_LIMIT = 31  # characters; Excel cuts longer sheet names
 
 def classify(name: str, truncated: bool = False) -> tuple[str | None, str | None]:
     """(kind, app) for an artifact name. kind is a RecordKind value, 'device' (the phone's own
-    details), or None when Baker does not import the artifact. SMS-family artifacts are 'sms'
+    details), or None when Mabillon does not import the artifact. SMS-family artifacts are 'sms'
     with the app 'SMS'; a call log without an app is the phone's ('Phone').
 
     With `truncated` (an Excel sheet name at the 31-character limit), the name may end partway
@@ -398,16 +398,16 @@ class _XmlReader:
         if not self.artifacts:
             raise ValueError(
                 "the XML file holds no Artifact elements, so it is not a Magnet AXIOM XML report "
-                "Baker can read"
+                "Mabillon can read"
             )
 
 
 def _refuse_doctype(*_a: object) -> None:
-    raise ValueError("the XML report declares a document type; Baker does not read such XML")
+    raise ValueError("the XML report declares a document type; Mabillon does not read such XML")
 
 
 def _refuse_entity(*_a: object) -> None:
-    raise ValueError("the XML report declares an entity; Baker does not read such XML")
+    raise ValueError("the XML report declares an entity; Mabillon does not read such XML")
 
 
 class _HashingReader:
@@ -455,7 +455,7 @@ def _known_field(name: object) -> bool:
 
 def read_workbook(data: bytes) -> ReadReport:
     """The Excel report: a case sheet (key, value pairs) and one sheet per artifact type, whose
-    header is the first of its top rows holding two or more field names Baker knows (or one,
+    header is the first of its top rows holding two or more field names Mabillon knows (or one,
     when it is the row's only value)."""
     wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
     arts: list[Artifact] = []
@@ -637,7 +637,7 @@ class _Mapper:
         kind, app = classify(art.name, truncated)
         self.artifact_counts[art.name] = len(art.hits)
         if kind is None:
-            # A sheet with no header Baker knows is counted in rows, any header included.
+            # A sheet with no header Mabillon knows is counted in rows, any header included.
             count = "rows" if art.locator == art.name and art.header_locator is None else "records"
             self.cov.not_imported.append(
                 {"name": art.name, "reason": not_imported_reason(art.name), count: len(art.hits)}
@@ -661,7 +661,7 @@ class _Mapper:
                 self.cov.not_imported.append(
                     {
                         "name": art.name,
-                        "reason": "device details with no field Baker knows",
+                        "reason": "device details with no field Mabillon knows",
                         "rows" if art.header_locator is None and art.locator == art.name
                         else "records": len(art.hits),
                     }
@@ -671,7 +671,7 @@ class _Mapper:
             self.cov.not_imported.append(
                 {
                     "name": art.name,
-                    "reason": "no header row with field names Baker knows",
+                    "reason": "no header row with field names Mabillon knows",
                     "rows": len(art.hits),
                 }
             )
@@ -939,7 +939,7 @@ class AxiomImporter:
             try:
                 report = read_workbook(data)
             except Exception as err:  # noqa: BLE001 - say what the file is not
-                raise ValueError(f"{path.name} is not an Excel workbook Baker can read") from err
+                raise ValueError(f"{path.name} is not an Excel workbook Mabillon can read") from err
         require_sha256(path.name, self.expected_sha256, sha)  # the XML parsed is the XML checked
         return self._write(path, sha, conn, report)
 
@@ -1067,7 +1067,7 @@ class AxiomImporter:
             audit_log.append(conn, source.imported_at_utc, "system", "import", payload)
             if rep.fmt == "xml" and sha256_file(path) != sha:
                 raise ValueError(
-                    f"{path.name} changed while Baker read it; nothing was imported. Nothing "
+                    f"{path.name} changed while Mabillon read it; nothing was imported. Nothing "
                     "should change a copied input, so check the case folder"
                 )
         return source
@@ -1076,7 +1076,7 @@ class AxiomImporter:
 def _summary(
     pairs: list[tuple[str, str, str]],
 ) -> tuple[dict[str, tuple[str, str]], dict[str, FieldName]]:
-    """key -> (value, locator) for the case sheet values Baker reads, and key -> the name as
+    """key -> (value, locator) for the case sheet values Mabillon reads, and key -> the name as
     written. A key may carry a zone and date format, as a time field's name does
     ('Acquisition Date/Time - UTC+00:00 (M/d/yyyy)')."""
     out: dict[str, tuple[str, str]] = {}

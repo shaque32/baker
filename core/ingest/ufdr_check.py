@@ -1,14 +1,14 @@
-"""UFDR self-check: does what Baker imported from a UFDR match the package's own report.xml?
+"""UFDR self-check: does what Mabillon imported from a UFDR match the package's own report.xml?
 
-Baker's UFDR reader (core/ingest/ufdr.py) was built from public descriptions of the format and
+Mabillon's UFDR reader (core/ingest/ufdr.py) was built from public descriptions of the format and
 has not yet been compared with a real package. This check is what an expert runs, offline, on
 their first real UFDR. It:
 
 1. reads report.xml a second time with its own small reader, independent of the importer's
-   record mapping: every model, field and attribute is counted, and for each record Baker should
+   record mapping: every model, field and attribute is counted, and for each record Mabillon should
    import it notes the body (as a hash), time, sender, recipients, record state, attachments,
    call duration and contact entries;
-2. imports the package with Baker's importer into a throwaway in-memory database (nothing is
+2. imports the package with Mabillon's importer into a throwaway in-memory database (nothing is
    written to a case, nothing leaves the computer);
 3. compares the two record by record, by locator.
 
@@ -19,7 +19,7 @@ It writes two files:
   only. No message text, name, phone number, identifier, file name, hash or device detail.
   Every string written to them is either built by this module or passes `_safe_name`, and a
   test plants marker strings in every value of a package and checks none comes out.
-- `ufdr-check-private.md`: STAYS ON THE COMPUTER. A sample of records with what Baker read for
+- `ufdr-check-private.md`: STAYS ON THE COMPUTER. A sample of records with what Mabillon read for
   each, to open side by side in Cellebrite Reader, and blanks for the counts Reader shows. The
   expert copies the yes/no totals into the shareable file.
 
@@ -782,8 +782,8 @@ class Count:
     in_report: int
     imported: int
     expected_not_imported: int  # same model id as an earlier record (imported once)
-    missing: list[str]  # locators in report.xml Baker has no record for
-    extra: list[str]  # Baker records with no model at that locator
+    missing: list[str]  # locators in report.xml Mabillon has no record for
+    extra: list[str]  # Mabillon records with no model at that locator
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -932,7 +932,7 @@ def compare(t: Tally, conn: sqlite3.Connection, src: str) -> tuple[list[Count], 
         "messages", "time_utc", "UTC time, for ISO 8601 times with an offset (read separately)"
     )
     sender = check("messages", "sender", "stated sender's identifier (else name)")
-    to = check("messages", "recipients", "every stated recipient is among Baker's recipients")
+    to = check("messages", "recipients", "every stated recipient is among Mabillon's recipients")
     direction = check(
         "messages",
         "direction",
@@ -1040,7 +1040,7 @@ def compare(t: Tally, conn: sqlite3.Connection, src: str) -> tuple[list[Count], 
             c_state.not_checked += 1
 
     # contacts --------------------------------------------------------------
-    k_entries = check("contacts", "entries", "one Baker row per distinct entry value")
+    k_entries = check("contacts", "entries", "one Mabillon row per distinct entry value")
     k_name = check("contacts", "name", "contact name")
     db_contacts: set[str] = set()
     names: dict[str, list[str | None]] = {}
@@ -1156,7 +1156,7 @@ def _refusal(msg: str) -> str:
     for needle, text in _REFUSALS:
         if needle in msg:
             return text
-    return "Baker's importer refused the package (the reason is in the private file)"
+    return "Mabillon's importer refused the package (the reason is in the private file)"
 
 
 def _shareable(
@@ -1295,7 +1295,7 @@ def _safe_field(label: str) -> str:
 
 
 def _sample(t: Tally, conn: sqlite3.Connection, src: str, n: int) -> list[dict[str, object]]:
-    """Up to n records of each kind, picked with a fixed seed, with what Baker stored."""
+    """Up to n records of each kind, picked with a fixed seed, with what Mabillon stored."""
     rng = random.Random(20261014)  # noqa: S311 - a reproducible sample, not a secret
     out: list[dict[str, object]] = []
     ids = [r[0] for r in conn.execute(
@@ -1405,7 +1405,7 @@ def _cell(v: object) -> str:
 def shareable_markdown(d: dict) -> str:
     pkg = d["package"]
     lines = [
-        "# Baker UFDR self-check",
+        "# Mabillon UFDR self-check",
         "",
         "**Shareable.** This file holds counts, field names, record positions and value shapes "
         "only: no message text, names, numbers, file names or device details. Read it before "
@@ -1414,17 +1414,22 @@ def shareable_markdown(d: dict) -> str:
         f"- Check {d['baker_ufdr_check']}, importer {d['importer']} "
         f"(format support: {d['format_support']}), run {d['checked_at_utc']}",
         f"- Differences found: **{d['differences']}**"
-        + ("" if d["imported"] else f" (Baker refused the package: {d['import_refused_because']})"),
+        + (
+            ""
+            if d["imported"]
+            else f" (Mabillon refused the package: {d['import_refused_because']})"
+        ),
         f"- Package: {pkg['files_besides_report']} files besides report.xml, report.xml "
         f"{pkg['report_xml_bytes']} bytes, report version {pkg['report_version']}, "
         f"Physical Analyzer {pkg['physical_analyzer_version']}, "
-        f"namespace {'known' if pkg['namespace_known'] else 'NOT the one Baker expects'}",
+        f"namespace {'known' if pkg['namespace_known'] else 'NOT the one Mabillon expects'}",
         f"- Extractions: {_inline(pkg['extraction_types'])}; partial: "
         f"{pkg['partial_extractions']}; tagged files: {pkg['tagged_files']}",
         "",
-        "## Records: report.xml against Baker",
+        "## Records: report.xml against Mabillon",
         "",
-        "| Record | In report.xml | Imported by Baker | Repeats imported once | Missing | Extra |",
+        "| Record | In report.xml | Imported by Mabillon | Repeats imported once | Missing "
+        "| Extra |",
         "|---|---|---|---|---|---|",
     ]
     for r in d["records"]:
@@ -1435,7 +1440,7 @@ def shareable_markdown(d: dict) -> str:
     if any(r["record"] == RELATED_RECORD for r in d["records"]):
         lines.append(
             '\nFor message copies under RelatedModels, "Repeats imported once" counts copies '
-            "that match no message and that Baker lists for review instead of importing."
+            "that match no message and that Mabillon lists for review instead of importing."
         )
     if d.get("copies_under_related_models"):
         lines.append(
@@ -1475,7 +1480,7 @@ def shareable_markdown(d: dict) -> str:
         "What differed, in your words (no case content):",
         "",
         "",
-        "## What Baker did not read",
+        "## What Mabillon did not read",
         "",
     ]
     cov = d["baker_coverage"]
@@ -1514,7 +1519,7 @@ def _inline(d: dict) -> str:
 
 def private_markdown(result: Result) -> str:
     lines = [
-        "# Baker UFDR self-check: records to compare in Cellebrite Reader",
+        "# Mabillon UFDR self-check: records to compare in Cellebrite Reader",
         "",
         "**PRIVATE. This file holds case content. Keep it on this computer; do not send it.**",
         "",
@@ -1529,7 +1534,7 @@ def private_markdown(result: Result) -> str:
         "",
     ]
     if result.import_error:
-        lines += [f"Baker refused the package: {result.import_error}", ""]
+        lines += [f"Mabillon refused the package: {result.import_error}", ""]
     groups: dict[str, list[dict[str, object]]] = {}
     for rec in result.sample:
         groups.setdefault(str(rec["kind"]), []).append(rec)
@@ -1542,5 +1547,5 @@ def private_markdown(result: Result) -> str:
             lines.append("| " + " | ".join(_cell(rec[k]) for k in keys) + " |  |  |")
         lines.append("")
     if not groups:
-        lines.append("Baker imported no records to sample.")
+        lines.append("Mabillon imported no records to sample.")
     return "\n".join(lines) + "\n"

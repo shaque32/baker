@@ -61,7 +61,7 @@ entities are ever read). Field names are matched case-insensitively.
 | `Attachment` | `attachments` | `Filename`, `ContentType` (MIME type), a path to the file in the package (`attachment_extracted_path`, `LocalPath`, else the `Local Path` of the `taggedFiles` file its `file_id` names), a stated `SHA256` |
 
 A message's `Type` is not read for direction (it names the content kind), nor is an MMS
-`Subject`. Other field names are listed in coverage as fields Baker does not read.
+`Subject`. Other field names are listed in coverage as fields Mabillon does not read.
 Known types not imported yet (`Location`, `Email`, `WebBookmark`, ... see `NOT_IMPORTED_TYPES`)
 are listed with their counts; any other type is listed for review as not recognised.
 
@@ -108,7 +108,7 @@ Metadata items read (by name, letters and digits only, case-insensitive):
 already there), `DeviceInfoOSVersion`, `DeviceInfoTimeZone` (stored on the device), and a
 Physical Analyzer version item when present. The extraction type comes from `extractionInfo`
 `type`; several different types give `unknown`. Extractions naming more than one device are
-refused: Baker imports one device per file and cannot attribute the records.
+refused: Mabillon imports one device per file and cannot attribute the records.
 
 ### Mapping
 
@@ -130,7 +130,7 @@ order is never assumed: it is read only when the package decides it or the exper
 only when report.xml writes it as `&#13;`.
 
 Record states: the `deleted_state` attribute (`Intact` gives 0; `Deleted` or `Trash` gives 1;
-anything else, or none, gives NULL). Every value seen is counted in coverage. Baker never says a
+anything else, or none, gives NULL). Every value seen is counted in coverage. Mabillon never says a
 record was deleted; the flag records what the package stated.
 
 A record with no time value is listed (`no_time`), as the reports' missing time column is.
@@ -205,7 +205,7 @@ every record was compared by hand with report.xml. Neither is in the repo.
 
 | Sample | Where it is from | Records | What it showed |
 |---|---|---|---|
-| `test.ufdr` from FlorianRudolf/autopsy-udfr (LGPL-2.1, commit 6f8f66d, SHA-256 `43d5eedc...c812`) | Hand-made and anonymised by that project's author from a report version 5.3.1.0 package (German case fields) | 4 messages, 2 contacts, 1 attachment, an Email and 2 InstalledApplication (not imported) | An Attachment can name its file only through `file_id`, a `taggedFiles` entry and its `Local Path` (Windows separators). Baker did not follow it, so the file was never hashed. Fixed. |
+| `test.ufdr` from FlorianRudolf/autopsy-udfr (LGPL-2.1, commit 6f8f66d, SHA-256 `43d5eedc...c812`) | Hand-made and anonymised by that project's author from a report version 5.3.1.0 package (German case fields) | 4 messages, 2 contacts, 1 attachment, an Email and 2 InstalledApplication (not imported) | An Attachment can name its file only through `file_id`, a `taggedFiles` entry and its `Local Path` (Windows separators). Mabillon did not follow it, so the file was never hashed. Fixed. |
 | IPED's UFED model fixtures (GPL-3, sepinf-inc/IPED commit 129ce8f) wrapped in a minimal report.xml shell | IPED's tests, one described as a synthetic sample of the PA 10.10 message model | 13 messages, 5 attachments, 2 UserAccounts | A UserAccount whose first entry is a `ProfilePicture` got the picture's link as the phone owner's account identifier. Fixed. |
 
 Forwarded messages: a message marked `Forwarded` (in its `Labels`, or on a `MessageLabel` or
@@ -238,8 +238,8 @@ verified.
 1. An expert runs `baker ufdr-check` on a real UFDR on their own computer
    (docs/ingest/ufdr_check.md). Nothing leaves the computer except the check's shareable
    report, which holds no case content. The package itself never goes into the repo or a prompt.
-2. The report compares Baker's import with report.xml record by record and lists every record
-   type, field and value shape Baker did not read.
+2. The report compares Mabillon's import with report.xml record by record and lists every record
+   type, field and value shape Mabillon did not read.
 3. The expert opens the sampled records (20 of each kind, in the private file) in Cellebrite
    Reader and compares sender, recipients, time and offset, text, record state and attachments,
    and notes the counts Reader shows per category.

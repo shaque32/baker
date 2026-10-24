@@ -65,8 +65,8 @@ def connect(path: Path | str) -> sqlite3.Connection:
 def open_encrypted(path: Path, dek: bytes) -> sqlite3.Connection:
     if _cipher is None:
         raise CaseLocked(
-            "this case is encrypted and this install of Baker cannot open encrypted cases "
-            "(the sqlcipher3 package is missing); run Baker's installer again"
+            "this case is encrypted and this install of Mabillon cannot open encrypted cases "
+            "(the sqlcipher3 package is missing); run Mabillon's installer again"
         )
     conn = _cipher.connect(str(path))
     try:

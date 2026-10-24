@@ -5,7 +5,7 @@ An expert can flag three things on a claim page, all optional:
 | Flag | Where | Asks for |
 |---|---|---|
 | Wrong label | "Flag this label" under any evidence item | what the label should be (or "not sure"), an optional note |
-| Missed record | "Flag a record Baker missed" under the evidence | where the record is (optional), an optional note |
+| Missed record | "Flag a record Mabillon missed" under the evidence | where the record is (optional), an optional note |
 | Disagree with the verdict | "Flag: I disagree with this verdict" in the verdict card | what the verdict should be (or "not sure"), an optional note |
 
 One click opens the form, one click saves it. No reason is required and nothing waits on a flag.
@@ -25,9 +25,9 @@ One click opens the form, one click saves it. No reason is required and nothing 
 - A flag needs a claim with a verdict on the audit on screen. Each form carries the run it
   showed; if the audit on screen changed before the expert saved, the flag is refused with
   "reload and flag again", so it is never counted against output the expert did not see.
-- After an expert override, a verdict flag records Baker's verdict (the one the rules gave,
+- After an expert override, a verdict flag records Mabillon's verdict (the one the rules gave,
   from the `verdict.override` log entry), not the expert's replacement. The verdict form does not
-  offer Baker's own verdict, and a flag naming it is refused.
+  offer Mabillon's own verdict, and a flag naming it is refused.
 - A label flag must name a label other than the item's own. A claim the expert removed takes no
   new flags, and flags made on it before it was removed are not counted.
 - A label flag needs an item in the audit on screen. An item a later audit dropped still opens on
