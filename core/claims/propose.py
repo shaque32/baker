@@ -1,4 +1,4 @@
-"""`baker claims propose`: the local model proposes claims, the expert edits the list.
+"""`mabillon claims propose`: the local model proposes claims, the expert edits the list.
 
 Proposals go in as status 'proposed' with the model run that made them. Nothing here accepts
 a claim: the expert accepts, edits or removes each one (core/review/actions.py). A paragraph

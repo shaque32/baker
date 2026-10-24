@@ -75,8 +75,8 @@ Full design: `docs/encryption.md`.
 - **What is encrypted.** `case.db` with SQLCipher 4 (AES-256 per page, HMAC-SHA512 per page) and
   every file in `inputs/` with AES-256-GCM in authenticated 1 MiB chunks.
 - **Default.** New cases made in the browser are encrypted by default (the box can be unticked).
-  `baker init` on the command line and the synthetic demo make plain cases. An existing plain case
-  is never encrypted silently; the expert presses "Encrypt this case" or runs `baker encrypt`.
+  `mabillon init` on the command line and the synthetic demo make plain cases. An existing plain case
+  is never encrypted silently; the expert presses "Encrypt this case" or runs `mabillon encrypt`.
 - **Not encrypted.** `case.json`, so a locked case can be listed. It holds the case name, when the
   case was made, who made it (the name entered on the screen), the claim order (claim ids only) and
   the timeline tolerance and gap settings. Don't put a client's name in the case name if that
@@ -99,7 +99,7 @@ Full design: `docs/encryption.md`.
   option or an environment variable, so it stays out of shell history.
 - **Lost both passphrase and recovery key.** Nobody can open the case, Mabillon included.
 - **Cloud API key (opted-in case).** The expert's own Anthropic key; Mabillon runs no server and holds no key of
-  its own. It is read from `$BAKER_ANTHROPIC_API_KEY`; or, in an encrypted case, from the key saved
+  its own. It is read from `$MABILLON_ANTHROPIC_API_KEY`; or, in an encrypted case, from the key saved
   in that case, sealed with AES-256-GCM under the case key, so it is unreadable while the case is
   locked; or from `~/.baker/cloud.json`, an owner-only (0600) plain file. The key travels in a
   request header and is never written to the audit log.
@@ -107,10 +107,10 @@ Full design: `docs/encryption.md`.
 ## 4. Retention and deletion
 
 **On the computer.** Mabillon deletes nothing on a schedule. A case is kept until the expert deletes
-it. Mabillon has no "delete case" button: delete the case folder (under `~/Baker/cases` by default),
+it. Mabillon has no "delete case" button: delete the case folder (under `~/Mabillon/cases` by default),
 plus any backups of it, any downloaded reports, any request draft downloaded from the case
 (`baker-request-draft.txt`: file names, device labels, extraction details, hashes) and any
-`baker ufdr-check` output folder (`ufdr-check-private.md` holds sample records). Outside the case folders Mabillon writes only small
+`mabillon ufdr-check` output folder (`ufdr-check-private.md` holds sample records). Outside the case folders Mabillon writes only small
 settings under `~/.baker`: `model.json` (which model file to use), `model-check.json` (the model
 file's checked hash), `speed.json` (seconds per model call) and, if the expert saves an Anthropic key outside a case,
 `cloud.json`. None holds case content; `cloud.json` holds the key. Each case folder also has
@@ -207,7 +207,7 @@ python -m pytest -q \
    `127.0.0.1:8765` (8766 for the demo) and your browser's connections to it.
 3. A firewall that asks per connection (for example Little Snitch on a Mac) shows the same.
 
-`baker serve --open` asks the operating system to open your browser at the local address; that is
+`mabillon serve --open` asks the operating system to open your browser at the local address; that is
 the browser's connection to 127.0.0.1, not an outside one.
 
 An opted-in case adds HTTPS connections to `api.anthropic.com`, and only those; each appears in

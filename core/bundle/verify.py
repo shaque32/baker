@@ -1,4 +1,4 @@
-"""Check a reproducibility bundle offline (`baker verify-bundle`).
+"""Check a reproducibility bundle offline (`mabillon verify-bundle`).
 
 Nothing here touches a case or the network. The bundle's tables are loaded into a database in
 memory, built from core/schema.sql, and checked in this order; any failure fails the bundle:
