@@ -14,7 +14,7 @@ some-inputs/.
 Importing a file. The upload is written into the case's inputs folder and SHA-256 hashed as it
 is written, then made read-only. The importer then opens that copy read-only and hashes exactly
 the bytes it parses (core/ingest/source_file.py, core/ingest/govdoc.py); the two hashes must
-agree or nothing is stored. The expert's original file is never opened by Baker. A file whose
+agree or nothing is stored. The expert's original file is never opened by Mabillon. A file whose
 hash is already in the case is refused, so nothing is imported twice. In an encrypted case the
 upload is encrypted as it is written, and the hashes are of the plain bytes, so they still
 match the expert's original file.

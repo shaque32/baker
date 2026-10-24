@@ -1,10 +1,10 @@
-"""Recent unexpected errors in this Baker session, kept in memory for the bug report.
+"""Recent unexpected errors in this Mabillon session, kept in memory for the bug report.
 
-Baker writes no log file. When the review screen or a background job hits an unexpected error,
+Mabillon writes no log file. When the review screen or a background job hits an unexpected error,
 this keeps what a developer needs and nothing from the case: the time, where it happened (a
-fixed label), the exception's type names, and the file and line of each frame in Baker's own
+fixed label), the exception's type names, and the file and line of each frame in Mabillon's own
 code. The error message is never kept, because it can quote a file name, a path or case text.
-Frames outside Baker (the standard library, installed packages) collapse to one marker, since
+Frames outside Mabillon (the standard library, installed packages) collapse to one marker, since
 their paths name the user's folders.
 """
 
@@ -28,7 +28,7 @@ class ErrorEvent:
     at_utc: str
     where: str  # one of WHERES
     types: tuple[str, ...]  # the exception's type, then each cause or context, outermost first
-    frames: tuple[str, ...]  # "core/pipeline.py:123 in run_audit", or "(outside Baker)"
+    frames: tuple[str, ...]  # "core/pipeline.py:123 in run_audit", or "(outside Mabillon)"
 
     def record(self) -> dict[str, object]:
         return {
@@ -65,7 +65,7 @@ def _frames_one(exc: BaseException) -> list[str]:
     out: list[str] = []
     for fs in traceback.extract_tb(exc.__traceback__):
         rel = _baker_path(fs.filename)
-        line = "(outside Baker)" if rel is None else f"{rel}:{fs.lineno} in {fs.name}"
+        line = "(outside Mabillon)" if rel is None else f"{rel}:{fs.lineno} in {fs.name}"
         if not out or out[-1] != line:  # one marker for a run of outside frames
             out.append(line)
     return out

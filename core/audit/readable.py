@@ -1,6 +1,6 @@
 """What a model reads: phones, people and accounts by the names the case gives them.
 
-Stored assumptions keep Baker's ids (Assumption.text, assumption ids, every check). Model input
+Stored assumptions keep Mabillon's ids (Assumption.text, assumption ids, every check). Model input
 renders through here instead, so the 14B, the small stance model and the data it is trained on
 read one wording. Agreed on 2026-10-14 after case01's paragraph 10.1, where "sent by
 person:dev:item1:owner" met a phone that showed the same sender as "Dan P":
@@ -14,7 +14,7 @@ person:dev:item1:owner" met a phone that showed the same sender as "Dan P":
 - a count is "exactly 12", "at least 12" or "at most 12".
 
 A sender line prints the account, the source's own name for the sender if it kept one,
-"(owner)" for the phone's own account, then in brackets the people Baker holds as confirmed for
+"(owner)" for the phone's own account, then in brackets the people Mabillon holds as confirmed for
 that account, as the signed probe set prints senders: on item1, "SMS +12125550111 (owner)
 [Daniel Petrov (the user of item1)]"; on another phone that saved the number, "SMS
 +12125550111 Dan P [Daniel Petrov (the user of item1)]". Only confirmed device_owner
@@ -26,7 +26,7 @@ account seen in the chat's records, printed as its sender line prints it, so a m
 chat between two accounts from a group whose other members say nothing near the record.
 
 No two people of a case read alike: people who share a name also print their id ("Alex Smith
-(person:alex-smith-1a2b3c4d)"), except phone users, whom their phone tells apart. Anything Baker
+(person:alex-smith-1a2b3c4d)"), except phone users, whom their phone tells apart. Anything Mabillon
 holds no name for prints its id, so a run never fails on a name.
 """
 
@@ -140,7 +140,7 @@ class CaseNames(Names):
         return f"{COUNT_WORDS.get(op, op)} {n}"
 
     def people_of(self, account_id: str) -> list[str]:
-        """The people Baker holds as confirmed for an account, by name, in a fixed order."""
+        """The people Mabillon holds as confirmed for an account, by name, in a fixed order."""
         acc = self.account_names.get(account_id)
         if acc is None:
             return []
@@ -181,7 +181,7 @@ def assumption_text(a: Assumption, names: CaseNames) -> str:
 
 def case_names(conn: sqlite3.Connection) -> CaseNames:
     """Read the names from a case database. Read-only. The people on an account are exactly
-    the parties Baker's checks tie to it (core.audit.checks._common.person_party)."""
+    the parties Mabillon's checks tie to it (core.audit.checks._common.person_party)."""
     data = CaseData(conn)
     devices = conn.execute("SELECT id, source_id FROM devices").fetchall()
     per_source = Counter(sid for _, sid in devices)

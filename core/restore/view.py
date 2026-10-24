@@ -8,7 +8,7 @@ The match itself is derived: deterministic code found and verified it.
 
 Related threads are matched by identifier as the sources show it (a phone number compared by its
 digits, a handle or user id compared as written, ignoring case), plus identity links an expert
-confirmed. Baker never links two different identifiers on its own: proposed identity links do
+confirmed. Mabillon never links two different identifiers on its own: proposed identity links do
 not count here.
 """
 

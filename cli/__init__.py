@@ -1,1 +1,1 @@
-"""Baker command line: `python -m cli <command>`."""
+"""Mabillon command line: `python -m cli <command>`."""

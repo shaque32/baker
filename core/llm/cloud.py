@@ -10,7 +10,7 @@ assumption, the record, its nearby messages and the claim. Never an input file o
 database. What comes back is checked exactly like the local model's answer: strict JSON, and a
 quote that code verifies verbatim before anything is stored.
 
-The key is the expert's own Anthropic key (bring your own key; Baker runs no server). It is read
+The key is the expert's own Anthropic key (bring your own key; Mabillon runs no server). It is read
 from $BAKER_ANTHROPIC_API_KEY; else, for an encrypted case, from the key saved in that case,
 sealed under the case key (core/encryption.py seal_secret), so it is unreadable while the case is
 locked; else from ~/.baker/cloud.json (owner-only), which also holds the other settings:
@@ -98,9 +98,9 @@ class CloudConfigError(RuntimeError):
 class CloudError(RuntimeError):
     """A cloud call that produced no answer. `sticky` failures (no network, a rejected key, the
     API down) pause the audit; the others (a refusal, an answer cut off) drop this label only.
-    `retryable` ones (no connection, a timeout, 408, 409, 429, 5xx) may be sent again; Baker
+    `retryable` ones (no connection, a timeout, 408, 409, 429, 5xx) may be sent again; Mabillon
     retries them itself (core/audit/_local_model.py SentLog), so every send is logged first.
-    `response` is the API's answer when there was one that Baker refused (another model, a
+    `response` is the API's answer when there was one that Mabillon refused (another model, a
     refusal, a cut-off answer), so its ids and raw text are logged like any answer's."""
 
     def __init__(
@@ -284,7 +284,7 @@ class ClaudeModel:
                     api_key=self.cfg.api_key,
                     base_url=self.cfg.base_url,
                     timeout=REQUEST_TIMEOUT_SECONDS,
-                    max_retries=0,  # Baker retries itself, logging each send (SentLog)
+                    max_retries=0,  # Mabillon retries itself, logging each send (SentLog)
                 )
             except Exception as e:  # noqa: BLE001 - a bad local proxy or HTTP setting
                 raise CloudError(

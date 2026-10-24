@@ -181,7 +181,7 @@ def test_an_encrypted_case_keeps_the_key_sealed_under_the_case_key(tmp_path, mon
     assert KEY.encode() not in where.read_bytes()
     assert stat.S_IMODE(os.stat(where).st_mode) == 0o600 or os.name == "nt"
     assert cloud.load_config(plain, case_db=dbp).api_key == KEY
-    encryption.forget_all()  # Baker stopped: every case is locked
+    encryption.forget_all()  # Mabillon stopped: every case is locked
     with pytest.raises(cloud.CloudConfigError, match="cannot be read"):
         cloud.load_config(plain, case_db=dbp)
 
@@ -511,7 +511,7 @@ def test_a_model_that_has_not_passed_the_signed_test_labels_locally(case_db, mon
     cloud_policy.set_cloud(case_db, "expert:Ana", allowed=True, csam=False)
     choice = cloud_policy.choose(case_db, _key)
     assert not choice.use
-    assert "has not passed Baker's signed stance test" in choice.why
+    assert "has not passed Mabillon's signed stance test" in choice.why
 
 
 def test_a_pass_on_another_stance_prompt_does_not_count(case_db, monkeypatch):
