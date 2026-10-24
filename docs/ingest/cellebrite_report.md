@@ -69,7 +69,7 @@ Summary sheet: key-value pairs, key in column A, value in column B. Keys read (a
 | from | `From`, `Sender`, `Author` |
 | to | `To`, `Recipients`, `Receiver`, `Participants`/`Members` (To only if `To` is absent: means all participants other than the sender) |
 | body | `Body`, `Message`, `Text`, `Content`, `Message Body`, `Message Text`. Never `Snippet`, `Preview` or `Body (Translated)`: those are listed as columns Baker does not read |
-| time | `Timestamp`, `Date/Time`, `Date & Time`, `Datetime`, `Time Stamp`, `Timestamp: Time` alone (full value), `Timestamp: Date` + `Timestamp: Time`, separate `Date` and `Time` columns (read together), `Time`, `Date`. A fixed offset in the column name (`Timestamp (UTC+3)`, `Time - UTC`) applies to values with no offset of their own; a zone name there (`Time (Device local)`) is recorded and not applied |
+| time | `Timestamp`, `Date/Time`, `Date & Time`, `Datetime`, `Time Stamp`, `Timestamp: Time` alone (full value), `Timestamp: Date` + `Timestamp: Time`, separate `Date` and `Time` columns (read together; when `Time` already holds the whole date and time, as in Physical Analyzer's per-category export where `Date` is an Excel serial number, `Time` is read and `Date` must name the same local date, else no time is set), `Time`, `Date`. A fixed offset in the column name (`Timestamp (UTC+3)`, `Time - UTC`) applies to values with no offset of their own; a zone name there (`Time (Device local)`) is recorded and not applied |
 | direction | `Direction`, `Message Direction`, `Type`, `Folder`, `Status` (values `Incoming`, `Outgoing`, `Sent`, `Received`, `Inbox`, `Missed`, `Read`, `Unread`) |
 | deleted | `Deleted`, `Deleted - Instant Message`, `Deleted - Chat`, `Deleted - Call`, `Record status` |
 | attachment | `Attachment #1`..`Attachment #N`, `Attachment 1`, `Attachments`, `Attached files`, `Attachment #1: File name` |
@@ -214,3 +214,11 @@ except `imported_at_utc`.
 The generator adopted these importer rules: `curated_report`; blank cells give NULL;
 `accounts.device_id` only on the phone's own accounts; first-seen display name; no language,
 MIME type or attachment hash from a report; device label from the Device field.
+
+## Rows numbered as copies
+
+Physical Analyzer numbers a record it lists again `3(1)` after `3` in the `#` column. In a rooted
+Android extraction this is often the same database read twice, at its own path and under
+`/sbin/.magisk/mirror/`. Each such row is imported as a record of its own and listed in coverage
+(`numbered_as_copy`), because whether two rows are one message is the expert's call. A count of
+those messages may include one message twice until the expert checks.

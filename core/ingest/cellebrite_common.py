@@ -15,7 +15,7 @@ import re
 import sqlite3
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
 from enum import StrEnum
 
 from core.contracts import (
@@ -31,7 +31,7 @@ from core.ingest import forwarded
 from core.ingest.source_file import SourceFile
 from core.review import audit_log
 
-IMPORTER_VERSION = "0.2.0"
+IMPORTER_VERSION = "0.3.0"
 HEADER_SCAN_ROWS = 10
 MAX_LISTED = 50  # cap on ids listed in a coverage payload
 FORWARDED_LABEL_RE = re.compile(r"\b(?:auto-?)?forward(?:ed)?\b", re.IGNORECASE)
@@ -720,6 +720,8 @@ class TimeProblem(StrEnum):
     NAMED_ZONE = "named_zone"  # 'EST', '(Eastern Standard Time)': not applied
     NUMERIC = "numeric"  # a bare number (an Excel serial date shown as a number)
     NO_OFFSET = "no_offset"  # a valid local time with no offset anywhere in the report
+    # A 'Date' column whose date differs from the full date and time in the 'Time' column
+    DATE_COLUMN_DISAGREES = "date_column_disagrees"
 
 
 def parse_offset(off: str | None) -> int:
@@ -1272,6 +1274,11 @@ class TimeContext:
 def _row_time(row: Row, tctx: TimeContext, cov: Coverage) -> Timestamp:
     if row.has("ts_time") and not row.has("ts") and not row.has("ts_date"):
         used, value = "ts_time", row.get("ts_time")  # full value in one column
+    elif row.has("ts_date") and row.has("ts_time") and _holds_date_and_time(row.get("ts_time")):
+        # Physical Analyzer's per-category Excel export writes 'Date' as an Excel serial number
+        # and 'Time' as the full value ('2/14/2020 1:09:03 PM(UTC+0)'). The full value is read;
+        # the Date column is only a check on it.
+        return _time_with_date_check(row, tctx, cov)
     elif row.has("ts_date") and row.has("ts_time"):
         dv = row.get("ts_date")
         d = dv.date().isoformat() if isinstance(dv, datetime) else row.text("ts_date")
@@ -1280,9 +1287,58 @@ def _row_time(row: Row, tctx: TimeContext, cov: Coverage) -> Timestamp:
         value = None if d is None and t is None else f"{d or ''} {t or ''}".strip()
     else:
         used, value = "ts", row.get("ts")
+    return _counted(parse_time(value, tctx.order, _fallback(used, tctx)), used, row, tctx, cov)
+
+
+def _fallback(used: str, tctx: TimeContext) -> int | None:
     header_off = tctx.header_offsets.get(used)
-    fallback = header_off if header_off is not None else tctx.report_offset
-    res = parse_time(value, tctx.order, fallback)
+    return header_off if header_off is not None else tctx.report_offset
+
+
+def _holds_date_and_time(cell: Cell) -> bool:
+    """A 'Time' cell written as a whole date and time, not a time of day alone."""
+    if not isinstance(cell, str):
+        return False
+    m = _TS_RE.match(_canonical(cell.strip()))
+    return m is not None and m.group("H") is not None
+
+
+# Excel's 1900 date system: serial 1 is 1900-01-01, counted from 1899-12-30 for serials past
+# the leap-day bug at 60. A workbook in the 1904 system gives other dates, and so fails the check.
+_EXCEL_EPOCH = datetime(1899, 12, 30)
+
+
+def _date_column_value(cell: Cell, order: DateOrder) -> date | None:
+    """The calendar date a 'Date' cell holds: an Excel date cell, an Excel serial number, or a
+    date written as text. None when it holds none of these."""
+    if isinstance(cell, datetime):
+        return cell.date()
+    if isinstance(cell, int | float) and not isinstance(cell, bool):
+        if not 61 <= cell < 2958466:  # 1900-03-01 to 9999-12-31
+            return None
+        return (_EXCEL_EPOCH + timedelta(days=int(cell))).date()
+    if isinstance(cell, str):
+        res = parse_time(f"{cell.strip()} 00:00", order, 0)
+        return res.ts.utc.date() if res.ts.utc is not None else None
+    return None
+
+
+def _time_with_date_check(row: Row, tctx: TimeContext, cov: Coverage) -> Timestamp:
+    """Read the full value in 'Time'. When 'Date' holds a date, it must be the date written in
+    'Time' (local, in the value's own offset); when it is another date, or not a date at all,
+    no UTC time is set, because Baker cannot tell which column is right."""
+    res = parse_time(row.get("ts_time"), tctx.order, _fallback("ts_time", tctx))
+    dv = row.get("ts_date")
+    if res.ts.utc is not None and text(dv) is not None:
+        local = res.ts.utc + timedelta(minutes=res.ts.offset_min or 0)
+        if _date_column_value(dv, tctx.order) != local.date():
+            raw = f"{text(dv)} {res.ts.raw}"
+            res = _no_utc(raw, TimeProblem.DATE_COLUMN_DISAGREES)
+    return _counted(res, "ts_time", row, tctx, cov)
+
+
+def _counted(res: TimeResult, used: str, row: Row, tctx: TimeContext, cov: Coverage) -> Timestamp:
+    header_off = tctx.header_offsets.get(used)
     if res.problem is not None:
         tctx.tc.time_problems[res.problem.value] += 1
         _listed(tctx.tc.time_problem_locators, res.problem.value, row.locator)
@@ -1583,6 +1639,25 @@ def _header_like(cells: list[Cell]) -> bool:
     return len(vals) >= 2 and all(isinstance(c, str) and known_header(c) for c in vals)
 
 
+# Physical Analyzer numbers a record it lists again '3(1)' after '3': in a rooted Android
+# extraction the same database is read twice, at its own path and under /sbin/.magisk/mirror/.
+_COPY_NUMBER_RE = re.compile(r"^(\d+)\s*\(\d+\)$")
+
+
+def _flag_numbered_copies(rows: list[Row], header_norms: list[str], tc: TableCoverage) -> None:
+    """List rows numbered as a further copy of another row in the table. Each stays a record
+    of its own: whether two rows are one message is the expert's call, never Baker's."""
+    col = next((i for i, h in enumerate(header_norms) if h == "#"), None)
+    if col is None:
+        return
+    numbers = {text(r.cells[col]) for r in rows if col < len(r.cells)}
+    for r in rows:
+        m = _COPY_NUMBER_RE.match(text(r.cells[col]) or "") if col < len(r.cells) else None
+        if m and m.group(1) in numbers:
+            tc.flag_counts["numbered_as_copy"] += 1
+            _listed(tc.flagged_locators, "numbered_as_copy", r.locator)
+
+
 def _table_rows(
     table: RawTable, cov: Coverage
 ) -> tuple[RecordKind, list[Row], DateOrder, HeaderMap, TableCoverage, RawTable] | None:
@@ -1655,6 +1730,7 @@ def _table_rows(
             continue
         rows.append(row)
     tc.rows_imported = len(rows)
+    _flag_numbered_copies(rows, header_norms, tc)
     order = DateOrder()
     for v in _raw_time_values(rows):
         order.observe(v)
