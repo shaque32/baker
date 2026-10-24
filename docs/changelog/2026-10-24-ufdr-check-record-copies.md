@@ -27,7 +27,10 @@
     deleted) and accounts (same, name, identifier): each run with the importer, and with an
     importer that lists nothing;
   - a custom-typed copy held by a call or a contact, which fails before the importer fix;
-  - a call copy inside a call copy.
+  - a call copy inside a call copy;
+  - a Party copied under a call or a message, and two custom copies that differ only in an
+    embedded message (Codex on #130), each failing before its fix;
+  - which importer counter, message or record copies, an unmatched copy lands in.
 
   Public Hickman UFDRs (cloud container, report.xml only, 2026-10-24): 0 differences on all
   three, and every call, contact and account copy agrees. The copies the importer lists for
