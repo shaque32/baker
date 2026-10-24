@@ -14,7 +14,7 @@
   claim that a re-run gives identical labels. Why: the court-defensibility plan (PR B) asks the
   report to show the other side, per claim, what a verdict rests on and which parts a model only
   proposed.
-- Where: branch claude/project-thread-677up6
+- Where: PR #131
 - Verified: new tests in `tests/test_report_consistency.py` (C05 traces model proposed and
   expert confirmed; claims waiting on the expert show found-not-relied-on items and never
   "Expert confirmed"; an override says so; a hosted model run prints the hosted disclosure and a
