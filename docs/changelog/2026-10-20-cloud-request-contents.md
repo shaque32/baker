@@ -9,7 +9,7 @@
   recommends local mode where the tool's reliability may be challenged in court.
   `docs/install.md`, `docs/install-mac.md` and `docs/review-screen.md` point to it. Why: legal
   defensibility brief (Arsh, 2026-10-20), PR C; follow-up to #102's caveats.
-- Where: local only (branch prc2; goes up as a PR after #131 merges)
+- Where: PR #133
 - Verified: each listed field checked against `core/audit/stance.py` `create`,
   `core/audit/prompts/stance_cloud.md`, `core/audit/context.py` (`DEFAULT_WINDOW = 20`,
   `MAX_MEMBERS = 20`), `core/audit/readable.py`, `core/enrich/records.py` and
