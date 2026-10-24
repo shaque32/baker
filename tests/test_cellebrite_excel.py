@@ -386,3 +386,15 @@ def test_a_date_column_that_disagrees_with_the_full_time_sets_no_time(make_xlsx,
     assert got == {"a": None, "b": None, "c": "2020-02-14T13:09:03Z", "d": "2020-02-14T13:09:03Z"}
     (table,) = coverage(case_db)["tables"]
     assert table["time_problems"] == {"date_column_disagrees": 2}
+
+
+def test_the_date_check_uses_the_local_date_written_in_time(make_xlsx, case_db):
+    # 9:30 PM at UTC-5 is 02:30 UTC the next day: the Date column must name the local day.
+    t = "1/29/2020 9:30:00 PM(UTC-5)"
+    rows = [
+        _pa_row(1, "From:  +15550100001", 43859.895833333336, t, "Incoming", "local", "data"),
+        _pa_row(2, "From:  +15550100001", 43860.0, t, "Incoming", "utc", "data"),
+    ]
+    run(case_db, make_xlsx(_pa_sheet(rows)))
+    got = dict(case_db.execute("SELECT body, ts_utc FROM messages"))
+    assert got == {"local": "2020-01-30T02:30:00Z", "utc": None}
