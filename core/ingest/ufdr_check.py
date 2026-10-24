@@ -47,7 +47,7 @@ from core.encryption import open_input
 from core.ingest import ufdr
 from core.ingest.cellebrite_common import is_forwarded_label
 
-CHECK_VERSION = "0.2.0"
+CHECK_VERSION = "0.3.0"
 SHAREABLE_MD = "ufdr-check.md"
 SHAREABLE_JSON = "ufdr-check.json"
 PRIVATE_MD = "ufdr-check-private.md"
@@ -61,6 +61,12 @@ TOP_MESSAGE_TYPES = {"InstantMessage", "Message", "SMS", "MMS"}
 # "imported" counts copies matching a message Mabillon imported; "repeats" those matching none
 # that Mabillon lists for review instead
 RELATED_RECORD = "message copies under RelatedModels (matched to an imported message)"
+COPY_KINDS = ("Call", "Contact", "UserAccount")  # records whose copies have rows of their own
+RELATED_KIND_RECORDS = {
+    "Call": "call copies under RelatedModels (matched to the call holding them)",
+    "Contact": "contact copies under RelatedModels (matched to the contact holding them)",
+    "UserAccount": "account copies under RelatedModels (matched to the account holding them)",
+}
 CHAT_MESSAGE_TYPES = ufdr.MESSAGE_TYPES
 BODY = ("body", "text", "message", "content")
 TS = ("timestamp", "datetime")
@@ -161,6 +167,10 @@ class _Frame:
     # never one of the package's own records (it is matched to them by content instead)
     related: bool = False
     is_message: bool = False  # a message record: top-level, in a chat, or a copy of one
+    # a copy of a call, contact or account, or one a call, contact or account holds (any type):
+    # matched to the record holding it, in the row of `record_kind`
+    record_copy: bool = False
+    record_kind: str | None = None
     embedded: bool = False  # a message embedded in a message (EmbeddedInstantMessage)
     embedded_seen: int = 0
     embedded_said: list[tuple[object, ...]] = field(default_factory=list)  # _said() of each
@@ -277,6 +287,10 @@ class Tally:
         self.related_messages: dict[str, MessageRec] = {}
         # messages embedded in a record's message (at its locator + /Embedded[n]), by content
         self.embedded: dict[str, MessageRec] = {}
+        # what each call, contact and account says (see _record_said), and each copy of one,
+        # or held by one (with the row it is counted in)
+        self.record_said: dict[str, tuple[object, ...]] = {}
+        self.related_records: dict[str, tuple[str, tuple[object, ...]]] = {}
         # what each chat (or copied chat) says around its messages: app, id, name, participants
         self.chat_context: dict[str, tuple[object, ...]] = {}
         self._capture: tuple[_Frame, str, list[str]] | None = None
@@ -313,6 +327,20 @@ class Tally:
                 f.is_message = mtype in TOP_MESSAGE_TYPES or (
                     (frame.is_message or frame.embedded) and mtype != "Chat"
                 )
+                # a copy of a call, contact or account, or any copy one of them holds (one of
+                # another type never says the same, so it is listed); not one under a message,
+                # which is a message itself
+                if not f.is_message and mtype != "Chat":
+                    f.record_copy = (
+                        mtype in COPY_KINDS
+                        and (frame.top or frame.record_copy or frame.type == "Chat")
+                        or (frame.type in COPY_KINDS and (frame.top or frame.record_copy))
+                        or (frame.record_copy and mtype == frame.type)
+                    )
+                    if f.record_copy:
+                        f.record_kind = (
+                            mtype if mtype in COPY_KINDS else frame.record_kind or (frame.type)
+                        )
                 self.related_roots[mtype] += 1
             elif frame is not None and parent in ("modelField", "multiModelField"):
                 fname = self.attr_stack[-2].get("name", "")
@@ -328,7 +356,13 @@ class Tally:
                     frame.msg_seen[fname] += 1
                     loc = f"{frame.locator}/{fname}[{frame.msg_seen[fname]}]"
                 embedded = (
-                    (frame.is_message or frame.embedded)
+                    # a copy of another type than a call, contact or account is keyed as the
+                    # importer keys a message, embedded messages and all
+                    (
+                        frame.is_message
+                        or frame.embedded
+                        or (frame.record_copy and frame.type not in COPY_KINDS)
+                    )
                     and frame is self.frames[-1]
                     and depth == frame.depth + 2
                     and fname.lower() == "embeddedinstantmessage"
@@ -454,6 +488,16 @@ class Tally:
 
     def _close(self, f: _Frame, holder: str) -> None:
         parent = self.frames[-1] if self.frames else None
+        if (
+            f.related
+            and (f.is_message or f.record_copy)
+            and f.locator is not None
+            and f.locator.rpartition("/")[2].startswith("Related[")
+        ):
+            # a copy is a record of its own whatever its type is named (a Party, say), never
+            # part of the record holding it
+            self._related(f)
+            return
         if parent is not None and holder in ("attachments", "attachment"):
             name = _first(f.fields, ATT_NAME)
             path = _first(f.fields, ATT_PATH)
@@ -502,9 +546,11 @@ class Tally:
                 tuple((p[0], p[1], p[3]) for p in f.parties.get("participants", [])),
             )
         if f.related:
-            if f.is_message:
-                self.related_messages[f.locator] = self._message_rec(f)
+            if f.is_message or f.record_copy:
+                self._related(f)
             return
+        if f.top and f.type in COPY_KINDS:
+            self.record_said[f.locator] = _record_said(f)
         if f.top and f.type == "UserAccount":
             u = _text(f.fields.get("username"))
             ident = u or next(iter(f.user_ids), None) or next(iter(f.entries), None)
@@ -523,6 +569,19 @@ class Tally:
             self.contacts[f.locator] = ContactRec(
                 f.locator, _digest(_text(f.fields.get("name"))), len(f.entries)
             )
+
+    def _related(self, f: _Frame) -> None:
+        loc = f.locator or ""
+        if f.is_message:
+            self.related_messages[loc] = self._message_rec(f)
+        else:
+            said = (
+                _record_said(f)
+                if f.type in COPY_KINDS
+                # another type: the importer keys it as it keys a message
+                else ("another type", _said(self._message_rec(f)))
+            )
+            self.related_records[loc] = (f.record_kind or f.type, said)
 
     def _repeat(self, f: _Frame) -> None:
         mid = f.attrs.get("id")
@@ -647,6 +706,38 @@ def _state(f: _Frame) -> str | None:
         if state is not None
         else _first(f.fields, ("deleted_state", "deletedstate", "recordstatus"))
     )
+
+
+def _record_said(f: _Frame) -> tuple[object, ...]:
+    """What a call, contact or account says, field by field as written: the fields the
+    importer maps for it."""
+    recovery = ufdr._recovery(f.attrs, _first(f.fields, ("carved", "iscarved")))
+    if f.type == "Call":
+        ps = f.parties
+        return (
+            f.type,
+            _first_raw(f.fields, ("source",)),
+            _first_raw(f.fields, CALL_TS),
+            _first_raw(f.fields, ("duration",)),
+            tuple(_first_raw(f.fields, (n,)) for n in ("direction", "type", "status")),
+            # each side in the order written: the mapper takes the first party on each
+            tuple((p[0], p[1], p[3]) for p in ps.get("from", [])),
+            tuple((p[0], p[1], p[3]) for p in ps.get("to", [])),
+            tuple((p[2], (p[0], p[1], p[3])) for p in ps.get("parties", [])),
+            _state(f),
+            recovery,
+        )
+    if f.type == "Contact":
+        return (f.type, _first_raw(f.fields, ("name",)), tuple(f.entries), _state(f), recovery)
+    if f.type == "UserAccount":
+        ident = _text(f.fields.get("username")) or next(iter(f.user_ids), None)
+        return (
+            f.type,
+            _first_raw(f.fields, ("source",)),
+            ident or next(iter(f.entries), None),
+            _first_raw(f.fields, ("name",)),
+        )
+    raise ValueError(f.type)
 
 
 def _text(v: str | None) -> str | None:
@@ -813,14 +904,15 @@ def _counts(record: str, xml: dict, db: set[str], repeats: set[str]) -> Count:
     return Count(record, len(want), len(db), len(rep - db), missing, extra)
 
 
-def _listed_copies(conn: sqlite3.Connection, src: str) -> tuple[set[str], int]:
+def _listed_copies(conn: sqlite3.Connection, src: str) -> tuple[set[str], int, int]:
     """The copies Mabillon's import listed for review as matching no record: the locators its
-    coverage record lists (capped, any type) and how many message copies there were."""
+    coverage record lists (capped, any type) and how many message copies, and how many other
+    copies, there were."""
     row = conn.execute(
         "SELECT payload_json FROM source_coverage WHERE source_id = ?", (src,)
     ).fetchone()
     if row is None:
-        return set(), 0
+        return set(), 0, 0
     p = json.loads(row[0])
     listed = {
         loc
@@ -829,7 +921,11 @@ def _listed_copies(conn: sqlite3.Connection, src: str) -> tuple[set[str], int]:
         for loc in (tb.get("flagged_locators") or {}).get("related_copy_unmatched", [])
     }
     counts = p.get("counts") or {}
-    return listed, int(counts.get("related_message_copies_matching_no_record", 0))
+    return (
+        listed,
+        int(counts.get("related_message_copies_matching_no_record", 0)),
+        int(counts.get("related_record_copies_matching_no_record", 0)),
+    )
 
 
 def _said(x: MessageRec) -> tuple[object, ...]:
@@ -889,6 +985,23 @@ def _unmatched_copies(
             else:
                 out.append(loc)
     return sorted(out, key=_loc_key)
+
+
+def _copy_count(
+    record: str, copies: set[str], unmatched: list[str], listed: set[str], n_listed: int
+) -> Count:
+    """A row of copies: each that does not match its holder must be one the importer lists
+    for review (related_copy_unmatched), else it is missing; one the importer lists that
+    matches here is a disagreement too (extra)."""
+    listed = listed & copies
+    wrong = sorted(listed - set(unmatched), key=_loc_key)
+    rest = [loc for loc in unmatched if loc not in listed]
+    # the coverage record lists the first locators only; past that list (and only then), its
+    # count stands in for the rest
+    capped = len(listed) < n_listed
+    missing = rest[max(0, n_listed - len(listed & set(unmatched))) :] if capped else rest
+    n = len(copies)
+    return Count(record, n, n - len(unmatched), len(unmatched) - len(missing), missing, wrong)
 
 
 def _loc_key(loc: str) -> tuple[object, ...]:
@@ -1082,20 +1195,31 @@ def compare(t: Tally, conn: sqlite3.Connection, src: str) -> tuple[list[Count], 
     # that does not match must be one Mabillon lists for review (related_copy_unmatched);
     # otherwise it is missing
     unmatched = _unmatched_copies(t, db_msgs, _said)
-    listed, n_listed = _listed_copies(conn, src)
-    listed &= set(t.related_messages)  # message copies only
-    # a copy Mabillon lists that matches here is a disagreement too (extra)
-    wrong = sorted(listed - set(unmatched), key=_loc_key)
-    rest = [loc for loc in unmatched if loc not in listed]
-    # the coverage record lists the first locators only; past that list (and only then), its
-    # count stands in for the rest
-    capped = len(listed) < n_listed
-    missing = rest[max(0, n_listed - len(listed & set(unmatched))) :] if capped else rest
-    n_rel = len(t.related_messages)
-    counts.append(
-        Count(RELATED_RECORD, n_rel, n_rel - len(unmatched), len(unmatched) - len(missing),
-              missing, wrong)
-    )  # fmt: skip
+    all_listed, n_listed, n_rec_listed = _listed_copies(conn, src)
+    counts.append(_copy_count(RELATED_RECORD, set(t.related_messages), unmatched,
+                              all_listed, n_listed))  # fmt: skip
+    # a copy of a call, contact or account (or one held by one) must say what the record
+    # holding it says, field by field as the importer maps it; checked apart from the
+    # importer's own keys, in one row per kind
+    rec_unmatched = []
+    for loc, (_kind, said) in t.related_records.items():
+        head = loc.rpartition("/")[0]
+        twin = t.record_said.get(head)
+        if twin is None and head in t.related_records:
+            twin = t.related_records[head][1]
+        if twin != said:
+            rec_unmatched.append(loc)
+    rec_unmatched.sort(key=_loc_key)
+    rec_counts = _copy_count("", set(t.related_records), rec_unmatched, all_listed, n_rec_listed)
+    for kind, record in RELATED_KIND_RECORDS.items():
+        mine = {loc for loc, (k, _s) in t.related_records.items() if k == kind}
+        if not mine:
+            continue
+        n = len(mine)
+        unm = [loc for loc in rec_unmatched if loc in mine]
+        missing = [loc for loc in rec_counts.missing if loc in mine]
+        extra = [loc for loc in rec_counts.extra if loc in mine]
+        counts.append(Count(record, n, n - len(unm), len(unm) - len(missing), missing, extra))
     xml_atts = sum(m.attachments for m in t.messages.values() if m.locator in db_msgs)
     (db_atts,) = conn.execute(
         "SELECT COUNT(*) FROM attachments WHERE source_id = ?", (src,)
@@ -1437,10 +1561,10 @@ def shareable_markdown(d: dict) -> str:
             f"| {r['record']} | {r['in_report_xml']} | {r['imported_by_baker']} | "
             f"{r['repeats_imported_once']} | {r['missing']} | {r['extra']} |"
         )
-    if any(r["record"] == RELATED_RECORD for r in d["records"]):
+    if any(r["record"] in (RELATED_RECORD, *RELATED_KIND_RECORDS.values()) for r in d["records"]):
         lines.append(
-            '\nFor message copies under RelatedModels, "Repeats imported once" counts copies '
-            "that match no message and that Mabillon lists for review instead of importing."
+            '\nFor copies under RelatedModels, "Repeats imported once" counts copies that match '
+            "no record and that Mabillon lists for review instead of importing."
         )
     if d.get("copies_under_related_models"):
         lines.append(
