@@ -4,8 +4,8 @@
         --llama-cpu <cpu wheel> --llama-cuda <cuda wheel> [--crt-dlls <dir>] [--cuda-dlls <dir>]
 
 Layout of build/stage (and of the installed folder):
-    python/                 embeddable CPython, with Baker's dependencies in Lib/site-packages
-    baker/                  Baker's source, from git (synthetic case01 and the signed probe set
+    python/                 embeddable CPython, with Mabillon's dependencies in Lib/site-packages
+    baker/                  Mabillon's source, from git (synthetic case01 and the signed probe set
                             included, so a fresh install can run case01 and the speed test)
     runtime/cpu/            llama-cpp-python, CPU build (AVX2), for a PC with no NVIDIA GPU
     runtime/cuda/           llama-cpp-python, CUDA build plus the CUDA runtime DLLs
@@ -83,7 +83,7 @@ def md5_file(path: Path) -> str:
 
 
 def runtime_requirements(root: Path = ROOT) -> list[str]:
-    """Baker's dependencies plus the `synthetic` extra: the installer ships eval/ so an expert's
+    """Mabillon's dependencies plus the `synthetic` extra: the installer ships eval/ so an expert's
     PC can run the case01 gate and the speed test, and those render the synthetic case PDFs.
     Plus the `cloud` extra, the client for a case the expert allows to use cloud AI."""
     data = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
@@ -174,7 +174,7 @@ def main(argv: list[str] | None = None) -> int:
     python.mkdir(parents=True)
     python_sha = stage_python(a.python_zip, python, pins["python"])
 
-    # Baker's runtime dependencies, plus llama-cpp-python's own (numpy, jinja2, ...), which
+    # Mabillon's runtime dependencies, plus llama-cpp-python's own (numpy, jinja2, ...), which
     # both runtimes share. The llama_cpp package itself goes in runtime/<variant>/.
     pip_target(site, *runtime_requirements())
     pip_target(site, str(a.llama_cpu))

@@ -37,14 +37,14 @@ can stop and resume: finished claims are kept.
 The 12 GB figure is an estimate, not a measurement: the model is 9.0 GB and its working memory
 at Mabillon's context size about 1.3 GB more. On a card with less, the model may fail to load; the
 run then stops with an error and nothing is decided from it. Reinstall with
-`Baker-Setup-<version>.exe /RUNTIME=cpu` to run on the processor instead.
+`Mabillon-Setup-<version>.exe /RUNTIME=cpu` to run on the processor instead.
 
 ## Install
 
-1. Download `Baker-Setup-<version>.exe` and `Baker-Setup-<version>.exe.sha256`.
+1. Download `Mabillon-Setup-<version>.exe` and `Mabillon-Setup-<version>.exe.sha256`.
 2. Check the file before running it. In PowerShell:
 
-       Get-FileHash .\Baker-Setup-<version>.exe -Algorithm SHA256
+       Get-FileHash .\Mabillon-Setup-<version>.exe -Algorithm SHA256
 
    The hash must match the one in the `.sha256` file and the one published with the release.
    Do not run the installer if they differ.
@@ -58,9 +58,15 @@ run then stops with an error and nothing is decided from it. Reinstall with
 5. Leave **Download the AI model** ticked to download it now (9 GB, from Hugging Face), or untick
    it for an offline computer (next section).
 
-Mabillon installs to `%LOCALAPPDATA%\Programs\Baker`, the model to `%LOCALAPPDATA%\Baker\models`,
-and the model setting to `%USERPROFILE%\.baker\model.json`. Setup adds the `baker` command to
-your PATH and a **Baker command prompt** shortcut to the Start menu.
+Mabillon installs to `%LOCALAPPDATA%\Programs\Mabillon`, the model to
+`%LOCALAPPDATA%\Mabillon\models`, and the model setting to `%USERPROFILE%\.mabillon\model.json`.
+Setup adds the `mabillon` command to your PATH (`baker` still works for a release) and a
+**Mabillon command prompt** shortcut to the Start menu.
+
+On a PC where it was installed under the name Baker, Setup updates that install in place: it
+stays in `%LOCALAPPDATA%\Programs\Baker`, a model in `%LOCALAPPDATA%\Baker\models` and a model
+setting of your own in `%USERPROFILE%\.baker\model.json` are used where they are, and the
+**Baker command prompt** shortcut becomes **Mabillon command prompt**.
 
 ## Offline computer (no internet)
 
@@ -82,15 +88,15 @@ not touched.
 
 ## Uninstall
 
-**Settings > Apps > Baker > Uninstall** removes the program. Your case databases, the model
-file and `%USERPROFILE%\.baker` stay, because they are your files. Delete them by hand if you
+**Settings > Apps > Mabillon > Uninstall** removes the program. Your case databases, the model
+file and `%USERPROFILE%\.mabillon` (or `.baker`) stay, because they are your files. Delete them by hand if you
 no longer need them.
 
 ## Check the install
 
-Open **Baker command prompt** from the Start menu and run:
+Open **Mabillon command prompt** from the Start menu and run:
 
-    baker --help
+    mabillon --help
 
 ## For builders
 

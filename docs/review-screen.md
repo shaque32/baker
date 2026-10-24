@@ -42,7 +42,7 @@ except `core/llm/cloud.py` (tests enforce it).
 4. **The model.** "Check the model" (and every audit, first) checks that the configured model
    file is on this computer, that its SHA-256 matches the config, that this computer has enough
    memory (the file's size plus 4 GB), and that the local runtime is installed, each with a plain
-   message. A passed hash is remembered for the unchanged file in `~/.baker/model-check.json`.
+   message. A passed hash is remembered for the unchanged file in `~/.mabillon/model-check.json`.
    `mabillon model-check` does the same from the command line.
 5. **Run the audit.** It runs in the background, in the expert's claim order, with a rough
    upfront estimate (about 25 model calls per claim, from synthetic case01, at the seconds per
