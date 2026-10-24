@@ -129,12 +129,17 @@ def match_record(
             " WHERE c.ts_raw = ? AND c.app = ? AND c.duration_s IS ?",
             (rec["time_utc"], _app(rec, chats), _seconds(rec.get("duration"))),
         ).fetchall()
-        # Every party Mabillon put on the call must be one of the record's parties (by number,
-        # or by name for a party with none). A call Mabillon left without parties, because the
-        # source did not say who called whom, is matched on the other fields alone.
-        named = {_ident(v) for p in rec.get("parties", []) for v in (p.get("id"), p.get("name"))
-                 if v}  # fmt: skip
-        ids = [r[0] for r in rows if {_ident(v) for v in r[1:] if v} <= named]
+        # Every party Mabillon put on the call must be one of the record's parties, from Parties,
+        # From or To (by number, or by name for a party with none). A call with no parties on
+        # either side, because the source did not say who called whom, is matched on the other
+        # fields alone.
+        named = {
+            _ident(v)
+            for p in (*rec.get("parties", []), *rec.get("from", []), *rec.get("to", []))
+            for v in (p.get("id"), p.get("name"))
+            if v
+        }
+        ids = [r[0] for r in rows if not named or {_ident(v) for v in r[1:] if v} <= named]
     elif kind == "contact":
         values = {_ident(e["value"]) for e in rec.get("entries", []) if e.get("value")}
         rows = conn.execute(

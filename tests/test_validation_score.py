@@ -203,9 +203,30 @@ def test_a_near_miss_is_never_a_match(scored):
     jo, sam = {"id": JO[0], "name": "Jo"}, {"id": "+15550100003", "name": "Sam"}
     call = {**call, "duration": "00:01:30"}
     assert score_hickman.match_record(conn, {**call, "parties": [jo]})[1] == ""
+    # a call whose people sit in From or To rather than Parties: the dump keeps them
+    assert score_hickman.match_record(conn, {**call, "parties": [], "to": [jo]})[1] == ""
     # the same time, app and duration with another person is another call
     assert score_hickman.match_record(conn, {**call, "parties": [sam]}) == ([], "no record matches")
     conn.close()
+
+
+def test_the_dump_keeps_a_calls_explicit_from_and_to(tmp_path):
+    call = model(
+        "Call",
+        field("Source", "Phone"),
+        ts_field("TimeStamp", T1),
+        one("To", party(*JO)),
+        source_index="61",
+        id="call-61",
+    )
+    xml = tmp_path / "report.xml"
+    xml.write_text(report_xml({"Call": [call]}), encoding="utf-8")
+    dump_ufdr.main([str(xml), str(tmp_path / "dump")])
+    row = json.loads((tmp_path / "dump" / "calls.jsonl").read_text("utf-8"))
+    assert row["parties"] == [] and [p["id"] for p in row["to"]] == [JO[0]]
+    assert (
+        "from" not in row
+    )  # absent From adds no key, so dumps of Parties-only calls are unchanged
 
 
 def test_a_standalone_sms_is_in_the_dump_and_matches(scored):

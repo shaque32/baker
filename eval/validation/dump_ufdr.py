@@ -133,6 +133,12 @@ def main(argv=None):
                         "type": field(el, "Type"),
                         "duration": field(el, "Duration"),
                         "parties": ps,
+                        # explicit From and To parties, written only when the record has them
+                        **{
+                            k: v
+                            for k, v in (("from", parties(el, "From")), ("to", parties(el, "To")))
+                            if v
+                        },
                     },
                     ensure_ascii=False,
                 )
