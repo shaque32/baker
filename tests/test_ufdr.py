@@ -1061,8 +1061,8 @@ def test_the_report_names_the_ufdr_importer_version(tmp_path):
 
     original = model("InstantMessage", one("From", party(*JO)), field("Body", "SYNTHETIC hi"))
     conn, _ids = _copy_case(tmp_path, original)
-    assert IMPORTER_VERSION == "0.3.0"
-    assert f"{ufdr.IMPORTER_NAME} 0.3.0</td>" in render_report(conn)
+    assert IMPORTER_VERSION == "0.3.1"
+    assert f"{ufdr.IMPORTER_NAME} 0.3.1</td>" in render_report(conn)
 
 
 # ---------------------------------------------------------------- RelatedModels (Reader 7.48)
