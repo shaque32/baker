@@ -33,21 +33,21 @@ Turn on your computer's disk encryption first (FileVault on a Mac, BitLocker on 
 **Mac (about 30 minutes, mostly waiting).** Full guide: `docs/install-mac.md`.
 
 1. Unzip the Mabillon folder you were sent into Downloads.
-2. In the Mabillon folder, open `packaging`, then `mac`, and double-click **Install Baker.command**.
+2. In the Mabillon folder, open `packaging`, then `mac`, and double-click **Install Mabillon.command**.
    The first time, macOS may make you right-click it and choose **Open**. (Or open Terminal, type
    `bash ` with a space, drag `packaging/mac/install.sh` into the window and press Return.) If asked to install Apple's command line tools, click **Install**, then
    run the installer again.
-3. Wait for **Done**. Two icons appear on your Desktop: **Baker** and **Baker demo**.
-4. Check it: in Terminal, run `~/Baker/app/.venv/bin/baker model-check`. It says whether the model
+3. Wait for **Done**. Two icons appear on your Desktop: **Mabillon** and **Mabillon demo**.
+4. Check it: in Terminal, run `~/Mabillon/app/.venv/bin/mabillon model-check`. It says whether the model
    is present, is the exact pinned file and fits in memory.
 
 **Windows.** Full guide: `docs/install.md`.
 
-1. Get `Baker-Setup-<version>.exe`, and get its SHA-256 value **by a different route** from the
+1. Get `Mabillon-Setup-<version>.exe`, and get its SHA-256 value **by a different route** from the
    installer: for example, read it back with the Mabillon team by phone. A `.sha256` file that came
    in the same email, download or shared folder proves nothing, since whoever could swap the
    installer could swap that file too.
-2. In PowerShell, run `Get-FileHash .\Baker-Setup-<version>.exe -Algorithm SHA256` and compare it
+2. In PowerShell, run `Get-FileHash .\Mabillon-Setup-<version>.exe -Algorithm SHA256` and compare it
    with that value. Stop if they differ.
 3. Check the publisher: right-click the installer > **Properties** > **Digital Signatures**
    must show **Shayan Haque**. Stop if it shows another name or no signature. Then run it. A new
@@ -57,14 +57,14 @@ Turn on your computer's disk encryption first (FileVault on a Mac, BitLocker on 
    `Qwen3-14B-Q4_K_M.gguf` in the same folder as the installer **before** running it; Setup
    checks its SHA-256 and copies it. If you add the model later, put it next to the installer and
    run Setup again (`docs/install.md`).
-5. Check it: open **Baker command prompt** from the Start menu and run `mabillon model-check`.
+5. Check it: open **Mabillon command prompt** from the Start menu and run `mabillon model-check`.
 
 ## 3. First run: the demo (15 minutes)
 
 The demo is a ready-made, fully synthetic case (two phones, seven planted traps). No model runs,
 so it opens in seconds. Run it before you open anything real.
 
-1. Start it. Mac: double-click **Baker demo**. Windows: in **Baker command prompt**, run
+1. Start it. Mac: double-click **Mabillon demo**. Windows: in **Mabillon command prompt**, run
    `mabillon demo`. Your browser opens `http://127.0.0.1:8766`. Only your computer can open that
    address. Closing the window that started it stops Mabillon.
 2. Open the case. The setup page lists three imported files, each with its SHA-256, and the phone
@@ -83,7 +83,7 @@ demo to a clean copy.
 
 ## 4. Your first case
 
-1. Start Mabillon (Mac: **Baker** on the Desktop; Windows: `mabillon serve --open`). It opens
+1. Start Mabillon (Mac: **Mabillon** on the Desktop; Windows: `mabillon serve --open`). It opens
    `http://127.0.0.1:8765`.
 2. **New case.** Leave **Encrypt this case with a passphrase** ticked. Mabillon shows a recovery key
    **once**: write it down and keep it away from the computer. If you lose both the passphrase and

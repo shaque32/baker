@@ -28,7 +28,7 @@ morning. A run can stop and resume: finished claims are kept.
 2. Open **Terminal** (press Command and Space, type Terminal, press Return).
 3. Type `bash ` (with a space after it), drag the file `packaging/mac/install.sh` from the Mabillon
    folder into the Terminal window, and press Return. Or double-click
-   **Install Baker.command** in the same folder; the first time, macOS may make you
+   **Install Mabillon.command** in the same folder; the first time, macOS may make you
    right-click it and choose **Open**.
 4. If a window asks to install Apple's command line tools, click **Install**, wait for it to
    finish, then run step 3 again. This happens once.
@@ -37,8 +37,8 @@ morning. A run can stop and resume: finished claims are kept.
 
 When it says **Done**, two icons are on your Desktop:
 
-- **Baker** opens your cases in your browser.
-- **Baker demo** opens a ready-made, fully synthetic demo case (see docs/demo.md).
+- **Mabillon** opens your cases in your browser.
+- **Mabillon demo** opens a ready-made, fully synthetic demo case (see docs/demo.md).
 
 Each opens a Terminal window; closing that window stops Mabillon. Mabillon's address is
 `http://127.0.0.1:8765` (8766 for the demo), which only this Mac can open.
@@ -46,7 +46,7 @@ Each opens a Terminal window; closing that window stops Mabillon. Mabillon's add
 ## Offline computer
 
 Copy `Qwen3-14B-Q4_K_M.gguf` (from <https://huggingface.co/Qwen/Qwen3-14B-GGUF>, Apache-2.0
-license) into `~/Baker/models` from a USB drive, then run the installer with `--no-model`, or
+license) into `~/Mabillon/models` from a USB drive, then run the installer with `--no-model`, or
 without it: a file already in place is checked, not downloaded again. The model's SHA-256 must
 be
 
@@ -58,22 +58,29 @@ The installer itself still needs the internet once for Python and the runtime.
 
 | What | Where |
 |---|---|
-| Mabillon and its Python | `~/Baker/app` |
-| The model | `~/Baker/models` |
+| Mabillon and its Python | `~/Mabillon/app` |
+| The model | `~/Mabillon/models` |
 | Your cases | `~/Mabillon/cases` (each case is one folder) |
 | The demo case | `~/Mabillon/demo` |
-| The model setting | `~/.baker/model.json` (an existing one is never overwritten) |
+| The model setting | `~/.mabillon/model.json` (an existing one is never overwritten) |
+
+A Mac set up when the product was called Baker keeps what it has: the installer uses a model
+already in `~/Baker/models` and a setting in `~/.baker/model.json` where they are, Mabillon
+keeps reading cases in `~/Baker/cases`, and the **Baker** and **Baker demo** Desktop icons are
+replaced by **Mabillon** and **Mabillon demo**. The program moves to `~/Mabillon/app`; the
+installer says when the old `~/Baker/app` can be deleted.
 
 ## Check the install
 
 Open Terminal and run:
 
-    ~/Baker/app/.venv/bin/baker model-check
+    ~/Mabillon/app/.venv/bin/mabillon model-check
 
 It says whether the model is there, is the exact pinned file, and fits in this Mac's memory.
 
 ## Update or uninstall
 
 To update, unzip the new Mabillon folder and run the installer again; your cases, the model and
-your settings stay. To uninstall, delete `~/Baker/app` and the two Desktop icons. Your cases
-and the model stay until you delete `~/Baker` and `~/.baker` yourself.
+your settings stay. To uninstall, delete `~/Mabillon/app` and the two Desktop icons. Your cases
+and the model stay until you delete `~/Mabillon` and `~/.mabillon` (and, from an install made
+under the name Baker, `~/Baker` and `~/.baker`) yourself.
