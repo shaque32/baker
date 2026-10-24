@@ -361,7 +361,7 @@ def verdict_trace(conn: sqlite3.Connection, st: ClaimState) -> str:
             step = "None needed: a code result anyone can re-run"
         elif cited in stips:
             s = stips[cited]
-            what = f"Stipulation: {e(s.statement)}"
+            what = f"Stipulation: {q(s.statement)}"
             who = "The expert"
             step = f"Expert {e(s.status.value)}: {e(s.decided_by or 'not decided')}"
         else:
@@ -381,6 +381,9 @@ def verdict_trace(conn: sqlite3.Connection, st: ClaimState) -> str:
             if x.assumption_id == assumption_id and x.stance != Stance.IRRELEVANT
         ]
 
+    cited_by_verdict = set(
+        decision.cited_evidence_ids + decision.cited_check_ids + decision.cited_stipulation_ids
+    )
     rows: list[str] = []
     listed: set[str] = set()
     for cv in decision.coverage:
@@ -394,7 +397,8 @@ def verdict_trace(conn: sqlite3.Connection, st: ClaimState) -> str:
             listed.add(cited)
         if not cv.covered:
             found = [i for i in found_for(cv.assumption_id) if i not in listed]
-            rows.extend(row(label, i, relied=False) for i in found)
+            # a failed check or a confirmed contradiction the verdict cites (rule 1) was relied on
+            rows.extend(row(label, i, relied=i in cited_by_verdict) for i in found)
             listed.update(found)
             if not cv.cited_ids and not found:
                 rows.append(

@@ -611,3 +611,48 @@ def test_the_report_says_what_can_and_cannot_be_regenerated(first_report, tmp_pa
     disclosure = HOSTED.format(vendor="Anthropic", model="hosted-model-x")
     assert html.escape(disclosure) in text
     assert "No claim is made" not in text
+
+
+@pytest.fixture(scope="module")
+def model_free_db(tmp_path_factory) -> Path:
+    """case01 audited model-free with the simulated expert: failed checks contradict C04, C08,
+    C10, C11 and C14, and supported claims cite the device-owner stipulations."""
+    out = tmp_path_factory.mktemp("model-free")
+    sheet = run_pipeline.assumption_sheet("case01")
+    run_pipeline.run_once("case01", "model-free", "none", out, sheet, "simulated")
+    return out / "case01.db"
+
+
+def test_a_failed_check_that_contradicts_is_traced_as_relied_on(model_free_db):
+    """Rule 1 cites the failed check of an uncovered assumption; the trace must not call the
+    item that decided the verdict "not relied on"."""
+    conn = sqlite3.connect(model_free_db)
+    try:
+        block = _claim_html(render_report(conn), "C04")
+    finally:
+        conn.close()
+    trace = block[block.index("How this verdict was reached") :]
+    assert "<td>Relied on</td><td>Check absence" in trace and ": fail</td>" in trace
+    assert "Found, not relied on</td><td>Check absence" not in trace
+
+
+def test_a_cited_stipulation_is_a_cited_span(model_free_db, monkeypatch):
+    """A stipulation's statement carries the device's own label, which may hold any word; it is
+    cited text, so the forbidden-word check passes it, as in Limitations."""
+    from core.audit import invariants
+
+    real = pipeline.load_stipulations
+
+    def labelled(conn):  # noqa: ANN001, ANN202
+        return [
+            s.model_copy(update={"statement": f"Deleted iPhone: {s.statement}"}) for s in real(conn)
+        ]
+
+    monkeypatch.setattr(pipeline, "load_stipulations", labelled)
+    conn = sqlite3.connect(model_free_db)
+    try:
+        page = render_report(conn)
+    finally:
+        conn.close()
+    assert "Stipulation: <span class=" in _claim_html(page, "C02")
+    invariants.check_report_text(page)
