@@ -1,0 +1,481 @@
+{
+ "note": "Three blind readers, each given only stance guide v0.3 and the items without labels (2026-10-21). All three gave every item its draft label. 'merits' is the stance a reader would give on plain sense where it differs from the guide's.",
+ "readers": {
+  "H001": [
+   {
+    "stance": "complicates",
+    "rule": "12, 23",
+    "merits": "contradicts"
+   },
+   {
+    "stance": "complicates",
+    "rule": "12, 23",
+    "merits": "contradicts"
+   },
+   {
+    "stance": "complicates",
+    "rule": "12, 23"
+   }
+  ],
+  "H002": [
+   {
+    "stance": "complicates",
+    "rule": "12, 23",
+    "merits": "contradicts"
+   },
+   {
+    "stance": "complicates",
+    "rule": "12, 23",
+    "merits": "contradicts"
+   },
+   {
+    "stance": "complicates",
+    "rule": "12, 23"
+   }
+  ],
+  "H003": [
+   {
+    "stance": "complicates",
+    "rule": "12, 23",
+    "merits": "contradicts"
+   },
+   {
+    "stance": "complicates",
+    "rule": "12, 23",
+    "merits": "contradicts"
+   },
+   {
+    "stance": "complicates",
+    "rule": "12, 23",
+    "merits": "contradicts"
+   }
+  ],
+  "H004": [
+   {
+    "stance": "complicates",
+    "rule": "12, 23",
+    "merits": "contradicts"
+   },
+   {
+    "stance": "complicates",
+    "rule": "12, 23",
+    "merits": "contradicts"
+   },
+   {
+    "stance": "complicates",
+    "rule": "12, 23",
+    "merits": "contradicts"
+   }
+  ],
+  "H005": [
+   {
+    "stance": "complicates",
+    "rule": "6, 12, 23",
+    "merits": "contradicts"
+   },
+   {
+    "stance": "complicates",
+    "rule": "6, 12, 23",
+    "merits": "contradicts"
+   },
+   {
+    "stance": "complicates",
+    "rule": "6, 12, 23"
+   }
+  ],
+  "H006": [
+   {
+    "stance": "complicates",
+    "rule": "12, 23",
+    "merits": "contradicts"
+   },
+   {
+    "stance": "complicates",
+    "rule": "12, 23",
+    "merits": "contradicts"
+   },
+   {
+    "stance": "complicates",
+    "rule": "12, 23"
+   }
+  ],
+  "H007": [
+   {
+    "stance": "complicates",
+    "rule": "12, 23",
+    "merits": "contradicts"
+   },
+   {
+    "stance": "complicates",
+    "rule": "12, 23",
+    "merits": "contradicts"
+   },
+   {
+    "stance": "complicates",
+    "rule": "12, 23"
+   }
+  ],
+  "H008": [
+   {
+    "stance": "complicates",
+    "rule": "12, 23",
+    "merits": "contradicts"
+   },
+   {
+    "stance": "complicates",
+    "rule": "12, 23",
+    "merits": "contradicts"
+   },
+   {
+    "stance": "complicates",
+    "rule": "12, 23"
+   }
+  ],
+  "H009": [
+   {
+    "stance": "complicates",
+    "rule": "6, 12, 23",
+    "merits": "contradicts"
+   },
+   {
+    "stance": "complicates",
+    "rule": "6, 12, 23",
+    "merits": "contradicts"
+   },
+   {
+    "stance": "complicates",
+    "rule": "6, 12, 23",
+    "merits": "contradicts"
+   }
+  ],
+  "H010": [
+   {
+    "stance": "complicates",
+    "rule": "6, 12, 23",
+    "merits": "contradicts"
+   },
+   {
+    "stance": "complicates",
+    "rule": "6, 12, 23",
+    "merits": "contradicts"
+   },
+   {
+    "stance": "complicates",
+    "rule": "6, 12, 23",
+    "merits": "contradicts"
+   }
+  ],
+  "H011": [
+   {
+    "stance": "complicates",
+    "rule": "23"
+   },
+   {
+    "stance": "complicates",
+    "rule": "23 (con_denial time coverage)"
+   },
+   {
+    "stance": "complicates",
+    "rule": "23",
+    "merits": "contradicts"
+   }
+  ],
+  "H012": [
+   {
+    "stance": "complicates",
+    "rule": "23"
+   },
+   {
+    "stance": "complicates",
+    "rule": "23 (con_denial time coverage)"
+   },
+   {
+    "stance": "complicates",
+    "rule": "23",
+    "merits": "contradicts"
+   }
+  ],
+  "H013": [
+   {
+    "stance": "complicates",
+    "rule": "23"
+   },
+   {
+    "stance": "complicates",
+    "rule": "23 (con_denial time coverage)"
+   },
+   {
+    "stance": "complicates",
+    "rule": "23",
+    "merits": "contradicts"
+   }
+  ],
+  "H014": [
+   {
+    "stance": "complicates",
+    "rule": "6, 23"
+   },
+   {
+    "stance": "complicates",
+    "rule": "6, 23 (con_denial time coverage)"
+   },
+   {
+    "stance": "complicates",
+    "rule": "6, 23",
+    "merits": "contradicts"
+   }
+  ],
+  "H015": [
+   {
+    "stance": "complicates",
+    "rule": "23"
+   },
+   {
+    "stance": "complicates",
+    "rule": "23"
+   },
+   {
+    "stance": "complicates",
+    "rule": "23"
+   }
+  ],
+  "H016": [
+   {
+    "stance": "complicates",
+    "rule": "23"
+   },
+   {
+    "stance": "complicates",
+    "rule": "23"
+   },
+   {
+    "stance": "complicates",
+    "rule": "23"
+   }
+  ],
+  "H017": [
+   {
+    "stance": "contradicts",
+    "rule": "con_denial, 23"
+   },
+   {
+    "stance": "contradicts",
+    "rule": "con_denial, 23"
+   },
+   {
+    "stance": "contradicts",
+    "rule": "con_denial, 23"
+   }
+  ],
+  "H018": [
+   {
+    "stance": "contradicts",
+    "rule": "con_denial, 23"
+   },
+   {
+    "stance": "contradicts",
+    "rule": "con_denial, 23"
+   },
+   {
+    "stance": "contradicts",
+    "rule": "con_denial, 23"
+   }
+  ],
+  "H019": [
+   {
+    "stance": "contradicts",
+    "rule": "con_denial, 6, 23"
+   },
+   {
+    "stance": "contradicts",
+    "rule": "con_denial, 6, 23"
+   },
+   {
+    "stance": "contradicts",
+    "rule": "con_denial, 6, 23"
+   }
+  ],
+  "H020": [
+   {
+    "stance": "contradicts",
+    "rule": "23, con_in_window"
+   },
+   {
+    "stance": "contradicts",
+    "rule": "23 (assumption excludes other messages), 22"
+   },
+   {
+    "stance": "contradicts",
+    "rule": "con_in_window, 23"
+   }
+  ],
+  "H021": [
+   {
+    "stance": "contradicts",
+    "rule": "23"
+   },
+   {
+    "stance": "contradicts",
+    "rule": "23 (assumption excludes other messages), 22"
+   },
+   {
+    "stance": "contradicts",
+    "rule": "con_in_window, 23"
+   }
+  ],
+  "H022": [
+   {
+    "stance": "contradicts",
+    "rule": "con_in_window"
+   },
+   {
+    "stance": "contradicts",
+    "rule": "con_in_window, 11"
+   },
+   {
+    "stance": "contradicts",
+    "rule": "con_in_window"
+   }
+  ],
+  "H023": [
+   {
+    "stance": "contradicts",
+    "rule": "con_in_window"
+   },
+   {
+    "stance": "contradicts",
+    "rule": "con_in_window"
+   },
+   {
+    "stance": "contradicts",
+    "rule": "con_in_window"
+   }
+  ],
+  "H024": [
+   {
+    "stance": "contradicts",
+    "rule": "con_other_value"
+   },
+   {
+    "stance": "contradicts",
+    "rule": "con_other_value"
+   },
+   {
+    "stance": "contradicts",
+    "rule": "con_other_value"
+   }
+  ],
+  "H025": [
+   {
+    "stance": "contradicts",
+    "rule": "con_correction, 19"
+   },
+   {
+    "stance": "contradicts",
+    "rule": "con_correction, 19, 22"
+   },
+   {
+    "stance": "contradicts",
+    "rule": "con_correction, 19, 22"
+   }
+  ],
+  "H026": [
+   {
+    "stance": "contradicts",
+    "rule": "con_other_state, 23"
+   },
+   {
+    "stance": "contradicts",
+    "rule": "con_other_state, 23"
+   },
+   {
+    "stance": "contradicts",
+    "rule": "con_other_state, 23"
+   }
+  ],
+  "H027": [
+   {
+    "stance": "supports",
+    "rule": "sup_plain, 14"
+   },
+   {
+    "stance": "supports",
+    "rule": "sup_plain, 14"
+   },
+   {
+    "stance": "supports",
+    "rule": "sup_plain, 14"
+   }
+  ],
+  "H028": [
+   {
+    "stance": "supports",
+    "rule": "sup_plain, 14"
+   },
+   {
+    "stance": "supports",
+    "rule": "sup_plain, 14"
+   },
+   {
+    "stance": "supports",
+    "rule": "sup_plain, 14"
+   }
+  ],
+  "H029": [
+   {
+    "stance": "supports",
+    "rule": "sup_plain, 14"
+   },
+   {
+    "stance": "supports",
+    "rule": "sup_plain, 14"
+   },
+   {
+    "stance": "supports",
+    "rule": "sup_plain, 14"
+   }
+  ],
+  "H030": [
+   {
+    "stance": "supports",
+    "rule": "sup_plain, 14"
+   },
+   {
+    "stance": "supports",
+    "rule": "sup_plain, 14"
+   },
+   {
+    "stance": "supports",
+    "rule": "sup_plain, 14"
+   }
+  ],
+  "H031": [
+   {
+    "stance": "supports",
+    "rule": "sup_plain, 6, 14"
+   },
+   {
+    "stance": "supports",
+    "rule": "sup_plain, 6"
+   },
+   {
+    "stance": "supports",
+    "rule": "sup_plain, 6"
+   }
+  ],
+  "H032": [
+   {
+    "stance": "supports",
+    "rule": "sup_plain, 6, 14, 15"
+   },
+   {
+    "stance": "supports",
+    "rule": "sup_plain, 6, 15"
+   },
+   {
+    "stance": "supports",
+    "rule": "sup_plain, 6, 15"
+   }
+  ]
+ }
+}
