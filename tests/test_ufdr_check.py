@@ -643,7 +643,9 @@ def test_a_message_held_only_as_a_related_copy_must_be_listed_by_baker(tmp_path,
         "Chat[1]/Related[1]/Messages[31]",
         "Chat[3]/Related[1]/Messages[6]",
     ]
-    assert d["differences"] == 2
+    calls = _rec(d, ufdr_check.RELATED_KIND_RECORDS["Call"])  # the call held only as a copy
+    assert calls["first_missing_locators"] == ["Call[1]/Related[1]"]
+    assert d["differences"] == 3
 
 
 def test_a_copy_to_another_recipient_is_not_matched_to_the_record(tmp_path):
@@ -709,3 +711,186 @@ def test_a_copy_baker_lists_that_matches_here_is_a_difference(tmp_path, monkeypa
     rel = _rec(d, ufdr_check.RELATED_RECORD)
     assert rel["extra"] == 1
     assert d["differences"] == 1
+
+
+# ---------------------------------------------------------------- call, contact, account copies
+
+
+def _call(cid: str, *tail: str, duration: str = "00:01:00", frm=OWNER, to=JO, **attrs: str) -> str:
+    return model(
+        "Call",
+        field("Source", "Phone"),
+        many("Parties", [party(*frm, role="From"), party(*to, role="To")]),
+        ts_field("TimeStamp", T),
+        field("Duration", duration, "TimeSpan"),
+        field("Type", "Outgoing"),
+        *tail,
+        id=cid,
+        **attrs,
+    )
+
+
+def _contact(cid: str, *tail: str, name: str = "Jo", number: str = JO[0], **attrs: str) -> str:
+    entries = many("Entries", [model("PhoneNumber", field("Value", number))], "ContactEntry")
+    return model("Contact", field("Name", name), entries, *tail, id=cid, **attrs)
+
+
+def _acct(aid: str, *tail: str, name: str = "Owner", user: str = "owner1") -> str:
+    parts = (field("Source", "Signal"), field("Username", user), field("Name", name))
+    return model("UserAccount", *parts, *tail, id=aid)
+
+
+def _copy_rows(tmp_path: Path, name: str, xml: str, monkeypatch) -> dict[str, list[str]]:
+    """ufdr-check agrees with the importer on the copies it lists; and with an importer that
+    matched and listed nothing, the copies that do not match are the call, contact and
+    account rows' own missing ones, by kind."""
+    path = write_package(tmp_path / f"{name}.ufdr", xml)
+    d = ufdr_check.run(path).shareable
+    assert d["differences"] == 0, d["records"]
+    with monkeypatch.context() as mp:
+        mp.setattr(ufdr._RecordMapper, "settle_related", lambda self: None)
+        d = ufdr_check.run(path).shareable
+    return {
+        kind: _rec(d, record)["first_missing_locators"]
+        for kind, record in ufdr_check.RELATED_KIND_RECORDS.items()
+        if any(r["record"] == record for r in d["records"])
+    }
+
+
+@pytest.mark.parametrize(
+    ("case", "copy"),
+    [
+        ("same", _call("k1r")),
+        ("duration", _call("k1r", duration="00:02:00")),
+        ("deleted", _call("k1r", deleted_state="Deleted")),
+        ("carved", _call("k1r", carved="true")),
+        ("type", _call("k1r").replace("Outgoing", "Incoming")),
+        ("sides", _call("k1r", frm=JO, to=OWNER)),
+    ],
+)
+def test_call_copies_are_checked_field_by_field(tmp_path, monkeypatch, case, copy):
+    xml = report_xml({"Call": [_call("k1", related(copy))]})
+    want = [] if case == "same" else ["Call[1]/Related[1]"]
+    assert _copy_rows(tmp_path, f"call-{case}", xml, monkeypatch) == {"Call": want}
+
+
+@pytest.mark.parametrize(
+    ("case", "copy"),
+    [
+        ("same", _contact("p1r")),
+        ("name", _contact("p1r", name="Joe")),
+        ("entry", _contact("p1r", number="+15550100009")),
+        ("deleted", _contact("p1r", deleted_state="Deleted")),
+    ],
+)
+def test_contact_copies_are_checked_field_by_field(tmp_path, monkeypatch, case, copy):
+    xml = report_xml({"Contact": [_contact("p1", related(copy))]})
+    want = [] if case == "same" else ["Contact[1]/Related[1]"]
+    assert _copy_rows(tmp_path, f"contact-{case}", xml, monkeypatch) == {"Contact": want}
+
+
+@pytest.mark.parametrize(
+    ("case", "copy"),
+    [
+        ("same", _acct("u1r")),
+        ("name", _acct("u1r", name="Other")),
+        ("user", _acct("u1r", user="x")),
+    ],
+)
+def test_account_copies_are_checked_field_by_field(tmp_path, monkeypatch, case, copy):
+    xml = report_xml({"UserAccount": [_acct("u1", related(copy))]})
+    want = [] if case == "same" else ["UserAccount[1]/Related[1]"]
+    assert _copy_rows(tmp_path, f"acct-{case}", xml, monkeypatch) == {"UserAccount": want}
+
+
+def test_a_copy_of_another_type_held_by_a_call_or_contact_is_listed_by_both(tmp_path, monkeypatch):
+    """A call's or contact's copy of a type of its own (here CallLog) is matched to it, so
+    listed, never only counted; copies inside it are matched to it, as at any depth."""
+    log = _call("k1r").replace('type="Call"', 'type="CallLog"', 1)
+    inner = _call("k1s").replace('type="Call"', 'type="CallLog"', 1)
+    head, end = log.rsplit("</model>", 1)
+    held = f"{head}{related(inner)}</model>{end}"
+    xml = report_xml(
+        {
+            "Call": [_call("k1", related(held))],
+            "Contact": [_contact("p1", related(_contact("p1r").replace("Contact", "Person", 1)))],
+        }
+    )
+    assert _copy_rows(tmp_path, "custom-held", xml, monkeypatch) == {
+        "Call": ["Call[1]/Related[1]"],  # the copy inside it says what it says
+        "Contact": ["Contact[1]/Related[1]"],
+    }
+
+
+def test_a_call_copy_inside_a_call_copy_matches_that_copy(tmp_path, monkeypatch):
+    inner_same = _call("k1s", duration="00:02:00")
+    inner_other = _call("k1t")
+    head, end = _call("k1r", duration="00:02:00").rsplit("</model>", 1)
+    copy = f"{head}{related(inner_same, inner_other)}</model>{end}"
+    xml = report_xml({"Call": [_call("k1", related(copy))]})
+    assert _copy_rows(tmp_path, "call-nested", xml, monkeypatch) == {
+        "Call": ["Call[1]/Related[1]", "Call[1]/Related[1]/Related[2]"],
+    }
+
+
+def test_a_party_copied_under_a_call_or_a_message_is_a_copy_not_a_party(tmp_path, monkeypatch):
+    """A Party model under RelatedModels is a copy of the record holding it, checked like
+    any other copy, never one of that record's parties."""
+    copy = party(*JO).replace("<model", '<model id="q1"', 1)
+    xml = report_xml(
+        {
+            "Call": [_call("k1", related(copy))],
+            "InstantMessage": [_msg("hi", T, JO, (OWNER,), related(copy))],
+        }
+    )
+    path = write_package(tmp_path / "party.ufdr", xml)
+    d = ufdr_check.run(path).shareable
+    assert d["differences"] == 0, d["records"]
+    assert _rec(d, ufdr_check.RELATED_RECORD)["repeats_imported_once"] == 1
+    assert _rec(d, ufdr_check.RELATED_KIND_RECORDS["Call"])["repeats_imported_once"] == 1
+    with monkeypatch.context() as mp:
+        mp.setattr(ufdr._RecordMapper, "settle_related", lambda self: None)
+        d = ufdr_check.run(path).shareable
+    assert _rec(d, ufdr_check.RELATED_RECORD)["first_missing_locators"] == [
+        "InstantMessage[1]/Related[1]"
+    ]
+    assert _rec(d, ufdr_check.RELATED_KIND_RECORDS["Call"])["first_missing_locators"] == [
+        "Call[1]/Related[1]"
+    ]
+
+
+def test_a_copy_counts_as_a_message_copy_by_what_holds_it(tmp_path):
+    """The importer's counters split unmatched copies the way ufdr-check's rows do: a copy
+    held by a message is a message copy whatever its type is named; a call copy held by a call
+    is a record copy."""
+    other = _call("k1r", duration="00:09:00")
+    xml = report_xml(
+        {
+            "Call": [_call("k1", related(other))],
+            "InstantMessage": [_msg("hi", T, JO, (OWNER,), related(other))],
+        }
+    )
+    d = ufdr_check.run(write_package(tmp_path / "counters.ufdr", xml)).shareable
+    assert d["differences"] == 0, d["records"]
+    counts = d["baker_coverage"]["counters"]
+    assert counts["related_message_copies_matching_no_record"] == 1
+    assert counts["related_record_copies_matching_no_record"] == 1
+
+
+def test_a_custom_copy_inside_a_custom_copy_compares_its_embedded_messages(tmp_path, monkeypatch):
+    """A copy of another type is keyed as a message, embedded messages and all: two that
+    differ only in the message embedded in them do not match."""
+
+    def log(lid: str, said: str) -> str:
+        m = _call(lid).replace('type="Call"', 'type="CallLog"', 1)
+        head, end = m.rsplit("</model>", 1)
+        emb = one("EmbeddedInstantMessage", _msg(said), "InstantMessage")
+        return f"{head}{emb}</model>{end}"
+
+    outer = log("k1r", "first")
+    head, end = outer.rsplit("</model>", 1)
+    outer = f"{head}{related(log('k1s', 'second'))}</model>{end}"
+    xml = report_xml({"Call": [_call("k1", related(outer))]})
+    assert _copy_rows(tmp_path, "custom-embedded", xml, monkeypatch) == {
+        "Call": ["Call[1]/Related[1]", "Call[1]/Related[1]/Related[1]"],
+    }
