@@ -831,3 +831,47 @@ def test_a_call_copy_inside_a_call_copy_matches_that_copy(tmp_path, monkeypatch)
     assert _copy_rows(tmp_path, "call-nested", xml, monkeypatch) == {
         "Call": ["Call[1]/Related[1]", "Call[1]/Related[1]/Related[2]"],
     }
+
+
+def test_a_party_copied_under_a_call_or_a_message_is_a_copy_not_a_party(tmp_path, monkeypatch):
+    """A Party model under RelatedModels is a copy of the record holding it, checked like
+    any other copy, never one of that record's parties."""
+    copy = party(*JO).replace("<model", '<model id="q1"', 1)
+    xml = report_xml(
+        {
+            "Call": [_call("k1", related(copy))],
+            "InstantMessage": [_msg("hi", T, JO, (OWNER,), related(copy))],
+        }
+    )
+    path = write_package(tmp_path / "party.ufdr", xml)
+    d = ufdr_check.run(path).shareable
+    assert d["differences"] == 0, d["records"]
+    assert _rec(d, ufdr_check.RELATED_RECORD)["repeats_imported_once"] == 1
+    assert _rec(d, ufdr_check.RELATED_KIND_RECORDS["Call"])["repeats_imported_once"] == 1
+    with monkeypatch.context() as mp:
+        mp.setattr(ufdr._RecordMapper, "settle_related", lambda self: None)
+        d = ufdr_check.run(path).shareable
+    assert _rec(d, ufdr_check.RELATED_RECORD)["first_missing_locators"] == [
+        "InstantMessage[1]/Related[1]"
+    ]
+    assert _rec(d, ufdr_check.RELATED_KIND_RECORDS["Call"])["first_missing_locators"] == [
+        "Call[1]/Related[1]"
+    ]
+
+
+def test_a_copy_counts_as_a_message_copy_by_what_holds_it(tmp_path):
+    """The importer's counters split unmatched copies the way ufdr-check's rows do: a copy
+    held by a message is a message copy whatever its type is named; a call copy held by a call
+    is a record copy."""
+    other = _call("k1r", duration="00:09:00")
+    xml = report_xml(
+        {
+            "Call": [_call("k1", related(other))],
+            "InstantMessage": [_msg("hi", T, JO, (OWNER,), related(other))],
+        }
+    )
+    d = ufdr_check.run(write_package(tmp_path / "counters.ufdr", xml)).shareable
+    assert d["differences"] == 0, d["records"]
+    counts = d["baker_coverage"]["counters"]
+    assert counts["related_message_copies_matching_no_record"] == 1
+    assert counts["related_record_copies_matching_no_record"] == 1

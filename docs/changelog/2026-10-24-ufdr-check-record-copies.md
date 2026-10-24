@@ -12,6 +12,8 @@
   lists for review, else it is a difference, and one the importer lists that matches is a
   difference too. The check adds three rows: "call copies", "contact copies" and "account
   copies under RelatedModels".
+  A copy is a record of its own whatever its type is named: a Party model under RelatedModels
+  was read as one of its holder's parties before, so the check missed it (message copies too).
 
   Importer 0.3.0 -> 0.3.1: a copy of another type held by a call, contact or account (a custom
   CallLog, say) was counted but never compared. It is now matched to its holder, so it is

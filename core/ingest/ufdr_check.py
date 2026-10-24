@@ -482,6 +482,16 @@ class Tally:
 
     def _close(self, f: _Frame, holder: str) -> None:
         parent = self.frames[-1] if self.frames else None
+        if (
+            f.related
+            and (f.is_message or f.record_copy)
+            and f.locator is not None
+            and f.locator.rpartition("/")[2].startswith("Related[")
+        ):
+            # a copy is a record of its own whatever its type is named (a Party, say), never
+            # part of the record holding it
+            self._related(f)
+            return
         if parent is not None and holder in ("attachments", "attachment"):
             name = _first(f.fields, ATT_NAME)
             path = _first(f.fields, ATT_PATH)
@@ -530,16 +540,8 @@ class Tally:
                 tuple((p[0], p[1], p[3]) for p in f.parties.get("participants", [])),
             )
         if f.related:
-            if f.is_message:
-                self.related_messages[f.locator] = self._message_rec(f)
-            elif f.record_copy:
-                said = (
-                    _record_said(f)
-                    if f.type in COPY_KINDS
-                    # another type: the importer keys it as it keys a message
-                    else ("another type", _said(self._message_rec(f)))
-                )
-                self.related_records[f.locator] = (f.record_kind or f.type, said)
+            if f.is_message or f.record_copy:
+                self._related(f)
             return
         if f.top and f.type in COPY_KINDS:
             self.record_said[f.locator] = _record_said(f)
@@ -561,6 +563,19 @@ class Tally:
             self.contacts[f.locator] = ContactRec(
                 f.locator, _digest(_text(f.fields.get("name"))), len(f.entries)
             )
+
+    def _related(self, f: _Frame) -> None:
+        loc = f.locator or ""
+        if f.is_message:
+            self.related_messages[loc] = self._message_rec(f)
+        else:
+            said = (
+                _record_said(f)
+                if f.type in COPY_KINDS
+                # another type: the importer keys it as it keys a message
+                else ("another type", _said(self._message_rec(f)))
+            )
+            self.related_records[loc] = (f.record_kind or f.type, said)
 
     def _repeat(self, f: _Frame) -> None:
         mid = f.attrs.get("id")
