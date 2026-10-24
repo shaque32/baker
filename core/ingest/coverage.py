@@ -68,6 +68,10 @@ _TIME_PROBLEM_WORDS = {
         "UTC time was set"
     ),
     "numeric": "{be} a bare number, not a date; kept as written, with no time",
+    "date_column_disagrees": (
+        "{have} a date in the Date column that is not the date in the Time column (or is not a "
+        "date), so Mabillon cannot tell which is right; kept as written, with no time"
+    ),
     "no_offset": (
         "{have} no UTC offset in the value, the column name or the report settings; kept as "
         "written, with no UTC time"
@@ -197,6 +201,13 @@ def reader_words(importer: str) -> tuple[str, str, str]:
 # Record flags a UFDR import lists by locator: (level, words). {n} is the count with its noun;
 # {be}, {have}, {s0} and {them} agree with it.
 _FLAG_WORDS: dict[str, tuple[Level, str]] = {
+    "numbered_as_copy": (
+        "attention",
+        "{n} {be} numbered by the tool that made the report as a further copy of another row "
+        "(such as '3(1)' after '3'), often the same database read at a second path. Each was "
+        "imported as a record of its own, so a count of these messages may include one message "
+        "twice; compare each with the row it copies before counting.",
+    ),
     "carved": (
         "attention",
         "{n} {be} marked as recovered by carving (rebuilt from raw or unallocated data), so "
