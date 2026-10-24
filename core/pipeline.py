@@ -37,7 +37,7 @@ only moves data between them, stores it, and refuses anything that breaks a rule
   contradicted whatever its evidence says, so labels could not change its verdict, and they
   cost model calls (about a fifth of case01's). The run's audit-log entry lists these claims
   under `unlabeled` with the reason, and the report and review screen say so.
-  Components.label_settled turns labeling back on for them (`baker audit --label-all`).
+  Components.label_settled turns labeling back on for them (`mabillon audit --label-all`).
 
 Saving. Each claim is committed when it finishes, together with an audit-log entry naming
 what it considered (CLAIM_ACTION), with SHA-256 digests of the model calls stored for it
@@ -880,7 +880,7 @@ def settled_by_check(
                 f"Evidence was not sent to the stance model: check {r.check_name} failed on the"
                 f" core assumption '{core[r.assumption_id].text}', so rule 1a decides this claim"
                 " (contradicted) whatever the evidence says. The check's cited records are the"
-                " evidence. `baker audit --label-all` labels it anyway."
+                " evidence. `mabillon audit --label-all` labels it anyway."
             )
     return None
 

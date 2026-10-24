@@ -59,6 +59,7 @@ Source: "{#Stage}\baker\*"; DestDir: "{app}\baker"; Flags: recursesubdirs create
 Source: "{#Stage}\runtime\cpu\*"; DestDir: "{app}\python\Lib\site-packages"; Flags: recursesubdirs createallsubdirs ignoreversion; Check: not UseCuda
 Source: "{#Stage}\runtime\cuda\*"; DestDir: "{app}\python\Lib\site-packages"; Flags: recursesubdirs createallsubdirs ignoreversion; Check: UseCuda
 Source: "{#Stage}\baker.cmd"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#Stage}\mabillon.cmd"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Stage}\BUILD_INFO.json"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]

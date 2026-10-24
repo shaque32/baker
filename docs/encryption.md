@@ -41,7 +41,7 @@ computer's own disk encryption too (FileVault on a Mac, BitLocker on Windows).
 ## New cases
 
 "New case" on the case list has "Encrypt this case with a passphrase" ticked. Untick it for a
-plain case (for example a synthetic test case). `baker demo` cases are synthetic and stay plain.
+plain case (for example a synthetic test case). `mabillon demo` cases are synthetic and stay plain.
 
 ## Cases made before encryption
 
@@ -50,7 +50,7 @@ To encrypt one, when no audit is running on it:
 
 - in the browser: open the case, "Set up and run", the **Encryption** section at the bottom,
   enter a passphrase twice, "Encrypt this case"; or
-- in a terminal: `baker encrypt --db ~/Baker/cases/<case>/case.db --by "expert:Your Name"`.
+- in a terminal: `mabillon encrypt --db ~/Mabillon/cases/<case>/case.db --by "expert:Your Name"`.
 
 Mabillon refuses while an audit is recorded as running, takes the database's write lock, writes
 `case.key`, copies the database into an encrypted file and checks it (integrity, every table's
@@ -68,8 +68,8 @@ forensic tools until reused; disk encryption covers that.
 ## Commands
 
 ```
-baker encrypt    --db CASE/case.db --by "expert:Your Name"   # encrypt, or finish encrypting
-baker passphrase --db CASE/case.db --by "expert:Your Name"   # change the passphrase
+mabillon encrypt    --db CASE/case.db --by "expert:Your Name"   # encrypt, or finish encrypting
+mabillon passphrase --db CASE/case.db --by "expert:Your Name"   # change the passphrase
 ```
 
 Every other command on an encrypted case (`audit`, `report`, `verify-log`, ...) asks for the
