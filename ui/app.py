@@ -5,7 +5,7 @@ machine's own pages, reads or changes the case database, and renders a page. App
 does the same for a file upload, streamed to disk (ui/upload.py). ui/server.py wraps both in the
 standard library's HTTP server bound to 127.0.0.1; tests call them directly.
 
-Starting a case. Started on a cases folder (`baker serve`), the screen lists the cases and makes
+Starting a case. Started on a cases folder (`mabillon serve`), the screen lists the cases and makes
 new ones (core/casework/cases.py). "Set up and run" imports files into the case folder (copied,
 read-only, SHA-256 hashed), proposes claims with the local model, takes the expert's claim
 decisions, claim order and device-owner stipulations, checks the model, and runs the audit in
@@ -193,7 +193,7 @@ class Response:
 
 
 class App:
-    """One screen. Either on one case database (`db_path`, as `baker serve --db`) or on a cases
+    """One screen. Either on one case database (`db_path`, as `mabillon serve --db`) or on a cases
     folder (`home`), where the expert makes and opens cases.
 
     components_for, extractor_for and model_check build the real local-model parts by default;
@@ -234,7 +234,9 @@ class App:
         self._last_view: tuple[tuple, datetime] | None = None  # the last page loaded, and when
         self._unrecorded: list[str] = []  # views that could not be written, not yet shown
         self.clock: Callable[[], datetime] = lambda: datetime.now(UTC)
-        self.cloud_config = cloud_config  # None: $BAKER_CLOUD_CONFIG, else ~/.baker/cloud.json
+        self.cloud_config = (
+            cloud_config  # None: $MABILLON_CLOUD_CONFIG, else ~/.mabillon/cloud.json
+        )
         if expert:
             self.set_expert(expert)
         if self.single is not None and not protect.is_locked(self.single):

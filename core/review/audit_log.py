@@ -50,7 +50,7 @@ ANCHORS_SUFFIX = ".anchors.jsonl"  # added to the database's full name: case.db.
 BLOCKED = (
     "the case database was changed outside Mabillon, so this case cannot be opened for review or "
     "reported. Nothing was changed. Restore the case from a backup, or make a new case from the "
-    'original files (docs/review-screen.md, "When a case is blocked"). The command baker '
+    'original files (docs/review-screen.md, "When a case is blocked"). The command mabillon '
     "verify-log still reads it."
 )
 

@@ -1659,7 +1659,7 @@ def cases_page(
     if single is not None:
         out.append(
             f"<p>This screen was started on one case database: <span class='mono'>{e(single)}"
-            "</span>. Start <span class='mono'>baker serve</span> without "
+            "</span>. Start <span class='mono'>mabillon serve</span> without "
             "<span class='mono'>--db</span> to make and open cases in a cases folder.</p>"
         )
         if single_locked:
@@ -2022,11 +2022,12 @@ def cloud_section(
             anchor="cloud",
         ),
     ]
-    from core.llm.cloud import KEY_ENV, key_from_environment
+    from core.llm.cloud import key_env_in_use, key_from_environment
 
     if key_problem is None and key_from_environment():
         out.append(
-            f"<p>The Anthropic key in use comes from <span class='mono'>{e(KEY_ENV)}</span>. "
+            "<p>The Anthropic key in use comes from "
+            f"<span class='mono'>{e(key_env_in_use())}</span>. "
             "Change or unset it there; a key saved here would not be used.</p></div>"
         )
         return "".join(out)

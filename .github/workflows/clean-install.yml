@@ -86,7 +86,7 @@ jobs:
           test ! -e ~/Baker/models/stub-model.gguf.part
           grep -q '"path": "'"$HOME"'/Baker/models/stub-model.gguf"' ~/.baker/model.json
           test -x ~/Desktop/Baker.command && test -x ~/Desktop/"Baker demo.command"
-          ls ~/Baker/demo/cases
+          ls ~/Mabillon/demo/cases
           ~/Baker/app/.venv/bin/python -c "import llama_cpp; print('llama-cpp-python', llama_cpp.__version__)"
           # The settings chain end to end: config found, file found, SHA-256 matches, runtime loads.
           ~/Baker/app/.venv/bin/baker model-check

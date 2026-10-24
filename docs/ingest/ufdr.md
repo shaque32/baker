@@ -13,7 +13,7 @@ last section), every import:
 - records `"format_support": "unverified"` in its coverage record;
 - shows, first among the items to review, that the reader is unverified and that each record
   should be compared with Cellebrite Reader before it is relied on (`format_unverified`). The
-  coverage headline starts "Unverified format." on the case screen and in `baker import`;
+  coverage headline starts "Unverified format." on the case screen and in `mabillon import`;
 - adds a line to the report's Limitations saying the file was read with an unverified reader;
 - imports with `fidelity = unknown`, so no absence or count finding can rest on it, whatever the
   package says about how complete it is.
@@ -200,7 +200,7 @@ history and the other types above, message language, files not attached to a mes
 No public UFDR made by Cellebrite with a license that allows this use could be found or reached.
 Public phone images (Josh Hickman's on Digital Corpora, NIST CFReDS, the Cellebrite CTFs) are raw
 extractions, not Reader reports: making a UFDR from them needs Physical Analyzer, which needs a
-Cellebrite license and Windows. Two third-party samples were run through `baker ufdr-check` and
+Cellebrite license and Windows. Two third-party samples were run through `mabillon ufdr-check` and
 every record was compared by hand with report.xml. Neither is in the repo.
 
 | Sample | Where it is from | Records | What it showed |
@@ -235,7 +235,7 @@ verified.
 
 ## Before calling it verified
 
-1. An expert runs `baker ufdr-check` on a real UFDR on their own computer
+1. An expert runs `mabillon ufdr-check` on a real UFDR on their own computer
    (docs/ingest/ufdr_check.md). Nothing leaves the computer except the check's shareable
    report, which holds no case content. The package itself never goes into the repo or a prompt.
 2. The report compares Mabillon's import with report.xml record by record and lists every record

@@ -7,7 +7,7 @@
 | `install_cuda.ps1` | CUDA toolkit on the build machine only (checks NVIDIA's signature) |
 | `stage.py` | Lays out what the installer ships: Python, Baker's git-tracked source (no case02, no cloud benchmark), both runtimes, `BUILD_INFO.json` with every file's SHA-256 |
 | `baker.iss` | Inno Setup script: per-user install, picks the runtime, places and verifies the model, writes `~/.baker/model.json` |
-| `baker.cmd` | The `baker` command (`python -X utf8 -m cli`) |
+| `baker.cmd` | The `mabillon` command (`python -X utf8 -m cli`), staged as both `mabillon.cmd` and `baker.cmd` |
 | `speedtest.ps1` | Install, model download and check, probe and timed case01 audit, then `RESULTS.md` to paste back |
 
 CI (`.github/workflows/windows-installer.yml`) runs on every push to `main`, on pull requests

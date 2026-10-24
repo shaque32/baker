@@ -16,7 +16,7 @@ and fragments of AXIOM XML reports) and tested on synthetic exports only
 - records `"format_support": "unverified"` in its coverage record;
 - shows, first among the items to review, that the reader is unverified and that each record
   should be compared with AXIOM Examine before it is relied on (`format_unverified`). The
-  coverage headline starts "Unverified format." on the case screen and in `baker import`;
+  coverage headline starts "Unverified format." on the case screen and in `mabillon import`;
 - adds a line to the report's Limitations saying the file was read with an unverified reader.
 
 A report export holds what the examiner chose to export, so it imports with
