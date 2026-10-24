@@ -7,12 +7,13 @@ independent ElementTree dump of the phone's report.xml (eval/validation/dump_ufd
 in project files. The run's case.db is copied; the copy is scored and the original never changes.
 
 1. Key evidence: each key record (`ufdr:source_index:N`) is matched to Mabillon's records by
-   content, since Mabillon's ids are positional and keep no UFDR id. A message matches on its
-   raw time (the same report.xml text both sides read), then its app, then its body; a call on
-   its raw time, then its duration; a contact on its name and one of its identifiers (a phone
-   number by its last ten digits). A key with
-   no single match (none, several, or a kind Mabillon does not cite, such as a chat) is listed.
-2. R1, the run as it stands: the three primary measures, key-evidence recall, label counts.
+   content, since Mabillon's ids are positional and keep no UFDR id. A message must agree on its
+   raw time (the same report.xml text both sides read), its app and its body; a call on its raw
+   time, its app and its duration; a contact on its name and one of its identifiers (a phone
+   number by its last ten digits). A key with no single match (none, several, or a kind
+   Mabillon does not cite, such as a chat) is listed, never matched to a near miss.
+2. R1, the run as it stands: the three primary measures, key-evidence recall (counted per key
+   record, so a contact Mabillon keeps as one row per identifier still counts once), label counts.
 3. R2, the simulated expert (eval/simulated_expert.py) on the mapped keys, then the rules again
    (`mabillon redecide`), scored by eval/validation/card.py.
 4. Import counts beside the dump's.
@@ -58,8 +59,8 @@ def load_keys(keys: Path) -> tuple[list[GoldClaim], dict[str, str]]:
     return gold, hashes
 
 
-def load_dump(dump: Path) -> tuple[dict[str, dict], set[str], dict[str, int]]:
-    """Records by source_index, chat ids, and top-level counts (copies left out)."""
+def load_dump(dump: Path) -> tuple[dict[str, dict], dict[str, str | None], dict[str, int]]:
+    """Records by source_index, each chat's app by chat id, and top-level counts."""
     by_index: dict[str, dict] = {}
     counts: dict[str, int] = {}
     for kind in ("messages", "calls", "contacts"):
@@ -70,19 +71,24 @@ def load_dump(dump: Path) -> tuple[dict[str, dict], set[str], dict[str, int]]:
         for r in rows:
             by_index[str(r["source_index"])] = r
     chat_lines = (dump / "chats.jsonl").read_text("utf-8").splitlines()
-    chats = {json.loads(x)["id"] for x in chat_lines if x}
-    counts["chats"] = len(chats)
+    chats = {c["id"]: c.get("app") for c in map(json.loads, filter(None, chat_lines))}
+    # Mabillon makes a thread only for a chat that holds a message, so count those.
+    holding = {r.get("chat_id") for r in by_index.values() if r.get("kind") == "message"}
+    counts["chats_with_messages"] = sum(1 for c in chats if c in holding)
     return by_index, chats, counts
 
 
 def _seconds(duration: str | None) -> int | None:
-    if not duration:
+    """A duration in whole seconds the way the importer stores it: plain seconds, or
+    [d.]hh:mm:ss with any fraction of a second dropped."""
+    t = (duration or "").strip()
+    if re.fullmatch(r"\d+", t):
+        return int(t)
+    m = re.fullmatch(r"(?:(\d+)\.)?(\d{1,2}):(\d{2}):(\d{2})(?:\.\d+)?", t)
+    if not m:
         return None
-    try:
-        h, m, s = (float(p) for p in duration.split(":"))
-    except ValueError:
-        return None
-    return round(h * 3600 + m * 60 + s)
+    d, h, mi, s = m.groups()
+    return int(d or 0) * 86400 + int(h) * 3600 + int(mi) * 60 + int(s)
 
 
 def _ident(value: str) -> str:
@@ -93,30 +99,32 @@ def _ident(value: str) -> str:
     return value.strip().lower()
 
 
-def _narrow(rows: list[tuple], keep) -> list[tuple]:  # noqa: ANN001
-    """Rows that pass keep, or all of them when none does (the test only narrows)."""
-    kept = [r for r in rows if keep(r)]
-    return kept if kept else rows
+def _app(rec: dict, chats: dict[str, str | None]) -> str:
+    """The app Mabillon files a record under: its own Source, else its chat's, else "SMS" for
+    a standalone SMS or MMS and "unknown" for anything else."""
+    default = "SMS" if rec.get("model") in ("SMS", "MMS") else "unknown"
+    return rec.get("app") or chats.get(rec.get("chat_id") or "") or default
 
 
-def match_record(conn: sqlite3.Connection, rec: dict) -> tuple[list[str], str]:
-    """Mabillon record ids for one dump record, and why when there is no single match."""
+def match_record(
+    conn: sqlite3.Connection, rec: dict, chats: dict[str, str | None] | None = None
+) -> tuple[list[str], str]:
+    """Mabillon record ids for one dump record, and why when there is no single match. Every
+    field compared must agree; a record that differs in any of them is not a match."""
     kind = rec.get("kind")
+    chats = chats or {}
     if kind == "message":
         rows = conn.execute(
-            "SELECT m.id, m.body, t.app FROM messages m JOIN threads t ON t.id = m.thread_id"
-            " WHERE m.ts_raw = ?",
-            (rec["time_utc"],),
+            "SELECT m.id FROM messages m JOIN threads t ON t.id = m.thread_id"
+            " WHERE m.ts_raw = ? AND t.app = ? AND m.body = ?",
+            (rec["time_utc"], _app(rec, chats), rec.get("body") or ""),
         ).fetchall()
-        rows = _narrow(rows, lambda r: r[2] == rec.get("app"))
-        rows = _narrow(rows, lambda r: r[1] == (rec.get("body") or ""))
         ids = [r[0] for r in rows]
     elif kind == "call":
         rows = conn.execute(
-            "SELECT id, duration_s FROM calls WHERE ts_raw = ?", (rec["time_utc"],)
+            "SELECT id FROM calls WHERE ts_raw = ? AND app = ? AND duration_s IS ?",
+            (rec["time_utc"], _app(rec, chats), _seconds(rec.get("duration"))),
         ).fetchall()
-        want = _seconds(rec.get("duration"))
-        rows = _narrow(rows, lambda r: want is not None and r[1] == want)
         ids = [r[0] for r in rows]
     elif kind == "contact":
         values = {_ident(e["value"]) for e in rec.get("entries", []) if e.get("value")}
@@ -136,14 +144,21 @@ def match_record(conn: sqlite3.Connection, rec: dict) -> tuple[list[str], str]:
 
 
 def map_keys(
-    conn: sqlite3.Connection, gold: list[GoldClaim], dump: dict[str, dict], chats: set[str]
+    conn: sqlite3.Connection,
+    gold: list[GoldClaim],
+    dump: dict[str, dict],
+    chats: dict[str, str | None],
 ) -> tuple[list[GoldClaim], dict[str, Any]]:
-    """The keys with key_evidence as Mabillon record ids, and every key left unmapped."""
+    """The keys with key_evidence as Mabillon record ids, and every key left unmapped. The
+    mapping also keeps, per claim, each mapped key record's ids (a contact has one per
+    identifier), so recall counts key records rather than rows."""
     mapped: list[GoldClaim] = []
     unmapped: list[dict[str, str]] = []
+    groups: dict[str, dict[str, list[str]]] = {}
     n_keys = 0
     for g in gold:
         ids: list[str] = []
+        groups[g.claim_id] = {}
         for key in g.key_evidence:
             n_keys += 1
             index = key.removeprefix("ufdr:source_index:")
@@ -153,13 +168,14 @@ def map_keys(
             elif index not in dump:
                 got, why = [], "not in the dump"
             else:
-                got, why = match_record(conn, dump[index])
+                got, why = match_record(conn, dump[index], chats)
             if got:
                 ids.extend(i for i in got if i not in ids)
+                groups[g.claim_id][key] = got
             else:
                 unmapped.append({"claim_id": g.claim_id, "key": key, "why": why})
         mapped.append(g.model_copy(update={"key_evidence": tuple(ids)}))
-    return mapped, {"keys": n_keys, "unmapped": unmapped}
+    return mapped, {"keys": n_keys, "unmapped": unmapped, "groups": groups}
 
 
 def _items(conn: sqlite3.Connection, manifest: dict, claim_id: str) -> list:
@@ -190,6 +206,47 @@ def _retrieved(conn: sqlite3.Connection) -> dict[str, set[str]]:
         if len(ids) >= 2 and ids[0].startswith("asm:"):
             out.setdefault(ids[0].split(":")[1], set()).add(ids[1])
     return out
+
+
+def key_recall(
+    conn: sqlite3.Connection, run: dict, groups: dict[str, dict[str, list[str]]]
+) -> dict[str, Any]:
+    """Key-evidence recall as eval/simulated_expert.readiness defines it, counted per mapped key
+    record: retrieved when the run sent any of its rows to the stance labeler for the claim,
+    surfaced when any of them became a labeled, not irrelevant evidence item."""
+    retrieved = _retrieved(conn)
+    per_claim: dict[str, dict[str, Any]] = {}
+    n_key = n_retrieved = n_surfaced = 0
+    all_retrieved: list[str] = []
+    any_surfaced: list[str] = []
+    for claim_id in sorted(groups):
+        keys = groups[claim_id]
+        sent = retrieved.get(claim_id, set())
+        items = _items(conn, run["manifest"], claim_id)
+        shown_ids = {e.record_id for e in items if e.stance is not Stance.IRRELEVANT}
+        got = sorted(k for k, ids in keys.items() if sent & set(ids))
+        shown = sorted(k for k, ids in keys.items() if shown_ids & set(ids))
+        n_key += len(keys)
+        n_retrieved += len(got)
+        n_surfaced += len(shown)
+        if keys and len(got) == len(keys):
+            all_retrieved.append(claim_id)
+        if shown:
+            any_surfaced.append(claim_id)
+        per_claim[claim_id] = {
+            "key": len(keys),
+            "retrieved": len(got),
+            "surfaced": len(shown),
+            "missed": sorted(set(keys) - set(got)),
+        }
+    return {
+        "key_evidence": n_key,
+        "key_evidence_recall_retrieved": rate(n_retrieved, n_key),
+        "key_evidence_recall_surfaced": rate(n_surfaced, n_key),
+        "claims_all_key_retrieved": all_retrieved,
+        "claims_ready_for_expert": any_surfaced,
+        "per_claim": per_claim,
+    }
 
 
 def r1_measures(conn: sqlite3.Connection, run: dict, gold: list[GoldClaim]) -> dict[str, Any]:
@@ -263,11 +320,14 @@ def label_counts(conn: sqlite3.Connection, run: dict, gold: list[GoldClaim]) -> 
 
 
 def import_counts(conn: sqlite3.Connection, dump_counts: dict[str, int]) -> dict[str, Any]:
+    """Like for like: a thread whose first message came from a source chat stands for that
+    chat (standalone messages make threads of their own, which are not counted here)."""
+    one = lambda sql: conn.execute(sql).fetchone()[0]  # noqa: E731
     ours = {
-        "messages": conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0],
-        "calls": conn.execute("SELECT COUNT(*) FROM calls").fetchone()[0],
-        "contacts": conn.execute("SELECT COUNT(DISTINCT locator) FROM contacts").fetchone()[0],
-        "chats": conn.execute("SELECT COUNT(*) FROM threads").fetchone()[0],
+        "messages": one("SELECT COUNT(*) FROM messages"),
+        "calls": one("SELECT COUNT(*) FROM calls"),
+        "contacts": one("SELECT COUNT(DISTINCT locator) FROM contacts"),
+        "chats_with_messages": one("SELECT COUNT(*) FROM threads WHERE locator LIKE 'Chat[%'"),
     }
     return {k: {"mabillon": ours[k], "dump": dump_counts.get(k)} for k in ours}
 
@@ -298,8 +358,6 @@ def r2(db: Path, run: dict, mapped: list[GoldClaim]) -> dict[str, Any]:
 def score(results: Path, keys: Path, dump: Path, out: Path) -> dict[str, Any]:
     from core import pipeline
     from core.db import connect
-    from eval.simulated_expert import GoldKey
-    from eval.simulated_expert import readiness as key_readiness
 
     out.mkdir(parents=True, exist_ok=True)
     db = out / "scored.db"
@@ -321,7 +379,7 @@ def score(results: Path, keys: Path, dump: Path, out: Path) -> dict[str, Any]:
         raise SystemExit(f"{results}: no completed audit in case.db")
     mapped, mapping = map_keys(conn, gold, by_index, chats)
     r1 = r1_measures(conn, run, mapped)
-    ready = key_readiness(GoldKey(mapped), _retrieved(conn), conn, run["manifest"])
+    ready = key_recall(conn, run, mapping["groups"])
     labels = label_counts(conn, run, mapped)
     counts = import_counts(conn, dump_counts)
     conn.close()
@@ -353,6 +411,7 @@ def _line(r: dict[str, Any]) -> str:
 def render(s: dict[str, Any]) -> str:
     r1 = s["r1"]
     m = s["key_mapping"]
+    ke = s["key_evidence"]
     lines = [
         "# Validation v1 score (iOS 15 public phone)",
         "",
@@ -368,6 +427,9 @@ def render(s: dict[str, Any]) -> str:
         f"3. Contradiction surfaced: {_line(r1['contradiction_surfaced'])}.",
         "",
         f"Key records: {m['keys']}, unmapped {len(m['unmapped'])} (listed in score.json).",
+        "Key-evidence recall, per key record: retrieved"
+        f" {_line(ke['key_evidence_recall_retrieved'])},"
+        f" surfaced {_line(ke['key_evidence_recall_surfaced'])}.",
         "",
         "## R2, simulated expert",
         "",

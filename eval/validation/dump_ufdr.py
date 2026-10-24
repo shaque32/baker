@@ -5,9 +5,10 @@ it made the iOS 15 dump in project files, and the scorer's test runs it on synth
 It imports nothing from core/ on purpose.
 
 Usage: python3 -I -m eval.validation.dump_ufdr <report.xml> <out_dir>
-Writes messages.jsonl (chat and standalone instant messages, SMS), calls.jsonl, contacts.jsonl.
+Writes messages.jsonl (chat messages, and standalone instant messages, SMS and MMS; a standalone
+SMS or MMS row says which in "model"), calls.jsonl, contacts.jsonl and chats.jsonl.
 Every row keeps the model id and source_index so a key can cite the record.
-Copies under RelatedModels are kept with related=True; readers use the holder.
+Only top-level records are written; a model nested in another is read as part of its holder.
 """
 
 import json
@@ -16,7 +17,6 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 NS = "{http://pa.cellebrite.com/report/2.0}"
-TOP = {"Chat", "InstantMessage", "Call", "Contact"}
 
 
 def t(el):
@@ -114,6 +114,9 @@ def main(argv=None):
                         files["messages"].write(json.dumps(row, ensure_ascii=False) + "\n")
         elif kind == "InstantMessage":
             files["messages"].write(json.dumps(message(el), ensure_ascii=False) + "\n")
+        elif kind in ("SMS", "MMS"):
+            row = {**message(el), "model": kind}
+            files["messages"].write(json.dumps(row, ensure_ascii=False) + "\n")
         elif kind == "Call":
             ps = parties(el, "Parties")
             files["calls"].write(
