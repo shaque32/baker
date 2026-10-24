@@ -178,8 +178,10 @@ something could not be checked, and 1 when anything failed:
    out the sections that read the whole phone (timeline, restore, selection, holdings, other
    explanations) unless the bundle holds `records`. A bundle exported with another report
    version, or another bundle version (whose METHOD.md wording differs), fails naming the
-   commit to verify it with: only that code writes the same bytes again. Bundles exported before
-   the rename to Mabillon (report 0.12.0, bundle 1.0.0) are verified that way.
+   commit to verify it with: only that code writes the same bytes again. This version does not
+   byte-compare such a report, so a change to it is caught only by verifying at that commit.
+   Bundles exported before the rename to Mabillon (report 0.12.0, bundle 1.0.0) are verified
+   that way.
 
 NOT VERIFIED lines say what could not be checked: a labeler that stored no model answers (the eval's
 stand-ins), cases audited before `cloud.received` or the run, claim and row digests existed,
