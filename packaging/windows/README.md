@@ -5,8 +5,8 @@
 | `pins.json` | Every download the build uses (embeddable Python, llama-cpp-python source, CUDA toolkit, model), pinned by SHA-256 |
 | `build_llama.ps1` | Builds the llama-cpp-python wheel from the pinned PyPI source: `cpu` (AVX2, no OpenMP) or `cuda` |
 | `install_cuda.ps1` | CUDA toolkit on the build machine only (checks NVIDIA's signature) |
-| `stage.py` | Lays out what the installer ships: Python, Baker's git-tracked source (no case02, no cloud benchmark), both runtimes, `BUILD_INFO.json` with every file's SHA-256 |
-| `baker.iss` | Inno Setup script: per-user install, picks the runtime, places and verifies the model, writes `~/.baker/model.json` |
+| `stage.py` | Lays out what the installer ships: Python, Mabillon's git-tracked source (in a folder still named `baker`) (no case02, no cloud benchmark), both runtimes, `BUILD_INFO.json` with every file's SHA-256 |
+| `baker.iss` | Inno Setup script: per-user install, picks the runtime, places and verifies the model, writes `~/.mabillon/model.json`. An update over an install made under the name Baker keeps its folder, model and own model setting, and replaces its Start-menu shortcuts |
 | `baker.cmd` | The `mabillon` command (`python -X utf8 -m cli`), staged as both `mabillon.cmd` and `baker.cmd` |
 | `speedtest.ps1` | Install, model download and check, probe and timed case01 audit, then `RESULTS.md` to paste back |
 
@@ -14,7 +14,7 @@ CI (`.github/workflows/windows-installer.yml`) runs on every push to `main`, on 
 that touch this folder, and on demand. It checks the pins, builds both runtimes (cached), builds
 the installer, installs it on a fresh runner and runs the case01 merge gate from the installed
 copy, then uninstalls it. The installer, its `.sha256`, `BUILD_INFO.json` and `speedtest.ps1`
-are the `baker-installer` artifact of the run.
+are the `mabillon-installer` artifact of the run.
 
 CPU timing: **Actions > windows-installer > Run workflow** with "Time the 14B model" ticked, or
 on a pull request add the `cpu-timing` label (or push a commit to `main` whose message contains
@@ -23,6 +23,9 @@ on a pull request add the `cpu-timing` label (or push a commit to `main` whose m
 
 ## Decisions
 
+- Setup keeps the AppId it had under the name Baker, so it updates such an install in place
+  (in `%LOCALAPPDATA%\Programs\Baker`) rather than installing a second copy. The pip package
+  and the source folder keep the name `baker`, like the file format ids (CLAUDE.md).
 - The model runtime is chosen at install time, not at run time: a CUDA build of llama.cpp does
   not load at all on a PC without the NVIDIA driver.
 - The CUDA build carries `cudart64_12.dll`, `cublas64_12.dll` and `cublasLt64_12.dll`, which the

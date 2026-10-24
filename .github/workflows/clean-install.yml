@@ -1,12 +1,13 @@
-# A first pilot's Mac install, from scratch, on a fresh Apple silicon runner: the Baker folder as
-# GitHub's zip, unzipped by macOS; "Install Baker.command" as docs/install-mac.md says; a second
-# run (the update path); then both Desktop launchers and a headless-Chromium look at the start
+# A first pilot's Mac install, from scratch, on a fresh Apple silicon runner: the Mabillon folder as
+# GitHub's zip, unzipped by macOS; "Install Mabillon.command" as docs/install-mac.md says; a second
+# run (the update path); a third over the folders the installer used when the product was called
+# Baker (the model and its setting are kept where they are); then both Desktop launchers and a headless-Chromium look at the start
 # screen and the demo case. The fresh Windows install is the smoke-test job in
 # windows-installer.yml.
 #
 # The real model is 9 GB, so this installs a 1 MB stub served from 127.0.0.1 through the same
-# download, SHA-256 check and settings steps (BAKER_PINS). The runner has 7 GB of memory, so the
-# 16 GB floor is lowered for the test (BAKER_MIN_MEMORY_GB). Every case here is synthetic.
+# download, SHA-256 check and settings steps (MABILLON_PINS). The runner has 7 GB of memory, so the
+# 16 GB floor is lowered for the test (MABILLON_MIN_MEMORY_GB). Every case here is synthetic.
 name: clean-install
 
 on:
@@ -35,7 +36,7 @@ concurrency:
 
 jobs:
   mac:
-    runs-on: macos-15 # Apple silicon, like every Mac Baker supports (macos-14 retires 2026-11-02)
+    runs-on: macos-15 # Apple silicon, like every Mac Mabillon supports (macos-14 retires 2026-11-02)
     timeout-minutes: 60
     env:
       # A pilot's Mac has no Python 3.12; make uv fetch its own, as it does there.
@@ -45,15 +46,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: The Baker folder as a pilot gets it (GitHub's zip, unzipped by macOS)
+      - name: The Mabillon folder as a pilot gets it (GitHub's zip, unzipped by macOS)
         run: |
           git archive --format=zip --prefix=baker-main/ -o "$RUNNER_TEMP/baker-main.zip" HEAD
           mkdir -p ~/Downloads
           ditto -x -k "$RUNNER_TEMP/baker-main.zip" ~/Downloads
           ls -l ~/Downloads/baker-main/packaging/mac
-          test -x "$HOME/Downloads/baker-main/packaging/mac/Install Baker.command"
+          test -x "$HOME/Downloads/baker-main/packaging/mac/Install Mabillon.command"
           echo "uv already here: $(command -v uv || echo no)"
-          test ! -e ~/Baker && test ! -e ~/.baker
+          test ! -e ~/Mabillon && test ! -e ~/.mabillon && test ! -e ~/Baker && test ! -e ~/.baker
 
       - name: A 1 MB stub model, served on this machine
         run: |
@@ -67,34 +68,36 @@ jobs:
           nohup python3 -m http.server 8899 --bind 127.0.0.1 > "$RUNNER_TEMP/ui/stub-http.log" 2>&1 &
           for i in $(seq 30); do curl -sfI http://127.0.0.1:8899/stub-model.gguf >/dev/null && break; sleep 1; done
 
-      - name: Install, as a double-click on "Install Baker.command" does
+      - name: Install, as a double-click on "Install Mabillon.command" does
         env:
-          BAKER_PINS: ${{ runner.temp }}/stub-pins.json
-          BAKER_MIN_MEMORY_GB: "4"
+          MABILLON_PINS: ${{ runner.temp }}/stub-pins.json
+          MABILLON_MIN_MEMORY_GB: "4"
         run: |
           export PATH="$PILOT_PATH"
           bash --version | head -1
-          echo | "$HOME/Downloads/baker-main/packaging/mac/Install Baker.command" 2>&1 |
+          echo | "$HOME/Downloads/baker-main/packaging/mac/Install Mabillon.command" 2>&1 |
             tee "$RUNNER_TEMP/ui/install-1.log"
           test "${PIPESTATUS[1]}" = 0
 
       - name: What the install left
         run: |
           set -x
-          ~/Baker/app/.venv/bin/baker --help >/dev/null
-          test -f ~/Baker/models/stub-model.gguf
-          test ! -e ~/Baker/models/stub-model.gguf.part
-          grep -q '"path": "'"$HOME"'/Baker/models/stub-model.gguf"' ~/.baker/model.json
-          test -x ~/Desktop/Baker.command && test -x ~/Desktop/"Baker demo.command"
+          ~/Mabillon/app/.venv/bin/mabillon --help >/dev/null
+          ~/Mabillon/app/.venv/bin/baker --help >/dev/null  # the old command name, for a release
+          test -f ~/Mabillon/models/stub-model.gguf
+          test ! -e ~/Mabillon/models/stub-model.gguf.part
+          grep -q '"path": "'"$HOME"'/Mabillon/models/stub-model.gguf"' ~/.mabillon/model.json
+          test -x ~/Desktop/Mabillon.command && test -x ~/Desktop/"Mabillon demo.command"
+          test ! -e ~/Baker && test ! -e ~/.baker
           ls ~/Mabillon/demo/cases
-          ~/Baker/app/.venv/bin/python -c "import llama_cpp; print('llama-cpp-python', llama_cpp.__version__)"
+          ~/Mabillon/app/.venv/bin/python -c "import llama_cpp; print('llama-cpp-python', llama_cpp.__version__)"
           # The settings chain end to end: config found, file found, SHA-256 matches, runtime loads.
-          ~/Baker/app/.venv/bin/baker model-check
+          ~/Mabillon/app/.venv/bin/mabillon model-check
 
       - name: Run the installer again (how a pilot updates)
         env:
-          BAKER_PINS: ${{ runner.temp }}/stub-pins.json
-          BAKER_MIN_MEMORY_GB: "4"
+          MABILLON_PINS: ${{ runner.temp }}/stub-pins.json
+          MABILLON_MIN_MEMORY_GB: "4"
         run: |
           export PATH="$PILOT_PATH"
           bash ~/Downloads/baker-main/packaging/mac/install.sh 2>&1 | tee "$RUNNER_TEMP/ui/install-2.log"
@@ -102,14 +105,42 @@ jobs:
           grep -q "Already here, SHA-256 checked." "$RUNNER_TEMP/ui/install-2.log"
           grep -q "Keeping the model setting you already have" "$RUNNER_TEMP/ui/install-2.log"
 
+      # The model, its setting and the launchers where the Baker installer put them; the old
+      # variable names for the stub. The installer keeps the model and setting where they are.
+      - name: Run the installer over a Mac set up when the product was called Baker
+        env:
+          BAKER_PINS: ${{ runner.temp }}/stub-pins.json
+          BAKER_MIN_MEMORY_GB: "4"
+        run: |
+          mkdir -p ~/Baker ~/.baker
+          mv ~/Mabillon/models ~/Baker/models
+          sed "s#$HOME/Mabillon/models#$HOME/Baker/models#" ~/.mabillon/model.json > ~/.baker/model.json
+          rm ~/.mabillon/model.json
+          rm ~/Desktop/Mabillon.command ~/Desktop/"Mabillon demo.command"
+          printf '#!/bin/bash\n# Opens Baker in your browser. Close this window to stop it.\n"x" serve --open\n' \
+            > ~/Desktop/Baker.command
+          printf '#!/bin/bash\n# My own notes launcher.\n' > ~/Desktop/"Baker demo.command"
+          export PATH="$PILOT_PATH"
+          bash ~/Downloads/baker-main/packaging/mac/install.sh 2>&1 | tee "$RUNNER_TEMP/ui/install-3.log"
+          test "${PIPESTATUS[0]}" = 0
+          grep -q "Already here, SHA-256 checked." "$RUNNER_TEMP/ui/install-3.log"
+          grep -q "Keeping the model setting you already have: $HOME/.baker/model.json" "$RUNNER_TEMP/ui/install-3.log"
+          test ! -e ~/Mabillon/models/stub-model.gguf && test ! -e ~/.mabillon/model.json
+          test -x ~/Desktop/Mabillon.command && test -x ~/Desktop/"Mabillon demo.command"
+          test ! -e ~/Desktop/Baker.command  # the Baker installer's launcher is replaced
+          test -f ~/Desktop/"Baker demo.command"  # a file of the person's own is left alone
+          ~/Mabillon/app/.venv/bin/mabillon model-check | tee "$RUNNER_TEMP/ui/model-check-3.log"
+          test "${PIPESTATUS[0]}" = 0
+          grep -q "$HOME/.baker/model.json" "$RUNNER_TEMP/ui/model-check-3.log"
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Both Desktop launchers, then headless Chromium on the start screen and the demo case
         run: |
-          PATH="$PILOT_PATH" nohup bash ~/Desktop/Baker.command > "$RUNNER_TEMP/ui/serve.log" 2>&1 &
-          PATH="$PILOT_PATH" nohup bash ~/Desktop/"Baker demo.command" > "$RUNNER_TEMP/ui/demo.log" 2>&1 &
+          PATH="$PILOT_PATH" nohup bash ~/Desktop/Mabillon.command > "$RUNNER_TEMP/ui/serve.log" 2>&1 &
+          PATH="$PILOT_PATH" nohup bash ~/Desktop/"Mabillon demo.command" > "$RUNNER_TEMP/ui/demo.log" 2>&1 &
           python -m pip install --quiet playwright==1.56.0
           python -m playwright install chromium
           python packaging/smoke_ui.py --serve http://127.0.0.1:8765 --demo http://127.0.0.1:8766 \

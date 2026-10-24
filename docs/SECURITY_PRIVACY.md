@@ -63,7 +63,7 @@ Install-time downloads, before any case exists:
   installs Mabillon's Python packages and the model runtime (`llama-cpp-python`, version pinned) from
   the package index. **These are not hash-pinned**: they trust astral.sh, the Python download
   source and PyPI over HTTPS. A firm that needs more can read `packaging/mac/install.sh` before running it, or wait
-  for a signed Mac package (not built yet). Copying an installed `~/Baker` folder to another Mac is
+  for a signed Mac package (not built yet). Copying an installed `~/Mabillon` folder to another Mac is
   not supported: the environment and launchers hold paths from the computer that installed it.
 
 An offline computer can take the model from a USB drive.
@@ -101,7 +101,8 @@ Full design: `docs/encryption.md`.
 - **Cloud API key (opted-in case).** The expert's own Anthropic key; Mabillon runs no server and holds no key of
   its own. It is read from `$MABILLON_ANTHROPIC_API_KEY`; or, in an encrypted case, from the key saved
   in that case, sealed with AES-256-GCM under the case key, so it is unreadable while the case is
-  locked; or from `~/.baker/cloud.json`, an owner-only (0600) plain file. The key travels in a
+  locked; or from `~/.mabillon/cloud.json` (`~/.baker/cloud.json` on a computer set up before the
+  rename), an owner-only (0600) plain file. The key travels in a
   request header and is never written to the audit log.
 
 ## 4. Retention and deletion
@@ -111,7 +112,7 @@ it. Mabillon has no "delete case" button: delete the case folder (under `~/Mabil
 plus any backups of it, any downloaded reports, any request draft downloaded from the case
 (`baker-request-draft.txt`: file names, device labels, extraction details, hashes) and any
 `mabillon ufdr-check` output folder (`ufdr-check-private.md` holds sample records). Outside the case folders Mabillon writes only small
-settings under `~/.baker`: `model.json` (which model file to use), `model-check.json` (the model
+settings under `~/.mabillon` (`~/.baker` on a computer set up when the product was called Baker): `model.json` (which model file to use), `model-check.json` (the model
 file's checked hash), `speed.json` (seconds per model call) and, if the expert saves an Anthropic key outside a case,
 `cloud.json`. None holds case content; `cloud.json` holds the key. Each case folder also has
 `case.db.anchors.jsonl`, unencrypted, beside `case.db` (audit-log entry numbers and hashes, no case content).
@@ -181,7 +182,7 @@ document is not legal advice.
 | `tests/test_review_screen.py::test_screen_code_imports_no_network_client` | The screen and report code import no network client |
 | `tests/test_review_screen.py::test_the_whole_flow_makes_no_network_call` | A full review, re-decide and report download with every socket connect and DNS lookup made to fail: none is attempted |
 | `tests/test_review_screen.py::test_server_binds_loopback_only_and_answers` | The screen binds 127.0.0.1 only |
-| `tests/test_packaging.py::test_no_network_tool_ships_in_core` | The Windows installer script downloads with the model's pinned SHA-256 (`DownloadTemporaryFile`, `ModelSha256`), and no `core/` file names Hugging Face. The test does not prove the model is the installer's only download; that comes from reading `packaging/windows/baker.iss`, whose two download calls (lines 161 and 244, interactive and silent) both fetch the model and only when the expert ticks the box |
+| `tests/test_packaging.py::test_no_network_tool_ships_in_core` | The Windows installer script downloads with the model's pinned SHA-256 (`DownloadTemporaryFile`, `ModelSha256`), and no `core/` file names Hugging Face. The test does not prove the model is the installer's only download; that comes from reading `packaging/windows/baker.iss`, whose two download calls (`DownloadPage.Download` in `NextButtonClick` and `DownloadTemporaryFile` in `PlaceModel`, interactive and silent) both fetch the model and only when the expert ticks the box |
 
 Run them yourself from a source checkout (7 passed on 2026-10-15, Linux, main `19d8461` plus #82):
 

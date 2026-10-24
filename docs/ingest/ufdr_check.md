@@ -9,8 +9,8 @@ sending a case file anywhere.
 mabillon ufdr-check --package "D:\Exports\item1.ufdr" --out "D:\Exports\item1-check"
 ```
 
-On Windows run it from the "Baker command prompt" in the Start menu; on a Mac, from Terminal
-(`~/Baker/app/.venv/bin/baker`). `--out` must be a new or empty folder. `--sample` sets how many
+On Windows run it from the "Mabillon command prompt" in the Start menu; on a Mac, from Terminal
+(`~/Mabillon/app/.venv/bin/mabillon`). `--out` must be a new or empty folder. `--sample` sets how many
 records of each kind go in the private sample (default 20). Nothing is added to any case.
 
 ## What it does

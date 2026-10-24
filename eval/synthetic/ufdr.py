@@ -279,7 +279,7 @@ def write_case01(out: Path) -> list[Path]:
 
 # ---------------------------------------------------------------- related copies (Reader 7.48)
 
-# Model types public Reader 7.48 packages hold that Baker does not know (listed, not imported)
+# Model types public Reader 7.48 packages hold that Mabillon does not know (listed, not imported)
 UNKNOWN_TYPES = ("AppsUsageLog", "ActivitySensorData", "FileUpload", "RecognizedDevice", "Activity")
 OWNER = ("syn-owner-1", "Synthetic Owner", True)
 FRIENDS = [(f"syn-friend-{i}", f"Friend {i}", False) for i in range(1, 4)]
@@ -288,7 +288,7 @@ _T0 = datetime(2026, 2, 1, 9, 0, tzinfo=UTC)
 
 def related(*models: str) -> str:
     """RelatedModels as Reader 7.48 writes it, after a model's fields: copies of other records,
-    each with an id of its own. Baker never imports them as records."""
+    each with an id of its own. Mabillon never imports them as records."""
     return f'<jumptargets name="" /><RelatedModels>{"".join(models)}</RelatedModels>'
 
 
@@ -355,7 +355,7 @@ def related_package(path: Path, unmatched: bool = False) -> Path:
     The last chat holds two messages with the same words, parties and second. Each copy is a
     copy of the record holding it, as on the public packages: a chat's copy holds its own
     messages again. Two accounts name the same app and identifier; one has no identifier. The
-    five model types Baker does not know are there too. With `unmatched`, one message and one
+    five model types Mabillon does not know are there too. With `unmatched`, one message and one
     call exist only as related copies, and the last chat's copy holds the repeated message a
     third time, so one copy matches no record of the package's own one to one."""
     files: dict[str, bytes] = {}

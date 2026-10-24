@@ -1,28 +1,32 @@
 #!/usr/bin/env bash
-# Install Baker on an Apple silicon Mac, for one person, with no administrator password.
+# Install Mabillon on an Apple silicon Mac, for one person, with no administrator password.
 #
-#   bash packaging/mac/install.sh            # from the unzipped Baker folder
+#   bash packaging/mac/install.sh            # from the unzipped Mabillon folder
 #   bash packaging/mac/install.sh --no-model # skip the 9 GB model download (copy it in later)
 #
 # What it does, in order (docs/install-mac.md explains each step in plain words):
 #   1. checks the Mac: Apple silicon, memory, disk space
 #   2. checks Apple's command line tools (needed once, to build the model runtime)
-#   3. installs uv (a Python installer) if it is missing, then Python 3.12 inside ~/Baker/app
-#   4. copies Baker to ~/Baker/app/baker and installs it with the local model runtime (Metal)
-#   5. downloads the model (Qwen3-14B Q4, 9 GB) to ~/Baker/models and checks its SHA-256
-#   6. writes ~/.baker/model.json (only if there is none), runs the model check and builds the
-#      demo case, and puts two launchers on the Desktop: "Baker" and "Baker demo"
-# Downloads happen only here, at install time. Baker itself makes no network calls, except for a
+#   3. installs uv (a Python installer) if it is missing, then Python 3.12 inside ~/Mabillon/app
+#   4. copies Mabillon to ~/Mabillon/app/baker and installs it with the local model runtime (Metal)
+#   5. downloads the model (Qwen3-14B Q4, 9 GB) to ~/Mabillon/models and checks its SHA-256
+#   6. writes ~/.mabillon/model.json (only if there is no model setting), runs the model check and
+#      builds the demo case, and puts two launchers on the Desktop: "Mabillon" and "Mabillon demo"
+# A Mac set up when the product was called Baker keeps what it has: a verified model in
+# ~/Baker/models and a model setting in ~/.baker/model.json are used where they are, and the
+# Desktop launchers "Baker" and "Baker demo" this installer made are replaced.
+# Downloads happen only here, at install time. Mabillon itself makes no network calls, except for a
 # case the expert opts in to cloud AI (stance questions to Anthropic, on the expert's own key).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-APP="$HOME/Baker/app"
-MODELS="$HOME/Baker/models"
-# BAKER_PINS and BAKER_MIN_MEMORY_GB are for the clean-install test only
-# (.github/workflows/clean-install.yml): a stub model on a small CI Mac.
-PINS="${BAKER_PINS:-$HERE/packaging/windows/pins.json}"
-MIN_GB="${BAKER_MIN_MEMORY_GB:-16}"
+APP="$HOME/Mabillon/app"
+MODELS="$HOME/Mabillon/models"
+OLD_MODELS="$HOME/Baker/models"  # where the Baker installer put the model
+# MABILLON_PINS and MABILLON_MIN_MEMORY_GB (BAKER_* still read) are for the clean-install test
+# only (.github/workflows/clean-install.yml): a stub model on a small CI Mac.
+PINS="${MABILLON_PINS:-${BAKER_PINS:-$HERE/packaging/windows/pins.json}}"
+MIN_GB="${MABILLON_MIN_MEMORY_GB:-${BAKER_MIN_MEMORY_GB:-16}}"
 WANT_MODEL=1
 for arg in "$@"; do
   case "$arg" in
@@ -36,16 +40,16 @@ stop() { printf '\nSTOPPED: %s\n' "$*"; exit 1; }
 # One pinned value from pins.json (the Windows build's pins: the same runtime and model).
 pin() { "$APP/.venv/bin/python" -c "import json, sys; print(json.load(open(sys.argv[1]))$1)" "$PINS"; }
 
-[ -f "$HERE/pyproject.toml" ] && [ -d "$HERE/core" ] || stop "run this from the Baker folder"
+[ -f "$HERE/pyproject.toml" ] && [ -d "$HERE/core" ] || stop "run this from the Mabillon folder"
 
 say "1/6 Checking this Mac"
-[ "$(uname -s)" = "Darwin" ] || stop "this installer is for a Mac; on Windows use Baker-Setup.exe"
-[ "$(uname -m)" = "arm64" ] || stop "Baker needs an Apple silicon Mac (M1 or later)"
+[ "$(uname -s)" = "Darwin" ] || stop "this installer is for a Mac; on Windows use Mabillon-Setup.exe"
+[ "$(uname -m)" = "arm64" ] || stop "Mabillon needs an Apple silicon Mac (M1 or later)"
 RAM_GB=$(( $(sysctl -n hw.memsize) / 1073741824 ))
 FREE_GB=$(( $(df -k "$HOME" | awk 'NR==2 {print $4}') / 1048576 ))
 echo "Memory: ${RAM_GB} GB. Free disk: ${FREE_GB} GB."
 if [ "$RAM_GB" -lt "$MIN_GB" ]; then
-  stop "Baker's model needs at least $MIN_GB GB of memory; this Mac has ${RAM_GB} GB"
+  stop "Mabillon's model needs at least $MIN_GB GB of memory; this Mac has ${RAM_GB} GB"
 elif [ "$RAM_GB" -lt 24 ]; then
   echo "NOTE: with ${RAM_GB} GB a case runs, but slowly. 24 GB or more is recommended."
 fi
@@ -70,7 +74,7 @@ command -v uv >/dev/null 2>&1 || stop "uv did not install; check the internet co
 mkdir -p "$APP"
 [ -x "$APP/.venv/bin/python" ] || uv venv --python 3.12 "$APP/.venv"
 
-say "4/6 Baker and the model runtime (building it takes 5 to 10 minutes)"
+say "4/6 Mabillon and the model runtime (building it takes 5 to 10 minutes)"
 if [ "$HERE" != "$APP/baker" ]; then
   mkdir -p "$APP/baker"
   rsync -a --delete --exclude .git --exclude .venv --exclude 'eval/out' \
@@ -86,14 +90,18 @@ fi
 LLAMA_VERSION="$(pin "['llama_cpp_python']['version']")"
 CMAKE_ARGS="-DGGML_METAL=on" uv pip install --python "$APP/.venv/bin/python" \
   -e "$APP/baker[synthetic,local,cloud]" "llama-cpp-python==$LLAMA_VERSION"
-BAKER="$APP/.venv/bin/baker"
-"$BAKER" --help >/dev/null || stop "Baker did not install"
-echo "Installed Baker in $APP."
+MABILLON="$APP/.venv/bin/mabillon"
+"$MABILLON" --help >/dev/null || stop "Mabillon did not install"
+echo "Installed Mabillon in $APP."
 
 MODEL_FILE="$(pin "['model']['file']")"
 MODEL_SHA="$(pin "['model']['sha256']")"
 MODEL_URL="$(pin "['model']['url']")"
 MODEL_NAME="$(pin "['model']['name']")"
+# A model the Baker installer downloaded stays where it is (checked below like any other).
+if [ ! -f "$MODELS/$MODEL_FILE" ] && [ -f "$OLD_MODELS/$MODEL_FILE" ]; then
+  MODELS="$OLD_MODELS"
+fi
 MODEL_PATH="$MODELS/$MODEL_FILE"
 
 say "5/6 The model ($MODEL_FILE, about 9 GB)"
@@ -115,30 +123,46 @@ else
 fi
 
 say "6/6 Settings, checks and launchers"
-CONFIG="$HOME/.baker/model.json"
+CONFIG="$HOME/.mabillon/model.json"
+OLD_CONFIG="$HOME/.baker/model.json"  # Mabillon reads it while there is no new one
 if [ -f "$CONFIG" ]; then
   echo "Keeping the model setting you already have: $CONFIG"
+elif [ -f "$OLD_CONFIG" ]; then
+  echo "Keeping the model setting you already have: $OLD_CONFIG"
 else
-  mkdir -p "$HOME/.baker"
+  mkdir -p "$HOME/.mabillon"
   printf '{\n  "name": "%s",\n  "path": "%s",\n  "sha256": "%s",\n  "n_ctx": 8192\n}\n' \
     "$MODEL_NAME" "$MODEL_PATH" "$MODEL_SHA" > "$CONFIG"
   echo "Wrote $CONFIG"
 fi
-"$BAKER" model-check || echo "The model is not ready yet; Baker works, but cannot audit a case."
-"$BAKER" demo --build-only
+"$MABILLON" model-check || echo "The model is not ready yet; Mabillon works, but cannot audit a case."
+"$MABILLON" demo --build-only
 
 mkdir -p "$HOME/Desktop"
-for name in "Baker" "Baker demo"; do
-  cmd="serve --open"; [ "$name" = "Baker demo" ] && cmd="demo"
+for name in "Mabillon" "Mabillon demo"; do
+  cmd="serve --open"; [ "$name" = "Mabillon demo" ] && cmd="demo"
   f="$HOME/Desktop/$name.command"
   printf '#!/bin/bash\n# Opens %s in your browser. Close this window to stop it.\n"%s" %s\n' \
-    "$name" "$BAKER" "$cmd" > "$f"
+    "$name" "$MABILLON" "$cmd" > "$f"
   chmod +x "$f"
+done
+# The launchers the Baker installer made, and only those (they open with its comment line).
+for name in "Baker" "Baker demo"; do
+  f="$HOME/Desktop/$name.command"
+  if [ -f "$f" ] && sed -n 2p "$f" | grep -q "^# Opens $name in your browser"; then
+    rm -f "$f"
+    echo "Replaced the Desktop launcher \"$name\" with \"${name/Baker/Mabillon}\"."
+  fi
 done
 
 say "Done"
 cat <<EOF
-Double-click "Baker" on your Desktop to open your cases, or "Baker demo" for the demo case.
-Baker opens in your browser at http://127.0.0.1 and runs only on this Mac.
-Close the Terminal window that opens with it to stop Baker.
+Double-click "Mabillon" on your Desktop to open your cases, or "Mabillon demo" for the demo case.
+Mabillon opens in your browser at http://127.0.0.1 and runs only on this Mac.
+Close the Terminal window that opens with it to stop Mabillon.
 EOF
+if [ -d "$HOME/Baker/app" ]; then
+  echo
+  echo "The program the Baker installer put in ~/Baker/app is no longer used. You can delete that"
+  echo "folder; your cases, the model and its setting stay where they are."
+fi

@@ -130,7 +130,7 @@ def test_the_installed_python_finds_baker_and_runs_in_utf8_mode():
 
 
 def test_no_network_tool_ships_in_core():
-    """The installer's only download is the optional model step in Setup, never Baker itself."""
+    """The installer's only download is the optional model step in Setup, never Mabillon itself."""
     iss = (WIN / "baker.iss").read_text(encoding="utf-8")
     assert "DownloadTemporaryFile" in iss and "ModelSha256" in iss
     for f in stage.tracked_files(ROOT):
@@ -149,10 +149,22 @@ def test_the_mac_installer_parses_reads_the_same_pins_and_keeps_an_existing_mode
     assert "packaging/windows/pins.json" in text
     for key in ("['llama_cpp_python']['version']", "['model']['sha256']", "['model']['url']"):
         assert key in text
-    assert 'if [ -f "$CONFIG" ]' in text  # never overwrites ~/.baker/model.json
+    assert 'if [ -f "$CONFIG" ]' in text  # never overwrites ~/.mabillon/model.json
+    assert 'elif [ -f "$OLD_CONFIG" ]' in text  # nor writes one over a Baker-era setting
     assert "shasum -a 256" in text  # the model is checked before it is used
     # Executable in git, so a checkout on any system (and the zip GitHub makes) keeps the bit.
     cmd = ["git", "ls-files", "-s", "packaging/mac"]  # noqa: S607 - fixed args
     modes = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True).stdout  # noqa: S603
-    for name in ("install.sh", "Install Baker.command"):
+    for name in ("install.sh", "Install Mabillon.command"):
         assert any(line.startswith("100755") and line.endswith(name) for line in modes.splitlines())
+
+
+def test_windows_setup_updates_a_baker_install_in_place():
+    """Setup keeps the AppId it had under the name Baker, so it updates that install instead of
+    adding a second one, and keeps its model and the person's own model setting."""
+    iss = (WIN / "baker.iss").read_text(encoding="utf-8")
+    assert "AppId={{6F0B3C1E-6A57-4D5B-9B9E-3C1A0B7E2D41}" in iss
+    assert "AppName=Mabillon" in iss and "OutputBaseFilename=Mabillon-Setup-" in iss
+    assert "{localappdata}\\Baker\\models" in iss  # a model placed there is used where it is
+    assert "PersonsOwnConfig(OldConfigFile())" in iss  # a ~/.baker/model.json of their own stays
+    assert "{userprograms}\\Baker\\Baker command prompt.lnk" in iss  # the old shortcut goes

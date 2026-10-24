@@ -1,6 +1,6 @@
 # Signing the Windows installer
 
-Builds of `main` sign `Baker-Setup-<version>.exe` with Microsoft Artifact Signing (formerly
+Builds of `main` sign `Mabillon-Setup-<version>.exe` with Microsoft Artifact Signing (formerly
 Trusted Signing), so Windows names the publisher (Shayan Haque, since 2026-10-20) instead of
 "Unknown publisher". A build of main whose signing settings below are missing fails rather than
 ship an unsigned file. Pull requests and other branches build unsigned, with the warning
