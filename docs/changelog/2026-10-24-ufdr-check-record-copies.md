@@ -1,4 +1,4 @@
-## 2026-10-24: ufdr-check verifies call, contact and account copies (#PR)
+## 2026-10-24: ufdr-check verifies call, contact and account copies (#130)
 - Changed: ufdr-check 0.2.0 -> 0.3.0 now checks the RelatedModels copies of calls, contacts and
   accounts on its own, as it already checked message copies. Before, the importer alone matched
   those copies. Each copy must say what the record holding it says, field by field as the
@@ -19,7 +19,7 @@
   same way. A new counter, `related_record_copies_matching_no_record`, lets ufdr-check account
   for these copies past the capped list of locators. This was Arsh's follow-up to #117
   (2026-10-23), plus Baker Merge's non-blocking item on #117.
-- Where: PR #PR
+- Where: PR #130
 - Verified: tests in `tests/test_ufdr_check.py`:
   - calls (same, duration, deleted, carved, type, sides), contacts (same, name, entry,
     deleted) and accounts (same, name, identifier): each run with the importer, and with an
