@@ -481,14 +481,20 @@ def test_every_mask_matches_a_field_in_the_report(first_report):
 
 
 def test_the_screen_reads_the_case_without_writing_it(tmp_path):
-    """Rendering both ways is read-only, so comparing them cannot change what they compare."""
+    """Rendering both ways changes nothing they compare: the screen writes only the page views
+    of the examiner's activity trail (core/review/activity.py), and the report writes nothing."""
     conn = _build(tmp_path / "case01.db", START)
     try:
-        before = conn.execute("SELECT COUNT(*), MAX(seq) FROM audit_log").fetchone()
+        before = conn.execute("SELECT MAX(seq) FROM audit_log").fetchone()[0]
         app = App(tmp_path / "case01.db", expert="Test Expert", port=PORT)
         _screen_claims(app, conn)
+        added = {
+            a for (a,) in conn.execute("SELECT action FROM audit_log WHERE seq > ?", (before,))
+        }
+        assert added == {"view"}
+        after = conn.execute("SELECT COUNT(*), MAX(seq) FROM audit_log").fetchone()
         render_report(conn)
-        assert conn.execute("SELECT COUNT(*), MAX(seq) FROM audit_log").fetchone() == before
+        assert conn.execute("SELECT COUNT(*), MAX(seq) FROM audit_log").fetchone() == after
     finally:
         conn.close()
 
