@@ -313,3 +313,94 @@ def test_a_forwarded_label_lists_the_message_for_the_fail_closed_path(make_xlsx,
         "SELECT body, forwarded, forwarded_from_raw FROM messages ORDER BY body"
     ).fetchall()
     assert marked == [("SYNTHETIC a", 1, None), ("SYNTHETIC b", None, None)]
+
+
+# The layout of Physical Analyzer's per-category Excel export (one 'SMS Messages (N)' sheet, a
+# title row over the header, 'Date' as an Excel serial number, 'Time' as the full value, and
+# each record of a rooted extraction listed twice, '1' and '1(1)'). Synthetic values only.
+PA_SMS_HEADER = [
+    "#", "Party", "Date", "Time", "All timestamps", "Direction", "Delivered-Date",
+    "Delivered-Time", "Read-Date", "Read-Time", "Folder", "Status", "Source", "SMSC", "Message",
+    "Deleted", "Tag Note", "Source file information", "Carved", "Manually decoded",
+]  # fmt: skip
+
+
+def _pa_row(number, party, serial, time, direction, body, path):
+    return [
+        number, party, serial, time, "", direction, "", "", "", "", "Inbox", "Read", "", "",
+        body, "", "", f"Phone.zip/{path}/mmssms.db : 0x1F00 (Table: sms, Size: 4096 bytes)",
+        "", "",
+    ]  # fmt: skip
+
+
+def _pa_sheet(rows):
+    return {"SMS Messages (4)": [["", "SMS Messages (4)"], PA_SMS_HEADER, *rows]}
+
+
+def test_physical_analyzer_sms_export_reads_time_column_and_flags_copies(make_xlsx, case_db):
+    mirror = "sbin/.magisk/mirror/data/data/com.android.providers.telephony/databases"
+    own = "data/data/com.android.providers.telephony/databases"
+    t1, s1 = "2/14/2020 1:09:03 PM(UTC+0)", 43875.547951388886  # 2020-02-14 13:09:03
+    t2, s2 = "1/29/2020 6:20:45 PM(UTC-5)", 43859.764409722222  # 2020-01-29 18:20:45 local
+    party_in = "From:  +15550100001 Sam\r\nTo:  "
+    rows = [
+        _pa_row(1, party_in, s1, t1, "Incoming", "first", mirror),
+        _pa_row("1(1)", party_in, s1, t1, "Incoming", "first", own),
+        _pa_row(2, "From:  \r\nTo:  +15550100002", s2, t2, "Outgoing", "second", mirror),
+        _pa_row("2(1)", "From:  \r\nTo:  +15550100002", s2, t2, "Outgoing", "second", own),
+    ]
+    run(case_db, make_xlsx(_pa_sheet(rows)))
+    got = case_db.execute(
+        "SELECT locator, ts_utc, ts_offset_min, ts_raw, direction FROM messages ORDER BY locator"
+    ).fetchall()
+    assert got == [
+        ("SMS Messages (4)!3", "2020-02-14T13:09:03Z", 0, t1, "incoming"),
+        ("SMS Messages (4)!4", "2020-02-14T13:09:03Z", 0, t1, "incoming"),
+        ("SMS Messages (4)!5", "2020-01-29T23:20:45Z", -300, t2, "outgoing"),
+        ("SMS Messages (4)!6", "2020-01-29T23:20:45Z", -300, t2, "outgoing"),
+    ]
+    senders = case_db.execute(
+        "SELECT a.identifier FROM messages m JOIN accounts a ON a.id = m.sender_account_id"
+    ).fetchall()
+    assert senders == [("+15550100001",), ("+15550100001",)]
+    (table,) = coverage(case_db)["tables"]
+    # Copies stay records of their own and are listed for the expert, never merged.
+    assert table["flag_counts"] == {"numbered_as_copy": 2}
+    assert table["flagged_locators"]["numbered_as_copy"] == [
+        "SMS Messages (4)!4",
+        "SMS Messages (4)!6",
+    ]
+    assert table["time_problems"] == {}
+    (payload,) = one(case_db, "SELECT payload_json FROM source_coverage")
+    # In full, for the count check (core/audit/checks/count.py).
+    assert json.loads(payload)["numbered_copy_records"] == [
+        "msg:src1:SMS Messages (4)!4",
+        "msg:src1:SMS Messages (4)!6",
+    ]
+
+
+def test_a_date_column_that_disagrees_with_the_full_time_sets_no_time(make_xlsx, case_db):
+    t = "2/14/2020 1:09:03 PM(UTC+0)"
+    rows = [
+        _pa_row(1, "From:  +15550100001", 43876.0, t, "Incoming", "a", "data"),  # 2020-02-15
+        _pa_row(2, "From:  +15550100001", "not a date", t, "Incoming", "b", "data"),
+        _pa_row(3, "From:  +15550100001", "2/14/2020", t, "Incoming", "c", "data"),
+        _pa_row(4, "From:  +15550100001", None, t, "Incoming", "d", "data"),
+    ]
+    run(case_db, make_xlsx(_pa_sheet(rows)))
+    got = dict(case_db.execute("SELECT body, ts_utc FROM messages"))
+    assert got == {"a": None, "b": None, "c": "2020-02-14T13:09:03Z", "d": "2020-02-14T13:09:03Z"}
+    (table,) = coverage(case_db)["tables"]
+    assert table["time_problems"] == {"date_column_disagrees": 2}
+
+
+def test_the_date_check_uses_the_local_date_written_in_time(make_xlsx, case_db):
+    # 9:30 PM at UTC-5 is 02:30 UTC the next day: the Date column must name the local day.
+    t = "1/29/2020 9:30:00 PM(UTC-5)"
+    rows = [
+        _pa_row(1, "From:  +15550100001", 43859.895833333336, t, "Incoming", "local", "data"),
+        _pa_row(2, "From:  +15550100001", 43860.0, t, "Incoming", "utc", "data"),
+    ]
+    run(case_db, make_xlsx(_pa_sheet(rows)))
+    got = dict(case_db.execute("SELECT body, ts_utc FROM messages"))
+    assert got == {"local": "2020-01-30T02:30:00Z", "utc": None}
