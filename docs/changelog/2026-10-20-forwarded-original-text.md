@@ -36,7 +36,7 @@
   model id, so a later standalone record still imports. `IMPORTER_VERSION` 0.1.1 -> 0.2.0;
   report 0.9.0 adds an "Importer for <source>" row to Versions. No schema or contract change.
   Why: gate 4 requires the original text.
-- Where: PR #103 (branch `claude/project-thread-5u7u3u`), not merged.
+- Where: main (#103, merged 2026-10-20)
 - Verified: `tests/test_ufdr.py` (verbatim body, own locator, forwarded mark, author as
   written, never the forwarder or the phone owner, same thread, nested level not imported,
   dedupe by model id both orders, exact notes with and without a named sender, mixed claim
@@ -52,15 +52,4 @@
   never see it. The original's own time is not kept anywhere on the record. UFDR format support stays unverified.
 - Affects: capabilities (UFDR imports more message text); customer-facing claims (gate 4
   evidence). Privacy: none. Performance: none measured.
-- Status doc: pending: in `docs/PRODUCT_STATUS.md` section 3 item 3, replace "the sender field
-  still shows the forwarder, and originals' text is not imported." with "the sender field
-  still shows the forwarder. The UFDR importer imports each embedded forwarded or quoted
-  original (one level) as its own record at `<locator>/Embedded[n]`, marked forwarded with its
-  own sender as written, so it fails closed too (PR #103);
-  AXIOM does not." In `docs/PILOT_GATES.md` gate 4, replace "Still open: the original text is
-  not imported, and AXIOM does not read forwarded marks." with "The UFDR importer now imports
-  the text of each embedded original (one level) as its own forwarded record at
-  `<locator>/Embedded[n]` (PR #103). Still open: AXIOM does not
-  read forwarded marks, and a second embedded level is not imported." and in its closing
-  paragraph replace "Gate 4 waits on importing the original text and on AXIOM reading
-  forwarded marks" with "Gate 4 waits on AXIOM reading forwarded marks"; gate 4 stays Not met.
+- Status doc: applied 2026-10-21
