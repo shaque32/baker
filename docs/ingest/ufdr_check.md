@@ -33,6 +33,20 @@ records of each kind go in the private sample (default 20). Nothing is added to 
      phone's own accounts.
    A check that cannot be made for a record (no stated sender, a time without an offset) is
    counted as "not checked", never as a match.
+   Models under a `RelatedModels` element (copies of other records, as Reader 7.48 writes them)
+   are never counted as the holder's messages, attachments or parties. Each copied message must
+   say what the message holding it says (app, text, time, Direction, Folder and Status, each
+   party with its side and IsPhoneOwner, deleted state, attachments by count, name and MIME type, a
+   Forwarded label, its recovery marks (carved, decoding confidence not High), and any embedded
+   message at every level, as written; a copy of an embedded message is matched to it), and a copied chat's messages are matched one to one to the holder chat's messages
+   Mabillon imported, or imported once under an earlier id, when the two chats also say the same
+   around their messages (app, id, name and participants); one that does not match must be one Mabillon lists
+   for review (`related_copy_unmatched`), else it is missing (row "message copies under
+   RelatedModels"). A copy Mabillon lists that matches here is a difference too (`extra`); only
+   past the importer's capped list of locators does its count stand in. Copies are counted per type
+   (`copies_under_related_models`). A second account with the same app and identifier is one
+   account in Mabillon and counts as a repeat, not as missing. Direction is expected from the
+   phone's own accounts by identifier only, as the importer links them.
 
 A test plants a wrong value in each field after import and shows the check catches it
 (tests/test_ufdr_check.py).
