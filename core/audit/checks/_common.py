@@ -25,6 +25,7 @@ from core.contracts import (
     check_id,
 )
 from core.ingest import forwarded as forwarded_records
+from core.ingest.cellebrite_common import NUMBERED_COPIES_KEY
 
 # Accounts are matched across phones by (namespace, identifier). SMS and phone calls share a
 # number space; every other app is its own.
@@ -90,6 +91,17 @@ class Account:
         return self.device_id is not None
 
 
+def numbered_copies(conn: sqlite3.Connection) -> set[str]:
+    """Every message id an import listed as numbered by the tool as a copy of another row."""
+    out: set[str] = set()
+    for (payload_json,) in conn.execute("SELECT payload_json FROM source_coverage"):
+        try:
+            out.update(json.loads(payload_json).get(NUMBERED_COPIES_KEY) or [])
+        except (ValueError, AttributeError, TypeError):
+            continue
+    return out
+
+
 class CaseData:
     """Small lookups, loaded once per check run. Read-only."""
 
@@ -116,6 +128,12 @@ class CaseData:
         # those words is not recorded, so no check may rest on them
         self.forwarded: dict[str, str] = (
             forwarded_records.affected(conn) if "source_coverage" in tables else {}
+        )
+        # message ids the extraction tool numbered as a further copy of another row ('3(1)'
+        # after '3', core/ingest/cellebrite_common.py): a count over them may hold one message
+        # twice, so no count may pass or fail on them
+        self.numbered_copies: set[str] = (
+            numbered_copies(conn) if "source_coverage" in tables else set()
         )
         self.has_sender_raw = any(
             r[1] == "sender_raw" for r in conn.execute("PRAGMA table_info(messages)")

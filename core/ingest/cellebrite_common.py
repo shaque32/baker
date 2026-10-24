@@ -1068,6 +1068,7 @@ class TableCoverage:
     header_notes: list[str] = field(default_factory=list)
     flagged_locators: dict[str, list[str]] = field(default_factory=dict)
     flag_counts: Counter[str] = field(default_factory=Counter)  # flagged_locators is capped
+    numbered_copies: set[str] = field(default_factory=set)  # every copy row's locator, uncapped
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -1109,6 +1110,8 @@ class Coverage:
     multi_name_accounts: list[str] = field(default_factory=list)
     # message ids by reason, in full (core/ingest/forwarded.py reads them downstream)
     forwarded_records: dict[str, list[str]] = field(default_factory=dict)
+    # message ids the tool numbered as a copy of another row, in full (count check reads them)
+    numbered_copy_records: list[str] = field(default_factory=list)
     # forwarded message id -> its original author as the source wrote it, when it says
     forwarded_from: dict[str, str] = field(default_factory=dict)
 
@@ -1458,6 +1461,8 @@ def _messages(
         tid = w.thread(app, chat_key, r.locator, title)
         ts = _row_time(r, tctx, cov)
         mid = f"msg:{w.src}:{r.locator}"
+        if r.locator in tc.numbered_copies:
+            cov.numbered_copy_records.append(mid)
         if is_forwarded_label(r.text("label")):
             cov.forwarded_records.setdefault("forwarded", []).append(mid)
             cov.counters["messages_marked_forwarded"] += 1
@@ -1641,6 +1646,7 @@ def _header_like(cells: list[Cell]) -> bool:
 
 # Physical Analyzer numbers a record it lists again '3(1)' after '3': in a rooted Android
 # extraction the same database is read twice, at its own path and under /sbin/.magisk/mirror/.
+NUMBERED_COPIES_KEY = "numbered_copy_records"
 _COPY_NUMBER_RE = re.compile(r"^(\d+)\s*\(\d+\)$")
 
 
@@ -1655,6 +1661,7 @@ def _flag_numbered_copies(rows: list[Row], header_norms: list[str], tc: TableCov
         m = _COPY_NUMBER_RE.match(text(r.cells[col]) or "") if col < len(r.cells) else None
         if m and m.group(1) in numbers:
             tc.flag_counts["numbered_as_copy"] += 1
+            tc.numbered_copies.add(r.locator)
             _listed(tc.flagged_locators, "numbered_as_copy", r.locator)
 
 
@@ -1928,4 +1935,6 @@ def coverage_payload(
         payload[forwarded.PAYLOAD_KEY] = {
             k: list(dict.fromkeys(v)) for k, v in sorted(cov.forwarded_records.items())
         }
+    if cov.numbered_copy_records:
+        payload[NUMBERED_COPIES_KEY] = list(dict.fromkeys(cov.numbered_copy_records))
     return payload

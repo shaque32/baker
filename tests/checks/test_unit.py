@@ -182,6 +182,22 @@ def test_count_and_its_limits() -> None:
     )
 
 
+def test_count_over_rows_the_tool_numbered_as_copies_neither_passes_nor_fails() -> None:
+    import json
+
+    conn = build()
+    conn.execute(
+        "INSERT INTO source_coverage VALUES ('p1', 'cellebrite_excel', '0.3.0', ?)",
+        (json.dumps({"numbered_copy_records": ["msg:p1:3"]}),),
+    )
+    common = dict(person_ids=[A, B], device_ids=["dev:p1"], window=MARCH)
+    for want in (1, 2):
+        r = check(conn, "message_count", expected_count=want, count_op="eq", **common)
+        assert r.outcome is CheckOutcome.INCONCLUSIVE
+        assert "1 of the matching messages is numbered by the extraction tool" in r.detail
+        assert not FORBIDDEN_WORDS.search(r.detail), r.detail
+
+
 def test_count_detail_never_uses_forbidden_words() -> None:
     # Baker reports the source's deletion flag; it never says a record was deleted.
     conn = build()
@@ -461,4 +477,4 @@ def test_handle_resolving_checks_record_the_version_that_skips_copy_recipients()
     assert {
         CHECKS[n].version for n in ("absence", "sender", "time", "weekday", "same_account")
     } == {"1.0.1"}
-    assert CHECKS["count"].version == "1.0.2"
+    assert CHECKS["count"].version == "1.0.3"

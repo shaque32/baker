@@ -371,6 +371,12 @@ def test_physical_analyzer_sms_export_reads_time_column_and_flags_copies(make_xl
         "SMS Messages (4)!6",
     ]
     assert table["time_problems"] == {}
+    (payload,) = one(case_db, "SELECT payload_json FROM source_coverage")
+    # In full, for the count check (core/audit/checks/count.py).
+    assert json.loads(payload)["numbered_copy_records"] == [
+        "msg:src1:SMS Messages (4)!4",
+        "msg:src1:SMS Messages (4)!6",
+    ]
 
 
 def test_a_date_column_that_disagrees_with_the_full_time_sets_no_time(make_xlsx, case_db):

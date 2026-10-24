@@ -220,5 +220,6 @@ MIME type or attachment hash from a report; device label from the Device field.
 Physical Analyzer numbers a record it lists again `3(1)` after `3` in the `#` column. In a rooted
 Android extraction this is often the same database read twice, at its own path and under
 `/sbin/.magisk/mirror/`. Each such row is imported as a record of its own and listed in coverage
-(`numbered_as_copy`), because whether two rows are one message is the expert's call. A count of
-those messages may include one message twice until the expert checks.
+(`numbered_as_copy`), because whether two rows are one message is the expert's call. Their message
+ids are kept in full in the coverage payload (`numbered_copy_records`), and the count check
+neither passes nor fails a count that includes one.

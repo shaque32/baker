@@ -5,8 +5,11 @@
   and `Date` must name the same local date (Excel cell, serial number or text); otherwise no time
   is set (`date_column_disagrees`). Rows the tool numbers as copies ("3(1)" after "3", often the
   same database seen through a rooted phone's mirror path) stay separate records and are listed
-  in coverage as `numbered_as_copy`, so counts are not trusted blindly. Cellebrite Excel/PDF
-  importer version 0.2.0 -> 0.3.0.
+  in coverage as `numbered_as_copy`. Their message ids are kept in full in the coverage payload
+  (`numbered_copy_records`), and the count check (1.0.2 -> 1.0.3) is inconclusive, never pass or
+  fail, when any matching message is such a copy: before, an "exactly N" claim could fail, and so
+  be contradicted with no expert, on rows counted twice. Cellebrite Excel/PDF importer version
+  0.2.0 -> 0.3.0.
 - Where: PR #129
 - Verified: synthetic tests with the export's layout (tests/test_cellebrite_excel.py). One
   real-format Cellebrite SMS export from a Pixel 3 test phone (believed to be a public test
@@ -15,7 +18,8 @@
   copies. `make check` numbers in the PR.
 - Open: only one real export tested. A workbook in Excel's 1904 date system fails the date
   check and gets no time (safe, not read). Copy rows are flagged, not merged.
-- Affects: capabilities (real-format import)
+- Affects: capabilities (real-format import); verdict path (count check can no longer fail
+  or pass on copy rows)
 - Status doc: pending: section 8 item 1, after "Cellebrite Excel and PDF", add "(Physical
   Analyzer per-category SMS export read on one real-format sample; rows the tool lists twice are
-  flagged, not merged)".
+  flagged, not merged, and the count check is inconclusive on them)".
