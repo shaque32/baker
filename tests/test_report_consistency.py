@@ -613,6 +613,64 @@ def test_the_report_says_what_can_and_cannot_be_regenerated(first_report, tmp_pa
     assert "No claim is made" not in text
 
 
+def _local_stance_run(conn: sqlite3.Connection, sha: str, prompt_sha: str) -> None:
+    with conn:
+        conn.execute(
+            "INSERT INTO model_runs (id, purpose, model_name, model_sha256, prompt_version,"
+            " prompt_sha256, params_json, seed, started_at_utc) VALUES"
+            " (?, 'stance', 'local-14b', ?, 'v', ?, ?, 7, ?)",
+            (
+                f"mr:stance:{sha[:8]}",
+                sha,
+                prompt_sha,
+                json.dumps({"n_gpu_layers": -1}),
+                pipeline.iso(START),
+            ),
+        )
+
+
+def test_a_repeat_tested_local_model_states_the_measured_result_and_its_limits(tmp_path):
+    from core.report.html import REPEAT_TESTED, regeneration
+
+    (sha, prompt_sha), statement = next(iter(REPEAT_TESTED.items()))
+    conn = run_pipeline.build_case("case01", tmp_path / "tested.db")
+    try:
+        _local_stance_run(conn, sha, prompt_sha)
+        text = regeneration(conn, None)
+    finally:
+        conn.close()
+    assert html.escape(statement) in text
+    assert "Other machines and runtime versions have not been tested" in text
+    assert "No claim is made" not in text
+
+
+def test_an_untested_prompt_or_model_file_still_makes_no_claim(tmp_path):
+    from core.report.html import REPEAT_TESTED, regeneration
+
+    (sha, prompt_sha), statement = next(iter(REPEAT_TESTED.items()))
+    conn = run_pipeline.build_case("case01", tmp_path / "untested.db")
+    try:
+        _local_stance_run(conn, sha, "1" * 64)  # same file, another stance prompt
+        _local_stance_run(conn, "2" * 64, prompt_sha)  # same prompt, another file
+        text = regeneration(conn, None)
+    finally:
+        conn.close()
+    assert text.count("No claim is made that a re-run gives identical labels") == 2
+    assert html.escape(statement) not in text
+
+
+def test_the_repeat_tested_key_is_the_shipped_model_and_the_signed_stance_prompt():
+    """A changed stance prompt or model pin drops the statement; re-run the repeat check and
+    record the new key rather than carry the old result over."""
+    from core.audit._llm_json import load_prompt
+    from core.audit.stance import PROMPT_FILE
+    from core.report.html import REPEAT_TESTED
+
+    pins = json.loads(Path("packaging/windows/pins.json").read_text(encoding="utf-8"))
+    prompt_sha = hashlib.sha256(load_prompt(PROMPT_FILE).encode("utf-8")).hexdigest()
+    assert (pins["model"]["sha256"], prompt_sha) in REPEAT_TESTED
+
+
 @pytest.fixture(scope="module")
 def model_free_db(tmp_path_factory) -> Path:
     """case01 audited model-free with the simulated expert: failed checks contradict C04, C08,
