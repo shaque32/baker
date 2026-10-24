@@ -98,9 +98,15 @@ MODEL_FILE="$(pin "['model']['file']")"
 MODEL_SHA="$(pin "['model']['sha256']")"
 MODEL_URL="$(pin "['model']['url']")"
 MODEL_NAME="$(pin "['model']['name']")"
-# A model the Baker installer downloaded stays where it is (checked below like any other).
-if [ ! -f "$MODELS/$MODEL_FILE" ] && [ -f "$OLD_MODELS/$MODEL_FILE" ]; then
-  MODELS="$OLD_MODELS"
+CONFIG="$HOME/.mabillon/model.json"
+OLD_CONFIG="$HOME/.baker/model.json"  # Mabillon reads it while there is no new one
+# A model the Baker installer downloaded stays where it is (checked below like any other). So
+# does its destination while its model setting is the one kept: after `--no-model` that setting
+# already names ~/Baker/models, and the model has to arrive there.
+if [ ! -f "$MODELS/$MODEL_FILE" ]; then
+  if [ -f "$OLD_MODELS/$MODEL_FILE" ] || { [ ! -f "$CONFIG" ] && [ -f "$OLD_CONFIG" ]; }; then
+    MODELS="$OLD_MODELS"
+  fi
 fi
 MODEL_PATH="$MODELS/$MODEL_FILE"
 
@@ -123,8 +129,6 @@ else
 fi
 
 say "6/6 Settings, checks and launchers"
-CONFIG="$HOME/.mabillon/model.json"
-OLD_CONFIG="$HOME/.baker/model.json"  # Mabillon reads it while there is no new one
 if [ -f "$CONFIG" ]; then
   echo "Keeping the model setting you already have: $CONFIG"
 elif [ -f "$OLD_CONFIG" ]; then

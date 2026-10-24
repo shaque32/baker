@@ -132,6 +132,13 @@ jobs:
           ~/Mabillon/app/.venv/bin/mabillon model-check | tee "$RUNNER_TEMP/ui/model-check-3.log"
           test "${PIPESTATUS[0]}" = 0
           grep -q "$HOME/.baker/model.json" "$RUNNER_TEMP/ui/model-check-3.log"
+          # After the Baker installer's --no-model run: its setting names ~/Baker/models, but no
+          # model is there yet. The download goes where that kept setting points.
+          rm ~/Baker/models/stub-model.gguf
+          bash ~/Downloads/baker-main/packaging/mac/install.sh 2>&1 | tee "$RUNNER_TEMP/ui/install-4.log"
+          test "${PIPESTATUS[0]}" = 0
+          test -f ~/Baker/models/stub-model.gguf && test ! -e ~/Mabillon/models/stub-model.gguf
+          ~/Mabillon/app/.venv/bin/mabillon model-check
 
       - uses: actions/setup-python@v5
         with:

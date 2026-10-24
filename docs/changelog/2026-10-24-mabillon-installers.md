@@ -13,7 +13,8 @@
   - A computer installed under the name Baker is updated, not duplicated, and keeps what it
     has.
     - Mac: a verified model in ~/Baker/models and a setting in ~/.baker/model.json are used
-      where they are. The Desktop launchers the Baker installer made are replaced (only those:
+      where they are; while that setting is kept, a model still to download goes to
+      ~/Baker/models too. The Desktop launchers the Baker installer made are replaced (only those:
       a file of the person's own with the same name stays). The installer says when ~/Baker/app
       can be deleted.
     - Windows: Setup keeps the AppId, so it updates the install in place in Programs\Baker. It
@@ -33,7 +34,8 @@
   - The clean-install workflow runs a third install, over a Mac laid out as the Baker installer
     left it. It checks that the model and setting are kept where they are, that model-check
     reads ~/.baker/model.json, that the Baker launcher is replaced and that a same-named file
-    of the person's own is left alone.
+    of the person's own is left alone. A fourth run, after a Baker install made with `--no-model`,
+    checks that the model downloads to ~/Baker/models, where that kept setting points.
   - The Windows smoke test installs on a fresh runner and runs `mabillon.cmd`, `baker.cmd` and
     the Start-menu shortcut check.
 - Open: three items.
