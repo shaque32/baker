@@ -3,7 +3,7 @@
 Each alternative is tied to the claim through its assumptions (core/audit/assumptions.py): the
 words the document quotes, the people and accounts it names, the time window it states and the
 apps it names. An alternative is shown only when a record, a saved name or a source fact in the
-case fits it; Baker never offers a bare "maybe". What each one searched is stated with it.
+case fits it; Mabillon never offers a bare "maybe". What each one searched is stated with it.
 
 - Someone else used the account or phone (claims about who sent something or who is behind an
   account): the account's user naming themselves as someone other than the person the claim
@@ -135,9 +135,9 @@ class Fit:
     locator: str
     quote: str  # exactly as the case holds it: a message body, a name, a file name; '' for a call
     when: str  # the record's time on its phone's own clock; '' for names and sources
-    note: str  # Baker's words; text from the case inside is marked with cite()
+    note: str  # Mabillon's words; text from the case inside is marked with cite()
     local: bool = False  # True only when `when` is a local time derived from the phone's zone
-    label: str = ""  # Baker's words for a record with no text of its own (a call), never quoted
+    label: str = ""  # Mabillon's words for a record with no text of its own (a call), never quoted
 
 
 @dataclass(frozen=True)
@@ -145,7 +145,7 @@ class Alternative:
     kind: Kind
     family: Family
     title: str
-    summary: str  # one plain sentence in Baker's words; case text marked with cite()
+    summary: str  # one plain sentence in Mabillon's words; case text marked with cite()
     fits: tuple[Fit, ...]  # at most MAX_FITS, most relevant first
     total: int  # everything that fits, shown or not
     searched: str  # what code searched, so a short list is never read as "nothing else"
@@ -656,7 +656,7 @@ def _multi_owner_fits(case: Case, keys: set[Key], persons: list[idl.Person]) -> 
                 rep,
                 src,
                 loc,
-                "",  # the label is Baker's composition of the account, not text the case holds
+                "",  # the label is Mabillon's composition of the account, not text the case holds
                 "",
                 f"{cite(g.label)} is an owner account on more than one phone ({phones}); a "
                 "message from it may have been written on any of them.",

@@ -426,7 +426,7 @@ def test_report_limitations_say_the_axiom_reader_is_unverified(case01, edge):
     limits = html.split("<h2>Limitations</h2>", 1)[1].split("<h2>", 1)[0]
     assert limits.count("Magnet AXIOM reader, which is not yet verified") == 2
     assert "examiner-curated report" in limits  # no absence finding rests on it
-    assert 'Baker did not read all of <span class="q">edge.xml' in limits
+    assert 'Mabillon did not read all of <span class="q">edge.xml' in limits
     check_report_text(html)
 
 
@@ -512,7 +512,7 @@ def test_device_details_baker_cannot_read_are_listed(tmp_path):
     entry = next(e for e in json.loads(
         conn.execute("SELECT payload_json FROM source_coverage").fetchone()[0]
     )["not_imported"] if e["name"] == "iOS Device Information")  # fmt: skip
-    assert entry["reason"] == "device details with no field Baker knows"
+    assert entry["reason"] == "device details with no field Mabillon knows"
     assert "not_imported" in _codes(s)
 
 

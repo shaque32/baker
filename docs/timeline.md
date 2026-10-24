@@ -9,7 +9,7 @@ on the review screen (Timeline and Gaps tabs) and in the report.
 1. **Read every stated time.** Each government-document paragraph is searched for dates, ranges,
    open ranges ("before", "since") and a time of day tied to a date. What code cannot read
    plainly is listed under "Not compared" with the reason:
-   - a numeric date that reads either way (3/5/2026 could be March 5 or May 3). Baker never picks
+   - a numeric date that reads either way (3/5/2026 could be March 5 or May 3). Mabillon never picks
      a month/day order; 3/25/2026 and 25/3/2026 read as March 25 because only one order exists;
    - a date with no year, when the paragraph and the document do not state exactly one year;
    - a two-digit year, an impossible date, or a time of day with no date beside it.
@@ -36,7 +36,7 @@ between its first and last, over that time) would put at least 8 records in the 
 its whole app already shows is listed once, at the app. Each stretch states what was searched
 and the source's coverage (a curated report holds only what the examiner chose), records with no
 usable time, what other phones hold in the same span, and the times the document states inside
-it. Baker states a quiet stretch; it never explains one. Not found does not mean it did not
+it. Mabillon states a quiet stretch; it never explains one. Not found does not mean it did not
 happen. The Selection tab names a listed stretch that falls in the pause just before or just
 after an exchange holding a message the government picked
 ([selection-audit.md](selection-audit.md)).

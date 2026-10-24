@@ -5,7 +5,7 @@ core/contracts.py). Its payload is described in docs/ingest/coverage.md. This mo
 into a short summary for the case screen, the CLI and the report's limitations.
 
 Each item is a list of segments. A segment marked quoted is text taken from the report itself
-(a sheet or column name, a raw value); everything else is Baker's own words. Renderers pass
+(a sheet or column name, a raw value); everything else is Mabillon's own words. Renderers pass
 quoted segments through their quote helper, so the forbidden-word check can tell them apart.
 """
 
@@ -45,9 +45,9 @@ _KEY_FIELD_WORDS = {
 # Each phrase follows a count; {be}, {have}, {s0} and {them} agree with it.
 _SKIP_REASON_WORDS = {
     "no_values_in_known_columns": (
-        "had values only in columns Baker does not read (for example a footer or a sub-heading)"
+        "had values only in columns Mabillon does not read (for example a footer or a sub-heading)"
     ),
-    "header_like_row": "held only column names (a second header row Baker could not join)",
+    "header_like_row": "held only column names (a second header row Mabillon could not join)",
     "account_without_identifier": "had no username or identifier",
     "same_id_as_an_earlier_record": (
         "repeated the record id of an earlier record (the same record listed twice); the "
@@ -60,11 +60,11 @@ _TIME_PROBLEM_WORDS = {
         "so no time was set. Re-import with the report's date order stated (month first or "
         "day first) to read {them}"
     ),
-    "unparsed": "{be} not a date and time Baker recognises; kept as written, with no time",
+    "unparsed": "{be} not a date and time Mabillon recognises; kept as written, with no time",
     "date_only": "{be} a date with no time of day; kept as written, with no time",
-    "two_digit_year": "{have} a two-digit year, which Baker does not guess; kept as written",
+    "two_digit_year": "{have} a two-digit year, which Mabillon does not guess; kept as written",
     "named_zone": (
-        "name{s0} a time zone instead of a UTC offset; Baker does not apply zone names, so no "
+        "name{s0} a time zone instead of a UTC offset; Mabillon does not apply zone names, so no "
         "UTC time was set"
     ),
     "numeric": "{be} a bare number, not a date; kept as written, with no time",
@@ -122,6 +122,14 @@ _INFO_COUNTERS = {
         "Forwarded or quoted messages carried inside other messages, imported as records of their "
         "own (not in the extraction's own message count)"
     ),
+    "related_copies": (
+        "Messages, calls, contacts and accounts the package holds a second time under another "
+        "record's RelatedModels (Cellebrite's related items), not imported again"
+    ),
+    "related_copies_matching_a_record": (
+        "Of those, copies that say what the record holding them says (text or duration, time, "
+        "parties, deleted state and attachments; a copied chat's messages one to one)"
+    ),
     "embedded_messages_already_imported": (
         "Forwarded or quoted messages carried inside other messages that the extraction also "
         "lists as records of their own (same model id), so imported once"
@@ -163,13 +171,13 @@ _INFO_COUNTERS = {
 # until a real file has been checked against the tool that made it). Attention level: the
 # expert must see it.
 FORMAT_UNVERIFIED = (
-    "Baker's UFDR reader is not yet verified. It was built from Cellebrite's public "
+    "Mabillon's UFDR reader is not yet verified. It was built from Cellebrite's public "
     "descriptions of the UFDR format and tested only on synthetic packages, never on a real "
     "one. Before relying on a record, open the same record in Cellebrite Reader and compare "
     "(each record's locator gives its place in report.xml)."
 )
 FORMAT_UNVERIFIED_AXIOM = (
-    "Baker's Magnet AXIOM reader is not yet verified. It was built from public descriptions of "
+    "Mabillon's Magnet AXIOM reader is not yet verified. It was built from public descriptions of "
     "AXIOM's XML and Excel report exports and tested only on synthetic exports, never on a real "
     "one. Before relying on a record, open the same record in AXIOM Examine (or the examiner's "
     "portable case) and compare (each record's locator gives its artifact and hit, or its sheet "
@@ -215,15 +223,16 @@ _FLAG_WORDS: dict[str, tuple[Level, str]] = {
     ),
     "forwarded": (
         "attention",
-        "{n} {be} marked as forwarded. Baker shows {them} as sent by whoever forwarded {them} and "
-        "has not verified who first wrote {them}, so {them} cannot support or contradict a claim; "
-        "check each one in {tool} before saying who wrote {them}.",
+        "{n} {be} marked as forwarded. Mabillon shows {them} as sent by whoever forwarded {them} "
+        "and has not verified who first wrote {them}, so {them} cannot support or contradict a "
+        "claim; check each one in {tool} before saying who wrote {them}.",
     ),
     "embedded_message_imported_separately": (
         "attention",
-        "{n} {have} a forwarded or quoted message inside {them}; Baker imported each such message "
-        "as a record of its own (at the locator plus /Embedded[n]), but who wrote which words is "
-        "not verified, so {them} cannot support or contradict a claim; see {them} in {tool}.",
+        "{n} {have} a forwarded or quoted message inside {them}; Mabillon imported each such "
+        "message as a record of its own (at the locator plus /Embedded[n]), but who wrote which "
+        "words is not verified, so {them} cannot support or contradict a claim; see {them} in "
+        "{tool}.",
     ),
     "embedded_original_imported": (
         "attention",
@@ -235,7 +244,7 @@ _FLAG_WORDS: dict[str, tuple[Level, str]] = {
     "embedded_message_not_imported": (
         "attention",
         "{n} {have} a forwarded or quoted message nested inside {them} (a second level) whose "
-        "text and attachments Baker did not import, so {them} cannot support or contradict a "
+        "text and attachments Mabillon did not import, so {them} cannot support or contradict a "
         "claim; see {them} in {tool}.",
     ),
     "attachment_file_ambiguous": (
@@ -243,7 +252,15 @@ _FLAG_WORDS: dict[str, tuple[Level, str]] = {
         "{n} {have} an attachment whose file id taggedFiles lists more than once with different "
         "paths, so it was not linked to a file or hashed.",
     ),
-    "duration_unread": ("attention", "{n} {have} a call duration Baker could not read."),
+    "related_copy_unmatched": (
+        "attention",
+        "{n} {be} held only as a related copy (under another record's RelatedModels) that "
+        "does not say what the record holding it says (app, text or duration, time, "
+        "direction, parties, deleted state and attachments; a copied chat's messages one to "
+        "one), so Mabillon did not "
+        "import {them}; open each one in {tool}.",
+    ),
+    "duration_unread": ("attention", "{n} {have} a call duration Mabillon could not read."),
     "no_time": ("attention", "{n} {have} no time in the {container}, so no time was set."),
 }
 
@@ -430,7 +447,7 @@ def _table_items(t: dict, xml: bool = False, importer: str = "ufdr") -> list[Cov
                 (
                     *where,
                     _t(
-                        "merged cells span several rows in columns whose value Baker does not "
+                        "merged cells span several rows in columns whose value Mabillon does not "
                         "copy to every row (text, times, attachments, flags); only the first "
                         "row of each merge has the value. Columns: "
                     ),
@@ -478,7 +495,7 @@ def _table_items(t: dict, xml: bool = False, importer: str = "ufdr") -> list[Cov
                 "unknown_columns",
                 (
                     *where,
-                    _t(f"{'fields' if xml else 'columns'} Baker does not read: "),
+                    _t(f"{'fields' if xml else 'columns'} Mabillon does not read: "),
                     *_names(unknown),
                     _t("."),
                 ),
@@ -592,7 +609,7 @@ def _ufdr_items(u: dict) -> list[CoverageItem]:
                 (
                     _t("report.xml uses the XML namespace "),
                     _q(u["namespace"]),
-                    _t(", which Baker has not seen documented; it was read the same way."),
+                    _t(", which Mabillon has not seen documented; it was read the same way."),
                 ),
             )
         )
@@ -606,7 +623,7 @@ def _ufdr_items(u: dict) -> list[CoverageItem]:
                 (
                     _t(
                         f"The package holds {_n(files, 'other files')} (pictures, databases and "
-                        f"other extracted files). Baker read report.xml and hashed "
+                        f"other extracted files). Mabillon read report.xml and hashed "
                         f"{_n(hashed, 'files')} attached to messages; it did not read the rest."
                     ),
                 ),
@@ -618,7 +635,12 @@ def _ufdr_items(u: dict) -> list[CoverageItem]:
             CoverageItem(
                 "info",
                 "tagged_files",
-                (_t(f"report.xml lists {_n(tagged, 'files')}; Baker does not import that list."),),
+                (
+                    _t(
+                        f"report.xml lists {_n(tagged, 'files')}; "
+                        "Mabillon does not import that list."
+                    ),
+                ),
             )
         )
     states = u.get("deleted_state_values") or {}
@@ -626,7 +648,7 @@ def _ufdr_items(u: dict) -> list[CoverageItem]:
         parts: list[Segment] = [_t("Record states as the package gives them: ")]
         for i, (k, v) in enumerate(sorted(states.items())):
             parts += [*([_t(", ")] if i else []), _q(k), _t(f" ({v:,})")]
-        parts.append(_t(". Baker stores only what the package states."))
+        parts.append(_t(". Mabillon stores only what the package states."))
         items.append(CoverageItem("info", "record_states", tuple(parts)))
     return items
 
@@ -709,7 +731,11 @@ def summarize(c: SourceCoverage) -> CoverageSummary:
             CoverageItem(
                 "info",
                 "unmapped_direction_values",
-                (_t("Direction values Baker does not read: "), *_names(sorted(unmapped)), _t(".")),
+                (
+                    _t("Direction values Mabillon does not read: "),
+                    *_names(sorted(unmapped)),
+                    _t("."),
+                ),
             )
         )
     missing = p.get("categories_not_found")
@@ -722,7 +748,7 @@ def summarize(c: SourceCoverage) -> CoverageSummary:
                 (
                     _t(
                         f"The {'package' if xml else 'report'} has no "
-                        f"{'records' if xml else 'section'} Baker reads for "
+                        f"{'records' if xml else 'section'} Mabillon reads for "
                         + ", ".join(names)
                         + f". That means only that the {'package' if xml else 'report'} does "
                         "not include them, not that the phone had none."
@@ -737,10 +763,10 @@ def summarize(c: SourceCoverage) -> CoverageSummary:
                 "no_summary",
                 (
                     _t(
-                        "The package has no device metadata Baker recognises, so the "
+                        "The package has no device metadata Mabillon recognises, so the "
                         "extraction time and device were not read from it."
                         if xml
-                        else "The report has no summary Baker recognises, so the extraction "
+                        else "The report has no summary Mabillon recognises, so the extraction "
                         "time, device and report time zone were not read from it."
                     ),
                 ),
@@ -793,7 +819,7 @@ def summarize(c: SourceCoverage) -> CoverageSummary:
         items += _ufdr_items(p["ufdr"])
     for note in p.get("notes", []) or []:
         # Notes with report text in them are rendered above from structured fields; only
-        # Baker's own fixed notes are shown as they are.
+        # Mabillon's own fixed notes are shown as they are.
         if note.startswith(_OWN_NOTES):
             items.append(CoverageItem("info", "note", (_t(note),)))
 
@@ -832,9 +858,9 @@ _OWN_NOTES = ("Text comes from PDF layout", "Pages with no ruled table")
 
 def _reason_words(reason: str) -> str:
     if reason == "category not imported" or reason.startswith("section '"):
-        return "Baker does not import this category"
+        return "Mabillon does not import this category"
     if reason == "model type not recognised":
-        return "Baker does not know this record type, so its records were not read"
+        return "Mabillon does not know this record type, so its records were not read"
     return reason
 
 
@@ -848,7 +874,7 @@ def where(item: CoverageItem, limit: int = 5) -> str:
 
 def render(item: CoverageItem, quote: Callable[[str], str], escape: Callable[[str], str]) -> str:
     """One item as markup: text from the report through `quote` (the screen's and the
-    report's q()), Baker's own words through `escape`, then where to look."""
+    report's q()), Mabillon's own words through `escape`, then where to look."""
     body = "".join(quote(t) if quoted else escape(t) for t, quoted in item.parts)
     loc = where(item)
     return body + (f" ({escape(loc)})" if loc else "")

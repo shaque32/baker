@@ -17,7 +17,7 @@ Display rules:
   rules.py sets only if an expert accepted every supporting item it cites (the invariants
   re-check this). Otherwise "Supported (AI-reviewed)". AI-reviewed never displays as confirmed.
   An unproven claim whose supporting evidence no expert has decided yet shows as
-  "Support found: do you agree?", Baker's finding put to the expert; its verdict is unproven.
+  "Support found: do you agree?", Mabillon's finding put to the expert; its verdict is unproven.
 - Each evidence item shows its provenance tier from contracts.display_tier: the record's tier
   (observed, derived, inferred), or ai_reviewed / confirmed from its review status.
 - Device-ownership stipulations, expert-confirmed identity links, source coverage, what each
@@ -28,7 +28,7 @@ Display rules:
 - Each claim lists the other explanations its records raise (core/hypotheses/, rendered by
   core/report/hypotheses.py, the same fragment as the claim page), with the records that fit
   each. Found by code, shown as leads for the expert; they never change a verdict.
-- The report carries source hashes, Baker, contract, rule, report and model versions, and an
+- The report carries source hashes, Mabillon, contract, rule, report and model versions, and an
   audit-log summary with the hash-chain result.
 - Each evidence row carries the evidence item's id (<tr id=...>), the same id the review screen
   gives its evidence card, so the two can be compared item by item.
@@ -91,7 +91,7 @@ from core.review.status import verdict_label as _verdict_label
 
 # 0.4.0 (#76): a "Quote check" row in Versions and the run line, and a call's UTC and printed
 # time beside its line (the review screen shows the same line, through record_line).
-# 0.5.0 (#91): the top line names the Baker release and git commit, the pipeline, rule and
+# 0.5.0 (#91): the top line names the Mabillon release and git commit, the pipeline, rule and
 # quote-check versions; Versions gives the build and each model's seed beside its SHA-256.
 # 0.6.0 (#89): a forwarded record's warning names its original author, as a cited span, when the
 # extraction names one.
@@ -112,7 +112,9 @@ from core.review.status import verdict_label as _verdict_label
 # 0.12.0 (#111): an Examiner activity section (page views per claim, core/review/activity.py),
 # its table opt-in per case and off by default; page views are left out of the expert-actions
 # table and counts.
-REPORT_VERSION = "0.12.0"
+# 0.13.0: the product is named Mabillon (formerly Baker) in the title, top line, Versions and
+# every sentence that names the tool. Nothing else changed.
+REPORT_VERSION = "0.13.0"
 
 
 @dataclass(frozen=True)
@@ -237,7 +239,8 @@ def q(text: object) -> str:
 
 
 def said(text: object) -> str:
-    """A reason or note an expert typed, as they wrote it. Never for Baker's or a model's text."""
+    """A reason or note an expert typed, as they wrote it. Never for Mabillon's or a model's
+    text."""
     return f'<span class="said">{html.escape(str(text))}</span>'
 
 
@@ -305,7 +308,7 @@ def _limitations(conn: sqlite3.Connection, srcs: list[tuple]) -> str:
             items.append(
                 "<li><strong>Device ownership is a stipulation, not a finding.</strong> "
                 f"{e(st.decided_by)} stipulated on {e(pipeline.iso(st.decided_at_utc))}: "
-                f"{q(st.statement)} Baker did not verify who used the phone. Every finding that "
+                f"{q(st.statement)} Mabillon did not verify who used the phone. Every finding that "
                 "names this person rests on the stipulation.</li>"
             )
     else:
@@ -321,14 +324,14 @@ def _limitations(conn: sqlite3.Connection, srcs: list[tuple]) -> str:
         items.append(
             "<li><strong>Who uses an account is an expert decision, not a finding.</strong> "
             f"{e(by)} confirmed on {e(at)} that {q(f'{app} {ident}')} is used by {q(person)}. "
-            "Baker did not verify it. Every check that ties this person to that account rests "
+            "Mabillon did not verify it. Every check that ties this person to that account rests "
             "on it.</li>"
         )
     for s in srcs:
         if s[2] == Fidelity.CURATED_REPORT.value:
             items.append(
                 f"<li>{q(s[4])} is an examiner-curated report. Records the examiner left out "
-                "were not available to Baker, so no absence finding can rest on it.</li>"
+                "were not available to Mabillon, so no absence finding can rest on it.</li>"
             )
         elif s[2] == Fidelity.UNKNOWN.value and s[1] != "govdoc":
             items.append(
@@ -338,26 +341,26 @@ def _limitations(conn: sqlite3.Connection, srcs: list[tuple]) -> str:
     for cov in import_coverage.summaries(conn):
         if cov.format_unverified and cov.importer == "axiom":
             items.append(
-                f"<li><strong>{q(cov.file_name)} was read with Baker's Magnet AXIOM reader, which "
-                "is not yet verified against a real AXIOM export.</strong> It was built from "
+                f"<li><strong>{q(cov.file_name)} was read with Mabillon's Magnet AXIOM reader, "
+                "which is not yet verified against a real AXIOM export.</strong> It was built from "
                 "public descriptions of AXIOM's report exports and tested on synthetic exports "
                 "only. Each record cited from this file should be compared with the same record "
                 "in AXIOM Examine before it is relied on.</li>"
             )
         elif cov.format_unverified:
             items.append(
-                f"<li><strong>{q(cov.file_name)} was read with Baker's UFDR reader, which is not "
-                "yet verified against a real UFDR.</strong> It was built from Cellebrite's public "
-                "descriptions of the format and tested on synthetic packages only. Each record "
-                "cited from this file should be compared with the same record in Cellebrite "
-                "Reader before it is relied on.</li>"
+                f"<li><strong>{q(cov.file_name)} was read with Mabillon's UFDR reader, which is "
+                "not yet verified against a real UFDR.</strong> It was built from Cellebrite's "
+                "public descriptions of the format and tested on synthetic packages only. Each "
+                "record cited from this file should be compared with the same record in "
+                "Cellebrite Reader before it is relied on.</li>"
             )
         attention = [i for i in cov.attention if i.code != "format_unverified"]
         if attention:
             lis = "".join(f"<li>{import_coverage.render(i, q, e)}</li>" for i in attention)
             items.append(
-                f"<li>Baker did not read all of {q(cov.file_name)}: {e(cov.headline)} Records "
-                "in the parts listed here are not in the evidence Baker reviewed, and times it "
+                f"<li>Mabillon did not read all of {q(cov.file_name)}: {e(cov.headline)} Records "
+                "in the parts listed here are not in the evidence Mabillon reviewed, and times it "
                 f"could not read are not used.<ul>{lis}</ul></li>"
             )
     items += [
@@ -366,17 +369,17 @@ def _limitations(conn: sqlite3.Connection, srcs: list[tuple]) -> str:
         f"<strong>{SUPPORTED_AI}</strong> would mean a local AI reviewer accepted the "
         "supporting evidence and no human expert has confirmed it; under the current rules no "
         "claim reaches supported on AI review alone.</li>",
-        f"<li><strong>{AWAITING_EXPERT}</strong> means Baker found records it reads as "
+        f"<li><strong>{AWAITING_EXPERT}</strong> means Mabillon found records it reads as "
         "supporting the claim and no expert has accepted or dismissed them yet. Until an expert "
         "does, the verdict is unproven. The labels are model output and can be wrong, so the "
         "expert checks each item. The local AI reviewer's acceptances only sort evidence for "
         "the expert; they never make a claim supported.</li>",
-        f"<li><strong>{CONTRADICTION_FOUND}</strong> means Baker found records it reads as "
+        f"<li><strong>{CONTRADICTION_FOUND}</strong> means Mabillon found records it reads as "
         "contradicting a core assumption of the claim. A contradiction found by the stance "
         "labeler counts once an expert confirms it, with a reason recorded in the audit log; "
         "until then the verdict is unproven. A failed deterministic check contradicts a claim "
         "without this step.</li>",
-        "<li>Unproven means the evidence Baker reviewed does not establish the claim. It does "
+        "<li>Unproven means the evidence Mabillon reviewed does not establish the claim. It does "
         "not mean the claim is false.</li>",
         "<li>A search that finds nothing does not show that something did not happen. Each "
         "check states what was searched and what the source covered (see Searches and "
@@ -459,9 +462,9 @@ def _claim_block(
     found = forwarded.affected(conn)
     if st.awaiting_expert:
         out.append(
-            f"<p>Baker found supporting evidence: {st.ai_accepted} item(s) accepted by the local "
-            f"AI reviewer and {st.open_support} not reviewed, waiting for an expert to agree or "
-            "disagree. Until an expert accepts the key evidence, the claim stays unproven.</p>"
+            f"<p>Mabillon found supporting evidence: {st.ai_accepted} item(s) accepted by the "
+            f"local AI reviewer and {st.open_support} not reviewed, waiting for an expert to agree "
+            "or disagree. Until an expert accepts the key evidence, the claim stays unproven.</p>"
         )
     if st.contradiction_found:
         out.append(f"<p>{e(CONFIRM_STEP.format(n=st.open_contradicts))}</p>")
@@ -529,7 +532,7 @@ def _claim_block(
                 f"<tr id='{e(x.id)}'><td><blockquote>{q(x.quote)}</blockquote>"
                 f"{record_line(conn, x.record_id, found)}"
                 f"<br><span class='muted'>{e(labelled_by(conn, x.model_run_id))}. Model "
-                f"rationale (inferred): {e(x.rationale)}</span>"
+                f"rationale (inferred): {e(forwarded.shown_rationale(x.rationale))}</span>"
                 f"</td><td>{STANCE_LABEL[x.stance]}</td><td>{display_tier(x).value}</td>"
                 f"<td>{review_label(conn, x)}</td>"
                 f"<td class='mono'>{e(x.ref.source_id)} {e(x.ref.locator)}<br>{e(x.record_id)}"
@@ -637,8 +640,8 @@ def quote_check_label(run: dict) -> str:
 
 
 def build_label(run: dict) -> str:
-    """The Baker release and git commit the run used (core.build). Runs before #91 did not
-    record them; their "Baker pipeline" version alone cannot tell two builds apart. A rules-only
+    """The Mabillon release and git commit the run used (core.build). Runs before #91 did not
+    record them; their "Mabillon pipeline" version alone cannot tell two builds apart. A rules-only
     re-run also names the build its evidence came from, when that differs."""
     return build.run_label(run.get("config") or {})
 
@@ -653,7 +656,7 @@ def forwarded_label(conn: sqlite3.Connection) -> str:
         return "on the record, with the original author when the extraction names one"
     return (
         "coverage list only (case made before contracts 0.4.0): listed forwarded messages fail "
-        "closed, but no original author is named. A source imported before Baker listed "
+        "closed, but no original author is named. A source imported before Mabillon listed "
         "forwarded messages (#73) has no list, so its forwarded messages are not marked; "
         "re-import it to check"
     )
@@ -681,8 +684,8 @@ def _versions(conn: sqlite3.Connection, run: dict | None) -> str:
     rows = [("Report", REPORT_VERSION), ("Other explanations (code)", explain.VERSION)]
     if run:
         rows += [
-            ("Baker build", build_label(run)),
-            ("Baker pipeline", run["baker_version"]),
+            ("Mabillon build", build_label(run)),
+            ("Mabillon pipeline", run["baker_version"]),
             ("Contracts", run["contracts_version"]),
             ("Verdict rules", run["rule_version"]),
             ("Quote check", quote_check_label(run)),
@@ -733,16 +736,16 @@ def render_report(
     parts = [
         "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
-        "<title>Baker claims report</title>"
+        "<title>Mabillon claims report</title>"
         f"<style>{CSS}{restore_html.CSS}{timeline_html.CSS}{selection_html.CSS}{paired_html.CSS}"
         f"{alternatives_html.CSS}</style>"
         "</head><body>",
-        "<h1>Baker claims report</h1>",
+        "<h1>Mabillon claims report</h1>",
         "<p class='muted'>"
         + (" · ".join(q(t) for t in govdocs) or "No government document imported")
         + f" · report {REPORT_VERSION}"
         + (
-            f" · Baker {e(build_label(run))} · pipeline {e(run['baker_version'])}"
+            f" · Mabillon {e(build_label(run))} · pipeline {e(run['baker_version'])}"
             f" · rules {e(run['rule_version'])}"
             f" · quote check {e(quote_check_label(run))}"
             if run
@@ -850,7 +853,7 @@ def render_report(
                     + "."
                 )
         parts.append(
-            f"<p>Run {e(run['run_id'])}, started {e(run['started_at_utc'])}. Baker "
+            f"<p>Run {e(run['run_id'])}, started {e(run['started_at_utc'])}. Mabillon "
             f"{e(build_label(run))}, pipeline {e(run['baker_version'])}, contracts "
             f"{e(run['contracts_version'])}, rule version "
             f"{e(run['rule_version'])}, quote check {e(quote_check_label(run))}. "
@@ -927,7 +930,7 @@ def activity_section(conn: sqlite3.Connection, scope: BundleScope | None = None)
     if not activity.in_report(conn):
         out.append(
             "<p>Not included. This case leaves examiner activity (pages opened and time on "
-            "them) out of the report, as Baker does unless the expert includes it. The audit "
+            "them) out of the report, as Mabillon does unless the expert includes it. The audit "
             "log keeps every page view.</p>"
         )
         return "".join(out)
@@ -942,7 +945,7 @@ def activity_section(conn: sqlite3.Connection, scope: BundleScope | None = None)
     idle = int(activity.IDLE.total_seconds() // 60)
     if not total["views"]:
         out.append(
-            "<p>No page views are recorded for this case: it was reviewed before Baker recorded "
+            "<p>No page views are recorded for this case: it was reviewed before Mabillon recorded "
             "them, or only from the command line.</p>"
         )
         return "".join(out)
@@ -983,7 +986,7 @@ def activity_section(conn: sqlite3.Connection, scope: BundleScope | None = None)
     return "".join(out)
 
 
-# Expert flags (core/review/flags.py) are feedback about Baker, not findings: the report names
+# Expert flags (core/review/flags.py) are feedback about Mabillon, not findings: the report names
 # each one but leaves out the expert's note, the record they named and the snapshot.
 FLAG_FIELDS_IN_REPORT = ("flag_id", "claim_id", "kind", "evidence_id", "should_be")
 
@@ -1004,7 +1007,7 @@ SCOPE_PARTS = {
     "prompts": "model prompts and answers no shown evidence item or AI review rests on",
     "records": "the rest of the phone: records no verdict cites",
     "history": "earlier audit runs' rows",
-    "feedback": "the expert's flags about Baker",
+    "feedback": "the expert's flags about Mabillon",
     "activity": "the examiner's page views",
 }
 
@@ -1037,7 +1040,7 @@ def stand_in_banner(run: dict) -> str:
             "<div class='banner'><strong>Demo case: synthetic data, scripted labels.</strong> "
             "Every name and message here is fictional. So the demo opens in seconds, no model "
             "ran: the evidence labels and most expert decisions were scripted from the signed "
-            "answer key. The checks, quote checks and verdict rules are Baker's own. On a real "
+            "answer key. The checks, quote checks and verdict rules are Mabillon's own. On a real "
             "case the local model labels the evidence and the expert decides every item.</div>"
         )
     return (

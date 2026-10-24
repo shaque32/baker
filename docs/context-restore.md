@@ -1,6 +1,6 @@
 # Context Restore
 
-The expert pastes the messages a government exhibit quotes. Baker finds each one in the imported
+The expert pastes the messages a government exhibit quotes. Mabillon finds each one in the imported
 extraction and shows it in its own conversation. Code finds and verifies every match; no model
 decides one. Screenshot OCR is not part of this version: the expert types or pastes the text.
 
@@ -11,7 +11,7 @@ message, and **Open in context** for the conversation around a match.
 
 1. The exhibit is split into quoted messages: one per line, or one per paragraph (blank line
    between messages) when a message runs over several lines.
-2. For each, Baker searches the text of every imported message:
+2. For each, Mabillon searches the text of every imported message:
    - the quote as pasted; if nothing matches, the text after a label the exhibit printed in front
      of it (`3/12/2026 4:15 PM PETROV: ...`), at least two words; then the same without a closing
      period or comma. Wrapping quotation marks are set aside;
@@ -57,7 +57,7 @@ section ends with, and the screen's **Request letter** page carries, a draft req
 phone's full extraction, the extraction summary, how the report was produced from it, and the
 examiner's notes. It lists each report with its device, extraction type, tool, extraction date
 and SHA-256, and any exhibit whose quoted messages were not located. Bracketed fields are for
-counsel. It is a draft, not legal advice, and Baker never sends it anywhere.
+counsel. It is a draft, not legal advice, and Mabillon never sends it anywhere.
 
 ## Storage
 
