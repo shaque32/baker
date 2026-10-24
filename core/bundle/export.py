@@ -29,6 +29,8 @@ examiner includes it (PARTS; "all" is the whole case):
     records      the rest of the phone: every record, thread and account no shipped row cites
     history      earlier audit runs' assumptions, checks, evidence, reviews and verdicts
     feedback     the expert's flags about Baker (flag.add, flag.withdraw entries)
+    activity     the examiner's page views (view entries, core/review/activity.py), which name
+                 the evidence items and records each page listed
 
 No verdict rests on what a scope leaves out: the rules skip dismissed and irrelevant items
 (core/audit/rules.py), and an export whose own bundle does not verify is refused. The audit
@@ -70,7 +72,7 @@ from core.db import apply_schema
 from core.enrich.records import kind_of
 from core.llm import cloud
 from core.report import html as report_html
-from core.review import audit_log
+from core.review import activity, audit_log
 from core.review.actions import ReviewError, _expert
 from core.timeline.settings import Settings
 
@@ -82,7 +84,7 @@ METHOD = "METHOD.md"
 REPORT = "report.html"
 TABLES = "tables/"
 WITHHELD = "withheld.jsonl"
-PARTS = ("dismissed", "irrelevant", "prompts", "records", "history", "feedback")
+PARTS = ("dismissed", "irrelevant", "prompts", "records", "history", "feedback", "activity")
 FULL = "full"
 ZIP_TIME = (1980, 1, 1, 0, 0, 0)
 NOTICE = (
@@ -352,6 +354,8 @@ def plan(conn: sqlite3.Connection, run: dict[str, Any], include: tuple[str, ...]
             why = left.get(str(p.get("evidence_id")), "history")
         elif action.startswith("flag.") and "feedback" not in inc:
             why = "feedback"
+        elif action == activity.VIEW and "activity" not in inc:
+            why = "activity"
         if why is not None:
             prev, h = conn.execute(
                 "SELECT prev_hash, hash FROM audit_log WHERE seq = ?", (seq,)

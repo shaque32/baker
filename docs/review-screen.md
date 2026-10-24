@@ -109,6 +109,24 @@ eval or re-decided.
    shortest quiet stretch) are logged with your name. See [timeline.md](timeline.md).
 8. **Report.** View it, save it (`Report` page, or `/report?download=1`), or print it to PDF from
    the browser; the print layout is built in. **Audit log** verifies the hash chain.
+9. **Activity.** Every case page you open is written to the audit log as a page view: the time
+   (UTC), your name, the page, the claim or evidence item it was opened on, the evidence items
+   it listed, and for an evidence item its record and where that record sits in its source
+   (source and locator), never the record's text. The Activity tab shows the trail per claim
+   (times opened, first and last, time on its pages, evidence opened, your actions) and step by
+   step, beside your decisions; `/activity.csv` and `baker activity --db case.db [--csv
+   out.csv]` export it with each entry's hash. Time on page runs from opening a page to the
+   next page you open in the same screen session. The screen runs no scripts, so it cannot tell
+   what was on screen or read; a stretch over 30 minutes may include time away and is counted
+   apart, and a reload of the same page within a minute of the last load, with nothing done
+   between, is one view. Only the address fields a page reads are kept (the item id, and switches
+   such as `views=1` or a claim filter); any other field, such as the flag summary's pilot
+   name, is counted, not stored. The
+   report leaves the activity table out unless you include it for the case (off by default): the
+   switch is on the Activity tab, or `baker activity --db case.db --in-report on|off --by
+   expert:<name>`, and each change is in the audit log with your name. Views change no verdict.
+   The Audit log page hides them unless you ask (`/log?views=1`). Code:
+   `core/review/activity.py`.
 
 ## Rules the screen keeps
 
