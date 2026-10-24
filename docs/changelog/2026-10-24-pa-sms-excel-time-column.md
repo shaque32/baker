@@ -1,4 +1,4 @@
-## 2026-10-24: Read Physical Analyzer SMS Excel times; flag rows listed twice (#PR)
+## 2026-10-24: Read Physical Analyzer SMS Excel times; flag rows listed twice (#129)
 - Changed: Physical Analyzer's per-category SMS Excel export writes `Date` as an Excel serial
   number and `Time` as the full value ("2/14/2020 1:09:03 PM(UTC+0)"). The importer joined the
   two and read no time for any row. When `Time` holds a whole date and time it is now read alone,
@@ -7,7 +7,7 @@
   same database seen through a rooted phone's mirror path) stay separate records and are listed
   in coverage as `numbered_as_copy`, so counts are not trusted blindly. Cellebrite Excel/PDF
   importer version 0.2.0 -> 0.3.0.
-- Where: branch claude/project-thread-nljig7
+- Where: PR #129
 - Verified: synthetic tests with the export's layout (tests/test_cellebrite_excel.py). One
   real-format Cellebrite SMS export from a Pixel 3 test phone (believed to be a public test
   image; not committed, not sent anywhere), run locally on 2026-10-24: 52 of 52
