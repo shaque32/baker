@@ -9,26 +9,26 @@ ship an unsigned file. Pull requests and other branches build unsigned, with the
 ## How the build signs
 
 - Only builds of `main` sign (a push to main, or **Run workflow** on main). Pull requests and
-  other branches always build unsigned, so an unreviewed change never carries Baker's signature.
+  other branches always build unsigned, so an unreviewed change never carries Mabillon's signature.
 - GitHub logs in to Azure with a short-lived token (OIDC). No Azure password or key is stored in
   GitHub, and nothing secret is printed in the logs.
 - After signing, the build checks the signature is valid, then writes the `.sha256` of the file
   as shipped. The fresh-runner install test checks both again before installing.
 - The setup program is signed. The uninstaller Setup writes is not; Windows does not show a
-  publisher warning when Baker is removed from Settings.
+  publisher warning when Mabillon is removed from Settings.
 
 ## Setup (about 20 minutes, after Microsoft finishes the identity check)
 
-First, in Microsoft's Artifact Signing quickstart order (done for Baker 2026-10-19/20):
+First, in Microsoft's Artifact Signing quickstart order (done for Mabillon 2026-10-19/20):
 
 - On the subscription (Pay-As-You-Go, billing account type **Individual** for a person, as on your
   ID): **Settings** > **Resource providers** > register `Microsoft.CodeSigning`.
-- Create the Artifact Signing account (Basic tier, East US). Baker's is `bakersigning`.
+- Create the Artifact Signing account (Basic tier, East US). Mabillon's is `bakersigning`.
 - In that account's **Access control (IAM)**, give yourself the role **Artifact Signing Identity
   Verifier**. Without it, **New identity validation** stays greyed out even for the owner.
 - **Identity validations** > **New** > **Public**, then pick **Individual** (the form that opens
   first asks for a company and a DUNS number). Individuals must be in the US or Canada. Finish the
-  email and ID check from Microsoft's link. Baker's took under a day.
+  email and ID check from Microsoft's link. Mabillon's took under a day.
 - **Certificate profiles** > **Create** > **Public Trust**, named `bakerpublic`, on that validation.
 
 Then:

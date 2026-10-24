@@ -1,6 +1,6 @@
 """Fixed assumption templates over typed parameters (AssumptionBuilder).
 
-Every assumption Baker tests is an instance of one template below. A template fixes the kind,
+Every assumption Mabillon tests is an instance of one template below. A template fixes the kind,
 the claim types it may serve, which AssumptionParams fields it needs and which deterministic
 checks can test it. Whoever fills a template (the local model, or the expert in the CLI)
 supplies only typed parameters: people, accounts, handles, a phone, a time window with its
@@ -89,7 +89,7 @@ def party_count(p: AssumptionParams) -> int:
 class Names:
     """How a template's text names phones, people, accounts and counts.
 
-    This base prints Baker's own ids ("person:dev:item1:owner", "eq 12"): that is the stored
+    This base prints Mabillon's own ids ("person:dev:item1:owner", "eq 12"): that is the stored
     Assumption.text, which nothing parses. What a model reads is rendered with
     core.audit.readable.CaseNames instead, so the 14B, the small model and its training data
     see the names the case gives them.

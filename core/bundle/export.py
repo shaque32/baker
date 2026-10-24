@@ -1,12 +1,12 @@
 """Write a case's reproducibility bundle (`baker export-bundle`).
 
-Producing a bundle is the examiner's choice, made on counsel's advice: Baker never makes or
+Producing a bundle is the examiner's choice, made on counsel's advice: Mabillon never makes or
 sends one on its own. The CLI first lists what the bundle would hold (describe()) and writes
 nothing until the examiner confirms counsel reviewed it. The bundle holds the case as it stands:
 
     bundle.json        format, versions, build, run, scope, contents, inputs, models, audit-log
                        head, file hashes
-    METHOD.md          plain-English method note: what Baker did, who labelled, how to check it
+    METHOD.md          plain-English method note: what Mabillon did, who labelled, how to check it
     report.html        the claims report, rendered from exactly the rows in tables/
     tables/<t>.jsonl   every table core/schema.sql defines, one JSON object per row, in the
                        database's own order
@@ -28,7 +28,7 @@ examiner includes it (PARTS; "all" is the whole case):
                  (they hold the prompts sent)
     records      the rest of the phone: every record, thread and account no shipped row cites
     history      earlier audit runs' assumptions, checks, evidence, reviews and verdicts
-    feedback     the expert's flags about Baker (flag.add, flag.withdraw entries)
+    feedback     the expert's flags about Mabillon (flag.add, flag.withdraw entries)
     activity     the examiner's page views (view entries, core/review/activity.py), which name
                  the evidence items and records each page listed
 
@@ -76,8 +76,10 @@ from core.review import activity, audit_log
 from core.review.actions import ReviewError, _expert
 from core.timeline.settings import Settings
 
-FORMAT = "baker-reproducibility-bundle"
-BUNDLE_VERSION = "1.0.0"
+FORMAT = "baker-reproducibility-bundle"  # a format id: keeps the development name (CLAUDE.md)
+# 1.1.0: METHOD.md and the notice name the product Mabillon. A minor version changes only text
+# the exporter writes, which only that version's code gives again; the tables read the same.
+BUNDLE_VERSION = "1.1.0"
 EXPORT_ACTION = "bundle.export"
 MANIFEST = "bundle.json"
 METHOD = "METHOD.md"
@@ -88,10 +90,10 @@ PARTS = ("dismissed", "irrelevant", "prompts", "records", "history", "feedback",
 FULL = "full"
 ZIP_TIME = (1980, 1, 1, 0, 0, 0)
 NOTICE = (
-    "Producing this bundle is the examiner's choice, made on counsel's advice. Baker never makes "
-    "or sends one on its own, and nothing is shared by default. The bundle holds case content "
-    "(record text, prompts and model answers, the expert's reasons); it is encrypted only when "
-    "the case is. Handle it under the case's protective order."
+    "Producing this bundle is the examiner's choice, made on counsel's advice. Mabillon never "
+    "makes or sends one on its own, and nothing is shared by default. The bundle holds case "
+    "content (record text, prompts and model answers, the expert's reasons); it is encrypted only "
+    "when the case is. Handle it under the case's protective order."
 )
 HOSTED = (
     "Labels from a hosted model ({vendor}, {model}). They cannot be regenerated exactly; the "
@@ -143,7 +145,7 @@ def _dump(
         rows = conn.execute(sql).fetchall()
     except db.DatabaseError as e:  # plain SQLite or SQLCipher
         raise ReviewError(
-            f"this case's {table} table does not match Baker's schema ({e}); a case made under "
+            f"this case's {table} table does not match Mabillon's schema ({e}); a case made under "
             "an older schema cannot be exported"
         ) from e
     for rowid, *row in rows:
@@ -680,9 +682,9 @@ def _build(
     if (run["rule_version"], run["contracts_version"]) != (rules.RULE_VERSION, CONTRACTS_VERSION):
         raise ReviewError(
             f"the latest audit was decided under rules {run['rule_version']} and contracts "
-            f"{run['contracts_version']}; this Baker has rules {rules.RULE_VERSION} and contracts "
-            f"{CONTRACTS_VERSION}, so its bundle could not be verified here. Re-run the verdicts "
-            "or the full audit first"
+            f"{run['contracts_version']}; this Mabillon has rules {rules.RULE_VERSION} and "
+            f"contracts {CONTRACTS_VERSION}, so its bundle could not be verified here. Re-run the "
+            "verdicts or the full audit first"
         )
     changed, _unbound = changed_rows(conn, run)
     if changed:
@@ -779,7 +781,7 @@ def load(files: dict[str, bytes]) -> sqlite3.Connection:
 
 
 def _self_check(data: bytes) -> None:
-    """Refuse a bundle that does not pass Baker's own offline check: a scope that left out a
+    """Refuse a bundle that does not pass Mabillon's own offline check: a scope that left out a
     row a verdict rests on, or a case whose rows the export's checks above did not catch."""
     from core.bundle import verify  # imports this module
 
@@ -789,7 +791,7 @@ def _self_check(data: bytes) -> None:
             "the bundle would not pass verify-bundle ("
             + "; ".join(f"{f.check}: {f.detail}" for f in fails[:3])
             + "); nothing was written. Export the whole case with --include all, or report this "
-            "as a Baker fault"
+            "as a Mabillon fault"
         )
 
 
@@ -924,7 +926,7 @@ def labelled_by(manifest: dict[str, Any]) -> list[str]:
         if m["where"] == "cloud":
             lines.append(
                 f"- {m['purpose']}: {m['disclosure']} Effort: {m.get('effort')}. Prompt "
-                f"{m['prompt_version']}. Baker logs each request and answer (cloud.sent, "
+                f"{m['prompt_version']}. Mabillon logs each request and answer (cloud.sent, "
                 "cloud.received: the API's message and request ids); answers stored before it "
                 "did are listed as NOT VERIFIED by verify-bundle."
             )
@@ -959,7 +961,7 @@ def scope_lines(manifest: dict[str, Any]) -> list[str]:
         f"{w['evidence']} evidence items and {w['model_call']} model calls left out that the "
         f"audit log's digests name, and the {w['audit_log']} audit-log entries left out, by "
         "time, actor, action and hash, so the hash chain and every digest still check. No "
-        "verdict rests on what was left out, and Baker refused to write this bundle unless "
+        "verdict rests on what was left out, and Mabillon refused to write this bundle unless "
         "verify-bundle passed it. What a left-out entry or row says cannot be checked from "
         "this bundle, and a left-out entry's time, actor and action are as the export listed "
         "them; the full case, or a bundle exported with --include all, can show each one.",
@@ -987,7 +989,7 @@ def method_note(manifest: dict[str, Any]) -> str:
             "",
             *scope_lines(manifest),
             "",
-            "## What Baker did",
+            "## What Mabillon did",
             "",
             "1. Imported each file listed under `inputs` in bundle.json, read-only, and recorded "
             "its SHA-256.",
@@ -1012,12 +1014,12 @@ def method_note(manifest: dict[str, Any]) -> str:
             "",
             "## How to check this bundle",
             "",
-            f"- Offline, with Baker at commit {commit} (rules {run['rule_version']}): "
+            f"- Offline, with Mabillon at commit {commit} (rules {run['rule_version']}): "
             "`baker verify-bundle <this zip> [--inputs <folder holding the original files>]`. It "
             "checks every file's hash, the audit log's hash chain, that each label matches the "
             "model's answer as stored, and re-applies the rules to the recorded labels and "
             "expert decisions; every verdict must come out exactly as recorded.",
-            "- Without Baker: every table is JSON lines. Each audit-log entry's hash is the "
+            "- Without Mabillon: every table is JSON lines. Each audit-log entry's hash is the "
             "SHA-256 of the JSON array [prev_hash, at_utc, actor, action, payload_json] "
             "(core/review/audit_log.py).",
             f"- The audit log's last hash is {manifest['audit_log']['last_hash']}. The report in "
@@ -1028,7 +1030,7 @@ def method_note(manifest: dict[str, Any]) -> str:
             "- A hosted model's labels cannot be regenerated exactly; the recorded labels and the "
             "rules applied to them are what can be re-checked.",
             "- Regenerating a local model's labels needs the same model file, runtime and "
-            "settings; Baker has not tested that across machines.",
+            "settings; Mabillon has not tested that across machines.",
             '- "Not found" never means "did not happen": an absence finding states what was '
             "searched and what the source could show.",
             "- The tamper check is as strong as its anchor: the last hash above, printed on the "

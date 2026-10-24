@@ -67,7 +67,7 @@ from core.ingest.source_file import require_sha256
 from core.review import audit_log
 
 IMPORTER_NAME = "ufdr"
-IMPORTER_VERSION = "0.2.0"
+IMPORTER_VERSION = "0.3.0"
 # Becomes "verified" only after a real UFDR has been checked against Cellebrite Reader
 # (docs/ingest/ufdr.md, "Before calling it verified"). Every import records it.
 FORMAT_SUPPORT = "unverified"
@@ -78,7 +78,7 @@ MAX_FIELD_NAMES = 30  # field names listed per record type in coverage
 
 FIDELITY_REASON = (
     "UFDR package. A UFDR may hold a whole extraction or only what the examiner selected, and "
-    "Baker's UFDR reader is not yet verified against a real package, so its coverage is "
+    "Mabillon's UFDR reader is not yet verified against a real package, so its coverage is "
     "treated as not known: it cannot support a claim that something is absent from the device."
 )
 
@@ -94,7 +94,10 @@ TABLE_KIND: dict[str, RecordKind] = {
     "UserAccount": RecordKind.ACCOUNTS,
 }
 MESSAGE_TYPES = {"InstantMessage", "Message", "SMS", "MMS"}  # message models inside a chat
-# Model types Baker knows and deliberately does not import (yet). Listed in coverage as
+COPY_KINDS = {"Call", "Contact", "UserAccount"}  # other records whose copies are matched
+COPY_TYPES = MESSAGE_TYPES | COPY_KINDS
+_CHAT_MESSAGE_LOC = re.compile(r"Chat\[\d+\]/[^/\[]+\[\d+\]")  # holder: a chat's message
+# Model types Mabillon knows and deliberately does not import (yet). Listed in coverage as
 # categories not imported; any other type is listed as not recognised.
 NOT_IMPORTED_TYPES = {
     "Location",
@@ -136,7 +139,7 @@ ATT_MIME_FIELDS = ("contenttype", "mimetype", "content type")
 ATT_PATH_FIELDS = ("attachment_extracted_path", "localpath", "local path", "extractedpath", "path")
 ATT_HASH_FIELDS = ("sha256", "sha-256", "hash")
 # Fields each type reads (beyond those above) or knowingly ignores; any other field name is
-# listed in coverage as a field Baker does not read.
+# listed in coverage as a field Mabillon does not read.
 _KNOWN = {
     "Chat": {
         *CHAT_ID_FIELDS, *CHAT_NAME_FIELDS, "source", "participants", "messages",
@@ -208,6 +211,7 @@ class _El:
     locator: str = ""
     pending: list[tuple[str, _Model]] | None = None  # a chat's messages, read as they close
     seen: dict[str, int] | None = None  # messages read so far per field of the chat
+    key: bytes | None = None  # content key of a copied chat's message, read as it closed
 
     def joined(self) -> str:
         return "".join(self.text or ())
@@ -265,7 +269,19 @@ def _model(el: _El) -> _Model:
                 m.fields[key] = values[0].joined()
         elif ch.tag == "multiField":
             m.field_names.append(name)
-            m.multi_values[key] = [v.joined() for v in ch.children if v.tag == "value"]
+            values = [v.joined() for v in ch.children if v.tag == "value"]
+            if key == "labels":  # every Labels field: any of them can mark the message forwarded
+                m.multi_values.setdefault(key, []).extend(values)
+            else:
+                m.multi_values[key] = values
+        elif ch.tag in ("modelField", "multiModelField") and key in (
+            "embeddedinstantmessage",
+            "messageextradata",
+        ):
+            # every model of every field of this name, in the order written: the reader numbers
+            # embedded messages that way (/Embedded[n]), and any extra data can mark a forward
+            m.field_names.append(name)
+            m.many.setdefault(key, []).extend(_model(c) for c in ch.children if c.tag == "model")
         elif ch.tag == "modelField":
             m.field_names.append(name)
             sub = [c for c in ch.children if c.tag == "model"]
@@ -276,7 +292,7 @@ def _model(el: _El) -> _Model:
             m.many[key] = [_model(c) for c in ch.children if c.tag == "model"]
         elif name:
             # Any other named child (a nodeField, say) is not read; naming it puts it among the
-            # fields Baker does not read in coverage instead of passing it over in silence.
+            # fields Mabillon does not read in coverage instead of passing it over in silence.
             m.field_names.append(name)
     return m
 
@@ -290,8 +306,11 @@ class _Reader:
     `build(type)` says which top-level models to build; `on_model(el)` receives each built one.
     With `stream_chats`, each message inside a Chat's Messages field is turned into a _Model
     when it closes and kept on the chat (`el.pending`), so the chat's XML is never held whole.
-    Without building, the reader still counts models per type, collects metadata items and
-    extraction details, and observes record times for the date order.
+    A RelatedModels element inside a built model (copies of other records, as Cellebrite Reader
+    7.48 writes them) is never part of its holder: it goes to `on_related(holder locator, el)`
+    when it closes. Without building, the reader still counts models per type and the messages
+    of every chat, collects metadata items and extraction details, and observes record times for
+    the date order.
     """
 
     def __init__(
@@ -299,10 +318,16 @@ class _Reader:
         build: Callable[[str], bool],
         on_model: Callable[[_El], None],
         stream_chats: bool,
+        on_related: Callable[[str, _El], None] | None = None,
     ) -> None:
         self.build = build
         self.on_model = on_model
         self.stream_chats = stream_chats
+        self.on_related = on_related
+        # messages directly in a chat's Messages field (or any field of message models),
+        # counted on every read so the two reads of one file can be compared
+        self.chat_messages = 0
+        self._top_depth = 0
         self.path: list[str] = []
         self.attr_stack: list[dict[str, str]] = []
         self.building: list[_El] = []
@@ -333,20 +358,35 @@ class _Reader:
             self.root, self.namespace, self.project_attrs = local, ns or None, dict(attrs)
         self.path.append(local)
         self.attr_stack.append(attrs)
+        depth = len(self.path)
+        if (
+            local == "model"
+            and self._top_type == "Chat"
+            and parent == "multiModelField"
+            and depth == self._top_depth + 2
+            and (
+                self.attr_stack[-2].get("name", "").lower() == "messages"
+                or attrs.get("type") in MESSAGE_TYPES
+            )
+        ):
+            self.chat_messages += 1
         if self.building:
             el = _El(local, attrs)
             if local == "value":
                 el.text = []
-            self.building[-1].children.append(el)
+            # a RelatedModels element is handed over on its own when it closes; one inside a
+            # copy stays with that copy, so the copy's own copies are matched to it
+            if local != "RelatedModels" or self._in_related():
+                self.building[-1].children.append(el)
             self.building.append(el)
             return
-        depth = len(self.path)
         if local == "model" and parent == "modelType" and depth >= 3:
             if self.path[-3] != "decodedData":
                 return
             mtype = attrs.get("type") or self.attr_stack[-2].get("type", "")
             self.counts[mtype] += 1
             self._top_type = mtype
+            self._top_depth = depth
             if self.build(mtype):
                 el = _El(local, attrs, locator=f"{mtype}[{self.counts[mtype]}]")
                 if self.stream_chats and mtype == "Chat":
@@ -375,6 +415,10 @@ class _Reader:
         self.attr_stack.pop()
         if self.building:
             el = self.building.pop()
+            if el.tag == "RelatedModels":
+                if self.on_related is not None and not self._in_related():
+                    self.on_related(self._holder(), el)
+                return
             if not self.building:
                 self.on_model(el)
                 self._top_type = None
@@ -395,6 +439,24 @@ class _Reader:
                 seen[fname] = seen.get(fname, 0) + 1
                 self.building[-1].children.pop()  # free the message's XML
                 pending.append((f"{self.building[0].locator}/{fname}[{seen[fname]}]", _model(el)))
+            elif (
+                el.tag == "model"
+                and len(self.building) >= 3
+                and self.building[-1].tag == "multiModelField"
+                and self.building[-2].attrs.get("type") == "Chat"
+                and self.building[-3].tag == "RelatedModels"
+                and (
+                    self.building[-1].attrs.get("name", "").lower() == "messages"
+                    or el.attrs.get("type") in MESSAGE_TYPES
+                )
+            ):
+                # a message of a copied chat: only its content key is kept (and any copies it
+                # holds), so a long copied chat is never held whole
+                el.key = _content_key(_model(el))
+                el.children = [
+                    c for c in el.children
+                    if c.tag == "RelatedModels" or _is_embedded_field(c)
+                ]  # fmt: skip
             return
         if local == "model" and self.path and self.path[-1] == "modelType":
             self._top_type = None
@@ -428,6 +490,41 @@ class _Reader:
         elif self._ts_text is not None:
             self._ts_text.append(data)
 
+    def _in_related(self) -> bool:
+        return any(e.tag == "RelatedModels" for e in self.building)
+
+    def _holder(self) -> str:
+        """Locator of the model holding a RelatedModels element that just closed: the record,
+        the chat message being read (its place once it closes), or a message embedded in
+        either (its place as an imported row, at the message's locator + /Embedded[n])."""
+        return self._locator(self.building[0], self.building[1:])
+
+    def _locator(self, top: _El, inner: list[_El]) -> str:
+        if (
+            len(inner) >= 2
+            and inner[-1].tag == "model"
+            and inner[-2].attrs.get("name", "").lower() == "embeddedinstantmessage"
+        ):
+            msg = inner[-3] if len(inner) >= 3 else top
+            # numbered across all of the message's embedded fields, as message_rows() does
+            n = sum(
+                1 for f in msg.children if _is_embedded_field(f)
+                for c in f.children if c.tag == "model"
+            )  # fmt: skip
+            return f"{self._locator(top, inner[:-2])}{EMBEDDED_STEP}{n}]"
+        if (
+            len(inner) == 2
+            and top.seen is not None
+            and inner[0].tag == "multiModelField"
+            and (
+                inner[0].attrs.get("name", "").lower() == "messages"
+                or inner[1].attrs.get("type") in MESSAGE_TYPES
+            )
+        ):
+            fname = inner[0].attrs.get("name", "")
+            return f"{top.locator}/{fname}[{top.seen.get(fname, 0) + 1}]"
+        return "/".join([top.locator, *(e.attrs.get("name") or e.tag for e in inner)])
+
     # driving -------------------------------------------------------------
 
     def read(self, stream: IO[bytes]) -> None:
@@ -448,16 +545,16 @@ class _Reader:
         if self.root != "project":
             raise ValueError(
                 f"report.xml has root element {self.root!r}, not 'project'; it is not a "
-                "Cellebrite UFDR report Baker can read"
+                "Cellebrite UFDR report Mabillon can read"
             )
 
 
 def _refuse_doctype(*_a: object) -> None:
-    raise ValueError("report.xml declares a document type; Baker does not read such XML")
+    raise ValueError("report.xml declares a document type; Mabillon does not read such XML")
 
 
 def _refuse_entity(*_a: object) -> None:
-    raise ValueError("report.xml declares an entity; Baker does not read such XML")
+    raise ValueError("report.xml declares an entity; Mabillon does not read such XML")
 
 
 class _HashingReader:
@@ -498,17 +595,17 @@ def find_report(z: zipfile.ZipFile) -> zipfile.ZipInfo:
         if not i.is_dir() and PurePosixPath(_norm_member(i.filename)).name.lower() == "report.xml"
     ]
     if not found:
-        raise ValueError("the package holds no report.xml, so it is not a UFDR Baker can read")
+        raise ValueError("the package holds no report.xml, so it is not a UFDR Mabillon can read")
     depth = min(_norm_member(i.filename).count("/") for i in found)
     top = [i for i in found if _norm_member(i.filename).count("/") == depth]
     if len(top) > 1:
         raise ValueError(
             "the package holds more than one report.xml at the same level ("
             + ", ".join(i.filename for i in top)
-            + "); Baker cannot tell which one is the report"
+            + "); Mabillon cannot tell which one is the report"
         )
     if top[0].flag_bits & 0x1:
-        raise ValueError("report.xml is encrypted in the package; Baker cannot read it")
+        raise ValueError("report.xml is encrypted in the package; Mabillon cannot read it")
     return top[0]
 
 
@@ -733,6 +830,20 @@ class _StreamWriter(_Writer):
 
 
 @dataclass
+class _Copies:
+    """Copies under one RelatedModels holder that must match it: `one` copies each say what
+    the record at `holder` says (or `want`, for copies inside a copy); `chat` copies are the
+    messages of a copied chat, matched one to one to the messages of the chat at `holder`."""
+
+    table: str
+    kind: str  # "one" or "chat"
+    holder: str
+    want: bytes | list[bytes] | None
+    keys: list[tuple[bytes, str]]  # content key, locator of each copy
+    message: bool
+
+
+@dataclass
 class _Scan:
     """What the first pass learns before any record is written."""
 
@@ -746,6 +857,8 @@ class _Scan:
     tagged_conflicts: set[str]
     votes: dict[str, DateOrder]
     accounts: list[_El]
+    chat_messages: int = 0
+    related: list[tuple[str, _El]] = field(default_factory=list)  # under UserAccounts
 
 
 class UfdrImporter:
@@ -807,7 +920,7 @@ class UfdrImporter:
             raise ValueError(
                 "this UFDR holds extractions from more than one device ("
                 + ", ".join(repr(d) for d in devices)
-                + "); Baker imports one device per file, so its records cannot be attributed. "
+                + "); Mabillon imports one device per file, so its records cannot be attributed. "
                 "Ask for one package per device"
             )
 
@@ -929,13 +1042,26 @@ class UfdrImporter:
                     meta.get("device_time_zone", (None, ""))[0],
                 ),
             )
+            for holder, el in scan.related:  # first: the accounts holding copies are known
+                rd.related(holder, el)
             for el in scan.accounts:
                 rd.user_account(el)
-            reader = _Reader(lambda t: t in TABLE_KIND and t != "UserAccount", rd.model, True)
+            rd.settle_related()
+            reader = _Reader(
+                lambda t: t in TABLE_KIND and t != "UserAccount", rd.model, True, rd.related
+            )
             with z.open(report) as f:
                 hashing = _HashingReader(f)
                 reader.read(hashing)
+            rd.finish_related()
             w.flush()
+            chat_read = tables["Chat"].rows_read if "Chat" in tables else 0
+            if not scan.chat_messages == reader.chat_messages == chat_read:
+                raise ValueError(  # a chat message was skipped or counted twice: store nothing
+                    f"report.xml gave {scan.chat_messages} chat messages on the first read, "
+                    f"{reader.chat_messages} on the second and {chat_read} imported or listed; "
+                    "nothing was imported"
+                )
             for t, tc in tables.items():
                 if t not in ("Chat", "UserAccount") and tc.rows_read != scan.counts[t]:
                     raise ValueError(  # the two passes over one file disagree: store nothing
@@ -979,6 +1105,7 @@ class UfdrImporter:
                     "package_files_hashed": len(pkg.hashed),
                     "model_counts": dict(sorted(scan.counts.items())),
                     "deleted_state_values": dict(sorted(rd.deleted_states.items())),
+                    "related_copies_by_type": dict(sorted(rd.related_counts.items())),
                 },
             )
             forwarded.mark(conn, cov.forwarded_records, cov.forwarded_from)
@@ -993,7 +1120,7 @@ class UfdrImporter:
             audit_log.append(conn, source.imported_at_utc, "system", "import", payload)
             if sha256_file(path) != sha:  # the package changed while it was read: store nothing
                 raise ValueError(
-                    f"{path.name} changed while Baker read it; nothing was imported. Nothing "
+                    f"{path.name} changed while Mabillon read it; nothing was imported. Nothing "
                     "should change a copied input, so check the case folder"
                 )
         return source
@@ -1001,7 +1128,10 @@ class UfdrImporter:
 
 def _scan(z: zipfile.ZipFile, report: zipfile.ZipInfo) -> _Scan:
     accounts: list[_El] = []
-    reader = _Reader(lambda t: t == "UserAccount", accounts.append, False)
+    related: list[tuple[str, _El]] = []
+    reader = _Reader(
+        lambda t: t == "UserAccount", accounts.append, False, lambda h, el: related.append((h, el))
+    )
     with z.open(report) as f:
         reader.read(f)
     return _Scan(
@@ -1015,6 +1145,8 @@ def _scan(z: zipfile.ZipFile, report: zipfile.ZipInfo) -> _Scan:
         tagged_conflicts=reader.tagged_conflicts,
         votes=reader.votes,
         accounts=accounts,
+        chat_messages=reader.chat_messages,
+        related=related,
     )
 
 
@@ -1042,6 +1174,21 @@ class _RecordMapper:
         self.unknown_fields: dict[str, list[str]] = {}
         self.flag_counts: dict[str, Counter[str]] = {}
         self.model_ids: set[str] = set()
+        # Copies under RelatedModels: how many of each type, and for messages, calls, contacts
+        # and accounts their content key (_content_key), matched to the record holding them
+        self.related_counts: Counter[str] = Counter()
+        # the copies of the record being read: matched (settle_related) once it is mapped, and
+        # dropped, so nothing grows with the number of copies in the package
+        self.related_copies: list[_Copies] = []
+        self.copies_seen = 0
+        self.copies_matched = 0
+        # content keys only of records holding copies: a record's RelatedModels closes before
+        # the record is mapped, so its holders are known by then and nothing else is kept
+        self.holders: set[str] = set()
+        self.related_seen: dict[str, int] = {}  # holder -> copies numbered so far
+        self.chat_context: dict[str, bytes] = {}  # holder chat locator -> _chat_context
+        self.record_keys: dict[str, bytes] = {}  # holder locator -> its content key
+        self.chat_keys: dict[str, list[bytes]] = {}  # holder chat locator -> its messages' keys
 
     def _repeat(self, table: str, m: _Model, locator: str) -> bool:
         """True for a message or call whose model id an earlier record already had: the same
@@ -1052,6 +1199,8 @@ class _RecordMapper:
         if mid not in self.model_ids:
             self.model_ids.add(mid)
             return False
+        self._record_key(locator, m)  # its copies still match it, though not imported again
+        self._record_embedded(locator, m)
         tc = self.tables[table]
         tc.rows_read += 1
         tc.rows_skipped["same_id_as_an_earlier_record"] += 1
@@ -1085,20 +1234,14 @@ class _RecordMapper:
         self, table: str, m: _Model, locator: str, embedded_in: _Model | None = None
     ) -> str | None:
         """The record's deleted state as the package wrote it, and its recovery flags."""
-        state = m.attrs.get("deleted_state") or m.attrs.get("deleted")
-        if state is None:
-            state = m.text("deleted_state", "deletedstate", "recordstatus")
+        state = _deleted_state(m)
         if state is not None:
             self.deleted_states[state] += 1
-        carved = any(
-            k.lower() in ("carved", "iscarved") and v.strip().lower() in _TRUE | {"carved"}
-            for k, v in m.attrs.items()
-        ) or (m.text("carved", "iscarved") or "").lower() in _TRUE | {"carved"}
+        carved, conf_not_high = _recovery(m.attrs, m.text("carved", "iscarved"))
         if carved:
             self.cov.counters["records_recovered_by_carving"] += 1
             self._flag(table, "carved", locator)
-        conf = m.attrs.get("decoding_confidence")
-        if conf is not None and conf.strip().lower() != "high":
+        if conf_not_high:
             self.cov.counters["records_decoding_confidence_not_high"] += 1
             self._flag(table, "decoding_confidence_not_high", locator)
         if table != "Contact" and table != "Call":
@@ -1146,6 +1289,163 @@ class _RecordMapper:
         if self.w.pending() >= BATCH:
             self.w.write_pending()
 
+    # copies under RelatedModels --------------------------------------------
+
+    def related(self, holder: str, rel: _El) -> None:
+        """Models a record holds under RelatedModels. On public Reader 7.48 packages each one is
+        a copy of the record holding it (the same record decoded again from another source:
+        same text, time, parties, deleted state and attachments, new id), so none is imported
+        again. Each is counted and, once the read ends (finish_related), matched to its holder:
+        a copied message, call, contact or account to the holder itself, and the messages of a
+        copied chat one to one to the holder chat's messages. One that does not match is
+        listed for review."""
+        table = holder.split("[", 1)[0]
+        self.holders.add(holder)
+        models = [c for c in rel.children if c.tag == "model"]
+        for el in models:
+            # numbered across all of the holder's RelatedModels elements, as ufdr-check does
+            i = self.related_seen[holder] = self.related_seen.get(holder, 0) + 1
+            t = el.attrs.get("type", "")
+            loc = f"{holder}/Related[{i}]"
+            self.related_counts[t] += 1
+            m = _model(el)
+            if t == "Chat":
+                keys: list[tuple[bytes, str]] = []
+                ctx = _chat_context(m)
+                for key, where, x in _chat_copy_messages(loc, el):
+                    keys.append((_in_chat(ctx, key), where))
+                    self._nested(table, where, key, x, True)
+                self.related_copies.append(_Copies(table, "chat", holder, None, keys, True))
+                self._nested_chats(table, loc, [k for k, _w in keys], el)
+            elif (
+                t in COPY_TYPES
+                or (table in MESSAGE_TYPES and "/" not in holder)
+                or _CHAT_MESSAGE_LOC.fullmatch(holder)
+                or holder.rpartition("/")[2].startswith(EMBEDDED_STEP[1:])
+            ):
+                # a message's copy (top-level, in a chat or embedded) is a message whatever
+                # its type is named, as its holder
+                key = _content_key(m)
+                is_message = t not in COPY_KINDS
+                self.related_copies.append(
+                    _Copies(table, "one", holder, None, [(key, loc)], is_message)
+                )
+                self._nested(table, loc, key, el, is_message)
+
+    def _nested_chats(self, table: str, loc: str, want: list[bytes], chat: _El) -> None:
+        """Chats copied inside a copied chat: their messages match that copy's one to one."""
+        i = 0  # numbered across all of the copy's RelatedModels elements
+        for rel in (c for c in chat.children if c.tag == "RelatedModels"):
+            for x in (c for c in rel.children if c.tag == "model"):
+                i += 1
+                t = x.attrs.get("type", "")
+                self.related_counts[t] += 1
+                where = f"{loc}/Related[{i}]"
+                if t != "Chat":
+                    if t in COPY_TYPES:  # another kind than the chat holding it: listed
+                        key = _content_key(_model(x))
+                        is_message = t not in COPY_KINDS
+                        own = _content_key(_model(chat))
+                        self.related_copies.append(
+                            _Copies(table, "one", loc, own, [(key, where)], is_message)
+                        )
+                        self._nested(table, where, key, x, is_message)
+                    continue
+                msgs = list(_chat_copy_messages(where, x))
+                ctx = _chat_context(_model(x))
+                keys = [(_in_chat(ctx, k), w) for k, w, _el in msgs]
+                self.related_copies.append(_Copies(table, "chat", loc, want, keys, True))
+                for k, w, y in msgs:
+                    self._nested(table, w, k, y, True)
+                self._nested_chats(table, where, [k for k, _w in keys], x)
+
+    def _nested(self, table: str, loc: str, want: bytes, el: _El, message: bool) -> None:
+        """Copies inside a copy (a RelatedModels element in a copied record), at any depth:
+        each must say what the copy holding it says (`want`). A copy held by a message
+        (`message`) is a message whatever its type is named, as at the top level."""
+        i = 0  # numbered across all of the copy's RelatedModels elements
+        for rel in (c for c in el.children if c.tag == "RelatedModels"):
+            for x in (c for c in rel.children if c.tag == "model"):
+                i += 1
+                t = x.attrs.get("type", "")
+                where = f"{loc}/Related[{i}]"
+                self.related_counts[t] += 1
+                if t == "Chat":
+                    # a chat copied under another kind of record: none of its messages can
+                    # match one of the holder's, so each is listed, as at the top level
+                    msgs = list(_chat_copy_messages(where, x))
+                    ctx = _chat_context(_model(x))
+                    keys = [(_in_chat(ctx, k), w) for k, w, _el in msgs]
+                    self.related_copies.append(_Copies(table, "chat", loc, [], keys, True))
+                    for k, w, y in msgs:
+                        self._nested(table, w, k, y, True)
+                    self._nested_chats(table, where, [k for k, _w in keys], x)
+                elif t in COPY_TYPES or t == el.attrs.get("type") or message:
+                    key = _content_key(_model(x))
+                    is_message = t not in COPY_KINDS
+                    self.related_copies.append(
+                        _Copies(table, "one", loc, want, [(key, where)], is_message)
+                    )
+                    self._nested(table, where, key, x, is_message)
+        # a message embedded in this one can hold copies too, at its /Embedded[n] locator
+        embedded = (e for f in el.children if _is_embedded_field(f) for e in f.children)
+        for n, e in enumerate((e for e in embedded if e.tag == "model"), 1):
+            self._nested(table, f"{loc}{EMBEDDED_STEP}{n}]", _content_key(_model(e)), e, True)
+
+    def finish_related(self) -> None:
+        self.settle_related()
+        if self.copies_seen:
+            self.cov.counters["related_copies"] = self.copies_seen
+        if self.copies_matched:
+            self.cov.counters["related_copies_matching_a_record"] = self.copies_matched
+
+    def settle_related(self) -> None:
+        """Match the copies held so far to their holders, all of which are mapped by now (a
+        record's copies are all inside it), then drop the copies and the holders' keys."""
+        for c in self.related_copies:
+            self.copies_seen += len(c.keys)
+            if c.kind == "chat":
+                left = Counter(
+                    c.want if isinstance(c.want, list) else self.chat_keys.get(c.holder, ())
+                )
+            else:
+                want = c.want if c.want is not None else self.record_keys.get(c.holder)
+                left = Counter({want: len(c.keys)}) if want is not None else Counter()
+            for key, loc in c.keys:
+                if left[key] > 0:
+                    left[key] -= 1
+                    self.copies_matched += 1
+                    continue
+                self.cov.counters["related_copies_matching_no_record"] += 1
+                if c.message:  # ufdr-check accounts for these by count past the listed ones
+                    self.cov.counters["related_message_copies_matching_no_record"] += 1
+                self._flag(c.table, "related_copy_unmatched", loc)
+        self.related_copies.clear()
+        self.holders.clear()
+        self.related_seen.clear()
+        self.chat_context.clear()
+        self.record_keys.clear()
+        self.chat_keys.clear()
+
+    def _record_key(self, locator: str, m: _Model) -> None:
+        chat, _, _ = locator.rpartition("/")
+        if locator not in self.holders and chat not in self.holders:
+            return
+        key = _content_key(m)
+        if locator in self.holders:
+            self.record_keys[locator] = key
+        if chat in self.holders:
+            ctx = self.chat_context.get(chat, b"")
+            self.chat_keys.setdefault(chat, []).append(_in_chat(ctx, key))
+
+    def _record_embedded(self, locator: str, m: _Model) -> None:
+        """Keys of the messages embedded in a message, at every level, at their /Embedded[n]
+        locators: a copy one of them holds is matched to it."""
+        for n, e in enumerate(m.models("embeddedinstantmessage"), 1):
+            eloc = f"{locator}{EMBEDDED_STEP}{n}]"
+            self._record_key(eloc, e)
+            self._record_embedded(eloc, e)
+
     # dispatch ------------------------------------------------------------
 
     def model(self, el: _El) -> None:
@@ -1164,6 +1464,7 @@ class _RecordMapper:
                 self.call(el.locator, m)
         elif t == "Contact":
             self.contact(el.locator, m)
+        self.settle_related()  # every holder in this record is mapped now
         self._maybe_write()
 
     def messages(self, table: str, kind: RecordKind, rows: list[_ModelRow]) -> None:
@@ -1179,6 +1480,8 @@ class _RecordMapper:
 
     def chat(self, el: _El, chat: _Model) -> None:
         self._fields("Chat", "Chat", chat)
+        if el.locator in self.holders:
+            self.chat_context[el.locator] = _chat_context(chat)
         pending = el.pending or []
         if not pending:
             self.cov.counters["chats_without_messages"] += 1
@@ -1193,6 +1496,7 @@ class _RecordMapper:
         same thread, at locator + "/Embedded[n]". An embedded message whose model id an earlier
         record already had is not imported twice."""
         rows = [self.message_row(chat, locator, m)]
+        self._record_embedded(locator, m)  # their copies match them, imported here or not
         for n, e in enumerate(m.models("embeddedinstantmessage"), 1):
             eloc = f"{locator}{EMBEDDED_STEP}{n}]"
             mid = e.attrs.get("id")
@@ -1244,6 +1548,8 @@ class _RecordMapper:
             "deleted": state,
         }
         parties = {"from": senders, "to": to, "participants": participants}
+        if embedded_in is None:
+            self._record_key(locator, m)
         return _row(locator, values, parties, self.attachments(table, locator, m))
 
     def sms_row(self, table: str, locator: str, m: _Model) -> _ModelRow:
@@ -1269,6 +1575,8 @@ class _RecordMapper:
             "deleted": state,
         }
         parties = {"from": senders, "to": to, "parties": counterpart}
+        self._record_key(locator, m)
+        self._record_embedded(locator, m)  # their copies match them, as in message_rows
         return _row(locator, values, parties, self.attachments(table, locator, m))
 
     def attachments(self, table: str, locator: str, m: _Model) -> list[str]:
@@ -1346,6 +1654,7 @@ class _RecordMapper:
         }
         tc.rows_read += 1
         tc.rows_imported += 1
+        self._record_key(locator, m)
         _calls(self.w, [_row(locator, values, parties)], self.tctx["Call"], None)
 
     def contact(self, locator: str, m: _Model) -> None:
@@ -1354,6 +1663,7 @@ class _RecordMapper:
         tc = self.tables["Contact"]
         tc.rows_read += 1
         tc.rows_imported += 1
+        self._record_key(locator, m)
         self._count_pictures(m)
         idents = _entries(m)
         if not idents:
@@ -1371,6 +1681,7 @@ class _RecordMapper:
         tc = self.tables["UserAccount"]
         tc.rows_read += 1
         self._count_pictures(m)
+        self._record_key(el.locator, m)  # a copy of one skipped here is no new record
         ident = m.text("username") or _account_identifier(m)
         if not ident:
             tc.rows_skipped["account_without_identifier"] += 1
@@ -1404,6 +1715,132 @@ def _forwarded(m: _Model) -> bool:
 
 
 EMBEDDED_STEP = forwarded.COPY_STEP  # locator step of a message embedded in another
+
+
+def _content_key(m: _Model) -> bytes:
+    """What a record says, as one hash: a copy under RelatedModels with the same key says the
+    same thing. Every field the record's mapper reads is in it, as written: messages: app,
+    text, time, direction, folder and status, parties (with their side and IsPhoneOwner;
+    those with no sender or recipient role in order), deleted state, attachments (how many,
+    their names and MIME types), whether it is marked forwarded, and any message embedded in it;
+    calls: app, time, duration, direction, type and status, parties (each side in order) and
+    deleted state; contacts: name and entries; accounts: app, identifier and name. Messages,
+    calls and contacts also carry their recovery marks (carved, decoding confidence not High),
+    which the importer flags for review."""
+    if m.type == "Call":
+        # each party with its side, in the order written: the mapper takes the first party
+        # on each side, so a copy that swaps caller and callee, or reorders one side, differs
+        parties = (
+            [_party_key(p) for p, _r in _parties(m.models("from"))],
+            [_party_key(p) for p, _r in _parties(m.models("to"))],
+            [(r, _party_key(p)) for p, r in _parties(m.models("parties"))],
+        )
+        key: tuple[object, ...] = (
+            m.type,
+            m.raw("source"),
+            m.raw(*CALL_TS_FIELDS),
+            m.raw("duration"),
+            # every field the call mapper reads a direction from (stated_call_direction)
+            (m.raw("direction"), m.raw("type"), m.raw("status")),
+            parties,
+            _deleted_state(m),
+            _recovery(m.attrs, m.text("carved", "iscarved")),
+        )
+    elif m.type == "Contact":
+        recovery = _recovery(m.attrs, m.text("carved", "iscarved"))
+        key = (m.type, m.raw("name"), _entries(m), _deleted_state(m), recovery)
+    elif m.type == "UserAccount":
+        key = (
+            m.type,
+            m.raw("source"),
+            m.text("username") or _account_identifier(m),
+            m.raw("name"),
+        )
+    else:
+        listed = list(_parties(m.models("parties", "participants")))
+        senders = [_party_key(p) for p, _r in _parties(m.models("from"))]
+        senders += [_party_key(p) for p, r in listed if r == "from"]
+        to = [_party_key(p) for p, _r in _parties(m.models("to"))]
+        to += [_party_key(p) for p, r in listed if r in ("to", "cc", "bcc")]
+        to.sort(key=repr)
+        # a party with no sender or recipient role: an SMS's counterpart, say, in the order
+        # written (the mapper takes the first one that is not the phone's owner)
+        others = [(r, _party_key(p)) for p, r in listed if r not in ("from", "to", "cc", "bcc")]
+        # attachments by name and MIME type as written: a copy decoded from another source
+        # points at its own file (another path or file id), so the reference is not compared
+        attachments = sorted(
+            ((a.raw(*ATT_NAME_FIELDS) or "", a.raw(*ATT_MIME_FIELDS))
+             for a in m.models("attachments", "attachment")),
+            key=repr,
+        )  # fmt: skip
+        key = (
+            m.type,  # SMS and chat messages map differently
+            m.raw("source"),
+            m.raw(*BODY_FIELDS),
+            m.raw(*TS_FIELDS),
+            # every field the message mapper reads a direction from (stated_message_direction)
+            (m.raw("direction"), m.raw("folder"), m.raw("status")),
+            senders,
+            to,
+            others,
+            _deleted_state(m),
+            attachments,
+            _forwarded(m),  # the record is marked forwarded from this
+            # a message embedded in it is imported as a row of its own
+            [_content_key(e) for e in m.models("embeddedinstantmessage")],
+            _recovery(m.attrs, m.text("carved", "iscarved")),
+        )
+    return hashlib.blake2b(repr(key).encode("utf-8", "surrogatepass"), digest_size=16).digest()
+
+
+def _recovery(attrs: dict[str, str], carved_field: str | None) -> tuple[bool, bool]:
+    """Whether a record was recovered by carving, and whether its decoding confidence is stated
+    and not High: the reliability marks the importer flags for review."""
+    carved = any(
+        k.lower() in ("carved", "iscarved") and v.strip().lower() in _TRUE | {"carved"}
+        for k, v in attrs.items()
+    ) or (carved_field or "").lower() in _TRUE | {"carved"}
+    conf = attrs.get("decoding_confidence")
+    return carved, conf is not None and conf.strip().lower() != "high"
+
+
+def _chat_copy_messages(loc: str, chat: _El) -> Iterator[tuple[bytes, str, _El]]:
+    """The messages of a copied chat, in order: content key, locator, element."""
+    seen: dict[str, int] = {}  # per field name, across the chat's fields, as the reader counts
+    for f in (c for c in chat.children if c.tag == "multiModelField"):
+        fname = f.attrs.get("name", "")
+        msgs = [
+            x for x in f.children if x.tag == "model"
+            and (fname.lower() == "messages" or x.attrs.get("type") in MESSAGE_TYPES)
+        ]  # fmt: skip
+        for x in msgs:
+            seen[fname] = seen.get(fname, 0) + 1
+            key = x.key if x.key is not None else _content_key(_model(x))
+            yield key, f"{loc}/{fname}[{seen[fname]}]", x
+
+
+def _chat_context(chat: _Model) -> bytes:
+    """What a chat says around its messages, as written: the message mapper reads its app,
+    id, name and participants."""
+    parts = [_party_key(p) for p, _r in _parties(chat.models("participants"))]
+    ctx = (chat.raw("source"), chat.raw(*CHAT_ID_FIELDS), chat.raw(*CHAT_NAME_FIELDS), parts)
+    return repr(ctx).encode("utf-8", "surrogatepass")
+
+
+def _in_chat(ctx: bytes, key: bytes) -> bytes:
+    """A chat message's key with its chat's context: a copied chat's messages match the holder
+    chat's only when the two chats also say the same around them."""
+    return hashlib.blake2b(ctx + key, digest_size=16).digest()
+
+
+def _is_embedded_field(el: _El) -> bool:
+    return el.tag != "model" and el.attrs.get("name", "").lower() == "embeddedinstantmessage"
+
+
+def _deleted_state(m: _Model) -> str | None:
+    """The record's deleted state as written: an attribute, else a field."""
+    state = m.attrs.get("deleted_state") or m.attrs.get("deleted")
+    return state if state is not None else m.text("deleted_state", "deletedstate", "recordstatus")
 
 
 def _sole_sender(m: _Model) -> str | None:
@@ -1455,6 +1892,12 @@ def _entries(m: _Model) -> list[str]:
     return out
 
 
+def _party_key(p: Party) -> tuple[str | None, str | None, bool]:
+    """A party in a content key: identifier and name kept apart, as written, and whether it
+    says it is the phone's owner (the mapper reads direction and accounts from that)."""
+    return (p.identifier, p.name, p.owner)
+
+
 def _party_text(p: Party) -> str:
     return " ".join(x for x in (p.identifier, p.name) if x)
 
@@ -1471,7 +1914,7 @@ def _table_dict(tc: TableCoverage, rd: _RecordMapper) -> dict[str, object]:
 
 
 def _meta(items: list[tuple[str, str, str, str]]) -> dict[str, tuple[str, str]]:
-    """key -> (value, locator) for the metadata Baker reads, first alias present wins."""
+    """key -> (value, locator) for the metadata Mabillon reads, first alias present wins."""
     by_name: dict[str, tuple[str, str]] = {}
     for _section, name, value, loc in items:
         k = _key(name)

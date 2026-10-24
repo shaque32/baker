@@ -43,7 +43,14 @@ def keep_awake() -> Iterator[str]:
         how = "Kept awake: macOS will not sleep while the audit runs (caffeinate)."
     elif exe := shutil.which("systemd-inhibit"):
         sleeper = shutil.which("sleep") or "sleep"
-        args = [exe, "--what=idle:sleep", "--who=Baker", "--why=audit running", sleeper, "infinity"]
+        args = [
+            exe,
+            "--what=idle:sleep",
+            "--who=Mabillon",
+            "--why=audit running",
+            sleeper,
+            "infinity",
+        ]
         how = "Kept awake: the system will not sleep while the audit runs (systemd-inhibit)."
     if args is None:
         yield NOT_HELD

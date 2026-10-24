@@ -1,6 +1,6 @@
-"""Expert flags: a wrong label, a record Baker missed, or a verdict the expert disagrees with.
+"""Expert flags: a wrong label, a record Mabillon missed, or a verdict the expert disagrees with.
 
-A flag is feedback about Baker, written by the expert on the claim page. It is optional, never
+A flag is feedback about Mabillon, written by the expert on the claim page. It is optional, never
 blocks review, and never changes an evidence status, a verdict or anything the rules read.
 
 Storage. Flags live only in the case's append-only, hash-chained audit log (actions
@@ -116,7 +116,7 @@ def _model(conn: sqlite3.Connection, model_run_id: str | None) -> dict | None:
 
 
 def baker_verdict(conn: sqlite3.Connection, claim_id: str, run_id: str | None, stored: str) -> str:
-    """Baker's own verdict on this run: the rules' verdict before the first expert override,
+    """Mabillon's own verdict on this run: the rules' verdict before the first expert override,
     or the stored verdict when nobody overrode it."""
     vid = f"vd:{claim_id}@{run_id}"
     for (payload_json,) in conn.execute(
@@ -142,7 +142,7 @@ def _snapshot(conn: sqlite3.Connection, claim_id: str, evidence_id: str | None) 
         snap["search_run"] = _search_run(pipeline.view_run(conn), st.run_id)
         if st.decision is not None:
             d = st.decision
-            # After an override the stored verdict is the expert's; the flag is about Baker's.
+            # After an override the stored verdict is the expert's; the flag is about Mabillon's.
             snap["verdict"] = baker_verdict(conn, claim_id, st.run_id, d.verdict.value)
             snap["expert_override"] = d.override_note is not None
             snap["rule_version"] = d.rule_version
@@ -228,7 +228,7 @@ def add_flag(
                 "this evidence item is not in the audit on screen; flag it on the current page"
             )
         if kind == VERDICT and should_be == snap["verdict"]:
-            raise ReviewError("that is the verdict Baker gave; pick the one it should be")
+            raise ReviewError("that is the verdict Mabillon gave; pick the one it should be")
         if kind == WRONG_LABEL and should_be == snap.get("stance"):
             raise ReviewError("that is the label the item has; pick the one it should be")
         flag_id = _next_id(conn)
@@ -479,7 +479,7 @@ class PilotRow:
 
 def _check(s: dict) -> None:
     if s.get("format") != FORMAT:
-        raise ValueError("not a Baker flag summary")
+        raise ValueError("not a Mabillon flag summary")
     if s.get("format_version") != FORMAT_VERSION:
         raise ValueError(f"unsupported flag summary version {s.get('format_version')!r}")
 
@@ -542,7 +542,7 @@ def error_log(summaries: Iterable[dict]) -> ErrorLog:
 def error_log_markdown(log: ErrorLog) -> str:
     rows = log.rows
     out = [
-        "# Baker measured error log",
+        "# Mabillon measured error log",
         "",
         "From expert flags in redacted pilot summaries. Flagging is optional, so each rate is a "
         "lower bound on what the expert found wrong, not a measured error rate.",
@@ -580,7 +580,7 @@ def error_log_markdown(log: ErrorLog) -> str:
             r.verdict_disagreements.items(), key=lambda kv: (-kv[1], [str(k) for k in kv[0]])
         ):
             out.append(f"- Verdict {was} flagged, expert says {should} (rules {rules}): {n}")
-        versions = ", ".join(f"Baker {b} rules {v}" for b, v in sorted(r.versions, key=str))
+        versions = ", ".join(f"Mabillon {b} rules {v}" for b, v in sorted(r.versions, key=str))
         out.append(f"- Versions: {versions}")
         models = ", ".join(f"{p} {m} prompt {v}" for p, m, v in sorted(r.models, key=str))
         out.append(f"- Models: {models or 'none recorded'}")
