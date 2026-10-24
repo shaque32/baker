@@ -1,5 +1,5 @@
 <#
-Baker speed test on a Windows PC: installs Baker from the installer, downloads and checks the
+Mabillon speed test on a Windows PC: installs Mabillon from the installer, downloads and checks the
 model, runs the stance probe and a timed case01 audit, and writes RESULTS.md to paste back.
 Everything it runs is synthetic (case01 and the signed probe set). It also proves the
 installer works on a clean PC.
@@ -8,8 +8,8 @@ On an NVIDIA machine (rented or a friendly examiner's), in PowerShell:
 
     powershell -ExecutionPolicy Bypass -File .\speedtest.ps1
 
-run in the folder that holds this script, Baker-Setup-<version>.exe and its .sha256 file (the
-"baker-installer" download from the build).
+run in the folder that holds this script, Mabillon-Setup-<version>.exe and its .sha256 file (the
+"mabillon-installer" download from the build).
 
 Options:
     -Installer <path|url>   the installer, if it is not next to this script
@@ -18,10 +18,10 @@ Options:
                             (default: the whole case on an NVIDIA GPU, C02,C05,C12 on CPU)
     -SkipProbe              skip the 88-item probe (CI's CPU run does; it adds hours on a CPU)
     -NCtx 8192              model context (8192 is what accuracy was measured with)
-    -Out <folder>           where results go (default: Documents\baker-speedtest)
+    -Out <folder>           where results go (default: Documents\mabillon-speedtest)
 
-Needs about 25 GB free disk (model 9 GB, Baker 1 GB, a copy during install) and an internet
-connection for the model download only. Baker itself never connects to the internet.
+Needs about 25 GB free disk (model 9 GB, Mabillon 1 GB, a copy during install) and an internet
+connection for the model download only. Mabillon itself never connects to the internet.
 #>
 param(
     [string]$Installer = '',
@@ -29,7 +29,7 @@ param(
     [string]$Claims = '',
     [switch]$SkipProbe,
     [int]$NCtx = 8192,
-    [string]$Out = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'baker-speedtest')
+    [string]$Out = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'mabillon-speedtest')
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -37,11 +37,13 @@ New-Item -ItemType Directory -Force $Out | Out-Null
 $Out = (Resolve-Path $Out).Path
 Start-Transcript (Join-Path $Out 'transcript.txt') -Force | Out-Null
 $started = Get-Date
-$app = Join-Path $env:LOCALAPPDATA 'Programs\Baker'
+# Where Setup installs: Programs\Mabillon, or Programs\Baker when it updates an install made under
+# that name (set again after the install).
+$app = Join-Path $env:LOCALAPPDATA 'Programs\Mabillon'
 
 function Step([string]$text) { Write-Host "`n== $text ($((Get-Date).ToString('HH:mm:ss')))" -ForegroundColor Cyan }
 
-function Install-Baker([string]$exe, [string]$log) {
+function Install-Mabillon([string]$exe, [string]$log) {
     $setupArgs = '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/MERGETASKS=!downloadmodel', "/LOG=$log"
     $p = Start-Process $exe -ArgumentList $setupArgs -Wait -PassThru
     if ($p.ExitCode) { throw "Setup exit code $($p.ExitCode); see $log" }
@@ -72,8 +74,8 @@ if (-not $Claims -and -not (Test-Path $smi)) { $Claims = 'C02,C05,C12' }
 # ------------------------------------------------------------------ install
 Step 'Installer'
 if (-not $Installer) {
-    $found = Get-ChildItem $PSScriptRoot -Filter 'Baker-Setup-*.exe' | Sort-Object LastWriteTime | Select-Object -Last 1
-    if (-not $found) { throw "No Baker-Setup-*.exe next to $PSCommandPath; pass -Installer <path>" }
+    $found = Get-ChildItem $PSScriptRoot -Filter 'Mabillon-Setup-*.exe' | Sort-Object LastWriteTime | Select-Object -Last 1
+    if (-not $found) { throw "No Mabillon-Setup-*.exe next to $PSCommandPath; pass -Installer <path>" }
     $Installer = $found.FullName
 }
 if (-not $InstallerSha256 -and (Test-Path "$Installer.sha256")) {
@@ -98,7 +100,8 @@ if ($signature.Status -eq 'Valid') {
     $sig = "$($signature.Status)"
     Write-Host "Code signature: $sig (builds of main are signed; pull request builds are not)"
 }
-Install-Baker $Installer (Join-Path $Out 'setup-1.log')
+Install-Mabillon $Installer (Join-Path $Out 'setup-1.log')
+if (-not (Test-Path (Join-Path $app 'python'))) { $app = Join-Path $env:LOCALAPPDATA 'Programs\Baker' }
 $runtime = (Select-String -Path (Join-Path $Out 'setup-1.log') -Pattern 'Model runtime installed: (\w+)').Matches |
     ForEach-Object { $_.Groups[1].Value } | Select-Object -Last 1
 Write-Host "Model runtime: $runtime"
@@ -108,7 +111,10 @@ Run-Py @('-c', "import llama_cpp; print('llama-cpp-python', llama_cpp.__version_
 
 # ------------------------------------------------------------------ model
 Step "Model $($model.file)"
-$modelDir = Join-Path $env:LOCALAPPDATA 'Baker\models'
+# The folder Setup looks in first: Mabillon\models, or Baker\models when the model is only there.
+$modelDir = Join-Path $env:LOCALAPPDATA 'Mabillon\models'
+$oldDir = Join-Path $env:LOCALAPPDATA 'Baker\models'
+if (-not (Test-Path (Join-Path $modelDir $model.file)) -and (Test-Path (Join-Path $oldDir $model.file))) { $modelDir = $oldDir }
 New-Item -ItemType Directory -Force $modelDir | Out-Null
 $modelPath = Join-Path $modelDir $model.file
 $have = (Test-Path $modelPath) -and ((Get-FileHash $modelPath -Algorithm SHA256).Hash.ToLower() -eq $model.sha256)
@@ -122,9 +128,11 @@ if (-not $have) {
     if ($sha -ne $model.sha256) { Remove-Item $modelPath; throw "model SHA-256 $sha is not the pinned $($model.sha256)" }
 }
 Write-Host 'Model SHA-256 matches the pin.'
-# Reinstall: Setup finds the verified model and points Baker at it (~/.baker/model.json).
-Install-Baker $Installer (Join-Path $Out 'setup-2.log')
-$config = Join-Path $env:USERPROFILE '.baker\model.json'
+# Reinstall: Setup finds the verified model and points Mabillon at it (~/.mabillon/model.json, or
+# a ~/.baker/model.json of the person's own, which Setup leaves and Mabillon reads).
+Install-Mabillon $Installer (Join-Path $Out 'setup-2.log')
+$config = Join-Path $env:USERPROFILE '.mabillon\model.json'
+if (-not (Test-Path $config)) { $config = Join-Path $env:USERPROFILE '.baker\model.json' }
 if (-not (Test-Path $config)) { throw "Setup did not write $config; see setup-2.log" }
 Get-Content $config
 
@@ -148,11 +156,11 @@ Run-Py $timeArgs
 Step 'Results'
 $results = Join-Path $Out 'RESULTS.md'
 $lines = @(
-    "# Baker Windows speed test ($((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mmZ')))",
+    "# Mabillon Windows speed test ($((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mmZ')))",
     '',
     "Machine: $machine",
     "Model runtime: $runtime; n_ctx $NCtx; model $($model.file) sha256 $($model.sha256)",
-    "Installer: $(Split-Path $Installer -Leaf) sha256 $installerSha (signature: $sig); Baker commit $($build.git_commit)",
+    "Installer: $(Split-Path $Installer -Leaf) sha256 $installerSha (signature: $sig); Mabillon commit $($build.git_commit)",
     "Wall time of this script: $([math]::Round(((Get-Date) - $started).TotalMinutes)) min",
     ''
 )

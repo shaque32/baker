@@ -302,7 +302,7 @@ def identities_page(conn: sqlite3.Connection, page: Page) -> str:
             "<label>Add a person, written as the document writes the name "
             "<input type='text' name='name' required maxlength='120' "
             "placeholder='The name as printed'></label> <button type='submit'>Add person</button>"
-            "<p class='muted'>Adding a name ties it to nothing. Baker then looks for accounts "
+            "<p class='muted'>Adding a name ties it to nothing. Mabillon then looks for accounts "
             "that carry the name and proposes links for you to decide.</p>",
             back="/identities",
         )

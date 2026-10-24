@@ -37,10 +37,14 @@ RULE_VERSION = "2"  # how forwarded records are handled; named in every note bel
 STANCE_NOTE = (
     "Recorded as complicates: the extraction marks this message as forwarded or as carrying a "
     "forwarded or quoted message, or it is a forwarded or quoted copy carried inside another "
-    "message, and Baker has not verified who first wrote the words (even "
+    "message, and Mabillon has not verified who first wrote the words (even "
     "where the extraction names an original author), so it "
     f"cannot support or contradict the claim (forwarded rule {RULE_VERSION}). Model's label: "
 )
+# The same note as stored before the product was renamed: evidence labelled then keeps it, and
+# core/bundle/verify.py accepts either.
+BAKER_STANCE_NOTE = STANCE_NOTE.replace("Mabillon", "Baker")
+
 RECORD_NOTE = {
     "forwarded": "Forwarded: shown as sent by whoever forwarded it; who first wrote it is not "
     "recorded.",
@@ -49,6 +53,14 @@ RECORD_NOTE = {
     "embedded_copy": "Forwarded or quoted copy carried inside another message, imported as its "
     "own record; who first wrote it is not verified.",
 }
+
+
+def shown_rationale(rationale: str) -> str:
+    """A rationale as the screen and report show it: a note stored before the rename names the
+    product Mabillon there, while the stored text stays as it was for verify-bundle."""
+    if rationale.startswith(BAKER_STANCE_NOTE):
+        return STANCE_NOTE + rationale[len(BAKER_STANCE_NOTE) :]
+    return rationale
 
 
 def has_columns(conn: sqlite3.Connection) -> bool:
@@ -104,16 +116,16 @@ def original_author(conn: sqlite3.Connection, record_id: str) -> str | None:
 
 
 # The warning on a forwarded record whose original author the source names. The author is the
-# source's text, so callers render it as a cited span between these two parts, never as Baker's
+# source's text, so callers render it as a cited span between these two parts, never as Mabillon's
 # own words (it can be anything, such as Telegram's "Deleted Account").
 AUTHOR_NOTE = (
     "Forwarded: shown as sent by whoever forwarded it; the extraction names ",
-    " as the original author, which Baker has not checked.",
+    " as the original author, which Mabillon has not checked.",
 )
 
 
 def _shown_sender(conn: sqlite3.Connection, record_id: str) -> str | None:
-    """A message's sender as Baker shows it (identifier, then display name in brackets)."""
+    """A message's sender as Mabillon shows it (identifier, then display name in brackets)."""
     r = conn.execute(
         "SELECT a.identifier, a.display_name FROM messages m"
         " LEFT JOIN accounts a ON a.id = m.sender_account_id WHERE m.id = ?",
@@ -137,7 +149,7 @@ def parent_id(conn: sqlite3.Connection, record_id: str) -> str | None:
 def record_note(conn: sqlite3.Connection, record_id: str, reason: str) -> list[tuple[str, bool]]:
     """The warning on one affected record, as parts: (text, cited). A cited part is the
     source's own text (a sender or author as written) and is rendered as a quote, never as
-    Baker's words. The claim page and the report both render this."""
+    Mabillon's words. The claim page and the report both render this."""
     if reason == "embedded_copy":
         parent = parent_id(conn, record_id) or "(not found)"
         sender = _shown_sender(conn, record_id)
@@ -209,7 +221,7 @@ def claim_warning(found: dict[str, str], record_ids: Iterable[str]) -> str | Non
     return (
         f"{n} record{'s' if n != 1 else ''} this claim's evidence or checks rest on "
         f"{'is a message' if n == 1 else 'are messages'} the extraction marks as forwarded or "
-        f"as carrying a forwarded or quoted message. Baker shows {these} as sent by whoever "
+        f"as carrying a forwarded or quoted message. Mabillon shows {these} as sent by whoever "
         "forwarded or quoted, and has not verified who first wrote the words, even where the "
         "extraction names an original author, so "
         f"{'it' if n == 1 else 'they'} cannot support or contradict this claim. Check "
@@ -230,7 +242,7 @@ def _copy_warning(marked: int, copies: int) -> str:
     if marked == 0:
         return (
             f"{n} record{'s' if n != 1 else ''} this claim's evidence or checks rest on "
-            f"{copy_words}. Baker shows the sender the extraction names for "
+            f"{copy_words}. Mabillon shows the sender the extraction names for "
             f"{'it' if n == 1 else 'each'}, which it has not verified, so "
             f"{'it' if n == 1 else 'they'} cannot support or contradict this claim. Check "
             f"{'it' if n == 1 else 'each'} in the extraction tool."
@@ -238,9 +250,9 @@ def _copy_warning(marked: int, copies: int) -> str:
     return (
         f"{n} records this claim's evidence or checks rest on are affected. {marked} "
         f"{'is a message' if marked == 1 else 'are messages'} the extraction marks as forwarded "
-        "or as carrying a forwarded or quoted message, which Baker shows as sent by whoever "
+        "or as carrying a forwarded or quoted message, which Mabillon shows as sent by whoever "
         f"forwarded or quoted; {copies} {copy_words}, shown with the sender the extraction names "
-        "for the embedded message. Baker has not verified who first wrote any of these words, "
+        "for the embedded message. Mabillon has not verified who first wrote any of these words, "
         "even where the extraction names an original author, so they cannot support or "
         "contradict this claim. Check each in the extraction tool."
     )
@@ -254,6 +266,6 @@ def check_note(found: dict[str, str], record_ids: Iterable[str]) -> str | None:
     return (
         f"Inconclusive (forwarded rule {RULE_VERSION}): the outcome rests on "
         f"{', '.join(hit)}, which the extraction marks as forwarded or as carrying a forwarded "
-        "or quoted message (or which are such a message, imported as its own record); Baker "
+        "or quoted message (or which are such a message, imported as its own record); Mabillon "
         "has not verified who first wrote those words."
     )

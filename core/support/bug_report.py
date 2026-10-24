@@ -1,7 +1,7 @@
-"""A bug report the examiner can send to the Baker team, holding no case data.
+"""A bug report the examiner can send to the Mabillon team, holding no case data.
 
-Built from an allowlist: every field is a version Baker ships, a yes or no, a count, a state
-from a fixed set, a time, or a Baker source file and line. Nothing is copied from the case's
+Built from an allowlist: every field is a version Mabillon ships, a yes or no, a count, a state
+from a fixed set, a time, or a Mabillon source file and line. Nothing is copied from the case's
 text or files. Left out on purpose:
 - the case name, the expert's name, file names and folder paths (a path names the user);
 - claim, record, document and quote text, and every error message (a message can quote any of
@@ -10,7 +10,7 @@ text or files. Left out on purpose:
 
 `check_clean` re-checks the finished text before anyone sees it: no long hex run (a SHA-256 or
 a key), and none of the open case's name, file names, input hashes or folder. If it finds one,
-the report is withheld rather than cleaned. Baker sends nothing itself: the examiner reads the
+the report is withheld rather than cleaned. Mabillon sends nothing itself: the examiner reads the
 report on the Help page, saves it and attaches it to an email.
 """
 
@@ -48,7 +48,7 @@ from core.timeline import settings as timeline_settings
 
 FORMAT = "baker-bug-report/1"
 ROOT = Path(__file__).resolve().parents[2]
-PROMPTS = {  # purpose in model_runs -> the prompt file Baker ships
+PROMPTS = {  # purpose in model_runs -> the prompt file Mabillon ships
     "stance": "stance.md",
     "review": "reviewer.md",
     "claims": "claims.md",
@@ -85,7 +85,7 @@ COUNTED = (
 WITHHELD = (
     "case name, expert name, file names and folder paths",
     "claim, record, document and quote text",
-    "error messages (only the error type and Baker's file and line are kept)",
+    "error messages (only the error type and Mabillon's file and line are kept)",
     "hashes of inputs, records, the model file and the audit log; API keys",
 )
 _HEX_RUN = re.compile(r"[0-9a-fA-F]{32,}")
@@ -112,13 +112,13 @@ def _safe(value: object) -> str | None:
 
 
 def _release() -> str | None:
-    """The Baker release, read the way run records read it (source tree or installed package)."""
+    """The Mabillon release, read the way run records read it (source tree or installed package)."""
     got = baker_build.release()
     return None if got == baker_build.NOT_RECORDED else got
 
 
 def _commit() -> str | None:
-    """The commit Baker runs from, short form, from a checkout or the installer's BUILD_INFO.json
+    """The commit Mabillon runs from, short form, from a checkout or the installer's BUILD_INFO.json
     (core/build.py). Short, so the report never holds a long hex run."""
     sha, _dirty = baker_build.commit()
     return sha[:12] if re.fullmatch(r"[0-9a-f]{7,40}", sha) else None
@@ -208,9 +208,16 @@ def cloud_section(key_ready: bool | None) -> dict[str, Any]:
     }
 
 
-# The BAKER_* settings Baker reads. Any other name is left out: a name is user-chosen text and
-# could carry a client, case or secret.
+# The MABILLON_* settings Mabillon reads, and their Baker-era BAKER_* names (core/paths.py). Any
+# other name is left out: a name is user-chosen text and could carry a client, case or secret.
 KNOWN_ENV = (
+    "MABILLON_ANTHROPIC_API_KEY",
+    "MABILLON_CASES",
+    "MABILLON_CLOUD_CONFIG",
+    "MABILLON_DEMO",
+    "MABILLON_MIN_MEMORY_GB",
+    "MABILLON_MODEL_CONFIG",
+    "MABILLON_PINS",
     "BAKER_ANTHROPIC_API_KEY",
     "BAKER_CASES",
     "BAKER_CLOUD_CONFIG",
@@ -413,7 +420,7 @@ def sensitive_values(case: cases.Case | None, conn: sqlite3.Connection | None) -
 def check_clean(text: str, sensitive: set[str]) -> None:
     if _HEX_RUN.search(text):
         raise NotClean("it contains a long hex value, which may be a hash or a key")
-    # Only the values Baker filled in are checked, not the report's own keys: a case named
+    # Only the values Mabillon filled in are checked, not the report's own keys: a case named
     # "Pipeline" must not match the "pipeline" key. Text that is not JSON is checked whole.
     try:
         lowered = "\n".join(_strings(json.loads(text))).lower()

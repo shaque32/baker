@@ -1,6 +1,6 @@
 """The demo case: synthetic case01, audited and mostly reviewed, ready in seconds.
 
-A real audit of case01 on a laptop takes hours, so a demo cannot wait for one. `baker demo`
+A real audit of case01 on a laptop takes hours, so a demo cannot wait for one. `mabillon demo`
 builds this case instead, through the product's own code (case folder, read-only imports with
 SHA-256, claims, owner stipulations, the audit with its real assumptions, retrieval, checks,
 quote check and verdict rules, the expert actions and the hash-chained log). Two things are
@@ -21,12 +21,12 @@ is restored as it was audited, without them):
 - The demo claims in eval/demo_claims.jsonl. D01 is an absence claim read from paragraph 11 ("no
   WhatsApp messages March 20 to 23"). Nothing contradicts it, but Item 1 is a curated report,
   which cannot show that something is absent, so the absence check is inconclusive and the rules
-  leave the claim unproven. It shows Baker declining to call silence an absence.
+  leave the claim unproven. It shows Mabillon declining to call silence an absence.
 - `--paired` (build_scripted(paired=True)) also imports a UFDR of Item 1 that holds records the
   curated report left out (eval/synthetic/paired.py), so the Selection tab shows the paired
   selection audit: what the curated report holds against the larger source of the same phone.
 
-Everything is synthetic. The demo lives in its own cases folder (~/Baker/demo/cases), so a
+Everything is synthetic. The demo lives in its own cases folder (~/Mabillon/demo/cases), so a
 screen share never shows another case. `--from-case` saves a finished synthetic case01 audit (for
 example a real local-model run) as the demo instead; reset then restores that copy.
 """
@@ -35,7 +35,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import shutil
 import sqlite3
 import stat
@@ -44,7 +43,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
-from core import encryption, pipeline
+from core import encryption, paths, pipeline
 from core.audit.invariants import record_text
 from core.casework import cases
 from core.contracts import (
@@ -67,11 +66,10 @@ SHEET = EVAL_DIR / "gold" / "case01" / "assumptions.jsonl"
 DEMO_CLAIMS = EVAL_DIR / "demo_claims.jsonl"  # demo-only claims, not signed gold
 CASE_META = EVAL_DIR / "synthetic" / "case01" / "case.json"
 
-DEMO_ROOT_ENV = "BAKER_DEMO"
-DEFAULT_DEMO_ROOT = Path.home() / "Baker" / "demo"
+DEMO_ROOT_ENV = "MABILLON_DEMO"
 DEMO_FOLDER = "demo-case01"  # where a restored snapshot goes
 DEMO_NAME = "Demo: Petrov and Reyes phones (synthetic case01)"
-SETUP_ACTOR = "expert:Baker demo setup"
+SETUP_ACTOR = "expert:Mabillon demo setup"
 SCRIPTED_EXPERT = "expert:Demo expert (scripted from the answer key)"
 
 # Claims the scripted expert leaves for the live demo: C05 goes SUPPORTED only when the person
@@ -104,8 +102,8 @@ Clock = Callable[[], datetime]
 def demo_root() -> Path:
     """<root>/cases is the cases folder the demo screen serves; <root>/snapshot is a saved case
     folder that reset restores instead of the scripted build."""
-    env = os.environ.get(DEMO_ROOT_ENV, "").strip()
-    return Path(env).expanduser() if env else DEFAULT_DEMO_ROOT
+    env = paths.env("DEMO")
+    return Path(env).expanduser() if env else paths.user_folder("demo")
 
 
 def cases_dir(root: Path) -> Path:

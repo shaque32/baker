@@ -1,4 +1,4 @@
-"""Which Baker build ran: its release version and git commit, stamped on every run.
+"""Which Mabillon build ran: its release version and git commit, stamped on every run.
 
 PIPELINE_VERSION (core/pipeline.py) names the pipeline's shape and changes rarely; it cannot tell
 two builds apart. A result also records the release (pyproject.toml's version) and the git commit

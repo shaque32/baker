@@ -2,7 +2,7 @@
 
 A page view is an audit-log entry with action `view` (core/review/audit_log.py), so it is
 hash-chained with the expert's decisions, kept inside the case database (encrypted with it in
-an encrypted case) and checked by `baker verify-log`. Nothing here is sent anywhere: the cloud
+an encrypted case) and checked by `mabillon verify-log`. Nothing here is sent anywhere: the cloud
 stance call sends only the filled-in stance prompt (core/llm/cloud.py), never the audit log.
 
 What a view records: the time (UTC), the examiner's name, the screen session, the page, the
@@ -11,7 +11,7 @@ its address (SWITCHES; any other field is counted, not kept), the evidence items
 linked to, and for an evidence item its record and where that record sits in its source (source
 id and locator). It never records the page's text.
 
-What it cannot show. The screen runs no scripts, so Baker cannot tell what part of a page was
+What it cannot show. The screen runs no scripts, so Mabillon cannot tell what part of a page was
 on screen, whether a folded section was opened, or whether the examiner read it. "Time on
 page" is the time from opening a page to the next page opened in the same screen session: an
 upper bound on attention, never proof of reading. A stretch longer than IDLE is shown as such
@@ -246,7 +246,7 @@ def steps(conn: sqlite3.Connection) -> list[Step]:
     """Every view and every action an expert logged, oldest first, each view with its time on
     page. A view's time ends at the next step; it has none when it was the last step, or when
     the next step is a view from another screen session (the screen was closed meanwhile, at a
-    time Baker did not record). Read from the audit log only."""
+    time Mabillon did not record). Read from the audit log only."""
     ev_claim, vd_claim = _claims_of(conn)
     rows = conn.execute(
         "SELECT seq, at_utc, actor, action, payload_json, hash FROM audit_log"
@@ -340,7 +340,7 @@ class ClaimActivity:
     last_at: str | None = None
     seconds: float = 0.0  # time on its pages, stretches over IDLE and untimed views left out
     away: int = 0  # stretches over IDLE
-    untimed: int = 0  # views whose end Baker did not record
+    untimed: int = 0  # views whose end Mabillon did not record
     evidence_opened: set[str] = field(default_factory=set)
     evidence_listed: set[str] = field(default_factory=set)
     listed_capped: bool = False  # a view listed more than MAX_LISTED: evidence_listed is a floor
@@ -435,7 +435,7 @@ def _cell(v: object) -> object:
 
 def csv_text(trail: list[Step]) -> str:
     """The trail as CSV, one row per step, with each entry's audit-log hash so a row can be
-    matched to the log `baker verify-log` checks."""
+    matched to the log `mabillon verify-log` checks."""
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator="\n")
     w.writerow(CSV_COLUMNS)

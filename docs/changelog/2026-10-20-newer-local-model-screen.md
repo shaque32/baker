@@ -10,7 +10,7 @@
   for Qwen3.8, drop the effort system turn). A model whose own template ends the generation
   prompt inside an open thinking block now refuses to load on the "gguf" template, instead of
   labelling with its answer inside that block.
-- Where: PR #105
+- Where: main (#105, merged 2026-10-20)
 - Verified: unit tests for both template shapes and the guard. Checked through
   llama-cpp-python 0.3.36's own formatter against the chat templates embedded in the four GGUF
   files (Qwen3-14B Q4_K_M: loads and no-think unchanged; Qwen3.8-27B: refused on "gguf", loads

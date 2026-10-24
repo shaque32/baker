@@ -5,7 +5,7 @@ machine's own pages, reads or changes the case database, and renders a page. App
 does the same for a file upload, streamed to disk (ui/upload.py). ui/server.py wraps both in the
 standard library's HTTP server bound to 127.0.0.1; tests call them directly.
 
-Starting a case. Started on a cases folder (`baker serve`), the screen lists the cases and makes
+Starting a case. Started on a cases folder (`mabillon serve`), the screen lists the cases and makes
 new ones (core/casework/cases.py). "Set up and run" imports files into the case folder (copied,
 read-only, SHA-256 hashed), proposes claims with the local model, takes the expert's claim
 decisions, claim order and device-owner stipulations, checks the model, and runs the audit in
@@ -193,7 +193,7 @@ class Response:
 
 
 class App:
-    """One screen. Either on one case database (`db_path`, as `baker serve --db`) or on a cases
+    """One screen. Either on one case database (`db_path`, as `mabillon serve --db`) or on a cases
     folder (`home`), where the expert makes and opens cases.
 
     components_for, extractor_for and model_check build the real local-model parts by default;
@@ -234,7 +234,9 @@ class App:
         self._last_view: tuple[tuple, datetime] | None = None  # the last page loaded, and when
         self._unrecorded: list[str] = []  # views that could not be written, not yet shown
         self.clock: Callable[[], datetime] = lambda: datetime.now(UTC)
-        self.cloud_config = cloud_config  # None: $BAKER_CLOUD_CONFIG, else ~/.baker/cloud.json
+        self.cloud_config = (
+            cloud_config  # None: $MABILLON_CLOUD_CONFIG, else ~/.mabillon/cloud.json
+        )
         if expert:
             self.set_expert(expert)
         if self.single is not None and not protect.is_locked(self.single):
@@ -424,7 +426,7 @@ class App:
         return self._origin_ok(req) and dest in (None, "document")
 
     def _unrecorded_warning(self, resp: Response) -> Response:
-        """Put the views Baker could not record at the top of this page, if it is a page shown
+        """Put the views Mabillon could not record at the top of this page, if it is a page shown
         on screen; a download carries none, so the warning waits for the next page shown."""
         if not self._unrecorded or resp.status != 200 or resp.header("Content-Disposition"):
             return resp
@@ -436,7 +438,7 @@ class App:
         if at <= 0:
             return resp
         warning = (
-            "<div class='flash err' role='alert'>Baker could not record that you opened these "
+            "<div class='flash err' role='alert'>Mabillon could not record that you opened these "
             "pages, so they are not in the activity trail: "
             + html.escape("; ".join(self._unrecorded))
             + ".</div>"
@@ -795,7 +797,7 @@ class App:
         found = propose_links(conn)
         mine = [lid for lid in found.added if lid.endswith(f"|{pid}")]
         return (
-            f"Added {f.get('name', '').strip()}. Baker proposed {len(mine)} link(s) to decide. "
+            f"Added {f.get('name', '').strip()}. Mabillon proposed {len(mine)} link(s) to decide. "
             "It applies on the next audit run."
         )
 
@@ -969,7 +971,7 @@ class App:
 
     def _recovery_done(self) -> str:
         self.recovery = None
-        return "Recovery key hidden. Baker keeps no copy of it."
+        return "Recovery key hidden. Mabillon keeps no copy of it."
 
     # -- set up and run
 

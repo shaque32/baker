@@ -1,6 +1,6 @@
 # Cellebrite UFDR import (unverified)
 
-Importer: `core/ingest/ufdr.py` (`UfdrImporter`, importer `ufdr` 0.1.1). It implements
+Importer: `core/ingest/ufdr.py` (`UfdrImporter`, importer `ufdr` 0.3.0). It implements
 `EvidenceImporter` and writes the same canonical rows as the Excel and PDF importers, through
 the same record mapping in `core/ingest/cellebrite_common.py`, so retrieval, checks, rules, the
 review screen and the report work unchanged.
@@ -13,7 +13,7 @@ last section), every import:
 - records `"format_support": "unverified"` in its coverage record;
 - shows, first among the items to review, that the reader is unverified and that each record
   should be compared with Cellebrite Reader before it is relied on (`format_unverified`). The
-  coverage headline starts "Unverified format." on the case screen and in `baker import`;
+  coverage headline starts "Unverified format." on the case screen and in `mabillon import`;
 - adds a line to the report's Limitations saying the file was read with an unverified reader;
 - imports with `fidelity = unknown`, so no absence or count finding can rest on it, whatever the
   package says about how complete it is.
@@ -41,6 +41,7 @@ project (xmlns http://pa.cellebrite.com/report/2.0, reportVersion, ...)
     modelField (name)/model                              one nested model (a Party)
     multiModelField (name)/model*                        nested models (Participants, Messages)
     any other named child (nodeField, ...)               not read; listed as a field not read
+    RelatedModels/model*                                 copies of other records (see below)
   taggedFiles/file                                        counted, not imported
 ```
 
@@ -60,9 +61,46 @@ entities are ever read). Field names are matched case-insensitively.
 | `Attachment` | `attachments` | `Filename`, `ContentType` (MIME type), a path to the file in the package (`attachment_extracted_path`, `LocalPath`, else the `Local Path` of the `taggedFiles` file its `file_id` names), a stated `SHA256` |
 
 A message's `Type` is not read for direction (it names the content kind), nor is an MMS
-`Subject`. Other field names are listed in coverage as fields Baker does not read.
+`Subject`. Other field names are listed in coverage as fields Mabillon does not read.
 Known types not imported yet (`Location`, `Email`, `WebBookmark`, ... see `NOT_IMPORTED_TYPES`)
 are listed with their counts; any other type is listed for review as not recognised.
+
+**RelatedModels.** Public Cellebrite Reader 7.48 packages end many models (chats, messages,
+calls, contacts, accounts, locations, cookies) with a `RelatedModels` element holding other
+models of the same type, each with an id of its own: the record holding it, decoded again from
+another source. On the three public packages checked (2026-10-21) every copied message has the
+same text, time, sender, deleted state and attachments as the message holding it, and the
+messages of every copied chat match the holder chat's messages one to one; a few spell a
+recipient's number differently. Calls, contacts and accounts are copies of their holder too, but
+for one call copy that lacks its duration. So a RelatedModels element is never read as part of
+the model holding it (its messages are not the chat's, its attachments and parties not the
+message's), and its models are not imported. Each copy of a message (also inside a copied chat,
+or inside a copy), call, contact or account is counted (`related_copies`, info) and matched to
+its holder: a copy must say what the record holding it says, in every field the record's mapper
+reads, as written (messages: model type, app, text, time, Direction, Folder and Status, each party with its
+side and IsPhoneOwner, parties with no sender or recipient role in order, deleted state,
+attachments by count and name, whether it is marked forwarded, and any embedded message (at
+every level); calls: app, time, duration, Direction,
+Type and Status, parties with each side in order, and deleted state; contacts: name and entries;
+accounts: app, identifier and name; a copy from another source points at its own file, so paths
+and file ids are not compared), and a copied chat's
+messages are matched one to one to the holder chat's messages, so two messages with the same
+words in the same second cover two copies, never three. A copy that does not match is listed for
+review (`related_copy_unmatched`, attention, at the holder's locator plus `/Related[n]`). Copies
+are counted per type in `ufdr.related_copies_by_type`. A call copy matches only with each party
+on the same side (a copy that swaps caller and callee is listed). Copies are matched at any
+depth: copies inside copies, and chats copied inside a copied chat. A copied chat's messages are
+reduced to their content key as each one closes, so a long copied chat is never held whole, and
+a content key is kept only for a record that holds copies. A message embedded in another
+(`/Embedded[n]`), in a record (an SMS or MMS too) or in a copy, can hold copies too, matched
+to it, numbered across all of the message's embedded fields in the order written. A copy held
+by a message (a top-level one, one in a chat or one inside a copy) is a message whatever its
+type is named. A copy's recovery marks
+(carved, decoding confidence) must match its holder's. Copies are matched as each record is
+mapped and then dropped. A copied chat's
+messages match the holder chat's only when the two chats also say the same around them (app,
+id, name and participants, as the message mapper reads them). Copies are numbered across all of
+a holder's RelatedModels elements.
 
 Metadata items read (by name, letters and digits only, case-insensitive):
 `DeviceInfoExtractionStartDateTime` (extraction time), `DeviceInfoSelectedDeviceName` or
@@ -70,7 +108,7 @@ Metadata items read (by name, letters and digits only, case-insensitive):
 already there), `DeviceInfoOSVersion`, `DeviceInfoTimeZone` (stored on the device), and a
 Physical Analyzer version item when present. The extraction type comes from `extractionInfo`
 `type`; several different types give `unknown`. Extractions naming more than one device are
-refused: Baker imports one device per file and cannot attribute the records.
+refused: Mabillon imports one device per file and cannot attribute the records.
 
 ### Mapping
 
@@ -92,7 +130,7 @@ order is never assumed: it is read only when the package decides it or the exper
 only when report.xml writes it as `&#13;`.
 
 Record states: the `deleted_state` attribute (`Intact` gives 0; `Deleted` or `Trash` gives 1;
-anything else, or none, gives NULL). Every value seen is counted in coverage. Baker never says a
+anything else, or none, gives NULL). Every value seen is counted in coverage. Mabillon never says a
 record was deleted; the flag records what the package stated.
 
 A record with no time value is listed (`no_time`), as the reports' missing time column is.
@@ -131,7 +169,10 @@ messages are held until the chat closes (so a chat's own fields can come after i
 nothing else is held but the account and thread lists. A 263 MB report.xml with 200,000 messages
 imported in about 40 seconds on the build machine; a 26 MB one peaked at about 11 MB of memory.
 The package is hashed again before the transaction commits; if it changed, nothing is stored.
-Both reads must count the same records of each type, or nothing is stored.
+Both reads must count the same records of each type, and the same messages in chats, and every
+message the second read counts must be imported or listed as skipped, or nothing is stored.
+report.xml states no count per type to compare with: the `ModelCount` attribute on `project`
+did not equal the number of records on the public packages, so it is not used.
 
 ## Coverage
 
@@ -143,10 +184,10 @@ the record states seen. Codes added: `format_unverified`, `carved`,
 `decoding_confidence_not_high`, `attachment_file_not_in_package`, `attachment_hash_differs`,
 `attachment_without_name`, `duration_unread`, `no_time`, `partial_extraction`,
 `rows_skipped_same_id_as_an_earlier_record`, `forwarded`,
-`embedded_message_not_imported` (attention);
+`embedded_message_not_imported`, `related_copy_unmatched` (attention);
 `several_extractions`, `unknown_namespace`, `package_files`, `tagged_files`, `record_states`,
-`attachment_files_hashed`, `attachment_files_encrypted_not_hashed`, `chats_without_messages`
-(info).
+`attachment_files_hashed`, `attachment_files_encrypted_not_hashed`, `chats_without_messages`,
+`related_copies`, `related_copies_matching_a_record` (info).
 
 ## Not imported yet
 
@@ -159,12 +200,12 @@ history and the other types above, message language, files not attached to a mes
 No public UFDR made by Cellebrite with a license that allows this use could be found or reached.
 Public phone images (Josh Hickman's on Digital Corpora, NIST CFReDS, the Cellebrite CTFs) are raw
 extractions, not Reader reports: making a UFDR from them needs Physical Analyzer, which needs a
-Cellebrite license and Windows. Two third-party samples were run through `baker ufdr-check` and
+Cellebrite license and Windows. Two third-party samples were run through `mabillon ufdr-check` and
 every record was compared by hand with report.xml. Neither is in the repo.
 
 | Sample | Where it is from | Records | What it showed |
 |---|---|---|---|
-| `test.ufdr` from FlorianRudolf/autopsy-udfr (LGPL-2.1, commit 6f8f66d, SHA-256 `43d5eedc...c812`) | Hand-made and anonymised by that project's author from a report version 5.3.1.0 package (German case fields) | 4 messages, 2 contacts, 1 attachment, an Email and 2 InstalledApplication (not imported) | An Attachment can name its file only through `file_id`, a `taggedFiles` entry and its `Local Path` (Windows separators). Baker did not follow it, so the file was never hashed. Fixed. |
+| `test.ufdr` from FlorianRudolf/autopsy-udfr (LGPL-2.1, commit 6f8f66d, SHA-256 `43d5eedc...c812`) | Hand-made and anonymised by that project's author from a report version 5.3.1.0 package (German case fields) | 4 messages, 2 contacts, 1 attachment, an Email and 2 InstalledApplication (not imported) | An Attachment can name its file only through `file_id`, a `taggedFiles` entry and its `Local Path` (Windows separators). Mabillon did not follow it, so the file was never hashed. Fixed. |
 | IPED's UFED model fixtures (GPL-3, sepinf-inc/IPED commit 129ce8f) wrapped in a minimal report.xml shell | IPED's tests, one described as a synthetic sample of the PA 10.10 message model | 13 messages, 5 attachments, 2 UserAccounts | A UserAccount whose first entry is a `ProfilePicture` got the picture's link as the phone owner's account identifier. Fixed. |
 
 Forwarded messages: a message marked `Forwarded` (in its `Labels`, or on a `MessageLabel` or
@@ -194,11 +235,11 @@ verified.
 
 ## Before calling it verified
 
-1. An expert runs `baker ufdr-check` on a real UFDR on their own computer
+1. An expert runs `mabillon ufdr-check` on a real UFDR on their own computer
    (docs/ingest/ufdr_check.md). Nothing leaves the computer except the check's shareable
    report, which holds no case content. The package itself never goes into the repo or a prompt.
-2. The report compares Baker's import with report.xml record by record and lists every record
-   type, field and value shape Baker did not read.
+2. The report compares Mabillon's import with report.xml record by record and lists every record
+   type, field and value shape Mabillon did not read.
 3. The expert opens the sampled records (20 of each kind, in the private file) in Cellebrite
    Reader and compares sender, recipients, time and offset, text, record state and attachments,
    and notes the counts Reader shows per category.
