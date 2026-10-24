@@ -1,4 +1,4 @@
-## 2026-10-24: The Mac and Windows installers say Mabillon (#PR)
+## 2026-10-24: The Mac and Windows installers say Mabillon (#132)
 - Changed: step 3, the last step of the rename to Mabillon
   (/mnt/project-files/baker/plans/rename-mabillon.md).
   - Mac: `packaging/mac/Install Mabillon.command` (was `Install Baker.command`). It installs into
@@ -25,7 +25,7 @@
     file-format ids (CLAUDE.md). So a reinstall never leaves two packages, and `pip install -e .`
     on a development checkout needs no uninstall. The Azure signing resource names are kept as
     well.
-- Where: branch claude/project-thread-2bmti8
+- Where: PR #132
 - Verified: `make check` (lint, tests, eval; numbers in the PR).
   - `tests/test_packaging.py`: the AppId is unchanged, Setup keeps a Baker-era model and the
     person's own setting, the old shortcut is removed, and the Mac installer never writes over a
