@@ -77,6 +77,9 @@ core/
   review/redecide.py  re-run the verdict rules after expert review, no model
   llm/                runtime.py: the local GGUF runtime; cloud.py: the cloud stance model
                       (the only network call in core/), on the expert's own Anthropic key
+  bundle/             reproducibility bundle: export.py writes one for a case (the examiner's
+                      choice, never automatic); verify.py checks one offline and re-derives
+                      every verdict from the recorded labels and decisions (docs/bundle.md)
   casework/           case folders and imports, background audit and claim-proposal jobs,
                       the model check, keeping the computer awake (used by the screen)
                       protect.py: encrypting an existing case, passphrase changes
@@ -87,7 +90,8 @@ core/
                       else used the account or phone, another clock, the day boundary, another
                       app, a whole app quiet, a curated report, the same words elsewhere);
                       code only, derived on demand, never stored, never touches verdicts
-cli/                  `baker import`, `baker claims`, `baker audit`, `baker report`, `baker serve`
+cli/                  `baker import`, `baker claims`, `baker audit`, `baker report`, `baker serve`,
+                      `baker export-bundle`, `baker verify-bundle`
 ui/                   the expert's screen on 127.0.0.1 (stdlib server, no scripts): start a case,
                       run the audit in the background, review
 eval/
@@ -119,6 +123,12 @@ tests/
 - **Reproducibility.** Every model call belongs to a `model_runs` row with the model file hash,
   prompt version, parameters and seed. Outputs are stored, not regenerated.
 - **Audit log.** Append-only; each entry hashes the previous entry's hash plus its own payload.
+  Each claim's entry also names the model calls stored while it ran, with one SHA-256 over
+  their rows, one SHA-256 over the rows its verdict rests on (assumptions, check results,
+  evidence items, AI reviews, cited records, the model runs they name) and one over the claim,
+  and the verdict's time; each run's entry records one SHA-256 over the run's versions and
+  settings; each cloud answer gets its own entry (`cloud.received`, refused answers too), so
+  stored prompts, raw outputs and evidence are tied to the chain.
 
 ## Local by default, cloud by opt-in
 

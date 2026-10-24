@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Book a Demo · Mabillon</title>
+<meta name="description" content="Book a demo of Mabillon, the verification layer for defense forensic examiners.">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://getmabillon.com/demo.html">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="site-head">
+  <div class="wrap">
+    <a class="wordmark" href="./" aria-label="Mabillon home"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true" fill="none"><rect class="page" x="2.75" y="2.75" width="18.5" height="18.5" rx="5"/><path class="ln" d="M12 6.5v11" stroke-width="1.5" stroke-linecap="round"/><path class="ln" d="M6.75 9h2.5M6.75 12h2.5M6.75 15h2.5" stroke-width="1.5" stroke-linecap="round" opacity="0.9"/><path class="ln" d="M14.75 9h2.5M14.75 12h1.25" stroke-width="1.5" stroke-linecap="round" opacity="0.55"/></svg>Mabillon</a>
+    <nav class="site-nav" aria-label="Main">
+      <a class="hide-sm" href="./#how">How it works</a>
+      <a class="hide-sm" href="./#rules">Rules</a>
+      <a class="hide-sm" href="./#data">Your data</a>
+      <a class="cta-sm" href="demo.html">Book a demo</a>
+    </nav>
+  </div>
+</header>
+
+<main class="demo">
+  <div class="wrap">
+    <div class="demo-copy">
+      <p class="eyebrow">Book a demo</p>
+      <h1>See it check a claim.</h1>
+      <p class="lede">We'll walk you through Mabillon on a synthetic case: an affidavit split into claims,
+        the checks behind each status, and what you confirm. By video call, at a time that suits you.</p>
+      <ul class="demo-points">
+        <li>Built for defense forensic examiners and the attorneys who retain them.</li>
+        <li>Alpha, opening to a small number of pilot examiners.</li>
+        <li>Please don't include case names or case details. We only need enough to reply.</li>
+      </ul>
+      <p class="fine">Prefer email? <span class="addr">support@getmabillon.com</span></p>
+    </div>
+    <form class="demo-form" method="post" action="https://forms.getmabillon.com/demo">
+      <h2>Book a demo</h2>
+      <div class="row">
+        <label class="field"><span>First name</span><input id="first_name" name="first_name" type="text" autocomplete="given-name" maxlength="80" required></label>
+        <label class="field"><span>Last name</span><input id="last_name" name="last_name" type="text" autocomplete="family-name" maxlength="80" required></label>
+      </div>
+      <label class="field"><span>Work email</span><input id="email" name="email" type="email" autocomplete="email" maxlength="200" required></label>
+      <label class="field"><span>Your role</span>
+        <select id="role" name="role">
+          <option>Forensic examiner</option>
+          <option>Defense attorney</option>
+          <option>Other</option>
+        </select>
+      </label>
+      <label class="field"><span>What brings you here?</span><textarea id="message" name="message" rows="3" maxlength="2000" placeholder="The tools you use, the kinds of cases you work"></textarea></label>
+      <label class="trap" aria-hidden="true">Leave this empty<input id="website" name="website" type="text" tabindex="-1" autocomplete="off"></label>
+      <div class="form-foot">
+        <button class="button" type="submit">Submit <span class="arrow" aria-hidden="true">→</span></button>
+        <p class="fine">We use this only to reply. See <a href="privacy.html">Privacy</a>.</p>
+      </div>
+    </form>
+  </div>
+</main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div>
+      <a class="wordmark" href="./"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true" fill="none"><rect class="page" x="2.75" y="2.75" width="18.5" height="18.5" rx="5"/><path class="ln" d="M12 6.5v11" stroke-width="1.5" stroke-linecap="round"/><path class="ln" d="M6.75 9h2.5M6.75 12h2.5M6.75 15h2.5" stroke-width="1.5" stroke-linecap="round" opacity="0.9"/><path class="ln" d="M14.75 9h2.5M14.75 12h1.25" stroke-width="1.5" stroke-linecap="round" opacity="0.55"/></svg>Mabillon</a>
+      <p>Named for Jean Mabillon, whose <i>De re diplomatica</i> (1681) set out the first rules for testing whether a document is genuine.</p>
+    </div>
+    <p>© 2026 Mabillon · <a href="privacy.html">Privacy</a> · <span class="addr">support@getmabillon.com</span><br>
+      Cellebrite and Magnet AXIOM are trademarks of their owners. Mabillon is not affiliated with them.</p>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mabillon Privacy</title>
+<meta name="description" content="How the Mabillon website and email to Mabillon handle your data.">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://getmabillon.com/privacy">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="site-head">
+  <div class="wrap">
+    <a class="wordmark" href="./" aria-label="Mabillon home"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true" fill="none"><rect class="page" x="2.75" y="2.75" width="18.5" height="18.5" rx="5"/><path class="ln" d="M12 6.5v11" stroke-width="1.5" stroke-linecap="round"/><path class="ln" d="M6.75 9h2.5M6.75 12h2.5M6.75 15h2.5" stroke-width="1.5" stroke-linecap="round" opacity="0.9"/><path class="ln" d="M14.75 9h2.5M14.75 12h1.25" stroke-width="1.5" stroke-linecap="round" opacity="0.55"/></svg>Mabillon</a>
+    <nav class="site-nav" aria-label="Main">
+      <a class="hide-sm" href="./#how">How it works</a>
+      <a class="hide-sm" href="./#rules">Rules</a>
+      <a class="hide-sm" href="./#data">Your data</a>
+      <a class="cta-sm" href="demo.html">Book a demo</a>
+    </nav>
+  </div>
+</header>
+
+<main class="prose">
+  <div class="wrap">
+    <article>
+      <p class="eyebrow">Effective 21 October 2026</p>
+      <h1>Privacy</h1>
+      <p>This page covers this website and email to us. The Mabillon software runs on your own
+        computer, and how it handles case data is set out in the pilot documents.</p>
+
+      <h2>This website</h2>
+      <ul>
+        <li>No cookies, no analytics, no advertising and no tracking. The only script on the site plays the example on the home page and sends nothing anywhere.</li>
+        <li>Fonts and images are served from this site. Nothing is loaded from other companies' servers.</li>
+        <li>The site is hosted on Cloudflare Pages. To deliver and protect it, Cloudflare processes
+          technical data such as IP addresses under its own privacy policy. We have not turned on
+          Cloudflare's visitor analytics.</li>
+      </ul>
+
+      <h2>Email</h2>
+      <ul>
+        <li>Mail to support@getmabillon.com is forwarded by Cloudflare Email Routing to our team's Gmail
+          inbox, so Cloudflare and Google handle it under their own terms. We use what you send only to
+          answer you and to run a pilot with you.</li>
+        <li>We do not sell or share it for marketing.</li>
+        <li>Please never send case material: no case files, databases or screenshots of evidence.</li>
+        <li>To have your emails deleted, ask us at the same address.</li>
+      </ul>
+
+      <h2>The demo form</h2>
+      <ul>
+        <li>The form on the Book a demo page collects your first and last name, work email, role and
+          what you write in the message box. The form sends nothing else.</li>
+        <li>When you submit it, a small Cloudflare Worker on forms.getmabillon.com turns it into an
+          email to our team's Gmail inbox through Cloudflare Email Routing. The Worker keeps no copy.
+          Like any web request, Cloudflare sees your IP address and browser details (user agent) when
+          you submit, and the Worker uses your IP address only to limit repeat submissions.</li>
+        <li>A hidden field filters out bots. There is no captcha, cookie or tracking script.</li>
+        <li>Please don't put case details in the message.</li>
+      </ul>
+
+      <h2>The software, in short</h2>
+      <p>Local by default; cloud AI only when your case allows it and you opt in. A case uses cloud AI
+        only when you attest at setup that its protective order allows it and you set up your own key,
+        and never for a case marked as possibly containing CSAM. Mabillon sends us no telemetry.</p>
+
+      <h2>Changes</h2>
+      <p>If this page changes, the date at the top changes with it.</p>
+    </article>
+  </div>
+</main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div>
+      <a class="wordmark" href="./"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true" fill="none"><rect class="page" x="2.75" y="2.75" width="18.5" height="18.5" rx="5"/><path class="ln" d="M12 6.5v11" stroke-width="1.5" stroke-linecap="round"/><path class="ln" d="M6.75 9h2.5M6.75 12h2.5M6.75 15h2.5" stroke-width="1.5" stroke-linecap="round" opacity="0.9"/><path class="ln" d="M14.75 9h2.5M14.75 12h1.25" stroke-width="1.5" stroke-linecap="round" opacity="0.55"/></svg>Mabillon</a>
+      <p>Named for Jean Mabillon, whose <i>De re diplomatica</i> (1681) set out the first rules for testing whether a document is genuine.</p>
+    </div>
+    <p>© 2026 Mabillon · <a href="privacy.html">Privacy</a> · <span class="addr">support@getmabillon.com</span><br>
+      Cellebrite and Magnet AXIOM are trademarks of their owners. Mabillon is not affiliated with them.</p>
+  </div>
+</footer>
+</body>
+</html>

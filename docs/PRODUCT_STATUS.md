@@ -388,7 +388,7 @@ CI (GitHub Actions `checks`, Ubuntu and Windows, local clock set to Pacific) run
 ## 11. Pilot readiness
 
 **Not pilot-ready for real case data yet.** The pass/fail gates are in
-[`docs/PILOT_GATES.md`](PILOT_GATES.md): 13 of 19 met (gate 1, CI green on 7 consecutive pushes to main through #110, 2026-10-21; gate 10, the signed Windows installer, by the signed main build of 2026-10-20; gate 19, no model-only Contradicted, by #98; gate 2 by #76, gate 3 by #91, gate 14 by the case02 key signed 2026-10-12, gate 6 by #72, gate 7 by #74,
+[`docs/PILOT_GATES.md`](PILOT_GATES.md): 14 of 19 met (gate 17 by #92, merged 2026-10-21; gate 1, CI green on 7 consecutive pushes to main through #110, 2026-10-21; gate 10, the signed Windows installer, by the signed main build of 2026-10-20; gate 19, no model-only Contradicted, by #98; gate 2 by #76, gate 3 by #91, gate 14 by the case02 key signed 2026-10-12, gate 6 by #72, gate 7 by #74,
 gate 8 by merging #68, gate 12, the buyer documents, by #82; gate 13, the known integrity bugs, by #86 and #88; gate 15, stopped runs never look
 complete, was already in place; 18 by the feedback form #82 publishes as
 `docs/PILOT_FEEDBACK_FORM.md`). Gates 13 to 18 fold in Grok's
