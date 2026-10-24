@@ -106,7 +106,7 @@ class Jobs:
             try:
                 target(job)
             except BaseException as e:  # noqa: BLE001 - a job never takes the screen down
-                support_errors.note(job.kind, e)  # type and Baker frames only, for a bug report
+                support_errors.note(job.kind, e)  # type and Mabillon frames only, for a bug report
                 if job.running:
                     job.end("failed", f"Stopped on an unexpected error ({type(e).__name__}: {e}).")
             finally:

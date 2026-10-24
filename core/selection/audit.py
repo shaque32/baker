@@ -620,7 +620,7 @@ encryption.on_lock(_forget_indexes)  # no message text stays in memory once a ca
 def _index(conn: sqlite3.Connection) -> Index:
     """The matcher's index of every message body. Its tolerant and transliteration folds take
     seconds to build in a large case, so it is kept in memory for the database file while its
-    messages are unchanged. Baker only ever adds messages, so their count, last rowid and total
+    messages are unchanged. Mabillon only ever adds messages, so their count, last rowid and total
     length tell when they changed. Locking any case drops every kept index."""
     path = next((r[2] for r in conn.execute("PRAGMA database_list") if r[1] == "main"), "")
     key = tuple(

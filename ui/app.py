@@ -424,7 +424,7 @@ class App:
         return self._origin_ok(req) and dest in (None, "document")
 
     def _unrecorded_warning(self, resp: Response) -> Response:
-        """Put the views Baker could not record at the top of this page, if it is a page shown
+        """Put the views Mabillon could not record at the top of this page, if it is a page shown
         on screen; a download carries none, so the warning waits for the next page shown."""
         if not self._unrecorded or resp.status != 200 or resp.header("Content-Disposition"):
             return resp
@@ -436,7 +436,7 @@ class App:
         if at <= 0:
             return resp
         warning = (
-            "<div class='flash err' role='alert'>Baker could not record that you opened these "
+            "<div class='flash err' role='alert'>Mabillon could not record that you opened these "
             "pages, so they are not in the activity trail: "
             + html.escape("; ".join(self._unrecorded))
             + ".</div>"
@@ -795,7 +795,7 @@ class App:
         found = propose_links(conn)
         mine = [lid for lid in found.added if lid.endswith(f"|{pid}")]
         return (
-            f"Added {f.get('name', '').strip()}. Baker proposed {len(mine)} link(s) to decide. "
+            f"Added {f.get('name', '').strip()}. Mabillon proposed {len(mine)} link(s) to decide. "
             "It applies on the next audit run."
         )
 
@@ -969,7 +969,7 @@ class App:
 
     def _recovery_done(self) -> str:
         self.recovery = None
-        return "Recovery key hidden. Baker keeps no copy of it."
+        return "Recovery key hidden. Mabillon keeps no copy of it."
 
     # -- set up and run
 

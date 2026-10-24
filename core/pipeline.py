@@ -7,7 +7,7 @@ only moves data between them, stores it, and refuses anything that breaks a rule
 - A stance label whose quote fails verification is dropped and never stored as evidence. The
   quote must pass Components.verify_quote and, whatever that verifier is, the product's own
   rule: verbatim and word-aligned at a place that takes in the record's own fields, not only
-  Baker's words or a placeholder such as "(no name)" (core.audit.quotes.cites_record). The model
+  Mabillon's words or a placeholder such as "(no name)" (core.audit.quotes.cites_record). The model
   calls components record (component.recorder.calls) are stored in model_calls, and the call
   behind a failed quote is stored as quote_failed. Every run records the quote check that ran
   in its config, as it records the rule version (quote_check_version).
@@ -175,7 +175,7 @@ def calls_digest(
 def claim_digest(conn: sqlite3.Connection, claim_id: str) -> str:
     """One SHA-256 over the claim's stored row (text, type, status, paragraph, model run) when
     its audit-log entry is written. A later change is the expert's and is logged (claim.status),
-    so core/bundle/verify.py can tell it from an edit made outside Baker."""
+    so core/bundle/verify.py can tell it from an edit made outside Mabillon."""
     return _sha(canonical_json(_stored(conn, "claims", "id = ?", (claim_id,))))
 
 
@@ -512,7 +512,7 @@ class RunResult:
 # ---------------------------------------------------------------- helpers
 
 NOT_TESTED = (
-    "Not tested: Baker could not set up what to check for this claim, so no record was "
+    "Not tested: Mabillon could not set up what to check for this claim, so no record was "
     "searched and the claim stays unproven."
 )
 
@@ -794,7 +794,7 @@ def mark_stale_runs_stopped(conn: sqlite3.Connection, clock: Clock | None = None
                 conn.execute(
                     "UPDATE pipeline_runs SET status = 'stopped', finished_at_utc = ?, note = ?"
                     " WHERE id = ?",
-                    (iso(_now(clock)), "found still marked running when Baker started", run_id),
+                    (iso(_now(clock)), "found still marked running when Mabillon started", run_id),
                 )
                 conn.execute(
                     "UPDATE run_claims SET state = 'failed', candidates_labeled = 0,"

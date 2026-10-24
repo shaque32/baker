@@ -1,10 +1,10 @@
 # Reproducibility bundle
 
-A bundle lets the other side re-check everything Baker added to an examiner's findings without
+A bundle lets the other side re-check everything Mabillon added to an examiner's findings without
 our help: which files went in, which model labelled what, what the expert decided, and that the
 versioned rules turn those recorded labels and decisions into exactly the verdicts reported.
 
-Producing a bundle is the examiner's choice, made on counsel's advice. Baker never makes or
+Producing a bundle is the examiner's choice, made on counsel's advice. Mabillon never makes or
 sends one on its own, and nothing is shared by default. A bundle holds case content (record
 text, the prompts sent to the model and its answers, the expert's reasons), so handle it under
 the case's protective order. By default it holds only what the verdicts rest on (Scope, below).
@@ -37,9 +37,9 @@ include it:
 | `prompts` | Every other model call (prompt and answer), and every `cloud.sent` entry (each holds the prompt sent) |
 | `records` | The rest of the phone: records, threads, accounts, recipients, translations and locations no shipped row cites |
 | `history` | Earlier audit runs' assumptions, checks, evidence, reviews and verdicts |
-| `feedback` | The expert's flags about Baker (`flag.add`, `flag.withdraw`) |
+| `feedback` | The expert's flags about Mabillon (`flag.add`, `flag.withdraw`) |
 
-No verdict rests on what is left out: the rules skip dismissed and irrelevant items. Baker runs
+No verdict rests on what is left out: the rules skip dismissed and irrelevant items. Mabillon runs
 `verify-bundle` on every bundle before writing it and refuses one that fails, so a scope that
 left out a row a verdict needs is never written.
 
@@ -57,7 +57,7 @@ id (an evidence id names its record's id, not its text).
 
 An encrypted case's bundle is encrypted too (AES-256-GCM under a key derived with scrypt from a
 bundle passphrase you type twice; `core/bundle/sealed.py`); give counsel the passphrase by
-another channel. Baker never writes an encrypted case's bundle in plain form. A plain case's
+another channel. Mabillon never writes an encrypted case's bundle in plain form. A plain case's
 bundle is a plain zip.
 
 It prints the bundle's SHA-256 (keep it: it names this exact file) and the audit log's last
@@ -69,7 +69,7 @@ it holds and the log head it carries). If that entry cannot be written, the file
 failed export leaves neither a bundle nor a success entry. The bundle holds the log as it stood
 just before that entry. Only the latest completed audit can be exported, and not while a newer
 audit is running or stopped part way; resume it (or re-run the verdicts) first. An audit
-decided under other rules or contracts than this Baker's is refused too (this Baker could not
+decided under other rules or contracts than this Mabillon's is refused too (this Mabillon could not
 verify its bundle): re-run the verdicts or the full audit. If a stopped
 audit rewrote the rows a verdict rests on, run the full audit again. A case whose audit log
 does not verify is refused, as for a report.
@@ -78,8 +78,8 @@ does not verify is refused, as for a report.
 
 | File | What it holds |
 |---|---|
-| `bundle.json` | Format and version; the Baker build (release, commit) and every version (pipeline, contracts, rules, report, quote check) that exported it and that ran the audit; each input's file name, SHA-256, importer and importer version; each model run's identity; the audit log's entry count and last hash; every other file's SHA-256 |
-| `METHOD.md` | Plain-English method note: what Baker did, who labelled the evidence, how to check the bundle, its limits |
+| `bundle.json` | Format and version; the Mabillon build (release, commit) and every version (pipeline, contracts, rules, report, quote check) that exported it and that ran the audit; each input's file name, SHA-256, importer and importer version; each model run's identity; the audit log's entry count and last hash; every other file's SHA-256 |
+| `METHOD.md` | Plain-English method note: what Mabillon did, who labelled the evidence, how to check the bundle, its limits |
 | `report.html` | The claims report, rendered from exactly the rows in `tables/` |
 | `tables/<table>.jsonl` | Every table `core/schema.sql` defines, one JSON object per row the scope holds, in the database's own order |
 | `withheld.jsonl` | What the scope left out that the log names: evidence items and model calls by SHA-256, log entries by time, actor, action and hashes (empty in a full bundle) |
@@ -92,7 +92,7 @@ Model identity, per model run (`bundle.json` `models`, and `tables/model_runs.js
   exactly; the recorded labels and rules are reproducible." Each request is in the audit log
   before it was sent (`cloud.sent`), and each answer after it came back (`cloud.received`: the
   model the API reported, its message id and request id, stop reason, token counts and the
-  SHA-256 of the raw answer). An answer Baker refused (another model, a refusal, a cut-off
+  SHA-256 of the raw answer). An answer Mabillon refused (another model, a refusal, a cut-off
   answer) is logged the same way, with the reason in `refused`. `cloud.received` exists from
   this release on.
 - Every model call the scope holds (all of them with `prompts`), with the prompt exactly as
@@ -121,11 +121,11 @@ something could not be checked, and 1 when anything failed:
 1. **Files.** Each file matches its SHA-256 in `bundle.json`; the files listed are exactly a
    bundle's (`METHOD.md`, `report.html`, `withheld.jsonl`, one file per table), nothing added
    or missing. An
-   encrypted bundle whose header names other key-derivation settings than Baker writes fails
+   encrypted bundle whose header names other key-derivation settings than Mabillon writes fails
    before any key is derived; a bundle file over 4 GiB, or one that would unpack to more than
    4 GiB, fails before it is read or unpacked; a damaged member fails without a crash.
 2. **Versions.** The rules and contracts that decided the verdicts are the ones in this copy of
-   Baker. If not, it names the commit to verify with.
+   Mabillon. If not, it names the commit to verify with.
 3. **Tables and scope.** Each row has exactly the schema's columns; every reference resolves. A
    full bundle leaves nothing out; a scoped one's `withheld.jsonl` is well formed and names
    nothing the bundle also holds (NOT VERIFIED says what it left out).
@@ -176,12 +176,17 @@ something could not be checked, and 1 when anything failed:
 12. **Report.** The report rendered from the tables is byte for byte the one in the bundle. A
    scoped bundle's report says what it left out, counts each claim's left-out items, and leaves
    out the sections that read the whole phone (timeline, restore, selection, holdings, other
-   explanations) unless the bundle holds `records`.
+   explanations) unless the bundle holds `records`. A bundle exported with another report
+   version, or another bundle version (whose METHOD.md wording differs), fails naming the
+   commit to verify it with: only that code writes the same bytes again. This version does not
+   byte-compare such a report, so a change to it is caught only by verifying at that commit.
+   Bundles exported before the rename to Mabillon (report 0.12.0, bundle 1.0.0) are verified
+   that way.
 
 NOT VERIFIED lines say what could not be checked: a labeler that stored no model answers (the eval's
 stand-ins), cases audited before `cloud.received` or the run, claim and row digests existed,
 hosted answers no digest names, model runs no audited row names (an earlier audit's), claims
-an older Baker proposed and no audit recorded, the
+an older Mabillon proposed and no audit recorded, the
 government document's import (not logged), original files not supplied, and what a scoped
 bundle left out.
 
@@ -210,5 +215,5 @@ bundle left out.
 - Not bound to the log: a proposed identity link's basis text, the nearby messages and group
   members shown with a record, and imported rows no verdict or check cites. Imported rows are not
   re-parsed from the original files; `--inputs` checks the files' hashes.
-- Producing a bundle is no claim that Baker's results are correct or court-ready; it lets them
+- Producing a bundle is no claim that Mabillon's results are correct or court-ready; it lets them
   be checked.

@@ -1,7 +1,7 @@
 # ruff: noqa: F811  (the screen fixtures, imported from test_review_screen)
 """Expert flags: a wrong label, a missed record or a verdict disagreement, on synthetic case01.
 
-A flag is feedback for Baker's error log. It lives in the hash-chained audit log, never changes
+A flag is feedback for Mabillon's error log. It lives in the hash-chained audit log, never changes
 a verdict or an evidence status, and exports only as a redacted summary with no case content.
 """
 
@@ -141,7 +141,7 @@ def test_flags_from_the_claim_page(db, conn):
     assert page.count("Flag this label") == sum(
         1 for x in claim_state(conn, "C05").evidence if x.stance.value != "irrelevant"
     )
-    assert "Flag: I disagree with this verdict" in page and "Flag a record Baker missed" in page
+    assert "Flag: I disagree with this verdict" in page and "Flag a record Mabillon missed" in page
     # no reviewer name yet: nothing recorded
     post(app, "/flag/add", claim="C05", kind="wrong_label", evidence=eid, should_be="irrelevant")
     assert flags.flags(conn) == []
@@ -170,7 +170,7 @@ def test_flags_from_the_claim_page(db, conn):
     assert "Your flags on this claim (1)" in get(app, "/claim", id="C05").text
 
     case_page = get(app, "/").text
-    assert "Flags for Baker" in case_page and "Download the redacted summary" in case_page
+    assert "Flags for Mabillon" in case_page and "Download the redacted summary" in case_page
     r = get(app, "/flags/summary.json", pilot="P1")
     assert r.status == 200 and "attachment" in r.header("Content-Disposition")
     assert ("Referrer-Policy", "same-origin") in r.headers
@@ -284,9 +284,9 @@ def test_error_log_keeps_unnamed_pilots_apart_and_always_names_versions(conn):
 
 
 def test_flags_must_disagree_and_target_the_audit_on_screen(db, conn):
-    # A verdict flag naming the verdict Baker gave is not a disagreement.
+    # A verdict flag naming the verdict Mabillon gave is not a disagreement.
     baker = claim_state(conn, "C06").decision.verdict.value
-    with pytest.raises(ReviewError, match="verdict Baker gave"):
+    with pytest.raises(ReviewError, match="verdict Mabillon gave"):
         flags.add_flag(conn, "C06", flags.VERDICT, EXPERT, should_be=baker)
     app = App(db, expert="Test Expert", port=PORT)
     page = get(app, "/claim", id="C06").text

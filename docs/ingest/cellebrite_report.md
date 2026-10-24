@@ -27,7 +27,7 @@ from a closed or training case and compare; do not put it in the repo).
 | `Contacts`, `Address Book` | `contacts` |
 | `User Accounts`, `Accounts` | `accounts` (device-owner accounts) |
 | a kind plus a known app: `Chats - WhatsApp`, `Instant Messages (Telegram)`, `Signal Chats`, `WhatsApp Messages` | that kind, with the app taken from the title when the sheet has no `Source` column. Only listed apps count, so `Chat Statistics` is not read as chats |
-| `Timeline`, `Locations`, `Web History`, `Emails`, ... | not imported; listed in coverage as a category Baker does not import, with its row count |
+| `Timeline`, `Locations`, `Web History`, `Emails`, ... | not imported; listed in coverage as a category Mabillon does not import, with its row count |
 | anything else | not imported; listed in coverage for review, with its row count and first row. An unrecognised sheet is never classified by its columns, because `Timeline` repeats messages and calls |
 
 Data sheets: one or more title or filter rows may sit above the header row. The header row is the
@@ -39,9 +39,9 @@ Header names are matched case-insensitively, with no-break spaces, invisible mar
 `:` or `*` ignored. Every row below the header is one record, except:
 - a row whose cells are all empty (skipped, counted);
 - the header repeated mid-sheet (skipped, counted);
-- a row with values only in columns Baker does not read, such as a footer `Total: 45` or a row
+- a row with values only in columns Mabillon does not read, such as a footer `Total: 45` or a row
   number alone (skipped, counted, and its locator listed for review);
-- a row holding only column names, such as a second header row Baker could not join (same).
+- a row holding only column names, such as a second header row Mabillon could not join (same).
 
 Merged cells (Excel). Read-only workbooks do not expose merges, so the importer reads them from
 the sheet XML. A header written on two rows, with a group name merged over its columns
@@ -68,7 +68,7 @@ Summary sheet: key-value pairs, key in column A, value in column B. Keys read (a
 | app | `Source`, `Application`, `App`, `Service`, `App Name` |
 | from | `From`, `Sender`, `Author` |
 | to | `To`, `Recipients`, `Receiver`, `Participants`/`Members` (To only if `To` is absent: means all participants other than the sender) |
-| body | `Body`, `Message`, `Text`, `Content`, `Message Body`, `Message Text`. Never `Snippet`, `Preview` or `Body (Translated)`: those are listed as columns Baker does not read |
+| body | `Body`, `Message`, `Text`, `Content`, `Message Body`, `Message Text`. Never `Snippet`, `Preview` or `Body (Translated)`: those are listed as columns Mabillon does not read |
 | time | `Timestamp`, `Date/Time`, `Date & Time`, `Datetime`, `Time Stamp`, `Timestamp: Time` alone (full value), `Timestamp: Date` + `Timestamp: Time`, separate `Date` and `Time` columns (read together; when `Time` already holds the whole date and time, as in Physical Analyzer's per-category export where `Date` is an Excel serial number, `Time` is read and `Date` must name the same local date, else no time is set), `Time`, `Date`. A fixed offset in the column name (`Timestamp (UTC+3)`, `Time - UTC`) applies to values with no offset of their own; a zone name there (`Time (Device local)`) is recorded and not applied |
 | direction | `Direction`, `Message Direction`, `Type`, `Folder`, `Status` (values `Incoming`, `Outgoing`, `Sent`, `Received`, `Inbox`, `Missed`, `Read`, `Unread`) |
 | deleted | `Deleted`, `Deleted - Instant Message`, `Deleted - Chat`, `Deleted - Call`, `Record status` |
@@ -116,7 +116,7 @@ The importer handles them as follows:
 
 `Deleted`, `Yes`, `Trash`, `True`, `1` set `deleted_flag = 1`. `Intact`, `No`, `False`, `0` set 0.
 Blank or a missing column gives NULL (the source did not say). Reports often omit the column, so
-NULL is common. Baker never reports that a message was deleted; this flag only records what the
+NULL is common. Mabillon never reports that a message was deleted; this flag only records what the
 report said.
 
 ## Stable ids and source_ref
@@ -146,7 +146,7 @@ report, so a report cannot support an absence claim. Each import writes one `sou
 and the same payload as one `import` entry in the audit log, in the same transaction as the rows.
 What the payload holds and how it is summarised for the expert: `docs/ingest/coverage.md`. In
 short: every sheet, page or table that was not imported (with its row count), every row skipped
-and why (with locators), columns Baker does not read, key columns missing, time values it could
+and why (with locators), columns Mabillon does not read, key columns missing, time values it could
 not read with confidence (per reason, with locators), where offsets and the date order came from,
 merged cells, and categories the report does not include.
 
@@ -161,9 +161,9 @@ section per category with a heading (`Chats (45)`, `Call Log`, ...) above a rule
 row is the column header.
 
 - The heading above a table picks its record kind (the same titles as Excel sheets, including
-  `WhatsApp Chats (4)`). Headings for sections Baker does not import (`Timeline`, `Locations`,
+  `WhatsApp Chats (4)`). Headings for sections Mabillon does not import (`Timeline`, `Locations`,
   `Web History`, ...) skip their tables, since the timeline repeats messages and calls.
-- A heading Baker does not know (a line set larger than the body text, or short and all bold)
+- A heading Mabillon does not know (a line set larger than the body text, or short and all bold)
   ends the current section. Its tables are **not** imported, even when their columns look like
   messages (a social media post list does), and coverage lists each one for review with its
   first row. A smaller heading inside a section (one chat's title) is a sub-heading: the section
