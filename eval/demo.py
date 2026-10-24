@@ -21,7 +21,7 @@ is restored as it was audited, without them):
 - The demo claims in eval/demo_claims.jsonl. D01 is an absence claim read from paragraph 11 ("no
   WhatsApp messages March 20 to 23"). Nothing contradicts it, but Item 1 is a curated report,
   which cannot show that something is absent, so the absence check is inconclusive and the rules
-  leave the claim unproven. It shows Baker declining to call silence an absence.
+  leave the claim unproven. It shows Mabillon declining to call silence an absence.
 - `--paired` (build_scripted(paired=True)) also imports a UFDR of Item 1 that holds records the
   curated report left out (eval/synthetic/paired.py), so the Selection tab shows the paired
   selection audit: what the curated report holds against the larger source of the same phone.
@@ -71,7 +71,7 @@ DEMO_ROOT_ENV = "BAKER_DEMO"
 DEFAULT_DEMO_ROOT = Path.home() / "Baker" / "demo"
 DEMO_FOLDER = "demo-case01"  # where a restored snapshot goes
 DEMO_NAME = "Demo: Petrov and Reyes phones (synthetic case01)"
-SETUP_ACTOR = "expert:Baker demo setup"
+SETUP_ACTOR = "expert:Mabillon demo setup"
 SCRIPTED_EXPERT = "expert:Demo expert (scripted from the answer key)"
 
 # Claims the scripted expert leaves for the live demo: C05 goes SUPPORTED only when the person

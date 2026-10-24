@@ -1,6 +1,6 @@
-# Baker architecture
+# Mabillon architecture
 
-Baker is a local-first desktop app. A Python core does the work on the expert's computer; a
+Mabillon is a local-first desktop app. A Python core does the work on the expert's computer; a
 Tauri UI comes later, after the audit engine scores well on the eval set. A CLI comes first.
 One step may go to the cloud, per case: stance labeling (see "Local by default, cloud by opt-in").
 
@@ -132,7 +132,7 @@ tests/
 
 ## Local by default, cloud by opt-in
 
-Baker runs entirely on the expert's computer unless the expert opts a case in to cloud AI.
+Mabillon runs entirely on the expert's computer unless the expert opts a case in to cloud AI.
 
 Stance labels come from Claude (Opus 5.5, medium effort by default) for a case where all hold:
 the expert attested at case setup that its protective order allows cloud AI; the case is not
@@ -160,9 +160,9 @@ cut-off answer drops that one label, as a local model's bad answer is. The repor
 labels" row and each item's "Labeled by" line name the model. Assumption filling and the
 optional AI reviewer stay local.
 
-What was sent (`SentLog`). Before each request, Baker writes it to the case's hash-chained
+What was sent (`SentLog`). Before each request, Mabillon writes it to the case's hash-chained
 audit log (action `cloud.sent`): the time, the endpoint, the attempt number and the request body
-exactly as sent. The key is in a header and never logged. Baker retries a retryable failure (no
+exactly as sent. The key is in a header and never logged. Mabillon retries a retryable failure (no
 connection, a timeout, 408, 409, 429, 5xx) itself, up to twice, logging each send; the SDK's
 own retries are off. If the entry cannot be written, the request is not sent and the audit
 pauses; if the client cannot be built, nothing is logged. An answer reused from stored outputs
@@ -173,16 +173,16 @@ quote), so a case that switches between cloud and local can produce the same ite
 row then names the model of the latest run that produced it, with that run's rationale; the
 expert's reviews of that content carry over, as on any re-run.
 
-Retention at Anthropic. Baker sends to the Claude API (`api.anthropic.com`) under the expert's
+Retention at Anthropic. Mabillon sends to the Claude API (`api.anthropic.com`) under the expert's
 own key, so Anthropic's terms for that account apply. Read them rather than our summary:
 [commercial data retention policy](https://privacy.claude.com/en/articles/7996866-how-long-do-you-store-my-organization-s-data),
 [API and data retention, including zero data retention](https://platform.claude.com/docs/en/manage-claude/api-and-data-retention),
 and the [Commercial Terms](https://www.anthropic.com/legal/commercial-terms) ("Anthropic may not
 train models on Customer Content from Services"). Two points from those pages matter here.
 Content flagged by Anthropic's trust and safety systems may be kept for up to 2 years even
-under zero data retention. With structured outputs, only the JSON schema is cached; Baker's
+under zero data retention. With structured outputs, only the JSON schema is cached; Mabillon's
 schema is fixed and holds no case data. Zero data retention is arranged with Anthropic per
-organization; Baker cannot turn it on.
+organization; Mabillon cannot turn it on.
 
 ## Not in scope
 Acquisition or extraction, deleted-file recovery, broad artifact coverage, automatic

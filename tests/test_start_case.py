@@ -383,7 +383,7 @@ def test_audit_runs_in_the_background_in_the_experts_order(app, inputs):
     c21 = states["C21"]
     assert c21.untested and c21.label == status.NOT_TESTED
     assert c21.not_tested.startswith(pipeline.NOT_TESTED)
-    assert status.NOT_TESTED in queue_page and "Not tested: Baker could not" in queue_page
+    assert status.NOT_TESTED in queue_page and "Not tested: Mabillon could not" in queue_page
     claim_page = get(app, "/claim", id="C21").text
     assert pipeline.NOT_TESTED in claim_page
     # ...next to what the case holds, so a claim about the case's own material can be checked.

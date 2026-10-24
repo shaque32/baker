@@ -32,7 +32,8 @@ def ambiguous(tmp_path_factory) -> Path:
 
 @pytest.fixture(scope="module")
 def odd_sheet(tmp_path_factory) -> Path:
-    """A sheet Baker does not recognise, named by the examiner with a word Baker never uses."""
+    """A sheet Mabillon does not recognise, named by the examiner with a word Mabillon never
+    uses."""
     path = tmp_path_factory.mktemp("odd") / "odd.xlsx"
     specs = xl.sheets()
     specs.append(xl.SheetSpec("Deleted Messages", [["#", "Body"], [1, "x"]]))
@@ -132,10 +133,10 @@ def test_report_limitations_list_each_source_that_needs_review(odd_sheet, ambigu
     CellebriteExcelImporter(source_id="amb", date_order="mdy").import_source(ambiguous, conn)
     html = render_report(conn)
     limits = html.split("<h2>Limitations</h2>", 1)[1].split("<h2>", 1)[0]
-    assert f'Baker did not read all of <span class="q">{odd_sheet.name}</span>' in limits
+    assert f'Mabillon did not read all of <span class="q">{odd_sheet.name}</span>' in limits
     assert '<span class="q">Deleted Messages</span>' in limits
     # read in full once the order was stated
-    assert f'Baker did not read all of <span class="q">{ambiguous.name}' not in limits
+    assert f'Mabillon did not read all of <span class="q">{ambiguous.name}' not in limits
     check_report_text(html)
 
 

@@ -324,7 +324,7 @@ def raw_sha256(raw_text: str) -> str:
 class SentLog:
     """Wraps the cloud model so every request is written to the case's hash-chained audit log
     (action "cloud.sent") before it is sent: the time, the endpoint, the attempt and the request
-    body exactly as sent (the key travels in a header and is never logged). Baker retries a
+    body exactly as sent (the key travels in a header and is never logged). Mabillon retries a
     retryable failure itself (the SDK's own retries are off), logging each send. A stored output
     answered without a request writes nothing. If the entry cannot be written, nothing is sent
     and the audit pauses (CloudPaused), so no send is ever missing from the log.
@@ -332,7 +332,7 @@ class SentLog:
     Each answer is logged too (action "cloud.received"): the model the API reported, its message
     and request ids, the stop reason, the token counts and the SHA-256 of the raw text, so the
     stored raw output (model_calls) is tied to the hash-chained log and a reproducibility bundle
-    can name the exact request (core/bundle/). An answer Baker refuses (another model, a refusal,
+    can name the exact request (core/bundle/). An answer Mabillon refuses (another model, a refusal,
     a cut-off answer) is logged the same way, with the reason in "refused". If that entry cannot
     be written, the answer is not used and the audit pauses, as for a send."""
 
@@ -400,7 +400,7 @@ class SentLog:
             "input_tokens": getattr(out, "prompt_tokens", None),
             "output_tokens": getattr(out, "completion_tokens", None),
             "raw_sha256": raw_sha256(getattr(out, "raw_text", None) or ""),
-            # why Baker did not use an answer the API returned (another model, a refusal, a
+            # why Mabillon did not use an answer the API returned (another model, a refusal, a
             # cut-off answer); None for an answer it used
             "refused": refused,
         }

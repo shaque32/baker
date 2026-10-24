@@ -14,7 +14,7 @@ say "the claim", and "(not needed for this assumption)" for the others. The clou
 (signed 2026-10-15): v1.1 with the told-frame sentences in "contradicts". Arsh chose on
 2026-10-19 to give it to the cloud model only ("Opus only", "Audit our model scoring"), since on
 the signed probe set it took the local 14B's contradicts precision from 58% to 50%. The model
-reads the case's names, never Baker's ids: the assumption through core/audit/readable.py and the
+reads the case's names, never Mabillon's ids: the assumption through core/audit/readable.py and the
 context through core/audit/context.py with the same CaseNames. The stored Assumption.text keeps
 the ids.
 """

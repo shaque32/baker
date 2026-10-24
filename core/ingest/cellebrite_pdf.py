@@ -86,9 +86,9 @@ _UNKNOWN = "unrecognised heading"
 @dataclass(frozen=True)
 class Section:
     title: str
-    kind: RecordKind | None  # None: a section Baker does not import
+    kind: RecordKind | None  # None: a section Mabillon does not import
     app: str | None = None
-    unrecognised: bool = False  # a heading Baker does not know; its tables are not imported
+    unrecognised: bool = False  # a heading Mabillon does not know; its tables are not imported
     size: float = 0.0  # font size of the heading line; a smaller heading is a sub-heading
 
 
@@ -221,12 +221,12 @@ class _PdfReader:
                 )
                 return
         if section is not None and section.unrecognised:
-            # A heading Baker does not know: never read its tables by their columns, since a
+            # A heading Mabillon does not know: never read its tables by their columns, since a
             # post or a location list can look like a message table.
             cov.not_imported.append(
                 {
                     "name": name,
-                    "reason": "under a heading Baker does not recognise",
+                    "reason": "under a heading Mabillon does not recognise",
                     "section": section.title,
                     "rows": len(rows),
                     "columns": header_preview(table),

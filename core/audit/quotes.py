@@ -16,7 +16,7 @@ Quotes are checked against the original text only. A translation is never citabl
 Contacts, calls and attachments have no words of their own: their text is the line
 core.enrich.records renders and the labeler is shown ("Marc Garage: +1...", "outgoing Phone call
 from +1... to +1..., duration 84 s"). A quote from such a line must take in a letter or digit of
-one of the record's own fields (cites_record). Baker's words in the line (" call from ",
+one of the record's own fields (cites_record). Mabillon's words in the line (" call from ",
 ", duration ") and its placeholders for a missing field ("(no name)", "unknown",
 "(no file name)") cannot verify a quote by themselves.
 
@@ -24,7 +24,7 @@ VERSION is the version of the whole quote check: the text a quote is checked aga
 (core.enrich.records), the matching and the own-field rule here, and the stored re-check
 (core.audit.invariants.quote_is_verbatim). Bump it on any change to which quotes pass. Every
 audit run records it (core.pipeline) and the report prints it beside the rule version.
-1.2.0 (#76): contacts and calls are checked as the labeler sees them, and a quote of Baker's
+1.2.0 (#76): contacts and calls are checked as the labeler sees them, and a quote of Mabillon's
 words or placeholders alone fails.
 """
 
@@ -74,7 +74,7 @@ def verify_quote(quote: str, record_text: str) -> bool:
 def cites_record(quote: str, record_text: str, own: Sequence[records.Span]) -> bool:
     """True if the quote matches record_text verbatim and word-aligned (find_quotes) at a place
     that takes in a letter or digit of the record's own fields (own: their (start, end) spans in
-    record_text). A quote of only Baker's words or a placeholder, such as "(no name)", fails.
+    record_text). A quote of only Mabillon's words or a placeholder, such as "(no name)", fails.
     Passing here implies passing verify_quote."""
     return any(
         record_text[i].isalnum()
