@@ -176,6 +176,9 @@ def redecide(
                 pipeline.RUN_ACTION,
                 {
                     "run_id": result.run_id,
+                    "run_sha256": pipeline.run_digest(conn, result.run_id),
+                    "finished_at_utc": pipeline.iso(now),
+                    "decided_at_utc": pipeline.iso(now),
                     "fake": result.fake,
                     "rules_pending": False,
                     "components": components,

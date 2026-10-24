@@ -121,6 +121,12 @@ class ModelOutput:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     seconds: float = 0.0
+    # A cloud answer only (core/llm/cloud.py): what the API reported about it, for the audit
+    # log's cloud.received entry. A local model leaves these empty.
+    served_model: str | None = None
+    message_id: str | None = None
+    request_id: str | None = None
+    stop_reason: str | None = None
 
     @property
     def ok(self) -> bool:

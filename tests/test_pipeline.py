@@ -536,6 +536,53 @@ def test_cli_audit_review_and_report(conn, tmp_path):
     assert cli_main(["verify-log", "--db", str(db)]) == 0
 
 
+def _progress_run(built_case, tmp_path, monkeypatch, every_s: float):
+    """A fake audit with the progress throttle at every_s; returns what it stored and the
+    labeled counts the screen was sent."""
+    monkeypatch.setattr(pipeline, "PROGRESS_EVERY_S", every_s)
+    sent: list[int] = []
+    update = getattr(pipeline._Progress._update, "real", pipeline._Progress._update)
+
+    def spy(self, claim_id, sql, params, commit=True):
+        if sql.startswith("candidates_labeled = ?"):
+            sent.append(params[0])
+        update(self, claim_id, sql, params, commit)
+
+    spy.real = update  # type: ignore[attr-defined]  # a second run spies on the real method
+    monkeypatch.setattr(pipeline._Progress, "_update", spy)
+    db_path = tmp_path / f"every-{every_s}.db"
+    shutil.copy(built_case, db_path)
+    conn = connect(db_path)
+    result = pipeline.run_audit(conn, comps(), clock=_clock)
+    stored = (
+        [d.model_dump() for d in result.decisions],
+        [p.model_dump() for p in pipeline.predictions(conn)],
+        list(conn.execute("SELECT * FROM evidence_items ORDER BY id")),
+        list(
+            conn.execute(
+                "SELECT claim_id, state, candidates_total, candidates_labeled, model_calls"
+                " FROM run_claims ORDER BY position"
+            )
+        ),
+    )
+    conn.close()
+    return stored, sent
+
+
+def test_progress_throttle_changes_only_how_often_the_screen_count_is_saved(
+    built_case, tmp_path, monkeypatch
+):
+    every, every_sent = _progress_run(built_case, tmp_path, monkeypatch, 0.0)
+    throttled, throttled_sent = _progress_run(built_case, tmp_path, monkeypatch, 3600.0)
+    # Verdicts, predictions, evidence and each claim's final progress row are the same.
+    assert throttled == every
+    rows = every[3]
+    assert rows and all(r[1] == "done" and r[2] == r[3] for r in rows)
+    # With no throttle each label is saved; throttled, only each claim's last label is.
+    assert len(every_sent) == sum(r[2] for r in rows) > len(throttled_sent)
+    assert sorted(throttled_sent) == sorted(r[2] for r in rows if r[2])
+
+
 def test_repeat_runs_on_fresh_databases_give_identical_predictions(tmp_path):
     a = run_pipeline.run_once("case01", "fake", "accept", tmp_path / "a")
     b = run_pipeline.run_once("case01", "fake", "accept", tmp_path / "b")
