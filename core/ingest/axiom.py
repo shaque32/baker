@@ -230,7 +230,7 @@ _CHAT_FIELDS: dict[str, tuple[str, ...]] = {
     "recovery": ("recovery method",),
     # Forwarded and quoted messages (pilot gate 4). ASSUMED names, conservative: no real AXIOM
     # export has been checked (docs/ingest/axiom.md). AXIOM's chat artifacts are described as
-    # carrying a forwarded flag and, for a reply, the quoted message's text and sender; Baker
+    # carrying a forwarded flag and, for a reply, the quoted message's text and sender; Mabillon
     # reads only these exact names (lowercased):
     # - a flag that the message was forwarded ('Yes', 'True', '1', 'Forwarded'; 'No', 'False',
     #   '0' and 'Not forwarded' mean not; any other value fails closed and marks it forwarded);
@@ -724,7 +724,7 @@ class _Mapper:
             {"forwarded", "forwarded_from", "quoted_body"} & set(used)
         ):
             tc.header_notes.append(
-                "no forwarded or quoted field Baker knows was found, so forwarded or quoted "
+                "no forwarded or quoted field Mabillon knows was found, so forwarded or quoted "
                 "messages in this table are not marked and may be credited to the forwarder."
             )
         self.tables.append(tc)
@@ -984,7 +984,7 @@ _FALSE_VALUES = {"no", "false", "0", "n", "not forwarded"}
 
 def _forwarded_value(v: Cell) -> bool:
     """A forwarded flag field says the message was forwarded. Blank or a stated no is not;
-    any other value (Yes, True, 1, Forwarded, or one Baker does not know) fails closed."""
+    any other value (Yes, True, 1, Forwarded, or one Mabillon does not know) fails closed."""
     if isinstance(v, bool):
         return v
     t = text(v)

@@ -590,7 +590,7 @@ def test_a_hit_marked_forwarded_is_marked_with_its_original_author_as_written(tm
     # never credited to the forwarder: the note names the author as the extraction's text
     assert forwarded.record_note_text(conn, mid, "forwarded") == (
         'Forwarded: shown as sent by whoever forwarded it; the extraction names "Jo (old #)" as '
-        "the original author, which Baker has not checked."
+        "the original author, which Mabillon has not checked."
     )
 
 
