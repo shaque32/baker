@@ -1,4 +1,4 @@
-## 2026-10-24: Local 14B repeat check passes on one Mac; the report says so for that file
+## 2026-10-24: Local 14B repeat check passes on one Mac; the report says so for that file (#136)
 - Changed: records the first repeat check (`eval/probe/repeat_check.py`, #126) of the local
   Qwen3-14B Q4_K_M (`500a8806…b81f0`) with its own stance prompt v1.1, run on Arsh's MacBook Air
   M4 24 GB, macOS 15.6.1, llama-cpp-python 0.3.36, 2026-10-24 (run at commit `f07aa62`; summary
@@ -12,7 +12,7 @@
   not tested) instead of "No claim is made that a re-run gives identical labels"; any other
   file or prompt keeps the old sentence. Why: court-defensibility plan, the 14B repeat check
   before local mode may be called reproducible (Arsh, 2026-10-20).
-- Where: branch claude/project-thread-677up6
+- Where: PR #136
 - Verified: the Mac run above (one run, synthetic probe and case01 only); new tests in
   `tests/test_report_consistency.py` (the tested pair prints the statement, an untested file or
   prompt still makes no claim, the key matches the model pinned in `packaging/windows/pins.json`
