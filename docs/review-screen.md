@@ -3,7 +3,8 @@
 `mabillon serve` starts a local web server on `127.0.0.1` (port 8765 by default) and the expert
 works in their own browser, from a new case to the exported report, without a terminal.
 Nothing leaves the computer unless the expert opts a case in to cloud AI (then that case's
-stance questions go to Anthropic, docs/ARCHITECTURE.md "Local by default, cloud by opt-in"): the
+stance questions go to Anthropic, docs/ARCHITECTURE.md "Local by default, cloud by opt-in"; what
+each one carries and the open limits are in docs/SECURITY_PRIVACY.md, section 5): the
 server binds the loopback address only, pages contain no scripts and load nothing from outside,
 and `core/`, `core/casework/`, `core/review/`, `core/report/` and `ui/` import no network client
 except `core/llm/cloud.py` (tests enforce it).

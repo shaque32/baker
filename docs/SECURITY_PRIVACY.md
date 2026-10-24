@@ -1,7 +1,8 @@
 # Security and privacy
 
-For firms, examiners and counsel deciding whether to install Mabillon. As of 2026-10-20 (#101, the
-cloud gate's first entry; earlier text as of `main` `19d8461`, after #68 and #74).
+For firms, examiners and counsel deciding whether to install Mabillon. As of 2026-10-24 (what a
+cloud request carries and its open limitations, section 5; #101, the cloud gate's first entry;
+earlier text as of `main` `19d8461`, after #68 and #74).
 
 **Mabillon is local by default; cloud AI only when your case allows it and you opt in.** The opt-in
 cloud option (#68) is gated on a model passing Mabillon's signed stance test. One has: Claude Opus
@@ -166,6 +167,52 @@ Further rules for an opted-in case:
   redirect case data.
 - **Same checks.** A cloud answer must be valid JSON and its quote must pass the verbatim check,
   exactly like a local answer. Cloud labels never set verdicts.
+
+**What one cloud request carries (opted-in case).** One request per (assumption, record) pair,
+the filled-in cloud stance prompt and nothing else (`core/audit/stance.py` `create`,
+`core/audit/prompts/stance_cloud.md`):
+
+- the claim's text, as the government document states it, for an assumption that refers to "the
+  claim";
+- the assumption, with people, phones and accounts by the names the case gives them
+  (`core/audit/readable.py`);
+- the record's full text: a message's body, or the rendered line of a call, contact or
+  attachment (for an attachment, its file name, never the file);
+- up to 20 messages on each side of the record (same chat, or for a call the same phone by
+  time), each with its device-local time, sender line and full text, and for a chat record a
+  line listing up to 20 of the chat's members (`core/audit/context.py`). Sender and member lines
+  carry app handles, phone numbers, the names the phone saved for them, and the people an
+  expert confirmed for an account;
+- the model name, effort, answer length limit and the answer's JSON schema.
+
+It never carries an input file, the case database, a record's locator in its source, a file
+hash, the case's name, the examiner's name or any other case's data. Each request's body is in
+the case's audit log exactly as sent (`cloud.sent`), so the examiner can show what went out, and
+each answer's API request id, message id and the model the API says answered are logged with it
+(`cloud.received`).
+
+**Open limitations (opted-in case).** Before a first real case that uses cloud AI, check each:
+
+1. **Retention at Anthropic is not verified by Mabillon.** It depends on the expert's own Anthropic
+   account: with zero data retention, or without it, the account's terms apply, and flagged
+   requests may be kept up to 2 years even under ZDR (above). Mabillon cannot see or set it.
+2. **Only a key saved into an encrypted case is sealed.** Such a key is sealed under the case key.
+   A key in `$MABILLON_ANTHROPIC_API_KEY` (read first, for every case) or in
+   `~/.mabillon/cloud.json` (owner-only but unencrypted, used when the case holds no key of its
+   own) is not, even when the case itself is encrypted. A machine set up before the rename may
+   still use `$BAKER_ANTHROPIC_API_KEY` or `~/.baker/cloud.json` the same way. To keep the key
+   sealed, save it into the encrypted case and leave the variable and the file unset.
+3. **The attestation is self-certified.** Mabillon records who attested, when and the exact words,
+   but cannot check the protective order, the government's consent or the client's consent.
+4. **Hosted labels cannot be regenerated.** The same request to the same model can answer
+   differently later. What can be re-checked is the recorded labels and the rules applied to them
+   (the reproducibility bundle, `docs/bundle.md`). The report says so in its "What can be checked
+   again" section.
+
+**For a case where the tool's reliability may be challenged in court,** local mode is the
+safer default: the local model's file is pinned by SHA-256 and run with a fixed seed, nothing
+leaves the computer, and no third party holds any of the case. Choosing cloud AI is the
+examiner's and counsel's call per case.
 
 Whether cloud AI may be used is a decision for the case's protective order and counsel. This
 document is not legal advice.
