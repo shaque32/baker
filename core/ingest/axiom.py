@@ -1144,19 +1144,32 @@ class AxiomImporter:
                     mp.device.get("time_zone", (None, ""))[0],
                 ),
             )
-            for kind in order:
-                for m in mapped:
-                    if m.kind is not kind:
-                        continue
-                    for rows, tctx in m.groups:
-                        if kind is RecordKind.ACCOUNTS:
-                            _accounts(w, rows, m.tc, m.app)
-                        elif kind is RecordKind.CONTACTS:
-                            _contacts(w, rows)
-                        elif kind is RecordKind.CALLS:
-                            _calls(w, rows, tctx, m.app)
-                        else:
-                            _messages(w, kind, rows, tctx, m.app)
+
+            # Embedded copies go last, after every record of the export: the writer keeps a
+            # thread's first locator and title, so a copy must never be the record that creates
+            # or seeds a thread (an SMS copy is threaded by its own sender, who may be another
+            # correspondent). _attach_copies then moves each copy into its parent's thread and
+            # drops a thread only a copy made.
+            def is_copy(r: Row) -> bool:
+                return forwarded.COPY_STEP in r.locator
+
+            for copies in (False, True):
+                for kind in order:
+                    for m in mapped:
+                        if m.kind is not kind:
+                            continue
+                        for group, tctx in m.groups:
+                            rows = [r for r in group if is_copy(r) is copies]
+                            if not rows:
+                                continue
+                            if kind is RecordKind.ACCOUNTS:
+                                _accounts(w, rows, m.tc, m.app)
+                            elif kind is RecordKind.CONTACTS:
+                                _contacts(w, rows)
+                            elif kind is RecordKind.CALLS:
+                                _calls(w, rows, tctx, m.app)
+                            else:
+                                _messages(w, kind, rows, tctx, m.app)
             _attach_copies(w, mp)
             w.flush()
             forwarded.mark(conn, cov.forwarded_records, cov.forwarded_from)

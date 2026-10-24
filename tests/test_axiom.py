@@ -807,3 +807,40 @@ def test_a_name_only_quoted_sender_takes_the_parent_thread_scope(tmp_path, ext):
         "SELECT sender_account_id FROM messages WHERE body = 'SYNTHETIC Jo here'"
     ).fetchone()
     assert accounts[2] == jo
+
+
+@pytest.mark.parametrize("ext", ["xml", "xlsx"])
+def test_an_sms_copy_never_creates_or_seeds_its_quoted_senders_thread(tmp_path, ext):
+    # Codex on #116: Bob's SMS quotes Alice before Alice's own SMS; Alice's thread keeps her
+    # own locator and title, and the copy sits in Bob's thread.
+    def sms(sender, to, body, ts, **extra):
+        return [("Sender", sender), ("Recipient(s)", to), ("Message", body),
+                ("Message Date/Time - UTC+00:00 (M/d/yyyy)", ts),
+                ("Conversation Name", extra.pop("title")), *extra.items()]  # fmt: skip
+
+    arts = [
+        ("Android SMS", [
+            sms("+15550100003", "+15550100001", "SYNTHETIC Bob replies", "3/10/2026 3:00:00 PM",
+                title="Bob", **{"Quoted Message": "SYNTHETIC Alice said",
+                                "Quoted Message Sender": "+15550100002"}),
+            sms("+15550100002", "+15550100001", "SYNTHETIC Alice here", "3/10/2026 4:00:00 PM",
+                title="Alice"),
+        ]),
+    ]  # fmt: skip
+    path = _both(tmp_path, arts)[0 if ext == "xml" else 1]
+    conn, _s = _import(path)
+    rows = {
+        body: (loc, tid)
+        for body, loc, tid in conn.execute("SELECT body, locator, thread_id FROM messages")
+    }
+    bob_loc, bob_tid = rows["SYNTHETIC Bob replies"]
+    alice_loc, alice_tid = rows["SYNTHETIC Alice here"]
+    copy_loc, copy_tid = rows["SYNTHETIC Alice said"]
+    assert copy_loc == f"{bob_loc}/Embedded[1]" and copy_tid == bob_tid != alice_tid
+    threads = dict(
+        (t, (loc, title))
+        for t, loc, title in conn.execute("SELECT id, locator, title FROM threads")
+    )
+    assert threads[alice_tid] == (alice_loc, "Alice")
+    assert threads[bob_tid] == (bob_loc, "Bob")
+    assert len(threads) == 2

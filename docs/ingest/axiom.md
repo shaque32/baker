@@ -129,7 +129,11 @@ Forwarded and quoted messages (assumed field names, importer 0.2.0): a `Forwarde
 `Is Forwarded` field marks the hit forwarded (`No`, `False`, `0` and `Not forwarded` do not;
 any other value does, failing closed), with `Forwarded From`, `Original Sender` or
 `Original Author` stored as the original author, as written. A nonempty original-author field
-alone also marks the hit forwarded. A `Quoted Message`,
+alone also marks the hit forwarded. Copies are written after every record of the export, so a copy never creates or seeds a
+thread another record uses (an SMS copy would otherwise be threaded by its own sender, another
+correspondent), and a thread only a copy made is dropped. In an SMS artifact a name-only quoted
+sender's account is scoped to the copy's own record, as every name-only SMS party is scoped to
+its record, so it is never merged with a same-named party of the parent. A `Quoted Message`,
 `Quoted Message Body` or `Quoted Text` field is imported, one level deep, as a record of its own
 at the hit's locator plus `/Embedded[1]`, in the same thread, with no time and with its own
 sender (`Quoted Message Sender`, `Quoted Message Author` or `Quoted Sender`, and

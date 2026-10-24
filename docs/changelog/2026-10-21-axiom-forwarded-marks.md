@@ -13,7 +13,11 @@
   a name-only quoted sender's account is scoped to the parent's thread from the start): no time, no stated direction, its own sender
   as written (`Quoted Message Sender`, `Quoted Message Author` or `Quoted Sender`, with
   `Quoted Message Sender Name` or `Quoted Sender Name`), marked forwarded with that sender as
-  `forwarded_from_raw` when exactly one is named, and listed under `embedded_copy`. The flags and
+  `forwarded_from_raw` when exactly one is named, and listed under `embedded_copy`. Copies are written after every record of the export, so a copy never creates or seeds a
+  thread another record uses (an SMS copy would otherwise be threaded by its own sender, another
+  correspondent), and a thread only a copy made is dropped. In an SMS artifact a name-only quoted
+  sender's account is scoped to the copy's own record, as every name-only SMS party is scoped to
+  its record, so it is never merged with a same-named party of the parent. The flags and
   counters are the UFDR ones (`forwarded`, `embedded_message_imported_separately`,
   `embedded_original_imported`, `embedded_messages_imported`); table `rows_imported` counts the
   export's own hits only. All field names are assumed from public descriptions, not a real
