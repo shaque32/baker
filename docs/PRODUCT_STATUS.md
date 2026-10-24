@@ -3,8 +3,8 @@
 The technical source of truth for what Baker does today. Every statement is checked against code,
 tests or recorded runs. Where something exists only on an unmerged branch, it says so.
 
-- **As of:** 2026-10-20 (status refresh after #101)
-- **main:** `75e75f1` (merge of #101, 2026-10-20)
+- **As of:** 2026-10-21 (status refresh after #110)
+- **main:** `30d194d` (merge of #110, 2026-10-21)
 - **Verified on:** main `7a14437` first, then re-checked after #64 to #67 merged (they changed
   only `core/audit/assumption_filler.py` in `core/`, plus tests and probe gold). The 2026-10-19
   refresh applied the merged `docs/changelog/` entries and checked each PR's merge state against
@@ -14,8 +14,10 @@ tests or recorded runs. Where something exists only on an unmerged branch, it sa
   (`core/audit/quotes.py`, `VERSION`). Since #91 (merged 2026-10-18) it also appears, with the
   Baker and rule versions, in the report's top line, on the case overview screen and in the
   eval's `run.json`, and each model run's seed is in the report's versions table. Report version
-  0.8.0 on main (#95 added a "Forwarded marks" row; #98 added "Model contradictions without an
-  expert").
+  0.10.0 on main (#95 added a "Forwarded marks" row; #98 added "Model contradictions without an
+  expert"; #103 made it 0.9.0 with an "Importer for <source>" row in Versions; #108 made it 0.10.0
+  with a plain gap line under each unproven claim). UFDR and Cellebrite `IMPORTER_VERSION` 0.2.0
+  (#103). Check versions since #107: same_account, sender, time, weekday and absence 1.0.1, count 1.0.2, contact unchanged at 1.0.0.
 - **Build stamp:** before #91, the "Baker" version a report printed was `PIPELINE_VERSION`
   ("0.1.0", `core/pipeline.py`), a constant that cannot tell two builds apart. #91 (merged
   2026-10-18) also records each run's release (`pyproject.toml`, 0.0.1 today) and git commit, with a flag when
@@ -257,6 +259,17 @@ report only) 0.90 accuracy, 0 false supported. See section 10 for the latest run
    Optional expert flags on the claim page (wrong label, missed record, verdict disagreement),
    stored as audit-log entries, never changing a verdict; a redacted summary download and
    `baker flag-log` for a per-pilot error log (`docs/flags.md`, #81). Nothing is sent.
+   The claims queue (`/claims`, #108) opens with how many claims need the expert and a progress
+   bar, then groups the claims (Needs you, Contradicted, Unproven, Supported, and Not audited when
+   there are any), with a plain gap line per unproven claim for each kind of core assumption not
+   covered (`ClaimState.explain_lines()`, `core/review/status.py`); the lines are read from the
+   stored verdict and decide nothing. The report (0.10.0) prints the same gap lines. The claim
+   page (#109) leads with a "What has to be true" checklist, one line per assumption, shows each
+   evidence record among its neighbouring messages as a conversation, and folds the rules'
+   assumption and check tables under "Show the rules' working". The top tabs (#110) come in three
+   groups (review; tools to look closer; set-up), and the case page leads with the claims that
+   need the expert and a verdict count, with the source files' SHA-256 hashes folded under
+   "Files and their SHA-256 hashes (chain of custody)".
 4. **Analysis pages (code only, never change verdicts):** Identities (proposed account-to-person
    links, expert confirms), Timeline check and Gaps, Selection audit (what the document left
    out), Context Restore (find pasted exhibit quotes, draft the full-extraction request), Other
@@ -266,7 +279,7 @@ report only) 0.90 accuracy, 0 false supported. See section 10 for the latest run
    the CLI makes a plain case), hash-chained audit log, HTML report, `baker demo` (the scripted demo
    has a demo-only inconclusive absence claim, which a saved `--from-case` snapshot lacks, and
    `--paired` runs the paired selection audit, #96), Mac
-   install script, Windows installer (unsigned), `baker model-check`.
+   install script, Windows installer (signed by builds of main, Artifact Signing), `baker model-check`.
 
 Merged 2026-10-15: stricter stated time windows, "after <date>" starts the next day (#66; rules
 0.2.2 with PR #75, which also refuses a rules-only re-run of an older audit), go-bar scorer fixes and the signed probe
@@ -281,7 +294,12 @@ stores nothing (#88), forwarded messages on the record (#89), versions stamped o
 (#91), forwarded-marks row in the report (#95), demo additions (#96); opt-in cloud Opus stance
 labels (#68), gated off until #101; first status refresh (#97).
 Merged 2026-10-20: expert confirms every model contradiction, rules 0.3.0 and report 0.8.0 (#98);
-stance v1.2 for a cloud model only (#93); the Opus 5.5 entry in `PROBE_PASSED` (#101).
+stance v1.2 for a cloud model only (#93); the Opus 5.5 entry in `PROBE_PASSED` (#101); status
+refreshes (#99, #102); newer local model screen and thinking-template guard (#105); UFDR imports
+embedded forwarded or quoted originals (#103); signed Windows installer (#106); copy recipients
+are not thread participants (#107).
+Merged 2026-10-21: UI redesign: claims overview with gap lines (#108), claim page checklist and
+conversation view (#109), tab groups and case page (#110).
 Branch only: small stance model (#50, parked). PRs #70 and #80 are empty Grok Product review
 PRs, never merged.
 
@@ -314,7 +332,9 @@ PRs, never merged.
    them are inconclusive, and the claim page and report warn. With the schema change Arsh signed
    on 2026-10-16 (PR #89, merged 2026-10-19) the record itself says
    forwarded, with the original author when the extraction names one; the sender field still
-   shows the forwarder, and originals' text is not imported. Cases made before then keep only the
+   shows the forwarder. The UFDR importer imports each embedded forwarded or quoted
+   original (one level) as its own record at `<locator>/Embedded[n]`, marked forwarded with its
+   own sender as written, so it fails closed too (#103). The AXIOM importer does the same for one level of quoted original (#116, merged 2026-10-24; field names unverified on a real export). Cases made before then keep only the
    coverage list (same fail-closed behaviour, no author); the report's Versions table says which
    mode a case is in ("Forwarded marks", #95).
 4. **Local runtime per case unknown on current code** (section 7). **The local 14B's stance
@@ -339,14 +359,14 @@ PRs, never merged.
    same stated device model; no serial number or IMEI is compared. The
    fail-closed rules are strict: a few report records not found hold back most nearby records as
    "may be in the report", and under 95% found lists nothing (`docs/selection-audit.md`).
-8. **Other gaps:** no translation in the pipeline; no embeddings; Windows installer unsigned; with
+8. **Other gaps:** no translation in the pipeline; no embeddings; with
    cloud (#68) a key saved for a plain (unencrypted) case, or before a case is open, is an owner-only plain
    file (an encrypted case seals its own key under the case key); experts still need the 14B
    installed even with cloud on.
 9. **Count check said "deleted" (fixed in #83, merged 2026-10-15).** Before #83 the count
    check's detail read "N of them are flagged deleted" when counted messages carried the source's
    deletion flag, which breaks the rule that Baker never says "deleted". It now reads "N of them
-   carry the source's deletion flag" (count check 1.0.1).
+   carry the source's deletion flag" (count check 1.0.1; 1.0.2 since #107).
 
 ## 10. Tests and results (main `75e75f1`)
 
@@ -368,7 +388,7 @@ CI (GitHub Actions `checks`, Ubuntu and Windows, local clock set to Pacific) run
 ## 11. Pilot readiness
 
 **Not pilot-ready for real case data yet.** The pass/fail gates are in
-[`docs/PILOT_GATES.md`](PILOT_GATES.md): 11 of 19 met (gate 19, no model-only Contradicted, by #98; gate 2 by #76, gate 3 by #91, gate 14 by the case02 key signed 2026-10-12, gate 6 by #72, gate 7 by #74,
+[`docs/PILOT_GATES.md`](PILOT_GATES.md): 14 of 19 met (gate 17 by #92, merged 2026-10-21; gate 1, CI green on 7 consecutive pushes to main through #110, 2026-10-21; gate 10, the signed Windows installer, by the signed main build of 2026-10-20; gate 19, no model-only Contradicted, by #98; gate 2 by #76, gate 3 by #91, gate 14 by the case02 key signed 2026-10-12, gate 6 by #72, gate 7 by #74,
 gate 8 by merging #68, gate 12, the buyer documents, by #82; gate 13, the known integrity bugs, by #86 and #88; gate 15, stopped runs never look
 complete, was already in place; 18 by the feedback form #82 publishes as
 `docs/PILOT_FEEDBACK_FORM.md`). Gates 13 to 18 fold in Grok's
@@ -387,7 +407,6 @@ Before a first real case (the full list is the gates file):
 2. Check a real UFDR and AXIOM export with `baker ufdr-check` (needs a pilot expert's closed case).
 3. Opt-in cloud (#68) is available for a case whose protective order allows it: `PROBE_PASSED`
    lists Opus 5.5 at medium (#101, signed 2026-10-20).
-4. Sign the Windows installer (Azure code signing pending).
 
 Measuring errors in a pilot: experts can flag wrong labels, missed records and verdicts they
 disagree with; a redacted summary they choose to share feeds a per-pilot error log. Rates from it

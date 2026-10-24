@@ -535,3 +535,124 @@ def test_the_screen_and_the_report_show_an_embedded_copy_with_the_same_note(tmp_
         assert line in get(app, "/claim", id=claim_id).text
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------- verdict trace (report 0.14.0)
+
+
+def _claim_html(text: str, claim_id: str) -> str:
+    start = text.index(f'<div class="claim" id="{claim_id}">')
+    end = text.find('<div class="claim" id="', start + 1)
+    return text[start : end if end != -1 else text.index("<h2>Searches and coverage</h2>")]
+
+
+def test_a_confirmed_verdict_traces_each_item_to_the_model_and_the_expert(first_report):
+    """C05: the expert accepted its key evidence, so each traced item says the model proposed
+    it and the expert confirmed it; no AI acceptance stands in for the expert."""
+    block = _claim_html(first_report, "C05")
+    trace = block[block.index("<h4>How this verdict was reached</h4>") :]
+    assert "model proposed" in trace and "Expert confirmed: expert:" in trace
+    assert "Local AI reviewer accepted" not in trace
+    assert "(after this verdict was decided)" not in trace
+
+
+def test_an_unconfirmed_verdict_shows_what_was_found_and_not_relied_on(first_report):
+    """A claim waiting on the expert traces its proposed support as found and not relied on,
+    with the AI reviewer's acceptance named as not confirmed; never as confirmed."""
+    waiting = [
+        b for b in first_report.split('<div class="claim" id="')[1:] if f">{AWAITING_EXPERT}<" in b
+    ]
+    assert waiting
+    traced = [b[b.index("How this verdict was reached") :] for b in waiting]
+    assert any(
+        "Found, not relied on" in t and "Local AI reviewer accepted; not confirmed" in t
+        for t in traced
+    )
+    for t in traced:
+        assert "Expert confirmed" not in t
+
+
+def test_an_override_says_the_expert_set_the_verdict(first_report):
+    assert "The expert set this verdict by override" in _claim_html(first_report, "C07")
+
+
+def test_a_check_in_the_trace_is_code_and_needs_no_expert(first_report):
+    assert "Code (deterministic, no model)" in first_report
+
+
+def test_the_report_says_what_can_and_cannot_be_regenerated(first_report, tmp_path):
+    from core.llm.cloud import SHA_PREFIX
+    from core.report.html import HOSTED, regeneration
+
+    section = first_report[first_report.index("<h2>What can be checked again</h2>") :]
+    section = section[: section.index("<h2>", 1)]  # up to Versions
+    assert "re-derives from the recorded labels" in section
+    assert "No claim is made that a re-run gives identical labels" in section
+    assert "cannot be regenerated" not in section  # no hosted model in this case
+
+    conn = run_pipeline.build_case("case01", tmp_path / "cloud.db")
+    try:
+        with conn:
+            conn.execute(
+                "INSERT INTO model_runs (id, purpose, model_name, model_sha256, prompt_version,"
+                " prompt_sha256, params_json, seed, started_at_utc) VALUES"
+                " (?, 'stance', 'cloud-stance', ?, 'v', ?, ?, NULL, ?)",
+                (
+                    "mr:stance:cloud",
+                    f"{SHA_PREFIX}cloud-stance",
+                    "0" * 64,
+                    json.dumps({"api_model": "hosted-model-x"}),
+                    pipeline.iso(START),
+                ),
+            )
+        text = regeneration(conn, None)
+    finally:
+        conn.close()
+    disclosure = HOSTED.format(vendor="Anthropic", model="hosted-model-x")
+    assert html.escape(disclosure) in text
+    assert "No claim is made" not in text
+
+
+@pytest.fixture(scope="module")
+def model_free_db(tmp_path_factory) -> Path:
+    """case01 audited model-free with the simulated expert: failed checks contradict C04, C08,
+    C10, C11 and C14, and supported claims cite the device-owner stipulations."""
+    out = tmp_path_factory.mktemp("model-free")
+    sheet = run_pipeline.assumption_sheet("case01")
+    run_pipeline.run_once("case01", "model-free", "none", out, sheet, "simulated")
+    return out / "case01.db"
+
+
+def test_a_failed_check_that_contradicts_is_traced_as_relied_on(model_free_db):
+    """Rule 1 cites the failed check of an uncovered assumption; the trace must not call the
+    item that decided the verdict "not relied on"."""
+    conn = sqlite3.connect(model_free_db)
+    try:
+        block = _claim_html(render_report(conn), "C04")
+    finally:
+        conn.close()
+    trace = block[block.index("How this verdict was reached") :]
+    assert "<td>Relied on</td><td>Check absence" in trace and ": fail</td>" in trace
+    assert "Found, not relied on</td><td>Check absence" not in trace
+
+
+def test_a_cited_stipulation_is_a_cited_span(model_free_db, monkeypatch):
+    """A stipulation's statement carries the device's own label, which may hold any word; it is
+    cited text, so the forbidden-word check passes it, as in Limitations."""
+    from core.audit import invariants
+
+    real = pipeline.load_stipulations
+
+    def labelled(conn):  # noqa: ANN001, ANN202
+        return [
+            s.model_copy(update={"statement": f"Deleted iPhone: {s.statement}"}) for s in real(conn)
+        ]
+
+    monkeypatch.setattr(pipeline, "load_stipulations", labelled)
+    conn = sqlite3.connect(model_free_db)
+    try:
+        page = render_report(conn)
+    finally:
+        conn.close()
+    assert "Stipulation: <span class=" in _claim_html(page, "C02")
+    invariants.check_report_text(page)

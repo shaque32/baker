@@ -96,10 +96,7 @@ NOTICE = (
     "content (record text, prompts and model answers, the expert's reasons); it is encrypted only "
     "when the case is. Handle it under the case's protective order."
 )
-HOSTED = (
-    "Labels from a hosted model ({vendor}, {model}). They cannot be regenerated exactly; the "
-    "recorded labels and rules are reproducible."
-)
+HOSTED = report_html.HOSTED
 
 Clock = Callable[[], datetime]
 
