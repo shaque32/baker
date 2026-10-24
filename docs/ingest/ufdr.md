@@ -95,7 +95,8 @@ a content key is kept only for a record that holds copies. A message embedded in
 (`/Embedded[n]`), in a record (an SMS or MMS too) or in a copy, can hold copies too, matched
 to it, numbered across all of the message's embedded fields in the order written. A copy held
 by a message (a top-level one, one in a chat or one inside a copy) is a message whatever its
-type is named. A copy's recovery marks
+type is named. A copy held by a call, contact or account whatever its type is named is matched
+to it too, so one of another type is listed. A copy's recovery marks
 (carved, decoding confidence) must match its holder's. Copies are matched as each record is
 mapped and then dropped. A copied chat's
 messages match the holder chat's only when the two chats also say the same around them (app,
