@@ -41,7 +41,9 @@ report differs only in these fields, which the reproducibility test masks before
 - the Run section's start time,
 - the audit log's first and last entry times, its last hash (the hash chain covers each
   entry's time) and the When column of the expert actions,
-- when each device-owner stipulation was made and each identity link confirmed (Limitations).
+- when each device-owner stipulation was made and each identity link confirmed (Limitations),
+- the Examiner activity section's times and time on page, when the case includes it, which
+  come from when pages were opened.
 """
 
 from __future__ import annotations
@@ -73,7 +75,7 @@ from core.report import paired as paired_html
 from core.report import restore as restore_html
 from core.report import selection as selection_html
 from core.report import timeline as timeline_html
-from core.review import audit_log
+from core.review import activity, audit_log
 from core.review.status import (
     AWAITING_EXPERT,
     CONFIRM_STEP,
@@ -107,7 +109,10 @@ from core.review.status import verdict_label as _verdict_label
 # change made stale says "Not current".
 # 0.11.0 (#104): a scoped reproducibility bundle's report says what the bundle left out, counts
 # the items left out under each claim, and leaves out the sections that read the whole phone.
-REPORT_VERSION = "0.11.0"
+# 0.12.0 (#111): an Examiner activity section (page views per claim, core/review/activity.py),
+# its table opt-in per case and off by default; page views are left out of the expert-actions
+# table and counts.
+REPORT_VERSION = "0.12.0"
 
 
 @dataclass(frozen=True)
@@ -609,7 +614,7 @@ def audit_log_summary(
         for seq, w in withheld.items()
     ]
     rows.sort(key=lambda r: r[0])
-    expert = [r for r in rows if str(r[2]).startswith("expert:")]
+    expert = [r for r in rows if str(r[2]).startswith("expert:") and r[3] != activity.VIEW]
     runs = Counter(s for (s,) in conn.execute("SELECT status FROM pipeline_runs"))
     return {
         "entries": len(rows),
@@ -621,6 +626,7 @@ def audit_log_summary(
         "experts": sorted({r[2] for r in expert}),
         "runs": dict(sorted(runs.items())),
         "withheld": dict(sorted(Counter(str(w.get("action")) for w in withheld.values()).items())),
+        "page_views": sum(1 for r in rows if r[3] == activity.VIEW),
     }
 
 
@@ -892,7 +898,8 @@ def render_report(
     expert_rows = list(
         conn.execute(
             "SELECT seq, at_utc, actor, action, payload_json FROM audit_log"
-            " WHERE actor LIKE 'expert:%' ORDER BY seq"
+            " WHERE actor LIKE 'expert:%' AND action != ? ORDER BY seq",
+            (activity.VIEW,),
         )
     )
     if expert_rows:
@@ -906,8 +913,74 @@ def render_report(
                 f"<td>{q(_compact(r[4], r[3]))}</td></tr>"
             )
         parts.append("</table>")
+    parts.append(activity_section(conn, scope))
     parts.append("</body></html>")
     return "".join(parts)
+
+
+def activity_section(conn: sqlite3.Connection, scope: BundleScope | None = None) -> str:
+    """The examiner's activity per claim, from the page views in the audit log
+    (core/review/activity.py): how often each claim and its evidence were opened, when, and time
+    on those pages, when the case includes it (activity.in_report, off by default). Read from
+    the audit log alone, so a bundle's report renders it from the rows it ships."""
+    out = ["<h2>Examiner activity</h2>"]
+    if not activity.in_report(conn):
+        out.append(
+            "<p>Not included. This case leaves examiner activity (pages opened and time on "
+            "them) out of the report, as Baker does unless the expert includes it. The audit "
+            "log keeps every page view.</p>"
+        )
+        return "".join(out)
+    if scope is not None and "activity" not in scope.included:
+        out.append(
+            "<p>The case includes examiner activity in its report, but this bundle leaves out "
+            "the page views (the activity part), so it is not shown here.</p>"
+        )
+        return "".join(out)
+    trail = activity.steps(conn)
+    total = activity.summary(trail)
+    idle = int(activity.IDLE.total_seconds() // 60)
+    if not total["views"]:
+        out.append(
+            "<p>No page views are recorded for this case: it was reviewed before Baker recorded "
+            "them, or only from the command line.</p>"
+        )
+        return "".join(out)
+    out.append(
+        f"<p>{total['views']} page views in {total['sessions']} screen session"
+        f"{'s' if total['sessions'] != 1 else ''} by {e(', '.join(total['examiners']))}, from "
+        f"{e(total['first_at'])} to {e(total['last_at'])}, recorded in the audit log above. "
+        "Time on page runs from opening a page to the next page opened on the same screen; the "
+        "screen runs no scripts, so it does not show what was read. Stretches over "
+        f"{idle} minutes may include time away, and pages whose end was not recorded are not "
+        "timed; both are counted apart. The full trail is the "
+        "review screen's Activity page and its CSV download.</p>"
+    )
+    per = activity.by_claim(trail)
+    claims = [
+        cid
+        for (cid,) in conn.execute("SELECT id FROM claims WHERE status != 'removed' ORDER BY id")
+    ]
+    out.append(
+        "<table><thead><tr><th>Claim</th><th>Times opened</th><th>First opened (UTC)</th>"
+        "<th>Last opened (UTC)</th><th>Time on its pages</th><th>Evidence items opened</th>"
+        "<th>Expert actions</th></tr></thead>"
+    )
+    for cid in claims:
+        a = per.get(cid)
+        if a is None or not (a.opened or a.evidence_opened):
+            out.append(
+                f"<tr><td>{e(cid)}</td><td>0</td><td colspan='4'>not opened</td>"
+                f"<td>{a.actions if a else 0}</td></tr>"
+            )
+            continue
+        out.append(
+            f"<tr><td>{e(cid)}</td><td>{a.opened}</td><td>{e(a.first_at or '')}</td>"
+            f"<td>{e(a.last_at or '')}</td><td>{e(activity.time_on_pages(a))}</td>"
+            f"<td>{len(a.evidence_opened)}</td><td>{a.actions}</td></tr>"
+        )
+    out.append("</table>")
+    return "".join(out)
 
 
 # Expert flags (core/review/flags.py) are feedback about Baker, not findings: the report names
@@ -932,6 +1005,7 @@ SCOPE_PARTS = {
     "records": "the rest of the phone: records no verdict cites",
     "history": "earlier audit runs' rows",
     "feedback": "the expert's flags about Baker",
+    "activity": "the examiner's page views",
 }
 
 

@@ -1423,3 +1423,34 @@ def test_a_run_records_the_pipeline_version_that_writes_digests(hosted):
     assert stored == {pipeline.PIPELINE_VERSION}
     manifest = json.loads(zipfile.ZipFile(path).read(export.MANIFEST))
     assert manifest["run"]["pipeline"] == pipeline.PIPELINE_VERSION
+
+
+def test_page_views_ship_only_in_the_activity_part(tmp_path):
+    """A view names the evidence items and records its page listed, so a scoped bundle keeps
+    only its hash unless the examiner includes the activity part; its report says so."""
+    from core.review import activity
+
+    conn = _build(tmp_path / "case01.db", START)
+    eid = conn.execute("SELECT id FROM evidence_items LIMIT 1").fetchone()[0]
+    activity.record_view(conn, AT, EXPERT, "/evidence", session="s1", query={"id": eid})
+    activity.set_in_report(conn, AT, EXPERT, True)
+    scoped = _export(conn, tmp_path, "scoped.zip", include=None)
+    findings = verify_bundle(scoped)
+    assert not failed(findings), _fails(findings)
+    stubs = [w for w in _member(scoped, export.WITHHELD) if w["kind"] == "audit_log"]
+    assert activity.VIEW in {w["action"] for w in stubs}
+    logged = _member(scoped, f"{export.TABLES}audit_log.jsonl")
+    assert activity.VIEW not in {r["action"] for r in logged}
+    assert activity.REPORT_ACTION in {r["action"] for r in logged}
+    report = zipfile.ZipFile(scoped).read(export.REPORT).decode()
+    assert "this bundle leaves out the page views" in report
+    assert "the examiner&#x27;s page views" in report  # in the scope banner's list
+
+    shipped = _export(conn, tmp_path, "activity.zip", include="activity")
+    findings = verify_bundle(shipped)
+    assert not failed(findings), _fails(findings)
+    logged = _member(shipped, f"{export.TABLES}audit_log.jsonl")
+    assert activity.VIEW in {r["action"] for r in logged}
+    report = zipfile.ZipFile(shipped).read(export.REPORT).decode()
+    assert "1 page views in 1 screen session" in report
+    conn.close()
