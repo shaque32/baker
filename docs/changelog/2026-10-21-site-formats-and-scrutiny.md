@@ -1,7 +1,6 @@
 ## 2026-10-21: Site and one-pager format wording, "Built for scrutiny" section (#119)
-- Changed: site/index.html and docs/ONE_PAGER.md now say the UFDR reader is tested on real
-  Cellebrite UFDR exports of public test phones (Digital Corpora Hickman images, Cellebrite Reader
-  report 7.48), with message, call and contact counts matching Cellebrite's own report, and that
+- Changed: site/index.html and docs/ONE_PAGER.md now say the UFDR reader is tested on real-format
+  Cellebrite UFDR exports from public test phones (Reader 7.48), and that
   other Cellebrite versions, Cellebrite Excel and AXIOM are not yet tested on real exports (Grok
   Product memo on #100). The site adds a "Built for scrutiny" section listing only built features:
   rules decide and the expert confirms, input hashes, hash-chained audit log, offline re-check
@@ -14,7 +13,7 @@
 - Affects: customer-facing claims
 - Status doc: pending: section 12, replace "and that UFDR or AXIOM imports are verified" with
   "that UFDR imports are verified beyond Cellebrite Reader 7.48 exports of public test phones, or
-  that Cellebrite Excel or AXIOM imports are tested on real exports"; add a row: "UFDR counts
-  match Cellebrite's report on Reader 7.48 public test phones | True after #117 and gate 5 sign-off
-  | #117, Baker Eval re-run | Tested on real Cellebrite UFDR exports of public test phones (Reader
-  report 7.48); other versions not yet tested".
+  that Cellebrite Excel or AXIOM imports are tested on real exports"; add a row: "UFDR tested on
+  real-format exports | True after #117 and gate 5 sign-off | #117, Baker Eval re-run | Tested on
+  real-format Cellebrite UFDR exports from public test phones (Reader 7.48); other versions not
+  yet tested".

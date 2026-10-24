@@ -13,8 +13,7 @@ the judgment.
 1. **Reads what you already have.** The government's document (an affidavit or report, as a PDF)
    and the phone extraction reports: Cellebrite Excel, PDF and UFDR, and Magnet AXIOM XML and
    Excel. Each file is opened read-only and its SHA-256 recorded. The UFDR reader is tested on
-   real Cellebrite UFDR exports of public test phones (Digital Corpora Hickman images, Cellebrite
-   Reader report 7.48): message, call and contact counts match Cellebrite's own report. Other
+   real-format Cellebrite UFDR exports from public test phones (Reader 7.48). Other
    Cellebrite versions are not yet tested. The Cellebrite Excel and AXIOM readers are not yet
    tested on real exports.
 2. **Splits the document into claims.** A local model proposes one claim at a time; you accept,
