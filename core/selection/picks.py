@@ -18,7 +18,7 @@ Placing a quote fails closed. Its words are looked for with every method of the 
 only the first that finds something, and also as the same words with any punctuation between
 them (Lookup.loose). It is placed only when every message they are found in is one message: a
 single message, or copies of it on different sources (the same text, within COPY_WINDOW of each
-other), at most MAX_PLACES of them. Otherwise Baker does not decide which message the document
+other), at most MAX_PLACES of them. Otherwise Mabillon does not decide which message the document
 means and says how often the words were found. Every message the words were found in is kept
 (Lookup.hits), so a message that may be the one quoted is never counted as left out.
 """

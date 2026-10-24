@@ -225,7 +225,12 @@ def add_claim(
             _now(clock),
             actor,
             "claim.add",
-            {"claim_id": claim_id, "paragraph_id": paragraph_id, "text": text},
+            {
+                "claim_id": claim_id,
+                "paragraph_id": paragraph_id,
+                "text": text,
+                "claim_type": claim_type.value,
+            },
         )
 
 
@@ -256,7 +261,13 @@ def set_claim_status(
             _now(clock),
             actor,
             "claim.status",
-            {"claim_id": claim_id, "status": status.value, "was": row[0], "text": text},
+            {
+                "claim_id": claim_id,
+                "status": status.value,
+                "was": row[0],
+                "text": text,
+                "was_text": row[1],
+            },
         )
 
 
@@ -434,7 +445,7 @@ def stipulate_device_owner(
 ) -> str:
     """The expert stipulates who used a device. Returns the stipulation id.
 
-    This is a case-level statement the expert makes, not a finding: Baker never verifies it.
+    This is a case-level statement the expert makes, not a finding: Mabillon never verifies it.
     Reports print every confirmed stipulation as a limitation.
     """
     _expert(actor)

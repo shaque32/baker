@@ -7,14 +7,14 @@
         case.key      only in an encrypted case: its wrapped key (core/encryption.py); the
                       database and every copy in inputs/ are then encrypted too
 
-The cases folder is $BAKER_CASES, else ~/Baker/cases. `baker serve --db some.db` works on a
-single database the same way: its settings sit beside it (some.json) and its copies in
-some-inputs/.
+The cases folder is $MABILLON_CASES, else ~/Mabillon/cases (core/paths.py: or the Baker-era
+$BAKER_CASES, ~/Baker/cases). `mabillon serve --db some.db` works on a single database the
+same way: its settings sit beside it (some.json) and its copies in some-inputs/.
 
 Importing a file. The upload is written into the case's inputs folder and SHA-256 hashed as it
 is written, then made read-only. The importer then opens that copy read-only and hashes exactly
 the bytes it parses (core/ingest/source_file.py, core/ingest/govdoc.py); the two hashes must
-agree or nothing is stored. The expert's original file is never opened by Baker. A file whose
+agree or nothing is stored. The expert's original file is never opened by Mabillon. A file whose
 hash is already in the case is refused, so nothing is imported twice. In an encrypted case the
 upload is encrypted as it is written, and the hashes are of the plain bytes, so they still
 match the expert's original file.
@@ -37,15 +37,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import BinaryIO
 
-from core import encryption, pipeline
+from core import encryption, paths, pipeline
 from core.db import OperationalError, apply_schema, connect
 from core.ingest.pick import REPORT_SUFFIXES
 from core.ingest.source_file import InputChanged, require_sha256, sha256_input
 from core.review import audit_log
 from core.review.actions import ReviewError, _expert
 
-CASES_ENV = "BAKER_CASES"
-DEFAULT_HOME = Path.home() / "Baker" / "cases"
+CASES_ENV = "MABILLON_CASES"
 DB_NAME = "case.db"
 UPLOAD_PREFIX = ".upload-"
 
@@ -55,8 +54,8 @@ Clock = Callable[[], datetime]
 
 
 def cases_home() -> Path:
-    env = os.environ.get(CASES_ENV, "").strip()
-    return Path(env).expanduser() if env else DEFAULT_HOME
+    env = paths.env("CASES")
+    return Path(env).expanduser() if env else paths.user_folder("cases")
 
 
 def _now(clock: Clock | None) -> datetime:

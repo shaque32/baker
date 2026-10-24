@@ -65,7 +65,7 @@ class SenderCheck(TemplateCheck):
                 unknown.append(row.id)
                 lines.append(
                     f"{row.id} on {row.app} is marked as forwarded or as carrying a forwarded "
-                    "or quoted message; Baker has not verified who first wrote the words"
+                    "or quoted message; Mabillon has not verified who first wrote the words"
                 )
                 continue
             if acc is None:

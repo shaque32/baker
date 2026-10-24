@@ -1,7 +1,7 @@
-"""The Help page: the support contact, what Baker does and doesn't do, and the bug report.
+"""The Help page: the support contact, what Mabillon does and doesn't do, and the bug report.
 
 The bug report (core/support/bug_report.py) is shown in full before it is saved, so the
-examiner reads exactly what would leave the computer. Baker sends nothing itself.
+examiner reads exactly what would leave the computer. Mabillon sends nothing itself.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ DOES_NOT = (
 
 def help_page(page: Page, report_text: str | None, withheld: str | None, case_open: bool) -> str:
     placeholder = (
-        " <span class='muted'>(placeholder: the Baker team sets the real address before any "
+        " <span class='muted'>(placeholder: the Mabillon team sets the real address before any "
         "pilot)</span>"
         if SUPPORT_IS_PLACEHOLDER
         else ""
@@ -44,20 +44,20 @@ def help_page(page: Page, report_text: str | None, withheld: str | None, case_op
         "instead.</p></div>"
     )
     about = (
-        "<div class='box'><h2>What Baker does and doesn't do</h2>"
-        "<p>Baker is a verification layer on top of Cellebrite and AXIOM. It takes the "
+        "<div class='box'><h2>What Mabillon does and doesn't do</h2>"
+        "<p>Mabillon is a verification layer on top of Cellebrite and AXIOM. It takes the "
         "scrolling, not the judgment.</p>"
         "<h3>It does</h3><ul>"
         + "".join(f"<li>{e(x)}</li>" for x in DOES)
         + "</ul><h3>It does not</h3><ul>"
         + "".join(f"<li>{e(x)}</li>" for x in DOES_NOT)
         + "</ul><p class='muted'>The full one-page explainer is "
-        "<code>docs/ONE_PAGER.md</code> in the Baker folder.</p></div>"
+        "<code>docs/ONE_PAGER.md</code> in the Mabillon folder.</p></div>"
     )
     scope = (
-        "It describes this Baker install and the case open now (counts and states only)."
+        "It describes this Mabillon install and the case open now (counts and states only)."
         if case_open
-        else "No case is open, so it describes this Baker install only."
+        else "No case is open, so it describes this Mabillon install only."
     )
     if report_text is None:
         body = (
@@ -78,8 +78,8 @@ def help_page(page: Page, report_text: str | None, withheld: str | None, case_op
         )
     report = (
         "<div class='box'><h2>Send a bug report</h2>"
-        "<p>The bug report holds Baker's versions, this computer's system and model setup, "
-        f"the last background job and recent errors, with no case data. {e(scope)} Baker "
+        "<p>The bug report holds Mabillon's versions, this computer's system and model setup, "
+        f"the last background job and recent errors, with no case data. {e(scope)} Mabillon "
         "never sends it: you save it and send it yourself.</p>"
         f"{body}</div>"
     )

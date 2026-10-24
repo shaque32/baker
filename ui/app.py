@@ -5,7 +5,7 @@ machine's own pages, reads or changes the case database, and renders a page. App
 does the same for a file upload, streamed to disk (ui/upload.py). ui/server.py wraps both in the
 standard library's HTTP server bound to 127.0.0.1; tests call them directly.
 
-Starting a case. Started on a cases folder (`baker serve`), the screen lists the cases and makes
+Starting a case. Started on a cases folder (`mabillon serve`), the screen lists the cases and makes
 new ones (core/casework/cases.py). "Set up and run" imports files into the case folder (copied,
 read-only, SHA-256 hashed), proposes claims with the local model, takes the expert's claim
 decisions, claim order and device-owner stipulations, checks the model, and runs the audit in
@@ -17,6 +17,10 @@ Every change goes through core/review/actions.py (evidence, verdicts, claims, st
 the hash-chained audit log records it with the reviewing expert's name. "Re-run verdicts" goes
 through core/review/redecide.py, which calls core/audit/rules.py and the invariants; the screen
 never sets a verdict itself. Nothing here makes a network call.
+
+Each case page the examiner opens is recorded in the same audit log as a `view` entry, with the
+time, the examiner's name, the page and the evidence it listed (core/review/activity.py). The
+Activity page shows that trail with time on each page; a view never changes a verdict.
 
 Local-server protections. Another web page open in the same browser can send requests to
 127.0.0.1, so:
@@ -32,6 +36,7 @@ from __future__ import annotations
 
 import functools
 import hmac
+import html
 import re
 import secrets
 import shutil
@@ -41,6 +46,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import BinaryIO
+from urllib.parse import parse_qs, urlsplit
 
 from core import db, encryption, pipeline
 from core.audit.invariants import InvariantViolation, check_report_text
@@ -62,7 +68,7 @@ from core.llm import cloud as cloud_llm
 from core.report.html import render_report
 from core.report.letter import request_letter
 from core.restore.store import ExhibitError, add_exhibit, match_exhibits, remove_exhibit
-from core.review import actions, audit_log, flags
+from core.review import actions, activity, audit_log, flags
 from core.review.actions import ReviewError
 from core.review.redecide import redecide
 from core.review.status import claim_state
@@ -122,6 +128,19 @@ NO_CASE_POST = {"/expert", "/case/new", "/case/open"}
 OWN_DB_POST = {"/case/encrypt", "/case/lock", "/case/recovery/done"}
 
 
+_EVIDENCE_HREF = re.compile(r"""href=['"](/evidence\?[^'"]*)['"]""")
+
+
+def listed_evidence(html_text: str) -> list[str]:
+    """The evidence items a rendered page links to (its /evidence?id= links), in page order,
+    each once. A link stands for an item the page listed, not one the examiner opened."""
+    seen: dict[str, None] = {}
+    for m in _EVIDENCE_HREF.finditer(html_text):
+        for v in parse_qs(urlsplit(html.unescape(m.group(1))).query).get("id", []):
+            seen.setdefault(v, None)
+    return list(seen)
+
+
 def _real_components(
     conn: sqlite3.Connection, ai_review: bool, cloud: cloud_policy.CloudChoice | None = None
 ) -> pipeline.Components:
@@ -174,7 +193,7 @@ class Response:
 
 
 class App:
-    """One screen. Either on one case database (`db_path`, as `baker serve --db`) or on a cases
+    """One screen. Either on one case database (`db_path`, as `mabillon serve --db`) or on a cases
     folder (`home`), where the expert makes and opens cases.
 
     components_for, extractor_for and model_check build the real local-model parts by default;
@@ -211,7 +230,13 @@ class App:
         self.extractor_for = extractor_for or _real_extractor
         self.model_check = model_check
         self.last_check: ModelCheck | None = None
-        self.cloud_config = cloud_config  # None: $BAKER_CLOUD_CONFIG, else ~/.baker/cloud.json
+        self.session = secrets.token_hex(8)  # names this screen's page views in the trail
+        self._last_view: tuple[tuple, datetime] | None = None  # the last page loaded, and when
+        self._unrecorded: list[str] = []  # views that could not be written, not yet shown
+        self.clock: Callable[[], datetime] = lambda: datetime.now(UTC)
+        self.cloud_config = (
+            cloud_config  # None: $MABILLON_CLOUD_CONFIG, else ~/.mabillon/cloud.json
+        )
         if expert:
             self.set_expert(expert)
         if self.single is not None and not protect.is_locked(self.single):
@@ -302,7 +327,11 @@ class App:
             or not hmac.compare_digest(req.form.get("token", ""), self.token)
         ):
             return self._plain(403, "This form did not come from this review screen.")
+        if req.method == "POST":
+            self._last_view = None  # whatever the post did, the next page is a new view
         if req.method == "GET" and req.path in HELP_GET:
+            if self._opened_here(req):
+                self._last_view = None  # the examiner left the case pages
             return self._help(req.path)
         if self.case is None:
             if req.method == "GET" and req.path not in NO_CASE_GET:
@@ -338,10 +367,85 @@ class App:
             return self._redirect("/cases")
         try:
             if req.method == "GET":
-                return self._get(conn, req)
+                if req.path in activity.RECORD_FIRST:  # it shows the trail up to itself
+                    self._note_view(conn, req, None)
+                    return self._unrecorded_warning(self._get(conn, req))
+                resp = self._get(conn, req)
+                self._note_view(conn, req, resp)
+                return self._unrecorded_warning(resp)
             return self._post(conn, req)
         finally:
             conn.close()
+
+    def _note_view(self, conn: sqlite3.Connection, req: Request, resp: Response | None) -> None:
+        """Record the page the examiner just opened in the case's audit log (core/review/
+        activity.py), with the evidence the rendered page links to. A page that shows the trail
+        or the log (resp None) is recorded before it renders, so it includes itself. A reload of
+        the same page within activity.REFRESH of the last load, with nothing posted between, is
+        the same view and is not recorded again (the audit progress page refreshes itself every
+        few seconds); a later reload, such as the page reopened after the screen was closed, is
+        a new view."""
+        if not self._opened_here(req):
+            return  # another site's request (an image tag, a fetch) is not the examiner's view
+        if (resp is not None and resp.status != 200) or req.path not in activity.PAGES:
+            self._last_view = None  # the examiner went elsewhere, so the next page is new
+            return
+        if self.case is None:
+            return
+        key = (str(self.case.db), self.expert, req.path, tuple(sorted(req.query.items())))
+        now = self.clock()
+        if self._last_view is not None and self._last_view[0] == key:
+            if now - self._last_view[1] <= activity.REFRESH:
+                self._last_view = (key, now)  # a page refreshing itself stays one view
+                return
+        listed: list[str] = []
+        if resp is not None and (resp.header("Content-Type") or "").startswith("text/html"):
+            listed = listed_evidence(resp.text)
+        try:
+            activity.record_view(
+                conn,
+                now,
+                f"expert:{self.expert}" if self.expert else None,
+                req.path,
+                session=self.session,
+                query=req.query,
+                listed=listed,
+            )
+        except db.Error as err:  # busy past the timeout, or a full disk: say so, never hide it
+            page = activity.PAGES.get(req.path, req.path)
+            self._unrecorded.append(f"{page} ({err})")
+            self._last_view = None  # the examiner left the last recorded page all the same
+            return
+        self._last_view = (key, now)
+
+    def _opened_here(self, req: Request) -> bool:
+        """A page the examiner opened in this screen: a document load from this server, or one
+        typed or bookmarked. Browsers send Sec-Fetch headers; one that sends none is taken at
+        its word, as for the forms."""
+        dest = req.headers.get("sec-fetch-dest")
+        return self._origin_ok(req) and dest in (None, "document")
+
+    def _unrecorded_warning(self, resp: Response) -> Response:
+        """Put the views Mabillon could not record at the top of this page, if it is a page shown
+        on screen; a download carries none, so the warning waits for the next page shown."""
+        if not self._unrecorded or resp.status != 200 or resp.header("Content-Disposition"):
+            return resp
+        if not (resp.header("Content-Type") or "").startswith("text/html"):
+            return resp
+        text = resp.text
+        at = text.find("<main")
+        at = text.find(">", at if at >= 0 else text.find("<body")) + 1
+        if at <= 0:
+            return resp
+        warning = (
+            "<div class='flash err' role='alert'>Mabillon could not record that you opened these "
+            "pages, so they are not in the activity trail: "
+            + html.escape("; ".join(self._unrecorded))
+            + ".</div>"
+        )
+        self._unrecorded = []
+        resp.body = (text[:at] + warning + text[at:]).encode("utf-8")
+        return resp
 
     # -- GET
 
@@ -435,7 +539,26 @@ class App:
                 ],
             )
         if p == "/log":
-            return self._html(pages.log_page(conn, page, req.query.get("all") == "1"))
+            q = req.query
+            return self._html(
+                pages.log_page(conn, page, q.get("all") == "1", q.get("views") == "1")
+            )
+        if p == "/activity":
+            return self._html(
+                pages.activity_page(
+                    conn, page, req.query.get("claim", ""), req.query.get("all") == "1"
+                )
+            )
+        if p == "/activity.csv":
+            return Response(
+                200,
+                activity.csv_text(activity.steps(conn)).encode("utf-8"),
+                [
+                    ("Content-Type", "text/csv; charset=utf-8"),
+                    ("Content-Disposition", 'attachment; filename="baker-activity.csv"'),
+                    *self._security_headers(),
+                ],
+            )
         if p in ("/report", "/report.html"):
             case = self._open()
             try:  # handle() checked the log; anchor its newest entry before the report goes out
@@ -497,6 +620,7 @@ class App:
             "/timeline/settings": lambda: self._timeline_settings(conn, f),  # type: ignore[arg-type]
             "/flag/add": lambda: self._add_flag(conn, f),  # type: ignore[arg-type]
             "/flag/withdraw": lambda: self._withdraw_flag(conn, f),  # type: ignore[arg-type]
+            "/activity/report": lambda: self._activity_in_report(conn, f),  # type: ignore[arg-type]
         }
         handler = handlers.get(req.path)
         if handler is None:
@@ -569,6 +693,20 @@ class App:
             f"Saved: time tolerance {s.tolerance_min} min, shortest quiet stretch "
             f"{s.gap_hours} h. Findings only; no verdict changes."
         )
+
+    def _activity_in_report(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        include = f.get("include") == "1"
+        if not activity.set_in_report(
+            conn, self.clock(), self.actor, include, session=self.session
+        ):
+            return (
+                "No change: the report already "
+                + ("includes" if include else "leaves out")
+                + (" examiner activity.")
+            )
+        if include:
+            return "The report now includes examiner activity, with time on page, for this case."
+        return "The report now leaves out examiner activity for this case."
 
     def _set_expert(self, f: dict[str, str]) -> str:
         self.set_expert(f.get("name", ""))
@@ -659,7 +797,7 @@ class App:
         found = propose_links(conn)
         mine = [lid for lid in found.added if lid.endswith(f"|{pid}")]
         return (
-            f"Added {f.get('name', '').strip()}. Baker proposed {len(mine)} link(s) to decide. "
+            f"Added {f.get('name', '').strip()}. Mabillon proposed {len(mine)} link(s) to decide. "
             "It applies on the next audit run."
         )
 
@@ -833,7 +971,7 @@ class App:
 
     def _recovery_done(self) -> str:
         self.recovery = None
-        return "Recovery key hidden. Baker keeps no copy of it."
+        return "Recovery key hidden. Mabillon keeps no copy of it."
 
     # -- set up and run
 
@@ -1136,6 +1274,7 @@ class App:
         def before_file(fields: dict[str, str]) -> None:
             if not hmac.compare_digest(fields.get("token", ""), self.token):
                 raise _Refused
+            self._last_view = None  # an accepted post: the page it returns to is a new view
             self._guard("/case/import")
             _ = self.actor
 

@@ -1,4 +1,4 @@
-"""Baker command line. Everything runs offline against one case database.
+"""Mabillon command line. Everything runs offline against one case database.
 
     python -m cli init      --db case.db
     python -m cli import    --db case.db --report item1.xlsx [--source-id item1]
@@ -19,6 +19,13 @@
                             --by expert:<name>
     python -m cli report    --db case.db --out report.html
     python -m cli verify-log --db case.db
+    python -m cli activity  --db case.db [--claim C01] [--csv activity.csv]
+                            [--in-report on|off --by expert:<name>]
+    python -m cli export-bundle --db case.db --out bundle.zip --by expert:<name>
+                            [--include dismissed,irrelevant,prompts,records,history,feedback,
+                                       activity|all]
+                            [--confirm-counsel-reviewed]
+    python -m cli verify-bundle bundle.zip [--inputs <folder of original files>]
     python -m cli redecide  --db case.db --by expert:<name>
     python -m cli serve     [--cases <folder> | --db case.db] [--port 8765] [--expert "<name>"]
                             [--open]
@@ -30,7 +37,7 @@
 
 `redecide` re-runs the verdict rules on the last audit's stored evidence after expert review;
 it calls no model. `serve` opens the expert's screen on http://127.0.0.1 only. Without --db it
-works on a cases folder (--cases, else $BAKER_CASES, else ~/Baker/cases), where the expert
+works on a cases folder (--cases, else $MABILLON_CASES, else ~/Mabillon/cases), where the expert
 makes a case, imports its files, settles the claims and runs the audit in the background, all
 in the browser. `model-check` says whether the configured local model is there, is the pinned
 file (SHA-256) and fits in this computer's memory.
@@ -44,7 +51,7 @@ again: the finished claims' model outputs are reused, not recomputed. Claims a f
 check already contradicts are not sent to the model (their labels could not change the
 verdict); `--label-all` labels them too.
 `demo` resets the synthetic demo case (eval/demo.py) and opens it on its own port, from its own
-cases folder (~/Baker/demo/cases, or $BAKER_DEMO/cases), so each demo starts clean in seconds
+cases folder (~/Mabillon/demo/cases, or $MABILLON_DEMO/cases), so each demo starts clean in seconds
 and a screen share shows no other case. `--from-case` saves a finished synthetic case01 audit
 (a real local-model run) as the demo from then on; `--scripted` goes back to the scripted one.
 `--paired` builds the scripted demo with a UFDR of Item 1 added, so the Selection tab shows the
@@ -57,8 +64,20 @@ terminal; it is never taken from an option or the environment.
 Every command but `verify-log` first verifies the case's audit-log hash chain, and that the log
 still holds every entry recorded in its anchor file (case.db.anchors.jsonl beside the database,
 written when a case opens and when a report is built), and stops, writing nothing, when either
-fails (the database was changed outside Baker). `verify-log` says which.
-`ufdr-check` compares what Baker imports from a UFDR with the package's own report.xml, record
+fails (the database was changed outside Mabillon). `verify-log` says which.
+`export-bundle` writes the case's reproducibility bundle (docs/bundle.md): input hashes,
+versions, model identity, and what the verdicts rest on: the labels and the model answers
+behind them, the records they cite, the expert's decisions, the verdicts, the audit log and the
+report. Dismissed and irrelevant items, other prompts, the rest of the phone, earlier runs and
+the expert's flags are left out unless --include names them (all: the whole case); the log's
+entries about them stay as hashes, so it still verifies. Producing one is the examiner's
+choice on counsel's advice: it lists what the bundle would hold and writes nothing until run
+with --confirm-counsel-reviewed. An encrypted case's bundle is encrypted under a bundle passphrase
+typed in the terminal. The export is logged, with the bundle's SHA-256, once the file is
+written. `verify-bundle` checks a bundle offline, without the case, and re-derives every verdict
+from the recorded labels and decisions. It exits 0 only when every check ran and passed, 2 when
+nothing failed but something could not be checked, and 1 on any failure.
+`ufdr-check` compares what Mabillon imports from a UFDR with the package's own report.xml, record
 by record, without touching any case (docs/ingest/ufdr.md, "Before calling it verified"). It
 writes ufdr-check.md and .json, which hold no case content and can be sent back, and
 ufdr-check-private.md, a sample of records to compare in Cellebrite Reader, which stays here.
@@ -171,7 +190,7 @@ def cmd_ufdr_check(a: argparse.Namespace) -> int:
     d = result.shareable
     print(f"Differences found: {d['differences']}")
     if result.import_error:
-        print(f"Baker refused the package: {result.import_error}")
+        print(f"Mabillon refused the package: {result.import_error}")
     print(f"shareable, no case content (read it before sending): {paths[0]}")
     print(f"  the same for a program: {paths[1]}")
     print(f"PRIVATE, keep on this computer: {paths[2]}")
@@ -321,6 +340,80 @@ def cmd_report(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_export_bundle(a: argparse.Namespace) -> int:
+    from core import encryption
+    from core.bundle.export import NOTICE, export_bundle, parts, preview
+    from core.casework.cases import Case
+    from core.timeline.settings import from_case
+
+    # Fails closed like `report`: a broken or cut-short audit log stops the export.
+    conn = _open(a.db)
+    case = Case(Path(a.db))
+    print(NOTICE)
+    try:
+        include = parts(a.include)
+        print(preview(conn, include))
+    except actions.ReviewError as e:
+        raise SystemExit(f"error: {e}") from e
+    if not a.confirm_counsel_reviewed:
+        print(
+            "Nothing was written. When counsel has reviewed this list, run the command again "
+            "with --confirm-counsel-reviewed.",
+            file=sys.stderr,
+        )
+        return 2
+    encrypted = encryption.is_encrypted_case(Path(a.db))
+    passphrase = None
+    if encrypted:
+        print("This case is encrypted, so the bundle will be encrypted too. Choose a bundle")
+        print("passphrase to give counsel by another channel (not with the file).")
+        try:
+            passphrase = encryption.check_new_passphrase(
+                _ask("Bundle passphrase: "), _ask("Again: ")
+            )
+        except ValueError as e:
+            raise SystemExit(f"error: {e}") from e
+    try:
+        r = export_bundle(
+            conn,
+            a.out,
+            a.by,
+            counsel_confirmed=True,
+            encrypted_case=encrypted,
+            passphrase=passphrase,
+            timeline=from_case(case.settings),
+            inputs_dir=case.inputs if case.inputs.is_dir() else None,
+            include=include,
+        )
+    except actions.ReviewError as e:
+        raise SystemExit(f"error: {e}") from e
+    print(f"wrote {r.path}{' (encrypted)' if r.encrypted else ''}")
+    print(f"bundle SHA-256 {r.sha256}")
+    print(f"audit run {r.run_id}; audit log {r.audit_entries} entries, last hash {r.last_hash}")
+    return 0
+
+
+def cmd_verify_bundle(a: argparse.Namespace) -> int:
+    from core.bundle import sealed
+    from core.bundle.verify import FAIL, NOTE, PASS, outcome, verify_bundle
+
+    try:
+        encrypted = sealed.is_sealed_file(a.bundle)
+    except OSError:
+        encrypted = False  # verify_bundle reports why it cannot be read
+    passphrase = _ask("Bundle passphrase: ") if encrypted else None
+    findings = verify_bundle(a.bundle, a.inputs, passphrase)
+    for level, title in ((PASS, "VERIFIED"), (NOTE, "NOT VERIFIED"), (FAIL, "FAILED")):
+        rows = [f for f in findings if f.level == level]
+        if rows:
+            print(f"{title}:")
+            for f in rows:
+                print(f"  {f.check}: {f.detail}")
+    code, line = outcome(findings)
+    print(line)
+    return code
+
+
 def cmd_verify_log(a: argparse.Namespace) -> int:
     try:
         audit_log.require_intact(_open(a.db, review=False), audit_log.anchors_path(a.db))
@@ -328,6 +421,36 @@ def cmd_verify_log(a: argparse.Namespace) -> int:
         print(f"audit log FAILED: {err.problem}")
         return 1
     print("audit log hash chain verified, and it holds every anchored entry")
+    return 0
+
+
+def cmd_activity(a: argparse.Namespace) -> int:
+    """The examiner's activity trail (core/review/activity.py): every page view and logged
+    expert action, with time on page, read from the verified audit log."""
+    from datetime import UTC, datetime
+
+    from core.review import activity
+
+    if a.in_report is not None:
+        if not a.by:
+            print("--in-report needs --by expert:<name>", file=sys.stderr)
+            return 2
+        include = a.in_report == "on"
+        changed = activity.set_in_report(_open(a.db), datetime.now(UTC), a.by, include)
+        verb = "includes" if include else "leaves out"
+        print(f"the report {verb} examiner activity{'' if changed else ' (no change)'}")
+        return 0
+    trail = activity.steps(_open(a.db))
+    if a.claim:
+        trail = [s for s in trail if s.claim_id == a.claim]
+    if a.csv is not None:
+        a.csv.write_text(activity.csv_text(trail), encoding="utf-8")
+        print(f"wrote {a.csv} ({len(trail)} rows; nothing was sent)")
+        return 0
+    for s in trail:
+        item = s.payload.get("id", "") if s.is_view else (s.evidence_id or s.claim_id or "")
+        took = activity.duration(s.seconds, s.away) if s.is_view else ""
+        print(f"{s.seq}  {s.at_utc}  {s.examiner}  {s.where}  {item}  {took}".rstrip())
     return 0
 
 
@@ -397,7 +520,7 @@ def cmd_serve(a: argparse.Namespace) -> int:
     except OSError as e:
         raise SystemExit(f"cannot open port {a.port} on 127.0.0.1 ({e}); try --port 8766") from e
     where = f"case {a.db}" if a.db is not None else f"cases in {home}"
-    print(f"Baker: {url(server)}  ({where}; this computer only; Ctrl+C stops it)")
+    print(f"Mabillon: {url(server)}  ({where}; this computer only; Ctrl+C stops it)")
     print("A running audit stops when this does; its finished claims are kept and resume later.")
     if a.open:
         import webbrowser
@@ -437,7 +560,7 @@ def cmd_encrypt(a: argparse.Namespace) -> int:
     print()
     print(f"Recovery key: {done.recovery_key}")
     print("Write it down now and keep it away from this computer. It opens the case if the")
-    print("passphrase is lost. Baker shows it only this once and keeps no copy.")
+    print("passphrase is lost. Mabillon shows it only this once and keeps no copy.")
     return 0
 
 
@@ -522,7 +645,9 @@ def cmd_demo(a: argparse.Namespace) -> int:
 
 
 def parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="baker", description="Baker: audit claims about phone data.")
+    p = argparse.ArgumentParser(
+        prog="mabillon", description="Mabillon: audit claims about phone data."
+    )
     sub = p.add_subparsers(dest="command", required=True)
 
     def add(name: str, fn, help_: str) -> argparse.ArgumentParser:  # noqa: ANN001
@@ -545,7 +670,7 @@ def parser() -> argparse.ArgumentParser:
         help="the report's date order (month or day first), when the report does not decide it",
     )
     sp = sub.add_parser(
-        "ufdr-check", help="check Baker's UFDR import against the package's own report.xml"
+        "ufdr-check", help="check Mabillon's UFDR import against the package's own report.xml"
     )
     sp.set_defaults(fn=cmd_ufdr_check)
     sp.add_argument("--package", type=Path, required=True, help="the .ufdr (or .zip) file")
@@ -602,6 +727,39 @@ def parser() -> argparse.ArgumentParser:
     sp = add("report", cmd_report, "write the HTML claims report")
     sp.add_argument("--out", type=Path, required=True)
     add("verify-log", cmd_verify_log, "verify the audit log hash chain")
+    sp = add("activity", cmd_activity, "show or export the examiner's activity trail")
+    sp.add_argument("--claim", help="only steps on this claim")
+    sp.add_argument("--csv", type=Path, help="write the whole trail as CSV here")
+    sp.add_argument(
+        "--in-report",
+        choices=("on", "off"),
+        help="put the activity table in this case's report, or leave it out (off by default)",
+    )
+    sp.add_argument("--by", help="with --in-report: expert:<name>, recorded in the audit log")
+    sp = add(
+        "export-bundle",
+        cmd_export_bundle,
+        "write the case's reproducibility bundle (the examiner's choice, on counsel's advice)",
+    )
+    sp.add_argument("--out", type=Path, required=True, help="a new file (a .zip)")
+    sp.add_argument("--by", required=True)
+    sp.add_argument(
+        "--include",
+        default="",
+        help="parts to add to what the verdicts rest on, comma separated: dismissed, irrelevant, "
+        "prompts, records, history, feedback, activity; or all (the whole case)",
+    )
+    sp.add_argument(
+        "--confirm-counsel-reviewed",
+        action="store_true",
+        help="confirm counsel reviewed what the bundle holds; without it nothing is written",
+    )
+    sp = sub.add_parser(
+        "verify-bundle", help="check a reproducibility bundle offline; re-derives every verdict"
+    )
+    sp.set_defaults(fn=cmd_verify_bundle)
+    sp.add_argument("bundle", type=Path, help="the bundle .zip")
+    sp.add_argument("--inputs", type=Path, help="a folder holding the original input files")
 
     sp = add("flags", cmd_flags, "list expert flags, or export the redacted flag summary")
     sp.add_argument("action", choices=("list", "export"))
@@ -626,7 +784,11 @@ def parser() -> argparse.ArgumentParser:
     sp.set_defaults(fn=cmd_serve)
     g = sp.add_mutually_exclusive_group()
     g.add_argument("--db", type=Path, help="one case database")
-    g.add_argument("--cases", type=Path, help="the cases folder (default ~/Baker/cases)")
+    g.add_argument(
+        "--cases",
+        type=Path,
+        help="the cases folder (default ~/Mabillon/cases, or ~/Baker/cases if only that exists)",
+    )
     sp.add_argument("--port", type=int, default=8765)
     sp.add_argument("--expert", help="your name, recorded with every decision")
     sp.add_argument("--open", action="store_true", help="open it in the default browser")
@@ -662,6 +824,15 @@ def main(argv: list[str] | None = None) -> int:
     except (actions.ReviewError, CaseLocked, audit_log.ChainBroken) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
+
+
+def baker_alias() -> int:
+    """The `baker` command, Mabillon's name in development: kept for a release so scripts, the
+    Desktop launchers and older notes keep working."""
+    print(
+        "note: `baker` is now `mabillon`; the old name will go in a later release", file=sys.stderr
+    )
+    return main()
 
 
 if __name__ == "__main__":

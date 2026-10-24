@@ -1,14 +1,14 @@
-"""UFDR self-check: does what Baker imported from a UFDR match the package's own report.xml?
+"""UFDR self-check: does what Mabillon imported from a UFDR match the package's own report.xml?
 
-Baker's UFDR reader (core/ingest/ufdr.py) was built from public descriptions of the format and
+Mabillon's UFDR reader (core/ingest/ufdr.py) was built from public descriptions of the format and
 has not yet been compared with a real package. This check is what an expert runs, offline, on
 their first real UFDR. It:
 
 1. reads report.xml a second time with its own small reader, independent of the importer's
-   record mapping: every model, field and attribute is counted, and for each record Baker should
+   record mapping: every model, field and attribute is counted, and for each record Mabillon should
    import it notes the body (as a hash), time, sender, recipients, record state, attachments,
    call duration and contact entries;
-2. imports the package with Baker's importer into a throwaway in-memory database (nothing is
+2. imports the package with Mabillon's importer into a throwaway in-memory database (nothing is
    written to a case, nothing leaves the computer);
 3. compares the two record by record, by locator.
 
@@ -19,7 +19,7 @@ It writes two files:
   only. No message text, name, phone number, identifier, file name, hash or device detail.
   Every string written to them is either built by this module or passes `_safe_name`, and a
   test plants marker strings in every value of a package and checks none comes out.
-- `ufdr-check-private.md`: STAYS ON THE COMPUTER. A sample of records with what Baker read for
+- `ufdr-check-private.md`: STAYS ON THE COMPUTER. A sample of records with what Mabillon read for
   each, to open side by side in Cellebrite Reader, and blanks for the counts Reader shows. The
   expert copies the yes/no totals into the shareable file.
 
@@ -35,6 +35,7 @@ import re
 import sqlite3
 import zipfile
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -44,8 +45,9 @@ from xml.parsers import expat
 from core.db import apply_schema
 from core.encryption import open_input
 from core.ingest import ufdr
+from core.ingest.cellebrite_common import is_forwarded_label
 
-CHECK_VERSION = "0.1.0"
+CHECK_VERSION = "0.2.0"
 SHAREABLE_MD = "ufdr-check.md"
 SHAREABLE_JSON = "ufdr-check.json"
 PRIVATE_MD = "ufdr-check-private.md"
@@ -56,6 +58,9 @@ MAX_SCHEMA_FIELDS = 60  # field names listed per model kind
 
 PARTY_HOLDERS = {"from", "to", "parties", "participants"}  # fields holding parties, any type
 TOP_MESSAGE_TYPES = {"InstantMessage", "Message", "SMS", "MMS"}
+# "imported" counts copies matching a message Mabillon imported; "repeats" those matching none
+# that Mabillon lists for review instead
+RELATED_RECORD = "message copies under RelatedModels (matched to an imported message)"
 CHAT_MESSAGE_TYPES = ufdr.MESSAGE_TYPES
 BODY = ("body", "text", "message", "content")
 TS = ("timestamp", "datetime")
@@ -146,9 +151,20 @@ class _Frame:
     parties: dict[str, list[tuple[str | None, str | None, str, bool]]] = field(default_factory=dict)
     # (named, path, file_id): a file_id is resolved through taggedFiles once the read ends
     attachments: list[tuple[bool, str | None, str | None]] = field(default_factory=list)
+    # attachment names and MIME types as written
+    att_written: list[tuple[str, str | None]] = field(default_factory=list)
     entries: list[str] = field(default_factory=list)
     user_ids: list[str] = field(default_factory=list)  # UserID entries, for a UserAccount
     msg_seen: Counter[str] = field(default_factory=Counter)
+    related_seen: int = 0
+    # a copy under some record's RelatedModels, or inside one: never part of its holder, and
+    # never one of the package's own records (it is matched to them by content instead)
+    related: bool = False
+    is_message: bool = False  # a message record: top-level, in a chat, or a copy of one
+    embedded: bool = False  # a message embedded in a message (EmbeddedInstantMessage)
+    embedded_seen: int = 0
+    embedded_said: list[tuple[object, ...]] = field(default_factory=list)  # _said() of each
+    labels: list[str] = field(default_factory=list)  # Labels values, and MessageExtraData's
 
 
 @dataclass
@@ -182,6 +198,21 @@ class MessageRec:
     att_refs: list[tuple[bool, str | None, str | None]]
     attachments: int = 0  # set when the read ends (file ids need taggedFiles)
     attachment_files: int = 0  # attachments naming a path that is in the package
+    # identifiers only: Mabillon links a party to the phone's own account by identifier, never by
+    # a name that happens to read like one
+    sender_ident: str | None = None
+    recipient_idents: list[str] = field(default_factory=list)
+    att_written: tuple[tuple[str, str | None], ...] = ()  # sorted (name, MIME), as written
+    # stated senders, sorted recipients (as (identifier, name, says phone owner)), then other
+    # parties with role
+    parties_written: tuple[object, ...] = ()
+    # app, then Direction, Folder and Status, each as written
+    meta_written: tuple[str | None, ...] = ()
+    embedded_written: tuple[tuple[object, ...], ...] = ()  # _said() of each embedded message
+    forwarded: bool = False  # a Forwarded label, as the importer reads one
+    body_written: bool = False  # a body field is there, even an empty one
+    # carved, and decoding confidence stated and not High: the marks the importer flags
+    recovery: tuple[bool, bool] = (False, False)
 
 
 @dataclass
@@ -234,9 +265,22 @@ class Tally:
         self.contacts: dict[str, ContactRec] = {}
         self.user_accounts: dict[str, str | None] = {}  # locator -> expected identifier
         self.owner_ids: set[str] = set()  # UserAccount identifiers: the phone's own accounts
+        # a UserAccount naming the same app and identifier as an earlier one: Mabillon keeps one
+        # account for both, at the earlier locator
+        self.account_repeats: set[str] = set()
+        self._account_keys: set[tuple[str, str]] = set()
         self.ids: Counter[str] = Counter()  # model ids of messages and calls
         self.repeats: set[str] = set()  # locators whose model id an earlier record had
+        self.related_roots: Counter[str] = Counter()  # models under RelatedModels, by type
+        # copies of messages under RelatedModels (at a record's locator + /Related[n]): matched
+        # by content to the package's own messages, never counted as one of them
+        self.related_messages: dict[str, MessageRec] = {}
+        # messages embedded in a record's message (at its locator + /Embedded[n]), by content
+        self.embedded: dict[str, MessageRec] = {}
+        # what each chat (or copied chat) says around its messages: app, id, name, participants
+        self.chat_context: dict[str, tuple[object, ...]] = {}
         self._capture: tuple[_Frame, str, list[str]] | None = None
+        self._label: tuple[_Frame, list[str]] | None = None  # a Labels value being read
         self._item: list[str] | None = None
         self._item_name = ""
 
@@ -258,21 +302,45 @@ class Tally:
                 mtype = mtype or self.attr_stack[-2].get("type", "")
                 self.top_counts[mtype] += 1
                 f = _Frame(mtype, dict(attrs), depth, mtype, f"{mtype}[{self.top_counts[mtype]}]",
-                           True)  # fmt: skip
+                           True, is_message=mtype in TOP_MESSAGE_TYPES)  # fmt: skip
+            elif frame is not None and parent == "RelatedModels":
+                # a copy of another record, kept by the package beside the record holding it
+                frame.related_seen += 1
+                loc = f"{frame.locator or frame.key}/Related[{frame.related_seen}]"
+                key = f"{frame.type}.RelatedModels>{mtype}"
+                f = _Frame(mtype, dict(attrs), depth, key, loc, False, related=True)
+                # a copy of a message is a message, whatever its type is named, as its holder
+                f.is_message = mtype in TOP_MESSAGE_TYPES or (
+                    (frame.is_message or frame.embedded) and mtype != "Chat"
+                )
+                self.related_roots[mtype] += 1
             elif frame is not None and parent in ("modelField", "multiModelField"):
                 fname = self.attr_stack[-2].get("name", "")
                 loc = None
                 if (
-                    frame.top
+                    (frame.top or (frame.related and frame.key.endswith("RelatedModels>Chat")))
                     and frame.type == "Chat"
-                    and len(self.frames) == 1
+                    and frame is self.frames[-1]
                     and parent == "multiModelField"
+                    and depth == frame.depth + 2
                     and (fname.lower() == "messages" or mtype in CHAT_MESSAGE_TYPES)
                 ):
                     frame.msg_seen[fname] += 1
                     loc = f"{frame.locator}/{fname}[{frame.msg_seen[fname]}]"
+                embedded = (
+                    (frame.is_message or frame.embedded)
+                    and frame is self.frames[-1]
+                    and depth == frame.depth + 2
+                    and fname.lower() == "embeddedinstantmessage"
+                )
+                if embedded:
+                    frame.embedded_seen += 1
+                    if frame.locator is not None:
+                        loc = f"{frame.locator}{ufdr.EMBEDDED_STEP}{frame.embedded_seen}]"
                 key = f"{frame.type}.{fname}>{mtype}"
-                f = _Frame(mtype, dict(attrs), depth, key, loc, False)
+                f = _Frame(mtype, dict(attrs), depth, key, loc, False, related=frame.related,
+                           is_message=loc is not None and not embedded,
+                           embedded=embedded)  # fmt: skip
             else:
                 return
             kind = self.kinds.setdefault(f.key, _Kind())
@@ -304,6 +372,15 @@ class Tally:
             if fname.lower() not in frame.fields and self._capture is None:
                 self._capture = (frame, fname, [])
             return
+        if (
+            frame is not None
+            and local == "value"
+            and parent == "multiField"
+            and depth == frame.depth + 2
+            and self.attr_stack[-2].get("name", "").lower() == "labels"
+        ):
+            self._label = (frame, [])
+            return
         if frame is not None:
             return
 
@@ -324,6 +401,10 @@ class Tally:
     def end(self, name: str) -> None:
         local = self.path.pop()
         self.attr_stack.pop()
+        if self._label is not None and local == "value":
+            self._label[0].labels.append("".join(self._label[1]))
+            self._label = None
+            return
         if self._capture is not None and local == "value":
             frame, fname, parts = self._capture
             if len(self.path) == frame.depth + 1:
@@ -352,7 +433,9 @@ class Tally:
             self._close(f, holder.lower())
 
     def chars(self, data: str) -> None:
-        if self._capture is not None:
+        if self._label is not None:
+            self._label[1].append(data)
+        elif self._capture is not None:
             self._capture[2].append(data)
         elif self._item is not None:
             self._item.append(data)
@@ -375,6 +458,14 @@ class Tally:
             name = _first(f.fields, ATT_NAME)
             path = _first(f.fields, ATT_PATH)
             parent.attachments.append((bool(name) or bool(path), path, f.attrs.get("file_id")))
+            # name and MIME type as written: the importer stores both for the record
+            written = _first_raw(f.fields, ATT_NAME) or ""
+            parent.att_written.append((written, _first_raw(f.fields, ufdr.ATT_MIME_FIELDS)))
+            return
+        if parent is not None and holder == "messageextradata":
+            # labels the importer reads to mark its message forwarded
+            parent.labels.append(_text(f.fields.get("label")) or "")
+            parent.labels.extend(f.labels)
             return
         if parent is not None and holder == "entries":
             if ufdr.PICTURE_TYPE_RE.search(f.type):  # an image link, not an identifier
@@ -393,7 +484,26 @@ class Tally:
                 owner = (_text(f.fields.get("isphoneowner")) or "").lower() in _TRUE
                 parent.parties.setdefault(holder, []).append((ident, name, role, owner))
             return
+        if f.embedded:
+            # part of what its message says; a record of its own only to its copies
+            rec = self._message_rec(f)
+            if parent is not None:
+                parent.embedded_said.append(_said(rec))
+            if f.locator is not None:
+                self.embedded[f.locator] = rec
+            return
         if f.locator is None:
+            return
+        if f.type == "Chat":
+            self.chat_context[f.locator] = (
+                _first_raw(f.fields, ("source",)),
+                _first_raw(f.fields, ufdr.CHAT_ID_FIELDS),
+                _first_raw(f.fields, ufdr.CHAT_NAME_FIELDS),
+                tuple((p[0], p[1], p[3]) for p in f.parties.get("participants", [])),
+            )
+        if f.related:
+            if f.is_message:
+                self.related_messages[f.locator] = self._message_rec(f)
             return
         if f.top and f.type == "UserAccount":
             u = _text(f.fields.get("username"))
@@ -401,6 +511,10 @@ class Tally:
             if ident is not None:  # one with no identifier is skipped, and listed
                 self.user_accounts[f.locator] = ident
                 self.owner_ids.add(ident)  # the importer marks this identifier as the owner's
+                key = (ufdr._slug(_text(f.fields.get("source")) or "unknown"), ident)
+                if key in self._account_keys:
+                    self.account_repeats.add(f.locator)
+                self._account_keys.add(key)
         elif (f.top and f.type in TOP_MESSAGE_TYPES) or not f.top:
             self._message(f)
         elif f.type == "Call":
@@ -421,17 +535,23 @@ class Tally:
         if f.locator is None:
             return
         self._repeat(f)
+        self.messages[f.locator] = self._message_rec(f)
+
+    def _message_rec(self, f: _Frame) -> MessageRec:
         senders = list(f.parties.get("from", []))
         recips = list(f.parties.get("to", []))
+        others = []
         for p in f.parties.get("parties", []) + f.parties.get("participants", []):
             if p[2] == "from":
                 senders.append(p)
             elif p[2] in ("to", "cc", "bcc"):
                 recips.append(p)
+            else:
+                others.append(p)
         body = _first_raw(f.fields, BODY)
         s = senders[0] if senders else None
-        self.messages[f.locator] = MessageRec(
-            locator=f.locator,
+        return MessageRec(
+            locator=f.locator or "",
             type=f.type,
             model_id=f.attrs.get("id"),
             body=_digest(body),
@@ -441,11 +561,27 @@ class Tally:
             sender_owner=bool(s and s[3]),
             recipient_owner=any(p[3] for p in recips),
             recipients=[p[0] or p[1] or "" for p in recips],
+            sender_ident=s[0] if s else None,
+            recipient_idents=[p[0] for p in recips if p[0]],
             direction=_text(f.fields.get("direction")),
             folder=_text(f.fields.get("folder")),
             status=_text(f.fields.get("status")),
             state=_state(f),
             att_refs=list(f.attachments),
+            att_written=tuple(sorted(f.att_written, key=repr)),
+            body_written=body is not None,
+            parties_written=(
+                tuple((p[0], p[1], p[3]) for p in senders),
+                tuple(sorted(((p[0], p[1], p[3]) for p in recips), key=repr)),
+                # in the order written: the mapper takes the first one not the phone's owner
+                tuple((p[2], (p[0], p[1], p[3])) for p in others),
+            ),
+            embedded_written=tuple(f.embedded_said),
+            forwarded=any(is_forwarded_label(v) for v in f.labels),
+            recovery=ufdr._recovery(f.attrs, _first(f.fields, ("carved", "iscarved"))),
+            meta_written=tuple(
+                _first_raw(f.fields, (n,)) for n in ("source", "direction", "folder", "status")
+            ),
         )
 
     def _finish(self) -> None:
@@ -503,11 +639,14 @@ class Tally:
 
 
 def _state(f: _Frame) -> str | None:
-    """The record state as the package writes it: an attribute, else a field."""
-    for a in ("deleted_state", "deleted"):
-        if a in f.attrs:
-            return f.attrs[a]
-    return _first(f.fields, ("deleted_state", "deletedstate", "recordstatus"))
+    """The record state as the package writes it: an attribute, else a field, in the
+    importer's order (a blank deleted_state falls through to deleted)."""
+    state = f.attrs.get("deleted_state") or f.attrs.get("deleted")
+    return (
+        state
+        if state is not None
+        else _first(f.fields, ("deleted_state", "deletedstate", "recordstatus"))
+    )
 
 
 def _text(v: str | None) -> str | None:
@@ -643,8 +782,8 @@ class Count:
     in_report: int
     imported: int
     expected_not_imported: int  # same model id as an earlier record (imported once)
-    missing: list[str]  # locators in report.xml Baker has no record for
-    extra: list[str]  # Baker records with no model at that locator
+    missing: list[str]  # locators in report.xml Mabillon has no record for
+    extra: list[str]  # Mabillon records with no model at that locator
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -672,6 +811,84 @@ def _counts(record: str, xml: dict, db: set[str], repeats: set[str]) -> Count:
     missing = sorted(want - db - rep, key=_loc_key)
     extra = sorted(db - want, key=_loc_key)
     return Count(record, len(want), len(db), len(rep - db), missing, extra)
+
+
+def _listed_copies(conn: sqlite3.Connection, src: str) -> tuple[set[str], int]:
+    """The copies Mabillon's import listed for review as matching no record: the locators its
+    coverage record lists (capped, any type) and how many message copies there were."""
+    row = conn.execute(
+        "SELECT payload_json FROM source_coverage WHERE source_id = ?", (src,)
+    ).fetchone()
+    if row is None:
+        return set(), 0
+    p = json.loads(row[0])
+    listed = {
+        loc
+        for tb in p.get("tables", []) or []
+        if isinstance(tb, dict)
+        for loc in (tb.get("flagged_locators") or {}).get("related_copy_unmatched", [])
+    }
+    counts = p.get("counts") or {}
+    return listed, int(counts.get("related_message_copies_matching_no_record", 0))
+
+
+def _said(x: MessageRec) -> tuple[object, ...]:
+    """What a message says, field by field as written (see compare)."""
+    return (
+        x.type,
+        x.body,
+        x.body_written,
+        x.ts_raw,
+        x.meta_written,
+        x.parties_written,
+        x.state,
+        x.att_written,
+        x.forwarded,
+        x.embedded_written,
+        x.recovery,
+    )
+
+
+def _unmatched_copies(
+    t: Tally, db_msgs: set[str], said: Callable[[MessageRec], tuple[object, ...]]
+) -> list[str]:
+    """Locators of message copies that do not match their holder (see compare)."""
+    out: list[str] = []
+    chats: dict[str, list[str]] = {}  # copied chat -> its messages' locators, in order
+    for loc, x in t.related_messages.items():
+        head, _, last = loc.rpartition("/")
+        if last.startswith("Related["):  # a copy of the message (or copy) holding it
+            # the holder: a message Mabillon imported, or one it imported once under an earlier id
+            if head in db_msgs or head in t.repeats:
+                twin = t.messages.get(head)
+            elif head in t.embedded:  # a message embedded in another
+                twin = t.embedded[head]
+            else:
+                twin = t.related_messages.get(head)
+            if twin is None or said(twin) != said(x):
+                out.append(loc)
+        else:  # a message of a copied chat
+            chats.setdefault(head, []).append(loc)
+    for chat, locs in chats.items():
+        holder = chat.rpartition("/Related[")[0]
+        if "/Related[" in holder:  # a chat copied inside a copied chat: matches that copy
+            own = [x for loc, x in t.related_messages.items() if loc.rpartition("/")[0] == holder]
+        else:
+            # the holder chat's messages Mabillon imported, and those it imported once under an
+            # earlier id (the importer keys those too)
+            own = [x for loc, x in t.messages.items()
+                   if (loc in db_msgs or loc in t.repeats)
+                   and loc.rpartition("/")[0] == holder]  # fmt: skip
+        # the two chats must also say the same around their messages
+        mine = t.chat_context.get(holder)
+        left = Counter((mine, said(x)) for x in own)
+        for loc in locs:
+            k = (t.chat_context.get(chat), said(t.related_messages[loc]))
+            if left[k] > 0:
+                left[k] -= 1
+            else:
+                out.append(loc)
+    return sorted(out, key=_loc_key)
 
 
 def _loc_key(loc: str) -> tuple[object, ...]:
@@ -715,7 +932,7 @@ def compare(t: Tally, conn: sqlite3.Connection, src: str) -> tuple[list[Count], 
         "messages", "time_utc", "UTC time, for ISO 8601 times with an offset (read separately)"
     )
     sender = check("messages", "sender", "stated sender's identifier (else name)")
-    to = check("messages", "recipients", "every stated recipient is among Baker's recipients")
+    to = check("messages", "recipients", "every stated recipient is among Mabillon's recipients")
     direction = check(
         "messages",
         "direction",
@@ -754,10 +971,10 @@ def compare(t: Tally, conn: sqlite3.Connection, src: str) -> tuple[list[Count], 
         stated = message_direction(x)
         if stated is not None:
             direction.see(dirn == stated, loc)
-        elif x.sender is not None and (x.sender_owner or x.sender in t.owner_ids):
+        elif x.sender is not None and (x.sender_owner or x.sender_ident in t.owner_ids):
             direction.see(dirn == "outgoing", loc)
         elif x.sender is not None and (
-            x.recipient_owner or any(r in t.owner_ids for r in x.recipients)
+            x.recipient_owner or any(r in t.owner_ids for r in x.recipient_idents)
         ):
             direction.see(dirn == "incoming", loc)
         else:
@@ -823,7 +1040,7 @@ def compare(t: Tally, conn: sqlite3.Connection, src: str) -> tuple[list[Count], 
             c_state.not_checked += 1
 
     # contacts --------------------------------------------------------------
-    k_entries = check("contacts", "entries", "one Baker row per distinct entry value")
+    k_entries = check("contacts", "entries", "one Mabillon row per distinct entry value")
     k_name = check("contacts", "name", "contact name")
     db_contacts: set[str] = set()
     names: dict[str, list[str | None]] = {}
@@ -855,8 +1072,30 @@ def compare(t: Tally, conn: sqlite3.Connection, src: str) -> tuple[list[Count], 
         _counts("messages", t.messages, db_msgs, t.repeats),
         _counts("calls", t.calls, db_calls, t.repeats),
         _counts("contacts", t.contacts, db_contacts, set()),
-        _counts("phone's own accounts (UserAccount)", t.user_accounts, accounts, set()),
+        _counts("phone's own accounts (UserAccount)", t.user_accounts, accounts, t.account_repeats),
     ]
+
+    # a copy under RelatedModels is a copy of the record holding it: a copied message must say
+    # what its holder says (text, time, sender, recipients, deleted state, and attachments by
+    # count and name as written; a copy's file path or id is its own source's reference), and
+    # the messages of a copied chat match the holder chat's imported messages one to one. One
+    # that does not match must be one Mabillon lists for review (related_copy_unmatched);
+    # otherwise it is missing
+    unmatched = _unmatched_copies(t, db_msgs, _said)
+    listed, n_listed = _listed_copies(conn, src)
+    listed &= set(t.related_messages)  # message copies only
+    # a copy Mabillon lists that matches here is a disagreement too (extra)
+    wrong = sorted(listed - set(unmatched), key=_loc_key)
+    rest = [loc for loc in unmatched if loc not in listed]
+    # the coverage record lists the first locators only; past that list (and only then), its
+    # count stands in for the rest
+    capped = len(listed) < n_listed
+    missing = rest[max(0, n_listed - len(listed & set(unmatched))) :] if capped else rest
+    n_rel = len(t.related_messages)
+    counts.append(
+        Count(RELATED_RECORD, n_rel, n_rel - len(unmatched), len(unmatched) - len(missing),
+              missing, wrong)
+    )  # fmt: skip
     xml_atts = sum(m.attachments for m in t.messages.values() if m.locator in db_msgs)
     (db_atts,) = conn.execute(
         "SELECT COUNT(*) FROM attachments WHERE source_id = ?", (src,)
@@ -917,7 +1156,7 @@ def _refusal(msg: str) -> str:
     for needle, text in _REFUSALS:
         if needle in msg:
             return text
-    return "Baker's importer refused the package (the reason is in the private file)"
+    return "Mabillon's importer refused the package (the reason is in the private file)"
 
 
 def _shareable(
@@ -989,6 +1228,9 @@ def _shareable(
             "tagged_files": t.tagged_files,
         },  # fmt: skip
         "records": [c.as_dict() for c in counts],
+        "copies_under_related_models": {
+            _safe_name(k): v for k, v in sorted(t.related_roots.items())
+        },
         "checks": [c.as_dict() for c in checks],
         "value_shapes": {
             _safe_label(k): dict(v.most_common(MAX_SHAPES)) for k, v in sorted(t.shapes.items())
@@ -1053,7 +1295,7 @@ def _safe_field(label: str) -> str:
 
 
 def _sample(t: Tally, conn: sqlite3.Connection, src: str, n: int) -> list[dict[str, object]]:
-    """Up to n records of each kind, picked with a fixed seed, with what Baker stored."""
+    """Up to n records of each kind, picked with a fixed seed, with what Mabillon stored."""
     rng = random.Random(20261014)  # noqa: S311 - a reproducible sample, not a secret
     out: list[dict[str, object]] = []
     ids = [r[0] for r in conn.execute(
@@ -1163,7 +1405,7 @@ def _cell(v: object) -> str:
 def shareable_markdown(d: dict) -> str:
     pkg = d["package"]
     lines = [
-        "# Baker UFDR self-check",
+        "# Mabillon UFDR self-check",
         "",
         "**Shareable.** This file holds counts, field names, record positions and value shapes "
         "only: no message text, names, numbers, file names or device details. Read it before "
@@ -1172,23 +1414,38 @@ def shareable_markdown(d: dict) -> str:
         f"- Check {d['baker_ufdr_check']}, importer {d['importer']} "
         f"(format support: {d['format_support']}), run {d['checked_at_utc']}",
         f"- Differences found: **{d['differences']}**"
-        + ("" if d["imported"] else f" (Baker refused the package: {d['import_refused_because']})"),
+        + (
+            ""
+            if d["imported"]
+            else f" (Mabillon refused the package: {d['import_refused_because']})"
+        ),
         f"- Package: {pkg['files_besides_report']} files besides report.xml, report.xml "
         f"{pkg['report_xml_bytes']} bytes, report version {pkg['report_version']}, "
         f"Physical Analyzer {pkg['physical_analyzer_version']}, "
-        f"namespace {'known' if pkg['namespace_known'] else 'NOT the one Baker expects'}",
+        f"namespace {'known' if pkg['namespace_known'] else 'NOT the one Mabillon expects'}",
         f"- Extractions: {_inline(pkg['extraction_types'])}; partial: "
         f"{pkg['partial_extractions']}; tagged files: {pkg['tagged_files']}",
         "",
-        "## Records: report.xml against Baker",
+        "## Records: report.xml against Mabillon",
         "",
-        "| Record | In report.xml | Imported by Baker | Repeats imported once | Missing | Extra |",
+        "| Record | In report.xml | Imported by Mabillon | Repeats imported once | Missing "
+        "| Extra |",
         "|---|---|---|---|---|---|",
     ]
     for r in d["records"]:
         lines.append(
             f"| {r['record']} | {r['in_report_xml']} | {r['imported_by_baker']} | "
             f"{r['repeats_imported_once']} | {r['missing']} | {r['extra']} |"
+        )
+    if any(r["record"] == RELATED_RECORD for r in d["records"]):
+        lines.append(
+            '\nFor message copies under RelatedModels, "Repeats imported once" counts copies '
+            "that match no message and that Mabillon lists for review instead of importing."
+        )
+    if d.get("copies_under_related_models"):
+        lines.append(
+            "\nCopies under RelatedModels (records the package holds again inside another "
+            "record; not counted as its own records): " + _inline(d["copies_under_related_models"])
         )
     for r in d["records"]:
         for key, label in (("first_missing_locators", "missing"), ("first_extra_locators",
@@ -1223,7 +1480,7 @@ def shareable_markdown(d: dict) -> str:
         "What differed, in your words (no case content):",
         "",
         "",
-        "## What Baker did not read",
+        "## What Mabillon did not read",
         "",
     ]
     cov = d["baker_coverage"]
@@ -1262,7 +1519,7 @@ def _inline(d: dict) -> str:
 
 def private_markdown(result: Result) -> str:
     lines = [
-        "# Baker UFDR self-check: records to compare in Cellebrite Reader",
+        "# Mabillon UFDR self-check: records to compare in Cellebrite Reader",
         "",
         "**PRIVATE. This file holds case content. Keep it on this computer; do not send it.**",
         "",
@@ -1277,7 +1534,7 @@ def private_markdown(result: Result) -> str:
         "",
     ]
     if result.import_error:
-        lines += [f"Baker refused the package: {result.import_error}", ""]
+        lines += [f"Mabillon refused the package: {result.import_error}", ""]
     groups: dict[str, list[dict[str, object]]] = {}
     for rec in result.sample:
         groups.setdefault(str(rec["kind"]), []).append(rec)
@@ -1290,5 +1547,5 @@ def private_markdown(result: Result) -> str:
             lines.append("| " + " | ".join(_cell(rec[k]) for k in keys) + " |  |  |")
         lines.append("")
     if not groups:
-        lines.append("Baker imported no records to sample.")
+        lines.append("Mabillon imported no records to sample.")
     return "\n".join(lines) + "\n"

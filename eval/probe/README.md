@@ -222,3 +222,39 @@ misses contradicts precision, which v1.0 meets, so it would make more claims con
 a wrong model label (rule 2). No-think is not adopted (rule 3). The cap stays at 1,024; the
 longest answer was 259 tokens (rule 4). The 6.2 h for flash with v1.0 is an estimate (A's
 audit time scaled by B's probe speed-up), not a measured run.
+
+## Stance v1.3 for the local 14B (rules 12 and 23)
+The 14B with its own prompt (stance v1.1) calls told frames and undated denials "contradicts"
+(8 of its 19 contradicts on the signed set, Mac run 2026-10-19). Two eval-only candidates teach
+stance guide v0.3 rules 12 and 23: `stance_v1_3a_draft.md` (two checks before answering
+contradicts) and `stance_v1_3b_draft.md` (the checks plus four worked examples). The plan and
+its criteria, fixed before any held-out item or call, are in `v13/PREREGISTERED.md`.
+
+    bash eval/probe/mac_v13.sh      # Mac, about 2.5 to 4.5 hours, $0; prints RESULTS.md
+
+It scores v1.1 and the candidates on the signed set, a fresh set (`v13/heldout.jsonl`), and the
+two 2026-10-15 sets (`v13/told_frame_24.jsonl`, `v13/rules_12_23_26.jsonl`); v1.3b runs only if
+v1.3a fails. `python -m eval.probe.v13.score report <folder>` re-scores a finished folder. The
+v1.1 signed-set baseline is `results/2026-10-19-qwen3-14b-stance-v1-1.jsonl` (ids and labels,
+the model's and each prompt's SHA-256), reused only for the same model file and prompts.
+Result (Arsh's Mac, 2026-10-22, `v13/RESULTS-2026-10-22-mac.md`): both candidates fail, so
+the product keeps v1.1. The 14B called 41 of the 42 told-frame and undated-denial items on the
+new sets "contradicts" under every prompt. `MODEL_NAME=<entry> bash eval/probe/mac_v13.sh`
+runs the same test on another local model.
+
+## Repeat check: same question, same answer? (2026-10-20)
+
+`bash eval/probe/mac_repeat.sh` (or `python -m eval.probe.repeat_check --models ...`) asks the
+local stance model the same things again and compares the answers byte for byte and by label
+(stance and quote): A, the signed probe set twice with the model loaded once; B, once more in a
+fresh process; C, the first 20 items with no GPU offload; D, two case01 audits on six claims,
+each on a fresh database. `--model NAME` checks any models-file entry. `--dry-run` prints the
+calls per stage and a time estimate (about 3.7 hours on the 14B; unverified). A failed
+generation or an answer that is not a stance object counts as failed, never as a match, and the
+script exits nonzero if any stage fails. The summary records the model file's digest as the run
+computed it and marks a commit with uncommitted changes.
+
+What is known before it runs: on the 2026-10-19 Mac run (llama-cpp-python 0.3.36, flash runtime,
+model loaded once, stance prompt v1.2), 104 of 105 repeated probe answers were identical; on
+P104 the rationale's wording changed while the stance and quote held. Prompt v1.1 (the 14B's own)
+has not been asked twice. Nothing may say local labels regenerate exactly until this passes.

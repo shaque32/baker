@@ -4,7 +4,7 @@
   never in that conversation). This follows up #103. On a case with embedded copies, a handle
   that was unresolved (inconclusive) can now resolve to one account, so the checks that resolve
   handles record new versions: identity, sender, timing, weekday and absence 1.0.1, count 1.0.2.
-- Where: PR #107
+- Where: main (#107, merged 2026-10-20)
 - Verified: `tests/checks/test_unit.py` (the copy's recipient is left out; versions recorded);
   `make check` on Linux, 2026-10-20: case01 1.00 with 0 false supported, hostile PASS, case02
   aggregate 0.90 with 0 false supported. case01 and case02 hold no embedded copies.

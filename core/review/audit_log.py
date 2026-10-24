@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import sqlite3
+from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
 
@@ -47,15 +48,15 @@ def append(
 ANCHORS_SUFFIX = ".anchors.jsonl"  # added to the database's full name: case.db.anchors.jsonl
 
 BLOCKED = (
-    "the case database was changed outside Baker, so this case cannot be opened for review or "
+    "the case database was changed outside Mabillon, so this case cannot be opened for review or "
     "reported. Nothing was changed. Restore the case from a backup, or make a new case from the "
-    'original files (docs/review-screen.md, "When a case is blocked"). The command baker '
+    'original files (docs/review-screen.md, "When a case is blocked"). The command mabillon '
     "verify-log still reads it."
 )
 
 
 class ChainBroken(Exception):
-    """A case whose audit log no longer verifies, or no longer reaches an entry Baker recorded
+    """A case whose audit log no longer verifies, or no longer reaches an entry Mabillon recorded
     outside the database. Opening or reporting it fails closed."""
 
     def __init__(self, seq: int, problem: str | None = None) -> None:
@@ -65,30 +66,52 @@ class ChainBroken(Exception):
 
 
 class AnchorUnwritable(ChainBroken):
-    """Baker cannot record the anchor beside the database (read-only media, permissions). The
+    """Mabillon cannot record the anchor beside the database (read-only media, permissions). The
     case is not opened or reported, because the next check could not see a cut from here on."""
 
     def __init__(self, anchors: Path, err: OSError) -> None:
         self.seq = 0
-        self.problem = f"Baker cannot write {anchors.name} beside the case database ({err})"
+        self.problem = f"Mabillon cannot write {anchors.name} beside the case database ({err})"
         Exception.__init__(
             self,
-            f"{self.problem}. Nothing was changed. Copy the case folder somewhere Baker can "
+            f"{self.problem}. Nothing was changed. Copy the case folder somewhere Mabillon can "
             "write, then open the copy.",
         )
 
 
-def first_break(conn: sqlite3.Connection) -> int | None:
-    """The seq of the first entry that does not match the chain, or None when it verifies."""
+def first_break(
+    conn: sqlite3.Connection, withheld: Mapping[int, Mapping[str, str]] | None = None
+) -> int | None:
+    """The seq of the first entry that does not match the chain, or None when it verifies.
+
+    `withheld`: entries a scoped reproducibility bundle left out (core/bundle/export.py), by
+    seq, each with its prev_hash and hash. Without its payload a withheld entry's own hash
+    cannot be recomputed, so it is taken as given; the entries after it still have to chain
+    from it, up to the last hash the report prints."""
+    withheld = withheld or {}
     prev = ""
     rows = conn.execute(
         "SELECT seq, at_utc, actor, action, payload_json, prev_hash, hash FROM audit_log"
         " ORDER BY seq"
     )
-    for seq, at, actor, action, payload_json, prev_hash, h in rows:
+    entries: list[tuple] = [
+        (seq, None, None, None, None, w.get("prev_hash"), w.get("hash"), True)
+        for seq, w in withheld.items()
+    ]
+    entries += [(*r, False) for r in rows]
+    entries.sort(key=lambda r: (r[0], r[7]))
+    expect = 1
+    for seq, at, actor, action, payload_json, prev_hash, h, stub in entries:
+        if withheld and seq != expect:  # a seq both withheld and present, or one missing
+            return seq if seq > expect else expect - 1
+        expect = seq + 1
         try:
-            ok = prev_hash == prev and entry_hash(prev_hash, at, actor, action, payload_json) == h
-        except (TypeError, ValueError):  # a non-text value stored by an edit outside Baker
+            ok = prev_hash == prev and (
+                isinstance(h, str)
+                if stub
+                else entry_hash(prev_hash, at, actor, action, payload_json) == h
+            )
+        except (TypeError, ValueError):  # a non-text value stored by an edit outside Mabillon
             ok = False
         if not ok:
             return seq
@@ -100,9 +123,9 @@ def decision_problem(conn: sqlite3.Connection) -> tuple[int, str] | None:
     """(seq, why) for the first expert evidence decision that the log and the stored reviews no
     longer agree on, or None. Each evidence.decide entry must have its expert review row, with
     the status (and, from #86 on, the reason) it logged, and each expert review row must have
-    its entry. So a row edited, added or removed outside Baker is caught. Entries logged before
+    its entry. So a row edited, added or removed outside Mabillon is caught. Entries logged before
     #86 carry no reason, so their reasons are not compared. One statement reads both tables,
-    so a decision committed meanwhile by another Baker process is seen whole or not at all."""
+    so a decision committed meanwhile by another Mabillon process is seen whole or not at all."""
     logged: dict[str, tuple[int, str | None, str | None]] = {}
     stored: dict[str, tuple[str, str]] = {}
     rows = conn.execute(
@@ -127,7 +150,7 @@ def decision_problem(conn: sqlite3.Connection) -> tuple[int, str] | None:
         if review not in stored:
             return seq, (
                 f"evidence decision {seq} of the audit log has no matching expert review in the "
-                "case database, so it was removed outside Baker"
+                "case database, so it was removed outside Mabillon"
             )
         reason, status = stored[review]
         if (why is not None and why != reason) or (was is not None and was != status):
@@ -139,13 +162,15 @@ def decision_problem(conn: sqlite3.Connection) -> tuple[int, str] | None:
         if review not in logged:
             return 0, (
                 f"the expert review {review} is in the case database but not in the audit log, "
-                "so it was added outside Baker"
+                "so it was added outside Mabillon"
             )
     return None
 
 
-def verify_chain(conn: sqlite3.Connection) -> bool:
-    return first_break(conn) is None
+def verify_chain(
+    conn: sqlite3.Connection, withheld: Mapping[int, Mapping[str, str]] | None = None
+) -> bool:
+    return first_break(conn, withheld) is None
 
 
 def anchors_path(db: Path) -> Path:
@@ -198,13 +223,13 @@ def _require_intact(conn: sqlite3.Connection, anchors: Path | None) -> None:
         if row is None:
             raise ChainBroken(
                 seq,
-                f"the audit log has no entry {seq}, which Baker recorded outside the database, "
+                f"the audit log has no entry {seq}, which Mabillon recorded outside the database, "
                 "so entries were removed from the end of the log",
             )
         if row[0] != want:
             raise ChainBroken(
                 seq,
-                f"entry {seq} of the audit log does not match the hash Baker recorded outside "
+                f"entry {seq} of the audit log does not match the hash Mabillon recorded outside "
                 "the database",
             )
 

@@ -1,18 +1,18 @@
-# Baker: methods note
+# Mabillon: methods note
 
-How Baker reaches each finding, for an examiner who uses it and may need to describe it. This note
-describes Baker as it is on `main` (verdict rules 0.3.0, as of 2026-10-19). Every report names the
+How Mabillon reaches each finding, for an examiner who uses it and may need to describe it. This note
+describes Mabillon as it is on `main` (verdict rules 0.3.0, as of 2026-10-19). Every report names the
 rule version, quote-check version, prompt versions and model file that produced it; read this note against those.
 
-Baker is a tool that helps an examiner check claims. It does not replace the examiner's own review
-of the source data, and nothing in a Baker report is an opinion. Any opinion is the examiner's.
+Mabillon is a tool that helps an examiner check claims. It does not replace the examiner's own review
+of the source data, and nothing in a Mabillon report is an opinion. Any opinion is the examiner's.
 
-This note contains no accuracy figures. Baker has been measured only on synthetic data, and no
+This note contains no accuracy figures. Mabillon has been measured only on synthetic data, and no
 figure will be published until it has been measured on real extractions.
 
-## 1. What Baker does
+## 1. What Mabillon does
 
-Baker reads a government document (an affidavit or a report) and the phone extraction reports it
+Mabillon reads a government document (an affidavit or a report) and the phone extraction reports it
 relies on. It splits the document into individual factual claims and tests each one against the
 extraction data. Each claim the audit finishes ends **Supported**, **Contradicted** or **Unproven**,
 with the records it rests on and the reasons, in words. A claim a stopped or crashed run did not
@@ -21,7 +21,7 @@ finish has no verdict and shows "Labeling incomplete" until the run resumes.
 ## 2. The flow: claim, assumption, check, rules
 
 **Import.** Each input file (Cellebrite Excel, PDF or UFDR; Magnet AXIOM XML or Excel; the
-government PDF) is opened read-only and SHA-256 hashed. Every record Baker stores carries a
+government PDF) is opened read-only and SHA-256 hashed. Every record Mabillon stores carries a
 `source_ref` pointing to where it came from in that file (a sheet and row, a page and table cell,
 or an XML locator). Times are stored in UTC with the original offset and the raw value as printed.
 Each phone-report import records its **coverage**: whether the source is a full extraction or an
@@ -47,14 +47,14 @@ records what it examined. No model is involved.
 
 **Evidence.** A claim the checks already settle (a failed check on a core assumption) skips this
 step: no records are retrieved or labeled for it, and its verdict rests on the recorded checks. For
-each assumption of every other claim, Baker retrieves candidate records with structured filters and
+each assumption of every other claim, Mabillon retrieves candidate records with structured filters and
 keyword ranking, with the surrounding messages and the other phone's copy where one exists. A
 language model labels each (assumption, record) pair: supports, contradicts, complicates or
 irrelevant, with a quote and a short rationale. **The quote must appear character for character in
 the record's original text** (no normalization, whole words only) and take in at least one letter or digit of the
 record's own fields, or the label is discarded and
 never stored. Translations are never citable. Contacts, calls and attachments have no message
-body, so Baker cites a fixed rendering of their stored fields instead (a contact's name and number;
+body, so Mabillon cites a fixed rendering of their stored fields instead (a contact's name and number;
 a call's direction, app, parties and duration, with its time shown beside it but not citable; an attachment's file name). A quote from
 such a record cites only those fields, each of which keeps its `source_ref`.
 
@@ -90,6 +90,15 @@ note. The reason typed for an evidence decision is logged with it, and a stored 
 that no longer matches its log entry blocks the case (decisions logged before #86 carry no reason
 in the log, so only their status and presence are checked).
 
+The same log records each page the examiner opens on the review screen (a page view: time, name,
+page, the claim or evidence item, and the evidence items the page listed), so the examiner can
+show which claims and records they opened, when, and for how long before their next step. Time
+on a page is an upper bound on attention, not proof of reading: the screen runs no scripts and
+cannot tell what was read, and a stretch over 30 minutes may include time away. Page views
+change no verdict. The report shows the per-claim activity table only when the examiner
+includes it for the case (off by default); that choice is itself an audit-log entry, and the
+report says when the table is left out.
+
 The examiner can also override any verdict directly, including to Supported. An override bypasses
 the rule prerequisites above: it needs a note, and the screen and report show it as the examiner's
 own decision with that note, not as a rule outcome.
@@ -98,15 +107,15 @@ own decision with that note, not as a rule outcome.
 
 | Verdict | Means | Does not mean |
 |---|---|---|
-| **Supported** | From the rules: every core assumption is covered by a passed check or by evidence the examiner accepted, and nothing open complicates or contradicts it | That the claim is true beyond the data imported, that the data is complete, or that Baker formed an opinion. An examiner override to Supported is the examiner's decision and is labeled as one |
+| **Supported** | From the rules: every core assumption is covered by a passed check or by evidence the examiner accepted, and nothing open complicates or contradicts it | That the claim is true beyond the data imported, that the data is complete, or that Mabillon formed an opinion. An examiner override to Supported is the examiner's decision and is labeled as one |
 | **Contradicted** | A deterministic check failed, or the examiner accepted a "contradicts" label on the cited record | That the person did not do something, or any conclusion about guilt |
-| **Unproven** | Baker could not cover every core assumption with the data it had; the uncovered ones are named | That the claim is false, or that the event did not happen |
+| **Unproven** | Mabillon could not cover every core assumption with the data it had; the uncovered ones are named | That the claim is false, or that the event did not happen |
 
 **"Not found" never means "did not happen."** An absence finding states what was searched and what
 the source could show. An examiner-curated report can never establish that something is absent: it
 can show records that are present (which can contradict an absence claim), never that none exist.
 
-Baker is built not to use the words guilty, innocent, leader or deleted in its own text, and the
+Mabillon is built not to use the words guilty, innocent, leader or deleted in its own text, and the
 report's own text is checked for them (`core/audit/invariants.py`). When a count includes records
 the source flags as deleted, the count check says they "carry the source's deletion flag" (#83).
 Text quoted from a source or typed by the examiner appears as written.
@@ -133,7 +142,7 @@ regenerated, so re-running the rules on the same case reproduces the same verdic
 
 **Audit log.** An append-only log in the case database where each entry includes the hash of the
 entry before it. Editing or removing an entry in the middle breaks the chain, and the report prints
-whether the chain verified and its last hash. Baker also keeps the newest entry's number and hash
+whether the chain verified and its last hash. Mabillon also keeps the newest entry's number and hash
 in a file beside the database (`case.db.anchors.jsonl`) and checks both when a case opens and
 before every report; a failed check blocks review and reports. This catches entries cut from the
 end back to the newest anchor. It does not catch entries added after the newest anchor and cut
@@ -154,7 +163,7 @@ from each report you deliver: that is the anchor no one can change.
    exactly as the model is shown them. An audit run before that may have discarded correct
    labels on contacts and calls, including contradicting ones; run a new full audit on such a case.
 4. **Evidence recall is limited.** Retrieval is keyword and filter based, with no embeddings.
-   Baker can miss a relevant record. The examiner should search beyond what Baker surfaces.
+   Mabillon can miss a relevant record. The examiner should search beyond what Mabillon surfaces.
 5. **Model labels can be wrong.** Each label is checked for a verbatim quote, but not for
    correctness. That is why both Supported and a contradiction found by the model require the
    examiner.

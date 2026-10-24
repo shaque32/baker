@@ -11,7 +11,7 @@ Every decision:
 - cites only evidence, checks and stipulations that were given to the rule;
 - rests on evidence whose quotes are non-empty and verbatim (exact substring, no normalization)
   in the record's stored text, re-read from the database, and take in a letter or digit of the
-  record's own fields, not only Baker's words or a placeholder such as "(no name)" (only a run
+  record's own fields, not only Mabillon's words or a placeholder such as "(no name)" (only a run
   that records no quote-check version, made before #76 or re-deciding one, holds its evidence to
   the check of its day);
 - sees each item's status as the database has it (the latest evidence_reviews row). 'accepted'
@@ -67,7 +67,7 @@ FORBIDDEN_WORDS = re.compile(r"\b(guilty|innocent|leader|deleted)\b", re.IGNOREC
 # this element. Its content is HTML-escaped, so it never contains '<'.
 QUOTED_SPAN = re.compile(r'<span class="q">[^<]*</span>')
 # ...and every reason or note an expert typed in this element (core/report/html.said). The
-# expert's own words are theirs to choose; the check is for what Baker or a model says.
+# expert's own words are theirs to choose; the check is for what Mabillon or a model says.
 EXPERT_SPAN = re.compile(r'<span class="said">[^<]*</span>')
 
 
@@ -139,7 +139,7 @@ def quote_is_verbatim(
     conn: sqlite3.Connection, quote: str, record_id: str, *, before_76: bool = False
 ) -> bool:
     """A stored quote still stands in its record: in its text now, at a place that takes in a
-    letter or digit of the record's own fields, so a quote of only Baker's words or a placeholder
+    letter or digit of the record's own fields, so a quote of only Mabillon's words or a placeholder
     ("(no name)", "unknown", " call from ") does not stand. With before_76, for evidence a run
     made before #76 stored (quote check 1.1.0 or earlier, no version recorded), a quote is held to
     the check of its day instead: a substring of the contact or call text the check read then, so
@@ -323,7 +323,7 @@ def check_decision(
 
 def check_report_text(html: str) -> None:
     """Tool-authored report text never uses the forbidden words. Cited spans and the expert's
-    own reasons and notes are exempt; a model's rationale or reason is checked like Baker's."""
+    own reasons and notes are exempt; a model's rationale or reason is checked like Mabillon's."""
     own_text = EXPERT_SPAN.sub("", QUOTED_SPAN.sub("", html))
     m = FORBIDDEN_WORDS.search(own_text)
     if m:

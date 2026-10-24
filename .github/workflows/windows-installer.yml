@@ -244,7 +244,7 @@ jobs:
             Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
       - uses: actions/upload-artifact@v4
         with:
-          name: baker-installer
+          name: mabillon-installer
           path: build/installer/*
           if-no-files-found: error
           retention-days: 30
@@ -260,7 +260,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: baker-installer
+          name: mabillon-installer
           path: dist
       - name: Check the download as docs/install.md says (SHA-256, then the signature)
         run: |
@@ -284,18 +284,22 @@ jobs:
             '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/MERGETASKS=addtopath,!downloadmodel', "/LOG=$PWD\setup.log"
           Get-Content setup.log | Select-String 'runtime|model|Model' | ForEach-Object { $_.Line }
           if ($p.ExitCode) { throw "setup exit code $($p.ExitCode)" }
-      - name: The baker command and the model runtime load
+      - name: The mabillon command, its baker alias and the model runtime load
         run: |
-          $app = "$env:LOCALAPPDATA\Programs\Baker"
-          & "$app\baker.cmd" --help | Select-Object -First 5
+          $app = "$env:LOCALAPPDATA\Programs\Mabillon"
+          & "$app\mabillon.cmd" --help | Select-Object -First 5
+          if ($LASTEXITCODE) { throw 'mabillon --help failed' }
+          & "$app\baker.cmd" --help | Select-Object -First 1
           if ($LASTEXITCODE) { throw 'baker --help failed' }
+          $lnk = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Mabillon\Mabillon command prompt.lnk"
+          if (-not (Test-Path $lnk)) { throw "no Start-menu shortcut at $lnk" }
           & "$app\python\python.exe" -X utf8 -c "import llama_cpp, sys; print('llama-cpp-python', llama_cpp.__version__, sys.version); llama_cpp.llama_backend_init(); print(llama_cpp.llama_print_system_info().decode())"
           if ($LASTEXITCODE) { throw 'llama_cpp did not load' }
-          & "$app\baker.cmd" init --db "$env:RUNNER_TEMP\smoke.db"
-          if ($LASTEXITCODE) { throw 'baker init failed' }
+          & "$app\mabillon.cmd" init --db "$env:RUNNER_TEMP\smoke.db"
+          if ($LASTEXITCODE) { throw 'mabillon init failed' }
       - name: case01 merge gate from the installed copy
         run: |
-          Set-Location "$env:LOCALAPPDATA\Programs\Baker\baker"
+          Set-Location "$env:LOCALAPPDATA\Programs\Mabillon\baker"
           $py = "..\python\python.exe"
           & $py -X utf8 -m eval.run_pipeline --mode model-free --assumption-spec eval/gold/case01/assumptions.jsonl
           if ($LASTEXITCODE) { throw 'pipeline failed' }
@@ -303,9 +307,9 @@ jobs:
           if ($LASTEXITCODE) { throw 'gate failed on the installed copy' }
       - name: The demo case, built by the installed copy
         run: |
-          & "$env:LOCALAPPDATA\Programs\Baker\baker.cmd" demo --build-only
-          if ($LASTEXITCODE) { throw 'baker demo --build-only failed' }
-      # The browser test's own Python and Chromium, set up only after Baker has run without them.
+          & "$env:LOCALAPPDATA\Programs\Mabillon\mabillon.cmd" demo --build-only
+          if ($LASTEXITCODE) { throw 'mabillon demo --build-only failed' }
+      # The browser test's own Python and Chromium, set up only after Mabillon has run without them.
       - uses: actions/checkout@v4
         with:
           sparse-checkout: packaging/smoke_ui.py
@@ -315,27 +319,27 @@ jobs:
         with:
           python-version: "3.12"
       # One step: Windows ends the processes a step started when that step ends.
-      - name: Start Baker and the demo, then headless Chromium on both
+      - name: Start Mabillon and the demo, then headless Chromium on both
         env:
           PYTHONUNBUFFERED: "1"
         run: |
           python -m pip install --quiet playwright==1.56.0
           python -m playwright install chromium
-          $baker = "$env:LOCALAPPDATA\Programs\Baker\baker.cmd"
+          $mabillon = "$env:LOCALAPPDATA\Programs\Mabillon\mabillon.cmd"
           $ui = "$env:RUNNER_TEMP\ui"
           New-Item -ItemType Directory -Force $ui | Out-Null
-          $serve = Start-Process $baker -ArgumentList 'serve' -WindowStyle Hidden -PassThru `
+          $serve = Start-Process $mabillon -ArgumentList 'serve' -WindowStyle Hidden -PassThru `
             -RedirectStandardOutput "$ui\serve.log" -RedirectStandardError "$ui\serve.err.log"
-          $demo = Start-Process $baker -ArgumentList 'demo', '--no-open' -WindowStyle Hidden -PassThru `
+          $demo = Start-Process $mabillon -ArgumentList 'demo', '--no-open' -WindowStyle Hidden -PassThru `
             -RedirectStandardOutput "$ui\demo.log" -RedirectStandardError "$ui\demo.err.log"
           python src/packaging/smoke_ui.py --serve http://127.0.0.1:8765 --demo http://127.0.0.1:8766 --screenshots $ui
           $failed = $LASTEXITCODE
           foreach ($p in @($serve, $demo)) {
-            if ($p.HasExited) { "baker process $($p.Id) exited with code $($p.ExitCode)" } else { "baker process $($p.Id) still running" }
+            if ($p.HasExited) { "mabillon process $($p.Id) exited with code $($p.ExitCode)" } else { "mabillon process $($p.Id) still running" }
           }
           Get-ChildItem "$ui\*.log" | ForEach-Object { "--- $($_.Name)"; Get-Content $_ }
           if ($failed) { throw 'browser smoke test failed' }
-      - name: Stop Baker
+      - name: Stop Mabillon
         if: always()
         run: |
           Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" |
@@ -349,7 +353,7 @@ jobs:
           retention-days: 14
       - name: Uninstall leaves no program files
         run: |
-          $app = "$env:LOCALAPPDATA\Programs\Baker"
+          $app = "$env:LOCALAPPDATA\Programs\Mabillon"
           $p = Start-Process "$app\unins000.exe" -Wait -PassThru -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES'
           if ($p.ExitCode) { throw "uninstall exit code $($p.ExitCode)" }
           Start-Sleep -Seconds 3
@@ -372,7 +376,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: baker-installer
+          name: mabillon-installer
           path: dist
       - name: Speed test (CPU)
         run: |

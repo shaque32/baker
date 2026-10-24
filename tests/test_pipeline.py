@@ -286,7 +286,7 @@ def test_evidence_stored_before_the_fix_still_passes_the_stored_quote_check(conn
     old = [
         item.model_copy(update={"quote": "Marc Garage +12125550122"}),
         item.model_copy(update={"record_id": call, "quote": old_call}),
-        # Held to the check of its day (Codex): only Baker's words, but in the old text.
+        # Held to the check of its day (Codex): only Mabillon's words, but in the old text.
         item.model_copy(update={"record_id": call, "quote": "call from"}),
     ]
     check_evidence(conn, old, before_76=True)
@@ -302,7 +302,7 @@ def test_evidence_stored_before_the_fix_still_passes_the_stored_quote_check(conn
 
 def test_only_a_run_made_before_the_fix_re_decides_on_the_old_quote_text(conn):
     # Grok review on #76: the pre-#76 text is accepted only for a run that records no quote-check
-    # version. A stored "call from" (Baker's words) on a run recording 1.2.0 stops the re-run.
+    # version. A stored "call from" (Mabillon's words) on a run recording 1.2.0 stops the re-run.
     from core.review.redecide import redecide
 
     pipeline.run_audit(conn, comps(), clock=_clock, claim_ids=["C01"])
@@ -528,12 +528,59 @@ def test_cli_audit_review_and_report(conn, tmp_path):
     assert cli_main(["audit", "--db", str(db), "--fake"]) == 0
     out = tmp_path / "report.html"
     assert cli_main(["report", "--db", str(db), "--out", str(out)]) == 0
-    assert "Baker claims report" in out.read_text(encoding="utf-8")
+    assert "Mabillon claims report" in out.read_text(encoding="utf-8")
     assert (
         cli_main(["verdict", "--db", str(db), "--claim", "C01", "--confirm", "--by", EXPERT]) == 0
     )
     assert cli_main(["verdict", "--db", str(db), "--claim", "C01", "--confirm", "--by", "x"]) == 2
     assert cli_main(["verify-log", "--db", str(db)]) == 0
+
+
+def _progress_run(built_case, tmp_path, monkeypatch, every_s: float):
+    """A fake audit with the progress throttle at every_s; returns what it stored and the
+    labeled counts the screen was sent."""
+    monkeypatch.setattr(pipeline, "PROGRESS_EVERY_S", every_s)
+    sent: list[int] = []
+    update = getattr(pipeline._Progress._update, "real", pipeline._Progress._update)
+
+    def spy(self, claim_id, sql, params, commit=True):
+        if sql.startswith("candidates_labeled = ?"):
+            sent.append(params[0])
+        update(self, claim_id, sql, params, commit)
+
+    spy.real = update  # type: ignore[attr-defined]  # a second run spies on the real method
+    monkeypatch.setattr(pipeline._Progress, "_update", spy)
+    db_path = tmp_path / f"every-{every_s}.db"
+    shutil.copy(built_case, db_path)
+    conn = connect(db_path)
+    result = pipeline.run_audit(conn, comps(), clock=_clock)
+    stored = (
+        [d.model_dump() for d in result.decisions],
+        [p.model_dump() for p in pipeline.predictions(conn)],
+        list(conn.execute("SELECT * FROM evidence_items ORDER BY id")),
+        list(
+            conn.execute(
+                "SELECT claim_id, state, candidates_total, candidates_labeled, model_calls"
+                " FROM run_claims ORDER BY position"
+            )
+        ),
+    )
+    conn.close()
+    return stored, sent
+
+
+def test_progress_throttle_changes_only_how_often_the_screen_count_is_saved(
+    built_case, tmp_path, monkeypatch
+):
+    every, every_sent = _progress_run(built_case, tmp_path, monkeypatch, 0.0)
+    throttled, throttled_sent = _progress_run(built_case, tmp_path, monkeypatch, 3600.0)
+    # Verdicts, predictions, evidence and each claim's final progress row are the same.
+    assert throttled == every
+    rows = every[3]
+    assert rows and all(r[1] == "done" and r[2] == r[3] for r in rows)
+    # With no throttle each label is saved; throttled, only each claim's last label is.
+    assert len(every_sent) == sum(r[2] for r in rows) > len(throttled_sent)
+    assert sorted(throttled_sent) == sorted(r[2] for r in rows if r[2])
 
 
 def test_repeat_runs_on_fresh_databases_give_identical_predictions(tmp_path):
@@ -717,7 +764,7 @@ def test_an_original_author_is_cited_never_written_as_bakers_words(conn, tmp_pat
     (named,) = conn.execute(
         "SELECT id FROM messages WHERE body = 'need 2 more by friday'"
     ).fetchone()
-    # the source's own name for the author, holding a word Baker never says itself
+    # the source's own name for the author, holding a word Mabillon never says itself
     conn.execute(
         "UPDATE messages SET forwarded = 1, forwarded_from_raw = 'Deleted Account' WHERE id = ?",
         (named,),

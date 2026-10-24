@@ -1,10 +1,10 @@
-# What Baker does and doesn't do
+# What Mabillon does and doesn't do
 
-One page for forensic examiners. Baker is alpha software, tested on synthetic cases only.
+One page for forensic examiners. Mabillon is alpha software, tested on synthetic cases only.
 
 ## In one line
 
-Baker is a verification layer on top of Cellebrite and AXIOM. It checks the government's specific
+Mabillon is a verification layer on top of Cellebrite and AXIOM. It checks the government's specific
 claims about phone evidence against the extraction you already have. It takes the scrolling, not
 the judgment.
 
@@ -44,7 +44,7 @@ the judgment.
    curated report (the examiner's selection) can never show that something is absent.
 4. **It doesn't link identities on its own.** Links between a number, a handle and a person stay
    proposed until you confirm them.
-5. **It makes no speed or accuracy claim.** There is no accuracy figure for real cases: Baker has
+5. **It makes no speed or accuracy claim.** There is no accuracy figure for real cases: Mabillon has
    been measured on synthetic cases only, and no figure is published until it is measured on real
    extractions. UFDR is tested only on Cellebrite
    Reader 7.48 exports of public test phones; Cellebrite Excel and AXIOM are not yet tested on
@@ -52,17 +52,17 @@ the judgment.
 
 ## Where your data goes
 
-Local by default; cloud AI only when your case allows it and you opt in. Baker runs on your own
+Local by default; cloud AI only when your case allows it and you opt in. Mabillon runs on your own
 computer and its screen answers only that computer. A case uses cloud AI only when you attest at
 setup that its protective order allows it and set up your own key, and never for a case marked
-as possibly containing CSAM. Only a cloud model setup that passed Baker's stance test can be
+as possibly containing CSAM. Only a cloud model setup that passed Mabillon's stance test can be
 used; the report says which model labelled the case. Cases can be encrypted with a passphrase.
 
 ## Getting help
 
 - **Support:** support@getmabillon.com. It is also on the **Help** tab in the app.
 - **Bug report:** on the Help tab, save the bug report and attach it to your email. It holds
-  Baker's versions, your computer's system and model setup and recent errors, with no case data:
+  Mabillon's versions, your computer's system and model setup and recent errors, with no case data:
   no case or file names, no text from the case, no hashes. Read it before you send it
   (`docs/SUPPORT.md`).
 - **Never send case content:** no case files, case database or screenshots of evidence.

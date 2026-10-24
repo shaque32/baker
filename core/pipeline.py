@@ -7,7 +7,7 @@ only moves data between them, stores it, and refuses anything that breaks a rule
 - A stance label whose quote fails verification is dropped and never stored as evidence. The
   quote must pass Components.verify_quote and, whatever that verifier is, the product's own
   rule: verbatim and word-aligned at a place that takes in the record's own fields, not only
-  Baker's words or a placeholder such as "(no name)" (core.audit.quotes.cites_record). The model
+  Mabillon's words or a placeholder such as "(no name)" (core.audit.quotes.cites_record). The model
   calls components record (component.recorder.calls) are stored in model_calls, and the call
   behind a failed quote is stored as quote_failed. Every run records the quote check that ran
   in its config, as it records the rule version (quote_check_version).
@@ -37,16 +37,22 @@ only moves data between them, stores it, and refuses anything that breaks a rule
   contradicted whatever its evidence says, so labels could not change its verdict, and they
   cost model calls (about a fifth of case01's). The run's audit-log entry lists these claims
   under `unlabeled` with the reason, and the report and review screen say so.
-  Components.label_settled turns labeling back on for them (`baker audit --label-all`).
+  Components.label_settled turns labeling back on for them (`mabillon audit --label-all`).
 
 Saving. Each claim is committed when it finishes, together with an audit-log entry naming
-what it considered (CLAIM_ACTION). The model work for a claim (assumptions, labels, AI review)
-runs before anything is written, and the claim's rows are then written in one short
-transaction, so a long run never holds the database locked while the model works: the expert
-can review finished claims on the screen while the audit runs. If a run stops part way (a
-crash, a closed laptop, a missing model, an invariant violation, the expert's Stop), the claims
-already finished keep their stored model outputs, so the next run reuses them
-(core/audit/_local_model.py) instead of calling the model again.
+what it considered (CLAIM_ACTION), with SHA-256 digests of the model calls stored for it
+(calls_digest), of the rows its verdict rests on, with the records they cite and the model runs
+they name (rows_digest), and of the claim (claim_digest), and the verdict's time. Each digest
+is a hash over per-item hashes (call_sha256, evidence_sha256), so a bundle that leaves an item
+out can list its hash and the digest still checks (core/bundle/export.py). The run's
+entry (RUN_ACTION) records a digest of its pipeline_runs row's fixed columns (run_digest).
+The model work for a claim (assumptions, labels, AI review) runs before anything is written, and
+the claim's rows are then written in one short transaction, so a long run never holds the
+database locked while the model works: the expert can review finished claims on the screen
+while the audit runs. If a run stops part way (a crash, a closed laptop, a missing model, an
+invariant violation, the expert's Stop), the claims already finished keep their stored model
+outputs, so the next run reuses them (core/audit/_local_model.py) instead of calling the model
+again.
 
 Which run is read. Predictions, the eval and redecide read only completed runs (last_run()).
 The review screen and the report read view_run(): the latest completed run, unless a newer
@@ -69,10 +75,12 @@ whose module is under eval/ marks the run as fake, which the report and the eval
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import json
 import sqlite3
-from collections.abc import Callable, Sequence
+import time
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
@@ -121,14 +129,200 @@ from core.contracts import (
     review_id,
     verdict_id,
 )
-from core.enrich.records import get_record
+from core.enrich.records import get_record, kind_of
 from core.ingest import forwarded
 from core.review import audit_log
 
-PIPELINE_VERSION = "0.1.0"
+# 0.2.0 (#104): the audit log records cloud.received per hosted answer, and pipeline.claim and
+# pipeline.run entries carry digests (model_calls and rows_sha256, hashes over per-item hashes;
+# claim_sha256, run_sha256) and decision times; each run's row stores this version, so a case
+# says which log format its runs wrote (core/bundle/verify.py).
+PIPELINE_VERSION = "0.2.0"
 RUN_ACTION = "pipeline.run"
+# The screen's labeled count is rewritten at most this often. Each write is a commit, and with a
+# fast labeler (model-free, rules-only, tests) per-item commits cost more than the labels did.
+PROGRESS_EVERY_S = 0.5
 CLAIM_ACTION = "pipeline.claim"  # one per finished claim, written with the claim's rows
 HALT_ACTION = "pipeline.halted"
+
+
+def _stored(conn: sqlite3.Connection, table: str, where: str, params: tuple) -> list[dict]:
+    cur = conn.execute(f"SELECT * FROM {table} WHERE {where}", params)  # noqa: S608 - fixed names
+    cols = [d[0] for d in cur.description]
+    return [dict(zip(cols, r, strict=True)) for r in cur]
+
+
+def call_sha256(conn: sqlite3.Connection, call_id: str) -> str:
+    """One SHA-256 over a model call's whole stored row (model run, seq, subject, prompt, raw
+    output, outcome, error, time) and the model run it names. A bundle that leaves the call out
+    lists this instead (core/bundle/export.py), so the digests that name it still check."""
+    rows = _stored(conn, "model_calls", "id = ?", (call_id,))
+    runs = [r for c in rows for r in _stored(conn, "model_runs", "id = ?", (c["model_run_id"],))]
+    return _sha(canonical_json({"row": rows, "model_run": runs}))
+
+
+def calls_digest(
+    conn: sqlite3.Connection, ids: Sequence[str], known: Mapping[str, str] | None = None
+) -> dict[str, object]:
+    """What a claim's audit-log entry records about the model calls stored while it ran: their
+    ids and one SHA-256 over each call's call_sha256, in order. core/bundle/verify.py
+    recomputes it; `known` gives the call_sha256 of calls a bundle left out."""
+    known = known or {}
+    shas = [known[cid] if cid in known else call_sha256(conn, cid) for cid in ids]
+    return {"ids": list(ids), "sha256": _sha(canonical_json(shas))}
+
+
+def claim_digest(conn: sqlite3.Connection, claim_id: str) -> str:
+    """One SHA-256 over the claim's stored row (text, type, status, paragraph, model run) when
+    its audit-log entry is written. A later change is the expert's and is logged (claim.status),
+    so core/bundle/verify.py can tell it from an edit made outside Mabillon."""
+    return _sha(canonical_json(_stored(conn, "claims", "id = ?", (claim_id,))))
+
+
+_RECORD_TABLES = {
+    "message": "messages",
+    "call": "calls",
+    "contact": "contacts",
+    "attachment": "attachments",
+}
+
+
+_CHECK_TABLES = {"acct": "accounts", "thr": "threads"}  # also named by check results
+_LINKED = {"thread_id": "threads", "message_id": "messages"}  # and every *_account_id
+
+
+def _cited(conn: sqlite3.Connection, record_id: str) -> dict[str, object]:
+    """A cited record as stored (every column: body, sender, direction, times, locator), the
+    rows the report shows beside it (its accounts, thread and, for an attachment, message),
+    and the record as the labeler and the report read it (text and time)."""
+    table = _RECORD_TABLES.get(kind_of(record_id) or "") or _CHECK_TABLES.get(
+        record_id.split(":", 1)[0]
+    )
+    rec = get_record(conn, record_id)
+    row = _stored(conn, table, "id = ?", (record_id,)) if table else []
+    linked = {
+        col: _stored(conn, _LINKED.get(col, "accounts"), "id = ?", (val,))
+        for r in row
+        for col, val in sorted(r.items())
+        if val is not None and (col in _LINKED or col.endswith("_account_id"))
+    }
+    return {
+        "id": record_id,
+        "row": row,
+        "linked": linked,
+        "text": rec.text if rec else None,
+        "ts_utc": rec.ts_utc if rec else None,
+    }
+
+
+def evidence_sha256(conn: sqlite3.Connection, evidence_id: str) -> str:
+    """One SHA-256 over an evidence item as stored (every column: stance, quote, rationale,
+    source and locator, model run), its AI reviews, the record it cites (_cited) and the model
+    runs the item and its reviews name. A bundle that leaves the item out lists this instead
+    (core/bundle/export.py), so its claim's rows_digest still checks."""
+    row = _stored(conn, "evidence_items", "id = ?", (evidence_id,))
+    reviews = _stored(
+        conn,
+        "evidence_reviews",
+        "evidence_id = ? AND reviewer_kind = 'ai' ORDER BY seq",
+        (evidence_id,),
+    )
+    named = {r["model_run_id"] for r in (*row, *reviews) if r.get("model_run_id")}
+    return _sha(
+        canonical_json(
+            {
+                "row": row,
+                "ai_reviews": reviews,
+                "records": [_cited(conn, str(r["record_id"])) for r in row],
+                "model_runs": [
+                    m
+                    for mid in sorted(named)
+                    for m in _stored(conn, "model_runs", "id = ?", (mid,))
+                ],
+            }
+        )
+    )
+
+
+def claim_rows(
+    conn: sqlite3.Connection,
+    manifest: dict[str, list[str]],
+    claim_id: str,
+    known: Mapping[str, str] | None = None,
+) -> dict[str, list]:
+    """The rows a claim's verdict rests on, as stored: its assumptions and check results (every
+    column: text, parameters, outcomes) with the records each check cites, each evidence item
+    as evidence_sha256 (the item, its AI reviews, the record it cites with the accounts, thread
+    and message shown beside it, and the model runs they name) and the model run the claim
+    names. Model calls are bound by calls_digest, expert decisions by their own entries
+    (evidence.decide). `known` gives the evidence_sha256 of items a bundle left out
+    (core/bundle/export.py)."""
+    known = known or {}
+    checks = [
+        r
+        for i in manifest.get("checks", [])
+        for r in _stored(conn, "check_results", "id = ?", (i,))
+    ]
+    claim = _stored(conn, "claims", "id = ?", (claim_id,))
+    named = sorted({r["model_run_id"] for r in claim if r.get("model_run_id")})
+    return {
+        "assumptions": [
+            r
+            for i in manifest.get("assumptions", [])
+            for r in _stored(conn, "assumptions", "id = ?", (i,))
+        ],
+        "checks": [
+            {
+                "row": c,
+                "records": [
+                    _cited(conn, str(rid)) for rid in json.loads(c["record_ids_json"] or "[]")
+                ],
+            }
+            for c in checks
+        ],
+        "evidence": [
+            known[eid] if eid in known else evidence_sha256(conn, eid)
+            for eid in manifest.get("evidence", [])
+        ],
+        "model_runs": [m for mid in named for m in _stored(conn, "model_runs", "id = ?", (mid,))],
+    }
+
+
+def rows_digest(
+    conn: sqlite3.Connection,
+    manifest: dict[str, list[str]],
+    claim_id: str,
+    known: Mapping[str, str] | None = None,
+) -> str:
+    """One SHA-256 over claim_rows() when a claim's audit-log entry is written. The entry
+    records it, so core/bundle/verify.py can tell a row edited later from the one the rules
+    read."""
+    return _sha(canonical_json(claim_rows(conn, manifest, claim_id, known)))
+
+
+def run_digest(conn: sqlite3.Connection, run_id: str) -> str:
+    """One SHA-256 over a pipeline run's fixed columns (start time, versions, configuration
+    with build, cloud decision and quote check), which its pipeline.run entry records."""
+    rows = [
+        {k: r[k] for k in _RUN_FIXED} for r in _stored(conn, "pipeline_runs", "id = ?", (run_id,))
+    ]
+    return _sha(canonical_json(rows))
+
+
+_RUN_FIXED = (
+    "id",
+    "started_at_utc",
+    "baker_version",
+    "contracts_version",
+    "rule_version",
+    "config_json",
+)
+
+
+def _sha(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 RULES_PENDING_REASON = (
     "Verdict rules are not written yet (core/audit/rules.py is a stub). No verdict was decided; "
     "the claim stays unproven."
@@ -318,7 +512,7 @@ class RunResult:
 # ---------------------------------------------------------------- helpers
 
 NOT_TESTED = (
-    "Not tested: Baker could not set up what to check for this claim, so no record was "
+    "Not tested: Mabillon could not set up what to check for this claim, so no record was "
     "searched and the claim stays unproven."
 )
 
@@ -600,7 +794,7 @@ def mark_stale_runs_stopped(conn: sqlite3.Connection, clock: Clock | None = None
                 conn.execute(
                     "UPDATE pipeline_runs SET status = 'stopped', finished_at_utc = ?, note = ?"
                     " WHERE id = ?",
-                    (iso(_now(clock)), "found still marked running when Baker started", run_id),
+                    (iso(_now(clock)), "found still marked running when Mabillon started", run_id),
                 )
                 conn.execute(
                     "UPDATE run_claims SET state = 'failed', candidates_labeled = 0,"
@@ -686,7 +880,7 @@ def settled_by_check(
                 f"Evidence was not sent to the stance model: check {r.check_name} failed on the"
                 f" core assumption '{core[r.assumption_id].text}', so rule 1a decides this claim"
                 " (contradicted) whatever the evidence says. The check's cited records are the"
-                " evidence. `baker audit --label-all` labels it anyway."
+                " evidence. `mabillon audit --label-all` labels it anyway."
             )
     return None
 
@@ -715,8 +909,10 @@ class _Progress:
         self.conn, self.run_id, self.c, self.clock = conn, run_id, c, clock
         self.calls_at_start = 0
         self.total = 0
+        self.written = 0.0  # time.monotonic() of the last progress write
 
     def _update(self, claim_id: str, sql: str, params: tuple, commit: bool = True) -> None:
+        self.written = time.monotonic()
         try:
             self.conn.execute(
                 f"UPDATE run_claims SET {sql} WHERE pipeline_run_id = ? AND claim_id = ?",  # noqa: S608
@@ -739,6 +935,8 @@ class _Progress:
         self._update(claim_id, "candidates_total = ?", (total,))
 
     def labeled(self, claim_id: str, n: int) -> None:
+        if n < self.total and time.monotonic() - self.written < PROGRESS_EVERY_S:
+            return  # the last label, and the claim's 'done' row, always write the full count
         calls = _new_calls(self.c) - self.calls_at_start
         self._update(claim_id, "candidates_labeled = ?, model_calls = ?", (n, calls))
 
@@ -789,6 +987,9 @@ class _Run:
         # so no write transaction is open while the model runs (see the module docstring).
         self.pending: list[tuple[str, tuple]] | None = None
         self.forwarded = forwarded.affected(conn)
+        # The model calls stored while the current claim ran, bound into its audit-log entry
+        # (calls_digest), so a stored call edited later no longer matches.
+        self.claim_calls: list[str] = []
 
     def _write(self, sql: str, params: tuple) -> None:
         if self.pending is None:
@@ -817,6 +1018,7 @@ class _Run:
             for call in calls[done:]:
                 if call.id in quote_failed:
                     call = call.model_copy(update={"outcome": ModelCallOutcome.QUOTE_FAILED})
+                self.claim_calls.append(call.id)
                 self._write(
                     "INSERT INTO model_calls (id, model_run_id, seq, subject_json, prompt,"
                     " raw_output, outcome, error, at_utc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -1208,11 +1410,19 @@ def run_audit(
                         iso(m.started_at_utc),
                     ),
                 )
-        stipulations = load_stipulations(conn)
+        # The stipulations every verdict reads, with the audit-log position they stand at,
+        # read in one transaction so no expert action lands between the two.
+        conn.execute("BEGIN")
+        try:
+            stipulations = load_stipulations(conn)
+            stip_seq = conn.execute("SELECT COALESCE(MAX(seq), 0) FROM audit_log").fetchone()[0]
+        finally:
+            conn.commit()
         run = _Run(conn, components, now, result, clock)
         reused_before = _reused(components)
         for n, claim in enumerate(claims, 1):
             current = claim.id
+            run.claim_calls = []
             with conn:  # one claim per transaction: a stop keeps every finished claim's work
                 decision = run.claim(claim, stipulations)
                 audit_log.append(  # inside the claim's write transaction, after its rows
@@ -1233,6 +1443,10 @@ def run_audit(
                         "stored_items": result.stored_items,
                         "dropped_labels": result.dropped_labels,
                         "reviewer_failures": result.reviewer_failures,
+                        "model_calls": calls_digest(conn, run.claim_calls),
+                        "rows_sha256": rows_digest(conn, result.manifest[claim.id], claim.id),
+                        "decided_at_utc": iso(decision.decided_at_utc),
+                        "claim_sha256": claim_digest(conn, claim.id),
                     },
                 )
             current = None
@@ -1243,9 +1457,10 @@ def run_audit(
         with conn:
             # The UPDATE opens the write transaction before the log reads its last entry, so a
             # decision the expert records at the same moment cannot take the same log seq.
+            finished = iso(_now(clock))
             conn.execute(
                 "UPDATE pipeline_runs SET status = ?, finished_at_utc = ? WHERE id = ?",
-                (PipelineRunStatus.COMPLETED.value, iso(_now(clock)), result.run_id),
+                (PipelineRunStatus.COMPLETED.value, finished, result.run_id),
             )
             audit_log.append(
                 conn,
@@ -1254,6 +1469,9 @@ def run_audit(
                 RUN_ACTION,
                 {
                     "run_id": result.run_id,
+                    "run_sha256": run_digest(conn, result.run_id),
+                    "finished_at_utc": finished,
+                    "stipulations_seq": stip_seq,
                     "fake": result.fake,
                     "rules_pending": components.rules_pending(),
                     "components": components.names(),

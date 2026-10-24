@@ -5,7 +5,8 @@ The model is a GGUF file on local disk, named in a small JSON config:
     {"name": "qwen2.5-14b-instruct-q4_k_m", "path": "/models/qwen.gguf", "sha256": "<64 hex>",
      "n_ctx": 4096}
 
-found at $BAKER_MODEL_CONFIG, else ~/.baker/model.json. The sha256 is required: a run must be
+found at $MABILLON_MODEL_CONFIG, else ~/.mabillon/model.json (core/paths.py reads the Baker-era
+$BAKER_MODEL_CONFIG and ~/.baker/model.json too). The sha256 is required: a run must be
 reproducible, so the exact model file is pinned and checked before loading. n_ctx is optional
 (a 14B model on a 16 GB laptop only fits with 4096). Nothing here makes network calls.
 core/llm/ (the model-runtime thread) loads the file; it is imported lazily so the rest of
@@ -26,7 +27,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 import sqlite3
 import time
@@ -36,12 +36,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
-from core import db
+from core import db, paths
 from core.audit._llm_json import CallRecorder, ModelUnavailable, prompt_version
 from core.contracts import ModelRun, canonical_json, short_hash
 
-MODEL_CONFIG_ENV = "BAKER_MODEL_CONFIG"
-DEFAULT_CONFIG = Path.home() / ".baker" / "model.json"
+MODEL_CONFIG_ENV = "MABILLON_MODEL_CONFIG"
 REUSE_PARAM = "reuse_stored_outputs"
 SCHEMA_PARAM = "output_schema"
 
@@ -69,8 +68,8 @@ class ModelConfig:
 
 
 def config_path() -> Path:
-    env = os.environ.get(MODEL_CONFIG_ENV, "").strip()
-    return Path(env) if env else DEFAULT_CONFIG
+    env = paths.env("MODEL_CONFIG")
+    return Path(env) if env else paths.settings_file("model.json")
 
 
 def load_config(path: Path | None = None) -> ModelConfig:
@@ -313,15 +312,28 @@ def open_run(
 
 
 SENT_ACTION = "cloud.sent"
+RECEIVED_ACTION = "cloud.received"
+
+
+def raw_sha256(raw_text: str) -> str:
+    """The hash a cloud.received entry gives an answer's raw text (model_calls.raw_output)."""
+    return hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
 
 
 class SentLog:
     """Wraps the cloud model so every request is written to the case's hash-chained audit log
     (action "cloud.sent") before it is sent: the time, the endpoint, the attempt and the request
-    body exactly as sent (the key travels in a header and is never logged). Baker retries a
+    body exactly as sent (the key travels in a header and is never logged). Mabillon retries a
     retryable failure itself (the SDK's own retries are off), logging each send. A stored output
     answered without a request writes nothing. If the entry cannot be written, nothing is sent
-    and the audit pauses (CloudPaused), so no send is ever missing from the log."""
+    and the audit pauses (CloudPaused), so no send is ever missing from the log.
+
+    Each answer is logged too (action "cloud.received"): the model the API reported, its message
+    and request ids, the stop reason, the token counts and the SHA-256 of the raw text, so the
+    stored raw output (model_calls) is tied to the hash-chained log and a reproducibility bundle
+    can name the exact request (core/bundle/). An answer Mabillon refuses (another model, a refusal,
+    a cut-off answer) is logged the same way, with the reason in "refused". If that entry cannot
+    be written, the answer is not used and the audit pauses, as for a send."""
 
     def __init__(
         self,
@@ -341,29 +353,61 @@ class SentLog:
         self.name, self.sha256 = model.name, model.sha256
         self.params, self.where = model.params, getattr(model, "where", "cloud")
 
-    def _log(self, request: dict, attempt: int) -> None:
-        from core.audit._llm_json import CloudPaused
+    def _append(self, action: str, payload: dict) -> None:
         from core.review import audit_log
 
+        if self._conn.in_transaction:  # the pipeline holds none during model work
+            raise RuntimeError("an open write transaction")
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            audit_log.append(self._conn, self._clock(), "system", action, payload)
+        except BaseException:
+            self._conn.rollback()
+            raise
+        self._conn.commit()
+
+    def _log(self, request: dict, attempt: int) -> str:
+        from core.audit._llm_json import CloudPaused
+
+        request_sha = hashlib.sha256(canonical_json(request).encode()).hexdigest()
         payload = {
             "endpoint": getattr(self.params, "endpoint", ""),
             "attempt": attempt,
             "request": request,
-            "request_sha256": hashlib.sha256(canonical_json(request).encode()).hexdigest(),
+            "request_sha256": request_sha,
         }
         try:
-            if self._conn.in_transaction:  # the pipeline holds none during model work
-                raise RuntimeError("an open write transaction")
-            self._conn.execute("BEGIN IMMEDIATE")
-            try:
-                audit_log.append(self._conn, self._clock(), "system", SENT_ACTION, payload)
-            except BaseException:
-                self._conn.rollback()
-                raise
-            self._conn.commit()
+            self._append(SENT_ACTION, payload)
         except Exception as e:  # noqa: BLE001 - any failure to log stops the send
             raise CloudPaused(
                 f"the request could not be recorded in the audit log ({e}), so it was not sent"
+            ) from e
+        return request_sha
+
+    def _received(
+        self, request_sha: str, attempt: int, out: Any, refused: str | None = None
+    ) -> None:
+        from core.audit._llm_json import CloudPaused
+
+        payload = {
+            "request_sha256": request_sha,
+            "attempt": attempt,
+            "model": getattr(out, "served_model", None),
+            "message_id": getattr(out, "message_id", None),
+            "request_id": getattr(out, "request_id", None),
+            "stop_reason": getattr(out, "stop_reason", None),
+            "input_tokens": getattr(out, "prompt_tokens", None),
+            "output_tokens": getattr(out, "completion_tokens", None),
+            "raw_sha256": raw_sha256(getattr(out, "raw_text", None) or ""),
+            # why Mabillon did not use an answer the API returned (another model, a refusal, a
+            # cut-off answer); None for an answer it used
+            "refused": refused,
+        }
+        try:
+            self._append(RECEIVED_ACTION, payload)
+        except Exception as e:  # noqa: BLE001 - an answer missing from the log is not used
+            raise CloudPaused(
+                f"the answer could not be recorded in the audit log ({e}), so it was not used"
             ) from e
 
     def generate_json(self, prompt: str, schema: Any, params: Any = None) -> Any:
@@ -374,10 +418,14 @@ class SentLog:
         if prepare is not None:
             prepare()  # a missing client fails here, before anything is logged as sent
         for attempt in range(1, self._retries + 2):
-            self._log(request, attempt)
+            request_sha = self._log(request, attempt)
             try:
-                return self._model.generate_json(prompt, schema, params)
+                out = self._model.generate_json(prompt, schema, params)
+                self._received(request_sha, attempt, out)
+                return out
             except CloudError as e:
+                if getattr(e, "response", None) is not None:
+                    self._received(request_sha, attempt, e.response, refused=e.reason)
                 if not getattr(e, "retryable", False) or attempt > self._retries:
                     raise
                 self._sleep(min(2.0**attempt, 30.0))

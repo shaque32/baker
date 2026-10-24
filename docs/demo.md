@@ -1,25 +1,25 @@
 # Giving a demo
 
-`baker demo` opens a ready-made, already-audited case in seconds, so a demo never waits on a
+`mabillon demo` opens a ready-made, already-audited case in seconds, so a demo never waits on a
 model run. Everything in it is synthetic (case01: two phones, Daniel Petrov's iPhone and
 Marcus Reyes's Samsung, mixed English and Russian, seven planted traps).
 
 ```
-baker demo                    # reset the demo case and open it at http://127.0.0.1:8766
-baker demo --expert "Your Name"   # the name recorded with what you click during the demo
-baker demo --paired           # also add a UFDR of Item 1, to show what the curated report left out
+mabillon demo                    # reset the demo case and open it at http://127.0.0.1:8766
+mabillon demo --expert "Your Name"   # the name recorded with what you click during the demo
+mabillon demo --paired           # also add a UFDR of Item 1, to show what the curated report left out
 ```
 
 Run it again before every demo: each run deletes the demo case and builds a clean one (about
-6 seconds). It uses its own folder (`~/Baker/demo/cases`, or `$BAKER_DEMO/cases`) and its own
+6 seconds). It uses its own folder (`~/Mabillon/demo/cases`, or `$MABILLON_DEMO/cases`) and its own
 port (8766), so it never shows your other cases on a screen share and can run beside a real
-`baker serve` on 8765. Ctrl+C stops it.
+`mabillon serve` on 8765. Ctrl+C stops it.
 
 ## What is real and what is scripted
 
 Say this if asked; the yellow banner on every page says the same.
 
-| Real (Baker's own code) | Scripted (so the demo opens in seconds) |
+| Real (Mabillon's own code) | Scripted (so the demo opens in seconds) |
 |---|---|
 | Import: read-only copies, SHA-256, coverage ("curated report, cannot show absence") | The evidence labels: key evidence from the signed answer key, labeled the way the answer points; everything else labeled irrelevant. No model ran. |
 | Assumptions (from the signed assumption sheet), retrieval, every deterministic check (sender, time with time zones, absence, count, contact, identity) | Most expert decisions: "Demo expert (scripted from the answer key)" accepted or dismissed every item, except on C05, which is left for you |
@@ -32,8 +32,8 @@ earlier version; the current version has not been timed.
 To demo real model labels instead, save a finished synthetic case01 audit as the demo once:
 
 ```
-baker demo --from-case ~/Baker/cases/<that case folder>   # only synthetic case01 is accepted
-baker demo --scripted                                     # back to the scripted demo
+mabillon demo --from-case ~/Mabillon/cases/<that case folder>   # only synthetic case01 is accepted
+mabillon demo --scripted                                     # back to the scripted demo
 ```
 
 ## Demo-only claim D01 and `--paired`
@@ -44,22 +44,22 @@ was run, so it holds the 20 answer-key claims and no D01 (`--paired` always buil
 case).
 
 - **D01** (eval/demo_claims.jsonl), an absence claim read from paragraph 11: "PETROV and REYES
-  exchanged no WhatsApp messages between March 20 and March 23, 2026." Baker finds no WhatsApp
+  exchanged no WhatsApp messages between March 20 and March 23, 2026." Mabillon finds no WhatsApp
   record in that window, yet the absence check is inconclusive and the claim stays unproven:
   both phones are examiner-curated reports, which cannot show that something is absent. Use it to
   show that "not found" never becomes "did not happen".
-- **`baker demo --paired`** builds the same scripted case and then imports `item1-full.ufdr`, a
+- **`mabillon demo --paired`** builds the same scripted case and then imports `item1-full.ufdr`, a
   UFDR of Item 1 that holds records the curated report does not (eval/synthetic/paired.py). It
   is imported after the audit, so every verdict is the same as in the plain demo. The Selection
   tab then shows the paired selection audit (each report record found once, more than once or
   not found in the UFDR, and the records left out near each claim), and C05's page says the UFDR
   holds 4 records within an hour of its messages that the report does not, such as "or sunday
-  works too". It never changes a verdict. A plain `baker demo` goes back to the case without it;
+  works too". It never changes a verdict. A plain `mabillon demo` goes back to the case without it;
   a saved audit (`--from-case`) is kept but not used for a `--paired` run.
 
 ## The 10-minute flow
 
-Open with this, before the screen: "You stay in charge. Baker does not replace the forensic
+Open with this, before the screen: "You stay in charge. Mabillon does not replace the forensic
 analyst or make any call for you. It does the searching and scrolling, hands you the exact
 records, and nothing counts as supported until you accept it yourself."
 
@@ -70,7 +70,7 @@ records, and nothing counts as supported until you accept it yourself."
    (expert-confirmed), 6 contradicted, 7 unproven, and C05 at the top: "Support found: do you agree?".
 3. **Live: the expert decides (C05).** Open C05, "need 2 more by friday". The model-side label
    says supports, yet the verdict is unproven: no claim is supported until an expert accepts its
-   evidence. Point out the time check: the phone prints the message on 3/13 (UTC), and Baker
+   evidence. Point out the time check: the phone prints the message on 3/13 (UTC), and Mabillon
    converts it to 8:03 p.m. on March 12 in New York, so the claim's date is right. Type a
    one-sentence reason, click **Accept** on both items, then **Re-run verdicts** (rules only, no
    model). C05 turns "Supported (expert-confirmed)" with your name in the audit log.
@@ -80,15 +80,15 @@ records, and nothing counts as supported until you accept it yourself."
 5. **Report.** The printable claims report: verdicts, cited records with their source rows,
    limitations (the owner stipulations, curated reports), source hashes and the audit log.
 
-Baker itself never says guilty, innocent, leader or deleted. A reason or note you type is
+Mabillon itself never says guilty, innocent, leader or deleted. A reason or note you type is
 yours, so it shows exactly as you wrote it, those words included.
 
 ## Answer key: the planted traps
 
 Paragraph numbers are the affidavit's. A quick reading, by a person or a chatbot, falls into
-each of these; Baker does not.
+each of these; Mabillon does not.
 
-| Claim | ¶ | The affidavit says | Trap | What Baker shows | Verdict |
+| Claim | ¶ | The affidavit says | Trap | What Mabillon shows | Verdict |
 |---|---|---|---|---|---|
 | C10 | 8 | Petrov texted "its done" at 2:31 a.m. on March 5 | Time zone: Item 1 prints UTC | Time check fails: the message was sent 9:31 p.m. March 4 local; Item 2's copy prints 9:31 p.m. | Contradicted |
 | C11 | 9 | Reyes got a warning call at 10:05 p.m., and after it Petrov sent "move it tonight" | Time zone across two phones | In one clock the message came 15 minutes before the call; read as printed, the order reverses | Contradicted |
