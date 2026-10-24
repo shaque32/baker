@@ -1,10 +1,10 @@
-# Validation v1 on public phone data: test plan, written before any Mabillon run (DRAFT)
+# Validation v1 on public phone data: test plan, written before any Mabillon run
 
-Status: DRAFT, not signed. It binds once Arsh signs it in thread "Real-world accuracy
-validation" and it is merged to main before any Mabillon run on the phone below. The PR that
-merges it records the signature. After that,
-nothing in it changes; a change means a new version of this file, a new tag and a new run,
-and every version is reported.
+Status: SIGNED. Arsh approved this plan in thread "Real-world accuracy validation" on
+2026-10-24 at 16:14:39Z ("approved"), as it stood at commit 5dfc4f5. It binds from its merge to
+main, which comes before any Mabillon run on the phone below. After that, nothing in it
+changes; a change means a new version of this file, a new tag and a new run, and every
+version is reported.
 
 Public data only (Josh Hickman's iOS 15.3.1 test iPhone on Digital Corpora). Never case02.
 Phone content and the answer key stay outside the repo; this file records their hashes.

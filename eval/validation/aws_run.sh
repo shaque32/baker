@@ -29,6 +29,7 @@ PINS="${PINS:-$REPO/packaging/windows/pins.json}"
 UFDR="$WORK/phone/$(basename "$UFDR_MEMBER")"
 OUT="$WORK/out"
 PY="$WORK/venv/bin/python"
+export PIP_DISABLE_PIP_VERSION_CHECK=1
 # Shut the machine down this many minutes after a finished run, so a forgotten machine stops
 # billing for its graphics card. Its disk, and ~/results.zip, stay until it is terminated.
 STOP_AFTER_MIN="${STOP_AFTER_MIN:-180}"
@@ -114,12 +115,12 @@ if [ ! -f "$model" ]; then
 else
   say "4/6 AI model already downloaded"
 fi
-export BAKER_MODEL_CONFIG="$WORK/model.json"
+export MABILLON_MODEL_CONFIG="$WORK/model.json"
 "$PY" -c 'import json, sys
 json.dump({"name": sys.argv[1], "path": sys.argv[2], "sha256": sys.argv[3], "n_ctx": int(sys.argv[4])},
           open(sys.argv[5], "w"), indent=2)' \
-  "$(pin model.name)" "$model" "$(pin model.sha256)" "$(pin model.n_ctx)" "$BAKER_MODEL_CONFIG"
-"$WORK/venv/bin/baker" model-check || die "the model check failed"
+  "$(pin model.name)" "$model" "$(pin model.sha256)" "$(pin model.n_ctx)" "$MABILLON_MODEL_CONFIG"
+"$WORK/venv/bin/mabillon" model-check || die "the model check failed"
 
 if [ "$(stat -c %s "$UFDR" 2> /dev/null || echo 0)" != "$UFDR_SIZE" ]; then
   say "5/6 downloading the public test phone (15 GB, unpacks to 31 GB; about 20 minutes)"

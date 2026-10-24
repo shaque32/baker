@@ -2,7 +2,7 @@
 
     python -m eval.validation.hickman_run --ufdr PHONE.ufdr --claims CLAIMS.jsonl --out DIR
 
-It builds one case the way an expert would, then runs `baker audit` with its defaults:
+It builds one case the way an expert would, then runs `mabillon audit` with its defaults:
 1. checks the claims file and the package's report.xml against the hashes it is given;
 2. renders the claims as a numbered affidavit PDF (paragraph n is claim n's text, verbatim);
 3. creates DIR/case.db in local mode, imports the UFDR, imports the affidavit, adds each claim
