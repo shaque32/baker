@@ -166,5 +166,7 @@ def test_windows_setup_updates_a_baker_install_in_place():
     assert "AppId={{6F0B3C1E-6A57-4D5B-9B9E-3C1A0B7E2D41}" in iss
     assert "AppName=Mabillon" in iss and "OutputBaseFilename=Mabillon-Setup-" in iss
     assert "{localappdata}\\Baker\\models" in iss  # a model placed there is used where it is
+    # Chosen once: deleting an old model that fails its check must not move the copy target.
+    assert "if ChosenModelDir = '' then" in iss
     assert "PersonsOwnConfig(OldConfigFile())" in iss  # a ~/.baker/model.json of their own stays
     assert "{userprograms}\\Baker\\Baker command prompt.lnk" in iss  # the old shortcut goes

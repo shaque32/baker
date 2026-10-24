@@ -18,7 +18,8 @@
       a file of the person's own with the same name stays). The installer says when ~/Baker/app
       can be deleted.
     - Windows: Setup keeps the AppId, so it updates the install in place in Programs\Baker. It
-      uses a model in %LOCALAPPDATA%\Baker\models where it is, leaves a ~/.baker/model.json of
+      uses a model in %LOCALAPPDATA%\Baker\models where it is (a replacement for one that fails
+      its check goes to the same folder), leaves a ~/.baker/model.json of
       the person's own, and moves the shortcuts out of the old "Baker" Start-menu group.
   - The docs name the new folders, launchers, shortcut and file names. Code comments that #117
     added after #127 now say Mabillon too.

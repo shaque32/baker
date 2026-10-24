@@ -93,14 +93,20 @@ var
   DownloadPage: TDownloadWizardPage;
   ModelReady: Boolean;
   RuntimeName: String;
+  ChosenModelDir: String;
 
 // A model the Baker installer placed stays where it is (PlaceModel checks it like any other).
+// The folder is chosen once, so removing a model that fails its check does not move the target.
 function ModelDir(): String;
 begin
-  Result := ExpandConstant('{localappdata}\Mabillon\models');
-  if not FileExists(Result + '\' + ModelFile) and
-    FileExists(ExpandConstant('{localappdata}\Baker\models\') + ModelFile) then
-    Result := ExpandConstant('{localappdata}\Baker\models');
+  if ChosenModelDir = '' then
+  begin
+    ChosenModelDir := ExpandConstant('{localappdata}\Mabillon\models');
+    if not FileExists(ChosenModelDir + '\' + ModelFile) and
+      FileExists(ExpandConstant('{localappdata}\Baker\models\') + ModelFile) then
+      ChosenModelDir := ExpandConstant('{localappdata}\Baker\models');
+  end;
+  Result := ChosenModelDir;
 end;
 
 function ModelTarget(): String;
