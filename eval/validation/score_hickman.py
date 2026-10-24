@@ -9,9 +9,10 @@ in project files. The run's case.db is copied; the copy is scored and the origin
 1. Key evidence: each key record (`ufdr:source_index:N`) is matched to Mabillon's records by
    content, since Mabillon's ids are positional and keep no UFDR id. A message must agree on its
    raw time (the same report.xml text both sides read), its app and its body; a call on its raw
-   time, its app and its duration; a contact on its name and one of its identifiers (a phone
-   number by its last ten digits). A key with no single match (none, several, or a kind
-   Mabillon does not cite, such as a chat) is listed, never matched to a near miss.
+   time, its app, its duration and its parties; a contact on its name and one of its
+   identifiers (a phone number by its last ten digits). A key with no single match (none,
+   several, or a kind Mabillon does not cite, such as a chat) is listed, never matched to a
+   near miss.
 2. R1, the run as it stands: the three primary measures, key-evidence recall (counted per key
    record, so a contact Mabillon keeps as one row per identifier still counts once), label counts.
 3. R2, the simulated expert (eval/simulated_expert.py) on the mapped keys, then the rules again
@@ -122,10 +123,18 @@ def match_record(
         ids = [r[0] for r in rows]
     elif kind == "call":
         rows = conn.execute(
-            "SELECT id FROM calls WHERE ts_raw = ? AND app = ? AND duration_s IS ?",
+            "SELECT c.id, f.identifier, t.identifier FROM calls c"
+            " LEFT JOIN accounts f ON f.id = c.from_account_id"
+            " LEFT JOIN accounts t ON t.id = c.to_account_id"
+            " WHERE c.ts_raw = ? AND c.app = ? AND c.duration_s IS ?",
             (rec["time_utc"], _app(rec, chats), _seconds(rec.get("duration"))),
         ).fetchall()
-        ids = [r[0] for r in rows]
+        # Every party Mabillon put on the call must be one of the record's parties (by number,
+        # or by name for a party with none). A call Mabillon left without parties, because the
+        # source did not say who called whom, is matched on the other fields alone.
+        named = {_ident(v) for p in rec.get("parties", []) for v in (p.get("id"), p.get("name"))
+                 if v}  # fmt: skip
+        ids = [r[0] for r in rows if {_ident(v) for v in r[1:] if v} <= named]
     elif kind == "contact":
         values = {_ident(e["value"]) for e in rec.get("entries", []) if e.get("value")}
         rows = conn.execute(

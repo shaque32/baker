@@ -200,6 +200,11 @@ def test_a_near_miss_is_never_a_match(scored):
         [],
         "no record matches",
     )
+    jo, sam = {"id": JO[0], "name": "Jo"}, {"id": "+15550100003", "name": "Sam"}
+    call = {**call, "duration": "00:01:30"}
+    assert score_hickman.match_record(conn, {**call, "parties": [jo]})[1] == ""
+    # the same time, app and duration with another person is another call
+    assert score_hickman.match_record(conn, {**call, "parties": [sam]}) == ([], "no record matches")
     conn.close()
 
 
@@ -220,7 +225,7 @@ def test_calls_and_contacts_map_to_their_one_record(scored, tmp_path):
     conn = sqlite3.connect(run / "case.db")
     call = {
         "kind": "call", "time_utc": "2023-04-28T17:00:00.000+00:00", "app": "Phone",
-        "duration": "00:01:30.6000000",
+        "duration": "00:01:30.6000000", "parties": [{"id": JO[0], "name": "Jo"}],
     }  # fmt: skip
     ids, why = score_hickman.match_record(conn, call)  # the fraction dropped, as imported
     assert len(ids) == 1 and ids[0].startswith("call:") and why == ""
