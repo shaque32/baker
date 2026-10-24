@@ -12,8 +12,10 @@ the judgment.
 
 1. **Reads what you already have.** The government's document (an affidavit or report, as a PDF)
    and the phone extraction reports: Cellebrite Excel, PDF and UFDR, and Magnet AXIOM XML and
-   Excel. Each file is opened read-only and its SHA-256 recorded. The UFDR and AXIOM readers have
-   not yet been checked on a real export, and Mabillon says so on screen and in the report.
+   Excel. Each file is opened read-only and its SHA-256 recorded. The UFDR reader is tested on
+   real-format Cellebrite UFDR exports from public test phones (Reader 7.48). Other
+   Cellebrite versions are not yet tested. The Cellebrite Excel and AXIOM readers are not yet
+   tested on real exports.
 2. **Splits the document into claims.** A local model proposes one claim at a time; you accept,
    edit or remove each one and add your own. The claim list is yours.
 3. **Tests each claim.** Code checks what can be computed (sender, account, time and time zone,
@@ -44,7 +46,9 @@ the judgment.
    proposed until you confirm them.
 5. **It makes no speed or accuracy claim.** There is no accuracy figure for real cases: Mabillon has
    been measured on synthetic cases only, and no figure is published until it is measured on real
-   extractions. UFDR and AXIOM support is unverified on real exports.
+   extractions. UFDR is tested only on Cellebrite
+   Reader 7.48 exports of public test phones; Cellebrite Excel and AXIOM are not yet tested on
+   real exports.
 
 ## Where your data goes
 

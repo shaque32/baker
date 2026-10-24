@@ -208,6 +208,7 @@ def build_card(
     return {
         "claims": len(gold),
         "predicted": sum(1 for g in gold if g.claim_id in by_id),
+        "not_predicted": [g.claim_id for g in gold if g.claim_id not in by_id],
         "accuracy": rate(correct, len(gold)),
         "false_supported": rate(fs, not_supported) | {"by_basis": dict(fs_basis)},
         "false_contradicted": rate(fc, not_contradicted) | {"by_basis": dict(fc_basis)},
@@ -233,6 +234,11 @@ def build_card(
     }
 
 
+def _cell(text: str) -> str:
+    """A value safe inside one Markdown table cell: no column break, no new row."""
+    return " ".join(text.split()).replace("|", "\\|")
+
+
 def _fmt(r: dict[str, Any]) -> str:
     """'0 of 12 (0%) [0-24%]'."""
     if r["rate"] is None:
@@ -256,12 +262,19 @@ def render_markdown(card: dict[str, Any]) -> str:
         "",
         "| Measure | Result |",
         "|---|---|",
+        f"| Claims predicted | predicted {card['predicted']} of {card['claims']} |",
         f"| Verdict accuracy | {_fmt(card['accuracy'])} |",
         f"| False supported (gold not supported) | {_fmt(card['false_supported'])} |",
         f"| False contradicted (gold not contradicted) | {_fmt(card['false_contradicted'])} |",
         f"| Missed contradiction (gold contradicted) | {_fmt(card['missed_contradicted'])} |",
         f"| Missed support (gold supported) | {_fmt(card['missed_supported'])} |",
     ]
+    missing = card["not_predicted"]
+    if missing:
+        lines.append(
+            f"| No prediction (counted wrong; never false supported or false contradicted) | "
+            f"{len(missing)}: {', '.join(_cell(m) for m in missing)} |"
+        )
     for label, key in (
         ("False supported", "false_supported"),
         ("False contradicted", "false_contradicted"),
