@@ -90,8 +90,8 @@ core/
                       else used the account or phone, another clock, the day boundary, another
                       app, a whole app quiet, a curated report, the same words elsewhere);
                       code only, derived on demand, never stored, never touches verdicts
-cli/                  `baker import`, `baker claims`, `baker audit`, `baker report`, `baker serve`,
-                      `baker export-bundle`, `baker verify-bundle`
+cli/                  `mabillon import`, `mabillon claims`, `mabillon audit`, `mabillon report`, `mabillon serve`,
+                      `mabillon export-bundle`, `mabillon verify-bundle`
 ui/                   the expert's screen on 127.0.0.1 (stdlib server, no scripts): start a case,
                       run the audit in the background, review
 eval/
@@ -136,9 +136,9 @@ Mabillon runs entirely on the expert's computer unless the expert opts a case in
 
 Stance labels come from Claude (Opus 5.5, medium effort by default) for a case where all hold:
 the expert attested at case setup that its protective order allows cloud AI; the case is not
-marked as possibly containing CSAM; the expert's own Anthropic key is set up: `$BAKER_ANTHROPIC_API_KEY`; or, in an encrypted case,
+marked as possibly containing CSAM; the expert's own Anthropic key is set up: `$MABILLON_ANTHROPIC_API_KEY`; or, in an encrypted case,
 the key saved in that case (`case.cloud-key`, AES-256-GCM under the case key, so it is unreadable
-while the case is locked); or `~/.baker/cloud.json` (owner-only), in that order; and the model
+while the case is locked); or `~/.mabillon/cloud.json` (owner-only; `~/.baker/cloud.json` from before the rename), in that order; and the model
 passed the signed stance test at its configured effort with the cloud stance prompt (`PROBE_PASSED` in
 `core/llm/cloud.py`, which lists Opus 5.5 at medium effort, signed by Arsh 2026-10-20; an entry
 needs a recorded pass on the signed set and on new held-out items, and Arsh's sign-off). Only a cloud model reads that prompt,

@@ -16,7 +16,7 @@ states only. Mabillon never sends it: you save it, read it, and attach it to an 
 
 - **In the app:** the **Help** tab (any page, with or without a case open) shows the whole report,
   then **Save the bug report** downloads the same text.
-- **On the command line:** `baker bug-report --out report.json`, or add `--db <case>/case.db` to
+- **On the command line:** `mabillon bug-report --out report.json`, or add `--db <case>/case.db` to
   include that case's counts and states.
 
 **What it holds:** Mabillon's package, commit, pipeline, contracts, rules, quote-check and report

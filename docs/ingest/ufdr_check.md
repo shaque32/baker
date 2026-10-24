@@ -1,16 +1,16 @@
 # UFDR self-check
 
-`baker ufdr-check` tells an expert, on their own computer and offline, whether Mabillon read a real
+`mabillon ufdr-check` tells an expert, on their own computer and offline, whether Mabillon read a real
 UFDR the way the package's own `report.xml` says it should be read. It is how Mabillon's UFDR reader
 (docs/ingest/ufdr.md, still **unverified**) gets checked against real packages without anyone
 sending a case file anywhere.
 
 ```
-baker ufdr-check --package "D:\Exports\item1.ufdr" --out "D:\Exports\item1-check"
+mabillon ufdr-check --package "D:\Exports\item1.ufdr" --out "D:\Exports\item1-check"
 ```
 
-On Windows run it from the "Baker command prompt" in the Start menu; on a Mac, from Terminal
-(`~/Baker/app/.venv/bin/baker`). `--out` must be a new or empty folder. `--sample` sets how many
+On Windows run it from the "Mabillon command prompt" in the Start menu; on a Mac, from Terminal
+(`~/Mabillon/app/.venv/bin/mabillon`). `--out` must be a new or empty folder. `--sample` sets how many
 records of each kind go in the private sample (default 20). Nothing is added to any case.
 
 ## What it does

@@ -1,7 +1,7 @@
 """Open a case database and apply the canonical schema.
 
 A plain case database (every case made before encryption at rest, and `--db` files made by
-`baker init`) opens with the standard library's sqlite3, exactly as before. An encrypted one
+`mabillon init`) opens with the standard library's sqlite3, exactly as before. An encrypted one
 (core/encryption.py) opens with SQLCipher, keyed from the case key this process unlocked; a
 locked one raises CaseLocked. Code that catches database errors uses the tuples below, not
 sqlite3's own classes, because SQLCipher raises its own classes of the same names.

@@ -1,15 +1,17 @@
-; Baker installer for Windows (Inno Setup 6). Built in CI by .github/workflows/windows-installer.yml
+; Mabillon installer for Windows (Inno Setup 6). Built in CI by .github/workflows/windows-installer.yml
 ; from the folder packaging/windows/stage.py writes. See docs/install.md.
 ;
-; Per-user install, no administrator rights: %LOCALAPPDATA%\Programs\Baker.
+; Per-user install, no administrator rights: %LOCALAPPDATA%\Programs\Mabillon. An update over an
+; install made when the product was called Baker (same AppId) stays in %LOCALAPPDATA%\Programs\Baker.
 ; Picks the model runtime at install time: the CUDA build when the PC has an NVIDIA driver
 ; (nvidia-smi.exe in System32), else the CPU build. /RUNTIME=cpu or /RUNTIME=cuda overrides.
 ;
 ; The model file (about 9 GB) is not inside the installer. Setup looks for it, in this order:
-;   1. already installed at %LOCALAPPDATA%\Baker\models\<file> (a reinstall, or the speed test)
+;   1. already installed at %LOCALAPPDATA%\Mabillon\models\<file> (a reinstall, or the speed test),
+;      or at %LOCALAPPDATA%\Baker\models\<file> from the Baker installer (used where it is)
 ;   2. next to Setup.exe (offline install: copy both files from a USB drive)
 ;   3. downloaded from Hugging Face, only if the person ticks that box (or /MERGETASKS=downloadmodel)
-; Every copy is checked against the pinned SHA-256 before Baker is told about it. Baker is
+; Every copy is checked against the pinned SHA-256 before Mabillon is told about it. Mabillon is
 ; offline by default; the only other network use is a case the expert opts in to cloud AI.
 
 #ifndef Stage
@@ -24,34 +26,40 @@
 
 [Setup]
 AppId={{6F0B3C1E-6A57-4D5B-9B9E-3C1A0B7E2D41}
-AppName=Baker
+AppName=Mabillon
 AppVersion={#AppVersion}
-AppPublisher=Baker
+AppPublisher=Mabillon
 AppComments=Audits government claims about phone evidence. Offline by default; cloud AI only for a case you opt in.
-DefaultDirName={localappdata}\Programs\Baker
-DefaultGroupName=Baker
+DefaultDirName={localappdata}\Programs\Mabillon
+DefaultGroupName=Mabillon
+; An update moves the Start-menu shortcuts out of an earlier "Baker" group (see [InstallDelete]).
+UsePreviousGroup=no
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
-OutputBaseFilename=Baker-Setup-{#AppVersion}
+OutputBaseFilename=Mabillon-Setup-{#AppVersion}
 Compression=lzma2/normal
 SolidCompression=yes
 LZMANumBlockThreads=4
 ChangesEnvironment=yes
 WizardStyle=modern
 SetupLogging=yes
-UninstallDisplayName=Baker {#AppVersion}
+UninstallDisplayName=Mabillon {#AppVersion}
 
 [Tasks]
-Name: addtopath; Description: "Add the baker command to PATH"
+Name: addtopath; Description: "Add the mabillon command to PATH"
 Name: downloadmodel; Description: "Download the AI model {#ModelName} ({#ModelSizeGB} GB) from Hugging Face. Skip this on an offline computer and put the model file next to Setup instead."; Check: not ModelAvailable
 
 [InstallDelete]
-; A reinstall replaces Baker and the runtime whole, so no file from an older version stays behind.
+; A reinstall replaces Mabillon and the runtime whole, so no file from an older version stays behind.
 Type: filesandordirs; Name: "{app}\baker"
 Type: filesandordirs; Name: "{app}\python"
+; The Start-menu shortcuts the Baker installer made, and their group once it is empty.
+Type: files; Name: "{userprograms}\Baker\Baker command prompt.lnk"
+Type: files; Name: "{userprograms}\Baker\Uninstall Baker.lnk"
+Type: dirifempty; Name: "{userprograms}\Baker"
 
 [Files]
 Source: "{#Stage}\python\*"; DestDir: "{app}\python"; Flags: recursesubdirs createallsubdirs ignoreversion
@@ -59,11 +67,12 @@ Source: "{#Stage}\baker\*"; DestDir: "{app}\baker"; Flags: recursesubdirs create
 Source: "{#Stage}\runtime\cpu\*"; DestDir: "{app}\python\Lib\site-packages"; Flags: recursesubdirs createallsubdirs ignoreversion; Check: not UseCuda
 Source: "{#Stage}\runtime\cuda\*"; DestDir: "{app}\python\Lib\site-packages"; Flags: recursesubdirs createallsubdirs ignoreversion; Check: UseCuda
 Source: "{#Stage}\baker.cmd"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#Stage}\mabillon.cmd"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Stage}\BUILD_INFO.json"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\Baker command prompt"; Filename: "{cmd}"; Parameters: "/k ""{app}\baker.cmd"" --help"; WorkingDir: "{userdocs}"
-Name: "{group}\Uninstall Baker"; Filename: "{uninstallexe}"
+Name: "{group}\Mabillon command prompt"; Filename: "{cmd}"; Parameters: "/k ""{app}\mabillon.cmd"" --help"; WorkingDir: "{userdocs}"
+Name: "{group}\Uninstall Mabillon"; Filename: "{uninstallexe}"
 
 [UninstallDelete]
 ; Case databases and the model stay: they are the person's files, not the program's.
@@ -77,16 +86,27 @@ const
   ModelSha256 = '{#ModelSha256}';
   ModelName = '{#ModelName}';
   ModelNCtx = '{#ModelNCtx}';
-  ConfigMarker = 'written by Baker setup';
+  ConfigMarker = 'written by Mabillon setup';
+  OldConfigMarker = 'written by Baker setup';
 
 var
   DownloadPage: TDownloadWizardPage;
   ModelReady: Boolean;
   RuntimeName: String;
+  ChosenModelDir: String;
 
+// A model the Baker installer placed stays where it is (PlaceModel checks it like any other).
+// The folder is chosen once, so removing a model that fails its check does not move the target.
 function ModelDir(): String;
 begin
-  Result := ExpandConstant('{localappdata}\Baker\models');
+  if ChosenModelDir = '' then
+  begin
+    ChosenModelDir := ExpandConstant('{localappdata}\Mabillon\models');
+    if not FileExists(ChosenModelDir + '\' + ModelFile) and
+      FileExists(ExpandConstant('{localappdata}\Baker\models\') + ModelFile) then
+      ChosenModelDir := ExpandConstant('{localappdata}\Baker\models');
+  end;
+  Result := ChosenModelDir;
 end;
 
 function ModelTarget(): String;
@@ -95,6 +115,12 @@ begin
 end;
 
 function ConfigFile(): String;
+begin
+  Result := ExpandConstant('{%USERPROFILE}\.mabillon\model.json');
+end;
+
+// Mabillon reads it while there is no ConfigFile().
+function OldConfigFile(): String;
 begin
   Result := ExpandConstant('{%USERPROFILE}\.baker\model.json');
 end;
@@ -164,10 +190,10 @@ begin
       try
         DownloadPage.Download;
       except
-        // A failed or cancelled download is not fatal: Baker installs, the model comes later.
+        // A failed or cancelled download is not fatal: Mabillon installs, the model comes later.
         Log('Model download did not finish: ' + GetExceptionMessage);
         SuppressibleMsgBox('The model was not downloaded (' + GetExceptionMessage + ').'#13#10 +
-          'Baker will install now. See "Install the model later" in the install guide.',
+          'Mabillon will install now. See "Install the model later" in the install guide.',
           mbInformation, MB_OK, IDOK);
       end;
     finally
@@ -182,19 +208,29 @@ begin
   StringChangeEx(Result, '\', '/', True);
 end;
 
-// Points Baker at the model unless the person already set up a model config of their own.
-procedure WriteModelConfig();
+// True for a model config the person wrote: one no Setup, Mabillon's or Baker's, wrote.
+function PersonsOwnConfig(const Path: String): Boolean;
 var
   Existing: AnsiString;
+begin
+  Result := FileExists(Path) and LoadStringFromFile(Path, Existing) and
+    (Pos(ConfigMarker, String(Existing)) = 0) and (Pos(OldConfigMarker, String(Existing)) = 0);
+end;
+
+// Points Mabillon at the model unless the person already set up a model config of their own.
+procedure WriteModelConfig();
+var
   Json: String;
 begin
-  if FileExists(ConfigFile()) then
+  if PersonsOwnConfig(ConfigFile()) then
   begin
-    if LoadStringFromFile(ConfigFile(), Existing) and (Pos(ConfigMarker, String(Existing)) = 0) then
-    begin
-      Log('Leaving ' + ConfigFile() + ' as it is: it was not written by Baker setup.');
-      Exit;
-    end;
+    Log('Leaving ' + ConfigFile() + ' as it is: it was not written by Setup.');
+    Exit;
+  end;
+  if not FileExists(ConfigFile()) and PersonsOwnConfig(OldConfigFile()) then
+  begin
+    Log('Leaving ' + OldConfigFile() + ' as it is: it was not written by Setup, and Mabillon reads it.');
+    Exit;
   end;
   ForceDirectories(ExtractFileDir(ConfigFile()));
   Json := '{' + #13#10 +
@@ -299,7 +335,7 @@ begin
     if ModelReady then
       WriteModelConfig()
     else
-      Log('No verified model file yet; Baker runs everything except the model steps.');
+      Log('No verified model file yet; Mabillon runs everything except the model steps.');
   end;
 end;
 

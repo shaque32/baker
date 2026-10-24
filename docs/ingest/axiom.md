@@ -16,7 +16,7 @@ and fragments of AXIOM XML reports) and tested on synthetic exports only
 - records `"format_support": "unverified"` in its coverage record;
 - shows, first among the items to review, that the reader is unverified and that each record
   should be compared with AXIOM Examine before it is relied on (`format_unverified`). The
-  coverage headline starts "Unverified format." on the case screen and in `baker import`;
+  coverage headline starts "Unverified format." on the case screen and in `mabillon import`;
 - adds a line to the report's Limitations saying the file was read with an unverified reader.
 
 A report export holds what the examiner chose to export, so it imports with
@@ -124,6 +124,22 @@ A hit whose `Recovery method` mentions carving is imported and listed for review
 (`carved`); every recovery method value seen is counted in coverage. A record with no time
 (`no_time`) and a call duration Mabillon cannot read (`duration_unread`) are listed. Mabillon never
 says a record was deleted; a `Deleted` field, when present, is stored as stated.
+
+Forwarded and quoted messages (assumed field names, importer 0.2.0): a `Forwarded` or
+`Is Forwarded` field marks the hit forwarded (`No`, `False`, `0` and `Not forwarded` do not;
+any other value does, failing closed), with `Forwarded From`, `Original Sender` or
+`Original Author` stored as the original author, as written. A nonempty original-author field
+alone also marks the hit forwarded. Copies are written after every record of the export, so a copy never creates or seeds a
+thread another record uses (an SMS copy would otherwise be threaded by its own sender, another
+correspondent), and a thread only a copy made is dropped. In an SMS artifact a name-only quoted
+sender's account is scoped to the copy's own record, as every name-only SMS party is scoped to
+its record, so it is never merged with a same-named party of the parent. A `Quoted Message`,
+`Quoted Message Body` or `Quoted Text` field is imported, one level deep, as a record of its own
+at the hit's locator plus `/Embedded[1]`, in the same thread, with no time and with its own
+sender (`Quoted Message Sender`, `Quoted Message Author` or `Quoted Sender`, and
+`Quoted Message Sender Name` or `Quoted Sender Name`) as written. Both fail closed exactly as
+UFDR forwards and embedded copies do (core/ingest/forwarded.py). These names come from no real
+export; check them under "Before calling it verified".
 
 ## Ids and locators
 

@@ -5,7 +5,7 @@
   the case01 row for that setup (95%, 0 false supported, $8.16, 2026-10-20) with the older Opus row
   labelled "(prompt v1.1)". Section 10 has a fresh `make check`. #99's and #101's entries now name
   their merges.
-- Where: branch `claude/status-refresh-after-98-u6nwod`, not merged.
+- Where: main (#102, merged 2026-10-20)
 - Verified: each replaced phrase matched main exactly once; `make check` (Linux, 2026-10-20):
   2282 passed, case01 gated 1.00 / 0 false supported, unreviewed 0.55, hostile PASS, case02 0.90 /
   0 false supported.

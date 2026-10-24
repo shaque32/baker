@@ -33,21 +33,21 @@ Turn on your computer's disk encryption first (FileVault on a Mac, BitLocker on 
 **Mac (about 30 minutes, mostly waiting).** Full guide: `docs/install-mac.md`.
 
 1. Unzip the Mabillon folder you were sent into Downloads.
-2. In the Mabillon folder, open `packaging`, then `mac`, and double-click **Install Baker.command**.
+2. In the Mabillon folder, open `packaging`, then `mac`, and double-click **Install Mabillon.command**.
    The first time, macOS may make you right-click it and choose **Open**. (Or open Terminal, type
    `bash ` with a space, drag `packaging/mac/install.sh` into the window and press Return.) If asked to install Apple's command line tools, click **Install**, then
    run the installer again.
-3. Wait for **Done**. Two icons appear on your Desktop: **Baker** and **Baker demo**.
-4. Check it: in Terminal, run `~/Baker/app/.venv/bin/baker model-check`. It says whether the model
+3. Wait for **Done**. Two icons appear on your Desktop: **Mabillon** and **Mabillon demo**.
+4. Check it: in Terminal, run `~/Mabillon/app/.venv/bin/mabillon model-check`. It says whether the model
    is present, is the exact pinned file and fits in memory.
 
 **Windows.** Full guide: `docs/install.md`.
 
-1. Get `Baker-Setup-<version>.exe`, and get its SHA-256 value **by a different route** from the
+1. Get `Mabillon-Setup-<version>.exe`, and get its SHA-256 value **by a different route** from the
    installer: for example, read it back with the Mabillon team by phone. A `.sha256` file that came
    in the same email, download or shared folder proves nothing, since whoever could swap the
    installer could swap that file too.
-2. In PowerShell, run `Get-FileHash .\Baker-Setup-<version>.exe -Algorithm SHA256` and compare it
+2. In PowerShell, run `Get-FileHash .\Mabillon-Setup-<version>.exe -Algorithm SHA256` and compare it
    with that value. Stop if they differ.
 3. Check the publisher: right-click the installer > **Properties** > **Digital Signatures**
    must show **Shayan Haque**. Stop if it shows another name or no signature. Then run it. A new
@@ -57,15 +57,15 @@ Turn on your computer's disk encryption first (FileVault on a Mac, BitLocker on 
    `Qwen3-14B-Q4_K_M.gguf` in the same folder as the installer **before** running it; Setup
    checks its SHA-256 and copies it. If you add the model later, put it next to the installer and
    run Setup again (`docs/install.md`).
-5. Check it: open **Baker command prompt** from the Start menu and run `baker model-check`.
+5. Check it: open **Mabillon command prompt** from the Start menu and run `mabillon model-check`.
 
 ## 3. First run: the demo (15 minutes)
 
 The demo is a ready-made, fully synthetic case (two phones, seven planted traps). No model runs,
 so it opens in seconds. Run it before you open anything real.
 
-1. Start it. Mac: double-click **Baker demo**. Windows: in **Baker command prompt**, run
-   `baker demo`. Your browser opens `http://127.0.0.1:8766`. Only your computer can open that
+1. Start it. Mac: double-click **Mabillon demo**. Windows: in **Mabillon command prompt**, run
+   `mabillon demo`. Your browser opens `http://127.0.0.1:8766`. Only your computer can open that
    address. Closing the window that started it stops Mabillon.
 2. Open the case. The setup page lists three imported files, each with its SHA-256, and the phone
    reports marked "curated report", which means they cannot show that something did not happen.
@@ -78,12 +78,12 @@ so it opens in seconds. Run it before you open anything real.
 6. Open the **Report**. Look for the source hashes, the rule version, the model runs and the
    audit-log result.
 
-`docs/demo.md` has the answer key for every planted trap. Running `baker demo` again resets the
+`docs/demo.md` has the answer key for every planted trap. Running `mabillon demo` again resets the
 demo to a clean copy.
 
 ## 4. Your first case
 
-1. Start Mabillon (Mac: **Baker** on the Desktop; Windows: `baker serve --open`). It opens
+1. Start Mabillon (Mac: **Mabillon** on the Desktop; Windows: `mabillon serve --open`). It opens
    `http://127.0.0.1:8765`.
 2. **New case.** Leave **Encrypt this case with a passphrase** ticked. Mabillon shows a recovery key
    **once**: write it down and keep it away from the computer. If you lose both the passphrase and
@@ -114,7 +114,7 @@ sources "unverified".
 
 1. Read the source's coverage block on the setup page. Anything under "needs review" lists records
    Mabillon skipped or values it could not read, with the location in the report.
-2. For a UFDR, run `baker ufdr-check --package <file.ufdr> --out <new empty folder>`. It compares
+2. For a UFDR, run `mabillon ufdr-check --package <file.ufdr> --out <new empty folder>`. It compares
    Mabillon's import with the UFDR's own `report.xml`, offline, and adds nothing to any case. It
    writes `ufdr-check.md` and `ufdr-check.json` (counts and differences, no message text, names
    or numbers), which you may send us after reading them, and `ufdr-check-private.md` (sample
@@ -141,7 +141,7 @@ changed together with the anchor file. Keep the last hash from each report you d
 
 Mabillon checks the log when a case opens, on every page while it is open, and before every report.
 A failed check shows **Review blocked** on the Cases page with the reason, closes the case (an
-encrypted case locks), and refuses any change or report. `baker verify-log --db <case
+encrypted case locks), and refuses any change or report. `mabillon verify-log --db <case
 folder>/case.db` says why. `docs/review-screen.md` ("When a case is blocked") has the same steps.
 
 What to do:
@@ -151,7 +151,7 @@ What to do:
    the background cannot write mid-copy. Then copy the whole case folder as it is, for
    examination.
 3. If you have a backup of the case folder from before the problem, restore it to a new folder and
-   check it with `baker verify-log`.
+   check it with `mabillon verify-log`.
 4. Otherwise start a new case from your original files and repeat your review. To show they are
    the same files, compare their SHA-256 values with a report you delivered or saved **before** the
    problem, or another record kept outside the case. A match with the broken case's own report is

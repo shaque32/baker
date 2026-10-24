@@ -1,11 +1,11 @@
 """The model check before a first audit: is the model set up, is it the pinned file, does it fit.
 
 Four checks, each with a plain message:
-1. The model config exists and is valid (core/audit/_local_model.py: $BAKER_MODEL_CONFIG, else
-   ~/.baker/model.json).
+1. The model config exists and is valid (core/audit/_local_model.py: $MABILLON_MODEL_CONFIG, else
+   ~/.mabillon/model.json).
 2. The model file it names is on this computer.
 3. The file's SHA-256 matches the config. Hashing a 9 GB file takes a minute or two, so a pass
-   is remembered for that file (path, size and modification time) in ~/.baker/model-check.json;
+   is remembered for that file (path, size and modification time) in ~/.mabillon/model-check.json;
    a changed file is hashed again.
 4. This computer has enough memory: the file's size plus HEADROOM_GB for the context and
    Mabillon itself. Below that the model either does not load or swaps so hard a case never ends.
@@ -27,11 +27,12 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
+from core import paths
 from core.audit._local_model import ModelConfigError, config_path, load_config
 
 GB = 1024**3
 HEADROOM_GB = 4.0  # context cache, the runtime and Mabillon; 14B Q4 (~9 GB) then needs ~13 GB
-CACHE = Path.home() / ".baker" / "model-check.json"
+CACHE = paths.settings_file("model-check.json")
 
 Progress = Callable[[int, int], None]  # bytes hashed, bytes total
 

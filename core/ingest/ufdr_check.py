@@ -58,8 +58,8 @@ MAX_SCHEMA_FIELDS = 60  # field names listed per model kind
 
 PARTY_HOLDERS = {"from", "to", "parties", "participants"}  # fields holding parties, any type
 TOP_MESSAGE_TYPES = {"InstantMessage", "Message", "SMS", "MMS"}
-# "imported" counts copies matching a message Baker imported; "repeats" those matching none
-# that Baker lists for review instead
+# "imported" counts copies matching a message Mabillon imported; "repeats" those matching none
+# that Mabillon lists for review instead
 RELATED_RECORD = "message copies under RelatedModels (matched to an imported message)"
 COPY_KINDS = ("Call", "Contact", "UserAccount")  # records whose copies have rows of their own
 RELATED_KIND_RECORDS = {
@@ -208,7 +208,7 @@ class MessageRec:
     att_refs: list[tuple[bool, str | None, str | None]]
     attachments: int = 0  # set when the read ends (file ids need taggedFiles)
     attachment_files: int = 0  # attachments naming a path that is in the package
-    # identifiers only: Baker links a party to the phone's own account by identifier, never by
+    # identifiers only: Mabillon links a party to the phone's own account by identifier, never by
     # a name that happens to read like one
     sender_ident: str | None = None
     recipient_idents: list[str] = field(default_factory=list)
@@ -275,7 +275,7 @@ class Tally:
         self.contacts: dict[str, ContactRec] = {}
         self.user_accounts: dict[str, str | None] = {}  # locator -> expected identifier
         self.owner_ids: set[str] = set()  # UserAccount identifiers: the phone's own accounts
-        # a UserAccount naming the same app and identifier as an earlier one: Baker keeps one
+        # a UserAccount naming the same app and identifier as an earlier one: Mabillon keeps one
         # account for both, at the earlier locator
         self.account_repeats: set[str] = set()
         self._account_keys: set[tuple[str, str]] = set()
@@ -905,7 +905,7 @@ def _counts(record: str, xml: dict, db: set[str], repeats: set[str]) -> Count:
 
 
 def _listed_copies(conn: sqlite3.Connection, src: str) -> tuple[set[str], int, int]:
-    """The copies Baker's import listed for review as matching no record: the locators its
+    """The copies Mabillon's import listed for review as matching no record: the locators its
     coverage record lists (capped, any type) and how many message copies, and how many other
     copies, there were."""
     row = conn.execute(
@@ -954,7 +954,7 @@ def _unmatched_copies(
     for loc, x in t.related_messages.items():
         head, _, last = loc.rpartition("/")
         if last.startswith("Related["):  # a copy of the message (or copy) holding it
-            # the holder: a message Baker imported, or one it imported once under an earlier id
+            # the holder: a message Mabillon imported, or one it imported once under an earlier id
             if head in db_msgs or head in t.repeats:
                 twin = t.messages.get(head)
             elif head in t.embedded:  # a message embedded in another
@@ -970,7 +970,7 @@ def _unmatched_copies(
         if "/Related[" in holder:  # a chat copied inside a copied chat: matches that copy
             own = [x for loc, x in t.related_messages.items() if loc.rpartition("/")[0] == holder]
         else:
-            # the holder chat's messages Baker imported, and those it imported once under an
+            # the holder chat's messages Mabillon imported, and those it imported once under an
             # earlier id (the importer keys those too)
             own = [x for loc, x in t.messages.items()
                    if (loc in db_msgs or loc in t.repeats)
@@ -1192,7 +1192,7 @@ def compare(t: Tally, conn: sqlite3.Connection, src: str) -> tuple[list[Count], 
     # what its holder says (text, time, sender, recipients, deleted state, and attachments by
     # count and name as written; a copy's file path or id is its own source's reference), and
     # the messages of a copied chat match the holder chat's imported messages one to one. One
-    # that does not match must be one Baker lists for review (related_copy_unmatched);
+    # that does not match must be one Mabillon lists for review (related_copy_unmatched);
     # otherwise it is missing
     unmatched = _unmatched_copies(t, db_msgs, _said)
     all_listed, n_listed, n_rec_listed = _listed_copies(conn, src)

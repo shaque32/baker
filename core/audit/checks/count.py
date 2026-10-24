@@ -24,11 +24,12 @@ class CountCheck(TemplateCheck):
 
     A report can leave records out, and phones lose them, so finding fewer than claimed is
     never a fail. Finding more than "exactly" or "at most" allows is a fail: those records are
-    there. "At most" can only pass on a full extraction.
+    there. "At most" can only pass on a full extraction. When any matching message is one the
+    extraction tool numbered as a copy of another row, the count neither passes nor fails.
     """
 
     name = "count"
-    version = "1.0.2"
+    version = "1.0.3"
 
     def evaluate(self, assumption_id: str, p: AssumptionParams, data: CaseData) -> CheckResult:
         if p.window is None or p.expected_count is None or p.count_op is None:
@@ -79,7 +80,17 @@ class CountCheck(TemplateCheck):
         if not full:
             lines.append(f"{source_id} is a curated report, so it may omit messages")
 
-        if op in ("eq", "le") and n > want:
+        copies = sum(1 for r in counted + no_time if r.id in data.numbered_copies)
+        if copies:
+            lines.append(
+                f"{copies} of the matching messages {'is' if copies == 1 else 'are'} numbered "
+                "by the extraction tool as a copy of another row, so the count may hold one "
+                "message twice; an expert must decide which rows are the same message"
+            )
+
+        if copies:
+            outcome = CheckOutcome.INCONCLUSIVE
+        elif op in ("eq", "le") and n > want:
             outcome = CheckOutcome.FAIL
         elif no_time:
             outcome = CheckOutcome.INCONCLUSIVE

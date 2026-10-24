@@ -12,7 +12,7 @@ the case's protective order. By default it holds only what the verdicts rest on 
 ## Export
 
 ```
-baker export-bundle --db <case>/case.db --out bundle.zip --by "expert:<your name>"
+mabillon export-bundle --db <case>/case.db --out bundle.zip --by "expert:<your name>"
 ```
 
 Run first without `--confirm-counsel-reviewed`: it prints the notice and exactly what the bundle
@@ -110,7 +110,7 @@ Model identity, per model run (`bundle.json` `models`, and `tables/model_runs.js
 ## Verify
 
 ```
-baker verify-bundle bundle.zip [--inputs <folder holding the original files>]
+mabillon verify-bundle bundle.zip [--inputs <folder holding the original files>]
 ```
 
 Offline; it never opens the case. An encrypted bundle asks for its passphrase. It loads the

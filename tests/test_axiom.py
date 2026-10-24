@@ -546,3 +546,301 @@ def test_values_against_the_field_date_format_are_not_called_a_stated_order(tmp_
     codes = _codes(s)
     assert codes["values_contradicting_field_date_format"] == "attention"
     assert "values_contradicting_stated_date_order" not in codes
+
+
+# ---------------------------------------------------------------- forwarded and quoted (gate 4)
+# The field names are the ones core/ingest/axiom.py assumes (unverified on a real export).
+
+
+def _fwd_case(tmp_path: Path, ext: str, **extra: str | None):
+    """The phone's owner sends a hit marked forwarded, or quoting Jo's words."""
+    hit = _msg(
+        "SYNTHETIC see you at noon",
+        "3/10/2026 3:00:00 PM",
+        sender="15550100001@wa",
+        sender_name=None,
+        to="15550100002@wa",
+        **{"Chat ID": "c1", **extra},
+    )
+    arts = [OWNER_WA, _wa(hit)]
+    path = _both(tmp_path, arts)[0 if ext == "xml" else 1]
+    conn, s = _import(path)
+    return conn, s
+
+
+def _rows(conn):
+    return conn.execute(
+        "SELECT id, locator, body, ts_raw, ts_utc, direction, forwarded, forwarded_from_raw,"
+        " thread_id FROM messages ORDER BY locator"
+    ).fetchall()
+
+
+@pytest.mark.parametrize("ext", ["xml", "xlsx"])
+def test_a_hit_marked_forwarded_is_marked_with_its_original_author_as_written(tmp_path, ext):
+    from core.ingest import forwarded
+
+    conn, s = _fwd_case(tmp_path, ext, **{"Forwarded": "Yes", "Forwarded From": " Jo (old #) "})
+    ((mid, _loc, body, *_r, fwd, author, _t),) = _rows(conn)
+    assert body == "SYNTHETIC see you at noon" and fwd == 1 and author == "Jo (old #)"
+    assert forwarded.affected(conn) == {mid: "forwarded"}
+    assert _codes(s)["forwarded"]
+    payload = json.loads(conn.execute("SELECT payload_json FROM source_coverage").fetchone()[0])
+    assert payload["forwarded_records"] == {"forwarded": [mid]}
+    assert payload["importer_version"] == "0.2.0"
+    # never credited to the forwarder: the note names the author as the extraction's text
+    assert forwarded.record_note_text(conn, mid, "forwarded") == (
+        'Forwarded: shown as sent by whoever forwarded it; the extraction names "Jo (old #)" as '
+        "the original author, which Mabillon has not checked."
+    )
+
+
+@pytest.mark.parametrize("value", ["No", "false", "0", "", None])
+def test_a_forwarded_flag_saying_no_marks_nothing(tmp_path, value):
+    conn, _s = _fwd_case(tmp_path, "xml", Forwarded=value)
+    assert [r[6] for r in _rows(conn)] == [None]
+
+
+def test_an_unknown_forwarded_value_fails_closed(tmp_path):
+    conn, _s = _fwd_case(tmp_path, "xml", Forwarded="Maybe")
+    assert [r[6] for r in _rows(conn)] == [1]
+
+
+@pytest.mark.parametrize("ext", ["xml", "xlsx"])
+def test_a_quoted_message_is_its_own_record_like_a_ufdr_embedded_copy(tmp_path, ext):
+    from core.ingest import forwarded
+
+    conn, s = _fwd_case(
+        tmp_path,
+        ext,
+        **{
+            "Quoted Message": "  SYNTHETIC Jo's exact words\n",
+            "Quoted Message Sender": "15550100002@wa",
+            "Quoted Message Sender Name": "Jo",
+        },
+    )
+    parent, copy = _rows(conn)
+    assert copy[1] == f"{parent[1]}/Embedded[1]" and copy[0] == f"msg:a1:{copy[1]}"
+    assert copy[2] == "  SYNTHETIC Jo's exact words\n"  # verbatim, in XML and Excel
+    assert copy[3] is None and copy[4] is None  # no time: never on the timeline
+    assert copy[5] != "outgoing" and parent[5] == "outgoing"  # never the owner's words
+    assert copy[6:8] == (1, "15550100002@wa")  # marked, author as written
+    assert parent[6] is None  # the hit itself is not marked forwarded
+    assert copy[8] == parent[8]  # same thread, and no thread made for the copy alone
+    assert conn.execute("SELECT COUNT(*) FROM threads").fetchone() == (1,)
+    sender = conn.execute(
+        "SELECT a.identifier, a.display_name FROM messages m"
+        " JOIN accounts a ON a.id = m.sender_account_id WHERE m.id = ?",
+        (copy[0],),
+    ).fetchone()
+    # Jo, never the forwarder or the phone owner (the account keeps the first name seen: none,
+    # from the hit's recipient)
+    assert sender == ("15550100002@wa", None)
+    found = forwarded.affected(conn)
+    assert found == {parent[0]: "embedded", copy[0]: "embedded_copy"}
+    assert forwarded.record_note_text(conn, copy[0], "embedded_copy") == (
+        f"Forwarded or quoted copy carried inside record {parent[0]}, imported as its own "
+        'record. The sender shown, "15550100002@wa", is the one the extraction names for '
+        "the embedded message, not verified; the message that carried it was sent by "
+        '"15550100001@wa".'
+    )
+    codes = _codes(s)
+    assert codes["embedded_messages_imported"] == "info"
+    assert "embedded_original_imported" in codes
+    assert "embedded_message_imported_separately" in codes
+    tc = json.loads(conn.execute("SELECT payload_json FROM source_coverage").fetchone()[0])
+    (table,) = [t for t in tc["tables"] if t["kind"] == "chats"]
+    assert table["rows_imported"] == 1  # the export's own hits only
+
+
+def test_a_forwarded_hit_never_takes_a_quoted_sender_as_its_author(tmp_path):
+    conn, _s = _fwd_case(
+        tmp_path, "xml", Forwarded="True", **{"Quoted Message": "SYNTHETIC hi",
+                                              "Quoted Message Sender": "15550100002@wa"}
+    )  # fmt: skip
+    parent, copy = _rows(conn)
+    # the quote's sender wrote the quote, not the forwarded text: the parent's author stays unknown
+    assert parent[6:8] == (1, None) and copy[6:8] == (1, "15550100002@wa")
+
+
+def test_a_quoted_message_with_no_sender_names_none(tmp_path):
+    from core.ingest import forwarded
+
+    conn, _s = _fwd_case(tmp_path, "xml", **{"Quoted Message": "SYNTHETIC no one named"})
+    parent, copy = _rows(conn)
+    assert copy[6:8] == (1, None)
+    assert forwarded.record_note_text(conn, copy[0], "embedded_copy") == (
+        f"Forwarded or quoted copy carried inside record {parent[0]}, imported as its own "
+        "record. The extraction names no sender for the embedded message; the message that "
+        'carried it was sent by "15550100001@wa".'
+    )
+
+
+def _sender(conn, quoted: str):
+    from tests.checks.helpers import check, stipulate
+
+    stipulate(conn, "person:b", "Bee", "dev:a1")
+    return check(conn, "sender", quoted_text=quoted, person_ids=["person:b"],
+                 device_ids=["dev:a1"])  # fmt: skip
+
+
+def test_checks_resting_on_an_axiom_forward_fail_closed_and_never_credit_the_forwarder(tmp_path):
+    from core.contracts import CheckOutcome
+
+    plain, _s = _fwd_case(tmp_path / "p", "xml")
+    assert _sender(plain, "see you at noon").outcome is CheckOutcome.PASS
+    conn, _s = _fwd_case(tmp_path / "f", "xml", Forwarded="Yes")
+    r = _sender(conn, "see you at noon")
+    assert r.outcome is CheckOutcome.INCONCLUSIVE
+    assert "marked as forwarded" in r.detail and "was sent by" not in r.detail
+
+
+def test_a_check_on_quoted_words_rests_on_the_copy_and_is_inconclusive(tmp_path):
+    from core.contracts import CheckOutcome
+    from core.ingest import forwarded
+
+    conn, _s = _fwd_case(
+        tmp_path, "xml", **{"Quoted Message": "SYNTHETIC Jo said this first",
+                            "Quoted Message Sender": "15550100002@wa"}
+    )  # fmt: skip
+    r = _sender(conn, "Jo said this first")
+    assert r.outcome is CheckOutcome.INCONCLUSIVE
+    assert any(forwarded.COPY_STEP in rid for rid in r.record_ids)
+    assert "was sent by" not in r.detail
+    found = forwarded.affected(conn)
+    assert "cannot support or contradict" in forwarded.claim_warning(found, r.record_ids)
+
+
+def test_the_report_names_the_axiom_importer_version(tmp_path):
+    conn, _s = _fwd_case(tmp_path, "xml", **{"Quoted Message": "SYNTHETIC hi"})
+    assert axiom.IMPORTER_VERSION == "0.2.0"
+    html_ = render_report(conn)
+    assert "axiom 0.2.0</td>" in html_
+
+
+@pytest.mark.parametrize("ext", ["xml", "xlsx"])
+def test_a_chat_table_without_forwarded_fields_says_so(tmp_path, ext):
+    def notes(conn):
+        tc = json.loads(conn.execute("SELECT payload_json FROM source_coverage").fetchone()[0])
+        (table,) = [t for t in tc["tables"] if t["kind"] == "chats"]
+        return " ".join(table.get("header_notes") or [])
+
+    conn, _s = _fwd_case(tmp_path / "a", ext)
+    assert "no forwarded or quoted field" in notes(conn)
+    conn, _s = _fwd_case(tmp_path / "b", ext, Forwarded="No")
+    assert "no forwarded or quoted field" not in notes(conn)
+
+
+@pytest.mark.parametrize("ext", ["xml", "xlsx"])
+def test_a_hit_with_only_forwarded_metadata_is_skipped_as_empty(tmp_path, ext):
+    empty = _msg(
+        None,
+        None,
+        sender=None,
+        sender_name=None,
+        to=None,
+        Forwarded="No",
+        **{"Forwarded From": "15550100009@wa", "Quoted Message Sender": "x@wa"},
+    )
+    real = _msg("SYNTHETIC hello", "1/2/2026 10:00:00 AM")
+    path = _both(tmp_path, [OWNER_WA, _wa(real, empty)])[0 if ext == "xml" else 1]
+    conn, s = _import(path)
+    assert conn.execute("SELECT COUNT(*) FROM messages").fetchone() == (1,)
+    assert "rows_skipped_no_values_in_known_columns" in _codes(s)
+
+
+@pytest.mark.parametrize("ext", ["xml", "xlsx"])
+@pytest.mark.parametrize("field_", ["Forwarded From", "Original Sender", "Original Author"])
+def test_an_original_author_alone_marks_the_hit_forwarded(tmp_path, ext, field_):
+    # Codex on #116: a stated original author with the flag absent or blank fails closed
+    for flag in ({}, {"Forwarded": ""}):
+        conn, _s = _fwd_case(tmp_path / f"{len(flag)}", ext, **{field_: "Jo", **flag})
+        ((mid, *_r, fwd, author, _t),) = _rows(conn)
+        assert (fwd, author) == (1, "Jo")
+        from core.ingest import forwarded
+
+        assert forwarded.affected(conn) == {mid: "forwarded"}
+
+
+@pytest.mark.parametrize("ext", ["xml", "xlsx"])
+def test_a_name_only_quoted_sender_takes_the_parent_thread_scope(tmp_path, ext):
+    # Codex on #116: with no Chat ID, a name-only quoted sender's account is scoped to the
+    # parent's thread, never shared across conversations or doubled within one.
+    def hit(to: str | None, quoted: str, **extra: str) -> list:
+        return _msg(
+            "SYNTHETIC reply",
+            "3/10/2026 3:00:00 PM",
+            sender="15550100001@wa",
+            sender_name=None,
+            to=to,
+            **{"Quoted Message": quoted, "Quoted Message Sender Name": "Jo", **extra},
+        )
+
+    arts = [
+        OWNER_WA,
+        _wa(
+            hit("15550100002@wa", "SYNTHETIC one"),
+            hit("15550100003@wa", "SYNTHETIC two"),
+            # Jo, name only, writes in a third conversation and is quoted there
+            [("Sender Name", "Jo"), ("Recipient(s)", "15550100001@wa"),
+             ("Message", "SYNTHETIC Jo here"),
+             ("Message Date/Time - UTC+00:00 (M/d/yyyy)", "3/10/2026 3:01:00 PM")],
+            hit(None, "SYNTHETIC three", **{"Recipient Name": "Jo"}),
+        ),
+    ]  # fmt: skip
+    path = _both(tmp_path, arts)[0 if ext == "xml" else 1]
+    conn, _s = _import(path)
+    copies = conn.execute(
+        "SELECT m.thread_id, m.sender_account_id, p.thread_id FROM messages m"
+        " JOIN messages p ON p.source_id = m.source_id"
+        " AND m.locator = p.locator || '/Embedded[1]' ORDER BY m.locator"
+    ).fetchall()
+    assert len(copies) == 3
+    assert all(t == pt for t, _a, pt in copies)  # the parent's thread
+    accounts = [a for _t, a, _pt in copies]
+    assert len(set(accounts)) == 3  # one Jo per conversation, never collapsed
+    for tid, aid, _pt in copies:
+        key = tid.split(":", 3)[3]
+        assert aid.endswith(f":name:{key}:Jo")  # scoped to the parent's thread
+    assert conn.execute("SELECT COUNT(*) FROM threads").fetchone() == (3,)
+    # the Jo quoted in the third conversation is the Jo who wrote there, not a second account
+    (jo,) = conn.execute(
+        "SELECT sender_account_id FROM messages WHERE body = 'SYNTHETIC Jo here'"
+    ).fetchone()
+    assert accounts[2] == jo
+
+
+@pytest.mark.parametrize("ext", ["xml", "xlsx"])
+def test_an_sms_copy_never_creates_or_seeds_its_quoted_senders_thread(tmp_path, ext):
+    # Codex on #116: Bob's SMS quotes Alice before Alice's own SMS; Alice's thread keeps her
+    # own locator and title, and the copy sits in Bob's thread.
+    def sms(sender, to, body, ts, **extra):
+        return [("Sender", sender), ("Recipient(s)", to), ("Message", body),
+                ("Message Date/Time - UTC+00:00 (M/d/yyyy)", ts),
+                ("Conversation Name", extra.pop("title")), *extra.items()]  # fmt: skip
+
+    arts = [
+        ("Android SMS", [
+            sms("+15550100003", "+15550100001", "SYNTHETIC Bob replies", "3/10/2026 3:00:00 PM",
+                title="Bob", **{"Quoted Message": "SYNTHETIC Alice said",
+                                "Quoted Message Sender": "+15550100002"}),
+            sms("+15550100002", "+15550100001", "SYNTHETIC Alice here", "3/10/2026 4:00:00 PM",
+                title="Alice"),
+        ]),
+    ]  # fmt: skip
+    path = _both(tmp_path, arts)[0 if ext == "xml" else 1]
+    conn, _s = _import(path)
+    rows = {
+        body: (loc, tid)
+        for body, loc, tid in conn.execute("SELECT body, locator, thread_id FROM messages")
+    }
+    bob_loc, bob_tid = rows["SYNTHETIC Bob replies"]
+    alice_loc, alice_tid = rows["SYNTHETIC Alice here"]
+    copy_loc, copy_tid = rows["SYNTHETIC Alice said"]
+    assert copy_loc == f"{bob_loc}/Embedded[1]" and copy_tid == bob_tid != alice_tid
+    threads = dict(
+        (t, (loc, title))
+        for t, loc, title in conn.execute("SELECT id, locator, title FROM threads")
+    )
+    assert threads[alice_tid] == (alice_loc, "Alice")
+    assert threads[bob_tid] == (bob_loc, "Bob")
+    assert len(threads) == 2
