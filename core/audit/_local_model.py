@@ -41,7 +41,6 @@ from core.audit._llm_json import CallRecorder, ModelUnavailable, prompt_version
 from core.contracts import ModelRun, canonical_json, short_hash
 
 MODEL_CONFIG_ENV = "MABILLON_MODEL_CONFIG"
-DEFAULT_CONFIG = paths.settings_file("model.json")
 REUSE_PARAM = "reuse_stored_outputs"
 SCHEMA_PARAM = "output_schema"
 
@@ -70,7 +69,7 @@ class ModelConfig:
 
 def config_path() -> Path:
     env = paths.env("MODEL_CONFIG")
-    return Path(env) if env else DEFAULT_CONFIG
+    return Path(env) if env else paths.settings_file("model.json")
 
 
 def load_config(path: Path | None = None) -> ModelConfig:

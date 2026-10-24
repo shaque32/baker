@@ -40,7 +40,6 @@ from core.llm.runtime import ModelOutput, parse_json_output
 
 KEY_ENV = "MABILLON_ANTHROPIC_API_KEY"
 CONFIG_ENV = "MABILLON_CLOUD_CONFIG"
-DEFAULT_CONFIG = paths.settings_file("cloud.json")
 DEFAULT_MODEL = "claude-opus-5-5"
 # Opus 5.5 at medium effort is the setting the cloud bench measured on case01 (85% accuracy,
 # 0 false supported) with the signed v1.1 prompt (cloud-bench 2026-10-14c, "Audit our model
@@ -139,7 +138,7 @@ class CloudConfig:
 
 def config_path() -> Path:
     env = paths.env("CLOUD_CONFIG")
-    return Path(env).expanduser() if env else DEFAULT_CONFIG
+    return Path(env).expanduser() if env else paths.settings_file("cloud.json")
 
 
 CASE_SECRET = "cloud-key"  # case.db -> case.cloud-key

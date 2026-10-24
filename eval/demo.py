@@ -67,7 +67,6 @@ DEMO_CLAIMS = EVAL_DIR / "demo_claims.jsonl"  # demo-only claims, not signed gol
 CASE_META = EVAL_DIR / "synthetic" / "case01" / "case.json"
 
 DEMO_ROOT_ENV = "MABILLON_DEMO"
-DEFAULT_DEMO_ROOT = paths.user_folder("demo")
 DEMO_FOLDER = "demo-case01"  # where a restored snapshot goes
 DEMO_NAME = "Demo: Petrov and Reyes phones (synthetic case01)"
 SETUP_ACTOR = "expert:Mabillon demo setup"
@@ -104,7 +103,7 @@ def demo_root() -> Path:
     """<root>/cases is the cases folder the demo screen serves; <root>/snapshot is a saved case
     folder that reset restores instead of the scripted build."""
     env = paths.env("DEMO")
-    return Path(env).expanduser() if env else DEFAULT_DEMO_ROOT
+    return Path(env).expanduser() if env else paths.user_folder("demo")
 
 
 def cases_dir(root: Path) -> Path:

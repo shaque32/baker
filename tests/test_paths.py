@@ -64,3 +64,26 @@ def test_the_baker_alias_runs_the_same_command_with_a_note(monkeypatch, capsys):
     out = capsys.readouterr()
     assert "usage: mabillon" in out.out
     assert "`baker` is now `mabillon`" in out.err
+
+
+def test_a_baker_era_setup_keeps_its_model_cloud_and_cases(monkeypatch, tmp_path: Path):
+    # Read when called, not at import, so the folder a run uses is the one on disk then.
+    from core.audit import _local_model
+    from core.casework import cases
+    from core.llm import cloud
+
+    for name in ("MODEL_CONFIG", "CLOUD_CONFIG", "CASES"):
+        monkeypatch.delenv(paths.PREFIX + name, raising=False)
+        monkeypatch.delenv(paths.OLD_PREFIX + name, raising=False)
+    monkeypatch.setattr(paths.Path, "home", lambda: tmp_path)
+    (tmp_path / ".baker").mkdir()
+    (tmp_path / ".baker" / "model.json").write_text("{}")
+    (tmp_path / ".baker" / "cloud.json").write_text("{}")
+    (tmp_path / "Baker" / "cases").mkdir(parents=True)
+    assert _local_model.config_path() == tmp_path / ".baker" / "model.json"
+    assert cloud.config_path() == tmp_path / ".baker" / "cloud.json"
+    assert cases.cases_home() == tmp_path / "Baker" / "cases"
+    # The installer's new model config, once written, is the one used.
+    (tmp_path / ".mabillon").mkdir()
+    (tmp_path / ".mabillon" / "model.json").write_text("{}")
+    assert _local_model.config_path() == tmp_path / ".mabillon" / "model.json"

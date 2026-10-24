@@ -45,7 +45,6 @@ from core.review import audit_log
 from core.review.actions import ReviewError, _expert
 
 CASES_ENV = "MABILLON_CASES"
-DEFAULT_HOME = paths.user_folder("cases")
 DB_NAME = "case.db"
 UPLOAD_PREFIX = ".upload-"
 
@@ -56,7 +55,7 @@ Clock = Callable[[], datetime]
 
 def cases_home() -> Path:
     env = paths.env("CASES")
-    return Path(env).expanduser() if env else DEFAULT_HOME
+    return Path(env).expanduser() if env else paths.user_folder("cases")
 
 
 def _now(clock: Clock | None) -> datetime:
