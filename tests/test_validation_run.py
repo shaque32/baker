@@ -101,3 +101,29 @@ def test_paragraphs_must_run_in_order(tmp_path):
     rows = [CLAIMS[0], {**CLAIMS[1], "para_no": 5}]
     with pytest.raises(SystemExit, match="1..n"):
         hickman_run.load_claims(_claims(tmp_path, rows))
+
+
+def test_a_resume_with_other_inputs_is_refused(ufdr, tmp_path):
+    claims, out = _claims(tmp_path), tmp_path / "out"
+    assert (
+        hickman_run.main(
+            ["--ufdr", str(ufdr), "--claims", str(claims), "--out", str(out), "--fake"]
+        )
+        == 0
+    )
+    run = (out / "run.json").read_text(encoding="utf-8")
+    other = tmp_path / "other"
+    other.mkdir()
+    other_claims = _claims(other, CLAIMS[:2])
+    with pytest.raises(SystemExit, match="was built from claims"):
+        hickman_run.main(
+            ["--ufdr", str(ufdr), "--claims", str(other_claims), "--out", str(out), "--fake"]
+        )
+    with pytest.raises(SystemExit, match="was built from report.xml"):
+        hickman_run.main(
+            ["--ufdr", str(ufdr), "--claims", str(claims), "--out", str(out), "--fake",
+             "--report-sha256", "0" * 64]
+        )  # fmt: skip
+    assert (out / "run.json").read_text(
+        encoding="utf-8"
+    ) == run  # the record still names the case's inputs

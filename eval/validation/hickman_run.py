@@ -208,6 +208,17 @@ def main(argv: list[str] | None = None) -> int:
     if a.claims_sha256 and claims_sha != a.claims_sha256:
         raise SystemExit(f"{a.claims}: SHA-256 {claims_sha}, expected {a.claims_sha256}")
     claims = load_claims(a.claims)
+    built = a.out / "built.ok"  # the inputs the case in DIR was built from
+    if built.exists():
+        was = json.loads(built.read_text(encoding="utf-8"))
+        if was["claims_sha256"] != claims_sha:
+            raise SystemExit(
+                f"{a.out} was built from claims {was['claims_sha256']}; use a new --out"
+            )
+        if a.report_sha256 and was["report_xml_sha256"] != a.report_sha256:
+            raise SystemExit(
+                f"{a.out} was built from report.xml {was['report_xml_sha256']}; use a new --out"
+            )
     run.setdefault("started_utc", f"{datetime.now(UTC):%Y-%m-%dT%H:%M:%SZ}")
     run.update(
         build=build_mod.build_info(),
@@ -216,14 +227,15 @@ def main(argv: list[str] | None = None) -> int:
         machine=machine(),
         claims={"file": a.claims.name, "sha256": claims_sha, "n": len(claims)},
     )
-    if not (a.out / "built.ok").exists():
+    if not built.exists():
         log("checking the phone package's report.xml")
         report_sha = report_xml_sha256(a.ufdr)
         if a.report_sha256 and report_sha != a.report_sha256:
             raise SystemExit(f"report.xml SHA-256 {report_sha}, expected {a.report_sha256}")
         run["report_xml_sha256"] = report_sha
         build(a.ufdr, claims, a.out, log)
-        (a.out / "built.ok").write_text("built\n", encoding="utf-8")
+        inputs = {"claims_sha256": claims_sha, "report_xml_sha256": report_sha}
+        built.write_text(json.dumps(inputs), encoding="utf-8")
     run_path.write_text(json.dumps(run, indent=2), encoding="utf-8")
     from core.pipeline import ComponentsMissing
 
