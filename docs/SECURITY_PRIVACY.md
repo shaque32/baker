@@ -102,7 +102,7 @@ Full design: `docs/encryption.md`.
 - **Cloud API key (opted-in case).** The expert's own Anthropic key; Mabillon runs no server and holds no key of
   its own. It is read from `$MABILLON_ANTHROPIC_API_KEY`; or, in an encrypted case, from the key saved
   in that case, sealed with AES-256-GCM under the case key, so it is unreadable while the case is
-  locked; or from `~/.baker/cloud.json`, an owner-only (0600) plain file. The key travels in a
+  locked; or from `~/.mabillon/cloud.json`, an owner-only (0600) plain file. The key travels in a
   request header and is never written to the audit log.
 
 ## 4. Retention and deletion
@@ -195,9 +195,12 @@ each answer's API request id, message id and the model the API says answered are
 1. **Retention at Anthropic is not verified by Mabillon.** It depends on the expert's own Anthropic
    account: with zero data retention, or without it, the account's terms apply, and flagged
    requests may be kept up to 2 years even under ZDR (above). Mabillon cannot see or set it.
-2. **The key is a plain file on an unencrypted setup.** In an encrypted case the key is sealed
-   under the case key. Otherwise it sits in `~/.baker/cloud.json`, owner-only but unencrypted, or
-   in `$BAKER_ANTHROPIC_API_KEY`.
+2. **Only a key saved into an encrypted case is sealed.** Such a key is sealed under the case key.
+   A key in `$MABILLON_ANTHROPIC_API_KEY` (read first, for every case) or in
+   `~/.mabillon/cloud.json` (owner-only but unencrypted, used when the case holds no key of its
+   own) is not, even when the case itself is encrypted. A machine set up before the rename may
+   still use `$BAKER_ANTHROPIC_API_KEY` or `~/.baker/cloud.json` the same way. To keep the key
+   sealed, save it into the encrypted case and leave the variable and the file unset.
 3. **The attestation is self-certified.** Mabillon records who attested, when and the exact words,
    but cannot check the protective order, the government's consent or the client's consent.
 4. **Hosted labels cannot be regenerated.** The same request to the same model can answer

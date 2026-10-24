@@ -6,8 +6,8 @@ protective order allows it). Then, for that case only, one stance question at a 
 Anthropic (Claude Opus 5.5) under your own key (see "Cloud AI for this case" on the setup
 screen): the claim, the assumption, the record and up to 20 messages either side, with their
 senders' handles, numbers and saved names, never a file or the case database. Its open limits
-(retention at Anthropic unverified by Mabillon, the key as a plain file outside an encrypted case,
-a self-certified attestation, labels that cannot be regenerated) are in
+(retention at Anthropic unverified by Mabillon, a key that is sealed only when saved into an
+encrypted case, a self-certified attestation, labels that cannot be regenerated) are in
 [SECURITY_PRIVACY.md](SECURITY_PRIVACY.md), section 5. Where the tool's reliability may be
 challenged in court, keep the case local. The installer downloads three
 things, once: a Python installer (uv), the model runtime's source, and the AI model (9 GB).

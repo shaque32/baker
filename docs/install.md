@@ -5,8 +5,8 @@ telemetry, unless you opt a case in to cloud AI at case setup (only if its prote
 allows it). Then, for that case only, one stance question at a time goes to Anthropic under your
 own key: the claim, the assumption, the record and up to 20 messages either side, with their
 senders' handles, numbers and saved names, never a file or the case database. Its open limits
-(retention at Anthropic unverified by Mabillon, the key as a plain file outside an encrypted case,
-a self-certified attestation, labels that cannot be regenerated) are in
+(retention at Anthropic unverified by Mabillon, a key that is sealed only when saved into an
+encrypted case, a self-certified attestation, labels that cannot be regenerated) are in
 [SECURITY_PRIVACY.md](SECURITY_PRIVACY.md), section 5. Where the tool's reliability may be
 challenged in court, keep the case local. The only download is the AI model, once, during setup, and you
 can skip it and copy the model from a USB drive instead.
