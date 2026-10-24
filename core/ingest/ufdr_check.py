@@ -356,7 +356,13 @@ class Tally:
                     frame.msg_seen[fname] += 1
                     loc = f"{frame.locator}/{fname}[{frame.msg_seen[fname]}]"
                 embedded = (
-                    (frame.is_message or frame.embedded)
+                    # a copy of another type than a call, contact or account is keyed as the
+                    # importer keys a message, embedded messages and all
+                    (
+                        frame.is_message
+                        or frame.embedded
+                        or (frame.record_copy and frame.type not in COPY_KINDS)
+                    )
                     and frame is self.frames[-1]
                     and depth == frame.depth + 2
                     and fname.lower() == "embeddedinstantmessage"

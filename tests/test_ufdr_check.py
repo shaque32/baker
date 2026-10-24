@@ -875,3 +875,22 @@ def test_a_copy_counts_as_a_message_copy_by_what_holds_it(tmp_path):
     counts = d["baker_coverage"]["counters"]
     assert counts["related_message_copies_matching_no_record"] == 1
     assert counts["related_record_copies_matching_no_record"] == 1
+
+
+def test_a_custom_copy_inside_a_custom_copy_compares_its_embedded_messages(tmp_path, monkeypatch):
+    """A copy of another type is keyed as a message, embedded messages and all: two that
+    differ only in the message embedded in them do not match."""
+
+    def log(lid: str, said: str) -> str:
+        m = _call(lid).replace('type="Call"', 'type="CallLog"', 1)
+        head, end = m.rsplit("</model>", 1)
+        emb = one("EmbeddedInstantMessage", _msg(said), "InstantMessage")
+        return f"{head}{emb}</model>{end}"
+
+    outer = log("k1r", "first")
+    head, end = outer.rsplit("</model>", 1)
+    outer = f"{head}{related(log('k1s', 'second'))}</model>{end}"
+    xml = report_xml({"Call": [_call("k1", related(outer))]})
+    assert _copy_rows(tmp_path, "custom-embedded", xml, monkeypatch) == {
+        "Call": ["Call[1]/Related[1]", "Call[1]/Related[1]/Related[1]"],
+    }
