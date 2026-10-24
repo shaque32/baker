@@ -30,6 +30,13 @@ Display rules:
   each. Found by code, shown as leads for the expert; they never change a verdict.
 - The report carries source hashes, Mabillon, contract, rule, report and model versions, and an
   audit-log summary with the hash-chain result.
+- Each decided claim traces its verdict ("How this verdict was reached"): per core assumption,
+  each evidence item, check or stipulation the rules relied on, or, for one not covered, what
+  was found and not relied on; who proposed each (a named model, code, or the expert) and the
+  expert's step. A model's label shows as model proposed until an expert accepts it.
+- "What can be checked again" says the verdicts re-derive from the recorded labels and expert
+  decisions, names each model whose labels they are, and says a hosted model's labels cannot be
+  regenerated exactly (HOSTED). It never claims a local re-run gives identical labels.
 - Each evidence row carries the evidence item's id (<tr id=...>), the same id the review screen
   gives its evidence card, so the two can be compared item by item.
 
@@ -53,6 +60,7 @@ import json
 import sqlite3
 from collections import Counter
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 from core import build, pipeline
@@ -114,7 +122,11 @@ from core.review.status import verdict_label as _verdict_label
 # table and counts.
 # 0.13.0: the product is named Mabillon (formerly Baker) in the title, top line, Versions and
 # every sentence that names the tool. Nothing else changed.
-REPORT_VERSION = "0.13.0"
+# 0.14.0: each decided claim traces its verdict ("How this verdict was reached": per core
+# assumption, the evidence, check or stipulation relied on, who proposed it and what the expert
+# did), and a "What can be checked again" section says what can and cannot be regenerated,
+# naming any hosted model whose labels cannot be regenerated exactly.
+REPORT_VERSION = "0.14.0"
 
 
 @dataclass(frozen=True)
@@ -255,6 +267,12 @@ def verdict_label(
     return _verdict_label(decision, awaiting, contradiction)
 
 
+HOSTED = (
+    "Labels from a hosted model ({vendor}, {model}). They cannot be regenerated exactly; the "
+    "recorded labels and rules are reproducible."
+)
+
+
 def labelled_by(conn: sqlite3.Connection, model_run_id: str | None) -> str:
     """Which model labeled an evidence item, in plain words: its name, cloud or local."""
     if not model_run_id:
@@ -284,6 +302,182 @@ def review_label(conn: sqlite3.Connection, item: EvidenceItem) -> str:
     what = {"ai_accepted": "Accepted", "dismissed": "Dismissed"}[status]
     tail = " Not confirmed by an expert." if status == "ai_accepted" else ""
     return f"{what} by the local AI reviewer: {e(reason)}{tail}"
+
+
+def _latest_review(conn: sqlite3.Connection, evidence_id: str) -> tuple | None:
+    return conn.execute(
+        "SELECT reviewer_kind, reviewer, status, reason, decided_at_utc FROM evidence_reviews"
+        " WHERE evidence_id = ? ORDER BY seq DESC LIMIT 1",
+        (evidence_id,),
+    ).fetchone()
+
+
+def _expert_step(conn: sqlite3.Connection, x: EvidenceItem, decided_at: datetime) -> str:
+    """What happened to a model's label after it was proposed, as the trace says it."""
+    r = _latest_review(conn, x.id)
+    if r is None:
+        return "Not reviewed: model proposed, no expert has decided it"
+    kind, who, status, _reason, at = r
+    at = datetime.fromisoformat(at.replace("Z", "+00:00"))
+    later = " (after this verdict was decided)" if at > decided_at else ""
+    if kind == "expert":
+        what = {
+            "accepted": "Expert confirmed",
+            "dismissed": "Expert dismissed",
+            "open": "Expert reopened",
+        }[status]
+        return f"{what}: {e(who)}{later}"
+    if status == "ai_accepted":
+        return f"Local AI reviewer accepted; not confirmed by an expert{later}"
+    return f"Local AI reviewer dismissed; no expert has decided it{later}"
+
+
+def verdict_trace(conn: sqlite3.Connection, st: ClaimState) -> str:
+    """How a decided claim's verdict was reached, per core assumption: each evidence item, check
+    or stipulation the rules relied on, or, for an assumption not covered, what was found for it
+    and not relied on; with who proposed each and what the expert did. Read from the verdict's
+    coverage and cited ids (rules.py); review status is as it is now."""
+    decision = st.decision
+    if decision is None:
+        return ""
+    evidence = {x.id: x for x in st.evidence}
+    checks = {c.id: c for c in st.checks}
+    stips = {s.id: s for s in pipeline.load_stipulations(conn)}
+    assumptions = {a.id: a for a in st.assumptions}
+
+    def row(label: str, cited: str, relied: bool = True) -> str:
+        if cited in evidence:
+            x = evidence[cited]
+            what = (
+                f"Evidence <a href='#{e(x.id)}' class='mono'>{e(x.id)}</a>: "
+                f"{STANCE_LABEL[x.stance]}, record <span class='mono'>{e(x.record_id)}</span>"
+            )
+            who = f"{e(labelled_by(conn, x.model_run_id))}: model proposed"
+            step = _expert_step(conn, x, decision.decided_at_utc)
+        elif cited in checks:
+            c = checks[cited]
+            what = f"Check {e(c.check_name)} {e(c.check_version)}: {e(c.outcome.value)}"
+            who = "Code (deterministic, no model)"
+            step = "None needed: a code result anyone can re-run"
+        elif cited in stips:
+            s = stips[cited]
+            what = f"Stipulation: {q(s.statement)}"
+            who = "The expert"
+            step = f"Expert {e(s.status.value)}: {e(s.decided_by or 'not decided')}"
+        else:
+            what, who, step = f"<span class='mono'>{e(cited)}</span>", "not recorded", ""
+        lead = "Relied on" if relied else "Found, not relied on"
+        return (
+            f"<tr><td>{label}</td><td>{lead}</td><td>{what}</td><td>{who}</td><td>{step}</td></tr>"
+        )
+
+    def found_for(assumption_id: str) -> list[str]:
+        """What the run found for an assumption, in id order: its checks, then its evidence
+        items not labeled irrelevant."""
+        ids = [c.id for c in st.checks if c.assumption_id == assumption_id]
+        return ids + [
+            x.id
+            for x in st.evidence
+            if x.assumption_id == assumption_id and x.stance != Stance.IRRELEVANT
+        ]
+
+    cited_by_verdict = set(
+        decision.cited_evidence_ids + decision.cited_check_ids + decision.cited_stipulation_ids
+    )
+    rows: list[str] = []
+    listed: set[str] = set()
+    for cv in decision.coverage:
+        a = assumptions.get(cv.assumption_id)
+        label = e(a.text) if a else f"<span class='mono'>{e(cv.assumption_id)}</span>"
+        tier = cv.tier.value if cv.tier else "?"
+        covered = f"covered at {e(tier)}" if cv.covered else "not covered"
+        label += f"<br><span class='muted'>{covered}</span>"
+        for cited in cv.cited_ids:
+            rows.append(row(label, cited))
+            listed.add(cited)
+        if not cv.covered:
+            found = [i for i in found_for(cv.assumption_id) if i not in listed]
+            # a failed check or a confirmed contradiction the verdict cites (rule 1) was relied on
+            rows.extend(row(label, i, relied=i in cited_by_verdict) for i in found)
+            listed.update(found)
+            if not cv.cited_ids and not found:
+                rows.append(
+                    f"<tr><td>{label}</td><td>Nothing found</td><td></td><td></td><td></td></tr>"
+                )
+    others = decision.cited_evidence_ids + decision.cited_check_ids + decision.cited_stipulation_ids
+    for cited in others:
+        if cited in listed:
+            continue
+        listed.add(cited)
+        x = evidence.get(cited)
+        c = checks.get(cited)
+        aid = x.assumption_id if x else c.assumption_id if c else None
+        a = assumptions.get(aid) if aid else None
+        rows.append(row(e(a.text) if a else "Cited by the verdict", cited))
+    out = [
+        "<h4>How this verdict was reached</h4>",
+        "<p class='muted'>Models propose labels; the verdict rules decide (rules "
+        f"{e(decision.rule_version)}); an expert confirms. Review status is shown as it is "
+        "now.</p>",
+    ]
+    if decision.override_note:
+        out.append(
+            "<p class='muted'>The expert set this verdict by override, with the note above. The "
+            "rows show what the rules found.</p>"
+        )
+    if not rows:
+        out.append("<p class='muted'>The verdict relies on no evidence, check or stipulation.</p>")
+        return "".join(out)
+    out.append(
+        "<table><thead><tr><th>Core assumption</th><th></th><th>Evidence, check or stipulation"
+        "</th><th>Proposed by</th><th>Expert step</th></tr></thead>" + "".join(rows) + "</table>"
+    )
+    return "".join(out)
+
+
+def regeneration(conn: sqlite3.Connection, run: dict | None) -> str:
+    """What a reader can regenerate from this case and what they cannot: the verdicts re-derive
+    from the record; a hosted model's labels cannot be regenerated exactly."""
+    out = ["<h2>What can be checked again</h2><ul>"]
+    if run:
+        out.append(
+            f"<li>Every verdict re-derives from the recorded labels, check results and expert "
+            f"decisions under rules {e(run['rule_version'])}. A reproducibility bundle "
+            "(made with <span class='mono'>export-bundle</span>, checked with "
+            "<span class='mono'>verify-bundle</span>) lets another examiner check that "
+            "offline.</li>"
+        )
+    seen: set[tuple[str, str]] = set()
+    for purpose, name, sha, params_json, seed in conn.execute(
+        "SELECT purpose, model_name, model_sha256, params_json, seed FROM model_runs"
+        " ORDER BY purpose, id"
+    ):
+        params = json.loads(params_json or "{}")
+        key = (purpose, sha)
+        if key in seen:
+            continue
+        seen.add(key)
+        if is_cloud_sha(sha):
+            model = str(params.get("api_model") or name)
+            text = HOSTED.format(vendor="Anthropic", model=model)
+            out.append(f"<li><strong>{e(purpose.capitalize())}:</strong> {e(text)}</li>")
+        elif params.get("stand_in"):
+            out.append(
+                f"<li><strong>{e(purpose.capitalize())}:</strong> labels from a stand-in "
+                f"({e(name)}), not a model. They are not findings.</li>"
+            )
+        else:
+            out.append(
+                f"<li><strong>{e(purpose.capitalize())}:</strong> labels from the local model "
+                f"{e(name)} (file SHA-256 <span class='mono'>{e(sha)}</span>, seed "
+                f"{e(seed) if seed is not None else 'not recorded'}; settings under Model runs)."
+                " Anyone with the same file can run it again. No claim is made that a "
+                "re-run gives identical labels; the verdicts rest on the recorded labels.</li>"
+            )
+    if len(out) == 1:
+        out.append("<li>No audit has run and no model run is recorded.</li>")
+    out.append("</ul>")
+    return "".join(out)
 
 
 # ---------------------------------------------------------------- sections
@@ -541,6 +735,7 @@ def _claim_block(
         out.append("</table>")
     elif decision is not None:
         out.append("<p class='muted'>No relevant evidence items were stored for this claim.</p>")
+    out.append(verdict_trace(conn, st))
     if hidden:
         out.append(f"<p class='muted'>{hidden} retrieved records were labeled irrelevant.</p>")
     if left_out:
@@ -833,6 +1028,7 @@ def render_report(
         )
     parts.append("</table>")
 
+    parts.append(regeneration(conn, run))
     parts.append("<h2>Versions</h2>")
     parts.append(_versions(conn, run))
 
