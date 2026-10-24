@@ -334,7 +334,7 @@ PRs, never merged.
    forwarded, with the original author when the extraction names one; the sender field still
    shows the forwarder. The UFDR importer imports each embedded forwarded or quoted
    original (one level) as its own record at `<locator>/Embedded[n]`, marked forwarded with its
-   own sender as written, so it fails closed too (#103); AXIOM does not. Cases made before then keep only the
+   own sender as written, so it fails closed too (#103). The AXIOM importer does the same for one level of quoted original (#116, merged 2026-10-24; field names unverified on a real export). Cases made before then keep only the
    coverage list (same fail-closed behaviour, no author); the report's Versions table says which
    mode a case is in ("Forwarded marks", #95).
 4. **Local runtime per case unknown on current code** (section 7). **The local 14B's stance

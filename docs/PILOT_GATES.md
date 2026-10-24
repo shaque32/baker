@@ -55,7 +55,7 @@ model-free eval with 0 false supported on case01, hostile red-team PASS).
 
 ## Order
 
-Gate 4 still needs AXIOM to read forwarded marks, the UFDR author and forwarder kept as separate fields rather than separate records linked by locator, and a second embedded level imported. Gate 16 needs Arsh and a lawyer for the agreement.
+Gate 4 still needs the AXIOM forwarded field names (#116) checked on a real export, the UFDR author and forwarder kept as separate fields rather than separate records linked by locator, and a second embedded level imported. Gate 16 needs Arsh and a lawyer for the agreement.
 Gate 17 is writing. Gates 5, 9 and 11 need a person: a pilot examiner or public test image, runs on the Mac and the
 AWS g5, and an outside tester.
 Gate 12 follows from merging.
