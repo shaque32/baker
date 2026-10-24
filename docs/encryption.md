@@ -1,6 +1,6 @@
 # Encryption at rest
 
-Baker can lock a case's files on the expert's computer with a passphrase. A copied case folder,
+Mabillon can lock a case's files on the expert's computer with a passphrase. A copied case folder,
 a lost laptop, a backup or a synced folder then holds nothing readable without the passphrase or
 the case's recovery key.
 
@@ -15,25 +15,25 @@ the case's recovery key.
 | `case.db.anchors.jsonl` (audit-log entry numbers and hashes, [review-screen.md](review-screen.md#the-audit-log-check)) | No | Holds no case content: entry numbers and hashes only |
 
 Not covered: a report or request letter the expert downloads (saved wherever they choose, as a
-plain file), the expert's original evidence files (Baker never changes them), and anything on
+plain file), the expert's original evidence files (Mabillon never changes them), and anything on
 screen while a case is unlocked.
 
-The SHA-256 Baker records for every imported file is of the plain bytes, so it still matches the
+The SHA-256 Mabillon records for every imported file is of the plain bytes, so it still matches the
 original file and the hash in the report, encrypted or not.
 
 ## The passphrase and the recovery key
 
-Each case gets its own random 256-bit key. Baker never stores it in the clear: `case.key` holds
-it wrapped twice, once under the expert's passphrase and once under a recovery key that Baker
+Each case gets its own random 256-bit key. Mabillon never stores it in the clear: `case.key` holds
+it wrapped twice, once under the expert's passphrase and once under a recovery key that Mabillon
 shows **once**, when the case is encrypted. Either opens the case.
 
 - Write the recovery key down and keep it away from the computer (paper, or a password manager).
 - Changing the passphrase re-wraps the key; nothing is re-encrypted, and the recovery key stays
   the same.
-- If both the passphrase and the recovery key are lost, nobody can open the case, Baker
+- If both the passphrase and the recovery key are lost, nobody can open the case, Mabillon
   included. The original evidence is untouched; the expert's review work in that case is lost.
 
-An unlocked key lives only in the memory of the running Baker. Stopping Baker (or pressing
+An unlocked key lives only in the memory of the running Mabillon. Stopping Mabillon (or pressing
 "Lock this case now") locks the case. Locking also drops the index of message text the Selection
 tab keeps in memory to look quotes up quickly. Python cannot promise to wipe memory, so turn on the
 computer's own disk encryption too (FileVault on a Mac, BitLocker on Windows).
@@ -52,7 +52,7 @@ To encrypt one, when no audit is running on it:
   enter a passphrase twice, "Encrypt this case"; or
 - in a terminal: `baker encrypt --db ~/Baker/cases/<case>/case.db --by "expert:Your Name"`.
 
-Baker refuses while an audit is recorded as running, takes the database's write lock, writes
+Mabillon refuses while an audit is recorded as running, takes the database's write lock, writes
 `case.key`, copies the database into an encrypted file and checks it (integrity, every table's
 row count, the audit log's hash chain and last hash), encrypts each copied file and reads it
 back against its SHA-256, then swaps the encrypted files in and logs `case.encrypt` in the audit

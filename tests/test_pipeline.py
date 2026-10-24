@@ -286,7 +286,7 @@ def test_evidence_stored_before_the_fix_still_passes_the_stored_quote_check(conn
     old = [
         item.model_copy(update={"quote": "Marc Garage +12125550122"}),
         item.model_copy(update={"record_id": call, "quote": old_call}),
-        # Held to the check of its day (Codex): only Baker's words, but in the old text.
+        # Held to the check of its day (Codex): only Mabillon's words, but in the old text.
         item.model_copy(update={"record_id": call, "quote": "call from"}),
     ]
     check_evidence(conn, old, before_76=True)
@@ -302,7 +302,7 @@ def test_evidence_stored_before_the_fix_still_passes_the_stored_quote_check(conn
 
 def test_only_a_run_made_before_the_fix_re_decides_on_the_old_quote_text(conn):
     # Grok review on #76: the pre-#76 text is accepted only for a run that records no quote-check
-    # version. A stored "call from" (Baker's words) on a run recording 1.2.0 stops the re-run.
+    # version. A stored "call from" (Mabillon's words) on a run recording 1.2.0 stops the re-run.
     from core.review.redecide import redecide
 
     pipeline.run_audit(conn, comps(), clock=_clock, claim_ids=["C01"])
@@ -528,7 +528,7 @@ def test_cli_audit_review_and_report(conn, tmp_path):
     assert cli_main(["audit", "--db", str(db), "--fake"]) == 0
     out = tmp_path / "report.html"
     assert cli_main(["report", "--db", str(db), "--out", str(out)]) == 0
-    assert "Baker claims report" in out.read_text(encoding="utf-8")
+    assert "Mabillon claims report" in out.read_text(encoding="utf-8")
     assert (
         cli_main(["verdict", "--db", str(db), "--claim", "C01", "--confirm", "--by", EXPERT]) == 0
     )
@@ -764,7 +764,7 @@ def test_an_original_author_is_cited_never_written_as_bakers_words(conn, tmp_pat
     (named,) = conn.execute(
         "SELECT id FROM messages WHERE body = 'need 2 more by friday'"
     ).fetchone()
-    # the source's own name for the author, holding a word Baker never says itself
+    # the source's own name for the author, holding a word Mabillon never says itself
     conn.execute(
         "UPDATE messages SET forwarded = 1, forwarded_from_raw = 'Deleted Account' WHERE id = ?",
         (named,),

@@ -4,7 +4,7 @@ A synthetic case01 is made on the screen with marked ("canary") values everywher
 live: the case name, the expert's name, the uploaded file names, a claim's text, a background
 job's message and an error message. The report must carry none of them, none of the inputs'
 SHA-256 values (or a prefix), no long hex run and no folder path, while still saying what a
-developer needs: versions, counts and states, and where an error happened in Baker's code.
+developer needs: versions, counts and states, and where an error happened in Mabillon's code.
 """
 
 from __future__ import annotations
@@ -60,7 +60,7 @@ CANARIES = (
 
 
 def _raise_in_baker() -> None:
-    """An error raised inside Baker's own code, with case text in its message."""
+    """An error raised inside Mabillon's own code, with case text in its message."""
     try:
         cases.check_case_name("")
     except Exception as err:
@@ -161,7 +161,7 @@ def test_help_page_shows_contact_and_the_same_report_without_a_case(tmp_path: Pa
     r = get(app, "/help")
     assert r.status == 200, "Help opens with no case open"
     page = r.text
-    assert SUPPORT_EMAIL in page and "the Baker team sets the real address" not in page
+    assert SUPPORT_EMAIL in page and "the Mabillon team sets the real address" not in page
     assert "/help/bug-report.json" in page and "Never send case content" in page
     assert "takes the scrolling, not the judgment" in page
     low = page.lower()
@@ -241,7 +241,7 @@ def test_error_labels_are_fixed_and_frames_outside_baker_collapse():
         json.loads("{not json")
     except ValueError as err:
         event = errors.note("cli", err)
-    assert "(outside Baker)" in event.frames
+    assert "(outside Mabillon)" in event.frames
     assert not any("site-packages" in f or f.startswith("/") for f in event.frames)
 
 

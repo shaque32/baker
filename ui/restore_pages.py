@@ -41,7 +41,7 @@ def _found_counts(conn: sqlite3.Connection, ex_id: str) -> tuple[int, int]:
 def exhibits_page(conn: sqlite3.Connection, page: Page) -> str:
     exhibits = load_exhibits(conn)
     out = [
-        "<h1>Exhibits</h1><p>Paste the messages a government exhibit quotes. Baker finds each "
+        "<h1>Exhibits</h1><p>Paste the messages a government exhibit quotes. Mabillon finds each "
         "one in the imported extraction and shows it in its own conversation, with the "
         "messages around it and related threads. Code finds and verifies every match; no model "
         "decides one. Screenshots are not read: type or paste the text.</p>"
@@ -99,7 +99,7 @@ def exhibits_page(conn: sqlite3.Connection, page: Page) -> str:
             "value='block'> paragraph (blank line between messages; keeps a message that runs "
             "over several lines whole)</label></p><p class='muted'>A time or sender name printed "
             "in front of a message is set aside and shown, not compared. An ellipsis marks "
-            "words the exhibit left out; Baker shows them.</p>"
+            "words the exhibit left out; Mabillon shows them.</p>"
             "<button type='submit'>Add and search</button>",
             back="/exhibits",
         )
@@ -173,7 +173,7 @@ def letter_page(conn: sqlite3.Connection, page: Page) -> str:
     else:
         body = (
             "<h1>Request for the full extraction (draft)</h1><p>Built from the imported "
-            "sources for counsel to review and complete. Not legal advice. Baker does not send "
+            "sources for counsel to review and complete. Not legal advice. Mabillon does not send "
             "it anywhere. <a href='/request-letter.txt'>Download as text</a></p>"
             f"<pre class='letter'>{html.escape(text)}</pre>"
         )

@@ -116,7 +116,7 @@ SHEET_KINDS: dict[str, RecordKind] = {
     "user accounts": RecordKind.ACCOUNTS,
     "accounts": RecordKind.ACCOUNTS,
 }
-# Report categories Baker does not import (yet). The timeline repeats messages and calls, so it
+# Report categories Mabillon does not import (yet). The timeline repeats messages and calls, so it
 # is never imported. Coverage lists every such sheet or section with its row count.
 NOT_IMPORTED_CATEGORIES = {
     "timeline",
@@ -372,7 +372,7 @@ for _kind_map in FIELD_ALIASES.values():
 
 
 def known_header(name: object) -> bool:
-    """True when `name` is a column name Baker knows for some record kind."""
+    """True when `name` is a column name Mabillon knows for some record kind."""
     n = header_norm(name)
     return n in _ALL_ALIASES or bool(ATTACHMENT_RE.match(n)) or n in IGNORED_COLUMNS
 
@@ -381,7 +381,7 @@ def known_header(name: object) -> bool:
 class HeaderMap:
     fields: dict[str, int]  # field -> column index; the first matching column wins
     attachments: list[int]
-    unknown: list[str]  # header names Baker does not know
+    unknown: list[str]  # header names Mabillon does not know
     duplicates: list[tuple[str, str]]  # (column, field) for a field already mapped; not read
     offsets: dict[str, int]  # time field -> fixed offset stated in its header
     qualifiers: dict[str, str]  # time field -> zone named in its header, not applied
@@ -713,7 +713,7 @@ _MONDY_RE = re.compile(
 class TimeProblem(StrEnum):
     """Why a time value got no UTC instant. Each is counted in coverage; none is guessed."""
 
-    UNPARSED = "unparsed"  # not a date and time Baker recognises
+    UNPARSED = "unparsed"  # not a date and time Mabillon recognises
     DATE_ONLY = "date_only"  # a date with no time is not a point in time
     TWO_DIGIT_YEAR = "two_digit_year"
     AMBIGUOUS_DAY_MONTH = "ambiguous_day_month"  # 3/4/2026 with no row deciding the order
@@ -995,7 +995,7 @@ class Row:
 
     def empty_in_known_columns(self) -> bool:
         """True when every mapped column and attachment column is blank (a footer such as
-        'Total: 45', or a value only in a column Baker does not read)."""
+        'Total: 45', or a value only in a column Mabillon does not read)."""
         cols = [*self.fields.values(), *self.attachment_cols]
         return all(text(self.cells[i]) is None for i in cols if i < len(self.cells))
 
@@ -1643,12 +1643,12 @@ def _table_rows(
             tc.rows_skipped["repeated_header"] += 1
             continue
         if _header_like(cells):
-            # A second header row Baker could not join (a group name over its columns).
+            # A second header row Mabillon could not join (a group name over its columns).
             tc.rows_skipped["header_like_row"] += 1
             _listed(tc.skipped_locators, "header_like_row", loc)
             continue
         if row.empty_in_known_columns():
-            # Not a record Baker can read: a footer ('Total: 45'), a sub-heading, or values only
+            # Not a record Mabillon can read: a footer ('Total: 45'), a sub-heading, or values only
             # in columns it does not know. Listed so the expert can open the row.
             tc.rows_skipped["no_values_in_known_columns"] += 1
             _listed(tc.skipped_locators, "no_values_in_known_columns", loc)

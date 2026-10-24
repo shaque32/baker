@@ -38,7 +38,9 @@ FIDELITY = {
     "full_extraction": "a full extraction",
     "unknown": "a source whose coverage is not known",
 }
-NOT_FOUND = "Not found does not mean it did not happen. Baker does not say why a stretch is quiet."
+NOT_FOUND = (
+    "Not found does not mean it did not happen. Mabillon does not say why a stretch is quiet."
+)
 
 CSS = """
 .tl { list-style: none; margin: 14px 0; padding: 0; }
@@ -254,7 +256,7 @@ def timeline_summary(rows: list[TimelineRow], s: Settings) -> str:
         )
     parts.append(
         f"{n['matches']} {_v(n['matches'], 'matches', 'match')}, and {n['not_tied']} "
-        f"{_v(n['not_tied'], 'names', 'name')} no record Baker can tie to it."
+        f"{_v(n['not_tied'], 'names', 'name')} no record Mabillon can tie to it."
     )
     return " ".join(parts)
 
@@ -406,7 +408,7 @@ def report_section(conn: sqlite3.Connection, s: Settings) -> str:
         )
         out.append(timeline_rows(views.rows, views.data))
     else:
-        out.append("<p class='muted'>The government document states no date Baker could read."
+        out.append("<p class='muted'>The government document states no date Mabillon could read."
                    "</p>")  # fmt: skip
     out.append("<h2>Quiet stretches</h2>")
     wide = sorted((g for g in views.gaps if g.series.scope != "thread"), key=lambda g: -g.expected)

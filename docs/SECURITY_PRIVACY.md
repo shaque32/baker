@@ -1,10 +1,10 @@
 # Security and privacy
 
-For firms, examiners and counsel deciding whether to install Baker. As of 2026-10-20 (#101, the
+For firms, examiners and counsel deciding whether to install Mabillon. As of 2026-10-20 (#101, the
 cloud gate's first entry; earlier text as of `main` `19d8461`, after #68 and #74).
 
-**Baker is local by default; cloud AI only when your case allows it and you opt in.** The opt-in
-cloud option (#68) is gated on a model passing Baker's signed stance test. One has: Claude Opus
+**Mabillon is local by default; cloud AI only when your case allows it and you opt in.** The opt-in
+cloud option (#68) is gated on a model passing Mabillon's signed stance test. One has: Claude Opus
 5.5 at medium effort with the cloud stance prompt, stance v1.2 (`PROBE_PASSED` in
 `core/llm/cloud.py`, signed 2026-10-20). So a case the expert opts in sends its stance questions to
 Anthropic, as below; every other case labels locally and nothing from it leaves the computer.
@@ -27,7 +27,7 @@ Statements about what an opted-in case sends are marked "opted-in case".
  │                                                ▲                             │
  │  Local model (Qwen3-14B, pinned SHA-256) ◀──────┤ claims, assumptions,       │
  │                                                 │ stance labels, AI review   │
- │  Browser ◀── http://127.0.0.1 only ──▶ Baker screen                          │
+ │  Browser ◀── http://127.0.0.1 only ──▶ Mabillon screen                          │
  │                                                 │                            │
  │  Report (plain HTML) ◀── saved only when the expert downloads it             │
  │                                                                             │
@@ -54,13 +54,13 @@ Install-time downloads, before any case exists:
 
 - **Model file (both platforms):** checked against its pinned SHA-256 before use; a file with any
   other hash is refused.
-- **Windows:** Python and Baker's packages ship inside the installer, so Setup itself downloads
+- **Windows:** Python and Mabillon's packages ship inside the installer, so Setup itself downloads
   only the optional model. The installer is built in CI: the embedded Python and the model runtime's
   source are pinned by SHA-256 (`packaging/windows/pins.json`); the CUDA toolkit is pinned by
-  version only, and Baker's other Python packages come from PyPI without hash pinning. Check the installer's own SHA-256 before
+  version only, and Mabillon's other Python packages come from PyPI without hash pinning. Check the installer's own SHA-256 before
   running it.
 - **Mac:** the installer runs uv's install script from astral.sh, lets uv fetch Python 3.12, and
-  installs Baker's Python packages and the model runtime (`llama-cpp-python`, version pinned) from
+  installs Mabillon's Python packages and the model runtime (`llama-cpp-python`, version pinned) from
   the package index. **These are not hash-pinned**: they trust astral.sh, the Python download
   source and PyPI over HTTPS. A firm that needs more can read `packaging/mac/install.sh` before running it, or wait
   for a signed Mac package (not built yet). Copying an installed `~/Baker` folder to another Mac is
@@ -93,12 +93,12 @@ Full design: `docs/encryption.md`.
 - **Case key.** Each case has its own random 256-bit key. It is never stored in the clear:
   `case.key` holds it wrapped with AES-256-GCM twice, once under a key derived from the expert's
   passphrase (scrypt) and once under a recovery key shown once, when the case is encrypted.
-- **Unlocked key.** Lives only in the memory of the running Baker. Stopping Baker or pressing
+- **Unlocked key.** Lives only in the memory of the running Mabillon. Stopping Mabillon or pressing
   "Lock this case now" locks the case. The OS keychain is not used.
 - **Passphrase entry.** The command line asks for it in the terminal. It is never read from an
   option or an environment variable, so it stays out of shell history.
-- **Lost both passphrase and recovery key.** Nobody can open the case, Baker included.
-- **Cloud API key (opted-in case).** The expert's own Anthropic key; Baker runs no server and holds no key of
+- **Lost both passphrase and recovery key.** Nobody can open the case, Mabillon included.
+- **Cloud API key (opted-in case).** The expert's own Anthropic key; Mabillon runs no server and holds no key of
   its own. It is read from `$BAKER_ANTHROPIC_API_KEY`; or, in an encrypted case, from the key saved
   in that case, sealed with AES-256-GCM under the case key, so it is unreadable while the case is
   locked; or from `~/.baker/cloud.json`, an owner-only (0600) plain file. The key travels in a
@@ -106,17 +106,17 @@ Full design: `docs/encryption.md`.
 
 ## 4. Retention and deletion
 
-**On the computer.** Baker deletes nothing on a schedule. A case is kept until the expert deletes
-it. Baker has no "delete case" button: delete the case folder (under `~/Baker/cases` by default),
+**On the computer.** Mabillon deletes nothing on a schedule. A case is kept until the expert deletes
+it. Mabillon has no "delete case" button: delete the case folder (under `~/Baker/cases` by default),
 plus any backups of it, any downloaded reports, any request draft downloaded from the case
 (`baker-request-draft.txt`: file names, device labels, extraction details, hashes) and any
-`baker ufdr-check` output folder (`ufdr-check-private.md` holds sample records). Outside the case folders Baker writes only small
+`baker ufdr-check` output folder (`ufdr-check-private.md` holds sample records). Outside the case folders Mabillon writes only small
 settings under `~/.baker`: `model.json` (which model file to use), `model-check.json` (the model
 file's checked hash), `speed.json` (seconds per model call) and, if the expert saves an Anthropic key outside a case,
 `cloud.json`. None holds case content; `cloud.json` holds the key. Each case folder also has
 `case.db.anchors.jsonl`, unencrypted, beside `case.db` (audit-log entry numbers and hashes, no case content).
 
-For an encrypted case, first lock it ("Lock this case now") or stop Baker, because a running Baker
+For an encrypted case, first lock it ("Lock this case now") or stop Mabillon, because a running Mabillon
 keeps an unlocked case's key in memory. Then destroy `case.key` and every copy of the recovery key,
 and check that the case no longer opens. The case database and the input file contents are then
 unreadable. `case.json` (case name, examiner name, times) and the input file names under `inputs/`
@@ -124,7 +124,7 @@ stay readable, so delete the case folder and every backup of it to remove those 
 disk encryption covers that.
 
 **At Anthropic (opted-in case only).** Requests go to the Claude API under the expert's own account, so
-Anthropic's terms for that account apply, not Baker's. Read them rather than our summary:
+Anthropic's terms for that account apply, not Mabillon's. Read them rather than our summary:
 
 - [How long Anthropic stores an organization's data](https://privacy.claude.com/en/articles/7996866-how-long-do-you-store-my-organization-s-data)
 - [API and data retention, including zero data retention](https://platform.claude.com/docs/en/manage-claude/api-and-data-retention)
@@ -132,7 +132,7 @@ Anthropic's terms for that account apply, not Baker's. Read them rather than our
 
 Checked 2026-10-15 on the API retention page: under a zero data retention (ZDR) arrangement
 Anthropic does not store prompts or responses at rest after the response is returned; ZDR is
-requested per organization from Anthropic, so Baker cannot turn it on; and if a request is flagged
+requested per organization from Anthropic, so Mabillon cannot turn it on; and if a request is flagged
 by Anthropic's trust and safety systems, inputs and outputs may be kept for up to 2 years. The
 Commercial Terms say Anthropic may not train models on customer content from its services. Check
 the current pages before relying on any of this.
@@ -149,7 +149,7 @@ A case uses cloud stance labels only when **all** of these hold, and otherwise r
    stays in the government's control (18 U.S.C. 3509(m)), so a marked case never uses cloud,
    whatever the attestation says.
 3. The expert's own Anthropic key is set up.
-4. The model passed Baker's signed stance test at its configured effort with the cloud stance
+4. The model passed Mabillon's signed stance test at its configured effort with the cloud stance
    prompt, and Arsh signed its entry. One has: Claude Opus 5.5 at medium effort with stance v1.2
    (signed 2026-10-20). With the earlier prompt, v1.1, it scored 73% contradicts precision against
    a 90% bar (2026-10-15); with v1.2, 10 of 10 on the signed set, and no wrong contradicts on new
@@ -196,12 +196,12 @@ python -m pytest -q \
   tests/test_packaging.py::test_no_network_tool_ships_in_core
 ```
 
-**Watch the computer.** The tests check Baker's own code, not the inside of the libraries it uses
+**Watch the computer.** The tests check Mabillon's own code, not the inside of the libraries it uses
 (the model runtime, PDF and OCR libraries). To check everything, observe the running program:
 
 1. Turn off Wi-Fi and unplug the network, then run the demo and a synthetic audit. Both work
    offline.
-2. Or, with the network on, list Baker's connections while an audit runs. Mac:
+2. Or, with the network on, list Mabillon's connections while an audit runs. Mac:
    `lsof -i -n -P | grep -i python`. Windows (PowerShell): `Get-NetTCPConnection | Where-Object
    OwningProcess -in (Get-Process python).Id`. The only entries should be the screen listening on
    `127.0.0.1:8765` (8766 for the demo) and your browser's connections to it.
@@ -225,7 +225,10 @@ the case's audit log as `cloud.sent`.
   scripts, no CDN.
 - Every review decision (evidence, verdicts, claims, stipulations) is written to a hash-chained
   audit log under the examiner's name, anchored in a file beside the database. The claim order
-  on the setup page is saved in `case.json` and is not logged. The log is checked on open and before every report, and a failure blocks the case. The
+  on the setup page is saved in `case.json` and is not logged. Each case page the examiner
+  opens is logged there too, as a page view (time, name, page, item ids and the source location
+  of an opened evidence record, no record text); it stays in the case database, encrypted with
+  it, and is never sent. The log is checked on open and before every report, and a failure blocks the case. The
   report prints the result and the last hash (see `docs/METHODS.md` for what the chain does and doesn't detect).
 - The Windows installer is code-signed (Microsoft Artifact Signing, publisher Shayan Haque);
   only builds of `main` sign. Check its SHA-256 and the publisher before running it

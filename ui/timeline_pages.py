@@ -66,8 +66,8 @@ def timeline_page(conn: sqlite3.Connection, page: Page, s: Settings) -> str:
     skipped = [r for r in rows if r.status == "not_compared"]
     if skipped:
         out.append(
-            "<h2>Not compared</h2><p class='muted'>Dates Baker could not read plainly, such as "
-            "a numeric date that reads either way. Baker never picks a month and day order.</p>"
+            "<h2>Not compared</h2><p class='muted'>Dates Mabillon could not read plainly, such as "
+            "a numeric date that reads either way. Mabillon never picks a month and day order.</p>"
             + timeline_rows(skipped, views.data)
         )
     return page.wrap("Timeline check", "".join(out), wide=True)

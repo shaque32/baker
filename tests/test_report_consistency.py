@@ -351,7 +351,7 @@ def test_the_screen_and_the_report_show_a_call_with_the_same_times(tmp_path):
 
 def test_the_report_and_the_screen_stamp_every_version_a_result_depends_on(tmp_path):
     # Pilot gate 3 (docs/PILOT_GATES.md): every report records each model file's SHA-256 and
-    # seed, the Baker version, the rule version and the quote-check version. The report's top
+    # seed, the Mabillon version, the rule version and the quote-check version. The report's top
     # line carries the run's versions so a printed first page names them; the screen says the
     # same; the eval's run.json stamps them too.
     db = tmp_path / "case01.db"
@@ -365,11 +365,11 @@ def test_the_report_and_the_screen_stamp_every_version_a_result_depends_on(tmp_p
         assert built["release"] == build.release() != build.NOT_RECORDED
         here = html.escape(build.label(built))
         stamp = (
-            f"Baker {here} · pipeline {html.escape(run['baker_version'])} · rules "
+            f"Mabillon {here} · pipeline {html.escape(run['baker_version'])} · rules "
             f"{html.escape(run['rule_version'])} · quote check {quotes.VERSION}"
         )
         report = render_report(conn)
-        top = report.split("<h1>Baker claims report</h1>", 1)[1].split("</p>", 1)[0]
+        top = report.split("<h1>Mabillon claims report</h1>", 1)[1].split("</p>", 1)[0]
         assert stamp in top
         assert f"<tr><td>Quote check</td><td class='mono'>{quotes.VERSION}</td></tr>" in report
         models = conn.execute("SELECT purpose, model_sha256, seed FROM model_runs").fetchall()
@@ -383,7 +383,7 @@ def test_the_report_and_the_screen_stamp_every_version_a_result_depends_on(tmp_p
         app = App(db, expert="Test Expert", port=PORT)
         screen = get(app, "/").text
         assert (
-            f"Baker {here}, rule version {html.escape(run['rule_version'])}, quote check "
+            f"Mabillon {here}, rule version {html.escape(run['rule_version'])}, quote check "
             f"{quotes.VERSION}," in (screen)
         )
         versions = run_pipeline.run_versions(conn)
@@ -391,7 +391,7 @@ def test_the_report_and_the_screen_stamp_every_version_a_result_depends_on(tmp_p
         assert versions["rules"] == run["rule_version"]
         assert versions["pipeline"] == run["baker_version"]
         assert versions["build"] == built
-        assert f"<tr><td>Baker build</td><td class='mono'>{here}</td></tr>" in report
+        assert f"<tr><td>Mabillon build</td><td class='mono'>{here}</td></tr>" in report
         assert {(m["purpose"], m["sha256"], m["seed"]) for m in versions["models"]} == set(models)
     finally:
         conn.close()
@@ -414,7 +414,7 @@ def test_a_rules_only_rerun_on_a_newer_build_names_the_build_its_evidence_came_f
         assert run["config"]["build"] == build.build_info()
         assert run["config"]["evidence_build"] == old
         here = html.escape(build.label(build.build_info()))
-        stamp = f"Baker {here}; its evidence and labels from 0.0.0, commit {'a' * 12} · pipeline"
+        stamp = f"Mabillon {here}; its evidence and labels from 0.0.0, commit {'a' * 12} · pipeline"
         assert stamp in render_report(conn)
         assert run_pipeline.run_versions(conn)["evidence_build"] == old
     finally:
@@ -481,14 +481,20 @@ def test_every_mask_matches_a_field_in_the_report(first_report):
 
 
 def test_the_screen_reads_the_case_without_writing_it(tmp_path):
-    """Rendering both ways is read-only, so comparing them cannot change what they compare."""
+    """Rendering both ways changes nothing they compare: the screen writes only the page views
+    of the examiner's activity trail (core/review/activity.py), and the report writes nothing."""
     conn = _build(tmp_path / "case01.db", START)
     try:
-        before = conn.execute("SELECT COUNT(*), MAX(seq) FROM audit_log").fetchone()
+        before = conn.execute("SELECT MAX(seq) FROM audit_log").fetchone()[0]
         app = App(tmp_path / "case01.db", expert="Test Expert", port=PORT)
         _screen_claims(app, conn)
+        added = {
+            a for (a,) in conn.execute("SELECT action FROM audit_log WHERE seq > ?", (before,))
+        }
+        assert added == {"view"}
+        after = conn.execute("SELECT COUNT(*), MAX(seq) FROM audit_log").fetchone()
         render_report(conn)
-        assert conn.execute("SELECT COUNT(*), MAX(seq) FROM audit_log").fetchone() == before
+        assert conn.execute("SELECT COUNT(*), MAX(seq) FROM audit_log").fetchone() == after
     finally:
         conn.close()
 
