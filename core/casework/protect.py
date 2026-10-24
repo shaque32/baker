@@ -1,7 +1,7 @@
 """Encrypting a case that was made before encryption at rest, and changing its passphrase.
 
 Nothing here runs on its own: a plain case stays plain, and opens as before, until the expert
-asks for it to be encrypted (the case's setup page, or `baker encrypt`). Encrypting:
+asks for it to be encrypted (the case's setup page, or `mabillon encrypt`). Encrypting:
 
 1. refuses while an audit is recorded as running on the case;
 2. takes the database's write lock, so no other writer can change it until the end;

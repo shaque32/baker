@@ -22,11 +22,11 @@ PDFs still import, scanned pages fail with a clear error, and the OCR test is sk
 ## Working in the browser
 
 ```
-baker serve --open                                  # cases in ~/Baker/cases (or --cases DIR)
-baker serve --db case.db --expert "Your Name" --open  # one existing case database
-baker model-check                                   # is the local model there, pinned, and does it fit?
-baker demo                                          # reset and open the synthetic demo case (port 8766)
-baker encrypt --db CASE/case.db --by "expert:Your Name"  # encrypt a case made before encryption
+mabillon serve --open                                  # cases in ~/Mabillon/cases (or --cases DIR)
+mabillon serve --db case.db --expert "Your Name" --open  # one existing case database
+mabillon model-check                                   # is the local model there, pinned, and does it fit?
+mabillon demo                                          # reset and open the synthetic demo case (port 8766)
+mabillon encrypt --db CASE/case.db --by "expert:Your Name"  # encrypt a case made before encryption
 ```
 
 Giving a demo: [docs/demo.md](docs/demo.md) (the 10-minute flow and the planted traps' answer

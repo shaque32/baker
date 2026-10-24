@@ -13,7 +13,7 @@ The audit job:
 - on a later start, resumes: claims finished before reuse their stored model outputs.
 
 Time estimates are rough and say so: model calls per claim from synthetic case01 times the
-seconds per call measured on this computer (stored in ~/.baker/speed.json after each audit), or,
+seconds per call measured on this computer (stored in ~/.mabillon/speed.json after each audit), or,
 before any measurement, the 43 s per call measured on a 24 GB Mac with the 14B model.
 """
 
@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-from core import pipeline
+from core import paths, pipeline
 from core.audit._llm_json import CloudPaused, ModelUnavailable
 from core.audit._local_model import ModelConfigError
 from core.audit.invariants import InvariantViolation
@@ -41,7 +41,7 @@ DEFAULT_SECONDS_PER_CALL = 43.0  # Qwen3-14B Q4 on a 24 GB Mac (Wave 3, PR #28)
 CLOUD_SECONDS_PER_CALL = 3.2
 CALLS_PER_CLAIM = 25  # synthetic case01 after PR #29: 495 model calls for 20 claims
 LOCAL_CALLS_PER_CLAIM = 1  # assumption filling, which stays local in a cloud case
-SPEED_FILE = Path.home() / ".baker" / "speed.json"
+SPEED_FILE = paths.settings_file("speed.json")
 MIN_CALLS_TO_MEASURE = 5
 
 ComponentsFor = Callable[..., pipeline.Components]  # (conn, ai_review) -> Components

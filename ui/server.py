@@ -1,4 +1,4 @@
-"""`baker serve`: the expert review screen on this computer only.
+"""`mabillon serve`: the expert review screen on this computer only.
 
 The standard library's HTTP server, bound to 127.0.0.1 and nothing else, handling one request
 at a time (one SQLite connection per request). A background audit or claim proposal runs in its
@@ -105,7 +105,7 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(self.app.handle(req))
 
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002
-        sys.stderr.write(f"baker serve: {self.command} {urlsplit(self.path).path}\n")
+        sys.stderr.write(f"mabillon serve: {self.command} {urlsplit(self.path).path}\n")
 
 
 def make_server(

@@ -1,19 +1,19 @@
 # Giving a demo
 
-`baker demo` opens a ready-made, already-audited case in seconds, so a demo never waits on a
+`mabillon demo` opens a ready-made, already-audited case in seconds, so a demo never waits on a
 model run. Everything in it is synthetic (case01: two phones, Daniel Petrov's iPhone and
 Marcus Reyes's Samsung, mixed English and Russian, seven planted traps).
 
 ```
-baker demo                    # reset the demo case and open it at http://127.0.0.1:8766
-baker demo --expert "Your Name"   # the name recorded with what you click during the demo
-baker demo --paired           # also add a UFDR of Item 1, to show what the curated report left out
+mabillon demo                    # reset the demo case and open it at http://127.0.0.1:8766
+mabillon demo --expert "Your Name"   # the name recorded with what you click during the demo
+mabillon demo --paired           # also add a UFDR of Item 1, to show what the curated report left out
 ```
 
 Run it again before every demo: each run deletes the demo case and builds a clean one (about
-6 seconds). It uses its own folder (`~/Baker/demo/cases`, or `$BAKER_DEMO/cases`) and its own
+6 seconds). It uses its own folder (`~/Mabillon/demo/cases`, or `$MABILLON_DEMO/cases`) and its own
 port (8766), so it never shows your other cases on a screen share and can run beside a real
-`baker serve` on 8765. Ctrl+C stops it.
+`mabillon serve` on 8765. Ctrl+C stops it.
 
 ## What is real and what is scripted
 
@@ -32,8 +32,8 @@ earlier version; the current version has not been timed.
 To demo real model labels instead, save a finished synthetic case01 audit as the demo once:
 
 ```
-baker demo --from-case ~/Baker/cases/<that case folder>   # only synthetic case01 is accepted
-baker demo --scripted                                     # back to the scripted demo
+mabillon demo --from-case ~/Mabillon/cases/<that case folder>   # only synthetic case01 is accepted
+mabillon demo --scripted                                     # back to the scripted demo
 ```
 
 ## Demo-only claim D01 and `--paired`
@@ -48,13 +48,13 @@ case).
   record in that window, yet the absence check is inconclusive and the claim stays unproven:
   both phones are examiner-curated reports, which cannot show that something is absent. Use it to
   show that "not found" never becomes "did not happen".
-- **`baker demo --paired`** builds the same scripted case and then imports `item1-full.ufdr`, a
+- **`mabillon demo --paired`** builds the same scripted case and then imports `item1-full.ufdr`, a
   UFDR of Item 1 that holds records the curated report does not (eval/synthetic/paired.py). It
   is imported after the audit, so every verdict is the same as in the plain demo. The Selection
   tab then shows the paired selection audit (each report record found once, more than once or
   not found in the UFDR, and the records left out near each claim), and C05's page says the UFDR
   holds 4 records within an hour of its messages that the report does not, such as "or sunday
-  works too". It never changes a verdict. A plain `baker demo` goes back to the case without it;
+  works too". It never changes a verdict. A plain `mabillon demo` goes back to the case without it;
   a saved audit (`--from-case`) is kept but not used for a `--paired` run.
 
 ## The 10-minute flow

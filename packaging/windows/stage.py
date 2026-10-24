@@ -9,7 +9,7 @@ Layout of build/stage (and of the installed folder):
                             included, so a fresh install can run case01 and the speed test)
     runtime/cpu/            llama-cpp-python, CPU build (AVX2), for a PC with no NVIDIA GPU
     runtime/cuda/           llama-cpp-python, CUDA build plus the CUDA runtime DLLs
-    baker.cmd               the `baker` command
+    baker.cmd, mabillon.cmd the `baker` and `mabillon` commands (one launcher, two names)
     BUILD_INFO.json         versions, the git commit and the SHA-256 of every staged file
 
 The installer copies exactly one of runtime/cpu and runtime/cuda into python/Lib/site-packages,
@@ -192,6 +192,7 @@ def main(argv: list[str] | None = None) -> int:
     shutil.rmtree(site / "bin", ignore_errors=True)
     files = stage_source(a.out / "baker")
     shutil.copyfile(LAUNCHER, a.out / "baker.cmd")
+    shutil.copyfile(LAUNCHER, a.out / "mabillon.cmd")  # the same launcher under the new name
 
     manifest = {
         str(p.relative_to(a.out).as_posix()): sha256_file(p)

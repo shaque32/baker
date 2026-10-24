@@ -1,4 +1,4 @@
-"""Write a case's reproducibility bundle (`baker export-bundle`).
+"""Write a case's reproducibility bundle (`mabillon export-bundle`).
 
 Producing a bundle is the examiner's choice, made on counsel's advice: Mabillon never makes or
 sends one on its own. The CLI first lists what the bundle would hold (describe()) and writes
@@ -77,9 +77,10 @@ from core.review.actions import ReviewError, _expert
 from core.timeline.settings import Settings
 
 FORMAT = "baker-reproducibility-bundle"  # a format id: keeps the development name (CLAUDE.md)
-# 1.1.0: METHOD.md and the notice name the product Mabillon. A minor version changes only text
-# the exporter writes, which only that version's code gives again; the tables read the same.
-BUNDLE_VERSION = "1.1.0"
+# 1.1.0: METHOD.md and the notice name the product Mabillon. 1.2.0: METHOD.md names the
+# `mabillon verify-bundle` command. A minor version changes only text the exporter writes, which
+# only that version's code gives again; the tables read the same.
+BUNDLE_VERSION = "1.2.0"
 EXPORT_ACTION = "bundle.export"
 MANIFEST = "bundle.json"
 METHOD = "METHOD.md"
@@ -1012,8 +1013,8 @@ def method_note(manifest: dict[str, Any]) -> str:
             "## How to check this bundle",
             "",
             f"- Offline, with Mabillon at commit {commit} (rules {run['rule_version']}): "
-            "`baker verify-bundle <this zip> [--inputs <folder holding the original files>]`. It "
-            "checks every file's hash, the audit log's hash chain, that each label matches the "
+            "`mabillon verify-bundle <this zip> [--inputs <folder holding the original files>]`. "
+            "It checks every file's hash, the audit log's hash chain, that each label matches the "
             "model's answer as stored, and re-applies the rules to the recorded labels and "
             "expert decisions; every verdict must come out exactly as recorded.",
             "- Without Mabillon: every table is JSON lines. Each audit-log entry's hash is the "
