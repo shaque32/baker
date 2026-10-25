@@ -256,5 +256,14 @@ computed it and marks a commit with uncommitted changes.
 
 What is known before it runs: on the 2026-10-19 Mac run (llama-cpp-python 0.3.36, flash runtime,
 model loaded once, stance prompt v1.2), 104 of 105 repeated probe answers were identical; on
-P104 the rationale's wording changed while the stance and quote held. Prompt v1.1 (the 14B's own)
-has not been asked twice. Nothing may say local labels regenerate exactly until this passes.
+P104 the rationale's wording changed while the stance and quote held.
+
+Result, 2026-10-24 (Arsh's MacBook Air M4, 24 GB, macOS 15.6.1, llama-cpp-python 0.3.36, run at
+commit `f07aa62`; Qwen3-14B Q4_K_M `500a8806…b81f0` with its own prompt, stance v1.1):
+`results/2026-10-24-qwen3-14b-repeat-mac.md`. On the GPU every answer was byte-identical: A
+105 of 105, B 105 of 105, D 85 of 85 calls, with the same 75 evidence rows. CPU only (C) kept
+all 20 stances and quotes, but 7 of the 20 rationales were worded differently. So on this Mac,
+with these versions, the 14B's stance labels regenerate exactly; nothing has been measured on
+another machine (a Windows NVIDIA PC included), another llama-cpp-python version or another
+prompt. The report says this only for this model file with this prompt (`REPEAT_TESTED` in
+`core/report/html.py`); any other pair still gets no claim.

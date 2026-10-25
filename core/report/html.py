@@ -126,7 +126,10 @@ from core.review.status import verdict_label as _verdict_label
 # assumption, the evidence, check or stipulation relied on, who proposed it and what the expert
 # did), and a "What can be checked again" section says what can and cannot be regenerated,
 # naming any hosted model whose labels cannot be regenerated exactly.
-REPORT_VERSION = "0.14.0"
+# 0.15.0: for a local model file and stance prompt that passed the repeat check (REPEAT_TESTED),
+# "What can be checked again" states that measured result and its limits instead of making no
+# claim.
+REPORT_VERSION = "0.15.0"
 
 
 @dataclass(frozen=True)
@@ -435,6 +438,23 @@ def verdict_trace(conn: sqlite3.Connection, st: ClaimState) -> str:
     return "".join(out)
 
 
+# Local stance runs that passed the repeat check (eval/probe/repeat_check.py), by model file
+# SHA-256 and stance prompt SHA-256 as model runs record them. Only these get a statement about
+# re-runs; the run itself is in eval/probe/results/.
+REPEAT_TESTED = {
+    (
+        "500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0",  # Qwen3-14B Q4_K_M
+        "4c35f1cf01b0b2277135bafe52d996f903f3bca3fc5a37c8e8996aedc35a2034",  # stance v1.1
+    ): (
+        "In Mabillon's repeat test of this model file with this stance prompt (2026-10-24, one "
+        "MacBook Air M4, macOS 15.6.1, llama-cpp-python 0.3.36), asking again, loading the model "
+        "afresh and auditing a synthetic case a second time gave byte-identical answers on the "
+        "GPU. With the GPU off, every stance and quote was the same but 7 of 20 rationales were "
+        "worded differently. Other machines and runtime versions have not been tested."
+    ),
+}
+
+
 def regeneration(conn: sqlite3.Connection, run: dict | None) -> str:
     """What a reader can regenerate from this case and what they cannot: the verdicts re-derive
     from the record; a hosted model's labels cannot be regenerated exactly."""
@@ -447,13 +467,14 @@ def regeneration(conn: sqlite3.Connection, run: dict | None) -> str:
             "<span class='mono'>verify-bundle</span>) lets another examiner check that "
             "offline.</li>"
         )
-    seen: set[tuple[str, str]] = set()
-    for purpose, name, sha, params_json, seed in conn.execute(
-        "SELECT purpose, model_name, model_sha256, params_json, seed FROM model_runs"
-        " ORDER BY purpose, id"
+    seen: set[tuple[str, str, str | None]] = set()
+    for purpose, name, sha, prompt_sha, params_json, seed in conn.execute(
+        "SELECT purpose, model_name, model_sha256, prompt_sha256, params_json, seed"
+        " FROM model_runs ORDER BY purpose, id"
     ):
         params = json.loads(params_json or "{}")
-        key = (purpose, sha)
+        tested = REPEAT_TESTED.get((sha, prompt_sha)) if purpose == "stance" else None
+        key = (purpose, sha, tested)
         if key in seen:
             continue
         seen.add(key)
@@ -471,8 +492,13 @@ def regeneration(conn: sqlite3.Connection, run: dict | None) -> str:
                 f"<li><strong>{e(purpose.capitalize())}:</strong> labels from the local model "
                 f"{e(name)} (file SHA-256 <span class='mono'>{e(sha)}</span>, seed "
                 f"{e(seed) if seed is not None else 'not recorded'}; settings under Model runs)."
-                " Anyone with the same file can run it again. No claim is made that a "
-                "re-run gives identical labels; the verdicts rest on the recorded labels.</li>"
+                " Anyone with the same file can run it again. "
+                + (
+                    f"{e(tested)} The verdicts rest on the recorded labels.</li>"
+                    if tested
+                    else "No claim is made that a re-run gives identical labels; the verdicts "
+                    "rest on the recorded labels.</li>"
+                )
             )
     if len(out) == 1:
         out.append("<li>No audit has run and no model run is recorded.</li>")
