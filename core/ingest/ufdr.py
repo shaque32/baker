@@ -67,7 +67,7 @@ from core.ingest.source_file import require_sha256
 from core.review import audit_log
 
 IMPORTER_NAME = "ufdr"
-IMPORTER_VERSION = "0.3.0"
+IMPORTER_VERSION = "0.3.1"
 # Becomes "verified" only after a real UFDR has been checked against Cellebrite Reader
 # (docs/ingest/ufdr.md, "Before calling it verified"). Every import records it.
 FORMAT_SUPPORT = "unverified"
@@ -1300,6 +1300,11 @@ class _RecordMapper:
         copied chat one to one to the holder chat's messages. One that does not match is
         listed for review."""
         table = holder.split("[", 1)[0]
+        message_holder = (
+            (table in MESSAGE_TYPES and "/" not in holder)
+            or _CHAT_MESSAGE_LOC.fullmatch(holder) is not None
+            or holder.rpartition("/")[2].startswith(EMBEDDED_STEP[1:])
+        )
         self.holders.add(holder)
         models = [c for c in rel.children if c.tag == "model"]
         for el in models:
@@ -1317,16 +1322,12 @@ class _RecordMapper:
                     self._nested(table, where, key, x, True)
                 self.related_copies.append(_Copies(table, "chat", holder, None, keys, True))
                 self._nested_chats(table, loc, [k for k, _w in keys], el)
-            elif (
-                t in COPY_TYPES
-                or (table in MESSAGE_TYPES and "/" not in holder)
-                or _CHAT_MESSAGE_LOC.fullmatch(holder)
-                or holder.rpartition("/")[2].startswith(EMBEDDED_STEP[1:])
-            ):
+            elif t in COPY_TYPES or message_holder or (table in COPY_KINDS and "/" not in holder):
                 # a message's copy (top-level, in a chat or embedded) is a message whatever
-                # its type is named, as its holder
+                # its type is named, as its holder; a call's, contact's or account's copy of
+                # another type is matched to it too, and so listed (it never says the same)
                 key = _content_key(m)
-                is_message = t not in COPY_KINDS
+                is_message = t in MESSAGE_TYPES or message_holder
                 self.related_copies.append(
                     _Copies(table, "one", holder, None, [(key, loc)], is_message)
                 )
@@ -1380,9 +1381,14 @@ class _RecordMapper:
                     for k, w, y in msgs:
                         self._nested(table, w, k, y, True)
                     self._nested_chats(table, where, [k for k, _w in keys], x)
-                elif t in COPY_TYPES or t == el.attrs.get("type") or message:
+                elif (
+                    t in COPY_TYPES
+                    or t == el.attrs.get("type")
+                    or message
+                    or el.attrs.get("type") in COPY_KINDS
+                ):
                     key = _content_key(_model(x))
-                    is_message = t not in COPY_KINDS
+                    is_message = t in MESSAGE_TYPES or message
                     self.related_copies.append(
                         _Copies(table, "one", loc, want, [(key, where)], is_message)
                     )
@@ -1417,8 +1423,11 @@ class _RecordMapper:
                     self.copies_matched += 1
                     continue
                 self.cov.counters["related_copies_matching_no_record"] += 1
-                if c.message:  # ufdr-check accounts for these by count past the listed ones
+                # ufdr-check accounts for these by count past the locators listed
+                if c.message:
                     self.cov.counters["related_message_copies_matching_no_record"] += 1
+                else:
+                    self.cov.counters["related_record_copies_matching_no_record"] += 1
                 self._flag(c.table, "related_copy_unmatched", loc)
         self.related_copies.clear()
         self.holders.clear()

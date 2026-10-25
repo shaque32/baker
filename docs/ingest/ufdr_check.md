@@ -44,7 +44,13 @@ records of each kind go in the private sample (default 20). Nothing is added to 
    for review (`related_copy_unmatched`), else it is missing (row "message copies under
    RelatedModels"). A copy Mabillon lists that matches here is a difference too (`extra`); only
    past the importer's capped list of locators does its count stand in. Copies are counted per type
-   (`copies_under_related_models`). A second account with the same app and identifier is one
+   (`copies_under_related_models`). Each copy of a call, contact or account, and each copy one
+   of them holds whatever its type is named, must say what the record holding it says (a call:
+   app, time, duration, Direction, Type and Status, each side's parties in order, deleted state
+   and recovery marks; a contact: name, entries, deleted state and recovery marks; an account:
+   app, identifier and name, as written; a copy inside a copy matches that copy), checked in
+   rows of their own ("call copies", "contact copies" and "account copies under
+   RelatedModels") in the same way. A second account with the same app and identifier is one
    account in Mabillon and counts as a repeat, not as missing. Direction is expected from the
    phone's own accounts by identifier only, as the importer links them.
 
