@@ -18,6 +18,10 @@ in project files. The run's case.db is copied; the copy is scored and the origin
 3. R2, the simulated expert (eval/simulated_expert.py) on the mapped keys, then the rules again
    (`mabillon redecide`), scored by eval/validation/card.py.
 4. Import counts beside the dump's.
+5. Coverage, for run 2's low-coverage rule (eval/validation/PREREGISTERED_v2.md): k, the claims
+   the run tested (not marked "Not tested"), out of all; each refusal kind that left a claim
+   untested, with its claims; and measures 1 to 3 and the R2 card again over tested claims only.
+   These are added beside the measures above and change none of them.
 Writes DIR/score.json and DIR/score.md.
 """
 
@@ -40,6 +44,48 @@ from eval.validation.card import build_card, load_checks, rate, render_markdown
 from eval.validation.hickman_run import TYPE_ALIASES
 
 KEY_FILES = ("gold.jsonl", "gold_b2.jsonl", "gold_b3.jsonl")
+
+# Run 2's low-coverage rule 3: below this many tested claims, no accuracy claim.
+MINIMUM_TESTED = 30
+INSUFFICIENT = "insufficient coverage, no accuracy claim"
+
+# What the assumption filler refused, by kind, read from each untested claim's "Not tested"
+# sentence (the run keeps no other per-claim record of it). A claim counts once per kind it
+# has; a claim can have several. The kinds follow the filler's own refusal wording.
+REFUSAL_KINDS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("phone not matched to a device", re.compile(r"phone '.*?' matches \d+ devices")),
+    (
+        "phone time zone not known",
+        re.compile(r"unknown phone time zone|do not share one known time zone"),
+    ),
+    (
+        "person not set up by the expert",
+        re.compile(r"matches (?:no person|\d+ persons) the expert created"),
+    ),
+    ("account not found", re.compile(r"matches no account in the case")),
+    ("channel not named or not in the case", re.compile(r"name the channel|not an app in")),
+    (
+        "time range not plainly stated",
+        re.compile(r"\bwindow\b|\brange\b|weekday|states no year|claim's date"),
+    ),
+    (
+        "count or duration not readable",
+        re.compile(r"count is approximate|number of messages or calls|duration|read the number"),
+    ),
+    ("value not written in the claim", re.compile(r"(?:quoted_text|'.*?') is not written in")),
+    (
+        "model output not usable",
+        re.compile(
+            r"not valid JSON|wrong shape|JSON is not an object|model output|model returned"
+            r"|model has no run id|is not allowed for this claim|does not take handles"
+        ),
+    ),
+)
+UNCLASSIFIED = "none of the kinds above (see the claim's sentence)"
+# The filler's closing summary of a claim ("no usable X assumption; the claim stays unproven")
+# names templates, not a cause, so it is not read for kinds.
+_GAP = re.compile(r"no usable [^;]*? assumption; the claim stays unproven")
+_MORE = re.compile(r"\(and \d+ more\)")
 
 
 def _sha256(path: Path) -> str:
@@ -263,6 +309,46 @@ def key_recall(
     }
 
 
+def _measure(
+    per_claim: dict[str, dict[str, Any]],
+    name: str,
+    base,  # noqa: ANN001
+    hit,  # noqa: ANN001
+) -> dict[str, Any]:
+    rows = {c: r for c, r in per_claim.items() if base(r)}
+    hits = sorted(c for c, r in rows.items() if hit(r))
+    by_type: dict[str, dict[str, Any]] = {}
+    for t in sorted({r["type"] for r in rows.values()}):
+        of_t = [c for c, r in rows.items() if r["type"] == t]
+        by_type[t] = rate(sum(c in hits for c in of_t), len(of_t))
+    return {"measure": name, **rate(len(hits), len(rows)), "claims": hits, "by_type": by_type}
+
+
+def _measures(per_claim: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    """Primary measures 1 to 3 over the claims given."""
+    contra = Verdict.CONTRADICTED.value
+    return {
+        "contradicted_without_expert": _measure(
+            per_claim,
+            "R1 contradicted, gold not contradicted",
+            lambda r: r["gold"] != contra,
+            lambda r: r["r1"] == contra,
+        ),
+        "false_claim_shown_only_as_support": _measure(
+            per_claim,
+            "gold contradicted; supports items, no contradicts item, no failed check",
+            lambda r: r["gold"] == contra,
+            lambda r: r["supports"] > 0 and r["contradicts"] == 0 and not r["failed_checks"],
+        ),
+        "contradiction_surfaced": _measure(
+            per_claim,
+            "gold contradicted; a failed check or a contradicts item on a key record",
+            lambda r: r["gold"] == contra,
+            lambda r: bool(r["failed_checks"]) or r["contradicts_on_key"] > 0,
+        ),
+    }
+
+
 def r1_measures(conn: sqlite3.Connection, run: dict, gold: list[GoldClaim]) -> dict[str, Any]:
     from core.pipeline import load_verdict
 
@@ -283,35 +369,46 @@ def r1_measures(conn: sqlite3.Connection, run: dict, gold: list[GoldClaim]) -> d
                 e.stance is Stance.CONTRADICTS and e.record_id in key for e in items
             ),
         }
-
-    def measure(name: str, base, hit) -> dict[str, Any]:  # noqa: ANN001
-        rows = {c: r for c, r in per_claim.items() if base(r)}
-        hits = sorted(c for c, r in rows.items() if hit(r))
-        by_type: dict[str, dict[str, Any]] = {}
-        for t in sorted({r["type"] for r in rows.values()}):
-            of_t = [c for c, r in rows.items() if r["type"] == t]
-            by_type[t] = rate(sum(c in hits for c in of_t), len(of_t))
-        return {"measure": name, **rate(len(hits), len(rows)), "claims": hits, "by_type": by_type}
-
-    contra = Verdict.CONTRADICTED.value
     return {
-        "contradicted_without_expert": measure(
-            "R1 contradicted, gold not contradicted",
-            lambda r: r["gold"] != contra,
-            lambda r: r["r1"] == contra,
-        ),
-        "false_claim_shown_only_as_support": measure(
-            "gold contradicted; supports items, no contradicts item, no failed check",
-            lambda r: r["gold"] == contra,
-            lambda r: r["supports"] > 0 and r["contradicts"] == 0 and not r["failed_checks"],
-        ),
-        "contradiction_surfaced": measure(
-            "gold contradicted; a failed check or a contradicts item on a key record",
-            lambda r: r["gold"] == contra,
-            lambda r: bool(r["failed_checks"]) or r["contradicts_on_key"] > 0,
-        ),
+        **_measures(per_claim),
         "no_r1_verdict": sorted(c for c, r in per_claim.items() if r["r1"] is None),
         "per_claim": per_claim,
+    }
+
+
+def refusal_kinds(sentence: str) -> list[str]:
+    """The refusal kinds in one claim's "Not tested" sentence, in REFUSAL_KINDS order."""
+    text = _GAP.sub("", sentence.partition("Refused:")[2])
+    kinds = [name for name, pattern in REFUSAL_KINDS if pattern.search(text)]
+    return kinds or [UNCLASSIFIED]
+
+
+def coverage(run: dict, gold: list[GoldClaim], r1: dict[str, Any]) -> dict[str, Any]:
+    """Run 2's low-coverage rule: k tested of all claims, why the rest were not, and measures
+    1 to 3 again over tested claims only (rules 1 and 2). An untested claim is listed by id
+    with its sentence, never counted correct or wrong."""
+    not_tested: dict[str, str] = run.get("not_tested") or {}
+    ids = [g.claim_id for g in gold]
+    tested = [c for c in ids if c not in not_tested]
+    untested = {c: not_tested[c] for c in ids if c in not_tested}
+    kinds: dict[str, list[str]] = {name: [] for name, _ in REFUSAL_KINDS}
+    kinds[UNCLASSIFIED] = []
+    for c, sentence in untested.items():
+        for kind in refusal_kinds(sentence):
+            kinds[kind].append(c)
+    k = len(tested)
+    return {
+        "claims": len(ids),
+        "tested": k,
+        "untested": len(untested),
+        "minimum": MINIMUM_TESTED,
+        "result": "enough tested claims" if k >= MINIMUM_TESTED else INSUFFICIENT,
+        "refusal_kinds": {name: {"claims": len(cs), "ids": cs} for name, cs in kinds.items() if cs},
+        # A sentence shows at most four refusals; its kinds may then be undercounted.
+        "sentences_cut_short": [c for c, sentence in untested.items() if _MORE.search(sentence)],
+        "untested_claims": untested,
+        "tested_claims": tested,
+        "r1_over_tested": _measures({c: r1["per_claim"][c] for c in tested}),
     }
 
 
@@ -346,8 +443,9 @@ def import_counts(conn: sqlite3.Connection, dump_counts: dict[str, int]) -> dict
     return {k: {"mabillon": ours[k], "dump": dump_counts.get(k)} for k in ours}
 
 
-def r2(db: Path, run: dict, mapped: list[GoldClaim]) -> dict[str, Any]:
-    """The simulated expert on the mapped keys, then the rules again, scored by the card."""
+def r2(db: Path, run: dict, mapped: list[GoldClaim], tested: list[str]) -> dict[str, Any]:
+    """The simulated expert on the mapped keys, then the rules again, scored by the card: over
+    all claims, and again over the tested claims only (run 2's low-coverage rule 2)."""
     from core import pipeline
     from core.db import connect
     from core.review.redecide import redecide
@@ -365,8 +463,15 @@ def r2(db: Path, run: dict, mapped: list[GoldClaim]) -> dict[str, Any]:
 
     verdicts = _verdicts(conn, again.run_id)
     conn.close()
-    card = build_card(mapped, preds, verdicts, load_checks(db, [g.claim_id for g in mapped]))
-    return {"run_id": again.run_id, "simulated_expert": decided.summary(), "card": card}
+    checks = load_checks(db, [g.claim_id for g in mapped])
+    card = build_card(mapped, preds, verdicts, checks)
+    over_tested = build_card([g for g in mapped if g.claim_id in tested], preds, verdicts, checks)
+    return {
+        "run_id": again.run_id,
+        "simulated_expert": decided.summary(),
+        "card": card,
+        "card_over_tested": over_tested,
+    }
 
 
 def score(results: Path, keys: Path, dump: Path, out: Path) -> dict[str, Any]:
@@ -397,6 +502,7 @@ def score(results: Path, keys: Path, dump: Path, out: Path) -> dict[str, Any]:
     labels = label_counts(conn, run, mapped)
     counts = import_counts(conn, dump_counts)
     conn.close()
+    covered = coverage(run, mapped, r1)
 
     result = {
         "results_sha256": _sha256(results),
@@ -409,7 +515,8 @@ def score(results: Path, keys: Path, dump: Path, out: Path) -> dict[str, Any]:
         "key_evidence": ready,
         "labels": labels,
         "import_counts": counts,
-        "r2": r2(db, run, mapped),
+        "coverage": covered,
+        "r2": r2(db, run, mapped, covered["tested_claims"]),
     }
     (out / "score.json").write_text(json.dumps(result, indent=2, default=str), encoding="utf-8")
     (out / "score.md").write_text(render(result), encoding="utf-8")
@@ -418,8 +525,57 @@ def score(results: Path, keys: Path, dump: Path, out: Path) -> dict[str, Any]:
 
 def _line(r: dict[str, Any]) -> str:
     ci = r["ci95"]
-    pct = f"{r['rate']:.1%}" if r["rate"] is not None else "n/a"
-    return f"{r['k']} of {r['n']} ({pct}; 95% CI {ci[0]:.1%} to {ci[1]:.1%})" if ci else pct
+    if not ci:  # no claims in the base
+        return f"{r['k']} of {r['n']}"
+    return f"{r['k']} of {r['n']} ({r['rate']:.1%}; 95% CI {ci[0]:.1%} to {ci[1]:.1%})"
+
+
+def _r1_lines(r1: dict[str, Any]) -> list[str]:
+    return [
+        f"1. Contradicted without an expert: {_line(r1['contradicted_without_expert'])}."
+        f" Claims: {', '.join(r1['contradicted_without_expert']['claims']) or 'none'}.",
+        f"2. False claim shown only as support: {_line(r1['false_claim_shown_only_as_support'])}."
+        f" Claims: {', '.join(r1['false_claim_shown_only_as_support']['claims']) or 'none'}.",
+        f"3. Contradiction surfaced: {_line(r1['contradiction_surfaced'])}.",
+    ]
+
+
+def _coverage_lines(c: dict[str, Any], card: dict[str, Any]) -> list[str]:
+    lines = [
+        "## Coverage (run 2's low-coverage rule, eval/validation/PREREGISTERED_v2.md)",
+        "",
+        f"**Tested: {c['tested']} of {c['claims']} claims.** Minimum {c['minimum']}:"
+        f" {c['result']}.",
+        "",
+    ]
+    if c["refusal_kinds"]:
+        lines += [
+            "Why the untested claims were not tested (a claim counts once per kind it has):",
+            "",
+            "| Refusal kind | Claims |",
+            "| --- | --- |",
+        ]
+        lines += [f"| {k} | {v['claims']} |" for k, v in c["refusal_kinds"].items()]
+        lines.append("")
+    if c["sentences_cut_short"]:
+        lines += [
+            "These claims' sentences list only their first four refusals, so a kind may be"
+            f" undercounted: {', '.join(c['sentences_cut_short'])}.",
+            "",
+        ]
+    lines += [
+        "### Measures over tested claims only (the ones run 2 reports)",
+        "",
+        *_r1_lines(c["r1_over_tested"]),
+        "",
+        render_markdown(card),
+        "",
+    ]
+    if c["untested_claims"]:
+        lines += ["### Untested claims (never counted correct or wrong)", ""]
+        lines += [f"- {cid}: {why}" for cid, why in c["untested_claims"].items()]
+        lines.append("")
+    return lines
 
 
 def render(s: dict[str, Any]) -> str:
@@ -432,20 +588,20 @@ def render(s: dict[str, Any]) -> str:
         f"Audit run `{s['audit_run']}`, rules {s['rule_version']}, results.zip SHA-256"
         f" `{s['results_sha256']}`.",
         "",
-        "## R1, the run as it stands",
+    ]
+    if "coverage" in s:
+        lines += _coverage_lines(s["coverage"], s["r2"]["card_over_tested"])
+    lines += [
+        "## R1, the run as it stands (all claims, as plan v1 defines it)",
         "",
-        f"1. Contradicted without an expert: {_line(r1['contradicted_without_expert'])}."
-        f" Claims: {', '.join(r1['contradicted_without_expert']['claims']) or 'none'}.",
-        f"2. False claim shown only as support: {_line(r1['false_claim_shown_only_as_support'])}."
-        f" Claims: {', '.join(r1['false_claim_shown_only_as_support']['claims']) or 'none'}.",
-        f"3. Contradiction surfaced: {_line(r1['contradiction_surfaced'])}.",
+        *_r1_lines(r1),
         "",
         f"Key records: {m['keys']}, unmapped {len(m['unmapped'])} (listed in score.json).",
         "Key-evidence recall, per key record: retrieved"
         f" {_line(ke['key_evidence_recall_retrieved'])},"
         f" surfaced {_line(ke['key_evidence_recall_surfaced'])}.",
         "",
-        "## R2, simulated expert",
+        "## R2, simulated expert (all claims, as plan v1 defines it)",
         "",
         render_markdown(s["r2"]["card"]),
         "",

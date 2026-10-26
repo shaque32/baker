@@ -297,3 +297,90 @@ def test_r2_runs_the_simulated_expert_then_the_rules_on_a_copy(scored):
     assert imported["contacts"] == {"mabillon": 1, "dump": 1}
     # The empty chat makes no thread, and the standalone messages' threads are not chats.
     assert imported["chats_with_messages"] == {"mabillon": 1, "dump": 1}
+
+
+def test_coverage_counts_the_tested_claims_beside_the_measures(scored):
+    run, s = scored
+    c = s["coverage"]
+    # Stand-in components give every claim a core assumption, so all three are tested.
+    assert (c["claims"], c["tested"], c["untested"]) == (3, 3, 0)
+    assert c["tested_claims"] == ["C01", "C02", "C03"] and c["refusal_kinds"] == {}
+    assert c["minimum"] == score_hickman.MINIMUM_TESTED == 30
+    assert c["result"] == score_hickman.INSUFFICIENT  # 3 tested is under the minimum
+    # Over tested claims the bases are the same here, and the all-claims measures stay as they are.
+    over = c["r1_over_tested"]["contradicted_without_expert"]
+    assert over["n"] == s["r1"]["contradicted_without_expert"]["n"] == 2
+    assert s["r2"]["card_over_tested"]["claims"] == 3
+    md = (run.parent / "score" / "score.md").read_text("utf-8")
+    assert "**Tested: 3 of 3 claims.** Minimum 30: insufficient coverage" in md
+
+
+def _claim(claim_id: str, para: int, verdict: str):  # noqa: ANN202
+    from core.contracts import GoldClaim
+
+    return GoldClaim.model_validate(
+        {**_gold(claim_id, para, "x", verdict, []), "claim_type": "content_meaning"}
+    )
+
+
+def _per_claim(gold: str, r1: str | None) -> dict:
+    return {
+        "type": "content", "gold": gold, "r1": r1, "failed_checks": [],
+        "supports": 0, "contradicts": 0, "contradicts_on_key": 0,
+    }  # fmt: skip
+
+
+def test_untested_claims_are_listed_by_reason_and_left_out_of_every_base():
+    from core.pipeline import not_tested_reason
+
+    gold = [_claim(f"C{i:02}", i, "contradicted") for i in range(1, 5)]
+    gap = "no usable message_count or call_duration assumption; the claim stays unproven"
+    run = {
+        "not_tested": {
+            "C01": not_tested_reason(["phone 'TARGET PHONE' matches 0 devices", gap]),
+            "C02": not_tested_reason(
+                [
+                    "unknown phone time zone '(UTC-05:00) Somewhere'",
+                    "'SUBJECT-2' matches no person the expert created",
+                    "'@jo' on WhatsApp matches no account in the case",
+                    "the time range is not one the claim plainly states",
+                    "not valid JSON: Unterminated string",
+                ]
+            ),
+            "C03": not_tested_reason(["something new the filler said"]),
+        }
+    }
+    per_claim = {g.claim_id: _per_claim("contradicted", "unproven") for g in gold}
+    c = score_hickman.coverage(run, gold, {"per_claim": per_claim})
+
+    assert (c["claims"], c["tested"], c["untested"]) == (4, 1, 3)
+    assert c["tested_claims"] == ["C04"] and list(c["untested_claims"]) == ["C01", "C02", "C03"]
+    kinds = {k: v["ids"] for k, v in c["refusal_kinds"].items()}
+    assert kinds == {
+        # The closing gap names templates (call_duration), not a cause, so C01 is phone only.
+        "phone not matched to a device": ["C01"],
+        "phone time zone not known": ["C02"],
+        "person not set up by the expert": ["C02"],
+        "account not found": ["C02"],
+        "time range not plainly stated": ["C02"],
+        score_hickman.UNCLASSIFIED: ["C03"],
+    }
+    # The sentence shows four refusals and "(and 1 more)": the JSON one is not counted.
+    assert c["sentences_cut_short"] == ["C02"]
+    # Measures count only the tested claim; untested ones are never correct or wrong.
+    assert c["r1_over_tested"]["false_claim_shown_only_as_support"]["n"] == 1
+    assert c["r1_over_tested"]["contradiction_surfaced"]["n"] == 1
+    assert c["result"] == score_hickman.INSUFFICIENT
+
+
+def test_coverage_is_enough_at_the_minimum():
+    n = score_hickman.MINIMUM_TESTED
+    gold = [_claim(f"C{i:02}", i + 1, "unproven") for i in range(n)]
+    per_claim = {g.claim_id: _per_claim("unproven", "unproven") for g in gold}
+    c = score_hickman.coverage({"not_tested": {}}, gold, {"per_claim": per_claim})
+    assert c["tested"] == n and c["result"] == "enough tested claims"
+    c = score_hickman.coverage(
+        {"not_tested": {"C00": "Not tested."}}, gold, {"per_claim": per_claim}
+    )
+    assert c["tested"] == n - 1 and c["result"] == score_hickman.INSUFFICIENT
+    assert c["refusal_kinds"] == {score_hickman.UNCLASSIFIED: {"claims": 1, "ids": ["C00"]}}
