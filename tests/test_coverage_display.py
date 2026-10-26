@@ -3,6 +3,7 @@ report's limitations. All data is synthetic (eval/synthetic/variants/)."""
 
 from __future__ import annotations
 
+import html
 import io
 import sqlite3
 from pathlib import Path
@@ -11,11 +12,12 @@ import pytest
 
 from cli.main import main as cli_main
 from core.audit.invariants import FORBIDDEN_WORDS, check_report_text
+from core.contracts import SourceCoverage
 from core.db import apply_schema
 from core.ingest import coverage
 from core.ingest.cellebrite_excel import CellebriteExcelImporter
 from core.ingest.ufdr import UfdrImporter
-from core.report.html import render_report
+from core.report.html import q, render_report
 from eval.synthetic.ufdr import related_package
 from eval.synthetic.variants import excel as xl
 from eval.synthetic.variants.catalog import VARIANTS
@@ -180,3 +182,98 @@ def test_report_on_a_package_with_related_copies_passes_the_word_check(tmp_path)
     limits = html.split("<h2>Limitations</h2>", 1)[1].split("<h2>", 1)[0]
     assert "held only as a related copy" in limits and "record state" in limits
     check_report_text(html)
+
+
+def _every_branch(importer: str, xml: bool, n: int) -> SourceCoverage:
+    """A coverage payload that reaches every line summarize() can write, with count n. Every
+    value from the report itself says "Deleted", as an examiner's sheet name may."""
+    table = {
+        "name": "Deleted Messages",
+        "kind": "chats",
+        "missing_key_fields": [*coverage._KEY_FIELD_WORDS, "other"],
+        "rows_skipped": {r: n for r in [*coverage._SKIP_REASON_WORDS, "other_reason", "empty"]},
+        "skipped_locators": {r: ["A!1"] * 6 for r in coverage._SKIP_REASON_WORDS},
+        "time_problems": {p: n for p in [*coverage._TIME_PROBLEM_WORDS, "other_problem"]},
+        "time_problem_locators": {p: ["A!2"] for p in coverage._TIME_PROBLEM_WORDS},
+        "duplicate_columns": [
+            {"field": "body", "column": "Deleted", "used": "Body"},
+            {"field": "mood", "column": "Deleted", "used": "Mood"},
+        ],
+        "merged_columns_not_filled": ["Deleted"],
+        "flagged_locators": {
+            f: ["A!3"] * n
+            for f in [*coverage._FLAG_WORDS, "body_at_excel_cell_limit", "no_body_or_attachment"]
+        },
+        "flag_counts": {f: n for f in coverage._FLAG_WORDS},
+        "unknown_columns": ["Deleted"],
+        "header_offsets": {"Deleted": -300},
+        "header_zone_names": {"Deleted": "EST"},
+        "merged_cells_filled": n,
+        "header_notes": ["Deleted"],
+        "app_from_title": "Deleted",
+        "rows_imported": n,
+        "rows_read": n + 1,
+        "date_order_basis": "other tables in the report",
+        "date_order": "dmy",
+    }
+    payload = {
+        "importer": importer,
+        "layout": "xml" if xml else "sheets",
+        "file_name": "Deleted.ufdr",
+        "format_support": "unverified",
+        "tables": [table, {**table, "date_order_basis": "field name", "date_order": "mdy"}],
+        "not_imported": [
+            {"name": "Deleted", "reason": "category not imported", "records": n},
+            {"name": "Deleted", "reason": "section 'x'", "rows": n, "section": "Deleted"},
+            {"name": "Deleted", "reason": "model type not recognised", "lines": n},
+            {"name": "Deleted", "reason": "other", "columns": ["Deleted"]},
+        ],
+        "counts": {k: n for k in [*coverage._ATTENTION_COUNTERS, *coverage._INFO_COUNTERS]},
+        "unmapped_direction_values": {"Deleted": n},
+        "categories_not_found": [*coverage.KIND_WORDS, "other"],
+        "summary_found": False,
+        "date_order_stated_at_import": "mdy",
+        "report_time_zone_raw": "Deleted",
+        "hidden_sheets": ["Deleted"],
+        "accounts_with_multiple_display_names": ["Deleted"],
+        "ufdr": {
+            "partial_extractions": ["Deleted"],
+            "extractions": [{"name": "Deleted"}, {"type": "Deleted"}],
+            "namespace": "Deleted",
+            "namespace_known": False,
+            "package_files": n,
+            "package_files_hashed": n,
+            "tagged_files": n,
+            "deleted_state_values": {"Deleted": n, "Intact": n},
+        },
+        "notes": [*coverage._OWN_NOTES],
+    }
+    return SourceCoverage(
+        source_id="s", importer=importer, importer_version="0.2.0", payload=payload
+    )
+
+
+@pytest.mark.parametrize("importer", [*coverage.READERS, "cellebrite_excel"])
+@pytest.mark.parametrize("xml", [True, False])
+@pytest.mark.parametrize("n", [1, 2])
+def test_every_rendered_coverage_line_passes_the_word_check(importer, xml, n):
+    """Close #137's gap: check the lines as summarize() builds and render() prints them, not only
+    the module's constants, so wording put together inside a function cannot slip past."""
+    s = coverage.summarize(_every_branch(importer, xml, n))
+    codes = {i.code for i in s.items}
+    reached = {
+        *coverage._FLAG_WORDS,
+        *coverage._ATTENTION_COUNTERS,
+        *coverage._INFO_COUNTERS,
+        *(f"missing_{f}" for f in coverage._KEY_FIELD_WORDS),
+        *(f"rows_skipped_{r}" for r in coverage._SKIP_REASON_WORDS),
+        *(f"times_{p}" for p in coverage._TIME_PROBLEM_WORDS),
+    }
+    assert reached <= codes, reached - codes
+    assert len(codes) > 70
+    own = [s.headline] + [coverage.render(i, lambda _t: "", html.escape) for i in s.items]
+    assert [t for t in own if FORBIDDEN_WORDS.search(t)] == []
+    # as the report prints them: the report's own words checked, its cited values exempt
+    printed = "".join(f"<li>{coverage.render(i, q, html.escape)}</li>" for i in s.items)
+    assert "Deleted" in printed
+    check_report_text(f"<p>{html.escape(s.headline)}</p><ul>{printed}</ul>")

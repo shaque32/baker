@@ -33,6 +33,13 @@ heading names, raw values, the report's time zone setting); the others are Mabil
 screen), so the forbidden-word check never mistakes an examiner's sheet name, such as
 "Deleted Messages", for Mabillon's words. `item.plain` joins the segments for plain text.
 
+**Record state** is what the extraction says about a record's status on the phone: whether
+the tool marks it deleted or intact (for a UFDR, the `deleted_state` attribute; for a
+Cellebrite or AXIOM report, its Deleted or Record Status column). Coverage lines say "record
+state" because the report's word check keeps "deleted" out of Mabillon's own words; the
+package's own values (such as `Deleted` or `Intact`) are printed as cited text. Mabillon stores
+the state as the package gives it and never says itself that a record was deleted.
+
 `needs_review` means at least one attention item: records may be missing, or values were left
 unread. It is not an error; the import still holds everything it could read.
 

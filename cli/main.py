@@ -15,6 +15,7 @@
     python -m cli audit     --db case.db [--fake] [--ai-review] [--label-all]
     python -m cli evidence  --db case.db --id <evidence id> --status accepted|dismissed|open
                             --reason "..." --by expert:<name>
+    python -m cli acknowledge --db case.db --id <evidence id> --by expert:<name>
     python -m cli verdict   --db case.db --claim C01 (--confirm | --set unproven --note "...")
                             --by expert:<name>
     python -m cli report    --db case.db --out report.html
@@ -316,6 +317,19 @@ def cmd_evidence(a: argparse.Namespace) -> int:
     conn = _open(a.db)
     d = actions.decide_evidence(conn, a.id, EvidenceStatus(a.status), a.by, a.reason)
     print(f"recorded {d.id}; re-run the audit to update verdicts")
+    return 0
+
+
+def cmd_acknowledge(a: argparse.Namespace) -> int:
+    from core.review import withheld
+
+    conn = _open(a.db)
+    w, new = withheld.acknowledge(conn, a.id, a.by)
+    entry = f"audit log entry {w.acknowledged_seq}"
+    if new:
+        print(f"acknowledged the withheld rationale on {a.id} ({entry})")
+    else:
+        print(f"already acknowledged by {w.acknowledged_by} ({entry})")
     return 0
 
 
@@ -714,6 +728,14 @@ def parser() -> argparse.ArgumentParser:
     sp.add_argument("--id", required=True)
     sp.add_argument("--status", choices=("accepted", "dismissed", "open"), required=True)
     sp.add_argument("--reason", required=True)
+    sp.add_argument("--by", required=True)
+
+    sp = add(
+        "acknowledge",
+        cmd_acknowledge,
+        "acknowledge an evidence item's withheld model rationale (needed before the verdict)",
+    )
+    sp.add_argument("--id", required=True)
     sp.add_argument("--by", required=True)
 
     sp = add("verdict", cmd_verdict, "confirm or override a verdict")

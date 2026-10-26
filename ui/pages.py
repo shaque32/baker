@@ -43,6 +43,7 @@ from core.report.html import (
     forwarded_warning,
     labelled_by,
     quote_check_label,
+    rationale_html,
     record_line,
     review_label,
     said,
@@ -59,6 +60,7 @@ from core.report.selection import anchor as selection_anchor
 from core.report.selection import claim_note
 from core.review import activity
 from core.review import flags as F
+from core.review import withheld as W
 from core.review.activity import VIEW
 from core.review.status import (
     AGAINST,
@@ -362,6 +364,7 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
             "<p class='muted'>Accepting or dismissing evidence does not change a verdict until "
             "you re-run the verdicts.</p>"
         )
+        out.append(_withheld_overview(states))
         if not run.get("partial") and not page.busy:
             out.append(
                 page.form(
@@ -405,6 +408,30 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
         "<a href='/log'>Open the log</a>.</p>"
     )
     return page.wrap("Case", "".join(out), run_banner(conn, page, "/"))
+
+
+def _withheld_overview(states: list[ClaimState]) -> str:
+    """The withheld rationales on the case, with the report's count (core/review/withheld.py)."""
+    rows = [(st, w) for st in states for w in st.withheld]
+    if not rows:
+        return ""
+    irrelevant = {x.id for st in states for x in st.evidence if x.stance == Stance.IRRELEVANT}
+    items = "".join(
+        "<li><a href='"
+        + e(
+            link("/evidence", id=w.evidence_id)
+            if w.evidence_id in irrelevant  # listed on the claim page without its card
+            else f"{link('/claim', id=st.claim.id)}#{w.evidence_id}"
+        )
+        + f"'>{e(st.name)}</a> <span class='mono'>{e(w.evidence_id)}</span>: "
+        + ("acknowledged" if w.acknowledged else "<strong>not yet acknowledged</strong>")
+        + "</li>"
+        for st, w in rows
+    )
+    return (
+        f"<div class='card' id='withheld'><div class='in'><p><strong>"
+        f"{e(W.summary([w for _st, w in rows]))}</strong></p><ul>{items}</ul></div></div>"
+    )
 
 
 def _identities_step(conn: sqlite3.Connection) -> str:
@@ -719,6 +746,19 @@ def _confirm_form(page: Page, item: EvidenceItem, back: str) -> str:
     )
 
 
+def _acknowledge_form(page: Page, item: EvidenceItem, back: str) -> str:
+    """The expert's acknowledgment of a withheld rationale (core/review/withheld.py)."""
+    return page.form(
+        "/rationale/acknowledge",
+        f"<input type='hidden' name='id' value='{e(item.id)}'>"
+        "<button type='submit'>Acknowledge the withheld rationale</button> <span class='muted'>"
+        "Recorded in the audit log with this item, the word and the rationale's SHA-256. Needed "
+        "before you confirm or override the claim's verdict.</span>",
+        back=back,
+        anchor=item.id,
+    )
+
+
 def evidence_card(
     conn: sqlite3.Connection,
     page: Page,
@@ -741,19 +781,28 @@ def evidence_card(
     flag = ""
     if claim_id is not None:
         flag = _flag_label_form(page, claim_id, item, back, run_id)
+    withheld = W.for_item(conn, item)
     return (
         f"<div class='item' id='{e(item.id)}'>"
         f"<span class='badge {stance_cls}'>{e(STANCE_LABEL[item.stance])}</span>"
         f"{_tier_badge(item, last_kind)}"
         + ("<span class='badge b-flag'>flagged by you</span>" if flagged else "")
+        + ("<span class='badge b-withheld'>needs expert review</span>" if withheld else "")
         + _conversation(conn, item, around, threads)
         + f"<p>{record_line(conn, item.record_id, found)}</p>"
         "<details class='more'><summary>Source and model note</summary>"
         f"<p><span class='mono'>{e(item.ref.source_id)} {e(item.ref.locator)} · "
         f"{e(item.record_id)}</span></p>"
-        f"<p class='muted'>{e(labelled_by(conn, item.model_run_id))}. Model rationale "
-        f"(inferred): {e(forwarded.shown_rationale(item.rationale))}</p></details>"
-        f"<p><strong>Review:</strong> {review_label(conn, item)} · "
+        f"<p class='muted'>{e(labelled_by(conn, item.model_run_id))}."
+        + ("" if withheld else f" {rationale_html(item, None)}")
+        + "</p></details>"
+        + (
+            f"<p>{rationale_html(item, withheld)}</p>"
+            + ("" if withheld.acknowledged else _acknowledge_form(page, item, back))
+            if withheld
+            else ""
+        )
+        + f"<p><strong>Review:</strong> {review_label(conn, item)} · "
         f"<a href='{e(link('/evidence', id=item.id))}'>See about 20 messages around it</a></p>"
         + (
             _confirm_form(page, item, back)
@@ -894,18 +943,23 @@ def _flag_missed_form(page: Page, st: ClaimState, back: str) -> str:
     )
 
 
-def _irrelevant_list(conn: sqlite3.Connection, items: list[EvidenceItem], flagged: set) -> str:
+def _irrelevant_list(
+    conn: sqlite3.Connection, items: list[EvidenceItem], flagged: set, withheld: set
+) -> str:
     """Records the model labeled irrelevant, folded away; each opens on its own page, where a
-    wrong 'irrelevant' can be flagged."""
+    wrong 'irrelevant' can be flagged and a withheld rationale acknowledged. The list opens by
+    itself while one of its rationales is withheld."""
     rows = "".join(
         f"<li>{q(x.quote)} · {record_line(conn, x.record_id)} · "
         f"<a href='{e(link('/evidence', id=x.id))}'>Open, or flag this label</a>"
         + (" <span class='badge b-flag'>flagged by you</span>" if x.id in flagged else "")
+        + (" <span class='badge b-withheld'>needs expert review</span>" if x.id in withheld else "")
         + "</li>"
         for x in items
     )
+    shown = " open" if any(x.id in withheld for x in items) else ""
     return (
-        f"<details id='irrelevant'><summary>{len(items)} retrieved records were labeled "
+        f"<details id='irrelevant'{shown}><summary>{len(items)} retrieved records were labeled "
         f"irrelevant</summary><ul>{rows}</ul></details>"
     )
 
@@ -1114,7 +1168,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
             )
     hidden = [x for x in st.evidence if x.stance == Stance.IRRELEVANT]
     if hidden:
-        out.append(_irrelevant_list(conn, hidden, flagged))
+        out.append(_irrelevant_list(conn, hidden, flagged, {w.evidence_id for w in st.withheld}))
     out.append(_working(st))
     if d is not None:  # a flag is about an audited claim
         out.append(_flag_missed_form(page, st, back))
