@@ -30,7 +30,8 @@ Every SUPPORTED decision, re-derived here from CLAUDE.md:
 
 Report text is checked too: tool-authored text never says guilty, innocent, leader or deleted.
 Quoted text from the government document or the evidence is exempt, because it is cited, not
-said by the tool.
+said by the tool. So is a forbidden word on its own in the notice that stands in for a withheld
+model rationale (core/review/withheld.py), which names the word it withheld.
 """
 
 from __future__ import annotations
@@ -62,13 +63,18 @@ from core.enrich import records
 
 ACCEPTED_STATUSES = (EvidenceStatus.AI_ACCEPTED, EvidenceStatus.ACCEPTED)
 
-FORBIDDEN_WORDS = re.compile(r"\b(guilty|innocent|leader|deleted)\b", re.IGNORECASE)
+WORDS = ("guilty", "innocent", "leader", "deleted")
+FORBIDDEN_WORDS = re.compile(rf"\b({'|'.join(WORDS)})\b", re.IGNORECASE)
 # Report renderers wrap every cited span (government text, evidence quotes, record text) in
 # this element. Its content is HTML-escaped, so it never contains '<'.
 QUOTED_SPAN = re.compile(r'<span class="q">[^<]*</span>')
 # ...and every reason or note an expert typed in this element (core/report/html.said). The
 # expert's own words are theirs to choose; the check is for what Mabillon or a model says.
 EXPERT_SPAN = re.compile(r'<span class="said">[^<]*</span>')
+# ...and the word a withheld rationale used, named in the notice shown in its place
+# (core/report/html.withheld_word). Only one forbidden word, in lower case, exactly: nothing else
+# can pass through this element.
+WITHHELD_WORD = re.compile(rf'<span class="withheld-word">(?:{"|".join(WORDS)})</span>')
 
 
 class InvariantViolation(Exception):
@@ -322,9 +328,11 @@ def check_decision(
 
 
 def check_report_text(html: str) -> None:
-    """Tool-authored report text never uses the forbidden words. Cited spans and the expert's
-    own reasons and notes are exempt; a model's rationale or reason is checked like Mabillon's."""
-    own_text = EXPERT_SPAN.sub("", QUOTED_SPAN.sub("", html))
+    """Tool-authored report text never uses the forbidden words. Cited spans, the expert's own
+    reasons and notes, and the word a withheld rationale used are exempt. A model's rationale is
+    checked item by item before it is shown (core/review/withheld.py), so one that reaches the
+    page anyway, or a model's reason, is checked like Mabillon's."""
+    own_text = WITHHELD_WORD.sub("", EXPERT_SPAN.sub("", QUOTED_SPAN.sub("", html)))
     m = FORBIDDEN_WORDS.search(own_text)
     if m:
         start = max(0, m.start() - 60)

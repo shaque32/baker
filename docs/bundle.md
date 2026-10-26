@@ -32,7 +32,7 @@ include it:
 
 | Part | What it adds |
 |---|---|
-| `dismissed` | Evidence items dismissed when their verdict was decided and still dismissed, with their reviews and the expert's `evidence.decide` entries for them |
+| `dismissed` | Evidence items dismissed when their verdict was decided and still dismissed, with their reviews and the expert's `evidence.decide` and `rationale.acknowledge` entries for them |
 | `irrelevant` | Evidence items the model labelled irrelevant, likewise |
 | `prompts` | Every other model call (prompt and answer), and every `cloud.sent` entry (each holds the prompt sent) |
 | `records` | The rest of the phone: records, threads, accounts, recipients, translations and locations no shipped row cites |
