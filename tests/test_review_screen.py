@@ -275,8 +275,15 @@ def test_the_document_names_for_a_phone_from_the_screen(db, conn):
     from core.review.device_names import logged_names
 
     app = App(db, expert="Test Expert", port=PORT)
+    from core.review.status import case_changed_after
+
+    assert not case_changed_after(conn, pipeline.view_run(conn))
     post(app, "/device/names", device="dev:item1", names="TARGET PHONE, Item 1 ,")
     assert logged_names(conn) == {"dev:item1": ["TARGET PHONE", "Item 1"]}
+    # The names change which phone the audit's assumptions mean: only a full audit is current.
+    assert case_changed_after(conn, pipeline.view_run(conn))
+    redecide(conn, EXPERT)
+    assert case_changed_after(conn, pipeline.view_run(conn))
     assert "value='TARGET PHONE, Item 1'" in get(app, "/setup").text
     post(app, "/device/names", device="dev:item2", names="target phone")  # names item1 already
     assert "dev:item2" not in logged_names(conn)

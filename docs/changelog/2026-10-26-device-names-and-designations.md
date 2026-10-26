@@ -8,7 +8,9 @@
   `device.names` (the device's whole list; empty clears it), read back by
   core/review/device_names.py. No schema change. The filler matches these names too, still one
   device only, and a name that would also reach another device is refused. Report 0.17.0 lists
-  each name under Limitations as the expert's statement, with who gave it and when.
+  each name under Limitations as the expert's statement, with who gave it and when. A name
+  change marks the verdicts out of date until a full audit runs again (a rules-only re-run
+  reuses the old assumptions, so it does not clear it).
   Also: an expert could not add SUBJECT-2 once SUBJECT-1 existed, because person names were
   compared without their numbers. Name words now keep a designation's number ("subject-2"),
   so numbered people stay apart for the add-person check, the identity screen and link
@@ -19,7 +21,8 @@
 - Verified: tests/test_device_names.py (filler resolves "TARGET PHONE" only after the expert
   names the device; replace and clear; refusals for another device's id, source id or name,
   empty and long names, non-experts, unknown devices; the report line passes the word check).
-  tests/test_review_screen.py (the screen form), tests/test_identity.py (SUBJECT-1 and
+  tests/test_review_screen.py (the screen form; verdicts stay out of date through a rules-only
+  re-run), tests/test_identity.py (SUBJECT-1 and
   SUBJECT-2 are two people and resolve apart), tests/test_validation_run.py (the driver's
   setup). make check passes; synthetic eval numbers unchanged.
 - Open: The effect on the iOS 15 claims is not measured until validation run 2. Link
