@@ -9,7 +9,9 @@ append-only evidence_reviews table, the latest row is the item's status, and the
 asks the AI about an item that already has a decision.
 
 Verdict confirmations and overrides apply to the verdict of the latest completed pipeline run.
-A re-run makes new verdicts, which the expert confirms again.
+A re-run makes new verdicts, which the expert confirms again. Neither is accepted while a model
+rationale on the claim's evidence is withheld for a forbidden word and not yet acknowledged
+(core/review/withheld.py).
 
 Phone ownership. Every case01 claim rests on "Item 1 is PETROV's phone, Item 2 is REYES's".
 Nothing in the extraction data can raise that above inferred, so the expert stipulates it once
@@ -148,11 +150,24 @@ def _current_verdict(conn: sqlite3.Connection, claim_id: str) -> tuple[str, str]
     return row[0], row[1]
 
 
+def _withheld_acknowledged(conn: sqlite3.Connection, claim_id: str) -> None:
+    """Sign-off waits until the expert has acknowledged every withheld rationale on the claim."""
+    from core.review import withheld  # withheld imports this module
+
+    left = withheld.waiting(conn, claim_id)
+    if left:
+        raise ReviewError(
+            f"acknowledge the {len(left)} withheld model rationale(s) on this claim first: "
+            + ", ".join(w.evidence_id for w in left)
+        )
+
+
 def confirm_verdict(
     conn: sqlite3.Connection, claim_id: str, actor: str, note: str = "", clock: Clock | None = None
 ) -> None:
     _expert(actor)
     vid, verdict = _current_verdict(conn, claim_id)
+    _withheld_acknowledged(conn, claim_id)
     with conn:
         conn.execute(
             "UPDATE verdicts SET confirmed_by = ?, override_note = NULL WHERE id = ?", (actor, vid)
@@ -179,6 +194,7 @@ def override_verdict(
     if not note.strip():
         raise ReviewError("an override needs a note saying why")
     vid, was = _current_verdict(conn, claim_id)
+    _withheld_acknowledged(conn, claim_id)
     if verdict == Verdict.SUPPORTED:
         # The verdicts table ties SUPPORTED to a supported_basis; an override records the
         # expert as the basis.

@@ -97,7 +97,8 @@ eval or re-decided.
    statuses (`core/review/redecide.py`, also `mabillon redecide`). No model is called, so it takes
    seconds. Claims edited or added since the audit need a full audit (Set up and run).
 5. **Confirm or override** each verdict. An override needs a note and prints as an expert
-   override.
+   override. If a model rationale on the claim's evidence is withheld (below), acknowledge each
+   one first: the confirm and the override are refused until you do.
 6. **Selection.** Every message the government's document quotes, an exhibit quotes or the
    examiner tagged, in its own exchange with the messages around it that were not picked, and the
    quiet stretches the Gaps tab lists in the pauses around it
@@ -147,6 +148,16 @@ eval or re-decided.
 - The screen and the report use the same labels (`core/review/status.py`).
 - Every page passes the same forbidden-word check as the report. Cited text and the
   expert's own reasons and notes are exempt; Mabillon's wording and a model's are not.
+- A stance rationale that uses a forbidden word is withheld on its own, so it no longer
+  withholds the whole page or report (report 0.16.0, `core/review/withheld.py`). Its item shows
+  a **needs expert review** badge and a "Rationale withheld" notice naming the word; the stance,
+  the quote and its check stay as stored, and no verdict rule reads a rationale. Read the
+  record yourself, then click **Acknowledge the withheld rationale** (or `mabillon acknowledge
+  --db case.db --id <evidence id> --by expert:<name>`). Each acknowledgment is an audit-log entry
+  (`rationale.acknowledge`) with the item, the word and the SHA-256 of the stored rationale,
+  never its text, and it covers only that rationale: a later run that stores another one needs
+  a new acknowledgment. The case page and the report list the same withheld items with the same
+  count. A forbidden word in Mabillon's own text still withholds the page.
 
 ## The audit log check
 

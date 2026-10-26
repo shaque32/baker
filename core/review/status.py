@@ -22,6 +22,11 @@ the evidence that verdict was decided on. It never upgrades a verdict:
   stopped) and has not finished this claim. Such a claim has no verdict and no evidence on
   screen or in the report; it appears for review only once all its candidates are labeled.
 
+Withheld rationales (core/review/withheld.py): `withheld` lists the claim's evidence items whose
+model rationale uses a forbidden word, with whether the expert has acknowledged each. It never
+changes the label or the verdict; it adds a step to needs(), and the verdict cannot be confirmed
+or overridden until every one is acknowledged.
+
 Which run: pipeline.view_run(), the same run for the screen and the report.
 """
 
@@ -44,6 +49,8 @@ from core.contracts import (
     Verdict,
     VerdictDecision,
 )
+from core.review import withheld as withheld_rationales
+from core.review.withheld import Withheld
 
 SUPPORTED_AI = "Supported (AI-reviewed)"
 SUPPORTED_EXPERT = "Supported (expert-confirmed)"
@@ -54,6 +61,12 @@ CONFIRM_STEP = (
     "Mabillon found {n} record(s) it reads as contradicting a core assumption. Confirm each one "
     "you agree with, giving your reason, to finalize the verdict as contradicted; dismiss the "
     "rest."
+)
+# the step a withheld rationale adds, worded the same on the screen and in the report
+WITHHELD_STEP = (
+    "{n} model rationale(s) withheld: each uses a word Mabillon does not print. Read each "
+    "item's record and quote yourself, then acknowledge it; the verdict cannot be confirmed or "
+    "overridden until you do."
 )
 NOT_AUDITED = "Not audited"
 LABELING_INCOMPLETE = "Labeling incomplete"
@@ -124,6 +137,13 @@ class ClaimState:
     unlabeled: str | None = None  # why the run did not send this claim's evidence to the model
     not_tested: str | None = None  # why nothing was checked: the claim got no core assumption
     incomplete: bool = False  # the run shown has not finished labeling this claim
+    # evidence items whose rationale is withheld for a forbidden word (core/review/withheld.py)
+    withheld: list[Withheld] = field(default_factory=list)
+
+    @property
+    def withheld_waiting(self) -> int:
+        """Withheld rationales the expert has not acknowledged yet."""
+        return sum(1 for w in self.withheld if not w.acknowledged)
 
     @property
     def awaiting_expert(self) -> bool:
@@ -259,6 +279,8 @@ class ClaimState:
                     "searched. Check this claim yourself, then confirm or override the verdict.",
                 )
             )
+        if self.withheld_waiting:
+            out.append((1, WITHHELD_STEP.format(n=self.withheld_waiting)))
         more = self.decision.verdict == Verdict.SUPPORTED  # already carried; review is optional
         if self.contradiction_found:
             out.append(
@@ -489,6 +511,7 @@ def _state(
     st.checks = pipeline.load_checks(conn, items["checks"])
     st.evidence = pipeline.load_evidence(conn, items["evidence"])
     st.last_reviewer = last_reviewers(conn, [e.id for e in st.evidence])
+    st.withheld = withheld_rationales.for_items(conn, st.evidence)
     for e in st.evidence:
         if e.stance == Stance.IRRELEVANT:
             continue

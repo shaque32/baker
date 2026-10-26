@@ -68,7 +68,7 @@ from core.llm import cloud as cloud_llm
 from core.report.html import render_report
 from core.report.letter import request_letter
 from core.restore.store import ExhibitError, add_exhibit, match_exhibits, remove_exhibit
-from core.review import actions, activity, audit_log, flags
+from core.review import actions, activity, audit_log, flags, withheld
 from core.review.actions import ReviewError
 from core.review.redecide import redecide
 from core.review.status import claim_state
@@ -597,6 +597,7 @@ class App:
             "/evidence/decide": lambda: self._decide(conn, f),  # type: ignore[arg-type]
             "/evidence/confirm": lambda: self._confirm(conn, f),  # type: ignore[arg-type]
             "/verdict": lambda: self._verdict(conn, f),  # type: ignore[arg-type]
+            "/rationale/acknowledge": lambda: self._acknowledge(conn, f),  # type: ignore[arg-type]
             "/claim/edit": lambda: self._edit_claim(conn, f),  # type: ignore[arg-type]
             "/claim/add": lambda: self._add_claim(conn, f),  # type: ignore[arg-type]
             "/claims/move": lambda: self._move_claim(conn, f),  # type: ignore[arg-type]
@@ -763,6 +764,13 @@ class App:
         verdict = Verdict(f.get("verdict", ""))
         actions.override_verdict(conn, claim, verdict, self.actor, f.get("note", ""))
         return f"Verdict on {claim} overridden: {verdict.value}."
+
+    def _acknowledge(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        """The expert has seen that an item's rationale is withheld (core/review/withheld.py)."""
+        w, new = withheld.acknowledge(conn, f.get("id", ""), self.actor)
+        if not new:
+            return f"Already acknowledged, by {w.acknowledged_by}."
+        return "Acknowledged. The audit log records the item, the word and the rationale's SHA-256."
 
     def _edit_claim(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         status = ClaimStatus(f.get("status", ""))
