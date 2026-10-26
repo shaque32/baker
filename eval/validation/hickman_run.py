@@ -6,14 +6,17 @@ It builds one case the way an expert would, then runs `mabillon audit` with its 
 1. checks the claims file and the package's report.xml against the hashes it is given;
 2. renders the claims as a numbered affidavit PDF (paragraph n is claim n's text, verbatim);
 3. creates DIR/case.db in local mode, imports the UFDR, imports the affidavit, adds each claim
-   to its paragraph, and stipulates that SUBJECT-1 used the TARGET PHONE;
+   to its paragraph, and sets the case up as the affidavit defines it: the phone is the TARGET
+   PHONE, SUBJECT-1 used it (a stipulation), and each other SUBJECT-<n> the claims name is a
+   person, with no stipulation or link;
 4. runs the audit with the product's local components (no AI reviewer, no cloud);
 5. writes DIR/report.html, DIR/run.json (versions, machine, times) and DIR/results.zip. If the
    report's own checks refuse it, run.json says why and the results go out without it.
 
 The claims file holds claims only, never their answers: the run machine never sees the key.
 Run it again with the same DIR to resume: a built case is kept, and the audit reuses the model
-outputs of the claims it finished. --fake swaps in the eval's stand-in components (tests only).
+outputs of the claims it finished. A case built by an earlier SETUP is refused, never resumed.
+--fake swaps in the eval's stand-in components (tests only).
 """
 
 from __future__ import annotations
@@ -22,6 +25,7 @@ import argparse
 import hashlib
 import json
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -36,11 +40,18 @@ from core.db import apply_schema, connect
 ACTOR = "expert:validation"
 SOURCE_ID = "ios15"
 OWNER = "SUBJECT-1"
+PHONE_NAME = "TARGET PHONE"  # the affidavit's name for the phone
+# The people the affidavit defines, found in the claims text by this rule alone (never from the
+# answers): every SUBJECT-<n> written in a claim.
+SUBJECT = re.compile(r"\bSUBJECT-\d+\b")
 TITLE = "AFFIDAVIT (VALIDATION V1, HICKMAN PUBLIC IMAGE, NOT A REAL CASE)"
 # The batch 3 writer typed "content" for content_meaning; ClaimType has no "content". The claim
 # type only picks which checks run; the signed answers do not depend on it.
 TYPE_ALIASES = {"content": "content_meaning"}
 RESULT_FILES = ("case.db", "run.json", "report.html", "progress.log")
+# How build() sets the case up. A case built by an earlier setup is not resumed: run 1's case
+# (setup 1) had no phone name and no SUBJECT-2.
+SETUP = 2
 
 
 def sha256_file(path: Path) -> str:
@@ -104,9 +115,16 @@ def build(ufdr: Path, claims: list[dict], out: Path, log) -> None:  # noqa: ANN0
             raise SystemExit(f"{c['claim_id']}: the ingester found no paragraph {c['para_no']}")
         kind = ClaimType(c["claim_type"])
         actions.add_claim(conn, c["claim_id"], para.id, c["text"], kind, ACTOR)
+    actions.name_device(conn, f"dev:{SOURCE_ID}", [PHONE_NAME], ACTOR)
     actions.stipulate_device_owner(conn, f"dev:{SOURCE_ID}", OWNER, ACTOR)
+    others = sorted(set(SUBJECT.findall(" ".join(c["text"] for c in claims))) - {OWNER})
+    for name in others:
+        actions.add_person(conn, name, ACTOR)
     conn.close()
-    log(f"case built: {len(claims)} claims on {len(paragraphs)} paragraphs")
+    log(
+        f"case built: {len(claims)} claims on {len(paragraphs)} paragraphs; the phone is"
+        f" {PHONE_NAME}, used by {OWNER}; other people: {', '.join(others) or 'none'}"
+    )
 
 
 def machine() -> dict:
@@ -231,6 +249,11 @@ def main(argv: list[str] | None = None) -> int:
     built = a.out / "built.ok"  # the inputs the case in DIR was built from
     if built.exists():
         was = json.loads(built.read_text(encoding="utf-8"))
+        if was.get("setup", 1) != SETUP:
+            raise SystemExit(
+                f"{a.out} was set up by an earlier version of this run (setup"
+                f" {was.get('setup', 1)}, now {SETUP}); use a new --out"
+            )
         if was["claims_sha256"] != claims_sha:
             raise SystemExit(
                 f"{a.out} was built from claims {was['claims_sha256']}; use a new --out"
@@ -254,7 +277,7 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(f"report.xml SHA-256 {report_sha}, expected {a.report_sha256}")
         run["report_xml_sha256"] = report_sha
         build(a.ufdr, claims, a.out, log)
-        inputs = {"claims_sha256": claims_sha, "report_xml_sha256": report_sha}
+        inputs = {"claims_sha256": claims_sha, "report_xml_sha256": report_sha, "setup": SETUP}
         built.write_text(json.dumps(inputs), encoding="utf-8")
     run_path.write_text(json.dumps(run, indent=2), encoding="utf-8")
     from core.pipeline import ComponentsMissing

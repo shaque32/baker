@@ -53,6 +53,7 @@ from typing import Literal
 from core.enrich.local_time import parse_utc
 from core.review.status import ClaimState
 from core.selection.audit import EXCHANGE_GAP, SelectionAudit
+from core.zones import resolve_zone
 
 MATCH_WINDOW = timedelta(seconds=60)  # the same record printed by two exports of one phone
 NEAR = EXCHANGE_GAP  # one hour: what counts as near a claim's record, as in the selection audit
@@ -276,7 +277,7 @@ def _sources(conn: sqlite3.Connection) -> list[SourceLine]:
         )
         out.append(
             SourceLine(
-                sid, name, fidelity, zone[0] if zone else None, parse_utc(extracted),
+                sid, name, fidelity, resolve_zone(zone[0]) if zone else None, parse_utc(extracted),
                 tuple(models),
             )
         )  # fmt: skip

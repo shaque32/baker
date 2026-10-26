@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from core.review.device_names import logged_names
 from eval.synthetic.generate import generate
 from eval.synthetic.ufdr import write_case01
 from eval.validation import hickman_run
@@ -18,7 +19,7 @@ CLAIMS = [
     {"claim_id": "C01", "page": 1, "para_no": 1, "claim_type": "communication",
      "text": "On April 28, 2023, the TARGET PHONE exchanged Signal messages with (919) 888-7386."},
     {"claim_id": "C02", "page": 1, "para_no": 2, "claim_type": "content",
-     "text": 'SUBJECT-1 wrote "I\'m here!" on April 28, 2023.'},
+     "text": 'SUBJECT-1 wrote "I\'m here!" to SUBJECT-2 on April 28, 2023.'},
     {"claim_id": "D01", "page": 2, "para_no": 3, "claim_type": "timing",
      "text": "On Tuesday, April 24, 2023, the TARGET PHONE's Discord account exchanged messages."},
 ]  # fmt: skip
@@ -59,6 +60,13 @@ def test_the_run_builds_the_case_audits_it_and_zips_the_results(ufdr, tmp_path):
         "SELECT s.subject_id, p.name FROM stipulations s JOIN persons p ON p.id = s.person_id"
     ).fetchall()
     assert owner == [("dev:ios15", "SUBJECT-1")]
+    # Set up as the affidavit defines it: the phone's name, and SUBJECT-2 as a person only.
+    assert logged_names(conn) == {"dev:ios15": ["TARGET PHONE"]}
+    assert [r[0] for r in conn.execute("SELECT name FROM persons ORDER BY name")] == [
+        "SUBJECT-1",
+        "SUBJECT-2",
+    ]
+    assert conn.execute("SELECT COUNT(*) FROM identity_links").fetchone()[0] == 0
     assert conn.execute("SELECT COUNT(*) FROM verdicts").fetchone()[0] == 3
     sources = conn.execute("SELECT id FROM sources ORDER BY id").fetchall()
     conn.close()
@@ -127,6 +135,14 @@ def test_a_resume_with_other_inputs_is_refused(ufdr, tmp_path):
     assert (out / "run.json").read_text(
         encoding="utf-8"
     ) == run  # the record still names the case's inputs
+    # A case run 1's setup built (no phone name, no SUBJECT-2) is never resumed.
+    built = json.loads((out / "built.ok").read_text(encoding="utf-8"))
+    del built["setup"]
+    (out / "built.ok").write_text(json.dumps(built), encoding="utf-8")
+    with pytest.raises(SystemExit, match="earlier version of this run"):
+        hickman_run.main(
+            ["--ufdr", str(ufdr), "--claims", str(claims), "--out", str(out), "--fake"]
+        )
 
 
 def test_a_refused_report_leaves_the_audit_results_and_says_why(ufdr, tmp_path, monkeypatch):

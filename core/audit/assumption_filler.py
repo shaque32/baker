@@ -10,7 +10,8 @@ the document or the case data. It fails closed at every step:
 
 - Every value must appear verbatim in the claim or its paragraph. Anything else is dropped.
 - Names resolve to persons the expert created (exact name or surname, one match only).
-  Phones resolve to devices by their label. Numbers and user ids resolve to accounts by app
+  Phones resolve to devices by id, label or a name the expert gave the device ("TARGET PHONE",
+  one match only). Numbers and user ids resolve to accounts by app
   and identifier, the way the checks match accounts. A handle stays a handle where the
   template takes one, and the checks resolve it from the data; a template that takes no
   handles drops the proposal. A handle the model wrote as an account ("@northstar") is kept as
@@ -74,6 +75,8 @@ from core.audit._local_model import LocalModel, open_run
 from core.audit.assumptions import TEMPLATES, Proposal, Template, local_window
 from core.audit.checks._common import CaseData, key
 from core.contracts import Claim, ClaimType, ModelRun
+from core.review.device_names import logged_names, name_key
+from core.zones import resolve_zone
 
 PROMPT_FILE = "assumptions.md"
 PLACEHOLDERS = frozenset({"claim", "paragraph", "templates", "channels"})
@@ -1328,13 +1331,16 @@ class LocalAssumptionFiller:
         return hits[0]
 
     def _device(self, phone: str) -> str:
-        want = re.sub(r"\s+", "", phone.casefold())
+        """The device a phone name means: its id, source id or label, or a name the expert
+        gave it (core/review/device_names.py)."""
+        want = name_key(phone)
+        named = logged_names(self.conn)
         hits = [
             did
             for did, sid, label in self.conn.execute(
                 "SELECT id, source_id, label FROM devices ORDER BY id"
             )
-            if want in {re.sub(r"\s+", "", x.casefold()) for x in (did, sid, label) if x}
+            if want in {name_key(x) for x in (did, sid, label, *named.get(did, [])) if x}
         ]
         if len(hits) != 1:
             raise Reject(f"phone {phone!r} matches {len(hits)} devices")
@@ -1395,7 +1401,7 @@ class LocalAssumptionFiller:
 
     def _phone_zone(self, device_ids: list[str]) -> str:
         rows = self.conn.execute("SELECT id, timezone FROM devices ORDER BY id").fetchall()
-        zones = {tz for did, tz in rows if not device_ids or did in device_ids}
+        zones = {resolve_zone(tz) for did, tz in rows if not device_ids or did in device_ids}
         if len(zones) != 1 or None in zones:
             raise Reject("the phones do not share one known time zone; name the phone")
         (tz,) = zones

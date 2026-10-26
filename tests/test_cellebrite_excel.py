@@ -9,6 +9,7 @@ from core.contracts import ExtractionType, Fidelity, SourceKind
 from core.db import apply_schema, connect
 from core.ingest.cellebrite_excel import CellebriteExcelImporter
 from core.review.audit_log import verify_chain
+from tests.conftest import DEFAULT_SHEETS, SUMMARY
 
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
 
@@ -38,7 +39,26 @@ def test_source_metadata_hash_and_fidelity(make_xlsx, case_db):
     row = one(case_db, "SELECT kind, fidelity, sha256 FROM sources WHERE id = 'src1'")
     assert row == ("cellebrite_excel", "curated_report", src.sha256)
     dev = one(case_db, "SELECT label, os_version, timezone FROM devices WHERE id = 'dev:src1'")
-    assert dev == ("SyntheticPhone X1", "14.1", "(UTC-05:00) Eastern Time (US & Canada)")
+    # The summary gives only the report's display zone, which is not the phone's: unknown.
+    assert dev == ("SyntheticPhone X1", "14.1", None)
+
+
+def test_the_phone_zone_is_the_device_time_zone_and_reads_as_a_zone(make_xlsx, case_db):
+    from core.audit.checks._common import CaseData
+
+    summary = [*SUMMARY, ["Device time zone", "(UTC-08:00) Pacific Time (US & Canada)"]]
+    run(case_db, make_xlsx({**DEFAULT_SHEETS, "Summary": summary}))
+    (tz,) = one(case_db, "SELECT timezone FROM devices WHERE id = 'dev:src1'")
+    assert tz == "(UTC-08:00) Pacific Time (US & Canada)"  # stored as the source writes it
+    assert str(CaseData(case_db).tz_for("src1")) == "America/Los_Angeles"
+
+
+def test_a_report_display_zone_alone_leaves_the_phone_zone_unknown(make_xlsx, case_db):
+    from core.audit.checks._common import CaseData
+
+    run(case_db, make_xlsx())  # the summary has only the report's "Time zone"
+    assert CaseData(case_db).tz_for("src1") is None
+    assert "Eastern Time" in json.dumps(coverage(case_db))  # kept as what the report said
 
 
 def test_input_file_is_not_modified(make_xlsx, case_db):

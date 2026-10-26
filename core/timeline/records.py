@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from core.zones import resolve_zone
+
 
 def zone(name: str | None) -> ZoneInfo | None:
     if not name:
@@ -90,7 +92,7 @@ class CaseRecords:
             "SELECT source_id, label, timezone FROM devices ORDER BY id"
         ):
             if sid not in labels:
-                labels[sid] = (label, tz)
+                labels[sid] = (label, resolve_zone(tz))
         self.phones: dict[str, Phone] = {}
         for sid, file_name, fidelity in conn.execute(
             "SELECT id, file_name, fidelity FROM sources WHERE kind != 'govdoc' ORDER BY id"

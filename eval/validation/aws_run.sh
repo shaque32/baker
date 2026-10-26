@@ -27,7 +27,7 @@ UFDR_SIZE="${UFDR_SIZE:-30705362520}"
 REPORT_SHA="${REPORT_SHA:-bf9bab624cebb7cd32d8543d0db60894b587597ae03d8ec97375862050ec7b8d}"
 PINS="${PINS:-$REPO/packaging/windows/pins.json}"
 UFDR="$WORK/phone/$(basename "$UFDR_MEMBER")"
-OUT="$WORK/out"
+OUT="$WORK/out-setup2"  # a new folder for each hickman_run.SETUP; run 1 used $WORK/out
 PY="$WORK/venv/bin/python"
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 # Shut the machine down this many minutes after a finished run, so a forgotten machine stops
@@ -63,6 +63,11 @@ pin() { python3 -c 'import json, sys; d = json.load(open(sys.argv[1]))
 for k in sys.argv[2].split("."): d = d[k]
 print(d)' "$PINS" "$1"; }
 trap 'say "STOPPED at line $LINENO. Run the start command again to resume, or send these lines."' ERR
+if [ -f "$HOME/results.zip" ] && [ ! -f "$OUT/results.zip" ]; then
+  # An earlier run's results: kept under another name, so status does not report this run done.
+  mv "$HOME/results.zip" "$HOME/results-earlier-$(date -u +%Y%m%dT%H%M%SZ).zip"
+  say "kept the earlier run's results as $(ls -t "$HOME"/results-earlier-*.zip | head -n 1)"
+fi
 
 say "1/6 checking the machine (Mabillon $(git -C "$REPO" describe --tags --always))"
 nvidia-smi -L || die "no NVIDIA graphics card found; this needs a g5 or g6 machine with the NVIDIA AMI"

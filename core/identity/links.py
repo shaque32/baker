@@ -46,7 +46,7 @@ from core.audit.checks._common import CaseData, Key, key
 from core.contracts import Fidelity, short_hash
 from core.review import audit_log
 
-PROPOSER_VERSION = "1.0.0"
+PROPOSER_VERSION = "1.1.0"  # 1.1.0: name words keep a designation's number (SUBJECT-2)
 PROPOSER = f"system:identity-names@{PROPOSER_VERSION}"
 PROPOSE_ACTION = "identity.propose"
 MENTION_LIMIT = 12
@@ -117,10 +117,13 @@ def _nfc(text: str) -> str:
 
 
 def tokens(text: str | None) -> list[str]:
-    """Name words: runs of letters, two or more, casefolded. '@alex92' -> ['alex']."""
+    """Name words: runs of letters, two or more, casefolded. '@alex92' -> ['alex']. A
+    designation keeps its number, so 'SUBJECT-1' and 'SUBJECT-2', as affidavits name people,
+    stay two names: 'SUBJECT-2' -> ['subject-2']."""
     if not text:
         return []
-    return [t for t in re.findall(r"[^\W\d_]+", _nfc(text).casefold()) if len(t) >= 2]
+    words = re.findall(r"[^\W\d_]+(?:-\d+(?![\w-]))?", _nfc(text).casefold())
+    return [t for t in words if len(t) >= 2]
 
 
 def _short(a: str, b: str) -> bool:

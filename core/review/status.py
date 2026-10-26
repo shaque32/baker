@@ -49,6 +49,7 @@ from core.contracts import (
     Verdict,
     VerdictDecision,
 )
+from core.review import device_names
 from core.review import withheld as withheld_rationales
 from core.review.withheld import Withheld
 
@@ -457,10 +458,11 @@ def claim_state(conn: sqlite3.Connection, claim_id: str) -> ClaimState | None:
 
 
 def case_changed_after(conn: sqlite3.Connection, run: dict) -> bool:
-    """A stipulation, person or identity-link decision the run's verdicts did not see: case-wide,
-    read once. A rules-only re-run reloads stipulations but reuses the checks and searches of
-    the full audit it came from, so identity and person changes count from that audit's start.
-    A proposed link counts too: it confirms nothing, but it widens what the audit searches."""
+    """A stipulation, person, identity-link or device-name decision the run's verdicts did not
+    see: case-wide, read once. A rules-only re-run reloads stipulations but reuses the
+    assumptions, checks and searches of the full audit it came from, so identity, person and
+    device-name changes count from that audit's start. A proposed link counts too: it confirms
+    nothing, but it widens what the audit searches."""
     since = run["started_at_utc"]
     built = since
     source = run.get("evidence_from_run")
@@ -472,8 +474,9 @@ def case_changed_after(conn: sqlite3.Connection, run: dict) -> bool:
     return (
         conn.execute(
             "SELECT 1 FROM audit_log WHERE (action LIKE 'stipulation.%' AND at_utc > ?)"
-            " OR ((action LIKE 'identity.%' OR action LIKE 'person.%') AND at_utc > ?) LIMIT 1",
-            (since, built),
+            " OR ((action LIKE 'identity.%' OR action LIKE 'person.%' OR action = ?)"
+            " AND at_utc > ?) LIMIT 1",
+            (since, device_names.ACTION, built),
         ).fetchone()
         is not None
     )

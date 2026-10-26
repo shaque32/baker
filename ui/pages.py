@@ -58,7 +58,7 @@ from core.report.restore import CSS as RESTORE_CSS
 from core.report.selection import CSS as SELECTION_CSS
 from core.report.selection import anchor as selection_anchor
 from core.report.selection import claim_note
-from core.review import activity
+from core.review import activity, device_names
 from core.review import flags as F
 from core.review import withheld as W
 from core.review.activity import VIEW
@@ -453,12 +453,16 @@ def _identities_step(conn: sqlite3.Connection) -> str:
 def _devices(conn: sqlite3.Connection, page: Page, back: str, heading: bool = True) -> str:
     devices = list(conn.execute("SELECT id, label, model, source_id FROM devices ORDER BY id"))
     stips = {s.subject_id: s for s in pipeline.load_stipulations(conn)}
+    named = device_names.logged_names(conn)
     out = [
         ("<h2>Devices and stipulations</h2>" if heading else "")
         + "<p>Who used each phone is a stipulation you make, not "
         "a finding. Every report lists it as a limitation.</p>"
+        "<p>If the document calls a phone something else, such as TARGET PHONE or Item 1, "
+        "give that name here, as the document writes it, so the audit knows which phone a "
+        "claim means. Separate names with commas. Every report lists the names you gave.</p>"
         "<table><thead><tr><th>Device</th><th>Source</th><th>Stipulated user</th>"
-        "<th>Change</th></tr></thead>"
+        "<th>Change</th><th>Document names</th></tr></thead>"
     ]
     for dev_id, label, model, source_id in devices:
         st = stips.get(dev_id)
@@ -486,10 +490,21 @@ def _devices(conn: sqlite3.Connection, page: Page, back: str, heading: bool = Tr
             back,
             f"dev-{dev_id}",
         )
+        names = page.form(
+            "/device/names",
+            f"<input type='hidden' name='device' value='{e(dev_id)}'>"
+            f"<input type='text' name='names' maxlength='400' placeholder='TARGET PHONE'"
+            f" value='{e(', '.join(named.get(dev_id, [])))}'>"
+            " <button type='submit'>Save names</button>",
+            "inline",
+            back,
+            f"dev-{dev_id}",
+        )
         out.append(
             f"<tr id='dev-{e(dev_id)}'><td>{q(label)} <span class='mono'>{e(dev_id)}</span><br>"
             f"{q(model or '')}</td>"
-            f"<td class='mono'>{e(source_id)}</td><td>{who}</td><td>{change}</td></tr>"
+            f"<td class='mono'>{e(source_id)}</td><td>{who}</td><td>{change}</td>"
+            f"<td>{names}</td></tr>"
         )
     out.append("</table>")
     if not devices:

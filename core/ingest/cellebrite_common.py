@@ -31,7 +31,9 @@ from core.ingest import forwarded
 from core.ingest.source_file import SourceFile
 from core.review import audit_log
 
-IMPORTER_VERSION = "0.3.0"
+# 0.3.1: devices.timezone holds only the summary's Device time zone, never the report's display
+# zone (with none, the phone's zone is unknown).
+IMPORTER_VERSION = "0.3.1"
 HEADER_SCAN_ROWS = 10
 MAX_LISTED = 50  # cap on ids listed in a coverage payload
 FORWARDED_LABEL_RE = re.compile(r"\b(?:auto-?)?forward(?:ed)?\b", re.IGNORECASE)
@@ -1862,7 +1864,9 @@ def write_report(
                 summary_field(summary, "device") or f"Device in {sf.path.name}",
                 summary_field(summary, "device"),
                 summary_field(summary, "os"),
-                summary_field(summary, "device_time_zone") or tz_raw,
+                # The phone's own zone only. The report's time zone is the examiner's display
+                # setting (kept in the coverage notes), never the phone's.
+                summary_field(summary, "device_time_zone"),
             ),
         )
         for rkind in KIND_ORDER:
