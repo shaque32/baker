@@ -1,4 +1,4 @@
-## 2026-10-26: A model rationale with a forbidden word is withheld per item, not the whole report (branch claude/project-thread-6brtdh)
+## 2026-10-26: A model rationale with a forbidden word is withheld per item, not the whole report (#138)
 - Changed: A stance rationale that used a forbidden word (guilty, innocent, leader, deleted)
   made the word check refuse the whole report and the case screen, leaving the examiner no way
   forward (found while reviewing #137; spec from the Grok review on PR #100). Each rationale is
@@ -16,7 +16,7 @@
   decisions. Report version 0.16.0, which also counts #137's "record state" wording.
   docs/ingest/coverage.md now says what "record state" means (deleted or intact, as the
   extraction states it).
-- Where: branch claude/project-thread-6brtdh
+- Where: PR #138
 - Verified: tests/test_withheld_rationale.py (synthetic case01, stand-in labels): a rationale
   saying "deleted" renders and writes the report with each item flagged and the text absent; a
   forbidden word in Mabillon's own report text still refuses it; the same labels with clean
