@@ -4,7 +4,7 @@ The signed plan (`PREREGISTERED.md`) stays as it is. It says "a change means a n
 this file, a new tag and a new run, and every version is reported": this is that new version.
 
 Status: Approved by Arsh <APPROVAL DATE> in thread "Real-world accuracy validation" (merged
-in #140, 924f3d4; low-coverage rule and change list added in #<THIS PR>). It binds before run 2
+in #140, 924f3d4; low-coverage rule and change list added in #141). It binds before run 2
 starts.
 
 ## What happened in run 1 (reported as a null result)
@@ -52,7 +52,7 @@ the scorer entry below says.
 | #138 | A stance rationale containing a forbidden word (guilty, innocent, leader, deleted) is withheld from that item instead of refusing the whole report; the expert must acknowledge it (audit-log `rationale.acknowledge`) before confirming or overriding that claim's verdict. Stance labels, quotes and verdict rules are unchanged. | report 0.16.0 |
 | #139 | Phone time zones in Cellebrite's UFDR and Windows display forms resolve to IANA names when the stated offset matches; the Cellebrite Excel/PDF importer never stores the report's display zone as the phone's zone; the expert can give a phone the document's names (audit-log `device.names`), which the assumption filler matches and the report lists; name words keep a designation's number (SUBJECT-2); a name change marks verdicts out of date; the run driver names the phone TARGET PHONE and adds each other SUBJECT-<n> as a person, and never resumes run 1's case. | report 0.17.0, Cellebrite importer 0.3.1, identity proposer 1.1.0 |
 | #140 | This file (first version), the run-2 tag named in `aws_run.sh`, and a test of name words. | none |
-| #<THIS PR> | This file: approval date, this change list and the low-coverage rule. | none |
+| #141 | This file: approval date, this change list and the low-coverage rule. | none |
 | next PR | `score_hickman.py` reports what the low-coverage rule below requires (k tested, each refusal reason and its count, measures over tested claims). It adds outputs and changes no existing measure. It merges before the tag, so before run 2's results exist. | none |
 
 ## Disclosure: these fixes were designed after seeing run 1
