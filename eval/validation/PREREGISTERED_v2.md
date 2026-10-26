@@ -3,8 +3,9 @@
 The signed plan (`PREREGISTERED.md`) stays as it is. It says "a change means a new version of
 this file, a new tag and a new run, and every version is reported": this is that new version.
 
-Status: Approved by Arsh <APPROVAL DATE> in thread "Real-world accuracy validation" (merged
-in #140, 924f3d4; low-coverage rule and change list added in #141). It binds before run 2
+Status: Approved by Arsh on 2026-10-26 at 23:03 UTC ("ok approved", in the project chat, in
+reply to a request for "approved, minimum 30"). That approval covers this file as merged in
+#140 (924f3d4) and the change list and low-coverage rule added in #141. It binds before run 2
 starts.
 
 ## What happened in run 1 (reported as a null result)
@@ -99,7 +100,7 @@ core assumption (`not_tested` in the run's record). Every other claim is **untes
    one as a share of 106, or of a base that includes untested claims. Untested claims are
    listed by id with their reason, never counted correct or wrong. Measures 5 and 6 (key
    evidence and import fidelity) are reported as in v1.
-3. The minimum is **<MINIMUM, Arsh's pick>** tested claims. If k is below it, run 2 is reported
+3. The minimum is **30** tested claims. If k is below it, run 2 is reported
    as "insufficient coverage, no accuracy claim". Its counts appear only in the validation
    write-up, with this rule, and no site, one-pager, validation card or customer material
    quotes a number from it.
