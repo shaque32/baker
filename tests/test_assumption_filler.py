@@ -893,15 +893,44 @@ def test_duration_range_refuses(words):
         duration_range(words)
 
 
-def test_a_phone_zone_written_the_way_a_ufdr_writes_it_is_read(conn):
+def _outcomes(conn, cid: str) -> list[tuple]:
+    """Each assumption the filler builds for the claim, and what its checks found."""
+    from core.audit.checks import run_checks
+
+    out = []
+    for a in build(conn, cid)[0]:
+        found = [(r.check_name, r.outcome, r.record_ids) for r in run_checks(a, conn)]
+        out.append((a.template_id, a.params.model_dump_json(), found))
+    return out
+
+
+@pytest.mark.parametrize("cid", ["C03", "C16"])
+def test_a_phone_zone_written_the_way_a_ufdr_writes_it_is_read(conn, cid):
     """A Cellebrite Reader 7.48 UFDR writes the phone's zone as '(UTC-05:00)  New_York
-    (America)'; the validation run on a public phone had every time range refused on it."""
+    (America)'; the validation run on a public phone had every time range refused on it. The
+    same case with the UFDR's wording gets the same assumptions and check outcomes."""
     (was,) = conn.execute("SELECT timezone FROM devices WHERE id = 'dev:item1'").fetchone()
+    assert was == "America/New_York"
+    iana = _outcomes(conn, cid)
+    assert any(found for *_, found in iana)  # the checks ran on a time range
     conn.execute(
         "UPDATE devices SET timezone = '(UTC-05:00)  New_York  (America)' WHERE id = 'dev:item1'"
     )
     try:
-        (c03,) = build(conn, "C03")[0]
-        assert c03.params.window.tz == "America/New_York"
+        assert _outcomes(conn, cid) == iana
+        if cid == "C03":
+            assert build(conn, "C03")[0][0].params.window.tz == "America/New_York"
+    finally:
+        conn.execute("UPDATE devices SET timezone = ? WHERE id = 'dev:item1'", (was,))
+
+
+def test_a_ufdr_zone_whose_offset_disagrees_is_still_refused(conn):
+    (was,) = conn.execute("SELECT timezone FROM devices WHERE id = 'dev:item1'").fetchone()
+    conn.execute(
+        "UPDATE devices SET timezone = '(UTC+03:00)  New_York  (America)' WHERE id = 'dev:item1'"
+    )
+    try:
+        windows = [a.params.window for a in build(conn, "C03")[0] if a.params.window]
+        assert all(w.tz != "America/New_York" for w in windows)
     finally:
         conn.execute("UPDATE devices SET timezone = ? WHERE id = 'dev:item1'", (was,))

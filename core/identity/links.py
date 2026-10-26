@@ -46,7 +46,7 @@ from core.audit.checks._common import CaseData, Key, key
 from core.contracts import Fidelity, short_hash
 from core.review import audit_log
 
-PROPOSER_VERSION = "1.0.0"
+PROPOSER_VERSION = "1.1.0"  # 1.1.0: name words keep a designation's number (SUBJECT-2)
 PROPOSER = f"system:identity-names@{PROPOSER_VERSION}"
 PROPOSE_ACTION = "identity.propose"
 MENTION_LIMIT = 12
