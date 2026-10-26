@@ -82,10 +82,13 @@ REFUSAL_KINDS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ),
 )
 UNCLASSIFIED = "none of the kinds above (see the claim's sentence)"
+ONLY_SUMMARY = "no refusal listed, only the filler's summary of what was missing"
 # The filler's closing summary of a claim ("no usable X assumption; the claim stays unproven")
-# names templates, not a cause, so it is not read for kinds.
-_GAP = re.compile(r"no usable [^;]*? assumption; the claim stays unproven")
-_MORE = re.compile(r"\(and \d+ more\)")
+# says what is missing, not why, so it is not read for kinds.
+_SUMMARY_END = "the claim stays unproven"
+# A refusal's own "; " (the sentence joins refusals with "; " too): what follows it.
+_CONTINUED = re.compile(r"(?:the claim stays unproven|it cannot be checked|name the phone)\b")
+_MORE = re.compile(r"\s*\(and \d+ more\)")
 
 
 def _sha256(path: Path) -> str:
@@ -376,11 +379,30 @@ def r1_measures(conn: sqlite3.Connection, run: dict, gold: list[GoldClaim]) -> d
     }
 
 
+def refusals(sentence: str) -> list[str]:
+    """The refusals one claim's "Not tested" sentence lists (pipeline.not_tested_reason)."""
+    text = sentence.partition("Refused:")[2].strip().removesuffix(".")
+    parts: list[str] = []
+    for piece in _MORE.sub("", text).split("; "):
+        if parts and _CONTINUED.match(piece):
+            parts[-1] += "; " + piece
+        elif piece.strip():
+            parts.append(piece.strip())
+    return parts
+
+
 def refusal_kinds(sentence: str) -> list[str]:
-    """The refusal kinds in one claim's "Not tested" sentence, in REFUSAL_KINDS order."""
-    text = _GAP.sub("", sentence.partition("Refused:")[2])
-    kinds = [name for name, pattern in REFUSAL_KINDS if pattern.search(text)]
-    return kinds or [UNCLASSIFIED]
+    """The refusal kinds in one claim's "Not tested" sentence, in REFUSAL_KINDS order. Each
+    refusal is read on its own, and one that matches no kind adds UNCLASSIFIED, so no refusal
+    is dropped. A claim with nothing but the closing summary is ONLY_SUMMARY."""
+    found: set[str] = set()
+    for refusal in refusals(sentence):
+        if refusal.endswith(_SUMMARY_END):
+            continue
+        hits = [name for name, pattern in REFUSAL_KINDS if pattern.search(refusal)]
+        found.update(hits or [UNCLASSIFIED])
+    order = [name for name, _ in REFUSAL_KINDS] + [UNCLASSIFIED]
+    return [name for name in order if name in found] or [ONLY_SUMMARY]
 
 
 def coverage(run: dict, gold: list[GoldClaim], r1: dict[str, Any]) -> dict[str, Any]:
@@ -393,6 +415,7 @@ def coverage(run: dict, gold: list[GoldClaim], r1: dict[str, Any]) -> dict[str, 
     untested = {c: not_tested[c] for c in ids if c in not_tested}
     kinds: dict[str, list[str]] = {name: [] for name, _ in REFUSAL_KINDS}
     kinds[UNCLASSIFIED] = []
+    kinds[ONLY_SUMMARY] = []
     for c, sentence in untested.items():
         for kind in refusal_kinds(sentence):
             kinds[kind].append(c)

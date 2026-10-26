@@ -10,10 +10,12 @@
   which contains:
   - k tested of all claims and the minimum. A claim is tested when the run did not mark it
     "Not tested", which is the run's own `not_tested` record.
-  - Refusal kinds and their claims. These are read from each untested claim's "Not tested"
-    sentence and grouped by fixed patterns that follow the assumption filler's wording. A claim
-    counts once per kind it has. Text that matches no kind is counted as unclassified and
-    listed.
+  - Refusal kinds and their claims. Each refusal in an untested claim's "Not tested" sentence
+    is read on its own and grouped by fixed patterns that follow the assumption filler's
+    wording. A claim counts once per kind it has. A refusal that matches no kind is counted as
+    unclassified, even beside recognized ones. The filler's closing summary ("no usable …
+    assumption; the claim stays unproven") says what was missing, not why, so it is not a
+    kind; a claim with nothing else is counted on its own line.
   - Each untested claim with its sentence.
   - Primary measures 1 to 3, and the R2 card (measure 4), again over tested claims only.
   The existing measures over all claims, and score.json's existing keys, are unchanged. The
@@ -23,8 +25,9 @@
 - Where: PR #142
 - Verified: tests/test_validation_score.py:
   - coverage on the synthetic run (3 of 3 tested, under the minimum, same bases);
-  - refusal kinds from real filler wording, the closing "no usable … assumption" summary
-    ignored, unclassified text, and a sentence cut short at four refusals;
+  - refusal kinds from real filler wording: the closing summary ignored, a refusal's own
+    "; " kept inside it, unclassified text beside a recognized refusal, a summary-only claim,
+    and a sentence cut short at four refusals;
   - untested claims kept out of every base;
   - the minimum boundary at 30 and 29.
 
