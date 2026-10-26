@@ -271,6 +271,20 @@ def test_claims_and_stipulations_from_the_screen(db, conn):
     assert audit_log.verify_chain(conn)
 
 
+def test_the_document_names_for_a_phone_from_the_screen(db, conn):
+    from core.review.device_names import logged_names
+
+    app = App(db, expert="Test Expert", port=PORT)
+    post(app, "/device/names", device="dev:item1", names="TARGET PHONE, Item 1 ,")
+    assert logged_names(conn) == {"dev:item1": ["TARGET PHONE", "Item 1"]}
+    assert "value='TARGET PHONE, Item 1'" in get(app, "/setup").text
+    post(app, "/device/names", device="dev:item2", names="target phone")  # names item1 already
+    assert "dev:item2" not in logged_names(conn)
+    post(app, "/device/names", device="dev:item1", names="")
+    assert logged_names(conn) == {}
+    assert audit_log.verify_chain(conn)
+
+
 def test_redecide_keeps_the_trail_and_the_test_run_flag(conn):
     first = pipeline.last_run(conn)
     a = redecide(conn, EXPERT)

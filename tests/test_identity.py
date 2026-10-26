@@ -200,6 +200,18 @@ def test_a_name_that_would_be_ambiguous_is_refused(conn):
         actions.add_person(conn, "PETROV", EXPERT)  # Daniel Petrov owns Item 1
 
 
+def test_numbered_designations_are_different_people(conn):
+    """Affidavits name people SUBJECT-1, SUBJECT-2; the number is part of the name."""
+    one = actions.add_person(conn, "SUBJECT-1", EXPERT)
+    two = actions.add_person(conn, "SUBJECT-2", EXPERT)
+    assert (one, two) == ("person:subject-1", "person:subject-2")
+    with pytest.raises(ReviewError, match="tell them apart"):
+        actions.add_person(conn, "subject-2", EXPERT)
+    assert L.resolves(L.load(conn).persons, "SUBJECT-2") == [two]
+    for pid in (one, two):
+        actions.remove_person(conn, pid, EXPERT)
+
+
 def test_removing_a_person_keeps_what_an_expert_confirmed(conn):
     pid = _add_sokolov(conn)
     lid = actions.link_account(conn, ALEX_0182, pid, EXPERT, "Test only.")

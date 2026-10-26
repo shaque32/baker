@@ -117,10 +117,13 @@ def _nfc(text: str) -> str:
 
 
 def tokens(text: str | None) -> list[str]:
-    """Name words: runs of letters, two or more, casefolded. '@alex92' -> ['alex']."""
+    """Name words: runs of letters, two or more, casefolded. '@alex92' -> ['alex']. A
+    designation keeps its number, so 'SUBJECT-1' and 'SUBJECT-2', as affidavits name people,
+    stay two names: 'SUBJECT-2' -> ['subject-2']."""
     if not text:
         return []
-    return [t for t in re.findall(r"[^\W\d_]+", _nfc(text).casefold()) if len(t) >= 2]
+    words = re.findall(r"[^\W\d_]+(?:-\d+(?![\w-]))?", _nfc(text).casefold())
+    return [t for t in words if len(t) >= 2]
 
 
 def _short(a: str, b: str) -> bool:

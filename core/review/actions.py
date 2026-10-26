@@ -525,3 +525,45 @@ def withdraw_stipulation(
         audit_log.append(
             conn, now, actor, "stipulation.withdraw", {"stipulation_id": stipulation_id_}
         )
+
+
+def name_device(
+    conn: sqlite3.Connection,
+    device_id: str,
+    names: list[str],
+    actor: str,
+    clock: Clock | None = None,
+) -> list[str]:
+    """The expert records the names the government document uses for a device ("TARGET
+    PHONE", "Item 1"), so the assumption filler can tell which phone a claim names. The list
+    replaces the device's earlier names; an empty list clears them. It is the expert's
+    statement, not a finding: the report lists each name with who gave it and when. Refused
+    when a name would also match another device, so a phone name never reaches two devices.
+    Returns the names as recorded."""
+    from core.review.device_names import ACTION, logged_names, name_key
+
+    _expert(actor)
+    dev = conn.execute("SELECT label FROM devices WHERE id = ?", (device_id,)).fetchone()
+    if dev is None:
+        raise ReviewError(f"no device {device_id}")
+    clean: list[str] = []
+    for raw in names:
+        name = " ".join(raw.split())
+        if not name or len(name) > 80:
+            raise ReviewError("enter each name as the document writes it (up to 80 characters)")
+        if name_key(name) not in {name_key(n) for n in clean}:
+            clean.append(name)
+    taken = logged_names(conn)
+    for did, sid, label in conn.execute("SELECT id, source_id, label FROM devices ORDER BY id"):
+        if did == device_id:
+            continue
+        theirs = {name_key(x) for x in (did, sid, label, *taken.get(did, [])) if x}
+        for name in clean:
+            if name_key(name) in theirs:
+                raise ReviewError(f"{name} already names {label} ({did})")
+    now = _now(clock)
+    with conn:
+        audit_log.append(
+            conn, now, actor, ACTION, {"device_id": device_id, "label": dev[0], "names": clean}
+        )
+    return clean

@@ -22,8 +22,9 @@ Display rules:
   "Support found: do you agree?", Mabillon's finding put to the expert; its verdict is unproven.
 - Each evidence item shows its provenance tier from contracts.display_tier: the record's tier
   (observed, derived, inferred), or ai_reviewed / confirmed from its review status.
-- Device-ownership stipulations, expert-confirmed identity links, source coverage, what each
-  search covered and the meaning of each verdict are printed as limitations in every report.
+- Device-ownership stipulations, the names the expert gave devices, expert-confirmed identity
+  links, source coverage, what each search covered and the meaning of each verdict are printed
+  as limitations in every report.
 - The Selection audit section (core/report/selection.py) shows each message the document quotes,
   an exhibit quotes or the examiner tagged in its own exchange, with the messages around it that
   were not picked. It never changes a verdict.
@@ -91,7 +92,7 @@ from core.report import paired as paired_html
 from core.report import restore as restore_html
 from core.report import selection as selection_html
 from core.report import timeline as timeline_html
-from core.review import activity, audit_log
+from core.review import activity, audit_log, device_names
 from core.review.status import (
     AWAITING_EXPERT,
     CONFIRM_STEP,
@@ -144,7 +145,9 @@ from core.review.withheld import summary as withheld_summary
 # a "Withheld model rationales" section lists each one with its SHA-256 and the expert's
 # acknowledgment (core/review/withheld.py). Also counts #137's change: import coverage says
 # "record state" for related copies.
-REPORT_VERSION = "0.16.0"
+# 0.17.0: Limitations list each name the expert gave a device for the document ("TARGET PHONE"),
+# with who gave it and when (core/review/device_names.py).
+REPORT_VERSION = "0.17.0"
 
 
 @dataclass(frozen=True)
@@ -606,6 +609,14 @@ def _limitations(conn: sqlite3.Connection, srcs: list[tuple]) -> str:
         items.append(
             "<li><strong>No device-ownership stipulation was recorded.</strong> Findings that "
             "name a person do not establish who used each phone.</li>"
+        )
+    for did, label, by, at, names in device_names.named_by(conn):
+        said = ", ".join(q(n) for n in names)
+        items.append(
+            "<li><strong>Which phone the document means is an expert statement, not a "
+            f"finding.</strong> {e(by)} said on {e(at)} that the document's {said} is "
+            f"{q(label)} ({e(did)}). Mabillon did not verify it. Every claim that names the "
+            "phone this way was audited on that device.</li>"
         )
     for app, ident, person, by, at in conn.execute(
         "SELECT a.app, a.identifier, p.name, l.decided_by, l.decided_at_utc"

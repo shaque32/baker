@@ -102,6 +102,7 @@ NEEDS_NO_JOB: dict[str, tuple[str, ...]] = {
     "/claims/move": ("audit",),
     "/stipulate": ("audit",),
     "/stipulation/withdraw": ("audit",),
+    "/device/names": ("audit",),
     "/person/add": ("audit",),
     "/person/remove": ("audit",),
     "/identity/decide": ("audit",),
@@ -604,6 +605,7 @@ class App:
             "/claims/propose": lambda: self._propose(),
             "/stipulate": lambda: self._stipulate(conn, f),  # type: ignore[arg-type]
             "/stipulation/withdraw": lambda: self._withdraw(conn, f),  # type: ignore[arg-type]
+            "/device/names": lambda: self._name_device(conn, f),  # type: ignore[arg-type]
             "/person/add": lambda: self._add_person(conn, f),  # type: ignore[arg-type]
             "/person/remove": lambda: self._remove_person(conn, f),  # type: ignore[arg-type]
             "/identity/decide": lambda: self._decide_link(conn, f),  # type: ignore[arg-type]
@@ -792,6 +794,13 @@ class App:
             raise ReviewError("pick the paragraph the claim comes from")
         actions.add_claim(conn, cid, para, text, ClaimType(f.get("type", "")), self.actor)
         return f"Added {cid}. It needs a full audit before it has a verdict."
+
+    def _name_device(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        names = [n for n in f.get("names", "").split(",") if n.strip()]
+        kept = actions.name_device(conn, f.get("device", ""), names, self.actor)
+        if not kept:
+            return "Names cleared. Run the audit again to apply it."
+        return f"Saved {', '.join(kept)}. Run the audit again so claims that name it are tested."
 
     def _stipulate(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         actions.stipulate_device_owner(conn, f.get("device", ""), f.get("person", ""), self.actor)
