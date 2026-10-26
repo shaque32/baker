@@ -4,7 +4,9 @@ No scripts, no external fonts, styles or images. Everything shown is read from t
 database. Every cited span (government text, evidence quotes, record text) is wrapped in
 <span class="q"> so the forbidden-word check can tell cited text from the tool's own words. A
 reason or note an expert typed is wrapped in <span class="said">, which the check also leaves as
-written: it is the expert's own wording, shown next to their name.
+written: it is the expert's own wording, shown next to their name. A model's stance rationale
+that uses a forbidden word is not printed: a notice stands in for it, naming the word in
+<span class="withheld-word"> (core/review/withheld.py).
 
 Display rules:
 - The report shows pipeline.view_run(): the latest completed pipeline run (a full audit, or a
@@ -39,6 +41,12 @@ Display rules:
   regenerated exactly (HOSTED). It never claims a local re-run gives identical labels.
 - Each evidence row carries the evidence item's id (<tr id=...>), the same id the review screen
   gives its evidence card, so the two can be compared item by item.
+- A stance rationale that uses a forbidden word is withheld, not printed: its row says
+  "Rationale withheld", names the word and marks the item as needing expert review, and the
+  "Withheld model rationales" section lists every such item (irrelevant ones too) with the
+  rationale's SHA-256 and whether the expert acknowledged it. The case overview shows the same
+  count (core/review/withheld.summary). Mabillon's own text is still checked whole: a forbidden
+  word in it refuses the report.
 
 Reproducible: the same case inputs, versions and expert decisions, made at the same clock
 times, render byte-identical HTML (tests/test_report_consistency.py). Made at other times, the
@@ -96,6 +104,8 @@ from core.review.status import (
     claim_states,
 )
 from core.review.status import verdict_label as _verdict_label
+from core.review.withheld import Withheld
+from core.review.withheld import summary as withheld_summary
 
 # 0.4.0 (#76): a "Quote check" row in Versions and the run line, and a call's UTC and printed
 # time beside its line (the review screen shows the same line, through record_line).
@@ -129,7 +139,12 @@ from core.review.status import verdict_label as _verdict_label
 # 0.15.0: for a local model file and stance prompt that passed the repeat check (REPEAT_TESTED),
 # "What can be checked again" states that measured result and its limits instead of making no
 # claim.
-REPORT_VERSION = "0.15.0"
+# 0.16.0: a stance rationale that uses a forbidden word no longer refuses the whole report: it is
+# withheld from its row, which names the word and marks the item as needing expert review, and
+# a "Withheld model rationales" section lists each one with its SHA-256 and the expert's
+# acknowledgment (core/review/withheld.py). Also counts #137's change: import coverage says
+# "record state" for related copies.
+REPORT_VERSION = "0.16.0"
 
 
 @dataclass(frozen=True)
@@ -261,6 +276,62 @@ def said(text: object) -> str:
 
 def e(text: object) -> str:
     return html.escape("" if text is None else str(text))
+
+
+def withheld_word(word: str) -> str:
+    """The forbidden word a withheld rationale used, named in the notice in its place. The word
+    check (invariants.WITHHELD_WORD) passes this element only around one forbidden word."""
+    return f'<span class="withheld-word">{html.escape(word)}</span>'
+
+
+def rationale_html(item: EvidenceItem, withheld: Withheld | None) -> str:
+    """The model's rationale as the report and the screen show it, or, when it uses a forbidden
+    word (core/review/withheld.py), the notice that stands in for it."""
+    if withheld is None:
+        return f"Model rationale (inferred): {e(forwarded.shown_rationale(item.rationale))}"
+    ack = (
+        f"Acknowledged by {e(withheld.acknowledged_by)} (audit log entry "
+        f"{withheld.acknowledged_seq})."
+        if withheld.acknowledged
+        else "Not yet acknowledged by the expert."
+    )
+    return (
+        "<strong>Rationale withheld; needs expert review.</strong> The model's rationale uses "
+        f"the word {withheld_word(withheld.word)}, which Mabillon does not print, so it is not "
+        "shown. Read the record and the quote yourself. The stance, the quote and its check are "
+        "as stored, and no verdict rule reads a rationale. Rationale SHA-256 "
+        f"<span class='mono'>{e(withheld.sha256)}</span>. {ack}"
+    )
+
+
+def withheld_section(states: list[ClaimState]) -> str:
+    """Every withheld rationale in the report, under the claim it belongs to, irrelevant items
+    included; the same count as the case overview."""
+    rows = [(st, w) for st in states for w in st.withheld]
+    if not rows:
+        return ""
+    stance = {x.id: x.stance for st in states for x in st.evidence}
+    out = [
+        "<h2>Withheld model rationales</h2>",
+        f"<p>{e(withheld_summary([w for _st, w in rows]))} The expert acknowledges each one "
+        "before confirming or overriding the claim's verdict; each acknowledgment is an audit-log "
+        "entry naming the item, the word and the SHA-256 of the rationale, never its text.</p>",
+        "<table><thead><tr><th>Claim</th><th>Evidence item</th><th>Stance</th><th>Word</th>"
+        "<th>Rationale SHA-256</th><th>Acknowledged</th></tr></thead>",
+    ]
+    for st, w in rows:
+        ack = (
+            f"by {e(w.acknowledged_by)} (audit log entry {w.acknowledged_seq})"
+            if w.acknowledged
+            else "not yet"
+        )
+        out.append(
+            f"<tr><td>{e(st.name)}</td><td class='mono'>{e(w.evidence_id)}</td>"
+            f"<td>{STANCE_LABEL[stance[w.evidence_id]]}</td><td>{withheld_word(w.word)}</td>"
+            f"<td class='mono'>{e(w.sha256)}</td><td>{ack}</td></tr>"
+        )
+    out.append("</table>")
+    return "".join(out)
 
 
 def verdict_label(
@@ -747,12 +818,13 @@ def _claim_block(
             "<table><thead><tr><th>Evidence</th><th>Stance</th><th>Tier</th><th>Review</th>"
             "<th>Source</th></tr></thead>"
         )
+        withheld = {w.evidence_id: w for w in st.withheld}
         for x in shown:
             out.append(
                 f"<tr id='{e(x.id)}'><td><blockquote>{q(x.quote)}</blockquote>"
                 f"{record_line(conn, x.record_id, found)}"
-                f"<br><span class='muted'>{e(labelled_by(conn, x.model_run_id))}. Model "
-                f"rationale (inferred): {e(forwarded.shown_rationale(x.rationale))}</span>"
+                f"<br><span class='muted'>{e(labelled_by(conn, x.model_run_id))}. "
+                f"{rationale_html(x, withheld.get(x.id))}</span>"
                 f"</td><td>{STANCE_LABEL[x.stance]}</td><td>{display_tier(x).value}</td>"
                 f"<td>{review_label(conn, x)}</td>"
                 f"<td class='mono'>{e(x.ref.source_id)} {e(x.ref.locator)}<br>{e(x.record_id)}"
@@ -1017,6 +1089,13 @@ def render_report(
                 "</strong> Each becomes contradicted once an expert confirms the contradicting "
                 "record.</div>"
             )
+        waiting = sum(st.withheld_waiting for st in states)
+        if waiting:
+            parts.append(
+                f"<div class='banner'><strong>{waiting} model rationale(s) withheld and not yet "
+                "acknowledged by the expert.</strong> Each uses a word Mabillon does not print; "
+                "the items are listed under Withheld model rationales.</div>"
+            )
 
     if scope is not None:
         parts.append(scope_banner(scope))
@@ -1024,6 +1103,7 @@ def render_report(
     for label, n in sorted(tally.items()):
         parts.append(f"<tr><td>{e(label)}</td><td>{n}</td></tr>")
     parts.append("</table>")
+    parts.append(withheld_section(states))
 
     parts.append(_limitations(conn, srcs))
     parts.append("<h2>Claims</h2>")

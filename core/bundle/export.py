@@ -72,7 +72,7 @@ from core.db import apply_schema
 from core.enrich.records import kind_of
 from core.llm import cloud
 from core.report import html as report_html
-from core.review import activity, audit_log
+from core.review import activity, audit_log, withheld
 from core.review.actions import ReviewError, _expert
 from core.timeline.settings import Settings
 
@@ -350,7 +350,7 @@ def plan(conn: sqlite3.Connection, run: dict[str, Any], include: tuple[str, ...]
         why = None
         if action == "cloud.sent" and "prompts" not in inc:
             why = "prompts"
-        elif action == "evidence.decide" and p.get("evidence_id") not in kept_ev:
+        elif action in ("evidence.decide", withheld.ACTION) and p.get("evidence_id") not in kept_ev:
             why = left.get(str(p.get("evidence_id")), "history")
         elif action.startswith("flag.") and "feedback" not in inc:
             why = "feedback"
