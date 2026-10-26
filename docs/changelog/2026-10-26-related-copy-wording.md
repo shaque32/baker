@@ -1,4 +1,4 @@
-## 2026-10-26: Report no longer refuses packages with related copies (#PR)
+## 2026-10-26: Report no longer refuses packages with related copies (#137)
 - Changed: Two import-coverage lines for UFDR related copies (Cellebrite RelatedModels) said
   "deleted state". The report's word check (tool text never says deleted) then refused the
   whole report, and the case screen's page, for any package with related copies, which public
@@ -7,7 +7,7 @@
   record-states line already did; the ufdr-check worksheet's wording matches. The validation
   run driver (eval/validation/hickman_run.py) now keeps the audit's results when the report is
   refused: run.json and progress.log say why and results.zip goes out without report.html.
-- Where: PR #PR
+- Where: PR #137
 - Verified: tests/test_coverage_display.py: every coverage wording passes the word check, and a
   synthetic package with related copies (one matching no record) renders a report that passes
   it; both tests fail on the old wording. tests/test_validation_run.py: a refused report leaves
