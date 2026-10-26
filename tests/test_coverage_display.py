@@ -10,11 +10,13 @@ from pathlib import Path
 import pytest
 
 from cli.main import main as cli_main
-from core.audit.invariants import check_report_text
+from core.audit.invariants import FORBIDDEN_WORDS, check_report_text
 from core.db import apply_schema
 from core.ingest import coverage
 from core.ingest.cellebrite_excel import CellebriteExcelImporter
+from core.ingest.ufdr import UfdrImporter
 from core.report.html import render_report
+from eval.synthetic.ufdr import related_package
 from eval.synthetic.variants import excel as xl
 from eval.synthetic.variants.catalog import VARIANTS
 from ui.app import App, Request
@@ -146,3 +148,35 @@ def test_render_quotes_report_text_and_escapes_the_rest():
     )
     got = coverage.render(item, lambda t: f"[{t}]", lambda t: t.replace("&", "&amp;"))
     assert got == "Sheet [<b>] &amp; more (see A!1)"
+
+
+def _strings(value: object) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [s for k, v in value.items() for s in _strings(k) + _strings(v)]
+    if isinstance(value, tuple | list):
+        return [s for v in value for s in _strings(v)]
+    return []
+
+
+def test_no_coverage_wording_says_a_forbidden_word():
+    """Every line coverage can show is Mabillon's own text, so the report check applies to all
+    of it, including lines only a real package reaches (a related copy matching no record)."""
+    words = [s for name, v in vars(coverage).items() if name.isupper() or name.startswith("_")
+             for s in _strings(v)]  # fmt: skip
+    assert len(words) > 50
+    assert [s for s in words if FORBIDDEN_WORDS.search(s)] == []
+
+
+def test_report_on_a_package_with_related_copies_passes_the_word_check(tmp_path):
+    """The validation run on a public phone stopped here: a package with related copies, one of
+    which matches no record, put "deleted state" in the report's limitations."""
+    conn = sqlite3.connect(":memory:")
+    conn.execute("PRAGMA foreign_keys = ON")
+    apply_schema(conn)
+    UfdrImporter(source_id="rel").import_source(related_package(tmp_path / "rel.ufdr", True), conn)
+    html = render_report(conn)
+    limits = html.split("<h2>Limitations</h2>", 1)[1].split("<h2>", 1)[0]
+    assert "held only as a related copy" in limits and "record state" in limits
+    check_report_text(html)

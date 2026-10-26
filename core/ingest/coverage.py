@@ -132,7 +132,7 @@ _INFO_COUNTERS = {
     ),
     "related_copies_matching_a_record": (
         "Of those, copies that say what the record holding them says (text or duration, time, "
-        "parties, deleted state and attachments; a copied chat's messages one to one)"
+        "parties, record state and attachments; a copied chat's messages one to one)"
     ),
     "embedded_messages_already_imported": (
         "Forwarded or quoted messages carried inside other messages that the extraction also "
@@ -267,7 +267,7 @@ _FLAG_WORDS: dict[str, tuple[Level, str]] = {
         "attention",
         "{n} {be} held only as a related copy (under another record's RelatedModels) that "
         "does not say what the record holding it says (app, text or duration, time, "
-        "direction, parties, deleted state and attachments; a copied chat's messages one to "
+        "direction, parties, record state and attachments; a copied chat's messages one to "
         "one), so Mabillon did not "
         "import {them}; open each one in {tool}.",
     ),

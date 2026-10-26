@@ -1649,7 +1649,7 @@ def private_markdown(result: Result) -> str:
         "",
         "1. Open the same UFDR in Cellebrite Reader.",
         "2. For each record below, find it in Reader (by time and party) and compare sender, "
-        "recipients, time and offset, text, deleted state and attachments.",
+        "recipients, time and offset, text, record state and attachments.",
         "3. Mark each row yes or no, and note what differed.",
         "4. Copy the totals, and the counts Reader shows per category, into ufdr-check.md.",
         "",
