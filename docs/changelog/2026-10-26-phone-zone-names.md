@@ -1,4 +1,4 @@
-## 2026-10-26: Phone time zones written the way Cellebrite writes them are read
+## 2026-10-26: Phone time zones written the way Cellebrite writes them are read (#139)
 - Changed: devices.timezone keeps the source's own text. A Cellebrite UFDR writes
   `(UTC-05:00)  New_York  (America)` and a Cellebrite Excel summary writes
   `(UTC-05:00) Eastern Time (US & Canada)`, but the assumption filler, the checks, the
@@ -10,7 +10,7 @@
   has the stated offset in winter or summer. Anything else, including a name whose offset
   disagrees, comes back as given and is refused as before. devices.timezone still stores the
   raw text.
-- Where: branch claude/project-thread-ds0ify (PR pending)
+- Where: PR #139
 - Verified: tests/test_zones.py: the exact UFDR and Excel strings, IANA pass-through, wrong
   offsets, unknown names and free text; the checks and device local time read a UFDR zone.
   tests/test_assumption_filler.py: a claim's window on a phone with the UFDR zone gets
