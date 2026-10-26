@@ -3,8 +3,9 @@
 The signed plan (`PREREGISTERED.md`) stays as it is. It says "a change means a new version of
 this file, a new tag and a new run, and every version is reported": this is that new version.
 
-Status: DRAFT until Arsh says "approved" in thread "Real-world accuracy validation". It binds
-from its merge to main, before run 2 starts.
+Status: Approved by Arsh <APPROVAL DATE> in thread "Real-world accuracy validation" (merged
+in #140, 924f3d4; low-coverage rule and change list added in #<THIS PR>). It binds before run 2
+starts.
 
 ## What happened in run 1 (reported as a null result)
 - Run 1 ran on AWS (A10G) with the local 14B. It ran at commit 30fcf4d, not at tag
@@ -38,6 +39,22 @@ from its merge to main, before run 2 starts.
    The list comes from the claims text by that rule alone, never from the answers. Nothing
    about SUBJECT-2 is stipulated or linked, as in v1.
 
+## Every change since run 1's code
+Generated from `git log --first-parent 30fcf4d..main` (30fcf4d is the commit run 1 ran). Nothing
+outside this list changed between run 1's code and the commit tagged for run 2. In particular,
+`core/audit/rules.py` (rules 0.3.0), every prompt under `core/audit/prompts/`, the model pins in
+`packaging/windows/pins.json`, `core/contracts.py`, `core/schema.sql`, everything under
+`eval/gold/` and `eval/validation/score_hickman.py` are byte-identical to 30fcf4d, except as
+the scorer entry below says.
+
+| PR | Effect | Versions |
+| --- | --- | --- |
+| #138 | A stance rationale containing a forbidden word (guilty, innocent, leader, deleted) is withheld from that item instead of refusing the whole report; the expert must acknowledge it (audit-log `rationale.acknowledge`) before confirming or overriding that claim's verdict. Stance labels, quotes and verdict rules are unchanged. | report 0.16.0 |
+| #139 | Phone time zones in Cellebrite's UFDR and Windows display forms resolve to IANA names when the stated offset matches; the Cellebrite Excel/PDF importer never stores the report's display zone as the phone's zone; the expert can give a phone the document's names (audit-log `device.names`), which the assumption filler matches and the report lists; name words keep a designation's number (SUBJECT-2); a name change marks verdicts out of date; the run driver names the phone TARGET PHONE and adds each other SUBJECT-<n> as a person, and never resumes run 1's case. | report 0.17.0, Cellebrite importer 0.3.1, identity proposer 1.1.0 |
+| #140 | This file (first version), the run-2 tag named in `aws_run.sh`, and a test of name words. | none |
+| #<THIS PR> | This file: approval date, this change list and the low-coverage rule. | none |
+| next PR | `score_hickman.py` reports what the low-coverage rule below requires (k tested, each refusal reason and its count, measures over tested claims). It adds outputs and changes no existing measure. It merges before the tag, so before run 2's results exist. | none |
+
 ## Disclosure: these fixes were designed after seeing run 1
 The fixes come from run 1's refusal reasons on this phone. Only the filler's refusals and the
 import counts were looked at. The answer key was not used to design them: run 1 had no
@@ -52,15 +69,16 @@ These stay exactly as signed:
 - UFDR and report.xml hash;
 - model file, its pins and stance prompt v1.1;
 - rules 0.3.0, one arm (local 14B), no AI reviewer, no `--label-all`;
-- primary measures 1 to 6;
+- primary measures 1 to 6 as defined, reported under the low-coverage rule below;
 - rules for the analysis;
-- scoring with `eval/validation/score_hickman.py` as merged in #134;
+- scoring with `eval/validation/score_hickman.py` as merged in #134, plus only the additions
+  the low-coverage rule needs, merged before the tag;
 - limits.
 
 ## Frozen version
-Git tag `validation-v1-run2` on the main commit that carries this file and #139. A run on any
-other commit or model is not run 2. Machine as v1: AWS g5.xlarge (A10G), or g6.xlarge as the
-fallback; `run.json` records which ran.
+Git tag `validation-v1-run2` on the main commit that carries this file, #139 and the scorer
+additions. A run on any other commit or model is not run 2. Machine as v1: AWS g5.xlarge
+(A10G), or g6.xlarge as the fallback; `run.json` records which ran.
 
 ## Procedure
 As v1, with step 3 replaced by "What changed" item 4. The run starts a new case: the driver
@@ -69,6 +87,24 @@ refuses to resume run 1's case, and `aws_run.sh` writes to a new folder and keep
 
 Blind analysis as v1. The scorer is already on main, and run 2's `results.zip` is only copied
 and hashed on arrival until it is scored with that code.
+
+## Low-coverage rule (stated before run 2)
+Run 1's 43 model-side refusals are not fixed, so run 2 may again test only part of the 106.
+A claim is **tested** when the run did not mark it "Not tested", that is, it got at least one
+core assumption (`not_tested` in the run's record). Every other claim is **untested**.
+1. Always report k, the number of tested claims out of 106, next to any other number, with each
+   refusal reason that left a claim untested and its count, as the scorer prints them.
+2. Report each verdict measure (primary measures 1 to 4) only over tested claims: k of n, with
+   a Wilson 95% interval, where n counts the tested claims in that measure's base. Never report
+   one as a share of 106, or of a base that includes untested claims. Untested claims are
+   listed by id with their reason, never counted correct or wrong. Measures 5 and 6 (key
+   evidence and import fidelity) are reported as in v1.
+3. The minimum is **<MINIMUM, Arsh's pick>** tested claims. If k is below it, run 2 is reported
+   as "insufficient coverage, no accuracy claim". Its counts appear only in the validation
+   write-up, with this rule, and no site, one-pager, validation card or customer material
+   quotes a number from it.
+4. A run 3 that fixes refusals needs a new version of this plan, written and signed before
+   that run. Nothing in this plan changes after run 2's results are seen.
 
 ## Reporting
 Run 1 (null result, with its causes) and run 2 are both reported. Run 2's numbers carry:
