@@ -15,7 +15,8 @@ It builds one case the way an expert would, then runs `mabillon audit` with its 
 
 The claims file holds claims only, never their answers: the run machine never sees the key.
 Run it again with the same DIR to resume: a built case is kept, and the audit reuses the model
-outputs of the claims it finished. --fake swaps in the eval's stand-in components (tests only).
+outputs of the claims it finished. A case built by an earlier SETUP is refused, never resumed.
+--fake swaps in the eval's stand-in components (tests only).
 """
 
 from __future__ import annotations
@@ -48,6 +49,9 @@ TITLE = "AFFIDAVIT (VALIDATION V1, HICKMAN PUBLIC IMAGE, NOT A REAL CASE)"
 # type only picks which checks run; the signed answers do not depend on it.
 TYPE_ALIASES = {"content": "content_meaning"}
 RESULT_FILES = ("case.db", "run.json", "report.html", "progress.log")
+# How build() sets the case up. A case built by an earlier setup is not resumed: run 1's case
+# (setup 1) had no phone name and no SUBJECT-2.
+SETUP = 2
 
 
 def sha256_file(path: Path) -> str:
@@ -245,6 +249,11 @@ def main(argv: list[str] | None = None) -> int:
     built = a.out / "built.ok"  # the inputs the case in DIR was built from
     if built.exists():
         was = json.loads(built.read_text(encoding="utf-8"))
+        if was.get("setup", 1) != SETUP:
+            raise SystemExit(
+                f"{a.out} was set up by an earlier version of this run (setup"
+                f" {was.get('setup', 1)}, now {SETUP}); use a new --out"
+            )
         if was["claims_sha256"] != claims_sha:
             raise SystemExit(
                 f"{a.out} was built from claims {was['claims_sha256']}; use a new --out"
@@ -268,7 +277,7 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(f"report.xml SHA-256 {report_sha}, expected {a.report_sha256}")
         run["report_xml_sha256"] = report_sha
         build(a.ufdr, claims, a.out, log)
-        inputs = {"claims_sha256": claims_sha, "report_xml_sha256": report_sha}
+        inputs = {"claims_sha256": claims_sha, "report_xml_sha256": report_sha, "setup": SETUP}
         built.write_text(json.dumps(inputs), encoding="utf-8")
     run_path.write_text(json.dumps(run, indent=2), encoding="utf-8")
     from core.pipeline import ComponentsMissing

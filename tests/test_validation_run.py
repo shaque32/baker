@@ -135,6 +135,14 @@ def test_a_resume_with_other_inputs_is_refused(ufdr, tmp_path):
     assert (out / "run.json").read_text(
         encoding="utf-8"
     ) == run  # the record still names the case's inputs
+    # A case run 1's setup built (no phone name, no SUBJECT-2) is never resumed.
+    built = json.loads((out / "built.ok").read_text(encoding="utf-8"))
+    del built["setup"]
+    (out / "built.ok").write_text(json.dumps(built), encoding="utf-8")
+    with pytest.raises(SystemExit, match="earlier version of this run"):
+        hickman_run.main(
+            ["--ufdr", str(ufdr), "--claims", str(claims), "--out", str(out), "--fake"]
+        )
 
 
 def test_a_refused_report_leaves_the_audit_results_and_says_why(ufdr, tmp_path, monkeypatch):
