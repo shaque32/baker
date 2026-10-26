@@ -4,7 +4,8 @@
 # For an AWS g5.xlarge (or g6.xlarge) running "Deep Learning Base OSS Nvidia Driver GPU AMI
 # (Ubuntu 24.04)", logged in as ubuntu, with the claims file copied to the home folder:
 #
-#   [ -d baker ] || git clone -q -b validation-v1 https://github.com/shaque32/baker.git
+#   [ -d baker ] || git clone -q -b validation-v1-run2 https://github.com/shaque32/baker.git
+#   (run 2, eval/validation/PREREGISTERED_v2.md; run 1 used validation-v1)
 #   bash baker/eval/validation/aws_run.sh          # starts the run in the background
 #   bash baker/eval/validation/aws_run.sh status   # how far it is
 #
