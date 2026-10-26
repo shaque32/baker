@@ -208,6 +208,8 @@ def test_numbered_designations_are_different_people(conn):
     with pytest.raises(ReviewError, match="tell them apart"):
         actions.add_person(conn, "subject-2", EXPERT)
     assert L.resolves(L.load(conn).persons, "SUBJECT-2") == [two]
+    # Only a trailing "-<number>" joins the word; other names split as before.
+    assert L.tokens("john-2 @alex92 Jean-Luc 555-0182 x-1-2") == ["john-2", "alex", "jean", "luc"]
     for pid in (one, two):
         actions.remove_person(conn, pid, EXPERT)
 
