@@ -74,6 +74,7 @@ from core.audit._local_model import LocalModel, open_run
 from core.audit.assumptions import TEMPLATES, Proposal, Template, local_window
 from core.audit.checks._common import CaseData, key
 from core.contracts import Claim, ClaimType, ModelRun
+from core.zones import resolve_zone
 
 PROMPT_FILE = "assumptions.md"
 PLACEHOLDERS = frozenset({"claim", "paragraph", "templates", "channels"})
@@ -1395,7 +1396,7 @@ class LocalAssumptionFiller:
 
     def _phone_zone(self, device_ids: list[str]) -> str:
         rows = self.conn.execute("SELECT id, timezone FROM devices ORDER BY id").fetchall()
-        zones = {tz for did, tz in rows if not device_ids or did in device_ids}
+        zones = {resolve_zone(tz) for did, tz in rows if not device_ids or did in device_ids}
         if len(zones) != 1 or None in zones:
             raise Reject("the phones do not share one known time zone; name the phone")
         (tz,) = zones

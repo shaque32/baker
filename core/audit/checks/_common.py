@@ -26,6 +26,7 @@ from core.contracts import (
 )
 from core.ingest import forwarded as forwarded_records
 from core.ingest.cellebrite_common import NUMBERED_COPIES_KEY
+from core.zones import resolve_zone
 
 # Accounts are matched across phones by (namespace, identifier). SMS and phone calls share a
 # number space; every other app is its own.
@@ -110,7 +111,7 @@ class CaseData:
         tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         devices: dict[str, list[tuple[str, str | None]]] = {}
         for did, sid, tz in conn.execute("SELECT id, source_id, timezone FROM devices ORDER BY id"):
-            devices.setdefault(sid, []).append((did, tz))
+            devices.setdefault(sid, []).append((did, resolve_zone(tz)))
         self.sources: dict[str, SourceInfo] = {}
         for sid, fidelity in conn.execute(
             "SELECT id, fidelity FROM sources WHERE kind != 'govdoc' ORDER BY id"

@@ -891,3 +891,17 @@ def test_duration_range_refuses(words):
 
     with pytest.raises(Reject):
         duration_range(words)
+
+
+def test_a_phone_zone_written_the_way_a_ufdr_writes_it_is_read(conn):
+    """A Cellebrite Reader 7.48 UFDR writes the phone's zone as '(UTC-05:00)  New_York
+    (America)'; the validation run on a public phone had every time range refused on it."""
+    (was,) = conn.execute("SELECT timezone FROM devices WHERE id = 'dev:item1'").fetchone()
+    conn.execute(
+        "UPDATE devices SET timezone = '(UTC-05:00)  New_York  (America)' WHERE id = 'dev:item1'"
+    )
+    try:
+        (c03,) = build(conn, "C03")[0]
+        assert c03.params.window.tz == "America/New_York"
+    finally:
+        conn.execute("UPDATE devices SET timezone = ? WHERE id = 'dev:item1'", (was,))
