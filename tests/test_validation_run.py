@@ -127,3 +127,22 @@ def test_a_resume_with_other_inputs_is_refused(ufdr, tmp_path):
     assert (out / "run.json").read_text(
         encoding="utf-8"
     ) == run  # the record still names the case's inputs
+
+
+def test_a_refused_report_leaves_the_audit_results_and_says_why(ufdr, tmp_path, monkeypatch):
+    from core.audit.invariants import InvariantViolation
+    from core.report import html
+
+    def refuse(conn, path, timeline=None):  # noqa: ANN001, ARG001
+        raise InvariantViolation("report says 'x': ...")
+
+    monkeypatch.setattr(html, "write_report", refuse)
+    out = tmp_path / "out"
+    args = ["--ufdr", str(ufdr), "--claims", str(_claims(tmp_path)), "--out", str(out), "--fake"]
+    assert hickman_run.main(args) == 0
+    run = json.loads((out / "run.json").read_text(encoding="utf-8"))
+    assert run["report"] == {"written": False, "error": "report says 'x': ..."}
+    assert sum(run["audit"]["verdicts"].values()) == 3
+    with zipfile.ZipFile(out / "results.zip") as z:
+        assert sorted(z.namelist()) == ["case.db", "progress.log", "run.json"]
+        assert "report not written" in z.read("progress.log").decode()

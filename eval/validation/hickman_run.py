@@ -8,7 +8,8 @@ It builds one case the way an expert would, then runs `mabillon audit` with its 
 3. creates DIR/case.db in local mode, imports the UFDR, imports the affidavit, adds each claim
    to its paragraph, and stipulates that SUBJECT-1 used the TARGET PHONE;
 4. runs the audit with the product's local components (no AI reviewer, no cloud);
-5. writes DIR/report.html, DIR/run.json (versions, machine, times) and DIR/results.zip.
+5. writes DIR/report.html, DIR/run.json (versions, machine, times) and DIR/results.zip. If the
+   report's own checks refuse it, run.json says why and the results go out without it.
 
 The claims file holds claims only, never their answers: the run machine never sees the key.
 Run it again with the same DIR to resume: a built case is kept, and the audit reuses the model
@@ -171,6 +172,25 @@ def audit(out: Path, fake: bool, log) -> dict:  # noqa: ANN001
     }
 
 
+def report(out: Path, log) -> dict:  # noqa: ANN001
+    """Write report.html. A report the invariants refuse is left out and said so: the audit's
+    results are in case.db either way, and the score is read from there."""
+    from core.audit.invariants import InvariantViolation
+    from core.report.html import write_report
+
+    path = out / "report.html"
+    path.unlink(missing_ok=True)  # never ship a report from an earlier attempt
+    conn = connect(out / "case.db")
+    try:
+        write_report(conn, path)
+    except InvariantViolation as e:
+        log(f"report not written: {e}")
+        return {"written": False, "error": str(e)}
+    finally:
+        conn.close()
+    return {"written": True}
+
+
 def model_config() -> dict | None:
     from core.audit._local_model import ModelConfigError, load_config
 
@@ -244,13 +264,8 @@ def main(argv: list[str] | None = None) -> int:
     except ComponentsMissing as e:
         raise SystemExit(f"audit: {e}") from e
     run["finished_utc"] = f"{datetime.now(UTC):%Y-%m-%dT%H:%M:%SZ}"
+    run["report"] = report(a.out, log)
     run_path.write_text(json.dumps(run, indent=2), encoding="utf-8")
-
-    from core.report.html import write_report
-
-    conn = connect(a.out / "case.db")
-    write_report(conn, a.out / "report.html")
-    conn.close()
     plog.close()
     with zipfile.ZipFile(a.out / "results.zip", "w", zipfile.ZIP_DEFLATED) as z:
         for name in RESULT_FILES:
