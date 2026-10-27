@@ -53,3 +53,9 @@ allowed, or `--hours 12` for a shorter one.
 - A link can't be cancelled before it expires. To stop all links at once, delete the API token
   in step 4 (every link made with it stops) and create a new one.
 - Send the installer's SHA-256 with the link, so the examiner can check the download.
+
+## If `--check` says it could not reach R2
+
+Python installed from python.org on a Mac starts without the certificates it needs for HTTPS.
+Run `open "/Applications/Python 3.12/Install Certificates.command"` once (use your Python's
+version number), then try again. Without `--check`, the tool makes the link without contacting R2.

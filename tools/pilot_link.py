@@ -118,6 +118,19 @@ def main(argv: list[str] | None = None) -> int:
             reason = "not in the bucket" if e.code == 404 else f"refused (HTTP {e.code})"
             print(f"{args.key}: {reason}. No link made.", file=sys.stderr)
             return 1
+        except (urllib.error.URLError, OSError) as e:
+            reason = getattr(e, "reason", e)
+            hint = ""
+            if "CERTIFICATE_VERIFY_FAILED" in str(reason):
+                hint = (
+                    ' Python has no web certificates yet; on a Mac run "Install Certificates'
+                    '.command" in your Python folder under /Applications.'
+                )
+            print(
+                f"Could not reach R2 to check {args.key}: {reason}.{hint} No link made.",
+                file=sys.stderr,
+            )
+            return 1
         print(f"Found {args.key} ({size / 1e6:.1f} MB).", file=sys.stderr)
 
     print(r2_link(dict(os.environ), args.key, seconds, now))
