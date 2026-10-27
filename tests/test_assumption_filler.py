@@ -879,6 +879,21 @@ def test_every_template_has_help():
         ("about 30 seconds", (22, 38)),
         ("a minute", (60, 119)),
         ("approximately one hour", (2700, 4500)),
+        # halves, to the half the words state
+        ("a minute and a half", (90, 119)),
+        ("one and a half minutes", (90, 119)),
+        ("about one and a half minutes", (68, 112)),
+        ("half an hour", (1800, 3599)),
+        # two parts, to the second
+        ("two minutes and 30 seconds", (150, 150)),
+        ("1 minute, 30 seconds", (90, 90)),
+        ("forty-five seconds", (45, 45)),
+        ("twenty two minutes", (1320, 1379)),
+        # a bound is an open range: up to a day, or from 1 second
+        ("more than a minute and a half", (91, 86400)),
+        ("at least two minutes", (120, 86400)),
+        ("under two minutes", (1, 119)),
+        ("no more than two minutes", (1, 120)),
     ],
 )
 def test_duration_range(words, rng):
@@ -887,7 +902,20 @@ def test_duration_range(words, rng):
     assert duration_range(words) == rng
 
 
-@pytest.mark.parametrize("words", ["under two minutes", "more than a minute", "a while", "2m"])
+def test_a_bound_the_claim_writes_before_the_models_words_is_read():
+    from core.audit.assumption_filler import duration_range
+
+    assert duration_range("two minutes", "a call lasting more than two minutes") == (121, 86400)
+    assert duration_range("two minutes", "a call lasting two minutes") == (120, 179)
+    with pytest.raises(Reject, match="more than once"):
+        duration_range("two minutes", "one call of about two minutes and one of two minutes")
+
+
+@pytest.mark.parametrize(
+    "words",
+    ["a while", "2m", "a few minutes", "just two minutes", "under a second", "zero seconds",
+     "between one and two minutes", "two minutes and three minutes"],
+)  # fmt: skip
 def test_duration_range_refuses(words):
     from core.audit.assumption_filler import duration_range
 
