@@ -1,55 +1,34 @@
-// Plays the hero demo: three example claims, one after another. Without this script the first
-// example shows in full; with reduced motion the tabs still work but nothing plays on its own.
+// Steps the home page walkthrough as you scroll: each step shows one stage of the example claim.
+// Without this script the panel shows the finished first claim; reduced motion only drops the fades.
 (function () {
-  const demo = document.getElementById("demo");
-  if (!demo) return;
-  const tabs = Array.from(demo.querySelectorAll('[role="tab"]'));
-  const scenes = tabs.map((t) => document.getElementById(t.getAttribute("aria-controls")));
-  const marks = Array.from(demo.querySelectorAll("mark[data-for]"));
-  const audit = demo.querySelector(".audit");
-  const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const letters = ["a", "b", "c"];
-  let current = 0;
-  let timer = null;
-  let visible = true;
-  let userTook = false;
-
-  function show(i) {
-    current = i;
-    tabs.forEach((t, k) => t.setAttribute("aria-selected", String(k === i)));
-    scenes.forEach((s, k) => { s.hidden = k !== i; });
-    marks.forEach((m) => m.classList.toggle("on", m.dataset.for.split(" ").includes(letters[i])));
-    if (still) return;
-    audit.classList.remove("play");
-    void audit.offsetWidth; // restart the CSS animations
-    audit.classList.add("play");
-  }
-
-  function schedule() {
-    clearTimeout(timer);
-    if (still || userTook || !visible) return;
-    timer = setTimeout(() => { show((current + 1) % tabs.length); schedule(); }, 6500);
-  }
-
-  tabs.forEach((t, i) => {
-    t.addEventListener("click", () => { userTook = true; clearTimeout(timer); show(i); });
-    t.addEventListener("keydown", (e) => {
-      if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
-      const n = (i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length;
-      tabs[n].focus();
-      tabs[n].click();
-    });
+  const walk = document.getElementById("walk");
+  if (!walk) return;
+  const steps = Array.from(walk.querySelectorAll(".walk-step"));
+  const parts = Array.from(walk.querySelectorAll("[data-on]")).map((el) => {
+    const [a, b] = el.dataset.on.split("-").map(Number);
+    return { el, from: a, to: b || a };
   });
 
-  // Someone tabbing into the demo is reading it: stop changing it under them.
-  demo.addEventListener("focusin", () => { userTook = true; clearTimeout(timer); });
-
-  if ("IntersectionObserver" in window) {
-    new IntersectionObserver((entries) => {
-      visible = entries[0].isIntersecting;
-      schedule();
-    }, { threshold: 0.3 }).observe(demo);
+  function show(n) {
+    steps.forEach((s) => s.classList.toggle("on", Number(s.dataset.step) === n));
+    parts.forEach((p) => p.el.classList.toggle("on", n >= p.from && n <= p.to));
   }
-  show(0);
-  schedule();
+
+  // The step whose box holds the middle of the viewport is the current one. Measured in pixels on
+  // scroll, since percentage observer margins do not resolve against height in every browser.
+  let current = 0;
+  let queued = false;
+  function update() {
+    queued = false;
+    const mid = window.innerHeight / 2;
+    let n = 1;
+    steps.forEach((s) => { if (s.getBoundingClientRect().top <= mid) n = Number(s.dataset.step); });
+    if (n !== current) { current = n; show(n); }
+  }
+  function queue() { if (!queued) { queued = true; requestAnimationFrame(update); } }
+
+  walk.classList.add("live");
+  update();
+  window.addEventListener("scroll", queue, { passive: true });
+  window.addEventListener("resize", queue);
 })();
