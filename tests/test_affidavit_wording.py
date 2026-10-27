@@ -18,6 +18,7 @@ from core.audit.assumption_filler import (
     _Window,
     check_window,
     stated_windows,
+    unread_zone,
     written_zone,
 )
 from core.contracts import Claim, ClaimStatus, ClaimType
@@ -226,6 +227,8 @@ def test_written_zone_reads_only_a_zone_right_after_a_time():
         "On July 9, 2026, at 9 p.m. BST, PETROV called.",  # a zone outside the US and UTC
         "On July 9, 2026, at 9 p.m. AST, PETROV called.",
         "At 9 p.m. Central European Time on July 9, 2026, PETROV called.",
+        "On July 9, 2026, at 9 p.m. central european time, PETROV called.",  # any case
+        "On July 9, 2026, at 9 p.m. bst, PETROV called.",
     ],
 )
 def test_a_zone_code_does_not_read_is_never_put_in_the_phones_zone(text):
@@ -236,6 +239,38 @@ def test_a_zone_code_does_not_read_is_never_put_in_the_phones_zone(text):
     words = text.split(", PETROV")[0].split(" p.m.")[0] + " p.m."
     with pytest.raises(Reject, match="time zone code does not read"):
         written_zone(words, text)  # the zone right after the model's words, in the claim
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "On July 9, 2026 UTC+3, PETROV sent no messages.",  # not a UTC day
+        "On July 9, 2026 (GMT-5), PETROV sent no messages.",
+        "On July 9, 2026 (BST), PETROV sent no messages.",
+        "On July 9, 2026 (pdt), PETROV sent no messages.",
+    ],
+)
+def test_a_zone_after_a_date_code_does_not_read_refuses_the_day(text):
+    assert stated_windows(text) is None
+    with pytest.raises(Reject, match="time zone code does not read"):
+        written_zone(text)
+    with pytest.raises(Reject, match="time zone code does not read"):
+        written_zone("On July 9, 2026", text)  # the zone right after the model's words
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "On July 9, 2026, at 9 p.m. Sgt. Reyes arrived.",  # title case is never another zone
+        "On July 9, 2026, at 9 p.m. west of the river, PETROV called.",  # an English word
+        "On July 9, 2026, at 9 p.m. local time, PETROV called.",  # the phone's zone, as before
+        "On July 9, 2026, AST called PETROV.",  # after a date, only brackets or an offset count
+        "On July 9, 2026 (Exhibit 4), PETROV called.",
+    ],
+)
+def test_words_after_a_time_or_date_that_are_not_a_zone_still_read(text):
+    assert unread_zone(text) is None
+    assert stated_windows(text) is not None
 
 
 def test_a_zone_in_quoted_words_or_after_no_time_is_not_one_code_must_read():
