@@ -1,4 +1,4 @@
-## 2026-10-27: Synthetic case03 draft for measuring a challenge step (branch)
+## 2026-10-27: Synthetic case03 draft for measuring a challenge step (#151)
 - Changed: new synthetic case03 to measure a forthcoming challenge step (a search for
   counter-evidence on claims close to supported). Seventeen claims in a mock affidavit over two
   Cellebrite-style reports (iPhone printed in UTC+0, Galaxy in local time; 1,265 messages,
@@ -16,7 +16,7 @@
   explain.py directions list it (a builder's report, not a test). `eval/run_pipeline.py` gains a
   case03 entry in DRAFT_GOLD and case03 branches for the reports and the affidavit PDF. Not wired
   into `make eval` or any gate; the challenge-step code was not read or used.
-- Where: branch `claude/project-thread-6i2msb-case03`
+- Where: PR #151 (branch `claude/project-thread-6i2msb-case03`), draft until Arsh signs the key
 - Verified: `tests/test_synthetic_case03.py` (synthetic only): the generator gives the same
   bytes twice (reports included); the committed drafts match a fresh build; every key-evidence,
   counter and decoy record exists after the real Cellebrite Excel importer reads both reports;
