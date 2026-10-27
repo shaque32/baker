@@ -20,7 +20,7 @@
     179) are unchanged.
   - A call length only narrows which calls the time check counts. That check never fails on
     calls (`core/audit/checks/timing.py`), so a call length cannot contradict a claim.
-- Where: branch `claude/project-thread-6i2msb-parsers`, stacked on #152
+- Where: PR #153 (branch `claude/project-thread-6i2msb-parsers`), stacked on #152
 - Verified: `tests/test_assumption_filler.py`, all on made-up wording:
   - `test_duration_range` grows from 5 to 17 cases: halves, two parts, compound number words
     and the four bounds;
@@ -49,4 +49,4 @@
 - Affects: capabilities. More claims can be set up from real affidavit wording.
 - Status doc: pending: section 9 item 8 ("Other gaps"): add "a call length with a half, two
   parts or a bound ('more than a minute and a half') is read by code as a range of seconds
-  (#N)".
+  (#153)".
