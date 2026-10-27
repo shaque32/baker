@@ -5,6 +5,7 @@ Synthetic case01 only; case02 is the held-out case and is never used here."""
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -30,6 +31,7 @@ from core.contracts import (
 )
 from core.hypotheses import explain
 from core.review import audit_log
+from core.review.redecide import redecide
 from eval import run_pipeline as rp
 from eval.run_eval import load_jsonl
 from eval.simulated_expert import (
@@ -196,6 +198,15 @@ def test_each_challenged_claim_logs_every_search_even_one_that_found_nothing(cha
             pipeline.load_evidence(conn, items["evidence"]),
         )
         assert es
+    # ...and every claim close to supported on all its evidence is challenged: an item stored
+    # before the step looks is never missed (Baker Eval on #154).
+    for claim_id, items in run["manifest"].items():
+        if claim_id not in result.challenge and claim_id not in result.unlabeled:
+            assert not challenge.near_supported(
+                pipeline.load_assumptions(conn, items["assumptions"]),
+                pipeline.load_checks(conn, items["checks"]),
+                pipeline.load_evidence(conn, items["evidence"]),
+            ), claim_id
     settled = {d.claim_id for d in result.decisions if d.verdict.value == "contradicted"}
     assert not settled & set(result.challenge)
 
@@ -345,15 +356,50 @@ def test_a_search_that_now_gives_other_records_fails(challenged, monkeypatch):
     assert any(f.level == FAIL and "do not give the records" in f.detail for f in findings)
 
 
-def test_a_change_after_the_run_to_what_the_searches_read_is_noted(tmp_path):
+@pytest.mark.parametrize(
+    ("actor", "action", "payload"),
+    [
+        (EXPERT, "person.add", {"person_id": "person:x", "name": "X"}),
+        # what the Cellebrite, AXIOM and UFDR importers log (Codex on #154)
+        ("system", "import", {"source_id": "src:x"}),
+    ],
+)
+def test_a_change_after_the_run_to_what_the_searches_read_is_noted(
+    tmp_path, actor, action, payload
+):
     conn, comps = _case(tmp_path)
     pipeline.run_audit(conn, comps)
     later = datetime.now(UTC) + timedelta(days=1)
-    audit_log.append(conn, later, EXPERT, "person.add", {"person_id": "person:x", "name": "X"})
+    audit_log.append(conn, later, actor, action, payload)
     findings = _check_challenge(conn)
     assert FAIL not in {f.level for f in findings}
     (note,) = [f for f in findings if f.level == NOTE]
-    assert "not re-run" in note.detail and "person.add after the run" in note.detail
+    assert "not re-run" in note.detail and f"{action} after the run" in note.detail
+    conn.close()
+
+
+def test_after_the_verdicts_are_re_run_the_audits_searches_are_still_checked(tmp_path, monkeypatch):
+    """A verdict re-run reuses the audit's evidence, so its bundle checks that audit's searches
+    (Codex on #154)."""
+    conn, comps = _case(tmp_path)
+    audit = pipeline.run_audit(conn, comps)
+    redecide(conn, EXPERT, clock=lambda: datetime.now(UTC) + timedelta(minutes=1))
+    run = pipeline.view_run(conn)
+    assert run["run_id"] != audit.run_id and run["evidence_from_run"] == audit.run_id
+    findings = verify_bundle(_export(conn, tmp_path / "redecided.zip"))
+    assert not failed(findings), [f for f in findings if f.level == FAIL]
+    (f,) = _challenge_findings(findings)
+    assert f.level == PASS and "give the same records again, with no model" in f.detail
+    assert f"{len(_entries(conn))} searches" in f.detail
+    real = challenge.queries
+    monkeypatch.setattr(
+        challenge,
+        "queries",
+        lambda case, a: [replace(q, record_ids=(*q.record_ids, "msg:x")) for q in real(case, a)],
+    )
+    assert any(
+        f.level == FAIL and "do not give the records" in f.detail for f in _check_challenge(conn)
+    )
     conn.close()
 
 

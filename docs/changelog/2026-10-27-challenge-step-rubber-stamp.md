@@ -24,7 +24,9 @@
     fails if one gives other records, or if a stored item is not a contradicts or complicates
     item of its claim. It notes, and does not re-run, when the bundle leaves out the phone's
     other records (a scoped bundle), when the searches' versions differ, or when the people,
-    links, stipulations, phones, sources or clocks changed after the run.
+    links, stipulations, phones, sources or clocks changed after the run (a phone report
+    imported after the run counts). After the expert re-runs the verdicts, the bundle checks the
+    searches of the audit whose evidence the re-run reused.
   - The eval gains the rubber-stamp simulated expert (`eval/simulated_expert.py`,
     `rubber_stamp_review`, `--expert rubber-stamp`): it accepts every labelled item, for the
     zero-false-supported bar. The signed-key simulated expert stays the merge gate.
@@ -37,18 +39,20 @@
   - No rule, prompt, pin, contract, schema, gold or scorer file changes, and nothing under
     `eval/validation/` or the `validation-v1-run2` tag. Off by default, so no default run changes.
 - Where: PR #154 (branch `claude/project-thread-6i2msb-challenge`)
-- Verified: new `tests/test_challenge.py`, 17 tests on synthetic case01:
+- Verified: new `tests/test_challenge.py`, 19 tests on synthetic case01:
   - which claims are close to SUPPORTED, and that only doubt is kept;
   - the invariant fails on a stored "supports" or "irrelevant" item, and a run whose step would
     store support fails;
   - off by default: no entries and no `challenge` key in the run's configuration;
-  - every challenged claim logs every search, even ones that found nothing, and no claim a
-    failed check settles is challenged;
+  - every challenged claim logs every search, even ones that found nothing, every claim close
+    to SUPPORTED on all its evidence is challenged, and no claim a failed check settles is
+    challenged;
   - a search's complicating label is stored as one of the claim's items, and its supporting
     label is not;
   - verify-bundle re-runs every search on a full bundle and passes, notes a scoped bundle and a
-    change after the run, and fails a search that gives other records, entries for a run that
-    did not run the step, and a stored item that is not doubt;
+    change after the run (an expert's or an importer's), checks the audit's searches after a
+    verdict re-run, and fails a search that gives other records, entries for a run that did
+    not run the step, and a stored item that is not doubt;
   - the rubber-stamp expert accepts every labelled item through the expert actions, and the
     eval runs the step under it.
   - new `tests/test_fallible_expert.py`, 9 tests: the draw is fixed by seed and item and near

@@ -1283,6 +1283,7 @@ _SEARCH_INPUTS = frozenset(
         links.PROPOSE_ACTION,
         "device.names",
         "case.import",
+        "import",  # what each phone-report importer logs (cellebrite_common, axiom, ufdr)
         "import.format",
         "timeline.settings",
     }
@@ -1290,26 +1291,60 @@ _SEARCH_INPUTS = frozenset(
 _QUERY_KEYS = ("kind", "assumption_ids", "searched", "record_ids", "total")
 
 
+def _evidence_run(conn: sqlite3.Connection, log: list, run: dict[str, Any]) -> dict[str, Any]:
+    """The audit whose searches and labels the run shows: the run itself, or for a verdict
+    re-run the audit it took its evidence from (its own manifest, configuration and start)."""
+    source = run.get("evidence_from_run", run["run_id"])
+    if source == run["run_id"]:
+        return run
+    payload = next(
+        (
+            p
+            for _s, _a, _c, act, p in reversed(log)
+            if act == pipeline.RUN_ACTION and p.get("run_id") == source
+        ),
+        {},
+    )
+    row = conn.execute(
+        "SELECT started_at_utc, config_json FROM pipeline_runs WHERE id = ?", (source,)
+    ).fetchone()
+    if row is None:  # _run_rows has failed it; check nothing against a run that is not there
+        return {
+            "run_id": source,
+            "manifest": {},
+            "config": {},
+            "started_at_utc": run["started_at_utc"],
+        }
+    return {
+        "run_id": source,
+        "manifest": payload.get("manifest") or {},
+        "config": json.loads(row[1]),
+        "started_at_utc": row[0],
+    }
+
+
 def _challenge(
     conn: sqlite3.Connection, run: dict[str, Any], manifest: dict[str, Any], out: _Out
 ) -> None:
-    """The run's challenge.query entries: what each search stored is doubt on its own claim,
-    and the same searches on these tables give the same records. A search is code, so no model
-    is needed; it needs every record it searched, so a scoped bundle is noted, not re-run."""
+    """The challenge.query entries of the audit the run's evidence came from (itself, or the
+    one a verdict re-run reused): what each search stored is doubt on its own claim, and the
+    same searches on these tables give the same records. A search is code, so no model is
+    needed; it needs every record it searched, so a scoped bundle is noted, not re-run."""
     log = _log(conn)
+    source = _evidence_run(conn, log, run)
     entries = [
         p
         for _s, _a, _c, act, p in log
-        if act == challenge.QUERY_ACTION and p.get("run_id") == run["run_id"]
+        if act == challenge.QUERY_ACTION and p.get("run_id") == source["run_id"]
     ]
     if not entries:
         return
-    if "challenge" not in run["config"]:
+    if "challenge" not in source["config"]:
         out.add(FAIL, "challenge", "the log has challenge searches for a run that did not run them")
         return
     bad = 0
     for p in entries:
-        items = run["manifest"].get(p.get("claim_id"), {}).get("evidence", [])
+        items = source["manifest"].get(p.get("claim_id"), {}).get("evidence", [])
         stored = list(p.get("stored") or [])
         rows = dict(
             conn.execute(
@@ -1332,7 +1367,7 @@ def _challenge(
         isinstance(scope, dict) and "records" in (scope.get("included") or [])
     )
     versions = {(p.get("challenge"), p.get("explain")) for p in entries}
-    started = _dt(run["started_at_utc"])
+    started = _dt(source["started_at_utc"])
     changed = sorted(
         {act for _s, at, _c, act, _p in log if act in _SEARCH_INPUTS and _dt(at) > started}
     )
@@ -1364,7 +1399,7 @@ def _challenge(
         for p in entries:
             by_claim[str(p.get("claim_id"))].append({k: p.get(k) for k in _QUERY_KEYS})
         for claim_id, got in sorted(by_claim.items()):
-            ids = run["manifest"].get(claim_id, {}).get("assumptions", [])
+            ids = source["manifest"].get(claim_id, {}).get("assumptions", [])
             want = [
                 q.payload() for q in challenge.queries(case, pipeline.load_assumptions(conn, ids))
             ]
