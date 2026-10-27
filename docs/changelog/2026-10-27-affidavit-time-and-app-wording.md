@@ -1,4 +1,4 @@
-## 2026-10-27: Assumption filler reads real affidavit times, written zones and export app names
+## 2026-10-27: Assumption filler reads real affidavit times, written zones and export app names (#150)
 - Changed: run 1 of the real-export validation tested 0 of 106 claims, and its refusals showed
   wording the filler's code could not read. This change is code only. No model, prompt, rule,
   contract, schema, gold, scorer or `eval/validation/` file changes.
@@ -27,7 +27,7 @@
       both "Wickr Pro" and "Wickr Me", "Wickr" is refused as ambiguous.
     - No message count is read from "Native Messages" by an alias, because it holds iMessage
       and SMS together and a count could include messages the claim does not name.
-- Where: branch `claude/project-thread-6i2msb-coverage`
+- Where: PR #150 (branch `claude/project-thread-6i2msb-coverage`)
 - Verified: new `tests/test_affidavit_wording.py`, 38 tests on synthetic case01 with made-up
   wording:
     - the date-first forms and written zones, each also passing `check_window`;
@@ -69,8 +69,8 @@
 - Status doc: pending: two edits.
   - Section 7, "Real-export validation", run 1 bullet: after "run 1's 43 model-side refusals
     are not fixed" add "; the date-first time wording, written time zones and export app names
-    behind many of them are read by code since #N (unmeasured until a run under a new signed
+    behind many of them are read by code since #150 (unmeasured until a run under a new signed
     plan)".
   - Section 9 item 8 ("Other gaps"): add "a time zone written beside a claim's time must match
     the phone's zone at that time, or the claim's range is refused; 'between approximately X
-    and Y', 24-hour times and zones other than US and UTC are left to the model (#N)".
+    and Y', 24-hour times and zones other than US and UTC are left to the model (#150)".
