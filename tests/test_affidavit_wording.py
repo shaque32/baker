@@ -212,9 +212,35 @@ def test_written_zone_reads_only_a_zone_right_after_a_time():
     assert written_zone("On July 3, 2026 (EST)") == "EST"
     assert written_zone("On July 3, 2026", "On July 3, 2026, EST, X called") == "EST"
     assert written_zone("On July 3, 2026", "On July 3, 2026, PT called") is None  # initials
-    assert written_zone("at 9 p.m. est") is None  # abbreviations only in capitals
     with pytest.raises(Reject, match="more than one time zone"):
         written_zone("between 9 p.m. EDT and 10 p.m. CDT")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "On July 9, 2026, at 9 p.m. pdt, PETROV called.",  # an abbreviation not in capitals
+        "At 9 P.M. (est) on January 9, 2026, PETROV called.",
+        "On July 9, 2026, at 9 p.m. UTC+3, PETROV called.",  # an offset, not UTC
+        "On July 9, 2026, at 9:15 p.m. GMT-5, PETROV called.",
+        "On July 9, 2026, at 9 p.m. BST, PETROV called.",  # a zone outside the US and UTC
+        "On July 9, 2026, at 9 p.m. AST, PETROV called.",
+        "At 9 p.m. Central European Time on July 9, 2026, PETROV called.",
+    ],
+)
+def test_a_zone_code_does_not_read_is_never_put_in_the_phones_zone(text):
+    # Read in the phone's zone instead, the time would be hours off.
+    assert stated_windows(text) is None
+    with pytest.raises(Reject, match="time zone code does not read"):
+        written_zone(text)
+    words = text.split(", PETROV")[0].split(" p.m.")[0] + " p.m."
+    with pytest.raises(Reject, match="time zone code does not read"):
+        written_zone(words, text)  # the zone right after the model's words, in the claim
+
+
+def test_a_zone_in_quoted_words_or_after_no_time_is_not_one_code_must_read():
+    assert stated_windows('On July 9, 2026, at 9 p.m., PETROV wrote "10 p.m. pdt?"') is not None
+    assert written_zone("At 9 p.m. EDT on July 9, 2026, the BST team met") == "EDT"
 
 
 # ---------------------------------------------------------------- the zone, checked by code
