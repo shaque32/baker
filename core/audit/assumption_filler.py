@@ -17,15 +17,23 @@ the document or the case data. It fails closed at every step:
   handles drops the proposal. A handle the model wrote as an account ("@northstar") is kept as
   a handle the same way. Zero or several matches for any other value drop it too.
 - A channel must be named in the claim ("Telegram", or "texted" for SMS, "call" for calls).
-  A model never narrows a search to a channel the document did not name.
+  A model never narrows a search to a channel the document did not name. An export's own
+  name for an app ("Wickr Pro", "Kik Messenger", "Native Messages") is named by the word a
+  document uses for it ("Wickr", "Kik", "iMessage"; `APP_ALIASES`) only when no other app in
+  the case goes by that word. A count is never read from an app that holds more than the
+  word names (iOS "Native Messages" holds iMessage and SMS together).
 - A call's stated length ("about two minutes") is turned into seconds by code.
 - A count's number must appear in the claim, and its comparison ("at least", "at most",
   exactly) is read from the claim's words by code, not taken from the model.
 - A time range must match the dates and times the document states (see `check_window`).
-  The zone is the phone's zone from the case data; UTC only if the document says UTC.
+  The zone is the phone's zone from the case data; UTC only if the document says UTC. A
+  zone the document writes beside the time ("11:11 a.m. EDT") is read by code, never taken
+  from the model, and the phone's zone must have its offset then, or the range is refused.
   Code reads the claim's own plain dates and times (`stated_windows`: "On March 12, 2026",
-  "between March 20 and March 23, 2026", "At about 7:58 p.m. on March 9, 2026") and builds
-  those ranges itself, the way the signed case01 sheet writes them. When the model's range
+  "between March 20 and March 23, 2026", "At about 7:58 p.m. on March 9, 2026", "On April
+  30, 2023, at approximately 11:11 a.m. EDT") and builds those ranges itself, the way the
+  signed case01 sheet writes them. A time of day it cannot read is never widened to the
+  whole day. When the model's range
   is refused or missing, the range the claim states on the same day (or its only one) is used
   instead, and still goes through `check_window`. A quoted message the claim dates gets its
   time assumption from code when the model gave none: the sender's parties and words with the
@@ -132,6 +140,19 @@ CHANNEL_WORDS: dict[str, tuple[str, ...]] = {
     "sms": ("sms", "text message", "texted", "texts", "text"),
     "call": ("call", "called", "calls", "phoned"),
 }
+# Words a document uses for an app that real exports name another way (a UFDR says "Wickr
+# Pro", "Kik Messenger", "Native Messages"). Such a word names the export's app only when no
+# other app in the case goes by it too.
+APP_ALIASES: dict[str, tuple[str, ...]] = {
+    "wickr pro": ("wickr",),
+    "wickr me": ("wickr",),
+    "kik messenger": ("kik",),
+    "microsoft teams": ("teams",),
+    "native messages": ("imessage", "imessages", "mms", *CHANNEL_WORDS["sms"]),
+}
+# Apps that hold more than the word that names them: iOS "Native Messages" holds iMessage and
+# SMS together, so a count on it could count messages the claim does not name.
+WIDER_APPS = frozenset({"native messages"})
 
 
 class FillerDrop(BaseModel):
@@ -357,6 +378,103 @@ _BARE_HOUR_RE = re.compile(
 
 OPEN_START = ("before", "prior to", "until", "up to")
 OPEN_END = ("after", "since", "onward", "onwards", "later")
+
+# Zones a document writes beside a time ("11:11 a.m. EDT"). An abbreviation is its fixed UTC
+# offset. A generic name ("ET", "Eastern Time") is the zone whose offset on that day it means.
+# The phone's zone must have that offset at the time (`LocalAssumptionFiller._read_zone`).
+_H = timedelta(hours=1)
+WRITTEN_ZONES: dict[str, timedelta | str] = {
+    "utc": timedelta(0),
+    "gmt": timedelta(0),
+    "est": -5 * _H,
+    "edt": -4 * _H,
+    "cst": -6 * _H,
+    "cdt": -5 * _H,
+    "mst": -7 * _H,
+    "mdt": -6 * _H,
+    "pst": -8 * _H,
+    "pdt": -7 * _H,
+    "akst": -9 * _H,
+    "akdt": -8 * _H,
+    "hst": -10 * _H,
+    "eastern standard time": -5 * _H,
+    "eastern daylight time": -4 * _H,
+    "central standard time": -6 * _H,
+    "central daylight time": -5 * _H,
+    "mountain standard time": -7 * _H,
+    "mountain daylight time": -6 * _H,
+    "pacific standard time": -8 * _H,
+    "pacific daylight time": -7 * _H,
+    "et": "America/New_York",
+    "ct": "America/Chicago",
+    "mt": "America/Denver",
+    "pt": "America/Los_Angeles",
+    "eastern time": "America/New_York",
+    "central time": "America/Chicago",
+    "mountain time": "America/Denver",
+    "pacific time": "America/Los_Angeles",
+}
+# Abbreviations only in capitals ("est" is not a zone); spelled-out names in any case.
+_ZONE = (
+    r"(?:(?-i:UTC|GMT|AKST|AKDT|[ECMP][SD]T|HST|[ECMP]T)"
+    r"|(?:eastern|central|mountain|pacific)(?:\s+(?:standard|daylight))?\s+time)\b"
+)
+_CLOCK_END = r"(?:\b[ap]\.?m\.?|\bnoon|\b\d{1,2}:\d{2})"
+_TIMED_ZONE_RE = re.compile(rf"{_CLOCK_END}\s*\(?(?P<z>{_ZONE})", re.IGNORECASE)
+_ENDS_TIMED_RE = re.compile(rf"{_CLOCK_END}\s*$", re.IGNORECASE)
+_ENDS_DATE_RE = re.compile(r"\b(?:19|20)\d\d\s*$")
+
+
+def _zone_opt(name: str) -> str:
+    """An optional zone right after a time: "11:11 a.m. EDT", "11:11 a.m. (EDT)"."""
+    return rf"(?:\s*\(?(?P<{name}>{_ZONE})\)?)?"
+
+
+def _hm(off: timedelta | None) -> str:
+    """'-04:00' for an offset of minus four hours."""
+    if off is None:
+        return "?"
+    mins = int(off.total_seconds() // 60)
+    return f"{'-' if mins < 0 else '+'}{abs(mins) // 60:02d}:{abs(mins) % 60:02d}"
+
+
+def zone_offset(zone: str, at: datetime) -> timedelta:
+    """The UTC offset a zone the document writes means at this wall-clock time."""
+    z = WRITTEN_ZONES[" ".join(zone.split()).casefold()]
+    if isinstance(z, timedelta):
+        return z
+    return at.replace(tzinfo=ZoneInfo(z)).utcoffset() or timedelta(0)
+
+
+def written_zone(as_written: str, claim: str = "") -> str | None:
+    """The zone the range's own words give its times in, or None when they give none. Only a
+    zone right after a time ("11:11 a.m. EDT", "noon (ET)") or a date ("March 3, 2026 (UTC)")
+    counts, and so does one the claim writes right after the range's words ("... 11:11 a.m."
+    then " EDT" in the claim). Raises Reject when they give more than one."""
+    plain = _unquoted(as_written)
+    found = [m.group("z") for m in _TIMED_ZONE_RE.finditer(plain)]
+    for d in _DATE_RE.finditer(plain):
+        zm = _DATE_ZONE_RE.match(plain[d.end() :])
+        if zm is not None:
+            found.append(zm.group("z") or zm.group("z2"))
+    text, words = _nfc(claim), _nfc(as_written.strip())
+    if not found and words:
+        timed = _ENDS_TIMED_RE.search(words)
+        dated = _ENDS_DATE_RE.search(words)
+        i = text.find(words) if timed or dated else -1
+        while i >= 0:
+            rest = text[i + len(words) :]
+            zm = (
+                re.match(rf"\s*\(?(?P<z>{_ZONE})", rest, re.IGNORECASE)
+                if timed
+                else _DATE_ZONE_RE.match(rest)
+            )
+            if zm is not None:
+                found.append(zm.group("z") or (zm.groupdict().get("z2") or ""))
+            i = text.find(words, i + 1)
+    if len({str(WRITTEN_ZONES[" ".join(z.split()).casefold()]) for z in found}) > 1:
+        raise Reject("the range names more than one time zone")
+    return found[0] if found else None
 
 
 @dataclass(frozen=True)
@@ -608,10 +726,31 @@ ABOUT_MINUTES = 8  # "at about 7:58 p.m." is 7:50 to 8:05 (the signed case01 she
 # the time is tied to the date right after it: "9 p.m. on March 3", "9 p.m. on Monday, March 3"
 _TIED = rf"\s*,?\s*(?:on\s+)?(?:(?P<wd>{_WD_RE}),?\s+)?$"
 _AT_TIME_RE = re.compile(
-    rf"\b(?:at\s+)?(?P<about>about\s+|approximately\s+|around\s+)?{_clock_re('t')}{_TIED}",
+    rf"\b(?:at\s+)?(?P<about>about\s+|approximately\s+|around\s+)?{_clock_re('t')}"
+    rf"{_zone_opt('z')}{_TIED}",
     re.IGNORECASE,
 )
-_AT_RANGE_RE = re.compile(_RANGE_TIME + _TIED, re.IGNORECASE)
+_AT_RANGE_RE = re.compile(_RANGE_TIME + _zone_opt("z") + _TIED, re.IGNORECASE)
+# the date first, then its time: "On April 30, 2023, at approximately 11:11 a.m. EDT"
+_THEN = r"^\s*,?\s*"
+_THEN_TIME_RE = re.compile(
+    rf"{_THEN}(?P<at>at\s+)?(?P<about>(?:about|approximately|around)\s+)?{_clock_re('t')}"
+    rf"{_zone_opt('z')}",
+    re.IGNORECASE,
+)
+_THEN_RANGE_RE = re.compile(_THEN + _RANGE_TIME + _zone_opt("z"), re.IGNORECASE)
+# a time with no a.m. or p.m. right after the date ("On May 2, 2026, between 9 and 11, ..."),
+# not a count ("between 10 and 12 messages")
+_THEN_LOOSE_RE = re.compile(
+    rf"{_THEN}(?:at|between|from)\s+(?:about\s+|approximately\s+|around\s+)?\d{{1,2}}"
+    r"(?:\s*(?:and|to|until|till|through|thru|-|–)\s*\d{1,2})?"
+    r"(?:\s*(?:hours|hrs|o'clock))?\s*(?:[,.;]|$)",
+    re.IGNORECASE,
+)
+# every time of day the text writes, so one that no range read is never widened to a day
+_ANY_TIME_RE = re.compile(
+    rf"{_TIME_RE.pattern}|{_TIME24_RE.pattern}|\b(?:noon|midnight)\b", re.IGNORECASE
+)
 # a time just before the one read, joined to it: a range code did not read as one
 _JOINED_RE = re.compile(r"(?:and|to|until|till|through|thru|-|–)\s*$", re.IGNORECASE)
 # a time with no a.m. or p.m. tied to the date ("between 9 and 11 on", "at 21:00 on")
@@ -621,15 +760,25 @@ _LOOSE_TIME_RE = re.compile(
     re.IGNORECASE,
 )
 _LEAD_RE = re.compile(r"\b(?:on|between|from)\s+$", re.IGNORECASE)
+# after a plain date, a zone in brackets, or an abbreviation that is never initials ("ET" or
+# "PT" after a date may be a person)
+_DATE_ZONE_RE = re.compile(
+    rf"\s*(?:\((?P<z>{_ZONE})\)|,?\s*(?P<z2>(?-i:UTC|GMT|AKST|AKDT|[ECMP][SD]T|HST))\b)",
+    re.IGNORECASE,
+)
+_FROM_RE = re.compile(r"\b(?:between|from)\s+$", re.IGNORECASE)
+_JOIN_AHEAD_RE = re.compile(r"\s*(?:(?:and|to|until|till|through|thru)\b|[-–])", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
 class StatedWindow:
-    """A plain range the claim states in its own words: wall clock, end exclusive."""
+    """A plain range the claim states in its own words: wall clock, end exclusive. `zone` is
+    the zone the words give the time in ("EDT"), or None when they give none."""
 
     raw: str
     start: datetime
     end: datetime
+    zone: str | None = None
 
 
 def stated_windows(text: str, context: str = "") -> list[StatedWindow] | None:
@@ -640,14 +789,22 @@ def stated_windows(text: str, context: str = "") -> list[StatedWindow] | None:
     - "March 12, 2026": the whole day.
     - "March 20 and March 23, 2026" or "March 10 through March 31, 2026": first day to the
       end of the last.
-    - "2:31 a.m. on March 5, 2026": that minute. "about 7:58 p.m." is 8 minutes either side.
-      "noon" is 12:00. "midnight" is not read: it may be the start or the end of the day.
-    - "Between 9 and 11 p.m. on May 2, 2026" or "From 9 p.m. to 11 p.m. ...": 9:00 p.m.
-      through the 11:00 p.m. minute. A bare first hour takes the end's a.m. or p.m.; a range
-      that would cross midnight, or carries "about", is not read.
+    - "2:31 a.m. on March 5, 2026" or "On March 5, 2026, at 2:31 a.m.": that minute.
+      "about 7:58 p.m." (or "approximately", "around") is 8 minutes either side. "noon" is
+      12:00. "midnight" is not read: it may be the start or the end of the day.
+    - "Between 9 and 11 p.m. on May 2, 2026", "From 9 p.m. to 11 p.m. ..." or "On May 2, 2026,
+      between 9 and 11 p.m.": 9:00 p.m. through the 11:00 p.m. minute. A bare first hour takes
+      the end's a.m. or p.m.; a range that would cross midnight, or carries "about", is not
+      read.
+    - A zone written right after the time ("11:11 a.m. EDT", "(ET)", "Eastern Time") is kept
+      in `zone`, for the filler to check against the phone's zone.
+    - Any time of day the text writes outside quoted words that no range above read (a
+      second time, "beginning at", "after 10 a.m.") makes the whole answer None: a time is
+      never widened to the whole day.
     """
     years = {int(y) for y in _YEAR_RE.findall(text + " " + context)}
     out: list[StatedWindow] = []
+    read: list[tuple[int, int]] = []  # the spans of `plain` the ranges were read from
     plain = _unquoted(text)  # a date or time in quoted words is the message's, not the claim's
     if weekday_mismatch(plain, years):
         return None  # a weekday that is not the date's: never pick one
@@ -673,29 +830,48 @@ def stated_windows(text: str, context: str = "") -> list[StatedWindow] | None:
         if d2 < d1:
             return None
         start_i, end_i = m.start(), m.end()
+        after = plain[m.end() : m.end() + 96]
         rng = _AT_RANGE_RE.search(before)
         at = _AT_TIME_RE.search(before) if rng is None else None
+        then: re.Match[str] | None = None
+        if rng is None and at is None:
+            rng = then = _THEN_RANGE_RE.match(after)
+            if rng is None:
+                at = then = _THEN_TIME_RE.match(after)
+                if at is not None and not (at.group("at") or at.group("about")):
+                    at = then = None  # "On May 2, 2026, 9 p.m." ties nothing
         if (rng is not None or at is not None) and m.group(5):
             return None  # a time of day on a range of dates: leave it to the model
         tied = rng or at
-        if tied is not None and tied.group("wd"):
+        if tied is not None and then is None and tied.group("wd"):
             if _WEEKDAYS.index(tied.group("wd").lower()) != d1.weekday():
                 return None  # the weekday does not match the date: never pick one
+        if then is not None:
+            end_i = m.end() + then.end()
+            if (
+                _JOINED_RE.search(before)
+                or _FROM_RE.search(before)
+                or _JOIN_AHEAD_RE.match(plain[end_i:])
+            ):
+                return None  # "between March 20 at 9 p.m. and March 21 at 1 a.m.": not read
+            lead = _LEAD_RE.search(before)
+            if lead is not None:
+                start_i = m.start() - len(before) + lead.start()
+        elif tied is not None:
+            start_i = m.start() - len(before) + tied.start()
         if rng is not None:
             times = _time_range(rng)
             if times is None:
                 return None
-            start_i = m.start() - len(before) + rng.start()
             start = datetime.combine(d1, times[0])
             end = datetime.combine(d1, times[1]) + timedelta(minutes=1)  # through the end minute
         elif at is not None:
-            if _JOINED_RE.search(before[: at.start()]):
+            if then is None and _JOINED_RE.search(before[: at.start()]):
                 return None  # "about 9 p.m. and 11 p.m. on ...": a range not read as one
             tt = _clock(at.group("th"), at.group("tm"), at.group("tap"), at.group("tw"))
             if tt is None:
                 return None
             t = datetime.combine(d1, tt)
-            start_i = m.start() - len(before) + at.start()
             if at.group("about"):
                 start, end = (
                     t - timedelta(minutes=ABOUT_MINUTES),
@@ -704,18 +880,25 @@ def stated_windows(text: str, context: str = "") -> list[StatedWindow] | None:
             else:
                 start, end = t, t + timedelta(minutes=1)
         else:
-            if _LOOSE_TIME_RE.search(before):
+            if _LOOSE_TIME_RE.search(before) or _THEN_LOOSE_RE.match(after):
                 return None  # a time code cannot read: never widen it to the whole day
-            if time_mentions(plain[m.end() : m.end() + 24]):
-                return None  # "March 5 at 2:31 a.m.": leave it to the model and check_window
             lead = _LEAD_RE.search(before)
             if lead is not None:
                 start_i = m.start() - len(before) + lead.start()
             start = datetime.combine(d1, time(0, 0))
             end = datetime.combine(d2 + timedelta(days=1), time(0, 0))
-        out.append(StatedWindow(text[start_i:end_i].strip(), start, end))
+        zone = tied.group("z") if tied is not None else None
+        if zone is None and then is None:  # right after the date: "on March 3, 2026 (UTC)"
+            zm = _DATE_ZONE_RE.match(plain[end_i:])
+            if zm is not None:
+                zone, end_i = zm.group("z") or zm.group("z2"), end_i + zm.end()
+        read.append((start_i, end_i))
+        out.append(StatedWindow(text[start_i:end_i].strip(), start, end, zone))
     if _NUM_DATE_RE.search(text):
         return None  # numeric dates (3/12/2026) may be either order; never guess
+    for t in _ANY_TIME_RE.finditer(plain):
+        if not any(a <= t.start() and t.end() <= b for a, b in read):
+            return None  # a time no range was read from: never widen it to the whole day
     return out
 
 
@@ -1112,7 +1295,7 @@ class LocalAssumptionFiller:
             if writer is not None:
                 params["person_ids"] = [writer]
 
-        channels = self._channels(claim.text, p.channels)
+        channels = self._channels(claim.text, p.channels, tpl.id)
         if channels:
             params["channels"] = channels
 
@@ -1185,8 +1368,9 @@ class LocalAssumptionFiller:
             raise Reject("the time range is not one the claim plainly states")
         (w,) = stated
         check_window(w.start, w.end, w.raw, claim.text, para, template_id)
+        tz = self._read_zone(w.zone, w.start, w.end, device_ids)
         try:
-            return local_window(w.start, w.end, self._phone_zone(device_ids), w.raw)
+            return local_window(w.start, w.end, tz, w.raw)
         except ValueError as e:
             raise Reject(str(e)) from None
 
@@ -1346,7 +1530,7 @@ class LocalAssumptionFiller:
             raise Reject(f"phone {phone!r} matches {len(hits)} devices")
         return hits[0]
 
-    def _channels(self, claim_text: str, names: list[str]) -> list[str]:
+    def _channels(self, claim_text: str, names: list[str], template_id: str = "") -> list[str]:
         vocab = {c.casefold(): c for c in self.channels()}
         out = []
         for name in names:
@@ -1355,9 +1539,33 @@ class LocalAssumptionFiller:
                 raise Reject(f"channel {name!r} is not an app in this case")
             words = CHANNEL_WORDS.get(canon.casefold(), (canon.casefold(),))
             if not any(_has_word(claim_text, w) for w in words):
-                raise Reject(f"the claim does not name the channel {canon!r}")
+                self._alias(claim_text, canon, vocab, template_id)
             out.append(canon)
         return sorted(set(out), key=str.lower)
+
+    @staticmethod
+    def _alias(claim_text: str, canon: str, vocab: dict[str, str], template_id: str) -> None:
+        """Raises Reject unless the claim names this app by a word APP_ALIASES gives it, and
+        no other app in the case goes by that word."""
+        said = [w for w in APP_ALIASES.get(canon.casefold(), ()) if _has_word(claim_text, w)]
+        if not said:
+            raise Reject(f"the claim does not name the channel {canon!r}")
+        for w in said:
+            others = sorted(
+                c
+                for k, c in vocab.items()
+                if c != canon
+                and (k == w or w in APP_ALIASES.get(k, ()) or w in CHANNEL_WORDS.get(k, ()))
+            )
+            if others:
+                raise Reject(
+                    f"the claim's {w!r} could be {canon!r} or {', '.join(map(repr, others))}"
+                )
+        if canon.casefold() in WIDER_APPS and template_id == "message_count":
+            raise Reject(
+                f"{canon!r} holds more than the claim's {said[0]!r} names, so a count on it"
+                " is not read"
+            )
 
     def _accounts(self, acc: _Account, device_ids: list[str]) -> set[str]:
         app = acc.app.strip().casefold()
@@ -1387,17 +1595,42 @@ class LocalAssumptionFiller:
             raise Reject("window start or end is not 'YYYY-MM-DDTHH:MM'") from None
         if start.tzinfo is not None or end.tzinfo is not None:
             raise Reject("window times must be wall-clock, without an offset")
-        if w.zone == "UTC":
-            if not re.search(r"\b(UTC|GMT)\b", w.as_written):
-                raise Reject("the range does not say UTC")
-            tz = "UTC"
-        else:
-            tz = self._phone_zone(device_ids)
+        # The zone comes from the document's words, never the model's: "11:11 a.m. EDT" is
+        # read in EDT even when the model says UTC, and check_window then holds the model's
+        # times to the times written.
+        zone = written_zone(w.as_written, claim_text)
+        if zone is None and re.search(r"\b(UTC|GMT)\b", w.as_written):
+            zone = "UTC"  # "on March 3, 2026 (UTC)": a whole day in UTC
+        if zone is None and w.zone == "UTC":
+            raise Reject("the range does not say UTC")
         check_window(start, end, w.as_written, claim_text, para, template_id)
+        tz = self._read_zone(zone, start, end, device_ids)
         try:
             return local_window(start, end, tz, w.as_written.strip())
         except ValueError as e:
             raise Reject(str(e)) from None
+
+    def _read_zone(
+        self, zone: str | None, start: datetime, end: datetime, device_ids: list[str]
+    ) -> str:
+        """The zone a range's wall-clock times are read in. UTC when the document writes UTC
+        or GMT beside the time. Otherwise the phone's zone, which must have the offset any
+        zone the document writes means ("EDT" is UTC-04:00) at both ends of the range: a
+        claim that says EST on a day New York was on EDT is refused, never read either way."""
+        if zone is not None and zone.strip().upper() in ("UTC", "GMT"):
+            return "UTC"
+        tz = self._phone_zone(device_ids)
+        if zone is None:
+            return tz
+        for t in (start, end - timedelta(minutes=1)):
+            want = zone_offset(zone, t)
+            got = t.replace(tzinfo=ZoneInfo(tz)).utcoffset()
+            if got != want:
+                raise Reject(
+                    f"the claim gives the time in {zone} (UTC{_hm(want)}), but the phone's zone"
+                    f" {tz} is at UTC{_hm(got)} then"
+                )
+        return tz
 
     def _phone_zone(self, device_ids: list[str]) -> str:
         rows = self.conn.execute("SELECT id, timezone FROM devices ORDER BY id").fetchall()
