@@ -22,7 +22,7 @@
   only change to existing output is that an empty base now prints "0 of 0" instead of "n/a".
   This must merge before the tag `validation-v1-run2`, so that it exists before run 2's
   results do, as blind analysis requires.
-- Where: PR #142
+- Where: main (#142, merged 2026-10-27)
 - Verified: tests/test_validation_score.py:
   - coverage on the synthetic run (3 of 3 tested, under the minimum, same bases);
   - refusal kinds from real filler wording: the closing summary ignored, a refusal's own

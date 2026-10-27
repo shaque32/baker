@@ -17,7 +17,7 @@
   proposals. The validation run driver (eval/validation/hickman_run.py) now sets the case up
   as the affidavit defines it: the phone is named TARGET PHONE, and every other SUBJECT-<n>
   the claims text names is added as a person, with no stipulation or link.
-- Where: PR #139
+- Where: main (#139, merged 2026-10-26)
 - Verified: tests/test_device_names.py (filler resolves "TARGET PHONE" only after the expert
   names the device; replace and clear; refusals for another device's id, source id or name,
   empty and long names, non-experts, unknown devices; the report line passes the word check).
@@ -30,6 +30,4 @@
   they stay proposals for the expert. Bundle verification checks the device.names entries'
   hash chain but does not replay them.
 - Affects: capabilities (claims that name a phone the way the document does; numbered people)
-- Status doc: pending: under the case setup capabilities, add "The expert can record the
-  document's names for each phone (TARGET PHONE, Item 1); the audit matches claims that use
-  them, and every report lists them as the expert's statement."
+- Status doc: applied 2026-10-27

@@ -8,7 +8,7 @@
   unexpected error with a plain 500 that points to Help, and keeps the error's type and frames in
   memory only. New docs: `docs/ONE_PAGER.md` (one-page explainer, no speed or accuracy
   claims) and `docs/SUPPORT.md`. Why: pilot gate 17 in `docs/PILOT_GATES.md`.
-- Where: PR #92
+- Where: main (#92, merged 2026-10-21)
 - Verified: `tests/test_bug_report.py` on a synthetic case01 with marked values in case name,
   expert name, file names, a claim, a job message and an error message: none appears in the
   report, the Help page or the CLI output, nor any input SHA-256 prefix or 32+ hex run.
@@ -20,10 +20,4 @@
 - Affects: capabilities (Help tab, bug report); privacy (a new export that holds no case data;
   Baker still sends nothing); customer-facing claims (the explainer; no new speed or accuracy
   claim).
-- Status doc: pending: in the capabilities list add "Pilot support: a Help tab on every screen
-  page with the support contact, a short what-Baker-does, and a bug report shown in full before
-  it is saved (`/help/bug-report.json`, `baker bug-report`), built from an allowlist with no case
-  names, paths, text or hashes (`core/support/`). Recent unexpected errors are kept in memory
-  only, without messages; no log file. The support address is support@getmabillon.com
-  (`core/support/contact.py`)." Gate 17 is marked met in `docs/PILOT_GATES.md` in this PR; add
-  one to the met-gate count.
+- Status doc: applied 2026-10-27

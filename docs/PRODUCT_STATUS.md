@@ -1,24 +1,39 @@
-# Baker product status
+# Mabillon product status
 
-The technical source of truth for what Baker does today. Every statement is checked against code,
-tests or recorded runs. Where something exists only on an unmerged branch, it says so.
+The technical source of truth for what Mabillon (formerly Baker) does today. Every statement is
+checked against code, tests or recorded runs. Where something exists only on an unmerged branch,
+or is only reported in a changelog entry or project record, it says so.
 
-- **As of:** 2026-10-21 (status refresh after #110)
-- **main:** `30d194d` (merge of #110, 2026-10-21)
-- **Verified on:** main `7a14437` first, then re-checked after #64 to #67 merged (they changed
-  only `core/audit/assumption_filler.py` in `core/`, plus tests and probe gold). The 2026-10-19
-  refresh applied the merged `docs/changelog/` entries and checked each PR's merge state against
-  main's history; it did not re-verify every line number below.
+- **As of:** 2026-10-27 (status refresh after #143)
+- **main:** `d478705` (merge of #143, 2026-10-27). Everything merged through #143 is covered.
+- **Verified on:** main `d478705`: every version below was read from the code at that commit.
+  This refresh applied the merged `docs/changelog/` entries and checked each PR's merge state
+  against main's history; it did not re-verify every line number below.
+- **Source labels:** **main** (merged, checked in code), **open PR #N** (not merged),
+  **reported** (a run recorded in a changelog entry or project record, not re-run here),
+  **unverified** (built or claimed, not measured).
 - **Rule version:** 0.3.0 on main (`core/audit/rules.py`, PR #98). **Contracts:** 0.4.0 on main (`core/contracts.py`, forwarded columns, PR #89).
 - **Quote check:** 1.2.0 on main (#76), recorded on every run and printed in the report
-  (`core/audit/quotes.py`, `VERSION`). Since #91 (merged 2026-10-18) it also appears, with the
-  Baker and rule versions, in the report's top line, on the case overview screen and in the
-  eval's `run.json`, and each model run's seed is in the report's versions table. Report version
-  0.10.0 on main (#95 added a "Forwarded marks" row; #98 added "Model contradictions without an
-  expert"; #103 made it 0.9.0 with an "Importer for <source>" row in Versions; #108 made it 0.10.0
-  with a plain gap line under each unproven claim). UFDR and Cellebrite `IMPORTER_VERSION` 0.2.0
-  (#103). Check versions since #107: same_account, sender, time, weekday and absence 1.0.1, count 1.0.2, contact unchanged at 1.0.0.
-- **Build stamp:** before #91, the "Baker" version a report printed was `PIPELINE_VERSION`
+  (`core/audit/quotes.py`, `VERSION`). Since #91 it also appears, with the Mabillon build and
+  rule versions, in the report's top line, on the case overview screen and in the eval's
+  `run.json`, and each model run's seed is in the report's versions table.
+- **Report version:** 0.17.0 on main (`core/report/html.py`, `REPORT_VERSION`). Since 0.10.0
+  (#108): 0.11.0 a scoped bundle's report says what it left out (#104); 0.12.0 Examiner activity
+  section (#111); 0.13.0 the product named Mabillon (#127); 0.14.0 each verdict traced and "What
+  can be checked again" (#131); 0.15.0 states the local repeat-check result for the tested model
+  file and prompt (#136); 0.16.0 a stance rationale with a forbidden word is withheld per item,
+  with an expert acknowledgment logged before sign-off (`core/review/withheld.py`, #138);
+  0.17.0 lists the expert's names for each device (#139).
+- **Importers (main):** Cellebrite UFDR `ufdr` 0.3.1 (`core/ingest/ufdr.py`; 0.3.0 #117,
+  0.3.1 #130); Cellebrite Excel and PDF 0.3.1 (`core/ingest/cellebrite_common.py`; 0.3.0 #129,
+  0.3.1 #139); Magnet AXIOM 0.2.0 (`core/ingest/axiom.py`, #116). UFDR and AXIOM record
+  `FORMAT_SUPPORT = "unverified"`. `mabillon ufdr-check` 0.3.0 (`core/ingest/ufdr_check.py`, #130).
+- **Other versions (main):** identity proposer 1.1.0 (`core/identity/links.py`, #139: name
+  words keep a designation's number, so SUBJECT-1 and SUBJECT-2 are two people); check versions
+  same_account, sender, time, weekday and absence 1.0.1, count 1.0.3 (#129), contact 1.0.0;
+  reproducibility bundle format 1.2.0 (`core/bundle/export.py`); validation scorer 1.2.0
+  (`eval/validation/score_hickman.py`, #143).
+- **Build stamp:** before #91, the version a report printed was `PIPELINE_VERSION`
   ("0.1.0", `core/pipeline.py`), a constant that cannot tell two builds apart. #91 (merged
   2026-10-18) also records each run's release (`pyproject.toml`, 0.0.1 today) and git commit, with a flag when
   tracked files had uncommitted changes, in the run's config as `build` (`core/build.py`), and
@@ -32,27 +47,29 @@ tests or recorded runs. Where something exists only on an unmerged branch, it sa
   GitHub's own "Download ZIP" should fill `core/BUILD_COMMIT` in the same way; not checked.
 - **Signed prompts on main:** stance v1.1 (local model) and v1.2 for a cloud model only (`stance_cloud.md`: v1.1 plus the told-frame sentences, signed 2026-10-15, #93), reviewer v1.1, claims v1.0, assumptions v1.0
   (`core/audit/prompts/`)
+- **Name:** the product is Mabillon. The command is `mabillon`, with `baker` kept as an alias for
+  a release (`pyproject.toml`, #128). File format ids and the `baker_version` field keep the
+  development name.
 
 **Newer changes:** merged entries in `docs/changelog/` marked `Status doc: pending` are not yet
 applied here and win where they differ (`python tools/changelog.py pending` lists them). One
 status refresh PR applies them after merges; feature PRs do not edit this file.
 
-Status labels used below: **main** (merged), **branch #N** (open PR, not merged), **unverified**
-(built or claimed, not measured).
+## 1. What Mabillon is
 
-## 1. What Baker is
-
-Baker is a local app for defense forensic experts. It reads a government document (affidavit or
+Mabillon (formerly Baker) is a local app for defense forensic experts. It reads a government document (affidavit or
 report) and the phone extraction reports. It splits the document into claims and marks each
 claim supported, contradicted or unproven, with cited evidence. The expert runs it in a browser
-on their own computer (`baker serve`, http://127.0.0.1:8765). Correctness matters more than
+on their own computer (`mabillon serve`, http://127.0.0.1:8765). Cases live in ~/Mabillon/cases
+and settings in ~/.mabillon; ~/Baker and ~/.baker are read when only they exist, and `BAKER_*`
+variables are still read beside `MABILLON_*` (#128). Correctness matters more than
 coverage: one wrong "supported" is the failure that counts most.
 
 ## 2. Pipeline (main)
 
 | Step | What happens | Code | Model? |
 |---|---|---|---|
-| 1. Import | Opens each input read-only and SHA-256 hashes it. The browser case workflow also copies it into the case folder, and the importer refuses to store a copy whose bytes no longer match the upload's hash (nothing is stored; `tests/test_import_changed.py`, #88); `baker import` on the CLI reads the original path and keeps no copy | `core/ingest/`, `core/casework/cases.py`, `cli/main.py` | No |
+| 1. Import | Opens each input read-only and SHA-256 hashes it. The browser case workflow also copies it into the case folder, and the importer refuses to store a copy whose bytes no longer match the upload's hash (nothing is stored; `tests/test_import_changed.py`, #88); `mabillon import` on the CLI reads the original path and keeps no copy | `core/ingest/`, `core/casework/cases.py`, `cli/main.py` | No |
 | 2. Normalize | Writes canonical rows; every row has a `source_ref`; times stored UTC with the original offset and raw value | `core/ingest/`, `core/schema.sql` | No |
 | 3. Enrich | Full-text search, local time, derived record text | `core/enrich/` | No |
 | 4. Claims | Splits the document into paragraphs; the local model proposes atomic claims; the expert edits the list | `core/claims/` | Local 14B |
@@ -60,12 +77,12 @@ coverage: one wrong "supported" is the failure that counts most.
 | 6. Checks | Deterministic checks: sender, identity, timing, weekday, count, absence | `core/audit/checks/` | No |
 | 7. Retrieval | Structured filters plus keyword ranking, with surrounding messages and the other phone's copy | `core/audit/retrieval.py` | No |
 | 8. Stance | Labels one record against one assumption: supports, contradicts, complicates or irrelevant | `core/audit/stance.py` | Local 14B by default; Opus 5.5, opt-in per case (#68); `PROBE_PASSED` lists Opus 5.5 at medium effort with the cloud prompt, stance v1.2 (signed 2026-10-20, #101) |
-| 9. Quote check | The label's quote must appear verbatim in the record, or the label is dropped. With #76 (version 1.2.0) the quote must also take in a letter or digit of the record's own fields: Baker's words in a rendered line ("call from") or a placeholder ("(no name)", "unknown") cannot verify it alone | `core/audit/quotes.py` | No |
+| 9. Quote check | The label's quote must appear verbatim in the record, or the label is dropped. With #76 (version 1.2.0) the quote must also take in a letter or digit of the record's own fields: Mabillon's words in a rendered line ("call from") or a placeholder ("(no name)", "unknown") cannot verify it alone | `core/audit/quotes.py` | No |
 | 10. AI review | Optional second pass on supporting items; off by default | `core/audit/review.py` | Local 14B |
 | 11. Verdict | `decide_verdict` applies rules 0.3.0 | `core/audit/rules.py` | No |
 | 12. Invariants | Re-checks each decision against stored records; a violation rolls back the claim and fails the run | `core/audit/invariants.py` | No |
-| 13. Review | Expert accepts, dismisses or reopens evidence and confirms verdicts; hash-chained audit log | `core/review/` | No |
-| 14. Report | HTML report with findings, limitations, source hashes, model runs and rule version. Same inputs, versions and expert decisions give the same report hash, time fields masked; it agrees with the review screen on each claim's status, verdict and evidence ids (`tests/test_report_consistency.py`, synthetic case01) | `core/report/` | No |
+| 13. Review | Expert accepts, dismisses or reopens evidence and confirms verdicts; hash-chained audit log. Each page the examiner opens is logged as a page view; Activity tab, CSV and `mabillon activity` (`core/review/activity.py`, #111). The expert acknowledges each withheld model rationale before confirming or overriding the claim's verdict (`rationale.acknowledge` in the audit log, #138) | `core/review/` | No |
+| 14. Report | HTML report with findings, limitations, source hashes, model runs and rule version. Each decided claim traces its verdict per core assumption: what the rules relied on, who proposed it (model, code or expert) and the expert's step; a "What can be checked again" section says verdicts re-derive from recorded labels and decisions, and that a hosted model's labels cannot be regenerated exactly (#131). A stance rationale that uses a forbidden word is withheld from its row and listed under Withheld model rationales; Mabillon's own text is still checked whole (#138). Same inputs, versions and expert decisions give the same report hash, time fields masked; it agrees with the review screen on each claim's status, verdict and evidence ids (`tests/test_report_consistency.py`, synthetic case01) | `core/report/` | No |
 
 Each claim is committed when it finishes, so the expert can review early claims while the audit
 runs, and a stopped run resumes from stored model outputs (`core/pipeline.py`,
@@ -89,25 +106,33 @@ screen in `ui/`.
 
 The local model file is pinned by SHA-256 and checked before loading (`core/audit/_local_model.py`,
 `packaging/windows/pins.json`). Every model call is stored with model hash, prompt hash,
-parameters and seed, and identical calls reuse stored output.
+parameters and seed, and identical calls reuse stored output. Each claim's audit-log entry
+binds its stored model calls by SHA-256 (#104). A repeat check (2026-10-24, MacBook Air M4,
+macOS 15.6.1, llama-cpp-python 0.3.36; reported) found the 14B's stance answers with prompt v1.1
+byte-identical on the GPU when asked again, after a fresh load and across two case01 audits
+(105/105, 105/105, 85/85); CPU only kept every stance and quote but reworded 7 of 20 rationales.
+Other machines and runtime versions are not measured (#136).
 
 ## 4. The "judge": how Opus is used
 
-There is no model judge of verdicts in Baker. The word "judge" does not name any component.
+There is no model judge of verdicts in Mabillon. The word "judge" does not name any component.
 
 - **Verdicts come from code or the expert.** `core/audit/rules.py` (`decide_verdict`, rules
   0.3.0) is the only automated verdict path. The expert can also override a verdict (screen or
-  `baker verdict --set`), which `core/review/actions.py` `override_verdict` writes directly,
+  `mabillon verdict --set`), which `core/review/actions.py` `override_verdict` writes directly,
   without the rules, under the expert's name in the audit log. No model, local or cloud, writes a
   verdict, an identity link or a confirmation.
 - **What Opus does (#68, on main; opted-in cases since #101).** It is the stance labeler: for one (assumption, record)
   pair it returns a label, a quote and a rationale. It is a remote HTTPS call to
   `api.anthropic.com` (`core/llm/cloud.py`), pinned so a stray `ANTHROPIC_BASE_URL` cannot
-  redirect it, using the expert's own key from `$BAKER_ANTHROPIC_API_KEY`; in an encrypted
+  redirect it, using the expert's own key from `$MABILLON_ANTHROPIC_API_KEY` (`$BAKER_ANTHROPIC_API_KEY` still read); in an encrypted
   case, the key saved in the case, encrypted under the case key (`case.cloud-key`); else
-  `~/.baker/cloud.json` (owner-only file). Only the filled-in stance prompt is sent: assumption,
-  record, nearby messages, claim text and a group chat's member list. Input files and the case
-  database are never sent.
+  `~/.mabillon/cloud.json` (owner-only file). Only the filled-in stance prompt is sent: assumption,
+  record, nearby messages, claim text and a group chat's member list. That is up to 20
+  messages either side of the record with device-local times, senders' handles, numbers, saved
+  names and confirmed people, and the record's full text (an attachment's file name, never the
+  file); never a locator, file hash or the case name (`docs/SECURITY_PRIVACY.md` section 5,
+  #133). Input files and the case database are never sent.
 - **When Opus is used (#68).** Opt-in per case, local by default (Arsh chose "Opt-in cloud",
   2026-10-15 07:10Z). Only when all hold: the expert attested for this case that
   the protective order allows cloud AI; the case is not marked as possibly containing CSAM; a key
@@ -121,7 +146,8 @@ There is no model judge of verdicts in Baker. The word "judge" does not name any
   whole case locally, so one case never mixes models. Every request body is written to the
   case's hash-chained audit log (`cloud.sent`) before it is sent, and nothing is logged as sent if
   the client cannot be built. Timeout 120 s, 2 retries. A cloud answer that failed its quote or
-  format check is asked again on a re-run rather than reused. The decrypted key is dropped from
+  format check is asked again on a re-run rather than reused. Each answer is logged as
+  `cloud.received` (API-reported model, message and request ids, raw-output SHA-256, #104). The decrypted key is dropped from
   memory when a cloud audit ends.
 - **Opus's influence on verdicts.** Indirect, through its labels, and bounded by the rules:
   - A "supports" label never makes a claim SUPPORTED by itself. An expert must accept it.
@@ -213,6 +239,11 @@ contradicts precision is 58% (11 of 19, bar 90%; the count is derived from 100% 
 11 gold contradicts) and it shows 6 moved traps as supports (contradicts recall 100%, supports recall 100%, 0 contradicting shown as supports). With v1.2 (same run) the 14B's contradicts precision fell
 to 50% (11 of 22) with the same 6 moved traps, which is why the local model keeps v1.1. Source:
 `/mnt/project-files/baker/cloud-bench/2026-10-16/fair-14b-vs-opus/local-arm/RESULTS.md`.
+Newer local models were screened on the same signed set (Arsh's Mac, macOS 15.6.1 arm64, 24 GB,
+commit f9461b9, 2026-10-22, both signed prompts, one run each; reported, #123): Gemma 4 26B-A4B,
+Gemma 4 12B and Qwen3.8-27B all failed the contradicts precision bar (41% to 52%, bar 90%) and
+showed 1 or 2 moved traps as supports. None passed, so Qwen3-14B stays the local model. Source:
+`/mnt/project-files/baker/local-model/2026-10-22-mac-screen-RESULTS.md`.
 
 **case01, real pipeline, simulated expert**
 
@@ -239,26 +270,63 @@ were ready for the expert; 381 of 493 labels were dropped before storage (this c
   **unverified** until `eval/probe/time_case.py` is re-run on the Mac.
 - Windows and NVIDIA speed: not measured.
 
+**Local 14B repeat check (2026-10-24, reported, #136).** On a MacBook Air M4, macOS 15.6.1,
+llama-cpp-python 0.3.36, Qwen3-14B Q4_K_M with stance v1.1: byte-identical stance answers on the
+GPU when asked again, after a fresh load and across two case01 audits (105/105, 105/105, 85/85);
+CPU only kept every stance and quote but reworded 7 of 20 rationales. Windows and NVIDIA not
+measured. Source: `eval/probe/results/2026-10-24-qwen3-14b-repeat-mac.md`.
+
 **Merge gate (model-free, `make eval`)**
 The gate swaps the model for a stand-in that labels every retrieved record and a simulated
 expert that accepts only signed key evidence. It tests retrieval, checks, assumption sheet,
 rules and invariants, not model quality. Last recorded: case01 accuracy 1.00, 0 false
 supported; unreviewed run 0.55 (report only; 0.60 before #98); hostile red-team PASS; case02 (hidden, aggregate,
 report only) 0.90 accuracy, 0 false supported. See section 10 for the latest run.
+Validation card (`python -m eval.validation.card`, `make validation-card`, #121): every rate with
+a Wilson 95% interval. On case01 0 false supported of 12 non-supported claims allows up to 24%;
+73 such claims with zero errors are needed for an upper bound of 5%, 189 for 2%. See
+`docs/validation/README.md`.
+
+**Real-export validation (public Hickman iOS 15.3.1 phone).** No accuracy figure exists yet.
+- Plan (main): `eval/validation/PREREGISTERED.md`, signed by Arsh 2026-10-24, 106 claims with a
+  signed answer key kept outside the repo (#124); scorer `eval/validation/score_hickman.py` (#134).
+- Run 1 (reported in `eval/validation/PREREGISTERED_v2.md` on main): a **null result**. It ran
+  on AWS (A10G) with the local 14B at commit `30fcf4d`; 0 of 106 claims were tested, because the
+  assumption filler refused every proposal; 0 stance calls. Its zero error rates are vacuous and
+  are never quoted as an error rate. #139 (merged 2026-10-26) fixed the phone-name, time-zone and
+  SUBJECT-2 causes; run 1's 43 model-side refusals are not fixed.
+- Run 2 plan (main): `eval/validation/PREREGISTERED_v2.md` (#140, #141), approved by Arsh
+  2026-10-26 23:03 UTC as the file records. Minimum **30** tested claims of 106: below it, run 2
+  is reported as "insufficient coverage, no accuracy claim" and no customer material quotes a
+  number from it. Verdict measures count only tested claims, as k of n with Wilson intervals.
+- Scorer 1.2.0 (main, #142 and #143): reports k tested, each refusal kind and its count, and
+  measures over tested claims; a claim counts as tested only when it has a first-pass verdict
+  and is not marked "Not tested"; coverage must account for all 106 gold claims or the scorer
+  stops. Rescoring run 1's results gives 0 of 106 tested (reported).
+- Run 2 has not run (per project records, 2026-10-27). The plan names the tag
+  `validation-v1-run2`; no such tag is on GitHub as of this refresh (`git ls-remote --tags`), and
+  `eval/validation/aws_run.sh` clones that tag. The run's commit is `d478705` per the project's
+  run guide (reported only).
 
 ## 8. Implemented features (main unless marked)
 
-1. **Import:** Cellebrite Excel and PDF; Cellebrite UFDR (unverified on real samples); Magnet
-   AXIOM XML and Excel (unverified); government PDF with local OCR (Tesseract). Unverified
-   readers say so on screen and in the report. `baker ufdr-check` compares a UFDR import with
-   its own report.xml, offline.
+1. **Import:** Cellebrite Excel and PDF (Physical Analyzer per-category SMS export read on one
+   real-format sample; rows the tool lists twice are flagged, not merged, and the count check is
+   inconclusive on them, #129); Cellebrite UFDR (unverified on real samples; importer 0.3.0 counts
+   Reader 7.48 RelatedModels copies and lists any that match no record, #117; 0.3.1 also matches
+   copies held by calls, contacts and accounts, #130); Magnet AXIOM XML and Excel (unverified;
+   forwarded and quoted marks on assumed field names, #116); government PDF with local OCR
+   (Tesseract). UFDR and AXIOM imports say "not yet verified" on screen and in the report;
+   Cellebrite Excel and PDF imports carry no such notice. `mabillon ufdr-check` (0.3.0) compares a
+   UFDR import with its own report.xml, offline, including message, call, contact and account
+   copies (#130). Gate 5a in `docs/PILOT_GATES.md` records what has been run on public packages.
 2. **Audit:** claims, assumptions, checks, retrieval, stance, quote check, rules, invariants, with
    background runs, progress, per-claim commits and resume.
 3. **Expert review screen** (`ui/`, local only, no scripts): claims, evidence accept or dismiss,
    "Support found: do you agree?" before confirmation, verdict confirm or override, notes.
    Optional expert flags on the claim page (wrong label, missed record, verdict disagreement),
    stored as audit-log entries, never changing a verdict; a redacted summary download and
-   `baker flag-log` for a per-pilot error log (`docs/flags.md`, #81). Nothing is sent.
+   `mabillon flag-log` for a per-pilot error log (`docs/flags.md`, #81). Nothing is sent.
    The claims queue (`/claims`, #108) opens with how many claims need the expert and a progress
    bar, then groups the claims (Needs you, Contradicted, Unproven, Supported, and Not audited when
    there are any), with a plain gap line per unproven claim for each kind of core assumption not
@@ -269,17 +337,36 @@ report only) 0.90 accuracy, 0 false supported. See section 10 for the latest run
    assumption and check tables under "Show the rules' working". The top tabs (#110) come in three
    groups (review; tools to look closer; set-up), and the case page leads with the claims that
    need the expert and a verdict count, with the source files' SHA-256 hashes folded under
-   "Files and their SHA-256 hashes (chain of custody)".
+   "Files and their SHA-256 hashes (chain of custody)". An Activity tab lists the examiner's page
+   views, and the report has an Examiner activity section whose table is opt-in per case, off by
+   default (#111).
 4. **Analysis pages (code only, never change verdicts):** Identities (proposed account-to-person
    links, expert confirms), Timeline check and Gaps, Selection audit (what the document left
    out), Context Restore (find pasted exhibit quotes, draft the full-extraction request), Other
    explanations per claim.
 5. **Case safety and delivery:** encryption at rest by passphrase (SQLCipher plus AES-256-GCM;
-   new cases from the browser form encrypted by default, the box can be unticked; `baker init` on
-   the CLI makes a plain case), hash-chained audit log, HTML report, `baker demo` (the scripted demo
+   new cases from the browser form encrypted by default, the box can be unticked; `mabillon init` on
+   the CLI makes a plain case), hash-chained audit log, HTML report, `mabillon demo` (the scripted demo
    has a demo-only inconclusive absence claim, which a saved `--from-case` snapshot lacks, and
-   `--paired` runs the paired selection audit, #96), Mac
-   install script, Windows installer (signed by builds of main, Artifact Signing), `baker model-check`.
+   `--paired` runs the paired selection audit, #96), `mabillon model-check`. The expert can record
+   the document's names for each phone (TARGET PHONE, Item 1); the audit matches claims that use
+   them, and every report lists them as the expert's statement (#139).
+   Installers (#132): the Mac installer is "Install Mabillon.command", installing to
+   ~/Mabillon/app and ~/Mabillon/models with Desktop launchers "Mabillon" and "Mabillon demo";
+   the Windows installer is Mabillon-Setup-<version>.exe (signed by builds of main, Artifact
+   Signing), installing to %LOCALAPPDATA%\Programs\Mabillon with the "Mabillon command prompt"
+   Start-menu shortcut; an install made under the name Baker is updated in place and keeps its
+   model and model setting.
+6. **Reproducibility bundle (#104):** `mabillon export-bundle` (examiner's choice after counsel
+   review, logged with its SHA-256, encrypted for an encrypted case; opt-in parts include
+   "activity") and `mabillon verify-bundle` (offline; re-derives every verdict of the exported
+   run from recorded labels and expert decisions; for a bundle from another report or bundle
+   version it names the commit to verify with; `docs/bundle.md`); CLI only. Bundle format 1.2.0.
+7. **Pilot support (#92):** a Help tab on every screen page with the support contact, a short
+   what-Mabillon-does, and a bug report shown in full before it is saved (`/help/bug-report.json`,
+   `mabillon bug-report`), built from an allowlist with no case names, paths, text or hashes
+   (`core/support/`). Recent unexpected errors are kept in memory only, without messages; no log
+   file. The support address is support@getmabillon.com (`core/support/contact.py`).
 
 Merged 2026-10-15: stricter stated time windows, "after <date>" starts the next day (#66; rules
 0.2.2 with PR #75, which also refuses a rules-only re-run of an older audit), go-bar scorer fixes and the signed probe
@@ -299,7 +386,20 @@ refreshes (#99, #102); newer local model screen and thinking-template guard (#10
 embedded forwarded or quoted originals (#103); signed Windows installer (#106); copy recipients
 are not thread participants (#107).
 Merged 2026-10-21: UI redesign: claims overview with gap lines (#108), claim page checklist and
-conversation view (#109), tab groups and case page (#110).
+conversation view (#109), tab groups and case page (#110); Help tab and bug report (#92); public
+website (#113); validation card (#121); Mac model-screen download retries (#114).
+Merged 2026-10-22: progress write throttle and CI step timings (#122); Book a demo form (#118);
+reproducibility bundle (#104); CLAUDE.md names Mabillon (#115); examiner activity trail (#111).
+Merged 2026-10-24: stance v1.3 local re-probe, both wordings fail, reusable test (#120); the app,
+report and docs say Mabillon (#127); UFDR Reader 7.48 RelatedModels copies (#117); local repeat
+check tool (#126); Physical Analyzer SMS Excel times (#129); AXIOM forwarded marks (#116);
+`mabillon` command and folders (#128); verdict trace in the report (#131); local model screen
+entry (#123); status refresh after #110 (#112); installers say Mabillon (#132); cloud request
+contents docs (#133); site format wording (#119); validation plan and AWS run script (#124);
+validation scorer (#134); ufdr-check record copies (#130); pilot download links tool (#125).
+Merged 2026-10-25 to 2026-10-27: local 14B repeat result in the report (#136); "record state"
+wording (#137); withheld rationales (#138); device names and designations, phone time zones
+(#139); validation run 2 plan (#140, #141); validation scorer coverage and 1.2.0 (#142, #143).
 Branch only: small stance model (#50, parked). PRs #70 and #80 are empty Grok Product review
 PRs, never merged.
 
@@ -310,7 +410,7 @@ PRs, never merged.
    claim with other accepted support go SUPPORTED. The systematic cause is fixed by #76: contacts
    and calls now read the same for the labeler and the check (`core/audit/invariants.py:81`,
    through `core.enrich.records`), and a test checks every case01 record. A label still drops
-   when its quote is not verbatim, has no letter or digit, or takes in only Baker's words or a
+   when its quote is not verbatim, has no letter or digit, or takes in only Mabillon's words or a
    placeholder such as "(no name)", and the report shows only a count.
    Replayed offline through the new check (2026-10-15, no model call): every supports,
    contradicts and complicates label of Opus's stored no-sheet case01 run passes (108); Sonnet
@@ -325,9 +425,12 @@ PRs, never merged.
    every such answer in the Opus tests; with it Opus misses one real contradiction (P065), a
    label that, absent a failed check or other evidence, could leave a claim UNPROVEN.
 3. **Real-data formats unverified.** UFDR and AXIOM readers were built from documentation and
-   synthetic samples. No real extraction has been imported. No public Cellebrite-made UFDR with a
-   usable license exists; #73 checked the reader on two non-Cellebrite test files (27 of 27
-   records). Forwarded messages, and messages carrying a forwarded or quoted original, fail
+   synthetic samples. No real case extraction has been imported. #73 checked the reader on two
+   non-Cellebrite test files (27 of 27 records). `mabillon ufdr-check` found 0 differences on three
+   public Cellebrite Reader 7.48 packages of Josh Hickman's test phones (#117 and #130, reported;
+   pilot gate 5a), but the counts have not been compared with Cellebrite Reader's own, so the
+   UFDR reader stays unverified. Cellebrite Excel was run on one real-format Physical Analyzer SMS
+   export (#129, reported); no real AXIOM export has been imported. Forwarded messages, and messages carrying a forwarded or quoted original, fail
    closed (#73, merged 2026-10-16): they can neither support nor contradict a claim, checks resting on
    them are inconclusive, and the claim page and report warn. With the schema change Arsh signed
    on 2026-10-16 (PR #89, merged 2026-10-19) the record itself says
@@ -365,20 +468,24 @@ PRs, never merged.
    installed even with cloud on.
 9. **Count check said "deleted" (fixed in #83, merged 2026-10-15).** Before #83 the count
    check's detail read "N of them are flagged deleted" when counted messages carried the source's
-   deletion flag, which breaks the rule that Baker never says "deleted". It now reads "N of them
-   carry the source's deletion flag" (count check 1.0.1; 1.0.2 since #107).
+   deletion flag, which breaks the rule that Mabillon never says "deleted". It now reads "N of them
+   carry the source's deletion flag" (count check 1.0.1; 1.0.2 since #107; 1.0.3 since #129).
+10. **Cloud caveats (opted-in case).** Retention at Anthropic depends on the expert's own account
+   and is not verified by Mabillon; the per-case attestation is self-certified (Mabillon records
+   who, when and the exact words, but cannot check the order or consents); hosted labels cannot
+   be regenerated, only the recorded labels and rules re-checked (#133).
 
-## 10. Tests and results (main `75e75f1`)
+## 10. Tests and results (main `d478705`)
 
-Run 2026-10-20 in a Linux cloud container (Python 3.13; the project targets 3.12), on main's code
-(the working copy differed from `75e75f1` only in this refresh's docs):
+Run 2026-10-27 in a Linux cloud container (Python 3.12), on main's code (the working copy
+differed from `d478705` only in this refresh's docs):
 
 | Check | Result |
 |---|---|
-| Lint and format (`ruff`) | clean, 428 files |
-| Tests (`pytest`) | 2282 passed, 8 skipped |
+| Lint and format (`ruff`) | clean, 518 files |
+| Tests (`pytest`) | 2726 passed, 9 skipped |
 | case01 model-free gate | PASS: accuracy 1.00, 0 false supported |
-| case01 unreviewed (report only) | accuracy 0.55, 0 supported by design (0.60 before #98: one model-only Contradicted now waits for the expert) |
+| case01 unreviewed (report only) | accuracy 0.55, 0 supported by design |
 | Hostile red team | PASS: none of the 7 structural claims went supported |
 | case02 hidden case (aggregate, report only) | accuracy 0.90, 0 false supported |
 
@@ -401,36 +508,57 @@ Documents for pilots and buyers (#82, merged): onboarding kit
 figures), and security and privacy pack with a data-flow diagram (`docs/SECURITY_PRIVACY.md`).
 Nobody outside the project has tried the onboarding kit yet (gate 11).
 
+Gate 5 is split into 5a, UFDR from Cellebrite Reader 7.48, the first pilot's scope, and 5b, the
+other formats, after the first pilot (this refresh's PR; Arsh's approval needed). Neither is met.
+The first pilot accepts only UFDR Reader 7.48, and every other format or version must show "not
+tested" on screen and in the report; on main that banner does not exist yet
+(`docs/PILOT_GATES.md`, "Pilot rule for gate 5").
+
 Before a first real case (the full list is the gates file):
 1. Time a full local case01 on the Mac for a real runtime (#76 merged, so the 14B's
    contact and call quotes pass the check, section 9).
-2. Check a real UFDR and AXIOM export with `baker ufdr-check` (needs a pilot expert's closed case).
+2. Gate 5a: compare the import's counts with Cellebrite Reader's own on the three public Reader
+   7.48 packages (or Arsh waives it in writing), and build the "not tested" banner for every
+   other format and version.
 3. Opt-in cloud (#68) is available for a case whose protective order allows it: `PROBE_PASSED`
-   lists Opus 5.5 at medium (#101, signed 2026-10-20).
+   lists Opus 5.5 at medium (#101, signed 2026-10-20). Conditions before a first real case uses
+   it: the expert has checked their Anthropic account's retention (ZDR or not), the key is saved
+   into the encrypted case with `$MABILLON_ANTHROPIC_API_KEY` and `~/.mabillon/cloud.json` unset,
+   and counsel has confirmed the protective order and the client's consent behind the
+   attestation. Where the tool's reliability may be challenged in court, run the case locally.
 
 Measuring errors in a pilot: experts can flag wrong labels, missed records and verdicts they
 disagree with; a redacted summary they choose to share feeds a per-pilot error log. Rates from it
 are lower bounds, since flagging is optional. Unused so far.
 
-No pilot has started and no expert has used Baker on a real case (per project records; this
+No pilot has started and no expert has used Mabillon on a real case (per project records; this
 cannot be checked from code).
 
 ## 12. Customer-facing claims
 
 Rows 1 and 2 re-checked 2026-10-20 on main `477190d` (rules 0.3.0). Otherwise checked 2026-10-15 against main `7a14437` (line numbers unchanged on `ae8f24e`; `core/audit/rules.py`, `core/audit/invariants.py` and `core/report/html.py` lines re-checked 2026-10-16 on #76 with main `79ad922` merged in, since #76 shifts the last two) and branch #68 (`3c6c1ec`), for the proposed line:
-"Baker tests the government's specific claims; versioned rules decide verdicts; nothing is
+"Mabillon tests the government's specific claims; versioned rules decide verdicts; nothing is
 supported until your expert accepts it; runs locally with no network calls."
 Since #101 the last clause needs the opt-in qualifier for cloud cases; use row 6's safe wording.
 
 | # | Claim | Status | Evidence | Safe wording |
 |---|---|---|---|---|
 | 1 | Verdicts come from versioned rules | **True** | `decide_verdict` is the only automated verdict path (`core/audit/rules.py:1`); an expert override is written directly by `override_verdict` (`core/review/actions.py`), as the expert's decision; `RULE_VERSION = "0.3.0"` (`core/audit/rules.py:118`) is stored on every decision (`core/audit/rules.py:333`) and printed in the report (`core/report/html.py:432`, `:613`). Models only label evidence. | "Versioned rules decide verdicts; your expert can override" |
-| 2 | Nothing is Supported until the expert accepts it | **True** | SUPPORTED needs an expert-accepted support on an observed record (`core/audit/rules.py:127`, `:423-433`); AI acceptance covers nothing (`_AI_MAY_COVER` empty, `core/audit/rules.py:124`); the invariants re-check every SUPPORTED and fail the run otherwise (`core/audit/invariants.py:270-320`). The expert can also set a verdict directly (`baker verdict --set`), which is still the expert's act. Since rules 0.3.0 (#98) a model "contradicts" also needs the expert's acceptance before a claim is CONTRADICTED (section 4); a failed deterministic check on a core assumption still contradicts on its own. | As proposed |
-| 3 | "Not found" says what was searched | **True for absence and count findings** | The absence check states what it searched and why the sources can or cannot show an absence (`core/audit/checks/absence.py:1-6`, `:40`, `:112-135`); a curated report can never pass an absence (`core/audit/checks/absence.py:123`); the report has a "Searches and coverage" section (`core/report/html.py:489-519`). An UNPROVEN claim with no evidence names the uncovered assumptions, not a search log. | "When Baker finds no contact or counts records, it says what it searched and what the source could show" |
+| 2 | Nothing is Supported until the expert accepts it | **True** | SUPPORTED needs an expert-accepted support on an observed record (`core/audit/rules.py:127`, `:423-433`); AI acceptance covers nothing (`_AI_MAY_COVER` empty, `core/audit/rules.py:124`); the invariants re-check every SUPPORTED and fail the run otherwise (`core/audit/invariants.py:270-320`). The expert can also set a verdict directly (`mabillon verdict --set`), which is still the expert's act. Since rules 0.3.0 (#98) a model "contradicts" also needs the expert's acceptance before a claim is CONTRADICTED (section 4); a failed deterministic check on a core assumption still contradicts on its own. | As proposed |
+| 3 | "Not found" says what was searched | **True for absence and count findings** | The absence check states what it searched and why the sources can or cannot show an absence (`core/audit/checks/absence.py:1-6`, `:40`, `:112-135`); a curated report can never pass an absence (`core/audit/checks/absence.py:123`); the report has a "Searches and coverage" section (`core/report/html.py:489-519`). An UNPROVEN claim with no evidence names the uncovered assumptions, not a search log. | "When Mabillon finds no contact or counts records, it says what it searched and what the source could show" |
 | 4 | The selection audit shows what was left out around each quote | **Partly true** | Shows each quoted, exhibit or examiner-tagged message in its exchange, with the messages not picked (`core/selection/audit.py:1-29`). Limits: a quote is placed only when its words fit one message, otherwise it is listed as found N times and nothing around it is counted as left out (`core/selection/picks.py:17-23`); names and quotes under two words are not looked up (`core/selection/picks.py:5-11`); messages an examiner left out of a curated report are not in the case to show (`core/selection/audit.py:27-29`), unless the case also holds a larger source of the same phone: then the paired selection audit (#78, `core/selection/paired.py`, `docs/selection-audit.md`; tested on synthetic pairs only) lists that source's records the report does not hold near each claim, failing closed when matching is uncertain (section 9). | "...around each quote it can place in the extraction" |
-| 5 | Every report has an audit packet: source hashes, model, prompt and rule versions, tamper-evident log | **True, with one nuance** | Sources with SHA-256 (`core/report/html.py:678-688`), versions and model runs with model SHA-256, prompt version, parameters and seed (`core/report/html.py:690-691`, `:557-593`, `:723-737`), Baker build (release and git commit), pipeline, rule and quote-check versions in the report's top line and its Run section (`core/report/html.py:612-623`, `:709-713`; PR #91 for the build, the top line and the seed in the versions table), audit-log summary with hash-chain result, last hash and expert actions (`core/report/html.py:738-764`, `core/review/audit_log.py:47-225`). Nuance: the report shows a summary and the expert entries, not every log entry. The chain detects edits to entries; anchors (`case.db.anchors.jsonl`, the newest entry's number and hash, written when a case opens and when a report is built) detect entries cut from the end back to the newest anchor. Evidence decisions log the expert's typed reason, and a stored reason or status that no longer matches its log entry, or an expert review added or removed without one, blocks the case (PR #86, merged; decisions logged before it carry no reason and are not compared). Neither catches a change to the database and the anchor file together, or entries added and cut between two anchors; there is no signature or external anchor beyond a saved report's last hash. The log is checked when a case opens, on every page while it is open (report and download included), and before encrypting or changing the passphrase; a failed check blocks review and reporting in the screen and the CLI (fail closed; `core/review/audit_log.py` `require_intact`, `ui/app.py` `open_case` and `/report`, `cli/main.py` `_open`; #74). | "A hash-chained audit log; the report prints its last hash" |
+| 5 | Every report has an audit packet: source hashes, model, prompt and rule versions, tamper-evident log | **True, with one nuance** | Page views (time, examiner, page, items) are in the same hash-chained log; time on page is not proof of reading (#111). A reproducibility bundle carries what the verdicts rest on (the whole case on request), and `mabillon verify-bundle` re-derives the verdicts offline (#104). Sources with SHA-256 (`core/report/html.py:678-688`), versions and model runs with model SHA-256, prompt version, parameters and seed (`core/report/html.py:690-691`, `:557-593`, `:723-737`), Mabillon build (release and git commit), pipeline, rule and quote-check versions in the report's top line and its Run section (`core/report/html.py:612-623`, `:709-713`; PR #91 for the build, the top line and the seed in the versions table), audit-log summary with hash-chain result, last hash and expert actions (`core/report/html.py:738-764`, `core/review/audit_log.py:47-225`). Nuance: the report shows a summary and the expert entries, not every log entry. The chain detects edits to entries; anchors (`case.db.anchors.jsonl`, the newest entry's number and hash, written when a case opens and when a report is built) detect entries cut from the end back to the newest anchor. Evidence decisions log the expert's typed reason, and a stored reason or status that no longer matches its log entry, or an expert review added or removed without one, blocks the case (PR #86, merged; decisions logged before it carry no reason and are not compared). Neither catches a change to the database and the anchor file together, or entries added and cut between two anchors; there is no signature or external anchor beyond a saved report's last hash. The log is checked when a case opens, on every page while it is open (report and download included), and before encrypting or changing the passphrase; a failed check blocks review and reporting in the screen and the CLI (fail closed; `core/review/audit_log.py` `require_intact`, `ui/app.py` `open_case` and `/report`, `cli/main.py` `_open`; #74). | "A hash-chained audit log; the report prints its last hash" |
 | 6 | Runs locally with no network calls | **True for every case not opted in to cloud** | main: true for every case not opted in; `PROBE_PASSED` lists Opus 5.5 at medium (#101). `core/` makes no network calls, the screen binds only 127.0.0.1 (`ui/server.py:19`); the installers download the pinned model once at install. #68 (merged 2026-10-15) adds the opt-in Opus stance integration, one HTTPS request per stance pair (up to three with retries) to api.anthropic.com (`core/llm/cloud.py`), used only for a case the expert opts in. Cloud stays off until the expert attests per case, so "local by default" stays true. "No network calls" would not be true for opted-in cases. | "Local by default; cloud AI only when your case allows it and you opt in" (Arsh's choice, 2026-10-15 07:10Z) |
+| 7 | UFDR tested on real-format exports | **Not yet claimable** (true after #117 and gate 5a sign-off; 5a is not met) | #117, #130, Baker Eval re-run (reported) | "Tested on real-format Cellebrite UFDR exports from public test phones (Reader 7.48); other versions not yet tested" |
 
-Claims Baker should not make yet: any speed figure for local runs (not measured on current code,
-section 7), any accuracy figure on real data (all numbers are synthetic), and that UFDR or AXIOM
-imports are verified.
+The public website (`site/`, getmabillon.com) uses only the safe wording above and the one-pager;
+update it when these claims change. The site's Book a demo form (`workers/demo-form`) emails
+requests to the team and stores nothing.
+
+Claims Mabillon should not make yet: any speed figure for local runs (not measured on current code,
+section 7), any accuracy figure on real data (all numbers are synthetic; validation run 1 was a
+null result and run 2 has not run), any error rate from synthetic case01 (0 of 12 false supported
+bounds the rate only to 0-24%), that UFDR imports are verified beyond Cellebrite Reader 7.48
+exports of public test phones, or that Cellebrite Excel or AXIOM imports are tested on real
+exports. Local labels may be described as regenerating exactly only for the 14B with stance
+prompt v1.1 on the tested Mac setup; not across machines, and never for a cloud model.

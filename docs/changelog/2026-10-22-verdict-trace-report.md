@@ -14,7 +14,7 @@
   claim that a re-run gives identical labels. Why: the court-defensibility plan (PR B) asks the
   report to show the other side, per claim, what a verdict rests on and which parts a model only
   proposed.
-- Where: PR #131
+- Where: main (#131, merged 2026-10-24)
 - Verified: new tests in `tests/test_report_consistency.py` (C05 traces model proposed and
   expert confirmed; claims waiting on the expert show found-not-relied-on items and never
   "Expert confirmed"; an override says so; a hosted model run prints the hosted disclosure and a
@@ -25,8 +25,4 @@
   Whether the local 14B gives identical labels on a re-run is unmeasured until the repeat check
   (#126, merged) finishes its first Mac run.
 - Affects: customer-facing claims (the report now states what can and cannot be regenerated)
-- Status doc: pending: in section 2 (Pipeline), row "14. Report", after "model runs and rule
-  version." add "Each decided claim traces its verdict per core assumption: what the rules relied
-  on, who proposed it (model, code or expert) and the expert's step; a 'What can be checked
-  again' section says verdicts re-derive from recorded labels and decisions, and that a hosted
-  model's labels cannot be regenerated exactly (report 0.14.0)."
+- Status doc: applied 2026-10-27

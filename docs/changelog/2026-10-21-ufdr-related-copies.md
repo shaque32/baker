@@ -69,7 +69,7 @@
   messages (two with the same words in the same second), attachments, recipients,
   RelatedModels copies of chats, messages, calls and accounts, a repeated account, and the five
   unknown types. No Hickman or real data in the repo.
-- Where: PR #117
+- Where: main (#117, merged 2026-10-24)
 - Verified: new tests in `tests/test_ufdr.py` and `tests/test_ufdr_check.py`; `make check` and
   eval in the PR description. Run on the three public packages in a cloud container
   (2026-10-21), with report.xml only (attachment files left out); results kept in the project
@@ -83,6 +83,4 @@
   by the importer alone, and on the public Android packages there are hundreds of them, so an
   independent check for those kinds is the next ufdr-check change.
 - Affects: capabilities (UFDR import coverage, ufdr-check). No verdict, privacy or network change.
-- Status doc: pending: §8 item 1, after "Cellebrite UFDR (unverified on real samples)" add
-  "(importer 0.3.0 counts Reader 7.48 RelatedModels copies and lists any that match no record,
-  #117)".
+- Status doc: applied 2026-10-27

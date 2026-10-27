@@ -10,7 +10,7 @@
   fail, when any matching message is such a copy: before, an "exactly N" claim could fail, and so
   be contradicted with no expert, on rows counted twice. Cellebrite Excel/PDF importer version
   0.2.0 -> 0.3.0.
-- Where: PR #129
+- Where: main (#129, merged 2026-10-24)
 - Verified: synthetic tests with the export's layout (tests/test_cellebrite_excel.py). One
   real-format Cellebrite SMS export from a Pixel 3 test phone (believed to be a public test
   image; not committed, not sent anywhere), run locally on 2026-10-24: 52 of 52
@@ -20,6 +20,4 @@
   check and gets no time (safe, not read). Copy rows are flagged, not merged.
 - Affects: capabilities (real-format import); verdict path (count check can no longer fail
   or pass on copy rows)
-- Status doc: pending: section 8 item 1, after "Cellebrite Excel and PDF", add "(Physical
-  Analyzer per-category SMS export read on one real-format sample; rows the tool lists twice are
-  flagged, not merged, and the count check is inconclusive on them)".
+- Status doc: applied 2026-10-27

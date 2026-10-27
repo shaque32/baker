@@ -16,7 +16,7 @@
   decisions. Report version 0.16.0, which also counts #137's "record state" wording.
   docs/ingest/coverage.md now says what "record state" means (deleted or intact, as the
   extraction states it).
-- Where: PR #138
+- Where: main (#138, merged 2026-10-26)
 - Verified: tests/test_withheld_rationale.py (synthetic case01, stand-in labels): a rationale
   saying "deleted" renders and writes the report with each item flagged and the text absent; a
   forbidden word in Mabillon's own report text still refuses it; the same labels with clean
@@ -35,10 +35,4 @@
   recorded; the path is tested with stand-in labels only.
 - Affects: capabilities (a report and screen no longer blocked by one model rationale; a new
   expert step before sign-off)
-- Status doc: pending: header "Quote check" bullet: report version 0.16.0 (a stance rationale
-  with a forbidden word is withheld per item, with an expert acknowledgment logged before
-  sign-off; core/review/withheld.py). §2 step 13 Review: add "the expert acknowledges each
-  withheld model rationale before confirming or overriding the claim's verdict
-  (`rationale.acknowledge` in the audit log)". §2 step 14 Report: add "a stance rationale that
-  uses a forbidden word is withheld from its row and listed under Withheld model rationales;
-  Mabillon's own text is still checked whole".
+- Status doc: applied 2026-10-27

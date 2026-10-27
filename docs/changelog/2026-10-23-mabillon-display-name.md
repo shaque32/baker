@@ -13,13 +13,10 @@
   Not changed here: the `baker` command, ~/Baker and
   ~/.baker paths, BAKER_* variables, Desktop launchers and installer names (steps 2 and 3);
   file-format ids and the `baker_version` field, which never change (CLAUDE.md).
-- Where: PR #127
+- Where: main (#127, merged 2026-10-24)
 - Verified: `make check` (lint, tests, eval); new tests that a bundle from another report or
   bundle version fails naming the commit. Eval numbers unchanged (wording only).
 - Open: steps 2 (`mabillon` command, `baker` alias, new paths with fallback) and 3 (installers).
   A bundle exported before this change verifies only at its own commit.
 - Affects: customer-facing claims (product name only; no capability or claim changes)
-- Status doc: pending: title and section 1 say Mabillon (formerly Baker) and every other
-  "Baker" naming the product says Mabillon, keeping `baker` commands and ~/Baker paths as they
-  are; report version 0.13.0 where the report version is named; bundle format 1.1.0; section 8
-  notes `verify-bundle` names the commit for a bundle from another report or bundle version.
+- Status doc: applied 2026-10-27

@@ -13,7 +13,7 @@
   answer, model SHA-256, Wilson intervals, time per call) and the v1.1 baseline's per-item file
   `eval/probe/results/2026-10-19-qwen3-14b-stance-v1-1.jsonl`. The product prompt
   (`core/audit/prompts/stance.md`, v1.1) is unchanged.
-- Where: PR #120 (branch `claude/expert-confirms-contradicts-y6ti2f`), not merged.
+- Where: main (#120, merged 2026-10-24)
 - Verified: `tests/test_probe_v13.py` (each candidate is v1.1 word for word plus its blocks; the
   copied sets keep their 2026-10-15 SHA-256; the fresh set is well formed and fictional; the
   baseline file reproduces the 2026-10-19 numbers; the scorer applies the written criteria on
