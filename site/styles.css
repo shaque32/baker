@@ -181,8 +181,10 @@ section[id] { scroll-margin-top: 72px; }
 .prose li, .prose p { color: var(--muted); }
 
 @media (max-width: 960px) {
-  .walk { grid-template-columns: minmax(0, 1fr); gap: 0; }
-  .panel { grid-row: 1; top: 62px; z-index: 5; }
+  /* A flex column, not grid rows: a sticky grid item is held inside its own row, so the panel
+     would scroll away. A flex item sticks for the height of the whole walkthrough. */
+  .walk { display: flex; flex-direction: column; gap: 0; }
+  .panel { order: -1; top: 62px; z-index: 5; }
   .panel-body { min-height: 0; padding: 16px; gap: 14px; }
   .doc, .rows small { display: none !important; }
   .walk-step, .walk-step:first-child, .walk-step:last-child { min-height: 70vh; align-content: end; padding: 0 0 12vh; }
