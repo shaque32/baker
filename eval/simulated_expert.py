@@ -39,6 +39,7 @@ Components:
 
 from __future__ import annotations
 
+import hashlib
 import sqlite3
 from collections import defaultdict
 from collections.abc import Callable, Sequence
@@ -60,6 +61,8 @@ from core.contracts import (
 )
 
 SIM_EXPERT = "expert:eval-simulated"
+RUBBER_STAMP = "expert:eval-rubber-stamp"
+FALLIBLE = "expert:eval-fallible"
 SIM_TIME = datetime(2026, 10, 7, tzinfo=UTC)
 
 GOLD_DIRECTION_RUN = ModelRun(
@@ -177,14 +180,30 @@ class RecordingRetriever:
 class ExpertReview:
     accepted: dict[str, list[str]] = field(default_factory=dict)  # claim -> evidence ids
     dismissed: dict[str, int] = field(default_factory=dict)  # claim -> count
+    actor: str = SIM_EXPERT
+    # the fallible expert only: its error rate, and the decisions it got wrong
+    error_rate: float | None = None
+    wrong_accepts: list[str] = field(default_factory=list)  # evidence ids
+    wrong_dismissals: list[str] = field(default_factory=list)  # evidence ids
 
     def summary(self) -> dict[str, object]:
-        return {
-            "actor": SIM_EXPERT,
+        out: dict[str, object] = {
+            "actor": self.actor,
             "accepted": sum(len(v) for v in self.accepted.values()),
             "dismissed": sum(self.dismissed.values()),
             "claims_with_an_acceptance": sorted(c for c, v in self.accepted.items() if v),
         }
+        if self.error_rate is not None:
+            decided = out["accepted"] + out["dismissed"]  # type: ignore[operator]
+            claims = [c for c in self.accepted if self.accepted[c] or self.dismissed.get(c)]
+            out |= {
+                "error_rate": self.error_rate,
+                "wrong_accepts": len(self.wrong_accepts),
+                "wrong_dismissals": len(self.wrong_dismissals),
+                "dismissal_rate": round(out["dismissed"] / decided, 4) if decided else 0.0,  # type: ignore[operator]
+                "items_per_claim_decided": round(decided / len(claims), 2) if claims else 0.0,
+            }
+        return out
 
 
 def review(
@@ -224,6 +243,107 @@ def review(
                     clock,
                 )
                 out.dismissed[claim_id] += 1
+    return out
+
+
+def rubber_stamp_review(
+    conn: sqlite3.Connection,
+    manifest: dict[str, dict[str, list[str]]],
+    clock: Callable[[], datetime],
+) -> ExpertReview:
+    """The rubber-stamp expert: accepts every labeled item the run surfaced, whatever it says,
+    through the same expert actions. Irrelevant labels are left alone, as above.
+
+    It is the worst reviewer the product can have, and it is what the zero-false-supported bar
+    is measured under for the challenge step (core/audit/challenge.py): every false SUPPORTED
+    it lets through is one only the expert's judgment would have stopped, and an item the
+    challenge step adds counts against it as an accepted doubt. The signed-key simulated expert
+    above stays the merge gate; the fallible expert below errs at a set rate."""
+    from core.pipeline import load_evidence
+    from core.review import actions
+
+    out = ExpertReview(actor=RUBBER_STAMP)
+    for claim_id in sorted(manifest):
+        out.accepted[claim_id] = []
+        out.dismissed[claim_id] = 0
+        for e in load_evidence(conn, manifest[claim_id]["evidence"]):
+            if e.stance is Stance.IRRELEVANT:
+                continue
+            actions.decide_evidence(
+                conn,
+                e.id,
+                EvidenceStatus.ACCEPTED,
+                RUBBER_STAMP,
+                "Rubber-stamp expert (eval): accepts every labeled item.",
+                clock,
+            )
+            out.accepted[claim_id].append(e.id)
+    return out
+
+
+def errs(seed: int, evidence_id: str, rate: float) -> bool:
+    """Whether the fallible expert gets this item wrong: a fixed draw from the seed and the
+    evidence id, so a run is reproducible and a second pass decides the same."""
+    h = hashlib.sha256(f"{seed}:{evidence_id}".encode()).digest()
+    return int.from_bytes(h[:8], "big") / 2**64 < rate
+
+
+def fallible_review(
+    conn: sqlite3.Connection,
+    gold: GoldKey,
+    manifest: dict[str, dict[str, list[str]]],
+    clock: Callable[[], datetime],
+    error_rate: float,
+    seed: int = 0,
+) -> ExpertReview:
+    """The fallible expert: decides as the signed-key simulated expert above, but gets each
+    labeled item wrong at `error_rate`, drawn per item from `seed` (errs). A wrong decision
+    accepts an item the key would dismiss, or dismisses one it would accept. Its summary gives
+    the dismissal rate and the items decided per claim, for the expert's workload. It has no
+    clock: time per item is not simulated.
+
+    The rate has no default. It is Arsh's to set (agent plan, 2026-10-27); tests use made-up
+    rates only to check the mechanism. Not a gate."""
+    from core.pipeline import load_evidence
+    from core.review import actions
+
+    if not 0.0 <= error_rate <= 1.0:
+        raise ValueError(f"error rate {error_rate} is not between 0 and 1")
+    out = ExpertReview(actor=FALLIBLE, error_rate=error_rate)
+    for claim_id in sorted(manifest):
+        out.accepted[claim_id] = []
+        out.dismissed[claim_id] = 0
+        for e in load_evidence(conn, manifest[claim_id]["evidence"]):
+            if e.stance is Stance.IRRELEVANT:
+                continue
+            right = gold.accepts(claim_id, e)
+            wrong = errs(seed, e.id, error_rate)
+            if right != wrong:
+                actions.decide_evidence(
+                    conn,
+                    e.id,
+                    EvidenceStatus.ACCEPTED,
+                    FALLIBLE,
+                    "Fallible expert (eval): accepted"
+                    + (", in error." if wrong else ", as the signed key says."),
+                    clock,
+                )
+                out.accepted[claim_id].append(e.id)
+                if wrong:
+                    out.wrong_accepts.append(e.id)
+            else:
+                actions.decide_evidence(
+                    conn,
+                    e.id,
+                    EvidenceStatus.DISMISSED,
+                    FALLIBLE,
+                    "Fallible expert (eval): dismissed"
+                    + (", in error." if wrong else ", as the signed key says."),
+                    clock,
+                )
+                out.dismissed[claim_id] += 1
+                if wrong:
+                    out.wrong_dismissals.append(e.id)
     return out
 
 
