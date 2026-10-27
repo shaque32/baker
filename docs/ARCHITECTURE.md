@@ -47,6 +47,8 @@ core/
   encryption.py       case keys, encrypted copies of inputs, the keyring of unlocked cases
   ingest/             one file per input format; implements EvidenceImporter or GovDocIngester
                       ufdr_check.py: offline check of a UFDR import against its report.xml
+                      tested.py: the one tested set (UFDR report version 7.48) and each
+                      source's "Not tested" or tested notice (screen, claim page, report)
   enrich/             search index, embeddings, translation, gap detection
   claims/             ClaimExtractor
   audit/

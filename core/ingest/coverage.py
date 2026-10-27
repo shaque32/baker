@@ -171,15 +171,10 @@ _INFO_COUNTERS = {
 }
 
 
-# Shown first for every import made with an unverified reader (the UFDR and AXIOM importers,
-# until a real file has been checked against the tool that made it). Attention level: the
-# expert must see it.
-FORMAT_UNVERIFIED = (
-    "Mabillon's UFDR reader is not yet verified. It was built from Cellebrite's public "
-    "descriptions of the UFDR format and tested only on synthetic packages, never on a real "
-    "one. Before relying on a record, open the same record in Cellebrite Reader and compare "
-    "(each record's locator gives its place in report.xml)."
-)
+# Shown first for every import made with the AXIOM reader, until a real AXIOM export has been
+# checked against the tool that made it. Attention level: the expert must see it. A UFDR import
+# has no such item: since #117 its reader has been run on public Reader 7.48 packages, and the
+# format notice (core/ingest/tested.py) says whether its version is in the tested set.
 FORMAT_UNVERIFIED_AXIOM = (
     "Mabillon's Magnet AXIOM reader is not yet verified. It was built from public descriptions of "
     "AXIOM's XML and Excel report exports and tested only on synthetic exports, never on a real "
@@ -187,9 +182,10 @@ FORMAT_UNVERIFIED_AXIOM = (
     "portable case) and compare (each record's locator gives its artifact and hit, or its sheet "
     "and row)."
 )
-# Per importer: the unverified notice, the tool to compare records in, and what the file is.
+# Per importer: the unverified notice ("" for none), the tool to compare records in, and what
+# the file is.
 READERS: dict[str, tuple[str, str, str]] = {
-    "ufdr": (FORMAT_UNVERIFIED, "Cellebrite Reader", "package"),
+    "ufdr": ("", "Cellebrite Reader", "package"),
     "axiom": (FORMAT_UNVERIFIED_AXIOM, "AXIOM Examine", "report"),
 }
 
@@ -674,8 +670,8 @@ def summarize(c: SourceCoverage) -> CoverageSummary:
     p = c.payload
     items: list[CoverageItem] = []
     xml = p.get("layout") == "xml"  # a UFDR: record types, not sheets or tables
-    if p.get("format_support") == "unverified":
-        notice = reader_words(str(p.get("importer", "")))[0]
+    notice = reader_words(str(p.get("importer", "")))[0]
+    if p.get("format_support") == "unverified" and notice:
         items.append(CoverageItem("attention", "format_unverified", (_t(notice),)))
     tables = [t for t in p.get("tables", []) if isinstance(t, dict)]
     for entry in p.get("not_imported", []) or []:
@@ -844,7 +840,7 @@ def summarize(c: SourceCoverage) -> CoverageSummary:
         else f"Imported {_n(imported, rw)} of {_n(read, rw)} read"
     )  # fmt: skip
     headline = (
-        ("Unverified format. " if p.get("format_support") == "unverified" else "")
+        ("Unverified format. " if any(i.code == "format_unverified" for i in items) else "")
         + f"{head} from {_n(len(tables), tw)}"
         + (f"; {_n(n_not, 'parts')} of the report not imported" if n_not else "")
         + (

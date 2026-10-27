@@ -586,7 +586,7 @@ def test_a_hit_marked_forwarded_is_marked_with_its_original_author_as_written(tm
     assert _codes(s)["forwarded"]
     payload = json.loads(conn.execute("SELECT payload_json FROM source_coverage").fetchone()[0])
     assert payload["forwarded_records"] == {"forwarded": [mid]}
-    assert payload["importer_version"] == "0.2.0"
+    assert payload["importer_version"] == "0.2.1"
     # never credited to the forwarder: the note names the author as the extraction's text
     assert forwarded.record_note_text(conn, mid, "forwarded") == (
         'Forwarded: shown as sent by whoever forwarded it; the extraction names "Jo (old #)" as '
@@ -712,9 +712,9 @@ def test_a_check_on_quoted_words_rests_on_the_copy_and_is_inconclusive(tmp_path)
 
 def test_the_report_names_the_axiom_importer_version(tmp_path):
     conn, _s = _fwd_case(tmp_path, "xml", **{"Quoted Message": "SYNTHETIC hi"})
-    assert axiom.IMPORTER_VERSION == "0.2.0"
+    assert axiom.IMPORTER_VERSION == "0.2.1"
     html_ = render_report(conn)
-    assert "axiom 0.2.0</td>" in html_
+    assert "axiom 0.2.1</td>" in html_
 
 
 @pytest.mark.parametrize("ext", ["xml", "xlsx"])

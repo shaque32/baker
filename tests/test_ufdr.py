@@ -161,8 +161,11 @@ def test_case01_ufdr_source_ids_locators_and_hashes(case01):
         "SELECT payload_json FROM audit_log WHERE action = 'import'"
     ).fetchone()
     assert json.loads(logged) == payload
-    assert s.status == "needs_review" and s.format_unverified
-    assert s.headline.startswith("Unverified format. Imported all ")
+    # no stale "synthetic only" item since #117; the format notice says it is not tested
+    # (core/ingest/tested.py: case01's package states reportVersion 5.2.0.0)
+    assert not s.format_unverified and s.headline.startswith("Imported all ")
+    assert payload["format_check"]["stated_version"] == "5.2.0.0"
+    assert payload["format_check"]["tested"] is False
 
 
 def test_case01_packages_are_deterministic(tmp_path):
@@ -336,7 +339,7 @@ def test_attachments_are_hashed_from_the_package_and_mismatches_listed(edge):
 def test_coverage_lists_what_the_package_held_and_baker_did_not_read(edge):
     _conn, s = _import(edge)
     codes = _codes(s)
-    assert codes["format_unverified"] == "attention" and s.items[0].code == "format_unverified"
+    assert "format_unverified" not in codes  # the format notice says what is tested
     assert codes["category_not_imported"] == "info"  # Location: known, not imported yet
     assert codes["not_imported"] == "attention"  # MysteryThing: not recognised
     mystery = next(i for i in s.items if i.code == "not_imported")
@@ -478,32 +481,39 @@ def iso_local_ts(c: int, i: int) -> str:
 # ---------------------------------------------------------------- where the expert sees it
 
 
-def test_baker_import_reads_a_ufdr_and_says_it_is_unverified(case01, tmp_path, capsys):
+NOT_TESTED_5_2 = (
+    "Not tested: Cellebrite UFDR report version 5.2.0.0 has not been tested with Mabillon. "
+    "Check results against the source tool."
+)
+
+
+def test_baker_import_reads_a_ufdr_and_says_it_is_not_tested(case01, tmp_path, capsys):
     db = tmp_path / "c.db"
     assert cli_main(["init", "--db", str(db)]) == 0
     assert cli_main(["import", "--db", str(db), "--report", str(case01 / "item2.ufdr")]) == 0
     out = capsys.readouterr().out
-    assert "(unknown)" in out and "Unverified format." in out
-    assert "UFDR reader is not yet verified" in out
+    assert "(unknown)" in out and NOT_TESTED_5_2 in out
+    assert "synthetic packages" not in out
 
 
-def test_case_screen_imports_a_ufdr_and_shows_it_unverified(case01, tmp_path):
+def test_case_screen_imports_a_ufdr_and_shows_it_not_tested(case01, tmp_path):
     app = _screen(tmp_path)
     assert _send(app, case01 / "item2.ufdr").status == 303
     page = _setup(app)
-    assert "Imported item2.ufdr" in page and "Unverified format." in page
-    assert "UFDR reader is not yet verified" in page
+    assert "Imported item2.ufdr" in page and "Not tested: Cellebrite UFDR report version" in page
+    assert "synthetic packages" not in page
     assert ".ufdr" in page  # the upload form takes UFDR packages
     check_report_text(page)
 
 
-def test_report_limitations_say_the_ufdr_reader_is_unverified(case01, edge):
+def test_report_limitations_say_each_ufdr_is_not_tested(case01, edge):
     conn = _db()
     UfdrImporter(source_id="item2").import_source(case01 / "item2.ufdr", conn)
     UfdrImporter(source_id="edge").import_source(edge, conn)
     html = render_report(conn)
     limits = html.split("<h2>Limitations</h2>", 1)[1].split("<h2>", 1)[0]
-    assert limits.count("UFDR reader, which is not yet verified") == 2
+    assert limits.count("Not tested: Cellebrite UFDR report version") == 2
+    assert "synthetic packages" not in limits
     assert "The coverage of" in limits  # fidelity not known: no absence finding rests on it
     # item2 has nothing else to review; the edge package lists what it did not read
     assert 'Mabillon did not read all of <span class="q">item2.ufdr' not in limits
@@ -1061,8 +1071,8 @@ def test_the_report_names_the_ufdr_importer_version(tmp_path):
 
     original = model("InstantMessage", one("From", party(*JO)), field("Body", "SYNTHETIC hi"))
     conn, _ids = _copy_case(tmp_path, original)
-    assert IMPORTER_VERSION == "0.3.1"
-    assert f"{ufdr.IMPORTER_NAME} 0.3.1</td>" in render_report(conn)
+    assert IMPORTER_VERSION == "0.3.2"
+    assert f"{ufdr.IMPORTER_NAME} 0.3.2</td>" in render_report(conn)
 
 
 # ---------------------------------------------------------------- RelatedModels (Reader 7.48)

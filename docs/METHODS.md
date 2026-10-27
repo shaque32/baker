@@ -151,10 +151,12 @@ from each report you deliver: that is the anchor no one can change.
 
 ## 6. Known limitations
 
-1. **Unverified formats.** The UFDR and AXIOM readers were built from vendor documentation and
-   synthetic samples and have not been checked against a real export. The screen and the report
-   mark these sources "unverified". The Cellebrite Excel and PDF readers have also been tested only
-   on synthetic reports.
+1. **Tested formats.** The tested set is one format and version: a Cellebrite UFDR whose
+   report.xml states report version 7.48, run on exports of public test phones, not on case
+   data (`core/ingest/tested.py`). The screen, each claim page and the report show every other
+   format or version (another UFDR version, Cellebrite Excel or PDF, Magnet AXIOM) as "Not
+   tested", with the version the export states, and say to check results against the source
+   tool. The AXIOM reader is also marked "not yet verified".
 2. **Forwarded and quoted messages** fail closed. A message the UFDR or Excel report marks as
    forwarded, or that carries a forwarded or quoted original, can neither support nor contradict a
    claim, checks resting on it are inconclusive, and the claim page and report warn. Its sender

@@ -27,13 +27,14 @@ from core.contracts import (
     SourceKind,
     Timestamp,
 )
-from core.ingest import forwarded
+from core.ingest import forwarded, tested
 from core.ingest.source_file import SourceFile
 from core.review import audit_log
 
 # 0.3.1: devices.timezone holds only the summary's Device time zone, never the report's display
-# zone (with none, the phone's zone is unknown).
-IMPORTER_VERSION = "0.3.1"
+# zone (with none, the phone's zone is unknown). 0.3.2: records the format check
+# (core/ingest/tested.py).
+IMPORTER_VERSION = "0.3.2"
 HEADER_SCAN_ROWS = 10
 MAX_LISTED = 50  # cap on ids listed in a coverage payload
 FORWARDED_LABEL_RE = re.compile(r"\b(?:auto-?)?forward(?:ed)?\b", re.IGNORECASE)
@@ -1884,12 +1885,15 @@ def write_report(
         payload = coverage_payload(
             source, importer_name, tz_raw, rep_off, cov, sorted(grouped), report_order, date_order
         )
+        check = tested.at_import(importer_name, source.id, source.file_name, source.tool_version)
+        payload["format_check"] = check.payload()
         conn.execute(
             "INSERT INTO source_coverage (source_id, importer, importer_version, payload_json)"
             " VALUES (?, ?, ?, ?)",
             (source.id, importer_name, IMPORTER_VERSION, json.dumps(payload, sort_keys=True)),
         )
         audit_log.append(conn, imported_at, "system", "import", payload)
+        audit_log.append(conn, imported_at, "system", tested.ACTION, check.payload())
     return source
 
 

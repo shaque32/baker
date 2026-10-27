@@ -22,6 +22,9 @@ Display rules:
   "Support found: do you agree?", Mabillon's finding put to the expert; its verdict is unproven.
 - Each evidence item shows its provenance tier from contracts.display_tier: the record's tier
   (observed, derived, inferred), or ai_reviewed / confirmed from its review status.
+- Each evidence source's format notice (core/ingest/tested.py) prints in Limitations and on
+  every claim that rests on the source, in the words the case screen and claim page use: "Not
+  tested: ..." for any format or version outside the tested set. It never changes a verdict.
 - Device-ownership stipulations, the names the expert gave devices, expert-confirmed identity
   links, source coverage, what each search covered and the meaning of each verdict are printed
   as limitations in every report.
@@ -85,7 +88,7 @@ from core.contracts import (
 )
 from core.hypotheses import explain
 from core.ingest import coverage as import_coverage
-from core.ingest import forwarded
+from core.ingest import forwarded, tested
 from core.llm.cloud import is_cloud_sha
 from core.report import hypotheses as alternatives_html
 from core.report import paired as paired_html
@@ -147,7 +150,10 @@ from core.review.withheld import summary as withheld_summary
 # "record state" for related copies.
 # 0.17.0: Limitations list each name the expert gave a device for the document ("TARGET PHONE"),
 # with who gave it and when (core/review/device_names.py).
-REPORT_VERSION = "0.17.0"
+# 0.18.0: each evidence source's format notice (core/ingest/tested.py), in Limitations and on
+# every claim that rests on the source: "Not tested: ..." outside the tested set, the tested
+# notice for a UFDR stating report version 7.48. The UFDR "synthetic packages only" item is gone.
+REPORT_VERSION = "0.18.0"
 
 
 @dataclass(frozen=True)
@@ -640,6 +646,7 @@ def _limitations(conn: sqlite3.Connection, srcs: list[tuple]) -> str:
                 f"<li>The coverage of {q(s[4])} is not known, so no absence finding can rest "
                 "on it.</li>"
             )
+    items += [f"<li>{format_notice(c)}</li>" for c in tested.all_sources(conn)]
     for cov in import_coverage.summaries(conn):
         if cov.format_unverified and cov.importer == "axiom":
             items.append(
@@ -648,14 +655,6 @@ def _limitations(conn: sqlite3.Connection, srcs: list[tuple]) -> str:
                 "public descriptions of AXIOM's report exports and tested on synthetic exports "
                 "only. Each record cited from this file should be compared with the same record "
                 "in AXIOM Examine before it is relied on.</li>"
-            )
-        elif cov.format_unverified:
-            items.append(
-                f"<li><strong>{q(cov.file_name)} was read with Mabillon's UFDR reader, which is "
-                "not yet verified against a real UFDR.</strong> It was built from Cellebrite's "
-                "public descriptions of the format and tested on synthetic packages only. Each "
-                "record cited from this file should be compared with the same record in "
-                "Cellebrite Reader before it is relied on.</li>"
             )
         attention = [i for i in cov.attention if i.code != "format_unverified"]
         if attention:
@@ -698,6 +697,29 @@ def claim_record_ids(st: ClaimState) -> list[str]:
     """The records a claim's shown evidence and its checks rest on."""
     ids = [x.record_id for x in st.evidence if x.stance != Stance.IRRELEVANT]
     return ids + [r for c in st.checks for r in c.record_ids]
+
+
+def format_notice(c: tested.FormatCheck) -> str:
+    """One source's format notice (core/ingest/tested.py), the same words on the case screen,
+    the claim page and in the report. The stated version is the export's own text."""
+    body = "".join(q(t) if cited else e(t) for t, cited in c.parts)
+    cls = "format-notice" if c.tested else "format-notice warn"
+    return (
+        f"<p class='{cls}' data-source='{e(c.source_id)}'><strong>{body}</strong> "
+        f"<span class='muted'>File {q(c.file_name)}.</span></p>"
+    )
+
+
+def claim_format_notices(conn: sqlite3.Connection, st: ClaimState) -> str:
+    """The format notice of each source the claim rests on: where its evidence comes from, what
+    its checks searched and where the records they cite come from."""
+    checks = tested.for_claim(
+        conn,
+        (x.ref.source_id for x in st.evidence),
+        (s for c in st.checks for s in c.source_ids),
+        (r for c in st.checks for r in c.record_ids),
+    )
+    return "".join(format_notice(c) for c in checks)
 
 
 def forwarded_warning(conn: sqlite3.Connection, st: ClaimState) -> str:
@@ -760,6 +782,7 @@ def _claim_block(
         f"<p class='gap'><strong>{e(topic)}:</strong> {e(text)}</p>"
         for topic, text in st.explain_lines()
     )
+    out.append(claim_format_notices(conn, st))
     out.append(forwarded_warning(conn, st))
     found = forwarded.affected(conn)
     if st.awaiting_expert:
