@@ -259,6 +259,27 @@ def test_a_zone_after_a_date_code_does_not_read_refuses_the_day(text):
 
 
 @pytest.mark.parametrize(
+    ("words", "text"),
+    [
+        ("On July 9, 2026 UTC", "On July 9, 2026 UTC+3, PETROV sent no messages."),
+        ("On July 9, 2026 GMT", "On July 9, 2026 GMT-5, PETROV sent no messages."),
+        ("at 9 p.m. UTC", "On July 9, 2026, at 9 p.m. UTC+3, PETROV called."),
+        ("at 9 p.m. (GMT", "On July 9, 2026, at 9 p.m. (GMT-5), PETROV called."),
+    ],
+)
+def test_model_words_that_stop_inside_the_claims_zone_are_refused(words, text):
+    """The model's words give UTC, but the claim goes on to write an offset (Codex on #150)."""
+    assert stated_windows(text) is None
+    with pytest.raises(Reject, match="time zone code does not read"):
+        written_zone(words, text)
+
+
+def test_a_zone_the_model_gives_still_reads_when_the_claim_adds_nothing_to_it():
+    assert written_zone("On July 9, 2026 UTC", "On July 9, 2026 UTC, PETROV called.") == "UTC"
+    assert written_zone("at 9 p.m. EDT", "On July 9, 2026, at 9 p.m. EDT the call") == "EDT"
+
+
+@pytest.mark.parametrize(
     "text",
     [
         "On July 9, 2026, at 9 p.m. Sgt. Reyes arrived.",  # title case is never another zone
