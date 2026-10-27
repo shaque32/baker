@@ -61,7 +61,7 @@ import sqlite3
 import unicodedata
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -514,6 +514,33 @@ def _hm(off: timedelta | None) -> str:
     return f"{'-' if mins < 0 else '+'}{abs(mins) // 60:02d}:{abs(mins) % 60:02d}"
 
 
+def _offsets(t: datetime, tz: str) -> dict[int, timedelta | None]:
+    """The offsets a wall-clock time has in tz, by fold: two the night the clocks go back, and
+    none for a time they skip when they go forward."""
+    z = ZoneInfo(tz)
+    return {
+        f: t.replace(fold=f, tzinfo=z).utcoffset()
+        for f in (0, 1)
+        if t.replace(fold=f, tzinfo=z).astimezone(UTC).astimezone(z).replace(tzinfo=None) == t
+    }
+
+
+def _instant(t: datetime, tz: str, want: timedelta | None) -> datetime:
+    """t with the fold that makes it one instant in tz: the one at the offset the document
+    writes ("EDT"), or its only one. Raises Reject when a clock change makes it two instants or
+    none and the document's words do not pick one."""
+    offsets = _offsets(t, tz)
+    if want is not None:
+        fold = next((f for f, off in offsets.items() if off == want), None)
+        if fold is None:
+            raise Reject(f"{t:%Y-%m-%d %H:%M} is not at UTC{_hm(want)} in {tz}: the clocks change")
+        return t.replace(fold=fold)
+    if len(set(offsets.values())) != 1:
+        n = "two times" if offsets else "no time"
+        raise Reject(f"{t:%Y-%m-%d %H:%M} is {n} in {tz}: the clocks change then")
+    return t.replace(fold=0)
+
+
 def zone_offset(zone: str, at: datetime) -> timedelta:
     """The UTC offset a zone the document writes means at this wall-clock time."""
     z = WRITTEN_ZONES[" ".join(zone.split()).casefold()]
@@ -867,6 +894,9 @@ _OPEN_LEAD_RE = re.compile(
 )
 # words right after the range read that leave its end open: "at 9 p.m. onward", "or later"
 _OPEN_TAIL_RE = re.compile(
+    # the phone's-zone words first do not hide the open end: "at 9 p.m. local time onward"
+    # (Codex on #150)
+    r"(?:\s*,?\s*\(?(?:local(?:\s+time)?|(?:phone|device)(?:'s)?\s+time)\)?)?"
     r"\s*,?\s*(?:(?:and|or)\s+(?:later|after|afterwards?|thereafter|onwards?|beyond|since|"
     r"before|earlier|prior)|onwards?|forward|thereafter|afterwards?|later)\b",
     re.IGNORECASE,
@@ -1479,11 +1509,7 @@ class LocalAssumptionFiller:
             raise Reject("the time range is not one the claim plainly states")
         (w,) = stated
         check_window(w.start, w.end, w.raw, claim.text, para, template_id)
-        tz = self._read_zone(w.zone, w.start, w.end, device_ids)
-        try:
-            return local_window(w.start, w.end, tz, w.raw)
-        except ValueError as e:
-            raise Reject(str(e)) from None
+        return self._zoned_window(w.zone, w.start, w.end, device_ids, w.raw)
 
     def _add_record_time(
         self, claim: Claim, para: str, out: list[Proposal], allowed_ids: set[str]
@@ -1661,6 +1687,11 @@ class LocalAssumptionFiller:
         said = [w for w in APP_ALIASES.get(canon.casefold(), ()) if _has_alias(claim_text, w)]
         if not said:
             raise Reject(f"the claim does not name the channel {canon!r}")
+        # The claim may write another export's full name for that word, "Wickr Me" for a case
+        # that holds only Wickr Pro: it means that app, not this one (Codex on #150).
+        for k, words in APP_ALIASES.items():
+            if k != canon.casefold() and set(words) & set(said) and _has_word(claim_text, k):
+                raise Reject(f"the claim names {k.title()!r}, not {canon!r}")
         for w in said:
             others = sorted(
                 c
@@ -1717,9 +1748,19 @@ class LocalAssumptionFiller:
         if zone is None and w.zone == "UTC":
             raise Reject("the range does not say UTC")
         check_window(start, end, w.as_written, claim_text, para, template_id)
+        return self._zoned_window(zone, start, end, device_ids, w.as_written.strip())
+
+    def _zoned_window(
+        self, zone: str | None, start: datetime, end: datetime, device_ids: list[str], raw: str
+    ) -> Any:
+        """The range in the zone `_read_zone` gives, with each end read as the one instant it
+        is there. On the night the clocks go back, "1:59 a.m. EDT" in New York ends at 2:00
+        a.m., which is EST: read as is, the minute would be 61 minutes (Codex on #150)."""
         tz = self._read_zone(zone, start, end, device_ids)
+        fixed = WRITTEN_ZONES[" ".join(zone.split()).casefold()] if zone else None
+        want = fixed if isinstance(fixed, timedelta) else None
         try:
-            return local_window(start, end, tz, w.as_written.strip())
+            return local_window(_instant(start, tz, want), _instant(end, tz, want), tz, raw)
         except ValueError as e:
             raise Reject(str(e)) from None
 
@@ -1738,7 +1779,7 @@ class LocalAssumptionFiller:
         for t in (start, end - timedelta(minutes=1)):
             want = zone_offset(zone, t)
             got = t.replace(tzinfo=ZoneInfo(tz)).utcoffset()
-            if got != want:
+            if want not in _offsets(t, tz).values():  # "1:30 a.m. EST" the night they go back
                 raise Reject(
                     f"the claim gives the time in {zone} (UTC{_hm(want)}), but the phone's zone"
                     f" {tz} is at UTC{_hm(got)} then"
