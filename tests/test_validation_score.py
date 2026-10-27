@@ -311,6 +311,7 @@ def test_coverage_counts_the_tested_claims_beside_the_measures(scored):
     over = c["r1_over_tested"]["contradicted_without_expert"]
     assert over["n"] == s["r1"]["contradicted_without_expert"]["n"] == 2
     assert s["r2"]["card_over_tested"]["claims"] == 3
+    assert s["scorer_version"] == score_hickman.SCORER_VERSION
     md = (run.parent / "score" / "score.md").read_text("utf-8")
     assert "**Tested: 3 of 3 claims.** Minimum 30: insufficient coverage" in md
 
@@ -400,3 +401,40 @@ def test_coverage_is_enough_at_the_minimum():
     )
     assert c["tested"] == n - 1 and c["result"] == score_hickman.INSUFFICIENT
     assert c["refusal_kinds"] == {score_hickman.ONLY_SUMMARY: {"claims": 1, "ids": ["C00"]}}
+
+
+def test_a_claim_with_no_verdict_is_untested_and_never_scored():
+    gold = [_claim(f"C{i:02}", i, "unproven") for i in range(1, 4)]
+    per_claim = {g.claim_id: _per_claim("unproven", "unproven") for g in gold}
+    per_claim["C02"]["r1"] = None  # neither decided nor marked "Not tested"
+    c = score_hickman.coverage({"not_tested": {}}, gold, {"per_claim": per_claim})
+    assert (c["claims"], c["tested"], c["untested"]) == (3, 2, 1)
+    assert c["tested_claims"] == ["C01", "C03"]
+    assert c["untested_claims"] == {"C02": "no verdict recorded."}
+    assert c["refusal_kinds"] == {score_hickman.NO_VERDICT: {"claims": 1, "ids": ["C02"]}}
+    # Measure 1's base (gold not contradicted) holds only the two decided claims.
+    assert c["r1_over_tested"]["contradicted_without_expert"]["n"] == 2
+
+
+def test_coverage_refuses_a_gold_claim_without_a_first_pass_row():
+    gold = [_claim(f"C{i:02}", i, "unproven") for i in range(1, 3)]
+    per_claim = {"C01": _per_claim("unproven", "unproven")}
+    with pytest.raises(SystemExit):
+        score_hickman.coverage({"not_tested": {}}, gold, {"per_claim": per_claim})
+
+
+def test_bare_words_are_not_a_refusal_kind():
+    from core.pipeline import not_tested_reason
+
+    loose = not_tested_reason(["the record's window and range and duration looked odd"])
+    assert score_hickman.refusal_kinds(loose) == [score_hickman.UNCLASSIFIED]
+    exact = not_tested_reason(
+        [
+            "template 'record_time': the time range is not one the claim plainly states",
+            "cannot read the duration 'a while'",
+        ]
+    )
+    assert score_hickman.refusal_kinds(exact) == [
+        "time range not plainly stated",
+        "count or duration not readable",
+    ]
