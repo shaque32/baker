@@ -172,13 +172,15 @@ _INFO_COUNTERS = {
 
 
 # Shown first for every import made with an unverified reader (the UFDR and AXIOM importers,
-# until a real file has been checked against the tool that made it). Attention level: the
-# expert must see it.
+# until their records have been checked against the tool that made the file). Attention level:
+# the expert must see it, so the import needs review whatever its version. Since #117 the UFDR
+# reader has been run on public packages stating report version 7.48 (the format notice,
+# core/ingest/tested.py, says whether a package's version is in the tested set), but its counts
+# have not been compared with Cellebrite Reader's own.
 FORMAT_UNVERIFIED = (
-    "Mabillon's UFDR reader is not yet verified. It was built from Cellebrite's public "
-    "descriptions of the UFDR format and tested only on synthetic packages, never on a real "
-    "one. Before relying on a record, open the same record in Cellebrite Reader and compare "
-    "(each record's locator gives its place in report.xml)."
+    "Mabillon's UFDR reader is not yet verified: its record counts have not been compared with "
+    "Cellebrite Reader's own. Before relying on a record, open the same record in Cellebrite "
+    "Reader and compare (each record's locator gives its place in report.xml)."
 )
 FORMAT_UNVERIFIED_AXIOM = (
     "Mabillon's Magnet AXIOM reader is not yet verified. It was built from public descriptions of "

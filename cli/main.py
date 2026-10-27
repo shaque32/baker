@@ -168,6 +168,7 @@ def cmd_init(a: argparse.Namespace) -> int:
 
 def cmd_import(a: argparse.Namespace) -> int:
     conn = _open(a.db)
+    from core.ingest import tested
     from core.ingest.coverage import format_text, summary
     from core.ingest.pick import report_importer
 
@@ -175,6 +176,9 @@ def cmd_import(a: argparse.Namespace) -> int:
 
     src = Importer(source_id=a.source_id, date_order=a.date_order).import_source(a.report, conn)
     print(f"imported {src.file_name} as {src.id} ({src.fidelity.value}), sha256 {src.sha256}")
+    check = tested.for_source(conn, src.id)
+    if check is not None:
+        print(check.notice)
     cov = summary(conn, src.id)
     if cov is not None:
         print(format_text(cov))

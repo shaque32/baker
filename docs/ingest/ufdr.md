@@ -1,20 +1,32 @@
 # Cellebrite UFDR import (unverified)
 
-Importer: `core/ingest/ufdr.py` (`UfdrImporter`, importer `ufdr` 0.3.0). It implements
+Importer: `core/ingest/ufdr.py` (`UfdrImporter`, importer `ufdr` 0.3.2). It implements
 `EvidenceImporter` and writes the same canonical rows as the Excel and PDF importers, through
 the same record mapping in `core/ingest/cellebrite_common.py`, so retrieval, checks, rules, the
 review screen and the report work unchanged.
 
 **Format support is unverified.** Cellebrite does not publish a full UFDR specification. This
-importer was built from public descriptions of the package and of `report.xml`, and tested on
-synthetic packages only (`eval/synthetic/ufdr.py`). Until a real UFDR has been checked (see the
-last section), every import:
+importer was built from public descriptions of the package and of `report.xml`, tested on
+synthetic packages (`eval/synthetic/ufdr.py`) and run on three public test-phone packages whose
+`report.xml` states `reportVersion` 7.48 (#117, #130; reported in their changelog entries). Its
+counts have not been compared with Cellebrite Reader's own (see the last section), so every
+import:
 
 - records `"format_support": "unverified"` in its coverage record;
-- shows, first among the items to review, that the reader is unverified and that each record
-  should be compared with Cellebrite Reader before it is relied on (`format_unverified`). The
-  coverage headline starts "Unverified format." on the case screen and in `mabillon import`;
-- adds a line to the report's Limitations saying the file was read with an unverified reader;
+- shows, first among the items to review, that the reader is not yet verified (its record counts
+  have not been compared with Cellebrite Reader's own) and that each record should be compared
+  with Cellebrite Reader before it is relied on (`format_unverified`), so every UFDR import needs
+  review, report version 7.48 included. The coverage headline starts "Unverified format." on the
+  case screen and in `mabillon import`, and the report's Limitations say the same;
+- records its `reportVersion` as written, and whether it is in the tested set
+  (`core/ingest/tested.py`), in the coverage record (`format_check`) and in the audit log
+  (`import.format`). The case overview, the setup screen's file list, each claim page that rests
+  on the package and the report (Limitations and each such claim) print the same notice:
+  "Imported without errors from three public test-phone packages (UFDR report version 7.48).
+  Counts not yet compared with Cellebrite Reader. Not tested on your case data." for
+  `reportVersion` 7.48 exactly, else "Not tested: Cellebrite UFDR report version <as written>
+  has not been tested with Mabillon. Check results against the source tool." (or "(no report
+  version stated)"). The notice never changes a verdict;
 - imports with `fidelity = unknown`, so no absence or count finding can rest on it, whatever the
   package says about how complete it is.
 

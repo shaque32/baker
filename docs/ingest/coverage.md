@@ -12,6 +12,14 @@ One `source_coverage` row per source (`core/schema.sql`; `SourceCoverage` in
 also appended to the audit log as the `import` entry, as before. Imports made with importer
 0.1.0 have only the audit-log entry; `core.ingest.coverage.load` falls back to it.
 
+Since UFDR importer 0.3.2, Cellebrite Excel and PDF 0.3.2 and AXIOM 0.2.1 the payload also holds
+`format_check` (`core/ingest/tested.py`): the format, the tool version the export states, as
+written (`stated_version`, null when it states none; a UFDR's `reportVersion`), whether that is
+in the tested set (`tested`), the tested set's version and the notice. The same object is
+appended to the audit log as an `import.format` entry. For an import made before then,
+`tested.for_source` reads the version from the UFDR's `ufdr.report_version` or the source row's
+`tool_version`.
+
 ## Reading it
 
 ```python

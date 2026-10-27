@@ -46,7 +46,7 @@ from openpyxl import load_workbook
 
 from core.contracts import Fidelity, Source, SourceKind
 from core.encryption import open_input
-from core.ingest import forwarded
+from core.ingest import forwarded, tested
 from core.ingest.cellebrite_common import (
     HEADER_SCAN_ROWS,
     Cell,
@@ -74,7 +74,9 @@ from core.ingest.source_file import require_sha256
 from core.review import audit_log
 
 IMPORTER_NAME = "axiom"
-IMPORTER_VERSION = "0.2.0"  # 0.2.0: forwarded and quoted messages marked, copies imported
+# 0.2.0: forwarded and quoted messages marked, copies imported. 0.2.1: records the format
+# check (core/ingest/tested.py).
+IMPORTER_VERSION = "0.2.1"
 # Becomes "verified" only after a real AXIOM export has been checked against AXIOM Examine
 # (docs/ingest/axiom.md, "Before calling it verified"). Every import records it.
 FORMAT_SUPPORT = "unverified"
@@ -1199,12 +1201,17 @@ class AxiomImporter:
                     "summary_read": {k: v[1] for k, v in sorted(summ.items())},
                 },
             )
+            check = tested.at_import(
+                IMPORTER_NAME, source.id, source.file_name, source.tool_version, rep.fmt
+            )
+            payload["format_check"] = check.payload()
             conn.execute(
                 "INSERT INTO source_coverage (source_id, importer, importer_version, payload_json)"
                 " VALUES (?, ?, ?, ?)",
                 (source.id, IMPORTER_NAME, IMPORTER_VERSION, json.dumps(payload, sort_keys=True)),
             )
             audit_log.append(conn, source.imported_at_utc, "system", "import", payload)
+            audit_log.append(conn, source.imported_at_utc, "system", tested.ACTION, check.payload())
             if rep.fmt == "xml" and sha256_file(path) != sha:
                 raise ValueError(
                     f"{path.name} changed while Mabillon read it; nothing was imported. Nothing "

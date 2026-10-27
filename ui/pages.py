@@ -34,12 +34,14 @@ from core.contracts import (
 )
 from core.hypotheses import explain
 from core.ingest import coverage as import_coverage
-from core.ingest import forwarded
+from core.ingest import forwarded, tested
 from core.report.html import CSS as REPORT_CSS
 from core.report.html import (
     STANCE_LABEL,
     audit_log_summary,
     build_label,
+    claim_format_notices,
+    format_notice,
     forwarded_warning,
     labelled_by,
     quote_check_label,
@@ -332,6 +334,7 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
             + "</details>"
         )
 
+    out.append(_format_notices(conn))
     out.append("<h2 id='audit'>Audit</h2>")
     if run is None:
         out.append("<p>No audit has run yet. <a href='/setup'>Set up and run the audit</a>.</p>")
@@ -408,6 +411,13 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
         "<a href='/log'>Open the log</a>.</p>"
     )
     return page.wrap("Case", "".join(out), run_banner(conn, page, "/"))
+
+
+def _format_notices(conn: sqlite3.Connection) -> str:
+    """Each evidence source's format notice (core/ingest/tested.py), as the report's Limitations
+    print it."""
+    notices = "".join(format_notice(c) for c in tested.all_sources(conn))
+    return f"<div class='banner' id='formats'>{notices}</div>" if notices else ""
 
 
 def _withheld_overview(states: list[ClaimState]) -> str:
@@ -1116,6 +1126,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
     if needs:
         out.append("<ul>" + "".join(f"<li>{e(t)}</li>" for _, t in needs) + "</ul>")
     out.append(_gap_lines(st))  # the same lines as the overview and the report
+    out.append(claim_format_notices(conn, st))  # the same notices as the report's claim
     out.append(forwarded_warning(conn, st))
     if d is not None:
         out.append(
@@ -1894,6 +1905,8 @@ def setup_page(
                 recs = f"{n} paragraphs"
             else:
                 what = f"{e(kind)}, {e(extraction)} extraction, {e(tool)} {e(tver or '')}"
+                fc = tested.for_source(conn, sid)
+                what += format_notice(fc) if fc is not None else ""
                 cov = e(FIDELITY.get(fidelity, fidelity)) + _import_coverage(conn, sid)
                 recs = str(counts.get(sid, 0))
             out.append(
@@ -1920,8 +1933,9 @@ def setup_page(
         + _upload_form(
             page,
             "report",
-            "Phone report: Cellebrite (Excel .xlsx, PDF, or UFDR package .ufdr, unverified) "
-            "or Magnet AXIOM (XML or Excel export, unverified)",
+            "Phone report: Cellebrite (UFDR package .ufdr, Excel .xlsx or PDF) or Magnet AXIOM "
+            "(XML or Excel export). Only a UFDR stating report version 7.48 has been tested; "
+            "every other format or version shows a not-tested notice",
             ".xlsx,.pdf,.ufdr,.zip,.xml",
             busy,
         )

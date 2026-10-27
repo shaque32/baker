@@ -2,10 +2,13 @@
 
 A UFDR ("Universal Forensic Data Reader" package, opened with Cellebrite Reader) is a zip file
 holding `report.xml`, the decoded data of one extraction, plus the extracted files it points to.
-This importer was built from Cellebrite's public descriptions of that structure and tested on
-synthetic packages only (eval/synthetic/ufdr.py). Until a real UFDR has been compared with
-Cellebrite Reader, every import says so in its coverage record, on the case screen and in the
-report's limitations. Layout assumptions: docs/ingest/ufdr.md.
+This importer was built from Cellebrite's public descriptions of that structure, tested on
+synthetic packages (eval/synthetic/ufdr.py) and run on three public test-phone packages whose
+report.xml states reportVersion 7.48 (#117, #130). Its counts have not been compared with
+Cellebrite Reader's own, so the coverage record still says `format_support: unverified`. Each
+import records its reportVersion as written, and the format notice (core/ingest/tested.py) says
+on the case screen, the claim pages and in the report whether that version is in the tested set.
+Layout assumptions: docs/ingest/ufdr.md.
 
 What it shares with the Excel and PDF importers (core/ingest/cellebrite_common.py): the record
 mapping for messages and calls (threads, senders, recipients, direction, owner accounts), time
@@ -42,7 +45,7 @@ from core.contracts import (
     SourceKind,
 )
 from core.encryption import open_input
-from core.ingest import forwarded
+from core.ingest import forwarded, tested
 from core.ingest.cellebrite_common import (
     MAX_LISTED,
     Cell,
@@ -67,7 +70,7 @@ from core.ingest.source_file import require_sha256
 from core.review import audit_log
 
 IMPORTER_NAME = "ufdr"
-IMPORTER_VERSION = "0.3.1"
+IMPORTER_VERSION = "0.3.2"  # 0.3.2: records the format check (core/ingest/tested.py)
 # Becomes "verified" only after a real UFDR has been checked against Cellebrite Reader
 # (docs/ingest/ufdr.md, "Before calling it verified"). Every import records it.
 FORMAT_SUPPORT = "unverified"
@@ -1112,12 +1115,17 @@ class UfdrImporter:
             payload["counts"] = dict(sorted(cov.counters.items()))
             payload["unmapped_direction_values"] = dict(cov.unmapped_direction_values)
             payload["notes"] = cov.notes
+            check = tested.at_import(
+                IMPORTER_NAME, source.id, source.file_name, scan.project_attrs.get("reportVersion")
+            )
+            payload["format_check"] = check.payload()
             conn.execute(
                 "INSERT INTO source_coverage (source_id, importer, importer_version, payload_json)"
                 " VALUES (?, ?, ?, ?)",
                 (source.id, IMPORTER_NAME, IMPORTER_VERSION, json.dumps(payload, sort_keys=True)),
             )
             audit_log.append(conn, source.imported_at_utc, "system", "import", payload)
+            audit_log.append(conn, source.imported_at_utc, "system", tested.ACTION, check.payload())
             if sha256_file(path) != sha:  # the package changed while it was read: store nothing
                 raise ValueError(
                     f"{path.name} changed while Mabillon read it; nothing was imported. Nothing "
