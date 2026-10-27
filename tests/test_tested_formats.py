@@ -74,7 +74,7 @@ def case01(tmp_path_factory) -> Path:
 def test_the_tested_set_is_ufdr_report_version_7_48_only():
     assert tested.TESTED == {("ufdr", "7.48")}
     assert tested.at_import("ufdr", "s", "f", "7.48").tested
-    for v in ("7.50", "7.48.0", " 7.48", "7.48 ", "", None):  # exact, as written
+    for v in ("7.50", "7.48.0", "7.480", "7.4", " 7.48", "7.48 ", "", None):  # exact, as written
         assert not tested.at_import("ufdr", "s", "f", v).tested, v
     for importer in ("cellebrite_excel", "cellebrite_pdf", "axiom"):
         assert not tested.at_import(importer, "s", "f", "7.48").tested
@@ -110,6 +110,9 @@ def test_a_ufdr_import_records_its_report_version_and_gets_its_notice(tmp_path, 
     assert s is not None and not s.format_unverified
     assert not any("synthetic packages" in i.plain for i in s.items)
     assert not s.headline.startswith("Unverified format")
+    # the coverage status says what the import read, as for every importer; it is not the
+    # format notice, which every screen and the report print beside it
+    assert s.status == "complete" and s.headline.endswith("Nothing needs review.")
 
 
 def _excel(tmp: Path) -> Path:
