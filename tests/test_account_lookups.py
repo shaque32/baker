@@ -119,6 +119,23 @@ def test_a_number_two_accounts_recorded_differently_share_is_refused(conn):
         conn.execute("DELETE FROM accounts WHERE id = 'acct:extra:wa'")
 
 
+def test_a_shared_number_is_not_looked_up_again_as_a_display_name(conn):
+    # Codex on #152: the refusal was caught, and the display name of one of the two accounts
+    # then picked it.
+    conn.execute(
+        "INSERT INTO accounts (id, source_id, locator, device_id, app, identifier,"
+        " display_name) VALUES ('acct:extra:wa2', 'src:none', 'extra/wa2', NULL, 'WhatsApp',"
+        " '+1 212 555 0122', '212-555-0122')"
+    )
+    try:
+        text = f'On March 18, 2026, 212-555-0122 wrote "{QUOTE}" on WhatsApp.'
+        with pytest.raises(Reject, match="is the number of 2 WhatsApp accounts"):
+            filler(conn)._resolve(claim(text), "", proposal(
+                "sender", **sender("212-555-0122", "WhatsApp")))  # fmt: skip
+    finally:
+        conn.execute("DELETE FROM accounts WHERE id = 'acct:extra:wa2'")
+
+
 @pytest.mark.parametrize("words", ["Reyes D", "+12125550199"])  # a display name, an identifier
 def test_no_count_or_absence_is_read_on_the_accounts_of_an_app_that_holds_more(conn, words):
     # Native Messages holds iMessages and SMS together. Codex on #153: an account found on it
@@ -154,6 +171,20 @@ def test_a_person_written_as_an_account_is_that_person(conn):
         "sender", **sender("PETROV", "Instagram")))  # fmt: skip
     assert out.params["person_ids"] == [PETROV]
     assert "account_ids" not in out.params
+    # the app the person is written on scopes their accounts (Codex on #152): a message of
+    # theirs on another app does not do
+    assert out.params["channels"] == ["Instagram"]
+
+
+def test_a_person_on_an_app_the_claim_does_not_name_or_the_channels_leave_out_is_refused(conn):
+    text = f'On March 18, 2026, PETROV wrote "{QUOTE}".'
+    with pytest.raises(Reject, match="does not name the channel"):
+        filler(conn)._resolve(claim(text), "", proposal(
+            "sender", **sender("PETROV", "Instagram")))  # fmt: skip
+    text = f'On March 18, 2026, PETROV wrote "{QUOTE}" on Instagram or Telegram.'
+    with pytest.raises(Reject, match="channels leave out"):
+        filler(conn)._resolve(claim(text), "", proposal(
+            "sender", channels=["Telegram"], **sender("PETROV", "Instagram")))  # fmt: skip
 
 
 def test_a_person_is_not_read_where_the_template_takes_no_person(conn):
@@ -241,6 +272,7 @@ def test_a_person_written_as_an_account_is_one_more_party(conn):
                          "end": "2026-03-19T00:00", "zone": "phone"})  # fmt: skip
     out = filler(conn)._resolve(claim(text, ClaimType.ABSENCE), "", p)
     assert out.params["person_ids"] == [PETROV, REYES]
+    assert out.params["channels"] == ["Instagram"]
     assert not parse_params("no_contact", out.params).account_ids
 
 

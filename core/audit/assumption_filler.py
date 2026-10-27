@@ -333,6 +333,11 @@ class Reject(ValueError):
     """One proposal (or one value in it) cannot be used."""
 
 
+class _SharedNumber(Reject):
+    """A number two accounts recorded differently share: refused, and never looked up again
+    as a person or a display name."""
+
+
 def _nfc(s: str) -> str:
     return unicodedata.normalize("NFC", s)
 
@@ -1415,9 +1420,12 @@ class LocalAssumptionFiller:
         account_ids: set[str] = set()
         handles = [h.strip() for h in p.handles]
         named: set[str] = set()  # people the model wrote as accounts
+        named_on: set[str] = set()  # the apps it wrote them on
         for acc in p.accounts:
             try:
                 account_ids |= self._accounts(acc, device_ids, claim.text)
+            except _SharedNumber:
+                raise  # the number is in the case, on more than one account (Codex on #152)
             except Reject:
                 # Words the case holds no account identifier under may still name a party:
                 # - a person the expert created ("SUBJECT-1" on Signal): the claim names the
@@ -1439,7 +1447,17 @@ class LocalAssumptionFiller:
                             f"{written!r} names a person and a {acc.app} account that is not"
                             " confirmed as theirs"
                         ) from None
+                    # The app the model wrote the person on scopes their accounts, as the
+                    # channel it is, which the claim must name; without it a message on any of
+                    # their apps would do (Codex on #152).
+                    (on,) = self._channels(claim.text, [acc.app], tpl.id)
+                    if channels and on not in channels:
+                        raise Reject(
+                            f"{written!r} is written on {on}, which the proposal's channels"
+                            " leave out"
+                        ) from None
                     named.add(person)
+                    named_on.add(on)
                     continue
                 if "handles" in tpl.allowed and (written.startswith("@") or written in handles):
                     if written not in handles:
@@ -1451,6 +1469,8 @@ class LocalAssumptionFiller:
                 account_ids |= by_name
         if named:
             params["person_ids"] = sorted(set(params.get("person_ids", [])) | named)
+            if not channels:
+                params["channels"] = sorted(named_on, key=str.lower)
         if handles:
             if "handles" not in tpl.allowed:
                 raise Reject(f"template {tpl.id!r} does not take handles")
@@ -1736,7 +1756,7 @@ class LocalAssumptionFiller:
         if not hits and number is not None and self._app_named(claim_text, acc.app):
             found = [a for a in mine if _same_number(number, a)]
             if len({a.key for a in found}) > 1:  # never joined: they stay apart until linked
-                raise Reject(
+                raise _SharedNumber(
                     f"{acc.as_written!r} is the number of {len({a.key for a in found})} {acc.app}"
                     " accounts recorded differently; which one the claim means is not known"
                 )
