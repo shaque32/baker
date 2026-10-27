@@ -26,7 +26,9 @@
     other records (a scoped bundle), when the searches' versions differ, or when the people,
     links, stipulations, phones, sources or clocks changed after the run (a phone report
     imported after the run counts). After the expert re-runs the verdicts, the bundle checks the
-    searches of the audit whose evidence the re-run reused.
+    searches of the audit whose evidence the re-run reused. A claim the re-run left out (edited
+    or removed after the audit) has its searches noted, not re-run, when the bundle leaves out
+    its assumptions (no history).
   - The eval gains the rubber-stamp simulated expert (`eval/simulated_expert.py`,
     `rubber_stamp_review`, `--expert rubber-stamp`): it accepts every labelled item, for the
     zero-false-supported bar. The signed-key simulated expert stays the merge gate.
@@ -39,7 +41,7 @@
   - No rule, prompt, pin, contract, schema, gold or scorer file changes, and nothing under
     `eval/validation/` or the `validation-v1-run2` tag. Off by default, so no default run changes.
 - Where: PR #154 (branch `claude/project-thread-6i2msb-challenge`)
-- Verified: new `tests/test_challenge.py`, 19 tests on synthetic case01:
+- Verified: new `tests/test_challenge.py`, 21 tests on synthetic case01:
   - which claims are close to SUPPORTED, and that only doubt is kept;
   - the invariant fails on a stored "supports" or "irrelevant" item, and a run whose step would
     store support fails;
@@ -51,7 +53,8 @@
     label is not;
   - verify-bundle re-runs every search on a full bundle and passes, notes a scoped bundle and a
     change after the run (an expert's or an importer's), checks the audit's searches after a
-    verdict re-run, and fails a search that gives other records, entries for a run that did
+    verdict re-run, notes the searches of a claim the re-run left out in a bundle without
+    history and re-runs them with history, and fails a search that gives other records, entries for a run that did
     not run the step, and a stored item that is not doubt;
   - the rubber-stamp expert accepts every labelled item through the expert actions, and the
     eval runs the step under it.

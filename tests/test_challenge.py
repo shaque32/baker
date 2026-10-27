@@ -22,6 +22,7 @@ from core.contracts import (
     AssumptionParams,
     CheckOutcome,
     CheckResult,
+    ClaimStatus,
     EvidenceItem,
     EvidenceStatus,
     GoldClaim,
@@ -31,6 +32,7 @@ from core.contracts import (
 )
 from core.hypotheses import explain
 from core.review import audit_log
+from core.review.actions import set_claim_status
 from core.review.redecide import redecide
 from eval import run_pipeline as rp
 from eval.run_eval import load_jsonl
@@ -400,6 +402,31 @@ def test_after_the_verdicts_are_re_run_the_audits_searches_are_still_checked(tmp
     assert any(
         f.level == FAIL and "do not give the records" in f.detail for f in _check_challenge(conn)
     )
+    conn.close()
+
+
+@pytest.mark.parametrize(("include", "replayed"), [("records", False), ("records,history", True)])
+def test_a_claim_the_verdict_re_run_left_out_is_noted_when_its_assumptions_are_withheld(
+    tmp_path, include, replayed
+):
+    """An edited claim drops out of a verdict re-run; a bundle without history leaves out its
+    assumptions, so its searches are noted, not failed (Codex on #154)."""
+    conn, comps = _case(tmp_path)
+    audit = pipeline.run_audit(conn, comps)
+    edited = sorted(audit.challenge)[0]
+    later = datetime.now(UTC) + timedelta(minutes=1)
+    set_claim_status(conn, edited, ClaimStatus.EDITED, EXPERT, text="Edited.", clock=lambda: later)
+    result = redecide(conn, EXPERT, clock=lambda: later + timedelta(minutes=1))
+    assert edited in result.skipped
+    findings = _challenge_findings(verify_bundle(_export(conn, tmp_path / "b.zip", include)))
+    assert FAIL not in {f.level for f in findings}, findings
+    notes = [f for f in findings if f.level == NOTE]
+    assert bool(notes) != replayed
+    if notes:
+        (note,) = notes
+        assert edited in note.detail and "include history" in note.detail
+    (passed,) = [f for f in findings if f.level == PASS]
+    assert "give the same records again" in passed.detail
     conn.close()
 
 

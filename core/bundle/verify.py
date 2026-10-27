@@ -1398,11 +1398,16 @@ def _challenge(
         by_claim: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for p in entries:
             by_claim[str(p.get("claim_id"))].append({k: p.get(k) for k in _QUERY_KEYS})
+        withheld: list[str] = []
         for claim_id, got in sorted(by_claim.items()):
             ids = source["manifest"].get(claim_id, {}).get("assumptions", [])
-            want = [
-                q.payload() for q in challenge.queries(case, pipeline.load_assumptions(conn, ids))
-            ]
+            assumptions = pipeline.load_assumptions(conn, ids)
+            if claim_id not in run["manifest"] and len(assumptions) != len(ids):
+                # A verdict re-run left the claim out (edited or removed after the audit), and
+                # a bundle without history leaves out its assumptions (Codex on #154).
+                withheld.append(claim_id)
+                continue
+            want = [q.payload() for q in challenge.queries(case, assumptions)]
             if got != want:
                 out.add(
                     FAIL,
@@ -1411,13 +1416,22 @@ def _challenge(
                     "give the records its log entries recorded",
                 )
                 bad += 1
-        if not bad:
+        if withheld:
+            out.add(
+                NOTE,
+                "challenge",
+                f"the challenge step's searches on {len(withheld)} claims the verdict re-run left "
+                f"out ({', '.join(withheld)}) were not re-run: the bundle leaves out their "
+                "assumptions (include history)",
+            )
+        rerun = [p for p in entries if str(p.get("claim_id")) not in withheld]
+        if not bad and rerun:
             out.add(
                 PASS,
                 "challenge",
-                f"the challenge step's {len(entries)} searches on {len(by_claim)} claims give the "
-                "same records again, with no model, and stored only contradicts and complicates "
-                "items",
+                f"the challenge step's {len(rerun)} searches on {len(by_claim) - len(withheld)} "
+                "claims give the same records again, with no model, and stored only contradicts "
+                "and complicates items",
             )
             return
     if not bad:
