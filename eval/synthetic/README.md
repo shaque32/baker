@@ -19,6 +19,7 @@ it with the committed files, so a stale or non-deterministic output fails `make 
 | `xlsx.py` | Minimal deterministic .xlsx writer |
 | `ufdr.py` | Deterministic synthetic UFDR packages: case01's phones from their Excel rows, plus builders for edge cases (`python -m eval.synthetic.ufdr`) |
 | `case01/` | Generated outputs (the `.xlsx` reports are rebuilt, not committed) |
+| `case03_*.py`, `case03/` | Case03, the challenge-step case (below), and its generated outputs |
 
 ## Case01 at a glance
 
@@ -30,6 +31,25 @@ Two phones, about 2,000 messages, English and Russian, Feb 16 to Apr 5 2026.
 
 Planted traps (full detail in `case01/case.json`): `handle_change`, `shared_account`,
 `timezone`, `gap`, `decoy_thread`, `second_alex`, `meeting_place`.
+
+## Case03: counter-evidence for a challenge step
+
+```
+python -m eval.synthetic.case03_generate   # writes eval/synthetic/case03/
+python -m eval.synthetic.case03_reach      # where each plant sits: retrieved? which direction?
+python -m eval.run_pipeline --case case03 --mode model-free \
+    --assumption-spec eval/synthetic/case03/draft_assumptions.jsonl
+```
+
+Seventeen claims over two phones (ORLOV's iPhone, printed in UTC+0, and DIAZ's Galaxy, printed
+in local time), in four groups: counter-evidence placed out of the fixed retrieval's reach where
+a `core/hypotheses/explain.py` direction finds it; counter-evidence only a word-variant search
+finds (misspelling, transliteration, slang); clean supported claims with near-miss decoys; and
+claims written with defined terms, an alias or a relative date. `case03_story.py` holds the
+events, `case03_key.py` the affidavit, the draft key and the draft assumption sheet,
+`case03_generate.py` renders them. Not part of `make eval` or any gate.
+`case03/SIGNING_SHEET.md` is the short version for Arsh; `case03/ANSWER_KEY_DRAFT.md` has every
+plant and why each counter-record is out of the fixed retrieval's reach. Both are drafts.
 
 ## Draft answer key
 
