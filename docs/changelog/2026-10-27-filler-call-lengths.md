@@ -22,6 +22,9 @@
     claim's "not more than two minutes" made the model's "two minutes" read as more than two
     minutes, and "two minutes or less" read as 120 to 179 seconds. "no more than" and "no less
     than" stay bounds.
+  - The claim's whole lead counts (review fix): when the model's words carry part of it, the
+    claim's "no more than two minutes" is read as at most 120 seconds. Before the fix, the
+    model's "more than two minutes" taken from it read as 121 seconds to a day.
   - The rules for "about" (25% either side) and for a plain length ("two minutes" is 120 to
     179) are unchanged.
   - A call length only narrows which calls the time check counts. That check never fails on
@@ -34,6 +37,8 @@
     words written twice with different leads;
   - 13 turned-round or trailing bounds are refused, and "no more than", "no less than" and a
     "not" in another clause still read;
+  - the claim's whole lead counts when the model's words carry part of it ("more than two
+    minutes" from "no more than two minutes" is at most 120 seconds);
   - `test_duration_range_refuses` covers "a while", "2m", "a few minutes", "just two
     minutes", "under a second", "zero seconds", "between one and two minutes" and "two minutes
     and three minutes".

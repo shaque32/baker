@@ -1141,8 +1141,9 @@ def duration_range(as_written: str, claim: str = "") -> tuple[int, int]:
     - A bound is an open range: "more than a minute and a half" is 91 seconds to a day,
       "at least two minutes" 120 to a day, "under two minutes" 1 to 119, "at most two minutes"
       1 to 120.
-    - A word the claim writes right before the model's words counts as theirs: in "lasting
-      more than two minutes", the words "two minutes" are read as "more than two minutes".
+    - The claim's own words before the length count, whole: in "lasting more than two
+      minutes", the words "two minutes" are read as "more than two minutes", and in "no more
+      than two minutes" the words "more than two minutes" are read as "no more than".
     - Refused: a bound the claim turns round ("not more than", "never over", "wasn't under";
       "no more than" is read as "at most"), and a bound written after the length ("two minutes
       or less", "or more", "or so", "plus"), in the model's words or the claim's.
@@ -1154,8 +1155,9 @@ def duration_range(as_written: str, claim: str = "") -> tuple[int, int]:
         text, leads = " ".join(claim.split()), set()
         i = text.lower().find(words.lower())
         while i >= 0:
-            head = text[:i]
-            before = _LEAD_BEFORE_RE.search(head) if lead is None else None
+            # the claim's whole lead before the length, which holds the model's lead if any
+            head = text[: i + len(words) - len(rest)]
+            before = _LEAD_BEFORE_RE.search(head)
             if before is not None:
                 head = head[: before.start()]
             if _NEGATED_RE.search(head):
@@ -1166,12 +1168,12 @@ def duration_range(as_written: str, claim: str = "") -> tuple[int, int]:
                 raise Reject(f"the claim writes a bound after the duration {as_written!r}")
             leads.add(" ".join(before.group("lead").lower().split()) if before else None)
             i = text.lower().find(words.lower(), i + 1)
-        if lead is None:
-            if len(leads) > 1:
-                raise Reject(
-                    f"the claim writes {as_written!r} more than once, with other words before it"
-                )
-            lead = leads.pop() if leads else None
+        if len(leads) > 1:
+            raise Reject(
+                f"the claim writes {as_written!r} more than once, with other words before it"
+            )
+        if leads:
+            lead = leads.pop()
     v, step = _length(rest)
     kind = _LENGTH_LEADS[" ".join(lead.lower().split())] if lead else None
     if v < 1 or v > LONGEST_CALL_S:

@@ -951,6 +951,21 @@ def test_no_more_and_no_less_than_stay_bounds():
     )
 
 
+def test_the_claims_whole_lead_counts_when_the_models_words_carry_part_of_it():
+    """Codex on #153: the model's "more than two minutes" taken from the claim's "no more than
+    two minutes" was read as more than two minutes, the claim's bound turned round."""
+    from core.audit.assumption_filler import duration_range
+
+    no_more, no_less = "a call of no more than two minutes", "a call of no less than two minutes"
+    assert duration_range("more than two minutes", no_more) == (1, 120)
+    assert duration_range("less than two minutes", no_less) == (120, 86400)
+    assert duration_range("over two minutes", "a call of just over two minutes") == (121, 86400)
+    assert duration_range("more than two minutes", "a call of more than two minutes") == (
+        121,
+        86400,
+    )
+
+
 @pytest.mark.parametrize(
     "words",
     ["a while", "2m", "a few minutes", "just two minutes", "under a second", "zero seconds",
