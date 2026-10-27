@@ -60,6 +60,7 @@ from core.contracts import (
 )
 
 SIM_EXPERT = "expert:eval-simulated"
+RUBBER_STAMP = "expert:eval-rubber-stamp"
 SIM_TIME = datetime(2026, 10, 7, tzinfo=UTC)
 
 GOLD_DIRECTION_RUN = ModelRun(
@@ -177,10 +178,11 @@ class RecordingRetriever:
 class ExpertReview:
     accepted: dict[str, list[str]] = field(default_factory=dict)  # claim -> evidence ids
     dismissed: dict[str, int] = field(default_factory=dict)  # claim -> count
+    actor: str = SIM_EXPERT
 
     def summary(self) -> dict[str, object]:
         return {
-            "actor": SIM_EXPERT,
+            "actor": self.actor,
             "accepted": sum(len(v) for v in self.accepted.values()),
             "dismissed": sum(self.dismissed.values()),
             "claims_with_an_acceptance": sorted(c for c, v in self.accepted.items() if v),
@@ -224,6 +226,42 @@ def review(
                     clock,
                 )
                 out.dismissed[claim_id] += 1
+    return out
+
+
+def rubber_stamp_review(
+    conn: sqlite3.Connection,
+    manifest: dict[str, dict[str, list[str]]],
+    clock: Callable[[], datetime],
+) -> ExpertReview:
+    """The rubber-stamp expert: accepts every labeled item the run surfaced, whatever it says,
+    through the same expert actions. Irrelevant labels are left alone, as above.
+
+    It is the worst reviewer the product can have, and it is what the zero-false-supported bar
+    is measured under for the challenge step (core/audit/challenge.py): every false SUPPORTED
+    it lets through is one only the expert's judgment would have stopped, and an item the
+    challenge step adds counts against it as an accepted doubt. The signed-key simulated expert
+    above stays the merge gate. A fallible expert (errs at a set rate) for dismissal rate and
+    time per item is planned beside it, not built yet."""
+    from core.pipeline import load_evidence
+    from core.review import actions
+
+    out = ExpertReview(actor=RUBBER_STAMP)
+    for claim_id in sorted(manifest):
+        out.accepted[claim_id] = []
+        out.dismissed[claim_id] = 0
+        for e in load_evidence(conn, manifest[claim_id]["evidence"]):
+            if e.stance is Stance.IRRELEVANT:
+                continue
+            actions.decide_evidence(
+                conn,
+                e.id,
+                EvidenceStatus.ACCEPTED,
+                RUBBER_STAMP,
+                "Rubber-stamp expert (eval): accepts every labeled item.",
+                clock,
+            )
+            out.accepted[claim_id].append(e.id)
     return out
 
 
