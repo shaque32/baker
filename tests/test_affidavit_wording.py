@@ -5,7 +5,7 @@ for these tests, on synthetic case01 (phones in America/New_York).
 
 import re
 import sqlite3
-from datetime import UTC
+from datetime import UTC, timedelta
 from datetime import datetime as D
 from pathlib import Path
 
@@ -29,6 +29,7 @@ from tests.fake_model import FakeModel
 ROOT = Path(__file__).parents[1]
 PETROV, REYES = "person:petrov", "person:reyes"
 QUOTE = "need 2 more by friday"
+US = timedelta(microseconds=1)
 
 
 @pytest.fixture(scope="module")
@@ -163,6 +164,10 @@ def test_a_time_no_range_reads_is_never_widened_to_the_whole_day(text):
         "Since Friday January 9, 2026, at 9 p.m., PETROV sent no messages.",
         "From Friday, January 9, 2026, at 9 p.m., PETROV sent no messages.",
         "From Friday, January 9, 2026, PETROV used Item 1.",  # no end
+        # the phone's-zone words before the open end (Codex on #150)
+        "On January 9, 2026, at 9 p.m. local time onward, PETROV sent no messages.",
+        "On January 9, 2026, at 9 p.m. (local time) and later, PETROV sent no messages.",
+        "At 9 p.m. phone time onward on January 9, 2026, PETROV sent no messages.",
     ],
 )
 def test_an_open_range_is_not_read(text):
@@ -395,6 +400,45 @@ def test_a_zone_in_quoted_words_is_not_the_ranges(conn):
         filler(conn)._window(text, "", w, [], "record_time")
 
 
+# The night New York's clocks go back: 1:00 to 1:59 a.m. happens twice, first in EDT, then EST.
+FALL_BACK = "On November 1, 2026"
+
+
+def test_a_minute_the_clocks_go_back_across_is_refused(conn):
+    # "1:59 a.m. EDT" ends at 2:00 a.m., which is EST: read as is, the minute would be 61
+    # minutes, 05:59 to 07:00 UTC (Codex on #150).
+    text = f"{FALL_BACK}, at 1:59 a.m. EDT, PETROV and REYES exchanged no messages."
+    p = proposal("no_contact", quoted_text="", people=["PETROV", "REYES"])
+    with pytest.raises(Reject, match="not at UTC-04:00 in America/New_York"):
+        filler(conn)._resolve(claim(text, ClaimType.ABSENCE), "", p)
+
+
+def test_a_time_the_clocks_go_back_through_is_read_in_the_zone_the_claim_writes(conn):
+    for said, start_utc in (("EDT", D(2026, 11, 1, 5, 30, tzinfo=UTC)),
+                            ("EST", D(2026, 11, 1, 6, 30, tzinfo=UTC))):  # fmt: skip
+        w = _window(conn, f'{FALL_BACK}, at 1:30 a.m. {said}, PETROV wrote "{QUOTE}".', None)
+        assert (w.start_utc, w.end_utc - w.start_utc) == (start_utc, timedelta(minutes=1) - US)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        f'{FALL_BACK}, at 1:30 a.m., PETROV wrote "{QUOTE}".',  # twice that night
+        f'{FALL_BACK}, at 1:30 a.m. ET, PETROV wrote "{QUOTE}".',  # ET does not say which
+        f'On March 8, 2026, at 2:30 a.m., PETROV wrote "{QUOTE}".',  # skipped that night
+    ],
+)
+def test_a_time_a_clock_change_makes_two_times_or_none_is_refused(conn, text):
+    with pytest.raises(Reject, match="the clocks change then"):
+        _window(conn, text, None)
+
+
+def test_a_whole_day_the_clocks_change_is_still_read(conn):
+    w = _window(conn, f'{FALL_BACK}, PETROV wrote "{QUOTE}".', None)
+    assert (w.start_utc, w.end_utc + US) == (D(2026, 11, 1, 4, tzinfo=UTC),
+                                             D(2026, 11, 2, 5, tzinfo=UTC))  # fmt: skip
+
+
 def test_a_zone_that_matches_the_phone_reads_as_before(conn):
     text = f'On January 9, 2026, at 7:58 p.m. EST, PETROV wrote "{QUOTE}".'
     w = _window(conn, text, None)
@@ -431,6 +475,17 @@ def test_a_capitalized_word_names_an_app_only_as_a_name(conn):
     text = f'On January 9, 2026, PETROV wrote "{QUOTE}" before the teams met.'
     with pytest.raises(Reject, match="does not name the channel 'Microsoft Teams'"):
         filler(conn)._resolve(claim(text), "", proposal("sender", channels=["Microsoft Teams"]))
+
+
+def test_another_exports_full_name_for_the_word_is_not_this_app(conn):
+    # case01 holds Wickr Pro only; a claim about Wickr Me never searches it (Codex on #150).
+    for text in ("PETROV and REYES exchanged no messages on Wickr Me.",
+                 "PETROV and REYES exchanged no messages on WICKR ME."):  # fmt: skip
+        with pytest.raises(Reject, match="the claim names 'Wickr Me', not 'Wickr Pro'"):
+            filler(conn)._resolve(claim(text, ClaimType.ABSENCE), "", proposal(
+                "no_contact", quoted_text="", people=["PETROV", "REYES"],
+                channels=["Wickr Pro"]))  # fmt: skip
+    LocalAssumptionFiller._alias("PETROV wrote on Wickr.", "Wickr Pro", {}, "sender")
 
 
 def test_a_word_two_apps_go_by_is_refused(conn):

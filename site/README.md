@@ -1,7 +1,7 @@
 # getmabillon.com
 
-The public website: plain static HTML and CSS plus one small script (`main.js`, the home page walkthrough that steps through an example claim as you scroll), no build step, no third-party
-requests. Fonts are the same OFL files as `ui/static/fonts` (licenses in `fonts/LICENSES.txt`).
+The public website: plain static HTML and CSS plus one small script (`main.js`: the home page walkthrough that builds an example claim as you scroll, and sections that play once when they come into view), no build step, no third-party
+requests. Fonts are OFL files: Instrument Serif (as in `ui/static/fonts`) and IBM Plex Sans (licenses in `fonts/LICENSES.txt`).
 
 - `index.html` home page, `demo.html` Book a demo form, `demo-thanks.html` its confirmation,
   `privacy.html` privacy page, `404.html` not-found page.
