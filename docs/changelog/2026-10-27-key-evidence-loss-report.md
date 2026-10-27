@@ -1,4 +1,4 @@
-## 2026-10-27: Key-evidence loss report, one stage per gold key record (#PR)
+## 2026-10-27: Key-evidence loss report, one stage per gold key record (#148)
 - Changed: new eval-only tool `eval/loss_report.py` (version 1.0.0; `python -m eval.loss_report
   --db <case.db>`). It opens a finished run's case database read-only, with the signed gold key,
   and puts each gold key record at the furthest stage it reached: refused (the claim has no
@@ -12,7 +12,7 @@
   evidence is lost mainly at the stance step or at the quote check before any agent work. It
   needs no model and changes no rule, prompt, pin, contract, schema, gold or scorer file, and
   nothing under `eval/validation/` (run 2).
-- Where: branch `claude/project-thread-6i2msb` (PR to open)
+- Where: PR #148 (branch `claude/project-thread-6i2msb`)
 - Verified: `tests/test_loss_report.py` (synthetic rows: every stage, the furthest stage across
   assumptions, the last call per pair, stored irrelevant items, the main-leak line, choosing a
   stance run, the hidden-case output, the database left unchanged). Run on the stored synthetic
@@ -34,5 +34,5 @@
   374 labels were dropped: 373 irrelevant answers and 1 quote failure. Of 71 gold key records,
   44 surfaced, 18 were on claims a failed core check settles (retrieval skipped by design), 8
   were labelled irrelevant and 1 was dropped at the quote check; retrieval missed none where it
-  ran (`eval/loss_report.py` 1.0.0, #PR)"; section 9 item 5: add "Where it ran, the fixed
-  retrieval found every key record on case01; the loss is at the stance step (#PR)"
+  ran (`eval/loss_report.py` 1.0.0, #148)"; section 9 item 5: add "Where it ran, the fixed
+  retrieval found every key record on case01; the loss is at the stance step (#148)"
