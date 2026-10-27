@@ -49,6 +49,10 @@ VERSION = "1.0.0"
 QUERY_ACTION = "challenge.query"
 DOUBT = frozenset({Stance.CONTRADICTS, Stance.COMPLICATES})
 LABELABLE = frozenset({"message", "call", "contact"})  # records the stance labeler reads
+NO_SEARCH = (
+    "No counter-search in core/hypotheses/explain.py applies to this claim's assumptions, so "
+    "nothing was searched."
+)
 
 
 @dataclass(frozen=True)
@@ -88,12 +92,14 @@ def queries(case: explain.Case, assumptions: Sequence[Assumption]) -> list[Query
     core = tuple(a.id for a in assumptions if a.is_core)
     known = {a.id for a in assumptions}
     out = []
-    for alt in explain.alternatives(case, list(assumptions)):
+    for alt in explain.alternatives(case, list(assumptions), keep_empty=True):
         aids = tuple(a for a in alt.assumption_ids if a in known) or core
         rids = tuple(
             dict.fromkeys(f.record_id for f in alt.fits if kind_of(f.record_id) in LABELABLE)
         )
         out.append(Query(alt.kind, aids, alt.searched, rids, alt.total))
+    if not out:  # still logged, so a challenged claim never reads as one nothing was asked of
+        out.append(Query("none", core, NO_SEARCH, (), 0))
     return out
 
 

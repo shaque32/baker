@@ -666,7 +666,9 @@ def _multi_owner_fits(case: Case, keys: set[Key], persons: list[idl.Person]) -> 
     return out
 
 
-def _other_user(case: Case, assumptions: list[Assumption]) -> Alternative | None:
+def _other_user(
+    case: Case, assumptions: list[Assumption], keep_empty: bool = False
+) -> Alternative | None:
     mine = [a for a in assumptions if a.template_id in _IDENTITY_TEMPLATES]
     if not mine:
         return None
@@ -734,7 +736,7 @@ def _other_user(case: Case, assumptions: list[Assumption]) -> Alternative | None
     # Hand-off words near the message come first: evidence about the message itself, ahead of
     # names and introductions from the account's whole history.
     fits = _merge(_collapse(case, hand_pairs) + fits)
-    if not fits:
+    if not fits and not keep_empty:
         return None
     title = (
         "Someone else may be behind the account"
@@ -838,7 +840,9 @@ def _clock_rows(case: Case, a: Assumption, claimed: dict[str, list[Row]]) -> lis
     return []
 
 
-def _clock(case: Case, assumptions: list[Assumption]) -> Alternative | None:
+def _clock(
+    case: Case, assumptions: list[Assumption], keep_empty: bool = False
+) -> Alternative | None:
     # Only record_time: a weekday_date window is the day a message refers to, counted from its
     # send date, so another clock would move the target day too. Reading the send time alone on
     # another clock against the old target would mislead.
@@ -848,6 +852,7 @@ def _clock(case: Case, assumptions: list[Assumption]) -> Alternative | None:
     claimed = _claimed_rows(case, mine)
     pairs: list[tuple[Row, str]] = []
     used: list[str] = []
+    tried: list[str] = []  # the statements searched, for keep_empty
     # Every copy is read on its own phone's clocks (phones can print different offsets). A
     # record shows once, from the first copy whose reading fits, across every statement; a copy
     # on another phone that fits too adds its own reading to that line.
@@ -856,6 +861,7 @@ def _clock(case: Case, assumptions: list[Assumption]) -> Alternative | None:
         wall = _wall(window) if window is not None else None
         if window is None or wall is None:
             continue
+        tried.append(a.id)
         rows: list[tuple[Row, datetime, ZoneInfo]] = []
         for r in _clock_rows(case, a, claimed):
             at = r.ts_utc
@@ -893,7 +899,7 @@ def _clock(case: Case, assumptions: list[Assumption]) -> Alternative | None:
                     used.append(a.id)
                     break
     fits = _collapse(case, pairs, name_copies=True)  # each record once, every copy's reading
-    if not fits:
+    if not fits and not (keep_empty and tried):
         return None
     return Alternative(
         "clock",
@@ -906,7 +912,7 @@ def _clock(case: Case, assumptions: list[Assumption]) -> Alternative | None:
         "Searched the records each time statement names (by its quoted words, or the call's "
         "parties and length) and read each on the phone's own clock, the report's printed clock "
         "and UTC.",
-        tuple(dict.fromkeys(used)),
+        tuple(dict.fromkeys(used or tried)),
     )
 
 
@@ -923,9 +929,12 @@ def _party_rows(case: Case, a: Assumption) -> tuple[list[Row], list[set[str]]] |
     return [r for r in rows if r.ts_utc is not None and involves_all(r, sets)], sets
 
 
-def _day_boundary(case: Case, assumptions: list[Assumption]) -> Alternative | None:
+def _day_boundary(
+    case: Case, assumptions: list[Assumption], keep_empty: bool = False
+) -> Alternative | None:
     fits: list[Fit] = []
     used: list[str] = []
+    tried: list[str] = []  # the statements searched, for keep_empty
     summaries: list[str] = []
     pairs: list[tuple[Row, str]] = []
     for a in assumptions:
@@ -936,6 +945,7 @@ def _day_boundary(case: Case, assumptions: list[Assumption]) -> Alternative | No
         got = _party_rows(case, a)
         if wall is None or got is None:
             continue
+        tried.append(a.id)
         # A message count counts messages only, so a call cannot move it; no_contact covers calls.
         msgs_only = a.template_id == "message_count"
         srcs = set(case.data.sources_for(a.params.device_ids))
@@ -969,7 +979,7 @@ def _day_boundary(case: Case, assumptions: list[Assumption]) -> Alternative | No
             )
             pairs.append((r, f"For the stated dates {cite(window.raw)}, this record is {side}."))
     fits = _collapse(case, pairs)  # a record two statements both move shows once
-    if not fits:
+    if not fits and not (keep_empty and tried):
         return None
     return Alternative(
         "day_boundary",
@@ -981,16 +991,19 @@ def _day_boundary(case: Case, assumptions: list[Assumption]) -> Alternative | No
         "Searched messages (and calls, for a statement of no contact) between the parties the "
         "claim names, on the apps it names, and compared the stated dates in the stated zone "
         "with the same dates in UTC.",
-        tuple(used),
+        tuple(used or tried),
     )
 
 
 # ---------------------------------------------------------------- another app
 
 
-def _other_app(case: Case, assumptions: list[Assumption]) -> Alternative | None:
+def _other_app(
+    case: Case, assumptions: list[Assumption], keep_empty: bool = False
+) -> Alternative | None:
     fits: list[Fit] = []
     used: list[str] = []
+    tried: list[str] = []  # the statements searched, for keep_empty
     summaries: list[str] = []
     pairs: list[tuple[Row, str]] = []
     for a in assumptions:
@@ -1005,6 +1018,7 @@ def _other_app(case: Case, assumptions: list[Assumption]) -> Alternative | None:
         got = _party_rows(case, a)
         if got is None:
             continue
+        tried.append(a.id)
         window = p.window
         srcs = set(case.data.sources_for(p.device_ids))
         others = [
@@ -1034,7 +1048,7 @@ def _other_app(case: Case, assumptions: list[Assumption]) -> Alternative | None:
                 )
             )
     fits = _collapse(case, pairs)
-    if not fits:
+    if not fits and not (keep_empty and tried):
         return None
     return Alternative(
         "other_app",
@@ -1045,7 +1059,7 @@ def _other_app(case: Case, assumptions: list[Assumption]) -> Alternative | None:
         len(fits),
         "Searched messages and calls between the parties the claim names, inside its window, on "
         "every app it does not name.",
-        tuple(used),
+        tuple(used or tried),
     )
 
 
@@ -1085,9 +1099,12 @@ def _phone_rows(case: Case, sid: str) -> list[Row]:
     return case.phone_rows[sid]
 
 
-def _app_quiet(case: Case, assumptions: list[Assumption]) -> Alternative | None:
+def _app_quiet(
+    case: Case, assumptions: list[Assumption], keep_empty: bool = False
+) -> Alternative | None:
     pairs: list[tuple[Row, str]] = []
     used: list[str] = []
+    tried: list[str] = []  # the statements searched, for keep_empty
     # Per app and window, the phones where that app is quiet: one sentence each, so no sentence
     # joins an app to a window it was not found quiet in.
     quiet: dict[tuple[str, str, datetime, datetime], list[str]] = {}
@@ -1096,6 +1113,7 @@ def _app_quiet(case: Case, assumptions: list[Assumption]) -> Alternative | None:
         apps = [c for c in p.channels if c.strip().lower() != CALL_CHANNEL]
         if a.template_id not in _SILENCE_TEMPLATES or p.window is None or not apps:
             continue
+        tried.append(a.id)
         window = p.window
         for app in apps:
             for sid in case.data.sources_for(p.device_ids):
@@ -1143,7 +1161,7 @@ def _app_quiet(case: Case, assumptions: list[Assumption]) -> Alternative | None:
                     )
     # An edge two windows share, or its copy on the other phone, shows once with each note.
     fits = _collapse(case, pairs)
-    if not fits:
+    if not fits and not (keep_empty and tried):
         return None
     return Alternative(
         "app_quiet",
@@ -1160,14 +1178,16 @@ def _app_quiet(case: Case, assumptions: list[Assumption]) -> Alternative | None:
         len(fits),
         "Searched every conversation of the app the claim names on each phone that holds the "
         "app, inside the claim's window, and counted the phone's other records then.",
-        tuple(dict.fromkeys(used)),
+        tuple(dict.fromkeys(used or tried)),
     )
 
 
 # ---------------------------------------------------------------- a curated report
 
 
-def _curated(case: Case, assumptions: list[Assumption]) -> Alternative | None:
+def _curated(
+    case: Case, assumptions: list[Assumption], keep_empty: bool = False
+) -> Alternative | None:
     mine = [
         a
         for a in assumptions
@@ -1195,7 +1215,7 @@ def _curated(case: Case, assumptions: list[Assumption]) -> Alternative | None:
             )
         if notes:
             fits.append(Fit(sid, sid, "", name, "", f"{cite(name)} " + "; it ".join(notes) + "."))
-    if not fits:
+    if not fits and not keep_empty:
         return None
     return Alternative(
         "curated",
@@ -1221,10 +1241,13 @@ def _words(text: str) -> list[str]:
     return out
 
 
-def _same_words(case: Case, assumptions: list[Assumption]) -> Alternative | None:
+def _same_words(
+    case: Case, assumptions: list[Assumption], keep_empty: bool = False
+) -> Alternative | None:
     mine = [a for a in assumptions if a.template_id == "meaning" and a.params.quoted_text]
     pairs: list[tuple[Row, str]] = []
     used: list[str] = []
+    tried: list[str] = []  # the statements searched, for keep_empty
     # Copy key -> seconds from the nearest quoted message. Keyed by copy, not record id: copies
     # share a line, and each copy's distance from its own phone's quote counts for the line.
     near: dict[tuple[str, ...], float] = {}
@@ -1234,6 +1257,7 @@ def _same_words(case: Case, assumptions: list[Assumption]) -> Alternative | None
         claimed = _quoted_rows(case, a)
         if not words or not claimed:
             continue
+        tried.append(a.id)
         copies = {_copy_key(case.data, r) for r in claimed}
         claimed_ids = {r.id for r in claimed}
         # Each quoted message's time, by its conversation: a match is near only to a quote in
@@ -1287,7 +1311,7 @@ def _same_words(case: Case, assumptions: list[Assumption]) -> Alternative | None
     # out another quote's near ones.
     key_of = {r.id: _copy_key(case.data, r) for r, _ in pairs}
     fits.sort(key=lambda f: near.get(key_of[f.record_id], float("inf")))
-    if not fits:
+    if not fits and not (keep_empty and tried):
         return None
     return Alternative(
         "same_words",
@@ -1299,15 +1323,25 @@ def _same_words(case: Case, assumptions: list[Assumption]) -> Alternative | None
         len(fits),
         "Searched every message in the conversation that holds the quoted words, for the "
         "longer words of the quote (four letters or more, common words left out).",
-        tuple(used),
+        tuple(used or tried),
     )
 
 
 # ---------------------------------------------------------------- one claim
 
 
-def alternatives(case: Case, assumptions: list[Assumption]) -> list[Alternative]:
+def alternatives(
+    case: Case, assumptions: list[Assumption], keep_empty: bool = False
+) -> list[Alternative]:
     """Every alternative the records raise for one claim's assumptions, in a fixed order.
-    Read-only: nothing is written, and the claim's verdict is never read or changed."""
+    Read-only: nothing is written, and the claim's verdict is never read or changed.
+
+    keep_empty also returns each search that applies to the claim but found nothing, with no
+    fits and its `searched` text, so a caller can say what was searched (the challenge step,
+    core/audit/challenge.py). The report shows only alternatives a record fits."""
     finders = (_other_user, _clock, _day_boundary, _other_app, _app_quiet, _curated, _same_words)
-    return [_located(case, alt) for find in finders if (alt := find(case, assumptions)) is not None]
+    return [
+        _located(case, alt)
+        for find in finders
+        if (alt := find(case, assumptions, keep_empty)) is not None
+    ]
