@@ -153,7 +153,10 @@ from core.review.withheld import summary as withheld_summary
 # 0.18.0: each evidence source's format notice (core/ingest/tested.py), in Limitations and on
 # every claim that rests on the source: "Not tested: ..." outside the tested set, the tested
 # notice for a UFDR stating report version 7.48. The UFDR "synthetic packages only" item is gone.
-REPORT_VERSION = "0.18.0"
+# 0.19.0: visual only, in the design of the review screen and getmabillon.com: table headings in
+# sentence case and Inter, ids and hashes in Inter with tabular figures, calmer notices and
+# verdict pills. No wording, fact or section changed.
+REPORT_VERSION = "0.19.0"
 
 
 @dataclass(frozen=True)
@@ -198,50 +201,50 @@ CSS = """
     Arial, sans-serif;
   --serif: "Instrument Serif", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
   --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; }
-body { font: 15px/1.55 var(--sans); color: var(--fg); background: var(--bg);
-  max-width: 980px; margin: 0 auto; padding: 32px 20px 72px;
+body { font: 15px/1.6 var(--sans); color: var(--fg); background: var(--bg);
+  max-width: 980px; margin: 0 auto; padding: 48px 24px 88px;
   -webkit-font-smoothing: antialiased; }
 ::selection { background: #d9e1ec; }
 a { color: var(--accent); text-underline-offset: 2px; }
 h1, h2, h3 { line-height: 1.2; color: var(--fg); }
-h1 { font: 400 40px/1.1 var(--serif); letter-spacing: -0.02em; margin: 8px 0 6px; }
-h2 { font-size: 17px; font-weight: 600; margin: 40px 0 10px; padding-bottom: 6px;
-  border-bottom: 1px solid var(--line); }
+h1 { font: 400 44px/1.08 var(--serif); letter-spacing: -0.015em; margin: 8px 0 10px; }
+h2 { font-size: 18px; font-weight: 600; letter-spacing: -0.005em; margin: 48px 0 12px;
+  padding-bottom: 8px; border-bottom: 1px solid var(--line); }
 h3 { font-size: 15px; font-weight: 600; }
 .muted { color: var(--muted); }
-.mono { font-family: var(--mono); font-size: 11.5px; word-break: break-all; }
-.banner { background: var(--unp-bg); border: 1px solid var(--unp-line); border-radius: 10px;
-  padding: 12px 16px; margin: 16px 0; color: #4a3608; }
-.banner strong { font-size: 15px; }
-p.warn { background: var(--unp-bg); border: 1px solid var(--unp-line); border-radius: 10px;
-  padding: 10px 14px; color: #4a3608; }
+.mono { font-family: var(--sans); font-size: 12.5px; font-variant-numeric: tabular-nums;
+  word-break: break-all; }
+.banner { background: #fbf6ea; border: 1px solid #ecdfbf; border-radius: 12px;
+  padding: 14px 18px; margin: 16px 0; color: #4a3a14; font-size: 14px; }
+.banner strong { font-weight: 600; color: #3a2c0a; }
+p.warn { background: #fbf6ea; border: 1px solid #ecdfbf; border-radius: 12px;
+  padding: 12px 16px; color: #4a3a14; font-size: 14px; }
 strong.warn { color: var(--unp); }
-table { border-collapse: separate; border-spacing: 0; width: 100%; margin: 10px 0;
-  font-size: 13px; background: var(--card); border: 1px solid var(--line); border-radius: 10px;
-  overflow: hidden; }
-th, td { border-bottom: 1px solid var(--line); padding: 8px 10px; text-align: left;
+table { border-collapse: separate; border-spacing: 0; width: 100%; margin: 12px 0;
+  font-size: 13.5px; line-height: 1.5; background: var(--card); border: 1px solid var(--line);
+  border-radius: 12px; overflow: hidden; }
+th, td { border-bottom: 1px solid var(--line); padding: 11px 14px; text-align: left;
   vertical-align: top; }
 tr:last-child td { border-bottom: 0; }
-th { background: var(--panel); font: 500 10.5px var(--mono); letter-spacing: 0.12em;
-  text-transform: uppercase; color: var(--muted); }
+th { background: transparent; font: 500 12.5px var(--sans); color: var(--muted); }
 .claim { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
-  padding: 6px 22px 16px; margin: 20px 0;
-  box-shadow: 0 1px 2px rgb(20 20 20 / 0.04), 0 6px 18px -10px rgb(20 20 20 / 0.12); }
-.claim > blockquote { font: 400 24px/1.25 var(--serif); letter-spacing: -0.01em;
-  background: none; border-left: 2px solid var(--fg); border-radius: 0; padding: 2px 0 2px 18px; }
+  padding: 8px 24px 18px; margin: 22px 0; }
+.claim > blockquote { font: 400 26px/1.22 var(--serif); letter-spacing: -0.01em;
+  background: none; border-left: 2px solid var(--accent); border-radius: 0;
+  padding: 2px 0 2px 18px; }
 .verdict { display: inline-flex; align-items: center; gap: 6px; font: 500 13px var(--sans);
-  padding: 3px 11px 3px 8px; border: 1px solid var(--line-strong); border-radius: 999px;
+  padding: 3px 11px 3px 8px; border: 1px solid transparent; border-radius: 999px;
   background: var(--panel); color: var(--muted); white-space: nowrap; }
 .verdict::before { content: "•"; display: inline-flex; align-items: center;
   justify-content: center; width: 15px; height: 15px; border: 1.5px solid currentColor;
   border-radius: 50%; font-size: 10px; font-weight: 700; line-height: 1; box-sizing: border-box; }
-.v-sup { color: var(--sup); background: var(--sup-bg); border-color: var(--sup-line); }
+.v-sup { color: var(--sup); background: var(--sup-bg); }
 .v-sup::before { content: "✓"; }
 .v-supai { color: var(--supai); background: var(--sup-bg); border: 1px dashed var(--sup-line); }
 .v-supai::before { content: "✓"; }
-.v-con { color: var(--con); background: var(--con-bg); border-color: var(--con-line); }
+.v-con { color: var(--con); background: var(--con-bg); }
 .v-con::before { content: "✕"; }
-.v-unp { color: var(--unp); background: var(--unp-bg); border-color: var(--unp-line); }
+.v-unp { color: var(--unp); background: var(--unp-bg); }
 .v-unp::before { content: "?"; }
 .v-await { color: var(--await); background: var(--unp-bg); border: 1px dashed var(--await); }
 .v-await::before { content: "?"; }

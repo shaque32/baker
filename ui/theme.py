@@ -179,7 +179,8 @@ label { font-size: 14px; }
 label:has(> input[type=text], > input[type=password], > input[type=number], > select,
   > textarea) { display: inline-grid; gap: 6px; font-weight: 500; font-size: 13.5px;
   color: var(--fg); vertical-align: top; margin: 0 12px 4px 0; }
-label:has(> textarea), label:has(> input.wide) { display: grid; margin-right: 0; }
+label:has(> textarea[name]), label:has(> input[type=text].wide) { display: grid;
+  margin-right: 0; }
 label:has(> input[type=checkbox], > input[type=radio]) { display: inline-flex;
   align-items: center; gap: 8px; margin: 0 16px 6px 0; cursor: pointer; }
 input[type=text], input[type=password], input[type=number], input[type=search], select {
@@ -438,9 +439,6 @@ ul.sig .quote { font-size: 14px; color: var(--fg); }
 ul.sig .ref { font-size: 12px; color: var(--muted); margin-top: 2px; overflow-wrap: anywhere; }
 button[aria-pressed=true] { box-shadow: inset 0 0 0 2px var(--fg); }
 ul.unplaced .head .text { font-weight: 600; }
-
-/* labels the report modules print in capitals read as plain words on screen */
-.alt .fam, .tag, .divider, .sel-unit > h3 .muted { text-transform: none; letter-spacing: 0; }
 
 @media (max-width: 900px) {
   .split { grid-template-columns: minmax(0, 1fr); }
