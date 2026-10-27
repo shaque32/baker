@@ -14,14 +14,15 @@
     (`core/audit/readable.py`), so the note is in the report and on screen only.
   - Display only: no verdict, check, rule, prompt, contract, schema, gold or scorer changes.
 - Where: PR #155 (branch `claude/project-thread-6i2msb-nativenote`), stacked on #150
-- Verified: new `tests/test_mixed_app_note.py`, 4 tests on synthetic case01:
+- Verified: new `tests/test_mixed_app_note.py`, 5 tests on synthetic case01:
   - the filler and the note read the same map, and every app in it is one an alias names;
   - case01 has no such app, so no claim gets the note;
   - with one of case01's threads renamed Native Messages after an audit, exactly the claims
     whose shown evidence or checks rest on a message in it get the note, the report passes the
     forbidden-word check, and the claim page shows the same note as the report;
   - an assumption naming Native Messages gets the note with no record, and one naming
-    WhatsApp does not.
+    WhatsApp does not;
+  - the app named twice in different case gets one note, and an empty app name none.
   - `make check` passes; its eval numbers are in the PR.
 - Open: whether a UFDR or AXIOM export says per message whether it is an iMessage or an SMS
   is not checked on a real export; if one does, the importer could keep it and the note could

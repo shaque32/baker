@@ -756,12 +756,15 @@ def mixed_app_note(conn: sqlite3.Connection, st: ClaimState) -> str:
                 (json.dumps(ids),),
             )
         }
+    named: dict[str, str] = {}  # one note per app, however its exports spell its name
+    for app in sorted(apps, key=lambda a: (a.casefold(), a)):
+        if app.casefold() in WIDER_APPS:
+            named.setdefault(app.casefold(), app)
     return "".join(
-        f"<p class='warn mixed-app'><strong>{e(app)} holds {e(WIDER_APPS[app.casefold()])} "
+        f"<p class='warn mixed-app'><strong>{e(app)} holds {e(WIDER_APPS[key])} "
         f"together.</strong> Its records do not say which kind a message is, so a record from "
         f"{e(app)} may be either, whatever word the claim uses.</p>"
-        for app in sorted(apps, key=str.casefold)
-        if app.casefold() in WIDER_APPS
+        for key, app in named.items()
     )
 
 

@@ -104,3 +104,17 @@ def test_an_assumption_naming_the_app_gets_the_note_with_no_record(audited):
     assert "Native Messages holds iMessages and SMS together." in mixed_app_note(audited, bare)
     other = a.model_copy(update={"params": a.params.model_copy(update={"channels": ("WhatsApp",)})})
     assert mixed_app_note(audited, dataclasses.replace(bare, assumptions=[other])) == ""
+
+
+def test_one_note_per_app_however_it_is_spelled_and_none_for_an_empty_name(audited):
+    st = next(s for s in claim_states(audited) if s.assumptions)
+    a = st.assumptions[0]
+
+    def on(*channels: str) -> str:
+        named = a.model_copy(update={"params": a.params.model_copy(update={"channels": channels})})
+        return mixed_app_note(
+            audited, dataclasses.replace(st, assumptions=[named], evidence=[], checks=[])
+        )
+
+    assert on("") == ""
+    assert len(NOTE_RE.findall(on("Native Messages", "native messages", ""))) == 1
