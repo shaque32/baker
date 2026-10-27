@@ -1,4 +1,4 @@
-## 2026-10-27: Challenge step behind a flag, and the rubber-stamp simulated expert (#N)
+## 2026-10-27: Challenge step behind a flag, and the rubber-stamp simulated expert (#154)
 - Changed: step 2 of the agent plan (approved by Arsh 2026-10-27, `plans/agentic.md`). A code
   step looks for what undercuts a claim close to SUPPORTED. It has no model of its own and is off
   by default (`Components.challenge`, `mabillon audit --challenge`).
@@ -8,7 +8,8 @@
     gone quiet, a curated report, the same words elsewhere) as fixed queries in code.
   - The records a search finds go to the same stance labeler and the same quote check as any
     retrieved record, at most the 6 records `explain.py` shows per search (`MAX_FITS`); the rest
-    are counted in the search's total and not labelled.
+    are counted in the search's total and not labelled. A record retrieval already sent to the
+    labeler for that assumption is not sent again.
   - Only a "contradicts" or "complicates" label is stored. A "supports" or "irrelevant" label
     from the step is discarded and counted. `invariants.check_challenge` fails the run if an item
     the step stored says otherwise. A stored item is an ordinary evidence item: under rules 0.3.0
@@ -30,7 +31,7 @@
     `--challenge` runs the step in the eval.
   - No rule, prompt, pin, contract, schema, gold or scorer file changes, and nothing under
     `eval/validation/` or the `validation-v1-run2` tag. Off by default, so no default run changes.
-- Where: branch `claude/project-thread-6i2msb-challenge`
+- Where: PR #154 (branch `claude/project-thread-6i2msb-challenge`)
 - Verified: new `tests/test_challenge.py`, 17 tests on synthetic case01:
   - which claims are close to SUPPORTED, and that only doubt is kept;
   - the invariant fails on a stored "supports" or "irrelevant" item, and a run whose step would
@@ -48,8 +49,10 @@
   - case01 model-free, rubber-stamp expert: 6 false supported of 20 claims, with and without the
     step (accuracy 0.70). The model-free stand-in labeller labels every record of a claim the
     way the gold verdict points, "supports" for an unproven claim, so it can never label doubt
-    and the step stored nothing. The step's effect needs the real labeller (the 14B on the Mac)
-    or case03's planted counter-evidence (#151, not yet signed). Not measured.
+    and the step stored nothing: it challenged 14 claims with 28 searches, which found 5
+    records; retrieval had labelled 3 already and the other 2 were labelled as not doubt. The
+    step's effect needs the real labeller (the 14B on the Mac) or case03's planted
+    counter-evidence (#151, not yet signed). Not measured.
   - case01 model-free, signed-key simulated expert, with the step: PASS, accuracy 1.00, 0 false
     supported, the same as without it.
   - `make check` passes; its eval numbers are in the PR.
@@ -63,6 +66,6 @@
 - Status doc: pending: section 8 item 2 ("Audit"): add "An optional challenge step (`mabillon
   audit --challenge`, off by default) runs code's counter-searches on claims close to supported,
   stores only contradicts and complicates labels, logs each search, and is re-run by
-  verify-bundle; its effect is unmeasured (#N)"; section 7 or 10: "The eval has a rubber-stamp
+  verify-bundle; its effect is unmeasured (#154)"; section 7 or 10: "The eval has a rubber-stamp
   simulated expert (`--expert rubber-stamp`); on case01 model-free it lets 6 of 20 claims through
-  as false supported, with or without the challenge step (#N)".
+  as false supported, with or without the challenge step (#154)".
