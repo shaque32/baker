@@ -24,7 +24,6 @@
     <nav class="site-nav" aria-label="Main">
       <a class="hide-sm" href="#how">How it works</a>
       <a class="hide-sm" href="#rules">Rules</a>
-      <a class="hide-sm" href="#scrutiny">Scrutiny</a>
       <a class="hide-sm" href="#data">Your data</a>
       <a class="cta-sm" href="demo.html">Book a demo</a>
     </nav>
@@ -34,131 +33,12 @@
 <main>
   <section class="hero">
     <div class="wrap">
-      <span class="kicker">Alpha · opening to a small number of pilot examiners</span>
-      <h1>The government made claims about the phone. <em>Test every one.</em></h1>
-      <p class="lede">Mabillon is a verification layer for defense forensic examiners, on top of Cellebrite and
-        AXIOM. It splits the
-        affidavit into claims and checks each one against the extraction you already have.
-        It takes the scrolling, not the judgment.</p>
+      <h1>The government made claims about the phone. <span>Test every one.</span></h1>
+      <p class="lede">Mabillon checks each claim in an affidavit against the Cellebrite or AXIOM extraction
+        you already have. It takes the scrolling, not the judgment.</p>
       <div class="actions">
-        <a class="button" href="demo.html">Book a demo <span class="arrow" aria-hidden="true">→</span></a>
+        <a class="button" href="demo.html">Book a demo</a>
         <a class="link" href="#how">See how it works</a>
-      </div>
-    </div>
-    <div class="stage">
-      <div class="wrap">
-        <figure class="window" id="demo" aria-label="The Mabillon review screen checking three example claims, with made-up data">
-          <div class="win-bar">
-            <div class="dots" aria-hidden="true"><i></i><i></i><i></i></div>
-            <span class="win-brand"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true" fill="none"><rect class="page" x="2.75" y="2.75" width="18.5" height="18.5" rx="5"/><path class="ln" d="M12 6.5v11" stroke-width="1.5" stroke-linecap="round"/><path class="ln" d="M6.75 9h2.5M6.75 12h2.5M6.75 15h2.5" stroke-width="1.5" stroke-linecap="round" opacity="0.9"/><path class="ln" d="M14.75 9h2.5M14.75 12h1.25" stroke-width="1.5" stroke-linecap="round" opacity="0.55"/></svg>Mabillon</span>
-            <span class="win-case">State v. Example<small>synthetic case · 2 sources · read-only</small></span>
-            <span class="pill">Offline · local model</span>
-          </div>
-          <div class="win-tabs" aria-hidden="true"><span class="on">Claims</span><span>Timeline</span><span>People</span><span>Sources</span><span>Report</span></div>
-          <div class="win-body">
-            <div class="doc">
-              <div class="doc-title"><span class="eyebrow">Affidavit · page 6</span><span class="eyebrow">PDF</span></div>
-              <p><b>¶ 14</b><mark data-for="a b" class="on">On March 3, 2025, at approximately 9:00 p.m., REYES sent PETROV a text message reading “bring it tonight.”</mark></p>
-              <p><b>¶ 15</b>Phone records show that REYES called PETROV on the morning of March 4.</p>
-              <p><b>¶ 16</b><mark data-for="c">On March 5, PETROV replied “ok same place,”</mark> which your affiant believes confirmed the meeting.</p>
-            </div>
-            <div class="audit">
-              <div class="scan" aria-hidden="true"></div>
-              <div class="scene-tabs" role="tablist" aria-label="Example claims">
-                <button type="button" role="tab" id="tab-a" aria-controls="scene-a" aria-selected="true">Awaiting you</button>
-                <button type="button" role="tab" id="tab-b" aria-controls="scene-b" aria-selected="false">After your review</button>
-                <button type="button" role="tab" id="tab-c" aria-controls="scene-c" aria-selected="false">Failed check</button>
-              </div>
-
-              <div class="scene n3" id="scene-a" role="tabpanel" aria-labelledby="tab-a">
-                <p class="claimtext">REYES texted PETROV “bring it tonight” at about 9 p.m. on March 3.</p>
-                <ul class="checks">
-                  <li class="ok"><span class="ico">✓</span><span>Sender account matches REYES</span><span class="badge sup">Passed</span><span class="src">+1 410-555-0147 · link to REYES confirmed by you</span></li>
-                  <li class="ok"><span class="ico">✓</span><span>Time falls in the stated window</span><span class="badge sup">Passed</span><span class="src">21:07:41 at UTC−05:00 · raw “3/3/2025 9:07:41 PM(UTC-5)”</span></li>
-                  <li class="ok"><span class="ico">“</span><span>Model label on the message: supports</span><span class="badge">Quote verified</span><span class="src">“bring it tonight” found word for word · Chats, row 212</span></li>
-                  <li class="wait"><span class="ico">?</span><span>Your review of the supporting message</span><span class="badge unp">Pending</span></li>
-                </ul>
-                <div class="verdict-row">
-                  <span class="why">A model's label alone never makes a claim supported. It waits for you.</span>
-                  <span class="stamp unp">Unproven<small>awaiting expert</small></span>
-                </div>
-              </div>
-
-              <div class="scene" id="scene-b" role="tabpanel" aria-labelledby="tab-b" hidden>
-                <p class="claimtext">REYES texted PETROV “bring it tonight” at about 9 p.m. on March 3.</p>
-                <ul class="checks">
-                  <li class="ok"><span class="ico">✓</span><span>Sender account matches REYES</span><span class="badge sup">Passed</span></li>
-                  <li class="ok"><span class="ico">✓</span><span>Time falls in the stated window</span><span class="badge sup">Passed</span></li>
-                  <li class="ok"><span class="ico">“</span><span>Model label on the message: supports</span><span class="badge">Quote verified</span></li>
-                  <li class="ok"><span class="ico">✓</span><span>Your review of the supporting message</span><span class="accept">Accepted by you</span><span class="src">Logged with your reason · audit entry 0412</span></li>
-                </ul>
-                <div class="verdict-row">
-                  <span class="why">Supported, because you accepted its evidence. The messages around the quote are one click away.</span>
-                  <span class="stamp sup">Supported<small>confirmed by you</small></span>
-                </div>
-              </div>
-
-              <div class="scene n3" id="scene-c" role="tabpanel" aria-labelledby="tab-c" hidden>
-                <p class="claimtext">PETROV texted REYES “ok same place” on March 5.</p>
-                <ul class="checks">
-                  <li class="ok"><span class="ico">“</span><span>Message found word for word</span><span class="badge sup">1 copy</span><span class="src">“ok same place” · Chats, row 341 · no other copy in either source</span></li>
-                  <li class="ok"><span class="ico">✓</span><span>Sender account matches PETROV</span><span class="badge sup">Passed</span><span class="src">+1 410-555-0192 · link to PETROV confirmed by you</span></li>
-                  <li class="bad"><span class="ico">✕</span><span>Sent on March 5</span><span class="badge con">Failed</span><span class="src">the only copy: 10:02:55 on March 6 at UTC−05:00 · raw “3/6/2025 10:02:55 AM(UTC-5)”</span></li>
-                </ul>
-                <div class="verdict-row">
-                  <span class="why">The quoted message exists, at another time. A failed code check on a core fact of the claim contradicts it directly, with the check shown. You can still override it.</span>
-                  <span class="stamp con">Contradicted<small>by a failed check</small></span>
-                </div>
-              </div>
-              <p class="example-note">Example with made-up names and data.</p>
-            </div>
-          </div>
-        </figure>
-      </div>
-    </div>
-  </section>
-
-  <section class="band feed-band">
-    <div class="wrap">
-      <div class="feed" aria-hidden="true">
-        <ol>
-            <li><time>20:41</time><span><span class="who">PETROV</span> · you around later?</span><span></span></li>
-            <li><time>20:44</time><span><span class="who">REYES</span> · maybe. depends on work</span><span></span></li>
-            <li><time>20:52</time><span><span class="who">PETROV</span> · ok let me know</span><span></span></li>
-            <li><time>21:03</time><span><span class="who">REYES</span> · still at my sister's</span><span></span></li>
-            <li class="around"><time>21:05</time><span><span class="who">PETROV</span> · what time u leaving</span><span class="tagq">Left out</span></li>
-            <li class="quoted"><time>21:07</time><span><span class="who">REYES</span> · bring it tonight</span><span class="tagq">Quoted in ¶ 14</span></li>
-            <li class="around"><time>21:07</time><span><span class="who">REYES</span> · the charger, mine died</span><span class="tagq">Left out</span></li>
-            <li class="around"><time>21:09</time><span><span class="who">PETROV</span> · lol ok</span><span class="tagq">Left out</span></li>
-            <li><time>21:30</time><span><span class="who">PETROV</span> · outside</span><span></span></li>
-            <li><time>21:31</time><span><span class="who">REYES</span> · coming down</span><span></span></li>
-            <li><time>22:15</time><span><span class="who">DANA</span> · did you get home ok</span><span></span></li>
-            <li><time>22:40</time><span><span class="who">REYES</span> · yeah thanks</span><span></span></li>
-            <li><time>20:41</time><span><span class="who">PETROV</span> · you around later?</span><span></span></li>
-            <li><time>20:44</time><span><span class="who">REYES</span> · maybe. depends on work</span><span></span></li>
-            <li><time>20:52</time><span><span class="who">PETROV</span> · ok let me know</span><span></span></li>
-            <li><time>21:03</time><span><span class="who">REYES</span> · still at my sister's</span><span></span></li>
-            <li class="around"><time>21:05</time><span><span class="who">PETROV</span> · what time u leaving</span><span class="tagq">Left out</span></li>
-            <li class="quoted"><time>21:07</time><span><span class="who">REYES</span> · bring it tonight</span><span class="tagq">Quoted in ¶ 14</span></li>
-            <li class="around"><time>21:07</time><span><span class="who">REYES</span> · the charger, mine died</span><span class="tagq">Left out</span></li>
-            <li class="around"><time>21:09</time><span><span class="who">PETROV</span> · lol ok</span><span class="tagq">Left out</span></li>
-            <li><time>21:30</time><span><span class="who">PETROV</span> · outside</span><span></span></li>
-            <li><time>21:31</time><span><span class="who">REYES</span> · coming down</span><span></span></li>
-            <li><time>22:15</time><span><span class="who">DANA</span> · did you get home ok</span><span></span></li>
-            <li><time>22:40</time><span><span class="who">REYES</span> · yeah thanks</span><span></span></li>
-        </ol>
-      </div>
-      <div class="feed-copy">
-        <p class="eyebrow">Why it exists</p>
-        <h2>The affidavit quotes a line. The phone holds the conversation.</h2>
-        <p class="lede">Checking a claim by hand means scrolling thousands of records for the few that
-          matter, then reading what came before and after. Mabillon searches for the records
-          behind each claim, puts the candidates in front of you, and shows what the document left out
-          around every quote it can place. It can miss a record, so your own search still counts.</p>
-        <div class="legend">
-          <div><span class="q"></span>Quoted in the affidavit</div>
-          <div><span class="a"></span>Next to the quote, not in the affidavit</div>
-        </div>
       </div>
     </div>
   </section>
@@ -166,14 +46,70 @@
   <section class="band" id="how">
     <div class="wrap">
       <div class="section-head">
-        <p class="eyebrow">How it works</p>
-        <h2>From the government's document to a status for every claim</h2>
+        <h2>One claim, start to finish</h2>
+        <p>Scroll to follow a claim from the affidavit to a status. Made-up names and data.</p>
       </div>
-      <ol class="steps">
-        <li><span class="num">01</span><h3>Reads what you have</h3><p>The affidavit or report as a PDF, and the extraction reports: Cellebrite Excel, PDF and UFDR, and Magnet AXIOM XML and Excel. Each file opens read-only, and its SHA-256 is recorded.</p></li>
-        <li><span class="num">02</span><h3>Splits it into claims</h3><p>A local model proposes claims one at a time. You accept, edit or remove each one and add your own. The claim list is yours.</p></li>
-        <li><span class="num">03</span><h3>Tests each claim</h3><p>Code checks sender, account, time and time zone, weekday, counts, and what a source can and cannot show. A model labels individual records, never the claim.</p></li>
-        <li><span class="num">04</span><h3>You decide what counts</h3><p>Fixed, versioned rules give each claim a status from your decisions and the checks. Every decision goes into the audit log under your name.</p></li>
+      <div class="walk" id="walk">
+        <ol class="walk-steps">
+          <li class="walk-step" data-step="1"><span class="n">1</span><h3>The claim</h3><p>Mabillon reads the affidavit and proposes its claims one at a time. You accept, edit or remove each one.</p></li>
+          <li class="walk-step" data-step="2"><span class="n">2</span><h3>What it assumes</h3><p>Each claim is split into the facts it depends on: who sent it, when, and what it said.</p></li>
+          <li class="walk-step" data-step="3"><span class="n">3</span><h3>The checks</h3><p>Code checks the sender, the time and the time zone. Any quote is matched word for word. A model labels records, never the claim.</p></li>
+          <li class="walk-step" data-step="4"><span class="n">4</span><h3>Your call</h3><p>Nothing is supported until you accept the evidence. Your decision and reason go into the audit log under your name.</p></li>
+          <li class="walk-step" data-step="5"><span class="n">5</span><h3>When a fact fails</h3><p>A failed check on a core fact contradicts the claim directly, with the check shown. You can still override it.</p></li>
+        </ol>
+
+        <figure class="panel" aria-label="The Mabillon review screen checking an example claim, with made-up data">
+          <div class="panel-bar"><span>State v. Example</span><span class="muted">Synthetic case · read-only</span></div>
+          <div class="panel-body">
+            <div class="doc">
+              <p class="muted small">Affidavit, page 6</p>
+              <p><b>¶ 14</b> <mark data-on="1-4">On March 3, 2025, at approximately 9:00 p.m., REYES sent PETROV a text message reading “bring it tonight.”</mark></p>
+              <p><b>¶ 16</b> <mark data-on="5">On March 5, PETROV replied “ok same place,”</mark> which your affiant believes confirmed the meeting.</p>
+            </div>
+
+            <div class="claim" data-on="1-4">
+              <p class="claimtext">REYES texted PETROV “bring it tonight” at about 9 p.m. on March 3.</p>
+              <ul class="rows" data-on="2-4">
+                <li><span>Sent from REYES's account</span><span class="tag" data-on="2">To check</span><span class="tag sup" data-on="3-4">Passed</span><small data-on="3-4">+1 410-555-0147, linked to REYES by you</small></li>
+                <li><span>Sent about 9 p.m. on March 3</span><span class="tag" data-on="2">To check</span><span class="tag sup" data-on="3-4">Passed</span><small data-on="3-4">21:07:41 at UTC−05:00</small></li>
+                <li><span>Reads “bring it tonight”</span><span class="tag" data-on="2">To check</span><span class="tag sup" data-on="3-4">Found word for word</span><small data-on="3-4">Chats, row 212</small></li>
+                <li data-on="3-4"><span>Your review of the message</span><span class="tag unp" data-on="3">Waiting for you</span><span class="tag you" data-on="4">Accepted by you</span><small data-on="4">Reason logged, audit entry 0412</small></li>
+              </ul>
+              <div class="verdict" data-on="3-4">
+                <span class="status unp" data-on="3">Unproven</span>
+                <span class="status sup" data-on="4">Supported</span>
+              </div>
+            </div>
+
+            <div class="claim" data-on="5">
+              <p class="claimtext">PETROV texted REYES “ok same place” on March 5.</p>
+              <ul class="rows">
+                <li><span>Reads “ok same place”</span><span class="tag sup">Found word for word</span><small>Chats, row 341, the only copy</small></li>
+                <li><span>Sent from PETROV's account</span><span class="tag sup">Passed</span><small>+1 410-555-0192, linked to PETROV by you</small></li>
+                <li class="bad"><span>Sent on March 5</span><span class="tag con">Failed</span><small>Sent 10:02:55 on March 6 at UTC−05:00</small></li>
+              </ul>
+              <div class="verdict"><span class="status con">Contradicted</span></div>
+            </div>
+          </div>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="band split" id="context">
+    <div class="wrap">
+      <div class="section-head">
+        <h2>The affidavit quotes a line. The phone holds the conversation.</h2>
+        <p>Mabillon shows what was said around each quote it can place in the extraction. It can miss a
+          record, so your own search still counts.</p>
+      </div>
+      <ol class="thread" aria-label="Example messages around a quote, with made-up data">
+        <li><time>21:03</time><b>REYES</b><span>still at my sister's</span></li>
+        <li class="left"><time>21:05</time><b>PETROV</b><span>what time u leaving</span><em>Left out</em></li>
+        <li class="quoted"><time>21:07</time><b>REYES</b><span>bring it tonight</span><em>Quoted in ¶ 14</em></li>
+        <li class="left"><time>21:07</time><b>REYES</b><span>the charger, mine died</span><em>Left out</em></li>
+        <li class="left"><time>21:09</time><b>PETROV</b><span>lol ok</span><em>Left out</em></li>
+        <li><time>21:30</time><b>PETROV</b><span>outside</span></li>
       </ol>
     </div>
   </section>
@@ -181,39 +117,13 @@
   <section class="band" id="rules">
     <div class="wrap">
       <div class="section-head">
-        <p class="eyebrow">Rules, not the model</p>
-        <h2>The model never decides a verdict</h2>
-        <p>Three statuses, set by rules that carry a version number into every report.</p>
+        <h2>Rules decide. The model never does.</h2>
+        <p>Versioned rules set every status, and the version goes into each report. You can override any status.</p>
       </div>
-      <div class="bento">
-        <div class="tile w2"><span class="stamp sup">Supported<small>confirmed by you</small></span><p>When you accept the evidence behind it, or set the status yourself. A model's label alone never makes a claim supported.</p></div>
-        <div class="tile w2"><span class="stamp con">Contradicted<small>by a failed check</small></span><p>When a code check on one of the claim's core facts fails, such as a wrong sender or a time outside the stated window. A model's "contradicts" counts only after you confirm it.</p></div>
-        <div class="tile w2 wide-sm"><span class="stamp unp">Unproven<small>until shown</small></span><p>Everything else, with the records found and what is still missing. You can override any status.</p></div>
-        <div class="tile w3">
-          <h3>Every quote checked word for word</h3>
-          <div class="quote-demo" aria-label="Example quote check">
-            <div>model: <span class="m">“bring it tonight”</span> → found in Chats, row 212 · kept</div>
-            <div>model: <span class="x">“bring it to me tonight”</span> → not in the record · thrown away</div>
-          </div>
-          <p>A quote a model attributes to a record is verified by code before it is stored. One that does not match is discarded.</p>
-        </div>
-        <div class="tile w3">
-          <h3>A record you can stand behind</h3>
-          <div class="chain" aria-label="Example audit log entries">
-            <div><b>0410</b><span>claim 7 created · 4c1e…9a02</span></div>
-            <div><b>0411</b><span>link REYES ↔ +1 410-555-0147 confirmed · b77d…11fe</span></div>
-            <div><b>0412</b><span>evidence accepted, reason logged · e03a…5c7b</span></div>
-          </div>
-          <p>A hash-chained audit log under your name. The report lists source hashes, rule, model and prompt versions, and the log's last hash.</p>
-        </div>
-        <div class="tile w4">
-          <h3>"Not found" never means "did not happen"</h3>
-          <div class="coverage"><b>Searched:</b> calls and messages between REYES and PETROV, March 4, 00:00 to 08:00 (UTC−05:00).<br><b>Coverage:</b> curated report. It holds only what the examiner selected, so it cannot show an absence.</div>
-        </div>
-        <div class="tile w2">
-          <h3>Identities stay proposed</h3>
-          <p>Links between a number, a handle and a person stay proposed until you confirm them. Mabillon never merges people on its own.</p>
-        </div>
+      <div class="cols three">
+        <div><span class="status sup">Supported</span><p>Only after you accept the evidence behind it.</p></div>
+        <div><span class="status con">Contradicted</span><p>When a code check on a core fact fails. A model's “contradicts” counts only after you confirm it.</p></div>
+        <div><span class="status unp">Unproven</span><p>Everything else, with what is still missing.</p></div>
       </div>
     </div>
   </section>
@@ -221,55 +131,28 @@
   <section class="band" id="scrutiny">
     <div class="wrap">
       <div class="section-head">
-        <p class="eyebrow">Built for scrutiny</p>
-        <h2>Designed so findings can be re-checked</h2>
+        <h2>Built to be re-checked</h2>
         <p>What is built today. Whether a finding holds up in your court is a question for your expert and counsel.</p>
       </div>
-      <div class="bento">
-        <div class="tile w3"><h3>Rules decide, you confirm</h3><p>Verdicts come from versioned rules, never from a model. Nothing is supported until you accept the evidence behind it.</p></div>
-        <div class="tile w3"><h3>Inputs hashed on import</h3><p>Every file opens read-only, and its SHA-256 is recorded and printed in the report.</p></div>
-        <div class="tile w2"><h3>Tamper-evident log</h3><p>Every action goes into a hash-chained audit log. Mabillon checks the chain each time a case opens and stops if it is broken.</p></div>
-        <div class="tile w2"><h3>A bundle the other side can re-check</h3><p>Export the case as a bundle that opposing counsel's examiner can re-check offline, with no Mabillon account and no network.</p></div>
-        <div class="tile w2 wide-sm"><h3>Examiner activity trail</h3><p>A record of what you reviewed and when. It stays out of reports unless you turn it on for the case.</p></div>
-        <div class="tile w6"><h3>Local by default</h3><p>The case stays on your computer. Cloud AI runs only for a case you opt in, after you attest the protective order allows it.</p></div>
+      <div class="cols three list">
+        <div><h3>Inputs hashed</h3><p>Every file opens read-only, and its SHA-256 goes into the report.</p></div>
+        <div><h3>Tamper-evident log</h3><p>A hash-chained audit log, checked each time a case opens. The report prints its last hash.</p></div>
+        <div><h3>Quotes verified</h3><p>A quote a model points to is checked against the record. One that does not match is thrown away.</p></div>
+        <div><h3>Careful about absence</h3><p>“Not found” never means “did not happen.” It says what was searched and what the source could show.</p></div>
+        <div><h3>Identities stay proposed</h3><p>A number or handle is linked to a person only when you confirm it.</p></div>
+        <div><h3>A bundle to re-check</h3><p>Opposing counsel's examiner can re-check the verdicts offline, with no account and no network.</p></div>
       </div>
     </div>
   </section>
 
-  <section class="night" id="data">
+  <section class="band" id="data">
     <div class="wrap">
       <div class="section-head">
-        <p class="eyebrow">Your data</p>
-        <h2>Local by default. <em>Cloud AI only when your case allows it and you opt in.</em></h2>
+        <h2>Local by default. Cloud AI only when your case allows it and you opt in.</h2>
       </div>
-      <div class="flow">
-        <div class="node">
-          <span class="eyebrow">Your computer</span>
-          <h3>Everything runs here</h3>
-          <ul><li>Files opened read-only and hashed</li><li>The screen answers only this computer</li><li>Cases can be encrypted with a passphrase</li></ul>
-        </div>
-        <div class="wire" aria-hidden="true"><span class="dot"></span><span class="gate">Off unless<br>you opt in</span></div>
-        <div class="node cloud">
-          <span class="eyebrow">Cloud AI, per case</span>
-          <h3>Only with your attestation</h3>
-          <ul><li>You attest the protective order allows it</li><li>You set up your own key</li><li>Never for a case marked as possibly containing CSAM</li><li>The report names the model that labelled the case</li></ul>
-          <span class="toggle"><i></i>Off by default</span>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section class="band" id="limits">
-    <div class="wrap">
-      <div class="section-head">
-        <p class="eyebrow">What it won't do</p>
-        <h2>Your opinion stays yours</h2>
-      </div>
-      <div class="nots">
-        <div><strong>Decide for you</strong><span>No opinion and no conclusion about any person.</span></div>
-        <div><strong>Replace your tools</strong><span>It does not extract phones or recover data, and it does not replace Cellebrite, AXIOM or your own review.</span></div>
-        <div><strong>Fill gaps with guesses</strong><span>When it finds no contact or counts records, it says what it searched and what the source could show. A curated report can never show that something is absent.</span></div>
-        <div><strong>Promise numbers</strong><span>No speed or accuracy figure is published until it is measured on real extractions.</span></div>
+      <div class="cols two">
+        <div><h3>On your computer</h3><p>Everything runs here. Files open read-only, and cases can be encrypted with a passphrase.</p></div>
+        <div><h3>Cloud AI, per case</h3><p>Off by default. You attest the protective order allows it and use your own key. Never for a case marked as possibly containing CSAM. The report names the model that labelled the case.</p></div>
       </div>
     </div>
   </section>
@@ -277,25 +160,24 @@
   <section class="band" id="status">
     <div class="wrap">
       <div class="section-head">
-        <p class="eyebrow">Where it stands</p>
-        <h2>Early, and plain about it</h2>
+        <h2>Where it stands</h2>
       </div>
       <dl class="facts">
         <dt>Stage</dt><dd>Alpha, opening to a small number of pilot examiners. No pilot has started yet.</dd>
         <dt>Testing</dt><dd>Tested on synthetic cases only. No accuracy figure for real cases yet.</dd>
         <dt>Formats</dt><dd>Tested on real-format Cellebrite UFDR exports from public test phones (Reader 7.48). Other Cellebrite versions are not yet tested. The Cellebrite Excel and AXIOM readers have not yet been tested on real exports.</dd>
+        <dt>Won't do</dt><dd>Give an opinion about any person, extract phones, or replace Cellebrite, AXIOM or your own review. No speed or accuracy figure until it is measured on real extractions.</dd>
         <dt>Attorneys</dt><dd>Mabillon is built for the forensic expert you retain. To bring it into a case, ask us about a pilot together with your expert.</dd>
       </dl>
     </div>
   </section>
 
-  <section class="night cta" id="pilot">
+  <section class="band cta" id="pilot">
     <div class="wrap">
-      <p class="eyebrow">Book a demo</p>
       <h2>Bring your next case review.</h2>
-      <p>Tell us your role and the tools you use, and we'll walk you through Mabillon on a synthetic case.
-        Prefer email? Write to <span class="addr">support@getmabillon.com</span>. Please don't send any case material.</p>
-      <a class="button light" href="demo.html">Book a demo <span class="arrow" aria-hidden="true">→</span></a>
+      <p>We'll walk you through Mabillon on a synthetic case. Or write to <span class="addr">support@getmabillon.com</span>.
+        Please don't send any case material.</p>
+      <a class="button" href="demo.html">Book a demo</a>
     </div>
   </section>
 </main>

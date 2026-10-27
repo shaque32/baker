@@ -155,6 +155,13 @@ def test_a_time_no_range_reads_is_never_widened_to_the_whole_day(text):
         "As of January 9, 2026, PETROV used Item 1.",
         "From January 9, 2026, PETROV used Item 1.",  # no end
         "Between 9 p.m. on January 9, 2026 and 1 a.m. on January 10, 2026, Item 1 called.",
+        # a weekday between the opening word and the date
+        "Starting on Friday, January 9, 2026, at 9 p.m., PETROV sent no messages.",
+        "Starting on Friday, January 9, 2026, PETROV sent no messages.",
+        "After Friday, January 9, 2026, PETROV sent no messages.",
+        "Since Friday January 9, 2026, at 9 p.m., PETROV sent no messages.",
+        "From Friday, January 9, 2026, at 9 p.m., PETROV sent no messages.",
+        "From Friday, January 9, 2026, PETROV used Item 1.",  # no end
     ],
 )
 def test_an_open_range_is_not_read(text):
@@ -167,6 +174,9 @@ def test_words_beside_a_range_that_do_not_open_it_still_read():
         ("A message sent by PETROV on January 9, 2026 read hello.", "on January 9, 2026"),
         ("On January 9, 2026, after the meeting, PETROV texted.", "On January 9, 2026"),
         ("From March 10 through March 31, 2026, X.", "From March 10 through March 31, 2026"),
+        ("On Friday, January 9, 2026, at 9 p.m., X.", "On Friday, January 9, 2026, at 9 p.m."),
+        ("From Tuesday, March 10 through March 31, 2026, X.",
+         "From Tuesday, March 10 through March 31, 2026"),
     ]:  # fmt: skip
         (w,) = stated_windows(text)
         assert w.raw == raw

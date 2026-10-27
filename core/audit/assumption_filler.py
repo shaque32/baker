@@ -785,19 +785,22 @@ _LOOSE_TIME_RE = re.compile(
     r"\d{1,2}(?::\d{2})?(?:\s*(?:hours|hrs))?" + _TIED,
     re.IGNORECASE,
 )
-_LEAD_RE = re.compile(r"\b(?:on|between|from)\s+$", re.IGNORECASE)
+# a weekday the document writes before the date: "on Friday, January 9"
+_WD_LEAD = rf"(?:(?:{_WD_RE}),?\s+)?"
+_LEAD_RE = re.compile(rf"\b(?:on|between|from)\s+{_WD_LEAD}$", re.IGNORECASE)
 # after a plain date, a zone in brackets, or an abbreviation that is never initials ("ET" or
 # "PT" after a date may be a person)
 _DATE_ZONE_RE = re.compile(
     rf"\s*(?:\((?P<z>{_ZONE})\)|,?\s*(?P<z2>(?-i:UTC|GMT|AKST|AKDT|[ECMP][SD]T|HST))\b)",
     re.IGNORECASE,
 )
-_FROM_RE = re.compile(r"\b(?:between|from)\s+$", re.IGNORECASE)
+_FROM_RE = re.compile(rf"\b(?:between|from)\s+{_WD_LEAD}$", re.IGNORECASE)
 # a word right before the range read that leaves one end open or names a second end: "after 9
-# p.m. on", "from 9 p.m. on", "starting on", "as of"
+# p.m. on", "from 9 p.m. on", "starting on", "as of", "starting on Friday,"
 _OPEN_LEAD_RE = re.compile(
     r"\b(?:after|before|since|until|till|by|from|between|starting|beginning|commencing|"
-    r"as\s+of|prior\s+to|up\s+to|no\s+(?:later|earlier)\s+than)\s+$",
+    r"as\s+of|prior\s+to|up\s+to|no\s+(?:later|earlier)\s+than)\s+"
+    rf"(?:on\s+)?{_WD_LEAD}$",
     re.IGNORECASE,
 )
 # words right after the range read that leave its end open: "at 9 p.m. onward", "or later"
