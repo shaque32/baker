@@ -206,6 +206,16 @@ def check_evidence(
                 raise InvariantViolation(f"{e.id}: an AI review came after an expert decision")
 
 
+def check_challenge(items: list[EvidenceItem]) -> None:
+    """The challenge step (core/audit/challenge.py) stores only contradicts and complicates."""
+    for e in items:
+        if e.stance not in (Stance.CONTRADICTS, Stance.COMPLICATES):
+            raise InvariantViolation(
+                f"{e.id}: the challenge step stored a {e.stance.value} item; it stores only"
+                " contradicts and complicates"
+            )
+
+
 # ---------------------------------------------------------------- coverage
 
 
