@@ -1,7 +1,8 @@
 """Run the full pipeline on a synthetic case and write predictions and the report.
 
 Usage: python -m eval.run_pipeline [--case case01] [--mode model-free|real|fake|hostile]
-                                   [--expert simulated|rubber-stamp|none]
+                                   [--expert simulated|rubber-stamp|fallible|none]
+                                   [--error-rate RATE] [--expert-seed N]
                                    [--reviewer accept|none] [--challenge]
                                    [--assumption-spec PATH] [--repeat] [--out DIR]
 
@@ -37,6 +38,11 @@ Modes:
                     one: it accepts every labeled item (eval/simulated_expert.py). Not a gate;
                     it shows what gets through when the expert accepts everything. Output in
                     <out>/rubber_stamp/.
+  --expert fallible --error-rate RATE   the two passes, with the fallible expert: it decides as
+                    the simulated one but gets each item wrong at RATE (0 to 1, no default: the
+                    rate is Arsh's to set), drawn per item from --expert-seed (default 0). Not a
+                    gate; its summary gives the dismissal rate and items decided per claim.
+                    Output in <out>/fallible/.
   --challenge       run the challenge step (core/audit/challenge.py, off by default): code's
                     counter-searches on claims close to supported, storing only doubt. Output
                     in <out>/challenge/.
@@ -441,6 +447,8 @@ def run_once(
     claim_ids: list[str] | None = None,
     filler_model: object | None = None,
     challenge: bool = False,
+    error_rate: float | None = None,
+    expert_seed: int = 0,
 ) -> list[Prediction]:
     """One audit of a case. labeler_model (real mode only) is the stance labeler's model in
     place of the configured local one: the cloud benchmark (eval/bench) passes Claude here.
@@ -450,6 +458,7 @@ def run_once(
         GoldKey,
         RecordingRetriever,
         ReplayLabeler,
+        fallible_review,
         rubber_stamp_review,
     )
     from eval.simulated_expert import readiness as key_readiness
@@ -507,7 +516,7 @@ def run_once(
             "dropped_labels": result.dropped_labels,
             "reviewer_failures": result.reviewer_failures,
         }
-        if expert not in ("simulated", "rubber-stamp"):
+        if expert not in ("simulated", "rubber-stamp", "fallible"):
             preds = write_outputs(conn, out, summary)
             print("pipeline: " + json.dumps(summary))
             return preds
@@ -517,6 +526,12 @@ def run_once(
         ready["not_labeled"] = not_labeled(conn, gold, result)
         if expert == "rubber-stamp":
             decided = rubber_stamp_review(conn, result.manifest, _clock)
+        elif expert == "fallible":
+            if error_rate is None:
+                raise SystemExit("pipeline: the fallible expert needs an error rate")
+            decided = fallible_review(
+                conn, gold, result.manifest, _clock, error_rate, seed=expert_seed
+            )
         else:
             decided = expert_review(conn, gold, result.manifest, _clock)
         # Second pass: the same retrieval, checks and assumptions, the first pass's stored
@@ -637,6 +652,12 @@ def print_summary(s: dict) -> None:
         f"{len(r['claims_all_key_retrieved'])}/{s['claims']}"
     )
     print(f"pipeline: simulated expert accepted {e['accepted']}, dismissed {e['dismissed']}")
+    if "error_rate" in e:
+        print(
+            f"pipeline: fallible expert at error rate {e['error_rate']}: {e['wrong_accepts']} "
+            f"wrong accepts, {e['wrong_dismissals']} wrong dismissals; dismissal rate "
+            f"{e['dismissal_rate']:.0%}, {e['items_per_claim_decided']} items decided per claim"
+        )
     print(f"pipeline: verdicts after the simulated expert {s['verdicts']}")
     print(f"pipeline: contradicted with a failed check cited: {s['contradicted_by_failed_check']}")
 
@@ -647,7 +668,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--mode", choices=("model-free", "real", "fake", "hostile"), default="model-free"
     )
-    parser.add_argument("--expert", choices=("simulated", "rubber-stamp", "none"), default=None)
+    parser.add_argument(
+        "--expert", choices=("simulated", "rubber-stamp", "fallible", "none"), default=None
+    )
+    parser.add_argument("--error-rate", type=float, default=None)
+    parser.add_argument("--expert-seed", type=int, default=0)
     parser.add_argument("--reviewer", choices=("accept", "none"), default="accept")
     parser.add_argument("--assumption-spec", type=Path, default=None)
     parser.add_argument("--repeat", action="store_true")
@@ -658,8 +683,15 @@ def main(argv: list[str] | None = None) -> int:
     expert = args.expert
     if expert is None:
         expert = "simulated" if args.mode in ("model-free", "real") else "none"
-    if expert in ("simulated", "rubber-stamp") and args.mode not in ("model-free", "real"):
+    if expert in ("simulated", "rubber-stamp", "fallible") and args.mode not in (
+        "model-free",
+        "real",
+    ):
         parser.error(f"the {expert} expert runs in model-free and real modes only")
+    if (expert == "fallible") != (args.error_rate is not None):
+        parser.error("--error-rate goes with --expert fallible, and it needs one")
+    if args.error_rate is not None and not 0.0 <= args.error_rate <= 1.0:
+        parser.error("--error-rate is between 0 and 1")
     if args.mode == "hostile" and args.case != "case01":
         parser.error("the red-team gate lists case01's structural claims; run it on case01")
     spec = args.assumption_spec
@@ -679,11 +711,21 @@ def main(argv: list[str] | None = None) -> int:
             out = out / "no_expert"
         if expert == "rubber-stamp":
             out = out / "rubber_stamp"
+        if expert == "fallible":
+            out = out / "fallible"
         if args.challenge:
             out = out / "challenge"
     try:
         first = run_once(
-            args.case, args.mode, args.reviewer, out, spec, expert, challenge=args.challenge
+            args.case,
+            args.mode,
+            args.reviewer,
+            out,
+            spec,
+            expert,
+            challenge=args.challenge,
+            error_rate=args.error_rate,
+            expert_seed=args.expert_seed,
         )
         if args.repeat:
             second = run_once(
@@ -694,6 +736,8 @@ def main(argv: list[str] | None = None) -> int:
                 spec,
                 expert,
                 challenge=args.challenge,
+                error_rate=args.error_rate,
+                expert_seed=args.expert_seed,
             )
             if first != second:
                 print("pipeline: FAIL, a repeat run gave different predictions")
