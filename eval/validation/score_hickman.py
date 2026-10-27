@@ -44,6 +44,9 @@ from eval.validation.card import build_card, load_checks, rate, render_markdown
 from eval.validation.hickman_run import TYPE_ALIASES
 
 KEY_FILES = ("gold.jsonl", "gold_b2.jsonl", "gold_b3.jsonl")
+# 1.0.0: #134. 1.1.0: coverage (#142). 1.2.0: a claim is tested only with a first-pass verdict,
+# coverage must account for every gold claim, and refusal kinds match whole refusal phrases.
+SCORER_VERSION = "1.2.0"
 
 # Run 2's low-coverage rule 3: below this many tested claims, no accuracy claim.
 MINIMUM_TESTED = 30
@@ -66,11 +69,33 @@ REFUSAL_KINDS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("channel not named or not in the case", re.compile(r"name the channel|not an app in")),
     (
         "time range not plainly stated",
-        re.compile(r"\bwindow\b|\brange\b|weekday|states no year|claim's date"),
+        re.compile(
+            r"window ends before it starts|window longer than \d+ days"
+            r"|the document states no year for this range"
+            r"|the stated time range is not a plain range on one day"
+            r"|window (?:start|end) is not near (?:the (?:start|end) of the stated time range"
+            r"|a time the range states)"
+            r"|a weekday the document gives is not that date's weekday"
+            r"|a range offset from a date|a range 'after' a date starts at midnight"
+            r"|window (?:start|end) \S+ is not a date the claim states"
+            r"|window end is not on a date the claim states"
+            r"|a range with no time of day must (?:start|end) at midnight"
+            r"|the claim's range for no contact is not a plain stated range"
+            r"|the time range is not one the claim plainly states"
+            r"|the window's words are not written in the claim"
+            r"|window start or end is not 'YYYY-MM-DDTHH:MM'"
+            r"|window times must be wall-clock|the range does not say UTC"
+            r"|record_time from the claim's date"
+        ),
     ),
     (
         "count or duration not readable",
-        re.compile(r"count is approximate|number of messages or calls|duration|read the number"),
+        re.compile(
+            r"the claim's count is approximate or strict"
+            r"|is not written in the claim as a number of messages or calls"
+            r"|cannot read the duration|the duration '.*?' is a bound"
+            r"|cannot read the number in|the duration's words are not written in the claim"
+        ),
     ),
     ("value not written in the claim", re.compile(r"(?:quoted_text|'.*?') is not written in")),
     (
@@ -82,6 +107,9 @@ REFUSAL_KINDS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ),
 )
 UNCLASSIFIED = "none of the kinds above (see the claim's sentence)"
+# A claim the run neither decided nor marked "Not tested" (it is missing from the run, or the
+# run stopped short): untested, never scored right or wrong.
+NO_VERDICT = "no verdict recorded"
 ONLY_SUMMARY = "no refusal listed, only the filler's summary of what was missing"
 # The filler's closing summary of a claim ("no usable X assumption; the claim stays unproven")
 # says what is missing, not why, so it is not read for kinds.
@@ -407,17 +435,28 @@ def refusal_kinds(sentence: str) -> list[str]:
 
 def coverage(run: dict, gold: list[GoldClaim], r1: dict[str, Any]) -> dict[str, Any]:
     """Run 2's low-coverage rule: k tested of all claims, why the rest were not, and measures
-    1 to 3 again over tested claims only (rules 1 and 2). An untested claim is listed by id
-    with its sentence, never counted correct or wrong."""
+    1 to 3 again over tested claims only (rules 1 and 2). A claim is tested only when it has a
+    first-pass verdict and is not marked "Not tested"; it fails closed. An untested claim is
+    listed by id with its sentence, never counted correct or wrong."""
     not_tested: dict[str, str] = run.get("not_tested") or {}
+    per_claim = r1["per_claim"]
     ids = [g.claim_id for g in gold]
-    tested = [c for c in ids if c not in not_tested]
-    untested = {c: not_tested[c] for c in ids if c in not_tested}
+    if len(set(ids)) != len(ids) or set(per_claim) != set(ids):
+        raise SystemExit("score: coverage needs each gold claim once, with its first-pass row")
+    untested = {
+        c: not_tested[c] if c in not_tested else f"{NO_VERDICT}."
+        for c in ids
+        if c in not_tested or per_claim[c]["r1"] is None
+    }
+    tested = [c for c in ids if c not in untested]
+    if len(tested) + len(untested) != len(gold):
+        raise SystemExit(f"score: coverage counts {len(tested) + len(untested)} of {len(gold)}")
     kinds: dict[str, list[str]] = {name: [] for name, _ in REFUSAL_KINDS}
     kinds[UNCLASSIFIED] = []
     kinds[ONLY_SUMMARY] = []
+    kinds[NO_VERDICT] = []
     for c, sentence in untested.items():
-        for kind in refusal_kinds(sentence):
+        for kind in [NO_VERDICT] if c not in not_tested else refusal_kinds(sentence):
             kinds[kind].append(c)
     k = len(tested)
     return {
@@ -431,7 +470,7 @@ def coverage(run: dict, gold: list[GoldClaim], r1: dict[str, Any]) -> dict[str, 
         "sentences_cut_short": [c for c, sentence in untested.items() if _MORE.search(sentence)],
         "untested_claims": untested,
         "tested_claims": tested,
-        "r1_over_tested": _measures({c: r1["per_claim"][c] for c in tested}),
+        "r1_over_tested": _measures({c: per_claim[c] for c in tested}),
     }
 
 
@@ -528,6 +567,7 @@ def score(results: Path, keys: Path, dump: Path, out: Path) -> dict[str, Any]:
     covered = coverage(run, mapped, r1)
 
     result = {
+        "scorer_version": SCORER_VERSION,
         "results_sha256": _sha256(results),
         "keys_sha256": key_hashes,
         "audit_run": run["run_id"],
@@ -609,7 +649,7 @@ def render(s: dict[str, Any]) -> str:
         "# Validation v1 score (iOS 15 public phone)",
         "",
         f"Audit run `{s['audit_run']}`, rules {s['rule_version']}, results.zip SHA-256"
-        f" `{s['results_sha256']}`.",
+        f" `{s['results_sha256']}`, scorer {s.get('scorer_version', 'before 1.2.0')}.",
         "",
     ]
     if "coverage" in s:
