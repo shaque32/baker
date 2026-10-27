@@ -541,23 +541,27 @@ def written_zone(as_written: str, claim: str = "") -> str | None:
         if zm is not None:
             found.append(zm.group("z") or zm.group("z2"))
     text, words = _nfc(claim), _nfc(as_written.strip())
-    if not found and words:
-        timed = _ENDS_TIMED_RE.search(words)
-        dated = _ENDS_DATE_RE.search(words)
-        i = text.find(words) if timed or dated else -1
-        while i >= 0:
-            rest = text[i + len(words) :]
-            unread = unread_zone((words[timed.start() :] if timed else words) + rest[:40])
-            if unread is not None:
-                raise Reject(f"the claim writes a time zone code does not read ({unread!r})")
+    timed = _ENDS_TIMED_RE.search(words)
+    dated = _ENDS_DATE_RE.search(words)
+    reads_on = not found and (timed or dated)
+    i = text.find(words) if words else -1
+    while i >= 0:
+        rest = text[i + len(words) :]
+        # Checked even when the model's words give a zone: they may stop inside one the claim
+        # writes, "On January 9, 2026 UTC" in "On January 9, 2026 UTC+3" (Codex on #150).
+        unread = unread_zone(words + rest[:40])
+        if unread is not None:
+            raise Reject(f"the claim writes a time zone code does not read ({unread!r})")
+        zm = None
+        if reads_on:
             zm = (
                 re.match(rf"\s*\(?(?P<z>{_ZONE})", rest, re.IGNORECASE)
                 if timed
                 else _DATE_ZONE_RE.match(rest)
             )
-            if zm is not None:
-                found.append(zm.group("z") or (zm.groupdict().get("z2") or ""))
-            i = text.find(words, i + 1)
+        if zm is not None:
+            found.append(zm.group("z") or (zm.groupdict().get("z2") or ""))
+        i = text.find(words, i + 1)
     if len({str(WRITTEN_ZONES[" ".join(z.split()).casefold()]) for z in found}) > 1:
         raise Reject("the range names more than one time zone")
     return found[0] if found else None
