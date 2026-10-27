@@ -32,7 +32,10 @@ from tests.test_coverage_display import _screen, _send, _setup
 from tests.test_ufdr import _chat, _msg
 from ui.app import Request
 
-TESTED = "Tested on public test phones (Cellebrite Reader 7.48). Not tested on your case data."
+TESTED = (
+    "Imported without errors from three public test-phone packages (UFDR report version 7.48). "
+    "Counts not yet compared with Cellebrite Reader. Not tested on your case data."
+)
 CHECK = "Check results against the source tool."
 NOTICE_RE = re.compile(r"<p class='format-notice[^']*' data-source='([^']*)'>(.*?)</p>", re.S)
 

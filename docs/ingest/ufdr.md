@@ -22,7 +22,8 @@ import:
   (`core/ingest/tested.py`), in the coverage record (`format_check`) and in the audit log
   (`import.format`). The case overview, the setup screen's file list, each claim page that rests
   on the package and the report (Limitations and each such claim) print the same notice:
-  "Tested on public test phones (Cellebrite Reader 7.48). Not tested on your case data." for
+  "Imported without errors from three public test-phone packages (UFDR report version 7.48).
+  Counts not yet compared with Cellebrite Reader. Not tested on your case data." for
   `reportVersion` 7.48 exactly, else "Not tested: Cellebrite UFDR report version <as written>
   has not been tested with Mabillon. Check results against the source tool." (or "(no report
   version stated)"). The notice never changes a verdict;

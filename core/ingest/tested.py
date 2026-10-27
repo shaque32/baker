@@ -27,9 +27,11 @@ ACTION = "import.format"  # the audit-log entry each import writes
 
 # (importer, stated version exactly as the export writes it)
 TESTED: frozenset[tuple[str, str]] = frozenset({("ufdr", "7.48")})
+# Wording chosen by Arsh 2026-10-27 (Baker Eval's text): it says what was done and no more.
 TESTED_NOTICE = {
     ("ufdr", "7.48"): (
-        "Tested on public test phones (Cellebrite Reader 7.48). Not tested on your case data."
+        "Imported without errors from three public test-phone packages (UFDR report version "
+        "7.48). Counts not yet compared with Cellebrite Reader. Not tested on your case data."
     ),
 }
 NOT_TESTED = "Not tested: {format} {version} has not been tested with Mabillon."

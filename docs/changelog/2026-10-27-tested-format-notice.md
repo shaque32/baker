@@ -9,8 +9,11 @@
   page that rests on the source (its evidence, what its checks searched, the records they cite),
   the report's Limitations and each such claim in the report print the same notice: "Not tested:
   <format> <version as written> has not been tested with Mabillon. Check results against the
-  source tool." or, for UFDR report version 7.48, "Tested on public test phones (Cellebrite
-  Reader 7.48). Not tested on your case data." `mabillon import` prints it too. The UFDR
+  source tool." or, for UFDR report version 7.48, "Imported without errors from three public
+  test-phone packages (UFDR report version 7.48). Counts not yet compared with Cellebrite
+  Reader. Not tested on your case data." (Baker Eval's wording, picked by Arsh in the owning
+  thread 2026-10-27, over the spec's "Tested on public test phones (Cellebrite Reader 7.48)").
+  `mabillon import` prints it too. The UFDR
   "not yet verified" coverage item and Limitations line no longer say the reader was "tested only
   on synthetic packages" (wrong since #117); they now say its record counts have not been
   compared with Cellebrite Reader's own. Every UFDR import, 7.48 included, still records
@@ -28,8 +31,8 @@
   gets its notice; overview, setup screen and report Limitations show the same notices; each
   case01 claim page shows the same notices as its report claim block; marking every source
   tested and auditing again gives the same verdicts. `make check`: see the PR.
-- Open: the tested notice says "Tested on public test phones" while gate 5a is still Not met
-  (Reader-side counts not compared; #144); the wording is the spec's. The tested set matches
+- Open: gate 5a is still Not met (Reader-side counts not compared; #144); the 7.48 notice
+  says so. The tested set matches
   report.xml's `reportVersion`, not the Physical Analyzer version the metadata states (the public
   Android 12 package states reportVersion 7.48 and PA 7.50). `docs/PILOT_GATES.md` "Pilot rule
   for gate 5" still says the banner does not exist on `d478705`; the next refresh should cite
@@ -43,7 +46,8 @@
   verified' on screen and in the report; Cellebrite Excel and PDF imports carry no such notice"
   with "Every evidence source shows a format notice on the case screen, each claim page that
   rests on it and in the report (`core/ingest/tested.py`): UFDR stating reportVersion 7.48 gets
-  'Tested on public test phones (Cellebrite Reader 7.48). Not tested on your case data.';
+  'Imported without errors from three public test-phone packages (UFDR report version 7.48).
+  Counts not yet compared with Cellebrite Reader. Not tested on your case data.';
   every other format or version gets 'Not tested: ...' with its version as written. AXIOM
   also keeps its 'not yet verified' item"; pilot gate 5 section: the pilot-rule banner exists
   on main (#145)
