@@ -9,11 +9,14 @@
     account's own number, or a WhatsApp id. A number without "+" is read only in the North
     American form. A user id made of digits is never taken for a phone number. A number that
     two accounts recorded differently share on the app ("+1 (919) 888-7386" and
-    "+19198887386") is refused, never joined (review fix).
+    "+19198887386") is refused, never joined, and never looked up again as a display name
+    (review fixes).
   - A person written as an account. "SUBJECT-1" on Signal, where SUBJECT-1 is a person the
     expert created, becomes that person. The checks then take the person's accounts from
     confirmed stipulations and links, never from the words, as for any person. If an account
-    not confirmed as theirs carries the same name on that app, the proposal is refused.
+    not confirmed as theirs carries the same name on that app, the proposal is refused. The app
+    the model wrote the person on scopes their accounts as a channel the claim must name, so a
+    message of theirs on another app does not do (review fix).
   - A display name. The display name of exactly one account on the model's app finds that
     account. A name that several accounts carry is refused, because accounts are never
     merged. For example, real Skype data lists one account under two identifiers.
@@ -24,16 +27,19 @@
     is refused, however the account was found (review fix). Native Messages holds iMessages
     and SMS together, so a count of "iMessages" on its account would count SMS too.
 - Where: PR #152 (branch `claude/project-thread-6i2msb-accounts`), stacked on #150
-- Verified: new `tests/test_account_lookups.py`, 33 tests on synthetic case01 with made-up
+- Verified: new `tests/test_account_lookups.py`, 35 tests on synthetic case01 with made-up
   wording:
     - phone_digits forms, including a UK number with and without "+" and digits run together;
     - user ids are not numbers;
     - numbers on SMS, WhatsApp and Phone;
     - a number on an app that does not hold it, or that the claim does not name, is refused;
-    - a number two accounts recorded differently share is refused;
+    - a number two accounts recorded differently share is refused, also when one of them has
+      the number as its display name;
     - a count or an absence of iMessages on a Native Messages account, found by its display
       name or its identifier, is refused, and a count of "messages" on it is read;
-    - a person written as an account, and the template that takes no person;
+    - a person written as an account, scoped to the app it is written on, and the template
+      that takes no person; a person on an app the claim does not name, or that the
+      proposal's channels leave out, is refused;
     - one display name, a display name two accounts carry, and a display name on an app the
       claim does not name;
     - a person whose name another account carries, or two other accounts carry, is refused
@@ -51,7 +57,8 @@
     - "Signal" written as a handle is refused.
     - After the review fixes, one of the 3 numbers is refused again: on that claim (a
       same-account claim) Viber holds the number as two accounts recorded differently, which
-      the earlier code joined. Every other replayed proposal is unchanged.
+      the earlier code joined. Every other replayed proposal is unchanged, and the later review
+      fixes change none of run 1's 106 proposals.
 - Open: unmeasured on a run.
   - With #150 and #139, the estimate from run 1's log is that every
     recorded reason is cleared on 36 of the 51 claims with a model-side reason (37 before the
