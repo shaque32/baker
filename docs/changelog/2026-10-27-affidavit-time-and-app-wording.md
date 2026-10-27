@@ -16,7 +16,8 @@
     "since", "by", "from", "between", "starting", "beginning", "as of") or right after it
     ("onward", "or later", "and thereafter") leaves the claim's ranges to the model. Before,
     main read "After 9 p.m. on January 9, 2026" as the 9 p.m. minute, so an absence would have
-    searched one minute.
+    searched one minute. A weekday between that word and the date counts the same way:
+    "Starting on Friday, January 9, 2026, at 9 p.m." is not read.
   - Written zones. A zone written right after a time ("EDT", "(EST)", "ET", "Eastern Time",
     "UTC"), or right after a date ("March 3, 2026 (UTC)"), is read by code, never taken from
     the model. After a date, a two-letter zone counts only in brackets, since "PT" there may
@@ -37,13 +38,13 @@
       holds iMessage and SMS together. A count could include messages the claim does not name,
       and an SMS could fail a claim of no iMessages.
 - Where: PR #150 (branch `claude/project-thread-6i2msb-coverage`)
-- Verified: new `tests/test_affidavit_wording.py`, 55 tests on synthetic case01 with made-up
+- Verified: new `tests/test_affidavit_wording.py`, 61 tests on synthetic case01 with made-up
   wording:
     - the date-first forms and written zones, each also passing `check_window`;
     - 11 phrasings that must not be read, including a second time, "beginning at", "after",
       a spelled-out range across two dates, 24-hour and bare hours, and midnight;
     - a count after a date is not read as a time;
-    - 13 open ranges are not read, and words beside a range that do not open it still read;
+    - 19 open ranges are not read, 6 of them with a weekday before the date, and words beside a range that do not open it still read;
     - the claim's zone wins over the model's;
     - a "UTC" inside the quoted message does not make the range UTC;
     - a written UTC is read as UTC, a whole day too;
@@ -56,8 +57,9 @@
     12, 2026 at noon" now reads the noon minute; before, it returned no range.
   - `make check` passes; its eval numbers are in the PR.
   - Read-only comparison on run 1's 106 claim texts, from its stored database. The four
-    review fixes (open ranges, quoted zones, capitalized words, absences on Native Messages)
-    came after it; rerun, they change none of the 106 claims' ranges.
+    review fixes (open ranges, quoted zones, capitalized words, absences on Native Messages,
+    a weekday before an open range) came after it; rerun, they change none of the 106 claims'
+    ranges.
     - 41 claims the old reader gave no range now get the exact stated time.
     - 1 claim the old reader widened to the whole day now gets its stated time.
     - 15 claims the old reader widened to the whole day now go to the model.
