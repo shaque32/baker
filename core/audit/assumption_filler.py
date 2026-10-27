@@ -445,6 +445,28 @@ _ZONE = (
 )
 _CLOCK_END = r"(?:\b[ap]\.?m\.?|\bnoon|\b\d{1,2}:\d{2})"
 _TIMED_ZONE_RE = re.compile(rf"{_CLOCK_END}\s*\(?(?P<z>{_ZONE})", re.IGNORECASE)
+# A zone right after a time that code does not read, so the range is never put in the phone's
+# zone instead: an abbreviation not in capitals ("pdt"), an offset ("UTC+3"), a zone outside
+# the US and UTC ("BST", "CET"), or another zone's name ("Central European Time").
+_UNREAD_ZONE_RE = re.compile(
+    rf"(?i:{_CLOCK_END})\s*\(?(?P<z>(?i:utc|gmt)\s*[+\-−]\s*\d"
+    r"|(?i:utc|gmt|akst|akdt|[ecmp][sd]t|hst)\b"
+    r"|(?:BST|IST|WET|WEST|CET|CEST|EET|EEST|MSK|GST|PKT|ICT|WIB|SGT|HKT|PHT|JST|KST|AWST|ACST"
+    r"|ACDT|AEST|AEDT|NZST|NZDT|AST|ADT|NST|NDT|BRT|ART|CAT|EAT|WAT|SAST|ChST|SST)\b"
+    r"|[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}\s+Time\b)"
+)
+
+
+def unread_zone(text: str) -> str | None:
+    """A zone written right after a time in the text (outside quoted words) that code does not
+    read, or None."""
+    for m in _UNREAD_ZONE_RE.finditer(_unquoted(text)):
+        z = m.group("z")
+        if not re.fullmatch(_ZONE, z, re.IGNORECASE):
+            return z
+    return None
+
+
 _ENDS_TIMED_RE = re.compile(rf"{_CLOCK_END}\s*$", re.IGNORECASE)
 _ENDS_DATE_RE = re.compile(r"\b(?:19|20)\d\d\s*$")
 
@@ -474,8 +496,13 @@ def written_zone(as_written: str, claim: str = "") -> str | None:
     """The zone the range's own words give its times in, or None when they give none. Only a
     zone right after a time ("11:11 a.m. EDT", "noon (ET)") or a date ("March 3, 2026 (UTC)")
     counts, and so does one the claim writes right after the range's words ("... 11:11 a.m."
-    then " EDT" in the claim). Raises Reject when they give more than one."""
+    then " EDT" in the claim). Raises Reject when they give more than one, or a zone right after
+    a time that code does not read ("pdt", "UTC+3", "BST"): the range is then never read in the
+    phone's zone instead."""
     plain = _unquoted(as_written)
+    unread = unread_zone(plain)
+    if unread is not None:
+        raise Reject(f"the range writes a time zone code does not read ({unread!r})")
     found = [m.group("z") for m in _TIMED_ZONE_RE.finditer(plain)]
     for d in _DATE_RE.finditer(plain):
         zm = _DATE_ZONE_RE.match(plain[d.end() :])
@@ -488,6 +515,10 @@ def written_zone(as_written: str, claim: str = "") -> str | None:
         i = text.find(words) if timed or dated else -1
         while i >= 0:
             rest = text[i + len(words) :]
+            if timed:
+                unread = unread_zone(words[timed.start() :] + rest[:40])
+                if unread is not None:
+                    raise Reject(f"the claim writes a time zone code does not read ({unread!r})")
             zm = (
                 re.match(rf"\s*\(?(?P<z>{_ZONE})", rest, re.IGNORECASE)
                 if timed
@@ -849,6 +880,8 @@ def stated_windows(text: str, context: str = "") -> list[StatedWindow] | None:
     plain = _unquoted(text)  # a date or time in quoted words is the message's, not the claim's
     if weekday_mismatch(plain, years):
         return None  # a weekday that is not the date's: never pick one
+    if unread_zone(plain) is not None:
+        return None  # "9 p.m. pdt", "9 p.m. BST": never read in the phone's zone instead
     for m in _DATE_RE.finditer(plain):
         before = plain[max(0, m.start() - 64) : m.start()]
         if any(_has_word(before[-12:], w) for w in (*OPEN_START, *OPEN_END)):

@@ -26,7 +26,10 @@
     never the range's. Any other zone must
     have the offset the phone's zone has at both ends of the range. Otherwise the range is
     refused with both offsets named, for example "EST (UTC-05:00), but the phone's zone
-    America/New_York is at UTC-04:00 then".
+    America/New_York is at UTC-04:00 then". A zone right after a time that code does not read
+    refuses the range (review fix), so it is never read in the phone's zone instead: an
+    abbreviation not in capitals ("pdt"), an offset ("UTC+3"), a zone outside the US and UTC
+    ("BST", "AST") or another zone's name ("Central European Time").
   - Export app names. `APP_ALIASES` covers the names real exports use: "Wickr Pro" and "Wickr
     Me" for "Wickr", "Kik Messenger" for "Kik", "Microsoft Teams" for "Teams", and iOS "Native
     Messages" for "iMessage" and the SMS words.
@@ -38,13 +41,16 @@
       holds iMessage and SMS together. A count could include messages the claim does not name,
       and an SMS could fail a claim of no iMessages.
 - Where: PR #150 (branch `claude/project-thread-6i2msb-coverage`)
-- Verified: new `tests/test_affidavit_wording.py`, 61 tests on synthetic case01 with made-up
+- Verified: new `tests/test_affidavit_wording.py`, 69 tests on synthetic case01 with made-up
   wording:
     - the date-first forms and written zones, each also passing `check_window`;
     - 11 phrasings that must not be read, including a second time, "beginning at", "after",
       a spelled-out range across two dates, 24-hour and bare hours, and midnight;
     - a count after a date is not read as a time;
-    - 19 open ranges are not read, 6 of them with a weekday before the date, and words beside a range that do not open it still read;
+    - 19 open ranges are not read, 6 of them with a weekday before the date, and words beside
+      a range that do not open it still read;
+    - 7 zones code does not read refuse the range, in the claim's words and after the model's,
+      while one in quoted words or after no time does not;
     - the claim's zone wins over the model's;
     - a "UTC" inside the quoted message does not make the range UTC;
     - a written UTC is read as UTC, a whole day too;
@@ -74,10 +80,12 @@
     - "between approximately X and Y";
     - times about midnight;
     - 24-hour times;
-    - zones other than US and UTC;
-    - lowercase abbreviations, which are ignored, so the phone's zone is used.
-  - Account lookups (number formats, display names, the owner's accounts) and small parsers
-    (one retry on invalid output, durations) are the next PRs.
+    - zones other than US and UTC, which are refused, not read.
+  - Account lookups (#152) and call lengths (#153) are the next PRs. The planned retry on
+    invalid output is dropped: run 1's 2 invalid outputs were the same bytes on all 3 runs.
+  - When "texted" or "iMessage" names Native Messages, the report does not yet say that the
+    export holds SMS and iMessage together. That is a report and screen change, planned as its
+    own PR.
 - Affects: capabilities. More claims can be set up from real affidavit wording. A claim whose
   written zone the phone was not in is now refused, where before it was read in the phone's
   zone.
