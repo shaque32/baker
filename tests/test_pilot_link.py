@@ -82,3 +82,21 @@ def test_prints_one_link(monkeypatch, capsys):
     assert out.out.count("https://") == 1
     assert "X-Amz-Expires=43200" in out.out
     assert "Works until" in out.err
+
+
+def test_check_that_cannot_reach_r2_says_why_and_makes_no_link(monkeypatch, capsys):
+    import ssl
+    import urllib.error
+
+    for k, v in ENV.items():
+        monkeypatch.setenv(k, v)
+
+    def fail(*a, **k):
+        raise urllib.error.URLError(ssl.SSLCertVerificationError("CERTIFICATE_VERIFY_FAILED"))
+
+    monkeypatch.setattr(pilot_link.urllib.request, "urlopen", fail)
+    assert pilot_link.main(["a.exe", "--check"]) == 1
+    out = capsys.readouterr()
+    assert "https://" not in out.out
+    assert "Install Certificates" in out.err
+    assert "No link made" in out.err
