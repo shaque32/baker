@@ -29,7 +29,10 @@
     America/New_York is at UTC-04:00 then". A zone right after a time that code does not read
     refuses the range (review fix), so it is never read in the phone's zone instead: an
     abbreviation not in capitals ("pdt"), an offset ("UTC+3"), a zone outside the US and UTC
-    ("BST", "AST") or another zone's name ("Central European Time").
+    ("BST", "AST", "bst") or another zone's name ("Central European Time", "central european
+    time"). After a date, an offset ("January 9, 2026 UTC+3") or a zone in brackets that code
+    does not read ("(BST)") refuses the range too (review fix). A title-case word ("Sgt."), a
+    lowercase English word ("west") and "local time" are not taken for a zone.
   - Export app names. `APP_ALIASES` covers the names real exports use: "Wickr Pro" and "Wickr
     Me" for "Wickr", "Kik Messenger" for "Kik", "Microsoft Teams" for "Teams", and iOS "Native
     Messages" for "iMessage" and the SMS words.
@@ -41,7 +44,7 @@
       holds iMessage and SMS together. A count could include messages the claim does not name,
       and an SMS could fail a claim of no iMessages.
 - Where: PR #150 (branch `claude/project-thread-6i2msb-coverage`)
-- Verified: new `tests/test_affidavit_wording.py`, 69 tests on synthetic case01 with made-up
+- Verified: new `tests/test_affidavit_wording.py`, 80 tests on synthetic case01 with made-up
   wording:
     - the date-first forms and written zones, each also passing `check_window`;
     - 11 phrasings that must not be read, including a second time, "beginning at", "after",
@@ -49,8 +52,9 @@
     - a count after a date is not read as a time;
     - 19 open ranges are not read, 6 of them with a weekday before the date, and words beside
       a range that do not open it still read;
-    - 7 zones code does not read refuse the range, in the claim's words and after the model's,
-      while one in quoted words or after no time does not;
+    - 9 zones code does not read after a time, and 4 after a date, refuse the range, in the
+      claim's words and after the model's, while one in quoted words or after no time does
+      not, and 5 words after a time or date that are not a zone still read;
     - the claim's zone wins over the model's;
     - a "UTC" inside the quoted message does not make the range UTC;
     - a written UTC is read as UTC, a whole day too;
@@ -62,10 +66,10 @@
   - One existing expectation changed on purpose (`tests/test_assumption_filler.py`). "On March
     12, 2026 at noon" now reads the noon minute; before, it returned no range.
   - `make check` passes; its eval numbers are in the PR.
-  - Read-only comparison on run 1's 106 claim texts, from its stored database. The four
+  - Read-only comparison on run 1's 106 claim texts, from its stored database. The
     review fixes (open ranges, quoted zones, capitalized words, absences on Native Messages,
-    a weekday before an open range) came after it; rerun, they change none of the 106 claims'
-    ranges.
+    a weekday before an open range, zones code does not read) came after it; rerun, they
+    change none of the 106 claims' ranges.
     - 41 claims the old reader gave no range now get the exact stated time.
     - 1 claim the old reader widened to the whole day now gets its stated time.
     - 15 claims the old reader widened to the whole day now go to the model.
