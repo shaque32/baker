@@ -4,21 +4,24 @@
   and puts each gold key record at the furthest stage it reached: refused (the claim has no
   assumptions), not retrieved (split into "settled by a failed core check", where retrieval is
   skipped by design, and "retrieval missed"), labelled irrelevant, invalid output, quote dropped,
-  or surfaced. It also splits a run's dropped labels by reason from the stored model calls. An
+  or surfaced; a claim the run did not finish is "not audited". It also splits a run's dropped labels by reason from the stored model calls. An
   irrelevant label carries no quote, so the pipeline drops it at the quote check and stores the
   call as `quote_failed`; the tool counts that as "irrelevant", and counts "quote_failed" only for
   real labels whose quote did not verify. For a hidden case (its `eval/synthetic/<case>/case.json`, or one
-  beside the gold, says `hidden`; case02 always) it prints aggregate counts only. A run's
-  surfaced items are the ones its finished claims list in the audit log, as well as those the
-  evidence rows name, since a later run that makes the same item takes over its
-  `model_run_id`. Step 1 of the agent plan (Arsh, 2026-10-27): it answers whether
+  beside the gold, says `hidden`; case02 always) it prints aggregate counts only. Each claim's
+  assumptions, checks and surfaced items are the ones its own audit-log entry lists, from the
+  pipeline run the stance run belongs to. Rows an earlier audit of the same case left in the
+  tables are not counted: a later run that makes the same item takes over its `model_run_id`,
+  and a claim the filler refused this time keeps an earlier audit's assumptions. Step 1 of the agent plan (Arsh, 2026-10-27): it answers whether
   evidence is lost mainly at the stance step or at the quote check before any agent work. It
   needs no model and changes no rule, prompt, pin, contract, schema, gold or scorer file, and
   nothing under `eval/validation/` (run 2).
 - Where: PR #148 (branch `claude/project-thread-6i2msb`)
 - Verified: `tests/test_loss_report.py` (synthetic rows: every stage, the furthest stage across
   assumptions, the last call per pair, stored irrelevant items, the main-leak line, choosing a
-  stance run, an earlier run's items found through its claim entries, the hidden-case output and
+  stance run, an earlier run's items found through its claim entries, an earlier audit's
+  assumptions and failed checks not counted for a later run, a claim the run did not finish,
+  the hidden-case output and
   the hidden flag read from the case's own folder, the database left unchanged). Run on the stored synthetic
   case01 database of the Opus 5.5 medium, cloud prompt v1.2 run (2026-10-20, commit cc3c43f,
   /mnt/project-files/baker/cloud-bench/2026-10-20-case01-v12/case01-opus-med-v12/case01.db): of

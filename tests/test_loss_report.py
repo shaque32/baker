@@ -15,6 +15,7 @@ from core.db import apply_schema, connect
 from eval import loss_report
 
 RUN = "mr:stance:test"
+PRUN = "pr:test"  # the pipeline run RUN belongs to
 
 
 def gold(claim_id: str, *key: str) -> GoldClaim:
@@ -40,12 +41,17 @@ def db() -> sqlite3.Connection:
     conn = connect(":memory:")
     apply_schema(conn)
     conn.execute("PRAGMA foreign_keys = OFF")  # only the tables the report reads
-    conn.execute(
-        "INSERT INTO model_runs (id, purpose, model_name, model_sha256, prompt_version,"
-        " params_json, started_at_utc) VALUES (?, 'stance', 'm', 'x', 'v', '{}', 't')",
-        (RUN,),
-    )
+    stance_run(conn, RUN, PRUN)
     return conn
+
+
+def stance_run(conn: sqlite3.Connection, run: str, prun: str) -> None:
+    conn.execute(
+        "INSERT INTO model_runs (id, pipeline_run_id, purpose, model_name, model_sha256,"
+        " prompt_version, params_json, started_at_utc) VALUES (?, ?, 'stance', 'm', 'x', 'v',"
+        " '{}', 't')",
+        (run, prun),
+    )
 
 
 def assumption(conn: sqlite3.Connection, aid: str, claim_id: str, is_core: int = 1) -> None:
@@ -87,6 +93,42 @@ def failed_check(conn, aid: str) -> None:  # noqa: ANN001
     )
 
 
+def finish(
+    conn: sqlite3.Connection,
+    *claims: str,
+    run: str = RUN,
+    prun: str = PRUN,
+    uses: list[str] | None = None,
+) -> None:
+    """The entry a pipeline run writes as each claim finishes (core/pipeline.py), with the
+    manifest built from the rows: the claim's assumptions (only those in `uses`, if given),
+    their checks, and the items and model calls of `run` for them."""
+    for cid in claims:
+        aids = [r[0] for r in conn.execute("SELECT id FROM assumptions WHERE claim_id = ?",
+                                           (cid,)) if uses is None or r[0] in uses]  # fmt: skip
+
+        def of(sql: str, *args: str) -> list[str]:
+            return [r[0] for r in conn.execute(sql, args) if r[1] in aids]  # noqa: B023
+
+        manifest = {
+            "assumptions": aids,
+            "checks": of("SELECT id, assumption_id FROM check_results"),
+            "evidence": of(
+                "SELECT id, assumption_id FROM evidence_items WHERE model_run_id = ?", run
+            ),
+        }
+        calls = [r[0] for r in conn.execute(
+            "SELECT id, subject_json FROM model_calls WHERE model_run_id = ?", (run,))
+            if json.loads(r[1])[0] in aids]  # fmt: skip
+        n = next(_seq)
+        conn.execute(
+            "INSERT INTO audit_log (seq, at_utc, actor, action, payload_json, prev_hash, hash)"
+            " VALUES (?, 't', 'system', 'pipeline.claim', ?, '', ?)",
+            (n, json.dumps({"run_id": prun, "claim_id": cid, "manifest": manifest,
+                            "model_calls": {"ids": calls}}), f"h{n}"),
+        )  # fmt: skip
+
+
 def stages(report: loss_report.LossReport) -> dict[tuple[str, str], str]:
     return {(k.claim_id, k.record_id): k.stage for k in report.key}
 
@@ -106,6 +148,7 @@ def test_each_key_record_gets_one_stage(db) -> None:
     call(db, "a2", "r5", "invalid_output", None)
     # C04: settled by a failed core check, so never labelled
     failed_check(db, "a4")
+    finish(db, "C01", "C02", "C03", "C04")
     r = loss_report.build(
         db, [gold("C01", "r1", "r2", "r3", "r4"), gold("C02", "r5"), gold("C03", "r6"),
              gold("C04", "r7")],
@@ -130,6 +173,7 @@ def test_furthest_stage_across_assumptions_wins(db) -> None:
     call(db, "a1", "r1", "quote_failed", "irrelevant")
     call(db, "a2", "r1", "ok", "contradicts")
     item(db, "a2", "r1", "contradicts")
+    finish(db, "C01")
     r = loss_report.build(db, [gold("C01", "r1")])
     assert r.key[0].stage == "surfaced" and r.key[0].stances == ("contradicts",)
 
@@ -139,6 +183,7 @@ def test_last_call_per_pair_counts(db) -> None:
     call(db, "a1", "r1", "error", None)
     call(db, "a1", "r1", "ok", "supports")  # asked again on a re-run
     item(db, "a1", "r1", "supports")
+    finish(db, "C01")
     r = loss_report.build(db, [gold("C01", "r1")])
     assert r.key[0].stage == "surfaced" and sum(r.dropped.values()) == 0
 
@@ -147,6 +192,7 @@ def test_stored_irrelevant_item_is_not_surfaced(db) -> None:
     assumption(db, "a1", "C01")
     call(db, "a1", "r1", "ok", "irrelevant")
     item(db, "a1", "r1", "irrelevant")
+    finish(db, "C01")
     r = loss_report.build(db, [gold("C01", "r1")])
     assert r.key[0].stage == "labelled_irrelevant" and r.stored_irrelevant == 1
 
@@ -156,6 +202,7 @@ def test_main_leak_names_the_bigger_loss(db) -> None:
     call(db, "a1", "r1", "quote_failed", "irrelevant")
     call(db, "a1", "r2", "quote_failed", "irrelevant")
     call(db, "a1", "r3", "quote_failed", "supports")
+    finish(db, "C01")
     r = loss_report.build(db, [gold("C01", "r1", "r2", "r3")])
     assert r.main_leak().startswith("stance step (2 key records vs 1")
 
@@ -168,6 +215,7 @@ def test_other_runs_are_ignored_and_two_runs_need_a_choice(db) -> None:
     assumption(db, "a1", "C01")
     call(db, "a1", "r1", "ok", "supports", run="mr:other")
     item(db, "a1", "r1", "supports", run="mr:other")
+    finish(db, "C01")
     with pytest.raises(SystemExit):
         loss_report.build(db, [gold("C01", "r1")])
     r = loss_report.build(db, [gold("C01", "r1")], model_run_id=RUN)
@@ -184,6 +232,7 @@ def test_no_stance_run_is_refused() -> None:
 def test_cli_reads_read_only_and_hides_ids_for_a_hidden_case(db, tmp_path: Path) -> None:
     assumption(db, "a1", "C01")
     call(db, "a1", "r1", "quote_failed", "irrelevant")
+    finish(db, "C01")
     db.commit()  # a backup waits on an open write transaction
     path = tmp_path / "case.db"
     disk = sqlite3.connect(path)
@@ -206,25 +255,51 @@ def test_an_earlier_runs_items_come_from_its_claim_entries(db) -> None:
     # A later run made the same item and took over its model_run_id; the earlier run's claim
     # entry in the audit log still lists it, so it still counts as surfaced for that run.
     later = "mr:stance:later"
-    db.execute(
-        "INSERT INTO model_runs (id, purpose, model_name, model_sha256, prompt_version,"
-        " params_json, started_at_utc) VALUES (?, 'stance', 'm', 'x', 'v', '{}', 't')",
-        (later,),
-    )
+    stance_run(db, later, "pr:later")
     assumption(db, "a1", "C01")
     call(db, "a1", "r1", "ok", "supports")
+    item(db, "a1", "r1", "supports")
+    finish(db, "C01")
     call(db, "a1", "r1", "ok", "supports", run=later)
-    item(db, "a1", "r1", "supports", run=later)
-    first = db.execute("SELECT id FROM model_calls WHERE model_run_id = ?", (RUN,)).fetchone()[0]
-    db.execute(
-        "INSERT INTO audit_log (seq, at_utc, actor, action, payload_json, prev_hash, hash)"
-        " VALUES (1, 't', 'system', 'pipeline.claim', ?, '', 'h')",
-        (json.dumps({"claim_id": "C01", "model_calls": {"ids": [first]},
-                     "manifest": {"evidence": ["ev:a1|r1|supports"]}}),),
-    )  # fmt: skip
+    db.execute("UPDATE evidence_items SET model_run_id = ?", (later,))
+    finish(db, "C01", run=later, prun="pr:later")
     for run in (RUN, later):
         r = loss_report.build(db, [gold("C01", "r1")], run)
         assert stages(r) == {("C01", "r1"): "surfaced"}, run
+
+
+def test_rows_an_earlier_audit_left_are_not_counted(db) -> None:
+    # An earlier audit gave C01 an assumption and settled C02 with a failed core check. This
+    # run's filler refused C01 and gave C02 a new assumption, and it did not finish C03. Each
+    # claim is staged by what its own entry lists, so the earlier rows change nothing.
+    stance_run(db, "mr:old", "pr:old")
+    assumption(db, "a_old1", "C01")
+    assumption(db, "a_old2", "C02")
+    failed_check(db, "a_old2")
+    call(db, "a_old1", "r1", "ok", "supports", run="mr:old")
+    item(db, "a_old1", "r1", "supports", run="mr:old")
+    finish(db, "C01", "C02", "C03", run="mr:old", prun="pr:old")
+    assumption(db, "a2", "C02")
+    call(db, "a2", "r9", "ok", "supports")  # retrieved, not key
+    item(db, "a2", "r9", "supports")
+    finish(db, "C01", uses=[])
+    finish(db, "C02", uses=["a2"])
+    key = [gold("C01", "r1"), gold("C02", "r2"), gold("C03", "r3")]
+    r = loss_report.build(db, key, RUN)
+    assert stages(r) == {
+        ("C01", "r1"): "refused",
+        ("C02", "r2"): "not_retrieved",
+        ("C03", "r3"): "not_audited",
+    }
+    assert r.not_retrieved_split() == {loss_report.SETTLED: 0, loss_report.MISSED: 1}
+    assert r.stored == 1
+    r = loss_report.build(db, key, "mr:old")
+    assert stages(r) == {
+        ("C01", "r1"): "surfaced",
+        ("C02", "r2"): "not_retrieved",
+        ("C03", "r3"): "refused",
+    }
+    assert r.not_retrieved_split() == {loss_report.SETTLED: 1, loss_report.MISSED: 0}
 
 
 def test_hidden_is_read_from_the_cases_own_folder(tmp_path: Path) -> None:

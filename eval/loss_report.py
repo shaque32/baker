@@ -15,6 +15,12 @@ claim:
   invalid_output       the stance step's output was unusable (wrong shape, or an error)
   quote_dropped        the stance step gave a real label but the quote check dropped it
   surfaced             it became an evidence item the expert can accept
+  not_audited          the run did not finish the claim (a stopped run), so it has no stage
+
+Each claim's assumptions, checks and evidence are the ones its own audit-log entry lists
+(core/pipeline.py, CLAIM_ACTION), from the pipeline run the stance run belongs to. Rows an
+earlier audit of the same case left in the tables are not counted: a claim the filler refused
+this time is "refused" even if an earlier audit gave it assumptions.
 
 It also splits the run's dropped labels by reason, from the stored model calls
 (model_calls.outcome plus the stance in raw_output). An irrelevant label carries no quote, so
@@ -55,6 +61,7 @@ STAGES = (
     "invalid_output",
     "quote_dropped",
     "surfaced",
+    "not_audited",
 )
 # How far a record got on one assumption, for picking its furthest stage across assumptions.
 _RANK = {"labelled_irrelevant": 0, "invalid_output": 1, "quote_dropped": 2, "surfaced": 3}
@@ -171,17 +178,21 @@ def build(
     run = stance_run(conn, model_run_id)
     report = LossReport(model_run_id=run)
 
+    manifests = run_manifests(conn, run)
     claim_of: dict[str, str] = {}
     assumptions: dict[str, list[str]] = defaultdict(list)
-    for aid, cid in conn.execute("SELECT id, claim_id FROM assumptions"):
-        claim_of[aid] = cid
-        assumptions[cid].append(aid)
+    for cid, m in manifests.items():
+        for aid in m.get("assumptions", []):
+            claim_of[aid] = cid
+            assumptions[cid].append(aid)
+    checks = {c for m in manifests.values() for c in m.get("checks", [])}
     failed_core = {
         claim_of[aid]
-        for (aid,) in conn.execute(
-            "SELECT c.assumption_id FROM check_results c JOIN assumptions a"
+        for cid, aid in conn.execute(
+            "SELECT c.id, c.assumption_id FROM check_results c JOIN assumptions a"
             " ON a.id = c.assumption_id WHERE c.outcome = 'fail' AND a.is_core = 1"
         )
+        if cid in checks and aid in claim_of
     }
 
     # The last call per (assumption, record) is the label the pipeline kept or dropped.
@@ -205,12 +216,12 @@ def build(
 
     # An item's model_run_id names the latest run that made it, so a later audit that makes
     # the same item takes it over. The run's own items are the ones its finished claims list.
-    mine = run_items(conn, run)
+    mine = {e for m in manifests.values() for e in m.get("evidence", [])}
     shown: dict[tuple[str, str], list[str]] = defaultdict(list)
-    for eid, aid, rid, stance, by in conn.execute(
-        "SELECT id, assumption_id, record_id, stance, model_run_id FROM evidence_items ORDER BY id"
+    for eid, aid, rid, stance in conn.execute(
+        "SELECT id, assumption_id, record_id, stance FROM evidence_items ORDER BY id"
     ):
-        if by != run and eid not in mine:
+        if eid not in mine:
             continue
         report.stored += 1
         if stance == "irrelevant":
@@ -221,6 +232,9 @@ def build(
     labelled_claims = {claim_of.get(aid) for aid, _ in pair}
     for g in sorted(gold, key=lambda g: g.claim_id):
         for rid in sorted(set(g.key_evidence)):
+            if g.claim_id not in manifests:
+                report.key.append(KeyRecord(g.claim_id, rid, "not_audited", "no claim entry"))
+                continue
             report.key.append(
                 _stage(g.claim_id, rid, assumptions[g.claim_id], pair, shown,
                        labelled=g.claim_id in labelled_claims,
@@ -229,19 +243,25 @@ def build(
     return report
 
 
-def run_items(conn: sqlite3.Connection, run: str) -> set[str]:
-    """The evidence items the finished claims of this stance run list in the audit log: each
-    claim entry names its model calls and its evidence (core/pipeline.py, CLAIM_ACTION)."""
+def run_manifests(conn: sqlite3.Connection, run: str) -> dict[str, dict]:
+    """Each claim's manifest (the assumptions, checks and evidence it used) from the latest
+    claim entry of the pipeline runs this stance run belongs to: the one its model_runs row
+    names, and any whose claim entries name its model calls (core/pipeline.py, CLAIM_ACTION).
+    Claims with no model calls (refused, or settled by a failed core check) are included."""
     calls = {r[0] for r in conn.execute("SELECT id FROM model_calls WHERE model_run_id = ?",
                                         (run,))}  # fmt: skip
-    out: set[str] = set()
-    for (payload,) in conn.execute(
-        "SELECT payload_json FROM audit_log WHERE action = ?", (CLAIM_ACTION,)
-    ):
-        entry = json.loads(payload)
+    runs = {r[0] for r in conn.execute("SELECT pipeline_run_id FROM model_runs WHERE id = ?",
+                                       (run,)) if r[0]}  # fmt: skip
+    entries = [
+        json.loads(payload)
+        for (payload,) in conn.execute(
+            "SELECT payload_json FROM audit_log WHERE action = ? ORDER BY seq", (CLAIM_ACTION,)
+        )
+    ]
+    for entry in entries:
         if calls & set((entry.get("model_calls") or {}).get("ids", [])):
-            out |= set((entry.get("manifest") or {}).get("evidence", []))
-    return out
+            runs.add(entry.get("run_id"))
+    return {e["claim_id"]: e.get("manifest") or {} for e in entries if e.get("run_id") in runs}
 
 
 def _stage(
