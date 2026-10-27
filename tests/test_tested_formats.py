@@ -105,14 +105,14 @@ def test_a_ufdr_import_records_its_report_version_and_gets_its_notice(tmp_path, 
         "SELECT payload_json FROM audit_log WHERE action = ?", (tested.ACTION,)
     ).fetchall()
     assert json.loads(logged[0]) == recorded
-    # the old notice, wrong since #117, is gone from the import's coverage items
+    # every UFDR import needs review, 7.48 included, until its counts are compared with
+    # Cellebrite Reader's (gate 5a): the notice informs and never relaxes review. The old
+    # "synthetic packages only" wording, wrong since #117, is gone.
     s = coverage.summary(conn, "u1")
-    assert s is not None and not s.format_unverified
+    assert s is not None and s.format_unverified and s.status == "needs_review"
+    assert s.items[0].plain == coverage.FORMAT_UNVERIFIED
+    assert s.headline.startswith("Unverified format. ")
     assert not any("synthetic packages" in i.plain for i in s.items)
-    assert not s.headline.startswith("Unverified format")
-    # the coverage status says what the import read, as for every importer; it is not the
-    # format notice, which every screen and the report print beside it
-    assert s.status == "complete" and s.headline.endswith("Nothing needs review.")
 
 
 def _excel(tmp: Path) -> Path:

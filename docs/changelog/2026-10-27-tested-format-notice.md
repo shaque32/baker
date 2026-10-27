@@ -10,11 +10,13 @@
   the report's Limitations and each such claim in the report print the same notice: "Not tested:
   <format> <version as written> has not been tested with Mabillon. Check results against the
   source tool." or, for UFDR report version 7.48, "Tested on public test phones (Cellebrite
-  Reader 7.48). Not tested on your case data." `mabillon import` prints it too. The stale UFDR
-  "tested only on synthetic packages" item and Limitations line are removed, and a UFDR's coverage
-  headline no longer starts "Unverified format." (UFDR still records `format_support:
-  unverified`; AXIOM keeps its "not yet verified" item). The notice only discloses: no verdict,
-  rule, check or prompt reads it. Importers: UFDR 0.3.2, Cellebrite Excel and PDF 0.3.2, AXIOM
+  Reader 7.48). Not tested on your case data." `mabillon import` prints it too. The UFDR
+  "not yet verified" coverage item and Limitations line no longer say the reader was "tested only
+  on synthetic packages" (wrong since #117); they now say its record counts have not been
+  compared with Cellebrite Reader's own. Every UFDR import, 7.48 included, still records
+  `format_support: unverified`, starts its headline "Unverified format." and needs review (Baker
+  Merge on #145); AXIOM keeps its item. The notice only discloses and never relaxes review: no
+  verdict, rule, check, prompt or coverage status reads it. Importers: UFDR 0.3.2, Cellebrite Excel and PDF 0.3.2, AXIOM
   0.2.1 (payload gains `format_check`; records unchanged). Report 0.18.0. No schema change: the
   stated version lives in the coverage payload and the existing `sources.tool_version`. Spec:
   Grok Product on PR #100 (comment 6433304729).

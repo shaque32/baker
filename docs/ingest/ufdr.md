@@ -13,6 +13,11 @@ counts have not been compared with Cellebrite Reader's own (see the last section
 import:
 
 - records `"format_support": "unverified"` in its coverage record;
+- shows, first among the items to review, that the reader is not yet verified (its record counts
+  have not been compared with Cellebrite Reader's own) and that each record should be compared
+  with Cellebrite Reader before it is relied on (`format_unverified`), so every UFDR import needs
+  review, report version 7.48 included. The coverage headline starts "Unverified format." on the
+  case screen and in `mabillon import`, and the report's Limitations say the same;
 - records its `reportVersion` as written, and whether it is in the tested set
   (`core/ingest/tested.py`), in the coverage record (`format_check`) and in the audit log
   (`import.format`). The case overview, the setup screen's file list, each claim page that rests

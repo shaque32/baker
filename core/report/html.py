@@ -656,6 +656,13 @@ def _limitations(conn: sqlite3.Connection, srcs: list[tuple]) -> str:
                 "only. Each record cited from this file should be compared with the same record "
                 "in AXIOM Examine before it is relied on.</li>"
             )
+        elif cov.format_unverified:
+            items.append(
+                f"<li><strong>{q(cov.file_name)} was read with Mabillon's UFDR reader, which is "
+                "not yet verified: its record counts have not been compared with Cellebrite "
+                "Reader's own.</strong> Each record cited from this file should be compared with "
+                "the same record in Cellebrite Reader before it is relied on.</li>"
+            )
         attention = [i for i in cov.attention if i.code != "format_unverified"]
         if attention:
             lis = "".join(f"<li>{import_coverage.render(i, q, e)}</li>" for i in attention)

@@ -171,10 +171,17 @@ _INFO_COUNTERS = {
 }
 
 
-# Shown first for every import made with the AXIOM reader, until a real AXIOM export has been
-# checked against the tool that made it. Attention level: the expert must see it. A UFDR import
-# has no such item: since #117 its reader has been run on public Reader 7.48 packages, and the
-# format notice (core/ingest/tested.py) says whether its version is in the tested set.
+# Shown first for every import made with an unverified reader (the UFDR and AXIOM importers,
+# until their records have been checked against the tool that made the file). Attention level:
+# the expert must see it, so the import needs review whatever its version. Since #117 the UFDR
+# reader has been run on public packages stating report version 7.48 (the format notice,
+# core/ingest/tested.py, says whether a package's version is in the tested set), but its counts
+# have not been compared with Cellebrite Reader's own.
+FORMAT_UNVERIFIED = (
+    "Mabillon's UFDR reader is not yet verified: its record counts have not been compared with "
+    "Cellebrite Reader's own. Before relying on a record, open the same record in Cellebrite "
+    "Reader and compare (each record's locator gives its place in report.xml)."
+)
 FORMAT_UNVERIFIED_AXIOM = (
     "Mabillon's Magnet AXIOM reader is not yet verified. It was built from public descriptions of "
     "AXIOM's XML and Excel report exports and tested only on synthetic exports, never on a real "
@@ -182,10 +189,9 @@ FORMAT_UNVERIFIED_AXIOM = (
     "portable case) and compare (each record's locator gives its artifact and hit, or its sheet "
     "and row)."
 )
-# Per importer: the unverified notice ("" for none), the tool to compare records in, and what
-# the file is.
+# Per importer: the unverified notice, the tool to compare records in, and what the file is.
 READERS: dict[str, tuple[str, str, str]] = {
-    "ufdr": ("", "Cellebrite Reader", "package"),
+    "ufdr": (FORMAT_UNVERIFIED, "Cellebrite Reader", "package"),
     "axiom": (FORMAT_UNVERIFIED_AXIOM, "AXIOM Examine", "report"),
 }
 
@@ -670,8 +676,8 @@ def summarize(c: SourceCoverage) -> CoverageSummary:
     p = c.payload
     items: list[CoverageItem] = []
     xml = p.get("layout") == "xml"  # a UFDR: record types, not sheets or tables
-    notice = reader_words(str(p.get("importer", "")))[0]
-    if p.get("format_support") == "unverified" and notice:
+    if p.get("format_support") == "unverified":
+        notice = reader_words(str(p.get("importer", "")))[0]
         items.append(CoverageItem("attention", "format_unverified", (_t(notice),)))
     tables = [t for t in p.get("tables", []) if isinstance(t, dict)]
     for entry in p.get("not_imported", []) or []:
@@ -840,7 +846,7 @@ def summarize(c: SourceCoverage) -> CoverageSummary:
         else f"Imported {_n(imported, rw)} of {_n(read, rw)} read"
     )  # fmt: skip
     headline = (
-        ("Unverified format. " if any(i.code == "format_unverified" for i in items) else "")
+        ("Unverified format. " if p.get("format_support") == "unverified" else "")
         + f"{head} from {_n(len(tables), tw)}"
         + (f"; {_n(n_not, 'parts')} of the report not imported" if n_not else "")
         + (
