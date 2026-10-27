@@ -119,6 +119,35 @@ def test_a_number_two_accounts_recorded_differently_share_is_refused(conn):
         conn.execute("DELETE FROM accounts WHERE id = 'acct:extra:wa'")
 
 
+@pytest.mark.parametrize("words", ["Reyes D", "+12125550199"])  # a display name, an identifier
+def test_no_count_or_absence_is_read_on_the_accounts_of_an_app_that_holds_more(conn, words):
+    # Native Messages holds iMessages and SMS together. Codex on #153: an account found on it
+    # with no channel named let a count of iMessages count SMS too. However the account was
+    # found, a count or an absence on it is refused when the claim names a narrower kind.
+    conn.execute(
+        "INSERT INTO accounts (id, source_id, locator, device_id, app, identifier,"
+        " display_name) VALUES ('acct:extra:nm', 'src:none', 'extra/nm', NULL,"
+        " 'Native Messages', '+12125550199', 'Reyes D')"
+    )
+    try:
+        acc = [{"as_written": words, "app": "Native Messages"}]
+        count = "On January 9, 2026, PETROV sent 3 iMessages to Reyes D (+12125550199)."
+        with pytest.raises(Reject, match="no count or absence is read on its accounts"):
+            filler(conn)._resolve(claim(count, ClaimType.COUNT), "", proposal(
+                "message_count", quoted_text="", accounts=acc, count={"value": 3}))  # fmt: skip
+        absence = "On January 9, 2026, PETROV exchanged no iMessages with Reyes D (+12125550199)."
+        with pytest.raises(Reject, match="no count or absence is read on its accounts"):
+            filler(conn)._resolve(claim(absence, ClaimType.ABSENCE), "", proposal(
+                "no_contact", quoted_text="", accounts=acc))  # fmt: skip
+        if words.startswith("+"):  # "messages" names both kinds (and no app, for a name)
+            messages = "On January 9, 2026, PETROV sent 3 messages to Reyes D (+12125550199)."
+            out = filler(conn)._resolve(claim(messages, ClaimType.COUNT), "", proposal(
+                "message_count", quoted_text="", accounts=acc, count={"value": 3}))  # fmt: skip
+            assert out.params["account_ids"] == ["acct:extra:nm"]
+    finally:
+        conn.execute("DELETE FROM accounts WHERE id = 'acct:extra:nm'")
+
+
 def test_a_person_written_as_an_account_is_that_person(conn):
     text = f'On March 18, 2026, PETROV wrote "{QUOTE}" on Instagram.'
     out = filler(conn)._resolve(claim(text), "", proposal(

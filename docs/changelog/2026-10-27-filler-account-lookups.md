@@ -20,14 +20,19 @@
   - A number or a display name finds an account only on a phone app or on an app the claim
     names. The words alone never pick the app.
   - "@" handles stay handles that the checks resolve, as before.
+  - A count or an absence on an account of an app that holds more than the claim's word names
+    is refused, however the account was found (review fix). Native Messages holds iMessages
+    and SMS together, so a count of "iMessages" on its account would count SMS too.
 - Where: PR #152 (branch `claude/project-thread-6i2msb-accounts`), stacked on #150
-- Verified: new `tests/test_account_lookups.py`, 31 tests on synthetic case01 with made-up
+- Verified: new `tests/test_account_lookups.py`, 33 tests on synthetic case01 with made-up
   wording:
     - phone_digits forms, including a UK number with and without "+" and digits run together;
     - user ids are not numbers;
     - numbers on SMS, WhatsApp and Phone;
     - a number on an app that does not hold it, or that the claim does not name, is refused;
     - a number two accounts recorded differently share is refused;
+    - a count or an absence of iMessages on a Native Messages account, found by its display
+      name or its identifier, is refused, and a count of "messages" on it is read;
     - a person written as an account, and the template that takes no person;
     - one display name, a display name two accounts carry, and a display name on an app the
       claim does not name;
@@ -44,7 +49,7 @@
     - 3 numbers, 4 person names and 2 display names now find their party;
     - "ThisIs DfirTwo" on Skype is refused, because two Skype identifiers carry it;
     - "Signal" written as a handle is refused.
-    - After the review fix, one of the 3 numbers is refused again: on that claim (a
+    - After the review fixes, one of the 3 numbers is refused again: on that claim (a
       same-account claim) Viber holds the number as two accounts recorded differently, which
       the earlier code joined. Every other replayed proposal is unchanged.
 - Open: unmeasured on a run.

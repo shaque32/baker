@@ -1570,6 +1570,16 @@ class LocalAssumptionFiller:
             params["handles"] = handles  # the checks resolve them from the data
         if account_ids:
             params["account_ids"] = sorted(account_ids)
+        if tpl.id in WHOLE_APP_TEMPLATES:
+            # However an account was found, on an app that holds more than the claim's word
+            # names a count would count, and an absence fail on, messages it does not name.
+            for app in sorted({self.data.accounts[a].app for a in account_ids}, key=str.lower):
+                said = [w for w in APP_ALIASES.get(app.casefold(), ()) if _has_alias(claim.text, w)]
+                if app.casefold() in WIDER_APPS and said:
+                    raise Reject(
+                        f"{app!r} holds more than the claim's {said[0]!r} names, so no count or"
+                        " absence is read on its accounts"
+                    )
 
         if p.count is not None:
             params["count_op"] = count_op(claim.text, p.count.value)
