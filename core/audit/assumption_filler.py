@@ -1675,7 +1675,8 @@ class LocalAssumptionFiller:
     def _accounts(self, acc: _Account, device_ids: list[str], claim_text: str = "") -> set[str]:
         """The accounts on the model's app with this identifier. A number written another way
         ("(919) 888-7386" for "+19198887386") finds its account too, on a phone app or on an
-        app the claim names: a number alone never picks the app."""
+        app the claim names: a number alone never picks the app. A number two accounts
+        recorded differently share is refused, never joined."""
         app = acc.app.strip().casefold()
         ident = re.sub(r"(?i)^(user\s*id|id|number|no\.)\s*", "", acc.as_written.strip())
         want = key(acc.app, ident)
@@ -1688,7 +1689,13 @@ class LocalAssumptionFiller:
         hits = {a.id for a in mine if a.key == want}
         number = phone_digits(ident)
         if not hits and number is not None and self._app_named(claim_text, acc.app):
-            hits = {a.id for a in mine if _same_number(number, a)}
+            found = [a for a in mine if _same_number(number, a)]
+            if len({a.key for a in found}) > 1:  # never joined: they stay apart until linked
+                raise Reject(
+                    f"{acc.as_written!r} is the number of {len({a.key for a in found})} {acc.app}"
+                    " accounts recorded differently; which one the claim means is not known"
+                )
+            hits = {a.id for a in found}
         if not hits:
             raise Reject(f"{acc.as_written!r} on {acc.app} matches no account in the case")
         return hits

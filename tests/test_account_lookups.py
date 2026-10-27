@@ -103,6 +103,22 @@ def test_a_number_on_an_app_that_does_not_hold_it_is_still_refused(conn):
         filler(conn)._accounts(acc, [], "PETROV wrote to (212) 555-0122 on Telegram.")
 
 
+def test_a_number_two_accounts_recorded_differently_share_is_refused(conn):
+    # WhatsApp holds 12125550122@s.whatsapp.net; the same number recorded as "+1 212 555 0122"
+    # on the same app is another account until an expert links them
+    conn.execute(
+        "INSERT INTO accounts (id, source_id, locator, device_id, app, identifier,"
+        " display_name) VALUES ('acct:extra:wa', 'src:none', 'extra/wa', NULL, 'WhatsApp',"
+        " '+1 212 555 0122', NULL)"
+    )
+    try:
+        acc = _Account.model_validate({"as_written": "212-555-0122", "app": "WhatsApp"})
+        with pytest.raises(Reject, match="is the number of 2 WhatsApp accounts"):
+            filler(conn)._accounts(acc, [], "PETROV wrote to 212-555-0122 on WhatsApp.")
+    finally:
+        conn.execute("DELETE FROM accounts WHERE id = 'acct:extra:wa'")
+
+
 def test_a_person_written_as_an_account_is_that_person(conn):
     text = f'On March 18, 2026, PETROV wrote "{QUOTE}" on Instagram.'
     out = filler(conn)._resolve(claim(text), "", proposal(
