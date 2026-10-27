@@ -26,8 +26,9 @@ The stance step is one model run. Every retrieved candidate is labelled (core/pi
 the call subjects (assumption id, record id) are what retrieval returned for the claims the run
 labelled. A database with more than one stance model run needs --model-run.
 
-For a hidden case (case.json beside the gold says "hidden"), only aggregate counts are printed
-and written: no claim or record ids.
+For a hidden case (its eval/synthetic/<case>/case.json, or one beside the gold, says
+"hidden"; case02 always), only aggregate counts are printed and written: no claim or record
+ids.
 """
 
 from __future__ import annotations
@@ -41,9 +42,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from core.contracts import GoldClaim
+from core.pipeline import CLAIM_ACTION
 from eval.run_eval import load_jsonl
 
 VERSION = "1.0.0"
+SYNTHETIC = Path(__file__).parent / "synthetic"
 
 STAGES = (
     "refused",
@@ -200,11 +203,15 @@ def build(
         if result != "stored":
             report.dropped[result] += 1
 
+    # An item's model_run_id names the latest run that made it, so a later audit that makes
+    # the same item takes it over. The run's own items are the ones its finished claims list.
+    mine = run_items(conn, run)
     shown: dict[tuple[str, str], list[str]] = defaultdict(list)
-    for aid, rid, stance in conn.execute(
-        "SELECT assumption_id, record_id, stance FROM evidence_items WHERE model_run_id = ?",
-        (run,),
+    for eid, aid, rid, stance, by in conn.execute(
+        "SELECT id, assumption_id, record_id, stance, model_run_id FROM evidence_items ORDER BY id"
     ):
+        if by != run and eid not in mine:
+            continue
         report.stored += 1
         if stance == "irrelevant":
             report.stored_irrelevant += 1
@@ -220,6 +227,21 @@ def build(
                        settled=g.claim_id in failed_core)
             )  # fmt: skip
     return report
+
+
+def run_items(conn: sqlite3.Connection, run: str) -> set[str]:
+    """The evidence items the finished claims of this stance run list in the audit log: each
+    claim entry names its model calls and its evidence (core/pipeline.py, CLAIM_ACTION)."""
+    calls = {r[0] for r in conn.execute("SELECT id FROM model_calls WHERE model_run_id = ?",
+                                        (run,))}  # fmt: skip
+    out: set[str] = set()
+    for (payload,) in conn.execute(
+        "SELECT payload_json FROM audit_log WHERE action = ?", (CLAIM_ACTION,)
+    ):
+        entry = json.loads(payload)
+        if calls & set((entry.get("model_calls") or {}).get("ids", [])):
+            out |= set((entry.get("manifest") or {}).get("evidence", []))
+    return out
 
 
 def _stage(
@@ -258,11 +280,17 @@ def _stage(
     return KeyRecord(claim_id, rid, best, stances=tuple(sorted(set(stances))))
 
 
-def is_hidden(gold_path: Path) -> bool:
-    meta = gold_path.parent / "case.json"
-    if not meta.exists():
-        return False
-    return bool(json.loads(meta.read_text(encoding="utf-8")).get("hidden"))
+def is_hidden(gold_path: Path, synthetic: Path = SYNTHETIC) -> bool:
+    """True for a hidden case. The gold sits in eval/gold/<case>/ (or a draft beside the
+    case), and the case's own case.json is in eval/synthetic/<case>/ (eval/run_pipeline.py).
+    case02 is the held-out case (CLAUDE.md), so it is hidden even when no case.json is found."""
+    case = gold_path.resolve().parent.name
+    if case == "case02":
+        return True
+    for meta in (gold_path.parent / "case.json", synthetic / case / "case.json"):
+        if meta.exists() and json.loads(meta.read_text(encoding="utf-8")).get("hidden"):
+            return True
+    return False
 
 
 def render(report: LossReport, hidden: bool) -> str:

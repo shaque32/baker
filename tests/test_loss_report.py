@@ -200,3 +200,42 @@ def test_cli_reads_read_only_and_hides_ids_for_a_hidden_case(db, tmp_path: Path)
     data = json.loads(out.read_text())
     assert "per_record" not in data and data["stages"]["labelled_irrelevant"] == 1
     assert path.read_bytes() == before
+
+
+def test_an_earlier_runs_items_come_from_its_claim_entries(db) -> None:
+    # A later run made the same item and took over its model_run_id; the earlier run's claim
+    # entry in the audit log still lists it, so it still counts as surfaced for that run.
+    later = "mr:stance:later"
+    db.execute(
+        "INSERT INTO model_runs (id, purpose, model_name, model_sha256, prompt_version,"
+        " params_json, started_at_utc) VALUES (?, 'stance', 'm', 'x', 'v', '{}', 't')",
+        (later,),
+    )
+    assumption(db, "a1", "C01")
+    call(db, "a1", "r1", "ok", "supports")
+    call(db, "a1", "r1", "ok", "supports", run=later)
+    item(db, "a1", "r1", "supports", run=later)
+    first = db.execute("SELECT id FROM model_calls WHERE model_run_id = ?", (RUN,)).fetchone()[0]
+    db.execute(
+        "INSERT INTO audit_log (seq, at_utc, actor, action, payload_json, prev_hash, hash)"
+        " VALUES (1, 't', 'system', 'pipeline.claim', ?, '', 'h')",
+        (json.dumps({"claim_id": "C01", "model_calls": {"ids": [first]},
+                     "manifest": {"evidence": ["ev:a1|r1|supports"]}}),),
+    )  # fmt: skip
+    for run in (RUN, later):
+        r = loss_report.build(db, [gold("C01", "r1")], run)
+        assert stages(r) == {("C01", "r1"): "surfaced"}, run
+
+
+def test_hidden_is_read_from_the_cases_own_folder(tmp_path: Path) -> None:
+    synthetic = tmp_path / "synthetic"
+    (synthetic / "caseX").mkdir(parents=True)
+    (synthetic / "caseX" / "case.json").write_text('{"hidden": true}', encoding="utf-8")
+    (synthetic / "caseY").mkdir()
+    (synthetic / "caseY" / "case.json").write_text('{"hidden": false}', encoding="utf-8")
+    signed = tmp_path / "gold"
+    for case in ("caseX", "caseY"):
+        (signed / case).mkdir(parents=True)
+    assert loss_report.is_hidden(signed / "caseX" / "gold.jsonl", synthetic)
+    assert not loss_report.is_hidden(signed / "caseY" / "gold.jsonl", synthetic)
+    assert loss_report.is_hidden(tmp_path / "case02" / "gold.jsonl", synthetic)  # always

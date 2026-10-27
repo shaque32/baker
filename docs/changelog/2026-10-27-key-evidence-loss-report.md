@@ -7,15 +7,19 @@
   or surfaced. It also splits a run's dropped labels by reason from the stored model calls. An
   irrelevant label carries no quote, so the pipeline drops it at the quote check and stores the
   call as `quote_failed`; the tool counts that as "irrelevant", and counts "quote_failed" only for
-  real labels whose quote did not verify. For a hidden case (case.json says `hidden`) it prints
-  aggregate counts only. Step 1 of the agent plan (Arsh, 2026-10-27): it answers whether
+  real labels whose quote did not verify. For a hidden case (its `eval/synthetic/<case>/case.json`, or one
+  beside the gold, says `hidden`; case02 always) it prints aggregate counts only. A run's
+  surfaced items are the ones its finished claims list in the audit log, as well as those the
+  evidence rows name, since a later run that makes the same item takes over its
+  `model_run_id`. Step 1 of the agent plan (Arsh, 2026-10-27): it answers whether
   evidence is lost mainly at the stance step or at the quote check before any agent work. It
   needs no model and changes no rule, prompt, pin, contract, schema, gold or scorer file, and
   nothing under `eval/validation/` (run 2).
 - Where: PR #148 (branch `claude/project-thread-6i2msb`)
 - Verified: `tests/test_loss_report.py` (synthetic rows: every stage, the furthest stage across
   assumptions, the last call per pair, stored irrelevant items, the main-leak line, choosing a
-  stance run, the hidden-case output, the database left unchanged). Run on the stored synthetic
+  stance run, an earlier run's items found through its claim entries, the hidden-case output and
+  the hidden flag read from the case's own folder, the database left unchanged). Run on the stored synthetic
   case01 database of the Opus 5.5 medium, cloud prompt v1.2 run (2026-10-20, commit cc3c43f,
   /mnt/project-files/baker/cloud-bench/2026-10-20-case01-v12/case01-opus-med-v12/case01.db): of
   71 gold key records, 44 surfaced, 18 not retrieved (all 18 on the 5 claims a failed core check
