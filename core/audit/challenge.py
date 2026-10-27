@@ -6,7 +6,8 @@ runs the counter-searches code already has for that claim (core/hypotheses/expla
 else using the account or phone, another clock, the day boundary, another app, a whole app gone
 quiet, a curated report, the same words elsewhere). Each search is a fixed query, not a model's
 choice. The records it finds go to the same stance labeler and the same quote check as any
-retrieved record, against the assumptions the search is tied to.
+retrieved record, against the assumptions the search is tied to: at most the explain.MAX_FITS
+records a search shows; the rest are counted in its total, not labelled.
 
 It can only add doubt. Only a "contradicts" or "complicates" label is stored; a "supports" or
 "irrelevant" label from this step is discarded and counted, so the step can never put support in
@@ -20,7 +21,8 @@ the records found, what was stored), and `mabillon verify-bundle` runs the same 
 the bundle's tables, with no model, and compares the records.
 
 "Nothing found" never means "did not happen": an entry with no records still says what was
-searched, in explain.py's words.
+searched, in explain.py's words (explain.alternatives with keep_empty), and a claim no search
+applies to gets one entry saying nothing was searched.
 
 Whether the claim is close to SUPPORTED is read from labels, never from review status, so the
 second pass after an expert's review (eval/simulated_expert.py) asks the same searches.

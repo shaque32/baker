@@ -32,7 +32,12 @@ from core.hypotheses import explain
 from core.review import audit_log
 from eval import run_pipeline as rp
 from eval.run_eval import load_jsonl
-from eval.simulated_expert import RUBBER_STAMP, GoldDirectionLabeler, rubber_stamp_review
+from eval.simulated_expert import (
+    RUBBER_STAMP,
+    GoldDirectionLabeler,
+    GoldKey,
+    rubber_stamp_review,
+)
 
 EXPERT = "expert:Dana Reyes"
 AT = datetime(2026, 10, 20, 12, tzinfo=UTC)
@@ -40,7 +45,7 @@ AT = datetime(2026, 10, 20, 12, tzinfo=UTC)
 
 def _case(folder: Path, challenge_on: bool = True, labeler=None):  # noqa: ANN001, ANN202
     conn = rp.build_case("case01", folder / "case01.db")
-    gold = load_jsonl(rp.gold_path("case01"), GoldClaim)
+    gold = GoldKey(load_jsonl(rp.gold_path("case01"), GoldClaim))
     comps = rp.model_free_components(conn, rp.assumption_sheet("case01"), gold)
     if labeler is not None:
         comps.labeler = labeler(comps.labeler)
@@ -209,12 +214,6 @@ def test_a_search_that_finds_nothing_is_kept_only_when_asked(challenged):
             assert alt.searched and alt.assumption_ids
 
 
-def test_a_claim_no_search_applies_to_still_logs_that_nothing_was_searched():
-    (q,) = challenge.queries(_EmptyCase(), [_a("a1")])
-    assert (q.kind, q.record_ids, q.total, q.assumption_ids) == ("none", (), 0, ("a1",))
-    assert q.searched == challenge.NO_SEARCH
-
-
 class _EmptyCase:
     pass
 
@@ -224,8 +223,10 @@ def no_alternatives(monkeypatch):  # noqa: ANN201
     monkeypatch.setattr(explain, "alternatives", lambda case, assumptions, keep_empty=False: [])
 
 
-def test_queries_uses_explain_and_falls_back_to_none(no_alternatives):
-    assert [q.kind for q in challenge.queries(_EmptyCase(), [_a("a1")])] == ["none"]
+def test_a_claim_no_search_applies_to_still_logs_that_nothing_was_searched(no_alternatives):
+    (q,) = challenge.queries(_EmptyCase(), [_a("a1"), _a("a2", core=False)])
+    assert (q.kind, q.record_ids, q.total, q.assumption_ids) == ("none", (), 0, ("a1",))
+    assert q.searched == challenge.NO_SEARCH
 
 
 # ---------------------------------------------------------------- what is stored
@@ -349,8 +350,10 @@ def test_a_change_after_the_run_to_what_the_searches_read_is_noted(tmp_path):
     pipeline.run_audit(conn, comps)
     later = datetime.now(UTC) + timedelta(days=1)
     audit_log.append(conn, later, EXPERT, "person.add", {"person_id": "person:x", "name": "X"})
-    (f,) = _check_challenge(conn)
-    assert f.level == NOTE and "person.add after the run" in f.detail
+    findings = _check_challenge(conn)
+    assert FAIL not in {f.level for f in findings}
+    (note,) = [f for f in findings if f.level == NOTE]
+    assert "not re-run" in note.detail and "person.add after the run" in note.detail
     conn.close()
 
 
@@ -411,7 +414,7 @@ def test_the_rubber_stamp_expert_accepts_every_labeled_item(tmp_path):
     assert review.summary()["actor"] == RUBBER_STAMP
     by = dict(
         conn.execute(
-            "SELECT evidence_id, decided_by FROM evidence_reviews WHERE reviewer_kind = 'expert'"
+            "SELECT evidence_id, reviewer FROM evidence_reviews WHERE reviewer_kind = 'expert'"
         ).fetchall()
     )
     assert {by[e.id] for e in labeled} == {RUBBER_STAMP}
