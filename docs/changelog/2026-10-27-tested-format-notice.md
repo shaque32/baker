@@ -1,4 +1,4 @@
-## 2026-10-27: "Not tested" notice per format and version (#PR)
+## 2026-10-27: "Not tested" notice per format and version (#145)
 - Changed: the pilot rule from #144 (first pilot limited to UFDR from Cellebrite Reader 7.48;
   everything else shows "not tested") is now in code. `core/ingest/tested.py` holds the one
   tested set: a Cellebrite UFDR whose report.xml states `reportVersion` 7.48, matched exactly as
@@ -18,7 +18,7 @@
   0.2.1 (payload gains `format_check`; records unchanged). Report 0.18.0. No schema change: the
   stated version lives in the coverage payload and the existing `sources.tool_version`. Spec:
   Grok Product on PR #100 (comment 6433304729).
-- Where: branch `claude/project-thread-40jhbx`
+- Where: PR #145 (branch `claude/project-thread-40jhbx`)
 - Verified: `tests/test_tested_formats.py` (synthetic only): UFDR 7.48 gets the tested notice;
   UFDR 7.50, a UFDR with no version, Cellebrite Excel (7.70.0.1), Cellebrite PDF (7.70.0.1),
   AXIOM Excel (SYNTHETIC) and AXIOM XML (no version) get "Not tested" with the version as
@@ -34,7 +34,7 @@
   this PR. Not checked on a real export in this PR.
 - Affects: capabilities (screen, claim page and report disclose per-format test status),
   customer-facing claims (only UFDR report version 7.48 is called tested)
-- Status doc: pending: header "Report version" 0.18.0 (#PR: each source's tested or "Not
+- Status doc: pending: header "Report version" 0.18.0 (#145: each source's tested or "Not
   tested" notice); "Importers (main)" UFDR 0.3.2, Cellebrite Excel and PDF 0.3.2, AXIOM 0.2.1,
   each recording `format_check` and an `import.format` audit entry; section 2 step 1 and the
   limitations item "Real-data formats unverified": replace "UFDR and AXIOM imports say 'not yet
@@ -44,4 +44,4 @@
   'Tested on public test phones (Cellebrite Reader 7.48). Not tested on your case data.';
   every other format or version gets 'Not tested: ...' with its version as written. AXIOM
   also keeps its 'not yet verified' item"; pilot gate 5 section: the pilot-rule banner exists
-  on main (#PR)
+  on main (#145)
