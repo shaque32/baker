@@ -28,7 +28,10 @@ memory, built from core/schema.sql, and checked in this order; any failure fails
    latest entry recording it logged or what logged claim.status changes made of it.
 9. Model calls: compared with the digests the audit log recorded for them (pipeline.claim's
    model_calls; cloud.received's raw_sha256 for the hosted answers those digests name).
-10. Stipulations and identity links: each is what the logged actions left.
+10. Stipulations and identity links: each is what the logged actions left. The challenge
+   step's searches (core/audit/challenge.py), when the run made them: each item one stored is
+   a contradicts or complicates item of its claim, and, in a bundle that holds every record,
+   each search gives again the records its challenge.query entry recorded, with no model.
 11. Verdicts: the verdict rules, re-applied to the recorded labels, checks, stipulations and the
    expert decisions as they stood when each verdict was decided, give every verdict exactly
    (verdict, basis, reasons, coverage, citations) at the logged time, and the expert's
@@ -52,7 +55,7 @@ from pathlib import Path
 from typing import Any
 
 from core import db, encryption, pipeline
-from core.audit import quotes, rules, stance
+from core.audit import challenge, quotes, rules, stance
 from core.audit import review as review_mod
 from core.audit._llm_json import BadModelOutput, parse_json_object
 from core.audit._local_model import RECEIVED_ACTION
@@ -74,6 +77,7 @@ from core.contracts import (
 )
 from core.db import apply_schema
 from core.enrich.records import get_record
+from core.hypotheses import explain
 from core.identity import links
 from core.ingest import forwarded
 from core.llm import cloud
@@ -219,6 +223,7 @@ def _checks(
     _calls(conn, out, known)
     _stipulations(conn, out)
     _identity(conn, out)
+    _challenge(conn, run, manifest, out)
     _verdicts(conn, run, out)
     _report(conn, zf, manifest, out, withheld)
 
@@ -1261,6 +1266,181 @@ def _identity(conn: sqlite3.Connection, out: _Out) -> None:
         bad += 1
     if stored and not bad:
         out.add(PASS, "identity links", f"{len(stored)} identity links match the logged actions")
+
+
+# ---------------------------------------------------------------- challenge step
+
+# Logged actions that change what the challenge step's searches read (people, names, links,
+# stipulations, phones, sources, clocks). After one, a search can rightly find other records.
+_SEARCH_INPUTS = frozenset(
+    {
+        "person.add",
+        "person.remove",
+        "stipulation.confirm",
+        "stipulation.withdraw",
+        "identity.link",
+        "identity.decide",
+        links.PROPOSE_ACTION,
+        "device.names",
+        "case.import",
+        "import",  # what each phone-report importer logs (cellebrite_common, axiom, ufdr)
+        "import.format",
+        "timeline.settings",
+    }
+)
+_QUERY_KEYS = ("kind", "assumption_ids", "searched", "record_ids", "total")
+
+
+def _evidence_run(conn: sqlite3.Connection, log: list, run: dict[str, Any]) -> dict[str, Any]:
+    """The audit whose searches and labels the run shows: the run itself, or for a verdict
+    re-run the audit it took its evidence from (its own manifest, configuration and start)."""
+    source = run.get("evidence_from_run", run["run_id"])
+    if source == run["run_id"]:
+        return run
+    payload = next(
+        (
+            p
+            for _s, _a, _c, act, p in reversed(log)
+            if act == pipeline.RUN_ACTION and p.get("run_id") == source
+        ),
+        {},
+    )
+    row = conn.execute(
+        "SELECT started_at_utc, config_json FROM pipeline_runs WHERE id = ?", (source,)
+    ).fetchone()
+    if row is None:  # _run_rows has failed it; check nothing against a run that is not there
+        return {
+            "run_id": source,
+            "manifest": {},
+            "config": {},
+            "started_at_utc": run["started_at_utc"],
+        }
+    return {
+        "run_id": source,
+        "manifest": payload.get("manifest") or {},
+        "config": json.loads(row[1]),
+        "started_at_utc": row[0],
+    }
+
+
+def _challenge(
+    conn: sqlite3.Connection, run: dict[str, Any], manifest: dict[str, Any], out: _Out
+) -> None:
+    """The challenge.query entries of the audit the run's evidence came from (itself, or the
+    one a verdict re-run reused): what each search stored is doubt on its own claim, and the
+    same searches on these tables give the same records. A search is code, so no model is
+    needed; it needs every record it searched, so a scoped bundle is noted, not re-run."""
+    log = _log(conn)
+    source = _evidence_run(conn, log, run)
+    entries = [
+        p
+        for _s, _a, _c, act, p in log
+        if act == challenge.QUERY_ACTION and p.get("run_id") == source["run_id"]
+    ]
+    if not entries:
+        return
+    if "challenge" not in source["config"]:
+        out.add(FAIL, "challenge", "the log has challenge searches for a run that did not run them")
+        return
+    bad = 0
+    for p in entries:
+        items = source["manifest"].get(p.get("claim_id"), {}).get("evidence", [])
+        stored = list(p.get("stored") or [])
+        rows = dict(
+            conn.execute(
+                "SELECT id, stance FROM evidence_items"
+                " WHERE id IN (SELECT value FROM json_each(?))",
+                (json.dumps(stored),),
+            ).fetchall()
+        )
+        for eid in stored:
+            if eid not in items or (eid in rows and Stance(rows[eid]) not in challenge.DOUBT):
+                out.add(
+                    FAIL,
+                    "challenge",
+                    f"{eid}: the challenge step stored it, but it is not a contradicts or "
+                    f"complicates item of {p.get('claim_id')}",
+                )
+                bad += 1
+    scope = manifest.get("scope")
+    whole = scope == export.FULL or (
+        isinstance(scope, dict) and "records" in (scope.get("included") or [])
+    )
+    versions = {(p.get("challenge"), p.get("explain")) for p in entries}
+    started = _dt(source["started_at_utc"])
+    changed = sorted(
+        {act for _s, at, _c, act, _p in log if act in _SEARCH_INPUTS and _dt(at) > started}
+    )
+    if not whole:
+        out.add(
+            NOTE,
+            "challenge",
+            f"the challenge step's {len(entries)} searches were not re-run: the bundle leaves out "
+            "the phone's other records they searched (include records)",
+        )
+    elif versions != {(challenge.VERSION, explain.VERSION)}:
+        out.add(
+            NOTE,
+            "challenge",
+            f"the challenge step's {len(entries)} searches were not re-run: they were made by "
+            f"other versions of its searches ({sorted(map(str, versions))}) than this copy's "
+            f"({challenge.VERSION}, {explain.VERSION})",
+        )
+    elif changed:
+        out.add(
+            NOTE,
+            "challenge",
+            f"the challenge step's {len(entries)} searches were not re-run: {', '.join(changed)} "
+            "after the run changed what they search",
+        )
+    else:
+        case = explain.load(conn)
+        by_claim: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for p in entries:
+            by_claim[str(p.get("claim_id"))].append({k: p.get(k) for k in _QUERY_KEYS})
+        withheld: list[str] = []
+        for claim_id, got in sorted(by_claim.items()):
+            ids = source["manifest"].get(claim_id, {}).get("assumptions", [])
+            assumptions = pipeline.load_assumptions(conn, ids)
+            if claim_id not in run["manifest"] and len(assumptions) != len(ids):
+                # A verdict re-run left the claim out (edited or removed after the audit), and
+                # a bundle without history leaves out its assumptions (Codex on #154).
+                withheld.append(claim_id)
+                continue
+            want = [q.payload() for q in challenge.queries(case, assumptions)]
+            if got != want:
+                out.add(
+                    FAIL,
+                    "challenge",
+                    f"{claim_id}: the challenge step's searches, re-run on these tables, do not "
+                    "give the records its log entries recorded",
+                )
+                bad += 1
+        if withheld:
+            out.add(
+                NOTE,
+                "challenge",
+                f"the challenge step's searches on {len(withheld)} claims the verdict re-run left "
+                f"out ({', '.join(withheld)}) were not re-run: the bundle leaves out their "
+                "assumptions (include history)",
+            )
+        rerun = [p for p in entries if str(p.get("claim_id")) not in withheld]
+        if not bad and rerun:
+            out.add(
+                PASS,
+                "challenge",
+                f"the challenge step's {len(rerun)} searches on {len(by_claim) - len(withheld)} "
+                "claims give the same records again, with no model, and stored only contradicts "
+                "and complicates items",
+            )
+            return
+    if not bad:
+        out.add(
+            PASS,
+            "challenge",
+            f"the challenge step's {len(entries)} searches stored only contradicts and "
+            "complicates items of their own claims",
+        )
 
 
 # ---------------------------------------------------------------- 7. verdicts

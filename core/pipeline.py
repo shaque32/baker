@@ -85,7 +85,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from core import build, db
-from core.audit import invariants, quotes, rules, stance
+from core.audit import challenge, invariants, quotes, rules, stance
 from core.audit._llm_json import ModelUnavailable
 from core.contracts import (
     CONTRACTS_VERSION,
@@ -130,6 +130,7 @@ from core.contracts import (
     verdict_id,
 )
 from core.enrich.records import get_record, kind_of
+from core.hypotheses import explain
 from core.ingest import forwarded
 from core.review import audit_log
 
@@ -364,6 +365,9 @@ class Components:
     # Label claims a failed core check already decides (rule 1a) too. Off: their labels could
     # not change the verdict, so they are skipped to save model calls.
     label_settled: bool = False
+    # The challenge step (core/audit/challenge.py): code's counter-searches on claims close to
+    # SUPPORTED, storing only doubt. Off by default (`mabillon audit --challenge`).
+    challenge: bool = False
     # The case's cloud choice (core/casework/cloud.py CloudChoice.record()), kept in the run's
     # config so the report says why this run's stance labels came from where they did.
     cloud: dict[str, object] | None = None
@@ -507,6 +511,8 @@ class RunResult:
     manifest: dict[str, dict[str, list[str]]] = field(default_factory=dict)
     unlabeled: dict[str, str] = field(default_factory=dict)  # claim id -> why it was not labeled
     not_tested: dict[str, str] = field(default_factory=dict)  # claim id -> why nothing was checked
+    # claim id -> the challenge step's searches (core/audit/challenge.py), one audit entry each
+    challenge: dict[str, list[dict[str, object]]] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------- helpers
@@ -990,6 +996,7 @@ class _Run:
         # The model calls stored while the current claim ran, bound into its audit-log entry
         # (calls_digest), so a stored call edited later no longer matches.
         self.claim_calls: list[str] = []
+        self.hypotheses: explain.Case | None = None  # loaded once, by the challenge step
 
     def _write(self, sql: str, params: tuple) -> None:
         if self.pending is None:
@@ -1115,6 +1122,70 @@ class _Run:
             ),
         )
 
+    def _store(self, a: Assumption, item: EvidenceItem, evidence_ids: list[str]) -> None:
+        self._write(
+            "INSERT OR IGNORE INTO evidence_items (id, assumption_id, source_id, locator,"
+            " record_id, stance, quote, rationale, tier, model_run_id)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                item.id,
+                item.assumption_id,
+                item.ref.source_id,
+                item.ref.locator,
+                item.record_id,
+                item.stance.value,
+                item.quote,
+                item.rationale,
+                item.tier.value,
+                item.model_run_id,
+            ),
+        )
+        # The same item (assumption, record, stance, quote) from another model, as when a
+        # case switches between cloud and local: the row names the model of this run.
+        self._write(
+            "UPDATE evidence_items SET model_run_id = ?, rationale = ?"
+            " WHERE id = ? AND model_run_id IS NOT ?",
+            (item.model_run_id, item.rationale, item.id, item.model_run_id),
+        )
+        self._review(a, item.model_copy(update={"status": evidence_status(self.conn, item.id)}))
+        evidence_ids.append(item.id)
+        self.result.stored_items += 1
+
+    def _challenge(
+        self,
+        claim: Claim,
+        assumptions: list[Assumption],
+        labelled: set[tuple[str, str]],
+        evidence_ids: list[str],
+    ) -> list[str]:
+        """The challenge step (core/audit/challenge.py): label what code's counter-searches
+        find, keep only doubt. Returns the evidence ids it stored."""
+        if self.hypotheses is None:
+            self.hypotheses = explain.load(self.conn)
+        by_id = {a.id: a for a in assumptions}
+        entries: list[dict[str, object]] = []
+        kept: list[str] = []
+        for q in challenge.queries(self.hypotheses, assumptions):
+            entry: dict[str, object] = {**q.payload(), "stored": [], "discarded": 0, "dropped": 0}
+            for aid in q.assumption_ids:
+                for rid in q.record_ids:
+                    if (aid, rid) in labelled:
+                        continue  # retrieval already sent it to the labeler
+                    labelled.add((aid, rid))
+                    cand = challenge.candidate(self.conn, rid)
+                    item = self._label(by_id[aid], cand) if cand is not None else None
+                    if item is None:
+                        entry["dropped"] += 1  # type: ignore[operator]
+                    elif not challenge.keep(item):
+                        entry["discarded"] += 1  # type: ignore[operator]
+                    elif item.id not in evidence_ids:
+                        self._store(by_id[aid], item, evidence_ids)
+                        entry["stored"].append(item.id)  # type: ignore[attr-defined]
+                        kept.append(item.id)
+            entries.append(entry)
+        self.result.challenge[claim.id] = entries
+        return kept
+
     def _review(self, a: Assumption, item: EvidenceItem) -> None:
         """One AI review per item, never after any earlier review. Fails closed."""
         if self.c.reviewer is None:
@@ -1231,41 +1302,26 @@ class _Run:
                     seen.add(cand.record_id)
                     todo.append((a, cand))
         self.progress.retrieved(claim.id, len(todo))
+        stored: list[EvidenceItem] = []
         for n, (a, cand) in enumerate(todo, 1):
             item = self._label(a, cand)
             if item is not None and item.id not in evidence_ids:
-                self._write(
-                    "INSERT OR IGNORE INTO evidence_items (id, assumption_id, source_id, locator,"
-                    " record_id, stance, quote, rationale, tier, model_run_id)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        item.id,
-                        item.assumption_id,
-                        item.ref.source_id,
-                        item.ref.locator,
-                        item.record_id,
-                        item.stance.value,
-                        item.quote,
-                        item.rationale,
-                        item.tier.value,
-                        item.model_run_id,
-                    ),
-                )
-                # The same item (assumption, record, stance, quote) from another model, as when a
-                # case switches between cloud and local: the row names the model of this run.
-                self._write(
-                    "UPDATE evidence_items SET model_run_id = ?, rationale = ?"
-                    " WHERE id = ? AND model_run_id IS NOT ?",
-                    (item.model_run_id, item.rationale, item.id, item.model_run_id),
-                )
-                self._review(a, item.model_copy(update={"status": evidence_status(conn, item.id)}))
-                evidence_ids.append(item.id)
-                self.result.stored_items += 1
+                self._store(a, item, evidence_ids)
+                stored.append(item)
             self.progress.labeled(claim.id, n)
+        challenged: list[str] = []
+        if (
+            c.challenge
+            and settled is None
+            and challenge.near_supported(assumptions, checks, stored)
+        ):
+            labelled = {(a.id, cand.record_id) for a, cand in todo}
+            challenged = self._challenge(claim, assumptions, labelled, evidence_ids)
 
         self.flush_calls()  # calls a component made after the last label (the filler's)
         self._write_pending()  # the claim's write transaction starts here
         evidence = load_evidence(conn, evidence_ids)
+        invariants.check_challenge([e for e in evidence if e.id in set(challenged)])
         if c.rules_pending():
             decision = VerdictDecision(
                 id=verdict_id(claim.id, self.run_id),
@@ -1362,6 +1418,7 @@ def run_audit(
         "k": components.k,
         "fake": result.fake,
         "label_settled": components.label_settled,
+        **({"challenge": challenge.VERSION} if components.challenge else {}),
         "claim_order": [cl.id for cl in claims],
         "components": components.names(),
         **({"cloud": components.cloud} if components.cloud is not None else {}),
@@ -1449,6 +1506,20 @@ def run_audit(
                         "claim_sha256": claim_digest(conn, claim.id),
                     },
                 )
+                for entry in result.challenge.get(claim.id, []):  # one entry per search
+                    audit_log.append(
+                        conn,
+                        _now(clock),
+                        "system",
+                        challenge.QUERY_ACTION,
+                        {
+                            "run_id": result.run_id,
+                            "claim_id": claim.id,
+                            "challenge": challenge.VERSION,
+                            "explain": explain.VERSION,
+                            **entry,
+                        },
+                    )
             current = None
             result.decisions.append(decision)
             if progress is not None:
