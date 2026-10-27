@@ -17,7 +17,14 @@
     ("onward", "or later", "and thereafter") leaves the claim's ranges to the model. Before,
     main read "After 9 p.m. on January 9, 2026" as the 9 p.m. minute, so an absence would have
     searched one minute. A weekday between that word and the date counts the same way:
-    "Starting on Friday, January 9, 2026, at 9 p.m." is not read.
+    "Starting on Friday, January 9, 2026, at 9 p.m." is not read, and neither is "at 9 p.m.
+    local time onward" (review fix).
+  - Clock changes (review fix). Each end of a range must be one instant in its zone. On the
+    night New York's clocks go back, "1:30 a.m. EDT" and "1:30 a.m. EST" each read as their
+    own minute, while "1:30 a.m." with no zone, or with "ET", is two times and is refused, and
+    so is "2:30 a.m." the night the clocks skip it. "1:59 a.m. EDT" that night is refused,
+    because its end, 2:00 a.m., is EST: read as is, the minute would have been 61 minutes. A
+    whole day the clocks change is still read, as 23 or 25 hours.
   - Written zones. A zone written right after a time ("EDT", "(EST)", "ET", "Eastern Time",
     "UTC"), or right after a date ("March 3, 2026 (UTC)"), is read by code, never taken from
     the model. After a date, a two-letter zone counts only in brackets, since "PT" there may
@@ -40,20 +47,22 @@
     Me" for "Wickr", "Kik Messenger" for "Kik", "Microsoft Teams" for "Teams", and iOS "Native
     Messages" for "iMessage" and the SMS words.
     - A word names such an app only when no other app in the case goes by it. In a case with
-      both "Wickr Pro" and "Wickr Me", "Wickr" is refused as ambiguous.
+      both "Wickr Pro" and "Wickr Me", "Wickr" is refused as ambiguous. A claim that writes
+      another export's full name ("Wickr Me" in a case that holds only Wickr Pro) means that
+      app, so Wickr Pro is refused for it (review fix).
     - A capitalized word names the app only as written or in capitals: "Teams" or "TEAMS",
       never "the teams met".
     - No message count and no absence is read from "Native Messages" by an alias, because it
       holds iMessage and SMS together. A count could include messages the claim does not name,
       and an SMS could fail a claim of no iMessages.
 - Where: PR #150 (branch `claude/project-thread-6i2msb-coverage`)
-- Verified: new `tests/test_affidavit_wording.py`, 95 tests on synthetic case01 with made-up
+- Verified: new `tests/test_affidavit_wording.py`, 105 tests on synthetic case01 with made-up
   wording:
     - the date-first forms and written zones, each also passing `check_window`;
     - 11 phrasings that must not be read, including a second time, "beginning at", "after",
       a spelled-out range across two dates, 24-hour and bare hours, and midnight;
     - a count after a date is not read as a time;
-    - 19 open ranges are not read, 6 of them with a weekday before the date, and words beside
+    - 22 open ranges are not read (3 with "local time" or "phone time" before the open end), 6 of them with a weekday before the date, and words beside
       a range that do not open it still read;
     - 11 zones code does not read after a time, and 5 after a date, refuse the range, in the
       claim's words and after the model's (an offset with no name, "+0300" or "(-05:00)",
@@ -69,7 +78,10 @@
       stop inside it ("UTC" of "UTC+3", "(GMT" of "(GMT-5)", after a date and after a time),
       and a zone the model's words give still reads when the claim adds nothing to it;
     - every alias works, ambiguity is refused, "the teams met" names no app, and no count or
-      absence is read on Native Messages.
+      absence is read on Native Messages;
+    - a claim that writes another export's full name for the word ("Wickr Me" in a case that
+      holds only Wickr Pro) never searches this app;
+    - the clock-change rules above, on the nights New York's clocks go back and forward.
   - One existing expectation changed on purpose (`tests/test_assumption_filler.py`). "On March
     12, 2026 at noon" now reads the noon minute; before, it returned no range.
   - `make check` passes; its eval numbers are in the PR.
