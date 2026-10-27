@@ -1,4 +1,4 @@
-## 2026-10-27: Assumption filler finds accounts written another way
+## 2026-10-27: Assumption filler finds accounts written another way (#152)
 - Changed: in run 1 of the real-export validation, 11 claims were refused because an account
   the model proposed "matches no account in the case". When the words are not an account's
   identifier, `core/audit/assumption_filler.py` now tries three more lookups, each with one
@@ -18,7 +18,7 @@
   - A number or a display name finds an account only on a phone app or on an app the claim
     names. The words alone never pick the app.
   - "@" handles stay handles that the checks resolve, as before.
-- Where: branch `claude/project-thread-6i2msb-accounts`, stacked on #150
+- Where: PR #152 (branch `claude/project-thread-6i2msb-accounts`), stacked on #150
 - Verified: new `tests/test_account_lookups.py`, 28 tests on synthetic case01 with made-up
   wording:
     - phone_digits forms, including a UK number with and without "+" and digits run together;
@@ -49,4 +49,4 @@
 - Affects: capabilities. More claims can be set up from real affidavit wording.
 - Status doc: pending: section 9 item 8 ("Other gaps"): add "an account the claim writes by a
   number in another format, a person's name or one account's display name is found by code;
-  a display name several accounts carry is refused, never merged (#N)".
+  a display name several accounts carry is refused, never merged (#152)".
