@@ -438,7 +438,8 @@ _ZONE = (
 _CLOCK_END = r"(?:\b[ap]\.?m\.?|\bnoon|\b\d{1,2}:\d{2})"
 _TIMED_ZONE_RE = re.compile(rf"{_CLOCK_END}\s*\(?(?P<z>{_ZONE})", re.IGNORECASE)
 # A zone that code does not read, so the range is never put in the phone's zone instead: an
-# abbreviation not in capitals ("pdt"), an offset ("UTC+3"), a zone outside the US and UTC
+# abbreviation not in capitals ("pdt", or "pt" all in lowercase, since "Pt." after a time may
+# be a place), an offset ("UTC+3"), a zone outside the US and UTC
 # ("BST", "CET", "bst"), or another zone's name ("Central European Time", "central european
 # time"). A zone outside the US and UTC counts in capitals or all in lowercase, never in title
 # case ("Sgt. Reyes"), and the lowercase ones that are English words ("west", "art") never
@@ -469,7 +470,7 @@ _ZONE_NAME = (
 )
 _UNREAD_ZONE_RE = re.compile(
     rf"(?i:{_CLOCK_END})\s*\(?(?P<z>{_OFFSET_ZONE}"
-    r"|(?i:utc|gmt|akst|akdt|[ecmp][sd]t|hst)\b"
+    r"|(?i:utc|gmt|akst|akdt|[ecmp][sd]t|hst)\b|[ecmp]t\b"
     rf"|{_OTHER_ZONE}|{_ZONE_NAME})"
 )
 # After a date only an offset, or a zone in brackets, counts: a capitalized word after a date
