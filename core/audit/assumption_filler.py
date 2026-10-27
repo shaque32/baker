@@ -28,8 +28,9 @@ the document or the case data. It fails closed at every step:
   A model never narrows a search to a channel the document did not name. An export's own
   name for an app ("Wickr Pro", "Kik Messenger", "Native Messages") is named by the word a
   document uses for it ("Wickr", "Kik", "iMessage"; `APP_ALIASES`) only when no other app in
-  the case goes by that word. A count is never read from an app that holds more than the
-  word names (iOS "Native Messages" holds iMessage and SMS together).
+  the case goes by that word. A capitalized word counts only as written or in capitals
+  ("Teams", never "the teams met"). No count or absence is read from an app that holds more
+  than the word names (iOS "Native Messages" holds iMessage and SMS together).
 - A call's stated length ("about two minutes") is turned into seconds by code.
 - A count's number must appear in the claim, and its comparison ("at least", "at most",
   exactly) is read from the claim's words by code, not taken from the model.
@@ -150,17 +151,21 @@ CHANNEL_WORDS: dict[str, tuple[str, ...]] = {
 }
 # Words a document uses for an app that real exports name another way (a UFDR says "Wickr
 # Pro", "Kik Messenger", "Native Messages"). Such a word names the export's app only when no
-# other app in the case goes by it too.
+# other app in the case goes by it too. A word with a capital letter counts only as written
+# here or in capitals ("Teams" or "TEAMS", never "the teams met"); a lowercase one in any case.
 APP_ALIASES: dict[str, tuple[str, ...]] = {
-    "wickr pro": ("wickr",),
-    "wickr me": ("wickr",),
-    "kik messenger": ("kik",),
-    "microsoft teams": ("teams",),
-    "native messages": ("imessage", "imessages", "mms", *CHANNEL_WORDS["sms"]),
+    "wickr pro": ("Wickr",),
+    "wickr me": ("Wickr",),
+    "kik messenger": ("Kik",),
+    "microsoft teams": ("Teams",),
+    "native messages": ("iMessage", "iMessages", "MMS", *CHANNEL_WORDS["sms"]),
 }
 # Apps that hold more than the word that names them: iOS "Native Messages" holds iMessage and
-# SMS together, so a count on it could count messages the claim does not name.
+# SMS together.
 WIDER_APPS = frozenset({"native messages"})
+# Checks whose answer depends on every record on the app they search. On a wider app a count
+# would count, and an absence would fail on, messages the claim does not name.
+WHOLE_APP_TEMPLATES = frozenset({"message_count", "no_contact"})
 
 
 class FillerDrop(BaseModel):
@@ -343,6 +348,17 @@ def _words(text: str) -> str:
 
 def _has_word(text: str, phrase: str) -> bool:
     return f" {phrase} " in _words(text)
+
+
+def _has_alias(text: str, alias: str) -> bool:
+    """An APP_ALIASES word in the text: any case when it is lowercase, else as written or in
+    capitals."""
+    if alias.islower():
+        return _has_word(text, alias)
+    return any(
+        re.search(rf"(?<![A-Za-z0-9]){re.escape(a)}(?![A-Za-z0-9])", text)
+        for a in (alias, alias.upper())
+    )
 
 
 _MONTHS = {
@@ -775,6 +791,19 @@ _DATE_ZONE_RE = re.compile(
     re.IGNORECASE,
 )
 _FROM_RE = re.compile(r"\b(?:between|from)\s+$", re.IGNORECASE)
+# a word right before the range read that leaves one end open or names a second end: "after 9
+# p.m. on", "from 9 p.m. on", "starting on", "as of"
+_OPEN_LEAD_RE = re.compile(
+    r"\b(?:after|before|since|until|till|by|from|between|starting|beginning|commencing|"
+    r"as\s+of|prior\s+to|up\s+to|no\s+(?:later|earlier)\s+than)\s+$",
+    re.IGNORECASE,
+)
+# words right after the range read that leave its end open: "at 9 p.m. onward", "or later"
+_OPEN_TAIL_RE = re.compile(
+    r"\s*,?\s*(?:(?:and|or)\s+(?:later|after|afterwards?|thereafter|onwards?|beyond|since|"
+    r"before|earlier|prior)|onwards?|forward|thereafter|afterwards?|later)\b",
+    re.IGNORECASE,
+)
 _JOIN_AHEAD_RE = re.compile(r"\s*(?:(?:and|to|until|till|through|thru)\b|[-–])", re.IGNORECASE)
 
 
@@ -791,8 +820,9 @@ class StatedWindow:
 
 def stated_windows(text: str, context: str = "") -> list[StatedWindow] | None:
     """Every date the text states, as the range it plainly means, or None when any date is
-    not plain: an open range ("before", "after", "since", "until"), a date with no year in the
-    text or its context, or a time code cannot pin to one date.
+    not plain: an open range ("before", "after", "since", "until", "from 9 p.m. on", "at 9
+    p.m. onward", "or later"), a date with no year in the text or its context, or a time code
+    cannot pin to one date.
 
     - "March 12, 2026": the whole day.
     - "March 20 and March 23, 2026" or "March 10 through March 31, 2026": first day to the
@@ -900,6 +930,10 @@ def stated_windows(text: str, context: str = "") -> list[StatedWindow] | None:
             zm = _DATE_ZONE_RE.match(plain[end_i:])
             if zm is not None:
                 zone, end_i = zm.group("z") or zm.group("z2"), end_i + zm.end()
+        if _OPEN_LEAD_RE.search(plain[:start_i]) or _OPEN_TAIL_RE.match(plain[end_i:]):
+            return None  # "after 9 p.m. on ...", "at 9 p.m. onward": an open range, not read
+        if rng is None and not m.group(5) and _FROM_RE.search(before):
+            return None  # "from January 9, 2026" with no end: not read
         read.append((start_i, end_i))
         out.append(StatedWindow(text[start_i:end_i].strip(), start, end, zone))
     if _NUM_DATE_RE.search(text):
@@ -1577,7 +1611,7 @@ class LocalAssumptionFiller:
     def _alias(claim_text: str, canon: str, vocab: dict[str, str], template_id: str) -> None:
         """Raises Reject unless the claim names this app by a word APP_ALIASES gives it, and
         no other app in the case goes by that word."""
-        said = [w for w in APP_ALIASES.get(canon.casefold(), ()) if _has_word(claim_text, w)]
+        said = [w for w in APP_ALIASES.get(canon.casefold(), ()) if _has_alias(claim_text, w)]
         if not said:
             raise Reject(f"the claim does not name the channel {canon!r}")
         for w in said:
@@ -1585,16 +1619,20 @@ class LocalAssumptionFiller:
                 c
                 for k, c in vocab.items()
                 if c != canon
-                and (k == w or w in APP_ALIASES.get(k, ()) or w in CHANNEL_WORDS.get(k, ()))
+                and (
+                    k == w.casefold()
+                    or w in APP_ALIASES.get(k, ())
+                    or w.casefold() in CHANNEL_WORDS.get(k, ())
+                )
             )
             if others:
                 raise Reject(
                     f"the claim's {w!r} could be {canon!r} or {', '.join(map(repr, others))}"
                 )
-        if canon.casefold() in WIDER_APPS and template_id == "message_count":
+        if canon.casefold() in WIDER_APPS and template_id in WHOLE_APP_TEMPLATES:
             raise Reject(
-                f"{canon!r} holds more than the claim's {said[0]!r} names, so a count on it"
-                " is not read"
+                f"{canon!r} holds more than the claim's {said[0]!r} names, so no count or"
+                " absence is read on it"
             )
 
     def _accounts(self, acc: _Account, device_ids: list[str], claim_text: str = "") -> set[str]:
@@ -1644,8 +1682,6 @@ class LocalAssumptionFiller:
         # read in EDT even when the model says UTC, and check_window then holds the model's
         # times to the times written.
         zone = written_zone(w.as_written, claim_text)
-        if zone is None and re.search(r"\b(UTC|GMT)\b", w.as_written):
-            zone = "UTC"  # "on March 3, 2026 (UTC)": a whole day in UTC
         if zone is None and w.zone == "UTC":
             raise Reject("the range does not say UTC")
         check_window(start, end, w.as_written, claim_text, para, template_id)
