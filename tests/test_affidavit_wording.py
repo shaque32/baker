@@ -224,6 +224,8 @@ def test_written_zone_reads_only_a_zone_right_after_a_time():
         "At 9 P.M. (est) on January 9, 2026, PETROV called.",
         "On July 9, 2026, at 9 p.m. UTC+3, PETROV called.",  # an offset, not UTC
         "On July 9, 2026, at 9:15 p.m. GMT-5, PETROV called.",
+        "On July 9, 2026, at 9 p.m. +0300, PETROV called.",  # an offset with no name
+        "On July 9, 2026, at 9 p.m. (-05:00), PETROV called.",
         "On July 9, 2026, at 9 p.m. BST, PETROV called.",  # a zone outside the US and UTC
         "On July 9, 2026, at 9 p.m. AST, PETROV called.",
         "At 9 p.m. Central European Time on July 9, 2026, PETROV called.",
@@ -246,6 +248,7 @@ def test_a_zone_code_does_not_read_is_never_put_in_the_phones_zone(text):
     [
         "On July 9, 2026 UTC+3, PETROV sent no messages.",  # not a UTC day
         "On July 9, 2026 (GMT-5), PETROV sent no messages.",
+        "On July 9, 2026 +0300, PETROV sent no messages.",
         "On July 9, 2026 (BST), PETROV sent no messages.",
         "On July 9, 2026 (pdt), PETROV sent no messages.",
     ],
@@ -287,11 +290,18 @@ def test_a_zone_the_model_gives_still_reads_when_the_claim_adds_nothing_to_it():
         "On July 9, 2026, at 9 p.m. local time, PETROV called.",  # the phone's zone, as before
         "On July 9, 2026, AST called PETROV.",  # after a date, only brackets or an offset count
         "On July 9, 2026 (Exhibit 4), PETROV called.",
+        "On July 9, 2026, between 10:00-10:30 a.m., PETROV called.",  # a range's other end
+        "On July 9, 2026-2027, PETROV called.",  # no offset passes 14 hours
     ],
 )
 def test_words_after_a_time_or_date_that_are_not_a_zone_still_read(text):
     assert unread_zone(text) is None
     assert stated_windows(text) is not None
+
+
+def test_the_other_end_of_a_range_is_not_an_offset():
+    # Left to the model as a range, as before, and not refused as a zone.
+    assert unread_zone("On July 9, 2026, at 9 p.m.-10:00 p.m. PETROV called.") is None
 
 
 def test_a_zone_in_quoted_words_or_after_no_time_is_not_one_code_must_read():

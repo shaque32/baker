@@ -443,7 +443,12 @@ _TIMED_ZONE_RE = re.compile(rf"{_CLOCK_END}\s*\(?(?P<z>{_ZONE})", re.IGNORECASE)
 # time"). A zone outside the US and UTC counts in capitals or all in lowercase, never in title
 # case ("Sgt. Reyes"), and the lowercase ones that are English words ("west", "art") never
 # count.
-_OFFSET_ZONE = r"(?i:utc|gmt)\s*[+\-−]\s*\d"
+_OFFSET_ZONE = (
+    r"(?:(?i:utc|gmt)\s*[+\-−]\s*\d"
+    # or an offset with no name, "+0300", "-05:00" (Codex on #152). Never a range's other end:
+    # "10:00-10:30 a.m." goes on to a.m. or p.m., and no offset passes 14 hours.
+    r"|[+\-−](?:0\d|1[0-4]):?[0-5]\d(?![\d:])(?!\s*[ap]\.?\s?m\b))"
+)
 _OTHER_ABBRS = (
     "BST IST CET CEST EET EEST MSK GST PKT ICT WIB SGT HKT PHT JST KST AWST ACST ACDT AEST AEDT"
     " NZST NZDT AST ADT NST NDT BRT SAST SST"
