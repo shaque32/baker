@@ -28,13 +28,13 @@
     refused with both offsets named, for example "EST (UTC-05:00), but the phone's zone
     America/New_York is at UTC-04:00 then". A zone right after a time that code does not read
     refuses the range (review fix), so it is never read in the phone's zone instead: an
-    abbreviation not in capitals ("pdt"), an offset ("UTC+3", or "+0300" with no name), a zone
+    abbreviation not in capitals ("pdt", or "pt" and "et" all in lowercase), an offset ("UTC+3", or "+0300" with no name), a zone
     outside the US and UTC
     ("BST", "AST", "bst") or another zone's name ("Central European Time", "central european
     time"). After a date, an offset ("January 9, 2026 UTC+3") or a zone in brackets that code
     does not read ("(BST)") refuses the range too (review fix). The claim's words right after
     the model's are checked even when the model's words give a zone, so "On January 9, 2026
-    UTC" taken from a claim that writes "UTC+3" is refused (review fix). A title-case word ("Sgt."), a
+    UTC" taken from a claim that writes "UTC+3" is refused (review fix). A title-case word ("Sgt.", "Mt.", "Pt."), a
     lowercase English word ("west") and "local time" are not taken for a zone.
   - Export app names. `APP_ALIASES` covers the names real exports use: "Wickr Pro" and "Wickr
     Me" for "Wickr", "Kik Messenger" for "Kik", "Microsoft Teams" for "Teams", and iOS "Native
@@ -47,7 +47,7 @@
       holds iMessage and SMS together. A count could include messages the claim does not name,
       and an SMS could fail a claim of no iMessages.
 - Where: PR #150 (branch `claude/project-thread-6i2msb-coverage`)
-- Verified: new `tests/test_affidavit_wording.py`, 91 tests on synthetic case01 with made-up
+- Verified: new `tests/test_affidavit_wording.py`, 95 tests on synthetic case01 with made-up
   wording:
     - the date-first forms and written zones, each also passing `check_window`;
     - 11 phrasings that must not be read, including a second time, "beginning at", "after",

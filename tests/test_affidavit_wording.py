@@ -221,6 +221,8 @@ def test_written_zone_reads_only_a_zone_right_after_a_time():
     "text",
     [
         "On July 9, 2026, at 9 p.m. pdt, PETROV called.",  # an abbreviation not in capitals
+        "On July 9, 2026, at 9 p.m. pt, PETROV called.",  # a generic one too (Codex on #150)
+        "On July 9, 2026, at 9 p.m. (et), PETROV called.",
         "At 9 P.M. (est) on January 9, 2026, PETROV called.",
         "On July 9, 2026, at 9 p.m. UTC+3, PETROV called.",  # an offset, not UTC
         "On July 9, 2026, at 9:15 p.m. GMT-5, PETROV called.",
@@ -286,6 +288,8 @@ def test_a_zone_the_model_gives_still_reads_when_the_claim_adds_nothing_to_it():
     "text",
     [
         "On July 9, 2026, at 9 p.m. Sgt. Reyes arrived.",  # title case is never another zone
+        "On July 9, 2026, at 9 a.m. Mt. Vernon police called PETROV.",  # nor a generic one
+        "On July 9, 2026, at 9 p.m. Pt. Reyes, PETROV called.",
         "On July 9, 2026, at 9 p.m. west of the river, PETROV called.",  # an English word
         "On July 9, 2026, at 9 p.m. local time, PETROV called.",  # the phone's zone, as before
         "On July 9, 2026, AST called PETROV.",  # after a date, only brackets or an offset count
