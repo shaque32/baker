@@ -447,23 +447,55 @@ _ZONE = (
 )
 _CLOCK_END = r"(?:\b[ap]\.?m\.?|\bnoon|\b\d{1,2}:\d{2})"
 _TIMED_ZONE_RE = re.compile(rf"{_CLOCK_END}\s*\(?(?P<z>{_ZONE})", re.IGNORECASE)
-# A zone right after a time that code does not read, so the range is never put in the phone's
-# zone instead: an abbreviation not in capitals ("pdt"), an offset ("UTC+3"), a zone outside
-# the US and UTC ("BST", "CET"), or another zone's name ("Central European Time").
+# A zone that code does not read, so the range is never put in the phone's zone instead: an
+# abbreviation not in capitals ("pdt"), an offset ("UTC+3"), a zone outside the US and UTC
+# ("BST", "CET", "bst"), or another zone's name ("Central European Time", "central european
+# time"). A zone outside the US and UTC counts in capitals or all in lowercase, never in title
+# case ("Sgt. Reyes"), and the lowercase ones that are English words ("west", "art") never
+# count.
+_OFFSET_ZONE = r"(?i:utc|gmt)\s*[+\-−]\s*\d"
+_OTHER_ABBRS = (
+    "BST IST CET CEST EET EEST MSK GST PKT ICT WIB SGT HKT PHT JST KST AWST ACST ACDT AEST AEDT"
+    " NZST NZDT AST ADT NST NDT BRT SAST SST"
+).split()
+_OTHER_ZONE = (
+    rf"(?:{'|'.join(_OTHER_ABBRS)}|WET|WEST|ART|CAT|EAT|WAT|ChST"
+    rf"|{'|'.join(a.lower() for a in _OTHER_ABBRS if a != 'SGT')}|chst)\b"
+)
+_ZONE_REGIONS = (
+    r"european|british|greenwich|india|indian|china|japan|korea|singapore|hong\s+kong"
+    r"|philippine|australian|new\s+zealand|atlantic|newfoundland|alaska|alaskan|hawaii|hawaiian"
+    r"|aleutian|arabian|gulf|moscow|brasilia|brazil|argentina|africa|african|chamorro|samoa"
+    r"|pakistan|indochina|indonesia|indonesian|israel|universal|mexico|mexican"
+)
+_ZONE_NAME = (
+    r"(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}\s+Time"
+    rf"|(?i:(?:[a-z]+\s+){{0,2}}(?:{_ZONE_REGIONS})(?:\s+(?:standard|daylight|summer))?\s+time))\b"
+)
 _UNREAD_ZONE_RE = re.compile(
-    rf"(?i:{_CLOCK_END})\s*\(?(?P<z>(?i:utc|gmt)\s*[+\-−]\s*\d"
+    rf"(?i:{_CLOCK_END})\s*\(?(?P<z>{_OFFSET_ZONE}"
     r"|(?i:utc|gmt|akst|akdt|[ecmp][sd]t|hst)\b"
-    r"|(?:BST|IST|WET|WEST|CET|CEST|EET|EEST|MSK|GST|PKT|ICT|WIB|SGT|HKT|PHT|JST|KST|AWST|ACST"
-    r"|ACDT|AEST|AEDT|NZST|NZDT|AST|ADT|NST|NDT|BRT|ART|CAT|EAT|WAT|SAST|ChST|SST)\b"
-    r"|[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}\s+Time\b)"
+    rf"|{_OTHER_ZONE}|{_ZONE_NAME})"
+)
+# After a date only an offset, or a zone in brackets, counts: a capitalized word after a date
+# may be a person ("On January 9, 2026, AST called").
+_UNREAD_DATE_ZONE_RE = re.compile(
+    rf"\s*,?\s*(?:\(?(?P<z>{_OFFSET_ZONE})"
+    r"|\(\s*(?P<z2>(?i:utc|gmt|akst|akdt|[ecmp][sd]t|hst|[ecmp]t)\b"
+    rf"|{_OTHER_ZONE}|{_ZONE_NAME})\s*\))"
 )
 
 
 def unread_zone(text: str) -> str | None:
-    """A zone written right after a time in the text (outside quoted words) that code does not
-    read, or None."""
-    for m in _UNREAD_ZONE_RE.finditer(_unquoted(text)):
-        z = m.group("z")
+    """A zone written right after a time, or after a date, in the text (outside quoted words)
+    that code does not read, or None."""
+    plain = _unquoted(text)
+    found = [m.group("z") for m in _UNREAD_ZONE_RE.finditer(plain)]
+    for d in _DATE_RE.finditer(plain):
+        m = _UNREAD_DATE_ZONE_RE.match(plain[d.end() :])
+        if m is not None:
+            found.append(m.group("z") or m.group("z2"))
+    for z in found:
         if not re.fullmatch(_ZONE, z, re.IGNORECASE):
             return z
     return None
@@ -517,10 +549,9 @@ def written_zone(as_written: str, claim: str = "") -> str | None:
         i = text.find(words) if timed or dated else -1
         while i >= 0:
             rest = text[i + len(words) :]
-            if timed:
-                unread = unread_zone(words[timed.start() :] + rest[:40])
-                if unread is not None:
-                    raise Reject(f"the claim writes a time zone code does not read ({unread!r})")
+            unread = unread_zone((words[timed.start() :] if timed else words) + rest[:40])
+            if unread is not None:
+                raise Reject(f"the claim writes a time zone code does not read ({unread!r})")
             zm = (
                 re.match(rf"\s*\(?(?P<z>{_ZONE})", rest, re.IGNORECASE)
                 if timed
