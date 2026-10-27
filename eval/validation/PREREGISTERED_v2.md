@@ -55,7 +55,7 @@ the scorer entry below says.
 | #140 | This file (first version), the run-2 tag named in `aws_run.sh`, and a test of name words. | none |
 | #141 | This file: approval date, this change list and the low-coverage rule. | none |
 | #142 | `score_hickman.py` reports what the low-coverage rule below requires (k tested, each refusal reason and its count, measures over tested claims). It adds outputs and changes no existing measure. It merges before the tag, so before run 2's results exist. | none |
-| #THIS_PR | Scorer fix before the tag: a claim is tested only when it has a first-pass verdict and is not marked "Not tested"; a claim with neither is untested ("no verdict recorded") and never scored; coverage must account for every gold claim or the scorer stops; refusal kinds match whole refusal phrases, so a bare word such as "range" is unclassified. It changes no existing measure over all claims. | scorer 1.2.0 |
+| #143 | Scorer fix before the tag: a claim is tested only when it has a first-pass verdict and is not marked "Not tested"; a claim with neither is untested ("no verdict recorded") and never scored; coverage must account for every gold claim or the scorer stops; refusal kinds match whole refusal phrases, so a bare word such as "range" is unclassified. It changes no existing measure over all claims. | scorer 1.2.0 |
 
 ## Disclosure: these fixes were designed after seeing run 1
 The fixes come from run 1's refusal reasons on this phone. Only the filler's refusals and the

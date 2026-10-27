@@ -16,7 +16,7 @@
 
   The measures over all claims are unchanged. Found by a Grok review spec on PR #100. The
   change lands before the tag `validation-v1-run2` and before run 2 runs.
-- Where: PR #THIS_PR
+- Where: PR #143
 - Verified: tests/test_validation_score.py:
   - a claim with no verdict and no mark is untested and outside measure 1's base;
   - a gold claim without a first-pass row stops the scorer;
