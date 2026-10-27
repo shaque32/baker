@@ -12,11 +12,17 @@
     12:18 p.m.", "after 10:00 a.m.", "beginning at" and a zone between the time and the date.
     Now any time of day the claim writes outside quoted words that no range was read from
     leaves the claim's ranges to the model and `check_window`.
+  - Open ranges. A word right before a date or time that opens or extends its range ("after",
+    "since", "by", "from", "between", "starting", "beginning", "as of") or right after it
+    ("onward", "or later", "and thereafter") leaves the claim's ranges to the model. Before,
+    main read "After 9 p.m. on January 9, 2026" as the 9 p.m. minute, so an absence would have
+    searched one minute.
   - Written zones. A zone written right after a time ("EDT", "(EST)", "ET", "Eastern Time",
     "UTC"), or right after a date ("March 3, 2026 (UTC)"), is read by code, never taken from
     the model. After a date, a two-letter zone counts only in brackets, since "PT" there may
-    be a person's initials. UTC or GMT is read as UTC; before, a
-    model that said "phone" put a written "UTC" time in the phone's zone. Any other zone must
+    be a person's initials. UTC or GMT is read as UTC; before, a model that said "phone" put
+    a written "UTC" time in the phone's zone. A zone inside quoted words is the message's,
+    never the range's. Any other zone must
     have the offset the phone's zone has at both ends of the range. Otherwise the range is
     refused with both offsets named, for example "EST (UTC-05:00), but the phone's zone
     America/New_York is at UTC-04:00 then".
@@ -25,26 +31,33 @@
     Messages" for "iMessage" and the SMS words.
     - A word names such an app only when no other app in the case goes by it. In a case with
       both "Wickr Pro" and "Wickr Me", "Wickr" is refused as ambiguous.
-    - No message count is read from "Native Messages" by an alias, because it holds iMessage
-      and SMS together and a count could include messages the claim does not name.
+    - A capitalized word names the app only as written or in capitals: "Teams" or "TEAMS",
+      never "the teams met".
+    - No message count and no absence is read from "Native Messages" by an alias, because it
+      holds iMessage and SMS together. A count could include messages the claim does not name,
+      and an SMS could fail a claim of no iMessages.
 - Where: PR #150 (branch `claude/project-thread-6i2msb-coverage`)
-- Verified: new `tests/test_affidavit_wording.py`, 38 tests on synthetic case01 with made-up
+- Verified: new `tests/test_affidavit_wording.py`, 55 tests on synthetic case01 with made-up
   wording:
     - the date-first forms and written zones, each also passing `check_window`;
     - 11 phrasings that must not be read, including a second time, "beginning at", "after",
       a spelled-out range across two dates, 24-hour and bare hours, and midnight;
     - a count after a date is not read as a time;
+    - 13 open ranges are not read, and words beside a range that do not open it still read;
     - the claim's zone wins over the model's;
+    - a "UTC" inside the quoted message does not make the range UTC;
     - a written UTC is read as UTC, a whole day too;
     - a zone right after a date is read, and initials after a date are not;
     - a zone the phone is not in then is refused (EST in July, CST and CT in January);
     - the zone the claim writes after the model's words is checked;
-    - every alias works, ambiguity is refused, and no count is read on Native Messages.
+    - every alias works, ambiguity is refused, "the teams met" names no app, and no count or
+      absence is read on Native Messages.
   - One existing expectation changed on purpose (`tests/test_assumption_filler.py`). "On March
     12, 2026 at noon" now reads the noon minute; before, it returned no range.
   - `make check` passes; its eval numbers are in the PR.
-  - Read-only comparison on run 1's 106 claim texts, from its stored database. No code was
-    changed after this comparison.
+  - Read-only comparison on run 1's 106 claim texts, from its stored database. The four
+    review fixes (open ranges, quoted zones, capitalized words, absences on Native Messages)
+    came after it; rerun, they change none of the 106 claims' ranges.
     - 41 claims the old reader gave no range now get the exact stated time.
     - 1 claim the old reader widened to the whole day now gets its stated time.
     - 15 claims the old reader widened to the whole day now go to the model.

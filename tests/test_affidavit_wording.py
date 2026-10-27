@@ -139,6 +139,39 @@ def test_a_time_no_range_reads_is_never_widened_to_the_whole_day(text):
     assert stated_windows(text) is None
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "On January 9, 2026, at 9 p.m. onward, PETROV sent no messages.",
+        "On January 9, 2026, at 9 p.m. EST or later, PETROV sent no messages.",
+        "At 9 p.m. on January 9, 2026, and thereafter, PETROV sent no messages.",
+        "On January 9, 2026 onwards, PETROV sent no messages.",
+        "After 9 p.m. on January 9, 2026, PETROV sent no messages.",
+        "Since 9 p.m. on January 9, 2026, PETROV sent no messages.",
+        "By 9 p.m. on January 9, 2026, PETROV had sent 4 messages.",
+        "From 9 p.m. on January 9, 2026, PETROV sent no messages.",
+        "Starting at 9 p.m. on January 9, 2026, PETROV sent no messages.",
+        "Beginning on January 9, 2026, PETROV sent no messages.",
+        "As of January 9, 2026, PETROV used Item 1.",
+        "From January 9, 2026, PETROV used Item 1.",  # no end
+        "Between 9 p.m. on January 9, 2026 and 1 a.m. on January 10, 2026, Item 1 called.",
+    ],
+)
+def test_an_open_range_is_not_read(text):
+    # Read as the minute or the day it names, an open range would be searched too narrowly.
+    assert stated_windows(text) is None
+
+
+def test_words_beside_a_range_that_do_not_open_it_still_read():
+    for text, raw in [
+        ("A message sent by PETROV on January 9, 2026 read hello.", "on January 9, 2026"),
+        ("On January 9, 2026, after the meeting, PETROV texted.", "On January 9, 2026"),
+        ("From March 10 through March 31, 2026, X.", "From March 10 through March 31, 2026"),
+    ]:  # fmt: skip
+        (w,) = stated_windows(text)
+        assert w.raw == raw
+
+
 def test_a_zone_right_after_a_plain_date_is_kept():
     (w,) = stated_windows("On March 3, 2026 (UTC), Item 1 called.")
     assert (w.raw, w.zone, w.start, w.end) == (
@@ -236,6 +269,26 @@ def test_a_zone_after_the_models_date_is_checked(conn):
         filler(conn)._window(text, "", w, [], "record_time")
 
 
+def test_a_zone_in_quoted_words_is_not_the_ranges(conn):
+    # The model's words take in the quote; "UTC" there is the message's, not the claim's.
+    text = 'On January 9, 2026, PETROV wrote "the server uses UTC".'
+    words = 'On January 9, 2026, PETROV wrote "the server uses UTC"'
+
+    def window(zone: str):
+        w = W(words, "2026-01-09T00:00", "2026-01-10T00:00", zone)
+        p = proposal(window=w, quoted_text="the server uses UTC")
+        return filler(conn)._resolve(claim(text), "", p).params["window"]
+
+    # Whichever zone the model says, the day is the phone's day. A model that says UTC has
+    # its range refused, and the claim's own range is read instead.
+    for zone in ("phone", "UTC"):
+        w = window(zone)
+        assert (w.tz, w.start_utc) == ("America/New_York", D(2026, 1, 9, 5, tzinfo=UTC))
+    w = _Window.model_validate(W(words, "2026-01-09T00:00", "2026-01-10T00:00", "UTC"))
+    with pytest.raises(Reject, match="does not say UTC"):
+        filler(conn)._window(text, "", w, [], "record_time")
+
+
 def test_a_zone_that_matches_the_phone_reads_as_before(conn):
     text = f'On January 9, 2026, at 7:58 p.m. EST, PETROV wrote "{QUOTE}".'
     w = _window(conn, text, None)
@@ -262,6 +315,18 @@ def test_the_word_a_document_uses_names_the_exports_app(conn, word, app):
     assert out.params["channels"] == [app]
 
 
+def test_a_capitalized_word_names_an_app_only_as_a_name(conn):
+    vocab = {"microsoft teams": "Microsoft Teams"}
+    for text in ("PETROV wrote on TEAMS.", "PETROV wrote on Teams."):
+        LocalAssumptionFiller._alias(text, "Microsoft Teams", vocab, "sender")
+    with pytest.raises(Reject, match="does not name the channel 'Microsoft Teams'"):
+        LocalAssumptionFiller._alias("After the teams met, PETROV wrote.", "Microsoft Teams",
+                                     vocab, "sender")  # fmt: skip
+    text = f'On January 9, 2026, PETROV wrote "{QUOTE}" before the teams met.'
+    with pytest.raises(Reject, match="does not name the channel 'Microsoft Teams'"):
+        filler(conn)._resolve(claim(text), "", proposal("sender", channels=["Microsoft Teams"]))
+
+
 def test_a_word_two_apps_go_by_is_refused(conn):
     # case01 has an SMS app, so "texted" could be SMS or Native Messages
     text = f'On January 9, 2026, PETROV texted "{QUOTE}".'
@@ -278,6 +343,15 @@ def test_no_count_is_read_from_an_app_that_holds_more_than_the_word_names(conn):
         filler(conn)._resolve(claim(text, ClaimType.COUNT), "", proposal(
             "message_count", quoted_text="", people=["PETROV", "REYES"],
             channels=["Native Messages"], count={"value": 3}))  # fmt: skip
+
+
+def test_no_absence_is_read_from_an_app_that_holds_more_than_the_word_names(conn):
+    # An SMS on Native Messages would fail an absence of iMessages the claim states.
+    text = "On January 9, 2026, PETROV and REYES exchanged no iMessages."
+    with pytest.raises(Reject, match="no count or absence is read"):
+        filler(conn)._resolve(claim(text, ClaimType.ABSENCE), "", proposal(
+            "no_contact", quoted_text="", people=["PETROV", "REYES"],
+            channels=["Native Messages"]))  # fmt: skip
 
 
 def test_an_app_the_claim_does_not_name_is_still_refused(conn):
