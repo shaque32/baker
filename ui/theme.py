@@ -1,10 +1,10 @@
 """The review screen's look: app chrome, ledger, cards and chat-style context on top of the
 report's base styles (core/report/html.py CSS).
 
-Same design language as getmabillon.com: Inter for text, Instrument Serif only for the wordmark
-and headlines, no monospace labels. Fully offline. The fonts (SIL Open Font License) are vendored
-in ui/static/fonts and served by this screen at /static/fonts/; the font stacks fall back to
-system fonts. The Mabillon mark is inline SVG, so no image request is ever made.
+Same design language as getmabillon.com: IBM Plex Sans for text, Instrument Serif only for the
+wordmark and headlines, no monospace labels. Fully offline. The fonts (SIL Open Font License) are
+vendored in ui/static/fonts and served by this screen at /static/fonts/; the font stacks fall
+back to system fonts. The Mabillon mark is inline SVG, so no image request is ever made.
 """
 
 from __future__ import annotations
@@ -30,8 +30,8 @@ def _face(family: str, file: str, weight: str, rng: str, style: str = "normal") 
 
 
 FONT_CSS = (
-    _face("Inter", "inter-latin-wght-normal.woff2", "100 900", _LATIN)
-    + _face("Inter", "inter-cyrillic-wght-normal.woff2", "100 900", _CYRILLIC)
+    _face("IBM Plex Sans", "ibm-plex-sans-latin-wght-normal.woff2", "100 700", _LATIN)
+    + _face("IBM Plex Sans", "ibm-plex-sans-cyrillic-wght-normal.woff2", "100 700", _CYRILLIC)
     + _face("Instrument Serif", "instrument-serif-latin-400-normal.woff2", "400", _LATIN)
     + _face("Instrument Serif", "instrument-serif-latin-400-italic.woff2", "400", _LATIN, "italic")
     + _face("JetBrains Mono", "jetbrains-mono-latin-wght-normal.woff2", "100 800", _LATIN)
@@ -51,17 +51,16 @@ MARK = (
 
 THEME_CSS = """
 /* Design tokens. The palette is the report's (warm paper, ink, navy, verdict colors), as on
-   getmabillon.com. One text face, Inter; Instrument Serif only for the wordmark and headlines.
-   No monospace: ids, hashes and times are Inter with tabular figures. */
+   getmabillon.com. One text face, IBM Plex Sans; Instrument Serif only for the wordmark and
+   headlines. No monospace: ids, hashes and times are Plex Sans with tabular figures. */
 :root { --mono: var(--sans); --hover: #faf8f4; --ring: rgb(29 53 87 / 0.16);
   --field: #fff; --amber: #c9a24a; --radius: 12px; }
-body { max-width: none; padding: 0; font-size: 15px; line-height: 1.6;
-  font-feature-settings: "cv11", "ss01"; }
+body { max-width: none; padding: 0; font-size: 15px; line-height: 1.6; }
 main { max-width: 1160px; margin: 0 auto; padding: 48px 32px 96px; }
 main.wide { max-width: 1360px; }
 p { margin: 0 0 14px; }
 
-/* Type: serif only for page titles and big numbers; section heads are plain Inter */
+/* Type: serif only for page titles and big numbers; section heads are plain sans */
 h1 { font: 400 44px/1.08 var(--serif); letter-spacing: -0.015em; margin: 0 0 14px;
   text-wrap: balance; }
 h2 { font: 600 18px/1.35 var(--sans); letter-spacing: -0.005em; margin: 56px 0 14px;
@@ -315,7 +314,8 @@ ul.flags form.inline button { margin-left: 8px; }
   color: var(--muted); }
 .tile.t-you.empty .sub { color: var(--muted); }
 .tile .name { font-size: 13.5px; font-weight: 600; }
-.tile .n { font: 400 44px/1.05 var(--serif); font-variant-numeric: tabular-nums; }
+.tile .n { font: 600 36px/1.15 var(--sans); letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums; }
 .tile .sub { font-size: 13px; color: var(--muted); line-height: 1.45; }
 .tile.t-you { background: var(--accent); border-color: var(--accent); color: #f7f5f0; }
 .tile.t-you:hover { background: #142842; }
@@ -328,7 +328,7 @@ ul.flags form.inline button { margin-left: 8px; }
 .nextup .meta a { color: inherit; }
 .nextup .meta { font: 500 13px var(--sans); letter-spacing: 0; color: var(--muted);
   text-transform: none; }
-.nextup blockquote.claimtext { font-size: 30px; margin: 16px 0 10px; }
+.nextup blockquote.claimtext { font-size: 22px; margin: 16px 0 10px; }
 .nextup p { color: var(--muted); margin: 6px 0 18px; }
 a.button { display: inline-flex; align-items: center; min-height: 40px; padding: 0 18px;
   border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14.5px; }
@@ -380,7 +380,7 @@ aside.side .ledger li.on { box-shadow: inset 3px 0 0 var(--accent); background: 
 .claim-head h1 { font: 500 13px var(--sans); letter-spacing: 0; color: var(--muted);
   margin: 0; }
 .claim-head h1 .muted { color: var(--muted); }
-blockquote.claimtext { font: 400 34px/1.16 var(--serif); letter-spacing: -0.015em;
+blockquote.claimtext { font: 500 24px/1.4 var(--sans); letter-spacing: -0.01em;
   background: none; border-left: 2px solid var(--accent); border-radius: 0;
   padding: 2px 0 2px 22px; margin: 18px 0 10px; text-wrap: pretty; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
@@ -443,7 +443,7 @@ ul.unplaced .head .text { font-weight: 600; }
 @media (max-width: 900px) {
   .split { grid-template-columns: minmax(0, 1fr); }
   aside.side { position: static; max-height: none; order: 2; }
-  blockquote.claimtext { font-size: 27px; }
+  blockquote.claimtext { font-size: 20px; }
   .msg { max-width: 88%; }
   .idgrid { grid-template-columns: minmax(0, 1fr); }
 }

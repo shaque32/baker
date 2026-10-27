@@ -50,7 +50,7 @@ def wizard(scale: float) -> Image.Image:
     m = mark(round(44 * scale))
     im.paste(m, (round(22 * scale), round(30 * scale)), m)
     serif = ImageFont.truetype(str(FONTS / "instrument-serif-latin-400-normal.woff2"), 30 * scale)
-    sans = ImageFont.truetype(str(FONTS / "inter-latin-wght-normal.woff2"), 10.5 * scale)
+    sans = ImageFont.truetype(str(FONTS / "ibm-plex-sans-latin-wght-normal.woff2"), 10.5 * scale)
     d.text((22 * scale, 92 * scale), "Mabillon", font=serif, fill=INK)
     d.line((22 * scale, 140 * scale, w - 22 * scale, 140 * scale), fill=LINE, width=1)
     for i, line in enumerate(("Audits government", "claims about phone", "evidence.")):

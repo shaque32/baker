@@ -154,8 +154,8 @@ from core.review.withheld import summary as withheld_summary
 # every claim that rests on the source: "Not tested: ..." outside the tested set, the tested
 # notice for a UFDR stating report version 7.48. The UFDR "synthetic packages only" item is gone.
 # 0.19.0: visual only, in the design of the review screen and getmabillon.com: table headings in
-# sentence case and Inter, ids and hashes in Inter with tabular figures, calmer notices and
-# verdict pills. No wording, fact or section changed.
+# sentence case and IBM Plex Sans, ids and hashes in Plex Sans with tabular figures, calmer
+# notices and verdict pills. No wording, fact or section changed.
 REPORT_VERSION = "0.19.0"
 
 
@@ -197,7 +197,7 @@ CSS = """
   --sup:#2f5d43; --sup-bg:#e6eee8; --sup-line:#bcd0c2; --supai:#5c5a1f;
   --con:#9a3a2c; --con-bg:#f4e5e1; --con-line:#e2c0b8;
   --unp:#7f5a12; --unp-bg:#f5ecd6; --unp-line:#e3d2a8; --await:#7f5a12; --warn:#f5ecd6;
-  --sans: Inter, "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica,
+  --sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica,
     Arial, sans-serif;
   --serif: "Instrument Serif", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
   --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; }
@@ -229,7 +229,7 @@ tr:last-child td { border-bottom: 0; }
 th { background: transparent; font: 500 12.5px var(--sans); color: var(--muted); }
 .claim { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
   padding: 8px 24px 18px; margin: 22px 0; }
-.claim > blockquote { font: 400 26px/1.22 var(--serif); letter-spacing: -0.01em;
+.claim > blockquote { font: 500 19px/1.45 var(--sans); letter-spacing: -0.005em;
   background: none; border-left: 2px solid var(--accent); border-radius: 0;
   padding: 2px 0 2px 18px; }
 .verdict { display: inline-flex; align-items: center; gap: 6px; font: 500 13px var(--sans);
