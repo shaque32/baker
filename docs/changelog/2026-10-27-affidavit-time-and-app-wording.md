@@ -28,7 +28,8 @@
     refused with both offsets named, for example "EST (UTC-05:00), but the phone's zone
     America/New_York is at UTC-04:00 then". A zone right after a time that code does not read
     refuses the range (review fix), so it is never read in the phone's zone instead: an
-    abbreviation not in capitals ("pdt"), an offset ("UTC+3"), a zone outside the US and UTC
+    abbreviation not in capitals ("pdt"), an offset ("UTC+3", or "+0300" with no name), a zone
+    outside the US and UTC
     ("BST", "AST", "bst") or another zone's name ("Central European Time", "central european
     time"). After a date, an offset ("January 9, 2026 UTC+3") or a zone in brackets that code
     does not read ("(BST)") refuses the range too (review fix). The claim's words right after
@@ -46,7 +47,7 @@
       holds iMessage and SMS together. A count could include messages the claim does not name,
       and an SMS could fail a claim of no iMessages.
 - Where: PR #150 (branch `claude/project-thread-6i2msb-coverage`)
-- Verified: new `tests/test_affidavit_wording.py`, 85 tests on synthetic case01 with made-up
+- Verified: new `tests/test_affidavit_wording.py`, 91 tests on synthetic case01 with made-up
   wording:
     - the date-first forms and written zones, each also passing `check_window`;
     - 11 phrasings that must not be read, including a second time, "beginning at", "after",
@@ -54,9 +55,11 @@
     - a count after a date is not read as a time;
     - 19 open ranges are not read, 6 of them with a weekday before the date, and words beside
       a range that do not open it still read;
-    - 9 zones code does not read after a time, and 4 after a date, refuse the range, in the
-      claim's words and after the model's, while one in quoted words or after no time does
-      not, and 5 words after a time or date that are not a zone still read;
+    - 11 zones code does not read after a time, and 5 after a date, refuse the range, in the
+      claim's words and after the model's (an offset with no name, "+0300" or "(-05:00)",
+      among them), while one in quoted words or after no time does not; 7 words after a time
+      or date that are not a zone still read, and a range's other end ("9 p.m.-10:00 p.m.",
+      "10:00-10:30 a.m.") or a year ("2026-2027") is not taken for an offset;
     - the claim's zone wins over the model's;
     - a "UTC" inside the quoted message does not make the range UTC;
     - a written UTC is read as UTC, a whole day too;
