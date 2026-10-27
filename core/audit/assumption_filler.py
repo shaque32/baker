@@ -1360,10 +1360,10 @@ class LocalAssumptionFiller:
                 # Anything else fails.
                 written = acc.as_written.strip()
                 person = self._person_named(written) if "person_ids" in tpl.allowed else None
-                by_name = self._accounts_named(acc, device_ids, claim.text)
                 if person is not None:
                     theirs = person_party(self.data, person).keys
-                    if any(self.data.accounts[a].key not in theirs for a in by_name):
+                    same = self._accounts_named(acc, device_ids, claim.text, one=False)
+                    if any(self.data.accounts[a].key not in theirs for a in same):
                         raise Reject(
                             f"{written!r} names a person and a {acc.app} account that is not"
                             " confirmed as theirs"
@@ -1374,6 +1374,7 @@ class LocalAssumptionFiller:
                     if written not in handles:
                         handles.append(written)
                     continue
+                by_name = self._accounts_named(acc, device_ids, claim.text)
                 if not by_name:
                     raise
                 account_ids |= by_name
@@ -1698,10 +1699,12 @@ class LocalAssumptionFiller:
         except Reject:
             return None
 
-    def _accounts_named(self, acc: _Account, device_ids: list[str], claim_text: str) -> set[str]:
+    def _accounts_named(
+        self, acc: _Account, device_ids: list[str], claim_text: str, *, one: bool = True
+    ) -> set[str]:
         """The accounts on the model's app whose display name is exactly these words, when
-        they are one account and the app is a phone app or one the claim names. Raises Reject
-        when the name is on several accounts."""
+        the app is a phone app or one the claim names. With `one`, they must be one account:
+        a name on several accounts raises Reject."""
         if not self._app_named(claim_text, acc.app):
             return set()
         app, written = acc.app.strip().casefold(), _nfc(acc.as_written.strip())
@@ -1714,7 +1717,7 @@ class LocalAssumptionFiller:
             and a.display_name is not None
             and _nfc(a.display_name.strip()) == written
         ]
-        if len({a.key for a in hits}) > 1:
+        if one and len({a.key for a in hits}) > 1:
             raise Reject(
                 f"{acc.as_written!r} is the name of {len({a.key for a in hits})} {acc.app}"
                 " accounts; which one the claim means is not known"

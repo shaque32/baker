@@ -13,7 +13,9 @@ from core.audit.assumption_filler import (
     _same_number,
     phone_digits,
 )
+from core.audit.assumptions import parse_params
 from core.audit.checks._common import Account
+from core.contracts import ClaimType
 from eval.synthetic.generate import generate
 from tests.checks.helpers import stipulate
 from tests.test_affidavit_wording import QUOTE, claim, filler, proposal
@@ -160,6 +162,41 @@ def test_a_person_and_an_account_of_someone_else_with_the_same_name_is_refused(c
                 "sender", **sender("PETROV", "Telegram")))  # fmt: skip
     finally:
         conn.execute("DELETE FROM accounts WHERE id = 'acct:extra:2'")
+
+
+def test_a_person_whose_name_two_other_accounts_carry_is_refused_as_not_theirs(conn):
+    # The reason names the real problem, not the two accounts' shared name.
+    _extra(conn, "acct:extra:3", "7007777", "PETROV")
+    _extra(conn, "acct:extra:4", "7006666", "PETROV")
+    try:
+        text = f'On March 18, 2026, PETROV wrote "{QUOTE}" on Telegram.'
+        with pytest.raises(Reject, match="not confirmed as theirs"):
+            filler(conn)._resolve(claim(text), "", proposal(
+                "sender", **sender("PETROV", "Telegram")))  # fmt: skip
+    finally:
+        conn.execute("DELETE FROM accounts WHERE id IN ('acct:extra:3', 'acct:extra:4')")
+
+
+def test_a_person_written_as_an_account_is_one_more_party(conn):
+    # Beside a writer, the person is a second party. A sender takes one party, so the
+    # template refuses; it never reads as "sent by PETROV or REYES".
+    text = f'On March 18, 2026, PETROV wrote "{QUOTE}" to REYES on Instagram.'
+    p = proposal(
+        "sender", people=["PETROV"], accounts=[{"as_written": "REYES", "app": "Instagram"}]
+    )
+    out = filler(conn)._resolve(claim(text), "", p)
+    assert out.params["person_ids"] == [PETROV, REYES]
+    with pytest.raises(ValueError, match="name exactly one party"):
+        parse_params("sender", out.params)
+    # where the template takes two parties, the meaning is kept: no contact between the two
+    text = "On March 18, 2026, PETROV had no contact with REYES on Instagram."
+    p = proposal("no_contact", quoted_text="", people=["PETROV"],
+                 accounts=[{"as_written": "REYES", "app": "Instagram"}],
+                 window={"as_written": "On March 18, 2026", "start": "2026-03-18T00:00",
+                         "end": "2026-03-19T00:00", "zone": "phone"})  # fmt: skip
+    out = filler(conn)._resolve(claim(text, ClaimType.ABSENCE), "", p)
+    assert out.params["person_ids"] == [PETROV, REYES]
+    assert not parse_params("no_contact", out.params).account_ids
 
 
 def test_an_apps_name_written_as_an_account_is_refused(conn):

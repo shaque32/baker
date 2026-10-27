@@ -19,7 +19,7 @@
     names. The words alone never pick the app.
   - "@" handles stay handles that the checks resolve, as before.
 - Where: PR #152 (branch `claude/project-thread-6i2msb-accounts`), stacked on #150
-- Verified: new `tests/test_account_lookups.py`, 28 tests on synthetic case01 with made-up
+- Verified: new `tests/test_account_lookups.py`, 30 tests on synthetic case01 with made-up
   wording:
     - phone_digits forms, including a UK number with and without "+" and digits run together;
     - user ids are not numbers;
@@ -28,7 +28,10 @@
     - a person written as an account, and the template that takes no person;
     - one display name, a display name two accounts carry, and a display name on an app the
       claim does not name;
-    - a person whose name another account carries is refused;
+    - a person whose name another account carries, or two other accounts carry, is refused
+      as not theirs;
+    - a person written as an account beside a writer is a second party, so a sender (one
+      party) is refused and never read as "sent by A or B"; a no-contact keeps both parties;
     - an app's name written as an account is refused;
     - "@" handles are unchanged.
   - The existing filler tests pass unchanged, including the wrong-app refusals.
