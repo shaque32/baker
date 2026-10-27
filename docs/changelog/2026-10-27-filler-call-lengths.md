@@ -16,6 +16,12 @@
     lasting more than two minutes", the model's "two minutes" is read as "more than two
     minutes". Before, it was read as 120 to 179 seconds. If the claim writes the same words
     twice with different words before them, the duration is refused.
+  - Refused (review fix): a bound turned round by "not" or "never" a few words before it ("not
+    more than", "never lasted over", "wasn't under"), and a bound written after the length
+    ("two minutes or less", "or more", "or longer", "or so", "plus"). Before the fix, the
+    claim's "not more than two minutes" made the model's "two minutes" read as more than two
+    minutes, and "two minutes or less" read as 120 to 179 seconds. "no more than" and "no less
+    than" stay bounds.
   - The rules for "about" (25% either side) and for a plain length ("two minutes" is 120 to
     179) are unchanged.
   - A call length only narrows which calls the time check counts. That check never fails on
@@ -26,6 +32,8 @@
     and the four bounds;
   - a new test reads a bound the claim writes before the model's words, and refuses the same
     words written twice with different leads;
+  - 13 turned-round or trailing bounds are refused, and "no more than", "no less than" and a
+    "not" in another clause still read;
   - `test_duration_range_refuses` covers "a while", "2m", "a few minutes", "just two
     minutes", "under a second", "zero seconds", "between one and two minutes" and "two minutes
     and three minutes".

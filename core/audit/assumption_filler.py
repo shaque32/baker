@@ -998,6 +998,14 @@ LONGEST_CALL_S = 86_400  # the open end of "more than" and "at least": one day
 _LEAD_ALT = "|".join(w.replace(" ", r"\s+") for w in sorted(_LENGTH_LEADS, key=len, reverse=True))
 _LENGTH_LEAD_RE = re.compile(rf"^(?P<lead>{_LEAD_ALT})\s+(?P<rest>.+)$", re.IGNORECASE)
 _LEAD_BEFORE_RE = re.compile(rf"\b(?P<lead>{_LEAD_ALT})\s+$", re.IGNORECASE)
+# a word that turns a bound round: "not more than", "never lasted over", "wasn't under"
+_NEGATED_RE = re.compile(r"(?:\b(?:not|never)|n't)(?:\s+[\w'-]+){0,3}\s+$", re.IGNORECASE)
+# a bound written after the length: "two minutes or less", "or more", "or so", "plus"
+_BOUND_AFTER_RE = re.compile(
+    r"^\s*,?\s*(?:(?:or|and)\s+(?:less|more|longer|shorter|under|over|fewer|greater|above|"
+    r"below|up|so|thereabouts)\b|plus\b|\+)",
+    re.IGNORECASE,
+)
 _UNIT = r"(?:second|sec|minute|min|hour|hr)s?\.?"
 _NUM = r"\d+|an?|[a-z]+(?:[-\s][a-z]+)?"
 # One part of a length, with the precision its words state: "two minutes" to the minute,
@@ -1071,22 +1079,35 @@ def duration_range(as_written: str, claim: str = "") -> tuple[int, int]:
       1 to 120.
     - A word the claim writes right before the model's words counts as theirs: in "lasting
       more than two minutes", the words "two minutes" are read as "more than two minutes".
+    - Refused: a bound the claim turns round ("not more than", "never over", "wasn't under";
+      "no more than" is read as "at most"), and a bound written after the length ("two minutes
+      or less", "or more", "or so", "plus"), in the model's words or the claim's.
     """
     words = " ".join(as_written.split())
     m = _LENGTH_LEAD_RE.match(words)
     lead, rest = (m.group("lead"), m.group("rest")) if m else (None, words)
-    if lead is None and claim:
+    if claim:
         text, leads = " ".join(claim.split()), set()
         i = text.lower().find(words.lower())
         while i >= 0:
-            before = _LEAD_BEFORE_RE.search(text[:i])
+            head = text[:i]
+            before = _LEAD_BEFORE_RE.search(head) if lead is None else None
+            if before is not None:
+                head = head[: before.start()]
+            if _NEGATED_RE.search(head):
+                raise Reject(
+                    f"the claim writes 'not' or 'never' before the duration {as_written!r}"
+                )
+            if _BOUND_AFTER_RE.match(text[i + len(words) :]):
+                raise Reject(f"the claim writes a bound after the duration {as_written!r}")
             leads.add(" ".join(before.group("lead").lower().split()) if before else None)
             i = text.lower().find(words.lower(), i + 1)
-        if len(leads) > 1:
-            raise Reject(
-                f"the claim writes {as_written!r} more than once, with other words before it"
-            )
-        lead = leads.pop() if leads else None
+        if lead is None:
+            if len(leads) > 1:
+                raise Reject(
+                    f"the claim writes {as_written!r} more than once, with other words before it"
+                )
+            lead = leads.pop() if leads else None
     v, step = _length(rest)
     kind = _LENGTH_LEADS[" ".join(lead.lower().split())] if lead else None
     if v < 1 or v > LONGEST_CALL_S:

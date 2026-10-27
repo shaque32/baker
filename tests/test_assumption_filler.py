@@ -912,6 +912,46 @@ def test_a_bound_the_claim_writes_before_the_models_words_is_read():
 
 
 @pytest.mark.parametrize(
+    ("words", "claim"),
+    [
+        # a bound turned round: read as written, it would mean the opposite
+        ("two minutes", "a call lasting not more than two minutes"),
+        ("more than two minutes", "a call lasting not more than two minutes"),
+        ("two minutes", "a call of not less than two minutes"),
+        ("two minutes", "a call that was not under two minutes"),
+        ("two minutes", "a call that never lasted over two minutes"),
+        ("two minutes", "a call that wasn't more than two minutes"),
+        # a bound after the length: read as written, it would be a plain length
+        ("two minutes", "a call of two minutes or less"),
+        ("two minutes", "a call of two minutes or more"),
+        ("two minutes", "a call of two minutes or longer"),
+        ("two minutes", "a call of two minutes, or so"),
+        ("two minutes", "a call of two minutes plus"),
+        ("two minutes or less", ""),
+        ("not more than two minutes", ""),
+    ],
+)
+def test_a_turned_round_or_trailing_bound_is_refused(words, claim):
+    from core.audit.assumption_filler import duration_range
+
+    with pytest.raises(Reject):
+        duration_range(words, claim)
+
+
+def test_no_more_and_no_less_than_stay_bounds():
+    from core.audit.assumption_filler import duration_range
+
+    assert duration_range("two minutes", "a call of no more than two minutes") == (1, 120)
+    assert duration_range("two minutes", "a call of no less than two minutes") == (120, 86400)
+    assert duration_range(
+        "two minutes", "PETROV did not answer, and the call lasted two minutes"
+    ) == (
+        120,
+        179,
+    )
+
+
+@pytest.mark.parametrize(
     "words",
     ["a while", "2m", "a few minutes", "just two minutes", "under a second", "zero seconds",
      "between one and two minutes", "two minutes and three minutes"],
