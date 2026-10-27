@@ -9,7 +9,7 @@
   the `checks` workflow passed on the first attempt on 7 consecutive pushes to main (runs
   39503538565, 39510733327, 39513830950, 39520824524, 39607503937, 39617971260, 39629330625),
   so 13 of 19 gates are met.
-- Where: PR #112
+- Where: main (#112, merged 2026-10-24)
 - Verified: each applied phrase matched exactly once; report 0.10.0, importer 0.2.0, check
   versions and the new screen text checked in `core/` and `ui/pages.py` on main; `make test` and
   `ruff check .` (Linux, 2026-10-21). CI run ids taken from the coordinator's record, not

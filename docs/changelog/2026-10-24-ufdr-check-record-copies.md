@@ -21,7 +21,7 @@
   same way. A new counter, `related_record_copies_matching_no_record`, lets ufdr-check account
   for these copies past the capped list of locators. This was Arsh's follow-up to #117
   (2026-10-23), plus Baker Merge's non-blocking item on #117.
-- Where: PR #130
+- Where: main (#130, merged 2026-10-24)
 - Verified: tests in `tests/test_ufdr_check.py`:
   - calls (same, duration, deleted, carved, type, sides), contacts (same, name, entry,
     deleted) and accounts (same, name, identifier): each run with the importer, and with an

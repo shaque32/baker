@@ -8,8 +8,7 @@
   form-action allows forms.getmabillon.com and the site itself (for the redirect to the thanks
   page), and the demo page sends its origin so the Worker's origin check does not see "null". Also fixes the Pages deploy
   notes: a `site/*` build watch path skipped every build on 2026-10-21.
-- Where: PR #118 (branch claude/project-thread-866ya3). The Worker is not deployed until Arsh
-  imports it in Cloudflare (`workers/demo-form/README.md`).
+- Where: main (#118, merged 2026-10-22)
 - Verified: `node workers/demo-form/test.mjs` (validation, header-injection guard, a quoted
   Reply-To name, MIME encoding, Origin null or absent accepted and another site refused, the
   honeypot redirect, the rate limit). The pages were rendered in headless Chromium at 1280 px and 390 px. A live submit from a real browser and real email
@@ -19,5 +18,4 @@
   the first live test.
 - Affects: privacy (the site now collects names, a work email, a role and a message, and emails
   them to the team's inbox). No app, `core/` or claims change.
-- Status doc: pending: section 12, add after the website note "The site's Book a demo form
-  (`workers/demo-form`) emails requests to the team and stores nothing."
+- Status doc: applied 2026-10-27

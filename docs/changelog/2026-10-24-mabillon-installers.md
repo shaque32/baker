@@ -27,7 +27,7 @@
     file-format ids (CLAUDE.md). So a reinstall never leaves two packages, and `pip install -e .`
     on a development checkout needs no uninstall. The Azure signing resource names are kept as
     well.
-- Where: PR #132
+- Where: main (#132, merged 2026-10-24)
 - Verified: `make check` (lint, tests, eval; numbers in the PR).
   - `tests/test_packaging.py`: the AppId is unchanged, Setup keeps a Baker-era model and the
     person's own setting, the old shortcut is removed, and the Mac installer never writes over a
@@ -49,9 +49,4 @@
 - Affects: customer-facing names (installer, launchers, Start menu, Settings > Apps, default
   folders). No change to capabilities, verdicts, privacy or network use: the installers download
   the same pinned files from the same places.
-- Status doc: pending: wherever installation is described, the Mac installer is "Install
-  Mabillon.command", installing to ~/Mabillon/app and ~/Mabillon/models with Desktop launchers
-  "Mabillon" and "Mabillon demo"; the Windows installer is Mabillon-Setup-<version>.exe,
-  installing to %LOCALAPPDATA%\Programs\Mabillon with the "Mabillon command prompt" Start-menu
-  shortcut; an install made under the name Baker is updated in place and keeps its model and
-  model setting.
+- Status doc: applied 2026-10-27

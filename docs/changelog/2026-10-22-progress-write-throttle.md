@@ -8,7 +8,7 @@
   checks, the audit log and each claim's final progress row are written as before. Also CI
   only: `make check` runs as lint, test and eval steps with the 40 slowest tests listed, and the
   Windows job limit is 45 minutes.
-- Where: PR #122
+- Where: main (#122, merged 2026-10-22)
 - Verified: `tests/test_pipeline.py::test_progress_throttle_changes_only_how_often_the_screen_count_is_saved`
   runs the fake audit with no throttle and with a one-hour throttle and finds identical
   decisions, predictions, evidence rows and final progress rows, with only each claim's last

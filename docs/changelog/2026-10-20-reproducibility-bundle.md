@@ -36,7 +36,7 @@
   `claim.status` records the text an edit replaced; `claim.add` records the
   claim type; `claims.proposed` records each proposed claim's SHA-256. No export while a newer audit is unfinished. Why: legal defensibility
   (Arsh's brief, 2026-10-20): equal access, authentication, hosted-model reproducibility.
-- Where: PR #104
+- Where: main (#104, merged 2026-10-22)
 - Verified: tests/test_bundle.py (91: round trips on a reviewed case01 and a cloud-path case01
   with a stand-in API, whole and scoped; 68 tampering and malformed-bundle cases fail without a
   crash, incl. a supporting item hidden behind its true hash, which fails the verdict check; a
@@ -63,11 +63,4 @@
   for a plain case, and only when the examiner confirms one; by default only what the verdicts
   rest on; nothing is sent); customer-facing claims (recorded
   labels and rules are reproducible; cloud labels still cannot be regenerated).
-- Status doc: pending: §8 add item 6 "Reproducibility bundle (#104): `baker export-bundle`
-  (examiner's choice after counsel review, logged with its SHA-256, encrypted for an encrypted case) and `baker verify-bundle` (offline; re-derives every
-  verdict of the exported run from recorded labels and expert decisions; docs/bundle.md); CLI
-  only"; §4 "Failure handling" add "each answer is logged as `cloud.received` (API-reported
-  model, message and request ids, raw-output SHA-256)"; §12 row 5 add to Evidence "a
-  reproducibility bundle carries what the verdicts rest on (the whole case on request), and
-  `baker verify-bundle` re-derives the verdicts offline (#104)"; §3 last paragraph add "each claim's audit-log entry
-  binds its stored model calls by SHA-256 (#104)".
+- Status doc: applied 2026-10-27

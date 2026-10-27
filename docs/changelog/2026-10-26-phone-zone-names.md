@@ -13,7 +13,7 @@
   display "Time zone" as the phone's zone when the summary has no Device time zone: the
   examiner's display setting is not the phone's, so the phone's zone stays unknown and time
   ranges are refused, as before this change. The display zone stays in the import coverage.
-- Where: PR #139
+- Where: main (#139, merged 2026-10-26)
 - Verified: tests/test_zones.py: the exact UFDR and Excel strings, IANA pass-through, wrong
   offsets, unknown names and free text; the checks and device local time read a UFDR zone.
   tests/test_assumption_filler.py: a claim's window on a phone with the UFDR zone gets

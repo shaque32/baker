@@ -5,7 +5,7 @@
   `baker_version` field and the `baker` command alias keep the old name, so agents never rename
   them and break old cases or bundles. No code changes; the app, CLI and installers still say
   Baker until the rename PRs in /mnt/project-files/baker/plans/rename-mabillon.md land.
-- Where: PR #115
+- Where: main (#115, merged 2026-10-22)
 - Verified: `make check`; wording only.
 - Open: the code rename (display name, `mabillon` command with a `baker` alias, installers).
 - Affects: none (agent instructions only).
