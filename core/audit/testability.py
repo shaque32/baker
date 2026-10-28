@@ -33,7 +33,8 @@ accepts it: the eval's simulated expert (`examiner`), or the examiner on the cla
 (core/review/actions.decide_repair, logged under the expert's actor). The next audit uses that
 acceptance when the step gives the same assumptions again for the same claim text. Without an
 acceptance a try is logged and never used, and an examiner's rejection keeps it out. The report
-shows such an assumption as "Proposed by agent, accepted by examiner" (`accepted_repairs`). The
+shows such an assumption as "Proposed by agent, accepted by examiner" (`used_repairs`, for the
+audit shown only, the same reading the claim page and verify-bundle use). The
 repair never sees, writes or changes the claim's text: the output has no field for it, and the
 claim's stored row is hashed before and after (`InvariantViolation` otherwise).
 
@@ -573,15 +574,70 @@ def proposals(conn: sqlite3.Connection, run: Mapping[str, Any] | None) -> dict[s
     }
 
 
-def accepted_repairs(conn: sqlite3.Connection) -> dict[str, str]:
-    """Assumption id -> the actor who accepted the repair that proposed it, from the log."""
-    out: dict[str, str] = {}
-    for actor, payload_json in conn.execute(
-        "SELECT actor, payload_json FROM audit_log WHERE action = ? ORDER BY seq",
-        (ACCEPT_ACTION,),
+def in_force(
+    conn: sqlite3.Connection, run_id: str
+) -> dict[str, tuple[list[str], str, tuple[str, str] | None]]:
+    """Claim id -> (assumption ids, claim hash, decision) for each try the audit run_id's step
+    proposed: the expert's latest decision on it when that audit used it, read as the step read
+    it (`decision`, before the claim's pipeline.claim entry closed its work). None when no
+    expert had decided it."""
+    from core import pipeline
+
+    done: dict[str, int] = {}
+    tried: dict[str, tuple[list[str], str]] = {}
+    for seq, action, payload_json in conn.execute(
+        "SELECT seq, action, payload_json FROM audit_log WHERE action IN (?, ?) ORDER BY seq",
+        (REPAIR_ACTION, pipeline.CLAIM_ACTION),
     ):
-        for aid in json.loads(payload_json).get("assumption_ids", []):
-            out[aid] = actor
+        p = json.loads(payload_json)
+        if p.get("run_id") != run_id:
+            continue
+        cid = str(p.get("claim_id"))
+        if action == pipeline.CLAIM_ACTION:
+            done.setdefault(cid, seq)
+        elif p.get("outcome") == "proposed":
+            tried[cid] = (sorted(p.get("assumption_ids") or []), str(p.get("claim_sha256")))
+    return {
+        cid: (ids, sha, decision(conn, cid, ids, sha, before=done.get(cid)))
+        for cid, (ids, sha) in tried.items()
+    }
+
+
+@dataclasses.dataclass(frozen=True)
+class Used:
+    """An agent proposal the shown audit used: the examiner whose acceptance it used, and why
+    that acceptance no longer holds for the next audit, if it does not."""
+
+    by: str
+    lapsed: str | None = None
+
+    def mark(self) -> str:
+        """The line the claim page and the report show beside the assumption."""
+        line = f"{PROPOSED_MARK}, accepted by examiner ({self.by.removeprefix('expert:')})"
+        return f"{line}; {self.lapsed}, so the next audit does not use it" if self.lapsed else line
+
+
+def used_repairs(conn: sqlite3.Connection, run: dict[str, Any] | None) -> dict[str, Used]:
+    """Assumption id -> how the shown audit used it, for the step's proposals that audit (or the
+    audit a verdict re-run took its evidence from) used under an expert's acceptance in force
+    then. One reading for the claim page and the report; verify-bundle checks the same rule
+    (`in_force`). Another audit's acceptance, a rejected proposal, and an assumption the filler
+    made itself are not marked."""
+    if run is None:
+        return {}
+    out: dict[str, Used] = {}
+    for cid, (ids, _sha, d) in in_force(conn, run.get("evidence_from_run", run["run_id"])).items():
+        if d is None or d[0] != ACCEPT_ACTION:
+            continue
+        now = decision(conn, cid, ids, claim_sha256(conn, cid))
+        lapsed = (
+            "the claim was edited or removed after the acceptance"
+            if now is None
+            else f"later rejected by {now[1].removeprefix('expert:')}"
+            if now[0] == REJECT_ACTION
+            else None
+        )
+        out.update(dict.fromkeys(ids, Used(d[1], lapsed)))
     return out
 
 

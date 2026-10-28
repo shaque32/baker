@@ -161,8 +161,8 @@ def test_the_agents_proposal_on_d02_was_accepted_and_reaches_supported(root):
     assert d02["outcome"] == "proposed" and d02["assumption_ids"] == sorted(
         run["manifest"]["D02"]["assumptions"]
     )
-    assert testability.accepted_repairs(conn) == dict.fromkeys(
-        d02["assumption_ids"], demo.AGENT_EXAMINER
+    assert testability.used_repairs(conn, run) == dict.fromkeys(
+        d02["assumption_ids"], testability.Used(demo.AGENT_EXAMINER)
     )
     assert _verdicts(conn)["D02"] == "supported"
     mark = "Proposed by agent, accepted by examiner (Demo examiner (scripted from the demo claims))"

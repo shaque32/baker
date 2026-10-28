@@ -25,7 +25,12 @@
     text. An expert's latest decision stands, and a rejection keeps the proposal out. The
     overview lists such a claim as waiting on the expert ("Proposed by agent: ..."). "What has
     to be true" marks an accepted assumption "Proposed by agent, accepted by examiner (<name>)",
-    as the report does.
+    as the report does. Both read one function (`testability.used_repairs`), for the audit
+    shown only: the proposals that audit used under an expert's acceptance in force then, the
+    same rule verify-bundle checks. A rejection or a claim edit after that audit is said beside
+    the mark ("later rejected by <name>, so the next audit does not use it"); the next audit
+    then shows no mark. Another audit's acceptance, or an assumption the filler made itself,
+    is never marked. Before, the mark read every acceptance ever logged (Grok Product).
   - Each `testability.repair` entry now records which checks ran (`check`) and the proposed
     assumptions with their texts (`proposed`), which is what the card shows. `verify-bundle`
     re-runs both and fails a decision by a non-expert. A kept proposal must have an expert's
@@ -70,6 +75,10 @@
       rejection, and passes one rejected after the audit;
     - verify-bundle re-runs the tries of a claim edited after the audit on its audited text, and
       fails a claim row changed with no log entry;
+    - the agent mark on the claim page and in the report follows the decision the shown audit
+      used: none before the audit uses an acceptance, the mark once it does, a later rejection
+      said beside it, none on the next audit or on an audit without the step; an acceptance
+      does not carry over to an edited claim;
     - the claim page shows one card with one accept and one reject and no accept-all, and
       posting an acceptance logs it under the examiner with the reason.
   - `tests/test_demo.py`:

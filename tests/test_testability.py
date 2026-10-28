@@ -582,6 +582,69 @@ def test_a_rejected_proposal_is_never_used_and_the_latest_decision_stands(tmp_pa
             conn, _components(conn, examiner=None, signed=False), claim_ids=["C01"]
         )
         assert "C01" in second.not_tested and second.manifest["C01"]["assumptions"] == []
+        assert not any(MARK in x for x in _shown(tmp_path, conn))
+    finally:
+        conn.close()
+
+
+MARK = "Proposed by agent, accepted by examiner (Dana Reyes)"
+
+
+def _shown(tmp_path: Path, conn) -> tuple[str, str]:  # noqa: ANN001
+    """C01's claim page and the report, as the examiner sees them."""
+    from ui.app import App, Request
+
+    app = App(tmp_path / "case01.db", "Dana Reyes", 8765, model_check=None)
+    host = {"host": "127.0.0.1:8765"}
+    page = app.handle(Request("GET", "/claim", {"id": "C01"}, host)).body.decode()
+    return page, render_report(conn)
+
+
+def test_the_agent_mark_follows_the_decision_the_shown_audit_used(tmp_path):
+    """One reading for the claim page and the report, for the audit shown: the acceptance that
+    audit used, and a later rejection said beside it (Grok Product on #163)."""
+    from core.review.actions import decide_repair
+
+    conn, first = _audit(tmp_path, examiner=None, signed=False)
+    try:
+        decide_repair(conn, "C01", first.run_id, 1, True, EXAMINER, "Looks right.")
+        assert not any(MARK in x for x in _shown(tmp_path, conn))  # nothing used yet
+        pipeline.run_audit(conn, _components(conn, examiner=None, signed=False), claim_ids=["C01"])
+        page, report = _shown(tmp_path, conn)
+        assert MARK in page and MARK in report
+        assert "next audit does not use it" not in page + report
+        decide_repair(conn, "C01", first.run_id, 1, False, EXAMINER, "Not this number.")
+        lapsed = MARK + "; later rejected by Dana Reyes, so the next audit does not use it"
+        assert all(lapsed in x for x in _shown(tmp_path, conn))  # still true of the audit shown
+        pipeline.run_audit(conn, _components(conn, examiner=None, signed=False), claim_ids=["C01"])
+        assert not any(MARK in x for x in _shown(tmp_path, conn))
+        assert testability.used_repairs(conn, pipeline.last_run(conn)) == {}
+        pipeline.run_audit(conn, _components(conn, on=False), claim_ids=["C01"])
+        assert testability.used_repairs(conn, pipeline.last_run(conn)) == {}  # no step, no mark
+    finally:
+        conn.close()
+
+
+def test_an_acceptance_does_not_carry_over_to_an_edited_claim(tmp_path):
+    from core.review.actions import decide_repair
+
+    conn, first = _audit(tmp_path, examiner=None, signed=False)
+    try:
+        decide_repair(conn, "C01", first.run_id, 1, True, EXAMINER, "Looks right.")
+        pipeline.run_audit(conn, _components(conn, examiner=None, signed=False), claim_ids=["C01"])
+        (text,) = conn.execute("SELECT text FROM claims WHERE id = 'C01'").fetchone()
+        set_claim_status(conn, "C01", ClaimStatus.EDITED, EXAMINER, text=text + " (as edited)")
+        lapsed = (
+            MARK + "; the claim was edited or removed after the acceptance, so the next audit "
+            "does not use it"
+        )
+        assert all(lapsed in x for x in _shown(tmp_path, conn))
+        third = pipeline.run_audit(
+            conn, _components(conn, examiner=None, signed=False), claim_ids=["C01"]
+        )
+        assert "C01" in third.not_tested and third.manifest["C01"]["assumptions"] == []
+        page, report = _shown(tmp_path, conn)
+        assert MARK not in page and MARK not in report and "Waiting for you" in page
     finally:
         conn.close()
 

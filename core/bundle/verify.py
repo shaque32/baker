@@ -1539,13 +1539,9 @@ def _testability(
                 sorted(p.get("assumption_ids") or []),
                 str(p.get("claim_sha256")),
             )
-    # Each claim's pipeline.claim entry closes its work in the audit: a decision logged after it
-    # (a later rejection) was not in force when the audit used the proposal.
-    done = {
-        str(p.get("claim_id")): s
-        for s, _a, _c, act, p in log
-        if act == pipeline.CLAIM_ACTION and p.get("run_id") == rid
-    }
+    # The latest expert decision on each proposal when the audit used it, read as the step,
+    # the claim page and the report read it: a decision after the audit was not in force then.
+    used = testability.in_force(conn, rid)
     for c, p in decisions:
         if not str(c).startswith("expert:"):
             out.add(
@@ -1554,13 +1550,11 @@ def _testability(
                 f"{p.get('claim_id')}: a repair was decided by {c}, not by an expert",
             )
             bad += 1
-    for claim_id, (ids, sha) in sorted(proposed.items()):
+    for claim_id, (ids, _sha) in sorted(proposed.items()):
         kept = set(source["manifest"].get(claim_id, {}).get("assumptions", []))
         if not kept & set(ids):
             continue
-        # The latest expert decision on this exact proposal when the audit used it, read as the
-        # step reads it (testability.decision): an earlier acceptance does not outlive a rejection.
-        d = testability.decision(conn, claim_id, ids, sha, before=done.get(claim_id))
+        d = used[claim_id][2]  # an earlier acceptance does not outlive a rejection
         if d is None or d[0] != testability.ACCEPT_ACTION:
             out.add(
                 FAIL,

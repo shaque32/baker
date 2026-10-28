@@ -1154,7 +1154,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
             f"{_flag_verdict_form(conn, page, st, back)}"
         )
     out.append("</div></div>")
-    out.append(_must_be_true(st, testability.accepted_repairs(conn)))
+    out.append(_must_be_true(st, testability.used_repairs(conn, pipeline.view_run(conn))))
     out.append(_alternatives(conn, st))
 
     out.append("<h2 id='evidence'>Evidence</h2>")
@@ -1302,10 +1302,11 @@ def _agent_card(page: Page, x: testability.Proposed | None, back: str) -> str:
     )
 
 
-def _must_be_true(st: ClaimState, repaired: dict[str, str] | None = None) -> str:
+def _must_be_true(st: ClaimState, repaired: dict[str, testability.Used] | None = None) -> str:
     """What has to be true for the claim, one line per assumption, core ones first, with what the
     verdict rules found. Read from the stored coverage; it decides nothing. `repaired`: the
-    assumptions the testability step proposed and an examiner accepted, by who accepted them."""
+    assumptions the shown audit took from the testability step under an examiner's acceptance
+    (testability.used_repairs, as the report reads it)."""
     repaired = repaired or {}
     if not st.assumptions:
         return ""
@@ -1324,8 +1325,7 @@ def _must_be_true(st: ClaimState, repaired: dict[str, str] | None = None) -> str
             mark, said_ = "no", "Not established"
         role = "core" if a.is_core else "context, not needed for the verdict"
         if a.id in repaired:
-            who = repaired[a.id].removeprefix("expert:")
-            role += f" · {testability.PROPOSED_MARK}, accepted by examiner ({who})"
+            role += f" · {repaired[a.id].mark()}"
         rows.append(
             f"<li class='{mark}'><span class='mark'></span><div><div>{e(a.text)}</div>"
             f"<div class='meta'>{e(GAP_TOPICS[a.kind])} · {e(role)}</div></div>"
