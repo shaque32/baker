@@ -26,4 +26,4 @@
   `eval/validation/PREREGISTERED_v3.md` (#165): coverage check only on development data; [approval
   as the file records]"; in the build line, change "validation scorer 1.2.0
   (`eval/validation/score_hickman.py`, #143)" to "validation scorer 1.3.0
-  (`eval/validation/score_hickman.py`, #N)"
+  (`eval/validation/score_hickman.py`, #165)"
