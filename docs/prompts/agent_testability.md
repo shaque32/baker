@@ -1,10 +1,10 @@
-# Testability agent prompt (DRAFT v0.1, for Arsh to edit and sign)
+# Testability agent prompt (DRAFT v0.1, signed by Arsh as v1.0)
 
 Draft by the agent thread "Build agents into the audit", 2026-10-28 (plans/agentic.md step 3).
-Not used by the product: `core/audit/testability.py` loads only the signed copy at
-`core/audit/prompts/agent_testability.md`, which does not exist until Arsh signs this. The eval
-can name this draft (`eval/run_pipeline.py --testability-prompt`), and its output then says the
-prompt is a draft and gives no go/no-go.
+Arsh signed this draft word for word as v1.0 on 2026-10-28. `core/audit/testability.py` loads
+only the signed copy at `core/audit/prompts/agent_testability.md`; change that copy, not this
+draft. The eval can still name this draft (`eval/run_pipeline.py --testability-prompt`), and its
+output then says the prompt is a draft and gives no go/no-go.
 
 What the code does around it (`core/audit/testability.py`):
 - It runs only on a claim the assumption filler left untested, at most CAP times per claim.

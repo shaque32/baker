@@ -642,6 +642,8 @@ Arsh on <date> from the docs/prompts/agent_testability.md draft v0.1." and "Arsh
 wording; agents only wire it to the local model." Everything from `<!-- prompt starts -->` down
 stays as drafted, or as Arsh edits it, keeping its six placeholders (`tests/test_testability.py`
 checks the signed copy has them).
+SIGNED by Arsh on 2026-10-28 ("i approve and sign off on others", 07:33Z, project thread
+"Build agents into the audit"). APPLIED by Arsh himself on this branch (PR #159), commit 88fe932. The prompt body is the draft's, byte for byte.
 
 ## 2026-10-28 claude/project-thread-6i2msb-testability: CLAUDE.md line naming agents as local jobs that only propose
 File: CLAUDE.md
@@ -655,3 +657,5 @@ model in core/. ... assumption filling stay local." (two lines), add:
 +  acceptance puts it in a case. An agent never labels, accepts, dismisses, links identities or
 +  sets a verdict, and never changes a claim's text. They stay off by default and eval only
 +  until a real-data run under a signed plan.
+SIGNED by Arsh on 2026-10-28 ("i approve and sign off on others", 07:33Z, project thread
+"Build agents into the audit"). APPLIED by Arsh himself on this branch (PR #159), commit 88fe932. Word for word as above.

@@ -14,7 +14,7 @@ frozen-files thread puts them there, in a PR Arsh merges.
 | `assumptions.md` | `core/audit/prompts/assumptions.md` | `core/audit/assumption_filler.py` | `{claim}`, `{paragraph}`, `{templates}`, `{channels}` |
 | `translation.md` | `core/audit/prompts/translation.md` | `core/audit/translation.py` | `{text}` |
 | `reviewer-notes.md` | `core/audit/prompts/reviewer.md` (exists) | `core/audit/review.py` | `{assumption}`, `{quote}`, `{context}` |
-| `agent_testability.md` | `core/audit/prompts/agent_testability.md` (not yet signed) | `core/audit/testability.py` (eval only) | `{claim}`, `{paragraph}`, `{templates}`, `{channels}`, `{lookups}`, `{refused}` |
+| `agent_testability.md` | `core/audit/prompts/agent_testability.md` (v1.0, signed 2026-10-28) | `core/audit/testability.py` (eval only) | `{claim}`, `{paragraph}`, `{templates}`, `{channels}`, `{lookups}`, `{refused}` |
 
 `core/audit/prompts/stance_cloud.md` has no draft here: it is stance v1.2 (v1.1 plus the told-frame
 sentences, signed 2026-10-15), which only a cloud model reads (`core/audit/stance.py`, `prompt_file`).

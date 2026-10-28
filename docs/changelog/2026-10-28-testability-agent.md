@@ -2,7 +2,7 @@
 - Changed: step 3 of the agent plan (approved by Arsh 2026-10-27 17:29Z, `plans/agentic.md`;
   design note `plans/testability.md`). New `core/audit/testability.py`, off by default
   (`Components.testability`) and eval only: it cannot run without a signed assumption sheet to
-  check against, and the product loads only a signed prompt, which does not exist yet.
+  check against. It loads only the signed prompt, which Arsh signed in this PR.
   - On a claim the assumption filler left untested (no core assumption), the step asks the same
     local model again, at most CAP times per claim. Each call is stateless and carries the claim,
     its paragraph, the allowed templates, the case's apps, code's reasons for refusing the last
@@ -43,12 +43,12 @@
     and the held-out go/no-go cases are placeholders (`TESTABILITY_X_PERCENT`,
     `TESTABILITY_Y_BUDGET`, `TESTABILITY_GO_NO_GO_CASES`). CAP has no default. Until all are
     set, the prompt is signed and a held-out case runs, it prints "go/no-go: none given".
-  - Draft prompt `docs/prompts/agent_testability.md`, for Arsh to sign into
-    `core/audit/prompts/agent_testability.md`. It is written generally and not tuned to any
-    validation claim. Its wording drew on run 2's refusal kinds (counts only: no meaning
+  - Prompt: draft `docs/prompts/agent_testability.md` v0.1, signed by Arsh word for word as
+    `core/audit/prompts/agent_testability.md` v1.0 (2026-10-28, his commit 88fe932 on this
+    branch). It is written generally and not tuned to any validation claim. Its wording drew on run 2's refusal kinds (counts only: no meaning
     assumption, a call with no parties, a phone's name proposed as an account).
-  - `PROPOSED_CHANGES.md` gains the signed prompt and the CLAUDE.md line naming agents as local
-    jobs that only propose.
+  - CLAUDE.md gains the line naming agents as local jobs that only propose, signed and written
+    by Arsh in the same commit. Both are recorded in `PROPOSED_CHANGES.md`.
   - No rule, prompt, pin, contract, schema, gold or scorer file changes, and nothing under
     `eval/validation/` or the `validation-v1-run2` tag. Off by default, so no default run changes.
 - Where: PR #159 (branch `claude/project-thread-6i2msb-testability`)
@@ -81,7 +81,9 @@
     again, and gives no go/no-go.
   - The step's effect on a real model is not measured: that needs the 14B on the Mac and a
     held-out set. `make check` passes; its eval numbers are in the PR.
-- Open: Arsh signs `agent_testability.md` and the CLAUDE.md line, and sets X, Y and CAP.
+- Open: Arsh sets X, Y and CAP. He asked on 2026-10-28 (07:44Z) for the agents to be on by
+  default in demos and pilots; that is later work (plans/agents-on-by-default.md), and this PR
+  keeps the step off by default and eval only, as the signed CLAUDE.md line says.
   - The go/no-go set (held-out synthetic claims with signed sheets, written by someone other
     than the prompt's author) does not exist yet.
   - The byte-identical Mac GPU repeat and the time budget are unmeasured.
@@ -98,4 +100,4 @@
   claim the assumption filler left untested; code checks each try with the filler's checks and
   against the signed sheet, only an examiner's acceptance uses it, each try is logged and
   re-run by verify-bundle, and the report marks it "Proposed by agent, accepted by examiner".
-  Its prompt is not signed yet and its effect is unmeasured".
+  Its prompt is signed (v1.0); its effect is unmeasured".
