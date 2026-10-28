@@ -1491,12 +1491,14 @@ def new_claim_page(conn: sqlite3.Connection, page: Page) -> str:
     else:
         body += page.form(
             "/claim/add",
-            f"<p>Claim id <input type='text' name='id' required maxlength='20' value='C{n:02d}'>"
-            f" Type <select name='type'>{types}</select></p>"
-            f"<p>Paragraph<br><select name='paragraph'>{opts}</select></p>"
-            "<p>Claim text, as the document states it<br>"
-            "<textarea name='text' rows='4' required></textarea></p>"
-            "<button type='submit'>Add claim</button> <span class='muted'>A new claim needs a "
+            "<p><label>Claim id <input type='text' name='id' required maxlength='20' "
+            f"value='C{n:02d}'></label>"
+            f" <label>Type <select name='type'>{types}</select></label></p>"
+            f"<p><label>Paragraph <select name='paragraph'>{opts}</select></label></p>"
+            "<p><label>Claim text, as the document states it "
+            "<textarea name='text' rows='4' required></textarea></label></p>"
+            "<button type='submit' class='primary'>Add claim</button> <span class='muted'>A new "
+            "claim needs a "
             "full audit before it has a verdict.</span>",
         )
     return page.wrap("Add a claim", body)
@@ -1797,10 +1799,11 @@ def cases_page(
         "<h2>New case</h2>"
         + page.form(
             "/case/new",
-            "<input type='text' name='name' required maxlength='80' class='wide' "
-            "placeholder='Case name, for example: United States v. Petrov (synthetic)'><br>"
-            "<label><input type='checkbox' name='encrypt' value='1' checked> Encrypt this case "
-            "with a passphrase (recommended)</label><br>"
+            "<p><label>Case name <input type='text' name='name' required maxlength='80' "
+            "class='wide' placeholder='For example: United States v. Petrov (synthetic)'>"
+            "</label></p>"
+            "<p><label><input type='checkbox' name='encrypt' value='1' checked> Encrypt this case "
+            "with a passphrase (recommended)</label></p>"
             "<input type='password' name='passphrase' autocomplete='new-password' minlength='12' "
             "placeholder='Passphrase' aria-label='Passphrase'> "
             "<input type='password' name='passphrase2' autocomplete='new-password' "
