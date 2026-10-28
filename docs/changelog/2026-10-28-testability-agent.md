@@ -1,4 +1,4 @@
-## 2026-10-28: Testability agent behind a flag, eval only (step 3 of the agent plan)
+## 2026-10-28: Testability agent behind a flag, eval only (step 3 of the agent plan) (#159)
 - Changed: step 3 of the agent plan (approved by Arsh 2026-10-27 17:29Z, `plans/agentic.md`;
   design note `plans/testability.md`). New `core/audit/testability.py`, off by default
   (`Components.testability`) and eval only: it cannot run without a signed assumption sheet to
@@ -47,7 +47,7 @@
     jobs that only propose.
   - No rule, prompt, pin, contract, schema, gold or scorer file changes, and nothing under
     `eval/validation/` or the `validation-v1-run2` tag. Off by default, so no default run changes.
-- Where: branch `claude/project-thread-6i2msb-testability`
+- Where: PR #159 (branch `claude/project-thread-6i2msb-testability`)
 - Verified: new `tests/test_testability.py`, 26 tests on synthetic case01 with scripted models:
   - the draft prompt (and a signed copy, once there is one) carries every placeholder, and the
     answer has no field for the claim;
