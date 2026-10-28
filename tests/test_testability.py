@@ -589,13 +589,17 @@ def test_with_no_expert_the_eval_never_accepts_a_repair(tmp_path):
         db.close()
 
 
-def test_the_eval_never_runs_the_step_on_a_hidden_case(monkeypatch):
+def test_the_eval_never_runs_the_step_on_a_hidden_case(monkeypatch, capsys):
     """Held-out scores never hold gold-filtered repairs: refused before anything is read."""
     with pytest.raises(SystemExit, match="hidden case"):
         rp.testability_step(None, "case02", None, 1, None, "simulated")
     monkeypatch.setattr(rp, "is_hidden", lambda case: case == "case99")
     with pytest.raises(SystemExit, match="hidden case"):
         rp.testability_step(None, "case99", None, 1, None, "simulated")
+    # The command line refuses before it builds the case or loads a model.
+    with pytest.raises(SystemExit):
+        rp.main(["--mode", "real", "--case", "case02", "--testability", "1"])
+    assert "never runs on a hidden case" in capsys.readouterr().err
 
 
 def test_the_eval_refuses_the_step_without_a_cap_or_outside_real_mode():

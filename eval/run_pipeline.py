@@ -884,6 +884,11 @@ def main(argv: list[str] | None = None) -> int:
         )
     if args.testability_prompt is not None and args.testability is None:
         parser.error("--testability-prompt goes with --testability CAP")
+    if args.testability is not None and (
+        args.case == "case02"
+        or ((synthetic_dir(args.case) / "case.json").exists() and is_hidden(args.case))
+    ):
+        parser.error("--testability never runs on a hidden case")
     if args.mode == "hostile" and args.case != "case01":
         parser.error("the red-team gate lists case01's structural claims; run it on case01")
     spec = args.assumption_spec
