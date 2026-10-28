@@ -49,7 +49,7 @@ CSS = """
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) 150px; }
 .tl > li.flag { border-color: var(--con-line); }
 .tl .said { font-size: 14.5px; }
-.tl .meta, .gap .meta { font: 400 11.5px var(--mono); color: var(--muted); }
+.tl .meta, .gap .meta { font: 400 12px var(--sans); color: var(--muted); }
 .tl .recs { font-size: 13px; }
 .tl .recs ul { margin: 4px 0; padding-left: 18px; }
 .tl .st { text-align: right; }
@@ -76,7 +76,7 @@ CSS = """
 .bars span { flex: 1; background: #3f3d38; border-radius: 2px 2px 0 0; min-height: 0; }
 .bars span.z { background: transparent; }
 .bars span.g { background: var(--unp-bg); border: 1px dashed var(--unp-line); border-radius: 2px; }
-.axis { display: flex; justify-content: space-between; font: 10.5px var(--mono);
+.axis { display: flex; justify-content: space-between; font: 11.5px var(--sans);
   color: var(--muted); }
 @media (max-width: 760px) {
   .tl > li { grid-template-columns: minmax(0, 1fr); }

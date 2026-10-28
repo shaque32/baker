@@ -35,14 +35,16 @@ for arg in "$@"; do
   esac
 done
 
-say() { printf '\n== %s\n' "$*"; }
-stop() { printf '\nSTOPPED: %s\n' "$*"; exit 1; }
+# Bold step titles and a plain finish, like the app; no colour codes when output is not a terminal.
+if [ -t 1 ]; then B=$'\033[1m' R=$'\033[0m'; else B="" R=""; fi
+say() { printf '\n%s%s%s\n' "$B" "$*" "$R"; }
+stop() { printf '\n%sStopped:%s %s\n' "$B" "$R" "$*"; exit 1; }
 # One pinned value from pins.json (the Windows build's pins: the same runtime and model).
 pin() { "$APP/.venv/bin/python" -c "import json, sys; print(json.load(open(sys.argv[1]))$1)" "$PINS"; }
 
 [ -f "$HERE/pyproject.toml" ] && [ -d "$HERE/core" ] || stop "run this from the Mabillon folder"
 
-say "1/6 Checking this Mac"
+say "Step 1 of 6: Checking this Mac"
 [ "$(uname -s)" = "Darwin" ] || stop "this installer is for a Mac; on Windows use Mabillon-Setup.exe"
 [ "$(uname -m)" = "arm64" ] || stop "Mabillon needs an Apple silicon Mac (M1 or later)"
 RAM_GB=$(( $(sysctl -n hw.memsize) / 1073741824 ))
@@ -56,7 +58,7 @@ fi
 NEED_GB=3; [ "$WANT_MODEL" = 1 ] && NEED_GB=15
 [ "$FREE_GB" -ge "$NEED_GB" ] || stop "needs ${NEED_GB} GB free disk; ${FREE_GB} GB free"
 
-say "2/6 Apple command line tools"
+say "Step 2 of 6: Apple command line tools"
 if ! xcode-select -p >/dev/null 2>&1; then
   xcode-select --install || true
   stop "a window asks to install Apple's command line tools. Click Install, wait until it
@@ -64,7 +66,7 @@ finishes (10 to 20 minutes), then run this installer again."
 fi
 echo "Installed."
 
-say "3/6 Python"
+say "Step 3 of 6: Python"
 export PATH="$HOME/.local/bin:$PATH"
 if ! command -v uv >/dev/null 2>&1; then
   echo "Installing uv (from astral.sh) into ~/.local/bin"
@@ -74,7 +76,7 @@ command -v uv >/dev/null 2>&1 || stop "uv did not install; check the internet co
 mkdir -p "$APP"
 [ -x "$APP/.venv/bin/python" ] || uv venv --python 3.12 "$APP/.venv"
 
-say "4/6 Mabillon and the model runtime (building it takes 5 to 10 minutes)"
+say "Step 4 of 6: Mabillon and the model runtime (building it takes 5 to 10 minutes)"
 if [ "$HERE" != "$APP/baker" ]; then
   mkdir -p "$APP/baker"
   rsync -a --delete --exclude .git --exclude .venv --exclude 'eval/out' \
@@ -110,7 +112,7 @@ if [ ! -f "$MODELS/$MODEL_FILE" ]; then
 fi
 MODEL_PATH="$MODELS/$MODEL_FILE"
 
-say "5/6 The model ($MODEL_FILE, about 9 GB)"
+say "Step 5 of 6: The model ($MODEL_FILE, about 9 GB)"
 if [ -f "$MODEL_PATH" ] && [ "$(shasum -a 256 "$MODEL_PATH" | cut -d' ' -f1)" = "$MODEL_SHA" ]; then
   echo "Already here, SHA-256 checked."
 elif [ "$WANT_MODEL" = 1 ]; then
@@ -128,7 +130,7 @@ else
   echo "Skipped. Copy $MODEL_FILE into $MODELS later and run the installer again."
 fi
 
-say "6/6 Settings, checks and launchers"
+say "Step 6 of 6: Settings, checks and launchers"
 if [ -f "$CONFIG" ]; then
   echo "Keeping the model setting you already have: $CONFIG"
 elif [ -f "$OLD_CONFIG" ]; then
@@ -159,7 +161,7 @@ for name in "Baker" "Baker demo"; do
   fi
 done
 
-say "Done"
+say "Mabillon is installed."
 cat <<EOF
 Double-click "Mabillon" on your Desktop to open your cases, or "Mabillon demo" for the demo case.
 Mabillon opens in your browser at http://127.0.0.1 and runs only on this Mac.
