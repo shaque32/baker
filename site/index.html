@@ -14,7 +14,7 @@
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preload" href="fonts/instrument-serif-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/ibm-plex-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="styles.css?v=08f5bb9c">
+<link rel="stylesheet" href="styles.css?v=6bba7f5b">
 <script src="main.js?v=61ba3671" defer></script>
 </head>
 <body>
@@ -118,14 +118,23 @@
         <p>Mabillon shows what was said around each quote it can place in the extraction. It can miss a
           record, so your own search still counts.</p>
       </div>
-      <ol class="thread reveal" aria-label="Example messages around a quote, with made-up data">
-        <li><time>21:03</time><b>REYES</b><span>still at my sister's</span></li>
-        <li class="left"><time>21:05</time><b>PETROV</b><span>what time u leaving</span><em>Left out</em></li>
-        <li class="quoted"><time>21:07</time><b>REYES</b><span>bring it tonight</span><em>Quoted in ¶ 14</em></li>
-        <li class="left"><time>21:07</time><b>REYES</b><span>the charger, mine died</span><em>Left out</em></li>
-        <li class="left"><time>21:09</time><b>PETROV</b><span>lol ok</span><em>Left out</em></li>
-        <li><time>21:30</time><b>PETROV</b><span>outside</span></li>
-      </ol>
+      <figure class="convo reveal" aria-label="Example messages around a quote, with made-up data">
+        <blockquote class="convo-quote">
+          <p class="muted small">Affidavit ¶ 14</p>
+          <p>REYES sent PETROV a text message reading <mark>“bring it tonight.”</mark></p>
+        </blockquote>
+        <div class="convo-window">
+          <div class="convo-head"><span>Messages, March 3</span><span class="muted">Made-up data</span></div>
+          <ol class="thread">
+            <li><time>21:03</time><b>REYES</b><span>still at my sister's</span></li>
+            <li class="left"><time>21:05</time><b>PETROV</b><span>what time u leaving</span><em>Left out</em></li>
+            <li class="quoted"><time>21:07</time><b>REYES</b><span>bring it tonight</span><em>Quoted in ¶ 14</em></li>
+            <li class="left"><time>21:07</time><b>REYES</b><span>the charger, mine died</span><em>Left out</em></li>
+            <li class="left"><time>21:09</time><b>PETROV</b><span>lol ok</span><em>Left out</em></li>
+            <li><time>21:30</time><b>PETROV</b><span>outside</span></li>
+          </ol>
+        </div>
+      </figure>
     </div>
   </section>
 
@@ -149,13 +158,13 @@
         <h2>Built to be re-checked</h2>
         <p>Every status traces back to the record. Every step is logged, and the whole case can be re-run by the other side's examiner.</p>
       </div>
-      <div class="cols three list reveal">
-        <div><h3>Inputs hashed</h3><p>Every file opens read-only, and its SHA-256 goes into the report.</p></div>
-        <div><h3>Tamper-evident log</h3><p>A hash-chained audit log, checked each time a case opens. The report prints its last hash.</p></div>
-        <div><h3>Quotes verified</h3><p>A quote a model points to is checked against the record. One that does not match is thrown away.</p></div>
-        <div><h3>Careful about absence</h3><p>“Not found” never means “did not happen.” It says what was searched and what the source could show.</p></div>
-        <div><h3>Identities stay proposed</h3><p>A number or handle is linked to a person only when you confirm it.</p></div>
-        <div><h3>A bundle to re-check</h3><p>Opposing counsel's examiner can re-check the verdicts offline, with no account and no network.</p></div>
+      <div class="proofs reveal">
+        <div><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path class="draw" pathLength="1" d="M6 3h8l4 4v14H6z"/><path class="draw" pathLength="1" d="M9.5 11h5M9.5 15h5M11.5 9l-1 8M14 9l-1 8"/></svg><h3>Inputs hashed</h3><p>Every file opens read-only, and its SHA-256 goes into the report.</p></div>
+        <div><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect class="draw" pathLength="1" x="7" y="2.5" width="10" height="4" rx="1"/><rect class="draw" pathLength="1" x="7" y="10" width="10" height="4" rx="1"/><rect class="draw" pathLength="1" x="7" y="17.5" width="10" height="4" rx="1"/><path class="draw" pathLength="1" d="M12 6.5V10M12 14v3.5"/></svg><h3>Tamper-evident log</h3><p>A hash-chained audit log, checked each time a case opens. The report prints its last hash.</p></div>
+        <div><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path class="draw" pathLength="1" d="M4 5h16v11H10l-5 4v-4H4z"/><path class="draw" pathLength="1" d="M8.5 10.5l2.4 2.4 4.6-4.9"/></svg><h3>Quotes verified</h3><p>A quote a model points to is checked against the record. One that does not match is thrown away.</p></div>
+        <div><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6" stroke-dasharray="2.2 2.4"/><path class="draw" pathLength="1" d="M15 15l5.5 5.5"/></svg><h3>Careful about absence</h3><p>“Not found” never means “did not happen.” It says what was searched and what the source could show.</p></div>
+        <div><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle class="draw" pathLength="1" cx="5.5" cy="12" r="3"/><circle class="draw" pathLength="1" cx="18.5" cy="12" r="3"/><path d="M9 12h6" stroke-dasharray="1.6 1.8"/></svg><h3>Identities stay proposed</h3><p>A number or handle is linked to a person only when you confirm it.</p></div>
+        <div><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path class="draw" pathLength="1" d="M3.5 7.5L12 3.5l8.5 4v9L12 20.5l-8.5-4z"/><path class="draw" pathLength="1" d="M3.5 7.5L12 11.5l8.5-4M12 11.5v9"/></svg><h3>A bundle to re-check</h3><p>Opposing counsel's examiner can re-check the verdicts offline, with no account and no network.</p></div>
       </div>
     </div>
   </section>
