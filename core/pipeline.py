@@ -86,6 +86,7 @@ from datetime import UTC, datetime
 
 from core import build, db
 from core.audit import challenge, invariants, quotes, rules, stance
+from core.audit import testability as testability_mod
 from core.audit._llm_json import ModelUnavailable
 from core.contracts import (
     CONTRACTS_VERSION,
@@ -368,6 +369,9 @@ class Components:
     # The challenge step (core/audit/challenge.py): code's counter-searches on claims close to
     # SUPPORTED, storing only doubt. Off by default (`mabillon audit --challenge`).
     challenge: bool = False
+    # The testability step (core/audit/testability.py): the local model's second try at a claim
+    # the filler left untested, checked by code against the signed sheet. Eval only, off (None).
+    testability: testability_mod.Testability | None = None
     # The case's cloud choice (core/casework/cloud.py CloudChoice.record()), kept in the run's
     # config so the report says why this run's stance labels came from where they did.
     cloud: dict[str, object] | None = None
@@ -390,6 +394,8 @@ class Components:
         }
         for c in self.checks:
             out[f"check:{c.name}@{c.version}"] = name(c)
+        if self.testability is not None:
+            out["testability"] = name(self.testability)
         return out
 
     def fake(self) -> bool:
@@ -513,6 +519,8 @@ class RunResult:
     not_tested: dict[str, str] = field(default_factory=dict)  # claim id -> why nothing was checked
     # claim id -> the challenge step's searches (core/audit/challenge.py), one audit entry each
     challenge: dict[str, list[dict[str, object]]] = field(default_factory=dict)
+    # claim id -> the testability step's tries at it (core/audit/testability.py)
+    testability: dict[str, testability_mod.Repair] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------- helpers
@@ -1238,9 +1246,13 @@ class _Run:
         assumptions = list(c.assumptions.build(claim))
         if not any(a.is_core for a in assumptions):
             refused = getattr(c.assumptions, "refused", None)
-            self.result.not_tested[claim.id] = not_tested_reason(
-                refused(claim.id) if callable(refused) else []
-            )
+            why = refused(claim.id) if callable(refused) else []
+            if c.testability is not None:  # only an examiner's acceptance puts its repair here
+                repair = c.testability.repair(claim, why)
+                self.result.testability[claim.id] = repair
+                assumptions = repair.assumptions or assumptions
+            if not any(a.is_core for a in assumptions):
+                self.result.not_tested[claim.id] = not_tested_reason(why)
         for a in assumptions:
             if a.claim_id != claim.id:
                 raise invariants.InvariantViolation(f"assumption {a.id} built for {a.claim_id}")
@@ -1419,6 +1431,7 @@ def run_audit(
         "fake": result.fake,
         "label_settled": components.label_settled,
         **({"challenge": challenge.VERSION} if components.challenge else {}),
+        **({"testability": testability_mod.VERSION} if components.testability else {}),
         "claim_order": [cl.id for cl in claims],
         "components": components.names(),
         **({"cloud": components.cloud} if components.cloud is not None else {}),
@@ -1482,6 +1495,24 @@ def run_audit(
             run.claim_calls = []
             with conn:  # one claim per transaction: a stop keeps every finished claim's work
                 decision = run.claim(claim, stipulations)
+                repair = result.testability.get(claim.id)
+                for entry in repair.entries() if repair is not None else ():  # one per try
+                    audit_log.append(
+                        conn,
+                        _now(clock),
+                        "system",
+                        testability_mod.REPAIR_ACTION,
+                        {"run_id": result.run_id, **entry},
+                    )
+                accepted = repair.accept_entry() if repair is not None else None
+                if repair is not None and accepted is not None:
+                    audit_log.append(  # the examiner's, so the report can say who accepted it
+                        conn,
+                        _now(clock),
+                        str(repair.accepted_by),
+                        testability_mod.ACCEPT_ACTION,
+                        {"run_id": result.run_id, **accepted},
+                    )
                 audit_log.append(  # inside the claim's write transaction, after its rows
                     conn,
                     _now(clock),

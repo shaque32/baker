@@ -32,6 +32,10 @@ memory, built from core/schema.sql, and checked in this order; any failure fails
    step's searches (core/audit/challenge.py), when the run made them: each item one stored is
    a contradicts or complicates item of its claim, and, in a bundle that holds every record,
    each search gives again the records its challenge.query entry recorded, with no model.
+   The testability step's tries (core/audit/testability.py), when the run made them: every
+   repaired assumption a claim kept was accepted by an expert, and, in a bundle that holds every
+   record, code's lookups and code's checks on each stored answer give again what its
+   testability.repair entry recorded, with no model.
 11. Verdicts: the verdict rules, re-applied to the recorded labels, checks, stipulations and the
    expert decisions as they stood when each verdict was decided, give every verdict exactly
    (verdict, basis, reasons, coverage, citations) at the logged time, and the expert's
@@ -55,7 +59,7 @@ from pathlib import Path
 from typing import Any
 
 from core import db, encryption, pipeline
-from core.audit import challenge, quotes, rules, stance
+from core.audit import challenge, quotes, rules, stance, testability
 from core.audit import review as review_mod
 from core.audit._llm_json import BadModelOutput, parse_json_object
 from core.audit._local_model import RECEIVED_ACTION
@@ -224,6 +228,7 @@ def _checks(
     _stipulations(conn, out)
     _identity(conn, out)
     _challenge(conn, run, manifest, out)
+    _testability(conn, run, manifest, out)
     _verdicts(conn, run, out)
     _report(conn, zf, manifest, out, withheld)
 
@@ -1440,6 +1445,193 @@ def _challenge(
             "challenge",
             f"the challenge step's {len(entries)} searches stored only contradicts and "
             "complicates items of their own claims",
+        )
+
+
+# ---------------------------------------------------------------- testability step
+
+# Logged actions that change what the testability step's lookups and checks read.
+_REPAIR_INPUTS = frozenset(
+    {
+        "person.add",
+        "person.remove",
+        "stipulation.confirm",
+        "stipulation.withdraw",
+        "device.names",
+        "case.import",
+        "import",
+        "import.format",
+    }
+)
+
+
+def _repair_answer(conn: sqlite3.Connection, call_id: str | None) -> list[dict[str, Any]] | str:
+    """A stored answer as the step read it: its items, or why it was unusable."""
+    from core.audit.assumption_filler import _validate_list
+
+    row = conn.execute(
+        "SELECT raw_output, outcome, error FROM model_calls WHERE id = ?", (call_id,)
+    ).fetchone()
+    if row is None:
+        return "the model call is not in the bundle"
+    if row[1] != "ok":
+        return str(row[2] or "")
+    try:
+        return _validate_list(parse_json_object(row[0]))
+    except BadModelOutput as e:
+        return e.reason
+
+
+def _testability(
+    conn: sqlite3.Connection, run: dict[str, Any], manifest: dict[str, Any], out: _Out
+) -> None:
+    """The testability.repair and testability.accept entries of the audit the run's evidence
+    came from. Every repaired assumption a claim kept was accepted, by an expert, as the repair
+    proposed it. Code's lookups and checks, re-run on these tables and the stored answer with no
+    model, give each try's outcome again; they read the people, phones and accounts, so a
+    scoped bundle is noted, not re-run."""
+    from core.audit._llm_json import load_prompt
+    from core.audit.assumption_filler import LocalAssumptionFiller
+
+    log = _log(conn)
+    source = _evidence_run(conn, log, run)
+    rid = source["run_id"]
+    repairs = [
+        p
+        for _s, _a, _c, act, p in log
+        if act == testability.REPAIR_ACTION and p.get("run_id") == rid
+    ]
+    accepts = [(c, p) for _s, _a, c, act, p in log if act == testability.ACCEPT_ACTION]
+    if not repairs and not any(p.get("run_id") == rid for _c, p in accepts):
+        return
+    if "testability" not in source["config"]:
+        out.add(
+            FAIL,
+            "testability",
+            "the log has testability repairs for a run that did not run the step",
+        )
+        return
+    bad = 0
+    proposed: dict[str, list[str]] = {}
+    for p in repairs:
+        if p.get("outcome") == "proposed":
+            proposed[str(p.get("claim_id"))] = sorted(p.get("assumption_ids") or [])
+    accepted = {
+        (str(p.get("claim_id")), tuple(sorted(p.get("assumption_ids") or [])))
+        for c, p in accepts
+        if str(c).startswith("expert:")
+    }
+    for c, p in accepts:
+        if not str(c).startswith("expert:"):
+            out.add(
+                FAIL,
+                "testability",
+                f"{p.get('claim_id')}: a repair was accepted by {c}, not by an expert",
+            )
+            bad += 1
+    for claim_id, ids in sorted(proposed.items()):
+        kept = set(source["manifest"].get(claim_id, {}).get("assumptions", []))
+        if kept & set(ids) and (claim_id, tuple(ids)) not in accepted:
+            out.add(
+                FAIL,
+                "testability",
+                f"{claim_id}: the claim kept assumptions the testability step proposed, and no "
+                "expert accepted them",
+            )
+            bad += 1
+    scope = manifest.get("scope")
+    whole = scope == export.FULL or (
+        isinstance(scope, dict) and "records" in (scope.get("included") or [])
+    )
+    started = _dt(source["started_at_utc"])
+    changed = sorted(
+        {act for _s, at, _c, act, _p in log if act in _REPAIR_INPUTS and _dt(at) > started}
+    )
+    versions = {p.get("testability") for p in repairs}
+    if not repairs:
+        pass
+    elif not whole:
+        out.add(
+            NOTE,
+            "testability",
+            f"the testability step's {len(repairs)} tries were not re-run: the bundle leaves out "
+            "the people, phones and accounts they looked up (include records)",
+        )
+        repairs = []
+    elif versions != {testability.VERSION}:
+        out.add(
+            NOTE,
+            "testability",
+            f"the testability step's {len(repairs)} tries were not re-run: they were made by "
+            f"another version of the step ({sorted(map(str, versions))}) than this copy's "
+            f"({testability.VERSION})",
+        )
+        repairs = []
+    elif changed:
+        out.add(
+            NOTE,
+            "testability",
+            f"the testability step's {len(repairs)} tries were not re-run: {', '.join(changed)} "
+            "after the run changed what they look up",
+        )
+        repairs = []
+    if repairs:
+        claims = {c.id: c for c in pipeline.load_claims(conn)}
+        filler = LocalAssumptionFiller(None, conn, template=load_prompt("assumptions.md"))  # type: ignore[arg-type]
+        for p in repairs:
+            claim = claims.get(str(p.get("claim_id")))
+            if claim is None:
+                out.add(
+                    FAIL,
+                    "testability",
+                    f"{p.get('claim_id')}: a repaired claim is not in the bundle",
+                )
+                bad += 1
+                continue
+            para = filler.paragraph_text(claim)
+            found = [x.payload() for x in testability.lookups(filler, claim, para)]
+            prompt = conn.execute(
+                "SELECT prompt FROM model_calls WHERE id = ?", (p.get("model_call_id"),)
+            ).fetchone()
+            told = [*map(str, p.get("refused_before") or []), *(x["written"] for x in found)]
+            answer = _repair_answer(conn, p.get("model_call_id"))
+            sheet = p.get("sheet")
+            if isinstance(answer, str):
+                want = {"outcome": "invalid", "reasons": [answer], "assumption_ids": []}
+            else:
+                got, reasons, names, assumptions = testability.check_answer(
+                    filler, claim, answer, testability.Named.from_payload(sheet) if sheet else None
+                )
+                want = {
+                    "outcome": got,
+                    "reasons": reasons,
+                    "assumption_ids": [a.id for a in assumptions],
+                }
+            if (
+                found != p.get("lookups")
+                or prompt is None
+                or not all(t in prompt[0] for t in told)
+                or {k: p.get(k) for k in want} != want
+            ):
+                out.add(
+                    FAIL,
+                    "testability",
+                    f"{claim.id}: try {p.get('attempt')} of the testability step, re-run on these "
+                    "tables with its stored answer, does not give what its log entry recorded",
+                )
+                bad += 1
+    if not bad:
+        n = len({p.get("claim_id") for p in repairs})
+        out.add(
+            PASS,
+            "testability",
+            (
+                f"the testability step's {len(repairs)} tries on {n} claims give the same "
+                "lookups and outcomes again, with no model; "
+                if repairs
+                else ""
+            )
+            + "every repaired assumption a claim kept was accepted by an expert",
         )
 
 

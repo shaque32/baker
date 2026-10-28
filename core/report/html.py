@@ -43,6 +43,9 @@ Display rules:
   each evidence item, check or stipulation the rules relied on, or, for one not covered, what
   was found and not relied on; who proposed each (a named model, code, or the expert) and the
   expert's step. A model's label shows as model proposed until an expert accepts it.
+- An assumption the testability step proposed (core/audit/testability.py, eval only) says
+  "Proposed by agent, accepted by examiner" with the examiner's name, in the claim's assumption
+  table and its verdict trace, read from the log's testability.accept entries.
 - "What can be checked again" says the verdicts re-derive from the recorded labels and expert
   decisions, names each model whose labels they are, and says a hosted model's labels cannot be
   regenerated exactly (HOSTED). It never claims a local re-run gives identical labels.
@@ -79,7 +82,7 @@ from datetime import datetime
 from pathlib import Path
 
 from core import build, pipeline
-from core.audit import invariants, rules
+from core.audit import invariants, rules, testability
 from core.audit.assumption_filler import WIDER_APPS
 from core.contracts import (
     AssumptionKind,
@@ -159,7 +162,11 @@ from core.review.withheld import summary as withheld_summary
 # notice for a UFDR stating report version 7.48. The UFDR "synthetic packages only" item is gone.
 # 0.19.0: a claim that names or rests on an app holding more than one kind of message (iOS
 # Native Messages: iMessages and SMS together) says so, on the claim page too.
-REPORT_VERSION = "0.19.0"
+# 0.21.0 (after #149's 0.20.0): an assumption the testability step proposed and an examiner
+# accepted (core/audit/testability.py, eval only) says "Proposed by agent, accepted by examiner"
+# with the examiner, in its claim's assumption table and verdict trace. A run without the step
+# renders as before.
+REPORT_VERSION = "0.21.0"
 
 
 @dataclass(frozen=True)
@@ -421,6 +428,16 @@ def _expert_step(conn: sqlite3.Connection, x: EvidenceItem, decided_at: datetime
     return f"Local AI reviewer dismissed; no expert has decided it{later}"
 
 
+def repair_marks(conn: sqlite3.Connection) -> dict[str, str]:
+    """Assumption id -> the line saying an examiner accepted the testability step's proposal of
+    it (core/audit/testability.py, read from the log)."""
+    return {
+        aid: "<br><span class='muted'>Proposed by agent, accepted by examiner "
+        f"({e(actor.removeprefix('expert:'))})</span>"
+        for aid, actor in testability.accepted_repairs(conn).items()
+    }
+
+
 def verdict_trace(conn: sqlite3.Connection, st: ClaimState) -> str:
     """How a decided claim's verdict was reached, per core assumption: each evidence item, check
     or stipulation the rules relied on, or, for an assumption not covered, what was found for it
@@ -433,6 +450,7 @@ def verdict_trace(conn: sqlite3.Connection, st: ClaimState) -> str:
     checks = {c.id: c for c in st.checks}
     stips = {s.id: s for s in pipeline.load_stipulations(conn)}
     assumptions = {a.id: a for a in st.assumptions}
+    marks = repair_marks(conn)
 
     def row(label: str, cited: str, relied: bool = True) -> str:
         if cited in evidence:
@@ -478,6 +496,7 @@ def verdict_trace(conn: sqlite3.Connection, st: ClaimState) -> str:
     for cv in decision.coverage:
         a = assumptions.get(cv.assumption_id)
         label = e(a.text) if a else f"<span class='mono'>{e(cv.assumption_id)}</span>"
+        label += marks.get(cv.assumption_id, "")
         tier = cv.tier.value if cv.tier else "?"
         covered = f"covered at {e(tier)}" if cv.covered else "not covered"
         label += f"<br><span class='muted'>{covered}</span>"
@@ -852,6 +871,7 @@ def _claim_block(
             "<table><thead><tr><th>Assumption</th><th>Kind</th><th>Core</th>"
             "<th>Tier at creation</th><th>Covered (computed by the rules)</th></tr></thead>"
         )
+        marks = repair_marks(conn)
         for a in st.assumptions:
             cv = coverage.get(a.id)
             cov = (
@@ -862,7 +882,7 @@ def _claim_block(
                 else "no"
             )
             out.append(
-                f"<tr><td>{e(a.text)}</td><td>{e(a.kind.value)}</td>"
+                f"<tr><td>{e(a.text)}{marks.get(a.id, '')}</td><td>{e(a.kind.value)}</td>"
                 f"<td>{'yes' if a.is_core else 'no'}</td><td>{e(a.tier.value)}</td>"
                 f"<td>{e(cov)}</td></tr>"
             )
