@@ -44,6 +44,7 @@ from core.report.html import (
     format_notice,
     forwarded_warning,
     labelled_by,
+    mixed_app_note,
     quote_check_label,
     rationale_html,
     record_line,
@@ -1128,6 +1129,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
     out.append(_gap_lines(st))  # the same lines as the overview and the report
     out.append(claim_format_notices(conn, st))  # the same notices as the report's claim
     out.append(forwarded_warning(conn, st))
+    out.append(mixed_app_note(conn, st))
     if d is not None:
         out.append(
             "<details><summary>Why (reasons from the verdict rules)</summary><ul>"

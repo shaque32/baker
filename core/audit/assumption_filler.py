@@ -160,9 +160,10 @@ APP_ALIASES: dict[str, tuple[str, ...]] = {
     "microsoft teams": ("Teams",),
     "native messages": ("iMessage", "iMessages", "MMS", *CHANNEL_WORDS["sms"]),
 }
-# Apps that hold more than the word that names them: iOS "Native Messages" holds iMessage and
-# SMS together.
-WIDER_APPS = frozenset({"native messages"})
+# Apps that hold more than the word that names them, with what they hold: iOS "Native Messages"
+# holds iMessage and SMS together. The report and the claim page say so on a claim that names
+# or rests on one (core/report/html.py, mixed_app_note).
+WIDER_APPS: dict[str, str] = {"native messages": "iMessages and SMS"}
 # Checks whose answer depends on every record on the app they search. On a wider app a count
 # would count, and an absence would fail on, messages the claim does not name.
 WHOLE_APP_TEMPLATES = frozenset({"message_count", "no_contact"})
