@@ -1,0 +1,249 @@
+{
+  "case_id": "case03",
+  "description": "Synthetic case for measuring a challenge step: counter-evidence placed out of the fixed retrieval's reach, word-variant counter-evidence, clean claims with decoys, and claims written with defined terms. Two phones, English and Russian.",
+  "synthetic": true,
+  "generator": "case03-gen 0.1.0",
+  "seed": 20260327,
+  "devices": [
+    {
+      "source_id": "item1",
+      "label": "Item 1: Apple iPhone 14 Pro seized from Pavel Orlov",
+      "model": "Apple iPhone 14 Pro (A2650)",
+      "timezone": "America/New_York",
+      "report_time": "utc",
+      "extraction_type": "logical",
+      "owner": "Pavel Orlov",
+      "messages": 634,
+      "calls": 21,
+      "contacts": 7
+    },
+    {
+      "source_id": "item2",
+      "label": "Item 2: Samsung Galaxy S23 seized from Ruben Diaz",
+      "model": "Samsung Galaxy S23 (SM-S911U)",
+      "timezone": "America/New_York",
+      "report_time": "local",
+      "extraction_type": "file_system",
+      "owner": "Ruben Diaz",
+      "messages": 631,
+      "calls": 26,
+      "contacts": 9
+    }
+  ],
+  "sources": [
+    {
+      "source_id": "item1",
+      "file": "item1.xlsx",
+      "kind": "cellebrite_excel",
+      "fidelity": "curated_report",
+      "sha256": "d26dcecfee390395a77aa965389e94e17fbb8046a82f463d227c7854f08d166b"
+    },
+    {
+      "source_id": "item2",
+      "file": "item2.xlsx",
+      "kind": "cellebrite_excel",
+      "fidelity": "curated_report",
+      "sha256": "81d245279467da70c18ac30f5bbc429f375912afdff667988cab49e9d50b4594"
+    }
+  ],
+  "plants": {
+    "C01": {
+      "group": 3,
+      "plant": "clean_contact",
+      "verdict": "supported",
+      "direction": null,
+      "counter_records": [],
+      "decoy_records": [
+        "contact:item2:Contacts!4#1"
+      ]
+    },
+    "C02": {
+      "group": 3,
+      "plant": "clean_count",
+      "verdict": "supported",
+      "direction": null,
+      "counter_records": [],
+      "decoy_records": [
+        "msg:item1:Chats!520",
+        "msg:item1:Chats!521",
+        "msg:item2:Chats!188"
+      ]
+    },
+    "C03": {
+      "group": 2,
+      "plant": "misspelled_handoff",
+      "verdict": "unproven",
+      "direction": null,
+      "counter_records": [
+        "msg:item1:Chats!596",
+        "msg:item1:Chats!598"
+      ],
+      "decoy_records": []
+    },
+    "C04": {
+      "group": 1,
+      "plant": "clock_printed_utc",
+      "verdict": "unproven",
+      "direction": "clock",
+      "counter_records": [
+        "call:item1:Call Log!8"
+      ],
+      "decoy_records": []
+    },
+    "C05": {
+      "group": 3,
+      "plant": "clean_message",
+      "verdict": "supported",
+      "direction": null,
+      "counter_records": [],
+      "decoy_records": [
+        "msg:item1:Chats!261",
+        "msg:item1:Chats!62"
+      ]
+    },
+    "C06": {
+      "group": 4,
+      "plant": "alias_reversed_sender",
+      "verdict": "contradicted",
+      "direction": null,
+      "counter_records": [],
+      "decoy_records": []
+    },
+    "C07": {
+      "group": 4,
+      "plant": "defined_terms",
+      "verdict": "supported",
+      "direction": null,
+      "counter_records": [],
+      "decoy_records": []
+    },
+    "C08": {
+      "group": 4,
+      "plant": "relative_date",
+      "verdict": "contradicted",
+      "direction": null,
+      "counter_records": [],
+      "decoy_records": []
+    },
+    "C09": {
+      "group": 1,
+      "plant": "app_broken",
+      "verdict": "unproven",
+      "direction": "app_quiet",
+      "counter_records": [
+        "msg:item1:Chats!63",
+        "msg:item1:Chats!64"
+      ],
+      "decoy_records": []
+    },
+    "C10": {
+      "group": 2,
+      "plant": "transliteration",
+      "verdict": "unproven",
+      "direction": null,
+      "counter_records": [
+        "msg:item1:Chats!401",
+        "msg:item1:Chats!402",
+        "msg:item1:Chats!427"
+      ],
+      "decoy_records": []
+    },
+    "C11": {
+      "group": 1,
+      "plant": "shared_account_intro",
+      "verdict": "unproven",
+      "direction": "other_user",
+      "counter_records": [
+        "msg:item1:Chats!631"
+      ],
+      "decoy_records": []
+    },
+    "C12": {
+      "group": 3,
+      "plant": "clean_weekday",
+      "verdict": "supported",
+      "direction": null,
+      "counter_records": [],
+      "decoy_records": [
+        "msg:item2:Chats!576",
+        "msg:item1:Chats!293"
+      ]
+    },
+    "C13": {
+      "group": 1,
+      "plant": "retracted_other_app",
+      "verdict": "unproven",
+      "direction": "other_app",
+      "counter_records": [
+        "msg:item1:Chats!526",
+        "msg:item1:Chats!527"
+      ],
+      "decoy_records": []
+    },
+    "C14": {
+      "group": 3,
+      "plant": "clean_call",
+      "verdict": "supported",
+      "direction": null,
+      "counter_records": [],
+      "decoy_records": [
+        "call:item1:Call Log!15"
+      ]
+    },
+    "C15": {
+      "group": 2,
+      "plant": "slang_synonym",
+      "verdict": "unproven",
+      "direction": null,
+      "counter_records": [
+        "msg:item2:Chats!630",
+        "msg:item2:Chats!631",
+        "msg:item2:Chats!632"
+      ],
+      "decoy_records": []
+    },
+    "C16": {
+      "group": 1,
+      "plant": "saved_under_other_name",
+      "verdict": "unproven",
+      "direction": "other_user",
+      "counter_records": [
+        "contact:item2:Contacts!10#1"
+      ],
+      "decoy_records": []
+    },
+    "C17": {
+      "group": 1,
+      "plant": "literal_handoff",
+      "verdict": "unproven",
+      "direction": "other_user",
+      "counter_records": [
+        "msg:item2:Chats!432"
+      ],
+      "decoy_records": []
+    }
+  },
+  "ground_truth_people": {
+    "orlov": "Pavel Orlov",
+    "diaz": "Ruben Diaz",
+    "kemal": "Kemal Aydin (works at Orlov's detailing shop, also runs its Instagram)",
+    "lena": "Lena Orlova (Orlov's sister)",
+    "misha": "Misha Orlov (Orlov's brother)",
+    "kirill": "Kirill (Orlov's nephew, used Item 1 on Mar 6 to 8)",
+    "dasha": "Dasha (Kirill's girlfriend)",
+    "cs1": "CS-1 (confidential source)",
+    "bell": "Mr. Bell (Orlov's landlord)",
+    "eddie": "Eddie Prado (uses +16465550170; Diaz saved him as 'Eddie P')",
+    "jr_parts": "unknown (Instagram jr.parts.nyc)",
+    "mia": "Mia K. (detailing customer)",
+    "ana": "Ana Diaz (Diaz's wife)",
+    "mami": "Diaz's mother",
+    "carmen": "Carmen Ramos (Diaz's aunt, Tito's mother)",
+    "tito": "Tito Ramos (Diaz's cousin, used Item 2 on Mar 27 to 29)",
+    "hector": "Hector (buying a 2009 Civic from Diaz)",
+    "ptires": "Pasha Tires (a tire shop, not Orlov)",
+    "nostrand": "Nostrand Parts (a parts counter)",
+    "gio": "Gio (Diaz's friend)",
+    "ig_customers": "detailing customers on Instagram"
+  }
+}
