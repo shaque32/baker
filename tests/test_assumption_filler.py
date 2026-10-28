@@ -227,18 +227,27 @@ def build(conn, cid: str, answers: dict[str, list[dict]] | None = None):
     return builder.build(claim(cid)), filler, builder
 
 
+# What code adds to a good answer from the claim's own words. C10 and C11 quote PETROV's
+# message ("PETROV texted REYES 'its done'", "PETROV sent the Telegram message 'move it
+# tonight'"), so each gets PETROV's sender assumption too, which passes: PETROV sent it, at
+# another time than the claim says.
+CODE_ADDS = {"C10": [("sender", CheckOutcome.PASS)], "C11": [("sender", CheckOutcome.PASS)]}
+
+
 @pytest.mark.parametrize("cid", sorted(GOOD))
 def test_good_answers_become_checkable_assumptions(conn, cid):
     assumptions, filler, builder = build(conn, cid)
     assert not filler.drops, filler.drops
     assert not builder.rejected, builder.rejected
-    assert len(assumptions) == len(GOOD[cid])
+    assert sorted(a.template_id for a in assumptions) == sorted(
+        [p["template_id"] for p in GOOD[cid]] + [t for t, _ in CODE_ADDS.get(cid, [])]
+    )
     outcomes = []
     for a in assumptions:
         assert a.is_core
         for name in TEMPLATES[a.template_id].checks:  # event, meaning, role: stance only
             outcomes.append(CHECKS[name].run(a, conn).outcome)
-    assert sorted(outcomes) == sorted(EXPECTED[cid])
+    assert sorted(outcomes) == sorted(EXPECTED[cid] + [o for _, o in CODE_ADDS.get(cid, [])])
 
 
 def test_parameters_match_the_check_tests(conn):
@@ -497,6 +506,36 @@ def test_a_sender_without_a_party_gets_the_writer_the_claim_names(conn):
         ("PETROV texted REYES, and REYES: 'ok'.", "ok", None),
         ("PETROV texted REYES then @northstar: 'ok'.", "ok", None),
         ("PETROV texted REYES and @northstar: 'ok'.", "ok", "PETROV"),
+        # The coverage plan's step 3: more ways a claim names the writer.
+        ("PETROV asked on Telegram: 'ok?'", "ok?", "PETROV"),
+        ("PETROV posted on Instagram: 'ok'.", "ok", "PETROV"),
+        ("REYES told PETROV by WhatsApp: 'ok'.", "ok", "REYES"),
+        ("REYES told PETROV via Telegram: 'ok'.", "ok", "REYES"),
+        ("PETROV told REYES by iMessage: 'ok'.", "ok", "PETROV"),  # an app's word, any case
+        ("PETROV told REYES in a WhatsApp chat: 'ok'.", "ok", "PETROV"),
+        ("PETROV sent a WhatsApp message to (212) 555-0122 reading 'ok'.", "ok", "PETROV"),
+        ("PETROV sent REYES a Telegram message reading 'ok'.", "ok", "PETROV"),
+        ("PETROV sent REYES a text that read 'ok'.", "ok", None),  # "read" governs
+        ('PETROV wrote to the Instagram user "dp_garage": "ok".', "ok", "PETROV"),
+        ('PETROV told "Marc Garage" in a WhatsApp chat: "ok".', "ok", "PETROV"),
+        # A quoted word that is no name the case knows still refuses the writer.
+        ('PETROV wrote to the user "a friend": "ok".', "ok", None),
+        # "reading" that is no message's words.
+        ("PETROV texted REYES, reading 'ok'.", "ok", None),
+        ("PETROV sent REYES a report reading 'ok'.", "ok", None),
+        # A number that is no plain phone number stays a word that refuses.
+        ("PETROV sent a message to 555-0122 reading 'ok'.", "ok", None),
+        # "said" still names no writer: it may be spoken.
+        ("PETROV said to REYES: 'ok'.", "ok", None),
+        # Baker Eval on #164: "by" or "via" a person may name another writer, and words
+        # handed on may have been sent by someone other than who wrote them.
+        ("SMITH sent a message by PETROV: 'ok'.", "ok", None),
+        ("PETROV sent a message via REYES: 'ok'.", "ok", None),
+        ("REYES forwarded what PETROV posted in the chat: 'ok'.", "ok", None),
+        ("REYES shared the post PETROV wrote: 'ok'.", "ok", None),
+        ("Quoting a chat, PETROV wrote to REYES: 'ok'.", "ok", None),
+        # Codex on #164: a full stop after a number still ends the sentence.
+        ("PETROV wrote to (212) 555-0122. REYES: 'ok'.", "ok", None),
     ],
 )  # fmt: skip
 def test_stated_sender_is_the_writer_of_the_quoted_words(conn, text, quoted, writer):
@@ -759,8 +798,10 @@ def test_the_addressee_is_never_the_sender(conn):
     quote = "need 2 more by friday"
     answers = {"C05": [P("sender", handles=["@northstar"], quoted_text=quote)]}
     assumptions, filler, _ = build(conn, "C05", answers)
-    assert assumptions == []
     assert "as the one the message went to" in filler.drops[0].reason
+    # Code then reads the writer the claim names ("PETROV wrote"), never the addressee.
+    senders = [a for a in assumptions if a.template_id == "sender"]
+    assert [(a.params.person_ids, a.params.handles) for a in senders] == [((PETROV,), ())]
 
 
 @pytest.mark.parametrize(
@@ -803,8 +844,8 @@ def test_a_message_is_quoted_words_not_the_claims_own(conn):
     # "call" or "wrote to" in a claim is the claim's wording, not a message anyone wrote.
     answers = {"C05": [P("sender", people=["PETROV"], quoted_text="wrote to")]}
     assumptions, filler, _ = build(conn, "C05", answers)
-    assert assumptions == []
     assert "not inside quotation marks" in filler.drops[0].reason
+    assert {a.params.quoted_text for a in assumptions} == {"need 2 more by friday"}
 
 
 def test_a_quote_wrapped_over_two_lines_is_still_quoted():
@@ -842,16 +883,15 @@ def test_unknown_person_is_dropped(conn):
     assert "matches no person" in filler.drops[0].reason
 
 
-def test_meaning_claim_without_a_meaning_assumption_gets_none(conn):
+def test_meaning_claim_without_a_meaning_assumption_gets_it_from_its_quote(conn):
     # C06: the model checks only the easy part (who sent it, when) and skips the meaning.
-    answers = {
-        "C06": [
-            P("sender", handles=["@northstar"], quoted_text="the package will be at marcs"),
-        ]
-    }
+    # Code adds the meaning of the one quoted message, which only the expert can accept.
+    quote = "the package will be at marcs"
+    answers = {"C06": [P("sender", handles=["@northstar"], quoted_text=quote)]}
     assumptions, filler, _ = build(conn, "C06", answers)
-    assert assumptions == []
-    assert "no usable meaning assumption" in filler.drops[-1].reason
+    assert not filler.drops, filler.drops
+    got = {a.template_id: a.params.quoted_text for a in assumptions}
+    assert got == {"sender": quote, "record_time": quote, "meaning": quote}
 
 
 def test_meaning_claim_keeps_meaning(conn):
@@ -871,19 +911,103 @@ def test_meaning_claim_keeps_meaning(conn):
     assert "states a date" in filler.drops[-1].reason
 
 
+def test_claim_is_not_judged_on_its_easy_parts(conn):
+    # A quoted message whose writer the claim does not name: its time alone does not test
+    # it. (A sender alone gets its date from code, test_a_dated_quote_gets_its_time_...; a
+    # named writer gets its sender from code, test_code_adds_the_sender_the_claim_names.)
+    text = 'On March 12, 2026, @northstar was sent "need 2 more by friday".'
+    keep = [p for p in GOOD["C05"] if p["template_id"] == "record_time"]
+    assumptions, filler = build_text(conn, text, ClaimType.COMMUNICATION, keep)
+    assert assumptions == []
+    assert "who sent it" in filler.drops[-1].reason
+
+
+def build_text(conn, text: str, claim_type: ClaimType, props: list[dict]):
+    """Build a claim of these words (in C05's paragraph) from this model answer."""
+    filler = LocalAssumptionFiller(
+        FakeModel(json.dumps({"assumptions": props})), conn, template=DRAFT
+    )
+    c = Claim(
+        id="X1",
+        paragraph_id=claim("C05").paragraph_id,
+        text=text,
+        claim_type=claim_type,
+        status=ClaimStatus.ACCEPTED,
+    )
+    return TemplateAssumptionBuilder(filler).build(c), filler
+
+
+def test_code_adds_the_sender_the_claim_names(conn):
+    # C05 with only its time range: "PETROV wrote to @northstar: ..." names the writer.
+    keep = [p for p in GOOD["C05"] if p["template_id"] == "record_time"]
+    assumptions, filler, _ = build(conn, "C05", {"C05": keep})
+    assert not filler.drops, filler.drops
+    (sender,) = [a for a in assumptions if a.template_id == "sender"]
+    assert sender.params.person_ids == (PETROV,)
+    assert sender.params.quoted_text == "need 2 more by friday"
+
+
+def test_any_claim_that_quotes_a_message_needs_its_sender(conn):
+    # A content claim quoting a message is not tested with its writer unchecked.
+    quote = "need 2 more by friday"
+    text = f'On March 12, 2026, @northstar was sent "{quote}", meaning more drugs.'
+    window = W("On March 12, 2026", "2026-03-12T00:00", "2026-03-13T00:00")
+    props = [P("meaning", quoted_text=quote), P("record_time", quoted_text=quote, window=window)]
+    assumptions, filler = build_text(conn, text, ClaimType.CONTENT_MEANING, props)
+    assert assumptions == []
+    assert "who sent it" in filler.drops[-1].reason
+
+
 @pytest.mark.parametrize(
-    ("cid", "keep", "why"),
+    ("text", "quote"),
     [
-        ("C05", "record_time", "who sent it"),  # quoted message, sender untested
-        # A sender alone now gets its date from code (test_a_dated_quote_gets_its_time_...);
-        # a stated date with no quote to date stays untested (C06 above).
+        ('PETROV wrote to @northstar: "need 2 more by friday".', "need 2 more by friday"),
+        ('A message reading "ok" shows it.', "ok"),
+        ('The note: "ok".', "ok"),
+        # A quoted name is no message, so the one quote left is.
+        ('The Instagram user "dp_garage" wrote: "ok".', "ok"),
+        # Two messages: code never picks one.
+        ('PETROV wrote "ok" and then "fine".', None),
+        # No verb of saying or colon before it: the claim's own words in quotation marks.
+        ('PETROV is a "friend".', None),
+        # A saved name the verb before it is far from (case01's Mac run, ¶13.3).
+        ("PETROV wrote in Russian to the contact saved as ' Mischa ' that he was worried.", None),
+        # Only a name in quotation marks.
+        ('The Instagram user "dp_garage" sent it.', None),
+        # A quote over two lines is refused for a code-made assumption.
+        ('PETROV wrote "need 2\nmore".', None),
     ],
 )
-def test_claim_is_not_judged_on_its_easy_parts(conn, cid, keep, why):
-    answers = {cid: [p for p in GOOD[cid] if p["template_id"] == keep]}
-    assumptions, filler, _ = build(conn, cid, answers)
-    assert assumptions == []
-    assert why in filler.drops[-1].reason
+def test_the_quote(conn, text, quote):
+    filler = LocalAssumptionFiller(FakeModel("{}"), conn, template=DRAFT)
+    c = Claim(
+        id="X1",
+        paragraph_id="p",
+        text=text,
+        claim_type=ClaimType.CONTENT_MEANING,
+        status=ClaimStatus.ACCEPTED,
+    )
+    assert filler.the_quote(c, []) == quote
+
+
+def test_the_quote_is_the_one_a_kept_proposal_uses(conn):
+    from core.audit.assumptions import Proposal
+
+    filler = LocalAssumptionFiller(FakeModel("{}"), conn, template=DRAFT)
+    c = Claim(
+        id="X1",
+        paragraph_id="p",
+        text='PETROV wrote "ok" and then wrote "fine".',
+        claim_type=ClaimType.CONTENT_MEANING,
+        status=ClaimStatus.ACCEPTED,
+    )
+    used = [Proposal("sender", {"quoted_text": "fine", "person_ids": [PETROV]})]
+    assert filler.the_quote(c, used) == "fine"
+    both = [*used, Proposal("record_time", {"quoted_text": "ok"})]
+    assert filler.the_quote(c, both) is None
+    # The model's words must lie in a quote that is a message, not a saved name.
+    c = c.model_copy(update={"text": 'PETROV wrote to the contact saved as "fine" at noon.'})
+    assert filler.the_quote(c, used) is None
 
 
 def test_dropping_the_time_of_day_is_refused(conn):
@@ -1184,3 +1308,129 @@ def test_a_ufdr_zone_whose_offset_disagrees_is_still_refused(conn):
         assert all(w.tz != "America/New_York" for w in windows)
     finally:
         conn.execute("UPDATE devices SET timezone = ? WHERE id = 'dev:item1'", (was,))
+
+
+def test_the_run_records_the_filler_version(conn):
+    from core.audit import assumption_filler
+
+    class Model(FakeModel):
+        name, sha256 = "fake", "ab" * 32
+
+    filler = assumption_filler.create(conn, model=Model("{}"))
+    (run,) = filler.model_runs
+    assert run.params["code_version"] == assumption_filler.FILLER_VERSION
+
+
+def test_a_phones_own_accounts_stand_for_the_phone_written_as_an_account(conn):
+    filler = LocalAssumptionFiller(FakeModel("{}"), conn, template=DRAFT)
+    text = "Item 1's Telegram account and @alex92 exchanged 3 messages."
+    own = filler._own_accounts("Item 1", "Telegram", text)
+    assert own == {"acct:item1:Telegram:7001001"}
+    assert filler._own_accounts("Item 1", "Instagram", text) == set()  # the claim names no app
+    assert filler._own_accounts("Item 3", "Telegram", text) == set()  # no such phone
+    assert filler._own_accounts("Item 1", "SMS", "Item 1 texted") == set()  # never a phone app
+
+
+@pytest.mark.parametrize(
+    ("text", "value", "op"),
+    [
+        ("PETROV and REYES exchanged thirteen messages.", 13, "eq"),
+        ("PETROV and REYES exchanged at least twenty-one texts.", 21, "ge"),
+        ("PETROV and REYES exchanged 13 messages.", 13, "eq"),
+    ],
+)
+def test_count_op_reads_numbers_in_words(text, value, op):
+    assert count_op(text, value) == op
+
+
+def test_count_op_never_reads_a_as_one():
+    with pytest.raises(Reject):
+        count_op("PETROV and REYES exchanged a message.", 1)
+
+
+@pytest.mark.parametrize(
+    ("text", "value"),
+    [
+        # Codex on #164: one part of a longer number is no count.
+        ("PETROV and REYES exchanged twenty one messages.", 20),
+        ("PETROV and REYES exchanged twenty one messages.", 1),
+        ("PETROV and REYES exchanged one hundred messages.", 1),
+        ("PETROV and REYES exchanged 1,000 messages.", 1),
+        ("PETROV and REYES exchanged 1,000 messages.", 0),
+        ("PETROV and REYES exchanged 2.5 thousand messages.", 5),
+    ],
+)
+def test_count_op_reads_only_a_whole_number(text, value):
+    with pytest.raises(Reject):
+        count_op(text, value)
+
+
+@pytest.mark.parametrize(
+    ("text", "op"),
+    [
+        # Codex on #164: the words after the whole noun phrase ("text messages") are read.
+        ("PETROV and REYES exchanged 13 text messages or more.", "ge"),
+        ("PETROV and REYES exchanged 13 text messages or fewer.", "le"),
+    ],
+)
+def test_count_op_reads_past_the_whole_counted_phrase(text, op):
+    assert count_op(text, 13) == op
+
+
+def test_count_op_refuses_one_way_text_messages():
+    with pytest.raises(Reject):
+        count_op("Item 1 holds 13 text messages from PETROV to REYES.", 13)
+
+
+def test_a_count_claim_quoting_only_a_name_needs_no_sender():
+    from core.audit.assumption_filler import coverage_gap
+    from core.audit.assumptions import Proposal
+
+    # Codex on #164: 'the Telegram user "Marcus R"' is a name, not a message.
+    text = 'PETROV sent and received 13 messages with the Telegram user "Marcus R".'
+    count = Proposal("message_count", {})
+    names = frozenset({"marcus r"})
+    c = Claim(id="X", paragraph_id="para:1", text=text, claim_type=ClaimType.COUNT,
+              status=ClaimStatus.ACCEPTED)  # fmt: skip
+    assert coverage_gap(c, [count], names) is None
+    # A quote that is no name still needs its sender, and in a communication claim any does.
+    message = c.model_copy(update={"text": text + ' PETROV wrote: "ok".'})
+    assert "who sent it" in coverage_gap(message, [count], names)
+    talk = c.model_copy(update={"claim_type": ClaimType.COMMUNICATION})
+    assert "who sent it" in coverage_gap(talk, [Proposal("record_time", {})], names)
+
+
+def test_a_code_made_sender_stays_on_the_app_the_claim_names(conn):
+    keep = [p for p in GOOD["C05"] if p["template_id"] == "record_time"]
+    text = 'On March 12, 2026, PETROV wrote to @northstar on Telegram: "need 2 more by friday".'
+    keep = [{**p, "channels": ["Telegram"]} for p in keep]
+    assumptions, filler = build_text(conn, text, ClaimType.COMMUNICATION, keep)
+    (sender,) = [a for a in assumptions if a.template_id == "sender"]
+    assert sender.params.channels == ("Telegram",)
+
+
+def test_a_code_made_sender_stays_on_the_phone_the_claim_names(conn):
+    # Codex on #164: "On Item 1, ..." keeps the sender's search on that phone.
+    keep = [
+        {**p, "channels": ["Telegram"]} for p in GOOD["C05"] if p["template_id"] == "record_time"
+    ]
+    text = (
+        'On March 12, 2026, on Item 1, PETROV wrote to @northstar on Telegram: "need 2 more by'
+        ' friday".'
+    )
+    assumptions, filler = build_text(conn, text, ClaimType.COMMUNICATION, keep)
+    (sender,) = [a for a in assumptions if a.template_id == "sender"]
+    assert sender.params.device_ids == ("dev:item1",)
+
+
+def test_a_code_made_sender_stays_on_the_phones_messages_when_the_claim_names_them(conn):
+    # Codex on #164: "texted" or "by iMessage" keeps the search off Telegram and the rest.
+    filler = LocalAssumptionFiller(FakeModel("{}"), conn, template=DRAFT)
+    phone = ["Phone", "SMS"]  # case01's apps that hold a phone's messages
+    assert filler._message_apps('PETROV texted REYES: "ok".') == phone
+    assert filler._message_apps('PETROV told REYES by iMessage: "ok".') == phone
+    assert filler._message_apps('PETROV texted REYES on Telegram: "ok".') == ["Telegram"]
+    assert filler._message_apps('PETROV wrote to REYES: "ok".') == []
+    # An app named inside the message is no app it went by.
+    assert filler._message_apps('PETROV told REYES by iMessage: "use Telegram".') == phone
+    assert filler._message_apps('PETROV texted REYES: "use Telegram".') == phone
