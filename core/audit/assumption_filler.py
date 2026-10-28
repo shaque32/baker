@@ -16,6 +16,14 @@ the document or the case data. It fails closed at every step:
   template takes one, and the checks resolve it from the data; a template that takes no
   handles drops the proposal. A handle the model wrote as an account ("@northstar") is kept as
   a handle the same way. Zero or several matches for any other value drop it too.
+  When the words are not an account's identifier, three more lookups are tried, each with
+  one answer only. A number written another way ("(919) 888-7386" for "+19198887386",
+  `phone_digits`) finds its account. A person the expert created, written as an account
+  ("SUBJECT-1" on Signal), is that person, whose accounts the checks take from confirmed
+  stipulations and links; if an account not confirmed as theirs carries the same name, the
+  proposal is refused. The display name of exactly one account finds that account. A
+  number or a display name finds an account only on a phone app or on an app the claim
+  names, so the words alone never pick the app. Accounts are never merged.
 - A channel must be named in the claim ("Telegram", or "texted" for SMS, "call" for calls).
   A model never narrows a search to a channel the document did not name. An export's own
   name for an app ("Wickr Pro", "Kik Messenger", "Native Messages") is named by the word a
@@ -82,7 +90,7 @@ from core.audit._llm_json import (
 )
 from core.audit._local_model import LocalModel, open_run
 from core.audit.assumptions import TEMPLATES, Proposal, Template, local_window
-from core.audit.checks._common import CaseData, key
+from core.audit.checks._common import Account, CaseData, key, namespace, person_party
 from core.contracts import Claim, ClaimType, ModelRun
 from core.review.device_names import logged_names, name_key
 from core.zones import resolve_zone
@@ -324,6 +332,11 @@ def fill_schema(template_ids: Iterable[str], channels: Iterable[str]) -> dict[st
 
 class Reject(ValueError):
     """One proposal (or one value in it) cannot be used."""
+
+
+class _SharedNumber(Reject):
+    """A number two accounts recorded differently share: refused, and never looked up again
+    as a person or a display name."""
 
 
 def _nfc(s: str) -> str:
@@ -1443,26 +1456,74 @@ class LocalAssumptionFiller:
 
         account_ids: set[str] = set()
         handles = [h.strip() for h in p.handles]
+        named: set[str] = set()  # people the model wrote as accounts
+        named_on: set[str] = set()  # the apps it wrote them on
         for acc in p.accounts:
             try:
-                account_ids |= self._accounts(acc, device_ids)
+                account_ids |= self._accounts(acc, device_ids, claim.text)
+            except _SharedNumber:
+                raise  # the number is in the case, on more than one account (Codex on #152)
             except Reject:
-                # "@northstar" written as an account is a handle, not an identifier. Where the
-                # template takes handles it stays one, and the checks resolve it from the data
-                # (exactly one account, or the party is left unresolved). Anything else fails.
+                # Words the case holds no account identifier under may still name a party:
+                # - a person the expert created ("SUBJECT-1" on Signal): the claim names the
+                #   person, whose accounts the checks take from confirmed stipulations and
+                #   links, never from the words;
+                # - "@northstar", a handle, where the template takes handles: the checks
+                #   resolve it from the data (exactly one account, or the party is left
+                #   unresolved);
+                # - the display name of exactly one account on that app ("ThisIs DfirTwo" on
+                #   Skype). A name several accounts carry is refused: they are never merged.
+                # Anything else fails.
                 written = acc.as_written.strip()
-                if "handles" not in tpl.allowed or not (
-                    written.startswith("@") or written in handles
-                ):
+                person = self._person_named(written) if "person_ids" in tpl.allowed else None
+                if person is not None:
+                    theirs = person_party(self.data, person).keys
+                    same = self._accounts_named(acc, device_ids, claim.text, one=False)
+                    if any(self.data.accounts[a].key not in theirs for a in same):
+                        raise Reject(
+                            f"{written!r} names a person and a {acc.app} account that is not"
+                            " confirmed as theirs"
+                        ) from None
+                    # The app the model wrote the person on scopes their accounts, as the
+                    # channel it is, which the claim must name; without it a message on any of
+                    # their apps would do (Codex on #152).
+                    (on,) = self._channels(claim.text, [acc.app], tpl.id)
+                    if channels and on not in channels:
+                        raise Reject(
+                            f"{written!r} is written on {on}, which the proposal's channels"
+                            " leave out"
+                        ) from None
+                    named.add(person)
+                    named_on.add(on)
+                    continue
+                if "handles" in tpl.allowed and (written.startswith("@") or written in handles):
+                    if written not in handles:
+                        handles.append(written)
+                    continue
+                by_name = self._accounts_named(acc, device_ids, claim.text)
+                if not by_name:
                     raise
-                if written not in handles:
-                    handles.append(written)
+                account_ids |= by_name
+        if named:
+            params["person_ids"] = sorted(set(params.get("person_ids", [])) | named)
+            if not channels:
+                params["channels"] = sorted(named_on, key=str.lower)
         if handles:
             if "handles" not in tpl.allowed:
                 raise Reject(f"template {tpl.id!r} does not take handles")
             params["handles"] = handles  # the checks resolve them from the data
         if account_ids:
             params["account_ids"] = sorted(account_ids)
+        if tpl.id in WHOLE_APP_TEMPLATES:
+            # However an account was found, on an app that holds more than the claim's word
+            # names a count would count, and an absence fail on, messages it does not name.
+            for app in sorted({self.data.accounts[a].app for a in account_ids}, key=str.lower):
+                said = [w for w in APP_ALIASES.get(app.casefold(), ()) if _has_alias(claim.text, w)]
+                if app.casefold() in WIDER_APPS and said:
+                    raise Reject(
+                        f"{app!r} holds more than the claim's {said[0]!r} names, so no count or"
+                        " absence is read on its accounts"
+                    )
 
         if p.count is not None:
             params["count_op"] = count_op(claim.text, p.count.value)
@@ -1714,21 +1775,43 @@ class LocalAssumptionFiller:
                 " absence is read on it"
             )
 
-    def _accounts(self, acc: _Account, device_ids: list[str]) -> set[str]:
+    def _accounts(self, acc: _Account, device_ids: list[str], claim_text: str = "") -> set[str]:
+        """The accounts on the model's app with this identifier. A number written another way
+        ("(919) 888-7386" for "+19198887386") finds its account too, on a phone app or on an
+        app the claim names: a number alone never picks the app. A number two accounts
+        recorded differently share is refused, never joined."""
         app = acc.app.strip().casefold()
         ident = re.sub(r"(?i)^(user\s*id|id|number|no\.)\s*", "", acc.as_written.strip())
         want = key(acc.app, ident)
         sources = set(self.data.sources_for(device_ids)) if device_ids else None
-        hits = {
-            a.id
+        mine = [
+            a
             for a in self.data.accounts.values()
-            if a.key == want
-            and a.app.casefold() == app
-            and (sources is None or a.source_id in sources)
-        }
+            if a.app.casefold() == app and (sources is None or a.source_id in sources)
+        ]
+        hits = {a.id for a in mine if a.key == want}
+        number = phone_digits(ident)
+        if not hits and number is not None and self._app_named(claim_text, acc.app):
+            found = [a for a in mine if _same_number(number, a)]
+            if len({a.key for a in found}) > 1:  # never joined: they stay apart until linked
+                raise _SharedNumber(
+                    f"{acc.as_written!r} is the number of {len({a.key for a in found})} {acc.app}"
+                    " accounts recorded differently; which one the claim means is not known"
+                )
+            hits = {a.id for a in found}
         if not hits:
             raise Reject(f"{acc.as_written!r} on {acc.app} matches no account in the case")
         return hits
+
+    def _app_named(self, claim_text: str, app: str) -> bool:
+        """A phone app, or an app the claim names the way `_channels` requires."""
+        if namespace(app) == "tel":
+            return True
+        try:
+            self._channels(claim_text, [app])
+        except Reject:
+            return False
+        return True
 
     def _window(
         self, claim_text: str, para: str, w: _Window, device_ids: list[str], template_id: str
@@ -1765,6 +1848,38 @@ class LocalAssumptionFiller:
         except ValueError as e:
             raise Reject(str(e)) from None
 
+    def _person_named(self, words: str) -> str | None:
+        """The one person the expert created whom these words name, or None."""
+        try:
+            return self._person(words)
+        except Reject:
+            return None
+
+    def _accounts_named(
+        self, acc: _Account, device_ids: list[str], claim_text: str, *, one: bool = True
+    ) -> set[str]:
+        """The accounts on the model's app whose display name is exactly these words, when
+        the app is a phone app or one the claim names. With `one`, they must be one account:
+        a name on several accounts raises Reject."""
+        if not self._app_named(claim_text, acc.app):
+            return set()
+        app, written = acc.app.strip().casefold(), _nfc(acc.as_written.strip())
+        sources = set(self.data.sources_for(device_ids)) if device_ids else None
+        hits = [
+            a
+            for a in self.data.accounts.values()
+            if a.app.casefold() == app
+            and (sources is None or a.source_id in sources)
+            and a.display_name is not None
+            and _nfc(a.display_name.strip()) == written
+        ]
+        if one and len({a.key for a in hits}) > 1:
+            raise Reject(
+                f"{acc.as_written!r} is the name of {len({a.key for a in hits})} {acc.app}"
+                " accounts; which one the claim means is not known"
+            )
+        return {a.id for a in hits}
+
     def _read_zone(
         self, zone: str | None, start: datetime, end: datetime, device_ids: list[str]
     ) -> str:
@@ -1798,6 +1913,44 @@ class LocalAssumptionFiller:
         except (ZoneInfoNotFoundError, ValueError):
             raise Reject(f"unknown phone time zone {tz!r}") from None
         return tz
+
+
+_PHONE_RE = re.compile(r"\+?[\d\s().\-]{7,24}")
+# the North American form: "(919) 888-7386", "919-888-7386", "1-919-888-7386"
+_NANP_RE = re.compile(r"(1[\s.\-]?)?(?:\((\d{3})\)\s?|(\d{3})[\s.\-])(\d{3})[\s.\-](\d{4})")
+
+
+def phone_digits(words: str) -> str | None:
+    """A phone number as its digits with the country code, or None when the words are not
+    plainly one. "+1 919-888-7386" is 19198887386. A number written in the North American form
+    ("(919) 888-7386", "919-888-7386") takes country code 1. Other numbers without a "+",
+    digits run together among them, are not read: their country is not written."""
+    w = words.strip()
+    if not _PHONE_RE.fullmatch(w):
+        return None
+    d = re.sub(r"\D", "", w)
+    if w.startswith("+"):
+        return d if 8 <= len(d) <= 15 else None
+    m = _NANP_RE.fullmatch(w)
+    if m is None:
+        return None
+    area, exchange, line = m.group(2) or m.group(3), m.group(4), m.group(5)
+    if area[0] not in "23456789" or exchange[0] not in "23456789":
+        return None
+    return "1" + area + exchange + line
+
+
+def _same_number(number: str, acc: Account) -> bool:
+    """The account's identifier is this phone number: written with its country code ("+"),
+    a WhatsApp id ("12125550122@s.whatsapp.net"), or a phone account's own number. A user id
+    that happens to be digits is never one."""
+    ident = acc.identifier.strip()
+    jid = re.fullmatch(r"(\d{8,15})@s\.whatsapp\.net", ident)  # a WhatsApp id is the number
+    if jid is not None:
+        return jid.group(1) == number
+    if not (ident.startswith("+") or namespace(acc.app) == "tel"):
+        return False
+    return phone_digits(ident) == number
 
 
 def _validate_list(obj: dict[str, object]) -> list[dict[str, Any]]:
