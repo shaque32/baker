@@ -314,6 +314,13 @@ def test_coverage_counts_the_tested_claims_beside_the_measures(scored):
     assert s["scorer_version"] == score_hickman.SCORER_VERSION
     md = (run.parent / "score" / "score.md").read_text("utf-8")
     assert "**Tested: 3 of 3 claims.** Minimum 30: insufficient coverage" in md
+    # Run 3's tiers split the tested claims, and its measure sits beside measures 1 to 3.
+    # Stand-in components put each claim's core assumption to a check: all code-checked.
+    assert c["tiers"] == {"code_checked": ["C01", "C02", "C03"], "expert_only": []}
+    assert c["result_v3"] == score_hickman.INSUFFICIENT
+    assert s["r1"]["contradicted_by_failed_check"]["n"] == 2
+    assert "Run 3 (eval/validation/PREREGISTERED_v3.md): code-checked" in md
+    assert "4. Contradicted by a failed check, gold not contradicted (run 3)" in md
 
 
 def _claim(claim_id: str, para: int, verdict: str):  # noqa: ANN202
@@ -401,6 +408,32 @@ def test_coverage_is_enough_at_the_minimum():
     )
     assert c["tested"] == n - 1 and c["result"] == score_hickman.INSUFFICIENT
     assert c["refusal_kinds"] == {score_hickman.ONLY_SUMMARY: {"claims": 1, "ids": ["C00"]}}
+
+
+def test_run_3_counts_its_minimum_on_code_checked_claims_only():
+    n = score_hickman.MINIMUM_CODE_CHECKED
+    gold = [_claim(f"C{i:02}", i + 1, "unproven") for i in range(n + 2)]
+    per_claim = {g.claim_id: {**_per_claim("unproven", "unproven"), "code_checked": True}
+                 for g in gold}  # fmt: skip
+    per_claim["C00"]["code_checked"] = False  # expert only: meaning or event alone
+    per_claim["C01"].pop("code_checked")  # a row from before 1.3.0 counts as expert only
+    c = score_hickman.coverage({"not_tested": {}}, gold, {"per_claim": per_claim})
+    assert c["tested"] == n + 2 and c["result"] == "enough tested claims"
+    assert c["tiers"]["expert_only"] == ["C00", "C01"]
+    assert len(c["tiers"]["code_checked"]) == n and c["result_v3"] == "enough code-checked claims"
+    per_claim["C02"]["code_checked"] = False
+    c = score_hickman.coverage({"not_tested": {}}, gold, {"per_claim": per_claim})
+    assert c["result_v3"] == score_hickman.INSUFFICIENT  # 31 tested, 29 code-checked
+
+
+def test_a_wrong_contradicted_from_a_failed_check_is_counted():
+    rows = {
+        "C01": {**_per_claim("supported", "contradicted"), "failed_checks": ["chk:a"]},
+        "C02": {**_per_claim("unproven", "contradicted")},  # no failed check: measure 1 only
+        "C03": {**_per_claim("contradicted", "contradicted"), "failed_checks": ["chk:b"]},
+    }
+    m = score_hickman._measures(rows)["contradicted_by_failed_check"]
+    assert (m["k"], m["n"], m["claims"]) == (1, 2, ["C01"])
 
 
 def test_a_claim_with_no_verdict_is_untested_and_never_scored():
