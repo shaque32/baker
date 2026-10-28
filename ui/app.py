@@ -1196,6 +1196,7 @@ class App:
                 cloud_opt_in=choice.use,
                 ai_review=f.get("ai_review") == "1",
                 label_all=f.get("label_all") == "1",
+                challenge=f.get("no_challenge") != "1",
             ),
         )
         where = (
