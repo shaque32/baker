@@ -21,6 +21,7 @@ from collections.abc import Iterable
 from urllib.parse import quote as urlquote
 
 from core import pipeline
+from core.audit import challenge
 from core.audit.context import ContextLine, build_context
 from core.contracts import (
     ClaimType,
@@ -814,6 +815,11 @@ def evidence_card(
         f"{_tier_badge(item, last_kind)}"
         + ("<span class='badge b-flag'>flagged by you</span>" if flagged else "")
         + ("<span class='badge b-withheld'>needs expert review</span>" if withheld else "")
+        + (
+            f"<span class='badge b-challenge'>{e(challenge.FOUND_MARK)}</span>"
+            if item.id in challenge.found_items(conn)
+            else ""
+        )
         + _conversation(conn, item, around, threads)
         + f"<p>{record_line(conn, item.record_id, found)}</p>"
         "<details class='more'><summary>Source and model note</summary>"
@@ -2054,7 +2060,10 @@ def setup_page(
                 "reviewer: a sorting aid that decides nothing and costs one more model call per "
                 "supporting item.</label><br><label><input type='checkbox' name='label_all' "
                 "value='1'> Also label claims a failed check already decides (more model calls; "
-                "their verdict cannot change).</label></p>"
+                "their verdict cannot change).</label><br><label><input type='checkbox' "
+                "name='no_challenge' value='1'> Skip the challenge step: code's searches for "
+                "what undercuts a claim close to supported. It only adds doubt; skipping it "
+                "saves model calls.</label></p>"
                 f"<button type='submit' class='primary'{off}>{start}</button> "
                 "<span class='muted'>Keeps this "
                 "computer awake while it runs. You can stop it; finished claims are kept.</span>",

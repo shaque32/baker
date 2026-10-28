@@ -4,6 +4,7 @@ Synthetic case01 only; case02 is the held-out case and is never used here."""
 
 from __future__ import annotations
 
+import inspect
 import json
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -31,6 +32,7 @@ from core.contracts import (
     Stance,
 )
 from core.hypotheses import explain
+from core.report.html import render_report
 from core.review import audit_log
 from core.review.actions import set_claim_status
 from core.review.redecide import redecide
@@ -164,16 +166,31 @@ def test_the_invariant_fails_on_any_other_item():
             invariants.check_challenge([_item("a", stance)])
 
 
-# ---------------------------------------------------------------- off by default
+# ---------------------------------------------------------------- on by default, with an off switch
 
 
-def test_the_step_is_off_by_default(tmp_path):
-    assert pipeline.Components.__dataclass_fields__["challenge"].default is False
+def test_the_step_is_on_by_default_and_a_run_can_skip_it(tmp_path):
+    assert pipeline.Components.__dataclass_fields__["challenge"].default is True
     conn, comps = _case(tmp_path, challenge_on=False)
     result = pipeline.run_audit(conn, comps)
     assert result.challenge == {} and _entries(conn) == []
     assert "challenge" not in pipeline.view_run(conn)["config"]
+    report = render_report(conn)
+    assert "skipped for this run" in report and "Found by the challenge step" not in report
     conn.close()
+
+
+def test_the_cli_runs_the_step_unless_told_not_to():
+    from cli.main import parser
+
+    assert parser().parse_args(["audit", "--db", "x.db"]).challenge is True
+    assert parser().parse_args(["audit", "--db", "x.db", "--no-challenge"]).challenge is False
+
+
+def test_the_review_screen_runs_the_step_unless_skipped():
+    from core.casework import jobs
+
+    assert inspect.signature(jobs.audit_job).parameters["challenge"].default is True
 
 
 # ---------------------------------------------------------------- the searches
@@ -284,6 +301,15 @@ def test_only_doubt_from_the_searches_is_stored(tmp_path, challenged, monkeypatc
     ).fetchone()
     # The stored doubt is one of the claim's items: an open complicating item blocks SUPPORTED.
     assert eid in pipeline.view_run(conn)["manifest"][claim_id]["evidence"]
+    # The report marks it as the step's find, and only the step's finds, and says the audit
+    # ran the step.
+    found = challenge.found_items(conn)
+    assert eid in found
+    report = render_report(conn)
+    row = report.split(f"<tr id='{eid}'>", 1)[1].split("</tr>", 1)[0]
+    assert "Found by the challenge step" in row
+    assert report.count("Found by the challenge step") <= len(found)
+    assert f"ran ({challenge.VERSION})" in report
     (logged, *_) = [p for p in _entries(conn) if p["claim_id"] == claim_id]
     assert logged["stored"] == [eid] and logged["record_ids"] == [doubt, support]
     conn.close()
@@ -503,8 +529,7 @@ def test_the_rubber_stamp_expert_accepts_every_labeled_item(tmp_path):
 def test_the_eval_runs_the_step_under_the_rubber_stamp_expert(tmp_path):
     out = tmp_path / "out"
     assert rp.main(
-        ["--case", "case01", "--mode", "model-free", "--expert", "rubber-stamp", "--challenge",
-         "--out", str(out)]
+        ["--case", "case01", "--mode", "model-free", "--expert", "rubber-stamp", "--out", str(out)]
     ) == 0  # fmt: skip
     summary = json.loads((out / "run.json").read_text(encoding="utf-8"))
     assert summary["simulated_expert"]["actor"] == RUBBER_STAMP

@@ -3,7 +3,7 @@
 Usage: python -m eval.run_pipeline [--case case01] [--mode model-free|real|fake|hostile]
                                    [--expert simulated|rubber-stamp|fallible|none]
                                    [--error-rate RATE] [--expert-seed N]
-                                   [--reviewer accept|none] [--challenge]
+                                   [--reviewer accept|none] [--no-challenge]
                                    [--assumption-spec PATH] [--repeat] [--out DIR]
 
 Steps, all through the product's own code:
@@ -43,9 +43,9 @@ Modes:
                     rate is Arsh's to set), drawn per item from --expert-seed (default 0). Not a
                     gate; its summary gives the dismissal rate and items decided per claim.
                     Output in <out>/fallible/.
-  --challenge       run the challenge step (core/audit/challenge.py, off by default): code's
-                    counter-searches on claims close to supported, storing only doubt. Output
-                    in <out>/challenge/.
+  --no-challenge    skip the challenge step (core/audit/challenge.py), which runs by default as
+                    it does in the product: code's counter-searches on claims close to
+                    supported, storing only doubt. Output in <out>/no_challenge/.
   --expert none     skip the simulated expert: one pass, no expert decisions (model-free and
                     real only; under rules 0.2.0 nothing can then be SUPPORTED).
   --reviewer none   every supporting item is dismissed, so nothing can be SUPPORTED. Shows what
@@ -455,7 +455,7 @@ def run_once(
     labeler_model: object | None = None,
     claim_ids: list[str] | None = None,
     filler_model: object | None = None,
-    challenge: bool = False,
+    challenge: bool = True,
     error_rate: float | None = None,
     expert_seed: int = 0,
 ) -> list[Prediction]:
@@ -685,7 +685,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--reviewer", choices=("accept", "none"), default="accept")
     parser.add_argument("--assumption-spec", type=Path, default=None)
     parser.add_argument("--repeat", action="store_true")
-    parser.add_argument("--challenge", action="store_true")
+    parser.add_argument("--challenge", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--out", type=Path, default=None)
     args = parser.parse_args(argv)
 
@@ -722,8 +722,8 @@ def main(argv: list[str] | None = None) -> int:
             out = out / "rubber_stamp"
         if expert == "fallible":
             out = out / "fallible"
-        if args.challenge:
-            out = out / "challenge"
+        if not args.challenge:
+            out = out / "no_challenge"
     try:
         first = run_once(
             args.case,

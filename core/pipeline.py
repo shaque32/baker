@@ -366,8 +366,9 @@ class Components:
     # not change the verdict, so they are skipped to save model calls.
     label_settled: bool = False
     # The challenge step (core/audit/challenge.py): code's counter-searches on claims close to
-    # SUPPORTED, storing only doubt. Off by default (`mabillon audit --challenge`).
-    challenge: bool = False
+    # SUPPORTED, storing only doubt. On by default; `mabillon audit --no-challenge` and the
+    # review screen's "Skip the challenge step" turn it off for one run.
+    challenge: bool = True
     # The case's cloud choice (core/casework/cloud.py CloudChoice.record()), kept in the run's
     # config so the report says why this run's stance labels came from where they did.
     cloud: dict[str, object] | None = None

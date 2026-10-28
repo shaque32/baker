@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from core import pipeline
+from core.audit import challenge
 from core.casework import cases
 from core.contracts import EvidenceStatus, Stance, Verdict
 from core.db import connect
@@ -97,6 +98,36 @@ def test_the_live_step_makes_c05_supported_only_after_the_expert_accepts(root):
     assert basis == "confirmed"
 
 
+def test_the_live_step_shows_the_challenge_steps_find_on_c16(root):
+    """The challenge step runs in the demo as in the product: on C16 it finds a message saying
+    someone else used the account, marked as its find on the screen and in the report, and left
+    open for the person giving the demo. Accepting the doubt leaves C16 unproven."""
+    case = _case(root)
+    conn = connect(case.db)
+    run = pipeline.last_run(conn)
+    audit = conn.execute(
+        "SELECT config_json FROM pipeline_runs WHERE id = ?", (run["evidence_from_run"],)
+    ).fetchone()[0]
+    assert json.loads(audit)["challenge"] == challenge.VERSION
+    found = challenge.found_items(conn)
+    items = pipeline.load_evidence(conn, run["manifest"]["C16"]["evidence"])
+    doubt = [e for e in items if e.stance is Stance.COMPLICATES]
+    assert {e.record_id for e in doubt} == demo.CHALLENGE_DOUBT["C16"]
+    assert all(e.status is EvidenceStatus.OPEN for e in doubt)
+    assert found and found <= {e.id for e in doubt}
+    app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
+    app.open_case(case)
+    page = app.handle(Request("GET", "/claim", {"id": "C16"}, dict(HOST))).body.decode()
+    assert page.count(challenge.FOUND_MARK) == len(found)
+    report = render_report(conn)
+    assert "Found by the challenge step" in report and f"ran ({challenge.VERSION})" in report
+    assert _verdicts(conn)["C16"] == "unproven"
+    for e in doubt:
+        actions.decide_evidence(conn, e.id, EvidenceStatus.ACCEPTED, EXPERT, "Read it myself.")
+    redecide(conn, EXPERT)
+    assert _verdicts(conn)["C16"] == "unproven"
+
+
 def test_scripted_parts_are_named_on_the_screen_and_in_the_report(root):
     case = _case(root)
     conn = connect(case.db)
@@ -144,12 +175,14 @@ def test_overview_groups_claims_and_says_why_each_unproven_claim_is_unproven(roo
     app.open_case(case)
     page = app.handle(Request("GET", "/claims", {}, dict(HOST))).body.decode()
     sections = re.findall(r"<section class='(?:group|nextup)' id='([a-z]+)'>", page)
-    assert sections == ["next", "con", "unp", "sup"]
+    assert sections == ["next", "you", "con", "unp", "sup"]  # C16's open doubt waits on you
+    you = page.split("<section class='group' id='you'>", 1)[1].split("</section>", 1)[0]
+    assert "id=C16" in you
     unp = page.split("<section class='group' id='unp'>", 1)[1].split("</section>", 1)[0]
     assert "id=C06" in unp and GAP_TEXT[K.MEANING] in unp
     assert "id=C05" in page.split("<section class='nextup' id='next'>", 1)[1].split("</section>")[0]
     assert "Verdict not yet confirmed" not in page
-    assert "20 of 21" in page
+    assert "19 of 21" in page
     own = " ".join([*GAP_TEXT.values(), *GAP_TOPICS.values()]).lower()  # Baker's words, not claims'
     assert not any(w in own for w in ("guilty", "innocent", "leader", "deleted"))
     report = render_report(conn)
@@ -337,7 +370,7 @@ def test_a_claim_supported_on_ai_review_or_with_ai_dismissed_support_waits_on_th
     sup = page.split("<section class='group' id='sup'>", 1)[1].split("</section>", 1)[0]
     assert "id=C01" not in sup and "id=C02" not in sup
     assert html.escape(SUPPORTED_AI) not in sup
-    assert "3 claims need you." in page and "18 of 21" in page
+    assert "4 claims need you." in page and "17 of 21" in page  # C05, C16 and these two
 
 
 def test_gap_lines_follow_the_stored_coverage_until_it_is_stale_and_tiles_have_destinations(root):

@@ -14,6 +14,10 @@ report say so on every page:
 - The expert's review. The scripted expert accepts key evidence in the gold direction and
   dismisses the rest, giving the answer key's rationale as the reason, on every claim except
   LEFT_OPEN. Those wait for the person giving the demo (docs/demo.md says what to do on each).
+- The challenge step's labels (CHALLENGE_DOUBT). The step itself is real and on, as in the
+  product. C16's two counter-records in the signed key are labelled complicates on C16's
+  authorship assumption, so the step stores the one its search finds and marks it, and both wait
+  for the person giving the demo.
 
 Two additions that are not in the answer key, both in the scripted build only (a saved snapshot
 is restored as it was audited, without them):
@@ -44,6 +48,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from core import encryption, paths, pipeline
+from core.audit import challenge
 from core.audit.invariants import record_text
 from core.casework import cases
 from core.contracts import (
@@ -75,6 +80,14 @@ SCRIPTED_EXPERT = "expert:Demo expert (scripted from the answer key)"
 # Claims the scripted expert leaves for the live demo: C05 goes SUPPORTED only when the person
 # giving the demo accepts its message and re-runs the verdicts.
 LEFT_OPEN = ("C05",)
+
+# The challenge step's work, shown live. Its other-user search on C16 finds the two messages the
+# signed answer key gives as C16's counter-evidence (someone else using dp_garage; the signed
+# sheet's authorship note: "The same account wrote 'its ilya btw' that day"). On C16's
+# authorship assumption they are labelled complicates, so the step stores them and the screen
+# marks them as its finds. The scripted expert leaves the step's items for the person giving
+# the demo; C16 stays unproven whatever they decide.
+CHALLENGE_DOUBT = {"C16": frozenset({"msg:item1:Chats!1026", "msg:item1:Chats!857"})}
 
 # The answer key's rationales are not reused as reasons: they name what the tool must never
 # say (the report withholds itself on such words). docs/demo.md explains each trap instead.
@@ -147,7 +160,11 @@ class ScriptedLabeler:
         if not text:
             raise LookupError(f"{candidate.record_id} has no citable text")
         g = self.gold.get(assumption.claim_id)
-        if g is not None and candidate.record_id in g.key_evidence:
+        doubt = CHALLENGE_DOUBT.get(assumption.claim_id, frozenset())
+        if assumption.template_id == "authorship" and candidate.record_id in doubt:
+            stance = Stance.COMPLICATES
+            why = "Demo label, scripted from the answer key: it says someone else used the account."
+        elif g is not None and candidate.record_id in g.key_evidence:
             stance = _DIRECTION.get(g.gold_verdict.value, Stance.SUPPORTS)
             why = "Demo label, scripted from the answer key: key evidence for this claim."
         else:
@@ -205,14 +222,17 @@ def _components(conn: sqlite3.Connection, gold: dict[str, GoldClaim]) -> pipelin
 
 def _scripted_review(conn: sqlite3.Connection, gold: dict[str, GoldClaim], run: dict) -> int:
     decided = 0
+    found = challenge.found_items(conn)  # the challenge step's finds wait for the live demo
     for claim_id, items in sorted(run["manifest"].items()):
         g = gold.get(claim_id)
         if g is None or claim_id in LEFT_OPEN:
             continue
         want = _DIRECTION.get(g.gold_verdict.value)
         for e in pipeline.load_evidence(conn, items["evidence"]):
-            if e.stance is Stance.IRRELEVANT:
+            if e.stance is Stance.IRRELEVANT or e.id in found:
                 continue
+            if e.stance is Stance.COMPLICATES and e.record_id in CHALLENGE_DOUBT.get(claim_id, ()):
+                continue  # the same doubt found by retrieval waits too
             accept = want is not None and e.stance is want and e.record_id in g.key_evidence
             actions.decide_evidence(
                 conn,
