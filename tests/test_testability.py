@@ -6,6 +6,7 @@ Synthetic case01 only, with scripted fake models; case02 is the held-out case an
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import re
 import sqlite3
@@ -22,10 +23,11 @@ from core.audit.assumptions import TemplateAssumptionBuilder
 from core.audit.invariants import InvariantViolation
 from core.bundle import export
 from core.bundle import verify as verify_mod
-from core.bundle.verify import FAIL, PASS, failed, verify_bundle
+from core.bundle.verify import FAIL, NOTE, PASS, failed, verify_bundle
 from core.contracts import Claim, ClaimStatus, ClaimType, GoldClaim
 from core.llm.runtime import FakeModel as RuntimeFake
 from core.report.html import render_report
+from core.review.actions import set_claim_status
 from eval import run_pipeline as rp
 from eval.run_eval import load_jsonl
 from eval.synthetic.generate import generate
@@ -223,7 +225,7 @@ def test_a_repair_naming_another_phone_than_the_sheet_is_rejected_and_is_a_no_go
     rep = s.repair(claim("C01"), why)
     att = rep.attempts[-1]
     assert att.outcome == "mismatch" and att.no_go and rep.assumptions == []
-    assert any("phone dev:item1" in r for r in att.reasons)
+    assert any("phone 'dev:item1'" in r for r in att.reasons)
 
 
 def test_an_account_the_sheet_does_not_name_is_rejected_but_is_not_the_no_go_kind(conn):
@@ -233,6 +235,36 @@ def test_an_account_the_sheet_does_not_name_is_rejected_but_is_not_the_no_go_kin
     s, _ = step(conn, filler, GOOD_C01, sheet=sheet)
     att = s.repair(claim("C01"), why).attempts[-1]
     assert att.outcome == "mismatch" and not att.no_go
+
+
+@pytest.mark.parametrize(
+    "drop, said",
+    [
+        ("templates", "template 'contact_entry'"),
+        ("quotes", "quoted words 'marc garage'"),
+    ],
+)
+def test_the_same_entities_on_another_template_or_quote_are_rejected(conn, drop, said):
+    """The sheet check compares what the assumptions test, not only who and when."""
+    filler, _built, why = first_pass(conn, "C01", BAD_C01)
+    facts = testability.sheet_named(SHEET)
+    sheet = {**facts, "C01": dataclasses.replace(facts["C01"], **{drop: frozenset({"other"})})}
+    s, _ = step(conn, filler, GOOD_C01, sheet=sheet)
+    att = s.repair(claim("C01"), why).attempts[-1]
+    assert att.outcome == "mismatch" and not att.no_go
+    assert any(said in r for r in att.reasons), att.reasons
+
+
+def test_an_app_the_sheet_does_not_name_is_rejected():
+    rows = [r for r in SHEET if r["claim_id"] == "C05"]
+    sheet = testability.sheet_named(rows)["C05"]
+    got = testability.named(
+        [("sender", {"person_ids": [PETROV], "quoted_text": "need 2 more by  Friday",
+                     "channels": ["Telegram"]})]
+    )  # fmt: skip
+    assert testability.mismatch(got, sheet) == [
+        "names the app 'telegram', which the signed sheet does not name"
+    ]  # quoted words compare with case and spacing folded
 
 
 def test_a_claim_the_sheet_leaves_untested_is_never_repaired(conn):
@@ -366,6 +398,17 @@ def test_the_step_is_off_by_default(tmp_path):
         conn.close()
 
 
+def test_a_claim_the_filler_tests_never_reaches_the_step(tmp_path, monkeypatch):
+    """The step never adds to a claim that already has a core assumption."""
+    monkeypatch.setitem(globals(), "BAD_C01", GOOD_C01)  # the first pass now passes
+    conn, result = _audit(tmp_path)
+    try:
+        assert result.testability == {} and "C01" not in result.not_tested
+        assert _log(conn, testability.REPAIR_ACTION) == []
+    finally:
+        conn.close()
+
+
 def test_the_audit_logs_each_try_and_the_examiners_acceptance(audited):
     conn, result = audited
     assert "C01" not in result.not_tested
@@ -402,10 +445,10 @@ def test_the_report_says_proposed_by_agent_accepted_by_examiner(audited):
     assert html.count("Proposed by agent, accepted by examiner (Dana Reyes)") >= 1
 
 
-def _export(conn, path: Path) -> Path:  # noqa: ANN001
+def _export(conn, path: Path, include: str | list[str] = "all") -> Path:  # noqa: ANN001
     at = datetime(2026, 10, 20, 12, tzinfo=UTC)
     return export.export_bundle(
-        conn, path, EXAMINER, counsel_confirmed=True, clock=lambda: at, include="all"
+        conn, path, EXAMINER, counsel_confirmed=True, clock=lambda: at, include=include
     ).path
 
 
@@ -432,6 +475,26 @@ def test_verify_bundle_re_runs_each_try_without_a_model(audited, tmp_path):
     assert not failed(findings), [f for f in findings if f.level == FAIL]
     (f,) = [f for f in findings if f.check == "testability"]
     assert f.level == PASS and "same lookups and outcomes again, with no model" in f.detail
+
+
+def test_a_bundle_without_the_steps_model_answers_notes_the_tries_unchecked(audited, tmp_path):
+    """Records but no prompts: the repair calls are left out, so the tries are noted, not
+    re-run, and the bundle still verifies (Codex on #159)."""
+    conn, _ = audited
+    findings = verify_bundle(_export(conn, tmp_path / "b.zip", include=["records"]))
+    assert not failed(findings), [f for f in findings if f.level == FAIL]
+    (f,) = [f for f in findings if f.check == "testability" and f.level == NOTE]
+    assert "were not re-run" in f.detail and "include records and prompts" in f.detail
+
+
+def test_a_claim_removed_after_the_audit_still_verifies(audited, tmp_path):
+    """The removed claim's row stays in the bundle, and its tries re-run (Codex on #159)."""
+    conn, _ = audited
+    copy = _copy(conn, tmp_path)
+    set_claim_status(copy, "C01", ClaimStatus.REMOVED, EXAMINER)
+    found = _check(copy)
+    copy.close()
+    assert [f.level for f in found] == [PASS], found
 
 
 def test_a_logged_try_that_no_longer_follows_fails(audited, monkeypatch):
@@ -496,15 +559,43 @@ def test_the_eval_reports_the_measures_and_gives_no_go_no_go_until_arsh_sets_the
     assert t["claims_the_filler_left_untested"] == 1
     assert t["of_them_the_sheet_makes_testable"] == 1 and t["converted_and_accepted"] == 1
     assert t["mismatch_person_phone_or_window"] == 0 and t["invalid_outputs"] == 0
+    assert t["wrong_entity_rate"] == 0.0 and t["mismatch_other_only"] == 0
     assert t["x_percent"] is None and t["y_budget"] is None and not t["go_no_go_case"]
     printed = capsys.readouterr().out
     assert "testability go/no-go: none given (x_percent, y_budget not set by Arsh" in printed
+    assert "an upper bound: the signed sheet filters every try" in printed
     db = sqlite3.connect(tmp_path / "case01.db")
     try:  # the replay pass asked no model and reused the examiner's acceptance
         assert len(_log(db, testability.ACCEPT_ACTION)) == 1
         assert len(_log(db, testability.REPAIR_ACTION)) == 2  # one try, once per pass
     finally:
         db.close()
+
+
+def test_with_no_expert_the_eval_never_accepts_a_repair(tmp_path):
+    """--expert none: the repair is logged and never used (Codex on #159)."""
+    model = RuntimeFake(respond=_eval_answers)
+    rp.run_once("case01", "real", "accept", tmp_path, None, "none", labeler_model=model,
+                claim_ids=["C01"], filler_model=model, testability_cap=1,
+                testability_prompt=ROOT / "docs/prompts/agent_testability.md",
+                testability_model=model)  # fmt: skip
+    db = sqlite3.connect(tmp_path / "case01.db")
+    try:
+        assert _log(db, testability.ACCEPT_ACTION) == []
+        assert [p["outcome"] for _a, p in _log(db, testability.REPAIR_ACTION)] == ["proposed"]
+        kept = db.execute("SELECT COUNT(*) FROM assumptions WHERE claim_id = 'C01'").fetchone()
+        assert kept[0] == 0
+    finally:
+        db.close()
+
+
+def test_the_eval_never_runs_the_step_on_a_hidden_case(monkeypatch):
+    """Held-out scores never hold gold-filtered repairs: refused before anything is read."""
+    with pytest.raises(SystemExit, match="hidden case"):
+        rp.testability_step(None, "case02", None, 1, None, "simulated")
+    monkeypatch.setattr(rp, "is_hidden", lambda case: case == "case99")
+    with pytest.raises(SystemExit, match="hidden case"):
+        rp.testability_step(None, "case99", None, 1, None, "simulated")
 
 
 def test_the_eval_refuses_the_step_without_a_cap_or_outside_real_mode():

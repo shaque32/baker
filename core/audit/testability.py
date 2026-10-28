@@ -13,10 +13,12 @@ the next try (if the cap allows) is told those reasons.
 
 Then code, never the examiner, checks the try against the claim's signed assumption sheet
 (`mismatch`): every person, phone and time window the repaired set names must be one the
-sheet's core rows for the claim name, and so must every account and handle. A try that names
-anything else is rejected whole. A claim the sheet gives no core row is never repaired. With no
-signed sheet the step does not run, which keeps it in the eval: the product has no sheet to
-check against.
+sheet's core rows for the claim name, and so must every account, handle, app, template and
+quoted words. A try that names anything else is rejected whole. A claim the sheet gives no core
+row is never repaired. With no signed sheet the step does not run, which keeps it in the eval:
+the product has no sheet to check against. That makes what the eval counts as converted an
+upper bound filtered by gold, so the share of tries the sheet check rejects is reported beside
+it (eval/run_pipeline.py).
 
 A try that passes is only a proposal. It becomes the claim's assumptions when an examiner
 accepts it (`examiner`; in v1 the eval's simulated expert, through no UI). Without one it is
@@ -181,13 +183,17 @@ def lookups(filler: LocalAssumptionFiller, claim: Claim, para: str) -> list[Look
 
 @dataclass(frozen=True)
 class Named:
-    """Who, which phones and which time windows a set of assumptions names."""
+    """Who, which phones and time windows, and which apps, templates and quoted words a set of
+    assumptions names."""
 
     people: frozenset[str] = frozenset()
     phones: frozenset[str] = frozenset()
     windows: frozenset[tuple[str, str]] = frozenset()  # (start UTC, end UTC), ISO
     accounts: frozenset[str] = frozenset()
-    handles: frozenset[str] = frozenset()
+    handles: frozenset[str] = frozenset()  # casefolded
+    apps: frozenset[str] = frozenset()  # channels, casefolded
+    templates: frozenset[str] = frozenset()
+    quotes: frozenset[str] = frozenset()  # casefolded, whitespace folded
 
     def payload(self) -> dict[str, list[Any]]:
         return {
@@ -196,6 +202,9 @@ class Named:
             "windows": sorted(list(w) for w in self.windows),
             "accounts": sorted(self.accounts),
             "handles": sorted(self.handles),
+            "apps": sorted(self.apps),
+            "templates": sorted(self.templates),
+            "quotes": sorted(self.quotes),
         }
 
     @classmethod
@@ -206,6 +215,9 @@ class Named:
             windows=frozenset(tuple(w) for w in p.get("windows", ())),  # type: ignore[misc]
             accounts=frozenset(p.get("accounts", ())),
             handles=frozenset(p.get("handles", ())),
+            apps=frozenset(p.get("apps", ())),
+            templates=frozenset(p.get("templates", ())),
+            quotes=frozenset(p.get("quotes", ())),
         )
 
 
@@ -214,19 +226,34 @@ def _utc(value: Any) -> str:
     return t.isoformat()
 
 
-def named(params: Iterable[Mapping[str, Any]]) -> Named:
-    """What a set of parameter dicts names (AssumptionParams dumped, or a sheet row's params)."""
+def _fold(words: str) -> str:
+    return " ".join(_nfc(words).casefold().split())
+
+
+def named(rows: Iterable[tuple[str, Mapping[str, Any]]]) -> Named:
+    """What a set of (template id, parameters) names: AssumptionParams dumped, or a sheet
+    row's params."""
     people, phones, accounts, handles = set(), set(), set(), set()
+    apps, templates, quotes = set(), set(), set()
     windows: set[tuple[str, str]] = set()
-    for p in params:
+    for template_id, p in rows:
+        templates.add(template_id)
         people |= set(p.get("person_ids") or ())
         phones |= set(p.get("device_ids") or ())
         accounts |= set(p.get("account_ids") or ())
         handles |= {_nfc(h).casefold() for h in p.get("handles") or ()}
+        apps |= {_nfc(c).casefold() for c in p.get("channels") or ()}
+        if p.get("quoted_text"):
+            quotes.add(_fold(p["quoted_text"]))
         w = p.get("window")
         if isinstance(w, Mapping):
             windows.add((_utc(w["start_utc"]), _utc(w["end_utc"])))
-    return Named(*(frozenset(x) for x in (people, phones, windows, accounts, handles)))
+    return Named(
+        *(
+            frozenset(x)
+            for x in (people, phones, windows, accounts, handles, apps, templates, quotes)
+        )
+    )
 
 
 def sheet_named(
@@ -234,20 +261,20 @@ def sheet_named(
 ) -> dict[str, Named]:
     """Claim id -> what the signed sheet's core rows for it name. `people` maps the sheet's
     person ids to the case's (eval/run_pipeline.sheet_people)."""
-    by_claim: dict[str, list[dict[str, Any]]] = {}
+    by_claim: dict[str, list[tuple[str, dict[str, Any]]]] = {}
     for r in rows:
         if not r.get("is_core"):
             continue
         params = dict(r.get("params") or {})
         if people and params.get("person_ids"):
             params["person_ids"] = [people.get(p, p) for p in params["person_ids"]]
-        by_claim.setdefault(r["claim_id"], []).append(params)
+        by_claim.setdefault(r["claim_id"], []).append((r["template_id"], params))
     return {cid: named(ps) for cid, ps in by_claim.items()}
 
 
 def mismatch(repair: Named, sheet: Named) -> list[str]:
-    """What the repaired set names that the sheet does not. Empty: the same person, phone and
-    window as the sheet."""
+    """What the repaired set names that the sheet does not. Empty: the same people, phones,
+    windows, accounts, handles, apps, templates and quoted words as the sheet, or fewer."""
     out = []
     for what, got, want in (
         ("person", repair.people, sheet.people),
@@ -255,15 +282,18 @@ def mismatch(repair: Named, sheet: Named) -> list[str]:
         ("time window", repair.windows, sheet.windows),
         ("account", repair.accounts, sheet.accounts),
         ("handle", repair.handles, sheet.handles),
+        ("app", repair.apps, sheet.apps),
+        ("template", repair.templates, sheet.templates),
+        ("quoted words", repair.quotes, sheet.quotes),
     ):
         for x in sorted(got - want):
-            shown = " to ".join(x) if isinstance(x, tuple) else x
+            shown = " to ".join(x) if isinstance(x, tuple) else repr(x)
             out.append(f"names the {what} {shown}, which the signed sheet does not name")
     return out
 
 
 # The kinds of mismatch the go/no-go counts (plans/agentic.md: "a different person, phone or
-# window than the sheet"); accounts and handles are rejected too and counted beside them.
+# window than the sheet"); the other kinds are rejected too and counted beside them.
 NO_GO_KINDS = ("the person ", "the phone ", "the time window ")
 
 
@@ -379,7 +409,7 @@ def check_answer(
             return "refused", [*reasons, f"template {p.template_id!r}: {e}"], Named(), []
         out.setdefault(a.id, a)
     assumptions = list(out.values())
-    got = named(a.params.model_dump() for a in assumptions if a.is_core)
+    got = named((a.template_id, a.params.model_dump()) for a in assumptions if a.is_core)
     if sheet is None:
         return "mismatch", ["the signed sheet has no core assumption for this claim"], got, []
     wrong = mismatch(got, sheet)

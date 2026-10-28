@@ -490,6 +490,8 @@ def testability_step(
     from core.audit._llm_json import prompt_body
     from eval.simulated_expert import FALLIBLE, RUBBER_STAMP, SIM_EXPERT
 
+    if case == "case02" or is_hidden(case):  # held-out scores never hold gold-filtered repairs
+        raise SystemExit(f"{case}: the testability step never runs on a hidden case")
     sheet = assumption_sheet(case)
     if sheet is None or sheet_status(sheet) != "signed":
         raise SystemExit(f"{case}: the testability step needs a signed assumption sheet")
@@ -498,6 +500,8 @@ def testability_step(
     if not path.exists():
         raise SystemExit(f"testability: no prompt at {path}; Arsh signs it (docs/prompts/ draft)")
     actor = {"rubber-stamp": RUBBER_STAMP, "fallible": FALLIBLE}.get(expert, SIM_EXPERT)
+    # With no expert (--expert none) nobody accepts: repairs stay logged proposals, never used.
+    examiner = sim_examiner(actor) if expert != "none" else None
     step = testability.create(
         conn,
         filler,  # type: ignore[arg-type]
@@ -505,7 +509,7 @@ def testability_step(
         cap,
         model=model,
         template=prompt_body(path.read_text(encoding="utf-8")),
-        examiner=sim_examiner(actor),
+        examiner=examiner,
     )
     return step
 
@@ -520,6 +524,7 @@ def testability_summary(
     Counts only, so a hidden case prints nothing claim by claim."""
     reps = list(result.testability.values())
     tries = [a for r in reps for a in r.attempts]
+    checked = [a for a in tries if a.outcome in ("mismatch", "proposed")]  # passed the filler's
     testable = [r for r in reps if r.sheet is not None]
     converted = [r for r in reps if r.assumptions]
     signed = prompt is None or prompt == TESTABILITY_SIGNED_PROMPT
@@ -528,8 +533,13 @@ def testability_summary(
         "cap": step.cap,
         "claims_the_filler_left_untested": len(reps),
         "of_them_the_sheet_makes_testable": len(testable),
+        # An upper bound filtered by gold: the signed sheet rejects whatever it does not name.
         "converted_and_accepted": len(converted),
         "conversion_rate": (len(converted) / len(testable)) if testable else None,
+        # Of the tries that passed the filler's own checks, the share the sheet check rejected.
+        "wrong_entity_rate": (sum(a.outcome == "mismatch" for a in checked) / len(checked))
+        if checked
+        else None,
         "tries": len(tries),
         "invalid_outputs": sum(a.outcome == "invalid" for a in tries),
         "valid_output_rate": (1 - sum(a.outcome == "invalid" for a in tries) / len(tries))
@@ -537,7 +547,7 @@ def testability_summary(
         else None,
         "refused_by_code": sum(a.outcome == "refused" for a in tries),
         "mismatch_person_phone_or_window": sum(a.no_go for a in tries),
-        "mismatch_account_or_handle_only": sum(
+        "mismatch_other_only": sum(
             a.outcome == "mismatch" and not a.no_go and r.sheet is not None
             for r in reps
             for a in r.attempts
@@ -813,12 +823,18 @@ def print_testability(t: dict) -> None:
         f"{t['of_them_the_sheet_makes_testable']} of them testable; "
         f"{t['converted_and_accepted']} converted and accepted"
         + (f" ({rate:.0%})" if rate is not None else "")
+        + ", an upper bound: the signed sheet filters every try"
+    )
+    wrong = t["wrong_entity_rate"]
+    print(
+        "pipeline: testability: of the tries that passed the filler's checks, the sheet check "
+        + (f"rejected {wrong:.0%}" if wrong is not None else "saw none")
     )
     print(
         f"pipeline: testability: {t['tries']} calls, {t['invalid_outputs']} invalid outputs, "
         f"{t['refused_by_code']} refused by code; mismatches with the sheet: "
         f"{t['mismatch_person_phone_or_window']} on a person, phone or window, "
-        f"{t['mismatch_account_or_handle_only']} on an account or handle only, "
+        f"{t['mismatch_other_only']} on an account, handle, app, template or quote only, "
         f"{t['repairs_on_claims_the_sheet_leaves_untested']} on claims the sheet leaves untested;"
         f" {t['seconds']} s"
     )

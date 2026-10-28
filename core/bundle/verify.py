@@ -1548,14 +1548,22 @@ def _testability(
         {act for _s, at, _c, act, _p in log if act in _REPAIR_INPUTS and _dt(at) > started}
     )
     versions = {p.get("testability") for p in repairs}
+    stored = {
+        c
+        for (c,) in conn.execute(
+            "SELECT id FROM model_calls WHERE id IN (SELECT value FROM json_each(?))",
+            (json.dumps([p.get("model_call_id") for p in repairs]),),
+        )
+    }
     if not repairs:
         pass
-    elif not whole:
+    elif not whole or any(p.get("model_call_id") not in stored for p in repairs):
         out.add(
             NOTE,
             "testability",
             f"the testability step's {len(repairs)} tries were not re-run: the bundle leaves out "
-            "the people, phones and accounts they looked up (include records)",
+            "the people, phones and accounts they looked up, or the model answers they rest on "
+            "(include records and prompts)",
         )
         repairs = []
     elif versions != {testability.VERSION}:
@@ -1576,7 +1584,7 @@ def _testability(
         )
         repairs = []
     if repairs:
-        claims = {c.id: c for c in pipeline.load_claims(conn)}
+        claims = {c.id: c for c in pipeline.load_claims(conn, include_removed=True)}
         filler = LocalAssumptionFiller(None, conn, template=load_prompt("assumptions.md"))  # type: ignore[arg-type]
         for p in repairs:
             claim = claims.get(str(p.get("claim_id")))
