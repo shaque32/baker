@@ -1,4 +1,4 @@
-## 2026-10-28: The challenge step runs by default, is marked in the report, and shows in the demo
+## 2026-10-28: The challenge step runs by default, is marked in the report, and shows in the demo (#162)
 - Changed: Arsh asked on 2026-10-28 (07:44Z) for the agents to be on by default and part of the
   demos and pilots, and (07:50Z) for their work to be featured in the demo. This is PR 1 of
   `plans/agents-on-by-default.md`: the challenge step (#154). The testability agent stays off and
@@ -26,7 +26,7 @@
     person giving the demo. C16 waits under "Also waiting on you", the step's find carries its
     mark, and C16 stays unproven whatever the presenter decides. `docs/demo.md` gains the live
     step.
-- Where: branch `claude/project-thread-6i2msb-challenge-default` (PR to follow)
+- Where: PR #162 (branch `claude/project-thread-6i2msb-challenge-default`)
 - Verified: `make check` passes; its eval numbers are in the PR. New and changed tests:
   - `tests/test_challenge.py`: the step is on by default and a run can skip it, with the report
     saying "skipped for this run"; the CLI runs it unless `--no-challenge`; the review screen's
@@ -56,5 +56,5 @@
   on the screen, turns it off for one run): code's counter-searches on claims close to
   supported, storing only contradicts and complicates labels, each search logged and re-run by
   verify-bundle; its finds are marked "found by the challenge step" on screen and in the report;
-  its effect with a real labeler is unmeasured (#154, this PR)". Keep #154's section 7 or 10
+  its effect with a real labeler is unmeasured (#154, #162)". Keep #154's section 7 or 10
   line on the simulated experts as written.
