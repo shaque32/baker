@@ -9,6 +9,7 @@ this check exists to catch.
 from __future__ import annotations
 
 from core.audit.checks._common import (
+    CALL_CHANNEL,
     CaseData,
     Row,
     calls_for_accounts,
@@ -30,10 +31,12 @@ class TimeCheck(TemplateCheck):
     """Pass if a picked record falls in the window. Fail only for messages picked by their
     exact words, when every copy has a known time outside the window: the record the claim
     describes exists, at another time. Calls are picked by their parties, not their content,
-    so a call outside the window could be a different call, and is never a fail."""
+    so a call outside the window could be a different call, and is never a fail. A call
+    picked with an app beside "call" ("a Signal call": channels call and Signal) is a call on
+    that app only; "call" alone admits every app's calls."""
 
     name = "time"
-    version = "1.0.1"
+    version = "1.0.2"  # 1.0.2: a call is on the app named beside "call"
 
     def evaluate(self, assumption_id: str, p: AssumptionParams, data: CaseData) -> CheckResult:
         if p.window is None:
@@ -55,11 +58,13 @@ class TimeCheck(TemplateCheck):
                 what += f" lasting {lo} to {hi} s"
         if found:
             what += " between " + " and ".join(x.describe() for x in found)
+        apps = {c.strip().lower() for c in p.channels} - {CALL_CHANNEL}
         rows = [
             r
             for r in rows
             if r.source_id in sources
             and channel_ok(r, p.channels)
+            and (by_text or not apps or r.app.strip().lower() in apps)
             and (not party_ids or involves_all(r, party_ids))
         ]
         searched = f"{what.capitalize()} in {', '.join(sources)}; window {window_str(p.window)}."

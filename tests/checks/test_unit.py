@@ -474,7 +474,8 @@ def test_handle_resolving_checks_record_the_version_that_skips_copy_recipients()
     r = check(build(), "sender", quoted_text="see you at noon", person_ids=[B],
               device_ids=["dev:p2"])  # fmt: skip
     assert r.id.endswith("|sender@1.0.1")
-    assert {
-        CHECKS[n].version for n in ("absence", "sender", "time", "weekday", "same_account")
-    } == {"1.0.1"}
+    assert {CHECKS[n].version for n in ("absence", "sender", "weekday", "same_account")} == {
+        "1.0.1"
+    }
+    assert CHECKS["time"].version == "1.0.2"  # and a call is on the app named beside "call"
     assert CHECKS["count"].version == "1.0.3"
