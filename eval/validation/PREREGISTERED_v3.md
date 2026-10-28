@@ -83,7 +83,9 @@ app, and quote only the claim's quoted words. The audit records one line per cla
 
 ## Measures
 As v2, over tested claims only, plus:
-- **5. Contradicted by a failed check, gold not contradicted: 0 expected.** Each such claim is
+- **5. Contradicted by a failed check, gold not contradicted: 0 expected.** Only the failed
+  checks the Contradicted verdict cites count (rule 1a: checks on core assumptions); a failed
+  check on a non-core assumption beside a stance contradiction does not. Each such claim is
   listed with its check and records.
 - False Supported: 0, as before.
 - Coverage: k of 106, split by tier, with every refusal kind and its count.

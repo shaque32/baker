@@ -334,7 +334,7 @@ def _claim(claim_id: str, para: int, verdict: str):  # noqa: ANN202
 def _per_claim(gold: str, r1: str | None) -> dict:
     return {
         "type": "content", "gold": gold, "r1": r1, "failed_checks": [],
-        "supports": 0, "contradicts": 0, "contradicts_on_key": 0,
+        "verdict_failed_checks": [], "supports": 0, "contradicts": 0, "contradicts_on_key": 0,
     }  # fmt: skip
 
 
@@ -427,13 +427,18 @@ def test_run_3_counts_its_minimum_on_code_checked_claims_only():
 
 
 def test_a_wrong_contradicted_from_a_failed_check_is_counted():
+    def failed(*ids: str, decided: bool = True) -> dict:
+        return {"failed_checks": list(ids), "verdict_failed_checks": list(ids) if decided else []}
+
     rows = {
-        "C01": {**_per_claim("supported", "contradicted"), "failed_checks": ["chk:a"]},
+        "C01": {**_per_claim("supported", "contradicted"), **failed("chk:a")},
         "C02": {**_per_claim("unproven", "contradicted")},  # no failed check: measure 1 only
-        "C03": {**_per_claim("contradicted", "contradicted"), "failed_checks": ["chk:b"]},
+        "C03": {**_per_claim("contradicted", "contradicted"), **failed("chk:b")},
+        # A stance contradiction decided C04; its failed check is on a non-core assumption.
+        "C04": {**_per_claim("supported", "contradicted"), **failed("chk:c", decided=False)},
     }
     m = score_hickman._measures(rows)["contradicted_by_failed_check"]
-    assert (m["k"], m["n"], m["claims"]) == (1, 2, ["C01"])
+    assert (m["k"], m["n"], m["claims"]) == (1, 3, ["C01"])
 
 
 def test_a_claim_with_no_verdict_is_untested_and_never_scored():

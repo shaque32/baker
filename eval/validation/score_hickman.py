@@ -399,11 +399,13 @@ def _measures(per_claim: dict[str, dict[str, Any]]) -> dict[str, Any]:
             lambda r: bool(r["failed_checks"]) or r["contradicts_on_key"] > 0,
         ),
         # Run 3's added measure: a failed deterministic check decided a wrong Contradicted.
+        # Only the checks the verdict cites count (rule 1a: failed checks on core assumptions),
+        # not a failed check on a non-core assumption beside a stance contradiction.
         "contradicted_by_failed_check": _measure(
             per_claim,
             "R1 contradicted with a failed check, gold not contradicted",
             lambda r: r["gold"] != contra,
-            lambda r: r["r1"] == contra and bool(r["failed_checks"]),
+            lambda r: r["r1"] == contra and bool(r.get("verdict_failed_checks")),
         ),
     }
 
@@ -422,6 +424,10 @@ def r1_measures(conn: sqlite3.Connection, run: dict, gold: list[GoldClaim]) -> d
             "gold": g.gold_verdict.value,
             "r1": v.verdict.value if v else None,
             "failed_checks": _failed_checks(conn, manifest, g.claim_id),
+            # A Contradicted verdict cites exactly the failed checks that decided it.
+            "verdict_failed_checks": (
+                list(v.cited_check_ids) if v and v.verdict is Verdict.CONTRADICTED else []
+            ),
             "code_checked": _code_checked(conn, manifest, g.claim_id),
             "supports": sum(e.stance is Stance.SUPPORTS for e in items),
             "contradicts": sum(e.stance is Stance.CONTRADICTS for e in items),
