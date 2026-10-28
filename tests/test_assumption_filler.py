@@ -661,7 +661,9 @@ def test_stated_windows_skip_a_time_inside_quoted_words():
 
     (w,) = stated_windows("On March 12, 2026, PETROV wrote 'noon'.")
     assert (w.start.hour, (w.end - w.start).days) == (0, 1)
-    assert stated_windows("On March 12, 2026 at noon, PETROV wrote 'ok'.") is None
+    # a time outside the quoted words is read, never skipped into the whole day
+    (w,) = stated_windows("On March 12, 2026 at noon, PETROV wrote 'ok'.")
+    assert (w.start.hour, w.start.minute, (w.end - w.start).seconds) == (12, 0, 60)
     # a date in the quoted words is the message's: no range for it
     assert stated_windows('PETROV wrote "meet me at noon on March 12, 2026".') == []
     (w,) = stated_windows("On March 11, 2026, PETROV wrote 'see you at noon on March 12'.")
