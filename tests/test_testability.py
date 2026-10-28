@@ -296,6 +296,18 @@ def test_an_unusable_answer_is_counted_invalid(conn):
     assert att.outcome == "invalid" and att.assumption_ids == []
 
 
+def test_a_try_gets_the_fillers_own_fills_in_its_order(conn):
+    """check_answer runs the filler's steps after its items in the filler's own order (#160,
+    #164): an answer naming no assumption for C05 gets code's sender and time range from the
+    claim's words, exactly as the first pass does with the same answer."""
+    filler, built, _why = first_pass(conn, "C05", {"assumptions": []})
+    assert {a.template_id for a in built} >= {"sender", "record_time"}
+    same = testability.named((a.template_id, a.params.model_dump()) for a in built if a.is_core)
+    outcome, reasons, _got, assumptions = testability.check_answer(filler, claim("C05"), [], same)
+    assert (outcome, reasons) == ("proposed", [])
+    assert sorted(a.id for a in assumptions) == sorted(a.id for a in built)
+
+
 def test_the_repair_leaves_the_first_pass_refusals_as_they_were(conn):
     filler, _built, why = first_pass(conn, "C01", BAD_C01)
     before = list(filler.drops)
