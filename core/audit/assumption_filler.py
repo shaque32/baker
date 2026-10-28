@@ -38,6 +38,12 @@ the document or the case data. It fails closed at every step:
   the case goes by that word. A capitalized word counts only as written or in capitals
   ("Teams", never "the teams met"). No count or absence is read from an app that holds more
   than the word names (iOS "Native Messages" holds iMessage and SMS together).
+- A call the model proposed without its parties gets them from the claim's words
+  (`_call_parties`): each person the expert created whom the claim names, and each number,
+  identifier or quoted display name it writes, on the one app the claim names for the call
+  ("a Signal call"; `_call_app`). Each must be exactly one person or one account, or nothing
+  is filled. The channels become "call" and that app, so the time check searches that app's
+  calls only. A call on no named app (a native phone call) or on two is left as it was.
 - A call's stated length ("about two minutes", "a minute and a half", "more than two
   minutes") is turned into seconds by code, with any bound the claim writes right before it
   (`duration_range`).
@@ -108,7 +114,14 @@ from core.audit._llm_json import (
 )
 from core.audit._local_model import LocalModel, open_run
 from core.audit.assumptions import TEMPLATES, Proposal, Template, local_window, parse_params
-from core.audit.checks._common import Account, CaseData, key, namespace, person_party
+from core.audit.checks._common import (
+    CALL_CHANNEL,
+    Account,
+    CaseData,
+    key,
+    namespace,
+    person_party,
+)
 from core.contracts import Claim, ClaimType, ModelRun
 from core.review.device_names import logged_names, name_key
 from core.zones import resolve_zone
@@ -380,6 +393,24 @@ def _words(text: str) -> str:
 
 def _has_word(text: str, phrase: str) -> bool:
     return f" {phrase} " in _words(text)
+
+
+def _names_person(text: str, name: str) -> bool:
+    """The text names this person the expert created: the whole name in any case ("SUBJECT-1",
+    "Daniel Petrov"), or a last name of several as written or in capitals ("PETROV")."""
+    if not name:
+        return False
+    if _has_word(text, _words(name).strip()):
+        return True
+    parts = name.split()
+    return len(parts) > 1 and any(
+        re.search(rf"(?<![\w-]){re.escape(x)}(?![\w-])", text)
+        for x in (parts[-1], parts[-1].upper())
+    )
+
+
+# An address or identifier with an app's name in it: "x@gmail.com", "live:.cid.5638", "zoom.us".
+_ADDRESS_RE = re.compile(r"\S+@\S+|\S*:\S+|\S+\.(?:com|net|org|us|io)\b\S*", re.IGNORECASE)
 
 
 def _has_alias(text: str, alias: str) -> bool:
@@ -1836,6 +1867,21 @@ class LocalAssumptionFiller:
                         " absence is read on its accounts"
                     )
 
+        if (
+            tpl.id == "record_time"
+            and not p.quoted_text
+            and not (params.get("person_ids") or account_ids or handles)
+            and any(_has_word(_unquoted(claim.text), w) for w in CHANNEL_WORDS["call"])
+        ):
+            # A call the model named without its parties: code reads them from the claim.
+            app = self._call_app(claim.text, params.get("channels", []))
+            people, accounts = self._call_parties(claim, device_ids, app)
+            params["channels"] = sorted({CALL_CHANNEL, app}, key=str.lower)
+            if people:
+                params["person_ids"] = people
+            if accounts:
+                params["account_ids"] = accounts
+
         if p.count is not None:
             params["count_op"] = count_op(claim.text, p.count.value)
             params["expected_count"] = p.count.value
@@ -2196,6 +2242,77 @@ class LocalAssumptionFiller:
         if not hits:
             raise Reject(f"{acc.as_written!r} on {acc.app} matches no account in the case")
         return hits
+
+    def _call_app(self, claim_text: str, channels: list[str]) -> str:
+        """The one app the claim names for a call ("a Signal call"), which any app the
+        proposal names must be. A call on no named app, or on two, is refused: the words
+        alone never pick the app."""
+        # An app's name inside an address names no app ("thisisdfirtwo@gmail.com").
+        words = _ADDRESS_RE.sub(" ", claim_text)
+        named = []
+        for app in self.channels():
+            if app == CALL_CHANNEL or namespace(app) == "tel":
+                continue
+            try:
+                self._channels(words, [app])
+            except Reject:
+                continue
+            named.append(app)
+        if len(named) != 1:
+            raise Reject(f"the claim names {len(named)} apps for the call, not one")
+        (app,) = named
+        if any(c not in (CALL_CHANNEL, app) for c in channels):
+            raise Reject(f"the proposal's channels are not the claim's {app!r} call")
+        return app
+
+    def _call_parties(
+        self, claim: Claim, device_ids: list[str], app: str
+    ) -> tuple[list[str], list[str]]:
+        """The parties of a call the claim describes, read from its own words: each person
+        the expert created whom it names, and each number, identifier or quoted display name
+        it writes, on the claim's one app. Each must be exactly one person or one account;
+        if any is not, or the claim names none, nothing is filled. The phone the call was on
+        ("the TARGET PHONE") is no party: it scopes the search."""
+        text = _nfc(claim.text)
+        bare = _unquoted(text)
+        people = {
+            pid
+            for pid, name in self.conn.execute("SELECT id, name FROM persons ORDER BY id")
+            if _names_person(bare, _nfc(name.strip()))
+        }
+        written: list[str] = [m.group(0).strip(" .,-") for m in _PHONE_RE.finditer(bare)]
+        written = [w for w in written if phone_digits(w) is not None]
+        quoted = [m.group(0)[1:-1].strip() for m in _QUOTE_SPAN_RE.finditer(_flat(text))]
+        written += [q for q in quoted if q]
+        ids = {
+            a.identifier.strip()
+            for a in self.data.accounts.values()
+            if a.app == app
+            and len(a.identifier.strip()) >= 6
+            and not re.search(r"\s", a.identifier)
+        }
+        written += sorted(
+            i for i in ids if re.search(rf"(?<![\w.:@-]){re.escape(i)}(?![\w@-])", bare)
+        )
+        accounts: set[str] = set()
+        for words in dict.fromkeys(written):
+            person = self._person_named(words)
+            if person is not None:
+                people.add(person)
+                continue
+            acc = _Account(as_written=words, app=app)
+            try:
+                found = self._accounts(acc, device_ids, claim.text)
+            except _SharedNumber:
+                raise
+            except Reject:
+                found = self._accounts_named(acc, device_ids, claim.text)
+            if len({self.data.accounts[a].key for a in found}) != 1:
+                raise Reject(f"{words!r} on {app} is not one account the call could be with")
+            accounts |= found
+        if not people and not accounts:
+            raise Reject("the claim names no party for the call")
+        return sorted(people), sorted(accounts)
 
     def _app_named(self, claim_text: str, app: str) -> bool:
         """A phone app, or an app the claim names the way `_channels` requires."""
