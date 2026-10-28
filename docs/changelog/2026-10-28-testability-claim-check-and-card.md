@@ -1,6 +1,6 @@
-## 2026-10-28: Testability agent: claim-only check, the examiner's card, and the demo's D02 and D03 (branch to follow)
+## 2026-10-28: Testability agent: claim-only check, the examiner's card, and the demo's D02 and D03 (#163)
 - Changed: PR 2 of `plans/agents-on-by-default.md`, after Arsh's choice on 2026-10-28 (07:50Z)
-  to build the claim-only check and the accept card now, and his ask that the agents' work be
+  to build the claim-only check and the accept card now, and Arsh's ask that the agents' work be
   featured in the demo. The step stays off by default: the review screen's audit and `mabillon
   audit` never turn it on. Only the eval and the scripted demo build (`eval/demo.py`) do.
   - Claim-only check (`testability.outside_claim`, step 0.2.0): every person, phone and account
@@ -43,13 +43,13 @@
       says that the answers are scripted and the checks are real.
   - Merges #162 into this branch (challenge step on by default), so it merges after #149, #159
     and #162. The report version stays 0.22.0: the report's mark is #159's.
-- Where: branch `claude/project-thread-6i2msb-testability-accept` (PR to follow)
+- Where: branch `claude/project-thread-6i2msb-testability-accept` (PR #163)
 - Verified: `make check` passes; its eval numbers are in the PR. New tests:
   - `tests/test_testability.py`:
     - the claim-only check counts what the claim's own words name (a person only the paragraph
       names, another phone, a handle and an account the claim does not write are refused);
     - a repair naming a person only the paragraph names is "outside" in both modes, before the
-      sheet (which names him) is read;
+      sheet (which names that person) is read;
     - without a sheet the step proposes, logs the proposed texts and uses nothing;
     - through the audit: a proposal waits for the examiner, `decide_repair` refuses a
       non-expert, an empty reason and an unknown try, an acceptance changes nothing until the
@@ -78,6 +78,6 @@
   step, add "With no signed sheet the step checks each try against the claim's own words (every
   person, phone and account one the claim's text names), and the claim page shows the try as
   "Proposed by agent" for the examiner to accept or reject; only an acceptance is used, from
-  the next audit on. Off by default; only the eval and the scripted demo turn it on (#N)".
+  the next audit on. Off by default; only the eval and the scripted demo turn it on (#163)".
   Section 7 (demo), if it lists the demo's claims: add D02 and D03 as the agent's demo claims,
   with scripted answers.
