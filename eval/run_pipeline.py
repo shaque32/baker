@@ -96,11 +96,14 @@ def synthetic_dir(case: str) -> Path:
 
 
 # Draft keys, used only until Arsh signs the case's gold (eval/gold/<case>/gold.jsonl).
-DRAFT_GOLD = {"case02": Path("eval/synthetic/case02/draft_gold.jsonl")}
+DRAFT_GOLD = {
+    "case02": Path("eval/synthetic/case02/draft_gold.jsonl"),
+    "case03": Path("eval/synthetic/case03/draft_gold.jsonl"),  # challenge-step case, ungated
+}
 
 
 def gold_path(case: str) -> Path:
-    """The case's signed gold if there is one, else its draft key (case02 only)."""
+    """The case's signed gold if there is one, else its draft key (case02, case03)."""
     signed = Path("eval/gold") / case / "gold.jsonl"
     if signed.exists() and signed.read_text(encoding="utf-8").strip():
         return signed
@@ -129,6 +132,8 @@ def ensure_reports(case: str) -> dict:
             from eval.synthetic.generate import generate
         elif case == "case02":
             from eval.synthetic.case02_generate import generate
+        elif case == "case03":
+            from eval.synthetic.case03_generate import generate
         else:
             raise SystemExit(f"{case}: reports missing; build them with that case's generator")
         generate(synthetic_dir(case), None)
@@ -142,6 +147,10 @@ def render_affidavit_pdf(case: str, path: Path) -> Path:
 
         path.parent.mkdir(parents=True, exist_ok=True)
         return write_affidavit_pdf(path)
+    if case == "case03":
+        from eval.synthetic.case03_generate import write_affidavit_pdf as write_case03
+
+        return write_case03(path)
     if case != "case01":
         raise SystemExit(f"{case}: no affidavit renderer")
     from eval.synthetic import govdocs as g
