@@ -157,7 +157,8 @@ def test_no_count_or_absence_is_read_on_the_accounts_of_an_app_that_holds_more(c
             filler(conn)._resolve(claim(absence, ClaimType.ABSENCE), "", proposal(
                 "no_contact", quoted_text="", accounts=acc))  # fmt: skip
         if words.startswith("+"):  # "messages" names both kinds (and no app, for a name)
-            messages = "On January 9, 2026, PETROV sent 3 messages to Reyes D (+12125550199)."
+            # (A count one side sent is refused anyway: the count check counts both ways.)
+            messages = "On January 9, 2026, PETROV and Reyes D (+12125550199) exchanged 3 messages."
             out = filler(conn)._resolve(claim(messages, ClaimType.COUNT), "", proposal(
                 "message_count", quoted_text="", accounts=acc, count={"value": 3}))  # fmt: skip
             assert out.params["account_ids"] == ["acct:extra:nm"]
@@ -256,7 +257,8 @@ def test_a_person_whose_name_two_other_accounts_carry_is_refused_as_not_theirs(c
 def test_a_person_written_as_an_account_is_one_more_party(conn):
     # Beside a writer, the person is a second party. A sender takes one party, so the
     # template refuses; it never reads as "sent by PETROV or REYES".
-    text = f'On March 18, 2026, PETROV wrote "{QUOTE}" to REYES on Instagram.'
+    # (Written as the one it went to, REYES is refused before that: test_assumption_filler.)
+    text = f'On March 18, 2026, PETROV and REYES wrote "{QUOTE}" on Instagram.'
     p = proposal(
         "sender", people=["PETROV"], accounts=[{"as_written": "REYES", "app": "Instagram"}]
     )

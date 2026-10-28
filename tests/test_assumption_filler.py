@@ -21,6 +21,7 @@ from core.audit.assumption_filler import (
     check_window,
     count_op,
     date_mentions,
+    only_addressed,
 )
 from core.audit.assumptions import TEMPLATES, TemplateAssumptionBuilder
 from core.audit.checks import CHECKS
@@ -745,6 +746,78 @@ def test_bad_values_drop_the_proposal_and_the_claim_stays_unproven(conn, cid, ch
     assert "stays unproven" in reasons  # the key template did not survive
 
 
+# ---------------------------------------------------------------- guards (run 2 replay)
+# Run 2's replay found claims "tested" on assumptions that misstate them: the addressee
+# checked as the sender, the claim's own words searched as a message, and a sender naming two
+# parties that counted for coverage and was then dropped. A sender check on the wrong person
+# can fail on a true claim, and a failed check contradicts it without an expert.
+
+
+def test_the_addressee_is_never_the_sender(conn):
+    # C05 "PETROV wrote to @northstar: ...": @northstar is who it went to.
+    quote = "need 2 more by friday"
+    answers = {"C05": [P("sender", handles=["@northstar"], quoted_text=quote)]}
+    assumptions, filler, _ = build(conn, "C05", answers)
+    assert assumptions == []
+    assert "as the one the message went to" in filler.drops[0].reason
+
+
+@pytest.mark.parametrize(
+    ("value", "text", "quoted", "addressed"),
+    [
+        ("@northstar", "PETROV wrote to @northstar: 'ok'.", "ok", True),
+        ("PETROV", "PETROV wrote to @northstar: 'ok'.", "ok", False),
+        ("REYES", "PETROV texted REYES 'its done'.", "its done", True),
+        ("REYES", "PETROV told REYES by Signal: 'its done'.", "its done", True),
+        (
+            "+1 (212) 555-0122",
+            "PETROV's iMessage to +1 (212) 555-0122, 'ok', shows it.",
+            "ok",
+            True,
+        ),
+        ("dp", 'PETROV wrote to the Instagram user "dp": "ok"', "ok", True),
+        ("dp", 'The Instagram user "dp" wrote to PETROV: "ok"', "ok", False),
+        # Written once as the writer: not only the addressee.
+        ("PETROV", "REYES wrote to PETROV, and PETROV wrote back 'fine'.", "fine", False),
+        # A name inside the quoted message is words, not a place the claim writes the party.
+        ("REYES", "PETROV wrote to REYES 'REYES, call me'.", "REYES, call me", True),
+        ("SOKOLOV", "PETROV wrote 'ok'.", "ok", False),  # not written: not judged here
+    ],
+)
+def test_only_addressed(value, text, quoted, addressed):
+    assert only_addressed(value, text, quoted) is addressed
+
+
+def test_a_message_is_quoted_words_not_the_claims_own(conn):
+    # "call" or "wrote to" in a claim is the claim's wording, not a message anyone wrote.
+    answers = {"C05": [P("sender", people=["PETROV"], quoted_text="wrote to")]}
+    assumptions, filler, _ = build(conn, "C05", answers)
+    assert assumptions == []
+    assert "not inside quotation marks" in filler.drops[0].reason
+
+
+def test_a_quoted_name_is_not_a_message(conn):
+    # C09 "... the number saved as "Marc Garage"": the quoted words name the party.
+    garage = {"as_written": "Marc Garage", "app": "Phone"}
+    answers = {"C09": [{**GOOD["C09"][0], "accounts": [garage], "quoted_text": "Marc Garage"}]}
+    assumptions, filler, _ = build(conn, "C09", answers)
+    assert assumptions == []
+    assert "a party's name, not a message" in filler.drops[0].reason
+
+
+def test_a_sender_the_builder_drops_does_not_count_for_coverage(conn):
+    # C16: a sender naming PETROV and the dp_garage account is two parties, which the
+    # builder drops. It must not count as testing the claim, nor lend its parties to a time
+    # range made by code; the claim stays unproven instead of being tested on its time alone.
+    quote = "got the money, come get it"
+    answers = {"C16": [P("sender", people=["PETROV"], accounts=[DP_GARAGE], quoted_text=quote)]}
+    assumptions, filler, _ = build(conn, "C16", answers)
+    assert assumptions == []
+    reasons = " | ".join(d.reason for d in filler.drops)
+    assert "name exactly one party" in reasons
+    assert "stays unproven" in reasons
+
+
 def test_unknown_person_is_dropped(conn):
     answers = {"C18": [P("person_identity", people=["ALEXANDER SOKOLOV"], handles=["@northstar"])]}
     assumptions, filler, _ = build(conn, "C18", answers)
@@ -836,7 +909,10 @@ def test_date_mentions():
         ("Item 1 recorded 13 Telegram messages", 13, "eq"),
         ("at least 13 messages", 13, "ge"),
         ("13 messages or more", 13, "ge"),
-        ("at most 4 calls", 4, "le"),
+        ("at most 4 texts", 4, "le"),
+        ("From March 10 to March 31, 2026, PETROV and @northstar exchanged 13 messages", 13, "eq"),
+        ("13 messages to and from @northstar", 13, "eq"),
+        ("13 messages from March 10 to March 31", 13, "eq"),
     ],
 )
 def test_count_op(claim_text, value, op):
@@ -844,7 +920,19 @@ def test_count_op(claim_text, value, op):
 
 
 @pytest.mark.parametrize(
-    "claim_text", ["about 13 messages", "more than 13 messages", "on March 13 they met"]
+    "claim_text",
+    [
+        "about 13 messages",
+        "more than 13 messages",
+        "on March 13 they met",
+        # The count check counts messages, in both directions between the two parties.
+        "at most 13 calls",
+        "Item 1 called @northstar 13 times",
+        "PETROV sent @northstar 13 messages",
+        "On March 12, PETROV sent exactly 13 Telegram messages to @northstar",
+        "Item 1 holds 13 messages from @northstar",
+        "REYES received 13 texts",
+    ],
 )
 def test_count_op_refuses(claim_text):
     with pytest.raises(Reject):
