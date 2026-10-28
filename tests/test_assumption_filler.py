@@ -506,6 +506,27 @@ def test_a_sender_without_a_party_gets_the_writer_the_claim_names(conn):
         ("PETROV texted REYES, and REYES: 'ok'.", "ok", None),
         ("PETROV texted REYES then @northstar: 'ok'.", "ok", None),
         ("PETROV texted REYES and @northstar: 'ok'.", "ok", "PETROV"),
+        # The coverage plan's step 3: more ways a claim names the writer.
+        ("PETROV asked on Telegram: 'ok?'", "ok?", "PETROV"),
+        ("PETROV posted on Instagram: 'ok'.", "ok", "PETROV"),
+        ("REYES told PETROV by WhatsApp: 'ok'.", "ok", "REYES"),
+        ("REYES told PETROV via Telegram: 'ok'.", "ok", "REYES"),
+        ("PETROV told REYES by iMessage: 'ok'.", "ok", "PETROV"),  # an app's word, any case
+        ("PETROV told REYES in a WhatsApp chat: 'ok'.", "ok", "PETROV"),
+        ("PETROV sent a WhatsApp message to (212) 555-0122 reading 'ok'.", "ok", "PETROV"),
+        ("PETROV sent REYES a Telegram message reading 'ok'.", "ok", "PETROV"),
+        ("PETROV sent REYES a text that read 'ok'.", "ok", None),  # "read" governs
+        ('PETROV wrote to the Instagram user "dp_garage": "ok".', "ok", "PETROV"),
+        ('PETROV told "Marc Garage" in a WhatsApp chat: "ok".', "ok", "PETROV"),
+        # A quoted word that is no name the case knows still refuses the writer.
+        ('PETROV wrote to the user "a friend": "ok".', "ok", None),
+        # "reading" that is no message's words.
+        ("PETROV texted REYES, reading 'ok'.", "ok", None),
+        ("PETROV sent REYES a report reading 'ok'.", "ok", None),
+        # A number that is no plain phone number stays a word that refuses.
+        ("PETROV sent a message to 555-0122 reading 'ok'.", "ok", None),
+        # "said" still names no writer: it may be spoken.
+        ("PETROV said to REYES: 'ok'.", "ok", None),
     ],
 )  # fmt: skip
 def test_stated_sender_is_the_writer_of_the_quoted_words(conn, text, quoted, writer):
@@ -1289,3 +1310,39 @@ def test_the_run_records_the_filler_version(conn):
     filler = assumption_filler.create(conn, model=Model("{}"))
     (run,) = filler.model_runs
     assert run.params["code_version"] == assumption_filler.FILLER_VERSION
+
+
+def test_a_phones_own_accounts_stand_for_the_phone_written_as_an_account(conn):
+    filler = LocalAssumptionFiller(FakeModel("{}"), conn, template=DRAFT)
+    text = "Item 1's Telegram account and @alex92 exchanged 3 messages."
+    own = filler._own_accounts("Item 1", "Telegram", text)
+    assert own == {"acct:item1:Telegram:7001001"}
+    assert filler._own_accounts("Item 1", "Instagram", text) == set()  # the claim names no app
+    assert filler._own_accounts("Item 3", "Telegram", text) == set()  # no such phone
+    assert filler._own_accounts("Item 1", "SMS", "Item 1 texted") == set()  # never a phone app
+
+
+@pytest.mark.parametrize(
+    ("text", "value", "op"),
+    [
+        ("PETROV and REYES exchanged thirteen messages.", 13, "eq"),
+        ("PETROV and REYES exchanged at least twenty-one texts.", 21, "ge"),
+        ("PETROV and REYES exchanged 13 messages.", 13, "eq"),
+    ],
+)
+def test_count_op_reads_numbers_in_words(text, value, op):
+    assert count_op(text, value) == op
+
+
+def test_count_op_never_reads_a_as_one():
+    with pytest.raises(Reject):
+        count_op("PETROV and REYES exchanged a message.", 1)
+
+
+def test_a_code_made_sender_stays_on_the_app_the_claim_names(conn):
+    keep = [p for p in GOOD["C05"] if p["template_id"] == "record_time"]
+    text = 'On March 12, 2026, PETROV wrote to @northstar on Telegram: "need 2 more by friday".'
+    keep = [{**p, "channels": ["Telegram"]} for p in keep]
+    assumptions, filler = build_text(conn, text, ClaimType.COMMUNICATION, keep)
+    (sender,) = [a for a in assumptions if a.template_id == "sender"]
+    assert sender.params.channels == ("Telegram",)
