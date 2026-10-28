@@ -1107,8 +1107,9 @@ LONGEST_CALL_S = 86_400  # the open end of "more than" and "at least": one day
 _LEAD_ALT = "|".join(w.replace(" ", r"\s+") for w in sorted(_LENGTH_LEADS, key=len, reverse=True))
 _LENGTH_LEAD_RE = re.compile(rf"^(?P<lead>{_LEAD_ALT})\s+(?P<rest>.+)$", re.IGNORECASE)
 _LEAD_BEFORE_RE = re.compile(rf"\b(?P<lead>{_LEAD_ALT})\s+$", re.IGNORECASE)
-# a word that turns a bound round: "not more than", "never lasted over", "wasn't under"
-_NEGATED_RE = re.compile(r"(?:\b(?:not|never)|n't)(?:\s+[\w'-]+){0,3}\s+$", re.IGNORECASE)
+# a word that turns a bound round: "not more than", "never lasted over", "wasn't under",
+# "cannot have lasted over" (apostrophes are made plain first)
+_NEGATED_RE = re.compile(r"(?:\b(?:not|never|cannot)|n't)(?:\s+[\w'-]+){0,3}\s+$", re.IGNORECASE)
 # a bound written after the length: "two minutes or less", "or more", "or so", "plus"
 _BOUND_AFTER_RE = re.compile(
     r"^\s*,?\s*(?:(?:or|and)\s+(?:less|more|longer|shorter|under|over|fewer|greater|above|"
@@ -1117,6 +1118,16 @@ _BOUND_AFTER_RE = re.compile(
 )
 _UNIT = r"(?:second|sec|minute|min|hour|hr)s?\.?"
 _NUM = r"\d+|an?|[a-z]+(?:[-\s][a-z]+)?"
+# The claim's length goes on past the model's words, or starts before them: "more than a
+# minute" of "more than a minute and a half", "30 seconds" of "two minutes and 30 seconds".
+# Read alone, the part would be another length (Codex on #153).
+_NUMBER_WORD = "|".join(sorted(_NUMBER_WORDS, key=len, reverse=True))
+_LENGTH_GOES_ON_RE = re.compile(
+    rf"^\s*,?\s*(?:and\s+)?(?:a\s+half\b|(?:\d+|(?:{_NUMBER_WORD})(?:[-\s](?:{_NUMBER_WORD}))?)"
+    rf"\s+{_UNIT}(?!\w))",
+    re.IGNORECASE,
+)
+_LENGTH_GOES_BEFORE_RE = re.compile(rf"(?<!\w){_UNIT}\s*,?\s*(?:and\s+)?$", re.IGNORECASE)
 # One part of a length, with the precision its words state: "two minutes" to the minute,
 # "a minute and a half" or "half an hour" to the half.
 _HALF_PARTS = (
@@ -1177,6 +1188,10 @@ def _length(words: str) -> tuple[int, int]:
     raise Reject(f"cannot read the duration {words!r}")
 
 
+def _plain_apostrophes(words: str) -> str:
+    return words.replace("\u2019", "'").replace("\u2018", "'").replace("\u02bc", "'")
+
+
 def duration_range(as_written: str, claim: str = "") -> tuple[int, int]:
     """Seconds a stated call length allows, read from its words by code.
 
@@ -1190,18 +1205,23 @@ def duration_range(as_written: str, claim: str = "") -> tuple[int, int]:
       minutes", the words "two minutes" are read as "more than two minutes", and in "no more
       than two minutes" the words "more than two minutes" are read as "no more than".
     - Refused: a bound the claim turns round ("not more than", "never over", "wasn't under";
-      "no more than" is read as "at most"), and a bound written after the length ("two minutes
-      or less", "or more", "or so", "plus"), in the model's words or the claim's.
+      "no more than" is read as "at most"), a bound written after the length ("two minutes
+      or less", "or more", "or so", "plus"), in the model's words or the claim's, and words
+      that are only part of the claim's length ("a minute" of "a minute and a half").
     """
-    words = " ".join(as_written.split())
+    words = " ".join(_plain_apostrophes(as_written).split())
     m = _LENGTH_LEAD_RE.match(words)
     lead, rest = (m.group("lead"), m.group("rest")) if m else (None, words)
     if claim:
-        text, leads = " ".join(claim.split()), set()
+        text, leads = " ".join(_plain_apostrophes(claim).split()), set()
         i = text.lower().find(words.lower())
         while i >= 0:
             # the claim's whole lead before the length, which holds the model's lead if any
             head = text[: i + len(words) - len(rest)]
+            if _LENGTH_GOES_ON_RE.match(text[i + len(words) :]) or _LENGTH_GOES_BEFORE_RE.search(
+                head
+            ):
+                raise Reject(f"the claim's length goes on past the words {as_written!r}")
             before = _LEAD_BEFORE_RE.search(head)
             if before is not None:
                 head = head[: before.start()]

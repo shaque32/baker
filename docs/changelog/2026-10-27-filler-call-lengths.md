@@ -25,6 +25,10 @@
   - The claim's whole lead counts (review fix): when the model's words carry part of it, the
     claim's "no more than two minutes" is read as at most 120 seconds. Before the fix, the
     model's "more than two minutes" taken from it read as 121 seconds to a day.
+  - Refused (review fix): words that are only part of the claim's length. Before the fix,
+    "more than a minute" taken from "more than a minute and a half" read as 61 seconds to a
+    day, and "30 seconds" taken from "two minutes and 30 seconds" as 30 seconds. A typographic
+    apostrophe ("wasn’t under") and "cannot" now turn a bound round as "wasn't" does.
   - The rules for "about" (25% either side) and for a plain length ("two minutes" is 120 to
     179) are unchanged.
   - A call length only narrows which calls the time check counts. That check never fails on
@@ -35,8 +39,10 @@
     and the four bounds;
   - a new test reads a bound the claim writes before the model's words, and refuses the same
     words written twice with different leads;
-  - 13 turned-round or trailing bounds are refused, and "no more than", "no less than" and a
-    "not" in another clause still read;
+  - 17 turned-round or trailing bounds are refused (4 with a typographic apostrophe or
+    "cannot"), and "no more than", "no less than" and a "not" in another clause still read;
+  - 7 sets of words that are only part of the claim's length are refused, and the whole
+    length, or a length followed by "a second call" or "then", still reads;
   - the claim's whole lead counts when the model's words carry part of it ("more than two
     minutes" from "no more than two minutes" is at most 120 seconds);
   - `test_duration_range_refuses` covers "a while", "2m", "a few minutes", "just two
@@ -47,7 +53,8 @@
   - Read-only replay of run 1's 2 recorded duration proposals on run 1's own case data, with
     #150 and #152, done after the code was written. Both now give a record_time assumption
     with no coverage gap: "more than a minute and a half" is 91 seconds to one day, and "about
-    one and a half minutes" is 68 to 112 seconds.
+    one and a half minutes" is 68 to 112 seconds. After the last review fix, replaying all 106
+    recorded proposals gives the same output as before it.
   - `make check` passes; its eval numbers are in the PR.
 - Open: unmeasured on a run, and not held out, because the parser was written after reading
   run 1's refusals.
