@@ -109,7 +109,7 @@ def test_the_live_step_shows_the_challenge_steps_find_on_c16(root):
         "SELECT config_json FROM pipeline_runs WHERE id = ?", (run["evidence_from_run"],)
     ).fetchone()[0]
     assert json.loads(audit)["challenge"] == challenge.VERSION
-    found = challenge.found_items(conn)
+    found = challenge.found_items(conn, run)  # the audit's finds, read through the re-run
     items = pipeline.load_evidence(conn, run["manifest"]["C16"]["evidence"])
     doubt = [e for e in items if e.stance is Stance.COMPLICATES]
     assert {e.record_id for e in doubt} == demo.CHALLENGE_DOUBT["C16"]

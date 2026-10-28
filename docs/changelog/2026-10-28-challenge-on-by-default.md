@@ -15,24 +15,30 @@
     model calls, never support.
   - Marked: an item the step stored says "Found by the challenge step" in the report (report
     0.22.0, after #149's 0.20.0 and #159's 0.21.0) and carries a "found by the challenge step"
-    badge on its review-screen card. Both are read from the step's own audit entries
-    (`challenge.found_items`). The report's versions table says "Challenge step: ran (1.0.0)" or
-    "skipped for this run", read from the audit whose evidence the run shows, so a verdict re-run
-    says it too.
+    badge on its review-screen card. Both are read, once per page, from the step's own audit
+    entries for the audit whose evidence is shown (`challenge.found_items`), so a verdict re-run
+    shows its source audit's finds. Another audit's finds are not marked: evidence ids come from
+    content, so a later audit without the step can store the same item through retrieval. The
+    report's versions table says "Challenge step: ran (1.0.0)" or "skipped for this run", read
+    from that same audit, or "not recorded" when its configuration is missing, never "skipped".
   - Demo: the step runs in the scripted demo as in the product. Its search for someone else
     using the account finds C16's "its ilya btw, dan's at work. he left his login on my ipad".
     The demo's scripted labels mark C16's two counter-records in the signed key complicates on
     its authorship assumption (`CHALLENGE_DOUBT`), and the scripted expert leaves both for the
     person giving the demo. C16 waits under "Also waiting on you", the step's find carries its
     mark, and C16 stays unproven whatever the presenter decides. `docs/demo.md` gains the live
-    step.
+    step, and says the search is real and its "complicates" label is scripted: the demo shows
+    where the step's finds land, not what it catches with a model.
 - Where: PR #162 (branch `claude/project-thread-6i2msb-challenge-default`)
 - Verified: `make check` passes; its eval numbers are in the PR. New and changed tests:
   - `tests/test_challenge.py`: the step is on by default and a run can skip it, with the report
     saying "skipped for this run"; the CLI runs it unless `--no-challenge`; the review screen's
     audit runs it unless skipped; a stored doubt is marked in its own report row and only the
     step's finds are marked; the report says the audit ran the step; the eval runs it by default
-    under the rubber-stamp expert.
+    under the rubber-stamp expert. An earlier audit's find, stored again by a later audit's
+    retrieval with the step off, is not marked in that audit's report or claim page, and both
+    say the step was skipped (this test fails without the run scoping); a missing configuration
+    reads "not recorded".
   - `tests/test_demo.py`: the demo's audit ran the step; C16's two counter-records are open
     complicating items and the step's find is among them; the claim page marks each find; the
     report marks it and says the step ran; accepting both leaves C16 unproven. The overview tests
@@ -48,7 +54,12 @@
   the expert, it does not replace the expert. On a case that opted into cloud AI, the step's
   records go to the cloud labeler like any retrieved record, so such a case sends more records;
   what is sent per record is unchanged. Pilot and privacy docs that list what an audit does are
-  Arsh's to update. Validation run 3 should pin the step on or off in PREREGISTERED_v3.
+  Arsh's to update. Validation run 3 should pin the step on or off in PREREGISTERED_v3, before
+  the run. Eval comparability: `eval/run_pipeline.py` output from before this change ran without
+  the step, so compare it with output after this change only from a `--no-challenge` run. The
+  step's marks read the audit log once per page: 54 ms on a synthetic log of 120,000 entries,
+  20,000 of them the step's (cloud container, x86_64, 4 cores, 2026-10-28); a real large case's
+  page time is unmeasured.
 - Affects: capabilities (the challenge step runs by default), performance (more stance calls on
   claims close to supported), customer-facing demo
 - Status doc: pending: section 8 item 2 ("Audit"): in place of #154's pending line, add "A

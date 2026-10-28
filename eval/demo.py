@@ -222,7 +222,7 @@ def _components(conn: sqlite3.Connection, gold: dict[str, GoldClaim]) -> pipelin
 
 def _scripted_review(conn: sqlite3.Connection, gold: dict[str, GoldClaim], run: dict) -> int:
     decided = 0
-    found = challenge.found_items(conn)  # the challenge step's finds wait for the live demo
+    found = challenge.found_items(conn, run)  # the challenge step's finds wait for the live demo
     for claim_id, items in sorted(run["manifest"].items()):
         g = gold.get(claim_id)
         if g is None or claim_id in LEFT_OPEN:

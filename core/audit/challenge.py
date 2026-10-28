@@ -128,8 +128,20 @@ def keep(item: EvidenceItem) -> bool:
     return item.stance in DOUBT
 
 
-def found_items(conn: sqlite3.Connection) -> frozenset[str]:
-    """The evidence ids the step stored, read from its own audit entries. The report and the
-    review screen mark each one as found by the challenge step."""
-    rows = conn.execute("SELECT payload_json FROM audit_log WHERE action = ?", (QUERY_ACTION,))
-    return frozenset(i for (payload,) in rows for i in json.loads(payload).get("stored", ()))
+def found_items(conn: sqlite3.Connection, run: dict | None) -> frozenset[str]:
+    """The evidence ids the step stored in the audit whose evidence `run` shows (a verdict re-run
+    shows its source audit's), read from that audit's own entries. Another audit's finds are not
+    marked: evidence ids come from content, so a later audit's retrieval can store the same item.
+    The report and the review screen read this once per page and mark each one as found by the
+    challenge step."""
+    if run is None:
+        return frozenset()
+    source = run.get("evidence_from_run", run["run_id"])
+    found: set[str] = set()
+    for (payload,) in conn.execute(
+        "SELECT payload_json FROM audit_log WHERE action = ?", (QUERY_ACTION,)
+    ):
+        entry = json.loads(payload)
+        if entry.get("run_id") == source:
+            found.update(entry.get("stored", ()))
+    return frozenset(found)

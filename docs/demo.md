@@ -83,6 +83,9 @@ records, and nothing counts as supported until you accept it yourself."
    other one, "using ur insta on my ipad for the audi guy". While either is open, C16 cannot go
    supported. Accept both with a reason (they undercut who typed the message), then **Re-run
    verdicts**: C16 stays unproven, and the report says which item the challenge step found.
+   Say it plainly: the search is real, but in this demo the "complicates" label on what it found
+   is scripted from the answer key. On a real case the local model labels it, and what the step
+   catches with that model is not measured yet.
 5. **The traps (pick three or four from the answer key below).** On each claim open "Why
    (reasons from the verdict rules)" and the Checks table: the reason is written out, with the
    records it rests on.

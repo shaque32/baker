@@ -799,11 +799,13 @@ def evidence_card(
     confirm: bool = False,
     around: int = 0,
     threads: dict[str, list[str]] | None = None,
+    challenged: frozenset[str] = frozenset(),
 ) -> str:
     """claim_id: the claim page shows the card; it then carries the optional label flag.
     confirm: a contradiction waiting for the expert (rule 1b), shown with the confirm step.
     around: messages shown either side of the record, as a conversation (0: the quote only).
-    threads: the page's cache of thread orders, so many cards read each thread once."""
+    threads: the page's cache of thread orders, so many cards read each thread once.
+    challenged: the items the challenge step stored in the audit on screen, read once a page."""
     stance_cls = "b-against" if item.stance in AGAINST else "b-open"
     flag = ""
     if claim_id is not None:
@@ -817,7 +819,7 @@ def evidence_card(
         + ("<span class='badge b-withheld'>needs expert review</span>" if withheld else "")
         + (
             f"<span class='badge b-challenge'>{e(challenge.FOUND_MARK)}</span>"
-            if item.id in challenge.found_items(conn)
+            if item.id in challenged
             else ""
         )
         + _conversation(conn, item, around, threads)
@@ -1175,6 +1177,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
     by_assumption = {a.id: a for a in st.assumptions}
     found = forwarded.affected(conn)
     threads: dict[str, list[str]] = {}  # each thread read once for the page's cards
+    challenged = challenge.found_items(conn, pipeline.view_run(conn))
     for title, group in groups:
         out.append(f"<h3>{e(title)} ({len(group)})</h3>")
         shown_on = None
@@ -1198,6 +1201,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
                     confirm=title == CONTRADICTION_FOUND,
                     around=AROUND,
                     threads=threads,
+                    challenged=challenged,
                 )
             )
     hidden = [x for x in st.evidence if x.stance == Stance.IRRELEVANT]
@@ -1428,6 +1432,9 @@ def evidence_page(conn: sqlite3.Connection, page: Page, evidence_id: str) -> str
             claim_id=claim_id[0] if on_screen else None,
             flagged=flagged,
             run_id=st.run_id if on_screen else None,
+            challenged=(
+                challenge.found_items(conn, pipeline.view_run(conn)) if on_screen else frozenset()
+            ),
         )
     )
     out.append("<h2>Context</h2>")

@@ -808,10 +808,12 @@ def _claim_block(
     st: ClaimState,
     case: explain.Case | None,
     left_out: int = 0,
+    challenged: frozenset[str] = frozenset(),
 ) -> str:
     """One claim. `case` is None in a scoped bundle's report that holds only the records the
     verdicts cite, so the parts that read the whole phone are left out; `left_out` counts the
-    claim's evidence items that bundle left out."""
+    claim's evidence items that bundle left out; `challenged` holds the items the challenge step
+    stored in the audit the report shows (challenge.found_items)."""
     claim, decision = st.claim, st.decision
     out = [f'<div class="claim" id="{e(claim.id)}">']
     out.append(
@@ -899,7 +901,6 @@ def _claim_block(
             "<th>Source</th></tr></thead>"
         )
         withheld = {w.evidence_id: w for w in st.withheld}
-        by_challenge = challenge.found_items(conn)
         for x in shown:
             out.append(
                 f"<tr id='{e(x.id)}'><td><blockquote>{q(x.quote)}</blockquote>"
@@ -909,7 +910,7 @@ def _claim_block(
                 + (
                     f"<br><span class='muted'>{e(challenge.FOUND_MARK.capitalize())}: code's "
                     "counter-searches found this record.</span>"
-                    if x.id in by_challenge
+                    if x.id in challenged
                     else ""
                 )
                 + f"</td><td>{STANCE_LABEL[x.stance]}</td><td>{display_tier(x).value}</td>"
@@ -1065,7 +1066,9 @@ def challenge_label(conn: sqlite3.Connection, run: dict) -> str:
     reuses that audit's evidence, so its own configuration does not say."""
     source = run.get("evidence_from_run", run["run_id"])
     row = conn.execute("SELECT config_json FROM pipeline_runs WHERE id = ?", (source,)).fetchone()
-    step = json.loads(row[0] or "{}").get("challenge") if row else None
+    if row is None:
+        return "not recorded: this audit's configuration is not in the case file"
+    step = json.loads(row[0] or "{}").get("challenge")
     return f"ran ({step})" if step else "skipped for this run"
 
 
@@ -1207,10 +1210,11 @@ def render_report(
     whole = scope is None or scope.whole_phone
     case = explain.load(conn) if whole else None
     manifest = (run or {}).get("manifest", {})
+    challenged = challenge.found_items(conn, run)
     for st in states:
         named = len(set((manifest.get(st.claim.id) or {}).get("evidence", [])))
         left = max(named - len(st.evidence), 0) if scope is not None and st.decision else 0
-        parts.append(_claim_block(conn, st, case, left))
+        parts.append(_claim_block(conn, st, case, left, challenged))
 
     parts.append(searches_section(states, srcs))
     timeline = timeline or timeline_html.Settings()
