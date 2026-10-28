@@ -38,7 +38,7 @@ From `git log --first-parent d478705..[run 3 tag]`. At the time of writing, main
 | #155 | A claim on Native Messages says it holds iMessages and SMS together. | report 0.19.0 |
 | #160 | Filler guards: the addressee is never the sender; a message's words come only from quotation marks; coverage is judged after the shape check; no one-way or call counts. | filler |
 | #164 | Coverage plan steps 1 to 3. Meaning comes from the claim's one quote. Every quoted message needs a sender. A call's parties come from the claim, on the app it names. `stated_sender` is wider. A phone's own accounts are found. Counts may be written in words. Review fixes in the same PR only narrow what code fills. | time check 1.0.2, filler version "2" (recorded as `code_version`) |
-| [this PR] | This file, and scorer 1.3.0 (tiers and measure 5 below). | scorer 1.3.0 |
+| #165 | This file, and scorer 1.3.0 (tiers and measure 5 below). | scorer 1.3.0 |
 | [any later PR] | [effect and versions] | |
 
 These stay unchanged, byte for byte, as v2 lists them: rules 0.3.0, every prompt (including
