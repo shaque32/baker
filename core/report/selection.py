@@ -44,7 +44,7 @@ CSS = """
 .sel-unit { margin: 28px 0 36px; }
 .sel-unit > h3 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px;
   font-size: 18px; margin: 0 0 8px; }
-.sel-unit > h3 .muted { font: 400 12px var(--mono); }
+.sel-unit > h3 .muted { font: 400 13px var(--sans); }
 .sel-n { display: inline-flex; align-items: center; height: 20px; padding: 0 8px;
   border-radius: 999px; font: 500 11px var(--sans); white-space: nowrap;
   color: var(--con); background: var(--con-bg); border: 1px solid var(--con-line); }
@@ -57,7 +57,7 @@ ul.sel-quotes li { margin: 0 0 8px; font-size: 13.5px; line-height: 1.5; }
 .sel-passage { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
   margin: 14px 0; overflow: hidden; }
 .sel-passage > .in { padding: 12px 16px; }
-.sel-passage .where { font: 400 11px var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.sel-passage .where { font: 400 12px var(--sans); color: var(--muted); overflow-wrap: anywhere; }
 .sel-passage ul.sum { margin: 6px 0 0; padding-left: 18px; font-size: 13.5px; }
 .sel-passage ul.sum li { margin: 2px 0; }
 .sel-passage > .foot { border-top: 1px solid var(--line); font-size: 13px; }
@@ -74,15 +74,14 @@ ul.sel-quotes li { margin: 0 0 8px; font-size: 13.5px; line-height: 1.5; }
 .bub .who2 { font-size: 11.5px; color: var(--muted); }
 .bub .body { font-size: 14.5px; }
 .bub .att { font-size: 12px; color: var(--muted); }
-.bub .t { font: 400 10.5px var(--mono); color: var(--muted); margin-top: 3px; display: flex;
+.bub .t { font: 400 11.5px var(--sans); color: var(--muted); margin-top: 3px; display: flex;
   flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 4px 6px; }
-.tag { font: 600 9.5px var(--mono); letter-spacing: 0.08em; text-transform: uppercase;
-  border-radius: 3px; padding: 1px 5px; }
+.tag { font: 600 11px var(--sans); border-radius: 999px; padding: 1px 7px; }
 .tag.pick { color: #6b4d0c; background: #f0dca3; }
 .tag.left { color: var(--con); background: var(--con-bg); }
 .tag.else { color: var(--accent); background: rgb(29 53 87 / 0.08); }
 .tag.maybe { color: var(--unp); background: var(--unp-bg); }
-.divider { align-self: center; font: 400 10.5px var(--mono); color: var(--muted);
+.divider { align-self: center; font: 400 11.5px var(--sans); color: var(--muted);
   border: 1px dashed var(--line-strong); border-radius: 999px; padding: 1px 10px;
   text-align: center; }
 @media (max-width: 600px) { .bub { max-width: 92%; } .sel-convo { padding: 12px 10px; } }

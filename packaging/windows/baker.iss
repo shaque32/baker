@@ -45,6 +45,10 @@ SolidCompression=yes
 LZMANumBlockThreads=4
 ChangesEnvironment=yes
 WizardStyle=modern
+; Artwork in the app's look (warm paper, ink mark, serif wordmark); art/make_art.py draws it.
+WizardImageFile=art\wizard-100.bmp,art\wizard-150.bmp,art\wizard-200.bmp
+WizardSmallImageFile=art\wizard-small-100.bmp,art\wizard-small-150.bmp,art\wizard-small-200.bmp
+SetupIconFile=art\mabillon.ico
 SetupLogging=yes
 UninstallDisplayName=Mabillon {#AppVersion}
 
