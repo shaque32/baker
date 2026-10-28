@@ -1,0 +1,521 @@
+"""Real affidavit wording the filler reads by code: the date first and then its time, a zone
+written beside the time, and the names real exports give apps. All wording here is made up
+for these tests, on synthetic case01 (phones in America/New_York).
+"""
+
+import re
+import sqlite3
+from datetime import UTC, timedelta
+from datetime import datetime as D
+from pathlib import Path
+
+import pytest
+
+from core.audit.assumption_filler import (
+    LocalAssumptionFiller,
+    Reject,
+    _ProposalOut,
+    _Window,
+    check_window,
+    stated_windows,
+    unread_zone,
+    written_zone,
+)
+from core.contracts import Claim, ClaimStatus, ClaimType
+from eval.synthetic.generate import generate
+from tests.checks.helpers import stipulate
+from tests.fake_model import FakeModel
+
+ROOT = Path(__file__).parents[1]
+PETROV, REYES = "person:petrov", "person:reyes"
+QUOTE = "need 2 more by friday"
+US = timedelta(microseconds=1)
+
+
+@pytest.fixture(scope="module")
+def conn(tmp_path_factory):
+    out = tmp_path_factory.mktemp("case01")
+    db = out / "case01.db"
+    generate(out, db)
+    c = sqlite3.connect(db)
+    stipulate(c, PETROV, "Daniel Petrov", "dev:item1")
+    stipulate(c, REYES, "Marcus Reyes", "dev:item2")
+    c.execute("PRAGMA foreign_keys = OFF")
+    for i, app in enumerate(("Wickr Pro", "Kik Messenger", "Microsoft Teams", "Native Messages")):
+        c.execute(
+            "INSERT INTO threads (id, source_id, locator, device_id, app, title)"
+            " VALUES (?, 'src:none', ?, 'dev:item1', ?, NULL)",
+            (f"thr:wording:{i}", f"wording/{i}", app),
+        )
+    yield c
+    c.close()
+
+
+def filler(conn) -> LocalAssumptionFiller:
+    template = "{claim} {paragraph} {templates} {channels}"
+    return LocalAssumptionFiller(FakeModel("{}"), conn, template=template)
+
+
+def claim(text: str, kind: ClaimType = ClaimType.COMMUNICATION) -> Claim:
+    return Claim(id="X", paragraph_id="para:none", text=text, claim_type=kind,
+                 status=ClaimStatus.ACCEPTED)  # fmt: skip
+
+
+def proposal(template_id: str = "record_time", **kw) -> _ProposalOut:
+    base = dict(people=["PETROV"], accounts=[], handles=[], phones=[], channels=[],
+                quoted_text=QUOTE, count=None, duration=None, window=None)  # fmt: skip
+    return _ProposalOut.model_validate({"template_id": template_id, **base, **kw})
+
+
+def W(as_written: str, start: str, end: str, zone: str = "phone") -> dict:  # noqa: N802
+    return {"as_written": as_written, "start": start, "end": end, "zone": zone}
+
+
+# ---------------------------------------------------------------- stated_windows
+
+
+@pytest.mark.parametrize(
+    ("text", "start", "end", "zone"),
+    [
+        (
+            "On January 9, 2026, at approximately 7:58 p.m. EST, Item 1 placed a call.",
+            "19:50",
+            "20:06",
+            "EST",
+        ),
+        ("On January 9, 2026, at 2:31 a.m., Item 1 placed a call.", "02:31", "02:32", None),
+        ("On Friday, January 9, 2026, at about noon ET, Item 1 called.", "11:52", "12:08", "ET"),
+        ("On January 9, 2026, around 4:10 p.m. (EST), Item 1 called.", "16:02", "16:18", "EST"),
+        (
+            "On January 9, 2026, between 9 and 11 p.m. EST, Item 1 sent texts.",
+            "21:00",
+            "23:01",
+            "EST",
+        ),  # fmt: skip
+        (
+            "On January 9, 2026, from 9 p.m. to 11 p.m. Eastern Time, Item 1 sent texts.",
+            "21:00",
+            "23:01",
+            "Eastern Time",
+        ),
+        (
+            "At approximately 7:58 p.m. EST on January 9, 2026, Item 1 placed a call.",
+            "19:50",
+            "20:06",
+            "EST",
+        ),
+        (
+            "Between 9 and 11 p.m. EST on January 9, 2026, Item 1 sent texts.",
+            "21:00",
+            "23:01",
+            "EST",
+        ),  # fmt: skip
+    ],
+)
+def test_the_date_first_and_a_written_zone_are_read(text, start, end, zone):
+    (w,) = stated_windows(text)
+    assert (w.start.strftime("%H:%M"), w.end.strftime("%H:%M"), w.zone) == (start, end, zone)
+    assert w.start.date() == D(2026, 1, 9).date()
+    assert w.raw in text
+    check_window(w.start, w.end, w.raw, text, "", "record_time")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # a second time, joined to the first
+        "On January 9, 2026, at approximately 7:58 p.m. and 8:15 p.m. EST, Item 1 called.",
+        "On January 9, 2026, beginning at approximately 8:00 p.m., Item 1 placed calls.",
+        "On January 9, 2026, there was no contact between them after 10:00 a.m. EST.",
+        "On January 9, 2026, Item 1 called REYES at 9:15 p.m.",  # the time is not tied
+        "On January 9, 2026, between approximately 9:10 and 9:40 p.m., Item 1 sent texts.",
+        "between January 9, 2026 at 9 p.m. and January 10, 2026 at 1 a.m., Item 1 called.",
+        "from January 9, 2026, at 9 p.m., Item 1 called REYES.",
+        "On January 9, 2026, between 9 and 11, Item 1 called.",  # no a.m. or p.m.
+        "On January 9, 2026, at 21:00, Item 1 called.",
+        "On January 9, 2026, at midnight, Item 1 called.",
+        "On January 9 and 10, 2026, at 9 p.m., Item 1 called.",  # one time on two days
+    ],
+)
+def test_a_time_no_range_reads_is_never_widened_to_the_whole_day(text):
+    assert stated_windows(text) is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "On January 9, 2026, at 9 p.m. onward, PETROV sent no messages.",
+        "On January 9, 2026, at 9 p.m. EST or later, PETROV sent no messages.",
+        "At 9 p.m. on January 9, 2026, and thereafter, PETROV sent no messages.",
+        "On January 9, 2026 onwards, PETROV sent no messages.",
+        "After 9 p.m. on January 9, 2026, PETROV sent no messages.",
+        "Since 9 p.m. on January 9, 2026, PETROV sent no messages.",
+        "By 9 p.m. on January 9, 2026, PETROV had sent 4 messages.",
+        "From 9 p.m. on January 9, 2026, PETROV sent no messages.",
+        "Starting at 9 p.m. on January 9, 2026, PETROV sent no messages.",
+        "Beginning on January 9, 2026, PETROV sent no messages.",
+        "As of January 9, 2026, PETROV used Item 1.",
+        "From January 9, 2026, PETROV used Item 1.",  # no end
+        "Between 9 p.m. on January 9, 2026 and 1 a.m. on January 10, 2026, Item 1 called.",
+        # a weekday between the opening word and the date
+        "Starting on Friday, January 9, 2026, at 9 p.m., PETROV sent no messages.",
+        "Starting on Friday, January 9, 2026, PETROV sent no messages.",
+        "After Friday, January 9, 2026, PETROV sent no messages.",
+        "Since Friday January 9, 2026, at 9 p.m., PETROV sent no messages.",
+        "From Friday, January 9, 2026, at 9 p.m., PETROV sent no messages.",
+        "From Friday, January 9, 2026, PETROV used Item 1.",  # no end
+        # the phone's-zone words before the open end (Codex on #150)
+        "On January 9, 2026, at 9 p.m. local time onward, PETROV sent no messages.",
+        "On January 9, 2026, at 9 p.m. (local time) and later, PETROV sent no messages.",
+        "At 9 p.m. phone time onward on January 9, 2026, PETROV sent no messages.",
+    ],
+)
+def test_an_open_range_is_not_read(text):
+    # Read as the minute or the day it names, an open range would be searched too narrowly.
+    assert stated_windows(text) is None
+
+
+def test_words_beside_a_range_that_do_not_open_it_still_read():
+    for text, raw in [
+        ("A message sent by PETROV on January 9, 2026 read hello.", "on January 9, 2026"),
+        ("On January 9, 2026, after the meeting, PETROV texted.", "On January 9, 2026"),
+        ("From March 10 through March 31, 2026, X.", "From March 10 through March 31, 2026"),
+        ("On Friday, January 9, 2026, at 9 p.m., X.", "On Friday, January 9, 2026, at 9 p.m."),
+        ("From Tuesday, March 10 through March 31, 2026, X.",
+         "From Tuesday, March 10 through March 31, 2026"),
+    ]:  # fmt: skip
+        (w,) = stated_windows(text)
+        assert w.raw == raw
+
+
+def test_a_zone_right_after_a_plain_date_is_kept():
+    (w,) = stated_windows("On March 3, 2026 (UTC), Item 1 called.")
+    assert (w.raw, w.zone, w.start, w.end) == (
+        "On March 3, 2026 (UTC)",
+        "UTC",
+        D(2026, 3, 3),
+        D(2026, 3, 4),
+    )
+    (w,) = stated_windows("On January 9, 2026, EST, Item 1 called.")
+    assert w.zone == "EST"
+    (w,) = stated_windows("On March 3, 2026, PT and Item 1 spoke.")  # initials, not a zone
+    assert (w.raw, w.zone) == ("On March 3, 2026", None)
+    (w,) = stated_windows("At 9:15 p.m. on March 3, 2026 (UTC), Item 1 called.")
+    assert (w.zone, w.start.strftime("%H:%M")) == ("UTC", "21:15")
+
+
+def test_a_count_after_the_date_is_not_a_time():
+    (w,) = stated_windows("On January 9, 2026, between 10 and 12 messages were sent.")
+    assert (w.start, w.end) == (D(2026, 1, 9), D(2026, 1, 10))
+
+
+def test_written_zone_reads_only_a_zone_right_after_a_time():
+    assert written_zone("On July 9, 2026, at 7:58 p.m. (EDT)") == "EDT"
+    assert written_zone("at about 7:58 p.m.", "On July 9, 2026, at about 7:58 p.m. EDT, X") == (
+        "EDT"
+    )
+    assert written_zone("At 9 p.m. on May 2, 2026 at the MT office") is None
+    assert written_zone("On July 3, 2026 (EST)") == "EST"
+    assert written_zone("On July 3, 2026", "On July 3, 2026, EST, X called") == "EST"
+    assert written_zone("On July 3, 2026", "On July 3, 2026, PT called") is None  # initials
+    with pytest.raises(Reject, match="more than one time zone"):
+        written_zone("between 9 p.m. EDT and 10 p.m. CDT")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "On July 9, 2026, at 9 p.m. pdt, PETROV called.",  # an abbreviation not in capitals
+        "On July 9, 2026, at 9 p.m. pt, PETROV called.",  # a generic one too (Codex on #150)
+        "On July 9, 2026, at 9 p.m. (et), PETROV called.",
+        "At 9 P.M. (est) on January 9, 2026, PETROV called.",
+        "On July 9, 2026, at 9 p.m. UTC+3, PETROV called.",  # an offset, not UTC
+        "On July 9, 2026, at 9:15 p.m. GMT-5, PETROV called.",
+        "On July 9, 2026, at 9 p.m. +0300, PETROV called.",  # an offset with no name
+        "On July 9, 2026, at 9 p.m. (-05:00), PETROV called.",
+        "On July 9, 2026, at 9 p.m. BST, PETROV called.",  # a zone outside the US and UTC
+        "On July 9, 2026, at 9 p.m. AST, PETROV called.",
+        "At 9 p.m. Central European Time on July 9, 2026, PETROV called.",
+        "On July 9, 2026, at 9 p.m. central european time, PETROV called.",  # any case
+        "On July 9, 2026, at 9 p.m. bst, PETROV called.",
+    ],
+)
+def test_a_zone_code_does_not_read_is_never_put_in_the_phones_zone(text):
+    # Read in the phone's zone instead, the time would be hours off.
+    assert stated_windows(text) is None
+    with pytest.raises(Reject, match="time zone code does not read"):
+        written_zone(text)
+    words = text.split(", PETROV")[0].split(" p.m.")[0] + " p.m."
+    with pytest.raises(Reject, match="time zone code does not read"):
+        written_zone(words, text)  # the zone right after the model's words, in the claim
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "On July 9, 2026 UTC+3, PETROV sent no messages.",  # not a UTC day
+        "On July 9, 2026 (GMT-5), PETROV sent no messages.",
+        "On July 9, 2026 +0300, PETROV sent no messages.",
+        "On July 9, 2026 (BST), PETROV sent no messages.",
+        "On July 9, 2026 (pdt), PETROV sent no messages.",
+    ],
+)
+def test_a_zone_after_a_date_code_does_not_read_refuses_the_day(text):
+    assert stated_windows(text) is None
+    with pytest.raises(Reject, match="time zone code does not read"):
+        written_zone(text)
+    with pytest.raises(Reject, match="time zone code does not read"):
+        written_zone("On July 9, 2026", text)  # the zone right after the model's words
+
+
+@pytest.mark.parametrize(
+    ("words", "text"),
+    [
+        ("On July 9, 2026 UTC", "On July 9, 2026 UTC+3, PETROV sent no messages."),
+        ("On July 9, 2026 GMT", "On July 9, 2026 GMT-5, PETROV sent no messages."),
+        ("at 9 p.m. UTC", "On July 9, 2026, at 9 p.m. UTC+3, PETROV called."),
+        ("at 9 p.m. (GMT", "On July 9, 2026, at 9 p.m. (GMT-5), PETROV called."),
+    ],
+)
+def test_model_words_that_stop_inside_the_claims_zone_are_refused(words, text):
+    """The model's words give UTC, but the claim goes on to write an offset (Codex on #150)."""
+    assert stated_windows(text) is None
+    with pytest.raises(Reject, match="time zone code does not read"):
+        written_zone(words, text)
+
+
+def test_a_zone_the_model_gives_still_reads_when_the_claim_adds_nothing_to_it():
+    assert written_zone("On July 9, 2026 UTC", "On July 9, 2026 UTC, PETROV called.") == "UTC"
+    assert written_zone("at 9 p.m. EDT", "On July 9, 2026, at 9 p.m. EDT the call") == "EDT"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "On July 9, 2026, at 9 p.m. Sgt. Reyes arrived.",  # title case is never another zone
+        "On July 9, 2026, at 9 a.m. Mt. Vernon police called PETROV.",  # nor a generic one
+        "On July 9, 2026, at 9 p.m. Pt. Reyes, PETROV called.",
+        "On July 9, 2026, at 9 p.m. west of the river, PETROV called.",  # an English word
+        "On July 9, 2026, at 9 p.m. local time, PETROV called.",  # the phone's zone, as before
+        "On July 9, 2026, AST called PETROV.",  # after a date, only brackets or an offset count
+        "On July 9, 2026 (Exhibit 4), PETROV called.",
+        "On July 9, 2026, between 10:00-10:30 a.m., PETROV called.",  # a range's other end
+        "On July 9, 2026-2027, PETROV called.",  # no offset passes 14 hours
+    ],
+)
+def test_words_after_a_time_or_date_that_are_not_a_zone_still_read(text):
+    assert unread_zone(text) is None
+    assert stated_windows(text) is not None
+
+
+def test_the_other_end_of_a_range_is_not_an_offset():
+    # Left to the model as a range, as before, and not refused as a zone.
+    assert unread_zone("On July 9, 2026, at 9 p.m.-10:00 p.m. PETROV called.") is None
+
+
+def test_a_zone_in_quoted_words_or_after_no_time_is_not_one_code_must_read():
+    assert stated_windows('On July 9, 2026, at 9 p.m., PETROV wrote "10 p.m. pdt?"') is not None
+    assert written_zone("At 9 p.m. EDT on July 9, 2026, the BST team met") == "EDT"
+
+
+# ---------------------------------------------------------------- the zone, checked by code
+
+
+def _window(conn, text: str, w: dict | None):
+    return filler(conn)._resolve(claim(text), "", proposal(window=w)).params["window"]
+
+
+def test_the_claims_zone_wins_over_the_models(conn):
+    # The model wrote UTC times and said UTC; the claim says EDT. check_window refuses the
+    # model's times, and the claim's own range is read in the phone's zone, which is EDT then.
+    text = f'On July 9, 2026, at approximately 7:58 p.m. EDT, PETROV wrote "{QUOTE}".'
+    w = _window(conn, text, W("at approximately 7:58 p.m. EDT", "2026-07-09T23:50",
+                              "2026-07-10T00:06", "UTC"))  # fmt: skip
+    assert w.tz == "America/New_York"
+    assert w.start_utc == D(2026, 7, 9, 23, 50, tzinfo=UTC)
+    assert w.end_utc.replace(microsecond=0) == D(2026, 7, 10, 0, 5, 59, tzinfo=UTC)
+
+
+def test_a_written_utc_is_read_as_utc_whatever_the_model_says(conn):
+    text = f'At 11:58 p.m. UTC on July 9, 2026, PETROV wrote "{QUOTE}".'
+    w = _window(conn, text, W("At 11:58 p.m. UTC on July 9, 2026", "2026-07-09T23:58",
+                              "2026-07-09T23:59", "phone"))  # fmt: skip
+    assert (w.tz, w.start_utc) == ("UTC", D(2026, 7, 9, 23, 58, tzinfo=UTC))
+
+
+@pytest.mark.parametrize(
+    ("text", "said"),
+    [
+        (f'On July 9, 2026, at 7:58 p.m. EST, PETROV wrote "{QUOTE}".', "EST (UTC-05:00)"),
+        (f'On January 9, 2026, at 7:58 p.m. CST, PETROV wrote "{QUOTE}".', "CST (UTC-06:00)"),
+        (f'At 7:58 p.m. CT on January 9, 2026, PETROV wrote "{QUOTE}".', "CT (UTC-06:00)"),
+    ],
+)
+def test_a_zone_the_phone_is_not_in_then_is_refused(conn, text, said):
+    with pytest.raises(Reject, match=r"the claim gives the time in " + re.escape(said)):
+        _window(conn, text, None)
+
+
+def test_a_zone_the_claim_writes_after_the_models_words_is_checked(conn):
+    # The model's words stop before the zone; code still reads the zone that follows them.
+    text = f'At 7:58 p.m. CST on January 9, 2026, PETROV wrote "{QUOTE}".'
+    w = _Window.model_validate(W("At 7:58 p.m.", "2026-01-09T19:58", "2026-01-09T19:59"))
+    with pytest.raises(Reject, match="CST"):
+        filler(conn)._window(text, "", w, [], "record_time")
+
+
+def test_a_whole_day_in_utc_is_read_in_utc(conn):
+    text = f'On July 9, 2026 (UTC), PETROV wrote "{QUOTE}".'
+    w = _window(conn, text, None)
+    assert (w.tz, w.start_utc) == ("UTC", D(2026, 7, 9, tzinfo=UTC))
+    w = _window(conn, text, W("On July 9, 2026 (UTC)", "2026-07-09T00:00", "2026-07-10T00:00",
+                              "UTC"))  # fmt: skip
+    assert (w.tz, w.start_utc) == ("UTC", D(2026, 7, 9, tzinfo=UTC))
+
+
+def test_a_zone_after_the_models_date_is_checked(conn):
+    text = f'On July 9, 2026 (EST), PETROV wrote "{QUOTE}".'
+    w = _Window.model_validate(W("On July 9, 2026", "2026-07-09T00:00", "2026-07-10T00:00"))
+    with pytest.raises(Reject, match=r"EST \(UTC-05:00\)"):
+        filler(conn)._window(text, "", w, [], "record_time")
+
+
+def test_a_zone_in_quoted_words_is_not_the_ranges(conn):
+    # The model's words take in the quote; "UTC" there is the message's, not the claim's.
+    text = 'On January 9, 2026, PETROV wrote "the server uses UTC".'
+    words = 'On January 9, 2026, PETROV wrote "the server uses UTC"'
+
+    def window(zone: str):
+        w = W(words, "2026-01-09T00:00", "2026-01-10T00:00", zone)
+        p = proposal(window=w, quoted_text="the server uses UTC")
+        return filler(conn)._resolve(claim(text), "", p).params["window"]
+
+    # Whichever zone the model says, the day is the phone's day. A model that says UTC has
+    # its range refused, and the claim's own range is read instead.
+    for zone in ("phone", "UTC"):
+        w = window(zone)
+        assert (w.tz, w.start_utc) == ("America/New_York", D(2026, 1, 9, 5, tzinfo=UTC))
+    w = _Window.model_validate(W(words, "2026-01-09T00:00", "2026-01-10T00:00", "UTC"))
+    with pytest.raises(Reject, match="does not say UTC"):
+        filler(conn)._window(text, "", w, [], "record_time")
+
+
+# The night New York's clocks go back: 1:00 to 1:59 a.m. happens twice, first in EDT, then EST.
+FALL_BACK = "On November 1, 2026"
+
+
+def test_a_minute_the_clocks_go_back_across_is_refused(conn):
+    # "1:59 a.m. EDT" ends at 2:00 a.m., which is EST: read as is, the minute would be 61
+    # minutes, 05:59 to 07:00 UTC (Codex on #150).
+    text = f"{FALL_BACK}, at 1:59 a.m. EDT, PETROV and REYES exchanged no messages."
+    p = proposal("no_contact", quoted_text="", people=["PETROV", "REYES"])
+    with pytest.raises(Reject, match="not at UTC-04:00 in America/New_York"):
+        filler(conn)._resolve(claim(text, ClaimType.ABSENCE), "", p)
+
+
+def test_a_time_the_clocks_go_back_through_is_read_in_the_zone_the_claim_writes(conn):
+    for said, start_utc in (("EDT", D(2026, 11, 1, 5, 30, tzinfo=UTC)),
+                            ("EST", D(2026, 11, 1, 6, 30, tzinfo=UTC))):  # fmt: skip
+        w = _window(conn, f'{FALL_BACK}, at 1:30 a.m. {said}, PETROV wrote "{QUOTE}".', None)
+        assert (w.start_utc, w.end_utc - w.start_utc) == (start_utc, timedelta(minutes=1) - US)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        f'{FALL_BACK}, at 1:30 a.m., PETROV wrote "{QUOTE}".',  # twice that night
+        f'{FALL_BACK}, at 1:30 a.m. ET, PETROV wrote "{QUOTE}".',  # ET does not say which
+        f'On March 8, 2026, at 2:30 a.m., PETROV wrote "{QUOTE}".',  # skipped that night
+    ],
+)
+def test_a_time_a_clock_change_makes_two_times_or_none_is_refused(conn, text):
+    with pytest.raises(Reject, match="the clocks change then"):
+        _window(conn, text, None)
+
+
+def test_a_whole_day_the_clocks_change_is_still_read(conn):
+    w = _window(conn, f'{FALL_BACK}, PETROV wrote "{QUOTE}".', None)
+    assert (w.start_utc, w.end_utc + US) == (D(2026, 11, 1, 4, tzinfo=UTC),
+                                             D(2026, 11, 2, 5, tzinfo=UTC))  # fmt: skip
+
+
+def test_a_zone_that_matches_the_phone_reads_as_before(conn):
+    text = f'On January 9, 2026, at 7:58 p.m. EST, PETROV wrote "{QUOTE}".'
+    w = _window(conn, text, None)
+    assert (w.tz, w.start_utc) == ("America/New_York", D(2026, 1, 10, 0, 58, tzinfo=UTC))
+    plain = f'On January 9, 2026, at 7:58 p.m., PETROV wrote "{QUOTE}".'
+    assert _window(conn, plain, None).start_utc == w.start_utc
+
+
+# ---------------------------------------------------------------- app names from real exports
+
+
+@pytest.mark.parametrize(
+    ("word", "app"),
+    [
+        ("Wickr", "Wickr Pro"),
+        ("Kik", "Kik Messenger"),
+        ("Teams", "Microsoft Teams"),
+        ("iMessage", "Native Messages"),
+    ],  # fmt: skip
+)
+def test_the_word_a_document_uses_names_the_exports_app(conn, word, app):
+    text = f'On January 9, 2026, PETROV wrote "{QUOTE}" on {word}.'
+    out = filler(conn)._resolve(claim(text), "", proposal("sender", channels=[app]))
+    assert out.params["channels"] == [app]
+
+
+def test_a_capitalized_word_names_an_app_only_as_a_name(conn):
+    vocab = {"microsoft teams": "Microsoft Teams"}
+    for text in ("PETROV wrote on TEAMS.", "PETROV wrote on Teams."):
+        LocalAssumptionFiller._alias(text, "Microsoft Teams", vocab, "sender")
+    with pytest.raises(Reject, match="does not name the channel 'Microsoft Teams'"):
+        LocalAssumptionFiller._alias("After the teams met, PETROV wrote.", "Microsoft Teams",
+                                     vocab, "sender")  # fmt: skip
+    text = f'On January 9, 2026, PETROV wrote "{QUOTE}" before the teams met.'
+    with pytest.raises(Reject, match="does not name the channel 'Microsoft Teams'"):
+        filler(conn)._resolve(claim(text), "", proposal("sender", channels=["Microsoft Teams"]))
+
+
+def test_another_exports_full_name_for_the_word_is_not_this_app(conn):
+    # case01 holds Wickr Pro only; a claim about Wickr Me never searches it (Codex on #150).
+    for text in ("PETROV and REYES exchanged no messages on Wickr Me.",
+                 "PETROV and REYES exchanged no messages on WICKR ME."):  # fmt: skip
+        with pytest.raises(Reject, match="the claim names 'Wickr Me', not 'Wickr Pro'"):
+            filler(conn)._resolve(claim(text, ClaimType.ABSENCE), "", proposal(
+                "no_contact", quoted_text="", people=["PETROV", "REYES"],
+                channels=["Wickr Pro"]))  # fmt: skip
+    LocalAssumptionFiller._alias("PETROV wrote on Wickr.", "Wickr Pro", {}, "sender")
+
+
+def test_a_word_two_apps_go_by_is_refused(conn):
+    # case01 has an SMS app, so "texted" could be SMS or Native Messages
+    text = f'On January 9, 2026, PETROV texted "{QUOTE}".'
+    with pytest.raises(Reject, match="could be 'Native Messages' or 'SMS'"):
+        filler(conn)._resolve(claim(text), "", proposal("sender", channels=["Native Messages"]))
+    vocab = {"wickr pro": "Wickr Pro", "wickr me": "Wickr Me"}
+    with pytest.raises(Reject, match="could be 'Wickr Pro' or 'Wickr Me'"):
+        LocalAssumptionFiller._alias("PETROV wrote on Wickr.", "Wickr Pro", vocab, "sender")
+
+
+def test_no_count_is_read_from_an_app_that_holds_more_than_the_word_names(conn):
+    text = "On January 9, 2026, PETROV sent REYES 3 iMessages."
+    with pytest.raises(Reject, match="holds more than"):
+        filler(conn)._resolve(claim(text, ClaimType.COUNT), "", proposal(
+            "message_count", quoted_text="", people=["PETROV", "REYES"],
+            channels=["Native Messages"], count={"value": 3}))  # fmt: skip
+
+
+def test_no_absence_is_read_from_an_app_that_holds_more_than_the_word_names(conn):
+    # An SMS on Native Messages would fail an absence of iMessages the claim states.
+    text = "On January 9, 2026, PETROV and REYES exchanged no iMessages."
+    with pytest.raises(Reject, match="no count or absence is read"):
+        filler(conn)._resolve(claim(text, ClaimType.ABSENCE), "", proposal(
+            "no_contact", quoted_text="", people=["PETROV", "REYES"],
+            channels=["Native Messages"]))  # fmt: skip
+
+
+def test_an_app_the_claim_does_not_name_is_still_refused(conn):
+    text = f'On January 9, 2026, PETROV wrote "{QUOTE}" on Signal.'
+    with pytest.raises(Reject, match="does not name the channel 'Wickr Pro'"):
+        filler(conn)._resolve(claim(text), "", proposal("sender", channels=["Wickr Pro"]))
