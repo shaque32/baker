@@ -12,6 +12,10 @@ one-pager, `docs/ONE_PAGER.md`: no speed
 or accuracy figures, UFDR and AXIOM unverified on real exports, no logos, testimonials or
 "court-ready". Change the copy when those docs change.
 
+When you change `styles.css` or `main.js`, update the `?v=` on every link to it (the first 8 characters
+of the file's SHA-256), so browsers that cached the old file fetch the new one. `tests/test_site_assets.py`
+checks it.
+
 Preview locally: `python -m http.server -d site 8000`, then open http://127.0.0.1:8000.
 
 ## Deploy (Cloudflare Pages, Git integration)
