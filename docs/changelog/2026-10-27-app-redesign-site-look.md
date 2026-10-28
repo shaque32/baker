@@ -5,7 +5,7 @@
   figures), tables without a header band and with roomy rows, 40px inputs with labels above
   and a focus ring, quiet secondary buttons and one navy primary, tabs as soft pills, format
   notices as one line with a dot. The new-case and add-a-claim forms get field labels.
-  Downloaded report: report 0.19.0, the same type and table style; visual only, no wording,
+  Downloaded report: report 0.20.0, the same type and table style; visual only, no wording,
   fact or section changed. Windows installer: wizard artwork and Setup icon drawn from the
   app's mark (packaging/windows/art/make_art.py). Mac installer: bold step titles.
 - Where: PR #149
