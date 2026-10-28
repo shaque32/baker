@@ -12,8 +12,9 @@ What the code does around it (`core/audit/testability.py`):
 - `{lookups}` is what code found the claim's own words name in the case: people the expert
   created, phones and accounts. Code finds them; the model never searches.
 - The answer has the filler's own shape and goes through the filler's own checks. Then code
-  checks that it names only people, phones, accounts and time ranges the signed sheet names
-  for the claim. Only an examiner's acceptance makes it the claim's assumptions.
+  checks that it names only people, phones, time ranges, accounts, handles, apps, templates
+  and quoted words the signed sheet names for the claim. Only an examiner's acceptance makes it
+  the claim's assumptions.
 - No field can carry the claim's text, so the answer cannot change it.
 
 Written generally. It is not tuned to any validation claim. Its wording drew on the kinds of
