@@ -26,11 +26,10 @@ CSS = """
   border-radius: 0 10px 10px 0; background: var(--card); padding: 8px 14px; margin: 8px 0; }
 .alt h4 { margin: 2px 0 4px; font-size: 14px; font-weight: 600; }
 .alt p { font-size: 14px; margin: 4px 0; }
-.alt .fam { font: 500 10.5px var(--mono); letter-spacing: 0.1em; text-transform: uppercase;
-  color: var(--muted); }
+.alt .fam { font: 500 12px var(--sans); color: var(--muted); }
 .alt ul { margin: 6px 0; padding-left: 18px; font-size: 13px; }
 .alt li { margin: 4px 0; }
-.alt .meta { font: 400 11.5px var(--mono); color: var(--muted); word-break: break-all; }
+.alt .meta { font: 400 12px var(--sans); color: var(--muted); word-break: break-all; }
 .alt .searched { font-size: 12px; color: var(--muted); margin: 4px 0 0; }
 """
 

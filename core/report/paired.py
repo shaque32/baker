@@ -32,7 +32,7 @@ CSS = """
 .pair { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
   padding: 12px 16px; margin: 14px 0; }
 .pair h4 { margin: 4px 0 8px; font-size: 16px; }
-.pair .where { font: 400 11px var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.pair .where { font: 400 12px var(--sans); color: var(--muted); overflow-wrap: anywhere; }
 .pair-claim { border-top: 1px solid var(--line); padding: 10px 0 4px; }
 .pair-claim table td { font-size: 13px; vertical-align: top; overflow-wrap: anywhere; }
 .pair-claim tr.thr td { background: var(--panel); font-weight: 600; }
