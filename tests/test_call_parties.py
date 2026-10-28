@@ -131,6 +131,13 @@ def test_a_call_whose_parties_are_not_plain_is_refused(conn, text, why):
     assert any(why in d.reason for d in f.drops), f.drops
 
 
+def test_the_phone_the_claim_writes_scopes_the_call(conn):
+    # Codex on #164: the phone counted as the call's other side is kept as its scope.
+    text = "On March 9, 2026, the Telegram user 7001002 called Item 1."
+    (a,), _ = build(conn, text, channels=["call"])
+    assert list(a.params.device_ids) == ["dev:item1"]
+
+
 def test_the_models_other_app_is_refused(conn):
     text = "On March 9, 2026, PETROV placed a WhatsApp call to (212) 555-0122."
     assumptions, f = build(conn, text, channels=["call", "Telegram"])

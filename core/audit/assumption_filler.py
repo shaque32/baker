@@ -1172,7 +1172,7 @@ _ONE_WAY_AFTER_RE = re.compile(
 
 
 # What a count's number counts: up to two words, then the noun ("13 Signal messages").
-_COUNTED_RE = re.compile(rf"\s+(?:[\w-]+\s+){{0,2}}?(?P<noun>{_COUNT_NOUNS})\b", re.IGNORECASE)
+_COUNTED_RE = re.compile(rf"\s+(?:[\w-]+\s+){{0,2}}(?P<noun>{_COUNT_NOUNS})\b", re.IGNORECASE)
 
 
 def count_op(claim: str, value: int) -> Literal["eq", "ge", "le"]:
@@ -1959,8 +1959,10 @@ class LocalAssumptionFiller:
         ):
             # A call the model named without its parties: code reads them from the claim.
             app = self._call_app(claim.text, params.get("channels", []))
-            people, accounts = self._call_parties(claim, device_ids, app)
+            people, accounts, phone = self._call_parties(claim, device_ids, app)
             params["channels"] = sorted({CALL_CHANNEL, app}, key=str.lower)
+            if phone and not device_ids:
+                params["device_ids"] = phone  # the phone the claim writes scopes the search
             if people:
                 params["person_ids"] = people
             if accounts:
@@ -2093,7 +2095,7 @@ class LocalAssumptionFiller:
         names no app."""
         if named := self._named_apps(claim_text):
             return named
-        words = _ADDRESS_RE.sub(" ", claim_text)
+        words = _ADDRESS_RE.sub(" ", _unquoted(claim_text))
         phone = [  # with an app that holds a phone's messages (iOS "Native Messages")
             app
             for app in self.channels()
@@ -2233,8 +2235,14 @@ class LocalAssumptionFiller:
             return " Party " if m.group(0)[1:-1].strip().casefold() in names else m.group(0)
 
         def number(m: re.Match[str]) -> str:
-            words = m.group(0).strip(" .,-")
-            return m.group(0) if phone_digits(words) is None else " Party "
+            # Only the number becomes "Party": a sentence's full stop after it stays, so a
+            # new sentence still hands the quote on ("to (919) 888-7386. REYES: ..."; Codex).
+            raw = m.group(0)
+            words = raw.strip(" .,-")
+            if phone_digits(words) is None:
+                return raw
+            at = raw.find(words)
+            return raw[:at] + " Party " + raw[at + len(words) :]
 
         out = _QUOTE_SPAN_RE.sub(quoted, _nfc(between))
         out = _PHONE_RE.sub(number, out)
@@ -2302,17 +2310,21 @@ class LocalAssumptionFiller:
             raise Reject(f"{name!r} matches {found} the expert created")
         return hits[0]
 
-    def _writes_a_phone(self, text: str) -> bool:
-        """True when the text writes a phone of the case by its id, source id, label or a name
-        the expert gave it ("the TARGET PHONE", "Item 1"), compared as `_device` compares:
-        case and spacing do not count."""
+    def _written_phones(self, text: str) -> set[str]:
+        """The devices the text writes by id, source id, label or a name the expert gave them
+        ("the TARGET PHONE", "Item 1"), compared as `_device` compares: case and spacing do
+        not count."""
         named = logged_names(self.conn)
-        return any(
-            re.search(r"(?<!\w)" + r"\s*".join(map(re.escape, name_key(x))) + r"(?!\w)", text, re.I)
+        return {
+            did
             for did, sid, label in self.conn.execute("SELECT id, source_id, label FROM devices")
             for x in (did, sid, label, *named.get(did, []))
-            if x and name_key(x)
-        )
+            if x
+            and name_key(x)
+            and re.search(
+                r"(?<!\w)" + r"\s*".join(map(re.escape, name_key(x))) + r"(?!\w)", text, re.I
+            )
+        }
 
     def _device(self, phone: str) -> str:
         """The device a phone name means: its id, source id or label, or a name the expert
@@ -2407,8 +2419,9 @@ class LocalAssumptionFiller:
     def _named_apps(self, claim_text: str) -> list[str]:
         """The apps the claim names the way `_channels` requires, phone apps aside (a phone
         app is never picked by the words). An app's name inside an address names no app
-        ("thisisdfirtwo@gmail.com")."""
-        words = _ADDRESS_RE.sub(" ", claim_text)
+        ("thisisdfirtwo@gmail.com"), and neither does one inside a quoted message ('texted
+        "use Telegram"'; Codex on #164)."""
+        words = _ADDRESS_RE.sub(" ", _unquoted(claim_text))
         named = []
         for app in self.channels():
             if app == CALL_CHANNEL or namespace(app) == "tel":
@@ -2434,13 +2447,14 @@ class LocalAssumptionFiller:
 
     def _call_parties(
         self, claim: Claim, device_ids: list[str], app: str
-    ) -> tuple[list[str], list[str]]:
+    ) -> tuple[list[str], list[str], list[str]]:
         """The parties of a call the claim describes, read from its own words: each person
         the expert created whom it names, and each number, identifier or quoted display name
         it writes, on the claim's one app. Each must be exactly one person or one account,
         and plainly a party (no possessive, role word or second clause: Baker Eval on #164);
         if any is not, or the claim names none, nothing is filled. The phone the call was on
-        ("the TARGET PHONE") is no party: it scopes the search."""
+        ("the TARGET PHONE") is no party: it scopes the search, and the third list is that
+        phone's device when the claim writes exactly one and the model gave none."""
         text = _nfc(claim.text)
         bare = _unquoted(text)
         joiner = _CLAUSE_JOINER_RE.search(bare)
@@ -2504,11 +2518,12 @@ class LocalAssumptionFiller:
         # Both sides, or the phone and one account ("(919) 888-7386 called the TARGET PHONE"):
         # a person alone may be the phone's own side, with the other side a name code cannot
         # read ("On the TARGET PHONE, PETROV called Jonathan"; Codex on #164).
-        phone = bool(device_ids) or self._writes_a_phone(bare)
-        sides = len(people) + bool(accounts) + bool(phone and not people)
+        written = self._written_phones(bare)
+        phone = sorted(written) if not device_ids and len(written) == 1 else []
+        sides = len(people) + bool(accounts) + bool((device_ids or phone) and not people)
         if sides < 2:
             raise Reject("the claim names one side of the call; code reads both or none")
-        return sorted(people), sorted(accounts)
+        return sorted(people), sorted(accounts), phone
 
     def _app_named(self, claim_text: str, app: str) -> bool:
         """A phone app, or an app the claim names the way `_channels` requires."""

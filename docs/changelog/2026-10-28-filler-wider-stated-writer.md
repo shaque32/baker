@@ -9,17 +9,21 @@
     can hand the quote to someone else still name no writer. "by" or "via" must be followed
     by an app's name ("a message by SUBJECT-1" names no writer), and a claim whose words before
     the quote forward, quote, relay, repost, share or screenshot a message names no writer
-    (Baker Eval on #164).
+    (Baker Eval on #164). A full stop after a phone number still ends the sentence, so the
+    quote after it is handed on (Codex on #164).
   - A sender code makes for the claim's named writer is searched on the apps the claim
     names. When it names only a phone's messages ("texted", "by iMessage"), it is searched on
     every app in the case that holds a phone's messages (SMS, iOS "Native Messages"), never on
-    Telegram and the rest; a case with no such app gets no code-made sender (Codex on #164).
+    Telegram and the rest; a case with no such app gets no code-made sender. An app named
+    inside the quoted message ('texted "use Telegram"') is no app it went by (Codex on #164).
   - A phone written as an account ("the TARGET PHONE's Kik account") is that phone's own
     accounts on the app the claim names, as the phone recorded them; not its owner's other
     links, and never a phone app.
   - A count's number may be written in words ("thirteen messages", "at least twenty-one
     texts"); "a message" is never a count of one, and a part of a longer number ("twenty
-    one", "one hundred", "1,000") is no count (Codex on #164).
+    one", "one hundred", "1,000") is no count. The words after the whole counted phrase
+    ("13 text messages or more") are what direction and comparison are read from (Codex on
+    #164).
 
   A wrong writer would fail the sender check and contradict the claim, so each new wording
   has a test that it names the claim's writer and a test that a near wording names none. No

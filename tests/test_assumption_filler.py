@@ -534,6 +534,8 @@ def test_a_sender_without_a_party_gets_the_writer_the_claim_names(conn):
         ("REYES forwarded what PETROV posted in the chat: 'ok'.", "ok", None),
         ("REYES shared the post PETROV wrote: 'ok'.", "ok", None),
         ("Quoting a chat, PETROV wrote to REYES: 'ok'.", "ok", None),
+        # Codex on #164: a full stop after a number still ends the sentence.
+        ("PETROV wrote to (212) 555-0122. REYES: 'ok'.", "ok", None),
     ],
 )  # fmt: skip
 def test_stated_sender_is_the_writer_of_the_quoted_words(conn, text, quoted, writer):
@@ -1363,6 +1365,23 @@ def test_count_op_reads_only_a_whole_number(text, value):
         count_op(text, value)
 
 
+@pytest.mark.parametrize(
+    ("text", "op"),
+    [
+        # Codex on #164: the words after the whole noun phrase ("text messages") are read.
+        ("PETROV and REYES exchanged 13 text messages or more.", "ge"),
+        ("PETROV and REYES exchanged 13 text messages or fewer.", "le"),
+    ],
+)
+def test_count_op_reads_past_the_whole_counted_phrase(text, op):
+    assert count_op(text, 13) == op
+
+
+def test_count_op_refuses_one_way_text_messages():
+    with pytest.raises(Reject):
+        count_op("Item 1 holds 13 text messages from PETROV to REYES.", 13)
+
+
 def test_a_count_claim_quoting_only_a_name_needs_no_sender():
     from core.audit.assumption_filler import coverage_gap
     from core.audit.assumptions import Proposal
@@ -1398,3 +1417,6 @@ def test_a_code_made_sender_stays_on_the_phones_messages_when_the_claim_names_th
     assert filler._message_apps('PETROV told REYES by iMessage: "ok".') == phone
     assert filler._message_apps('PETROV texted REYES on Telegram: "ok".') == ["Telegram"]
     assert filler._message_apps('PETROV wrote to REYES: "ok".') == []
+    # An app named inside the message is no app it went by.
+    assert filler._message_apps('PETROV told REYES by iMessage: "use Telegram".') == phone
+    assert filler._message_apps('PETROV texted REYES: "use Telegram".') == phone
