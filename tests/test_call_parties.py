@@ -138,6 +138,31 @@ def test_the_phone_the_claim_writes_scopes_the_call(conn):
     assert list(a.params.device_ids) == ["dev:item1"]
 
 
+def test_the_written_phone_gives_the_window_its_zone(conn):
+    # Codex on #164: with phones in two zones, the phone the claim writes picks the zone.
+    (old,) = conn.execute("SELECT timezone FROM devices WHERE id = 'dev:item2'").fetchone()
+    conn.execute("UPDATE devices SET timezone = 'Asia/Tokyo' WHERE id = 'dev:item2'")
+    try:
+        text = "On March 9, 2026, the Telegram user 7001002 called Item 1."
+        (a,), f = build(conn, text, channels=["call"])
+        assert not f.drops, f.drops
+        assert list(a.params.device_ids) == ["dev:item1"]
+    finally:
+        conn.execute("UPDATE devices SET timezone = ? WHERE id = 'dev:item2'", (old,))
+
+
+def test_a_quoted_name_an_account_also_carries_is_refused(conn):
+    # Codex on #164: '"Marcus R"' may be the Telegram account of that name, not the person.
+    conn.execute("INSERT INTO persons VALUES ('person:mr', 'Marcus R', 'expert:test')")
+    try:
+        text = 'On March 9, 2026, PETROV placed a Telegram call to "Marcus R".'
+        assumptions, f = build(conn, text, channels=["call"])
+        assert assumptions == []
+        assert any("names a person and an account" in d.reason for d in f.drops), f.drops
+    finally:
+        conn.execute("DELETE FROM persons WHERE id = 'person:mr'")
+
+
 def test_the_models_other_app_is_refused(conn):
     text = "On March 9, 2026, PETROV placed a WhatsApp call to (212) 555-0122."
     assumptions, f = build(conn, text, channels=["call", "Telegram"])

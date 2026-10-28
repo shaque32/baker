@@ -15,7 +15,9 @@
     names. When it names only a phone's messages ("texted", "by iMessage"), it is searched on
     every app in the case that holds a phone's messages (SMS, iOS "Native Messages"), never on
     Telegram and the rest; a case with no such app gets no code-made sender. An app named
-    inside the quoted message ('texted "use Telegram"') is no app it went by (Codex on #164).
+    inside the quoted message ('texted "use Telegram"') is no app it went by. The one phone
+    the claim writes ("On Item 1, ...") scopes the code-made sender; two phones give none
+    (Codex on #164).
   - A phone written as an account ("the TARGET PHONE's Kik account") is that phone's own
     accounts on the app the claim names, as the phone recorded them; not its owner's other
     links, and never a phone app.

@@ -1962,7 +1962,9 @@ class LocalAssumptionFiller:
             people, accounts, phone = self._call_parties(claim, device_ids, app)
             params["channels"] = sorted({CALL_CHANNEL, app}, key=str.lower)
             if phone and not device_ids:
-                params["device_ids"] = phone  # the phone the claim writes scopes the search
+                # The phone the claim writes scopes the search, and gives the window its zone.
+                device_ids = phone
+                params["device_ids"] = phone
             if people:
                 params["person_ids"] = people
             if accounts:
@@ -2085,6 +2087,11 @@ class LocalAssumptionFiller:
             return out  # a phone's messages, in a case that holds none
         if apps:  # the search stays on the apps named
             params["channels"] = apps
+        phones = self._written_phones(_unquoted(_nfc(claim.text)))
+        if len(phones) > 1:
+            return out  # two phones: code never picks the one the message is on
+        if phones:  # "On Item 1, PETROV wrote ...": the search stays on that phone (Codex)
+            params["device_ids"] = sorted(phones)
         return [*out, Proposal("sender", params)]
 
     def _message_apps(self, claim_text: str) -> list[str] | None:
@@ -2497,10 +2504,18 @@ class LocalAssumptionFiller:
         accounts: set[str] = set()
         for words in dict.fromkeys(written):
             person = self._person_named(words)
+            acc = _Account(as_written=words, app=app)
             if person is not None:
+                # A name an account on the app also carries may be that account, which no one
+                # has linked to the person: 'the Telegram user "Marcus Reyes"' (Codex on #164).
+                try:
+                    shared = self._accounts_named(acc, device_ids, claim.text, one=False)
+                except Reject:
+                    shared = {""}
+                if shared:
+                    raise Reject(f"{words!r} names a person and an account on {app}")
                 people.add(person)
                 continue
-            acc = _Account(as_written=words, app=app)
             try:
                 found = self._accounts(acc, device_ids, claim.text)
             except _SharedNumber:

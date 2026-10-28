@@ -18,7 +18,10 @@
     claim that gives only one side of the call: both sides, or the phone and one account
     ("(919) 888-7386 called the TARGET PHONE"). A person alone may be the phone's own side,
     with the other side a name code cannot read (Codex on #164). A phone the claim writes
-    as a side, when the model gave none, scopes the search to that phone;
+    as a side, when the model gave none, scopes the search to that phone and gives the
+    window its zone;
+  - a quoted name that is both a person's and an account's on the app is refused: it may be
+    that account, which no one has linked to the person;
   - the call's app is read outside quoted words.
 
   The channels become "call" and that app. The time check (core/audit/checks/timing.py,
@@ -33,7 +36,7 @@
 - Verified: on this container, 2026-10-28.
   - New tests/test_call_parties.py: parties from persons, numbers, a quoted display name and
     a written identifier; refusals for no app, two apps, an address, an unknown name and no
-    party; possessives, roles and second clauses; two account-only parties; an unknown handle, address or number; one side only; the phone kept as the scope; the model's other app; "call" added beside
+    party; possessives, roles and second clauses; two account-only parties; an unknown handle, address or number; one side only; the phone kept as the scope and zone; a quoted name a person and an account share; the model's other app; "call" added beside
     an app; a model's own party kept; and the time check searching only the named app's calls.
   - Replay of run 2's recorded answers: unchanged by the possessive, role and clause guards.
   - `make check`: see the PR.

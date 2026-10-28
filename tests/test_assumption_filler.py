@@ -1409,6 +1409,20 @@ def test_a_code_made_sender_stays_on_the_app_the_claim_names(conn):
     assert sender.params.channels == ("Telegram",)
 
 
+def test_a_code_made_sender_stays_on_the_phone_the_claim_names(conn):
+    # Codex on #164: "On Item 1, ..." keeps the sender's search on that phone.
+    keep = [
+        {**p, "channels": ["Telegram"]} for p in GOOD["C05"] if p["template_id"] == "record_time"
+    ]
+    text = (
+        'On March 12, 2026, on Item 1, PETROV wrote to @northstar on Telegram: "need 2 more by'
+        ' friday".'
+    )
+    assumptions, filler = build_text(conn, text, ClaimType.COMMUNICATION, keep)
+    (sender,) = [a for a in assumptions if a.template_id == "sender"]
+    assert sender.params.device_ids == ("dev:item1",)
+
+
 def test_a_code_made_sender_stays_on_the_phones_messages_when_the_claim_names_them(conn):
     # Codex on #164: "texted" or "by iMessage" keeps the search off Telegram and the rest.
     filler = LocalAssumptionFiller(FakeModel("{}"), conn, template=DRAFT)
