@@ -1015,7 +1015,10 @@ def test_the_claims_whole_lead_counts_when_the_models_words_carry_part_of_it():
 @pytest.mark.parametrize(
     "words",
     ["a while", "2m", "a few minutes", "just two minutes", "under a second", "zero seconds",
-     "between one and two minutes", "two minutes and three minutes"],
+     "between one and two minutes", "two minutes and three minutes",
+     # half seconds (Codex on #153): "at least ten and a half seconds" read as 10 seconds
+     "ten and a half seconds", "at least ten and a half seconds", "10 seconds and a half",
+     "half a second"],
 )  # fmt: skip
 def test_duration_range_refuses(words):
     from core.audit.assumption_filler import duration_range

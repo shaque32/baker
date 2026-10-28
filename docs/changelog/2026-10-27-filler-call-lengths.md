@@ -64,7 +64,9 @@
     - the other lists every app in the case, which is more than the 4 channels allowed.
     A retry with the same prompt would get the same answer, so these 2 claims stay refused
     with their reasons, for the testability agent.
-  - "between one and two minutes" and decimal lengths ("1.5 minutes") are still refused.
+  - "between one and two minutes", decimal lengths ("1.5 minutes") and half seconds ("ten
+    and a half seconds", refused in a review fix because records count whole seconds) are
+    still refused.
   - The time check's own text shows an open bound as "lasting 91 to 86400 s".
 - Affects: capabilities. More claims can be set up from real affidavit wording.
 - Status doc: pending: section 9 item 8 ("Other gaps"): add "a call length with a half, two

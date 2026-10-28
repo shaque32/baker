@@ -1166,6 +1166,8 @@ def _length(words: str) -> tuple[int, int]:
         m = half.fullmatch(words)
         if m is not None:
             unit = _unit(m.group("u"))
+            if unit == 1:  # "ten and a half seconds": records count whole seconds (Codex on #153)
+                raise Reject(f"the duration {words!r} is in half seconds")
             n = 0 if i == 2 else _number(m.group("n"))
             if n is None:
                 raise Reject(f"cannot read the number in {words!r}")
