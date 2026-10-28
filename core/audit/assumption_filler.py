@@ -1345,6 +1345,13 @@ _NOT_BETWEEN = (
     r"from|by|after|before|when|while|once|and|or|then|but|as|because|since|until|who|which|"
     r"that|back|wrote|writes|texted|texts|sent|sends|messaged|told|replied|said|asked|posted"
 )
+# "PETROV texted REYES, who replied 'ok'": a relative clause right after the party makes it the
+# writer after all (Codex on #160).
+_WHO_WROTE_RE = re.compile(
+    r"^[\"”’']?\s*,?\s*who\s+(?:[\w-]+\s+)?(?:replied|wrote|texted|answered|responded|said|"
+    r"sent|messaged|asked|posted|typed|emailed)\b",
+    re.IGNORECASE,
+)
 _ADDRESSED_RE = re.compile(
     r"(?<!according )\b(?:to|with|told|texted|messaged|emailed|called)\s+"
     rf"(?:(?!(?:{_NOT_BETWEEN})\b)[\w-]+\s+){{0,3}}?[\"“‘']?$",
@@ -1371,7 +1378,9 @@ def only_addressed(value: str, text: str, quoted: str | None) -> bool:
         elif not (q and q in t[span[0] : span[1]]):
             places.append(span[0])
         at = t.find(v, at + 1)
-    return bool(places) and all(_ADDRESSED_RE.search(t[:p]) for p in places)
+    return bool(places) and all(
+        _ADDRESSED_RE.search(t[:p]) and not _WHO_WROTE_RE.match(t[p + len(v) :]) for p in places
+    )
 
 
 # The writer of a quoted message, as the claim names it: 'PETROV wrote', 'Daniel Petrov texted

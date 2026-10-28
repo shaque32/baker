@@ -789,6 +789,8 @@ def test_the_addressee_is_never_the_sender(conn):
         ("REYES", "According to REYES, PETROV wrote 'ok'.", "ok", False),
         # A new clause ends the recipient's phrase (Codex on #160).
         ("PETROV", "REYES texted back after PETROV wrote 'ok'.", "ok", False),
+        ("REYES", "PETROV texted REYES, who replied 'ok'.", "ok", False),
+        ("REYES", "PETROV texted REYES, who then wrote 'ok'.", "ok", False),
         # A quote wrapped over two lines is still one quote.
         ("REYES", "PETROV wrote to REYES 'REYES,\ncall me'.", "REYES,\ncall me", True),
     ],
