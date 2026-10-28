@@ -1087,16 +1087,22 @@ _APPROX = ("about", "approximately", "around", "roughly", "nearly", "almost", "s
            "more than", "fewer than", "less than", "under")  # fmt: skip
 
 
-# A count one side made: "sent 10 messages", "SUBJECT-2 sent SUBJECT-1 3 messages", "10
-# messages to X". The count check counts both directions between the two parties
-# (checks/count.py), so it would count the replies too, and fail a true "exactly".
-_ONE_WAY_BEFORE_RE = re.compile(
-    r"\b(?:sent|sends|sending|received|receives|receiving|wrote|writes|texted|texts|"
-    r"messaged|forwarded|got)\b[^.;:!?]*$",
+# A count one side made: "sent 10 messages", "13 messages were sent by PETROV", "13 messages
+# that PETROV sent", "13 messages went from PETROV to @northstar", "10 messages to X". The count
+# check counts both directions between the two parties (checks/count.py), so it would count the
+# replies too and fail a true "exactly". Any such word anywhere in the claim refuses the count,
+# even one about something else ("After PETROV sent the photo, they exchanged 13 messages"):
+# that costs coverage, never a wrong verdict.
+_ONE_WAY_RE = re.compile(
+    r"\b(?:sent|sends|sending|received|receives|receiving|wrote|writes|written|texted|"
+    r"messaged|forwarded|got|went|came)\b",
     re.IGNORECASE,
 )
+# "13 messages to X" or "from X", but not "to and from X" or a range of dates or times ("from
+# March 10 to March 31", "from 9 a.m. to noon").
 _ONE_WAY_AFTER_RE = re.compile(
-    rf"^\s+(?:to|from)\b(?!\s+and\b)(?!\s+(?:{_MONTH_RE})\b)", re.IGNORECASE
+    rf"^\s+(?:to|from)\b(?!\s+and\b)(?!\s+(?:(?:{_MONTH_RE})\b|\d|noon\b|midnight\b))",
+    re.IGNORECASE,
 )
 
 
@@ -1115,10 +1121,7 @@ def count_op(claim: str, value: int) -> Literal["eq", "ge", "le"]:
         raise Reject(
             f"the claim counts {m.group('noun').lower()}; the count check counts messages only"
         )
-    clause = _unquoted(claim)[: m.start("noun")]
-    if _ONE_WAY_BEFORE_RE.search(clause[max(0, len(clause) - 60) :]) or _ONE_WAY_AFTER_RE.match(
-        claim[m.end() :]
-    ):
+    if _ONE_WAY_RE.search(_unquoted(claim)) or _ONE_WAY_AFTER_RE.match(claim[m.end() :]):
         raise Reject(
             "the claim counts messages one side sent or received; the count check counts both"
             " directions"
@@ -1322,9 +1325,11 @@ _QUOTED_MESSAGE = re.compile(
 
 # A party written as the one a message went to: "wrote to the Discord user 'X'", "iMessage to
 # (919) 888-7386", "told REYES", "texted REYES". Up to three words may stand between the word
-# and the party ("to the Discord user"), and an opening quote may lead a quoted name.
+# and the party ("to the Discord user"), but not "from" or "by" ("to the group from PETROV":
+# PETROV sent it), and an opening quote may lead a quoted name. "According to X" is a source.
 _ADDRESSED_RE = re.compile(
-    r"\b(?:to|with|told|texted|messaged|emailed|called)\s+(?:[\w-]+\s+){0,3}?[\"“‘']?$",
+    r"(?<!according )\b(?:to|with|told|texted|messaged|emailed|called)\s+"
+    r"(?:(?!(?:from|by)\b)[\w-]+\s+){0,3}?[\"“‘']?$",
     re.IGNORECASE,
 )
 

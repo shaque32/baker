@@ -782,6 +782,10 @@ def test_the_addressee_is_never_the_sender(conn):
         # A name inside the quoted message is words, not a place the claim writes the party.
         ("REYES", "PETROV wrote to REYES 'REYES, call me'.", "REYES, call me", True),
         ("SOKOLOV", "PETROV wrote 'ok'.", "ok", False),  # not written: not judged here
+        # "from" or "by" after the "to" names the sender; "according to" names a source.
+        ("PETROV", "The message to the group from PETROV: 'ok'.", "ok", False),
+        ("PETROV", "A message to REYES by PETROV read 'ok'.", "ok", False),
+        ("REYES", "According to REYES, PETROV wrote 'ok'.", "ok", False),
     ],
 )
 def test_only_addressed(value, text, quoted, addressed):
@@ -913,6 +917,7 @@ def test_date_mentions():
         ("From March 10 to March 31, 2026, PETROV and @northstar exchanged 13 messages", 13, "eq"),
         ("13 messages to and from @northstar", 13, "eq"),
         ("13 messages from March 10 to March 31", 13, "eq"),
+        ("PETROV and REYES exchanged 13 messages from 9 a.m. to noon", 13, "eq"),
     ],
 )
 def test_count_op(claim_text, value, op):
@@ -932,6 +937,14 @@ def test_count_op(claim_text, value, op):
         "On March 12, PETROV sent exactly 13 Telegram messages to @northstar",
         "Item 1 holds 13 messages from @northstar",
         "REYES received 13 texts",
+        # One way, written after the count (Baker Eval on #160).
+        "13 messages were sent by PETROV to @northstar",
+        "13 messages that PETROV sent",
+        "On March 12, 13 messages went from PETROV to @northstar",
+        "Of the 13 messages, PETROV sent all of them",
+        # Refused on purpose: a word of one direction anywhere in the claim refuses its
+        # count, even about something else. That costs coverage, never a wrong verdict.
+        "After PETROV sent the photo, the two exchanged 13 messages",
     ],
 )
 def test_count_op_refuses(claim_text):
