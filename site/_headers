@@ -13,3 +13,12 @@
 
 /fonts/*
   Cache-Control: public, max-age=31536000, immutable
+
+# Pages and their CSS and script must always be revalidated, so a deploy never pairs new HTML
+# with a stylesheet a browser cached earlier. The ?v= on each link changes with the file.
+/*.html
+  Cache-Control: public, max-age=0, must-revalidate
+/styles.css
+  Cache-Control: public, max-age=0, must-revalidate
+/main.js
+  Cache-Control: public, max-age=0, must-revalidate
