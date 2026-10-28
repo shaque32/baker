@@ -16,7 +16,9 @@
   explain.py directions list it (a builder's report, not a test). `eval/run_pipeline.py` gains a
   case03 entry in DRAFT_GOLD and case03 branches for the reports and the affidavit PDF. Not wired
   into `make eval` or any gate; the challenge-step code was not read or used.
-- Where: PR #151 (branch `claude/project-thread-6i2msb-case03`), draft until Arsh signs the key
+- Where: PR #151 (branch `claude/project-thread-6i2msb-case03`). Arsh approved the draft key and
+  sheet as drafted on 2026-10-28 (05:15Z, in the project thread). The signed copies under
+  `eval/gold/case03/` are his to write; the exact commands are in `PROPOSED_CHANGES.md`.
 - Verified: `tests/test_synthetic_case03.py` (synthetic only): the generator gives the same
   bytes twice (reports included); the committed drafts match a fresh build; every key-evidence,
   counter and decoy record exists after the real Cellebrite Excel importer reads both reports;
@@ -30,8 +32,8 @@
   expert reads that key); unreviewed run 0.65 (0 supported by design); key-evidence recall
   57% (27/47), the 16 counter-records never retrieved, C06 and C08 decided by failed checks
   that cite their 4 key records. `make check` passed.
-- Open: the key and the sheet are drafts until Arsh signs them; C04 and C13 are the closest
-  calls between unproven and contradicted. Group 1 rests on explain.py VERSION 1.0.0 and
+- Open: until the signed copies are written, the pipeline still reports the key and sheet as
+  drafts. Arsh's approval keeps C04 and C13, the closest calls, as unproven. Group 1 rests on explain.py VERSION 1.0.0 and
   retrieval 0.2.0 as they are; a change to either can move a plant, which `case03_reach.py`
   shows. explain.py lists known noise on clean claims (ORLOV's "Pasha" saved names, C02's day
   boundary, C14's printed-UTC call), listed in the answer key.
