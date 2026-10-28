@@ -607,3 +607,23 @@ directly above `If you are unsure between "supports" and anything else, do not c
 case:` block from `eval/probe/stance_v1_3b_draft.md`. Header: "v1.3, signed by Arsh on <date>
 ...". Nothing else in the prompt changes (tests/test_probe_v13.py). The tests that pin v1.1's
 SHA-256 (tests/test_stance.py, tests/test_probe_layout.py) move with it.
+
+## 2026-10-28 claude/project-thread-6i2msb-case03: sign case03's key and assumption sheet
+File: eval/gold/case03/gold.jsonl, eval/gold/case03/assumptions.jsonl (new)
+Why: Arsh approved the case03 draft key and assumption sheet as drafted, all 17 claims and all
+39 rows, including the close calls C04 and C13 as unproven ("approv", project thread
+"Build agents into the audit", 2026-10-28 05:15Z). `eval/gold/` is human-owned, so the signed
+copies are his to write. Until they exist, `eval/run_pipeline.py` reports case03's key and
+sheet as drafts; once they exist it picks them up and reports both as signed (`key_status`,
+`sheet_status`). Nothing else changes: case03 stays out of `make eval` and every gate.
+Diff: on main after #151 merges, from the repo root (works with macOS and GNU sed):
+   mkdir -p eval/gold/case03
+   sed -e 's/"labeled_by":"DRAFT (case03 builder, not signed by Arsh)"/"labeled_by":"Arsh, 2026-10-28"/' \
+       -e 's/"labeled_at":"2026-10-27T00:00:00Z"/"labeled_at":"2026-10-28T05:15:02Z"/' \
+       eval/synthetic/case03/draft_gold.jsonl > eval/gold/case03/gold.jsonl
+   sed -e 's/"labeled_by": "DRAFT (case03 builder, not signed by Arsh)"/"labeled_by": "Arsh, 2026-10-28"/' \
+       eval/synthetic/case03/draft_assumptions.jsonl > eval/gold/case03/assumptions.jsonl
+   grep -c DRAFT eval/gold/case03/gold.jsonl eval/gold/case03/assumptions.jsonl
+The last line must print 0 for both files. The copies are the drafts with only `labeled_by`
+(and, in the key, `labeled_at`) changed: 17 key lines and 39 sheet rows (checked on a scratch
+copy, 2026-10-28).
