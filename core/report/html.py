@@ -25,6 +25,9 @@ Display rules:
 - Each evidence source's format notice (core/ingest/tested.py) prints in Limitations and on
   every claim that rests on the source, in the words the case screen and claim page use: "Not
   tested: ..." for any format or version outside the tested set. It never changes a verdict.
+- A claim that names or rests on an app holding more than one kind of message (iOS Native
+  Messages holds iMessages and SMS together; assumption_filler.WIDER_APPS) says so, on the
+  claim page too, so the expert reads a record from it as either. It never changes a verdict.
 - Device-ownership stipulations, the names the expert gave devices, expert-confirmed identity
   links, source coverage, what each search covered and the meaning of each verdict are printed
   as limitations in every report.
@@ -77,6 +80,7 @@ from pathlib import Path
 
 from core import build, pipeline
 from core.audit import invariants, rules
+from core.audit.assumption_filler import WIDER_APPS
 from core.contracts import (
     AssumptionKind,
     EvidenceItem,
@@ -153,7 +157,9 @@ from core.review.withheld import summary as withheld_summary
 # 0.18.0: each evidence source's format notice (core/ingest/tested.py), in Limitations and on
 # every claim that rests on the source: "Not tested: ..." outside the tested set, the tested
 # notice for a UFDR stating report version 7.48. The UFDR "synthetic packages only" item is gone.
-REPORT_VERSION = "0.18.0"
+# 0.19.0: a claim that names or rests on an app holding more than one kind of message (iOS
+# Native Messages: iMessages and SMS together) says so, on the claim page too.
+REPORT_VERSION = "0.19.0"
 
 
 @dataclass(frozen=True)
@@ -735,6 +741,33 @@ def forwarded_warning(conn: sqlite3.Connection, st: ClaimState) -> str:
     return f"<p class='warn'><strong>Forwarded messages.</strong> {e(text)}</p>" if text else ""
 
 
+def mixed_app_note(conn: sqlite3.Connection, st: ClaimState) -> str:
+    """A note when the claim's assumptions name, or its records come from, an app that holds
+    more than one kind of message (assumption_filler.WIDER_APPS). Whatever word the claim uses,
+    a record from it may be either kind: the records do not say which."""
+    apps = {ch for a in st.assumptions for ch in a.params.channels}
+    ids = [r for r in claim_record_ids(st) if r.startswith("msg:")]
+    if ids:
+        apps |= {
+            app
+            for (app,) in conn.execute(
+                "SELECT DISTINCT t.app FROM messages m JOIN threads t ON t.id = m.thread_id"
+                " WHERE m.id IN (SELECT value FROM json_each(?))",
+                (json.dumps(ids),),
+            )
+        }
+    named: dict[str, str] = {}  # one note per app, however its exports spell its name
+    for app in sorted(apps, key=lambda a: (a.casefold(), a)):
+        if app.casefold() in WIDER_APPS:
+            named.setdefault(app.casefold(), app)
+    return "".join(
+        f"<p class='warn mixed-app'><strong>{e(app)} holds {e(WIDER_APPS[key])} "
+        f"together.</strong> Its records do not say which kind a message is, so a record from "
+        f"{e(app)} may be either, whatever word the claim uses.</p>"
+        for key, app in named.items()
+    )
+
+
 def record_line(
     conn: sqlite3.Connection, record_id: str, found: dict[str, str] | None = None
 ) -> str:
@@ -791,6 +824,7 @@ def _claim_block(
     )
     out.append(claim_format_notices(conn, st))
     out.append(forwarded_warning(conn, st))
+    out.append(mixed_app_note(conn, st))
     found = forwarded.affected(conn)
     if st.awaiting_expert:
         out.append(
