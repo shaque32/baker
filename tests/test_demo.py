@@ -217,11 +217,13 @@ def test_scripted_parts_are_named_on_the_screen_and_in_the_report(root):
     conn = connect(case.db)
     run = pipeline.last_run(conn)
     assert run["fake"] and pipeline.scripted_demo(run)
-    assert "Demo case: synthetic data, scripted labels." in render_report(conn)
+    agent = "The testability agent's answers were scripted from the demo's own claims"
+    report = render_report(conn)
+    assert "Demo case: synthetic data, scripted labels." in report and agent in report
     app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
     app.open_case(case)
     page = app.handle(Request("GET", "/claims", {}, dict(HOST))).body.decode()
-    assert "Demo case: synthetic data, scripted labels." in page
+    assert "Demo case: synthetic data, scripted labels." in page and agent in page
     reviewers = {r for (r,) in conn.execute("SELECT DISTINCT reviewer FROM evidence_reviews")}
     assert reviewers == {demo.SCRIPTED_EXPERT, demo.AGENT_EXAMINER}
     purposes = dict(conn.execute("SELECT id, model_name FROM model_runs"))

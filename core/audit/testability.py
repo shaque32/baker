@@ -425,6 +425,20 @@ def claim_sha256(conn: sqlite3.Connection, claim_id: str) -> str:
     return hashlib.sha256(json.dumps(list(row) if row else None).encode("utf-8")).hexdigest()
 
 
+def row_sha256(claim: Claim) -> str:
+    """claim_sha256 of a claim as given, not as stored: verify-bundle's check that the claim it
+    rebuilt from the log is the one a try was made on."""
+    row = [
+        claim.id,
+        claim.paragraph_id,
+        claim.text,
+        claim.claim_type.value,
+        claim.status.value,
+        claim.model_run_id,
+    ]
+    return hashlib.sha256(json.dumps(row).encode("utf-8")).hexdigest()
+
+
 def check_answer(
     filler: LocalAssumptionFiller,
     claim: Claim,
@@ -482,15 +496,21 @@ def check_answer(
 
 
 def decision(
-    conn: sqlite3.Connection, claim_id: str, assumption_ids: Iterable[str], claim_sha: str
+    conn: sqlite3.Connection,
+    claim_id: str,
+    assumption_ids: Iterable[str],
+    claim_sha: str,
+    before: int | None = None,
 ) -> tuple[str, str] | None:
     """An expert's latest decision on this exact proposal, (action, actor): the same claim, the
-    same claim text and the same assumptions. None when no expert decided it."""
+    same claim text and the same assumptions. None when no expert decided it. With before, only
+    log entries before that seq count: what was in force when an audit used the proposal."""
     ids = sorted(assumption_ids)
     got = None
     for actor, action, payload_json in conn.execute(
-        "SELECT actor, action, payload_json FROM audit_log WHERE action IN (?, ?) ORDER BY seq",
-        (ACCEPT_ACTION, REJECT_ACTION),
+        "SELECT actor, action, payload_json FROM audit_log WHERE action IN (?, ?) AND seq < ?"
+        " ORDER BY seq",
+        (ACCEPT_ACTION, REJECT_ACTION, before if before is not None else 2**62),
     ):
         p = json.loads(payload_json)
         if (

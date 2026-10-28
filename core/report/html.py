@@ -174,7 +174,9 @@ from core.review.withheld import summary as withheld_summary
 # renders as before.
 # 0.22.0 (after #159's 0.21.0): an evidence item the challenge step stored
 # says "Found by the challenge step", and the versions table says whether the step ran.
-REPORT_VERSION = "0.22.0"
+# 0.23.0: the demo case's banner says the testability agent's answers, and the examiner who
+# accepted one, were scripted, when the demo's audit ran the step.
+REPORT_VERSION = "0.23.0"
 
 
 @dataclass(frozen=True)
@@ -1466,7 +1468,15 @@ def stand_in_banner(run: dict) -> str:
             "<div class='banner'><strong>Demo case: synthetic data, scripted labels.</strong> "
             "Every name and message here is fictional. So the demo opens in seconds, no model "
             "ran: the evidence labels and most expert decisions were scripted from the signed "
-            "answer key. The checks, quote checks and verdict rules are Mabillon's own. On a real "
+            "answer key."
+            + (
+                " The testability agent's answers were scripted from the demo's own claims, "
+                "and so was the examiner who accepted one of its proposals. Its work here is "
+                "not evidence of how often the agent is right."
+                if "testability" in (run.get("components") or {})
+                else ""
+            )
+            + " The checks, quote checks and verdict rules are Mabillon's own. On a real "
             "case the local model labels the evidence and the expert decides every item.</div>"
         )
     return (

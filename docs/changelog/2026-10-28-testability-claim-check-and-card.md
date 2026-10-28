@@ -10,9 +10,11 @@
     rejected whole ("outside"). This is the whole check on a case without a signed sheet. In the
     eval it runs first, then the signed sheet's check as before. The eval's wrong-entity rate is
     now the share of tries that passed the filler's checks and the claim-only check that the
-    sheet then rejected: how often the claim's words alone would let a wrong one through. The
-    eval also counts "outside" tries. It is stricter than the filler: a name only the paragraph
-    writes is refused here.
+    sheet then rejected: how often the claim's words alone would let a wrong one through. Until
+    the go/no-go fixes one definition, the eval also reports #159's rate on the same tries (of
+    the tries that passed the filler's checks, the share the sheet rejects, an "outside" try
+    counted by what the sheet says of its names), and counts "outside" tries. It is stricter
+    than the filler: a name only the paragraph writes is refused here.
   - The examiner's card: on an untested claim with a proposal from the audit on screen, the
     claim page shows "Proposed by agent", the proposed assumptions, what code checked and code's
     lookups, a reason field, and Accept or Reject. There is one card per claim and no accept-all.
@@ -26,7 +28,11 @@
     as the report does.
   - Each `testability.repair` entry now records which checks ran (`check`) and the proposed
     assumptions with their texts (`proposed`), which is what the card shows. `verify-bundle`
-    re-runs both and fails a decision by a non-expert.
+    re-runs both and fails a decision by a non-expert. A kept proposal must have an expert's
+    acceptance as its latest decision when the audit used it (the step's own rule), so an
+    acceptance a later rejection overrode fails, and a rejection after the audit does not. Each
+    try re-runs on the claim as it stood, rebuilt from any later claim edit's log entry and
+    checked against the try's hash; a row the log does not explain fails.
   - Demo: two demo claims outside the signed key (`eval/demo_agent_claims.jsonl`). The product's
     filler and testability step run on them with their signed prompts. Only the answers are
     scripted: a first answer code refuses for a refusal kind run 2 saw, then the agent's answer,
@@ -40,9 +46,12 @@
       D03 is "Next up" on the claims queue.
     - The demo's queue is now 23 claims: 8 supported, 6 contradicted, 9 unproven.
       `docs/demo.md` gains step 5 (the presenter accepts D03's proposal, then opens D02) and
-      says that the answers are scripted and the checks are real.
-  - Merges #162 into this branch (challenge step on by default), so it merges after #149, #159
-    and #162. The report version stays 0.22.0: the report's mark is #159's.
+      says that the answers are scripted and the checks are real. Report 0.23.0: the demo
+      banner, on every page and in the report, says so too when the demo's audit ran the step:
+      the agent's answers and the examiner who accepted one were scripted, and its work there
+      is not evidence of how often the agent is right.
+  - Merges #162 into this branch (challenge step on by default), so it merges after #159 and
+    #162 (#149 is on main). Report 0.23.0 follows #162's 0.22.0.
 - Where: branch `claude/project-thread-6i2msb-testability-accept` (PR #163)
 - Verified: `make check` passes; its eval numbers are in the PR. New tests:
   - `tests/test_testability.py`:
@@ -57,6 +66,10 @@
       verify-bundle passes;
     - a rejection after an acceptance keeps the proposal out of the next audit;
     - a claim whose text changed cannot be accepted;
+    - verify-bundle fails a kept proposal whose latest decision before the audit was a
+      rejection, and passes one rejected after the audit;
+    - verify-bundle re-runs the tries of a claim edited after the audit on its audited text, and
+      fails a claim row changed with no log entry;
     - the claim page shows one card with one accept and one reject and no accept-all, and
       posting an acceptance logs it under the examiner with the reason.
   - `tests/test_demo.py`:
@@ -64,7 +77,10 @@
       in the report;
     - the presenter accepts D03 on its card, nothing changes until the next audit, and that
       audit tests D03 with the accepted assumption;
-    - the queue, counts and "Next up" follow the new claims.
+    - the queue, counts and "Next up" follow the new claims;
+    - the demo banner names the scripted agent answers on the screen and in the report.
+  - `tests/test_testability.py` also checks that the eval reports both wrong-entity rates on
+    the same tries.
 - Open: the step's effect with the local model is unmeasured. The go/no-go needs the 14B on the
   Mac, a held-out synthetic set and Arsh's X, Y and CAP. CAP has no default, and the demo uses
   1. Turning the step on for pilots is PR 3 of the plan. Arsh re-signs the CLAUDE.md line for

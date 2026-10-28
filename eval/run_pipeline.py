@@ -522,11 +522,27 @@ def testability_summary(
 ) -> dict[str, object]:
     """What the step did on the first pass, with the go/no-go measures (plans/agentic.md).
     Counts only, so a hidden case prints nothing claim by claim."""
+    from core.audit import testability
+
     reps = list(result.testability.values())
     tries = [a for r in reps for a in r.attempts]
     # Tries that passed the filler's checks and the claim-only check (the product's gate); the
     # sheet then rejects some of them: how often the claim's own words let a wrong one through.
     checked = [a for a in tries if a.outcome in ("mismatch", "proposed")]
+    # #159's rate on the same tries, reported beside it until the go/no-go fixes one: of the
+    # tries that passed the filler's checks, the share the sheet check rejects, with an
+    # "outside" try counted by what the sheet says of the names it gave.
+    passed = [
+        (r, a) for r in reps for a in r.attempts if a.outcome in ("mismatch", "proposed", "outside")
+    ]
+    sheet_rejects = sum(
+        a.outcome == "mismatch"
+        or (
+            a.outcome == "outside"
+            and (r.sheet is None or bool(testability.mismatch(a.named, r.sheet)))
+        )
+        for r, a in passed
+    )
     testable = [r for r in reps if r.sheet is not None]
     converted = [r for r in reps if r.assumptions]
     signed = prompt is None or prompt == TESTABILITY_SIGNED_PROMPT
@@ -542,6 +558,9 @@ def testability_summary(
         # sheet check rejected.
         "wrong_entity_rate": (sum(a.outcome == "mismatch" for a in checked) / len(checked))
         if checked
+        else None,
+        "wrong_entity_rate_without_the_claim_check": (sheet_rejects / len(passed))
+        if passed
         else None,
         "tries": len(tries),
         "invalid_outputs": sum(a.outcome == "invalid" for a in tries),
@@ -833,6 +852,12 @@ def print_testability(t: dict) -> None:
     print(
         "pipeline: testability: of the tries that passed the filler's checks and the claim-only "
         "check, the sheet check " + (f"rejected {wrong:.0%}" if wrong is not None else "saw none")
+    )
+    before = t["wrong_entity_rate_without_the_claim_check"]
+    print(
+        "pipeline: testability: of the tries that passed the filler's checks (#159's measure, "
+        "the claim-only check aside), the sheet check "
+        + (f"rejects {before:.0%}" if before is not None else "saw none")
     )
     print(
         f"pipeline: testability: {t['tries']} calls, {t['invalid_outputs']} invalid outputs, "

@@ -67,6 +67,8 @@ from core.bundle import export, sealed
 from core.claims import propose as claims_propose
 from core.contracts import (
     CONTRACTS_VERSION,
+    Claim,
+    ClaimStatus,
     EvidenceStatus,
     Stance,
     Stipulation,
@@ -1482,6 +1484,18 @@ def _repair_answer(conn: sqlite3.Connection, call_id: str | None) -> list[dict[s
         return e.reason
 
 
+def _claim_as_tried(claim: Claim, log: list, after: int) -> Claim:
+    """The claim as it stood when the testability step tried it, its tries logged up to seq
+    after: an expert's later edit or removal (claim.status, the only write to a claim's row) is
+    undone from the first such entry's own record of the row."""
+    for seq, _at, _c, act, p in log:
+        if act == "claim.status" and p.get("claim_id") == claim.id and seq > after:
+            return claim.model_copy(
+                update={"text": p.get("was_text"), "status": ClaimStatus(p.get("was"))}
+            )
+    return claim
+
+
 def _testability(
     conn: sqlite3.Connection, run: dict[str, Any], manifest: dict[str, Any], out: _Out
 ) -> None:
@@ -1501,6 +1515,11 @@ def _testability(
         for _s, _a, _c, act, p in log
         if act == testability.REPAIR_ACTION and p.get("run_id") == rid
     ]
+    tried = {
+        str(p.get("claim_id")): s
+        for s, _a, _c, act, p in log
+        if act == testability.REPAIR_ACTION and p.get("run_id") == rid
+    }
     accepts = [(c, p) for _s, _a, c, act, p in log if act == testability.ACCEPT_ACTION]
     decisions = accepts + [(c, p) for _s, _a, c, act, p in log if act == testability.REJECT_ACTION]
     if not repairs and not any(p.get("run_id") == rid for _c, p in accepts):
@@ -1513,14 +1532,19 @@ def _testability(
         )
         return
     bad = 0
-    proposed: dict[str, list[str]] = {}
+    proposed: dict[str, tuple[list[str], str]] = {}
     for p in repairs:
         if p.get("outcome") == "proposed":
-            proposed[str(p.get("claim_id"))] = sorted(p.get("assumption_ids") or [])
-    accepted = {
-        (str(p.get("claim_id")), tuple(sorted(p.get("assumption_ids") or [])))
-        for c, p in accepts
-        if str(c).startswith("expert:")
+            proposed[str(p.get("claim_id"))] = (
+                sorted(p.get("assumption_ids") or []),
+                str(p.get("claim_sha256")),
+            )
+    # Each claim's pipeline.claim entry closes its work in the audit: a decision logged after it
+    # (a later rejection) was not in force when the audit used the proposal.
+    done = {
+        str(p.get("claim_id")): s
+        for s, _a, _c, act, p in log
+        if act == pipeline.CLAIM_ACTION and p.get("run_id") == rid
     }
     for c, p in decisions:
         if not str(c).startswith("expert:"):
@@ -1530,14 +1554,24 @@ def _testability(
                 f"{p.get('claim_id')}: a repair was decided by {c}, not by an expert",
             )
             bad += 1
-    for claim_id, ids in sorted(proposed.items()):
+    for claim_id, (ids, sha) in sorted(proposed.items()):
         kept = set(source["manifest"].get(claim_id, {}).get("assumptions", []))
-        if kept & set(ids) and (claim_id, tuple(ids)) not in accepted:
+        if not kept & set(ids):
+            continue
+        # The latest expert decision on this exact proposal when the audit used it, read as the
+        # step reads it (testability.decision): an earlier acceptance does not outlive a rejection.
+        d = testability.decision(conn, claim_id, ids, sha, before=done.get(claim_id))
+        if d is None or d[0] != testability.ACCEPT_ACTION:
             out.add(
                 FAIL,
                 "testability",
-                f"{claim_id}: the claim kept assumptions the testability step proposed, and no "
-                "expert accepted them",
+                f"{claim_id}: the claim kept assumptions the testability step proposed, and "
+                + (
+                    "no expert accepted them"
+                    if d is None
+                    else "an expert's latest decision on them before the audit used them was a "
+                    "rejection"
+                ),
             )
             bad += 1
     scope = manifest.get("scope")
@@ -1594,6 +1628,16 @@ def _testability(
                     FAIL,
                     "testability",
                     f"{p.get('claim_id')}: a repaired claim is not in the bundle",
+                )
+                bad += 1
+                continue
+            claim = _claim_as_tried(claim, log, tried[claim.id])
+            if testability.row_sha256(claim) != p.get("claim_sha256"):
+                out.add(
+                    FAIL,
+                    "testability",
+                    f"{claim.id}: try {p.get('attempt')} of the testability step was made on "
+                    "another claim row than this one, and the log's claim edits do not explain it",
                 )
                 bad += 1
                 continue

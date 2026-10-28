@@ -12,6 +12,7 @@ import re
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -575,12 +576,54 @@ def test_a_rejected_proposal_is_never_used_and_the_latest_decision_stands(tmp_pa
     conn, first = _audit(tmp_path, examiner=None, signed=False)
     try:
         decide_repair(conn, "C01", first.run_id, 1, True, EXAMINER, "Looks right.")
-        decide_repair(conn, "C01", first.run_id, 1, False, EXAMINER, "The number is not his.")
+        decide_repair(conn, "C01", first.run_id, 1, False, EXAMINER, "The number is not theirs.")
         assert _proposal(conn).decided == (testability.REJECT_ACTION, EXAMINER)
         second = pipeline.run_audit(
             conn, _components(conn, examiner=None, signed=False), claim_ids=["C01"]
         )
         assert "C01" in second.not_tested and second.manifest["C01"]["assumptions"] == []
+    finally:
+        conn.close()
+
+
+def test_verify_bundle_fails_a_kept_proposal_whose_latest_decision_was_a_rejection(
+    tmp_path, monkeypatch
+):
+    """An acceptance does not outlive a later rejection in verify-bundle either: a step that
+    used the stale acceptance is caught (Codex on #163)."""
+    from core.review.actions import decide_repair
+
+    conn, first = _audit(tmp_path, examiner=None, signed=False)
+    try:
+        decide_repair(conn, "C01", first.run_id, 1, True, EXAMINER, "Looks right.")
+        decide_repair(conn, "C01", first.run_id, 1, False, EXAMINER, "Not this number.")
+        with monkeypatch.context() as m:  # a step that reads only the first acceptance
+            m.setattr(
+                testability, "decision", lambda *a, **k: (testability.ACCEPT_ACTION, EXAMINER)
+            )
+            second = pipeline.run_audit(
+                conn, _components(conn, examiner=None, signed=False), claim_ids=["C01"]
+            )
+        assert second.manifest["C01"]["assumptions"]
+        details = [f.detail for f in _check(conn) if f.level == FAIL]
+        assert any("latest decision on them before the audit used them was a rejection" in d
+                   for d in details)  # fmt: skip
+    finally:
+        conn.close()
+
+
+def test_a_rejection_after_the_audit_used_a_proposal_does_not_fail_that_audit(tmp_path):
+    from core.review.actions import decide_repair
+
+    conn, first = _audit(tmp_path, examiner=None, signed=False)
+    try:
+        decide_repair(conn, "C01", first.run_id, 1, True, EXAMINER, "Looks right.")
+        second = pipeline.run_audit(
+            conn, _components(conn, examiner=None, signed=False), claim_ids=["C01"]
+        )
+        assert second.manifest["C01"]["assumptions"]
+        decide_repair(conn, "C01", first.run_id, 1, False, EXAMINER, "Not this number.")
+        assert not failed(_check(conn))  # it was in force then; the next audit drops it
     finally:
         conn.close()
 
@@ -683,6 +726,26 @@ def test_a_claim_removed_after_the_audit_still_verifies(audited, tmp_path):
     assert [f.level for f in found] == [PASS], found
 
 
+def test_a_claim_edited_after_the_audit_still_verifies_its_tries(audited, tmp_path):
+    """The tries re-run on the claim as it stood, rebuilt from the edit's log entry, not on the
+    edited text (Codex on #163)."""
+    conn, _ = audited
+    copy = _copy(conn, tmp_path)
+    set_claim_status(copy, "C01", ClaimStatus.EDITED, EXAMINER, text="Edited by the examiner.")
+    found = _check(copy)
+    copy.close()
+    assert [f.level for f in found] == [PASS], found
+
+
+def test_a_claim_row_changed_outside_the_log_fails(audited, tmp_path):
+    conn, _ = audited
+    copy = _copy(conn, tmp_path)
+    copy.execute("UPDATE claims SET text = 'Changed with no log entry.' WHERE id = 'C01'")
+    found = _check(copy)
+    copy.close()
+    assert any(f.level == FAIL and "another claim row" in f.detail for f in found), found
+
+
 def test_a_logged_try_that_no_longer_follows_fails(audited, monkeypatch):
     conn, _ = audited
     monkeypatch.setattr(testability, "MAX_LOOKUPS", 0)  # code's lookups now find nothing
@@ -724,6 +787,34 @@ def _eval_answers(prompt: str) -> str:
     return '{"stance": "irrelevant", "quote": "", "rationale": "n"}'
 
 
+def test_the_eval_reports_both_wrong_entity_rates_on_the_same_tries(capsys):
+    """The claim-only check's rate leaves out "outside" tries. #159's rate counts them by what
+    the sheet says of the names they gave, so the two can be compared until the go/no-go."""
+    sheet = testability.Named(people=frozenset({"person:petrov", "person:reyes"}))
+    other = testability.Named(people=frozenset({"person:someone-else"}))
+
+    def tried(outcome: str, named: testability.Named) -> testability.Attempt:
+        return testability.Attempt(1, None, [], [], outcome, [], named)
+
+    rep = testability.Repair("C01", "sha", sheet, testability.SHEET_CHECK)
+    rep.attempts = [
+        tried("outside", testability.Named(people=frozenset({"person:reyes"}))),  # sheet agrees
+        tried("outside", other),
+        tried("outside", other),
+        tried("mismatch", other),
+        tried("proposed", sheet),
+    ]
+    step = SimpleNamespace(cap=5, seconds=0.0)
+    t = rp.testability_summary(SimpleNamespace(testability={"C01": rep}), step, "case01", None)
+    assert t["outside_the_claims_words"] == 3
+    assert t["wrong_entity_rate"] == 0.5  # 1 of the 2 tries the claim-only check let through
+    assert t["wrong_entity_rate_without_the_claim_check"] == 0.6  # 3 of the 5
+    rp.print_testability(t)
+    printed = capsys.readouterr().out
+    assert "the claim-only check, the sheet check rejected 50%" in printed
+    assert "(#159's measure, the claim-only check aside), the sheet check rejects 60%" in printed
+
+
 def test_the_eval_reports_the_measures_and_gives_no_go_no_go_until_arsh_sets_them(tmp_path, capsys):
     model = RuntimeFake(respond=_eval_answers)
     rp.run_once(
@@ -746,6 +837,7 @@ def test_the_eval_reports_the_measures_and_gives_no_go_no_go_until_arsh_sets_the
     assert t["of_them_the_sheet_makes_testable"] == 1 and t["converted_and_accepted"] == 1
     assert t["mismatch_person_phone_or_window"] == 0 and t["invalid_outputs"] == 0
     assert t["wrong_entity_rate"] == 0.0 and t["mismatch_other_only"] == 0
+    assert t["wrong_entity_rate_without_the_claim_check"] == 0.0
     assert t["x_percent"] is None and t["y_budget"] is None and not t["go_no_go_case"]
     printed = capsys.readouterr().out
     assert "testability go/no-go: none given (x_percent, y_budget not set by Arsh" in printed
