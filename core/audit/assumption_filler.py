@@ -62,12 +62,18 @@ the document or the case data. It fails closed at every step:
   writer of the quoted words ("PETROV wrote", "PETROV texted REYES"), read by code
   (`stated_sender`) from the verb nearest before the quote, when that name matches exactly one
   person the expert created. Otherwise it stays without a party and
-  is refused as before.
+  is refused as before. A claim that quotes a message and names its writer that way, with no
+  sender assumption at all, gets one from code: the claim's one quoted message (`the_quote`)
+  sent by that person.
+- A claim whose type needs a meaning assumption and got none gets it from code on the claim's
+  one quoted message: the words a kept sender or time assumption already quotes, or else the
+  one quote in the claim that is no name and follows a verb of saying or a colon. Two quotes,
+  or any doubt, add nothing. Meaning has no check, so only the expert's acceptance covers it.
 - Every proposed assumption is core. The model does not get to mark one optional.
 - A claim must not be judged on its easy parts (`coverage_gap`): each claim type needs its
   key template (a meaning claim needs "meaning", a count needs "message_count", ...), a stated
   date needs a time range, a stated time of day a range that states it, and a quoted message
-  in a communication claim a sender assumption. Otherwise the claim gets no assumptions at
+  in a claim of any type a sender assumption. Otherwise the claim gets no assumptions at
   all and stays unproven. It judges only proposals whose parameters fit their template: a
   sender naming two parties, which the builder drops, does not count as testing who sent it.
 
@@ -110,6 +116,11 @@ from core.zones import resolve_zone
 PROMPT_FILE = "assumptions.md"
 PLACEHOLDERS = frozenset({"claim", "paragraph", "templates", "channels"})
 MAX_PROPOSALS = 8
+# The filler's own version, recorded in each assumptions run (open_run's code_version). Bump it
+# when a change alters which proposals are kept or what code adds, so two runs of the same
+# model and prompt that test different claims can be told apart.
+#   2: #160's guards, and code adds a meaning assumption and a stated writer's sender.
+FILLER_VERSION = "2"
 MAX_WINDOW_DAYS = 400
 TIME_SLACK = timedelta(minutes=15)
 
@@ -1522,6 +1533,7 @@ _BETWEEN_WORDS = frozenset(
         *_SAME_SUBJECT_FORMS,
         *_NOUN_FORMS,
         "to", "and", "that", "it", "back", "at", "on", "before", "after", "around",
+        "message",  # "PETROV sent the Telegram message 'ok'"
         "a", "an", "the", "these", "those", "some", "several", "two", "three", "four",
         "five", "six", "seven", "eight", "nine", "ten",
         "a.m", "p.m", "am", "pm", "midnight", "noon", "morning", "afternoon", "evening",
@@ -1545,6 +1557,21 @@ _NOT_THE_WRITER_BEFORE = re.compile(
 )
 
 
+# What leads a quote that is a message, right before its opening mark: a verb of saying or
+# writing, alone or with the one it went to ('PETROV texted REYES "ok"', 'a message reading
+# "ok"'), a word for a message ('the Telegram message "ok"'), or a colon. Not a name's lead-in
+# ('the contact saved as "Marc"', 'the LINE user "DFIR Two"').
+_SAYING = (
+    r"wrote|writes|writing|texted|texts|texting|told|tells|sent|sends|sending|said|says|saying|"
+    r"messaged|replied|replies|replying|asked|asks|posted|posts|stated|states|stating|answered|"
+    r"responded|typed|read|reads|reading"
+)
+_MESSAGE_CUE_RE = re.compile(
+    rf"(?:\b(?:{_SAYING})(?:\s+(?-i:{_RECIPIENT}))?|\b{_QUOTE_NOUNS}|:)\s*,?\s*$",
+    re.IGNORECASE,
+)
+
+
 def _last_end(pattern: re.Pattern[str], text: str) -> int:
     """Where the last match of the pattern in the text ends, or 0 when there is none."""
     return max((m.end() for m in pattern.finditer(text)), default=0)
@@ -1556,7 +1583,8 @@ def coverage_gap(claim: Claim, proposals: list[Proposal]) -> str | None:
     A claim must not be judged on its easy parts: its key template must be there, a stated
     date must be tested by some time range, a stated time of day (outside quoted words) by a
     range that states one,
-    and a quoted message in a communication claim by a sender assumption.
+    and a quoted message, in a claim of any type, by a sender assumption: a meaning claim
+    ("SUBJECT-2 told SUBJECT-1: \"...\"") is not tested with its writer unchecked.
     """
     kept = {p.template_id for p in proposals}
     needed = REQUIRED_TEMPLATES.get(claim.claim_type, frozenset())
@@ -1568,11 +1596,7 @@ def coverage_gap(claim: Claim, proposals: list[Proposal]) -> str | None:
         return "the claim states a date but no assumption tests a time range"
     if time_mentions(_unquoted(claim.text)) and not any(time_mentions(r) for r in raws):
         return "the claim states a time of day but no time range states one"
-    if (
-        claim.claim_type is ClaimType.COMMUNICATION
-        and _QUOTED_MESSAGE.search(claim.text)
-        and "sender" not in kept
-    ):
+    if _QUOTED_MESSAGE.search(claim.text) and "sender" not in kept:
         return "the claim quotes a message but no assumption tests who sent it"
     return None
 
@@ -1667,7 +1691,9 @@ class LocalAssumptionFiller:
                 self._drop(claim, i, str(e), call.id)
 
         out = self._shaped(claim, out, call.id)
+        out = self._shaped(claim, self._add_sender(claim, out, allowed_ids), call.id)
         out = self._shaped(claim, self._add_record_time(claim, para, out, allowed_ids), call.id)
+        out = self._add_meaning(claim, out, allowed_ids, call.id)
         gap = coverage_gap(claim, out)
         if gap:
             self._drop(claim, None, f"{gap}; the claim stays unproven", call.id)
@@ -1857,6 +1883,89 @@ class LocalAssumptionFiller:
         (w,) = stated
         check_window(w.start, w.end, w.raw, claim.text, para, template_id)
         return self._zoned_window(w.zone, w.start, w.end, device_ids, w.raw)
+
+    def the_quote(self, claim: Claim, out: list[Proposal]) -> str | None:
+        """The one message the claim quotes, word for word, or None.
+
+        The quoted words a kept proposal already uses (verified verbatim and inside quotation
+        marks) are that message when all such proposals use the same words and those words
+        lie in a quote that is a message. With none, the claim must hold exactly one quoted
+        span that is not a name (a person the expert created, or an account's identifier or
+        display name: 'the Teams user "ThisIs DfirTwo"'), led by what leads a message
+        (_MESSAGE_CUE_RE: "PETROV wrote: ...", "a message reading ...", not "saved as ..."),
+        on one line. Two such quotes, or any doubt, give None: code never picks one."""
+        text, names = _nfc(claim.text), self._names()
+        spans = [
+            m.span()
+            for m in _QUOTE_SPAN_RE.finditer(_flat(text))
+            if m.group(0)[1:-1].strip() and m.group(0)[1:-1].strip().casefold() not in names
+        ]
+        messages = [(s, e) for s, e in spans if _MESSAGE_CUE_RE.search(text[:s])]
+        used = {
+            str(p.params["quoted_text"])
+            for p in out
+            if p.template_id in MESSAGE_TEXT_TEMPLATES
+            and isinstance(p.params, dict)
+            and p.params.get("quoted_text")
+        }
+        if used:
+            # The model's words, when they lie in a quote that is a message.
+            (words,) = used if len(used) == 1 else (None,)
+            inside = words is not None and any(
+                _flat(_nfc(words)) in _flat(text)[s + 1 : e - 1] for s, e in messages
+            )
+            return words if inside else None
+        if len(spans) != 1 or len(messages) != 1:
+            return None
+        start, end = messages[0]
+        words = text[start + 1 : end - 1].strip()
+        return None if "\n" in words or "\r" in words else words
+
+    def _names(self) -> set[str]:
+        """Every name a quote must not be read as a message for: persons the expert created
+        (whole and last name) and accounts' identifiers and display names, casefolded."""
+        names: set[str] = set()
+        for (full,) in self.conn.execute("SELECT name FROM persons"):
+            parts = _nfc(full.strip()).casefold().split()
+            names |= {" ".join(parts), *parts[-1:]}
+        for a in self.data.accounts.values():
+            names |= {_nfc(x.strip()).casefold() for x in (a.identifier, a.display_name) if x}
+        return names
+
+    def _add_sender(
+        self, claim: Claim, out: list[Proposal], allowed_ids: set[str]
+    ) -> list[Proposal]:
+        """A claim that quotes a message and names its writer ("PETROV wrote to REYES: ...")
+        but got no sender assumption gets it from code: the claim's one quoted message
+        (`the_quote`) sent by the person `stated_sender` reads. Otherwise the claim keeps no
+        sender, and coverage_gap refuses it."""
+        if "sender" not in allowed_ids or any(p.template_id == "sender" for p in out):
+            return out
+        if not _QUOTED_MESSAGE.search(claim.text):
+            return out
+        quote = self.the_quote(claim, out)
+        writer = self.stated_sender(claim, quote) if quote else None
+        if quote is None or writer is None:
+            return out
+        return [*out, Proposal("sender", {"quoted_text": quote, "person_ids": [writer]})]
+
+    def _add_meaning(
+        self, claim: Claim, out: list[Proposal], allowed_ids: set[str], call_id: str | None
+    ) -> list[Proposal]:
+        """A claim whose type needs a meaning assumption (REQUIRED_TEMPLATES) and got none
+        gets it from code on the claim's one quoted message (`the_quote`). Meaning has no
+        check, so only the expert's acceptance can cover it: this keeps the claim's reading
+        in front of the expert, and never makes Supported easier."""
+        needed = REQUIRED_TEMPLATES.get(claim.claim_type, frozenset())
+        if "meaning" not in needed or "meaning" not in allowed_ids:
+            return out
+        if any(p.template_id == "meaning" for p in out):
+            return out
+        quote = self.the_quote(claim, out)
+        if quote is None:
+            self._drop(claim, None, "meaning from the claim: no one quoted message", call_id)
+            return out
+        return [*out, Proposal("meaning", {"quoted_text": quote}, is_core=True)]
 
     def _add_record_time(
         self, claim: Claim, para: str, out: list[Proposal], allowed_ids: set[str]
@@ -2253,7 +2362,14 @@ def create(
     template = load_prompt(PROMPT_FILE)
     # The per-call schema is fixed by the templates and channels the prompt lists, so the
     # empty schema records its shape for stored-output reuse.
-    opened = open_run(conn, "assumptions", template, model=model, schema=fill_schema((), ()))
+    opened = open_run(
+        conn,
+        "assumptions",
+        template,
+        model=model,
+        schema=fill_schema((), ()),
+        code_version=FILLER_VERSION,
+    )
     filler = LocalAssumptionFiller(opened.port, conn, template=template, recorder=opened.recorder)
     filler.model_runs = (opened.run,)
     return filler
