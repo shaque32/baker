@@ -43,6 +43,11 @@ from core.contracts import ModelRun, canonical_json, short_hash
 MODEL_CONFIG_ENV = "MABILLON_MODEL_CONFIG"
 REUSE_PARAM = "reuse_stored_outputs"
 SCHEMA_PARAM = "output_schema"
+# The version of the code that turns a pass's answers into records (the assumption filler's
+# FILLER_VERSION). Two runs with the same model and prompt can keep different assumptions when
+# it differs, so it is recorded; the model's answers do not depend on it, so stored outputs
+# are still reused across it.
+CODE_VERSION_PARAM = "code_version"
 
 
 class ModelConfigError(RuntimeError):
@@ -210,7 +215,8 @@ class RunPort:
 
 
 def _reuse_key(params: Mapping[str, Any]) -> str:
-    return canonical_json({k: v for k, v in params.items() if k != REUSE_PARAM})
+    skip = (REUSE_PARAM, CODE_VERSION_PARAM)
+    return canonical_json({k: v for k, v in params.items() if k not in skip})
 
 
 def stored_output_lookup(
@@ -272,12 +278,14 @@ def open_run(
     schema: Mapping[str, Any] | None = None,
     reuse: bool = True,
     reuse_unusable: bool = True,
+    code_version: str | None = None,
 ) -> OpenedRun:
     """One ModelRun per pass per pipeline run. Its id is unique per process start time, and
     call numbering continues from any calls already stored for it. `schema` (the pass's output
     schema) is recorded by hash, so a schema change never reuses older outputs. `reuse` turns
     stored-output reuse on (the default) or off (the speed test's cold run); `reuse_unusable`
-    False asks again where a stored answer was unusable (stored_output_lookup)."""
+    False asks again where a stored answer was unusable (stored_output_lookup). `code_version`
+    records the version of the code that reads the answers (CODE_VERSION_PARAM)."""
     if model is None:
         model = load_model(load_config())
     started = clock()
@@ -289,6 +297,8 @@ def open_run(
         params[SCHEMA_PARAM] = short_hash(dict(schema))
     if reuse:
         params[REUSE_PARAM] = True
+    if code_version is not None:
+        params[CODE_VERSION_PARAM] = code_version
     seed = params_obj.seed if params_obj is not None and hasattr(params_obj, "seed") else None
     version = prompt_version(template)
     run_id = (

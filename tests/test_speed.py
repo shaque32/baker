@@ -115,6 +115,21 @@ def test_anything_else_changed_calls_the_model(case_db, change):
     assert second.port.reused == 0
 
 
+def test_the_code_version_is_recorded_and_does_not_stop_reuse(case_db):
+    # A new assumption filler reads the same model answers differently; the run records it,
+    # and the stored answers are still the model's answers.
+    model = Counting()
+    first = _open(case_db, model, code_version="1")
+    assert first.run.params[lm.CODE_VERSION_PARAM] == "1"
+    first.port.generate("P1", SCHEMA)
+    _store(case_db, first, "P1", '{"x": "stored"}', "ok")
+    second = _open(case_db, model, code_version="2")
+    assert second.run.params[lm.CODE_VERSION_PARAM] == "2"
+    assert second.port.generate("P1", SCHEMA) == '{"x": "stored"}'
+    assert model.prompts == ["P1"]
+    assert lm.CODE_VERSION_PARAM not in _open(case_db, model).run.params
+
+
 def test_another_model_file_or_prompt_calls_the_model(case_db):
     first = _open(case_db, Counting())
     _store(case_db, first, "P1", '{"x": "stored"}', "ok")

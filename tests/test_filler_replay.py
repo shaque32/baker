@@ -29,8 +29,11 @@ RUN = json.loads(
     (ROOT / "eval/fixtures/mac_run_2026-10-12/assumption_filler.json").read_text("utf-8")
 )
 TESTED_IN_THE_RUN = 5  # what the Mac run itself got, before code read the stated dates
-TESTED_NOW = 10
-TESTED_WITH_NAMES = 12  # after the expert adds ALEXANDER SOKOLOV on the Identities page
+# 10 and 12 before the guards: ¶12.1 counted as tested through a sender naming two parties,
+# which the builder drops, and ¶13.1 searched a paraphrase ("he was worried about Marcus") as
+# message text. Neither tested what the claim says.
+TESTED_NOW = 8
+TESTED_WITH_NAMES = 10  # after the expert adds ALEXANDER SOKOLOV on the Identities page
 
 
 def _name(c: dict) -> str:
