@@ -2,9 +2,10 @@
 report's base styles (core/report/html.py CSS).
 
 Same design language as getmabillon.com: IBM Plex Sans for text, Instrument Serif only for the
-wordmark and headlines, no monospace labels. Fully offline. The fonts (SIL Open Font License) are
-vendored in ui/static/fonts and served by this screen at /static/fonts/; the font stacks fall
-back to system fonts. The Mabillon mark is inline SVG, so no image request is ever made.
+wordmark and headlines, IBM Plex Mono only for ids and hashes. Fully offline. The fonts (SIL
+Open Font License) are vendored in ui/static/fonts and served by this screen at /static/fonts/;
+the font stacks fall back to system fonts. The Mabillon mark is inline SVG, so no image request
+is ever made.
 """
 
 from __future__ import annotations
@@ -34,8 +35,8 @@ FONT_CSS = (
     + _face("IBM Plex Sans", "ibm-plex-sans-cyrillic-wght-normal.woff2", "100 700", _CYRILLIC)
     + _face("Instrument Serif", "instrument-serif-latin-400-normal.woff2", "400", _LATIN)
     + _face("Instrument Serif", "instrument-serif-latin-400-italic.woff2", "400", _LATIN, "italic")
-    + _face("JetBrains Mono", "jetbrains-mono-latin-wght-normal.woff2", "100 800", _LATIN)
-    + _face("JetBrains Mono", "jetbrains-mono-cyrillic-wght-normal.woff2", "100 800", _CYRILLIC)
+    + _face("IBM Plex Mono", "ibm-plex-mono-latin-400-normal.woff2", "400", _LATIN)
+    + _face("IBM Plex Mono", "ibm-plex-mono-cyrillic-400-normal.woff2", "400", _CYRILLIC)
 )
 
 # A ledger page split into "for" and "against".
@@ -52,8 +53,10 @@ MARK = (
 THEME_CSS = """
 /* Design tokens. The palette is the report's (warm paper, ink, navy, verdict colors), as on
    getmabillon.com. One text face, IBM Plex Sans; Instrument Serif only for the wordmark and
-   headlines. No monospace: ids, hashes and times are Plex Sans with tabular figures. */
-:root { --mono: var(--sans); --hover: #faf8f4; --ring: rgb(29 53 87 / 0.16);
+   headlines. IBM Plex Mono only for ids and hashes (.mono), so they compare by eye; labels
+   are never monospace or uppercase. */
+:root { --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace; --hover: #faf8f4;
+  --ring: rgb(29 53 87 / 0.16);
   --field: #fff; --amber: #c9a24a; --radius: 12px; }
 body { max-width: none; padding: 0; font-size: 15px; line-height: 1.6; }
 main { max-width: 1160px; margin: 0 auto; padding: 48px 32px 96px; }
@@ -68,7 +71,7 @@ h2 { font: 600 18px/1.35 var(--sans); letter-spacing: -0.005em; margin: 56px 0 1
 h3 { font: 600 15px/1.4 var(--sans); margin: 28px 0 10px; }
 .eyebrow { font: 500 13px/1.4 var(--sans); letter-spacing: 0; text-transform: none;
   color: var(--muted); margin-bottom: 6px; }
-.mono { font: 400 12.5px/1.5 var(--sans); font-variant-numeric: tabular-nums;
+.mono { font: 400 12px/1.5 var(--mono);
   color: var(--muted); letter-spacing: 0; word-break: break-all; }
 .muted { color: var(--muted); }
 a { color: var(--accent); text-decoration-color: rgb(29 53 87 / 0.35);

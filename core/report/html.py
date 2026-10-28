@@ -160,7 +160,7 @@ from core.review.withheld import summary as withheld_summary
 # 0.19.0: a claim that names or rests on an app holding more than one kind of message (iOS
 # Native Messages: iMessages and SMS together) says so, on the claim page too.
 # 0.20.0: visual only, in the design of the review screen and getmabillon.com: table headings in
-# sentence case and IBM Plex Sans, ids and hashes in Plex Sans with tabular figures, claim text
+# sentence case and IBM Plex Sans, ids and hashes in IBM Plex Mono, claim text
 # in the sans, calmer notices and verdict pills. No wording, fact or section changed.
 REPORT_VERSION = "0.20.0"
 
@@ -206,7 +206,7 @@ CSS = """
   --sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica,
     Arial, sans-serif;
   --serif: "Instrument Serif", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
-  --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; }
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace; }
 body { font: 15px/1.6 var(--sans); color: var(--fg); background: var(--bg);
   max-width: 980px; margin: 0 auto; padding: 48px 24px 88px;
   -webkit-font-smoothing: antialiased; }
@@ -218,7 +218,7 @@ h2 { font-size: 18px; font-weight: 600; letter-spacing: -0.005em; margin: 48px 0
   padding-bottom: 8px; border-bottom: 1px solid var(--line); }
 h3 { font-size: 15px; font-weight: 600; }
 .muted { color: var(--muted); }
-.mono { font-family: var(--sans); font-size: 12.5px; font-variant-numeric: tabular-nums;
+.mono { font-family: var(--mono); font-size: 12px;
   word-break: break-all; }
 .banner { background: #fbf6ea; border: 1px solid #ecdfbf; border-radius: 12px;
   padding: 14px 18px; margin: 16px 0; color: #4a3a14; font-size: 14px; }
