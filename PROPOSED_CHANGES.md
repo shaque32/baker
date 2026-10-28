@@ -675,3 +675,5 @@ with
 +  sets a verdict, and never changes a claim's text. They stay off by default: only the eval
 +  and the scripted demo (eval/demo.py, scripted answers, no model) run them, until a real-data
 +  run under a signed plan.
+SIGNED by Arsh on 2026-10-28 ("approved", 13:17Z, project thread "Build agents into the audit").
+To be applied by Arsh on this branch (PR #163), word for word as above.
