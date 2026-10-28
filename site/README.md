@@ -1,7 +1,7 @@
 # getmabillon.com
 
-The public website: plain static HTML and CSS plus one small script (`main.js`, the home page demo), no build step, no third-party
-requests. Fonts are the same OFL files as `ui/static/fonts` (licenses in `fonts/LICENSES.txt`).
+The public website: plain static HTML and CSS plus one small script (`main.js`: the home page walkthrough that builds an example claim as you scroll, and sections that play once when they come into view), no build step, no third-party
+requests. Fonts are OFL files: Instrument Serif (as in `ui/static/fonts`) and IBM Plex Sans (licenses in `fonts/LICENSES.txt`).
 
 - `index.html` home page, `demo.html` Book a demo form, `demo-thanks.html` its confirmation,
   `privacy.html` privacy page, `404.html` not-found page.
@@ -11,6 +11,10 @@ Every statement must match the safe wording in `docs/PRODUCT_STATUS.md` section 
 one-pager, `docs/ONE_PAGER.md`: no speed
 or accuracy figures, UFDR and AXIOM unverified on real exports, no logos, testimonials or
 "court-ready". Change the copy when those docs change.
+
+When you change `styles.css` or `main.js`, update the `?v=` on every link to it (the first 8 characters
+of the file's SHA-256), so browsers that cached the old file fetch the new one. `tests/test_site_assets.py`
+checks it.
 
 Preview locally: `python -m http.server -d site 8000`, then open http://127.0.0.1:8000.
 

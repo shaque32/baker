@@ -661,7 +661,9 @@ def test_stated_windows_skip_a_time_inside_quoted_words():
 
     (w,) = stated_windows("On March 12, 2026, PETROV wrote 'noon'.")
     assert (w.start.hour, (w.end - w.start).days) == (0, 1)
-    assert stated_windows("On March 12, 2026 at noon, PETROV wrote 'ok'.") is None
+    # a time outside the quoted words is read, never skipped into the whole day
+    (w,) = stated_windows("On March 12, 2026 at noon, PETROV wrote 'ok'.")
+    assert (w.start.hour, w.start.minute, (w.end - w.start).seconds) == (12, 0, 60)
     # a date in the quoted words is the message's: no range for it
     assert stated_windows('PETROV wrote "meet me at noon on March 12, 2026".') == []
     (w,) = stated_windows("On March 11, 2026, PETROV wrote 'see you at noon on March 12'.")
@@ -877,6 +879,21 @@ def test_every_template_has_help():
         ("about 30 seconds", (22, 38)),
         ("a minute", (60, 119)),
         ("approximately one hour", (2700, 4500)),
+        # halves, to the half the words state
+        ("a minute and a half", (90, 119)),
+        ("one and a half minutes", (90, 119)),
+        ("about one and a half minutes", (68, 112)),
+        ("half an hour", (1800, 3599)),
+        # two parts, to the second
+        ("two minutes and 30 seconds", (150, 150)),
+        ("1 minute, 30 seconds", (90, 90)),
+        ("forty-five seconds", (45, 45)),
+        ("twenty two minutes", (1320, 1379)),
+        # a bound is an open range: up to a day, or from 1 second
+        ("more than a minute and a half", (91, 86400)),
+        ("at least two minutes", (120, 86400)),
+        ("under two minutes", (1, 119)),
+        ("no more than two minutes", (1, 120)),
     ],
 )
 def test_duration_range(words, rng):
@@ -885,7 +902,124 @@ def test_duration_range(words, rng):
     assert duration_range(words) == rng
 
 
-@pytest.mark.parametrize("words", ["under two minutes", "more than a minute", "a while", "2m"])
+def test_a_bound_the_claim_writes_before_the_models_words_is_read():
+    from core.audit.assumption_filler import duration_range
+
+    assert duration_range("two minutes", "a call lasting more than two minutes") == (121, 86400)
+    assert duration_range("two minutes", "a call lasting two minutes") == (120, 179)
+    with pytest.raises(Reject, match="more than once"):
+        duration_range("two minutes", "one call of about two minutes and one of two minutes")
+
+
+@pytest.mark.parametrize(
+    ("words", "claim"),
+    [
+        # a bound turned round: read as written, it would mean the opposite
+        ("two minutes", "a call lasting not more than two minutes"),
+        ("more than two minutes", "a call lasting not more than two minutes"),
+        ("two minutes", "a call of not less than two minutes"),
+        ("two minutes", "a call that was not under two minutes"),
+        ("two minutes", "a call that never lasted over two minutes"),
+        ("two minutes", "a call that wasn't more than two minutes"),
+        # a bound after the length: read as written, it would be a plain length
+        ("two minutes", "a call of two minutes or less"),
+        ("two minutes", "a call of two minutes or more"),
+        ("two minutes", "a call of two minutes or longer"),
+        ("two minutes", "a call of two minutes, or so"),
+        ("two minutes", "a call of two minutes plus"),
+        ("two minutes or less", ""),
+        ("not more than two minutes", ""),
+        # typographic apostrophes and "cannot" turn a bound round too (Codex on #153)
+        ("under two minutes", "a call that wasn\u2019t under two minutes"),
+        ("over two minutes", "a call that didn\u2019t last over two minutes"),
+        ("two minutes", "a call that couldn\u02bct have lasted more than two minutes"),
+        ("more than two minutes", "the call cannot have lasted more than two minutes"),
+    ],
+)
+def test_a_turned_round_or_trailing_bound_is_refused(words, claim):
+    from core.audit.assumption_filler import duration_range
+
+    with pytest.raises(Reject):
+        duration_range(words, claim)
+
+
+@pytest.mark.parametrize(
+    ("words", "claim"),
+    [
+        ("more than a minute", "a call lasting more than a minute and a half"),
+        ("a minute", "a call lasting a minute and a half"),
+        ("at least two minutes", "a call lasting at least two minutes and 30 seconds"),
+        ("two minutes", "a call lasting two minutes, thirty seconds"),
+        ("two minutes", "a call lasting two minutes and twenty two seconds"),
+        ("30 seconds", "a call lasting two minutes and 30 seconds"),
+        ("30 seconds", "a call lasting 1 min., 30 seconds"),
+    ],
+)
+def test_words_that_are_only_part_of_the_claims_length_are_refused(words, claim):
+    """Codex on #153: "more than a minute" taken from "more than a minute and a half" was read
+    as 61 seconds to a day, so a call shorter than the claim allows could count."""
+    from core.audit.assumption_filler import duration_range
+
+    with pytest.raises(Reject, match="goes on past"):
+        duration_range(words, claim)
+
+
+def test_the_whole_length_and_lengths_beside_other_words_still_read():
+    from core.audit.assumption_filler import duration_range
+
+    half = "a call lasting more than a minute and a half"
+    assert duration_range("more than a minute and a half", half) == (91, 86400)
+    assert duration_range("a minute and a half", half) == (91, 86400)
+    parts = "a call lasting two minutes and 30 seconds"
+    assert duration_range("two minutes and 30 seconds", parts) == (150, 150)
+    # a length followed by other words, or by a second call, is still read
+    assert duration_range("two minutes", "a call of two minutes and a second call at 9 p.m.") == (
+        120,
+        179,
+    )
+    assert duration_range("two minutes", "the second call lasted two minutes") == (120, 179)
+    assert duration_range("two minutes", "a call lasting two minutes and then a text") == (
+        120,
+        179,
+    )
+
+
+def test_no_more_and_no_less_than_stay_bounds():
+    from core.audit.assumption_filler import duration_range
+
+    assert duration_range("two minutes", "a call of no more than two minutes") == (1, 120)
+    assert duration_range("two minutes", "a call of no less than two minutes") == (120, 86400)
+    assert duration_range(
+        "two minutes", "PETROV did not answer, and the call lasted two minutes"
+    ) == (
+        120,
+        179,
+    )
+
+
+def test_the_claims_whole_lead_counts_when_the_models_words_carry_part_of_it():
+    """Codex on #153: the model's "more than two minutes" taken from the claim's "no more than
+    two minutes" was read as more than two minutes, the claim's bound turned round."""
+    from core.audit.assumption_filler import duration_range
+
+    no_more, no_less = "a call of no more than two minutes", "a call of no less than two minutes"
+    assert duration_range("more than two minutes", no_more) == (1, 120)
+    assert duration_range("less than two minutes", no_less) == (120, 86400)
+    assert duration_range("over two minutes", "a call of just over two minutes") == (121, 86400)
+    assert duration_range("more than two minutes", "a call of more than two minutes") == (
+        121,
+        86400,
+    )
+
+
+@pytest.mark.parametrize(
+    "words",
+    ["a while", "2m", "a few minutes", "just two minutes", "under a second", "zero seconds",
+     "between one and two minutes", "two minutes and three minutes",
+     # half seconds (Codex on #153): "at least ten and a half seconds" read as 10 seconds
+     "ten and a half seconds", "at least ten and a half seconds", "10 seconds and a half",
+     "half a second"],
+)  # fmt: skip
 def test_duration_range_refuses(words):
     from core.audit.assumption_filler import duration_range
 

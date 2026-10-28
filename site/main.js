@@ -1,55 +1,93 @@
-// Plays the hero demo: three example claims, one after another. Without this script the first
-// example shows in full; with reduced motion the tabs still work but nothing plays on its own.
+// Builds the home page walkthrough as you scroll. Progress runs from 1 to 6: the step whose box
+// holds the middle of the viewport, plus how far through that step the reader is. Each panel part
+// shows while progress is inside its data-on range ("a-b", or "a-" for no end). Without this
+// script the panel shows the finished first claim; reduced motion only drops the fades.
+const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// Sections play once, when about a third of them is on screen.
 (function () {
-  const demo = document.getElementById("demo");
-  if (!demo) return;
-  const tabs = Array.from(demo.querySelectorAll('[role="tab"]'));
-  const scenes = tabs.map((t) => document.getElementById(t.getAttribute("aria-controls")));
-  const marks = Array.from(demo.querySelectorAll("mark[data-for]"));
-  const audit = demo.querySelector(".audit");
-  const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const letters = ["a", "b", "c"];
-  let current = 0;
-  let timer = null;
-  let visible = true;
-  let userTook = false;
-
-  function show(i) {
-    current = i;
-    tabs.forEach((t, k) => t.setAttribute("aria-selected", String(k === i)));
-    scenes.forEach((s, k) => { s.hidden = k !== i; });
-    marks.forEach((m) => m.classList.toggle("on", m.dataset.for.split(" ").includes(letters[i])));
-    if (still) return;
-    audit.classList.remove("play");
-    void audit.offsetWidth; // restart the CSS animations
-    audit.classList.add("play");
+  document.documentElement.classList.add("js");
+  const items = Array.from(document.querySelectorAll(".reveal"));
+  if (still || !("IntersectionObserver" in window)) {
+    items.forEach((el) => el.classList.add("in"));
+    return;
   }
-
-  function schedule() {
-    clearTimeout(timer);
-    if (still || userTook || !visible) return;
-    timer = setTimeout(() => { show((current + 1) % tabs.length); schedule(); }, 6500);
-  }
-
-  tabs.forEach((t, i) => {
-    t.addEventListener("click", () => { userTook = true; clearTimeout(timer); show(i); });
-    t.addEventListener("keydown", (e) => {
-      if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
-      const n = (i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length;
-      tabs[n].focus();
-      tabs[n].click();
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((e) => {
+      if (!e.isIntersecting) return;
+      e.target.classList.add("in");
+      io.unobserve(e.target);
     });
+  }, { threshold: 0.33 });
+  items.forEach((el) => io.observe(el));
+})();
+
+(function () {
+  const walk = document.getElementById("walk");
+  if (!walk) return;
+  const steps = Array.from(walk.querySelectorAll(".walk-step"));
+  const rail = Array.from(walk.querySelectorAll(".rail li"));
+  // On narrow screens the panel covers the step text, so the panel repeats the current step.
+  const capTitle = walk.querySelector(".panel-caption h3");
+  const capText = walk.querySelector(".panel-caption p");
+  const parts = Array.from(walk.querySelectorAll("[data-on]")).map((el) => {
+    const [a, b] = el.dataset.on.split("-");
+    return { el, from: Number(a), to: b ? Number(b) : Infinity };
   });
+  let queued = false;
 
-  // Someone tabbing into the demo is reading it: stop changing it under them.
-  demo.addEventListener("focusin", () => { userTook = true; clearTimeout(timer); });
-
-  if ("IntersectionObserver" in window) {
-    new IntersectionObserver((entries) => {
-      visible = entries[0].isIntersecting;
-      schedule();
-    }, { threshold: 0.3 }).observe(demo);
+  // The first claim types itself out the first time it appears.
+  const typed = walk.querySelector(".claim .claimtext");
+  const full = typed.textContent;
+  let typing = false;
+  function type() {
+    typing = true;
+    const caret = document.createElement("span");
+    caret.className = "caret";
+    let i = 0;
+    typed.textContent = "";
+    typed.append(document.createTextNode(""), caret);
+    const t = setInterval(() => {
+      i += 1;
+      typed.firstChild.textContent = full.slice(0, i);
+      if (i >= full.length) {
+        clearInterval(t);
+        setTimeout(() => caret.remove(), 1400);
+      }
+    }, 22);
   }
-  show(0);
-  schedule();
+
+  function progress() {
+    // Measured in pixels on scroll, since percentage observer margins do not resolve against
+    // height in every browser.
+    const mid = window.innerHeight / 2;
+    let p = 1;
+    steps.forEach((s, i) => {
+      const r = s.getBoundingClientRect();
+      if (r.top <= mid) p = i + 1 + Math.min(0.999, (mid - r.top) / Math.max(1, r.height));
+    });
+    return p;
+  }
+
+  function update() {
+    queued = false;
+    const p = progress();
+    const n = Math.floor(p);
+    steps.forEach((s, i) => s.classList.toggle("on", i + 1 === n));
+    const cur = steps[n - 1];
+    if (cur && capTitle.dataset.step !== String(n)) {
+      capTitle.dataset.step = String(n);
+      capTitle.textContent = `${n}. ${cur.querySelector("h3").textContent}`;
+      capText.textContent = cur.querySelector("p").textContent;
+    }
+    rail.forEach((r, i) => { r.classList.toggle("on", i + 1 === n); r.classList.toggle("done", i + 1 < n); });
+    parts.forEach((q) => q.el.classList.toggle("on", p >= q.from && p < q.to));
+    if (!typing && !still && typed.parentElement.classList.contains("on")) type();
+  }
+  function queue() { if (!queued) { queued = true; requestAnimationFrame(update); } }
+
+  walk.classList.add("live");
+  update();
+  window.addEventListener("scroll", queue, { passive: true });
+  window.addEventListener("resize", queue);
 })();
