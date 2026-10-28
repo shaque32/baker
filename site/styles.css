@@ -159,14 +159,66 @@ section[id] { scroll-margin-top: 72px; }
 
 /* Context */
 .split > .wrap { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 64px; }
-.thread { list-style: none; margin: 0; padding: 8px; display: grid; gap: 4px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
-.thread li { display: grid; grid-template-columns: 3.2em 5.4em minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 9px 12px; border-radius: 7px; font-size: 0.9rem; color: var(--muted); }
-.thread time { font-size: 0.78rem; font-variant-numeric: tabular-nums; }
-.thread b { font-size: 0.78rem; font-weight: 600; }
-.thread em { font-style: normal; font-size: 0.76rem; font-weight: 500; }
+/* The quote, then the conversation it came from. On reveal the rows arrive in order, the quoted
+   line lights up with the affidavit's words, and then the left-out lines are marked. */
+.convo { margin: 0; display: grid; justify-items: stretch; }
+.convo-quote { margin: 0; position: relative; justify-self: start; max-width: 25rem; display: grid; gap: 4px; padding: 16px 20px; background: var(--card); border: 1px solid var(--line-strong); border-radius: 12px; }
+.convo-quote p:last-child { font: 400 1.18rem/1.4 var(--serif); }
+.convo-quote mark { background: var(--hl); color: inherit; border-radius: 3px; padding: 0 2px; transition: background-color 0.6s var(--ease) 1.05s; }
+.convo-quote::after { content: ""; position: absolute; left: 44px; top: 100%; width: 1px; height: 28px; background: var(--line-strong); transform-origin: top; transition: transform 0.6s var(--ease) 0.35s; }
+.convo-window { margin-top: 28px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.convo-head { display: flex; justify-content: space-between; gap: 10px; padding: 11px 18px; border-bottom: 1px solid var(--line); font-size: 0.8rem; font-weight: 600; }
+.convo-head .muted { font-weight: 400; }
+.thread { list-style: none; margin: 0; padding: 8px 8px 10px; display: grid; gap: 0; position: relative; }
+.thread li { position: relative; display: grid; grid-template-columns: 3.2em 7px 5.4em minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 10px 12px; border-radius: 8px; font-size: 0.92rem; color: var(--muted); transition: background-color 0.6s var(--ease), color 0.6s var(--ease); }
+.thread li::after { content: ""; position: absolute; left: calc(12px + 3.2em + 14px + 3px); top: 0; bottom: 0; width: 1px; background: var(--line-strong); }
+.thread li:first-child::after { top: 50%; }
+.thread li:last-child::after { bottom: 50%; }
+.thread li::before { content: ""; position: relative; z-index: 1; grid-column: 2; grid-row: 1; width: 7px; height: 7px; border-radius: 50%; background: var(--bg); border: 1px solid var(--line-strong); transition: background-color 0.6s var(--ease), border-color 0.6s var(--ease); }
+.thread time { grid-column: 1; grid-row: 1; font-size: 0.78rem; font-variant-numeric: tabular-nums; }
+.thread b { grid-column: 3; font-size: 0.74rem; font-weight: 600; letter-spacing: 0.02em; }
+.thread span { grid-column: 4; }
+.thread em { grid-column: 5; font-style: normal; font-size: 0.74rem; font-weight: 500; white-space: nowrap; padding: 2px 9px; border-radius: 999px; transition: opacity 0.5s var(--ease); }
 .thread .quoted { background: var(--hl); color: var(--fg); }
-.thread .left { background: var(--panel); color: var(--fg); }
-.thread .left em { color: var(--muted); }
+.thread .quoted::before { background: var(--fg); border-color: var(--fg); }
+.thread .left { color: var(--fg); }
+.thread .left::before { border-color: var(--fg); }
+.thread .left em { color: var(--muted); border: 1px solid var(--line-strong); }
+.js .convo-quote mark { background: transparent; }
+.js .convo.in .convo-quote mark { background: var(--hl); }
+.js .convo .convo-quote::after { transform: scaleY(0); }
+.js .convo.in .convo-quote::after { transform: scaleY(1); }
+.js .convo .thread li { opacity: 0; transform: translateY(6px); transition: opacity 0.6s var(--ease), transform 0.6s var(--ease), background-color 0.6s var(--ease), color 0.6s var(--ease); }
+.js .convo.in .thread li { opacity: 1; transform: none; }
+.js .convo .thread li:nth-child(1) { transition-delay: 0.4s; }
+.js .convo .thread li:nth-child(2) { transition-delay: 0.47s; }
+.js .convo .thread li:nth-child(3) { transition-delay: 0.54s, 0.54s, 1.05s, 1.05s; }
+.js .convo .thread li:nth-child(4) { transition-delay: 0.61s; }
+.js .convo .thread li:nth-child(5) { transition-delay: 0.68s; }
+.js .convo .thread li:nth-child(6) { transition-delay: 0.75s; }
+.js .convo .thread .quoted { background: transparent; }
+.js .convo.in .thread .quoted { background: var(--hl); }
+.js .convo .thread em { opacity: 0; }
+.js .convo.in .thread .quoted em { opacity: 1; transition-delay: 1.15s; }
+.js .convo.in .thread .left em { opacity: 1; transition-delay: 1.6s; }
+
+/* What makes a status checkable: a ruled sheet of six, each with a line icon that draws in */
+.proofs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.proofs > div { display: grid; gap: 10px; align-content: start; padding: 30px 30px 34px; background: var(--bg); transition: background-color 0.4s var(--ease); }
+.proofs > div:hover { background: var(--card); }
+.proofs p { color: var(--muted); font-size: 0.97rem; }
+.proofs .icon { width: 46px; height: 46px; padding: 10px; margin-bottom: 8px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); fill: none; stroke: var(--accent); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.js .proofs.reveal { opacity: 1; transform: none; }
+.js .proofs > div { opacity: 0; transform: translateY(10px); transition: opacity 0.8s var(--ease), transform 0.8s var(--ease), background-color 0.4s var(--ease); }
+.js .proofs.in > div { opacity: 1; transform: none; }
+.js .proofs .draw { stroke-dasharray: 1; stroke-dashoffset: 1; transition: stroke-dashoffset 1.2s var(--ease); }
+.js .proofs.in .draw { stroke-dashoffset: 0; }
+.js .proofs > div:nth-child(2), .js .proofs > div:nth-child(2) .draw { transition-delay: 0.08s; }
+.js .proofs > div:nth-child(3), .js .proofs > div:nth-child(3) .draw { transition-delay: 0.16s; }
+.js .proofs > div:nth-child(4), .js .proofs > div:nth-child(4) .draw { transition-delay: 0.24s; }
+.js .proofs > div:nth-child(5), .js .proofs > div:nth-child(5) .draw { transition-delay: 0.32s; }
+.js .proofs > div:nth-child(6), .js .proofs > div:nth-child(6) .draw { transition-delay: 0.4s; }
+.js .proofs.in > div:hover { transition-delay: 0s; }
 
 /* Columns */
 .cols { display: grid; gap: 36px 40px; }
@@ -251,7 +303,7 @@ section[id] { scroll-margin-top: 72px; }
   .walk.live .panel-caption h3 { font: 400 1.3rem/1.2 var(--serif); }
   .walk.live .panel-caption p { font-size: 0.86rem; color: var(--muted); }
   .split > .wrap { grid-template-columns: minmax(0, 1fr); gap: 36px; }
-  .cols.three { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cols.three, .proofs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .band > .wrap { padding-block: 72px; }
 }
 @media (max-width: 620px) {
@@ -267,8 +319,13 @@ section[id] { scroll-margin-top: 72px; }
   .cols.three, .cols.two { grid-template-columns: minmax(0, 1fr); }
   .facts { grid-template-columns: minmax(0, 1fr); }
   .facts dt { border-bottom: 0; padding-bottom: 0; }
-  .thread li { grid-template-columns: 3em minmax(0, 1fr) auto; }
+  .proofs { grid-template-columns: minmax(0, 1fr); }
+  .proofs > div { padding: 24px 22px 26px; }
+  .thread li { grid-template-columns: 3em 7px minmax(0, 1fr) auto; gap: 10px; }
+  .thread li::after { left: calc(12px + 3em + 10px + 3px); }
   .thread b { display: none; }
+  .thread span { grid-column: 3; }
+  .thread em { grid-column: 4; }
 }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
