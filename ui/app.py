@@ -110,6 +110,7 @@ NEEDS_NO_JOB: dict[str, tuple[str, ...]] = {
     "/identity/look": ("audit",),
     "/redecide": ("audit",),
     "/evidence/confirm": ("audit",),
+    "/testability/decide": ("audit",),
     "/claims/propose": ("audit", "propose", "model_check"),
     "/model/check": ("audit", "propose", "model_check"),
     "/audit/start": ("audit", "propose", "model_check"),
@@ -612,6 +613,7 @@ class App:
             "/identity/link": lambda: self._link_account(conn, f),  # type: ignore[arg-type]
             "/identity/look": lambda: self._look_for_links(conn),  # type: ignore[arg-type]
             "/redecide": lambda: self._redecide(conn),  # type: ignore[arg-type]
+            "/testability/decide": lambda: self._decide_repair(conn, f),  # type: ignore[arg-type]
             "/model/check": lambda: self._check_model(),
             "/audit/start": lambda: self._start_audit(conn, f),  # type: ignore[arg-type]
             "/audit/stop": lambda: self._stop_audit(),
@@ -723,6 +725,31 @@ class App:
         return (
             f"Recorded: {status.value}. Re-run the verdicts when you are ready; the verdict does "
             "not change until then."
+        )
+
+    def _decide_repair(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        """The claim page's card: accept or reject one testability proposal."""
+        choice = f.get("decision", "")
+        if choice not in ("accept", "reject"):
+            raise ReviewError("accept or reject the agent's proposal")
+        try:
+            attempt = int(f.get("attempt", ""))
+        except ValueError:
+            raise ReviewError("no agent proposal named") from None
+        actions.decide_repair(
+            conn,
+            f.get("claim", ""),
+            f.get("run", ""),
+            attempt,
+            choice == "accept",
+            self.actor,
+            f.get("reason", ""),
+        )
+        if choice == "reject":
+            return "Recorded: rejected. No audit uses the agent's proposal."
+        return (
+            "Recorded: accepted. The next audit tests the claim with these assumptions, if the "
+            "agent gives them again for this claim's text; nothing changes until then."
         )
 
     def _confirm(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:

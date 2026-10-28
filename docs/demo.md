@@ -24,6 +24,7 @@ Say this if asked; the yellow banner on every page says the same.
 | Import: read-only copies, SHA-256, coverage ("curated report, cannot show absence") | The evidence labels: key evidence from the signed answer key, labeled the way the answer points; C16's two counter-records labeled complicates on its authorship assumption; everything else labeled irrelevant. No model ran. |
 | Assumptions (from the signed assumption sheet), retrieval, every deterministic check (sender, time with time zones, absence, count, contact, identity) | Most expert decisions: "Demo expert (scripted from the answer key)" accepted or dismissed every item, except on C05 and C16's two counter-records, which are left for you |
 | The challenge step: code's counter-searches on each claim close to supported, which keep only doubt | |
+| The testability agent's machinery on D02 and D03: the product's assumption filler and testability step with their signed prompts, code's checks on every answer (including the claim-only check), the "Proposed by agent" card and the audit log | The model's answers on D02 and D03 (a first answer code refuses, then the agent's answer), and the acceptance of D02's proposal and its contact record by "Demo examiner (scripted from the demo claims)". No model ran. |
 | The quote check, the verdict rules (0.3.0), the hash-chained audit log, the report | |
 
 On a real case the local model (Qwen3-14B, on the expert's own computer) labels the evidence and
@@ -37,18 +38,28 @@ mabillon demo --from-case ~/Mabillon/cases/<that case folder>   # only synthetic
 mabillon demo --scripted                                     # back to the scripted demo
 ```
 
-## Demo-only claim D01 and `--paired`
+## Demo-only claims D01 to D03 and `--paired`
 
-Two parts of the scripted demo are not in the signed answer key, and are synthetic like the
-rest. Both come only with the scripted build: a saved audit (`--from-case`) is restored as it
-was run, so it holds the 20 answer-key claims and no D01 (`--paired` always builds the scripted
-case).
+These parts of the scripted demo are not in the signed answer key, and are synthetic like the
+rest. They come only with the scripted build: a saved audit (`--from-case`) is restored as it
+was run, so it holds the 20 answer-key claims and no D01, D02 or D03 (`--paired` always builds
+the scripted case).
 
 - **D01** (eval/demo_claims.jsonl), an absence claim read from paragraph 11: "PETROV and REYES
   exchanged no WhatsApp messages between March 20 and March 23, 2026." Mabillon finds no WhatsApp
   record in that window, yet the absence check is inconclusive and the claim stays unproven:
   both phones are examiner-curated reports, which cannot show that something is absent. Use it to
   show that "not found" never becomes "did not happen".
+- **D02 and D03** (eval/demo_agent_claims.jsonl) show the testability agent. On each, the
+  product's assumption filler gets a scripted first answer that code refuses, for a reason
+  validation run 2 saw: D02's writes the phone "Item 1" as an account, D03's names a call with
+  no party. The testability step then asks again with code's reasons, and its scripted answer
+  passes code's checks. The step runs on these two claims only, CAP 1, with no signed sheet: the
+  claim-only check is all it gets, as a real case would. D02's proposal ("Item 1 holds a contact
+  saved as "Alex" with the number +1 (212) 555-0182") was accepted when the demo was built, with
+  its contact record, so D02 shows the whole path to "Supported (expert-confirmed)". D03's ("At
+  about 7:58 p.m. on March 9, 2026, Item 1 placed a call to +1 (212) 555-0122") waits on its
+  claim page for you.
 - **`mabillon demo --paired`** builds the same scripted case and then imports `item1-full.ufdr`, a
   UFDR of Item 1 that holds records the curated report does not (eval/synthetic/paired.py). It
   is imported after the audit, so every verdict is the same as in the plain demo. The Selection
@@ -67,9 +78,11 @@ records, and nothing counts as supported until you accept it yourself."
 1. **Cases, then the case.** One case, nothing else on the screen. Open it. The setup page
    shows the three imported files, each with its SHA-256, and "curated report (examiner-selected;
    cannot show absence)".
-2. **Claims queue.** 20 claims from the affidavit plus the scripted demo's D01: 7 supported
-   (expert-confirmed), 6 contradicted, 7 unproven, and C05 at the top: "Support found: do you agree?".
-   C16 waits just below it: "2 contradicting or complicating item(s) to review".
+2. **Claims queue.** 20 claims from the affidavit plus the scripted demo's D01, D02 and D03: 8
+   supported (expert-confirmed), 6 contradicted, 9 unproven. Next up is D03: "Proposed by agent:
+   the testability agent proposed assumptions that would make this claim testable". C05 ("Support
+   found: do you agree?") and C16 ("2 contradicting or complicating item(s) to review") wait just
+   below it.
 3. **Live: the expert decides (C05).** Open C05, "need 2 more by friday". The model-side label
    says supports, yet the verdict is unproven: no claim is supported until an expert accepts its
    evidence. Point out the time check: the phone prints the message on 3/13 (UTC), and Mabillon
@@ -86,10 +99,23 @@ records, and nothing counts as supported until you accept it yourself."
    Say it plainly: the search is real, but in this demo the "complicates" label on what it found
    is scripted from the answer key. On a real case the local model labels it, and what the step
    catches with that model is not measured yet.
-5. **The traps (pick three or four from the answer key below).** On each claim open "Why
+5. **Live: the testability agent (D03, then D02).** Open D03. It is not tested: the first
+   answer named a call with no party, and code refused it; the reason is on the page. The
+   testability agent asked again, told why, and its answer is on the card marked "Proposed by
+   agent". Open "What code checked": every person, phone and account it names is one the claim's
+   own words name, and nothing it proposes is used until you accept it. There is one card and no
+   accept-all. Type a one-sentence reason and click **Accept these assumptions**: the log records
+   it under your name. Nothing changes yet: the next audit tests D03 with them, if the agent gives
+   them again for this claim's text, and the claim's text never changes. Then open D02 for the
+   whole path: its proposal was accepted when the demo was built, code's contact check passed,
+   its contact record was accepted, and it is "Supported (expert-confirmed)", with "Proposed by
+   agent, accepted by examiner" beside the assumption here and in the report. Say it plainly: the
+   model's answers on D02 and D03 are scripted, code's checks on them are real, and what the
+   agent does with the local model is not measured yet.
+6. **The traps (pick three or four from the answer key below).** On each claim open "Why
    (reasons from the verdict rules)" and the Checks table: the reason is written out, with the
    records it rests on.
-6. **Report.** The printable claims report: verdicts, cited records with their source rows,
+7. **Report.** The printable claims report: verdicts, cited records with their source rows,
    limitations (the owner stipulations, curated reports), source hashes and the audit log.
 
 Mabillon itself never says guilty, innocent, leader or deleted. A reason or note you type is

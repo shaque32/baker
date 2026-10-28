@@ -1502,6 +1502,7 @@ def _testability(
         if act == testability.REPAIR_ACTION and p.get("run_id") == rid
     ]
     accepts = [(c, p) for _s, _a, c, act, p in log if act == testability.ACCEPT_ACTION]
+    decisions = accepts + [(c, p) for _s, _a, c, act, p in log if act == testability.REJECT_ACTION]
     if not repairs and not any(p.get("run_id") == rid for _c, p in accepts):
         return
     if "testability" not in source["config"]:
@@ -1521,12 +1522,12 @@ def _testability(
         for c, p in accepts
         if str(c).startswith("expert:")
     }
-    for c, p in accepts:
+    for c, p in decisions:
         if not str(c).startswith("expert:"):
             out.add(
                 FAIL,
                 "testability",
-                f"{p.get('claim_id')}: a repair was accepted by {c}, not by an expert",
+                f"{p.get('claim_id')}: a repair was decided by {c}, not by an expert",
             )
             bad += 1
     for claim_id, ids in sorted(proposed.items()):
@@ -1605,15 +1606,25 @@ def _testability(
             answer = _repair_answer(conn, p.get("model_call_id"))
             sheet = p.get("sheet")
             if isinstance(answer, str):
-                want = {"outcome": "invalid", "reasons": [answer], "assumption_ids": []}
+                want = {
+                    "outcome": "invalid",
+                    "reasons": [answer],
+                    "assumption_ids": [],
+                    "proposed": [],
+                }
             else:
                 got, reasons, names, assumptions = testability.check_answer(
-                    filler, claim, answer, testability.Named.from_payload(sheet) if sheet else None
+                    filler,
+                    claim,
+                    answer,
+                    testability.Named.from_payload(sheet) if sheet else None,
+                    str(p.get("check", testability.SHEET_CHECK)),
                 )
                 want = {
                     "outcome": got,
                     "reasons": reasons,
                     "assumption_ids": [a.id for a in assumptions],
+                    "proposed": testability.shown(assumptions),
                 }
             if (
                 found != p.get("lookups")
