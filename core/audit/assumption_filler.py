@@ -31,7 +31,9 @@ the document or the case data. It fails closed at every step:
   the case goes by that word. A capitalized word counts only as written or in capitals
   ("Teams", never "the teams met"). No count or absence is read from an app that holds more
   than the word names (iOS "Native Messages" holds iMessage and SMS together).
-- A call's stated length ("about two minutes") is turned into seconds by code.
+- A call's stated length ("about two minutes", "a minute and a half", "more than two
+  minutes") is turned into seconds by code, with any bound the claim writes right before it
+  (`duration_range`).
 - A count's number must appear in the claim, and its comparison ("at least", "at most",
   exactly) is read from the claim's words by code, not taken from the model.
 - A time range must match the dates and times the document states (see `check_window`).
@@ -1088,38 +1090,175 @@ _NUMBER_WORDS = {
         "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen "
         "fifteen sixteen seventeen eighteen nineteen twenty".split()
     )
-} | {"thirty": 30, "forty": 40, "forty-five": 45, "fifty": 50, "sixty": 60, "ninety": 90}
+} | {"thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90}
 _UNITS = {"second": 1, "sec": 1, "minute": 60, "min": 60, "hour": 3600, "hr": 3600}
 _ABOUT = ("about", "approximately", "around", "roughly", "nearly", "almost", "some")
-_DURATION_RE = re.compile(
-    r"^(?:(?P<about>[a-z]+)\s+)?(?:(?P<a>an?)|(?P<n>\d+|[a-z-]+))\s+"
-    r"(?P<unit>second|sec|minute|min|hour|hr)s?\.?$",
+# What a word before a stated call length makes of it. A bound reads as an open range, up to
+# LONGEST_CALL_S above or from 1 second below (a call that lasted 0 seconds never connected).
+_LENGTH_LEADS = {
+    **dict.fromkeys(_ABOUT, "about"),
+    **dict.fromkeys(("more than", "over", "longer than", "just over", "a little over",
+                     "a little more than", "slightly more than", "well over"), "over"),
+    **dict.fromkeys(("at least", "no less than", "no shorter than"), "at least"),
+    **dict.fromkeys(("less than", "under", "shorter than", "just under", "a little under",
+                     "a little less than", "slightly less than", "well under"), "under"),
+    **dict.fromkeys(("at most", "no more than", "no longer than", "up to"), "at most"),
+}  # fmt: skip
+LONGEST_CALL_S = 86_400  # the open end of "more than" and "at least": one day
+_LEAD_ALT = "|".join(w.replace(" ", r"\s+") for w in sorted(_LENGTH_LEADS, key=len, reverse=True))
+_LENGTH_LEAD_RE = re.compile(rf"^(?P<lead>{_LEAD_ALT})\s+(?P<rest>.+)$", re.IGNORECASE)
+_LEAD_BEFORE_RE = re.compile(rf"\b(?P<lead>{_LEAD_ALT})\s+$", re.IGNORECASE)
+# a word that turns a bound round: "not more than", "never lasted over", "wasn't under",
+# "cannot have lasted over" (apostrophes are made plain first)
+_NEGATED_RE = re.compile(r"(?:\b(?:not|never|cannot)|n't)(?:\s+[\w'-]+){0,3}\s+$", re.IGNORECASE)
+# a bound written after the length: "two minutes or less", "or more", "or so", "plus"
+_BOUND_AFTER_RE = re.compile(
+    r"^\s*,?\s*(?:(?:or|and)\s+(?:less|more|longer|shorter|under|over|fewer|greater|above|"
+    r"below|up|so|thereabouts)\b|plus\b|\+)",
     re.IGNORECASE,
 )
+_UNIT = r"(?:second|sec|minute|min|hour|hr)s?\.?"
+_NUM = r"\d+|an?|[a-z]+(?:[-\s][a-z]+)?"
+# The claim's length goes on past the model's words, or starts before them: "more than a
+# minute" of "more than a minute and a half", "30 seconds" of "two minutes and 30 seconds".
+# Read alone, the part would be another length (Codex on #153).
+_NUMBER_WORD = "|".join(sorted(_NUMBER_WORDS, key=len, reverse=True))
+_LENGTH_GOES_ON_RE = re.compile(
+    rf"^\s*,?\s*(?:and\s+)?(?:a\s+half\b|(?:\d+|(?:{_NUMBER_WORD})(?:[-\s](?:{_NUMBER_WORD}))?)"
+    rf"\s+{_UNIT}(?!\w))",
+    re.IGNORECASE,
+)
+_LENGTH_GOES_BEFORE_RE = re.compile(rf"(?<!\w){_UNIT}\s*,?\s*(?:and\s+)?$", re.IGNORECASE)
+# One part of a length, with the precision its words state: "two minutes" to the minute,
+# "a minute and a half" or "half an hour" to the half.
+_HALF_PARTS = (
+    re.compile(rf"(?P<n>{_NUM})\s+and\s+a\s+half\s+(?P<u>{_UNIT})", re.IGNORECASE),
+    re.compile(rf"(?P<n>{_NUM})\s+(?P<u>{_UNIT})\s+and\s+a\s+half", re.IGNORECASE),
+    re.compile(rf"(?:a\s+)?half(?:\s+an?)?[\s-]+(?P<u>{_UNIT})", re.IGNORECASE),
+)
+_PART_RE = re.compile(rf"(?P<n>{_NUM})\s+(?P<u>{_UNIT})", re.IGNORECASE)
+# two parts: "two minutes and 30 seconds", "1 minute, 30 seconds"
+_TWO_PARTS_RE = re.compile(rf"(?P<a>.+?{_UNIT})\s*,?\s*(?:and\s+)?(?P<b>.+)", re.IGNORECASE)
 
 
-def duration_range(as_written: str) -> tuple[int, int]:
-    """Seconds a stated call length allows: "about two minutes" is 90 to 150 (25% either
-    side); "two minutes" is 120 to 179. Bounds like "under" or "more than" are refused."""
-    m = _DURATION_RE.match(as_written.strip())
-    if m is None:
-        raise Reject(f"cannot read the duration {as_written!r}")
-    lead = (m.group("about") or "").lower()
-    if lead and lead not in _ABOUT:
-        raise Reject(f"the duration {as_written!r} is a bound, not a length")
-    if m.group("a"):
-        n = 1
-    elif m.group("n").isdigit():
-        n = int(m.group("n"))
-    elif m.group("n").lower() in _NUMBER_WORDS:
-        n = _NUMBER_WORDS[m.group("n").lower()]
-    else:
-        raise Reject(f"cannot read the number in {as_written!r}")
-    unit = _UNITS[m.group("unit").lower()]
-    v = n * unit
-    if lead:
+def _number(words: str) -> int | None:
+    w = words.lower()
+    if w.isdigit():
+        return int(w)
+    if w in ("a", "an"):
+        return 1
+    if w in _NUMBER_WORDS:
+        return _NUMBER_WORDS[w]
+    tens, _, ones = w.replace("-", " ").partition(" ")  # "forty-five", "twenty two"
+    if tens in _NUMBER_WORDS and _NUMBER_WORDS[tens] >= 20 and _NUMBER_WORDS[tens] % 10 == 0:
+        if ones in _NUMBER_WORDS and 1 <= _NUMBER_WORDS[ones] <= 9:
+            return _NUMBER_WORDS[tens] + _NUMBER_WORDS[ones]
+    return None
+
+
+def _unit(words: str) -> int:
+    return _UNITS[words.lower().rstrip(".").removesuffix("s")]
+
+
+def _length(words: str) -> tuple[int, int]:
+    """Seconds a plain stated length is, and the precision its words state it to. Raises
+    Reject when the words are not one."""
+    for i, half in enumerate(_HALF_PARTS):
+        m = half.fullmatch(words)
+        if m is not None:
+            unit = _unit(m.group("u"))
+            if unit == 1:  # "ten and a half seconds": records count whole seconds (Codex on #153)
+                raise Reject(f"the duration {words!r} is in half seconds")
+            n = 0 if i == 2 else _number(m.group("n"))
+            if n is None:
+                raise Reject(f"cannot read the number in {words!r}")
+            return n * unit + unit // 2, unit // 2
+    m = _PART_RE.fullmatch(words)
+    if m is not None:
+        n = _number(m.group("n"))
+        if n is None:
+            raise Reject(f"cannot read the number in {words!r}")
+        unit = _unit(m.group("u"))
+        return n * unit, unit
+    m = _TWO_PARTS_RE.fullmatch(words)
+    if m is not None:
+        a, b = _PART_RE.fullmatch(m.group("a")), _PART_RE.fullmatch(m.group("b"))
+        if a is not None and b is not None:
+            na, nb = _number(a.group("n")), _number(b.group("n"))
+            ua, ub = _unit(a.group("u")), _unit(b.group("u"))
+            if na is not None and nb is not None and ub < ua and nb * ub < ua:
+                return na * ua + nb * ub, ub
+    raise Reject(f"cannot read the duration {words!r}")
+
+
+def _plain_apostrophes(words: str) -> str:
+    return words.replace("\u2019", "'").replace("\u2018", "'").replace("\u02bc", "'")
+
+
+def duration_range(as_written: str, claim: str = "") -> tuple[int, int]:
+    """Seconds a stated call length allows, read from its words by code.
+
+    - "two minutes" is 120 to 179, to the precision the words state; "a minute and a half" is
+      90 to 119; "two minutes and 30 seconds" is 150.
+    - "about two minutes" (or "approximately", "around", ...) is 90 to 150 (25% either side).
+    - A bound is an open range: "more than a minute and a half" is 91 seconds to a day,
+      "at least two minutes" 120 to a day, "under two minutes" 1 to 119, "at most two minutes"
+      1 to 120.
+    - The claim's own words before the length count, whole: in "lasting more than two
+      minutes", the words "two minutes" are read as "more than two minutes", and in "no more
+      than two minutes" the words "more than two minutes" are read as "no more than".
+    - Refused: a bound the claim turns round ("not more than", "never over", "wasn't under";
+      "no more than" is read as "at most"), a bound written after the length ("two minutes
+      or less", "or more", "or so", "plus"), in the model's words or the claim's, and words
+      that are only part of the claim's length ("a minute" of "a minute and a half").
+    """
+    words = " ".join(_plain_apostrophes(as_written).split())
+    m = _LENGTH_LEAD_RE.match(words)
+    lead, rest = (m.group("lead"), m.group("rest")) if m else (None, words)
+    if claim:
+        text, leads = " ".join(_plain_apostrophes(claim).split()), set()
+        i = text.lower().find(words.lower())
+        while i >= 0:
+            # the claim's whole lead before the length, which holds the model's lead if any
+            head = text[: i + len(words) - len(rest)]
+            if _LENGTH_GOES_ON_RE.match(text[i + len(words) :]) or _LENGTH_GOES_BEFORE_RE.search(
+                head
+            ):
+                raise Reject(f"the claim's length goes on past the words {as_written!r}")
+            before = _LEAD_BEFORE_RE.search(head)
+            if before is not None:
+                head = head[: before.start()]
+            if _NEGATED_RE.search(head):
+                raise Reject(
+                    f"the claim writes 'not' or 'never' before the duration {as_written!r}"
+                )
+            if _BOUND_AFTER_RE.match(text[i + len(words) :]):
+                raise Reject(f"the claim writes a bound after the duration {as_written!r}")
+            leads.add(" ".join(before.group("lead").lower().split()) if before else None)
+            i = text.lower().find(words.lower(), i + 1)
+        if len(leads) > 1:
+            raise Reject(
+                f"the claim writes {as_written!r} more than once, with other words before it"
+            )
+        if leads:
+            lead = leads.pop()
+    v, step = _length(rest)
+    kind = _LENGTH_LEADS[" ".join(lead.lower().split())] if lead else None
+    if v < 1 or v > LONGEST_CALL_S:
+        raise Reject(f"the duration {as_written!r} is not a call length")
+    if kind == "about":
         return round(v * 0.75), round(v * 1.25)
-    return v, v + unit - 1
+    if kind == "over":
+        return v + 1, LONGEST_CALL_S
+    if kind == "at least":
+        return v, LONGEST_CALL_S
+    if kind == "under":
+        if v < 2:
+            raise Reject(f"the duration {as_written!r} is not a call length")
+        return 1, v - 1
+    if kind == "at most":
+        return 1, v
+    return v, v + step - 1
 
 
 # A message quoted after a verb of saying: 'PETROV texted REYES: "its done"'. A quoted contact
@@ -1532,7 +1671,7 @@ class LocalAssumptionFiller:
         if p.duration is not None:
             if not _verbatim(p.duration.as_written, claim.text):
                 raise Reject("the duration's words are not written in the claim")
-            params["duration_s"] = duration_range(p.duration.as_written)
+            params["duration_s"] = duration_range(p.duration.as_written, claim.text)
 
         if p.window is not None and "window" not in tpl.allowed:
             pass  # a sender is picked by its words and party; the time is record_time's job
