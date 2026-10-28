@@ -1,4 +1,4 @@
-## 2026-10-28: Code adds a quoted message's meaning and its stated writer (PR pending)
+## 2026-10-28: Code adds a quoted message's meaning and its stated writer (PR #164)
 - Changed: The 14B often proposes who sent a quoted message and when, but leaves out the
   `meaning` assumption a meaning claim needs, so `coverage_gap` refused the whole claim. In
   core/audit/assumption_filler.py, code now fills what the claim plainly states:
@@ -9,7 +9,9 @@
     two lines or a name's lead-in ("saved as", "the LINE user") add nothing. Meaning has no
     check, so only the expert's acceptance covers it: Supported gets harder, never easier.
   - A quoted message now needs a sender assumption in a claim of any type, not only a
-    communication claim, so a meaning claim is never tested with its writer unchecked.
+    communication claim, so a meaning claim is never tested with its writer unchecked. Outside
+    a communication claim, a claim whose every quote is a known name ('13 messages with the
+    Telegram user "Marcus R"') quotes no message (Codex on #164).
   - A claim that quotes a message and names its writer ("PETROV wrote to @northstar: ...")
     but got no sender assumption gets one from code: that message, sent by the person
     `stated_sender` reads. `stated_sender` also reads "sent the Telegram message '...'".
@@ -17,11 +19,12 @@
     as `code_version`. Stored model answers are still reused across filler versions.
 
   Assumption filling stays local. No frozen file changes.
-- Where: local only (branch to follow PR #160)
+- Where: PR #164
 - Verified: on this container, 2026-10-28.
   - New tests in tests/test_assumption_filler.py: meaning from the quote, the quote rules
     (names, two quotes, a saved name, a wrapped quote, the model's own words), the sender
-    rule for any claim type, the code-made sender, and the run's filler version.
+    rule for any claim type and a count claim quoting only a name, the code-made sender, and
+    the run's filler version.
     tests/test_speed.py: the code version is recorded and does not stop reuse.
   - tests/test_filler_replay.py (synthetic case01, Mac-run answers): unchanged at 8 tested,
     10 with the added name. A first version read a saved contact name as a message there;

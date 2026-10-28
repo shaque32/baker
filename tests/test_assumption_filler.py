@@ -527,6 +527,13 @@ def test_a_sender_without_a_party_gets_the_writer_the_claim_names(conn):
         ("PETROV sent a message to 555-0122 reading 'ok'.", "ok", None),
         # "said" still names no writer: it may be spoken.
         ("PETROV said to REYES: 'ok'.", "ok", None),
+        # Baker Eval on #164: "by" or "via" a person may name another writer, and words
+        # handed on may have been sent by someone other than who wrote them.
+        ("SMITH sent a message by PETROV: 'ok'.", "ok", None),
+        ("PETROV sent a message via REYES: 'ok'.", "ok", None),
+        ("REYES forwarded what PETROV posted in the chat: 'ok'.", "ok", None),
+        ("REYES shared the post PETROV wrote: 'ok'.", "ok", None),
+        ("Quoting a chat, PETROV wrote to REYES: 'ok'.", "ok", None),
     ],
 )  # fmt: skip
 def test_stated_sender_is_the_writer_of_the_quoted_words(conn, text, quoted, writer):
@@ -1339,6 +1346,41 @@ def test_count_op_never_reads_a_as_one():
         count_op("PETROV and REYES exchanged a message.", 1)
 
 
+@pytest.mark.parametrize(
+    ("text", "value"),
+    [
+        # Codex on #164: one part of a longer number is no count.
+        ("PETROV and REYES exchanged twenty one messages.", 20),
+        ("PETROV and REYES exchanged twenty one messages.", 1),
+        ("PETROV and REYES exchanged one hundred messages.", 1),
+        ("PETROV and REYES exchanged 1,000 messages.", 1),
+        ("PETROV and REYES exchanged 1,000 messages.", 0),
+        ("PETROV and REYES exchanged 2.5 thousand messages.", 5),
+    ],
+)
+def test_count_op_reads_only_a_whole_number(text, value):
+    with pytest.raises(Reject):
+        count_op(text, value)
+
+
+def test_a_count_claim_quoting_only_a_name_needs_no_sender():
+    from core.audit.assumption_filler import coverage_gap
+    from core.audit.assumptions import Proposal
+
+    # Codex on #164: 'the Telegram user "Marcus R"' is a name, not a message.
+    text = 'PETROV sent and received 13 messages with the Telegram user "Marcus R".'
+    count = Proposal("message_count", {})
+    names = frozenset({"marcus r"})
+    c = Claim(id="X", paragraph_id="para:1", text=text, claim_type=ClaimType.COUNT,
+              status=ClaimStatus.ACCEPTED)  # fmt: skip
+    assert coverage_gap(c, [count], names) is None
+    # A quote that is no name still needs its sender, and in a communication claim any does.
+    message = c.model_copy(update={"text": text + ' PETROV wrote: "ok".'})
+    assert "who sent it" in coverage_gap(message, [count], names)
+    talk = c.model_copy(update={"claim_type": ClaimType.COMMUNICATION})
+    assert "who sent it" in coverage_gap(talk, [Proposal("record_time", {})], names)
+
+
 def test_a_code_made_sender_stays_on_the_app_the_claim_names(conn):
     keep = [p for p in GOOD["C05"] if p["template_id"] == "record_time"]
     text = 'On March 12, 2026, PETROV wrote to @northstar on Telegram: "need 2 more by friday".'
@@ -1346,3 +1388,13 @@ def test_a_code_made_sender_stays_on_the_app_the_claim_names(conn):
     assumptions, filler = build_text(conn, text, ClaimType.COMMUNICATION, keep)
     (sender,) = [a for a in assumptions if a.template_id == "sender"]
     assert sender.params.channels == ("Telegram",)
+
+
+def test_a_code_made_sender_stays_on_the_phones_messages_when_the_claim_names_them(conn):
+    # Codex on #164: "texted" or "by iMessage" keeps the search off Telegram and the rest.
+    filler = LocalAssumptionFiller(FakeModel("{}"), conn, template=DRAFT)
+    phone = ["Phone", "SMS"]  # case01's apps that hold a phone's messages
+    assert filler._message_apps('PETROV texted REYES: "ok".') == phone
+    assert filler._message_apps('PETROV told REYES by iMessage: "ok".') == phone
+    assert filler._message_apps('PETROV texted REYES on Telegram: "ok".') == ["Telegram"]
+    assert filler._message_apps('PETROV wrote to REYES: "ok".') == []

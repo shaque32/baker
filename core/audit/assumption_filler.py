@@ -43,8 +43,12 @@ the document or the case data. It fails closed at every step:
 - A call the model proposed without its parties gets them from the claim's words
   (`_call_parties`): each person the expert created whom the claim names, and each number,
   identifier or quoted display name it writes, on the one app the claim names for the call
-  ("a Signal call"; `_call_app`). Each must be exactly one person or one account, or nothing
-  is filled. The channels become "call" and that app, so the time check searches that app's
+  ("a Signal call"; `_call_app`). Each must be exactly one person or one account, and plainly
+  a party: not someone's ("PETROV's phone"), not after "of", "for", "about" or "posing as",
+  and not in a claim with a second clause ("after speaking with"). Both sides must be read,
+  or one account and the phone; an unknown handle, address or number refuses. Else nothing is
+  filled.
+  The channels become "call" and that app, so the time check searches that app's
   calls only. A call on no named app (a native phone call) or on two is left as it was.
 - A call's stated length ("about two minutes", "a minute and a half", "more than two
   minutes") is turned into seconds by code, with any bound the claim writes right before it
@@ -189,6 +193,8 @@ CHANNEL_WORDS: dict[str, tuple[str, ...]] = {
     "sms": ("sms", "text message", "texted", "texts", "text"),
     "call": ("call", "called", "calls", "phoned"),
 }
+# Words for a phone's own messages, whether or not the case holds an app by that name.
+_PHONE_MESSAGE_WORDS = (*CHANNEL_WORDS["sms"], "imessage", "imessages", "mms", "rcs")
 # Words a document uses for an app that real exports name another way (a UFDR says "Wickr
 # Pro", "Kik Messenger", "Native Messages"). Such a word names the export's app only when no
 # other app in the case goes by it too. A word with a capital letter counts only as written
@@ -399,18 +405,20 @@ def _has_word(text: str, phrase: str) -> bool:
     return f" {phrase} " in _words(text)
 
 
-def _names_person(text: str, name: str) -> bool:
-    """The text names this person the expert created: the whole name in any case ("SUBJECT-1",
-    "Daniel Petrov"), or a last name of several as written or in capitals ("PETROV")."""
-    if not name:
-        return False
-    if _has_word(text, _words(name).strip()):
-        return True
+def _name_spans(text: str, name: str) -> list[tuple[int, int]]:
+    """Where the text names this person the expert created: the whole name in any case
+    ("SUBJECT-1", "Daniel Petrov"), or a last name of several as written or in capitals
+    ("PETROV")."""
+    words = _words(name).split()
+    if not words:
+        return []
+    found = [r"(?<![a-z0-9])" + r"[^a-z0-9]+".join(map(re.escape, words)) + r"(?![a-z0-9])"]
     parts = name.split()
-    return len(parts) > 1 and any(
-        re.search(rf"(?<![\w-]){re.escape(x)}(?![\w-])", text)
-        for x in (parts[-1], parts[-1].upper())
-    )
+    if len(parts) > 1:
+        found += [
+            rf"(?-i:(?<![\w-]){re.escape(x)}(?![\w-]))" for x in (parts[-1], parts[-1].upper())
+        ]
+    return [m.span() for f in found for m in re.finditer(f, text, re.IGNORECASE)]
 
 
 # An address or identifier with an app's name in it: "x@gmail.com", "live:.cid.5638", "zoom.us".
@@ -1173,10 +1181,16 @@ def count_op(claim: str, value: int) -> Literal["eq", "ge", "le"]:
     ("about 13", "more than 13"), or the count is one the count check cannot make: calls or
     "times" (it counts messages), or messages one side sent or received (it counts both
     directions)."""
-    # The number in figures or in words ("13 messages", "thirteen messages"), never "a".
+    # The number in figures or in words ("13 messages", "thirteen messages"), never "a", and
+    # never one part of a longer number: "twenty one", "one hundred" and "1,000" are read as
+    # no count, not as 20, 1 or 1 (Codex on #164).
     at, m = 0, None
-    for n in re.finditer(r"\b(?:\d+|[a-z]+(?:-[a-z]+)?)\b", claim, re.I):
+    for n in re.finditer(r"(?<![\d.,])\b(?:\d+|[a-z]+(?:-[a-z]+)?)\b(?![.,]\d)", claim, re.I):
         if n.group(0).lower() in ("a", "an") or _number(n.group(0)) != value:
+            continue
+        if _NEXT_TO_A_NUMBER_RE.search(claim[: n.start()]) or _NUMBER_GOES_ON_RE.match(
+            claim, n.end()
+        ):
             continue
         m = _COUNTED_RE.match(claim, n.end())
         if m is not None:
@@ -1252,6 +1266,14 @@ _LENGTH_GOES_ON_RE = re.compile(
     re.IGNORECASE,
 )
 _LENGTH_GOES_BEFORE_RE = re.compile(rf"(?<!\w){_UNIT}\s*,?\s*(?:and\s+)?$", re.IGNORECASE)
+# A number word right before or after a count's number: the number goes on ("twenty one").
+_MORE_NUMBER = r"hundred|thousand|million|dozen|score"
+_NEXT_TO_A_NUMBER_RE = re.compile(
+    rf"(?<![\w-])(?:\d+|{_NUMBER_WORD}|{_MORE_NUMBER})[\s-]+(?:and\s+)?$", re.IGNORECASE
+)
+_NUMBER_GOES_ON_RE = re.compile(
+    rf"[\s-]+(?:and\s+)?(?:\d+|{_NUMBER_WORD}|{_MORE_NUMBER})(?![\w-])", re.IGNORECASE
+)
 # One part of a length, with the precision its words state: "two minutes" to the minute,
 # "a minute and a half" or "half an hour" to the half.
 _HALF_PARTS = (
@@ -1626,19 +1648,48 @@ _READING_RE = re.compile(
 )
 
 
+# A call's party is named plainly: not someone's ("PETROV's lawyer", "PETROV's phone"), and
+# not someone acted for or spoken of ("on behalf of PETROV", "about REYES", "posing as X").
+_NOT_A_PARTY_AFTER = re.compile(r"\s*['’]s\b", re.IGNORECASE)
+_NOT_A_PARTY_BEFORE = re.compile(
+    r"\b(?:of|for|about|like|than|posing\s+as|pretending\s+to\s+be|impersonating)\s*$",
+    re.IGNORECASE,
+)
+# A word that joins another clause ("after speaking with PETROV", "while REYES waited"): a
+# name there may belong to another event, so code reads no call party from such a claim.
+_CLAUSE_JOINER_RE = re.compile(
+    r"\b(?:but|then|while|when|whereas|although|though|because|since|until|unless|after|"
+    r"before|so|who|whom|whose|which|where)\b",
+    re.IGNORECASE,
+)
+# What may be a call's party whatever the case knows: a handle, an address, or a run of five
+# or more digits.
+_UNREAD_PARTY_RE = re.compile(r"@[\w.-]*\w|\S+@\S*\w|(?<![\w-])\+?\d[\d\s().-]{3,}\d(?![\w-])")
+# Words that hand on what another wrote: 'REYES forwarded what PETROV posted: "ok"'.
+_PASSED_ON_RE = re.compile(
+    r"\b(?:forward\w*|quot(?:e|ed|es|ing)|relay\w*|repost\w*|shared|screenshot\w*)\b",
+    re.IGNORECASE,
+)
+
+
 def _last_end(pattern: re.Pattern[str], text: str) -> int:
     """Where the last match of the pattern in the text ends, or 0 when there is none."""
     return max((m.end() for m in pattern.finditer(text)), default=0)
 
 
-def coverage_gap(claim: Claim, proposals: list[Proposal]) -> str | None:
+def coverage_gap(
+    claim: Claim, proposals: list[Proposal], names: frozenset[str] = frozenset()
+) -> str | None:
     """What the kept proposals leave untested that the claim states, or None.
 
     A claim must not be judged on its easy parts: its key template must be there, a stated
     date must be tested by some time range, a stated time of day (outside quoted words) by a
     range that states one,
     and a quoted message, in a claim of any type, by a sender assumption: a meaning claim
-    ("SUBJECT-2 told SUBJECT-1: \"...\"") is not tested with its writer unchecked.
+    ("SUBJECT-2 told SUBJECT-1: \"...\"") is not tested with its writer unchecked. Outside a
+    communication claim, a claim whose every quote is one of `names` (casefolded; a person's
+    or an account's name: 'sent 13 messages to the Telegram user "Marcus R"') quotes no
+    message.
     """
     kept = {p.template_id for p in proposals}
     needed = REQUIRED_TEMPLATES.get(claim.claim_type, frozenset())
@@ -1651,7 +1702,11 @@ def coverage_gap(claim: Claim, proposals: list[Proposal]) -> str | None:
     if time_mentions(_unquoted(claim.text)) and not any(time_mentions(r) for r in raws):
         return "the claim states a time of day but no time range states one"
     if _QUOTED_MESSAGE.search(claim.text) and "sender" not in kept:
-        return "the claim quotes a message but no assumption tests who sent it"
+        quotes = [m.group(0)[1:-1].strip() for m in _QUOTE_SPAN_RE.finditer(_flat(claim.text))]
+        if claim.claim_type is ClaimType.COMMUNICATION or any(
+            _nfc(q).casefold() not in names for q in quotes
+        ):
+            return "the claim quotes a message but no assumption tests who sent it"
     return None
 
 
@@ -1748,7 +1803,7 @@ class LocalAssumptionFiller:
         out = self._shaped(claim, self._add_sender(claim, out, allowed_ids), call.id)
         out = self._shaped(claim, self._add_record_time(claim, para, out, allowed_ids), call.id)
         out = self._add_meaning(claim, out, allowed_ids, call.id)
-        gap = coverage_gap(claim, out)
+        gap = coverage_gap(claim, out, frozenset(self._names()))
         if gap:
             self._drop(claim, None, f"{gap}; the claim stays unproven", call.id)
             return []
@@ -2023,10 +2078,39 @@ class LocalAssumptionFiller:
         if quote is None or writer is None:
             return out
         params: dict[str, Any] = {"quoted_text": quote, "person_ids": [writer]}
-        apps = self._named_apps(claim.text)
-        if len(apps) == 1:  # "told REYES by iMessage": the search stays on that app
+        apps = self._message_apps(claim.text)
+        if apps is None:
+            return out  # a phone's messages, in a case that holds none
+        if apps:  # the search stays on the apps named
             params["channels"] = apps
         return [*out, Proposal("sender", params)]
+
+    def _message_apps(self, claim_text: str) -> list[str] | None:
+        """The apps a code-made sender searches: the apps the claim names other than a phone's
+        ("told REYES on Telegram"), or, when it names only a phone's ("texted", "by iMessage"),
+        every app in the case that holds a phone's messages, since "texted" may be SMS or
+        iMessage (Codex on #164); None when the case holds no such app. Empty when the claim
+        names no app."""
+        if named := self._named_apps(claim_text):
+            return named
+        words = _ADDRESS_RE.sub(" ", claim_text)
+        phone = [  # with an app that holds a phone's messages (iOS "Native Messages")
+            app
+            for app in self.channels()
+            if app != CALL_CHANNEL
+            and (namespace(app) == "tel" or app.strip().casefold() in WIDER_APPS)
+        ]
+        said = any(_has_word(words, w) for w in _PHONE_MESSAGE_WORDS) or any(
+            _has_word(words, w) or _has_alias(words, w)
+            for app in phone
+            for w in (
+                *CHANNEL_WORDS.get(app.casefold(), (app.casefold(),)),
+                *APP_ALIASES.get(app.casefold(), ()),
+            )
+        )
+        if not said:
+            return []
+        return phone or None
 
     def _add_meaning(
         self, claim: Claim, out: list[Proposal], allowed_ids: set[str], call_id: str | None
@@ -2094,8 +2178,9 @@ class LocalAssumptionFiller:
         possessive), and the name must not follow "of", "for", "posing as" and the like.
         Between them a phone number or a quoted name the case knows reads as one name, an
         app's name may stand ("by iMessage"), and "a message reading" leaves the verb before
-        it governing (`_parties_as_names`). Anything else (no quote, "quoting", "said",
-        "answered", a name that is no person) names no writer."""
+        it governing (`_parties_as_names`). "by" or "via" must name an app. Anything else (no
+        quote, words before it that forward, quote or share a message, "said", "answered", a
+        name that is no person) names no writer."""
         if not quoted or not quoted.strip():
             return None
         at = _nfc(claim.text).find(_nfc(quoted.strip()))
@@ -2103,6 +2188,8 @@ class LocalAssumptionFiller:
             return None
         before = _nfc(claim.text)[:at]
         after = _nfc(claim.text)[at + len(_nfc(quoted.strip())) :]
+        if _PASSED_ON_RE.search(before):
+            return None  # the words may be another's, handed on
         verbs = [
             v for v in _QUOTING_RE.finditer(before) if not self._passes_quote_on(before, v, after)
         ]
@@ -2168,7 +2255,7 @@ class LocalAssumptionFiller:
             return False  # a new line can carry a new label ("REYES\nSMITH: 'ok'")
         mixed_case = bool(re.search(r"[a-z]", re.sub(r"@[\w.-]+", "", between)))
         last_end, last_capital = 0, False  # the word before: where it ends, and its kind
-        last_digit = False
+        last_digit = by_app = False  # by_app: "by" or "via" must name an app ("by iMessage")
         for m in re.finditer(r"@[\w.-]+|\w[\w'’.-]*", between):
             word = m.group(0)
             w = re.sub(r"['’]s$", "", word.casefold()).strip(".'’-")
@@ -2177,6 +2264,9 @@ class LocalAssumptionFiller:
             gap = between[last_end : m.start()]
             if not (re.fullmatch(r"[\s,]*", gap) or (gap == ":" and last_digit and w.isdigit())):
                 return False
+            if by_app and w not in apps:
+                return False  # "a message by PETROV": PETROV may be the writer
+            by_app = w in ("by", "via")
             known = (
                 word.startswith("@")
                 or w.isdigit()
@@ -2196,7 +2286,7 @@ class LocalAssumptionFiller:
         # After the last word only a comma or a colon, then the quote's opening mark. A colon
         # after a list ("REYES, then REYES: 'ok'") may label the quote, so not both.
         tail = between[last_end:]
-        if not re.fullmatch(r"\s*[,:]?\s*[\"'“‘]*\s*", tail):
+        if by_app or not re.fullmatch(r"\s*[,:]?\s*[\"'“‘]*\s*", tail):
             return False
         return not (":" in tail and "," in between[:last_end])
 
@@ -2211,6 +2301,18 @@ class LocalAssumptionFiller:
             found = "no person" if not hits else f"{len(hits)} persons"
             raise Reject(f"{name!r} matches {found} the expert created")
         return hits[0]
+
+    def _writes_a_phone(self, text: str) -> bool:
+        """True when the text writes a phone of the case by its id, source id, label or a name
+        the expert gave it ("the TARGET PHONE", "Item 1"), compared as `_device` compares:
+        case and spacing do not count."""
+        named = logged_names(self.conn)
+        return any(
+            re.search(r"(?<!\w)" + r"\s*".join(map(re.escape, name_key(x))) + r"(?!\w)", text, re.I)
+            for did, sid, label in self.conn.execute("SELECT id, source_id, label FROM devices")
+            for x in (did, sid, label, *named.get(did, []))
+            if x and name_key(x)
+        )
 
     def _device(self, phone: str) -> str:
         """The device a phone name means: its id, source id or label, or a name the expert
@@ -2335,20 +2437,30 @@ class LocalAssumptionFiller:
     ) -> tuple[list[str], list[str]]:
         """The parties of a call the claim describes, read from its own words: each person
         the expert created whom it names, and each number, identifier or quoted display name
-        it writes, on the claim's one app. Each must be exactly one person or one account;
+        it writes, on the claim's one app. Each must be exactly one person or one account,
+        and plainly a party (no possessive, role word or second clause: Baker Eval on #164);
         if any is not, or the claim names none, nothing is filled. The phone the call was on
         ("the TARGET PHONE") is no party: it scopes the search."""
         text = _nfc(claim.text)
         bare = _unquoted(text)
-        people = {
-            pid
-            for pid, name in self.conn.execute("SELECT id, name FROM persons ORDER BY id")
-            if _names_person(bare, _nfc(name.strip()))
-        }
-        written: list[str] = [m.group(0).strip(" .,-") for m in _PHONE_RE.finditer(bare)]
-        written = [w for w in written if phone_digits(w) is not None]
-        quoted = [m.group(0)[1:-1].strip() for m in _QUOTE_SPAN_RE.finditer(_flat(text))]
-        written += [q for q in quoted if q]
+        joiner = _CLAUSE_JOINER_RE.search(bare)
+        if joiner:
+            raise Reject(f"the claim joins another clause ({joiner.group(0)!r}) to the call")
+        spans: list[tuple[int, int]] = []  # where each party is written
+        people: set[str] = set()
+        for pid, name in self.conn.execute("SELECT id, name FROM persons ORDER BY id"):
+            if found := _name_spans(bare, _nfc(name.strip())):
+                people.add(pid)
+                spans += found
+        written: list[str] = []
+        for m in _PHONE_RE.finditer(bare):
+            if phone_digits(m.group(0).strip(" .,-")) is not None:
+                written.append(m.group(0).strip(" .,-"))
+                spans.append(m.span())
+        for m in _QUOTE_SPAN_RE.finditer(_flat(text)):
+            if m.group(0)[1:-1].strip():
+                written.append(m.group(0)[1:-1].strip())
+                spans.append(m.span())
         ids = {
             a.identifier.strip()
             for a in self.data.accounts.values()
@@ -2356,9 +2468,18 @@ class LocalAssumptionFiller:
             and len(a.identifier.strip()) >= 6
             and not re.search(r"\s", a.identifier)
         }
-        written += sorted(
-            i for i in ids if re.search(rf"(?<![\w.:@-]){re.escape(i)}(?![\w@-])", bare)
-        )
+        for i in sorted(ids):
+            for m in re.finditer(rf"(?<![\w.:@-]){re.escape(i)}(?![\w@-])", bare):
+                written.append(i)
+                spans.append(m.span())
+        for start, end in spans:
+            if _NOT_A_PARTY_AFTER.match(bare, end) or _NOT_A_PARTY_BEFORE.search(bare[:start]):
+                raise Reject(f"{text[start:end]!r} may not be a party to the call")
+        # A handle, address or long number the case does not know is a party code cannot
+        # read, so nothing is filled: "a Telegram call to @unknownuser" (Codex on #164).
+        for m in _UNREAD_PARTY_RE.finditer(bare):
+            if not any(s <= m.start() and m.end() <= e for s, e in spans):
+                raise Reject(f"{m.group(0)!r} is not one account the call could be with")
         accounts: set[str] = set()
         for words in dict.fromkeys(written):
             person = self._person_named(words)
@@ -2375,8 +2496,18 @@ class LocalAssumptionFiller:
             if len({self.data.accounts[a].key for a in found}) != 1:
                 raise Reject(f"{words!r} on {app} is not one account the call could be with")
             accounts |= found
+        if len({self.data.accounts[a].key for a in accounts}) > 1:
+            # The checks read every account id as one party, either of them (Codex on #164).
+            raise Reject("the claim writes two parties as accounts; a check reads them as one")
         if not people and not accounts:
             raise Reject("the claim names no party for the call")
+        # Both sides, or the phone and one account ("(919) 888-7386 called the TARGET PHONE"):
+        # a person alone may be the phone's own side, with the other side a name code cannot
+        # read ("On the TARGET PHONE, PETROV called Jonathan"; Codex on #164).
+        phone = bool(device_ids) or self._writes_a_phone(bare)
+        sides = len(people) + bool(accounts) + bool(phone and not people)
+        if sides < 2:
+            raise Reject("the claim names one side of the call; code reads both or none")
         return sorted(people), sorted(accounts)
 
     def _app_named(self, claim_text: str, app: str) -> bool:

@@ -74,6 +74,9 @@ def build(conn, text: str, kind: ClaimType = ClaimType.COMMUNICATION, **change):
         # An identifier written as it is recorded.
         ("On March 9, 2026, the Telegram user 7001002 called PETROV.", [PETROV],
          MARCUS_TG_BOTH, "Telegram"),
+        # One account and the phone it called.
+        ("On March 9, 2026, the Telegram user 7001002 called Item 1.", [], MARCUS_TG_BOTH,
+         "Telegram"),
     ],
 )  # fmt: skip
 def test_a_calls_parties_come_from_the_claim(conn, text, people, accounts, app):
@@ -95,8 +98,33 @@ def test_a_calls_parties_come_from_the_claim(conn, text, people, accounts, app):
         # A party that is not one account refuses every party.
         ('On March 9, 2026, PETROV placed a Telegram call to "Nobody Known".', "not one account"),
         ("On March 9, 2026, a Telegram call was placed.", "names no party"),
+        # Baker Eval on #164: a name that is someone's, or someone acted for or spoken of, or
+        # that sits in another clause, is no party.
+        ("On March 9, 2026, PETROV's lawyer placed a Telegram call to REYES.",
+         "may not be a party"),
+        ("On March 9, 2026, PETROV’s phone placed a WhatsApp call to (212) 555-0122.",
+         "may not be a party"),
+        ("On March 9, 2026, REYES placed a Telegram call on behalf of PETROV.",
+         "may not be a party"),
+        ("On March 9, 2026, REYES placed a Telegram call to Marcus about PETROV.",
+         "may not be a party"),
+        ("On March 9, 2026, after speaking with PETROV, REYES placed a Telegram call.",
+         "joins another clause"),
+        ("On March 9, 2026, REYES placed a Telegram call while PETROV waited.",
+         "joins another clause"),
+        # Codex on #164: two parties written as accounts would be read as one, either of them.
+        ("On March 9, 2026, the Telegram user 7001001 called the Telegram user 7001002.",
+         "two parties as accounts"),
+        # Codex on #164: a party the case does not know, or only one side of the call.
+        ("On March 9, 2026, PETROV placed a Telegram call to @unknownuser.", "not one account"),
+        ("On March 9, 2026, PETROV placed a Telegram call to jon@example.org.",
+         "not one account"),
+        ("On March 9, 2026, PETROV placed a Telegram call to 7009999.", "not one account"),
+        ("On March 9, 2026, PETROV placed a Telegram call to Jonathan.", "one side of the call"),
+        ("On March 9, 2026, on Item 1, PETROV placed a Telegram call to Jonathan.",
+         "one side of the call"),
     ],
-)
+)  # fmt: skip
 def test_a_call_whose_parties_are_not_plain_is_refused(conn, text, why):
     assumptions, f = build(conn, text, channels=["call"])
     assert assumptions == []
