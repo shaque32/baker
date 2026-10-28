@@ -315,12 +315,15 @@ def test_coverage_counts_the_tested_claims_beside_the_measures(scored):
     md = (run.parent / "score" / "score.md").read_text("utf-8")
     assert "**Tested: 3 of 3 claims.** Minimum 30: insufficient coverage" in md
     # Run 3's tiers split the tested claims, and its measure sits beside measures 1 to 3.
-    # Stand-in components put each claim's core assumption to a check: all code-checked.
-    assert c["tiers"] == {"code_checked": ["C01", "C02", "C03"], "expert_only": []}
+    # Each claim's core sender check ran but settled nothing: Jo is tied to no account, and
+    # neither "bring the van" nor "see you at noon" is in the phone.
+    assert c["tiers"] == {
+        "code_checked": [], "check_unsettled": ["C01", "C02", "C03"], "expert_only": [],
+    }  # fmt: skip
     assert c["result_v3"] == score_hickman.INSUFFICIENT
     assert s["r1"]["contradicted_by_failed_check"]["n"] == 2
-    assert "Run 3 (eval/validation/PREREGISTERED_v3.md): code-checked" in md
-    assert "4. Contradicted by a failed check, gold not contradicted (run 3)" in md
+    assert "Run 3 (eval/validation/PREREGISTERED_v3.md): code-checked 0, check unsettled 3" in md
+    assert "7. Contradicted by a failed check, gold not contradicted (run 3)" in md
 
 
 def _claim(claim_id: str, para: int, verdict: str):  # noqa: ANN202
@@ -413,17 +416,39 @@ def test_coverage_is_enough_at_the_minimum():
 def test_run_3_counts_its_minimum_on_code_checked_claims_only():
     n = score_hickman.MINIMUM_CODE_CHECKED
     gold = [_claim(f"C{i:02}", i + 1, "unproven") for i in range(n + 2)]
-    per_claim = {g.claim_id: {**_per_claim("unproven", "unproven"), "code_checked": True}
+    per_claim = {g.claim_id: {**_per_claim("unproven", "unproven"), "check_tier": "code_checked"}
                  for g in gold}  # fmt: skip
-    per_claim["C00"]["code_checked"] = False  # expert only: meaning or event alone
-    per_claim["C01"].pop("code_checked")  # a row from before 1.3.0 counts as expert only
+    per_claim["C00"]["check_tier"] = "expert_only"  # meaning or event alone
+    per_claim["C01"].pop("check_tier")  # a row from before 1.3.0 counts as expert only
     c = score_hickman.coverage({"not_tested": {}}, gold, {"per_claim": per_claim})
     assert c["tested"] == n + 2 and c["result"] == "enough tested claims"
-    assert c["tiers"]["expert_only"] == ["C00", "C01"]
+    assert c["tiers"]["expert_only"] == ["C00", "C01"] and c["tiers"]["check_unsettled"] == []
     assert len(c["tiers"]["code_checked"]) == n and c["result_v3"] == "enough code-checked claims"
-    per_claim["C02"]["code_checked"] = False
+    # Checks that ran but settled nothing (none found, a party tied to no account) do not count.
+    per_claim["C02"]["check_tier"] = "check_unsettled"
     c = score_hickman.coverage({"not_tested": {}}, gold, {"per_claim": per_claim})
+    assert c["tiers"]["check_unsettled"] == ["C02"]
     assert c["result_v3"] == score_hickman.INSUFFICIENT  # 31 tested, 29 code-checked
+
+
+def test_only_a_core_check_that_passed_or_failed_makes_a_claim_code_checked():
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE assumptions (id TEXT, is_core INTEGER)")
+    conn.execute("CREATE TABLE check_results (id TEXT, assumption_id TEXT, outcome TEXT)")
+    conn.executemany("INSERT INTO assumptions VALUES (?, ?)", [("a:core", 1), ("a:side", 0)])
+    conn.executemany(
+        "INSERT INTO check_results VALUES (?, ?, ?)",
+        [
+            ("k:core-pass", "a:core", "pass"),
+            ("k:core-fail", "a:core", "fail"),
+            ("k:core-none", "a:core", "inconclusive"),
+            ("k:side-pass", "a:side", "pass"),
+        ],
+    )
+    tier = lambda *ids: score_hickman._check_tier(conn, {"C": {"checks": list(ids)}}, "C")  # noqa: E731
+    assert tier("k:core-pass") == tier("k:core-fail", "k:core-none") == "code_checked"
+    assert tier("k:core-none") == "check_unsettled"
+    assert tier("k:side-pass") == tier() == "expert_only"  # a non-core check settles nothing
 
 
 def test_a_wrong_contradicted_from_a_failed_check_is_counted():

@@ -20,7 +20,7 @@ after run 3's results are seen.
   not this file.
 
 ## Every change since run 2's code
-From `git log --first-parent d478705..[run 3 tag]`. At the time of writing, main is e99c0a8.
+From `git log --first-parent d478705..validation-v1-run3`. At the time of writing, main is e99c0a8.
 
 | PR | What changed | Versions |
 | --- | --- | --- |
@@ -38,8 +38,9 @@ From `git log --first-parent d478705..[run 3 tag]`. At the time of writing, main
 | #155 | A claim on Native Messages says it holds iMessages and SMS together. | report 0.19.0 |
 | #160 | Filler guards: the addressee is never the sender; a message's words come only from quotation marks; coverage is judged after the shape check; no one-way or call counts. | filler |
 | #164 | Coverage plan steps 1 to 3. Meaning comes from the claim's one quote. Every quoted message needs a sender. A call's parties come from the claim, on the app it names. `stated_sender` is wider. A phone's own accounts are found. Counts may be written in words. Review fixes in the same PR only narrow what code fills. | time check 1.0.2, filler version "2" (recorded as `code_version`) |
-| #165 | This file, and scorer 1.3.0 (tiers and measure 5 below). | scorer 1.3.0 |
-| [any later PR] | [effect and versions] | |
+| #165 | This file, and scorer 1.3.0 (tiers and measure 7 below). | scorer 1.3.0 |
+
+Any PR that merges after #165 and before the tag is added to this table before approval.
 
 These stay unchanged, byte for byte, as v2 lists them: rules 0.3.0, every prompt (including
 the assumptions prompt), model pins, contracts, schema and gold. Because the assumptions prompt
@@ -51,25 +52,31 @@ run 2's recorded answers on these claims. The answer key was not used to design 
 null result and run 2's insufficient coverage (9 of 106) are reported with run 3.
 
 ## Prediction (stated before run 3)
-- Replaying run 2's recorded answers through main e99c0a8 gives **35 of 106** tested: **31
-  code-checked** and **4 expert only**. This is development data, in the project's
+- Replaying run 2's recorded answers through main e99c0a8, and running the deterministic checks
+  on run 2's case database, gives **35 of 106** tested: **7 code-checked**, **24 check
+  unsettled** and **4 expert only**. This is development data, in the project's
   `run-v2/replay/REPLAY.md`. The replay is re-run at the tag, and this line is updated before
   approval if anything merged since then changes it.
-- If the A10G repeats run 2's answers byte for byte, run 3's k equals the replay's. Any other
-  k is reported with its cause: either the A10G did not repeat its answers, or the replay
-  missed a code path.
-- The margin over the minimum is one claim. If the A10G answers differently on two
-  code-checked claims, run 3 is "insufficient coverage" again.
+- At e99c0a8 that is below the minimum of 30 code-checked claims, so run 3 at that commit is
+  predicted "insufficient coverage". Most unsettled checks found no message because the claim's
+  straight apostrophe does not match the export's typographic one, or because the other party
+  is tied to no account.
+- If the A10G repeats run 2's answers byte for byte, run 3's k and tiers equal the replay's.
+  Any other result is reported with its cause: either the A10G did not repeat its answers, or
+  the replay missed a code path.
 
-## Tested, in two tiers
+## Tested, in three tiers
 A claim is tested as in v2: it has a first-pass verdict and is not marked "Not tested". The
 scorer (1.3.0) puts each tested claim in one tier:
-1. **Code-checked:** at least one core assumption went to a deterministic check (sender, time,
-   count, absence, contact entry, same account or weekday), whatever the outcome.
-2. **Expert only:** every core assumption is stance-only or expert-only (meaning, event, role,
-   person identity or authorship).
+1. **Code-checked:** a deterministic check (sender, time, count, absence, contact entry, same
+   account or weekday) on a core assumption passed or failed.
+2. **Check unsettled:** checks ran on a core assumption, but every one was inconclusive, for
+   example none found, or a party tied to no account. The pipeline writes a check result only
+   for a check that applies, so these checks did run on the phone's records.
+3. **Expert only:** no check ran on a core assumption; every core assumption is stance-only or
+   expert-only (meaning, event, role, person identity or authorship).
 
-Both tiers are reported. Only tier 1 counts toward the minimum.
+All three tiers are reported. Only tier 1 counts toward the minimum.
 
 ## Assumption fidelity audit (before scoring)
 Before the scorer runs, every tested claim's assumptions are read against the claim text, with
@@ -82,8 +89,8 @@ app, and quote only the claim's quoted words. The audit records one line per cla
 - Any failure is reported as a defect with its claim, and run 3's numbers carry it.
 
 ## Measures
-As v2, over tested claims only, plus:
-- **5. Contradicted by a failed check, gold not contradicted: 0 expected.** Only the failed
+As v2, over tested claims only, plus a new measure numbered after v1's six:
+- **7. Contradicted by a failed check, gold not contradicted: 0 expected.** Only the failed
   checks the Contradicted verdict cites count (rule 1a: checks on core assumptions); a failed
   check on a non-core assumption beside a stance contradiction does not. Each such claim is
   listed with its check and records.
@@ -119,6 +126,7 @@ changes above. Arsh makes the tag in GitHub Releases. The machine is as in v2: A
 - The fixes were designed after seeing runs 1 and 2, as above. The answer key was not used.
 - Run 1's null result and run 2's insufficient coverage are reported with run 3.
 - Model-side refusals that remain are counted on their own.
-- Determinism is measured on [Mac only / A10G too].
+- Determinism is measured on the A10G if the second run above is done, and is otherwise
+  stated as measured on the Mac only (14B on GPU, 2026-10-24), not on AWS.
 - Chats with messages: 128 against 109 in the independent dump. This is a lead, not a known
   bug.
