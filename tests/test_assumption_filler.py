@@ -17,6 +17,7 @@ from core.audit._llm_json import prompt_body
 from core.audit.assumption_filler import (
     LocalAssumptionFiller,
     Reject,
+    _in_quotes,
     _ProposalOut,
     check_window,
     count_op,
@@ -786,6 +787,10 @@ def test_the_addressee_is_never_the_sender(conn):
         ("PETROV", "The message to the group from PETROV: 'ok'.", "ok", False),
         ("PETROV", "A message to REYES by PETROV read 'ok'.", "ok", False),
         ("REYES", "According to REYES, PETROV wrote 'ok'.", "ok", False),
+        # A new clause ends the recipient's phrase (Codex on #160).
+        ("PETROV", "REYES texted back after PETROV wrote 'ok'.", "ok", False),
+        # A quote wrapped over two lines is still one quote.
+        ("REYES", "PETROV wrote to REYES 'REYES,\ncall me'.", "REYES,\ncall me", True),
     ],
 )
 def test_only_addressed(value, text, quoted, addressed):
@@ -798,6 +803,12 @@ def test_a_message_is_quoted_words_not_the_claims_own(conn):
     assumptions, filler, _ = build(conn, "C05", answers)
     assert assumptions == []
     assert "not inside quotation marks" in filler.drops[0].reason
+
+
+def test_a_quote_wrapped_over_two_lines_is_still_quoted():
+    # Ingest keeps a PDF's line breaks inside claim text (Codex on #160).
+    assert _in_quotes("need 2 more", 'PETROV wrote "need 2 more\nby friday".')
+    assert not _in_quotes("wrote", 'PETROV wrote "need 2 more\nby friday".')
 
 
 def test_a_quoted_name_is_not_a_message(conn):
@@ -918,6 +929,8 @@ def test_date_mentions():
         ("13 messages to and from @northstar", 13, "eq"),
         ("13 messages from March 10 to March 31", 13, "eq"),
         ("PETROV and REYES exchanged 13 messages from 9 a.m. to noon", 13, "eq"),
+        # Both directions together, as the count check counts (Codex on #160).
+        ("PETROV sent and received a total of 13 messages with REYES", 13, "eq"),
     ],
 )
 def test_count_op(claim_text, value, op):

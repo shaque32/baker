@@ -727,11 +727,18 @@ def _unquoted(text: str) -> str:
 _QUOTE_MARKS = "\"“”‘’'"
 
 
+def _flat(text: str) -> str:
+    """The text with each line break or other whitespace character as one space, same length,
+    so a quote a PDF wrapped over two lines is still one quoted span (Codex on #160)."""
+    return re.sub(r"\s", " ", text)
+
+
 def _in_quotes(value: str, text: str) -> bool:
     """True when the value lies inside one quoted span of the text: words the claim quotes,
     not words it uses itself ("call" in "placed a Telegram call")."""
-    v = _nfc(value.strip()).strip(_QUOTE_MARKS).strip()
-    return bool(v) and any(v in m.group(0)[1:-1] for m in _QUOTE_SPAN_RE.finditer(_nfc(text)))
+    v = _flat(_nfc(value.strip())).strip(_QUOTE_MARKS).strip()
+    spans = _QUOTE_SPAN_RE.finditer(_flat(_nfc(text)))
+    return bool(v) and any(v in m.group(0)[1:-1] for m in spans)
 
 
 def _date_stated(d: date, mentions: list[_DateMention], years: set[int]) -> bool:
@@ -1098,6 +1105,10 @@ _ONE_WAY_RE = re.compile(
     r"messaged|forwarded|got|went|came)\b",
     re.IGNORECASE,
 )
+# "sent and received 13 messages": both directions together, as the check counts (Codex on #160).
+_BOTH_WAYS_RE = re.compile(
+    r"\b(?:sent|received)\s+(?:and|or|and/or)\s+(?:received|sent)\b", re.IGNORECASE
+)
 # "13 messages to X" or "from X", but not "to and from X" or a range of dates or times ("from
 # March 10 to March 31", "from 9 a.m. to noon").
 _ONE_WAY_AFTER_RE = re.compile(
@@ -1121,7 +1132,8 @@ def count_op(claim: str, value: int) -> Literal["eq", "ge", "le"]:
         raise Reject(
             f"the claim counts {m.group('noun').lower()}; the count check counts messages only"
         )
-    if _ONE_WAY_RE.search(_unquoted(claim)) or _ONE_WAY_AFTER_RE.match(claim[m.end() :]):
+    words = _BOTH_WAYS_RE.sub(" ", _unquoted(_flat(claim)))
+    if _ONE_WAY_RE.search(words) or _ONE_WAY_AFTER_RE.match(claim[m.end() :]):
         raise Reject(
             "the claim counts messages one side sent or received; the count check counts both"
             " directions"
@@ -1325,11 +1337,17 @@ _QUOTED_MESSAGE = re.compile(
 
 # A party written as the one a message went to: "wrote to the Discord user 'X'", "iMessage to
 # (919) 888-7386", "told REYES", "texted REYES". Up to three words may stand between the word
-# and the party ("to the Discord user"), but not "from" or "by" ("to the group from PETROV":
+# and the party ("to the Discord user"), but none of _NOT_BETWEEN ("to the group from PETROV":
 # PETROV sent it), and an opening quote may lead a quoted name. "According to X" is a source.
+# Words that end the recipient's phrase: "from" or "by" name the sender, and a joining word or
+# a verb starts a new clause ("REYES texted back after PETROV wrote": PETROV is the writer).
+_NOT_BETWEEN = (
+    r"from|by|after|before|when|while|once|and|or|then|but|as|because|since|until|who|which|"
+    r"that|back|wrote|writes|texted|texts|sent|sends|messaged|told|replied|said|asked|posted"
+)
 _ADDRESSED_RE = re.compile(
     r"(?<!according )\b(?:to|with|told|texted|messaged|emailed|called)\s+"
-    r"(?:(?!(?:from|by)\b)[\w-]+\s+){0,3}?[\"“‘']?$",
+    rf"(?:(?!(?:{_NOT_BETWEEN})\b)[\w-]+\s+){{0,3}}?[\"“‘']?$",
     re.IGNORECASE,
 )
 
@@ -1339,10 +1357,10 @@ def only_addressed(value: str, text: str, quoted: str | None) -> bool:
     cannot be the sender of the quoted message. Words inside the quoted message itself are
     words, not a party, and are skipped; a quoted name ('the user "DFIR Two"') is read from
     what leads its opening quote. A party the claim does not write is not judged here."""
-    v, t = _nfc(value.strip()), _nfc(text)
+    v, t = _flat(_nfc(value.strip())), _flat(_nfc(text))
     if not v:
         return False
-    q = _nfc(quoted.strip()) if quoted else ""
+    q = _flat(_nfc(quoted.strip())) if quoted else ""
     spans = [(m.start(), m.end()) for m in _QUOTE_SPAN_RE.finditer(t)]
     places: list[int] = []
     at = t.find(v)
