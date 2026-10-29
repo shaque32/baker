@@ -1,4 +1,4 @@
-## 2026-10-29: More claims become checkable from their own words (validation rulings R1, R4, R6; fills a to d and g)
+## 2026-10-29: More claims become checkable from their own words (validation rulings R1, R4, R5, R6; fills a to d, f and g)
 - Changed: the assumption filler fills more from a claim's own words, and says so. Arsh ruled
   on each step in the validation thread on 2026-10-29.
   - R1, native calls: a call claim that names no app and writes the other party as a phone
@@ -23,6 +23,12 @@
     names another account takes the phone's side as its owner by confirmed stipulation, only
     when that person's accounts are exactly the phone's own.
   - A time stated near midnight may start its window on the day before.
+  - R5, open ranges: a no-contact claim that says "never", "before X", "after X", "since X"
+    or "until X" and states no other time is checked from the extraction's first dated
+    record, or to its last, on the phone's own sources; the assumption text names both
+    edges. When the model gave no parties, they come from the claim: the phone's exact
+    owner and the one person or number it names. "Not found" still states what was searched
+    and the source's coverage.
   - Fill f, call counts: with 'call' among its channels the count check (1.1.0) counts calls
     on the app named. A call count never fails, since a call log keeps calls that did not
     connect and can hold one call twice; two counted calls 60 seconds apart or less make it
@@ -39,11 +45,13 @@
   tests/test_account_lookups.py (two tests changed from "refused" to "one party" under R6)
   and tests/test_validation_run.py. Replaying run 2's recorded model answers through this
   code and running the checks on run 2's case database (development data, project files
-  only): 32 code-checked, 14 check unsettled, 3 expert only (49 tested), up from 18, 13 and
-  4 at #165. One of the 32 is code-checked by its call's time while its count of calls stays
-  inconclusive (calls stored twice). 10 of the 32 have a failed core check; whether those are
+  only): 33 code-checked, 15 check unsettled, 3 expert only (51 tested), up from 18, 13 and
+  4 at #165. One of the 33 is code-checked by its call's time while its count of calls stays
+  inconclusive (calls stored twice). 11 of the 33 have a failed core check; whether those are
   right is unscored until run 3's measure 7. `make check`: see the PR.
-- Open: R5 (open ranges such as "before May 1" or "never") is not built. Direction for
+- Open: the absence check compares stored time strings, so a window edge that falls exactly
+  on a record with fractional seconds can report the source as not spanning the window
+  (conservative: it leaves the claim unsettled, never supported). Direction for
   counts and "exchanged" needs a `core/contracts.py` field; the diff is in
   PROPOSED_CHANGES.md for Arsh. A failed check on rules 0.3.0 contradicts without an expert,
   so more checked claims also means more such contradictions.
@@ -52,5 +60,6 @@
   customer-facing claim change
 - Status doc: pending: in the assumption filler's capabilities, add "reads native calls by
   number, one number written several ways as one party, writers from 'instructed ...,
-  writing' and 'after receiving it from', part-day ranges on a stated day; code-made
+  writing' and 'after receiving it from', part-day ranges on a stated day, open no-contact
+  ranges ('never', 'before', 'since') to the extraction's first or last dated record; code-made
   assumptions say 'Filled from the claim's wording.'"

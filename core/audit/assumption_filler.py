@@ -96,6 +96,7 @@ Proposals then go through TemplateAssumptionBuilder, which validates them again.
 
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 import unicodedata
@@ -1152,6 +1153,8 @@ def stated_windows(text: str, context: str = "") -> list[StatedWindow] | None:
     return out
 
 
+# Words that leave a range for no contact open to the extraction's edge (validation R5).
+_OPEN_RANGE_RE = re.compile(r"\b(?:never|before|prior\s+to|until|after|since)\b", re.IGNORECASE)
 _PART_DAY_RE = re.compile(
     rf"\b(?P<dir>after|before)\s+{_clock_re('t')}{_zone_opt('z')}", re.IGNORECASE
 )
@@ -2138,7 +2141,24 @@ class LocalAssumptionFiller:
                 raise Reject("the duration's words are not written in the claim")
             params["duration_s"] = duration_range(p.duration.as_written, claim.text)
 
-        if p.window is not None and "window" not in tpl.allowed:
+        if tpl.id == "no_contact" and not (params.get("person_ids") or account_ids or handles):
+            # "The TARGET PHONE never communicated with (919) 555-0142": the model named the
+            # phone but no party; code reads both from the claim (validation ruling R5).
+            device_ids = self._absence_parties(claim, params, device_ids)
+            code_made = True
+        bare = _unquoted(_nfc(claim.text))
+        if (
+            tpl.id == "no_contact"
+            and _OPEN_RANGE_RE.search(bare)
+            and not time_mentions(bare)
+            # "first made contact on March 12" keeps the reading check_window gives it
+            and not any(_has_word(bare, w) for w in ("first", "last", "earliest", "latest"))
+        ):
+            # "before May 1, 2023", "never": the range runs to the extraction's own edge, which
+            # code reads from the records, never the model (validation ruling R5).
+            params["window"] = self._open_range(claim, device_ids)
+            code_made = True
+        elif p.window is not None and "window" not in tpl.allowed:
             pass  # a sender is picked by its words and party; the time is record_time's job
         elif p.window is not None:
             try:
@@ -2833,6 +2853,120 @@ class LocalAssumptionFiller:
         if sides < 2:
             raise Reject("the claim names one side of the call; code reads both or none")
         return sorted(people), sorted(accounts), phone
+
+    def _absence_parties(
+        self, claim: Claim, params: dict[str, Any], device_ids: list[str]
+    ) -> list[str]:
+        """The two sides of "no contact" read from the claim when the model named none: the
+        one phone it writes, as its owner by confirmed stipulation when that person is exactly
+        the phone's own accounts, and one other party, a person the expert created or a phone
+        number (every account on the phone's sources whose identifier is that number, on the
+        apps the proposal names, or on any app when it names none). Returns the device ids.
+        Raises Reject when either side is not exactly one."""
+        bare = _unquoted(_nfc(claim.text))
+        phones = sorted(set(device_ids) or self._written_phones(bare))
+        if len(phones) != 1:
+            raise Reject("no contact: the claim writes no one phone for its side")
+        own = {a.id for a in self.data.accounts.values() if a.device_id == phones[0]}
+        owner = self._exact_owner(own) if own else None
+        if owner is None:
+            raise Reject("no contact: the phone's side is no one person code can name")
+        people = {
+            pid
+            for pid, name in self.conn.execute("SELECT id, name FROM persons ORDER BY id")
+            if pid != owner and _name_spans(bare, _nfc(name.strip()))
+        }
+        numbers = {
+            d
+            for m in _PHONE_RE.finditer(bare)
+            if (d := phone_digits(m.group(0).strip(" .,-"))) is not None
+        }
+        if len(people) + len(numbers) != 1 or _UNREAD_PARTY_RE.search(
+            _PHONE_RE.sub(" ", bare) if numbers else bare
+        ):
+            raise Reject("no contact: the claim does not write exactly one other party")
+        params["device_ids"] = phones
+        if people:
+            params["person_ids"] = sorted({owner, *people})
+            return phones
+        (number,) = numbers
+        sources = set(self.data.sources_for(phones))
+        apps = {c.casefold() for c in params.get("channels", []) if c != CALL_CHANNEL}
+        found = {
+            a.id
+            for a in self.data.accounts.values()
+            if a.source_id in sources
+            and (not apps or a.app.casefold() in apps)
+            and _same_number(number, a)
+        }
+        if not found:
+            raise Reject("no contact: the number is on no account on the phone")
+        params["person_ids"] = [owner]
+        params["account_ids"] = sorted(found)
+        return phones
+
+    def _open_range(self, claim: Claim, device_ids: list[str]) -> Any:
+        """The range of "no contact before May 1, 2023", "after", "since" or "never", run to
+        the extraction's own edge: its first or last dated message or call on the phone
+        (validation ruling R5). The range's words say so. Only a claim with no time of day and
+        at most one plain date; "first" or "last" contact is refused."""
+        text = _unquoted(_nfc(claim.text))
+        if any(_has_word(text, w) for w in ("first", "last", "earliest", "latest")):
+            raise Reject("the claim's range for no contact is not a plain stated range")
+        if len(device_ids) != 1 or time_mentions(text) or _NUM_DATE_RE.search(text):
+            raise Reject("an open range needs one phone and no time of day")
+        dates = list(_DATE_RE.finditer(text))
+        sources = self.data.sources_for(device_ids)
+        times = [
+            t
+            for (t,) in self.conn.execute(
+                "SELECT ts_utc FROM messages WHERE source_id IN (SELECT value FROM json_each(?))"
+                " AND ts_utc IS NOT NULL UNION ALL SELECT ts_utc FROM calls WHERE source_id IN"
+                " (SELECT value FROM json_each(?)) AND ts_utc IS NOT NULL",
+                (json.dumps(sources), json.dumps(sources)),
+            )
+        ]
+        if not times:
+            raise Reject("the phone holds no dated record to run an open range to")
+        tz = self._phone_zone(device_ids)
+        zone = ZoneInfo(tz)
+
+        def wall(ts: str) -> datetime:
+            t = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            t = t if t.tzinfo else t.replace(tzinfo=UTC)
+            return t.astimezone(zone).replace(tzinfo=None)
+
+        # From the first record to the last one, inclusive, so a full extraction spans it.
+        first = min(wall(t) for t in times)
+        last = max(wall(t) for t in times) + timedelta(microseconds=1)
+        span = f"the extraction's first dated record ({first:%B} {first.day}, {first.year})"
+        end_span = f"its last dated record ({last:%B} {last.day}, {last.year})"
+        if not dates:
+            if not _has_word(text, "never"):
+                raise Reject("an open range needs 'never' or one stated date")
+            return local_window(first, last, tz, f"never: from {span} to {end_span}")
+        if len(dates) != 1 or dates[0].group(5):
+            raise Reject("an open range reads one stated day")
+        m = dates[0]
+        years = {int(y) for y in _YEAR_RE.findall(claim.text)}
+        y = int(m.group(3) or m.group(6) or 0) or (next(iter(years)) if len(years) == 1 else 0)
+        try:
+            day = datetime.combine(date(y, _MONTHS[m.group(1).lower()], int(m.group(2))), time())
+        except ValueError:
+            raise Reject("the open range's date is not a date") from None
+        head = text[max(0, m.start() - 16) : m.start()]
+        said = text[m.start() : m.end()].strip(" ,")
+        if re.search(r"\b(?:before|prior\s+to|until)\s+$", head, re.IGNORECASE):
+            start, end, raw = first, day, f"before {said}: from {span}"
+        elif re.search(r"\bon\s+or\s+after\s+$|\bsince\s+$", head, re.IGNORECASE):
+            start, end, raw = day, last, f"since {said}: to {end_span}"
+        elif re.search(r"\bafter\s+$", head, re.IGNORECASE):
+            start, end, raw = day + timedelta(days=1), last, f"after {said}: to {end_span}"
+        else:
+            raise Reject("the claim's date is not the open end of a range")
+        if end <= start:
+            raise Reject("the extraction holds no record on the open side of the date")
+        return local_window(start, end, tz, raw)
 
     def _count_calls(self, claim: Claim, params: dict[str, Any]) -> None:
         """Make a count of calls ("the TARGET PHONE had four Viber calls with (919) 888-7386")

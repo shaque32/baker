@@ -8,8 +8,10 @@ find what they find there, and that wrong or unsupported values are dropped.
 import json
 import re
 import sqlite3
+from datetime import UTC
 from datetime import datetime as D
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -1753,3 +1755,62 @@ def test_a_count_of_calls_is_read_and_made_from_a_calls_time(call_log):
     assert c.account_ids == ("acct:t:log1", "acct:t:log2") and c.device_ids == ("dev:item1",)
     assert by["message_count"].text.endswith("Filled from the claim's wording.")
     assert "calls between" in by["message_count"].text
+
+
+def _no_contact(conn, text: str, **prop):
+    return build_text(conn, text, ClaimType.ABSENCE, [{"template_id": "no_contact", **prop}])
+
+
+def test_never_runs_to_the_extractions_own_edges(conn):
+    # Ruling R5: "never" is the whole extraction, read from the phone's dated records; the
+    # sides are the phone's exact owner and the one number the claim writes.
+    assumptions, filler = _no_contact(
+        conn, "dev:item1 never communicated with (212) 555-0144.", phones=["dev:item1"]
+    )
+    (a,) = [a for a in assumptions if a.template_id == "no_contact"]
+    p = a.params
+    assert p.person_ids == (PETROV,) and p.device_ids == ("dev:item1",)
+    assert p.account_ids == ("acct:item1:Phone:+12125550144", "acct:item1:SMS:+12125550144")
+    assert p.window is not None and p.window.raw.startswith(
+        "never: from the extraction's first dated record"
+    )
+    lo, hi = conn.execute(
+        "SELECT min(t), max(t) FROM (SELECT ts_utc t FROM messages WHERE source_id = 'item1'"
+        " UNION ALL SELECT ts_utc FROM calls WHERE source_id = 'item1') WHERE t IS NOT NULL"
+    ).fetchone()
+    assert p.window.start_utc.isoformat()[:19] == lo[:19]
+    assert p.window.end_utc.isoformat()[:19] == hi[:19]
+    assert a.text.endswith("Filled from the claim's wording.")
+
+
+def test_before_a_date_runs_from_the_first_record_whatever_the_model_said(conn):
+    # The model's one-day range for "before March 12" would test only March 11; code's range
+    # runs from the extraction's first record to the start of March 12.
+    window = {"as_written": "before March 12, 2026", "start": "2026-03-11T00:00",
+              "end": "2026-03-12T00:00", "zone": "phone"}  # fmt: skip
+    assumptions, filler = _no_contact(
+        conn,
+        "There was no contact between dev:item1 and (212) 555-0144 before March 12, 2026.",
+        phones=["dev:item1"],
+        window=window,
+    )
+    (a,) = [a for a in assumptions if a.template_id == "no_contact"]
+    w = a.params.window
+    assert w is not None and w.raw.startswith("before March 12, 2026: from the extraction's")
+    assert w.end_utc.astimezone(ZoneInfo("America/New_York")).isoformat()[:19] == (
+        "2026-03-11T23:59:59"
+    )
+    assert w.start_utc < D(2026, 3, 1, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "dev:item1 never communicated with (212) 555-0144 or (212) 555-0191.",  # two parties
+        "dev:item1 never communicated with @someone.",  # a party code cannot read
+        "There was never contact with (212) 555-0144.",  # no phone written
+    ],
+)
+def test_an_open_range_or_its_sides_are_refused_when_in_doubt(conn, text):
+    assumptions, _ = _no_contact(conn, text)
+    assert not any(a.template_id == "no_contact" for a in assumptions)
