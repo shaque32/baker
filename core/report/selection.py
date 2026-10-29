@@ -54,7 +54,7 @@ ul.sel-quotes li { margin: 0 0 8px; font-size: 13.5px; line-height: 1.5; }
 .sel-claims { font-size: 13px; margin: 6px 0 10px; display: flex; flex-wrap: wrap; gap: 6px;
   align-items: center; }
 .sel-claims .verdict { font-size: 12px; text-decoration: none; }
-.sel-passage { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+.sel-passage { background: var(--card); border: 1px solid var(--line); border-radius: 8px;
   margin: 14px 0; overflow: hidden; }
 .sel-passage > .in { padding: 12px 16px; }
 .sel-passage .where { font: 400 12px var(--sans); color: var(--muted); overflow-wrap: anywhere; }
@@ -64,7 +64,7 @@ ul.sel-quotes li { margin: 0 0 8px; font-size: 13.5px; line-height: 1.5; }
 .sel-passage .sel-passage { margin: 10px 0 0; }
 .sel-convo { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px;
   background: #faf8f4; border-top: 1px solid var(--line); }
-.bub { max-width: 76%; border: 1px solid var(--line); border-radius: 14px; padding: 7px 12px;
+.bub { max-width: 76%; border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px;
   background: #fff; align-self: flex-start; overflow-wrap: anywhere; }
 .bub.out { align-self: flex-end; background: #e9eef5; border-color: #d3dceb; }
 .bub.pick { border: 1.5px solid #c9a24a; background: #fbf1cf;
