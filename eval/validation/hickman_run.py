@@ -8,7 +8,10 @@ It builds one case the way an expert would, then runs `mabillon audit` with its 
 3. creates DIR/case.db in local mode, imports the UFDR, imports the affidavit, adds each claim
    to its paragraph, and sets the case up as the affidavit defines it: the phone is the TARGET
    PHONE, SUBJECT-1 used it (a stipulation), and each other SUBJECT-<n> the claims name is a
-   person, with no stipulation or link;
+   person. A person the affidavit's header defines by a telephone number ("SUBJECT-2 is the user
+   of telephone number (919) 888-7386") is linked to each account whose identifier is that
+   number, written any way (a WhatsApp id 19198887386@s.whatsapp.net too), never to an account
+   by its display name;
 4. runs the audit with the product's local components (no AI reviewer, no cloud);
 5. writes DIR/report.html, DIR/run.json (versions, machine, times) and DIR/results.zip. If the
    report's own checks refuse it, run.json says why and the results go out without it.
@@ -44,14 +47,19 @@ PHONE_NAME = "TARGET PHONE"  # the affidavit's name for the phone
 # The people the affidavit defines, found in the claims text by this rule alone (never from the
 # answers): every SUBJECT-<n> written in a claim.
 SUBJECT = re.compile(r"\bSUBJECT-\d+\b")
+# The affidavit's header defines these people by a telephone number (PREREGISTERED_v3.md, R4). The
+# number is the definition, as the phone is SUBJECT-1's: a premise of the affidavit, not a claim.
+DEFINED_NUMBERS = {"SUBJECT-2": "(919) 888-7386"}
+# An identifier that is a telephone number: digits with + ( ) - . and spaces, or a WhatsApp id.
+_NUMBER_ID = re.compile(r"\+?[\d\s().-]+(?:@s\.whatsapp\.net)?")
 TITLE = "AFFIDAVIT (VALIDATION V1, HICKMAN PUBLIC IMAGE, NOT A REAL CASE)"
 # The batch 3 writer typed "content" for content_meaning; ClaimType has no "content". The claim
 # type only picks which checks run; the signed answers do not depend on it.
 TYPE_ALIASES = {"content": "content_meaning"}
 RESULT_FILES = ("case.db", "run.json", "report.html", "progress.log")
 # How build() sets the case up. A case built by an earlier setup is not resumed: run 1's case
-# (setup 1) had no phone name and no SUBJECT-2.
-SETUP = 2
+# (setup 1) had no phone name and no SUBJECT-2; run 2's (setup 2) had no account for SUBJECT-2.
+SETUP = 3
 
 
 def sha256_file(path: Path) -> str:
@@ -118,13 +126,45 @@ def build(ufdr: Path, claims: list[dict], out: Path, log) -> None:  # noqa: ANN0
     actions.name_device(conn, f"dev:{SOURCE_ID}", [PHONE_NAME], ACTOR)
     actions.stipulate_device_owner(conn, f"dev:{SOURCE_ID}", OWNER, ACTOR)
     others = sorted(set(SUBJECT.findall(" ".join(c["text"] for c in claims))) - {OWNER})
+    linked = {}
     for name in others:
-        actions.add_person(conn, name, ACTOR)
+        pid = actions.add_person(conn, name, ACTOR)
+        if name in DEFINED_NUMBERS:
+            linked[name] = link_defined_number(conn, pid, DEFINED_NUMBERS[name])
     conn.close()
     log(
         f"case built: {len(claims)} claims on {len(paragraphs)} paragraphs; the phone is"
         f" {PHONE_NAME}, used by {OWNER}; other people: {', '.join(others) or 'none'}"
+        + "".join(f"; {n} linked to {len(ids)} accounts by number" for n, ids in linked.items())
     )
+
+
+def number_digits(identifier: str) -> str | None:
+    """The national digits of an identifier that is a telephone number, else None: '+1 (919)
+    888-7386', '19198887386' and '19198887386@s.whatsapp.net' all give '9198887386'."""
+    if not _NUMBER_ID.fullmatch(identifier.strip()):
+        return None
+    digits = re.sub(r"\D", "", identifier.split("@", 1)[0])
+    if len(digits) == 11 and digits.startswith("1"):
+        digits = digits[1:]
+    return digits if len(digits) == 10 else None
+
+
+def link_defined_number(conn, person_id: str, number: str) -> list[str]:  # noqa: ANN001
+    """Link the person to every account whose identifier is the defined number (R4). A display
+    name never links; nor does a number inside a longer identifier. Returns the account ids."""
+    from core.review import actions
+
+    want = number_digits(number)
+    ids = [
+        aid
+        for aid, ident in conn.execute("SELECT id, identifier FROM accounts ORDER BY id")
+        if ident and number_digits(ident) == want
+    ]
+    note = f"The affidavit defines {person_id} as the user of telephone number {number}."
+    for aid in ids:
+        actions.link_account(conn, aid, person_id, ACTOR, note)
+    return ids
 
 
 def machine() -> dict:

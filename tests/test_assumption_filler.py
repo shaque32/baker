@@ -17,6 +17,7 @@ from core.audit._llm_json import prompt_body
 from core.audit.assumption_filler import (
     LocalAssumptionFiller,
     Reject,
+    _Account,
     _in_quotes,
     _ProposalOut,
     check_window,
@@ -1434,3 +1435,75 @@ def test_a_code_made_sender_stays_on_the_phones_messages_when_the_claim_names_th
     # An app named inside the message is no app it went by.
     assert filler._message_apps('PETROV told REYES by iMessage: "use Telegram".') == phone
     assert filler._message_apps('PETROV texted REYES: "use Telegram".') == phone
+
+
+# ---------------------------------------------------------------- PAST-30 fills (validation)
+
+
+def test_a_dated_quote_with_no_writer_gets_its_time_from_code(conn):
+    # Fill a: the claim names no one who sent the words, so code tests when the message was
+    # sent, on the app the claim names, with no party; meaning is the model's or code's.
+    text = (
+        'The Telegram message of March 12, 2026, "the package will be at marcs", shows that the'
+        " package held narcotics."
+    )
+    assumptions, filler = build_text(conn, text, ClaimType.CONTENT_MEANING, [])
+    by = {a.template_id: a for a in assumptions}
+    assert set(by) == {"meaning", "record_time"}, filler.drops
+    t = by["record_time"].params
+    assert t.quoted_text == "the package will be at marcs" and t.channels == ("Telegram",)
+    assert not (t.person_ids or t.account_ids or t.handles)
+    assert t.window is not None and t.window.raw.endswith("March 12, 2026")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # a writer the claim names after the quote, or with a verb the cue list reads
+        'The Telegram message of March 12, 2026, "the package will be at marcs", which'
+        " @northstar sent, held narcotics.",
+        'On March 12, 2026, PETROV deleted the Telegram message "the package will be at marcs"'
+        " after receiving it from @northstar.",
+        'On March 12, 2026, @northstar contacted PETROV by Telegram, writing "the package will be'
+        ' at marcs".',
+    ],
+)
+def test_no_time_is_made_without_a_sender_when_the_claim_names_a_writer(conn, text):
+    assumptions, filler = build_text(conn, text, ClaimType.CONTENT_MEANING, [])
+    assert not any(a.template_id == "record_time" for a in assumptions)
+
+
+def test_a_time_near_midnight_may_start_on_the_day_before():
+    raw = "On May 2, 2023, at approximately 12:01 a.m. EDT"
+    check_window(D(2023, 5, 1, 23, 53), D(2023, 5, 2, 0, 10), raw, raw, "", "record_time")
+    with pytest.raises(Reject, match="not a date the claim states"):
+        check_window(D(2023, 5, 1, 22, 0), D(2023, 5, 2, 0, 10), raw, raw, "", "record_time")
+    far = "On May 2, 2023, at approximately 9:00 p.m. EDT"
+    with pytest.raises(Reject):
+        check_window(D(2023, 5, 1, 20, 52), D(2023, 5, 1, 21, 9), far, far, "", "record_time")
+
+
+def test_an_identifier_in_brackets_picks_one_of_two_accounts_with_one_name(conn):
+    # Fill d: two Telegram accounts carry the display name "Marc Twin"; the claim writes which.
+    rows = [
+        ("acct:t:twin1", "Telegram", "twin_one_111", "Marc Twin"),
+        ("acct:t:twin2", "Telegram", "twin_two_222", "Marc Twin"),
+    ]
+    src = conn.execute("SELECT source_id FROM accounts LIMIT 1").fetchone()[0]
+    for aid, app, ident, name in rows:
+        conn.execute(
+            "INSERT INTO accounts (id, source_id, locator, device_id, app, identifier,"
+            " display_name) VALUES (?, ?, 'x', NULL, ?, ?, ?)",
+            (aid, src, app, ident, name),
+        )
+    try:
+        filler = LocalAssumptionFiller(FakeModel("{}"), conn, template=DRAFT)
+        acc = _Account(as_written="Marc Twin", app="Telegram")
+        said = 'PETROV called "Marc Twin" (twin_two_222) on Telegram.'
+        assert filler._accounts_named(acc, [], said) == {"acct:t:twin2"}
+        with pytest.raises(Reject, match="name of 2 Telegram accounts"):
+            filler._accounts_named(acc, [], 'PETROV called "Marc Twin" on Telegram.')
+        with pytest.raises(Reject):  # an identifier no account named "Marc Twin" holds
+            filler._accounts_named(acc, [], 'PETROV called "Marc Twin" (nobody_9) on Telegram.')
+    finally:
+        conn.execute("DELETE FROM accounts WHERE id IN ('acct:t:twin1', 'acct:t:twin2')")

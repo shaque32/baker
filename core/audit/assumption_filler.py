@@ -213,6 +213,8 @@ WIDER_APPS: dict[str, str] = {"native messages": "iMessages and SMS"}
 # Checks whose answer depends on every record on the app they search. On a wider app a count
 # would count, and an absence would fail on, messages the claim does not name.
 WHOLE_APP_TEMPLATES = frozenset({"message_count", "no_contact"})
+# The templates whose time range a check tests.
+_TIMED = frozenset({"record_time", "message_count", "no_contact", "weekday_date"})
 # Templates whose quoted_text is the words of a message (a contact entry's is a saved name, a
 # weekday's the claim's own words).
 MESSAGE_TEXT_TEMPLATES = frozenset({"sender", "record_time", "meaning"})
@@ -910,7 +912,12 @@ def check_window(
         ):
             raise Reject("a range 'after' a date starts at midnight the day after it")
     elif not open_start:
-        if not _date_stated(start.date(), mentions, years):
+        # "at approximately 12:01 a.m. on May 2" starts a few minutes before midnight on May 1:
+        # a start near a stated time may fall on the day before the date it is near.
+        near_midnight = bool(times) and _near(start, times)
+        if not _date_stated(start.date(), mentions, years) and not (
+            near_midnight and _date_stated((start + TIME_SLACK).date(), mentions, years)
+        ):
             raise Reject(f"window start {start.date()} is not a date the claim states")
         if times and not _near(start, times):
             raise Reject("window start is not near a time the range states")
@@ -1635,8 +1642,18 @@ _SAYING = (
     r"messaged|replied|replies|replying|asked|asks|posted|posts|stated|states|stating|answered|"
     r"responded|typed|read|reads|reading"
 )
+# Words that may name who sent a quoted message, anywhere outside quotes ("which @northstar
+# sent", "after receiving it from X", "writing"): with any of them, no record_time is made
+# without a sender, so a writer the claim names is never left untested (PAST-30 fill a). "a
+# message reading" names no one.
+_NAMES_A_WRITER_RE = re.compile(
+    rf"\b(?:(?!read\b|reads\b|reading\b)(?:{_SAYING})|from|by|via)\b", re.IGNORECASE
+)
+# A word for a message dated right before its quote is a cue too: 'the Wickr message of May 7,
+# 2023, "..."' (PAST-30 fill a).
 _MESSAGE_CUE_RE = re.compile(
-    rf"(?:\b(?:{_SAYING})(?:\s+(?-i:{_RECIPIENT}))?|\b{_QUOTE_NOUNS}|:)\s*,?\s*$",
+    rf"(?:\b(?:{_SAYING})(?:\s+(?-i:{_RECIPIENT}))?|\b{_QUOTE_NOUNS}"
+    rf"(?:\s+of\s+(?:{_DATE_RE.pattern}))?|:)\s*,?\s*$",
     re.IGNORECASE,
 )
 
@@ -2144,12 +2161,34 @@ class LocalAssumptionFiller:
     ) -> list[Proposal]:
         """A claim that dates a quoted message ("On March 12, 2026, PETROV wrote ...") and got
         a sender assumption but no time range gets the record_time assumption from code: the
-        sender's parties and words, in the one range the claim states."""
+        sender's parties and words, in the one range the claim states. With no sender at all,
+        the claim's one quoted message (`the_quote`) on the apps it names (`_message_apps`)
+        and the one phone it writes, if any, with no party: "The Wickr message of May 7,
+        2023, \"...\"", "received a Kik message reading \"...\"" (PAST-30 fill a). Whoever
+        sent it stays untested, and coverage_gap still asks for a sender where the claim
+        names a writer."""
         if "record_time" not in allowed_ids or not date_mentions(claim.text):
             return out
-        if any(isinstance(p.params, dict) and p.params.get("window") for p in out):
+        # A range only a model-read event or role holds is no check's: it does not stop this.
+        if any(
+            isinstance(p.params, dict) and p.params.get("window") and p.template_id in _TIMED
+            for p in out
+        ):
             return out
         senders = [p for p in out if p.template_id == "sender" and isinstance(p.params, dict)]
+        if (
+            not senders
+            and not any(p.template_id == "sender" for p in out)
+            and not _NAMES_A_WRITER_RE.search(_unquoted(_nfc(claim.text)))
+        ):
+            quote = self.the_quote(claim, out)
+            apps = self._message_apps(claim.text) if quote else None
+            phones = self._written_phones(_unquoted(_nfc(claim.text)))
+            if quote is None or apps is None or len(phones) > 1:
+                return out
+            senders = [Proposal("sender", {"quoted_text": quote}
+                                | ({"channels": apps} if apps else {})
+                                | ({"device_ids": sorted(phones)} if phones else {}))]  # fmt: skip
         if len(senders) != 1:
             return out
         sender = dict(senders[0].params)
@@ -2628,6 +2667,20 @@ class LocalAssumptionFiller:
             and _nfc(a.display_name.strip()) == written
         ]
         if one and len({a.key for a in hits}) > 1:
+            # The claim may write which one, in brackets right after the name: 'to "ThisIs
+            # DfirTwo" (live:.cid.5638f9306b7b8594)' (PAST-30 fill d). Only an exact identifier
+            # of one of the named accounts picks it.
+            flat = _nfc(claim_text)
+            picked = {
+                a.id
+                for a in hits
+                if re.search(
+                    rf"{re.escape(written)}[\"”]?\s*\(\s*{re.escape(a.identifier.strip())}\s*\)",
+                    flat,
+                )
+            }
+            if len(picked) == 1:
+                return picked
             raise Reject(
                 f"{acc.as_written!r} is the name of {len({a.key for a in hits})} {acc.app}"
                 " accounts; which one the claim means is not known"
