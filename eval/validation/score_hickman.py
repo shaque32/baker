@@ -22,6 +22,10 @@ in project files. The run's case.db is copied; the copy is scored and the origin
    the run tested (not marked "Not tested"), out of all; each refusal kind that left a claim
    untested, with its claims; and measures 1 to 3 and the R2 card again over tested claims only.
    These are added beside the measures above and change none of them.
+6. For run 3's plan (eval/validation/PREREGISTERED_v3.md): each tested claim's tier, code-checked
+   (a core assumption went to a deterministic check, whatever its outcome) or expert only, with
+   the plan's minimum on the code-checked tier; and, beside measures 1 to 3, the claims a failed
+   check contradicted although gold does not.
 Writes DIR/score.json and DIR/score.md.
 """
 
@@ -46,11 +50,15 @@ from eval.validation.hickman_run import TYPE_ALIASES
 KEY_FILES = ("gold.jsonl", "gold_b2.jsonl", "gold_b3.jsonl")
 # 1.0.0: #134. 1.1.0: coverage (#142). 1.2.0: a claim is tested only with a first-pass verdict,
 # coverage must account for every gold claim, and refusal kinds match whole refusal phrases.
-SCORER_VERSION = "1.2.0"
+# 1.3.0: run 3's tiers (code-checked, check unsettled or expert only) and measure 7, a false
+# Contradicted from a failed check.
+SCORER_VERSION = "1.3.0"
 
 # Run 2's low-coverage rule 3: below this many tested claims, no accuracy claim.
 MINIMUM_TESTED = 30
 INSUFFICIENT = "insufficient coverage, no accuracy claim"
+# Run 3's minimum (PREREGISTERED_v3.md), counted on the code-checked tier only.
+MINIMUM_CODE_CHECKED = 30
 
 # What the assumption filler refused, by kind, read from each untested claim's "Not tested"
 # sentence (the run keeps no other per-claim record of it). A claim counts once per kind it
@@ -285,6 +293,31 @@ def _failed_checks(conn: sqlite3.Connection, manifest: dict, claim_id: str) -> l
     return out
 
 
+CODE_CHECKED = "code_checked"
+CHECK_UNSETTLED = "check_unsettled"
+EXPERT_ONLY = "expert_only"
+TIERS = (CODE_CHECKED, CHECK_UNSETTLED, EXPERT_ONLY)
+
+
+def _check_tier(conn: sqlite3.Connection, manifest: dict, claim_id: str) -> str:
+    """Run 3's tier: code-checked when a deterministic check on a core assumption passed or
+    failed; check unsettled when such checks ran but every one was inconclusive (for example
+    none found, or a party tied to no account); expert only when no check ran on a core
+    assumption. The pipeline writes a check row only for a check that applies."""
+    outcomes = set()
+    for cid in manifest.get(claim_id, {}).get("checks", []):
+        row = conn.execute(
+            "SELECT c.outcome FROM check_results c JOIN assumptions a ON a.id = c.assumption_id"
+            " WHERE c.id = ? AND a.is_core = 1",
+            (cid,),
+        ).fetchone()
+        if row:
+            outcomes.add(row[0])
+    if outcomes & {"pass", "fail"}:
+        return CODE_CHECKED
+    return CHECK_UNSETTLED if outcomes else EXPERT_ONLY
+
+
 def _retrieved(conn: sqlite3.Connection) -> dict[str, set[str]]:
     """Records the run sent to the stance labeler, by claim (assumption ids carry the claim)."""
     out: dict[str, set[str]] = {}
@@ -377,6 +410,16 @@ def _measures(per_claim: dict[str, dict[str, Any]]) -> dict[str, Any]:
             lambda r: r["gold"] == contra,
             lambda r: bool(r["failed_checks"]) or r["contradicts_on_key"] > 0,
         ),
+        # Run 3's measure 7 (v1 numbers 1 to 6): a failed deterministic check decided a wrong
+        # Contradicted. Only the failed checks the verdict cites count (rule 1a: failed checks on
+        # core assumptions), not a failed check on a non-core assumption beside a stance
+        # contradiction.
+        "contradicted_by_failed_check": _measure(
+            per_claim,
+            "R1 contradicted with a failed check, gold not contradicted",
+            lambda r: r["gold"] != contra,
+            lambda r: r["r1"] == contra and bool(r.get("verdict_failed_checks")),
+        ),
     }
 
 
@@ -389,11 +432,19 @@ def r1_measures(conn: sqlite3.Connection, run: dict, gold: list[GoldClaim]) -> d
         v = load_verdict(conn, g.claim_id, run["run_id"])
         items = [e for e in _items(conn, manifest, g.claim_id) if e.stance is not Stance.IRRELEVANT]
         key = set(g.key_evidence)
+        failed = _failed_checks(conn, manifest, g.claim_id)
         per_claim[g.claim_id] = {
             "type": g.claim_type.value,
             "gold": g.gold_verdict.value,
             "r1": v.verdict.value if v else None,
-            "failed_checks": _failed_checks(conn, manifest, g.claim_id),
+            "failed_checks": failed,
+            # The failed checks a Contradicted verdict cites: the ones that decided it.
+            "verdict_failed_checks": [
+                c
+                for c in (v.cited_check_ids if v and v.verdict is Verdict.CONTRADICTED else ())
+                if c in failed
+            ],
+            "check_tier": _check_tier(conn, manifest, g.claim_id),
             "supports": sum(e.stance is Stance.SUPPORTS for e in items),
             "contradicts": sum(e.stance is Stance.CONTRADICTS for e in items),
             "contradicts_on_key": sum(
@@ -459,6 +510,11 @@ def coverage(run: dict, gold: list[GoldClaim], r1: dict[str, Any]) -> dict[str, 
         for kind in [NO_VERDICT] if c not in not_tested else refusal_kinds(sentence):
             kinds[kind].append(c)
     k = len(tested)
+    # Run 3's tiers. A row without the field (a scorer before 1.3.0) counts as expert only.
+    tiers: dict[str, list[str]] = {t: [] for t in TIERS}
+    for c in tested:
+        tiers[per_claim[c].get("check_tier", EXPERT_ONLY)].append(c)
+    code_checked = tiers[CODE_CHECKED]
     return {
         "claims": len(ids),
         "tested": k,
@@ -471,6 +527,13 @@ def coverage(run: dict, gold: list[GoldClaim], r1: dict[str, Any]) -> dict[str, 
         "untested_claims": untested,
         "tested_claims": tested,
         "r1_over_tested": _measures({c: per_claim[c] for c in tested}),
+        "tiers": tiers,
+        "minimum_code_checked": MINIMUM_CODE_CHECKED,
+        "result_v3": (
+            "enough code-checked claims"
+            if len(code_checked) >= MINIMUM_CODE_CHECKED
+            else INSUFFICIENT
+        ),
     }
 
 
@@ -600,6 +663,15 @@ def _r1_lines(r1: dict[str, Any]) -> list[str]:
         f"2. False claim shown only as support: {_line(r1['false_claim_shown_only_as_support'])}."
         f" Claims: {', '.join(r1['false_claim_shown_only_as_support']['claims']) or 'none'}.",
         f"3. Contradiction surfaced: {_line(r1['contradiction_surfaced'])}.",
+        *(
+            [
+                "7. Contradicted by a failed check, gold not contradicted (run 3):"
+                f" {_line(r1['contradicted_by_failed_check'])}."
+                f" Claims: {', '.join(r1['contradicted_by_failed_check']['claims']) or 'none'}."
+            ]
+            if "contradicted_by_failed_check" in r1
+            else []
+        ),
     ]
 
 
@@ -611,6 +683,19 @@ def _coverage_lines(c: dict[str, Any], card: dict[str, Any]) -> list[str]:
         f" {c['result']}.",
         "",
     ]
+    if "tiers" in c:
+        t = c["tiers"]
+        lines += [
+            f"**Run 3 (eval/validation/PREREGISTERED_v3.md): code-checked {len(t[CODE_CHECKED])},"
+            f" check unsettled {len(t[CHECK_UNSETTLED])}, expert only {len(t[EXPERT_ONLY])}.**"
+            f" Minimum {c['minimum_code_checked']} code-checked: {c['result_v3']}.",
+            "",
+            f"Check unsettled (checks ran, none passed or failed):"
+            f" {', '.join(t[CHECK_UNSETTLED]) or 'none'}.",
+            "",
+            f"Expert only: {', '.join(t[EXPERT_ONLY]) or 'none'}.",
+            "",
+        ]
     if c["refusal_kinds"]:
         lines += [
             "Why the untested claims were not tested (a claim counts once per kind it has):",

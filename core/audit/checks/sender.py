@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from core.audit.checks._common import (
+    TEXT_MATCH,
     CaseData,
     channel_ok,
     fmt_key,
@@ -22,7 +23,7 @@ class SenderCheck(TemplateCheck):
     """
 
     name = "sender"
-    version = "1.0.1"
+    version = "1.0.2"  # 1.0.2: curly quotes and runs of spaces fold (TEXT_MATCH)
 
     def evaluate(self, assumption_id: str, p: AssumptionParams, data: CaseData) -> CheckResult:
         sources = data.sources_for(p.device_ids)
@@ -35,7 +36,7 @@ class SenderCheck(TemplateCheck):
         ]
         on = f" on {', '.join(p.channels)}" if p.channels else ""
         searched = (
-            f"Messages{on} containing {p.quoted_text!r} verbatim in {', '.join(sources)}; "
+            f"Messages{on} containing {p.quoted_text!r} ({TEXT_MATCH}) in {', '.join(sources)}; "
             f"expected sender {party.describe()}."
         )
         if not party.keys:
