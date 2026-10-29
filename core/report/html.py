@@ -174,7 +174,9 @@ from core.review.withheld import summary as withheld_summary
 # renders as before.
 # 0.22.0 (after #159's 0.21.0): an evidence item the challenge step stored
 # says "Found by the challenge step", and the versions table says whether the step ran.
-REPORT_VERSION = "0.22.0"
+# 0.23.0: the demo case's banner says the testability agent's answers, and the examiner who
+# accepted one, were scripted, when the demo's audit ran the step.
+REPORT_VERSION = "0.23.0"
 
 
 @dataclass(frozen=True)
@@ -436,17 +438,15 @@ def _expert_step(conn: sqlite3.Connection, x: EvidenceItem, decided_at: datetime
     return f"Local AI reviewer dismissed; no expert has decided it{later}"
 
 
-def repair_marks(conn: sqlite3.Connection) -> dict[str, str]:
-    """Assumption id -> the line saying an examiner accepted the testability step's proposal of
-    it (core/audit/testability.py, read from the log)."""
-    return {
-        aid: "<br><span class='muted'>Proposed by agent, accepted by examiner "
-        f"({e(actor.removeprefix('expert:'))})</span>"
-        for aid, actor in testability.accepted_repairs(conn).items()
-    }
+def repair_marks(used: dict[str, testability.Used]) -> dict[str, str]:
+    """Assumption id -> the line saying the shown audit used the testability step's proposal of
+    it under an examiner's acceptance (testability.used_repairs, as the claim page reads it)."""
+    return {aid: f"<br><span class='muted'>{e(u.mark())}</span>" for aid, u in used.items()}
 
 
-def verdict_trace(conn: sqlite3.Connection, st: ClaimState) -> str:
+def verdict_trace(
+    conn: sqlite3.Connection, st: ClaimState, marks: dict[str, str] | None = None
+) -> str:
     """How a decided claim's verdict was reached, per core assumption: each evidence item, check
     or stipulation the rules relied on, or, for an assumption not covered, what was found for it
     and not relied on; with who proposed each and what the expert did. Read from the verdict's
@@ -458,7 +458,7 @@ def verdict_trace(conn: sqlite3.Connection, st: ClaimState) -> str:
     checks = {c.id: c for c in st.checks}
     stips = {s.id: s for s in pipeline.load_stipulations(conn)}
     assumptions = {a.id: a for a in st.assumptions}
-    marks = repair_marks(conn)
+    marks = marks or {}
 
     def row(label: str, cited: str, relied: bool = True) -> str:
         if cited in evidence:
@@ -831,11 +831,14 @@ def _claim_block(
     case: explain.Case | None,
     left_out: int = 0,
     challenged: frozenset[str] = frozenset(),
+    marks: dict[str, str] | None = None,
 ) -> str:
     """One claim. `case` is None in a scoped bundle's report that holds only the records the
     verdicts cite, so the parts that read the whole phone are left out; `left_out` counts the
     claim's evidence items that bundle left out; `challenged` holds the items the challenge step
-    stored in the audit the report shows (challenge.found_items)."""
+    stored in the audit the report shows (challenge.found_items); `marks` the lines for the
+    assumptions that audit took from the testability step (repair_marks)."""
+    marks = marks or {}
     claim, decision = st.claim, st.decision
     out = [f'<div class="claim" id="{e(claim.id)}">']
     out.append(
@@ -881,7 +884,6 @@ def _claim_block(
             "<table><thead><tr><th>Assumption</th><th>Kind</th><th>Core</th>"
             "<th>Tier at creation</th><th>Covered (computed by the rules)</th></tr></thead>"
         )
-        marks = repair_marks(conn)
         for a in st.assumptions:
             cv = coverage.get(a.id)
             cov = (
@@ -944,7 +946,7 @@ def _claim_block(
         out.append("</table>")
     elif decision is not None:
         out.append("<p class='muted'>No relevant evidence items were stored for this claim.</p>")
-    out.append(verdict_trace(conn, st))
+    out.append(verdict_trace(conn, st, marks))
     if hidden:
         out.append(f"<p class='muted'>{hidden} retrieved records were labeled irrelevant.</p>")
     if left_out:
@@ -1234,10 +1236,11 @@ def render_report(
     case = explain.load(conn) if whole else None
     manifest = (run or {}).get("manifest", {})
     challenged = challenge.found_items(conn, run)
+    marks = repair_marks(testability.used_repairs(conn, run))
     for st in states:
         named = len(set((manifest.get(st.claim.id) or {}).get("evidence", [])))
         left = max(named - len(st.evidence), 0) if scope is not None and st.decision else 0
-        parts.append(_claim_block(conn, st, case, left, challenged))
+        parts.append(_claim_block(conn, st, case, left, challenged, marks))
 
     parts.append(searches_section(states, srcs))
     timeline = timeline or timeline_html.Settings()
@@ -1466,7 +1469,15 @@ def stand_in_banner(run: dict) -> str:
             "<div class='banner'><strong>Demo case: synthetic data, scripted labels.</strong> "
             "Every name and message here is fictional. So the demo opens in seconds, no model "
             "ran: the evidence labels and most expert decisions were scripted from the signed "
-            "answer key. The checks, quote checks and verdict rules are Mabillon's own. On a real "
+            "answer key."
+            + (
+                " The testability agent's answers were scripted from the demo's own claims, "
+                "and so was the examiner who accepted one of its proposals. Its work here is "
+                "not evidence of how often the agent is right."
+                if "testability" in (run.get("components") or {})
+                else ""
+            )
+            + " The checks, quote checks and verdict rules are Mabillon's own. On a real "
             "case the local model labels the evidence and the expert decides every item.</div>"
         )
     return (

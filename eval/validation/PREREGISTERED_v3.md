@@ -42,6 +42,7 @@ From `git log --first-parent d478705..validation-v1-run3`. At the time of writin
 | #164 | Coverage plan steps 1 to 3. Meaning comes from the claim's one quote. Every quoted message needs a sender. A call's parties come from the claim, on the app it names. `stated_sender` is wider. A phone's own accounts are found. Counts may be written in words. Review fixes in the same PR only narrow what code fills. | time check 1.0.2, filler version "2" (recorded as `code_version`) |
 | #165 | This file, and scorer 1.3.0 (tiers and measure 7 below). The checks' text match reads curly quotes as straight and runs of spaces as one; quote verification stays exact. | scorer 1.3.0; sender 1.0.2, weekday 1.0.2, time 1.0.3 |
 | #162 | Challenge step on by default. The run driver turns it off for run 3 (see Agents). | none in this run |
+| #163 | Testability agent: claim-only check, the examiner's accept card, and the scripted demo. Still off by default; run 3 does not use it. | none in this run |
 | #169 | Coverage steps after Arsh's rulings R1, R4, R5, R6 and fills a to g: native calls by number, one number written two ways as one party, open no-contact ranges to the extraction's edges, writers from "instructed ..., writing", part-day ranges, call counts, and code-made assumptions marked "Filled from the claim's wording." The run driver links a defined number's accounts (R4) and turns the challenge step off. | filler; count 1.1.0; run driver |
 
 Any PR that merges after #165 and before the tag is added to this table before approval.

@@ -122,6 +122,70 @@ def decide_evidence(
     return d
 
 
+# ---------------------------------------------------------------- agent proposals
+
+
+def decide_repair(
+    conn: sqlite3.Connection,
+    claim_id: str,
+    run_id: str,
+    attempt: int,
+    accept: bool,
+    actor: str,
+    reason: str,
+    clock: Clock | None = None,
+) -> None:
+    """Accept or reject one testability proposal (core/audit/testability.py) from the claim
+    page's card: the try the step proposed for this claim in that audit. Only an acceptance puts
+    its assumptions in the case, and only from the next audit on, when the step gives the same
+    assumptions again for the same claim text. Nothing is used before then, and the claim's text
+    is never changed. One proposal at a time; there is no accept-all."""
+    import json
+
+    from core.audit import testability
+
+    _expert(actor)
+    if not reason.strip():
+        raise ReviewError("say why, in one sentence")
+    entry = None
+    for (payload_json,) in conn.execute(
+        "SELECT payload_json FROM audit_log WHERE action = ? ORDER BY seq",
+        (testability.REPAIR_ACTION,),
+    ):
+        p = json.loads(payload_json)
+        if (
+            p.get("run_id") == run_id
+            and p.get("claim_id") == claim_id
+            and p.get("attempt") == attempt
+            and p.get("outcome") == "proposed"
+        ):
+            entry = p
+    if entry is None:
+        raise ReviewError(f"no agent proposal for {claim_id} in that audit")
+    if entry.get("claim_sha256") != testability.claim_sha256(conn, claim_id):
+        raise ReviewError(
+            f"{claim_id} changed after the agent proposed this; the next audit proposes again"
+        )
+    with conn:
+        audit_log.append(
+            conn,
+            _now(clock),
+            actor,
+            testability.ACCEPT_ACTION if accept else testability.REJECT_ACTION,
+            {
+                "claim_id": claim_id,
+                "claim_sha256": entry["claim_sha256"],
+                "testability": entry.get("testability"),
+                "run_id": run_id,
+                "attempt": attempt,
+                "model_call_id": entry.get("model_call_id"),
+                "assumption_ids": sorted(entry.get("assumption_ids") or []),
+                "reason": reason.strip(),
+                "via": "claim page",
+            },
+        )
+
+
 # ---------------------------------------------------------------- verdicts
 
 
