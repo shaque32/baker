@@ -4,8 +4,9 @@
   coverage check only: these claims are now development data, so no accuracy figure from run 3
   is quoted outside the validation write-up. It lists every change since run 2 and states the
   prediction from the replay of run 2's recorded answers with the checks run on run 2's case
-  database: 35 of 106 tested, only 7 code-checked, so run 3 at main e99c0a8 is predicted
-  "insufficient coverage".
+  database: 35 of 106 tested, 18 code-checked with this PR's text fold (7 at main e99c0a8).
+  That is under the minimum, so the plan holds run 3 until a replay at the tag predicts at least
+  30 code-checked.
   Its minimum is 30 code-checked claims. It adds a fidelity audit before scoring and a
   determinism repeat on the A10G. `eval/validation/aws_run.sh` now clones the tag
   `validation-v1-run3`. The scorer (`eval/validation/score_hickman.py`, 1.3.0) adds two

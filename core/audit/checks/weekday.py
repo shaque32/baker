@@ -13,6 +13,7 @@ from datetime import date, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from core.audit.checks._common import (
+    TEXT_MATCH,
     CaseData,
     channel_ok,
     involves_all,
@@ -33,7 +34,7 @@ _QUALIFIED = re.compile(
 
 class WeekdayCheck(TemplateCheck):
     name = "weekday"
-    version = "1.0.1"
+    version = "1.0.2"  # 1.0.2: curly quotes and runs of spaces fold (TEXT_MATCH)
 
     def evaluate(self, assumption_id: str, p: AssumptionParams, data: CaseData) -> CheckResult:
         if p.window is None or not p.quoted_text:
@@ -43,7 +44,7 @@ class WeekdayCheck(TemplateCheck):
         party_ids = [data.account_ids(x.keys) for x in found]
         text = p.quoted_text
         searched = (
-            f"Messages containing {text!r} verbatim in {', '.join(sources)}; the weekday it "
+            f"Messages containing {text!r} ({TEXT_MATCH}) in {', '.join(sources)}; the weekday it "
             f'names, counted forward from the send date on the phone, against "{p.window.raw}".'
         )
         notes = [n for x in found for n in x.notes]

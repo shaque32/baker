@@ -38,7 +38,7 @@ From `git log --first-parent d478705..validation-v1-run3`. At the time of writin
 | #155 | A claim on Native Messages says it holds iMessages and SMS together. | report 0.19.0 |
 | #160 | Filler guards: the addressee is never the sender; a message's words come only from quotation marks; coverage is judged after the shape check; no one-way or call counts. | filler |
 | #164 | Coverage plan steps 1 to 3. Meaning comes from the claim's one quote. Every quoted message needs a sender. A call's parties come from the claim, on the app it names. `stated_sender` is wider. A phone's own accounts are found. Counts may be written in words. Review fixes in the same PR only narrow what code fills. | time check 1.0.2, filler version "2" (recorded as `code_version`) |
-| #165 | This file, and scorer 1.3.0 (tiers and measure 7 below). | scorer 1.3.0 |
+| #165 | This file, and scorer 1.3.0 (tiers and measure 7 below). The checks' text match reads curly quotes as straight and runs of spaces as one; quote verification stays exact. | scorer 1.3.0; sender 1.0.2, weekday 1.0.2, time 1.0.3 |
 
 Any PR that merges after #165 and before the tag is added to this table before approval.
 
@@ -52,18 +52,24 @@ run 2's recorded answers on these claims. The answer key was not used to design 
 null result and run 2's insufficient coverage (9 of 106) are reported with run 3.
 
 ## Prediction (stated before run 3)
-- Replaying run 2's recorded answers through main e99c0a8, and running the deterministic checks
-  on run 2's case database, gives **35 of 106** tested: **7 code-checked**, **24 check
-  unsettled** and **4 expert only**. This is development data, in the project's
-  `run-v2/replay/REPLAY.md`. The replay is re-run at the tag, and this line is updated before
-  approval if anything merged since then changes it.
-- At e99c0a8 that is below the minimum of 30 code-checked claims, so run 3 at that commit is
-  predicted "insufficient coverage". Most unsettled checks found no message because the claim's
-  straight apostrophe does not match the export's typographic one, or because the other party
-  is tied to no account.
+- Replaying run 2's recorded answers through this PR's code, and running the deterministic
+  checks on run 2's case database, gives **35 of 106** tested: **18 code-checked**, **13 check
+  unsettled** and **4 expert only**. At main e99c0a8, before the text fold, it was 7, 24 and 4.
+  This is development data, in the project's `run-v2/replay/REPLAY.md`. The replay is re-run at
+  the tag, and this line is updated before approval if anything merged since then changes it.
+- What still leaves checks unsettled: the other party is tied to no account, a display name
+  two accounts share, records only outside the claimed window, one number stored as two
+  accounts, and quoted words that are not on the phone. The last is the right outcome.
 - If the A10G repeats run 2's answers byte for byte, run 3's k and tiers equal the replay's.
   Any other result is reported with its cause: either the A10G did not repeat its answers, or
   the replay missed a code path.
+
+## When run 3 runs
+Run 3 runs only when the replay at the tag predicts at least 30 code-checked claims. Until then
+the remaining coverage steps (native calls recorded under app "unknown", message direction,
+call and one-way counts) come first, each replayed the same way. Each step that changes code is
+added to the change table above. This file's Status line changes to approved only after that
+replay, with its numbers in the prediction above.
 
 ## Tested, in three tiers
 A claim is tested as in v2: it has a first-pass verdict and is not marked "Not tested". The
@@ -119,7 +125,7 @@ result (14B on GPU, 105 of 105) does not carry over.
 
 ## Frozen version
 The git tag `validation-v1-run3` goes on the main commit that carries this file and the
-changes above. Arsh makes the tag in GitHub Releases. The machine is as in v2: AWS g5.xlarge
+changes above. Arsh names the commit, and Baker Product publishes the tag on it. The machine is as in v2: AWS g5.xlarge
 (A10G), or g6.xlarge as the fallback. `run.json` records which.
 
 ## Disclosures that travel with every run 3 number
