@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from core.audit.checks._common import (
     CALL_CHANNEL,
+    TEXT_MATCH,
     CaseData,
     Row,
     calls_for_accounts,
@@ -36,7 +37,8 @@ class TimeCheck(TemplateCheck):
     that app only; "call" alone admits every app's calls."""
 
     name = "time"
-    version = "1.0.2"  # 1.0.2: a call is on the app named beside "call"
+    # 1.0.2: a call is on the app named beside "call". 1.0.3: the text match folds (TEXT_MATCH).
+    version = "1.0.3"
 
     def evaluate(self, assumption_id: str, p: AssumptionParams, data: CaseData) -> CheckResult:
         if p.window is None:
@@ -47,7 +49,7 @@ class TimeCheck(TemplateCheck):
         by_text = bool(p.quoted_text)
         if by_text:
             rows = messages_with_text(data, p.quoted_text or "")
-            what = f"messages containing {p.quoted_text!r} verbatim"
+            what = f"messages containing {p.quoted_text!r} ({TEXT_MATCH})"
         else:
             rows = calls_for_accounts(data, set().union(*party_ids))
             what = "calls"
