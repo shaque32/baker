@@ -56,6 +56,12 @@ from core.review import device_names
 from core.review import withheld as withheld_rationales
 from core.review.withheld import Withheld
 
+
+def _count(n: int, noun: str) -> str:
+    """'1 record', '2 records': a count with its noun in the right number."""
+    return f"{n} {noun}{'' if n == 1 else 's'}"
+
+
 SUPPORTED_AI = "Supported (AI-reviewed)"
 SUPPORTED_EXPERT = "Supported (expert-confirmed)"
 AWAITING_EXPERT = "Support found: do you agree?"
@@ -324,7 +330,7 @@ class ClaimState:
             out.append(
                 (
                     5 if more else 1,
-                    f"{self.ai_accepted} supporting item(s) the AI reviewer accepted. "
+                    f"{_count(self.ai_accepted, 'supporting item')} the AI reviewer accepted. "
                     "Accept the ones you agree with and dismiss the rest.",
                 )
             )
@@ -332,20 +338,20 @@ class ClaimState:
             out.append(
                 (
                     5 if more else 2,
-                    f"Mabillon found {self.open_support} record(s) it reads as support. Check each "
-                    "one: accept the ones you agree with and dismiss the rest.",
+                    f"Mabillon found {_count(self.open_support, 'record')} it reads as support. "
+                    "Check each one: accept the ones you agree with and dismiss the rest.",
                 )
             )
         against = self.open_against + (0 if self.contradiction_found else self.open_contradicts)
         if against:
-            out.append((3, f"{against} contradicting or complicating item(s) to review."))
+            out.append((3, f"{_count(against, 'contradicting or complicating item')} to review."))
         if self.decided_after_run:
             out.append((4, "You decided evidence after the last verdict run. Re-run verdicts."))
         if self.ai_dismissed:
             out.append(
                 (
                     5,
-                    f"{self.ai_dismissed} supporting item(s) the AI reviewer dismissed. "
+                    f"{_count(self.ai_dismissed, 'supporting item')} the AI reviewer dismissed. "
                     "You have not reviewed them.",
                 )
             )
