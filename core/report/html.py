@@ -171,7 +171,8 @@ from core.review.withheld import summary as withheld_summary
 # renders as before.
 # 0.22.0: visual only, in the review screen's dashboard look: the title in IBM Plex Sans (no
 # serif), cool grays, white cards with 8px corners, notices as a gray note instead of a yellow
-# box, unproven in gray and waiting on the expert in navy. No wording, fact or section changed.
+# box, unproven in gray and waiting on the expert in navy. The expert's next steps count in the
+# right number ("1 record", "2 records", not "record(s)"). No fact or section changed.
 REPORT_VERSION = "0.22.0"
 
 

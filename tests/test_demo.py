@@ -455,7 +455,7 @@ def test_the_claim_page_leads_with_what_has_to_be_true_and_shows_records_in_conv
     working = c06.split("<details class='working'>", 1)[1].split("</details>", 1)[0]
     assert "Covered (computed by the rules)" in working and "What was searched" in working
     c05 = app.handle(Request("GET", "/claim", {"id": "C05"}, dict(HOST))).body.decode()
-    assert "<div class='thread mini'>" in c05 and "UNDER REVIEW" in c05
+    assert "<div class='thread mini'>" in c05 and "This record</span>" in c05
     assert "Records found (derived)" in c05 and "Quoted:" in c05
     for page in (c05, c06):  # Baker's own words in the checklist
         truths = page.split("<section class='truths'>", 1)[1].split("</section>", 1)[0]
@@ -497,7 +497,7 @@ def test_tabs_come_in_three_groups_and_the_case_page_leads_with_the_audit(root):
     assert home.index("<div class='casestatus'>") < home.index("<details class='custody'>")
     custody = home.split("<details class='custody'>", 1)[1].split("</details>", 1)[0]
     assert "<h2>Sources</h2>" in custody and "SHA-256" in custody
-    assert "claim(s) need you</a>" in home
+    assert "needs you</a>" in home or "need you</a>" in home
     from core.review.status import claim_states
 
     status = home.split("<div class='casestatus'>", 1)[1].split("</div>", 1)[0]

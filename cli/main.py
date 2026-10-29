@@ -651,7 +651,18 @@ def cmd_bug_report(a: argparse.Namespace) -> int:
 
 
 def cmd_demo(a: argparse.Namespace) -> int:
-    from eval import demo
+    try:
+        from eval import demo
+    except ModuleNotFoundError as err:  # the demo draws its synthetic PDFs with reportlab
+        if err.name != "reportlab":
+            raise
+        print(
+            "The demo needs reportlab to draw its synthetic documents. Install it with "
+            "\"pip install -e '.[synthetic]'\" (the installers include it), then run "
+            "mabillon demo again.",
+            file=sys.stderr,
+        )
+        return 2
 
     root = demo.demo_root()
     if a.from_case is not None:

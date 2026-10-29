@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import html
 import json
+import re
 import sqlite3
 from collections import Counter
 from collections.abc import Iterable
@@ -23,6 +24,7 @@ from urllib.parse import quote as urlquote
 from core import pipeline
 from core.audit.context import ContextLine, build_context
 from core.contracts import (
+    CheckOutcome,
     ClaimType,
     EvidenceItem,
     EvidenceStatus,
@@ -263,9 +265,9 @@ def run_banner(conn: sqlite3.Connection, page: Page, back: str) -> str:
     if (later or stips) and not run.get("partial") and not page.busy:
         what = []
         if later:
-            what.append(f"{later} evidence decision(s)")
+            what.append(f"{later} evidence decision{'' if later == 1 else 's'}")
         if stips:
-            what.append(f"{stips} stipulation change(s)")
+            what.append(f"{stips} stipulation change{'' if stips == 1 else 's'}")
         out.append(
             "<div class='banner'><strong>Verdicts are out of date.</strong> You made "
             f"{' and '.join(what)} after the last verdict run. Re-run the verdicts to apply them. "
@@ -358,7 +360,8 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
         waiting = sum(1 for st in states if needs_you(st))
         out.append(
             "<div class='casestatus'>"
-            f"<a class='button primary' href='/claims'>{waiting} claim(s) need you</a>"
+            f"<a class='button primary' href='/claims'>{waiting} "
+            f"{'claim needs' if waiting == 1 else 'claims need'} you</a>"
             "<ul class='findings'>"
             + "".join(
                 f"<li><span class='verdict {e(css)}'>{e(label)}</span> {n}</li>"
@@ -557,7 +560,7 @@ def _ledger(states: list[ClaimState], current: str | None = None, compact: bool 
             f"<li{' class=on' if st.claim.id == current else ''}>"
             "<div class='row'><div class='head'><span class='meta'>"
             f"<a href='{e(link('/claim', id=st.claim.id))}'>{e(st.name)}</a> · {e(st.where)} · "
-            f"{e(st.claim.claim_type.value)}</span>"
+            f"{e(st.claim.claim_type.value.replace('_', ' '))}</span>"
             f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span></div>"
             f"<div class='text'>{q(st.claim.text)}</div>"
             + (f"<div class='needs'>{e(needs)}</div>" if needs else "")
@@ -616,7 +619,7 @@ def _claim_row(st: ClaimState, group: str) -> str:
     return (
         "<li><div class='row'><div class='head'><span class='meta'>"
         f"<a href='{e(link('/claim', id=st.claim.id))}'>{e(st.name)}</a> · {e(st.where)} · "
-        f"{e(st.claim.claim_type.value)}</span>"
+        f"{e(st.claim.claim_type.value.replace('_', ' '))}</span>"
         f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span></div>"
         f"<div class='text'>{q(st.claim.text)}</div>{note}</div></li>"
     )
@@ -860,7 +863,7 @@ def _msg(ln: ContextLine) -> str:
     """One message as a chat bubble; the record under review is highlighted."""
     shown = f" (shown as {q(ln.shown_as)})" if ln.shown_as else ""
     side = " out" if ln.direction == "outgoing" else ""
-    tag = "<span class='cited'>UNDER REVIEW</span>" if ln.is_target else ""
+    tag = "<span class='cited'>This record</span>" if ln.is_target else ""
     return (
         f"<div class='msg{side}{' target' if ln.is_target else ''}'>"
         f"<div class='who2'>{q(ln.sender)}{shown} · {e(ln.direction)}</div>"
@@ -1055,14 +1058,14 @@ def _groups(st: ClaimState) -> list[tuple[str, list[EvidenceItem]]]:
         "Supporting, not reviewed": [],
         "Contradicting or complicating": [],
         "Dismissed by the AI reviewer, not reviewed by you": [],
-        "Decided by an expert": [],
+        "Evidence the expert already decided": [],
     }
     for x in st.evidence:
         if x.stance == Stance.IRRELEVANT:
             continue
         by_expert = st.last_reviewer.get(x.id) == "expert" and x.status != EvidenceStatus.OPEN
         if by_expert:
-            groups["Decided by an expert"].append(x)
+            groups["Evidence the expert already decided"].append(x)
         elif st.contradiction_found and st.to_confirm(x):
             groups[CONTRADICTION_FOUND].append(x)
         elif x.stance in AGAINST:
@@ -1107,10 +1110,11 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
     c, d = st.claim, st.decision
     out = [
         "<div class='claim-head'>"
-        f"<h1>{e(st.name)} <span class='muted'>· {e(st.where)} · {e(c.claim_type.value)} · "
-        f"claim {e(c.status.value)}"
+        f"<h1>{e(st.name)} <span class='muted'>· {e(st.where)} · "
+        f"{e(c.claim_type.value.replace('_', ' '))} · wording {e(c.status.value)}"
         f"{' by the expert' if c.model_run_id is None else ' (model-proposed)'}</span></h1>"
-        f"<span class='mono muted'>Claim id {e(c.id)}</span></div>",
+        + (f"<span class='mono muted'>Claim id {e(c.id)}</span>" if st.name != c.id else "")
+        + "</div>",
         f"<blockquote class='claimtext'>{q(c.text)}</blockquote>",
     ]
     if st.paragraph_text:
@@ -1146,14 +1150,19 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
             f"{_flag_verdict_form(conn, page, st, back)}"
         )
     out.append("</div></div>")
-    out.append(_must_be_true(st))
+    out.append(_must_be_true(conn, st))
     out.append(_alternatives(conn, st))
 
     out.append("<h2 id='evidence'>Evidence</h2>")
     claim_flags = F.active_flags(conn, c.id)
     flagged = {f.evidence_id for f in claim_flags if f.evidence_id}
     if st.unlabeled:
-        out.append(f"<p class='muted'>{e(st.unlabeled)}</p>")
+        # The run's own note (pipeline.unlabeled_reason) stays in the report; here, plainly.
+        out.append(
+            "<p class='muted'>A check on the phone records failed on a core part of this claim, "
+            "so the verdict rules contradict it whatever the evidence says. The records that "
+            "check cites are the evidence; the model was not asked to label any.</p>"
+        )
     if st.untested:
         out.append(f"<p><strong>{e(st.not_tested or '')}</strong></p>")
         if "matches no person" in (st.not_tested or ""):
@@ -1176,7 +1185,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
         for x in sorted(group, key=lambda x: order.get(x.assumption_id, len(order))):
             a = by_assumption.get(x.assumption_id)
             if a is not None and a.id != shown_on:
-                out.append(f"<p class='muted'>Assumption: {e(a.text)}</p>")
+                out.append(f"<p class='muted'>Assumption: {plain_ids(conn, a.text)}</p>")
                 shown_on = a.id
             out.append(
                 evidence_card(
@@ -1214,8 +1223,54 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
 
 AROUND = 1  # messages either side of each evidence record on the claim page
 
+# Case ids inside an assumption's text, and the count words the filler writes as operators
+_CASE_ID = re.compile(r"(?:acct:[^\s'\"(),]+)|(?:person:[\w.:-]+)|(?:\bdev:[\w.-]+)")
+_COUNT_OP = re.compile(r"\b(eq|ge|le|gt|lt) (?=\d)")
+_COUNT_WORD = {
+    "eq": "exactly",
+    "ge": "at least",
+    "le": "at most",
+    "gt": "more than",
+    "lt": "fewer than",
+}
 
-def _must_be_true(st: ClaimState) -> str:
+
+def plain_ids(conn: sqlite3.Connection, text: str) -> str:
+    """An assumption's text as HTML with the case's ids shown by name: a person by the name the
+    case gives them, a phone by its label, an account as its app and identifier (one account
+    held on two phones once). The id stays in the hover title. Display only; the stored text
+    and the report keep the ids."""
+
+    def account(aid: str) -> str:
+        row = conn.execute("SELECT app, identifier FROM accounts WHERE id = ?", (aid,)).fetchone()
+        if row:
+            return f"{row[0]} {row[1]}"
+        parts = aid.split(":", 3)
+        return f"{parts[2]} {parts[3]}" if len(parts) == 4 else aid
+
+    def name(token: str) -> str:
+        if token.startswith("acct:"):
+            labels = list(dict.fromkeys(account("acct:" + a) for a in token[5:].split("/acct:")))
+            return " / ".join(labels)
+        sql = (
+            "SELECT name FROM persons WHERE id = ?"
+            if token.startswith("person:")
+            else "SELECT label FROM devices WHERE id = ?"
+        )
+        row = conn.execute(sql, (token,)).fetchone()
+        return row[0] if row else token
+
+    out, at = [], 0
+    for m in _CASE_ID.finditer(text):
+        out.append(e(_COUNT_OP.sub(lambda c: _COUNT_WORD[c[1]] + " ", text[at : m.start()])))
+        shown = name(m[0])
+        out.append(f"<span title='{e(m[0])}'>{e(shown)}</span>" if shown != m[0] else e(m[0]))
+        at = m.end()
+    out.append(e(_COUNT_OP.sub(lambda c: _COUNT_WORD[c[1]] + " ", text[at:])))
+    return "".join(out)
+
+
+def _must_be_true(conn: sqlite3.Connection, st: ClaimState) -> str:
     """What has to be true for the claim, one line per assumption, core ones first, with what the
     verdict rules found. Read from the stored coverage; it decides nothing."""
     if not st.assumptions:
@@ -1223,6 +1278,7 @@ def _must_be_true(st: ClaimState) -> str:
     d = st.decision
     coverage = {cv.assumption_id: cv for cv in (d.coverage if d else ())}
     current = d is not None and not st.stale
+    failed = {r.assumption_id for r in st.checks if r.outcome is CheckOutcome.FAIL}
     rows = []
     for a in sorted(st.assumptions, key=lambda a: not a.is_core):
         cv = coverage.get(a.id) if current else None
@@ -1231,11 +1287,14 @@ def _must_be_true(st: ClaimState) -> str:
         elif cv.covered:
             tier = cv.tier.value if cv.tier else "?"
             mark, said_ = "ok", f"Records found ({tier.replace('_', ' ')})"
+        elif a.id in failed:
+            mark, said_ = "con", "Contradicted by the records"
         else:
             mark, said_ = "no", "Not established"
         role = "core" if a.is_core else "context, not needed for the verdict"
         rows.append(
-            f"<li class='{mark}'><span class='mark'></span><div><div>{e(a.text)}</div>"
+            f"<li class='{mark}'><span class='mark'></span>"
+            f"<div><div>{plain_ids(conn, a.text)}</div>"
             f"<div class='meta'>{e(GAP_TOPICS[a.kind])} · {e(role)}</div></div>"
             f"<span class='said'>{e(said_)}</span></li>"
         )
@@ -1980,7 +2039,8 @@ def setup_page(
             out.append(
                 f"<tr id='claim-{e(cid)}'><td>{n}</td><td><a href='{e(link('/claim', id=cid))}'>"
                 f"{e(claim_name(conn, cid, c.paragraph_id))}</a></td>"
-                f"<td>{e(where)}</td><td>{e(c.claim_type.value)}</td><td>{e(c.status.value)}"
+                f"<td>{e(where)}</td><td>{e(c.claim_type.value.replace('_', ' '))}</td>"
+                f"<td>{e(c.status.value)}"
                 f"{'' if c.model_run_id is None else ' (model)'}</td><td>{q(c.text)}</td>"
                 f"<td>{_claim_buttons(page, cid, c.status.value, c.text, audit_busy)}</td></tr>"
             )

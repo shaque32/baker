@@ -169,7 +169,7 @@ def _screen_claims(app: App, conn: sqlite3.Connection) -> dict[str, dict]:
         card = main.split("<div class='card' id='verdict'>", 1)[1]
         pill = re.search(r"<span class='verdict ([^']*)'>(.*?)</span>", card)
         out[cid] = {
-            "status": re.search(r"· claim ([a-z_]+)", main).group(1),
+            "status": re.search(r"· wording ([a-z_]+)", main).group(1),
             "label": html.unescape(pill.group(2)),
             "css": pill.group(1),
             "evidence": [

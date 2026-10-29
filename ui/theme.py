@@ -182,6 +182,7 @@ td input[type=text], td input[type=password] { min-width: 0; width: 100%; max-wi
   height: 32px; font-size: 13.5px; }
 td button { min-height: 30px; padding: 0 10px; font-size: 13px; margin: 2px 6px 2px 0; }
 .ctx td { font-size: 13px; }
+td { overflow-wrap: anywhere; }
 td.when { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--muted);
   font-size: 12.5px; }
 td:has(> form.inline):not(:has(input[type=text])) { white-space: nowrap; }
@@ -395,6 +396,8 @@ section.group { margin: 36px 0; }
 .checklist .meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
 .checklist .said { font: 500 12px var(--sans); color: var(--muted); white-space: nowrap; }
 .checklist li.ok .said { color: var(--sup); }
+.checklist li.con .mark { background: var(--con); border-color: var(--con); }
+.checklist li.con .said { color: var(--con); }
 .thread.mini { padding: 10px; margin: 6px 0; gap: 6px; background: var(--side); }
 .item .quoted { font-size: 13px; margin: 4px 0; }
 details.more summary, details.working summary { font-size: 13px; color: var(--muted); }
@@ -445,9 +448,8 @@ blockquote.claimtext { font: 500 20px/1.45 var(--sans); letter-spacing: -0.005em
   font-variant-numeric: tabular-nums; }
 .msg.target { border: 1.5px solid var(--accent); box-shadow: 0 0 0 3px var(--ring); }
 .msg .cited { display: inline-block; font: 600 11px var(--sans); letter-spacing: 0;
-  text-transform: lowercase; color: var(--accent); background: var(--accent-bg);
-  border-radius: 4px; padding: 1px 6px; margin-right: 6px; }
-.msg .cited::first-letter { text-transform: uppercase; }
+  color: var(--accent); background: var(--accent-bg); border-radius: 4px; padding: 1px 6px;
+  margin-right: 6px; }
 
 /* identities: a person, and each link with its records for and against */
 .lede { font-size: 14px; line-height: 1.6; }

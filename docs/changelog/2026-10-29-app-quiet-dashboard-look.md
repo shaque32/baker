@@ -15,10 +15,23 @@
   stay in the report so a black-and-white print still tells verdicts apart. No route, form
   field, audit log entry, fact or report section changed; the settings form gained only the
   two help lines and a title.
+  From a skeptic-checked demo audit (2026-10-29), screen wording only: a claim page names the
+  people, phones and accounts in its assumptions (Daniel Petrov, Telegram 5551234) with the
+  id on hover, and count operators as words ("exactly 13"); an assumption a failed check
+  contradicts says "Contradicted by the records", not "Not established"; a claim the rules
+  contradict on a failed check says so in one sentence instead of the run's engine note and
+  CLI hint (the report keeps the run's note); the header says "wording accepted by the
+  expert" so it no longer reads as the verdict; "Evidence the expert already decided" replaces
+  "Decided by an expert"; the highlighted message reads "This record"; claim types without
+  underscores; counts in the right number on the screen and in the report's next steps.
+  `mabillon demo` without reportlab now says how to install it instead of a traceback.
 - Where: PR #167
 - Verified: make check (lint, tests, eval); demo case screens rendered in Chromium at 1440x900
   and 390x844 before and after (preview images shared with Arsh, who approved the look).
-- Open: dark mode not done; the pilot installers in the R2 bucket predate this and #149
+- Open: from the same audit, left for Arsh or later: one record shown once per assumption it
+  supports (grouping it changes what one Accept does); the per-file "Not tested" lines (the
+  claim page and report must show the same notices, tests/test_tested_formats.py); ids and
+  raw format names in the report (report wording); verdict names (Arsh's wording). Dark mode not done; the pilot installers in the R2 bucket predate this and #149
   and need a fresh upload after merge.
 - Affects: none (look only; no capability, privacy, performance or claim change)
 - Status doc: pending: in the review-screen paragraph, replace "The top tabs (#110) come in
