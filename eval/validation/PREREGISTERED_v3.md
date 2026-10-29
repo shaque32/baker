@@ -21,7 +21,7 @@ changes after run 3's results are seen.
   not this file.
 
 ## Every change since run 2's code
-From `git log --first-parent d478705..validation-v1-run3`. At the time of writing, main is e99c0a8.
+From `git log --first-parent d478705..validation-v1-run3`. At the time of writing, main is 00ccc9d.
 
 | PR | What changed | Versions |
 | --- | --- | --- |
@@ -37,6 +37,7 @@ From `git log --first-parent d478705..validation-v1-run3`. At the time of writin
 | #153 | The filler reads call lengths with halves, two parts and bounds. | filler |
 | #154 | Challenge step behind a flag, off by default; simulated experts (eval only). | none in this run |
 | #155 | A claim on Native Messages says it holds iMessages and SMS together. | report 0.19.0 |
+| #159 | Testability agent behind a flag, off by default, eval only. Run 3 does not use it. | none in this run |
 | #160 | Filler guards: the addressee is never the sender; a message's words come only from quotation marks; coverage is judged after the shape check; no one-way or call counts. | filler |
 | #164 | Coverage plan steps 1 to 3. Meaning comes from the claim's one quote. Every quoted message needs a sender. A call's parties come from the claim, on the app it names. `stated_sender` is wider. A phone's own accounts are found. Counts may be written in words. Review fixes in the same PR only narrow what code fills. | time check 1.0.2, filler version "2" (recorded as `code_version`) |
 | #165 | This file, and scorer 1.3.0 (tiers and measure 7 below). The checks' text match reads curly quotes as straight and runs of spaces as one; quote verification stays exact. | scorer 1.3.0; sender 1.0.2, weekday 1.0.2, time 1.0.3 |
@@ -121,7 +122,7 @@ result (14B on GPU, 105 of 105) does not carry over.
   later PR makes it default-on before the tag, the run driver must turn it off explicitly in
   that PR or this one, and `run.json`'s configuration records it. Run 3 then changes only the
   filler fixes above and stays comparable to run 2.
-- The testability agent (#159), if merged, is off by default and eval only. Run 3 does not use
+- The testability agent (#159) is off by default and eval only. Run 3 does not use
   it, and its repairs never count toward tested claims or the minimum.
 
 ## Frozen version
