@@ -1462,6 +1462,9 @@ def test_one_value_counting_calls_and_messages_is_no_count():
         "On March 12, 2026, on dev:item1, PETROV and REYES had two Telegram calls about narcotics.",
         "On March 12, 2026, PETROV and REYES had two Telegram calls to arrange the meeting.",
         "On March 12, 2026, PETROV and REYES discussed the shipment in two Telegram calls.",
+        # a number after "about" is no clock time (Codex on #169)
+        "On March 12, 2026, on dev:item1, PETROV and REYES had two Telegram calls about three"
+        " kilograms of narcotics.",
     ],
 )
 def test_count_op_refuses_calls_on_a_subject(text):

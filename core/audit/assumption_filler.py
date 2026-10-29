@@ -1390,13 +1390,26 @@ _CALL_LENGTH_RE = re.compile(
 # A kind of call the call log does not record: "video calls", "audio calls" (Codex on #169).
 _CALL_KIND_RE = re.compile(r"\b(?:video|videos|audio|voice)\b", re.I)
 # "two Telegram calls about narcotics": a call log keeps no subject, so the count check would
-# count every call (Codex on #169). "at about 9 p.m." is a time, not a topic.
+# count every call (Codex on #169). "about" is a topic unless a clock time follows it ("at
+# about 9 p.m."): `_on_a_subject`.
 _CALL_TOPIC_RE = re.compile(
-    r"\b(?:about(?!\s+(?:\d|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
-    r"noon|midnight)\b)|regarding|concerning|re:|discuss\w*|related\s+to|relating\s+to|"
+    r"\b(?:regarding|concerning|re:|discuss\w*|related\s+to|relating\s+to|"
     r"in\s+connection\s+with|on\s+the\s+subject|to\s+arrange|to\s+plan|to\s+set\s+up)",
     re.IGNORECASE,
 )
+
+
+def _on_a_subject(words: str) -> bool:
+    """True when the words give the calls a subject: a topic word, or "about" with no clock
+    time right after it ("about three kilograms" is a subject; Codex on #169)."""
+    if _CALL_TOPIC_RE.search(words):
+        return True
+    return any(
+        _ANY_TIME_RE.match(words, a.end()) is None
+        for a in re.finditer(r"\babout\s+", words, re.IGNORECASE)
+    )
+
+
 # A call one side placed: "two outgoing calls", "made four calls", "called X" (Codex on #169).
 _ONE_WAY_CALL_RE = re.compile(
     r"\b(?:placed|placing|made|making|dialed|dialled|dialing|dialling|answered|missed|"
@@ -1491,7 +1504,7 @@ def count_op(claim: str, value: int) -> Literal["eq", "ge", "le"]:
     if re.fullmatch(r"calls?", m.group("noun"), re.I) and _CALL_KIND_RE.search(words):
         # "two Telegram video calls": a call log keeps no video or audio kind (Codex on #169)
         raise Reject("the claim counts one kind of call; the count check counts every call")
-    if re.fullmatch(r"calls?", m.group("noun"), re.I) and _CALL_TOPIC_RE.search(words):
+    if re.fullmatch(r"calls?", m.group("noun"), re.I) and _on_a_subject(words):
         raise Reject("the claim counts calls on a subject; a call log keeps no subject")
     if _ONE_WAY_RE.search(words) or _ONE_WAY_AFTER_RE.match(claim[m.end() :]):
         raise Reject(
