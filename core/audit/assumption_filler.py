@@ -1158,6 +1158,25 @@ _OPEN_RANGE_RE = re.compile(r"\b(?:never|before|prior\s+to|until|after|since)\b"
 # An open range's edges come from the data, so the source spans it by construction; the
 # words say what that leaves unseen.
 _EDGE_NOTE = "; the edges are the extraction's own, so contact outside its records is not seen"
+
+
+def _open_range_wording(bare: str) -> bool:
+    """True when a no-contact claim's range is open ("never", "before May 1, 2023") and code
+    runs it to the extraction's edge (R5). A range with both ends stated ("from March 10
+    until March 12"), a time of day, a written time zone or "first" or "last" contact keeps
+    the model's range, read as before (Codex on #169)."""
+    if not _OPEN_RANGE_RE.search(bare) or time_mentions(bare) or _NUM_DATE_RE.search(bare):
+        return False
+    if any(_has_word(bare, w) for w in ("first", "last", "earliest", "latest")):
+        return False
+    dates = list(_DATE_RE.finditer(bare))
+    if len(dates) > 1 or (dates and dates[0].group(5)):
+        return False
+    if unread_zone(bare) is not None:
+        return False
+    return not (dates and _DATE_ZONE_RE.match(bare[dates[0].end() :]))
+
+
 _PART_DAY_RE = re.compile(
     rf"\b(?P<dir>after|before)\s+{_clock_re('t')}{_zone_opt('z')}", re.IGNORECASE
 )
@@ -1223,12 +1242,20 @@ _APPROX = ("about", "approximately", "around", "roughly", "nearly", "almost", "s
 # that costs coverage, never a wrong verdict.
 _ONE_WAY_RE = re.compile(
     r"\b(?:sent|sends|sending|received|receives|receiving|wrote|writes|written|texted|"
-    r"messaged|forwarded|got|went|came)\b",
+    r"messaged|forwarded|got|went|came|incoming|outgoing|inbound|outbound)\b",
+    re.IGNORECASE,
+)
+# A call one side placed: "two outgoing calls", "made four calls", "called X" (Codex on #169).
+_ONE_WAY_CALL_RE = re.compile(
+    r"\b(?:placed|placing|made|making|dialed|dialled|dialing|dialling|answered|missed|"
+    r"returned|called|calling|rang)\b",
     re.IGNORECASE,
 )
 # "sent and received 13 messages": both directions together, as the check counts (Codex on #160).
 _BOTH_WAYS_RE = re.compile(
-    r"\b(?:sent|received)\s+(?:and|or|and/or)\s+(?:received|sent)\b", re.IGNORECASE
+    r"\b(?:sent|received|incoming|outgoing|inbound|outbound)\s+(?:and|or|and/or)\s+"
+    r"(?:received|sent|incoming|outgoing|inbound|outbound)\b",
+    re.IGNORECASE,
 )
 # "13 messages to X" or "from X", but not "to and from X" or a range of dates or times ("from
 # March 10 to March 31", "from 9 a.m. to noon").
@@ -1302,6 +1329,8 @@ def count_op(claim: str, value: int) -> Literal["eq", "ge", "le"]:
     if re.fullmatch(r"times", m.group("noun"), re.I):
         raise Reject("the claim counts times; the count check counts messages or calls")
     words = _BOTH_WAYS_RE.sub(" ", _unquoted(_flat(claim)))
+    if re.fullmatch(r"calls?", m.group("noun"), re.I) and _ONE_WAY_CALL_RE.search(words):
+        raise Reject("the claim counts calls one side made; the count check counts both directions")
     if _ONE_WAY_RE.search(words) or _ONE_WAY_AFTER_RE.match(claim[m.end() :]):
         raise Reject(
             "the claim counts messages one side sent or received; the count check counts both"
@@ -2149,14 +2178,7 @@ class LocalAssumptionFiller:
             # phone but no party; code reads both from the claim (validation ruling R5).
             device_ids = self._absence_parties(claim, params, device_ids)
             code_made = True
-        bare = _unquoted(_nfc(claim.text))
-        if (
-            tpl.id == "no_contact"
-            and _OPEN_RANGE_RE.search(bare)
-            and not time_mentions(bare)
-            # "first made contact on March 12" keeps the reading check_window gives it
-            and not any(_has_word(bare, w) for w in ("first", "last", "earliest", "latest"))
-        ):
+        if tpl.id == "no_contact" and _open_range_wording(_unquoted(_nfc(claim.text))):
             # "before May 1, 2023", "never": the range runs to the extraction's own edge, which
             # code reads from the records, never the model (validation ruling R5).
             params["window"] = self._open_range(claim, device_ids)
@@ -2808,7 +2830,7 @@ class LocalAssumptionFiller:
         for m in _UNREAD_PARTY_RE.finditer(bare):
             if not any(s <= m.start() and m.end() <= e for s, e in spans):
                 raise Reject(f"{m.group(0)!r} is not one account the call could be with")
-        if app == NATIVE_CALL_APP and (people or len(written) != len(numbers)):
+        if app == NATIVE_CALL_APP and (people or any(phone_digits(w) is None for w in written)):
             # The call log by number only: a name or a display name with no app is refused (R1).
             raise Reject("a call on no named app is read only with a phone number as its party")
         accounts: set[str] = set()

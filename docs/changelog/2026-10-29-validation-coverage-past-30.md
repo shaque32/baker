@@ -29,14 +29,18 @@
     or "until X" and states no other time is checked from the extraction's first dated
     record, or to its last, on the phone's own sources; the assumption text names both
     edges. When the model gave no parties, they come from the claim: the phone's exact
-    owner and the one person or number it names. The range's words say its edges are the
+    owner and the one person or number it names. Only a range open at one end takes this
+    path: both ends stated, a time of day or a written time zone keep the model's range, read
+    as before. The range's words say its edges are the
     extraction's own, so contact outside its records is not seen. "Not found" still states
     what was searched and the source's coverage.
   - Fill f, call counts: with 'call' among its channels the count check (1.1.0) counts calls
     on the app named. A call count never fails, since a call log keeps calls that did not
     connect and can hold one call twice; two counted calls 60 seconds apart or less, or a
     counted call with no length or a zero length, make it inconclusive. A counted call's
-    deletion flag is named, as for messages. The filler reads "N calls" and, when the model gave only one call's time,
+    deletion flag is named, as for messages. A count of calls one side placed ("outgoing",
+    "made", "missed", "called") is refused, since the check counts both directions; so is
+    a count of "incoming" or "outgoing" messages. The filler reads "N calls" and, when the model gave only one call's time,
     adds the count from it, with the phone's side as its exact owner.
   - Fill g: an assumption code filled, in whole or in part, ends its text with "Filled from
     the claim's wording.", which the expert reads before accepting it. `eval/run_pipeline.py`

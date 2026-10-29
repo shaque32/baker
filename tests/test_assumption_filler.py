@@ -1064,6 +1064,7 @@ def test_date_mentions():
         # Calls are counted too (validation fill f); the filler puts 'call' in the channels.
         ("at most 13 calls", 13, "le"),
         ("the TARGET PHONE had four Viber calls with (919) 888-7386", 4, "eq"),
+        ("Item 1 holds 13 messages with REYES, incoming and outgoing", 13, "eq"),
     ],
 )
 def test_count_op(claim_text, value, op):
@@ -1090,6 +1091,12 @@ def test_count_op(claim_text, value, op):
         # Refused on purpose: a word of one direction anywhere in the claim refuses its
         # count, even about something else. That costs coverage, never a wrong verdict.
         "After PETROV sent the photo, the two exchanged 13 messages",
+        "Item 1 holds 13 incoming messages from REYES",
+        # Calls one side placed: the count check counts both directions (Codex on #169).
+        "On March 12, 2026, dev:item1 had 13 outgoing Signal calls with (212) 555-0199",
+        "On March 12, 2026, dev:item1 made 13 calls to (212) 555-0199",
+        "PETROV placed 13 Viber calls with REYES",
+        "Item 1 shows 13 missed calls with REYES",
     ],
 )
 def test_count_op_refuses(claim_text):
@@ -1709,6 +1716,16 @@ def test_a_call_on_no_app_to_a_number_is_searched_in_the_call_log(call_log):
     assert t.channels == ("call", "unknown") and t.device_ids == ("dev:item1",)
 
 
+def test_a_number_written_as_the_call_logs_own_identifier_is_one_number(call_log):
+    # "+12125550199" is both a number and the log's identifier; read once, it is one party
+    # (Codex on #169).
+    text = "On March 12, 2026, at approximately 9:00 p.m., dev:item1 had a call with +12125550199."
+    prop = {"template_id": "record_time", "channels": ["call"]}
+    assumptions, filler = build_text(call_log, text, ClaimType.COMMUNICATION, [prop])
+    (t,) = [a.params for a in assumptions if a.template_id == "record_time"]
+    assert t.account_ids == ("acct:t:log1", "acct:t:log2"), filler.drops
+
+
 @pytest.mark.parametrize(
     "text",
     [
@@ -1756,6 +1773,7 @@ def test_a_count_of_calls_is_read_and_made_from_a_calls_time(call_log):
     assert stated_call_count("PETROV called REYES 13 times") is None
     assert stated_call_count("four calls and then two calls") is None
     assert stated_call_count("about five calls") is None
+    assert stated_call_count("dev:item1 had two outgoing calls with (212) 555-0199.") is None
     text = "On March 12, 2026, dev:item1 had two calls with (212) 555-0199."
     prop = {"template_id": "record_time", "channels": ["call"]}
     assumptions, filler = build_text(call_log, text, ClaimType.COUNT, [prop])
@@ -1814,6 +1832,46 @@ def test_before_a_date_runs_from_the_first_record_whatever_the_model_said(conn):
         "2026-03-11T23:59:59"
     )
     assert w.start_utc < D(2026, 3, 1, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    ("text", "open_"),
+    [
+        ("dev:item1 never communicated with X.", True),
+        ("no contact before March 12, 2026", True),
+        ("no contact since March 12, 2026", True),
+        # Both ends stated, a written zone, a time of day: the model's range, read as before
+        # (Codex on #169).
+        ("no contact from March 10, 2026 until March 12, 2026", False),
+        ("no contact between March 10 and 12, 2026, nor after", False),
+        ("no contact before March 12, 2026 UTC", False),
+        ("no contact before March 12, 2026 (ET)", False),
+        ("no contact before 3/12/2026", False),
+        ("no contact after 9:00 p.m. on March 12, 2026", False),
+        ("they first made contact after March 12, 2026", False),
+        ("no contact on March 12, 2026", False),
+    ],
+)
+def test_only_an_open_range_runs_to_the_extractions_edge(text, open_):
+    from core.audit.assumption_filler import _open_range_wording
+
+    assert _open_range_wording(text) is open_
+
+
+def test_a_range_with_both_ends_stated_keeps_its_own_ends(conn):
+    window = {"as_written": "from March 10, 2026 until March 12, 2026",
+              "start": "2026-03-10T00:00", "end": "2026-03-13T00:00", "zone": "phone"}  # fmt: skip
+    assumptions, filler = _no_contact(
+        conn,
+        "There was no contact between dev:item1 and (212) 555-0144 from March 10, 2026 until"
+        " March 12, 2026.",
+        phones=["dev:item1"],
+        window=window,
+    )
+    (a,) = [a for a in assumptions if a.template_id == "no_contact"]
+    assert a.params.window is not None, filler.drops
+    assert "extraction" not in a.params.window.raw
+    assert a.params.window.start_utc.astimezone(ZoneInfo("America/New_York")).day == 10
 
 
 @pytest.mark.parametrize(
