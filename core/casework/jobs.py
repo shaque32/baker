@@ -214,6 +214,7 @@ def audit_job(
     ai_review: bool = False,
     label_all: bool = False,
     cloud_opt_in: bool = False,
+    challenge: bool = True,
 ) -> Callable[[Job], None]:
     """cloud_opt_in: the case's stance labels come from the cloud model. The local model check
     still gates the start: assumption filling (and the AI reviewer) run on the local model."""
@@ -235,6 +236,7 @@ def audit_job(
                     return
             comps = components_for(conn, ai_review)
             comps.label_settled = label_all
+            comps.challenge = challenge
             job.components = comps
 
             def progress(done: int, total: int, d: object) -> None:

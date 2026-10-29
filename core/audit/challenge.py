@@ -1,5 +1,6 @@
 """The challenge step: code looks for what undercuts a claim close to SUPPORTED. No model of its
-own, off by default (`Components.challenge`, `mabillon audit --challenge`).
+own. On by default (`Components.challenge`); `mabillon audit --no-challenge` and the review
+screen's "Skip the challenge step" turn it off for one run, and the run's configuration says so.
 
 For a claim whose every core assumption has a passing check or a "supports" label, the step
 runs the counter-searches code already has for that claim (core/hypotheses/explain.py: someone
@@ -30,6 +31,7 @@ second pass after an expert's review (eval/simulated_expert.py) asks the same se
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
@@ -51,6 +53,7 @@ VERSION = "1.0.0"
 QUERY_ACTION = "challenge.query"
 DOUBT = frozenset({Stance.CONTRADICTS, Stance.COMPLICATES})
 LABELABLE = frozenset({"message", "call", "contact"})  # records the stance labeler reads
+FOUND_MARK = "found by the challenge step"
 NO_SEARCH = (
     "No counter-search in core/hypotheses/explain.py applies to this claim's assumptions, so "
     "nothing was searched."
@@ -123,3 +126,22 @@ def candidate(conn: sqlite3.Connection, record_id: str) -> EvidenceCandidate | N
 def keep(item: EvidenceItem) -> bool:
     """Only doubt is stored from this step."""
     return item.stance in DOUBT
+
+
+def found_items(conn: sqlite3.Connection, run: dict | None) -> frozenset[str]:
+    """The evidence ids the step stored in the audit whose evidence `run` shows (a verdict re-run
+    shows its source audit's), read from that audit's own entries. Another audit's finds are not
+    marked: evidence ids come from content, so a later audit's retrieval can store the same item.
+    The report and the review screen read this once per page and mark each one as found by the
+    challenge step."""
+    if run is None:
+        return frozenset()
+    source = run.get("evidence_from_run", run["run_id"])
+    found: set[str] = set()
+    for (payload,) in conn.execute(
+        "SELECT payload_json FROM audit_log WHERE action = ?", (QUERY_ACTION,)
+    ):
+        entry = json.loads(payload)
+        if entry.get("run_id") == source:
+            found.update(entry.get("stored", ()))
+    return frozenset(found)
