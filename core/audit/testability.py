@@ -464,11 +464,16 @@ def check_answer(
             reasons.append(f"item {i}: wrong shape: {e.error_count()} errors")
         except Reject as e:
             reasons.append(f"item {i}: {e}")
+    # The filler's own steps after its items, in its order (LocalAssumptionFiller.__call__):
+    # the template shape check, code's sender, time range and meaning fills, then the gate.
     before = len(filler.drops)
-    kept = filler._add_record_time(claim, para, kept, allowed)
+    kept = filler._shaped(claim, kept, None)
+    kept = filler._shaped(claim, filler._add_sender(claim, kept, allowed), None)
+    kept = filler._shaped(claim, filler._add_record_time(claim, para, kept, allowed), None)
+    kept = filler._add_meaning(claim, kept, allowed, None)
     reasons += [d.reason for d in filler.drops[before:]]
     del filler.drops[before:]  # this try's refusals are the step's, not the first pass's
-    gap = coverage_gap(claim, kept)
+    gap = coverage_gap(claim, kept, frozenset(filler._names()))
     if gap:
         return "refused", [*reasons, gap], Named(), []
     out: dict[str, Assumption] = {}

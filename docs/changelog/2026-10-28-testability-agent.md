@@ -10,6 +10,9 @@
     case (read-only queries, fixed by code). The answer has the filler's shape and goes through
     the filler's own checks (the same functions): every value verbatim in the claim or
     paragraph, names, phones and accounts resolved by code, stated time ranges, `coverage_gap`.
+    After its items, a try gets the filler's later steps in the filler's own order (after #160
+    and #164): the template shape check, code's sender, time range and meaning fills, then
+    `coverage_gap` with the case's names.
   - Code then checks the try against the claim's signed sheet rows: every person, phone, time
     window, account, handle, app, template and quoted words it names must be one the sheet
     names for the claim. Anything else rejects the try. A claim the sheet gives no core row is
@@ -52,7 +55,9 @@
   - No rule, prompt, pin, contract, schema, gold or scorer file changes, and nothing under
     `eval/validation/` or the `validation-v1-run2` tag. Off by default, so no default run changes.
 - Where: PR #159 (branch `claude/project-thread-6i2msb-testability`)
-- Verified: new `tests/test_testability.py`, 34 tests on synthetic case01 with scripted models:
+- Verified: new `tests/test_testability.py`, 35 tests on synthetic case01 with scripted models:
+  - a try that names no assumption for C05 gets code's sender and time range, exactly as the
+    first pass does with the same answer (fails with the order before #160 and #164);
   - the draft prompt (and a signed copy, once there is one) carries every placeholder, and the
     answer has no field for the claim;
   - lookups find the phone and number the claim writes, whole words only;
