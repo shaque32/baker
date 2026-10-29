@@ -269,6 +269,25 @@ def test_a_contact_entry_keeps_the_one_account_it_names(conn):
         conn.execute("DELETE FROM accounts WHERE id = 'acct:item1:Phone:2125550122'")
 
 
+def test_a_contact_entry_written_another_way_still_finds_its_one_account(conn):
+    # No account is written "(212) 555-0122"; the one that holds the number is it (Codex on
+    # #169). Two that hold it are two candidates, and the exact one is not known.
+    filler = LocalAssumptionFiller(FakeModel("{}"), conn, template=DRAFT)
+    acc = _Account(as_written="(212) 555-0122", app="Phone")
+    assert filler._accounts(acc, ["dev:item1"], "", one_number=False) == set(MARC_0122)
+    conn.execute(
+        "INSERT INTO accounts (id, source_id, locator, device_id, app, identifier)"
+        " VALUES ('acct:item1:Phone:12125550122', 'item1', 'x', 'dev:item1', 'Phone',"
+        " '12125550122')"
+    )
+    try:
+        filler = LocalAssumptionFiller(FakeModel("{}"), conn, template=DRAFT)
+        with pytest.raises(Reject):
+            filler._accounts(acc, ["dev:item1"], "", one_number=False)
+    finally:
+        conn.execute("DELETE FROM accounts WHERE id = 'acct:item1:Phone:12125550122'")
+
+
 def test_parameters_match_the_check_tests(conn):
     (c01,) = build(conn, "C01")[0]
     assert c01.params.device_ids == ("dev:item1",)
@@ -1661,6 +1680,13 @@ def test_the_one_a_message_was_received_from_sent_it(conn):
         " PETROV.",  # a writer verb before the quote names another writer
         'On March 12, 2026, REYES deleted the Telegram message "move it tonight" from WhatsApp'
         " after receiving it from 7001001.",  # not right after the quote
+        # the words before say whose message it is (Codex on #169)
+        'On March 12, 2026, REYES kept PETROV\'s Telegram message "move it tonight" after'
+        " receiving it from 7001001.",
+        'On March 12, 2026, REYES kept a Telegram message from PETROV, "move it tonight", after'
+        " receiving it from 7001001.",
+        'On March 12, 2026, REYES kept the Telegram message written by PETROV, "move it'
+        ' tonight", after receiving it from 7001001.',
     ):
         assert filler.received_from(_x1(text), q) is None, text
 
@@ -1937,6 +1963,27 @@ def test_never_runs_to_the_extractions_own_edges(conn):
     assert p.window.start_utc.isoformat()[:19] == lo[:19]
     assert p.window.end_utc.isoformat()[:19] == hi[:19]
     assert a.text.endswith("Filled from the claim's wording.")
+
+
+def test_an_embedded_copy_sets_no_extraction_edge(conn):
+    # The absence check's coverage leaves embedded copies out, so the edges must too: an
+    # older copy inside a message would stretch the window past what the source spans (Codex
+    # on #169).
+    tid = conn.execute("SELECT thread_id FROM messages WHERE source_id = 'item1'").fetchone()[0]
+    conn.execute(
+        "INSERT INTO messages (id, source_id, locator, thread_id, direction, ts_utc, ts_raw,"
+        " body) VALUES ('msg:copy', 'item1', 'x/Embedded[0]', ?, 'unknown',"
+        " '2020-01-02T00:00:00Z', '2020-01-02', 'old words')",
+        (tid,),
+    )
+    try:
+        assumptions, _ = _no_contact(
+            conn, "dev:item1 never communicated with (212) 555-0144.", phones=["dev:item1"]
+        )
+    finally:
+        conn.execute("DELETE FROM messages WHERE id = 'msg:copy'")
+    (a,) = [a for a in assumptions if a.template_id == "no_contact"]
+    assert a.params.window is not None and a.params.window.start_utc.year > 2020
 
 
 def test_before_a_date_runs_from_the_first_record_whatever_the_model_said(conn):

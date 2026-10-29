@@ -125,6 +125,7 @@ from core.audit._local_model import LocalModel, open_run
 from core.audit.assumptions import TEMPLATES, Proposal, Template, local_window, parse_params
 from core.audit.checks._common import (
     CALL_CHANNEL,
+    NOT_COPY,
     Account,
     CaseData,
     Key,
@@ -1954,6 +1955,12 @@ _RECEIVED_FROM_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Words before the quote that say whose message it is ("PETROV's message", "a message from
+# PETROV", "written by PETROV"): then receiving it from another names no sender (Codex on #169).
+_ATTRIBUTED_BEFORE_RE = re.compile(
+    r"['’]s\b|\b(?:from|by|written|sent|authored|composed)\b", re.IGNORECASE
+)
+
 
 def _last_end(pattern: re.Pattern[str], text: str) -> int:
     """Where the last match of the pattern in the text ends, or 0 when there is none."""
@@ -2697,6 +2704,9 @@ class LocalAssumptionFiller:
         m = _RECEIVED_FROM_RE.match(after)
         if m is None or _PASSED_ON_RE.search(before) or _QUOTING_RE.search(before):
             return None
+        if _ATTRIBUTED_BEFORE_RE.search(_unquoted(before)):
+            # "kept PETROV's Telegram message": the one it came from need not have written it
+            return None
         who = m.group("who").strip()
         person = self._person_named(who)
         if person is not None:
@@ -2886,7 +2896,8 @@ class LocalAssumptionFiller:
         888-7386", "+19198887386", "19198887386@s.whatsapp.net"), on a phone app, the phone's
         call log, or an app the claim names: a number alone never picks the app. They are one
         party: the same digits, only the formatting differs (ruling R6). Not for a contact
-        entry (`one_number` False), which names the one account that holds the number."""
+        entry (`one_number` False), which names the one account written exactly so, or else the
+        only one that holds the number."""
         app = acc.app.strip().casefold()
         ident = re.sub(r"(?i)^(user\s*id|id|number|no\.)\s*", "", acc.as_written.strip())
         want = key(acc.app, ident)
@@ -2899,11 +2910,17 @@ class LocalAssumptionFiller:
         hits = {a.id for a in mine if a.key == want}
         number = phone_digits(ident)
         named = app == NATIVE_CALL_APP or self._app_named(claim_text, acc.app)
-        if number is not None and named and one_number:
+        if number is not None and named:
             # One number written two ways on one app ("+19195677484" and "9195677484", from two
             # databases) is one party: the same digits, only the formatting differs (ruling
             # R6). Display names, addresses and user ids are never read as numbers.
-            hits |= {a.id for a in mine if _same_number(number, a)}
+            same = {a.id for a in mine if _same_number(number, a)}
+            if one_number:
+                hits |= same
+            elif not hits and len(same) == 1:
+                # A contact entry written another way ("(212) 555-0122") still names the one
+                # account that holds the number, when no account is written exactly so.
+                hits = same
         if not hits:
             raise Reject(f"{acc.as_written!r} on {acc.app} matches no account in the case")
         return hits
@@ -3203,8 +3220,11 @@ class LocalAssumptionFiller:
         times = [
             t
             for (t,) in self.conn.execute(
-                "SELECT ts_utc FROM messages WHERE source_id IN (SELECT value FROM json_each(?))"
-                " AND ts_utc IS NOT NULL UNION ALL SELECT ts_utc FROM calls WHERE source_id IN"
+                # Embedded copies are left out, as the absence check's coverage leaves them out
+                # (Codex on #169).
+                "SELECT ts_utc FROM messages m WHERE source_id IN"  # noqa: S608  (constant SQL; values are bound)
+                f" (SELECT value FROM json_each(?)) AND ts_utc IS NOT NULL AND {NOT_COPY}"
+                " UNION ALL SELECT ts_utc FROM calls WHERE source_id IN"
                 " (SELECT value FROM json_each(?)) AND ts_utc IS NOT NULL",
                 (json.dumps(sources), json.dumps(sources)),
             )

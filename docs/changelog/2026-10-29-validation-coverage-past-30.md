@@ -32,7 +32,8 @@
     owner and the one person or number it names. Only a range open at one end takes this
     path: both ends stated, a time of day, a written time zone or an offset ("two days
     after") keep the model's range, read as before. "On or before X" takes in all of X, and a
-    date with no year takes the paragraph's year. Code fills the sides only for plain
+    date with no year takes the paragraph's year. The edges leave out embedded copies of
+    messages, as the absence check's coverage does. Code fills the sides only for plain
     contact wording on the case's own apps: a claim about calls only or messages only
     ("never called", "never texted", "never spoke with"), a possessive or "a friend of"
     party, or an app the case does not hold is refused, since the absence check reads every
@@ -62,7 +63,8 @@
   code and running the checks on run 2's case database (development data, project files
   only): 33 code-checked, 14 check unsettled, 3 expert only (50 tested), up from 18, 13 and
   4 at #165. (One claim that names an app the case does not hold was check unsettled before
-  the last review round and is now untested: code no longer searches every app for it.) One of the 33 is code-checked by its call's time while its count of calls stays
+  the last review round and is now untested: code no longer searches every app for it.)
+  One of the 33 is code-checked by its call's time while its count of calls stays
   inconclusive (calls stored twice). 11 of the 33 have a failed core check; whether those are
   right is unscored until run 3's measure 7. `make check`: see the PR.
 - Open: the absence check compares stored time strings, so a window edge that falls exactly
