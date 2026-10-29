@@ -12,13 +12,15 @@
     does not name written after "sent" stay refused. A message to the other side with no
     recorded sender may be one of the counted side's, so "exactly" and "at most" then stay
     inconclusive unless the known ones already exceed the claim. A denial ("has not sent",
-    "never sent") is not the plain form. A number written another way finds its account (R6).
+    "never sent") is not the plain form, and the other side must be written as the recipient
+    (right after "sent", or after "to", "to the Kik account"), not in another clause
+    ("while REYES was abroad"). A number written another way finds its account (R6).
   - R3, `each_way`: "exchanged ... messages" passes only when each side sent at least one
     counted message in the window. With no stated number it is "at least two"; a stated number
     is still compared. One side's silence never fails the claim: the check says "Not finding a
     message each way does not mean one was never sent" and stays inconclusive. A claim that
     states a count the model left out ("exchanged exactly three", "dozens of") is refused, not
-    read as "at least two".
+    read as "at least two"; so is a denial ("never exchanged", "had not exchanged").
   - When the two sides share an account (through a confirmed identity link), a count by
     direction is inconclusive: which side sent a message from that account is not known.
   - A count of calls takes neither field: a call log's direction is not read here, so the

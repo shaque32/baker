@@ -2442,6 +2442,10 @@ def test_a_count_of_what_one_side_sent_counts_only_that_side(conn, text, sender)
         # a denial is not the plain form (Codex on #172)
         "On March 21, 2026, on dev:item1, PETROV has not sent REYES exactly one Telegram message.",
         "On March 21, 2026, on dev:item1, PETROV never sent REYES exactly one Telegram message.",
+        # the other side named in another clause is not the recipient (Codex on #172)
+        "On March 21, 2026, on dev:item1, PETROV sent exactly one Telegram message while REYES"
+        " was abroad.",
+        "On March 21, 2026, on dev:item1, PETROV sent exactly one Telegram message about REYES.",
     ],
 )
 def test_a_one_way_count_is_refused_unless_the_words_name_each_side(conn, text):
@@ -2483,6 +2487,10 @@ def test_a_stated_count_of_exchanged_messages_is_still_compared(conn):
     [
         "On March 21, 2026, PETROV and REYES exchanged Telegram messages.",  # no phone written
         "On March 21, 2026, PETROV and REYES exchanged and sent Telegram messages.",  # one-way word
+        # a denial is no exchange (Codex on #172)
+        "On March 21, 2026, on dev:item1, PETROV and REYES never exchanged Telegram messages.",
+        "On March 21, 2026, on dev:item1, PETROV and REYES had not exchanged Telegram messages.",
+        "On March 21, 2026, on dev:item1, PETROV and REYES haven't exchanged Telegram messages.",
     ],
 )
 def test_exchanged_without_one_phone_or_with_a_one_way_word_makes_no_count(conn, text):
@@ -2518,3 +2526,19 @@ def test_the_other_side_written_as_its_number_another_way_is_found(conn):
     (a,) = [a for a in assumptions if a.template_id == "message_count"]
     assert a.params.account_ids == tuple(MARC_0122), filler.drops
     assert a.params.sent_by == (PETROV,)
+
+
+def test_the_recipient_may_be_written_as_the_app_account_after_to(conn):
+    # "sent ... to the Telegram account 7001002": app and "account" words before the
+    # identifier still write the recipient (the "another clause" guard, Codex on #172).
+    text = (
+        "On March 21, 2026, on dev:item1, PETROV sent exactly one Telegram message to the"
+        " Telegram account 7001002."
+    )
+    prop = P("message_count", count={"value": 1}, people=["PETROV"], phones=["dev:item1"],
+             channels=["Telegram"], accounts=[{"as_written": "7001002", "app": "Telegram"}],
+             window=MAR21)  # fmt: skip
+    assumptions, filler = build_text(conn, text, ClaimType.COUNT, [prop])
+    (a,) = [a for a in assumptions if a.template_id == "message_count"]
+    assert a.params.sent_by == (PETROV,), filler.drops
+    assert CHECKS["count"].run(a, conn).outcome is CheckOutcome.PASS

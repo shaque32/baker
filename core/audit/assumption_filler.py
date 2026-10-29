@@ -1464,10 +1464,17 @@ _PASSIVE_SENT_RE = re.compile(
     r"\b(?:was|were|been|being|be|is|are|get|got)\s+sent\b|\bsent\s+by\b", re.I
 )
 # "exchanged Signal messages", "exchanged more than forty iMessages": messages each way (R3).
+# A denial anywhere in the claim: "never exchanged", "had not sent" (Codex on #172).
+_DENIAL_RE = re.compile(r"\b(?:not|never|no|neither|nor|without|cannot)\b|n['’]t\b", re.I)
 _EXCHANGED_RE = re.compile(
     r"\bexchanged\b(?P<between>[^.;,]*?)\b(?:messages?|texts?|imessages?|chats?|emails?|dms?)\b",
     re.I,
 )
+
+
+# Where a recipient is written: right after "sent" ("sent REYES three messages") or after
+# "to" ("sent three messages to REYES").
+_RECIPIENT_BEFORE_RE = re.compile(r"(?:^|\bto)\s*(?:the\s+)?$", re.IGNORECASE)
 
 
 def sent_form(claim: str, value: int) -> tuple[str, str] | None:
@@ -1476,7 +1483,7 @@ def sent_form(claim: str, value: int) -> tuple[str, str] | None:
     words = _unquoted(_flat(_nfc(claim)))
     if [w.casefold() for w in _ONE_WAY_RE.findall(words)] != ["sent"]:
         return None
-    if _PASSIVE_SENT_RE.search(words) or _BOTH_WAYS_RE.search(words):
+    if _PASSIVE_SENT_RE.search(words) or _BOTH_WAYS_RE.search(words) or _DENIAL_RE.search(words):
         return None
     m = _SENT_FORM_RE.match(words.strip())
     if m is None:
@@ -1495,7 +1502,9 @@ def exchanged(claim: str) -> str | None:
     ("exchanged Signal messages" gives " Signal ") and writes no one-way word; else None."""
     words = _unquoted(_flat(_nfc(claim)))
     m = _EXCHANGED_RE.search(words)
-    return m.group("between") if m and not _ONE_WAY_RE.search(words) else None
+    if m is None or _ONE_WAY_RE.search(words) or _DENIAL_RE.search(words):
+        return None
+    return m.group("between")
 
 
 def states_a_count(claim: str) -> bool:
@@ -2512,14 +2521,26 @@ class LocalAssumptionFiller:
                     out.append(("accounts", *m.span(), False))
             return out
 
-        def sides(text: str) -> set[str]:
+        def sides(text: str, recipient: bool = False) -> set[str]:
             found = mentions(text)
             for _, start, end, by_phone in found:
                 if (not by_phone and _NOT_A_PARTY_AFTER.match(text, end)) or (
                     _NOT_A_PARTY_BEFORE.search(text[:start])
                 ):
                     raise Reject(f"{text[start:end]!r} may not be a side of the count")
+                if recipient and not _RECIPIENT_BEFORE_RE.search(_strip_kind(text[:start])):
+                    # "sent ... while REYES was abroad": REYES is not whom it went to
+                    raise Reject(f"{text[start:end]!r} is not written as the recipient")
             return {side for side, *_ in found}
+
+        apps = {w for app in self.channels() for w in _words(app).split()}
+
+        def _strip_kind(before: str) -> str:
+            """The words before a mention without a trailing kind ("the Kik account <id>")."""
+            words = before.rstrip().split(" ")
+            while words and _words(words[-1]).strip() in apps | {"account", "user", "number"}:
+                words.pop()
+            return " ".join(words) + " "
 
         sender = sides(subject)
         if len(sender) != 1 or (sender == {"accounts"} and (handles or not accounts)):
@@ -2527,11 +2548,12 @@ class LocalAssumptionFiller:
         left = list(subject)
         for _, start, end, _ in mentions(subject):
             left[start:end] = " " * (end - start)
-        apps = {w for app in self.channels() for w in _words(app).split()}
         if not set(_words("".join(left)).split()) <= {"the", "s", "account", "user"} | apps:
             # "PETROV and his lawyer sent ...", "then PETROV sent ...": not one plain sender
             raise Reject("the claim's sender is written with other words")
-        other = sides(rest)
+        if joiner := _CLAUSE_JOINER_RE.search(rest):
+            raise Reject(f"the claim joins another clause after 'sent' ({joiner.group(0)!r})")
+        other = sides(rest, recipient=True)
         unnamed = [
             pid
             for pid, name in self.conn.execute("SELECT id, name FROM persons")
