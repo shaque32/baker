@@ -101,6 +101,7 @@ from core.ingest import coverage as import_coverage
 from core.ingest import forwarded, tested
 from core.llm.cloud import is_cloud_sha
 from core.report import hypotheses as alternatives_html
+from core.report import names as case_names
 from core.report import paired as paired_html
 from core.report import restore as restore_html
 from core.report import selection as selection_html
@@ -178,7 +179,13 @@ from core.review.withheld import summary as withheld_summary
 # serif), cool grays, white cards with 8px corners, notices as a gray note instead of a yellow
 # box, unproven in gray and waiting on the expert in navy. The expert's next steps count in the
 # right number ("1 record", "2 records", not "record(s)"). No fact or section changed.
-REPORT_VERSION = "0.23.0"
+# 0.25.0 (after #163's 0.23.0 and #166's 0.24.0, so the numbers never clash): 0.23.0's look,
+# and claims, checks and verdict traces name people, phones and accounts as the case names
+# them (Daniel Petrov, not person:dev:item1:owner), with the id in the hover title and a new
+# "Names used in this report" key from each name to its id. Count operators read as words
+# ("exactly 13", not "eq 13"). The Sources table shows plain labels (Cellebrite Excel export,
+# Curated report, File system) instead of stored values. Stored text, rules and log unchanged.
+REPORT_VERSION = "0.25.0"
 
 
 @dataclass(frozen=True)
@@ -452,7 +459,9 @@ def repair_marks(conn: sqlite3.Connection) -> dict[str, str]:
     }
 
 
-def verdict_trace(conn: sqlite3.Connection, st: ClaimState) -> str:
+def verdict_trace(
+    conn: sqlite3.Connection, st: ClaimState, names: case_names.Names | None = None
+) -> str:
     """How a decided claim's verdict was reached, per core assumption: each evidence item, check
     or stipulation the rules relied on, or, for an assumption not covered, what was found for it
     and not relied on; with who proposed each and what the expert did. Read from the verdict's
@@ -465,6 +474,7 @@ def verdict_trace(conn: sqlite3.Connection, st: ClaimState) -> str:
     stips = {s.id: s for s in pipeline.load_stipulations(conn)}
     assumptions = {a.id: a for a in st.assumptions}
     marks = repair_marks(conn)
+    names = names or case_names.Names(conn)
 
     def row(label: str, cited: str, relied: bool = True) -> str:
         if cited in evidence:
@@ -509,7 +519,7 @@ def verdict_trace(conn: sqlite3.Connection, st: ClaimState) -> str:
     listed: set[str] = set()
     for cv in decision.coverage:
         a = assumptions.get(cv.assumption_id)
-        label = e(a.text) if a else f"<span class='mono'>{e(cv.assumption_id)}</span>"
+        label = names.html(a.text) if a else f"<span class='mono'>{e(cv.assumption_id)}</span>"
         label += marks.get(cv.assumption_id, "")
         tier = cv.tier.value if cv.tier else "?"
         covered = f"covered at {e(tier)}" if cv.covered else "not covered"
@@ -535,7 +545,7 @@ def verdict_trace(conn: sqlite3.Connection, st: ClaimState) -> str:
         c = checks.get(cited)
         aid = x.assumption_id if x else c.assumption_id if c else None
         a = assumptions.get(aid) if aid else None
-        rows.append(row(e(a.text) if a else "Cited by the verdict", cited))
+        rows.append(row(names.html(a.text) if a else "Cited by the verdict", cited))
     out = [
         "<h4>How this verdict was reached</h4>",
         "<p class='muted'>Models propose labels; the verdict rules decide (rules "
@@ -626,6 +636,31 @@ def regeneration(conn: sqlite3.Connection, run: dict | None) -> str:
 
 
 # ---------------------------------------------------------------- sections
+
+
+# The Sources table's plain labels for the stored kind, coverage and extraction values.
+SOURCE_KIND = {
+    "ufdr": "Cellebrite UFDR",
+    "cellebrite_excel": "Cellebrite Excel export",
+    "cellebrite_pdf": "Cellebrite PDF report",
+    "cellebrite_html": "Cellebrite HTML report",
+    "axiom": "Magnet AXIOM report",
+    "raw_zip": "Raw ZIP",
+    "govdoc": "Government document",
+    "synthetic": "Synthetic",
+}
+COVERAGE = {
+    "curated_report": "Curated report (examiner-selected; cannot show absence)",
+    "full_extraction": "Full extraction",
+    "unknown": "Not known (cannot show absence)",
+}
+EXTRACTION = {
+    "logical": "Logical",
+    "file_system": "File system",
+    "physical": "Physical",
+    "not_applicable": "Not applicable",
+    "unknown": "Not known",
+}
 
 
 def sources(conn: sqlite3.Connection) -> list[tuple]:
@@ -837,12 +872,14 @@ def _claim_block(
     case: explain.Case | None,
     left_out: int = 0,
     challenged: frozenset[str] = frozenset(),
+    names: case_names.Names | None = None,
 ) -> str:
     """One claim. `case` is None in a scoped bundle's report that holds only the records the
     verdicts cite, so the parts that read the whole phone are left out; `left_out` counts the
     claim's evidence items that bundle left out; `challenged` holds the items the challenge step
     stored in the audit the report shows (challenge.found_items)."""
     claim, decision = st.claim, st.decision
+    names = names or case_names.Names(conn)
     out = [f'<div class="claim" id="{e(claim.id)}">']
     out.append(
         f"<h3>{e(st.name)} <span class='muted'>· {e(st.where)} · {e(claim.claim_type.value)} · "
@@ -872,7 +909,9 @@ def _claim_block(
     if st.edited_after_run:
         out.append("<p><strong>The claim text changed after this audit.</strong> Re-run it.</p>")
     if decision is not None:
-        out.append("<ul>" + "".join(f"<li>{e(r)}</li>" for r in decision.reasons) + "</ul>")
+        out.append(
+            "<ul>" + "".join(f"<li>{names.html(r)}</li>" for r in decision.reasons) + "</ul>"
+        )
         out.append(
             f"<p class='muted'>Rule version {e(decision.rule_version)}, decided "
             f"{e(pipeline.iso(decision.decided_at_utc))} in {e(decision.pipeline_run_id)}.</p>"
@@ -898,7 +937,7 @@ def _claim_block(
                 else "no"
             )
             out.append(
-                f"<tr><td>{e(a.text)}{marks.get(a.id, '')}</td><td>{e(a.kind.value)}</td>"
+                f"<tr><td>{names.html(a.text)}{marks.get(a.id, '')}</td><td>{e(a.kind.value)}</td>"
                 f"<td>{'yes' if a.is_core else 'no'}</td><td>{e(a.tier.value)}</td>"
                 f"<td>{e(cov)}</td></tr>"
             )
@@ -911,11 +950,11 @@ def _claim_block(
         for c in st.checks:
             out.append(
                 f"<tr><td>{e(c.check_name)} {e(c.check_version)}</td><td>{e(c.outcome.value)}"
-                f"</td><td>{e(c.searched)}</td><td>{e(c.detail)}</td></tr>"
+                f"</td><td>{names.html(c.searched)}</td><td>{names.html(c.detail)}</td></tr>"
             )
         out.append("</table>")
     if st.unlabeled:
-        out.append(f"<p class='muted'>{e(st.unlabeled)}</p>")
+        out.append(f"<p class='muted'>{names.html(st.unlabeled)}</p>")
     if st.untested:
         out.append(f"<p><strong>{e(st.not_tested or '')}</strong></p>")
         if case is not None:
@@ -950,7 +989,7 @@ def _claim_block(
         out.append("</table>")
     elif decision is not None:
         out.append("<p class='muted'>No relevant evidence items were stored for this claim.</p>")
-    out.append(verdict_trace(conn, st))
+    out.append(verdict_trace(conn, st, names))
     if hidden:
         out.append(f"<p class='muted'>{hidden} retrieved records were labeled irrelevant.</p>")
     if left_out:
@@ -970,8 +1009,11 @@ def _claim_block(
     return "".join(out)
 
 
-def searches_section(states: list[ClaimState], srcs: list[tuple]) -> str:
+def searches_section(
+    states: list[ClaimState], srcs: list[tuple], names: case_names.Names | None = None
+) -> str:
     """What each completeness (absence or count) check searched, and the sources' coverage."""
+    shown = names.html if names else e
     fidelity = {s[0]: (s[4], s[2]) for s in srcs}
     rows: list[str] = []
     for st in states:
@@ -988,9 +1030,9 @@ def searches_section(states: list[ClaimState], srcs: list[tuple]) -> str:
                 or "none named"
             )
             rows.append(
-                f"<tr><td>{e(st.name)}</td><td>{e(a.text)}</td>"
+                f"<tr><td>{e(st.name)}</td><td>{shown(a.text)}</td>"
                 f"<td>{e(c.check_name)} {e(c.check_version)}</td><td>{e(c.outcome.value)}</td>"
-                f"<td>{e(c.searched)}</td><td>{e(searched_sources)}</td></tr>"
+                f"<td>{shown(c.searched)}</td><td>{e(searched_sources)}</td></tr>"
             )
     out = [
         "<h2>Searches and coverage</h2><p>Absence and count findings rest on searches. A search "
@@ -1240,12 +1282,13 @@ def render_report(
     case = explain.load(conn) if whole else None
     manifest = (run or {}).get("manifest", {})
     challenged = challenge.found_items(conn, run)
+    names = case_names.Names(conn)
     for st in states:
         named = len(set((manifest.get(st.claim.id) or {}).get("evidence", [])))
         left = max(named - len(st.evidence), 0) if scope is not None and st.decision else 0
-        parts.append(_claim_block(conn, st, case, left, challenged))
+        parts.append(_claim_block(conn, st, case, left, challenged, names))
 
-    parts.append(searches_section(states, srcs))
+    parts.append(searches_section(states, srcs, names))
     timeline = timeline or timeline_html.Settings()
     if whole:
         parts.append(timeline_html.report_section(conn, timeline))
@@ -1258,11 +1301,13 @@ def render_report(
     )
     for s in srcs:
         parts.append(
-            f"<tr><td>{q(s[4])}<br><span class='mono'>{e(s[0])}</span></td><td>{e(s[1])}</td>"
-            f"<td>{e(s[2])}</td><td>{e(s[3])}</td><td class='mono'>{e(s[5])}</td>"
+            f"<tr><td>{q(s[4])}<br><span class='mono'>{e(s[0])}</span></td>"
+            f"<td>{e(SOURCE_KIND.get(s[1], s[1]))}</td><td>{e(COVERAGE.get(s[2], s[2]))}</td>"
+            f"<td>{e(EXTRACTION.get(s[3], s[3]))}</td><td class='mono'>{e(s[5])}</td>"
             f"<td>{e(s[6])} {e(s[7])}</td></tr>"
         )
     parts.append("</table>")
+    parts.append(names.key_table())
 
     parts.append(regeneration(conn, run))
     parts.append("<h2>Versions</h2>")

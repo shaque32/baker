@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import html
 import json
-import re
 import sqlite3
 from collections import Counter
 from collections.abc import Iterable
@@ -58,6 +57,7 @@ from core.report.html import (
 )
 from core.report.hypotheses import CSS as ALTERNATIVES_CSS
 from core.report.hypotheses import alternatives_html
+from core.report.names import plain_ids
 from core.report.paired import CSS as PAIRED_CSS
 from core.report.paired import claim_line
 from core.report.restore import CSS as RESTORE_CSS
@@ -1233,53 +1233,8 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
 
 AROUND = 1  # messages either side of each evidence record on the claim page
 
+
 # Case ids inside an assumption's text, and the count words the filler writes as operators
-_CASE_ID = re.compile(r"(?:acct:[^\s'\"(),]+)|(?:person:[\w.:-]+)|(?:\bdev:[\w.-]+)")
-_COUNT_OP = re.compile(r"\b(eq|ge|le|gt|lt) (?=\d)")
-_COUNT_WORD = {
-    "eq": "exactly",
-    "ge": "at least",
-    "le": "at most",
-    "gt": "more than",
-    "lt": "fewer than",
-}
-
-
-def plain_ids(conn: sqlite3.Connection, text: str) -> str:
-    """An assumption's text as HTML with the case's ids shown by name: a person by the name the
-    case gives them, a phone by its label, an account as its app and identifier (one account
-    held on two phones once). The id stays in the hover title. Display only; the stored text
-    and the report keep the ids."""
-
-    def account(aid: str) -> str:
-        row = conn.execute("SELECT app, identifier FROM accounts WHERE id = ?", (aid,)).fetchone()
-        if row:
-            return f"{row[0]} {row[1]}"
-        parts = aid.split(":", 3)
-        return f"{parts[2]} {parts[3]}" if len(parts) == 4 else aid
-
-    def name(token: str) -> str:
-        if token.startswith("acct:"):
-            labels = list(dict.fromkeys(account("acct:" + a) for a in token[5:].split("/acct:")))
-            return " / ".join(labels)
-        sql = (
-            "SELECT name FROM persons WHERE id = ?"
-            if token.startswith("person:")
-            else "SELECT label FROM devices WHERE id = ?"
-        )
-        row = conn.execute(sql, (token,)).fetchone()
-        return row[0] if row else token
-
-    out, at = [], 0
-    for m in _CASE_ID.finditer(text):
-        out.append(e(_COUNT_OP.sub(lambda c: _COUNT_WORD[c[1]] + " ", text[at : m.start()])))
-        shown = name(m[0])
-        out.append(f"<span title='{e(m[0])}'>{e(shown)}</span>" if shown != m[0] else e(m[0]))
-        at = m.end()
-    out.append(e(_COUNT_OP.sub(lambda c: _COUNT_WORD[c[1]] + " ", text[at:])))
-    return "".join(out)
-
-
 def _must_be_true(conn: sqlite3.Connection, st: ClaimState) -> str:
     """What has to be true for the claim, one line per assumption, core ones first, with what the
     verdict rules found. Read from the stored coverage; it decides nothing."""
