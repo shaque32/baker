@@ -900,6 +900,7 @@ def test_the_eval_reports_both_wrong_entity_rates_on_the_same_tries(capsys):
     step = SimpleNamespace(cap=5, seconds=0.0)
     t = rp.testability_summary(SimpleNamespace(testability={"C01": rep}), step, "case01", None)
     assert t["outside_the_claims_words"] == 3
+    assert t["mismatch_person_phone_or_window"] == 2  # the two outside tries naming another
     assert t["wrong_entity_rate"] == 0.5  # 1 of the 2 tries the claim-only check let through
     assert t["wrong_entity_rate_without_the_claim_check"] == 0.6  # 3 of the 5
     rp.print_testability(t)
@@ -931,10 +932,20 @@ def test_the_eval_reports_the_measures_and_gives_no_go_no_go_until_arsh_sets_the
     assert t["mismatch_person_phone_or_window"] == 0 and t["invalid_outputs"] == 0
     assert t["wrong_entity_rate"] == 0.0 and t["mismatch_other_only"] == 0
     assert t["wrong_entity_rate_without_the_claim_check"] == 0.0
-    assert t["x_percent"] is None and t["y_budget"] is None and not t["go_no_go_case"]
-    printed = capsys.readouterr().out
-    assert "testability go/no-go: none given (x_percent, y_budget not set by Arsh" in printed
-    assert "an upper bound: the signed sheet filters every try" in printed
+    assert t["x_percent"] == 40.0 and t["y_budget"] == {"calls": 2, "seconds": 120}
+    assert t["cap_set"] == 2 and t["min_testable"] == 15 and not t["go_no_go_case"]
+    assert "an upper bound: the signed sheet filters every try" in capsys.readouterr().out
+    r = rp.testability_go_no_go(
+        t, expert="simulated", false_supported=0, repeat=None, gold="signed"
+    )
+    assert r["decision"] == "none given"
+    assert r["why"] == [
+        "the prompt is a draft",
+        "this is not a held-out go/no-go case",
+        "the run's cap is 1, not Arsh's 2",
+        "the false-supported bar needs --expert rubber-stamp",
+        "the byte-identical repeat needs --repeat",
+    ]
     db = sqlite3.connect(tmp_path / "case01.db")
     try:  # the replay pass asked no model and reused the examiner's acceptance
         assert len(_log(db, testability.ACCEPT_ACTION)) == 1
