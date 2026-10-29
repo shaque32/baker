@@ -1240,6 +1240,8 @@ def stated_part_day(text: str, context: str = "") -> StatedWindow | None:
     (m,), (t,), (p,) = dates, times, parts
     if not (p.start("th") <= t.start() < p.end()) or m.group(5):
         return None
+    if _DATE_ZONE_RE.match(plain[m.end() :]) or _UNREAD_DATE_ZONE_RE.match(plain[m.end() :]):
+        return None  # "On May 7, 2023 UTC, ... after 10:00 a.m.": the day's zone (Codex on #169)
     before = plain[max(0, m.start() - 12) : m.start()]
     if any(_has_word(before, w) for w in (*OPEN_START, *OPEN_END)):
         return None
@@ -2457,6 +2459,8 @@ class LocalAssumptionFiller:
             phones = self._written_phones(_unquoted(_nfc(claim.text)))
             if quote is None or apps is None or len(phones) > 1:
                 return out
+            if not apps and _names_an_app_off_the_case(_unquoted(_nfc(claim.text))):
+                return out  # "the Signal message" on a case with no Signal (Codex on #169)
             senders = [Proposal("sender", {"quoted_text": quote}
                                 | ({"channels": apps} if apps else {})
                                 | ({"device_ids": sorted(phones)} if phones else {}))]  # fmt: skip
@@ -2961,6 +2965,9 @@ class LocalAssumptionFiller:
             if (d := phone_digits(m.group(0).strip(" .,-"))) is not None:
                 numbers.add(d)
                 spans.append(m.span())
+        if joiner := self._absence_joiner(bare):
+            # "never communicated with SMITH while REYES was abroad" (Codex on #169)
+            raise Reject(f"no contact: the claim joins another clause ({joiner!r})")
         for start, end in spans:
             # "REYES's assistant" or "a friend of REYES" is not REYES (Codex on #169).
             if _NOT_A_PARTY_AFTER.match(bare, end) or _NOT_A_PARTY_BEFORE.search(bare[:start]):
@@ -3007,6 +3014,22 @@ class LocalAssumptionFiller:
         params["person_ids"] = [owner]
         params["account_ids"] = sorted(found)
         return phones
+
+    @staticmethod
+    def _absence_joiner(bare: str) -> str | None:
+        """A word joining another clause to a no-contact claim, a name in which may not be
+        the other party. "before", "after", "since", "until" and "prior to" right before the
+        range's date are the range's own words, not a clause."""
+        if ";" in bare:
+            return ";"
+        for m in _CLAUSE_JOINER_RE.finditer(bare):
+            word = m.group(0).casefold()
+            if word in ("before", "after", "since", "until") and _DATE_RE.match(
+                bare[m.end() :].lstrip()
+            ):
+                continue
+            return m.group(0)
+        return None
 
     def _open_range(self, claim: Claim, device_ids: list[str], para: str = "") -> Any:
         """The range of "no contact before May 1, 2023", "after", "since" or "never", run to
@@ -3217,16 +3240,16 @@ class LocalAssumptionFiller:
             # DfirTwo" (live:.cid.5638f9306b7b8594)' (PAST-30 fill d). Only an exact identifier
             # of one of the named accounts picks it.
             flat = _nfc(claim_text)
-            picked = {
-                a.id
+            picked = [
+                a
                 for a in hits
                 if re.search(
                     rf"{re.escape(written)}[\"”]?\s*\(\s*{re.escape(a.identifier.strip())}\s*\)",
                     flat,
                 )
-            }
-            if len(picked) == 1:
-                return picked
+            ]
+            if len({a.key for a in picked}) == 1:  # one account, on any phone (Codex on #169)
+                return {a.id for a in picked}
             raise Reject(
                 f"{acc.as_written!r} is the name of {len({a.key for a in hits})} {acc.app}"
                 " accounts; which one the claim means is not known"

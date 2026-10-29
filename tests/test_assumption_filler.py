@@ -1518,8 +1518,22 @@ def test_an_identifier_in_brackets_picks_one_of_two_accounts_with_one_name(conn)
             filler._accounts_named(acc, [], 'PETROV called "Marc Twin" on Telegram.')
         with pytest.raises(Reject):  # an identifier no account named "Marc Twin" holds
             filler._accounts_named(acc, [], 'PETROV called "Marc Twin" (nobody_9) on Telegram.')
+        # The same account on a second phone's extraction is still one account (Codex on #169).
+        other = conn.execute(
+            "SELECT source_id FROM accounts WHERE source_id != ? LIMIT 1", (src,)
+        ).fetchone()[0]
+        conn.execute(
+            "INSERT INTO accounts (id, source_id, locator, device_id, app, identifier,"
+            " display_name) VALUES ('acct:t:twin2b', ?, 'x', NULL, 'Telegram', 'twin_two_222',"
+            " 'Marc Twin')",
+            (other,),
+        )
+        filler = LocalAssumptionFiller(FakeModel("{}"), conn, template=DRAFT)
+        assert filler._accounts_named(acc, [], said) == {"acct:t:twin2", "acct:t:twin2b"}
     finally:
-        conn.execute("DELETE FROM accounts WHERE id IN ('acct:t:twin1', 'acct:t:twin2')")
+        conn.execute(
+            "DELETE FROM accounts WHERE id IN ('acct:t:twin1', 'acct:t:twin2', 'acct:t:twin2b')"
+        )
 
 
 def _sender(assumptions):
@@ -1616,6 +1630,9 @@ def test_an_open_time_on_one_stated_day_is_the_rest_or_the_start_of_that_day():
         "On 5/7/2023, no call was placed after 9 a.m.",  # a numeric date
         "On Monday, May 7, 2023, no call was placed after 9 a.m.",  # not that date's weekday
         "On May 7, 2023, at 9 a.m., a call was placed.",  # no open time
+        # the day's own zone, which the time's would not carry (Codex on #169)
+        "On May 7, 2023 UTC, there was no contact with REYES after 10:00 a.m.",
+        "On May 7, 2023 (UTC), there was no contact with REYES after 10:00 a.m.",
     ):
         assert stated_part_day(text) is None, text
 
@@ -1910,6 +1927,19 @@ def test_an_open_range_takes_its_year_from_the_paragraph(conn):
     assert w.end_utc.astimezone(ZoneInfo("America/New_York")).date().isoformat() == "2026-03-11"
 
 
+@pytest.mark.parametrize("app", ["Signal", "Viber"])
+def test_a_dated_quote_on_an_app_the_case_lacks_gets_no_senderless_time(conn, app):
+    # "The Signal message" on a case with no Signal: a time on every app could match the
+    # words on Telegram (Codex on #169).
+    text = (
+        f'The {app} message of March 12, 2026, "the package will be at marcs", shows that the'
+        " package held narcotics."
+    )
+    assumptions, filler = build_text(conn, text, ClaimType.CONTENT_MEANING, [])
+    assert not any(c.casefold() == app.casefold() for c in filler.channels())
+    assert not any(a.template_id == "record_time" for a in assumptions)
+
+
 def test_a_message_dated_by_its_writers_possessive_gets_no_senderless_time(conn):
     # "PETROV's Telegram message of March 12" names its writer; a time with no party would
     # match anyone's message (Codex on #169).
@@ -2015,6 +2045,10 @@ def test_a_range_with_both_ends_stated_keeps_its_own_ends(conn):
         # Someone else named through the party (Codex on #169).
         "dev:item1 never communicated with REYES's assistant.",
         "dev:item1 never communicated with a friend of REYES.",
+        # A name in another clause (Codex on #169).
+        "dev:item1 never communicated with SMITH while REYES was abroad.",
+        "dev:item1 never communicated with SMITH after REYES left.",
+        "dev:item1 never communicated with SMITH; REYES was abroad.",
     ],
 )
 def test_an_open_range_or_its_sides_are_refused_when_in_doubt(conn, text):
