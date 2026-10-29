@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import re
 import sqlite3
 
@@ -60,3 +61,15 @@ def test_the_key_lists_each_name_once_whatever_the_ids_case(conn):
     assert key.count("acct:item1:") == 1
     assert '<td class="mono">dev:item1</td>' in key
     assert Names(conn).key_table() == ""
+
+
+def test_two_people_named_alike_keep_their_ids(conn):
+    conn.execute("INSERT INTO persons VALUES ('person:dev:item2:owner', 'Daniel Petrov')")
+    out = re.sub(r"<[^>]+>", "", Names(conn).html("person:dev:item1:owner"))
+    assert out == "Daniel Petrov (person:dev:item1:owner)"
+
+
+def test_only_the_fillers_count_wording_becomes_words(conn):
+    shown = Names(conn).html("Messages containing 'lt 3 left' verbatim; dev:item1 holds ge 2 calls")
+    out = html.unescape(re.sub(r"<[^>]+>", "", shown))
+    assert "'lt 3 left'" in out and "holds at least 2 calls" in out

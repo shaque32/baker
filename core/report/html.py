@@ -190,7 +190,10 @@ from core.review.withheld import summary as withheld_summary
 # testability agent proposed waits for the expert says so, with the step to confirm it,
 # like the screen; the key to the verdicts says such a failure counts once an expert
 # confirms it.
-REPORT_VERSION = "0.26.0"
+# 0.27.0 (after #166's 0.26.0): two people or phones the case names alike keep their ids
+# beside the name, and only the filler's own count wording ("holds eq 13") becomes words, so
+# quoted text stays verbatim.
+REPORT_VERSION = "0.27.0"
 
 
 @dataclass(frozen=True)
