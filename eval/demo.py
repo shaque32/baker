@@ -18,6 +18,13 @@ report say so on every page:
   product. C16's two counter-records in the signed key are labelled complicates on C16's
   authorship assumption, so the step stores the one its search finds and marks it, and both wait
   for the person giving the demo.
+- The model's answers on the agent's demo claims (eval/demo_agent_claims.jsonl, D02 and D03).
+  The product's own filler and testability step run on them, with their signed prompts, and
+  only the answers are scripted: a first answer that code refuses for a reason validation run 2
+  saw, then the agent's answer, which code's checks pass. The step runs on these two claims only
+  (`_DemoAgent`). D02's proposal was accepted by a scripted examiner when the demo was built
+  (AGENT_EXAMINER), so it shows what an accepted proposal does; D03's waits on its claim page for
+  the person giving the demo.
 
 Two additions that are not in the answer key, both in the scripted build only (a saved snapshot
 is restored as it was audited, without them):
@@ -69,6 +76,7 @@ EVAL_DIR = Path(__file__).resolve().parent
 GOLD = EVAL_DIR / "gold" / "case01" / "gold.jsonl"
 SHEET = EVAL_DIR / "gold" / "case01" / "assumptions.jsonl"
 DEMO_CLAIMS = EVAL_DIR / "demo_claims.jsonl"  # demo-only claims, not signed gold
+DEMO_AGENT_CLAIMS = EVAL_DIR / "demo_agent_claims.jsonl"  # the agent's demo claims, not gold
 CASE_META = EVAL_DIR / "synthetic" / "case01" / "case.json"
 
 DEMO_ROOT_ENV = "MABILLON_DEMO"
@@ -76,6 +84,7 @@ DEMO_FOLDER = "demo-case01"  # where a restored snapshot goes
 DEMO_NAME = "Demo: Petrov and Reyes phones (synthetic case01)"
 SETUP_ACTOR = "expert:Mabillon demo setup"
 SCRIPTED_EXPERT = "expert:Demo expert (scripted from the answer key)"
+AGENT_EXAMINER = "expert:Demo examiner (scripted from the demo claims)"
 
 # Claims the scripted expert leaves for the live demo: C05 goes SUPPORTED only when the person
 # giving the demo accepts its message and re-runs the verdicts.
@@ -92,6 +101,7 @@ CHALLENGE_DOUBT = {"C16": frozenset({"msg:item1:Chats!1026", "msg:item1:Chats!85
 # The answer key's rationales are not reused as reasons: they name what the tool must never
 # say (the report withholds itself on such words). docs/demo.md explains each trap instead.
 ACCEPT_REASON = "Scripted demo review: signed key evidence for this claim, read the same way."
+AGENT_REASON = "Scripted demo review: the record the demo claim describes, read the same way."
 DISMISS_REASON = (
     "Scripted demo review: the signed answer key does not rest this claim on this item."
 )
@@ -105,6 +115,19 @@ DEMO_RUN = ModelRun(
     params={"scripted_demo": True},
     seed=0,
     started_at_utc=datetime(2026, 10, 13, tzinfo=UTC),
+)
+
+# The model runs of the agent's demo claims: the product's filler and testability step, with
+# their signed prompts, on scripted answers.
+DEMO_FILLER_RUN = DEMO_RUN.model_copy(
+    update={
+        "id": "mr:demo-scripted-assumptions",
+        "purpose": "assumptions",
+        "model_name": "scripted demo answers (from eval/demo_agent_claims.jsonl, no model)",
+    }
+)
+DEMO_AGENT_RUN = DEMO_FILLER_RUN.model_copy(
+    update={"id": "mr:demo-scripted-testability", "purpose": "testability"}
 )
 
 _DIRECTION = {"supported": Stance.SUPPORTS, "contradicted": Stance.CONTRADICTS}
@@ -136,6 +159,16 @@ def load_demo_claims() -> list[dict]:
     ]
 
 
+def load_agent_claims() -> list[dict]:
+    """The agent's demo claims (eval/demo_agent_claims.jsonl): each with a scripted first answer
+    that code refuses and a scripted answer for the testability step."""
+    return [
+        json.loads(line)
+        for line in DEMO_AGENT_CLAIMS.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+
 def load_gold() -> dict[str, GoldClaim]:
     rows = [
         GoldClaim.model_validate_json(line)
@@ -154,6 +187,7 @@ class ScriptedLabeler:
     def __init__(self, conn: sqlite3.Connection, gold: dict[str, GoldClaim]) -> None:
         self.conn = conn
         self.gold = gold
+        self.demo_key = {d["claim_id"]: frozenset(d["key_evidence"]) for d in load_agent_claims()}
 
     def label(self, assumption: Assumption, candidate: EvidenceCandidate) -> StanceLabel:
         text = record_text(self.conn, candidate.record_id)
@@ -167,6 +201,9 @@ class ScriptedLabeler:
         elif g is not None and candidate.record_id in g.key_evidence:
             stance = _DIRECTION.get(g.gold_verdict.value, Stance.SUPPORTS)
             why = "Demo label, scripted from the answer key: key evidence for this claim."
+        elif candidate.record_id in self.demo_key.get(assumption.claim_id, ()):
+            stance = Stance.SUPPORTS
+            why = "Demo label, scripted from the demo claim: the record the claim describes."
         else:
             stance = Stance.IRRELEVANT
             why = "Demo label, scripted from the answer key: not key evidence for this claim."
@@ -178,6 +215,87 @@ class ScriptedLabeler:
             rationale=why,
             model_run_id=DEMO_RUN.id,
         )
+
+
+class ScriptedAnswers:
+    """A JsonModel for the agent's demo claims: the scripted answer for the claim whose text the
+    prompt carries, else an empty one. The prompt is the product's, filled as for a model."""
+
+    def __init__(self, run: ModelRun, answers: dict[str, dict]) -> None:
+        self.run = run
+        self.answers = answers  # claim text -> answer
+
+    @property
+    def run_id(self) -> str:
+        return self.run.id
+
+    def generate(self, prompt: str, json_schema: object) -> str:
+        for text, answer in self.answers.items():
+            if text in prompt:
+                return json.dumps(answer, ensure_ascii=False)
+        return json.dumps({"assumptions": []})
+
+
+def _recorder(conn: sqlite3.Connection):  # noqa: ANN202 - core.audit._llm_json.CallRecorder
+    """Call numbering that continues the demo's fixed model runs, so a later audit can run."""
+    from core.audit._llm_json import CallRecorder
+    from core.audit._local_model import next_call_seq
+
+    return CallRecorder(start_seq=lambda rid: next_call_seq(conn, rid))
+
+
+class _DemoFiller:
+    """The demo's assumptions: the signed sheet's and the demo claims' entries, and on the
+    agent's demo claims the product's own filler (core/audit/assumption_filler.py), whose
+    refusals the testability step is told."""
+
+    def __init__(
+        self, conn: sqlite3.Connection, signed: Callable, extra: Callable, agent: list[dict]
+    ) -> None:
+        from core.audit.assumption_filler import LocalAssumptionFiller
+
+        self.signed, self.demo = signed, extra
+        self.agent_ids = {d["claim_id"] for d in agent}
+        model = ScriptedAnswers(DEMO_FILLER_RUN, {d["text"]: d["filler_answer"] for d in agent})
+        self.local = LocalAssumptionFiller(model, conn, recorder=_recorder(conn))  # type: ignore[arg-type]
+        self.local.model_runs = (DEMO_FILLER_RUN,)
+        self.model, self.recorder, self.model_runs = model, self.local.recorder, (DEMO_FILLER_RUN,)
+
+    @property
+    def drops(self) -> list:
+        return self.local.drops
+
+    def __call__(self, claim, allowed):  # noqa: ANN001, ANN204
+        if claim.id in self.agent_ids:
+            return self.local(claim, allowed)
+        return self.signed(claim, allowed) or self.demo(claim, allowed)
+
+
+def _agent(conn: sqlite3.Connection, filler: _DemoFiller, agent: list[dict]):  # noqa: ANN202
+    """The product's testability step on the agent's demo claims only, with the signed prompt and
+    no signed sheet (the claim-only check), CAP 1. A proposal marked accepted_in_build is
+    accepted by AGENT_EXAMINER; the rest wait for the person giving the demo."""
+    from core.audit import testability
+
+    class _DemoAgent(testability.Testability):
+        def repair(self, claim, refused):  # noqa: ANN001, ANN202
+            if claim.id not in filler.agent_ids:  # scripted answers exist for these claims only
+                sha = testability.claim_sha256(self.conn, claim.id)
+                return testability.Repair(claim.id, sha, None, self.check)
+            return super().repair(claim, refused)
+
+    accept = {d["claim_id"] for d in agent if d.get("accepted_in_build")}
+    model = ScriptedAnswers(DEMO_AGENT_RUN, {d["text"]: d["agent_answer"] for d in agent})
+    step = _DemoAgent(
+        model,  # type: ignore[arg-type]
+        filler.local,
+        None,
+        1,
+        examiner=lambda claim, assumptions: AGENT_EXAMINER if claim.id in accept else None,
+        recorder=_recorder(conn),
+    )
+    step.model_runs = (DEMO_AGENT_RUN,)
+    return step
 
 
 # ---------------------------------------------------------------- building the case
@@ -209,21 +327,38 @@ def _components(conn: sqlite3.Connection, gold: dict[str, GoldClaim]) -> pipelin
     from eval.pipeline_fakes import FakeReviewer
     from eval.run_pipeline import spec_filler
 
-    signed, extra = spec_filler(SHEET, conn), spec_filler(DEMO_CLAIMS, conn)
+    agent = load_agent_claims()
+    filler = _DemoFiller(conn, spec_filler(SHEET, conn), spec_filler(DEMO_CLAIMS, conn), agent)
     comps = pipeline.real_components(
         conn,
         replace={"labeler": ScriptedLabeler(conn, gold), "reviewer": FakeReviewer(False)},
-        filler=lambda claim, allowed: signed(claim, allowed) or extra(claim, allowed),
+        filler=filler,
     )
     comps.reviewable = lambda item: False  # no AI reviewer in the demo: the expert decides
-    comps.model_runs = (*comps.model_runs, DEMO_RUN)
+    step = _agent(conn, filler, agent)
+    comps.testability = step
+    comps.recorders = (*comps.recorders, step)
+    comps.model_runs = (*comps.model_runs, DEMO_RUN, *step.model_runs)
     return comps
 
 
 def _scripted_review(conn: sqlite3.Connection, gold: dict[str, GoldClaim], run: dict) -> int:
     decided = 0
     found = challenge.found_items(conn, run)  # the challenge step's finds wait for the live demo
+    # The agent's demo claims whose proposal the scripted examiner accepted: the record they
+    # describe, accepted the same way (D02 shows the whole path; D03 waits for the presenter).
+    agent = {
+        d["claim_id"]: d["key_evidence"] for d in load_agent_claims() if d["accepted_in_build"]
+    }
     for claim_id, items in sorted(run["manifest"].items()):
+        if claim_id in agent:
+            for e in pipeline.load_evidence(conn, items["evidence"]):
+                if e.stance is Stance.SUPPORTS and e.record_id in agent[claim_id]:
+                    actions.decide_evidence(
+                        conn, e.id, EvidenceStatus.ACCEPTED, AGENT_EXAMINER, AGENT_REASON
+                    )
+                    decided += 1
+            continue
         g = gold.get(claim_id)
         if g is None or claim_id in LEFT_OPEN:
             continue
@@ -275,7 +410,7 @@ def build_scripted(home: Path, paired: bool = False) -> cases.Case:
                 actions.add_claim(
                     conn, g.claim_id, para, g.text, ClaimType(g.claim_type), SETUP_ACTOR
                 )
-            for d in load_demo_claims():
+            for d in [*load_demo_claims(), *load_agent_claims()]:
                 para = _paragraph(conn, d["claim_id"], d["para_no"], d["page"])
                 actions.add_claim(
                     conn, d["claim_id"], para, d["text"], ClaimType(d["claim_type"]), SETUP_ACTOR

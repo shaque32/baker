@@ -1,5 +1,7 @@
-"""The testability agent: a second try at a claim the assumption filler left untested. Eval only
-in v1, off by default (`Components.testability`; plans/agentic.md step 3).
+"""The testability agent: a second try at a claim the assumption filler left untested. Off by
+default (`Components.testability`; plans/agentic.md step 3): only the eval and the scripted demo
+(eval/demo.py) turn it on. A review screen's audit or `mabillon audit` never does; turning it on
+for pilots is a later, signed step (plans/agents-on-by-default.md).
 
 When the filler (core/audit/assumption_filler.py) keeps no core assumption for a claim, this
 step asks the same local model again, at most `cap` times per claim. Each call is stateless and
@@ -11,30 +13,41 @@ value verbatim in the claim or its paragraph, names, phones and accounts resolve
 stated time ranges, `coverage_gap`. A try that fails them is refused, with code's reasons, and
 the next try (if the cap allows) is told those reasons.
 
-Then code, never the examiner, checks the try against the claim's signed assumption sheet
+Then code, never the examiner, checks that the try names only what the claim's own words name
+(`outside_claim`, the check a case without a signed sheet gets): every person, phone and
+account must be one code's lookups find in the claim's text, not its paragraph, and every handle
+must be written there. The filler's own checks already read apps, quoted words, durations and
+time ranges from the claim's text. A try that names anything else is rejected whole
+("outside").
+
+In the eval, code then checks the try against the claim's signed assumption sheet too
 (`mismatch`): every person, phone and time window the repaired set names must be one the
 sheet's core rows for the claim name, and so must every account, handle, app, template and
-quoted words. A try that names anything else is rejected whole. A claim the sheet gives no core
-row is never repaired. With no signed sheet the step does not run, which keeps it in the eval:
-the product has no sheet to check against. That makes what the eval counts as converted an
-upper bound filtered by gold, so the share of tries the sheet check rejects is reported beside
-it (eval/run_pipeline.py).
+quoted words. A claim the sheet gives no core row is never repaired there. That makes what the
+eval counts as converted an upper bound filtered by gold, so the tries the sheet check rejects
+after the claim-only check passed them are reported beside it (eval/run_pipeline.py): how often
+the claim-only check alone would let a wrong person, phone or window through.
 
-A try that passes is only a proposal. It becomes the claim's assumptions when an examiner
-accepts it (`examiner`; in v1 the eval's simulated expert, through no UI). Without one it is
-logged and never used. The report shows such an assumption as "Proposed by agent, accepted by
-examiner" (`accepted_repairs`). The repair never sees, writes or changes the claim's text: the
-output has no field for it, and the claim's stored row is hashed before and after
-(`InvariantViolation` otherwise).
+A try that passes is only a proposal. It becomes the claim's assumptions only once an examiner
+accepts it: the eval's simulated expert (`examiner`), or the examiner on the claim page's card
+(core/review/actions.decide_repair, logged under the expert's actor). The next audit uses that
+acceptance when the step gives the same assumptions again for the same claim text. Without an
+acceptance a try is logged and never used, and an examiner's rejection keeps it out. The report
+shows such an assumption as "Proposed by agent, accepted by examiner" (`used_repairs`, for the
+audit shown only, the same reading the claim page and verify-bundle use). The
+repair never sees, writes or changes the claim's text: the output has no field for it, and the
+claim's stored row is hashed before and after (`InvariantViolation` otherwise).
 
 Each try is its own `testability.repair` audit entry (what code looked up, the model call, the
-reasons, the sheet check and the assumption ids), and each acceptance a `testability.accept`
-entry by the examiner's actor. `mabillon verify-bundle` re-runs the lookups and code's checks
-on the stored answer with no model (core/bundle/verify.py).
+reasons, which checks ran, and the proposed assumptions with their texts), and each decision a
+`testability.accept` or `testability.reject` entry by the examiner's actor. `mabillon
+verify-bundle` re-runs the lookups and code's checks on the stored answer with no model
+(core/bundle/verify.py).
 """
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import re
@@ -79,15 +92,21 @@ from core.audit.invariants import InvariantViolation
 from core.contracts import Assumption, Claim, ModelRun
 from core.review.device_names import logged_names, name_key
 
-VERSION = "0.1.0"
+# 0.2.0: the claim-only check (outcome "outside"), the checks each try ran ("check"), the
+# proposed assumptions' texts in each entry, and the examiner's decisions from the claim page.
+VERSION = "0.2.0"
 PROMPT_FILE = "agent_testability.md"  # signed copy only; the eval may name the draft
 PLACEHOLDERS = frozenset({"claim", "paragraph", "templates", "channels", "lookups", "refused"})
 REPAIR_ACTION = "testability.repair"
 ACCEPT_ACTION = "testability.accept"
+REJECT_ACTION = "testability.reject"
+PROPOSED_MARK = "Proposed by agent"
+CLAIM_CHECK = "claim"  # the claim-only check, all a case without a signed sheet gets
+SHEET_CHECK = "claim and sheet"  # the eval's: the claim-only check, then the signed sheet
 MAX_LOOKUPS = 30  # per claim, in code's fixed order: people, phones, accounts
 MIN_NAME = 3  # an identifier or display name shorter than this is never looked up ("J")
 
-Outcome = Literal["invalid", "refused", "mismatch", "proposed"]
+Outcome = Literal["invalid", "refused", "outside", "mismatch", "proposed"]
 Answer = list[dict[str, Any]] | str  # the answer's items, or why it was unusable
 # The examiner: the assumptions a passing try would give the claim, in; the actor who accepted
 # them ("expert:<name>"), or None, out. v1 has only the eval's simulated expert.
@@ -140,26 +159,23 @@ def _phone_written(name: str, texts: Sequence[str]) -> str | None:
     return None
 
 
-def lookups(filler: LocalAssumptionFiller, claim: Claim, para: str) -> list[Lookup]:
-    """What the claim's own words name in the case: people the expert created (whole name or
-    surname, as the filler resolves them), phones (label or a name the expert gave it) and
-    accounts (identifier, the same number written another way, or display name). Read-only,
-    in a fixed order, at most MAX_LOOKUPS."""
-    conn, texts = filler.conn, (claim.text, para)
-    out: list[Lookup] = []
-    for _pid, name in conn.execute("SELECT id, name FROM persons ORDER BY id"):
+def _found(filler: LocalAssumptionFiller, texts: Sequence[str]) -> list[tuple[Lookup, str]]:
+    """Each lookup the texts give, with the person, device or account id it names."""
+    conn = filler.conn
+    out: list[tuple[Lookup, str]] = []
+    for pid, name in conn.execute("SELECT id, name FROM persons ORDER BY id"):
         parts = name.split()
         for words in dict.fromkeys([name, parts[-1]] if parts else []):
             w = _written(words, texts)
             if w is not None:
-                out.append(Lookup("person", w, f"a person in the case ({name})"))
+                out.append((Lookup("person", w, f"a person in the case ({name})"), pid))
                 break
     names = logged_names(conn)
     for did, sid, label in conn.execute("SELECT id, source_id, label FROM devices ORDER BY id"):
         for words in dict.fromkeys(x for x in (label, *names.get(did, []), sid, did) if x):
             w = _phone_written(words, texts)
             if w is not None:
-                out.append(Lookup("phone", w, f"a phone ({label or did}), not an account"))
+                out.append((Lookup("phone", w, f"a phone ({label or did}), not an account"), did))
                 break
     numbers = [
         (m.group(0).strip().rstrip(".-").strip(), d)
@@ -174,8 +190,17 @@ def lookups(filler: LocalAssumptionFiller, claim: Claim, para: str) -> list[Look
         if w is None and a.display_name and len(a.display_name.strip()) >= MIN_NAME:
             w = _written(a.display_name, texts)
         if w is not None:
-            out.append(Lookup("account", w, f"an account on {a.app}"))
-    return list(dict.fromkeys(out))[:MAX_LOOKUPS]
+            out.append((Lookup("account", w, f"an account on {a.app}"), a.id))
+    return out
+
+
+def lookups(filler: LocalAssumptionFiller, claim: Claim, para: str) -> list[Lookup]:
+    """What the claim's own words name in the case: people the expert created (whole name or
+    surname, as the filler resolves them), phones (label or a name the expert gave it) and
+    accounts (identifier, the same number written another way, or display name). Read-only,
+    in a fixed order, at most MAX_LOOKUPS."""
+    found = [x for x, _id in _found(filler, (claim.text, para))]
+    return list(dict.fromkeys(found))[:MAX_LOOKUPS]
 
 
 # ---------------------------------------------------------------- the sheet check
@@ -292,6 +317,25 @@ def mismatch(repair: Named, sheet: Named) -> list[str]:
     return out
 
 
+def outside_claim(filler: LocalAssumptionFiller, claim: Claim, got: Named) -> list[str]:
+    """What the repaired set names that the claim's own words do not: a person, phone or
+    account code's lookups do not find in the claim's text (its paragraph does not count), or a
+    handle not written there. Empty: everything it names is the claim's own. Apps, quoted
+    words, durations and time ranges need no second look: the filler reads them from the
+    claim's text already."""
+    own: dict[str, set[str]] = {"person": set(), "phone": set(), "account": set()}
+    for x, xid in _found(filler, (claim.text,)):
+        own[x.kind].add(xid)
+    out = []
+    for what, ids in (("person", got.people), ("phone", got.phones), ("account", got.accounts)):
+        for x in sorted(ids - own[what]):
+            out.append(f"names the {what} {x!r}, which the claim's own words do not name")
+    for h in sorted(got.handles):
+        if _written(h, (claim.text,)) is None:
+            out.append(f"names the handle {h!r}, which the claim's own words do not write")
+    return out
+
+
 # The kinds of mismatch the go/no-go counts (plans/agentic.md: "a different person, phone or
 # window than the sheet"); the other kinds are rejected too and counted beside them.
 NO_GO_KINDS = ("the person ", "the phone ", "the time window ")
@@ -310,6 +354,7 @@ class Attempt:
     reasons: list[str]  # why it was refused or rejected; empty when proposed
     named: Named = field(default_factory=Named)
     assumption_ids: list[str] = field(default_factory=list)
+    proposed: list[dict[str, str]] = field(default_factory=list)  # `shown`, what a card shows
 
     def payload(self) -> dict[str, Any]:
         return {
@@ -321,6 +366,7 @@ class Attempt:
             "reasons": list(self.reasons),
             "named": self.named.payload(),
             "assumption_ids": list(self.assumption_ids),
+            "proposed": list(self.proposed),
         }
 
     @property
@@ -331,11 +377,17 @@ class Attempt:
         )
 
 
+def shown(assumptions: Iterable[Assumption]) -> list[dict[str, str]]:
+    """The proposed assumptions as the examiner's card shows them, in the repair's log entry."""
+    return [{"id": a.id, "template_id": a.template_id, "text": a.text} for a in assumptions]
+
+
 @dataclass
 class Repair:
     claim_id: str
     claim_sha256: str
     sheet: Named | None
+    check: str = CLAIM_CHECK
     attempts: list[Attempt] = field(default_factory=list)
     assumptions: list[Assumption] = field(default_factory=list)  # set only once accepted
     accepted_by: str | None = None
@@ -347,6 +399,7 @@ class Repair:
             "claim_id": self.claim_id,
             "claim_sha256": self.claim_sha256,
             "testability": VERSION,
+            "check": self.check,
             "sheet": self.sheet.payload() if self.sheet is not None else None,
         }
         return [{**base, **a.payload()} for a in self.attempts]
@@ -356,8 +409,9 @@ class Repair:
             return None
         return {
             "claim_id": self.claim_id,
+            "claim_sha256": self.claim_sha256,
             "testability": VERSION,
-            "assumption_ids": [a.id for a in self.assumptions],
+            "assumption_ids": sorted(a.id for a in self.assumptions),
             "attempt": self.attempts[-1].n,
             "model_call_id": self.attempts[-1].call_id,
         }
@@ -372,14 +426,30 @@ def claim_sha256(conn: sqlite3.Connection, claim_id: str) -> str:
     return hashlib.sha256(json.dumps(list(row) if row else None).encode("utf-8")).hexdigest()
 
 
+def row_sha256(claim: Claim) -> str:
+    """claim_sha256 of a claim as given, not as stored: verify-bundle's check that the claim it
+    rebuilt from the log is the one a try was made on."""
+    row = [
+        claim.id,
+        claim.paragraph_id,
+        claim.text,
+        claim.claim_type.value,
+        claim.status.value,
+        claim.model_run_id,
+    ]
+    return hashlib.sha256(json.dumps(row).encode("utf-8")).hexdigest()
+
+
 def check_answer(
     filler: LocalAssumptionFiller,
     claim: Claim,
     items: list[dict[str, Any]],
     sheet: Named | None,
+    check: str = SHEET_CHECK,
 ) -> tuple[Outcome, list[str], Named, list[Assumption]]:
-    """Code's verdict on one answer: the filler's own checks, then the sheet's. The same code
-    runs live and in verify-bundle, so a stored answer gives the same outcome again."""
+    """Code's verdict on one answer: the filler's own checks, the claim-only check, then (with
+    check SHEET_CHECK, the eval's) the signed sheet's. The same code runs live and in
+    verify-bundle, so a stored answer gives the same outcome again."""
     para = filler.paragraph_text(claim)
     allowed = {t.id for t in templates_for(claim.claim_type)}
     reasons: list[str] = []
@@ -415,6 +485,11 @@ def check_answer(
         out.setdefault(a.id, a)
     assumptions = list(out.values())
     got = named((a.template_id, a.params.model_dump()) for a in assumptions if a.is_core)
+    outside = outside_claim(filler, claim, got)
+    if outside:
+        return "outside", outside, got, []
+    if check == CLAIM_CHECK:
+        return "proposed", [], got, assumptions
     if sheet is None:
         return "mismatch", ["the signed sheet has no core assumption for this claim"], got, []
     wrong = mismatch(got, sheet)
@@ -426,28 +501,162 @@ def check_answer(
 # ---------------------------------------------------------------- the step
 
 
-def accepted_repairs(conn: sqlite3.Connection) -> dict[str, str]:
-    """Assumption id -> the actor who accepted the repair that proposed it, from the log."""
-    out: dict[str, str] = {}
-    for actor, payload_json in conn.execute(
-        "SELECT actor, payload_json FROM audit_log WHERE action = ? ORDER BY seq",
-        (ACCEPT_ACTION,),
+def decision(
+    conn: sqlite3.Connection,
+    claim_id: str,
+    assumption_ids: Iterable[str],
+    claim_sha: str,
+    before: int | None = None,
+) -> tuple[str, str] | None:
+    """An expert's latest decision on this exact proposal, (action, actor): the same claim, the
+    same claim text and the same assumptions. None when no expert decided it. With before, only
+    log entries before that seq count: what was in force when an audit used the proposal."""
+    ids = sorted(assumption_ids)
+    got = None
+    for actor, action, payload_json in conn.execute(
+        "SELECT actor, action, payload_json FROM audit_log WHERE action IN (?, ?) AND seq < ?"
+        " ORDER BY seq",
+        (ACCEPT_ACTION, REJECT_ACTION, before if before is not None else 2**62),
     ):
-        for aid in json.loads(payload_json).get("assumption_ids", []):
-            out[aid] = actor
+        p = json.loads(payload_json)
+        if (
+            actor.startswith("expert:")
+            and p.get("claim_id") == claim_id
+            and p.get("claim_sha256") == claim_sha
+            and sorted(p.get("assumption_ids", [])) == ids
+        ):
+            got = (action, actor)
+    return got
+
+
+@dataclass(frozen=True)
+class Proposed:
+    """A try the step proposed in an audit, as the claim page's card shows it."""
+
+    claim_id: str
+    run_id: str
+    attempt: int
+    model_call_id: str | None
+    claim_sha256: str
+    assumptions: tuple[Mapping[str, str], ...]  # id, template_id, text (`shown`)
+    lookups: tuple[Mapping[str, str], ...]
+    check: str
+    decided: tuple[str, str] | None  # the expert's latest (action, actor), or None
+
+    @property
+    def assumption_ids(self) -> list[str]:
+        return sorted(a["id"] for a in self.assumptions)
+
+
+def proposals(conn: sqlite3.Connection, run: Mapping[str, Any] | None) -> dict[str, Proposed]:
+    """Claim id -> the try the step proposed for it in the audit whose evidence `run` shows (a
+    verdict re-run shows its source audit's), with the expert's latest decision on it."""
+    if run is None:
+        return {}
+    source = run.get("evidence_from_run", run["run_id"])
+    out: dict[str, Proposed] = {}
+    for (payload_json,) in conn.execute(
+        "SELECT payload_json FROM audit_log WHERE action = ? ORDER BY seq", (REPAIR_ACTION,)
+    ):
+        p = json.loads(payload_json)
+        if p.get("run_id") != source or p.get("outcome") != "proposed":
+            continue
+        cid = str(p.get("claim_id"))
+        out[cid] = Proposed(
+            claim_id=cid,
+            run_id=source,
+            attempt=int(p.get("attempt", 0)),
+            model_call_id=p.get("model_call_id"),
+            claim_sha256=str(p.get("claim_sha256", "")),
+            assumptions=tuple(p.get("proposed") or ()),
+            lookups=tuple(p.get("lookups") or ()),
+            check=str(p.get("check", SHEET_CHECK)),
+            decided=None,
+        )
+    return {
+        cid: dataclasses.replace(x, decided=decision(conn, cid, x.assumption_ids, x.claim_sha256))
+        for cid, x in out.items()
+    }
+
+
+def in_force(
+    conn: sqlite3.Connection, run_id: str
+) -> dict[str, tuple[list[str], str, tuple[str, str] | None]]:
+    """Claim id -> (assumption ids, claim hash, decision) for each try the audit run_id's step
+    proposed: the expert's latest decision on it when that audit used it, read as the step read
+    it (`decision`, before the claim's pipeline.claim entry closed its work). None when no
+    expert had decided it."""
+    from core import pipeline
+
+    done: dict[str, int] = {}
+    tried: dict[str, tuple[list[str], str]] = {}
+    for seq, action, payload_json in conn.execute(
+        "SELECT seq, action, payload_json FROM audit_log WHERE action IN (?, ?) ORDER BY seq",
+        (REPAIR_ACTION, pipeline.CLAIM_ACTION),
+    ):
+        p = json.loads(payload_json)
+        if p.get("run_id") != run_id:
+            continue
+        cid = str(p.get("claim_id"))
+        if action == pipeline.CLAIM_ACTION:
+            done.setdefault(cid, seq)
+        elif p.get("outcome") == "proposed":
+            tried[cid] = (sorted(p.get("assumption_ids") or []), str(p.get("claim_sha256")))
+    return {
+        cid: (ids, sha, decision(conn, cid, ids, sha, before=done.get(cid)))
+        for cid, (ids, sha) in tried.items()
+    }
+
+
+@dataclasses.dataclass(frozen=True)
+class Used:
+    """An agent proposal the shown audit used: the examiner whose acceptance it used, and why
+    that acceptance no longer holds for the next audit, if it does not."""
+
+    by: str
+    lapsed: str | None = None
+
+    def mark(self) -> str:
+        """The line the claim page and the report show beside the assumption."""
+        line = f"{PROPOSED_MARK}, accepted by examiner ({self.by.removeprefix('expert:')})"
+        return f"{line}; {self.lapsed}, so the next audit does not use it" if self.lapsed else line
+
+
+def used_repairs(conn: sqlite3.Connection, run: dict[str, Any] | None) -> dict[str, Used]:
+    """Assumption id -> how the shown audit used it, for the step's proposals that audit (or the
+    audit a verdict re-run took its evidence from) used under an expert's acceptance in force
+    then. One reading for the claim page and the report; verify-bundle checks the same rule
+    (`in_force`). Another audit's acceptance, a rejected proposal, and an assumption the filler
+    made itself are not marked."""
+    if run is None:
+        return {}
+    out: dict[str, Used] = {}
+    for cid, (ids, _sha, d) in in_force(conn, run.get("evidence_from_run", run["run_id"])).items():
+        if d is None or d[0] != ACCEPT_ACTION:
+            continue
+        now = decision(conn, cid, ids, claim_sha256(conn, cid))
+        lapsed = (
+            "the claim was edited or removed after the acceptance"
+            if now is None
+            else f"later rejected by {now[1].removeprefix('expert:')}"
+            if now[0] == REJECT_ACTION
+            else None
+        )
+        out.update(dict.fromkeys(ids, Used(d[1], lapsed)))
     return out
 
 
 class Testability:
     """The step. `filler` is the first pass's LocalAssumptionFiller (its checks are reused),
-    `sheet` the signed sheet's facts by claim id (`sheet_named`), `cap` the most calls per claim
-    (Arsh sets it; there is no default)."""
+    `sheet` the signed sheet's facts by claim id (`sheet_named`; the eval's), or None for a case
+    without one, which gets the claim-only check alone. `cap` is the most calls per claim (Arsh
+    sets it; there is no default)."""
 
     def __init__(
         self,
         model: JsonModel,
         filler: LocalAssumptionFiller,
-        sheet: Mapping[str, Named],
+        sheet: Mapping[str, Named] | None,
         cap: int,
         *,
         template: str | None = None,
@@ -457,11 +666,12 @@ class Testability:
     ) -> None:
         if cap < 1:
             raise ValueError("the testability step needs a cap of at least one call per claim")
-        if not sheet:
-            raise ValueError("the testability step needs a signed sheet to check against")
+        if sheet is not None and not sheet:
+            raise ValueError("a signed sheet to check against has no rows")
         self.model = model
         self.filler = filler
-        self.sheet = dict(sheet)
+        self.sheet = dict(sheet) if sheet is not None else None
+        self.check = CLAIM_CHECK if sheet is None else SHEET_CHECK
         self.cap = cap
         self.examiner = examiner
         self.template = template if template is not None else load_prompt(PROMPT_FILE, prompts_dir)
@@ -521,7 +731,8 @@ class Testability:
         filler's reasons, each later one the reasons code refused the try before it."""
         started = time.perf_counter()
         before = claim_sha256(self.conn, claim.id)
-        rep = Repair(claim.id, before, self.sheet.get(claim.id))
+        sheet = self.sheet.get(claim.id) if self.sheet is not None else None
+        rep = Repair(claim.id, before, sheet, self.check)
         para = self.filler.paragraph_text(claim)
         found = lookups(self.filler, claim, para)
         told = list(refused)
@@ -531,9 +742,13 @@ class Testability:
                 rep.attempts.append(Attempt(n, call_id, found, told, "invalid", [answer]))
                 told = [answer]
                 continue
-            outcome, reasons, got, assumptions = check_answer(self.filler, claim, answer, rep.sheet)
+            outcome, reasons, got, assumptions = check_answer(
+                self.filler, claim, answer, rep.sheet, self.check
+            )
             ids = [a.id for a in assumptions]
-            rep.attempts.append(Attempt(n, call_id, found, told, outcome, reasons, got, ids))
+            rep.attempts.append(
+                Attempt(n, call_id, found, told, outcome, reasons, got, ids, shown(assumptions))
+            )
             if outcome == "proposed":
                 rep.assumptions = assumptions
                 break
@@ -546,16 +761,17 @@ class Testability:
         return rep
 
     def _accept(self, claim: Claim, rep: Repair) -> None:
-        """An examiner's acceptance, or none: then the proposal is logged and never used."""
-        ids = sorted(a.id for a in rep.assumptions)
-        for actor, payload_json in self.conn.execute(
-            "SELECT actor, payload_json FROM audit_log WHERE action = ? ORDER BY seq",
-            (ACCEPT_ACTION,),
-        ):
-            p = json.loads(payload_json)
-            if p.get("claim_id") == claim.id and sorted(p.get("assumption_ids", [])) == ids:
+        """An examiner's acceptance, or none: then the proposal is logged and never used. An
+        expert's earlier decision on this exact proposal (the claim page's card, or the eval's
+        first pass) stands: an acceptance is used, a rejection keeps it out."""
+        done = decision(self.conn, claim.id, (a.id for a in rep.assumptions), rep.claim_sha256)
+        if done is not None:
+            action, actor = done
+            if action == ACCEPT_ACTION:
                 rep.accepted_by, rep.accepted_before = actor, True
-                return
+            else:
+                rep.assumptions = []
+            return
         actor = self.examiner(claim, rep.assumptions) if self.examiner is not None else None
         if actor is None or not actor.startswith("expert:"):
             rep.assumptions = []  # a proposal nobody accepted is not used
@@ -566,7 +782,7 @@ class Testability:
 def create(
     conn: sqlite3.Connection,
     filler: LocalAssumptionFiller,
-    sheet: Mapping[str, Named],
+    sheet: Mapping[str, Named] | None,
     cap: int,
     *,
     model: LocalModel | None = None,

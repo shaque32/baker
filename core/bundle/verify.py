@@ -67,6 +67,8 @@ from core.bundle import export, sealed
 from core.claims import propose as claims_propose
 from core.contracts import (
     CONTRACTS_VERSION,
+    Claim,
+    ClaimStatus,
     EvidenceStatus,
     Stance,
     Stipulation,
@@ -1482,6 +1484,18 @@ def _repair_answer(conn: sqlite3.Connection, call_id: str | None) -> list[dict[s
         return e.reason
 
 
+def _claim_as_tried(claim: Claim, log: list, after: int) -> Claim:
+    """The claim as it stood when the testability step tried it, its tries logged up to seq
+    after: an expert's later edit or removal (claim.status, the only write to a claim's row) is
+    undone from the first such entry's own record of the row."""
+    for seq, _at, _c, act, p in log:
+        if act == "claim.status" and p.get("claim_id") == claim.id and seq > after:
+            return claim.model_copy(
+                update={"text": p.get("was_text"), "status": ClaimStatus(p.get("was"))}
+            )
+    return claim
+
+
 def _testability(
     conn: sqlite3.Connection, run: dict[str, Any], manifest: dict[str, Any], out: _Out
 ) -> None:
@@ -1501,7 +1515,13 @@ def _testability(
         for _s, _a, _c, act, p in log
         if act == testability.REPAIR_ACTION and p.get("run_id") == rid
     ]
+    tried = {
+        str(p.get("claim_id")): s
+        for s, _a, _c, act, p in log
+        if act == testability.REPAIR_ACTION and p.get("run_id") == rid
+    }
     accepts = [(c, p) for _s, _a, c, act, p in log if act == testability.ACCEPT_ACTION]
+    decisions = accepts + [(c, p) for _s, _a, c, act, p in log if act == testability.REJECT_ACTION]
     if not repairs and not any(p.get("run_id") == rid for _c, p in accepts):
         return
     if "testability" not in source["config"]:
@@ -1512,31 +1532,40 @@ def _testability(
         )
         return
     bad = 0
-    proposed: dict[str, list[str]] = {}
+    proposed: dict[str, tuple[list[str], str]] = {}
     for p in repairs:
         if p.get("outcome") == "proposed":
-            proposed[str(p.get("claim_id"))] = sorted(p.get("assumption_ids") or [])
-    accepted = {
-        (str(p.get("claim_id")), tuple(sorted(p.get("assumption_ids") or [])))
-        for c, p in accepts
-        if str(c).startswith("expert:")
-    }
-    for c, p in accepts:
+            proposed[str(p.get("claim_id"))] = (
+                sorted(p.get("assumption_ids") or []),
+                str(p.get("claim_sha256")),
+            )
+    # The latest expert decision on each proposal when the audit used it, read as the step,
+    # the claim page and the report read it: a decision after the audit was not in force then.
+    used = testability.in_force(conn, rid)
+    for c, p in decisions:
         if not str(c).startswith("expert:"):
             out.add(
                 FAIL,
                 "testability",
-                f"{p.get('claim_id')}: a repair was accepted by {c}, not by an expert",
+                f"{p.get('claim_id')}: a repair was decided by {c}, not by an expert",
             )
             bad += 1
-    for claim_id, ids in sorted(proposed.items()):
+    for claim_id, (ids, _sha) in sorted(proposed.items()):
         kept = set(source["manifest"].get(claim_id, {}).get("assumptions", []))
-        if kept & set(ids) and (claim_id, tuple(ids)) not in accepted:
+        if not kept & set(ids):
+            continue
+        d = used[claim_id][2]  # an earlier acceptance does not outlive a rejection
+        if d is None or d[0] != testability.ACCEPT_ACTION:
             out.add(
                 FAIL,
                 "testability",
-                f"{claim_id}: the claim kept assumptions the testability step proposed, and no "
-                "expert accepted them",
+                f"{claim_id}: the claim kept assumptions the testability step proposed, and "
+                + (
+                    "no expert accepted them"
+                    if d is None
+                    else "an expert's latest decision on them before the audit used them was a "
+                    "rejection"
+                ),
             )
             bad += 1
     scope = manifest.get("scope")
@@ -1596,6 +1625,16 @@ def _testability(
                 )
                 bad += 1
                 continue
+            claim = _claim_as_tried(claim, log, tried[claim.id])
+            if testability.row_sha256(claim) != p.get("claim_sha256"):
+                out.add(
+                    FAIL,
+                    "testability",
+                    f"{claim.id}: try {p.get('attempt')} of the testability step was made on "
+                    "another claim row than this one, and the log's claim edits do not explain it",
+                )
+                bad += 1
+                continue
             para = filler.paragraph_text(claim)
             found = [x.payload() for x in testability.lookups(filler, claim, para)]
             prompt = conn.execute(
@@ -1605,15 +1644,25 @@ def _testability(
             answer = _repair_answer(conn, p.get("model_call_id"))
             sheet = p.get("sheet")
             if isinstance(answer, str):
-                want = {"outcome": "invalid", "reasons": [answer], "assumption_ids": []}
+                want = {
+                    "outcome": "invalid",
+                    "reasons": [answer],
+                    "assumption_ids": [],
+                    "proposed": [],
+                }
             else:
                 got, reasons, names, assumptions = testability.check_answer(
-                    filler, claim, answer, testability.Named.from_payload(sheet) if sheet else None
+                    filler,
+                    claim,
+                    answer,
+                    testability.Named.from_payload(sheet) if sheet else None,
+                    str(p.get("check", testability.SHEET_CHECK)),
                 )
                 want = {
                     "outcome": got,
                     "reasons": reasons,
                     "assumption_ids": [a.id for a in assumptions],
+                    "proposed": testability.shown(assumptions),
                 }
             if (
                 found != p.get("lookups")

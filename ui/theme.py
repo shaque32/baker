@@ -254,6 +254,9 @@ details summary::marker { color: var(--muted); }
 .b-flag { color: var(--muted); border-style: dashed; background: transparent; }
 .b-withheld { color: var(--unp); border-color: var(--unp-line); background: var(--unp-bg); }
 .b-challenge { color: var(--muted); border-style: dotted; background: transparent; }
+.b-agent { color: var(--muted); border-style: dashed; background: transparent; }
+section.agent { background: var(--card); border: 1px dashed var(--line-strong);
+  border-radius: var(--radius); padding: 12px 16px; margin: 12px 0; }
 details.flag { margin-top: 6px; }
 details.flag > summary { font-size: 13px; color: var(--muted); cursor: pointer; }
 ul.flags form.inline button { margin-left: 8px; }

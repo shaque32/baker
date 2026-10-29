@@ -522,9 +522,27 @@ def testability_summary(
 ) -> dict[str, object]:
     """What the step did on the first pass, with the go/no-go measures (plans/agentic.md).
     Counts only, so a hidden case prints nothing claim by claim."""
+    from core.audit import testability
+
     reps = list(result.testability.values())
     tries = [a for r in reps for a in r.attempts]
-    checked = [a for a in tries if a.outcome in ("mismatch", "proposed")]  # passed the filler's
+    # Tries that passed the filler's checks and the claim-only check (the product's gate); the
+    # sheet then rejects some of them: how often the claim's own words let a wrong one through.
+    checked = [a for a in tries if a.outcome in ("mismatch", "proposed")]
+    # #159's rate on the same tries, reported beside it until the go/no-go fixes one: of the
+    # tries that passed the filler's checks, the share the sheet check rejects, with an
+    # "outside" try counted by what the sheet says of the names it gave.
+    passed = [
+        (r, a) for r in reps for a in r.attempts if a.outcome in ("mismatch", "proposed", "outside")
+    ]
+    sheet_rejects = sum(
+        a.outcome == "mismatch"
+        or (
+            a.outcome == "outside"
+            and (r.sheet is None or bool(testability.mismatch(a.named, r.sheet)))
+        )
+        for r, a in passed
+    )
     testable = [r for r in reps if r.sheet is not None]
     converted = [r for r in reps if r.assumptions]
     signed = prompt is None or prompt == TESTABILITY_SIGNED_PROMPT
@@ -536,9 +554,13 @@ def testability_summary(
         # An upper bound filtered by gold: the signed sheet rejects whatever it does not name.
         "converted_and_accepted": len(converted),
         "conversion_rate": (len(converted) / len(testable)) if testable else None,
-        # Of the tries that passed the filler's own checks, the share the sheet check rejected.
+        # Of the tries that passed the filler's checks and the claim-only check, the share the
+        # sheet check rejected.
         "wrong_entity_rate": (sum(a.outcome == "mismatch" for a in checked) / len(checked))
         if checked
+        else None,
+        "wrong_entity_rate_without_the_claim_check": (sheet_rejects / len(passed))
+        if passed
         else None,
         "tries": len(tries),
         "invalid_outputs": sum(a.outcome == "invalid" for a in tries),
@@ -546,6 +568,7 @@ def testability_summary(
         if tries
         else None,
         "refused_by_code": sum(a.outcome == "refused" for a in tries),
+        "outside_the_claims_words": sum(a.outcome == "outside" for a in tries),
         "mismatch_person_phone_or_window": sum(a.no_go for a in tries),
         "mismatch_other_only": sum(
             a.outcome == "mismatch" and not a.no_go and r.sheet is not None
@@ -827,12 +850,19 @@ def print_testability(t: dict) -> None:
     )
     wrong = t["wrong_entity_rate"]
     print(
-        "pipeline: testability: of the tries that passed the filler's checks, the sheet check "
-        + (f"rejected {wrong:.0%}" if wrong is not None else "saw none")
+        "pipeline: testability: of the tries that passed the filler's checks and the claim-only "
+        "check, the sheet check " + (f"rejected {wrong:.0%}" if wrong is not None else "saw none")
+    )
+    before = t["wrong_entity_rate_without_the_claim_check"]
+    print(
+        "pipeline: testability: of the tries that passed the filler's checks (#159's measure, "
+        "the claim-only check aside), the sheet check "
+        + (f"rejects {before:.0%}" if before is not None else "saw none")
     )
     print(
         f"pipeline: testability: {t['tries']} calls, {t['invalid_outputs']} invalid outputs, "
-        f"{t['refused_by_code']} refused by code; mismatches with the sheet: "
+        f"{t['refused_by_code']} refused by code, {t['outside_the_claims_words']} naming what "
+        "the claim's own words do not; mismatches with the sheet: "
         f"{t['mismatch_person_phone_or_window']} on a person, phone or window, "
         f"{t['mismatch_other_only']} on an account, handle, app, template or quote only, "
         f"{t['repairs_on_claims_the_sheet_leaves_untested']} on claims the sheet leaves untested;"
