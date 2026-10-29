@@ -60,8 +60,9 @@
   tests/test_account_lookups.py (two tests changed from "refused" to "one party" under R6)
   and tests/test_validation_run.py. Replaying run 2's recorded model answers through this
   code and running the checks on run 2's case database (development data, project files
-  only): 33 code-checked, 15 check unsettled, 3 expert only (51 tested), up from 18, 13 and
-  4 at #165. One of the 33 is code-checked by its call's time while its count of calls stays
+  only): 33 code-checked, 14 check unsettled, 3 expert only (50 tested), up from 18, 13 and
+  4 at #165. (One claim that names an app the case does not hold was check unsettled before
+  the last review round and is now untested: code no longer searches every app for it.) One of the 33 is code-checked by its call's time while its count of calls stays
   inconclusive (calls stored twice). 11 of the 33 have a failed core check; whether those are
   right is unscored until run 3's measure 7. `make check`: see the PR.
 - Open: the absence check compares stored time strings, so a window edge that falls exactly

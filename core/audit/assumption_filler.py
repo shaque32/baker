@@ -1272,6 +1272,14 @@ _PART_DAY_RE = re.compile(
 )
 
 
+# Words that make a stated day more than that day: "From May 7 onward", "every day after".
+_PART_DAY_OPEN_RE = re.compile(
+    r"\b(?:from|onwards?|forward|thereafter|beginning|starting|since|until|till|through|thru|"
+    r"after|before|prior|during|each|every|daily|nightly|weekly|later|following)\b",
+    re.IGNORECASE,
+)
+
+
 def stated_part_day(text: str, context: str = "") -> StatedWindow | None:
     """The part of one stated day an open time leaves, or None (PAST-30 fill c).
 
@@ -1298,6 +1306,8 @@ def stated_part_day(text: str, context: str = "") -> StatedWindow | None:
         return None  # "On May 7, 2023 UTC, ... after 10:00 a.m.": the day's zone (Codex on #169)
     if _OFFSET_EDGE_RE.search(plain):
         return None  # "two hours after 10:00 a.m.": an offset code does not read
+    if _PART_DAY_OPEN_RE.search(plain[: p.start()] + " " + plain[p.end() :]):
+        return None  # "From May 7, 2023 onward, ... before 9 a.m.": more than one day
     before = plain[max(0, m.start() - 12) : m.start()]
     if any(_has_word(before, w) for w in (*OPEN_START, *OPEN_END)):
         return None
@@ -2153,7 +2163,9 @@ class LocalAssumptionFiller:
         own_ids: set[str] = set()  # a phone's own accounts, the phone written as an account
         for acc in p.accounts:
             try:
-                account_ids |= self._accounts(acc, device_ids, claim.text)
+                account_ids |= self._accounts(
+                    acc, device_ids, claim.text, one_number=tpl.id != "contact_entry"
+                )
             except Reject:
                 # Words the case holds no account identifier under may still name a party:
                 # - a person the expert created ("SUBJECT-1" on Signal): the claim names the
@@ -2408,6 +2420,8 @@ class LocalAssumptionFiller:
         apps = self._message_apps(claim.text)
         if apps is None:
             return out  # a phone's messages, in a case that holds none
+        if not apps and _names_an_app_off_the_case(_unquoted(_nfc(claim.text))):
+            return out  # "the Signal message" on a case with no Signal (Codex on #169)
         if apps:  # the search stays on the apps named
             params["channels"] = apps
         phones = self._written_phones(_unquoted(_nfc(claim.text)))
@@ -2864,12 +2878,15 @@ class LocalAssumptionFiller:
                 " absence is read on it"
             )
 
-    def _accounts(self, acc: _Account, device_ids: list[str], claim_text: str = "") -> set[str]:
+    def _accounts(
+        self, acc: _Account, device_ids: list[str], claim_text: str = "", one_number: bool = True
+    ) -> set[str]:
         """The accounts on the model's app with this identifier. A number finds every account
         on that app whose identifier is the same number, however it is written ("(919)
         888-7386", "+19198887386", "19198887386@s.whatsapp.net"), on a phone app, the phone's
         call log, or an app the claim names: a number alone never picks the app. They are one
-        party: the same digits, only the formatting differs (ruling R6)."""
+        party: the same digits, only the formatting differs (ruling R6). Not for a contact
+        entry (`one_number` False), which names the one account that holds the number."""
         app = acc.app.strip().casefold()
         ident = re.sub(r"(?i)^(user\s*id|id|number|no\.)\s*", "", acc.as_written.strip())
         want = key(acc.app, ident)
@@ -2882,7 +2899,7 @@ class LocalAssumptionFiller:
         hits = {a.id for a in mine if a.key == want}
         number = phone_digits(ident)
         named = app == NATIVE_CALL_APP or self._app_named(claim_text, acc.app)
-        if number is not None and named:
+        if number is not None and named and one_number:
             # One number written two ways on one app ("+19195677484" and "9195677484", from two
             # databases) is one party: the same digits, only the formatting differs (ruling
             # R6). Display names, addresses and user ids are never read as numbers.

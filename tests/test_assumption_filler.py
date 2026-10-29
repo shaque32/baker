@@ -254,6 +254,21 @@ def test_good_answers_become_checkable_assumptions(conn, cid):
     assert sorted(outcomes) == sorted(EXPECTED[cid] + [o for _, o in CODE_ADDS.get(cid, [])])
 
 
+def test_a_contact_entry_keeps_the_one_account_it_names(conn):
+    # The same number written another way on the same phone is a second account; a contact
+    # entry names the one account that holds the number (Codex on #169).
+    conn.execute(
+        "INSERT INTO accounts (id, source_id, locator, device_id, app, identifier)"
+        " VALUES ('acct:item1:Phone:2125550122', 'item1', 'x', 'dev:item1', 'Phone',"
+        " '2125550122')"
+    )
+    try:
+        (c01,) = build(conn, "C01")[0]
+        assert c01.params.account_ids == tuple(MARC_0122)
+    finally:
+        conn.execute("DELETE FROM accounts WHERE id = 'acct:item1:Phone:2125550122'")
+
+
 def test_parameters_match_the_check_tests(conn):
     (c01,) = build(conn, "C01")[0]
     assert c01.params.device_ids == ("dev:item1",)
@@ -1616,6 +1631,15 @@ def test_a_deletion_date_dates_no_sending_even_with_a_sender(conn):
     assert not any(a.template_id == "record_time" for a in assumptions), filler.drops
 
 
+def test_a_message_on_an_app_the_case_lacks_gets_no_sender_from_its_receipt(conn):
+    # "the Signal message ... after receiving it from REYES" on a case with no Signal: the
+    # sender search would run on every app (Codex on #169).
+    text = 'PETROV kept the Signal message "move it tonight" after receiving it from REYES.'
+    assumptions, filler = build_text(conn, text, ClaimType.COMMUNICATION, [])
+    assert not any(c.casefold() == "signal" for c in filler.channels())
+    assert not any(a.template_id == "sender" for a in assumptions), filler.drops
+
+
 def test_the_one_a_message_was_received_from_sent_it(conn):
     # Fill b: '... "words" after receiving it from X.' names X as the sender: a person, or one
     # account on the one app the claim names, by its exact identifier.
@@ -1659,6 +1683,9 @@ def test_an_open_time_on_one_stated_day_is_the_rest_or_the_start_of_that_day():
         "On 5/7/2023, no call was placed after 9 a.m.",  # a numeric date
         "On Monday, May 7, 2023, no call was placed after 9 a.m.",  # not that date's weekday
         "On May 7, 2023, at 9 a.m., a call was placed.",  # no open time
+        # more days than the one stated (Codex on #169)
+        "From May 7, 2023 onward, there was no contact between PETROV and REYES before 9 a.m.",
+        "On May 7, 2023 and every day after, no call was placed before 9 a.m.",
         # the day's own zone, which the time's would not carry (Codex on #169)
         "On May 7, 2023 UTC, there was no contact with REYES after 10:00 a.m.",
         "On May 7, 2023 (UTC), there was no contact with REYES after 10:00 a.m.",
