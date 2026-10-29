@@ -478,7 +478,7 @@ def test_handle_resolving_checks_record_the_version_that_skips_copy_recipients()
     # The checks that match a quote's text record the fold (curly quotes, runs of spaces).
     assert {CHECKS[n].version for n in ("sender", "weekday")} == {"1.0.2"}
     assert CHECKS["time"].version == "1.0.3"  # and a call is on the app named beside "call"
-    assert CHECKS["count"].version == "1.0.3"
+    assert CHECKS["count"].version == "1.1.0"  # and counts calls (validation fill f)
 
 
 def _typed(conn: sqlite3.Connection, body: str) -> sqlite3.Connection:
@@ -528,3 +528,58 @@ def test_quote_verification_stays_exact() -> None:
 
     assert not verify_quote("I'm at the dock", "I\u2019m at the dock")
     assert not verify_quote("Yay! Do", "Yay!  Do")
+
+
+def _with_calls(
+    conn: sqlite3.Connection, times: list[str], durations: list[int | None] | None = None
+) -> sqlite3.Connection:
+    for i, ts in enumerate(times):
+        conn.execute(
+            "INSERT INTO calls (id, source_id, locator, device_id, app, from_account_id,"
+            " to_account_id, direction, ts_utc, duration_s) VALUES (?, 'p1', 'x', 'dev:p1',"
+            " 'SMS', 'a:p1:own', 'a:p1:b', 'outgoing', ?, ?)",
+            (f"call:p1:{i}", ts, 60 if durations is None else durations[i]),
+        )
+    return conn
+
+
+def test_a_count_of_calls_counts_calls_and_never_fails() -> None:
+    # Fill f: with 'call' among the channels the count check counts calls, not messages.
+    conn = _with_calls(build(), ["2026-03-10T15:00:00Z", "2026-03-12T15:00:00Z"])
+    common = dict(person_ids=[A, B], device_ids=["dev:p1"], window=MARCH, channels=["call"])
+    r = check(conn, "message_count", expected_count=2, count_op="eq", **common)
+    assert r.outcome is CheckOutcome.PASS, r.detail
+    assert r.record_ids == ("call:p1:0", "call:p1:1") and "Counted 2 calls" in r.detail
+    # More rows than the claim says is no fail: calls that did not connect stay in the log.
+    r = check(conn, "message_count", expected_count=1, count_op="eq", **common)
+    assert r.outcome is CheckOutcome.INCONCLUSIVE and "never fails" in r.detail
+    # Another app's calls are not counted when an app is named.
+    r = check(conn, "message_count", expected_count=2, count_op="eq",
+              **{**common, "channels": ["call", "Signal"]})  # fmt: skip
+    assert r.outcome is CheckOutcome.INCONCLUSIVE and "Counted 0 calls" in r.detail
+
+
+def test_a_call_with_no_length_may_not_have_connected() -> None:
+    # A zero or missing length leaves the count open: "spoke twice" needs two connected calls.
+    common = dict(person_ids=[A, B], device_ids=["dev:p1"], window=MARCH, channels=["call"])
+    for durations in ([60, 0], [60, None]):
+        conn = _with_calls(build(), ["2026-03-10T15:00:00Z", "2026-03-12T15:00:00Z"], durations)
+        for op in ("eq", "ge"):
+            r = check(conn, "message_count", expected_count=2, count_op=op, **common)
+            assert r.outcome is CheckOutcome.INCONCLUSIVE, (durations, op, r.detail)
+            assert "may not have connected" in r.detail
+            assert not FORBIDDEN_WORDS.search(r.detail), r.detail
+    # The source's deletion flag is named, as for messages, and does not change the outcome.
+    conn = _with_calls(build(), ["2026-03-10T15:00:00Z", "2026-03-12T15:00:00Z"])
+    conn.execute("UPDATE calls SET deleted_flag = 1 WHERE id = 'call:p1:0'")
+    r = check(conn, "message_count", expected_count=2, count_op="eq", **common)
+    assert r.outcome is CheckOutcome.PASS and "1 of them carry the source's deletion" in r.detail
+
+
+def test_two_calls_seconds_apart_may_be_one_call_stored_twice() -> None:
+    conn = _with_calls(build(), ["2026-03-10T15:00:00Z", "2026-03-10T15:00:12Z"])
+    r = check(conn, "message_count", person_ids=[A, B], device_ids=["dev:p1"], window=MARCH,
+              channels=["call"], expected_count=2, count_op="eq")  # fmt: skip
+    assert r.outcome is CheckOutcome.INCONCLUSIVE
+    assert "may hold one call twice" in r.detail
+    assert not FORBIDDEN_WORDS.search(r.detail), r.detail

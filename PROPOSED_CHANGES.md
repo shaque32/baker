@@ -678,6 +678,38 @@ with
 SIGNED by Arsh on 2026-10-28 ("approved", 13:17Z, project thread "Build agents into the audit").
 APPLIED by Arsh himself on this branch (PR #163), commit 2aded2d. Word for word as above.
 
+## 2026-10-29 claude/project-thread-ds0ify: message direction for counts and "exchanged" (validation R2, R3)
+File: core/contracts.py
+Why: the count check counts messages both ways, so "SUBJECT-2 sent SUBJECT-1 exactly three
+Signal messages" and "the TARGET PHONE exchanged Signal messages with (919) 888-7386" are refused
+today (#160: no one-way counts). The template filler cannot say which side sent, or that a
+message must go each way, without a field for it. Replaying run 2's recorded answers, about
+5 to 9 more iOS 15 claims would be code-checked with this (one-way counts: 3; "exchanged": 4
+to 6, two of them also need "iMessage" read as Native Messages). Not needed for run 3's minimum
+of 30 if R1 lands; it raises the ceiling.
+Diff (core/contracts.py, class AssumptionParams, after `quoted_text`):
+```
++    # The side whose messages a count counts, as ids that are also in person_ids or
++    # account_ids ("SUBJECT-2 sent SUBJECT-1 three messages": sent_by is SUBJECT-2's id).
++    # Empty: messages either way.
++    sent_by: tuple[str, ...] = ()
++    # "exchanged messages": at least one message each way inside the window.
++    each_way: bool = False
+```
+and in `_count_pair` (or a new validator beside it):
+```
++        if self.sent_by and not set(self.sent_by) <= set(self.person_ids) | set(self.account_ids):
++            raise ValueError("sent_by names a party the assumption does not name")
++        if self.sent_by and self.each_way:
++            raise ValueError("sent_by and each_way do not go together")
+```
+What follows in unsigned code, in the PR after this is applied: the count check reads `sent_by`
+(only messages whose sender is that side) and `each_way` (pass when each side sent at least
+one inside the window; it never fails on absence, since coverage is unknown); the filler sets
+them only from the claim's own words ("sent", "received", "exchanged"); TEMPLATES_VERSION and
+the count check's version go up. No change to rules, prompts or schema: params are stored as
+JSON.
+
 ## 2026-10-29 claude/project-thread-6i2msb-case04: sign case04's key and assumption sheet
 File: eval/gold/case04/gold.jsonl, eval/gold/case04/assumptions.jsonl (new)
 Why: case04 is the held-out set for the testability step's go/no-go (plans/agentic.md, approved

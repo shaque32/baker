@@ -84,6 +84,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from core import pipeline
+from core.audit.assumptions import is_code_made
 from core.contracts import ClaimType, DocKind, GoldClaim, GovDocParagraph, Prediction
 from core.db import apply_schema, connect
 from core.ingest.cellebrite_excel import CellebriteExcelImporter
@@ -741,6 +742,7 @@ def run_once(
             for d in second.decisions
             if d.verdict.value == "contradicted" and d.cited_check_ids
         )
+        summary["supported_on_code_made"] = supported_on_code_made(conn, second.decisions)
         preds = write_outputs(conn, out, summary)
         summary["verdicts"] = _verdict_counts(preds)
         (out / "run.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
@@ -751,6 +753,20 @@ def run_once(
         return preds
     finally:
         conn.close()
+
+
+def supported_on_code_made(conn, decisions) -> list[str]:  # noqa: ANN001
+    """Claims the rules made Supported while one of their core assumptions was filled by code
+    from the claim's wording, not by the model (validation fill g). The Mac check's bar is
+    no false Supported among them."""
+    made = {
+        cid
+        for cid, text in conn.execute("SELECT claim_id, text FROM assumptions WHERE is_core = 1")
+        if is_code_made(text)
+    }
+    return sorted(
+        d.claim_id for d in decisions if d.verdict.value == "supported" and d.claim_id in made
+    )
 
 
 def challenge_summary(result: pipeline.RunResult) -> dict[str, object]:
@@ -843,6 +859,10 @@ def print_summary(s: dict) -> None:
         )
     print(f"pipeline: verdicts after the simulated expert {s['verdicts']}")
     print(f"pipeline: contradicted with a failed check cited: {s['contradicted_by_failed_check']}")
+    print(
+        "pipeline: supported with a code-made core assumption (filled from the claim's wording):"
+        f" {s['supported_on_code_made']}"
+    )
     if "testability" in s:
         print_testability(s["testability"])
 
