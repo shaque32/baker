@@ -14,13 +14,15 @@
     inconclusive unless the known ones already exceed the claim. A denial ("has not sent",
     "never sent") is not the plain form, and the other side must be written as the recipient
     (right after "sent", or after "to", "to the Kik account"), not in another clause
-    ("while REYES was abroad"). A number written another way finds its account (R6).
+    ("while REYES was abroad"). Words after "sent" that limit which messages count ("about the
+    delivery", "mentioning money") are refused, since the check reads no message content. A number written another way finds its account (R6).
   - R3, `each_way`: "exchanged ... messages" passes only when each side sent at least one
     counted message in the window. With no stated number it is "at least two"; a stated number
     is still compared. One side's silence never fails the claim: the check says "Not finding a
     message each way does not mean one was never sent" and stays inconclusive. A claim that
     states a count the model left out ("exchanged exactly three", "dozens of") is refused, not
-    read as "at least two"; so is a denial ("never exchanged", "had not exchanged").
+    read as "at least two"; so is a denial ("never exchanged", "had not exchanged"), and messages limited by what
+    they say ("exchanged messages about the delivery").
   - When the two sides share an account (through a confirmed identity link), a count by
     direction is inconclusive: which side sent a message from that account is not known.
   - A count of calls takes neither field: a call log's direction is not read here, so the

@@ -1464,6 +1464,11 @@ _PASSIVE_SENT_RE = re.compile(
     r"\b(?:was|were|been|being|be|is|are|get|got)\s+sent\b|\bsent\s+by\b", re.I
 )
 # "exchanged Signal messages", "exchanged more than forty iMessages": messages each way (R3).
+# Words that limit which messages count by what they say: the count check reads no content.
+_MESSAGE_CONTENT_RE = re.compile(
+    r"\b(?:mention\w*|contain\w*|saying|stating|referr\w*|that|which|whose|including)\b", re.I
+)
+_MESSAGE_NOUN_RE = re.compile(r"(?:messages?|texts?|imessages?|chats?|emails?|dms?)", re.I)
 # A denial anywhere in the claim: "never exchanged", "had not sent" (Codex on #172).
 _DENIAL_RE = re.compile(r"\b(?:not|never|no|neither|nor|without|cannot)\b|n['’]t\b", re.I)
 _EXCHANGED_RE = re.compile(
@@ -1503,6 +1508,9 @@ def exchanged(claim: str) -> str | None:
     words = _unquoted(_flat(_nfc(claim)))
     m = _EXCHANGED_RE.search(words)
     if m is None or _ONE_WAY_RE.search(words) or _DENIAL_RE.search(words):
+        return None
+    if _on_a_subject(words) or _MESSAGE_CONTENT_RE.search(words):
+        # "exchanged messages about the delivery": the check reads no subject (Codex on #172)
         return None
     return m.group("between")
 
@@ -2519,7 +2527,12 @@ class LocalAssumptionFiller:
             for m in _PHONE_RE.finditer(text):
                 if phone_digits(m.group(0).strip(" .,-")) in numbers:
                     out.append(("accounts", *m.span(), False))
-            return out
+            # "Marcus Reyes" holds "Reyes": only the outermost mention counts (Codex on #172)
+            return [
+                m
+                for m in out
+                if not any(o[1] <= m[1] and m[2] <= o[2] and o[2] - o[1] > m[2] - m[1] for o in out)
+            ]
 
         def sides(text: str, recipient: bool = False) -> set[str]:
             found = mentions(text)
@@ -2561,6 +2574,20 @@ class LocalAssumptionFiller:
         ]
         if not other or other & sender or unnamed:
             raise Reject("the claim does not write the sender on one side and the other after")
+        left = list(rest)
+        for _, start, end, _ in mentions(rest):
+            left[start:end] = " " * (end - start)
+        plain = apps | {"to", "the", "account", "user", "number", "exactly", "only", "at", "least"}
+        plain |= {"most", "a", "total", "of"}
+        extra = [
+            w
+            for w in _words("".join(left)).split()
+            if w not in plain and _number(w) is None and not _MESSAGE_NOUN_RE.fullmatch(w)
+        ]
+        if extra:
+            # "sent REYES one message about the delivery": the check reads no subject or other
+            # limit on the messages, so it would count them all (Codex on #172)
+            raise Reject(f"the count is limited by words the check does not read ({extra[0]!r})")
         (side,) = sender
         return sorted(accounts) if side == "accounts" else [side]
 
