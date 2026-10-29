@@ -406,12 +406,34 @@ def messages_for_accounts(data: CaseData, account_ids: set[str]) -> list[Row]:
     return [_message_row(r) for r in rows]
 
 
+# A claim types I'm where the phone stored I’m, and one space where the export kept two. The
+# checks' text match reads curly quotes as straight ones and any run of spaces as one space;
+# every other character must match exactly. Quote verification (core/audit/quotes.py) stays
+# exact: this fold is only for finding the record a claim quotes.
+_TYPOGRAPHIC = str.maketrans({"\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"'})
+_SPACES = re.compile(r"\s+")
+_FOLDED_AWAY = re.compile(r"[\s'\"\u2018\u2019\u201c\u201d]+")
+TEXT_MATCH = "verbatim, with curly quotes read as straight and runs of spaces as one"
+
+
+def fold_text(text: str) -> str:
+    """The text as the checks match it: curly quotes straight, each run of spaces one space."""
+    return _SPACES.sub(" ", text.translate(_TYPOGRAPHIC))
+
+
 def messages_with_text(data: CaseData, text: str) -> list[Row]:
-    """Messages whose original body contains the text verbatim and word-aligned. Embedded copies
-    stay in: a copy carrying the words makes a quote-picked check rest on a forwarded record,
-    so it comes out inconclusive and names the copy, never a changed holds or fails."""
-    rows = data.conn.execute(_MSG_SQL + " WHERE instr(m.body, ?) > 0 ORDER BY m.id", (text,))
-    return [row for row in map(_message_row, rows) if find_quote(text, row.text or "")]
+    """Messages whose original body contains the text word-aligned, verbatim but for the fold
+    (fold_text). Embedded copies stay in: a copy carrying the words makes a quote-picked check
+    rest on a forwarded record, so it comes out inconclusive and names the copy, never a
+    changed holds or fails."""
+    want = fold_text(text)
+    # The longest piece the fold never changes narrows the scan; it sits in every match as is.
+    piece = max(_FOLDED_AWAY.split(text), key=len, default="")
+    if piece:
+        rows = data.conn.execute(_MSG_SQL + " WHERE instr(m.body, ?) > 0 ORDER BY m.id", (piece,))
+    else:
+        rows = data.conn.execute(_MSG_SQL + " ORDER BY m.id")
+    return [row for row in map(_message_row, rows) if find_quote(want, fold_text(row.text or ""))]
 
 
 def calls_for_accounts(data: CaseData, account_ids: set[str]) -> list[Row]:

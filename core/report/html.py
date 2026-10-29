@@ -51,6 +51,9 @@ Display rules:
   regenerated exactly (HOSTED). It never claims a local re-run gives identical labels.
 - Each evidence row carries the evidence item's id (<tr id=...>), the same id the review screen
   gives its evidence card, so the two can be compared item by item.
+- An item the challenge step stored (core/audit/challenge.py, read from its audit entries) says
+  "Found by the challenge step", as its review-screen card does, and the versions table says
+  whether the run ran the step.
 - A stance rationale that uses a forbidden word is withheld, not printed: its row says
   "Rationale withheld", names the word and marks the item as needing expert review, and the
   "Withheld model rationales" section lists every such item (irrelevant ones too) with the
@@ -82,7 +85,7 @@ from datetime import datetime
 from pathlib import Path
 
 from core import build, pipeline
-from core.audit import invariants, rules, testability
+from core.audit import challenge, invariants, rules, testability
 from core.audit.assumption_filler import WIDER_APPS
 from core.contracts import (
     AssumptionKind,
@@ -169,7 +172,9 @@ from core.review.withheld import summary as withheld_summary
 # accepted (core/audit/testability.py, eval only) says "Proposed by agent, accepted by examiner"
 # with the examiner, in its claim's assumption table and verdict trace. A run without the step
 # renders as before.
-REPORT_VERSION = "0.21.0"
+# 0.22.0 (after #159's 0.21.0): an evidence item the challenge step stored
+# says "Found by the challenge step", and the versions table says whether the step ran.
+REPORT_VERSION = "0.22.0"
 
 
 @dataclass(frozen=True)
@@ -825,10 +830,12 @@ def _claim_block(
     st: ClaimState,
     case: explain.Case | None,
     left_out: int = 0,
+    challenged: frozenset[str] = frozenset(),
 ) -> str:
     """One claim. `case` is None in a scoped bundle's report that holds only the records the
     verdicts cite, so the parts that read the whole phone are left out; `left_out` counts the
-    claim's evidence items that bundle left out."""
+    claim's evidence items that bundle left out; `challenged` holds the items the challenge step
+    stored in the audit the report shows (challenge.found_items)."""
     claim, decision = st.claim, st.decision
     out = [f'<div class="claim" id="{e(claim.id)}">']
     out.append(
@@ -923,7 +930,13 @@ def _claim_block(
                 f"{record_line(conn, x.record_id, found)}"
                 f"<br><span class='muted'>{e(labelled_by(conn, x.model_run_id))}. "
                 f"{rationale_html(x, withheld.get(x.id))}</span>"
-                f"</td><td>{STANCE_LABEL[x.stance]}</td><td>{display_tier(x).value}</td>"
+                + (
+                    f"<br><span class='muted'>{e(challenge.FOUND_MARK.capitalize())}: code's "
+                    "counter-searches found this record.</span>"
+                    if x.id in challenged
+                    else ""
+                )
+                + f"</td><td>{STANCE_LABEL[x.stance]}</td><td>{display_tier(x).value}</td>"
                 f"<td>{review_label(conn, x)}</td>"
                 f"<td class='mono'>{e(x.ref.source_id)} {e(x.ref.locator)}<br>{e(x.record_id)}"
                 "</td></tr>"
@@ -1071,6 +1084,17 @@ def auto_contradict_label(run: dict | None) -> str:
     return text
 
 
+def challenge_label(conn: sqlite3.Connection, run: dict) -> str:
+    """Whether the audit whose evidence the run shows ran the challenge step. A verdict re-run
+    reuses that audit's evidence, so its own configuration does not say."""
+    source = run.get("evidence_from_run", run["run_id"])
+    row = conn.execute("SELECT config_json FROM pipeline_runs WHERE id = ?", (source,)).fetchone()
+    if row is None:
+        return "not recorded: this audit's configuration is not in the case file"
+    step = json.loads(row[0] or "{}").get("challenge")
+    return f"ran ({step})" if step else "skipped for this run"
+
+
 def _versions(conn: sqlite3.Connection, run: dict | None) -> str:
     rows = [("Report", REPORT_VERSION), ("Other explanations (code)", explain.VERSION)]
     if run:
@@ -1081,6 +1105,7 @@ def _versions(conn: sqlite3.Connection, run: dict | None) -> str:
             ("Verdict rules", run["rule_version"]),
             ("Quote check", quote_check_label(run)),
         ]
+        rows.append(("Challenge step", challenge_label(conn, run)))
         cloud = (run.get("config") or {}).get("cloud")
         if isinstance(cloud, dict):
             rows.append(("Stance labels", str(cloud.get("why", ""))))
@@ -1208,10 +1233,11 @@ def render_report(
     whole = scope is None or scope.whole_phone
     case = explain.load(conn) if whole else None
     manifest = (run or {}).get("manifest", {})
+    challenged = challenge.found_items(conn, run)
     for st in states:
         named = len(set((manifest.get(st.claim.id) or {}).get("evidence", [])))
         left = max(named - len(st.evidence), 0) if scope is not None and st.decision else 0
-        parts.append(_claim_block(conn, st, case, left))
+        parts.append(_claim_block(conn, st, case, left, challenged))
 
     parts.append(searches_section(states, srcs))
     timeline = timeline or timeline_html.Settings()
