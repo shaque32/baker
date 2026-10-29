@@ -37,6 +37,8 @@ import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 
+from core.audit.assumption_filler import NATIVE_CALL_APP
+from core.audit.checks._common import namespace
 from core.contracts import ClaimType, DocKind
 from core.db import apply_schema, connect
 
@@ -139,10 +141,21 @@ def build(ufdr: Path, claims: list[dict], out: Path, log) -> None:  # noqa: ANN0
     )
 
 
-def number_digits(identifier: str) -> str | None:
+def number_digits(identifier: str, app: str | None = None) -> str | None:
     """The national digits of an identifier that is a telephone number, else None: '+1 (919)
-    888-7386', '19198887386' and '19198887386@s.whatsapp.net' all give '9198887386'."""
-    if not _NUMBER_ID.fullmatch(identifier.strip()):
+    888-7386', '19198887386' and '19198887386@s.whatsapp.net' all give '9198887386'. Bare
+    digits are a number only on a phone app or the call log (`app` None, or its namespace
+    "tel"): on another app they are a user id (Codex on #169)."""
+    ident = identifier.strip()
+    if not _NUMBER_ID.fullmatch(ident):
+        return None
+    if (
+        app is not None
+        and not ident.startswith("+")
+        and not ident.endswith("@s.whatsapp.net")
+        and namespace(app) != "tel"
+        and app != NATIVE_CALL_APP
+    ):
         return None
     digits = re.sub(r"\D", "", identifier.split("@", 1)[0])
     if len(digits) == 11 and digits.startswith("1"):
@@ -158,8 +171,8 @@ def link_defined_number(conn, person_id: str, number: str) -> list[str]:  # noqa
     want = number_digits(number)
     ids = [
         aid
-        for aid, ident in conn.execute("SELECT id, identifier FROM accounts ORDER BY id")
-        if ident and number_digits(ident) == want
+        for aid, app, ident in conn.execute("SELECT id, app, identifier FROM accounts ORDER BY id")
+        if ident and number_digits(ident, app or "") == want
     ]
     note = f"The affidavit defines {person_id} as the user of telephone number {number}."
     for aid in ids:

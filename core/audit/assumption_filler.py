@@ -1269,6 +1269,8 @@ def _open_range_wording(bare: str) -> bool:
     the model's range, read as before (Codex on #169)."""
     if not _OPEN_RANGE_RE.search(bare) or time_mentions(bare) or _NUM_DATE_RE.search(bare):
         return False
+    if _EXCEPT_RE.search(bare):
+        return False  # "except before March 12": the open side is the one left out (Codex)
     if any(_has_word(bare, w) for w in ("first", "last", "earliest", "latest")):
         return False
     if _OFFSET_EDGE_RE.search(bare):
@@ -3338,7 +3340,10 @@ class LocalAssumptionFiller:
         app = self._call_app(claim.text, channels)
         params["channels"] = sorted({CALL_CHANNEL, app}, key=str.lower)
         device_ids = list(params.get("device_ids", []))
-        if not (params.get("person_ids") or params.get("account_ids") or params.get("handles")):
+        supplied = bool(
+            params.get("person_ids") or params.get("account_ids") or params.get("handles")
+        )
+        if not supplied:
             people, accounts, phone = self._call_parties(claim, device_ids, app)
             if phone and not device_ids:
                 device_ids = phone
@@ -3351,6 +3356,17 @@ class LocalAssumptionFiller:
             params.get("account_ids") or params.get("handles")
         )
         if sides == 1 and len(device_ids) == 1:
+            if supplied:
+                # The model's one side: the claim's own words must make the phone the other
+                # side and name that one side, as when code reads the parties ("REYES and
+                # SMITH had two calls" on the phone is no call with its owner; Codex on #169).
+                people, accounts, _ = self._call_parties(claim, device_ids, app)
+                if (
+                    params.get("handles")
+                    or sorted(params.get("person_ids", [])) != people
+                    or sorted(params.get("account_ids", [])) != accounts
+                ):
+                    raise Reject("the model's party for the calls is not the claim's one party")
             own = {a.id for a in self.data.accounts.values() if a.device_id == device_ids[0]}
             owner = self._exact_owner(own) if own else None
             if owner is None or owner in params.get("person_ids", []):

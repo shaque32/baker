@@ -10,7 +10,8 @@
     and user ids that happen to be digits are never read as numbers.
   - R4 (run driver only, `eval/validation/hickman_run.py`): a person the affidavit defines as
     the user of a number is linked to the accounts whose identifier is that number, in any
-    format. Display names never link.
+    format. Display names never link, and bare digits link only on a phone app or the call
+    log: on another app they are a user id, as the filler reads them.
   - Run driver: the challenge step, on by default since #162, is turned off for validation
     runs as the run 3 plan requires, and `run.json` records it.
   - Fill a: a dated quote with no named writer gets its time checked, with no party.

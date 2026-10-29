@@ -192,6 +192,9 @@ def test_a_person_defined_by_a_number_is_linked_to_that_numbers_accounts_only(tm
         ("a:tg", "Telegram", "1364243771", "This Is DFIR Two"),  # a user id: not the number
         ("a:line", "Line", "u2353528e3ca406ce7a308f29772ee2c9", "(919) 888-7386"),  # a name
         ("a:other", "Signal", "+19195794674", "This Is DFIR"),
+        # bare digits: a number on the phone's own app, a user id on another (Codex on #169)
+        ("a:ph", "Phone", "9198887386", None),
+        ("a:tg2", "Telegram", "9198887386", None),
     ]
     conn.executemany(
         "INSERT INTO accounts (id, source_id, locator, device_id, app, identifier, display_name)"
@@ -200,7 +203,8 @@ def test_a_person_defined_by_a_number_is_linked_to_that_numbers_accounts_only(tm
     )
     pid = actions.add_person(conn, "SUBJECT-2", hickman_run.ACTOR)
     ids = hickman_run.link_defined_number(conn, pid, "(919) 888-7386")
-    assert ids == ["a:sig", "a:wa"]
+    assert ids == ["a:ph", "a:sig", "a:wa"]
     links = conn.execute("SELECT account_id, status, decided_by FROM identity_links").fetchall()
-    assert sorted(links) == [("a:sig", "confirmed", hickman_run.ACTOR),
+    assert sorted(links) == [("a:ph", "confirmed", hickman_run.ACTOR),
+                             ("a:sig", "confirmed", hickman_run.ACTOR),
                              ("a:wa", "confirmed", hickman_run.ACTOR)]  # fmt: skip

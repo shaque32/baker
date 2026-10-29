@@ -1963,6 +1963,34 @@ def test_a_model_count_of_calls_takes_the_written_phones_zone(call_log):
         call_log.execute("UPDATE devices SET timezone = 'America/New_York' WHERE id = 'dev:item2'")
 
 
+def test_a_model_party_for_calls_must_be_the_claims_one_party(conn):
+    # The model named REYES only; the claim names REYES and SMITH, so the phone's owner is no
+    # side of these calls (Codex on #169).
+    text = "On March 12, 2026, on dev:item1, REYES and SMITH had two Telegram calls."
+    window = {"as_written": "On March 12, 2026", "start": "2026-03-12T00:00",
+              "end": "2026-03-13T00:00", "zone": "phone"}  # fmt: skip
+    prop = {"template_id": "message_count", "count": {"value": 2}, "channels": ["Telegram"],
+            "people": ["REYES"], "phones": ["dev:item1"], "window": window}  # fmt: skip
+    assumptions, filler = build_text(conn, text, ClaimType.COUNT, [prop])
+    assert not any(a.template_id == "message_count" for a in assumptions)
+    assert any("not the claim's one party" in d.reason or "one side" in d.reason
+               for d in filler.drops), filler.drops  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "On dev:item1, there was no contact between PETROV and REYES except before March 12, 2026.",
+        "dev:item1 never communicated with (212) 555-0144 other than after March 12, 2026.",
+    ],
+)
+def test_an_open_range_left_out_by_an_exception_is_not_read(text):
+    # The open side is the one the claim exempts (Codex on #169).
+    from core.audit.assumption_filler import _open_range_wording
+
+    assert not _open_range_wording(text)
+
+
 def _no_contact(conn, text: str, **prop):
     return build_text(conn, text, ClaimType.ABSENCE, [{"template_id": "no_contact", **prop}])
 
