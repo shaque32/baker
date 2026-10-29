@@ -159,6 +159,8 @@ class ClaimState:
     # failed checks on a core assumption the shown audit took from the testability step that no
     # expert has confirmed (rules 0.4.0, rule 1a): each keeps the claim unproven until confirmed
     agent_fails: list[CheckResult] = field(default_factory=list)
+    # check id -> testability.seen_sha256 of each, the token its confirm form carries
+    agent_seen: dict[str, str] = field(default_factory=dict)
     # evidence items whose rationale is withheld for a forbidden word (core/review/withheld.py)
     withheld: list[Withheld] = field(default_factory=list)
 
@@ -597,6 +599,9 @@ def _state(
         st.agent_fails = testability.awaiting(
             conn, agent.accepted, claim.id, st.assumptions, st.checks
         )
+        st.agent_seen = {
+            c.id: testability.seen_sha256(agent.accepted[claim.id], c) for c in st.agent_fails
+        }
     st.evidence = pipeline.load_evidence(conn, items["evidence"])
     st.last_reviewer = last_reviewers(conn, [e.id for e in st.evidence])
     st.withheld = withheld_rationales.for_items(conn, st.evidence)

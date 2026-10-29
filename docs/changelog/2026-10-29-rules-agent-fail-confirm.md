@@ -25,8 +25,9 @@
     There is no confirm-all. A confirm re-runs the verdicts at once, as the evidence confirm
     does. `actions.confirm_agent_fail` refuses a non-expert, an empty reason and a failure the
     audit on screen does not show as waiting. It also refuses a failure other than the one the
-    page showed: the form carries the shown result's hash, so a page left open across a later
-    audit whose check failed another way confirms nothing (Codex).
+    page showed: the form carries a hash of the shown result, its proposal and the claim text,
+    so a page left open across a later audit whose check failed another way, or across a claim
+    edit, confirms nothing (Codex, twice).
   - The overview, the claim page and report 0.24.0 give the step to confirm it. The report's key
     to the verdicts says such a failure counts once an expert confirms it. `verify-bundle`
     re-applies the rules with the same inputs, read at each verdict's log position, and fails a
@@ -51,10 +52,11 @@
     contradicted citing the check; a later rejection undoes the confirm and the next audit leaves
     the claim untested; a rejection after the verdicts counted a confirm marks them not current,
     and one with no confirm to undo does not; a confirm from a page that showed an earlier
-    failure of the same check is refused, on the page too; a confirm carries to a later audit only while the
-    check fails the same way; verify-bundle passes each run and fails a forged non-expert
-    confirm; the claim page shows one confirm per failure and a reject, and a posted confirm
-    re-runs the verdicts.
+    failure of the same check is refused, on the page too, and so is one from a page shown
+    before a claim edit after which the check fails the same way; a confirm carries to a later
+    audit only while the check fails the same way; verify-bundle passes each run and fails a
+    forged non-expert confirm; the claim page shows one confirm per failure and a reject, and a
+    posted confirm re-runs the verdicts.
 - Open: the Mac go/no-go still reports how often an accepted proposal fails a check on a true
   claim (now a confirm the expert must decide, not a verdict). The demo has no claim whose
   agent proposal fails a check; a demo claim for it is a possible follow-up. PR 3 (the agent on
