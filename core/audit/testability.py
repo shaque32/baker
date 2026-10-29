@@ -96,7 +96,7 @@ from core.audit.assumption_filler import (
     fill_schema,
     phone_digits,
 )
-from core.audit.assumptions import Proposal, instantiate, templates_for
+from core.audit.assumptions import Proposal, from_proposal, templates_for
 from core.audit.invariants import InvariantViolation
 from core.contracts import (
     Assumption,
@@ -486,9 +486,7 @@ def check_answer(
     # the template shape check, code's sender, time range and meaning fills, then the gate.
     before = len(filler.drops)
     kept = filler._shaped(claim, kept, None)
-    kept = filler._shaped(claim, filler._add_sender(claim, kept, allowed), None)
-    kept = filler._shaped(claim, filler._add_record_time(claim, para, kept, allowed), None)
-    kept = filler._add_meaning(claim, kept, allowed, None)
+    kept = filler.code_fills(claim, para, kept, allowed, None)
     reasons += [d.reason for d in filler.drops[before:]]
     del filler.drops[before:]  # this try's refusals are the step's, not the first pass's
     gap = coverage_gap(claim, kept, frozenset(filler._names()))
@@ -497,7 +495,7 @@ def check_answer(
     out: dict[str, Assumption] = {}
     for p in kept:
         try:
-            a = instantiate(claim.id, p.template_id, p.params, p.is_core)
+            a = from_proposal(claim.id, p)  # keeps the code-made note (Codex on #169)
         except (ValidationError, ValueError) as e:
             return "refused", [*reasons, f"template {p.template_id!r}: {e}"], Named(), []
         out.setdefault(a.id, a)
