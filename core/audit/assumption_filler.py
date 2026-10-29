@@ -1465,7 +1465,8 @@ _PASSIVE_SENT_RE = re.compile(
 )
 # "exchanged Signal messages", "exchanged more than forty iMessages": messages each way (R3).
 _EXCHANGED_RE = re.compile(
-    r"\bexchanged\b[^.;,]*?\b(?:messages?|texts?|imessages?|chats?|emails?|dms?)\b", re.I
+    r"\bexchanged\b(?P<between>[^.;,]*?)\b(?:messages?|texts?|imessages?|chats?|emails?|dms?)\b",
+    re.I,
 )
 
 
@@ -1489,11 +1490,23 @@ def sent_form(claim: str, value: int) -> tuple[str, str] | None:
     return m.group("subject"), m.group("rest")
 
 
-def exchanged(claim: str) -> bool:
-    """True when the claim says messages went each way ("exchanged ... messages") and writes
-    no one-way word."""
+def exchanged(claim: str) -> str | None:
+    """The words between "exchanged" and "messages" when the claim says messages went each way
+    ("exchanged Signal messages" gives " Signal ") and writes no one-way word; else None."""
     words = _unquoted(_flat(_nfc(claim)))
-    return bool(_EXCHANGED_RE.search(words)) and not _ONE_WAY_RE.search(words)
+    m = _EXCHANGED_RE.search(words)
+    return m.group("between") if m and not _ONE_WAY_RE.search(words) else None
+
+
+def states_a_count(claim: str) -> bool:
+    """True when the claim writes any number as a count of records ("three messages", "13
+    calls"), whatever its value."""
+    words = _unquoted(_flat(_nfc(claim)))
+    for n in re.finditer(r"(?<![\d.,])\b(?:\d+|[a-z]+(?:-[a-z]+)?)\b(?![.,]\d)", words, re.I):
+        if n.group(0).lower() not in ("a", "an") and _number(n.group(0)) is not None:
+            if _COUNTED_RE.match(words, n.end()):
+                return True
+    return False
 
 
 def counts_calls(claim: str, value: int) -> bool:
@@ -2398,14 +2411,18 @@ class LocalAssumptionFiller:
                 device_ids = list(params.get("device_ids", device_ids))
                 code_made = True
 
-        if (
-            tpl.id == "message_count"
-            and exchanged(claim.text)
-            and not counts_calls(claim.text, p.count.value if p.count is not None else -1)
+        between = exchanged(claim.text) if tpl.id == "message_count" else None
+        if between is not None and not counts_calls(
+            claim.text, p.count.value if p.count is not None else -1
         ):
             # "exchanged messages": at least one message each way (ruling R3). With no number,
             # that is at least two messages; a stated number is still compared.
             if p.count is None:
+                apps = {w for app in self.channels() for w in _words(app).split()}
+                if states_a_count(claim.text) or set(_words(between).split()) - apps - {"text"}:
+                    # "exchanged exactly three ..." or "exchanged dozens of ...": a count the
+                    # model did not give is not read as "at least two" (Codex on #172)
+                    raise Reject("the claim states how many messages; the model gave no count")
                 params["count_op"], params["expected_count"] = "ge", 2
             params["each_way"] = True
             code_made = True
@@ -2459,42 +2476,71 @@ class LocalAssumptionFiller:
 
     def _sent_by(self, sent: tuple[str, str], params: dict[str, Any]) -> list[str]:
         """The side the claim's subject names as sender ("SUBJECT-2 sent ..."): one person
-        written by name or as the phone they own ("the TARGET PHONE's Kik account"), or the
-        accounts by identifier. The other side must be written after "sent", and the sender
-        not. Raises Reject when the words do not name exactly one side each way."""
+        written by name or as the phone they exactly own ("the TARGET PHONE's Kik account"), or
+        the accounts by identifier. The subject holds nothing else, the other side is written
+        after "sent" and the sender is not, and no side is written as someone's or someone
+        acted for ("PETROV's lawyer", "a friend of REYES"). Raises Reject otherwise."""
         subject, rest = sent
         people = list(params.get("person_ids", []))
         accounts = list(params.get("account_ids", []))
         handles = list(params.get("handles", []))
+        names = {
+            pid: _nfc(row[0].strip())
+            for pid in people
+            if (
+                row := self.conn.execute("SELECT name FROM persons WHERE id = ?", (pid,)).fetchone()
+            )
+        }
+        idents = [self.data.accounts[a].identifier for a in accounts] + handles
 
-        def person_in(text: str, pid: str) -> bool:
-            row = self.conn.execute("SELECT name FROM persons WHERE id = ?", (pid,)).fetchone()
-            if row and _name_spans(text, _nfc(row[0].strip())):
-                return True
-            for did in self._written_phones(text):
+        def mentions(text: str) -> list[tuple[str, int, int, bool]]:
+            """(side, start, end, by_phone) for each mention of a side; 'accounts' is the
+            accounts side."""
+            out = [(pid, s, e, False) for pid, n in names.items() for s, e in _name_spans(text, n)]
+            for did, s, e in self._phone_spans(text):
                 own = {a.id for a in self.data.accounts.values() if a.device_id == did}
-                if own and self._exact_owner(own) == pid:
-                    return True
-            return False
+                if own and (owner := self._exact_owner(own)) in people:
+                    out.append((owner, s, e, True))
+            for i in idents:
+                if i and i.strip():
+                    found = re.finditer(re.escape(i.strip()), text, re.IGNORECASE)
+                    out += [("accounts", m.start(), m.end(), False) for m in found]
+            # one number written another way ("+1 (212) 555-0122" for +12125550122; R6)
+            numbers = {d for i in idents if i and (d := phone_digits(i)) is not None}
+            for m in _PHONE_RE.finditer(text):
+                if phone_digits(m.group(0).strip(" .,-")) in numbers:
+                    out.append(("accounts", *m.span(), False))
+            return out
 
-        def accounts_in(text: str) -> bool:
-            low = text.casefold()
-            idents = [self.data.accounts[a].identifier for a in accounts] + handles
-            return any(i and i.strip().casefold() in low for i in idents)
+        def sides(text: str) -> set[str]:
+            found = mentions(text)
+            for _, start, end, by_phone in found:
+                if (not by_phone and _NOT_A_PARTY_AFTER.match(text, end)) or (
+                    _NOT_A_PARTY_BEFORE.search(text[:start])
+                ):
+                    raise Reject(f"{text[start:end]!r} may not be a side of the count")
+            return {side for side, *_ in found}
 
-        senders = [pid for pid in people if person_in(subject, pid)]
-        by_accounts = bool(accounts or handles) and accounts_in(subject)
-        if len(senders) == 1 and not by_accounts:
-            others_named = [pid for pid in people if pid != senders[0] and person_in(rest, pid)]
-            other_side = others_named or ((accounts or handles) and accounts_in(rest))
-            if person_in(rest, senders[0]) or not other_side:
-                raise Reject("the claim does not write the sender on one side and the other after")
-            return senders
-        if not senders and by_accounts and accounts and not handles:
-            if accounts_in(rest) or not any(person_in(rest, pid) for pid in people):
-                raise Reject("the claim does not write the sender on one side and the other after")
-            return sorted(accounts)
-        raise Reject("the claim's sender is not exactly one side of the count")
+        sender = sides(subject)
+        if len(sender) != 1 or (sender == {"accounts"} and (handles or not accounts)):
+            raise Reject("the claim's sender is not exactly one side of the count")
+        left = list(subject)
+        for _, start, end, _ in mentions(subject):
+            left[start:end] = " " * (end - start)
+        apps = {w for app in self.channels() for w in _words(app).split()}
+        if not set(_words("".join(left)).split()) <= {"the", "s", "account", "user"} | apps:
+            # "PETROV and his lawyer sent ...", "then PETROV sent ...": not one plain sender
+            raise Reject("the claim's sender is written with other words")
+        other = sides(rest)
+        unnamed = [
+            pid
+            for pid, name in self.conn.execute("SELECT id, name FROM persons")
+            if pid not in people and _name_spans(rest, _nfc(name.strip()))
+        ]
+        if not other or other & sender or unnamed:
+            raise Reject("the claim does not write the sender on one side and the other after")
+        (side,) = sender
+        return sorted(accounts) if side == "accounts" else [side]
 
     def _stated(
         self, claim: Claim, para: str, device_ids: list[str], template_id: str, near: str | None
@@ -2978,17 +3024,20 @@ class LocalAssumptionFiller:
         """The devices the text writes by id, source id, label or a name the expert gave them
         ("the TARGET PHONE", "Item 1"), compared as `_device` compares: case and spacing do
         not count."""
+        return {did for did, _, _ in self._phone_spans(text)}
+
+    def _phone_spans(self, text: str) -> list[tuple[str, int, int]]:
+        """(device, start, end) for each place `_written_phones` finds a device written."""
         named = logged_names(self.conn)
-        return {
-            did
+        return [
+            (did, *m.span())
             for did, sid, label in self.conn.execute("SELECT id, source_id, label FROM devices")
             for x in (did, sid, label, *named.get(did, []))
-            if x
-            and name_key(x)
-            and re.search(
+            if x and name_key(x)
+            for m in re.finditer(
                 r"(?<!\w)" + r"\s*".join(map(re.escape, name_key(x))) + r"(?!\w)", text, re.I
             )
-        }
+        ]
 
     def _device(self, phone: str) -> str:
         """The device a phone name means: its id, source id or label, or a name the expert

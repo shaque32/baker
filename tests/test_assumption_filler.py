@@ -2395,6 +2395,13 @@ def _count(conn, text: str, value: int | None, **kw):
             "On March 21, 2026, on dev:item1, REYES sent exactly one Telegram message to PETROV.",
             REYES,
         ),
+        (
+            "On March 21, 2026, on dev:item1, Daniel Petrov sent REYES exactly one Telegram"
+            " message.",
+            PETROV,
+        ),
+        # the phone written as the sender is its exact owner
+        ("On March 21, 2026, dev:item1 sent REYES exactly one Telegram message.", PETROV),
     ],
 )
 def test_a_count_of_what_one_side_sent_counts_only_that_side(conn, text, sender):
@@ -2422,6 +2429,19 @@ def test_a_count_of_what_one_side_sent_counts_only_that_side(conn, text, sender)
         "On March 21, 2026, on dev:item1, PETROV sent PETROV and REYES exactly one Telegram"
         " message.",
         "On March 21, 2026, on dev:item1, PETROV sent exactly one Telegram message.",
+        # someone's, or someone acted for, is not that side (Baker Eval on #172)
+        "On March 21, 2026, on dev:item1, PETROV's lawyer sent REYES exactly one Telegram message.",
+        "On March 21, 2026, on dev:item1, PETROV's phone sent REYES exactly one Telegram message.",
+        "On March 21, 2026, on dev:item1, a friend of PETROV sent REYES exactly one Telegram"
+        " message.",
+        "On March 21, 2026, on dev:item1, PETROV sent REYES's lawyer exactly one Telegram message.",
+        "On March 21, 2026, on dev:item1, PETROV sent a friend of REYES exactly one Telegram"
+        " message.",
+        "On March 21, 2026, on dev:item1, PETROV and his lawyer sent REYES exactly one Telegram"
+        " message.",
+        # a denial is not the plain form (Codex on #172)
+        "On March 21, 2026, on dev:item1, PETROV has not sent REYES exactly one Telegram message.",
+        "On March 21, 2026, on dev:item1, PETROV never sent REYES exactly one Telegram message.",
     ],
 )
 def test_a_one_way_count_is_refused_unless_the_words_name_each_side(conn, text):
@@ -2468,3 +2488,33 @@ def test_a_stated_count_of_exchanged_messages_is_still_compared(conn):
 def test_exchanged_without_one_phone_or_with_a_one_way_word_makes_no_count(conn, text):
     made, filler = _count(conn, text, None)
     assert not any(a.params.each_way for a in made), [a.params for a in made]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "On March 21, 2026, on dev:item1, PETROV and REYES exchanged exactly three Telegram"
+        " messages.",
+        "On March 21, 2026, on dev:item1, PETROV and REYES exchanged dozens of Telegram messages.",
+        "On March 21, 2026, on dev:item1, PETROV and REYES exchanged Telegram messages, 3 messages"
+        " in all.",
+    ],
+)
+def test_exchanged_with_a_stated_count_the_model_left_out_is_refused(conn, text):
+    # Not read as "at least two" (Codex on #172).
+    made, filler = _count(conn, text, None)
+    assert not made, [a.params for a in made]
+    assert any("states how many" in d.reason for d in filler.drops), filler.drops
+
+
+def test_the_other_side_written_as_its_number_another_way_is_found(conn):
+    # The account resolves by number (R6), and the sender reading finds it the same way
+    # (Codex on #172).
+    text = "On March 21, 2026, on dev:item1, PETROV sent exactly one message to +1 (212) 555-0122."
+    marc = {"as_written": "+1 (212) 555-0122", "app": "Phone"}
+    prop = P("message_count", count={"value": 1}, people=["PETROV"], phones=["dev:item1"],
+             accounts=[marc], window=MAR21)  # fmt: skip
+    assumptions, filler = build_text(conn, text, ClaimType.COUNT, [prop])
+    (a,) = [a for a in assumptions if a.template_id == "message_count"]
+    assert a.params.account_ids == tuple(MARC_0122), filler.drops
+    assert a.params.sent_by == (PETROV,)

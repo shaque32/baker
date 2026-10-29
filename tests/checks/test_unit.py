@@ -599,7 +599,7 @@ def _march_message(conn: sqlite3.Connection, mid: str, sender: str | None, *to: 
 
 def test_a_count_of_one_sides_messages_counts_only_what_that_side_sent() -> None:
     # Ruling R2. In March Bee sent Ay one message and Ay sent Bee one (two either way).
-    conn = build()
+    conn = without_undated_row(build())
     common = dict(person_ids=[A, B], device_ids=["dev:p1"], window=MARCH, count_op="eq")
     for sender, record in ((A, "msg:p1:3"), (B, "msg:p1:2")):
         r = check(conn, "message_count", expected_count=1, sent_by=[sender], **common)
@@ -611,6 +611,26 @@ def test_a_count_of_one_sides_messages_counts_only_what_that_side_sent() -> None
     _march_message(conn, "msg:p1:7", "a:p1:own", "a:p1:b")
     r = check(conn, "message_count", expected_count=1, sent_by=[A], **common)
     assert r.outcome is CheckOutcome.FAIL, r.detail
+
+
+def test_a_message_to_the_other_side_with_no_sender_may_be_one_of_them() -> None:
+    # The undated message to Ay has no recorded sender: it may be Bee's (Baker Eval on #172).
+    conn = build()
+    common = dict(person_ids=[A, B], device_ids=["dev:p1"], window=MARCH, sent_by=[B])
+    for op in ("eq", "le"):
+        r = check(conn, "message_count", expected_count=1, count_op=op, **common)
+        assert r.outcome is CheckOutcome.INCONCLUSIVE, (op, r.detail)
+        assert "1 messages to person:a" in r.detail and "no recorded sender" in r.detail
+        assert not FORBIDDEN_WORDS.search(r.detail), r.detail
+    # "At least" still passes on the known ones, and more known than claimed still fails.
+    r = check(conn, "message_count", expected_count=1, count_op="ge", **common)
+    assert r.outcome is CheckOutcome.PASS, r.detail
+    _march_message(conn, "msg:p1:7", "a:p1:b", "a:p1:own")
+    r = check(conn, "message_count", expected_count=1, count_op="eq", **common)
+    assert r.outcome is CheckOutcome.FAIL, r.detail
+    # A message to Bee with no sender is not one Bee sent: Ay's count is not held open by it.
+    r = check(conn, "message_count", expected_count=1, count_op="eq", **{**common, "sent_by": [A]})
+    assert r.outcome is CheckOutcome.PASS, r.detail
 
 
 def test_exchanged_messages_pass_only_with_one_each_way_and_never_fail_on_silence() -> None:
@@ -653,3 +673,13 @@ def test_a_count_direction_must_name_a_party_and_not_both_ways() -> None:
         AssumptionParams(person_ids=(A, B), sent_by=("person:c",))
     with pytest.raises(ValidationError, match="do not go together"):
         AssumptionParams(person_ids=(A, B), sent_by=(A,), each_way=True)
+
+
+@pytest.mark.parametrize("direction", [dict(sent_by=[A]), dict(each_way=True)])
+def test_sides_that_share_an_account_give_no_direction(direction) -> None:
+    # Ay's own account is also the accounts side: who sent is no side's alone (Codex on #172).
+    r = check(build(), "message_count", person_ids=[A], account_ids=["a:p1:own", "a:p1:b"],
+              device_ids=["dev:p1"], window=MARCH, expected_count=1, count_op="ge",
+              **direction)  # fmt: skip
+    assert r.outcome is CheckOutcome.INCONCLUSIVE, r.detail
+    assert "share an account" in r.detail

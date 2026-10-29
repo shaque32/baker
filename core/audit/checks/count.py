@@ -37,8 +37,9 @@ class CountCheck(TemplateCheck):
     only when the rows match the claim and no two counted calls with the same party fall
     within DUPLICATE_S of each other; otherwise it is inconclusive.
 
-    With `sent_by` it counts only the messages that side sent (validation R2); a message with no
-    recorded sender is never counted between two parties (`involves_all`). With `each_way`
+    With `sent_by` it counts only the messages that side sent (validation R2). A message to the
+    other side with no recorded sender may be one of them, so "exactly" and "at most" then
+    stay inconclusive unless the known ones already exceed the claim. With `each_way`
     ("exchanged messages", R3) it passes only when each side sent at least one counted message;
     one side's silence is never a fail, since coverage is unknown.
     """
@@ -78,16 +79,30 @@ class CountCheck(TemplateCheck):
             )
         (source_id,) = sources
         source = data.sources[source_id]
-        rows = [
+        pool = [
             r
             for r in messages_for_accounts(data, a_ids | b_ids)
-            if r.source_id == source_id
-            and channel_ok(r, p.channels)
-            and involves_all(r, [a_ids, b_ids])
+            if r.source_id == source_id and channel_ok(r, p.channels)
         ]
+        rows = [r for r in pool if involves_all(r, [a_ids, b_ids])]
         counted = [r for r in rows if r.ts_utc is not None and in_window(r.ts_utc, p.window)]
         no_time = [r for r in rows if r.ts_utc is None]
+        if (p.sent_by or p.each_way) and a_ids & b_ids:
+            # A message from an account both sides hold is no side's alone (Codex on #172).
+            return self.done(
+                assumption_id,
+                CheckOutcome.INCONCLUSIVE,
+                searched,
+                sentences(
+                    "Cannot count by direction: the two sides share an account, so which side "
+                    "sent a message is not known",
+                    notes,
+                ),
+                [],
+                sources,
+            )
         lines: list[str] = []
+        unknown_sender: list[Row] = []
         one_side_silent = False
         if p.sent_by:
             side = _sending_side(p, a, b)
@@ -100,10 +115,22 @@ class CountCheck(TemplateCheck):
                     [],
                     sources,
                 )
-            mine = a_ids if side is a else b_ids
+            mine, theirs = (a_ids, b_ids) if side is a else (b_ids, a_ids)
+            unknown_sender = [
+                r
+                for r in pool
+                if r.sender is None
+                and set(r.recipients) & theirs
+                and (r.ts_utc is None or in_window(r.ts_utc, p.window))
+            ]
             counted = [r for r in counted if r.sender in mine]
             no_time = [r for r in no_time if r.sender in mine]
             searched += f" Only messages {side.describe()} sent."
+            if unknown_sender:
+                lines.append(
+                    f"{len(unknown_sender)} messages to {(b if side is a else a).describe()} "
+                    "have no recorded sender, so they may be among them"
+                )
         if p.each_way:
             by_a = sum(1 for r in counted if r.sender in a_ids)
             by_b = sum(1 for r in counted if r.sender in b_ids)
@@ -134,7 +161,7 @@ class CountCheck(TemplateCheck):
             outcome = CheckOutcome.INCONCLUSIVE
         elif op in ("eq", "le") and n > want:
             outcome = CheckOutcome.FAIL
-        elif no_time or one_side_silent:
+        elif no_time or one_side_silent or (unknown_sender and op != "ge"):
             outcome = CheckOutcome.INCONCLUSIVE
         elif op == "eq":
             outcome = CheckOutcome.PASS if n == want else CheckOutcome.INCONCLUSIVE
