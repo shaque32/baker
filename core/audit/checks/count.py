@@ -169,10 +169,21 @@ class CountCheck(TemplateCheck):
             )
         if no_time:
             lines.append(f"{len(no_time)} matching calls have no usable time")
+        # A row with no length, or a zero length, may be a call that never connected, so it
+        # cannot count toward "spoke N times".
+        unconnected = sum(1 for r in counted if not r.duration_s)
+        if unconnected:
+            lines.append(
+                f"{unconnected} counted calls have no length or a zero length, so they may not "
+                "have connected"
+            )
+        deleted = sum(1 for r in counted if r.deleted)
+        if deleted:
+            lines.append(f"{deleted} of them carry the source's deletion flag")
         full = data.sources[source_id].fidelity is Fidelity.FULL_EXTRACTION
         if not full:
             lines.append(f"{source_id} is a curated report, so it may omit calls")
-        if twins or no_time:
+        if twins or no_time or unconnected:
             outcome = CheckOutcome.INCONCLUSIVE
         elif op == "eq":
             outcome = CheckOutcome.PASS if n == want else CheckOutcome.INCONCLUSIVE

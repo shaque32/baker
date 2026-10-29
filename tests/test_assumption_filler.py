@@ -1667,6 +1667,18 @@ def test_one_number_written_two_ways_is_one_number():
         ("Signal", "9198887386"),
     ]:
         assert not _same_number(n, acc(app, ident)), (app, ident)
+    # Same ten digits, another country code: two numbers, never one party.
+    uk = "449198887386"
+    for app, ident in [
+        ("unknown", "9198887386"),
+        ("unknown", "+19198887386"),
+        ("WhatsApp", "(919) 888-7386"),
+        ("WhatsApp", "19198887386@s.whatsapp.net"),
+        ("Viber", "+1 (919) 888-7386"),
+    ]:
+        assert not _same_number(uk, acc(app, ident)), (app, ident)
+    assert _same_number(uk, acc("WhatsApp", "+44 919 888 7386"))
+    assert not _same_number(n, acc("WhatsApp", "+44 919 888 7386"))
 
 
 @pytest.fixture
@@ -1778,6 +1790,7 @@ def test_never_runs_to_the_extractions_own_edges(conn):
         "SELECT min(t), max(t) FROM (SELECT ts_utc t FROM messages WHERE source_id = 'item1'"
         " UNION ALL SELECT ts_utc FROM calls WHERE source_id = 'item1') WHERE t IS NOT NULL"
     ).fetchone()
+    assert p.window.raw.endswith("so contact outside its records is not seen")
     assert p.window.start_utc.isoformat()[:19] == lo[:19]
     assert p.window.end_utc.isoformat()[:19] == hi[:19]
     assert a.text.endswith("Filled from the claim's wording.")

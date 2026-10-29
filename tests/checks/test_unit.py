@@ -530,13 +530,15 @@ def test_quote_verification_stays_exact() -> None:
     assert not verify_quote("Yay! Do", "Yay!  Do")
 
 
-def _with_calls(conn: sqlite3.Connection, times: list[str]) -> sqlite3.Connection:
+def _with_calls(
+    conn: sqlite3.Connection, times: list[str], durations: list[int | None] | None = None
+) -> sqlite3.Connection:
     for i, ts in enumerate(times):
         conn.execute(
             "INSERT INTO calls (id, source_id, locator, device_id, app, from_account_id,"
-            " to_account_id, direction, ts_utc) VALUES (?, 'p1', 'x', 'dev:p1', 'SMS',"
-            " 'a:p1:own', 'a:p1:b', 'outgoing', ?)",
-            (f"call:p1:{i}", ts),
+            " to_account_id, direction, ts_utc, duration_s) VALUES (?, 'p1', 'x', 'dev:p1',"
+            " 'SMS', 'a:p1:own', 'a:p1:b', 'outgoing', ?, ?)",
+            (f"call:p1:{i}", ts, 60 if durations is None else durations[i]),
         )
     return conn
 
@@ -555,6 +557,23 @@ def test_a_count_of_calls_counts_calls_and_never_fails() -> None:
     r = check(conn, "message_count", expected_count=2, count_op="eq",
               **{**common, "channels": ["call", "Signal"]})  # fmt: skip
     assert r.outcome is CheckOutcome.INCONCLUSIVE and "Counted 0 calls" in r.detail
+
+
+def test_a_call_with_no_length_may_not_have_connected() -> None:
+    # A zero or missing length leaves the count open: "spoke twice" needs two connected calls.
+    common = dict(person_ids=[A, B], device_ids=["dev:p1"], window=MARCH, channels=["call"])
+    for durations in ([60, 0], [60, None]):
+        conn = _with_calls(build(), ["2026-03-10T15:00:00Z", "2026-03-12T15:00:00Z"], durations)
+        for op in ("eq", "ge"):
+            r = check(conn, "message_count", expected_count=2, count_op=op, **common)
+            assert r.outcome is CheckOutcome.INCONCLUSIVE, (durations, op, r.detail)
+            assert "may not have connected" in r.detail
+            assert not FORBIDDEN_WORDS.search(r.detail), r.detail
+    # The source's deletion flag is named, as for messages, and does not change the outcome.
+    conn = _with_calls(build(), ["2026-03-10T15:00:00Z", "2026-03-12T15:00:00Z"])
+    conn.execute("UPDATE calls SET deleted_flag = 1 WHERE id = 'call:p1:0'")
+    r = check(conn, "message_count", expected_count=2, count_op="eq", **common)
+    assert r.outcome is CheckOutcome.PASS and "1 of them carry the source's deletion" in r.detail
 
 
 def test_two_calls_seconds_apart_may_be_one_call_stored_twice() -> None:

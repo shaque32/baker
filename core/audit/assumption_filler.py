@@ -1155,6 +1155,9 @@ def stated_windows(text: str, context: str = "") -> list[StatedWindow] | None:
 
 # Words that leave a range for no contact open to the extraction's edge (validation R5).
 _OPEN_RANGE_RE = re.compile(r"\b(?:never|before|prior\s+to|until|after|since)\b", re.IGNORECASE)
+# An open range's edges come from the data, so the source spans it by construction; the
+# words say what that leaves unseen.
+_EDGE_NOTE = "; the edges are the extraction's own, so contact outside its records is not seen"
 _PART_DAY_RE = re.compile(
     rf"\b(?P<dir>after|before)\s+{_clock_re('t')}{_zone_opt('z')}", re.IGNORECASE
 )
@@ -2944,7 +2947,7 @@ class LocalAssumptionFiller:
         if not dates:
             if not _has_word(text, "never"):
                 raise Reject("an open range needs 'never' or one stated date")
-            return local_window(first, last, tz, f"never: from {span} to {end_span}")
+            return local_window(first, last, tz, f"never: from {span} to {end_span}{_EDGE_NOTE}")
         if len(dates) != 1 or dates[0].group(5):
             raise Reject("an open range reads one stated day")
         m = dates[0]
@@ -2966,7 +2969,7 @@ class LocalAssumptionFiller:
             raise Reject("the claim's date is not the open end of a range")
         if end <= start:
             raise Reject("the extraction holds no record on the open side of the date")
-        return local_window(start, end, tz, raw)
+        return local_window(start, end, tz, raw + _EDGE_NOTE)
 
     def _count_calls(self, claim: Claim, params: dict[str, Any]) -> None:
         """Make a count of calls ("the TARGET PHONE had four Viber calls with (919) 888-7386")
