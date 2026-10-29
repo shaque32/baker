@@ -2590,6 +2590,22 @@ def test_an_identifier_inside_a_longer_one_is_not_the_side(conn, text):
 
 
 @pytest.mark.parametrize(
+    "text",
+    [
+        "On March 21, 2026, PETROV and REYES exchanged two Telegram messages on dev:item1 and"
+        " dev:item2.",
+        "On March 21, 2026, on dev:item1 and dev:item2, PETROV sent REYES exactly one Telegram"
+        " message.",
+    ],
+)
+def test_a_direction_is_not_read_when_the_claim_writes_a_phone_the_count_leaves_out(conn, text):
+    # The count searches dev:item1 only; what the claim says of dev:item2 would go untested
+    # (Codex on #172).
+    made, filler = _count(conn, text, 1 if "exactly" in text else 2, phones=["dev:item1"])
+    assert not any(a.params.each_way or a.params.sent_by for a in made), [a.params for a in made]
+
+
+@pytest.mark.parametrize(
     "third",
     ["SOKOLOV", "(212) 555-0199"],  # a person the case names, a number
 )

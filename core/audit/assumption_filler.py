@@ -2446,6 +2446,7 @@ class LocalAssumptionFiller:
             params["expected_count"] = p.count.value
             if sent is not None:
                 # "SUBJECT-2 sent SUBJECT-1 three messages": only that side's (ruling R2)
+                self._phones_kept(claim.text, params)
                 params["sent_by"] = self._sent_by(sent, params)
                 code_made = True
             if tpl.id == "message_count" and counts_calls(claim.text, p.count.value):
@@ -2467,6 +2468,7 @@ class LocalAssumptionFiller:
                     # model did not give is not read as "at least two" (Codex on #172)
                     raise Reject("the claim states how many messages; the model gave no count")
                 params["count_op"], params["expected_count"] = "ge", 2
+            self._phones_kept(claim.text, params)
             if extra := self._limits_on_exchange(claim.text, params):
                 # "exchanged Telegram messages in Spanish": the check reads no language,
                 # content or attachment, so it would count every message (Codex on #172)
@@ -2522,6 +2524,15 @@ class LocalAssumptionFiller:
             code_made = True
 
         return Proposal(p.template_id, params, is_core=True, code_made=code_made)
+
+    def _phones_kept(self, claim_text: str, params: dict[str, Any]) -> None:
+        """Raises Reject when the claim writes a phone the count does not search: "exchanged
+        ... on dev:p1 and dev:p2" counted on dev:p1 leaves dev:p2 untested (Codex on #172).
+        With no phone given, the one the claim writes is the one searched."""
+        written = self._written_phones(_unquoted(_nfc(claim_text)))
+        scope = set(params.get("device_ids") or [])
+        if (scope and not written <= scope) or (not scope and len(written) > 1):
+            raise Reject("the claim writes a phone the count does not search")
 
     def _limits_on_exchange(self, claim_text: str, params: dict[str, Any]) -> str | None:
         """The first word of the clause that says "exchanged" that is not a side, a phone, the
