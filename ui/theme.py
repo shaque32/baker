@@ -246,7 +246,8 @@ form.settings .settings-head h3 { margin: 0 0 2px; }
 form.settings .settings-head p { margin: 0; font-size: 12.5px; }
 form.settings .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 16px 24px; max-width: 640px; }
-form.settings label.field { display: grid; gap: 6px; margin: 0; font-weight: 500;
+form.settings label.field { display: grid; align-content: start; gap: 6px; margin: 0;
+  font-weight: 500;
   font-size: 13px; }
 form.settings small { font-weight: 400; font-size: 12px; color: var(--muted);
   line-height: 1.45; }
