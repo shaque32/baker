@@ -65,6 +65,18 @@ def _failed_check(conn) -> str:  # noqa: ANN001
     return c.id
 
 
+def _seen(conn) -> str:  # noqa: ANN001
+    """The waiting failure as the claim page shows it (the form's `seen`)."""
+    st = claim_state(conn, "C01")
+    assert st is not None
+    (c,) = st.agent_fails
+    return testability.check_sha256(c)
+
+
+def _confirm(conn, reason: str = "Not on the phone.") -> None:  # noqa: ANN001
+    confirm_agent_fail(conn, "C01", _failed_check(conn), EXAMINER, reason, seen=_seen(conn))
+
+
 def test_a_failed_check_on_the_agents_assumption_waits_for_the_expert(tmp_path, failing):
     conn, first = _audit(tmp_path, signed=False)  # the examiner accepts in the audit
     try:
@@ -89,15 +101,17 @@ def test_a_failed_check_on_the_agents_assumption_waits_for_the_expert(tmp_path, 
 def test_a_confirmed_failure_contradicts_from_the_next_verdict_run(tmp_path, failing):
     conn, first = _audit(tmp_path, signed=False)
     try:
-        check = _failed_check(conn)
+        check, seen = _failed_check(conn), _seen(conn)
         for actor, cid, reason, why in (
             ("system", check, "Read it.", "expert"),
             (EXAMINER, check, " ", "say why"),
             (EXAMINER, "check:nothing", "Read it.", "not waiting"),
         ):
             with pytest.raises(ReviewError, match=why):
-                confirm_agent_fail(conn, "C01", cid, actor, reason)
-        confirm_agent_fail(conn, "C01", check, EXAMINER, "The contact is not on the phone.")
+                confirm_agent_fail(conn, "C01", cid, actor, reason, seen=seen)
+        confirm_agent_fail(
+            conn, "C01", check, EXAMINER, "The contact is not on the phone.", seen=seen
+        )
         ((actor, entry),) = _log(conn, testability.CONFIRM_ACTION)
         assert actor == EXAMINER and entry["check_id"] == check
         assert entry["reason"] == "The contact is not on the phone."
@@ -105,7 +119,7 @@ def test_a_confirmed_failure_contradicts_from_the_next_verdict_run(tmp_path, fai
         assert st is not None and st.agent_fails == [] and st.decided_after_run
         assert _verdict(conn) is Verdict.UNPROVEN  # nothing changes until the verdicts re-run
         with pytest.raises(ReviewError, match="not waiting"):
-            confirm_agent_fail(conn, "C01", check, EXAMINER, "Again.")
+            confirm_agent_fail(conn, "C01", check, EXAMINER, "Again.", seen=seen)
         redecide(conn, EXAMINER)
         assert _verdict(conn) is Verdict.CONTRADICTED
         d = pipeline.load_verdict(conn, "C01", pipeline.view_run(conn)["run_id"])
@@ -120,7 +134,7 @@ def test_a_confirmed_failure_contradicts_from_the_next_verdict_run(tmp_path, fai
 def test_rejecting_the_proposal_undoes_a_confirm(tmp_path, failing):
     conn, first = _audit(tmp_path, signed=False)
     try:
-        confirm_agent_fail(conn, "C01", _failed_check(conn), EXAMINER, "Not on the phone.")
+        _confirm(conn)
         decide_repair(conn, "C01", first.run_id, 1, False, EXAMINER, "Wrong reading.")
         redecide(conn, EXAMINER)
         assert _verdict(conn) is Verdict.UNPROVEN
@@ -138,7 +152,7 @@ def test_a_rejection_after_the_verdicts_used_a_confirm_marks_them_not_current(tm
     longer follows from the log, so the claim says to re-run them (Codex on #166)."""
     conn, first = _audit(tmp_path, signed=False)
     try:
-        confirm_agent_fail(conn, "C01", _failed_check(conn), EXAMINER, "Not on the phone.")
+        _confirm(conn)
         redecide(conn, EXAMINER)
         st = claim_state(conn, "C01")
         assert _verdict(conn) is Verdict.CONTRADICTED and st is not None
@@ -165,10 +179,29 @@ def test_a_rejection_with_no_confirm_to_undo_leaves_the_verdicts_current(tmp_pat
         conn.close()
 
 
+def test_a_confirm_binds_to_the_failure_the_expert_saw(tmp_path, failing):
+    """A page left open across a later audit whose check failed another way confirms nothing:
+    the form carries the failure it showed (Codex on #168)."""
+    conn, _first = _audit(tmp_path, signed=False)
+    try:
+        check, seen = _failed_check(conn), _seen(conn)
+        failing["detail"] = 'item1 has the contact "Marc Garage" with another number.'
+        pipeline.run_audit(conn, _components(conn, signed=False), claim_ids=["C01"])
+        assert _failed_check(conn) == check and _seen(conn) != seen  # same check, new failure
+        with pytest.raises(ReviewError, match="failed another way"):
+            confirm_agent_fail(conn, "C01", check, EXAMINER, "Not on the phone.", seen=seen)
+        assert _log(conn, testability.CONFIRM_ACTION) == []
+        assert _verdict(conn) is Verdict.UNPROVEN
+        _confirm(conn)  # the failure on screen now
+        assert len(_log(conn, testability.CONFIRM_ACTION)) == 1
+    finally:
+        conn.close()
+
+
 def test_a_confirm_holds_only_while_the_check_fails_the_same_way(tmp_path, failing):
     conn, first = _audit(tmp_path, signed=False)
     try:
-        confirm_agent_fail(conn, "C01", _failed_check(conn), EXAMINER, "Not on the phone.")
+        _confirm(conn)
         again = pipeline.run_audit(conn, _components(conn, signed=False), claim_ids=["C01"])
         assert again.manifest["C01"]["assumptions"] == first.manifest["C01"]["assumptions"]
         assert _verdict(conn) is Verdict.CONTRADICTED  # the same failure, confirmed
@@ -185,7 +218,7 @@ def test_a_confirm_holds_only_while_the_check_fails_the_same_way(tmp_path, faili
 def test_verify_bundle_fails_a_confirm_that_is_not_an_experts(tmp_path, failing):
     conn, _first = _audit(tmp_path, signed=False)
     try:
-        confirm_agent_fail(conn, "C01", _failed_check(conn), EXAMINER, "Not on the phone.")
+        _confirm(conn)
         redecide(conn, EXAMINER)
         copy = _copy(conn, tmp_path)
         copy.execute("UPDATE audit_log SET actor = 'system' WHERE action = ?",
@@ -216,9 +249,16 @@ def test_the_claim_page_shows_each_failure_and_confirms_one(tmp_path, failing):
         "token": app.token,
         "claim": "C01",
         "check": check,
+        "seen": card.split("name='seen' value='", 1)[1].split("'", 1)[0],
         "reason": "The phone has no such contact.",
         "next": "/claim?id=C01",
     }
+    stale = app.handle(
+        Request("POST", "/testability/confirm", {}, dict(host), {**form, "seen": "0" * 64})
+    )
+    assert stale.status == 303
+    page = app.handle(Request("GET", "/claim", {"id": "C01"}, dict(host))).body.decode()
+    assert "failed another way" in page and "id='agent-fail'" in page  # nothing confirmed
     app.handle(Request("POST", "/testability/confirm", {}, dict(host), form))
     page = app.handle(Request("GET", "/claim", {"id": "C01"}, dict(host))).body.decode()
     assert "id='agent-fail'" not in page

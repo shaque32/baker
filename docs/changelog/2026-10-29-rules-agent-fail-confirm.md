@@ -24,7 +24,9 @@
     searched, a reason field and "Confirm this failure", plus "Or reject the agent's proposal".
     There is no confirm-all. A confirm re-runs the verdicts at once, as the evidence confirm
     does. `actions.confirm_agent_fail` refuses a non-expert, an empty reason and a failure the
-    audit on screen does not show as waiting.
+    audit on screen does not show as waiting. It also refuses a failure other than the one the
+    page showed: the form carries the shown result's hash, so a page left open across a later
+    audit whose check failed another way confirms nothing (Codex).
   - The overview, the claim page and report 0.24.0 give the step to confirm it. The report's key
     to the verdicts says such a failure counts once an expert confirms it. `verify-bundle`
     re-applies the rules with the same inputs, read at each verdict's log position, and fails a
@@ -48,7 +50,8 @@
     reason or an unknown check, changes nothing until the verdicts re-run, and then the claim is
     contradicted citing the check; a later rejection undoes the confirm and the next audit leaves
     the claim untested; a rejection after the verdicts counted a confirm marks them not current,
-    and one with no confirm to undo does not; a confirm carries to a later audit only while the
+    and one with no confirm to undo does not; a confirm from a page that showed an earlier
+    failure of the same check is refused, on the page too; a confirm carries to a later audit only while the
     check fails the same way; verify-bundle passes each run and fails a forged non-expert
     confirm; the claim page shows one confirm per failure and a reject, and a posted confirm
     re-runs the verdicts.
