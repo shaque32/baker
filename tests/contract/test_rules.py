@@ -1,4 +1,4 @@
-"""Verdict rules 0.3.0 (core/audit/rules.py). Every rule in its docstring has a test here.
+"""Verdict rules 0.4.0 (core/audit/rules.py). Every rule in its docstring has a test here.
 
 SYNTHETIC. The claims echo case01 (C06, C16, C17, C18, C20) only to name the trap each tests.
 """
@@ -200,6 +200,83 @@ def test_failed_check_contradicts_despite_accepted_support():
     assert d.verdict is Verdict.CONTRADICTED
     assert d.cited_check_ids == (chk(TIME, O.FAIL).id,)
     assert d.supported_basis is None
+
+
+# rule 1a, 0.4.0: a failed check on an assumption an agent proposed waits for the expert
+
+
+def agent(assumptions, evidence=(), checks=(), proposed=(), confirmed=(), claim=CLAIM):
+    return rules.decide_verdict(
+        claim,
+        list(assumptions),
+        list(evidence),
+        list(checks),
+        [],
+        RUN,
+        agent_proposed=frozenset(proposed),
+        confirmed_fails=frozenset(confirmed),
+    )
+
+
+def test_version_0_4_0():
+    assert rules.RULE_VERSION == "0.4.0"
+
+
+def test_a_failed_check_on_an_agents_assumption_waits_for_the_expert():
+    failed = chk(TIME, O.FAIL)
+    d = agent([EVENT, TIME], [ev(1, EVENT, status=S.ACCEPTED)], [failed], proposed=[TIME.id])
+    assert d.verdict is Verdict.UNPROVEN
+    assert d.cited_check_ids == () and d.cited_evidence_ids == ()
+    (why,) = [r for r in d.reasons if r.startswith("Rule 1a")]
+    assert "an assumption an agent proposed" in why and CONFIRM in why
+    assert "counts once an expert confirms the failed check" in why
+
+
+def test_the_failure_counts_once_an_expert_confirms_it():
+    failed = chk(TIME, O.FAIL)
+    d = agent([EVENT, TIME], [ev(1, EVENT)], [failed], proposed=[TIME.id], confirmed=[failed.id])
+    assert d.verdict is Verdict.CONTRADICTED and d.cited_check_ids == (failed.id,)
+    assert "an expert confirmed the failure" in d.reasons[0]
+
+
+def test_without_agent_inputs_a_failed_check_contradicts_as_in_0_3_0():
+    failed = chk(TIME, O.FAIL)
+    for d in (decide([EVENT, TIME], [], [failed]), agent([EVENT, TIME], [], [failed])):
+        assert d.verdict is Verdict.CONTRADICTED and d.cited_check_ids == (failed.id,)
+        assert "agent" not in d.reasons[0]
+
+
+def test_a_confirm_or_an_agent_id_elsewhere_changes_nothing():
+    failed = chk(TIME, O.FAIL)
+    other = asm(9, K.TIME, claim_id="C2")
+    # a confirm of a check on an assumption no agent proposed: the failure counted anyway
+    d = agent([EVENT, TIME], [], [failed], proposed=[other.id], confirmed=[failed.id])
+    assert d.verdict is Verdict.CONTRADICTED
+    # an agent's assumption with no failed check: nothing waits
+    d = agent([EVENT], [ev(1, EVENT, status=S.ACCEPTED)], [chk(EVENT)], proposed=[EVENT.id])
+    assert d.verdict is Verdict.SUPPORTED
+
+
+def test_a_waiting_failure_blocks_support_and_another_failure_still_contradicts():
+    failed = chk(TIME, O.FAIL)
+    d = agent(
+        [EVENT, TIME],
+        [ev(1, EVENT, status=S.ACCEPTED), ev(2, TIME, status=S.ACCEPTED)],
+        [failed],
+        proposed=[TIME.id],
+    )
+    assert d.verdict is Verdict.UNPROVEN
+    plain = chk(EVENT, O.FAIL, name="sender")
+    d = agent([EVENT, TIME], [], [failed, plain], proposed=[TIME.id])
+    assert d.verdict is Verdict.CONTRADICTED and d.cited_check_ids == (plain.id,)
+
+
+def test_a_failure_on_an_agents_context_assumption_blocks_support_as_before():
+    side = asm(3, core=False)
+    failed = chk(side, O.FAIL)
+    d = agent([EVENT, side], [ev(1, EVENT, status=S.ACCEPTED)], [failed], proposed=[side.id])
+    assert d.verdict is Verdict.UNPROVEN
+    assert any(r.startswith("Rule 3d: check time failed on non-core") for r in d.reasons)
 
 
 CONFIRM = "Contradiction found, confirm to finalize"

@@ -1,7 +1,7 @@
 # Mabillon: methods note
 
 How Mabillon reaches each finding, for an examiner who uses it and may need to describe it. This note
-describes Mabillon as it is on `main` (verdict rules 0.3.0, as of 2026-10-19). Every report names the
+describes Mabillon as it is on `main` (verdict rules 0.4.0, as of 2026-10-29). Every report names the
 rule version, quote-check version, prompt versions and model file that produced it; read this note against those.
 
 Mabillon is a tool that helps an examiner check claims. It does not replace the examiner's own review
@@ -59,14 +59,18 @@ a call's direction, app, parties and duration, with its time shown beside it but
 such a record cites only those fields, each of which keeps its `source_ref`.
 
 **Rules.** A fixed, versioned program (`core/audit/rules.py`) turns the checks, the evidence and
-the examiner's decisions into a verdict. No model decides a verdict. In brief (rules 0.3.0):
+the examiner's decisions into a verdict. No model decides a verdict. In brief (rules 0.4.0):
 
 - **Contradicted** if any core assumption has a failed check, or a "contradicts" label the
   examiner accepted. A model's "contradicts" the examiner has not accepted keeps the claim
   Unproven, shown as "Contradiction found, confirm to finalize"; the examiner confirms it in one
   click with a one-sentence reason, which the audit log records. Automatic contradiction can
   return one claim type at a time, only after the local labeler meets the signed stance bars for
-  that type and with sign-off; no claim type has it today, and every report says so.
+  that type and with sign-off; no claim type has it today, and every report says so. A failed
+  check on an assumption the testability agent proposed (an agent that is off by default: only
+  the eval and the scripted demo run it) waits the same way: the examiner accepted the agent's
+  proposal, and may have accepted a wrong phone or time window, so the failure counts only once
+  the examiner confirms it, or the examiner rejects the proposal instead.
 - **Supported** only if every core assumption is covered (by a passed check, or by support the
   examiner accepted on an observed or derived record), the examiner accepted at least one
   supporting record that was observed directly, nothing complicating or contradicting remains open,

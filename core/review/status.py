@@ -17,7 +17,9 @@ the evidence that verdict was decided on. It never upgrades a verdict:
   "contradicts" counts only once an expert accepts it, so this is the step that finalizes the
   verdict: one confirm (with the expert's reason) makes the claim contradicted on the next
   verdict run. It takes precedence over "Support found", since an open contradiction blocks
-  supported anyway.
+  supported anyway. Under rules 0.4.0 the same holds for a failed check on a core assumption
+  the testability step proposed (`agent_fails`, core/audit/testability.py): it counts once the
+  expert confirms that failure, and the expert may reject the agent's proposal instead.
 - "Labeling incomplete" when the run shown is an audit that has not finished (still running, or
   stopped) and has not finished this claim. Such a claim has no verdict and no evidence on
   screen or in the report; it appears for review only once all its candidates are labeled.
@@ -40,6 +42,7 @@ from core import pipeline
 from core.contracts import (
     Assumption,
     AssumptionKind,
+    CheckOutcome,
     CheckResult,
     Claim,
     EvidenceItem,
@@ -69,11 +72,26 @@ CONFIRM_STEP = (
     "you agree with, giving your reason, to finalize the verdict as contradicted; dismiss the "
     "rest."
 )
-# the step a withheld rationale adds, worded the same on the screen and in the report
+# what the expert does about a failed check on an agent's assumption (rules 0.4.0)
+AGENT_FAIL_STEP = (
+    "{checks} failed on an assumption the testability agent proposed and an examiner "
+    "accepted. A failure there counts only once you confirm it, since the agent may have named "
+    "the wrong phone or time window. Confirm each failure you agree with, giving your reason, "
+    "to finalize the verdict as contradicted, or reject the agent's proposal so the next audit "
+    "does not use it."
+)
+
+
+def agent_fail_step(n: int) -> str:
+    """AGENT_FAIL_STEP for n waiting failures, the count in the right number."""
+    return AGENT_FAIL_STEP.format(checks=_count(n, "check"))
+
+
 AGENT_STEP = (
     "Proposed by agent: the testability agent proposed assumptions that would make this claim "
     "testable. Accept or reject them on the claim page; nothing is used until you accept."
 )
+# the step a withheld rationale adds, worded the same on the screen and in the report
 WITHHELD_STEP = (
     "{n} model rationale(s) withheld: each uses a word Mabillon does not print. Read each "
     "item's record and quote yourself, then acknowledge it; the verdict cannot be confirmed or "
@@ -151,6 +169,11 @@ class ClaimState:
     # the testability step proposed assumptions for this untested claim and no expert has
     # accepted or rejected them yet (core/audit/testability.py; the claim page's card)
     agent_waiting: bool = False
+    # failed checks on a core assumption the shown audit took from the testability step that no
+    # expert has confirmed (rules 0.4.0, rule 1a): each keeps the claim unproven until confirmed
+    agent_fails: list[CheckResult] = field(default_factory=list)
+    # check id -> testability.seen_sha256 of each, the token its confirm form carries
+    agent_seen: dict[str, str] = field(default_factory=dict)
     # evidence items whose rationale is withheld for a forbidden word (core/review/withheld.py)
     withheld: list[Withheld] = field(default_factory=list)
 
@@ -183,8 +206,18 @@ class ClaimState:
             self.decision is not None
             and self.decision.verdict == Verdict.UNPROVEN
             and self.decision.override_note is None
-            and self.open_contradicts > 0
+            and (self.open_contradicts > 0 or bool(self.agent_fails))
         )
+
+    def confirm_steps(self) -> list[str]:
+        """What the expert does to finalize a contradiction found, worded the same on the screen
+        and in the report: the contradicting items, then the failed checks on agent assumptions."""
+        if not self.contradiction_found:
+            return []
+        out = [CONFIRM_STEP.format(n=self.open_contradicts)] if self.open_contradicts else []
+        if self.agent_fails:
+            out.append(agent_fail_step(len(self.agent_fails)))
+        return out
 
     @property
     def untested(self) -> bool:
@@ -299,12 +332,7 @@ class ClaimState:
             out.append((1, WITHHELD_STEP.format(n=self.withheld_waiting)))
         more = self.decision.verdict == Verdict.SUPPORTED  # already carried; review is optional
         if self.contradiction_found:
-            out.append(
-                (
-                    1,
-                    f"{CONTRADICTION_FOUND}. {CONFIRM_STEP.format(n=self.open_contradicts)}",
-                )
-            )
+            out.append((1, f"{CONTRADICTION_FOUND}. {' '.join(self.confirm_steps())}"))
         if self.ai_accepted:
             out.append(
                 (
@@ -458,8 +486,9 @@ def claim_states(
     edited = edited_after(conn, run["started_at_utc"]) if run else set()
     changed = case_changed_after(conn, run) if run else False
     waiting = agent_waiting(conn, run)
+    agent = _agent(conn, run)
     return [
-        _state(conn, c, run, edited, changed, waiting)
+        _state(conn, c, run, edited, changed, waiting, agent)
         for c in pipeline.load_claims(conn, include_removed)
     ]
 
@@ -470,7 +499,9 @@ def claim_state(conn: sqlite3.Connection, claim_id: str) -> ClaimState | None:
     changed = case_changed_after(conn, run) if run else False
     for c in pipeline.load_claims(conn, include_removed=True):
         if c.id == claim_id:
-            return _state(conn, c, run, edited, changed, agent_waiting(conn, run))
+            return _state(
+                conn, c, run, edited, changed, agent_waiting(conn, run), _agent(conn, run)
+            )
     return None
 
 
@@ -479,6 +510,41 @@ def agent_waiting(conn: sqlite3.Connection, run: dict | None) -> frozenset[str]:
     from core.audit import testability
 
     return frozenset(c for c, x in testability.proposals(conn, run).items() if x.decided is None)
+
+
+@dataclass(frozen=True)
+class _Agent:
+    """Read once per page: the testability proposals the shown audit used (rules 0.4.0's
+    agent_proposed), and the claims whose verdict an agent decision after the run may change:
+    a confirmed failed check, or a rejection of the proposal that undoes an earlier confirm
+    (testability.confirmed_fails), so a verdict re-run would no longer count that failure."""
+
+    accepted: dict[str, tuple[list[str], str]] = field(default_factory=dict)
+    confirmed_after: frozenset[str] = frozenset()
+
+
+def _agent(conn: sqlite3.Connection, run: dict | None) -> _Agent:
+    from core.audit import testability
+
+    if run is None:
+        return _Agent()
+    confirmed: set[str] = set()
+    later: set[str] = set()
+    for action, at, p in conn.execute(
+        "SELECT action, at_utc, payload_json FROM audit_log WHERE action IN (?, ?) ORDER BY seq",
+        (testability.CONFIRM_ACTION, testability.REJECT_ACTION),
+    ):
+        cid = str(json.loads(p).get("claim_id"))
+        after = at > run["started_at_utc"]
+        if action == testability.CONFIRM_ACTION:
+            confirmed.add(cid)
+            if after:
+                later.add(cid)
+        elif cid in confirmed:  # a rejection clears the confirms before it
+            confirmed.discard(cid)
+            if after:
+                later.add(cid)
+    return _Agent(testability.accepted_in(conn, run), frozenset(later))
 
 
 def case_changed_after(conn: sqlite3.Connection, run: dict) -> bool:
@@ -513,6 +579,7 @@ def _state(
     edited: set[str],
     changed: bool = False,
     waiting: frozenset[str] = frozenset(),
+    agent: _Agent | None = None,
 ) -> ClaimState:
     where, ptext = _where(conn, claim.paragraph_id)
     items = (run or {}).get("manifest", {}).get(claim.id)
@@ -538,6 +605,16 @@ def _state(
         st.not_tested = (run or {}).get("not_tested", {}).get(claim.id) or pipeline.NOT_TESTED
         st.agent_waiting = claim.id in waiting
     st.checks = pipeline.load_checks(conn, items["checks"])
+    agent = agent or _Agent()
+    if claim.id in agent.accepted and any(c.outcome is CheckOutcome.FAIL for c in st.checks):
+        from core.audit import testability
+
+        st.agent_fails = testability.awaiting(
+            conn, agent.accepted, claim.id, st.assumptions, st.checks
+        )
+        st.agent_seen = {
+            c.id: testability.seen_sha256(agent.accepted[claim.id], c) for c in st.agent_fails
+        }
     st.evidence = pipeline.load_evidence(conn, items["evidence"])
     st.last_reviewer = last_reviewers(conn, [e.id for e in st.evidence])
     st.withheld = withheld_rationales.for_items(conn, st.evidence)
@@ -568,6 +645,7 @@ def _state(
             (run["started_at_utc"], *[e.id for e in st.evidence]),  # type: ignore[index]
         ).fetchone()[0]
         st.decided_after_run = later > 0
+    st.decided_after_run = st.decided_after_run or claim.id in agent.confirmed_after
     st.edited_after_run = claim.id in edited
     return st
 
