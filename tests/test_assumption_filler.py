@@ -2658,6 +2658,48 @@ def test_a_direction_is_not_read_with_a_range_of_counts(conn, text):
     assert not any(a.params.each_way or a.params.sent_by for a in made), [a.params for a in made]
 
 
+@pytest.mark.parametrize(
+    "text, value",
+    [
+        # a count each day is not one count over the days (Codex on #172)
+        (
+            "Every day from March 21 through March 22, 2026, on dev:item1, PETROV sent REYES"
+            " exactly one Telegram message.",
+            1,
+        ),
+        ("Every day, PETROV and REYES exchanged Telegram messages on dev:item1.", None),
+        (
+            "On March 21, 2026, PETROV and REYES exchanged two Telegram messages per hour on"
+            " dev:item1.",
+            2,
+        ),  # fmt: skip
+        # a bound written as a sign is not an exact count (Codex on #172)
+        ("On March 21, 2026, on dev:item1, PETROV sent REYES <2 Telegram messages.", 2),
+        ("On March 21, 2026, on dev:item1, PETROV sent REYES 2+ Telegram messages.", 2),
+        ("On March 21, 2026, PETROV and REYES exchanged ≥2 Telegram messages on dev:item1.", 2),
+    ],
+)
+def test_a_direction_is_not_read_with_a_count_per_period_or_a_bound_sign(conn, text, value):
+    made, filler = _count(conn, text, value, phones=["dev:item1"])
+    assert not any(a.params.each_way or a.params.sent_by for a in made), [a.params for a in made]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "On March 21, 2026, PETROV and REYES exchanged exactly twenty-one Telegram messages on"
+        " dev:item1.",
+        "On March 21, 2026, on dev:item1, PETROV sent REYES exactly twenty-one Telegram messages.",
+    ],
+)
+def test_a_count_written_as_one_compound_number_is_one_number(conn, text):
+    # "twenty-one" is one count, not a range (Codex on #172)
+    made, filler = _count(conn, text, 21, phones=["dev:item1"])
+    (a,) = made
+    assert a.params.each_way or a.params.sent_by, filler.drops
+    assert a.params.expected_count == 21
+
+
 @pytest.mark.parametrize("phrase", ["with each other", "with one another"])
 def test_exchanged_with_each_other_is_still_each_way(conn, phrase):
     text = f"On March 21, 2026, PETROV and REYES exchanged Telegram messages {phrase} on dev:item1."

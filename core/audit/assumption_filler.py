@@ -434,6 +434,21 @@ def _ident_spans(text: str, ident: str) -> list[tuple[int, int]]:
     return [m.span() for m in re.finditer(pattern, text, re.IGNORECASE)]
 
 
+def _numbers_in(words: list[str]) -> int:
+    """How many counts the words write: "twenty one" (from "twenty-one") is one, "one to two"
+    is two (Codex on #172)."""
+    n, i = 0, 0
+    while i < len(words):
+        if _count_word(words[i]):
+            n += 1
+            tens = _NUMBER_WORDS.get(words[i], 0)
+            ones = _NUMBER_WORDS.get(words[i + 1], 0) if i + 1 < len(words) else 0
+            if tens >= 20 and tens % 10 == 0 and 1 <= ones <= 9:
+                i += 1
+        i += 1
+    return n
+
+
 def _count_word(w: str) -> bool:
     """A word that may write a message count: a number word, or digits too short to be an
     account number ("70010023" left over is an account no side holds; Codex on #172)."""
@@ -1503,6 +1518,14 @@ def _plain_noun(w: str, apps: set[str]) -> bool:
 
 # A denial anywhere in the claim: "never exchanged", "had not sent" (Codex on #172).
 _DENIAL_RE = re.compile(r"\b(?:not|never|no|neither|nor|without|cannot)\b|n['’]t\b", re.I)
+# A count per period ("every day", "two per hour") or a bound written as a sign ("<2", "2+",
+# "≥2"): neither is one exact count over the window (Codex on #172).
+_PER_PERIOD_RE = re.compile(
+    r"\b(?:every|daily|nightly|hourly|weekly|monthly|per)\b|\beach\b(?!\s+other\b)"
+    r"|\ba\s+(?:day|night|hour|week|month)\b",
+    re.I,
+)
+_BOUND_SIGN_RE = re.compile(r"[<>≤≥≈~]|\d\s*\+(?!\s*\d)")
 _EXCHANGED_RE = re.compile(
     r"\bexchanged\b(?P<between>[^.;,]*?)\b(?:messages?|texts?|imessages?|chats?|emails?|dms?)\b",
     re.I,
@@ -1530,6 +1553,8 @@ def sent_form(claim: str, value: int) -> tuple[str, str] | None:
         return None
     if _PASSIVE_SENT_RE.search(words) or _BOTH_WAYS_RE.search(words) or _DENIAL_RE.search(words):
         return None
+    if _PER_PERIOD_RE.search(words) or _BOUND_SIGN_RE.search(words):
+        return None
     m = _SENT_FORM_RE.match(words.strip())
     if m is None:
         return None
@@ -1548,6 +1573,8 @@ def exchanged(claim: str) -> str | None:
     words = _unquoted(_flat(_nfc(claim)))
     m = _EXCHANGED_RE.search(words)
     if m is None or _ONE_WAY_RE.search(words) or _DENIAL_RE.search(words):
+        return None
+    if _PER_PERIOD_RE.search(words) or _BOUND_SIGN_RE.search(words):
         return None
     if _on_a_subject(words) or _MESSAGE_CONTENT_RE.search(words):
         # "exchanged messages about the delivery": the check reads no subject (Codex on #172)
@@ -2579,13 +2606,12 @@ class LocalAssumptionFiller:
             left[start:end] = " " * (end - start)
         apps = _app_words(params)
         plain = apps | _PLAIN_EXCHANGE_WORDS
-        numbers = 0
-        for w in _RECIPROCAL_RE.sub(" ", _words("".join(left))).split():
-            if w in plain:
-                continue
-            numbers += _count_word(w)
-            if numbers > 1 or not (_count_word(w) or _plain_noun(w, apps)):
-                return w  # a second number is a range, not the one count (Codex on #172)
+        rest = [w for w in _RECIPROCAL_RE.sub(" ", _words("".join(left))).split() if w not in plain]
+        for w in rest:
+            if not (_count_word(w) or _plain_noun(w, apps)):
+                return w
+        if _numbers_in(rest) > 1:
+            return " ".join(w for w in rest if _count_word(w))  # a range (Codex on #172)
         return None
 
     def _sent_by(self, sent: tuple[str, str], params: dict[str, Any]) -> list[str]:
@@ -2678,7 +2704,7 @@ class LocalAssumptionFiller:
         plain |= {"most", "a", "total", "of"}
         rest_words = [w for w in _words("".join(left)).split() if w not in plain]
         extra = [w for w in rest_words if not _count_word(w) and not _plain_noun(w, apps)]
-        if len([w for w in rest_words if _count_word(w)]) > 1:
+        if _numbers_in(rest_words) > 1:
             # "sent REYES one to two messages": a range, not the one count (Codex on #172)
             raise Reject("the claim writes more than one number for the count")
         if extra:
