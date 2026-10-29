@@ -703,3 +703,8 @@ Diff: on main after the case04 PR merges, from the repo root (macOS and GNU sed)
 The last line must print 0 for both files. The copies are the drafts with only `labeled_by`
 (and, in the key, `labeled_at`) changed: 48 key lines and 85 sheet rows, and both then report
 as signed (checked on a scratch copy with bash, 2026-10-29).
+SIGNED by Arsh on 2026-10-29 at 04:31Z ("yeah i approve", project thread "Build agents into the
+audit"), the key and sheet as they stood after the second blind read (22 supported,
+12 contradicted, 14 unproven), in reply to an offer to copy them into eval/gold for him. He was
+away from his Mac, so Claude APPLIED it at his request on this branch (PR #170), before the
+merge, with these commands and D=2026-10-29, T=2026-10-29T04:31:25Z. Nothing else changed.

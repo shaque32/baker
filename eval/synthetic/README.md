@@ -79,8 +79,8 @@ change). No name, number or handle is shared with case01 or case03.
 claim's `wording` and `hazard`) and the draft assumption sheet, `case04_generate.py` renders
 them. `case04/SIGNING_SHEET.md` is the short version for Arsh, with the count tables;
 `case04/ANSWER_KEY_DRAFT.md` has every claim's verdict, key evidence, hazard records and
-reasoning. Both are drafts. `eval/run_pipeline.py` uses the draft key and sheet until signed
-copies exist under `eval/gold/case04/`. It is the case the go/no-go reads
+reasoning. Arsh signed the key and sheet on 2026-10-29; the signed copies are under
+`eval/gold/case04/`, and `eval/run_pipeline.py` uses them. It is the case the go/no-go reads
 (`TESTABILITY_GO_NO_GO_CASES` in `eval/run_pipeline.py`), and is not part of `make eval` or any
 merge gate.
 
