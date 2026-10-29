@@ -1787,6 +1787,24 @@ def test_a_count_of_calls_is_read_and_made_from_a_calls_time(call_log):
     assert "calls between" in by["message_count"].text
 
 
+def test_a_model_count_of_calls_takes_the_written_phones_zone(call_log):
+    # The model gave no phone; code reads it from the claim, and the window takes its zone even
+    # when the case's phones are in different zones (Codex on #169).
+    call_log.execute("UPDATE devices SET timezone = 'America/Los_Angeles' WHERE id = 'dev:item2'")
+    try:
+        text = "On March 12, 2026, dev:item1 had two calls with (212) 555-0199."
+        window = {"as_written": "On March 12, 2026", "start": "2026-03-12T00:00",
+                  "end": "2026-03-13T00:00", "zone": "phone"}  # fmt: skip
+        prop = {"template_id": "message_count", "count": {"value": 2}, "channels": ["call"],
+                "window": window}  # fmt: skip
+        assumptions, filler = build_text(call_log, text, ClaimType.COUNT, [prop])
+        (c,) = [a.params for a in assumptions if a.template_id == "message_count"]
+        assert c.device_ids == ("dev:item1",), filler.drops
+        assert c.window is not None and c.window.tz == "America/New_York"
+    finally:
+        call_log.execute("UPDATE devices SET timezone = 'America/New_York' WHERE id = 'dev:item2'")
+
+
 def _no_contact(conn, text: str, **prop):
     return build_text(conn, text, ClaimType.ABSENCE, [{"template_id": "no_contact", **prop}])
 
@@ -1850,6 +1868,8 @@ def test_before_a_date_runs_from_the_first_record_whatever_the_model_said(conn):
         ("no contact after 9:00 p.m. on March 12, 2026", False),
         ("they first made contact after March 12, 2026", False),
         ("no contact on March 12, 2026", False),
+        ("no contact starting two days after March 12, 2026", False),
+        ("no contact in the weeks before March 12, 2026", False),
     ],
 )
 def test_only_an_open_range_runs_to_the_extractions_edge(text, open_):
@@ -1880,6 +1900,9 @@ def test_a_range_with_both_ends_stated_keeps_its_own_ends(conn):
         "dev:item1 never communicated with (212) 555-0144 or (212) 555-0191.",  # two parties
         "dev:item1 never communicated with @someone.",  # a party code cannot read
         "There was never contact with (212) 555-0144.",  # no phone written
+        # Someone else named through the party (Codex on #169).
+        "dev:item1 never communicated with REYES's assistant.",
+        "dev:item1 never communicated with a friend of REYES.",
     ],
 )
 def test_an_open_range_or_its_sides_are_refused_when_in_doubt(conn, text):

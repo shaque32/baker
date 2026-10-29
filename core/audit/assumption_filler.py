@@ -1158,6 +1158,11 @@ _OPEN_RANGE_RE = re.compile(r"\b(?:never|before|prior\s+to|until|after|since)\b"
 # An open range's edges come from the data, so the source spans it by construction; the
 # words say what that leaves unseen.
 _EDGE_NOTE = "; the edges are the extraction's own, so contact outside its records is not seen"
+_OFFSET_EDGE_RE = re.compile(
+    r"\b(?:minutes?|hours?|days?|nights?|weeks?|months?|years?|shortly|soon|right|just|"
+    r"immediately|sometime|long|well)\s+(?:before|after|prior\s+to|since|until)\b",
+    re.IGNORECASE,
+)
 
 
 def _open_range_wording(bare: str) -> bool:
@@ -1169,6 +1174,8 @@ def _open_range_wording(bare: str) -> bool:
         return False
     if any(_has_word(bare, w) for w in ("first", "last", "earliest", "latest")):
         return False
+    if _OFFSET_EDGE_RE.search(bare):
+        return False  # "two days after March 12": an offset code does not read
     dates = list(_DATE_RE.finditer(bare))
     if len(dates) > 1 or (dates and dates[0].group(5)):
         return False
@@ -2166,6 +2173,8 @@ class LocalAssumptionFiller:
             params["expected_count"] = p.count.value
             if tpl.id == "message_count" and counts_calls(claim.text, p.count.value):
                 self._count_calls(claim, params)
+                # The phone it may read from the claim gives the window its zone (Codex on #169).
+                device_ids = list(params.get("device_ids", device_ids))
                 code_made = True
 
         if p.duration is not None:
@@ -2896,16 +2905,21 @@ class LocalAssumptionFiller:
         owner = self._exact_owner(own) if own else None
         if owner is None:
             raise Reject("no contact: the phone's side is no one person code can name")
-        people = {
-            pid
-            for pid, name in self.conn.execute("SELECT id, name FROM persons ORDER BY id")
-            if pid != owner and _name_spans(bare, _nfc(name.strip()))
-        }
-        numbers = {
-            d
-            for m in _PHONE_RE.finditer(bare)
-            if (d := phone_digits(m.group(0).strip(" .,-"))) is not None
-        }
+        people: set[str] = set()
+        spans: list[tuple[int, int]] = []
+        for pid, name in self.conn.execute("SELECT id, name FROM persons ORDER BY id"):
+            if pid != owner and (found := _name_spans(bare, _nfc(name.strip()))):
+                people.add(pid)
+                spans += found
+        numbers: set[str] = set()
+        for m in _PHONE_RE.finditer(bare):
+            if (d := phone_digits(m.group(0).strip(" .,-"))) is not None:
+                numbers.add(d)
+                spans.append(m.span())
+        for start, end in spans:
+            # "REYES's assistant" or "a friend of REYES" is not REYES (Codex on #169).
+            if _NOT_A_PARTY_AFTER.match(bare, end) or _NOT_A_PARTY_BEFORE.search(bare[:start]):
+                raise Reject(f"no contact: {bare[start:end]!r} may not be the other party")
         if len(people) + len(numbers) != 1 or _UNREAD_PARTY_RE.search(
             _PHONE_RE.sub(" ", bare) if numbers else bare
         ):
