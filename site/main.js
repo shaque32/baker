@@ -52,6 +52,7 @@ const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   let t = 0;
   let last = null;
   let pointerPaused = false;
+  let focusHeld = false;
   let userPaused = false;
   let userHoldUntil = 0;
   let panelVisible = false;
@@ -109,7 +110,7 @@ const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   function playing(ts) {
     if (!panelVisible) return false;
-    if (pointerPaused || userPaused) return false;
+    if (pointerPaused || focusHeld || userPaused) return false;
     if (ts < userHoldUntil) return false;
     return true;
   }
@@ -144,9 +145,11 @@ const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     });
     btn.addEventListener("keydown", (e) => {
       const k = e.key;
+      // Arrows move from the step on screen, which is not always the focused tab.
+      const cur = Math.max(0, lastCapStep - 1);
       let targetIdx = null;
-      if (k === "ArrowRight" || k === "ArrowDown") targetIdx = (i + 1) % STEPS;
-      else if (k === "ArrowLeft" || k === "ArrowUp") targetIdx = (i - 1 + STEPS) % STEPS;
+      if (k === "ArrowRight" || k === "ArrowDown") targetIdx = (cur + 1) % STEPS;
+      else if (k === "ArrowLeft" || k === "ArrowUp") targetIdx = (cur - 1 + STEPS) % STEPS;
       else if (k === "Home") targetIdx = 0;
       else if (k === "End") targetIdx = STEPS - 1;
       if (targetIdx === null) return;
@@ -158,9 +161,18 @@ const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   panel.addEventListener("pointerenter", () => { pointerPaused = true; });
   panel.addEventListener("pointerleave", () => { pointerPaused = false; });
+  // Keyboard focus inside the panel holds autoplay until it leaves, so the step never changes
+  // under a keyboard reader. A mouse click focuses a tab too, but only holds for USER_HOLD.
+  function keyboardFocus(el) {
+    try { return el.matches(":focus-visible"); } catch (err) { return true; }
+  }
   panel.addEventListener("focusin", (e) => {
-    if (e.target === playBtn) return;
+    if (e.target === playBtn) { focusHeld = false; return; }
+    focusHeld = keyboardFocus(e.target);
     userHoldUntil = performance.now() + USER_HOLD;
+  });
+  panel.addEventListener("focusout", (e) => {
+    if (!panel.contains(e.relatedTarget)) focusHeld = false;
   });
 
   if (playBtn) {
@@ -188,6 +200,8 @@ const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     userPaused = true;
     if (playBtn) playBtn.hidden = true;
     panelVisible = true;
+    // Progress 1 shows nothing (the first claim starts at 1.4), so start at the end of step 1.
+    t = timeFor(1.95);
     paint();
     return;
   }
