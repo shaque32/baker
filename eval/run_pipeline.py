@@ -3,7 +3,7 @@
 Usage: python -m eval.run_pipeline [--case case01] [--mode model-free|real|fake|hostile]
                                    [--expert simulated|rubber-stamp|fallible|none]
                                    [--error-rate RATE] [--expert-seed N]
-                                   [--reviewer accept|none] [--challenge]
+                                   [--reviewer accept|none] [--no-challenge]
                                    [--testability CAP [--testability-prompt PATH]]
                                    [--assumption-spec PATH] [--repeat] [--out DIR]
 
@@ -44,9 +44,9 @@ Modes:
                     rate is Arsh's to set), drawn per item from --expert-seed (default 0). Not a
                     gate; its summary gives the dismissal rate and items decided per claim.
                     Output in <out>/fallible/.
-  --challenge       run the challenge step (core/audit/challenge.py, off by default): code's
-                    counter-searches on claims close to supported, storing only doubt. Output
-                    in <out>/challenge/.
+  --no-challenge    skip the challenge step (core/audit/challenge.py), which runs by default as
+                    it does in the product: code's counter-searches on claims close to
+                    supported, storing only doubt. Output in <out>/no_challenge/.
   --testability CAP the testability step (core/audit/testability.py, eval only, off by
                     default), real mode only: the model fills the assumptions, and on a claim it
                     leaves untested the step makes up to CAP more calls (CAP: Arsh sets it; no
@@ -573,7 +573,7 @@ def run_once(
     labeler_model: object | None = None,
     claim_ids: list[str] | None = None,
     filler_model: object | None = None,
-    challenge: bool = False,
+    challenge: bool = True,
     error_rate: float | None = None,
     expert_seed: int = 0,
     testability_cap: int | None = None,
@@ -860,7 +860,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--reviewer", choices=("accept", "none"), default="accept")
     parser.add_argument("--assumption-spec", type=Path, default=None)
     parser.add_argument("--repeat", action="store_true")
-    parser.add_argument("--challenge", action="store_true")
+    parser.add_argument("--challenge", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--testability", type=int, default=None, metavar="CAP")
     parser.add_argument("--testability-prompt", type=Path, default=None)
     parser.add_argument("--out", type=Path, default=None)
@@ -910,8 +910,8 @@ def main(argv: list[str] | None = None) -> int:
             out = out / "rubber_stamp"
         if expert == "fallible":
             out = out / "fallible"
-        if args.challenge:
-            out = out / "challenge"
+        if not args.challenge:
+            out = out / "no_challenge"
         if args.testability is not None:
             out = out / "testability"
     try:
