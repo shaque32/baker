@@ -1183,6 +1183,14 @@ _ONE_CALL_RE = re.compile(
     r"last|final|second|third|each|another|latest|earliest)\s+(?:[\w-]+\s+){0,2}(?:call|one)\b",
     re.IGNORECASE,
 )
+# The words a no-contact claim code fills its sides for may use, beside the phone, the party,
+# the range's date and the case's app names (Codex on #169).
+_PLAIN_CONTACT_WORDS = frozenset(
+    "there was were is has have had did does do not no never any ever at all contact contacts "
+    "communication communications communicated communicate communicating between and with the "
+    "a an on by via over using through telephone phone number before after since until prior "
+    "to or of from app".split()
+)
 # One way only: "never sent anything to REYES", "never received anything from" (Codex on #169).
 _ONE_DIRECTION_RE = re.compile(
     r"\b(?:sent|sends|sending|send|received|receives|receiving|receive|got|gets|heard|"
@@ -3056,6 +3064,10 @@ class LocalAssumptionFiller:
             # "never communicated by Signal" on a case with no Signal: the scope cannot be
             # kept, so code does not widen it to every app (Codex on #169).
             raise Reject("no contact: the claim names an app the case does not hold")
+        if self._absence_leftover(bare, phones[0], spans):
+            # "never communicated with REYES about narcotics": a topic, or any word beyond
+            # plain contact, is a scope the absence check cannot keep (Codex on #169).
+            raise Reject("no contact: the claim says more than plain contact code can check")
         if not params.get("channels"):
             # "never communicated by Signal with X" is no contact on Signal only: the scope
             # comes from the claim's own words (Codex on #169).
@@ -3101,6 +3113,25 @@ class LocalAssumptionFiller:
             _RECEIVED_AFTER_RE.match(bare, end) or _TO_BEFORE_RE.search(bare[:start])
             for start, end in spans
         )
+
+    def _absence_leftover(self, bare: str, phone: str, spans: list[tuple[int, int]]) -> bool:
+        """True when the claim writes any word beyond plain no-contact wording, once the
+        phone's name, the party, the range's date and the case's app names are taken out."""
+        cut = [*spans, *(m.span() for m in _DATE_RE.finditer(bare))]
+        named = logged_names(self.conn)
+        for did, sid, label in self.conn.execute(
+            "SELECT id, source_id, label FROM devices WHERE id = ?", (phone,)
+        ):
+            for x in (did, sid, label, *named.get(did, [])):
+                if x and name_key(x):
+                    pat = r"(?<!\w)" + r"\s*".join(map(re.escape, name_key(x))) + r"(?!\w)"
+                    cut += [m.span() for m in re.finditer(pat, bare, re.I)]
+        kept = list(bare)
+        for start, end in cut:
+            kept[start:end] = " " * (end - start)
+        apps = {w for app in self.channels() for w in re.findall(r"[a-z0-9]+", app.casefold())}
+        words = re.findall(r"[^\W_]+", "".join(kept).casefold())
+        return any(w not in _PLAIN_CONTACT_WORDS and w not in apps for w in words)
 
     @staticmethod
     def _absence_joiner(bare: str) -> str | None:

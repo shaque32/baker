@@ -2104,6 +2104,21 @@ def test_absence_parties_refuse_one_direction(conn, text):
     assert any("one-direction" in d.reason for d in filler.drops), filler.drops
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "dev:item1 never communicated with REYES about narcotics.",
+        "dev:item1 never communicated with (212) 555-0144 regarding the package.",
+        "dev:item1 never communicated with REYES in person.",
+    ],
+)
+def test_absence_parties_refuse_words_beyond_plain_contact(conn, text):
+    # A topic or other scope the absence check cannot keep (Codex on #169).
+    assumptions, filler = _no_contact(conn, text, phones=["dev:item1"])
+    assert not any(a.template_id == "no_contact" for a in assumptions)
+    assert any("more than plain contact" in d.reason for d in filler.drops), filler.drops
+
+
 def test_an_open_range_reads_the_phone_the_claim_writes(conn):
     # The model gave both people and no phone; the claim writes the phone (Codex on #169).
     assumptions, filler = _no_contact(

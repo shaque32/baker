@@ -87,7 +87,7 @@ from core.audit.assumption_filler import (
     fill_schema,
     phone_digits,
 )
-from core.audit.assumptions import Proposal, instantiate, templates_for
+from core.audit.assumptions import Proposal, from_proposal, templates_for
 from core.audit.invariants import InvariantViolation
 from core.contracts import Assumption, Claim, ModelRun
 from core.review.device_names import logged_names, name_key
@@ -479,7 +479,7 @@ def check_answer(
     out: dict[str, Assumption] = {}
     for p in kept:
         try:
-            a = instantiate(claim.id, p.template_id, p.params, p.is_core)
+            a = from_proposal(claim.id, p)  # keeps the code-made note (Codex on #169)
         except (ValidationError, ValueError) as e:
             return "refused", [*reasons, f"template {p.template_id!r}: {e}"], Named(), []
         out.setdefault(a.id, a)

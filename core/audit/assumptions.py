@@ -428,6 +428,16 @@ class Proposal:
     code_made: bool = False
 
 
+def from_proposal(claim_id: str, proposal: Proposal) -> Assumption:
+    """The assumption a proposal fills, its text ending with CODE_MADE_NOTE when code filled
+    it: every path that builds one from a proposal (the builder, the testability step's repair)
+    keeps the note. Raises as `instantiate` does."""
+    a = instantiate(claim_id, proposal.template_id, proposal.params, proposal.is_core)
+    if proposal.code_made:
+        a = a.model_copy(update={"text": a.text + CODE_MADE_NOTE})
+    return a
+
+
 @dataclass(frozen=True)
 class Rejected:
     proposal: Proposal
@@ -466,13 +476,11 @@ class TemplateAssumptionBuilder:
                 why.append(reason)
                 continue
             try:
-                a = instantiate(claim.id, proposal.template_id, proposal.params, proposal.is_core)
+                a = from_proposal(claim.id, proposal)
             except (ValidationError, ValueError) as e:
                 self.rejected.append(Rejected(proposal, str(e)))
                 why.append(f"template {proposal.template_id!r}: {e}")
                 continue
-            if proposal.code_made:
-                a = a.model_copy(update={"text": a.text + CODE_MADE_NOTE})
             out.setdefault(a.id, a)
         drops = getattr(self._filler, "drops", None)  # the local-model filler keeps its refusals
         if isinstance(drops, list):
