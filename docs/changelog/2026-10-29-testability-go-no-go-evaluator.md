@@ -5,8 +5,10 @@
   (`testability_go_no_go`) and writes it to `<out>/go_no_go.json`.
   - GO only if every bar holds: conversion of the refusals the sheet makes testable at least X%
     (with its Wilson 95% interval), no try naming a different person, phone or window than the
-    sheet, 0 false supported under the rubber-stamp expert, every output valid, a byte-identical
-    repeat, and calls and seconds per claim within Y. Any bar missed is NO-GO, naming it.
+    sheet (counting the tries the claim-only check rejects first too, Codex), 0 false
+    supported under the rubber-stamp expert, every output valid, a byte-identical repeat, and
+    calls and seconds per claim within Y (seconds on average, as Arsh picked). Any bar missed
+    is NO-GO, naming it.
   - The repeat compares the predictions and every filler and testability model call (prompt and
     raw output), byte for byte, between the run and its `--repeat`.
   - Fewer sheet-testable refusals than a least denominator gives "insufficient", not a decision.
@@ -19,12 +21,13 @@
   - The record names the hardware, the Python version and the wall-clock date of the run.
   - The run's measures print as before; the old "none given" line moved into the go/no-go.
 - Where: branch `claude/project-thread-6i2msb-go-no-go` (stacked on the rules 0.4.0 branch)
-- Verified: `tests/test_testability_go_no_go.py` (17 tests): every bar held is a GO; each bar
+- Verified: `tests/test_testability_go_no_go.py` (18 tests): every bar held is a GO; each bar
   missed alone is a NO-GO naming it; conversion exactly at X passes; a repeat whose filler and
   step answers differ by one byte is a NO-GO that says the model calls differ; too few testable
   refusals is insufficient; with nothing set, a draft prompt, a development case, the simulated
   expert and no repeat, none is given with every reason; a run's cap other than Arsh's gives
-  none; a draft gold key gives none; the Wilson interval; and two eval runs of synthetic case01 with the scripted model, the
+  none; a draft gold key gives none; a try the claim-only check rejects that names another
+  person counts against the entity bar (it did not before); the Wilson interval; and two eval runs of synthetic case01 with the scripted model, the
   signed prompt and the rubber-stamp expert give a GO with the hardware recorded.
   `make check` results are in the PR.
 - Open: no held-out case is listed on this branch (#170 adds case04, written by a builder who

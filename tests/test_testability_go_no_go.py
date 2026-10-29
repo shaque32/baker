@@ -126,6 +126,35 @@ def test_a_draft_gold_key_gives_none():
     assert r["why"] == ["the gold key is a draft, not signed by Arsh"]
 
 
+def test_a_try_the_claim_only_check_rejects_still_counts_against_the_entity_bar():
+    """The bar counts every try naming a different person, phone or window than the sheet,
+    the ones the claim-only check rejects as "outside" first included (Codex on #168)."""
+    from types import SimpleNamespace
+
+    from core.audit import testability as ts
+
+    sheet = ts.Named(people=frozenset({"person:a"}), phones=frozenset({"phone:1"}))
+
+    def tried(outcome: str, named: ts.Named, reasons: list[str] | None = None) -> ts.Attempt:
+        return ts.Attempt(1, None, [], [], outcome, reasons or [], named)
+
+    rep = ts.Repair("C01", "sha", sheet, ts.SHEET_CHECK)
+    rep.attempts = [
+        tried("outside", ts.Named(people=frozenset({"person:b"}))),  # another person: counts
+        tried("outside", ts.Named(phones=frozenset({"phone:1"}))),  # the sheet's phone
+        tried("outside", ts.Named(accounts=frozenset({"account:x"}))),  # not a no-go kind
+        tried(
+            "mismatch", sheet, ["names the phone 'phone:2', which the signed sheet does not name"]
+        ),
+        tried("proposed", sheet),
+    ]
+    step = SimpleNamespace(cap=5, seconds=0.0)
+    t = rp.testability_summary(SimpleNamespace(testability={"C01": rep}), step, "case01", None)
+    assert t["mismatch_person_phone_or_window"] == 2
+    r = _decide(_measures(mismatch_person_phone_or_window=t["mismatch_person_phone_or_window"]))
+    assert r["decision"] == "NO-GO" and r["why"][0].startswith("no try names a different person")
+
+
 def test_the_wilson_interval():
     low, high = rp.wilson(6, 15)
     assert (round(low, 3), round(high, 3)) == (0.198, 0.643)

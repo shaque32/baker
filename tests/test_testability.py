@@ -882,6 +882,7 @@ def test_the_eval_reports_both_wrong_entity_rates_on_the_same_tries(capsys):
     step = SimpleNamespace(cap=5, seconds=0.0)
     t = rp.testability_summary(SimpleNamespace(testability={"C01": rep}), step, "case01", None)
     assert t["outside_the_claims_words"] == 3
+    assert t["mismatch_person_phone_or_window"] == 2  # the two outside tries naming another
     assert t["wrong_entity_rate"] == 0.5  # 1 of the 2 tries the claim-only check let through
     assert t["wrong_entity_rate_without_the_claim_check"] == 0.6  # 3 of the 5
     rp.print_testability(t)

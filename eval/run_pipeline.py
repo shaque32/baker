@@ -555,6 +555,22 @@ def testability_summary(
         )
         for r, a in passed
     )
+    # The go/no-go's "no try names a different person, phone or window than the sheet" counts
+    # every such try, the ones the claim-only check rejects first included (Codex on #168).
+    no_go = sum(
+        a.no_go
+        or (
+            a.outcome == "outside"
+            and r.sheet is not None
+            and any(
+                m.startswith("names " + k)
+                for m in testability.mismatch(a.named, r.sheet)
+                for k in testability.NO_GO_KINDS
+            )
+        )
+        for r in reps
+        for a in r.attempts
+    )
     testable = [r for r in reps if r.sheet is not None]
     converted = [r for r in reps if r.assumptions]
     signed = prompt is None or prompt == TESTABILITY_SIGNED_PROMPT
@@ -581,7 +597,7 @@ def testability_summary(
         else None,
         "refused_by_code": sum(a.outcome == "refused" for a in tries),
         "outside_the_claims_words": sum(a.outcome == "outside" for a in tries),
-        "mismatch_person_phone_or_window": sum(a.no_go for a in tries),
+        "mismatch_person_phone_or_window": no_go,
         "mismatch_other_only": sum(
             a.outcome == "mismatch" and not a.no_go and r.sheet is not None
             for r in reps
