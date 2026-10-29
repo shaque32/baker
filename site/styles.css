@@ -391,6 +391,10 @@ section[id] { scroll-margin-top: 96px; }
 .trap { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
 .form-foot { display: flex; align-items: center; gap: 14px 22px; flex-wrap: wrap; }
 .form-foot .button { border: 0; cursor: pointer; font-family: var(--sans); }
+.form-foot .button:disabled { cursor: progress; opacity: 0.7; }
+.form-error { padding: 12px 14px; border: 1px solid var(--con); border-left-width: 3px; border-radius: 7px; background: var(--con-bg); color: var(--fg); font-size: 0.95rem; }
+.form-error[hidden] { display: none; }
+.field [aria-invalid="true"] { border-color: var(--con); }
 @media (max-width: 960px) {
   .demo > .wrap { grid-template-columns: minmax(0, 1fr); gap: 40px; padding-block: 56px 72px; }
 }
