@@ -23,7 +23,7 @@
   signed sheet, so until Arsh signs case04 (the `PROPOSED_CHANGES.md` entry "sign case04's key
   and assumption sheet" copies the drafts into `eval/gold/case04/`) it refuses case04 and no
   go/no-go is given.
-- Where: branch `claude/project-thread-6i2msb-case04`
+- Where: PR #170 (branch `claude/project-thread-6i2msb-case04`)
 - Verified: `tests/test_synthetic_case04.py` (synthetic only, 26 tests):
   - the generator gives the same bytes twice, reports included, and the committed drafts match
     a fresh build, with case.json's SHA-256 pins;
