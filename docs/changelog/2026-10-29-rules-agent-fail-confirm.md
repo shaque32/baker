@@ -15,7 +15,9 @@
   - A confirm (`testability.confirm`, under the expert's actor, with a reason) holds for that
     failure only: the same claim text, proposal and check result, hashed. If a later audit's
     check fails another way, it waits again. A rejection of the proposal logged after a confirm
-    undoes it, and the next audit does not use the proposal.
+    undoes it, and the next audit does not use the proposal. If that rejection comes after the
+    verdicts already counted the confirm (a stale tab), the claim says the verdicts are not
+    current and asks for a re-run (Codex).
   - A waiting failure no longer settles the claim (`pipeline.settled_by_check`): its evidence is
     labeled, since an accepted contradicting item could still decide it.
   - The claim page shows a card for each waiting failure, with the check's detail and what it
@@ -45,9 +47,11 @@
     the report and its evidence is labeled; a confirm is refused for a non-expert, an empty
     reason or an unknown check, changes nothing until the verdicts re-run, and then the claim is
     contradicted citing the check; a later rejection undoes the confirm and the next audit leaves
-    the claim untested; a confirm carries to a later audit only while the check fails the same
-    way; verify-bundle passes each run and fails a forged non-expert confirm; the claim page
-    shows one confirm per failure and a reject, and a posted confirm re-runs the verdicts.
+    the claim untested; a rejection after the verdicts counted a confirm marks them not current,
+    and one with no confirm to undo does not; a confirm carries to a later audit only while the
+    check fails the same way; verify-bundle passes each run and fails a forged non-expert
+    confirm; the claim page shows one confirm per failure and a reject, and a posted confirm
+    re-runs the verdicts.
 - Open: the Mac go/no-go still reports how often an accepted proposal fails a check on a true
   claim (now a confirm the expert must decide, not a verdict). The demo has no claim whose
   agent proposal fails a check; a demo claim for it is a possible follow-up. PR 3 (the agent on

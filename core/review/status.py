@@ -500,7 +500,9 @@ def agent_waiting(conn: sqlite3.Connection, run: dict | None) -> frozenset[str]:
 @dataclass(frozen=True)
 class _Agent:
     """Read once per page: the testability proposals the shown audit used (rules 0.4.0's
-    agent_proposed), and the claims an expert confirmed a failed check of after the run."""
+    agent_proposed), and the claims whose verdict an agent decision after the run may change:
+    a confirmed failed check, or a rejection of the proposal that undoes an earlier confirm
+    (testability.confirmed_fails), so a verdict re-run would no longer count that failure."""
 
     accepted: dict[str, tuple[list[str], str]] = field(default_factory=dict)
     confirmed_after: frozenset[str] = frozenset()
@@ -511,14 +513,23 @@ def _agent(conn: sqlite3.Connection, run: dict | None) -> _Agent:
 
     if run is None:
         return _Agent()
-    later = frozenset(
-        str(json.loads(p).get("claim_id"))
-        for (p,) in conn.execute(
-            "SELECT payload_json FROM audit_log WHERE action = ? AND at_utc > ?",
-            (testability.CONFIRM_ACTION, run["started_at_utc"]),
-        )
-    )
-    return _Agent(testability.accepted_in(conn, run), later)
+    confirmed: set[str] = set()
+    later: set[str] = set()
+    for action, at, p in conn.execute(
+        "SELECT action, at_utc, payload_json FROM audit_log WHERE action IN (?, ?) ORDER BY seq",
+        (testability.CONFIRM_ACTION, testability.REJECT_ACTION),
+    ):
+        cid = str(json.loads(p).get("claim_id"))
+        after = at > run["started_at_utc"]
+        if action == testability.CONFIRM_ACTION:
+            confirmed.add(cid)
+            if after:
+                later.add(cid)
+        elif cid in confirmed:  # a rejection clears the confirms before it
+            confirmed.discard(cid)
+            if after:
+                later.add(cid)
+    return _Agent(testability.accepted_in(conn, run), frozenset(later))
 
 
 def case_changed_after(conn: sqlite3.Connection, run: dict) -> bool:
