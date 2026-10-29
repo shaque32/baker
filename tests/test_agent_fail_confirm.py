@@ -22,9 +22,9 @@ from core.audit import testability
 from core.audit.checks import identity
 from core.bundle import verify as verify_mod
 from core.bundle.verify import FAIL, PASS
-from core.contracts import CheckOutcome, Verdict
+from core.contracts import CheckOutcome, ClaimStatus, Verdict
 from core.report.html import render_report
-from core.review.actions import ReviewError, confirm_agent_fail, decide_repair
+from core.review.actions import ReviewError, confirm_agent_fail, decide_repair, set_claim_status
 from core.review.redecide import redecide
 from core.review.status import AGENT_FAIL_STEP, CONTRADICTION_FOUND, claim_state
 from tests.test_testability import EXAMINER, _audit, _check, _components, _copy, _log
@@ -70,7 +70,7 @@ def _seen(conn) -> str:  # noqa: ANN001
     st = claim_state(conn, "C01")
     assert st is not None
     (c,) = st.agent_fails
-    return testability.check_sha256(c)
+    return st.agent_seen[c.id]
 
 
 def _confirm(conn, reason: str = "Not on the phone.") -> None:  # noqa: ANN001
@@ -188,11 +188,35 @@ def test_a_confirm_binds_to_the_failure_the_expert_saw(tmp_path, failing):
         failing["detail"] = 'item1 has the contact "Marc Garage" with another number.'
         pipeline.run_audit(conn, _components(conn, signed=False), claim_ids=["C01"])
         assert _failed_check(conn) == check and _seen(conn) != seen  # same check, new failure
-        with pytest.raises(ReviewError, match="failed another way"):
+        with pytest.raises(ReviewError, match="changed after the page you read"):
             confirm_agent_fail(conn, "C01", check, EXAMINER, "Not on the phone.", seen=seen)
         assert _log(conn, testability.CONFIRM_ACTION) == []
         assert _verdict(conn) is Verdict.UNPROVEN
         _confirm(conn)  # the failure on screen now
+        assert len(_log(conn, testability.CONFIRM_ACTION)) == 1
+    finally:
+        conn.close()
+
+
+def test_a_confirm_binds_to_the_claim_and_proposal_the_expert_saw(tmp_path, failing):
+    """A page left open across a claim edit confirms nothing on the edited claim, even when the
+    next audit's check fails the same way on the same proposed assumption: the form carries the
+    claim text and the proposal it showed with the failure (Codex on #166)."""
+    conn, _first = _audit(tmp_path, signed=False)
+    try:
+        check, seen = _failed_check(conn), _seen(conn)
+        (c,) = claim_state(conn, "C01").agent_fails  # type: ignore[union-attr]
+        failed = testability.check_sha256(c)
+        (text,) = conn.execute("SELECT text FROM claims WHERE id = 'C01'").fetchone()
+        set_claim_status(conn, "C01", ClaimStatus.EDITED, EXAMINER, text=text + " (as edited)")
+        pipeline.run_audit(conn, _components(conn, signed=False), claim_ids=["C01"])
+        (c,) = claim_state(conn, "C01").agent_fails  # type: ignore[union-attr]
+        assert c.id == check and testability.check_sha256(c) == failed  # the same failure
+        with pytest.raises(ReviewError, match="changed after the page you read"):
+            confirm_agent_fail(conn, "C01", check, EXAMINER, "Not on the phone.", seen=seen)
+        assert _log(conn, testability.CONFIRM_ACTION) == []
+        assert _verdict(conn) is Verdict.UNPROVEN
+        _confirm(conn)  # the edited claim's failure, as its page shows it
         assert len(_log(conn, testability.CONFIRM_ACTION)) == 1
     finally:
         conn.close()
@@ -258,7 +282,7 @@ def test_the_claim_page_shows_each_failure_and_confirms_one(tmp_path, failing):
     )
     assert stale.status == 303
     page = app.handle(Request("GET", "/claim", {"id": "C01"}, dict(host))).body.decode()
-    assert "failed another way" in page and "id='agent-fail'" in page  # nothing confirmed
+    assert "changed after the page you read" in page and "id='agent-fail'" in page
     app.handle(Request("POST", "/testability/confirm", {}, dict(host), form))
     page = app.handle(Request("GET", "/claim", {"id": "C01"}, dict(host))).body.decode()
     assert "id='agent-fail'" not in page

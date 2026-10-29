@@ -683,6 +683,16 @@ def check_sha256(check: CheckResult) -> str:
     return hashlib.sha256(canonical_json(check).encode("utf-8")).hexdigest()
 
 
+def seen_sha256(accepted: tuple[list[str], str], check: CheckResult) -> str:
+    """What the claim page's confirm form carries: the failure as shown, with the proposal it
+    failed on and the claim text that proposal was accepted for (`accepted`, from accepted_in).
+    A page left open across a later audit or a claim edit confirms nothing it did not show
+    (Codex on #166 and #168)."""
+    ids, claim_sha = accepted
+    shown = {"assumption_ids": sorted(ids), "check": check_sha256(check), "claim": claim_sha}
+    return hashlib.sha256(canonical_json(shown).encode("utf-8")).hexdigest()
+
+
 def confirmed_fails(
     conn: sqlite3.Connection,
     claim_id: str,

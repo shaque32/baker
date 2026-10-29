@@ -201,9 +201,9 @@ def confirm_agent_fail(
     examiner may have accepted a wrong phone or time window. Once confirmed it counts from the
     next verdict run, for as long as the check fails exactly that way. Only a failure the audit
     on screen shows as waiting can be confirmed, and only as the expert saw it: `seen` is the
-    shown result's testability.check_sha256, so a page left open across a later audit whose
-    check failed another way confirms nothing (Codex on #168). A rejection of the proposal
-    undoes a confirm."""
+    page's testability.seen_sha256 (the failure, its proposal and the claim text), so a page
+    left open across a later audit whose check failed another way, or across a claim edit,
+    confirms nothing (Codex on #166 and #168). A rejection of the proposal undoes a confirm."""
     from core import pipeline
     from core.audit import testability
 
@@ -230,10 +230,10 @@ def confirm_agent_fail(
         raise ReviewError(
             "this failed check is not waiting for you in the audit on screen; reload the claim"
         )
-    if testability.check_sha256(check) != seen:
+    if testability.seen_sha256((ids, sha), check) != seen:
         raise ReviewError(
-            "this check failed another way in a later audit than the one you read; reload the "
-            "claim and read the failure again"
+            "the claim, the agent's proposal or this check's failure changed after the page you "
+            "read; reload the claim and read the failure again"
         )
     with conn:
         audit_log.append(
