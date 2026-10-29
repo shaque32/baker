@@ -11,6 +11,8 @@
   - R4 (run driver only, `eval/validation/hickman_run.py`): a person the affidavit defines as
     the user of a number is linked to the accounts whose identifier is that number, in any
     format. Display names never link.
+  - Run driver: the challenge step, on by default since #162, is turned off for validation
+    runs as the run 3 plan requires, and `run.json` records it.
   - Fill a: a dated quote with no named writer gets its time checked, with no party.
   - Fill b: "X instructed Y by App to <errand>, writing \"...\"" names X as the writer;
     "\"...\" after receiving it from Z." names Z (a person, or one account by its exact

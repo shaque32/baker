@@ -201,6 +201,9 @@ def audit(out: Path, fake: bool, log) -> dict:  # noqa: ANN001
         comps = fake_components()
     else:
         comps = pipeline.real_components(conn)  # local model, no AI reviewer, no cloud
+    # The run 3 plan keeps the challenge step off (on by default since #162), so run 3 changes
+    # only the filler and stays comparable to run 2. The audit's configuration records it.
+    comps.challenge = False
 
     def progress(done: int, total: int, d) -> None:  # noqa: ANN001
         log(f"[{done}/{total}] {d.claim_id}: {d.verdict.value}")
@@ -221,6 +224,7 @@ def audit(out: Path, fake: bool, log) -> dict:  # noqa: ANN001
     return {
         "run_id": result.run_id,
         "fake": result.fake,
+        "challenge": comps.challenge,
         "verdicts": tally,
         "audit_seconds": round(time.monotonic() - t),
         "model_calls": calls,

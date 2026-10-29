@@ -75,6 +75,7 @@ def test_the_run_builds_the_case_audits_it_and_zips_the_results(ufdr, tmp_path):
     assert run["claims"] == {"file": "claims.jsonl", "sha256": sha, "n": 3}
     assert run["report_xml_sha256"] == report
     assert run["audit"]["fake"] is True and sum(run["audit"]["verdicts"].values()) == 3
+    assert run["audit"]["challenge"] is False  # the run 3 plan keeps it off
     with zipfile.ZipFile(out / "results.zip") as z:
         assert sorted(z.namelist()) == ["case.db", "progress.log", "report.html", "run.json"]
 
