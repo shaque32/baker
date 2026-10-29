@@ -12,6 +12,7 @@ import re
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -189,6 +190,77 @@ def test_sheet_windows_compare_by_their_utc_ends():
     assert facts.windows == {("2026-03-12T04:00:00+00:00", "2026-03-13T03:59:59.999999+00:00")}
 
 
+# ---------------------------------------------------------------- the claim-only check
+
+# C09's call, with the party the claim writes and the length it states.
+WIN_C09 = {
+    "as_written": "At about 7:58 p.m. on March 9, 2026",
+    "start": "2026-03-09T19:50",
+    "end": "2026-03-09T20:05",
+    "zone": "phone",
+}
+CALL_C09 = P(
+    "record_time",
+    phones=["Item 1"],
+    channels=["call"],
+    accounts=[{"as_written": "+1 (212) 555-0122", "app": "Phone"}],
+    duration={"as_written": "about two minutes"},
+    window=WIN_C09,
+)
+
+
+def test_the_claim_only_check_counts_only_what_the_claims_own_words_name(conn):
+    filler = LocalAssumptionFiller(FakeModel({}), conn, template=FILLER_DRAFT)
+    N = testability.Named  # noqa: N806
+    c08 = claim("C08")  # "PETROV chose the location ...": its paragraph names REYES too
+    assert testability.outside_claim(filler, c08, N(people=frozenset({PETROV}))) == []
+    (why,) = testability.outside_claim(filler, c08, N(people=frozenset({REYES})))
+    assert "claim's own words do not name" in why
+    c05 = claim("C05")  # PETROV and @northstar; no phone
+    assert testability.outside_claim(filler, c05, N(handles=frozenset({"@northstar"}))) == []
+    wrong = N(phones=frozenset({"dev:item2"}), handles=frozenset({"@alex92"}))
+    assert len(testability.outside_claim(filler, c05, wrong)) == 2
+    c01 = claim("C01")  # the number +1 (212) 555-0122
+    ok = N(accounts=frozenset({"acct:item1:Phone:+12125550122"}), phones=frozenset({"dev:item1"}))
+    assert testability.outside_claim(filler, c01, ok) == []
+    other = N(accounts=frozenset({"acct:item1:SMS:+12125550182"}))
+    assert testability.outside_claim(filler, c01, other)
+
+
+def test_a_repair_naming_a_person_only_its_paragraph_names_is_outside_the_claim(conn):
+    """The filler takes names from the claim or its paragraph; the agent's repair only from the
+    claim. C09's paragraph names PETROV, its claim does not: rejected before the sheet, which
+    names PETROV, is read."""
+    filler = LocalAssumptionFiller(FakeModel({}), conn, template=FILLER_DRAFT)
+    sheet = testability.sheet_named(SHEET)["C09"]
+    assert PETROV in sheet.people
+    with_petrov = {**CALL_C09, "people": ["PETROV"]}
+    for check in (testability.CLAIM_CHECK, testability.SHEET_CHECK):
+        outcome, reasons, got, kept = testability.check_answer(
+            filler, claim("C09"), [with_petrov], sheet, check
+        )
+        assert (outcome, kept) == ("outside", []) and PETROV in got.people
+        assert reasons == [f"names the person {PETROV!r}, which the claim's own words do not name"]
+    outcome, reasons, _, kept = testability.check_answer(
+        filler, claim("C09"), [CALL_C09], None, testability.CLAIM_CHECK
+    )
+    assert (outcome, reasons) == ("proposed", []) and [a.template_id for a in kept] == [
+        "record_time"
+    ]
+
+
+def test_without_a_sheet_the_step_proposes_on_the_claim_only_check(conn):
+    filler, _, why = first_pass(conn, "C01", BAD_C01)
+    s = testability.Testability(FakeModel(GOOD_C01), filler, None, 1, template=DRAFT)
+    rep = s.repair(claim("C01"), why)
+    (only,) = rep.attempts
+    assert only.outcome == "proposed" and rep.check == testability.CLAIM_CHECK
+    assert only.proposed and all(set(x) == {"id", "template_id", "text"} for x in only.proposed)
+    assert [x["id"] for x in only.proposed] == only.assumption_ids
+    assert rep.assumptions == [] and rep.accepted_by is None  # no examiner: not used
+    assert rep.entries()[0]["check"] == testability.CLAIM_CHECK
+
+
 # ---------------------------------------------------------------- one claim
 
 
@@ -352,11 +424,18 @@ def _answers(prompt: str) -> str:
     return json.dumps(BAD_C01)
 
 
-def _audit(folder: Path, on: bool = True, examiner: str | None = EXAMINER):  # noqa: ANN202
+def _audit(folder: Path, on: bool = True, examiner: str | None = EXAMINER, signed: bool = True):  # noqa: ANN202
+    conn = rp.build_case("case01", folder / "case01.db")
+    result = pipeline.run_audit(conn, _components(conn, on, examiner, signed), claim_ids=["C01"])
+    return conn, result
+
+
+def _components(conn, on: bool = True, examiner: str | None = EXAMINER, signed: bool = True):  # noqa: ANN001, ANN202
+    """case01's components with the scripted filler; the step checks against the signed sheet,
+    or (signed False) against the claim's own words only, as a case without a sheet."""
     from eval.pipeline_fakes import FakeReviewer
     from eval.simulated_expert import GoldDirectionLabeler, GoldKey
 
-    conn = rp.build_case("case01", folder / "case01.db")
     gold = GoldKey(load_jsonl(rp.gold_path("case01"), GoldClaim))
     model = RuntimeFake(respond=_answers)
     filler = assumption_filler.create(conn, model=model)
@@ -371,7 +450,7 @@ def _audit(folder: Path, on: bool = True, examiner: str | None = EXAMINER):  # n
         s = testability.create(
             conn,
             filler,
-            testability.sheet_named(SHEET, rp.sheet_people(conn)),
+            testability.sheet_named(SHEET, rp.sheet_people(conn)) if signed else None,
             1,
             model=model,
             template=DRAFT,
@@ -380,8 +459,7 @@ def _audit(folder: Path, on: bool = True, examiner: str | None = EXAMINER):  # n
         comps.testability = s
         comps.recorders = (*comps.recorders, s)
         comps.model_runs = (*comps.model_runs, *s.model_runs)
-    result = pipeline.run_audit(conn, comps, claim_ids=["C01"])
-    return conn, result
+    return comps
 
 
 def _log(conn, action: str) -> list[tuple[str, dict]]:  # noqa: ANN001
@@ -457,6 +535,220 @@ def test_the_report_says_proposed_by_agent_accepted_by_examiner(audited):
     assert html.count("Proposed by agent, accepted by examiner (Dana Reyes)") >= 1
 
 
+# ---------------------------------------------------------------- the examiner's card
+
+
+def _proposal(conn):  # noqa: ANN001, ANN202
+    (x,) = testability.proposals(conn, pipeline.last_run(conn)).values()
+    return x
+
+
+def test_without_a_sheet_a_proposal_waits_for_the_examiner_and_the_next_audit_uses_it(
+    tmp_path,
+):
+    from core.review.actions import ReviewError, decide_repair
+    from core.review.status import claim_state
+
+    conn, first = _audit(tmp_path, examiner=None, signed=False)
+    try:
+        (entry,) = [p for _a, p in _log(conn, testability.REPAIR_ACTION)]
+        assert (entry["check"], entry["outcome"]) == (testability.CLAIM_CHECK, "proposed")
+        assert "C01" in first.not_tested and _log(conn, testability.ACCEPT_ACTION) == []
+        x = _proposal(conn)
+        assert x.decided is None and x.assumption_ids == sorted(entry["assumption_ids"])
+        assert claim_state(conn, "C01").agent_waiting
+        for actor, attempt, reason, why in (
+            ("system", 1, "Read it.", "expert"),
+            (EXAMINER, 1, " ", "say why"),
+            (EXAMINER, 2, "Read it.", "no agent proposal"),
+        ):
+            with pytest.raises(ReviewError, match=why):
+                decide_repair(conn, "C01", first.run_id, attempt, True, actor, reason)
+        decide_repair(conn, "C01", first.run_id, 1, True, EXAMINER, "Item 1 is the phone.")
+        assert _proposal(conn).decided == (testability.ACCEPT_ACTION, EXAMINER)
+        assert not claim_state(conn, "C01").agent_waiting
+        # Nothing is used until the next audit.
+        assert pipeline.last_run(conn)["manifest"]["C01"]["assumptions"] == []
+        second = pipeline.run_audit(
+            conn, _components(conn, examiner=None, signed=False), claim_ids=["C01"]
+        )
+        assert "C01" not in second.not_tested
+        assert second.manifest["C01"]["assumptions"] == entry["assumption_ids"]
+        (accepted,) = _log(conn, testability.ACCEPT_ACTION)  # the card's, not a new one
+        assert accepted[0] == EXAMINER and accepted[1]["via"] == "claim page"
+        assert "Proposed by agent, accepted by examiner (Dana Reyes)" in render_report(conn)
+        assert not failed(_check(conn))
+    finally:
+        conn.close()
+
+
+def test_a_rejected_proposal_is_never_used_and_the_latest_decision_stands(tmp_path):
+    from core.review.actions import decide_repair
+
+    conn, first = _audit(tmp_path, examiner=None, signed=False)
+    try:
+        decide_repair(conn, "C01", first.run_id, 1, True, EXAMINER, "Looks right.")
+        decide_repair(conn, "C01", first.run_id, 1, False, EXAMINER, "The number is not theirs.")
+        assert _proposal(conn).decided == (testability.REJECT_ACTION, EXAMINER)
+        second = pipeline.run_audit(
+            conn, _components(conn, examiner=None, signed=False), claim_ids=["C01"]
+        )
+        assert "C01" in second.not_tested and second.manifest["C01"]["assumptions"] == []
+        assert not any(MARK in x for x in _shown(tmp_path, conn))
+    finally:
+        conn.close()
+
+
+MARK = "Proposed by agent, accepted by examiner (Dana Reyes)"
+
+
+def _shown(tmp_path: Path, conn) -> tuple[str, str]:  # noqa: ANN001
+    """C01's claim page and the report, as the examiner sees them."""
+    from ui.app import App, Request
+
+    app = App(tmp_path / "case01.db", "Dana Reyes", 8765, model_check=None)
+    host = {"host": "127.0.0.1:8765"}
+    page = app.handle(Request("GET", "/claim", {"id": "C01"}, host)).body.decode()
+    return page, render_report(conn)
+
+
+def test_the_agent_mark_follows_the_decision_the_shown_audit_used(tmp_path):
+    """One reading for the claim page and the report, for the audit shown: the acceptance that
+    audit used, and a later rejection said beside it (Grok Product on #163)."""
+    from core.review.actions import decide_repair
+
+    conn, first = _audit(tmp_path, examiner=None, signed=False)
+    try:
+        decide_repair(conn, "C01", first.run_id, 1, True, EXAMINER, "Looks right.")
+        assert not any(MARK in x for x in _shown(tmp_path, conn))  # nothing used yet
+        pipeline.run_audit(conn, _components(conn, examiner=None, signed=False), claim_ids=["C01"])
+        page, report = _shown(tmp_path, conn)
+        assert MARK in page and MARK in report
+        assert "next audit does not use it" not in page + report
+        decide_repair(conn, "C01", first.run_id, 1, False, EXAMINER, "Not this number.")
+        lapsed = MARK + "; later rejected by Dana Reyes, so the next audit does not use it"
+        assert all(lapsed in x for x in _shown(tmp_path, conn))  # still true of the audit shown
+        pipeline.run_audit(conn, _components(conn, examiner=None, signed=False), claim_ids=["C01"])
+        assert not any(MARK in x for x in _shown(tmp_path, conn))
+        assert testability.used_repairs(conn, pipeline.last_run(conn)) == {}
+        pipeline.run_audit(conn, _components(conn, on=False), claim_ids=["C01"])
+        assert testability.used_repairs(conn, pipeline.last_run(conn)) == {}  # no step, no mark
+    finally:
+        conn.close()
+
+
+def test_an_acceptance_does_not_carry_over_to_an_edited_claim(tmp_path):
+    from core.review.actions import decide_repair
+
+    conn, first = _audit(tmp_path, examiner=None, signed=False)
+    try:
+        decide_repair(conn, "C01", first.run_id, 1, True, EXAMINER, "Looks right.")
+        pipeline.run_audit(conn, _components(conn, examiner=None, signed=False), claim_ids=["C01"])
+        (text,) = conn.execute("SELECT text FROM claims WHERE id = 'C01'").fetchone()
+        set_claim_status(conn, "C01", ClaimStatus.EDITED, EXAMINER, text=text + " (as edited)")
+        lapsed = (
+            MARK + "; the claim was edited or removed after the acceptance, so the next audit "
+            "does not use it"
+        )
+        assert all(lapsed in x for x in _shown(tmp_path, conn))
+        third = pipeline.run_audit(
+            conn, _components(conn, examiner=None, signed=False), claim_ids=["C01"]
+        )
+        assert "C01" in third.not_tested and third.manifest["C01"]["assumptions"] == []
+        page, report = _shown(tmp_path, conn)
+        assert MARK not in page and MARK not in report and "Waiting for you" in page
+    finally:
+        conn.close()
+
+
+def test_verify_bundle_fails_a_kept_proposal_whose_latest_decision_was_a_rejection(
+    tmp_path, monkeypatch
+):
+    """An acceptance does not outlive a later rejection in verify-bundle either: a step that
+    used the stale acceptance is caught (Codex on #163)."""
+    from core.review.actions import decide_repair
+
+    conn, first = _audit(tmp_path, examiner=None, signed=False)
+    try:
+        decide_repair(conn, "C01", first.run_id, 1, True, EXAMINER, "Looks right.")
+        decide_repair(conn, "C01", first.run_id, 1, False, EXAMINER, "Not this number.")
+        with monkeypatch.context() as m:  # a step that reads only the first acceptance
+            m.setattr(
+                testability, "decision", lambda *a, **k: (testability.ACCEPT_ACTION, EXAMINER)
+            )
+            second = pipeline.run_audit(
+                conn, _components(conn, examiner=None, signed=False), claim_ids=["C01"]
+            )
+        assert second.manifest["C01"]["assumptions"]
+        details = [f.detail for f in _check(conn) if f.level == FAIL]
+        assert any("latest decision on them before the audit used them was a rejection" in d
+                   for d in details)  # fmt: skip
+    finally:
+        conn.close()
+
+
+def test_a_rejection_after_the_audit_used_a_proposal_does_not_fail_that_audit(tmp_path):
+    from core.review.actions import decide_repair
+
+    conn, first = _audit(tmp_path, examiner=None, signed=False)
+    try:
+        decide_repair(conn, "C01", first.run_id, 1, True, EXAMINER, "Looks right.")
+        second = pipeline.run_audit(
+            conn, _components(conn, examiner=None, signed=False), claim_ids=["C01"]
+        )
+        assert second.manifest["C01"]["assumptions"]
+        decide_repair(conn, "C01", first.run_id, 1, False, EXAMINER, "Not this number.")
+        assert not failed(_check(conn))  # it was in force then; the next audit drops it
+    finally:
+        conn.close()
+
+
+def test_a_proposal_for_a_claim_whose_text_changed_cannot_be_accepted(tmp_path):
+    from core.review.actions import ReviewError, decide_repair
+
+    conn, first = _audit(tmp_path, examiner=None, signed=False)
+    try:
+        with conn:
+            conn.execute("UPDATE claims SET text = text || ' (edited)' WHERE id = 'C01'")
+        with pytest.raises(ReviewError, match="changed after the agent proposed"):
+            decide_repair(conn, "C01", first.run_id, 1, True, EXAMINER, "Read it.")
+    finally:
+        conn.close()
+
+
+def test_the_claim_page_shows_one_card_and_takes_one_decision(tmp_path):
+    from ui.app import App, Request
+
+    conn, first = _audit(tmp_path, examiner=None, signed=False)
+    conn.close()
+    app = App(tmp_path / "case01.db", "Dana Reyes", 8765, model_check=None)
+    host = {"host": "127.0.0.1:8765"}
+    page = app.handle(Request("GET", "/claim", {"id": "C01"}, dict(host))).body.decode()
+    card = page.split("<section class='agent' id='agent'>", 1)[1].split("</section>", 1)[0]
+    assert testability.PROPOSED_MARK in card and "Waiting for you" in card
+    assert card.count("value='accept'") == 1 and card.count("value='reject'") == 1
+    assert "accept all" not in page.lower()
+    form = {
+        "token": app.token,
+        "claim": "C01",
+        "run": first.run_id,
+        "attempt": "1",
+        "decision": "accept",
+        "reason": "Item 1 is the phone, as the claim says.",
+        "next": "/claim?id=C01",
+    }
+    app.handle(Request("POST", "/testability/decide", {}, dict(host), form))
+    page = app.handle(Request("GET", "/claim", {"id": "C01"}, dict(host))).body.decode()
+    assert "Accepted by Dana Reyes" in page and "Waiting for you" not in page
+    c = sqlite3.connect(tmp_path / "case01.db")
+    try:
+        (accepted,) = _log(c, testability.ACCEPT_ACTION)
+        assert accepted[0] == "expert:Dana Reyes"
+        assert accepted[1]["reason"] == "Item 1 is the phone, as the claim says."
+    finally:
+        c.close()
+
+
 def _export(conn, path: Path, include: str | list[str] = "all") -> Path:  # noqa: ANN001
     at = datetime(2026, 10, 20, 12, tzinfo=UTC)
     return export.export_bundle(
@@ -509,6 +801,26 @@ def test_a_claim_removed_after_the_audit_still_verifies(audited, tmp_path):
     assert [f.level for f in found] == [PASS], found
 
 
+def test_a_claim_edited_after_the_audit_still_verifies_its_tries(audited, tmp_path):
+    """The tries re-run on the claim as it stood, rebuilt from the edit's log entry, not on the
+    edited text (Codex on #163)."""
+    conn, _ = audited
+    copy = _copy(conn, tmp_path)
+    set_claim_status(copy, "C01", ClaimStatus.EDITED, EXAMINER, text="Edited by the examiner.")
+    found = _check(copy)
+    copy.close()
+    assert [f.level for f in found] == [PASS], found
+
+
+def test_a_claim_row_changed_outside_the_log_fails(audited, tmp_path):
+    conn, _ = audited
+    copy = _copy(conn, tmp_path)
+    copy.execute("UPDATE claims SET text = 'Changed with no log entry.' WHERE id = 'C01'")
+    found = _check(copy)
+    copy.close()
+    assert any(f.level == FAIL and "another claim row" in f.detail for f in found), found
+
+
 def test_a_logged_try_that_no_longer_follows_fails(audited, monkeypatch):
     conn, _ = audited
     monkeypatch.setattr(testability, "MAX_LOOKUPS", 0)  # code's lookups now find nothing
@@ -550,6 +862,34 @@ def _eval_answers(prompt: str) -> str:
     return '{"stance": "irrelevant", "quote": "", "rationale": "n"}'
 
 
+def test_the_eval_reports_both_wrong_entity_rates_on_the_same_tries(capsys):
+    """The claim-only check's rate leaves out "outside" tries. #159's rate counts them by what
+    the sheet says of the names they gave, so the two can be compared until the go/no-go."""
+    sheet = testability.Named(people=frozenset({"person:petrov", "person:reyes"}))
+    other = testability.Named(people=frozenset({"person:someone-else"}))
+
+    def tried(outcome: str, named: testability.Named) -> testability.Attempt:
+        return testability.Attempt(1, None, [], [], outcome, [], named)
+
+    rep = testability.Repair("C01", "sha", sheet, testability.SHEET_CHECK)
+    rep.attempts = [
+        tried("outside", testability.Named(people=frozenset({"person:reyes"}))),  # sheet agrees
+        tried("outside", other),
+        tried("outside", other),
+        tried("mismatch", other),
+        tried("proposed", sheet),
+    ]
+    step = SimpleNamespace(cap=5, seconds=0.0)
+    t = rp.testability_summary(SimpleNamespace(testability={"C01": rep}), step, "case01", None)
+    assert t["outside_the_claims_words"] == 3
+    assert t["wrong_entity_rate"] == 0.5  # 1 of the 2 tries the claim-only check let through
+    assert t["wrong_entity_rate_without_the_claim_check"] == 0.6  # 3 of the 5
+    rp.print_testability(t)
+    printed = capsys.readouterr().out
+    assert "the claim-only check, the sheet check rejected 50%" in printed
+    assert "(#159's measure, the claim-only check aside), the sheet check rejects 60%" in printed
+
+
 def test_the_eval_reports_the_measures_and_gives_no_go_no_go_until_arsh_sets_them(tmp_path, capsys):
     model = RuntimeFake(respond=_eval_answers)
     rp.run_once(
@@ -572,6 +912,7 @@ def test_the_eval_reports_the_measures_and_gives_no_go_no_go_until_arsh_sets_the
     assert t["of_them_the_sheet_makes_testable"] == 1 and t["converted_and_accepted"] == 1
     assert t["mismatch_person_phone_or_window"] == 0 and t["invalid_outputs"] == 0
     assert t["wrong_entity_rate"] == 0.0 and t["mismatch_other_only"] == 0
+    assert t["wrong_entity_rate_without_the_claim_check"] == 0.0
     assert t["x_percent"] is None and t["y_budget"] is None and not t["go_no_go_case"]
     printed = capsys.readouterr().out
     assert "testability go/no-go: none given (x_percent, y_budget not set by Arsh" in printed

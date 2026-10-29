@@ -21,7 +21,7 @@ from collections.abc import Iterable
 from urllib.parse import quote as urlquote
 
 from core import pipeline
-from core.audit import challenge
+from core.audit import challenge, testability
 from core.audit.context import ContextLine, build_context
 from core.contracts import (
     ClaimType,
@@ -1154,7 +1154,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
             f"{_flag_verdict_form(conn, page, st, back)}"
         )
     out.append("</div></div>")
-    out.append(_must_be_true(st))
+    out.append(_must_be_true(st, testability.used_repairs(conn, pipeline.view_run(conn))))
     out.append(_alternatives(conn, st))
 
     out.append("<h2 id='evidence'>Evidence</h2>")
@@ -1171,6 +1171,9 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
                 "audit run can then test the claim.</p>"
             )
         out.append(_holdings(conn))
+        out.append(
+            _agent_card(page, testability.proposals(conn, pipeline.view_run(conn)).get(c.id), back)
+        )
     groups = _groups(st)
     if not groups:
         out.append("<p class='muted'>No relevant evidence items were stored for this claim.</p>")
@@ -1225,9 +1228,86 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
 AROUND = 1  # messages either side of each evidence record on the claim page
 
 
-def _must_be_true(st: ClaimState) -> str:
+AGENT_CHECKED = (
+    "Code checked this answer before showing it to you, with no model: every value is written "
+    "in the claim or its paragraph, and each name, phone and account resolves to exactly one in "
+    "the case (the assumption filler's own checks); every person, phone and account is one the "
+    "claim's own words name, not only its paragraph; apps, quoted words and time ranges are read "
+    "from the claim's text. It did not decide whether the claim is true."
+)
+
+
+def _agent_card(page: Page, x: testability.Proposed | None, back: str) -> str:
+    """The testability step's proposal for a claim the filler left untested, for the examiner
+    to accept or reject. Nothing in it is used until accepted, and then only from the next
+    audit on. One card per claim; there is no accept-all."""
+    if x is None:
+        return ""
+    rows = "".join(f"<li>{e(str(a.get('text', '')))}</li>" for a in x.assumptions)
+    found = "".join(
+        f"<li>&ldquo;{e(str(f.get('written', '')))}&rdquo;: {e(str(f.get('means', '')))}</li>"
+        for f in x.lookups
+    )
+    sheet = (
+        " The case's signed assumption sheet names the same people, phones and time ranges."
+        if x.check == testability.SHEET_CHECK
+        else ""
+    )
+    fields = (
+        f"<input type='hidden' name='claim' value='{e(x.claim_id)}'>"
+        f"<input type='hidden' name='run' value='{e(x.run_id)}'>"
+        f"<input type='hidden' name='attempt' value='{x.attempt}'>"
+        "<input type='text' class='wide' name='reason' required maxlength='500' "
+        "placeholder='Why, in one sentence (recorded in the audit log)'><br>"
+    )
+    accept = (
+        "<button type='submit' name='decision' value='accept'>Accept these assumptions</button>"
+    )
+    reject = "<button type='submit' name='decision' value='reject'>Reject</button>"
+    if x.decided is None:
+        state = (
+            "<p><strong>Waiting for you.</strong> Nothing here is used until you accept it. "
+            "Accepting puts these assumptions in the case from the next audit on, if the agent "
+            "gives them again for this claim's text. The claim's text never changes.</p>"
+        )
+        form = page.form("/testability/decide", fields + accept + reject, back=back, anchor="agent")
+    else:
+        action, actor = x.decided
+        who = e(actor.removeprefix("expert:"))
+        if action == testability.ACCEPT_ACTION:
+            state = (
+                f"<p><strong>Accepted by {who}.</strong> The next audit tests the claim with "
+                "these assumptions, if the agent gives them again for this claim's text.</p>"
+            )
+            other = reject
+        else:
+            state = f"<p><strong>Rejected by {who}.</strong> No audit uses them.</p>"
+            other = accept
+        form = (
+            "<details><summary>Change this decision</summary>"
+            + page.form("/testability/decide", fields + other, back=back, anchor="agent")
+            + "</details>"
+        )
+    return (
+        "<section class='agent' id='agent'>"
+        f"<h2><span class='badge b-agent'>{e(testability.PROPOSED_MARK)}</span> Assumptions that "
+        "would make this claim testable</h2>"
+        "<p class='muted'>The testability step asked the local model again, with the reasons "
+        "code refused the first try. It only proposes.</p>"
+        f"<ul class='checklist'>{rows}</ul>"
+        f"<details class='more'><summary>What code checked</summary><p>{e(AGENT_CHECKED)}{sheet}"
+        "</p><p>What the claim and its paragraph name in the case, by code's lookups (the "
+        "agent was shown these; only those in the claim's own words count):</p>"
+        f"<ul>{found or '<li>nothing</li>'}</ul></details>{state}{form}</section>"
+    )
+
+
+def _must_be_true(st: ClaimState, repaired: dict[str, testability.Used] | None = None) -> str:
     """What has to be true for the claim, one line per assumption, core ones first, with what the
-    verdict rules found. Read from the stored coverage; it decides nothing."""
+    verdict rules found. Read from the stored coverage; it decides nothing. `repaired`: the
+    assumptions the shown audit took from the testability step under an examiner's acceptance
+    (testability.used_repairs, as the report reads it)."""
+    repaired = repaired or {}
     if not st.assumptions:
         return ""
     d = st.decision
@@ -1244,6 +1324,8 @@ def _must_be_true(st: ClaimState) -> str:
         else:
             mark, said_ = "no", "Not established"
         role = "core" if a.is_core else "context, not needed for the verdict"
+        if a.id in repaired:
+            role += f" · {repaired[a.id].mark()}"
         rows.append(
             f"<li class='{mark}'><span class='mark'></span><div><div>{e(a.text)}</div>"
             f"<div class='meta'>{e(GAP_TOPICS[a.kind])} · {e(role)}</div></div>"

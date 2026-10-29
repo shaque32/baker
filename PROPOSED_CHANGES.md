@@ -660,6 +660,24 @@ model in core/. ... assumption filling stay local." (two lines), add:
 SIGNED by Arsh on 2026-10-28 ("i approve and sign off on others", 07:33Z, project thread
 "Build agents into the audit"). APPLIED by Arsh himself on this branch (PR #159), commit 88fe932. Word for word as above.
 
+## 2026-10-28 claude/project-thread-6i2msb-testability-accept: the CLAUDE.md agent line names the scripted demo
+File: CLAUDE.md
+Why: Arsh asked on 2026-10-28 (07:50Z) for the agents and their work to be featured in the demo.
+This branch runs the testability step in the scripted demo build (eval/demo.py) on two demo
+claims, D02 and D03, with scripted answers and no model. The review screen's audit and
+`mabillon audit` still never turn it on. The line Arsh signed in #159 says "eval only". The demo
+is built by eval code on synthetic data, but it is shown through `mabillon demo`, so the line
+should say so. Turning the agents on for pilots (PR 3) is a separate re-signature.
+Diff: in the agent line under "## Evidence rules" (signed in #159), replace
+-  sets a verdict, and never changes a claim's text. They stay off by default and eval only
+-  until a real-data run under a signed plan.
+with
++  sets a verdict, and never changes a claim's text. They stay off by default: only the eval
++  and the scripted demo (eval/demo.py, scripted answers, no model) run them, until a real-data
++  run under a signed plan.
+SIGNED by Arsh on 2026-10-28 ("approved", 13:17Z, project thread "Build agents into the audit").
+APPLIED by Arsh himself on this branch (PR #163), commit 2aded2d. Word for word as above.
+
 ## 2026-10-29 claude/project-thread-6i2msb-case04: sign case04's key and assumption sheet
 File: eval/gold/case04/gold.jsonl, eval/gold/case04/assumptions.jsonl (new)
 Why: case04 is the held-out set for the testability step's go/no-go (plans/agentic.md, approved
