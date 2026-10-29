@@ -25,14 +25,22 @@ from ui.pages import Page, e
 def _settings_form(page: Page, s: Settings, back: str) -> str:
     return page.form(
         "/timeline/settings",
-        "<strong>Case settings</strong> "
-        f"<label>Time tolerance <input type='number' name='tolerance_min' required "
-        f"min='{TOLERANCE_RANGE[0]}' max='{TOLERANCE_RANGE[1]}' value='{s.tolerance_min}' "
-        "style='width:5em'> min</label> · "
-        f"<label>Shortest quiet stretch <input type='number' name='gap_hours' required "
-        f"min='{GAP_RANGE[0]}' max='{GAP_RANGE[1]}' value='{s.gap_hours}' style='width:5em'> "
-        "h</label> <button type='submit'>Save</button>"
-        "<div class='muted'>Your name is recorded in the audit log with any change.</div>",
+        "<div class='settings-head'><h3>Case settings</h3>"
+        "<p class='muted'>Used by the Timeline and Gaps checks. Your name is recorded in the audit "
+        "log with any change.</p></div><div class='fields'>"
+        "<label class='field'>Time tolerance<span class='unit-input'>"
+        f"<input type='number' name='tolerance_min' required inputmode='numeric' "
+        f"min='{TOLERANCE_RANGE[0]}' max='{TOLERANCE_RANGE[1]}' value='{s.tolerance_min}'>"
+        "<span class='unit'>min</span></span><small>How far a phone record may sit from a time "
+        "the document states before the Timeline shows the difference.</small></label>"
+        "<label class='field'>Shortest quiet stretch<span class='unit-input'>"
+        f"<input type='number' name='gap_hours' required inputmode='numeric' "
+        f"min='{GAP_RANGE[0]}' max='{GAP_RANGE[1]}' value='{s.gap_hours}'>"
+        "<span class='unit'>hours</span></span><small>Gaps lists only stretches with no "
+        "messages or calls at least this long.</small></label>"
+        "</div><div class='actions'><button type='submit' class='primary'>Save settings</button>"
+        "</div>",
+        cls="box settings",
         back=back,
     )
 

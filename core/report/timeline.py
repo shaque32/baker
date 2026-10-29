@@ -44,7 +44,7 @@ NOT_FOUND = (
 
 CSS = """
 .tl { list-style: none; margin: 14px 0; padding: 0; }
-.tl > li { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+.tl > li { background: var(--card); border: 1px solid var(--line); border-radius: 8px;
   padding: 12px 16px; margin: 10px 0; display: grid; gap: 6px 18px;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) 150px; }
 .tl > li.flag { border-color: var(--con-line); }
@@ -61,19 +61,19 @@ CSS = """
 .chip.flag { color: var(--con); background: var(--con-bg); border-color: var(--con-line); }
 .chip.ok { color: var(--sup); background: var(--sup-bg); border-color: var(--sup-line); }
 .d-ok { color: var(--sup); } .d-flag { color: var(--con); font-weight: 600; }
-.gap { background: var(--card); border: 1px solid var(--unp-line); border-radius: 14px;
+.gap { background: var(--card); border: 1px solid var(--line); border-radius: 8px;
   padding: 12px 18px; margin: 12px 0; }
-.gap .stmt { font: 400 21px/1.3 var(--serif); margin: 4px 0 8px; }
+.gap .stmt { font: 600 15px/1.45 var(--sans); margin: 4px 0 8px; }
 .gap dl { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 4px 14px;
   margin: 6px 0; font-size: 13px; }
 .gap dt { color: var(--muted); }
 .gap dd { margin: 0; }
-.strips { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+.strips { background: var(--card); border: 1px solid var(--line); border-radius: 8px;
   padding: 12px 16px; margin: 12px 0; overflow-x: auto; }
 .strip { display: grid; grid-template-columns: 110px minmax(0, 1fr) 70px; gap: 10px;
   align-items: end; margin: 6px 0; font-size: 12.5px; min-width: 520px; }
 .bars { display: flex; align-items: flex-end; gap: 2px; height: 40px; }
-.bars span { flex: 1; background: #3f3d38; border-radius: 2px 2px 0 0; min-height: 0; }
+.bars span { flex: 1; background: #7d8aa0; border-radius: 2px 2px 0 0; min-height: 0; }
 .bars span.z { background: transparent; }
 .bars span.g { background: var(--unp-bg); border: 1px dashed var(--unp-line); border-radius: 2px; }
 .axis { display: flex; justify-content: space-between; font: 11.5px var(--sans);
