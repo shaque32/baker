@@ -13,16 +13,17 @@
   - None is given until Arsh sets X (`TESTABILITY_X_PERCENT`), Y (`TESTABILITY_Y_BUDGET`, calls
     and seconds per claim), the cap (`TESTABILITY_CAP`) and the least denominator
     (`TESTABILITY_MIN_TESTABLE`), all still placeholders, and until the run has the signed
-    prompt, a held-out case, `--expert rubber-stamp` and `--repeat`. The reasons are printed.
+    prompt, a held-out case, `--expert rubber-stamp`, `--repeat` and Arsh's signed key (false
+    supported is never scored against a builder's draft). The reasons are printed.
   - The record names the hardware, the Python version and the wall-clock date of the run.
   - The run's measures print as before; the old "none given" line moved into the go/no-go.
 - Where: branch `claude/project-thread-6i2msb-go-no-go` (stacked on the rules 0.4.0 branch)
-- Verified: `tests/test_testability_go_no_go.py` (16 tests): every bar held is a GO; each bar
+- Verified: `tests/test_testability_go_no_go.py` (17 tests): every bar held is a GO; each bar
   missed alone is a NO-GO naming it; conversion exactly at X passes; a repeat whose filler and
   step answers differ by one byte is a NO-GO that says the model calls differ; too few testable
   refusals is insufficient; with nothing set, a draft prompt, a development case, the simulated
   expert and no repeat, none is given with every reason; a run's cap other than Arsh's gives
-  none; the Wilson interval; and two eval runs of synthetic case01 with the scripted model, the
+  none; a draft gold key gives none; the Wilson interval; and two eval runs of synthetic case01 with the scripted model, the
   signed prompt and the rubber-stamp expert give a GO with the hardware recorded.
   `make check` results are in the PR.
 - Open: X, Y, the cap and the least denominator are Arsh's to set, and no held-out case is

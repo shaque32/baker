@@ -895,17 +895,23 @@ def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
 
 
 def testability_go_no_go(
-    t: dict, *, expert: str, false_supported: int | None, repeat: dict | None
+    t: dict,
+    *,
+    expert: str,
+    false_supported: int | None,
+    repeat: dict | None,
+    gold: str | None,
 ) -> dict[str, object]:
     """The testability step's go/no-go (plans/agentic.md, approved 2026-10-27) on one run's
     measures `t` (testability_summary), against Arsh's X, Y, cap and least denominator.
 
     A decision needs all four set, the signed prompt, a held-out case, the rubber-stamp expert
-    (the false-supported bar) and --repeat (the byte-identical repeat); otherwise none is given,
-    with the reasons. With fewer sheet-testable refusals than the least denominator the result
-    is "insufficient", not a decision. Then GO only if every bar holds: conversion at least X%,
-    no try naming a different person, phone or window than the sheet, 0 false supported, every
-    output valid, the repeat identical, and calls and seconds per claim within Y."""
+    (the false-supported bar), --repeat (the byte-identical repeat) and Arsh's signed key
+    (`gold`, its key_status); otherwise none is given, with the reasons. With fewer
+    sheet-testable refusals than the least denominator the result is "insufficient", not a
+    decision. Then GO only if every bar holds: conversion at least X%, no try naming a different
+    person, phone or window than the sheet, 0 false supported, every output valid, the repeat
+    identical, and calls and seconds per claim within Y."""
     why: list[str] = []
     unset = [k for k in GO_NO_GO_SETTINGS if t.get(k) is None]
     why += [f"{', '.join(unset)} not set by Arsh"] if unset else []
@@ -919,6 +925,8 @@ def testability_go_no_go(
         why.append("the byte-identical repeat needs --repeat")
     if false_supported is None:
         why.append("no gold key to score false supported")
+    elif gold != "signed":
+        why.append("the gold key is a draft, not signed by Arsh")
     if why:
         return {"decision": "none given", "why": why, "checks": []}
     testable = int(t["of_them_the_sheet_makes_testable"])
@@ -1041,11 +1049,21 @@ def report_go_no_go(
     t = json.loads((out / "run.json").read_text(encoding="utf-8"))["testability"]
     gold = load_jsonl(gold_path(case), GoldClaim)
     false_supported = score(gold, first).n_false_supported if gold else None
+    status = key_status(gold_path(case)) if gold else None
     repeat = None
     if second is not None:
         repeat = repeat_result(first, second, out / f"{case}.db", out / "repeat" / f"{case}.db")
-    result = testability_go_no_go(t, expert=expert, false_supported=false_supported, repeat=repeat)
-    record = {**result, "case": case, "testability": t, "repeat": repeat, "hardware": hardware()}
+    result = testability_go_no_go(
+        t, expert=expert, false_supported=false_supported, repeat=repeat, gold=status
+    )
+    record = {
+        **result,
+        "case": case,
+        "gold": {"path": str(gold_path(case)), "status": status},
+        "testability": t,
+        "repeat": repeat,
+        "hardware": hardware(),
+    }
     (out / "go_no_go.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     why = "; ".join(result["why"])  # type: ignore[arg-type]
     print(f"pipeline: testability go/no-go: {result['decision']}" + (f" ({why})" if why else ""))

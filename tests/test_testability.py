@@ -916,7 +916,9 @@ def test_the_eval_reports_the_measures_and_gives_no_go_no_go_until_arsh_sets_the
     assert t["x_percent"] is None and t["y_budget"] is None and not t["go_no_go_case"]
     assert t["cap_set"] is None and t["min_testable"] is None
     assert "an upper bound: the signed sheet filters every try" in capsys.readouterr().out
-    r = rp.testability_go_no_go(t, expert="simulated", false_supported=0, repeat=None)
+    r = rp.testability_go_no_go(
+        t, expert="simulated", false_supported=0, repeat=None, gold="signed"
+    )
     assert r["decision"] == "none given"
     assert r["why"][0] == "x_percent, y_budget, cap_set, min_testable not set by Arsh"
     db = sqlite3.connect(tmp_path / "case01.db")

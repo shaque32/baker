@@ -45,8 +45,14 @@ def _measures(**changed: object) -> dict:
 SAME = {"identical": True, "predictions": True, "model_calls": True, "calls_compared": 50}
 
 
-def _decide(t: dict, expert: str = "rubber-stamp", fs: int | None = 0, repeat=SAME) -> dict:  # noqa: ANN001
-    return rp.testability_go_no_go(t, expert=expert, false_supported=fs, repeat=repeat)
+def _decide(
+    t: dict,
+    expert: str = "rubber-stamp",
+    fs: int | None = 0,
+    repeat=SAME,  # noqa: ANN001
+    gold: str | None = "signed",
+) -> dict:
+    return rp.testability_go_no_go(t, expert=expert, false_supported=fs, repeat=repeat, gold=gold)
 
 
 def test_every_bar_held_is_a_go():
@@ -113,6 +119,13 @@ def test_no_decision_until_arsh_sets_the_values_and_the_run_can_measure_every_ba
     assert r["decision"] == "none given" and r["why"] == ["the run's cap is 3, not Arsh's 2"]
 
 
+def test_a_draft_gold_key_gives_none():
+    """False supported is scored against Arsh's signed key only, never the builder's draft."""
+    r = _decide(_measures(), gold="draft, not signed by Arsh (48/48 claims marked DRAFT)")
+    assert r["decision"] == "none given"
+    assert r["why"] == ["the gold key is a draft, not signed by Arsh"]
+
+
 def test_the_wilson_interval():
     low, high = rp.wilson(6, 15)
     assert (round(low, 3), round(high, 3)) == (0.198, 0.643)
@@ -150,6 +163,7 @@ def test_a_run_and_its_repeat_give_a_go_with_the_hardware_recorded(tmp_path, mon
     assert r["decision"] == "GO", r
     record = json.loads((tmp_path / "go_no_go.json").read_text("utf-8"))
     assert record["decision"] == "GO" and record["repeat"]["identical"]
+    assert record["gold"]["status"] == "signed"
     assert record["repeat"]["calls_compared"] > 0  # the filler's and the step's calls
     assert set(record["hardware"]) >= {
         "platform",
