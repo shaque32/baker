@@ -60,15 +60,18 @@ def _verdicts(conn: sqlite3.Connection) -> dict[str, str]:
 
 
 def _claim_ids() -> list[str]:
-    return [*demo.load_gold(), *(d["claim_id"] for d in demo.load_demo_claims())]
+    extra = [*demo.load_demo_claims(), *demo.load_agent_claims()]
+    return [*demo.load_gold(), *(d["claim_id"] for d in extra)]
 
 
 def test_demo_matches_the_answer_key_except_the_claim_left_for_the_demo(root):
     gold = {g.claim_id: g.gold_verdict.value for g in demo.load_gold().values()}
     conn = connect(_case(root).db)
     got = _verdicts(conn)
-    extra = {d["claim_id"] for d in demo.load_demo_claims()}
+    extra = {d["claim_id"] for d in [*demo.load_demo_claims(), *demo.load_agent_claims()]}
     assert set(got) == set(gold) | extra and not extra & set(gold)
+    # The agent's demo claims: D02's accepted proposal ends supported, D03's waits untested.
+    assert (got["D02"], got["D03"]) == ("supported", "unproven")
     for claim_id in extra:
         del got[claim_id]
     for claim_id in demo.LEFT_OPEN:
@@ -128,18 +131,104 @@ def test_the_live_step_shows_the_challenge_steps_find_on_c16(root):
     assert _verdicts(conn)["C16"] == "unproven"
 
 
+def test_the_agents_proposal_on_d02_was_accepted_and_reaches_supported(root):
+    """D02's first answer writes the phone as an account; code refuses it. The agent's answer,
+    told why, passes code's checks; the scripted examiner accepted it, code's contact check
+    passed and the expert accepted the record. The screen and the report say the assumption was
+    proposed by the agent and accepted by an examiner."""
+    from core.audit import testability
+
+    case = _case(root)
+    conn = connect(case.db)
+    run = pipeline.last_run(conn)
+    audit = json.loads(
+        conn.execute(
+            "SELECT config_json FROM pipeline_runs WHERE id = ?", (run["evidence_from_run"],)
+        ).fetchone()[0]
+    )
+    assert audit["testability"] == testability.VERSION
+    repairs = [
+        json.loads(p)
+        for (p,) in conn.execute(
+            "SELECT payload_json FROM audit_log WHERE action = ? ORDER BY seq",
+            (testability.REPAIR_ACTION,),
+        )
+    ]
+    assert {r["claim_id"] for r in repairs} == {"D02", "D03"}  # the step ran on these only
+    assert all(r["check"] == testability.CLAIM_CHECK and r["sheet"] is None for r in repairs)
+    d02 = next(r for r in repairs if r["claim_id"] == "D02")
+    assert any("matches no account" in why for why in d02["refused_before"])
+    assert d02["outcome"] == "proposed" and d02["assumption_ids"] == sorted(
+        run["manifest"]["D02"]["assumptions"]
+    )
+    assert testability.used_repairs(conn, run) == dict.fromkeys(
+        d02["assumption_ids"], testability.Used(demo.AGENT_EXAMINER)
+    )
+    assert _verdicts(conn)["D02"] == "supported"
+    mark = "Proposed by agent, accepted by examiner (Demo examiner (scripted from the demo claims))"
+    assert mark in render_report(conn)
+    app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
+    app.open_case(case)
+    page = app.handle(Request("GET", "/claim", {"id": "D02"}, dict(HOST))).body.decode()
+    assert html.escape(mark, quote=True) in page
+    assert "<section class='agent'" not in page  # used, so no card
+
+
+def test_the_presenter_accepts_d03s_proposal_on_its_card_and_the_next_audit_tests_it(root):
+    """D03's first answer names a call with no party; code refuses it. The agent's proposal
+    waits on D03's page. The presenter accepts it there with a reason, which changes nothing
+    until the next audit; that audit tests D03 with it."""
+    from core.audit import testability
+    from core.review.status import claim_state
+
+    case = _case(root)
+    conn = connect(case.db)
+    assert _verdicts(conn)["D03"] == "unproven" and claim_state(conn, "D03").untested
+    app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
+    app.open_case(case)
+    app.expert = "Test Expert"
+    page = app.handle(Request("GET", "/claim", {"id": "D03"}, dict(HOST))).body.decode()
+    card = page.split("<section class='agent' id='agent'>", 1)[1].split("</section>", 1)[0]
+    assert testability.PROPOSED_MARK in card and "Waiting for you" in card
+    assert "A call between" in card and card.count("value='accept'") == 1
+    (x,) = [p for c, p in testability.proposals(conn, pipeline.last_run(conn)).items()
+            if c == "D03"]  # fmt: skip
+    form = {
+        "token": app.token,
+        "claim": "D03",
+        "run": x.run_id,
+        "attempt": str(x.attempt),
+        "decision": "accept",
+        "reason": "The number is the one the claim writes.",
+        "next": "/claim?id=D03",
+    }
+    app.handle(Request("POST", "/testability/decide", {}, dict(HOST), form))
+    page = app.handle(Request("GET", "/claim", {"id": "D03"}, dict(HOST))).body.decode()
+    assert "Accepted by Test Expert" in page
+    assert _verdicts(conn)["D03"] == "unproven"  # nothing changes until the next audit
+    pipeline.run_audit(conn, demo._components(conn, demo.load_gold()))
+    st = claim_state(conn, "D03")
+    assert not st.untested and [a.id for a in st.assumptions] == x.assumption_ids
+    assert "Proposed by agent, accepted by examiner (Test Expert)" in render_report(conn)
+
+
 def test_scripted_parts_are_named_on_the_screen_and_in_the_report(root):
     case = _case(root)
     conn = connect(case.db)
     run = pipeline.last_run(conn)
     assert run["fake"] and pipeline.scripted_demo(run)
-    assert "Demo case: synthetic data, scripted labels." in render_report(conn)
+    agent = "The testability agent's answers were scripted from the demo's own claims"
+    report = render_report(conn)
+    assert "Demo case: synthetic data, scripted labels." in report and agent in report
     app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
     app.open_case(case)
     page = app.handle(Request("GET", "/claims", {}, dict(HOST))).body.decode()
-    assert "Demo case: synthetic data, scripted labels." in page
+    assert "Demo case: synthetic data, scripted labels." in page and agent in page
     reviewers = {r for (r,) in conn.execute("SELECT DISTINCT reviewer FROM evidence_reviews")}
-    assert reviewers == {demo.SCRIPTED_EXPERT}
+    assert reviewers == {demo.SCRIPTED_EXPERT, demo.AGENT_EXAMINER}
+    purposes = dict(conn.execute("SELECT id, model_name FROM model_runs"))
+    for mr in (demo.DEMO_RUN, demo.DEMO_FILLER_RUN, demo.DEMO_AGENT_RUN):
+        assert mr.id in purposes and "scripted" in purposes[mr.id]
     labels = {r for (r,) in conn.execute("SELECT DISTINCT model_run_id FROM evidence_items")}
     assert labels == {demo.DEMO_RUN.id}
 
@@ -159,7 +248,7 @@ def test_overview_groups_claims_and_says_why_each_unproven_claim_is_unproven(roo
     unproven claim a plain gap line read from the stored coverage. The report prints the same
     lines; no verdict changes."""
     from core.contracts import AssumptionKind as K
-    from core.review.status import GAP_TEXT, GAP_TOPICS, claim_states
+    from core.review.status import AGENT_STEP, GAP_TEXT, GAP_TOPICS, claim_states
 
     case = _case(root)
     conn = connect(case.db)
@@ -177,12 +266,14 @@ def test_overview_groups_claims_and_says_why_each_unproven_claim_is_unproven(roo
     sections = re.findall(r"<section class='(?:group|nextup)' id='([a-z]+)'>", page)
     assert sections == ["next", "you", "con", "unp", "sup"]  # C16's open doubt waits on you
     you = page.split("<section class='group' id='you'>", 1)[1].split("</section>", 1)[0]
-    assert "id=C16" in you
+    assert "id=C16" in you and "id=C05" in you
     unp = page.split("<section class='group' id='unp'>", 1)[1].split("</section>", 1)[0]
     assert "id=C06" in unp and GAP_TEXT[K.MEANING] in unp
-    assert "id=C05" in page.split("<section class='nextup' id='next'>", 1)[1].split("</section>")[0]
+    # Next up: D03, the agent's proposal waiting for the person giving the demo.
+    nextup = page.split("<section class='nextup' id='next'>", 1)[1].split("</section>")[0]
+    assert "id=D03" in nextup and html.escape(AGENT_STEP, quote=True) in nextup
     assert "Verdict not yet confirmed" not in page
-    assert "19 of 21" in page
+    assert "20 of 23" in page
     own = " ".join([*GAP_TEXT.values(), *GAP_TOPICS.values()]).lower()  # Baker's words, not claims'
     assert not any(w in own for w in ("guilty", "innocent", "leader", "deleted"))
     report = render_report(conn)
@@ -370,7 +461,7 @@ def test_a_claim_supported_on_ai_review_or_with_ai_dismissed_support_waits_on_th
     sup = page.split("<section class='group' id='sup'>", 1)[1].split("</section>", 1)[0]
     assert "id=C01" not in sup and "id=C02" not in sup
     assert html.escape(SUPPORTED_AI) not in sup
-    assert "4 claims need you." in page and "17 of 21" in page  # C05, C16 and these two
+    assert "5 claims need you." in page and "18 of 23" in page  # C05, C16, D03 and these two
 
 
 def test_gap_lines_follow_the_stored_coverage_until_it_is_stale_and_tiles_have_destinations(root):

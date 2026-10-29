@@ -28,3 +28,27 @@ eval/probe/models*.local.json
 
 # Local model files never enter the repo.
 *.gguf
+
+# Impeccable design skill (.claude/skills/impeccable). Its engine binary is downloaded on first
+# run into ~/.impeccable/bin/ and checked against scripts/engine-checksums.txt, so it is never
+# committed. The rest of the block is Impeccable's own list of working files.
+.claude/skills/impeccable/scripts/bin/
+# impeccable-ignore-start
+**/.impeccable/config.local.json
+**/.impeccable/hook.cache.json
+**/.impeccable/hook.pending.json
+**/.impeccable/*.png
+**/.impeccable/review/
+**/.impeccable/questions/
+**/.impeccable/live/server.json
+**/.impeccable/live/sessions/
+**/.impeccable/live/previews/
+**/.impeccable/live/annotations/
+**/.impeccable/live/cache/
+**/.impeccable/live/manual-edit-apply-transaction.json
+**/.impeccable/live/manual-edit-events.jsonl
+**/.impeccable/live/manual-edit-evidence/
+**/.impeccable/live/pending-manual-edits.json
+**/.impeccable/live/deferred-svelte-component-accepts.json
+**/.impeccable/live/*.png
+# impeccable-ignore-end

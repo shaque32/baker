@@ -302,6 +302,10 @@ details summary::marker { color: var(--muted); }
 .b-withheld { color: var(--muted); background: var(--panel); }
 .b-challenge { color: var(--muted); background: transparent;
   box-shadow: inset 0 0 0 1px var(--line-strong); }
+.b-agent { color: var(--muted); background: transparent;
+  box-shadow: inset 0 0 0 1px var(--line-strong); }
+section.agent { background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 16px 20px; margin: 16px 0; }
 details.flag { margin-top: 6px; }
 details.flag > summary { font-size: 12.5px; color: var(--muted); cursor: pointer; }
 ul.flags form.inline button { margin-left: 8px; }

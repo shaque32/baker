@@ -8,8 +8,10 @@ find what they find there, and that wrong or unsupported values are dropped.
 import json
 import re
 import sqlite3
+from datetime import UTC
 from datetime import datetime as D
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -17,12 +19,14 @@ from core.audit._llm_json import prompt_body
 from core.audit.assumption_filler import (
     LocalAssumptionFiller,
     Reject,
+    _Account,
     _in_quotes,
     _ProposalOut,
     check_window,
     count_op,
     date_mentions,
     only_addressed,
+    stated_part_day,
 )
 from core.audit.assumptions import TEMPLATES, TemplateAssumptionBuilder
 from core.audit.checks import CHECKS
@@ -248,6 +252,40 @@ def test_good_answers_become_checkable_assumptions(conn, cid):
         for name in TEMPLATES[a.template_id].checks:  # event, meaning, role: stance only
             outcomes.append(CHECKS[name].run(a, conn).outcome)
     assert sorted(outcomes) == sorted(EXPECTED[cid] + [o for _, o in CODE_ADDS.get(cid, [])])
+
+
+def test_a_contact_entry_keeps_the_one_account_it_names(conn):
+    # The same number written another way on the same phone is a second account; a contact
+    # entry names the one account that holds the number (Codex on #169).
+    conn.execute(
+        "INSERT INTO accounts (id, source_id, locator, device_id, app, identifier)"
+        " VALUES ('acct:item1:Phone:2125550122', 'item1', 'x', 'dev:item1', 'Phone',"
+        " '2125550122')"
+    )
+    try:
+        (c01,) = build(conn, "C01")[0]
+        assert c01.params.account_ids == tuple(MARC_0122)
+    finally:
+        conn.execute("DELETE FROM accounts WHERE id = 'acct:item1:Phone:2125550122'")
+
+
+def test_a_contact_entry_written_another_way_still_finds_its_one_account(conn):
+    # No account is written "(212) 555-0122"; the one that holds the number is it (Codex on
+    # #169). Two that hold it are two candidates, and the exact one is not known.
+    filler = LocalAssumptionFiller(FakeModel("{}"), conn, template=DRAFT)
+    acc = _Account(as_written="(212) 555-0122", app="Phone")
+    assert filler._accounts(acc, ["dev:item1"], "", one_number=False) == set(MARC_0122)
+    conn.execute(
+        "INSERT INTO accounts (id, source_id, locator, device_id, app, identifier)"
+        " VALUES ('acct:item1:Phone:12125550122', 'item1', 'x', 'dev:item1', 'Phone',"
+        " '12125550122')"
+    )
+    try:
+        filler = LocalAssumptionFiller(FakeModel("{}"), conn, template=DRAFT)
+        with pytest.raises(Reject):
+            filler._accounts(acc, ["dev:item1"], "", one_number=False)
+    finally:
+        conn.execute("DELETE FROM accounts WHERE id = 'acct:item1:Phone:12125550122'")
 
 
 def test_parameters_match_the_check_tests(conn):
@@ -1057,6 +1095,10 @@ def test_date_mentions():
         ("PETROV and REYES exchanged 13 messages from 9 a.m. to noon", 13, "eq"),
         # Both directions together, as the count check counts (Codex on #160).
         ("PETROV sent and received a total of 13 messages with REYES", 13, "eq"),
+        # Calls are counted too (validation fill f); the filler puts 'call' in the channels.
+        ("at most 13 calls", 13, "le"),
+        ("the TARGET PHONE had four Viber calls with (919) 888-7386", 4, "eq"),
+        ("Item 1 holds 13 messages with REYES, incoming and outgoing", 13, "eq"),
     ],
 )
 def test_count_op(claim_text, value, op):
@@ -1069,8 +1111,7 @@ def test_count_op(claim_text, value, op):
         "about 13 messages",
         "more than 13 messages",
         "on March 13 they met",
-        # The count check counts messages, in both directions between the two parties.
-        "at most 13 calls",
+        # The count check counts messages or calls, in both directions between the parties.
         "Item 1 called @northstar 13 times",
         "PETROV sent @northstar 13 messages",
         "On March 12, PETROV sent exactly 13 Telegram messages to @northstar",
@@ -1084,6 +1125,13 @@ def test_count_op(claim_text, value, op):
         # Refused on purpose: a word of one direction anywhere in the claim refuses its
         # count, even about something else. That costs coverage, never a wrong verdict.
         "After PETROV sent the photo, the two exchanged 13 messages",
+        "Item 1 holds 13 incoming messages from REYES",
+        # Calls one side placed: the count check counts both directions (Codex on #169).
+        "On March 12, 2026, dev:item1 had 13 outgoing Signal calls with (212) 555-0199",
+        "On March 12, 2026, dev:item1 made 13 calls to (212) 555-0199",
+        "PETROV placed 13 Viber calls with REYES",
+        "Item 1 shows 13 missed calls with REYES",
+        "dev:item1 had 13 calls with (212) 555-0199, each lasting more than ten minutes",
     ],
 )
 def test_count_op_refuses(claim_text):
@@ -1382,6 +1430,58 @@ def test_count_op_refuses_one_way_text_messages():
         count_op("Item 1 holds 13 text messages from PETROV to REYES.", 13)
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "On March 12, 2026, on dev:item1, PETROV and REYES had two Telegram video calls.",
+        "On March 12, 2026, PETROV and REYES had two audio calls on Telegram.",
+    ],
+)
+def test_count_op_refuses_a_kind_of_call(text):
+    # The call log keeps no video or audio kind (Codex on #169).
+    with pytest.raises(Reject, match="one kind of call"):
+        count_op(text, 2)
+
+
+def test_one_value_counting_calls_and_messages_is_no_count():
+    # The value alone does not say which count a proposal means (Codex on #169).
+    from core.audit.assumption_filler import counts_calls
+
+    text = (
+        "On March 12, 2026, PETROV and REYES had two Telegram calls and exchanged two Telegram"
+        " messages."
+    )
+    assert not counts_calls(text, 2)
+    with pytest.raises(Reject, match="both calls and other records"):
+        count_op(text, 2)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "On March 12, 2026, on dev:item1, PETROV and REYES had two Telegram calls about narcotics.",
+        "On March 12, 2026, PETROV and REYES had two Telegram calls to arrange the meeting.",
+        "On March 12, 2026, PETROV and REYES discussed the shipment in two Telegram calls.",
+        # a number after "about" is no clock time (Codex on #169)
+        "On March 12, 2026, on dev:item1, PETROV and REYES had two Telegram calls about three"
+        " kilograms of narcotics.",
+    ],
+)
+def test_count_op_refuses_calls_on_a_subject(text):
+    # A call log keeps no subject, so every call would be counted (Codex on #169).
+    with pytest.raises(Reject, match="on a subject"):
+        count_op(text, 2)
+    # a time is not a subject
+    assert count_op("At about 9 p.m. on March 12, 2026, PETROV and REYES had two Telegram"
+                    " calls.", 2) == "eq"  # fmt: skip
+
+
+def test_a_call_of_a_kind_the_log_does_not_keep_names_no_app(conn):
+    filler = LocalAssumptionFiller(FakeModel("{}"), conn, template=DRAFT)
+    with pytest.raises(Reject, match="kind of call"):
+        filler._call_app("PETROV had a Telegram video call with REYES.", ["call"])
+
+
 def test_a_count_claim_quoting_only_a_name_needs_no_sender():
     from core.audit.assumption_filler import coverage_gap
     from core.audit.assumptions import Proposal
@@ -1434,3 +1534,840 @@ def test_a_code_made_sender_stays_on_the_phones_messages_when_the_claim_names_th
     # An app named inside the message is no app it went by.
     assert filler._message_apps('PETROV told REYES by iMessage: "use Telegram".') == phone
     assert filler._message_apps('PETROV texted REYES: "use Telegram".') == phone
+
+
+# ---------------------------------------------------------------- PAST-30 fills (validation)
+
+
+def test_a_dated_quote_with_no_writer_gets_its_time_from_code(conn):
+    # Fill a: the claim names no one who sent the words, so code tests when the message was
+    # sent, on the app the claim names, with no party; meaning is the model's or code's.
+    text = (
+        'The Telegram message of March 12, 2026, "the package will be at marcs", shows that the'
+        " package held narcotics."
+    )
+    assumptions, filler = build_text(conn, text, ClaimType.CONTENT_MEANING, [])
+    by = {a.template_id: a for a in assumptions}
+    assert set(by) == {"meaning", "record_time"}, filler.drops
+    t = by["record_time"].params
+    assert t.quoted_text == "the package will be at marcs" and t.channels == ("Telegram",)
+    assert not (t.person_ids or t.account_ids or t.handles)
+    assert t.window is not None and t.window.raw.endswith("March 12, 2026")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # a writer the claim names after the quote, or with a verb the cue list reads
+        'The Telegram message of March 12, 2026, "the package will be at marcs", which'
+        " @northstar sent, held narcotics.",
+        'On March 12, 2026, PETROV deleted the Telegram message "the package will be at marcs"'
+        " after receiving it from @northstar.",
+        'On March 12, 2026, @northstar contacted PETROV by Telegram, writing "the package will be'
+        ' at marcs".',
+    ],
+)
+def test_no_time_is_made_without_a_sender_when_the_claim_names_a_writer(conn, text):
+    assumptions, filler = build_text(conn, text, ClaimType.CONTENT_MEANING, [])
+    assert not any(a.template_id == "record_time" for a in assumptions)
+
+
+def test_a_time_near_midnight_may_start_on_the_day_before():
+    raw = "On May 2, 2023, at approximately 12:01 a.m. EDT"
+    check_window(D(2023, 5, 1, 23, 53), D(2023, 5, 2, 0, 10), raw, raw, "", "record_time")
+    with pytest.raises(Reject, match="not a date the claim states"):
+        check_window(D(2023, 5, 1, 22, 0), D(2023, 5, 2, 0, 10), raw, raw, "", "record_time")
+    far = "On May 2, 2023, at approximately 9:00 p.m. EDT"
+    with pytest.raises(Reject):
+        check_window(D(2023, 5, 1, 20, 52), D(2023, 5, 1, 21, 9), far, far, "", "record_time")
+    # "11:59 p.m." on May 2: the evening before is not near it, though its clock time is
+    # (Codex on #169)
+    late = "On May 2, 2023, at approximately 11:59 p.m. EDT"
+    with pytest.raises(Reject, match="not a date the claim states"):
+        check_window(D(2023, 5, 1, 23, 53), D(2023, 5, 2, 23, 59), late, late, "", "record_time")
+
+
+def test_an_identifier_in_brackets_picks_one_of_two_accounts_with_one_name(conn):
+    # Fill d: two Telegram accounts carry the display name "Marc Twin"; the claim writes which.
+    rows = [
+        ("acct:t:twin1", "Telegram", "twin_one_111", "Marc Twin"),
+        ("acct:t:twin2", "Telegram", "twin_two_222", "Marc Twin"),
+    ]
+    src = conn.execute("SELECT source_id FROM accounts LIMIT 1").fetchone()[0]
+    for aid, app, ident, name in rows:
+        conn.execute(
+            "INSERT INTO accounts (id, source_id, locator, device_id, app, identifier,"
+            " display_name) VALUES (?, ?, 'x', NULL, ?, ?, ?)",
+            (aid, src, app, ident, name),
+        )
+    try:
+        filler = LocalAssumptionFiller(FakeModel("{}"), conn, template=DRAFT)
+        acc = _Account(as_written="Marc Twin", app="Telegram")
+        said = 'PETROV called "Marc Twin" (twin_two_222) on Telegram.'
+        assert filler._accounts_named(acc, [], said) == {"acct:t:twin2"}
+        with pytest.raises(Reject, match="name of 2 Telegram accounts"):
+            filler._accounts_named(acc, [], 'PETROV called "Marc Twin" on Telegram.')
+        with pytest.raises(Reject):  # an identifier no account named "Marc Twin" holds
+            filler._accounts_named(acc, [], 'PETROV called "Marc Twin" (nobody_9) on Telegram.')
+        # The same account on a second phone's extraction is still one account (Codex on #169).
+        other = conn.execute(
+            "SELECT source_id FROM accounts WHERE source_id != ? LIMIT 1", (src,)
+        ).fetchone()[0]
+        conn.execute(
+            "INSERT INTO accounts (id, source_id, locator, device_id, app, identifier,"
+            " display_name) VALUES ('acct:t:twin2b', ?, 'x', NULL, 'Telegram', 'twin_two_222',"
+            " 'Marc Twin')",
+            (other,),
+        )
+        filler = LocalAssumptionFiller(FakeModel("{}"), conn, template=DRAFT)
+        assert filler._accounts_named(acc, [], said) == {"acct:t:twin2", "acct:t:twin2b"}
+    finally:
+        conn.execute(
+            "DELETE FROM accounts WHERE id IN ('acct:t:twin1', 'acct:t:twin2', 'acct:t:twin2b')"
+        )
+
+
+def _sender(assumptions):
+    return next((a.params for a in assumptions if a.template_id == "sender"), None)
+
+
+def test_the_one_who_instructed_is_the_writer(conn):
+    # Fill b: 'X instructed Y by App to <errand>, writing "..."' names X as the writer.
+    text = (
+        "On March 12, 2026, PETROV instructed REYES by Telegram to hide the car, writing"
+        ' "move it tonight".'
+    )
+    assumptions, filler = build_text(conn, text, ClaimType.COMMUNICATION, [])
+    s = _sender(assumptions)
+    assert s is not None, filler.drops
+    assert s.person_ids == (PETROV,) and s.channels == ("Telegram",)
+    assert s.quoted_text == "move it tonight"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # an errand that may bring in another's words or clause
+        'PETROV instructed REYES by Telegram to tell his cousin, writing "move it tonight".',
+        'PETROV instructed REYES by Telegram to wait and then call, writing "move it tonight".',
+        # someone else's instruction
+        'A friend of PETROV instructed REYES by Telegram to hide the car, writing "move it'
+        ' tonight".',
+        # an app the case does not hold
+        'PETROV instructed REYES by Wire to hide the car, writing "move it tonight".',
+        # a new subject after the quote may be the one writing
+        'PETROV instructed REYES by Telegram to hide the car, writing "move it tonight", REYES'
+        " said.",
+        # the one instructed is the one named first
+        'PETROV instructed PETROV by Telegram to hide the car, writing "move it tonight".',
+    ],
+)
+def test_an_instruction_names_no_writer_when_anything_is_in_doubt(conn, text):
+    assumptions, _ = build_text(conn, "On March 12, 2026, " + text, ClaimType.COMMUNICATION, [])
+    s = _sender(assumptions)
+    assert s is None or PETROV not in s.person_ids
+
+
+def _x1(text: str) -> Claim:
+    return Claim(
+        id="X1",
+        paragraph_id=claim("C05").paragraph_id,
+        text=text,
+        claim_type=ClaimType.COMMUNICATION,
+        status=ClaimStatus.ACCEPTED,
+    )
+
+
+def test_a_deletion_date_dates_no_sending_even_with_a_sender(conn):
+    # Fill b names the sender, but March 16 is the deletion's date (Codex on #169).
+    text = (
+        'On March 16, 2026, REYES deleted the Telegram message "the package will be at marcs"'
+        " after receiving it from PETROV."
+    )
+    assumptions, filler = build_text(conn, text, ClaimType.COMMUNICATION, [])
+    assert not any(a.template_id == "record_time" for a in assumptions), filler.drops
+
+
+def test_a_message_on_an_app_the_case_lacks_gets_no_sender_from_its_receipt(conn):
+    # "the Signal message ... after receiving it from REYES" on a case with no Signal: the
+    # sender search would run on every app (Codex on #169).
+    text = 'PETROV kept the Signal message "move it tonight" after receiving it from REYES.'
+    assumptions, filler = build_text(conn, text, ClaimType.COMMUNICATION, [])
+    assert not any(c.casefold() == "signal" for c in filler.channels())
+    assert not any(a.template_id == "sender" for a in assumptions), filler.drops
+
+
+def test_the_one_a_message_was_received_from_sent_it(conn):
+    # Fill b: '... "words" after receiving it from X.' names X as the sender: a person, or one
+    # account on the one app the claim names, by its exact identifier.
+    filler = LocalAssumptionFiller(FakeModel("{}"), conn, template=DRAFT)
+    q = "move it tonight"
+    said = 'On March 12, 2026, REYES deleted the Telegram message "move it tonight" after'
+    assert filler.received_from(_x1(f"{said} receiving it from PETROV."), q) == {
+        "person_ids": [PETROV]
+    }
+    got = filler.received_from(_x1(f"{said} receiving it from 7001001."), q)
+    assert got == {"account_ids": ["acct:item1:Telegram:7001001", "acct:item2:Telegram:7001001"]}
+    for text in (
+        f"{said} receiving it from 9999999.",  # no such account
+        f"{said} receiving it from Dan P.",  # a display name is no identifier
+        f"{said} receiving it from PETROV, who wrote it.",  # not the end of the claim
+        'On March 12, 2026, REYES forwarded the Telegram message "move it tonight" after'
+        " receiving it from PETROV.",  # handed on
+        'On March 12, 2026, REYES texted Dre "move it tonight" after receiving it from'
+        " PETROV.",  # a writer verb before the quote names another writer
+        'On March 12, 2026, REYES deleted the Telegram message "move it tonight" from WhatsApp'
+        " after receiving it from 7001001.",  # not right after the quote
+        # the words before say whose message it is (Codex on #169)
+        'On March 12, 2026, REYES kept PETROV\'s Telegram message "move it tonight" after'
+        " receiving it from 7001001.",
+        'On March 12, 2026, REYES kept a Telegram message from PETROV, "move it tonight", after'
+        " receiving it from 7001001.",
+        'On March 12, 2026, REYES kept the Telegram message written by PETROV, "move it'
+        ' tonight", after receiving it from 7001001.',
+    ):
+        assert filler.received_from(_x1(text), q) is None, text
+
+
+def test_an_open_time_on_one_stated_day_is_the_rest_or_the_start_of_that_day():
+    # Fill c.
+    w = stated_part_day("On May 7, 2023, there was no Wickr contact after 10:00 a.m. EDT.")
+    assert w is not None
+    assert (w.start, w.end, w.zone) == (D(2023, 5, 7, 10, 0), D(2023, 5, 8, 0, 0), "EDT")
+    assert w.raw == "May 7, 2023, after 10:00 a.m. EDT"
+    w = stated_part_day("On May 7, 2023, no call was placed before 9 a.m.")
+    assert w is not None and (w.start, w.end) == (D(2023, 5, 7), D(2023, 5, 7, 9, 0))
+    for text in (
+        "On May 7, 2023, no call was placed after about 9 a.m.",  # "about"
+        "On May 7, 2023, no call was placed after 9 a.m. or before 7 a.m.",  # two times
+        "On May 7 and May 8, 2023, no call was placed after 9 a.m.",  # two days
+        "On May 7, no call was placed after 9 a.m.",  # no year
+        "On May 7, 2023, no call was placed after midnight.",  # midnight is not read
+        "After May 7, 2023, no call was placed after 9 a.m.",  # an open date
+        "On 5/7/2023, no call was placed after 9 a.m.",  # a numeric date
+        "On Monday, May 7, 2023, no call was placed after 9 a.m.",  # not that date's weekday
+        "On May 7, 2023, at 9 a.m., a call was placed.",  # no open time
+        # more days than the one stated (Codex on #169)
+        "From May 7, 2023 onward, there was no contact between PETROV and REYES before 9 a.m.",
+        "On May 7, 2023 and every day after, no call was placed before 9 a.m.",
+        # the day's own zone, which the time's would not carry (Codex on #169)
+        "On May 7, 2023 UTC, there was no contact with REYES after 10:00 a.m.",
+        "On May 7, 2023 (UTC), there was no contact with REYES after 10:00 a.m.",
+        # an offset on the time (Codex on #169)
+        "On May 7, 2023, there was no contact with REYES starting two hours after 10:00 a.m.",
+        # the stated part is the one left out (Codex on #169)
+        "On May 7, 2023, there was no contact between PETROV and REYES except after 10:00 a.m.",
+        "On May 7, 2023, there was no contact with REYES other than before 9 a.m.",
+    ):
+        assert stated_part_day(text) is None, text
+
+
+def test_the_phone_written_as_an_account_is_its_exact_owner_beside_another_account(conn):
+    # "no Telegram contact between dev:item1 and 5551234": the checks read every account id as
+    # one party, so the phone's side becomes PETROV, the owner by confirmed stipulation, whose
+    # accounts are exactly the phone's own.
+    text = "On March 12, 2026, there was no Telegram contact between dev:item1 and 5551234."
+    prop = {
+        "template_id": "no_contact",
+        "accounts": [
+            {"as_written": "dev:item1", "app": "Telegram"},
+            {"as_written": "5551234", "app": "Telegram"},
+        ],
+        "channels": ["Telegram"],
+        "window": {
+            "as_written": "On March 12, 2026",
+            "start": "2026-03-12T00:00",
+            "end": "2026-03-13T00:00",
+            "zone": "phone",
+        },
+    }
+    assumptions, filler = build_text(conn, text, ClaimType.ABSENCE, [prop])
+    (a,) = [a for a in assumptions if a.template_id == "no_contact"]
+    assert a.params.person_ids == (PETROV,)
+    assert a.params.account_ids == ("acct:item1:Telegram:5551234", "acct:item2:Telegram:5551234")
+    # An owner with an account elsewhere is wider than the phone: refused, never widened.
+    filler.data.links.append(("link:x", "acct:item2:Telegram:7001077", PETROV))
+    own = {aid for aid, acc in filler.data.accounts.items() if acc.device_id == "dev:item1"}
+    assert filler._exact_owner(own) is None
+
+
+def test_one_number_written_two_ways_is_one_number():
+    # Ruling R6: the same digits, only the formatting differs. A user id stays apart.
+    from core.audit.assumption_filler import _same_number
+    from core.audit.checks._common import Account
+
+    def acc(app: str, ident: str) -> Account:
+        return Account("a", "s", None, app, ident, None)
+
+    n = "19198887386"
+    for app, ident in [
+        ("unknown", "9198887386"),
+        ("unknown", "19198887386"),
+        ("unknown", "+19198887386"),
+        ("Phone", "9198887386"),
+        ("WhatsApp", "(919) 888-7386"),
+        ("WhatsApp", "19198887386@s.whatsapp.net"),
+        ("Viber", "+1 (919) 888-7386"),
+    ]:
+        assert _same_number(n, acc(app, ident)), (app, ident)
+    for app, ident in [
+        ("Telegram", "9198887386"),  # a user id of ten digits
+        ("unknown", "29198887386"),
+        ("unknown", "919888738"),
+        ("Signal", "9198887386"),
+    ]:
+        assert not _same_number(n, acc(app, ident)), (app, ident)
+    # Same ten digits, another country code: two numbers, never one party.
+    uk = "449198887386"
+    for app, ident in [
+        ("unknown", "9198887386"),
+        ("unknown", "+19198887386"),
+        ("WhatsApp", "(919) 888-7386"),
+        ("WhatsApp", "19198887386@s.whatsapp.net"),
+        ("Viber", "+1 (919) 888-7386"),
+    ]:
+        assert not _same_number(uk, acc(app, ident)), (app, ident)
+    assert _same_number(uk, acc("WhatsApp", "+44 919 888 7386"))
+    assert not _same_number(n, acc("WhatsApp", "+44 919 888 7386"))
+
+
+@pytest.fixture
+def call_log(conn):
+    # The phone's call log stores one number two ways, as a UFDR from two databases does.
+    src = conn.execute("SELECT source_id FROM accounts WHERE id LIKE 'acct:item1:%'").fetchone()[0]
+    rows = [("acct:t:log1", "+12125550199"), ("acct:t:log2", "2125550199")]
+    for aid, ident in rows:
+        conn.execute(
+            "INSERT INTO accounts (id, source_id, locator, device_id, app, identifier,"
+            " display_name) VALUES (?, ?, 'x', NULL, 'unknown', ?, 'Mom')",
+            (aid, src, ident),
+        )
+    yield conn
+    conn.execute("DELETE FROM accounts WHERE id IN ('acct:t:log1', 'acct:t:log2')")
+
+
+def test_a_call_on_no_app_to_a_number_is_searched_in_the_call_log(call_log):
+    # Ruling R1: no app named, the other party written as a number: the phone's call log.
+    text = (
+        "On March 12, 2026, at approximately 9:00 p.m., dev:item1 placed an outgoing telephone"
+        " call to (212) 555-0199."
+    )
+    prop = {"template_id": "record_time", "channels": ["call"]}
+    assumptions, filler = build_text(call_log, text, ClaimType.COMMUNICATION, [prop])
+    (t,) = [a.params for a in assumptions if a.template_id == "record_time"]
+    assert t.account_ids == ("acct:t:log1", "acct:t:log2"), filler.drops
+    assert t.channels == ("call", "unknown") and t.device_ids == ("dev:item1",)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "On March 12, 2026, at approximately 9:00 p.m., dev:item1 had a Signal call with"
+        " (212) 555-0199.",
+        "On March 12, 2026, at approximately 9:00 p.m., dev:item1 had a FaceTime call with"
+        " (212) 555-0199.",
+        "On March 12, 2026, at approximately 9:00 p.m., dev:item1 had a video call with"
+        " (212) 555-0199.",
+    ],
+)
+def test_a_call_on_an_app_the_case_lacks_is_not_the_call_log(call_log, text):
+    # The case holds no Signal or FaceTime: the call log does not stand in (Codex on #169).
+    prop = {"template_id": "record_time", "channels": ["call"]}
+    assumptions, filler = build_text(call_log, text, ClaimType.COMMUNICATION, [prop])
+    assert not any(a.template_id == "record_time" for a in assumptions), filler.drops
+
+
+def test_a_number_written_as_the_call_logs_own_identifier_is_one_number(call_log):
+    # "+12125550199" is both a number and the log's identifier; read once, it is one party
+    # (Codex on #169).
+    text = "On March 12, 2026, at approximately 9:00 p.m., dev:item1 had a call with +12125550199."
+    prop = {"template_id": "record_time", "channels": ["call"]}
+    assumptions, filler = build_text(call_log, text, ClaimType.COMMUNICATION, [prop])
+    (t,) = [a.params for a in assumptions if a.template_id == "record_time"]
+    assert t.account_ids == ("acct:t:log1", "acct:t:log2"), filler.drops
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # a display name with no app
+        'On March 12, 2026, at approximately 9:00 p.m., dev:item1 placed a call to "Mom".',
+        # a person with no app: the call log is read by number only
+        "On March 12, 2026, at approximately 9:00 p.m., PETROV placed a call to (212) 555-0199.",
+    ],
+)
+def test_a_call_on_no_app_is_refused_without_a_number_as_its_party(call_log, text):
+    prop = {"template_id": "record_time", "channels": ["call"]}
+    assumptions, filler = build_text(call_log, text, ClaimType.COMMUNICATION, [prop])
+    assert not any(a.template_id == "record_time" for a in assumptions)
+    why = ("only with a phone number", "names 0 apps for the call")
+    assert any(w in d.reason for d in filler.drops for w in why), filler.drops
+
+
+def test_code_made_assumptions_say_so_and_model_ones_do_not(conn):
+    # Fill g: an assumption code filled from the claim's wording says so in its text, which the
+    # expert reads before accepting it; one the model filled whole does not.
+    from core.audit.assumptions import is_code_made
+
+    text = (
+        "On March 12, 2026, PETROV instructed REYES by Telegram to hide the car, writing"
+        ' "move it tonight".'
+    )
+    assumptions, _ = build_text(conn, text, ClaimType.COMMUNICATION, [])
+    made = {a.template_id: a for a in assumptions}
+    assert is_code_made(made["sender"].text) and is_code_made(made["record_time"].text)
+    assert made["sender"].text.endswith("Filled from the claim's wording.")
+    for cid in sorted(GOOD):
+        model_made, *_ = build(conn, cid)
+        whole = [
+            a for a in model_made if a.template_id not in {t for t, _ in CODE_ADDS.get(cid, [])}
+        ]
+        assert not any(is_code_made(a.text) for a in whole if a.template_id != "meaning"), cid
+
+
+def test_a_count_of_calls_is_read_and_made_from_a_calls_time(call_log):
+    # Fill f: the claim counts calls on no named app to a number; the model gave one call's
+    # time. Code adds the count over the call log, with the phone's side as its exact owner.
+    from core.audit.assumption_filler import stated_call_count
+
+    assert stated_call_count("the TARGET PHONE had five calls with (828) 520-5789.") == 5
+    assert stated_call_count("PETROV called REYES 13 times") is None
+    assert stated_call_count("four calls and then two calls") is None
+    assert stated_call_count("about five calls") is None
+    assert stated_call_count("dev:item1 had two outgoing calls with (212) 555-0199.") is None
+    text = "On March 12, 2026, dev:item1 had two calls with (212) 555-0199."
+    prop = {"template_id": "record_time", "channels": ["call"]}
+    assumptions, filler = build_text(call_log, text, ClaimType.COUNT, [prop])
+    by = {a.template_id: a for a in assumptions}
+    assert "message_count" in by, filler.drops
+    c = by["message_count"].params
+    assert (c.count_op, c.expected_count) == ("eq", 2)
+    assert c.channels == ("call", "unknown") and c.person_ids == (PETROV,)
+    assert c.account_ids == ("acct:t:log1", "acct:t:log2") and c.device_ids == ("dev:item1",)
+    assert by["message_count"].text.endswith("Filled from the claim's wording.")
+    assert "calls between" in by["message_count"].text
+
+
+def test_no_count_is_made_from_the_time_of_one_call_among_them(call_log):
+    # A time that dates one of the calls is not the count's span (Codex on #169).
+    text = (
+        "On March 12, 2026, at approximately 9:00 p.m., dev:item1 had the last of two calls"
+        " with (212) 555-0199."
+    )
+    window = {"as_written": "On March 12, 2026, at approximately 9:00 p.m.",
+              "start": "2026-03-12T20:52", "end": "2026-03-12T21:09", "zone": "phone"}  # fmt: skip
+    prop = {"template_id": "record_time", "channels": ["call"], "window": window}
+    assumptions, filler = build_text(call_log, text, ClaimType.COUNT, [prop])
+    assert not any(a.template_id == "message_count" for a in assumptions), filler.drops
+
+
+def test_a_model_count_of_calls_dated_by_one_call_is_refused(conn):
+    # The model's own count window is the one call's time, not the count's (Codex on #169).
+    text = (
+        "On March 12, 2026, on dev:item1, PETROV and REYES had two Telegram calls, including a"
+        " call at approximately 9:00 p.m."
+    )
+    window = {"as_written": "On March 12, 2026, on dev:item1, PETROV and REYES had two Telegram"
+              " calls, including a call at approximately 9:00 p.m.", "start": "2026-03-12T20:52",
+              "end": "2026-03-12T21:09", "zone": "phone"}  # fmt: skip
+    prop = {"template_id": "message_count", "count": {"value": 2}, "channels": ["Telegram"],
+            "people": ["PETROV", "REYES"], "phones": ["dev:item1"], "window": window}  # fmt: skip
+    assumptions, filler = build_text(conn, text, ClaimType.COUNT, [prop])
+    assert not any(a.template_id == "message_count" for a in assumptions)
+    assert any("dates one of the calls" in d.reason for d in filler.drops), filler.drops
+
+
+def test_a_model_count_of_calls_takes_the_written_phones_zone(call_log):
+    # The model gave no phone; code reads it from the claim, and the window takes its zone even
+    # when the case's phones are in different zones (Codex on #169).
+    call_log.execute("UPDATE devices SET timezone = 'America/Los_Angeles' WHERE id = 'dev:item2'")
+    try:
+        text = "On March 12, 2026, dev:item1 had two calls with (212) 555-0199."
+        window = {"as_written": "On March 12, 2026", "start": "2026-03-12T00:00",
+                  "end": "2026-03-13T00:00", "zone": "phone"}  # fmt: skip
+        prop = {"template_id": "message_count", "count": {"value": 2}, "channels": ["call"],
+                "window": window}  # fmt: skip
+        assumptions, filler = build_text(call_log, text, ClaimType.COUNT, [prop])
+        (c,) = [a.params for a in assumptions if a.template_id == "message_count"]
+        assert c.device_ids == ("dev:item1",), filler.drops
+        assert c.window is not None and c.window.tz == "America/New_York"
+    finally:
+        call_log.execute("UPDATE devices SET timezone = 'America/New_York' WHERE id = 'dev:item2'")
+
+
+def test_a_model_party_for_calls_must_be_the_claims_one_party(conn):
+    # The model named REYES only; the claim names REYES and SMITH, so the phone's owner is no
+    # side of these calls (Codex on #169).
+    text = "On March 12, 2026, on dev:item1, REYES and SMITH had two Telegram calls."
+    window = {"as_written": "On March 12, 2026", "start": "2026-03-12T00:00",
+              "end": "2026-03-13T00:00", "zone": "phone"}  # fmt: skip
+    prop = {"template_id": "message_count", "count": {"value": 2}, "channels": ["Telegram"],
+            "people": ["REYES"], "phones": ["dev:item1"], "window": window}  # fmt: skip
+    assumptions, filler = build_text(conn, text, ClaimType.COUNT, [prop])
+    assert not any(a.template_id == "message_count" for a in assumptions)
+    assert any("not the claim's one party" in d.reason or "one side" in d.reason
+               for d in filler.drops), filler.drops  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "On dev:item1, there was no contact between PETROV and REYES except before March 12, 2026.",
+        "dev:item1 never communicated with (212) 555-0144 other than after March 12, 2026.",
+    ],
+)
+def test_an_open_range_left_out_by_an_exception_is_not_read(text):
+    # The open side is the one the claim exempts (Codex on #169).
+    from core.audit.assumption_filler import _open_range_wording
+
+    assert not _open_range_wording(text)
+
+
+def _no_contact(conn, text: str, **prop):
+    return build_text(conn, text, ClaimType.ABSENCE, [{"template_id": "no_contact", **prop}])
+
+
+def test_never_runs_to_the_extractions_own_edges(conn):
+    # Ruling R5: "never" is the whole extraction, read from the phone's dated records; the
+    # sides are the phone's exact owner and the one number the claim writes.
+    assumptions, filler = _no_contact(
+        conn, "dev:item1 never communicated with (212) 555-0144.", phones=["dev:item1"]
+    )
+    (a,) = [a for a in assumptions if a.template_id == "no_contact"]
+    p = a.params
+    assert p.person_ids == (PETROV,) and p.device_ids == ("dev:item1",)
+    assert p.account_ids == ("acct:item1:Phone:+12125550144", "acct:item1:SMS:+12125550144")
+    assert p.window is not None and p.window.raw.startswith(
+        "never: from the extraction's first dated record"
+    )
+    lo, hi = conn.execute(
+        "SELECT min(t), max(t) FROM (SELECT ts_utc t FROM messages WHERE source_id = 'item1'"
+        " UNION ALL SELECT ts_utc FROM calls WHERE source_id = 'item1') WHERE t IS NOT NULL"
+    ).fetchone()
+    assert p.window.raw.endswith("so contact outside its records is not seen")
+    assert p.window.start_utc.isoformat()[:19] == lo[:19]
+    assert p.window.end_utc.isoformat()[:19] == hi[:19]
+    assert a.text.endswith("Filled from the claim's wording.")
+
+
+def test_an_embedded_copy_sets_no_extraction_edge(conn):
+    # The absence check's coverage leaves embedded copies out, so the edges must too: an
+    # older copy inside a message would stretch the window past what the source spans (Codex
+    # on #169).
+    tid = conn.execute("SELECT thread_id FROM messages WHERE source_id = 'item1'").fetchone()[0]
+    conn.execute(
+        "INSERT INTO messages (id, source_id, locator, thread_id, direction, ts_utc, ts_raw,"
+        " body) VALUES ('msg:copy', 'item1', 'x/Embedded[0]', ?, 'unknown',"
+        " '2020-01-02T00:00:00Z', '2020-01-02', 'old words')",
+        (tid,),
+    )
+    try:
+        assumptions, _ = _no_contact(
+            conn, "dev:item1 never communicated with (212) 555-0144.", phones=["dev:item1"]
+        )
+    finally:
+        conn.execute("DELETE FROM messages WHERE id = 'msg:copy'")
+    (a,) = [a for a in assumptions if a.template_id == "no_contact"]
+    assert a.params.window is not None and a.params.window.start_utc.year > 2020
+
+
+def test_before_a_date_runs_from_the_first_record_whatever_the_model_said(conn):
+    # The model's one-day range for "before March 12" would test only March 11; code's range
+    # runs from the extraction's first record to the start of March 12.
+    window = {"as_written": "before March 12, 2026", "start": "2026-03-11T00:00",
+              "end": "2026-03-12T00:00", "zone": "phone"}  # fmt: skip
+    assumptions, filler = _no_contact(
+        conn,
+        "There was no contact between dev:item1 and (212) 555-0144 before March 12, 2026.",
+        phones=["dev:item1"],
+        window=window,
+    )
+    (a,) = [a for a in assumptions if a.template_id == "no_contact"]
+    w = a.params.window
+    assert w is not None and w.raw.startswith("before March 12, 2026: from the extraction's")
+    assert w.end_utc.astimezone(ZoneInfo("America/New_York")).isoformat()[:19] == (
+        "2026-03-11T23:59:59"
+    )
+    assert w.start_utc < D(2026, 3, 1, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    ("text", "open_"),
+    [
+        ("dev:item1 never communicated with X.", True),
+        ("no contact before March 12, 2026", True),
+        ("no contact since March 12, 2026", True),
+        # Both ends stated, a written zone, a time of day: the model's range, read as before
+        # (Codex on #169).
+        ("no contact from March 10, 2026 until March 12, 2026", False),
+        ("no contact between March 10 and 12, 2026, nor after", False),
+        ("no contact before March 12, 2026 UTC", False),
+        ("no contact before March 12, 2026 (ET)", False),
+        ("no contact before 3/12/2026", False),
+        ("no contact after 9:00 p.m. on March 12, 2026", False),
+        ("they first made contact after March 12, 2026", False),
+        ("no contact on March 12, 2026", False),
+        ("no contact starting two days after March 12, 2026", False),
+        ("no contact in the weeks before March 12, 2026", False),
+    ],
+)
+def test_only_an_open_range_runs_to_the_extractions_edge(text, open_):
+    from core.audit.assumption_filler import _open_range_wording
+
+    assert _open_range_wording(text) is open_
+
+
+def test_an_open_range_takes_its_year_from_the_paragraph(conn):
+    # "before March 12" with the year only in the paragraph (Codex on #169).
+    assumptions, filler = _no_contact(
+        conn,
+        "There was no contact between dev:item1 and (212) 555-0144 before March 12.",
+        phones=["dev:item1"],
+    )
+    (a,) = [a for a in assumptions if a.template_id == "no_contact"]
+    w = a.params.window
+    assert w is not None and w.raw.startswith("before March 12: from"), filler.drops
+    assert w.end_utc.astimezone(ZoneInfo("America/New_York")).date().isoformat() == "2026-03-11"
+
+
+@pytest.mark.parametrize("app", ["Signal", "Viber"])
+def test_a_dated_quote_on_an_app_the_case_lacks_gets_no_senderless_time(conn, app):
+    # "The Signal message" on a case with no Signal: a time on every app could match the
+    # words on Telegram (Codex on #169).
+    text = (
+        f'The {app} message of March 12, 2026, "the package will be at marcs", shows that the'
+        " package held narcotics."
+    )
+    assumptions, filler = build_text(conn, text, ClaimType.CONTENT_MEANING, [])
+    assert not any(c.casefold() == app.casefold() for c in filler.channels())
+    assert not any(a.template_id == "record_time" for a in assumptions)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # The date may be another act's, not the sending's (Codex on #169).
+        'On March 16, 2026, REYES deleted the Telegram message "the package will be at marcs".',
+        'On March 16, 2026, the Telegram message "the package will be at marcs" was deleted.',
+        'On March 12, 2026, REYES received a Telegram message reading "the package will be at'
+        ' marcs".',
+        'The Telegram message to REYES of March 12, 2026, "the package will be at marcs", shows'
+        " that the package held narcotics.",
+    ],
+)
+def test_a_dated_quote_with_another_party_or_act_gets_no_senderless_time(conn, text):
+    # A time on anyone's message would not keep the one it went to (Codex on #169).
+    assumptions, _ = build_text(conn, text, ClaimType.CONTENT_MEANING, [])
+    for a in assumptions:
+        if a.template_id == "record_time":
+            assert a.params.person_ids or a.params.account_ids, a.params
+
+
+def test_a_message_dated_by_its_writers_possessive_gets_no_senderless_time(conn):
+    # "PETROV's Telegram message of March 12" names its writer; a time with no party would
+    # match anyone's message (Codex on #169).
+    text = 'PETROV’s Telegram message of March 12, 2026, "move it tonight".'
+    assumptions, _ = build_text(conn, text, ClaimType.COMMUNICATION, [])
+    for a in assumptions:
+        if a.template_id == "record_time":
+            assert a.params.person_ids or a.params.account_ids, a.params
+
+
+def test_on_or_before_takes_in_the_whole_day(conn):
+    # "on or before March 12" includes March 12 (Codex on #169).
+    assumptions, filler = _no_contact(
+        conn,
+        "There was no contact between dev:item1 and (212) 555-0144 on or before March 12, 2026.",
+        phones=["dev:item1"],
+    )
+    (a,) = [a for a in assumptions if a.template_id == "no_contact"]
+    w = a.params.window
+    assert w is not None and w.raw.startswith("on or before March 12, 2026: from"), filler.drops
+    assert w.end_utc.astimezone(ZoneInfo("America/New_York")).isoformat()[:19] == (
+        "2026-03-12T23:59:59"
+    )
+
+
+def test_absence_parties_keep_the_app_the_claim_names(conn):
+    # "by WhatsApp" is no contact on WhatsApp only, never every app (Codex on #169).
+    assumptions, filler = _no_contact(
+        conn, "dev:item1 never communicated by WhatsApp with (212) 555-0122.", phones=["dev:item1"]
+    )
+    (a,) = [a for a in assumptions if a.template_id == "no_contact"]
+    assert a.params.channels == ("WhatsApp",), filler.drops
+    assert a.params.account_ids == ("acct:item1:WhatsApp:12125550122@s.whatsapp.net",)
+    # "texted" may be SMS or iMessage, and a phone app may hold calls: not filled.
+    assumptions, filler = _no_contact(
+        conn, "dev:item1 never texted (212) 555-0122.", phones=["dev:item1"]
+    )
+    assert not any(a.template_id == "no_contact" for a in assumptions)
+    # A call-only claim is not filled: the absence check would also search messages.
+    assumptions, filler = _no_contact(
+        conn, "dev:item1 never called (212) 555-0144.", phones=["dev:item1"]
+    )
+    assert not any(a.template_id == "no_contact" for a in assumptions)
+    assert any("call-only" in d.reason for d in filler.drops), filler.drops
+    # ... even when the model gave a channel (Codex on #169).
+    assumptions, filler = _no_contact(
+        conn, "dev:item1 never called (212) 555-0122 on WhatsApp.", phones=["dev:item1"],
+        channels=["WhatsApp"],
+    )  # fmt: skip
+    assert not any(a.template_id == "no_contact" for a in assumptions)
+
+
+@pytest.mark.parametrize("channels", [None, ["WhatsApp"]])
+@pytest.mark.parametrize(
+    "text",
+    [
+        # Messages only: a WhatsApp call would fail it (Codex on #169).
+        "dev:item1 never texted (212) 555-0122 on WhatsApp.",
+        "dev:item1 never sent a message to (212) 555-0122 on WhatsApp.",
+        "dev:item1 never spoke with (212) 555-0122 on WhatsApp.",
+    ],
+)
+def test_absence_parties_refuse_one_kind_of_contact(conn, text, channels):
+    extra = {"channels": channels} if channels else {}
+    assumptions, filler = _no_contact(conn, text, phones=["dev:item1"], **extra)
+    assert not any(a.template_id == "no_contact" for a in assumptions)
+    assert any("one-kind" in d.reason for d in filler.drops), filler.drops
+
+
+@pytest.mark.parametrize("app", ["Signal", "Viber"])
+def test_absence_parties_refuse_an_app_the_case_lacks(conn, app):
+    # No such app in the case: the scope cannot be kept, so it is never widened (Codex on #169).
+    assumptions, filler = _no_contact(
+        conn, f"dev:item1 never communicated by {app} with (212) 555-0144.", phones=["dev:item1"]
+    )
+    assert not any(c.casefold() == app.casefold() for c in filler.channels())
+    assert not any(a.template_id == "no_contact" for a in assumptions)
+    assert any("does not hold" in d.reason for d in filler.drops), filler.drops
+
+
+def test_never_on_a_stated_day_keeps_the_days_own_range(conn):
+    # "On March 12, 2026, ... never" is that day, not an open range (Codex on #169).
+    window = {"as_written": "On March 12, 2026",
+              "start": "2026-03-12T00:00", "end": "2026-03-13T00:00", "zone": "phone"}  # fmt: skip
+    assumptions, filler = _no_contact(
+        conn,
+        "On March 12, 2026, dev:item1 never communicated with (212) 555-0144.",
+        phones=["dev:item1"],
+        window=window,
+    )
+    (a,) = [a for a in assumptions if a.template_id == "no_contact"]
+    assert a.params.window is not None, filler.drops
+    assert "extraction" not in a.params.window.raw
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "During 2025, dev:item1 never communicated with (212) 555-0144.",
+        "dev:item1 never communicated with (212) 555-0144 on Mondays.",
+        "dev:item1 never communicated with (212) 555-0144 in March.",
+        "dev:item1 never communicated with (212) 555-0144 before May 1, 2026 in 2025.",
+    ],
+)
+def test_never_with_another_time_keeps_the_models_range(conn, text):
+    # A year, month or weekday the open range would drop (Codex on #169).
+    window = {"as_written": "2025", "start": "2025-01-01T00:00", "end": "2026-01-01T00:00",
+              "zone": "phone"}  # fmt: skip
+    assumptions, _ = _no_contact(conn, text, phones=["dev:item1"], window=window)
+    for a in assumptions:
+        if a.template_id == "no_contact" and a.params.window is not None:
+            assert "extraction" not in a.params.window.raw, text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "dev:item1 never sent anything to (212) 555-0144.",
+        "dev:item1 never received anything from (212) 555-0144.",
+        "dev:item1 never contacted (212) 555-0144.",
+    ],
+)
+def test_absence_parties_refuse_one_direction(conn, text):
+    # The absence check reads both ways, so code fills no one-way scope (Codex on #169).
+    assumptions, filler = _no_contact(conn, text, phones=["dev:item1"])
+    assert not any(a.template_id == "no_contact" for a in assumptions)
+    assert any("one-direction" in d.reason for d in filler.drops), filler.drops
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "dev:item1 never communicated with REYES about narcotics.",
+        "dev:item1 never communicated with (212) 555-0144 regarding the package.",
+        "dev:item1 never communicated with REYES in person.",
+    ],
+)
+def test_absence_parties_refuse_words_beyond_plain_contact(conn, text):
+    # A topic or other scope the absence check cannot keep (Codex on #169).
+    assumptions, filler = _no_contact(conn, text, phones=["dev:item1"])
+    assert not any(a.template_id == "no_contact" for a in assumptions)
+    assert any("more than plain contact" in d.reason for d in filler.drops), filler.drops
+
+
+def test_an_open_range_reads_the_phone_the_claim_writes(conn):
+    # The model gave both people and no phone; the claim writes the phone (Codex on #169).
+    assumptions, filler = _no_contact(
+        conn,
+        "On dev:item1, there was no contact between PETROV and REYES before March 12, 2026.",
+        people=["PETROV", "REYES"],
+    )
+    (a,) = [a for a in assumptions if a.template_id == "no_contact"]
+    assert a.params.device_ids == ("dev:item1",), filler.drops
+    assert a.params.window is not None and "extraction" in a.params.window.raw
+
+
+def test_the_extractions_edge_is_kept_as_an_instant_across_a_clock_change(conn):
+    # A last record in the repeated hour of a fall-back night (01:30 EST, the second time)
+    # ends the range on that instant, not an hour before it (Codex on #169).
+    conn.execute(
+        "INSERT INTO calls (id, source_id, locator, app, direction, ts_utc, duration_s)"
+        " VALUES ('call:dst', 'item1', 'x', 'Phone', 'incoming', '2026-11-01T06:30:00+00:00', 5)"
+    )
+    try:
+        assumptions, filler = _no_contact(
+            conn, "dev:item1 never communicated with (212) 555-0144.", phones=["dev:item1"]
+        )
+        (a,) = [a for a in assumptions if a.template_id == "no_contact"]
+        assert a.params.window is not None, filler.drops
+        assert a.params.window.end_utc.isoformat()[:19] == "2026-11-01T06:30:00"
+    finally:
+        conn.execute("DELETE FROM calls WHERE id = 'call:dst'")
+
+
+def test_a_range_with_both_ends_stated_keeps_its_own_ends(conn):
+    window = {"as_written": "from March 10, 2026 until March 12, 2026",
+              "start": "2026-03-10T00:00", "end": "2026-03-13T00:00", "zone": "phone"}  # fmt: skip
+    assumptions, filler = _no_contact(
+        conn,
+        "There was no contact between dev:item1 and (212) 555-0144 from March 10, 2026 until"
+        " March 12, 2026.",
+        phones=["dev:item1"],
+        window=window,
+    )
+    (a,) = [a for a in assumptions if a.template_id == "no_contact"]
+    assert a.params.window is not None, filler.drops
+    assert "extraction" not in a.params.window.raw
+    assert a.params.window.start_utc.astimezone(ZoneInfo("America/New_York")).day == 10
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "dev:item1 never communicated with (212) 555-0144 or (212) 555-0191.",  # two parties
+        "dev:item1 never communicated with @someone.",  # a party code cannot read
+        "There was never contact with (212) 555-0144.",  # no phone written
+        # Someone else named through the party (Codex on #169).
+        "dev:item1 never communicated with REYES's assistant.",
+        "dev:item1 never communicated with a friend of REYES.",
+        # A name in another clause (Codex on #169).
+        "dev:item1 never communicated with SMITH while REYES was abroad.",
+        "dev:item1 never communicated with SMITH after REYES left.",
+        "dev:item1 never communicated with SMITH; REYES was abroad.",
+    ],
+)
+def test_an_open_range_or_its_sides_are_refused_when_in_doubt(conn, text):
+    assumptions, _ = _no_contact(conn, text)
+    assert not any(a.template_id == "no_contact" for a in assumptions)

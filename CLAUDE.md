@@ -41,8 +41,9 @@ with the reason and the exact diff you want, then finish the rest of your task w
 - Agents (the testability step, core/audit/testability.py) are local jobs on the local model
   that only propose. Code checks every proposal, each is logged, and only an examiner's
   acceptance puts it in a case. An agent never labels, accepts, dismisses, links identities or
-  sets a verdict, and never changes a claim's text. They stay off by default and eval only
-  until a real-data run under a signed plan.
+  sets a verdict, and never changes a claim's text. They stay off by default: only the eval
+  and the scripted demo (eval/demo.py, scripted answers, no model) run them, until a real-data
+  run under a signed plan.
 - An inference never becomes observed because another component consumed it.
 - Any quote attributed to evidence must be verified verbatim by code before it is stored.
   Unverified quotes are discarded, never stored.

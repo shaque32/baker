@@ -659,3 +659,53 @@ model in core/. ... assumption filling stay local." (two lines), add:
 +  until a real-data run under a signed plan.
 SIGNED by Arsh on 2026-10-28 ("i approve and sign off on others", 07:33Z, project thread
 "Build agents into the audit"). APPLIED by Arsh himself on this branch (PR #159), commit 88fe932. Word for word as above.
+
+## 2026-10-28 claude/project-thread-6i2msb-testability-accept: the CLAUDE.md agent line names the scripted demo
+File: CLAUDE.md
+Why: Arsh asked on 2026-10-28 (07:50Z) for the agents and their work to be featured in the demo.
+This branch runs the testability step in the scripted demo build (eval/demo.py) on two demo
+claims, D02 and D03, with scripted answers and no model. The review screen's audit and
+`mabillon audit` still never turn it on. The line Arsh signed in #159 says "eval only". The demo
+is built by eval code on synthetic data, but it is shown through `mabillon demo`, so the line
+should say so. Turning the agents on for pilots (PR 3) is a separate re-signature.
+Diff: in the agent line under "## Evidence rules" (signed in #159), replace
+-  sets a verdict, and never changes a claim's text. They stay off by default and eval only
+-  until a real-data run under a signed plan.
+with
++  sets a verdict, and never changes a claim's text. They stay off by default: only the eval
++  and the scripted demo (eval/demo.py, scripted answers, no model) run them, until a real-data
++  run under a signed plan.
+SIGNED by Arsh on 2026-10-28 ("approved", 13:17Z, project thread "Build agents into the audit").
+APPLIED by Arsh himself on this branch (PR #163), commit 2aded2d. Word for word as above.
+
+## 2026-10-29 claude/project-thread-ds0ify: message direction for counts and "exchanged" (validation R2, R3)
+File: core/contracts.py
+Why: the count check counts messages both ways, so "SUBJECT-2 sent SUBJECT-1 exactly three
+Signal messages" and "the TARGET PHONE exchanged Signal messages with (919) 888-7386" are refused
+today (#160: no one-way counts). The template filler cannot say which side sent, or that a
+message must go each way, without a field for it. Replaying run 2's recorded answers, about
+5 to 9 more iOS 15 claims would be code-checked with this (one-way counts: 3; "exchanged": 4
+to 6, two of them also need "iMessage" read as Native Messages). Not needed for run 3's minimum
+of 30 if R1 lands; it raises the ceiling.
+Diff (core/contracts.py, class AssumptionParams, after `quoted_text`):
+```
++    # The side whose messages a count counts, as ids that are also in person_ids or
++    # account_ids ("SUBJECT-2 sent SUBJECT-1 three messages": sent_by is SUBJECT-2's id).
++    # Empty: messages either way.
++    sent_by: tuple[str, ...] = ()
++    # "exchanged messages": at least one message each way inside the window.
++    each_way: bool = False
+```
+and in `_count_pair` (or a new validator beside it):
+```
++        if self.sent_by and not set(self.sent_by) <= set(self.person_ids) | set(self.account_ids):
++            raise ValueError("sent_by names a party the assumption does not name")
++        if self.sent_by and self.each_way:
++            raise ValueError("sent_by and each_way do not go together")
+```
+What follows in unsigned code, in the PR after this is applied: the count check reads `sent_by`
+(only messages whose sender is that side) and `each_way` (pass when each side sent at least
+one inside the window; it never fails on absence, since coverage is unknown); the filler sets
+them only from the claim's own words ("sent", "received", "exchanged"); TEMPLATES_VERSION and
+the count check's version go up. No change to rules, prompts or schema: params are stored as
+JSON.

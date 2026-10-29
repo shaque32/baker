@@ -70,6 +70,10 @@ CONFIRM_STEP = (
     "rest."
 )
 # the step a withheld rationale adds, worded the same on the screen and in the report
+AGENT_STEP = (
+    "Proposed by agent: the testability agent proposed assumptions that would make this claim "
+    "testable. Accept or reject them on the claim page; nothing is used until you accept."
+)
 WITHHELD_STEP = (
     "{n} model rationale(s) withheld: each uses a word Mabillon does not print. Read each "
     "item's record and quote yourself, then acknowledge it; the verdict cannot be confirmed or "
@@ -144,6 +148,9 @@ class ClaimState:
     unlabeled: str | None = None  # why the run did not send this claim's evidence to the model
     not_tested: str | None = None  # why nothing was checked: the claim got no core assumption
     incomplete: bool = False  # the run shown has not finished labeling this claim
+    # the testability step proposed assumptions for this untested claim and no expert has
+    # accepted or rejected them yet (core/audit/testability.py; the claim page's card)
+    agent_waiting: bool = False
     # evidence items whose rationale is withheld for a forbidden word (core/review/withheld.py)
     withheld: list[Withheld] = field(default_factory=list)
 
@@ -278,6 +285,8 @@ class ClaimState:
             return [(8, "Not audited yet. Run the audit to check this claim.")]
         if self.edited_after_run:
             out.append((0, "Claim text changed after the audit. Run the full audit again."))
+        if self.untested and self.agent_waiting:
+            out.append((1, AGENT_STEP))
         if self.untested:
             out.append(
                 (
@@ -448,8 +457,10 @@ def claim_states(
     run = pipeline.view_run(conn) if run is None else run
     edited = edited_after(conn, run["started_at_utc"]) if run else set()
     changed = case_changed_after(conn, run) if run else False
+    waiting = agent_waiting(conn, run)
     return [
-        _state(conn, c, run, edited, changed) for c in pipeline.load_claims(conn, include_removed)
+        _state(conn, c, run, edited, changed, waiting)
+        for c in pipeline.load_claims(conn, include_removed)
     ]
 
 
@@ -459,8 +470,15 @@ def claim_state(conn: sqlite3.Connection, claim_id: str) -> ClaimState | None:
     changed = case_changed_after(conn, run) if run else False
     for c in pipeline.load_claims(conn, include_removed=True):
         if c.id == claim_id:
-            return _state(conn, c, run, edited, changed)
+            return _state(conn, c, run, edited, changed, agent_waiting(conn, run))
     return None
+
+
+def agent_waiting(conn: sqlite3.Connection, run: dict | None) -> frozenset[str]:
+    """Claims with a testability proposal in the run's audit that no expert has decided."""
+    from core.audit import testability
+
+    return frozenset(c for c, x in testability.proposals(conn, run).items() if x.decided is None)
 
 
 def case_changed_after(conn: sqlite3.Connection, run: dict) -> bool:
@@ -494,6 +512,7 @@ def _state(
     run: dict | None,
     edited: set[str],
     changed: bool = False,
+    waiting: frozenset[str] = frozenset(),
 ) -> ClaimState:
     where, ptext = _where(conn, claim.paragraph_id)
     items = (run or {}).get("manifest", {}).get(claim.id)
@@ -517,6 +536,7 @@ def _state(
     if not any(a.is_core for a in st.assumptions):
         # Runs before this was recorded have no reason stored; the claim is untested either way.
         st.not_tested = (run or {}).get("not_tested", {}).get(claim.id) or pipeline.NOT_TESTED
+        st.agent_waiting = claim.id in waiting
     st.checks = pipeline.load_checks(conn, items["checks"])
     st.evidence = pipeline.load_evidence(conn, items["evidence"])
     st.last_reviewer = last_reviewers(conn, [e.id for e in st.evidence])
