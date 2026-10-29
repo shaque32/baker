@@ -24,6 +24,7 @@ from core.audit.assumption_filler import (
     count_op,
     date_mentions,
     only_addressed,
+    stated_part_day,
 )
 from core.audit.assumptions import TEMPLATES, TemplateAssumptionBuilder
 from core.audit.checks import CHECKS
@@ -1507,3 +1508,130 @@ def test_an_identifier_in_brackets_picks_one_of_two_accounts_with_one_name(conn)
             filler._accounts_named(acc, [], 'PETROV called "Marc Twin" (nobody_9) on Telegram.')
     finally:
         conn.execute("DELETE FROM accounts WHERE id IN ('acct:t:twin1', 'acct:t:twin2')")
+
+
+def _sender(assumptions):
+    return next((a.params for a in assumptions if a.template_id == "sender"), None)
+
+
+def test_the_one_who_instructed_is_the_writer(conn):
+    # Fill b: 'X instructed Y by App to <errand>, writing "..."' names X as the writer.
+    text = (
+        "On March 12, 2026, PETROV instructed REYES by Telegram to hide the car, writing"
+        ' "move it tonight".'
+    )
+    assumptions, filler = build_text(conn, text, ClaimType.COMMUNICATION, [])
+    s = _sender(assumptions)
+    assert s is not None, filler.drops
+    assert s.person_ids == (PETROV,) and s.channels == ("Telegram",)
+    assert s.quoted_text == "move it tonight"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # an errand that may bring in another's words or clause
+        'PETROV instructed REYES by Telegram to tell his cousin, writing "move it tonight".',
+        'PETROV instructed REYES by Telegram to wait and then call, writing "move it tonight".',
+        # someone else's instruction
+        'A friend of PETROV instructed REYES by Telegram to hide the car, writing "move it'
+        ' tonight".',
+        # an app the case does not hold
+        'PETROV instructed REYES by Wire to hide the car, writing "move it tonight".',
+        # a new subject after the quote may be the one writing
+        'PETROV instructed REYES by Telegram to hide the car, writing "move it tonight", REYES'
+        " said.",
+        # the one instructed is the one named first
+        'PETROV instructed PETROV by Telegram to hide the car, writing "move it tonight".',
+    ],
+)
+def test_an_instruction_names_no_writer_when_anything_is_in_doubt(conn, text):
+    assumptions, _ = build_text(conn, "On March 12, 2026, " + text, ClaimType.COMMUNICATION, [])
+    s = _sender(assumptions)
+    assert s is None or PETROV not in s.person_ids
+
+
+def _x1(text: str) -> Claim:
+    return Claim(
+        id="X1",
+        paragraph_id=claim("C05").paragraph_id,
+        text=text,
+        claim_type=ClaimType.COMMUNICATION,
+        status=ClaimStatus.ACCEPTED,
+    )
+
+
+def test_the_one_a_message_was_received_from_sent_it(conn):
+    # Fill b: '... "words" after receiving it from X.' names X as the sender: a person, or one
+    # account on the one app the claim names, by its exact identifier.
+    filler = LocalAssumptionFiller(FakeModel("{}"), conn, template=DRAFT)
+    q = "move it tonight"
+    said = 'On March 12, 2026, REYES deleted the Telegram message "move it tonight" after'
+    assert filler.received_from(_x1(f"{said} receiving it from PETROV."), q) == {
+        "person_ids": [PETROV]
+    }
+    got = filler.received_from(_x1(f"{said} receiving it from 7001001."), q)
+    assert got == {"account_ids": ["acct:item1:Telegram:7001001", "acct:item2:Telegram:7001001"]}
+    for text in (
+        f"{said} receiving it from 9999999.",  # no such account
+        f"{said} receiving it from Dan P.",  # a display name is no identifier
+        f"{said} receiving it from PETROV, who wrote it.",  # not the end of the claim
+        'On March 12, 2026, REYES forwarded the Telegram message "move it tonight" after'
+        " receiving it from PETROV.",  # handed on
+        'On March 12, 2026, REYES texted Dre "move it tonight" after receiving it from'
+        " PETROV.",  # a writer verb before the quote names another writer
+        'On March 12, 2026, REYES deleted the Telegram message "move it tonight" from WhatsApp'
+        " after receiving it from 7001001.",  # not right after the quote
+    ):
+        assert filler.received_from(_x1(text), q) is None, text
+
+
+def test_an_open_time_on_one_stated_day_is_the_rest_or_the_start_of_that_day():
+    # Fill c.
+    w = stated_part_day("On May 7, 2023, there was no Wickr contact after 10:00 a.m. EDT.")
+    assert w is not None
+    assert (w.start, w.end, w.zone) == (D(2023, 5, 7, 10, 0), D(2023, 5, 8, 0, 0), "EDT")
+    assert w.raw == "May 7, 2023, after 10:00 a.m. EDT"
+    w = stated_part_day("On May 7, 2023, no call was placed before 9 a.m.")
+    assert w is not None and (w.start, w.end) == (D(2023, 5, 7), D(2023, 5, 7, 9, 0))
+    for text in (
+        "On May 7, 2023, no call was placed after about 9 a.m.",  # "about"
+        "On May 7, 2023, no call was placed after 9 a.m. or before 7 a.m.",  # two times
+        "On May 7 and May 8, 2023, no call was placed after 9 a.m.",  # two days
+        "On May 7, no call was placed after 9 a.m.",  # no year
+        "On May 7, 2023, no call was placed after midnight.",  # midnight is not read
+        "After May 7, 2023, no call was placed after 9 a.m.",  # an open date
+        "On 5/7/2023, no call was placed after 9 a.m.",  # a numeric date
+        "On Monday, May 7, 2023, no call was placed after 9 a.m.",  # not that date's weekday
+        "On May 7, 2023, at 9 a.m., a call was placed.",  # no open time
+    ):
+        assert stated_part_day(text) is None, text
+
+
+def test_the_phone_written_as_an_account_is_its_exact_owner_beside_another_account(conn):
+    # "no Telegram contact between dev:item1 and 5551234": the checks read every account id as
+    # one party, so the phone's side becomes PETROV, the owner by confirmed stipulation, whose
+    # accounts are exactly the phone's own.
+    text = "On March 12, 2026, there was no Telegram contact between dev:item1 and 5551234."
+    prop = {
+        "template_id": "no_contact",
+        "accounts": [
+            {"as_written": "dev:item1", "app": "Telegram"},
+            {"as_written": "5551234", "app": "Telegram"},
+        ],
+        "channels": ["Telegram"],
+        "window": {
+            "as_written": "On March 12, 2026",
+            "start": "2026-03-12T00:00",
+            "end": "2026-03-13T00:00",
+            "zone": "phone",
+        },
+    }
+    assumptions, filler = build_text(conn, text, ClaimType.ABSENCE, [prop])
+    (a,) = [a for a in assumptions if a.template_id == "no_contact"]
+    assert a.params.person_ids == (PETROV,)
+    assert a.params.account_ids == ("acct:item1:Telegram:5551234", "acct:item2:Telegram:5551234")
+    # An owner with an account elsewhere is wider than the phone: refused, never widened.
+    filler.data.links.append(("link:x", "acct:item2:Telegram:7001077", PETROV))
+    own = {aid for aid, acc in filler.data.accounts.items() if acc.device_id == "dev:item1"}
+    assert filler._exact_owner(own) is None

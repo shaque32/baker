@@ -213,6 +213,8 @@ WIDER_APPS: dict[str, str] = {"native messages": "iMessages and SMS"}
 # Checks whose answer depends on every record on the app they search. On a wider app a count
 # would count, and an absence would fail on, messages the claim does not name.
 WHOLE_APP_TEMPLATES = frozenset({"message_count", "no_contact"})
+# Templates whose check reads exactly two sides.
+TWO_SIDED_TEMPLATES = frozenset({"message_count", "no_contact"})
 # The templates whose time range a check tests.
 _TIMED = frozenset({"record_time", "message_count", "no_contact", "weekday_date"})
 # Templates whose quoted_text is the words of a message (a contact entry's is a saved name, a
@@ -1150,6 +1152,58 @@ def stated_windows(text: str, context: str = "") -> list[StatedWindow] | None:
     return out
 
 
+_PART_DAY_RE = re.compile(
+    rf"\b(?P<dir>after|before)\s+{_clock_re('t')}{_zone_opt('z')}", re.IGNORECASE
+)
+
+
+def stated_part_day(text: str, context: str = "") -> StatedWindow | None:
+    """The part of one stated day an open time leaves, or None (PAST-30 fill c).
+
+    "On May 7, 2023, there was no Wickr contact ... after 10:00 a.m. EDT" is 10:00 a.m. to
+    midnight on May 7; "before 9 a.m." is midnight to 9:00 a.m. Only when the text, outside
+    quoted words, states exactly one date (one day, with its year in the text or context) and
+    exactly one time of day, written right after "after" or "before"; no "about", no numeric
+    date, no weekday that is not the date's, no zone code cannot read. Anything else is None."""
+    plain = _unquoted(text)
+    years = {int(y) for y in _YEAR_RE.findall(text + " " + context)}
+    if weekday_mismatch(plain, years) or unread_zone(plain) is not None:
+        return None
+    if _NUM_DATE_RE.search(text):
+        return None
+    dates = list(_DATE_RE.finditer(plain))
+    times = list(_ANY_TIME_RE.finditer(plain))
+    parts = list(_PART_DAY_RE.finditer(plain))
+    if len(dates) != 1 or len(times) != 1 or len(parts) != 1:
+        return None
+    (m,), (t,), (p,) = dates, times, parts
+    if not (p.start("th") <= t.start() < p.end()) or m.group(5):
+        return None
+    before = plain[max(0, m.start() - 12) : m.start()]
+    if any(_has_word(before, w) for w in (*OPEN_START, *OPEN_END)):
+        return None
+    if re.search(r"\b(?:about|approximately|around|roughly)\s*$", plain[: p.start()], re.I):
+        return None
+    y = int(m.group(3) or m.group(6) or 0) or (next(iter(years)) if len(years) == 1 else None)
+    if y is None:
+        return None
+    try:
+        day = date(y, _MONTHS[m.group(1).lower()], int(m.group(2)))
+    except ValueError:
+        return None
+    tt = _clock(p.group("th"), p.group("tm"), p.group("tap"), p.group("tw"))
+    if tt is None or p.group("tw"):
+        return None  # "after midnight", "before noon": not read
+    at = datetime.combine(day, tt)
+    midnight = datetime.combine(day, time(0, 0))
+    if p.group("dir").lower() == "after":
+        start, end = at, midnight + timedelta(days=1)
+    else:
+        start, end = midnight, at
+    raw = f"{plain[m.start() : m.end()].strip(' ,')}, {p.group(0).strip()}"
+    return StatedWindow(raw, start, end, p.group("z"))
+
+
 _COUNT_NOUNS = r"(?:messages?|texts?|calls?|times|emails?|chats?)"
 _APPROX = ("about", "approximately", "around", "roughly", "nearly", "almost", "some", "over",
            "more than", "fewer than", "less than", "under")  # fmt: skip
@@ -1687,6 +1741,34 @@ _PASSED_ON_RE = re.compile(
     r"\b(?:forward\w*|quot(?:e|ed|es|ing)|relay\w*|repost\w*|shared|screenshot\w*)\b",
     re.IGNORECASE,
 )
+# 'SUBJECT-2 instructed SUBJECT-1 by Signal to destroy evidence, writing "..."': the one who
+# instructed is the subject of "writing" (PAST-30 fill b). Between them only the recipient,
+# the app, and a short errand in lower-case words (checked against _ERRAND_STOP).
+_ERRAND_RE = re.compile(
+    rf"(?<![\w@])(?P<name>[A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*){{0,2}})\s+"
+    r"(?i:instructed|told|asked|directed|ordered|urged)\s+"
+    rf"(?P<to>{_RECIPIENT})"
+    r"(?:\s+(?i:by|via|on|over)\s+(?P<app>[\w]+(?:\s+[\w]+){0,2}?))?"
+    r"\s+to\s+(?P<errand>[a-z]+(?:\s+[a-z]+){0,5})\s*,\s*writing\s*:?\s*[\"“‘']?\s*$"
+)
+# Errand words that may bring in someone else's words or another clause.
+_ERRAND_STOP = frozenset(
+    {
+        "and", "but", "or", "then", "who", "whom", "whose", "which", "where", "when", "while",
+        "he", "she", "they", "it", "we", "i", "you", "him", "her", "them", "his", "their",
+        "its", "my", "our", "your", "message", "messages", "text", "texts", "reply", "words",
+        "post", "email", "note", "chat", "what", "that",
+    }
+)  # fmt: skip
+# The wordings fill b reads a sender from, for the cheap test before them.
+_SENDER_WORDS_RE = re.compile(r"\bwriting\b|\breceiving\s+it\s+from\b", re.IGNORECASE)
+# '... the Kik message "..." after receiving it from thisisdfirtwo_dm7@talk.kik.com.': the one
+# it came from sent it (PAST-30 fill b). Only that wording, right after the quote, ending the
+# claim.
+_RECEIVED_FROM_RE = re.compile(
+    r"^[\"”’']?\s*,?\s*(?:after|upon|on)\s+receiving\s+it\s+from\s+(?P<who>\S+?)\s*[.;]?\s*$",
+    re.IGNORECASE,
+)
 
 
 def _last_end(pattern: re.Pattern[str], text: str) -> int:
@@ -1895,6 +1977,7 @@ class LocalAssumptionFiller:
         handles = [h.strip() for h in p.handles]
         named: set[str] = set()  # people the model wrote as accounts
         named_on: set[str] = set()  # the apps it wrote them on
+        own_ids: set[str] = set()  # a phone's own accounts, the phone written as an account
         for acc in p.accounts:
             try:
                 account_ids |= self._accounts(acc, device_ids, claim.text)
@@ -1917,6 +2000,7 @@ class LocalAssumptionFiller:
                     # "the TARGET PHONE's Kik account": the phone's own accounts on that app,
                     # as the phone recorded them, never its owner's wider links.
                     account_ids |= own
+                    own_ids |= own
                     continue
                 person = self._person_named(written) if "person_ids" in tpl.allowed else None
                 if person is not None:
@@ -1947,6 +2031,20 @@ class LocalAssumptionFiller:
                 if not by_name:
                     raise
                 account_ids |= by_name
+        if own_ids and account_ids - own_ids and tpl.id in TWO_SIDED_TEMPLATES:
+            # The checks read every account id as one party, so the phone's side and the other
+            # cannot both be accounts: 'no Wickr contact between the TARGET PHONE and X'. The
+            # phone's side is its owner by confirmed stipulation, only when that person is
+            # exactly the phone's own accounts (PAST-30: the phone as an account).
+            owner = self._exact_owner(own_ids)
+            if owner is None:
+                raise Reject(
+                    "the phone and another party are both written as accounts, and no person"
+                    " is exactly the phone's own accounts"
+                )
+            account_ids -= own_ids
+            named.add(owner)
+            named_on |= {self.data.accounts[a].app for a in own_ids}
         if named:
             params["person_ids"] = sorted(set(params.get("person_ids", [])) | named)
             if not channels:
@@ -2022,7 +2120,10 @@ class LocalAssumptionFiller:
         ):
             # "first made contact on March 12" means none before it, not none that day.
             raise Reject("the claim's range for no contact is not a plain stated range")
-        stated = stated_windows(claim.text, para) or []
+        stated = stated_windows(claim.text, para)
+        if stated is None:
+            part = stated_part_day(claim.text, para)
+            stated = [part] if part is not None else []
         if near is not None and len(stated) > 1:
             try:
                 day = datetime.fromisoformat(near).date()
@@ -2088,17 +2189,19 @@ class LocalAssumptionFiller:
     ) -> list[Proposal]:
         """A claim that quotes a message and names its writer ("PETROV wrote to REYES: ...")
         but got no sender assumption gets it from code: the claim's one quoted message
-        (`the_quote`) sent by the person `stated_sender` reads, on the one app the claim names
-        if it names one. Otherwise the claim keeps no sender, and coverage_gap refuses it."""
+        (`the_quote`) sent by the person `stated_sender` reads, or by the party
+        `received_from` reads, on the one app the claim names if it names one. Otherwise the
+        claim keeps no sender, and coverage_gap refuses it."""
         if "sender" not in allowed_ids or any(p.template_id == "sender" for p in out):
             return out
-        if not _QUOTED_MESSAGE.search(claim.text):
+        if not (_QUOTED_MESSAGE.search(claim.text) or _SENDER_WORDS_RE.search(claim.text)):
             return out
         quote = self.the_quote(claim, out)
         writer = self.stated_sender(claim, quote) if quote else None
-        if quote is None or writer is None:
+        party = {"person_ids": [writer]} if writer else self.received_from(claim, quote)
+        if quote is None or party is None:
             return out
-        params: dict[str, Any] = {"quoted_text": quote, "person_ids": [writer]}
+        params: dict[str, Any] = {"quoted_text": quote, **party}
         apps = self._message_apps(claim.text)
         if apps is None:
             return out  # a phone's messages, in a case that holds none
@@ -2238,6 +2341,8 @@ class LocalAssumptionFiller:
         after = _nfc(claim.text)[at + len(_nfc(quoted.strip())) :]
         if _PASSED_ON_RE.search(before):
             return None  # the words may be another's, handed on
+        if errand := _ERRAND_RE.search(before):
+            return self._errand_writer(claim.text, before, errand, after)
         verbs = [
             v for v in _QUOTING_RE.finditer(before) if not self._passes_quote_on(before, v, after)
         ]
@@ -2267,6 +2372,66 @@ class LocalAssumptionFiller:
             except Reject:
                 continue
         return None
+
+    def _errand_writer(
+        self, claim_text: str, before: str, m: re.Match[str], after: str
+    ) -> str | None:
+        """The person who instructed, when 'X instructed Y [by App] to <errand>, writing'
+        leads the quote: X must be exactly one person the expert created and not Y, the app
+        one the claim names, the errand plain lower-case words, and the quote must end the
+        sentence with no new subject after it. Anything else names no writer."""
+        errand = m.group("errand").split()
+        if any(w in _ERRAND_STOP for w in errand):
+            return None
+        app = m.group("app")
+        if app is not None and app.casefold() not in {
+            a.casefold() for a in self._named_apps(claim_text)
+        } | {
+            w.casefold()
+            for a in self._named_apps(claim_text)
+            for w in (*CHANNEL_WORDS.get(a.casefold(), ()), *APP_ALIASES.get(a.casefold(), ()))
+        }:
+            return None
+        if _SUBJECT_AFTER.search(after) or not _QUOTE_ENDS_CLAUSE.match(after):
+            return None
+        prefix = before[: m.start("name")]
+        if _NOT_THE_WRITER_BEFORE.search(prefix) or _POSSESSIVE_BEFORE.search(prefix):
+            return None
+        writer = self._person_named(m.group("name"))
+        to = self._person_named(m.group("to"))
+        if writer is None or writer == to:
+            return None
+        return writer
+
+    def received_from(self, claim: Claim, quoted: str | None) -> dict[str, list[str]] | None:
+        """The party a quoted message came from when the claim says so right after the quote
+        ('... "ok" after receiving it from X.'), as sender parameters, or None. X must be one
+        person the expert created, or one account on the one app the claim names, found by
+        its exact identifier. Words before the quote that hand it on or name a writer refuse."""
+        if not quoted or not quoted.strip():
+            return None
+        text = _nfc(claim.text)
+        at = text.find(_nfc(quoted.strip()))
+        if at < 0:
+            return None
+        before, after = text[:at], text[at + len(_nfc(quoted.strip())) :]
+        m = _RECEIVED_FROM_RE.match(after)
+        if m is None or _PASSED_ON_RE.search(before) or _QUOTING_RE.search(before):
+            return None
+        who = m.group("who").strip()
+        person = self._person_named(who)
+        if person is not None:
+            return {"person_ids": [person]}
+        apps = self._named_apps(claim.text)
+        if len(apps) != 1:
+            return None
+        try:
+            ids = self._accounts(_Account(as_written=who, app=apps[0]), [], claim.text)
+        except Reject:
+            return None
+        if len({self.data.accounts[a].key for a in ids}) != 1:
+            return None
+        return {"account_ids": sorted(ids)}
 
     def _parties_as_names(self, between: str) -> str:
         """The words between the writer's verb and the quote, with each party written as
@@ -2640,6 +2805,25 @@ class LocalAssumptionFiller:
             for a in self.data.accounts.values()
             if a.device_id == device and a.app.casefold() == want
         }
+
+    def _exact_owner(self, own_ids: set[str]) -> str | None:
+        """The one person a confirmed stipulation makes owner of the phone these accounts are
+        on, when that person's accounts are exactly the phone's own (no other phone, no link
+        to an account elsewhere); else None."""
+        devices = {self.data.accounts[a].device_id for a in own_ids}
+        if len(devices) != 1 or None in devices:
+            return None
+        (device,) = devices
+        owners = {
+            pid
+            for _, did, pid, status in self.data.stipulations
+            if did == device and status == "confirmed"
+        }
+        if len(owners) != 1:
+            return None
+        (owner,) = owners
+        phone = {a.key for a in self.data.accounts.values() if a.device_id == device}
+        return owner if person_party(self.data, owner).keys == phone else None
 
     def _person_named(self, words: str) -> str | None:
         """The one person the expert created whom these words name, or None."""
