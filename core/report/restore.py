@@ -41,7 +41,7 @@ mark { background: #fbf1cf; color: inherit; padding: 0 2px; border-radius: 3px;
   border-bottom: 2px solid var(--await); }
 tr.target td { font-weight: bold; background: var(--warn); }
 .ctx td { font-size: 12px; } .ctx td.t { white-space: nowrap; }
-.exhibit { border: 1px solid var(--line); border-radius: 14px;
+.exhibit { border: 1px solid var(--line); border-radius: 8px;
   background: var(--card); padding: 6px 20px 14px; margin: 18px 0; }
 .nf { color: var(--await); font-weight: bold; }
 .piece { font: 12.5px var(--mono); border: 1px solid var(--line);

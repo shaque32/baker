@@ -28,12 +28,13 @@
     page showed: the form carries a hash of the shown result, its proposal and the claim text,
     so a page left open across a later audit whose check failed another way, or across a claim
     edit, confirms nothing (Codex, twice).
-  - The overview, the claim page and report 0.24.0 give the step to confirm it. The report's key
+  - The overview, the claim page and report 0.26.0 give the step to confirm it (numbered 0.24.0
+    until #167's 0.25.0 merged first; no report was released as 0.24.0). The report's key
     to the verdicts says such a failure counts once an expert confirms it. `verify-bundle`
     re-applies the rules with the same inputs, read at each verdict's log position, and fails a
     confirm that is not an expert's.
   - `docs/METHODS.md` names rules 0.4.0 and the new wait.
-- Where: branch `claude/project-thread-6i2msb-agent-fail-confirm` (stacked on #163)
+- Where: PR #166, branch `claude/project-thread-6i2msb-agent-fail-confirm`
 - Verified: `make check` passes with Arsh's applied rules (75ea6eb and after); its eval numbers
   are in the PR. Under rules 0.3.0 the 21 new tests fail, as they should. New tests:
   - `tests/contract/test_rules.py`: a waiting failure keeps the claim unproven with the rule 1a

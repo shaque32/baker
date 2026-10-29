@@ -56,6 +56,12 @@ from core.review import device_names
 from core.review import withheld as withheld_rationales
 from core.review.withheld import Withheld
 
+
+def _count(n: int, noun: str) -> str:
+    """'1 record', '2 records': a count with its noun in the right number."""
+    return f"{n} {noun}{'' if n == 1 else 's'}"
+
+
 SUPPORTED_AI = "Supported (AI-reviewed)"
 SUPPORTED_EXPERT = "Supported (expert-confirmed)"
 AWAITING_EXPERT = "Support found: do you agree?"
@@ -68,12 +74,19 @@ CONFIRM_STEP = (
 )
 # what the expert does about a failed check on an agent's assumption (rules 0.4.0)
 AGENT_FAIL_STEP = (
-    "{n} check(s) failed on an assumption the testability agent proposed and an examiner "
+    "{checks} failed on an assumption the testability agent proposed and an examiner "
     "accepted. A failure there counts only once you confirm it, since the agent may have named "
     "the wrong phone or time window. Confirm each failure you agree with, giving your reason, "
     "to finalize the verdict as contradicted, or reject the agent's proposal so the next audit "
     "does not use it."
 )
+
+
+def agent_fail_step(n: int) -> str:
+    """AGENT_FAIL_STEP for n waiting failures, the count in the right number."""
+    return AGENT_FAIL_STEP.format(checks=_count(n, "check"))
+
+
 AGENT_STEP = (
     "Proposed by agent: the testability agent proposed assumptions that would make this claim "
     "testable. Accept or reject them on the claim page; nothing is used until you accept."
@@ -203,7 +216,7 @@ class ClaimState:
             return []
         out = [CONFIRM_STEP.format(n=self.open_contradicts)] if self.open_contradicts else []
         if self.agent_fails:
-            out.append(AGENT_FAIL_STEP.format(n=len(self.agent_fails)))
+            out.append(agent_fail_step(len(self.agent_fails)))
         return out
 
     @property
@@ -324,7 +337,7 @@ class ClaimState:
             out.append(
                 (
                     5 if more else 1,
-                    f"{self.ai_accepted} supporting item(s) the AI reviewer accepted. "
+                    f"{_count(self.ai_accepted, 'supporting item')} the AI reviewer accepted. "
                     "Accept the ones you agree with and dismiss the rest.",
                 )
             )
@@ -332,20 +345,20 @@ class ClaimState:
             out.append(
                 (
                     5 if more else 2,
-                    f"Mabillon found {self.open_support} record(s) it reads as support. Check each "
-                    "one: accept the ones you agree with and dismiss the rest.",
+                    f"Mabillon found {_count(self.open_support, 'record')} it reads as support. "
+                    "Check each one: accept the ones you agree with and dismiss the rest.",
                 )
             )
         against = self.open_against + (0 if self.contradiction_found else self.open_contradicts)
         if against:
-            out.append((3, f"{against} contradicting or complicating item(s) to review."))
+            out.append((3, f"{_count(against, 'contradicting or complicating item')} to review."))
         if self.decided_after_run:
             out.append((4, "You decided evidence after the last verdict run. Re-run verdicts."))
         if self.ai_dismissed:
             out.append(
                 (
                     5,
-                    f"{self.ai_dismissed} supporting item(s) the AI reviewer dismissed. "
+                    f"{_count(self.ai_dismissed, 'supporting item')} the AI reviewer dismissed. "
                     "You have not reviewed them.",
                 )
             )
