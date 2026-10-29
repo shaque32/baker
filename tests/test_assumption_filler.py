@@ -2462,9 +2462,7 @@ def test_a_one_way_count_is_refused_unless_the_words_name_each_side(conn, text):
 def test_exchanged_messages_need_one_each_way(conn):
     # Ruling R3: "exchanged" is at least one message each way; with no number, at least two.
     # The phone the claim writes is the one counted, though the model named none.
-    text = (
-        "On March 21, 2026, the phone dev:item1 shows PETROV and REYES exchanged Telegram messages."
-    )
+    text = "On March 21, 2026, PETROV and REYES exchanged Telegram messages on dev:item1."
     made, filler = _count(conn, text, None)
     (a,) = made
     assert a.params.each_way and not a.params.sent_by, filler.drops
@@ -2501,6 +2499,10 @@ def test_a_stated_count_of_exchanged_messages_is_still_compared(conn):
         " delivery.",
         "On March 21, 2026, on dev:item1, PETROV and REYES exchanged Telegram messages that"
         " mention money.",
+        # any limit the check does not read, not only topic words (Codex on #172)
+        "On March 21, 2026, on dev:item1, PETROV and REYES exchanged Telegram messages in Spanish.",
+        "On March 21, 2026, on dev:item1, PETROV and REYES exchanged Telegram messages with photos"
+        " attached.",
     ],
 )
 def test_exchanged_without_one_phone_or_with_a_one_way_word_makes_no_count(conn, text):

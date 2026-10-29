@@ -1468,6 +1468,11 @@ _PASSIVE_SENT_RE = re.compile(
 _MESSAGE_CONTENT_RE = re.compile(
     r"\b(?:mention\w*|contain\w*|saying|stating|referr\w*|that|which|whose|including)\b", re.I
 )
+# What the clause of an "exchanged" count may hold besides its sides, phone, count and app.
+_PLAIN_EXCHANGE_WORDS = frozenset(
+    "exchanged with the and s on between each other one another telephone phone number user"
+    " username account direct exactly at least most only a total of".split()
+)
 _MESSAGE_NOUN_RE = re.compile(r"(?:messages?|texts?|imessages?|chats?|emails?|dms?)", re.I)
 # A denial anywhere in the claim: "never exchanged", "had not sent" (Codex on #172).
 _DENIAL_RE = re.compile(r"\b(?:not|never|no|neither|nor|without|cannot)\b|n['’]t\b", re.I)
@@ -2441,6 +2446,12 @@ class LocalAssumptionFiller:
                     # model did not give is not read as "at least two" (Codex on #172)
                     raise Reject("the claim states how many messages; the model gave no count")
                 params["count_op"], params["expected_count"] = "ge", 2
+            if extra := self._limits_on_exchange(claim.text, params):
+                # "exchanged Telegram messages in Spanish": the check reads no language,
+                # content or attachment, so it would count every message (Codex on #172)
+                raise Reject(
+                    f"the exchange is limited by words the check does not read ({extra!r})"
+                )
             params["each_way"] = True
             code_made = True
         if tpl.id == "message_count" and not device_ids:
@@ -2490,6 +2501,33 @@ class LocalAssumptionFiller:
             code_made = True
 
         return Proposal(p.template_id, params, is_core=True, code_made=code_made)
+
+    def _limits_on_exchange(self, claim_text: str, params: dict[str, Any]) -> str | None:
+        """The first word of the clause that says "exchanged" that is not a side, a phone, the
+        count, the app or a plain joining word; None when there is none. The sides are any
+        person the case names and the assumption's accounts, by identifier or number."""
+        words = _unquoted(_flat(_nfc(claim_text)))
+        clause = words[words.rfind(",") + 1 :]
+        left = list(clause)
+        spans = [s for _, *s in self._phone_spans(clause)]
+        for (name,) in self.conn.execute("SELECT name FROM persons"):
+            spans += _name_spans(clause, _nfc(name.strip()))
+        found = [self.data.accounts[a] for a in params.get("account_ids", [])]
+        idents = [x for a in found for x in (a.identifier, a.display_name)]  # "Reyes D (+1...)"
+        for i in [*idents, *params.get("handles", [])]:
+            if i and i.strip():
+                spans += [m.span() for m in re.finditer(re.escape(i.strip()), clause, re.I)]
+        spans += [
+            m.span() for m in _PHONE_RE.finditer(clause) if phone_digits(m.group(0).strip(" .,-"))
+        ]
+        for start, end in spans:
+            left[start:end] = " " * (end - start)
+        apps = {w for app in self.channels() for w in _words(app).split()}
+        plain = apps | _PLAIN_EXCHANGE_WORDS
+        for w in _words("".join(left)).split():
+            if w not in plain and _number(w) is None and not _MESSAGE_NOUN_RE.fullmatch(w):
+                return w
+        return None
 
     def _sent_by(self, sent: tuple[str, str], params: dict[str, Any]) -> list[str]:
         """The side the claim's subject names as sender ("SUBJECT-2 sent ..."): one person
