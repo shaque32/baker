@@ -627,3 +627,35 @@ Diff: on main after #151 merges, from the repo root (works with macOS and GNU se
 The last line must print 0 for both files. The copies are the drafts with only `labeled_by`
 (and, in the key, `labeled_at`) changed: 17 key lines and 39 sheet rows (checked on a scratch
 copy, 2026-10-28).
+
+## 2026-10-28 claude/project-thread-6i2msb-testability: sign the testability agent's prompt
+File: core/audit/prompts/agent_testability.md (new)
+Why: step 3 of the agent plan (plans/agentic.md, approved by Arsh 2026-10-27 17:29Z, change 8:
+`agent_testability.md` needs his signature before merge). `core/audit/testability.py` loads only
+the signed copy; until it exists the product cannot run the step, and the eval runs only with
+`--testability-prompt docs/prompts/agent_testability.md`, which it reports as a draft with no
+go/no-go. The draft is written generally and not tuned to any validation claim; its wording
+drew on run 2's refusal kinds (counts only).
+Diff: copy `docs/prompts/agent_testability.md` to `core/audit/prompts/agent_testability.md` and
+change its header to "# Testability agent prompt (HUMAN-OWNED, Arsh)", then "v1.0, signed by
+Arsh on <date> from the docs/prompts/agent_testability.md draft v0.1." and "Arsh edits this
+wording; agents only wire it to the local model." Everything from `<!-- prompt starts -->` down
+stays as drafted, or as Arsh edits it, keeping its six placeholders (`tests/test_testability.py`
+checks the signed copy has them).
+SIGNED by Arsh on 2026-10-28 ("i approve and sign off on others", 07:33Z, project thread
+"Build agents into the audit"). APPLIED by Arsh himself on this branch (PR #159), commit 88fe932. The prompt body is the draft's, byte for byte.
+
+## 2026-10-28 claude/project-thread-6i2msb-testability: CLAUDE.md line naming agents as local jobs that only propose
+File: CLAUDE.md
+Why: plan step 3 adds the first agent, and the plan's "Needs Arsh" list asks for "a CLAUDE.md
+line naming agents as local jobs that only propose records". Without it, nothing tells the next
+builder that an agent may never label, accept, dismiss, link identities or set a verdict.
+Diff: under "## Evidence rules", directly after the entry "- The AI reviewer runs on the local
+model in core/. ... assumption filling stay local." (two lines), add:
++- Agents (the testability step, core/audit/testability.py) are local jobs on the local model
++  that only propose. Code checks every proposal, each is logged, and only an examiner's
++  acceptance puts it in a case. An agent never labels, accepts, dismisses, links identities or
++  sets a verdict, and never changes a claim's text. They stay off by default and eval only
++  until a real-data run under a signed plan.
+SIGNED by Arsh on 2026-10-28 ("i approve and sign off on others", 07:33Z, project thread
+"Build agents into the audit"). APPLIED by Arsh himself on this branch (PR #159), commit 88fe932. Word for word as above.
