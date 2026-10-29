@@ -2377,8 +2377,9 @@ MAR21 = W("On March 21, 2026", "2026-03-21T00:00", "2026-03-22T00:00")
 
 
 def _count(conn, text: str, value: int | None, **kw):
+    kw = {"channels": ["Telegram"], **kw}
     prop = P("message_count", count=None if value is None else {"value": value},
-             people=["PETROV", "REYES"], channels=["Telegram"], window=MAR21, **kw)  # fmt: skip
+             people=["PETROV", "REYES"], window=MAR21, **kw)  # fmt: skip
     assumptions, filler = build_text(conn, text, ClaimType.COUNT, [prop])
     made = [a for a in assumptions if a.template_id == "message_count"]
     return made, filler
@@ -2585,3 +2586,23 @@ def test_an_exchange_with_a_third_party_is_refused(conn, third):
         assert not any(a.params.each_way for a in made), [a.params for a in made]
     finally:
         conn.execute("DELETE FROM persons WHERE id = 'person:sokolov'")
+
+
+@pytest.mark.parametrize(
+    "text, channels",
+    [
+        # an app the count would not keep to: no channels given (Codex on #172)
+        ("On March 21, 2026, PETROV and REYES exchanged Telegram messages on dev:item1.", []),
+        ("On March 21, 2026, on dev:item1, PETROV sent REYES exactly one Telegram message.", []),
+        # a limit after a comma is still in the clause (Codex on #172)
+        (
+            "On March 21, 2026, PETROV and REYES exchanged Telegram messages in Spanish, on"
+            " dev:item1.",
+            ["Telegram"],
+        ),
+    ],
+)
+def test_a_direction_is_not_read_past_words_the_count_does_not_keep(conn, text, channels):
+    value = 1 if "exactly one" in text else None
+    made, filler = _count(conn, text, value, channels=channels)
+    assert not any(a.params.each_way or a.params.sent_by for a in made), [a.params for a in made]

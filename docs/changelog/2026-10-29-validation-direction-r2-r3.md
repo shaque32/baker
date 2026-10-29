@@ -24,7 +24,9 @@
     read as "at least two"; so is a denial ("never exchanged", "had not exchanged"), and any limit the check does not
     read: the clause that says "exchanged" may hold only its own two sides, the phone, the
     count, the app and plain joining words, so "about the delivery", "in Spanish", "with
-    photos attached", or a third person or number refuse it.
+    photos attached", or a third person or number refuse it. The whole clause is read, past
+    any comma. On both forms an app written in the claim is plain wording only when the count
+    keeps to that app; otherwise the claim is refused.
   - When the two sides share an account (through a confirmed identity link), a count by
     direction is inconclusive: which side sent a message from that account is not known.
   - A count of calls takes neither field: a call log's direction is not read here, so the

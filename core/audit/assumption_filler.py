@@ -1487,6 +1487,14 @@ _EXCHANGED_RE = re.compile(
 _RECIPIENT_BEFORE_RE = re.compile(r"(?:^|\bto)\s*(?:the\s+)?$", re.IGNORECASE)
 
 
+def _app_words(params: dict[str, Any]) -> set[str]:
+    """The words of the apps the assumption keeps: an app written in the claim is plain wording
+    only when the count searches that app alone (Codex on #172)."""
+    return {
+        w for app in params.get("channels", []) if app != CALL_CHANNEL for w in _words(app).split()
+    }
+
+
 def sent_form(claim: str, value: int) -> tuple[str, str] | None:
     """(subject, rest) when the claim counts messages in the plain form "<subject> sent
     <rest>" with the count in <rest> and no other one-way word; else None."""
@@ -2440,7 +2448,7 @@ class LocalAssumptionFiller:
             # "exchanged messages": at least one message each way (ruling R3). With no number,
             # that is at least two messages; a stated number is still compared.
             if p.count is None:
-                apps = {w for app in self.channels() for w in _words(app).split()}
+                apps = _app_words(params)
                 if states_a_count(claim.text) or set(_words(between).split()) - apps - {"text"}:
                     # "exchanged exactly three ..." or "exchanged dozens of ...": a count the
                     # model did not give is not read as "at least two" (Codex on #172)
@@ -2507,7 +2515,9 @@ class LocalAssumptionFiller:
         count, the app or a plain joining word; None when there is none. The sides are the
         assumption's persons by name and its accounts by identifier, display name or number."""
         words = _unquoted(_flat(_nfc(claim_text)))
-        clause = words[words.rfind(",") + 1 :]
+        # The whole clause from "exchanged" to the end, commas and all: "... in Spanish, on
+        # dev:p1." keeps "in Spanish" in it (Codex on #172).
+        clause = words[words.rfind(",", 0, words.casefold().find("exchanged")) + 1 :]
         left = list(clause)
         spans = [s for _, *s in self._phone_spans(clause)]
         # Only the assumption's own sides: "... with SOKOLOV" names a third party the count
@@ -2529,7 +2539,7 @@ class LocalAssumptionFiller:
                 spans.append(m.span())
         for start, end in spans:
             left[start:end] = " " * (end - start)
-        apps = {w for app in self.channels() for w in _words(app).split()}
+        apps = _app_words(params)
         plain = apps | _PLAIN_EXCHANGE_WORDS
         for w in _words("".join(left)).split():
             if w not in plain and _number(w) is None and not _MESSAGE_NOUN_RE.fullmatch(w):
@@ -2591,7 +2601,7 @@ class LocalAssumptionFiller:
                     raise Reject(f"{text[start:end]!r} is not written as the recipient")
             return {side for side, *_ in found}
 
-        apps = {w for app in self.channels() for w in _words(app).split()}
+        apps = _app_words(params)
 
         def _strip_kind(before: str) -> str:
             """The words before a mention without a trailing kind ("the Kik account <id>")."""
