@@ -20,7 +20,7 @@ from core import pipeline
 from core.audit import assumption_filler, testability
 from core.audit._llm_json import prompt_body, required_placeholders
 from core.audit.assumption_filler import LocalAssumptionFiller
-from core.audit.assumptions import TemplateAssumptionBuilder
+from core.audit.assumptions import TemplateAssumptionBuilder, is_code_made
 from core.audit.invariants import InvariantViolation
 from core.bundle import export
 from core.bundle import verify as verify_mod
@@ -378,6 +378,24 @@ def test_a_try_gets_the_fillers_own_fills_in_its_order(conn):
     outcome, reasons, _got, assumptions = testability.check_answer(filler, claim("C05"), [], same)
     assert (outcome, reasons) == ("proposed", [])
     assert sorted(a.id for a in assumptions) == sorted(a.id for a in built)
+    # Code's fills keep their note on the repair path too (Codex on #169).
+    assert any(is_code_made(a.text) for a in built)
+    assert sorted(a.text for a in assumptions) == sorted(a.text for a in built)
+
+
+def test_a_try_runs_every_code_fill_the_first_pass_runs(conn, monkeypatch):
+    """The repair runs the filler's own code_fills, the call count included (Codex on #169)."""
+    filler, _built, _why = first_pass(conn, "C05", {"assumptions": []})
+    seen: list[str] = []
+    real = filler._add_call_count
+
+    def counting(claim, out, allowed):
+        seen.append(claim.id)
+        return real(claim, out, allowed)
+
+    monkeypatch.setattr(filler, "_add_call_count", counting)
+    testability.check_answer(filler, claim("C05"), [], testability.named([]))
+    assert seen == ["C05"]
 
 
 def test_the_repair_leaves_the_first_pass_refusals_as_they_were(conn):

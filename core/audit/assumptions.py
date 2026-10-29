@@ -249,7 +249,8 @@ TEMPLATES: dict[str, Template] = {
             _count_rule,
             lambda p, n: (
                 f"{_phones(p, n)} holds {n.count(p.count_op or '', p.expected_count or 0)} "
-                f"messages between {_who(p, n)}{_on(p)} {_when(p)}"
+                f"{'calls' if 'call' in p.channels else 'messages'} between "
+                f"{_who(p, n)}{_on(p)} {_when(p)}"
             ),
         ),
         Template(
@@ -406,13 +407,35 @@ def template_of(assumption: Assumption) -> Template | None:
     return template
 
 
+# The words a code-made assumption's text ends with, so the expert who accepts it, the report
+# and the eval all see that code filled it, not the model (validation fill g).
+CODE_MADE_NOTE = " Filled from the claim's wording."
+
+
+def is_code_made(text: str) -> bool:
+    """True when an assumption's text says code filled it from the claim's wording."""
+    return text.endswith(CODE_MADE_NOTE)
+
+
 @dataclass(frozen=True)
 class Proposal:
-    """One filled template, as proposed by the local model or typed by the expert."""
+    """One filled template, as proposed by the local model or typed by the expert.
+    `code_made`: code filled it, or some of its parameters, from the claim's own words."""
 
     template_id: str
     params: Mapping[str, Any] | AssumptionParams
     is_core: bool = True
+    code_made: bool = False
+
+
+def from_proposal(claim_id: str, proposal: Proposal) -> Assumption:
+    """The assumption a proposal fills, its text ending with CODE_MADE_NOTE when code filled
+    it: every path that builds one from a proposal (the builder, the testability step's repair)
+    keeps the note. Raises as `instantiate` does."""
+    a = instantiate(claim_id, proposal.template_id, proposal.params, proposal.is_core)
+    if proposal.code_made:
+        a = a.model_copy(update={"text": a.text + CODE_MADE_NOTE})
+    return a
 
 
 @dataclass(frozen=True)
@@ -453,7 +476,7 @@ class TemplateAssumptionBuilder:
                 why.append(reason)
                 continue
             try:
-                a = instantiate(claim.id, proposal.template_id, proposal.params, proposal.is_core)
+                a = from_proposal(claim.id, proposal)
             except (ValidationError, ValueError) as e:
                 self.rejected.append(Rejected(proposal, str(e)))
                 why.append(f"template {proposal.template_id!r}: {e}")

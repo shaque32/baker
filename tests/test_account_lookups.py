@@ -103,9 +103,10 @@ def test_a_number_on_an_app_that_does_not_hold_it_is_still_refused(conn):
         filler(conn)._accounts(acc, [], "PETROV wrote to (212) 555-0122 on Telegram.")
 
 
-def test_a_number_two_accounts_recorded_differently_share_is_refused(conn):
-    # WhatsApp holds 12125550122@s.whatsapp.net; the same number recorded as "+1 212 555 0122"
-    # on the same app is another account until an expert links them
+def test_one_number_recorded_two_ways_on_one_app_is_one_party(conn):
+    # Ruling R6 (Arsh, 2026-10-29): WhatsApp holds 12125550122@s.whatsapp.net and the same
+    # number recorded as "+1 212 555 0122". The same digits, only the formatting differs, so
+    # the number finds both. Before R6 this was refused until an expert linked them.
     conn.execute(
         "INSERT INTO accounts (id, source_id, locator, device_id, app, identifier,"
         " display_name) VALUES ('acct:extra:wa', 'src:none', 'extra/wa', NULL, 'WhatsApp',"
@@ -113,15 +114,18 @@ def test_a_number_two_accounts_recorded_differently_share_is_refused(conn):
     )
     try:
         acc = _Account.model_validate({"as_written": "212-555-0122", "app": "WhatsApp"})
-        with pytest.raises(Reject, match="is the number of 2 WhatsApp accounts"):
-            filler(conn)._accounts(acc, [], "PETROV wrote to 212-555-0122 on WhatsApp.")
+        assert filler(conn)._accounts(acc, [], "PETROV wrote to 212-555-0122 on WhatsApp.") == {
+            "acct:extra:wa",
+            "acct:item1:WhatsApp:12125550122@s.whatsapp.net",
+            "acct:item2:WhatsApp:12125550122@s.whatsapp.net",
+        }
     finally:
         conn.execute("DELETE FROM accounts WHERE id = 'acct:extra:wa'")
 
 
-def test_a_shared_number_is_not_looked_up_again_as_a_display_name(conn):
-    # Codex on #152: the refusal was caught, and the display name of one of the two accounts
-    # then picked it.
+def test_a_number_on_two_accounts_is_their_one_party_not_a_display_name(conn):
+    # Codex on #152: a display name must never pick one of the accounts a number is on. Under
+    # R6 the number finds all of them, as one party, by identifier.
     conn.execute(
         "INSERT INTO accounts (id, source_id, locator, device_id, app, identifier,"
         " display_name) VALUES ('acct:extra:wa2', 'src:none', 'extra/wa2', NULL, 'WhatsApp',"
@@ -129,9 +133,13 @@ def test_a_shared_number_is_not_looked_up_again_as_a_display_name(conn):
     )
     try:
         text = f'On March 18, 2026, 212-555-0122 wrote "{QUOTE}" on WhatsApp.'
-        with pytest.raises(Reject, match="is the number of 2 WhatsApp accounts"):
-            filler(conn)._resolve(claim(text), "", proposal(
-                "sender", **sender("212-555-0122", "WhatsApp")))  # fmt: skip
+        got = filler(conn)._resolve(claim(text), "", proposal(
+            "sender", **sender("212-555-0122", "WhatsApp")))  # fmt: skip
+        assert set(got.params["account_ids"]) == {
+            "acct:extra:wa2",
+            "acct:item1:WhatsApp:12125550122@s.whatsapp.net",
+            "acct:item2:WhatsApp:12125550122@s.whatsapp.net",
+        }
     finally:
         conn.execute("DELETE FROM accounts WHERE id = 'acct:extra:wa2'")
 
