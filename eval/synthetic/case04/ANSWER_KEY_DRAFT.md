@@ -9,9 +9,9 @@ case04 is the held-out set for the testability step's go/no-go. It was written w
 reading the testability step's code, prompt or tests. It is the case the go/no-go
 reads, and is not part of `make eval` or any merge gate.
 
-Draft split: 24 supported, 12 contradicted, 12 unproven; 2 claims need more than one phone. Every intended verdict was recorded before the story was written, and none changed while building.
+Draft split: 22 supported, 12 contradicted, 14 unproven; 2 claims need more than one phone. Every intended verdict was recorded before the story was written, and none changed while building. The second read (2026-10-29) changed C37 (supported to unproven), C40 (supported to unproven); see `SIGNING_SHEET.md`.
 
-Shared assumption: Item 1 is used by HALLORAN, Item 2 by FERRO and Item 3 by OKAFOR, so each phone's own accounts speak for its owner. The key treats this as given, as the affidavit does; it is not proven by the data. The PREPAID is HALLORAN's because paragraph 3 says so; Item 2 saves it as 'Hal 2' and it writes 'new number, its hal' (C08).
+Shared assumption: Item 1 is used by HALLORAN, Item 2 by FERRO and Item 3 by OKAFOR, so each phone's own accounts speak for its owner. The key treats this as given, as the affidavit does; it is not proven by the data. The PREPAID is HALLORAN's because paragraph 3 says so, and the number writes 'new number, its hal' (Item 2 saves it as 'Hal 2', Item 3 as 'H'). No record from his own phone shows it, so C04's core authorship row puts it to the expert, and C32 rests on it.
 
 Reading rules (how the key reads approximate or defined wording):
 
@@ -86,10 +86,10 @@ CDT from 2 a.m. on 2026-03-08).
 | C34 | p2 ¶11 | absence | affidavit | **unproven** | near_window | [ ] |
 | C35 | p4 ¶16 | absence | affidavit | **contradicted** | same_name | [ ] |
 | C36 | p4 ¶17 | absence | affidavit | **unproven** | second_phone | [ ] |
-| C37 | p4 ¶16 | role | plain | **supported** | second_number | [ ] |
+| C37 | p4 ¶16 | role | plain | **unproven** | second_number | [ ] |
 | C38 | p3 ¶15 | role | plain | **contradicted** | same_name | [ ] |
 | C39 | p2 ¶8 | role | plain | **unproven** | none | [ ] |
-| C40 | p3 ¶15 | role | affidavit | **supported** | same_name | [ ] |
+| C40 | p3 ¶15 | role | affidavit | **unproven** | same_name | [ ] |
 | C41 | p2 ¶11 | role | affidavit | **contradicted** | similar_quote | [ ] |
 | C42 | p2 ¶11 | role | affidavit | **unproven** | similar_quote | [ ] |
 | C43 | p2 ¶10 | event | plain | **supported** | similar_quote | [ ] |
@@ -106,7 +106,7 @@ CDT from 2 a.m. on 2026-03-08).
 - Type: communication. Page 2, paragraph 8. Wording: plain.
 - Core assumptions: HALLORAN's SMS account sent the message to FERRO on Feb 18, Chicago time
 - Why: Outgoing SMS on Item 1 at 8:12 p.m. CST on Feb 18, incoming on Item 2.
-- Hazard: `near_window`. Item 1 prints it as 2/19/2026 2:12:40 AM(UTC+0); a window on the printed date misses it. FERRO's neighbour, the other Owen, asked to borrow the van two days earlier.
+- Hazard: `near_window`. Item 1 prints it as 2/19/2026 2:12:40 AM(UTC+0); a window on the printed date misses it. Two days earlier Item 2's 'Owen upstairs' (+13125550118, a second Owen) asked to borrow the van.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
@@ -142,7 +142,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 - Type: communication. Page 3, paragraph 12. Wording: plain.
 - Core assumptions: OKAFOR's SMS account sent the message to FERRO on Mar 10
-- Why: The only copy is on Item 2, sent by +17735550164, which Item 2 saves as 'Dez': FERRO's cousin Desiree, whose next message is about the kids' boots. OKAFOR (+17735550176, saved on Item 2 as 'Desmond O') did not send it. Observed data rules out the stated sender.
+- Why: The only copy is on Item 2, sent by +17735550164, which Item 2 saves as 'Dez'; that number's next message is 'come grab the boots whenever'. OKAFOR (+17735550176, saved on Item 2 as 'Desmond O') did not send it. Observed data rules out the stated sender.
 - Hazard: `same_name`. DEZ is OKAFOR's nickname (paragraph 2) and Item 1 saves OKAFOR as 'Dez', but on Item 2 'Dez' is another person. A reading that takes Item 2's 'Dez' for OKAFOR passes the sender; the sheet names OKAFOR.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
@@ -161,8 +161,8 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 > On the evening before the BELMONT SITE theft, HALLORAN, using the PREPAID, told the DRIVER to "bring the long ladder and both dollies".
 
 - Type: communication. Page 2, paragraph 10. Wording: affidavit (defined terms (BELMONT SITE, PREPAID, DRIVER), a relative date).
-- Core assumptions: The PREPAID sent the message to OKAFOR on the evening of Mar 6; HALLORAN is the PREPAID's user (paragraph 3; tested in C08)
-- Why: Item 3 holds the message from +13125550199 at 7:15 p.m. CST on Mar 6 (printed 7:15:22 PM(UTC-6)); the PREPAID had introduced itself to OKAFOR as 'new number, its hal'.
+- Core assumptions: The PREPAID sent the message to OKAFOR on the evening of Mar 6; HALLORAN is the PREPAID's user (paragraph 3, and the number's own 'new number, its hal')
+- Why: Item 3 holds the message from +13125550199 at 7:15 p.m. CST on Mar 6 (printed 7:15:22 PM(UTC-6)). That HALLORAN used the PREPAID rests on paragraph 3 and on the number's own 'new number, its hal' to OKAFOR (Item 3 saves the number as 'H', Item 2 as 'Hal 2'); no check tests it, so its authorship row is core and the expert must accept it before supported.
 - Hazard: `second_number`. HALLORAN's own number also texted the DRIVER that evening ('u still got my drill?'). A repair that names HALLORAN's phone accounts fails the sender check; the sheet names the PREPAID account.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
@@ -200,7 +200,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 - Type: communication. Page 3, paragraph 13. Wording: affidavit (alias (HAL), a role (the DRIVER), a relative date ('the next day' after C31's Mar 14), indirect speech).
 - Core assumptions: HALLORAN's SMS account sent the message to OKAFOR on Mar 15
 - Why: No message with these words is on any phone. The nearest HALLORAN-OKAFOR exchange is on Mar 14 ('u around tmrw?'). The reports are curated, so not found does not mean not sent.
-- Hazard: `similar_quote`. That morning HALLORAN texted his foreman 'stay off the roof till tuesday, its icing up'. A repair that quotes those words passes the sender; the sheet quotes the claim's words.
+- Hazard: `similar_quote`. That morning HALLORAN texted 'Benny NGE' (+13125550126) 'stay off the roof till tuesday, its icing up'. A repair that quotes those words passes the sender; the sheet quotes the claim's words.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
@@ -219,7 +219,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 - Type: identity. Page 2, paragraph 9. Wording: plain.
 - Core assumptions: Item 1's contact list has an entry named 'Rocco' with +17735550187
 - Why: Observed in Item 1's contacts. CW-1 also signs a text 'rocco' to HALLORAN.
-- Hazard: `contact_name`. Item 3 also has a 'Rocco', with +17735550133 (Rocco Vitale). The sheet names Item 1.
+- Hazard: `contact_name`. Item 3 also has a 'Rocco', with +17735550133. The sheet names Item 1.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
@@ -273,8 +273,8 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 - Type: identity. Page 3, paragraph 13. Wording: affidavit (defined terms (TARGET PHONE, DRIVER), an approximate date ('mid-March')).
 - Core assumptions: On Telegram, 'dez' and 'D.O.' resolve to one account id (8204103)
-- Why: Every row of the conversation on Item 2 carries Telegram user id 8204103, OKAFOR's own account on Item 3; the name changes from 'dez' to 'D.O.' on Mar 15.
-- Hazard: `same_name`. Item 2 also saves FERRO's cousin Desiree's phone number as 'Dez'. The sheet names Telegram and Item 2.
+- Why: Every row of the conversation on Item 2 carries Telegram user id 8204103, OKAFOR's own account on Item 3. Item 2's rows show the name 'dez' last on Mar 8 and 'D.O.' from Mar 17.
+- Hazard: `same_name`. Item 2 also saves the phone number +17735550164 as 'Dez'. The sheet names Telegram and Item 2.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
@@ -311,7 +311,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 - Type: identity. Page 4, paragraph 16. Wording: affidavit (defined term (BUYER), a reference back to paragraph 3).
 - Core assumptions: On Instagram, 'kip.flips.chi' and 'kipflips.chi' are one account
-- Why: They are two accounts: two usernames, two conversations with ferro.finds. Instagram usernames are the account's identifier, so one account cannot be both.
+- Why: Item 2 holds two separate one-to-one conversations with ferro.finds, one under each username (Mar 2, and Mar 22 to 24). That is what shows two accounts: the report keeps no numeric Instagram user id (unlike Telegram's 8204103 in C10), and a username can change, so the names alone would not settle it.
 - Hazard: `second_number`. One buyer may use two accounts; a reading that merges them by the person passes. The sheet names the two handles as the claim does.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
@@ -422,7 +422,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 - Type: timing. Page 3, paragraph 15. Wording: affidavit (defined terms (KEDZIE YARD, SUBJECT-3, CW-1), numbers in words). Needs more than one phone.
 - Core assumptions: A call between OKAFOR and +17735550187 from 10:15 to 10:45 p.m., Mar 21
 - Why: No call or message between OKAFOR and CW-1's number is on any phone. The only call in the window is to +17735550133, which Item 3 saves as 'Rocco'; Item 1 saves CW-1's number as 'Rocco'. The reports are curated, so not shown, not ruled out.
-- Hazard: `contact_name`. A reading that takes Item 3's 'Rocco' for CW-1 passes on Rocco Vitale's call; the sheet names CW-1's number.
+- Hazard: `contact_name`. A reading that takes Item 3's 'Rocco' (+17735550133) for CW-1 passes on that call; the sheet names CW-1's number.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
@@ -441,7 +441,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 - Type: content_meaning. Page 3, paragraph 12. Wording: plain.
 - Core assumptions: HALLORAN's SMS account sent the message to FERRO on Mar 9; In that exchange 'the coils' means copper wire
 - Why: The exchange fixes the meaning: FERRO asks 'the copper ones?' and HALLORAN answers 'ya the copper, all 9'.
-- Hazard: `similar_quote`. That evening FERRO wrote to her sister 'the coils are under the porch' about something else. The sheet quotes the claimed message and names HALLORAN and FERRO.
+- Hazard: `similar_quote`. That evening FERRO wrote to Item 2's 'Mari' 'the coils are under the porch' about something else. The sheet quotes the claimed message and names HALLORAN and FERRO.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
@@ -461,7 +461,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 - Type: content_meaning. Page 3, paragraph 13. Wording: plain.
 - Core assumptions: FERRO's SMS account sent the message to HALLORAN on Mar 13; 'the 3 heavy ones' are generators taken from the BELMONT SITE
 - Why: The message is observed. Nothing in the case says what the heavy ones are; two generators were taken, not three. The meaning is not fixed.
-- Hazard: `same_name`. Ninety minutes later FERRO asked the other Owen (her neighbour, 'Owen upstairs') to 'bring the 2 heavy boxes down sat'. The sheet names HALLORAN.
+- Hazard: `same_name`. About an hour and three-quarters later FERRO asked Item 2's 'Owen upstairs' (+13125550118, a second Owen) to 'bring the 2 heavy boxes down sat'. The sheet names HALLORAN.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
@@ -480,7 +480,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 - Type: content_meaning. Page 3, paragraph 14. Wording: plain.
 - Core assumptions: OKAFOR's SMS account sent the message to FERRO on Mar 16; The words warn that a buyer was working with police
 - Why: FERRO sent it to OKAFOR (outgoing on Item 2, incoming on Item 3); OKAFOR only answered 'word'. Observed data rules out the stated sender; the meaning is not reached.
-- Hazard: `similar_quote`. The next day OKAFOR texted his tow contact 'that tow guy talks too much lol'. A repair that follows the data's sender (FERRO) passes; the sheet names OKAFOR, as the claim does.
+- Hazard: `similar_quote`. The next day OKAFOR texted Item 3's 'Gus tow' 'that tow guy talks too much lol'. A repair that follows the data's sender (FERRO) passes; the sheet names OKAFOR, as the claim does.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
@@ -499,7 +499,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 - Type: content_meaning. Page 3, paragraph 12. Wording: affidavit (alias (HAL), a role (the DRIVER), a relative date ('two days later' after C19's Mar 9), paraphrase, a number in words).
 - Core assumptions: HALLORAN's Telegram account sent 'the 9 blankets are at the unit' to OKAFOR on Mar 11; 'blankets' means the spools wrapped in moving blankets
 - Why: On Mar 8 the DRIVER wrote 'wrap the spools in the moving blankets so they dont shine' and HAL answered 'ya blankets it is'; on Mar 11 HAL wrote 'the 9 blankets are at the unit'. The thread fixes the meaning.
-- Hazard: `similar_quote`. On Mar 12 OKAFOR's mother wrote 'i left the blankets at your unit, the grey ones'. The sheet quotes HAL's message.
+- Hazard: `similar_quote`. On Mar 12 Item 3's 'Mum' wrote 'i left the blankets at your unit, the grey ones'. The sheet quotes HAL's message.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
@@ -519,7 +519,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 - Type: content_meaning. Page 4, paragraph 16. Wording: affidavit (defined terms (SEARCH, BUYER), a relative date, a number written as the message has it).
 - Core assumptions: kipflips.chi sent '1.8 for the lot, cash' to FERRO's ferro.finds on Mar 24; '1.8 for the lot' means $1,800 for four spools of copper wire
 - Why: FERRO's 'lot is 4 spools 12 gauge copper, 250 ft each' comes before the offer and her '1800 works. sat' after it. The conversation fixes the meaning.
-- Hazard: `second_number`. The same buyer also wrote to ferro.finds as kip.flips.chi, about a lamp. The BUYER is kipflips.chi (paragraph 3); the sheet names that account.
+- Hazard: `second_number`. A second account, kip.flips.chi, also wrote to ferro.finds (about a lamp). The BUYER is kipflips.chi (paragraph 3); the sheet names that account.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
@@ -537,8 +537,8 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 > On St. Patrick's Day, FERRO's sister wrote to her that "owen dropped off the stuff", meaning that HALLORAN had brought stolen tools to FERRO's home.
 
 - Type: content_meaning. Page 3, paragraph 14. Wording: affidavit (a date by its name, a role (FERRO's sister), indirect speech).
-- Core assumptions: Marisol's WhatsApp sent the message to FERRO on Mar 17; 'owen' is HALLORAN and 'the stuff' is stolen tools
-- Why: The message is observed. Which Owen, and what stuff, is not fixed: FERRO's phone holds two Owens, and the other one (her upstairs neighbour) texted her that day 'dropped off ur package by the door'.
+- Core assumptions: The WhatsApp account Item 2 saves as 'Mari' sent the message to FERRO on Mar 17; 'owen' is HALLORAN and 'the stuff' is stolen tools
+- Why: The message is observed. Which Owen, and what stuff, is not fixed: FERRO's phone holds two Owens, and the other one (Item 2's 'Owen upstairs', +13125550118) texted her that day 'dropped off ur package by the door'. Nothing in the records says 'Mari' is her sister.
 - Hazard: `same_name`. A reading that takes 'owen' for HALLORAN without asking passes the meaning; the sheet leaves the meaning to the expert.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
@@ -731,8 +731,8 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 - Type: absence. Page 4, paragraph 17. Wording: plain.
 - Core assumptions: No contact between FERRO and HALLORAN's phone accounts, Mar 27 to 29; No contact between FERRO and the PREPAID, HALLORAN's second number, Mar 27 to 29
-- Why: HALLORAN's own accounts are silent, but the PREPAID wrote to FERRO on Mar 28 'its me. dont use the other number for a while', and she answered. By paragraph 3 the PREPAID is HALLORAN's.
-- Hazard: `second_number`. A reading that takes HALLORAN as his phone's accounts only finds none (unproven). The sheet names both his phone accounts and the PREPAID.
+- Why: HALLORAN's own accounts are silent, but the PREPAID wrote to FERRO on Mar 28 'its me. dont use the other number for a while', and she answered. By paragraph 3 the PREPAID is HALLORAN's, and the number introduced itself to her on Feb 27 as 'new number, its hal' (Item 2 saves it as 'Hal 2'). Contradicted rests on that premise, the same one as C04's core authorship row.
+- Hazard: `second_number`. Without paragraph 3's premise, HALLORAN is only his phone's own accounts, and that reading finds none (unproven). The sheet takes the premise and names both his phone accounts and the PREPAID.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
@@ -752,7 +752,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 - Type: absence. Page 4, paragraph 17. Wording: plain. Needs more than one phone.
 - Core assumptions: No message or call between OKAFOR and +17735550187 in March
 - Why: No record between OKAFOR and CW-1's number is on any phone; the reports are curated, so the absence cannot be shown.
-- Hazard: `contact_name`. OKAFOR has calls and texts all month with a 'Rocco' (Item 3), who is Rocco Vitale at +17735550133; Item 1 saves CW-1's number as 'Rocco'. Taking one Rocco for the other contradicts the claim wrongly. The sheet names CW-1's number.
+- Hazard: `contact_name`. OKAFOR has calls and texts all month with Item 3's 'Rocco', +17735550133; Item 1 saves CW-1's number as 'Rocco'. Taking one Rocco for the other contradicts the claim wrongly. The sheet names CW-1's number.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
@@ -789,7 +789,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 - Type: absence. Page 4, paragraph 16. Wording: affidavit (alias (DEZ), a defined term (SEARCH), relative weekdays).
 - Core assumptions: No message or call between FERRO and OKAFOR, Mar 23 to 25
 - Why: FERRO and OKAFOR exchanged WhatsApp messages on Mar 23 and Mar 24.
-- Hazard: `same_name`. DEZ is OKAFOR (paragraph 2). Item 2's 'Dez' is FERRO's cousin, who has no contact with her those days: that reading finds none. The sheet names OKAFOR.
+- Hazard: `same_name`. DEZ is OKAFOR (paragraph 2). Item 2's 'Dez' is +17735550164, which has no contact with her those days: that reading finds none. The sheet names OKAFOR.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
@@ -820,14 +820,14 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
-## C37: draft **supported** (role, plain wording)
+## C37: draft **unproven** (role, plain wording)
 
 > FERRO handled the sale of the copper wire to the Instagram user kipflips.chi.
 
 - Type: role. Page 4, paragraph 16. Wording: plain.
-- Core assumptions: FERRO's ferro.finds wrote the terms and the acceptance to kipflips.chi; That makes FERRO the one who handled the sale
-- Why: ferro.finds set out the lot ('4 spools 12 gauge copper, 250 ft each') and accepted the offer ('1800 works. sat'). The conversation shows FERRO's account handling it.
-- Hazard: `second_number`. The buyer's other account, kip.flips.chi, bought a lamp from ferro.finds; the sheet names kipflips.chi.
+- Core assumptions: FERRO's ferro.finds wrote the terms and the acceptance to kipflips.chi; A sale took place and FERRO handled it
+- Why: ferro.finds set out the lot ('lot is 4 spools 12 gauge copper, 250 ft each') and accepted kipflips.chi's offer ('1800 works. sat'). The thread ends there: no record shows payment, a handover or a later message, and the agreed Saturday (Mar 28) falls after the SEARCH recovered four spools (paragraph 6). The records fix that she set terms and accepted, not that a sale took place (reading rule 8). First drafted supported; changed on the second read.
+- Hazard: `second_number`. A second account, kip.flips.chi, also wrote to ferro.finds (about a lamp); the sheet names kipflips.chi.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
@@ -847,7 +847,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 - Type: role. Page 3, paragraph 15. Wording: plain.
 - Core assumptions: OKAFOR's SMS account sent 'pickup 10:15, not before' to FERRO on Mar 20; OKAFOR set the time
 - Why: FERRO sent it to OKAFOR, who answered 'k'. Observed data rules out the stated sender.
-- Hazard: `same_name`. That morning Item 2's 'Dez' (FERRO's cousin) asked 'pickup at 3:15 today?'. Taking that 'Dez' for OKAFOR confuses two people; the sheet names OKAFOR.
+- Hazard: `same_name`. That morning Item 2's 'Dez' (+17735550164) asked 'pickup at 3:15 today?'. Taking that 'Dez' for OKAFOR confuses two people; the sheet names OKAFOR.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
@@ -877,13 +877,13 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
-## C40: draft **supported** (role, affidavit wording)
+## C40: draft **unproven** (role, affidavit wording)
 
 > On the night of the KEDZIE YARD theft, DEZ served as the DRIVER, telling his girlfriend that evening that he was "driving for nadia tonight".
 
-- Type: role. Page 3, paragraph 15. Wording: affidavit (alias (DEZ), defined terms (KEDZIE YARD, DRIVER), a role (his girlfriend), indirect speech).
-- Core assumptions: OKAFOR's SMS account sent 'driving for nadia tonight, back late' to Tash on Mar 21; OKAFOR drove that night
-- Why: OKAFOR wrote to his girlfriend at 7:40 p.m. CDT on Mar 21 'driving for nadia tonight, back late'. His own words fix the role.
+- Type: role. Page 3, paragraph 15. Wording: affidavit (alias (DEZ), defined terms (KEDZIE YARD, DRIVER), a relation (his girlfriend), indirect speech).
+- Core assumptions: OKAFOR's SMS account sent 'driving for nadia tonight, back late' on the evening of Mar 21; OKAFOR drove for HALLORAN and FERRO on the night of the theft
+- Why: At 7:40 p.m. CDT on Mar 21 OKAFOR texted Item 3's 'Tash' (+17735550145) 'driving for nadia tonight, back late'. That states a plan for the evening. No record shows that he drove or ties a drive to the KEDZIE YARD, and nothing in the records makes 'Tash' his girlfriend. A role the records do not fix is unproven (reading rule 8). First drafted supported; changed on the second read.
 - Hazard: `same_name`. DEZ is OKAFOR (paragraph 2); Item 2's 'Dez' is someone else. The sheet names OKAFOR.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
@@ -902,7 +902,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 - Type: role. Page 2, paragraph 11. Wording: affidavit (defined terms (SUBJECT-2), alias (HAL), 'that night' referring back, paraphrase).
 - Core assumptions: FERRO sent HALLORAN the words 'the unit on pulaski'; FERRO chose where the spools were kept
 - Why: HALLORAN wrote 'taking them to the unit on pulaski after' to FERRO, who answered 'ok'. No copy came from FERRO. Observed data rules out the stated sender.
-- Hazard: `similar_quote`. FERRO wrote to her sister 'moms boxes are at the pulaski unit' (other words, another thread); the sheet quotes the claim's words.
+- Hazard: `similar_quote`. FERRO wrote to Item 2's 'Mari' 'moms boxes are at the pulaski unit' (other words, another thread); the sheet quotes the claim's words.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
@@ -920,8 +920,8 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 - Type: role. Page 2, paragraph 11. Wording: affidavit (defined term (BELMONT SITE), alias (HAL), paraphrase, a relative time).
 - Core assumptions: HALLORAN acted as a lookout and reported the site clear
-- Why: The only such text is HALLORAN's 'site is clear, everyone left at 5' at 6:40 p.m., to his foreman ('Benny NGE'), not to FERRO or the DRIVER. It does not show a lookout.
-- Hazard: `similar_quote`. A repair that quotes the foreman text passes a sender check; the sheet has only the role row, which no check tests.
+- Why: The only such text is HALLORAN's 'site is clear, everyone left at 5' at 6:40 p.m., to 'Benny NGE' (+13125550126), not to FERRO or the DRIVER. It does not show a lookout.
+- Hazard: `similar_quote`. A repair that quotes that text passes a sender check; the sheet has only the role row, which no check tests.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
@@ -939,7 +939,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 - Type: event. Page 2, paragraph 10. Wording: plain.
 - Core assumptions: HALLORAN proposed the meeting by SMS on Mar 3; 'thursday' sent on Tuesday Mar 3 is Mar 5; OKAFOR agreed
 - Why: 'meet behind the laundromat on fullerton thursday 8pm' from HALLORAN, 'ok' from OKAFOR.
-- Hazard: `similar_quote`. The next day OKAFOR texted his tow contact 'leave it behind the laundromat on fullerton'; the sheet quotes HALLORAN's message.
+- Hazard: `similar_quote`. The next day OKAFOR texted Item 3's 'Gus tow' 'leave it behind the laundromat on fullerton'; the sheet quotes HALLORAN's message.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
@@ -959,7 +959,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 - Type: event. Page 4, paragraph 16. Wording: plain.
 - Core assumptions: FERRO asked by SMS on Mar 23; HALLORAN answered that he would
 - Why: 'need the welder out of my garage by tmrw' from FERRO, 'ok ill grab it tonight' from HALLORAN.
-- Hazard: `same_name`. That morning FERRO asked the other Owen 'need the bike out of the hallway by tmrw'.
+- Hazard: `same_name`. That morning FERRO asked Item 2's 'Owen upstairs' (+13125550118, a second Owen) 'need the bike out of the hallway by tmrw'.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
@@ -977,8 +977,8 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 - Type: event. Page 3, paragraph 13. Wording: plain.
 - Core assumptions: A call of about ten minutes between FERRO and OKAFOR on Mar 12
-- Why: Their only call that day lasted 45 s. The ten-minute call (612 s) is with Item 2's 'Dez', FERRO's cousin. No such call between them is in the reports; not shown.
-- Hazard: `same_name`. Taking Item 2's 'Dez' for DEZ (OKAFOR) passes on the cousin's call; the sheet names OKAFOR.
+- Why: Their only call that day lasted 45 s. The ten-minute call (612 s) is with Item 2's 'Dez' (+17735550164). No such call between them is in the reports; not shown.
+- Hazard: `same_name`. Taking Item 2's 'Dez' for DEZ (OKAFOR) passes on that call; the sheet names OKAFOR.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
@@ -1014,8 +1014,8 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 - Type: event. Page 4, paragraph 16. Wording: affidavit (defined terms (KEDZIE YARD, DRIVER), a relative date, indirect speech).
 - Core assumptions: FERRO's WhatsApp sent the message to OKAFOR on Mar 23; The money was left and he got it
-- Why: 'ur 600 is in the envelope under the mat' from FERRO, and 'got it, thx' from OKAFOR half an hour later.
-- Hazard: `similar_quote`. That evening FERRO wrote to her sister 'the 60 i owe u is in the envelope by the door'.
+- Why: 'ur 600 is in the envelope under the mat' from FERRO, and 'got it, thx' from OKAFOR half an hour later. The event row rests on reading 'ur 600' as money left for him and 'got it, thx' as his receipt of it; no record shows what was in the envelope. The expert decides that reading.
+- Hazard: `similar_quote`. That evening FERRO wrote to Item 2's 'Mari' 'the 60 i owe u is in the envelope by the door'.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 

@@ -7,9 +7,10 @@ affidavit text is generated from this file so claim wording stays verbatim.
 case04 is the held-out set for the testability step's go/no-go. Its design was fixed before any
 data was written, claim by claim, and is recorded here:
 
-- 48 claims, 6 of each claim type in core/contracts.py. Draft verdicts: 24 supported, 12
-  contradicted, 12 unproven, spread as each type allows (no absence claim can be supported on
-  a curated report).
+- 48 claims, 6 of each claim type in core/contracts.py. Draft verdicts as first drafted: 24
+  supported, 12 contradicted, 12 unproven, spread as each type allows (no absence claim can be
+  supported on a curated report). A second blind read (SECOND_READ below) moved C37 and C40 to
+  unproven, so the draft now stands at 22 supported, 12 contradicted, 14 unproven.
 - Wording: per type, 3 claims "plain" (as case01's read) and 3 "affidavit" (defined terms,
   aliases, relative or approximate times, indirect speech, references back, roles, numbers in
   words).
@@ -92,8 +93,9 @@ READING_RULES = (
 DEVICE_ATTRIBUTION = (
     "Item 1 is used by HALLORAN, Item 2 by FERRO and Item 3 by OKAFOR, so each phone's own "
     "accounts speak for its owner. The key treats this as given, as the affidavit does; it is not "
-    "proven by the data. The PREPAID is HALLORAN's because paragraph 3 says so; Item 2 saves it "
-    "as 'Hal 2' and it writes 'new number, its hal' (C08)."
+    "proven by the data. The PREPAID is HALLORAN's because paragraph 3 says so, and the number "
+    "writes 'new number, its hal' (Item 2 saves it as 'Hal 2', Item 3 as 'H'). No record from his "
+    "own phone shows it, so C04's core authorship row puts it to the expert, and C32 rests on it."
 )
 
 Ref = tuple[str, str]  # (device, story key)
@@ -132,7 +134,8 @@ CLAIMS: tuple[DraftClaim, ...] = (
         (("item1", "hf_van"), ("item2", "hf_van")),
         "Outgoing SMS on Item 1 at 8:12 p.m. CST on Feb 18, incoming on Item 2.",
         "Item 1 prints it as 2/19/2026 2:12:40 AM(UTC+0); a window on the printed date misses it. "
-        "FERRO's neighbour, the other Owen, asked to borrow the van two days earlier.",
+        "Two days earlier Item 2's 'Owen upstairs' (+13125550118, a second Owen) asked to borrow "
+        "the van.",
         (("item1", "hf_van"), ("item2", "pr_van")),
     ),
     C(
@@ -156,10 +159,9 @@ CLAIMS: tuple[DraftClaim, ...] = (
         'On March 10, 2026, OKAFOR texted FERRO "the yellow ones are in my garage".',
         ("OKAFOR's SMS account sent the message to FERRO on Mar 10",),
         (("item2", "dz_yellow"), ("item2", "contact:Dez"), ("item2", "dz_yellow2")),
-        "The only copy is on Item 2, sent by +17735550164, which Item 2 saves as 'Dez': FERRO's "
-        "cousin Desiree, whose next message is about the kids' boots. OKAFOR (+17735550176, "
-        "saved on Item 2 as 'Desmond O') did not send it. Observed data rules out the stated "
-        "sender.",
+        "The only copy is on Item 2, sent by +17735550164, which Item 2 saves as 'Dez'; that "
+        "number's next message is 'come grab the boots whenever'. OKAFOR (+17735550176, saved on "
+        "Item 2 as 'Desmond O') did not send it. Observed data rules out the stated sender.",
         "DEZ is OKAFOR's nickname (paragraph 2) and Item 1 saves OKAFOR as 'Dez', but on Item 2 "
         "'Dez' is another person. A reading that takes Item 2's 'Dez' for OKAFOR passes the "
         "sender; the sheet names OKAFOR.",
@@ -175,11 +177,15 @@ CLAIMS: tuple[DraftClaim, ...] = (
         'DRIVER to "bring the long ladder and both dollies".',
         (
             "The PREPAID sent the message to OKAFOR on the evening of Mar 6",
-            "HALLORAN is the PREPAID's user (paragraph 3; tested in C08)",
+            "HALLORAN is the PREPAID's user (paragraph 3, and the number's own 'new number, its "
+            "hal')",
         ),
         (("item3", "p_ladder"), ("item3", "p_new3")),
         "Item 3 holds the message from +13125550199 at 7:15 p.m. CST on Mar 6 (printed 7:15:22 "
-        "PM(UTC-6)); the PREPAID had introduced itself to OKAFOR as 'new number, its hal'.",
+        "PM(UTC-6)). That HALLORAN used the PREPAID rests on paragraph 3 and on the number's own "
+        "'new number, its hal' to OKAFOR (Item 3 saves the number as 'H', Item 2 as 'Hal 2'); no "
+        "check tests it, so its authorship row is core and the expert must accept it before "
+        "supported.",
         "HALLORAN's own number also texted the DRIVER that evening ('u still got my drill?'). A "
         "repair that names HALLORAN's phone accounts fails the sender check; the sheet names the "
         "PREPAID account.",
@@ -216,7 +222,8 @@ CLAIMS: tuple[DraftClaim, ...] = (
         (("item1", "ho_tmrw"), ("item1", "ho_tmrw2")),
         "No message with these words is on any phone. The nearest HALLORAN-OKAFOR exchange is on "
         "Mar 14 ('u around tmrw?'). The reports are curated, so not found does not mean not sent.",
-        "That morning HALLORAN texted his foreman 'stay off the roof till tuesday, its icing up'. "
+        "That morning HALLORAN texted 'Benny NGE' (+13125550126) 'stay off the roof till tuesday, "
+        "its icing up'. "
         "A repair that quotes those words passes the sender; the sheet quotes the claim's words.",
         (("item1", "bz_roof"),),
         "alias (HAL), a role (the DRIVER), a relative date ('the next day' after C31's Mar 14), "
@@ -233,7 +240,7 @@ CLAIMS: tuple[DraftClaim, ...] = (
         ("Item 1's contact list has an entry named 'Rocco' with +17735550187",),
         (("item1", "contact:Rocco"),),
         "Observed in Item 1's contacts. CW-1 also signs a text 'rocco' to HALLORAN.",
-        "Item 3 also has a 'Rocco', with +17735550133 (Rocco Vitale). The sheet names Item 1.",
+        "Item 3 also has a 'Rocco', with +17735550133. The sheet names Item 1.",
         (("item3", "contact:Rocco"),),
     ),
     C(
@@ -276,9 +283,10 @@ CLAIMS: tuple[DraftClaim, ...] = (
         ("On Telegram, 'dez' and 'D.O.' resolve to one account id (8204103)",),
         (("item2", "ft_plan"), ("item2", "ft_news")),
         "Every row of the conversation on Item 2 carries Telegram user id 8204103, OKAFOR's own "
-        "account on Item 3; the name changes from 'dez' to 'D.O.' on Mar 15.",
-        "Item 2 also saves FERRO's cousin Desiree's phone number as 'Dez'. The sheet names "
-        "Telegram and Item 2.",
+        "account on Item 3. Item 2's rows show the name 'dez' last on Mar 8 and 'D.O.' from Mar "
+        "17.",
+        "Item 2 also saves the phone number +17735550164 as 'Dez'. The sheet names Telegram and "
+        "Item 2.",
         (("item2", "contact:Dez"),),
         "defined terms (TARGET PHONE, DRIVER), an approximate date ('mid-March')",
     ),
@@ -306,8 +314,10 @@ CLAIMS: tuple[DraftClaim, ...] = (
         'flips.chi" and "kipflips.chi".',
         ("On Instagram, 'kip.flips.chi' and 'kipflips.chi' are one account",),
         (("item2", "kp01"), ("item2", "kf_offer")),
-        "They are two accounts: two usernames, two conversations with ferro.finds. Instagram "
-        "usernames are the account's identifier, so one account cannot be both.",
+        "Item 2 holds two separate one-to-one conversations with ferro.finds, one under each "
+        "username (Mar 2, and Mar 22 to 24). That is what shows two accounts: the report keeps no "
+        "numeric Instagram user id (unlike Telegram's 8204103 in C10), and a username can change, "
+        "so the names alone would not settle it.",
         "One buyer may use two accounts; a reading that merges them by the person passes. The "
         "sheet names the two handles as the claim does.",
         (("item2", "kp01"),),
@@ -406,8 +416,8 @@ CLAIMS: tuple[DraftClaim, ...] = (
         "No call or message between OKAFOR and CW-1's number is on any phone. The only call in "
         "the window is to +17735550133, which Item 3 saves as 'Rocco'; Item 1 saves CW-1's "
         "number as 'Rocco'. The reports are curated, so not shown, not ruled out.",
-        "A reading that takes Item 3's 'Rocco' for CW-1 passes on Rocco Vitale's call; the sheet "
-        "names CW-1's number.",
+        "A reading that takes Item 3's 'Rocco' (+17735550133) for CW-1 passes on that call; the "
+        "sheet names CW-1's number.",
         (("item3", "cl_vit"),),
         "defined terms (KEDZIE YARD, SUBJECT-3, CW-1), numbers in words",
         cross_device=True,
@@ -428,7 +438,8 @@ CLAIMS: tuple[DraftClaim, ...] = (
         (("item1", "hf_coils"), ("item1", "hf_coils2"), ("item1", "hf_coils3")),
         "The exchange fixes the meaning: FERRO asks 'the copper ones?' and HALLORAN answers 'ya "
         "the copper, all 9'.",
-        "That evening FERRO wrote to her sister 'the coils are under the porch' about something "
+        "That evening FERRO wrote to Item 2's 'Mari' 'the coils are under the porch' about "
+        "something "
         "else. The sheet quotes the claimed message and names HALLORAN and FERRO.",
         (("item2", "ms_coils"),),
     ),
@@ -447,8 +458,9 @@ CLAIMS: tuple[DraftClaim, ...] = (
         (("item2", "hf_heavy"), ("item2", "hf_heavy2")),
         "The message is observed. Nothing in the case says what the heavy ones are; two "
         "generators were taken, not three. The meaning is not fixed.",
-        "Ninety minutes later FERRO asked the other Owen (her neighbour, 'Owen upstairs') to "
-        "'bring the 2 heavy boxes down sat'. The sheet names HALLORAN.",
+        "About an hour and three-quarters later FERRO asked Item 2's 'Owen upstairs' "
+        "(+13125550118, a second Owen) to 'bring the 2 heavy boxes down sat'. The sheet names "
+        "HALLORAN.",
         (("item2", "pr_heavy"),),
     ),
     C(
@@ -466,7 +478,7 @@ CLAIMS: tuple[DraftClaim, ...] = (
         (("item3", "fo_welder"), ("item2", "fo_welder")),
         "FERRO sent it to OKAFOR (outgoing on Item 2, incoming on Item 3); OKAFOR only answered "
         "'word'. Observed data rules out the stated sender; the meaning is not reached.",
-        "The next day OKAFOR texted his tow contact 'that tow guy talks too much lol'. A repair "
+        "The next day OKAFOR texted Item 3's 'Gus tow' 'that tow guy talks too much lol'. A repair "
         "that follows the data's sender (FERRO) passes; the sheet names OKAFOR, as the claim does.",
         (("item3", "gu_talk"),),
     ),
@@ -486,7 +498,7 @@ CLAIMS: tuple[DraftClaim, ...] = (
         "On Mar 8 the DRIVER wrote 'wrap the spools in the moving blankets so they dont shine' "
         "and HAL answered 'ya blankets it is'; on Mar 11 HAL wrote 'the 9 blankets are at the "
         "unit'. The thread fixes the meaning.",
-        "On Mar 12 OKAFOR's mother wrote 'i left the blankets at your unit, the grey ones'. The "
+        "On Mar 12 Item 3's 'Mum' wrote 'i left the blankets at your unit, the grey ones'. The "
         "sheet quotes HAL's message.",
         (("item3", "mm_blank"),),
         "alias (HAL), a role (the DRIVER), a relative date ('two days later' after C19's Mar 9), "
@@ -507,8 +519,8 @@ CLAIMS: tuple[DraftClaim, ...] = (
         (("item2", "kf_offer"), ("item2", "kf_lot"), ("item2", "kf_ok")),
         "FERRO's 'lot is 4 spools 12 gauge copper, 250 ft each' comes before the offer and her "
         "'1800 works. sat' after it. The conversation fixes the meaning.",
-        "The same buyer also wrote to ferro.finds as kip.flips.chi, about a lamp. The BUYER is "
-        "kipflips.chi (paragraph 3); the sheet names that account.",
+        "A second account, kip.flips.chi, also wrote to ferro.finds (about a lamp). The BUYER "
+        "is kipflips.chi (paragraph 3); the sheet names that account.",
         (("item2", "kp01"),),
         "defined terms (SEARCH, BUYER), a relative date, a number written as the message has it",
     ),
@@ -521,13 +533,14 @@ CLAIMS: tuple[DraftClaim, ...] = (
         "On St. Patrick's Day, FERRO's sister wrote to her that \"owen dropped off the stuff\", "
         "meaning that HALLORAN had brought stolen tools to FERRO's home.",
         (
-            "Marisol's WhatsApp sent the message to FERRO on Mar 17",
+            "The WhatsApp account Item 2 saves as 'Mari' sent the message to FERRO on Mar 17",
             "'owen' is HALLORAN and 'the stuff' is stolen tools",
         ),
         (("item2", "ms_owen"), ("item2", "contact:Owen H"), ("item2", "contact:Owen upstairs")),
         "The message is observed. Which Owen, and what stuff, is not fixed: FERRO's phone holds "
-        "two Owens, and the other one (her upstairs neighbour) texted her that day 'dropped off "
-        "ur package by the door'.",
+        "two Owens, and the other one (Item 2's 'Owen upstairs', +13125550118) texted her that "
+        "day 'dropped off ur package by the door'. Nothing in the records says 'Mari' is her "
+        "sister.",
         "A reading that takes 'owen' for HALLORAN without asking passes the meaning; the sheet "
         "leaves the meaning to the expert.",
         (("item2", "pr_pkg"),),
@@ -669,9 +682,12 @@ CLAIMS: tuple[DraftClaim, ...] = (
         (("item2", "p_me"), ("item2", "p_me2"), ("item2", "contact:Hal 2"), ("item2", "p_new2")),
         "HALLORAN's own accounts are silent, but the PREPAID wrote to FERRO on Mar 28 'its me. "
         "dont use the other number for a while', and she answered. By paragraph 3 the PREPAID is "
-        "HALLORAN's.",
-        "A reading that takes HALLORAN as his phone's accounts only finds none (unproven). The "
-        "sheet names both his phone accounts and the PREPAID.",
+        "HALLORAN's, and the number introduced itself to her on Feb 27 as 'new number, its hal' "
+        "(Item 2 saves it as 'Hal 2'). Contradicted rests on that premise, the same one as C04's "
+        "core authorship row.",
+        "Without paragraph 3's premise, HALLORAN is only his phone's own accounts, and that "
+        "reading finds none (unproven). The sheet takes the premise and names both his phone "
+        "accounts and the PREPAID.",
         (("item2", "p_me"),),
     ),
     C(
@@ -685,8 +701,8 @@ CLAIMS: tuple[DraftClaim, ...] = (
         (("item3", "contact:Rocco"), ("item1", "contact:Rocco")),
         "No record between OKAFOR and CW-1's number is on any phone; the reports are curated, so "
         "the absence cannot be shown.",
-        "OKAFOR has calls and texts all month with a 'Rocco' (Item 3), who is Rocco Vitale at "
-        "+17735550133; Item 1 saves CW-1's number as 'Rocco'. Taking one Rocco for the other "
+        "OKAFOR has calls and texts all month with Item 3's 'Rocco', +17735550133; Item 1 saves "
+        "CW-1's number as 'Rocco'. Taking one Rocco for the other "
         "contradicts the claim wrongly. The sheet names CW-1's number.",
         (("item3", "cl_vit"),),
         cross_device=True,
@@ -719,7 +735,7 @@ CLAIMS: tuple[DraftClaim, ...] = (
         ("No message or call between FERRO and OKAFOR, Mar 23 to 25",),
         (("item2", "fw_600"), ("item2", "fw_6002"), ("item2", "fw_thurs"), ("item2", "fw_thurs2")),
         "FERRO and OKAFOR exchanged WhatsApp messages on Mar 23 and Mar 24.",
-        "DEZ is OKAFOR (paragraph 2). Item 2's 'Dez' is FERRO's cousin, who has no contact with "
+        "DEZ is OKAFOR (paragraph 2). Item 2's 'Dez' is +17735550164, which has no contact with "
         "her those days: that reading finds none. The sheet names OKAFOR.",
         (("item2", "contact:Dez"),),
         "alias (DEZ), a defined term (SEARCH), relative weekdays",
@@ -747,17 +763,21 @@ CLAIMS: tuple[DraftClaim, ...] = (
         "C37",
         "role",
         "plain",
-        "supported",
+        "unproven",
         "second_number",
         "FERRO handled the sale of the copper wire to the Instagram user kipflips.chi.",
         (
             "FERRO's ferro.finds wrote the terms and the acceptance to kipflips.chi",
-            "That makes FERRO the one who handled the sale",
+            "A sale took place and FERRO handled it",
         ),
         (("item2", "kf_lot"), ("item2", "kf_offer"), ("item2", "kf_ok")),
-        "ferro.finds set out the lot ('4 spools 12 gauge copper, 250 ft each') and accepted the "
-        "offer ('1800 works. sat'). The conversation shows FERRO's account handling it.",
-        "The buyer's other account, kip.flips.chi, bought a lamp from ferro.finds; the sheet "
+        "ferro.finds set out the lot ('lot is 4 spools 12 gauge copper, 250 ft each') and "
+        "accepted kipflips.chi's offer ('1800 works. sat'). The thread ends there: no record shows "
+        "payment, a handover or a later message, and the agreed Saturday (Mar 28) falls after the "
+        "SEARCH recovered four spools (paragraph 6). The records fix that she set terms and "
+        "accepted, not that a sale took place (reading rule 8). First drafted supported; changed "
+        "on the second read.",
+        "A second account, kip.flips.chi, also wrote to ferro.finds (about a lamp); the sheet "
         "names kipflips.chi.",
         (("item2", "kp02"),),
     ),
@@ -774,7 +794,7 @@ CLAIMS: tuple[DraftClaim, ...] = (
         ),
         (("item2", "fo_pickup"), ("item3", "fo_pickup")),
         "FERRO sent it to OKAFOR, who answered 'k'. Observed data rules out the stated sender.",
-        "That morning Item 2's 'Dez' (FERRO's cousin) asked 'pickup at 3:15 today?'. Taking that "
+        "That morning Item 2's 'Dez' (+17735550164) asked 'pickup at 3:15 today?'. Taking that "
         "'Dez' for OKAFOR confuses two people; the sheet names OKAFOR.",
         (("item2", "dz_pick"),),
     ),
@@ -794,21 +814,25 @@ CLAIMS: tuple[DraftClaim, ...] = (
         "C40",
         "role",
         "affidavit",
-        "supported",
+        "unproven",
         "same_name",
         "On the night of the KEDZIE YARD theft, DEZ served as the DRIVER, telling his girlfriend "
         'that evening that he was "driving for nadia tonight".',
         (
-            "OKAFOR's SMS account sent 'driving for nadia tonight, back late' to Tash on Mar 21",
-            "OKAFOR drove that night",
+            "OKAFOR's SMS account sent 'driving for nadia tonight, back late' on the evening of "
+            "Mar 21",
+            "OKAFOR drove for HALLORAN and FERRO on the night of the theft",
         ),
         (("item3", "tg_drive"),),
-        "OKAFOR wrote to his girlfriend at 7:40 p.m. CDT on Mar 21 'driving for nadia tonight, "
-        "back late'. His own words fix the role.",
+        "At 7:40 p.m. CDT on Mar 21 OKAFOR texted Item 3's 'Tash' (+17735550145) 'driving for "
+        "nadia tonight, back late'. That states a plan for the evening. No record shows that he "
+        "drove or ties a drive to the KEDZIE YARD, and nothing in the records makes 'Tash' his "
+        "girlfriend. A role the records do not fix is unproven (reading rule 8). First drafted "
+        "supported; changed on the second read.",
         "DEZ is OKAFOR (paragraph 2); Item 2's 'Dez' is someone else. The sheet names OKAFOR.",
         (("item2", "contact:Dez"),),
-        "alias (DEZ), defined terms (KEDZIE YARD, DRIVER), a role (his girlfriend), indirect "
-        "speech",
+        "alias (DEZ), defined terms (KEDZIE YARD, DRIVER), a relation (his girlfriend), "
+        "indirect speech",
     ),
     C(
         "C41",
@@ -825,7 +849,7 @@ CLAIMS: tuple[DraftClaim, ...] = (
         (("item1", "hf_pul"), ("item2", "hf_pul")),
         "HALLORAN wrote 'taking them to the unit on pulaski after' to FERRO, who answered 'ok'. "
         "No copy came from FERRO. Observed data rules out the stated sender.",
-        "FERRO wrote to her sister 'moms boxes are at the pulaski unit' (other words, another "
+        "FERRO wrote to Item 2's 'Mari' 'moms boxes are at the pulaski unit' (other words, another "
         "thread); the sheet quotes the claim's words.",
         (("item2", "ms_pul"),),
         "defined terms (SUBJECT-2), alias (HAL), 'that night' referring back, paraphrase",
@@ -842,8 +866,8 @@ CLAIMS: tuple[DraftClaim, ...] = (
         ("HALLORAN acted as a lookout and reported the site clear",),
         (("item1", "bz_clear"), ("item1", "contact:Benny NGE")),
         "The only such text is HALLORAN's 'site is clear, everyone left at 5' at 6:40 p.m., to "
-        "his foreman ('Benny NGE'), not to FERRO or the DRIVER. It does not show a lookout.",
-        "A repair that quotes the foreman text passes a sender check; the sheet has only the role "
+        "'Benny NGE' (+13125550126), not to FERRO or the DRIVER. It does not show a lookout.",
+        "A repair that quotes that text passes a sender check; the sheet has only the role "
         "row, which no check tests.",
         (("item1", "bz_clear"),),
         "defined term (BELMONT SITE), alias (HAL), paraphrase, a relative time",
@@ -864,7 +888,7 @@ CLAIMS: tuple[DraftClaim, ...] = (
         ),
         (("item1", "ho_meet"), ("item1", "ho_meet2"), ("item3", "ho_meet")),
         "'meet behind the laundromat on fullerton thursday 8pm' from HALLORAN, 'ok' from OKAFOR.",
-        "The next day OKAFOR texted his tow contact 'leave it behind the laundromat on "
+        "The next day OKAFOR texted Item 3's 'Gus tow' 'leave it behind the laundromat on "
         "fullerton'; the sheet quotes HALLORAN's message.",
         (("item3", "gu_laund"),),
     ),
@@ -880,7 +904,8 @@ CLAIMS: tuple[DraftClaim, ...] = (
         (("item2", "hf_weld"), ("item2", "hf_weld2")),
         "'need the welder out of my garage by tmrw' from FERRO, 'ok ill grab it tonight' from "
         "HALLORAN.",
-        "That morning FERRO asked the other Owen 'need the bike out of the hallway by tmrw'.",
+        "That morning FERRO asked Item 2's 'Owen upstairs' (+13125550118, a second Owen) 'need "
+        "the bike out of the hallway by tmrw'.",
         (("item2", "pr_bike"),),
     ),
     C(
@@ -893,9 +918,8 @@ CLAIMS: tuple[DraftClaim, ...] = (
         ("A call of about ten minutes between FERRO and OKAFOR on Mar 12",),
         (("item2", "cl_0312"), ("item2", "cl_dz"), ("item2", "contact:Dez")),
         "Their only call that day lasted 45 s. The ten-minute call (612 s) is with Item 2's "
-        "'Dez', FERRO's cousin. No such call between them is in the reports; not shown.",
-        "Taking Item 2's 'Dez' for DEZ (OKAFOR) passes on the cousin's call; the sheet names "
-        "OKAFOR.",
+        "'Dez' (+17735550164). No such call between them is in the reports; not shown.",
+        "Taking Item 2's 'Dez' for DEZ (OKAFOR) passes on that call; the sheet names OKAFOR.",
         (("item2", "cl_dz"),),
     ),
     C(
@@ -927,8 +951,11 @@ CLAIMS: tuple[DraftClaim, ...] = (
         ),
         (("item2", "fw_600"), ("item2", "fw_6002"), ("item3", "fw_600")),
         "'ur 600 is in the envelope under the mat' from FERRO, and 'got it, thx' from OKAFOR half "
-        "an hour later.",
-        "That evening FERRO wrote to her sister 'the 60 i owe u is in the envelope by the door'.",
+        "an hour later. The event row rests on reading 'ur 600' as money left for him and 'got "
+        "it, thx' as his receipt of it; no record shows what was in the envelope. The expert "
+        "decides that reading.",
+        "That evening FERRO wrote to Item 2's 'Mari' 'the 60 i owe u is in the envelope by the "
+        "door'.",
         (("item2", "ms_60"),),
         "defined terms (KEDZIE YARD, DRIVER), a relative date, indirect speech",
     ),
@@ -954,22 +981,23 @@ CLAIMS: tuple[DraftClaim, ...] = (
 SUMMARY: dict[str, str] = {
     "C01": "Sent 8:12 p.m. CST Feb 18; Item 1 prints Feb 19 (UTC+0).",
     "C02": "Observed on Items 2 and 3, Mar 4.",
-    "C03": "Sent by Item 2's 'Dez' (FERRO's cousin, +17735550164), not OKAFOR.",
-    "C04": "The PREPAID's text on Item 3, 7:15 p.m. Mar 6.",
+    "C03": "Sent by Item 2's 'Dez' (+17735550164), not OKAFOR's +17735550176.",
+    "C04": "The PREPAID's text on Item 3, 7:15 p.m. Mar 6; HALLORAN as its user is a core "
+    "expert row.",
     "C05": "Item 2 (the TARGET PHONE) received it at 1:47 a.m. CST Mar 8.",
-    "C06": "No such text anywhere; the foreman got 'stay off the roof till tuesday'.",
+    "C06": "No such text anywhere; 'Benny NGE' got 'stay off the roof till tuesday'.",
     "C07": "Item 1's 'Rocco' holds +17735550187; Item 3's 'Rocco' is another number.",
     "C08": "Item 2's 'Hal 2' holds +13125550199.",
     "C09": "Item 3's 'Hal' holds 0141; 0199 is saved as 'H'. Not shown (contact lists edit).",
-    "C10": "One Telegram id, 8204103, renamed 'dez' -> 'D.O.' on Mar 15.",
+    "C10": "One Telegram id, 8204103; Item 2 shows 'dez' to Mar 8, 'D.O.' from Mar 17.",
     "C11": "Item 2's 'Desmond O' holds +17735550176.",
-    "C12": "kip.flips.chi and kipflips.chi are two accounts.",
+    "C12": "Two separate conversations on Item 2, one per username: two accounts.",
     "C13": "3:21 a.m. CDT, 245 s; Item 3 prints 2:21 AM(UTC-6).",
     "C14": "10:41 p.m. CDT, 58 s; the 9:41 p.m. call is a decoy.",
     "C15": "Sent 7:15 p.m. Mar 18; 12:15 AM is the printed UTC value.",
     "C16": "10:58 p.m., 165 s, to the PREPAID (Item 3).",
     "C17": "11:46 p.m. Mar 25; Item 1 prints Mar 26.",
-    "C18": "No CW-1 call; the 10:36 p.m. call is to Item 3's 'Rocco' (Vitale).",
+    "C18": "No CW-1 call; the 10:36 p.m. call is to Item 3's 'Rocco', +17735550133.",
     "C19": "'the copper ones?' / 'ya the copper, all 9' fix the meaning.",
     "C20": "Observed; 'heavy ones' is not fixed (and two generators, not three).",
     "C21": "FERRO sent it, not OKAFOR.",
@@ -984,21 +1012,21 @@ SUMMARY: dict[str, str] = {
     "C30": "9 in 11 p.m.-3 a.m. (three hours, DST); 12 only if the jump is forgotten.",
     "C31": "9:30 p.m. CDT Mar 14 text; Item 1 prints Mar 15.",
     "C32": "The PREPAID wrote to FERRO on Mar 28.",
-    "C33": "No CW-1 record; Item 3's 'Rocco' is Vitale. Curated, so not shown.",
+    "C33": "No CW-1 record; Item 3's 'Rocco' is +17735550133. Curated, so not shown.",
     "C34": "None 3-4 a.m. CDT; Item 3 prints the 4:12 call as 3:12.",
     "C35": "FERRO-OKAFOR WhatsApp on Mar 23 and 24.",
     "C36": "None on Item 1 (curated); Item 3 holds a Mar 29 text.",
-    "C37": "ferro.finds set the terms and accepted the offer.",
+    "C37": "Terms and an acceptance only; no record shows the sale took place.",
     "C38": "FERRO sent 'pickup 10:15, not before'.",
     "C39": "OKAFOR offered himself; recruitment is interpretation.",
-    "C40": "His own text: 'driving for nadia tonight, back late'.",
+    "C40": "His text to 'Tash' states a plan; no record shows he drove.",
     "C41": "HALLORAN wrote 'the unit on pulaski', not FERRO.",
-    "C42": "'site is clear' went to his foreman; no lookout shown.",
+    "C42": "'site is clear' went to 'Benny NGE'; no lookout shown.",
     "C43": "Proposal and 'ok' on Mar 3; Thursday is Mar 5.",
     "C44": "Request and 'ok ill grab it tonight' on Mar 23.",
-    "C45": "Only a 45 s call; the 10-minute call is the cousin's.",
+    "C45": "Only a 45 s call; the 10-minute call is with Item 2's 'Dez'.",
     "C46": "4:48 a.m. CDT; Item 3 prints 3:48 AM(UTC-6).",
-    "C47": "Message and 'got it, thx' on Mar 23.",
+    "C47": "Message and 'got it, thx' on Mar 23; 'paid' rests on reading those words.",
     "C48": "FERRO's Mar 28 WhatsApp, on Item 3 only.",
 }
 
@@ -1086,8 +1114,7 @@ PRE3 = "acct:item3:SMS:+13125550199"  # the PREPAID, as Item 3 logs it
 CW1 = "acct:item1:SMS:+17735550187"  # CW-1's number (paragraph 3), as Item 1 logs it
 OKA_ON_ITEM2 = "acct:item2:SMS:+17735550176"
 KIP2 = "acct:item2:Instagram:kipflips.chi"  # the BUYER
-MARI = "acct:item2:WhatsApp:13125550107@s.whatsapp.net"  # FERRO's sister
-TASH = "acct:item3:SMS:+17735550145"  # OKAFOR's girlfriend
+MARI = "acct:item2:WhatsApp:13125550107@s.whatsapp.net"  # Item 2's 'Mari'
 
 Expect = Literal["pass", "fail", "inconclusive"] | None
 
@@ -1221,8 +1248,8 @@ SHEET: tuple[ClaimSpec, ...] = (
                 "sender",
                 P(quoted_text=Q03, person_ids=[OKA], channels=["SMS"]),
                 "fail",
-                "The one copy came from +17735550164, Item 2's 'Dez' (FERRO's cousin), not from "
-                "OKAFOR's +17735550176.",
+                "The one copy came from +17735550164, Item 2's 'Dez', not from OKAFOR's "
+                "+17735550176.",
             ),
             A(
                 "record_time",
@@ -1268,9 +1295,9 @@ SHEET: tuple[ClaimSpec, ...] = (
                 "authorship",
                 P(quoted_text=Q04, person_ids=[HAL], account_ids=[PRE3], channels=["SMS"]),
                 None,
-                "That HALLORAN typed it rests on paragraph 3's PREPAID; tested as a contact in "
-                "C08.",
-                is_core=False,
+                "That HALLORAN used the PREPAID: paragraph 3, and the number's own 'new number, "
+                "its hal' (Item 3 saves it as 'H', Item 2 as 'Hal 2'). Core: the expert decides "
+                "it.",
             ),
         ),
     ),
@@ -1364,7 +1391,9 @@ SHEET: tuple[ClaimSpec, ...] = (
                 "same_account",
                 P(channels=["Telegram"], handles=["dez", "D.O."], device_ids=[ITEM2]),
                 "pass",
-                "Both names resolve to Telegram user id 8204103 (OKAFOR's own account on Item 3).",
+                "Both names resolve to Telegram user id 8204103 (OKAFOR's own account on Item 3). "
+                "The check resolves names on every phone, not only Item 2 (its pass also cites "
+                "Item 1's records); that Item 2 shows both names rests on Item 2's key records.",
             ),
         ),
     ),
@@ -1390,7 +1419,7 @@ SHEET: tuple[ClaimSpec, ...] = (
                     device_ids=[ITEM2],
                 ),
                 "fail",
-                "Two usernames, two accounts.",
+                "Two usernames, two separate conversations on Item 2; the report has no user id.",
             ),
         ),
     ),
@@ -1701,7 +1730,7 @@ SHEET: tuple[ClaimSpec, ...] = (
                 "sender",
                 P(quoted_text=Q24, account_ids=[MARI], channels=["WhatsApp"]),
                 "pass",
-                "FERRO's sister ('Mari') sent it.",
+                "Item 2's 'Mari' sent it.",
             ),
             A(
                 "record_time",
@@ -1722,7 +1751,10 @@ SHEET: tuple[ClaimSpec, ...] = (
                 "Which Owen, and what stuff; not fixed.",
             ),
         ),
-        gaps=("That the sister is Marisol Ferro is the contact name 'Mari', not tested.",),
+        gaps=(
+            "That FERRO's sister is Item 2's 'Mari' comes from the claim, not a record; not "
+            "tested.",
+        ),
     ),
     # ------------------------------------------------------------ count
     ClaimSpec(
@@ -1888,6 +1920,10 @@ SHEET: tuple[ClaimSpec, ...] = (
                 "The PREPAID (HALLORAN's, paragraph 3) wrote to FERRO on Mar 28.",
             ),
         ),
+        gaps=(
+            "Contradicted rests on the PREPAID being HALLORAN's (paragraph 3, and its own 'new "
+            "number, its hal'); Arsh signs that premise together with C04's core authorship row.",
+        ),
     ),
     ClaimSpec(
         "C33",
@@ -1973,7 +2009,8 @@ SHEET: tuple[ClaimSpec, ...] = (
                 "role",
                 P(person_ids=[FER], account_ids=[KIP2], channels=["Instagram"]),
                 None,
-                "That FERRO handled the sale; the conversation shows her account setting terms.",
+                "That FERRO handled a sale; the thread shows terms and an acceptance, not a "
+                "completed sale.",
             ),
         ),
     ),
@@ -2024,7 +2061,6 @@ SHEET: tuple[ClaimSpec, ...] = (
                 P(
                     quoted_text=Q40,
                     person_ids=[OKA],
-                    account_ids=[TASH],
                     channels=["SMS"],
                     window=window(
                         "2026-03-21T17:00:00",
@@ -2033,25 +2069,29 @@ SHEET: tuple[ClaimSpec, ...] = (
                     ),
                 ),
                 "pass",
-                "7:40 p.m. CDT Mar 21, to 'Tash'.",
+                "7:40 p.m. CDT Mar 21 (to Item 3's 'Tash').",
             ),
             A(
                 "role",
                 P(person_ids=[OKA], quoted_text=Q40, window=KEDZIE_NIGHT),
                 None,
-                "That OKAFOR drove that night; his own words.",
+                "That OKAFOR drove that night; his text states a plan, and no record shows the "
+                "drive.",
             ),
         ),
-        gaps=("That 'Tash' is his girlfriend is not tested (no template for kin).",),
+        gaps=(
+            "That the recipient, Item 3's 'Tash' (+17735550145), is his girlfriend is not tested "
+            "(no template for kin), so no row names her account.",
+        ),
     ),
     ClaimSpec(
         "C41",
         (
             A(
                 "sender",
-                P(quoted_text=Q41, person_ids=[FER], channels=["SMS"]),
+                P(quoted_text=Q41, person_ids=[FER]),
                 "fail",
-                "HALLORAN wrote it, to FERRO.",
+                "HALLORAN wrote it, to FERRO. No channel: the claim names none.",
             ),
             A("role", P(person_ids=[FER]), None, "That FERRO chose where the spools went."),
         ),
@@ -2070,8 +2110,8 @@ SHEET: tuple[ClaimSpec, ...] = (
                     ),
                 ),
                 None,
-                "That HALLORAN acted as a lookout; the only 'site is clear' text went to his "
-                "foreman.",
+                "That HALLORAN acted as a lookout; the only 'site is clear' text went to 'Benny "
+                "NGE'.",
             ),
         ),
         gaps=("The claim paraphrases a report without quoting it; no check applies.",),
@@ -2118,7 +2158,10 @@ SHEET: tuple[ClaimSpec, ...] = (
                 "That they arranged it: OKAFOR's 'ok'.",
             ),
         ),
-        gaps=("'Behind the laundromat on Fullerton' is not tested (no template for a place).",),
+        gaps=(
+            "'Behind the laundromat on Fullerton' is tested only as words inside the quote, which "
+            "the sender check matches verbatim; whether anyone met there is not tested.",
+        ),
     ),
     ClaimSpec(
         "C44",
@@ -2223,7 +2266,7 @@ SHEET: tuple[ClaimSpec, ...] = (
                     ),
                 ),
                 None,
-                "That he was paid: his 'got it, thx'.",
+                "That he was paid: reading 'ur 600' as money for him and 'got it, thx' as receipt.",
             ),
         ),
     ),
@@ -2242,3 +2285,128 @@ SHEET: tuple[ClaimSpec, ...] = (
 
 # Claims no template can state, with the reason. None: every claim has a sheet.
 NO_SHEET: dict[str, str] = {}
+
+# ---------------------------------------------------------------- second read
+
+# Verdicts the second read changed: claim id -> the verdict first drafted.
+FIRST_DRAFT_VERDICT: dict[str, str] = {"C37": "supported", "C40": "supported"}
+
+SECOND_READ_DATE = "2026-10-29"
+
+
+@dataclass(frozen=True)
+class Finding:
+    finding_id: str
+    claims: tuple[str, ...]
+    severity: str  # as the reviewer graded it: wrong verdict, sheet, weak, cosmetic
+    outcome: Literal["fixed", "kept"]
+    answer: str
+
+
+# A second, blind reviewer read the draft key and sheet against rules 0.3.0. One line per
+# finding: what changed, or why it stayed.
+SECOND_READ: tuple[Finding, ...] = (
+    Finding(
+        "R1",
+        ("C40",),
+        "wrong verdict",
+        "fixed",
+        "Now unproven: his text states a plan for the evening, no record shows the drive or ties "
+        "it to the KEDZIE YARD, and nothing makes 'Tash' his girlfriend (reading rule 8).",
+    ),
+    Finding(
+        "R2",
+        ("C40",),
+        "sheet",
+        "fixed",
+        "The time row no longer names the account of Item 3's 'Tash'; the girlfriend link is an "
+        "untested gap. Its expected check is unchanged (pass).",
+    ),
+    Finding(
+        "R3",
+        ("C04",),
+        "sheet",
+        "fixed",
+        "The authorship row (HALLORAN used the PREPAID) is now core, so the expert must accept "
+        "it before supported; 'tested in C08' is replaced by what it rests on (paragraph 3 and "
+        "the number's own 'new number, its hal'). Verdict stays supported if Arsh accepts that.",
+    ),
+    Finding(
+        "R4",
+        ("C32",),
+        "weak",
+        "kept",
+        "Contradicted kept on paragraph 3's premise, now said in the rationale, the hazard and a "
+        "gap; Arsh signs it together with R3. If he rejects the premise, C04 and C32 both go "
+        "unproven.",
+    ),
+    Finding(
+        "R5",
+        ("C37",),
+        "weak",
+        "fixed",
+        "Now unproven: the thread shows terms and an acceptance, not a completed sale, and the "
+        "agreed Saturday falls after the SEARCH recovered four spools.",
+    ),
+    Finding(
+        "R6",
+        ("C47",),
+        "weak",
+        "kept",
+        "Supported kept: money left for him and his 'got it, thx' is the plain reading; the "
+        "rationale and the event row now say the verdict rests on that reading, for the expert.",
+    ),
+    Finding(
+        "R7",
+        ("C12",),
+        "weak",
+        "fixed",
+        "Contradicted kept; the rationale now rests on the two separate conversations and says "
+        "the report holds no Instagram user id.",
+    ),
+    Finding(
+        "R8",
+        ("C10",),
+        "cosmetic",
+        "fixed",
+        "The rename is dated from Item 2's rows (Mar 8 to Mar 17); the row note says the check's "
+        "pass is not limited to Item 2.",
+    ),
+    Finding(
+        "R9",
+        ("C20",),
+        "cosmetic",
+        "fixed",
+        "The hazard's gap is now about an hour and three-quarters.",
+    ),
+    Finding(
+        "R10",
+        ("C03", "C06", "C10", "C18", "C24", "C33", "C42", "C45"),
+        "cosmetic",
+        "fixed",
+        "Rationales, hazards, notes and summaries cite the saved name and number the reports "
+        "show, not the story's identities; the same wording was applied to the other claims "
+        "that had it.",
+    ),
+    Finding(
+        "R11",
+        ("C23", "C37"),
+        "cosmetic",
+        "fixed",
+        "The hazards now say a second account wrote to ferro.finds, without linking the two.",
+    ),
+    Finding(
+        "R12",
+        ("C41",),
+        "cosmetic",
+        "fixed",
+        "The sender row names no channel, as the claim names none; the check still fails.",
+    ),
+    Finding(
+        "R13",
+        ("C43",),
+        "cosmetic",
+        "fixed",
+        "The gap now says the place is tested as words inside the quote, not as a place.",
+    ),
+)

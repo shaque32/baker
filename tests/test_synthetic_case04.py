@@ -231,10 +231,28 @@ def test_the_design_counts(gold):
         wordings = Counter(c.wording for c in key.CLAIMS if c.claim_type == t)
         assert wordings == {"plain": 3, "affidavit": 3}, t
     verdicts = Counter(g.gold_verdict.value for g in gold)
-    assert verdicts == {"supported": 24, "contradicted": 12, "unproven": 12}
+    # 24/12/12 as first drafted; the second read moved two claims to unproven
+    assert verdicts == {"supported": 22, "contradicted": 12, "unproven": 14}
+    first = Counter(key.FIRST_DRAFT_VERDICT.get(c.claim_id, c.verdict) for c in key.CLAIMS)
+    assert first == {"supported": 24, "contradicted": 12, "unproven": 12}
     assert sum(c.hazard != "none" for c in key.CLAIMS) >= 24
     # no absence claim can be supported on a curated report
     assert not [c for c in key.CLAIMS if c.claim_type == "absence" and c.verdict == "supported"]
+
+
+def test_the_second_read_answers_every_finding(built):
+    ids = {c.claim_id for c in key.CLAIMS}
+    assert [f.finding_id for f in key.SECOND_READ] == [f"R{i}" for i in range(1, 14)]
+    for f in key.SECOND_READ:
+        assert f.claims and set(f.claims) <= ids, f.finding_id
+        assert f.outcome in ("fixed", "kept") and f.answer, f.finding_id
+    for cid, was in key.FIRST_DRAFT_VERDICT.items():
+        now = next(c.verdict for c in key.CLAIMS if c.claim_id == cid)
+        assert was != now, cid
+    sheet_md = (built / "SIGNING_SHEET.md").read_text(encoding="utf-8")
+    assert f"## Second read ({key.SECOND_READ_DATE})" in sheet_md
+    for f in key.SECOND_READ:
+        assert f"| {f.finding_id} | {', '.join(f.claims)} |" in sheet_md
 
 
 def test_claims_are_verbatim_in_their_affidavit_paragraph(built, gold):

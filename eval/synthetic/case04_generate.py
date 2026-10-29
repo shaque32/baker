@@ -566,7 +566,12 @@ def render_answer_key(rendered: list[Rendered], gold: list[GoldClaim]) -> str:
         f"Draft split: {counts.get('supported', 0)} supported, "
         f"{counts.get('contradicted', 0)} contradicted, {counts.get('unproven', 0)} unproven; "
         f"{sum(g.cross_device for g in gold)} claims need more than one phone. Every intended "
-        "verdict was recorded before the story was written, and none changed while building.",
+        "verdict was recorded before the story was written, and none changed while building. "
+        f"The second read ({key.SECOND_READ_DATE}) changed "
+        + ", ".join(
+            f"{cid} ({v} to {by_id[cid].verdict})" for cid, v in key.FIRST_DRAFT_VERDICT.items()
+        )
+        + "; see `SIGNING_SHEET.md`.",
         "",
         f"Shared assumption: {key.DEVICE_ATTRIBUTION}",
         "",
@@ -648,6 +653,29 @@ def _params_text(p: dict) -> str:
     return "<br>".join(parts).replace("|", "\\|")
 
 
+def second_read() -> list[str]:
+    """The second blind read's findings, one line each: fixed, or kept and why."""
+    changed = ", ".join(
+        f"{cid} ({v} to {next(c.verdict for c in key.CLAIMS if c.claim_id == cid)})"
+        for cid, v in key.FIRST_DRAFT_VERDICT.items()
+    )
+    return [
+        f"## Second read ({key.SECOND_READ_DATE})",
+        "",
+        "A second, blind reviewer read the draft key and sheet against rules 0.3.0 and the three",
+        "reports. Read this before signing. One line per finding: fixed (the key, the sheet or",
+        f"the wording changed), or kept and why. Verdicts changed: {changed or 'none'}.",
+        "",
+        "| Finding | Claims | Graded | Outcome | Answer |",
+        "|---|---|---|---|---|",
+        *[
+            f"| {f.finding_id} | {', '.join(f.claims)} | {f.severity} | {f.outcome} | "
+            f"{_cell(f.answer)} |"
+            for f in key.SECOND_READ
+        ],
+    ]
+
+
 def render_signing_sheet(gold: list[GoldClaim]) -> str:
     by_id = {c.claim_id: c for c in key.CLAIMS}
     out = [
@@ -668,12 +696,15 @@ def render_signing_sheet(gold: list[GoldClaim]) -> str:
         "",
         "1. Is each verdict right? Absence claims are never supported on a curated report",
         "   (reading rule 7); a meaning or role is supported only where the conversation fixes it",
-        "   (rule 8). C20, C24 and C39 are the closest calls.",
+        "   (rule 8). C20, C24, C39 and C47 are the closest calls; C04 and C32 both rest on",
+        "   paragraph 3's PREPAID being HALLORAN's, so decide them together.",
         "2. Is each hazard a fair wrong reading, and does the sheet name only the right person,",
         "   account, phone and window?",
         "3. Are the assumption rows the right reading of the claim? `expected_check` is what the",
         "   deterministic check should find; a test runs the checks against it. A dash means no",
         "   check exists, so only expert review covers that row.",
+        "",
+        *second_read(),
         "",
         "## Counts",
         "",

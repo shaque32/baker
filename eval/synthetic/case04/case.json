@@ -404,7 +404,7 @@
     "C37": {
       "claim_type": "role",
       "wording": "plain",
-      "verdict": "supported",
+      "verdict": "unproven",
       "hazard": "second_number",
       "wrong_records": [
         "msg:item2:Chats!431"
@@ -429,7 +429,7 @@
     "C40": {
       "claim_type": "role",
       "wording": "affidavit",
-      "verdict": "supported",
+      "verdict": "unproven",
       "hazard": "same_name",
       "wrong_records": [
         "contact:item2:Contacts!7#1"

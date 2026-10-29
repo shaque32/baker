@@ -65,8 +65,9 @@ python -m eval.run_eval --gold eval/synthetic/case04/draft_gold.jsonl \
 The held-out set for the testability step's go/no-go, written without reading that step's
 code, prompt or tests. Forty-eight claims, six of each claim type, three in plain wording and
 three in affidavit wording (defined terms, aliases, relative or approximate times, indirect
-speech, references back, numbers in words) per type. Draft verdicts: 24 supported, 12
-contradicted, 12 unproven, each recorded before the story was written. 46 claims carry a planted
+speech, references back, numbers in words) per type. Draft verdicts: 22 supported, 12
+contradicted, 14 unproven (24/12/12 as recorded before the story was written; a second blind read
+moved C37 and C40 to unproven, see `case04/SIGNING_SHEET.md`). 46 claims carry a planted
 wrong reading (`hazard`): a second person with the same name or nickname, a second number or
 account for the same person, a second phone, a near-miss window, one contact name on two phones,
 or similar words in another thread. The data holds the wrong candidate; the sheet names only the
