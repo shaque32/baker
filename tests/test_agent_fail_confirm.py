@@ -133,6 +133,38 @@ def test_rejecting_the_proposal_undoes_a_confirm(tmp_path, failing):
         conn.close()
 
 
+def test_a_rejection_after_the_verdicts_used_a_confirm_marks_them_not_current(tmp_path, failing):
+    """A stale tab's reject after the confirm re-ran the verdicts: the shown contradicted no
+    longer follows from the log, so the claim says to re-run them (Codex on #166)."""
+    conn, first = _audit(tmp_path, signed=False)
+    try:
+        confirm_agent_fail(conn, "C01", _failed_check(conn), EXAMINER, "Not on the phone.")
+        redecide(conn, EXAMINER)
+        st = claim_state(conn, "C01")
+        assert _verdict(conn) is Verdict.CONTRADICTED and st is not None
+        assert not st.decided_after_run
+        decide_repair(conn, "C01", first.run_id, 1, False, EXAMINER, "Wrong reading.")
+        st = claim_state(conn, "C01")
+        assert st is not None and st.decided_after_run and st.stale
+        assert any("Re-run verdicts" in text for _p, text in st.needs())
+        redecide(conn, EXAMINER)
+        assert _verdict(conn) is Verdict.UNPROVEN
+        st = claim_state(conn, "C01")
+        assert st is not None and not st.decided_after_run
+    finally:
+        conn.close()
+
+
+def test_a_rejection_with_no_confirm_to_undo_leaves_the_verdicts_current(tmp_path, failing):
+    conn, first = _audit(tmp_path, signed=False)
+    try:
+        decide_repair(conn, "C01", first.run_id, 1, False, EXAMINER, "Wrong reading.")
+        st = claim_state(conn, "C01")
+        assert st is not None and not st.decided_after_run
+    finally:
+        conn.close()
+
+
 def test_a_confirm_holds_only_while_the_check_fails_the_same_way(tmp_path, failing):
     conn, first = _audit(tmp_path, signed=False)
     try:
