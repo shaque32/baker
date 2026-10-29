@@ -2371,3 +2371,100 @@ def test_a_range_with_both_ends_stated_keeps_its_own_ends(conn):
 def test_an_open_range_or_its_sides_are_refused_when_in_doubt(conn, text):
     assumptions, _ = _no_contact(conn, text)
     assert not any(a.template_id == "no_contact" for a in assumptions)
+
+
+MAR21 = W("On March 21, 2026", "2026-03-21T00:00", "2026-03-22T00:00")
+
+
+def _count(conn, text: str, value: int | None, **kw):
+    prop = P("message_count", count=None if value is None else {"value": value},
+             people=["PETROV", "REYES"], channels=["Telegram"], window=MAR21, **kw)  # fmt: skip
+    assumptions, filler = build_text(conn, text, ClaimType.COUNT, [prop])
+    made = [a for a in assumptions if a.template_id == "message_count"]
+    return made, filler
+
+
+@pytest.mark.parametrize(
+    "text, sender",
+    [
+        (
+            "On March 21, 2026, on dev:item1, PETROV sent REYES exactly one Telegram message.",
+            PETROV,
+        ),
+        (
+            "On March 21, 2026, on dev:item1, REYES sent exactly one Telegram message to PETROV.",
+            REYES,
+        ),
+    ],
+)
+def test_a_count_of_what_one_side_sent_counts_only_that_side(conn, text, sender):
+    # Ruling R2: "X sent Y one message" counts X's messages only. That day each sent one, so
+    # the two-way count (2) would fail the claim; one side's count passes it.
+    made, filler = _count(conn, text, 1, phones=["dev:item1"])
+    (a,) = made
+    assert a.params.sent_by == (sender,), filler.drops
+    assert (a.params.count_op, a.params.expected_count) == ("eq", 1)
+    assert "counting only messages" in a.text
+    r = CHECKS["count"].run(a, conn)
+    assert r.outcome is CheckOutcome.PASS, r.detail
+    assert len(r.record_ids) == 1 and "Only messages" in r.searched
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # passive, two one-way words, a sender the claim does not write before "sent", the
+        # sender written on both sides, no other side written after "sent"
+        "On March 21, 2026, on dev:item1, exactly one Telegram message was sent by PETROV to"
+        " REYES.",
+        "On March 21, 2026, on dev:item1, PETROV sent and received exactly one Telegram message.",
+        "On March 21, 2026, on dev:item1, the phone sent REYES exactly one Telegram message.",
+        "On March 21, 2026, on dev:item1, PETROV sent PETROV and REYES exactly one Telegram"
+        " message.",
+        "On March 21, 2026, on dev:item1, PETROV sent exactly one Telegram message.",
+    ],
+)
+def test_a_one_way_count_is_refused_unless_the_words_name_each_side(conn, text):
+    made, filler = _count(conn, text, 1, phones=["dev:item1"])
+    assert not made, [a.params for a in made]
+    assert filler.drops
+
+
+def test_exchanged_messages_need_one_each_way(conn):
+    # Ruling R3: "exchanged" is at least one message each way; with no number, at least two.
+    # The phone the claim writes is the one counted, though the model named none.
+    text = (
+        "On March 21, 2026, the phone dev:item1 shows PETROV and REYES exchanged Telegram messages."
+    )
+    made, filler = _count(conn, text, None)
+    (a,) = made
+    assert a.params.each_way and not a.params.sent_by, filler.drops
+    assert (a.params.count_op, a.params.expected_count) == ("ge", 2)
+    assert a.params.device_ids == ("dev:item1",)
+    assert a.text.endswith("Filled from the claim's wording.")
+    assert "with at least one message each way" in a.text
+    r = CHECKS["count"].run(a, conn)
+    assert r.outcome is CheckOutcome.PASS, r.detail
+    assert "sent 1 of them" in r.detail
+
+
+def test_a_stated_count_of_exchanged_messages_is_still_compared(conn):
+    text = (
+        "On March 21, 2026, on dev:item1, PETROV and REYES exchanged exactly two Telegram messages."
+    )
+    made, filler = _count(conn, text, 2, phones=["dev:item1"])
+    (a,) = made
+    assert a.params.each_way and (a.params.count_op, a.params.expected_count) == ("eq", 2)
+    assert CHECKS["count"].run(a, conn).outcome is CheckOutcome.PASS
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "On March 21, 2026, PETROV and REYES exchanged Telegram messages.",  # no phone written
+        "On March 21, 2026, PETROV and REYES exchanged and sent Telegram messages.",  # one-way word
+    ],
+)
+def test_exchanged_without_one_phone_or_with_a_one_way_word_makes_no_count(conn, text):
+    made, filler = _count(conn, text, None)
+    assert not any(a.params.each_way for a in made), [a.params for a in made]

@@ -1454,6 +1454,48 @@ def stated_call_count(claim: str) -> int | None:
     return value
 
 
+# "SUBJECT-2 sent SUBJECT-1 exactly three Signal messages", "X sent ten messages to Y": the
+# one plain form whose sender code reads (validation ruling R2). The subject follows the
+# last comma before "sent"; nothing passive ("were sent by"), no second one-way word.
+_SENT_FORM_RE = re.compile(
+    r"^(?:.*,\s*)?(?P<subject>[^,;]+?)\s+sent\s+(?P<rest>[^,;]+?)\s*\.?\s*$", re.IGNORECASE
+)
+_PASSIVE_SENT_RE = re.compile(
+    r"\b(?:was|were|been|being|be|is|are|get|got)\s+sent\b|\bsent\s+by\b", re.I
+)
+# "exchanged Signal messages", "exchanged more than forty iMessages": messages each way (R3).
+_EXCHANGED_RE = re.compile(
+    r"\bexchanged\b[^.;,]*?\b(?:messages?|texts?|imessages?|chats?|emails?|dms?)\b", re.I
+)
+
+
+def sent_form(claim: str, value: int) -> tuple[str, str] | None:
+    """(subject, rest) when the claim counts messages in the plain form "<subject> sent
+    <rest>" with the count in <rest> and no other one-way word; else None."""
+    words = _unquoted(_flat(_nfc(claim)))
+    if [w.casefold() for w in _ONE_WAY_RE.findall(words)] != ["sent"]:
+        return None
+    if _PASSIVE_SENT_RE.search(words) or _BOTH_WAYS_RE.search(words):
+        return None
+    m = _SENT_FORM_RE.match(words.strip())
+    if m is None:
+        return None
+    try:
+        _, counted = _count_match(m.group("rest"), value)
+    except Reject:
+        return None
+    if re.fullmatch(r"calls?|times", counted.group("noun"), re.I):
+        return None
+    return m.group("subject"), m.group("rest")
+
+
+def exchanged(claim: str) -> bool:
+    """True when the claim says messages went each way ("exchanged ... messages") and writes
+    no one-way word."""
+    words = _unquoted(_flat(_nfc(claim)))
+    return bool(_EXCHANGED_RE.search(words)) and not _ONE_WAY_RE.search(words)
+
+
 def counts_calls(claim: str, value: int) -> bool:
     """True when the claim's count of `value` counts calls ("had four calls with X")."""
     try:
@@ -1487,12 +1529,14 @@ def _count_match(claim: str, value: int) -> tuple[int, re.Match[str]]:
     return found[0]
 
 
-def count_op(claim: str, value: int) -> Literal["eq", "ge", "le"]:
+def count_op(claim: str, value: int, *, one_way: bool = False) -> Literal["eq", "ge", "le"]:
     """How the claim compares its count, read from its words. Raises Reject when the number
     is not a count of records in the claim, the claim's comparison cannot be stated exactly
     ("about 13", "more than 13"), or the count is one the count check cannot make: "times",
     or records one side sent or received (it counts both directions). Calls are counted
-    (validation fill f); the caller puts 'call' among the channels (`counts_calls`)."""
+    (validation fill f); the caller puts 'call' among the channels (`counts_calls`). With
+    `one_way` the caller has read which side sent the messages (`sent_form`, ruling R2), so
+    one-way words do not refuse."""
     at, m = _count_match(claim, value)
     if re.fullmatch(r"times", m.group("noun"), re.I):
         raise Reject("the claim counts times; the count check counts messages or calls")
@@ -1506,7 +1550,7 @@ def count_op(claim: str, value: int) -> Literal["eq", "ge", "le"]:
         raise Reject("the claim counts one kind of call; the count check counts every call")
     if re.fullmatch(r"calls?", m.group("noun"), re.I) and _on_a_subject(words):
         raise Reject("the claim counts calls on a subject; a call log keeps no subject")
-    if _ONE_WAY_RE.search(words) or _ONE_WAY_AFTER_RE.match(claim[m.end() :]):
+    if not one_way and (_ONE_WAY_RE.search(words) or _ONE_WAY_AFTER_RE.match(claim[m.end() :])):
         raise Reject(
             "the claim counts messages one side sent or received; the count check counts both"
             " directions"
@@ -2341,12 +2385,36 @@ class LocalAssumptionFiller:
         ):
             pass  # a time range takes no count; code adds the count of calls (_add_call_count)
         elif p.count is not None:
-            params["count_op"] = count_op(claim.text, p.count.value)
+            sent = sent_form(claim.text, p.count.value) if tpl.id == "message_count" else None
+            params["count_op"] = count_op(claim.text, p.count.value, one_way=sent is not None)
             params["expected_count"] = p.count.value
+            if sent is not None:
+                # "SUBJECT-2 sent SUBJECT-1 three messages": only that side's (ruling R2)
+                params["sent_by"] = self._sent_by(sent, params)
+                code_made = True
             if tpl.id == "message_count" and counts_calls(claim.text, p.count.value):
                 self._count_calls(claim, params)
                 # The phone it may read from the claim gives the window its zone (Codex on #169).
                 device_ids = list(params.get("device_ids", device_ids))
+                code_made = True
+
+        if (
+            tpl.id == "message_count"
+            and exchanged(claim.text)
+            and not counts_calls(claim.text, p.count.value if p.count is not None else -1)
+        ):
+            # "exchanged messages": at least one message each way (ruling R3). With no number,
+            # that is at least two messages; a stated number is still compared.
+            if p.count is None:
+                params["count_op"], params["expected_count"] = "ge", 2
+            params["each_way"] = True
+            code_made = True
+        if tpl.id == "message_count" and not device_ids:
+            # "the TARGET PHONE exchanged Signal messages with ...": the phone the claim writes
+            # is the one whose records are counted.
+            written = sorted(self._written_phones(_unquoted(_nfc(claim.text))))
+            if len(written) == 1:
+                device_ids = params["device_ids"] = written
                 code_made = True
 
         if p.duration is not None:
@@ -2388,6 +2456,45 @@ class LocalAssumptionFiller:
             code_made = True
 
         return Proposal(p.template_id, params, is_core=True, code_made=code_made)
+
+    def _sent_by(self, sent: tuple[str, str], params: dict[str, Any]) -> list[str]:
+        """The side the claim's subject names as sender ("SUBJECT-2 sent ..."): one person
+        written by name or as the phone they own ("the TARGET PHONE's Kik account"), or the
+        accounts by identifier. The other side must be written after "sent", and the sender
+        not. Raises Reject when the words do not name exactly one side each way."""
+        subject, rest = sent
+        people = list(params.get("person_ids", []))
+        accounts = list(params.get("account_ids", []))
+        handles = list(params.get("handles", []))
+
+        def person_in(text: str, pid: str) -> bool:
+            row = self.conn.execute("SELECT name FROM persons WHERE id = ?", (pid,)).fetchone()
+            if row and _name_spans(text, _nfc(row[0].strip())):
+                return True
+            for did in self._written_phones(text):
+                own = {a.id for a in self.data.accounts.values() if a.device_id == did}
+                if own and self._exact_owner(own) == pid:
+                    return True
+            return False
+
+        def accounts_in(text: str) -> bool:
+            low = text.casefold()
+            idents = [self.data.accounts[a].identifier for a in accounts] + handles
+            return any(i and i.strip().casefold() in low for i in idents)
+
+        senders = [pid for pid in people if person_in(subject, pid)]
+        by_accounts = bool(accounts or handles) and accounts_in(subject)
+        if len(senders) == 1 and not by_accounts:
+            others_named = [pid for pid in people if pid != senders[0] and person_in(rest, pid)]
+            other_side = others_named or ((accounts or handles) and accounts_in(rest))
+            if person_in(rest, senders[0]) or not other_side:
+                raise Reject("the claim does not write the sender on one side and the other after")
+            return senders
+        if not senders and by_accounts and accounts and not handles:
+            if accounts_in(rest) or not any(person_in(rest, pid) for pid in people):
+                raise Reject("the claim does not write the sender on one side and the other after")
+            return sorted(accounts)
+        raise Reject("the claim's sender is not exactly one side of the count")
 
     def _stated(
         self, claim: Claim, para: str, device_ids: list[str], template_id: str, near: str | None

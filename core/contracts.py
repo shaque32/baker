@@ -363,11 +363,21 @@ class AssumptionParams(Model):
     duration_s: tuple[int, int] | None = None
     channels: tuple[str, ...] = ()  # apps as spelled in accounts.app / threads.app, 'sms', 'call'
     quoted_text: str | None = None  # words the document attributes to the evidence
+    # The side whose messages a count counts, as ids that are also in person_ids or
+    # account_ids ("SUBJECT-2 sent SUBJECT-1 three messages": sent_by is SUBJECT-2's id).
+    # Empty: messages either way.
+    sent_by: tuple[str, ...] = ()
+    # "exchanged messages": at least one message each way inside the window.
+    each_way: bool = False
 
     @model_validator(mode="after")
     def _count_pair(self) -> AssumptionParams:
         if (self.expected_count is None) != (self.count_op is None):
             raise ValueError("expected_count and count_op go together")
+        if self.sent_by and not set(self.sent_by) <= set(self.person_ids) | set(self.account_ids):
+            raise ValueError("sent_by names a party the assumption does not name")
+        if self.sent_by and self.each_way:
+            raise ValueError("sent_by and each_way do not go together")
         if self.duration_s is not None:
             lo, hi = self.duration_s
             if lo < 0 or hi < lo:

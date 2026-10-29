@@ -44,6 +44,7 @@ From `git log --first-parent d478705..validation-v1-run3`. At the time of writin
 | #162 | Challenge step on by default. The run driver turns it off for run 3 (see Agents). | none in this run |
 | #163 | Testability agent: claim-only check, the examiner's accept card, and the scripted demo. Still off by default; run 3 does not use it. | none in this run |
 | #169 | Coverage steps after Arsh's rulings R1, R4, R5, R6 and fills a to g: native calls by number, one number written two ways as one party, open no-contact ranges to the extraction's edges, writers from "instructed ..., writing", part-day ranges, call counts, and code-made assumptions marked "Filled from the claim's wording." The run driver links a defined number's accounts (R4) and turns the challenge step off. | filler; count 1.1.0; run driver |
+| R2/R3 PR | Arsh's rulings R2 and R3 (signed contracts fields `sent_by`, `each_way`): a message count of what one side sent, and "exchanged" messages as at least one each way, never failed on one side's silence. Code sets them only from the claim's words. Assumption ids change once (the id hashes the new default fields). | count 1.2.0; filler; AssumptionParams fields |
 
 Any PR that merges after #165 and before the tag is added to this table before approval.
 

@@ -128,7 +128,11 @@ class Template:
 
     def problems(self, p: AssumptionParams) -> list[str]:
         out = []
-        given = {name for name in _FIELDS if getattr(p, name) not in (None, (), "")}
+        given = {
+            name
+            for name in _FIELDS
+            if (v := getattr(p, name)) not in (None, (), "") and v is not False  # each_way off
+        }
         missing = sorted(self.required - given)
         extra = sorted(given - self.allowed)
         if missing:
@@ -163,6 +167,13 @@ def _lasting(p: AssumptionParams) -> str:
     return f" lasting {p.duration_s[0]} to {p.duration_s[1]} s" if p.duration_s else ""
 
 
+def _direction(p: AssumptionParams, n: Names) -> str:
+    if p.sent_by:
+        who = [n.person(x) for x in p.sent_by if x in p.person_ids]
+        return f", counting only messages {' and '.join(who or n.accounts(p.sent_by))} sent"
+    return ", with at least one message each way" if p.each_way else ""
+
+
 def _phones(p: AssumptionParams, n: Names) -> str:
     return ", ".join(n.phone(d) for d in p.device_ids) or "every phone"
 
@@ -186,6 +197,13 @@ def _time_rule(p: AssumptionParams) -> str | None:
 def _count_rule(p: AssumptionParams) -> str | None:
     if len(p.device_ids) != 1:
         return "a count is about one phone; name exactly one device"
+    if (p.sent_by or p.each_way) and "call" in {c.strip().lower() for c in p.channels}:
+        return "a count of calls reads no direction; sent_by and each_way are for messages"
+    if p.sent_by and not (
+        (len(p.sent_by) == 1 and p.sent_by[0] in p.person_ids)
+        or (set(p.sent_by) == set(p.account_ids) and not set(p.sent_by) & set(p.person_ids))
+    ):
+        return "sent_by names one side: one person, or exactly the accounts"
     return _two_parties(p)
 
 
@@ -206,7 +224,7 @@ def _none(_: AssumptionParams) -> str | None:
 
 
 _ALL = frozenset(ClaimType)
-_FREE = _FIELDS - {"expected_count", "count_op", "duration_s"}
+_FREE = _FIELDS - {"expected_count", "count_op", "duration_s", "sent_by", "each_way"}
 
 TEMPLATES: dict[str, Template] = {
     t.id: t
@@ -244,13 +262,22 @@ TEMPLATES: dict[str, Template] = {
             ("count",),
             frozenset({"window", "expected_count", "count_op", "device_ids"}),
             frozenset(
-                {"window", "expected_count", "count_op", "device_ids", "channels", *PARTY_FIELDS}
+                {
+                    "window",
+                    "expected_count",
+                    "count_op",
+                    "device_ids",
+                    "channels",
+                    "sent_by",
+                    "each_way",
+                    *PARTY_FIELDS,
+                }
             ),
             _count_rule,
             lambda p, n: (
                 f"{_phones(p, n)} holds {n.count(p.count_op or '', p.expected_count or 0)} "
                 f"{'calls' if 'call' in p.channels else 'messages'} between "
-                f"{_who(p, n)}{_on(p)} {_when(p)}"
+                f"{_who(p, n)}{_on(p)} {_when(p)}{_direction(p, n)}"
             ),
         ),
         Template(
