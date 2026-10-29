@@ -93,10 +93,13 @@
 - Open: the step's effect with the local model is unmeasured. The go/no-go needs the 14B on the
   Mac, a held-out synthetic set and Arsh's X, Y and CAP. CAP has no default, and the demo uses
   1. Turning the step on for pilots is PR 3 of the plan. Arsh re-signs the CLAUDE.md line for
-  it. This PR also proposes a wording change to that line (`PROPOSED_CHANGES.md`) so it names
-  the scripted demo. The sharper risk on a real case stays a false Contradicted: an accepted
-  wrong window or phone can fail a deterministic check (rules 0.3.0). The claim-only check
-  narrows that, and the sheet check measures it, but neither removes it.
+  it. Arsh signed this PR's wording change to that line, which names the scripted demo
+  (`PROPOSED_CHANGES.md`, 2026-10-28 13:17Z), and applied it in 2aded2d. The sharper risk on a
+  real case stays a false Contradicted: an accepted wrong window or phone can fail a
+  deterministic check (rules 0.3.0). The claim-only check narrows that, and the sheet check
+  measures it, but neither removes it. Arsh chose (2026-10-28 23:52Z) a rules change for it
+  first, in its own PR: a failed check on an agent-proposed assumption counts only once the
+  expert confirms it.
 - Affects: capabilities (the testability agent's claim-only check and the examiner's card; still
   off by default), customer-facing demo (D02 and D03)
 - Status doc: pending: section 8 item 2 ("Audit"): after #159's pending line on the testability
