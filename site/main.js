@@ -129,8 +129,9 @@ const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   function goToStep(n) {
     const target = Math.max(1, Math.min(STEPS, n));
-    // Settle slightly past the integer so the step's post-trigger reveals also show.
-    const p = Math.min(MAX_P, target + 0.35);
+    // Settle at the end of the step so every part it reveals shows (step 5's verdict starts at
+    // 5.6), as it did when the reader scrolled to the bottom of a step.
+    const p = Math.min(MAX_P, target + 0.95);
     t = timeFor(p);
     userHoldUntil = performance.now() + USER_HOLD;
     paint();
