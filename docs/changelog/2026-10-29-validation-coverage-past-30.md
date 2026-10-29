@@ -42,7 +42,7 @@
   Why: run 2 of the Hickman iOS 15 validation tested 9 of 106 claims, and run 3 needs at
   least 30 code-checked. Every step only lets code read what the claim plainly writes; the
   expert still accepts each assumption, and rules 0.3.0 are unchanged.
-- Where: branch claude/project-thread-ds0ify, PR to follow #165
+- Where: PR #169 (branch claude/project-thread-ds0ify)
 - Verified: on this container, 2026-10-29. New tests in tests/test_assumption_filler.py,
   tests/test_account_lookups.py (two tests changed from "refused" to "one party" under R6)
   and tests/test_validation_run.py. Replaying run 2's recorded model answers through this
