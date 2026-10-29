@@ -3339,6 +3339,11 @@ class LocalAssumptionFiller:
         The phone the claim writes is the other side through its owner by confirmed
         stipulation, only when that person is exactly the phone's own accounts. Raises Reject
         otherwise."""
+        bare = _unquoted(_nfc(claim.text))
+        if time_mentions(bare) and _ONE_CALL_RE.search(bare):
+            # "two calls ..., including a call at about 9:00 p.m.": the time dates one call,
+            # not the count's span, whoever proposed the count (Codex on #169)
+            raise Reject("the claim's time dates one of the calls, not the count")
         channels = [c for c in params.get("channels", []) if c != CALL_CHANNEL]
         app = self._call_app(claim.text, channels)
         params["channels"] = sorted({CALL_CHANNEL, app}, key=str.lower)

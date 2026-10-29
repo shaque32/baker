@@ -1958,6 +1958,22 @@ def test_no_count_is_made_from_the_time_of_one_call_among_them(call_log):
     assert not any(a.template_id == "message_count" for a in assumptions), filler.drops
 
 
+def test_a_model_count_of_calls_dated_by_one_call_is_refused(conn):
+    # The model's own count window is the one call's time, not the count's (Codex on #169).
+    text = (
+        "On March 12, 2026, on dev:item1, PETROV and REYES had two Telegram calls, including a"
+        " call at approximately 9:00 p.m."
+    )
+    window = {"as_written": "On March 12, 2026, on dev:item1, PETROV and REYES had two Telegram"
+              " calls, including a call at approximately 9:00 p.m.", "start": "2026-03-12T20:52",
+              "end": "2026-03-12T21:09", "zone": "phone"}  # fmt: skip
+    prop = {"template_id": "message_count", "count": {"value": 2}, "channels": ["Telegram"],
+            "people": ["PETROV", "REYES"], "phones": ["dev:item1"], "window": window}  # fmt: skip
+    assumptions, filler = build_text(conn, text, ClaimType.COUNT, [prop])
+    assert not any(a.template_id == "message_count" for a in assumptions)
+    assert any("dates one of the calls" in d.reason for d in filler.drops), filler.drops
+
+
 def test_a_model_count_of_calls_takes_the_written_phones_zone(call_log):
     # The model gave no phone; code reads it from the claim, and the window takes its zone even
     # when the case's phones are in different zones (Codex on #169).
