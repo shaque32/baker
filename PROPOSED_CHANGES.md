@@ -698,8 +698,10 @@ UNPROVEN until then, shown as "Contradiction found, confirm to finalize".
 - What else it moves: a waiting failure no longer settles a claim (pipeline.settled_by_check), so
   its evidence is labeled; the claim page gets a confirm card (one form per failure, plus
   "Or reject the agent's proposal"); report 0.24.0 prints the step.
-- No change to rule 1b, rule 2, rule 3 or any other input. Every case01, hostile and case02 eval
-  verdict is the same, since none of them runs the testability step.
+- No change to rule 1b, rule 2, rule 3 or any other input. The case01, hostile and case02 eval
+  results are unchanged with the diff applied (none of them runs the testability step): case01
+  model-free PASS at 1.00 with 0 false supported, hostile PASS, case02 aggregate 0.90 with 0 false
+  supported (`make check` on a throwaway copy, cloud container, 2026-10-29).
 Diff (made against the file on main, which is the same on this branch; tested on a throwaway
 copy only, never committed by an agent):
 ```diff
@@ -802,5 +804,5 @@ copy only, never committed by an agent):
                  "Contradiction found, confirm to finalize: it counts once an expert accepts it."
                  for e in f.unconfirmed
 ```
-AWAITING Arsh's signature. Once he signs, he applies it on this branch (PR for rules 0.4.0) with
+AWAITING Arsh's signature. Once he signs, he applies it on this branch (PR #166) with
 the command posted in the project thread, word for word as above.
