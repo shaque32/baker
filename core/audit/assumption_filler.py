@@ -126,6 +126,7 @@ from core.audit.checks._common import (
     CALL_CHANNEL,
     Account,
     CaseData,
+    Key,
     key,
     namespace,
     person_party,
@@ -213,6 +214,10 @@ WIDER_APPS: dict[str, str] = {"native messages": "iMessages and SMS"}
 # Checks whose answer depends on every record on the app they search. On a wider app a count
 # would count, and an absence would fail on, messages the claim does not name.
 WHOLE_APP_TEMPLATES = frozenset({"message_count", "no_contact"})
+# The app an import gives a record with no source app: on a phone, its own call log. A call
+# claim that names no app and writes the other party as a phone number is searched there
+# (validation ruling R1).
+NATIVE_CALL_APP = "unknown"
 # Templates whose check reads exactly two sides.
 TWO_SIDED_TEMPLATES = frozenset({"message_count", "no_contact"})
 # The templates whose time range a check tests.
@@ -385,11 +390,6 @@ def fill_schema(template_ids: Iterable[str], channels: Iterable[str]) -> dict[st
 
 class Reject(ValueError):
     """One proposal (or one value in it) cannot be used."""
-
-
-class _SharedNumber(Reject):
-    """A number two accounts recorded differently share: refused, and never looked up again
-    as a person or a display name."""
 
 
 def _nfc(s: str) -> str:
@@ -1933,6 +1933,7 @@ class LocalAssumptionFiller:
         tpl = TEMPLATES[p.template_id]
         texts = (claim.text, para)
         params: dict[str, Any] = {}
+        code_made = False  # code filled a parameter the model left out or got wrong
 
         for value in [*p.people, *p.handles, *p.phones, *(a.as_written for a in p.accounts)]:
             if not _verbatim(value, *texts):
@@ -1968,6 +1969,7 @@ class LocalAssumptionFiller:
             writer = self.stated_sender(claim, p.quoted_text)
             if writer is not None:
                 params["person_ids"] = [writer]
+                code_made = True
 
         channels = self._channels(claim.text, p.channels, tpl.id)
         if channels:
@@ -1981,8 +1983,6 @@ class LocalAssumptionFiller:
         for acc in p.accounts:
             try:
                 account_ids |= self._accounts(acc, device_ids, claim.text)
-            except _SharedNumber:
-                raise  # the number is in the case, on more than one account (Codex on #152)
             except Reject:
                 # Words the case holds no account identifier under may still name a party:
                 # - a person the expert created ("SUBJECT-1" on Signal): the claim names the
@@ -2043,6 +2043,7 @@ class LocalAssumptionFiller:
                     " is exactly the phone's own accounts"
                 )
             account_ids -= own_ids
+            code_made = True
             named.add(owner)
             named_on |= {self.data.accounts[a].app for a in own_ids}
         if named:
@@ -2075,6 +2076,7 @@ class LocalAssumptionFiller:
             # A call the model named without its parties: code reads them from the claim.
             app = self._call_app(claim.text, params.get("channels", []))
             people, accounts, phone = self._call_parties(claim, device_ids, app)
+            code_made = True
             params["channels"] = sorted({CALL_CHANNEL, app}, key=str.lower)
             if phone and not device_ids:
                 # The phone the claim writes scopes the search, and gives the window its zone.
@@ -2103,12 +2105,14 @@ class LocalAssumptionFiller:
                 # The model's range is refused; use the range the claim states that day.
                 try:
                     params["window"] = self._stated(claim, para, device_ids, tpl.id, p.window.start)
+                    code_made = True
                 except Reject as e:
                     raise Reject(f"{refused}, and {e}") from None
         elif "window" in tpl.required:
             params["window"] = self._stated(claim, para, device_ids, tpl.id, None)
+            code_made = True
 
-        return Proposal(p.template_id, params, is_core=True)
+        return Proposal(p.template_id, params, is_core=True, code_made=code_made)
 
     def _stated(
         self, claim: Claim, para: str, device_ids: list[str], template_id: str, near: str | None
@@ -2212,7 +2216,7 @@ class LocalAssumptionFiller:
             return out  # two phones: code never picks the one the message is on
         if phones:  # "On Item 1, PETROV wrote ...": the search stays on that phone (Codex)
             params["device_ids"] = sorted(phones)
-        return [*out, Proposal("sender", params)]
+        return [*out, Proposal("sender", params, code_made=True)]
 
     def _message_apps(self, claim_text: str) -> list[str] | None:
         """The apps a code-made sender searches: the apps the claim names other than a phone's
@@ -2257,7 +2261,7 @@ class LocalAssumptionFiller:
         if quote is None:
             self._drop(claim, None, "meaning from the claim: no one quoted message", call_id)
             return out
-        return [*out, Proposal("meaning", {"quoted_text": quote}, is_core=True)]
+        return [*out, Proposal("meaning", {"quoted_text": quote}, is_core=True, code_made=True)]
 
     def _add_record_time(
         self, claim: Claim, para: str, out: list[Proposal], allowed_ids: set[str]
@@ -2302,7 +2306,7 @@ class LocalAssumptionFiller:
             return out
         allowed = TEMPLATES["record_time"].allowed
         params = {k: v for k, v in sender.items() if k in allowed} | {"window": window}
-        return [*out, Proposal("record_time", params, is_core=True)]
+        return [*out, Proposal("record_time", params, is_core=True, code_made=True)]
 
     @staticmethod
     def _passes_quote_on(before: str, verb: re.Match[str], after: str) -> bool:
@@ -2600,10 +2604,11 @@ class LocalAssumptionFiller:
             )
 
     def _accounts(self, acc: _Account, device_ids: list[str], claim_text: str = "") -> set[str]:
-        """The accounts on the model's app with this identifier. A number written another way
-        ("(919) 888-7386" for "+19198887386") finds its account too, on a phone app or on an
-        app the claim names: a number alone never picks the app. A number two accounts
-        recorded differently share is refused, never joined."""
+        """The accounts on the model's app with this identifier. A number finds every account
+        on that app whose identifier is the same number, however it is written ("(919)
+        888-7386", "+19198887386", "19198887386@s.whatsapp.net"), on a phone app, the phone's
+        call log, or an app the claim names: a number alone never picks the app. They are one
+        party: the same digits, only the formatting differs (ruling R6)."""
         app = acc.app.strip().casefold()
         ident = re.sub(r"(?i)^(user\s*id|id|number|no\.)\s*", "", acc.as_written.strip())
         want = key(acc.app, ident)
@@ -2615,14 +2620,12 @@ class LocalAssumptionFiller:
         ]
         hits = {a.id for a in mine if a.key == want}
         number = phone_digits(ident)
-        if not hits and number is not None and self._app_named(claim_text, acc.app):
-            found = [a for a in mine if _same_number(number, a)]
-            if len({a.key for a in found}) > 1:  # never joined: they stay apart until linked
-                raise _SharedNumber(
-                    f"{acc.as_written!r} is the number of {len({a.key for a in found})} {acc.app}"
-                    " accounts recorded differently; which one the claim means is not known"
-                )
-            hits = {a.id for a in found}
+        named = app == NATIVE_CALL_APP or self._app_named(claim_text, acc.app)
+        if number is not None and named:
+            # One number written two ways on one app ("+19195677484" and "9195677484", from two
+            # databases) is one party: the same digits, only the formatting differs (ruling
+            # R6). Display names, addresses and user ids are never read as numbers.
+            hits |= {a.id for a in mine if _same_number(number, a)}
         if not hits:
             raise Reject(f"{acc.as_written!r} on {acc.app} matches no account in the case")
         return hits
@@ -2649,6 +2652,10 @@ class LocalAssumptionFiller:
         proposal names must be. A call on no named app, or on two, is refused: the words
         alone never pick the app."""
         named = self._named_apps(claim_text)
+        if not named and NATIVE_CALL_APP in self.channels() and _writes_a_number(claim_text):
+            # "placed an outgoing telephone call to (919) 567-7484": the phone's call log (R1).
+            # _call_parties then takes only numbers as the other party.
+            named = [NATIVE_CALL_APP]
         if len(named) != 1:
             raise Reject(f"the claim names {len(named)} apps for the call, not one")
         (app,) = named
@@ -2678,9 +2685,11 @@ class LocalAssumptionFiller:
                 people.add(pid)
                 spans += found
         written: list[str] = []
+        numbers: list[str] = []
         for m in _PHONE_RE.finditer(bare):
             if phone_digits(m.group(0).strip(" .,-")) is not None:
                 written.append(m.group(0).strip(" .,-"))
+                numbers.append(m.group(0).strip(" .,-"))
                 spans.append(m.span())
         for m in _QUOTE_SPAN_RE.finditer(_flat(text)):
             if m.group(0)[1:-1].strip():
@@ -2705,7 +2714,11 @@ class LocalAssumptionFiller:
         for m in _UNREAD_PARTY_RE.finditer(bare):
             if not any(s <= m.start() and m.end() <= e for s, e in spans):
                 raise Reject(f"{m.group(0)!r} is not one account the call could be with")
+        if app == NATIVE_CALL_APP and (people or len(written) != len(numbers)):
+            # The call log by number only: a name or a display name with no app is refused (R1).
+            raise Reject("a call on no named app is read only with a phone number as its party")
         accounts: set[str] = set()
+        groups: list[set[Key]] = []  # the accounts each party is, merged where they share one
         for words in dict.fromkeys(written):
             person = self._person_named(words)
             acc = _Account(as_written=words, app=app)
@@ -2722,14 +2735,20 @@ class LocalAssumptionFiller:
                 continue
             try:
                 found = self._accounts(acc, device_ids, claim.text)
-            except _SharedNumber:
-                raise
             except Reject:
                 found = self._accounts_named(acc, device_ids, claim.text)
-            if len({self.data.accounts[a].key for a in found}) != 1:
+            keys = {self.data.accounts[a].key for a in found}
+            number = phone_digits(words)
+            one_number = number is not None and all(
+                _same_number(number, self.data.accounts[a]) for a in found
+            )
+            if not keys or (len(keys) != 1 and not one_number):
                 raise Reject(f"{words!r} on {app} is not one account the call could be with")
             accounts |= found
-        if len({self.data.accounts[a].key for a in accounts}) > 1:
+            groups = [g for g in groups if not g & keys] + [
+                keys.union(*(g for g in groups if g & keys))
+            ]
+        if len(groups) > 1:
             # The checks read every account id as one party, either of them (Codex on #164).
             raise Reject("the claim writes two parties as accounts; a check reads them as one")
         if not people and not accounts:
@@ -2911,6 +2930,14 @@ _PHONE_RE = re.compile(r"\+?[\d\s().\-]{7,24}")
 _NANP_RE = re.compile(r"(1[\s.\-]?)?(?:\((\d{3})\)\s?|(\d{3})[\s.\-])(\d{3})[\s.\-](\d{4})")
 
 
+def _writes_a_number(text: str) -> bool:
+    """True when the text, outside quoted words, writes a phone number `phone_digits` reads."""
+    return any(
+        phone_digits(m.group(0).strip(" .,-")) is not None
+        for m in _PHONE_RE.finditer(_unquoted(_nfc(text)))
+    )
+
+
 def phone_digits(words: str) -> str | None:
     """A phone number as its digits with the country code, or None when the words are not
     plainly one. "+1 919-888-7386" is 19198887386. A number written in the North American form
@@ -2932,15 +2959,21 @@ def phone_digits(words: str) -> str | None:
 
 
 def _same_number(number: str, acc: Account) -> bool:
-    """The account's identifier is this phone number: written with its country code ("+"),
-    a WhatsApp id ("12125550122@s.whatsapp.net"), or a phone account's own number. A user id
-    that happens to be digits is never one."""
+    """The account's identifier is this phone number: written with its country code ("+") or
+    in the North American form, a WhatsApp id ("12125550122@s.whatsapp.net"), or bare digits
+    on a phone app or the phone's call log. A user id that happens to be digits is never one.
+    Accounts on one app whose identifiers are the same number are one party (ruling R6)."""
     ident = acc.identifier.strip()
     jid = re.fullmatch(r"(\d{8,15})@s\.whatsapp\.net", ident)  # a WhatsApp id is the number
     if jid is not None:
         return jid.group(1) == number
-    if not (ident.startswith("+") or namespace(acc.app) == "tel"):
-        return False
+    bare = re.fullmatch(r"1?(\d{10})", ident)
+    if bare is not None and (namespace(acc.app) == "tel" or acc.app == NATIVE_CALL_APP):
+        # A phone's call log may store the number bare ("9195677484", "18285205789"); a user id
+        # on another app that happens to be ten digits is never one.
+        return number == "1" + bare.group(1)
+    # "+1 919-888-7386", or the North American form "(919) 888-7386": `phone_digits` reads
+    # nothing else, so a run of digits with no "+" (a user id) is never a number here.
     return phone_digits(ident) == number
 
 

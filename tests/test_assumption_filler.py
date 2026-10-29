@@ -1635,3 +1635,97 @@ def test_the_phone_written_as_an_account_is_its_exact_owner_beside_another_accou
     filler.data.links.append(("link:x", "acct:item2:Telegram:7001077", PETROV))
     own = {aid for aid, acc in filler.data.accounts.items() if acc.device_id == "dev:item1"}
     assert filler._exact_owner(own) is None
+
+
+def test_one_number_written_two_ways_is_one_number():
+    # Ruling R6: the same digits, only the formatting differs. A user id stays apart.
+    from core.audit.assumption_filler import _same_number
+    from core.audit.checks._common import Account
+
+    def acc(app: str, ident: str) -> Account:
+        return Account("a", "s", None, app, ident, None)
+
+    n = "19198887386"
+    for app, ident in [
+        ("unknown", "9198887386"),
+        ("unknown", "19198887386"),
+        ("unknown", "+19198887386"),
+        ("Phone", "9198887386"),
+        ("WhatsApp", "(919) 888-7386"),
+        ("WhatsApp", "19198887386@s.whatsapp.net"),
+        ("Viber", "+1 (919) 888-7386"),
+    ]:
+        assert _same_number(n, acc(app, ident)), (app, ident)
+    for app, ident in [
+        ("Telegram", "9198887386"),  # a user id of ten digits
+        ("unknown", "29198887386"),
+        ("unknown", "919888738"),
+        ("Signal", "9198887386"),
+    ]:
+        assert not _same_number(n, acc(app, ident)), (app, ident)
+
+
+@pytest.fixture
+def call_log(conn):
+    # The phone's call log stores one number two ways, as a UFDR from two databases does.
+    src = conn.execute("SELECT source_id FROM accounts WHERE id LIKE 'acct:item1:%'").fetchone()[0]
+    rows = [("acct:t:log1", "+12125550199"), ("acct:t:log2", "2125550199")]
+    for aid, ident in rows:
+        conn.execute(
+            "INSERT INTO accounts (id, source_id, locator, device_id, app, identifier,"
+            " display_name) VALUES (?, ?, 'x', NULL, 'unknown', ?, 'Mom')",
+            (aid, src, ident),
+        )
+    yield conn
+    conn.execute("DELETE FROM accounts WHERE id IN ('acct:t:log1', 'acct:t:log2')")
+
+
+def test_a_call_on_no_app_to_a_number_is_searched_in_the_call_log(call_log):
+    # Ruling R1: no app named, the other party written as a number: the phone's call log.
+    text = (
+        "On March 12, 2026, at approximately 9:00 p.m., dev:item1 placed an outgoing telephone"
+        " call to (212) 555-0199."
+    )
+    prop = {"template_id": "record_time", "channels": ["call"]}
+    assumptions, filler = build_text(call_log, text, ClaimType.COMMUNICATION, [prop])
+    (t,) = [a.params for a in assumptions if a.template_id == "record_time"]
+    assert t.account_ids == ("acct:t:log1", "acct:t:log2"), filler.drops
+    assert t.channels == ("call", "unknown") and t.device_ids == ("dev:item1",)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # a display name with no app
+        'On March 12, 2026, at approximately 9:00 p.m., dev:item1 placed a call to "Mom".',
+        # a person with no app: the call log is read by number only
+        "On March 12, 2026, at approximately 9:00 p.m., PETROV placed a call to (212) 555-0199.",
+    ],
+)
+def test_a_call_on_no_app_is_refused_without_a_number_as_its_party(call_log, text):
+    prop = {"template_id": "record_time", "channels": ["call"]}
+    assumptions, filler = build_text(call_log, text, ClaimType.COMMUNICATION, [prop])
+    assert not any(a.template_id == "record_time" for a in assumptions)
+    why = ("only with a phone number", "names 0 apps for the call")
+    assert any(w in d.reason for d in filler.drops for w in why), filler.drops
+
+
+def test_code_made_assumptions_say_so_and_model_ones_do_not(conn):
+    # Fill g: an assumption code filled from the claim's wording says so in its text, which the
+    # expert reads before accepting it; one the model filled whole does not.
+    from core.audit.assumptions import is_code_made
+
+    text = (
+        "On March 12, 2026, PETROV instructed REYES by Telegram to hide the car, writing"
+        ' "move it tonight".'
+    )
+    assumptions, _ = build_text(conn, text, ClaimType.COMMUNICATION, [])
+    made = {a.template_id: a for a in assumptions}
+    assert is_code_made(made["sender"].text) and is_code_made(made["record_time"].text)
+    assert made["sender"].text.endswith("Filled from the claim's wording.")
+    for cid in sorted(GOOD):
+        model_made, *_ = build(conn, cid)
+        whole = [
+            a for a in model_made if a.template_id not in {t for t, _ in CODE_ADDS.get(cid, [])}
+        ]
+        assert not any(is_code_made(a.text) for a in whole if a.template_id != "meaning"), cid

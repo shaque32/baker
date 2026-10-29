@@ -406,13 +406,25 @@ def template_of(assumption: Assumption) -> Template | None:
     return template
 
 
+# The words a code-made assumption's text ends with, so the expert who accepts it, the report
+# and the eval all see that code filled it, not the model (validation fill g).
+CODE_MADE_NOTE = " Filled from the claim's wording."
+
+
+def is_code_made(text: str) -> bool:
+    """True when an assumption's text says code filled it from the claim's wording."""
+    return text.endswith(CODE_MADE_NOTE)
+
+
 @dataclass(frozen=True)
 class Proposal:
-    """One filled template, as proposed by the local model or typed by the expert."""
+    """One filled template, as proposed by the local model or typed by the expert.
+    `code_made`: code filled it, or some of its parameters, from the claim's own words."""
 
     template_id: str
     params: Mapping[str, Any] | AssumptionParams
     is_core: bool = True
+    code_made: bool = False
 
 
 @dataclass(frozen=True)
@@ -458,6 +470,8 @@ class TemplateAssumptionBuilder:
                 self.rejected.append(Rejected(proposal, str(e)))
                 why.append(f"template {proposal.template_id!r}: {e}")
                 continue
+            if proposal.code_made:
+                a = a.model_copy(update={"text": a.text + CODE_MADE_NOTE})
             out.setdefault(a.id, a)
         drops = getattr(self._filler, "drops", None)  # the local-model filler keeps its refusals
         if isinstance(drops, list):
