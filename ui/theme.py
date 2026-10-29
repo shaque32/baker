@@ -306,6 +306,8 @@ details summary::marker { color: var(--muted); }
   box-shadow: inset 0 0 0 1px var(--line-strong); }
 section.agent { background: var(--card); border: 1px solid var(--line);
   border-radius: var(--radius); padding: 16px 20px; margin: 16px 0; }
+section.agent ul.proposed { margin: 8px 0 12px; padding-left: 20px; max-width: 78ch; }
+section.agent ul.proposed li { margin: 4px 0; }
 details.flag { margin-top: 6px; }
 details.flag > summary { font-size: 12.5px; color: var(--muted); cursor: pointer; }
 ul.flags form.inline button { margin-left: 8px; }

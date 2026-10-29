@@ -1181,7 +1181,9 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
             )
         out.append(_holdings(conn))
         out.append(
-            _agent_card(page, testability.proposals(conn, pipeline.view_run(conn)).get(c.id), back)
+            _agent_card(
+                page, conn, testability.proposals(conn, pipeline.view_run(conn)).get(c.id), back
+            )
         )
     groups = _groups(st)
     if not groups:
@@ -1246,13 +1248,15 @@ AGENT_CHECKED = (
 )
 
 
-def _agent_card(page: Page, x: testability.Proposed | None, back: str) -> str:
+def _agent_card(
+    page: Page, conn: sqlite3.Connection, x: testability.Proposed | None, back: str
+) -> str:
     """The testability step's proposal for a claim the filler left untested, for the examiner
     to accept or reject. Nothing in it is used until accepted, and then only from the next
     audit on. One card per claim; there is no accept-all."""
     if x is None:
         return ""
-    rows = "".join(f"<li>{e(str(a.get('text', '')))}</li>" for a in x.assumptions)
+    rows = "".join(f"<li>{plain_ids(conn, str(a.get('text', '')))}</li>" for a in x.assumptions)
     found = "".join(
         f"<li>&ldquo;{e(str(f.get('written', '')))}&rdquo;: {e(str(f.get('means', '')))}</li>"
         for f in x.lookups
@@ -1303,7 +1307,7 @@ def _agent_card(page: Page, x: testability.Proposed | None, back: str) -> str:
         "would make this claim testable</h2>"
         "<p class='muted'>The testability step asked the local model again, with the reasons "
         "code refused the first try. It only proposes.</p>"
-        f"<ul class='checklist'>{rows}</ul>"
+        f"<ul class='proposed'>{rows}</ul>"
         f"<details class='more'><summary>What code checked</summary><p>{e(AGENT_CHECKED)}{sheet}"
         "</p><p>What the claim and its paragraph name in the case, by code's lookups (the "
         "agent was shown these; only those in the claim's own words count):</p>"
