@@ -2504,22 +2504,29 @@ class LocalAssumptionFiller:
 
     def _limits_on_exchange(self, claim_text: str, params: dict[str, Any]) -> str | None:
         """The first word of the clause that says "exchanged" that is not a side, a phone, the
-        count, the app or a plain joining word; None when there is none. The sides are any
-        person the case names and the assumption's accounts, by identifier or number."""
+        count, the app or a plain joining word; None when there is none. The sides are the
+        assumption's persons by name and its accounts by identifier, display name or number."""
         words = _unquoted(_flat(_nfc(claim_text)))
         clause = words[words.rfind(",") + 1 :]
         left = list(clause)
         spans = [s for _, *s in self._phone_spans(clause)]
-        for (name,) in self.conn.execute("SELECT name FROM persons"):
-            spans += _name_spans(clause, _nfc(name.strip()))
+        # Only the assumption's own sides: "... with SOKOLOV" names a third party the count
+        # would leave out (Codex on #172).
+        people = set(params.get("person_ids", []))
+        for pid, name in self.conn.execute("SELECT id, name FROM persons"):
+            if pid in people:
+                spans += _name_spans(clause, _nfc(name.strip()))
         found = [self.data.accounts[a] for a in params.get("account_ids", [])]
         idents = [x for a in found for x in (a.identifier, a.display_name)]  # "Reyes D (+1...)"
         for i in [*idents, *params.get("handles", [])]:
             if i and i.strip():
                 spans += [m.span() for m in re.finditer(re.escape(i.strip()), clause, re.I)]
-        spans += [
-            m.span() for m in _PHONE_RE.finditer(clause) if phone_digits(m.group(0).strip(" .,-"))
-        ]
+        numbers = {d for i in idents if i and (d := phone_digits(i)) is not None}
+        for m in _PHONE_RE.finditer(clause):
+            if (d := phone_digits(m.group(0).strip(" .,-"))) is not None:
+                if d not in numbers:
+                    return m.group(0).strip()  # a number no side holds: a third party
+                spans.append(m.span())
         for start, end in spans:
             left[start:end] = " " * (end - start)
         apps = {w for app in self.channels() for w in _words(app).split()}

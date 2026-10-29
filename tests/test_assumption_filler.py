@@ -2566,3 +2566,22 @@ def test_a_recipient_written_by_full_name_is_one_mention(conn):
     assumptions, filler = build_text(conn, text, ClaimType.COUNT, [prop])
     (a,) = [a for a in assumptions if a.template_id == "message_count"]
     assert a.params.sent_by == (PETROV,), filler.drops
+
+
+@pytest.mark.parametrize(
+    "third",
+    ["SOKOLOV", "(212) 555-0199"],  # a person the case names, a number
+)
+def test_an_exchange_with_a_third_party_is_refused(conn, third):
+    # The count is between the assumption's two sides; a third written in the clause would be
+    # left out of it (Codex on #172).
+    conn.execute("INSERT INTO persons VALUES ('person:sokolov', 'Ivan Sokolov', 'expert:test')")
+    try:
+        text = (
+            f"On March 21, 2026, PETROV and REYES exchanged Telegram messages with {third} on"
+            " dev:item1."
+        )
+        made, filler = _count(conn, text, None)
+        assert not any(a.params.each_way for a in made), [a.params for a in made]
+    finally:
+        conn.execute("DELETE FROM persons WHERE id = 'person:sokolov'")
