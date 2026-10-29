@@ -16,24 +16,26 @@
     (`TESTABILITY_X_PERCENT`) 40%, Y (`TESTABILITY_Y_BUDGET`) at most 2 calls and 120 s per claim
     on the MacBook Air M4, the cap (`TESTABILITY_CAP`) 2, and the least denominator
     (`TESTABILITY_MIN_TESTABLE`) 15. A value set to None gives none. None is also given until
-    the run has the signed prompt, a held-out case, `--expert rubber-stamp`, `--repeat` and Arsh's signed key (false
-    supported is never scored against a builder's draft). The reasons are printed.
+    the run has the signed prompt, a held-out case, `--expert rubber-stamp`, `--repeat` and
+    Arsh's signed key (false supported is never scored against a builder's draft). The reasons
+    are printed.
   - The record names the hardware, the Python version and the wall-clock date of the run.
   - The run's measures print as before; the old "none given" line moved into the go/no-go.
-- Where: branch `claude/project-thread-6i2msb-go-no-go` (stacked on the rules 0.4.0 branch)
+- Where: PR #168 (branch `claude/project-thread-6i2msb-go-no-go`, stacked on #166)
 - Verified: `tests/test_testability_go_no_go.py` (18 tests): every bar held is a GO; each bar
   missed alone is a NO-GO naming it; conversion exactly at X passes; a repeat whose filler and
   step answers differ by one byte is a NO-GO that says the model calls differ; too few testable
   refusals is insufficient; with nothing set, a draft prompt, a development case, the simulated
   expert and no repeat, none is given with every reason; a run's cap other than Arsh's gives
   none; a draft gold key gives none; a try the claim-only check rejects that names another
-  person counts against the entity bar (it did not before); the Wilson interval; and two eval runs of synthetic case01 with the scripted model, the
-  signed prompt and the rubber-stamp expert give a GO with the hardware recorded.
+  person counts against the entity bar (it did not before); the Wilson interval; and two eval
+  runs of synthetic case01 with the scripted model, the signed prompt and the rubber-stamp
+  expert give a GO with the hardware recorded.
   `make check` results are in the PR.
 - Open: no held-out case is listed on this branch (#170 adds case04, written by a builder who
   never saw the step's prompt, and Arsh signs its key there). Y's seconds are for the M4 Air;
-  other hardware is not measured. No go/no-go has been run with the local model. Tokens per second and peak GPU memory are not
-  recorded.
+  other hardware is not measured. No go/no-go has been run with the local model. Tokens per
+  second and peak GPU memory are not recorded.
 - Affects: performance (how the testability step's go/no-go is measured before pilots). No
   capability, privacy, network, model or verdict change.
 - Status doc: pending: section 8 item 2 ("Audit"), after #159's pending line on the testability
