@@ -1443,6 +1443,19 @@ def test_count_op_refuses_a_kind_of_call(text):
         count_op(text, 2)
 
 
+def test_one_value_counting_calls_and_messages_is_no_count():
+    # The value alone does not say which count a proposal means (Codex on #169).
+    from core.audit.assumption_filler import counts_calls
+
+    text = (
+        "On March 12, 2026, PETROV and REYES had two Telegram calls and exchanged two Telegram"
+        " messages."
+    )
+    assert not counts_calls(text, 2)
+    with pytest.raises(Reject, match="both calls and other records"):
+        count_op(text, 2)
+
+
 @pytest.mark.parametrize(
     "text",
     [

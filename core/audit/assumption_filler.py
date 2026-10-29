@@ -1454,7 +1454,7 @@ def _count_match(claim: str, value: int) -> tuple[int, re.Match[str]]:
     # The number in figures or in words ("13 messages", "thirteen messages"), never "a", and
     # never one part of a longer number: "twenty one", "one hundred" and "1,000" are read as
     # no count, not as 20, 1 or 1 (Codex on #164).
-    at, m = 0, None
+    found: list[tuple[int, re.Match[str]]] = []
     for n in re.finditer(r"(?<![\d.,])\b(?:\d+|[a-z]+(?:-[a-z]+)?)\b(?![.,]\d)", claim, re.I):
         if n.group(0).lower() in ("a", "an") or _number(n.group(0)) != value:
             continue
@@ -1464,11 +1464,14 @@ def _count_match(claim: str, value: int) -> tuple[int, re.Match[str]]:
             continue
         m = _COUNTED_RE.match(claim, n.end())
         if m is not None:
-            at = n.start()
-            break
-    if m is None:
+            found.append((n.start(), m))
+    if not found:
         raise Reject(f"{value} is not written in the claim as a number of messages or calls")
-    return at, m
+    if len({bool(re.fullmatch(r"calls?", m.group("noun"), re.I)) for _, m in found}) > 1:
+        # "two Telegram calls and two Telegram messages": the value alone does not say which
+        # count is meant (Codex on #169)
+        raise Reject(f"{value} counts both calls and other records in the claim")
+    return found[0]
 
 
 def count_op(claim: str, value: int) -> Literal["eq", "ge", "le"]:
