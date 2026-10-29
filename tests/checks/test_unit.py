@@ -473,9 +473,58 @@ def test_handle_resolving_checks_record_the_version_that_skips_copy_recipients()
     participants), so every check resolving handles records a bumped version."""
     r = check(build(), "sender", quoted_text="see you at noon", person_ids=[B],
               device_ids=["dev:p2"])  # fmt: skip
-    assert r.id.endswith("|sender@1.0.1")
-    assert {CHECKS[n].version for n in ("absence", "sender", "weekday", "same_account")} == {
-        "1.0.1"
-    }
-    assert CHECKS["time"].version == "1.0.2"  # and a call is on the app named beside "call"
+    assert r.id.endswith("|sender@1.0.2")
+    assert {CHECKS[n].version for n in ("absence", "same_account")} == {"1.0.1"}
+    # The checks that match a quote's text record the fold (curly quotes, runs of spaces).
+    assert {CHECKS[n].version for n in ("sender", "weekday")} == {"1.0.2"}
+    assert CHECKS["time"].version == "1.0.3"  # and a call is on the app named beside "call"
     assert CHECKS["count"].version == "1.0.3"
+
+
+def _typed(conn: sqlite3.Connection, body: str) -> sqlite3.Connection:
+    conn.execute("UPDATE messages SET body = ? WHERE id = 'msg:p2:2'", (body,))
+    return conn
+
+
+@pytest.mark.parametrize(
+    ("body", "quoted"),
+    [
+        ("I\u2019m at the dock", "I'm at the dock"),  # the phone kept a curly apostrophe
+        ("I'm at the dock", "I\u2019m at the dock"),  # the claim has one
+        ("He said \u201cgo\u201d now", 'He said "go" now'),
+        ("Yay!  Do we go?", "Yay! Do we go?"),  # two spaces in the export, one in the claim
+        ("Yay!\nDo we go?", "Yay! Do we go?"),
+        ("Yay! Do we go?", "Yay!  Do we go?"),  # the fold applies to both sides
+    ],
+)
+def test_the_text_match_reads_curly_quotes_as_straight_and_space_runs_as_one(
+    body: str, quoted: str
+) -> None:
+    conn = _typed(build(), body)
+    r = check(conn, "sender", quoted_text=quoted, person_ids=[B], device_ids=["dev:p2"])
+    assert r.outcome is CheckOutcome.PASS and r.record_ids == ("msg:p2:2",)
+    assert "curly quotes read as straight and runs of spaces as one" in r.searched
+    t = check(conn, "record_time", quoted_text=quoted, person_ids=[B], window=MARCH)
+    assert t.outcome is CheckOutcome.PASS and t.record_ids == ("msg:p2:2",)
+
+
+@pytest.mark.parametrize(
+    "quoted",
+    [
+        "Im at the dock",  # a missing apostrophe is not folded in
+        "I`m at the dock",  # nor is a backtick
+        "I'm at the do",  # still word-aligned
+        "i'm at the dock",  # and case still counts
+    ],
+)
+def test_the_fold_changes_nothing_else(quoted: str) -> None:
+    conn = _typed(build(), "I\u2019m at the dock")
+    r = check(conn, "sender", quoted_text=quoted, person_ids=[B], device_ids=["dev:p2"])
+    assert r.outcome is CheckOutcome.INCONCLUSIVE and "Not found does not mean" in r.detail
+
+
+def test_quote_verification_stays_exact() -> None:
+    from core.audit.quotes import verify_quote
+
+    assert not verify_quote("I'm at the dock", "I\u2019m at the dock")
+    assert not verify_quote("Yay! Do", "Yay!  Do")

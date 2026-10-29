@@ -352,7 +352,7 @@ def _account_label(case: Case, keys: Iterable[Key]) -> str:
 
 
 def _quoted_rows(case: Case, a: Assumption) -> list[Row]:
-    """Messages holding the assumption's quote, verbatim and word-aligned, within its scope: the
+    """Messages holding the assumption's quote as the checks match it, within its scope: the
     phones and apps it names, and messages its parties sent or received. For a time statement
     every named party must be on the message, as in the time checks. Otherwise, when no copy
     involves a party (the claim may name the wrong sender), every copy in scope is kept."""
