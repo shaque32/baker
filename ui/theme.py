@@ -182,6 +182,12 @@ td input[type=text], td input[type=password] { min-width: 0; width: 100%; max-wi
   height: 32px; font-size: 13.5px; }
 td button { min-height: 30px; padding: 0 10px; font-size: 13px; margin: 2px 6px 2px 0; }
 .ctx td { font-size: 13px; }
+td.when { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--muted);
+  font-size: 12.5px; }
+td:has(> form.inline):not(:has(input[type=text])) { white-space: nowrap; }
+td:has(> form.inline) details { white-space: normal; margin-top: 4px; }
+td form.inline button { min-height: 28px; padding: 0 9px; font-size: 12.5px;
+  margin: 2px 4px 2px 0; }
 tr.target td { font-weight: 600; background: var(--accent-bg); }
 
 /* Forms: labels above fields, 36px controls, one clear focus ring */
@@ -233,6 +239,30 @@ input[type=checkbox], input[type=radio] { width: 15px; height: 15px; margin: 0;
   accent-color: var(--accent); cursor: pointer; }
 input[type=text].wide, textarea { width: 100%; margin-right: 0; }
 input:disabled, select:disabled, textarea:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* A settings card: title and note, fields side by side with the unit inside the field */
+form.settings { display: grid; gap: 16px; }
+form.settings .settings-head h3 { margin: 0 0 2px; }
+form.settings .settings-head p { margin: 0; font-size: 12.5px; }
+form.settings .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px 24px; max-width: 640px; }
+form.settings label.field { display: grid; gap: 6px; margin: 0; font-weight: 500;
+  font-size: 13px; }
+form.settings small { font-weight: 400; font-size: 12px; color: var(--muted);
+  line-height: 1.45; }
+.unit-input { display: flex; align-items: center; height: 36px; max-width: 200px;
+  border: 1px solid var(--line-strong); border-radius: 6px; background: var(--field);
+  box-shadow: 0 1px 1px rgb(20 20 20 / 0.03); }
+.unit-input:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--ring); }
+.unit-input input[type=number] { flex: 1; min-width: 0; height: 34px; margin: 0; border: 0;
+  box-shadow: none; background: transparent; font-variant-numeric: tabular-nums;
+  -moz-appearance: textfield; appearance: textfield; }
+.unit-input input[type=number]:focus { box-shadow: none; }
+.unit-input input::-webkit-outer-spin-button,
+.unit-input input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.unit-input .unit { padding: 0 12px 0 4px; font-size: 13px; color: var(--muted); }
+form.settings .actions { display: flex; }
+form.settings .actions button { margin: 0; }
 
 /* Buttons: quiet by default, navy for the one main action */
 button { display: inline-flex; align-items: center; justify-content: center; gap: 6px;
@@ -413,8 +443,10 @@ blockquote.claimtext { font: 500 20px/1.45 var(--sans); letter-spacing: -0.005em
 .msg .t { font: 400 11px var(--sans); color: var(--muted); text-align: right; margin-top: 2px;
   font-variant-numeric: tabular-nums; }
 .msg.target { border: 1.5px solid var(--accent); box-shadow: 0 0 0 3px var(--ring); }
-.msg .cited { font: 600 11px var(--sans); color: var(--accent);
-  background: var(--accent-bg); border-radius: 4px; padding: 1px 6px; margin-right: 6px; }
+.msg .cited { display: inline-block; font: 600 11px var(--sans); letter-spacing: 0;
+  text-transform: lowercase; color: var(--accent); background: var(--accent-bg);
+  border-radius: 4px; padding: 1px 6px; margin-right: 6px; }
+.msg .cited::first-letter { text-transform: uppercase; }
 
 /* identities: a person, and each link with its records for and against */
 .lede { font-size: 14px; line-height: 1.6; }

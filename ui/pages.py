@@ -1442,7 +1442,8 @@ def evidence_page(conn: sqlite3.Connection, page: Page, evidence_id: str) -> str
             "<th>When (UTC)</th></tr></thead>"
             + "".join(
                 f"<tr><td>{s}</td><td>{e(who)}</td><td>{e(status)}</td>"
-                f"<td>{said(reason) if kind == 'expert' else e(reason)}</td><td>{e(at)}</td></tr>"
+                f"<td>{said(reason) if kind == 'expert' else e(reason)}</td>"
+                f"<td class='when'>{e(at)}</td></tr>"
                 for s, kind, who, status, reason, at in history
             )
             + "</table>"
@@ -1543,7 +1544,8 @@ def log_page(conn: sqlite3.Connection, page: Page, show_all: bool, show_views: b
     ]
     for seq, at, actor, action, payload, _h in rows:
         out.append(
-            f"<tr><td>{seq}</td><td>{e(at)}</td><td>{e(actor)}</td><td>{e(action)}</td>"
+            f"<tr><td>{seq}</td><td class='when'>{e(at)}</td><td>{e(actor)}</td>"
+            f"<td>{e(action)}</td>"
             f"<td class='mono'>{q(_short(payload))}</td></tr>"
         )
     out.append("</table>")
@@ -1685,7 +1687,7 @@ def activity_page(conn: sqlite3.Connection, page: Page, claim: str, show_all: bo
     for s in shown[cut:]:
         when = activity.duration(s.seconds, s.away) if s.is_view else ""
         out.append(
-            f"<tr><td>{s.seq}</td><td>{e(s.at_utc)}</td><td>{e(s.examiner)}</td>"
+            f"<tr><td>{s.seq}</td><td class='when'>{e(s.at_utc)}</td><td>{e(s.examiner)}</td>"
             f"<td>{e(s.where)}</td><td>{_step_item(s)}</td><td>{e(when)}</td></tr>"
         )
     out.append("</table>")
@@ -1916,7 +1918,8 @@ def setup_page(
                 recs = str(counts.get(sid, 0))
             out.append(
                 f"<tr><td>{q(fname)}<br><span class='mono'>{e(sid)}</span></td><td>{what}</td>"
-                f"<td>{cov}</td><td>{recs}</td><td class='mono'>{e(sha)}</td><td>{e(at)}</td></tr>"
+                f"<td>{cov}</td><td>{recs}</td><td class='mono'>{e(sha)}</td>"
+                f"<td class='when'>{e(at)}</td></tr>"
             )
         out.append("</table>")
     else:

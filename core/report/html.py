@@ -162,7 +162,10 @@ from core.review.withheld import summary as withheld_summary
 # 0.20.0: visual only, in the design of the review screen and getmabillon.com: table headings in
 # sentence case and IBM Plex Sans, ids and hashes in IBM Plex Mono, claim text
 # in the sans, calmer notices and verdict pills. No wording, fact or section changed.
-REPORT_VERSION = "0.20.0"
+# 0.21.0: visual only, in the review screen's dashboard look: the title in IBM Plex Sans (no
+# serif), cool grays, white cards with 8px corners, notices as a gray note instead of a yellow
+# box, unproven in gray and waiting on the expert in navy. No wording, fact or section changed.
+REPORT_VERSION = "0.21.0"
 
 
 @dataclass(frozen=True)
@@ -198,11 +201,11 @@ STANCE_LABEL = {
 }
 
 CSS = """
-:root { --fg:#141414; --muted:#57534b; --bg:#f7f5f0; --card:#fdfcfa; --line:#e4e0d8;
-  --line-strong:#cfc9bd; --panel:#efece5; --accent:#1d3557;
+:root { --fg:#1a2233; --muted:#5f6878; --bg:#f6f7f9; --card:#fff; --line:#e3e6eb;
+  --line-strong:#cfd4dc; --panel:#f0f2f5; --accent:#1d3557;
   --sup:#2f5d43; --sup-bg:#e6eee8; --sup-line:#bcd0c2; --supai:#5c5a1f;
   --con:#9a3a2c; --con-bg:#f4e5e1; --con-line:#e2c0b8;
-  --unp:#7f5a12; --unp-bg:#f5ecd6; --unp-line:#e3d2a8; --await:#7f5a12; --warn:#f5ecd6;
+  --unp:#5f6878; --unp-bg:#f0f2f5; --unp-line:#d9dde4; --await:#1d3557; --warn:#f5ecd6;
   --sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica,
     Arial, sans-serif;
   --serif: "Instrument Serif", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
@@ -213,27 +216,29 @@ body { font: 15px/1.6 var(--sans); color: var(--fg); background: var(--bg);
 ::selection { background: #d9e1ec; }
 a { color: var(--accent); text-underline-offset: 2px; }
 h1, h2, h3 { line-height: 1.2; color: var(--fg); }
-h1 { font: 400 44px/1.08 var(--serif); letter-spacing: -0.015em; margin: 8px 0 10px; }
+h1 { font: 600 28px/1.25 var(--sans); letter-spacing: -0.01em; margin: 8px 0 10px; }
 h2 { font-size: 18px; font-weight: 600; letter-spacing: -0.005em; margin: 48px 0 12px;
   padding-bottom: 8px; border-bottom: 1px solid var(--line); }
 h3 { font-size: 15px; font-weight: 600; }
 .muted { color: var(--muted); }
 .mono { font-family: var(--mono); font-size: 12px;
   word-break: break-all; }
-.banner { background: #fbf6ea; border: 1px solid #ecdfbf; border-radius: 12px;
-  padding: 14px 18px; margin: 16px 0; color: #4a3a14; font-size: 14px; }
-.banner strong { font-weight: 600; color: #3a2c0a; }
-p.warn { background: #fbf6ea; border: 1px solid #ecdfbf; border-radius: 12px;
-  padding: 12px 16px; color: #4a3a14; font-size: 14px; }
+.banner { background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+  padding: 12px 16px; margin: 16px 0; color: #3c4555; font-size: 14px;
+  box-shadow: inset 3px 0 0 var(--line-strong); }
+.banner strong { font-weight: 600; color: var(--fg); }
+p.warn { background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+  padding: 10px 16px; color: #3c4555; font-size: 14px;
+  box-shadow: inset 3px 0 0 var(--line-strong); }
 strong.warn { color: var(--unp); }
 table { border-collapse: separate; border-spacing: 0; width: 100%; margin: 12px 0;
   font-size: 13.5px; line-height: 1.5; background: var(--card); border: 1px solid var(--line);
-  border-radius: 12px; overflow: hidden; }
+  border-radius: 8px; overflow: hidden; }
 th, td { border-bottom: 1px solid var(--line); padding: 11px 14px; text-align: left;
   vertical-align: top; }
 tr:last-child td { border-bottom: 0; }
-th { background: transparent; font: 500 12.5px var(--sans); color: var(--muted); }
-.claim { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+th { background: #f9fafb; font: 500 12.5px var(--sans); color: var(--muted); }
+.claim { background: var(--card); border: 1px solid var(--line); border-radius: 8px;
   padding: 8px 24px 18px; margin: 22px 0; }
 .claim > blockquote { font: 500 19px/1.45 var(--sans); letter-spacing: -0.005em;
   background: none; border-left: 2px solid var(--accent); border-radius: 0;
@@ -252,7 +257,7 @@ th { background: transparent; font: 500 12.5px var(--sans); color: var(--muted);
 .v-con::before { content: "✕"; }
 .v-unp { color: var(--unp); background: var(--unp-bg); }
 .v-unp::before { content: "?"; }
-.v-await { color: var(--await); background: var(--unp-bg); border: 1px dashed var(--await); }
+.v-await { color: var(--await); background: #ebf0f7; border: 1px dashed var(--await); }
 .v-await::before { content: "?"; }
 .v-confirm { color: var(--con); background: var(--con-bg); border: 1px dashed var(--con); }
 .v-confirm::before { content: "✕"; }
