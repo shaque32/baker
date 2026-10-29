@@ -2597,11 +2597,24 @@ class LocalAssumptionFiller:
             if i and i.strip():
                 spans += _ident_spans(clause, i)
         numbers = {d for i in idents if i and (d := phone_digits(i)) is not None}
+        written_numbers = set()
         for m in _PHONE_RE.finditer(clause):
             if (d := phone_digits(m.group(0).strip(" .,-"))) is not None:
                 if d not in numbers:
                     return m.group(0).strip()  # a number no side holds: a third party
                 spans.append(m.span())
+                written_numbers.add(d)
+        for a in found:
+            names = [x for x in (a.identifier, a.display_name) if x and x.strip()]
+            if not any(_ident_spans(clause, x) for x in names) and not any(
+                phone_digits(x) in written_numbers for x in names
+            ):
+                # An account the clause does not write: the count would credit its messages
+                # to a side the claim names otherwise (Codex on #172).
+                raise Reject("the exchange's count holds an account the claim does not write")
+        for h in params.get("handles", []):
+            if not (h and h.strip() and _ident_spans(clause, h)):
+                raise Reject("the exchange's count holds an account the claim does not write")
         for start, end in spans:
             left[start:end] = " " * (end - start)
         apps = _app_words(params)
@@ -2697,6 +2710,26 @@ class LocalAssumptionFiller:
         ]
         if not other or other & sender or unnamed:
             raise Reject("the claim does not write the sender on one side and the other after")
+
+        def written(text: str) -> set[str]:
+            """The accounts whose identifier or number the text writes whole."""
+            out = set()
+            for a in accounts:
+                i = (self.data.accounts[a].identifier or "").strip()
+                d = phone_digits(i) if i else None
+                if i and _ident_spans(text, i):
+                    out.add(a)
+                elif d is not None and any(
+                    phone_digits(m.group(0).strip(" .,-")) == d for m in _PHONE_RE.finditer(text)
+                ):
+                    out.add(a)
+            return out
+
+        for side, text in ((sender, subject), (other, rest)):
+            if "accounts" in side and written(text) != set(accounts):
+                # "7001002 sent ..." with 7001001 also given: a count of both would credit a
+                # message from the one the claim does not write (Codex on #172)
+                raise Reject("the claim writes only some of the accounts on that side")
         left = list(rest)
         for _, start, end, _ in mentions(rest):
             left[start:end] = " " * (end - start)

@@ -2700,6 +2700,41 @@ def test_a_count_written_as_one_compound_number_is_one_number(conn, text):
     assert a.params.expected_count == 21
 
 
+@pytest.mark.parametrize("sender_side", [True, False])
+def test_the_accounts_side_is_only_the_accounts_written_there(conn, sender_side):
+    # The model may give accounts the paragraph names; the claim's "7001002" is not 7001001,
+    # so a count of both would credit the other one (Codex on #172).
+    filler = LocalAssumptionFiller(FakeModel("{}"), conn, template=DRAFT)
+    ids = {a.identifier: a.id for a in filler.data.accounts.values() if a.app == "Telegram"}
+    params = {"person_ids": [PETROV], "channels": ["Telegram"],
+              "account_ids": [ids["7001002"], ids["7001001"]]}  # fmt: skip
+    if sender_side:
+        sent = ("the Telegram account 7001002", "PETROV exactly one Telegram message")
+    else:
+        sent = ("PETROV", "exactly one Telegram message to the Telegram account 7001002")
+    with pytest.raises(Reject):
+        filler._sent_by(sent, params)
+    params["account_ids"] = [ids["7001002"]]
+    assert filler._sent_by(sent, params) == ([ids["7001002"]] if sender_side else [PETROV])
+
+
+def test_an_exchange_holds_only_the_accounts_its_clause_writes(conn):
+    # As for "sent": 7001001, given but not written, would have its messages counted for the
+    # side the claim writes as 7001002 (Codex on #172).
+    filler = LocalAssumptionFiller(FakeModel("{}"), conn, template=DRAFT)
+    ids = {a.identifier: a.id for a in filler.data.accounts.values() if a.app == "Telegram"}
+    text = (
+        "On March 21, 2026, PETROV and the Telegram account 7001002 exchanged two Telegram"
+        " messages on dev:item1."
+    )
+    params = {"person_ids": [PETROV], "channels": ["Telegram"],
+              "account_ids": [ids["7001002"], ids["7001001"]]}  # fmt: skip
+    with pytest.raises(Reject):
+        filler._limits_on_exchange(text, params)
+    params["account_ids"] = [ids["7001002"]]
+    assert filler._limits_on_exchange(text, params) is None
+
+
 @pytest.mark.parametrize("phrase", ["with each other", "with one another"])
 def test_exchanged_with_each_other_is_still_each_way(conn, phrase):
     text = f"On March 21, 2026, PETROV and REYES exchanged Telegram messages {phrase} on dev:item1."
