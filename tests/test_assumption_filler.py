@@ -2606,6 +2606,38 @@ def test_a_direction_is_not_read_when_the_claim_writes_a_phone_the_count_leaves_
 
 
 @pytest.mark.parametrize(
+    "text, value",
+    [
+        # two each is a count per side, not a total (Codex on #172)
+        (
+            "On March 21, 2026, on dev:item1, PETROV and REYES exchanged exactly two Telegram"
+            " messages each.",
+            2,
+        ),
+        # a direct message is not told from a group message by the count (Codex on #172)
+        ("On March 21, 2026, PETROV and REYES exchanged Telegram DMs on dev:item1.", None),
+        (
+            "On March 21, 2026, PETROV and REYES exchanged two Telegram direct messages on"
+            " dev:item1.",
+            2,
+        ),
+        ("On March 21, 2026, on dev:item1, PETROV sent REYES exactly one Telegram DM.", 1),
+    ],
+)
+def test_a_direction_is_not_read_with_a_count_per_side_or_direct_messages(conn, text, value):
+    made, filler = _count(conn, text, value, phones=["dev:item1"])
+    assert not any(a.params.each_way or a.params.sent_by for a in made), [a.params for a in made]
+
+
+@pytest.mark.parametrize("phrase", ["with each other", "with one another"])
+def test_exchanged_with_each_other_is_still_each_way(conn, phrase):
+    text = f"On March 21, 2026, PETROV and REYES exchanged Telegram messages {phrase} on dev:item1."
+    made, filler = _count(conn, text, None, phones=["dev:item1"])
+    (a,) = made
+    assert a.params.each_way, filler.drops
+
+
+@pytest.mark.parametrize(
     "third",
     ["SOKOLOV", "(212) 555-0199"],  # a person the case names, a number
 )

@@ -1482,11 +1482,15 @@ _MESSAGE_CONTENT_RE = re.compile(
     r"\b(?:mention\w*|contain\w*|saying|stating|referr\w*|that|which|whose|including)\b", re.I
 )
 # What the clause of an "exchanged" count may hold besides its sides, phone, count and app.
+# "each" only in "each other": "two messages each" is a count per side, which the check does
+# not compare. "direct" and "DMs" are left out: the count does not tell a direct message from
+# a group message (Codex on #172).
 _PLAIN_EXCHANGE_WORDS = frozenset(
-    "exchanged with the and s on between each other one another telephone phone number user"
-    " username account direct exactly at least most only a total of".split()
+    "exchanged with the and s on between telephone phone number user username account exactly"
+    " at least most only a total of".split()
 )
-_MESSAGE_NOUN_RE = re.compile(r"(?:messages?|texts?|imessages?|chats?|emails?|dms?)", re.I)
+_RECIPROCAL_RE = re.compile(r" (?:each other|one another) ")
+_MESSAGE_NOUN_RE = re.compile(r"(?:messages?|texts?|imessages?|chats?|emails?)", re.I)
 # A denial anywhere in the claim: "never exchanged", "had not sent" (Codex on #172).
 _DENIAL_RE = re.compile(r"\b(?:not|never|no|neither|nor|without|cannot)\b|n['’]t\b", re.I)
 _EXCHANGED_RE = re.compile(
@@ -2565,7 +2569,7 @@ class LocalAssumptionFiller:
             left[start:end] = " " * (end - start)
         apps = _app_words(params)
         plain = apps | _PLAIN_EXCHANGE_WORDS
-        for w in _words("".join(left)).split():
+        for w in _RECIPROCAL_RE.sub(" ", _words("".join(left))).split():
             if w not in plain and not _count_word(w) and not _MESSAGE_NOUN_RE.fullmatch(w):
                 return w
         return None
