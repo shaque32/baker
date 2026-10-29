@@ -1059,6 +1059,9 @@ def test_date_mentions():
         ("PETROV and REYES exchanged 13 messages from 9 a.m. to noon", 13, "eq"),
         # Both directions together, as the count check counts (Codex on #160).
         ("PETROV sent and received a total of 13 messages with REYES", 13, "eq"),
+        # Calls are counted too (validation fill f); the filler puts 'call' in the channels.
+        ("at most 13 calls", 13, "le"),
+        ("the TARGET PHONE had four Viber calls with (919) 888-7386", 4, "eq"),
     ],
 )
 def test_count_op(claim_text, value, op):
@@ -1071,8 +1074,7 @@ def test_count_op(claim_text, value, op):
         "about 13 messages",
         "more than 13 messages",
         "on March 13 they met",
-        # The count check counts messages, in both directions between the two parties.
-        "at most 13 calls",
+        # The count check counts messages or calls, in both directions between the parties.
         "Item 1 called @northstar 13 times",
         "PETROV sent @northstar 13 messages",
         "On March 12, PETROV sent exactly 13 Telegram messages to @northstar",
@@ -1729,3 +1731,25 @@ def test_code_made_assumptions_say_so_and_model_ones_do_not(conn):
             a for a in model_made if a.template_id not in {t for t, _ in CODE_ADDS.get(cid, [])}
         ]
         assert not any(is_code_made(a.text) for a in whole if a.template_id != "meaning"), cid
+
+
+def test_a_count_of_calls_is_read_and_made_from_a_calls_time(call_log):
+    # Fill f: the claim counts calls on no named app to a number; the model gave one call's
+    # time. Code adds the count over the call log, with the phone's side as its exact owner.
+    from core.audit.assumption_filler import stated_call_count
+
+    assert stated_call_count("the TARGET PHONE had five calls with (828) 520-5789.") == 5
+    assert stated_call_count("PETROV called REYES 13 times") is None
+    assert stated_call_count("four calls and then two calls") is None
+    assert stated_call_count("about five calls") is None
+    text = "On March 12, 2026, dev:item1 had two calls with (212) 555-0199."
+    prop = {"template_id": "record_time", "channels": ["call"]}
+    assumptions, filler = build_text(call_log, text, ClaimType.COUNT, [prop])
+    by = {a.template_id: a for a in assumptions}
+    assert "message_count" in by, filler.drops
+    c = by["message_count"].params
+    assert (c.count_op, c.expected_count) == ("eq", 2)
+    assert c.channels == ("call", "unknown") and c.person_ids == (PETROV,)
+    assert c.account_ids == ("acct:t:log1", "acct:t:log2") and c.device_ids == ("dev:item1",)
+    assert by["message_count"].text.endswith("Filled from the claim's wording.")
+    assert "calls between" in by["message_count"].text

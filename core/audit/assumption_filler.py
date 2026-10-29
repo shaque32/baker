@@ -1236,12 +1236,36 @@ _ONE_WAY_AFTER_RE = re.compile(
 _COUNTED_RE = re.compile(rf"\s+(?:[\w-]+\s+){{0,2}}(?P<noun>{_COUNT_NOUNS})\b", re.IGNORECASE)
 
 
-def count_op(claim: str, value: int) -> Literal["eq", "ge", "le"]:
-    """How the claim compares its count, read from its words. Raises Reject when the number
-    is not a count of records in the claim, the claim's comparison cannot be stated exactly
-    ("about 13", "more than 13"), or the count is one the count check cannot make: calls or
-    "times" (it counts messages), or messages one side sent or received (it counts both
-    directions)."""
+def stated_call_count(claim: str) -> int | None:
+    """The one number of calls the claim states ("had four calls with X", "five Viber calls"),
+    or None: no such number, two of them, or one `count_op` would refuse."""
+    found = {
+        v
+        for n in re.finditer(r"(?<![\d.,])\b(?:\d+|[a-z]+(?:-[a-z]+)?)\b(?![.,]\d)", claim, re.I)
+        if n.group(0).lower() not in ("a", "an")
+        and (v := _number(n.group(0))) is not None
+        and counts_calls(claim, v)
+    }
+    if len(found) != 1:
+        return None
+    (value,) = found
+    try:
+        count_op(claim, value)
+    except Reject:
+        return None
+    return value
+
+
+def counts_calls(claim: str, value: int) -> bool:
+    """True when the claim's count of `value` counts calls ("had four calls with X")."""
+    try:
+        _, m = _count_match(claim, value)
+    except Reject:
+        return False
+    return bool(re.fullmatch(r"calls?", m.group("noun"), re.I))
+
+
+def _count_match(claim: str, value: int) -> tuple[int, re.Match[str]]:
     # The number in figures or in words ("13 messages", "thirteen messages"), never "a", and
     # never one part of a longer number: "twenty one", "one hundred" and "1,000" are read as
     # no count, not as 20, 1 or 1 (Codex on #164).
@@ -1259,10 +1283,18 @@ def count_op(claim: str, value: int) -> Literal["eq", "ge", "le"]:
             break
     if m is None:
         raise Reject(f"{value} is not written in the claim as a number of messages or calls")
-    if re.fullmatch(r"calls?|times", m.group("noun"), re.I):
-        raise Reject(
-            f"the claim counts {m.group('noun').lower()}; the count check counts messages only"
-        )
+    return at, m
+
+
+def count_op(claim: str, value: int) -> Literal["eq", "ge", "le"]:
+    """How the claim compares its count, read from its words. Raises Reject when the number
+    is not a count of records in the claim, the claim's comparison cannot be stated exactly
+    ("about 13", "more than 13"), or the count is one the count check cannot make: "times",
+    or records one side sent or received (it counts both directions). Calls are counted
+    (validation fill f); the caller puts 'call' among the channels (`counts_calls`)."""
+    at, m = _count_match(claim, value)
+    if re.fullmatch(r"times", m.group("noun"), re.I):
+        raise Reject("the claim counts times; the count check counts messages or calls")
     words = _BOTH_WAYS_RE.sub(" ", _unquoted(_flat(claim)))
     if _ONE_WAY_RE.search(words) or _ONE_WAY_AFTER_RE.match(claim[m.end() :]):
         raise Reject(
@@ -1901,6 +1933,7 @@ class LocalAssumptionFiller:
         out = self._shaped(claim, out, call.id)
         out = self._shaped(claim, self._add_sender(claim, out, allowed_ids), call.id)
         out = self._shaped(claim, self._add_record_time(claim, para, out, allowed_ids), call.id)
+        out = self._shaped(claim, self._add_call_count(claim, out, allowed_ids), call.id)
         out = self._add_meaning(claim, out, allowed_ids, call.id)
         gap = coverage_gap(claim, out, frozenset(self._names()))
         if gap:
@@ -2087,9 +2120,18 @@ class LocalAssumptionFiller:
             if accounts:
                 params["account_ids"] = accounts
 
-        if p.count is not None:
+        if (
+            p.count is not None
+            and tpl.id == "record_time"
+            and counts_calls(claim.text, p.count.value)
+        ):
+            pass  # a time range takes no count; code adds the count of calls (_add_call_count)
+        elif p.count is not None:
             params["count_op"] = count_op(claim.text, p.count.value)
             params["expected_count"] = p.count.value
+            if tpl.id == "message_count" and counts_calls(claim.text, p.count.value):
+                self._count_calls(claim, params)
+                code_made = True
 
         if p.duration is not None:
             if not _verbatim(p.duration.as_written, claim.text):
@@ -2244,6 +2286,35 @@ class LocalAssumptionFiller:
         if not said:
             return []
         return phone or None
+
+    def _add_call_count(
+        self, claim: Claim, out: list[Proposal], allowed_ids: set[str]
+    ) -> list[Proposal]:
+        """A claim that counts calls ("had five calls with (828) 520-5789") whose model answer
+        gave one call's time range but no count gets the count from code: the same parties,
+        phone and window, 'call' on the same app, and the one number of calls it states
+        (validation fill f). The phone's side is its exact owner (`_count_calls`)."""
+        if "message_count" not in allowed_ids or any(p.template_id == "message_count" for p in out):
+            return out
+        value = stated_call_count(claim.text)
+        times = [
+            p
+            for p in out
+            if p.template_id == "record_time"
+            and isinstance(p.params, dict)
+            and CALL_CHANNEL in p.params.get("channels", [])
+            and not p.params.get("quoted_text")
+        ]
+        if value is None or len(times) != 1:
+            return out
+        allowed = TEMPLATES["message_count"].allowed
+        params = {k: v for k, v in dict(times[0].params).items() if k in allowed}
+        params |= {"count_op": count_op(claim.text, value), "expected_count": value}
+        try:
+            self._count_calls(claim, params)
+        except Reject:
+            return out  # the call's time stays tested; its count does not
+        return [*out, Proposal("message_count", params, is_core=True, code_made=True)]
 
     def _add_meaning(
         self, claim: Claim, out: list[Proposal], allowed_ids: set[str], call_id: str | None
@@ -2762,6 +2833,36 @@ class LocalAssumptionFiller:
         if sides < 2:
             raise Reject("the claim names one side of the call; code reads both or none")
         return sorted(people), sorted(accounts), phone
+
+    def _count_calls(self, claim: Claim, params: dict[str, Any]) -> None:
+        """Make a count of calls ("the TARGET PHONE had four Viber calls with (919) 888-7386")
+        countable (validation fill f): 'call' and the claim's one app go in the channels, and
+        when the model named no party code reads them as for a call's time (`_call_parties`).
+        The phone the claim writes is the other side through its owner by confirmed
+        stipulation, only when that person is exactly the phone's own accounts. Raises Reject
+        otherwise."""
+        channels = [c for c in params.get("channels", []) if c != CALL_CHANNEL]
+        app = self._call_app(claim.text, channels)
+        params["channels"] = sorted({CALL_CHANNEL, app}, key=str.lower)
+        device_ids = list(params.get("device_ids", []))
+        if not (params.get("person_ids") or params.get("account_ids") or params.get("handles")):
+            people, accounts, phone = self._call_parties(claim, device_ids, app)
+            if phone and not device_ids:
+                device_ids = phone
+                params["device_ids"] = phone
+            if people:
+                params["person_ids"] = people
+            if accounts:
+                params["account_ids"] = accounts
+        sides = len(params.get("person_ids", [])) + bool(
+            params.get("account_ids") or params.get("handles")
+        )
+        if sides == 1 and len(device_ids) == 1:
+            own = {a.id for a in self.data.accounts.values() if a.device_id == device_ids[0]}
+            owner = self._exact_owner(own) if own else None
+            if owner is None or owner in params.get("person_ids", []):
+                raise Reject("the phone's side of the calls is no one person code can name")
+            params["person_ids"] = sorted({*params.get("person_ids", []), owner})
 
     def _app_named(self, claim_text: str, app: str) -> bool:
         """A phone app, or an app the claim names the way `_channels` requires."""

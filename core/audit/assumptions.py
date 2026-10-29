@@ -249,7 +249,8 @@ TEMPLATES: dict[str, Template] = {
             _count_rule,
             lambda p, n: (
                 f"{_phones(p, n)} holds {n.count(p.count_op or '', p.expected_count or 0)} "
-                f"messages between {_who(p, n)}{_on(p)} {_when(p)}"
+                f"{'calls' if 'call' in p.channels else 'messages'} between "
+                f"{_who(p, n)}{_on(p)} {_when(p)}"
             ),
         ),
         Template(

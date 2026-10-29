@@ -23,6 +23,11 @@
     names another account takes the phone's side as its owner by confirmed stipulation, only
     when that person's accounts are exactly the phone's own.
   - A time stated near midnight may start its window on the day before.
+  - Fill f, call counts: with 'call' among its channels the count check (1.1.0) counts calls
+    on the app named. A call count never fails, since a call log keeps calls that did not
+    connect and can hold one call twice; two counted calls 60 seconds apart or less make it
+    inconclusive. The filler reads "N calls" and, when the model gave only one call's time,
+    adds the count from it, with the phone's side as its exact owner.
   - Fill g: an assumption code filled, in whole or in part, ends its text with "Filled from
     the claim's wording.", which the expert reads before accepting it. `eval/run_pipeline.py`
     lists Supported claims that rest on such an assumption.
@@ -34,15 +39,17 @@
   tests/test_account_lookups.py (two tests changed from "refused" to "one party" under R6)
   and tests/test_validation_run.py. Replaying run 2's recorded model answers through this
   code and running the checks on run 2's case database (development data, project files
-  only): 31 code-checked, 13 check unsettled, 3 expert only (47 tested), up from 18, 13 and
-  4 at #165. 10 of the 31 have a failed core check; whether those are right is unscored until
-  run 3's measure 7. `make check`: see the PR.
-- Open: R5 (open ranges such as "before May 1" or "never") is not built. Call counts are not
-  built. Direction for counts and "exchanged" needs a `core/contracts.py` field; the diff is in
+  only): 32 code-checked, 14 check unsettled, 3 expert only (49 tested), up from 18, 13 and
+  4 at #165. One of the 32 is code-checked by its call's time while its count of calls stays
+  inconclusive (calls stored twice). 10 of the 32 have a failed core check; whether those are
+  right is unscored until run 3's measure 7. `make check`: see the PR.
+- Open: R5 (open ranges such as "before May 1" or "never") is not built. Direction for
+  counts and "exchanged" needs a `core/contracts.py` field; the diff is in
   PROPOSED_CHANGES.md for Arsh. A failed check on rules 0.3.0 contradicts without an expert,
   so more checked claims also means more such contradictions.
-- Affects: capabilities (which claims the filler can make checkable; number matching; the
-  code-made note on assumption text); no privacy change; no customer-facing claim change
+- Affects: capabilities (which claims the filler can make checkable; number matching; call
+  counts, count check 1.1.0; the code-made note on assumption text); no privacy change; no
+  customer-facing claim change
 - Status doc: pending: in the assumption filler's capabilities, add "reads native calls by
   number, one number written several ways as one party, writers from 'instructed ...,
   writing' and 'after receiving it from', part-day ranges on a stated day; code-made
