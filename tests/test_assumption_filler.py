@@ -1633,6 +1633,8 @@ def test_an_open_time_on_one_stated_day_is_the_rest_or_the_start_of_that_day():
         # the day's own zone, which the time's would not carry (Codex on #169)
         "On May 7, 2023 UTC, there was no contact with REYES after 10:00 a.m.",
         "On May 7, 2023 (UTC), there was no contact with REYES after 10:00 a.m.",
+        # an offset on the time (Codex on #169)
+        "On May 7, 2023, there was no contact with REYES starting two hours after 10:00 a.m.",
     ):
         assert stated_part_day(text) is None, text
 
@@ -1940,6 +1942,23 @@ def test_a_dated_quote_on_an_app_the_case_lacks_gets_no_senderless_time(conn, ap
     assert not any(a.template_id == "record_time" for a in assumptions)
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        'On March 12, 2026, REYES received a Telegram message reading "the package will be at'
+        ' marcs".',
+        'The Telegram message to REYES of March 12, 2026, "the package will be at marcs", shows'
+        " that the package held narcotics.",
+    ],
+)
+def test_a_dated_quote_to_a_named_recipient_gets_no_senderless_time(conn, text):
+    # A time on anyone's message would not keep the one it went to (Codex on #169).
+    assumptions, _ = build_text(conn, text, ClaimType.CONTENT_MEANING, [])
+    for a in assumptions:
+        if a.template_id == "record_time":
+            assert a.params.person_ids or a.params.account_ids, a.params
+
+
 def test_a_message_dated_by_its_writers_possessive_gets_no_senderless_time(conn):
     # "PETROV's Telegram message of March 12" names its writer; a time with no party would
     # match anyone's message (Codex on #169).
@@ -2018,6 +2037,39 @@ def test_absence_parties_refuse_an_app_the_case_lacks(conn, app):
     assert not any(c.casefold() == app.casefold() for c in filler.channels())
     assert not any(a.template_id == "no_contact" for a in assumptions)
     assert any("does not hold" in d.reason for d in filler.drops), filler.drops
+
+
+def test_never_on_a_stated_day_keeps_the_days_own_range(conn):
+    # "On March 12, 2026, ... never" is that day, not an open range (Codex on #169).
+    window = {"as_written": "On March 12, 2026",
+              "start": "2026-03-12T00:00", "end": "2026-03-13T00:00", "zone": "phone"}  # fmt: skip
+    assumptions, filler = _no_contact(
+        conn,
+        "On March 12, 2026, dev:item1 never communicated with (212) 555-0144.",
+        phones=["dev:item1"],
+        window=window,
+    )
+    (a,) = [a for a in assumptions if a.template_id == "no_contact"]
+    assert a.params.window is not None, filler.drops
+    assert "extraction" not in a.params.window.raw
+
+
+def test_the_extractions_edge_is_kept_as_an_instant_across_a_clock_change(conn):
+    # A last record in the repeated hour of a fall-back night (01:30 EST, the second time)
+    # ends the range on that instant, not an hour before it (Codex on #169).
+    conn.execute(
+        "INSERT INTO calls (id, source_id, locator, app, direction, ts_utc, duration_s)"
+        " VALUES ('call:dst', 'item1', 'x', 'Phone', 'incoming', '2026-11-01T06:30:00+00:00', 5)"
+    )
+    try:
+        assumptions, filler = _no_contact(
+            conn, "dev:item1 never communicated with (212) 555-0144.", phones=["dev:item1"]
+        )
+        (a,) = [a for a in assumptions if a.template_id == "no_contact"]
+        assert a.params.window is not None, filler.drops
+        assert a.params.window.end_utc.isoformat()[:19] == "2026-11-01T06:30:00"
+    finally:
+        conn.execute("DELETE FROM calls WHERE id = 'call:dst'")
 
 
 def test_a_range_with_both_ends_stated_keeps_its_own_ends(conn):

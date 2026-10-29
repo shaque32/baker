@@ -132,7 +132,7 @@ from core.audit.checks._common import (
     namespace,
     person_party,
 )
-from core.contracts import Claim, ClaimType, ModelRun
+from core.contracts import Claim, ClaimType, ModelRun, TimeWindow
 from core.review.device_names import logged_names, name_key
 from core.zones import resolve_zone
 
@@ -1158,6 +1158,16 @@ _OPEN_RANGE_RE = re.compile(r"\b(?:never|before|prior\s+to|until|after|since)\b"
 # An open range's edges come from the data, so the source spans it by construction; the
 # words say what that leaves unseen.
 _EDGE_NOTE = "; the edges are the extraction's own, so contact outside its records is not seen"
+_HANDLE_RE = re.compile(r"@[\w.-]*\w|\S+@\S*\w")
+# Someone the message went to: "REYES received a Telegram message reading ...", "a message
+# to REYES" (Codex on #169).
+_RECEIVED_AFTER_RE = re.compile(
+    r"\s+(?:(?:had|has|have|was|were)\s+)?(?:received|receives|got|gets|was\s+sent)\b",
+    re.IGNORECASE,
+)
+_TO_BEFORE_RE = re.compile(r"\b(?:to|for|toward|towards)\s+$", re.IGNORECASE)
+# The word right before an open range's one date: "before May 1", "on or after", "since".
+_OPEN_EDGE_BEFORE_RE = re.compile(r"\b(?:before|prior\s+to|until|after|since)\s+$", re.IGNORECASE)
 _CALL_WORD_RE = re.compile(
     r"\b(?:calls?|called|calling|phoned|phoning|rang|dialed|dialled|voicemails?)\b", re.IGNORECASE
 )
@@ -1208,6 +1218,8 @@ def _open_range_wording(bare: str) -> bool:
     dates = list(_DATE_RE.finditer(bare))
     if len(dates) > 1 or (dates and dates[0].group(5)):
         return False
+    if dates and not _OPEN_EDGE_BEFORE_RE.search(bare[: dates[0].start()]):
+        return False  # "On March 12, 2026, ... never": a stated day, not an open end
     if unread_zone(bare) is not None:
         return False
     return not (dates and _DATE_ZONE_RE.match(bare[dates[0].end() :]))
@@ -1242,6 +1254,8 @@ def stated_part_day(text: str, context: str = "") -> StatedWindow | None:
         return None
     if _DATE_ZONE_RE.match(plain[m.end() :]) or _UNREAD_DATE_ZONE_RE.match(plain[m.end() :]):
         return None  # "On May 7, 2023 UTC, ... after 10:00 a.m.": the day's zone (Codex on #169)
+    if _OFFSET_EDGE_RE.search(plain):
+        return None  # "two hours after 10:00 a.m.": an offset code does not read
     before = plain[max(0, m.start() - 12) : m.start()]
     if any(_has_word(before, w) for w in (*OPEN_START, *OPEN_END)):
         return None
@@ -2461,6 +2475,10 @@ class LocalAssumptionFiller:
                 return out
             if not apps and _names_an_app_off_the_case(_unquoted(_nfc(claim.text))):
                 return out  # "the Signal message" on a case with no Signal (Codex on #169)
+            if self._names_a_recipient(_unquoted(_nfc(claim.text))):
+                # "REYES received a Telegram message reading ...": a time on anyone's
+                # message would not keep the party the claim names (Codex on #169)
+                return out
             senders = [Proposal("sender", {"quoted_text": quote}
                                 | ({"channels": apps} if apps else {})
                                 | ({"device_ids": sorted(phones)} if phones else {}))]  # fmt: skip
@@ -3015,6 +3033,24 @@ class LocalAssumptionFiller:
         params["account_ids"] = sorted(found)
         return phones
 
+    def _names_a_recipient(self, bare: str) -> bool:
+        """True when the words write a person the case knows, a phone number or a handle as
+        the one the message went to: "REYES received ...", "a message to REYES". The phone
+        itself ("the TARGET PHONE received") scopes the search and is no such party."""
+        spans = [m.span() for m in _HANDLE_RE.finditer(bare)]
+        spans += [
+            m.span()
+            for m in _PHONE_RE.finditer(bare)
+            if phone_digits(m.group(0).strip(" .,-")) is not None
+        ]
+        for (name,) in self.conn.execute("SELECT name FROM persons"):
+            if name and name.strip():
+                spans += _name_spans(bare, _nfc(name.strip()))
+        return any(
+            _RECEIVED_AFTER_RE.match(bare, end) or _TO_BEFORE_RE.search(bare[:start])
+            for start, end in spans
+        )
+
     @staticmethod
     def _absence_joiner(bare: str) -> str | None:
         """A word joining another clause to a no-contact claim, a name in which may not be
@@ -3057,20 +3093,36 @@ class LocalAssumptionFiller:
         tz = self._phone_zone(device_ids)
         zone = ZoneInfo(tz)
 
-        def wall(ts: str) -> datetime:
+        def instant(ts: str) -> datetime:
             t = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-            t = t if t.tzinfo else t.replace(tzinfo=UTC)
-            return t.astimezone(zone).replace(tzinfo=None)
+            return t if t.tzinfo else t.replace(tzinfo=UTC)
 
         # From the first record to the last one, inclusive, so a full extraction spans it.
-        first = min(wall(t) for t in times)
-        last = max(wall(t) for t in times) + timedelta(microseconds=1)
+        # The edges stay instants: a wall time in a repeated hour would shift them by the
+        # clock change (Codex on #169).
+        first_utc = min(instant(t) for t in times).astimezone(UTC)
+        last_utc = max(instant(t) for t in times).astimezone(UTC)
+        first, last = first_utc.astimezone(zone), last_utc.astimezone(zone)
         span = f"the extraction's first dated record ({first:%B} {first.day}, {first.year})"
         end_span = f"its last dated record ({last:%B} {last.day}, {last.year})"
+
+        def window(start: datetime | None, end: datetime | None, raw: str) -> TimeWindow:
+            """A range from a local midnight (start) or to one (end, exclusive); a missing
+            end is the extraction's own."""
+            lo = start.replace(tzinfo=zone).astimezone(UTC) if start else first_utc
+            hi = (
+                end.replace(tzinfo=zone).astimezone(UTC) - timedelta(microseconds=1)
+                if end
+                else last_utc
+            )
+            if hi < lo:
+                raise Reject("the extraction holds no record on the open side of the date")
+            return TimeWindow(start_utc=lo, end_utc=hi, tz=tz, raw=raw + _EDGE_NOTE)
+
         if not dates:
             if not _has_word(text, "never"):
                 raise Reject("an open range needs 'never' or one stated date")
-            return local_window(first, last, tz, f"never: from {span} to {end_span}{_EDGE_NOTE}")
+            return window(None, None, f"never: from {span} to {end_span}")
         if len(dates) != 1 or dates[0].group(5):
             raise Reject("an open range reads one stated day")
         m = dates[0]
@@ -3086,18 +3138,14 @@ class LocalAssumptionFiller:
         said = text[m.start() : m.end()].strip(" ,")
         if re.search(r"\bon\s+or\s+before\s+$", head, re.IGNORECASE):
             # "on or before March 12" takes in all of March 12 (Codex on #169)
-            start, end, raw = first, day + timedelta(days=1), f"on or before {said}: from {span}"
-        elif re.search(r"\b(?:before|prior\s+to|until)\s+$", head, re.IGNORECASE):
-            start, end, raw = first, day, f"before {said}: from {span}"
-        elif re.search(r"\bon\s+or\s+after\s+$|\bsince\s+$", head, re.IGNORECASE):
-            start, end, raw = day, last, f"since {said}: to {end_span}"
-        elif re.search(r"\bafter\s+$", head, re.IGNORECASE):
-            start, end, raw = day + timedelta(days=1), last, f"after {said}: to {end_span}"
-        else:
-            raise Reject("the claim's date is not the open end of a range")
-        if end <= start:
-            raise Reject("the extraction holds no record on the open side of the date")
-        return local_window(start, end, tz, raw + _EDGE_NOTE)
+            return window(None, day + timedelta(days=1), f"on or before {said}: from {span}")
+        if re.search(r"\b(?:before|prior\s+to|until)\s+$", head, re.IGNORECASE):
+            return window(None, day, f"before {said}: from {span}")
+        if re.search(r"\bon\s+or\s+after\s+$|\bsince\s+$", head, re.IGNORECASE):
+            return window(day, None, f"since {said}: to {end_span}")
+        if re.search(r"\bafter\s+$", head, re.IGNORECASE):
+            return window(day + timedelta(days=1), None, f"after {said}: to {end_span}")
+        raise Reject("the claim's date is not the open end of a range")
 
     def _count_calls(self, claim: Claim, params: dict[str, Any]) -> None:
         """Make a count of calls ("the TARGET PHONE had four Viber calls with (919) 888-7386")
