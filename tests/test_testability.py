@@ -914,9 +914,11 @@ def test_the_eval_reports_the_measures_and_gives_no_go_no_go_until_arsh_sets_the
     assert t["wrong_entity_rate"] == 0.0 and t["mismatch_other_only"] == 0
     assert t["wrong_entity_rate_without_the_claim_check"] == 0.0
     assert t["x_percent"] is None and t["y_budget"] is None and not t["go_no_go_case"]
-    printed = capsys.readouterr().out
-    assert "testability go/no-go: none given (x_percent, y_budget not set by Arsh" in printed
-    assert "an upper bound: the signed sheet filters every try" in printed
+    assert t["cap_set"] is None and t["min_testable"] is None
+    assert "an upper bound: the signed sheet filters every try" in capsys.readouterr().out
+    r = rp.testability_go_no_go(t, expert="simulated", false_supported=0, repeat=None)
+    assert r["decision"] == "none given"
+    assert r["why"][0] == "x_percent, y_budget, cap_set, min_testable not set by Arsh"
     db = sqlite3.connect(tmp_path / "case01.db")
     try:  # the replay pass asked no model and reused the examiner's acceptance
         assert len(_log(db, testability.ACCEPT_ACTION)) == 1
