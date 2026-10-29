@@ -10,10 +10,11 @@
   - The repeat compares the predictions and every filler and testability model call (prompt and
     raw output), byte for byte, between the run and its `--repeat`.
   - Fewer sheet-testable refusals than a least denominator gives "insufficient", not a decision.
-  - None is given until Arsh sets X (`TESTABILITY_X_PERCENT`), Y (`TESTABILITY_Y_BUDGET`, calls
-    and seconds per claim), the cap (`TESTABILITY_CAP`) and the least denominator
-    (`TESTABILITY_MIN_TESTABLE`), all still placeholders, and until the run has the signed
-    prompt, a held-out case, `--expert rubber-stamp`, `--repeat` and Arsh's signed key (false
+  - Arsh set the values on 2026-10-29 (03:16Z, decision card in the project thread): X
+    (`TESTABILITY_X_PERCENT`) 40%, Y (`TESTABILITY_Y_BUDGET`) at most 2 calls and 120 s per claim
+    on the MacBook Air M4, the cap (`TESTABILITY_CAP`) 2, and the least denominator
+    (`TESTABILITY_MIN_TESTABLE`) 15. A value set to None gives none. None is also given until
+    the run has the signed prompt, a held-out case, `--expert rubber-stamp`, `--repeat` and Arsh's signed key (false
     supported is never scored against a builder's draft). The reasons are printed.
   - The record names the hardware, the Python version and the wall-clock date of the run.
   - The run's measures print as before; the old "none given" line moved into the go/no-go.
@@ -26,13 +27,14 @@
   none; a draft gold key gives none; the Wilson interval; and two eval runs of synthetic case01 with the scripted model, the
   signed prompt and the rubber-stamp expert give a GO with the hardware recorded.
   `make check` results are in the PR.
-- Open: X, Y, the cap and the least denominator are Arsh's to set, and no held-out case is
-  listed yet (case04 is being written for it, by a writer who never saw the step's prompt). No
-  go/no-go has been run with the local model. Tokens per second and peak GPU memory are not
+- Open: no held-out case is listed on this branch (#170 adds case04, written by a builder who
+  never saw the step's prompt, and Arsh signs its key there). Y's seconds are for the M4 Air;
+  other hardware is not measured. No go/no-go has been run with the local model. Tokens per second and peak GPU memory are not
   recorded.
 - Affects: performance (how the testability step's go/no-go is measured before pilots). No
   capability, privacy, network, model or verdict change.
 - Status doc: pending: section 8 item 2 ("Audit"), after #159's pending line on the testability
   step: "Its go/no-go before pilots (plans/agentic.md) is read by code from one eval run with
-  the rubber-stamp expert and a repeat, against X, Y, a per-claim cap and a least denominator
-  that Arsh sets; none has been run yet".
+  the rubber-stamp expert and a repeat, against Arsh's values (a cap of 2 tries per claim, at
+  least 40% of at least 15 sheet-testable refusals converted, and at most 2 calls and 120 s per
+  claim on the M4 Air); none has been run yet".

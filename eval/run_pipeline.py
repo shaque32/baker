@@ -462,13 +462,15 @@ class _ReplayableFiller:
         return out
 
 
-# The testability step's go/no-go (plans/agentic.md), fixed before the run. Arsh sets X, Y, the
-# per-claim cap and the least denominator; until then each prints as not set and no go/no-go is
-# given (testability_go_no_go).
-TESTABILITY_X_PERCENT: float | None = None  # least share of sheet-testable refusals converted
-TESTABILITY_Y_BUDGET: dict[str, float] | None = None  # most "calls" and "seconds", per claim
-TESTABILITY_CAP: int | None = None  # the per-claim cap the go/no-go runs with
-TESTABILITY_MIN_TESTABLE: int | None = None  # fewest sheet-testable refusals for a decision
+# The testability step's go/no-go (plans/agentic.md), fixed before the run: X, Y, the per-claim
+# cap and the least denominator are Arsh's, picked on the decision card in the project thread
+# "Build agents into the audit" (2026-10-29 03:16Z; plans/testability-go-no-go.md). A value set
+# to None prints as not set and gives no go/no-go (testability_go_no_go). Y's seconds hold for
+# the MacBook Air M4 the go/no-go runs on; other hardware is not measured.
+TESTABILITY_X_PERCENT: float | None = 40.0  # least share of sheet-testable refusals converted
+TESTABILITY_Y_BUDGET: dict[str, float] | None = {"calls": 2, "seconds": 120}  # most, per claim
+TESTABILITY_CAP: int | None = 2  # the per-claim cap the go/no-go runs with
+TESTABILITY_MIN_TESTABLE: int | None = 15  # fewest sheet-testable refusals for a decision
 TESTABILITY_SIGNED_PROMPT = Path("core/audit/prompts/agent_testability.md")
 # Cases whose claims and signed sheets were written by someone other than the prompt's author,
 # held out for the go/no-go. None yet: case01 and case03 are development cases.
