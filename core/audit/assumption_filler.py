@@ -1175,6 +1175,28 @@ _OTHER_TIME_RE = re.compile(
     r"summer|winter|spring|autumn|holidays?|hours?|minutes?)\b",
     re.IGNORECASE,
 )
+# One call among those counted: "including a call at 9:00 p.m.", "the last one at" (Codex on
+# #169). "Between 1:55 and 2:01 p.m. ... five calls" dates the count itself.
+_ONE_CALL_RE = re.compile(
+    r"\b(?:including|included|includes|among|of\s+which|one\s+of)\b|"
+    r"\b(?:first|last|final|second|third|latest|earliest)\s+of\b|\b(?:a|an|one|the|first|"
+    r"last|final|second|third|each|another|latest|earliest)\s+(?:[\w-]+\s+){0,2}(?:call|one)\b",
+    re.IGNORECASE,
+)
+# One way only: "never sent anything to REYES", "never received anything from" (Codex on #169).
+_ONE_DIRECTION_RE = re.compile(
+    r"\b(?:sent|sends|sending|send|received|receives|receiving|receive|got|gets|heard|"
+    r"contacted|contacts|contacting|reached|incoming|outgoing|inbound|outbound|forwarded)\b",
+    re.IGNORECASE,
+)
+# Another act on a quoted message, which the stated date may date instead of its sending:
+# "On March 16, REYES deleted the Telegram message ..." (Codex on #169).
+_OTHER_ACT_RE = re.compile(
+    r"\b(?:deleted|deletes|deleting|forwarded|forwards|forwarding|read|viewed|opened|saved|"
+    r"edited|copied|shared|archived|starred|pinned|screenshotted|replied|responded|reacted|"
+    r"recovered|found|located|retrieved|extracted|reviewed|discovered)\b",
+    re.IGNORECASE,
+)
 # The word right before an open range's one date: "before May 1", "on or after", "since".
 _OPEN_EDGE_BEFORE_RE = re.compile(r"\b(?:before|prior\s+to|until|after|since)\s+$", re.IGNORECASE)
 _CALL_WORD_RE = re.compile(
@@ -2252,7 +2274,14 @@ class LocalAssumptionFiller:
             # phone but no party; code reads both from the claim (validation ruling R5).
             device_ids = self._absence_parties(claim, params, device_ids)
             code_made = True
-        if tpl.id == "no_contact" and _open_range_wording(_unquoted(_nfc(claim.text))):
+        open_range = tpl.id == "no_contact" and _open_range_wording(_unquoted(_nfc(claim.text)))
+        if open_range and not device_ids:
+            # "On dev:item1, there was no contact between PETROV and REYES before ...": the
+            # phone the claim writes scopes the range (Codex on #169).
+            written = sorted(self._written_phones(_unquoted(_nfc(claim.text))))
+            if len(written) == 1:
+                device_ids = params["device_ids"] = written
+        if open_range and len(device_ids) == 1:
             # "before May 1, 2023", "never": the range runs to the extraction's own edge, which
             # code reads from the records, never the model (validation ruling R5).
             params["window"] = self._open_range(claim, device_ids, para)
@@ -2416,6 +2445,11 @@ class LocalAssumptionFiller:
         if "message_count" not in allowed_ids or any(p.template_id == "message_count" for p in out):
             return out
         value = stated_call_count(claim.text)
+        bare = _unquoted(_nfc(claim.text))
+        if time_mentions(bare) and _ONE_CALL_RE.search(bare):
+            # "two calls ..., including a call at about 9:00 p.m.": the time range dates one
+            # call, not the count's own span (Codex on #169).
+            return out
         times = [
             p
             for p in out
@@ -2487,6 +2521,8 @@ class LocalAssumptionFiller:
                 return out
             if not apps and _names_an_app_off_the_case(_unquoted(_nfc(claim.text))):
                 return out  # "the Signal message" on a case with no Signal (Codex on #169)
+            if _OTHER_ACT_RE.search(_unquoted(_nfc(claim.text))):
+                return out  # the date may be the deletion's, not the sending's (Codex on #169)
             if self._names_a_recipient(_unquoted(_nfc(claim.text))):
                 # "REYES received a Telegram message reading ...": a time on anyone's
                 # message would not keep the party the claim names (Codex on #169)
@@ -3012,6 +3048,9 @@ class LocalAssumptionFiller:
             raise Reject("no contact by call: code reads no call-only scope")
         if _MESSAGE_WORD_RE.search(bare):
             raise Reject("no contact by message or by voice: code reads no one-kind scope")
+        if _ONE_DIRECTION_RE.search(bare):
+            # "never sent anything to REYES": the absence check reads both ways (Codex on #169)
+            raise Reject("no contact one way: code reads no one-direction scope")
         named = self._named_apps(claim.text)
         if not named and _names_an_app_off_the_case(bare):
             # "never communicated by Signal" on a case with no Signal: the scope cannot be

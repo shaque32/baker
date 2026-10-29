@@ -1825,6 +1825,19 @@ def test_a_count_of_calls_is_read_and_made_from_a_calls_time(call_log):
     assert "calls between" in by["message_count"].text
 
 
+def test_no_count_is_made_from_the_time_of_one_call_among_them(call_log):
+    # A time that dates one of the calls is not the count's span (Codex on #169).
+    text = (
+        "On March 12, 2026, at approximately 9:00 p.m., dev:item1 had the last of two calls"
+        " with (212) 555-0199."
+    )
+    window = {"as_written": "On March 12, 2026, at approximately 9:00 p.m.",
+              "start": "2026-03-12T20:52", "end": "2026-03-12T21:09", "zone": "phone"}  # fmt: skip
+    prop = {"template_id": "record_time", "channels": ["call"], "window": window}
+    assumptions, filler = build_text(call_log, text, ClaimType.COUNT, [prop])
+    assert not any(a.template_id == "message_count" for a in assumptions), filler.drops
+
+
 def test_a_model_count_of_calls_takes_the_written_phones_zone(call_log):
     # The model gave no phone; code reads it from the claim, and the window takes its zone even
     # when the case's phones are in different zones (Codex on #169).
@@ -1945,13 +1958,16 @@ def test_a_dated_quote_on_an_app_the_case_lacks_gets_no_senderless_time(conn, ap
 @pytest.mark.parametrize(
     "text",
     [
+        # The date may be another act's, not the sending's (Codex on #169).
+        'On March 16, 2026, REYES deleted the Telegram message "the package will be at marcs".',
+        'On March 16, 2026, the Telegram message "the package will be at marcs" was deleted.',
         'On March 12, 2026, REYES received a Telegram message reading "the package will be at'
         ' marcs".',
         'The Telegram message to REYES of March 12, 2026, "the package will be at marcs", shows'
         " that the package held narcotics.",
     ],
 )
-def test_a_dated_quote_to_a_named_recipient_gets_no_senderless_time(conn, text):
+def test_a_dated_quote_with_another_party_or_act_gets_no_senderless_time(conn, text):
     # A time on anyone's message would not keep the one it went to (Codex on #169).
     assumptions, _ = build_text(conn, text, ClaimType.CONTENT_MEANING, [])
     for a in assumptions:
@@ -2071,6 +2087,33 @@ def test_never_with_another_time_keeps_the_models_range(conn, text):
     for a in assumptions:
         if a.template_id == "no_contact" and a.params.window is not None:
             assert "extraction" not in a.params.window.raw, text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "dev:item1 never sent anything to (212) 555-0144.",
+        "dev:item1 never received anything from (212) 555-0144.",
+        "dev:item1 never contacted (212) 555-0144.",
+    ],
+)
+def test_absence_parties_refuse_one_direction(conn, text):
+    # The absence check reads both ways, so code fills no one-way scope (Codex on #169).
+    assumptions, filler = _no_contact(conn, text, phones=["dev:item1"])
+    assert not any(a.template_id == "no_contact" for a in assumptions)
+    assert any("one-direction" in d.reason for d in filler.drops), filler.drops
+
+
+def test_an_open_range_reads_the_phone_the_claim_writes(conn):
+    # The model gave both people and no phone; the claim writes the phone (Codex on #169).
+    assumptions, filler = _no_contact(
+        conn,
+        "On dev:item1, there was no contact between PETROV and REYES before March 12, 2026.",
+        people=["PETROV", "REYES"],
+    )
+    (a,) = [a for a in assumptions if a.template_id == "no_contact"]
+    assert a.params.device_ids == ("dev:item1",), filler.drops
+    assert a.params.window is not None and "extraction" in a.params.window.raw
 
 
 def test_the_extractions_edge_is_kept_as_an_instant_across_a_clock_change(conn):
