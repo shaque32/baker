@@ -46,7 +46,8 @@
     counted call with no length or a zero length, make it inconclusive. A counted call's
     deletion flag is named, as for messages. A count of calls one side placed ("outgoing",
     "made", "missed", "called") is refused, since the check counts both directions; so is
-    a count of "incoming" or "outgoing" messages, and a count of calls of a stated length.
+    a count of "incoming" or "outgoing" messages, and a count of calls of a stated length or on a subject ("about narcotics"), since a call log
+    keeps no subject.
     A call on a calling app the case does not hold ("a Signal call") is not read from the
     call log. The filler reads "N calls" and, when the model gave only one call's time,
     adds the count from it, with the phone's side as its exact owner.

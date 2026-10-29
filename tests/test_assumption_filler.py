@@ -1443,6 +1443,23 @@ def test_count_op_refuses_a_kind_of_call(text):
         count_op(text, 2)
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "On March 12, 2026, on dev:item1, PETROV and REYES had two Telegram calls about narcotics.",
+        "On March 12, 2026, PETROV and REYES had two Telegram calls to arrange the meeting.",
+        "On March 12, 2026, PETROV and REYES discussed the shipment in two Telegram calls.",
+    ],
+)
+def test_count_op_refuses_calls_on_a_subject(text):
+    # A call log keeps no subject, so every call would be counted (Codex on #169).
+    with pytest.raises(Reject, match="on a subject"):
+        count_op(text, 2)
+    # a time is not a subject
+    assert count_op("At about 9 p.m. on March 12, 2026, PETROV and REYES had two Telegram"
+                    " calls.", 2) == "eq"  # fmt: skip
+
+
 def test_a_call_of_a_kind_the_log_does_not_keep_names_no_app(conn):
     filler = LocalAssumptionFiller(FakeModel("{}"), conn, template=DRAFT)
     with pytest.raises(Reject, match="kind of call"):
@@ -1547,6 +1564,11 @@ def test_a_time_near_midnight_may_start_on_the_day_before():
     far = "On May 2, 2023, at approximately 9:00 p.m. EDT"
     with pytest.raises(Reject):
         check_window(D(2023, 5, 1, 20, 52), D(2023, 5, 1, 21, 9), far, far, "", "record_time")
+    # "11:59 p.m." on May 2: the evening before is not near it, though its clock time is
+    # (Codex on #169)
+    late = "On May 2, 2023, at approximately 11:59 p.m. EDT"
+    with pytest.raises(Reject, match="not a date the claim states"):
+        check_window(D(2023, 5, 1, 23, 53), D(2023, 5, 2, 23, 59), late, late, "", "record_time")
 
 
 def test_an_identifier_in_brackets_picks_one_of_two_accounts_with_one_name(conn):
@@ -1717,6 +1739,9 @@ def test_an_open_time_on_one_stated_day_is_the_rest_or_the_start_of_that_day():
         "On May 7, 2023 (UTC), there was no contact with REYES after 10:00 a.m.",
         # an offset on the time (Codex on #169)
         "On May 7, 2023, there was no contact with REYES starting two hours after 10:00 a.m.",
+        # the stated part is the one left out (Codex on #169)
+        "On May 7, 2023, there was no contact between PETROV and REYES except after 10:00 a.m.",
+        "On May 7, 2023, there was no contact with REYES other than before 9 a.m.",
     ):
         assert stated_part_day(text) is None, text
 

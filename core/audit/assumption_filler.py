@@ -848,6 +848,25 @@ def _near(t: datetime, times: list[time]) -> bool:
     return False
 
 
+def _near_a_stated_instant(
+    t: datetime, times: list[time], mentions: list[_DateMention], years: set[int]
+) -> bool:
+    """True when t is within the slack of a stated time on a stated date ("May 2 at 12:01
+    a.m."), as one instant, so a start on the day before counts only when the slack around
+    that instant crosses midnight (Codex on #169)."""
+    for m in mentions:
+        for y in [m.year] if m.year is not None else sorted(years):
+            try:
+                d = date(y, m.month, m.day)
+            except ValueError:
+                continue
+            for x in times:
+                at = datetime.combine(d, x.replace(tzinfo=None), tzinfo=t.tzinfo)
+                if abs(t - at) <= TIME_SLACK:
+                    return True
+    return False
+
+
 def check_window(
     start: datetime,
     end: datetime,
@@ -918,9 +937,8 @@ def check_window(
     elif not open_start:
         # "at approximately 12:01 a.m. on May 2" starts a few minutes before midnight on May 1:
         # a start near a stated time may fall on the day before the date it is near.
-        near_midnight = bool(times) and _near(start, times)
         if not _date_stated(start.date(), mentions, years) and not (
-            near_midnight and _date_stated((start + TIME_SLACK).date(), mentions, years)
+            _near_a_stated_instant(start, times, mentions, years)
         ):
             raise Reject(f"window start {start.date()} is not a date the claim states")
         if times and not _near(start, times):
@@ -1309,6 +1327,8 @@ def stated_part_day(text: str, context: str = "") -> StatedWindow | None:
         return None  # "two hours after 10:00 a.m.": an offset code does not read
     if _PART_DAY_OPEN_RE.search(plain[: p.start()] + " " + plain[p.end() :]):
         return None  # "From May 7, 2023 onward, ... before 9 a.m.": more than one day
+    if _EXCEPT_RE.search(plain):
+        return None  # "no contact except after 10:00 a.m.": the part is the one left out
     before = plain[max(0, m.start() - 12) : m.start()]
     if any(_has_word(before, w) for w in (*OPEN_START, *OPEN_END)):
         return None
@@ -1332,6 +1352,15 @@ def stated_part_day(text: str, context: str = "") -> StatedWindow | None:
         start, end = midnight, at
     raw = f"{plain[m.start() : m.end()].strip(' ,')}, {p.group(0).strip()}"
     return StatedWindow(raw, start, end, p.group("z"))
+
+
+# "except after 10:00 a.m.", "other than before 9 a.m.": the stated part is the one the claim
+# leaves out, so it is no range to check (Codex on #169).
+_EXCEPT_RE = re.compile(
+    r"\b(?:except|excepting|other\s+than|apart\s+from|aside\s+from|besides|but|save\s+for|"
+    r"unless|outside(?:\s+of)?)\b",
+    re.IGNORECASE,
+)
 
 
 _COUNT_NOUNS = r"(?:messages?|texts?|calls?|times|emails?|chats?)"
@@ -1358,6 +1387,14 @@ _CALL_LENGTH_RE = re.compile(
 )
 # A kind of call the call log does not record: "video calls", "audio calls" (Codex on #169).
 _CALL_KIND_RE = re.compile(r"\b(?:video|videos|audio|voice)\b", re.I)
+# "two Telegram calls about narcotics": a call log keeps no subject, so the count check would
+# count every call (Codex on #169). "at about 9 p.m." is a time, not a topic.
+_CALL_TOPIC_RE = re.compile(
+    r"\b(?:about(?!\s+(?:\d|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
+    r"noon|midnight)\b)|regarding|concerning|re:|discuss\w*|related\s+to|relating\s+to|"
+    r"in\s+connection\s+with|on\s+the\s+subject|to\s+arrange|to\s+plan|to\s+set\s+up)",
+    re.IGNORECASE,
+)
 # A call one side placed: "two outgoing calls", "made four calls", "called X" (Codex on #169).
 _ONE_WAY_CALL_RE = re.compile(
     r"\b(?:placed|placing|made|making|dialed|dialled|dialing|dialling|answered|missed|"
@@ -1449,6 +1486,8 @@ def count_op(claim: str, value: int) -> Literal["eq", "ge", "le"]:
     if re.fullmatch(r"calls?", m.group("noun"), re.I) and _CALL_KIND_RE.search(words):
         # "two Telegram video calls": a call log keeps no video or audio kind (Codex on #169)
         raise Reject("the claim counts one kind of call; the count check counts every call")
+    if re.fullmatch(r"calls?", m.group("noun"), re.I) and _CALL_TOPIC_RE.search(words):
+        raise Reject("the claim counts calls on a subject; a call log keeps no subject")
     if _ONE_WAY_RE.search(words) or _ONE_WAY_AFTER_RE.match(claim[m.end() :]):
         raise Reject(
             "the claim counts messages one side sent or received; the count check counts both"
