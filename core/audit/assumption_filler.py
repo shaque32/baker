@@ -1252,6 +1252,12 @@ _ONE_WAY_RE = re.compile(
     r"messaged|forwarded|got|went|came|incoming|outgoing|inbound|outbound)\b",
     re.IGNORECASE,
 )
+# Calls of a length: "two calls, each lasting more than ten minutes" (Codex on #169).
+_CALL_LENGTH_RE = re.compile(
+    r"\b(?:lasting|lasted|lasts|long|longer|shorter|duration|minutes?|mins?|seconds?|secs?|"
+    r"hours?|hrs?)\b",
+    re.IGNORECASE,
+)
 # A call one side placed: "two outgoing calls", "made four calls", "called X" (Codex on #169).
 _ONE_WAY_CALL_RE = re.compile(
     r"\b(?:placed|placing|made|making|dialed|dialled|dialing|dialling|answered|missed|"
@@ -1338,6 +1344,8 @@ def count_op(claim: str, value: int) -> Literal["eq", "ge", "le"]:
     words = _BOTH_WAYS_RE.sub(" ", _unquoted(_flat(claim)))
     if re.fullmatch(r"calls?", m.group("noun"), re.I) and _ONE_WAY_CALL_RE.search(words):
         raise Reject("the claim counts calls one side made; the count check counts both directions")
+    if re.fullmatch(r"calls?", m.group("noun"), re.I) and _CALL_LENGTH_RE.search(words):
+        raise Reject("the claim counts calls of a length; the count check counts every call")
     if _ONE_WAY_RE.search(words) or _ONE_WAY_AFTER_RE.match(claim[m.end() :]):
         raise Reject(
             "the claim counts messages one side sent or received; the count check counts both"
@@ -2190,7 +2198,7 @@ class LocalAssumptionFiller:
         if tpl.id == "no_contact" and _open_range_wording(_unquoted(_nfc(claim.text))):
             # "before May 1, 2023", "never": the range runs to the extraction's own edge, which
             # code reads from the records, never the model (validation ruling R5).
-            params["window"] = self._open_range(claim, device_ids)
+            params["window"] = self._open_range(claim, device_ids, para)
             code_made = True
         elif p.window is not None and "window" not in tpl.allowed:
             pass  # a sender is picked by its words and party; the time is record_time's job
@@ -2412,6 +2420,8 @@ class LocalAssumptionFiller:
             not senders
             and not any(p.template_id == "sender" for p in out)
             and not _NAMES_A_WRITER_RE.search(_unquoted(_nfc(claim.text)))
+            # "PETROV's Telegram message of March 12" names its writer too (Codex on #169).
+            and not _NOT_A_PARTY_AFTER.search(_unquoted(_nfc(claim.text)))
         ):
             quote = self.the_quote(claim, out)
             apps = self._message_apps(claim.text) if quote else None
@@ -2944,7 +2954,7 @@ class LocalAssumptionFiller:
         params["account_ids"] = sorted(found)
         return phones
 
-    def _open_range(self, claim: Claim, device_ids: list[str]) -> Any:
+    def _open_range(self, claim: Claim, device_ids: list[str], para: str = "") -> Any:
         """The range of "no contact before May 1, 2023", "after", "since" or "never", run to
         the extraction's own edge: its first or last dated message or call on the phone
         (validation ruling R5). The range's words say so. Only a claim with no time of day and
@@ -2987,7 +2997,9 @@ class LocalAssumptionFiller:
         if len(dates) != 1 or dates[0].group(5):
             raise Reject("an open range reads one stated day")
         m = dates[0]
-        years = {int(y) for y in _YEAR_RE.findall(claim.text)}
+        # A date with no year takes the one year the claim and its paragraph state, as
+        # check_window reads it (Codex on #169).
+        years = {int(y) for y in _YEAR_RE.findall(claim.text + " " + para)}
         y = int(m.group(3) or m.group(6) or 0) or (next(iter(years)) if len(years) == 1 else 0)
         try:
             day = datetime.combine(date(y, _MONTHS[m.group(1).lower()], int(m.group(2))), time())

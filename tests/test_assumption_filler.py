@@ -1097,6 +1097,7 @@ def test_count_op(claim_text, value, op):
         "On March 12, 2026, dev:item1 made 13 calls to (212) 555-0199",
         "PETROV placed 13 Viber calls with REYES",
         "Item 1 shows 13 missed calls with REYES",
+        "dev:item1 had 13 calls with (212) 555-0199, each lasting more than ten minutes",
     ],
 )
 def test_count_op_refuses(claim_text):
@@ -1876,6 +1877,29 @@ def test_only_an_open_range_runs_to_the_extractions_edge(text, open_):
     from core.audit.assumption_filler import _open_range_wording
 
     assert _open_range_wording(text) is open_
+
+
+def test_an_open_range_takes_its_year_from_the_paragraph(conn):
+    # "before March 12" with the year only in the paragraph (Codex on #169).
+    assumptions, filler = _no_contact(
+        conn,
+        "There was no contact between dev:item1 and (212) 555-0144 before March 12.",
+        phones=["dev:item1"],
+    )
+    (a,) = [a for a in assumptions if a.template_id == "no_contact"]
+    w = a.params.window
+    assert w is not None and w.raw.startswith("before March 12: from"), filler.drops
+    assert w.end_utc.astimezone(ZoneInfo("America/New_York")).date().isoformat() == "2026-03-11"
+
+
+def test_a_message_dated_by_its_writers_possessive_gets_no_senderless_time(conn):
+    # "PETROV's Telegram message of March 12" names its writer; a time with no party would
+    # match anyone's message (Codex on #169).
+    text = 'PETROV’s Telegram message of March 12, 2026, "move it tonight".'
+    assumptions, _ = build_text(conn, text, ClaimType.COMMUNICATION, [])
+    for a in assumptions:
+        if a.template_id == "record_time":
+            assert a.params.person_ids or a.params.account_ids, a.params
 
 
 def test_a_range_with_both_ends_stated_keeps_its_own_ends(conn):
