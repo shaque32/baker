@@ -2,7 +2,7 @@
 
 These are agent-written **drafts** for Arsh to edit and sign. They are not used by the product.
 
-Arsh signed all five on 2026-10-07 (reviewer v1.1, decision first). The signed
+Arsh signed the first five on 2026-10-07 (reviewer v1.1, decision first). The signed
 copies in `core/audit/prompts/` are the ones in use; change those, not these drafts.
 The signed copies live in `core/audit/prompts/` (frozen, human-owned), and only the
 frozen-files thread puts them there, in a PR Arsh merges.
@@ -14,6 +14,7 @@ frozen-files thread puts them there, in a PR Arsh merges.
 | `assumptions.md` | `core/audit/prompts/assumptions.md` | `core/audit/assumption_filler.py` | `{claim}`, `{paragraph}`, `{templates}`, `{channels}` |
 | `translation.md` | `core/audit/prompts/translation.md` | `core/audit/translation.py` | `{text}` |
 | `reviewer-notes.md` | `core/audit/prompts/reviewer.md` (exists) | `core/audit/review.py` | `{assumption}`, `{quote}`, `{context}` |
+| `agent_testability.md` | `core/audit/prompts/agent_testability.md` (v1.0, signed 2026-10-28) | `core/audit/testability.py` (eval only) | `{claim}`, `{paragraph}`, `{templates}`, `{channels}`, `{lookups}`, `{refused}` |
 
 `core/audit/prompts/stance_cloud.md` has no draft here: it is stance v1.2 (v1.1 plus the told-frame
 sentences, signed 2026-10-15), which only a cloud model reads (`core/audit/stance.py`, `prompt_file`).

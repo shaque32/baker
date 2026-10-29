@@ -4,6 +4,7 @@ Usage: python -m eval.run_pipeline [--case case01] [--mode model-free|real|fake|
                                    [--expert simulated|rubber-stamp|fallible|none]
                                    [--error-rate RATE] [--expert-seed N]
                                    [--reviewer accept|none] [--challenge]
+                                   [--testability CAP [--testability-prompt PATH]]
                                    [--assumption-spec PATH] [--repeat] [--out DIR]
 
 Steps, all through the product's own code:
@@ -46,6 +47,15 @@ Modes:
   --challenge       run the challenge step (core/audit/challenge.py, off by default): code's
                     counter-searches on claims close to supported, storing only doubt. Output
                     in <out>/challenge/.
+  --testability CAP the testability step (core/audit/testability.py, eval only, off by
+                    default), real mode only: the model fills the assumptions, and on a claim it
+                    leaves untested the step makes up to CAP more calls (CAP: Arsh sets it; no
+                    default). The case's signed sheet is used only to check each repair and to
+                    score. The run's expert accepts every repair that passed code's checks, as
+                    the examiner (eval/simulated_expert.py). --testability-prompt names the
+                    prompt; the default is the signed core/audit/prompts/agent_testability.md,
+                    and any other (the draft in docs/prompts/) is reported as a draft with no
+                    go/no-go. Output in <out>/testability/.
   --expert none     skip the simulated expert: one pass, no expert decisions (model-free and
                     real only; under rules 0.2.0 nothing can then be SUPPORTED).
   --reviewer none   every supporting item is dismissed, so nothing can be SUPPORTED. Shows what
@@ -445,6 +455,114 @@ class _ReplayableFiller:
         return out
 
 
+# The testability step's go/no-go (plans/agentic.md), fixed before the run. Arsh sets X, Y and the
+# per-claim cap; until then each prints as not set and no go/no-go is given.
+TESTABILITY_X_PERCENT: float | None = None  # least share of sheet-testable refusals converted
+TESTABILITY_Y_BUDGET: dict[str, float] | None = None  # most calls and seconds, per claim
+TESTABILITY_SIGNED_PROMPT = Path("core/audit/prompts/agent_testability.md")
+# Cases whose claims and signed sheets were written by someone other than the prompt's author,
+# held out for the go/no-go. None yet: case01 and case03 are development cases.
+TESTABILITY_GO_NO_GO_CASES: frozenset[str] = frozenset()
+
+
+def sim_examiner(actor: str):  # noqa: ANN201 - core.audit.testability.Examiner
+    """The eval's examiner for the testability step: it accepts every repair that reached it,
+    which is every repair that passed code's checks against the signed sheet, under the run's
+    expert's actor. No UI; a real examiner's step is a later, signed change."""
+
+    def examiner(claim, assumptions):  # noqa: ANN001, ANN202
+        return actor
+
+    return examiner
+
+
+def testability_step(
+    conn,  # noqa: ANN001
+    case: str,
+    filler: object,
+    cap: int,
+    prompt: Path | None,
+    expert: str,
+    model: object | None = None,
+):  # noqa: ANN201 - core.audit.testability.Testability
+    """The step for an eval run, checked against the case's signed sheet."""
+    from core.audit import testability
+    from core.audit._llm_json import prompt_body
+    from eval.simulated_expert import FALLIBLE, RUBBER_STAMP, SIM_EXPERT
+
+    if case == "case02" or is_hidden(case):  # held-out scores never hold gold-filtered repairs
+        raise SystemExit(f"{case}: the testability step never runs on a hidden case")
+    sheet = assumption_sheet(case)
+    if sheet is None or sheet_status(sheet) != "signed":
+        raise SystemExit(f"{case}: the testability step needs a signed assumption sheet")
+    rows = [json.loads(line) for line in sheet.read_text(encoding="utf-8").splitlines() if line]
+    path = prompt or TESTABILITY_SIGNED_PROMPT
+    if not path.exists():
+        raise SystemExit(f"testability: no prompt at {path}; Arsh signs it (docs/prompts/ draft)")
+    actor = {"rubber-stamp": RUBBER_STAMP, "fallible": FALLIBLE}.get(expert, SIM_EXPERT)
+    # With no expert (--expert none) nobody accepts: repairs stay logged proposals, never used.
+    examiner = sim_examiner(actor) if expert != "none" else None
+    step = testability.create(
+        conn,
+        filler,  # type: ignore[arg-type]
+        testability.sheet_named(rows, sheet_people(conn)),
+        cap,
+        model=model,
+        template=prompt_body(path.read_text(encoding="utf-8")),
+        examiner=examiner,
+    )
+    return step
+
+
+def testability_summary(
+    result: pipeline.RunResult,
+    step,  # noqa: ANN001
+    case: str,
+    prompt: Path | None,
+) -> dict[str, object]:
+    """What the step did on the first pass, with the go/no-go measures (plans/agentic.md).
+    Counts only, so a hidden case prints nothing claim by claim."""
+    reps = list(result.testability.values())
+    tries = [a for r in reps for a in r.attempts]
+    checked = [a for a in tries if a.outcome in ("mismatch", "proposed")]  # passed the filler's
+    testable = [r for r in reps if r.sheet is not None]
+    converted = [r for r in reps if r.assumptions]
+    signed = prompt is None or prompt == TESTABILITY_SIGNED_PROMPT
+    out: dict[str, object] = {
+        "prompt": "signed" if signed else "DRAFT, not signed by Arsh",
+        "cap": step.cap,
+        "claims_the_filler_left_untested": len(reps),
+        "of_them_the_sheet_makes_testable": len(testable),
+        # An upper bound filtered by gold: the signed sheet rejects whatever it does not name.
+        "converted_and_accepted": len(converted),
+        "conversion_rate": (len(converted) / len(testable)) if testable else None,
+        # Of the tries that passed the filler's own checks, the share the sheet check rejected.
+        "wrong_entity_rate": (sum(a.outcome == "mismatch" for a in checked) / len(checked))
+        if checked
+        else None,
+        "tries": len(tries),
+        "invalid_outputs": sum(a.outcome == "invalid" for a in tries),
+        "valid_output_rate": (1 - sum(a.outcome == "invalid" for a in tries) / len(tries))
+        if tries
+        else None,
+        "refused_by_code": sum(a.outcome == "refused" for a in tries),
+        "mismatch_person_phone_or_window": sum(a.no_go for a in tries),
+        "mismatch_other_only": sum(
+            a.outcome == "mismatch" and not a.no_go and r.sheet is not None
+            for r in reps
+            for a in r.attempts
+        ),
+        "repairs_on_claims_the_sheet_leaves_untested": sum(
+            a.outcome == "mismatch" and r.sheet is None for r in reps for a in r.attempts
+        ),
+        "seconds": round(step.seconds, 1),
+        "x_percent": TESTABILITY_X_PERCENT,
+        "y_budget": TESTABILITY_Y_BUDGET,
+        "go_no_go_case": case in TESTABILITY_GO_NO_GO_CASES,
+    }
+    return out
+
+
 def run_once(
     case: str,
     mode: str,
@@ -458,11 +576,15 @@ def run_once(
     challenge: bool = False,
     error_rate: float | None = None,
     expert_seed: int = 0,
+    testability_cap: int | None = None,
+    testability_prompt: Path | None = None,
+    testability_model: object | None = None,
 ) -> list[Prediction]:
     """One audit of a case. labeler_model (real mode only) is the stance labeler's model in
     place of the configured local one: the cloud benchmark (eval/bench) passes Claude here.
     filler_model (real mode, no assumption sheet) is the assumption filler's model the same
-    way. claim_ids audits just those claims."""
+    way. claim_ids audits just those claims. testability_cap (real mode, no assumption sheet)
+    turns the testability step on, with testability_model in place of the configured model."""
     from eval.simulated_expert import (
         GoldKey,
         RecordingRetriever,
@@ -493,11 +615,21 @@ def run_once(
 
                 replace["labeler"] = stance_mod.create(conn, model=labeler_model)  # type: ignore[arg-type]
             filler = spec_filler(spec, conn) if spec else None
-            if filler is None and filler_model is not None:
+            if filler is None and (filler_model is not None or testability_cap is not None):
                 from core.audit import assumption_filler
 
                 filler = _ReplayableFiller(assumption_filler.create(conn, model=filler_model))  # type: ignore[arg-type]
             comps = pipeline.real_components(conn, replace=replace, filler=filler)
+            if testability_cap is not None:
+                if spec is not None:
+                    raise SystemExit("testability: the model fills; the sheet is only checked")
+                step = testability_step(
+                    conn, case, filler, testability_cap, testability_prompt, expert,
+                    model=testability_model,
+                )  # fmt: skip
+                comps.testability = step
+                comps.recorders = (*comps.recorders, step)
+                comps.model_runs = (*comps.model_runs, *step.model_runs)
             if reviewer == "none":
                 from eval.pipeline_fakes import FakeReviewer
 
@@ -525,6 +657,10 @@ def run_once(
             "dropped_labels": result.dropped_labels,
             "reviewer_failures": result.reviewer_failures,
         }
+        if comps.testability is not None:
+            summary["testability"] = testability_summary(
+                result, comps.testability, case, testability_prompt
+            )
         if expert not in ("simulated", "rubber-stamp", "fallible"):
             preds = write_outputs(conn, out, summary)
             print("pipeline: " + json.dumps(summary))
@@ -549,6 +685,8 @@ def run_once(
         for f in comps.recorders:  # a model filler answers the replay from its first answers
             if isinstance(f, _ReplayableFiller):
                 f.replaying = True
+        if comps.testability is not None:  # and so does the testability step
+            comps.testability.replaying = True
         comps.recorders = ()  # the first pass stored every call already
         second = pipeline.run_audit(
             conn,
@@ -629,6 +767,8 @@ def print_hidden_summary(s: dict) -> None:
         f"pipeline: claims ready for the expert {len(r['claims_ready_for_expert'])}/{s['claims']}"
     )
     print(f"pipeline: verdicts after the simulated expert {s['verdicts']}")
+    if "testability" in s:
+        print_testability(s["testability"])
 
 
 def print_summary(s: dict) -> None:
@@ -669,6 +809,41 @@ def print_summary(s: dict) -> None:
         )
     print(f"pipeline: verdicts after the simulated expert {s['verdicts']}")
     print(f"pipeline: contradicted with a failed check cited: {s['contradicted_by_failed_check']}")
+    if "testability" in s:
+        print_testability(s["testability"])
+
+
+def print_testability(t: dict) -> None:
+    """The testability step's measures and the go/no-go, which needs Arsh's X, Y and cap, the
+    signed prompt and a held-out case."""
+    rate = t["conversion_rate"]
+    print(
+        f"pipeline: testability ({t['prompt']} prompt, cap {t['cap']}): the filler left "
+        f"{t['claims_the_filler_left_untested']} claims untested, the sheet makes "
+        f"{t['of_them_the_sheet_makes_testable']} of them testable; "
+        f"{t['converted_and_accepted']} converted and accepted"
+        + (f" ({rate:.0%})" if rate is not None else "")
+        + ", an upper bound: the signed sheet filters every try"
+    )
+    wrong = t["wrong_entity_rate"]
+    print(
+        "pipeline: testability: of the tries that passed the filler's checks, the sheet check "
+        + (f"rejected {wrong:.0%}" if wrong is not None else "saw none")
+    )
+    print(
+        f"pipeline: testability: {t['tries']} calls, {t['invalid_outputs']} invalid outputs, "
+        f"{t['refused_by_code']} refused by code; mismatches with the sheet: "
+        f"{t['mismatch_person_phone_or_window']} on a person, phone or window, "
+        f"{t['mismatch_other_only']} on an account, handle, app, template or quote only, "
+        f"{t['repairs_on_claims_the_sheet_leaves_untested']} on claims the sheet leaves untested;"
+        f" {t['seconds']} s"
+    )
+    unset = [k for k in ("x_percent", "y_budget") if t[k] is None]
+    if unset or t["prompt"] != "signed" or not t["go_no_go_case"]:
+        why = [f"{', '.join(unset)} not set by Arsh"] if unset else []
+        why += ["the prompt is a draft"] if t["prompt"] != "signed" else []
+        why += ["this is not a held-out go/no-go case"] if not t["go_no_go_case"] else []
+        print(f"pipeline: testability go/no-go: none given ({'; '.join(why)})")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -686,6 +861,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--assumption-spec", type=Path, default=None)
     parser.add_argument("--repeat", action="store_true")
     parser.add_argument("--challenge", action="store_true")
+    parser.add_argument("--testability", type=int, default=None, metavar="CAP")
+    parser.add_argument("--testability-prompt", type=Path, default=None)
     parser.add_argument("--out", type=Path, default=None)
     args = parser.parse_args(argv)
 
@@ -701,6 +878,17 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--error-rate goes with --expert fallible, and it needs one")
     if args.error_rate is not None and not 0.0 <= args.error_rate <= 1.0:
         parser.error("--error-rate is between 0 and 1")
+    if args.testability is not None and (args.mode != "real" or args.assumption_spec):
+        parser.error(
+            "--testability runs in real mode, with the model filling (no --assumption-spec)"
+        )
+    if args.testability_prompt is not None and args.testability is None:
+        parser.error("--testability-prompt goes with --testability CAP")
+    if args.testability is not None and (
+        args.case == "case02"
+        or ((synthetic_dir(args.case) / "case.json").exists() and is_hidden(args.case))
+    ):
+        parser.error("--testability never runs on a hidden case")
     if args.mode == "hostile" and args.case != "case01":
         parser.error("the red-team gate lists case01's structural claims; run it on case01")
     spec = args.assumption_spec
@@ -724,6 +912,8 @@ def main(argv: list[str] | None = None) -> int:
             out = out / "fallible"
         if args.challenge:
             out = out / "challenge"
+        if args.testability is not None:
+            out = out / "testability"
     try:
         first = run_once(
             args.case,
@@ -735,6 +925,8 @@ def main(argv: list[str] | None = None) -> int:
             challenge=args.challenge,
             error_rate=args.error_rate,
             expert_seed=args.expert_seed,
+            testability_cap=args.testability,
+            testability_prompt=args.testability_prompt,
         )
         if args.repeat:
             second = run_once(
@@ -747,6 +939,8 @@ def main(argv: list[str] | None = None) -> int:
                 challenge=args.challenge,
                 error_rate=args.error_rate,
                 expert_seed=args.expert_seed,
+                testability_cap=args.testability,
+                testability_prompt=args.testability_prompt,
             )
             if first != second:
                 print("pipeline: FAIL, a repeat run gave different predictions")
