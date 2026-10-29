@@ -27,7 +27,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #12110f; --card: #1a1916; --panel: #211f1b; --fg: #ece8df; --muted: #a8a196;
-    --line: #2c2a25; --line-strong: #3d3a33; --accent: #9db8de; --accent-fg: #10151d; --hl: #4a3f1c;
+    --line: #2c2a25; --line-strong: #3d3a33; --accent: #9db8de; --accent-fg: #10151d; --hl: #7a6428;
     --sup: #92c4a2; --sup-bg: #1b2a20;
     --con: #eea193; --con-bg: #33201c;
     --unp: #e3bd6c; --unp-bg: #2e2716;
@@ -36,7 +36,7 @@
 }
 :root[data-theme="dark"] {
   --bg: #12110f; --card: #1a1916; --panel: #211f1b; --fg: #ece8df; --muted: #a8a196;
-  --line: #2c2a25; --line-strong: #3d3a33; --accent: #9db8de; --accent-fg: #10151d; --hl: #4a3f1c;
+  --line: #2c2a25; --line-strong: #3d3a33; --accent: #9db8de; --accent-fg: #10151d; --hl: #7a6428;
   --sup: #92c4a2; --sup-bg: #1b2a20;
   --con: #eea193; --con-bg: #33201c;
   --unp: #e3bd6c; --unp-bg: #2e2716;
@@ -64,7 +64,7 @@ p { margin: 0; }
 .link:hover { border-color: var(--fg); }
 
 /* Header */
-.site-head { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: color-mix(in srgb, var(--bg) 74%, transparent); backdrop-filter: blur(20px) saturate(1.6); -webkit-backdrop-filter: blur(20px) saturate(1.6); border-bottom: 1px solid var(--line); }
+.site-head { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: color-mix(in srgb, var(--bg) 90%, transparent); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-bottom: 1px solid var(--line); }
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 21; background: var(--bg); }
 .site-head .wrap { display: flex; align-items: center; gap: 16px 28px; padding-block: 12px; flex-wrap: wrap; }
 .wordmark { display: inline-flex; align-items: center; gap: 9px; color: var(--fg); text-decoration: none; font: 400 1.55rem/1 var(--serif); }
@@ -84,6 +84,10 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .lede { font-size: clamp(1.08rem, 1.5vw, 1.2rem); color: var(--muted); max-width: 34em; }
 .actions { display: flex; gap: 14px 26px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
 
+.audience-note { font-size: 0.86rem; color: var(--muted); }
+.audience-note a { color: var(--muted); text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 0.22em; }
+.audience-note a:hover { color: var(--fg); text-decoration-color: var(--fg); }
+
 /* Hero ledger: an example case's claims, each taking its status in turn */
 .ledger { margin: 0; background: var(--card); border: 1px solid var(--line-strong); border-radius: 12px; overflow: hidden; }
 .ledger-head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 12px 20px; border-bottom: 1px solid var(--line); font-size: 0.84rem; font-weight: 600; }
@@ -95,46 +99,68 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .ledger li > span { font: 400 1.08rem/1.4 var(--serif); }
 .ledger em { font-style: normal; justify-self: end; white-space: nowrap; }
 .ledger small { grid-column: 2 / -1; font-size: 0.8rem; color: var(--muted); }
-.ledger figcaption { padding: 10px 20px 14px; font-size: 0.76rem; color: var(--muted); border-top: 1px solid var(--line); }
-.ledger li em, .ledger li small { animation: rise 0.45s var(--ease) both; }
-.ledger li:nth-child(1) em, .ledger li:nth-child(1) small { animation-delay: 0.5s; }
-.ledger li:nth-child(2) em, .ledger li:nth-child(2) small { animation-delay: 1.1s; }
-.ledger li:nth-child(3) em, .ledger li:nth-child(3) small { animation-delay: 1.7s; }
-.ledger li:nth-child(4) em, .ledger li:nth-child(4) small { animation-delay: 2.3s; }
+.ledger figcaption { padding: 10px 20px 14px; font: italic 400 0.76rem/1.4 var(--sans); color: var(--muted); border-top: 1px solid var(--line); }
+/* Verdicts arrive in order when the ledger comes into view, not on load. The sequence IS the
+   pitch, so it should play when the visitor sees it, not before. */
+.js .ledger.in li em, .js .ledger.in li small { animation: rise 0.45s var(--ease) both; }
+.js .ledger.in li:nth-child(1) em, .js .ledger.in li:nth-child(1) small { animation-delay: 0.35s; }
+.js .ledger.in li:nth-child(2) em, .js .ledger.in li:nth-child(2) small { animation-delay: 0.75s; }
+.js .ledger.in li:nth-child(3) em, .js .ledger.in li:nth-child(3) small { animation-delay: 1.15s; }
+.js .ledger.in li:nth-child(4) em, .js .ledger.in li:nth-child(4) small { animation-delay: 1.55s; }
 
 /* Sections */
-section[id] { scroll-margin-top: 72px; }
-.band { border-top: 1px solid var(--line); }
-.band > .wrap { padding-block: 96px; display: grid; gap: 48px; }
+section[id] { scroll-margin-top: 96px; }
+.band { border-top: 1px solid var(--line); padding-block: 96px; }
+.band > .wrap { display: grid; gap: 48px; }
 .section-head { display: grid; gap: 14px; max-width: 42rem; }
 .section-head p { color: var(--muted); font-size: 1.05rem; }
 
-/* Walkthrough */
-.walk { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 64px; align-items: start; }
-.walk-steps { list-style: none; margin: 0; padding: 0; }
-.walk-step { min-height: 62vh; display: grid; gap: 10px; align-content: center; grid-template-columns: 28px minmax(0, 1fr); column-gap: 14px; }
-.walk-step:first-child { min-height: 40vh; align-content: start; padding-top: 24px; }
-.walk-step:last-child { min-height: 50vh; }
-.walk-step .n { grid-row: span 2; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--line-strong); display: grid; place-items: center; font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; transition: background-color 0.3s var(--ease), color 0.3s var(--ease), border-color 0.3s var(--ease); }
-.walk-step h3 { font: 400 1.7rem/1.15 var(--serif); }
-.walk-step p { color: var(--muted); max-width: 28em; }
-.walk.live .walk-step { opacity: 0.35; transition: opacity 0.35s var(--ease); }
-.walk.live .walk-step.on { opacity: 1; }
-.walk.live .walk-step.on .n { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+/* The walk is a case-file plate: one centered panel with a numbered step strip up top. The
+   examiner steps through at their pace with the row of tabs or the arrow keys; autoplay just
+   suggests the rhythm and yields the moment the pointer or focus enters. */
+.panel { margin-inline: auto; max-width: 760px; background: var(--card); border: 1px solid var(--line-strong); border-radius: 12px; overflow: hidden; }
+.panel-bar { display: flex; justify-content: space-between; align-items: center; gap: 10px 16px; padding: 10px 14px 10px 20px; border-bottom: 1px solid var(--line); font-size: 0.84rem; font-weight: 600; }
 
-.panel { position: sticky; top: 96px; margin: 0; background: var(--card); border: 1px solid var(--line-strong); border-radius: 12px; overflow: hidden; }
-.panel-bar { display: flex; justify-content: space-between; align-items: center; gap: 10px 16px; flex-wrap: wrap; padding: 12px 20px; border-bottom: 1px solid var(--line); font-size: 0.84rem; font-weight: 600; }
-.rail { list-style: none; margin: 0; padding: 0; display: flex; gap: 4px; font-size: 0.72rem; font-weight: 500; color: var(--muted); }
-.rail li { padding: 3px 8px; border-radius: 999px; transition: background-color 0.3s var(--ease), color 0.3s var(--ease); }
-.rail li.done { color: var(--fg); }
-.rail li.on { background: var(--fg); color: var(--bg); }
-.panel-caption { display: none; }
-.panel-body { display: grid; gap: 22px; padding: 22px 22px 26px; min-height: 470px; align-content: start; }
+/* The pause/play button: a small persistent affordance, so the autoplay never feels like a demo
+   reel playing at the examiner. WCAG 2.2.2 wants this reachable, not hidden behind hover. */
+.walk-play { all: unset; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; color: var(--muted); cursor: pointer; transition: color 0.2s var(--ease), background-color 0.2s var(--ease); }
+.walk-play:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.walk-play:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.walk-play svg { width: 11px; height: 11px; }
+.walk-play[hidden] { display: none; }
+.walk-play .ico-triangle { display: none; }
+.walk-play[aria-pressed="true"] .ico-bars { display: none; }
+.walk-play[aria-pressed="true"] .ico-triangle { display: inline-block; }
+
+.stepper { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); background: var(--bg); border-bottom: 1px solid var(--line); }
+.stepper li { border-right: 1px solid var(--line); min-width: 0; }
+.stepper li:last-child { border-right: 0; }
+.stepper button { all: unset; position: relative; box-sizing: border-box; display: flex; align-items: baseline; gap: 10px; width: 100%; padding: 12px 14px; font: 500 0.84rem/1.3 var(--sans); color: var(--muted); cursor: pointer; transition: background-color 0.2s var(--ease), color 0.2s var(--ease); }
+.stepper .n { font-variant-numeric: tabular-nums; font-size: 0.72rem; letter-spacing: 0.08em; color: var(--muted); min-width: 1em; transition: color 0.2s var(--ease); }
+.stepper .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stepper button:hover { background: var(--card); color: var(--fg); }
+.stepper button:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; border-radius: 2px; }
+.stepper button[data-done="true"] { color: var(--fg); }
+.stepper button[aria-selected="true"] { background: var(--card); color: var(--fg); }
+.stepper button[aria-selected="true"] .n { color: var(--accent); font-weight: 600; }
+/* Progress underline: fills left-to-right as autoplay walks through the active step. Completed
+   steps carry a muted line as a done-marker; the active step's bar is accent-colored. */
+.stepper button::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--line-strong); transform: scaleX(var(--p, 0)); transform-origin: left; transition: transform 0.12s linear; }
+.stepper button[data-done="true"]::after { transform: scaleX(1); }
+.stepper button[aria-selected="true"]::after { background: var(--accent); }
+
+.walk-panel { display: contents; }
+
+.panel-caption { display: grid; gap: 4px; padding: 16px 22px; border-bottom: 1px solid var(--line); background: var(--card); }
+.panel-caption h3 { font: 400 1.3rem/1.2 var(--serif); color: var(--fg); }
+.panel-caption p { font-size: 0.9rem; color: var(--muted); max-width: 48em; }
+
+.panel-body { display: grid; gap: 22px; padding: 22px 22px 26px; min-height: 360px; align-content: start; }
 .doc { display: grid; gap: 10px; padding: 16px 18px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
 .doc p:not(.small) { font: 400 1.02rem/1.55 var(--serif); color: var(--muted); }
 .doc b { font: 500 0.78rem var(--sans); margin-right: 4px; }
 .doc mark { background: transparent; color: inherit; border-radius: 3px; padding: 1px 2px; transition: background-color 0.4s var(--ease), color 0.4s var(--ease); }
-.walk.live .doc mark.on, .walk:not(.live) .doc mark.lit { background: var(--hl); color: var(--fg); }
+.panel.live .doc mark.on, .panel:not(.live) .doc mark.lit { background: var(--hl); color: var(--fg); }
 .claim { display: grid; gap: 16px; }
 .claimtext { font-size: 1.08rem; font-weight: 500; padding-left: 14px; border-left: 2px solid var(--accent); }
 .rows { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
@@ -150,11 +176,15 @@ section[id] { scroll-margin-top: 72px; }
 .status.sup { color: var(--sup); } .status.con { color: var(--con); } .status.unp { color: var(--unp); }
 .status.wait { color: var(--accent); border-style: dashed; }
 
+/* Blinking caret the first time the claim types itself out. */
+.walk-caret { display: inline-block; width: 2px; height: 1.05em; margin-left: 2px; vertical-align: -0.15em; background: var(--accent); animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
 /* Walkthrough states. With the script, only the current step's parts show; without it, the
    finished first claim shows. */
-.walk.live [data-on]:not(mark):not(.on) { display: none; }
-.walk:not(.live) .pre { display: none; }
-.walk.live .panel .on:not(mark):not(.rail li) { animation: rise 0.35s var(--ease) both; }
+.panel.live [data-on]:not(mark):not(.on) { display: none; }
+.panel:not(.live) .pre { display: none; }
+.panel.live .panel-body .on:not(mark) { animation: rise 0.35s var(--ease) both; }
 @keyframes rise { from { opacity: 0; transform: translateY(4px); } }
 
 /* Context */
@@ -164,7 +194,7 @@ section[id] { scroll-margin-top: 72px; }
 .convo { margin: 0; display: grid; justify-items: stretch; }
 .convo-quote { margin: 0; position: relative; justify-self: start; max-width: 25rem; display: grid; gap: 4px; padding: 16px 20px; background: var(--card); border: 1px solid var(--line-strong); border-radius: 12px; }
 .convo-quote p:last-child { font: 400 1.18rem/1.4 var(--serif); }
-.convo-quote mark { background: var(--hl); color: inherit; border-radius: 3px; padding: 0 2px; transition: background-color 0.6s var(--ease) 1.05s; }
+.convo-quote mark { background: var(--hl); color: inherit; border-radius: 3px; padding: 0 2px; transition: background-color 0.3s var(--ease); }
 .convo-quote::after { content: ""; position: absolute; left: 44px; top: 100%; width: 1px; height: 28px; background: var(--line-strong); transform-origin: top; transition: transform 0.6s var(--ease) 0.35s; }
 .convo-window { margin-top: 28px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
 .convo-head { display: flex; justify-content: space-between; gap: 10px; padding: 11px 18px; border-bottom: 1px solid var(--line); font-size: 0.8rem; font-weight: 600; }
@@ -203,7 +233,7 @@ section[id] { scroll-margin-top: 72px; }
 .js .convo.in .thread .left em { opacity: 1; transition-delay: 1.6s; }
 
 /* What makes a status checkable: a ruled sheet of six, each with a line icon that draws in */
-.proofs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.proofs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
 .proofs > div { display: grid; gap: 10px; align-content: start; padding: 30px 30px 34px; background: var(--bg); transition: background-color 0.4s var(--ease); }
 .proofs > div:hover { background: var(--card); }
 .proofs p { color: var(--muted); font-size: 0.97rem; }
@@ -216,8 +246,6 @@ section[id] { scroll-margin-top: 72px; }
 .js .proofs > div:nth-child(2), .js .proofs > div:nth-child(2) .draw { transition-delay: 0.08s; }
 .js .proofs > div:nth-child(3), .js .proofs > div:nth-child(3) .draw { transition-delay: 0.16s; }
 .js .proofs > div:nth-child(4), .js .proofs > div:nth-child(4) .draw { transition-delay: 0.24s; }
-.js .proofs > div:nth-child(5), .js .proofs > div:nth-child(5) .draw { transition-delay: 0.32s; }
-.js .proofs > div:nth-child(6), .js .proofs > div:nth-child(6) .draw { transition-delay: 0.4s; }
 .js .proofs.in > div:hover { transition-delay: 0s; }
 
 /* Columns */
@@ -229,21 +257,28 @@ section[id] { scroll-margin-top: 72px; }
 .cols p { color: var(--muted); font-size: 0.97rem; }
 .cols .status { justify-self: start; }
 
-/* Data flow: the case stays on the left of the gate unless the expert opts in */
+/* Data flow: the case stays on the left of a locked gate. The trace walks out of the computer,
+   stops at the gate, and never crosses it. The path beyond the gate is drawn dim and dashed so
+   the reader can read it as "possible only if you open the lock," not "flowing." */
 .flow-diagram { margin: 0; max-width: 900px; }
 .flow-diagram svg { display: block; width: 100%; height: auto; overflow: visible; }
 .flow-diagram .box { fill: var(--card); stroke: var(--line-strong); stroke-width: 1; }
-.flow-diagram .box.cloud { stroke-dasharray: 5 4; }
-.flow-diagram .wire { stroke: var(--line-strong); stroke-width: 1.5; stroke-dasharray: 3 5; fill: none; }
-.flow-diagram .pulse { stroke: var(--accent); stroke-width: 2.5; stroke-linecap: round; fill: none; stroke-dasharray: 26 400; stroke-dashoffset: 26; opacity: 0; }
-.flow-diagram .gate { stroke: var(--fg); stroke-width: 2; stroke-linecap: round; }
-.flow-diagram .tick { fill: var(--accent); transform-box: fill-box; transform-origin: center; opacity: 0; }
+.flow-diagram .box.cloud { stroke-dasharray: 5 4; opacity: 0.78; }
+.flow-diagram .trace { stroke: var(--accent); stroke-width: 2.25; stroke-linecap: round; fill: none; }
+.flow-diagram .trace-stop { stroke: var(--accent); stroke-width: 2.25; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+.flow-diagram .gate-bar { stroke: var(--fg); stroke-width: 2; stroke-linecap: round; }
+.flow-diagram .lock-body { fill: var(--fg); stroke: var(--fg); stroke-width: 1; }
+.flow-diagram .lock-shackle { fill: none; stroke: var(--fg); stroke-width: 2; stroke-linecap: round; }
+.flow-diagram .lock-keyhole { fill: var(--bg); }
+.flow-diagram .wire-beyond { stroke: var(--line-strong); stroke-width: 1.5; stroke-dasharray: 3 5; fill: none; opacity: 0.55; }
 .flow-diagram text { font: 500 15px var(--sans); fill: var(--fg); }
 .flow-diagram text.sub { font-size: 12.5px; font-weight: 400; fill: var(--muted); }
-.flow-diagram.in .pulse { animation: pulse 3s var(--ease) 0.6s infinite; }
-.flow-diagram.in .tick { animation: tick 3s var(--ease) 0.6s infinite; }
-@keyframes pulse { 0% { stroke-dashoffset: 26; opacity: 0; } 10% { opacity: 1; } 55% { stroke-dashoffset: -103; opacity: 1; } 70%, 100% { stroke-dashoffset: -103; opacity: 0; } }
-@keyframes tick { 0%, 50% { opacity: 0; transform: scale(0.4); } 58% { opacity: 1; transform: scale(1.35); } 66% { transform: scale(1); } 85%, 100% { opacity: 0; } }
+.js .flow-diagram .trace { stroke-dasharray: 110; stroke-dashoffset: 110; transition: stroke-dashoffset 1.1s var(--ease) 0.25s; }
+.js .flow-diagram.in .trace { stroke-dashoffset: 0; }
+.js .flow-diagram .trace-stop { opacity: 0; transition: opacity 0.35s var(--ease) 1.3s; }
+.js .flow-diagram.in .trace-stop { opacity: 1; }
+.js .flow-diagram .lock { opacity: 0; transition: opacity 0.4s var(--ease) 1.4s; }
+.js .flow-diagram.in .lock { opacity: 1; }
 
 /* Sections play once when about a third is on screen (the script adds .js and .in) */
 .js .reveal { opacity: 0; transform: translateY(14px); transition: opacity 0.9s var(--ease), transform 0.9s var(--ease); }
@@ -259,10 +294,6 @@ section[id] { scroll-margin-top: 72px; }
 .js .cols.reveal > div:nth-child(5), .js .cols.reveal > div:nth-child(5)::before { transition-delay: 0.32s; }
 .js .cols.reveal > div:nth-child(6), .js .cols.reveal > div:nth-child(6)::before { transition-delay: 0.4s; }
 
-/* Typing caret on the claim as it is lifted out of the affidavit */
-.caret { display: inline-block; width: 2px; height: 1.05em; margin-left: 2px; vertical-align: -0.15em; background: var(--accent); animation: blink 1s steps(1) infinite; }
-@keyframes blink { 50% { opacity: 0; } }
-
 /* Facts */
 .facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); margin: 0; max-width: 860px; border-top: 1px solid var(--line); }
 .facts dt, .facts dd { padding: 16px 0; border-bottom: 1px solid var(--line); }
@@ -270,7 +301,8 @@ section[id] { scroll-margin-top: 72px; }
 .facts dd { margin: 0; color: var(--muted); }
 
 /* CTA */
-.cta > .wrap { gap: 22px; justify-items: start; padding-block: 104px 112px; }
+.band.cta { padding-block: 104px 112px; }
+.cta > .wrap { gap: 22px; justify-items: start; }
 .cta p { color: var(--muted); max-width: 36em; }
 
 /* Footer */
@@ -290,25 +322,25 @@ section[id] { scroll-margin-top: 72px; }
 
 @media (max-width: 960px) {
   .hero > .wrap { grid-template-columns: minmax(0, 1fr); gap: 48px; padding-block: 64px 80px; }
-  .rail li:not(.on) { display: none; }
-  /* A flex column, not grid rows: a sticky grid item is held inside its own row, so the panel
-     would scroll away. A flex item sticks for the height of the whole walkthrough. */
-  .walk { display: flex; flex-direction: column; gap: 0; }
-  .panel { order: -1; top: 62px; z-index: 5; }
-  .panel-body { min-height: 0; padding: 16px; gap: 14px; }
-  .doc, .rows small { display: none !important; }
-  .walk-step, .walk-step:first-child, .walk-step:last-child { min-height: 70vh; align-content: end; padding: 0 0 12vh; }
-  .walk.live .walk-step, .walk.live .walk-step.on { opacity: 0; }
-  .walk.live .panel-caption { display: grid; gap: 4px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--bg); }
-  .walk.live .panel-caption h3 { font: 400 1.3rem/1.2 var(--serif); }
-  .walk.live .panel-caption p { font-size: 0.86rem; color: var(--muted); }
+  .panel-body { padding: 20px; gap: 16px; min-height: 320px; }
   .split > .wrap { grid-template-columns: minmax(0, 1fr); gap: 36px; }
   .cols.three, .proofs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .band > .wrap { padding-block: 72px; }
+  .band { padding-block: 72px; }
+  .band.cta { padding-block: 80px 88px; }
+}
+@media (max-width: 760px) {
+  .doc { display: none !important; }
 }
 @media (max-width: 620px) {
+  section[id] { scroll-margin-top: 128px; }
   .site-nav .hide-sm { display: none; }
   .hero > .wrap { padding-block: 48px 64px; }
+  .stepper button { flex-direction: column; align-items: center; gap: 4px; padding: 10px 6px; }
+  .stepper .n { font-size: 0.85rem; min-width: 0; }
+  .stepper .label { font-size: 0.72rem; line-height: 1.15; letter-spacing: 0.01em; text-align: center; white-space: normal; overflow: visible; text-overflow: clip; max-width: 100%; }
+  .rows small { display: none !important; }
+  .panel-caption { padding: 14px 16px; }
+  .panel-caption h3 { font-size: 1.18rem; }
   .ledger ol { padding: 4px 16px; }
   .flow-diagram text { font-size: 23px; }
   .flow-diagram text.gate-label { font-size: 21px; }
