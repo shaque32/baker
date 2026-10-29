@@ -109,11 +109,12 @@ def synthetic_dir(case: str) -> Path:
 DRAFT_GOLD = {
     "case02": Path("eval/synthetic/case02/draft_gold.jsonl"),
     "case03": Path("eval/synthetic/case03/draft_gold.jsonl"),  # challenge-step case, ungated
+    "case04": Path("eval/synthetic/case04/draft_gold.jsonl"),  # testability held-out set, ungated
 }
 
 
 def gold_path(case: str) -> Path:
-    """The case's signed gold if there is one, else its draft key (case02, case03)."""
+    """The case's signed gold if there is one, else its draft key (case02, case03, case04)."""
     signed = Path("eval/gold") / case / "gold.jsonl"
     if signed.exists() and signed.read_text(encoding="utf-8").strip():
         return signed
@@ -144,6 +145,8 @@ def ensure_reports(case: str) -> dict:
             from eval.synthetic.case02_generate import generate
         elif case == "case03":
             from eval.synthetic.case03_generate import generate
+        elif case == "case04":
+            from eval.synthetic.case04_generate import generate
         else:
             raise SystemExit(f"{case}: reports missing; build them with that case's generator")
         generate(synthetic_dir(case), None)
@@ -161,6 +164,10 @@ def render_affidavit_pdf(case: str, path: Path) -> Path:
         from eval.synthetic.case03_generate import write_affidavit_pdf as write_case03
 
         return write_case03(path)
+    if case == "case04":
+        from eval.synthetic.case04_generate import write_affidavit_pdf as write_case04
+
+        return write_case04(path)
     if case != "case01":
         raise SystemExit(f"{case}: no affidavit renderer")
     from eval.synthetic import govdocs as g
@@ -353,12 +360,14 @@ def hostile_gate(preds: list[Prediction]) -> int:
 DRAFT_SHEETS = {
     "case01": Path("eval/probe_draft/case01_assumptions.jsonl"),
     "case02": Path("eval/synthetic/case02/case02_assumptions.jsonl"),
+    "case04": Path("eval/synthetic/case04/draft_assumptions.jsonl"),  # held-out set, ungated
 }
 
 
 def assumption_sheet(case: str) -> Path | None:
     """The case's assumption sheet: the signed copy under eval/gold/ if there is one, else the
-    draft (eval/probe_draft/ for case01, the hidden eval/synthetic/case02/ for case02)."""
+    draft (eval/probe_draft/ for case01, the hidden eval/synthetic/case02/ for case02,
+    eval/synthetic/case04/ for case04)."""
     signed = Path("eval/gold") / case / "assumptions.jsonl"
     if signed.exists():
         return signed
