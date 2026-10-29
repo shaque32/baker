@@ -33,11 +33,14 @@ memory, built from core/schema.sql, and checked in this order; any failure fails
    a contradicts or complicates item of its claim, and, in a bundle that holds every record,
    each search gives again the records its challenge.query entry recorded, with no model.
    The testability step's tries (core/audit/testability.py), when the run made them: every
-   repaired assumption a claim kept was accepted by an expert, and, in a bundle that holds every
-   record, code's lookups and code's checks on each stored answer give again what its
-   testability.repair entry recorded, with no model.
+   repaired assumption a claim kept was accepted by an expert, every confirm of a failed check
+   on one is an expert's, and, in a bundle that holds every record, code's lookups and code's
+   checks on each stored answer give again what its testability.repair entry recorded, with no
+   model.
 11. Verdicts: the verdict rules, re-applied to the recorded labels, checks, stipulations and the
-   expert decisions as they stood when each verdict was decided, give every verdict exactly
+   expert decisions as they stood when each verdict was decided (with rules 0.4.0, the
+   assumptions the testability step proposed and the expert's confirms of their failed checks,
+   read as the audit read them), give every verdict exactly
    (verdict, basis, reasons, coverage, citations) at the logged time, and the expert's
    confirmations and overrides in the log replay to the stored outcome.
 12. Report: the report rendered from these tables is byte for byte the report in the bundle.
@@ -1521,7 +1524,11 @@ def _testability(
         if act == testability.REPAIR_ACTION and p.get("run_id") == rid
     }
     accepts = [(c, p) for _s, _a, c, act, p in log if act == testability.ACCEPT_ACTION]
-    decisions = accepts + [(c, p) for _s, _a, c, act, p in log if act == testability.REJECT_ACTION]
+    decisions = accepts + [
+        (c, p)
+        for _s, _a, c, act, p in log
+        if act in (testability.REJECT_ACTION, testability.CONFIRM_ACTION)
+    ]
     if not repairs and not any(p.get("run_id") == rid for _c, p in accepts):
         return
     if "testability" not in source["config"]:
@@ -1800,6 +1807,7 @@ def _verdicts(conn: sqlite3.Connection, run: dict[str, Any], out: _Out) -> None:
         if act in ("verdict.override", "verdict.confirm"):
             actions[p.get("verdict_id")].append((actor, act, p))
     decided_at = _decided_at(log, run)
+    accepted = testability.accepted_in(conn, run)  # rules 0.4.0: the step's proposals it used
     n = overridden = untimed = 0
     for claim_id, items in sorted(run["manifest"].items()):
         claim = claims.get(claim_id)
@@ -1811,13 +1819,17 @@ def _verdicts(conn: sqlite3.Connection, run: dict[str, Any], out: _Out) -> None:
             e.model_copy(update={"status": statuses[e.id]})
             for e in pipeline.load_evidence(conn, items["evidence"])
         ]
+        checks = pipeline.load_checks(conn, items["checks"])
         decision = rules.decide_verdict(
             claim,
             pipeline.load_assumptions(conn, items["assumptions"]),
             evidence,
-            pipeline.load_checks(conn, items["checks"]),
+            checks,
             stipulations,
             run["run_id"],
+            **testability.verdict_inputs(
+                conn, accepted, claim_id, checks, before=positions[claim_id]
+            ),
         )
         stored = pipeline.load_verdict(conn, claim_id, run["run_id"])
         if stored is None:

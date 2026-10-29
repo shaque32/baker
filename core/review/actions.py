@@ -186,6 +186,66 @@ def decide_repair(
         )
 
 
+def confirm_agent_fail(
+    conn: sqlite3.Connection,
+    claim_id: str,
+    check_id: str,
+    actor: str,
+    reason: str,
+    clock: Clock | None = None,
+) -> None:
+    """Confirm one failed check on an assumption the testability step proposed, from the claim
+    page (rules 0.4.0, rule 1a). Until then the failure does not contradict the claim, since an
+    examiner may have accepted a wrong phone or time window. Once confirmed it counts from the
+    next verdict run, for as long as the check fails exactly that way. Only a failure the audit
+    on screen shows as waiting can be confirmed; a rejection of the proposal undoes a confirm."""
+    from core import pipeline
+    from core.audit import testability
+
+    _expert(actor)
+    if not reason.strip():
+        raise ReviewError("say why, in one sentence")
+    run = pipeline.view_run(conn)
+    accepted = testability.accepted_in(conn, run)
+    items = (run or {}).get("manifest", {}).get(claim_id)
+    if claim_id not in accepted or items is None:
+        raise ReviewError(f"no agent proposal for {claim_id} in the audit on screen")
+    ids, sha = accepted[claim_id]
+    checks = pipeline.load_checks(conn, items["checks"])
+    assumptions = pipeline.load_assumptions(conn, items["assumptions"])
+    check = next(
+        (
+            c
+            for c in testability.awaiting(conn, accepted, claim_id, assumptions, checks)
+            if c.id == check_id
+        ),
+        None,
+    )
+    if check is None:
+        raise ReviewError(
+            "this failed check is not waiting for you in the audit on screen; reload the claim"
+        )
+    with conn:
+        audit_log.append(
+            conn,
+            _now(clock),
+            actor,
+            testability.CONFIRM_ACTION,
+            {
+                "claim_id": claim_id,
+                "claim_sha256": sha,
+                "assumption_ids": sorted(ids),
+                "assumption_id": check.assumption_id,
+                "check_id": check.id,
+                "check_name": check.check_name,
+                "check_sha256": testability.check_sha256(check),
+                "run_id": (run or {}).get("run_id"),
+                "reason": reason.strip(),
+                "via": "claim page",
+            },
+        )
+
+
 # ---------------------------------------------------------------- verdicts
 
 

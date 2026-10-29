@@ -8,7 +8,9 @@ reviews evidence, so this re-decides instead:
 - It starts a new pipeline run (config mode 'rules_only') that reuses the latest completed run's
   assumptions, check results and evidence items, exactly as stored.
 - Each item's status is read again (the latest evidence_reviews row), so expert decisions made
-  since the run count. Stipulations are read again too.
+  since the run count. Stipulations are read again too, and so are the expert's confirms of a
+  failed check on an assumption the testability step proposed (rules 0.4.0,
+  core/audit/testability.py): such a failure counts once confirmed.
 - core/audit/rules.py decides every verdict and core/audit/invariants.py re-checks each one,
   exactly as in a full run. A violation rolls back and marks the run failed.
 - A run audited under rules older than one in INPUTS_CHANGED_AT is refused: its assumptions
@@ -31,7 +33,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from core import build, pipeline
-from core.audit import invariants, rules
+from core.audit import invariants, rules, testability
 from core.contracts import CONTRACTS_VERSION, PipelineRunStatus, VerdictDecision, canonical_json
 from core.review import audit_log
 from core.review.actions import ReviewError, _expert
@@ -138,6 +140,7 @@ def redecide(
     manifest_in: dict[str, dict[str, list[str]]] = src["manifest"]
     edited = edited_after(conn, src["started_at_utc"])
     manifest: dict[str, dict[str, list[str]]] = {}
+    accepted = testability.accepted_in(conn, src)  # the step's proposals the audit used
     try:
         with conn:
             stipulations = pipeline.load_stipulations(conn)
@@ -153,7 +156,13 @@ def redecide(
                 checks = pipeline.load_checks(conn, items["checks"])
                 evidence = pipeline.load_evidence(conn, items["evidence"])
                 decision = rules.decide_verdict(
-                    claim, assumptions, evidence, checks, stipulations, result.run_id
+                    claim,
+                    assumptions,
+                    evidence,
+                    checks,
+                    stipulations,
+                    result.run_id,
+                    **testability.verdict_inputs(conn, accepted, claim.id, checks),
                 ).model_copy(update={"decided_at_utc": now})  # the run's clock, not rules.py's
                 invariants.check_decision(
                     conn,

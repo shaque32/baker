@@ -26,7 +26,9 @@ from eval.adversarial.scenarios import (
 
 def decide(s: Scenario, evidence=None) -> VerdictDecision:
     args = [s.claim, list(s.assumptions), list(evidence or s.evidence), list(s.checks)]
-    if len(inspect.signature(rules.decide_verdict).parameters) == 6:  # v0.2 signature
+    params = inspect.signature(rules.decide_verdict).parameters.values()
+    # v0.2 signature; 0.4.0's agent arguments are keyword-only and empty by default
+    if len([p for p in params if p.kind is not p.KEYWORD_ONLY]) == 6:
         args += [list(s.stipulations), PIPELINE_RUN_ID]
     try:
         return rules.decide_verdict(*args)

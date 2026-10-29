@@ -108,7 +108,6 @@ from core.report import timeline as timeline_html
 from core.review import activity, audit_log, device_names
 from core.review.status import (
     AWAITING_EXPERT,
-    CONFIRM_STEP,
     CONTRADICTION_FOUND,
     HOLDINGS,
     SUPPORTED_AI,
@@ -176,7 +175,10 @@ from core.review.withheld import summary as withheld_summary
 # says "Found by the challenge step", and the versions table says whether the step ran.
 # 0.23.0: the demo case's banner says the testability agent's answers, and the examiner who
 # accepted one, were scripted, when the demo's audit ran the step.
-REPORT_VERSION = "0.23.0"
+# 0.24.0 (rules 0.4.0): a claim whose failed check on an assumption the testability agent
+# proposed waits for the expert says so, with the step to confirm it, like the screen; the key
+# to the verdicts says such a failure counts once an expert confirms it.
+REPORT_VERSION = "0.24.0"
 
 
 @dataclass(frozen=True)
@@ -719,7 +721,8 @@ def _limitations(conn: sqlite3.Connection, srcs: list[tuple]) -> str:
         "contradicting a core assumption of the claim. A contradiction found by the stance "
         "labeler counts once an expert confirms it, with a reason recorded in the audit log; "
         "until then the verdict is unproven. A failed deterministic check contradicts a claim "
-        "without this step.</li>",
+        "without this step, unless the check failed on an assumption the testability agent "
+        "proposed: that failure counts once an expert confirms it.</li>",
         "<li>Unproven means the evidence Mabillon reviewed does not establish the claim. It does "
         "not mean the claim is false.</li>",
         "<li>A search that finds nothing does not show that something did not happen. Each "
@@ -864,8 +867,7 @@ def _claim_block(
             f"local AI reviewer and {st.open_support} not reviewed, waiting for an expert to agree "
             "or disagree. Until an expert accepts the key evidence, the claim stays unproven.</p>"
         )
-    if st.contradiction_found:
-        out.append(f"<p>{e(CONFIRM_STEP.format(n=st.open_contradicts))}</p>")
+    out += [f"<p>{e(step)}</p>" for step in st.confirm_steps()]
     if st.edited_after_run:
         out.append("<p><strong>The claim text changed after this audit.</strong> Re-run it.</p>")
     if decision is not None:

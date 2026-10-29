@@ -68,6 +68,7 @@ from core.review import withheld as W
 from core.review.activity import VIEW
 from core.review.status import (
     AGAINST,
+    AGENT_FAIL_STEP,
     CONTRADICTION_FOUND,
     GAP_TOPICS,
     HOLDINGS,
@@ -1156,6 +1157,9 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
     out.append("</div></div>")
     out.append(_must_be_true(st, testability.used_repairs(conn, pipeline.view_run(conn))))
     out.append(_alternatives(conn, st))
+    if st.agent_fails:
+        proposed = testability.proposals(conn, pipeline.view_run(conn)).get(c.id)
+        out.append(_agent_fail_card(page, st, proposed, back))
 
     out.append("<h2 id='evidence'>Evidence</h2>")
     claim_flags = F.active_flags(conn, c.id)
@@ -1299,6 +1303,60 @@ def _agent_card(page: Page, x: testability.Proposed | None, back: str) -> str:
         "</p><p>What the claim and its paragraph name in the case, by code's lookups (the "
         "agent was shown these; only those in the claim's own words count):</p>"
         f"<ul>{found or '<li>nothing</li>'}</ul></details>{state}{form}</section>"
+    )
+
+
+def _agent_fail_card(page: Page, st: ClaimState, x: testability.Proposed | None, back: str) -> str:
+    """Rules 0.4.0: each failed check on an assumption the testability agent proposed and an
+    examiner accepted, waiting for the expert. A confirmed failure counts (the verdicts re-run at
+    once), or the expert rejects the proposal and the next audit does not use it. One form per
+    failure; there is no confirm-all."""
+    texts = {a.id: a.text for a in st.assumptions}
+    reason = (
+        "<input type='text' class='wide' name='reason' required maxlength='500' "
+        "placeholder='Why, in one sentence (recorded in the audit log)'><br>"
+    )
+    rows = []
+    for c in st.agent_fails:
+        fields = (
+            f"<input type='hidden' name='claim' value='{e(st.claim.id)}'>"
+            f"<input type='hidden' name='check' value='{e(c.id)}'>{reason}"
+        )
+        rows.append(
+            f"<li><div><strong>{e(texts.get(c.assumption_id, c.assumption_id))}</strong></div>"
+            f"<div class='meta'>Check {e(c.check_name)} failed: {e(c.detail)}</div>"
+            f"<div class='meta'>Searched: {e(c.searched)}</div>"
+            + page.form(
+                "/testability/confirm",
+                fields + "<button type='submit'>Confirm this failure</button>",
+                back=back,
+                anchor="agent-fail",
+            )
+            + "</li>"
+        )
+    reject = ""
+    if x is not None:
+        fields = (
+            f"<input type='hidden' name='claim' value='{e(x.claim_id)}'>"
+            f"<input type='hidden' name='run' value='{e(x.run_id)}'>"
+            f"<input type='hidden' name='attempt' value='{x.attempt}'>{reason}"
+        )
+        reject = (
+            "<details><summary>Or reject the agent's proposal</summary>"
+            + page.form(
+                "/testability/decide",
+                fields + "<button type='submit' name='decision' value='reject'>Reject</button>",
+                back=back,
+                anchor="agent-fail",
+            )
+            + "</details>"
+        )
+    return (
+        "<section class='agent' id='agent-fail'>"
+        f"<h2><span class='badge b-agent'>{e(testability.PROPOSED_MARK)}</span> "
+        f"{e(CONTRADICTION_FOUND)}</h2>"
+        f"<p>{e(AGENT_FAIL_STEP.format(n=len(st.agent_fails)))}</p>"
+        f"<ul class='checklist'>{''.join(rows)}</ul>{reject}</section>"
     )
 
 
