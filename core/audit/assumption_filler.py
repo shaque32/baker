@@ -1168,6 +1168,24 @@ _OFFSET_EDGE_RE = re.compile(
 )
 
 
+# Apps that place calls of their own, which a phone's call log does not stand in for. Names
+# that are also plain words count only as capitalised here or in capitals.
+_OTHER_CALL_APPS_RE = re.compile(
+    r"\b(?:whats\s?app|telegram|viber|face\s?time|skype|zoom|snapchat|instagram|facebook|kik|"
+    r"wickr|threema|discord|wechat|textnow|hangouts|google\s+voice|video)\b",
+    re.IGNORECASE,
+)
+_OTHER_CALL_APPS_CAP_RE = re.compile(
+    r"\b(?:Signal|SIGNAL|Line|LINE|Wire|WIRE|Teams|TEAMS|Session|SESSION|Element|ELEMENT|"
+    r"Messenger|MESSENGER|Duo|DUO|Meet|MEET)\b"
+)
+
+
+def _names_an_app_off_the_case(bare: str) -> bool:
+    """True when the words name a calling app, whether or not the case holds it."""
+    return bool(_OTHER_CALL_APPS_RE.search(bare) or _OTHER_CALL_APPS_CAP_RE.search(bare))
+
+
 def _open_range_wording(bare: str) -> bool:
     """True when a no-contact claim's range is open ("never", "before May 1, 2023") and code
     runs it to the extraction's edge (R5). A range with both ends stated ("from March 10
@@ -2790,7 +2808,13 @@ class LocalAssumptionFiller:
         proposal names must be. A call on no named app, or on two, is refused: the words
         alone never pick the app."""
         named = self._named_apps(claim_text)
-        if not named and NATIVE_CALL_APP in self.channels() and _writes_a_number(claim_text):
+        if (
+            not named
+            and NATIVE_CALL_APP in self.channels()
+            and _writes_a_number(claim_text)
+            # "a Signal call" on a case with no Signal is no call-log call (Codex on #169)
+            and not _names_an_app_off_the_case(_unquoted(_nfc(claim_text)))
+        ):
             # "placed an outgoing telephone call to (919) 567-7484": the phone's call log (R1).
             # _call_parties then takes only numbers as the other party.
             named = [NATIVE_CALL_APP]
@@ -2937,12 +2961,13 @@ class LocalAssumptionFiller:
             _PHONE_RE.sub(" ", bare) if numbers else bare
         ):
             raise Reject("no contact: the claim does not write exactly one other party")
+        # "never called X" says nothing of messages, whatever channels the model gave: the
+        # absence check would search both, so a call-only claim is not filled (Codex on #169).
+        if _CALL_WORD_RE.search(bare):
+            raise Reject("no contact by call: code reads no call-only scope")
         if not params.get("channels"):
-            # "never communicated by Signal with X" is no contact on Signal only, and "never
-            # called X" says nothing of messages: the scope comes from the claim's own words,
-            # and a call-only claim is not filled (Codex on #169).
-            if _CALL_WORD_RE.search(bare):
-                raise Reject("no contact by call: code reads no call-only scope")
+            # "never communicated by Signal with X" is no contact on Signal only: the scope
+            # comes from the claim's own words (Codex on #169).
             if named := self._named_apps(claim.text):
                 params["channels"] = named
             elif self._message_apps(claim.text) != []:

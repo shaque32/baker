@@ -1717,6 +1717,24 @@ def test_a_call_on_no_app_to_a_number_is_searched_in_the_call_log(call_log):
     assert t.channels == ("call", "unknown") and t.device_ids == ("dev:item1",)
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "On March 12, 2026, at approximately 9:00 p.m., dev:item1 had a Signal call with"
+        " (212) 555-0199.",
+        "On March 12, 2026, at approximately 9:00 p.m., dev:item1 had a FaceTime call with"
+        " (212) 555-0199.",
+        "On March 12, 2026, at approximately 9:00 p.m., dev:item1 had a video call with"
+        " (212) 555-0199.",
+    ],
+)
+def test_a_call_on_an_app_the_case_lacks_is_not_the_call_log(call_log, text):
+    # The case holds no Signal or FaceTime: the call log does not stand in (Codex on #169).
+    prop = {"template_id": "record_time", "channels": ["call"]}
+    assumptions, filler = build_text(call_log, text, ClaimType.COMMUNICATION, [prop])
+    assert not any(a.template_id == "record_time" for a in assumptions), filler.drops
+
+
 def test_a_number_written_as_the_call_logs_own_identifier_is_one_number(call_log):
     # "+12125550199" is both a number and the log's identifier; read once, it is one party
     # (Codex on #169).
@@ -1936,6 +1954,12 @@ def test_absence_parties_keep_the_app_the_claim_names(conn):
     )
     assert not any(a.template_id == "no_contact" for a in assumptions)
     assert any("call-only" in d.reason for d in filler.drops), filler.drops
+    # ... even when the model gave a channel (Codex on #169).
+    assumptions, filler = _no_contact(
+        conn, "dev:item1 never called (212) 555-0122 on WhatsApp.", phones=["dev:item1"],
+        channels=["WhatsApp"],
+    )  # fmt: skip
+    assert not any(a.template_id == "no_contact" for a in assumptions)
 
 
 def test_a_range_with_both_ends_stated_keeps_its_own_ends(conn):
