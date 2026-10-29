@@ -1166,6 +1166,15 @@ _RECEIVED_AFTER_RE = re.compile(
     re.IGNORECASE,
 )
 _TO_BEFORE_RE = re.compile(r"\b(?:to|for|toward|towards)\s+$", re.IGNORECASE)
+# Any other word for when, outside an open range's one date: a year, a month, a weekday, a
+# part of a day or a span ("During 2025 ... never", "never on Mondays"; Codex on #169).
+_OTHER_TIME_RE = re.compile(
+    rf"\b(?:{_MONTH_RE}|{_WD_RE})s?\b|\b(?:during|within|throughout|"
+    r"while|when|whenever|once|again|anymore|weekends?|weekdays?|weeks?|months?|years?|days?|"
+    r"nights?|mornings?|afternoons?|evenings?|tonight|today|yesterday|tomorrow|period|"
+    r"summer|winter|spring|autumn|holidays?|hours?|minutes?)\b",
+    re.IGNORECASE,
+)
 # The word right before an open range's one date: "before May 1", "on or after", "since".
 _OPEN_EDGE_BEFORE_RE = re.compile(r"\b(?:before|prior\s+to|until|after|since)\s+$", re.IGNORECASE)
 _CALL_WORD_RE = re.compile(
@@ -1220,6 +1229,9 @@ def _open_range_wording(bare: str) -> bool:
         return False
     if dates and not _OPEN_EDGE_BEFORE_RE.search(bare[: dates[0].start()]):
         return False  # "On March 12, 2026, ... never": a stated day, not an open end
+    rest = bare[: dates[0].start()] + " " + bare[dates[0].end() :] if dates else bare
+    if _YEAR_RE.search(rest) or _OTHER_TIME_RE.search(rest):
+        return False  # "During 2025", "in March", "on Mondays": a range code does not keep
     if unread_zone(bare) is not None:
         return False
     return not (dates and _DATE_ZONE_RE.match(bare[dates[0].end() :]))

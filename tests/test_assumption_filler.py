@@ -2054,6 +2054,25 @@ def test_never_on_a_stated_day_keeps_the_days_own_range(conn):
     assert "extraction" not in a.params.window.raw
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "During 2025, dev:item1 never communicated with (212) 555-0144.",
+        "dev:item1 never communicated with (212) 555-0144 on Mondays.",
+        "dev:item1 never communicated with (212) 555-0144 in March.",
+        "dev:item1 never communicated with (212) 555-0144 before May 1, 2026 in 2025.",
+    ],
+)
+def test_never_with_another_time_keeps_the_models_range(conn, text):
+    # A year, month or weekday the open range would drop (Codex on #169).
+    window = {"as_written": "2025", "start": "2025-01-01T00:00", "end": "2026-01-01T00:00",
+              "zone": "phone"}  # fmt: skip
+    assumptions, _ = _no_contact(conn, text, phones=["dev:item1"], window=window)
+    for a in assumptions:
+        if a.template_id == "no_contact" and a.params.window is not None:
+            assert "extraction" not in a.params.window.raw, text
+
+
 def test_the_extractions_edge_is_kept_as_an_instant_across_a_clock_change(conn):
     # A last record in the repeated hour of a fall-back night (01:30 EST, the second time)
     # ends the range on that instant, not an hour before it (Codex on #169).
