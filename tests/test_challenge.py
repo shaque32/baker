@@ -4,6 +4,7 @@ Synthetic case01 only; case02 is the held-out case and is never used here."""
 
 from __future__ import annotations
 
+import inspect
 import json
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -31,6 +32,7 @@ from core.contracts import (
     Stance,
 )
 from core.hypotheses import explain
+from core.report.html import challenge_label, render_report
 from core.review import audit_log
 from core.review.actions import set_claim_status
 from core.review.redecide import redecide
@@ -42,6 +44,7 @@ from eval.simulated_expert import (
     GoldKey,
     rubber_stamp_review,
 )
+from ui.pages import Page, claim_page
 
 EXPERT = "expert:Dana Reyes"
 AT = datetime(2026, 10, 20, 12, tzinfo=UTC)
@@ -164,16 +167,31 @@ def test_the_invariant_fails_on_any_other_item():
             invariants.check_challenge([_item("a", stance)])
 
 
-# ---------------------------------------------------------------- off by default
+# ---------------------------------------------------------------- on by default, with an off switch
 
 
-def test_the_step_is_off_by_default(tmp_path):
-    assert pipeline.Components.__dataclass_fields__["challenge"].default is False
+def test_the_step_is_on_by_default_and_a_run_can_skip_it(tmp_path):
+    assert pipeline.Components.__dataclass_fields__["challenge"].default is True
     conn, comps = _case(tmp_path, challenge_on=False)
     result = pipeline.run_audit(conn, comps)
     assert result.challenge == {} and _entries(conn) == []
     assert "challenge" not in pipeline.view_run(conn)["config"]
+    report = render_report(conn)
+    assert "skipped for this run" in report and "Found by the challenge step" not in report
     conn.close()
+
+
+def test_the_cli_runs_the_step_unless_told_not_to():
+    from cli.main import parser
+
+    assert parser().parse_args(["audit", "--db", "x.db"]).challenge is True
+    assert parser().parse_args(["audit", "--db", "x.db", "--no-challenge"]).challenge is False
+
+
+def test_the_review_screen_runs_the_step_unless_skipped():
+    from core.casework import jobs
+
+    assert inspect.signature(jobs.audit_job).parameters["challenge"].default is True
 
 
 # ---------------------------------------------------------------- the searches
@@ -284,9 +302,77 @@ def test_only_doubt_from_the_searches_is_stored(tmp_path, challenged, monkeypatc
     ).fetchone()
     # The stored doubt is one of the claim's items: an open complicating item blocks SUPPORTED.
     assert eid in pipeline.view_run(conn)["manifest"][claim_id]["evidence"]
+    # The report marks it as the step's find, and only the step's finds, and says the audit
+    # ran the step.
+    found = challenge.found_items(conn, pipeline.view_run(conn))
+    assert eid in found
+    report = render_report(conn)
+    row = report.split(f"<tr id='{eid}'>", 1)[1].split("</tr>", 1)[0]
+    assert "Found by the challenge step" in row
+    assert report.count("Found by the challenge step") <= len(found)
+    assert f"ran ({challenge.VERSION})" in report
     (logged, *_) = [p for p in _entries(conn) if p["claim_id"] == claim_id]
     assert logged["stored"] == [eid] and logged["record_ids"] == [doubt, support]
     conn.close()
+
+
+class _AlsoRetrieving:
+    """The model-free retriever, also returning one record for one assumption."""
+
+    def __init__(self, inner, assumption_id: str, record_id: str) -> None:  # noqa: ANN001
+        self.inner, self.assumption_id, self.record_id = inner, assumption_id, record_id
+
+    def retrieve(self, assumption, conn, k):  # noqa: ANN001, ANN201
+        out = self.inner.retrieve(assumption, conn, k)
+        if assumption.id == self.assumption_id:
+            out = [*out, challenge.candidate(conn, self.record_id)]
+        return out
+
+
+def test_an_earlier_audits_find_is_not_marked_in_a_run_without_the_step(
+    tmp_path, challenged, monkeypatch
+):
+    """Evidence ids come from content: a later audit without the step can store the same item
+    through retrieval. The report and the screen then agree that this audit skipped the step,
+    and neither marks the item as its find."""
+    base_conn, base, _ = challenged
+    claim_id = sorted(base.challenge)[0]
+    doubt, _ = _two_records(base_conn, claim_id)
+    stances = {doubt: Stance.COMPLICATES}
+
+    def queries(case, assumptions):  # noqa: ANN001, ANN202
+        core = tuple(a.id for a in assumptions if a.is_core)
+        return [challenge.Query("other_app", core[:1], "test search", (doubt,), 1)]
+
+    monkeypatch.setattr(challenge, "queries", queries)
+    conn, comps = _case(tmp_path, labeler=lambda inner: _Doubting(inner, stances))
+    first = pipeline.run_audit(conn, comps)
+    ((eid,),) = [e["stored"] for e in first.challenge[claim_id]]
+    assert eid in challenge.found_items(conn, pipeline.view_run(conn))  # every claim's search
+    aid = conn.execute("SELECT assumption_id FROM evidence_items WHERE id = ?", (eid,)).fetchone()
+    comps.retriever = _AlsoRetrieving(comps.retriever, aid[0], doubt)
+    comps.challenge = False
+    pipeline.run_audit(conn, comps)
+    run = pipeline.view_run(conn)
+    assert run["run_id"] != first.run_id and "challenge" not in run["config"]
+    assert eid in run["manifest"][claim_id]["evidence"]  # the same item, through retrieval
+    assert challenge.found_items(conn, run) == frozenset()
+    report = render_report(conn)
+    assert f"<tr id='{eid}'>" in report
+    assert "skipped for this run" in report and "Found by the challenge step" not in report
+    page = claim_page(conn, Page("t", "Tester"), claim_id)
+    assert page is not None and f"id='{eid}'" in page
+    assert challenge.FOUND_MARK not in page
+    conn.close()
+
+
+def test_the_report_does_not_say_skipped_when_the_audits_configuration_is_missing(challenged):
+    conn, result, _ = challenged
+    run = {"run_id": "run:not-in-this-case"}
+    assert challenge_label(conn, run).startswith("not recorded")
+    assert challenge_label(conn, {**run, "evidence_from_run": result.run_id}) == (
+        f"ran ({challenge.VERSION})"
+    )
 
 
 def test_a_stored_support_fails_the_run(tmp_path, challenged, monkeypatch):
@@ -503,8 +589,7 @@ def test_the_rubber_stamp_expert_accepts_every_labeled_item(tmp_path):
 def test_the_eval_runs_the_step_under_the_rubber_stamp_expert(tmp_path):
     out = tmp_path / "out"
     assert rp.main(
-        ["--case", "case01", "--mode", "model-free", "--expert", "rubber-stamp", "--challenge",
-         "--out", str(out)]
+        ["--case", "case01", "--mode", "model-free", "--expert", "rubber-stamp", "--out", str(out)]
     ) == 0  # fmt: skip
     summary = json.loads((out / "run.json").read_text(encoding="utf-8"))
     assert summary["simulated_expert"]["actor"] == RUBBER_STAMP

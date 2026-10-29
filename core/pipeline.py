@@ -367,8 +367,9 @@ class Components:
     # not change the verdict, so they are skipped to save model calls.
     label_settled: bool = False
     # The challenge step (core/audit/challenge.py): code's counter-searches on claims close to
-    # SUPPORTED, storing only doubt. Off by default (`mabillon audit --challenge`).
-    challenge: bool = False
+    # SUPPORTED, storing only doubt. On by default; `mabillon audit --no-challenge` and the
+    # review screen's "Skip the challenge step" turn it off for one run.
+    challenge: bool = True
     # The testability step (core/audit/testability.py): the local model's second try at a claim
     # the filler left untested, checked by code against the signed sheet. Eval only, off (None).
     testability: testability_mod.Testability | None = None

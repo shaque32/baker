@@ -253,6 +253,7 @@ details summary::marker { color: var(--muted); }
 .b-against { color: var(--con); border-color: var(--con-line); background: var(--con-bg); }
 .b-flag { color: var(--muted); border-style: dashed; background: transparent; }
 .b-withheld { color: var(--unp); border-color: var(--unp-line); background: var(--unp-bg); }
+.b-challenge { color: var(--muted); border-style: dotted; background: transparent; }
 details.flag { margin-top: 6px; }
 details.flag > summary { font-size: 13px; color: var(--muted); cursor: pointer; }
 ul.flags form.inline button { margin-left: 8px; }
