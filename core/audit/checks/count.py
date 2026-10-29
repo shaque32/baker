@@ -211,8 +211,8 @@ def _possible_twins(rows: list[Row]) -> list[tuple[str, str]]:
     timed = sorted((r.ts_utc, r.id) for r in rows if r.ts_utc is not None)
     out = []
     for i, (tx, x) in enumerate(timed):
-        for ty, y in timed[i + 1 :]:
-            if (ty - tx).total_seconds() > DUPLICATE_S:
-                break
-            out.append((x, y))
+        j = i + 1  # by index, so a sparse log is one pass, not a copy per call (Codex on #169)
+        while j < len(timed) and (timed[j][0] - tx).total_seconds() <= DUPLICATE_S:
+            out.append((x, timed[j][1]))
+            j += 1
     return out

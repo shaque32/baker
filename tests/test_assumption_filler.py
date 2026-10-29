@@ -1902,6 +1902,42 @@ def test_a_message_dated_by_its_writers_possessive_gets_no_senderless_time(conn)
             assert a.params.person_ids or a.params.account_ids, a.params
 
 
+def test_on_or_before_takes_in_the_whole_day(conn):
+    # "on or before March 12" includes March 12 (Codex on #169).
+    assumptions, filler = _no_contact(
+        conn,
+        "There was no contact between dev:item1 and (212) 555-0144 on or before March 12, 2026.",
+        phones=["dev:item1"],
+    )
+    (a,) = [a for a in assumptions if a.template_id == "no_contact"]
+    w = a.params.window
+    assert w is not None and w.raw.startswith("on or before March 12, 2026: from"), filler.drops
+    assert w.end_utc.astimezone(ZoneInfo("America/New_York")).isoformat()[:19] == (
+        "2026-03-12T23:59:59"
+    )
+
+
+def test_absence_parties_keep_the_app_the_claim_names(conn):
+    # "by WhatsApp" is no contact on WhatsApp only, never every app (Codex on #169).
+    assumptions, filler = _no_contact(
+        conn, "dev:item1 never communicated by WhatsApp with (212) 555-0122.", phones=["dev:item1"]
+    )
+    (a,) = [a for a in assumptions if a.template_id == "no_contact"]
+    assert a.params.channels == ("WhatsApp",), filler.drops
+    assert a.params.account_ids == ("acct:item1:WhatsApp:12125550122@s.whatsapp.net",)
+    # "texted" may be SMS or iMessage, and a phone app may hold calls: not filled.
+    assumptions, filler = _no_contact(
+        conn, "dev:item1 never texted (212) 555-0122.", phones=["dev:item1"]
+    )
+    assert not any(a.template_id == "no_contact" for a in assumptions)
+    # A call-only claim is not filled: the absence check would also search messages.
+    assumptions, filler = _no_contact(
+        conn, "dev:item1 never called (212) 555-0144.", phones=["dev:item1"]
+    )
+    assert not any(a.template_id == "no_contact" for a in assumptions)
+    assert any("call-only" in d.reason for d in filler.drops), filler.drops
+
+
 def test_a_range_with_both_ends_stated_keeps_its_own_ends(conn):
     window = {"as_written": "from March 10, 2026 until March 12, 2026",
               "start": "2026-03-10T00:00", "end": "2026-03-13T00:00", "zone": "phone"}  # fmt: skip

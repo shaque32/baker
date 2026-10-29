@@ -1158,6 +1158,9 @@ _OPEN_RANGE_RE = re.compile(r"\b(?:never|before|prior\s+to|until|after|since)\b"
 # An open range's edges come from the data, so the source spans it by construction; the
 # words say what that leaves unseen.
 _EDGE_NOTE = "; the edges are the extraction's own, so contact outside its records is not seen"
+_CALL_WORD_RE = re.compile(
+    r"\b(?:calls?|called|calling|phoned|phoning|rang|dialed|dialled|voicemails?)\b", re.IGNORECASE
+)
 _OFFSET_EDGE_RE = re.compile(
     r"\b(?:minutes?|hours?|days?|nights?|weeks?|months?|years?|shortly|soon|right|just|"
     r"immediately|sometime|long|well)\s+(?:before|after|prior\s+to|since|until)\b",
@@ -2934,6 +2937,17 @@ class LocalAssumptionFiller:
             _PHONE_RE.sub(" ", bare) if numbers else bare
         ):
             raise Reject("no contact: the claim does not write exactly one other party")
+        if not params.get("channels"):
+            # "never communicated by Signal with X" is no contact on Signal only, and "never
+            # called X" says nothing of messages: the scope comes from the claim's own words,
+            # and a call-only claim is not filled (Codex on #169).
+            if _CALL_WORD_RE.search(bare):
+                raise Reject("no contact by call: code reads no call-only scope")
+            if named := self._named_apps(claim.text):
+                params["channels"] = named
+            elif self._message_apps(claim.text) != []:
+                # "texted" or "by SMS" may be SMS or iMessage, and a phone app may hold calls
+                raise Reject("no contact by text: code reads no phone-message scope")
         params["device_ids"] = phones
         if people:
             params["person_ids"] = sorted({owner, *people})
@@ -3007,7 +3021,10 @@ class LocalAssumptionFiller:
             raise Reject("the open range's date is not a date") from None
         head = text[max(0, m.start() - 16) : m.start()]
         said = text[m.start() : m.end()].strip(" ,")
-        if re.search(r"\b(?:before|prior\s+to|until)\s+$", head, re.IGNORECASE):
+        if re.search(r"\bon\s+or\s+before\s+$", head, re.IGNORECASE):
+            # "on or before March 12" takes in all of March 12 (Codex on #169)
+            start, end, raw = first, day + timedelta(days=1), f"on or before {said}: from {span}"
+        elif re.search(r"\b(?:before|prior\s+to|until)\s+$", head, re.IGNORECASE):
             start, end, raw = first, day, f"before {said}: from {span}"
         elif re.search(r"\bon\s+or\s+after\s+$|\bsince\s+$", head, re.IGNORECASE):
             start, end, raw = day, last, f"since {said}: to {end_span}"
