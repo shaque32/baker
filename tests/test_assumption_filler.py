@@ -2570,6 +2570,26 @@ def test_a_recipient_written_by_full_name_is_one_mention(conn):
 
 
 @pytest.mark.parametrize(
+    "text",
+    [
+        "On March 21, 2026, on dev:item1, PETROV sent exactly one Telegram message to the"
+        " Telegram account 70010023.",
+        "On March 21, 2026, PETROV and the Telegram account 70010023 exchanged two Telegram"
+        " messages on dev:item1.",
+    ],
+)
+def test_an_identifier_inside_a_longer_one_is_not_the_side(conn, text):
+    # The model names account 7001002 for "70010023": its match inside the longer number is
+    # not that account, and the "3" left over is not the count (Codex on #172).
+    prop = P("message_count", count={"value": 1 if "exactly" in text else 2},
+             people=["PETROV"], phones=["dev:item1"], channels=["Telegram"],
+             accounts=[{"as_written": "7001002", "app": "Telegram"}], window=MAR21)  # fmt: skip
+    assumptions, filler = build_text(conn, text, ClaimType.COUNT, [prop])
+    made = [a for a in assumptions if a.template_id == "message_count"]
+    assert not any(a.params.each_way or a.params.sent_by for a in made), [a.params for a in made]
+
+
+@pytest.mark.parametrize(
     "third",
     ["SOKOLOV", "(212) 555-0199"],  # a person the case names, a number
 )

@@ -427,6 +427,19 @@ def _name_spans(text: str, name: str) -> list[tuple[int, int]]:
     return [m.span() for f in found for m in re.finditer(f, text, re.IGNORECASE)]
 
 
+def _ident_spans(text: str, ident: str) -> list[tuple[int, int]]:
+    """Where the text writes this identifier whole, in any case: not inside a longer one
+    ("7001002" is not in "70010023" or "dp_garage" in "dp_garage2")."""
+    pattern = rf"(?<![\w.:@-]){re.escape(ident.strip())}(?![\w@-]|[.:]\w)"
+    return [m.span() for m in re.finditer(pattern, text, re.IGNORECASE)]
+
+
+def _count_word(w: str) -> bool:
+    """A word that may write a message count: a number word, or digits too short to be an
+    account number ("70010023" left over is an account no side holds; Codex on #172)."""
+    return _number(w) is not None and not (w.isdigit() and len(w) > 4)
+
+
 # An address or identifier with an app's name in it: "x@gmail.com", "live:.cid.5638", "zoom.us".
 _ADDRESS_RE = re.compile(r"\S+@\S+|\S*:\S+|\S+\.(?:com|net|org|us|io)\b\S*", re.IGNORECASE)
 
@@ -2530,7 +2543,7 @@ class LocalAssumptionFiller:
         idents = [x for a in found for x in (a.identifier, a.display_name)]  # "Reyes D (+1...)"
         for i in [*idents, *params.get("handles", [])]:
             if i and i.strip():
-                spans += [m.span() for m in re.finditer(re.escape(i.strip()), clause, re.I)]
+                spans += _ident_spans(clause, i)
         numbers = {d for i in idents if i and (d := phone_digits(i)) is not None}
         for m in _PHONE_RE.finditer(clause):
             if (d := phone_digits(m.group(0).strip(" .,-"))) is not None:
@@ -2542,7 +2555,7 @@ class LocalAssumptionFiller:
         apps = _app_words(params)
         plain = apps | _PLAIN_EXCHANGE_WORDS
         for w in _words("".join(left)).split():
-            if w not in plain and _number(w) is None and not _MESSAGE_NOUN_RE.fullmatch(w):
+            if w not in plain and not _count_word(w) and not _MESSAGE_NOUN_RE.fullmatch(w):
                 return w
         return None
 
@@ -2575,8 +2588,8 @@ class LocalAssumptionFiller:
                     out.append((owner, s, e, True))
             for i in idents:
                 if i and i.strip():
-                    found = re.finditer(re.escape(i.strip()), text, re.IGNORECASE)
-                    out += [("accounts", m.start(), m.end(), False) for m in found]
+                    # whole only: "7001002" inside "70010023" is another account (Codex on #172)
+                    out += [("accounts", s, e, False) for s, e in _ident_spans(text, i)]
             # one number written another way ("+1 (212) 555-0122" for +12125550122; R6)
             numbers = {d for i in idents if i and (d := phone_digits(i)) is not None}
             for m in _PHONE_RE.finditer(text):
@@ -2637,7 +2650,7 @@ class LocalAssumptionFiller:
         extra = [
             w
             for w in _words("".join(left)).split()
-            if w not in plain and _number(w) is None and not _MESSAGE_NOUN_RE.fullmatch(w)
+            if w not in plain and not _count_word(w) and not _MESSAGE_NOUN_RE.fullmatch(w)
         ]
         if extra:
             # "sent REYES one message about the delivery": the check reads no subject or other
