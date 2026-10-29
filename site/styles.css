@@ -127,6 +127,7 @@ section[id] { scroll-margin-top: 96px; }
 .walk-play:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
 .walk-play:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .walk-play svg { width: 11px; height: 11px; }
+.walk-play[hidden] { display: none; }
 .walk-play .ico-triangle { display: none; }
 .walk-play[aria-pressed="true"] .ico-bars { display: none; }
 .walk-play[aria-pressed="true"] .ico-triangle { display: inline-block; }
