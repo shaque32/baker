@@ -1,4 +1,4 @@
-"""The site's pages link styles.css, main.js and demo.js with a ?v= that matches the file's content."""
+"""The site's pages link styles.css, main.js and demo.js with a ?v= of the file's content."""
 
 import hashlib
 import re
