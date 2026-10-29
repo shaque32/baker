@@ -2629,6 +2629,21 @@ def test_a_direction_is_not_read_with_a_count_per_side_or_direct_messages(conn, 
     assert not any(a.params.each_way or a.params.sent_by for a in made), [a.params for a in made]
 
 
+@pytest.mark.parametrize(
+    "text, value",
+    [
+        ("On March 21, 2026, PETROV and REYES exchanged iMessages on dev:item1.", None),
+        ("On March 21, 2026, PETROV and REYES exchanged emails on dev:item1.", None),
+        ("On March 21, 2026, on dev:item1, PETROV sent REYES exactly one iMessage.", 1),
+    ],
+)
+def test_a_message_noun_that_names_an_app_needs_the_count_kept_to_it(conn, text, value):
+    # "iMessages" and "emails" name an app; with no channels the count would search every
+    # app (Codex on #172).
+    made, filler = _count(conn, text, value, phones=["dev:item1"], channels=[])
+    assert not any(a.params.each_way or a.params.sent_by for a in made), [a.params for a in made]
+
+
 @pytest.mark.parametrize("phrase", ["with each other", "with one another"])
 def test_exchanged_with_each_other_is_still_each_way(conn, phrase):
     text = f"On March 21, 2026, PETROV and REYES exchanged Telegram messages {phrase} on dev:item1."

@@ -1490,7 +1490,17 @@ _PLAIN_EXCHANGE_WORDS = frozenset(
     " at least most only a total of".split()
 )
 _RECIPROCAL_RE = re.compile(r" (?:each other|one another) ")
-_MESSAGE_NOUN_RE = re.compile(r"(?:messages?|texts?|imessages?|chats?|emails?)", re.I)
+_MESSAGE_NOUN_RE = re.compile(r"(?:messages?|texts?|chats?)", re.I)
+# A message noun that names its app: plain only when the count keeps to that app, as an app
+# word is (Codex on #172).
+_APP_NOUNS = {"imessage": "imessage", "imessages": "imessage", "email": "email", "emails": "email"}
+
+
+def _plain_noun(w: str, apps: set[str]) -> bool:
+    """A message noun the count reads: "messages", or "iMessages" when it keeps to iMessage."""
+    return bool(_MESSAGE_NOUN_RE.fullmatch(w)) or _APP_NOUNS.get(w) in apps
+
+
 # A denial anywhere in the claim: "never exchanged", "had not sent" (Codex on #172).
 _DENIAL_RE = re.compile(r"\b(?:not|never|no|neither|nor|without|cannot)\b|n['’]t\b", re.I)
 _EXCHANGED_RE = re.compile(
@@ -2570,7 +2580,7 @@ class LocalAssumptionFiller:
         apps = _app_words(params)
         plain = apps | _PLAIN_EXCHANGE_WORDS
         for w in _RECIPROCAL_RE.sub(" ", _words("".join(left))).split():
-            if w not in plain and not _count_word(w) and not _MESSAGE_NOUN_RE.fullmatch(w):
+            if w not in plain and not _count_word(w) and not _plain_noun(w, apps):
                 return w
         return None
 
@@ -2665,7 +2675,7 @@ class LocalAssumptionFiller:
         extra = [
             w
             for w in _words("".join(left)).split()
-            if w not in plain and not _count_word(w) and not _MESSAGE_NOUN_RE.fullmatch(w)
+            if w not in plain and not _count_word(w) and not _plain_noun(w, apps)
         ]
         if extra:
             # "sent REYES one message about the delivery": the check reads no subject or other
