@@ -21,7 +21,9 @@ import sqlite3
 _CASE_ID = re.compile(
     r"(?<![\w:])(?:acct:[^\s'\"(),]+|person:[\w.:-]+|dev:[\w.-]+)(?<!\.)", re.IGNORECASE
 )
-_COUNT_OP = re.compile(r"\b(eq|ge|le|gt|lt) (?=\d)")
+# Only the filler's own count wording ("holds eq 13 messages"), so quoted record text that
+# happens to read "lt 3" stays verbatim.
+_COUNT_OP = re.compile(r"(?<=\bholds )(eq|ge|le|gt|lt) (?=\d)")
 _COUNT_WORD = {
     "eq": "exactly",
     "ge": "at least",
@@ -60,13 +62,23 @@ class Names:
         if token.lower().startswith("acct:"):
             ids = re.split(r"/(?=acct:)", token, flags=re.IGNORECASE)
             return " / ".join(dict.fromkeys(self._account(a) for a in ids))
+        person = token.lower().startswith("person:")
         sql = (
             "SELECT name FROM persons WHERE id = ? COLLATE NOCASE"
-            if token.lower().startswith("person:")
+            if person
             else "SELECT label FROM devices WHERE id = ? COLLATE NOCASE"
         )
         row = self.conn.execute(sql, (token,)).fetchone()
-        return row[0] if row and row[0] else token
+        if not row or not row[0]:
+            return token
+        same = (
+            "SELECT COUNT(*) FROM persons WHERE name = ?"
+            if person
+            else "SELECT COUNT(*) FROM devices WHERE label = ?"
+        )
+        # two people (or phones) the case names alike keep their ids beside the name
+        shared = self.conn.execute(same, (row[0],)).fetchone()[0] > 1
+        return f"{row[0]} ({token})" if shared else row[0]
 
     def html(self, text: str | None) -> str:
         """The text as HTML, each id shown by name with the id in its hover title, and the count

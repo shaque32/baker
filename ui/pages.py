@@ -1164,13 +1164,17 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
     out.append("<h2 id='evidence'>Evidence</h2>")
     claim_flags = F.active_flags(conn, c.id)
     flagged = {f.evidence_id for f in claim_flags if f.evidence_id}
-    if st.unlabeled:
-        # The run's own note (pipeline.unlabeled_reason) stays in the report; here, plainly.
+    d0 = st.decision
+    if st.unlabeled and d0 is not None and d0.verdict is Verdict.CONTRADICTED and not st.stale:
+        # The run's own note (pipeline.unlabeled_reason) stays in the report; here, plainly,
+        # and only while the verdict the rules gave is the contradiction that note leads to.
         out.append(
             "<p class='muted'>A check on the phone records failed on a core part of this claim, "
             "so the verdict rules contradict it whatever the evidence says. The records that "
             "check cites are the evidence; the model was not asked to label any.</p>"
         )
+    elif st.unlabeled:
+        out.append(f"<p class='muted'>{e(st.unlabeled)}</p>")
     if st.untested:
         out.append(f"<p><strong>{e(st.not_tested or '')}</strong></p>")
         if "matches no person" in (st.not_tested or ""):
@@ -1330,7 +1334,12 @@ def _must_be_true(
     d = st.decision
     coverage = {cv.assumption_id: cv for cv in (d.coverage if d else ())}
     current = d is not None and not st.stale
-    failed = {r.assumption_id for r in st.checks if r.outcome is CheckOutcome.FAIL}
+    # a failed check marks its assumption contradicted only when the verdict cites it, so the
+    # mark follows what the rules decided (a check the rules leave to the expert is not cited)
+    cited = set(d.cited_check_ids) if d is not None else set()
+    failed = {
+        r.assumption_id for r in st.checks if r.outcome is CheckOutcome.FAIL and r.id in cited
+    }
     rows = []
     for a in sorted(st.assumptions, key=lambda a: not a.is_core):
         cv = coverage.get(a.id) if current else None

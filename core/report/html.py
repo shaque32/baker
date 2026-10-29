@@ -186,7 +186,9 @@ from core.review.withheld import summary as withheld_summary
 # new "Names used in this report" key from each name to its id. Count operators read as words
 # ("exactly 13", not "eq 13"). The Sources table shows plain labels (Cellebrite Excel export,
 # Curated report, File system) instead of stored values. Stored text, rules and log unchanged.
-REPORT_VERSION = "0.25.0"
+# 0.26.0: two people or phones the case names alike keep their ids beside the name, and only
+# the filler's own count wording ("holds eq 13") becomes words, so quoted text stays verbatim.
+REPORT_VERSION = "0.26.0"
 
 
 @dataclass(frozen=True)
