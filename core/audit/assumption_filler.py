@@ -2579,9 +2579,13 @@ class LocalAssumptionFiller:
             left[start:end] = " " * (end - start)
         apps = _app_words(params)
         plain = apps | _PLAIN_EXCHANGE_WORDS
+        numbers = 0
         for w in _RECIPROCAL_RE.sub(" ", _words("".join(left))).split():
-            if w not in plain and not _count_word(w) and not _plain_noun(w, apps):
-                return w
+            if w in plain:
+                continue
+            numbers += _count_word(w)
+            if numbers > 1 or not (_count_word(w) or _plain_noun(w, apps)):
+                return w  # a second number is a range, not the one count (Codex on #172)
         return None
 
     def _sent_by(self, sent: tuple[str, str], params: dict[str, Any]) -> list[str]:
@@ -2672,11 +2676,11 @@ class LocalAssumptionFiller:
             left[start:end] = " " * (end - start)
         plain = apps | {"to", "the", "account", "user", "number", "exactly", "only", "at", "least"}
         plain |= {"most", "a", "total", "of"}
-        extra = [
-            w
-            for w in _words("".join(left)).split()
-            if w not in plain and not _count_word(w) and not _plain_noun(w, apps)
-        ]
+        rest_words = [w for w in _words("".join(left)).split() if w not in plain]
+        extra = [w for w in rest_words if not _count_word(w) and not _plain_noun(w, apps)]
+        if len([w for w in rest_words if _count_word(w)]) > 1:
+            # "sent REYES one to two messages": a range, not the one count (Codex on #172)
+            raise Reject("the claim writes more than one number for the count")
         if extra:
             # "sent REYES one message about the delivery": the check reads no subject or other
             # limit on the messages, so it would count them all (Codex on #172)

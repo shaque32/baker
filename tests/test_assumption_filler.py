@@ -2644,6 +2644,20 @@ def test_a_message_noun_that_names_an_app_needs_the_count_kept_to_it(conn, text,
     assert not any(a.params.each_way or a.params.sent_by for a in made), [a.params for a in made]
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "On March 21, 2026, on dev:item1, PETROV sent REYES one to two Telegram messages.",
+        "On March 21, 2026, on dev:item1, PETROV and REYES exchanged one to two Telegram messages.",
+    ],
+)
+def test_a_direction_is_not_read_with_a_range_of_counts(conn, text):
+    # "one to two" is a range; read as exactly two, one message would fail a true claim
+    # (Codex on #172).
+    made, filler = _count(conn, text, 2, phones=["dev:item1"])
+    assert not any(a.params.each_way or a.params.sent_by for a in made), [a.params for a in made]
+
+
 @pytest.mark.parametrize("phrase", ["with each other", "with one another"])
 def test_exchanged_with_each_other_is_still_each_way(conn, phrase):
     text = f"On March 21, 2026, PETROV and REYES exchanged Telegram messages {phrase} on dev:item1."
