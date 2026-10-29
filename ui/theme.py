@@ -300,6 +300,8 @@ details summary::marker { color: var(--muted); }
 .b-against { color: var(--con); background: var(--con-bg); }
 .b-flag { color: var(--muted); background: transparent; box-shadow: inset 0 0 0 1px var(--line); }
 .b-withheld { color: var(--muted); background: var(--panel); }
+.b-challenge { color: var(--muted); background: transparent;
+  box-shadow: inset 0 0 0 1px var(--line-strong); }
 details.flag { margin-top: 6px; }
 details.flag > summary { font-size: 12.5px; color: var(--muted); cursor: pointer; }
 ul.flags form.inline button { margin-left: 8px; }

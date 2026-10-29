@@ -14,7 +14,7 @@
                             --by expert:<name>
     python -m cli name-device --db case.db --device dev:item1 --name "TARGET PHONE"
                             [--name ...] --by expert:<name>
-    python -m cli audit     --db case.db [--fake] [--ai-review] [--label-all] [--challenge]
+    python -m cli audit     --db case.db [--fake] [--ai-review] [--label-all] [--no-challenge]
     python -m cli evidence  --db case.db --id <evidence id> --status accepted|dismissed|open
                             --reason "..." --by expert:<name>
     python -m cli acknowledge --db case.db --id <evidence id> --by expert:<name>
@@ -52,9 +52,9 @@ file (SHA-256) and fits in this computer's memory.
 `audit` saves each claim as it finishes and prints its progress. If it stops part way, run it
 again: the finished claims' model outputs are reused, not recomputed. Claims a failed core
 check already contradicts are not sent to the model (their labels could not change the
-verdict); `--label-all` labels them too. `--challenge` (off by default) runs code's
-counter-searches on each claim close to supported and stores only contradicting or complicating
-labels from them (core/audit/challenge.py); it costs more model calls.
+verdict); `--label-all` labels them too. The challenge step runs by default: code's
+counter-searches on each claim close to supported, storing only contradicting or complicating
+labels from them (core/audit/challenge.py). It costs more model calls; `--no-challenge` skips it.
 `demo` resets the synthetic demo case (eval/demo.py) and opens it on its own port, from its own
 cases folder (~/Mabillon/demo/cases, or $MABILLON_DEMO/cases), so each demo starts clean in seconds
 and a screen share shows no other case. `--from-case` saves a finished synthetic case01 audit
@@ -760,8 +760,10 @@ def parser() -> argparse.ArgumentParser:
     )
     sp.add_argument(
         "--challenge",
-        action="store_true",
-        help="look for what undercuts claims close to supported; stores only doubt (more calls)",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="look for what undercuts claims close to supported; stores only doubt (on by "
+        "default, more model calls; --no-challenge skips it)",
     )
 
     sp = add("evidence", cmd_evidence, "accept, dismiss or reopen an evidence item")

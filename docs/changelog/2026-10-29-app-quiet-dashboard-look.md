@@ -9,7 +9,7 @@
   about 78 characters; tables as white cards with a light header row; the Timeline and Gaps
   settings as a proper form (labeled fields, the unit inside the field, no
   spinner arrows, a Save settings button, one help line per field); times in tables kept on one
-  line; the claim table's Remove, Up and Down buttons on one row. Downloaded report 0.22.0,
+  line; the claim table's Remove, Up and Down buttons on one row. Downloaded report 0.23.0 (or the next free number when it merges),
   visual only: the title in IBM Plex Sans (no serif), the same cool grays and white cards with
   8px corners, notices as a gray note instead of a yellow box, unproven in gray. Verdict icons
   stay in the report so a black-and-white print still tells verdicts apart. No route, form

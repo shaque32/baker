@@ -21,8 +21,9 @@ Say this if asked; the yellow banner on every page says the same.
 
 | Real (Mabillon's own code) | Scripted (so the demo opens in seconds) |
 |---|---|
-| Import: read-only copies, SHA-256, coverage ("curated report, cannot show absence") | The evidence labels: key evidence from the signed answer key, labeled the way the answer points; everything else labeled irrelevant. No model ran. |
-| Assumptions (from the signed assumption sheet), retrieval, every deterministic check (sender, time with time zones, absence, count, contact, identity) | Most expert decisions: "Demo expert (scripted from the answer key)" accepted or dismissed every item, except on C05, which is left for you |
+| Import: read-only copies, SHA-256, coverage ("curated report, cannot show absence") | The evidence labels: key evidence from the signed answer key, labeled the way the answer points; C16's two counter-records labeled complicates on its authorship assumption; everything else labeled irrelevant. No model ran. |
+| Assumptions (from the signed assumption sheet), retrieval, every deterministic check (sender, time with time zones, absence, count, contact, identity) | Most expert decisions: "Demo expert (scripted from the answer key)" accepted or dismissed every item, except on C05 and C16's two counter-records, which are left for you |
+| The challenge step: code's counter-searches on each claim close to supported, which keep only doubt | |
 | The quote check, the verdict rules (0.3.0), the hash-chained audit log, the report | |
 
 On a real case the local model (Qwen3-14B, on the expert's own computer) labels the evidence and
@@ -68,16 +69,27 @@ records, and nothing counts as supported until you accept it yourself."
    cannot show absence)".
 2. **Claims queue.** 20 claims from the affidavit plus the scripted demo's D01: 7 supported
    (expert-confirmed), 6 contradicted, 7 unproven, and C05 at the top: "Support found: do you agree?".
+   C16 waits just below it: "2 contradicting or complicating item(s) to review".
 3. **Live: the expert decides (C05).** Open C05, "need 2 more by friday". The model-side label
    says supports, yet the verdict is unproven: no claim is supported until an expert accepts its
    evidence. Point out the time check: the phone prints the message on 3/13 (UTC), and Mabillon
    converts it to 8:03 p.m. on March 12 in New York, so the claim's date is right. Type a
    one-sentence reason, click **Accept** on both items, then **Re-run verdicts** (rules only, no
    model). C05 turns "Supported (expert-confirmed)" with your name in the audit log.
-4. **The traps (pick three or four from the answer key below).** On each claim open "Why
+4. **Live: the challenge step (C16).** Open C16, "got the money, come get it". On every claim
+   close to supported, Mabillon runs code's searches for what would undercut it, and keeps only
+   doubt. Here its search for someone else using the account found "its ilya btw, dan's at work.
+   he left his login on my ipad", marked "found by the challenge step". Retrieval found the
+   other one, "using ur insta on my ipad for the audi guy". While either is open, C16 cannot go
+   supported. Accept both with a reason (they undercut who typed the message), then **Re-run
+   verdicts**: C16 stays unproven, and the report says which item the challenge step found.
+   Say it plainly: the search is real, but in this demo the "complicates" label on what it found
+   is scripted from the answer key. On a real case the local model labels it, and what the step
+   catches with that model is not measured yet.
+5. **The traps (pick three or four from the answer key below).** On each claim open "Why
    (reasons from the verdict rules)" and the Checks table: the reason is written out, with the
    records it rests on.
-5. **Report.** The printable claims report: verdicts, cited records with their source rows,
+6. **Report.** The printable claims report: verdicts, cited records with their source rows,
    limitations (the owner stipulations, curated reports), source hashes and the audit log.
 
 Mabillon itself never says guilty, innocent, leader or deleted. A reason or note you type is
@@ -98,7 +110,7 @@ each of these; Mabillon does not.
 | C14 | 11 | No contact of any kind March 20 to 23 | WhatsApp gap | Absence check finds 12 SMS, Telegram and call records in the window | Contradicted |
 | D01 (demo only) | 11 | No WhatsApp messages March 20 to 23 | Silence read as absence | Absence check finds none but is inconclusive: both phones are curated reports, which cannot show absence | Unproven |
 | C15 | 11 | Petrov removed the WhatsApp messages from March 20 to 23 | Silence read as destruction | No WhatsApp rows, none flagged; an absence of artifacts never proves an event, and a curated report cannot show absence | Unproven |
-| C16 | 12 | Petrov, on Instagram dp_garage, said "got the money, come get it" | Shared account | The account also wrote "its ilya btw, dan's at work"; who typed it is not established | Unproven |
+| C16 | 12 | Petrov, on Instagram dp_garage, said "got the money, come get it" | Shared account | The account also wrote "its ilya btw, dan's at work", which the challenge step finds; who typed it is not established | Unproven |
 | C19 | 14 | @northstar is the "Alex" saved at 0182 | Second Alex | On Item 2, @northstar asks "who is alex turner?"; the contacts tie the account to 0147, not 0182 | Contradicted |
 | C18 | 14 | @northstar is Alexander Sokolov | Name from nowhere | Saved as "Sasha N"; nothing on either phone ties the account to Sokolov | Unproven |
 | C20 | 15 | "got the tickets" refers to narcotics | Decoy thread | The thread has seat sections, a ticket PDF and "that show was insane last night": concert context; a meaning claim needs an expert, never a model label alone | Unproven |
