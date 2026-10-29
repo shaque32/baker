@@ -74,12 +74,19 @@ CONFIRM_STEP = (
 )
 # what the expert does about a failed check on an agent's assumption (rules 0.4.0)
 AGENT_FAIL_STEP = (
-    "{n} check(s) failed on an assumption the testability agent proposed and an examiner "
+    "{checks} failed on an assumption the testability agent proposed and an examiner "
     "accepted. A failure there counts only once you confirm it, since the agent may have named "
     "the wrong phone or time window. Confirm each failure you agree with, giving your reason, "
     "to finalize the verdict as contradicted, or reject the agent's proposal so the next audit "
     "does not use it."
 )
+
+
+def agent_fail_step(n: int) -> str:
+    """AGENT_FAIL_STEP for n waiting failures, the count in the right number."""
+    return AGENT_FAIL_STEP.format(checks=_count(n, "check"))
+
+
 AGENT_STEP = (
     "Proposed by agent: the testability agent proposed assumptions that would make this claim "
     "testable. Accept or reject them on the claim page; nothing is used until you accept."
@@ -209,7 +216,7 @@ class ClaimState:
             return []
         out = [CONFIRM_STEP.format(n=self.open_contradicts)] if self.open_contradicts else []
         if self.agent_fails:
-            out.append(AGENT_FAIL_STEP.format(n=len(self.agent_fails)))
+            out.append(agent_fail_step(len(self.agent_fails)))
         return out
 
     @property

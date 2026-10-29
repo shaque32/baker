@@ -26,7 +26,7 @@ from core.contracts import CheckOutcome, ClaimStatus, Verdict
 from core.report.html import render_report
 from core.review.actions import ReviewError, confirm_agent_fail, decide_repair, set_claim_status
 from core.review.redecide import redecide
-from core.review.status import AGENT_FAIL_STEP, CONTRADICTION_FOUND, claim_state
+from core.review.status import CONTRADICTION_FOUND, agent_fail_step, claim_state
 from tests.test_testability import EXAMINER, _audit, _check, _components, _copy, _log
 
 DETAIL = 'item1 has no contact "Marc Garage" with +12125550122.'
@@ -86,7 +86,7 @@ def test_a_failed_check_on_the_agents_assumption_waits_for_the_expert(tmp_path, 
         assert st is not None and st.contradiction_found and st.label == CONTRADICTION_FOUND
         (c,) = st.agent_fails
         assert c.check_name == "contact" and c.outcome is CheckOutcome.FAIL
-        step = AGENT_FAIL_STEP.format(n=1)
+        step = agent_fail_step(1)
         assert any(step in text for _p, text in st.needs())
         assert html.escape(step) in render_report(conn)
         d = pipeline.load_verdict(conn, "C01", first.run_id)

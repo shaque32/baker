@@ -70,12 +70,12 @@ from core.review import withheld as W
 from core.review.activity import VIEW
 from core.review.status import (
     AGAINST,
-    AGENT_FAIL_STEP,
     CONTRADICTION_FOUND,
     GAP_TOPICS,
     HOLDINGS,
     STALE,
     ClaimState,
+    agent_fail_step,
     case_holdings,
     claim_name,
     claim_state,
@@ -1378,7 +1378,7 @@ def _agent_fail_card(
         "<section class='agent' id='agent-fail'>"
         f"<h2><span class='badge b-agent'>{e(testability.PROPOSED_MARK)}</span> "
         f"{e(CONTRADICTION_FOUND)}</h2>"
-        f"<p>{e(AGENT_FAIL_STEP.format(n=len(st.agent_fails)))}</p>"
+        f"<p>{e(agent_fail_step(len(st.agent_fails)))}</p>"
         f"<ul class='proposed'>{''.join(rows)}</ul>{reject}</section>"
     )
 
