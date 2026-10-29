@@ -75,8 +75,8 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .site-nav a { color: var(--muted); text-decoration: none; }
 .site-nav a:hover { color: var(--fg); }
 /* Small text links keep their look but get a hit area of at least 44px tall, drawn invisibly. */
-.site-nav a, .link, .audience-note a, .site-foot a, .addr, .wordmark { position: relative; }
-.site-nav a::after, .link::after, .audience-note a::after, .site-foot a::after, .addr::after, .wordmark::after { content: ""; position: absolute; inset: -14px -4px; }
+.site-nav a, .link, .audience-note a, .site-foot a, .fine a, .addr, .wordmark { position: relative; }
+.site-nav a::after, .link::after, .audience-note a::after, .site-foot a::after, .fine a::after, .addr::after, .wordmark::after { content: ""; position: absolute; inset: -14px -4px; }
 .site-nav .cta-sm { color: var(--fg); border: 1px solid var(--line-strong); padding: 6px 13px; border-radius: 7px; font-weight: 500; }
 
 /* Hero */
@@ -380,9 +380,10 @@ section[id] { scroll-margin-top: 96px; }
 .demo-form .row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 22px; }
 .field { display: grid; gap: 6px; min-width: 0; }
 .field span { font-size: 0.86rem; font-weight: 500; color: var(--muted); }
-.field input, .field select, .field textarea { width: 100%; font: 400 1.02rem/1.5 var(--sans); color: var(--fg); background: var(--bg); border: 1px solid var(--line-strong); border-radius: 7px; padding: 9px 12px; transition: border-color 0.15s var(--ease); }
+.field input, .field select, .field textarea { width: 100%; font: 400 1.02rem/1.5 var(--sans); color: var(--fg); background: var(--bg); border: 1px solid var(--line-strong); border-radius: 7px; padding: 9px 12px; min-height: 44px; transition: border-color 0.15s var(--ease); }
 .field textarea { resize: vertical; min-height: 4.6em; }
 .field select { appearance: none; -webkit-appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 17px) 55%, calc(100% - 12px) 55%; background-size: 5px 5px; background-repeat: no-repeat; cursor: pointer; }
+.field select:invalid { color: var(--muted); }
 .field select option { color: #141414; }
 .field input::placeholder, .field textarea::placeholder { color: var(--muted); opacity: 0.7; }
 .field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--accent); }
