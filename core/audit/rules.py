@@ -12,6 +12,15 @@ whether it was reviewed.
 Rule 1. Contradiction. The claim is CONTRADICTED if any core assumption has
     (a) a deterministic check that failed, or
     (b) a contradicting evidence item that an expert accepted.
+    A failed check on an assumption an agent proposed (agent_proposed: the testability step's,
+    core/audit/testability.py, in the claim only because an examiner accepted the proposal)
+    counts under (a) only once an expert confirms that failure (confirmed_fails) (rules 0.4.0,
+    Arsh, 2026-10-28: an accepted wrong phone or time window must not turn a true claim
+    CONTRADICTED by itself). Until then the claim stays UNPROVEN, the failure blocks SUPPORTED
+    (rule 3d), and the screen and the report say "Contradiction found, confirm to finalize".
+    The caller passes both sets: ids of this claim's assumptions an agent proposed, and ids of
+    failed checks an expert confirmed exactly as they failed. Left empty, every failed check
+    counts, as in 0.3.0.
     A model's or the AI reviewer's "contradicts" that no expert accepted does not count (rules
     0.3.0, Arsh, 2026-10-19, PR #90 URGENT FIX: on the signed probe set the local 14B scored 58%
     contradicts precision against a bar of 90%). The claim stays UNPROVEN, the item blocks
@@ -85,6 +94,10 @@ differently (core/audit/assumption_filler.py): "after March 3" starts on March 4
 0.3.0 (Arsh, 2026-10-19) changes rule 1b as above: only an expert-accepted contradiction counts
 unless the claim type is in _AUTO_CONTRADICT. A claim decided CONTRADICTED under 0.2.x on an
 unaccepted label is UNPROVEN under 0.3.0 until the expert confirms the contradiction.
+0.4.0 (Arsh, 2026-10-28) changes rule 1a as above: a failed check on an assumption an agent
+proposed counts only once an expert confirms the failure. A call that passes no agent_proposed
+decides exactly as 0.3.0 did. A claim decided CONTRADICTED under 0.3.0 on such a failed check
+alone is UNPROVEN under 0.4.0 until the expert confirms it.
 """
 
 from __future__ import annotations
@@ -115,7 +128,7 @@ from core.contracts import (
     verdict_id,
 )
 
-RULE_VERSION = "0.3.0"
+RULE_VERSION = "0.4.0"
 
 _CITABLE_RECORD = frozenset({ProvenanceTier.OBSERVED, ProvenanceTier.DERIVED})
 _REVIEWED = frozenset({EvidenceStatus.AI_ACCEPTED, EvidenceStatus.ACCEPTED})
@@ -148,6 +161,8 @@ class _Finding:
 
     assumption: Assumption
     failed_checks: list[CheckResult] = field(default_factory=list)
+    # rule 1a, 0.4.0: failed checks on an agent's assumption that no expert confirmed yet
+    awaiting_checks: list[CheckResult] = field(default_factory=list)
     contradicting: list[EvidenceItem] = field(default_factory=list)  # counts under rule 1
     unconfirmed: list[EvidenceItem] = field(default_factory=list)  # rule 1b: awaits an expert
     complicating: list[EvidenceItem] = field(default_factory=list)  # blocks rule 3(d)
@@ -275,6 +290,9 @@ def decide_verdict(
     checks: list[CheckResult],
     stipulations: list[Stipulation],
     pipeline_run_id: str,
+    *,
+    agent_proposed: frozenset[str] = frozenset(),
+    confirmed_fails: frozenset[str] = frozenset(),
 ) -> VerdictDecision:
     mine = {a.id: a for a in assumptions if a.claim_id == claim.id}
     ev_by: dict[str, list[EvidenceItem]] = defaultdict(list)
@@ -298,6 +316,8 @@ def decide_verdict(
         f.failed_checks = sorted(
             (c for c in ck_by[aid] if c.outcome is CheckOutcome.FAIL), key=lambda c: c.id
         )
+        if aid in agent_proposed:  # rule 1a, 0.4.0
+            f.awaiting_checks = [c for c in f.failed_checks if c.id not in confirmed_fails]
         checks_passed = bool(ck_by[aid]) and all(c.outcome is CheckOutcome.PASS for c in ck_by[aid])
         for e in sorted(ev_by[aid], key=lambda e: e.id):
             if e.status is EvidenceStatus.DISMISSED:
@@ -338,12 +358,17 @@ def decide_verdict(
         )
 
     # Rule 1: a contradiction on a core assumption.
-    failed = [(f, c) for f in core for c in f.failed_checks]
+    failed = [(f, c) for f in core for c in f.failed_checks if c not in f.awaiting_checks]
     against = [(f, e) for f in core for e in f.contradicting]
     if failed or against:
         for f, c in failed:
             reasons.append(
                 f"Rule 1a: check {c.check_name} failed on '{f.assumption.text}': {c.detail}"
+                + (
+                    " An agent proposed this assumption, and an expert confirmed the failure."
+                    if f.assumption.id in agent_proposed
+                    else ""
+                )
             )
         for f, e in against:
             reasons.append(f"Rule 1b: {e.record_id} contradicts '{f.assumption.text}' ({_how(e)}).")
@@ -401,6 +426,12 @@ def decide_verdict(
                 for e in f.contradicting
             ]
         if f.assumption.is_core:
+            blockers += [
+                f"Rule 1a: check {c.check_name} failed on '{f.assumption.text}', an assumption "
+                f"an agent proposed: {c.detail} Contradiction found, confirm to finalize: it "
+                "counts once an expert confirms the failed check."
+                for c in f.awaiting_checks
+            ]
             blockers += [
                 f"Rule 1b: {e.record_id} contradicts '{f.assumption.text}' ({_how(e)}). "
                 "Contradiction found, confirm to finalize: it counts once an expert accepts it."

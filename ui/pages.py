@@ -75,6 +75,7 @@ from core.review.status import (
     HOLDINGS,
     STALE,
     ClaimState,
+    agent_fail_step,
     case_holdings,
     claim_name,
     claim_state,
@@ -1160,6 +1161,9 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
     out.append("</div></div>")
     out.append(_must_be_true(conn, st, testability.used_repairs(conn, pipeline.view_run(conn))))
     out.append(_alternatives(conn, st))
+    if st.agent_fails:
+        proposed = testability.proposals(conn, pipeline.view_run(conn)).get(c.id)
+        out.append(_agent_fail_card(page, conn, st, proposed, back))
 
     out.append("<h2 id='evidence'>Evidence</h2>")
     claim_flags = F.active_flags(conn, c.id)
@@ -1319,6 +1323,70 @@ def _agent_card(
     )
 
 
+def _agent_fail_card(
+    page: Page,
+    conn: sqlite3.Connection,
+    st: ClaimState,
+    x: testability.Proposed | None,
+    back: str,
+) -> str:
+    """Rules 0.4.0: each failed check on an assumption the testability agent proposed and an
+    examiner accepted, waiting for the expert. A confirmed failure counts (the verdicts re-run at
+    once), or the expert rejects the proposal and the next audit does not use it. One form per
+    failure; there is no confirm-all."""
+    texts = {a.id: a.text for a in st.assumptions}
+    reason = (
+        "<input type='text' class='wide' name='reason' required maxlength='500' "
+        "placeholder='Why, in one sentence (recorded in the audit log)'><br>"
+    )
+    rows = []
+    for c in st.agent_fails:
+        fields = (
+            f"<input type='hidden' name='claim' value='{e(st.claim.id)}'>"
+            f"<input type='hidden' name='check' value='{e(c.id)}'>"
+            # the failure as shown, with its claim text and proposal: a later audit's other
+            # failure, or the same failure after a claim edit, is not confirmed with it
+            f"<input type='hidden' name='seen' value='{st.agent_seen[c.id]}'>{reason}"
+        )
+        rows.append(
+            f"<li><div><strong>{plain_ids(conn, texts.get(c.assumption_id, c.assumption_id))}"
+            f"</strong></div><div class='muted'>Check {e(c.check_name)} failed: "
+            f"{plain_ids(conn, c.detail)}</div>"
+            f"<div class='muted'>Searched: {plain_ids(conn, c.searched)}</div>"
+            + page.form(
+                "/testability/confirm",
+                fields + "<button type='submit'>Confirm this failure</button>",
+                back=back,
+                anchor="agent-fail",
+            )
+            + "</li>"
+        )
+    reject = ""
+    if x is not None:
+        fields = (
+            f"<input type='hidden' name='claim' value='{e(x.claim_id)}'>"
+            f"<input type='hidden' name='run' value='{e(x.run_id)}'>"
+            f"<input type='hidden' name='attempt' value='{x.attempt}'>{reason}"
+        )
+        reject = (
+            "<details><summary>Or reject the agent's proposal</summary>"
+            + page.form(
+                "/testability/decide",
+                fields + "<button type='submit' name='decision' value='reject'>Reject</button>",
+                back=back,
+                anchor="agent-fail",
+            )
+            + "</details>"
+        )
+    return (
+        "<section class='agent' id='agent-fail'>"
+        f"<h2><span class='badge b-agent'>{e(testability.PROPOSED_MARK)}</span> "
+        f"{e(CONTRADICTION_FOUND)}</h2>"
+        f"<p>{e(agent_fail_step(len(st.agent_fails)))}</p>"
+        f"<ul class='proposed'>{''.join(rows)}</ul>{reject}</section>"
+    )
+
+
 def _must_be_true(
     conn: sqlite3.Connection,
     st: ClaimState,
@@ -1340,6 +1408,8 @@ def _must_be_true(
     failed = {
         r.assumption_id for r in st.checks if r.outcome is CheckOutcome.FAIL and r.id in cited
     }
+    # rules 0.4.0: a failed check on an agent's assumption counts only once an expert confirms it
+    awaiting = {c.assumption_id for c in st.agent_fails}
     rows = []
     for a in sorted(st.assumptions, key=lambda a: not a.is_core):
         cv = coverage.get(a.id) if current else None
@@ -1350,6 +1420,8 @@ def _must_be_true(
             mark, said_ = "ok", f"Records found ({tier.replace('_', ' ')})"
         elif a.id in failed:
             mark, said_ = "con", "Contradicted by the records"
+        elif a.id in awaiting:
+            mark, said_ = "no", "A check failed: waiting for you to confirm"
         else:
             mark, said_ = "no", "Not established"
         role = "core" if a.is_core else "context, not needed for the verdict"

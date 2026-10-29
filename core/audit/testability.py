@@ -38,11 +38,20 @@ audit shown only, the same reading the claim page and verify-bundle use). The
 repair never sees, writes or changes the claim's text: the output has no field for it, and the
 claim's stored row is hashed before and after (`InvariantViolation` otherwise).
 
+A check that fails on an assumption the step proposed does not contradict the claim by itself
+(rules 0.4.0, rule 1a, Arsh, 2026-10-28): an examiner may have accepted a wrong phone or time
+window. The claim stays unproven, and the claim page shows "Contradiction found, confirm to
+finalize" with the failed check. The expert confirms that failure (`testability.confirm`, with a
+reason; core/review/actions.confirm_agent_fail), and it counts from the next verdict run, for as
+long as the check fails exactly that way (`confirmed_fails`). Or the expert rejects the
+proposal, and the next audit does not use it. rules.decide_verdict gets both sets from
+`verdict_inputs`, the same reading in the audit, a verdict re-run and verify-bundle.
+
 Each try is its own `testability.repair` audit entry (what code looked up, the model call, the
-reasons, which checks ran, and the proposed assumptions with their texts), and each decision a
-`testability.accept` or `testability.reject` entry by the examiner's actor. `mabillon
-verify-bundle` re-runs the lookups and code's checks on the stored answer with no model
-(core/bundle/verify.py).
+reasons, which checks ran, and the proposed assumptions with their texts), each decision a
+`testability.accept` or `testability.reject` entry by the examiner's actor, and each confirmed
+failure a `testability.confirm` entry. `mabillon verify-bundle` re-runs the lookups and code's
+checks on the stored answer with no model (core/bundle/verify.py).
 """
 
 from __future__ import annotations
@@ -89,7 +98,14 @@ from core.audit.assumption_filler import (
 )
 from core.audit.assumptions import Proposal, from_proposal, templates_for
 from core.audit.invariants import InvariantViolation
-from core.contracts import Assumption, Claim, ModelRun
+from core.contracts import (
+    Assumption,
+    CheckOutcome,
+    CheckResult,
+    Claim,
+    ModelRun,
+    canonical_json,
+)
 from core.review.device_names import logged_names, name_key
 
 # 0.2.0: the claim-only check (outcome "outside"), the checks each try ran ("check"), the
@@ -100,6 +116,8 @@ PLACEHOLDERS = frozenset({"claim", "paragraph", "templates", "channels", "lookup
 REPAIR_ACTION = "testability.repair"
 ACCEPT_ACTION = "testability.accept"
 REJECT_ACTION = "testability.reject"
+# an expert confirms a failed check on an assumption the step proposed (rules 0.4.0, rule 1a)
+CONFIRM_ACTION = "testability.confirm"
 PROPOSED_MARK = "Proposed by agent"
 CLAIM_CHECK = "claim"  # the claim-only check, all a case without a signed sheet gets
 SHEET_CHECK = "claim and sheet"  # the eval's: the claim-only check, then the signed sheet
@@ -642,6 +660,119 @@ def used_repairs(conn: sqlite3.Connection, run: dict[str, Any] | None) -> dict[s
         )
         out.update(dict.fromkeys(ids, Used(d[1], lapsed)))
     return out
+
+
+def accepted_in(
+    conn: sqlite3.Connection, run: Mapping[str, Any] | None
+) -> dict[str, tuple[list[str], str]]:
+    """Claim id -> (assumption ids, claim hash) of the proposal the audit `run` (or the audit a
+    verdict re-run took its evidence from) used under an expert's acceptance in force then
+    (`in_force`): the assumptions rules.decide_verdict gets as agent_proposed."""
+    if run is None:
+        return {}
+    source = str(run.get("evidence_from_run", run["run_id"]))
+    return {
+        cid: (ids, sha)
+        for cid, (ids, sha, d) in in_force(conn, source).items()
+        if d is not None and d[0] == ACCEPT_ACTION
+    }
+
+
+def check_sha256(check: CheckResult) -> str:
+    """A check result as it failed, hashed: an expert's confirm holds for that failure only."""
+    return hashlib.sha256(canonical_json(check).encode("utf-8")).hexdigest()
+
+
+def seen_sha256(accepted: tuple[list[str], str], check: CheckResult) -> str:
+    """What the claim page's confirm form carries: the failure as shown, with the proposal it
+    failed on and the claim text that proposal was accepted for (`accepted`, from accepted_in).
+    A page left open across a later audit or a claim edit confirms nothing it did not show
+    (Codex on #166 and #168)."""
+    ids, claim_sha = accepted
+    shown = {"assumption_ids": sorted(ids), "check": check_sha256(check), "claim": claim_sha}
+    return hashlib.sha256(canonical_json(shown).encode("utf-8")).hexdigest()
+
+
+def confirmed_fails(
+    conn: sqlite3.Connection,
+    claim_id: str,
+    assumption_ids: Iterable[str],
+    claim_sha: str,
+    checks: Iterable[CheckResult],
+    before: int | None = None,
+) -> frozenset[str]:
+    """Ids of the failed checks among `checks` an expert confirmed exactly as they failed: the
+    same claim, claim text, proposal and check result. An expert's rejection of the proposal
+    logged after a confirm undoes it. With before, only log entries before that seq count."""
+    ids = sorted(assumption_ids)
+    got: dict[str, str] = {}
+    for actor, action, payload_json in conn.execute(
+        "SELECT actor, action, payload_json FROM audit_log WHERE action IN (?, ?) AND seq < ?"
+        " ORDER BY seq",
+        (CONFIRM_ACTION, REJECT_ACTION, before if before is not None else 2**62),
+    ):
+        p = json.loads(payload_json)
+        if not (
+            actor.startswith("expert:")
+            and p.get("claim_id") == claim_id
+            and p.get("claim_sha256") == claim_sha
+            and sorted(p.get("assumption_ids", [])) == ids
+        ):
+            continue
+        if action == REJECT_ACTION:
+            got.clear()
+        else:
+            got[str(p.get("check_id"))] = str(p.get("check_sha256"))
+    return frozenset(
+        c.id for c in checks if c.outcome is CheckOutcome.FAIL and got.get(c.id) == check_sha256(c)
+    )
+
+
+def verdict_inputs(
+    conn: sqlite3.Connection,
+    accepted: Mapping[str, tuple[list[str], str]],
+    claim_id: str,
+    checks: Sequence[CheckResult],
+    before: int | None = None,
+) -> dict[str, frozenset[str]]:
+    """rules.decide_verdict's agent_proposed and confirmed_fails for one claim (rules 0.4.0):
+    the assumptions the audit took from the step (`accepted`, from `accepted_in` or the run's
+    own repair) and the failures of them an expert confirmed. Empty for a claim the step did not
+    change, whose call then is the one rules 0.3.0 got."""
+    got = accepted.get(claim_id)
+    if got is None:
+        return {}
+    ids, sha = got
+    return {
+        "agent_proposed": frozenset(ids),
+        "confirmed_fails": confirmed_fails(conn, claim_id, ids, sha, checks, before),
+    }
+
+
+def awaiting(
+    conn: sqlite3.Connection,
+    accepted: Mapping[str, tuple[list[str], str]],
+    claim_id: str,
+    assumptions: Sequence[Assumption],
+    checks: Sequence[CheckResult],
+) -> list[CheckResult]:
+    """The failed checks on a core assumption the shown audit took from the step that no expert
+    has confirmed, while the acceptance still holds (no later rejection, no claim edit): what
+    the claim page asks the expert to confirm. Each keeps the claim unproven (rules 0.4.0)."""
+    got = accepted.get(claim_id)
+    if got is None:
+        return []
+    ids, sha = got
+    now = decision(conn, claim_id, ids, claim_sha256(conn, claim_id))
+    if now is None or now[0] != ACCEPT_ACTION:
+        return []  # lapsed: the next audit does not use the proposal
+    core = {a.id for a in assumptions if a.is_core and a.id in set(ids)}
+    done = confirmed_fails(conn, claim_id, ids, sha, checks)
+    return [
+        c
+        for c in checks
+        if c.outcome is CheckOutcome.FAIL and c.assumption_id in core and c.id not in done
+    ]
 
 
 class Testability:
