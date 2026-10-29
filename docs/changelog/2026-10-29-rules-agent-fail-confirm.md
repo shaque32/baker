@@ -3,10 +3,10 @@
   testability agent goes on for pilots: "Rules change first, then measure". Under rules 0.3.0 a
   failed deterministic check contradicts a claim with no further review, so an examiner who
   accepts an agent's proposal naming a wrong phone or time window could turn a true claim
-  Contradicted. Under rules 0.4.0 (`core/audit/rules.py`, Arsh's file, applied by Arsh after he
-  signs the diff in `PROPOSED_CHANGES.md`) such a failure counts only once an expert confirms it,
-  the same way a model's "contradicts" already does. Until then the claim stays Unproven and
-  says "Contradiction found, confirm to finalize".
+  Contradicted. Under rules 0.4.0 (`core/audit/rules.py`, Arsh's file: he signed the diff in
+  `PROPOSED_CHANGES.md` on 2026-10-29 and applied it himself in 75ea6eb) such a failure counts
+  only once an expert confirms it, the same way a model's "contradicts" already does. Until
+  then the claim stays Unproven and says "Contradiction found, confirm to finalize".
   - `decide_verdict` gains two keyword-only arguments, empty by default, so every call that
     passes neither decides as 0.3.0 did: `agent_proposed` (the claim's assumptions the audit
     took from the testability step under an expert's acceptance) and `confirmed_fails` (failed
@@ -29,9 +29,8 @@
     confirm that is not an expert's.
   - `docs/METHODS.md` names rules 0.4.0 and the new wait.
 - Where: branch `claude/project-thread-6i2msb-agent-fail-confirm` (stacked on #163)
-- Verified: with the draft rules applied on a throwaway copy, `make check` passes; its eval
-  numbers are in the PR. Without them (rules 0.3.0), the 21 new tests fail, as they should, until
-  Arsh applies the signed diff. New tests:
+- Verified: `make check` passes with Arsh's applied rules (75ea6eb and after); its eval numbers
+  are in the PR. Under rules 0.3.0 the 21 new tests fail, as they should. New tests:
   - `tests/contract/test_rules.py`: a waiting failure keeps the claim unproven with the rule 1a
     reason and no citation; a confirmed one contradicts and cites the check; without the new
     arguments a failed check contradicts as in 0.3.0; a confirm or an agent id that belongs

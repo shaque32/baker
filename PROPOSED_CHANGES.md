@@ -804,5 +804,6 @@ copy only, never committed by an agent):
                  "Contradiction found, confirm to finalize: it counts once an expert accepts it."
                  for e in f.unconfirmed
 ```
-AWAITING Arsh's signature. Once he signs, he applies it on this branch (PR #166) with
-the command posted in the project thread, word for word as above.
+SIGNED by Arsh on 2026-10-29 at 01:05Z ("approve ran on mac", project thread "Build agents into
+the audit") and APPLIED by Arsh himself on this branch (PR #166), commit 75ea6eb. Word for word
+as above.
