@@ -1161,6 +1161,14 @@ _EDGE_NOTE = "; the edges are the extraction's own, so contact outside its recor
 _CALL_WORD_RE = re.compile(
     r"\b(?:calls?|called|calling|phoned|phoning|rang|dialed|dialled|voicemails?)\b", re.IGNORECASE
 )
+# "never texted X" or "never spoke with X": one kind of contact. The absence check reads
+# messages and calls alike, so the words keep code from filling either scope (Codex on #169).
+_MESSAGE_WORD_RE = re.compile(
+    r"\b(?:texts?|texted|texting|messages?|messaged|messaging|wrote|writes?|written|writing|"
+    r"chats?|chatted|chatting|dms?|dm'?d|e-?mails?|e-?mailed|e-?mailing|replied|replies|"
+    r"spoke|speak|speaks|speaking|spoken|talked|talks?|talking)\b",
+    re.IGNORECASE,
+)
 _OFFSET_EDGE_RE = re.compile(
     r"\b(?:minutes?|hours?|days?|nights?|weeks?|months?|years?|shortly|soon|right|just|"
     r"immediately|sometime|long|well)\s+(?:before|after|prior\s+to|since|until)\b",
@@ -2965,10 +2973,17 @@ class LocalAssumptionFiller:
         # absence check would search both, so a call-only claim is not filled (Codex on #169).
         if _CALL_WORD_RE.search(bare):
             raise Reject("no contact by call: code reads no call-only scope")
+        if _MESSAGE_WORD_RE.search(bare):
+            raise Reject("no contact by message or by voice: code reads no one-kind scope")
+        named = self._named_apps(claim.text)
+        if not named and _names_an_app_off_the_case(bare):
+            # "never communicated by Signal" on a case with no Signal: the scope cannot be
+            # kept, so code does not widen it to every app (Codex on #169).
+            raise Reject("no contact: the claim names an app the case does not hold")
         if not params.get("channels"):
             # "never communicated by Signal with X" is no contact on Signal only: the scope
             # comes from the claim's own words (Codex on #169).
-            if named := self._named_apps(claim.text):
+            if named:
                 params["channels"] = named
             elif self._message_apps(claim.text) != []:
                 # "texted" or "by SMS" may be SMS or iMessage, and a phone app may hold calls

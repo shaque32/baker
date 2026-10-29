@@ -1962,6 +1962,34 @@ def test_absence_parties_keep_the_app_the_claim_names(conn):
     assert not any(a.template_id == "no_contact" for a in assumptions)
 
 
+@pytest.mark.parametrize("channels", [None, ["WhatsApp"]])
+@pytest.mark.parametrize(
+    "text",
+    [
+        # Messages only: a WhatsApp call would fail it (Codex on #169).
+        "dev:item1 never texted (212) 555-0122 on WhatsApp.",
+        "dev:item1 never sent a message to (212) 555-0122 on WhatsApp.",
+        "dev:item1 never spoke with (212) 555-0122 on WhatsApp.",
+    ],
+)
+def test_absence_parties_refuse_one_kind_of_contact(conn, text, channels):
+    extra = {"channels": channels} if channels else {}
+    assumptions, filler = _no_contact(conn, text, phones=["dev:item1"], **extra)
+    assert not any(a.template_id == "no_contact" for a in assumptions)
+    assert any("one-kind" in d.reason for d in filler.drops), filler.drops
+
+
+@pytest.mark.parametrize("app", ["Signal", "Viber"])
+def test_absence_parties_refuse_an_app_the_case_lacks(conn, app):
+    # No such app in the case: the scope cannot be kept, so it is never widened (Codex on #169).
+    assumptions, filler = _no_contact(
+        conn, f"dev:item1 never communicated by {app} with (212) 555-0144.", phones=["dev:item1"]
+    )
+    assert not any(c.casefold() == app.casefold() for c in filler.channels())
+    assert not any(a.template_id == "no_contact" for a in assumptions)
+    assert any("does not hold" in d.reason for d in filler.drops), filler.drops
+
+
 def test_a_range_with_both_ends_stated_keeps_its_own_ends(conn):
     window = {"as_written": "from March 10, 2026 until March 12, 2026",
               "start": "2026-03-10T00:00", "end": "2026-03-13T00:00", "zone": "phone"}  # fmt: skip

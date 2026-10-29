@@ -30,8 +30,13 @@
     record, or to its last, on the phone's own sources; the assumption text names both
     edges. When the model gave no parties, they come from the claim: the phone's exact
     owner and the one person or number it names. Only a range open at one end takes this
-    path: both ends stated, a time of day or a written time zone keep the model's range, read
-    as before. The range's words say its edges are the
+    path: both ends stated, a time of day, a written time zone or an offset ("two days
+    after") keep the model's range, read as before. "On or before X" takes in all of X, and a
+    date with no year takes the paragraph's year. Code fills the sides only for plain
+    contact wording on the case's own apps: a claim about calls only or messages only
+    ("never called", "never texted", "never spoke with"), a possessive or "a friend of"
+    party, or an app the case does not hold is refused, since the absence check reads every
+    kind of contact on the scope. The range's words say its edges are the
     extraction's own, so contact outside its records is not seen. "Not found" still states
     what was searched and the source's coverage.
   - Fill f, call counts: with 'call' among its channels the count check (1.1.0) counts calls
@@ -40,7 +45,9 @@
     counted call with no length or a zero length, make it inconclusive. A counted call's
     deletion flag is named, as for messages. A count of calls one side placed ("outgoing",
     "made", "missed", "called") is refused, since the check counts both directions; so is
-    a count of "incoming" or "outgoing" messages. The filler reads "N calls" and, when the model gave only one call's time,
+    a count of "incoming" or "outgoing" messages, and a count of calls of a stated length.
+    A call on a calling app the case does not hold ("a Signal call") is not read from the
+    call log. The filler reads "N calls" and, when the model gave only one call's time,
     adds the count from it, with the phone's side as its exact owner.
   - Fill g: an assumption code filled, in whole or in part, ends its text with "Filled from
     the claim's wording.", which the expert reads before accepting it. `eval/run_pipeline.py`
