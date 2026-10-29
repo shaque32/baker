@@ -193,12 +193,17 @@ def confirm_agent_fail(
     actor: str,
     reason: str,
     clock: Clock | None = None,
+    *,
+    seen: str,
 ) -> None:
     """Confirm one failed check on an assumption the testability step proposed, from the claim
     page (rules 0.4.0, rule 1a). Until then the failure does not contradict the claim, since an
     examiner may have accepted a wrong phone or time window. Once confirmed it counts from the
     next verdict run, for as long as the check fails exactly that way. Only a failure the audit
-    on screen shows as waiting can be confirmed; a rejection of the proposal undoes a confirm."""
+    on screen shows as waiting can be confirmed, and only as the expert saw it: `seen` is the
+    shown result's testability.check_sha256, so a page left open across a later audit whose
+    check failed another way confirms nothing (Codex on #168). A rejection of the proposal
+    undoes a confirm."""
     from core import pipeline
     from core.audit import testability
 
@@ -224,6 +229,11 @@ def confirm_agent_fail(
     if check is None:
         raise ReviewError(
             "this failed check is not waiting for you in the audit on screen; reload the claim"
+        )
+    if testability.check_sha256(check) != seen:
+        raise ReviewError(
+            "this check failed another way in a later audit than the one you read; reload the "
+            "claim and read the failure again"
         )
     with conn:
         audit_log.append(

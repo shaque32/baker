@@ -763,7 +763,12 @@ class App:
                 "the latest audit has not finished; resume it before confirming a contradiction"
             )
         actions.confirm_agent_fail(
-            conn, f.get("claim", ""), f.get("check", ""), self.actor, f.get("reason", "")
+            conn,
+            f.get("claim", ""),
+            f.get("check", ""),
+            self.actor,
+            f.get("reason", ""),
+            seen=f.get("seen", ""),
         )
         done = "Failed check confirmed"
         try:

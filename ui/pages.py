@@ -1320,7 +1320,9 @@ def _agent_fail_card(page: Page, st: ClaimState, x: testability.Proposed | None,
     for c in st.agent_fails:
         fields = (
             f"<input type='hidden' name='claim' value='{e(st.claim.id)}'>"
-            f"<input type='hidden' name='check' value='{e(c.id)}'>{reason}"
+            f"<input type='hidden' name='check' value='{e(c.id)}'>"
+            # the failure as shown: a later audit's other failure is not confirmed with it
+            f"<input type='hidden' name='seen' value='{testability.check_sha256(c)}'>{reason}"
         )
         rows.append(
             f"<li><div><strong>{e(texts.get(c.assumption_id, c.assumption_id))}</strong></div>"
