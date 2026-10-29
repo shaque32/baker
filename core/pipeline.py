@@ -876,7 +876,9 @@ def extract_claims(
 
 
 def settled_by_check(
-    assumptions: Sequence[Assumption], checks: Sequence[CheckResult]
+    assumptions: Sequence[Assumption],
+    checks: Sequence[CheckResult],
+    waiting: frozenset[str] = frozenset(),
 ) -> str | None:
     """Why this claim's evidence need not be labeled, or None if it must be.
 
@@ -887,10 +889,14 @@ def settled_by_check(
     review cannot change it either; a new full audit runs the checks again. The test in
     tests/test_fewer_calls.py holds this against the real rules with every stance, review
     status and tier, so a rule change that breaks it fails there.
+
+    `waiting`: failed checks that do not decide yet, on an assumption the testability step
+    proposed that no expert has confirmed the failure of (rules 0.4.0). They settle nothing:
+    the claim stays unproven, and its evidence could still decide it.
     """
     core = {a.id: a for a in assumptions if a.is_core}
     for r in checks:
-        if r.outcome is CheckOutcome.FAIL and r.assumption_id in core:
+        if r.outcome is CheckOutcome.FAIL and r.assumption_id in core and r.id not in waiting:
             return (
                 f"Evidence was not sent to the stance model: check {r.check_name} failed on the"
                 f" core assumption '{core[r.assumption_id].text}', so rule 1a decides this claim"
@@ -1301,9 +1307,25 @@ class _Run:
                 )
                 checks.append(r)
 
+        # Rules 0.4.0: a failed check on an assumption the testability step proposed waits
+        # for the expert's confirm, so it neither decides the verdict nor settles the claim.
+        repair = self.result.testability.get(claim.id)
+        used = (
+            {claim.id: ([a.id for a in repair.assumptions], repair.claim_sha256)}
+            if repair is not None and repair.assumptions
+            else {}
+        )
+        agent = testability_mod.verdict_inputs(conn, used, claim.id, checks)
+        waiting = frozenset(
+            r.id
+            for r in checks
+            if r.outcome is CheckOutcome.FAIL
+            and r.assumption_id in agent.get("agent_proposed", ())
+            and r.id not in agent.get("confirmed_fails", ())
+        )
         settled = None
         if c.rule is rules.decide_verdict and not (c.label_settled or c.rules_pending()):
-            settled = settled_by_check(assumptions, checks)
+            settled = settled_by_check(assumptions, checks, waiting)
         if settled is not None:
             self.result.unlabeled[claim.id] = settled
         # Retrieval first (no model), so the screen knows how many candidates there are.
@@ -1346,7 +1368,9 @@ class _Run:
                 decided_at_utc=self.now,
             )
         else:
-            decision = c.rule(claim, assumptions, evidence, checks, stipulations, self.run_id)  # type: ignore[call-arg]
+            decision = c.rule(  # type: ignore[call-arg]
+                claim, assumptions, evidence, checks, stipulations, self.run_id, **agent
+            )
             # rules.py stamps the wall clock; the run's clock decides, so a run is repeatable.
             decision = decision.model_copy(update={"decided_at_utc": _now(self.clock)})
         invariants.check_decision(
