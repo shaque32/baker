@@ -1396,6 +1396,25 @@ def test_count_op_refuses_one_way_text_messages():
         count_op("Item 1 holds 13 text messages from PETROV to REYES.", 13)
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "On March 12, 2026, on dev:item1, PETROV and REYES had two Telegram video calls.",
+        "On March 12, 2026, PETROV and REYES had two audio calls on Telegram.",
+    ],
+)
+def test_count_op_refuses_a_kind_of_call(text):
+    # The call log keeps no video or audio kind (Codex on #169).
+    with pytest.raises(Reject, match="one kind of call"):
+        count_op(text, 2)
+
+
+def test_a_call_of_a_kind_the_log_does_not_keep_names_no_app(conn):
+    filler = LocalAssumptionFiller(FakeModel("{}"), conn, template=DRAFT)
+    with pytest.raises(Reject, match="kind of call"):
+        filler._call_app("PETROV had a Telegram video call with REYES.", ["call"])
+
+
 def test_a_count_claim_quoting_only_a_name_needs_no_sender():
     from core.audit.assumption_filler import coverage_gap
     from core.audit.assumptions import Proposal
@@ -1585,6 +1604,16 @@ def _x1(text: str) -> Claim:
         claim_type=ClaimType.COMMUNICATION,
         status=ClaimStatus.ACCEPTED,
     )
+
+
+def test_a_deletion_date_dates_no_sending_even_with_a_sender(conn):
+    # Fill b names the sender, but March 16 is the deletion's date (Codex on #169).
+    text = (
+        'On March 16, 2026, REYES deleted the Telegram message "the package will be at marcs"'
+        " after receiving it from PETROV."
+    )
+    assumptions, filler = build_text(conn, text, ClaimType.COMMUNICATION, [])
+    assert not any(a.template_id == "record_time" for a in assumptions), filler.drops
 
 
 def test_the_one_a_message_was_received_from_sent_it(conn):

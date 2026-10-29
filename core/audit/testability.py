@@ -468,9 +468,7 @@ def check_answer(
     # the template shape check, code's sender, time range and meaning fills, then the gate.
     before = len(filler.drops)
     kept = filler._shaped(claim, kept, None)
-    kept = filler._shaped(claim, filler._add_sender(claim, kept, allowed), None)
-    kept = filler._shaped(claim, filler._add_record_time(claim, para, kept, allowed), None)
-    kept = filler._add_meaning(claim, kept, allowed, None)
+    kept = filler.code_fills(claim, para, kept, allowed, None)
     reasons += [d.reason for d in filler.drops[before:]]
     del filler.drops[before:]  # this try's refusals are the step's, not the first pass's
     gap = coverage_gap(claim, kept, frozenset(filler._names()))

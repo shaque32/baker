@@ -1345,6 +1345,8 @@ _CALL_LENGTH_RE = re.compile(
     r"hours?|hrs?)\b",
     re.IGNORECASE,
 )
+# A kind of call the call log does not record: "video calls", "audio calls" (Codex on #169).
+_CALL_KIND_RE = re.compile(r"\b(?:video|videos|audio|voice)\b", re.I)
 # A call one side placed: "two outgoing calls", "made four calls", "called X" (Codex on #169).
 _ONE_WAY_CALL_RE = re.compile(
     r"\b(?:placed|placing|made|making|dialed|dialled|dialing|dialling|answered|missed|"
@@ -1433,6 +1435,9 @@ def count_op(claim: str, value: int) -> Literal["eq", "ge", "le"]:
         raise Reject("the claim counts calls one side made; the count check counts both directions")
     if re.fullmatch(r"calls?", m.group("noun"), re.I) and _CALL_LENGTH_RE.search(words):
         raise Reject("the claim counts calls of a length; the count check counts every call")
+    if re.fullmatch(r"calls?", m.group("noun"), re.I) and _CALL_KIND_RE.search(words):
+        # "two Telegram video calls": a call log keeps no video or audio kind (Codex on #169)
+        raise Reject("the claim counts one kind of call; the count check counts every call")
     if _ONE_WAY_RE.search(words) or _ONE_WAY_AFTER_RE.match(claim[m.end() :]):
         raise Reject(
             "the claim counts messages one side sent or received; the count check counts both"
@@ -2067,11 +2072,7 @@ class LocalAssumptionFiller:
             except Reject as e:
                 self._drop(claim, i, str(e), call.id)
 
-        out = self._shaped(claim, out, call.id)
-        out = self._shaped(claim, self._add_sender(claim, out, allowed_ids), call.id)
-        out = self._shaped(claim, self._add_record_time(claim, para, out, allowed_ids), call.id)
-        out = self._shaped(claim, self._add_call_count(claim, out, allowed_ids), call.id)
-        out = self._add_meaning(claim, out, allowed_ids, call.id)
+        out = self.code_fills(claim, para, self._shaped(claim, out, call.id), allowed_ids, call.id)
         gap = coverage_gap(claim, out, frozenset(self._names()))
         if gap:
             self._drop(claim, None, f"{gap}; the claim stays unproven", call.id)
@@ -2443,6 +2444,22 @@ class LocalAssumptionFiller:
             return []
         return phone or None
 
+    def code_fills(
+        self,
+        claim: Claim,
+        para: str,
+        out: list[Proposal],
+        allowed_ids: set[str],
+        call_id: str | None,
+    ) -> list[Proposal]:
+        """Code's own fills after the model's items, in order: sender, time, call count and
+        meaning. The first pass and the testability step's repair both run exactly these
+        (Codex on #169)."""
+        out = self._shaped(claim, self._add_sender(claim, out, allowed_ids), call_id)
+        out = self._shaped(claim, self._add_record_time(claim, para, out, allowed_ids), call_id)
+        out = self._shaped(claim, self._add_call_count(claim, out, allowed_ids), call_id)
+        return self._add_meaning(claim, out, allowed_ids, call_id)
+
     def _add_call_count(
         self, claim: Claim, out: list[Proposal], allowed_ids: set[str]
     ) -> list[Proposal]:
@@ -2508,6 +2525,10 @@ class LocalAssumptionFiller:
         names a writer."""
         if "record_time" not in allowed_ids or not date_mentions(claim.text):
             return out
+        if _OTHER_ACT_RE.search(_unquoted(_nfc(claim.text))):
+            # "On March 16, REYES deleted the message ... after receiving it from PETROV": the
+            # date may be that act's, not the sending's, sender or no (Codex on #169)
+            return out
         # A range only a model-read event or role holds is no check's: it does not stop this.
         if any(
             isinstance(p.params, dict) and p.params.get("window") and p.template_id in _TIMED
@@ -2529,8 +2550,6 @@ class LocalAssumptionFiller:
                 return out
             if not apps and _names_an_app_off_the_case(_unquoted(_nfc(claim.text))):
                 return out  # "the Signal message" on a case with no Signal (Codex on #169)
-            if _OTHER_ACT_RE.search(_unquoted(_nfc(claim.text))):
-                return out  # the date may be the deletion's, not the sending's (Codex on #169)
             if self._names_a_recipient(_unquoted(_nfc(claim.text))):
                 # "REYES received a Telegram message reading ...": a time on anyone's
                 # message would not keep the party the claim names (Codex on #169)
@@ -2893,6 +2912,9 @@ class LocalAssumptionFiller:
         """The one app the claim names for a call ("a Signal call"), which any app the
         proposal names must be. A call on no named app, or on two, is refused: the words
         alone never pick the app."""
+        if _CALL_KIND_RE.search(_unquoted(_nfc(claim_text))):
+            # "a Telegram video call": the call log keeps no kind, so any call would match
+            raise Reject("the claim names a kind of call the call log does not record")
         named = self._named_apps(claim_text)
         if (
             not named
