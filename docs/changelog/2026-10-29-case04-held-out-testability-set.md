@@ -18,8 +18,12 @@
   sheet, `ANSWER_KEY_DRAFT.md` and `SIGNING_SHEET.md` (with count tables) are under
   `eval/synthetic/case04/`; nothing is under `eval/gold/`. `eval/run_pipeline.py` gains case04
   entries in DRAFT_GOLD and DRAFT_SHEETS and case04 branches for the reports and the affidavit
-  PDF. Not wired into `make eval`, any gate or any go/no-go list.
-- Where: branch `claude/project-thread-6i2msb-case04` (local commits, not pushed)
+  PDF. case04 is the one case in `TESTABILITY_GO_NO_GO_CASES`, the held-out list the step's
+  go/no-go reads. It is not wired into `make eval` or any merge gate. The step runs only on a
+  signed sheet, so until Arsh signs case04 (the `PROPOSED_CHANGES.md` entry "sign case04's key
+  and assumption sheet" copies the drafts into `eval/gold/case04/`) it refuses case04 and no
+  go/no-go is given.
+- Where: branch `claude/project-thread-6i2msb-case04`
 - Verified: `tests/test_synthetic_case04.py` (synthetic only, 26 tests):
   - the generator gives the same bytes twice, reports included, and the committed drafts match
     a fresh build, with case.json's SHA-256 pins;
@@ -31,7 +35,8 @@
   - every sheet row fits its template, and each of the 70 rows a check tests gives the sheet's
     expected outcome;
   - background chatter uses no reserved word and never joins two subjects;
-  - a model-free run on the draft sheet gives the drafted verdict for all 48 claims.
+  - a model-free run on the draft sheet gives the drafted verdict for all 48 claims;
+  - case04 is the go/no-go's one held-out case, and the step refuses its draft sheet.
 
   Model-free run on the draft key and sheet (cloud container, 2026-10-29, information only):
   accuracy 1.00 and 0 false supported against the draft key, partly by construction since the

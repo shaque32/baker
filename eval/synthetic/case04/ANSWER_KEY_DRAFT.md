@@ -6,8 +6,8 @@ Approved lines get copied into `eval/gold/case04/gold.jsonl` by a human, with
 `case04_story.py` and `case04_key.py`; edit those, not this file.
 
 case04 is the held-out set for the testability step's go/no-go. It was written without
-reading the testability step's code, prompt or tests. It is not part of `make eval`, any
-gate or any go/no-go list.
+reading the testability step's code, prompt or tests. It is the case the go/no-go
+reads, and is not part of `make eval` or any merge gate.
 
 Draft split: 24 supported, 12 contradicted, 12 unproven; 2 claims need more than one phone. Every intended verdict was recorded before the story was written, and none changed while building.
 

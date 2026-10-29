@@ -470,8 +470,10 @@ TESTABILITY_X_PERCENT: float | None = None  # least share of sheet-testable refu
 TESTABILITY_Y_BUDGET: dict[str, float] | None = None  # most calls and seconds, per claim
 TESTABILITY_SIGNED_PROMPT = Path("core/audit/prompts/agent_testability.md")
 # Cases whose claims and signed sheets were written by someone other than the prompt's author,
-# held out for the go/no-go. None yet: case01 and case03 are development cases.
-TESTABILITY_GO_NO_GO_CASES: frozenset[str] = frozenset()
+# held out for the go/no-go: case04, written by a builder who never read the step's prompt, code,
+# tests or demo claims. case01 and case03 are development cases. The step still runs only on a
+# signed sheet, so case04 gives no go/no-go until Arsh signs its sheet.
+TESTABILITY_GO_NO_GO_CASES: frozenset[str] = frozenset({"case04"})
 
 
 def sim_examiner(actor: str):  # noqa: ANN201 - core.audit.testability.Examiner

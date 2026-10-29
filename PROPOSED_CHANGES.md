@@ -659,3 +659,29 @@ model in core/. ... assumption filling stay local." (two lines), add:
 +  until a real-data run under a signed plan.
 SIGNED by Arsh on 2026-10-28 ("i approve and sign off on others", 07:33Z, project thread
 "Build agents into the audit"). APPLIED by Arsh himself on this branch (PR #159), commit 88fe932. Word for word as above.
+
+## 2026-10-29 claude/project-thread-6i2msb-case04: sign case04's key and assumption sheet
+File: eval/gold/case04/gold.jsonl, eval/gold/case04/assumptions.jsonl (new)
+Why: case04 is the held-out set for the testability step's go/no-go (plans/agentic.md, approved
+by Arsh 2026-10-27 17:29Z: "held-out synthetic claims with signed sheets, written by someone
+other than the prompt's author"; change 8: gold needs his signature before merge). A builder
+who never read the step's prompt, code, tests or demo claims drafted all 48 claims and 85 sheet
+rows. `eval/gold/` is human-owned, so the signed copies are Arsh's to write. Until they exist,
+`eval/run_pipeline.py` reports case04's key and sheet as drafts, the testability step refuses
+to run on the draft sheet, and no go/no-go is given. Once they exist it picks them up and
+reports both as signed (`key_status`, `sheet_status`). case04 stays out of `make eval` and every
+merge gate. Arsh reads `eval/synthetic/case04/SIGNING_SHEET.md` (its count tables, the claims
+and the assumption rows) and may change any verdict or row first; the commands below copy the
+drafts as they stand.
+Diff: on main after the case04 PR merges, from the repo root (macOS and GNU sed):
+   D=$(date -u +%Y-%m-%d); T=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+   mkdir -p eval/gold/case04
+   sed -e "s/\"labeled_by\":\"DRAFT (case04 builder, not signed by Arsh)\"/\"labeled_by\":\"Arsh, $D\"/" \
+       -e "s/\"labeled_at\":\"2026-10-29T00:00:00Z\"/\"labeled_at\":\"$T\"/" \
+       eval/synthetic/case04/draft_gold.jsonl > eval/gold/case04/gold.jsonl
+   sed -e "s/\"labeled_by\": \"DRAFT (case04 builder, not signed by Arsh)\"/\"labeled_by\": \"Arsh, $D\"/" \
+       eval/synthetic/case04/draft_assumptions.jsonl > eval/gold/case04/assumptions.jsonl
+   grep -c DRAFT eval/gold/case04/gold.jsonl eval/gold/case04/assumptions.jsonl
+The last line must print 0 for both files. The copies are the drafts with only `labeled_by`
+(and, in the key, `labeled_at`) changed: 48 key lines and 85 sheet rows, and both then report
+as signed (checked on a scratch copy with bash, 2026-10-29).

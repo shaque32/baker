@@ -3,8 +3,9 @@ answer key and the DRAFT assumption sheet. SYNTHETIC data only; deterministic fo
 
 case04 is the held-out set for the testability step's go/no-go: 48 claims, six of each type,
 half in plain wording and half in affidavit wording, most with a wrong reading planted in the
-data. It is not wired into `make eval`, any gate or any go/no-go list. Its key and sheet are
-drafts until Arsh signs them; nothing here writes under eval/gold/.
+data. It is the case the go/no-go reads (`TESTABILITY_GO_NO_GO_CASES`), and is not wired into
+`make eval` or any merge gate. Its key and sheet are drafts until Arsh signs them; nothing here
+writes under eval/gold/.
 
 Usage: python -m eval.synthetic.case04_generate [--out eval/synthetic/case04]
 
@@ -559,8 +560,8 @@ def render_answer_key(rendered: list[Rendered], gold: list[GoldClaim]) -> str:
         "`case04_story.py` and `case04_key.py`; edit those, not this file.",
         "",
         "case04 is the held-out set for the testability step's go/no-go. It was written without",
-        "reading the testability step's code, prompt or tests. It is not part of `make eval`, any",
-        "gate or any go/no-go list.",
+        "reading the testability step's code, prompt or tests. It is the case the go/no-go",
+        "reads, and is not part of `make eval` or any merge gate.",
         "",
         f"Draft split: {counts.get('supported', 0)} supported, "
         f"{counts.get('contradicted', 0)} contradicted, {counts.get('unproven', 0)} unproven; "

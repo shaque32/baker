@@ -395,3 +395,16 @@ def test_a_model_free_run_on_the_draft_sheet_gives_the_drafted_verdicts(tmp_path
     got = {p.claim_id: p.verdict.value for p in preds}
     want = {c.claim_id: c.verdict for c in key.CLAIMS}
     assert got == want
+
+
+def test_case04_is_the_held_out_go_no_go_case():
+    """The testability go/no-go counts case04 only, and the step runs only on its signed sheet:
+    on the draft it refuses."""
+    from eval import run_pipeline
+
+    assert run_pipeline.TESTABILITY_GO_NO_GO_CASES == frozenset({"case04"})
+    sheet = run_pipeline.assumption_sheet("case04")
+    assert sheet is not None
+    if run_pipeline.sheet_status(sheet) != "signed":
+        with pytest.raises(SystemExit, match="needs a signed assumption sheet"):
+            run_pipeline.testability_step(None, "case04", None, 1, None, "rubber-stamp")
