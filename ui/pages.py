@@ -64,6 +64,7 @@ from core.report.restore import CSS as RESTORE_CSS
 from core.report.selection import CSS as SELECTION_CSS
 from core.report.selection import anchor as selection_anchor
 from core.report.selection import claim_note
+from core.report.timeline import CSS as TIMELINE_CSS
 from core.review import activity, device_names
 from core.review import flags as F
 from core.review import withheld as W
@@ -192,7 +193,7 @@ class Page:
             "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
             f"<meta name='viewport' content='width=device-width, initial-scale=1'>{meta}"
             f"<title>{e(title)} · Mabillon</title>"
-            f"<style>{FONT_CSS}{REPORT_CSS}{RESTORE_CSS}{SELECTION_CSS}{PAIRED_CSS}{ALTERNATIVES_CSS}{UI_CSS}{THEME_CSS}</style>"
+            f"<style>{FONT_CSS}{REPORT_CSS}{RESTORE_CSS}{SELECTION_CSS}{TIMELINE_CSS}{PAIRED_CSS}{ALTERNATIVES_CSS}{UI_CSS}{THEME_CSS}</style>"
             "</head><body>"
             "<header class='top'><div class='bar'>"
             f"<a class='brand' href='{'/' if self.case_name is not None else '/cases'}'>"

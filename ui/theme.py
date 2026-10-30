@@ -258,7 +258,7 @@ select { appearance: none; -webkit-appearance: none; padding-right: 32px; cursor
     linear-gradient(135deg, var(--muted) 50%, transparent 50%);
   background-position: calc(100% - 17px) 52%, calc(100% - 12px) 52%;
   background-size: 5px 5px; background-repeat: no-repeat; }
-input::placeholder, textarea::placeholder { color: #9b978f; }
+input::placeholder, textarea::placeholder { color: #75716a; }
 input[type=text]:hover, input[type=password]:hover, input[type=number]:hover, textarea:hover,
 select:hover { border-color: #bdb9b0; }
 input[type=text]:focus, input[type=password]:focus, input[type=number]:focus,
@@ -528,6 +528,17 @@ main .tl > li.flag { border-color: var(--line); box-shadow: inset 2px 0 0 var(--
 main .chip { border: 0; border-radius: 4px; padding: 1px 7px; }
 main .bars span { background: #7d8aa0; }
 main .bars span.g { background: var(--panel); border: 1px dashed var(--line-strong); }
+details.case-settings { margin: 14px 0 20px; }
+details.case-settings > summary { font-size: 13.5px; color: var(--muted); cursor: pointer; }
+details.case-settings[open] > summary { margin-bottom: 10px; }
+details.case-settings form.settings { margin: 0; }
+/* The page intro states the not-found caveat once; the card keeps its own Searched line. */
+main .gap > .meta:last-child { display: none; }
+/* Unpicked messages recede by tint, not opacity, so their metadata keeps its contrast. */
+main .bub.dim { opacity: 1; background: var(--panel); }
+main .bub.dim .body { color: #4a4740; }
+main .bub .who2, main .bub .t, main .divider { font-size: 12px; }
+main > p, main > .flash, main .banner { max-width: 66ch; text-wrap: pretty; }
 
 @media (max-width: 960px) {
   body { padding-left: 0; }
