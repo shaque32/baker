@@ -71,7 +71,7 @@ ul.sel-quotes li { margin: 0 0 8px; font-size: 13.5px; line-height: 1.5; }
   box-shadow: 0 0 0 3px rgb(201 162 74 / 0.18); }
 .bub.left { border: 1.5px dashed var(--con); }
 .bub.dim { opacity: 0.62; }
-.bub .who2 { font-size: 11.5px; color: var(--muted); }
+.bub .who2 { font-size: 12.5px; color: var(--muted); }
 .bub .body { font-size: 14.5px; }
 .bub .att { font-size: 12px; color: var(--muted); }
 .bub .t { font: 400 11.5px var(--sans); color: var(--muted); margin-top: 3px; display: flex;
