@@ -401,3 +401,19 @@ def test_the_identities_page_saves_and_offers_aliases(conn):
     assert "value='SUBJECT-1, DP'" not in page  # stored order is by alias
     assert "value='DP, SUBJECT-1'" in page
     check_report_text(page)
+
+
+# ------------------------------------------------- a quote that is only a name
+
+
+def test_a_quoted_alias_is_a_name_to_every_quote_reader(db, two):
+    # A quote that is only a person's other name ('the user "HAL"') is no message to look up,
+    # for the claim-quote picks and the timeline's quote reading, as for a person's name.
+    from core.selection.picks import case_names, skip_reason
+    from core.timeline import check as timeline_check
+    from core.timeline.records import CaseRecords
+
+    hal, _ = two
+    actions.set_aliases(db, hal, ["SUBJECT-1"], EXPERT, _clock)
+    assert skip_reason("SUBJECT-1", case_names(db)) == "a name in the case, not a quoted message"
+    assert "subject-1" in timeline_check._names(CaseRecords(db))

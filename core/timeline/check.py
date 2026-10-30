@@ -29,6 +29,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from core.audit.quotes import find_quote
+from core.identity.aliases import stored as stored_aliases
 from core.timeline.records import CaseRecords, Record, zone
 from core.timeline.settings import Settings
 from core.timeline.stated import StatedTime, quotes
@@ -170,7 +171,8 @@ def _offset_str(minutes: int) -> str:
 
 
 def _names(data: CaseRecords) -> set[str]:
-    """Names a quote may just be (a contact, an account's display name, a thread title)."""
+    """Names a quote may just be (a contact, an account's display name, a thread title, a
+    person or another name the expert gave them)."""
     out: set[str] = set()
     for sql in (
         "SELECT name FROM contacts WHERE name IS NOT NULL",
@@ -180,6 +182,7 @@ def _names(data: CaseRecords) -> set[str]:
         "SELECT name FROM persons",
     ):
         out |= {" ".join(r[0].split()).casefold() for r in data.conn.execute(sql) if r[0]}
+    out |= {" ".join(a.alias.split()).casefold() for a in stored_aliases(data.conn)}  # #181
     return out
 
 

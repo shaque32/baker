@@ -2815,3 +2815,93 @@ def test_a_direction_is_not_read_past_words_the_count_does_not_keep(conn, text, 
     value = 1 if "exactly one" in text else None
     made, filler = _count(conn, text, value, channels=channels)
     assert not any(a.params.each_way or a.params.sent_by for a in made), [a.params for a in made]
+
+
+@pytest.fixture
+def aliased(conn):
+    """PETROV is also called "SUBJECT-1" and "Big Dan" in the document (the expert's entry,
+    person_aliases); removed after the test."""
+    from core.review import actions
+
+    actions.set_aliases(conn, PETROV, ["SUBJECT-1", "Big Dan"], "expert:test")
+    yield conn
+    actions.set_aliases(conn, PETROV, [], "expert:test")
+
+
+def test_an_alias_the_expert_gave_names_that_person(aliased):
+    filler = LocalAssumptionFiller(FakeModel(by_claim(GOOD)), aliased, template=DRAFT)
+    assert filler._person("SUBJECT-1") == PETROV
+    assert filler._person("subject 1") == PETROV  # the alias's letters and digits, any case
+    for part in ("SUBJECT", "Dan", "DAN", "Big"):  # whole only: no surname rule for an alias
+        with pytest.raises(Reject):
+            filler._person(part)
+
+
+def test_a_one_way_count_reads_the_sender_by_an_alias(aliased):
+    # case04 (#181): the affidavit calls the phone's owner "SUBJECT-1"; the model names him.
+    text = "On March 21, 2026, on dev:item1, SUBJECT-1 sent REYES exactly one Telegram message."
+    made, filler = _count(aliased, text, 1, phones=["dev:item1"])
+    (a,) = made
+    assert a.params.sent_by == (PETROV,), filler.drops
+
+
+def test_exchanged_messages_read_a_side_by_an_alias(aliased):
+    text = "On March 21, 2026, SUBJECT-1 and REYES exchanged Telegram messages on dev:item1."
+    made, filler = _count(aliased, text, None)
+    (a,) = made
+    assert a.params.each_way, filler.drops
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # part of an alias is no name: "Dan" of "Big Dan" is not PETROV
+        "On March 21, 2026, on dev:item1, Dan sent REYES exactly one Telegram message.",
+        "On March 21, 2026, Dan and REYES exchanged Telegram messages on dev:item1.",
+    ],
+)
+def test_part_of_an_alias_names_no_side(aliased, text):
+    made, filler = _count(aliased, text, None if "exchanged" in text else 1, phones=["dev:item1"])
+    assert not made, [a.params for a in made]
+
+
+def test_a_quoted_alias_is_a_name_not_a_message(aliased):
+    filler = LocalAssumptionFiller(FakeModel(by_claim(GOOD)), aliased, template=DRAFT)
+    assert "subject-1" in filler._names()
+    c = Claim(id="X", paragraph_id="para:1", text='REYES wrote to "SUBJECT-1": \'ok\'.',
+              claim_type=ClaimType.COMMUNICATION, status=ClaimStatus.ACCEPTED)  # fmt: skip
+    assert filler.stated_sender(c, "ok") == REYES
+
+
+def test_the_writer_is_read_by_an_alias(aliased):
+    filler = LocalAssumptionFiller(FakeModel(by_claim(GOOD)), aliased, template=DRAFT)
+    c = Claim(id="X", paragraph_id="para:1", text="SUBJECT-1 wrote to REYES: 'ok'.",
+              claim_type=ClaimType.COMMUNICATION, status=ClaimStatus.ACCEPTED)  # fmt: skip
+    assert filler.stated_sender(c, "ok") == PETROV
+
+
+def test_an_alias_two_persons_share_names_neither(conn):
+    # Entry refuses a shared alias; one stored anyway (an older entry) matches neither person.
+    conn.executemany(
+        "INSERT INTO person_aliases (person_id, alias, created_by, created_at_utc)"
+        " VALUES (?, 'TWIN', 'expert:test', '2026-10-30T00:00:00Z')",
+        [(PETROV,), (REYES,)],
+    )
+    try:
+        filler = LocalAssumptionFiller(FakeModel(by_claim(GOOD)), conn, template=DRAFT)
+        with pytest.raises(Reject):
+            filler._person("TWIN")
+        text = "On March 21, 2026, on dev:item1, TWIN sent REYES exactly one Telegram message."
+        made, _ = _count(conn, text, 1, phones=["dev:item1"])
+        assert not made
+    finally:
+        conn.execute("DELETE FROM person_aliases WHERE alias = 'TWIN'")
+
+
+def test_an_alias_is_read_as_every_alias_reader_reads_it(aliased):
+    # core/identity/aliases.spans: spacing and punctuation between its words do not count;
+    # a longer name or a handle is not the alias.
+    filler = LocalAssumptionFiller(FakeModel(by_claim(GOOD)), aliased, template=DRAFT)
+    text = "Subject 1 called SUBJECT-12, then @subject-1 and Subject-1A; big  dan's phone"
+    spans = filler._person_spans(text)[PETROV]
+    assert [text[s:e] for s, e in sorted(spans)] == ["Subject 1", "big  dan"]

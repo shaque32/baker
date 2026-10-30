@@ -35,6 +35,7 @@ from weakref import WeakKeyDictionary
 
 from core.contracts import MatchMethod
 from core.enrich.local_time import parse_utc
+from core.identity.aliases import stored as stored_aliases
 from core.restore.fold import fold
 from core.restore.match import WORD_RE, Found, Index, core_groups, find_every, segments
 from core.restore.store import load_excerpts, load_exhibits
@@ -101,7 +102,8 @@ def _key(text: str) -> str:
 
 def case_names(conn: sqlite3.Connection) -> set[str]:
     """Every name a quote may just be: contacts, account identifiers and display names, thread
-    titles and persons, compared ignoring case, spacing and a leading '@'."""
+    titles, persons and the other names the expert gave them, compared ignoring case, spacing
+    and a leading '@'."""
     names: set[str] = set()
     for sql in (
         "SELECT name FROM contacts",
@@ -111,6 +113,7 @@ def case_names(conn: sqlite3.Connection) -> set[str]:
         "SELECT name FROM persons",
     ):
         names.update(_key(r[0]) for r in conn.execute(sql) if r[0])
+    names.update(_key(a.alias) for a in stored_aliases(conn))  # a person's other names (#181)
     names.discard("")
     return names
 
