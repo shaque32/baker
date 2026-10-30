@@ -242,6 +242,18 @@ the product keeps v1.1. The 14B called 41 of the 42 told-frame and undated-denia
 new sets "contradicts" under every prompt. `MODEL_NAME=<entry> bash eval/probe/mac_v13.sh`
 runs the same test on another local model.
 
+## Stance v1.4 for speed: the same words, instructions first (2026-10-30)
+`stance_v1_4_draft.md` is the signed v1.1, line for line, with the fixed instructions moved
+ahead of the case data, so llama.cpp can reuse them from one call to the next (on case04, 40% of
+an average stance prompt was fixed text after the data). The plan and its criteria, fixed
+before any call, are in `v14/PREREGISTERED.md`: v1.4 must show no more traps as supports than
+v1.1, be no worse on the signed bars, keep recall within one item, and cut the mean time per
+stance call on a timed case01 audit by at least 15%. One Mac sitting, about 3 to 4 hours:
+
+    bash eval/probe/mac_v14.sh
+
+`python -m eval.probe.v14.score report <folder>` re-scores a finished folder. Not run yet.
+
 ## Repeat check: same question, same answer? (2026-10-20)
 
 `bash eval/probe/mac_repeat.sh` (or `python -m eval.probe.repeat_check --models ...`) asks the
