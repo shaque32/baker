@@ -38,6 +38,20 @@ def _found_counts(conn: sqlite3.Connection, ex_id: str) -> tuple[int, int]:
     return found, len(excerpts)
 
 
+def _option_text(text: str, label: str, limit: int = 80) -> str:
+    """A paragraph's opening words for a select option: without its own leading number, which
+    the option already shows, and cut at a word with an ellipsis."""
+    text = " ".join(text.split())
+    for lead in (f"{label}.", f"{label})", f"¶{label}"):
+        if text.startswith(lead):
+            text = text[len(lead) :].lstrip()
+            break
+    if len(text) <= limit:
+        return text
+    cut = text[:limit].rsplit(" ", 1)[0]
+    return cut.rstrip(" ,;:") + "…"
+
+
 def exhibits_page(conn: sqlite3.Connection, page: Page) -> str:
     exhibits = load_exhibits(conn)
     out = [
@@ -73,20 +87,24 @@ def exhibits_page(conn: sqlite3.Connection, page: Page) -> str:
                 )
             )
     else:
-        out.append("<p class='muted'>No exhibit added yet.</p>")
+        out.append(
+            "<p class='muted'>No exhibit yet. Paste the messages an exhibit quotes in "
+            "<a href='#add'>the form below</a>, and Mabillon searches the extraction for each.</p>"
+        )
 
     paragraphs = list(
         conn.execute(
-            "SELECT p.id, p.page, coalesce(p.label, p.para_no), substr(p.text, 1, 80)"
+            "SELECT p.id, p.page, coalesce(p.label, p.para_no), p.text"
             " FROM govdoc_paragraphs p ORDER BY p.govdoc_id, p.para_no"
         )
     )
     options = "<option value=''>(none)</option>" + "".join(
-        f"<option value='{e(pid)}'>Page {pg}, paragraph {e(lbl)}: {e(txt)}</option>"
+        f"<option value='{e(pid)}'>Page {pg}, paragraph {e(lbl)}: "
+        f"{e(_option_text(txt, str(lbl)))}</option>"
         for pid, pg, lbl, txt in paragraphs
     )
     out.append(
-        "<h2>Add an exhibit</h2>"
+        "<h2 id='add'>Add an exhibit</h2>"
         + page.form(
             "/exhibit/add",
             "<p><label>Exhibit name <input type='text' name='label' required maxlength='120' "

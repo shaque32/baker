@@ -9,7 +9,6 @@ from __future__ import annotations
 import sqlite3
 
 from core.report.timeline import (
-    CSS,
     NOT_FOUND,
     compute,
     gap_lists,
@@ -23,9 +22,9 @@ from ui.pages import Page, e
 
 
 def _settings_form(page: Page, s: Settings, back: str) -> str:
-    return page.form(
+    form = page.form(
         "/timeline/settings",
-        "<div class='settings-head'><h3>Case settings</h3>"
+        "<div class='settings-head'>"
         "<p class='muted'>Used by the Timeline and Gaps checks. Your name is recorded in the audit "
         "log with any change.</p></div><div class='fields'>"
         "<label class='field'>Time tolerance<span class='unit-input'>"
@@ -43,22 +42,25 @@ def _settings_form(page: Page, s: Settings, back: str) -> str:
         cls="box settings",
         back=back,
     )
+    return (
+        "<details class='case-settings'><summary>Case settings: tolerance "
+        f"{s.tolerance_min} min, shortest quiet stretch {s.gap_hours} h</summary>{form}</details>"
+    )
 
 
 def timeline_page(conn: sqlite3.Connection, page: Page, s: Settings) -> str:
     views = compute(conn, s, gaps=False)
     rows = views.rows
     out = [
-        f"<style>{CSS}</style>",
-        "<div class='eyebrow'>Timeline check</div><h1>The document's clock against the "
+        "<h1>The document's clock against the "
         "phones'</h1><p>Each date and time the government document states, beside the phone "
         "records' own timestamps. Code reads the dates and ties a record to a statement only by "
         "the quoted words or call number in the same sentence. Times without a zone are read "
         "in the phone's own zone, never in the offset a report printed. A difference is for "
         "you to weigh; it does not change any verdict.</p>",
-        _settings_form(page, s, "/timeline"),
     ]
     if not rows:
+        out.append(_settings_form(page, s, "/timeline"))
         out.append(
             "<p class='muted'>No date or time to show. Import the government document on "
             "<a href='/setup'>Set up and run</a>.</p>"
@@ -66,6 +68,7 @@ def timeline_page(conn: sqlite3.Connection, page: Page, s: Settings) -> str:
         return page.wrap("Timeline check", "".join(out), wide=True)
     flagged = [r for r in rows if r.status in FLAGGED]
     out.append(f"<div class='flash'>{e(timeline_summary(rows, s))}</div>")
+    out.append(_settings_form(page, s, "/timeline"))
     if flagged:
         out.append("<h2>Differences</h2>" + timeline_rows(flagged, views.data))
     rest = [r for r in rows if r.status not in FLAGGED and r.status != "not_compared"]
@@ -84,11 +87,11 @@ def timeline_page(conn: sqlite3.Connection, page: Page, s: Settings) -> str:
 def gaps_page(conn: sqlite3.Connection, page: Page, s: Settings) -> str:
     views = compute(conn, s, rows=False)
     out = [
-        f"<style>{CSS}</style>",
-        "<div class='eyebrow'>Gaps</div><h1>Where the records go quiet</h1><p>Stretches with "
+        "<h1>Where the records go quiet</h1><p>Stretches with "
         "no messages or calls, on each phone, in each app and in each thread, measured against "
         "that series' own pace. A stretch is listed when it lasts at least the shortest "
-        f"stretch below and the series' pace would put at least {MIN_EXPECTED} records in it. "
+        f"quiet stretch in the case settings ({s.gap_hours} h) and the series' pace "
+        f"would put at least {MIN_EXPECTED} records in it. "
         f"{e(NOT_FOUND)}</p>",
         _settings_form(page, s, "/gaps"),
     ]
