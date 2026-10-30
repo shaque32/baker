@@ -19,7 +19,7 @@ from typing import Literal, Protocol
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # Bump on every change to this file or core/schema.sql. pipeline_runs records it.
-CONTRACTS_VERSION = "0.4.0"
+CONTRACTS_VERSION = "0.5.0"
 
 # ---------------------------------------------------------------- enums
 

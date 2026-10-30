@@ -873,6 +873,8 @@ assumption ids, and an expert's decision on an old id does not carry over to the
 pilot case exists yet. If ids must stay stable, the fields could be left out of the dump when
 unset (`Field(default=(), exclude_if=lambda v: not v)`, which needs pydantic 2.11 or later;
 pyproject allows 2.7). Not proposed as a diff unless Arsh wants it.
+SIGNED by Arsh on 2026-10-30 at 01:26Z ("i sign it", validation thread). APPLIED on
+claude/project-thread-ds0ify (#172), the three edits above and nothing else.
 
 ## 2026-10-29 claude/project-thread-6i2msb-case04: sign case04's key and assumption sheet
 File: eval/gold/case04/gold.jsonl, eval/gold/case04/assumptions.jsonl (new)

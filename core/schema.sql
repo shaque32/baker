@@ -1,4 +1,5 @@
--- Baker canonical schema v0.4.0 (matches CONTRACTS_VERSION in core/contracts.py).
+-- Baker canonical schema v0.5.0 (matches CONTRACTS_VERSION in core/contracts.py).
+-- 0.5.0: no table change; AssumptionParams.sent_by and each_way (signed by Arsh 2026-10-29).
 -- 0.4.0: messages.forwarded and messages.forwarded_from_raw (signed by Arsh 2026-10-16).
 -- A case database made under an older version is not upgraded in place: the CHECK on
 -- pipeline_runs.status changed in 0.3.0, so re-create the case (stored inputs re-import).

@@ -58,8 +58,11 @@
   11 with a failed core check, unchanged. Both moved claims moved through the new fields; the
   written-phone fill changed no other claim's tier. No 14B run on this code: every number is
   model-free or a replay of recorded answers. `make check`: see the PR.
-- Open: the version bump (CONTRACTS_VERSION 0.5.0, schema.sql header) was not in the signed
-  diff and is proposed in PROPOSED_CHANGES.md. Every assumption id changes once, since the id
+- Contracts 0.5.0: the version bump (CONTRACTS_VERSION, the schema.sql header comment, the
+  contract test) was signed by Arsh separately on 2026-10-30 at 01:26Z and is applied in the same
+  PR. No table changes. As with any contracts change, a bundle made under 0.4.0 fails the
+  version check here and is verified with Mabillon at its own commit, as verify says.
+- Open: every assumption id changes once, since the id
   hashes params with their defaults: a case re-run under this code gets new ids and an expert
   decision on an old id does not carry over (no pilot case exists yet). TEMPLATES_VERSION stays
   1.0.0 (the gold pins it; existing assumptions render as before). Claims writing "iMessage"
