@@ -27,6 +27,14 @@
     photos attached", or a third person or number refuse it. The whole clause is read, past
     any comma. On both forms an app written in the claim is plain wording only when the count
     keeps to that app; otherwise the claim is refused.
+  - Later review rounds tightened both forms the same way, each with a test that fails without
+    it: a side's identifier counts only written whole, and the accounts side holds only the
+    accounts the claim writes there; every phone the claim writes must be one the count
+    searches; a count per side ("two each"), per period ("every day", "per hour"), a range
+    ("one to two"), a bound written as a sign ("<2", "2+"), and "DMs" or "direct messages"
+    are refused; "iMessages" and "emails" need the count kept to that app; and the words
+    before the clause may be only its date, time and phone ("in Spanish, PETROV sent ..." is
+    refused). "Twenty-one" stays one number.
   - When the two sides share an account (through a confirmed identity link), a count by
     direction is inconclusive: which side sent a message from that account is not known.
   - A count of calls takes neither field: a call log's direction is not read here, so the
@@ -54,8 +62,12 @@
   hashes params with their defaults: a case re-run under this code gets new ids and an expert
   decision on an old id does not carry over (no pilot case exists yet). TEMPLATES_VERSION stays
   1.0.0 (the gold pins it; existing assumptions render as before). Claims writing "iMessage"
-  still need fill e to be read as Native Messages. Rules 0.3.0 are unchanged, so a failed
-  one-way count contradicts without an expert, as any failed check does.
+  still need fill e to be read as Native Messages. This PR does not change the rules (0.4.0
+  on main): a failed one-way count on a filled assumption contradicts without an expert, as any
+  failed check on one does. The direction reader is a word allow list, so a rare wording it
+  does not know is refused rather than misread; review stopped at Arsh's call (2026-10-29) once
+  rounds found only rare wordings and the run 2 replay no longer moved. Any wording found later
+  is a follow-up.
 - Affects: capabilities (one-way and "exchanged" message counts; count check 1.2.0); no privacy
   change; no customer-facing claim change
 - Status doc: pending: in the count check's capabilities, add "counts one side's messages
