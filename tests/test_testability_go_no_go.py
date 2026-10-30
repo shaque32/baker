@@ -12,6 +12,7 @@ import json
 
 import pytest
 
+from core.contracts import Prediction
 from core.llm.runtime import FakeModel as RuntimeFake
 from eval import run_pipeline as rp
 from tests.test_testability import ROOT, _eval_answers
@@ -73,7 +74,7 @@ def test_conversion_exactly_at_x_passes():
     [
         ({"converted_and_accepted": 5}, 0, SAME, "conversion at least 40%"),
         ({"mismatch_person_phone_or_window": 1}, 0, SAME, "no try names a different person"),
-        ({}, 1, SAME, "0 false supported under the rubber-stamp expert"),
+        ({}, 1, SAME, "0 false supported on the claims the agent changed"),
         ({"invalid_outputs": 1}, 0, SAME, "100% valid outputs"),
         ({}, 0, {**SAME, "identical": False, "model_calls": False}, "a byte-identical repeat"),
         ({"tries": 41}, 0, SAME, "at most 2 calls per claim"),
@@ -227,3 +228,32 @@ def test_without_the_repeat_or_the_rubber_stamp_expert_none_is_given(tmp_path, m
     assert r["why"] == ["the byte-identical repeat needs --repeat"]
     r = rp.report_go_no_go("case01", tmp_path, "simulated", first, None)
     assert "the false-supported bar needs --expert rubber-stamp" in r["why"]
+
+
+def test_the_false_supported_bar_counts_only_the_claims_the_agent_changed(tmp_path, monkeypatch):
+    """Arsh, 2026-10-30: a false supported on a claim the step never touched (case04's C39, on
+    two stance labels the rubber-stamp expert accepted) is the base pipeline's, not the
+    agent's. The whole run's count is still shown."""
+    from core.contracts import SupportedBasis, Verdict
+
+    first = _run(tmp_path, monkeypatch)
+    second = _run(tmp_path / "repeat", monkeypatch)
+    assert rp.agent_changed(tmp_path / "case01.db") == {"C01"}  # the step converted C01
+    wrong = Prediction(  # case01's C04 is contradicted in the signed key
+        claim_id="C04", verdict=Verdict.SUPPORTED, supported_basis=SupportedBasis.CONFIRMED
+    )
+    r = rp.report_go_no_go("case01", tmp_path, "rubber-stamp", [*first, wrong], [*second, wrong])
+    assert r["decision"] == "GO", r
+    (fs,) = [c for c in r["checks"] if c["bar"].startswith("0 false supported")]
+    assert fs["value"] == (
+        "0 false supported on the 1 claims the agent changed; 1 in the whole run, for information"
+    )
+    record = json.loads((tmp_path / "go_no_go.json").read_text("utf-8"))
+    assert record["false_supported"] == {
+        "on_claims_the_agent_changed": 0,
+        "claims_the_agent_changed": 1,
+        "whole_run": 1,
+    }
+    monkeypatch.setattr(rp, "agent_changed", lambda db: frozenset({"C01", "C04"}))
+    r = rp.report_go_no_go("case01", tmp_path, "rubber-stamp", [*first, wrong], [*second, wrong])
+    assert r["decision"] == "NO-GO" and r["why"][0].startswith("0 false supported on the claims")

@@ -950,6 +950,8 @@ def testability_go_no_go(
     false_supported: int | None,
     repeat: dict | None,
     gold: str | None,
+    changed: int | None = None,
+    whole_run: int | None = None,
 ) -> dict[str, object]:
     """The testability step's go/no-go (plans/agentic.md, approved 2026-10-27) on one run's
     measures `t` (testability_summary), against Arsh's X, Y, cap and least denominator.
@@ -959,8 +961,10 @@ def testability_go_no_go(
     (`gold`, its key_status); otherwise none is given, with the reasons. With fewer
     sheet-testable refusals than the least denominator the result is "insufficient", not a
     decision. Then GO only if every bar holds: conversion at least X%, no try naming a different
-    person, phone or window than the sheet, 0 false supported, every output valid, the repeat
-    identical, and calls and seconds per claim within Y."""
+    person, phone or window than the sheet, 0 false supported on the claims the agent changed
+    (`false_supported`, of `changed` such claims; `whole_run` is the whole run's count, shown
+    for information), every output valid, the repeat identical, and calls and seconds per
+    claim within Y."""
     why: list[str] = []
     unset = [k for k in GO_NO_GO_SETTINGS if t.get(k) is None]
     why += [f"{', '.join(unset)} not set by Arsh"] if unset else []
@@ -1008,8 +1012,15 @@ def testability_go_no_go(
             "ok": t["mismatch_person_phone_or_window"] == 0,
         },
         {
-            "bar": "0 false supported under the rubber-stamp expert",
-            "value": f"{false_supported} false supported",
+            "bar": "0 false supported on the claims the agent changed, under the rubber-stamp "
+            "expert",
+            "value": f"{false_supported} false supported"
+            + (f" on the {changed} claims the agent changed" if changed is not None else "")
+            + (
+                f"; {whole_run} in the whole run, for information"
+                if whole_run is not None
+                else ""
+            ),
             "ok": false_supported == 0,
         },
         {
@@ -1086,6 +1097,21 @@ def hardware() -> dict[str, object]:
     }
 
 
+def agent_changed(db: Path) -> frozenset[str]:
+    """The claims the agent changed: those whose scored verdicts used a proposal the
+    testability step made and the examiner accepted (testability.accepted_in, the
+    assumptions rules.decide_verdict got as agent_proposed). Arsh, 2026-10-30 (decision card):
+    the false-supported bar counts only these. On case04's go/no-go the one false supported,
+    C39, was a claim the step never touched, so it failed the bar with the agent off too."""
+    from core.audit import testability
+
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    try:
+        return frozenset(testability.accepted_in(conn, pipeline.last_run(conn)))
+    finally:
+        conn.close()
+
+
 def report_go_no_go(
     case: str,
     out: Path,
@@ -1097,17 +1123,32 @@ def report_go_no_go(
     write and print the go/no-go (<out>/go_no_go.json)."""
     t = json.loads((out / "run.json").read_text(encoding="utf-8"))["testability"]
     gold = load_jsonl(gold_path(case), GoldClaim)
-    false_supported = score(gold, first).n_false_supported if gold else None
+    changed = agent_changed(out / f"{case}.db")
+    mine = [g for g in gold if g.claim_id in changed]
+    false_supported = score(mine, first).n_false_supported if gold else None
+    whole_run = score(gold, first).n_false_supported if gold else None
     status = key_status(gold_path(case)) if gold else None
     repeat = None
     if second is not None:
         repeat = repeat_result(first, second, out / f"{case}.db", out / "repeat" / f"{case}.db")
     result = testability_go_no_go(
-        t, expert=expert, false_supported=false_supported, repeat=repeat, gold=status
+        t,
+        expert=expert,
+        false_supported=false_supported,
+        repeat=repeat,
+        gold=status,
+        changed=len(changed),
+        whole_run=whole_run,
     )
     record = {
         **result,
         "case": case,
+        # counts only, so a hidden case names no claim
+        "false_supported": {
+            "on_claims_the_agent_changed": false_supported,
+            "claims_the_agent_changed": len(changed),
+            "whole_run": whole_run,
+        },
         "gold": {"path": str(gold_path(case)), "status": status},
         "testability": t,
         "repeat": repeat,
