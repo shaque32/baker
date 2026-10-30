@@ -43,6 +43,7 @@
     phone is the one counted.
   - The assumption text says "counting only messages X sent" or "with at least one message
     each way", and ends "Filled from the claim's wording." when code set the field.
+    The report is 0.28.0 for this wording.
   Why: run 3 of the Hickman iOS 15 validation needs as many code-checked claims as the data
   allows; one-way and "exchanged" counts were refused only for want of a field.
 - Where: branch claude/project-thread-ds0ify (the R2/R3 PR)

@@ -193,7 +193,11 @@ from core.review.withheld import summary as withheld_summary
 # 0.27.0 (after #166's 0.26.0): two people or phones the case names alike keep their ids
 # beside the name, and only the filler's own count wording ("holds eq 13") becomes words, so
 # quoted text stays verbatim.
-REPORT_VERSION = "0.27.0"
+# 0.28.0 (validation R2/R3, #172): a message count may say which side sent the messages
+# ("counting only messages X sent") or that they went each way ("with at least one message
+# each way"), and the count check's lines say so ("Only messages X sent.", a side that sent
+# none). Rules and stored text otherwise unchanged.
+REPORT_VERSION = "0.28.0"
 
 
 @dataclass(frozen=True)
