@@ -16,7 +16,7 @@
   - Every other bar, value and setting is unchanged. No rule, prompt, pin, contract, schema or
     gold change.
 - Where: branch `claude/project-thread-6i2msb-bar3`
-- Verified:
+- Verified: the go/no-go's tests and a re-score of Arsh's case04 run.
   - `tests/test_testability_go_no_go.py`, 19 tests. They include a new one in which a false
     supported on a claim the step did not change leaves a GO, with "1 in the whole run, for
     information", and the same claim counted as changed gives a NO-GO.
