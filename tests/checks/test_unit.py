@@ -478,7 +478,7 @@ def test_handle_resolving_checks_record_the_version_that_skips_copy_recipients()
     # The checks that match a quote's text record the fold (curly quotes, runs of spaces).
     assert {CHECKS[n].version for n in ("sender", "weekday")} == {"1.0.2"}
     assert CHECKS["time"].version == "1.0.3"  # and a call is on the app named beside "call"
-    assert CHECKS["count"].version == "1.1.0"  # and counts calls (validation fill f)
+    assert CHECKS["count"].version == "1.2.0"  # and counts calls (validation fill f)
 
 
 def _typed(conn: sqlite3.Connection, body: str) -> sqlite3.Connection:
@@ -583,3 +583,103 @@ def test_two_calls_seconds_apart_may_be_one_call_stored_twice() -> None:
     assert r.outcome is CheckOutcome.INCONCLUSIVE
     assert "may hold one call twice" in r.detail
     assert not FORBIDDEN_WORDS.search(r.detail), r.detail
+
+
+def _march_message(conn: sqlite3.Connection, mid: str, sender: str | None, *to: str) -> None:
+    conn.execute(
+        "INSERT INTO messages (id, source_id, locator, thread_id, sender_account_id, direction,"
+        " ts_utc, body) VALUES (?, 'p1', 'x', 't1', ?, 'unknown', '2026-03-12T15:00:00Z', 'hi')",
+        (mid, sender),
+    )
+    for account in to:
+        conn.execute(
+            "INSERT INTO message_recipients (message_id, account_id) VALUES (?, ?)", (mid, account)
+        )
+
+
+def test_a_count_of_one_sides_messages_counts_only_what_that_side_sent() -> None:
+    # Ruling R2. In March Bee sent Ay one message and Ay sent Bee one (two either way).
+    conn = without_undated_row(build())
+    common = dict(person_ids=[A, B], device_ids=["dev:p1"], window=MARCH, count_op="eq")
+    for sender, record in ((A, "msg:p1:3"), (B, "msg:p1:2")):
+        r = check(conn, "message_count", expected_count=1, sent_by=[sender], **common)
+        assert r.outcome is CheckOutcome.PASS, r.detail
+        assert r.record_ids == (record,) and "Only messages" in r.searched
+    # Fewer than claimed is never a fail; more is.
+    r = check(conn, "message_count", expected_count=2, sent_by=[A], **common)
+    assert r.outcome is CheckOutcome.INCONCLUSIVE
+    _march_message(conn, "msg:p1:7", "a:p1:own", "a:p1:b")
+    r = check(conn, "message_count", expected_count=1, sent_by=[A], **common)
+    assert r.outcome is CheckOutcome.FAIL, r.detail
+
+
+def test_a_message_to_the_other_side_with_no_sender_may_be_one_of_them() -> None:
+    # The undated message to Ay has no recorded sender: it may be Bee's (Baker Eval on #172).
+    conn = build()
+    common = dict(person_ids=[A, B], device_ids=["dev:p1"], window=MARCH, sent_by=[B])
+    for op in ("eq", "le"):
+        r = check(conn, "message_count", expected_count=1, count_op=op, **common)
+        assert r.outcome is CheckOutcome.INCONCLUSIVE, (op, r.detail)
+        assert "1 messages to person:a" in r.detail and "no recorded sender" in r.detail
+        assert not FORBIDDEN_WORDS.search(r.detail), r.detail
+    # "At least" still passes on the known ones, and more known than claimed still fails.
+    r = check(conn, "message_count", expected_count=1, count_op="ge", **common)
+    assert r.outcome is CheckOutcome.PASS, r.detail
+    _march_message(conn, "msg:p1:7", "a:p1:b", "a:p1:own")
+    r = check(conn, "message_count", expected_count=1, count_op="eq", **common)
+    assert r.outcome is CheckOutcome.FAIL, r.detail
+    # A message to Bee with no sender is not one Bee sent: Ay's count is not held open by it.
+    r = check(conn, "message_count", expected_count=1, count_op="eq", **{**common, "sent_by": [A]})
+    assert r.outcome is CheckOutcome.PASS, r.detail
+
+
+def test_exchanged_messages_pass_only_with_one_each_way_and_never_fail_on_silence() -> None:
+    # Ruling R3: each side sent at least one counted message.
+    conn = build()
+    common = dict(person_ids=[A, B], device_ids=["dev:p1"], window=MARCH, each_way=True)
+    r = check(conn, "message_count", expected_count=2, count_op="ge", **common)
+    assert r.outcome is CheckOutcome.PASS, r.detail
+    assert "sent 1 of them" in r.detail
+    conn.execute("DELETE FROM message_recipients WHERE message_id = 'msg:p1:2'")
+    conn.execute("DELETE FROM messages WHERE id = 'msg:p1:2'")
+    _march_message(conn, "msg:p1:7", "a:p1:own", "a:p1:b")
+    r = check(conn, "message_count", expected_count=2, count_op="ge", **common)
+    assert r.outcome is CheckOutcome.INCONCLUSIVE, r.detail
+    assert "does not mean one was never sent" in r.detail
+    assert not FORBIDDEN_WORDS.search(r.detail), r.detail
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        dict(sent_by=[A, B]),  # both sides
+        dict(sent_by=[A], channels=["call"]),  # a call log reads no direction here
+        dict(each_way=True, channels=["call"]),
+    ],
+)
+def test_a_count_direction_names_one_side_of_messages(extra) -> None:
+    params = dict(person_ids=[A, B], device_ids=["dev:p1"], window=MARCH, expected_count=1,
+                  count_op="eq", **extra)  # fmt: skip
+    with pytest.raises(ValueError, match="sent_by|direction"):
+        instantiate("CT", "message_count", params)
+
+
+def test_a_count_direction_must_name_a_party_and_not_both_ways() -> None:
+    from pydantic import ValidationError
+
+    from core.contracts import AssumptionParams
+
+    with pytest.raises(ValidationError, match="does not name"):
+        AssumptionParams(person_ids=(A, B), sent_by=("person:c",))
+    with pytest.raises(ValidationError, match="do not go together"):
+        AssumptionParams(person_ids=(A, B), sent_by=(A,), each_way=True)
+
+
+@pytest.mark.parametrize("direction", [dict(sent_by=[A]), dict(each_way=True)])
+def test_sides_that_share_an_account_give_no_direction(direction) -> None:
+    # Ay's own account is also the accounts side: who sent is no side's alone (Codex on #172).
+    r = check(build(), "message_count", person_ids=[A], account_ids=["a:p1:own", "a:p1:b"],
+              device_ids=["dev:p1"], window=MARCH, expected_count=1, count_op="ge",
+              **direction)  # fmt: skip
+    assert r.outcome is CheckOutcome.INCONCLUSIVE, r.detail
+    assert "share an account" in r.detail

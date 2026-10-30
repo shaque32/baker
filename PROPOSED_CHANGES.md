@@ -839,6 +839,42 @@ one inside the window; it never fails on absence, since coverage is unknown); th
 them only from the claim's own words ("sent", "received", "exchanged"); TEMPLATES_VERSION and
 the count check's version go up. No change to rules, prompts or schema: params are stored as
 JSON.
+SIGNED by Arsh on 2026-10-29 ("ok i approve and sign it", 16:30Z, validation thread).
+APPLIED on claude/project-thread-ds0ify (the R2/R3 PR), word for word as above and nothing else
+in core/contracts.py. In the code that follows: the count check is 1.2.0; the filler reads
+"sent" and "exchanged" (not "received", which stays refused); TEMPLATES_VERSION stays 1.0.0,
+since eval/gold/case01/assumptions.jsonl pins it and a template's text changes only when the new
+fields are set. Every assumption id changes once, since the id hashes the params with their
+defaults (see the next entry).
+
+## 2026-10-29 claude/project-thread-ds0ify: CONTRACTS_VERSION for the R2/R3 fields
+Files: core/contracts.py, core/schema.sql (header comment only)
+Why: core/contracts.py says to bump CONTRACTS_VERSION on every change to it, and pipeline_runs
+records it. The signed R2/R3 diff added two AssumptionParams fields without the bump, so a run
+made with the new fields still records 0.4.0. Kept out of the applied diff because it was not
+in what Arsh signed. No table changes: params are stored as JSON.
+Diff:
+```
+core/contracts.py
+-CONTRACTS_VERSION = "0.4.0"
++CONTRACTS_VERSION = "0.5.0"
+core/schema.sql
+--- Baker canonical schema v0.4.0 (matches CONTRACTS_VERSION in core/contracts.py).
++-- Baker canonical schema v0.5.0 (matches CONTRACTS_VERSION in core/contracts.py).
++-- 0.5.0: no table change; AssumptionParams.sent_by and each_way (signed by Arsh 2026-10-29).
+tests/contract/test_contracts_v03.py
+-    assert c.CONTRACTS_VERSION == "0.4.0"
++    assert c.CONTRACTS_VERSION == "0.5.0"
+```
+Note on ids: `assumption_id` hashes `canonical_json(params)`, which includes defaults, so the two
+new fields change every assumption id once, whether or not they are set. Nothing recomputes a
+stored id, so existing case databases read as before; a case re-run under the new code gets new
+assumption ids, and an expert's decision on an old id does not carry over to the new one. No
+pilot case exists yet. If ids must stay stable, the fields could be left out of the dump when
+unset (`Field(default=(), exclude_if=lambda v: not v)`, which needs pydantic 2.11 or later;
+pyproject allows 2.7). Not proposed as a diff unless Arsh wants it.
+SIGNED by Arsh on 2026-10-30 at 01:26Z ("i sign it", validation thread). APPLIED on
+claude/project-thread-ds0ify (#172), the three edits above and nothing else.
 
 ## 2026-10-29 claude/project-thread-6i2msb-case04: sign case04's key and assumption sheet
 File: eval/gold/case04/gold.jsonl, eval/gold/case04/assumptions.jsonl (new)

@@ -5,6 +5,7 @@ from __future__ import annotations
 from core.audit.checks._common import (
     CALL_CHANNEL,
     CaseData,
+    Party,
     Row,
     calls_for_accounts,
     channel_ok,
@@ -35,10 +36,16 @@ class CountCheck(TemplateCheck):
     and an extraction can hold one call twice (two databases, a few seconds apart). It passes
     only when the rows match the claim and no two counted calls with the same party fall
     within DUPLICATE_S of each other; otherwise it is inconclusive.
+
+    With `sent_by` it counts only the messages that side sent (validation R2). A message to the
+    other side with no recorded sender may be one of them, so "exactly" and "at most" then
+    stay inconclusive unless the known ones already exceed the claim. With `each_way`
+    ("exchanged messages", R3) it passes only when each side sent at least one counted message;
+    one side's silence is never a fail, since coverage is unknown.
     """
 
     name = "count"
-    version = "1.1.0"
+    version = "1.2.0"
 
     def evaluate(self, assumption_id: str, p: AssumptionParams, data: CaseData) -> CheckResult:
         if p.window is None or p.expected_count is None or p.count_op is None:
@@ -72,17 +79,67 @@ class CountCheck(TemplateCheck):
             )
         (source_id,) = sources
         source = data.sources[source_id]
-        rows = [
+        pool = [
             r
             for r in messages_for_accounts(data, a_ids | b_ids)
-            if r.source_id == source_id
-            and channel_ok(r, p.channels)
-            and involves_all(r, [a_ids, b_ids])
+            if r.source_id == source_id and channel_ok(r, p.channels)
         ]
+        rows = [r for r in pool if involves_all(r, [a_ids, b_ids])]
         counted = [r for r in rows if r.ts_utc is not None and in_window(r.ts_utc, p.window)]
         no_time = [r for r in rows if r.ts_utc is None]
+        if (p.sent_by or p.each_way) and a_ids & b_ids:
+            # A message from an account both sides hold is no side's alone (Codex on #172).
+            return self.done(
+                assumption_id,
+                CheckOutcome.INCONCLUSIVE,
+                searched,
+                sentences(
+                    "Cannot count by direction: the two sides share an account, so which side "
+                    "sent a message is not known",
+                    notes,
+                ),
+                [],
+                sources,
+            )
+        lines: list[str] = []
+        unknown_sender: list[Row] = []
+        one_side_silent = False
+        if p.sent_by:
+            side = _sending_side(p, a, b)
+            if side is None:
+                return self.done(
+                    assumption_id,
+                    CheckOutcome.INCONCLUSIVE,
+                    searched,
+                    sentences("Cannot count: sent_by is not exactly one side", notes),
+                    [],
+                    sources,
+                )
+            mine, theirs = (a_ids, b_ids) if side is a else (b_ids, a_ids)
+            unknown_sender = [
+                r
+                for r in pool
+                if r.sender is None
+                and set(r.recipients) & theirs
+                and (r.ts_utc is None or in_window(r.ts_utc, p.window))
+            ]
+            counted = [r for r in counted if r.sender in mine]
+            no_time = [r for r in no_time if r.sender in mine]
+            searched += f" Only messages {side.describe()} sent."
+            if unknown_sender:
+                lines.append(
+                    f"{len(unknown_sender)} messages to {(b if side is a else a).describe()} "
+                    "have no recorded sender, so they may be among them"
+                )
+        if p.each_way:
+            by_a = sum(1 for r in counted if r.sender in a_ids)
+            by_b = sum(1 for r in counted if r.sender in b_ids)
+            lines.append(f"{a.describe()} sent {by_a} of them and {b.describe()} sent {by_b}")
+            one_side_silent = not (by_a and by_b)
+            if one_side_silent:
+                lines.append("Not finding a message each way does not mean one was never sent")
         n, want, op = len(counted), p.expected_count, p.count_op
-        lines = [f"Counted {n}; the claim says {_OPS[op]} {want}"]
+        lines.insert(0, f"Counted {n}; the claim says {_OPS[op]} {want}")
         deleted = sum(1 for r in counted if r.deleted)
         if deleted:
             lines.append(f"{deleted} of them carry the source's deletion flag")
@@ -104,7 +161,7 @@ class CountCheck(TemplateCheck):
             outcome = CheckOutcome.INCONCLUSIVE
         elif op in ("eq", "le") and n > want:
             outcome = CheckOutcome.FAIL
-        elif no_time:
+        elif no_time or one_side_silent or (unknown_sender and op != "ge"):
             outcome = CheckOutcome.INCONCLUSIVE
         elif op == "eq":
             outcome = CheckOutcome.PASS if n == want else CheckOutcome.INCONCLUSIVE
@@ -122,6 +179,8 @@ class CountCheck(TemplateCheck):
     def _calls(self, assumption_id: str, p: AssumptionParams, data: CaseData) -> CheckResult:
         if p.window is None or p.expected_count is None or p.count_op is None:
             raise ValueError("the count check needs a window, expected_count and count_op")
+        if p.sent_by or p.each_way:
+            raise ValueError("a count of calls reads no direction (sent_by, each_way)")
         sources = data.sources_for(p.device_ids)
         a, b = parties(data, p)
         a_ids, b_ids = data.account_ids(a.keys), data.account_ids(b.keys)
@@ -203,6 +262,19 @@ class CountCheck(TemplateCheck):
 
 
 DUPLICATE_S = 60  # two rows of one call from two databases fall seconds apart
+
+
+def _sending_side(p: AssumptionParams, a: Party, b: Party) -> Party | None:
+    """The one party `sent_by` names, in `parties` order (each person, then the accounts
+    together): one person, or exactly the accounts; else None."""
+    order = [*p.person_ids, *(["accounts"] if p.account_ids or p.handles else [])]
+    if len(p.sent_by) == 1 and p.sent_by[0] in p.person_ids:
+        at = order.index(p.sent_by[0])
+    elif set(p.sent_by) == set(p.account_ids) and not set(p.sent_by) & set(p.person_ids):
+        at = order.index("accounts")
+    else:
+        return None
+    return (a, b)[at] if at < 2 else None
 
 
 def _possible_twins(rows: list[Row]) -> list[tuple[str, str]]:

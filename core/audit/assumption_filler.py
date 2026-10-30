@@ -427,6 +427,34 @@ def _name_spans(text: str, name: str) -> list[tuple[int, int]]:
     return [m.span() for f in found for m in re.finditer(f, text, re.IGNORECASE)]
 
 
+def _ident_spans(text: str, ident: str) -> list[tuple[int, int]]:
+    """Where the text writes this identifier whole, in any case: not inside a longer one
+    ("7001002" is not in "70010023" or "dp_garage" in "dp_garage2")."""
+    pattern = rf"(?<![\w.:@-]){re.escape(ident.strip())}(?![\w@-]|[.:]\w)"
+    return [m.span() for m in re.finditer(pattern, text, re.IGNORECASE)]
+
+
+def _numbers_in(words: list[str]) -> int:
+    """How many counts the words write: "twenty one" (from "twenty-one") is one, "one to two"
+    is two (Codex on #172)."""
+    n, i = 0, 0
+    while i < len(words):
+        if _count_word(words[i]):
+            n += 1
+            tens = _NUMBER_WORDS.get(words[i], 0)
+            ones = _NUMBER_WORDS.get(words[i + 1], 0) if i + 1 < len(words) else 0
+            if tens >= 20 and tens % 10 == 0 and 1 <= ones <= 9:
+                i += 1
+        i += 1
+    return n
+
+
+def _count_word(w: str) -> bool:
+    """A word that may write a message count: a number word, or digits too short to be an
+    account number ("70010023" left over is an account no side holds; Codex on #172)."""
+    return _number(w) is not None and not (w.isdigit() and len(w) > 4)
+
+
 # An address or identifier with an app's name in it: "x@gmail.com", "live:.cid.5638", "zoom.us".
 _ADDRESS_RE = re.compile(r"\S+@\S+|\S*:\S+|\S+\.(?:com|net|org|us|io)\b\S*", re.IGNORECASE)
 
@@ -1454,6 +1482,125 @@ def stated_call_count(claim: str) -> int | None:
     return value
 
 
+# "SUBJECT-2 sent SUBJECT-1 exactly three Signal messages", "X sent ten messages to Y": the
+# one plain form whose sender code reads (validation ruling R2). The subject follows the
+# last comma before "sent"; nothing passive ("were sent by"), no second one-way word.
+_SENT_FORM_RE = re.compile(
+    r"^(?:.*,\s*)?(?P<subject>[^,;]+?)\s+sent\s+(?P<rest>[^,;]+?)\s*\.?\s*$", re.IGNORECASE
+)
+_PASSIVE_SENT_RE = re.compile(
+    r"\b(?:was|were|been|being|be|is|are|get|got)\s+sent\b|\bsent\s+by\b", re.I
+)
+# "exchanged Signal messages", "exchanged more than forty iMessages": messages each way (R3).
+# Words that limit which messages count by what they say: the count check reads no content.
+_MESSAGE_CONTENT_RE = re.compile(
+    r"\b(?:mention\w*|contain\w*|saying|stating|referr\w*|that|which|whose|including)\b", re.I
+)
+# What the clause of an "exchanged" count may hold besides its sides, phone, count and app.
+# "each" only in "each other": "two messages each" is a count per side, which the check does
+# not compare. "direct" and "DMs" are left out: the count does not tell a direct message from
+# a group message (Codex on #172).
+_PLAIN_EXCHANGE_WORDS = frozenset(
+    "exchanged with the and s on between telephone phone number user username account exactly"
+    " at least most only a total of".split()
+)
+_RECIPROCAL_RE = re.compile(r" (?:each other|one another) ")
+_MESSAGE_NOUN_RE = re.compile(r"(?:messages?|texts?|chats?)", re.I)
+# A message noun that names its app: plain only when the count keeps to that app, as an app
+# word is (Codex on #172).
+_APP_NOUNS = {"imessage": "imessage", "imessages": "imessage", "email": "email", "emails": "email"}
+
+
+def _plain_noun(w: str, apps: set[str]) -> bool:
+    """A message noun the count reads: "messages", or "iMessages" when it keeps to iMessage."""
+    return bool(_MESSAGE_NOUN_RE.fullmatch(w)) or _APP_NOUNS.get(w) in apps
+
+
+# A denial anywhere in the claim: "never exchanged", "had not sent" (Codex on #172).
+_DENIAL_RE = re.compile(r"\b(?:not|never|no|neither|nor|without|cannot)\b|n['’]t\b", re.I)
+# A count per period ("every day", "two per hour") or a bound written as a sign ("<2", "2+",
+# "≥2"): neither is one exact count over the window (Codex on #172).
+_PER_PERIOD_RE = re.compile(
+    r"\b(?:every|daily|nightly|hourly|weekly|monthly|per)\b|\beach\b(?!\s+other\b)"
+    r"|\ba\s+(?:day|night|hour|week|month)\b",
+    re.I,
+)
+_BOUND_SIGN_RE = re.compile(r"[<>≤≥≈~]|\d\s*\+(?!\s*\d)")
+# What may come before a direction's clause: the date, time and phone the window and scope are
+# read from. Any other word ("in Spanish, PETROV sent ...") limits the messages in a way the
+# count does not read (Codex on #172).
+_PREFIX_WORDS = frozenset(
+    "on at the of a and between from through to until beginning starting approximately about"
+    " around st nd rd th m p am pm noon midnight morning afternoon evening night edt est cdt cst"
+    " mdt mst pdt pst utc gmt z".split()
+)
+_EXCHANGED_RE = re.compile(
+    r"\bexchanged\b(?P<between>[^.;,]*?)\b(?:messages?|texts?|imessages?|chats?|emails?|dms?)\b",
+    re.I,
+)
+
+
+# Where a recipient is written: right after "sent" ("sent REYES three messages") or after
+# "to" ("sent three messages to REYES").
+_RECIPIENT_BEFORE_RE = re.compile(r"(?:^|\bto)\s*(?:the\s+)?$", re.IGNORECASE)
+
+
+def _app_words(params: dict[str, Any]) -> set[str]:
+    """The words of the apps the assumption keeps: an app written in the claim is plain wording
+    only when the count searches that app alone (Codex on #172)."""
+    return {
+        w for app in params.get("channels", []) if app != CALL_CHANNEL for w in _words(app).split()
+    }
+
+
+def sent_form(claim: str, value: int) -> tuple[str, str] | None:
+    """(subject, rest) when the claim counts messages in the plain form "<subject> sent
+    <rest>" with the count in <rest> and no other one-way word; else None."""
+    words = _unquoted(_flat(_nfc(claim)))
+    if [w.casefold() for w in _ONE_WAY_RE.findall(words)] != ["sent"]:
+        return None
+    if _PASSIVE_SENT_RE.search(words) or _BOTH_WAYS_RE.search(words) or _DENIAL_RE.search(words):
+        return None
+    if _PER_PERIOD_RE.search(words) or _BOUND_SIGN_RE.search(words):
+        return None
+    m = _SENT_FORM_RE.match(words.strip())
+    if m is None:
+        return None
+    try:
+        _, counted = _count_match(m.group("rest"), value)
+    except Reject:
+        return None
+    if re.fullmatch(r"calls?|times", counted.group("noun"), re.I):
+        return None
+    return m.group("subject"), m.group("rest")
+
+
+def exchanged(claim: str) -> str | None:
+    """The words between "exchanged" and "messages" when the claim says messages went each way
+    ("exchanged Signal messages" gives " Signal ") and writes no one-way word; else None."""
+    words = _unquoted(_flat(_nfc(claim)))
+    m = _EXCHANGED_RE.search(words)
+    if m is None or _ONE_WAY_RE.search(words) or _DENIAL_RE.search(words):
+        return None
+    if _PER_PERIOD_RE.search(words) or _BOUND_SIGN_RE.search(words):
+        return None
+    if _on_a_subject(words) or _MESSAGE_CONTENT_RE.search(words):
+        # "exchanged messages about the delivery": the check reads no subject (Codex on #172)
+        return None
+    return m.group("between")
+
+
+def states_a_count(claim: str) -> bool:
+    """True when the claim writes any number as a count of records ("three messages", "13
+    calls"), whatever its value."""
+    words = _unquoted(_flat(_nfc(claim)))
+    for n in re.finditer(r"(?<![\d.,])\b(?:\d+|[a-z]+(?:-[a-z]+)?)\b(?![.,]\d)", words, re.I):
+        if n.group(0).lower() not in ("a", "an") and _number(n.group(0)) is not None:
+            if _COUNTED_RE.match(words, n.end()):
+                return True
+    return False
+
+
 def counts_calls(claim: str, value: int) -> bool:
     """True when the claim's count of `value` counts calls ("had four calls with X")."""
     try:
@@ -1487,12 +1634,14 @@ def _count_match(claim: str, value: int) -> tuple[int, re.Match[str]]:
     return found[0]
 
 
-def count_op(claim: str, value: int) -> Literal["eq", "ge", "le"]:
+def count_op(claim: str, value: int, *, one_way: bool = False) -> Literal["eq", "ge", "le"]:
     """How the claim compares its count, read from its words. Raises Reject when the number
     is not a count of records in the claim, the claim's comparison cannot be stated exactly
     ("about 13", "more than 13"), or the count is one the count check cannot make: "times",
     or records one side sent or received (it counts both directions). Calls are counted
-    (validation fill f); the caller puts 'call' among the channels (`counts_calls`)."""
+    (validation fill f); the caller puts 'call' among the channels (`counts_calls`). With
+    `one_way` the caller has read which side sent the messages (`sent_form`, ruling R2), so
+    one-way words do not refuse."""
     at, m = _count_match(claim, value)
     if re.fullmatch(r"times", m.group("noun"), re.I):
         raise Reject("the claim counts times; the count check counts messages or calls")
@@ -1506,7 +1655,7 @@ def count_op(claim: str, value: int) -> Literal["eq", "ge", "le"]:
         raise Reject("the claim counts one kind of call; the count check counts every call")
     if re.fullmatch(r"calls?", m.group("noun"), re.I) and _on_a_subject(words):
         raise Reject("the claim counts calls on a subject; a call log keeps no subject")
-    if _ONE_WAY_RE.search(words) or _ONE_WAY_AFTER_RE.match(claim[m.end() :]):
+    if not one_way and (_ONE_WAY_RE.search(words) or _ONE_WAY_AFTER_RE.match(claim[m.end() :])):
         raise Reject(
             "the claim counts messages one side sent or received; the count check counts both"
             " directions"
@@ -2341,12 +2490,56 @@ class LocalAssumptionFiller:
         ):
             pass  # a time range takes no count; code adds the count of calls (_add_call_count)
         elif p.count is not None:
-            params["count_op"] = count_op(claim.text, p.count.value)
+            sent = sent_form(claim.text, p.count.value) if tpl.id == "message_count" else None
+            params["count_op"] = count_op(claim.text, p.count.value, one_way=sent is not None)
             params["expected_count"] = p.count.value
+            if sent is not None:
+                # "SUBJECT-2 sent SUBJECT-1 three messages": only that side's (ruling R2)
+                self._phones_kept(claim.text, params)
+                words = _unquoted(_flat(_nfc(claim.text)))
+                lead = len(words) - len(words.lstrip())
+                sent_at = _SENT_FORM_RE.match(words.strip())
+                self._plain_prefix(claim.text, lead + sent_at.start("subject"))
+                params["sent_by"] = self._sent_by(sent, params)
+                code_made = True
             if tpl.id == "message_count" and counts_calls(claim.text, p.count.value):
                 self._count_calls(claim, params)
                 # The phone it may read from the claim gives the window its zone (Codex on #169).
                 device_ids = list(params.get("device_ids", device_ids))
+                code_made = True
+
+        between = exchanged(claim.text) if tpl.id == "message_count" else None
+        if between is not None and not counts_calls(
+            claim.text, p.count.value if p.count is not None else -1
+        ):
+            # "exchanged messages": at least one message each way (ruling R3). With no number,
+            # that is at least two messages; a stated number is still compared.
+            if p.count is None:
+                apps = _app_words(params)
+                if states_a_count(claim.text) or set(_words(between).split()) - apps - {"text"}:
+                    # "exchanged exactly three ..." or "exchanged dozens of ...": a count the
+                    # model did not give is not read as "at least two" (Codex on #172)
+                    raise Reject("the claim states how many messages; the model gave no count")
+                params["count_op"], params["expected_count"] = "ge", 2
+            self._phones_kept(claim.text, params)
+            words = _unquoted(_flat(_nfc(claim.text)))
+            self._plain_prefix(
+                claim.text, words.rfind(",", 0, words.casefold().find("exchanged")) + 1
+            )
+            if extra := self._limits_on_exchange(claim.text, params):
+                # "exchanged Telegram messages in Spanish": the check reads no language,
+                # content or attachment, so it would count every message (Codex on #172)
+                raise Reject(
+                    f"the exchange is limited by words the check does not read ({extra!r})"
+                )
+            params["each_way"] = True
+            code_made = True
+        if tpl.id == "message_count" and not device_ids:
+            # "the TARGET PHONE exchanged Signal messages with ...": the phone the claim writes
+            # is the one whose records are counted.
+            written = sorted(self._written_phones(_unquoted(_nfc(claim.text))))
+            if len(written) == 1:
+                device_ids = params["device_ids"] = written
                 code_made = True
 
         if p.duration is not None:
@@ -2388,6 +2581,199 @@ class LocalAssumptionFiller:
             code_made = True
 
         return Proposal(p.template_id, params, is_core=True, code_made=code_made)
+
+    def _plain_prefix(self, claim_text: str, clause_start: int) -> None:
+        """Raises Reject when the words before the direction's clause hold anything but its date,
+        time and phone (`_PREFIX_WORDS`): "On March 21, in Spanish, PETROV sent ..." limits the
+        messages before the clause is read (Codex on #172)."""
+        words = _unquoted(_flat(_nfc(claim_text)))
+        prefix = list(words[:clause_start])
+        for _, start, end in self._phone_spans("".join(prefix)):
+            prefix[start:end] = " " * (end - start)
+        for w in _words("".join(prefix)).split():
+            if not (w in _PREFIX_WORDS or w in _MONTHS or w in _WEEKDAYS or w.isdigit()):
+                raise Reject(f"the claim limits the messages before the count ({w!r})")
+
+    def _phones_kept(self, claim_text: str, params: dict[str, Any]) -> None:
+        """Raises Reject when the claim writes a phone the count does not search: "exchanged
+        ... on dev:p1 and dev:p2" counted on dev:p1 leaves dev:p2 untested (Codex on #172).
+        With no phone given, the one the claim writes is the one searched."""
+        written = self._written_phones(_unquoted(_nfc(claim_text)))
+        scope = set(params.get("device_ids") or [])
+        if (scope and not written <= scope) or (not scope and len(written) > 1):
+            raise Reject("the claim writes a phone the count does not search")
+
+    def _limits_on_exchange(self, claim_text: str, params: dict[str, Any]) -> str | None:
+        """The first word of the clause that says "exchanged" that is not a side, a phone, the
+        count, the app or a plain joining word; None when there is none. The sides are the
+        assumption's persons by name and its accounts by identifier, display name or number."""
+        words = _unquoted(_flat(_nfc(claim_text)))
+        # The whole clause from "exchanged" to the end, commas and all: "... in Spanish, on
+        # dev:p1." keeps "in Spanish" in it (Codex on #172).
+        clause = words[words.rfind(",", 0, words.casefold().find("exchanged")) + 1 :]
+        left = list(clause)
+        spans = [s for _, *s in self._phone_spans(clause)]
+        # Only the assumption's own sides: "... with SOKOLOV" names a third party the count
+        # would leave out (Codex on #172).
+        people = set(params.get("person_ids", []))
+        for pid, name in self.conn.execute("SELECT id, name FROM persons"):
+            if pid in people:
+                spans += _name_spans(clause, _nfc(name.strip()))
+        found = [self.data.accounts[a] for a in params.get("account_ids", [])]
+        idents = [x for a in found for x in (a.identifier, a.display_name)]  # "Reyes D (+1...)"
+        for i in [*idents, *params.get("handles", [])]:
+            if i and i.strip():
+                spans += _ident_spans(clause, i)
+        numbers = {d for i in idents if i and (d := phone_digits(i)) is not None}
+        written_numbers = set()
+        for m in _PHONE_RE.finditer(clause):
+            if (d := phone_digits(m.group(0).strip(" .,-"))) is not None:
+                if d not in numbers:
+                    return m.group(0).strip()  # a number no side holds: a third party
+                spans.append(m.span())
+                written_numbers.add(d)
+        for a in found:
+            names = [x for x in (a.identifier, a.display_name) if x and x.strip()]
+            if not any(_ident_spans(clause, x) for x in names) and not any(
+                phone_digits(x) in written_numbers for x in names
+            ):
+                # An account the clause does not write: the count would credit its messages
+                # to a side the claim names otherwise (Codex on #172).
+                raise Reject("the exchange's count holds an account the claim does not write")
+        for h in params.get("handles", []):
+            if not (h and h.strip() and _ident_spans(clause, h)):
+                raise Reject("the exchange's count holds an account the claim does not write")
+        for start, end in spans:
+            left[start:end] = " " * (end - start)
+        apps = _app_words(params)
+        plain = apps | _PLAIN_EXCHANGE_WORDS
+        rest = [w for w in _RECIPROCAL_RE.sub(" ", _words("".join(left))).split() if w not in plain]
+        for w in rest:
+            if not (_count_word(w) or _plain_noun(w, apps)):
+                return w
+        if _numbers_in(rest) > 1:
+            return " ".join(w for w in rest if _count_word(w))  # a range (Codex on #172)
+        return None
+
+    def _sent_by(self, sent: tuple[str, str], params: dict[str, Any]) -> list[str]:
+        """The side the claim's subject names as sender ("SUBJECT-2 sent ..."): one person
+        written by name or as the phone they exactly own ("the TARGET PHONE's Kik account"), or
+        the accounts by identifier. The subject holds nothing else, the other side is written
+        after "sent" and the sender is not, and no side is written as someone's or someone
+        acted for ("PETROV's lawyer", "a friend of REYES"). Raises Reject otherwise."""
+        subject, rest = sent
+        people = list(params.get("person_ids", []))
+        accounts = list(params.get("account_ids", []))
+        handles = list(params.get("handles", []))
+        names = {
+            pid: _nfc(row[0].strip())
+            for pid in people
+            if (
+                row := self.conn.execute("SELECT name FROM persons WHERE id = ?", (pid,)).fetchone()
+            )
+        }
+        idents = [self.data.accounts[a].identifier for a in accounts] + handles
+
+        def mentions(text: str) -> list[tuple[str, int, int, bool]]:
+            """(side, start, end, by_phone) for each mention of a side; 'accounts' is the
+            accounts side."""
+            out = [(pid, s, e, False) for pid, n in names.items() for s, e in _name_spans(text, n)]
+            for did, s, e in self._phone_spans(text):
+                own = {a.id for a in self.data.accounts.values() if a.device_id == did}
+                if own and (owner := self._exact_owner(own)) in people:
+                    out.append((owner, s, e, True))
+            for i in idents:
+                if i and i.strip():
+                    # whole only: "7001002" inside "70010023" is another account (Codex on #172)
+                    out += [("accounts", s, e, False) for s, e in _ident_spans(text, i)]
+            # one number written another way ("+1 (212) 555-0122" for +12125550122; R6)
+            numbers = {d for i in idents if i and (d := phone_digits(i)) is not None}
+            for m in _PHONE_RE.finditer(text):
+                if phone_digits(m.group(0).strip(" .,-")) in numbers:
+                    out.append(("accounts", *m.span(), False))
+            # "Marcus Reyes" holds "Reyes": only the outermost mention counts (Codex on #172)
+            return [
+                m
+                for m in out
+                if not any(o[1] <= m[1] and m[2] <= o[2] and o[2] - o[1] > m[2] - m[1] for o in out)
+            ]
+
+        def sides(text: str, recipient: bool = False) -> set[str]:
+            found = mentions(text)
+            for _, start, end, by_phone in found:
+                if (not by_phone and _NOT_A_PARTY_AFTER.match(text, end)) or (
+                    _NOT_A_PARTY_BEFORE.search(text[:start])
+                ):
+                    raise Reject(f"{text[start:end]!r} may not be a side of the count")
+                if recipient and not _RECIPIENT_BEFORE_RE.search(_strip_kind(text[:start])):
+                    # "sent ... while REYES was abroad": REYES is not whom it went to
+                    raise Reject(f"{text[start:end]!r} is not written as the recipient")
+            return {side for side, *_ in found}
+
+        apps = _app_words(params)
+
+        def _strip_kind(before: str) -> str:
+            """The words before a mention without a trailing kind ("the Kik account <id>")."""
+            words = before.rstrip().split(" ")
+            while words and _words(words[-1]).strip() in apps | {"account", "user", "number"}:
+                words.pop()
+            return " ".join(words) + " "
+
+        sender = sides(subject)
+        if len(sender) != 1 or (sender == {"accounts"} and (handles or not accounts)):
+            raise Reject("the claim's sender is not exactly one side of the count")
+        left = list(subject)
+        for _, start, end, _ in mentions(subject):
+            left[start:end] = " " * (end - start)
+        if not set(_words("".join(left)).split()) <= {"the", "s", "account", "user"} | apps:
+            # "PETROV and his lawyer sent ...", "then PETROV sent ...": not one plain sender
+            raise Reject("the claim's sender is written with other words")
+        if joiner := _CLAUSE_JOINER_RE.search(rest):
+            raise Reject(f"the claim joins another clause after 'sent' ({joiner.group(0)!r})")
+        other = sides(rest, recipient=True)
+        unnamed = [
+            pid
+            for pid, name in self.conn.execute("SELECT id, name FROM persons")
+            if pid not in people and _name_spans(rest, _nfc(name.strip()))
+        ]
+        if not other or other & sender or unnamed:
+            raise Reject("the claim does not write the sender on one side and the other after")
+
+        def written(text: str) -> set[str]:
+            """The accounts whose identifier or number the text writes whole."""
+            out = set()
+            for a in accounts:
+                i = (self.data.accounts[a].identifier or "").strip()
+                d = phone_digits(i) if i else None
+                if i and _ident_spans(text, i):
+                    out.add(a)
+                elif d is not None and any(
+                    phone_digits(m.group(0).strip(" .,-")) == d for m in _PHONE_RE.finditer(text)
+                ):
+                    out.add(a)
+            return out
+
+        for side, text in ((sender, subject), (other, rest)):
+            if "accounts" in side and written(text) != set(accounts):
+                # "7001002 sent ..." with 7001001 also given: a count of both would credit a
+                # message from the one the claim does not write (Codex on #172)
+                raise Reject("the claim writes only some of the accounts on that side")
+        left = list(rest)
+        for _, start, end, _ in mentions(rest):
+            left[start:end] = " " * (end - start)
+        plain = apps | {"to", "the", "account", "user", "number", "exactly", "only", "at", "least"}
+        plain |= {"most", "a", "total", "of"}
+        rest_words = [w for w in _words("".join(left)).split() if w not in plain]
+        extra = [w for w in rest_words if not _count_word(w) and not _plain_noun(w, apps)]
+        if _numbers_in(rest_words) > 1:
+            # "sent REYES one to two messages": a range, not the one count (Codex on #172)
+            raise Reject("the claim writes more than one number for the count")
+        if extra:
+            # "sent REYES one message about the delivery": the check reads no subject or other
+            # limit on the messages, so it would count them all (Codex on #172)
+            raise Reject(f"the count is limited by words the check does not read ({extra[0]!r})")
+        (side,) = sender
+        return sorted(accounts) if side == "accounts" else [side]
 
     def _stated(
         self, claim: Claim, para: str, device_ids: list[str], template_id: str, near: str | None
@@ -2871,17 +3257,20 @@ class LocalAssumptionFiller:
         """The devices the text writes by id, source id, label or a name the expert gave them
         ("the TARGET PHONE", "Item 1"), compared as `_device` compares: case and spacing do
         not count."""
+        return {did for did, _, _ in self._phone_spans(text)}
+
+    def _phone_spans(self, text: str) -> list[tuple[str, int, int]]:
+        """(device, start, end) for each place `_written_phones` finds a device written."""
         named = logged_names(self.conn)
-        return {
-            did
+        return [
+            (did, *m.span())
             for did, sid, label in self.conn.execute("SELECT id, source_id, label FROM devices")
             for x in (did, sid, label, *named.get(did, []))
-            if x
-            and name_key(x)
-            and re.search(
+            if x and name_key(x)
+            for m in re.finditer(
                 r"(?<!\w)" + r"\s*".join(map(re.escape, name_key(x))) + r"(?!\w)", text, re.I
             )
-        }
+        ]
 
     def _device(self, phone: str) -> str:
         """The device a phone name means: its id, source id or label, or a name the expert

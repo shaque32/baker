@@ -2371,3 +2371,447 @@ def test_a_range_with_both_ends_stated_keeps_its_own_ends(conn):
 def test_an_open_range_or_its_sides_are_refused_when_in_doubt(conn, text):
     assumptions, _ = _no_contact(conn, text)
     assert not any(a.template_id == "no_contact" for a in assumptions)
+
+
+MAR21 = W("On March 21, 2026", "2026-03-21T00:00", "2026-03-22T00:00")
+
+
+def _count(conn, text: str, value: int | None, **kw):
+    kw = {"channels": ["Telegram"], **kw}
+    prop = P("message_count", count=None if value is None else {"value": value},
+             people=["PETROV", "REYES"], window=MAR21, **kw)  # fmt: skip
+    assumptions, filler = build_text(conn, text, ClaimType.COUNT, [prop])
+    made = [a for a in assumptions if a.template_id == "message_count"]
+    return made, filler
+
+
+@pytest.mark.parametrize(
+    "text, sender",
+    [
+        (
+            "On March 21, 2026, on dev:item1, PETROV sent REYES exactly one Telegram message.",
+            PETROV,
+        ),
+        (
+            "On March 21, 2026, on dev:item1, REYES sent exactly one Telegram message to PETROV.",
+            REYES,
+        ),
+        (
+            "On March 21, 2026, on dev:item1, Daniel Petrov sent REYES exactly one Telegram"
+            " message.",
+            PETROV,
+        ),
+        # the phone written as the sender is its exact owner
+        ("On March 21, 2026, dev:item1 sent REYES exactly one Telegram message.", PETROV),
+    ],
+)
+def test_a_count_of_what_one_side_sent_counts_only_that_side(conn, text, sender):
+    # Ruling R2: "X sent Y one message" counts X's messages only. That day each sent one, so
+    # the two-way count (2) would fail the claim; one side's count passes it.
+    made, filler = _count(conn, text, 1, phones=["dev:item1"])
+    (a,) = made
+    assert a.params.sent_by == (sender,), filler.drops
+    assert (a.params.count_op, a.params.expected_count) == ("eq", 1)
+    assert "counting only messages" in a.text
+    r = CHECKS["count"].run(a, conn)
+    assert r.outcome is CheckOutcome.PASS, r.detail
+    assert len(r.record_ids) == 1 and "Only messages" in r.searched
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # passive, two one-way words, a sender the claim does not write before "sent", the
+        # sender written on both sides, no other side written after "sent"
+        "On March 21, 2026, on dev:item1, exactly one Telegram message was sent by PETROV to"
+        " REYES.",
+        "On March 21, 2026, on dev:item1, PETROV sent and received exactly one Telegram message.",
+        "On March 21, 2026, on dev:item1, the phone sent REYES exactly one Telegram message.",
+        "On March 21, 2026, on dev:item1, PETROV sent PETROV and REYES exactly one Telegram"
+        " message.",
+        "On March 21, 2026, on dev:item1, PETROV sent exactly one Telegram message.",
+        # someone's, or someone acted for, is not that side (Baker Eval on #172)
+        "On March 21, 2026, on dev:item1, PETROV's lawyer sent REYES exactly one Telegram message.",
+        "On March 21, 2026, on dev:item1, PETROV's phone sent REYES exactly one Telegram message.",
+        "On March 21, 2026, on dev:item1, a friend of PETROV sent REYES exactly one Telegram"
+        " message.",
+        "On March 21, 2026, on dev:item1, PETROV sent REYES's lawyer exactly one Telegram message.",
+        "On March 21, 2026, on dev:item1, PETROV sent a friend of REYES exactly one Telegram"
+        " message.",
+        "On March 21, 2026, on dev:item1, PETROV and his lawyer sent REYES exactly one Telegram"
+        " message.",
+        # a denial is not the plain form (Codex on #172)
+        "On March 21, 2026, on dev:item1, PETROV has not sent REYES exactly one Telegram message.",
+        "On March 21, 2026, on dev:item1, PETROV never sent REYES exactly one Telegram message.",
+        # the other side named in another clause is not the recipient (Codex on #172)
+        "On March 21, 2026, on dev:item1, PETROV sent exactly one Telegram message while REYES"
+        " was abroad.",
+        "On March 21, 2026, on dev:item1, PETROV sent exactly one Telegram message about REYES.",
+        # a limit the check does not read: what the messages say (Codex on #172)
+        "On March 21, 2026, on dev:item1, PETROV sent REYES exactly one Telegram message about the"
+        " delivery.",
+        "On March 21, 2026, on dev:item1, PETROV sent REYES exactly one Telegram message"
+        " mentioning money.",
+    ],
+)
+def test_a_one_way_count_is_refused_unless_the_words_name_each_side(conn, text):
+    made, filler = _count(conn, text, 1, phones=["dev:item1"])
+    assert not made, [a.params for a in made]
+    assert filler.drops
+
+
+def test_exchanged_messages_need_one_each_way(conn):
+    # Ruling R3: "exchanged" is at least one message each way; with no number, at least two.
+    # The phone the claim writes is the one counted, though the model named none.
+    text = "On March 21, 2026, PETROV and REYES exchanged Telegram messages on dev:item1."
+    made, filler = _count(conn, text, None)
+    (a,) = made
+    assert a.params.each_way and not a.params.sent_by, filler.drops
+    assert (a.params.count_op, a.params.expected_count) == ("ge", 2)
+    assert a.params.device_ids == ("dev:item1",)
+    assert a.text.endswith("Filled from the claim's wording.")
+    assert "with at least one message each way" in a.text
+    r = CHECKS["count"].run(a, conn)
+    assert r.outcome is CheckOutcome.PASS, r.detail
+    assert "sent 1 of them" in r.detail
+
+
+def test_a_stated_count_of_exchanged_messages_is_still_compared(conn):
+    text = (
+        "On March 21, 2026, on dev:item1, PETROV and REYES exchanged exactly two Telegram messages."
+    )
+    made, filler = _count(conn, text, 2, phones=["dev:item1"])
+    (a,) = made
+    assert a.params.each_way and (a.params.count_op, a.params.expected_count) == ("eq", 2)
+    assert CHECKS["count"].run(a, conn).outcome is CheckOutcome.PASS
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "On March 21, 2026, PETROV and REYES exchanged Telegram messages.",  # no phone written
+        "On March 21, 2026, PETROV and REYES exchanged and sent Telegram messages.",  # one-way word
+        # a denial is no exchange (Codex on #172)
+        "On March 21, 2026, on dev:item1, PETROV and REYES never exchanged Telegram messages.",
+        "On March 21, 2026, on dev:item1, PETROV and REYES had not exchanged Telegram messages.",
+        "On March 21, 2026, on dev:item1, PETROV and REYES haven't exchanged Telegram messages.",
+        # what the messages say is not read (Codex on #172)
+        "On March 21, 2026, on dev:item1, PETROV and REYES exchanged Telegram messages about the"
+        " delivery.",
+        "On March 21, 2026, on dev:item1, PETROV and REYES exchanged Telegram messages that"
+        " mention money.",
+        # any limit the check does not read, not only topic words (Codex on #172)
+        "On March 21, 2026, on dev:item1, PETROV and REYES exchanged Telegram messages in Spanish.",
+        "On March 21, 2026, on dev:item1, PETROV and REYES exchanged Telegram messages with photos"
+        " attached.",
+    ],
+)
+def test_exchanged_without_one_phone_or_with_a_one_way_word_makes_no_count(conn, text):
+    made, filler = _count(conn, text, None)
+    assert not any(a.params.each_way for a in made), [a.params for a in made]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "On March 21, 2026, on dev:item1, PETROV and REYES exchanged exactly three Telegram"
+        " messages.",
+        "On March 21, 2026, on dev:item1, PETROV and REYES exchanged dozens of Telegram messages.",
+        "On March 21, 2026, on dev:item1, PETROV and REYES exchanged Telegram messages, 3 messages"
+        " in all.",
+    ],
+)
+def test_exchanged_with_a_stated_count_the_model_left_out_is_refused(conn, text):
+    # Not read as "at least two" (Codex on #172).
+    made, filler = _count(conn, text, None)
+    assert not made, [a.params for a in made]
+    assert any("states how many" in d.reason for d in filler.drops), filler.drops
+
+
+def test_the_other_side_written_as_its_number_another_way_is_found(conn):
+    # The account resolves by number (R6), and the sender reading finds it the same way
+    # (Codex on #172).
+    text = "On March 21, 2026, on dev:item1, PETROV sent exactly one message to +1 (212) 555-0122."
+    marc = {"as_written": "+1 (212) 555-0122", "app": "Phone"}
+    prop = P("message_count", count={"value": 1}, people=["PETROV"], phones=["dev:item1"],
+             accounts=[marc], window=MAR21)  # fmt: skip
+    assumptions, filler = build_text(conn, text, ClaimType.COUNT, [prop])
+    (a,) = [a for a in assumptions if a.template_id == "message_count"]
+    assert a.params.account_ids == tuple(MARC_0122), filler.drops
+    assert a.params.sent_by == (PETROV,)
+
+
+def test_the_recipient_may_be_written_as_the_app_account_after_to(conn):
+    # "sent ... to the Telegram account 7001002": app and "account" words before the
+    # identifier still write the recipient (the "another clause" guard, Codex on #172).
+    text = (
+        "On March 21, 2026, on dev:item1, PETROV sent exactly one Telegram message to the"
+        " Telegram account 7001002."
+    )
+    prop = P("message_count", count={"value": 1}, people=["PETROV"], phones=["dev:item1"],
+             channels=["Telegram"], accounts=[{"as_written": "7001002", "app": "Telegram"}],
+             window=MAR21)  # fmt: skip
+    assumptions, filler = build_text(conn, text, ClaimType.COUNT, [prop])
+    (a,) = [a for a in assumptions if a.template_id == "message_count"]
+    assert a.params.sent_by == (PETROV,), filler.drops
+    assert CHECKS["count"].run(a, conn).outcome is CheckOutcome.PASS
+
+
+def test_a_recipient_written_by_full_name_is_one_mention(conn):
+    # "Marcus Reyes" holds "Reyes"; only the whole name is the mention (Codex on #172).
+    text = (
+        "On March 21, 2026, on dev:item1, PETROV sent exactly one Telegram message to Marcus Reyes."
+    )
+    prop = P("message_count", count={"value": 1}, people=["PETROV", "Marcus Reyes"],
+             channels=["Telegram"], phones=["dev:item1"], window=MAR21)  # fmt: skip
+    assumptions, filler = build_text(conn, text, ClaimType.COUNT, [prop])
+    (a,) = [a for a in assumptions if a.template_id == "message_count"]
+    assert a.params.sent_by == (PETROV,), filler.drops
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "On March 21, 2026, on dev:item1, PETROV sent exactly one Telegram message to the"
+        " Telegram account 70010023.",
+        "On March 21, 2026, PETROV and the Telegram account 70010023 exchanged two Telegram"
+        " messages on dev:item1.",
+    ],
+)
+def test_an_identifier_inside_a_longer_one_is_not_the_side(conn, text):
+    # The model names account 7001002 for "70010023": its match inside the longer number is
+    # not that account, and the "3" left over is not the count (Codex on #172).
+    prop = P("message_count", count={"value": 1 if "exactly" in text else 2},
+             people=["PETROV"], phones=["dev:item1"], channels=["Telegram"],
+             accounts=[{"as_written": "7001002", "app": "Telegram"}], window=MAR21)  # fmt: skip
+    assumptions, filler = build_text(conn, text, ClaimType.COUNT, [prop])
+    made = [a for a in assumptions if a.template_id == "message_count"]
+    assert not any(a.params.each_way or a.params.sent_by for a in made), [a.params for a in made]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "On March 21, 2026, PETROV and REYES exchanged two Telegram messages on dev:item1 and"
+        " dev:item2.",
+        "On March 21, 2026, on dev:item1 and dev:item2, PETROV sent REYES exactly one Telegram"
+        " message.",
+    ],
+)
+def test_a_direction_is_not_read_when_the_claim_writes_a_phone_the_count_leaves_out(conn, text):
+    # The count searches dev:item1 only; what the claim says of dev:item2 would go untested
+    # (Codex on #172).
+    made, filler = _count(conn, text, 1 if "exactly" in text else 2, phones=["dev:item1"])
+    assert not any(a.params.each_way or a.params.sent_by for a in made), [a.params for a in made]
+
+
+@pytest.mark.parametrize(
+    "text, value",
+    [
+        # two each is a count per side, not a total (Codex on #172)
+        (
+            "On March 21, 2026, on dev:item1, PETROV and REYES exchanged exactly two Telegram"
+            " messages each.",
+            2,
+        ),
+        # a direct message is not told from a group message by the count (Codex on #172)
+        ("On March 21, 2026, PETROV and REYES exchanged Telegram DMs on dev:item1.", None),
+        (
+            "On March 21, 2026, PETROV and REYES exchanged two Telegram direct messages on"
+            " dev:item1.",
+            2,
+        ),
+        ("On March 21, 2026, on dev:item1, PETROV sent REYES exactly one Telegram DM.", 1),
+    ],
+)
+def test_a_direction_is_not_read_with_a_count_per_side_or_direct_messages(conn, text, value):
+    made, filler = _count(conn, text, value, phones=["dev:item1"])
+    assert not any(a.params.each_way or a.params.sent_by for a in made), [a.params for a in made]
+
+
+@pytest.mark.parametrize(
+    "text, value",
+    [
+        ("On March 21, 2026, PETROV and REYES exchanged iMessages on dev:item1.", None),
+        ("On March 21, 2026, PETROV and REYES exchanged emails on dev:item1.", None),
+        ("On March 21, 2026, on dev:item1, PETROV sent REYES exactly one iMessage.", 1),
+    ],
+)
+def test_a_message_noun_that_names_an_app_needs_the_count_kept_to_it(conn, text, value):
+    # "iMessages" and "emails" name an app; with no channels the count would search every
+    # app (Codex on #172).
+    made, filler = _count(conn, text, value, phones=["dev:item1"], channels=[])
+    assert not any(a.params.each_way or a.params.sent_by for a in made), [a.params for a in made]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "On March 21, 2026, on dev:item1, PETROV sent REYES one to two Telegram messages.",
+        "On March 21, 2026, on dev:item1, PETROV and REYES exchanged one to two Telegram messages.",
+    ],
+)
+def test_a_direction_is_not_read_with_a_range_of_counts(conn, text):
+    # "one to two" is a range; read as exactly two, one message would fail a true claim
+    # (Codex on #172).
+    made, filler = _count(conn, text, 2, phones=["dev:item1"])
+    assert not any(a.params.each_way or a.params.sent_by for a in made), [a.params for a in made]
+
+
+@pytest.mark.parametrize(
+    "text, value",
+    [
+        # a count each day is not one count over the days (Codex on #172)
+        (
+            "Every day from March 21 through March 22, 2026, on dev:item1, PETROV sent REYES"
+            " exactly one Telegram message.",
+            1,
+        ),
+        ("Every day, PETROV and REYES exchanged Telegram messages on dev:item1.", None),
+        (
+            "On March 21, 2026, PETROV and REYES exchanged two Telegram messages per hour on"
+            " dev:item1.",
+            2,
+        ),  # fmt: skip
+        # a bound written as a sign is not an exact count (Codex on #172)
+        ("On March 21, 2026, on dev:item1, PETROV sent REYES <2 Telegram messages.", 2),
+        ("On March 21, 2026, on dev:item1, PETROV sent REYES 2+ Telegram messages.", 2),
+        ("On March 21, 2026, PETROV and REYES exchanged ≥2 Telegram messages on dev:item1.", 2),
+    ],
+)
+def test_a_direction_is_not_read_with_a_count_per_period_or_a_bound_sign(conn, text, value):
+    made, filler = _count(conn, text, value, phones=["dev:item1"])
+    assert not any(a.params.each_way or a.params.sent_by for a in made), [a.params for a in made]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "On March 21, 2026, PETROV and REYES exchanged exactly twenty-one Telegram messages on"
+        " dev:item1.",
+        "On March 21, 2026, on dev:item1, PETROV sent REYES exactly twenty-one Telegram messages.",
+    ],
+)
+def test_a_count_written_as_one_compound_number_is_one_number(conn, text):
+    # "twenty-one" is one count, not a range (Codex on #172)
+    made, filler = _count(conn, text, 21, phones=["dev:item1"])
+    (a,) = made
+    assert a.params.each_way or a.params.sent_by, filler.drops
+    assert a.params.expected_count == 21
+
+
+@pytest.mark.parametrize("sender_side", [True, False])
+def test_the_accounts_side_is_only_the_accounts_written_there(conn, sender_side):
+    # The model may give accounts the paragraph names; the claim's "7001002" is not 7001001,
+    # so a count of both would credit the other one (Codex on #172).
+    filler = LocalAssumptionFiller(FakeModel("{}"), conn, template=DRAFT)
+    ids = {a.identifier: a.id for a in filler.data.accounts.values() if a.app == "Telegram"}
+    params = {"person_ids": [PETROV], "channels": ["Telegram"],
+              "account_ids": [ids["7001002"], ids["7001001"]]}  # fmt: skip
+    if sender_side:
+        sent = ("the Telegram account 7001002", "PETROV exactly one Telegram message")
+    else:
+        sent = ("PETROV", "exactly one Telegram message to the Telegram account 7001002")
+    with pytest.raises(Reject):
+        filler._sent_by(sent, params)
+    params["account_ids"] = [ids["7001002"]]
+    assert filler._sent_by(sent, params) == ([ids["7001002"]] if sender_side else [PETROV])
+
+
+def test_an_exchange_holds_only_the_accounts_its_clause_writes(conn):
+    # As for "sent": 7001001, given but not written, would have its messages counted for the
+    # side the claim writes as 7001002 (Codex on #172).
+    filler = LocalAssumptionFiller(FakeModel("{}"), conn, template=DRAFT)
+    ids = {a.identifier: a.id for a in filler.data.accounts.values() if a.app == "Telegram"}
+    text = (
+        "On March 21, 2026, PETROV and the Telegram account 7001002 exchanged two Telegram"
+        " messages on dev:item1."
+    )
+    params = {"person_ids": [PETROV], "channels": ["Telegram"],
+              "account_ids": [ids["7001002"], ids["7001001"]]}  # fmt: skip
+    with pytest.raises(Reject):
+        filler._limits_on_exchange(text, params)
+    params["account_ids"] = [ids["7001002"]]
+    assert filler._limits_on_exchange(text, params) is None
+
+
+@pytest.mark.parametrize(
+    "text, value",
+    [
+        # a limit before the clause is still a limit (Codex on #172)
+        (
+            "On March 21, 2026, on dev:item1, in Spanish, PETROV sent REYES exactly one Telegram"
+            " message.",
+            1,
+        ),  # fmt: skip
+        (
+            "On March 21, 2026, in Spanish, PETROV and REYES exchanged Telegram messages on"
+            " dev:item1.",
+            None,
+        ),  # fmt: skip
+    ],
+)
+def test_a_direction_is_not_read_past_a_limit_before_the_clause(conn, text, value):
+    made, filler = _count(conn, text, value, phones=["dev:item1"])
+    assert not any(a.params.each_way or a.params.sent_by for a in made), [a.params for a in made]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "On March 21, 2026, a Saturday, on dev:item1, PETROV sent REYES exactly one Telegram"
+        " message.",
+        "On the morning of March 21, 2026, on dev:item1, PETROV sent REYES exactly one Telegram"
+        " message.",
+    ],
+)
+def test_a_date_and_phone_before_the_clause_are_plain(conn, text):
+    made, filler = _count(conn, text, 1, phones=["dev:item1"])
+    assert any(a.params.sent_by == (PETROV,) for a in made), filler.drops
+
+
+@pytest.mark.parametrize("phrase", ["with each other", "with one another"])
+def test_exchanged_with_each_other_is_still_each_way(conn, phrase):
+    text = f"On March 21, 2026, PETROV and REYES exchanged Telegram messages {phrase} on dev:item1."
+    made, filler = _count(conn, text, None, phones=["dev:item1"])
+    (a,) = made
+    assert a.params.each_way, filler.drops
+
+
+@pytest.mark.parametrize(
+    "third",
+    ["SOKOLOV", "(212) 555-0199"],  # a person the case names, a number
+)
+def test_an_exchange_with_a_third_party_is_refused(conn, third):
+    # The count is between the assumption's two sides; a third written in the clause would be
+    # left out of it (Codex on #172).
+    conn.execute("INSERT INTO persons VALUES ('person:sokolov', 'Ivan Sokolov', 'expert:test')")
+    try:
+        text = (
+            f"On March 21, 2026, PETROV and REYES exchanged Telegram messages with {third} on"
+            " dev:item1."
+        )
+        made, filler = _count(conn, text, None)
+        assert not any(a.params.each_way for a in made), [a.params for a in made]
+    finally:
+        conn.execute("DELETE FROM persons WHERE id = 'person:sokolov'")
+
+
+@pytest.mark.parametrize(
+    "text, channels",
+    [
+        # an app the count would not keep to: no channels given (Codex on #172)
+        ("On March 21, 2026, PETROV and REYES exchanged Telegram messages on dev:item1.", []),
+        ("On March 21, 2026, on dev:item1, PETROV sent REYES exactly one Telegram message.", []),
+        # a limit after a comma is still in the clause (Codex on #172)
+        (
+            "On March 21, 2026, PETROV and REYES exchanged Telegram messages in Spanish, on"
+            " dev:item1.",
+            ["Telegram"],
+        ),
+    ],
+)
+def test_a_direction_is_not_read_past_words_the_count_does_not_keep(conn, text, channels):
+    value = 1 if "exactly one" in text else None
+    made, filler = _count(conn, text, value, channels=channels)
+    assert not any(a.params.each_way or a.params.sent_by for a in made), [a.params for a in made]
