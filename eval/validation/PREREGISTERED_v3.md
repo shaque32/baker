@@ -3,11 +3,12 @@
 `PREREGISTERED.md` and `PREREGISTERED_v2.md` stay as they are. This is the new version that v2's
 low-coverage rule item 4 requires for a run 3.
 
-Status: **filled at the tag, awaiting Arsh's approval.** It merged to main as a draft (#165) so
-the coverage steps could build on it. This version fills the prediction from the replay at the
-tag's commit, e5ce04b. It binds when this line records the date and Arsh's words of approval in
-the validation thread. Baker Product publishes the tag `validation-v1-run3` on e5ce04b before
-run 3 starts. Nothing here changes after run 3's results are seen.
+Status: **Approved by Arsh on 2026-10-30 at 23:10 UTC ("approve", in the validation thread, in
+reply to the request to approve the run 3 plan as filled in #176).** It merged to main as a
+draft (#165) so the coverage steps could build on it. This version fills the prediction from the
+replay at the tag's commit, e5ce04b, and is binding from that approval. Baker Product publishes
+the tag `validation-v1-run3` on e5ce04b before run 3 starts. Nothing here changes after run 3's
+results are seen.
 
 ## What run 3 is, and is not
 - Run 3 reruns the same 106 signed iOS 15 claims, on the same phone, with the same answer keys.

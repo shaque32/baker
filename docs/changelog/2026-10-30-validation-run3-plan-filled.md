@@ -9,9 +9,9 @@
   - It counts how the sender and time checks' results moved since sender 1.0.1, weekday 1.0.1
     and time 1.0.2: 21 of 68 core results changed, 17 inconclusive to pass and 4 inconclusive
     to fail, none between pass and fail, and no core weekday result.
-  - The plan binds when Arsh approves it in the validation thread. Run 3 is still a coverage
-    check on development claims: no accuracy figure from it is quoted outside the validation
-    write-up.
+  - Arsh approved the plan on 2026-10-30 at 23:10 UTC ("approve", validation thread), recorded
+    in its Status line, so it binds. Run 3 is still a coverage check on development claims:
+    no accuracy figure from it is quoted outside the validation write-up.
   Why: the plan needs the replay at the tag before it binds, and the Grok audit on #165 asked
   for the check changes by direction.
 - Where: PR #176 (branch claude/project-thread-ds0ify)
@@ -28,5 +28,5 @@
 - Status doc: pending: in section "Real-export validation", add a bullet "Run 3 plan
   (`eval/validation/PREREGISTERED_v3.md`): a coverage check on the same 106 claims, now
   development data, at tag `validation-v1-run3` on e5ce04b; the replay there predicts 34
-  code-checked of 106 against a minimum of 30; no accuracy claim from it. Binding once Arsh's
-  approval is recorded in the file."
+  code-checked of 106 against a minimum of 30; no accuracy claim from it. Approved by Arsh
+  2026-10-30, binding."
