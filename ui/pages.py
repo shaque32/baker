@@ -75,6 +75,7 @@ from core.review.status import (
     HOLDINGS,
     STALE,
     ClaimState,
+    _agent,
     agent_fail_step,
     case_holdings,
     claim_name,
@@ -264,12 +265,16 @@ def run_banner(conn: sqlite3.Connection, page: Page, back: str) -> str:
     stips = conn.execute(
         "SELECT COUNT(*) FROM stipulations WHERE decided_at_utc > ?", (run["started_at_utc"],)
     ).fetchone()[0]
-    if (later or stips) and not run.get("partial") and not page.busy:
+    # a confirmed failed check, or a rejection that undoes one, the claim page marks stale
+    agent = len(_agent(conn, run).confirmed_after)
+    if (later or stips or agent) and not run.get("partial") and not page.busy:
         what = []
         if later:
             what.append(f"{later} evidence decision{'' if later == 1 else 's'}")
         if stips:
             what.append(f"{stips} stipulation change{'' if stips == 1 else 's'}")
+        if agent:
+            what.append(f"a failed-check decision on {agent} claim{'' if agent == 1 else 's'}")
         out.append(
             "<div class='banner'><strong>Verdicts are out of date.</strong> You made "
             f"{' and '.join(what)} after the last verdict run. Re-run the verdicts to apply them. "
@@ -330,7 +335,8 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
     the record of runs, versions and the audit log, kept quiet."""
     run = pipeline.view_run(conn)
     summary = audit_log_summary(conn)
-    out = [f"<h1>{e(page.case_name or 'Case overview')}</h1>"]
+    # the case name is the expert's own text, so it is cited, not Mabillon's words
+    out = [f"<h1>{q(page.case_name) if page.case_name else 'Case overview'}</h1>"]
     if not summary["chain_ok"]:
         out.append(
             "<div class='flash err'><strong>Audit log hash chain FAILED VERIFICATION.</strong> "
@@ -400,7 +406,7 @@ def _case_setup(conn: sqlite3.Connection) -> str:
             else "<span class='muted'>no stipulated user</span>"
         )
         names = named.get(dev_id, [])
-        called = f" · the document calls it {e(', '.join(names))}" if names else ""
+        called = f" · the document calls it {q(', '.join(names))}" if names else ""
         rows.append(
             f"<li id='dev-{e(dev_id)}'><b>{q(label)}</b> <span class='mono'>{e(source_id)}"
             f"</span><br>{who}{called}</li>"

@@ -20,6 +20,7 @@ import pytest
 from core import pipeline
 from core.audit import testability
 from core.audit.checks import identity
+from core.audit.invariants import check_report_text
 from core.bundle import verify as verify_mod
 from core.bundle.verify import FAIL, PASS
 from core.contracts import CheckOutcome, ClaimStatus, Verdict
@@ -165,6 +166,40 @@ def test_a_rejection_after_the_verdicts_used_a_confirm_marks_them_not_current(tm
         assert _verdict(conn) is Verdict.UNPROVEN
         st = claim_state(conn, "C01")
         assert st is not None and not st.decided_after_run
+    finally:
+        conn.close()
+
+
+def test_the_case_page_offers_the_re_run_a_testability_decision_needs(tmp_path, failing):
+    """The case page has no always-on re-run, so the out-of-date banner counts a rejection that
+    undoes a confirm the verdicts used (Codex on #177)."""
+    from ui.pages import Page, overview
+
+    conn, first = _audit(tmp_path, signed=False)
+    try:
+        _confirm(conn)
+        assert "a failed-check decision on 1 claim" in overview(conn, Page("t", EXAMINER))
+        redecide(conn, EXAMINER)
+        assert "Verdicts are out of date" not in overview(conn, Page("t", EXAMINER))
+        decide_repair(conn, "C01", first.run_id, 1, False, EXAMINER, "Wrong reading.")
+        case = overview(conn, Page("t", EXAMINER))
+        assert "Verdicts are out of date" in case and 'action="/redecide"' in case
+        assert "a failed-check decision on 1 claim" in case
+        assert "Re-run verdicts" not in overview(conn, Page("t", EXAMINER, busy=True))
+    finally:
+        conn.close()
+
+
+def test_the_case_page_cites_the_case_name(tmp_path, failing):
+    """A case may be named with a word Mabillon never says itself: its heading is the expert's
+    own text, cited, so the page still renders (Codex on #177)."""
+    from ui.pages import Page, overview
+
+    conn, _first = _audit(tmp_path, signed=False)
+    try:
+        case = overview(conn, Page("t", EXAMINER, case_name="Deleted messages, Innocent"))
+        check_report_text(case)
+        assert '<h1><span class="q">Deleted messages, Innocent</span></h1>' in case
     finally:
         conn.close()
 
