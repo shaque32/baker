@@ -124,6 +124,34 @@ nav.tabs .sep { flex: none; height: 1px; margin: 8px 10px; background: var(--lin
 .casestatus .findings { display: flex; flex-wrap: wrap; gap: 8px 16px; list-style: none;
   padding: 0; margin: 0; }
 .casestatus .verdict { margin: 0 2px 0 0; }
+.casestatus .findings a { display: inline-flex; align-items: center; gap: 6px; color: var(--fg);
+  text-decoration: none; font-size: 13.5px; }
+.casestatus .findings a:hover .name { color: var(--fg); }
+.casestatus .findings .name { display: inline-flex; align-items: center; gap: 7px;
+  color: var(--muted); }
+.casestatus .findings .name::before { content: ""; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--line-strong); }
+.casestatus .findings .t-con::before { background: var(--con); }
+.casestatus .findings .t-sup::before { background: var(--sup); }
+.casestatus .findings .t-unp::before { background: var(--card);
+  box-shadow: inset 0 0 0 1.5px var(--unp); }
+.casestatus .findings b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.banner + .banner { margin-top: -12px; }
+.banner details > summary { cursor: pointer; }
+.banner details[open] > summary { margin-bottom: 6px; }
+.banner details p { margin: 0 0 4px; }
+ul.setuplist { list-style: none; padding: 0; margin: 0 0 10px; background: var(--card);
+  border: 1px solid var(--line); border-radius: var(--radius); }
+ul.setuplist li { padding: 10px 16px; border-top: 1px solid var(--line); line-height: 1.5; }
+ul.setuplist li:first-child { border-top: 0; }
+dl.record { display: grid; grid-template-columns: max-content 1fr; gap: 6px 20px;
+  margin: 0 0 12px; font-size: 13px; color: var(--muted); }
+dl.record dt { font-weight: 500; }
+dl.record dd { margin: 0; max-width: 78ch; }
+@media (max-width: 640px) {
+  dl.record { grid-template-columns: 1fr; gap: 0; }
+  dl.record dd { margin: 0 0 8px; }
+}
 details.custody { margin: 16px 0; }
 details.custody > summary { font-size: 13.5px; color: var(--muted); }
 
@@ -230,7 +258,7 @@ select { appearance: none; -webkit-appearance: none; padding-right: 32px; cursor
     linear-gradient(135deg, var(--muted) 50%, transparent 50%);
   background-position: calc(100% - 17px) 52%, calc(100% - 12px) 52%;
   background-size: 5px 5px; background-repeat: no-repeat; }
-input::placeholder, textarea::placeholder { color: #9b978f; }
+input::placeholder, textarea::placeholder { color: #75716a; }
 input[type=text]:hover, input[type=password]:hover, input[type=number]:hover, textarea:hover,
 select:hover { border-color: #bdb9b0; }
 input[type=text]:focus, input[type=password]:focus, input[type=number]:focus,
@@ -500,6 +528,17 @@ main .tl > li.flag { border-color: var(--line); box-shadow: inset 2px 0 0 var(--
 main .chip { border: 0; border-radius: 4px; padding: 1px 7px; }
 main .bars span { background: #7d8aa0; }
 main .bars span.g { background: var(--panel); border: 1px dashed var(--line-strong); }
+details.case-settings { margin: 14px 0 20px; }
+details.case-settings > summary { font-size: 13.5px; color: var(--muted); cursor: pointer; }
+details.case-settings[open] > summary { margin-bottom: 10px; }
+details.case-settings form.settings { margin: 0; }
+/* The page intro states the not-found caveat once; the card keeps its own Searched line. */
+main .gap > .meta:last-child { display: none; }
+/* Unpicked messages recede by tint, not opacity, so their metadata keeps its contrast. */
+main .bub.dim { opacity: 1; background: var(--panel); }
+main .bub.dim .body { color: #4a4740; }
+main .bub .who2, main .bub .t, main .divider { font-size: 12px; }
+main > p, main > .flash, main .banner { max-width: 66ch; text-wrap: pretty; }
 
 @media (max-width: 960px) {
   body { padding-left: 0; }
