@@ -3,11 +3,11 @@
 An affidavit calls Owen Halloran "SUBJECT-1" and "HAL"; a person in the case has one name. The
 expert records the document's other names for a person with core/review/actions.set_aliases,
 and only an expert does: no model proposes one. Code matches an alias whole, in any case, the
-way the assumption filler matches a whole name. The surname rule (a bare "HALLORAN" for "Owen
-Halloran") is for the person's name only, never for an alias, so "Big Owen" never matches a
-bare "Owen". An alias that would also match another person is refused when entered; if one
-ever does (an owner renamed later), it matches neither person (`person_names`). Every report
-lists each alias as an expert statement.
+way the assumption filler matches a whole name (`written`). The surname rule (a bare
+"HALLORAN" for "Owen Halloran") is for the person's name only, never for an alias, so "Big
+Owen" never matches a bare "Owen". An alias that would also match another person is refused
+when entered; if one ever does (an owner renamed later), it matches neither person
+(`person_names`). Every report lists each alias as an expert statement.
 """
 
 from __future__ import annotations
@@ -23,16 +23,35 @@ MAX_LEN = 120
 
 
 def key(text: str) -> str:
-    """How a name or an alias is compared: its letters and digits, lowercased, in order, as the
-    assumption filler's whole-name match reads them ("SUBJECT-1" and "subject 1" are one)."""
-    return " ".join(re.sub(r"[^a-z0-9]+", " ", unicodedata.normalize("NFC", text).lower()).split())
+    """How a name or an alias is compared: its letters and digits, in any script, casefolded,
+    in order ("SUBJECT-1" and "subject 1" are one). For a name in plain Latin letters this is
+    how the assumption filler's whole-name match reads it."""
+    return " ".join(re.sub(r"[\W_]+", " ", unicodedata.normalize("NFC", text).casefold()).split())
 
 
 def name_keys(name: str) -> set[str]:
-    """The keys a person's name is matched by: the whole name and, for a name of more than one
-    word, its last word (the filler's surname rule)."""
+    """The keys a person's name is matched by, in every reader: the whole name; for a name of
+    more than one word, its last word (the filler's surname rule, "Brown-Smith" for "John
+    Brown-Smith"); and its last name word as the Identities page reads one ("Smith",
+    core/identity/links.tokens). An alias with any of these keys could reach the person."""
+    from core.identity.links import tokens  # links reads this module, so not at the top
+
     parts = name.split()
-    return {k for k in (key(name), key(parts[-1]) if len(parts) > 1 else "") if k}
+    last = key(parts[-1]) if len(parts) > 1 else ""
+    return {k for k in (key(name), last, *map(key, tokens(name)[-1:])) if k}
+
+
+def written(alias: str, text: str) -> str | None:
+    """The alias as the text writes it, or None: whole, in any case, with the spacing and
+    punctuation between its words not counting, as `key` compares ("SUBJECT 1" is
+    "SUBJECT-1", "the DRIVER's" holds "the DRIVER"). Never inside a longer name or a handle:
+    "SUBJECT-12", "Subject-1A" and "@hal" do not write "SUBJECT-1" or "HAL"."""
+    words = key(alias).split()
+    if not words:
+        return None
+    pattern = r"(?<![\w@+])" + r"[\W_]+".join(map(re.escape, words)) + r"(?!\w)"
+    m = re.search(pattern, unicodedata.normalize("NFC", text), re.IGNORECASE)
+    return None if m is None else m.group(0)
 
 
 @dataclass(frozen=True)

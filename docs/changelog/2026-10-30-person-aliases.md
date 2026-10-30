@@ -20,6 +20,14 @@
     alias is matched whole ("Big Owen" never matches a bare "Owen"). An alias two persons share
     is left out for both, so it matches neither. A case database made before 0.6.0 reads as
     having no aliases.
+  - One matcher, `aliases.written(alias, text)`, used by the testability step and the
+    Identities page alike. An alias is found whole, in any case, with the spacing and
+    punctuation between its words not counting: "Subject 1" is "SUBJECT-1", and "the DRIVER's"
+    holds "the DRIVER". "SUBJECT-12", "Subject-1A" and the handle "@subject-1" are not
+    "SUBJECT-1". Letters in any script count ("Дима").
+  - The refusal compares every form a reader matches a name by: the whole name, the filler's
+    surname ("Brown-Smith" for "John Brown-Smith") and the Identities page's last name word
+    ("Smith"), so "Smith" may not be another person's alias (Codex on #181).
   - The testability step's person lookups (`core/audit/testability.py`) find a person by an
     alias the claim writes, whole only ("SUBJECT-12" is not "SUBJECT-1"). The Identities page
     (`core/identity/links.py`, `ui/identity_pages.py`) resolves names by alias. It lists a
@@ -28,18 +36,23 @@
     matches has "Add as another name" beside "Add as a person". Suggested names keep a
     designation's number ("SUBJECT-1", not "SUBJECT").
   - The report lists each alias in Limitations as an expert statement, with who gave it and
-    when (report 0.29.0). The bundle carries the table like every other.
+    when (report 0.29.0). The bundle carries the table like every other. An alias added or
+    removed after an audit changes what the testability step's tries looked up, so
+    `verify-bundle` notes those tries as not re-run, as it does after a person is added
+    (Codex on #181).
   - The eval's case setup records each phone owner's aliases from the case's `case.json`.
     case04 gets the affidavit's definitions: SUBJECT-1 and HAL for Halloran, SUBJECT-2 for Ferro,
     and SUBJECT-3, DEZ and the DRIVER for Okafor. No other case has aliases, so `make eval` is
     unchanged.
   - Not in this PR: the assumption filler does not match aliases yet. Its `_name_spans` (claim
     text) and `_person` (a model answer's people) still read one name. That is the validation
-    thread's PR, after this one, through `person_names`. Until it lands, an alias reaches the
-    testability step's lookups and the Identities page only, and no claim is filled or checked
-    differently. No verdict rule changes.
+    thread's PR, after this one, through `person_names` and `aliases.written`. Until it lands,
+    with the testability step off (the default) no claim is filled, checked or decided
+    differently. With the step on (the eval), its lookups give the model the person an alias
+    names, and its check accepts that person as the claim's own, so the step's conversion on
+    case04 can change with this PR alone. That is unmeasured. No verdict rule changes.
 - Where: PR #181 (branch `claude/project-thread-6i2msb-aliases`)
-- Verified: new `tests/test_person_aliases.py`, 18 tests:
+- Verified: new `tests/test_person_aliases.py`, 29 tests:
   - recording, replacing and clearing aliases, each logged;
   - every refusal: another person's whole name, surname or alias; the person's own surname;
     no letter or digit; too long; a non-expert actor; an unknown person; the schema's CHECK and
@@ -47,19 +60,28 @@
   - `add_person` refused on another person's alias or its surname, and `remove_person` removes
     and logs aliases;
   - a shared alias matches neither person;
-  - an alias is matched whole, never by its last word;
+  - an alias is matched whole, never by its last word, and near misses: "Subject 1" and the
+    possessive match, "SUBJECT-12", "Subject-1A", "SUBJECT1" and "@subject-1" do not; an
+    everyday alias ("the DRIVER") matches in any case; an alias in another script;
+  - an alias another person's last name word matches ("Smith" for "John Brown-Smith") refused;
   - a database without the table;
-  - on case01: the testability step's lookups by alias (and not "SUBJECT-12"), the Identities
-    page placing a designation and naming its claims, the report's limitation line, and the
-    page's forms through the app.
+  - on case01: the testability step's lookups by alias ("Subject 1" too, and not
+    "SUBJECT-12"), the Identities page placing a designation and naming its claims while
+    CW-1 and SUBJECT-12 stay offered, the report's limitation line, and the page's forms
+    through the app.
+  - `tests/test_testability.py`: an alias given after the audit makes `verify-bundle` note the
+    tries as not re-run, with no failure. Without the fix the same test fails.
   - `tests/contract/test_contracts_v03.py` now expects 0.6.0.
   - `make check` passes; its eval numbers are in the PR and unchanged from main.
   - case04 regenerated: its `case.json` gains only the three `aliases` lists. No case04 run was
     made, so the effect on conversion is not measured.
 - Open: the filler's matching (validation thread). An identity-link search by alias (a contact
-  saved as "Hal") is not proposed. CW-1 and the BUYER are people the expert would add, not
-  aliases, and the eval's case setup does not add them. Whether aliases raise the testability
-  step's conversion is unmeasured until case05.
+  saved as "Hal") is not proposed, and an alias is not compared with phone names or contact
+  display names, so an alias that equals one is not refused. An everyday alias such as "the
+  DRIVER" matches those words in any claim, in any case: it is the expert's statement, so the
+  expert should give the document's defined term. CW-1 and the BUYER are people the expert
+  would add, not aliases, and the eval's case setup does not add them. Whether aliases raise
+  the testability step's conversion is unmeasured until case05.
 - Affects: capabilities (a new expert input, with its own limitation line in every report)
 - Status doc: pending: section 8 item 5 ("Case safety and delivery"), after "...as the expert's
   statement (#139).": add "The expert can also record the document's other names for a person

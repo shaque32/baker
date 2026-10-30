@@ -87,7 +87,7 @@ from core.contracts import (
 from core.db import apply_schema
 from core.enrich.records import get_record
 from core.hypotheses import explain
-from core.identity import links
+from core.identity import aliases, links
 from core.ingest import forwarded
 from core.llm import cloud
 from core.report import html as report_html
@@ -1460,6 +1460,8 @@ _REPAIR_INPUTS = frozenset(
     {
         "person.add",
         "person.remove",
+        aliases.ADD_ACTION,
+        aliases.REMOVE_ACTION,
         "stipulation.confirm",
         "stipulation.withdraw",
         "device.names",

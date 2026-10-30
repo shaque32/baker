@@ -106,7 +106,7 @@ from core.contracts import (
     ModelRun,
     canonical_json,
 )
-from core.identity.aliases import person_names
+from core.identity.aliases import person_names, written
 from core.review.device_names import logged_names, name_key
 
 # 0.2.0: the claim-only check (outcome "outside"), the checks each try ran ("check"), the
@@ -164,6 +164,12 @@ def _written(words: str, texts: Sequence[str]) -> str | None:
     return None
 
 
+def _alias_written(alias: str, texts: Sequence[str]) -> str | None:
+    """An alias as a text writes it, or None (core/identity/aliases.written: whole, in any
+    case, "SUBJECT 1" for "SUBJECT-1", never "SUBJECT-12")."""
+    return next((w for t in texts if (w := written(alias, t)) is not None), None)
+
+
 def _phone_written(name: str, texts: Sequence[str]) -> str | None:
     """A phone's name as a text writes it, compared as the filler compares phone names: case
     and spacing do not count ("Item 1" is the phone whose source is "item1")."""
@@ -182,12 +188,15 @@ def _found(filler: LocalAssumptionFiller, texts: Sequence[str]) -> list[tuple[Lo
     """Each lookup the texts give, with the person, device or account id it names."""
     conn = filler.conn
     out: list[tuple[Lookup, str]] = []
-    # A person's name, its surname, then each alias the expert gave them, whole only
-    # (core/identity/aliases.py: an alias two persons share is in neither list).
+    # A person's name, its surname, then each alias the expert gave them, whole only and
+    # compared as the Identities page compares it (core/identity/aliases.py: an alias two
+    # persons share is in neither list).
     for pid, (name, aliases) in person_names(conn).items():
         parts = name.split()
-        for words in dict.fromkeys([name, parts[-1], *aliases] if parts else aliases):
-            w = _written(words, texts)
+        tries = [(_written, w) for w in dict.fromkeys([name, parts[-1]] if parts else [])]
+        tries += [(_alias_written, a) for a in aliases]
+        for match, words in tries:
+            w = match(words, texts)
             if w is not None:
                 out.append((Lookup("person", w, f"a person in the case ({name})"), pid))
                 break

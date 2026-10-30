@@ -171,6 +171,56 @@ def test_an_alias_is_matched_whole_never_by_its_last_word(db, two):
     assert L.resolves(persons, "SUBJECT-12") == []
 
 
+def test_an_alias_another_persons_last_name_word_matches_is_refused(db):
+    """The Identities page reads "John Brown-Smith"'s last name word as "Smith", so "Smith"
+    would reach him there: it may not be another person's alias (Codex on #181)."""
+    john = actions.add_person(db, "John Brown-Smith", EXPERT, _clock)
+    amy = actions.add_person(db, "Amy Jones", EXPERT, _clock)
+    assert L.resolves(L.load(db).persons, "Smith") == [john]
+    with pytest.raises(ReviewError, match="would also match John Brown-Smith"):
+        actions.set_aliases(db, amy, ["Smith"], EXPERT, _clock)
+    db.execute(
+        "INSERT INTO person_aliases VALUES (?, 'SMITH', ?, '2026-10-30T23:30:00Z')", (amy, EXPERT)
+    )
+    assert aliases.person_names(db)[amy] == ("Amy Jones", [])  # written outside the action
+    assert L.resolves(L.load(db).persons, "Smith") == [john]
+
+
+@pytest.mark.parametrize(
+    ("text", "found"),
+    [
+        ("SUBJECT-1 drove.", "SUBJECT-1"),
+        ("Subject 1 drove.", "Subject 1"),  # spacing and punctuation do not count (Codex)
+        ("SUBJECT-1's phone", "SUBJECT-1"),
+        ("SUBJECT-12 drove.", None),
+        ("Subject-1A drove.", None),
+        ("SUBJECT1 drove.", None),  # no break between its words, so another name
+        ("He wrote to @subject-1.", None),  # a handle, not the designation
+    ],
+)
+def test_an_alias_is_found_whole_as_its_key_compares_it(text, found):
+    assert aliases.written("SUBJECT-1", text) == found
+
+
+def test_an_everyday_alias_matches_in_any_case_as_the_experts_statement(db, two):
+    """An alias is the expert's statement that the document's words mean this person, so it
+    applies wherever a claim writes them, capitals or not. The Limitations line says so; an
+    expert gives the document's defined term, not a common word (Baker Eval on #181)."""
+    _, dez = two
+    actions.set_aliases(db, dez, ["the DRIVER"], EXPERT, _clock)
+    assert aliases.written("the DRIVER", "the DRIVER's phone") == "the DRIVER"
+    assert aliases.written("the DRIVER", "the driver of the van") == "the driver"
+    assert aliases.written("the DRIVER", "a driver for the courier") is None
+
+
+def test_an_alias_in_another_script_is_kept_and_matched(db, two):
+    hal, _ = two
+    assert actions.set_aliases(db, hal, ["Дима", "José"], EXPERT, _clock) == ["José", "Дима"]
+    assert aliases.written("Дима", "ДИМА wrote first.") == "ДИМА"
+    assert aliases.key("José") != aliases.key("Jose")
+    assert L.resolves(L.load(db).persons, "дима") == [hal]
+
+
 def test_a_case_database_without_the_table_reads_as_having_no_aliases(db, two):
     hal, _ = two
     db.execute("DROP TABLE person_aliases")
@@ -219,6 +269,10 @@ def test_the_testability_step_looks_a_person_up_by_an_alias_the_claim_writes(con
     ]
     longer = _claim("On March 12, 2026, SUBJECT-12 wrote to @northstar on Telegram.")
     assert not [x for x in testability.lookups(filler, longer, "") if x.kind == "person"]
+    # compared as the Identities page compares it: "Subject 1" is SUBJECT-1 (Codex on #181)
+    spaced = _claim("On March 12, 2026, Subject 1 wrote to @northstar on Telegram.")
+    people = [x for x in testability.lookups(filler, spaced, "") if x.kind == "person"]
+    assert [x.written for x in people] == ["Subject 1"]
 
 
 def _add_claim(conn: sqlite3.Connection, text: str) -> None:
@@ -236,6 +290,16 @@ def test_a_designation_with_an_alias_is_placed_and_its_claims_are_named(conn):
     petrov = next(p for p in case.persons if p.id == PETROV)
     assert petrov.aliases == ("SUBJECT-1",)
     assert "C99" in {cid for cid, _ in L.claims_naming(conn, petrov)}
+
+
+def test_other_designations_stay_names_of_their_own_on_the_identities_page(conn):
+    """An alias places SUBJECT-1 only: CW-1 and SUBJECT-12 are still offered (Baker Eval on
+    #181)."""
+    _add_claim(conn, "On March 12, 2026, SUBJECT-1 met CW-1 and SUBJECT-12 on Telegram.")
+    actions.set_aliases(conn, PETROV, ["SUBJECT-1"], EXPERT, _clock)
+    unplaced = {u.name: u.matches for u in L.unplaced_names(conn, L.load(conn).persons)}
+    assert unplaced.get("CW-1") == 0 and unplaced.get("SUBJECT-12") == 0
+    assert "SUBJECT-1" not in unplaced
 
 
 def test_the_report_lists_each_alias_as_an_expert_statement(conn):

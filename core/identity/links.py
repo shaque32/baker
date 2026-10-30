@@ -632,14 +632,13 @@ def claims_naming(conn: sqlite3.Connection, person: Person) -> list[tuple[str, s
     if not person.words and not person.aliases:
         return []
     names = {" ".join(person.words), person.words[-1]} if person.words else set()
-    whole = [aliases.key(a) for a in person.aliases]
     out = []
     for cid, text in conn.execute(
         "SELECT id, text FROM claims WHERE status != 'removed' ORDER BY id"
     ):
         flat = " ".join(_nfc(text).casefold().split())
         if any(_word_in(n, flat) for n in names) or any(
-            _word_in(k, aliases.key(text)) for k in whole if k
+            aliases.written(a, text) is not None for a in person.aliases
         ):
             out.append((cid, text))
     return out

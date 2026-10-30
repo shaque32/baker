@@ -28,7 +28,7 @@ from core.bundle.verify import FAIL, NOTE, PASS, failed, verify_bundle
 from core.contracts import Claim, ClaimStatus, ClaimType, GoldClaim
 from core.llm.runtime import FakeModel as RuntimeFake
 from core.report.html import render_report
-from core.review.actions import set_claim_status
+from core.review.actions import set_aliases, set_claim_status
 from eval import run_pipeline as rp
 from eval.run_eval import load_jsonl
 from eval.synthetic.generate import generate
@@ -807,6 +807,19 @@ def test_a_bundle_without_the_steps_model_answers_notes_the_tries_unchecked(audi
     assert not failed(findings), [f for f in findings if f.level == FAIL]
     (f,) = [f for f in findings if f.check == "testability" and f.level == NOTE]
     assert "were not re-run" in f.detail and "include records and prompts" in f.detail
+
+
+def test_an_alias_given_after_the_audit_notes_the_tries_not_re_run(audited, tmp_path):
+    """An alias changes what a try looks up ("Marc Garage", which C01 writes), so a bundle made
+    after one says the tries were not re-run instead of failing them (Codex on #181)."""
+    conn, _ = audited
+    copy = _copy(conn, tmp_path)
+    set_aliases(copy, "person:dev:item2:owner", ["Marc Garage"], EXAMINER)
+    found = _check(copy)
+    copy.close()
+    assert FAIL not in {f.level for f in found}, found
+    (note,) = [f for f in found if f.level == NOTE]
+    assert "person.alias.add after the run changed what they look up" in note.detail
 
 
 def test_a_claim_removed_after_the_audit_still_verifies(audited, tmp_path):
