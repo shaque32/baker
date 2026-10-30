@@ -1526,6 +1526,14 @@ _PER_PERIOD_RE = re.compile(
     re.I,
 )
 _BOUND_SIGN_RE = re.compile(r"[<>≤≥≈~]|\d\s*\+(?!\s*\d)")
+# What may come before a direction's clause: the date, time and phone the window and scope are
+# read from. Any other word ("in Spanish, PETROV sent ...") limits the messages in a way the
+# count does not read (Codex on #172).
+_PREFIX_WORDS = frozenset(
+    "on at the of a and between from through to until beginning starting approximately about"
+    " around st nd rd th m p am pm noon midnight morning afternoon evening night edt est cdt cst"
+    " mdt mst pdt pst utc gmt z".split()
+)
 _EXCHANGED_RE = re.compile(
     r"\bexchanged\b(?P<between>[^.;,]*?)\b(?:messages?|texts?|imessages?|chats?|emails?|dms?)\b",
     re.I,
@@ -2488,6 +2496,10 @@ class LocalAssumptionFiller:
             if sent is not None:
                 # "SUBJECT-2 sent SUBJECT-1 three messages": only that side's (ruling R2)
                 self._phones_kept(claim.text, params)
+                words = _unquoted(_flat(_nfc(claim.text)))
+                lead = len(words) - len(words.lstrip())
+                sent_at = _SENT_FORM_RE.match(words.strip())
+                self._plain_prefix(claim.text, lead + sent_at.start("subject"))
                 params["sent_by"] = self._sent_by(sent, params)
                 code_made = True
             if tpl.id == "message_count" and counts_calls(claim.text, p.count.value):
@@ -2510,6 +2522,10 @@ class LocalAssumptionFiller:
                     raise Reject("the claim states how many messages; the model gave no count")
                 params["count_op"], params["expected_count"] = "ge", 2
             self._phones_kept(claim.text, params)
+            words = _unquoted(_flat(_nfc(claim.text)))
+            self._plain_prefix(
+                claim.text, words.rfind(",", 0, words.casefold().find("exchanged")) + 1
+            )
             if extra := self._limits_on_exchange(claim.text, params):
                 # "exchanged Telegram messages in Spanish": the check reads no language,
                 # content or attachment, so it would count every message (Codex on #172)
@@ -2565,6 +2581,18 @@ class LocalAssumptionFiller:
             code_made = True
 
         return Proposal(p.template_id, params, is_core=True, code_made=code_made)
+
+    def _plain_prefix(self, claim_text: str, clause_start: int) -> None:
+        """Raises Reject when the words before the direction's clause hold anything but its date,
+        time and phone (`_PREFIX_WORDS`): "On March 21, in Spanish, PETROV sent ..." limits the
+        messages before the clause is read (Codex on #172)."""
+        words = _unquoted(_flat(_nfc(claim_text)))
+        prefix = list(words[:clause_start])
+        for _, start, end in self._phone_spans("".join(prefix)):
+            prefix[start:end] = " " * (end - start)
+        for w in _words("".join(prefix)).split():
+            if not (w in _PREFIX_WORDS or w in _MONTHS or w in _WEEKDAYS or w.isdigit()):
+                raise Reject(f"the claim limits the messages before the count ({w!r})")
 
     def _phones_kept(self, claim_text: str, params: dict[str, Any]) -> None:
         """Raises Reject when the claim writes a phone the count does not search: "exchanged

@@ -2735,6 +2735,41 @@ def test_an_exchange_holds_only_the_accounts_its_clause_writes(conn):
     assert filler._limits_on_exchange(text, params) is None
 
 
+@pytest.mark.parametrize(
+    "text, value",
+    [
+        # a limit before the clause is still a limit (Codex on #172)
+        (
+            "On March 21, 2026, on dev:item1, in Spanish, PETROV sent REYES exactly one Telegram"
+            " message.",
+            1,
+        ),  # fmt: skip
+        (
+            "On March 21, 2026, in Spanish, PETROV and REYES exchanged Telegram messages on"
+            " dev:item1.",
+            None,
+        ),  # fmt: skip
+    ],
+)
+def test_a_direction_is_not_read_past_a_limit_before_the_clause(conn, text, value):
+    made, filler = _count(conn, text, value, phones=["dev:item1"])
+    assert not any(a.params.each_way or a.params.sent_by for a in made), [a.params for a in made]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "On March 21, 2026, a Saturday, on dev:item1, PETROV sent REYES exactly one Telegram"
+        " message.",
+        "On the morning of March 21, 2026, on dev:item1, PETROV sent REYES exactly one Telegram"
+        " message.",
+    ],
+)
+def test_a_date_and_phone_before_the_clause_are_plain(conn, text):
+    made, filler = _count(conn, text, 1, phones=["dev:item1"])
+    assert any(a.params.sent_by == (PETROV,) for a in made), filler.drops
+
+
 @pytest.mark.parametrize("phrase", ["with each other", "with one another"])
 def test_exchanged_with_each_other_is_still_each_way(conn, phrase):
     text = f"On March 21, 2026, PETROV and REYES exchanged Telegram messages {phrase} on dev:item1."
