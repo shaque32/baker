@@ -1,4 +1,4 @@
-## 2026-10-30: The testability go/no-go's false-supported bar counts only the claims the agent changed
+## 2026-10-30: The testability go/no-go's false-supported bar counts only the claims the agent changed (#183)
 - Changed: the go/no-go's third bar (`eval/run_pipeline.py`, `testability_go_no_go` and
   `report_go_no_go`) now reads "0 false supported on the claims the agent changed, under the
   rubber-stamp expert". Arsh chose this on 2026-10-30 at 23:08Z, on a decision card in the
@@ -15,7 +15,7 @@
     hidden case names no claim.
   - Every other bar, value and setting is unchanged. No rule, prompt, pin, contract, schema or
     gold change.
-- Where: branch `claude/project-thread-6i2msb-bar3`
+- Where: PR #183 (branch `claude/project-thread-6i2msb-bar3`)
 - Verified: the go/no-go's tests and a re-score of Arsh's case04 run.
   - `tests/test_testability_go_no_go.py`, 19 tests. They include a new one in which a false
     supported on a claim the step did not change leaves a GO, with "1 in the whole run, for
