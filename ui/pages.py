@@ -24,6 +24,7 @@ from core import pipeline
 from core.audit import challenge, testability
 from core.audit.context import ContextLine, build_context
 from core.contracts import (
+    CheckOutcome,
     ClaimType,
     EvidenceItem,
     EvidenceStatus,
@@ -56,6 +57,7 @@ from core.report.html import (
 )
 from core.report.hypotheses import CSS as ALTERNATIVES_CSS
 from core.report.hypotheses import alternatives_html
+from core.report.names import plain_ids
 from core.report.paired import CSS as PAIRED_CSS
 from core.report.paired import claim_line
 from core.report.restore import CSS as RESTORE_CSS
@@ -73,6 +75,7 @@ from core.review.status import (
     HOLDINGS,
     STALE,
     ClaimState,
+    agent_fail_step,
     case_holdings,
     claim_name,
     claim_state,
@@ -264,9 +267,9 @@ def run_banner(conn: sqlite3.Connection, page: Page, back: str) -> str:
     if (later or stips) and not run.get("partial") and not page.busy:
         what = []
         if later:
-            what.append(f"{later} evidence decision(s)")
+            what.append(f"{later} evidence decision{'' if later == 1 else 's'}")
         if stips:
-            what.append(f"{stips} stipulation change(s)")
+            what.append(f"{stips} stipulation change{'' if stips == 1 else 's'}")
         out.append(
             "<div class='banner'><strong>Verdicts are out of date.</strong> You made "
             f"{' and '.join(what)} after the last verdict run. Re-run the verdicts to apply them. "
@@ -359,7 +362,8 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
         waiting = sum(1 for st in states if needs_you(st))
         out.append(
             "<div class='casestatus'>"
-            f"<a class='button primary' href='/claims'>{waiting} claim(s) need you</a>"
+            f"<a class='button primary' href='/claims'>{waiting} "
+            f"{'claim needs' if waiting == 1 else 'claims need'} you</a>"
             "<ul class='findings'>"
             + "".join(
                 f"<li><span class='verdict {e(css)}'>{e(label)}</span> {n}</li>"
@@ -558,7 +562,7 @@ def _ledger(states: list[ClaimState], current: str | None = None, compact: bool 
             f"<li{' class=on' if st.claim.id == current else ''}>"
             "<div class='row'><div class='head'><span class='meta'>"
             f"<a href='{e(link('/claim', id=st.claim.id))}'>{e(st.name)}</a> · {e(st.where)} · "
-            f"{e(st.claim.claim_type.value)}</span>"
+            f"{e(st.claim.claim_type.value.replace('_', ' '))}</span>"
             f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span></div>"
             f"<div class='text'>{q(st.claim.text)}</div>"
             + (f"<div class='needs'>{e(needs)}</div>" if needs else "")
@@ -617,7 +621,7 @@ def _claim_row(st: ClaimState, group: str) -> str:
     return (
         "<li><div class='row'><div class='head'><span class='meta'>"
         f"<a href='{e(link('/claim', id=st.claim.id))}'>{e(st.name)}</a> · {e(st.where)} · "
-        f"{e(st.claim.claim_type.value)}</span>"
+        f"{e(st.claim.claim_type.value.replace('_', ' '))}</span>"
         f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span></div>"
         f"<div class='text'>{q(st.claim.text)}</div>{note}</div></li>"
     )
@@ -868,7 +872,7 @@ def _msg(ln: ContextLine) -> str:
     """One message as a chat bubble; the record under review is highlighted."""
     shown = f" (shown as {q(ln.shown_as)})" if ln.shown_as else ""
     side = " out" if ln.direction == "outgoing" else ""
-    tag = "<span class='cited'>UNDER REVIEW</span>" if ln.is_target else ""
+    tag = "<span class='cited'>This record</span>" if ln.is_target else ""
     return (
         f"<div class='msg{side}{' target' if ln.is_target else ''}'>"
         f"<div class='who2'>{q(ln.sender)}{shown} · {e(ln.direction)}</div>"
@@ -1063,14 +1067,14 @@ def _groups(st: ClaimState) -> list[tuple[str, list[EvidenceItem]]]:
         "Supporting, not reviewed": [],
         "Contradicting or complicating": [],
         "Dismissed by the AI reviewer, not reviewed by you": [],
-        "Decided by an expert": [],
+        "Evidence the expert already decided": [],
     }
     for x in st.evidence:
         if x.stance == Stance.IRRELEVANT:
             continue
         by_expert = st.last_reviewer.get(x.id) == "expert" and x.status != EvidenceStatus.OPEN
         if by_expert:
-            groups["Decided by an expert"].append(x)
+            groups["Evidence the expert already decided"].append(x)
         elif st.contradiction_found and st.to_confirm(x):
             groups[CONTRADICTION_FOUND].append(x)
         elif x.stance in AGAINST:
@@ -1115,10 +1119,11 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
     c, d = st.claim, st.decision
     out = [
         "<div class='claim-head'>"
-        f"<h1>{e(st.name)} <span class='muted'>· {e(st.where)} · {e(c.claim_type.value)} · "
-        f"claim {e(c.status.value)}"
+        f"<h1>{e(st.name)} <span class='muted'>· {e(st.where)} · "
+        f"{e(c.claim_type.value.replace('_', ' '))} · wording {e(c.status.value)}"
         f"{' by the expert' if c.model_run_id is None else ' (model-proposed)'}</span></h1>"
-        f"<span class='mono muted'>Claim id {e(c.id)}</span></div>",
+        + (f"<span class='mono muted'>Claim id {e(c.id)}</span>" if st.name != c.id else "")
+        + "</div>",
         f"<blockquote class='claimtext'>{q(c.text)}</blockquote>",
     ]
     if st.paragraph_text:
@@ -1154,13 +1159,25 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
             f"{_flag_verdict_form(conn, page, st, back)}"
         )
     out.append("</div></div>")
-    out.append(_must_be_true(st, testability.used_repairs(conn, pipeline.view_run(conn))))
+    out.append(_must_be_true(conn, st, testability.used_repairs(conn, pipeline.view_run(conn))))
     out.append(_alternatives(conn, st))
+    if st.agent_fails:
+        proposed = testability.proposals(conn, pipeline.view_run(conn)).get(c.id)
+        out.append(_agent_fail_card(page, conn, st, proposed, back))
 
     out.append("<h2 id='evidence'>Evidence</h2>")
     claim_flags = F.active_flags(conn, c.id)
     flagged = {f.evidence_id for f in claim_flags if f.evidence_id}
-    if st.unlabeled:
+    d0 = st.decision
+    if st.unlabeled and d0 is not None and d0.verdict is Verdict.CONTRADICTED and not st.stale:
+        # The run's own note (pipeline.unlabeled_reason) stays in the report; here, plainly,
+        # and only while the verdict the rules gave is the contradiction that note leads to.
+        out.append(
+            "<p class='muted'>A check on the phone records failed on a core part of this claim, "
+            "so the verdict rules contradict it whatever the evidence says. The records that "
+            "check cites are the evidence; the model was not asked to label any.</p>"
+        )
+    elif st.unlabeled:
         out.append(f"<p class='muted'>{e(st.unlabeled)}</p>")
     if st.untested:
         out.append(f"<p><strong>{e(st.not_tested or '')}</strong></p>")
@@ -1172,7 +1189,9 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
             )
         out.append(_holdings(conn))
         out.append(
-            _agent_card(page, testability.proposals(conn, pipeline.view_run(conn)).get(c.id), back)
+            _agent_card(
+                page, conn, testability.proposals(conn, pipeline.view_run(conn)).get(c.id), back
+            )
         )
     groups = _groups(st)
     if not groups:
@@ -1188,7 +1207,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
         for x in sorted(group, key=lambda x: order.get(x.assumption_id, len(order))):
             a = by_assumption.get(x.assumption_id)
             if a is not None and a.id != shown_on:
-                out.append(f"<p class='muted'>Assumption: {e(a.text)}</p>")
+                out.append(f"<p class='muted'>Assumption: {plain_ids(conn, a.text)}</p>")
                 shown_on = a.id
             out.append(
                 evidence_card(
@@ -1237,13 +1256,15 @@ AGENT_CHECKED = (
 )
 
 
-def _agent_card(page: Page, x: testability.Proposed | None, back: str) -> str:
+def _agent_card(
+    page: Page, conn: sqlite3.Connection, x: testability.Proposed | None, back: str
+) -> str:
     """The testability step's proposal for a claim the filler left untested, for the examiner
     to accept or reject. Nothing in it is used until accepted, and then only from the next
     audit on. One card per claim; there is no accept-all."""
     if x is None:
         return ""
-    rows = "".join(f"<li>{e(str(a.get('text', '')))}</li>" for a in x.assumptions)
+    rows = "".join(f"<li>{plain_ids(conn, str(a.get('text', '')))}</li>" for a in x.assumptions)
     found = "".join(
         f"<li>&ldquo;{e(str(f.get('written', '')))}&rdquo;: {e(str(f.get('means', '')))}</li>"
         for f in x.lookups
@@ -1294,7 +1315,7 @@ def _agent_card(page: Page, x: testability.Proposed | None, back: str) -> str:
         "would make this claim testable</h2>"
         "<p class='muted'>The testability step asked the local model again, with the reasons "
         "code refused the first try. It only proposes.</p>"
-        f"<ul class='checklist'>{rows}</ul>"
+        f"<ul class='proposed'>{rows}</ul>"
         f"<details class='more'><summary>What code checked</summary><p>{e(AGENT_CHECKED)}{sheet}"
         "</p><p>What the claim and its paragraph name in the case, by code's lookups (the "
         "agent was shown these; only those in the claim's own words count):</p>"
@@ -1302,7 +1323,75 @@ def _agent_card(page: Page, x: testability.Proposed | None, back: str) -> str:
     )
 
 
-def _must_be_true(st: ClaimState, repaired: dict[str, testability.Used] | None = None) -> str:
+def _agent_fail_card(
+    page: Page,
+    conn: sqlite3.Connection,
+    st: ClaimState,
+    x: testability.Proposed | None,
+    back: str,
+) -> str:
+    """Rules 0.4.0: each failed check on an assumption the testability agent proposed and an
+    examiner accepted, waiting for the expert. A confirmed failure counts (the verdicts re-run at
+    once), or the expert rejects the proposal and the next audit does not use it. One form per
+    failure; there is no confirm-all."""
+    texts = {a.id: a.text for a in st.assumptions}
+    reason = (
+        "<input type='text' class='wide' name='reason' required maxlength='500' "
+        "placeholder='Why, in one sentence (recorded in the audit log)'><br>"
+    )
+    rows = []
+    for c in st.agent_fails:
+        fields = (
+            f"<input type='hidden' name='claim' value='{e(st.claim.id)}'>"
+            f"<input type='hidden' name='check' value='{e(c.id)}'>"
+            # the failure as shown, with its claim text and proposal: a later audit's other
+            # failure, or the same failure after a claim edit, is not confirmed with it
+            f"<input type='hidden' name='seen' value='{st.agent_seen[c.id]}'>{reason}"
+        )
+        rows.append(
+            f"<li><div><strong>{plain_ids(conn, texts.get(c.assumption_id, c.assumption_id))}"
+            f"</strong></div><div class='muted'>Check {e(c.check_name)} failed: "
+            f"{plain_ids(conn, c.detail)}</div>"
+            f"<div class='muted'>Searched: {plain_ids(conn, c.searched)}</div>"
+            + page.form(
+                "/testability/confirm",
+                fields + "<button type='submit'>Confirm this failure</button>",
+                back=back,
+                anchor="agent-fail",
+            )
+            + "</li>"
+        )
+    reject = ""
+    if x is not None:
+        fields = (
+            f"<input type='hidden' name='claim' value='{e(x.claim_id)}'>"
+            f"<input type='hidden' name='run' value='{e(x.run_id)}'>"
+            f"<input type='hidden' name='attempt' value='{x.attempt}'>{reason}"
+        )
+        reject = (
+            "<details><summary>Or reject the agent's proposal</summary>"
+            + page.form(
+                "/testability/decide",
+                fields + "<button type='submit' name='decision' value='reject'>Reject</button>",
+                back=back,
+                anchor="agent-fail",
+            )
+            + "</details>"
+        )
+    return (
+        "<section class='agent' id='agent-fail'>"
+        f"<h2><span class='badge b-agent'>{e(testability.PROPOSED_MARK)}</span> "
+        f"{e(CONTRADICTION_FOUND)}</h2>"
+        f"<p>{e(agent_fail_step(len(st.agent_fails)))}</p>"
+        f"<ul class='proposed'>{''.join(rows)}</ul>{reject}</section>"
+    )
+
+
+def _must_be_true(
+    conn: sqlite3.Connection,
+    st: ClaimState,
+    repaired: dict[str, testability.Used] | None = None,
+) -> str:
     """What has to be true for the claim, one line per assumption, core ones first, with what the
     verdict rules found. Read from the stored coverage; it decides nothing. `repaired`: the
     assumptions the shown audit took from the testability step under an examiner's acceptance
@@ -1313,6 +1402,14 @@ def _must_be_true(st: ClaimState, repaired: dict[str, testability.Used] | None =
     d = st.decision
     coverage = {cv.assumption_id: cv for cv in (d.coverage if d else ())}
     current = d is not None and not st.stale
+    # a failed check marks its assumption contradicted only when the verdict cites it, so the
+    # mark follows what the rules decided (a check the rules leave to the expert is not cited)
+    cited = set(d.cited_check_ids) if d is not None else set()
+    failed = {
+        r.assumption_id for r in st.checks if r.outcome is CheckOutcome.FAIL and r.id in cited
+    }
+    # rules 0.4.0: a failed check on an agent's assumption counts only once an expert confirms it
+    awaiting = {c.assumption_id for c in st.agent_fails}
     rows = []
     for a in sorted(st.assumptions, key=lambda a: not a.is_core):
         cv = coverage.get(a.id) if current else None
@@ -1321,13 +1418,18 @@ def _must_be_true(st: ClaimState, repaired: dict[str, testability.Used] | None =
         elif cv.covered:
             tier = cv.tier.value if cv.tier else "?"
             mark, said_ = "ok", f"Records found ({tier.replace('_', ' ')})"
+        elif a.id in failed:
+            mark, said_ = "con", "Contradicted by the records"
+        elif a.id in awaiting:
+            mark, said_ = "no", "A check failed: waiting for you to confirm"
         else:
             mark, said_ = "no", "Not established"
         role = "core" if a.is_core else "context, not needed for the verdict"
         if a.id in repaired:
             role += f" · {repaired[a.id].mark()}"
         rows.append(
-            f"<li class='{mark}'><span class='mark'></span><div><div>{e(a.text)}</div>"
+            f"<li class='{mark}'><span class='mark'></span>"
+            f"<div><div>{plain_ids(conn, a.text)}</div>"
             f"<div class='meta'>{e(GAP_TOPICS[a.kind])} · {e(role)}</div></div>"
             f"<span class='said'>{e(said_)}</span></li>"
         )
@@ -1537,7 +1639,8 @@ def evidence_page(conn: sqlite3.Connection, page: Page, evidence_id: str) -> str
             "<th>When (UTC)</th></tr></thead>"
             + "".join(
                 f"<tr><td>{s}</td><td>{e(who)}</td><td>{e(status)}</td>"
-                f"<td>{said(reason) if kind == 'expert' else e(reason)}</td><td>{e(at)}</td></tr>"
+                f"<td>{said(reason) if kind == 'expert' else e(reason)}</td>"
+                f"<td class='when'>{e(at)}</td></tr>"
                 for s, kind, who, status, reason, at in history
             )
             + "</table>"
@@ -1638,7 +1741,8 @@ def log_page(conn: sqlite3.Connection, page: Page, show_all: bool, show_views: b
     ]
     for seq, at, actor, action, payload, _h in rows:
         out.append(
-            f"<tr><td>{seq}</td><td>{e(at)}</td><td>{e(actor)}</td><td>{e(action)}</td>"
+            f"<tr><td>{seq}</td><td class='when'>{e(at)}</td><td>{e(actor)}</td>"
+            f"<td>{e(action)}</td>"
             f"<td class='mono'>{q(_short(payload))}</td></tr>"
         )
     out.append("</table>")
@@ -1780,7 +1884,7 @@ def activity_page(conn: sqlite3.Connection, page: Page, claim: str, show_all: bo
     for s in shown[cut:]:
         when = activity.duration(s.seconds, s.away) if s.is_view else ""
         out.append(
-            f"<tr><td>{s.seq}</td><td>{e(s.at_utc)}</td><td>{e(s.examiner)}</td>"
+            f"<tr><td>{s.seq}</td><td class='when'>{e(s.at_utc)}</td><td>{e(s.examiner)}</td>"
             f"<td>{e(s.where)}</td><td>{_step_item(s)}</td><td>{e(when)}</td></tr>"
         )
     out.append("</table>")
@@ -2011,7 +2115,8 @@ def setup_page(
                 recs = str(counts.get(sid, 0))
             out.append(
                 f"<tr><td>{q(fname)}<br><span class='mono'>{e(sid)}</span></td><td>{what}</td>"
-                f"<td>{cov}</td><td>{recs}</td><td class='mono'>{e(sha)}</td><td>{e(at)}</td></tr>"
+                f"<td>{cov}</td><td>{recs}</td><td class='mono'>{e(sha)}</td>"
+                f"<td class='when'>{e(at)}</td></tr>"
             )
         out.append("</table>")
     else:
@@ -2072,7 +2177,8 @@ def setup_page(
             out.append(
                 f"<tr id='claim-{e(cid)}'><td>{n}</td><td><a href='{e(link('/claim', id=cid))}'>"
                 f"{e(claim_name(conn, cid, c.paragraph_id))}</a></td>"
-                f"<td>{e(where)}</td><td>{e(c.claim_type.value)}</td><td>{e(c.status.value)}"
+                f"<td>{e(where)}</td><td>{e(c.claim_type.value.replace('_', ' '))}</td>"
+                f"<td>{e(c.status.value)}"
                 f"{'' if c.model_run_id is None else ' (model)'}</td><td>{q(c.text)}</td>"
                 f"<td>{_claim_buttons(page, cid, c.status.value, c.text, audit_busy)}</td></tr>"
             )

@@ -101,6 +101,7 @@ from core.ingest import coverage as import_coverage
 from core.ingest import forwarded, tested
 from core.llm.cloud import is_cloud_sha
 from core.report import hypotheses as alternatives_html
+from core.report import names as case_names
 from core.report import paired as paired_html
 from core.report import restore as restore_html
 from core.report import selection as selection_html
@@ -108,7 +109,6 @@ from core.report import timeline as timeline_html
 from core.review import activity, audit_log, device_names
 from core.review.status import (
     AWAITING_EXPERT,
-    CONFIRM_STEP,
     CONTRADICTION_FOUND,
     HOLDINGS,
     SUPPORTED_AI,
@@ -176,7 +176,24 @@ from core.review.withheld import summary as withheld_summary
 # says "Found by the challenge step", and the versions table says whether the step ran.
 # 0.23.0: the demo case's banner says the testability agent's answers, and the examiner who
 # accepted one, were scripted, when the demo's audit ran the step.
-REPORT_VERSION = "0.23.0"
+# 0.25.0 (after #163's 0.23.0 and #166's 0.24.0, so the numbers never clash): the review
+# screen's dashboard look: the title in IBM Plex Sans (no serif), cool grays, white cards with
+# 8px corners, notices as a gray note instead of a yellow box, unproven in gray and waiting on
+# the expert in navy. The expert's next steps count in the right number ("2 records", not
+# "record(s)"). Claims, checks and verdict traces name people, phones and accounts as the case
+# names them (Daniel Petrov, not person:dev:item1:owner), with the id in the hover title and a
+# new "Names used in this report" key from each name to its id. Count operators read as words
+# ("exactly 13", not "eq 13"). The Sources table shows plain labels (Cellebrite Excel export,
+# Curated report, File system) instead of stored values. Stored text, rules and log unchanged.
+# 0.26.0 (rules 0.4.0, #166; numbered 0.24.0 until #167's 0.25.0 merged first, so no
+# report was released as 0.24.0): a claim whose failed check on an assumption the
+# testability agent proposed waits for the expert says so, with the step to confirm it,
+# like the screen; the key to the verdicts says such a failure counts once an expert
+# confirms it.
+# 0.27.0 (after #166's 0.26.0): two people or phones the case names alike keep their ids
+# beside the name, and only the filler's own count wording ("holds eq 13") becomes words, so
+# quoted text stays verbatim.
+REPORT_VERSION = "0.27.0"
 
 
 @dataclass(frozen=True)
@@ -212,11 +229,11 @@ STANCE_LABEL = {
 }
 
 CSS = """
-:root { --fg:#141414; --muted:#57534b; --bg:#f7f5f0; --card:#fdfcfa; --line:#e4e0d8;
-  --line-strong:#cfc9bd; --panel:#efece5; --accent:#1d3557;
+:root { --fg:#1a2233; --muted:#5f6878; --bg:#f6f7f9; --card:#fff; --line:#e3e6eb;
+  --line-strong:#cfd4dc; --panel:#f0f2f5; --accent:#1d3557;
   --sup:#2f5d43; --sup-bg:#e6eee8; --sup-line:#bcd0c2; --supai:#5c5a1f;
   --con:#9a3a2c; --con-bg:#f4e5e1; --con-line:#e2c0b8;
-  --unp:#7f5a12; --unp-bg:#f5ecd6; --unp-line:#e3d2a8; --await:#7f5a12; --warn:#f5ecd6;
+  --unp:#5f6878; --unp-bg:#f0f2f5; --unp-line:#d9dde4; --await:#1d3557; --warn:#f5ecd6;
   --sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica,
     Arial, sans-serif;
   --serif: "Instrument Serif", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
@@ -227,27 +244,29 @@ body { font: 15px/1.6 var(--sans); color: var(--fg); background: var(--bg);
 ::selection { background: #d9e1ec; }
 a { color: var(--accent); text-underline-offset: 2px; }
 h1, h2, h3 { line-height: 1.2; color: var(--fg); }
-h1 { font: 400 44px/1.08 var(--serif); letter-spacing: -0.015em; margin: 8px 0 10px; }
+h1 { font: 600 28px/1.25 var(--sans); letter-spacing: -0.01em; margin: 8px 0 10px; }
 h2 { font-size: 18px; font-weight: 600; letter-spacing: -0.005em; margin: 48px 0 12px;
   padding-bottom: 8px; border-bottom: 1px solid var(--line); }
 h3 { font-size: 15px; font-weight: 600; }
 .muted { color: var(--muted); }
 .mono { font-family: var(--mono); font-size: 12px;
   word-break: break-all; }
-.banner { background: #fbf6ea; border: 1px solid #ecdfbf; border-radius: 12px;
-  padding: 14px 18px; margin: 16px 0; color: #4a3a14; font-size: 14px; }
-.banner strong { font-weight: 600; color: #3a2c0a; }
-p.warn { background: #fbf6ea; border: 1px solid #ecdfbf; border-radius: 12px;
-  padding: 12px 16px; color: #4a3a14; font-size: 14px; }
+.banner { background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+  padding: 12px 16px; margin: 16px 0; color: #3c4555; font-size: 14px;
+  box-shadow: inset 3px 0 0 var(--line-strong); }
+.banner strong { font-weight: 600; color: var(--fg); }
+p.warn { background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+  padding: 10px 16px; color: #3c4555; font-size: 14px;
+  box-shadow: inset 3px 0 0 var(--line-strong); }
 strong.warn { color: var(--unp); }
 table { border-collapse: separate; border-spacing: 0; width: 100%; margin: 12px 0;
   font-size: 13.5px; line-height: 1.5; background: var(--card); border: 1px solid var(--line);
-  border-radius: 12px; overflow: hidden; }
+  border-radius: 8px; overflow: hidden; }
 th, td { border-bottom: 1px solid var(--line); padding: 11px 14px; text-align: left;
   vertical-align: top; }
 tr:last-child td { border-bottom: 0; }
-th { background: transparent; font: 500 12.5px var(--sans); color: var(--muted); }
-.claim { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+th { background: #f9fafb; font: 500 12.5px var(--sans); color: var(--muted); }
+.claim { background: var(--card); border: 1px solid var(--line); border-radius: 8px;
   padding: 8px 24px 18px; margin: 22px 0; }
 .claim > blockquote { font: 500 19px/1.45 var(--sans); letter-spacing: -0.005em;
   background: none; border-left: 2px solid var(--accent); border-radius: 0;
@@ -266,7 +285,7 @@ th { background: transparent; font: 500 12.5px var(--sans); color: var(--muted);
 .v-con::before { content: "✕"; }
 .v-unp { color: var(--unp); background: var(--unp-bg); }
 .v-unp::before { content: "?"; }
-.v-await { color: var(--await); background: var(--unp-bg); border: 1px dashed var(--await); }
+.v-await { color: var(--await); background: #ebf0f7; border: 1px dashed var(--await); }
 .v-await::before { content: "?"; }
 .v-confirm { color: var(--con); background: var(--con-bg); border: 1px dashed var(--con); }
 .v-confirm::before { content: "✕"; }
@@ -445,7 +464,10 @@ def repair_marks(used: dict[str, testability.Used]) -> dict[str, str]:
 
 
 def verdict_trace(
-    conn: sqlite3.Connection, st: ClaimState, marks: dict[str, str] | None = None
+    conn: sqlite3.Connection,
+    st: ClaimState,
+    marks: dict[str, str] | None = None,
+    names: case_names.Names | None = None,
 ) -> str:
     """How a decided claim's verdict was reached, per core assumption: each evidence item, check
     or stipulation the rules relied on, or, for an assumption not covered, what was found for it
@@ -459,6 +481,7 @@ def verdict_trace(
     stips = {s.id: s for s in pipeline.load_stipulations(conn)}
     assumptions = {a.id: a for a in st.assumptions}
     marks = marks or {}
+    names = names or case_names.Names(conn)
 
     def row(label: str, cited: str, relied: bool = True) -> str:
         if cited in evidence:
@@ -503,7 +526,7 @@ def verdict_trace(
     listed: set[str] = set()
     for cv in decision.coverage:
         a = assumptions.get(cv.assumption_id)
-        label = e(a.text) if a else f"<span class='mono'>{e(cv.assumption_id)}</span>"
+        label = names.html(a.text) if a else f"<span class='mono'>{e(cv.assumption_id)}</span>"
         label += marks.get(cv.assumption_id, "")
         tier = cv.tier.value if cv.tier else "?"
         covered = f"covered at {e(tier)}" if cv.covered else "not covered"
@@ -529,7 +552,7 @@ def verdict_trace(
         c = checks.get(cited)
         aid = x.assumption_id if x else c.assumption_id if c else None
         a = assumptions.get(aid) if aid else None
-        rows.append(row(e(a.text) if a else "Cited by the verdict", cited))
+        rows.append(row(names.html(a.text) if a else "Cited by the verdict", cited))
     out = [
         "<h4>How this verdict was reached</h4>",
         "<p class='muted'>Models propose labels; the verdict rules decide (rules "
@@ -620,6 +643,31 @@ def regeneration(conn: sqlite3.Connection, run: dict | None) -> str:
 
 
 # ---------------------------------------------------------------- sections
+
+
+# The Sources table's plain labels for the stored kind, coverage and extraction values.
+SOURCE_KIND = {
+    "ufdr": "Cellebrite UFDR",
+    "cellebrite_excel": "Cellebrite Excel export",
+    "cellebrite_pdf": "Cellebrite PDF report",
+    "cellebrite_html": "Cellebrite HTML report",
+    "axiom": "Magnet AXIOM report",
+    "raw_zip": "Raw ZIP",
+    "govdoc": "Government document",
+    "synthetic": "Synthetic",
+}
+COVERAGE = {
+    "curated_report": "Curated report (examiner-selected; cannot show absence)",
+    "full_extraction": "Full extraction",
+    "unknown": "Not known (cannot show absence)",
+}
+EXTRACTION = {
+    "logical": "Logical",
+    "file_system": "File system",
+    "physical": "Physical",
+    "not_applicable": "Not applicable",
+    "unknown": "Not known",
+}
 
 
 def sources(conn: sqlite3.Connection) -> list[tuple]:
@@ -719,7 +767,8 @@ def _limitations(conn: sqlite3.Connection, srcs: list[tuple]) -> str:
         "contradicting a core assumption of the claim. A contradiction found by the stance "
         "labeler counts once an expert confirms it, with a reason recorded in the audit log; "
         "until then the verdict is unproven. A failed deterministic check contradicts a claim "
-        "without this step.</li>",
+        "without this step, unless the check failed on an assumption the testability agent "
+        "proposed: that failure counts once an expert confirms it.</li>",
         "<li>Unproven means the evidence Mabillon reviewed does not establish the claim. It does "
         "not mean the claim is false.</li>",
         "<li>A search that finds nothing does not show that something did not happen. Each "
@@ -832,6 +881,7 @@ def _claim_block(
     left_out: int = 0,
     challenged: frozenset[str] = frozenset(),
     marks: dict[str, str] | None = None,
+    names: case_names.Names | None = None,
 ) -> str:
     """One claim. `case` is None in a scoped bundle's report that holds only the records the
     verdicts cite, so the parts that read the whole phone are left out; `left_out` counts the
@@ -840,6 +890,7 @@ def _claim_block(
     assumptions that audit took from the testability step (repair_marks)."""
     marks = marks or {}
     claim, decision = st.claim, st.decision
+    names = names or case_names.Names(conn)
     out = [f'<div class="claim" id="{e(claim.id)}">']
     out.append(
         f"<h3>{e(st.name)} <span class='muted'>· {e(st.where)} · {e(claim.claim_type.value)} · "
@@ -864,12 +915,13 @@ def _claim_block(
             f"local AI reviewer and {st.open_support} not reviewed, waiting for an expert to agree "
             "or disagree. Until an expert accepts the key evidence, the claim stays unproven.</p>"
         )
-    if st.contradiction_found:
-        out.append(f"<p>{e(CONFIRM_STEP.format(n=st.open_contradicts))}</p>")
+    out += [f"<p>{e(step)}</p>" for step in st.confirm_steps()]
     if st.edited_after_run:
         out.append("<p><strong>The claim text changed after this audit.</strong> Re-run it.</p>")
     if decision is not None:
-        out.append("<ul>" + "".join(f"<li>{e(r)}</li>" for r in decision.reasons) + "</ul>")
+        out.append(
+            "<ul>" + "".join(f"<li>{names.html(r)}</li>" for r in decision.reasons) + "</ul>"
+        )
         out.append(
             f"<p class='muted'>Rule version {e(decision.rule_version)}, decided "
             f"{e(pipeline.iso(decision.decided_at_utc))} in {e(decision.pipeline_run_id)}.</p>"
@@ -894,7 +946,7 @@ def _claim_block(
                 else "no"
             )
             out.append(
-                f"<tr><td>{e(a.text)}{marks.get(a.id, '')}</td><td>{e(a.kind.value)}</td>"
+                f"<tr><td>{names.html(a.text)}{marks.get(a.id, '')}</td><td>{e(a.kind.value)}</td>"
                 f"<td>{'yes' if a.is_core else 'no'}</td><td>{e(a.tier.value)}</td>"
                 f"<td>{e(cov)}</td></tr>"
             )
@@ -907,11 +959,11 @@ def _claim_block(
         for c in st.checks:
             out.append(
                 f"<tr><td>{e(c.check_name)} {e(c.check_version)}</td><td>{e(c.outcome.value)}"
-                f"</td><td>{e(c.searched)}</td><td>{e(c.detail)}</td></tr>"
+                f"</td><td>{names.html(c.searched)}</td><td>{names.html(c.detail)}</td></tr>"
             )
         out.append("</table>")
     if st.unlabeled:
-        out.append(f"<p class='muted'>{e(st.unlabeled)}</p>")
+        out.append(f"<p class='muted'>{names.html(st.unlabeled)}</p>")
     if st.untested:
         out.append(f"<p><strong>{e(st.not_tested or '')}</strong></p>")
         if case is not None:
@@ -946,7 +998,7 @@ def _claim_block(
         out.append("</table>")
     elif decision is not None:
         out.append("<p class='muted'>No relevant evidence items were stored for this claim.</p>")
-    out.append(verdict_trace(conn, st, marks))
+    out.append(verdict_trace(conn, st, marks, names))
     if hidden:
         out.append(f"<p class='muted'>{hidden} retrieved records were labeled irrelevant.</p>")
     if left_out:
@@ -966,8 +1018,11 @@ def _claim_block(
     return "".join(out)
 
 
-def searches_section(states: list[ClaimState], srcs: list[tuple]) -> str:
+def searches_section(
+    states: list[ClaimState], srcs: list[tuple], names: case_names.Names | None = None
+) -> str:
     """What each completeness (absence or count) check searched, and the sources' coverage."""
+    shown = names.html if names else e
     fidelity = {s[0]: (s[4], s[2]) for s in srcs}
     rows: list[str] = []
     for st in states:
@@ -984,9 +1039,9 @@ def searches_section(states: list[ClaimState], srcs: list[tuple]) -> str:
                 or "none named"
             )
             rows.append(
-                f"<tr><td>{e(st.name)}</td><td>{e(a.text)}</td>"
+                f"<tr><td>{e(st.name)}</td><td>{shown(a.text)}</td>"
                 f"<td>{e(c.check_name)} {e(c.check_version)}</td><td>{e(c.outcome.value)}</td>"
-                f"<td>{e(c.searched)}</td><td>{e(searched_sources)}</td></tr>"
+                f"<td>{shown(c.searched)}</td><td>{e(searched_sources)}</td></tr>"
             )
     out = [
         "<h2>Searches and coverage</h2><p>Absence and count findings rest on searches. A search "
@@ -1237,12 +1292,13 @@ def render_report(
     manifest = (run or {}).get("manifest", {})
     challenged = challenge.found_items(conn, run)
     marks = repair_marks(testability.used_repairs(conn, run))
+    names = case_names.Names(conn)
     for st in states:
         named = len(set((manifest.get(st.claim.id) or {}).get("evidence", [])))
         left = max(named - len(st.evidence), 0) if scope is not None and st.decision else 0
-        parts.append(_claim_block(conn, st, case, left, challenged, marks))
+        parts.append(_claim_block(conn, st, case, left, challenged, marks, names))
 
-    parts.append(searches_section(states, srcs))
+    parts.append(searches_section(states, srcs, names))
     timeline = timeline or timeline_html.Settings()
     if whole:
         parts.append(timeline_html.report_section(conn, timeline))
@@ -1255,11 +1311,13 @@ def render_report(
     )
     for s in srcs:
         parts.append(
-            f"<tr><td>{q(s[4])}<br><span class='mono'>{e(s[0])}</span></td><td>{e(s[1])}</td>"
-            f"<td>{e(s[2])}</td><td>{e(s[3])}</td><td class='mono'>{e(s[5])}</td>"
+            f"<tr><td>{q(s[4])}<br><span class='mono'>{e(s[0])}</span></td>"
+            f"<td>{e(SOURCE_KIND.get(s[1], s[1]))}</td><td>{e(COVERAGE.get(s[2], s[2]))}</td>"
+            f"<td>{e(EXTRACTION.get(s[3], s[3]))}</td><td class='mono'>{e(s[5])}</td>"
             f"<td>{e(s[6])} {e(s[7])}</td></tr>"
         )
     parts.append("</table>")
+    parts.append(names.key_table())
 
     parts.append(regeneration(conn, run))
     parts.append("<h2>Versions</h2>")

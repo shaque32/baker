@@ -111,6 +111,7 @@ NEEDS_NO_JOB: dict[str, tuple[str, ...]] = {
     "/redecide": ("audit",),
     "/evidence/confirm": ("audit",),
     "/testability/decide": ("audit",),
+    "/testability/confirm": ("audit",),
     "/claims/propose": ("audit", "propose", "model_check"),
     "/model/check": ("audit", "propose", "model_check"),
     "/audit/start": ("audit", "propose", "model_check"),
@@ -614,6 +615,7 @@ class App:
             "/identity/look": lambda: self._look_for_links(conn),  # type: ignore[arg-type]
             "/redecide": lambda: self._redecide(conn),  # type: ignore[arg-type]
             "/testability/decide": lambda: self._decide_repair(conn, f),  # type: ignore[arg-type]
+            "/testability/confirm": lambda: self._confirm_agent_fail(conn, f),  # type: ignore[arg-type]
             "/model/check": lambda: self._check_model(),
             "/audit/start": lambda: self._start_audit(conn, f),  # type: ignore[arg-type]
             "/audit/stop": lambda: self._stop_audit(),
@@ -746,11 +748,35 @@ class App:
             f.get("reason", ""),
         )
         if choice == "reject":
-            return "Recorded: rejected. No audit uses the agent's proposal."
+            return "Recorded: rejected. No later audit uses the agent's proposal."
         return (
             "Recorded: accepted. The next audit tests the claim with these assumptions, if the "
             "agent gives them again for this claim's text; nothing changes until then."
         )
+
+    def _confirm_agent_fail(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        """Rules 0.4.0's step: confirm a failed check on an assumption the testability agent
+        proposed, with the expert's reason in the audit log, then re-run the verdicts so the
+        claim shows the result."""
+        if pipeline.view_run(conn) != pipeline.last_run(conn):
+            raise ReviewError(
+                "the latest audit has not finished; resume it before confirming a contradiction"
+            )
+        actions.confirm_agent_fail(
+            conn,
+            f.get("claim", ""),
+            f.get("check", ""),
+            self.actor,
+            f.get("reason", ""),
+            seen=f.get("seen", ""),
+        )
+        done = "Failed check confirmed"
+        try:
+            return f"{done}. {self._redecide(conn)}"
+        except audit_log.ChainBroken:
+            raise  # _post closes the case
+        except Exception as err:  # noqa: BLE001 - the confirm is recorded either way
+            return f"{done} and recorded. The verdicts were not re-run: {err}."
 
     def _confirm(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         """Rule 1b's one-click step: decide a contradiction waiting for the expert, with the

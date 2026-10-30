@@ -20,6 +20,7 @@ it with the committed files, so a stale or non-deterministic output fails `make 
 | `ufdr.py` | Deterministic synthetic UFDR packages: case01's phones from their Excel rows, plus builders for edge cases (`python -m eval.synthetic.ufdr`) |
 | `case01/` | Generated outputs (the `.xlsx` reports are rebuilt, not committed) |
 | `case03_*.py`, `case03/` | Case03, the challenge-step case (below), and its generated outputs |
+| `case04_*.py`, `case04/` | Case04, the testability step's held-out set (below), and its generated outputs |
 
 ## Case01 at a glance
 
@@ -50,6 +51,38 @@ events, `case03_key.py` the affidavit, the draft key and the draft assumption sh
 `case03_generate.py` renders them. Not part of `make eval` or any gate.
 `case03/SIGNING_SHEET.md` is the short version for Arsh; `case03/ANSWER_KEY_DRAFT.md` has every
 plant and why each counter-record is out of the fixed retrieval's reach. Both are drafts.
+
+## Case04: held-out set for the testability step
+
+```
+python -m eval.synthetic.case04_generate   # writes eval/synthetic/case04/
+python -m eval.run_pipeline --case case04 --mode model-free \
+    --assumption-spec eval/synthetic/case04/draft_assumptions.jsonl
+python -m eval.run_eval --gold eval/synthetic/case04/draft_gold.jsonl \
+    --predictions eval/out/case04/model_free/predictions.jsonl --report-only
+```
+
+The held-out set for the testability step's go/no-go, written without reading that step's
+code, prompt or tests. Forty-eight claims, six of each claim type, three in plain wording and
+three in affidavit wording (defined terms, aliases, relative or approximate times, indirect
+speech, references back, numbers in words) per type. Draft verdicts: 22 supported, 12
+contradicted, 14 unproven (24/12/12 as recorded before the story was written; a second blind read
+moved C37 and C40 to unproven, see `case04/SIGNING_SHEET.md`). 46 claims carry a planted
+wrong reading (`hazard`): a second person with the same name or nickname, a second number or
+account for the same person, a second phone, a near-miss window, one contact name on two phones,
+or similar words in another thread. The data holds the wrong candidate; the sheet names only the
+right one. Three phones, all set to America/Chicago, print times three ways: Item 1 in UTC+0,
+Item 2 in local time, Item 3 at a fixed UTC-6 (an hour behind the phone after the 2026-03-08 DST
+change). No name, number or handle is shared with case01 or case03.
+
+`case04_story.py` holds the events, `case04_key.py` the affidavit, the draft key (with each
+claim's `wording` and `hazard`) and the draft assumption sheet, `case04_generate.py` renders
+them. `case04/SIGNING_SHEET.md` is the short version for Arsh, with the count tables;
+`case04/ANSWER_KEY_DRAFT.md` has every claim's verdict, key evidence, hazard records and
+reasoning. Arsh signed the key and sheet on 2026-10-29; the signed copies are under
+`eval/gold/case04/`, and `eval/run_pipeline.py` uses them. It is the case the go/no-go reads
+(`TESTABILITY_GO_NO_GO_CASES` in `eval/run_pipeline.py`), and is not part of `make eval` or any
+merge gate.
 
 ## Draft answer key
 

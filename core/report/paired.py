@@ -29,7 +29,7 @@ SHOW_RECORDS = 50  # report records not found or found more than once, listed pe
 SHOW_THREADS = 50  # conversations with records not in the report, listed per pair
 
 CSS = """
-.pair { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+.pair { background: var(--card); border: 1px solid var(--line); border-radius: 8px;
   padding: 12px 16px; margin: 14px 0; }
 .pair h4 { margin: 4px 0 8px; font-size: 16px; }
 .pair .where { font: 400 12px var(--sans); color: var(--muted); overflow-wrap: anywhere; }

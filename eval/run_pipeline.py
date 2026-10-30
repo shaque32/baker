@@ -55,7 +55,10 @@ Modes:
                     the examiner (eval/simulated_expert.py). --testability-prompt names the
                     prompt; the default is the signed core/audit/prompts/agent_testability.md,
                     and any other (the draft in docs/prompts/) is reported as a draft with no
-                    go/no-go. Output in <out>/testability/.
+                    go/no-go. Output in <out>/testability/. The go/no-go (testability_go_no_go)
+                    is printed after the run and written to <out>/go_no_go.json; a decision
+                    needs Arsh's X, Y, cap and least denominator, a held-out case, --expert
+                    rubber-stamp and --repeat.
   --expert none     skip the simulated expert: one pass, no expert decisions (model-free and
                     real only; under rules 0.2.0 nothing can then be SUPPORTED).
   --reviewer none   every supporting item is dismissed, so nothing can be SUPPORTED. Shows what
@@ -78,7 +81,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import os
+import platform
 import re
+import sqlite3
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -91,7 +98,7 @@ from core.ingest.cellebrite_excel import CellebriteExcelImporter
 from core.ingest.govdoc import PdfGovDocIngester
 from core.report.html import quote_check_label, write_report
 from core.review import actions
-from eval.run_eval import load_jsonl
+from eval.run_eval import load_jsonl, score
 
 EVAL_TIME = datetime(2026, 10, 7, tzinfo=UTC)  # fixed, so runs are byte-for-byte repeatable
 GOLD_ACTOR = "expert:eval-gold-claims"
@@ -110,11 +117,12 @@ def synthetic_dir(case: str) -> Path:
 DRAFT_GOLD = {
     "case02": Path("eval/synthetic/case02/draft_gold.jsonl"),
     "case03": Path("eval/synthetic/case03/draft_gold.jsonl"),  # challenge-step case, ungated
+    "case04": Path("eval/synthetic/case04/draft_gold.jsonl"),  # testability held-out set, ungated
 }
 
 
 def gold_path(case: str) -> Path:
-    """The case's signed gold if there is one, else its draft key (case02, case03)."""
+    """The case's signed gold if there is one, else its draft key (case02, case03, case04)."""
     signed = Path("eval/gold") / case / "gold.jsonl"
     if signed.exists() and signed.read_text(encoding="utf-8").strip():
         return signed
@@ -145,6 +153,8 @@ def ensure_reports(case: str) -> dict:
             from eval.synthetic.case02_generate import generate
         elif case == "case03":
             from eval.synthetic.case03_generate import generate
+        elif case == "case04":
+            from eval.synthetic.case04_generate import generate
         else:
             raise SystemExit(f"{case}: reports missing; build them with that case's generator")
         generate(synthetic_dir(case), None)
@@ -162,6 +172,10 @@ def render_affidavit_pdf(case: str, path: Path) -> Path:
         from eval.synthetic.case03_generate import write_affidavit_pdf as write_case03
 
         return write_case03(path)
+    if case == "case04":
+        from eval.synthetic.case04_generate import write_affidavit_pdf as write_case04
+
+        return write_case04(path)
     if case != "case01":
         raise SystemExit(f"{case}: no affidavit renderer")
     from eval.synthetic import govdocs as g
@@ -354,12 +368,14 @@ def hostile_gate(preds: list[Prediction]) -> int:
 DRAFT_SHEETS = {
     "case01": Path("eval/probe_draft/case01_assumptions.jsonl"),
     "case02": Path("eval/synthetic/case02/case02_assumptions.jsonl"),
+    "case04": Path("eval/synthetic/case04/draft_assumptions.jsonl"),  # held-out set, ungated
 }
 
 
 def assumption_sheet(case: str) -> Path | None:
     """The case's assumption sheet: the signed copy under eval/gold/ if there is one, else the
-    draft (eval/probe_draft/ for case01, the hidden eval/synthetic/case02/ for case02)."""
+    draft (eval/probe_draft/ for case01, the hidden eval/synthetic/case02/ for case02,
+    eval/synthetic/case04/ for case04)."""
     signed = Path("eval/gold") / case / "assumptions.jsonl"
     if signed.exists():
         return signed
@@ -456,14 +472,21 @@ class _ReplayableFiller:
         return out
 
 
-# The testability step's go/no-go (plans/agentic.md), fixed before the run. Arsh sets X, Y and the
-# per-claim cap; until then each prints as not set and no go/no-go is given.
-TESTABILITY_X_PERCENT: float | None = None  # least share of sheet-testable refusals converted
-TESTABILITY_Y_BUDGET: dict[str, float] | None = None  # most calls and seconds, per claim
+# The testability step's go/no-go (plans/agentic.md), fixed before the run: X, Y, the per-claim
+# cap and the least denominator are Arsh's, picked on the decision card in the project thread
+# "Build agents into the audit" (2026-10-29 03:16Z; plans/testability-go-no-go.md). A value set
+# to None prints as not set and gives no go/no-go (testability_go_no_go). Y's seconds hold for
+# the MacBook Air M4 the go/no-go runs on; other hardware is not measured.
+TESTABILITY_X_PERCENT: float | None = 40.0  # least share of sheet-testable refusals converted
+TESTABILITY_Y_BUDGET: dict[str, float] | None = {"calls": 2, "seconds": 120}  # most, per claim
+TESTABILITY_CAP: int | None = 2  # the per-claim cap the go/no-go runs with
+TESTABILITY_MIN_TESTABLE: int | None = 15  # fewest sheet-testable refusals for a decision
 TESTABILITY_SIGNED_PROMPT = Path("core/audit/prompts/agent_testability.md")
 # Cases whose claims and signed sheets were written by someone other than the prompt's author,
-# held out for the go/no-go. None yet: case01 and case03 are development cases.
-TESTABILITY_GO_NO_GO_CASES: frozenset[str] = frozenset()
+# held out for the go/no-go: case04, written by a builder who never read the step's prompt, code,
+# tests or demo claims. case01 and case03 are development cases. The step still runs only on a
+# signed sheet, so case04 gives no go/no-go until Arsh signs its sheet.
+TESTABILITY_GO_NO_GO_CASES: frozenset[str] = frozenset({"case04"})
 
 
 def sim_examiner(actor: str):  # noqa: ANN201 - core.audit.testability.Examiner
@@ -544,6 +567,22 @@ def testability_summary(
         )
         for r, a in passed
     )
+    # The go/no-go's "no try names a different person, phone or window than the sheet" counts
+    # every such try, the ones the claim-only check rejects first included (Codex on #168).
+    no_go = sum(
+        a.no_go
+        or (
+            a.outcome == "outside"
+            and r.sheet is not None
+            and any(
+                m.startswith("names " + k)
+                for m in testability.mismatch(a.named, r.sheet)
+                for k in testability.NO_GO_KINDS
+            )
+        )
+        for r in reps
+        for a in r.attempts
+    )
     testable = [r for r in reps if r.sheet is not None]
     converted = [r for r in reps if r.assumptions]
     signed = prompt is None or prompt == TESTABILITY_SIGNED_PROMPT
@@ -570,7 +609,7 @@ def testability_summary(
         else None,
         "refused_by_code": sum(a.outcome == "refused" for a in tries),
         "outside_the_claims_words": sum(a.outcome == "outside" for a in tries),
-        "mismatch_person_phone_or_window": sum(a.no_go for a in tries),
+        "mismatch_person_phone_or_window": no_go,
         "mismatch_other_only": sum(
             a.outcome == "mismatch" and not a.no_go and r.sheet is not None
             for r in reps
@@ -582,6 +621,8 @@ def testability_summary(
         "seconds": round(step.seconds, 1),
         "x_percent": TESTABILITY_X_PERCENT,
         "y_budget": TESTABILITY_Y_BUDGET,
+        "cap_set": TESTABILITY_CAP,
+        "min_testable": TESTABILITY_MIN_TESTABLE,
         "go_no_go_case": case in TESTABILITY_GO_NO_GO_CASES,
     }
     return out
@@ -857,8 +898,8 @@ def print_summary(s: dict) -> None:
 
 
 def print_testability(t: dict) -> None:
-    """The testability step's measures and the go/no-go, which needs Arsh's X, Y and cap, the
-    signed prompt and a held-out case."""
+    """The testability step's measures. The go/no-go is read from them after the run
+    (report_go_no_go), since it also needs the repeat and the false-supported count."""
     rate = t["conversion_rate"]
     print(
         f"pipeline: testability ({t['prompt']} prompt, cap {t['cap']}): the filler left "
@@ -888,12 +929,197 @@ def print_testability(t: dict) -> None:
         f"{t['repairs_on_claims_the_sheet_leaves_untested']} on claims the sheet leaves untested;"
         f" {t['seconds']} s"
     )
-    unset = [k for k in ("x_percent", "y_budget") if t[k] is None]
-    if unset or t["prompt"] != "signed" or not t["go_no_go_case"]:
-        why = [f"{', '.join(unset)} not set by Arsh"] if unset else []
-        why += ["the prompt is a draft"] if t["prompt"] != "signed" else []
-        why += ["this is not a held-out go/no-go case"] if not t["go_no_go_case"] else []
-        print(f"pipeline: testability go/no-go: none given ({'; '.join(why)})")
+
+
+# The go/no-go's settings: what Arsh sets, in the order the reasons name them.
+GO_NO_GO_SETTINGS = ("x_percent", "y_budget", "cap_set", "min_testable")
+
+
+def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
+    """The Wilson 95% interval of k in n (n > 0)."""
+    p = k / n
+    centre = (p + z * z / (2 * n)) / (1 + z * z / n)
+    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / (1 + z * z / n)
+    return max(0.0, centre - half), min(1.0, centre + half)
+
+
+def testability_go_no_go(
+    t: dict,
+    *,
+    expert: str,
+    false_supported: int | None,
+    repeat: dict | None,
+    gold: str | None,
+) -> dict[str, object]:
+    """The testability step's go/no-go (plans/agentic.md, approved 2026-10-27) on one run's
+    measures `t` (testability_summary), against Arsh's X, Y, cap and least denominator.
+
+    A decision needs all four set, the signed prompt, a held-out case, the rubber-stamp expert
+    (the false-supported bar), --repeat (the byte-identical repeat) and Arsh's signed key
+    (`gold`, its key_status); otherwise none is given, with the reasons. With fewer
+    sheet-testable refusals than the least denominator the result is "insufficient", not a
+    decision. Then GO only if every bar holds: conversion at least X%, no try naming a different
+    person, phone or window than the sheet, 0 false supported, every output valid, the repeat
+    identical, and calls and seconds per claim within Y."""
+    why: list[str] = []
+    unset = [k for k in GO_NO_GO_SETTINGS if t.get(k) is None]
+    why += [f"{', '.join(unset)} not set by Arsh"] if unset else []
+    why += ["the prompt is a draft"] if t["prompt"] != "signed" else []
+    why += ["this is not a held-out go/no-go case"] if not t["go_no_go_case"] else []
+    if t.get("cap_set") is not None and t["cap"] != t["cap_set"]:
+        why.append(f"the run's cap is {t['cap']}, not Arsh's {t['cap_set']}")
+    if expert != "rubber-stamp":
+        why.append("the false-supported bar needs --expert rubber-stamp")
+    if repeat is None:
+        why.append("the byte-identical repeat needs --repeat")
+    if false_supported is None:
+        why.append("no gold key to score false supported")
+    elif gold != "signed":
+        why.append("the gold key is a draft, not signed by Arsh")
+    if why:
+        return {"decision": "none given", "why": why, "checks": []}
+    testable = int(t["of_them_the_sheet_makes_testable"])
+    if testable < max(1, int(t["min_testable"])):
+        return {
+            "decision": "insufficient",
+            "why": [
+                f"{testable} refusals the sheet makes testable, fewer than the "
+                f"{t['min_testable']} a decision needs"
+            ],
+            "checks": [],
+        }
+    converted = int(t["converted_and_accepted"])
+    low, high = wilson(converted, testable)
+    worked = int(t["claims_the_filler_left_untested"])  # >= testable > 0
+    y = t["y_budget"]
+    calls, seconds = t["tries"] / worked, t["seconds"] / worked
+    invalid = int(t["invalid_outputs"])
+    differ = [k for k in ("predictions", "model_calls") if not repeat[k]]  # type: ignore[index]
+    checks = [
+        {
+            "bar": f"conversion at least {t['x_percent']:g}%",
+            "value": f"{converted} of {testable} ({converted / testable:.0%}, "
+            f"Wilson 95% {low:.0%} to {high:.0%})",
+            "ok": converted / testable * 100 >= t["x_percent"],
+        },
+        {
+            "bar": "no try names a different person, phone or window than the sheet",
+            "value": f"{t['mismatch_person_phone_or_window']} such tries",
+            "ok": t["mismatch_person_phone_or_window"] == 0,
+        },
+        {
+            "bar": "0 false supported under the rubber-stamp expert",
+            "value": f"{false_supported} false supported",
+            "ok": false_supported == 0,
+        },
+        {
+            "bar": "100% valid outputs",
+            "value": f"{invalid} invalid of {t['tries']} calls",
+            "ok": invalid == 0,
+        },
+        {
+            "bar": "a byte-identical repeat",
+            "value": (f"different ({', '.join(differ)})" if differ else "identical")
+            + f", {repeat['calls_compared']} filler and step calls compared",  # type: ignore[index]
+            "ok": not differ,
+        },
+        {
+            "bar": f"at most {y['calls']:g} calls per claim",
+            "value": f"{calls:.2f} per claim the step worked on ({worked})",
+            "ok": calls <= y["calls"],
+        },
+        {
+            "bar": f"at most {y['seconds']:g} s per claim",
+            "value": f"{seconds:.1f} s per claim the step worked on ({worked})",
+            "ok": seconds <= y["seconds"],
+        },
+    ]  # fmt: skip
+    failed = [c["bar"] for c in checks if not c["ok"]]
+    return {"decision": "NO-GO" if failed else "GO", "why": failed, "checks": checks}
+
+
+def model_outputs(db: Path) -> list[tuple[str, str, str, str]]:
+    """The filler's and the testability step's model calls in a run's database, sorted: what a
+    byte-identical repeat must give again (the stance calls are compared through the
+    predictions)."""
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    try:
+        rows = conn.execute(
+            "SELECT r.purpose, c.prompt, c.raw_output, c.outcome FROM model_calls c "
+            "JOIN model_runs r ON r.id = c.model_run_id "
+            "WHERE r.purpose IN ('assumptions', 'testability')"
+        ).fetchall()
+    finally:
+        conn.close()
+    return sorted(tuple(r) for r in rows)
+
+
+def repeat_result(
+    first: list[Prediction], second: list[Prediction], first_db: Path, second_db: Path
+) -> dict[str, object]:
+    """Whether the repeat gave the same predictions and the same filler and step model calls,
+    byte for byte."""
+    a, b = model_outputs(first_db), model_outputs(second_db)
+    return {
+        "identical": first == second and a == b,
+        "predictions": first == second,
+        "model_calls": a == b,
+        "calls_compared": len(a),
+    }
+
+
+def hardware() -> dict[str, object]:
+    """What a go/no-go's calls and seconds were measured on, and when (wall-clock time, not the
+    eval's fixed clock)."""
+    memory = None
+    try:
+        memory = round(os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 2**30, 1)
+    except (AttributeError, ValueError, OSError):
+        pass
+    return {
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        "cpus": os.cpu_count(),
+        "memory_gb": memory,
+        "python": platform.python_version(),
+        "measured_at_utc": datetime.now(UTC).isoformat(timespec="seconds"),
+    }
+
+
+def report_go_no_go(
+    case: str,
+    out: Path,
+    expert: str,
+    first: list[Prediction],
+    second: list[Prediction] | None,
+) -> dict[str, object]:
+    """Read the run's testability measures, score its false supported, compare the repeat, and
+    write and print the go/no-go (<out>/go_no_go.json)."""
+    t = json.loads((out / "run.json").read_text(encoding="utf-8"))["testability"]
+    gold = load_jsonl(gold_path(case), GoldClaim)
+    false_supported = score(gold, first).n_false_supported if gold else None
+    status = key_status(gold_path(case)) if gold else None
+    repeat = None
+    if second is not None:
+        repeat = repeat_result(first, second, out / f"{case}.db", out / "repeat" / f"{case}.db")
+    result = testability_go_no_go(
+        t, expert=expert, false_supported=false_supported, repeat=repeat, gold=status
+    )
+    record = {
+        **result,
+        "case": case,
+        "gold": {"path": str(gold_path(case)), "status": status},
+        "testability": t,
+        "repeat": repeat,
+        "hardware": hardware(),
+    }
+    (out / "go_no_go.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    why = "; ".join(result["why"])  # type: ignore[arg-type]
+    print(f"pipeline: testability go/no-go: {result['decision']}" + (f" ({why})" if why else ""))
+    for c in result["checks"]:  # type: ignore[attr-defined]
+        mark = "pass" if c["ok"] else "FAIL"
+        print(f"pipeline: testability go/no-go: {mark}: {c['bar']}: {c['value']}")
+    return result
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -978,6 +1204,7 @@ def main(argv: list[str] | None = None) -> int:
             testability_cap=args.testability,
             testability_prompt=args.testability_prompt,
         )
+        second = None
         if args.repeat:
             second = run_once(
                 args.case,
@@ -992,6 +1219,9 @@ def main(argv: list[str] | None = None) -> int:
                 testability_cap=args.testability,
                 testability_prompt=args.testability_prompt,
             )
+        if args.testability is not None:
+            report_go_no_go(args.case, out, expert, first, second)
+        if second is not None:
             if first != second:
                 print("pipeline: FAIL, a repeat run gave different predictions")
                 return 1

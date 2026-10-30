@@ -119,6 +119,28 @@ def test_a_failed_core_check_decides_the_claim_whatever_the_evidence(claim_type,
         assert d.verdict is Verdict.CONTRADICTED, (rules.RULE_VERSION, evidence, d.reasons)
 
 
+@pytest.mark.parametrize("claim_type", list(c.ClaimType))
+def test_an_agents_failed_check_settles_the_claim_only_once_confirmed(claim_type):
+    """Rules 0.4.0: a failed check on an assumption the testability step proposed decides
+    nothing until an expert confirms it, so it must not settle the claim before then; once
+    confirmed it decides the claim whatever the evidence, as any failed check does."""
+    failed = _asm(1, K.TIME, core=True)
+    other = _asm(2, K.IDENTITY, core=True)
+    assumptions = [failed, other]
+    checks = [_chk(failed, O.FAIL), _chk(other, O.PASS)]
+    waiting = frozenset({checks[0].id})
+    assert pipeline.settled_by_check(assumptions, checks, waiting) is None
+    kw = {"agent_proposed": frozenset({failed.id, other.id})}
+    d = rules.decide_verdict(_claim(claim_type), assumptions, [], checks, [], RUN, **kw)
+    assert d.verdict is Verdict.UNPROVEN
+    kw["confirmed_fails"] = waiting
+    pool = _pool(assumptions)
+    rng = random.Random(f"agent-{claim_type}")  # noqa: S311 - a fixed test sample
+    for evidence in [[], pool, *([e] for e in pool), *(rng.sample(pool, 8) for _ in range(20))]:
+        d = rules.decide_verdict(_claim(claim_type), assumptions, evidence, checks, [], RUN, **kw)
+        assert d.verdict is Verdict.CONTRADICTED, (rules.RULE_VERSION, evidence, d.reasons)
+
+
 def test_only_a_failed_core_check_settles_a_claim():
     core, side = _asm(1, K.EVENT, core=True), _asm(2, K.EVENT, core=False)
     assert pipeline.settled_by_check([core, side], [_chk(side, O.FAIL)]) is None
