@@ -105,6 +105,8 @@ NEEDS_NO_JOB: dict[str, tuple[str, ...]] = {
     "/device/names": ("audit",),
     "/person/add": ("audit",),
     "/person/remove": ("audit",),
+    "/person/aliases": ("audit",),
+    "/person/alias/add": ("audit",),
     "/identity/decide": ("audit",),
     "/identity/link": ("audit",),
     "/identity/look": ("audit",),
@@ -610,6 +612,8 @@ class App:
             "/device/names": lambda: self._name_device(conn, f),  # type: ignore[arg-type]
             "/person/add": lambda: self._add_person(conn, f),  # type: ignore[arg-type]
             "/person/remove": lambda: self._remove_person(conn, f),  # type: ignore[arg-type]
+            "/person/aliases": lambda: self._set_aliases(conn, f),  # type: ignore[arg-type]
+            "/person/alias/add": lambda: self._add_alias(conn, f),  # type: ignore[arg-type]
             "/identity/decide": lambda: self._decide_link(conn, f),  # type: ignore[arg-type]
             "/identity/link": lambda: self._link_account(conn, f),  # type: ignore[arg-type]
             "/identity/look": lambda: self._look_for_links(conn),  # type: ignore[arg-type]
@@ -874,6 +878,21 @@ class App:
     def _remove_person(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         actions.remove_person(conn, f.get("id", ""), self.actor)
         return "Person removed. It applies on the next audit run."
+
+    def _set_aliases(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        names = [n for n in f.get("aliases", "").split(",") if n.strip()]
+        kept = actions.set_aliases(conn, f.get("id", ""), names, self.actor)
+        if not kept:
+            return "Other names cleared. It applies on the next audit run."
+        return f"Saved {', '.join(kept)}. Run the audit again so claims that use them are tested."
+
+    def _add_alias(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
+        from core.identity import aliases
+
+        pid = f.get("id", "")
+        have = [a.alias for a in aliases.stored(conn) if a.person_id == pid]
+        kept = actions.set_aliases(conn, pid, [*have, f.get("alias", "")], self.actor)
+        return f"Saved {', '.join(kept)}. Run the audit again so claims that use them are tested."
 
     def _decide_link(self, conn: sqlite3.Connection, f: dict[str, str]) -> str:
         status = IdentityLinkStatus(f.get("status", ""))

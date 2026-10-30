@@ -1,4 +1,5 @@
--- Baker canonical schema v0.5.0 (matches CONTRACTS_VERSION in core/contracts.py).
+-- Baker canonical schema v0.6.0 (matches CONTRACTS_VERSION in core/contracts.py).
+-- 0.6.0: person_aliases, the other names an expert gives a person (signed by Arsh 2026-10-30).
 -- 0.5.0: no table change; AssumptionParams.sent_by and each_way (signed by Arsh 2026-10-29).
 -- 0.4.0: messages.forwarded and messages.forwarded_from_raw (signed by Arsh 2026-10-16).
 -- A case database made under an older version is not upgraded in place: the CHECK on
@@ -68,6 +69,19 @@ CREATE TABLE persons (
     id         TEXT PRIMARY KEY,
     name       TEXT NOT NULL,
     created_by TEXT NOT NULL      -- 'expert:<name>' or 'govdoc:<claim_id>'; never the model
+);
+
+-- Other names an expert gives a person, as the government document writes them: a designation
+-- ("SUBJECT-1", "CW-1", "the DRIVER") or a nickname ("HAL"). Only an expert enters one, never a
+-- model. Code matches an alias whole, in any case. An alias that would also match another
+-- person is refused when entered, and an alias two persons share matches neither. Reports list
+-- every alias as a limitation.
+CREATE TABLE person_aliases (
+    person_id      TEXT NOT NULL REFERENCES persons(id),
+    alias          TEXT NOT NULL COLLATE NOCASE CHECK (length(trim(alias)) BETWEEN 1 AND 120),
+    created_by     TEXT NOT NULL CHECK (created_by LIKE 'expert:%'),
+    created_at_utc TEXT NOT NULL,
+    PRIMARY KEY (person_id, alias)
 );
 
 CREATE TABLE identity_links (

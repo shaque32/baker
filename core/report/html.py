@@ -97,6 +97,7 @@ from core.contracts import (
     display_tier,
 )
 from core.hypotheses import explain
+from core.identity import aliases
 from core.ingest import coverage as import_coverage
 from core.ingest import forwarded, tested
 from core.llm.cloud import is_cloud_sha
@@ -197,7 +198,9 @@ from core.review.withheld import summary as withheld_summary
 # ("counting only messages X sent") or that they went each way ("with at least one message
 # each way"), and the count check's lines say so ("Only messages X sent.", a side that sent
 # none). Rules and stored text otherwise unchanged.
-REPORT_VERSION = "0.28.0"
+# 0.29.0: Limitations list each other name the expert gave a person for the document
+# ("SUBJECT-1", "HAL"), with who gave it and when (core/identity/aliases.py, schema 0.6.0).
+REPORT_VERSION = "0.29.0"
 
 
 @dataclass(frozen=True)
@@ -708,6 +711,18 @@ def _limitations(conn: sqlite3.Connection, srcs: list[tuple]) -> str:
             f"finding.</strong> {e(by)} said on {e(at)} that the document's {said} is "
             f"{q(label)} ({e(did)}). Mabillon did not verify it. Every claim that names the "
             "phone this way was audited on that device.</li>"
+        )
+    people = dict(conn.execute("SELECT id, name FROM persons"))
+    given: dict[tuple[str, str, str], list[str]] = {}
+    for a in aliases.stored(conn):
+        given.setdefault((a.person_id, a.created_by, a.created_at_utc), []).append(a.alias)
+    for (pid, by, at), names in given.items():
+        said = ", ".join(q(n) for n in names)
+        items.append(
+            "<li><strong>Whom the document means by another name is an expert statement, not a "
+            f"finding.</strong> {e(by)} said on {e(at)} that the document's {said} is "
+            f"{q(people.get(pid, pid))}. Mabillon did not verify it. Every claim that names the "
+            "person this way was audited as that person.</li>"
         )
     for app, ident, person, by, at in conn.execute(
         "SELECT a.app, a.identifier, p.name, l.decided_by, l.decided_at_utc"

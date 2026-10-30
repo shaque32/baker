@@ -106,6 +106,7 @@ from core.contracts import (
     ModelRun,
     canonical_json,
 )
+from core.identity.aliases import person_names
 from core.review.device_names import logged_names, name_key
 
 # 0.2.0: the claim-only check (outcome "outside"), the checks each try ran ("check"), the
@@ -181,9 +182,11 @@ def _found(filler: LocalAssumptionFiller, texts: Sequence[str]) -> list[tuple[Lo
     """Each lookup the texts give, with the person, device or account id it names."""
     conn = filler.conn
     out: list[tuple[Lookup, str]] = []
-    for pid, name in conn.execute("SELECT id, name FROM persons ORDER BY id"):
+    # A person's name, its surname, then each alias the expert gave them, whole only
+    # (core/identity/aliases.py: an alias two persons share is in neither list).
+    for pid, (name, aliases) in person_names(conn).items():
         parts = name.split()
-        for words in dict.fromkeys([name, parts[-1]] if parts else []):
+        for words in dict.fromkeys([name, parts[-1], *aliases] if parts else aliases):
             w = _written(words, texts)
             if w is not None:
                 out.append((Lookup("person", w, f"a person in the case ({name})"), pid))
@@ -214,9 +217,9 @@ def _found(filler: LocalAssumptionFiller, texts: Sequence[str]) -> list[tuple[Lo
 
 def lookups(filler: LocalAssumptionFiller, claim: Claim, para: str) -> list[Lookup]:
     """What the claim's own words name in the case: people the expert created (whole name or
-    surname, as the filler resolves them), phones (label or a name the expert gave it) and
-    accounts (identifier, the same number written another way, or display name). Read-only,
-    in a fixed order, at most MAX_LOOKUPS."""
+    surname, as the filler resolves them, or an alias the expert gave them, whole), phones
+    (label or a name the expert gave it) and accounts (identifier, the same number written
+    another way, or display name). Read-only, in a fixed order, at most MAX_LOOKUPS."""
     found = [x for x, _id in _found(filler, (claim.text, para))]
     return list(dict.fromkeys(found))[:MAX_LOOKUPS]
 

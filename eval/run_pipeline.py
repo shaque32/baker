@@ -256,6 +256,10 @@ def build_case(case: str, db_path: Path) -> object:
         actions.stipulate_device_owner(
             conn, f"dev:{d['source_id']}", d["owner"], STIPULATION_ACTOR, _clock
         )
+    for d in meta["devices"]:  # the owners' other names in the document, as the expert gives them
+        if d.get("aliases"):
+            owner = f"person:dev:{d['source_id']}:owner"
+            actions.set_aliases(conn, owner, d["aliases"], STIPULATION_ACTOR, _clock)
     return conn
 
 

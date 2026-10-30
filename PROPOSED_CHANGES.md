@@ -961,3 +961,7 @@ called" field on the people page, the testability step's person lookups and the 
 limitations, the eval's case setup reading each case's aliases from its generated case.json, and
 tests that fail first. The filler's matching (`_name_spans` over name plus aliases) is the
 validation thread's PR, after this one.
+SIGNED by Arsh on 2026-10-30 at 23:08Z ("i sign it", project thread "Build agents into the
+audit"), in reply to the request to sign this entry. APPLIED on
+claude/project-thread-6i2msb-aliases: the three edits above, with <date> as 2026-10-30, and
+nothing else in either file.

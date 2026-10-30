@@ -757,6 +757,16 @@ def render_signing_sheet(gold: list[GoldClaim]) -> str:
     return "\n".join(out)
 
 
+# The other names the affidavit defines for each phone's owner (paragraph 1: "HALLORAN" or
+# "SUBJECT-1", known as "HAL"; OKAFOR, "SUBJECT-3", known as "DEZ", the "DRIVER"), as the expert
+# enters them at case setup (core/identity/aliases.py). The eval's case setup records them.
+ALIASES = {
+    "halloran": ["SUBJECT-1", "HAL"],
+    "ferro": ["SUBJECT-2"],
+    "okafor": ["SUBJECT-3", "DEZ", "the DRIVER"],
+}
+
+
 def case_json(rendered: list[Rendered], out: Path) -> dict:
     return {
         "case_id": "case04",
@@ -776,6 +786,7 @@ def case_json(rendered: list[Rendered], out: Path) -> dict:
                 "report_time": r.device.report_tz,
                 "extraction_type": r.device.extraction_type,
                 "owner": story.PEOPLE[r.device.owner],
+                "aliases": ALIASES.get(r.device.owner, []),
                 "messages": len(r.messages),
                 "calls": len(r.calls),
                 "contacts": len(r.contacts),
