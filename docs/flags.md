@@ -35,7 +35,8 @@ One click opens the form, one click saves it. No reason is required and nothing 
 
 ## The redacted summary
 
-The case page has "Download the redacted summary" (`/flags/summary.json`), and the CLI has
+The Audit log page has "Download the redacted summary" (the case page counts the flags and links
+there) (`/flags/summary.json`), and the CLI has
 `mabillon flags --db case.db export --pilot "Pilot A" --out flags.json`. The file holds counts, enum
 labels and versions only: flag kinds, the label or verdict at flag time and what the expert says
 it should be, claim types, record kinds, model file name and prompt version, and denominators

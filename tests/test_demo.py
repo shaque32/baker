@@ -10,6 +10,7 @@ import json
 import re
 import shutil
 import sqlite3
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -625,6 +626,9 @@ def test_tabs_come_in_three_groups_and_the_case_page_leads_with_the_audit(root):
     from core.review.status import claim_states
 
     status = home.split("<div class='casestatus'>", 1)[1].split("</div>", 1)[0]
-    for st in claim_states(connect(case.db)):  # the same pill styles as everywhere else
-        pill = f"<span class='verdict {pages._vcls(st)}'>{html.escape(st.label, quote=True)}"
-        assert pill in status, st.claim.id
+    groups = Counter(pages._group(st) for st in claim_states(connect(case.db)))
+    assert f"{groups['you']} claims need you</a>" in status  # the Claims screen's own grouping
+    for g, name, _sub in pages.GROUPS:
+        if g != "you" and groups[g]:
+            link = f"<a href='/claims#{g}'><span class='name t-{g}'>{name}</span> "
+            assert f"{link}<b>{groups[g]}</b>" in status, g
