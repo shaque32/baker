@@ -34,7 +34,8 @@ const evil = buildMime(
 assert.match(evil, /^Reply-To: "x@evil\.example, \\"Bob Lee <x@evil\.example>" <a@b\.co>$/m);
 assert.equal(displayName('a\\b'), '"a\\\\b"');
 
-// The handler, up to the send (no NOTIFY_TO, so it answers 503 once the checks pass).
+// The handler, up to the send (no NOTIFY_TO, so it sends the visitor back with "unavailable"
+// once the checks pass).
 const env = { SITE: "https://getmabillon.com", FROM: "f@getmabillon.com" };
 const good = { first_name: "Ana", last_name: "Lee", email: "ana@lab.example", role: "Other" };
 const post = (headers, fields = good) =>
@@ -47,15 +48,21 @@ const post = (headers, fields = good) =>
     env,
   );
 
-assert.equal((await post({ origin: "null" })).status, 503, "Origin: null is accepted");
-assert.equal((await post({})).status, 503, "no Origin is accepted");
-assert.equal((await post({ origin: "https://getmabillon.com" })).status, 503);
-assert.equal((await post({ origin: "https://www.getmabillon.com" })).status, 503);
+const back = (code, fields) =>
+  `https://getmabillon.com/demo.html?error=${code}${fields ? `&fields=${encodeURIComponent(fields)}` : ""}#form`;
+const unavailable = await post({ origin: "null" });
+assert.equal(unavailable.status, 303, "Origin: null is accepted");
+assert.equal(unavailable.headers.get("location"), back("unavailable"));
+assert.equal((await post({})).headers.get("location"), back("unavailable"), "no Origin is accepted");
+assert.equal((await post({ origin: "https://getmabillon.com" })).headers.get("location"), back("unavailable"));
+assert.equal((await post({ origin: "https://www.getmabillon.com" })).headers.get("location"), back("unavailable"));
 assert.equal((await post({ origin: "https://evil.example" })).status, 403);
 const trapped = await post({ origin: "null" }, { ...good, website: "x" });
 assert.equal(trapped.status, 303);
 assert.equal(trapped.headers.get("location"), "https://getmabillon.com/demo-thanks.html");
-assert.equal((await post({ origin: "null" }, { ...good, email: "bad" })).status, 400);
+const invalid = await post({ origin: "null" }, { ...good, first_name: " ", email: "bad" });
+assert.equal(invalid.status, 303);
+assert.equal(invalid.headers.get("location"), back("invalid", "first_name,email"));
 
 // The rate limit answers 429 once the binding says no.
 let calls = 0;
@@ -69,7 +76,7 @@ const send = () =>
     }),
     limited,
   );
-assert.equal((await send()).status, 503);
-assert.equal((await send()).status, 429);
+assert.equal((await send()).headers.get("location"), back("unavailable"));
+assert.equal((await send()).headers.get("location"), back("busy"));
 
 console.log("demo-form tests passed");

@@ -79,13 +79,15 @@ export function buildMime(f, { from, to, now = new Date(), id = crypto.randomUUI
   ].join("\r\n");
 }
 
-function page(status, title, text, site) {
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1"><title>${title} · Mabillon</title>
-<link rel="stylesheet" href="${site}/styles.css"></head><body><main class="prose"><div class="wrap"><article>
-<h1>${title}</h1><p>${text}</p><p><a href="${site}/demo.html">Back to the form</a></p>
-</article></div></main></body></html>`;
-  return new Response(html, { status, headers: { "content-type": "text/html; charset=utf-8" } });
+// Every problem a visitor can fix or retry goes back to the form, which shows the message in the
+// site's own style and refills what they typed (site/demo.js). Codes: invalid (with the bad
+// fields), busy, unreadable, unavailable.
+const FIELD_CODES = { "first name": "first_name", "last name": "last_name", "work email": "email" };
+
+export function backToForm(site, code, fields = []) {
+  const q = new URLSearchParams({ error: code });
+  if (fields.length) q.set("fields", fields.map((f) => FIELD_CODES[f]).join(","));
+  return Response.redirect(`${site}/demo.html?${q}#form`, 303);
 }
 
 export default {
@@ -106,7 +108,7 @@ export default {
       const ip = request.headers.get("cf-connecting-ip") || "unknown";
       const { success } = await env.LIMITER.limit({ key: ip });
       if (!success) {
-        return page(429, "Too many requests", "Please wait a minute and try again, or email support@getmabillon.com.", site);
+        return backToForm(site, "busy");
       }
     }
 
@@ -114,16 +116,15 @@ export default {
     try {
       form = await request.formData();
     } catch {
-      return page(400, "Something went wrong", "We could not read the form. Please try again.", site);
+      return backToForm(site, "unreadable");
     }
     const { fields, errors } = validate(form);
     // A filled hidden field means a bot: answer as if it worked, send nothing.
     if (fields.trap) return Response.redirect(`${site}/demo-thanks.html`, 303);
-    if (errors.length) {
-      return page(400, "Please check the form", `Missing or invalid: ${errors.join(", ")}.`, site);
-    }
+    if (errors.length) return backToForm(site, "invalid", errors);
     if (!env.NOTIFY_TO) {
-      return page(503, "Form not set up yet", "Please email support@getmabillon.com instead.", site);
+      console.error("NOTIFY_TO is not set");
+      return backToForm(site, "unavailable");
     }
 
     try {
@@ -132,7 +133,7 @@ export default {
       await env.MAIL.send(new EmailMessage(env.FROM, env.NOTIFY_TO, raw));
     } catch (err) {
       console.error("send failed", err && err.message);
-      return page(502, "We could not send that", "Please email support@getmabillon.com instead.", site);
+      return backToForm(site, "unavailable");
     }
     return Response.redirect(`${site}/demo-thanks.html`, 303);
   },

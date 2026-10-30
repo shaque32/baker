@@ -14,8 +14,8 @@
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preload" href="fonts/instrument-serif-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/ibm-plex-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="styles.css?v=720f61ae">
-<script src="main.js?v=9334d35a" defer></script>
+<link rel="stylesheet" href="styles.css?v=7007a249">
+<script src="main.js?v=07fb0c63" defer></script>
 </head>
 <body>
 <header class="site-head">
@@ -60,7 +60,7 @@
     <div class="wrap">
       <div class="section-head reveal">
         <h2>One claim, start to finish</h2>
-        <p>Step through a claim being checked, piece by piece. Click a step, or wait and the panel runs itself.</p>
+        <p>Step through a claim being checked, piece by piece. Choose a step, or wait and the panel runs itself.</p>
       </div>
       <figure class="panel walk" id="walk" aria-label="The Mabillon review screen checking an example claim, with example data">
         <div class="panel-bar">
@@ -71,13 +71,13 @@
           </button>
         </div>
         <ol class="stepper" role="tablist" aria-label="Steps in the check">
-          <li role="presentation"><button type="button" role="tab" id="walk-tab-1" aria-selected="true" tabindex="0" data-step="1" data-title="The claim" data-desc="Mabillon reads the affidavit and proposes its claims one at a time. You accept, edit or remove each one."><span class="n">1</span><span class="label">Claim</span></button></li>
-          <li role="presentation"><button type="button" role="tab" id="walk-tab-2" aria-selected="false" tabindex="-1" data-step="2" data-title="Assumptions" data-desc="Each claim is split into the facts it depends on: who sent it, when, and what it said."><span class="n">2</span><span class="label">Assumptions</span></button></li>
-          <li role="presentation"><button type="button" role="tab" id="walk-tab-3" aria-selected="false" tabindex="-1" data-step="3" data-title="Checks" data-desc="Code checks the sender, the time and the time zone. Any quote is matched word for word. A model labels records, never the claim."><span class="n">3</span><span class="label">Checks</span></button></li>
-          <li role="presentation"><button type="button" role="tab" id="walk-tab-4" aria-selected="false" tabindex="-1" data-step="4" data-title="Your call" data-desc="Nothing is supported until you accept the evidence. Your decision and reason go into the audit log under your name."><span class="n">4</span><span class="label">Your call</span></button></li>
-          <li role="presentation"><button type="button" role="tab" id="walk-tab-5" aria-selected="false" tabindex="-1" data-step="5" data-title="A failed check" data-desc="A failed check on a core fact contradicts the claim directly, with the check shown. You can still override it."><span class="n">5</span><span class="label">Failed check</span></button></li>
+          <li role="presentation"><button type="button" role="tab" id="walk-tab-1" aria-controls="walk-panel" aria-selected="true" tabindex="0" data-step="1" data-title="The claim" data-desc="Mabillon reads the affidavit and proposes its claims one at a time. You accept, edit or remove each one."><span class="n">1</span><span class="label">Claim</span></button></li>
+          <li role="presentation"><button type="button" role="tab" id="walk-tab-2" aria-controls="walk-panel" aria-selected="false" tabindex="-1" data-step="2" data-title="Assumptions" data-desc="Each claim is split into the facts it depends on: who sent it, when, and what it said."><span class="n">2</span><span class="label">Assump&shy;tions</span></button></li>
+          <li role="presentation"><button type="button" role="tab" id="walk-tab-3" aria-controls="walk-panel" aria-selected="false" tabindex="-1" data-step="3" data-title="Checks" data-desc="Code checks the sender, the time and the time zone. Any quote is matched word for word. A model labels records, never the claim."><span class="n">3</span><span class="label">Checks</span></button></li>
+          <li role="presentation"><button type="button" role="tab" id="walk-tab-4" aria-controls="walk-panel" aria-selected="false" tabindex="-1" data-step="4" data-title="Your call" data-desc="Nothing is supported until you accept the evidence. Your decision and reason go into the audit log under your name."><span class="n">4</span><span class="label">Your call</span></button></li>
+          <li role="presentation"><button type="button" role="tab" id="walk-tab-5" aria-controls="walk-panel" aria-selected="false" tabindex="-1" data-step="5" data-title="A failed check" data-desc="A failed check on a core fact contradicts the claim directly, with the check shown. You can still override it."><span class="n">5</span><span class="label">Failed check</span></button></li>
         </ol>
-        <div class="walk-panel" role="tabpanel" aria-label="Checking the claim" tabindex="0">
+        <div class="walk-panel" id="walk-panel" role="tabpanel" aria-labelledby="walk-tab-1" tabindex="0">
           <div class="panel-caption" aria-live="polite"><h3></h3><p></p></div>
           <div class="panel-body">
             <div class="doc">
@@ -225,7 +225,7 @@
   <section class="band cta" id="pilot">
     <div class="wrap">
       <h2>Bring your next case review.</h2>
-      <p>We'll walk you through Mabillon on a synthetic case. Or write to <span class="addr">support@getmabillon.com</span>.
+      <p>We'll walk you through Mabillon on a synthetic case. Or write to <a class="addr" href="mailto:support@getmabillon.com">support@getmabillon.com</a>.
         Please don't send any case material.</p>
       <a class="button" href="demo.html">Book a demo</a>
     </div>
@@ -238,7 +238,7 @@
       <a class="wordmark" href="./"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true" fill="none"><rect class="page" x="2.75" y="2.75" width="18.5" height="18.5" rx="5"/><path class="ln" d="M12 6.5v11" stroke-width="1.5" stroke-linecap="round"/><path class="ln" d="M6.75 9h2.5M6.75 12h2.5M6.75 15h2.5" stroke-width="1.5" stroke-linecap="round" opacity="0.9"/><path class="ln" d="M14.75 9h2.5M14.75 12h1.25" stroke-width="1.5" stroke-linecap="round" opacity="0.55"/></svg>Mabillon</a>
       <p>Named for Jean Mabillon, whose <i>De re diplomatica</i> (1681) set out the first rules for testing whether a document is genuine.</p>
     </div>
-    <p>© 2026 Mabillon · <a href="privacy.html">Privacy</a> · <span class="addr">support@getmabillon.com</span><br>
+    <p>© 2026 Mabillon · <a href="privacy.html">Privacy</a> · <a class="addr" href="mailto:support@getmabillon.com">support@getmabillon.com</a><br>
       Cellebrite and Magnet AXIOM are trademarks of their owners. Mabillon is not affiliated with them.</p>
   </div>
 </footer>
