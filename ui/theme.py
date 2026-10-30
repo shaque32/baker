@@ -124,6 +124,34 @@ nav.tabs .sep { flex: none; height: 1px; margin: 8px 10px; background: var(--lin
 .casestatus .findings { display: flex; flex-wrap: wrap; gap: 8px 16px; list-style: none;
   padding: 0; margin: 0; }
 .casestatus .verdict { margin: 0 2px 0 0; }
+.casestatus .findings a { display: inline-flex; align-items: center; gap: 6px; color: var(--fg);
+  text-decoration: none; font-size: 13.5px; }
+.casestatus .findings a:hover .name { color: var(--fg); }
+.casestatus .findings .name { display: inline-flex; align-items: center; gap: 7px;
+  color: var(--muted); }
+.casestatus .findings .name::before { content: ""; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--line-strong); }
+.casestatus .findings .t-con::before { background: var(--con); }
+.casestatus .findings .t-sup::before { background: var(--sup); }
+.casestatus .findings .t-unp::before { background: var(--card);
+  box-shadow: inset 0 0 0 1.5px var(--unp); }
+.casestatus .findings b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.banner + .banner { margin-top: -12px; }
+.banner details > summary { cursor: pointer; }
+.banner details[open] > summary { margin-bottom: 6px; }
+.banner details p { margin: 0 0 4px; }
+ul.setuplist { list-style: none; padding: 0; margin: 0 0 10px; background: var(--card);
+  border: 1px solid var(--line); border-radius: var(--radius); }
+ul.setuplist li { padding: 10px 16px; border-top: 1px solid var(--line); line-height: 1.5; }
+ul.setuplist li:first-child { border-top: 0; }
+dl.record { display: grid; grid-template-columns: max-content 1fr; gap: 6px 20px;
+  margin: 0 0 12px; font-size: 13px; color: var(--muted); }
+dl.record dt { font-weight: 500; }
+dl.record dd { margin: 0; max-width: 78ch; }
+@media (max-width: 640px) {
+  dl.record { grid-template-columns: 1fr; gap: 0; }
+  dl.record dd { margin: 0 0 8px; }
+}
 details.custody { margin: 16px 0; }
 details.custody > summary { font-size: 13.5px; color: var(--muted); }
 
