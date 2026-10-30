@@ -1,4 +1,4 @@
-## 2026-10-30: Case page leads with what waits on the expert; flags tool moves to the Audit log page
+## 2026-10-30: Case page leads with what waits on the expert; flags tool moves to the Audit log page (#177)
 - Changed: The case page (`ui/pages.py` `overview()`) was a run log, a stipulation form, a flags
   tool and the status all at one weight. It now opens on one action ("N claims need you") with the
   verdict counts grouped as the Claims screen groups them, each linking to its section. The format
@@ -9,7 +9,7 @@
   only form. Run id, versions, audit log, flags count and custody hashes sit in a quiet "Record"
   list. A hash chain that fails verification now shows as an error at the top of the case page.
   The flags tool (pilot name and "Download the redacted summary") moved to the Audit log page.
-- Where: branch case-page-distill (local only)
+- Where: PR #177
 - Verified: make check (see the PR description for the run); tests changed only where content
   moved: tests/test_flags.py (summary download now on /log), tests/test_demo.py (case status
   counts follow the Claims screen grouping instead of one pill per label). Screenshots at 1440
