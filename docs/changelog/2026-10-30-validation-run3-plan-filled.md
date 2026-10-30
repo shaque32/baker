@@ -1,4 +1,4 @@
-## 2026-10-30: Run 3 plan filled at the tag commit e5ce04b (validation)
+## 2026-10-30: Run 3 plan filled at the tag commit e5ce04b (validation, #176)
 - Changed: `eval/validation/PREREGISTERED_v3.md` (draft since #165) now names e5ce04b, where #172
   merged, as the commit for the tag `validation-v1-run3`.
   - It completes the change table with #166 to #175. It says which signed files changed (rules
@@ -14,7 +14,7 @@
     write-up.
   Why: the plan needs the replay at the tag before it binds, and the Grok audit on #165 asked
   for the check changes by direction.
-- Where: branch claude/project-thread-ds0ify (the plan-binding PR)
+- Where: PR #176 (branch claude/project-thread-ds0ify)
 - Verified: on this container, 2026-10-30. Replay of run 2's recorded 14B answers through
   e5ce04b's code (no model), with the checks on a copy of run 2's case database, made both with
   and without the run driver's R4 links. The check comparison runs each core check with the
