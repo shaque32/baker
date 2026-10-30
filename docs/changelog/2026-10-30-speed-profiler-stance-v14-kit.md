@@ -1,4 +1,4 @@
-## 2026-10-30: Speed work, step 1: a run profiler and the stance v1.4 test kit (#PR)
+## 2026-10-30: Speed work, step 1: a run profiler and the stance v1.4 test kit (#182)
 - Changed: Two eval-only tools for making the local audit faster without changing what it
   decides; no product behavior changes.
   - `eval/run_profile.py` 1.0.0 (`python -m eval.run_profile --db <case.db>`): read-only, no
@@ -16,7 +16,7 @@
     supports, no worse than v1.1 on the signed bars, recall within one item, at least 15% less
     time per stance call on a timed case01 audit); `bash eval/probe/mac_v14.sh` runs it on the
     Mac (about 3 to 4 hours) and `eval/probe/v14/score.py` decides.
-- Where: branch claude/project-thread-lt1vdp
+- Where: PR #182
 - Verified: tests/test_run_profile.py and tests/test_stance_v14_order.py (synthetic rows and a
   stand-in model). The profiler on the case04 database from Arsh's Mac go/no-go run (main
   67dabdb, MacBook Air M4 24 GB, Qwen3-14B Q4_K_M, flash runtime, 2026-10-29, reported): about
