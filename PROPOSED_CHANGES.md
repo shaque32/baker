@@ -921,8 +921,13 @@ second person named "SUBJECT-1", which nothing ties to Halloran's phone.
 What the table holds (agreed with the validation thread, which owns the filler): each alias
 belongs to one person an expert created, and only an expert enters one, never a model. Code
 matches an alias whole, in any case, with the filler's word-boundary rules. An alias that would
-also match another person (their name, surname or alias) is refused when entered, as `add_person`
-refuses an ambiguous name today, and an alias two persons share matches neither. Entering or
+also match another person (their whole name, their surname or an alias of theirs) is refused when
+entered, as `add_person` refuses an ambiguous name today, and so is an alias with no letter or
+digit; an alias two persons share matches neither. An alias is matched whole only: the surname
+rule (a bare "HALLORAN" for "Owen Halloran") applies to the person's name, never to an alias, so
+"Big Owen" never matches a bare "Owen". One reader in `core/identity` gives each person's name
+and aliases apart (`person_names(conn) -> {person_id: (name, [aliases])}`, shared aliases
+dropped) for the filler and the testability step. Entering or
 removing one is an audit-log entry (`person.alias.add`, `person.alias.remove`). Reports list
 every alias as a limitation, beside the device-owner stipulations, because a check can rest on
 it. The bundle carries the table like every other (`core/bundle/export.py` exports every table
