@@ -11,7 +11,7 @@ sets no cookies. It is not part of the Mabillon app and makes no call from `core
 - Origin: a post naming another site is refused. "null" or no Origin is accepted, because
   browsers send that under some referrer and privacy settings.
 - Rate limit: 5 submits a minute per IP address (the `LIMITER` binding in `wrangler.toml`);
-  more get "Too many requests".
+  more are sent back to the form with a "please wait a minute" message.
 - Tests: `node workers/demo-form/test.mjs` (no dependencies).
 
 ## Setup (Cloudflare dashboard, about 10 minutes)
@@ -26,4 +26,8 @@ sets no cookies. It is not part of the Mabillon app and makes no call from `core
 4. Test: submit the form on getmabillon.com/demo.html. The email arrives from
    demo-form@getmabillon.com.
 
-Until step 2 is done the Worker answers "Form not set up yet" and points to the support address.
+Every problem a visitor can fix or retry (a missing or invalid field, the rate limit, an
+unreadable post, a send that failed or a missing `NOTIFY_TO`) redirects 303 to
+`demo.html?error=<code>`, where `site/demo.js` shows the message in the site's style and refills
+the fields. Until step 2 is done every valid post comes back as "unavailable", which points to
+the support address, and the Worker logs "NOTIFY_TO is not set".

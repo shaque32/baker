@@ -92,6 +92,7 @@ const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       btn.setAttribute("tabindex", active ? "0" : "-1");
       btn.dataset.done = String(stepN < n);
       btn.style.setProperty("--p", active ? String(frac) : "0");
+      if (active) panel.querySelector(".walk-panel").setAttribute("aria-labelledby", btn.id);
     });
     if (lastCapStep !== n) {
       lastCapStep = n;
