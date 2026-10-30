@@ -257,3 +257,18 @@ def test_the_false_supported_bar_counts_only_the_claims_the_agent_changed(tmp_pa
     monkeypatch.setattr(rp, "agent_changed", lambda db: frozenset({"C01", "C04"}))
     r = rp.report_go_no_go("case01", tmp_path, "rubber-stamp", [*first, wrong], [*second, wrong])
     assert r["decision"] == "NO-GO" and r["why"][0].startswith("0 false supported on the claims")
+
+
+def test_no_claim_the_agent_changed_never_passes_the_false_supported_bar(tmp_path, monkeypatch):
+    """An empty set has no false supported to find, so it is no evidence (Baker Eval on
+    #183)."""
+    first = _run(tmp_path, monkeypatch)
+    second = _run(tmp_path / "repeat", monkeypatch)
+    monkeypatch.setattr(rp, "agent_changed", lambda db: frozenset())
+    r = rp.report_go_no_go("case01", tmp_path, "rubber-stamp", first, second)
+    (fs,) = [c for c in r["checks"] if c["bar"].startswith("0 false supported")]
+    assert not fs["ok"] and r["decision"] == "NO-GO", r
+    assert fs["value"] == (
+        "no claim the agent changed, so the bar has nothing to score; 0 in the whole run, "
+        "for information"
+    )

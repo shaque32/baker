@@ -962,9 +962,9 @@ def testability_go_no_go(
     sheet-testable refusals than the least denominator the result is "insufficient", not a
     decision. Then GO only if every bar holds: conversion at least X%, no try naming a different
     person, phone or window than the sheet, 0 false supported on the claims the agent changed
-    (`false_supported`, of `changed` such claims; `whole_run` is the whole run's count, shown
-    for information), every output valid, the repeat identical, and calls and seconds per
-    claim within Y."""
+    (`false_supported`, of `changed` such claims, at least one; `whole_run` is the whole run's
+    count, shown for information), every output valid, the repeat identical, and calls and
+    seconds per claim within Y."""
     why: list[str] = []
     unset = [k for k in GO_NO_GO_SETTINGS if t.get(k) is None]
     why += [f"{', '.join(unset)} not set by Arsh"] if unset else []
@@ -1014,14 +1014,19 @@ def testability_go_no_go(
         {
             "bar": "0 false supported on the claims the agent changed, under the rubber-stamp "
             "expert",
-            "value": f"{false_supported} false supported"
-            + (f" on the {changed} claims the agent changed" if changed is not None else "")
+            "value": (
+                "no claim the agent changed, so the bar has nothing to score"
+                if changed == 0
+                else f"{false_supported} false supported"
+                + (f" on the {changed} claims the agent changed" if changed is not None else "")
+            )
             + (
                 f"; {whole_run} in the whole run, for information"
                 if whole_run is not None
                 else ""
             ),
-            "ok": false_supported == 0,
+            # no changed claim is no evidence, so it never passes (Baker Eval on #183)
+            "ok": false_supported == 0 and changed != 0,
         },
         {
             "bar": "100% valid outputs",
@@ -1102,7 +1107,10 @@ def agent_changed(db: Path) -> frozenset[str]:
     testability step made and the examiner accepted (testability.accepted_in, the
     assumptions rules.decide_verdict got as agent_proposed). Arsh, 2026-10-30 (decision card):
     the false-supported bar counts only these. On case04's go/no-go the one false supported,
-    C39, was a claim the step never touched, so it failed the bar with the agent off too."""
+    C39, was a claim the step never touched, so it failed the bar with the agent off too.
+    The step reaches a verdict only through an accepted proposal: a refused or rejected try
+    is a log entry, and the expert's own inputs (persons, aliases, stipulations) apply with
+    the step off, so they count in the whole run's figure."""
     from core.audit import testability
 
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
