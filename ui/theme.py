@@ -230,7 +230,7 @@ select { appearance: none; -webkit-appearance: none; padding-right: 32px; cursor
     linear-gradient(135deg, var(--muted) 50%, transparent 50%);
   background-position: calc(100% - 17px) 52%, calc(100% - 12px) 52%;
   background-size: 5px 5px; background-repeat: no-repeat; }
-input::placeholder, textarea::placeholder { color: #9b978f; }
+input::placeholder, textarea::placeholder { color: #75716a; }
 input[type=text]:hover, input[type=password]:hover, input[type=number]:hover, textarea:hover,
 select:hover { border-color: #bdb9b0; }
 input[type=text]:focus, input[type=password]:focus, input[type=number]:focus,

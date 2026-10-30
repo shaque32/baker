@@ -1664,12 +1664,19 @@ def new_claim_page(conn: sqlite3.Connection, page: Page) -> str:
     n = 1
     while f"C{n:02d}" in ids:
         n += 1
+    groups: dict[str, list[str]] = {}
+    for pid, pg, no, label, text, title in paras:
+        groups.setdefault(title or "", []).append(
+            f"<option value='{e(pid)}'>Page {pg}, paragraph "
+            f"{e(label or '#' + str(no))}: {e(text[:70])}</option>"
+        )
     opts = "".join(
-        f"<option value='{e(pid)}'>{e(title[:40])}: page {pg}, paragraph "
-        f"{e(label or '#' + str(no))}: {e(text[:70])}</option>"
-        for pid, pg, no, label, text, title in paras
+        f"<optgroup label='{e(title)}'>{''.join(items)}</optgroup>"
+        for title, items in groups.items()
     )
-    types = "".join(f"<option value='{t.value}'>{t.value}</option>" for t in ClaimType)
+    types = "".join(
+        f"<option value='{t.value}'>{e(t.value.replace('_', ' '))}</option>" for t in ClaimType
+    )
     body = "<h1>Add a claim</h1>"
     if not paras:
         body += "<p>Import the government document first.</p>"
@@ -1743,7 +1750,13 @@ def log_page(conn: sqlite3.Connection, page: Page, show_all: bool, show_views: b
         out.append(
             f"<tr><td>{seq}</td><td class='when'>{e(at)}</td><td>{e(actor)}</td>"
             f"<td>{e(action)}</td>"
-            f"<td class='mono'>{q(_short(payload))}</td></tr>"
+            f"<td class='mono'>{q(_short(payload, 120))}"
+            + (
+                f"<details><summary>Full entry</summary>{q(payload)}</details>"
+                if len(payload) > 120
+                else ""
+            )
+            + "</td></tr>"
         )
     out.append("</table>")
     return page.wrap("Audit log", "".join(out))
@@ -1819,12 +1832,14 @@ def activity_page(conn: sqlite3.Connection, page: Page, claim: str, show_all: bo
         "examiner's name, the page and the evidence it listed, beside the examiner's decisions. "
         "The hash chain covers these entries like every other. Nothing here leaves this "
         "computer.</p>",
+        "<details><summary>How time on page is counted</summary>"
         "<p class='muted'>Time on page runs from opening a page to the next page opened. "
         "The screen runs no scripts, so Mabillon cannot tell what was on screen or read; a "
         f"stretch over {idle} minutes may include time away, and a page whose end was not "
         "recorded (the screen closed, or the next step came from elsewhere) is not timed; both "
         "are counted apart from totals. "
-        "\u201cListed\u201d means the page linked to the item, not that it was opened.</p>",
+        "\u201cListed\u201d means the page linked to the item, not that it was opened.</p>"
+        "</details>",
         "<p><a href='/activity.csv'>Download the trail (CSV)</a></p>",
         _report_switch(conn, page),
     ]
@@ -2115,7 +2130,8 @@ def setup_page(
                 recs = str(counts.get(sid, 0))
             out.append(
                 f"<tr><td>{q(fname)}<br><span class='mono'>{e(sid)}</span></td><td>{what}</td>"
-                f"<td>{cov}</td><td>{recs}</td><td class='mono'>{e(sha)}</td>"
+                f"<td>{cov}</td><td>{recs}</td>"
+                f"<td class='mono' title='{e(sha)}'>{e(sha[:16])}…</td>"
                 f"<td class='when'>{e(at)}</td></tr>"
             )
         out.append("</table>")
@@ -2462,14 +2478,6 @@ def _claim_buttons(page: Page, cid: str, status: str, text: str, locked: bool) -
             if accept
             else ""
         )
-        # A removed claim leaves the table, so its form comes back to the section instead.
-        + page.form(
-            "/claim/edit",
-            hidden + "<button type='submit' name='status' value='removed'>Remove</button>",
-            "inline",
-            "/setup",
-            "claims",
-        )
         + page.form(
             "/claims/move",
             hidden + "<button type='submit' name='delta' value='-1'>Up</button>"
@@ -2488,6 +2496,14 @@ def _claim_buttons(page: Page, cid: str, status: str, text: str, locked: bool) -
             anchor=f"claim-{cid}",
         )
         + "</details>"
+        # A removed claim leaves the table, so its form comes back to the section instead.
+        + page.form(
+            "/claim/edit",
+            hidden + "<button type='submit' name='status' value='removed'>Remove</button>",
+            "inline",
+            "/setup",
+            "claims",
+        )
     )
 
 
@@ -2546,9 +2562,9 @@ def run_page(
         return page.wrap("Audit progress", "".join(out), refresh=5 if running else None)
     out.append(
         f"<p>Run <span class='mono'>{e(run['id'])}</span>, started {e(run['started_at_utc'])}, "
-        f"status <strong>{e(run['status'])}</strong>"
-        + (f": {e(run['note'])}" if run.get("note") else "")
-        + ".</p>"
+        f"status <strong>{e(run['status'])}</strong>."
+        + (f" <span class='muted'>Note: {e(run['note'])}.</span>" if run.get("note") else "")
+        + "</p>"
     )
     if not running and run["status"] != "completed":
         out.append(
@@ -2560,6 +2576,11 @@ def run_page(
     labels = {}
     if view is not None and view["run_id"] == run["id"]:
         labels = {st.claim.id: st for st in claim_states(conn, run=view)}
+    if not labels:
+        out.append(
+            "<p class='muted'>Findings show here and on Claims once this run is the one on "
+            "screen.</p>"
+        )
     out.append(
         "<table><thead><tr><th>#</th><th>Claim</th><th>State</th><th>Candidates labeled</th>"
         "<th>New model calls</th><th>Finding</th></tr></thead>"
@@ -2570,7 +2591,7 @@ def run_page(
         if state == "done" and st is not None and not st.incomplete:
             finding = f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span>"
         elif state == "done":
-            finding = "<span class='muted'>Finished; shown once it is the run on screen</span>"
+            finding = ""
         else:
             finding = "<span class='verdict v-unp'>Labeling incomplete</span>"
         cands = "" if total is None else f"{labeled} of {total}"
