@@ -15,7 +15,7 @@
     hidden case names no claim.
   - Every other bar, value and setting is unchanged. No rule, prompt, pin, contract, schema or
     gold change.
-- Where: PR #N (branch `claude/project-thread-6i2msb-bar3`)
+- Where: branch `claude/project-thread-6i2msb-bar3`
 - Verified:
   - `tests/test_testability_go_no_go.py`, 19 tests. They include a new one in which a false
     supported on a claim the step did not change leaves a GO, with "1 in the whole run, for
