@@ -1,4 +1,4 @@
-## 2026-10-30: Person aliases, the other names the expert gives a person (schema 0.6.0)
+## 2026-10-30: Person aliases, the other names the expert gives a person (schema 0.6.0) (#181)
 - Changed: the expert can record the other names the government document uses for a person,
   such as a designation ("SUBJECT-1", "CW-1", "the DRIVER") or a nickname ("HAL"). Why: on
   case04's testability go/no-go (Arsh's Mac run, 2026-10-30, NO-GO), 11 of the 32 claims the
@@ -38,7 +38,7 @@
     thread's PR, after this one, through `person_names`. Until it lands, an alias reaches the
     testability step's lookups and the Identities page only, and no claim is filled or checked
     differently. No verdict rule changes.
-- Where: branch `claude/project-thread-6i2msb-aliases`
+- Where: PR #181 (branch `claude/project-thread-6i2msb-aliases`)
 - Verified: new `tests/test_person_aliases.py`, 18 tests:
   - recording, replacing and clearing aliases, each logged;
   - every refusal: another person's whole name, surname or alias; the person's own surname;
@@ -64,5 +64,5 @@
 - Status doc: pending: section 8 item 5 ("Case safety and delivery"), after "...as the expert's
   statement (#139).": add "The expert can also record the document's other names for a person
   (SUBJECT-1, HAL) on the Identities page; each is matched whole, an alias that could match two
-  people is refused, and every report lists them as the expert's statement (schema 0.6.0, #N).
+  people is refused, and every report lists them as the expert's statement (schema 0.6.0, #181).
   The testability step's lookups use them; the assumption filler does not yet."
