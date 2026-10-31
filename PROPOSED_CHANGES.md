@@ -1006,3 +1006,60 @@ core/schema.sql
 +-- 0.5.0: no table change; AssumptionParams.sent_by and each_way (fields signed by Arsh
 +-- 2026-10-29; version bump signed 2026-10-30).
 ```
+
+## 2026-10-31 claude/project-thread-ds0ify: case events, the dated events the document defines
+File: core/schema.sql, core/contracts.py
+Why: affidavits define an event once and then date later claims only by it: `On Thursday, March
+26, 2026, officers searched FERRO's storage unit (the "SEARCH")`, then "Two days before the
+SEARCH, the BUYER offered ...". Code reads only a date the claim writes itself, so such a claim
+is refused ("window start is not a date the claim states"), and a model's window for it is
+refused too, rightly, because the model guesses the edges. In the case04 alias replay (filler
+only, Arsh's recorded answers, development data), 8 of the 11 remaining window or quote
+refusals are dated by an event or by the sentence before. Arsh chose to add expert-entered
+events on 2026-10-31 at 23:38Z (decision card, validation thread). Plan:
+`plans/case-events.md`.
+What the table holds: each event the expert enters, by its name as the document writes it
+("SEARCH", "KEDZIE YARD theft"), with the first and last wall-clock day it covers as the
+document gives them. Only an expert enters one, never a model. Code matches the name whole, in
+any case, with the filler's word-boundary rules; a name that would also match a person (name,
+surname or alias) or another event is refused when entered. Entering or removing one is an
+audit-log entry (`case.event.add`, `case.event.remove`). Reports list every event as a
+limitation, because a check can rest on it. The bundle carries the table like every other. A
+case database made under 0.6.0 is not upgraded in place; code reads a database with no
+`case_events` table as having no events.
+What code reads from it (in `assumption_filler.py`, not frozen, an allow list): only one-day
+events, only whole days: "on the day of X", "the day before X", "N days before X", "the day
+after X", "N days after X". Everything else stays refused, including "in the days before X",
+"shortly before", "the night of X", "after X" with no count, and any relation to a multi-day
+event. No verdict rule changes.
+Diff, core/schema.sql (header):
+--- Baker canonical schema v0.6.0 (matches CONTRACTS_VERSION in core/contracts.py).
++-- Baker canonical schema v0.7.0 (matches CONTRACTS_VERSION in core/contracts.py).
++-- 0.7.0: case_events, the dated events the document defines (signed by Arsh <date>).
+ -- 0.6.0: person_aliases, the other names an expert gives a person (signed by Arsh 2026-10-30).
+Diff, core/schema.sql (after `CREATE TABLE person_aliases (...)`):
++-- Events the government document defines and later claims are dated by ("the SEARCH"), with
++-- the first and last wall-clock day (YYYY-MM-DD) the document gives each. Only an expert
++-- enters one, never a model. Code matches a name whole, in any case. A name that would also
++-- match a person or another event is refused when entered. Reports list every event as a
++-- limitation.
++CREATE TABLE case_events (
++    name           TEXT PRIMARY KEY COLLATE NOCASE
++                   CHECK (length(trim(name)) BETWEEN 1 AND 120),
++    first_day      TEXT NOT NULL
++                   CHECK (first_day GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
++    last_day       TEXT NOT NULL
++                   CHECK (last_day GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
++                          AND last_day >= first_day),
++    created_by     TEXT NOT NULL CHECK (created_by LIKE 'expert:%'),
++    created_at_utc TEXT NOT NULL
++);
+Diff, core/contracts.py:
+-CONTRACTS_VERSION = "0.6.0"
++CONTRACTS_VERSION = "0.7.0"
+Nothing else in either file. No enum, model or verdict rule changes; `core/audit/rules.py` is
+untouched. Once signed, one PR applies these three edits and adds: `add_event` and
+`remove_event` expert actions (logged), an events list on the case setup page, the report's
+limitations, the filler reading the allow list above, the eval's case setup reading events from
+a case.json that has them (case04 and case05 left as built), the contracts version test, and
+tests that fail first.
