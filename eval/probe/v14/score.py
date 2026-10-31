@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from eval.loss_report import open_readonly
 from eval.probe import prompts
 from eval.probe.v13.score import (
     ROOT,
@@ -51,6 +52,7 @@ SET_NAMES = {
 }
 TIMED_CLAIMS = "C02,C05,C12"
 MIN_SPEEDUP = 0.15  # criterion 6: mean seconds per stance call at least 15% below v1.1's
+FAILED = ("error", "invalid_output")  # criterion 6: calls that ran without a usable answer
 NOT_FRESH = (
     "None of these items is new to the 14B: it answered all four sets on 2026-10-22 (the v1.3"
     " test). That is acceptable for a pure reorder with the criteria fixed in advance, but a"
@@ -67,16 +69,44 @@ def ran(out: Path, prompt: str, set_name: str) -> Run | None:
     return load_run(out, prompt, set_name)
 
 
+def db_outcomes(db: Path) -> dict[str, int] | None:
+    """The cold run's stance call outcomes from a timed audit's own database, for a folder
+    written before time_case recorded them (2026-10-31). Each timed audit builds its case
+    database new, so its first stance model run is the cold run."""
+    if not db.exists():
+        return None
+    conn = open_readonly(db)
+    try:
+        first = conn.execute(
+            "SELECT id FROM model_runs WHERE purpose = 'stance' ORDER BY started_at_utc, id"
+        ).fetchone()
+        if first is None:
+            return None
+        return dict(
+            conn.execute(
+                "SELECT outcome, COUNT(*) FROM model_calls WHERE model_run_id = ? GROUP BY outcome",
+                first,
+            ).fetchall()
+        )
+    finally:
+        conn.close()
+
+
 def timed(out: Path, prompt: str) -> dict[str, Any] | None:
     """The cold run of one timed audit, with its model's SHA-256, or None if it did not run."""
     path = out / f"time_{prompt}" / "summary.json"
     if not path.exists():
         return None
-    models = json.loads(path.read_text(encoding="utf-8")).get("models") or []
+    summary = json.loads(path.read_text(encoding="utf-8"))
+    models = summary.get("models") or []
     if len(models) != 1 or "cold" not in models[0]:
         return None
     m = models[0]
     stance = m["cold"]["passes"].get("stance", {})
+    outcomes = stance.get("outcomes")
+    if outcomes is None:
+        db = path.parent / str(m.get("model", "")) / f"{summary.get('case', 'case01')}.db"
+        outcomes = db_outcomes(db)
     return {
         "sha256": m["sha256"],
         "calls": stance.get("calls"),
@@ -90,7 +120,13 @@ def timed(out: Path, prompt: str) -> dict[str, Any] | None:
         "n_ctx": m.get("n_ctx"),
         "runtime": m.get("runtime"),
         "peak_rss_gb": m.get("peak_rss_gb"),
+        "outcomes": outcomes,  # None: not recorded
+        "failed": None if outcomes is None else sum(outcomes.get(k, 0) for k in FAILED),
     }
+
+
+def _failed_calls(t: dict[str, Any]) -> str:
+    return "not recorded" if t["failed"] is None else f"{t['failed']} failed"
 
 
 def probe_record(out: Path, prompt: str, set_name: str) -> dict[str, Any] | None:
@@ -203,13 +239,28 @@ def criteria(out: Path) -> list[tuple[str, str, bool]]:
                 pc[kind][0] >= pb[kind][0] - 1,
             )
         )
+    # A call that fails returns at once and still counts in the mean, so the times count only
+    # when every stance call of both audits was answered.
+    answered = t_base["failed"] == 0 and t_cand["failed"] == 0
+    res.append(
+        (
+            "timed audit",
+            "6. every stance call of both timed audits answered, no runtime error or invalid"
+            f" output (v1.1: {_failed_calls(t_base)}, v1.4: {_failed_calls(t_cand)})",
+            answered,
+        )
+    )
+    why = ""
+    if not answered:
+        unrecorded = t_base["failed"] is None or t_cand["failed"] is None
+        why = "; not counted" + (": call outcomes not recorded" if unrecorded else "")
     tb, tc = t_base["mean_s"], t_cand["mean_s"]
-    fast = bool(tb and tc) and tc <= (1 - MIN_SPEEDUP) * tb
+    fast = answered and bool(tb and tc) and tc <= (1 - MIN_SPEEDUP) * tb
     res.append(
         (
             "timed audit",
             f"6. mean s per stance call at least {MIN_SPEEDUP:.0%} below v1.1's"
-            f" (v1.1 {tb} s, v1.4 {tc} s)",
+            f" (v1.1 {tb} s, v1.4 {tc} s{why})",
             fast,
         )
     )
@@ -320,9 +371,15 @@ def report(out: Path) -> str:
                 if t["call_seconds"]
                 else f"{t['calls']} calls, mean {t['mean_s']} s; per-call times not recorded"
             )
+            ended = (
+                ", ".join(f"{k} {v}" for k, v in sorted(t["outcomes"].items()))
+                if t["outcomes"] is not None
+                else "not recorded"
+            )
             lines.append(
                 f"- {PROMPT_NAMES[p]}, timed audit stance calls: {calls}; wall {t['wall_s']} s,"
-                f" verdicts {t['verdicts']}, stored items {t['stored_items']}"
+                f" verdicts {t['verdicts']}, stored items {t['stored_items']}, call outcomes"
+                f" {ended}"
             )
     t_base, t_cand = timed(out, "base"), timed(out, "v14")
     if t_base is not None and t_cand is not None:

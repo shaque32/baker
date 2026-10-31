@@ -15,18 +15,23 @@
     and context, so calls can reuse them. Not signed and not used by the product.
     `eval/probe/v14/PREREGISTERED.md` fixes the criteria before any call (on each of the four
     sets no more traps shown as supports than v1.1, no worse than v1.1 on the signed bars,
-    recall within one item, at least 15% less time per stance call on a timed case01 audit);
+    recall within one item, at least 15% less time per stance call on a timed case01 audit,
+    with every stance call of both timed audits answered);
     `bash eval/probe/mac_v14.sh` runs it on the Mac (about 3 to 4 hours) and
     `eval/probe/v14/score.py` decides. Its addendum (2026-10-31, before any answer was seen,
     after the PR's reviews) made the trap criterion hold set by set and added to the report:
     every item's answer, the model's full SHA-256, each step's seed, context size, runtime,
     tokens per second and peak memory, the timed audits' per-call spread, and a note that the
-    sets are not fresh items. For that, `run_probe` and `time_case` summaries now also record
-    the process's peak resident memory (`peak_rss_gb`) and `time_case` each call's seconds
-    (`call_seconds`); the probe runs get the same `--n-ctx` as the timed audits.
+    sets are not fresh items. A later addendum the same day, still before any answer, made the
+    speed criterion count only when no stance call of either timed audit failed (a runtime
+    error or invalid output returns at once and would otherwise count as speed). For that,
+    `run_probe` and `time_case` summaries now also record the process's peak resident memory
+    (`peak_rss_gb`), and `time_case` each call's seconds (`call_seconds`) and each pass's call
+    outcomes (`outcomes`, from `model_calls`; the scorer reads an older folder's from its
+    database); the probe runs get the same `--n-ctx` as the timed audits.
 - Where: PR #182
-- Verified: tests/test_run_profile.py and tests/test_stance_v14_order.py (synthetic rows and a
-  stand-in model). The profiler on the case04 database from Arsh's Mac go/no-go run (main
+- Verified: tests/test_run_profile.py, tests/test_stance_v14_order.py and the call-outcome test
+  in tests/test_speed_eval.py (synthetic rows and stand-in models). The profiler on the case04 database from Arsh's Mac go/no-go run (main
   67dabdb, MacBook Air M4 24 GB, Qwen3-14B Q4_K_M, flash runtime, 2026-10-29, reported): about
   4.9 h of model time on the first pass, 3.9 h on the repeat pass (estimates, as above). First
   pass: stance 283 calls, 3.62 h, mean 46.0 s (median 43.1 s); testability 66 calls, 0.72 h;

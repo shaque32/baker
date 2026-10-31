@@ -17,7 +17,8 @@ For each model in the models file (the probe's file; a null sha256 is computed h
 1. Build the case fresh, as the eval does (eval/run_pipeline.build_case), with the case's
    assumption sheet as the filler, so every model sees the same assumptions.
 2. Cold run: the product's components on that model. Records model load time, each call's
-   seconds and tokens, and wall time. --claims runs a subset and projects the whole case.
+   seconds and tokens, how the calls ended (model_calls outcomes, so a failed call is never
+   read as a fast one) and wall time. --claims runs a subset and projects the whole case.
 3. Warm run: the same audit again on the same database, which is what an expert's rerun after
    accepting evidence costs. Stored outputs are reused (core/audit/_local_model.py).
 4. Surfacing: for each gold claim, whether the run put its key evidence in front of the
@@ -137,6 +138,18 @@ def calls_per_claim(conn: sqlite3.Connection, run_ids: set[str]) -> dict[str, Co
     return out
 
 
+def call_outcomes(conn: sqlite3.Connection, run_id: str) -> dict[str, int]:
+    """How the calls of one model run ended (model_calls.outcome). A runtime error comes back
+    as an empty answer that still took its seconds, so a pass's times only count with these."""
+    return dict(
+        conn.execute(
+            "SELECT outcome, COUNT(*) FROM model_calls WHERE model_run_id = ?"
+            " GROUP BY outcome ORDER BY outcome",
+            (run_id,),
+        ).fetchall()
+    )
+
+
 def retrieved_keys(conn: sqlite3.Connection, assumption_ids: list[str], keys: set[str]) -> set[str]:
     """Key evidence retrieval hands the labeler at all (the ceiling for any model)."""
     from core.audit import retrieval
@@ -236,6 +249,9 @@ def audit_once(
     wall = time.perf_counter() - start
     ports = _ports(comps)
     run_ids = {p.run_id for p in ports.values()}
+    passes = _stats(ports)
+    for purpose, port in ports.items():
+        passes[purpose]["outcomes"] = call_outcomes(conn, port.run_id)
     return {
         "wall_seconds": round(wall, 1),
         "claims": len(result.decisions),
@@ -243,7 +259,7 @@ def audit_once(
         "stored_items": result.stored_items,
         "dropped_labels": result.dropped_labels,
         "outputs_reused": result.model_outputs_reused,
-        "passes": _stats(ports),
+        "passes": passes,
         "calls_per_claim": {k: dict(v) for k, v in sorted(calls_per_claim(conn, run_ids).items())},
     }
 
@@ -413,7 +429,9 @@ def markdown(summary: dict[str, Any]) -> str:
             lines += [
                 "",
                 f"{r['model']}: verdicts {r['cold']['verdicts']}; dropped labels "
-                f"{r['cold']['dropped_labels']}; claims with no key evidence surfaced: "
+                f"{r['cold']['dropped_labels']}; stance call outcomes "
+                f"{r['cold']['passes'].get('stance', {}).get('outcomes')}; "
+                "claims with no key evidence surfaced: "
                 f"{', '.join(missed) or 'none'}; key evidence in the wrong direction: "
                 f"{', '.join(s['key_evidence_wrong_direction']) or 'none'}.",
             ]

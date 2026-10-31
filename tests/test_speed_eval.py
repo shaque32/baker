@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from datetime import UTC, datetime
+from itertools import count
 
 from core.contracts import Claim, ClaimStatus, ClaimType, GoldClaim, GovDocParagraph, Verdict
+from core.llm.runtime import FakeModel
+from eval import run_pipeline as rp
 from eval.probe import claim_recall, time_case
 from eval.probe.run_probe import StanceScore, expert_confirms
 
@@ -16,6 +20,36 @@ def test_dry_run_counts_every_stance_call(tmp_path):
     assert sum(d["stance_calls_by_assumption_kind"].values()) == d["stance_calls"]
     md = time_case.markdown({"case": "case01", "machine": {}, "assumption_spec": "x", "dry_run": d})
     assert f"{d['stance_calls']} stance calls" in md
+
+
+def test_a_timed_audit_records_how_each_call_ended(tmp_path):
+    # Every fourth call fails at once (a runtime error comes back empty) and the next answer
+    # after it is not JSON: those calls still count in the pass's seconds, so the outcomes
+    # are recorded beside them.
+    n = count()
+    answer = '{"stance": "irrelevant", "quote": "", "rationale": "n"}'
+    seen: Counter = Counter()
+
+    def respond(_prompt: str) -> str:
+        i = next(n)
+        out = "" if i % 4 == 0 else "not json" if i % 4 == 1 else answer
+        seen["error" if out == "" else "invalid_output" if out == "not json" else "ok"] += 1
+        return out
+
+    conn = rp.build_case("case01", tmp_path / "case01.db")
+    try:
+        res = time_case.audit_once(
+            conn, FakeModel(respond=respond), time_case.default_spec(), False, ["C02"]
+        )
+    finally:
+        conn.close()  # type: ignore[attr-defined]
+    ended = res["passes"]["stance"]["outcomes"]
+    assert seen["error"] > 0 and ended["error"] == seen["error"]
+    assert seen["invalid_output"] > 0 and ended["invalid_output"] == seen["invalid_output"]
+    # The answers parse; with no quote the product's quote check drops them as quote_failed.
+    assert ended.get("ok", 0) + ended.get("quote_failed", 0) == seen["ok"]
+    stance = res["passes"]["stance"]
+    assert sum(ended.values()) == stance["calls"] == len(stance["call_seconds"])
 
 
 def _score(confusion: dict[str, dict[str, int]]) -> StanceScore:

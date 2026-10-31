@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from core.audit._llm_json import fill_prompt, prompt_body
-from core.db import connect
+from core.db import apply_schema, connect
 from core.llm.runtime import FakeModel, GenerationParams, ModelOutput
 from eval import run_pipeline as rp
 from eval.probe import prompts, run_probe, time_case
@@ -142,26 +142,61 @@ def _run(out: Path, prompt: str, set_name: str, wrong: dict[str, str] | None = N
 
 
 def _timed(
-    out: Path, prompt: str, mean_s: float, sha: str = StandIn.sha256, recorded: bool = True
+    out: Path,
+    prompt: str,
+    mean_s: float,
+    sha: str = StandIn.sha256,
+    recorded: bool = True,
+    outcomes: dict[str, int] | None = None,
 ) -> None:
-    """A timed audit's summary; recorded=False is a folder from before per-call seconds,
-    settings and peak memory were written."""
+    """A timed audit's summary; recorded=False is a folder from before per-call seconds, call
+    outcomes, settings and peak memory were written."""
     folder = out / f"time_{prompt}"
     folder.mkdir(exist_ok=True)
-    stance = {"calls": 60, "mean_seconds_per_call": mean_s, "tokens_per_second": 9.5}
-    if recorded:  # the same 60 calls, a little spread around the mean
+    stance: dict[str, object] = {
+        "calls": 60,
+        "mean_seconds_per_call": mean_s,
+        "tokens_per_second": 9.5,
+    }
+    if recorded:  # the same 60 calls, a little spread around the mean, all answered
         stance["call_seconds"] = [mean_s + (i % 5) - 2 for i in range(60)]
+        stance["outcomes"] = outcomes or {"ok": 60}
     cold = {
         "passes": {"stance": stance},
         "wall_seconds": round(60 * mean_s, 1),
         "verdicts": {"unproven": 3},
         "stored_items": 5,
     }
-    model = {"sha256": sha, "cold": cold}
+    model = {"model": StandIn.name, "sha256": sha, "cold": cold}
     if recorded:
         model |= {"params": {"seed": 1234}, "n_ctx": 8192, "runtime": "flash", "peak_rss_gb": 13.1}
-    summary = {"models": [model]}
+    summary = {"case": "case01", "models": [model]}
     (folder / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
+
+
+def _audit_db(out: Path, prompt: str, cold: dict[str, int]) -> None:
+    """A timed audit's own case database, as time_case leaves it: a cold stance run whose calls
+    ended as `cold` says, then the warm run, all answered."""
+    path = out / f"time_{prompt}" / StandIn.name / "case01.db"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    db = connect(path)
+    apply_schema(db)
+    for hour, (run, ended) in enumerate((("mr:stance:cold", cold), ("mr:stance:warm", {"ok": 3}))):
+        at = f"2026-10-31T0{hour}:00:00+00:00"
+        db.execute(
+            "INSERT INTO model_runs (id, purpose, model_name, model_sha256, prompt_version,"
+            " params_json, started_at_utc) VALUES (?, 'stance', ?, ?, 'v1.1', '{}', ?)",
+            (run, StandIn.name, StandIn.sha256, at),
+        )
+        outcomes = [o for o, n in ended.items() for _ in range(n)]
+        for seq, outcome in enumerate(outcomes, 1):
+            db.execute(
+                "INSERT INTO model_calls (id, model_run_id, seq, subject_json, prompt, raw_output,"
+                " outcome, at_utc) VALUES (?, ?, ?, '[]', 'p', '', ?, ?)",
+                (f"mc:{run}#{seq}", run, seq, outcome, at),
+            )
+    db.commit()
+    db.close()
 
 
 def _gold(set_name: str, gold: str) -> list[str]:
@@ -241,10 +276,50 @@ def test_a_folder_from_before_the_run_record_still_scores(out):
     for s in score.SETS:
         _run(out, "v14", s)
     _timed(out, "v14", 30.0, recorded=False)
-    assert score.passes(out)
+    _audit_db(out, "v14", {"ok": 60})  # the call outcomes come from the audit's own database
+    assert score.passes(out), score.criteria(out)
     text = score.report(out)
     assert "60 calls, mean 30.0 s; per-call times not recorded" in text
     assert "| v1.4 timed audit | not recorded | not recorded | not recorded | 9.5 |" in text
+    assert "stored items 5, call outcomes ok 60" in text
+
+
+def test_failed_calls_never_count_as_a_speedup(out):
+    # Two calls that failed at once and one unusable answer pull v1.4's mean well below v1.1's.
+    for s in score.SETS:
+        _run(out, "v14", s)
+    _timed(out, "v14", 20.0, outcomes={"ok": 57, "error": 2, "invalid_output": 1})
+    assert _failed(out) == [
+        "6. every stance call of both timed audits answered, no runtime error or invalid output"
+        " (v1.1: 0 failed, v1.4: 3 failed)",
+        "6. mean s per stance call at least 15% below v1.1's (v1.1 40.0 s, v1.4 20.0 s;"
+        " not counted)",
+    ]
+    text = score.report(out)
+    assert "Recommendation: no prompt change." in text
+    assert "call outcomes error 2, invalid_output 1, ok 57" in text
+    # A quote the product discards is a real answer: reported, not a failed call.
+    _timed(out, "v14", 30.0, outcomes={"ok": 59, "quote_failed": 1})
+    assert score.passes(out)
+    # The same holds for v1.1's audit, and for an old folder read from its database.
+    _timed(out, "base", 40.0, recorded=False)
+    _audit_db(out, "base", {"ok": 59, "error": 1})
+    assert [t.split(" (")[1] for t in _failed(out)] == [
+        "v1.1: 1 failed, v1.4: 0 failed)",
+        "v1.1 40.0 s, v1.4 30.0 s; not counted)",
+    ]
+
+
+def test_call_outcomes_that_were_never_recorded_fail_the_speed_criterion(out):
+    for s in score.SETS:
+        _run(out, "v14", s)
+    _timed(out, "v14", 30.0, recorded=False)  # an old folder whose database is gone
+    assert _failed(out) == [
+        "6. every stance call of both timed audits answered, no runtime error or invalid output"
+        " (v1.1: 0 failed, v1.4: not recorded)",
+        "6. mean s per stance call at least 15% below v1.1's (v1.1 40.0 s, v1.4 30.0 s;"
+        " not counted: call outcomes not recorded)",
+    ]
 
 
 def test_spread_and_the_call_by_call_ratio():

@@ -85,3 +85,12 @@ scored under these criteria; RESULTS.md names the commit that ran.
 - The times under "Why" come from `eval/run_profile.py`, which takes a call's time as the gap
   between the end of the call before it and its own end (each call is logged when its answer
   is back), so a gap also holds the code between calls: estimates, not per-call measurements.
+- Added later on 2026-10-31, after a further Codex review on PR #182 and still before any
+  answer was seen: criterion 6 also needs every stance call of both timed audits answered, with
+  no runtime error and no invalid output (`model_calls` outcomes `error` and
+  `invalid_output`). This is stricter: a failed call returns at once and still counts in the
+  mean, so failures can no longer pass as a speedup. A quote the product's check discards is a
+  full answer: reported beside the criteria, not counted as failed, as on the probe sets.
+  `time_case` now records each pass's call outcomes; for a folder written before that, the
+  scorer reads them from the timed audit's own case database (its first stance model run is
+  the cold run). Outcomes recorded in neither place fail the criterion.
