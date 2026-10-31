@@ -543,3 +543,28 @@ def test_case05_is_the_held_out_go_no_go_case():
     if run_pipeline.sheet_status(sheet) != "signed":
         with pytest.raises(SystemExit, match="needs a signed assumption sheet"):
             run_pipeline.testability_step(None, "case05", None, 1, None, "rubber-stamp")
+
+
+def test_the_signed_copies_are_the_drafts_with_only_their_labels_changed():
+    """Arsh signed case05's key and sheet on 2026-10-31 (23:26Z) as drafted; the copies under
+    eval/gold/case05/ change only `labeled_by` and, in the key, `labeled_at`."""
+    for name, draft in (
+        ("gold.jsonl", "draft_gold.jsonl"),
+        ("assumptions.jsonl", "draft_assumptions.jsonl"),
+    ):
+        signed = ROOT / "eval/gold/case05" / name
+        rows = [
+            json.loads(line) for line in signed.read_text(encoding="utf-8").splitlines() if line
+        ]
+        drafts = [
+            json.loads(line)
+            for line in (COMMITTED / draft).read_text(encoding="utf-8").splitlines()
+            if line
+        ]
+        assert len(rows) == len(drafts)
+        for got, want in zip(rows, drafts, strict=True):
+            assert got.pop("labeled_by") == "Arsh, 2026-10-31"
+            want.pop("labeled_by")
+            got.pop("labeled_at", None)
+            want.pop("labeled_at", None)
+            assert got == want

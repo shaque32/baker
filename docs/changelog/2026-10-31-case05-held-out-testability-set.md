@@ -33,6 +33,11 @@
   person it points to, right or wrong. That is real product behaviour, so it is left for the
   measurement to see.
 
+  Arsh signed the key and sheet on 2026-10-31 (23:26Z, "approve", as they stood after the
+  second read). Claude copied them into `eval/gold/case05/` with the `PROPOSED_CHANGES.md`
+  commands; only `labeled_by` and `labeled_at` change. With the signed copies the step can run
+  on case05, and the go/no-go scores false supported against the signed key.
+
   `TESTABILITY_GO_NO_GO_CASES` now names case05 alone, and case04 leaves it. `eval/run_pipeline.py`
   gains case05 entries in DRAFT_GOLD and DRAFT_SHEETS, and case05 branches for the reports and
   the affidavit PDF.
@@ -43,7 +48,7 @@
   never tested. `spec_filler` now maps `sent_by` too. No earlier sheet uses `sent_by`, so no
   earlier result changes.
 - Where: PR #188 (branch `claude/project-thread-6i2msb-case05`)
-- Verified: `tests/test_synthetic_case05.py` (synthetic only, 32 tests):
+- Verified: `tests/test_synthetic_case05.py` (synthetic only, 33 tests):
   - the generator gives the same bytes twice, and the committed drafts match a fresh build;
   - the real importer reads all three reports, and every key and wrong-reading record exists and
     imports at its story time with the right offset, both passes of the repeated hour included;
@@ -52,7 +57,8 @@
   - the second read is answered;
   - every alias match inside a quote is recorded;
   - a model-free run on the draft sheet gives the drafted verdict for all 48 claims;
-  - case05 is the go/no-go's one held-out case, and the step refuses its draft sheet.
+  - case05 is the go/no-go's one held-out case, and the step refuses its draft sheet;
+  - the signed copies are the drafts with only their labels changed.
 
   `tests/test_simulated_expert.py` adds `test_spec_filler_maps_sent_by_with_the_people_it_names`,
   which fails without the fix.
@@ -63,7 +69,7 @@
   Key-evidence recall is 66% retrieved and 65% surfaced, over 136 records. Arsh's signing
   commands in `PROPOSED_CHANGES.md` were run on a scratch copy, and both files then report as
   signed. `make check` passed.
-- Open: Arsh signs the key and sheet; until then no go/no-go is given.
+- Open: no go/no-go has been run on case05 yet.
   - The closest calls are C04, which goes back to supported if paragraph 3's premise is accepted;
     C24, whose meaning the conversation doesn't fix; C39, where recruitment is interpretation;
     and C08, which is unproven because a missing contact entry never fails.
