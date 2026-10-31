@@ -41,7 +41,10 @@ exact prompts to send are all the same (`identity.json`), and anything else is r
    supported.
 4. No call leaves complicates or contradicts (a label that holds a claim back until an expert
    dismisses it).
-5. No gold key record (`eval/gold/case04/gold.jsonl`, key_evidence) changes its label.
+5. No gold key record (`eval/gold/case04/gold.jsonl`, key_evidence) changes its label. The
+   gold file must be the replayed audit's (it holds every replayed claim word for word, by
+   SHA-256 of the text) and must reach at least one replayed call; otherwise nothing was
+   checked, and the criterion fails as unverified.
 6. Every call of both replays answered (no runtime error, no invalid output), and mean
    seconds per call at least 10% below the 20-message replay's. A failed call comes back at
    once and still counts in the mean, so it must never pass as speed.
@@ -86,7 +89,8 @@ get worse.
 ## Edits before any replay (2026-10-31, review of PR #185)
 Made before any replay ran, each one stricter: criterion 1 also needs the same recorded audit,
 sample, settings and replay version, and each run record must show the prompt and context size
-its folder names; criteria 7 and 8 (supports lost) were added; each count
+its folder names; criterion 5 needs the replayed audit's own gold file and at least one
+key-record call; criteria 7 and 8 (supports lost) were added; each count
 is reported with its 95% Wilson upper bound; the report lists every call behind criterion 2
 and every label change; a stopped replay resumes only as the same replay; and the PR that
 adopts a pass needs the eval gate on a fresh synthetic case.

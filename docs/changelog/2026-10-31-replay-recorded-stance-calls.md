@@ -16,7 +16,7 @@
   instead of 20 before any replay (both run records showing the signed prompt with 20 and with
   8 messages, on the same calls, audit, model file and settings; the 20-message replay repeating the recorded answer on at least 99% of calls; no
   call newly labelled supports, none leaving complicates or contradicts, no key record changing
-  its label; at least 10% faster per call with no failed call in either replay; supports lost
+  its label, checked on the replayed audit's own gold file and on at least one key-record call; at least 10% faster per call with no failed call in either replay; supports lost
   on at most 5% of the baseline's supports calls, and no assumption losing all of them);
   `bash eval/probe/mac_replay.sh` runs it on the Mac (about 4 hours, estimated).
 - Where: PR #185

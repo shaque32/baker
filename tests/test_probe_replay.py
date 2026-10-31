@@ -4,6 +4,7 @@ labels are compared the way the product stores them. A stand-in model, synthetic
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 from pathlib import Path
@@ -182,11 +183,15 @@ def test_a_write_connection_is_never_needed(recorded_db, tmp_path) -> None:  # n
     db.close()
 
 
+CLAIM = "On March 4, 2026, the owner texted a contact."  # C01 of the synthetic gold below
+
+
 def _folder(out: Path, name: str, rows: list[dict], sha: str = "a" * 64) -> None:
     d = out / name
     d.mkdir(parents=True)
     meta = {"prompt": "signed", "window": 20 if name == replay.BASE else 8, "model": "m",
-            "model_sha256": sha, "recorded_model_sha256": "a" * 64}  # fmt: skip
+            "model_sha256": sha, "recorded_model_sha256": "a" * 64,
+            "claims": {"C01": hashlib.sha256(CLAIM.encode("utf-8")).hexdigest()}}  # fmt: skip
     (d / "run.json").write_text(json.dumps(meta), encoding="utf-8")
     (d / "calls.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
 
@@ -201,7 +206,8 @@ def _row(seq: int, label: str, seconds: float, record: str = "r", same: bool = T
 @pytest.fixture
 def gold(tmp_path) -> Path:  # noqa: ANN001
     path = tmp_path / "gold.jsonl"
-    path.write_text(json.dumps({"claim_id": "C01", "key_evidence": ["k2"]}) + "\n", "utf-8")
+    row = {"claim_id": "C01", "text": CLAIM, "key_evidence": ["k2"]}
+    path.write_text(json.dumps(row) + "\n", "utf-8")
     return path
 
 
@@ -311,6 +317,25 @@ def test_replays_on_other_settings_or_other_calls_are_not_compared(tmp_path, gol
         path.write_text(json.dumps({**meta, field: value}), encoding="utf-8")
         assert _not_met(out, gold) == [SAME_CALLS]
         assert "Recommendation: keep 20 messages" in replay.report(out, gold)
+
+
+def test_a_gold_file_from_another_audit_or_with_no_replayed_key_record_checks_nothing(
+    tmp_path,  # noqa: ANN001
+) -> None:
+    gold_from = {
+        "another audit": {"claim_id": "C01", "text": "Another claim.", "key_evidence": ["k2"]},
+        "no key record replayed": {"claim_id": "C01", "text": CLAIM, "key_evidence": ["x9"]},
+        "empty": None,
+    }
+    for n, (why, row) in enumerate(gold_from.items()):
+        gold = tmp_path / f"gold{n}.jsonl"
+        gold.write_text(json.dumps(row) + "\n" if row else "", encoding="utf-8")
+        out = _window(tmp_path / str(n), _short(s2="complicates"))  # the key record moves
+        not_met = _not_met(out, gold)
+        assert not_met, why
+        assert all(t.startswith("5. ") for t in not_met), (why, not_met)
+        assert "Recommendation: keep 20 messages" in replay.report(out, gold)
+    assert "; none replayed, so unverified)" in replay.report(out, tmp_path / "gold1.jsonl")
 
 
 def test_lost_supports_have_a_cap_and_no_assumption_loses_all_its_support(tmp_path, gold) -> None:  # noqa: ANN001

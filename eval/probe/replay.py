@@ -133,12 +133,12 @@ class Builder:
             template=template(prompt),
             render_context=lambda c: render_for(conn, c.record_id, window, names=names),
             render_assumption=lambda a: assumption_text(a, names),
-            claim_text=self._claim_text,
+            claim_text=self.claim_text,
         )
         self.assumptions: dict[str, Assumption] = {}
         self.candidates: dict[str, dict[str, EvidenceCandidate]] = {}
 
-    def _claim_text(self, claim_id: str) -> str | None:
+    def claim_text(self, claim_id: str) -> str | None:
         row = self.conn.execute("SELECT text FROM claims WHERE id = ?", (claim_id,)).fetchone()
         return row[0] if row else None
 
@@ -298,15 +298,23 @@ def run(  # noqa: PLR0913
             f.write(json.dumps(row) + "\n")
             f.flush()
     peaks = [r["rss_gb"] for r in read_rows(out) if r.get("rss_gb") is not None]
+    replayed = sorted({a.claim_id for c in calls if c.seq in plan
+                       if (a := base.assumption(c.assumption_id)) is not None})  # fmt: skip
     meta = {
         **ident,
         "model": getattr(model, "name", None),
         "calls_asked": len(calls),
         "not_rebuilt": len(calls) - len(plan),
         "peak_rss_gb": max(peaks, default=peak_rss_gb()),
+        # each replayed claim's text, by SHA-256, so a gold file is matched to this audit
+        "claims": {cid: _text_sha(base.claim_text(cid)) for cid in replayed},
     }
     (out / "run.json").write_text(json.dumps(meta, indent=1) + "\n", encoding="utf-8")
     return meta
+
+
+def _text_sha(text: str | None) -> str | None:
+    return None if text is None else hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _sha(value: Any) -> str:
@@ -401,9 +409,20 @@ def compare(rows: list[dict[str, Any]], key: set[tuple[str, str]] | None = None)
     return out
 
 
+def _gold_rows(gold: Path) -> list[dict[str, Any]]:
+    return [json.loads(x) for x in gold.read_text(encoding="utf-8").splitlines() if x.strip()]
+
+
 def load_key(gold: Path) -> set[tuple[str, str]]:
-    rows = [json.loads(x) for x in gold.read_text(encoding="utf-8").splitlines() if x.strip()]
-    return {(r["claim_id"], rec) for r in rows for rec in r.get("key_evidence", ())}
+    return {(r["claim_id"], rec) for r in _gold_rows(gold) for rec in r.get("key_evidence", ())}
+
+
+def gold_matches(gold: Path, claims: dict[str, str | None] | None) -> tuple[int, int]:
+    """How many of the replayed claims the gold file holds word for word (by SHA-256 of the
+    text), out of how many: a gold file from another audit, or an empty one, matches none."""
+    texts = {r["claim_id"]: _text_sha(r.get("text")) for r in _gold_rows(gold)}
+    claims = claims or {}
+    return sum(sha is not None and texts.get(c) == sha for c, sha in claims.items()), len(claims)
 
 
 BASE, SHORT = "signed_w20", "signed_w8"  # the folders eval/probe/mac_replay.sh writes
@@ -492,8 +511,16 @@ def window_criteria(out: Path, gold: Path | None) -> list[tuple[str, bool]]:
     moved = n["key record label changes"][0]
     res.append((f"3. no call newly labelled supports ({new_sup})", new_sup == 0))
     res.append((f"4. no call leaves complicates or contradicts ({left})", left == 0))
-    if key is not None:
-        res.append((f"5. no key record changes its label ({moved})", moved == 0))
+    if gold is not None and key is not None:
+        # The gold file must be this audit's, and must reach some replayed call, or nothing
+        # was checked and the criterion fails as unverified.
+        held, of = gold_matches(gold, metas[BASE].get("claims"))
+        res.append((f"5. the gold file is the replayed audit's: it holds every replayed claim"
+                    f" word for word ({held} of {of})", of > 0 and held == of))  # fmt: skip
+        keyed = n["key record label changes"][1]
+        res.append((f"5. no key record changes its label ({moved} of {keyed} key-record calls"
+                    f"{'' if keyed else '; none replayed, so unverified'})",
+                    keyed > 0 and moved == 0))  # fmt: skip
     else:
         res.append(("5. the gold key was given", False))
     # A failed call (a runtime error comes back empty, at once) still counts in the mean, so the
