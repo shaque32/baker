@@ -39,7 +39,7 @@
     matches has "Add as another name" beside "Add as a person". Suggested names keep a
     designation's number ("SUBJECT-1", not "SUBJECT").
   - The report lists each alias in Limitations as an expert statement, with who gave it and
-    when (report 0.29.0). The bundle carries the table like every other. An alias added or
+    when (report 0.30.0). The bundle carries the table like every other. An alias added or
     removed after an audit changes what the testability step's tries looked up, so
     `verify-bundle` notes those tries as not re-run, as it does after a person is added
     (Codex on #181). `verify-bundle` also holds each stored alias to the expert's logged
