@@ -185,8 +185,8 @@ def test_a_write_connection_is_never_needed(recorded_db, tmp_path) -> None:  # n
 def _folder(out: Path, name: str, rows: list[dict], sha: str = "a" * 64) -> None:
     d = out / name
     d.mkdir(parents=True)
-    meta = {"prompt": "signed", "window": 8, "model": "m", "model_sha256": sha,
-            "recorded_model_sha256": "a" * 64}  # fmt: skip
+    meta = {"prompt": "signed", "window": 20 if name == replay.BASE else 8, "model": "m",
+            "model_sha256": sha, "recorded_model_sha256": "a" * 64}  # fmt: skip
     (d / "run.json").write_text(json.dumps(meta), encoding="utf-8")
     (d / "calls.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
 
@@ -227,8 +227,8 @@ def _not_met(out: Path, gold: Path) -> list[str]:
 
 
 SAME_CALLS = (
-    "1. both ran the same calls of the same recorded audit, on the recorded model file with the"
-    " same settings"
+    "1. the signed prompt with 20 and with 8 messages, by both run records, on the same calls of"
+    " the same recorded audit, the recorded model file and the same settings"
 )
 
 
@@ -299,13 +299,18 @@ def test_too_little_speedup_or_other_calls_fail(tmp_path, gold) -> None:  # noqa
 
 
 def test_replays_on_other_settings_or_other_calls_are_not_compared(tmp_path, gold) -> None:  # noqa: ANN001
-    for field, value in (("params", {"seed": 2}), ("recorded_calls_sha256", "c" * 64),
-                         ("model_sha256", "b" * 64)):  # fmt: skip
-        out = _window(tmp_path / field, _short())
-        path = out / replay.SHORT / "run.json"
+    for n, (folder, field, value) in enumerate((
+        (replay.SHORT, "params", {"seed": 2}), (replay.SHORT, "recorded_calls_sha256", "c" * 64),
+        (replay.SHORT, "model_sha256", "b" * 64),
+        (replay.SHORT, "window", 20),  # two 20-message replays, one in the 8-message folder
+        (replay.BASE, "prompt", "v14"),  # a v1.4 replay in the baseline's folder
+    )):  # fmt: skip
+        out = _window(tmp_path / str(n), _short())
+        path = out / folder / "run.json"
         meta = json.loads(path.read_text(encoding="utf-8"))
         path.write_text(json.dumps({**meta, field: value}), encoding="utf-8")
         assert _not_met(out, gold) == [SAME_CALLS]
+        assert "Recommendation: keep 20 messages" in replay.report(out, gold)
 
 
 def test_lost_supports_have_a_cap_and_no_assumption_loses_all_its_support(tmp_path, gold) -> None:  # noqa: ANN001

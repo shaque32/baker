@@ -32,8 +32,9 @@ when the model file, its settings, the prompt, the context size, the recorded ca
 exact prompts to send are all the same (`identity.json`), and anything else is refused.
 
 ## 8 messages either side is recommended only if all hold (signed_w8 against signed_w20)
-1. Both ran the same calls of the same recorded audit and sample, on the recorded model file,
-   with the same settings and the same replay version.
+1. Both run records show what their folders name (the signed prompt, with 20 and with 8
+   messages), and both ran the same calls of the same recorded audit and sample, on the
+   recorded model file, with the same settings and the same replay version.
 2. The 20-message replay repeats the recorded answer, byte for byte, on at least 99% of calls.
    Otherwise the replay is not a faithful baseline and nothing is decided.
 3. No call newly labelled supports. No slack: this is the direction that can end in a false
@@ -84,7 +85,8 @@ get worse.
 
 ## Edits before any replay (2026-10-31, review of PR #185)
 Made before any replay ran, each one stricter: criterion 1 also needs the same recorded audit,
-sample, settings and replay version; criteria 7 and 8 (supports lost) were added; each count
+sample, settings and replay version, and each run record must show the prompt and context size
+its folder names; criteria 7 and 8 (supports lost) were added; each count
 is reported with its 95% Wilson upper bound; the report lists every call behind criterion 2
 and every label change; a stopped replay resumes only as the same replay; and the PR that
 adopts a pass needs the eval gate on a fresh synthetic case.

@@ -407,6 +407,8 @@ def load_key(gold: Path) -> set[tuple[str, str]]:
 
 
 BASE, SHORT = "signed_w20", "signed_w8"  # the folders eval/probe/mac_replay.sh writes
+# What each folder must hold, by its run record and not its name (criterion 1).
+TESTED = {BASE: ("signed", DEFAULT_WINDOW), SHORT: ("signed", 8)}
 MIN_SAME_RAW = 0.99  # REPLAY_PREREGISTERED.md, criterion 2
 MIN_FASTER = 0.10  # criterion 6
 MAX_LOST_SUPPORTS = 0.05  # criterion 7
@@ -468,9 +470,11 @@ def window_criteria(out: Path, gold: Path | None) -> list[tuple[str, bool]]:
     pairs = _pairs(base, short)
     same_file = all(m["model_sha256"] == m["recorded_model_sha256"] for m in metas.values())
     same_setup = all(metas[BASE].get(k) == metas[SHORT].get(k) for k in SAME_SETUP)
-    res = [("1. both ran the same calls of the same recorded audit, on the recorded model file"
-            " with the same settings",
-            bool(base) and base.keys() == short.keys() and same_file and same_setup)]  # fmt: skip
+    as_named = all((metas[n].get("prompt"), metas[n].get("window")) == TESTED[n] for n in TESTED)
+    res = [("1. the signed prompt with 20 and with 8 messages, by both run records, on the same"
+            " calls of the same recorded audit, the recorded model file and the same settings",
+            bool(base) and base.keys() == short.keys() and as_named and same_file
+            and same_setup)]  # fmt: skip
     if not res[0][1]:
         return res
     same_raw = sum(r["same_raw"] for r in base.values())
