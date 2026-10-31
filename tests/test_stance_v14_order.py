@@ -334,6 +334,30 @@ def test_spread_and_the_call_by_call_ratio():
     )
 
 
+def test_an_unusable_v1_1_run_cannot_lower_the_bars(tmp_path):
+    # v1.1 answers nothing usable and v1.4 calls every item irrelevant: held to "no worse than
+    # v1.1", v1.4 would clear every label bar, so criterion 2 checks both prompts' answers.
+    for s in score.SETS:
+        ids = [i["id"] for i in score.items(s)]
+        _run(tmp_path, "base", s, dict.fromkeys(ids, "invalid"))
+        _run(tmp_path, "v14", s, dict.fromkeys(ids, "irrelevant"))
+    _timed(tmp_path, "base", 40.0)
+    _timed(tmp_path, "v14", 30.0)
+    assert _failed(tmp_path) == [
+        "2. valid output 100% on every set, under both prompts"
+        " (v1.1 on signed, v1.1 on fresh, v1.1 on tf24, v1.1 on r26)"
+    ]
+
+
+def test_one_invalid_v1_1_answer_stops_the_comparison(out):
+    for s in score.SETS:
+        _run(out, "v14", s)
+    _timed(out, "v14", 30.0)
+    shutil.rmtree(out / "base_fresh")
+    _run(out, "base", "fresh", {score.items("fresh")[0]["id"]: "invalid"})
+    _only_fails(out, "2. valid output 100% on every set, under both prompts (v1.1 on fresh)")
+
+
 def test_recall_may_lose_one_item_but_not_two(out):
     lost = _gold("signed", "supports")[:2]
     for s in score.SETS:

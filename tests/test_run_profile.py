@@ -141,6 +141,34 @@ def test_reuse_is_against_the_call_just_before_whatever_its_job(db) -> None:  # 
     assert prof.jobs["stance"].shared_prefix_chars == len("HEAD")  # not "HEAD-stance-"
 
 
+def test_answers_from_stored_outputs_take_no_model_time(db) -> None:  # noqa: ANN001
+    # A rerun answers "AAAA-1" from the first run's stored output, in no model time. Its next
+    # call is timed from that answer and shares only what the model last read ("BBBB-2").
+    first, rerun, fresh = "mr:stance:first", "mr:stance:rerun", "mr:stance:fresh"
+    reuse = json.dumps({"reuse_stored_outputs": True})
+    for run, params in ((first, reuse), (rerun, reuse), (fresh, "{}")):
+        db.execute(
+            "INSERT INTO model_runs (id, pipeline_run_id, purpose, model_name, model_sha256,"
+            " prompt_version, params_json, started_at_utc) VALUES (?, 'pr:test', 'stance', 'm',"
+            " 'x', 'v', ?, 't')",
+            (run, params),
+        )
+    call(db, FILLER, t(0), "fill", ["C01"])
+    call(db, first, t(40), "AAAA-1", ["a", "r1"], "irrelevant")
+    call(db, first, t(80), "BBBB-2", ["a", "r2"], "supports")
+    call(db, rerun, t(81), "AAAA-1", ["a", "r1"], "irrelevant")  # the stored answer
+    call(db, rerun, t(121), "BBBB-3", ["a", "r3"], "irrelevant")
+    call(db, fresh, t(161), "AAAA-1", ["a", "r1"], "irrelevant")  # reuse off: asked again
+    prof = run_profile.build(db)
+    stance = prof.jobs["stance"]
+    assert (stance.calls, stance.stored_answers) == (4, 1)
+    assert stance.seconds == [40.0, 40.0, 40.0, 40.0]
+    assert stance.shared_prefix_chars == len("BBBB-")
+    assert prof.as_dict()["stance_answers"]["irrelevant"] == 3
+    text = run_profile.render(prof)
+    assert "Answered from stored outputs, not by the model, and left out above: stance 1." in text
+
+
 def test_a_single_prompt_has_no_fixed_tail(db) -> None:  # noqa: ANN001
     call(db, FILLER, t(0), "only prompt", ["C01"])
     assert run_profile.build(db).jobs["assumptions"].fixed_tail_chars == 0

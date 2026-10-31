@@ -94,3 +94,8 @@ scored under these criteria; RESULTS.md names the commit that ran.
   `time_case` now records each pass's call outcomes; for a folder written before that, the
   scorer reads them from the timed audit's own case database (its first stance model run is
   the cold run). Outcomes recorded in neither place fail the criterion.
+- Added after one more Codex review on PR #182, still before any answer was seen: criterion 2
+  holds for both prompts' runs, as its words say ("valid output 100% on every set"); the scorer
+  had checked only v1.4's. An invalid or missing v1.1 answer lowers v1.1's recall and can make
+  it miss a bar, which would hold v1.4 only to "no worse than v1.1" (criteria 3 and 5), so an
+  unusable v1.1 run now stops the comparison instead of easing it. This is stricter.

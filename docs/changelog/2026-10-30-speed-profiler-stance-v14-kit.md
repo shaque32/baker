@@ -9,7 +9,9 @@
     (all jobs share one loaded model, so this is what llama.cpp's prefix reuse can skip), or
     with every prompt of its run at the end (fixed text after the case data, which no call can
     reuse). Stance answers split by the code checks on the assumption, and calls on a record a
-    passed check itself cited. Aggregates only; it refuses a case02 path.
+    passed check itself cited. Calls answered from a stored output (an audit rerun reuses
+    earlier answers) are counted apart and left out of every figure: they took no model time.
+    Aggregates only; it refuses a case02 path.
   - Stance v1.4 test kit: `eval/probe/stance_v1_4_draft.md` is the signed v1.1 lines, none
     added or reworded, with the fixed instructions moved ahead of the claim, assumption, record
     and context, so calls can reuse them. Not signed and not used by the product.
@@ -22,9 +24,11 @@
     after the PR's reviews) made the trap criterion hold set by set and added to the report:
     every item's answer, the model's full SHA-256, each step's seed, context size, runtime,
     tokens per second and peak memory, the timed audits' per-call spread, and a note that the
-    sets are not fresh items. A later addendum the same day, still before any answer, made the
+    sets are not fresh items. Later additions the same day, still before any answer, made the
     speed criterion count only when no stance call of either timed audit failed (a runtime
-    error or invalid output returns at once and would otherwise count as speed). For that,
+    error or invalid output returns at once and would otherwise count as speed), and the
+    valid-output criterion hold for v1.1's answers too (an unusable v1.1 run would otherwise
+    lower the bars v1.4 is held to). For that,
     `run_probe` and `time_case` summaries now also record the process's peak resident memory
     (`peak_rss_gb`), and `time_case` each call's seconds (`call_seconds`) and each pass's call
     outcomes (`outcomes`, from `model_calls`; the scorer reads an older folder's from its

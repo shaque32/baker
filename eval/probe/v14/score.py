@@ -198,15 +198,18 @@ def criteria(out: Path) -> list[tuple[str, str, bool]]:
     c = {s: r for s, r in cand.items() if r is not None}
     shas = {r.sha for r in [*b.values(), *c.values()]} | {t_base["sha256"], t_cand["sha256"]}
     res = [("all", f"1. every run from one model file (found {len(shas)})", len(shas) == 1)]
+    # Both prompts: an invalid or missing v1.1 answer would lower the bars v1.4 is held to.
     invalid = [
-        s
-        for s, r in c.items()
+        f"{PROMPT_NAMES[p]} on {s}"
+        for p, by_set in (("base", b), ("v14", c))
+        for s, r in by_set.items()
         if any(r.labels[i["id"]] in ("invalid", "missing") for i in scored(s))
     ]
     res.append(
         (
             "all",
-            f"2. valid output 100% on every set ({', '.join(invalid) or 'all valid'})",
+            "2. valid output 100% on every set, under both prompts"
+            f" ({', '.join(invalid) or 'all valid'})",
             not invalid,
         )
     )

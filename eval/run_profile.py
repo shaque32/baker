@@ -21,6 +21,10 @@ model job (model_runs.purpose):
              re-reading), and the text every prompt of a model run ends with (fixed
              instructions placed after the case data, which no call can reuse)
 
+Calls answered from a stored output (an audit rerun reuses earlier answers, see
+core/audit/_local_model.py) are counted apart and left out of every figure above: they took no
+model time and read no prompt.
+
 Shares of prompt text are counted in characters, not tokens; a token is a few characters, so
 treat them as close, not exact. Only aggregate counts are printed: no claim, record or prompt
 text, so it is safe on any synthetic case. Never run it on case02 (CLAUDE.md).
@@ -39,6 +43,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from core.audit._local_model import REUSE_PARAM, _reuse_key
 from eval.loss_report import _raw_stance, open_readonly
 
 VERSION = "1.0.0"
@@ -58,6 +63,7 @@ class Job:
     prompt_chars: int = 0
     shared_prefix_chars: int = 0  # with the model call just before it, any job
     fixed_tail_chars: int = 0  # text every prompt of a model run ends with, summed per call
+    stored_answers: int = 0  # answered from a stored output, not by the model; not counted
 
     @property
     def total_s(self) -> float:
@@ -70,6 +76,7 @@ class Job:
             "purpose": self.purpose,
             "model_runs": self.model_runs,
             "calls": self.calls,
+            "stored_answers": self.stored_answers,
             "timed_calls": self.timed_calls,
             "hours": round(self.total_s / 3600, 2),
             "mean_s": None if mean is None else round(mean, 1),
@@ -156,6 +163,36 @@ def _check_states(conn: sqlite3.Connection) -> tuple[dict[str, str], dict[str, s
     return states, cited
 
 
+def stored_answers(conn: sqlite3.Connection) -> set[str]:
+    """Calls answered from a stored output, not by the model: their run reuses outputs, and an
+    earlier call of the same job, model file, prompt file and settings, with the same prompt
+    and an answer that was not an error, holds the same raw output (stored_output_lookup in
+    core/audit/_local_model.py). The cloud labeler asks again after an unusable stored answer;
+    a new answer identical to it would be counted here too."""
+    runs = {
+        run_id: (purpose, sha, prompt_sha or "", json.loads(params))
+        for run_id, purpose, sha, prompt_sha, params in conn.execute(
+            "SELECT id, purpose, model_sha256, prompt_sha256, params_json FROM model_runs"
+        )
+    }
+    first: dict[tuple[str, ...], str] = {}
+    out: set[str] = set()
+    rows = conn.execute(
+        "SELECT id, model_run_id, prompt, raw_output, outcome FROM model_calls ORDER BY at_utc, id"
+    )
+    for call_id, run_id, prompt, raw, outcome in rows:
+        if run_id not in runs:
+            continue
+        purpose, sha, prompt_sha, params = runs[run_id]
+        key = (purpose, sha, prompt_sha, _reuse_key(params), prompt)
+        if key in first:
+            if params.get(REUSE_PARAM) and raw == first[key]:
+                out.add(call_id)
+        elif outcome != "error":  # a failed call is never reused
+            first[key] = raw
+    return out
+
+
 def build(conn: sqlite3.Connection, max_gap_s: float = MAX_GAP_S) -> Profile:
     prof = Profile()
     purpose_of: dict[str, str] = {}
@@ -163,13 +200,15 @@ def build(conn: sqlite3.Connection, max_gap_s: float = MAX_GAP_S) -> Profile:
         purpose_of[run_id] = purpose
         prof.jobs.setdefault(purpose, Job(purpose)).model_runs += 1
 
+    stored = stored_answers(conn)
     calls = conn.execute(
-        "SELECT model_run_id, subject_json, prompt, raw_output, at_utc FROM model_calls"
+        "SELECT id, model_run_id, subject_json, prompt, raw_output, at_utc FROM model_calls"
         " ORDER BY at_utc, model_run_id, seq"
     ).fetchall()
     by_run: dict[str, list[str]] = defaultdict(list)
-    for run_id, _, prompt, _, _ in calls:
-        by_run[run_id].append(prompt)
+    for call_id, run_id, _, prompt, _, _ in calls:
+        if call_id not in stored:
+            by_run[run_id].append(prompt)
     tails = {run_id: _common_tail(prompts) for run_id, prompts in by_run.items()}
     for run_id in by_run:
         if len(by_run[run_id]) < 2:
@@ -179,9 +218,13 @@ def build(conn: sqlite3.Connection, max_gap_s: float = MAX_GAP_S) -> Profile:
     states, cited = _check_states(conn)
     prev_at: datetime | None = None
     prev_prompt: str | None = None  # one model serves every job, so one cache
-    for run_id, subject, prompt, raw, at in calls:
+    for call_id, run_id, subject, prompt, raw, at in calls:
         purpose = purpose_of.get(run_id, "unknown")
         job = prof.jobs.setdefault(purpose, Job(purpose))
+        if call_id in stored:  # no model time, and the model's cache still holds prev_prompt
+            job.stored_answers += 1
+            prev_at = _at(at)
+            continue
         job.calls += 1
         job.prompt_chars += len(prompt)
         job.fixed_tail_chars += tails[run_id]
@@ -234,6 +277,14 @@ def render(prof: Profile) -> str:
             f" | {j['prompt_chars_mean']} | {j['reused_prefix_share']:.0%}"
             f" | {j['fixed_tail_share']:.0%} |"
         )
+    stored = [f"{j['purpose']} {j['stored_answers']}" for j in d["jobs"] if j["stored_answers"]]
+    if stored:
+        lines += [
+            "",
+            "Answered from stored outputs, not by the model, and left out above: "
+            + ", ".join(stored)
+            + ".",
+        ]
     n = d["stance_calls"]
     if n:
         a = d["stance_answers"]

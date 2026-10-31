@@ -248,9 +248,9 @@ ahead of the case data, so llama.cpp can reuse them from one call to the next (o
 an average stance prompt was fixed text after the data). The plan and its criteria, fixed
 before any call, are in `v14/PREREGISTERED.md`: on each of the four sets v1.4 must show no more
 traps as supports than v1.1, be no worse on the signed bars, keep recall within one item, and
-cut the mean time per stance call on a timed case01 audit by at least 15%, with every stance
-call of both timed audits answered (a failed call returns at once, so it never counts as
-speed). One Mac sitting, about 3 to 4 hours:
+cut the mean time per stance call on a timed case01 audit by at least 15%, with every answer
+of both prompts valid and every stance call of both timed audits answered (a failed call
+returns at once, so it never counts as speed). One Mac sitting, about 3 to 4 hours:
 
     bash eval/probe/mac_v14.sh
 
