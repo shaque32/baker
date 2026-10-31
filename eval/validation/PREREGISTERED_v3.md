@@ -3,11 +3,12 @@
 `PREREGISTERED.md` and `PREREGISTERED_v2.md` stay as they are. This is the new version that v2's
 low-coverage rule item 4 requires for a run 3.
 
-Status: **draft, not binding.** It merges to main as a draft so the coverage steps can build on
-it. It binds only when a later PR fills the prediction from the replay at the commit Arsh names
-and this line records the date and his words of approval in the validation thread. Baker Product
-then publishes the tag `validation-v1-run3` on that commit before run 3 starts. Nothing here
-changes after run 3's results are seen.
+Status: **Approved by Arsh on 2026-10-30 at 23:10 UTC ("approve", in the validation thread, in
+reply to the request to approve the run 3 plan as filled in #176).** It merged to main as a
+draft (#165) so the coverage steps could build on it. This version fills the prediction from the
+replay at the tag's commit, e5ce04b, and is binding from that approval. Baker Product publishes
+the tag `validation-v1-run3` on e5ce04b before run 3 starts. Nothing here changes after run 3's
+results are seen.
 
 ## What run 3 is, and is not
 - Run 3 reruns the same 106 signed iOS 15 claims, on the same phone, with the same answer keys.
@@ -21,7 +22,7 @@ changes after run 3's results are seen.
   not this file.
 
 ## Every change since run 2's code
-From `git log --first-parent d478705..validation-v1-run3`. At the time of writing, main is 00ccc9d.
+From `git log --first-parent d478705..e5ce04b`, the commit the tag goes on (#172's merge).
 
 | PR | What changed | Versions |
 | --- | --- | --- |
@@ -44,13 +45,26 @@ From `git log --first-parent d478705..validation-v1-run3`. At the time of writin
 | #162 | Challenge step on by default. The run driver turns it off for run 3 (see Agents). | none in this run |
 | #163 | Testability agent: claim-only check, the examiner's accept card, and the scripted demo. Still off by default; run 3 does not use it. | none in this run |
 | #169 | Coverage steps after Arsh's rulings R1, R4, R5, R6 and fills a to g: native calls by number, one number written two ways as one party, open no-contact ranges to the extraction's edges, writers from "instructed ..., writing", part-day ranges, call counts, and code-made assumptions marked "Filled from the claim's wording." The run driver links a defined number's accounts (R4) and turns the challenge step off. | filler; count 1.1.0; run driver |
-| R2/R3 PR | Arsh's rulings R2 and R3 (signed contracts fields `sent_by`, `each_way`): a message count of what one side sent, and "exchanged" messages as at least one each way, never failed on one side's silence. Code sets them only from the claim's words. Assumption ids change once (the id hashes the new default fields). | count 1.2.0; filler; AssumptionParams fields |
+| #171 | A design skill for agents working on the UI. | none |
+| #167 | App and report look; names in place of ids in the report. | report 0.25.0 |
+| #173, #175 | Website only. | none |
+| #166 | Rules 0.4.0: a failed check on an assumption the testability agent proposed counts only once an expert confirms it. Run 3 does not use the agent, so every verdict is decided as under 0.3.0 (see below). | rules 0.4.0; report 0.26.0 |
+| #168, #170 | The testability agent's go/no-go and its held-out synthetic case04 (eval only). | none in this run |
+| #174 | Report follow-ups: same-name ids kept beside the name, count operators as words. | report 0.27.0 |
+| #172 | Arsh's rulings R2 and R3 (contracts fields `sent_by`, `each_way`, signed 2026-10-29): a message count of what one side sent, and "exchanged" messages as at least one each way, never failed on one side's silence. Code sets them only from the claim's plain words and refuses any other wording. Assumption ids change once (the id hashes the new default fields). | count 1.2.0; filler; contracts 0.5.0 (signed 2026-10-30); report 0.28.0 |
 
 Any PR that merges after #165 and before the tag is added to this table before approval.
 
-These stay unchanged, byte for byte, as v2 lists them: rules 0.3.0, every prompt (including
-the assumptions prompt), model pins, contracts, schema and gold. Because the assumptions prompt
-and model are unchanged, the model's answers should repeat run 2's.
+These stay unchanged, byte for byte, as v2 lists them: every prompt run 3 uses (including the
+assumptions prompt), the model pins, the schema's tables and the signed answer keys. The only
+prompt added since run 2 is the testability agent's, which run 3 does not use. Because the
+assumptions prompt and model are unchanged, the model's answers should repeat run 2's.
+
+Two signed files changed, neither in a way that moves a run 3 verdict:
+- Rules 0.4.0 (#166) differ from 0.3.0 only for an assumption the testability agent proposed.
+  With the agent off, the pipeline passes no such assumption, and 0.4.0 decides exactly as
+  0.3.0. A failed core check still contradicts without an expert.
+- Contracts 0.5.0 (#172) add the two count fields above. The schema's tables are unchanged.
 
 ## Disclosure: these fixes were designed after seeing runs 1 and 2
 The fixes since run 2 were designed after seeing run 1's and run 2's refusals, and replays of
@@ -58,24 +72,41 @@ run 2's recorded answers on these claims. The answer key was not used to design 
 null result and run 2's insufficient coverage (9 of 106) are reported with run 3.
 
 ## Prediction (stated before run 3)
-- Replaying run 2's recorded answers through this PR's code, and running the deterministic
-  checks on run 2's case database, gives **35 of 106** tested: **18 code-checked**, **13 check
-  unsettled** and **4 expert only**. At main e99c0a8, before the text fold, it was 7, 24 and 4.
-  This is development data, in the project's `run-v2/replay/REPLAY.md`. The replay is re-run at
-  the tag, and this line is updated before approval if anything merged since then changes it.
+- Replaying run 2's recorded answers through the tag's code (e5ce04b), and running the
+  deterministic checks on a copy of run 2's case database with the run driver's links for the
+  defined number (R4, as run 3 makes them), gives **52 of 106** tested: **34 code-checked**,
+  **15 check unsettled** and **3 expert only**. 11 of the tested claims have a failed core
+  check; measure 7 scores them. These are not checked against the answer key.
+- Without the R4 links it is 52 tested: 31 code-checked, 18 unsettled and 3 expert only. Three
+  claims move from code-checked to unsettled, and the failed core checks stay at 11.
+- The path here: 7 code-checked at e99c0a8, 18 with the text fold (#165), 33 after #169 and 34
+  after #172. Development data, in the project's `run-v2/replay/REPLAY.md`.
 - What still leaves checks unsettled: the other party is tied to no account, a display name
-  two accounts share, records only outside the claimed window, one number stored as two
-  accounts, and quoted words that are not on the phone. The last is the right outcome.
+  two accounts share, records only outside the claimed window, no call of the stated length,
+  a one-way count that finds fewer messages than claimed in a curated report, and quoted words
+  that are not on the phone. The last is the right outcome.
 - If the A10G repeats run 2's answers byte for byte, run 3's k and tiers equal the replay's.
   Any other result is reported with its cause: either the A10G did not repeat its answers, or
   the replay missed a code path.
 
+## Check changes since run 2's checks, by direction
+The text fold (#165) is the only change to the sender, weekday and time checks since sender
+1.0.1, weekday 1.0.1 and time 1.0.2 (`git diff e99c0a8..e5ce04b -- core/audit/checks`). The same
+replay runs each core check both ways, with the fold and with the earlier exact match:
+- Sender: 25 core results. 8 went from inconclusive to pass and 1 from inconclusive to fail.
+  16 are unchanged.
+- Time: 43 core results. 9 went from inconclusive to pass and 3 from inconclusive to fail. 31
+  are unchanged.
+- Weekday: no core weekday result in the replay.
+- No result moved between pass and fail, and none became inconclusive. In all, 21 of 68
+  changed: 17 to pass, 4 to fail.
+
+The count check changed in #169 (1.1.0) and #172 (1.2.0). Before them, the counts it now reads
+were refused before any check ran, so there is no earlier result to compare.
+
 ## When run 3 runs
-Run 3 runs only when the replay at the tag predicts at least 30 code-checked claims. Until then
-the remaining coverage steps (native calls recorded under app "unknown", message direction,
-call and one-way counts) come first, each replayed the same way. Each step that changes code is
-added to the change table above. This file's Status line changes to approved only after that
-replay, with its numbers in the prediction above.
+Run 3 runs only when the replay at the tag predicts at least 30 code-checked claims. The replay
+at e5ce04b predicts 34, so the condition is met. The margin is 4, and 1 without the R4 links.
 
 ## Tested, in three tiers
 A claim is tested as in v2: it has a first-pass verdict and is not marked "Not tested". The
@@ -122,6 +153,8 @@ whether any verdict differs. Determinism on AWS stays unmeasured until this is d
 result (14B on GPU, 105 of 105) does not carry over.
 
 ## Agents
+- Rules 0.4.0 change a verdict only for an assumption the testability agent proposed. With
+  the agent off, run 3's verdicts are decided as under 0.3.0.
 - The challenge step (#154) is on by default since #162, so the run driver
   (`eval/validation/hickman_run.py`) turns it off, and `run.json` records `"challenge": false`
   (the audit's stored configuration has no challenge entry). Run 3 then changes only the
@@ -130,8 +163,11 @@ result (14B on GPU, 105 of 105) does not carry over.
   it, and its repairs never count toward tested claims or the minimum.
 
 ## Frozen version
-The git tag `validation-v1-run3` goes on the main commit that carries this file and the
-changes above. Arsh names the commit, and Baker Product publishes the tag on it. The machine is as in v2: AWS g5.xlarge
+The git tag `validation-v1-run3` goes on main commit e5ce04b, where #172 merged. It carries every
+code change above and this file as a draft. On 2026-10-29 Arsh asked for the commit to be
+chosen, with "current main is fine", and e5ce04b is the merge that made main carry R2 and R3.
+Baker Product publishes the tag on it. This version of the file changes only text: run 3
+clones the tag, so nothing merged after e5ce04b reaches it. The machine is as in v2: AWS g5.xlarge
 (A10G), or g6.xlarge as the fallback. `run.json` records which.
 
 ## Disclosures that travel with every run 3 number
