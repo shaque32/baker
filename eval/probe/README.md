@@ -262,6 +262,24 @@ audit's own database). The four
 sets are not fresh items (the 14B answered them on 2026-10-22), so a pass is not a held-out
 result. Not run yet.
 
+## Replaying a recorded audit: a shorter context (2026-10-31)
+The probe sets carry 2 to 6 context lines; real audit prompts carry about 23. `replay.py`
+rebuilds a recorded audit's stance prompts with today's code and asks the local model again
+under a variant (the signed prompt or the v1.4 order; 20, 8 or 5 messages either side of the
+record), in the recorded order, then compares the labels as the product stores them. Only
+calls whose signed 20-message prompt rebuilds byte for byte are replayed (279 of 283 on the
+case04 go/no-go run), so a label change comes from the variant, not from code that changed.
+
+    python -m eval.probe.replay check --db <case.db>      # no model: rebuilds and prompt sizes
+    bash eval/probe/mac_replay.sh                         # the Mac test, about 4 hours
+
+On the case04 prompts, 8 messages either side make the prompt about 18% shorter and 5 about
+24% (`check`, no model). Whether that keeps the labels is the Mac test's question;
+`REPLAY_PREREGISTERED.md` fixes its criteria, and the report prints each count with its 95%
+Wilson upper bound and lists every call behind the decision. A replay folder holds one replay:
+a stopped replay resumes only with the same model file, settings, prompt, context size,
+recorded calls and prompt text (`identity.json`). Not run yet.
+
 ## Repeat check: same question, same answer? (2026-10-20)
 
 `bash eval/probe/mac_repeat.sh` (or `python -m eval.probe.repeat_check --models ...`) asks the
