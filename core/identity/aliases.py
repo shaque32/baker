@@ -3,7 +3,7 @@
 An affidavit calls Owen Halloran "SUBJECT-1" and "HAL"; a person in the case has one name. The
 expert records the document's other names for a person with core/review/actions.set_aliases,
 and only an expert does: no model proposes one. Code matches an alias whole, in any case, the
-way the assumption filler matches a whole name (`written`). The surname rule (a bare
+way the assumption filler matches a whole name (`spans`, `written`). The surname rule (a bare
 "HALLORAN" for "Owen Halloran") is for the person's name only, never for an alias, so "Big
 Owen" never matches a bare "Owen". An alias that would also match another person is refused
 when entered; if one ever does (an owner renamed later), it matches neither person
@@ -41,17 +41,36 @@ def name_keys(name: str) -> set[str]:
     return {k for k in (key(name), last, *map(key, tokens(name)[-1:])) if k}
 
 
-def written(alias: str, text: str) -> str | None:
-    """The alias as the text writes it, or None: whole, in any case, with the spacing and
-    punctuation between its words not counting, as `key` compares ("SUBJECT 1" is
-    "SUBJECT-1", "the DRIVER's" holds "the DRIVER"). Never inside a longer name or a handle:
-    "SUBJECT-12", "Subject-1A" and "@hal" do not write "SUBJECT-1" or "HAL"."""
+def _folded(text: str) -> tuple[str, list[int]]:
+    """The text casefolded as `key` folds it, and for each folded character the index of the
+    character it came from ("ß" folds to "ss", two characters from one)."""
+    out: list[str] = []
+    where: list[int] = []
+    for i, ch in enumerate(text):
+        f = ch.casefold()
+        out.append(f)
+        where += [i] * len(f)
+    return "".join(out), where
+
+
+def spans(alias: str, text: str) -> list[tuple[int, int]]:
+    """Where the text writes the alias, as (start, end) in the text after NFC: whole, in any
+    case, with the spacing and punctuation between its words not counting, compared as `key`
+    compares both sides ("SUBJECT 1" is "SUBJECT-1", "the DRIVER's" holds "the DRIVER",
+    "GROSS" is "Groß"). Never inside a longer name or a handle: "SUBJECT-12", "Subject-1A" and
+    "@hal" do not write "SUBJECT-1" or "HAL"."""
     words = key(alias).split()
     if not words:
-        return None
+        return []
+    folded, where = _folded(unicodedata.normalize("NFC", text))
     pattern = r"(?<![\w@+])" + r"[\W_]+".join(map(re.escape, words)) + r"(?!\w)"
-    m = re.search(pattern, unicodedata.normalize("NFC", text), re.IGNORECASE)
-    return None if m is None else m.group(0)
+    return [(where[m.start()], where[m.end() - 1] + 1) for m in re.finditer(pattern, folded)]
+
+
+def written(alias: str, text: str) -> str | None:
+    """The alias as the text writes it (`spans`, the first place), or None."""
+    found = spans(alias, text)
+    return unicodedata.normalize("NFC", text)[slice(*found[0])] if found else None
 
 
 @dataclass(frozen=True)

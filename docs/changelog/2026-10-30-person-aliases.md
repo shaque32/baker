@@ -24,7 +24,8 @@
     Identities page alike. An alias is found whole, in any case, with the spacing and
     punctuation between its words not counting: "Subject 1" is "SUBJECT-1", and "the DRIVER's"
     holds "the DRIVER". "SUBJECT-12", "Subject-1A" and the handle "@subject-1" are not
-    "SUBJECT-1". Letters in any script count ("Дима").
+    "SUBJECT-1". Letters in any script count ("Дима"), and both sides are casefolded alike, so
+    "GROSS" finds "Groß" (Codex on #181). `aliases.spans` gives every place, for the filler.
   - The refusal compares every form a reader matches a name by: the whole name, the filler's
     surname ("Brown-Smith" for "John Brown-Smith") and the Identities page's last name word
     ("Smith"), so "Smith" may not be another person's alias (Codex on #181).
@@ -39,7 +40,10 @@
     when (report 0.29.0). The bundle carries the table like every other. An alias added or
     removed after an audit changes what the testability step's tries looked up, so
     `verify-bundle` notes those tries as not re-run, as it does after a person is added
-    (Codex on #181).
+    (Codex on #181). `verify-bundle` also holds each stored alias to the expert's logged
+    actions (added, not since removed, as written, by that expert at that time), and fails a
+    row the log does not account for or a logged alias that is missing, since the report names
+    the expert and the time from these rows (Codex on #181).
   - The eval's case setup records each phone owner's aliases from the case's `case.json`.
     case04 gets the affidavit's definitions: SUBJECT-1 and HAL for Halloran, SUBJECT-2 for Ferro,
     and SUBJECT-3, DEZ and the DRIVER for Okafor. No other case has aliases, so `make eval` is
@@ -52,7 +56,7 @@
     names, and its check accepts that person as the claim's own, so the step's conversion on
     case04 can change with this PR alone. That is unmeasured. No verdict rule changes.
 - Where: PR #181 (branch `claude/project-thread-6i2msb-aliases`)
-- Verified: new `tests/test_person_aliases.py`, 29 tests:
+- Verified: new `tests/test_person_aliases.py`, 31 tests:
   - recording, replacing and clearing aliases, each logged;
   - every refusal: another person's whole name, surname or alias; the person's own surname;
     no letter or digit; too long; a non-expert actor; an unknown person; the schema's CHECK and
@@ -62,7 +66,10 @@
   - a shared alias matches neither person;
   - an alias is matched whole, never by its last word, and near misses: "Subject 1" and the
     possessive match, "SUBJECT-12", "Subject-1A", "SUBJECT1" and "@subject-1" do not; an
-    everyday alias ("the DRIVER") matches in any case; an alias in another script;
+    everyday alias ("the DRIVER") matches in any case; an alias in another script; "Groß"
+    and "GROSS" folded alike;
+  - `verify-bundle`'s alias check: a forged expert, an unlogged row and a missing logged alias
+    each fail; a person's removal accounts for their aliases;
   - an alias another person's last name word matches ("Smith" for "John Brown-Smith") refused;
   - a database without the table;
   - on case01: the testability step's lookups by alias ("Subject 1" too, and not

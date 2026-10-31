@@ -135,11 +135,16 @@ def test_a_new_person_may_not_take_a_name_another_person_is_called(db, two):
 
 
 def test_removing_a_person_removes_their_aliases_and_says_so(db, two):
+    from core.bundle import verify as V
+
     hal, _ = two
     actions.set_aliases(db, hal, ["SUBJECT-1"], EXPERT, _clock)
     actions.remove_person(db, hal, EXPERT, _clock)
     assert aliases.stored(db) == []
     assert _log(db, "person.remove")[-1]["aliases_removed"] == ["SUBJECT-1"]
+    out = V._Out()
+    V._aliases(db, out)
+    assert out.items == []  # the log's removal accounts for the row's absence
 
 
 # ---------------------------------------------------------------- reading them
@@ -211,6 +216,17 @@ def test_an_everyday_alias_matches_in_any_case_as_the_experts_statement(db, two)
     assert aliases.written("the DRIVER", "the DRIVER's phone") == "the DRIVER"
     assert aliases.written("the DRIVER", "the driver of the van") == "the driver"
     assert aliases.written("the DRIVER", "a driver for the courier") is None
+
+
+def test_an_alias_is_found_with_both_sides_folded_alike():
+    """`key` casefolds, so the matcher folds the text the same way and still returns it as
+    written (Codex on #181)."""
+    assert aliases.written("Groß", "Groß wrote first.") == "Groß"
+    assert aliases.written("GROSS", "Then Groß wrote.") == "Groß"
+    assert aliases.written("Groß", "GROSS wrote first.") == "GROSS"
+    assert aliases.written("İbrahim", "İbrahim wrote first.") == "İbrahim"
+    assert aliases.written("Gros", "Groß wrote first.") is None  # not part of a letter
+    assert aliases.spans("HAL", "HAL and hal, not @hal") == [(0, 3), (8, 11)]
 
 
 def test_an_alias_in_another_script_is_kept_and_matched(db, two):
@@ -290,6 +306,35 @@ def test_a_designation_with_an_alias_is_placed_and_its_claims_are_named(conn):
     petrov = next(p for p in case.persons if p.id == PETROV)
     assert petrov.aliases == ("SUBJECT-1",)
     assert "C99" in {cid for cid, _ in L.claims_naming(conn, petrov)}
+
+
+def test_verify_bundle_holds_each_alias_to_the_experts_logged_action(conn):
+    """The report names who gave an alias and when from these rows, so each must be what the
+    expert's logged actions left (Codex on #181)."""
+    from core.bundle import verify as V
+
+    def check() -> list[tuple[str, str]]:
+        out = V._Out()
+        V._aliases(conn, out)
+        return [(f.level, f.detail) for f in out.items]
+
+    actions.set_aliases(conn, PETROV, ["SUBJECT-1", "HAL"], EXPERT, _clock)
+    actions.set_aliases(conn, PETROV, ["SUBJECT-1"], EXPERT, _clock)  # HAL removed, logged
+    assert check() == [(V.PASS, "1 aliases match the expert's logged actions")]
+    conn.execute("UPDATE person_aliases SET created_by = 'expert:Someone Else'")
+    assert [level for level, _ in check()] == [V.FAIL]
+    conn.execute("UPDATE person_aliases SET created_by = ?", (EXPERT,))
+    conn.execute(
+        "INSERT INTO person_aliases VALUES (?, 'DEZ', ?, '2026-10-30T23:30:00Z')", (PETROV, EXPERT)
+    )
+    assert [d for level, d in check() if level == V.FAIL] == [
+        f"{PETROV}: the alias 'DEZ' is not what the expert's logged actions left (person, "
+        "expert or time)"
+    ]
+    conn.execute("DELETE FROM person_aliases")
+    assert check() == [
+        (V.FAIL, f"{PETROV}: the log records the alias 'SUBJECT-1', but it is missing")
+    ]
 
 
 def test_other_designations_stay_names_of_their_own_on_the_identities_page(conn):
