@@ -275,7 +275,10 @@ case04 go/no-go run), so a label change comes from the variant, not from code th
 
 On the case04 prompts, 8 messages either side make the prompt about 18% shorter and 5 about
 24% (`check`, no model). Whether that keeps the labels is the Mac test's question;
-`REPLAY_PREREGISTERED.md` fixes its criteria. Not run yet.
+`REPLAY_PREREGISTERED.md` fixes its criteria, and the report prints each count with its 95%
+Wilson upper bound and lists every call behind the decision. A replay folder holds one replay:
+a stopped replay resumes only with the same model file, settings, prompt, context size,
+recorded calls and prompt text (`identity.json`). Not run yet.
 
 ## Repeat check: same question, same answer? (2026-10-20)
 

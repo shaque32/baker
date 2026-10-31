@@ -10,7 +10,8 @@
 # path). Run nothing else on the Mac meanwhile. About 4 hours on a 24 GB MacBook Air (estimated
 # from the case04 run's 46 s per stance call); the Mac stays awake until it finishes. To resume
 # after a stop, run it again with OUT set to the same folder: each replay resumes where it
-# stopped. Everything is synthetic and offline. Paste back the RESULTS.md it prints at the end.
+# stopped, and only as the same replay (another model file, setting, prompt or code is refused).
+# Everything is synthetic and offline. Paste back the RESULTS.md it prints at the end.
 set -euo pipefail
 
 MODELS="${MODELS:-eval/probe/models.local.json}"

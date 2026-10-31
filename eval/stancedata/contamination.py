@@ -25,12 +25,15 @@ template frame, so only the words it quotes are compared. A pair is flagged when
 Equal texts shorter than EXACT_MIN_TOKENS ("ok thx", "where r u") are counted, not flagged:
 independent chats share them by chance.
 
-Exit status 1 if anything is flagged. The report lists every flag with both texts.
+Exit status 1 if anything is flagged. The report lists every flag with both texts, and
+report.json names every file checked by SHA-256, so a later step (eval/stancedata/sft.py) can
+prove which exact file passed.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -348,6 +351,28 @@ def report(results: list[Result], limit: int = 200) -> str:
     return "\n".join(out)
 
 
+def payload(results: list[Result], train: list[Path], heldout: list[Path]) -> dict:
+    """report.json: the files checked (by SHA-256), whether the check passed, every flag."""
+    return {
+        "inputs": {
+            name: [{"path": str(p), "sha256": hashlib.sha256(p.read_bytes()).hexdigest()}
+                   for p in paths]
+            for name, paths in (("train", train), ("heldout", heldout))
+        },
+        "passed": not any(r.flags for r in results),
+        "comparisons": [
+            {
+                "comparison": r.name,
+                "queries": r.queries,
+                "references": r.references,
+                "short_exact": r.short_exact,
+                "flags": [f.as_dict() for f in r.flags],
+            }
+            for r in results
+        ],
+    }  # fmt: skip
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--train", type=Path, nargs="*", default=[])
@@ -356,18 +381,9 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     results = run(args.train, args.heldout)
     args.out.mkdir(parents=True, exist_ok=True)
-    payload = [
-        {
-            "comparison": r.name,
-            "queries": r.queries,
-            "references": r.references,
-            "short_exact": r.short_exact,
-            "flags": [f.as_dict() for f in r.flags],
-        }
-        for r in results
-    ]
     (args.out / "report.json").write_text(
-        json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        json.dumps(payload(results, args.train, args.heldout), indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
     )
     md = report(results)
     (args.out / "report.md").write_text(md + "\n", encoding="utf-8")

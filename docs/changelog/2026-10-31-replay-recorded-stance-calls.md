@@ -6,14 +6,18 @@
   record. Calls keep the recorded order, so prefix reuse works as in the audit, and only calls
   whose signed 20-message prompt rebuilds byte for byte are replayed. Labels are compared the
   way the product stores them (invalid, quote dropped, forwarded words). `check` needs no
-  model; `run` resumes a stopped replay; `report` prints label changes by direction, gold key
-  records, per-call time spread and a run record. Why: the probe sets carry 2 to 6 context
+  model; `run` resumes a stopped replay only as the same replay (`identity.json`: the model
+  file, its settings, the prompt, the context size, the recorded calls and the exact prompt
+  text) and refuses anything else; `report` prints label changes by direction, gold key
+  records, each safety count with its 95% Wilson upper bound, every call behind the repeat
+  criterion and every label change by ids, the per-call time spread and a run record. Why: the probe sets carry 2 to 6 context
   lines while real audit prompts carry about 23, so only real prompts can test a shorter
   context. `eval/probe/REPLAY_PREREGISTERED.md` fixes the criteria for showing 8 messages
-  instead of 20 before any replay (no call newly labelled supports, none leaving complicates or
-  contradicts, no key record changing its label, at least 10% faster per call with no failed
-  call in either replay, and the 20-message replay repeating the recorded answer on at least
-  99% of calls);
+  instead of 20 before any replay (both replays on the same calls, audit, model file and
+  settings; the 20-message replay repeating the recorded answer on at least 99% of calls; no
+  call newly labelled supports, none leaving complicates or contradicts, no key record changing
+  its label; at least 10% faster per call with no failed call in either replay; supports lost
+  on at most 5% of the baseline's supports calls, and no assumption losing all of them);
   `bash eval/probe/mac_replay.sh` runs it on the Mac (about 4 hours, estimated).
 - Where: PR #185
 - Verified: tests/test_probe_replay.py (a case01 audit labelled by a stand-in model through the
@@ -25,7 +29,10 @@
   a replay: whether a shorter context keeps the labels, and how much time it saves, is
   unverified.
 - Open: character counts stand in for tokens. case04 was already spent as a held-out case, so
-  a result there is not a held-out result. Only the local 14B is tested; the cloud labeler and
+  a result there is not a held-out result. The sample is small: zero new supports on its 116
+  calls that were not supports still allows a rate up to about 3.2% (95% Wilson upper bound),
+  so a pass is not evidence of no effect, and the PR that adopts one is a labeling change that
+  needs the eval gate on a fresh synthetic case. Only the local 14B is tested; the cloud labeler and
   retrieval would keep 20 messages. One machine.
 - Affects: performance (measurement only)
 - Status doc: no change

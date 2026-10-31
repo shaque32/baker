@@ -27,10 +27,13 @@ supports, 19 complicates, 4 contradicts, 93 irrelevant; 20 of the calls are on g
 2. `signed_w8`: the signed prompt, 8 messages either side.
 The calls keep the recorded order, so llama.cpp's prefix reuse works as it did in the audit.
 `signed_w8` always runs after `signed_w20`, so a Mac that slows as it warms counts against the
-shorter context, not for it.
+shorter context, not for it. Each replay folder holds one replay: a stopped replay resumes only
+when the model file, its settings, the prompt, the context size, the recorded calls and the
+exact prompts to send are all the same (`identity.json`), and anything else is refused.
 
 ## 8 messages either side is recommended only if all hold (signed_w8 against signed_w20)
-1. Both ran the same calls on the recorded model file.
+1. Both ran the same calls of the same recorded audit and sample, on the recorded model file,
+   with the same settings and the same replay version.
 2. The 20-message replay repeats the recorded answer, byte for byte, on at least 99% of calls.
    Otherwise the replay is not a faithful baseline and nothing is decided.
 3. No call newly labelled supports. No slack: this is the direction that can end in a false
@@ -41,12 +44,25 @@ shorter context, not for it.
 6. Every call of both replays answered (no runtime error, no invalid output), and mean
    seconds per call at least 10% below the 20-message replay's. A failed call comes back at
    once and still counts in the mean, so it must never pass as speed.
+7. Supports lost on at most 5% of the calls the 20-message replay labels supports (2 of the
+   sample's 49 recorded supports). This is the supports-recall direction: a lost label is
+   evidence the expert no longer sees. Gold key records may not change at all (criterion 5).
+8. No assumption loses every supports label it had with 20 messages.
 If any fails, the context stays at 20 messages and every number goes to Arsh as it is.
 
-Reported beside the criteria, never changing them: every label change by direction (calls by
-seq and record id, no text), supports lost, the per-call spread and the call-by-call time
-ratio, and the run record (the model's SHA-256, seed, context size, runtime, tokens per second
-and peak resident memory).
+A pass is not evidence of no effect. The sample is one already-spent case, one sitting and a
+few dozen calls in each direction that matters. With the sample's recorded labels, zero new
+supports on the 116 calls that were not supports still allows a rate up to about 3.2% (95%
+Wilson upper bound), zero changes on the 23 complicates or contradicts calls up to about 14%,
+and zero changes on the 20 key-record calls up to about 16%. The report prints each count out
+of the calls it could move, with its upper bound.
+
+Reported beside the criteria, never changing them: each count with its 95% Wilson upper bound;
+every call where the 20-message replay's answer is not the recorded one, byte for byte, and
+every label change between the two replays (calls by seq, claim and record id, no text); the
+label changes by direction; the per-call spread and the call-by-call time ratio; and the run
+record (the model's SHA-256, seed, context size, runtime, tokens per second and peak resident
+memory).
 
 ## After a pass
 A PR shows 8 messages either side in the local stance prompt only (the `render_for` call in
@@ -56,6 +72,19 @@ tested them. The eval gate (`make check`) must still pass, and the 14B repeat ch
 because the report states the repeat result for the prompts the product sends. It is a
 meaningful change with its own changelog entry; no signed file changes.
 
+That PR is a labeling change, so it needs the eval gate on its own evidence, not on this
+replay's: the signed probe set on the 14B (whose 2 to 6 line contexts do not exercise the
+window, so it shows only that nothing else moved) and a fresh synthetic audit case that is not
+case04, both reported with every failed item, Wilson intervals, the model's SHA-256, seed,
+tokens per second and peak memory.
+
 ## Commitments
 No criterion edit after seeing any replayed answer. All numbers published, including any that
 get worse.
+
+## Edits before any replay (2026-10-31, review of PR #185)
+Made before any replay ran, each one stricter: criterion 1 also needs the same recorded audit,
+sample, settings and replay version; criteria 7 and 8 (supports lost) were added; each count
+is reported with its 95% Wilson upper bound; the report lists every call behind criterion 2
+and every label change; a stopped replay resumes only as the same replay; and the PR that
+adopts a pass needs the eval gate on a fresh synthetic case.

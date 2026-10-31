@@ -27,12 +27,18 @@ one alike: an invalid output is "invalid", a quote that fails the quote check is
 otherwise the stance after the product's own adjustments (stance.subject_stance; forwarded
 words become "complicates").
 
+A replay folder holds one replay. identity.json, written before the first call, names the model
+file, its settings, the prompt, the context size, the recorded calls and the exact prompts to
+send; a stopped replay resumes only when all of it is the same, and anything else is refused,
+never mixed into the same log.
+
 Eval only, synthetic cases only: it refuses a case02 path.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sqlite3
@@ -56,7 +62,7 @@ from core.ingest import forwarded
 from core.llm.runtime import parse_json_output
 from core.pipeline import load_assumptions
 from eval.loss_report import open_readonly, stance_run
-from eval.probe.run_probe import peak_rss_gb
+from eval.probe.run_probe import peak_rss_gb, wilson
 from eval.probe.v14.score import spread
 
 VERSION = "1.0.0"
@@ -64,6 +70,7 @@ HERE = Path(__file__).parent
 PROMPT_FILES = {"signed": None, "v14": HERE / "stance_v1_4_draft.md"}
 K = 20  # candidates per assumption (core/pipeline.py Components.k)
 RISKY_TO_LEAVE = ("complicates", "contradicts")  # labels that block SUPPORTED until dismissed
+IDENTITY = "identity.json"
 
 
 def template(prompt: str) -> str:
@@ -249,31 +256,31 @@ def run(  # noqa: PLR0913
 ) -> dict[str, Any]:
     base = Builder(conn, "signed", DEFAULT_WINDOW)
     variant = Builder(conn, prompt, window)
+    plan: dict[int, str] = {}  # seq -> the variant's prompt, for calls that rebuild exactly
+    for c in calls:
+        if base.prompt(c.assumption_id, c.record_id) == c.prompt:
+            text = variant.prompt(c.assumption_id, c.record_id)
+            assert text is not None  # noqa: S101 - the same retrieval found the record above
+            plan[c.seq] = text
+    ident = identity(model, calls, plan, prompt, window, recorded_sha256)
+    out.mkdir(parents=True, exist_ok=True)
+    done = _resume(out, ident)
     fwd = forwarded.affected(conn)
     perf = _perf(model)
-    out.mkdir(parents=True, exist_ok=True)
     log = out / "calls.jsonl"
-    done = (
-        {json.loads(x)["seq"] for x in log.read_text(encoding="utf-8").splitlines()}
-        if log.exists()
-        else set()
-    )
-    skipped = 0
     with log.open("a", encoding="utf-8") as f:
         for c in calls:
-            if base.prompt(c.assumption_id, c.record_id) != c.prompt:
-                skipped += 1
+            text = plan.get(c.seq)
+            if text is None or c.seq in done:
                 continue
-            if c.seq in done:
-                continue
-            text = variant.prompt(c.assumption_id, c.record_id)
             a = base.assumption(c.assumption_id)
-            assert text is not None and a is not None  # noqa: S101 - rebuilt just above
+            assert a is not None  # noqa: S101 - rebuilt just above
             start = time.perf_counter()
             res = model.generate_json(text, stance.STANCE_SCHEMA)
             seconds = getattr(res, "seconds", 0.0) or time.perf_counter() - start
             row = {
                 "seq": c.seq,
+                "assumption_id": c.assumption_id,
                 "template": a.template_id,
                 "claim_id": a.claim_id,
                 "record_id": c.record_id,
@@ -286,24 +293,73 @@ def run(  # noqa: PLR0913
                 "prompt_tokens": getattr(res, "prompt_tokens", 0),
                 "completion_tokens": getattr(res, "completion_tokens", 0),
                 "perf": perf(),
+                "rss_gb": peak_rss_gb(),  # this sitting's peak so far, so a resume keeps it
             }
             f.write(json.dumps(row) + "\n")
             f.flush()
-    params = getattr(model, "params", None)
+    peaks = [r["rss_gb"] for r in read_rows(out) if r.get("rss_gb") is not None]
     meta = {
-        "replay": VERSION,
-        "prompt": prompt,
-        "window": window,
+        **ident,
         "model": getattr(model, "name", None),
-        "model_sha256": getattr(model, "sha256", None),
-        "recorded_model_sha256": recorded_sha256,
-        "params": params.as_record() if params is not None else None,
         "calls_asked": len(calls),
-        "not_rebuilt": skipped,
-        "peak_rss_gb": peak_rss_gb(),
+        "not_rebuilt": len(calls) - len(plan),
+        "peak_rss_gb": max(peaks, default=peak_rss_gb()),
     }
     (out / "run.json").write_text(json.dumps(meta, indent=1) + "\n", encoding="utf-8")
     return meta
+
+
+def _sha(value: Any) -> str:
+    return hashlib.sha256(json.dumps(value, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+
+def identity(  # noqa: PLR0913
+    model: Any,
+    calls: list[Call],
+    plan: dict[int, str],
+    prompt: str,
+    window: int,
+    recorded_sha256: str | None,
+) -> dict[str, Any]:
+    """What makes two sittings the same replay: the replay version, the model file and its
+    settings, the prompt and context size, the recorded calls asked for (the audit and the
+    sample), and the exact prompts that will be sent (so a changed prompt file or prompt code
+    counts too)."""
+    params = getattr(model, "params", None)
+    return {
+        "replay": VERSION,
+        "prompt": prompt,
+        "window": window,
+        "model_sha256": getattr(model, "sha256", None),
+        "params": params.as_record() if params is not None else None,
+        "recorded_model_sha256": recorded_sha256,
+        "recorded_calls_sha256": _sha(
+            [[c.seq, c.assumption_id, c.record_id, c.prompt, c.raw_output] for c in calls]
+        ),
+        "prompts_sha256": _sha(sorted(plan.items())),
+    }
+
+
+def _resume(out: Path, ident: dict[str, Any]) -> set[int]:
+    """The seqs this folder already answered, when it holds this same replay. A folder with
+    answers from any other replay, or with answers and no identity, is refused, never mixed."""
+    ident = json.loads(json.dumps(ident))  # as it reads back from the file
+    path, log = out / IDENTITY, out / "calls.jsonl"
+    if path.exists():
+        before = json.loads(path.read_text(encoding="utf-8"))
+        differ = sorted(k for k in before.keys() | ident.keys() if before.get(k) != ident.get(k))
+        if differ:
+            raise SystemExit(
+                f"{out} holds another replay (it differs in {', '.join(differ)});"
+                " use a new --out folder"
+            )
+    elif log.exists():
+        raise SystemExit(
+            f"{log} has no {IDENTITY}, so its replay is unknown; use a new --out folder"
+        )
+    else:
+        path.write_text(json.dumps(ident, indent=1) + "\n", encoding="utf-8")
+    return {r["seq"] for r in read_rows(out)}
 
 
 # ---------------------------------------------------------------- report
@@ -353,22 +409,68 @@ def load_key(gold: Path) -> set[tuple[str, str]]:
 BASE, SHORT = "signed_w20", "signed_w8"  # the folders eval/probe/mac_replay.sh writes
 MIN_SAME_RAW = 0.99  # REPLAY_PREREGISTERED.md, criterion 2
 MIN_FASTER = 0.10  # criterion 6
+MAX_LOST_SUPPORTS = 0.05  # criterion 7
+# What the two replays must share, beside the calls themselves (criterion 1).
+SAME_SETUP = ("replay", "model_sha256", "params", "recorded_model_sha256", "recorded_calls_sha256")
+
+Pair = tuple[dict[str, Any], dict[str, Any]]  # one call: the 20-message row, the 8-message row
+
+
+Rows = dict[int, dict[str, Any]]  # a replay's calls by seq
+
+
+def _replays(out: Path) -> tuple[dict[str, dict[str, Any]], Rows, Rows] | None:
+    """Both replays' run records and calls, or None when one has not run."""
+    metas = {}
+    for name in (BASE, SHORT):
+        if not (out / name / "run.json").exists():
+            return None
+        metas[name] = json.loads((out / name / "run.json").read_text(encoding="utf-8"))
+    base = {r["seq"]: r for r in read_rows(out / BASE)}
+    short = {r["seq"]: r for r in read_rows(out / SHORT)}
+    return metas, base, short
+
+
+def _pairs(base: Rows, short: Rows) -> list[Pair]:
+    return [(base[k], short[k]) for k in sorted(base) if k in short]
+
+
+def safety_counts(
+    pairs: list[Pair], key: set[tuple[str, str]] | None
+) -> dict[str, tuple[int, int]]:
+    """Each count the decision needs at zero (or under its cap), with the calls it is out of."""
+    not_sup = [(b, s) for b, s in pairs if b["replayed"] != "supports"]
+    risky = [(b, s) for b, s in pairs if b["replayed"] in RISKY_TO_LEAVE]
+    keyed = [(b, s) for b, s in pairs if key and (b["claim_id"], b["record_id"]) in key]
+    sup = [(b, s) for b, s in pairs if b["replayed"] == "supports"]
+    return {
+        "new supports": (sum(s["replayed"] == "supports" for _, s in not_sup), len(not_sup)),
+        "left complicates or contradicts": (
+            sum(s["replayed"] != b["replayed"] for b, s in risky),
+            len(risky),
+        ),
+        "key record label changes": (
+            sum(s["replayed"] != b["replayed"] for b, s in keyed),
+            len(keyed),
+        ),
+        "supports lost": (sum(s["replayed"] != "supports" for _, s in sup), len(sup)),
+    }
 
 
 def window_criteria(out: Path, gold: Path | None) -> list[tuple[str, bool]]:
     """The shorter-context decision (eval/probe/REPLAY_PREREGISTERED.md): signed_w8 against the
     same sitting's signed_w20, call by call."""
-    folders = {name: out / name for name in (BASE, SHORT)}
-    metas = {}
-    for name, folder in folders.items():
-        if not (folder / "run.json").exists():
-            return [(f"1. {name} ran", False)]
-        metas[name] = json.loads((folder / "run.json").read_text(encoding="utf-8"))
-    base = {r["seq"]: r for r in read_rows(folders[BASE])}
-    short = {r["seq"]: r for r in read_rows(folders[SHORT])}
+    got = _replays(out)
+    if got is None:
+        missing = next(n for n in (BASE, SHORT) if not (out / n / "run.json").exists())
+        return [(f"1. {missing} ran", False)]
+    metas, base, short = got
+    pairs = _pairs(base, short)
     same_file = all(m["model_sha256"] == m["recorded_model_sha256"] for m in metas.values())
-    res = [("1. both ran the same calls on the recorded model file",
-            bool(base) and base.keys() == short.keys() and same_file)]  # fmt: skip
+    same_setup = all(metas[BASE].get(k) == metas[SHORT].get(k) for k in SAME_SETUP)
+    res = [("1. both ran the same calls of the same recorded audit, on the recorded model file"
+            " with the same settings",
+            bool(base) and base.keys() == short.keys() and same_file and same_setup)]  # fmt: skip
     if not res[0][1]:
         return res
     same_raw = sum(r["same_raw"] for r in base.values())
@@ -379,18 +481,14 @@ def window_criteria(out: Path, gold: Path | None) -> list[tuple[str, bool]]:
             same_raw >= MIN_SAME_RAW * len(base),
         )
     )
-    pairs = [(base[k], short[k]) for k in sorted(base)]
-    new_sup = sum(s["replayed"] == "supports" != b["replayed"] for b, s in pairs)
-    left = sum(b["replayed"] in RISKY_TO_LEAVE and s["replayed"] != b["replayed"] for b, s in pairs)
+    key = load_key(gold) if gold is not None else None
+    n = safety_counts(pairs, key)
+    new_sup = n["new supports"][0]
+    left = n["left complicates or contradicts"][0]
+    moved = n["key record label changes"][0]
     res.append((f"3. no call newly labelled supports ({new_sup})", new_sup == 0))
     res.append((f"4. no call leaves complicates or contradicts ({left})", left == 0))
-    if gold is not None:
-        key = load_key(gold)
-        moved = sum(
-            s["replayed"] != b["replayed"]
-            for b, s in pairs
-            if (b["claim_id"], b["record_id"]) in key
-        )
+    if key is not None:
         res.append((f"5. no key record changes its label ({moved})", moved == 0))
     else:
         res.append(("5. the gold key was given", False))
@@ -414,7 +512,51 @@ def window_criteria(out: Path, gold: Path | None) -> list[tuple[str, bool]]:
             answered and ts <= (1 - MIN_FASTER) * tb,
         )
     )
+    lost, had = n["supports lost"]
+    res.append(
+        (
+            f"7. supports lost on at most {MAX_LOST_SUPPORTS:.0%} of the calls the 20-message"
+            f" replay labels supports ({lost} of {had})",
+            lost <= MAX_LOST_SUPPORTS * had,
+        )
+    )
+    backed = {b.get("assumption_id") for b, _ in pairs if b["replayed"] == "supports"}
+    still = {s.get("assumption_id") for _, s in pairs if s["replayed"] == "supports"}
+    res.append(
+        (
+            "8. no assumption loses every supports label it had with 20 messages"
+            f" ({len(backed - still)})",
+            not backed - still,
+        )
+    )
     return res
+
+
+def _bounds(pairs: list[Pair], key: set[tuple[str, str]] | None) -> list[str]:
+    """How large each rate could still be: a pass on a few dozen calls is not evidence of no
+    effect, so each count is printed with its 95% Wilson upper bound."""
+    out = []
+    for name, (k, n) in safety_counts(pairs, key).items():
+        w = wilson(k, n)
+        out.append(f"- {name}: {k} of {n}" + (f", up to {w[1]:.1%}" if w else ""))
+    return out
+
+
+def _call_lists(base: Rows, pairs: list[Pair], key: set[tuple[str, str]] | None) -> list[str]:
+    """Every call behind criterion 2 and every label change, by seq and ids, no text."""
+
+    def ids(r: dict[str, Any]) -> str:
+        star = " (gold key record)" if key and (r["claim_id"], r["record_id"]) in key else ""
+        return f"seq {r['seq']}, claim {r['claim_id']}, record {r['record_id']}{star}"
+
+    lines = ["", f"### {BASE}: calls whose answer is not the recorded one, byte for byte", ""]
+    miss = [r for _, r in sorted(base.items()) if not r["same_raw"]]
+    lines += [f"- {ids(r)}: recorded {r['recorded']}, replayed {r['replayed']}" for r in miss]
+    lines += [] if miss else ["- none"]
+    lines += ["", f"### {SHORT} against {BASE}: every label change", ""]
+    moved = [(b, s) for b, s in pairs if s["replayed"] != b["replayed"]]
+    lines += [f"- {ids(b)}: {b['replayed']} -> {s['replayed']}" for b, s in moved]
+    return lines + ([] if moved else ["- none"])
 
 
 def report(out: Path, gold: Path | None = None) -> str:
@@ -426,7 +568,14 @@ def report(out: Path, gold: Path | None = None) -> str:
         lines += ["## Shorter context (REPLAY_PREREGISTERED.md)", ""]
         lines += [f"- {'met' if ok else 'NOT met'}: {text}" for text, ok in res]
         lines += ["", f"Recommendation: {'show 8 messages' if met else 'keep 20 messages'}"
-                  " each side in the stance prompt.", "", "## Every replay", ""]  # fmt: skip
+                  " each side in the stance prompt."]  # fmt: skip
+        got = _replays(out)
+        if got is not None:
+            pairs = _pairs(got[1], got[2])
+            lines += ["", "A pass is not evidence of no effect: each count, out of the calls it"
+                      " could move, and the 95% Wilson upper bound on its rate.", ""]  # fmt: skip
+            lines += _bounds(pairs, key) + _call_lists(got[1], pairs, key)
+        lines += ["", "## Every replay", ""]
     folders = sorted(p for p in out.iterdir() if (p / "run.json").exists())
     for folder in folders:
         meta = json.loads((folder / "run.json").read_text(encoding="utf-8"))

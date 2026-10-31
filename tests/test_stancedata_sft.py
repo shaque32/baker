@@ -4,6 +4,7 @@ model is trained or loaded here."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from eval.probe.from_draft import convert
 from eval.probe.v13.score import prompt_text
 from eval.stancedata import sft
 from eval.stancedata.chat import write_jsonl
+from eval.stancedata.contamination import Flag, Result, Text, payload
 from eval.train.generate import generate
 
 PROMPT = prompts.STANCE_PROMPT
@@ -79,3 +81,40 @@ def test_the_same_items_give_the_same_file_and_a_manifest(items, tmp_path):
     assert m["chats"] == len(_rows(items)) and m["left_out"] == {}
     assert m["prompt_version"] == prompts.prompt_version(PROMPT)
     assert sum(m["by_stance"].values()) == m["chats"]
+    assert m["overlap"] is None  # not checked, so not for training
+
+
+def _overlap(tmp_path: Path, train: list[Path], held: list[Path], results: list[Result]) -> Path:
+    path = tmp_path / f"report{len(list(tmp_path.glob('report*.json')))}.json"
+    path.write_text(json.dumps(payload(results, train, held)), encoding="utf-8")
+    return path
+
+
+def test_only_an_overlap_check_that_passed_on_these_items_is_recorded(items, tmp_path):
+    held = tmp_path / "heldout_test.jsonl"
+    held.write_text("{}\n", encoding="utf-8")
+    clean = [Result("train vs test data"), Result("held-out vs test data"),
+             Result("train vs held-out")]  # fmt: skip
+    report = _overlap(tmp_path, [items], [held], clean)
+    out = tmp_path / "chats.jsonl"
+    assert sft.main(["--items", str(items), "--out", str(out), "--overlap", str(report)]) == 0
+    m = json.loads((tmp_path / "chats.jsonl.manifest.json").read_text(encoding="utf-8"))
+    assert m["overlap"]["report"] == str(report)
+    sha = hashlib.sha256(held.read_bytes()).hexdigest()
+    assert m["overlap"]["heldout"] == [{"path": str(held), "sha256": sha}]
+    other = tmp_path / "other.jsonl"
+    other.write_text("{}\n", encoding="utf-8")
+    flag = Flag("exact", 1.0, Text("train T1 record", "x"), Text("heldout H1 record", "x"))
+    flagged = [*clean[:2], Result("train vs held-out", flags=[flag])]
+    for report, why in (
+        (_overlap(tmp_path, [other], [held], clean), "did not check this items file"),
+        (_overlap(tmp_path, [items], [held], clean[:2]), "lacks train vs held-out"),
+        (_overlap(tmp_path, [items], [], clean), "lacks held-out files"),
+        (_overlap(tmp_path, [items], [held], flagged), "found overlap"),
+    ):  # fmt: skip
+        with pytest.raises(SystemExit, match=why):
+            sft.main(["--items", str(items), "--out", str(out), "--overlap", str(report)])
+    old = tmp_path / "old.json"  # the check's report from before it named its files
+    old.write_text(json.dumps(payload(clean, [items], [held])["comparisons"]), encoding="utf-8")
+    with pytest.raises(SystemExit, match="does not name the files"):
+        sft.main(["--items", str(items), "--out", str(out), "--overlap", str(old)])

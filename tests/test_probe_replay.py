@@ -105,14 +105,58 @@ def test_changed_labels_are_counted_by_direction(conn, tmp_path) -> None:  # noq
     )
 
 
+class Stopped(Exception):
+    """Stands in for a replay stopped partway (Ctrl-C, a closed lid)."""
+
+
 def test_a_stopped_replay_resumes_without_asking_twice(conn, tmp_path) -> None:  # noqa: ANN001
     rec = replay.recorded(conn)
-    first = FakeModel(respond=supports_everything)
-    replay.run(conn, first, rec.calls[:3], "signed", 20, tmp_path / "r", rec.model_sha256)
+    calls, out = rec.calls[:6], tmp_path / "r"
+
+    def stops_after_three(prompt: str) -> str:
+        if len(first.calls) > 3:
+            raise Stopped
+        return supports_everything(prompt)
+
+    first = FakeModel(respond=stops_after_three)
+    with pytest.raises(Stopped):
+        replay.run(conn, first, calls, "signed", 20, out, rec.model_sha256)
+    assert len(replay.read_rows(out)) == 3 and not (out / "run.json").exists()
     again = FakeModel(respond=supports_everything)
-    replay.run(conn, again, rec.calls[:6], "signed", 20, tmp_path / "r", rec.model_sha256)
+    meta = replay.run(conn, again, calls, "signed", 20, out, rec.model_sha256)
     assert len(again.calls) == 3
-    assert [r["seq"] for r in replay.read_rows(tmp_path / "r")] == [c.seq for c in rec.calls[:6]]
+    rows = replay.read_rows(out)
+    assert [r["seq"] for r in rows] == [c.seq for c in calls]
+    # the run record keeps the higher peak of the two sittings
+    peaks = [r["rss_gb"] for r in rows if r["rss_gb"] is not None]
+    assert meta["peak_rss_gb"] == (max(peaks) if peaks else None)
+
+
+def test_a_folder_that_holds_another_replay_is_refused(conn, tmp_path) -> None:  # noqa: ANN001
+    rec = replay.recorded(conn)
+    out = tmp_path / "r"
+    replay.run(conn, FakeModel(respond=supports_everything), rec.calls[:3], "signed", 20, out,
+               rec.model_sha256)  # fmt: skip
+    answered = (out / "calls.jsonl").read_text(encoding="utf-8")
+    for model, calls, prompt, window, differ in (
+        (FakeModel(respond=supports_everything), rec.calls[:3], "signed", 8,
+         "prompts_sha256, window"),
+        (FakeModel(respond=supports_everything), rec.calls[:3], "v14", 20,
+         "prompt, prompts_sha256"),
+        (FakeModel(respond=supports_everything, sha256="b" * 64), rec.calls[:3], "signed", 20,
+         "model_sha256"),
+        (FakeModel(respond=supports_everything), rec.calls[:6], "signed", 20,
+         "prompts_sha256, recorded_calls_sha256"),
+    ):  # fmt: skip
+        with pytest.raises(SystemExit, match=rf"another replay \(it differs in {differ}\)"):
+            replay.run(conn, model, calls, prompt, window, out, rec.model_sha256)
+        assert not model.calls
+    with pytest.raises(SystemExit, match=r"differs in recorded_model_sha256\)"):
+        replay.run(conn, FakeModel(), rec.calls[:3], "signed", 20, out, "c" * 64)
+    assert (out / "calls.jsonl").read_text(encoding="utf-8") == answered
+    (out / replay.IDENTITY).unlink()  # answers whose replay is unknown are never resumed
+    with pytest.raises(SystemExit, match="has no identity.json"):
+        replay.run(conn, FakeModel(), rec.calls[:3], "signed", 20, out, rec.model_sha256)
 
 
 def test_sample_keeps_whole_assumptions_in_order(conn) -> None:  # noqa: ANN001
@@ -148,9 +192,10 @@ def _folder(out: Path, name: str, rows: list[dict], sha: str = "a" * 64) -> None
 
 
 def _row(seq: int, label: str, seconds: float, record: str = "r", same: bool = True) -> dict:
-    return {"seq": seq, "claim_id": "C01", "record_id": f"{record}{seq}", "template": "sender",
-            "recorded": label, "replayed": label, "same_raw": same, "seconds": seconds,
-            "prompt_chars": 100, "perf": None}  # fmt: skip
+    return {"seq": seq, "assumption_id": f"A{seq // 4}", "claim_id": "C01",
+            "record_id": f"{record}{seq}", "template": "sender", "recorded": label,
+            "replayed": label, "same_raw": same, "seconds": seconds, "prompt_chars": 100,
+            "perf": None}  # fmt: skip
 
 
 @pytest.fixture
@@ -181,6 +226,12 @@ def _not_met(out: Path, gold: Path) -> list[str]:
     return [text.split(" (")[0] for text, ok in replay.window_criteria(out, gold) if not ok]
 
 
+SAME_CALLS = (
+    "1. both ran the same calls of the same recorded audit, on the recorded model file with the"
+    " same settings"
+)
+
+
 def test_the_same_labels_and_a_faster_call_recommend_the_shorter_context(tmp_path, gold) -> None:  # noqa: ANN001
     out = _window(tmp_path, _short())
     assert _not_met(out, gold) == []
@@ -209,6 +260,12 @@ def test_a_baseline_that_does_not_repeat_the_recording_stops_the_decision(tmp_pa
     base = [_row(i, labels[i % 4], 40.0, same=i != 0) for i in range(8)]
     out = _window(tmp_path, _short(), base)
     assert _not_met(out, gold)[0].startswith("2. the 20-message replay repeats")
+    # every call behind the rate is listed, by ids, beside the decision
+    text = replay.report(out, gold)
+    listed = text.split("calls whose answer is not the recorded one, byte for byte\n\n")[1]
+    assert listed.startswith(
+        "- seq 0, claim C01, record r0: recorded supports, replayed supports\n"
+    )
 
 
 def test_failed_calls_never_count_as_a_speedup(tmp_path, gold) -> None:  # noqa: ANN001
@@ -238,6 +295,33 @@ def test_too_little_speedup_or_other_calls_fail(tmp_path, gold) -> None:  # noqa
         "6. mean s per call at least 10% below the 20-message replay's"
     ]
     fewer = _short()[:-1]
-    assert _not_met(_window(tmp_path / "b", fewer), gold) == [
-        "1. both ran the same calls on the recorded model file"
+    assert _not_met(_window(tmp_path / "b", fewer), gold) == [SAME_CALLS]
+
+
+def test_replays_on_other_settings_or_other_calls_are_not_compared(tmp_path, gold) -> None:  # noqa: ANN001
+    for field, value in (("params", {"seed": 2}), ("recorded_calls_sha256", "c" * 64),
+                         ("model_sha256", "b" * 64)):  # fmt: skip
+        out = _window(tmp_path / field, _short())
+        path = out / replay.SHORT / "run.json"
+        meta = json.loads(path.read_text(encoding="utf-8"))
+        path.write_text(json.dumps({**meta, field: value}), encoding="utf-8")
+        assert _not_met(out, gold) == [SAME_CALLS]
+
+
+def test_lost_supports_have_a_cap_and_no_assumption_loses_all_its_support(tmp_path, gold) -> None:  # noqa: ANN001
+    # supports at seq 0 (assumption A0) and seq 4 (A1); seq 0 loses it with 8 messages
+    out = _window(tmp_path, _short(s0="irrelevant"))
+    assert _not_met(out, gold) == [
+        "7. supports lost on at most 5% of the calls the 20-message replay labels supports",
+        "8. no assumption loses every supports label it had with 20 messages",
     ]
+    text = replay.report(out, gold)
+    # each count is printed out of the calls it could move, with its 95% Wilson upper bound
+    assert "- new supports: 0 of 6, up to 39.0%" in text
+    assert "- left complicates or contradicts: 0 of 4, up to " in text
+    assert "- key record label changes: 0 of 1, up to " in text
+    assert "- supports lost: 1 of 2, up to " in text
+    assert "every label change\n\n- seq 0, claim C01, record r0: supports -> irrelevant\n" in text
+    # a supports label kept by another call of the same assumption still fails the cap
+    not_met = _not_met(_window(tmp_path / "b", _short(s0="irrelevant", s1="supports")), gold)
+    assert not_met[-1].startswith("7. ") and not any(t.startswith("8. ") for t in not_met)
