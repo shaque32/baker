@@ -260,7 +260,9 @@ runtime, tokens per second and peak memory, and the timed audits' per-call sprea
 outcomes (`time_case` records them per pass; for an older folder they are read from the timed
 audit's own database). The four
 sets are not fresh items (the 14B answered them on 2026-10-22), so a pass is not a held-out
-result. Not run yet.
+result. Run on Arsh's Mac on 2026-10-31 (`v14/RESULTS-2026-10-31-mac.md`): no prompt change.
+v1.4 was faster but showed 3 scored gold contradicts items as supports where v1.1 showed none,
+and more traps as supports on every set.
 
 ## Replaying a recorded audit: a shorter context (2026-10-31)
 The probe sets carry 2 to 6 context lines; real audit prompts carry about 23. `replay.py`
