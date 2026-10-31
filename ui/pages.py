@@ -677,7 +677,7 @@ GROUPS = (
     ("you", "Needs you", "Waiting on your review"),
     ("con", "Contradicted", "The verdict rules or an expert decided it"),
     ("unp", "Unproven", "The claim says more than the data shows"),
-    ("sup", "Supported", "An expert accepted its key evidence"),
+    ("sup", "Supported", "An expert accepted its key evidence or overrode the verdict"),
     ("not", "Not audited", "No verdict yet"),
 )
 NEEDS_YOU = 4  # needs() priority at or below this waits on the expert
