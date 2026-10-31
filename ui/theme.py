@@ -159,7 +159,7 @@ details.custody > summary { font-size: 13.5px; color: var(--muted); }
 .banner, p.warn { background: var(--card); border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 10px 14px 10px 16px; margin: 0 0 20px; color: #3c4555; font-size: 13px;
-  line-height: 1.55; max-width: none; box-shadow: inset 3px 0 0 var(--line-strong); }
+  line-height: 1.55; max-width: 92ch; box-shadow: inset 3px 0 0 var(--line-strong); }
 .banner strong, p.warn strong { font-size: inherit; font-weight: 600; color: var(--fg); }
 .banner .banner { background: var(--card); margin: 8px 0 0;
   box-shadow: inset 2px 0 0 var(--amber); }
@@ -401,6 +401,7 @@ body .verdict.v-nt { color: var(--muted); background: var(--panel); border: 0; }
 .tile.t-you .name::before { background: var(--accent); }
 .tile.t-con .name::before { background: var(--con); }
 .tile.t-sup .name::before { background: var(--sup); }
+.tile.t-unp .name::before { background: var(--card); box-shadow: inset 0 0 0 1.5px var(--unp); }
 .tile .n { font: 600 30px/1.25 var(--sans); letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums; }
 .tile.t-you .n { color: var(--accent); }
@@ -412,7 +413,7 @@ body .verdict.v-nt { color: var(--muted); background: var(--panel); border: 0; }
 .nextup .meta { font: 500 12.5px var(--sans); letter-spacing: 0; color: var(--muted);
   text-transform: none; }
 .nextup blockquote.claimtext { font-size: 17px; margin: 12px 0 8px; }
-.nextup p { color: var(--muted); margin: 4px 0 14px; }
+.nextup p { color: var(--muted); margin: 4px 0 14px; max-width: 78ch; }
 a.button { display: inline-flex; align-items: center; min-height: 32px; padding: 0 14px;
   border-radius: 6px; text-decoration: none; font-weight: 500; font-size: 13.5px; }
 a.button.primary { background: var(--accent); color: #fff; }
@@ -422,6 +423,7 @@ section.group { margin: 36px 0; }
   margin-bottom: 10px; }
 .ghead h2 { font: 600 16px/1.4 var(--sans); margin: 0; border: 0; padding: 0; }
 .ghead .muted { font-size: 13px; }
+details.fold > summary { font-size: 13px; color: var(--muted); cursor: pointer; margin: 0 0 10px; }
 .kinds { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 10px; }
 /* claim page: what has to be true, the evidence as a conversation, the working folded */
 .truths .checklist { list-style: none; padding: 0; margin: 8px 0 20px; background: var(--card);

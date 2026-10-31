@@ -677,7 +677,7 @@ GROUPS = (
     ("you", "Needs you", "Waiting on your review"),
     ("con", "Contradicted", "The verdict rules or an expert decided it"),
     ("unp", "Unproven", "The claim says more than the data shows"),
-    ("sup", "Supported", "The verdict rules or an expert decided it"),
+    ("sup", "Supported", "An expert accepted its key evidence or overrode the verdict"),
     ("not", "Not audited", "No verdict yet"),
 )
 NEEDS_YOU = 4  # needs() priority at or below this waits on the expert
@@ -769,6 +769,16 @@ def _next_up(st: ClaimState) -> str:
     )
 
 
+def _group_rows(rows: list[ClaimState], g: str, folded: bool) -> str:
+    """A group's claims; settled groups fold while claims still wait on the expert."""
+    ul = f"<ul class='ledger'>{''.join(_claim_row(st, g) for st in rows)}</ul>"
+    if not folded:
+        return ul
+    n = len(rows)
+    show = f"Show {n} claim{'s' if n != 1 else ''}"
+    return f"<details class='fold'><summary>{show}</summary>{ul}</details>"
+
+
 def claims_queue(conn: sqlite3.Connection, page: Page) -> str:
     states = queue(conn)
     by: dict[str, list[ClaimState]] = {g: [] for g, _, _ in GROUPS}
@@ -788,7 +798,7 @@ def claims_queue(conn: sqlite3.Connection, page: Page) -> str:
         "supported until you accept its key evidence and re-run the verdicts. AI-accepted "
         "evidence only sorts the work.</p></div>"
         + (
-            f"<div class='progress'><div class='lbl'><span>Nothing waiting on you"
+            f"<div class='progress'><div class='lbl'><span>Settled"
             f"</span><b>{done} of {total}</b></div><div class='track'>"
             f"<span style='width:{100 * done / total:.2f}%'></span></div></div>"
             if total
@@ -821,7 +831,8 @@ def claims_queue(conn: sqlite3.Connection, page: Page) -> str:
             f"<span class='muted'>{len(rows)} claim{'s' if len(rows) != 1 else ''} · {e(sub)}"
             f"</span></div>"
             + (f"<div class='kinds'>{extra}</div>" if extra else "")
-            + f"<ul class='ledger'>{''.join(_claim_row(st, g) for st in rows)}</ul></section>"
+            + _group_rows(rows, g, folded=g in ("con", "sup") and bool(by["you"]))
+            + "</section>"
         )
     removed = [c for c in pipeline.load_claims(conn, include_removed=True) if c.status == "removed"]
     if removed:

@@ -85,6 +85,9 @@ def demo_case(page: Page, base: str) -> None:
     print(f"ok  demo case opened at {page.url}")
     page.click("nav a[href='/claims']")
     page.wait_for_load_state()
+    folds = page.locator("details.fold > summary")
+    for i in range(folds.count()):  # settled groups fold while claims wait on the expert
+        folds.nth(i).click()
     body = page.inner_text("body")
     want = ("Support found: do you agree?", "Contradicted", "Supported (expert-confirmed)")
     missing = [w for w in want if w not in body]
