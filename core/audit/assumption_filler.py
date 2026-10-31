@@ -3275,15 +3275,18 @@ class LocalAssumptionFiller:
 
     def _person(self, name: str) -> str:
         """The one person a model's name answer is: their whole name or last name, or an
-        alias the expert gave them, compared by its letters and digits (#181)."""
-        n = _nfc(name.strip()).casefold()
+        alias the expert gave them, written whole (core/identity/aliases.spans, #181)."""
+        written = _nfc(name.strip())
+        n = written.casefold()
         hits = []
+        # An alias is the whole answer as the alias matcher reads it, so "@subject-1" (a
+        # handle) is not "SUBJECT-1" (Codex on #186).
         for pid, (full, aliases) in person_names(self.conn).items():
             parts = _nfc(full.strip()).casefold().split()
             if (
                 n == " ".join(parts)
                 or (parts and n == parts[-1])
-                or (alias_key(name) and alias_key(name) in {alias_key(a) for a in aliases})
+                or any(alias_spans(a, written) == [(0, len(written))] for a in aliases)
             ):
                 hits.append(pid)
         if len(hits) != 1:

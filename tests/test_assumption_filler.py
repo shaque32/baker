@@ -2832,7 +2832,7 @@ def test_an_alias_the_expert_gave_names_that_person(aliased):
     filler = LocalAssumptionFiller(FakeModel(by_claim(GOOD)), aliased, template=DRAFT)
     assert filler._person("SUBJECT-1") == PETROV
     assert filler._person("subject 1") == PETROV  # the alias's letters and digits, any case
-    for part in ("SUBJECT", "Dan", "DAN", "Big"):  # whole only: no surname rule for an alias
+    for part in ("SUBJECT", "Dan", "DAN", "Big", "@subject-1", "SUBJECT-12"):  # whole only
         with pytest.raises(Reject):
             filler._person(part)
 
@@ -2923,3 +2923,17 @@ def test_only_a_whole_alias_is_a_name_between_the_writer_and_the_quote(aliased, 
     c = Claim(id="X", paragraph_id="para:1", text=text, claim_type=ClaimType.COMMUNICATION,
               status=ClaimStatus.ACCEPTED)  # fmt: skip
     assert filler.stated_sender(c, "ok") == writer
+
+
+def test_a_reply_is_not_credited_through_part_of_an_alias(conn):
+    # Codex on #186: with the alias "Hot Shot", "REYES SHOT BACK" stays REYES's own clause.
+    from core.review import actions
+
+    actions.set_aliases(conn, PETROV, ["Hot Shot"], "expert:test")
+    try:
+        filler = LocalAssumptionFiller(FakeModel(by_claim(GOOD)), conn, template=DRAFT)
+        c = Claim(id="X", paragraph_id="para:1", text="PETROV texted REYES, REYES SHOT BACK 'OK'.",
+                  claim_type=ClaimType.COMMUNICATION, status=ClaimStatus.ACCEPTED)  # fmt: skip
+        assert filler.stated_sender(c, "OK") is None
+    finally:
+        actions.set_aliases(conn, PETROV, [], "expert:test")
