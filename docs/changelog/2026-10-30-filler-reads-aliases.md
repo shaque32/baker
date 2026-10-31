@@ -9,7 +9,9 @@
   (`aliases.spans`, from #181). So "Big Dan" never matches a bare "Dan",
   "SUBJECT-12" is not "SUBJECT-1", and an alias two persons share matches neither.
   `core/selection/picks.case_names` and `core/timeline/check._names` also count an alias as a
-  name, so a quote that is only an alias is not looked up as a message.
+  name, in any spelling the alias matcher reads alike ("Big Owen" for "Big-Owen"), so a quote
+  that is only an alias is not looked up as a message. Codex reviewed four rounds; every
+  finding has a test that failed before its fix.
   Why: case04's go/no-go run showed affidavit designations ("SUBJECT-1", "HAL", "DEZ") as the
   first reason the filler refused 11 claims. A person had only one name.
 - Where: PR #186 (branch claude/project-thread-ds0ify), on main after #181.

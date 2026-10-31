@@ -417,3 +417,10 @@ def test_a_quoted_alias_is_a_name_to_every_quote_reader(db, two):
     actions.set_aliases(db, hal, ["SUBJECT-1"], EXPERT, _clock)
     assert skip_reason("SUBJECT-1", case_names(db)) == "a name in the case, not a quoted message"
     assert "subject-1" in timeline_check._names(CaseRecords(db))
+    # in another spelling the alias matcher reads alike (Codex on #186)
+    actions.set_aliases(db, hal, ["SUBJECT-1", "Big-Owen"], EXPERT, _clock)
+    names = case_names(db)
+    for written in ("Big Owen", "big_owen", "SUBJECT 1"):
+        assert skip_reason(written, names) == "a name in the case, not a quoted message"
+        assert timeline_check._is_name(written, timeline_check._names(CaseRecords(db)))
+    assert skip_reason("Big Owen came by", names) is None

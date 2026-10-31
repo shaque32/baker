@@ -35,6 +35,8 @@ from weakref import WeakKeyDictionary
 
 from core.contracts import MatchMethod
 from core.enrich.local_time import parse_utc
+from core.identity.aliases import KEY_MARK as ALIAS_MARK
+from core.identity.aliases import key as alias_key
 from core.identity.aliases import stored as stored_aliases
 from core.restore.fold import fold
 from core.restore.match import WORD_RE, Found, Index, core_groups, find_every, segments
@@ -113,14 +115,17 @@ def case_names(conn: sqlite3.Connection) -> set[str]:
         "SELECT name FROM persons",
     ):
         names.update(_key(r[0]) for r in conn.execute(sql) if r[0])
-    names.update(_key(a.alias) for a in stored_aliases(conn))  # a person's other names (#181)
+    # A person's other names (#181), also by the alias key, so a quote that writes one in
+    # another spelling the alias matcher reads alike ("Big Owen" for "Big-Owen") is a name too.
+    for a in stored_aliases(conn):
+        names.update({_key(a.alias), ALIAS_MARK + alias_key(a.alias)})
     names.discard("")
     return names
 
 
 def skip_reason(words: str, names: set[str]) -> str | None:
     """Why quoted words are not looked up in the messages, or None to look them up."""
-    if _key(words) in names:
+    if _key(words) in names or ALIAS_MARK + alias_key(words) in names:
         return "a name in the case, not a quoted message"
     n = len(WORD_RE.findall(words))
     if n == 0:

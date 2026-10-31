@@ -29,6 +29,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from core.audit.quotes import find_quote
+from core.identity.aliases import KEY_MARK as ALIAS_MARK
+from core.identity.aliases import key as alias_key
 from core.identity.aliases import stored as stored_aliases
 from core.timeline.records import CaseRecords, Record, zone
 from core.timeline.settings import Settings
@@ -182,8 +184,15 @@ def _names(data: CaseRecords) -> set[str]:
         "SELECT name FROM persons",
     ):
         out |= {" ".join(r[0].split()).casefold() for r in data.conn.execute(sql) if r[0]}
-    out |= {" ".join(a.alias.split()).casefold() for a in stored_aliases(data.conn)}  # #181
+    for a in stored_aliases(data.conn):  # a person's other names (#181), also by alias key
+        out |= {" ".join(a.alias.split()).casefold(), ALIAS_MARK + alias_key(a.alias)}
     return out
+
+
+def _is_name(words: str, names: set[str]) -> bool:
+    """True when the quoted words are one of `names`, or an alias in another spelling the alias
+    matcher reads alike ("Big Owen" for "Big-Owen"; Codex on #186)."""
+    return words.casefold() in names or ALIAS_MARK + alias_key(words) in names
 
 
 def _relation(sentence: str, a: int, b: int, quote_after: bool) -> Relation:
@@ -236,7 +245,7 @@ def tie_records(
             if not (s0 <= q.start < s1):
                 continue
             words = q.text
-            if len(words.split()) < 2 or words.casefold() in names:
+            if len(words.split()) < 2 or _is_name(words, names):
                 continue
             st = _nearest(group, q.start)
             if st is None:
