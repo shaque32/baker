@@ -20,6 +20,9 @@ from dataclasses import dataclass
 ADD_ACTION = "person.alias.add"
 REMOVE_ACTION = "person.alias.remove"
 MAX_LEN = 120
+# Marks an alias's `key` in a set of quote names (core/selection/picks.case_names, the
+# timeline's), so only an alias, not a contact or account name, is matched by its key.
+KEY_MARK = "\x00alias:"
 
 
 def key(text: str) -> str:
