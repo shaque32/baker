@@ -64,6 +64,7 @@ from core.report.restore import CSS as RESTORE_CSS
 from core.report.selection import CSS as SELECTION_CSS
 from core.report.selection import anchor as selection_anchor
 from core.report.selection import claim_note
+from core.report.timeline import CSS as TIMELINE_CSS
 from core.review import activity, device_names
 from core.review import flags as F
 from core.review import withheld as W
@@ -75,6 +76,7 @@ from core.review.status import (
     HOLDINGS,
     STALE,
     ClaimState,
+    _agent,
     agent_fail_step,
     case_holdings,
     claim_name,
@@ -191,7 +193,7 @@ class Page:
             "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
             f"<meta name='viewport' content='width=device-width, initial-scale=1'>{meta}"
             f"<title>{e(title)} · Mabillon</title>"
-            f"<style>{FONT_CSS}{REPORT_CSS}{RESTORE_CSS}{SELECTION_CSS}{PAIRED_CSS}{ALTERNATIVES_CSS}{UI_CSS}{THEME_CSS}</style>"
+            f"<style>{FONT_CSS}{REPORT_CSS}{RESTORE_CSS}{SELECTION_CSS}{TIMELINE_CSS}{PAIRED_CSS}{ALTERNATIVES_CSS}{UI_CSS}{THEME_CSS}</style>"
             "</head><body>"
             "<header class='top'><div class='bar'>"
             f"<a class='brand' href='{'/' if self.case_name is not None else '/cases'}'>"
@@ -255,7 +257,7 @@ def run_banner(conn: sqlite3.Connection, page: Page, back: str) -> str:
     if run.get("partial"):
         out.append(partial_banner(conn, run))
     if run.get("fake"):
-        out.append(stand_in_banner(run))
+        out.append(_folded(stand_in_banner(run)) if back == "/" else stand_in_banner(run))
     later = conn.execute(
         "SELECT COUNT(*) FROM evidence_reviews WHERE reviewer_kind = 'expert'"
         " AND decided_at_utc > ?",
@@ -264,12 +266,16 @@ def run_banner(conn: sqlite3.Connection, page: Page, back: str) -> str:
     stips = conn.execute(
         "SELECT COUNT(*) FROM stipulations WHERE decided_at_utc > ?", (run["started_at_utc"],)
     ).fetchone()[0]
-    if (later or stips) and not run.get("partial") and not page.busy:
+    # a confirmed failed check, or a rejection that undoes one, the claim page marks stale
+    agent = len(_agent(conn, run).confirmed_after)
+    if (later or stips or agent) and not run.get("partial") and not page.busy:
         what = []
         if later:
             what.append(f"{later} evidence decision{'' if later == 1 else 's'}")
         if stips:
             what.append(f"{stips} stipulation change{'' if stips == 1 else 's'}")
+        if agent:
+            what.append(f"a failed-check decision on {agent} claim{'' if agent == 1 else 's'}")
         out.append(
             "<div class='banner'><strong>Verdicts are out of date.</strong> You made "
             f"{' and '.join(what)} after the last verdict run. Re-run the verdicts to apply them. "
@@ -279,11 +285,23 @@ def run_banner(conn: sqlite3.Connection, page: Page, back: str) -> str:
                 "<button type='submit' class='primary'>Re-run verdicts</button>",
                 "",
                 back,
-                "verdict" if back.startswith("/claim?") else "",
+                "verdict" if back.startswith("/claim?") else "audit" if back == "/" else "",
             )
             + "</div>"
         )
     return "".join(out)
+
+
+def _folded(banner: str) -> str:
+    """A notice banner folded to its bold first sentence; the rest opens under it. Every word
+    stays on the page."""
+    head, rest = banner.split("</strong>", 1)
+    head = head.replace("<div class='banner'>", "", 1)
+    rest = rest.removesuffix("</div>")
+    return (
+        f"<div class='banner'><details><summary>{head}</strong></summary>"
+        f"<p>{rest.strip()}</p></details></div>"
+    )
 
 
 def partial_banner(conn: sqlite3.Connection, run: dict) -> str:
@@ -314,10 +332,17 @@ def partial_banner(conn: sqlite3.Connection, run: dict) -> str:
 
 
 def overview(conn: sqlite3.Connection, page: Page) -> str:
-    srcs = sources(conn)
+    """The case at a glance: what waits on the expert first, then how the case is set up, then
+    the record of runs, versions and the audit log, kept quiet."""
     run = pipeline.view_run(conn)
-    govdocs = list(conn.execute("SELECT id, title, doc_kind FROM govdocs ORDER BY id"))
-    out = ["<h1>Case overview</h1>"]
+    summary = audit_log_summary(conn)
+    # the case name is the expert's own text, so it is cited, not Mabillon's words
+    out = [f"<h1>{q(page.case_name) if page.case_name else 'Case overview'}</h1>"]
+    if not summary["chain_ok"]:
+        out.append(
+            "<div class='flash err'><strong>Audit log hash chain FAILED VERIFICATION.</strong> "
+            "The log was changed outside Mabillon. <a href='/log'>Open the log</a>.</div>"
+        )
     if not page.expert:
         out.append(
             page.form(
@@ -328,22 +353,88 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
                 "Start reviewing</button>",
             )
         )
-    else:
-        out.append(
-            "<details><summary>Change reviewer</summary>"
-            + page.form(
-                "/expert",
-                "<input type='text' name='name' required maxlength='60' placeholder='Your name'>"
-                " <button type='submit'>Change</button>",
-            )
-            + "</details>"
-        )
-
-    out.append(_format_notices(conn))
-    out.append("<h2 id='audit'>Audit</h2>")
+    out.append("<section id='audit'>")
     if run is None:
         out.append("<p>No audit has run yet. <a href='/setup'>Set up and run the audit</a>.</p>")
+        states: list[ClaimState] = []
     else:
+        states = claim_states(conn, run=run)
+        out.append(_case_status(states))
+        out.append(_withheld_overview(states))
+    out.append("</section>")
+    out.append(_case_setup(conn))
+    out.append(_record(conn, page, run, summary))
+    # the notices sit together above the title, as the other pages show their banners
+    notices = run_banner(conn, page, "/") + _format_notices(conn)
+    return page.wrap("Case", "".join(out), notices)
+
+
+def _case_status(states: list[ClaimState]) -> str:
+    """One action (the claims waiting on the expert), then the counts grouped as the Claims
+    screen groups them, each linking to its section there."""
+    by = Counter(_group(st) for st in states)
+    waiting = by["you"]
+    action = (
+        f"{waiting} {'claim needs' if waiting == 1 else 'claims need'} you"
+        if waiting
+        else "Open the claims"
+    )
+    counts = "".join(
+        f"<li><a href='/claims#{g}'><span class='name t-{g}'>{e(name)}</span> "
+        f"<b>{by[g]}</b></a></li>"
+        for g, name, _sub in GROUPS
+        if g != "you" and (by[g] or g != "not")
+    )
+    return (
+        "<div class='casestatus'>"
+        f"<a class='button primary' href='/claims'>{e(action)}</a>"
+        f"<ul class='findings'>{counts}</ul></div>"
+    )
+
+
+def _case_setup(conn: sqlite3.Connection) -> str:
+    """The devices, who used each one and the document's names for it, read-only: they change on
+    Set up and run. Then the government documents."""
+    devices = list(conn.execute("SELECT id, label, model, source_id FROM devices ORDER BY id"))
+    stips = {s.subject_id: s for s in pipeline.load_stipulations(conn)}
+    named = device_names.logged_names(conn)
+    rows = []
+    for dev_id, label, _model, source_id in devices:
+        st = stips.get(dev_id)
+        who = (
+            f"Stipulated: {q(st.statement)}"
+            if st is not None and st.status == StipulationStatus.CONFIRMED
+            else "<span class='muted'>no stipulated user</span>"
+        )
+        names = named.get(dev_id, [])
+        called = f" · the document calls it {q(', '.join(names))}" if names else ""
+        rows.append(
+            f"<li id='dev-{e(dev_id)}'><b>{q(label)}</b> <span class='mono'>{e(source_id)}"
+            f"</span><br>{who}{called}</li>"
+        )
+    if not rows:
+        rows.append("<li class='muted'>No devices imported.</li>")
+    govdocs = list(conn.execute("SELECT title, doc_kind FROM govdocs ORDER BY id"))
+    docs = (
+        "; ".join(f"{q(t)} ({e(k)})" for t, k in govdocs)
+        if govdocs
+        else "<span class='muted'>none imported</span>"
+    )
+    return (
+        "<h2 id='setup'>Case setup</h2><ul class='setuplist'>"
+        + "".join(rows)
+        + f"<li>Government documents: {docs}</li></ul>"
+        "<p class='muted'>Who used each phone is a stipulation you make, not a finding. Every "
+        "report lists it as a limitation. <a href='/setup'>Change devices and stipulations on "
+        "Set up and run</a>.</p>"
+    )
+
+
+def _record(conn: sqlite3.Connection, page: Page, run: dict | None, summary: dict) -> str:
+    """The run, its versions, the audit log, flags and the files' hashes: the record behind the
+    verdicts, kept quiet."""
+    rows: list[tuple[str, str]] = []
+    if run is not None:
         mode = (
             f"verdict rules re-run after expert review, from {e(run['from_run'])}"
             if run.get("mode") == "rules_only"
@@ -351,49 +442,45 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
             if run.get("partial")
             else "full audit"
         )
-        out.append(
-            f"<p>Latest run <span class='mono'>{e(run['run_id'])}</span> ({mode}), started "
-            f"{e(run['started_at_utc'])}, Mabillon {e(build_label(run))}, rule version "
-            f"{e(run['rule_version'])}, quote check "
-            f"{e(quote_check_label(run))}, contracts {e(run['contracts_version'])}.</p>"
+        rows += [
+            ("Latest run", f"<span class='mono'>{e(run['run_id'])}</span> ({mode})"),
+            ("Started (UTC)", e(run["started_at_utc"])),
+            (
+                "Versions",
+                f"Mabillon {e(build_label(run))}, rule version {e(run['rule_version'])}, quote "
+                f"check {e(quote_check_label(run))}, contracts {e(run['contracts_version'])}",
+            ),
+        ]
+    rows.append(
+        (
+            "Audit log",
+            f"{summary['entries']} entries. Hash chain "
+            f"{'verified' if summary['chain_ok'] else '<strong>FAILED VERIFICATION</strong>'}. "
+            "<a href='/log'>Open the log</a>.",
         )
-        states = claim_states(conn, run=run)
-        tally = Counter((st.label, _vcls(st)) for st in states)
-        waiting = sum(1 for st in states if needs_you(st))
-        out.append(
-            "<div class='casestatus'>"
-            f"<a class='button primary' href='/claims'>{waiting} "
-            f"{'claim needs' if waiting == 1 else 'claims need'} you</a>"
-            "<ul class='findings'>"
-            + "".join(
-                f"<li><span class='verdict {e(css)}'>{e(label)}</span> {n}</li>"
-                for (label, css), n in sorted(tally.items())
-            )
-            + "</ul></div>"
-            "<p class='muted'>Accepting or dismissing evidence does not change a verdict until "
-            "you re-run the verdicts.</p>"
-        )
-        out.append(_withheld_overview(states))
-        if not run.get("partial") and not page.busy:
-            out.append(
-                page.form(
-                    "/redecide",
-                    "<button type='submit' class='primary'>Re-run verdicts (rules only, no model)"
-                    "</button>",
-                    back="/",
-                    anchor="audit",
-                )
-            )
-    out.append(
-        "<p class='muted'>A full audit (new evidence search and model labels) runs from "
-        "<a href='/setup'>Set up and run</a>, in the background.</p>"
     )
-    out.append("<h2>Government documents</h2>")
-    if govdocs:
-        out.append("<ul>" + "".join(f"<li>{q(t)} ({e(k)})</li>" for _, t, k in govdocs) + "</ul>")
-    else:
-        out.append("<p class='muted'>None imported.</p>")
-
+    active = F.active_flags(conn)
+    rows.append(
+        (
+            "Flags",
+            f"{len(active)} flag{'' if len(active) == 1 else 's'} for Mabillon's error log. "
+            "Flag from any claim page; <a href='/log#flags'>the redacted summary</a> is on the "
+            "Audit log page.",
+        )
+    )
+    rows.append(
+        (
+            "Full audit",
+            "New evidence search and model labels run from <a href='/setup'>Set up and run</a>, "
+            "in the background.",
+        )
+    )
+    out = [
+        "<h2 id='record'>Record</h2><dl class='record'>"
+        + "".join(f"<dt>{k}</dt><dd>{v}</dd>" for k, v in rows)
+        + "</dl>"
+    ]
+    srcs = sources(conn)
     out.append(
         "<details class='custody'><summary>Files and their SHA-256 hashes (chain of custody)"
         "</summary><h2>Sources</h2><table><thead><tr><th>File</th><th>Kind</th><th>Coverage</th>"
@@ -406,24 +493,38 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
             f"<td>{e(s[6])} {e(s[7])}</td><td>{e(s[8])}</td></tr>"
         )
     out.append("</table></details>")
-
-    out.append(_devices(conn, page, "/"))
-
-    out.append(flags_overview(conn))
-    summary = audit_log_summary(conn)
-    out.append(
-        f"<h2>Audit log</h2><p>{summary['entries']} entries. Hash chain "
-        f"{'verified' if summary['chain_ok'] else '<strong>FAILED VERIFICATION</strong>'}. "
-        "<a href='/log'>Open the log</a>.</p>"
-    )
-    return page.wrap("Case", "".join(out), run_banner(conn, page, "/"))
+    if page.expert:
+        out.append(
+            "<details class='custody'><summary>Change reviewer</summary>"
+            + page.form(
+                "/expert",
+                "<input type='text' name='name' required maxlength='60' placeholder='Your name'>"
+                " <button type='submit'>Change</button>",
+            )
+            + "</details>"
+        )
+    return "".join(out)
 
 
 def _format_notices(conn: sqlite3.Connection) -> str:
     """Each evidence source's format notice (core/ingest/tested.py), as the report's Limitations
-    print it."""
-    notices = "".join(format_notice(c) for c in tested.all_sources(conn))
-    return f"<div class='banner' id='formats'>{notices}</div>" if notices else ""
+    print it, folded under one line that counts the untested ones."""
+    checks = tested.all_sources(conn)
+    if not checks:
+        return ""
+    untested = sum(1 for c in checks if not c.tested)
+    n = len(checks)
+    head = (
+        f"{untested} of {n} file{'' if n == 1 else 's'} come from an export version not tested "
+        "with Mabillon. Check results against the source tool."
+        if untested
+        else f"Format notices for {n} file{'' if n == 1 else 's'}."
+    )
+    notices = "".join(format_notice(c) for c in checks)
+    return (
+        f"<div class='banner' id='formats'><details><summary><strong>{e(head)}</strong>"
+        f"</summary>{notices}</details></div>"
+    )
 
 
 def _withheld_overview(states: list[ClaimState]) -> str:
@@ -1054,7 +1155,7 @@ def _flags_section(page: Page, items: list[F.Flag], back: str, run_id: str | Non
 
 
 def flags_overview(conn: sqlite3.Connection) -> str:
-    """The case page's flag line and the redacted summary download."""
+    """The audit log page's flag count and the redacted summary download."""
     active = F.active_flags(conn)
     by_kind = Counter(f.kind for f in active)
     counts = ", ".join(f"{F.KINDS[k].lower()} {n}" for k, n in sorted(by_kind.items()))
@@ -1675,12 +1776,19 @@ def new_claim_page(conn: sqlite3.Connection, page: Page) -> str:
     n = 1
     while f"C{n:02d}" in ids:
         n += 1
+    groups: dict[str, list[str]] = {}
+    for pid, pg, no, label, text, title in paras:
+        groups.setdefault(title or "", []).append(
+            f"<option value='{e(pid)}'>Page {pg}, paragraph "
+            f"{e(label or '#' + str(no))}: {e(text[:70])}</option>"
+        )
     opts = "".join(
-        f"<option value='{e(pid)}'>{e(title[:40])}: page {pg}, paragraph "
-        f"{e(label or '#' + str(no))}: {e(text[:70])}</option>"
-        for pid, pg, no, label, text, title in paras
+        f"<optgroup label='{e(title)}'>{''.join(items)}</optgroup>"
+        for title, items in groups.items()
     )
-    types = "".join(f"<option value='{t.value}'>{t.value}</option>" for t in ClaimType)
+    types = "".join(
+        f"<option value='{t.value}'>{e(t.value.replace('_', ' '))}</option>" for t in ClaimType
+    )
     body = "<h1>Add a claim</h1>"
     if not paras:
         body += "<p>Import the government document first.</p>"
@@ -1747,6 +1855,8 @@ def log_page(conn: sqlite3.Connection, page: Page, show_all: bool, show_views: b
             else f"Newest 200 shown. <a href='{e(link('/log', all='1', **more))}'>Show all</a>."
         )
         + "</p>",
+        flags_overview(conn),
+        "<h2>Entries</h2>",
         "<table><thead><tr><th>#</th><th>When (UTC)</th><th>Actor</th><th>Action</th>"
         "<th>Details</th></tr></thead>",
     ]
@@ -1754,7 +1864,13 @@ def log_page(conn: sqlite3.Connection, page: Page, show_all: bool, show_views: b
         out.append(
             f"<tr><td>{seq}</td><td class='when'>{e(at)}</td><td>{e(actor)}</td>"
             f"<td>{e(action)}</td>"
-            f"<td class='mono'>{q(_short(payload))}</td></tr>"
+            f"<td class='mono'>{q(_short(payload, 120))}"
+            + (
+                f"<details><summary>Full entry</summary>{q(payload)}</details>"
+                if len(payload) > 120
+                else ""
+            )
+            + "</td></tr>"
         )
     out.append("</table>")
     return page.wrap("Audit log", "".join(out))
@@ -1830,12 +1946,14 @@ def activity_page(conn: sqlite3.Connection, page: Page, claim: str, show_all: bo
         "examiner's name, the page and the evidence it listed, beside the examiner's decisions. "
         "The hash chain covers these entries like every other. Nothing here leaves this "
         "computer.</p>",
+        "<details><summary>How time on page is counted</summary>"
         "<p class='muted'>Time on page runs from opening a page to the next page opened. "
         "The screen runs no scripts, so Mabillon cannot tell what was on screen or read; a "
         f"stretch over {idle} minutes may include time away, and a page whose end was not "
         "recorded (the screen closed, or the next step came from elsewhere) is not timed; both "
         "are counted apart from totals. "
-        "\u201cListed\u201d means the page linked to the item, not that it was opened.</p>",
+        "\u201cListed\u201d means the page linked to the item, not that it was opened.</p>"
+        "</details>",
         "<p><a href='/activity.csv'>Download the trail (CSV)</a></p>",
         _report_switch(conn, page),
     ]
@@ -2126,7 +2244,8 @@ def setup_page(
                 recs = str(counts.get(sid, 0))
             out.append(
                 f"<tr><td>{q(fname)}<br><span class='mono'>{e(sid)}</span></td><td>{what}</td>"
-                f"<td>{cov}</td><td>{recs}</td><td class='mono'>{e(sha)}</td>"
+                f"<td>{cov}</td><td>{recs}</td>"
+                f"<td class='mono' title='{e(sha)}'>{e(sha[:16])}…</td>"
                 f"<td class='when'>{e(at)}</td></tr>"
             )
         out.append("</table>")
@@ -2473,14 +2592,6 @@ def _claim_buttons(page: Page, cid: str, status: str, text: str, locked: bool) -
             if accept
             else ""
         )
-        # A removed claim leaves the table, so its form comes back to the section instead.
-        + page.form(
-            "/claim/edit",
-            hidden + "<button type='submit' name='status' value='removed'>Remove</button>",
-            "inline",
-            "/setup",
-            "claims",
-        )
         + page.form(
             "/claims/move",
             hidden + "<button type='submit' name='delta' value='-1'>Up</button>"
@@ -2499,6 +2610,14 @@ def _claim_buttons(page: Page, cid: str, status: str, text: str, locked: bool) -
             anchor=f"claim-{cid}",
         )
         + "</details>"
+        # A removed claim leaves the table, so its form comes back to the section instead.
+        + page.form(
+            "/claim/edit",
+            hidden + "<button type='submit' name='status' value='removed'>Remove</button>",
+            "inline",
+            "/setup",
+            "claims",
+        )
     )
 
 
@@ -2557,9 +2676,9 @@ def run_page(
         return page.wrap("Audit progress", "".join(out), refresh=5 if running else None)
     out.append(
         f"<p>Run <span class='mono'>{e(run['id'])}</span>, started {e(run['started_at_utc'])}, "
-        f"status <strong>{e(run['status'])}</strong>"
-        + (f": {e(run['note'])}" if run.get("note") else "")
-        + ".</p>"
+        f"status <strong>{e(run['status'])}</strong>."
+        + (f" <span class='muted'>Note: {e(run['note'])}.</span>" if run.get("note") else "")
+        + "</p>"
     )
     if not running and run["status"] != "completed":
         out.append(
@@ -2571,6 +2690,11 @@ def run_page(
     labels = {}
     if view is not None and view["run_id"] == run["id"]:
         labels = {st.claim.id: st for st in claim_states(conn, run=view)}
+    if not labels:
+        out.append(
+            "<p class='muted'>Findings show here and on Claims once this run is the one on "
+            "screen.</p>"
+        )
     out.append(
         "<table><thead><tr><th>#</th><th>Claim</th><th>State</th><th>Candidates labeled</th>"
         "<th>New model calls</th><th>Finding</th></tr></thead>"
@@ -2581,7 +2705,7 @@ def run_page(
         if state == "done" and st is not None and not st.incomplete:
             finding = f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span>"
         elif state == "done":
-            finding = "<span class='muted'>Finished; shown once it is the run on screen</span>"
+            finding = ""
         else:
             finding = "<span class='verdict v-unp'>Labeling incomplete</span>"
         cands = "" if total is None else f"{labeled} of {total}"
