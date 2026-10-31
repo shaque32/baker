@@ -47,7 +47,7 @@
   row then named a party its own row no longer held, and the row was refused, so the claim was
   never tested. `spec_filler` now maps `sent_by` too. No earlier sheet uses `sent_by`, so no
   earlier result changes.
-- Where: PR #188 (branch `claude/project-thread-6i2msb-case05`)
+- Where: PR #188 (merged), and PR #189 for the signed copies (branch `claude/project-thread-6i2msb-case05`)
 - Verified: `tests/test_synthetic_case05.py` (synthetic only, 33 tests):
   - the generator gives the same bytes twice, and the committed drafts match a fresh build;
   - the real importer reads all three reports, and every key and wrong-reading record exists and
