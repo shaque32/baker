@@ -87,7 +87,7 @@ from core.contracts import (
 from core.db import apply_schema
 from core.enrich.records import get_record
 from core.hypotheses import explain
-from core.identity import links
+from core.identity import aliases, links
 from core.ingest import forwarded
 from core.llm import cloud
 from core.report import html as report_html
@@ -232,6 +232,7 @@ def _checks(
     _calls(conn, out, known)
     _stipulations(conn, out)
     _identity(conn, out)
+    _aliases(conn, out)
     _challenge(conn, run, manifest, out)
     _testability(conn, run, manifest, out)
     _verdicts(conn, run, out)
@@ -1278,6 +1279,49 @@ def _identity(conn: sqlite3.Connection, out: _Out) -> None:
         out.add(PASS, "identity links", f"{len(stored)} identity links match the logged actions")
 
 
+def _aliases(conn: sqlite3.Connection, out: _Out) -> None:
+    """Each stored alias is one the expert's logged actions left: added (person.alias.add) and
+    not since removed (person.alias.remove, or person.remove's aliases_removed), as written,
+    for that person, by that expert, at that time. An alias the log still holds is not
+    missing. The report names the expert and the time from these rows (Codex on #181)."""
+    state: dict[tuple[str, str], tuple[str, str, str]] = {}  # (person, key) -> alias, by, at
+    for _s, at, actor, act, p in _log(conn):
+        pid = str(p.get("person_id"))
+        if act == aliases.ADD_ACTION:
+            state[(pid, aliases.key(str(p.get("alias", ""))))] = (str(p.get("alias")), actor, at)
+        elif act == aliases.REMOVE_ACTION:
+            state.pop((pid, aliases.key(str(p.get("alias", "")))), None)
+        elif act == "person.remove":
+            for a in p.get("aliases_removed") or []:
+                state.pop((pid, aliases.key(str(a))), None)
+    stored = aliases.stored(conn)
+    bad = 0
+    for a in stored:
+        logged = state.get((a.person_id, aliases.key(a.alias)))
+        if (
+            logged is None
+            or (a.alias, a.created_by) != logged[:2]
+            or _dt(a.created_at_utc) != _dt(logged[2])
+        ):
+            out.add(
+                FAIL,
+                "aliases",
+                f"{a.person_id}: the alias {a.alias!r} is not what the expert's logged actions "
+                "left (person, expert or time)",
+            )
+            bad += 1
+    held = {(a.person_id, aliases.key(a.alias)) for a in stored}
+    for pid, k in sorted(set(state) - held):
+        out.add(
+            FAIL,
+            "aliases",
+            f"{pid}: the log records the alias {state[(pid, k)][0]!r}, but it is missing",
+        )
+        bad += 1
+    if stored and not bad:
+        out.add(PASS, "aliases", f"{len(stored)} aliases match the expert's logged actions")
+
+
 # ---------------------------------------------------------------- challenge step
 
 # Logged actions that change what the challenge step's searches read (people, names, links,
@@ -1460,6 +1504,8 @@ _REPAIR_INPUTS = frozenset(
     {
         "person.add",
         "person.remove",
+        aliases.ADD_ACTION,
+        aliases.REMOVE_ACTION,
         "stipulation.confirm",
         "stipulation.withdraw",
         "device.names",

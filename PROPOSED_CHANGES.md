@@ -906,3 +906,62 @@ audit"), the key and sheet as they stood after the second blind read (22 support
 12 contradicted, 14 unproven), in reply to an offer to copy them into eval/gold for him. He was
 away from his Mac, so Claude APPLIED it at his request on this branch (PR #170), before the
 merge, with these commands and D=2026-10-29, T=2026-10-29T04:31:25Z. Nothing else changed.
+
+## 2026-10-30 claude/project-thread-6i2msb-aliases: person aliases, the other names the expert gives a person
+File: core/schema.sql, core/contracts.py
+Why: on case04's testability go/no-go (Arsh's Mac run, 2026-10-30, NO-GO), 11 of the 32 claims
+the agent did not convert failed on an affidavit designation: SUBJECT-1, HAL, DEZ, the DRIVER,
+CW-1. case04's affidavit defines them ("HAL = SUBJECT-1 = HALLORAN (Item 1); DEZ = the DRIVER =
+SUBJECT-3 = OKAFOR (Item 3)"), but a person in Mabillon has one name ("Owen Halloran"), so code
+matches only "HALLORAN" or the whole name. Neither the code filler nor the agent can test those
+claims, and an agent answer that writes "SUBJECT-1" is refused ("matches no person the expert
+created"). Real affidavits use designations like these all the time, so this is a product gap,
+not only an agent gap (`plans/testability-no-go.md`). Today the expert's only way round it is a
+second person named "SUBJECT-1", which nothing ties to Halloran's phone.
+What the table holds (agreed with the validation thread, which owns the filler): each alias
+belongs to one person an expert created, and only an expert enters one, never a model. Code
+matches an alias whole, in any case, with the filler's word-boundary rules. An alias that would
+also match another person (their whole name, their surname or an alias of theirs) is refused when
+entered, as `add_person` refuses an ambiguous name today, and so is an alias with no letter or
+digit; an alias two persons share matches neither. An alias is matched whole only: the surname
+rule (a bare "HALLORAN" for "Owen Halloran") applies to the person's name, never to an alias, so
+"Big Owen" never matches a bare "Owen". One reader in `core/identity` gives each person's name
+and aliases apart (`person_names(conn) -> {person_id: (name, [aliases])}`, shared aliases
+dropped) for the filler and the testability step. Entering or
+removing one is an audit-log entry (`person.alias.add`, `person.alias.remove`). Reports list
+every alias as a limitation, beside the device-owner stipulations, because a check can rest on
+it. The bundle carries the table like every other (`core/bundle/export.py` exports every table
+the schema defines). A case database made under 0.5.0 is not upgraded in place, as before; code
+reads a database with no `person_aliases` table as having no aliases.
+Diff, core/schema.sql (header):
+--- Baker canonical schema v0.5.0 (matches CONTRACTS_VERSION in core/contracts.py).
++-- Baker canonical schema v0.6.0 (matches CONTRACTS_VERSION in core/contracts.py).
++-- 0.6.0: person_aliases, the other names an expert gives a person (signed by Arsh <date>).
+ -- 0.5.0: no table change; AssumptionParams.sent_by and each_way (signed by Arsh 2026-10-29).
+Diff, core/schema.sql (after `CREATE TABLE persons (...)`):
++-- Other names an expert gives a person, as the government document writes them: a designation
++-- ("SUBJECT-1", "CW-1", "the DRIVER") or a nickname ("HAL"). Only an expert enters one, never a
++-- model. Code matches an alias whole, in any case. An alias that would also match another
++-- person is refused when entered, and an alias two persons share matches neither. Reports list
++-- every alias as a limitation.
++CREATE TABLE person_aliases (
++    person_id      TEXT NOT NULL REFERENCES persons(id),
++    alias          TEXT NOT NULL COLLATE NOCASE CHECK (length(trim(alias)) BETWEEN 1 AND 120),
++    created_by     TEXT NOT NULL CHECK (created_by LIKE 'expert:%'),
++    created_at_utc TEXT NOT NULL,
++    PRIMARY KEY (person_id, alias)
++);
+Diff, core/contracts.py:
+-CONTRACTS_VERSION = "0.5.0"
++CONTRACTS_VERSION = "0.6.0"
+Nothing else in either file. No enum, model or verdict rule changes; `core/audit/rules.py` is
+untouched. Once signed, the PR applies these three edits and adds: `add_alias` and
+`remove_alias` expert actions (remove_person removes a person's aliases first, logged), an "Also
+called" field on the people page, the testability step's person lookups and the report's
+limitations, the eval's case setup reading each case's aliases from its generated case.json, and
+tests that fail first. The filler's matching (`_name_spans` over name plus aliases) is the
+validation thread's PR, after this one.
+SIGNED by Arsh on 2026-10-30 at 23:08Z ("i sign it", project thread "Build agents into the
+audit"), in reply to the request to sign this entry. APPLIED on
+claude/project-thread-6i2msb-aliases: the three edits above, with <date> as 2026-10-30, and
+nothing else in either file.

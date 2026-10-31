@@ -13,6 +13,10 @@
       "report_time": "utc",
       "extraction_type": "logical",
       "owner": "Owen Halloran",
+      "aliases": [
+        "SUBJECT-1",
+        "HAL"
+      ],
       "messages": 418,
       "calls": 13,
       "contacts": 7
@@ -25,6 +29,9 @@
       "report_time": "local",
       "extraction_type": "file_system",
       "owner": "Nadia Ferro",
+      "aliases": [
+        "SUBJECT-2"
+      ],
       "messages": 456,
       "calls": 11,
       "contacts": 7
@@ -37,6 +44,11 @@
       "report_time": "fixed-360",
       "extraction_type": "logical",
       "owner": "Desmond Okafor",
+      "aliases": [
+        "SUBJECT-3",
+        "DEZ",
+        "the DRIVER"
+      ],
       "messages": 506,
       "calls": 23,
       "contacts": 7

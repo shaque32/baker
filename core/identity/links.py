@@ -44,6 +44,7 @@ from enum import IntEnum
 
 from core.audit.checks._common import CaseData, Key, key
 from core.contracts import Fidelity, short_hash
+from core.identity import aliases
 from core.review import audit_log
 
 PROPOSER_VERSION = "1.1.0"  # 1.1.0: name words keep a designation's number (SUBJECT-2)
@@ -90,7 +91,10 @@ _INTRO = re.compile(
     re.IGNORECASE,
 )
 # Runs of capitalised words in a claim: affidavits print names in capitals ("SOKOLOV").
-_CAPS_RUN = re.compile(r"\b[A-ZА-ЯЁ][A-ZА-ЯЁ'’\-]{2,}(?:\s+[A-ZА-ЯЁ][A-ZА-ЯЁ'’\-]{2,})*\b")
+# A designation keeps its number ("SUBJECT-1", "CW-1"), so the page offers it whole.
+_CAPS_RUN = re.compile(
+    r"\b[A-ZА-ЯЁ][A-ZА-ЯЁ'’\-]{2,}(?:(?<=-)\d+)?(?:\s+[A-ZА-ЯЁ][A-ZА-ЯЁ'’\-]{2,})*\b"
+)
 _CAPS_STOP = frozenset(
     "SMS MMS UTC GMT EST EDT CST PST GPS DEA FBI ATF HSI NYPD USA LLC INC IMEI IMSI ICCID PDF "
     "CSV URL WIFI NOTE UFED UFDR AXIOM APP IOS RCS VOIP CDR ESN MEID SIM USB IP".split()
@@ -172,6 +176,8 @@ class Person:
     created_by: str
     words: tuple[str, ...]
     devices: tuple[str, ...]  # phones stipulated to this person (not withdrawn)
+    # the document's other names for them, matched whole (core/identity/aliases.py)
+    aliases: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -262,8 +268,16 @@ def load(conn: sqlite3.Connection) -> Case:
         if status != "rejected":
             stipulated[device_id] = pid
             by_person[pid].append(device_id)
+    other_names = aliases.person_names(conn)
     persons = [
-        Person(pid, name, created_by, tuple(tokens(name)), tuple(by_person.get(pid, ())))
+        Person(
+            pid,
+            name,
+            created_by,
+            tuple(tokens(name)),
+            tuple(by_person.get(pid, ())),
+            tuple(other_names.get(pid, (name, []))[1]),
+        )
         for pid, name, created_by in conn.execute(
             "SELECT id, name, created_by FROM persons ORDER BY id"
         )
@@ -614,16 +628,18 @@ def propose_links(conn: sqlite3.Connection, clock: Clock | None = None) -> Propo
 
 def claims_naming(conn: sqlite3.Connection, person: Person) -> list[tuple[str, str]]:
     """Claims (not removed) that use the person's full name or surname, the way the assumption
-    filler resolves names. (claim id, text)."""
-    if not person.words:
+    filler resolves names, or one of their aliases, whole. (claim id, text)."""
+    if not person.words and not person.aliases:
         return []
-    names = {" ".join(person.words), person.words[-1]}
+    names = {" ".join(person.words), person.words[-1]} if person.words else set()
     out = []
     for cid, text in conn.execute(
         "SELECT id, text FROM claims WHERE status != 'removed' ORDER BY id"
     ):
         flat = " ".join(_nfc(text).casefold().split())
-        if any(_word_in(n, flat) for n in names):
+        if any(_word_in(n, flat) for n in names) or any(
+            aliases.written(a, text) is not None for a in person.aliases
+        ):
             out.append((cid, text))
     return out
 
@@ -648,9 +664,16 @@ def _word_in(needle: str, hay: str) -> bool:
 
 
 def resolves(persons: Iterable[Person], name: str) -> list[str]:
-    """Persons a name resolves to, by the assumption filler's rule (whole name or surname)."""
+    """Persons a name resolves to, by the assumption filler's rule (whole name or surname), or
+    by one of their aliases, whole."""
     n = " ".join(tokens(name))
-    return [p.id for p in persons if p.words and (n == " ".join(p.words) or n == p.words[-1])]
+    k = aliases.key(name)
+    return [
+        p.id
+        for p in persons
+        if (p.words and (n == " ".join(p.words) or n == p.words[-1]))
+        or (k and k in {aliases.key(a) for a in p.aliases})
+    ]
 
 
 @dataclass(frozen=True)

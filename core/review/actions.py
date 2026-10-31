@@ -524,6 +524,7 @@ def add_person(conn: sqlite3.Connection, name: str, actor: str, clock: Clock | N
     it ("ALEXANDER SOKOLOV"). A person is only a name: nothing ties them to an account until an
     expert confirms a link. Refused when the name would make another person's name ambiguous
     for the assumption filler (same whole name or same surname). Returns the person id."""
+    from core.identity.aliases import forms, name_keys, person_names
     from core.identity.links import person_id_for, tokens
 
     _expert(actor)
@@ -541,6 +542,14 @@ def add_person(conn: sqlite3.Connection, name: str, actor: str, clock: Clock | N
             raise ReviewError(
                 f"{name} would also match {other} ({pid}); the audit could not tell them apart"
             )
+    taken = name_keys(name)
+    for pid, (other, aliases) in person_names(conn).items():
+        for a in aliases:
+            if forms(a) & taken:
+                raise ReviewError(
+                    f"{name} would also match {other} ({pid}), whom the document also calls "
+                    f"{a}; the audit could not tell them apart"
+                )
     pid = person_id_for(name, (r[0] for r in rows))
     now = _now(clock)
     with conn:
@@ -556,7 +565,10 @@ def remove_person(
 ) -> None:
     """Remove a person the expert added, with their undecided and rejected links. Refused for a
     phone owner (withdraw the stipulation instead) and for a person with a confirmed link
-    (reject it first), so nothing an expert confirmed disappears silently."""
+    (reject it first), so nothing an expert confirmed disappears silently. The person's aliases
+    go with them, named in the log entry."""
+    from core.identity.aliases import stored as stored_aliases
+
     _expert(actor)
     row = conn.execute("SELECT name FROM persons WHERE id = ?", (person_id,)).fetchone()
     if row is None:
@@ -575,14 +587,22 @@ def remove_person(
                 "SELECT id FROM identity_links WHERE person_id = ? ORDER BY id", (person_id,)
             )
         ]
+        aliases = [a.alias for a in stored_aliases(conn) if a.person_id == person_id]
         conn.execute("DELETE FROM identity_links WHERE person_id = ?", (person_id,))
+        if aliases:
+            conn.execute("DELETE FROM person_aliases WHERE person_id = ?", (person_id,))
         conn.execute("DELETE FROM persons WHERE id = ?", (person_id,))
         audit_log.append(
             conn,
             now,
             actor,
             "person.remove",
-            {"person_id": person_id, "name": row[0], "links_removed": gone},
+            {
+                "person_id": person_id,
+                "name": row[0],
+                "links_removed": gone,
+                "aliases_removed": aliases,
+            },
         )
 
 
@@ -701,3 +721,94 @@ def name_device(
             conn, now, actor, ACTION, {"device_id": device_id, "label": dev[0], "names": clean}
         )
     return clean
+
+
+def set_aliases(
+    conn: sqlite3.Connection,
+    person_id: str,
+    aliases: list[str],
+    actor: str,
+    clock: Clock | None = None,
+) -> list[str]:
+    """The expert records the other names the government document uses for a person
+    ("SUBJECT-1", "HAL"), so the audit can tell whom a claim names. The list replaces the
+    person's aliases; an empty list clears them. Each alias added or removed is its own log
+    entry. It is the expert's statement, not a finding: the report lists each alias with who
+    gave it and when. Refused when an alias has no letter or digit, is how the person's own
+    name is already matched, or would also match another person (their whole name, their
+    surname or an alias of theirs), so an alias never reaches two persons. Returns the aliases
+    as recorded."""
+    from core.identity.aliases import (
+        ADD_ACTION,
+        MAX_LEN,
+        REMOVE_ACTION,
+        forms,
+        key,
+        name_keys,
+        stored,
+    )
+
+    _expert(actor)
+    row = conn.execute("SELECT name FROM persons WHERE id = ?", (person_id,)).fetchone()
+    if row is None:
+        raise ReviewError(f"no person {person_id}")
+    name = row[0]
+    clean: list[str] = []
+    for raw in aliases:
+        alias = " ".join(raw.split())
+        if not alias or len(alias) > MAX_LEN:
+            raise ReviewError(
+                f"enter each name as the document writes it (up to {MAX_LEN} characters)"
+            )
+        if not key(alias):
+            raise ReviewError(f"{alias} has no letter or digit, so the audit could not match it")
+        if key(alias) in name_keys(name):
+            raise ReviewError(f"{alias} is already how the audit matches {name}")
+        if key(alias) not in {key(a) for a in clean}:
+            clean.append(alias)
+    names = dict(conn.execute("SELECT id, name FROM persons"))
+    theirs: dict[str, str] = {}  # a form -> the other person it already matches
+    for pid, other in names.items():
+        if pid != person_id:
+            theirs.update(dict.fromkeys(name_keys(other) - theirs.keys(), pid))
+    rows = stored(conn)
+    for a in rows:
+        if a.person_id != person_id:
+            theirs.update(dict.fromkeys(forms(a.alias) - theirs.keys(), a.person_id))
+    for alias in clean:
+        clash = sorted(forms(alias) & theirs.keys())
+        if clash:
+            pid = theirs[clash[0]]
+            raise ReviewError(
+                f"{alias} would also match {names.get(pid, pid)} ({pid}); the audit could not "
+                "tell them apart"
+            )
+    have = {key(a.alias): a.alias for a in rows if a.person_id == person_id}
+    keep = {key(a) for a in clean}
+    now = _now(clock)
+    with conn:
+        for k, alias in have.items():
+            if k in keep:
+                continue
+            conn.execute(
+                "DELETE FROM person_aliases WHERE person_id = ? AND alias = ?", (person_id, alias)
+            )
+            audit_log.append(
+                conn,
+                now,
+                actor,
+                REMOVE_ACTION,
+                {"person_id": person_id, "name": name, "alias": alias},
+            )
+        for alias in clean:
+            if key(alias) in have:
+                continue
+            conn.execute(
+                "INSERT INTO person_aliases (person_id, alias, created_by, created_at_utc)"
+                " VALUES (?, ?, ?, ?)",
+                (person_id, alias, actor, _iso(now)),
+            )
+            audit_log.append(
+                conn, now, actor, ADD_ACTION, {"person_id": person_id, "name": name, "alias": alias}
+            )
+    return [a.alias for a in stored(conn) if a.person_id == person_id]

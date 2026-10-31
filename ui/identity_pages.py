@@ -15,6 +15,7 @@ from __future__ import annotations
 import sqlite3
 
 from core import pipeline
+from core.identity import aliases
 from core.identity import links as L
 from ui.pages import Page, e, link, q
 
@@ -161,6 +162,19 @@ def _person_card(
     out = [
         f"<section class='person' id='{e(person.id)}'><p class='eyebrow'>{e(kind)}</p>",
         f"<h2 class='pname'>{q(person.name)}</h2><p>{named}</p>",
+        page.form(
+            "/person/aliases",
+            f"<input type='hidden' name='id' value='{e(person.id)}'>"
+            "<label>Also called in the document "
+            "<input type='text' name='aliases' maxlength='600' placeholder='SUBJECT-1, HAL' "
+            f"value='{e(', '.join(_stored_aliases(conn, person.id)))}'></label> "
+            "<button type='submit'>Save names</button>"
+            "<span class='muted'> Separate names with commas. Each is matched whole, and every "
+            "report lists the names you gave.</span>",
+            "plain",
+            "/identities",
+            anchor=person.id,
+        ),
     ]
     if owner:
         out.append(
@@ -196,7 +210,12 @@ def _person_card(
     return "".join(out)
 
 
-def _unplaced(page: Page, names: list[L.UnplacedName]) -> str:
+def _stored_aliases(conn: sqlite3.Connection, person_id: str) -> list[str]:
+    """The person's aliases as recorded, a shared one included, so the form shows them all."""
+    return [a.alias for a in aliases.stored(conn) if a.person_id == person_id]
+
+
+def _unplaced(page: Page, names: list[L.UnplacedName], persons: list[L.Person]) -> str:
     if not names:
         return (
             "<p class='muted'>Every capitalised name in the claims, and every name the claim "
@@ -221,6 +240,16 @@ def _unplaced(page: Page, names: list[L.UnplacedName]) -> str:
             if u.matches == 0
             else ""
         )
+        if u.matches == 0 and persons:
+            opts = "".join(f"<option value='{e(p.id)}'>{e(p.name)}</option>" for p in persons)
+            add += page.form(
+                "/person/alias/add",
+                f"<input type='hidden' name='alias' value='{e(u.name)}'>"
+                f"<select name='id' aria-label='Person'>{opts}</select> "
+                "<button type='submit'>Add as another name</button>",
+                "inline",
+                "/identities",
+            )
         out.append(
             f"<li><div class='row'><div class='head'><div class='text'>{q(u.name)}</div>"
             f"<div>{add}</div></div><div class='needs'>Used in {cl}; {e(why)}.</div>"
@@ -236,7 +265,8 @@ def _changed_since_audit(conn: sqlite3.Connection) -> int:
         return 0
     return conn.execute(
         "SELECT COUNT(*) FROM audit_log WHERE at_utc > ? AND action IN"
-        " ('identity.decide', 'identity.link', 'person.add', 'person.remove')",
+        " ('identity.decide', 'identity.link', 'person.add', 'person.remove',"
+        " 'person.alias.add', 'person.alias.remove')",
         (run["started_at_utc"],),
     ).fetchone()[0]
 
@@ -296,7 +326,7 @@ def identities_page(conn: sqlite3.Connection, page: Page) -> str:
             "them.</div>"
         )
     out.append("<h2>Names the claims use with no person yet</h2>")
-    out.append(_unplaced(page, L.unplaced_names(conn, case.persons)))
+    out.append(_unplaced(page, L.unplaced_names(conn, case.persons), case.persons))
     out.append(
         page.form(
             "/person/add",
