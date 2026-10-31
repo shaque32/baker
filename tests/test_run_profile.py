@@ -130,6 +130,17 @@ def test_prompt_reuse_counts_the_shared_start_and_the_fixed_end(db) -> None:  # 
     assert job.fixed_tail_chars == 2 * len("-" + tail)
 
 
+def test_reuse_is_against_the_call_just_before_whatever_its_job(db) -> None:  # noqa: ANN001
+    # One loaded model serves every job, so a filler call between two stance calls replaces
+    # what the model has cached: the second stance call shares only "HEAD" with the filler.
+    call(db, STANCE, t(0), "HEAD-stance-one", ["a", "r1"], "irrelevant")
+    call(db, FILLER, t(10), "HEAD:fill", ["C01"])
+    call(db, STANCE, t(20), "HEAD-stance-two", ["a", "r2"], "irrelevant")
+    prof = run_profile.build(db)
+    assert prof.jobs["assumptions"].shared_prefix_chars == len("HEAD")
+    assert prof.jobs["stance"].shared_prefix_chars == len("HEAD")  # not "HEAD-stance-"
+
+
 def test_a_single_prompt_has_no_fixed_tail(db) -> None:  # noqa: ANN001
     call(db, FILLER, t(0), "only prompt", ["C01"])
     assert run_profile.build(db).jobs["assumptions"].fixed_tail_chars == 0

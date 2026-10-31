@@ -69,7 +69,7 @@ probe() {
   echo "  $1_$2: $(prompt_file "$p") on $(set_file "$s")"
   "${KEEP_AWAKE[@]}" python -m eval.probe.run_probe --models "$OUT/model.json" \
     --probe-set "$(set_file "$s")" --stance-only --repeat 1 --layout product_members \
-    --stance-prompt "$(prompt_file "$p")" --out "$dir" > /dev/null
+    --stance-prompt "$(prompt_file "$p")" --n-ctx "$NCTX" --out "$dir" > /dev/null
 }
 
 # One timed audit of the three claims, the product's wiring on the given prompt.

@@ -60,3 +60,28 @@ result for the tested prompt. The cloud prompt (`stance_cloud.md`, v1.2) is not 
 ## Commitments
 No label, criterion or candidate edit after seeing any answer. All numbers published, including
 any that get worse. $0 API spend: everything runs on the Mac's local model.
+
+## Addendum, before any answer of this test was seen (2026-10-31)
+Written after the reviews on PR #182 (Codex, and the Baker Eval gate's six flags), with no v1.1
+or v1.4 answer of this test seen. If the Mac run started before this commit, its outputs are
+scored under these criteria; RESULTS.md names the commit that ran.
+- Criterion 4 now holds on each of the four sets, not only over all four together: on every
+  set, gold complicates or irrelevant items shown as supports are no more than v1.1's on that
+  set. This is stricter: a rise on one set can no longer hide behind a drop on another (the
+  v1.3 test checked the signed set on its own).
+- The probe runs get the same context size as the timed audits (`mac_v14.sh` passes `--n-ctx`
+  to both; on a 24 GB Mac both were already 8192).
+- Reported beside the criteria, never changing them: every item's first answer under both
+  prompts, set by set (RESULTS.md, committed with the results as
+  `v14/RESULTS-<date>-mac.md`); the model's full SHA-256; each step's seed, context size,
+  runtime, tokens per second and peak resident memory; and for the timed audits the per-call
+  spread (mean, SD, median, middle half) and the call-by-call ratio of v1.4's time to v1.1's.
+  Criterion 6 rests on one cold run of three case01 claims: a go/no-go, not a product runtime
+  figure.
+- The four sets are not fresh: the 14B answered all of them on 2026-10-22, so a pass is not a
+  held-out result. After signing and before pilots use v1.4, it also runs on fresh items
+  (written after this test, never answered by the 14B), held to the signed bars and to no
+  more traps shown as supports than v1.1.
+- The times under "Why" come from `eval/run_profile.py`, which takes a call's time as the gap
+  between the end of the call before it and its own end (each call is logged when its answer
+  is back), so a gap also holds the code between calls: estimates, not per-call measurements.

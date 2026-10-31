@@ -52,6 +52,7 @@ from core.audit._local_model import LazyModel, ModelConfig, RunPort
 from core.contracts import GoldClaim, Stance
 from core.llm.runtime import PRODUCT_RUNTIME, RUNTIMES, FakeModel, sha256_file, with_runtime
 from eval import run_pipeline as rp
+from eval.probe.run_probe import peak_rss_gb
 from eval.run_eval import load_jsonl
 
 GOLD_SPEC = Path("eval/gold/case01/assumptions.jsonl")  # once Arsh signs the sheet
@@ -216,6 +217,7 @@ def _stats(ports: dict[str, RunPort]) -> dict[str, Any]:
             "completion_tokens_over": {
                 str(n): sum(s.completion_tokens > n for s in fresh) for n in OUTPUT_SIZES
             },
+            "call_seconds": [round(s.seconds, 2) for s in fresh],
         }
     return out
 
@@ -289,6 +291,7 @@ def time_model(
         "claims_run": claims or "all",
         "cold": cold,
         "warm": {k: warm[k] for k in ("wall_seconds", "outputs_reused", "passes")},
+        "peak_rss_gb": peak_rss_gb(),
     }
     stance = cold["passes"].get("stance", {})
     per_call = stance.get("mean_seconds_per_call")

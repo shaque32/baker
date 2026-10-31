@@ -5,19 +5,21 @@ Usage: python -m eval.run_profile --db <case.db> [--json <out.json>] [--max-gap 
 Eval only, no model, read-only. Reads a finished run's case database and prints, for every
 model job (model_runs.purpose):
 
-  time       wall time between consecutive model calls, from model_calls.at_utc, given to the
-             later call. The database stores no per-call seconds, so a gap also holds the code
-             that ran between two calls (retrieval, checks, writes); for a local model that is
-             small next to a call. A gap longer than --max-gap seconds (a pause, a model load,
-             a stopped run) is not counted, and the first call of each stretch has no gap.
+  time       an estimate: wall time between consecutive model calls, from model_calls.at_utc,
+             given to the later call. The database stores no per-call seconds, so a gap also
+             holds the code that ran between two calls (retrieval, checks, writes); for a local
+             model that is small next to a call. A gap longer than --max-gap seconds (a pause, a
+             model load, a stopped run) is not counted, and the first call of each stretch has
+             no gap.
   answers    for stance calls, the stance each answer gave, from raw_output
   checks     for stance calls, the code checks on the call's assumption: every check passed,
              one failed, one was inconclusive, or none ran; and for passed checks, whether the
              record was one the check itself cited (check_results.record_ids_json)
-  reuse      prompt text a call shares with the call before it in the same model run, from the
-             start (what llama.cpp's prefix reuse can skip re-reading), and the text every
-             prompt of the run ends with (fixed instructions placed after the case data, which
-             no call can reuse)
+  reuse      prompt text a call shares from the start with the model call just before it,
+             whatever that call's job (every job uses the one loaded model, so its cache holds
+             the last call's prompt; this is what llama.cpp's prefix reuse can skip
+             re-reading), and the text every prompt of a model run ends with (fixed
+             instructions placed after the case data, which no call can reuse)
 
 Shares of prompt text are counted in characters, not tokens; a token is a few characters, so
 treat them as close, not exact. Only aggregate counts are printed: no claim, record or prompt
@@ -43,6 +45,7 @@ VERSION = "1.0.0"
 MAX_GAP_S = 600.0
 STANCES = ("supports", "contradicts", "complicates", "irrelevant", "unparsed")
 CHECK_STATES = ("all passed", "a check failed", "inconclusive", "no check")
+TIMES = "estimates: gaps between model_calls.at_utc, which include the code between calls"
 
 
 @dataclass
@@ -53,7 +56,7 @@ class Job:
     timed_calls: int = 0
     seconds: list[float] = field(default_factory=list)
     prompt_chars: int = 0
-    shared_prefix_chars: int = 0  # with the previous call of the same model run
+    shared_prefix_chars: int = 0  # with the model call just before it, any job
     fixed_tail_chars: int = 0  # text every prompt of a model run ends with, summed per call
 
     @property
@@ -97,6 +100,7 @@ class Profile:
         n = stance.calls if stance else 0
         return {
             "run_profile": VERSION,
+            "times": TIMES,
             "model_hours": round(self.total_s() / 3600, 2),
             "untimed_gaps": self.untimed_gaps,
             "jobs": [j.as_dict() for j in sorted(self.jobs.values(), key=lambda j: -j.total_s)],
@@ -174,16 +178,16 @@ def build(conn: sqlite3.Connection, max_gap_s: float = MAX_GAP_S) -> Profile:
     template_of = dict(conn.execute("SELECT id, template_id FROM assumptions").fetchall())
     states, cited = _check_states(conn)
     prev_at: datetime | None = None
-    prev_prompt: dict[str, str] = {}
+    prev_prompt: str | None = None  # one model serves every job, so one cache
     for run_id, subject, prompt, raw, at in calls:
         purpose = purpose_of.get(run_id, "unknown")
         job = prof.jobs.setdefault(purpose, Job(purpose))
         job.calls += 1
         job.prompt_chars += len(prompt)
         job.fixed_tail_chars += tails[run_id]
-        if run_id in prev_prompt:
-            job.shared_prefix_chars += _prefix_len(prev_prompt[run_id], prompt)
-        prev_prompt[run_id] = prompt
+        if prev_prompt is not None:
+            job.shared_prefix_chars += _prefix_len(prev_prompt, prompt)
+        prev_prompt = prompt
         now = _at(at)
         if prev_at is not None:
             gap = (now - prev_at).total_seconds()
@@ -217,10 +221,11 @@ def _pct(part: int, whole: int) -> str:
 def render(prof: Profile) -> str:
     d = prof.as_dict()
     lines = [
-        f"Run profile {VERSION}: about {d['model_hours']} h of model time "
-        f"({prof.untimed_gaps} gaps over the limit not counted)",
+        f"Run profile {VERSION}: an estimated {d['model_hours']} h of model time "
+        f"({prof.untimed_gaps} gaps over the limit not counted). Times are {TIMES}.",
         "",
-        "| job | calls | hours | mean s | median s | prompt chars | reused prefix | fixed tail |",
+        "| job | calls | est. hours | est. mean s | est. median s | prompt chars | reused prefix"
+        " | fixed tail |",
         "|---|---|---|---|---|---|---|---|",
     ]
     for j in d["jobs"]:

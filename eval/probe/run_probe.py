@@ -417,6 +417,17 @@ def gpu_memory_mib() -> int | None:
     return int(out.stdout.split()[0])
 
 
+def peak_rss_gb() -> float | None:
+    """This process's peak resident memory so far, in GB (ru_maxrss, the measure speed round 2
+    used; on a Mac the GPU shares this memory). None where the platform has no getrusage."""
+    try:
+        import resource  # noqa: PLC0415 - Unix only
+    except ImportError:  # pragma: no cover - Windows
+        return None
+    scale = 1 if sys.platform == "darwin" else 1024  # bytes on macOS, kilobytes on Linux
+    return round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * scale / 2**30, 1)
+
+
 def run_model(
     model: LocalModel,
     reviewer_items: list[dict[str, Any]],
@@ -566,6 +577,7 @@ def main(argv: list[str] | None = None) -> int:
             res["layout"] = args.layout if args.probe_set is not None else None
             res["params"] = params.as_record()
             res["vram_used_mib"] = None if loaded is None or before is None else loaded - before
+            res["peak_rss_gb"] = peak_rss_gb()
             results.append(res)
             print(f"{res['model']}: passes_all={res['passes_all']}", file=sys.stderr)
         del model

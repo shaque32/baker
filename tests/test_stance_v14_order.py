@@ -135,19 +135,32 @@ def _run(out: Path, prompt: str, set_name: str, wrong: dict[str, str] | None = N
         path,
         stance_only=True,
     )
+    # What run_probe's main adds to each result.
+    res |= {"params": GenerationParams(n_ctx=8192).as_record(), "runtime": "flash",
+            "peak_rss_gb": 12.5}  # fmt: skip
     (folder / "summary.json").write_text(json.dumps([res]), encoding="utf-8")
 
 
-def _timed(out: Path, prompt: str, mean_s: float, sha: str = StandIn.sha256) -> None:
+def _timed(
+    out: Path, prompt: str, mean_s: float, sha: str = StandIn.sha256, recorded: bool = True
+) -> None:
+    """A timed audit's summary; recorded=False is a folder from before per-call seconds,
+    settings and peak memory were written."""
     folder = out / f"time_{prompt}"
     folder.mkdir(exist_ok=True)
+    stance = {"calls": 60, "mean_seconds_per_call": mean_s, "tokens_per_second": 9.5}
+    if recorded:  # the same 60 calls, a little spread around the mean
+        stance["call_seconds"] = [mean_s + (i % 5) - 2 for i in range(60)]
     cold = {
-        "passes": {"stance": {"calls": 60, "mean_seconds_per_call": mean_s}},
+        "passes": {"stance": stance},
         "wall_seconds": round(60 * mean_s, 1),
         "verdicts": {"unproven": 3},
         "stored_items": 5,
     }
-    summary = {"models": [{"sha256": sha, "cold": cold}]}
+    model = {"sha256": sha, "cold": cold}
+    if recorded:
+        model |= {"params": {"seed": 1234}, "n_ctx": 8192, "runtime": "flash", "peak_rss_gb": 13.1}
+    summary = {"models": [model]}
     (folder / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
 
 
@@ -179,7 +192,18 @@ def test_same_labels_and_a_faster_call_recommend_signing(out):
     assert score.passes(out), score.criteria(out)
     text = score.report(out)
     assert "Recommendation: sign v1.4." in text
-    assert "v1.4, timed audit C02,C05,C12: 60 stance calls, mean 30.0 s" in text
+    assert f"Model SHA-256: {StandIn.sha256}" in text
+    assert score.NOT_FRESH in text
+    # the speed with its spread, call by call, and never as a product runtime
+    assert "one cold run of C02,C05,C12 on case01: a go/no-go for criterion 6" in text
+    assert "- v1.4, timed audit stance calls: 60 calls, mean 30.0 s (SD 1.4), median 30.0 s" in text
+    assert "v1.4 faster on 60 of 60 calls" in text
+    # the run record: seed, context, runtime, tokens per second and peak memory of every step
+    assert "| v1.4 on signed | 1234 | 8192 | flash |" in text
+    assert "| v1.1 timed audit | 1234 | 8192 | flash | 9.5 | 13.1 |" in text
+    # every item, not only those whose answer differs
+    rows = [r for r in text.splitlines() if r.startswith("| signed | P")]
+    assert len(rows) == len(score.items("signed"))
 
 
 def test_one_more_trap_shown_as_supports_fails_with_no_slack(out):
@@ -191,6 +215,48 @@ def test_one_more_trap_shown_as_supports_fails_with_no_slack(out):
     text = score.report(out)
     assert "Recommendation: no prompt change." in text
     assert f"| fresh | {trap} | complicates | complicates | supports |" in text
+
+
+def test_a_trap_on_one_set_cannot_hide_behind_a_drop_on_another(tmp_path):
+    # v1.1 shows a told-frame trap as supports; v1.4 gets it right but shows a signed-set trap
+    # as supports. Pooled over the sets they tie; on the signed set v1.4 is worse, so it fails.
+    signed_trap, tf24_trap = _gold("signed", "complicates")[0], _gold("tf24", "complicates")[0]
+    for s in score.SETS:
+        _run(tmp_path, "base", s, {tf24_trap: "supports"} if s == "tf24" else None)
+        _run(tmp_path, "v14", s, {signed_trap: "supports"} if s == "signed" else None)
+    _timed(tmp_path, "base", 40.0)
+    _timed(tmp_path, "v14", 30.0)
+    failed = [(scope, text) for scope, text, ok in score.criteria(tmp_path) if not ok]
+    base_signed = score.traps(score.ran(tmp_path, "base", "signed").labels, "signed")
+    assert failed == [
+        (
+            "signed",
+            "4. gold complicates or irrelevant shown as supports <= v1.1's"
+            f" {base_signed} (v1.4: {base_signed + 1})",
+        )
+    ]
+
+
+def test_a_folder_from_before_the_run_record_still_scores(out):
+    for s in score.SETS:
+        _run(out, "v14", s)
+    _timed(out, "v14", 30.0, recorded=False)
+    assert score.passes(out)
+    text = score.report(out)
+    assert "60 calls, mean 30.0 s; per-call times not recorded" in text
+    assert "| v1.4 timed audit | not recorded | not recorded | not recorded | 9.5 |" in text
+
+
+def test_spread_and_the_call_by_call_ratio():
+    assert score.spread([]) == "per-call times not recorded"
+    assert score.spread([10.0, 20.0, 30.0, 40.0]) == (
+        "4 calls, mean 25.0 s (SD 12.9), median 25.0 s, middle half 12.5 to 37.5 s"
+    )
+    assert score.paired([10.0, 20.0], [5.0]) is None  # different calls cannot be paired
+    assert score.paired([10.0, 20.0, 40.0], [5.0, 10.0, 40.0]) == (
+        "call by call, v1.4's time over v1.1's: median 0.50, middle half 0.50 to 1.00;"
+        " v1.4 faster on 2 of 3 calls"
+    )
 
 
 def test_recall_may_lose_one_item_but_not_two(out):
