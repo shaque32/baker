@@ -22,6 +22,7 @@ go bar. The two generators live next door:
 | `score.py` | Scores any model's predictions with the exact rules of `eval/probe/run_probe.py`. |
 | `GO_BAR.md`, `gobar.py` | The adoption rule, fixed before training. |
 | `review_sheet.py` | The random sample Arsh checks: 200 training items and 100 held-out items. |
+| `sft.py` | Training chats for a fine-tuned local model (the Qwen3-4B LoRA arm of `GO_BAR.md`): each training item as the stance prompt the probe sends and the JSON answer the product's checks accept. Refuses held-out items. |
 | `TEST_LOG.md` | Every scoring of the held-out test split. |
 
 ## Build and check
