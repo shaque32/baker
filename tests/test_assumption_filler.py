@@ -2838,6 +2838,27 @@ def test_the_exchange_clause_is_found_in_the_text_as_written(conn):
     assert filler._limits_on_exchange(text, params) == "(212) 555-0199"
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        # an earlier "exchanged" that is not about messages: the clause the count reads starts
+        # at the later one, and the words before it are a limit (Baker Eval on #190)
+        "On March 21, 2026, PETROV exchanged calls with SOKOLOV, and PETROV and REYES exchanged"
+        " Telegram messages on dev:item1.",
+        "On March 21, 2026, PETROV exchanged photos with SOKOLOV, and PETROV and REYES exchanged"
+        " Telegram messages on dev:item1.",
+    ],
+)
+def test_an_earlier_exchange_that_is_not_messages_is_still_a_limit(conn, text):
+    conn.execute("INSERT INTO persons VALUES ('person:sokolov', 'Ivan Sokolov', 'expert:test')")
+    try:
+        made, filler = _count(conn, text, None, phones=["dev:item1"])
+        assert not any(a.params.each_way for a in made), [a.params for a in made]
+        assert any("before the count" in d.reason for d in filler.drops), filler.drops
+    finally:
+        conn.execute("DELETE FROM persons WHERE id = 'person:sokolov'")
+
+
 def test_a_sent_form_code_cannot_place_is_refused(conn, monkeypatch):
     # sent_form and the clause's position read the same words; were they ever to disagree, the
     # claim is refused rather than read from a position code did not find.
