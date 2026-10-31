@@ -9,7 +9,7 @@
   and counted; held-out items (ids D... and H...) are refused. Why: Arsh asked on 2026-10-30
   for a fine-tuned, smaller and faster local model; stance labelling is about 74% of local model
   time (case04, estimated from call timestamps).
-- Where: local only
+- Where: PR #185
 - Verified: tests/test_stancedata_sft.py (generated items, no model). On the full training file
   (`python -m eval.train.generate --n 12000 --seed 1`, eval.train 1.5.0 and eval.train.baker
   1.4.1, 19,250 items): 19,250 chats, none left out (complicates 8,377, supports 5,206,

@@ -15,7 +15,7 @@
   call in either replay, and the 20-message replay repeating the recorded answer on at least
   99% of calls);
   `bash eval/probe/mac_replay.sh` runs it on the Mac (about 4 hours, estimated).
-- Where: local only
+- Where: PR #185
 - Verified: tests/test_probe_replay.py (a case01 audit labelled by a stand-in model through the
   product's wiring; synthetic folders for the decision). `replay check` on the case04 database
   of Arsh's go/no-go Mac run (main 67dabdb, 2026-10-29), no model, re-run on main 085c48e:
