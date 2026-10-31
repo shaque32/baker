@@ -18,8 +18,8 @@
 - Where: local only
 - Verified: tests/test_probe_replay.py (a case01 audit labelled by a stand-in model through the
   product's wiring; synthetic folders for the decision). `replay check` on the case04 database
-  of Arsh's go/no-go Mac run (main 67dabdb, 2026-10-29), no model: 279 of 283 stance prompts
-  rebuild byte for byte; mean prompt 6,569 characters at 20 messages, 5,401 at 8 (about 18%
+  of Arsh's go/no-go Mac run (main 67dabdb, 2026-10-29), no model, re-run on main 085c48e:
+  279 of 283 stance prompts rebuild byte for byte; mean prompt 6,569 characters at 20 messages, 5,401 at 8 (about 18%
   shorter), 4,993 at 5 (about 24% shorter). With the v1.4 order, the text a call must newly
   read falls from 5,702 to 3,310 characters at 20 messages and to 2,161 at 8. No model has run
   a replay: whether a shorter context keeps the labels, and how much time it saves, is
