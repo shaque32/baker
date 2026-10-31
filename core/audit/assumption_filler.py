@@ -2050,6 +2050,9 @@ _CAPS_CLAUSE_RE = re.compile(rf"\b(?i:{_JOINS})\s+(?:(?:[A-Z][A-Z'.-]*|@[\w.-]+)
 # Any other word ("annoyed", "REPORT", "shot") names no writer: the guard above lists
 # phrasings that hand a quote on, and this one keeps a phrasing it does not know from
 # naming the wrong person.
+# What a whole alias stands in as between a writer's verb and the quote (_plain_between).
+_ALIAS_STAND_IN = "Aliasname"
+
 _BETWEEN_WORDS = frozenset(
     {
         *_SAME_SUBJECT_FORMS,
@@ -3226,15 +3229,19 @@ class LocalAssumptionFiller:
             plain = re.fullmatch(r"\w+(?:(?:[ \t]+|[-_.'’])\w+)*", between[slice(*span)])
             if plain and (not kept or span[0] >= kept[-1][1]):
                 kept.append(span)
-        stand_in = min(names, default="").upper()
-        for start, end in reversed(kept if stand_in else []):
-            between = between[:start] + stand_in + between[end:]
+        # The stand-in is a word of its own that every check below reads as a known name, not
+        # a stored name fragment ("B." of "B. Smith" would not survive; Codex on #186).
+        written = between
+        if kept:
+            names.add(_ALIAS_STAND_IN.casefold())
+        for start, end in reversed(kept):
+            between = between[:start] + _ALIAS_STAND_IN + between[end:]
         apps = {c.casefold() for c in self.channels()} | {
             w.casefold() for words in APP_ALIASES.values() for w in words if " " not in w
         }
         if "\n" in between or "\r" in between:
             return False  # a new line can carry a new label ("REYES\nSMITH: 'ok'")
-        mixed_case = bool(re.search(r"[a-z]", re.sub(r"@[\w.-]+", "", between)))
+        mixed_case = bool(re.search(r"[a-z]", re.sub(r"@[\w.-]+", "", written)))
         last_end, last_capital = 0, False  # the word before: where it ends, and its kind
         last_digit = by_app = False  # by_app: "by" or "via" must name an app ("by iMessage")
         for m in re.finditer(r"@[\w.-]+|\w[\w'’.-]*", between):

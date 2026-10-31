@@ -2978,3 +2978,15 @@ def test_a_name_inside_another_persons_alias_is_that_alias(conn):
         assert [text[s:e] for s, e in spans[REYES]] == ["REYES"]
     finally:
         actions.set_aliases(conn, PETROV, [], "expert:test")
+
+
+def test_a_whole_alias_stands_in_whatever_names_the_case_holds(aliased):
+    # Codex on #186: a person "B. Smith" must not change how REYES's alias reader works.
+    aliased.execute("INSERT INTO persons VALUES ('person:bsmith', 'B. Smith', 'expert:test')")
+    try:
+        filler = LocalAssumptionFiller(FakeModel(by_claim(GOOD)), aliased, template=DRAFT)
+        c = Claim(id="X", paragraph_id="para:1", text="REYES told Big Dan: 'ok'.",
+                  claim_type=ClaimType.COMMUNICATION, status=ClaimStatus.ACCEPTED)  # fmt: skip
+        assert filler.stated_sender(c, "ok") == REYES
+    finally:
+        aliased.execute("DELETE FROM persons WHERE id = 'person:bsmith'")
