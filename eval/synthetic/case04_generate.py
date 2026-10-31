@@ -1,11 +1,11 @@
 """Generate synthetic case04: three Cellebrite-style Excel reports, the mock affidavit, the DRAFT
 answer key and the DRAFT assumption sheet. SYNTHETIC data only; deterministic for a seed.
 
-case04 is the held-out set for the testability step's go/no-go: 48 claims, six of each type,
+case04 was the held-out set for the testability step's go/no-go: 48 claims, six of each type,
 half in plain wording and half in affidavit wording, most with a wrong reading planted in the
-data. It is the case the go/no-go reads (`TESTABILITY_GO_NO_GO_CASES`), and is not wired into
-`make eval` or any merge gate. Its key and sheet are drafts until Arsh signs them; nothing here
-writes under eval/gold/.
+data. The go/no-go read it (`TESTABILITY_GO_NO_GO_CASES`) until its run on 2026-10-30 spent it
+as held-out data; case05 replaced it. It is not wired into `make eval` or any merge gate. Its
+key and sheet were drafts until Arsh signed them; nothing here writes under eval/gold/.
 
 Usage: python -m eval.synthetic.case04_generate [--out eval/synthetic/case04]
 
