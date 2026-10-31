@@ -524,8 +524,7 @@ def add_person(conn: sqlite3.Connection, name: str, actor: str, clock: Clock | N
     it ("ALEXANDER SOKOLOV"). A person is only a name: nothing ties them to an account until an
     expert confirms a link. Refused when the name would make another person's name ambiguous
     for the assumption filler (same whole name or same surname). Returns the person id."""
-    from core.identity.aliases import key as alias_key
-    from core.identity.aliases import name_keys, person_names
+    from core.identity.aliases import forms, name_keys, person_names
     from core.identity.links import person_id_for, tokens
 
     _expert(actor)
@@ -546,7 +545,7 @@ def add_person(conn: sqlite3.Connection, name: str, actor: str, clock: Clock | N
     taken = name_keys(name)
     for pid, (other, aliases) in person_names(conn).items():
         for a in aliases:
-            if alias_key(a) in taken:
+            if forms(a) & taken:
                 raise ReviewError(
                     f"{name} would also match {other} ({pid}), whom the document also calls "
                     f"{a}; the audit could not tell them apart"
@@ -739,7 +738,15 @@ def set_aliases(
     name is already matched, or would also match another person (their whole name, their
     surname or an alias of theirs), so an alias never reaches two persons. Returns the aliases
     as recorded."""
-    from core.identity.aliases import ADD_ACTION, MAX_LEN, REMOVE_ACTION, key, name_keys, stored
+    from core.identity.aliases import (
+        ADD_ACTION,
+        MAX_LEN,
+        REMOVE_ACTION,
+        forms,
+        key,
+        name_keys,
+        stored,
+    )
 
     _expert(actor)
     row = conn.execute("SELECT name FROM persons WHERE id = ?", (person_id,)).fetchone()
@@ -760,17 +767,18 @@ def set_aliases(
         if key(alias) not in {key(a) for a in clean}:
             clean.append(alias)
     names = dict(conn.execute("SELECT id, name FROM persons"))
-    theirs: dict[str, str] = {}  # key -> the other person it already matches
+    theirs: dict[str, str] = {}  # a form -> the other person it already matches
     for pid, other in names.items():
         if pid != person_id:
             theirs.update(dict.fromkeys(name_keys(other) - theirs.keys(), pid))
     rows = stored(conn)
     for a in rows:
         if a.person_id != person_id:
-            theirs.setdefault(key(a.alias), a.person_id)
+            theirs.update(dict.fromkeys(forms(a.alias) - theirs.keys(), a.person_id))
     for alias in clean:
-        if key(alias) in theirs:
-            pid = theirs[key(alias)]
+        clash = sorted(forms(alias) & theirs.keys())
+        if clash:
+            pid = theirs[clash[0]]
             raise ReviewError(
                 f"{alias} would also match {names.get(pid, pid)} ({pid}); the audit could not "
                 "tell them apart"

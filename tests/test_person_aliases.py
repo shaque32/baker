@@ -191,6 +191,23 @@ def test_an_alias_another_persons_last_name_word_matches_is_refused(db):
     assert L.resolves(L.load(db).persons, "Smith") == [john]
 
 
+@pytest.mark.parametrize("alias", ["John Smith", "J Smith", "JOHN-SMITH"])
+def test_an_alias_another_persons_name_reads_as_on_the_identities_page_is_refused(db, alias):
+    """The Identities page reads "John Q Smith" as "john smith" (it drops initials), so any
+    alias it would read as his name, whole or last word, may not be another person's (Codex
+    on #181)."""
+    john = actions.add_person(db, "John Q Smith", EXPERT, _clock)
+    amy = actions.add_person(db, "Amy Jones", EXPERT, _clock)
+    assert L.resolves(L.load(db).persons, alias) == [john]
+    with pytest.raises(ReviewError, match="would also match John Q Smith"):
+        actions.set_aliases(db, amy, [alias], EXPERT, _clock)
+    db.execute(
+        "INSERT INTO person_aliases VALUES (?, ?, ?, '2026-10-30T23:30:00Z')", (amy, alias, EXPERT)
+    )
+    assert aliases.person_names(db)[amy] == ("Amy Jones", [])
+    assert L.resolves(L.load(db).persons, alias) == [john]
+
+
 @pytest.mark.parametrize(
     ("text", "found"),
     [

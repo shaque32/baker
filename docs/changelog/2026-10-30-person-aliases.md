@@ -26,9 +26,11 @@
     holds "the DRIVER". "SUBJECT-12", "Subject-1A" and the handle "@subject-1" are not
     "SUBJECT-1". Letters in any script count ("Дима"), and both sides are casefolded alike, so
     "GROSS" finds "Groß" (Codex on #181). `aliases.spans` gives every place, for the filler.
-  - The refusal compares every form a reader matches a name by: the whole name, the filler's
-    surname ("Brown-Smith" for "John Brown-Smith") and the Identities page's last name word
-    ("Smith"), so "Smith" may not be another person's alias (Codex on #181).
+  - The refusal compares every form any reader matches a name by, on both sides
+    (`aliases.forms`, `aliases.name_keys`): the whole name, the filler's surname
+    ("Brown-Smith" for "John Brown-Smith"), and the Identities page's reading, which drops
+    initials ("john smith" for "John Q Smith", and its last word "smith"). So neither "Smith",
+    "John Smith" nor "J Smith" may be another person's alias (Codex on #181, twice).
   - The testability step's person lookups (`core/audit/testability.py`) find a person by an
     alias the claim writes, whole only ("SUBJECT-12" is not "SUBJECT-1"). The Identities page
     (`core/identity/links.py`, `ui/identity_pages.py`) resolves names by alias. It lists a
@@ -56,7 +58,7 @@
     names, and its check accepts that person as the claim's own, so the step's conversion on
     case04 can change with this PR alone. That is unmeasured. No verdict rule changes.
 - Where: PR #181 (branch `claude/project-thread-6i2msb-aliases`)
-- Verified: new `tests/test_person_aliases.py`, 31 tests:
+- Verified: new `tests/test_person_aliases.py`, 34 tests:
   - recording, replacing and clearing aliases, each logged;
   - every refusal: another person's whole name, surname or alias; the person's own surname;
     no letter or digit; too long; a non-expert actor; an unknown person; the schema's CHECK and
@@ -70,7 +72,8 @@
     and "GROSS" folded alike;
   - `verify-bundle`'s alias check: a forged expert, an unlogged row and a missing logged alias
     each fail; a person's removal accounts for their aliases;
-  - an alias another person's last name word matches ("Smith" for "John Brown-Smith") refused;
+  - an alias another person's name reads as on the Identities page refused: "Smith" for "John
+    Brown-Smith"; "John Smith", "J Smith" and "JOHN-SMITH" for "John Q Smith";
   - a database without the table;
   - on case01: the testability step's lookups by alias ("Subject 1" too, and not
     "SUBJECT-12"), the Identities page placing a designation and naming its claims while

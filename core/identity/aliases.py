@@ -29,16 +29,27 @@ def key(text: str) -> str:
     return " ".join(re.sub(r"[\W_]+", " ", unicodedata.normalize("NFC", text).casefold()).split())
 
 
-def name_keys(name: str) -> set[str]:
-    """The keys a person's name is matched by, in every reader: the whole name; for a name of
-    more than one word, its last word (the filler's surname rule, "Brown-Smith" for "John
-    Brown-Smith"); and its last name word as the Identities page reads one ("Smith",
-    core/identity/links.tokens). An alias with any of these keys could reach the person."""
+def forms(text: str) -> set[str]:
+    """Every form a reader compares a name or an alias by: its key, and its name words as the
+    Identities page reads them (core/identity/links.tokens drops initials and numbers, so
+    "John Q Smith" reads as "john smith")."""
     from core.identity.links import tokens  # links reads this module, so not at the top
 
+    return {f for f in (key(text), " ".join(tokens(text))) if f}
+
+
+def name_keys(name: str) -> set[str]:
+    """Every form a person's name is matched by, in every reader: the whole name (`forms`);
+    for a name of more than one word, its last word (the filler's surname rule, "Brown-Smith"
+    for "John Brown-Smith"); and its last name word as the Identities page reads one ("Smith",
+    core/identity/links.tokens). An alias any of whose `forms` is one of these could reach the
+    person."""
+    from core.identity.links import tokens
+
     parts = name.split()
-    last = key(parts[-1]) if len(parts) > 1 else ""
-    return {k for k in (key(name), last, *map(key, tokens(name)[-1:])) if k}
+    last = tokens(name)[-1:]
+    surname = key(parts[-1]) if len(parts) > 1 else ""
+    return {k for k in (*forms(name), surname, *last, *map(key, last)) if k}
 
 
 def _folded(text: str) -> tuple[str, list[int]]:
@@ -113,9 +124,12 @@ def person_names(conn: sqlite3.Connection) -> dict[str, tuple[str, list[str]]]:
         aliases.setdefault(a.person_id, []).append(a.alias)
     owners: dict[str, set[str]] = {}
     for pid, name in persons:
-        for k in name_keys(name) | {key(a) for a in aliases[pid]}:
+        for k in name_keys(name).union(*map(forms, aliases[pid])):
             owners.setdefault(k, set()).add(pid)
     return {
-        pid: (name, [a for a in aliases[pid] if key(a) and owners.get(key(a)) == {pid}])
+        pid: (
+            name,
+            [a for a in aliases[pid] if key(a) and all(owners[f] == {pid} for f in forms(a))],
+        )
         for pid, name in persons
     }
