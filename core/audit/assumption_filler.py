@@ -147,7 +147,9 @@ MAX_PROPOSALS = 8
 # when a change alters which proposals are kept or what code adds, so two runs of the same
 # model and prompt that test different claims can be told apart.
 #   2: #160's guards, and code adds a meaning assumption and a stated writer's sender.
-FILLER_VERSION = "2"
+#   3: #164, #169, #172 (sent_by, each_way), #186 (person aliases) and #190 (positions found in
+#      the claim as written) change which proposals are kept and what code adds.
+FILLER_VERSION = "3"
 MAX_WINDOW_DAYS = 400
 TIME_SLACK = timedelta(minutes=15)
 
