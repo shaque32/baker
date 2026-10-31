@@ -992,3 +992,17 @@ Diff: on main after the case05 PR merges, from the repo root (macOS and GNU sed)
 The last line must print 0 for both files. The copies are the drafts with only `labeled_by`
 (and, in the key, `labeled_at`) changed: 48 key lines and 86 sheet rows, and both then report
 as signed (checked on a scratch copy with bash, 2026-10-31).
+
+## 2026-10-31 claude/project-thread-ds0ify: schema header dates for 0.5.0
+File: core/schema.sql (header comment only)
+Why: the 0.5.0 line says the change was signed on 2026-10-29. The two AssumptionParams fields
+were signed then (R2/R3), but the version bump itself was signed on 2026-10-30 at 01:26Z (the
+"CONTRACTS_VERSION for the R2/R3 fields" entry above). Found in review of #172. No table, field
+or version change; wording only.
+Diff:
+```
+core/schema.sql
+--- 0.5.0: no table change; AssumptionParams.sent_by and each_way (signed by Arsh 2026-10-29).
++-- 0.5.0: no table change; AssumptionParams.sent_by and each_way (fields signed by Arsh
++-- 2026-10-29; version bump signed 2026-10-30).
+```

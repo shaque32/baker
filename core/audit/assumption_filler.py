@@ -1593,6 +1593,16 @@ def exchanged(claim: str) -> str | None:
     return m.group("between")
 
 
+def _exchange_clause_start(words: str) -> int:
+    """Where the clause that says "exchanged ... messages" starts in `words`: just after the
+    last comma before it, or 0. Found in the text itself, not in a case-folded copy, whose
+    length can differ ("ß" folds to "ss")."""
+    m = _EXCHANGED_RE.search(words)
+    if m is None:
+        raise Reject("the claim's exchange could not be placed")
+    return words.rfind(",", 0, m.start()) + 1
+
+
 def states_a_count(claim: str) -> bool:
     """True when the claim writes any number as a count of records ("three messages", "13
     calls"), whatever its value."""
@@ -1817,7 +1827,11 @@ def duration_range(as_written: str, claim: str = "") -> tuple[int, int]:
     lead, rest = (m.group("lead"), m.group("rest")) if m else (None, words)
     if claim:
         text, leads = " ".join(_plain_apostrophes(claim).split()), set()
-        i = text.lower().find(words.lower())
+        # Found case-insensitively in the text itself: a lower-cased copy can be longer
+        # ("İ" is two characters lower-cased), and its index would point elsewhere.
+        at = re.compile(re.escape(words), re.I)
+        found = at.search(text)
+        i = found.start() if found else -1
         while i >= 0:
             # the claim's whole lead before the length, which holds the model's lead if any
             head = text[: i + len(words) - len(rest)]
@@ -1835,7 +1849,8 @@ def duration_range(as_written: str, claim: str = "") -> tuple[int, int]:
             if _BOUND_AFTER_RE.match(text[i + len(words) :]):
                 raise Reject(f"the claim writes a bound after the duration {as_written!r}")
             leads.add(" ".join(before.group("lead").lower().split()) if before else None)
-            i = text.lower().find(words.lower(), i + 1)
+            found = at.search(text, i + 1)
+            i = found.start() if found else -1
         if len(leads) > 1:
             raise Reject(
                 f"the claim writes {as_written!r} more than once, with other words before it"
@@ -2505,6 +2520,8 @@ class LocalAssumptionFiller:
                 words = _unquoted(_flat(_nfc(claim.text)))
                 lead = len(words) - len(words.lstrip())
                 sent_at = _SENT_FORM_RE.match(words.strip())
+                if sent_at is None:
+                    raise Reject("the claim's sent form could not be placed")
                 self._plain_prefix(claim.text, lead + sent_at.start("subject"))
                 params["sent_by"] = self._sent_by(sent, params)
                 code_made = True
@@ -2529,9 +2546,7 @@ class LocalAssumptionFiller:
                 params["count_op"], params["expected_count"] = "ge", 2
             self._phones_kept(claim.text, params)
             words = _unquoted(_flat(_nfc(claim.text)))
-            self._plain_prefix(
-                claim.text, words.rfind(",", 0, words.casefold().find("exchanged")) + 1
-            )
+            self._plain_prefix(claim.text, _exchange_clause_start(words))
             if extra := self._limits_on_exchange(claim.text, params):
                 # "exchanged Telegram messages in Spanish": the check reads no language,
                 # content or attachment, so it would count every message (Codex on #172)
@@ -2616,7 +2631,7 @@ class LocalAssumptionFiller:
         words = _unquoted(_flat(_nfc(claim_text)))
         # The whole clause from "exchanged" to the end, commas and all: "... in Spanish, on
         # dev:p1." keeps "in Spanish" in it (Codex on #172).
-        clause = words[words.rfind(",", 0, words.casefold().find("exchanged")) + 1 :]
+        clause = words[_exchange_clause_start(words) :]
         left = list(clause)
         spans = [s for _, *s in self._phone_spans(clause)]
         # Only the assumption's own sides: "... with SOKOLOV" names a third party the count
