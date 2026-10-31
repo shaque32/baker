@@ -2937,3 +2937,44 @@ def test_a_reply_is_not_credited_through_part_of_an_alias(conn):
         assert filler.stated_sender(c, "OK") is None
     finally:
         actions.set_aliases(conn, PETROV, [], "expert:test")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # Codex on #186: an alias written across a new line, a dash or a colon may carry a new
+        # label, so it does not stand in as one name between the writer and the quote
+        "REYES texted Big\nDan: 'ok'.",
+        "REYES texted Big — Dan: 'ok'.",
+        "REYES texted Big: Dan: 'ok'.",
+    ],
+)
+def test_an_alias_across_a_label_break_is_no_name_between(aliased, text):
+    filler = LocalAssumptionFiller(FakeModel(by_claim(GOOD)), aliased, template=DRAFT)
+    c = Claim(id="X", paragraph_id="para:1", text=text, claim_type=ClaimType.COMMUNICATION,
+              status=ClaimStatus.ACCEPTED)  # fmt: skip
+    assert filler.stated_sender(c, "ok") is None
+
+
+@pytest.mark.parametrize("written", ["SUBJECT-1", "SUBJECT—1", "SUBJECT_1", "subject 1"])
+def test_a_quoted_alias_in_any_spelling_the_matcher_reads_is_a_name(aliased, written):
+    # Codex on #186: the quoted name is read as _person reads it, so the one message is found.
+    filler = LocalAssumptionFiller(FakeModel(by_claim(GOOD)), aliased, template=DRAFT)
+    c = Claim(id="X", paragraph_id="para:1", text=f'REYES wrote to "{written}": "ok".',
+              claim_type=ClaimType.COMMUNICATION, status=ClaimStatus.ACCEPTED)  # fmt: skip
+    assert filler.the_quote(c, []) == "ok"
+
+
+def test_a_name_inside_another_persons_alias_is_that_alias(conn):
+    # Codex on #186: "Big Reyes" (PETROV's alias) is one designation, not also REYES.
+    from core.review import actions
+
+    actions.set_aliases(conn, PETROV, ["Big Reyes"], "expert:test")
+    try:
+        filler = LocalAssumptionFiller(FakeModel(by_claim(GOOD)), conn, template=DRAFT)
+        spans = filler._person_spans("SMITH texted Big Reyes; REYES replied.")
+        text = "SMITH texted Big Reyes; REYES replied."
+        assert [text[s:e] for s, e in spans[PETROV]] == ["Big Reyes"]
+        assert [text[s:e] for s, e in spans[REYES]] == ["REYES"]
+    finally:
+        actions.set_aliases(conn, PETROV, [], "expert:test")

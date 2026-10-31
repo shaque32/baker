@@ -2299,7 +2299,7 @@ class LocalAssumptionFiller:
                 self._drop(claim, i, str(e), call.id)
 
         out = self.code_fills(claim, para, self._shaped(claim, out, call.id), allowed_ids, call.id)
-        gap = coverage_gap(claim, out, frozenset(self._names()))
+        gap = coverage_gap(claim, out, frozenset(self._names(claim.text)))
         if gap:
             self._drop(claim, None, f"{gap}; the claim stays unproven", call.id)
             return []
@@ -2810,7 +2810,7 @@ class LocalAssumptionFiller:
         display name: 'the Teams user "ThisIs DfirTwo"'), led by what leads a message
         (_MESSAGE_CUE_RE: "PETROV wrote: ...", "a message reading ...", not "saved as ..."),
         on one line. Two such quotes, or any doubt, give None: code never picks one."""
-        text, names = _nfc(claim.text), self._names()
+        text, names = _nfc(claim.text), self._names(claim.text)
         spans = [
             m.span()
             for m in _QUOTE_SPAN_RE.finditer(_flat(text))
@@ -2837,7 +2837,7 @@ class LocalAssumptionFiller:
         words = text[start + 1 : end - 1].strip()
         return None if "\n" in words or "\r" in words else words
 
-    def _names(self) -> set[str]:
+    def _names(self, text: str = "") -> set[str]:
         """Every name a quote must not be read as a message for: persons the expert created
         (whole and last name, and each alias whole) and accounts' identifiers and display
         names, casefolded."""
@@ -2850,6 +2850,14 @@ class LocalAssumptionFiller:
             }
         for a in self.data.accounts.values():
             names |= {_nfc(x.strip()).casefold() for x in (a.identifier, a.display_name) if x}
+        # A quote in the text that writes a whole alias in another spelling the alias matcher
+        # reads ("SUBJECT—1" for SUBJECT-1), as _person reads it (Codex on #186).
+        aliases = [a for _, theirs in person_names(self.conn).values() for a in theirs]
+        for flat in {_nfc(text), _flat(_nfc(text))}:
+            for m in _QUOTE_SPAN_RE.finditer(flat):
+                words = m.group(0)[1:-1].strip()
+                if words and any(alias_spans(a, words) == [(0, len(words))] for a in aliases):
+                    names.add(words.casefold())
         return names
 
     def _add_sender(
@@ -3175,7 +3183,7 @@ class LocalAssumptionFiller:
         #3283"'). "reading" right after a message ('a Signal message to (919) 888-7386
         reading "..."') is the message's words, so it is dropped: the verb before still
         governs. Any other quote between stays and refuses the writer."""
-        names = self._names()
+        names = self._names(between)
 
         def quoted(m: re.Match[str]) -> str:
             return " Party " if m.group(0)[1:-1].strip().casefold() in names else m.group(0)
@@ -3213,7 +3221,10 @@ class LocalAssumptionFiller:
         )
         kept: list[tuple[int, int]] = []
         for span in found:  # the longest first where two start alike; never overlapping
-            if not kept or span[0] >= kept[-1][1]:
+            # Only an alias written with plain spacing or joiners stands in: across a new line,
+            # a dash or a colon it may carry a new label ("Big\nDan: 'ok'"; Codex on #186).
+            plain = re.fullmatch(r"\w+(?:(?:[ \t]+|[-_.'’])\w+)*", between[slice(*span)])
+            if plain and (not kept or span[0] >= kept[-1][1]):
                 kept.append(span)
         stand_in = min(names, default="").upper()
         for start, end in reversed(kept if stand_in else []):
@@ -3265,12 +3276,32 @@ class LocalAssumptionFiller:
         (whole, or the last name, _name_spans) or an alias the expert gave them, whole only
         and read as every alias reader reads it (core/identity/aliases.spans). An alias two
         persons share names neither (core/identity/aliases.person_names)."""
-        return {
+        persons = person_names(self.conn)
+        by_alias = {
+            pid: [sp for a in aliases for sp in alias_spans(a, text)]
+            for pid, (_, aliases) in persons.items()
+        }
+        found = {
             pid: [
                 *(_name_spans(text, _nfc(full.strip())) if full and full.strip() else []),
-                *(span for a in aliases for span in alias_spans(a, text)),
+                *by_alias[pid],
             ]
-            for pid, (full, aliases) in person_names(self.conn).items()
+            for pid, (full, _) in persons.items()
+        }
+        # A name inside another person's alias is that alias: "Big Reyes" (PETROV's) is not
+        # also REYES (Codex on #186).
+        return {
+            pid: [
+                (s, e)
+                for s, e in spans
+                if not any(
+                    a <= s and e <= b and (a, b) != (s, e)
+                    for other, theirs in by_alias.items()
+                    if other != pid
+                    for a, b in theirs
+                )
+            ]
+            for pid, spans in found.items()
         }
 
     def _person(self, name: str) -> str:
