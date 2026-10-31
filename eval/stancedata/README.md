@@ -18,10 +18,11 @@ go bar. The two generators live next door:
 | `bakerform.py`, `names.py` | Items in Baker's own wording: the product's assumption templates, sender lines and call text, rendered with the names a case gives (`core/audit/readable.py`), so the model reads what Baker will show it. |
 | `../train/` | Training generator: 12,000 plain items, with sibling items that share a record and differ in the assumption, then 7,250 items in Baker's own wording (`--n-baker`). |
 | `../heldout/` | Held-out generator, written separately with its own names, situations and wording: a 1,846-item test split (ids H...; 1,150 plain, 696 in Baker's wording) and a 923-item dev split (ids D...; 575 plain, 348 in Baker's wording). |
-| `contamination.py` | Overlap check: generated text against the probe set, case01 and case02, and training against held-out. The only code here that reads that data. |
+| `contamination.py` | Overlap check: generated text against the probe set, case01 and case02, and training against held-out. The only code here that reads that data. Its report.json names every file checked by SHA-256. |
 | `score.py` | Scores any model's predictions with the exact rules of `eval/probe/run_probe.py`. |
 | `GO_BAR.md`, `gobar.py` | The adoption rule, fixed before training. |
 | `review_sheet.py` | The random sample Arsh checks: 200 training items and 100 held-out items. |
+| `sft.py` | Training chats for a fine-tuned local model (the Qwen3-4B LoRA arm of `GO_BAR.md`): each training item as the stance prompt the probe sends and the JSON answer the product's checks accept. Refuses held-out items. `--overlap` records the overlap check that passed on the exact items file; a training run uses only chats whose manifest has it. |
 | `TEST_LOG.md` | Every scoring of the held-out test split. |
 
 ## Build and check

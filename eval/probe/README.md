@@ -242,6 +242,44 @@ the product keeps v1.1. The 14B called 41 of the 42 told-frame and undated-denia
 new sets "contradicts" under every prompt. `MODEL_NAME=<entry> bash eval/probe/mac_v13.sh`
 runs the same test on another local model.
 
+## Stance v1.4 for speed: the same words, instructions first (2026-10-30)
+`stance_v1_4_draft.md` is the signed v1.1, line for line, with the fixed instructions moved
+ahead of the case data, so llama.cpp can reuse them from one call to the next (on case04, 40% of
+an average stance prompt was fixed text after the data). The plan and its criteria, fixed
+before any call, are in `v14/PREREGISTERED.md`: on each of the four sets v1.4 must show no more
+traps as supports than v1.1, be no worse on the signed bars, keep recall within one item, and
+cut the mean time per stance call on a timed case01 audit by at least 15%, with every answer
+of both prompts valid and every stance call of both timed audits answered (a failed call
+returns at once, so it never counts as speed). One Mac sitting, about 3 to 4 hours:
+
+    bash eval/probe/mac_v14.sh
+
+`python -m eval.probe.v14.score report <folder>` re-scores a finished folder. The report lists
+every item's answer under both prompts, the model's SHA-256, each step's seed, context size,
+runtime, tokens per second and peak memory, and the timed audits' per-call spread and call
+outcomes (`time_case` records them per pass; for an older folder they are read from the timed
+audit's own database). The four
+sets are not fresh items (the 14B answered them on 2026-10-22), so a pass is not a held-out
+result. Not run yet.
+
+## Replaying a recorded audit: a shorter context (2026-10-31)
+The probe sets carry 2 to 6 context lines; real audit prompts carry about 23. `replay.py`
+rebuilds a recorded audit's stance prompts with today's code and asks the local model again
+under a variant (the signed prompt or the v1.4 order; 20, 8 or 5 messages either side of the
+record), in the recorded order, then compares the labels as the product stores them. Only
+calls whose signed 20-message prompt rebuilds byte for byte are replayed (279 of 283 on the
+case04 go/no-go run), so a label change comes from the variant, not from code that changed.
+
+    python -m eval.probe.replay check --db <case.db>      # no model: rebuilds and prompt sizes
+    bash eval/probe/mac_replay.sh                         # the Mac test, about 4 hours
+
+On the case04 prompts, 8 messages either side make the prompt about 18% shorter and 5 about
+24% (`check`, no model). Whether that keeps the labels is the Mac test's question;
+`REPLAY_PREREGISTERED.md` fixes its criteria, and the report prints each count with its 95%
+Wilson upper bound and lists every call behind the decision. A replay folder holds one replay:
+a stopped replay resumes only with the same model file, settings, prompt, context size,
+recorded calls and prompt text (`identity.json`). Not run yet.
+
 ## Repeat check: same question, same answer? (2026-10-20)
 
 `bash eval/probe/mac_repeat.sh` (or `python -m eval.probe.repeat_check --models ...`) asks the
