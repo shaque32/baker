@@ -12,7 +12,7 @@
   name, so a quote that is only an alias is not looked up as a message.
   Why: case04's go/no-go run showed affidavit designations ("SUBJECT-1", "HAL", "DEZ") as the
   first reason the filler refused 11 claims. A person had only one name.
-- Where: branch claude/project-thread-ds0ify (PR to follow), on main after #181.
+- Where: PR #186 (branch claude/project-thread-ds0ify), on main after #181.
 - Verified: on this container, 2026-10-30.
   - 9 new filler tests and 1 alias test. The alias reads failed first; the guards are part of
     an alias, a longer name, a handle and a shared alias. `make check` passes.
