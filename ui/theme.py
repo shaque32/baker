@@ -258,7 +258,11 @@ select { appearance: none; -webkit-appearance: none; padding-right: 32px; cursor
     linear-gradient(135deg, var(--muted) 50%, transparent 50%);
   background-position: calc(100% - 17px) 52%, calc(100% - 12px) 52%;
   background-size: 5px 5px; background-repeat: no-repeat; }
-input::placeholder, textarea::placeholder { color: #75716a; }
+input::placeholder, textarea::placeholder { color: #6f6b64; }
+fieldset.msgsplit { border: 0; padding: 0; margin: 0 0 12px; }
+fieldset.msgsplit label { display: flex; align-items: baseline; gap: 6px; width: auto;
+  margin: 0 0 6px; font-weight: 400; }
+fieldset.msgsplit legend { padding: 0; margin-bottom: 6px; font-weight: 500; }
 input[type=text]:hover, input[type=password]:hover, input[type=number]:hover, textarea:hover,
 select:hover { border-color: #bdb9b0; }
 input[type=text]:focus, input[type=password]:focus, input[type=number]:focus,
@@ -478,7 +482,7 @@ blockquote.claimtext { font: 500 20px/1.45 var(--sans); letter-spacing: -0.005em
 .msg { max-width: 72%; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px;
   background: #fff; align-self: flex-start; }
 .msg.out { align-self: flex-end; background: var(--accent-bg); border-color: #d9e1ec; }
-.msg .who2 { font-size: 11.5px; color: var(--muted); }
+.msg .who2 { font-size: 12.5px; color: var(--muted); }
 .msg .body { font-size: 14px; }
 .msg .t { font: 400 11px var(--sans); color: var(--muted); text-align: right; margin-top: 2px;
   font-variant-numeric: tabular-nums; }

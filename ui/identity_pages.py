@@ -270,14 +270,15 @@ def identities_page(conn: sqlite3.Connection, page: Page) -> str:
         for r in rows:
             counts[r["status"]] += 1
     out = [
-        "<p class='eyebrow'>Identity audit</p><h1>Who is behind each name</h1>",
+        "<h1>Who is behind each name</h1>",
         "<p class='lede'>Each proposed link between an account and a person shows the records "
-        "for and against it. Code proposes a link only where the extraction itself puts a form "
-        "of the person's name on the account; no model is involved. Nothing is merged: a link "
-        "counts in the audit's checks only after you confirm it, and every report lists each "
-        "confirmed link as a limitation. Proposed, unresolved and rejected links stay unknown. "
-        "A proposed or unresolved link only widens what the audit searches for that "
-        "person.</p>",
+        "for and against it. Nothing is merged: a link counts in the audit's checks only after "
+        "you confirm it.</p>",
+        "<details class='more'><summary>How links are proposed and used</summary>"
+        "<p>Code proposes a link only where the extraction itself puts a form of the person's "
+        "name on the account; no model is involved. Every report lists each confirmed link as "
+        "a limitation. Proposed, unresolved and rejected links stay unknown. A proposed or "
+        "unresolved link only widens what the audit searches for that person.</p></details>",
         "<div class='counts'>"
         + "".join(
             f"<span class='stpill st-{s}'>{e(STATUS_LABEL[s])} <b>{n}</b></span>"

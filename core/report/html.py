@@ -197,7 +197,11 @@ from core.review.withheld import summary as withheld_summary
 # ("counting only messages X sent") or that they went each way ("with at least one message
 # each way"), and the count check's lines say so ("Only messages X sent.", a side that sent
 # none). Rules and stored text otherwise unchanged.
-REPORT_VERSION = "0.28.0"
+# 0.29.0: look only, from a design critique. A format notice inside Limitations reads as a plain
+# list item, and on a claim as one compact line, not a boxed callout; the claim id line is left
+# out when the claim's name is its id (as on the claim page); source ids wrap at spaces; the
+# summary table is narrower. No wording, fact or section changed.
+REPORT_VERSION = "0.29.0"
 
 
 @dataclass(frozen=True)
@@ -263,6 +267,14 @@ p.warn { background: var(--card); border: 1px solid var(--line); border-radius: 
   padding: 10px 16px; color: #3c4555; font-size: 14px;
   box-shadow: inset 3px 0 0 var(--line-strong); }
 strong.warn { color: var(--unp); }
+li > .format-notice { background: none; border: 0; box-shadow: none; padding: 0; margin: 0;
+  font-size: inherit; color: inherit; }
+li > .format-notice strong { font-weight: 600; }
+.claim .format-notice { background: none; border: 0; box-shadow: none; padding: 0;
+  margin: 6px 0; font-size: 13.5px; }
+.claim .format-notice strong { font-weight: 500; }
+table.summary { max-width: 32rem; }
+td.mono { word-break: normal; overflow-wrap: anywhere; }
 table { border-collapse: separate; border-spacing: 0; width: 100%; margin: 12px 0;
   font-size: 13.5px; line-height: 1.5; background: var(--card); border: 1px solid var(--line);
   border-radius: 8px; overflow: hidden; }
@@ -902,7 +914,8 @@ def _claim_block(
         f"{' by the expert' if claim.model_run_id is None else ' (model-proposed)'}</span></h3>"
     )
     out.append(f"<blockquote>{q(claim.text)}</blockquote>")
-    out.append(f"<p class='muted'>Claim id <span class='mono'>{e(claim.id)}</span></p>")
+    if st.name != claim.id:
+        out.append(f"<p class='muted'>Claim id <span class='mono'>{e(claim.id)}</span></p>")
     nt = " v-nt" if st.untested else ""
     out.append(f'<p><span class="verdict {st.css}{nt}">{e(st.label)}</span></p>')
     out.extend(
@@ -1283,7 +1296,10 @@ def render_report(
 
     if scope is not None:
         parts.append(scope_banner(scope))
-    parts.append("<h2>Summary</h2><table><thead><tr><th>Finding</th><th>Claims</th></tr></thead>")
+    parts.append(
+        "<h2>Summary</h2><table class='summary'><thead><tr><th>Finding</th><th>Claims</th>"
+        "</tr></thead>"
+    )
     for label, n in sorted(tally.items()):
         parts.append(f"<tr><td>{e(label)}</td><td>{n}</td></tr>")
     parts.append("</table>")
