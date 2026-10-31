@@ -1,4 +1,4 @@
-## 2026-10-30: Claims screen fixes from a design critique (branch claims-critique-fixes)
+## 2026-10-30: Claims screen fixes from a design critique (#184)
 - Changed: The Claims screen's progress label read "Nothing waiting on you" beside the heading
   "N claims need you"; it now reads "Settled". The Supported tile said "The verdict rules or an
   expert decided it", which suggested the rules alone can make a claim supported; under rules
@@ -8,7 +8,7 @@
   claims" (a `<details>`, no script). The Unproven tile's dot is a visible ring, and notices and
   the next-up paragraph stop at a readable line length. Look only, in `ui/pages.py` and
   `ui/theme.py`; the exported report is unchanged.
-- Where: branch claims-critique-fixes
+- Where: PR #184
 - Verified: ruff; pytest (see PR description for the full run and eval numbers).
 - Open: A reason line on Contradicted rows and clickable Unproven reason chips were proposed
   and not done. The demo banner text was not shortened, because it is shared with the report.
