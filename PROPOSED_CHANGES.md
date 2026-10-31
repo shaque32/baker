@@ -1020,16 +1020,28 @@ events on 2026-10-31 at 23:38Z (decision card, validation thread). Plan:
 `plans/case-events.md`.
 What the table holds: each event the expert enters, by its name as the document writes it
 ("SEARCH", "KEDZIE YARD theft"), with the first and last wall-clock day it covers as the
-document gives them. Only an expert enters one, never a model. Code matches the name whole, in
+document gives them, the government-document paragraph that defines it, and the defining words
+copied from that paragraph (`On Thursday, March 26, 2026, officers searched FERRO's storage unit
+on North Pulaski Road (the "SEARCH")`). Code checks the defining words verbatim against the
+paragraph's stored text when the event is entered and refuses the entry otherwise, so every
+window built from an event traces to the document (Grok Product on #190). Only an expert enters
+one, never a model. Code matches the name whole, in
 any case, with the filler's word-boundary rules; a name that would also match a person (name,
-surname or alias) or another event is refused when entered. Entering or removing one is an
+surname or alias) or another event is refused when entered. That check is in code, with Unicode
+case folding: the column's `COLLATE NOCASE` folds ASCII only and is a backstop, not the rule. Entering or removing one is an
 audit-log entry (`case.event.add`, `case.event.remove`). Reports list every event as a
-limitation, because a check can rest on it. The bundle carries the table like every other. A
+limitation, with its defining words and paragraph beside its days, because a check can rest on
+it. Entering or removing an event after a run marks that run's verdicts "Not current", as a
+person or alias change does today (`core/review/status.case_changed_after`, `case.event.%`).
+The bundle carries the table like every other. A
 case database made under 0.6.0 is not upgraded in place; code reads a database with no
 `case_events` table as having no events.
 What code reads from it (in `assumption_filler.py`, not frozen, an allow list): only one-day
 events, only whole days: "on the day of X", "the day before X", "N days before X", "the day
-after X", "N days after X". Everything else stays refused, including "in the days before X",
+after X", "N days after X". The days are wall-clock days, read exactly as a date the claim
+writes itself: "two days before the SEARCH" becomes the wall-clock day March 24, 2026, from
+00:00 to the next day's 00:00, placed in the phone's zone by the filler's existing zone rule
+(`_zoned_window`), so a day with a clock change is 23 or 25 hours long and is tested. Everything else stays refused, including "in the days before X",
 "shortly before", "the night of X", "after X" with no count, and any relation to a multi-day
 event. No verdict rule changes.
 Diff, core/schema.sql (header):
@@ -1039,8 +1051,9 @@ Diff, core/schema.sql (header):
  -- 0.6.0: person_aliases, the other names an expert gives a person (signed by Arsh 2026-10-30).
 Diff, core/schema.sql (after `CREATE TABLE person_aliases (...)`):
 +-- Events the government document defines and later claims are dated by ("the SEARCH"), with
-+-- the first and last wall-clock day (YYYY-MM-DD) the document gives each. Only an expert
-+-- enters one, never a model. Code matches a name whole, in any case. A name that would also
++-- the first and last wall-clock day (YYYY-MM-DD) the document gives each, and the paragraph
++-- and words that define it (checked verbatim against the paragraph). Only an expert enters
++-- one, never a model. Code matches a name whole, in any case. A name that would also
 +-- match a person or another event is refused when entered. Reports list every event as a
 +-- limitation.
 +CREATE TABLE case_events (
@@ -1051,6 +1064,8 @@ Diff, core/schema.sql (after `CREATE TABLE person_aliases (...)`):
 +    last_day       TEXT NOT NULL
 +                   CHECK (last_day GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
 +                          AND last_day >= first_day),
++    paragraph_id   TEXT NOT NULL REFERENCES govdoc_paragraphs(id),
++    defined_as     TEXT NOT NULL CHECK (length(trim(defined_as)) BETWEEN 1 AND 2000),
 +    created_by     TEXT NOT NULL CHECK (created_by LIKE 'expert:%'),
 +    created_at_utc TEXT NOT NULL
 +);
@@ -1059,7 +1074,8 @@ Diff, core/contracts.py:
 +CONTRACTS_VERSION = "0.7.0"
 Nothing else in either file. No enum, model or verdict rule changes; `core/audit/rules.py` is
 untouched. Once signed, one PR applies these three edits and adds: `add_event` and
-`remove_event` expert actions (logged), an events list on the case setup page, the report's
-limitations, the filler reading the allow list above, the eval's case setup reading events from
+`remove_event` expert actions (logged, with the verbatim check), an events list on the case
+setup page, the report's limitations, "Not current" after an event change, the filler reading
+the allow list above, the eval's case setup reading events from
 a case.json that has them (case04 and case05 left as built), the contracts version test, and
 tests that fail first.
