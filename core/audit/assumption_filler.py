@@ -3197,12 +3197,27 @@ class LocalAssumptionFiller:
     def _plain_between(self, between: str) -> bool:
         """True when every word between the writer's verb and the quote is on the list that
         cannot hand the quote on (see _BETWEEN_WORDS)."""
-        names = {
-            part
-            for full, aliases in person_names(self.conn).values()
-            for written in (full, *aliases)
-            for part in _nfc(written).casefold().split()
-        }
+        persons = person_names(self.conn)
+        names = {part for full, _ in persons.values() for part in _nfc(full).casefold().split()}
+        # An alias counts only whole: each place one is written stands in as one known name
+        # word, so "Big" alone (of "Big Dan") is no name word (Baker Eval on #186).
+        between = _nfc(between)
+        found = sorted(
+            (
+                span
+                for _, aliases in persons.values()
+                for a in aliases
+                for span in alias_spans(a, between)
+            ),
+            key=lambda span: (span[0], -span[1]),
+        )
+        kept: list[tuple[int, int]] = []
+        for span in found:  # the longest first where two start alike; never overlapping
+            if not kept or span[0] >= kept[-1][1]:
+                kept.append(span)
+        stand_in = min(names, default="").upper()
+        for start, end in reversed(kept if stand_in else []):
+            between = between[:start] + stand_in + between[end:]
         apps = {c.casefold() for c in self.channels()} | {
             w.casefold() for words in APP_ALIASES.values() for w in words if " " not in w
         }

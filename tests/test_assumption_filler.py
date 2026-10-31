@@ -2905,3 +2905,21 @@ def test_an_alias_is_read_as_every_alias_reader_reads_it(aliased):
     text = "Subject 1 called SUBJECT-12, then @subject-1 and Subject-1A; big  dan's phone"
     spans = filler._person_spans(text)[PETROV]
     assert [text[s:e] for s, e in sorted(spans)] == ["Subject 1", "big  dan"]
+
+
+@pytest.mark.parametrize(
+    "text, writer",
+    [
+        ("REYES told Big Dan: 'ok'.", REYES),  # the whole alias is one known name
+        ("REYES WROTE TO BIG DAN: 'ok'.", REYES),
+        ("REYES TOLD SUBJECT-1: 'ok'.", REYES),
+        # a word of an alias alone is no name word (Baker Eval on #186)
+        ("REYES TOLD BIG: 'ok'.", None),
+        ("REYES told SMITH Big: 'ok'.", None),
+    ],
+)
+def test_only_a_whole_alias_is_a_name_between_the_writer_and_the_quote(aliased, text, writer):
+    filler = LocalAssumptionFiller(FakeModel(by_claim(GOOD)), aliased, template=DRAFT)
+    c = Claim(id="X", paragraph_id="para:1", text=text, claim_type=ClaimType.COMMUNICATION,
+              status=ClaimStatus.ACCEPTED)  # fmt: skip
+    assert filler.stated_sender(c, "ok") == writer
