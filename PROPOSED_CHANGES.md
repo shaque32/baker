@@ -965,3 +965,30 @@ SIGNED by Arsh on 2026-10-30 at 23:08Z ("i sign it", project thread "Build agent
 audit"), in reply to the request to sign this entry. APPLIED on
 claude/project-thread-6i2msb-aliases: the three edits above, with <date> as 2026-10-30, and
 nothing else in either file.
+
+## 2026-10-31 claude/project-thread-6i2msb-case05: sign case05's key and assumption sheet
+File: eval/gold/case05/gold.jsonl, eval/gold/case05/assumptions.jsonl (new)
+Why: case04's go/no-go run (2026-10-30) spent it as held-out data, so the next testability
+go/no-go needs a new held-out case (plans/testability-no-go.md, step 4; Arsh chose to build it
+on 2026-10-31 at 17:09Z). A builder who never read the step's prompt, code, tests or demo
+claims, or case04's results, drafted all 48 claims and 86 sheet rows under case04's design, and
+a second blind reader checked them (13 findings, answered in the signing sheet). `eval/gold/` is
+human-owned, so the signed copies are Arsh's to write. Until they exist, `eval/run_pipeline.py`
+reports case05's key and sheet as drafts, the testability step refuses to run on the draft
+sheet, and no go/no-go is given. Once they exist it reports both as signed (`key_status`,
+`sheet_status`). case05 stays out of `make eval` and every merge gate. Arsh reads
+`eval/synthetic/case05/SIGNING_SHEET.md` (its count tables, the claims, the assumption rows, the
+second read and the alias matches inside quotes) and may change any verdict or row first; the
+commands below copy the drafts as they stand.
+Diff: on main after the case05 PR merges, from the repo root (macOS and GNU sed):
+   D=$(date -u +%Y-%m-%d); T=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+   mkdir -p eval/gold/case05
+   sed -e "s/\"labeled_by\":\"DRAFT (case05 builder, not signed by Arsh)\"/\"labeled_by\":\"Arsh, $D\"/" \
+       -e "s/\"labeled_at\":\"2026-10-31T00:00:00Z\"/\"labeled_at\":\"$T\"/" \
+       eval/synthetic/case05/draft_gold.jsonl > eval/gold/case05/gold.jsonl
+   sed -e "s/\"labeled_by\": \"DRAFT (case05 builder, not signed by Arsh)\"/\"labeled_by\": \"Arsh, $D\"/" \
+       eval/synthetic/case05/draft_assumptions.jsonl > eval/gold/case05/assumptions.jsonl
+   grep -c DRAFT eval/gold/case05/gold.jsonl eval/gold/case05/assumptions.jsonl
+The last line must print 0 for both files. The copies are the drafts with only `labeled_by`
+(and, in the key, `labeled_at`) changed: 48 key lines and 86 sheet rows, and both then report
+as signed (checked on a scratch copy with bash, 2026-10-31).

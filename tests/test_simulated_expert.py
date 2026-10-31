@@ -190,6 +190,33 @@ def test_sheet_people_resolve_to_the_stipulated_owners(gate_db):
     assert "person:sokolov" not in people  # nobody stipulated: stays unresolved
 
 
+def test_spec_filler_maps_sent_by_with_the_people_it_names(gate_db, tmp_path):
+    """A count row's sent_by names one of its people. Mapped apart from person_ids, it named a
+    party the row no longer held, and the row was refused (found building case05)."""
+    from core.contracts import AssumptionParams
+
+    row = {
+        "claim_id": "C99",
+        "template_id": "message_count",
+        "is_core": True,
+        "params": {
+            "person_ids": ["person:petrov"],
+            "account_ids": ["acct:x"],
+            "sent_by": ["person:petrov"],
+            "expected_count": 2,
+            "count_op": "eq",
+            "channels": ["SMS"],
+        },
+    }
+    sheet = tmp_path / "sheet.jsonl"
+    sheet.write_text(json.dumps(row) + "\n", encoding="utf-8")
+    claim = type("C", (), {"id": "C99"})()
+    (proposal,) = run_pipeline.spec_filler(sheet, gate_db)(claim, None)
+    assert proposal.params["person_ids"] == ["person:dev:item1:owner"]
+    assert proposal.params["sent_by"] == ["person:dev:item1:owner"]
+    AssumptionParams.model_validate(proposal.params)  # sent_by names a party the row names
+
+
 def test_checks_see_the_owners_so_time_and_sender_checks_can_fail(gate_db):
     failed = {
         r[0]
