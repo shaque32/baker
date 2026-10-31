@@ -60,6 +60,11 @@ def exhibits_page(conn: sqlite3.Connection, page: Page) -> str:
         "messages around it and related threads. Code finds and verifies every match; no model "
         "decides one. Screenshots are not read: type or paste the text.</p>"
     ]
+    if needs_request(conn):
+        out.append(
+            "<p class='warn'>Only curated reports (or sources of unknown coverage) are imported. "
+            "<a href='/request-letter'>Draft request for the full extraction</a></p>"
+        )
     if exhibits:
         out.append(
             "<table><thead><tr><th>Exhibit</th><th>Quoted messages found</th><th>Added</th>"
@@ -112,21 +117,17 @@ def exhibits_page(conn: sqlite3.Connection, page: Page) -> str:
             f"<p><label>Cited in (optional) <select name='paragraph'>{options}</select></label>"
             "</p><p><label>Quoted messages, as the exhibit prints them<br>"
             f"<textarea name='text' rows='12' required maxlength='{MAX_EXHIBIT_CHARS}'>"
-            "</textarea></label></p><p>One message per <label><input type='radio' name='split' "
-            "value='line' checked> line</label> <label><input type='radio' name='split' "
-            "value='block'> paragraph (blank line between messages; keeps a message that runs "
-            "over several lines whole)</label></p><p class='muted'>A time or sender name printed "
+            "</textarea></label></p><fieldset class='msgsplit'><legend>One message per</legend>"
+            "<label><input type='radio' name='split' value='line' checked> line</label>"
+            "<label><input type='radio' name='split' value='block'> paragraph <span "
+            "class='muted'>(blank line between messages; keeps a message that runs over several "
+            "lines whole)</span></label></fieldset><p class='muted'>A time or sender name printed "
             "in front of a message is set aside and shown, not compared. An ellipsis marks "
             "words the exhibit left out; Mabillon shows them.</p>"
             "<button type='submit'>Add and search</button>",
             back="/exhibits",
         )
     )
-    if needs_request(conn):
-        out.append(
-            "<p>Only curated reports (or sources of unknown coverage) are imported. "
-            "<a href='/request-letter'>Draft request for the full extraction</a></p>"
-        )
     return page.wrap("Exhibits", "".join(out))
 
 
