@@ -5,7 +5,7 @@
   real one. The "exchanged" clause start and the duration's words are now found
   case-insensitively in the text itself, and a "sent" form code cannot place raises a refusal
   instead of an error. Found in review of #172 and #186; no case seen in the data.
-- Where: PR #PR
+- Where: branch claude/project-thread-ds0ify
 - Verified: three new tests in `tests/test_assumption_filler.py`, each failing first (a third
   party left out of the exchange clause after 60 "ß"; "or more" missed after "İSMAİL İNCİ"; an
   AttributeError on an unplaced sent form). `make check` passes; eval numbers in the PR.
