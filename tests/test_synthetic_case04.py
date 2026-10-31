@@ -415,12 +415,12 @@ def test_a_model_free_run_on_the_draft_sheet_gives_the_drafted_verdicts(tmp_path
     assert got == want
 
 
-def test_case04_is_the_held_out_go_no_go_case():
-    """The testability go/no-go counts case04 only, and the step runs only on its signed sheet:
-    on the draft it refuses."""
+def test_case04_is_spent_and_no_longer_a_go_no_go_case():
+    """case04's go/no-go run (2026-10-30) spent it as held-out data, so the go/no-go no longer
+    counts it (case05 replaced it). The step still runs only on a signed sheet."""
     from eval import run_pipeline
 
-    assert run_pipeline.TESTABILITY_GO_NO_GO_CASES == frozenset({"case04"})
+    assert "case04" not in run_pipeline.TESTABILITY_GO_NO_GO_CASES
     sheet = run_pipeline.assumption_sheet("case04")
     assert sheet is not None
     if run_pipeline.sheet_status(sheet) != "signed":

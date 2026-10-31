@@ -118,11 +118,12 @@ DRAFT_GOLD = {
     "case02": Path("eval/synthetic/case02/draft_gold.jsonl"),
     "case03": Path("eval/synthetic/case03/draft_gold.jsonl"),  # challenge-step case, ungated
     "case04": Path("eval/synthetic/case04/draft_gold.jsonl"),  # testability held-out set, ungated
+    "case05": Path("eval/synthetic/case05/draft_gold.jsonl"),  # testability held-out set, ungated
 }
 
 
 def gold_path(case: str) -> Path:
-    """The case's signed gold if there is one, else its draft key (case02, case03, case04)."""
+    """The case's signed gold if there is one, else its draft key (case02 to case05)."""
     signed = Path("eval/gold") / case / "gold.jsonl"
     if signed.exists() and signed.read_text(encoding="utf-8").strip():
         return signed
@@ -155,6 +156,8 @@ def ensure_reports(case: str) -> dict:
             from eval.synthetic.case03_generate import generate
         elif case == "case04":
             from eval.synthetic.case04_generate import generate
+        elif case == "case05":
+            from eval.synthetic.case05_generate import generate
         else:
             raise SystemExit(f"{case}: reports missing; build them with that case's generator")
         generate(synthetic_dir(case), None)
@@ -176,6 +179,10 @@ def render_affidavit_pdf(case: str, path: Path) -> Path:
         from eval.synthetic.case04_generate import write_affidavit_pdf as write_case04
 
         return write_case04(path)
+    if case == "case05":
+        from eval.synthetic.case05_generate import write_affidavit_pdf as write_case05
+
+        return write_case05(path)
     if case != "case01":
         raise SystemExit(f"{case}: no affidavit renderer")
     from eval.synthetic import govdocs as g
@@ -281,7 +288,8 @@ def sheet_people(conn) -> dict[str, str]:  # noqa: ANN001
 
 def spec_filler(path: Path, conn=None):  # noqa: ANN001, ANN201 - core.audit.assumptions.Filler
     """A filler that proposes exactly the assumptions a signed spec lists for each claim.
-    With conn, the sheet's person ids are mapped to the case's stipulated owners first."""
+    With conn, the sheet's person ids (in person_ids and sent_by) are mapped to the case's
+    stipulated owners first."""
     from core.audit.assumptions import Proposal
 
     people = sheet_people(conn) if conn is not None else {}
@@ -290,8 +298,9 @@ def spec_filler(path: Path, conn=None):  # noqa: ANN001, ANN201 - core.audit.ass
         if line.strip():
             row = json.loads(line)
             params = dict(row["params"])
-            if "person_ids" in params:
-                params["person_ids"] = [people.get(p, p) for p in params["person_ids"]]
+            for field in ("person_ids", "sent_by"):  # sent_by may name one of the people
+                if field in params:
+                    params[field] = [people.get(p, p) for p in params[field]]
             by_claim.setdefault(row["claim_id"], []).append(
                 Proposal(row["template_id"], params, row.get("is_core", True))
             )
@@ -373,13 +382,14 @@ DRAFT_SHEETS = {
     "case01": Path("eval/probe_draft/case01_assumptions.jsonl"),
     "case02": Path("eval/synthetic/case02/case02_assumptions.jsonl"),
     "case04": Path("eval/synthetic/case04/draft_assumptions.jsonl"),  # held-out set, ungated
+    "case05": Path("eval/synthetic/case05/draft_assumptions.jsonl"),  # held-out set, ungated
 }
 
 
 def assumption_sheet(case: str) -> Path | None:
     """The case's assumption sheet: the signed copy under eval/gold/ if there is one, else the
     draft (eval/probe_draft/ for case01, the hidden eval/synthetic/case02/ for case02,
-    eval/synthetic/case04/ for case04)."""
+    eval/synthetic/<case>/ for case04 and case05)."""
     signed = Path("eval/gold") / case / "assumptions.jsonl"
     if signed.exists():
         return signed
@@ -487,10 +497,11 @@ TESTABILITY_CAP: int | None = 2  # the per-claim cap the go/no-go runs with
 TESTABILITY_MIN_TESTABLE: int | None = 15  # fewest sheet-testable refusals for a decision
 TESTABILITY_SIGNED_PROMPT = Path("core/audit/prompts/agent_testability.md")
 # Cases whose claims and signed sheets were written by someone other than the prompt's author,
-# held out for the go/no-go: case04, written by a builder who never read the step's prompt, code,
-# tests or demo claims. case01 and case03 are development cases. The step still runs only on a
-# signed sheet, so case04 gives no go/no-go until Arsh signs its sheet.
-TESTABILITY_GO_NO_GO_CASES: frozenset[str] = frozenset({"case04"})
+# held out for the go/no-go: case05, written by a builder who never read the step's prompt, code,
+# tests or demo claims, or case04's results. case04 was the first such case; its go/no-go run
+# (2026-10-30) spent it. case01 and case03 are development cases. The step still runs only on a
+# signed sheet, so case05 gives no go/no-go until Arsh signs its sheet.
+TESTABILITY_GO_NO_GO_CASES: frozenset[str] = frozenset({"case05"})
 
 
 def sim_examiner(actor: str):  # noqa: ANN201 - core.audit.testability.Examiner
