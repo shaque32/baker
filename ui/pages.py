@@ -2187,18 +2187,51 @@ def _date_order_choice(off: str) -> str:
     )
 
 
-def _upload_form(page: Page, kind: str, label: str, accept: str, disabled: bool) -> str:
+def _upload_form(
+    page: Page, kind: str, label: str, accept: str, disabled: bool, hint: str = ""
+) -> str:
     """multipart form; the token comes before the file so the server checks it first."""
     off = " disabled" if disabled else ""
     return (
         "<form method='post' action='/case/import' enctype='multipart/form-data' class='box'>"
         f"<input type='hidden' name='token' value='{e(page.token)}'>"
         f"<input type='hidden' name='kind' value='{e(kind)}'>"
-        f"<p><strong>{e(label)}</strong></p>"
+        f"<p><strong>{e(label)}</strong>"
+        + (f"<br><span class='muted'>{e(hint)}</span>" if hint else "")
+        + "</p>"
         + (_date_order_choice(off) if kind == "report" else "")
         + f"<input type='file' name='file' accept='{e(accept)}' required{off}> "
         f"<button type='submit'{off}>Import</button></form>"
     )
+
+
+def _step_strip(ready: list, audit_busy: bool) -> str:
+    """The five steps as one row of links, each marked done or to do from the readiness checks
+    (core.casework.cases.readiness: document, reports, claims, then phone owners if any)."""
+    oks = [r.ok for r in ready]
+    files = all(oks[:2]) if len(oks) >= 2 else False
+    claims = oks[2] if len(oks) >= 3 else False
+    people = oks[3] if len(oks) >= 4 else None
+    steps = [
+        ("files", "Files", files),
+        ("claims", "Claims", claims),
+        ("owners", "Who used each phone", people),
+        ("model", "The model", None),
+        ("run", "Run", True if audit_busy else None),
+    ]
+    items = []
+    for n, (anchor, name, ok) in enumerate(steps, 1):
+        state = "" if ok is None else (" ok" if ok else " todo")
+        note = "" if ok is None else ("Done" if ok else "To do")
+        if anchor == "run" and audit_busy:
+            note = "Running"
+        items.append(
+            f"<li class='step{state}'><a href='#{anchor}'><span class='n'>{n}</span>"
+            f"<span class='name'>{e(name)}</span>"
+            + (f"<span class='state'>{note}</span>" if note else "")
+            + "</a></li>"
+        )
+    return f"<ol class='steps' aria-label='Steps'>{''.join(items)}</ol>"
 
 
 def setup_page(
@@ -2224,19 +2257,21 @@ def setup_page(
     audit_busy = job_kind == "audit"
     out = ["<h1>Set up and run</h1>", recovery_box(page, recovery_key), name_form(page)]
     out.append(
-        "<p>Four steps: import the files, settle the claims, confirm who used each phone, then "
+        "<p class='lede'>Import the files, settle the claims, confirm who used each phone, then "
         "run the audit. It runs in the background; you can review each claim as soon as it is "
         "labeled.</p>"
     )
+    out.append(_step_strip(ready, audit_busy))
 
     # 1. files
     out.append("<h2 id='files'>1. Files</h2>")
     srcs = sources(conn)
+    hashes: list[str] = []
     govdocs = {r[0]: r for r in conn.execute("SELECT source_id, title, doc_kind FROM govdocs")}
     if srcs:
         out.append(
-            "<table class='tidy'><thead><tr><th>File</th><th>What it is</th><th>Coverage</th>"
-            "<th>Records</th><th>SHA-256</th><th>Imported (UTC)</th></tr></thead>"
+            "<table class='tidy files'><thead><tr><th>File</th><th>What it is</th>"
+            "<th>Records</th><th>Imported (UTC)</th></tr></thead>"
         )
         for sid, kind, fidelity, extraction, fname, sha, tool, tver, at in srcs:
             if sid in govdocs:
@@ -2255,37 +2290,54 @@ def setup_page(
                 cov = e(FIDELITY.get(fidelity, fidelity)) + _import_coverage(conn, sid)
                 recs = str(counts.get(sid, 0))
             out.append(
-                f"<tr><td>{q(fname)}<br><span class='mono'>{e(sid)}</span></td><td>{what}</td>"
-                f"<td>{cov}</td><td class='nowrap'>{recs}</td>"
-                f"<td class='mono nowrap' title='{e(sha)}'>{e(sha[:16])}…</td>"
+                f"<tr><td>{q(fname)}<br><span class='mono'>{e(sid)}</span></td>"
+                f"<td>{what}<div class='coverage'>{cov}</div></td>"
+                f"<td class='nowrap'>{recs}</td>"
                 f"<td class='when' title='{e(at)}'>{e(at[:19].replace('T', ' '))}</td></tr>"
             )
+            hashes.append(f"<tr><td>{q(fname)}</td><td class='mono hash'>{e(sha)}</td></tr>")
         out.append("</table>")
     else:
         out.append("<p class='muted'>No files yet.</p>")
     out.append(
+        "<details class='fold'><summary>Hashes and where the copies are kept</summary>"
         "<p class='muted'>Each file is copied into "
         f"<span class='mono'>{e(inputs_folder)}</span>, made read-only and SHA-256 hashed; "
         "Mabillon reads only the copy, and the hash of what it parsed must match the hash of what "
         "it received. Your original file is not changed.</p>"
+        + (
+            "<table class='tidy hashes'><thead><tr><th>File</th><th>SHA-256</th></tr></thead>"
+            + "".join(hashes)
+            + "</table>"
+            if hashes
+            else ""
+        )
+        + "</details>"
+    )
+    out.append(
+        f"<details class='add-files'{'' if srcs else ' open'}><summary>Add a file</summary>"
+        "<div class='uploads'>"
     )
     out.append(
         _upload_form(
             page,
             "govdoc",
-            "Government document (PDF): affidavit, police or forensic report",
+            "Government document (PDF)",
             ".pdf",
             busy,
+            hint="An affidavit, police or forensic report.",
         )
         + _upload_form(
             page,
             "report",
-            "Phone report: Cellebrite (UFDR package .ufdr, Excel .xlsx or PDF) or Magnet AXIOM "
-            "(XML or Excel export). Only a UFDR stating report version 7.48 has been tested; "
-            "every other format or version shows a not-tested notice",
+            "Phone report",
             ".xlsx,.pdf,.ufdr,.zip,.xml",
             busy,
+            hint="Cellebrite (UFDR package .ufdr, Excel .xlsx or PDF) or Magnet AXIOM (XML or "
+            "Excel export). Only a UFDR stating report version 7.48 has been tested; every other "
+            "format or version shows a not-tested notice.",
         )
+        + "</div></details>"
     )
 
     # 2. claims
@@ -2298,11 +2350,15 @@ def setup_page(
         out.append(
             page.form(
                 "/claims/propose",
-                "<button type='submit'" + (" disabled" if busy else "") + ">Propose claims with "
-                "the local model</button> <span class='muted'>The model reads each paragraph "
-                "that has no claims yet and proposes claims, each quoting its paragraph. Nothing "
-                "is audited until you accept, edit or remove each one. Or "
-                "<a href='/claim/new'>add a claim yourself</a>.</span>",
+                "<div class='inline-actions'><button type='submit'"
+                + (" disabled" if busy else "")
+                + ">"
+                "Propose claims with the local model</button>"
+                "<a class='button' href='/claim/new'>Add a claim yourself</a></div>"
+                "<p class='muted'>The model reads each paragraph that has no claims yet and "
+                "proposes claims, each quoting its paragraph. Nothing is audited until you "
+                "accept, edit or remove each one.</p>",
+                "plain",
                 back="/setup",
                 anchor="claims",
             )
@@ -2310,8 +2366,8 @@ def setup_page(
     if order or any(c.status.value == "removed" for c in claims.values()):
         out.append(
             "<p>Claims run in this order. Move the ones you want first to the top.</p>"
-            "<table class='tidy claim-order'><thead><tr><th>#</th><th>Claim</th><th>Where</th>"
-            "<th>Type</th><th>Status</th><th>Text</th><th>Decide</th></tr></thead>"
+            "<table class='tidy claim-order'><thead><tr><th>#</th><th>Claim</th>"
+            "<th>Status</th><th>Text</th><th>Decide</th></tr></thead>"
         )
         for n, cid in enumerate(order, 1):
             c = claims[cid]
@@ -2319,9 +2375,9 @@ def setup_page(
             out.append(
                 f"<tr id='claim-{e(cid)}'><td class='brief'>{n}</td><td class='brief'>"
                 f"<a href='{e(link('/claim', id=cid))}'>"
-                f"{e(claim_name(conn, cid, c.paragraph_id))}</a></td>"
-                f"<td class='brief where'>{e(where)}</td>"
-                f"<td class='brief'>{e(c.claim_type.value.replace('_', ' '))}</td>"
+                f"{e(claim_name(conn, cid, c.paragraph_id))}</a>"
+                f"<span class='where'>{e(where)}</span>"
+                f"<span class='kind'>{e(c.claim_type.value.replace('_', ' '))}</span></td>"
                 f"<td class='brief'>{e(c.status.value)}"
                 f"{'' if c.model_run_id is None else ' (model)'}</td><td>{q(c.text)}</td>"
                 f"<td class='decide'>"
@@ -2331,13 +2387,28 @@ def setup_page(
         removed = [c for c in claims.values() if c.status.value == "removed"]
         if removed:
             out.append(
-                "<p class='muted'>Removed (not audited): "
-                + ", ".join(
-                    f"<a href='{e(link('/claim', id=c.id))}'>"
+                "<div class='removed'><p class='muted'>Removed, not audited. Put one back to "
+                "accept it again; each change is in the audit log.</p><ul>"
+                + "".join(
+                    f"<li><a href='{e(link('/claim', id=c.id))}'>"
                     f"{e(claim_name(conn, c.id, c.paragraph_id))}</a>"
+                    + (
+                        ""
+                        if audit_busy
+                        else page.form(
+                            "/claim/edit",
+                            f"<input type='hidden' name='claim' value='{e(c.id)}'>"
+                            "<button type='submit' name='status' value='accepted'>Put back"
+                            "</button>",
+                            "inline",
+                            "/setup",
+                            "claims",
+                        )
+                    )
+                    + "</li>"
                     for c in removed
                 )
-                + ". Open one to accept it again.</p>"
+                + "</ul></div>"
             )
 
     # 3. owners, then the other people the document names
@@ -2364,20 +2435,25 @@ def setup_page(
     out.append(
         page.form(
             "/model/check",
-            "<button type='submit'" + (" disabled" if busy else "") + ">Check the model now"
-            "</button> <span class='muted'>Finds the model file, checks its SHA-256 against the "
-            "config and checks this computer's memory. The audit also does this first.</span>",
+            "<div class='inline-actions'><button type='submit'"
+            + (" disabled" if busy else "")
+            + ">Check the model now</button><span class='muted'>Finds the model file, checks its "
+            "SHA-256 against the config and checks this computer's memory. The audit also does "
+            "this first.</span></div>",
+            "plain",
             back="/setup",
             anchor="model",
         )
     )
 
-    out.append("<h2>5. Run the audit</h2>")
+    out.append("<h2 id='run'>5. Run the audit</h2>")
     blocking = [r for r in ready if not r.ok and r.blocks and r.acknowledge is None]
     out.append(
-        "<ul>"
+        "<ul class='ready'>"
         + "".join(
-            f"<li>{'Done' if r.ok else '<strong>To do</strong>'}: {e(r.text)}</li>" for r in ready
+            f"<li class='{'ok' if r.ok else 'todo'}'>"
+            f"{'Done' if r.ok else '<strong>To do</strong>'}: {e(r.text)}</li>"
+            for r in ready
         )
         + "</ul>"
     )
@@ -2398,18 +2474,20 @@ def setup_page(
         out.append(
             page.form(
                 "/audit/start",
-                acks
-                + "<p><label><input type='checkbox' name='ai_review' value='1'> Also run the AI "
-                "reviewer: a sorting aid that decides nothing and costs one more model call per "
-                "supporting item.</label><br><label><input type='checkbox' name='label_all' "
-                "value='1'> Also label claims a failed check already decides (more model calls; "
-                "their verdict cannot change).</label><br><label><input type='checkbox' "
-                "name='no_challenge' value='1'> Skip the challenge step: code's searches for "
-                "what undercuts a claim close to supported. It only adds doubt; skipping it "
-                "saves model calls.</label></p>"
-                f"<button type='submit' class='primary'{off}>{start}</button> "
+                acks + "<details class='options'><summary>More options</summary>"
+                "<div class='checks'><label><input type='checkbox' name='ai_review' value='1'> "
+                "Also run the AI reviewer: a sorting aid that decides nothing and costs one more "
+                "model call per supporting item.</label><label><input type='checkbox' "
+                "name='label_all' value='1'> Also label claims a failed check already decides "
+                "(more model calls; their verdict cannot change).</label><label><input "
+                "type='checkbox' name='no_challenge' value='1'> Skip the challenge step: code's "
+                "searches for what undercuts a claim close to supported. It only adds doubt; "
+                "skipping it saves model calls.</label></div></details>"
+                "<div class='inline-actions'>"
+                f"<button type='submit' class='primary'{off}>{start}</button>"
                 "<span class='muted'>Keeps this "
-                "computer awake while it runs. You can stop it; finished claims are kept.</span>",
+                "computer awake while it runs. You can stop it; finished claims are kept.</span>"
+                "</div>",
                 back="/run",
             )
         )
@@ -2435,6 +2513,7 @@ def cloud_section(
         f"<p><strong>{'Cloud AI on for this case' if use else 'Local only'}.</strong> {e(why)}</p>",
         "<p class='muted'>Off by default: everything runs on this computer unless you opt in "
         "for this case below.</p>",
+        "<details class='fold'><summary>What cloud AI sends, and what it never sends</summary>"
         "<p class='muted'>With cloud AI, Mabillon sends one question at a time to Anthropic under "
         "your own key: the assumption being tested, one record, the messages around it, the "
         "claim, and for a group chat its member list (up to 20 accounts, with the names you "
@@ -2445,16 +2524,17 @@ def cloud_section(
         "recorded in the case's audit log, with its time, before it is sent. How long Anthropic "
         "keeps API data: <a href='https://privacy.claude.com/en/articles/7996866-how-long-do-you-"
         "store-my-organization-s-data' rel='noreferrer'>Anthropic's commercial retention "
-        "policy</a>.</p>",
+        "policy</a>.</p></details>",
         page.form(
             "/cloud/case",
-            "<p><label><input type='checkbox' name='allowed' value='1'"
-            f"{' checked' if allowed else ''}> {e(ATTESTATION)}</label></p>"
-            "<p><label><input type='checkbox' name='csam' value='1'"
+            "<div class='checks'><label><input type='checkbox' name='allowed' value='1'"
+            f"{' checked' if allowed else ''}> {e(ATTESTATION)}</label>"
+            "<label><input type='checkbox' name='csam' value='1'"
             f"{' checked' if csam else ''}> {e(CSAM_NOTE)} This case then never uses cloud AI."
-            "</label></p>"
-            f"<button type='submit'{off}>Save the cloud choice</button> <span class='muted'>"
-            "Recorded in the case's audit log under your name.</span>",
+            "</label></div>"
+            f"<div class='inline-actions'><button type='submit'{off}>Save the cloud choice"
+            "</button><span class='muted'>Recorded in the case's audit log under your name."
+            "</span></div>",
             back="/setup",
             anchor="cloud",
         ),
@@ -2468,27 +2548,30 @@ def cloud_section(
             "Change or unset it there; a key saved here would not be used.</p></div>"
         )
         return "".join(out)
+    # The key form folds away until the case opts in: a local-only case does not need it.
+    out.append(f"<details class='fold'{' open' if allowed else ''}><summary>")
     if key_problem is None:
         out.append(
-            "<p>An Anthropic key is set up on this computer. Replace it below if you need to.</p>"
+            "An Anthropic key is set up on this computer.</summary>"
+            "<p class='muted'>Replace it below if you need to.</p>"
         )
     else:
-        out.append(f"<p><strong>No cloud key yet</strong> ({e(key_problem)}).</p>")
+        out.append(f"No cloud key yet</summary><p class='muted'>{e(key_problem)}.</p>")
     out.append(
         page.form(
             "/cloud/key",
-            "<input type='password' name='api_key' required autocomplete='off' "
-            "placeholder='sk-ant-...' aria-label='Your Anthropic API key'> "
-            f"<button type='submit'{off}>Save the key</button> <span class='muted'>Your own "
+            "<div class='inline-actions'><input type='password' name='api_key' required "
+            "autocomplete='off' placeholder='sk-ant-...' aria-label='Your Anthropic API key'>"
+            f"<button type='submit'{off}>Save the key</button></div><p class='muted'>Your own "
             "key, from your firm's Anthropic account (ask for zero data retention). In an "
             "encrypted case it is saved in the case, encrypted with the case's key; otherwise only "
             "on this "
-            "computer, readable by your user account. It is never shown again.</span>",
+            "computer, readable by your user account. It is never shown again.</p>",
             back="/setup",
             anchor="cloud",
         )
     )
-    out.append("</div>")
+    out.append("</details></div>")
     return "".join(out)
 
 
@@ -2517,7 +2600,9 @@ def encryption_section(page: Page, protection: str, busy: bool) -> str:
     wait = "<p class='muted'>Wait until the background work finishes.</p>" if busy else ""
     if protection == "plain":
         out.append(
-            "<p>This case is <strong>not encrypted</strong>. Anyone who can read its folder "
+            "<p>This case is <strong>not encrypted</strong>.</p>"
+            "<details class='fold'><summary>Encrypt this case</summary>"
+            "<p class='muted'>Anyone who can read its folder "
             "can read its database and the copies of its files. Encrypting locks both with a "
             "passphrase (AES-256). It is a one-way step, it does not change any finding, and "
             "large reports can take a few minutes; keep this page open.</p>"
@@ -2533,6 +2618,7 @@ def encryption_section(page: Page, protection: str, busy: bool) -> str:
                 back="/setup",
                 anchor="encryption",
             )
+            + "</details>"
         )
         return "".join(out)
     if protection == "partial":
@@ -2593,7 +2679,7 @@ def _where_short(conn: sqlite3.Connection, paragraph_id: str) -> str:
 
 
 def _claim_buttons(page: Page, cid: str, status: str, text: str, locked: bool) -> str:
-    """Accept, Up, Down and Remove sit on one row; Edit the wording opens below them."""
+    """Accept, move up, move down and Remove sit on one row; Edit the wording opens below."""
     if locked:
         return "<span class='muted'>Locked while the audit runs.</span>"
     hidden = f"<input type='hidden' name='claim' value='{e(cid)}'>"
@@ -2611,8 +2697,10 @@ def _claim_buttons(page: Page, cid: str, status: str, text: str, locked: bool) -
         )
         + page.form(
             "/claims/move",
-            hidden + "<button type='submit' name='delta' value='-1'>Up</button>"
-            "<button type='submit' name='delta' value='1'>Down</button>",
+            hidden + "<button type='submit' name='delta' value='-1' aria-label='Move up' "
+            "title='Move up'>↑</button>"
+            "<button type='submit' name='delta' value='1' aria-label='Move down' "
+            "title='Move down'>↓</button>",
             "inline",
             "/setup",
             f"claim-{cid}",
