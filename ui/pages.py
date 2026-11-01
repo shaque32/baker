@@ -1160,16 +1160,21 @@ def flags_overview(conn: sqlite3.Connection) -> str:
     active = F.active_flags(conn)
     by_kind = Counter(f.kind for f in active)
     counts = ", ".join(f"{F.KINDS[k].lower()} {n}" for k, n in sorted(by_kind.items()))
+    n = len(active)
+    # one quiet panel: the count, how to flag, and the download on one line with its note
     return (
+        "<section class='logflags'>"
         "<h2 id='flags'>Flags for Mabillon's error log</h2>"
-        f"<p>{len(active)} flag(s){': ' + e(counts) if counts else ''}. Flag a wrong label, a "
-        "missed record or a verdict you disagree with on any claim page.</p>"
-        "<form method='get' action='/flags/summary.json' class='box'>"
-        "<input type='text' name='pilot' maxlength='60' placeholder='Pilot name (optional)'> "
+        f"<p><strong>{n} flag{'' if n == 1 else 's'}</strong>{': ' + e(counts) if counts else ''}."
+        " Flag a wrong label, a missed record or a verdict you disagree with on any claim page."
+        "</p>"
+        "<form method='get' action='/flags/summary.json' class='flagform'>"
+        "<input type='text' name='pilot' maxlength='60' placeholder='Pilot name (optional)' "
+        "aria-label='Pilot name (optional)'> "
         "<button type='submit'>Download the redacted summary</button>"
         "<p class='muted'>Nothing is sent. The file holds counts, labels and versions only: no "
         "claim text, quotes, notes, names, record references or ids. Read it before you share "
-        "it.</p></form>"
+        "it.</p></form></section>"
     )
 
 
@@ -1823,57 +1828,81 @@ def log_page(conn: sqlite3.Connection, page: Page, show_all: bool, show_views: b
         (show_views, VIEW, -1 if show_all else 200),
     )
     status = (
-        "<div class='flash'>Hash chain verified: every entry matches the hash of the one before."
-        "</div>"
+        "<p class='chain ok'>Hash chain verified: every entry matches the hash of the one before."
+        "</p>"
         if summary["chain_ok"]
-        else "<div class='flash err'><strong>Hash chain FAILED VERIFICATION.</strong> The log "
-        "was changed outside Mabillon.</div>"
+        else "<div class='flash err chain'><strong>Hash chain failed verification.</strong> The "
+        "log was changed outside Mabillon.</div>"
     )
-    params = {"all": "1"} if show_all else {}
-    if show_views:
-        views_line = (
-            f"Page views shown ({views}). "
-            f"<a href='{e(link('/log', **params))}'>Hide page views</a>. "
+
+    def seg(label: str, options: list[tuple[str, str, bool]]) -> str:
+        """A row of links that read as one control; the current choice is marked, not linked."""
+        return (
+            f"<span class='seg' role='group' aria-label='{e(label)}'>"
+            f"<span class='seglabel'>{e(label)}</span>"
+            + "".join(
+                f"<span class='on' aria-current='true'>{text}</span>"
+                if on
+                else f"<a href='{e(href)}'>{text}</a>"
+                for text, href, on in options
+            )
+            + "</span>"
         )
-    else:
-        views_line = (
-            f"{views} page views not shown: "
-            f"<a href='{e(link('/log', **params, views='1'))}'>show them here</a>, or see "
-            "<a href='/activity'>Activity</a>. "
-            if views
-            else ""
+
+    views_p = {"views": "1"} if show_views else {}
+    all_p = {"all": "1"} if show_all else {}
+    controls = [
+        seg(
+            "Show",
+            [
+                ("Newest 200", link("/log", **views_p), not show_all),
+                ("All", link("/log", all="1", **views_p), show_all),
+            ],
         )
-    more = {"views": "1"} if show_views else {}
+    ]
+    if views or show_views:
+        controls.append(
+            seg(
+                "Page views",
+                [
+                    ("Hidden", link("/log", **all_p), not show_views),
+                    (f"Shown ({views})", link("/log", **all_p, views="1"), show_views),
+                ],
+            )
+        )
+        controls.append(
+            "<span class='muted'>"
+            + ("" if show_views else f"{views} page views not shown here; ")
+            + "<a href='/activity'>Activity</a> lists them too.</span>"
+        )
     out = [
+        "<div class='pg-log'>",
         "<h1>Audit log</h1>",
         status,
-        f"<p>{summary['entries']} entries. Last hash <span class='mono'>"
-        f"{e(summary['last_hash'])}</span>. "
-        + views_line
-        + (
-            ""
-            if show_all
-            else f"Newest 200 shown. <a href='{e(link('/log', all='1', **more))}'>Show all</a>."
-        )
-        + "</p>",
+        f"<p class='chainmeta'>{summary['entries']} entries · last hash <span class='mono'>"
+        f"{e(summary['last_hash'])}</span></p>",
         flags_overview(conn),
         "<h2>Entries</h2>",
-        "<table><thead><tr><th>#</th><th>When (UTC)</th><th>Actor</th><th>Action</th>"
-        "<th>Details</th></tr></thead>",
+        f"<div class='logbar'>{''.join(controls)}</div>",
+        "<table class='logtable'><thead><tr><th>#</th><th>When (UTC)</th><th>Actor</th>"
+        "<th>Action</th><th>Details</th></tr></thead>",
     ]
     for seq, at, actor, action, payload, _h in rows:
+        kind, sep, name = str(actor).partition(":")
+        who = f"<span class='kind'>{e(kind + sep)}</span>{e(name)}" if sep else e(actor)
         out.append(
-            f"<tr><td>{seq}</td><td class='when'>{e(at)}</td><td>{e(actor)}</td>"
+            f"<tr><td>{seq}</td><td class='when'>{e(at)}</td><td>{who}</td>"
             f"<td>{e(action)}</td>"
-            f"<td class='mono'>{q(_short(payload, 120))}"
+            f"<td class='payload'><span class='mono'>{q(_short(payload, 120))}</span>"
             + (
-                f"<details><summary>Full entry</summary>{q(payload)}</details>"
+                "<details><summary>Full entry</summary>"
+                f"<div class='mono'>{q(payload)}</div></details>"
                 if len(payload) > 120
                 else ""
             )
             + "</td></tr>"
         )
-    out.append("</table>")
+    out.append("</table></div>")
     return page.wrap("Audit log", "".join(out))
 
 
@@ -1885,7 +1914,8 @@ ACTIVITY_NEWEST = 500
 def _step_item(s: activity.Step) -> str:
     p = s.payload
     if not s.is_view:
-        return e(s.evidence_id or s.claim_id or "")
+        item = s.evidence_id or s.claim_id
+        return f"<span class='mono'>{e(item)}</span>" if item else ""
     bits = []
     ident = p.get("id")
     # ids, locators and query values come from the address or the case, not Mabillon's own words,
@@ -1921,12 +1951,13 @@ def _report_switch(conn: sqlite3.Connection, page: Page) -> str:
     )
     return page.form(
         "/activity/report",
-        f"<p>{state} The choice is yours for this case, and the audit log records each change "
-        "with your name.</p>"
+        f"<p>{state} <span class='muted'>The choice is yours for this case, and the audit log "
+        "records each change with your name.</span></p>"
         f"<input type='hidden' name='include' value='{'0' if on else '1'}'>"
         "<button type='submit'>"
         + ("Leave activity out of the report" if on else "Include activity in the report")
         + "</button>",
+        "reportswitch",
         back="/activity",
     )
 
@@ -1941,13 +1972,23 @@ def activity_page(conn: sqlite3.Connection, page: Page, claim: str, show_all: bo
         for (cid,) in conn.execute("SELECT id FROM claims WHERE status != 'removed' ORDER BY id")
     ]
     idle = int(activity.IDLE.total_seconds() // 60)
+    if total["views"]:
+        seen = (
+            f"{total['views']} page views in {total['sessions']} screen session"
+            f"{'s' if total['sessions'] != 1 else ''}, by {e(', '.join(total['examiners']))}, "
+            f"from <span class='t'>{e(total['first_at'])}</span> to "
+            f"<span class='t'>{e(total['last_at'])}</span> (UTC)."
+        )
+    else:
+        seen = "No page views are recorded for this case yet."
     out = [
+        "<div class='pg-activity'>",
         "<h1>Activity</h1>",
-        "<p>Every page opened in this case is recorded in its audit log, with the time, the "
-        "examiner's name, the page and the evidence it listed, beside the examiner's decisions. "
-        "The hash chain covers these entries like every other. Nothing here leaves this "
-        "computer.</p>",
-        "<details><summary>How time on page is counted</summary>"
+        "<p class='lede'>Every page opened in this case is recorded in its audit log, with the "
+        "time, the examiner's name, the page and the evidence it listed, beside the examiner's "
+        "decisions. The hash chain covers these entries like every other. Nothing here leaves "
+        "this computer.</p>",
+        "<details class='howcounted'><summary>How time on page is counted</summary>"
         "<p class='muted'>Time on page runs from opening a page to the next page opened. "
         "The screen runs no scripts, so Mabillon cannot tell what was on screen or read; a "
         f"stretch over {idle} minutes may include time away, and a page whose end was not "
@@ -1955,35 +1996,31 @@ def activity_page(conn: sqlite3.Connection, page: Page, claim: str, show_all: bo
         "are counted apart from totals. "
         "\u201cListed\u201d means the page linked to the item, not that it was opened.</p>"
         "</details>",
-        "<p><a href='/activity.csv'>Download the trail (CSV)</a></p>",
+        # what was seen and the download on one line; the report switch under it
+        f"<div class='actbar'><p>{seen}</p>"
+        "<a class='dl' href='/activity.csv'>Download the trail (CSV)</a></div>",
         _report_switch(conn, page),
     ]
-    if total["views"]:
-        out.append(
-            f"<p>{total['views']} page views in {total['sessions']} screen session"
-            f"{'s' if total['sessions'] != 1 else ''}, by {e(', '.join(total['examiners']))}, "
-            f"from {e(total['first_at'])} to {e(total['last_at'])} (UTC).</p>"
-        )
-    else:
-        out.append("<p>No page views are recorded for this case yet.</p>")
     out.append(
-        "<h2>By claim</h2><table><thead><tr><th>Claim</th><th>Times opened</th>"
-        "<th>First opened (UTC)</th><th>Last opened (UTC)</th><th>Time on its pages</th>"
-        "<th>Evidence items opened</th><th>Evidence items listed</th><th>Actions</th>"
-        "</tr></thead>"
+        "<h2>By claim</h2><table class='byclaim'><thead><tr><th>Claim</th>"
+        "<th class='n'>Times opened</th><th>First opened (UTC)</th><th>Last opened (UTC)</th>"
+        "<th class='n'>Time on its pages</th><th class='n'>Evidence items opened</th>"
+        "<th class='n'>Evidence items listed</th><th class='n'>Actions</th></tr></thead>"
     )
     for cid in claims:
         a = per.get(cid)
         if a is None or not (a.opened or a.evidence_opened):
             out.append(
-                f"<tr><td><a href='{e(link('/activity', claim=cid))}'>{e(cid)}</a></td>"
+                f"<tr class='unopened'><td><a href='{e(link('/activity', claim=cid))}'>"
+                f"{e(cid)}</a></td>"
                 "<td>0</td><td colspan='5' class='muted'>not opened</td>"
                 f"<td>{a.actions if a else 0}</td></tr>"
             )
             continue
         out.append(
             f"<tr><td><a href='{e(link('/activity', claim=cid))}'>{e(cid)}</a></td>"
-            f"<td>{a.opened}</td><td>{e(a.first_at or '')}</td><td>{e(a.last_at or '')}</td>"
+            f"<td>{a.opened}</td><td class='when'>{e(a.first_at or '')}</td>"
+            f"<td class='when'>{e(a.last_at or '')}</td>"
             f"<td>{e(activity.time_on_pages(a))}</td>"
             f"<td>{len(a.evidence_opened)}</td><td>{e(activity.listed_count(a))}</td>"
             f"<td>{a.actions}</td></tr>"
@@ -1994,22 +2031,24 @@ def activity_page(conn: sqlite3.Connection, page: Page, claim: str, show_all: bo
     known = claim in claims  # an id typed into the address is shown as cited text, never linked
     head = f"Trail for claim {e(claim) if known else q(claim)}" if claim else "Trail"
     out.append(f"<h2>{head}</h2>")
+    bar = []  # the trail's filter and paging links, as one row of controls
     if claim:
-        out.append("<p><a href='/activity'>Show every claim</a>. ")
+        bar.append("<a href='/activity'>Show every claim</a>")
         if known:
-            out.append(f"<a href='{e(link('/claim', id=claim))}'>Open claim {e(claim)}</a>.")
+            bar.append(f"<a href='{e(link('/claim', id=claim))}'>Open claim {e(claim)}</a>")
         else:
-            out.append("There is no such claim in this case.")
-        out.append("</p>")
+            bar.append("<span class='muted'>There is no such claim in this case.</span>")
     if cut:
         more = {"claim": claim} if known else {}
-        out.append(
-            f"<p>Newest {ACTIVITY_NEWEST} of {len(shown)} shown. "
-            f"<a href='{e(link('/activity', all='1', **more))}'>Show all</a>.</p>"
+        bar.append(
+            f"<span class='muted'>Newest {ACTIVITY_NEWEST} of {len(shown)} shown.</span>"
+            f"<a href='{e(link('/activity', all='1', **more))}'>Show all</a>"
         )
+    if bar:
+        out.append(f"<div class='trailbar'>{''.join(bar)}</div>")
     out.append(
-        "<table><thead><tr><th>#</th><th>When (UTC)</th><th>Examiner</th><th>Page or action"
-        "</th><th>Item</th><th>Time on page</th></tr></thead>"
+        "<table class='trail'><thead><tr><th>#</th><th>When (UTC)</th><th>Examiner</th>"
+        "<th>Page or action</th><th>Item</th><th class='n'>Time on page</th></tr></thead>"
     )
     for s in shown[cut:]:
         when = activity.duration(s.seconds, s.away) if s.is_view else ""
@@ -2017,7 +2056,7 @@ def activity_page(conn: sqlite3.Connection, page: Page, claim: str, show_all: bo
             f"<tr><td>{s.seq}</td><td class='when'>{e(s.at_utc)}</td><td>{e(s.examiner)}</td>"
             f"<td>{e(s.where)}</td><td>{_step_item(s)}</td><td>{e(when)}</td></tr>"
         )
-    out.append("</table>")
+    out.append("</table></div>")
     return page.wrap("Activity", "".join(out), wide=True)
 
 
