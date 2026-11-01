@@ -786,6 +786,7 @@ def claims_queue(conn: sqlite3.Connection, page: Page) -> str:
         by[_group(st)].append(st)
     you, total = len(by["you"]), len(states)
     done = total - you - len(by["not"])
+    unp = len(by["unp"])
     if not total:
         head = "No claims yet"
     elif you:
@@ -798,9 +799,11 @@ def claims_queue(conn: sqlite3.Connection, page: Page) -> str:
         "supported until you accept its key evidence and re-run the verdicts. AI-accepted "
         "evidence only sorts the work.</p></div>"
         + (
-            f"<div class='progress'><div class='lbl'><span>Settled"
+            f"<div class='progress'><div class='lbl'><span>Not waiting on you"
             f"</span><b>{done} of {total}</b></div><div class='track'>"
-            f"<span style='width:{100 * done / total:.2f}%'></span></div></div>"
+            f"<span style='width:{100 * done / total:.2f}%'></span></div>"
+            + (f"<p class='note'>Includes {unp} unproven</p>" if unp else "")
+            + "</div>"
             if total
             else ""
         )
