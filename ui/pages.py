@@ -86,6 +86,7 @@ from core.review.status import (
 )
 from core.selection.audit import selection_audit
 from core.selection.paired import paired_check
+from ui.css import PAGE_CSS
 from ui.theme import FONT_CSS, MARK, THEME_CSS
 
 CONTEXT_WINDOW = 10  # messages either side: about 20 messages of context
@@ -193,7 +194,7 @@ class Page:
             "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
             f"<meta name='viewport' content='width=device-width, initial-scale=1'>{meta}"
             f"<title>{e(title)} · Mabillon</title>"
-            f"<style>{FONT_CSS}{REPORT_CSS}{RESTORE_CSS}{SELECTION_CSS}{TIMELINE_CSS}{PAIRED_CSS}{ALTERNATIVES_CSS}{UI_CSS}{THEME_CSS}</style>"
+            f"<style>{FONT_CSS}{REPORT_CSS}{RESTORE_CSS}{SELECTION_CSS}{TIMELINE_CSS}{PAIRED_CSS}{ALTERNATIVES_CSS}{UI_CSS}{THEME_CSS}{PAGE_CSS}</style>"
             "</head><body>"
             "<header class='top'><div class='bar'>"
             f"<a class='brand' href='{'/' if self.case_name is not None else '/cases'}'>"
