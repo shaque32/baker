@@ -1199,6 +1199,15 @@ def test_a_bound_the_claim_writes_before_the_models_words_is_read():
         duration_range("two minutes", "one call of about two minutes and one of two minutes")
 
 
+def test_a_bound_after_the_duration_is_read_after_a_name_whose_lower_case_is_longer():
+    from core.audit.assumption_filler import duration_range
+
+    # "İ" lower-cases to two characters: an index found in a lower-cased copy would read the
+    # words after the length from the wrong place and miss "or more".
+    with pytest.raises(Reject, match="bound after"):
+        duration_range("two minutes", "İSMAİL İNCİ called REYES for two minutes or more.")
+
+
 @pytest.mark.parametrize(
     ("words", "claim"),
     [
@@ -2815,6 +2824,51 @@ def test_a_direction_is_not_read_past_words_the_count_does_not_keep(conn, text, 
     value = 1 if "exactly one" in text else None
     made, filler = _count(conn, text, value, channels=channels)
     assert not any(a.params.each_way or a.params.sent_by for a in made), [a.params for a in made]
+
+
+def test_the_exchange_clause_is_found_in_the_text_as_written(conn):
+    # "ß" case-folds to "ss": an index found in a case-folded copy lands past the clause's
+    # true start, and the clause read from it loses the third party written in it.
+    filler = LocalAssumptionFiller(FakeModel("{}"), conn, template=DRAFT)
+    text = (
+        "ß" * 60
+        + ", PETROV and REYES exchanged Telegram messages with (212) 555-0199, on dev:item1."
+    )
+    params = {"person_ids": [PETROV, REYES], "channels": ["Telegram"]}
+    assert filler._limits_on_exchange(text, params) == "(212) 555-0199"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # an earlier "exchanged" that is not about messages: the clause the count reads starts
+        # at the later one, and the words before it are a limit (Baker Eval on #190)
+        "On March 21, 2026, PETROV exchanged calls with SOKOLOV, and PETROV and REYES exchanged"
+        " Telegram messages on dev:item1.",
+        "On March 21, 2026, PETROV exchanged photos with SOKOLOV, and PETROV and REYES exchanged"
+        " Telegram messages on dev:item1.",
+    ],
+)
+def test_an_earlier_exchange_that_is_not_messages_is_still_a_limit(conn, text):
+    conn.execute("INSERT INTO persons VALUES ('person:sokolov', 'Ivan Sokolov', 'expert:test')")
+    try:
+        made, filler = _count(conn, text, None, phones=["dev:item1"])
+        assert not any(a.params.each_way for a in made), [a.params for a in made]
+        assert any("before the count" in d.reason for d in filler.drops), filler.drops
+    finally:
+        conn.execute("DELETE FROM persons WHERE id = 'person:sokolov'")
+
+
+def test_a_sent_form_code_cannot_place_is_refused(conn, monkeypatch):
+    # sent_form and the clause's position read the same words; were they ever to disagree, the
+    # claim is refused rather than read from a position code did not find.
+    import core.audit.assumption_filler as af
+
+    monkeypatch.setattr(af, "sent_form", lambda claim, value: ("PETROV", "REYES one message"))
+    text = "On March 21, 2026, PETROV sent REYES exactly one Telegram message; on dev:item1."
+    made, filler = _count(conn, text, 1, phones=["dev:item1"])
+    assert not any(a.params.sent_by for a in made), [a.params for a in made]
+    assert any("sent form" in d.reason for d in filler.drops), filler.drops
 
 
 @pytest.fixture
