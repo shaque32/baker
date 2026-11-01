@@ -28,7 +28,7 @@
   closed and open; Impeccable detector found nothing on ui/pages.py and ui/theme.py; tests in
   tests/test_start_case.py check the claims table's action row and the Put back buttons; make
   check results are in the PR. Not checked in the Mac app window or on Windows.
-- Open: the shared button, checkbox and field styles come from the "Declutter every app page"
-  work; this page's rules move to ui/css/setup.py once that lands.
+- Open: none. The page's rules live in ui/css/setup.py; shared buttons, checkboxes and fields
+  come from #194.
 - Affects: none (screen layout only)
 - Status doc: no change
