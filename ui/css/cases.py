@@ -53,7 +53,8 @@ CSS = """
   background: var(--card); border: 1px dashed var(--line-strong); border-radius: 12px; }
 .pg-cases p.where { font-size: 12.5px; color: var(--muted); max-width: 78ch; margin: 0; }
 .pg-cases p.where .mono { font-size: 12px; word-break: normal; overflow-wrap: anywhere; }
-@media (prefers-reduced-motion: reduce) { .pg-cases .caselist tbody tr { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .pg-cases .caselist tbody tr, .pg-cases .pass {
+  transition: none; } }
 
 /* Cases: making a new case, one card with the page's one primary button */
 .pg-cases section.newcase { margin-top: 44px; }
@@ -67,7 +68,9 @@ CSS = """
 .pg-cases .pass .passfields input { margin: 0; flex: 1 1 200px; max-width: 247px;
   min-width: 0; }
 .pg-cases .pass p.muted { margin: 0; max-width: 62ch; line-height: 1.5; }
-.pg-cases form.box:has(input[name=encrypt]:not(:checked)) .pass { display: none; }
+/* Dimmed, never hidden: a hidden field keeps its minlength check and would block the submit */
+.pg-cases .pass { transition: opacity 0.15s var(--ease); }
+.pg-cases form.box:has(input[name=encrypt]:not(:checked)) .pass { opacity: 0.45; }
 .pg-cases section.newcase button.primary { margin: 0; min-height: 36px; padding: 0 18px; }
 
 /* The enter-your-name form, here and on the set-up page */
