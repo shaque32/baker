@@ -258,7 +258,7 @@ def run_banner(conn: sqlite3.Connection, page: Page, back: str) -> str:
     if run.get("partial"):
         out.append(partial_banner(conn, run))
     if run.get("fake"):
-        out.append(_folded(stand_in_banner(run)) if back == "/" else stand_in_banner(run))
+        out.append(_folded(stand_in_banner(run)))  # every word stays, under its first sentence
     later = conn.execute(
         "SELECT COUNT(*) FROM evidence_reviews WHERE reviewer_kind = 'expert'"
         " AND decided_at_utc > ?",
