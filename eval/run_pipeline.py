@@ -426,7 +426,9 @@ def model_free_components(conn, spec: Path, gold) -> pipeline.Components:  # noq
 
 def run_versions(conn) -> dict:  # noqa: ANN001
     """What a result depends on, as the report stamps it: the latest run's Baker release and git
-    commit, pipeline, rule and quote-check versions and every model run's file SHA-256 and seed."""
+    commit, pipeline, rule and quote-check versions and every model run's file SHA-256 and seed,
+    with the version of the code that turned its answers into records where the run has one
+    (the assumption filler's FILLER_VERSION)."""
     run = pipeline.last_run(conn) or {}
     return {
         "build": (run.get("config") or {}).get("build"),
@@ -435,13 +437,27 @@ def run_versions(conn) -> dict:  # noqa: ANN001
         "rules": run.get("rule_version"),
         "quote_check": quote_check_label(run),
         "models": [
-            {"purpose": r[0], "model": r[1], "sha256": r[2], "prompt": r[3], "seed": r[4]}
+            {
+                "purpose": r[0],
+                "model": r[1],
+                "sha256": r[2],
+                "prompt": r[3],
+                "seed": r[4],
+                **_code_version(r[5]),
+            }
             for r in conn.execute(
-                "SELECT purpose, model_name, model_sha256, prompt_version, seed FROM model_runs"
-                " ORDER BY purpose, id"
+                "SELECT purpose, model_name, model_sha256, prompt_version, seed, params_json"
+                " FROM model_runs ORDER BY purpose, id"
             )
         ],
     }
+
+
+def _code_version(params_json: str | None) -> dict[str, str]:
+    from core.audit._local_model import CODE_VERSION_PARAM
+
+    version = json.loads(params_json or "{}").get(CODE_VERSION_PARAM)
+    return {"code_version": str(version)} if version is not None else {}
 
 
 def write_outputs(conn, out: Path, summary: dict) -> list[Prediction]:  # noqa: ANN001
@@ -500,7 +516,9 @@ TESTABILITY_SIGNED_PROMPT = Path("core/audit/prompts/agent_testability.md")
 # held out for the go/no-go: case05, written by a builder who never read the step's prompt, code,
 # tests or demo claims, or case04's results. case04 was the first such case; its go/no-go run
 # (2026-10-30) spent it. case01 and case03 are development cases. The step still runs only on a
-# signed sheet, so case05 gives no go/no-go until Arsh signs its sheet.
+# signed sheet, so case05 gives no go/no-go until Arsh signs its sheet. case05 is the last clean
+# held-out case: its first local-model go/no-go run is the result of record, never re-run after
+# its per-claim output is seen (a run that stops before its decision prints is not a result).
 TESTABILITY_GO_NO_GO_CASES: frozenset[str] = frozenset({"case05"})
 
 
@@ -1099,6 +1117,21 @@ def repeat_result(
     }
 
 
+def provenance(versions: dict | None) -> str:
+    """One line for the go/no-go log: the build, and each model run's SHA-256 (first 12) with
+    the filler's code version where the run records one."""
+    from core import build
+
+    if not versions:
+        return "versions not recorded"
+    models = "; ".join(
+        f"{m['purpose']} {m['model']} {str(m['sha256'])[:12]}"
+        + (f" (code version {m['code_version']})" if "code_version" in m else "")
+        for m in versions.get("models") or []
+    )
+    return f"Mabillon {build.label(versions.get('build'))}; {models or 'no model runs'}"
+
+
 def hardware() -> dict[str, object]:
     """What a go/no-go's calls and seconds were measured on, and when (wall-clock time, not the
     eval's fixed clock)."""
@@ -1144,7 +1177,8 @@ def report_go_no_go(
 ) -> dict[str, object]:
     """Read the run's testability measures, score its false supported, compare the repeat, and
     write and print the go/no-go (<out>/go_no_go.json)."""
-    t = json.loads((out / "run.json").read_text(encoding="utf-8"))["testability"]
+    summary = json.loads((out / "run.json").read_text(encoding="utf-8"))
+    t = summary["testability"]
     gold = load_jsonl(gold_path(case), GoldClaim)
     changed = agent_changed(out / f"{case}.db")
     mine = [g for g in gold if g.claim_id in changed]
@@ -1176,6 +1210,9 @@ def report_go_no_go(
         "testability": t,
         "repeat": repeat,
         "hardware": hardware(),
+        # the build, every model's SHA-256 and the filler's code version, so the result is tied
+        # to the code and models that produced it
+        "versions": summary.get("versions"),
     }
     (out / "go_no_go.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     why = "; ".join(result["why"])  # type: ignore[arg-type]
@@ -1183,6 +1220,7 @@ def report_go_no_go(
     for c in result["checks"]:  # type: ignore[attr-defined]
         mark = "pass" if c["ok"] else "FAIL"
         print(f"pipeline: testability go/no-go: {mark}: {c['bar']}: {c['value']}")
+    print(f"pipeline: testability go/no-go: made with {provenance(summary.get('versions'))}")
     return result
 
 
