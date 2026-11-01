@@ -36,23 +36,23 @@ def help_page(page: Page, report_text: str | None, withheld: str | None, case_op
         else ""
     )
     contact = (
-        "<div class='box'><h2>Support</h2>"
+        "<section class='hs support'><h2>Support</h2>"
         f"<p>Email <a href='mailto:{e(SUPPORT_EMAIL)}'>{e(SUPPORT_EMAIL)}</a>{placeholder}.</p>"
         "<p>Say what you did, what you saw and what you expected. "
         "<strong>Never send case content</strong>: no case files, no case database, no "
         "screenshots of evidence, no claim or message text. Attach the bug report below "
-        "instead.</p></div>"
+        "instead.</p></section>"
     )
     about = (
-        "<div class='box'><h2>What Mabillon does and doesn't do</h2>"
+        "<section class='hs about'><h2>What Mabillon does and doesn't do</h2>"
         "<p>Mabillon is a verification layer on top of Cellebrite and AXIOM. It takes the "
         "scrolling, not the judgment.</p>"
-        "<h3>It does</h3><ul>"
+        "<div class='dodont'><div><h3>It does</h3><ul>"
         + "".join(f"<li>{e(x)}</li>" for x in DOES)
-        + "</ul><h3>It does not</h3><ul>"
+        + "</ul></div><div><h3>It does not</h3><ul>"
         + "".join(f"<li>{e(x)}</li>" for x in DOES_NOT)
-        + "</ul><p class='muted'>The full one-page explainer is "
-        "<code>docs/ONE_PAGER.md</code> in the Mabillon folder.</p></div>"
+        + "</ul></div></div><p class='muted'>The full one-page explainer is "
+        "<code>docs/ONE_PAGER.md</code> in the Mabillon folder.</p></section>"
     )
     scope = (
         "It describes this Mabillon install and the case open now (counts and states only)."
@@ -67,20 +67,23 @@ def help_page(page: Page, report_text: str | None, withheld: str | None, case_op
         )
     else:
         body = (
-            "<ol><li><a href='/help/bug-report.json' download>Save the bug report</a> "
+            "<ol class='steps'><li><a class='button' href='/help/bug-report.json' download>"
+            "Save the bug report</a> "
             "(a small JSON file).</li>"
             "<li>Open it and read it. It is the same text as below.</li>"
             f"<li>Attach it to an email to {e(SUPPORT_EMAIL)}.</li></ol>"
             "<h3>Left out on purpose</h3><ul>"
             + "".join(f"<li>{e(x)}</li>" for x in bug_report.WITHHELD)
-            + "</ul><h3>Exactly what the file holds</h3>"
-            f"<pre class='bugreport'>{e(report_text)}</pre>"
+            + "</ul><details class='filetext'><summary>Exactly what the file holds</summary>"
+            f"<pre class='bugreport'>{e(report_text)}</pre></details>"
         )
     report = (
-        "<div class='box'><h2>Send a bug report</h2>"
+        "<section class='hs report'><h2>Send a bug report</h2>"
         "<p>The bug report holds Mabillon's versions, this computer's system and model setup, "
         f"the last background job and recent errors, with no case data. {e(scope)} Mabillon "
         "never sends it: you save it and send it yourself.</p>"
-        f"{body}</div>"
+        f"{body}</section>"
     )
-    return page.wrap("Help", "<h1>Help</h1>" + contact + report + about)
+    return page.wrap(
+        "Help", "<div class='pg-help'><h1>Help</h1>" + contact + report + about + "</div>"
+    )
