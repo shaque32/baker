@@ -46,7 +46,14 @@ from eval.train.writers import sentence
 # part of the day misses more often; the time trap reports the message as the subject too,
 # comes up in more scenes, and the time scene sets most records against a time that holds
 # them and one that misses them; half the irrelevant assumptions carry a time (from 35%).
-GENERATOR = "eval.train 1.5.0"
+# 1.6.0: labels follow guide draft v0.4: a denial or another value now also comes against a
+# report that its sender said the act happened or the other value (ovr_told_frame), a denial
+# that names no time against the act with no time or a later date (ovr_undated_denial), and a
+# plain statement against "never told" or "did not tell ... on <its date>" (con_never_told),
+# each beside the same record's supports and contradicts items. They are drawn apart from each
+# scene's own siblings (scenes.more), so the other families keep their odds within a scene, and
+# a told frame beside a denial always comes with the report of the denial itself.
+GENERATOR = "eval.train 1.6.0"
 SOURCE = "train_gen"
 
 

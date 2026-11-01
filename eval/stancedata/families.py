@@ -5,10 +5,12 @@ then write a record and an assumption that fit its rule; the label comes from th
 from the generator's own judgment. LABELING_GUIDE.md explains every family for the signer, and a
 test checks the two stay in step.
 
-Conventions follow stance guide v0.3 (LABELING_GUIDE.md, signed 2026-10-14) and stance prompt
-v1.1, signed with it, which the pipeline wiring PR (#62) applies. Since 2026-10-15, when Arsh
-relabeled P049 and P066 to P069, the signed probe set (eval/gold/probe, P001-P105) reads
-contradicts as the guide does.
+Conventions follow stance guide v0.4 (LABELING_GUIDE.md, draft of 2026-10-31 for Arsh to sign;
+v0.3 was signed 2026-10-14) and stance prompt v1.1, signed with v0.3, which the pipeline wiring
+PR (#62) applies. Since 2026-10-15, when Arsh relabeled P049 and P066 to P069, the signed probe
+set (eval/gold/probe, P001-P105) reads contradicts as the guide does; v0.4 adds the two traps
+that relabel showed, told frames and undated denials, and the "never told" report that one
+message rules out.
 
 Families marked `new` brought a convention the signed probe set did not show when they were
 added; Arsh decided each one when he signed the first guide that had it (v0.2 on 2026-10-12,
@@ -88,13 +90,19 @@ FAMILIES: tuple[Family, ...] = (
        "The record is the sender's own correction of an earlier message in the context, giving "
        "a value for the same thing that cannot be true together with the assumption's; the "
        "quote is the correcting words.", new=True),
+    _F("con_never_told", C.CONTRADICTS, S.CONTRADICTS, None, (K.COMPLETENESS, K.EVENT),
+       "The assumption says a sender never told or wrote something, or did not tell it within a "
+       "time that holds the record, in words that exclude every such message; the record, from "
+       "that sender in the chat the assumption names, says it in plain words (rules 12 and 23).",
+       new=True),
     # Overreach with gold contradicts: the record's own words rule the assumption out.
     _F("ovr_negation", C.OVERREACH, S.CONTRADICTS, "negation", (K.EVENT,),
        "The assumption's words appear in the record inside a negated statement that covers the "
        "assumption's time (rule 23)."),
     # Overreach whose gold changed to complicates in v0.3: the record's words match the
     # assumption, but its date, sender or a later correction leaves the assumption open, and one
-    # record cannot show that no other message exists.
+    # record cannot show that no other message exists. The told frame and the undated denial
+    # are the two traps the 2026-10-15 probe relabel moved (v0.4 writes them).
     _F("ovr_time_mismatch", C.OVERREACH, S.COMPLICATES, "time_mismatch", (K.TIME,),
        "Same words and people, but the record's local date or local clock time falls outside "
        "what the assumption states; at a DST change the local clock reading decides. One record "
@@ -111,6 +119,18 @@ FAMILIES: tuple[Family, ...] = (
        "The record states the assumed fact, but a later message from the same sender in the "
        "context replaces it with an incompatible value; that later message, not the record, "
        "carries the contradiction.", new=True),
+    _F("ovr_told_frame", C.OVERREACH, S.COMPLICATES, "told_frame", (K.EVENT,),
+       "The assumption reports what a sender told or wrote, in the supports items' frames and at "
+       "a time that fits the record without singling it out (never its own minute or about it); "
+       "the record, from that sender, says something that cannot "
+       "be true together with the reported words (a denial or another value). It does not show "
+       "the report, and one record cannot show that no other message said it (rules 12 and "
+       "23)."),
+    _F("ovr_undated_denial", C.OVERREACH, S.COMPLICATES, "undated_denial", (K.EVENT,),
+       "The record is the sender's past-tense denial of the act, naming no time and answering "
+       "no question that names one; the assumption states the act as a fact with no time, or "
+       "dated after the message. The denial covers only the time before it was sent (rule "
+       "23)."),
     # Overreach with gold complicates (or irrelevant for an unrelated injection).
     _F("ovr_handle_owner", C.OVERREACH, S.COMPLICATES, "handle_owner", (K.IDENTITY, K.EVENT),
        "The assumption names a real person, but the record shows only an account, number, "

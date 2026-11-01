@@ -58,7 +58,7 @@ def _item(family_id: str = "sup_plain", **kw):
 def test_every_family_is_in_the_guide_with_the_same_answer() -> None:
     rows = re.findall(r"^\| `(\w+)` \| (\w+)", GUIDE.read_text(encoding="utf-8"), re.M)
     assert dict(rows) == {f.family_id: f.stance.value for f in FAMILIES}
-    assert len(BY_ID) == len(FAMILIES) == 66
+    assert len(BY_ID) == len(FAMILIES) == 69
 
 
 def test_label_comes_from_the_family() -> None:
@@ -120,6 +120,10 @@ def test_reference_data_covers_probe_case01_and_case02(reference_index) -> None:
     assert sum(s.startswith("probe(signed)") and s.endswith("assumption") for s in sources) == 105
     drafts = len(read_jsonl(ROOT / "eval" / "probe_draft" / "probe_draft.jsonl"))
     assert sum(s.startswith("probe(draft)") and s.endswith("assumption") for s in sources) == drafts
+    told = [r for p in sorted((ROOT / "eval" / "probe" / "v13").glob("*.jsonl"))
+            for r in read_jsonl(p)]  # fmt: skip
+    assert len(told) == 82  # the fresh set (32), told_frame_24 and rules_12_23_26
+    assert sum(s.startswith("v13(") and s.endswith("assumption") for s in sources) == len(told)
     assert sum(s.startswith("case01 msg:") for s in sources) > 1500
     assert sum(s.startswith("case02 msg:") for s in sources) > 1000
     assert any(s.startswith("case01 gold C20") for s in sources)
@@ -240,9 +244,10 @@ def test_moved_traps_are_the_families_guide_v0_3_made_complicates() -> None:
     for f in FAMILIES:
         if f.trap in moved:
             moved[f.trap].add(f.stance.value)
-    # The four trap families v0.3 moved, and two probe-only traps (2026-10-15) that the
-    # generators never write: undated denials and told frames (guide rules 12 and 23).
-    assert set(moved) == set(TRAP_ORDER[:4])
+    # The four trap families v0.3 moved, and the two traps the probe set has carried since the
+    # 2026-10-15 relabel, which guide v0.4 gives families: undated denials and told frames
+    # (rules 12 and 23).
+    assert set(moved) == set(TRAP_ORDER)
     assert run_probe.MOVED_TRAPS == set(TRAP_ORDER)
     assert all(stances == {"complicates"} for stances in moved.values()), moved
     probe = [it for it in read_jsonl(PROBE) if it["trap"] in run_probe.MOVED_TRAPS]

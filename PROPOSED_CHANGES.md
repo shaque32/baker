@@ -992,3 +992,53 @@ Diff: on main after the case05 PR merges, from the repo root (macOS and GNU sed)
 The last line must print 0 for both files. The copies are the drafts with only `labeled_by`
 (and, in the key, `labeled_at`) changed: 48 key lines and 86 sheet rows, and both then report
 as signed (checked on a scratch copy with bash, 2026-10-31).
+
+## 2026-11-01 claude/project-thread-lt1vdp: sign stance labeling guide v0.4 (told frames, undated denials, "never told")
+File: eval/gold/stancedata/LABELING_GUIDE.md and eval/gold/stancedata/README.md (the signed copy
+and its pin table), with the matching pin in tests/test_gold_stancedata.py
+Why: draft v0.4 of `eval/stancedata/LABELING_GUIDE.md` adds three families with a fixed answer,
+`ovr_told_frame` and `ovr_undated_denial` (complicates traps) and `con_never_told`
+(contradicts), which the training generator eval.train 1.6.0 writes. Its last section, "Changes
+from v0.3, for Arsh to sign", lists every change and the calls to sign: an act dated after a
+denial that names no time stays open, a "never told" report is ruled out by one message that
+says it, and three cases stay out of the data until Arsh decides them. Until the signed copy
+and its pins match the draft, two tests in tests/test_gold_stancedata.py fail by design, so the
+PR cannot merge without Arsh's signature. `eval/gold/` is human-owned. Nothing else there changes:
+GO_BAR.md already counts both traps as moved (since 2026-10-15), and the glossaries are
+unchanged and stay signed.
+Diff: once Arsh signs, on the PR branch from the repo root, with DATE, TIME (UTC) and COMMIT
+(the commit Arsh signed) filled in:
+   python3 - <<'PY'
+   from pathlib import Path
+   draft = Path("eval/stancedata/LABELING_GUIDE.md").read_text(encoding="utf-8")
+   head = """# Labeling guide for generated stance data
+
+   SIGNED by Arsh on DATE ("approved" in the "Plan a faster, sharper audit engine" thread, TIME
+   UTC). This is draft v0.4 of `eval/stancedata/LABELING_GUIDE.md`, unchanged below this
+   paragraph since commit COMMIT. It replaces v0.3, signed on 2026-10-14. The calls on its list of
+   changes are decided as written: an act dated after a denial that names no time stays open, a
+   "never told" report is ruled out by one message that says it, and three cases stay out of the
+   data until Arsh decides them. The Russian-English pairs in `eval/train/glossary.py` and
+   `eval/heldout/glossary.py` (rule 6) are unchanged since v0.2 and stay signed. `README.md` next
+   to this file pins all three files by SHA-256.
+   """
+   head = "\n".join(line.removeprefix("   ") for line in head.splitlines()) + "\n"
+   body = draft.partition("\nSYNTHETIC.")[2]
+   Path("eval/gold/stancedata/LABELING_GUIDE.md").write_text(head + "\nSYNTHETIC." + body,
+                                                            encoding="utf-8")
+   PY
+   sha256sum eval/stancedata/LABELING_GUIDE.md
+In eval/gold/stancedata/README.md:
+-`LABELING_GUIDE.md` is the stance-data labeling guide, draft v0.3, signed by Arsh on 2026-10-14
+-("approved" in the "Custom model for Baker" thread, 21:16 UTC), with the three calls on its
+-sign-off page decided as written. It replaces v0.2, signed on 2026-10-12. Below its header it is
++`LABELING_GUIDE.md` is the stance-data labeling guide, draft v0.4, signed by Arsh on DATE
++("approved" in the "Plan a faster, sharper audit engine" thread, TIME UTC), with the calls on
++its list of changes decided as written. It replaces v0.3, signed on 2026-10-14, which replaced
++v0.2 (2026-10-12). Below its header it is
+-| `eval/stancedata/LABELING_GUIDE.md` | `40b8618456d264dd5f97377f9f94ceef50a4a05cd6c1d8ecb8f63e8a497c09a2` |
++| `eval/stancedata/LABELING_GUIDE.md` | `<the sha256sum printed above>` |
+In tests/test_gold_stancedata.py, the same SHA-256 for "eval/stancedata/LABELING_GUIDE.md", and
+the comment above it: "Pinned when Arsh signed guide v0.4 on DATE (v0.3: 2026-10-14)". Then
+`python -m pytest -q tests/test_gold_stancedata.py` passes (2 tests). The pin is the draft's
+SHA-256 at the commit Arsh signs, so a review change made after the signature needs a new one.

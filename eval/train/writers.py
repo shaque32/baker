@@ -19,7 +19,16 @@ from eval.stancedata.families import family
 from eval.train import facts as fx
 from eval.train.facts import Fact
 from eval.train.facts import claim as fact_claim
-from eval.train.frames import contact, contact_by, first_contact, none_before, report, sent, words
+from eval.train.frames import (
+    contact,
+    contact_by,
+    first_contact,
+    never,
+    none_before,
+    report,
+    sent,
+    words,
+)
 from eval.train.names import (
     AREA_CODES,
     Party,
@@ -423,6 +432,78 @@ def dated_act(rng: random.Random, c: Chat, subj: str, pred: str, *, ahead: bool 
         return cap(rng.choice([f"by {t} on {d}, {subj} {perfect(pred)}",
                                f"before {t} on {d}, {subj} {pred}"]))  # fmt: skip
     return _on(rng, subj, pred, d)
+
+
+def _told_to(c: Chat) -> str:
+    """Whom the record's sender told, as a report names them: the group in a group chat."""
+    return "the group" if c.is_group() else c.other.who
+
+
+def spec_told_frame(rng: random.Random, c: Chat, pred: str, quote: str) -> Spec:
+    """A report that the record's sender told the other side that they `pred`, where the
+    record's own words (`quote`, a denial or another value) say otherwise: complicates (guide
+    rules 12 and 23).
+
+    The report is about a message, and one record cannot show that no other message said it.
+    It takes the supports items' frames and a time that fits the record (when.telling_when),
+    so only what it says tells it from a supports item; never the message as the subject and
+    never the record's own minute or about it ("at 9:14 p.m.", "around 9:15 p.m."), which
+    could name the record itself: those times become the record's date.
+    """
+    when = telling_when(rng, c)
+    if when is not None and when.startswith(("at ", "around ")):
+        when = f"on {say_day(rng, c.day)}"
+    s, o, q = c.sender.who, _told_to(c), quoted(quote)
+    why = rng.choice([
+        f"The record from {s} says {q}, not what the assumption reports {s} told {o}. It does "
+        "not show that report, and one message cannot show that no other message said it.",
+        f"In the record {s} writes {q}, which is not the report the assumption gives; one "
+        f"message cannot show that no other message from {s} said it, so the report is left "
+        "open.",
+    ])  # fmt: skip
+    return Spec("ovr_told_frame", K.EVENT, frame(rng, c, pred, when=when), quote, why)
+
+
+def spec_undated_denial(rng: random.Random, c: Chat, pred: str, quote: str) -> Spec:
+    """The act a past-tense denial names no time for, stated as a fact with no time or dated
+    after the record's date: complicates (guide rule 23). The denial covers the act only up to
+    the moment it was sent; the caller makes sure that neither the record, nor a question it
+    answers, nor the act names a time."""
+    q, d = quoted(quote), long_date(c.day)
+    if rng.random() < 0.5:
+        a = cap(f"{c.sender.who} {pred}")
+        gap = "and the assumption gives the act no time"
+    else:
+        later = c.day + timedelta(days=rng.randint(1, 6))
+        a = _on(rng, c.sender.who, pred, day_of(rng, later, pred))
+        gap = f"and the assumption dates the act on {long_date(later)}, after it was sent"
+    why = rng.choice([
+        f"The denial {q}, sent on {d}, names no time: it covers the act only up to that "
+        f"message, {gap}. Whether the act came later is not shown.",
+        f"Sent on {d}, {q} denies the act without naming a time, so it speaks only to the time "
+        f"before it was sent, {gap}; the record leaves the assumption open.",
+    ])  # fmt: skip
+    return Spec("ovr_undated_denial", K.EVENT, a, quote, why)
+
+
+def spec_never_told(rng: random.Random, c: Chat, pred: str, quote: str) -> Spec:
+    """That the record's sender never told the other side that they `pred`, or did not tell
+    them so within a time that holds the record (when.fit_when), where the record says it in
+    plain words: contradicts (guide rules 12 and 23). The assumption's words exclude every such
+    message, so the one record that says it rules them out; the quote is the words that say
+    it, as the supports item's is."""
+    # A clock comes up more often than on a supports item's telling: a bound or range that
+    # holds the record is what this family has to teach about time.
+    when = fit_when(rng, c, date=1.0, clock=0.35) if rng.random() < 0.4 else None
+    s, o = c.sender.who, _told_to(c)
+    a = never(rng, s, c.other.who, f"{c.sender.pron} {pred}", group=c.is_group(), when=when)
+    why = rng.choice([
+        f"The record is a message from {s} to {o} that says {quoted(quote)}. The assumption's "
+        "words exclude every such message, so this one rules it out.",
+        f"{cap(s)} writes {quoted(quote)} to {o} here: one message that says it rules out an "
+        "assumption that no such message was sent.",
+    ])  # fmt: skip
+    return Spec("con_never_told", kind_of(rng, "con_never_told"), cap(a), quote, why)
 
 
 def spec_handle_owner(rng: random.Random, c: Chat, pred: str, quote: str,
