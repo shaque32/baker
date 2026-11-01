@@ -48,52 +48,72 @@ def _settings_form(page: Page, s: Settings, back: str) -> str:
     )
 
 
+def _count(n: int) -> str:
+    return f" <span class='n'>{n}</span>"
+
+
+def _folds(*details: str) -> str:
+    """The page's explanation and its settings, folded side by side; an open one takes the row."""
+    return f"<div class='tl-folds'>{''.join(details)}</div>"
+
+
 def timeline_page(conn: sqlite3.Connection, page: Page, s: Settings) -> str:
     views = compute(conn, s, gaps=False)
     rows = views.rows
+    folds = _folds(
+        "<details class='more'><summary>How Mabillon reads the dates</summary><p>Code reads the "
+        "dates and ties a record to a statement only by the quoted words or call number in the "
+        "same sentence. Times without a zone are read in the phone's own zone, never in the "
+        "offset a report printed.</p></details>",
+        _settings_form(page, s, "/timeline"),
+    )
     out = [
-        "<h1>The document's clock against the "
-        "phones'</h1><p>Each date and time the government document states, beside the phone "
-        "records' own timestamps. Code reads the dates and ties a record to a statement only by "
-        "the quoted words or call number in the same sentence. Times without a zone are read "
-        "in the phone's own zone, never in the offset a report printed. A difference is for "
-        "you to weigh; it does not change any verdict.</p>",
+        "<div class='pg-timeline'><h1>The document's clock against the phones'</h1>"
+        "<p class='lede'>Each date and time the government document states, beside the phone "
+        "records' own timestamps. A difference is for you to weigh; it does not change any "
+        "verdict.</p>",
     ]
     if not rows:
-        out.append(_settings_form(page, s, "/timeline"))
+        out.append(folds)
         out.append(
             "<p class='muted'>No date or time to show. Import the government document on "
-            "<a href='/setup'>Set up and run</a>.</p>"
+            "<a href='/setup'>Set up and run</a>.</p></div>"
         )
         return page.wrap("Timeline check", "".join(out), wide=True)
     flagged = [r for r in rows if r.status in FLAGGED]
-    out.append(f"<div class='flash'>{e(timeline_summary(rows, s))}</div>")
-    out.append(_settings_form(page, s, "/timeline"))
+    out.append(f"<p class='tl-summary'>{e(timeline_summary(rows, s))}</p>")
+    out.append(folds)
     if flagged:
-        out.append("<h2>Differences</h2>" + timeline_rows(flagged, views.data))
+        out.append(
+            f"<h2>Differences{_count(len(flagged))}</h2>" + timeline_rows(flagged, views.data)
+        )
     rest = [r for r in rows if r.status not in FLAGGED and r.status != "not_compared"]
     if rest:
-        out.append("<h2>In time order</h2>" + timeline_rows(rest, views.data))
+        out.append(f"<h2>In time order{_count(len(rest))}</h2>" + timeline_rows(rest, views.data))
     skipped = [r for r in rows if r.status == "not_compared"]
     if skipped:
         out.append(
-            "<h2>Not compared</h2><p class='muted'>Dates Mabillon could not read plainly, such as "
-            "a numeric date that reads either way. Mabillon never picks a month and day order.</p>"
-            + timeline_rows(skipped, views.data)
+            f"<h2>Not compared{_count(len(skipped))}</h2><p class='muted'>Dates Mabillon could "
+            "not read plainly, such as a numeric date that reads either way. Mabillon never "
+            "picks a month and day order.</p>" + timeline_rows(skipped, views.data)
         )
+    out.append("</div>")
     return page.wrap("Timeline check", "".join(out), wide=True)
 
 
 def gaps_page(conn: sqlite3.Connection, page: Page, s: Settings) -> str:
     views = compute(conn, s, rows=False)
     out = [
-        "<h1>Where the records go quiet</h1><p>Stretches with "
-        "no messages or calls, on each phone, in each app and in each thread, measured against "
-        "that series' own pace. A stretch is listed when it lasts at least the shortest "
-        f"quiet stretch in the case settings ({s.gap_hours} h) and the series' pace "
-        f"would put at least {MIN_EXPECTED} records in it. "
-        f"{e(NOT_FOUND)}</p>",
-        _settings_form(page, s, "/gaps"),
+        "<div class='pg-gaps'><h1>Where the records go quiet</h1><p class='lede'>Stretches "
+        "with no messages or calls, on each phone, in each app and in each thread, measured "
+        f"against that series' own pace.</p><p class='caveat'>{e(NOT_FOUND)}</p>",
+        _folds(
+            "<details class='more'><summary>When a stretch is listed</summary><p>A stretch is "
+            "listed when it lasts at least the shortest quiet stretch in the case settings "
+            f"({s.gap_hours} h) and the series' pace would put at least {MIN_EXPECTED} records "
+            "in it.</p></details>",
+            _settings_form(page, s, "/gaps"),
+        ),
     ]
     if not views.data.phones:
         out.append(
@@ -102,4 +122,5 @@ def gaps_page(conn: sqlite3.Connection, page: Page, s: Settings) -> str:
         )
     else:
         out.append(gap_lists(views))
+    out.append("</div>")
     return page.wrap("Gaps", "".join(out), wide=True)
