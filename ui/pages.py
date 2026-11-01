@@ -578,14 +578,15 @@ def _devices(conn: sqlite3.Connection, page: Page, back: str, heading: bool = Tr
         "<p>If the document calls a phone something else, such as TARGET PHONE or Item 1, "
         "give that name here, as the document writes it, so the audit knows which phone a "
         "claim means. Separate names with commas. Every report lists the names you gave.</p>"
-        "<table><thead><tr><th>Device</th><th>Source</th><th>Stipulated user</th>"
+        "<table class='tidy'><thead><tr><th>Device</th><th>Source</th><th>Stipulated user</th>"
         "<th>Change</th><th>Document names</th></tr></thead>"
     ]
     for dev_id, label, model, source_id in devices:
         st = stips.get(dev_id)
         if st is not None and st.status == StipulationStatus.CONFIRMED:
-            who = f"{q(st.statement)}<br><span class='muted'>by {e(st.decided_by)}</span>"
-            change = page.form(
+            by = e(st.decided_by.removeprefix("expert:"))
+            who = f"{q(st.statement)}<br><span class='muted'>Stipulated by {by}</span>"
+            withdraw = page.form(
                 "/stipulation/withdraw",
                 f"<input type='hidden' name='id' value='{e(st.id)}'>"
                 "<button type='submit'>Withdraw</button>",
@@ -597,31 +598,42 @@ def _devices(conn: sqlite3.Connection, page: Page, back: str, heading: bool = Tr
             who = "<span class='muted'>none</span>" + (
                 " (withdrawn)" if st is not None and st.status == StipulationStatus.REJECTED else ""
             )
-            change = ""
-        change += page.form(
+            withdraw = ""
+        stipulate = page.form(
             "/stipulate",
             f"<input type='hidden' name='device' value='{e(dev_id)}'>"
             "<input type='text' name='person' required maxlength='120' placeholder='Person'>"
-            " <button type='submit'>Stipulate</button>",
+            "<button type='submit'>Stipulate</button>",
             "inline",
             back,
             f"dev-{dev_id}",
+        )
+        # With a stipulation in place, Withdraw comes first and naming someone else folds away.
+        change = (
+            f"<div class='row-actions'>{withdraw}</div>"
+            f"<details><summary>Name someone else</summary>"
+            f"<div class='row-actions'>{stipulate}</div></details>"
+            if withdraw
+            else f"<div class='row-actions'>{stipulate}</div>"
         )
         names = page.form(
             "/device/names",
             f"<input type='hidden' name='device' value='{e(dev_id)}'>"
             f"<input type='text' name='names' maxlength='400' placeholder='TARGET PHONE'"
             f" value='{e(', '.join(named.get(dev_id, [])))}'>"
-            " <button type='submit'>Save names</button>",
+            "<button type='submit'>Save names</button>",
             "inline",
             back,
             f"dev-{dev_id}",
         )
+        # The model line is left out when the label already is the model.
+        shown_model = "" if not model or model == label else f"<br>{q(model)}"
         out.append(
-            f"<tr id='dev-{e(dev_id)}'><td>{q(label)} <span class='mono'>{e(dev_id)}</span><br>"
-            f"{q(model or '')}</td>"
-            f"<td class='mono'>{e(source_id)}</td><td>{who}</td><td>{change}</td>"
-            f"<td>{names}</td></tr>"
+            f"<tr id='dev-{e(dev_id)}'><td>{q(label)}{shown_model}<br>"
+            f"<span class='mono muted'>{e(dev_id)}</span></td>"
+            f"<td class='mono'>{e(source_id)}</td><td>{who}</td>"
+            f"<td class='controls'>{change}</td>"
+            f"<td class='controls'><div class='row-actions'>{names}</div></td></tr>"
         )
     out.append("</table>")
     if not devices:
@@ -2223,7 +2235,7 @@ def setup_page(
     govdocs = {r[0]: r for r in conn.execute("SELECT source_id, title, doc_kind FROM govdocs")}
     if srcs:
         out.append(
-            "<table><thead><tr><th>File</th><th>What it is</th><th>Coverage</th>"
+            "<table class='tidy'><thead><tr><th>File</th><th>What it is</th><th>Coverage</th>"
             "<th>Records</th><th>SHA-256</th><th>Imported (UTC)</th></tr></thead>"
         )
         for sid, kind, fidelity, extraction, fname, sha, tool, tver, at in srcs:
@@ -2244,9 +2256,9 @@ def setup_page(
                 recs = str(counts.get(sid, 0))
             out.append(
                 f"<tr><td>{q(fname)}<br><span class='mono'>{e(sid)}</span></td><td>{what}</td>"
-                f"<td>{cov}</td><td>{recs}</td>"
-                f"<td class='mono' title='{e(sha)}'>{e(sha[:16])}…</td>"
-                f"<td class='when'>{e(at)}</td></tr>"
+                f"<td>{cov}</td><td class='nowrap'>{recs}</td>"
+                f"<td class='mono nowrap' title='{e(sha)}'>{e(sha[:16])}…</td>"
+                f"<td class='when' title='{e(at)}'>{e(at[:19].replace('T', ' '))}</td></tr>"
             )
         out.append("</table>")
     else:
@@ -2298,19 +2310,22 @@ def setup_page(
     if order or any(c.status.value == "removed" for c in claims.values()):
         out.append(
             "<p>Claims run in this order. Move the ones you want first to the top.</p>"
-            "<table><thead><tr><th>#</th><th>Claim</th><th>Where</th><th>Type</th><th>Status</th>"
-            "<th>Text</th><th>Decide</th></tr></thead>"
+            "<table class='tidy claim-order'><thead><tr><th>#</th><th>Claim</th><th>Where</th>"
+            "<th>Type</th><th>Status</th><th>Text</th><th>Decide</th></tr></thead>"
         )
         for n, cid in enumerate(order, 1):
             c = claims[cid]
             where = _where_short(conn, c.paragraph_id)
             out.append(
-                f"<tr id='claim-{e(cid)}'><td>{n}</td><td><a href='{e(link('/claim', id=cid))}'>"
+                f"<tr id='claim-{e(cid)}'><td class='brief'>{n}</td><td class='brief'>"
+                f"<a href='{e(link('/claim', id=cid))}'>"
                 f"{e(claim_name(conn, cid, c.paragraph_id))}</a></td>"
-                f"<td>{e(where)}</td><td>{e(c.claim_type.value.replace('_', ' '))}</td>"
-                f"<td>{e(c.status.value)}"
+                f"<td class='brief where'>{e(where)}</td>"
+                f"<td class='brief'>{e(c.claim_type.value.replace('_', ' '))}</td>"
+                f"<td class='brief'>{e(c.status.value)}"
                 f"{'' if c.model_run_id is None else ' (model)'}</td><td>{q(c.text)}</td>"
-                f"<td>{_claim_buttons(page, cid, c.status.value, c.text, audit_busy)}</td></tr>"
+                f"<td class='decide'>"
+                f"{_claim_buttons(page, cid, c.status.value, c.text, audit_busy)}</td></tr>"
             )
         out.append("</table>")
         removed = [c for c in claims.values() if c.status.value == "removed"]
@@ -2578,6 +2593,7 @@ def _where_short(conn: sqlite3.Connection, paragraph_id: str) -> str:
 
 
 def _claim_buttons(page: Page, cid: str, status: str, text: str, locked: bool) -> str:
+    """Accept, Up, Down and Remove sit on one row; Edit the wording opens below them."""
     if locked:
         return "<span class='muted'>Locked while the audit runs.</span>"
     hidden = f"<input type='hidden' name='claim' value='{e(cid)}'>"
@@ -2587,7 +2603,8 @@ def _claim_buttons(page: Page, cid: str, status: str, text: str, locked: bool) -
         else "<button type='submit' name='status' value='accepted'>Accept</button>"
     )
     return (
-        (
+        "<div class='claim-actions'>"
+        + (
             page.form("/claim/edit", hidden + accept, "inline", "/setup", f"claim-{cid}")
             if accept
             else ""
@@ -2600,7 +2617,15 @@ def _claim_buttons(page: Page, cid: str, status: str, text: str, locked: bool) -
             "/setup",
             f"claim-{cid}",
         )
-        + "<details><summary>Edit the wording</summary>"
+        # A removed claim leaves the table, so its form comes back to the section instead.
+        + page.form(
+            "/claim/edit",
+            hidden + "<button type='submit' name='status' value='removed'>Remove</button>",
+            "inline",
+            "/setup",
+            "claims",
+        )
+        + "</div><details><summary>Edit the wording</summary>"
         + page.form(
             "/claim/edit",
             hidden + "<input type='hidden' name='status' value='edited'>"
@@ -2610,14 +2635,6 @@ def _claim_buttons(page: Page, cid: str, status: str, text: str, locked: bool) -
             anchor=f"claim-{cid}",
         )
         + "</details>"
-        # A removed claim leaves the table, so its form comes back to the section instead.
-        + page.form(
-            "/claim/edit",
-            hidden + "<button type='submit' name='status' value='removed'>Remove</button>",
-            "inline",
-            "/setup",
-            "claims",
-        )
     )
 
 

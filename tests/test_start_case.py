@@ -317,6 +317,15 @@ def test_proposed_claims_must_be_decided_and_owners_confirmed_before_the_audit(a
     assert status.claim_name(conn, "C05", pid) == "C05"
     for path in ("/setup", "/claims"):
         assert f">{name}</a>" in get(app, path).text
+    # Set up's claims table keeps short cells whole and puts Accept, Up, Down and Remove on one
+    # row, with Edit the wording under them.
+    setup = get(app, "/setup").text
+    assert "<table class='tidy claim-order'>" in setup
+    row = setup.split(f"<tr id='claim-{proposed[0]}'>", 1)[1].split("</tr>", 1)[0]
+    actions = row.split("<div class='claim-actions'>", 1)[1].split("</div>", 1)[0]
+    for label in (">Accept<", ">Up<", ">Down<", ">Remove<"):
+        assert label in actions
+    assert "<details><summary>Edit the wording</summary>" in row.split(actions, 1)[1]
     claim_page = get(app, "/claim", id=proposed[0]).text
     assert f"<h1>{name} " in claim_page and proposed[0] in claim_page  # the id stays findable
     post(app, "/audit/start", next="/run")

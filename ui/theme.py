@@ -219,6 +219,30 @@ td form.inline button { min-height: 28px; padding: 0 9px; font-size: 12.5px;
   margin: 2px 4px 2px 0; }
 tr.target td { font-weight: 600; background: var(--accent-bg); }
 
+/* Set up's tables: words stay whole (a cell wraps only between words), controls sit on one
+   row, and the claims table's wording column takes the room. */
+table.tidy td { overflow-wrap: break-word; }
+table.tidy td.nowrap { white-space: nowrap; }
+table.tidy td .mono { white-space: nowrap; word-break: normal; overflow-wrap: normal; }
+table.tidy td.controls { width: 1%; white-space: nowrap; }
+table.tidy .row-actions { display: flex; flex-wrap: nowrap; gap: 6px; align-items: center; }
+table.tidy .row-actions form.inline { display: flex; gap: 6px; align-items: center; }
+table.tidy .row-actions input[type=text] { min-width: 0; width: 170px; margin: 0; }
+table.tidy .row-actions button { margin: 0; }
+table.tidy td.controls details { margin-top: 6px; }
+table.tidy td.controls details > summary { font-size: 13px; }
+table.tidy td.controls details[open] > summary { margin-bottom: 6px; }
+table.claim-order td.brief { padding-right: 8px; }
+table.claim-order td.where { white-space: nowrap; }
+table.claim-order td.decide { width: 1%; white-space: nowrap; overflow-wrap: normal; }
+table.claim-order .claim-actions { display: flex; flex-wrap: nowrap; gap: 6px;
+  align-items: center; }
+table.claim-order .claim-actions form.inline { display: flex; gap: 6px; }
+table.claim-order .claim-actions button { margin: 0; }
+table.claim-order td.decide details { margin-top: 6px; white-space: normal; }
+table.claim-order td.decide details > summary { white-space: nowrap; font-size: 13px; }
+table.claim-order td.decide textarea { width: 100%; min-width: 260px; margin: 6px 0; }
+
 /* Forms: labels above fields, 36px controls, one clear focus ring */
 form.inline { display: inline; }
 form.box { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
