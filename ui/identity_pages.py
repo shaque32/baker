@@ -17,7 +17,7 @@ import sqlite3
 from core import pipeline
 from core.identity import aliases
 from core.identity import links as L
-from ui.pages import Page, e, link, q
+from ui.pages import Page, _folded, e, link, q
 
 STATUS_LABEL = {
     "proposed": "Proposed",
@@ -42,17 +42,31 @@ def _ref(s: L.Signal) -> str:
     return f"<div class='ref mono'>{e(where)} · {e(s.record_id)}</div>"
 
 
-def _signals(items: list[L.Signal], empty: str) -> str:
+def _signals(items: list[L.Signal], empty: str, shown: int | None = None) -> str:
+    """The records on one side of a link. The first `shown` stay open; the rest fold under
+    them, so a long side does not bury the decision. Every record stays on the page."""
     if not items:
         return f"<p class='muted'>{e(empty)}</p>"
+    rows = [
+        f"<li><div class='quote'>{q(s.quote)}</div><div class='note'>{note_html(s.note)}</div>"
+        f"{_ref(s)}</li>"
+        for s in items
+    ]
+    if shown is None or len(rows) <= shown + 1:
+        return "<ul class='sig'>" + "".join(rows) + "</ul>"
+    rest = len(rows) - shown
     return (
         "<ul class='sig'>"
-        + "".join(
-            f"<li><div class='quote'>{q(s.quote)}</div><div>{note_html(s.note)}</div>{_ref(s)}</li>"
-            for s in items
-        )
-        + "</ul>"
+        + "".join(rows[:shown])
+        + "</ul><details class='sigmore'><summary>"
+        + f"{rest} more record{'s' if rest != 1 else ''}</summary><ul class='sig'>"
+        + "".join(rows[shown:])
+        + "</ul></details>"
     )
+
+
+def _side(cls: str, title: str, n: int) -> str:
+    return f"<p class='side {cls}'>{e(title)} <span class='n'>{n}</span></p>"
 
 
 def _decided(row: dict) -> str:
@@ -78,15 +92,15 @@ def _link_card(
     tier = "b-conf" if status == "confirmed" else "b-open"
     tier_text = "confirmed" if status == "confirmed" else "inferred"
     stated = L.claims_stating(case, cand) if cand else []
+    seen = f" · Seen on {q(phones)}." if phones else ""
     out = [
         f"<article class='card idlink st-{e(status)}' id='{e(row['id'])}'><div class='in'>",
-        "<div class='idhead'><span class='eyebrow'>Account used by person</span><span>"
-        f"<span class='badge {tier}'>{e(tier_text)}</span>"
+        f"<div class='idhead'><p class='idpair'>{q(label)} "
+        f"<span class='arrow' aria-label='linked to'>→</span> {q(person.name)}</p>"
+        f"<span class='idtags'><span class='badge {tier}'>{e(tier_text)}</span>"
         f"<span class='stpill st-{e(status)}'>{e(STATUS_LABEL[status])}</span></span></div>",
-        f"<p class='idpair'>{q(label)} <span class='arrow' aria-label='linked to'>→</span> "
-        f"{q(person.name)}</p>",
-        f"<p class='muted'>Seen on {q(phones)}.</p>" if phones else "",
-        f"<p>{note_html(cand.basis) if cand else q(row['basis'])}</p>",
+        f"<p class='idmeta'>Account used by person{seen}</p>",
+        f"<p class='idbasis'>{note_html(cand.basis) if cand else q(row['basis'])}</p>",
     ]
     if stated:
         names = ", ".join(f"<a href='{e(link('/claim', id=c))}'>{e(c)}</a>" for c in stated)
@@ -98,13 +112,21 @@ def _link_card(
     out.append(_decided(row))
     out.append("</div>")
     if cand is not None:
-        out.append(
-            "<div class='idgrid'><div><p class='side for'>For</p>"
-            + _signals(cand.support, "No record names this account this way now.")
-            + "</div><div><p class='side against'>Against, or pointing elsewhere</p>"
-            + _signals(cand.against, "None found in the records searched.")
+        grid = (
+            "<div class='idgrid'><div>"
+            + _side("for", "For", len(cand.support))
+            + _signals(cand.support, "No record names this account this way now.", 3)
+            + "</div><div>"
+            + _side("against", "Against, or pointing elsewhere", len(cand.against))
+            + _signals(cand.against, "None found in the records searched.", 3)
             + "</div></div>"
         )
+        if status in ("confirmed", "rejected"):  # decided: the records fold, one click away
+            grid = (
+                f"<details class='idrec'><summary>Records: {len(cand.support)} for, "
+                f"{len(cand.against)} against or pointing elsewhere</summary>{grid}</details>"
+            )
+        out.append(grid)
         if cand.mentions:
             out.append(
                 f"<div class='in'><details><summary>Messages in this account's conversations "
@@ -123,13 +145,14 @@ def _link_card(
         )
     )
     out.append(
-        "<div class='in'>"
+        "<div class='in idact'>"
         + page.form(
             "/identity/decide",
             f"<input type='hidden' name='id' value='{e(row['id'])}'>"
-            "<label>Why (one sentence; needed to confirm or reject)<br>"
-            "<input type='text' name='note' maxlength='300' class='wide'></label><br>" + choices,
-            "plain",
+            "<label>Why (one sentence; needed to confirm or reject)"
+            "<input type='text' name='note' maxlength='300' class='wide'></label>"
+            f"<span class='choices'>{choices}</span>",
+            "plain decide",
             "/identities",
             anchor=row["id"],
         )
@@ -159,9 +182,26 @@ def _person_card(
     by_group = {
         a: c for c in cands.values() for a in c.group.account_ids
     }  # a stored link may point at another phone's copy
+    remove = (
+        page.form(
+            "/person/remove",
+            f"<input type='hidden' name='id' value='{e(person.id)}'>"
+            "<button type='submit' class='remove'>Remove this person</button>",
+            "inline",
+            "/identities",
+        )
+        if not owner and not any(r["status"] == "confirmed" for r in rows)
+        else ""
+    )
+    owner_note = (
+        "The owner accounts of this phone are tied to this person by the "
+        "stipulation. Links below are other accounts that carry the name."
+    )
     out = [
-        f"<section class='person' id='{e(person.id)}'><p class='eyebrow'>{e(kind)}</p>",
-        f"<h2 class='pname'>{q(person.name)}</h2><p>{named}</p>",
+        f"<section class='person' id='{e(person.id)}'><div class='phead'><div>"
+        f"<h2 class='pname'>{q(person.name)}</h2><p class='pkind'>{e(kind)}</p></div>"
+        f"{remove}</div>",
+        f"<p class='pclaims'>{named}</p>",
         page.form(
             "/person/aliases",
             f"<input type='hidden' name='id' value='{e(person.id)}'>"
@@ -169,41 +209,31 @@ def _person_card(
             "<input type='text' name='aliases' maxlength='600' placeholder='SUBJECT-1, HAL' "
             f"value='{e(', '.join(_stored_aliases(conn, person.id)))}'></label> "
             "<button type='submit'>Save names</button>"
-            "<span class='muted'> Separate names with commas. Each is matched whole, and every "
-            "report lists the names you gave.</span>",
-            "plain",
+            "<span class='muted hint'> Separate names with commas. Each is matched whole, and "
+            "every report lists the names you gave.</span>",
+            "plain aliasf",
             "/identities",
             anchor=person.id,
         ),
     ]
-    if owner:
-        out.append(
-            "<p class='muted'>The owner accounts of this phone are tied to this person by the "
-            "stipulation. Links below are other accounts that carry the name.</p>"
-        )
+    if owner and rows:
+        out.append(f"<p class='muted pnote'>{owner_note}</p>")
     for row in rows:
         out.append(_link_card(page, case, person, row, by_group.get(row["account_id"])))
     if not rows and owner:
         out.append(
-            "<p class='muted'>No account beyond this phone's own carries this name or a part "
-            f"of it. {note_html(L.searched_note(case))}</p>"
+            "<details class='absent'><summary>No account beyond this phone's own carries this "
+            "name or a part of it.</summary>"
+            f"<p>{note_html(L.searched_note(case))}</p><p>{owner_note}</p></details>"
         )
     elif not rows:
         out.append(
-            "<div class='banner'><strong>No account in the data carries this name or a part of "
-            f"it.</strong> {note_html(L.searched_note(case))} Not found does not mean "
-            f"{q(person.name)} has no account here: a name can be saved differently, or not at "
-            "all. Claims that rest on who this person is stay unproven unless you link an "
-            "account below.</div>"
-        )
-    if not owner and not any(r["status"] == "confirmed" for r in rows):
-        out.append(
-            page.form(
-                "/person/remove",
-                f"<input type='hidden' name='id' value='{e(person.id)}'>"
-                "<button type='submit'>Remove this person</button>",
-                "inline",
-                "/identities",
+            _folded(
+                "<div class='banner'><strong>No account in the data carries this name or a part "
+                f"of it.</strong> {note_html(L.searched_note(case))} Not found does not mean "
+                f"{q(person.name)} has no account here: a name can be saved differently, or not "
+                "at all. Claims that rest on who this person is stay unproven unless you link an "
+                "account below.</div>"
             )
         )
     out.append("</section>")
@@ -252,7 +282,7 @@ def _unplaced(page: Page, names: list[L.UnplacedName], persons: list[L.Person]) 
             )
         out.append(
             f"<li><div class='row'><div class='head'><div class='text'>{q(u.name)}</div>"
-            f"<div>{add}</div></div><div class='needs'>Used in {cl}; {e(why)}.</div>"
+            f"<div class='acts'>{add}</div></div><div class='needs'>Used in {cl}; {e(why)}.</div>"
             "</div></li>"
         )
     out.append("</ul>")
@@ -309,21 +339,32 @@ def identities_page(conn: sqlite3.Connection, page: Page) -> str:
         "name on the account; no model is involved. Every report lists each confirmed link as "
         "a limitation. Proposed, unresolved and rejected links stay unknown. A proposed or "
         "unresolved link only widens what the audit searches for that person.</p></details>",
-        "<div class='counts'>"
+        "<div class='idbar'><div class='counts'>"
         + "".join(
-            f"<span class='stpill st-{s}'>{e(STATUS_LABEL[s])} <b>{n}</b></span>"
+            f"<span class='stpill st-{s}{' zero' if not n else ''}'>{e(STATUS_LABEL[s])} "
+            f"<b>{n}</b></span>"
             for s, n in counts.items()
+        )
+        + "</div>"
+        + page.form(
+            "/identity/look",
+            "<button type='submit'>Look for links again</button> <span class='muted'>After "
+            "importing more data or changing a phone owner.</span>",
+            "plain look",
+            "/identities",
         )
         + "</div>",
     ]
     changed = _changed_since_audit(conn)
     if changed:
         out.append(
-            f"<div class='banner'><strong>{changed} identity change(s) since the last audit "
-            "started.</strong> They reach the checks and searches on the next audit run. "
-            "Finished model work is reused, so only what changed goes to the model. "
-            "<a href='/setup'>Set up and run</a>. Re-running the verdicts alone does not apply "
-            "them.</div>"
+            _folded(
+                f"<div class='banner'><strong>{changed} identity change(s) since the last audit "
+                "started.</strong> They reach the checks and searches on the next audit run. "
+                "Finished model work is reused, so only what changed goes to the model. "
+                "<a href='/setup'>Set up and run</a>. Re-running the verdicts alone does not "
+                "apply them.</div>"
+            )
         )
     out.append("<h2>Names the claims use with no person yet</h2>")
     out.append(_unplaced(page, L.unplaced_names(conn, case.persons), case.persons))
@@ -335,16 +376,8 @@ def identities_page(conn: sqlite3.Connection, page: Page) -> str:
             "placeholder='The name as printed'></label> <button type='submit'>Add person</button>"
             "<p class='muted'>Adding a name ties it to nothing. Mabillon then looks for accounts "
             "that carry the name and proposes links for you to decide.</p>",
+            "plain addp",
             back="/identities",
-        )
-    )
-    out.append(
-        page.form(
-            "/identity/look",
-            "<button type='submit'>Look for links again</button> <span class='muted'>After "
-            "importing more data or changing a phone owner.</span>",
-            "plain",
-            "/identities",
         )
     )
     owners = [p for p in case.persons if p.devices]
@@ -368,14 +401,15 @@ def identities_page(conn: sqlite3.Connection, page: Page) -> str:
             "<h2>Link an account yourself</h2>"
             + page.form(
                 "/identity/link",
-                f"<p><label>Account <select name='account'>{acc_opts}</select></label> "
-                f"<label>Person <select name='person'>{per_opts}</select></label></p>"
-                "<p><label>Why (one sentence, recorded with your name)<br><input type='text' "
+                f"<p class='pick'><label>Account <select name='account'>{acc_opts}</select>"
+                f"</label> <label>Person <select name='person'>{per_opts}</select></label></p>"
+                "<p><label>Why (one sentence, recorded with your name)<input type='text' "
                 "name='note' required maxlength='300' class='wide'></label></p>"
-                "<button type='submit' class='primary'>Link and confirm</button> "
+                "<p class='go'><button type='submit' class='primary'>Link and confirm</button> "
                 "<span class='muted'>Your own link is your decision, so it is confirmed at "
-                "once and listed in the report as a limitation.</span>",
+                "once and listed in the report as a limitation.</span></p>",
+                "box linkself",
                 back="/identities",
             )
         )
-    return page.wrap("Identities", "".join(out))
+    return page.wrap("Identities", "<div class='pg-ids'>" + "".join(out) + "</div>")
