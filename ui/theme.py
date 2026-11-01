@@ -63,7 +63,10 @@ THEME_CSS = """
   --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
   --ring: rgb(29 53 87 / 0.16); --accent-bg: #ebf0f7; --unp: #5f6878; --unp-bg: #f0f2f5;
   --unp-line: #d9dde4; --await: #1d3557;
-  --field: #fff; --amber: #b7862c; --radius: 8px; --sidebar: 232px; }
+  --field: #fff; --amber: #b7862c; --radius: 8px; --sidebar: 232px;
+  /* controls (site/styles.css): 8px buttons, 7px fields, one navy primary */
+  --accent-fg: #fff; --accent-hover: #142842; --line-hover: #b3bac6; --ctl-radius: 8px;
+  --field-radius: 7px; --ease: cubic-bezier(.22, 1, .36, 1); }
 body { max-width: none; padding: 0 0 0 var(--sidebar); font-size: 14px; line-height: 1.55;
   background: var(--bg); }
 main { max-width: 1120px; margin: 0; padding: 32px 48px 96px; }
@@ -208,7 +211,7 @@ td .mono { display: inline-block; margin-top: 2px; }
 td form.inline button { margin: 0; }
 td input[type=text], td input[type=password] { min-width: 0; width: 100%; max-width: 260px;
   height: 32px; font-size: 13.5px; }
-td button { min-height: 30px; padding: 0 10px; font-size: 13px; margin: 2px 6px 2px 0; }
+td button { min-height: 30px; padding: 0 11px; font-size: 13px; margin: 2px 6px 2px 0; }
 .ctx td { font-size: 13px; }
 td { overflow-wrap: anywhere; }
 td.when { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--muted);
@@ -237,39 +240,67 @@ label:has(> input[type=number]) input { margin: 0; }
 label:has(> textarea[name]), label:has(> input[type=text].wide) { display: grid;
   margin-right: 0; }
 label:has(> input[type=checkbox], > input[type=radio]) { display: inline-flex;
-  align-items: center; gap: 8px; margin: 0 16px 6px 0; cursor: pointer; }
+  align-items: flex-start; gap: 10px; margin: 0 16px 6px 0; cursor: pointer; }
+label:has(> input[type=checkbox], > input[type=radio]) > input { margin-top: 0.2em; }
 input[type=text], input[type=password], input[type=number], input[type=search], select {
   height: 36px; }
 input[type=text], input[type=password], input[type=number], input[type=search],
 input[type=file], textarea, select {
   font: 400 14px/1.4 var(--sans); color: var(--fg); background: var(--field);
-  border: 1px solid var(--line-strong); border-radius: 6px; padding: 0 10px;
+  border: 1px solid var(--line-strong); border-radius: var(--field-radius); padding: 0 11px;
   max-width: 100%; box-sizing: border-box; margin: 0 6px 6px 0;
-  box-shadow: 0 1px 1px rgb(20 20 20 / 0.03); }
+  box-shadow: 0 1px 1px rgb(20 20 20 / 0.03);
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease); }
 input[type=text], input[type=password] { min-width: min(280px, 100%); }
 textarea { padding: 8px 10px; line-height: 1.55; min-height: 96px; resize: vertical; }
 input[type=file] { height: auto; padding: 8px; background: var(--side); border-style: dashed;
   box-shadow: none; }
 input[type=file]::file-selector-button { font: 500 13px var(--sans); color: var(--fg);
-  background: var(--card); border: 1px solid var(--line-strong); border-radius: 6px;
-  padding: 5px 10px; margin-right: 12px; cursor: pointer; }
+  background: var(--card); border: 1px solid var(--line-strong);
+  border-radius: var(--ctl-radius); padding: 6px 12px; margin-right: 12px; cursor: pointer;
+  box-shadow: 0 1px 2px rgb(20 20 20 / 0.05); transition: border-color 0.15s var(--ease); }
+input[type=file]:hover::file-selector-button { border-color: var(--line-hover); }
 select { appearance: none; -webkit-appearance: none; padding-right: 32px; cursor: pointer;
   background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
     linear-gradient(135deg, var(--muted) 50%, transparent 50%);
   background-position: calc(100% - 17px) 52%, calc(100% - 12px) 52%;
   background-size: 5px 5px; background-repeat: no-repeat; }
-input::placeholder, textarea::placeholder { color: #6f6b64; }
+input::placeholder, textarea::placeholder { color: var(--muted); opacity: 0.85; }
 fieldset.msgsplit { border: 0; padding: 0; margin: 0 0 12px; }
 fieldset.msgsplit label { display: flex; align-items: baseline; gap: 6px; width: auto;
   margin: 0 0 6px; font-weight: 400; }
 fieldset.msgsplit legend { padding: 0; margin-bottom: 6px; font-weight: 500; }
 input[type=text]:hover, input[type=password]:hover, input[type=number]:hover, textarea:hover,
-select:hover { border-color: #bdb9b0; }
+select:hover { border-color: var(--line-hover); }
 input[type=text]:focus, input[type=password]:focus, input[type=number]:focus,
 input[type=search]:focus, textarea:focus, select:focus {
   outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--ring); }
-input[type=checkbox], input[type=radio] { width: 15px; height: 15px; margin: 0;
-  accent-color: var(--accent); cursor: pointer; }
+/* Checkboxes and radios drawn in CSS (the CSP allows no images): a 16px box with a navy fill
+   and a white tick when checked. Forced-colors mode gets the system control back. */
+input[type=checkbox], input[type=radio] { appearance: none; -webkit-appearance: none;
+  flex: none; display: inline-grid; place-content: center; width: 16px; height: 16px;
+  margin: 0; vertical-align: -3px; background: var(--field);
+  border: 1px solid var(--line-strong); border-radius: 4px; cursor: pointer;
+  box-shadow: 0 1px 1px rgb(20 20 20 / 0.04);
+  transition: background-color 0.12s var(--ease), border-color 0.12s var(--ease); }
+input[type=radio] { border-radius: 50%; }
+input[type=checkbox]::before { content: ""; width: 8px; height: 4px; margin-top: -2px;
+  border: solid var(--accent-fg); border-width: 0 0 2px 2px; transform: rotate(-45deg) scale(0);
+  transition: transform 0.12s var(--ease); }
+input[type=radio]::before { content: ""; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent-fg); transform: scale(0); transition: transform 0.12s var(--ease); }
+input[type=checkbox]:checked, input[type=radio]:checked { background: var(--accent);
+  border-color: var(--accent); }
+input[type=checkbox]:checked::before { transform: rotate(-45deg) scale(1); }
+input[type=radio]:checked::before { transform: scale(1); }
+input[type=checkbox]:hover:not(:disabled), input[type=radio]:hover:not(:disabled) {
+  border-color: var(--accent); }
+input[type=checkbox]:focus-visible, input[type=radio]:focus-visible { outline: none;
+  box-shadow: 0 0 0 3px var(--ring); }
+@media (forced-colors: active) {
+  input[type=checkbox], input[type=radio] { appearance: auto; -webkit-appearance: auto; }
+  input[type=checkbox]::before, input[type=radio]::before { content: none; }
+}
 input[type=text].wide, textarea { width: 100%; margin-right: 0; }
 input:disabled, select:disabled, textarea:disabled { opacity: 0.55; cursor: not-allowed; }
 
@@ -298,24 +329,41 @@ form.settings small { font-weight: 400; font-size: 12px; color: var(--muted);
 form.settings .actions { display: flex; }
 form.settings .actions button { margin: 0; }
 
-/* Buttons: quiet by default, navy for the one main action */
+/* Buttons (site/styles.css): quiet white by default, navy for the one main action, red text
+   for the one that removes something. 34px tall, 8px corners, a soft press. */
 button { display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  min-height: 32px; font: 500 13.5px/1 var(--sans); color: var(--fg); background: var(--card);
-  border: 1px solid var(--line-strong); border-radius: 6px; padding: 0 12px;
-  margin: 6px 8px 0 0; cursor: pointer; box-shadow: 0 1px 1px rgb(20 20 20 / 0.04);
-  vertical-align: middle; }
-button:hover { background: var(--hover); border-color: #bdb9b0; }
+  min-height: 34px; font: 500 13.5px/1.2 var(--sans); color: var(--fg); background: var(--card);
+  border: 1px solid var(--line-strong); border-radius: var(--ctl-radius); padding: 0 14px;
+  margin: 6px 8px 0 0; cursor: pointer; box-shadow: 0 1px 2px rgb(20 20 20 / 0.05);
+  vertical-align: middle; text-align: center;
+  transition: background-color 0.15s var(--ease), border-color 0.15s var(--ease),
+    color 0.15s var(--ease), box-shadow 0.15s var(--ease); }
+button:hover { background: var(--hover); border-color: var(--line-hover); }
+button:active:not(:disabled) { box-shadow: none; transform: translateY(0.5px); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 button.primary, button[value=accepted] { background: var(--accent); border-color: var(--accent);
-  color: #fff; }
-button.primary:hover, button[value=accepted]:hover { background: #142842; border-color: #142842; }
+  color: var(--accent-fg); font-weight: 600;
+  box-shadow: 0 1px 2px rgb(29 53 87 / 0.22), inset 0 1px 0 rgb(255 255 255 / 0.08); }
+button.primary:hover, button[value=accepted]:hover { background: var(--accent-hover);
+  border-color: var(--accent-hover); }
 button[value=dismissed], button[value=removed] { color: var(--con); }
 button[value=dismissed]:hover, button[value=removed]:hover { background: var(--con-bg);
   border-color: var(--con-line); }
+@media (prefers-reduced-motion: reduce) {
+  button, input, select, textarea, input::before { transition: none; }
+}
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
-details summary { color: var(--accent); font-weight: 500; }
-details summary::marker { color: var(--muted); }
+/* Disclosures: a small drawn chevron that turns when open, in place of the browser triangle */
+details > summary { color: var(--accent); font-weight: 500; list-style: none; cursor: pointer;
+  display: list-item; }
+details > summary::-webkit-details-marker { display: none; }
+details > summary::before { content: ""; display: inline-block; width: 5px; height: 5px;
+  margin: 0 9px 0 2px; vertical-align: 0.18em; border: solid var(--muted);
+  border-width: 0 1.5px 1.5px 0; transform: rotate(-45deg);
+  transition: transform 0.15s var(--ease); }
+details[open] > summary::before { transform: rotate(45deg); vertical-align: 0.28em; }
+details > summary:hover::before { border-color: currentColor; }
 
 /* evidence cards and tier badges: small square-cornered labels, color only in the text */
 .item { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
@@ -414,10 +462,12 @@ body .verdict.v-nt { color: var(--muted); background: var(--panel); border: 0; }
   text-transform: none; }
 .nextup blockquote.claimtext { font-size: 17px; margin: 12px 0 8px; }
 .nextup p { color: var(--muted); margin: 4px 0 14px; max-width: 78ch; }
-a.button { display: inline-flex; align-items: center; min-height: 32px; padding: 0 14px;
-  border-radius: 6px; text-decoration: none; font-weight: 500; font-size: 13.5px; }
-a.button.primary { background: var(--accent); color: #fff; }
-a.button.primary:hover { background: #142842; }
+a.button { display: inline-flex; align-items: center; min-height: 34px; padding: 0 14px;
+  border-radius: var(--ctl-radius); text-decoration: none; font-weight: 500; font-size: 13.5px;
+  transition: background-color 0.15s var(--ease); }
+a.button.primary { background: var(--accent); color: var(--accent-fg); font-weight: 600;
+  box-shadow: 0 1px 2px rgb(29 53 87 / 0.22); }
+a.button.primary:hover { background: var(--accent-hover); }
 section.group { margin: 36px 0; }
 .ghead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px;
   margin-bottom: 10px; }
