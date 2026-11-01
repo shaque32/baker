@@ -435,6 +435,7 @@ body .verdict.v-nt { color: var(--muted); background: var(--panel); border: 0; }
 .progress .track { height: 4px; border-radius: 999px; background: var(--panel); overflow: hidden; }
 .progress .track span { display: block; height: 100%; background: var(--accent);
   border-radius: 999px; }
+.progress .note { margin: 6px 0 0; font-size: 12.5px; color: var(--muted); }
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 12px; margin: 24px 0 28px; }
 .tile { display: flex; flex-direction: column; gap: 4px; padding: 16px 18px;

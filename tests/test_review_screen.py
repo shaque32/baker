@@ -507,3 +507,15 @@ def test_a_form_brings_the_expert_back_to_what_they_acted_on(db, conn):
     assert 'class="flash toast" role="status"' in page  # seen wherever the page opens
     assert 'value="/claim?id=C05#verdict"' in page  # the re-run banner comes back to the verdict
     assert 'value="/#audit"' in get(app, "/").text and "id='audit'" in get(app, "/").text
+
+
+def test_claims_progress_says_its_count_includes_unproven(db, conn):
+    """The progress count covers every audited claim off the expert's list, Unproven included,
+    so the screen says so instead of reading as decided."""
+    from ui.pages import _group
+
+    page = get(App(db, expert="Test Expert", port=PORT), "/claims").text
+    unproven = sum(_group(st) == "unp" for st in queue(conn))
+    assert unproven and "Settled" not in page
+    assert "<span>Not waiting on you</span>" in page
+    assert f"<p class='note'>Includes {unproven} unproven</p>" in page
