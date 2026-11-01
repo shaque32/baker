@@ -19,8 +19,13 @@ import pytest
 
 from core.audit import case_events
 from core.audit._llm_json import prompt_body
-from core.audit.assumption_filler import LocalAssumptionFiller, event_windows
-from core.audit.assumptions import TemplateAssumptionBuilder
+from core.audit.assumption_filler import (
+    LocalAssumptionFiller,
+    Reject,
+    coverage_gap,
+    event_windows,
+)
+from core.audit.assumptions import Proposal, TemplateAssumptionBuilder
 from core.audit.invariants import check_report_text
 from core.contracts import Claim, ClaimStatus, ClaimType
 from core.db import connect
@@ -243,6 +248,8 @@ def _day(conn, date_words: str):
         ("On the day before the RAID", "March 19, 2026"),
         ("Two days before the RAID", "March 18, 2026"),
         ("3 days after the RAID", "March 23, 2026"),
+        ("A day before the RAID", "March 19, 2026"),
+        ("Sixty days after the RAID", "May 19, 2026"),
     ],
 )
 def test_a_whole_day_tied_to_a_one_day_event_is_read(events, tie, day):
@@ -286,6 +293,17 @@ def test_a_whole_day_tied_to_a_one_day_event_is_read(events, tie, day):
         "The day after the RAID's end, PETROV and REYES had no contact of any kind.",
         "The day after the RAID warrant, PETROV and REYES had no contact of any kind.",
         "PETROV and REYES had no contact the day after the RAID-related arrests.",
+        # counts it cannot read or past 60 days, and a name that runs on into other words
+        "Sixty-one days after the RAID, PETROV and REYES had no contact of any kind.",
+        "A few days before the RAID, PETROV and REYES had no contact of any kind.",
+        "The day after the RAID of the unit, PETROV and REYES had no contact of any kind.",
+        # a clock time with no a.m. or p.m., or a zone: never widened or moved (Codex on #201)
+        "Between 9 and 11 on the day after the RAID, PETROV and REYES had no contact.",
+        "At nine on the day after the RAID, PETROV and REYES had no contact of any kind.",
+        "On the day after the RAID, at 21:00, PETROV and REYES had no contact of any kind.",
+        "On the day after the RAID, in UTC, PETROV and REYES had no contact of any kind.",
+        "On the day after the RAID (Eastern Time), PETROV and REYES had no contact.",
+        "On the day after the RAID, UTC+3, PETROV and REYES had no contact of any kind.",
         # the claim's own date is not the event's day it names
         "On March 22, 2026, the day after the RAID, PETROV and REYES had no contact of any kind.",
     ],
@@ -303,6 +321,28 @@ def test_the_claims_own_date_agreeing_with_the_tie_is_read(events):
     )
 
 
+def test_a_date_the_claim_writes_but_code_cannot_place_is_never_dropped_for_the_tie(events):
+    # No year in the claim, and two in its paragraph: the written March 22 cannot be read, so
+    # the tie's March 21 must not stand in for it (Codex on #201).
+    para = "In 2025 and 2026 the agents watched the unit."
+    events.execute(
+        "INSERT INTO govdoc_paragraphs (id, govdoc_id, page, para_no, label, char_start,"
+        " char_end, text) SELECT 'para:years', govdoc_id, 9, 98, '98', 0, ?, ? FROM"
+        " govdoc_paragraphs WHERE id = ?",
+        (len(para), para, PARA),
+    )
+    filler = LocalAssumptionFiller(FakeModel("{}"), events, template=DRAFT)
+    c = Claim(
+        id="X4",
+        paragraph_id="para:years",
+        text="On March 22, the day after the RAID, PETROV and REYES had no contact.",
+        claim_type=ClaimType.ABSENCE,
+        status=ClaimStatus.ACCEPTED,
+    )
+    with pytest.raises(Reject, match="writes a date code cannot read"):
+        filler._stated(c, para, [], "no_contact", None)
+
+
 def test_a_tied_day_with_a_clock_change_is_its_wall_clock_day(events):
     # New York: March 8, 2026 is 23 hours long and November 1, 2026 is 25.
     (a,), _ = _no_contact(events, "The day after the TRUCK, PETROV and REYES had no contact.")
@@ -314,6 +354,79 @@ def test_a_tied_day_with_a_clock_change_is_its_wall_clock_day(events):
     assert b.params.window.end_utc - b.params.window.start_utc == timedelta(hours=25) - timedelta(
         microseconds=1
     )
+
+
+def test_a_tied_day_is_read_in_the_phones_zone_as_a_written_date_is(events):
+    # The document's wall-clock day goes in the phone's zone, exactly as "On March 21, 2026"
+    # does, wherever the affidavit was written.
+    events.execute("UPDATE devices SET timezone = 'America/Chicago'")
+    (a,), _ = _no_contact(events, "The day after the RAID, PETROV and REYES had no contact.")
+    assert a.params.window.tz == "America/Chicago"
+    assert a.params.window.start_utc == datetime(2026, 3, 21, 5, 0, tzinfo=UTC)
+    assert a.params.window == _day(events, "March 21, 2026").model_copy(
+        update={"raw": a.params.window.raw}
+    )
+    # phones in two zones: refused for the tie as for the written date
+    (one,) = events.execute("SELECT id FROM devices ORDER BY id LIMIT 1").fetchone()
+    events.execute("UPDATE devices SET timezone = 'America/New_York' WHERE id = ?", (one,))
+    for text in (
+        "The day after the RAID, PETROV and REYES had no contact.",
+        "On March 21, 2026, PETROV and REYES had no contact.",
+    ):
+        made, filler = _no_contact(events, text)
+        assert made == []
+        assert "do not share one known time zone" in " | ".join(d.reason for d in filler.drops)
+
+
+def test_code_dates_a_quoted_message_by_the_tie(events):
+    # The record_time code adds to a named writer's message reads the tie the same way.
+    quote = "need 2 more by friday"
+    prop = {
+        "template_id": "sender",
+        "people": ["PETROV"],
+        "accounts": [],
+        "handles": [],
+        "phones": [],
+        "channels": [],
+        "quoted_text": quote,
+        "count": None,
+        "duration": None,
+        "window": None,
+    }
+    filler = LocalAssumptionFiller(
+        FakeModel(json.dumps({"assumptions": [prop]})), events, template=DRAFT
+    )
+    c = Claim(
+        id="X2",
+        paragraph_id=PARA,
+        text=f'The day after the RAID, PETROV wrote to @northstar: "{quote}".',
+        claim_type=ClaimType.COMMUNICATION,
+        status=ClaimStatus.ACCEPTED,
+    )
+    made = {a.template_id: a for a in TemplateAssumptionBuilder(filler).build(c)}
+    assert "record_time" in made, filler.drops
+    assert made["record_time"].params.window == _day(events, "March 21, 2026").model_copy(
+        update={"raw": "The day after the RAID"}
+    )
+
+
+def test_a_claim_dated_by_an_event_is_not_tested_on_its_sender_alone(events):
+    c = Claim(
+        id="X3",
+        paragraph_id=PARA,
+        text='The day after the RAID, PETROV wrote to @northstar: "need 2 more by friday".',
+        claim_type=ClaimType.COMMUNICATION,
+        status=ClaimStatus.ACCEPTED,
+    )
+    sender = Proposal("sender", {"quoted_text": "need 2 more by friday"})
+    readable = tuple(case_events.readable(events))
+    assert coverage_gap(c, [sender], events=readable) == (
+        "the claim is dated by a defined event but no assumption tests a time range"
+    )
+    assert coverage_gap(c, [sender]) is None  # with no events entered, as on main
+    (w,) = event_windows(c.text, list(readable))
+    timed = Proposal("record_time", {"quoted_text": "need 2 more by friday", "window": w})
+    assert coverage_gap(c, [sender, timed], events=readable) is None
 
 
 def test_no_event_means_no_change(conn):

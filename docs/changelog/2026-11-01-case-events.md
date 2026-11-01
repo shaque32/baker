@@ -10,8 +10,13 @@
   as", "the day before or after" and "N days before or after". The day is read in the phone's
   zone like a date the claim writes, so a clock-change day is 23 or 25 hours long. It refuses
   everything else: "in the days before", "shortly before", "the night of", "after" with no
-  count, any time of day, part of a day or weekday, two ties, a multi-day event, a quoted name,
-  and a name that runs on ("the SEARCH warrant").
+  count, any time of day (also "between 9 and 11" with no a.m. or p.m.), part of a day or
+  weekday, any zone the claim names ("in UTC"), a date the claim writes that code cannot place,
+  two ties, a multi-day event, a quoted name, and a name that runs on ("the SEARCH warrant").
+  - A claim tied to a defined event counts as stating a date: code adds the record_time of a
+    named writer's message from the tied day, as it does from a written date, and the coverage
+    gate refuses a claim dated by an event that no assumption gives a time range, so it is not
+    tested on its sender or meaning alone. FILLER_VERSION is 4.
   - The Set up page lists events and adds or removes them.
   - The report's Limitations list each event as an expert statement (report 0.31.0).
   - An event change after a run marks verdicts "Not current".
@@ -21,17 +26,23 @@
   - Why: in the case04 alias replay, 8 of the 11 remaining window or quote refusals were dated
     only by an event or by the sentence before.
 - Where: PR #201 (branch claude/project-thread-ds0ify)
-- Verified: 42 new tests in `tests/test_case_events.py`. They fail on main, which has no table, actions
+- Verified: 57 new tests in `tests/test_case_events.py`. They fail on main, which has no table, actions
     or reader. The near-miss tests are guards that pass both before and after.
   - Replay of Arsh's recorded case04 filler answers (development data, filler only, no model)
     with the three events an expert would enter from its affidavit: claims with a core
     assumption are 15 before and 15 after. The window refusal on C47 ("Two days after the KEDZIE
     YARD theft") is gone, but C47 still converts nothing, because the model's answer holds no
     event or role template. C17 and C35 need forms this version does not read, and the rest are
-    refused as before. No new assumption was made, so no new false supported.
+    refused as before. No new assumption was made, so no new false supported. With the
+    coverage gate, claims with a core assumption are 14: C23 ("Two days before the SEARCH, the
+    BUYER offered ...") had only a meaning assumption and is now refused, because nothing tested
+    its date. That is a loss of one tested claim, on purpose.
   - Outputs are in project files under `baker/agentic/case04-run-2026-10-30/case-events-replay/`.
   - `make check` passes; eval numbers are in the PR.
-- Open: conversion gain is measured as zero on case04's recorded answers, and on no other case.
+- Open: conversion gain is measured as zero on case04's recorded answers (one claim fewer
+  tested, by the coverage gate), and on no other case. Before anyone quotes a gain, a case.json
+  with `events` needs a bar set first: 0 false supported from event-tied windows, conversion
+  reported as n of N, on case04, case05 or a new synthetic case, never case02.
   - The testability step and the model are not told about events, so their effect on an agent
     run is unmeasured.
   - The later forms ("from Monday through Wednesday" in the days before X, a time on the day
