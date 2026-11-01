@@ -52,20 +52,22 @@ MARK = (
 )
 
 THEME_CSS = """
-/* Design tokens. A quiet working dashboard: white pages, a light sidebar, gray lines, one navy
-   accent, and the verdict colors only as small text badges. One text face, IBM Plex Sans, for
-   everything but the wordmark (Instrument Serif); IBM Plex Mono only for ids and hashes
-   (.mono), so they compare by eye. Labels are never monospace or uppercase. The report keeps
-   its own paper palette (core/report/html.py). */
-:root { --fg: #1a2233; --bg: #f6f7f9; --card: #fff; --side: #f6f7f9; --panel: #f0f2f5;
-  --line: #e3e6eb; --line-strong: #cfd4dc; --muted: #5f6878; --hover: #f9fafb;
+/* Design tokens: the getmabillon.com palette (site/styles.css). A quiet working dashboard:
+   warm paper page and sidebar, near-white cards, warm gray lines, one navy accent, and the
+   verdict colors only as small text badges. One text face, IBM Plex Sans, for everything but
+   the wordmark (Instrument Serif); IBM Plex Mono only for ids and hashes (.mono), so they
+   compare by eye. Labels are never monospace or uppercase. Unproven stays a neutral gray, not
+   the site's amber. The report keeps its own palette (core/report/html.py). */
+:root { --fg: #141414; --bg: #f7f5f0; --card: #fdfcfa; --side: #f7f5f0; --panel: #efece5;
+  --line: #e4e0d8; --line-strong: #cfc9bd; --muted: #5f5a51; --hover: #f5f2ec;
+  --ink-2: #3d3a34;
   --serif: var(--sans); --wordmark: "Instrument Serif", Georgia, serif;
   --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
-  --ring: rgb(29 53 87 / 0.16); --accent-bg: #ebf0f7; --unp: #5f6878; --unp-bg: #f0f2f5;
-  --unp-line: #d9dde4; --await: #1d3557;
+  --ring: rgb(29 53 87 / 0.16); --accent-bg: #e9edf3; --unp: #5f5a51; --unp-bg: #efece5;
+  --unp-line: #dcd7cc; --await: #1d3557;
   --field: #fff; --amber: #b7862c; --radius: 8px; --sidebar: 232px;
   /* controls (site/styles.css): 8px buttons, 7px fields, one navy primary */
-  --accent-fg: #fff; --accent-hover: #142842; --line-hover: #b3bac6; --ctl-radius: 8px;
+  --accent-fg: #fff; --accent-hover: #142842; --line-hover: #b5ae9f; --ctl-radius: 8px;
   --field-radius: 7px; --ease: cubic-bezier(.22, 1, .36, 1); }
 body { max-width: none; padding: 0 0 0 var(--sidebar); font-size: 14px; line-height: 1.55;
   background: var(--bg); }
@@ -115,11 +117,11 @@ a.pill:hover { color: var(--fg); }
 .who { font-size: 12px; color: var(--muted); } .who strong { color: var(--fg); font-weight: 600; }
 nav.tabs { order: 2; display: flex; flex-direction: column; gap: 1px; padding: 12px 12px 16px;
   font-size: 13.5px; }
-nav.tabs a { color: #3c4555; text-decoration: none; padding: 6px 10px; border-radius: 6px;
+nav.tabs a { color: var(--ink-2); text-decoration: none; padding: 6px 10px; border-radius: 6px;
   white-space: nowrap; }
 nav.tabs a:hover { color: var(--fg); background: rgb(20 20 20 / 0.045); }
 nav.tabs a.on { color: var(--accent); font-weight: 600; background: var(--card);
-  box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgb(26 34 51 / 0.05); }
+  box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgb(20 20 20 / 0.05); }
 nav.tabs .sep { flex: none; height: 1px; margin: 8px 10px; background: var(--line); }
 .casestatus { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px;
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
@@ -161,7 +163,7 @@ details.custody > summary { font-size: 13.5px; color: var(--muted); }
 /* Notices: a gray note, not a colored box. The demo and "not tested" notices stay visible. */
 .banner, p.warn { background: var(--card); border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 10px 14px 10px 16px; margin: 0 0 20px; color: #3c4555; font-size: 13px;
+  padding: 10px 14px 10px 16px; margin: 0 0 20px; color: var(--ink-2); font-size: 13px;
   line-height: 1.55; max-width: 92ch; box-shadow: inset 3px 0 0 var(--line-strong); }
 .banner strong, p.warn strong { font-size: inherit; font-weight: 600; color: var(--fg); }
 .banner .banner { background: var(--card); margin: 8px 0 0;
@@ -465,7 +467,7 @@ details > summary:hover::before { border-color: currentColor; }
 .badge { display: inline-flex; align-items: center; height: 20px; padding: 0 6px;
   margin: 0 6px 4px 0; border: 0; border-radius: 4px;
   font: 500 12px var(--sans); letter-spacing: 0; text-transform: none;
-  color: #3c4555; background: var(--panel); }
+  color: var(--ink-2); background: var(--panel); }
 .b-ai { color: var(--muted); background: var(--panel); }
 .b-conf { color: var(--accent); background: var(--accent-bg); }
 .b-open { color: var(--fg); }
@@ -618,13 +620,13 @@ blockquote.claimtext { font: 500 20px/1.45 var(--sans); letter-spacing: -0.005em
 .card > .in + .in { border-top: 1px solid var(--line); background: var(--side); }
 .card .verdict { font-size: 13px; padding: 2px 8px; margin: 6px 0; }
 .card ul { padding-left: 20px; margin: 8px 0; }
-.card details form.box { background: #fff; }
+.card details form.box { background: var(--card); }
 
 /* context around a record, as a conversation */
 .thread { background: var(--side); border: 1px solid var(--line); border-radius: var(--radius);
   padding: 16px; display: flex; flex-direction: column; gap: 8px; }
 .msg { max-width: 72%; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px;
-  background: #fff; align-self: flex-start; }
+  background: var(--card); align-self: flex-start; }
 .msg.out { align-self: flex-end; background: var(--accent-bg); border-color: #d9e1ec; }
 .msg .who2 { font-size: 12.5px; color: var(--muted); }
 .msg .body { font-size: 14px; }
@@ -645,7 +647,7 @@ h2.pname { font: 600 18px/1.35 var(--sans); letter-spacing: -0.005em; margin: 2p
 .idpair .arrow { color: var(--muted); font-weight: 400; margin: 0 6px; }
 .stpill { display: inline-flex; align-items: center; height: 20px; padding: 0 7px;
   border: 0; border-radius: 4px; font: 500 12px var(--sans);
-  color: #3c4555; background: var(--panel); margin: 0 6px 4px 0; white-space: nowrap; }
+  color: var(--ink-2); background: var(--panel); margin: 0 6px 4px 0; white-space: nowrap; }
 .stpill b { margin-left: 4px; font-variant-numeric: tabular-nums; }
 .st-confirmed.stpill { color: var(--sup); background: var(--sup-bg); }
 .st-rejected.stpill { color: var(--con); background: var(--con-bg); }
@@ -674,7 +676,7 @@ main .gap dd ul { margin: 2px 0 0; padding-left: 18px; }
 main .tl > li, main .strips { border-radius: var(--radius); }
 main .tl > li.flag { border-color: var(--line); box-shadow: inset 2px 0 0 var(--con); }
 main .chip { border: 0; border-radius: 4px; padding: 1px 7px; }
-main .bars span { background: #7d8aa0; }
+main .bars span { background: #8a8476; }
 main .bars span.g { background: var(--panel); border: 1px dashed var(--line-strong); }
 details.case-settings { margin: 14px 0 20px; }
 details.case-settings > summary { font-size: 13.5px; color: var(--muted); cursor: pointer; }
