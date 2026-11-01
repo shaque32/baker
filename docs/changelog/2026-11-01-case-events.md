@@ -1,4 +1,4 @@
-## 2026-11-01: case events, the dated events the document defines (schema 0.7.0) (#PR)
+## 2026-11-01: case events, the dated events the document defines (schema 0.7.0) (#201)
 - Changed: the expert can enter the events a government document defines and later claims are
   dated by (`the "SEARCH"`). Each event holds its name, its first and last wall-clock day, and
   the paragraph and words that define it. Code checks the words verbatim against the paragraph,
@@ -20,7 +20,7 @@
   - Schema and contracts 0.7.0, signed by Arsh 2026-11-01 18:47Z.
   - Why: in the case04 alias replay, 8 of the 11 remaining window or quote refusals were dated
     only by an event or by the sentence before.
-- Where: branch claude/project-thread-ds0ify
+- Where: PR #201 (branch claude/project-thread-ds0ify)
 - Verified: 42 new tests in `tests/test_case_events.py`. They fail on main, which has no table, actions
     or reader. The near-miss tests are guards that pass both before and after.
   - Replay of Arsh's recorded case04 filler answers (development data, filler only, no model)
