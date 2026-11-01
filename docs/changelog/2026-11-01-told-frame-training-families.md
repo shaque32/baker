@@ -30,8 +30,9 @@
   (`make stancedata`'s file, sha256 `284a90d7405a91df...` with its 7,250 Baker-wording items)
   hold 479 told frames, 238 undated denials and 200 "never told"; the label mix moves from
   supports 28.8%, complicates 38.6%, contradicts 23.3%, irrelevant 9.4% (eval.train 1.5.0) to
-  27.5%, 41.4%, 23.5% and 7.6%; the moved traps fall about 10% in count with the larger set
-  (time traps 824 to 735, sender traps 496 to 490). The overlap check, run here without case02
+  27.5%, 41.4%, 23.5% and 7.6%. The new families take 7.6% of the plain items, so the older
+  ones fall in count, the time and sender traps by about 10% over seeds 1 to 3 (on seed 1, time
+  traps 824 to 735, sender traps 496 to 490). The overlap check, run here without case02
   (this work may not read it), with the module's own functions: training against the signed and
   draft probe sets, the smoke sets and case01, 0 flagged; training against both held-out files,
   1 chance match (training item T004763, a `sup_contact` window with the same frame, times and
