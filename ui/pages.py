@@ -712,20 +712,26 @@ def _group(st: ClaimState) -> str:
 
 
 def _claim_row(st: ClaimState, group: str) -> str:
-    """One claim on the overview: what it needs from the expert, or why it is unproven. The
-    standing "verdict not yet confirmed" reminder is left out here; the claim page shows it."""
+    """One claim on the overview, laid out like the site's ledger: its name, the claim, its status
+    at the right, then small lines saying where it is, what it needs from the expert and why it
+    is unproven. Every row shows its status in words; a status that repeats its group's heading
+    word for word is marked `same` and shows as plain text rather than a pill. The standing
+    "verdict not yet confirmed" reminder is left out here; the claim page shows it."""
     note = ""
     if group == "you":
         lines = _you_lines(st)
         note = f"<div class='needs'>{e(' '.join(lines))}</div>" if lines else ""
     if group in ("you", "unp"):
         note += _gap_lines(st)
+    heading = {g: name for g, name, _ in GROUPS}[group]
+    same = " class='same'" if group != "you" and st.label == heading else ""
     return (
-        "<li><div class='row'><div class='head'><span class='meta'>"
-        f"<a href='{e(link('/claim', id=st.claim.id))}'>{e(st.name)}</a> · {e(st.where)} · "
-        f"{e(st.claim.claim_type.value.replace('_', ' '))}</span>"
-        f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span></div>"
-        f"<div class='text'>{q(st.claim.text)}</div>{note}</div></li>"
+        f"<li{same}><div class='row'><span class='cid'>"
+        f"<a href='{e(link('/claim', id=st.claim.id))}'>{e(st.name)}</a></span>"
+        f"<div class='text'>{q(st.claim.text)}</div>"
+        f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span>"
+        f"<div class='sub'><span class='meta'>{e(st.where)} · "
+        f"{e(st.claim.claim_type.value.replace('_', ' '))}</span>{note}</div></div></li>"
     )
 
 
@@ -758,13 +764,14 @@ def _tile(group: str, name: str, sub: str, n: int) -> str:
 
 
 def _next_up(st: ClaimState) -> str:
-    lines = _you_lines(st)
+    """The first claim waiting on the expert, with each thing it needs on its own line."""
+    lines = "".join(f"<p>{e(t)}</p>" for t in _you_lines(st))
     return (
         "<section class='nextup' id='next'><div class='head'><span class='meta'>Next up · "
         f"<a href='{e(link('/claim', id=st.claim.id))}'>{e(st.name)}</a> · {e(st.where)}</span>"
         f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span></div>"
         f"<blockquote class='claimtext'>{q(st.claim.text)}</blockquote>"
-        f"<p>{e(' '.join(lines))}</p>{_gap_lines(st)}"
+        f"<div class='todo'>{lines}{_gap_lines(st)}</div>"
         f"<a class='button primary' href='{e(link('/claim', id=st.claim.id))}'>Review it</a>"
         "</section>"
     )
@@ -794,7 +801,7 @@ def claims_queue(conn: sqlite3.Connection, page: Page) -> str:
     else:
         head = "Nothing waits on you."
     out = [
-        "<div class='eyebrow'>Claims</div>"
+        "<div class='pg-claims'>"
         f"<div class='overview-head'><div><h1>{e(head)}</h1><p class='muted'>Nothing becomes "
         "supported until you accept its key evidence and re-run the verdicts. AI-accepted "
         "evidence only sorts the work.</p></div>"
@@ -806,7 +813,7 @@ def claims_queue(conn: sqlite3.Connection, page: Page) -> str:
             else ""
         )
         + "</div>",
-        "<nav class='tiles'>"
+        "<nav class='tiles' aria-label='Claims by finding'>"
         + "".join(_tile(g, name, sub, len(by[g])) for g, name, sub in GROUPS if by[g] or g != "not")
         + "</nav>",
     ]
@@ -819,6 +826,16 @@ def claims_queue(conn: sqlite3.Connection, page: Page) -> str:
         if not by[g]:
             continue
         title = "Also waiting on you" if g == "you" else name
+        folded = g in ("con", "sup") and bool(by["you"])
+        # the tile above already gives each group's sentence; the heading keeps only the count,
+        # and a folded group leaves the count to its "Show N claims" line. Unproven keeps its
+        # own caveat, which no tile says.
+        count = "" if folded else f"{len(rows)} claim{'s' if len(rows) != 1 else ''}"
+        sub = (
+            "What the data does not show. Not found never means it did not happen."
+            if g == "unp"
+            else ""
+        )
         extra = ""
         if g == "unp":
             kinds = Counter(k for st in rows for k in st.gaps())
@@ -826,13 +843,13 @@ def claims_queue(conn: sqlite3.Connection, page: Page) -> str:
                 f"<span class='stpill'>{e(GAP_TOPICS[k])} <b>{n}</b></span>"
                 for k, n in kinds.most_common()
             )
-            sub = "What the data does not show. Not found never means it did not happen."
+        said = " · ".join(e(x) for x in (count, sub) if x)
         out.append(
             f"<section class='group' id='{g}'><div class='ghead'><h2>{e(title)}</h2>"
-            f"<span class='muted'>{len(rows)} claim{'s' if len(rows) != 1 else ''} · {e(sub)}"
-            f"</span></div>"
+            + (f"<span class='muted'>{said}</span>" if said else "")
+            + "</div>"
             + (f"<div class='kinds'>{extra}</div>" if extra else "")
-            + _group_rows(rows, g, folded=g in ("con", "sup") and bool(by["you"]))
+            + _group_rows(rows, g, folded=folded)
             + "</section>"
         )
     removed = [c for c in pipeline.load_claims(conn, include_removed=True) if c.status == "removed"]
@@ -846,6 +863,7 @@ def claims_queue(conn: sqlite3.Connection, page: Page) -> str:
             )
             + "</p>"
         )
+    out.append("</div>")
     return page.wrap("Claims queue", "".join(out), run_banner(conn, page, "/claims"))
 
 
@@ -1802,11 +1820,11 @@ def new_claim_page(conn: sqlite3.Connection, page: Page) -> str:
             f"<p><label>Paragraph <select name='paragraph'>{opts}</select></label></p>"
             "<p><label>Claim text, as the document states it "
             "<textarea name='text' rows='4' required></textarea></label></p>"
-            "<button type='submit' class='primary'>Add claim</button> <span class='muted'>A new "
-            "claim needs a "
-            "full audit before it has a verdict.</span>",
+            "<p class='act'><button type='submit' class='primary'>Add claim</button> "
+            "<span class='muted'>A new claim needs a full audit before it has a verdict.</span>"
+            "</p>",
         )
-    return page.wrap("Add a claim", body)
+    return page.wrap("Add a claim", f"<div class='pg-newclaim'>{body}</div>")
 
 
 # ---------------------------------------------------------------- audit log
