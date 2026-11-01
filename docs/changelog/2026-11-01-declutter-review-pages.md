@@ -1,4 +1,4 @@
-## 2026-11-01: Case, Claims, Add a claim, one-claim and evidence pages decluttered (#PR)
+## 2026-11-01: Case, Claims, Add a claim, one-claim and evidence pages decluttered (#196)
 - Changed: after an Impeccable audit of each page (findings and before/after screenshots in
   /mnt/project-files/baker/declutter/), the review pages show less at once. Case: one column;
   the notices in one panel, folded to their first sentence; Case setup and Record as hairline
@@ -14,7 +14,7 @@
   page: names instead of raw ids, compact thread. The demo banner now folds to its first
   sentence on every page (it already did on the case page); every word stays. No form action,
   field, value, verdict, label or caveat removed.
-- Where: PR #PR
+- Where: PR #196
 - Verified: per-page pytest selections (overview 270, claims 95, claim/evidence 441 passed),
   tests/test_demo.py, test_review_screen.py and test_report_consistency.py (62 passed), ruff,
   and `make check` on the combined branch (numbers in the PR). Impeccable detect, before to
