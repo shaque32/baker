@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from core.contracts import (
     ClaimStatus,
@@ -812,3 +812,136 @@ def set_aliases(
                 conn, now, actor, ADD_ACTION, {"person_id": person_id, "name": name, "alias": alias}
             )
     return [a.alias for a in stored(conn) if a.person_id == person_id]
+
+
+# ---------------------------------------------------------------- case events
+
+
+def add_event(
+    conn: sqlite3.Connection,
+    name: str,
+    first_day: str,
+    last_day: str,
+    paragraph_id: str,
+    defined_as: str,
+    actor: str,
+    clock: Clock | None = None,
+) -> str:
+    """The expert records an event the government document defines and later claims are dated
+    by ("the SEARCH"): its name as the document writes it, the first and last wall-clock day
+    the document gives it (YYYY-MM-DD), and the paragraph and words that define it. It is the
+    expert's statement, not a finding: the report lists each event with its words, who gave it
+    and when. The words need not write the name: a document often defines the place (`(the
+    "KEDZIE YARD")`) and then names the event ("the KEDZIE YARD theft"). Refused when the
+    defining words are not the paragraph's own (compared with whitespace runs as one space), or
+    state dates code reads that are not the days entered; when the name has no letter or
+    digit, or would also match a person, an alias or another event. Returns the name as
+    recorded."""
+    from core.audit import case_events as ev
+    from core.identity.aliases import forms
+
+    _expert(actor)
+    name = " ".join(name.split())
+    if not name or len(name) > ev.MAX_NAME:
+        raise ReviewError(
+            f"enter the event's name as the document writes it (up to {ev.MAX_NAME} characters)"
+        )
+    if not ev.key(name):
+        raise ReviewError(f"{name} has no letter or digit, so the audit could not match it")
+    try:
+        first, last = date.fromisoformat(first_day.strip()), date.fromisoformat(last_day.strip())
+    except ValueError:
+        raise ReviewError("enter each day as YYYY-MM-DD") from None
+    if last < first:
+        raise ReviewError("the last day is before the first day")
+    row = conn.execute(
+        "SELECT text FROM govdoc_paragraphs WHERE id = ?", (paragraph_id,)
+    ).fetchone()
+    if row is None:
+        raise ReviewError(f"no paragraph {paragraph_id}")
+    words = ev.plain(defined_as)
+    if not words or len(words) > ev.MAX_WORDS:
+        raise ReviewError(f"copy the words that define the event (up to {ev.MAX_WORDS} characters)")
+    if words not in ev.plain(row[0]):
+        raise ReviewError("the defining words are not in that paragraph as written")
+    _days_agree(words, row[0], first, last)
+    clash = sorted(forms(name) & ev.taken(conn).keys())
+    if clash:
+        raise ReviewError(
+            f"{name} would also match {ev.taken(conn)[clash[0]]}; the audit could not tell them "
+            "apart"
+        )
+    now = _now(clock)
+    with conn:
+        conn.execute(
+            "INSERT INTO case_events (name, first_day, last_day, paragraph_id, defined_as,"
+            " created_by, created_at_utc) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (name, first.isoformat(), last.isoformat(), paragraph_id, words, actor, _iso(now)),
+        )
+        audit_log.append(
+            conn,
+            now,
+            actor,
+            ev.ADD_ACTION,
+            {
+                "name": name,
+                "first_day": first.isoformat(),
+                "last_day": last.isoformat(),
+                "paragraph_id": paragraph_id,
+                "defined_as": words,
+            },
+        )
+    return name
+
+
+def _days_agree(words: str, para: str, first: date, last: date) -> None:
+    """Raises ReviewError when the defining words state dates code reads plainly and those
+    dates are not first to last: "On Thursday, March 26, 2026, officers searched ..." entered
+    as March 25 is a typo the audit would build every window on."""
+    from datetime import timedelta
+
+    from core.audit.assumption_filler import stated_windows
+
+    read = stated_windows(words, para)
+    if not read:
+        return  # nothing code reads plainly ("the night of March 7 into March 8"): the expert's
+    lo = min(w.start for w in read).date()
+    hi = max(w.end for w in read)
+    hi_day = (hi - timedelta(microseconds=1)).date()
+    if (lo, hi_day) != (first, last):
+        raise ReviewError(
+            f"the defining words state {lo.isoformat()}"
+            + (f" to {hi_day.isoformat()}" if hi_day != lo else "")
+            + f", not the days entered ({first.isoformat()}"
+            + (f" to {last.isoformat()}" if last != first else "")
+            + ")"
+        )
+
+
+def remove_event(
+    conn: sqlite3.Connection, name: str, actor: str, clock: Clock | None = None
+) -> None:
+    """The expert removes an event they entered. Logged with what it held."""
+    from core.audit import case_events as ev
+
+    _expert(actor)
+    found = [x for x in ev.stored(conn) if ev.key(x.name) == ev.key(name)]
+    if not found:
+        raise ReviewError(f"no event {name}")
+    (x,) = found
+    now = _now(clock)
+    with conn:
+        conn.execute("DELETE FROM case_events WHERE name = ?", (x.name,))
+        audit_log.append(
+            conn,
+            now,
+            actor,
+            ev.REMOVE_ACTION,
+            {
+                "name": x.name,
+                "first_day": x.first_day.isoformat(),
+                "last_day": x.last_day.isoformat(),
+                "paragraph_id": x.paragraph_id,
+                "defined_as": x.defined_as,
+            },
+        )

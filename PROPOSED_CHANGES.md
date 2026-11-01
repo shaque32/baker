@@ -1083,3 +1083,6 @@ setup page, the report's limitations, "Not current" after an event change, the f
 the allow list above, the eval's case setup reading events from
 a case.json that has them (case04 and case05 left as built), the contracts version test, and
 tests that fail first.
+SIGNED by Arsh on 2026-11-01 at 18:47Z ("approve", validation thread), in reply to the request
+to sign this entry. APPLIED on claude/project-thread-ds0ify: the three edits above, with <date>
+as 2026-11-01, and nothing else in either file.

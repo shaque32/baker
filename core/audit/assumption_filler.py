@@ -109,6 +109,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, StrictStr, ValidationError
 
+from core.audit import case_events
 from core.audit._llm_json import (
     PROMPTS_DIR,
     BadModelOutput,
@@ -1334,6 +1335,86 @@ _PART_DAY_OPEN_RE = re.compile(
 )
 
 
+# The ties to a defined event code reads (case_events, schema 0.7.0), ending right where the
+# event's name starts, with an optional "the": "the day of", "the same day as", "the day
+# before", "the day after", "<n> days before", "<n> days after". An allow list: nothing else is
+# read ("in the days before", "the night of", "shortly before", "after" with no count).
+_EVENT_TIE_RE = re.compile(
+    r"(?:(?P<same>(?:on\s+)?the\s+(?:same\s+)?day\s+of|(?:on\s+)?the\s+same\s+day\s+as)"
+    r"|(?:on\s+)?the\s+day\s+(?P<dir1>before|after)"
+    r"|\b(?P<n>\d{1,2}|[a-z]+(?:-[a-z]+)?)\s+days?\s+(?P<dir2>before|after))"
+    r"\s+(?:the\s+)?$",
+    re.IGNORECASE,
+)
+# A word right before a tie that makes it more or less than that one day: "about two days
+# after", "within two days after", "at least a day before", "in the two days before", "no later
+# than the day after", "never on the day of".
+_EVENT_TIE_LEAD_RE = re.compile(
+    r"\b(?:about|approximately|approx|around|roughly|nearly|almost|some|within|in|by|until|"
+    r"till|since|before|after|from|between|through|thru|at|least|most|than|more|less|over|"
+    r"under|up|to|the|and|or|during|prior|following|past|first|last|every|each|only|just|"
+    r"shortly|soon|late|early|later|earlier|not|never|no|nor|except|other|another|"
+    r"same|next|following|preceding|previous|whole|entire|all|any)\s*$",
+    re.IGNORECASE,
+)
+# Words that tie a claim to a part of a day, or to more than one: an event tie is read as a
+# whole day only, never widened from these ("the morning after the SEARCH").
+_EVENT_PART_RE = re.compile(
+    r"\b(?:morning|afternoon|evening|night|nights|overnight|tonight|today|tomorrow|yesterday|"
+    r"dawn|dusk|sunrise|sunset|hours?|minutes?|weekend|week|weeks|month|months|days\s+leading|"
+    r"leading\s+up|run-up|eve)\b",
+    re.IGNORECASE,
+)
+
+
+def event_windows(text: str, events: list[case_events.CaseEvent]) -> list[StatedWindow] | None:
+    """The whole wall-clock days the text ties to defined events, [] when it writes none, or
+    None when any doubt: a tie that is not on the allow list (`_EVENT_TIE_RE`), a word before it
+    that changes it (`_EVENT_TIE_LEAD_RE`), words after it that leave it open or join a second
+    end, an event of more than one day, any time of day, part of a day, weekday or numeric date
+    the text writes outside quoted words. "Two days after the KEDZIE YARD theft" with the theft
+    on March 21, 2026 is March 23 from 00:00 to March 24 00:00, wall clock; the filler places
+    it in the phone's zone like a date the claim writes. The event's name is matched whole
+    (case_events.spans); a name written inside quotation marks is not read."""
+    plain = _unquoted(_flat(_nfc(text)))
+    found = [(ev, s, t) for ev in events for s, t in case_events.spans(ev.name, plain)]
+    if not found:
+        return []
+    if _ANY_TIME_RE.search(plain) or _EVENT_PART_RE.search(plain) or _NUM_DATE_RE.search(plain):
+        return None
+    if any(_has_word(plain.lower(), w) for w in _WEEKDAYS):
+        return None
+    out: list[StatedWindow] = []
+    for ev, s, t in sorted(found, key=lambda x: x[1]):
+        tie = _EVENT_TIE_RE.search(plain[:s])
+        if tie is None or not ev.one_day:
+            return None
+        if _EVENT_TIE_LEAD_RE.search(plain[: tie.start()]):
+            return None
+        tail = plain[t:]
+        if _OPEN_TAIL_RE.match(tail) or _JOIN_AHEAD_RE.match(tail):
+            return None
+        if not re.match(r"\s*(?:$|[,.;:)])", tail):
+            # "the SEARCH warrant", "the SEARCH's aftermath", "the SEARCH-related": the name
+            # may be part of something else, so the tie ends at punctuation or the text's end
+            return None
+        if tie.group("same"):
+            offset = 0
+        elif tie.group("dir1"):
+            offset = 1 if tie.group("dir1").lower() == "after" else -1
+        else:
+            n = _number(tie.group("n"))
+            if n is None or not 1 <= n <= 60:
+                return None
+            offset = n if tie.group("dir2").lower() == "after" else -n
+        day = ev.first_day + timedelta(days=offset)
+        start = datetime.combine(day, time(0, 0))
+        out.append(
+            StatedWindow(_nfc(text)[tie.start() : t].strip(), start, start + timedelta(days=1))
+        )
+    return out
+
+
 def stated_part_day(text: str, context: str = "") -> StatedWindow | None:
     """The part of one stated day an open time leaves, or None (PAST-30 fill c).
 
@@ -2254,6 +2335,7 @@ class LocalAssumptionFiller:
         self.recorder = recorder if recorder is not None else CallRecorder()
         self.model_runs: tuple[ModelRun, ...] = ()
         self.drops: list[FillerDrop] = []
+        self._case_events: list[case_events.CaseEvent] | None = None
         self._data: CaseData | None = None
 
     # -- case vocabulary, read once
@@ -2808,6 +2890,21 @@ class LocalAssumptionFiller:
         if stated is None:
             part = stated_part_day(claim.text, para)
             stated = [part] if part is not None else []
+        tied = event_windows(claim.text, self._events())
+        if tied is None and not stated:
+            raise Reject("the claim's tie to a defined event is not one code reads")
+        if tied and stated:
+            # "On March 23, 2026, two days after the KEDZIE YARD theft": read only when the
+            # claim's own date is the event's day it names.
+            if {(w.start, w.end) for w in stated} != {(w.start, w.end) for w in tied}:
+                raise Reject("the claim's date and its tie to a defined event are not one day")
+        elif tied:
+            if len(tied) != 1:  # two tied days: never picked by the model's day
+                raise Reject("the time range is not one the claim plainly states")
+            (w,) = tied
+            # A day code reads from the expert's event, not from words the claim writes, so it
+            # is not a date check_window can find in the claim (case_events, schema 0.7.0).
+            return self._zoned_window(None, w.start, w.end, device_ids, w.raw)
         if near is not None and len(stated) > 1:
             try:
                 day = datetime.fromisoformat(near).date()
@@ -2856,6 +2953,12 @@ class LocalAssumptionFiller:
         start, end = messages[0]
         words = text[start + 1 : end - 1].strip()
         return None if "\n" in words or "\r" in words else words
+
+    def _events(self) -> list[case_events.CaseEvent]:
+        """The defined events code may date a claim by (case_events.readable), read once."""
+        if self._case_events is None:
+            self._case_events = case_events.readable(self.conn)
+        return self._case_events
 
     def _names(self, text: str = "") -> set[str]:
         """Every name a quote must not be read as a message for: persons the expert created
