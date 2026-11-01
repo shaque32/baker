@@ -452,7 +452,20 @@ def test_the_report_lists_each_event_as_an_expert_statement(events):
         'that the document\'s <span class="q">OPERATION</span> is 2026-03-19 to 2026-03-20' in html
     )
     assert "paragraph 99, page 9" in html
+    # the day comes from the expert's day and the claim's own tie, never "that day" alone
+    assert "code set the day from the expert's day and the tie the claim writes" in html
+    assert "audited on that day" not in html
+    assert "Mabillon dates no claim by an event of more than one day." in html
     check_report_text(html)
+
+
+def test_the_report_never_says_a_clashing_event_dated_a_claim(events):
+    actions.add_person(events, "Rita RAID", EXPERT)  # "RAID" now also matches a person
+    html = render_report(events)
+    raid = html[html.index('<span class="q">RAID</span> is') :]
+    raid = raid[: raid.index("</li>")]
+    assert "so Mabillon dated no claim by it" in raid
+    assert "code set the day" not in raid
 
 
 def test_verify_bundle_holds_each_event_to_the_experts_logged_action(events):
@@ -486,6 +499,10 @@ def test_the_setup_page_adds_and_removes_events(conn):
     app = App(db_path, expert="Test Expert", port=8765)
     page = _get(app, "/setup").text
     assert "Events the document defines" in page and "Add event" in page
+    # folded, so the page stays as short as before for the cases that need no events
+    assert (
+        "<details class='fold' id='events'><summary>Events the document defines</summary>" in page
+    )
     form = dict(name="RAID", first_day="2026-03-20", paragraph=PARA, defined_as=RAID)
     assert _post(app, "/event/add", **form, next="/setup").status == 303
     assert app.flash and not app.flash[1] and "RAID" in app.flash[0]

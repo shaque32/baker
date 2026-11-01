@@ -17,8 +17,11 @@
     named writer's message from the tied day, as it does from a written date, and the coverage
     gate refuses a claim dated by an event that no assumption gives a time range, so it is not
     tested on its sender or meaning alone. FILLER_VERSION is 4.
-  - The Set up page lists events and adds or removes them.
-  - The report's Limitations list each event as an expert statement (report 0.31.0).
+  - The Set up page lists events and adds or removes them, folded behind "Events the document
+    defines" like its other optional steps.
+  - The report's Limitations list each event as an expert statement, say the day of a claim
+    dated by it comes from the expert's day and the claim's own tie, and say that an event
+    whose name clashes, or that spans more than one day, dates no claim (report 0.31.0).
   - An event change after a run marks verdicts "Not current".
   - The bundle check holds each event to the logged actions.
   - The eval's case setup reads `events` from a case.json that has them. None does yet.
@@ -26,7 +29,7 @@
   - Why: in the case04 alias replay, 8 of the 11 remaining window or quote refusals were dated
     only by an event or by the sentence before.
 - Where: PR #201 (branch claude/project-thread-ds0ify)
-- Verified: 57 new tests in `tests/test_case_events.py`. They fail on main, which has no table, actions
+- Verified: 58 new tests in `tests/test_case_events.py`. They fail on main, which has no table, actions
     or reader. The near-miss tests are guards that pass both before and after.
   - Replay of Arsh's recorded case04 filler answers (development data, filler only, no model)
     with the three events an expert would enter from its affidavit: claims with a core

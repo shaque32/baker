@@ -2678,15 +2678,17 @@ def _events_box(conn: sqlite3.Connection, page: Page, locked: bool) -> str:
     entered them, with a form to add one (core/review/actions.add_event)."""
     from core.audit import case_events
 
+    events = case_events.stored(conn)
     out = [
-        "<h3 id='events'>Events the document defines</h3>",
+        # folded, as the page's other optional steps are: most cases need no events
+        "<details class='fold' id='events'><summary>Events the document defines"
+        f"{f' ({len(events)})' if events else ''}</summary>",
         "<p class='muted'>When the document defines an event and dates later claims by it "
         "(\u201ctwo days before the SEARCH\u201d), enter the event, its day and the words that "
         "define it. The audit reads only a whole day tied to a one-day event: the day of, the "
         "day before or after, or a number of days before or after. Every report lists the "
         "events you entered.</p>",
     ]
-    events = case_events.stored(conn)
     if events:
         out.append(
             "<table><thead><tr><th>Event</th><th>Days</th><th>Where</th><th>Defined as</th>"
@@ -2715,7 +2717,7 @@ def _events_box(conn: sqlite3.Connection, page: Page, locked: bool) -> str:
             )
         out.append("</table>")
     if locked:
-        return "".join(out)
+        return "".join(out) + "</details>"
     opts = "".join(
         f"<option value='{e(pid)}'>{e(_where_short(conn, pid))}</option>"
         for (pid,) in conn.execute("SELECT id FROM govdoc_paragraphs ORDER BY page, para_no")
@@ -2736,7 +2738,7 @@ def _events_box(conn: sqlite3.Connection, page: Page, locked: bool) -> str:
             anchor="events",
         )
     )
-    return "".join(out)
+    return "".join(out) + "</details>"
 
 
 def _where_short(conn: sqlite3.Connection, paragraph_id: str) -> str:
