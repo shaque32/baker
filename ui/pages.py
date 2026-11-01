@@ -917,19 +917,43 @@ def evidence_card(
     around: int = 0,
     threads: dict[str, list[str]] | None = None,
     challenged: frozenset[str] = frozenset(),
+    around_link: bool = True,
 ) -> str:
     """claim_id: the claim page shows the card; it then carries the optional label flag.
     confirm: a contradiction waiting for the expert (rule 1b), shown with the confirm step.
     around: messages shown either side of the record, as a conversation (0: the quote only).
     threads: the page's cache of thread orders, so many cards read each thread once.
-    challenged: the items the challenge step stored in the audit on screen, read once a page."""
+    challenged: the items the challenge step stored in the audit on screen, read once a page.
+    around_link: the link to the item's own page (that page leaves it out).
+    Once the expert has decided an item, its conversation and its decision form fold."""
     stance_cls = "b-against" if item.stance in AGAINST else "b-open"
     flag = ""
     if claim_id is not None:
         flag = _flag_label_form(page, claim_id, item, back, run_id)
     withheld = W.for_item(conn, item)
+    settled = last_kind == "expert" and item.status != EvidenceStatus.OPEN and not confirm
+    form = (
+        _confirm_form(page, item, back)
+        if confirm
+        else _decide_form(page, item, last_kind == "expert", back)
+    )
+    shown, thread = _conversation(conn, item, around, threads, folded=settled)
+    folds = ""  # a settled item's disclosures open on the card's last line
+    if settled:
+        folds = (
+            thread
+            + f"<details class='ev-change'><summary>Change your decision</summary>{form}</details>"
+        )
+        form = ""
+    around_a = (
+        f"<a class='ev-around' href='{e(link('/evidence', id=item.id))}'>"
+        "See about 20 messages around it</a>"
+        if around_link
+        else ""
+    )
     return (
         f"<div class='item' id='{e(item.id)}'>"
+        "<div class='ev-tags'>"
         f"<span class='badge {stance_cls}'>{e(STANCE_LABEL[item.stance])}</span>"
         f"{_tier_badge(item, last_kind)}"
         + ("<span class='badge b-flag'>flagged by you</span>" if flagged else "")
@@ -939,28 +963,25 @@ def evidence_card(
             if item.id in challenged
             else ""
         )
-        + _conversation(conn, item, around, threads)
-        + f"<p>{record_line(conn, item.record_id, found)}</p>"
-        "<details class='more'><summary>Source and model note</summary>"
-        f"<p><span class='mono'>{e(item.ref.source_id)} {e(item.ref.locator)} · "
-        f"{e(item.record_id)}</span></p>"
-        f"<p class='muted'>{e(labelled_by(conn, item.model_run_id))}."
-        + ("" if withheld else f" {rationale_html(item, None)}")
-        + "</p></details>"
+        + "</div>"
+        + shown
+        + f"<p class='ev-rec'>{record_line(conn, item.record_id, found)}</p>"
         + (
             f"<p>{rationale_html(item, withheld)}</p>"
             + ("" if withheld.acknowledged else _acknowledge_form(page, item, back))
             if withheld
             else ""
         )
-        + f"<p><strong>Review:</strong> {review_label(conn, item)} · "
-        f"<a href='{e(link('/evidence', id=item.id))}'>See about 20 messages around it</a></p>"
-        + (
-            _confirm_form(page, item, back)
-            if confirm
-            else _decide_form(page, item, last_kind == "expert", back)
-        )
-        + f"{flag}</div>"
+        + f"<p class='ev-review'><strong>Review:</strong> {review_label(conn, item)}</p>"
+        + form
+        + f"<div class='ev-foot'>{folds}"
+        "<details class='more'><summary>Source and model note</summary>"
+        f"<p><span class='mono'>{e(item.ref.source_id)} {e(item.ref.locator)} · "
+        f"{e(item.record_id)}</span></p>"
+        f"<p class='muted'>{e(labelled_by(conn, item.model_run_id))}."
+        + ("" if withheld else f" {rationale_html(item, None)}")
+        + "</p></details>"
+        + f"{flag}{around_a}</div></div>"
     )
 
 
@@ -969,16 +990,23 @@ def _conversation(
     item: EvidenceItem,
     around: int,
     threads: dict[str, list[str]] | None = None,
-) -> str:
-    """The verified quote, and with around > 0 the record among its neighbours."""
+    folded: bool = False,
+) -> tuple[str, str]:
+    """The verified quote, and with around > 0 the record among its neighbours: (shown, fold).
+    folded: the expert has decided the item, so the neighbours come back as a disclosure (fold)
+    for the card's last line, and only the quote shows."""
     quote = f"<blockquote>{q(item.quote)}</blockquote>"
     lines = build_context(conn, item.record_id, around, threads=threads) if around else []
     if len(lines) < 2:  # no neighbours (a contact, a call): the quote says it all
-        return quote
-    return (
-        f"<div class='thread mini'>{''.join(_msg(ln) for ln in lines)}</div>"
-        f"<p class='quoted'><span class='muted'>Quoted:</span> {q(item.quote)}</p>"
-    )
+        return quote, ""
+    thread = f"<div class='thread mini'>{''.join(_msg(ln) for ln in lines)}</div>"
+    quoted = f"<p class='quoted'><span class='muted'>Quoted:</span> {q(item.quote)}</p>"
+    if folded:
+        return quoted, (
+            f"<details class='ev-thread'><summary>The messages around it ({len(lines)})"
+            f"</summary>{thread}</details>"
+        )
+    return thread + quoted, ""
 
 
 def _msg(ln: ContextLine) -> str:
@@ -1241,17 +1269,18 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
     ]
     if st.paragraph_text:
         out.append(
+            "<div class='claim-src'>"
             f"<details><summary>Paragraph as printed ({e(st.where)})</summary>"
             f"<blockquote>{q(st.paragraph_text)}</blockquote></details>"
+            f"{_selection_note(conn, st)}</div>"
         )
-        out.append(_selection_note(conn, st))
     out.append(
-        "<div class='card' id='verdict'><div class='in'><div class='eyebrow'>Verdict</div>"
-        f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span>"
+        "<div class='card' id='verdict'><div class='in'><div class='vhead'><h2>Verdict</h2>"
+        f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span></div>"
     )
     needs = st.needs()
     if needs:
-        out.append("<ul>" + "".join(f"<li>{e(t)}</li>" for _, t in needs) + "</ul>")
+        out.append("<ul class='needs'>" + "".join(f"<li>{e(t)}</li>" for _, t in needs) + "</ul>")
     out.append(_gap_lines(st))  # the same lines as the overview and the report
     out.append(claim_format_notices(conn, st))  # the same notices as the report's claim
     out.append(forwarded_warning(conn, st))
@@ -1268,7 +1297,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
             kind = "overrode" if d.override_note is not None else "confirmed"
             out.append(f"<p>{e(d.confirmed_by)} {kind} this verdict.{note}</p>")
         out.append(
-            f"</div><div class='in'>{_verdict_forms(page, st, back)}"
+            f"</div><div class='in vacts'>{_verdict_forms(page, st, back)}"
             f"{_flag_verdict_form(conn, page, st, back)}"
         )
     out.append("</div></div>")
@@ -1293,7 +1322,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
     elif st.unlabeled:
         out.append(f"<p class='muted'>{e(st.unlabeled)}</p>")
     if st.untested:
-        out.append(f"<p><strong>{e(st.not_tested or '')}</strong></p>")
+        out.append(f"<p class='warn'><strong>{e(st.not_tested or '')}</strong></p>")
         if "matches no person" in (st.not_tested or ""):
             out.append(
                 "<p>A name in this claim is not a person in the case yet. Add it on "
@@ -1314,13 +1343,13 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
     threads: dict[str, list[str]] = {}  # each thread read once for the page's cards
     challenged = challenge.found_items(conn, pipeline.view_run(conn))
     for title, group in groups:
-        out.append(f"<h3>{e(title)} ({len(group)})</h3>")
+        out.append(f"<h3 class='ev-group'>{e(title)} <span>({len(group)})</span></h3>")
         shown_on = None
         order = {a.id: i for i, a in enumerate(st.assumptions)}
         for x in sorted(group, key=lambda x: order.get(x.assumption_id, len(order))):
             a = by_assumption.get(x.assumption_id)
             if a is not None and a.id != shown_on:
-                out.append(f"<p class='muted'>Assumption: {plain_ids(conn, a.text)}</p>")
+                out.append(f"<p class='ev-asm'>Assumption: {plain_ids(conn, a.text)}</p>")
                 shown_on = a.id
             out.append(
                 evidence_card(
@@ -1340,11 +1369,13 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
                 )
             )
     hidden = [x for x in st.evidence if x.stance == Stance.IRRELEVANT]
+    out.append("<div class='claim-more'>")
     if hidden:
         out.append(_irrelevant_list(conn, hidden, flagged, {w.evidence_id for w in st.withheld}))
     out.append(_working(st))
     if d is not None:  # a flag is about an audited claim
         out.append(_flag_missed_form(page, st, back))
+    out.append("</div>")
     out.append(_flags_section(page, claim_flags, back, st.run_id))
 
     out.append(_edit_claim_form(page, st, back))
@@ -1353,7 +1384,7 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
         f"<aside class='side'><div class='eyebrow'>Claims ledger <span>{len(states)} claims"
         f"</span></div>{_tally(states)}{_ledger(states, c.id, compact=True)}</aside>"
     )
-    body = f"<div class='split'>{side}<div>{''.join(out)}</div></div>"
+    body = f"<div class='split pg-claim'>{side}<div class='claim-main'>{''.join(out)}</div></div>"
     return page.wrap(st.name, body, run_banner(conn, page, back), wide=True)
 
 
@@ -1526,11 +1557,13 @@ def _must_be_true(
     rows = []
     for a in sorted(st.assumptions, key=lambda a: not a.is_core):
         cv = coverage.get(a.id) if current else None
+        tier_attr = ""
         if cv is None:
             mark, said_ = "na", "Not current" if d is not None and st.stale else "Not computed"
         elif cv.covered:
             tier = cv.tier.value if cv.tier else "?"
             mark, said_ = "ok", f"Records found ({tier.replace('_', ' ')})"
+            tier_attr = f" data-tier='{e(tier)}'"  # an ai_reviewed tier never tags as confirmed
         elif a.id in failed:
             mark, said_ = "con", "Contradicted by the records"
         elif a.id in awaiting:
@@ -1541,7 +1574,7 @@ def _must_be_true(
         if a.id in repaired:
             role += f" · {repaired[a.id].mark()}"
         rows.append(
-            f"<li class='{mark}'><span class='mark'></span>"
+            f"<li class='{mark}'{tier_attr}><span class='mark'></span>"
             f"<div><div>{plain_ids(conn, a.text)}</div>"
             f"<div class='meta'>{e(GAP_TOPICS[a.kind])} · {e(role)}</div></div>"
             f"<span class='said'>{e(said_)}</span></li>"
@@ -1615,9 +1648,14 @@ def _alternatives(conn: sqlite3.Connection, st: ClaimState) -> str:
     alts = explain.alternatives(explain.load(conn), st.assumptions)
     if not alts:
         return ""
+    # Folded under one line per lead; the report's fragment is shown whole when opened, its
+    # headings one level under this section's.
+    titles = "".join(f"<span>{e(a.title)}</span>" for a in alts)
+    full = alternatives_html(alts, _context_link).replace("<h4>", "<h3>").replace("</h4>", "</h3>")
     return (
-        f"<h2 id='alternatives'>Other explanations to check ({len(alts)})</h2>"
-        + alternatives_html(alts, _context_link)
+        "<details class='alts-fold' id='alternatives'><summary>"
+        f"<h2>Other explanations to check ({len(alts)})</h2>"
+        f"<span class='alt-titles'>{titles}</span></summary>{full}</details>"
     )
 
 
@@ -1654,13 +1692,26 @@ def _verdict_forms(page: Page, st: ClaimState, back: str) -> str:
 def _holdings(conn: sqlite3.Connection) -> str:
     held = case_holdings(conn)
     items = "".join(f"<li>{e(h)}</li>" for h in held) or "<li>No extraction imported.</li>"
-    return f"<p>{e(HOLDINGS)}</p><ul>{items}</ul>"
+    return f"<div class='holdings'><p>{e(HOLDINGS)}</p><ul>{items}</ul></div>"
 
 
 def _edit_claim_form(page: Page, st: ClaimState, back: str) -> str:
+    """The claim's wording: accept or remove it on one line, the new wording folded. Once the
+    wording is accepted, Accept as written stays as a quiet button, not the page's main one."""
     cid = e(st.claim.id)
+    done = " done" if st.claim.status.value == "accepted" else ""
     return (
-        "<h2 id='edit'>Edit this claim</h2>"
+        "<section class='wording'><h2 id='edit'>Edit this claim</h2>"
+        + page.form(
+            "/claim/edit",
+            f"<input type='hidden' name='claim' value='{cid}'>"
+            "<button type='submit' name='status' value='accepted'>Accept as written</button>"
+            "<button type='submit' name='status' value='removed'>Remove this claim</button>",
+            cls=f"box wording-acts{done}",
+            back=back,
+            anchor="edit",
+        )
+        + "<details class='edit-text'><summary>Change the wording</summary>"
         + page.form(
             "/claim/edit",
             f"<input type='hidden' name='claim' value='{cid}'>"
@@ -1671,14 +1722,7 @@ def _edit_claim_form(page: Page, st: ClaimState, back: str) -> str:
             back=back,
             anchor="edit",
         )
-        + page.form(
-            "/claim/edit",
-            f"<input type='hidden' name='claim' value='{cid}'>"
-            "<button type='submit' name='status' value='accepted'>Accept as written</button>"
-            "<button type='submit' name='status' value='removed'>Remove this claim</button>",
-            back=back,
-            anchor="edit",
-        )
+        + "</details></section>"
     )
 
 
@@ -1707,11 +1751,11 @@ def evidence_page(conn: sqlite3.Connection, page: Page, evidence_id: str) -> str
         " LIMIT 1",
         (evidence_id,),
     ).fetchone()
-    out = ["<h1>Evidence item</h1>"]
+    out = ["<div class='pg-evidence'><h1>Evidence item</h1>"]
     if claim_id:
         out.append(
-            f"<p>Claim <a href='{e(link('/claim', id=claim_id[0]))}'>{e(claim_id[0])}</a>. "
-            f"Assumption: {e(claim_id[1])}</p>"
+            f"<p class='ev-of'>Claim <a href='{e(link('/claim', id=claim_id[0]))}'>"
+            f"{e(claim_id[0])}</a>. Assumption: {plain_ids(conn, claim_id[1])}</p>"
         )
     flagged = any(f.evidence_id == item.id for f in F.active_flags(conn))
     # Flag only an item in the audit on screen; one an older run dropped is not counted.
@@ -1732,6 +1776,7 @@ def evidence_page(conn: sqlite3.Connection, page: Page, evidence_id: str) -> str
             challenged=(
                 challenge.found_items(conn, pipeline.view_run(conn)) if on_screen else frozenset()
             ),
+            around_link=False,
         )
     )
     out.append("<h2>Context</h2>")
@@ -1760,6 +1805,7 @@ def evidence_page(conn: sqlite3.Connection, page: Page, evidence_id: str) -> str
         )
     else:
         out.append("<p class='muted'>Not reviewed yet.</p>")
+    out.append("</div>")
     return page.wrap("Evidence", "".join(out), run_banner(conn, page, back))
 
 
