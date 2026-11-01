@@ -267,7 +267,30 @@ def build_case(case: str, db_path: Path) -> object:
         if d.get("aliases"):
             owner = f"person:dev:{d['source_id']}:owner"
             actions.set_aliases(conn, owner, d["aliases"], STIPULATION_ACTOR, _clock)
+    for ev in meta.get("events", []):  # events the document defines, as the expert enters them
+        _add_event(conn, paragraphs, ev)
     return conn
+
+
+def _add_event(conn: sqlite3.Connection, paragraphs: list, ev: dict) -> None:
+    """Enters one event from case.json ("name", "first_day", "last_day" if more than one day,
+    "defined_as"), in the one paragraph whose text holds its defining words."""
+    from core.audit.case_events import plain
+
+    words = plain(ev["defined_as"])
+    found = [p for p in paragraphs if words in plain(p.text)]
+    if len(found) != 1:
+        raise SystemExit(f"event {ev['name']}: its defining words are in {len(found)} paragraphs")
+    actions.add_event(
+        conn,
+        ev["name"],
+        ev["first_day"],
+        ev.get("last_day", ev["first_day"]),
+        found[0].id,
+        words,
+        STIPULATION_ACTOR,
+        _clock,
+    )
 
 
 def sheet_people(conn) -> dict[str, str]:  # noqa: ANN001

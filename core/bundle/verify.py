@@ -62,7 +62,7 @@ from pathlib import Path
 from typing import Any
 
 from core import db, encryption, pipeline
-from core.audit import challenge, quotes, rules, stance, testability
+from core.audit import case_events, challenge, quotes, rules, stance, testability
 from core.audit import review as review_mod
 from core.audit._llm_json import BadModelOutput, parse_json_object
 from core.audit._local_model import RECEIVED_ACTION
@@ -233,6 +233,7 @@ def _checks(
     _stipulations(conn, out)
     _identity(conn, out)
     _aliases(conn, out)
+    _events(conn, out)
     _challenge(conn, run, manifest, out)
     _testability(conn, run, manifest, out)
     _verdicts(conn, run, out)
@@ -1322,6 +1323,70 @@ def _aliases(conn: sqlite3.Connection, out: _Out) -> None:
         out.add(PASS, "aliases", f"{len(stored)} aliases match the expert's logged actions")
 
 
+def _events(conn: sqlite3.Connection, out: _Out) -> None:
+    """Each stored defined event is one the expert's logged actions left: added
+    (case.event.add) and not since removed (case.event.remove), with the same days, paragraph
+    and defining words, by that expert, at that time; and its defining words are still the
+    paragraph's own. An event the log still holds is not missing."""
+    state: dict[str, dict[str, Any]] = {}  # event key -> the logged entry, with by and at
+    for _s, at, actor, act, p in _log(conn):
+        k = case_events.key(str(p.get("name", "")))
+        if act == case_events.ADD_ACTION:
+            state[k] = {**p, "by": actor, "at": at}
+        elif act == case_events.REMOVE_ACTION:
+            state.pop(k, None)
+    stored = case_events.stored(conn)
+    paras = dict(conn.execute("SELECT id, text FROM govdoc_paragraphs"))
+    bad = 0
+    for ev in stored:
+        logged = state.get(case_events.key(ev.name))
+        held = (
+            ev.name,
+            ev.first_day.isoformat(),
+            ev.last_day.isoformat(),
+            ev.paragraph_id,
+            ev.defined_as,
+            ev.created_by,
+        )
+        if (
+            logged is None
+            or held
+            != tuple(
+                str(logged.get(f))
+                for f in ("name", "first_day", "last_day", "paragraph_id", "defined_as", "by")
+            )
+            or _dt(ev.created_at_utc) != _dt(str(logged["at"]))
+        ):
+            out.add(
+                FAIL,
+                "case events",
+                f"the event {ev.name!r} is not what the expert's logged actions left (days, "
+                "paragraph, words, expert or time)",
+            )
+            bad += 1
+        elif case_events.plain(ev.defined_as) not in case_events.plain(
+            paras.get(ev.paragraph_id, "")
+        ):
+            out.add(
+                FAIL,
+                "case events",
+                f"the event {ev.name!r}: its defining words are not in paragraph {ev.paragraph_id}",
+            )
+            bad += 1
+    held_keys = {case_events.key(ev.name) for ev in stored}
+    for k in sorted(set(state) - held_keys):
+        out.add(
+            FAIL,
+            "case events",
+            f"the log records the event {state[k].get('name')!r}, but it is missing",
+        )
+        bad += 1
+    if stored and not bad:
+        out.add(
+            PASS, "case events", f"{len(stored)} defined events match the expert's logged actions"
+        )
+
+
 # ---------------------------------------------------------------- challenge step
 
 # Logged actions that change what the challenge step's searches read (people, names, links,
@@ -1506,6 +1571,8 @@ _REPAIR_INPUTS = frozenset(
         "person.remove",
         aliases.ADD_ACTION,
         aliases.REMOVE_ACTION,
+        case_events.ADD_ACTION,  # the filler checks each try's window by the events
+        case_events.REMOVE_ACTION,
         "stipulation.confirm",
         "stipulation.withdraw",
         "device.names",

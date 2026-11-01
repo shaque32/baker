@@ -2483,6 +2483,9 @@ def setup_page(
                 + "</ul></div>"
             )
 
+    if has_paras:
+        out.append(_events_box(conn, page, audit_busy))
+
     # 3. owners, then the other people the document names
     out.append("<h2 id='owners'>3. Who used each phone</h2>")
     out.append(_devices(conn, page, "/setup", heading=False))
@@ -2739,6 +2742,74 @@ def encryption_section(page: Page, protection: str, busy: bool) -> str:
         )
     )
     return "".join(out)
+
+
+def _events_box(conn: sqlite3.Connection, page: Page, locked: bool) -> str:
+    """The events the document defines and claims are dated by ("the SEARCH"), as the expert
+    entered them, with a form to add one (core/review/actions.add_event)."""
+    from core.audit import case_events
+
+    events = case_events.stored(conn)
+    out = [
+        # folded, as the page's other optional steps are: most cases need no events
+        "<details class='fold' id='events'><summary>Events the document defines"
+        f"{f' ({len(events)})' if events else ''}</summary>",
+        "<p class='muted'>When the document defines an event and dates later claims by it "
+        "(\u201ctwo days before the SEARCH\u201d), enter the event, its day and the words that "
+        "define it. The audit reads only a whole day tied to a one-day event: the day of, the "
+        "day before or after, or a number of days before or after. Every report lists the "
+        "events you entered.</p>",
+    ]
+    if events:
+        out.append(
+            "<table><thead><tr><th>Event</th><th>Days</th><th>Where</th><th>Defined as</th>"
+            "<th></th></tr></thead>"
+        )
+        for ev in events:
+            days = ev.first_day.isoformat() + (
+                "" if ev.one_day else f" to {ev.last_day.isoformat()}"
+            )
+            remove = (
+                "<span class='muted'>Locked while the audit runs.</span>"
+                if locked
+                else page.form(
+                    "/event/remove",
+                    f"<input type='hidden' name='name' value='{e(ev.name)}'>"
+                    "<button type='submit'>Remove</button>",
+                    "inline",
+                    "/setup",
+                    anchor="events",
+                )
+            )
+            out.append(
+                f"<tr><td>{q(ev.name)}</td><td>{e(days)}</td>"
+                f"<td>{e(_where_short(conn, ev.paragraph_id))}</td><td>{q(ev.defined_as)}</td>"
+                f"<td>{remove}</td></tr>"
+            )
+        out.append("</table>")
+    if locked:
+        return "".join(out) + "</details>"
+    opts = "".join(
+        f"<option value='{e(pid)}'>{e(_where_short(conn, pid))}</option>"
+        for (pid,) in conn.execute("SELECT id FROM govdoc_paragraphs ORDER BY page, para_no")
+    )
+    out.append(
+        page.form(
+            "/event/add",
+            "<label>Event, as the document writes it <input type='text' name='name' "
+            "maxlength='120' placeholder='SEARCH' required></label> "
+            "<label>First day <input type='date' name='first_day' required></label> "
+            "<label>Last day <input type='date' name='last_day'></label> "
+            f"<label>Paragraph <select name='paragraph'>{opts}</select></label> "
+            "<label>Words that define it, as the paragraph writes them "
+            "<textarea name='defined_as' maxlength='2000' rows='2' required></textarea></label> "
+            "<button type='submit'>Add event</button>",
+            "box",
+            "/setup",
+            anchor="events",
+        )
+    )
+    return "".join(out) + "</details>"
 
 
 def _where_short(conn: sqlite3.Connection, paragraph_id: str) -> str:

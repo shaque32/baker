@@ -109,6 +109,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, StrictStr, ValidationError
 
+from core.audit import case_events
 from core.audit._llm_json import (
     PROMPTS_DIR,
     BadModelOutput,
@@ -149,7 +150,8 @@ MAX_PROPOSALS = 8
 #   2: #160's guards, and code adds a meaning assumption and a stated writer's sender.
 #   3: #164, #169, #172 (sent_by, each_way), #186 (person aliases) and #190 (positions found in
 #      the claim as written) change which proposals are kept and what code adds.
-FILLER_VERSION = "3"
+#   4: #201 reads a whole day tied to an event the expert entered (case_events).
+FILLER_VERSION = "4"
 MAX_WINDOW_DAYS = 400
 TIME_SLACK = timedelta(minutes=15)
 
@@ -1334,6 +1336,102 @@ _PART_DAY_OPEN_RE = re.compile(
 )
 
 
+# The ties to a defined event code reads (case_events, schema 0.7.0), ending right where the
+# event's name starts, with an optional "the": "the day of", "the same day as", "the day
+# before", "the day after", "<n> days before", "<n> days after". An allow list: nothing else is
+# read ("in the days before", "the night of", "shortly before", "after" with no count).
+_EVENT_TIE_RE = re.compile(
+    r"(?:(?P<same>(?:on\s+)?the\s+(?:same\s+)?day\s+of|(?:on\s+)?the\s+same\s+day\s+as)"
+    r"|(?:on\s+)?the\s+day\s+(?P<dir1>before|after)"
+    r"|\b(?P<n>\d{1,2}|[a-z]+(?:-[a-z]+)?)\s+days?\s+(?P<dir2>before|after))"
+    r"\s+(?:the\s+)?$",
+    re.IGNORECASE,
+)
+# A word right before a tie that makes it more or less than that one day: "about two days
+# after", "within two days after", "at least a day before", "in the two days before", "no later
+# than the day after", "never on the day of".
+_EVENT_TIE_LEAD_RE = re.compile(
+    r"\b(?:about|approximately|approx|around|roughly|nearly|almost|some|within|in|by|until|"
+    r"till|since|before|after|from|between|through|thru|at|least|most|than|more|less|over|"
+    r"under|up|to|the|and|or|during|prior|following|past|first|last|every|each|only|just|"
+    r"shortly|soon|late|early|later|earlier|not|never|no|nor|except|other|another|"
+    r"same|next|following|preceding|previous|whole|entire|all|any)\s*$",
+    re.IGNORECASE,
+)
+# Words that tie a claim to a part of a day, or to more than one: an event tie is read as a
+# whole day only, never widened from these ("the morning after the SEARCH").
+_EVENT_PART_RE = re.compile(
+    r"\b(?:morning|afternoon|evening|night|nights|overnight|tonight|today|tomorrow|yesterday|"
+    r"dawn|dusk|sunrise|sunset|hours?|minutes?|weekend|week|weeks|month|months|days\s+leading|"
+    r"leading\s+up|run-up|eve|o'?clock)\b",
+    re.IGNORECASE,
+)
+# A clock time with no a.m. or p.m. ("between 9 and 11 on the day after the RAID", "at nine"):
+# _ANY_TIME_RE does not find it, and a whole day would widen it (Codex on #201).
+_EVENT_LOOSE_TIME_RE = re.compile(
+    r"\b(?:at|about|around|approximately|between|from|until|till|by|before|after)\s+"
+    r"(?:\d{1,2}(?::\d{2})?(?!\s*,?\s*(?:19|20)\d\d)(?!\s+days?\b)|(?:one|two|three|four|five|six"
+    r"|seven|eight|nine|ten|eleven|twelve)(?!\s+days?\b)(?:\s+(?:thirty|fifteen|forty-five))?)\b",
+    re.IGNORECASE,
+)
+# Any zone the text writes, read or not ("in UTC", "Eastern Time", "+03:00"): an event's day is
+# read only in the phone's zone, so a claim that names a zone is refused (Codex on #201).
+_EVENT_ZONE_RE = re.compile(
+    rf"(?:\b{_ZONE}|{_OFFSET_ZONE}|\b{_OTHER_ZONE}|\b{_ZONE_NAME}|\b(?i:utc|gmt|zulu)\b)"
+)
+
+
+def event_windows(text: str, events: list[case_events.CaseEvent]) -> list[StatedWindow] | None:
+    """The whole wall-clock days the text ties to defined events, [] when it writes none, or
+    None when any doubt: a tie that is not on the allow list (`_EVENT_TIE_RE`), a word before it
+    that changes it (`_EVENT_TIE_LEAD_RE`), words after it that leave it open or join a second
+    end, an event of more than one day, any time of day, part of a day, weekday or numeric date
+    the text writes outside quoted words, a clock time with no a.m. or p.m., or any zone. "Two
+    days after the KEDZIE YARD theft" with the theft
+    on March 21, 2026 is March 23 from 00:00 to March 24 00:00, wall clock; the filler places
+    it in the phone's zone like a date the claim writes. The event's name is matched whole
+    (case_events.spans); a name written inside quotation marks is not read."""
+    plain = _unquoted(_flat(_nfc(text)))
+    found = [(ev, s, t) for ev in events for s, t in case_events.spans(ev.name, plain)]
+    if not found:
+        return []
+    if _ANY_TIME_RE.search(plain) or _EVENT_PART_RE.search(plain) or _NUM_DATE_RE.search(plain):
+        return None
+    if _EVENT_LOOSE_TIME_RE.search(plain) or _EVENT_ZONE_RE.search(plain):
+        return None
+    if any(_has_word(plain.lower(), w) for w in _WEEKDAYS):
+        return None
+    out: list[StatedWindow] = []
+    for ev, s, t in sorted(found, key=lambda x: x[1]):
+        tie = _EVENT_TIE_RE.search(plain[:s])
+        if tie is None or not ev.one_day:
+            return None
+        if _EVENT_TIE_LEAD_RE.search(plain[: tie.start()]):
+            return None
+        tail = plain[t:]
+        if _OPEN_TAIL_RE.match(tail) or _JOIN_AHEAD_RE.match(tail):
+            return None
+        if not re.match(r"\s*(?:$|[,.;:)])", tail):
+            # "the SEARCH warrant", "the SEARCH's aftermath", "the SEARCH-related": the name
+            # may be part of something else, so the tie ends at punctuation or the text's end
+            return None
+        if tie.group("same"):
+            offset = 0
+        elif tie.group("dir1"):
+            offset = 1 if tie.group("dir1").lower() == "after" else -1
+        else:
+            n = _number(tie.group("n"))
+            if n is None or not 1 <= n <= 60:
+                return None
+            offset = n if tie.group("dir2").lower() == "after" else -n
+        day = ev.first_day + timedelta(days=offset)
+        start = datetime.combine(day, time(0, 0))
+        out.append(
+            StatedWindow(_nfc(text)[tie.start() : t].strip(), start, start + timedelta(days=1))
+        )
+    return out
+
+
 def stated_part_day(text: str, context: str = "") -> StatedWindow | None:
     """The part of one stated day an open time leaves, or None (PAST-30 fill c).
 
@@ -2197,7 +2295,10 @@ def _last_end(pattern: re.Pattern[str], text: str) -> int:
 
 
 def coverage_gap(
-    claim: Claim, proposals: list[Proposal], names: frozenset[str] = frozenset()
+    claim: Claim,
+    proposals: list[Proposal],
+    names: frozenset[str] = frozenset(),
+    events: tuple[case_events.CaseEvent, ...] = (),
 ) -> str | None:
     """What the kept proposals leave untested that the claim states, or None.
 
@@ -2208,7 +2309,9 @@ def coverage_gap(
     ("SUBJECT-2 told SUBJECT-1: \"...\"") is not tested with its writer unchecked. Outside a
     communication claim, a claim whose every quote is one of `names` (casefolded; a person's
     or an account's name: 'sent 13 messages to the Telegram user "Marcus R"') quotes no
-    message.
+    message. A day the claim ties to one of `events` (the case's readable events,
+    `event_windows`) is a stated date too: "The day after the RAID, PETROV wrote ..." is not
+    tested on its sender alone.
     """
     kept = {p.template_id for p in proposals}
     needed = REQUIRED_TEMPLATES.get(claim.claim_type, frozenset())
@@ -2218,6 +2321,8 @@ def coverage_gap(
     raws = [w.raw for w in windows if w is not None]
     if date_mentions(claim.text) and not raws:
         return "the claim states a date but no assumption tests a time range"
+    if events and not raws and event_windows(claim.text, list(events)):
+        return "the claim is dated by a defined event but no assumption tests a time range"
     if time_mentions(_unquoted(claim.text)) and not any(time_mentions(r) for r in raws):
         return "the claim states a time of day but no time range states one"
     if _QUOTED_MESSAGE.search(claim.text) and "sender" not in kept:
@@ -2254,6 +2359,7 @@ class LocalAssumptionFiller:
         self.recorder = recorder if recorder is not None else CallRecorder()
         self.model_runs: tuple[ModelRun, ...] = ()
         self.drops: list[FillerDrop] = []
+        self._case_events: list[case_events.CaseEvent] | None = None
         self._data: CaseData | None = None
 
     # -- case vocabulary, read once
@@ -2319,7 +2425,7 @@ class LocalAssumptionFiller:
                 self._drop(claim, i, str(e), call.id)
 
         out = self.code_fills(claim, para, self._shaped(claim, out, call.id), allowed_ids, call.id)
-        gap = coverage_gap(claim, out, frozenset(self._names(claim.text)))
+        gap = coverage_gap(claim, out, frozenset(self._names(claim.text)), tuple(self._events()))
         if gap:
             self._drop(claim, None, f"{gap}; the claim stays unproven", call.id)
             return []
@@ -2805,9 +2911,29 @@ class LocalAssumptionFiller:
             # "first made contact on March 12" means none before it, not none that day.
             raise Reject("the claim's range for no contact is not a plain stated range")
         stated = stated_windows(claim.text, para)
+        unread = stated is None
         if stated is None:
             part = stated_part_day(claim.text, para)
             stated = [part] if part is not None else []
+        tied = event_windows(claim.text, self._events())
+        if tied is None and not stated:
+            raise Reject("the claim's tie to a defined event is not one code reads")
+        if tied and not stated and (unread or date_mentions(claim.text)):
+            # "On March 22, the day after the RAID" with no year code can pick: the date the
+            # claim writes is never dropped for the event's day (Codex on #201)
+            raise Reject("the claim writes a date code cannot read beside its tie to an event")
+        if tied and stated:
+            # "On March 23, 2026, two days after the KEDZIE YARD theft": read only when the
+            # claim's own date is the event's day it names.
+            if {(w.start, w.end) for w in stated} != {(w.start, w.end) for w in tied}:
+                raise Reject("the claim's date and its tie to a defined event are not one day")
+        elif tied:
+            if len(tied) != 1:  # two tied days: never picked by the model's day
+                raise Reject("the time range is not one the claim plainly states")
+            (w,) = tied
+            # A day code reads from the expert's event, not from words the claim writes, so it
+            # is not a date check_window can find in the claim (case_events, schema 0.7.0).
+            return self._zoned_window(None, w.start, w.end, device_ids, w.raw)
         if near is not None and len(stated) > 1:
             try:
                 day = datetime.fromisoformat(near).date()
@@ -2856,6 +2982,12 @@ class LocalAssumptionFiller:
         start, end = messages[0]
         words = text[start + 1 : end - 1].strip()
         return None if "\n" in words or "\r" in words else words
+
+    def _events(self) -> list[case_events.CaseEvent]:
+        """The defined events code may date a claim by (case_events.readable), read once."""
+        if self._case_events is None:
+            self._case_events = case_events.readable(self.conn)
+        return self._case_events
 
     def _names(self, text: str = "") -> set[str]:
         """Every name a quote must not be read as a message for: persons the expert created
@@ -3018,8 +3150,10 @@ class LocalAssumptionFiller:
         2023, \"...\"", "received a Kik message reading \"...\"" (PAST-30 fill a). Whoever
         sent it stays untested, and coverage_gap still asks for a sender where the claim
         names a writer."""
-        if "record_time" not in allowed_ids or not date_mentions(claim.text):
+        if "record_time" not in allowed_ids:
             return out
+        if not (date_mentions(claim.text) or event_windows(claim.text, self._events())):
+            return out  # no date the claim writes, and no day it ties to a defined event
         if _OTHER_ACT_RE.search(_unquoted(_nfc(claim.text))):
             # "On March 16, REYES deleted the message ... after receiving it from PETROV": the
             # date may be that act's, not the sending's, sender or no (Codex on #169)

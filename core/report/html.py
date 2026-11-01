@@ -85,7 +85,7 @@ from datetime import datetime
 from pathlib import Path
 
 from core import build, pipeline
-from core.audit import challenge, invariants, rules, testability
+from core.audit import case_events, challenge, invariants, rules, testability
 from core.audit.assumption_filler import WIDER_APPS
 from core.contracts import (
     AssumptionKind,
@@ -204,7 +204,10 @@ from core.review.withheld import summary as withheld_summary
 # summary table is narrower. No wording, fact or section changed.
 # 0.30.0: Limitations list each other name the expert gave a person for the document
 # ("SUBJECT-1", "HAL"), with who gave it and when (core/identity/aliases.py, schema 0.6.0).
-REPORT_VERSION = "0.30.0"
+# 0.31.0: Limitations list each event the expert entered for the document ("the SEARCH"), with
+# its days, the paragraph and words that define it, and who entered it and when
+# (core/audit/case_events.py, schema 0.7.0).
+REPORT_VERSION = "0.31.0"
 
 
 @dataclass(frozen=True)
@@ -735,6 +738,40 @@ def _limitations(conn: sqlite3.Connection, srcs: list[tuple]) -> str:
             f"finding.</strong> {e(by)} said on {e(at)} that the document's {said} is "
             f"{q(people.get(pid, pid))}. Mabillon did not verify it. Every claim that names the "
             "person this way was audited as that person.</li>"
+        )
+    paras = {
+        pid: (label, page)
+        for pid, label, page in conn.execute("SELECT id, label, page FROM govdoc_paragraphs")
+    }
+    readable = {ev.name for ev in case_events.readable(conn)}
+    for ev in case_events.stored(conn):
+        days = ev.first_day.isoformat() + ("" if ev.one_day else f" to {ev.last_day.isoformat()}")
+        if ev.name not in readable:
+            # a name a person, an alias or another event also matches dates nothing
+            # (case_events.readable), so the report never says a claim was dated by it
+            dated = (
+                "This name also matches a person, an alias or another event, so Mabillon "
+                "dated no claim by it."
+            )
+        elif not ev.one_day:
+            dated = "Mabillon dates no claim by an event of more than one day."
+        else:
+            dated = (
+                "For a claim the audit dated by this event, code set the day from the "
+                "expert's day and the tie the claim writes (the day of, the day before or "
+                "after, or a number of days before or after), as a whole day in the phone's "
+                "zone."
+            )
+        label, page = paras.get(ev.paragraph_id, (None, None))
+        where = (f"paragraph {e(label)}" if label else f"paragraph {e(ev.paragraph_id)}") + (
+            f", page {e(page)}" if page is not None else ""
+        )
+        items.append(
+            "<li><strong>When a defined event happened is an expert statement, not a finding."
+            f"</strong> {e(ev.created_by)} said on {e(ev.created_at_utc)} that the document's "
+            f"{q(ev.name)} is {e(days)}, from {where}: {q(ev.defined_as)}. Mabillon checked "
+            f"that these words are the paragraph's own, not that the event happened then. {dated}"
+            "</li>"
         )
     for app, ident, person, by, at in conn.execute(
         "SELECT a.app, a.identifier, p.name, l.decided_by, l.decided_at_utc"
