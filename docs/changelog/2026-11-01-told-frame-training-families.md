@@ -40,7 +40,8 @@
   `sup_contact` window with the same frame, times and date as held-out dev D000747), to be
   dropped from the delivered file as earlier data drops were (#87). The signature pins in
   `tests/test_gold_stancedata.py` pass on the signed copy. `make check` with main at 41d9c1e
-  merged: MAKE_CHECK_RESULT.
+  merged: lint clean, 3,616 tests passed, 9 skipped; eval gate unchanged from main: case01
+  model-free 1.00 with 0 false supported (PASS), hostile PASS.
 - Open: the held-out generator does not write the three families yet: a separate author adds
   them from the signed guide alone. The full overlap check with case02 has not run on these
   files, the label review sheet is not checked, and no model was trained. Left out until Arsh
