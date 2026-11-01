@@ -992,6 +992,10 @@ Diff: on main after the case05 PR merges, from the repo root (macOS and GNU sed)
 The last line must print 0 for both files. The copies are the drafts with only `labeled_by`
 (and, in the key, `labeled_at`) changed: 48 key lines and 86 sheet rows, and both then report
 as signed (checked on a scratch copy with bash, 2026-10-31).
+SIGNED by Arsh on 2026-10-31 at 23:26Z ("approve", project thread "Build agents into the
+audit"), the key and sheet as they stood after the second blind read (23 supported,
+12 contradicted, 13 unproven). APPLIED on claude/project-thread-6i2msb-case05 (#189) with the
+commands above, D=2026-10-31: only `labeled_by` and `labeled_at` changed.
 
 ## 2026-10-31 claude/project-thread-ds0ify: schema header dates for 0.5.0
 File: core/schema.sql (header comment only)
