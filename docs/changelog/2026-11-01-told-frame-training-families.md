@@ -1,4 +1,4 @@
-## 2026-11-01: Told frames, undated denials and "never told" in the stance training data
+## 2026-11-01: Told frames, undated denials and "never told" in the stance training data (#199)
 - Changed: stance labeling guide draft v0.4 (`eval/stancedata/LABELING_GUIDE.md`, for Arsh to
   sign; v0.3 stays the signed copy in `eval/gold/stancedata/`) adds three families with a fixed
   answer, 69 in all: `ovr_told_frame`, a complicates trap ("X told the owner that they paid
@@ -20,7 +20,7 @@
   the faster-engine plan (Arsh, 2026-10-30). The speed rule from that plan holds: nothing here
   can ship a model; any candidate still needs 0 contradicting records and 0 moved traps shown
   as supports on both test sets.
-- Where: branch claude/project-thread-lt1vdp
+- Where: PR #199 (draft, held for Arsh's signature on guide v0.4)
 - Verified: on a Linux container, 2026-11-01. 98 training generator tests pass, 4 of them new:
   each family's shape (a told frame's report frame, never the message as the subject or the
   record's minute; an undated denial's record, earlier questions and act name no time, and a
