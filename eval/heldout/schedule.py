@@ -7,9 +7,9 @@ claimed from the shared walk in schedule order, test split first, so no record t
 
 Volume (GO_BAR.md): the test split keeps at least 1,000 gated items and at least 440 gold
 contradicts (the bar needs 420; ovr_translation items are disputed and never gated). Under guide
-v0.3 contradicts come only from con_denial, con_other_value, con_other_state, con_in_window,
-con_correction and ovr_negation; the time, sender, speaker and later-correction traps are
-complicates.
+v0.4 contradicts come only from con_denial, con_other_value, con_other_state, con_in_window,
+con_correction, con_never_told and ovr_negation; the time, sender, speaker and later-correction
+traps, told frames and undated denials are complicates.
 """
 
 from __future__ import annotations
@@ -51,11 +51,14 @@ COMPOSITION: dict[str, int] = {
     "con_other_state": 40,
     "con_in_window": 80,
     "con_correction": 100,
+    "con_never_told": 40,
     "ovr_negation": 60,
     "ovr_time_mismatch": 32,
     "ovr_sender_mismatch": 28,
     "ovr_speaker_mismatch": 30,
     "ovr_later_correction": 30,
+    "ovr_told_frame": 40,
+    "ovr_undated_denial": 30,
     "ovr_handle_owner": 14,
     "ovr_shared_account": 12,
     "ovr_pronoun": 12,
@@ -93,11 +96,14 @@ POOL_TAGS: dict[str, tuple[str, ...]] = {
     "con_other_state": ("state",),
     "con_in_window": ("any",),
     "con_correction": ("corr",),
+    "con_never_told": ("stmt",),
     "ovr_negation": ("neg",),
     "ovr_time_mismatch": ("any",),
     "ovr_sender_mismatch": ("any",),
     "ovr_speaker_mismatch": ("stmt",),
     "ovr_later_correction": ("corr",),
+    "ovr_told_frame": ("deny", "neg", "value"),
+    "ovr_undated_denial": ("deny", "neg"),
     "ovr_handle_owner": ("stmt",),
     "ovr_shared_account": ("stmt",),
     "ovr_pronoun": ("pron",),
@@ -130,6 +136,35 @@ def _no_bare_denial(t: Tpl) -> bool:
     return not _BARE_DENIAL.search(t.text)
 
 
+def reportable(t: Tpl) -> bool:
+    """Whether the template's fact can follow "X told the owner that": an act of the sender's
+    (vp) or a fact with no "the sender" in it, which only a message frame can carry. A report
+    never names the message itself (guide v0.4, ovr_told_frame)."""
+    return bool(t.vp) or bool(t.that and "the sender" not in t.that)
+
+
+# A time a record, its question or its fact names: a weekday, a clock time, a relative day or
+# part of the day, a digit. An undated denial has none of them in any of its lines or in the
+# act it denies (guide v0.4, ovr_undated_denial: "naming no time and answering no question
+# that names one"). {n} counts things, never a time.
+_NAMES_A_TIME = re.compile(
+    r"\{(?:day\w*|day2|t|x\w+)\}|\d"
+    r"|\b(?:yesterday|today|tonight|tomorrow|morning|night|evening|afternoon|noon|week|month"
+    r"|weekend|last|this|ago|earlier|since|until|before|after|monday|tuesday|wednesday"
+    r"|thursday|friday|saturday|sunday)\b"
+    r"|вчера|сегодня|завтра|утр|вечер|ноч|днём|недел|месяц|после|понедельник|вторник|сред"
+    r"|четверг|пятниц|суббот|воскресен",
+    re.IGNORECASE,
+)
+
+
+def undated(t: Tpl) -> bool:
+    """A past-tense denial that names no time, of an act that names none, answering no
+    question that names one."""
+    parts = [t.text, t.quote, t.vp, t.that] + [v for k, v in t.extra if k == "ask"]
+    return not any(_NAMES_A_TIME.search(p) for p in parts)
+
+
 PREDICATES: dict[str, Callable[[Tpl], bool]] = {
     "ovr_speaker_mismatch": lambda t: bool(t.vp),  # the act must be attributable to a member
     "sup_account_shared": lambda t: bool(t.that or t.vp),
@@ -137,6 +172,9 @@ PREDICATES: dict[str, Callable[[Tpl], bool]] = {
     "con_in_window": _no_bare_denial,
     "ovr_time_mismatch": _no_bare_denial,
     "ovr_sender_mismatch": _no_bare_denial,
+    "con_never_told": reportable,
+    "ovr_told_frame": reportable,
+    "ovr_undated_denial": undated,
 }
 
 
@@ -157,6 +195,8 @@ KEYS: dict[str, Callable[[Entry], Iterable[str]]] = {
     "con_correction": _fix_and_fact,
     "ovr_negation": _fact,
     "ovr_later_correction": _fix_and_fact,
+    "ovr_told_frame": _fact,
+    "ovr_undated_denial": _fact,
 }
 
 # The four traps whose record has the assumption's words but leaves it open (guide v0.3): the
@@ -173,8 +213,12 @@ CONTRADICTS_FAMILIES = (
     "con_other_state",
     "con_in_window",
     "con_correction",
+    "con_never_told",
     "ovr_negation",
 )
+# The two traps guide v0.4 added (told frames and undated denials): the go bar counts them
+# with the four above among the moved traps shown as supports (GO_BAR.md bars 2 and 3).
+REPORT_TRAPS = ("ovr_told_frame", "ovr_undated_denial")
 
 
 def _misc_templates() -> list[Tpl]:

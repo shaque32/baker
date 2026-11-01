@@ -19,6 +19,7 @@ from pathlib import Path
 from eval.heldout import GENERATOR, ID_PREFIX, SEEDS, SOURCE
 from eval.heldout import writers_a as wa
 from eval.heldout import writers_b as wb
+from eval.heldout import writers_c as wc
 from eval.heldout.bk_common import BK_GENERATOR
 from eval.heldout.bk_generate import bk_items
 from eval.heldout.scene import finish
@@ -40,10 +41,13 @@ WRITERS: dict[str, Callable] = {
     "con_other_state": wa.con_other_state,
     "con_in_window": wa.con_in_window,
     "con_correction": wa.con_correction,
+    "con_never_told": wc.con_never_told,
     "ovr_time_mismatch": wb.ovr_time_mismatch,
     "ovr_sender_mismatch": wb.ovr_sender_mismatch,
     "ovr_speaker_mismatch": wb.ovr_speaker_mismatch,
     "ovr_later_correction": wb.ovr_later_correction,
+    "ovr_told_frame": wc.ovr_told_frame,
+    "ovr_undated_denial": wc.ovr_undated_denial,
     "ovr_negation": wb.ovr_negation,
     "ovr_handle_owner": wb.ovr_handle_owner,
     "ovr_shared_account": wb.ovr_shared_account,

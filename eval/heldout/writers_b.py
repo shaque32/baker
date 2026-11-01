@@ -26,7 +26,14 @@ from eval.heldout.frames import (
     reported,
     setup_chat,
 )
-from eval.heldout.pools import CYRILLIC_FULL, IG_SUFFIXES, LATIN_NAMES, LATIN_SURNAMES, TG_SUFFIXES
+from eval.heldout.pools import (
+    AWAY,
+    CYRILLIC_FULL,
+    IG_SUFFIXES,
+    LATIN_NAMES,
+    LATIN_SURNAMES,
+    TG_SUFFIXES,
+)
 from eval.heldout.scene import (
     FALL_CHANGE,
     SPRING_CHANGE,
@@ -566,10 +573,13 @@ def ovr_question(slot: Slot, rng: random.Random) -> Draft:
     pool = list(NON_ANSWER_RU if slot.record_lang == "ru" else NON_ANSWER_EN)
     extra = rng.randint(1 if st.sender.owner else 0, 2)  # the other party must be on screen
     for i in range(extra):  # what follows must not answer the question
-        line = rng.choice(pool)
-        pool.remove(line)
         asker_only = i == 0 and st.sender.owner
-        core.append((st.receiver if asker_only else rng.choice((st.sender, st.receiver)), line))
+        who_says = st.receiver if asker_only else rng.choice((st.sender, st.receiver))
+        # The asker never says they are elsewhere ("in a meeting") beside their own record.
+        fits = [t for t in pool if who_says != st.sender or t not in AWAY]
+        line = rng.choice(fits)
+        pool.remove(line)
+        core.append((who_says, line))
     lines, target = place(rng, st.chat, core, 0, (0, 3), (0, 0), neutral=True)
     utc = record_time(rng, st, lines)
     that = fill(e.that(), st)

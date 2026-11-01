@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
+import json
 import re
 from collections import Counter
 from datetime import UTC, date, datetime, timedelta
@@ -17,7 +19,7 @@ from eval.heldout.bk_common import BK_GENERATOR
 from eval.heldout.bk_schedule import BK_COMPOSITION
 from eval.heldout.data_complicates import HEARSAY
 from eval.heldout.data_support import QA
-from eval.heldout.frames import names_in
+from eval.heldout.frames import RELATIVE_THAT, names_in
 from eval.heldout.generate import generate, plain_items
 from eval.heldout.glossary import RU_EN_PAIRS, SLANG_FORMS
 from eval.heldout.pools import (
@@ -31,7 +33,13 @@ from eval.heldout.pools import (
     PLACES,
     WEEKDAYS_EN,
 )
-from eval.heldout.schedule import COMPOSITION, CONTRADICTS_FAMILIES, MISMATCH_TRAPS
+from eval.heldout.schedule import (
+    COMPOSITION,
+    CONTRADICTS_FAMILIES,
+    MISMATCH_TRAPS,
+    REPORT_TRAPS,
+    schedule,
+)
 from eval.heldout.text import normalized
 from eval.heldout.verbs import has_past_verb
 from eval.stancedata.bakerform import ZONE_OF
@@ -45,16 +53,16 @@ PACKAGE = Path(__file__).resolve().parent.parent / "eval" / "heldout"
 # The test split, exactly; the dev split is half of every number.
 BLOCKS = {
     "clear_support": 200,
-    "contradicts": 390,
+    "contradicts": 430,
     "complicates": 120,
     "irrelevant": 80,
 }
 MINIMUMS = {"sup_": 15, "con_": 40, "cpl_": 15}
-OVERREACH_GATED = 340  # every ovr_* family except ovr_translation
+OVERREACH_GATED = 410  # every ovr_* family except ovr_translation
 OVERREACH_MISMATCH_TRAPS = 120  # time, sender, speaker and later-correction traps
 OVERREACH_OTHER_MIN = 12
 TRANSLATION = 20
-TOTAL = 1150
+TOTAL = 1260
 # GO_BAR.md: at least 1,000 gated items; the bar needs 420 gold contradicts, kept with a margin.
 GATED_MIN = 1000
 CONTRADICTS_MIN = 440
@@ -107,10 +115,11 @@ def _check_composition(items: list[GenItem], scale: int) -> None:
     stances = Counter(it.gold_stance for it in items)
     assert stances["contradicts"] >= CONTRADICTS_MIN // scale
     assert sum(it.disputed is None for it in items) >= GATED_MIN // scale
-    # Guide v0.3: contradicts come only from these families; the four traps are complicates.
+    # Guide v0.4: contradicts come only from these families; the four traps of v0.3 and the two
+    # report traps of v0.4 are complicates.
     contra = {it.family for it in items if it.gold_stance == "contradicts"}
     assert contra == set(CONTRADICTS_FAMILIES)
-    for family_id in MISMATCH_TRAPS:
+    for family_id in MISMATCH_TRAPS + REPORT_TRAPS:
         assert family(family_id).stance == "complicates", family_id
 
 
@@ -353,6 +362,8 @@ _REPORT_ALLOWED = {
     "sup_plain",
     "sup_answer",
     "sup_injection",
+    "ovr_told_frame",  # guide v0.4: the two report families are about a message (rule 12)
+    "con_never_told",
 }
 _REPORT_FRAMES = re.compile(
     r"says that|said that|the message|wrote to the owner that|told the owner that"
@@ -869,7 +880,7 @@ def test_denial_quotes_carry_the_denial(
 ) -> None:
     """Rule 22: the quote of a denial or a negation holds the denying words themselves."""
     for it in test_items + dev_items:
-        if it.family in ("con_denial", "ovr_negation"):
+        if it.family in ("con_denial", "ovr_negation", "ovr_undated_denial"):
             assert _DENIAL_WORDS.search(it.proposed_quote), (it.probe_id, it.proposed_quote)
 
 
@@ -1028,6 +1039,163 @@ def test_denied_acts_are_dated_before_the_message(
             assert stamp in it.assumption, (it.probe_id, stamp, it.assumption)
 
 
+# ------------------------------------- guide v0.4: told frames, undated denials, "never told"
+
+_REPORT_TAGS = {
+    "ovr_told_frame": {"deny", "neg", "value"},
+    "ovr_undated_denial": {"deny", "neg"},
+    "con_never_told": {"stmt"},
+}
+
+
+def test_report_families_draw_the_records_the_guide_names() -> None:
+    """A told frame stands against a denial or another value, an undated denial against a
+    denial, a "never told" against a plain statement (as sup_plain draws). None of them is a
+    record a later message corrects, which the guide keeps out until Arsh decides."""
+    for slots in schedule().values():
+        for slot in slots:
+            if slot.family in _REPORT_TAGS:
+                tpl = slot.entry.tpl
+                assert tpl.tags & _REPORT_TAGS[slot.family], (slot.family, tpl.text)
+                assert not tpl.has("fix"), (slot.family, tpl.text)
+
+
+def _phrase(text: str) -> str:
+    """An account phrase as it would open a sentence ("The owner") back in running text."""
+    return "the owner" + text[9:] if text.startswith("The owner") else text
+
+
+_TOLD = re.compile(
+    r"^(?:On ([A-Z][a-z]+ \d{1,2}, \d{4}), )?(.+?) (?:told|wrote to) (.+?) that (.+)\.$"
+)
+_CLOCK = re.compile(r"\d:\d\d|\b\d{1,2} ?(?:a\.m\.|p\.m\.)")
+
+
+def test_told_frames_report_what_the_sender_says_otherwise(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    """Guide v0.4, rules 12 and 23 (ovr_told_frame): the assumption reports what the record's
+    own sender told the other party, in the frames supports items use and never "the
+    message"; its time, if any, is the record's local date, never its minute or about it
+    (kept out). One record cannot show that no other message said it."""
+    seen = 0
+    for it in test_items + dev_items:
+        if it.family != "ovr_told_frame":
+            continue
+        seen += 1
+        m = _TOLD.match(it.assumption)
+        assert m, (it.probe_id, it.assumption)
+        day, who, to, said = m.groups()
+        assert _names(_phrase(who), it.target.sender), (it.probe_id, who, it.target.sender)
+        if it.target.sender.endswith("(owner)"):  # the other party is on screen (rule 11)
+            assert any(_names(to, ln.sender) for ln in it.context), (it.probe_id, to)
+        assert "message" not in it.assumption.lower(), (it.probe_id, it.assumption)
+        assert not _CLOCK.search(f"{who} {to}"), (it.probe_id, it.assumption)
+        if day:
+            sent = date.fromisoformat(it.target.local_time[:10])
+            assert datetime.strptime(day, "%B %d, %Y").date() == sent, (it.probe_id, day)
+        assert not RELATIVE_THAT.search(said), (it.probe_id, said)
+        assert "does not show whether" in it.rationale, (it.probe_id, it.rationale)
+        assert family(it.family).stance == it.gold_stance == "complicates"
+    assert seen == (COMPOSITION["ovr_told_frame"] * 3) // 2
+
+
+_TIME_WORDS = re.compile(
+    r"\b(?:yesterday|today|tonight|tomorrow|morning|night|evening|afternoon|noon|week|month"
+    r"|weekend|last|ago|earlier|since|until|monday|tuesday|wednesday|thursday|friday|saturday"
+    r"|sunday)\b|\bat \d|\d:\d\d|вчера|сегодня|завтра|утр|вечер|ноч|недел|понедельник"
+    r"|вторник|сред[ау]|четверг|пятниц|суббот|воскресен",
+    re.IGNORECASE,
+)
+
+
+def test_undated_denials_name_no_time_and_leave_a_later_act_open(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    """Guide v0.4, rule 23 (ovr_undated_denial): a past-tense denial that names no time,
+    answering no question that names one, covers the act only up to when it was sent. The
+    assumption states the act as a fact with no time, or dated after the message, never
+    before it (that is con_denial)."""
+    seen = 0
+    for it in test_items + dev_items:
+        if it.family != "ovr_undated_denial":
+            continue
+        seen += 1
+        assert not _TIME_WORDS.search(it.target.text), (it.probe_id, it.target.text)
+        asked = [
+            ln.text
+            for ln in it.context[: it.target_index]
+            if ln.sender != it.target.sender and _ASKS.search(ln.text)
+        ]
+        for text in asked:
+            assert not _TIME_WORDS.search(text), (it.probe_id, text)
+        sent = date.fromisoformat(it.target.local_time[:10])
+        assert not it.assumption.startswith("Before "), (it.probe_id, it.assumption)
+        for m in _FULL_DATE.finditer(it.assumption):
+            day = datetime.strptime(m.group(2), "%B %d, %Y").date()
+            if it.assumption[: m.start()].endswith("after "):
+                assert day == sent, (it.probe_id, it.assumption)
+            else:
+                assert day > sent, (it.probe_id, it.assumption)
+        assert "covers only the time before it was sent" in it.rationale, it.probe_id
+        assert "whether the denial is true is for the expert" in it.rationale, it.probe_id
+    assert seen == (COMPOSITION["ovr_undated_denial"] * 3) // 2
+
+
+_NEVER_TOLD = re.compile(
+    r"^(?:At no (?:point|time in (?P<month>[A-Z][a-z]+ \d{4})) did (?P<s1>.+?) tell (?P<r1>.+?)"
+    r"|(?P<s2>.+?) (?:never told|never wrote to|did not tell) (?P<r2>.+?))"
+    r"(?: on (?P<day>[A-Z][a-z]+ \d{1,2}, \d{4})"
+    r"| at any time from (?P<d1>[A-Z][a-z]+ \d{1,2}(?:, \d{4})?) through "
+    r"(?P<d2>[A-Z][a-z]+ \d{1,2}, \d{4}))? that (?P<said>.+)\.$"
+)
+_NEVER_FRAME = {"never", "point", "tell", "time", "told", "wrote"}
+
+
+def test_never_told_excludes_every_message_and_holds_the_record(
+    test_items: list[GenItem], dev_items: list[GenItem]
+) -> None:
+    """Guide v0.4, rules 12 and 23 (con_never_told): the assumption says the record's own
+    sender never told the other party something, or did not tell it within a time that holds
+    the record (a "never told" whose time misses the record is kept out). The record says it
+    in plain words, as a sup_plain record would, and the quote is the whole message, so the
+    words that rule the report out are all quoted (rule 22)."""
+    seen = 0
+    for it in test_items + dev_items:
+        if it.family != "con_never_told":
+            continue
+        seen += 1
+        m = _NEVER_TOLD.match(it.assumption)
+        assert m, (it.probe_id, it.assumption)
+        who = _phrase(m.group("s1") or m.group("s2"))
+        assert _names(who, it.target.sender), (it.probe_id, who, it.target.sender)
+        sent = date.fromisoformat(it.target.local_time[:10])
+        if m.group("month"):
+            assert m.group("month") == f"{sent.strftime('%B')} {sent.year}", it.probe_id
+        if m.group("day"):
+            assert datetime.strptime(m.group("day"), "%B %d, %Y").date() == sent, it.probe_id
+        if m.group("d2"):
+            end = datetime.strptime(m.group("d2"), "%B %d, %Y").date()
+            first = m.group("d1") if "," in m.group("d1") else f"{m.group('d1')}, {end.year}"
+            start = datetime.strptime(first, "%B %d, %Y").date()
+            assert start <= sent <= end, (it.probe_id, it.assumption)
+        said = m.group("said")
+        assert not RELATIVE_THAT.search(said), (it.probe_id, said)
+        assert it.proposed_quote == it.target.text, it.probe_id
+        assert has_past_verb(it.target.text), (it.probe_id, it.target.text)
+        assert not _SLANG.search(it.target.text.lower()), (it.probe_id, it.target.text)
+        pool = set()
+        for line in [it.target, *it.context]:
+            pool |= _tokens(line.text) | _tokens(line.sender)
+        if it.lang != "en":
+            pool |= _GLOSSARY_WORDS | _RU_NAMES_EN
+        for word in re.findall(r"[a-z]{4,}", _outside_quotes(said).lower()):
+            if word not in _FRAME_WORDS | _NEVER_FRAME:
+                assert _known(word, pool), (it.probe_id, word, it.assumption)
+        assert "rules the assumption out" in it.rationale, it.probe_id
+    assert seen == (COMPOSITION["con_never_told"] * 3) // 2
+
+
 # An answer's element whose tense or time the record leaves open ("done, back at 6").
 _OPEN_ELEMENT = re.compile(
     r"\bback at\b|\b(?:until|till|by) (?:\d|\{t\})|\bsold out\b|\bwas sold\b|\bfinished by\b"
@@ -1110,9 +1278,15 @@ def test_hearsay_carries_its_marker_and_states_are_the_senders_own(
 # item itself: times from the lines' local clock and zone, windows from the document's words,
 # calls from the call text, and brackets from the sender lines.
 
-_PLAIN_SHA = {  # the plain part of each split (eval.heldout 1.3.0): no bk_* change moves it
-    "test": "992b7c924a5abc5f6c0847efe52815434ac0324e1fae11cc112fc648585c7407",
-    "dev": "13cc45af73f8b3105c5323d91d1927440b6c277a9646b580496808fe7edf24bd",
+_PLAIN_SHA = {  # the plain part of each split (eval.heldout 1.4.0): no bk_* change moves it
+    "test": "ba6e2ff4a2dcbe056fc909e0cbf7c2fa7ebbe09752a974e2e18d051f522b15ae",
+    "dev": "b9f6d956088354b4c702c8255bcb8e3018b9aae1901712b60659d7f5e498bbdc",
+}
+# The Baker-wording items without their ids, as eval.heldout 1.3.0 wrote them: adding plain
+# families (1.4.0 added three) moves their ids, never their content (bk_generate.STREAM_BASE).
+_BK_BODY_SHA = {
+    "test": "ecf68b904ff09bd5c9528ce45a7e1f5837cfe3c629176754516720e810060e48",
+    "dev": "c33ce78b53596a25e20461ac352c33ccc43518a605616d99abd0f70033246006",
 }
 _ABBR_HOURS = {"EST": -5, "EDT": -4, "CST": -6, "CDT": -5, "MST": -7, "MDT": -6, "PST": -8,
                "PDT": -7}  # fmt: skip
@@ -1203,6 +1377,20 @@ def test_bk_composition_follows_the_plain_items(
 def test_bk_items_leave_the_plain_bytes_alone(split: str, tmp_path: Path) -> None:
     digest = write_jsonl(plain_items(split), tmp_path / f"{split}.jsonl")
     assert digest == _PLAIN_SHA[split]
+
+
+@pytest.mark.parametrize("split", ["test", "dev"])
+def test_plain_families_leave_the_bk_items_alone(split: str) -> None:
+    items = generate(split)
+    rows = [
+        json.dumps(
+            {k: v for k, v in it.model_dump(mode="json").items() if k not in ("probe_id", "group")},
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        for it in _bk(items)
+    ]
+    assert hashlib.sha256("\n".join(rows).encode()).hexdigest() == _BK_BODY_SHA[split]
 
 
 def test_bk_sender_lines_follow_the_bracket_rule(

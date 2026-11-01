@@ -12,7 +12,9 @@ writes chats and assumptions that fit each family's rule.
 # 1.2.0: wording for guide draft v0.3. 1.3.0: a denial's act is dated before the message (rule
 # 23), an answer's assumption leaves out what the answer leaves open, no "the account's user",
 # no generalization bounded by "that month" or "that week", hearsay in the present tense.
-GENERATOR = "eval.heldout 1.3.0"
+# 1.4.0: the three families guide v0.4 added (ovr_told_frame, ovr_undated_denial,
+# con_never_told), written from the signed guide alone.
+GENERATOR = "eval.heldout 1.4.0"
 SOURCE = "heldout_gen"
 SEEDS = {"test": 1001, "dev": 2002}
 ID_PREFIX = {"test": "H", "dev": "D"}
