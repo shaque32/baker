@@ -203,8 +203,17 @@ def test_a_run_and_its_repeat_give_a_go_with_the_hardware_recorded(tmp_path, mon
         "measured_at_utc",
     }
     assert record["testability"]["prompt"] == "signed"
+    # the result is tied to the build, every model and the filler that produced it
+    from core.audit import assumption_filler
+
+    versions = record["versions"]
+    assert versions["build"]["commit"]
+    assert {m["purpose"] for m in versions["models"]} >= {"assumptions", "stance"}
+    (filler,) = [m for m in versions["models"] if m["purpose"] == "assumptions"]
+    assert filler["code_version"] == assumption_filler.FILLER_VERSION
     printed = capsys.readouterr().out
     assert "pipeline: testability go/no-go: GO\n" in printed
+    assert f"(code version {assumption_filler.FILLER_VERSION})" in printed
     assert "pipeline: testability go/no-go: pass: 0 false supported" in printed
 
 

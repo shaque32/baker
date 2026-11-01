@@ -522,9 +522,12 @@ def test_an_experts_own_words_are_exempt_and_nothing_else_is():
         check_report_text('<p><span class="said" title="x">deleted</span></p>')
 
 
-def test_cli_audit_review_and_report(conn, tmp_path):
+def test_cli_audit_review_and_report(conn, tmp_path, monkeypatch):
     db = Path(conn.execute("PRAGMA database_list").fetchone()[2])
-    assert cli_main(["audit", "--db", str(db)]) == 2  # real components not built yet
+    # with no local model set up, a real audit cannot run; point the config at nothing so this
+    # holds on a machine that has one (#180: it failed on a Mac with local models)
+    monkeypatch.setenv("MABILLON_MODEL_CONFIG", str(tmp_path / "no-model.json"))
+    assert cli_main(["audit", "--db", str(db)]) == 2
     assert cli_main(["audit", "--db", str(db), "--fake"]) == 0
     out = tmp_path / "report.html"
     assert cli_main(["report", "--db", str(db), "--out", str(out)]) == 0

@@ -2,7 +2,8 @@
 - Changed: the go/no-go's third bar (`eval/run_pipeline.py`, `testability_go_no_go` and
   `report_go_no_go`) now reads "0 false supported on the claims the agent changed, under the
   rubber-stamp expert". Arsh chose this on 2026-10-30 at 23:08Z, on a decision card in the
-  project thread. Why: on case04's go/no-go (his Mac run, 2026-10-30) the one false supported
+  project thread, and signed the scorer change on 2026-10-31 at 00:02Z ("approve", project
+  thread), before #183 merged (2026-10-31, about 15:05Z) and before any case05 run. Why: on case04's go/no-go (his Mac run, 2026-10-30) the one false supported
   was C39, a role claim the step never touched. The 14B labelled two messages as supporting it,
   and the rubber-stamp expert accepted both. With the agent off, C39 fails the same way, so the
   bar as built (#168, every claim in the run) measured the base pipeline under a careless
