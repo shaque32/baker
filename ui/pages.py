@@ -2033,7 +2033,16 @@ def _short(payload_json: str, limit: int = 400) -> str:
 
 
 def error_page(page: Page, status: int, message: str) -> str:
-    return page.wrap("Error", f"<h1>{status}</h1><p>{e(message)}</p><p><a href='/'>Case</a></p>")
+    back = (
+        "<a class='button' href='/'>Go to the case</a>"
+        if page.case_name is not None
+        else "<a class='button' href='/cases'>Go to the case list</a>"
+    )
+    return page.wrap(
+        "Error",
+        f"<div class='pg-error'><h1>{status}</h1><p class='lede'>{e(message)}</p>"
+        f"<p class='actions'>{back}<a href='/help'>Help</a></p></div>",
+    )
 
 
 # ---------------------------------------------------------------- cases
@@ -2049,10 +2058,10 @@ LOCK_LABEL = {"plain": "Not encrypted", "locked": "Encrypted, locked", "open": "
 def _unlock_fields(slug: str) -> str:
     return (
         f"<input type='hidden' name='case' value='{e(slug)}'>"
-        "<input type='password' name='passphrase' required size='30' "
+        "<span class='unlock'><input type='password' name='passphrase' required size='30' "
         "autocomplete='current-password' placeholder='Passphrase or recovery key' "
         "aria-label='Passphrase or recovery key'> "
-        "<button type='submit'>Unlock and open</button>"
+        "<button type='submit'>Unlock and open</button></span>"
     )
 
 
@@ -2067,12 +2076,15 @@ def cases_page(
     """rows: (folder name, case name, one-line state, lock state: plain | locked | open).
     single: the database path when the screen was started on one case database (`--db`),
     which has no cases folder; single_locked when that database is encrypted and locked;
-    single_blocked: why that database cannot be opened for review (a broken audit log)."""
-    out = ["<h1>Cases</h1>"]
+    single_blocked: why that database cannot be opened for review (a broken audit log).
+
+    The first screen after install: the case list, then one card to make a case, whose
+    "Make the case" is the page's only primary button. The cases folder is one muted line."""
+    out = ["<div class='pg-cases'><h1>Cases</h1>"]
     if single is not None:
         out.append(
-            f"<p>This screen was started on one case database: <span class='mono'>{e(single)}"
-            "</span>. Start <span class='mono'>mabillon serve</span> without "
+            f"<p class='lede'>This screen was started on one case database: <span class='mono'>"
+            f"{e(single)}</span>. Start <span class='mono'>mabillon serve</span> without "
             "<span class='mono'>--db</span> to make and open cases in a cases folder.</p>"
         )
         if single_locked:
@@ -2085,15 +2097,13 @@ def cases_page(
             out.append(
                 f"<div class='flash err'><strong>Review blocked.</strong> {e(single_blocked)}</div>"
             )
+        out.append("</div>")
         return page.wrap("Cases", "".join(out))
     out.append(name_form(page))
-    out.append(
-        f"<p>Cases folder: <span class='mono'>{e(home)}</span>. Each case is a folder with its "
-        "own database and read-only copies of its files.</p>"
-    )
     if rows:
         out.append(
-            "<table><thead><tr><th>Case</th><th>State</th><th>Encryption</th><th></th></tr></thead>"
+            "<table class='caselist'><thead><tr><th>Case</th><th>State</th><th>Encryption</th>"
+            "<th><span class='vh'>Open</span></th></tr></thead><tbody>"
         )
         for slug, name, state, lock in rows:
             fields = (
@@ -2103,16 +2113,20 @@ def cases_page(
                 "<button type='submit'>Open</button>"
             )
             out.append(
-                f"<tr><td>{q(name)}<br><span class='mono'>{e(slug)}</span></td><td>{e(state)}</td>"
-                f"<td>{e(LOCK_LABEL.get(lock, lock))}</td><td>"
-                + page.form("/case/open", fields, "inline")
-                + "</td></tr>"
+                f"<tr><td class='name'>{q(name)}<span class='mono'>{e(slug)}</span></td>"
+                f"<td class='state'>{e(state)}</td>"
+                f"<td class='lock lock-{e(lock)}'>{e(LOCK_LABEL.get(lock, lock))}</td>"
+                "<td class='go'>" + page.form("/case/open", fields, "inline") + "</td></tr>"
             )
-        out.append("</table>")
+        out.append("</tbody></table>")
     else:
-        out.append("<p class='muted'>No cases yet.</p>")
+        out.append("<p class='empty'>No cases yet.</p>")
     out.append(
-        "<h2>New case</h2>"
+        f"<p class='where'>Cases folder: <span class='mono'>{e(home)}</span>. Each case is a "
+        "folder with its own database and read-only copies of its files.</p>"
+    )
+    out.append(
+        "<section class='newcase'><h2>New case</h2>"
         + page.form(
             "/case/new",
             "<p><label>Case name <input type='text' name='name' required maxlength='80' "
@@ -2120,14 +2134,16 @@ def cases_page(
             "</label></p>"
             "<p><label><input type='checkbox' name='encrypt' value='1' checked> Encrypt this case "
             "with a passphrase (recommended)</label></p>"
+            "<div class='pass'><div class='passfields'>"
             "<input type='password' name='passphrase' autocomplete='new-password' minlength='12' "
             "placeholder='Passphrase' aria-label='Passphrase'> "
             "<input type='password' name='passphrase2' autocomplete='new-password' "
-            "placeholder='The passphrase again' aria-label='The passphrase again'>"
+            "placeholder='The passphrase again' aria-label='The passphrase again'></div>"
             f"<p class='muted'>{e(PASSPHRASE_HINT)} The case name stays readable in this list."
-            "</p>"
+            "</p></div>"
             "<button type='submit' class='primary'>Make the case</button>",
         )
+        + "</section></div>"
     )
     return page.wrap("Cases", "".join(out))
 
@@ -2138,8 +2154,10 @@ def name_form(page: Page) -> str:
     return page.form(
         "/expert",
         "<p><strong>Who is working on this case?</strong> Your name is recorded with every "
-        "decision in the audit log.</p><input type='text' name='name' required "
-        "maxlength='60' placeholder='Your name'> <button type='submit'>Continue</button>",
+        "decision in the audit log.</p><div class='row'><input type='text' name='name' required "
+        "maxlength='60' placeholder='Your name' aria-label='Your name'> "
+        "<button type='submit'>Continue</button></div>",
+        "box nameform",
     )
 
 
