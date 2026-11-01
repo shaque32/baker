@@ -46,7 +46,7 @@ from eval.train.writers import sentence
 # part of the day misses more often; the time trap reports the message as the subject too,
 # comes up in more scenes, and the time scene sets most records against a time that holds
 # them and one that misses them; half the irrelevant assumptions carry a time (from 35%).
-# 1.6.0: labels follow guide draft v0.4: a denial or another value now also comes against a
+# 1.6.0: labels follow guide v0.4: a denial or another value now also comes against a
 # report that its sender said the act happened or the other value (ovr_told_frame), a denial
 # that names no time against the act with no time or a later date (ovr_undated_denial), and a
 # plain statement against "never told" or "did not tell ... on <its date>" (con_never_told),

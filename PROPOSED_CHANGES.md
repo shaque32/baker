@@ -1133,3 +1133,11 @@ In tests/test_gold_stancedata.py, the same SHA-256 for "eval/stancedata/LABELING
 the comment above it: "Pinned when Arsh signed guide v0.4 on DATE (v0.3: 2026-10-14)". Then
 `python -m pytest -q tests/test_gold_stancedata.py` passes (2 tests). The pin is the draft's
 SHA-256 at the commit Arsh signs, so a review change made after the signature needs a new one.
+SIGNED by Arsh on 2026-11-01 at 18:47Z ("Sign v0.4 as written" on a decision card, project
+thread "Plan a faster, sharper audit engine"), the draft as it stood at commit 78682cf. APPLIED
+on claude/project-thread-lt1vdp (#199) with DATE=2026-11-01, TIME=18:47 and COMMIT=78682cf: a
+copy of the draft with its header edited, which gives the same file as the script above, with
+the card's words in place of "approved" (in the gold README too) and the lines rewrapped. The
+draft's own header now says signed, above its SYNTHETIC line and so outside the signed text,
+and the pin is that file's SHA-256, `4dafbb8560fa862685a31320f346f1e38bab7eb00ecfe2de2f60876114f7ede1`.
+Below the headers both copies are the text at 78682cf byte for byte, and the two tests pass.

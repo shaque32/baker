@@ -1,13 +1,13 @@
 # Labeling guide for generated stance data
 
-v0.4 DRAFT of 2026-10-31, for Arsh to sign. It writes into the data the two traps the signed
+v0.4, signed by Arsh on 2026-11-01 ("Sign v0.4 as written" on a decision card in the "Plan a
+faster, sharper audit engine" thread, 18:47 UTC); the signed copy is
+`eval/gold/stancedata/LABELING_GUIDE.md`. v0.4 writes into the data the two traps the signed
 probe set has shown since its 2026-10-15 relabel and neither generator wrote, told frames and
-undated denials, with the "never told" report that one message rules out (rules 12 and 23);
-"Changes from v0.3, for Arsh to sign" at the end lists every change. v0.3, signed by Arsh on
-2026-10-14 ("approved" in the "Custom model for Baker" thread), stays the signed copy in
-`eval/gold/stancedata/LABELING_GUIDE.md` until Arsh signs this one. Any change below this
-paragraph needs a new signature: edit this draft, have Arsh sign it, then copy it to
-`eval/gold/stancedata/` and update the pins there.
+undated denials, with the "never told" report that one message rules out (rules 12 and 23); the
+list of changes from v0.3 at the end gives every change. It replaces v0.3, signed on
+2026-10-14. Any change below this paragraph needs a new signature: edit this draft, have Arsh
+sign it, then copy it to `eval/gold/stancedata/` and update the pins there.
 
 SYNTHETIC. Every example below is invented.
 

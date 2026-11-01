@@ -1,13 +1,14 @@
 # Labeling guide for generated stance data
 
-SIGNED by Arsh on 2026-10-14 ("approved" in the "Custom model for Baker" thread, 21:16 UTC).
-This is draft v0.3 of `eval/stancedata/LABELING_GUIDE.md`, unchanged below this paragraph since
-commit e23f7f3. It replaces v0.2, signed on 2026-10-12. The three calls the sign-off page left
-for his word are decided as written: "this" before a weekday already past stays open, another
-meaning from the words' own user stays open, and the words' own user supports a meaning claim
-that names no one. The Russian-English pairs in `eval/train/glossary.py` and
-`eval/heldout/glossary.py` (rule 6) are unchanged since v0.2 and stay signed. `README.md` next
-to this file pins all three files by SHA-256.
+SIGNED by Arsh on 2026-11-01 ("Sign v0.4 as written" on a decision card in the "Plan a faster,
+sharper audit engine" thread, 18:47 UTC). This is draft v0.4 of
+`eval/stancedata/LABELING_GUIDE.md`, unchanged below this paragraph since commit 78682cf. It
+replaces v0.3, signed on 2026-10-14. The calls on its list of changes are decided as written:
+an act dated after a denial that names no time stays open, a "never told" report is ruled out
+by one message that says it, and three cases stay out of the data until Arsh decides them. The
+Russian-English pairs in `eval/train/glossary.py` and `eval/heldout/glossary.py` (rule 6) are
+unchanged since v0.2 and stay signed. `README.md` next to this file pins all three files by
+SHA-256.
 
 SYNTHETIC. Every example below is invented.
 
@@ -91,11 +92,17 @@ whose words exclude other messages, such as "first contact on" or "no contact be
     Ruiz $2,000"), not "the message says that ..." or "Gabe told the owner that ...", which
     stay literally true after the correction. The exceptions are the families whose point is
     the message itself: `sup_verbatim`, `sup_contact`, `sup_account_shared`,
-    `ovr_sender_mismatch`, `ovr_speaker_mismatch`, `ovr_time_mismatch`, `con_in_window`.
-    The same holds for every trap family, `ovr_injection_unrelated` and `ovr_plan` included:
-    "the message from Nate says that Rosa drove the boat" invites contradicts for an item whose
-    answer is irrelevant, and "X wrote that they sold the car" is true of a message that only
-    plans the sale.
+    `ovr_sender_mismatch`, `ovr_speaker_mismatch`, `ovr_time_mismatch`, `con_in_window`, and
+    the two report families `ovr_told_frame` and `con_never_told`. The same holds for every
+    other trap family, `ovr_injection_unrelated` and `ovr_plan` included: "the message from
+    Nate says that Rosa drove the boat" invites contradicts for an item whose answer is
+    irrelevant, and "X wrote that they sold the car" is true of a message that only plans the
+    sale. A report is about a message, so it is read as one (rule 23): "Gabe told the owner
+    that they paid Ruiz $2,000" is shown by a message from Gabe that says it, and Gabe's own
+    "never paid ruiz" or "paid ruiz 1,500" leaves it open, because one record cannot show that
+    no other message said it (`ovr_told_frame`). Only a report whose words exclude every such
+    message ("Gabe never told the owner that they paid Ruiz", "Gabe did not tell the owner on
+    May 2 that ...") is ruled out by one message that says it (`con_never_told`).
 13. **Filler never settles the question.** Messages placed after a question or a plan must not
     answer or confirm it; otherwise the item becomes a different family.
 14. **A supports assumption says what the message communicates.** "The contact saved as Nico
@@ -169,7 +176,9 @@ whose words exclude other messages, such as "first contact on" or "no contact be
     open, because one record cannot show that no other message exists. A past-tense denial
     that names no time ("i didnt pay the 250"), answering no question that names one, covers
     the act at any time before it was sent, and says nothing about a later act: an assumption
-    that gives no time is left open, so the generators date the act before the message. Where that gap matters,
+    that gives the act no time, or dates it after the message, is left open
+    (`ovr_undated_denial`), and one that dates it before the message is ruled out
+    (`con_denial`). Where that gap matters,
     the timeline search reports it with the coverage it had (CLAUDE.md: "not found" never means
     "did not happen").
 24. **Rationales claim only what is shown.** A rationale names no place or fact that the record
@@ -200,10 +209,13 @@ on the surface; they exist to teach the model where the line is.
 | `con_other_state` | contradicts | The record names a place or state that cannot hold at the same stated time as the assumption's, with nothing unstated needed (rule 23). | Record, Tuesday 4 p.m.: "back in porto since sunday, just left the gym". Assumption: Bo was still in Lisbon on Tuesday morning. |
 | `con_in_window` | contradicts | The assumption says there was no contact in a window, or first contact on a date; the record is a message inside the window, or earlier. | Assumption: no contact between the owner and Bo from May 1 to May 5. Record: Bo to owner, May 3. |
 | `con_correction` | contradicts (new) | The record is the sender's own correction of an earlier message in the context, giving a value for the same thing that cannot be true together with the assumption's (rule 19); the quote is the correcting words. | Earlier, Bo: "paid him $500". Record, Bo: "sorry, $300 not $500". Assumption: Bo paid him $500. |
+| `con_never_told` | contradicts (new in v0.4) | The assumption says a sender never told or wrote something, or did not tell it within a time that holds the record, in words that exclude every such message (rules 12 and 23); the record, from that sender in the chat the assumption names, says it in plain words, as a `sup_plain` record would. | Assumption: Bo never told the owner that they paid Ruiz. Record from Bo: "paid ruiz 2000 yesterday". |
 | `ovr_time_mismatch` | complicates (trap, changed in v0.3) | Same words and people, but the record's local date or clock time falls outside what the assumption states; one record cannot show that no matching message was sent then (rule 23). At a DST change the local clock reading decides. | Assumption: the owner sent Bo "on my way" on May 3. Record: "on my way" at 9:40 p.m. May 2 local. |
 | `ovr_sender_mismatch` | complicates (trap, changed in v0.3) | The assumption says one account sent the words; the record shows another account sent them, and does not show whether the first also did (rule 23). | Assumption: the owner wrote "its done". Record: "its done" from Bo. |
 | `ovr_speaker_mismatch` | complicates (trap, changed in v0.3) | In a group chat, the assumption attributes words to one member; the record shows a different member wrote them, and does not show whether the first member also said them (rule 23). Was `con_other_speaker` (contradicts) in v0.2. | Assumption: +1 ...0142 offered to drive. Record: "i'll drive" from +1 ...0187. |
 | `ovr_later_correction` | complicates (trap, changed in v0.3) | The record states the fact, but a later message from the same sender replaces it with an incompatible value for the same thing (rule 19). That later message carries the contradiction, not the record (rule 22). | Record: "paid him $500". Later, same sender: "sorry, $300 not $500". Assumption: Bo paid him $500. |
+| `ovr_told_frame` | complicates (trap, new in v0.4) | The assumption reports what a sender told or wrote, in the frames supports items use ("X told the owner that ...", "X wrote that ...", never "the message says", which could name the record itself) and at a time that fits the record without singling it out (never its own minute or about it); the record, from that sender, says something that cannot be true together with the reported words: a denial, or another value. It does not show the report, and one record cannot show that no other message said it (rules 12 and 23). | Assumption: Bo told the owner that they paid Ruiz $2,000. Record from Bo: "never paid ruiz, not a cent". |
+| `ovr_undated_denial` | complicates (trap, new in v0.4) | The record is the sender's past-tense denial of the act, naming no time and answering no question that names one; the assumption states the act as a fact (rule 12) with no time, or dated after the message. The denial covers only the time before it was sent (rule 23). | Record from Bo, May 3: "didnt pay the plumber 300". Assumption: Bo paid the plumber 300. |
 | `ovr_negation` | contradicts (trap) | The assumption's words appear in the record inside a negated statement that covers the assumption's time. | Record from Bo, May 3: "i did not take the van yesterday". Assumption: Bo took the van on May 2. |
 | `ovr_handle_owner` | complicates (trap) | The assumption names a real person; the record shows only an account, handle or saved label, one consistent with that name or neutral (a label carrying a different person's name is not this family). | Assumption: Rita Vance told the owner to wait. Record from @rv_44: "wait there". |
 | `ovr_shared_account` | complicates (trap) | The context shows someone other than the usual user typing on the account; the assumption names the usual person. | Context: "its Lee, Kai left his phone". Assumption: Kai wrote "open at 10". |
@@ -229,7 +241,16 @@ on the surface; they exist to teach the model where the line is.
 
 Left out on purpose: **quoted speech** ("he keeps saying 'I sold the car'"). The signed probe set
 labels it contradicts but marks both items disputed, so neither generator writes it until Arsh
-settles it.
+settles it. Also left out: **a report of a record that a later message corrects** ("Bo told the
+owner that they paid him $500" against "paid him $500", then "sorry, $300 not $500"). Rule 12
+keeps the report true after the correction and rule 22 makes a corrected record complicates, so
+neither generator writes the pair until Arsh settles which reading holds. Nor **a told frame at
+the record's own minute or about it** ("Bo told the owner at 9:14 p.m. that they paid Ruiz
+$2,000" against Bo's "never paid ruiz", sent at 9:14 p.m.): the time could be read as naming the
+record itself, so a told frame's time fits the record without singling it out. Nor **a "never
+told" whose time misses the record** ("Bo did not tell the owner on May 3 that ..." against
+Bo's message of May 2 that says it): the record does not rule it out, and no family yet says
+what it is.
 
 ## Baker's own wording (new in v0.3)
 
@@ -362,7 +383,36 @@ record is irrelevant when it does not bear on the template (`bk_outside_window`,
 | `bk_claim_denied` | contradicts | role, event | A person the claim names, from an account bracketed with them, rules the act or role out for the claim's whole time in their own words, sent after it: a denial that covers it, or placing themselves elsewhere for all of it (rules 23 and 29). | Claim: On May 2, 2026, Vance met Ortiz at the yard. Same assumption. Record from `SMS +13125550161 [Rita Vance]`, sent May 4: "didnt see ortiz at all on the 2nd, i was in denver all weekend". |
 | `bk_unrelated` | irrelevant | all | Another message, call, contact row or attachment that holds none of the quoted words, is not between the named parties and says nothing that bears on the claim's act, role or meaning: it involves none of them, or one of them with someone else: a person the assumption does not name, shown in that person's brackets, or an account other than the one the assumption names for the other party. For the sender, time, no-contact and count templates, an account no bracket shows may be a named person (`bk_party_unshown`); for role and event, rule 29 says when that leaves the record open. A record from or to a named person that bears on the claim is `bk_claim_open`. | Sender assumption about "gate code 1190"; record "running 10 min late" from the same account. |
 
-## Changes from v0.2, for Arsh to sign
+## Changes from v0.3, for Arsh to sign
+
+1. **Told frames (`ovr_told_frame`, trap, complicates).** "X told the owner that ..." against X's
+   own message that says otherwise: a denial, or another value. The signed probe set has read
+   these as complicates since the 2026-10-15 relabel (P066 to P069, P092 to P094), but the
+   training data had none, and the run 8 model showed 6 of them as supports. The training
+   generator writes each one beside the same record's contradicts item (the fact stated
+   plainly, rule 12) and, against a denial, always beside its supports item (the report of what
+   the record does say), so the answer rests on what the report says, never on its frame.
+2. **Undated denials (`ovr_undated_denial`, trap, complicates).** A past-tense denial that names
+   no time, against the act with no time (signed P049) or dated after the message. The second
+   is a decision to sign: it bears on the same act and leaves it open, as the 2026-10-21 fresh
+   set and its three blind readers read it. Each is written beside the same denial's
+   contradicts item (`con_denial` or `ovr_negation`), which dates the act before the message.
+3. **"Never told" (`con_never_told`, contradicts).** A report whose words exclude every such
+   message ("never told", "did not tell ... on May 2") is ruled out by one message that says
+   it, as rule 23 already reads "no contact between". It is the contradicts control for told
+   frames, so a model cannot learn that a report never contradicts.
+4. **Rules 12 and 23** say the above, and rule 12 lists the two report families with the
+   message-level ones. Both traps are on the go bar's moved-trap list already (`GO_BAR.md`
+   bars 2 and 3, since 2026-10-15), so `GO_BAR.md` does not change.
+5. **Left out until Arsh decides:** a report of a record that a later message corrects, where
+   rules 12 and 22 point different ways; a told frame at the record's own minute or about it
+   ("told the owner at 9:14 p.m. that ...", for a record sent at 9:14 p.m.), which could be read
+   as naming the record itself; and a "never told" whose time misses the record, which the
+   record does not rule out.
+6. **The review sheet** prints a line on reports and undated denials, and the guide says so
+   ("How the labels are checked").
+
+## Decided when v0.3 was signed (2026-10-14, as proposed)
 
 1. **Strict contradicts (rules 22 and 23).** `ovr_time_mismatch`, `ovr_sender_mismatch` and
    `ovr_later_correction` move from contradicts to complicates; `con_other_speaker` becomes
@@ -421,7 +471,8 @@ record is irrelevant when it does not bear on the template (`bk_outside_window`,
   examples go to Arsh in one review sheet, about 4 to 5 hours in total. If more than 2% of either
   sample is wrong (more than 4 of 200, or more than 2 of 100), the generator is fixed and the
   whole set rebuilt, and a fresh sample is drawn. The sheet prints the four answers and rules 6,
-  19 and 22 to 24 at the top, so a reader without this guide judges by the same standard. Until
-  the held-out sample passes, held-out scores are reported as provisional and decide nothing.
+  12, 19 and 22 to 24 at the top, with a line on reports and undated denials (rules 12 and 23),
+  so a reader without this guide judges by the same standard. Until the held-out sample passes,
+  held-out scores are reported as provisional and decide nothing.
 - **Never tuned to a model.** An example changes only when Arsh decides its answer was wrong,
   never because a model got it wrong.

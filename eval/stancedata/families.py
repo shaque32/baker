@@ -5,9 +5,9 @@ then write a record and an assumption that fit its rule; the label comes from th
 from the generator's own judgment. LABELING_GUIDE.md explains every family for the signer, and a
 test checks the two stay in step.
 
-Conventions follow stance guide v0.4 (LABELING_GUIDE.md, draft of 2026-10-31 for Arsh to sign;
-v0.3 was signed 2026-10-14) and stance prompt v1.1, signed with v0.3, which the pipeline wiring
-PR (#62) applies. Since 2026-10-15, when Arsh relabeled P049 and P066 to P069, the signed probe
+Conventions follow stance guide v0.4 (LABELING_GUIDE.md, signed 2026-11-01; v0.3 was signed
+2026-10-14) and stance prompt v1.1, signed with v0.3, which the pipeline wiring PR (#62)
+applies. Since 2026-10-15, when Arsh relabeled P049 and P066 to P069, the signed probe
 set (eval/gold/probe, P001-P105) reads contradicts as the guide does; v0.4 adds the two traps
 that relabel showed, told frames and undated denials, and the "never told" report that one
 message rules out.

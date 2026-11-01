@@ -1,8 +1,8 @@
 # Stance data for Baker's own model
 
-SYNTHETIC. Arsh signed labeling guide v0.3 on 2026-10-14; draft v0.4 (2026-10-31: told frames,
-undated denials and "never told") waits for Arsh's signature. Generated labels stay DRAFT
-until Arsh signs the label samples.
+SYNTHETIC. Arsh signed labeling guide v0.4 on 2026-11-01 (told frames, undated denials and
+"never told"; v0.3 on 2026-10-14). Generated labels stay DRAFT until Arsh signs the label
+samples.
 
 Baker's stance step labels how one phone record bears on one assumption. Today a prompted
 Qwen3-14B does it at about 23 seconds per record on a 24 GB Mac. The plan is a small model
@@ -13,12 +13,12 @@ go bar. The two generators live next door:
 
 | Path | What it is |
 |---|---|
-| `LABELING_GUIDE.md` | The rulebook: the four answers, the ground rules, 69 families with a fixed answer each (41 plain, 28 in Baker's own wording). Draft v0.4, for Arsh to sign; v0.3 (66 families) was signed by Arsh on 2026-10-14, and the signed copy is in `eval/gold/stancedata/`. |
+| `LABELING_GUIDE.md` | The rulebook: the four answers, the ground rules, 69 families with a fixed answer each (41 plain, 28 in Baker's own wording). v0.4, signed by Arsh on 2026-11-01; v0.3 (66 families) was signed on 2026-10-14. The signed copy is in `eval/gold/stancedata/`. |
 | `families.py` | The same families as code. A generator picks a family; the label comes from it. |
 | `model.py`, `chat.py` | The item format (a probe item with a wider id) and the shared mechanics: accounts, local times, item assembly. No wording. |
 | `bakerform.py`, `names.py` | Items in Baker's own wording: the product's assumption templates, sender lines and call text, rendered with the names a case gives (`core/audit/readable.py`), so the model reads what Baker will show it. |
 | `../train/` | Training generator: 12,000 plain items, with sibling items that share a record and differ in the assumption, then 7,250 items in Baker's own wording (`--n-baker`). |
-| `../heldout/` | Held-out generator, written separately with its own names, situations and wording: a 1,846-item test split (ids H...; 1,150 plain, 696 in Baker's wording) and a 923-item dev split (ids D...; 575 plain, 348 in Baker's wording). It does not write the three v0.4 families yet: a separate author adds them from the guide alone, once it is signed. |
+| `../heldout/` | Held-out generator, written separately with its own names, situations and wording: a 1,846-item test split (ids H...; 1,150 plain, 696 in Baker's wording) and a 923-item dev split (ids D...; 575 plain, 348 in Baker's wording). It does not write the three v0.4 families yet: a separate author adds them from the signed guide alone. |
 | `contamination.py` | Overlap check: generated text against the probe set, the told-frame and undated-denial sets in `eval/probe/v13`, case01 and case02, and training against held-out. The only code here that reads that data. Its report.json names every file checked by SHA-256. |
 | `score.py` | Scores any model's predictions with the exact rules of `eval/probe/run_probe.py`. |
 | `GO_BAR.md`, `gobar.py` | The adoption rule, fixed before training. |
