@@ -239,6 +239,8 @@ table.claim-order .claim-actions { display: flex; flex-wrap: nowrap; gap: 6px;
   align-items: center; }
 table.claim-order .claim-actions form.inline { display: flex; gap: 6px; }
 table.claim-order .claim-actions button { margin: 0; }
+/* Remove stays apart from the reorder buttons, so a slip on Down does not land on it */
+table.claim-order .claim-actions form:last-child { margin-left: 14px; }
 table.claim-order td.decide details { margin-top: 6px; white-space: normal; }
 table.claim-order td.decide details > summary { white-space: nowrap; font-size: 13px; }
 table.claim-order td.decide textarea { width: 100%; min-width: 260px; margin: 6px 0; }

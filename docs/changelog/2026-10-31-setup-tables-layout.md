@@ -3,7 +3,8 @@
   ("identi ty", "acce pted", "paragrap hs") and made rows tall, because the app-wide
   `td { overflow-wrap: anywhere }` let the browser shrink columns to one letter. These tables now
   carry a `tidy` class that wraps only between words. Claims: Accept, Up, Down and Remove sit on
-  one row with "Edit the wording" under them. Devices: the model line is left out when it
+  one row (Remove set apart by a gap, keeping the 10-30 critique's separation from the reorder
+  buttons) with "Edit the wording" under them. Devices: the model line is left out when it
   repeats the device name, "by expert:<name>" now reads "Stipulated by <name>", and with a
   stipulation in place only Withdraw shows, with "Name someone else" folded under it. Files: the
   hash stays on one line and the import time drops
