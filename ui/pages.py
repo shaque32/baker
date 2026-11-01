@@ -365,9 +365,12 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
     out.append("</section>")
     out.append(_case_setup(conn))
     out.append(_record(conn, page, run, summary))
-    # the notices sit together above the title, as the other pages show their banners
+    # the notices sit together above the title, as the other pages show their banners, in one
+    # quiet panel (ui/css/overview.py) rather than a box each
     notices = run_banner(conn, page, "/") + _format_notices(conn)
-    return page.wrap("Case", "".join(out), notices)
+    if notices:
+        notices = f"<div class='ov-notices'>{notices}</div>"
+    return page.wrap("Case", f"<div class='pg-overview'>{''.join(out)}</div>", notices)
 
 
 def _case_status(states: list[ClaimState]) -> str:
@@ -405,13 +408,15 @@ def _case_setup(conn: sqlite3.Connection) -> str:
         who = (
             f"Stipulated: {q(st.statement)}"
             if st is not None and st.status == StipulationStatus.CONFIRMED
-            else "<span class='muted'>no stipulated user</span>"
+            else "<span class='ov-none'>no stipulated user</span>"
         )
         names = named.get(dev_id, [])
         called = f" · the document calls it {q(', '.join(names))}" if names else ""
+        # the device on the left, with its source id under it; who used it on the right
         rows.append(
-            f"<li id='dev-{e(dev_id)}'><b>{q(label)}</b> <span class='mono'>{e(source_id)}"
-            f"</span><br>{who}{called}</li>"
+            f"<li id='dev-{e(dev_id)}'><span class='ov-dev'><b>{q(label)}</b> "
+            f"<span class='mono'>{e(source_id)}</span></span>"
+            f"<span class='ov-who'>{who}{called}</span></li>"
         )
     if not rows:
         rows.append("<li class='muted'>No devices imported.</li>")
@@ -424,10 +429,11 @@ def _case_setup(conn: sqlite3.Connection) -> str:
     return (
         "<h2 id='setup'>Case setup</h2><ul class='setuplist'>"
         + "".join(rows)
-        + f"<li>Government documents: {docs}</li></ul>"
-        "<p class='muted'>Who used each phone is a stipulation you make, not a finding. Every "
-        "report lists it as a limitation. <a href='/setup'>Change devices and stipulations on "
-        "Set up and run</a>.</p>"
+        + "<li><span class='ov-dev'>Government documents</span>"
+        f"<span class='ov-who'>{docs}</span></li></ul>"
+        "<p class='muted ov-note'>Who used each phone is a stipulation you make, not a finding. "
+        "Every report lists it as a limitation. <a href='/setup'>Change devices and stipulations "
+        "on Set up and run</a>.</p>"
     )
 
 
@@ -477,7 +483,7 @@ def _record(conn: sqlite3.Connection, page: Page, run: dict | None, summary: dic
         )
     )
     out = [
-        "<h2 id='record'>Record</h2><dl class='record'>"
+        "<section class='ov-record'><h2 id='record'>Record</h2><dl class='record'>"
         + "".join(f"<dt>{k}</dt><dd>{v}</dd>" for k, v in rows)
         + "</dl>"
     ]
@@ -504,6 +510,7 @@ def _record(conn: sqlite3.Connection, page: Page, run: dict | None, summary: dic
             )
             + "</details>"
         )
+    out.append("</section>")
     return "".join(out)
 
 
