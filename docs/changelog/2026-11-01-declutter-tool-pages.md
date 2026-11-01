@@ -1,4 +1,4 @@
-## 2026-11-01: Identities, Exhibits, Selection, Timeline and Gaps pages decluttered (#PR)
+## 2026-11-01: Identities, Exhibits, Selection, Timeline and Gaps pages decluttered (#197)
 - Changed: after an Impeccable audit of each page (findings and before/after screenshots in
   /mnt/project-files/baker/declutter/), the "look closer" pages show less at once. Identities:
   counts and "Look for links again" in one bar; each link card on one header row with its
@@ -14,7 +14,7 @@
   "does not change any verdict"); no wording, form action, field, verdict or label change.
   Page CSS lives in ui/css/{identities,exhibits,selection,timeline}.py; core/ and the exported
   report are unchanged.
-- Where: PR #PR
+- Where: PR #197
 - Verified: per-page pytest selections (identities 161, exhibits/selection 141, timeline/gaps
   209 passed), ruff, and `make check` on the combined branch (numbers in the PR). Impeccable
   detect, before to after: /identities 3 to 1, /exhibit 18 to 2, /selection 113 to 15,
