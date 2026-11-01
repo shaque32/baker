@@ -1,4 +1,4 @@
-## 2026-11-01: Site walkthrough on phones: even step tabs, no random pauses
+## 2026-11-01: Site walkthrough on phones: even step tabs, no random pauses (#203)
 
 - Changed: On getmabillon.com's "One claim, start to finish" stepper (`site/index.html`,
   `site/styles.css`, `site/main.js`), two phone bugs Arsh reported from an iPhone. (1) Uneven
@@ -15,7 +15,7 @@
   below no longer jumps each step and the panel can no longer jump out of view, which stopped the
   walk. A long frame gap (phone asleep, tab hidden) no longer skips the walk ahead, and the last
   step's underline fills fully before the loop instead of stopping at 95%. `?v=` hashes updated.
-- Where: PR (this branch, claude/project-thread-le500d)
+- Where: PR #203
 - Verified: Headless Chromium (Playwright, Linux, 2026-11-01) with touch emulation at 320, 360,
   390, 430, 460, 540, 620 and 900px: all five tabs the same height with one underline line at
   every width, and panel and page height constant over a full 26-second cycle. A held finger on
