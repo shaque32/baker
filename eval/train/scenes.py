@@ -4,12 +4,15 @@ Each scenario function takes the scenario's random stream and the index of its f
 returns the Chat and the Specs built on its record; siblings share the record and differ in the
 assumption and the family. Assumptions on trap, contradict and irrelevant families state the fact
 itself (guide rule 12); only supports families and the message-level exceptions report what the
-message says.
+message says. The two report families (guide v0.4) sit beside the same record's supports and
+contradicts items: a told frame of what a denial or another value rules out, and "never told"
+of what a record says.
 """
 
 from __future__ import annotations
 
 import random
+import re
 from dataclasses import dataclass
 from datetime import date
 
@@ -38,6 +41,7 @@ from eval.train.scenario import (
     weekday_clash,
 )  # fmt: skip
 from eval.train.writers import (
+    ACT_CLOCK,
     ACT_DAY,
     Spec,
     act_before,
@@ -49,11 +53,14 @@ from eval.train.writers import (
     spec_handle_owner,
     spec_in_window,
     spec_irrelevant,
+    spec_never_told,
     spec_partial,
     spec_plain,
     spec_sender_mismatch,
     spec_time_mismatch,
     spec_time_window,
+    spec_told_frame,
+    spec_undated_denial,
     spec_verbatim,
     wrap,
 )  # fmt: skip
@@ -245,6 +252,13 @@ def siblings(rng: random.Random, lead: Spec, cands: list[Spec | None], p: float,
     return [lead, *picked]
 
 
+def more(rng: random.Random, lead: Spec, cands: list[Spec | None], p: float,
+         most: int = 1) -> list[Spec]:  # fmt: skip
+    """Siblings drawn apart from a scenario's own (see siblings), so that a family added to a
+    scenario leaves the odds of its other siblings as they were."""
+    return siblings(rng, lead, cands, p, most)[1:]
+
+
 def plain_why(c: Chat) -> str:
     return (f"The record from {c.record.account.sender} states it in plain words; nothing in the "
             "context qualifies it.")  # fmt: skip
@@ -253,6 +267,12 @@ def plain_why(c: Chat) -> str:
 def fact_lead(c: Chat, fam: str, kind: K, pred: str, core: str, why: str) -> Spec:
     """A lead that states the fact of the sender (guide rule 12)."""
     return Spec(fam, kind, cap(f"{c.sender.who} {pred}"), core, why)
+
+
+# The odds of the guide v0.4 families beside a scenario's own siblings (drawn apart, see more):
+# a "never told" beside a stated fact; a told frame of the other value or a "never told" of the
+# record's own beside another value; a told frame and an undated denial beside a denial.
+Q_STATED, Q_EXACT, Q_NEG = 0.15, 0.4, 0.4
 
 
 def sc_stated(rng: random.Random, slot: int) -> Result:
@@ -273,7 +293,8 @@ def sc_stated(rng: random.Random, slot: int) -> Result:
              spec_time_window(rng, c), spec_contact(rng, c), spec_in_window(rng, c),
              spec_irrelevant(rng, c, "irr_other_topic", other_facts(f), False),
              spec_plain(rng, c, pred, core, plain_why(c))]  # fmt: skip
-    return c, siblings(rng, lead, cands, 0.6)
+    never_told = more(rng, lead, [spec_never_told(rng, c, pred, core)], Q_STATED)
+    return c, [*siblings(rng, lead, cands, 0.6), *never_told]
 
 
 def sc_exact(rng: random.Random, slot: int) -> Result:
@@ -301,7 +322,11 @@ def sc_exact(rng: random.Random, slot: int) -> Result:
     cands = [spec_plain(rng, c, pred, core, plain_why(c)), spec_in_window(rng, c),
              spec_handle_owner(rng, c, pred, core, False),
              spec_sender_mismatch(rng, c, pred), spec_time_mismatch(rng, c, pred)]  # fmt: skip
-    return c, siblings(rng, lead, cands, 0.5, 3)
+    # A report of the value the record rules out (complicates), or that the sender never told
+    # the value the record gives (contradicts), beside the other value it rules out.
+    report = more(rng, lead, [spec_told_frame(rng, c, pred2, core),
+                              spec_never_told(rng, c, pred, core)], Q_EXACT)  # fmt: skip
+    return c, [*siblings(rng, lead, cands, 0.5, 3), *report]
 
 
 # Acts done again and again (a shift's tips, laps, a sitter's pay, the rent each month) or at
@@ -358,7 +383,46 @@ def _neg_pair(rng: random.Random, c: Chat, f: Fact, v: str, core: str, fam: str)
     lead = Spec(fam, K.EVENT, a, core, why)
     plain_sib = spec_plain(rng, c, f"did not {fx.claim_base(f, v, money)}", core, plain_why(c),
                            told_only=True)  # fmt: skip
-    return c, siblings(rng, lead, [plain_sib], 0.5, 1)
+    # The same words against a report that the sender said the act happened (a told frame)
+    # and, when the denial names no time, against the act with no time or a later one: both
+    # complicates, beside the dated act this denial rules out (guide v0.4, rules 12 and 23).
+    # A told frame always comes with the report of the denial itself ("said they did not"),
+    # which supports: the two differ only in what the sender is reported to have said.
+    cands = [spec_told_frame(rng, c, pred, core)]
+    if undated(c, pred):
+        cands.append(spec_undated_denial(rng, c, pred, core))
+    sibs, extra = siblings(rng, lead, [plain_sib], 0.5, 1), more(rng, lead, cands, Q_NEG, 2)
+    if any(s.family == "ovr_told_frame" for s in extra) and len(sibs) == 1:
+        sibs.append(plain_sib)
+    return c, [*sibs, *extra]
+
+
+# Words that give a denial, or a question it may answer, a time of its own ("didnt pay him
+# yesterday", "did u pay him on friday?"): such a denial covers that time, so it is never an
+# undated one (guide rule 23). Broad on purpose: a word that only might name a time keeps the
+# record out of ovr_undated_denial.
+TIMED = re.compile(
+    r"\b(yesterday|today|tonight|tmrw|tomorrow|morning|afternoon|evening|night|nights|week|"
+    r"weekend|month|year|earlier|ago|last|this|since|until|till|before|after|then|already|yet|"
+    r"anymore|again|noon|midnight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|"
+    r"tue|tues|wed|thu|thur|thurs|fri|sat|sun|january|february|march|april|june|july|august|"
+    r"september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)"
+    r"\b|\b\d{1,2}(?::\d{2})?\s?(?:am|pm|a\.m\.|p\.m\.)|\bat \d|\bon the \d|\d(?:st|nd|rd|th)\b|"
+    r"вчера|сегодня|завтра|утр|днём|днем|вечер|ноч|недел|месяц|\bгод|понедельник|вторник|"
+    r"сред[уа]|четверг|пятниц|суббот|воскресень|раньше|назад|уже|ещё|еще|пока|после|до \d|"
+    r"\b(?:in|on|by|since|until|till|for) may\b|\bmay \d|\b\d{1,2}/\d{1,2}\b|январ|феврал|"
+    r"\bмарт|апрел|\bма[йя]\b|\bиюн|\bиюл|август|сентябр|октябр|ноябр|декабр",
+    re.I,
+)
+
+
+def undated(c: Chat, pred: str) -> bool:
+    """Whether a denial record names no time of its own: neither its words, nor a question
+    sent before it, nor the act it denies ("returned the drill on monday") names one."""
+    if fx.names_day(pred) or ACT_DAY.search(pred) or ACT_CLOCK.search(pred):
+        return False
+    asked = [m.text for m in c.msgs[: c.target] if "?" in m.text]
+    return not any(TIMED.search(t) for t in [c.record.text, *asked])
 
 
 def sc_neg(rng: random.Random, slot: int) -> Result:

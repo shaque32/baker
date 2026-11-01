@@ -6,10 +6,11 @@
 
 Two checks, both by script, nothing by eye:
 1. Generated items (training and held-out) against the reference test data: the probe set
-   (signed items and drafts) and the older smoke items, case01 (messages, signed gold claims,
-   assumption sheets, affidavit) and case02 (messages, draft key, affidavit). The generators never
-   read any of it; this script is the only code in eval/stancedata, eval/train or eval/heldout
-   that does.
+   (signed items and drafts), the older smoke items, the told-frame and undated-denial test sets
+   in eval/probe/v13 (the fresh set and the two 2026-10-15 sets the stance prompt runs score),
+   case01 (messages, signed gold claims, assumption sheets, affidavit) and case02 (messages, draft
+   key, affidavit). The generators never read any of it; this script is the only code in
+   eval/stancedata, eval/train or eval/heldout that does.
 2. Training items against the held-out set, so the exam shares no text with the lessons.
 
 Every free text of an item (assumption, record, context lines, rationale, and the claim an item
@@ -264,11 +265,15 @@ def _case_messages(case: str) -> Iterator[Text]:
 
 
 def reference_texts(root: Path = ROOT) -> Iterator[Text]:
-    """Every text of the probe set, case01 and case02 that a generated item must not copy."""
+    """Every text of the probe sets, case01 and case02 that a generated item must not copy."""
     yield from _probe_texts(root / "eval/gold/probe/probe.jsonl", "probe(signed)")
     yield from _probe_texts(root / "eval/probe_draft/probe_draft.jsonl", "probe(draft)")
     for smoke in sorted((root / "eval/probe").glob("smoke_*.jsonl")):
         yield from _probe_texts(smoke, f"smoke({smoke.stem})")
+    # The told-frame and undated-denial sets, since the training generator writes both (guide
+    # v0.4); run 8's data drop checked them by hand (2026-10-16).
+    for told in sorted((root / "eval/probe/v13").glob("*.jsonl")):
+        yield from _probe_texts(told, f"v13({told.stem})")
     yield from _gold_texts(root / "eval/gold/case01/gold.jsonl", "case01 gold")
     yield from _gold_texts(root / "eval/synthetic/case01/draft_gold.jsonl", "case01 draft key")
     for sheet in sorted((root / "eval").glob("**/case01_assumptions.jsonl")):

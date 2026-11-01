@@ -56,8 +56,15 @@ def items() -> list[GenItem]:
 
 
 @pytest.fixture(scope="module")
-def many() -> list[GenItem]:
-    return gen.generate(4000, 1)
+def full() -> list[GenItem]:
+    """The 12,000 plain items `make stancedata` trains on, for shapes too rare to count in
+    `many`."""
+    return gen.generate(12000, 1)
+
+
+@pytest.fixture(scope="module")
+def many(full: list[GenItem]) -> list[GenItem]:
+    return full[:4000]  # a shorter run is a prefix of a longer one (generate.plain)
 
 
 @pytest.fixture(scope="module")
@@ -245,11 +252,13 @@ OPEN_REFERENCE = re.compile(
 )
 REPORT_OK = {f.family_id for f in FAMILIES if f.stance.value == "supports"} | {
     "ovr_sender_mismatch", "ovr_time_mismatch", "con_in_window", "ovr_speaker_mismatch",
+    "ovr_told_frame", "con_never_told",
 }  # fmt: skip
 REPORT = re.compile(
     r"\b(said|says|stated|states|wrote|texted|messaged|сказал|сказала|написал|написала|говорит|"
     r"пишет)\b|\btold\b[^.;]*?\bthat\b|\btold\b(?![^.;]*?\bto\b)|\b(the|a|that|in a) message\b|"
-    r"\bmessage from\b"
+    r"\bmessage from\b|\b(mentioned to|posted in|replied to|in reply to|answering)\b|"
+    r"\blet\b[^.;]*?\bknow that\b"
 )
 CURRENCY = re.compile(r"\$|\b(dollars?|bucks|rubles?)\b|\bруб|₽")
 
@@ -285,7 +294,8 @@ def test_assumptions_resolve_references_and_dates(items: list[GenItem]) -> None:
 def test_report_frames_only_in_message_families(items: list[GenItem]) -> None:
     # Guide rule 12: trap, contradict and irrelevant families state the fact; "told ... that",
     # "said ...", "the message says" belong to supports families and the message-level
-    # exceptions only.
+    # exceptions only, which since v0.4 include the two report families, ovr_told_frame and
+    # con_never_told.
     for it in items:
         if it.family not in REPORT_OK:
             assert not REPORT.search(_bare(it.assumption)), (it.family, it.assumption)
@@ -725,6 +735,8 @@ def test_contradicts_assumptions_end_by_the_record(many: list[GenItem]) -> None:
     # the record's own minute. A value the record gives carries no clock at all. A denial or a
     # negation dates the act before the record's date, or bounds it by that date ("before May 7,
     # 2025"); where the record says "never" or the assumption names a weekday, it has no clock.
+    # con_in_window's window and con_never_told's time hold the record by design: their own
+    # tests check them (guide v0.4 rules 12 and 23 for con_never_told).
     assert CLOCK_ON.findall("By 2 p.m. on March 3, 2026, X had paid") == [
         ("2 p.m.", "March", "3", "2026")]  # fmt: skip
     assert BEFORE_DATE.findall("X landed at noon before March 3, 2026") == [("March", "3", "2026")]
@@ -732,7 +744,7 @@ def test_contradicts_assumptions_end_by_the_record(many: list[GenItem]) -> None:
         ("Monday", "May", "12", "2025")]  # fmt: skip
     seen: Counter[str] = Counter()
     for it in many:
-        if it.gold_stance != "contradicts" or it.family == "con_in_window":
+        if it.gold_stance != "contradicts" or it.family in ("con_in_window", "con_never_told"):
             continue
         a, lt = it.assumption, it.target.local_time
         day, minute = date.fromisoformat(lt[:10]), int(lt[11:13]) * 60 + int(lt[14:16])
@@ -991,7 +1003,7 @@ def test_bounds_come_as_near_whether_they_hold_or_miss(many: list[GenItem]) -> N
     assert near[False, True] >= 10 and abs(share[True] - share[False]) < 0.15, (near, share)
 
 
-def test_time_traps_miss_on_another_date_as_well(many: list[GenItem]) -> None:
+def test_time_traps_miss_on_another_date_as_well(full: list[GenItem]) -> None:
     # A time trap may hold the record's clock on another date, mostly the day before or after
     # (or give the record's UTC clock on its UTC date); a bound then runs away from the
     # record's date, before a time on an earlier date or after one on a later date, since the
@@ -999,7 +1011,7 @@ def test_time_traps_miss_on_another_date_as_well(many: list[GenItem]) -> None:
     # run into the next, never comes up. A supports item's clock and part of the day are
     # always on the record's own date.
     seen: Counter[str] = Counter()
-    for it in many:
+    for it in full:
         day = _record_minute(it)[0]
         sup, miss = it.gold_stance == "supports", it.family == "ovr_time_mismatch"
         if not (sup or miss) or "daylight-saving" in it.rationale:
@@ -1025,7 +1037,141 @@ def test_time_traps_miss_on_another_date_as_well(many: list[GenItem]) -> None:
             assert _date(*d) == utc.date() != day, (it.rationale, it.target.local_time)
             assert abs(_minute_of(t) - utc.hour * 60 - utc.minute) <= 2, it.rationale
             seen["utc"] += 1
+    # A part of the day on another date comes up in under 2% of time traps, so this reads all
+    # 12,000 training items: 4,000 hold only a few.
     assert min(seen[k] for k in ("bound", "part", "range")) >= 5 and seen["utc"], seen
+
+
+# --- guide v0.4: told frames, undated denials, "never told" ---------------------------------
+
+NEVER_FRAME = re.compile(r"\b(?:never (?:told|wrote|texted|said|let)|did not (?:tell|write|text|"
+                         r"say)|at no point did)\b", re.I)  # fmt: skip
+# The message as the subject (frames.says): "the message from X says ...". A report's "in a
+# message" or "sent the owner a message saying" is about any message, as a told frame is.
+MESSAGE_SUBJECT = re.compile(r"\bthe message\b|\bmessage\b[^.;]*\bsays\b")
+POINT_TIME = re.compile(rf"\b(?:at|at about|around|at around|at approximately) {CLOCK} on ", re.I)
+ON_DATE = re.compile(rf"\b(?:on|of) {WDAY}{LONG_DATE.pattern}")
+# Words that give a message, or a question it answers, a time of its own; written apart from
+# eval/train/scenes.py TIMED, so a gap in either shows here.
+SOME_TIME = re.compile(
+    r"\b(?:yesterday|today|tonight|tomorrow|tmrw|last|ago|earlier|morning|afternoon|evening|"
+    r"night|week|weekend|month|year|since|before|after|noon|\d{1,2}(?::\d{2})?\s?(?:am|pm)|"
+    r"(?:in|on) may|jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec)\b|\b\d{1,2}/\d{1,2}\b|"
+    r"вчера|сегодня|завтра|утр|вечер|ноч|недел|месяц|январ|феврал|марта|апрел|мая|июн|июл|"
+    r"август|сентябр|октябр|ноябр|декабр",
+    re.I,
+)
+DENIALS = {"con_denial", "ovr_negation"}
+
+
+def _families_by_group(rows: list[GenItem]) -> dict[str, set[str]]:
+    out: dict[str, set[str]] = defaultdict(set)
+    for it in rows:
+        out[it.group].add(it.family)
+    return out
+
+
+def test_told_frames_report_what_the_record_rules_out(many: list[GenItem]) -> None:
+    # ovr_told_frame (guide v0.4, rules 12 and 23): a supports item's report frame around what
+    # the record's own words rule out, so only what is reported tells it from a supports item.
+    # Never the message as the subject and never the record's own minute or about it, which
+    # could name the record itself. It sits beside the record's denial or other value, which
+    # rules the act out, and quotes those words; beside a denial, the report of the denial
+    # itself (supports) comes with it.
+    groups = _families_by_group(many)
+    seen: Counter[str] = Counter()
+    for it in many:
+        if it.family != "ovr_told_frame":
+            continue
+        bare, a = _bare(it.assumption), QUOTED.sub(" ", it.assumption)
+        assert REPORT.search(bare) and not MESSAGE_SUBJECT.search(bare), it.assumption
+        assert not POINT_TIME.search(a), (it.assumption, it.target.local_time)
+        assert it.proposed_quote in it.target.text, (it.proposed_quote, it.target.text)
+        beside = groups[it.group]
+        assert beside & (DENIALS | {"con_other_value"}), (it.assumption, beside)
+        if beside & DENIALS:
+            assert "sup_plain" in beside, (it.assumption, beside)
+            seen["denial"] += 1
+        else:
+            seen["other value"] += 1
+        seen["dated"] += bool(LONG_DATE.search(a))
+    assert seen["denial"] >= 50 and seen["other value"] >= 30 and seen["dated"] >= 30, seen
+
+
+def test_undated_denials_leave_a_later_act_open(many: list[GenItem]) -> None:
+    # ovr_undated_denial (guide v0.4, rule 23): the record denies the act, and neither its
+    # words, nor a question sent before it, nor the act names a time; the assumption states the
+    # act as a fact with no time, or on a date after the record's, never with a clock. It sits
+    # beside the same denial's dated act, which the record rules out.
+    groups = _families_by_group(many)
+    seen: Counter[str] = Counter()
+    for it in many:
+        if it.family != "ovr_undated_denial":
+            continue
+        a, day = QUOTED.sub(" ", it.assumption), _record_minute(it)[0]
+        lines = it.lines()
+        target = next(i for i, ln in enumerate(lines) if ln.text == it.target.text)
+        asked = [ln.text for ln in lines[:target] if "?" in ln.text]
+        for text in (it.target.text, *asked):
+            assert not SOME_TIME.search(text) and not _weekday_mentions(text.lower()), text
+        dates = [_date(*m) for m in LONG_DATE.findall(a)]
+        assert all(d > day for d in dates) and not re.search(CLOCK, a), (a, it.target.local_time)
+        assert it.proposed_quote in it.target.text, (it.proposed_quote, it.target.text)
+        assert groups[it.group] & DENIALS, (it.assumption, groups[it.group])
+        seen["later" if dates else "no time"] += 1
+    assert seen["later"] >= 20 and seen["no time"] >= 20, seen
+
+
+def test_never_told_excludes_every_message_and_holds_the_record(full: list[GenItem]) -> None:
+    # con_never_told (guide v0.4, rules 12 and 23): "never told ... that" names no time, and
+    # "did not tell ... <time> that" a time that holds the record, in the shapes a supports
+    # item's time takes, so the one message that says it rules the assumption out. The quote is
+    # the words that say it.
+    seen: Counter[str] = Counter()
+    for it in full:
+        if it.family != "con_never_told":
+            continue
+        a, lt = QUOTED.sub(" ", it.assumption), it.target.local_time
+        assert NEVER_FRAME.search(a), it.assumption
+        assert it.proposed_quote in it.target.text, (it.proposed_quote, it.target.text)
+        day, minute = _record_minute(it)
+        if not LONG_DATE.search(a):
+            seen["never"] += 1
+            continue
+        for word, t, *d in TIME_ON.findall(a):
+            t, word = _minute_of(t), word.lower()
+            ok = {"before": t > minute, "after": t < minute, "at": t == minute,
+                  "by": t >= minute}[word]  # fmt: skip
+            assert _date(*d) == day and ok, (a, lt)
+            seen["clock"] += 1
+        for word, t, *d in LOOSE_ON.findall(a):
+            t, word = _minute_of(t), word.lower()
+            if word in ("no later than", "sometime before"):
+                ok = t >= minute
+            elif word in ("no earlier than", "sometime after"):
+                ok = t <= minute
+            else:
+                ok = abs(t - minute) <= 5
+            assert _date(*d) == day and ok, (a, lt)
+            seen["clock"] += 1
+        for lo, hi, *d in WINDOW.findall(a):
+            assert _date(*d) == day and _minute_of(lo) + 2 < minute < _minute_of(hi) - 2, (a, lt)
+            seen["clock"] += 1
+        for *parts, month, dd, year in PART_ON.findall(a):
+            lo, hi = PART_SPAN[("night" if parts[2] else parts[0] or parts[1]).lower()]
+            assert _date(month, dd, year) == day and lo <= minute < hi, (a, lt)
+            seen["part"] += 1
+        bounds = DATE_BOUND.findall(a)
+        for word, *d in bounds:
+            b = _date(*d)
+            assert {"before": day < b, "prior to": day < b, "on or before": day <= b,
+                    "after": day > b, "on or after": day >= b}[word.lower()], (a, lt)  # fmt: skip
+            seen["date bound"] += 1
+        # Any other date is the record's own ("on May 2, 2025", "the morning of May 2, 2025").
+        if not bounds:
+            assert {_date(*m) for m in ON_DATE.findall(a)} == {day}, (a, lt)
+            seen["date"] += 1
+    assert seen["never"] >= 75 and seen["date"] >= 30 and seen["clock"] >= 10, seen
 
 
 # Words that make a message's exact words name one message: a sender or time trap's record
@@ -1262,7 +1408,8 @@ ANY_DAY = {"ovr_time_mismatch", "con_in_window", "irr_other_topic", "irr_pleasan
 def test_weekday_words_fit_each_lines_date(many: list[GenItem]) -> None:
     # Shape 4: no line names its own weekday as a particular day ("whats the plan for sat" is
     # never sent on a Saturday); a weekday an assumption dates is that date's weekday, a past
-    # act's date falls before the record, and a plan's or a booking's after it. A date may
+    # act's date falls before the record, and a plan's, a booking's or an undated denial's
+    # act (guide v0.4 rule 23) after it. A date may
     # carry its weekday anywhere (eval/train/when.py say_day): the record's own date, or any
     # date in the families above.
     assert _weekday_mentions("whats the plan for sat") == [5]
@@ -1280,7 +1427,8 @@ def test_weekday_words_fit_each_lines_date(many: list[GenItem]) -> None:
             if d == day or it.family in ANY_DAY:
                 seen["any"] += 1
                 continue
-            ahead = word == "for" or it.family in ("ovr_plan", "ovr_hypothetical")
+            ahead = word == "for" or it.family in ("ovr_plan", "ovr_hypothetical",
+                                                   "ovr_undated_denial")  # fmt: skip
             assert d > day if ahead else d < day, (it.family, it.assumption, it.target.local_time)
             seen["ahead" if ahead else "past"] += 1
     assert seen["past"] >= 100 and seen["ahead"] >= 20 and seen["any"] >= 20, seen
