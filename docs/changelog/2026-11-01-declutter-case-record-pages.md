@@ -1,4 +1,4 @@
-## 2026-11-01: Cases, Help, Audit log and Activity pages decluttered (#PR)
+## 2026-11-01: Cases, Help, Audit log and Activity pages decluttered (#198)
 - Changed: after an Impeccable audit of each page (findings and before/after screenshots in
   /mnt/project-files/baker/declutter/), these pages show less at once. Cases: ledger-style case
   rows (name, slug, one muted state line, Open at the right), the cases-folder line under the
@@ -12,7 +12,7 @@
   Activity: narrower intro, the CSV link as a quiet button beside the summary, the
   activity-in-report switch on one row, tidy numeric columns. No form action, field, entry or
   caveat removed.
-- Where: PR #PR
+- Where: PR #198
 - Verified: per-page pytest selections (cases/help 379, log/activity 229 passed), ruff, a
   replay of packaging/smoke_ui.py's cases-screen steps in Node Playwright, and `make check` on
   the combined branch (numbers in the PR). Impeccable detect, before to after: /help 3 to 1,
