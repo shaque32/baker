@@ -1,4 +1,4 @@
-## 2026-11-01: Told frames, undated denials and "never told" in the held-out stance set (#PR)
+## 2026-11-01: Told frames, undated denials and "never told" in the held-out stance set (#202)
 - Changed: the held-out generator (`eval.heldout` 1.4.0) writes the three families signed stance
   labeling guide v0.4 added, from the signed guide alone (rules 12 and 23, the three family
   rows, the list of changes from v0.3), in new writers (`eval/heldout/writers_c.py`) over the
@@ -19,7 +19,7 @@
   Why: the go bar already counts told frames and undated denials as moved traps (`GO_BAR.md`
   bars 2 and 3), and a fine-tuned model must be scored on held-out ones written apart from the
   training side (#199).
-- Where: branch claude/project-thread-q0xz09 (built on #199; merge after #199)
+- Where: PR #202 (built on #199; merge after #199)
 - Verified: on a Linux container, 2026-11-01. 80 held-out generator tests pass: the existing ones
   with the new counts and plain-file pins, plus 5 new (records drawn from denials, values and
   statements, never a corrected one; told frames in the supports frames, never "the message"
