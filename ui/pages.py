@@ -547,12 +547,9 @@ def _identities_step(conn: sqlite3.Connection) -> str:
     ).fetchone()[0]
     by = dict(conn.execute("SELECT status, COUNT(*) FROM identity_links GROUP BY status"))
     return (
-        "<p><strong>Other people the document names.</strong> A claim about someone with no "
-        "account in the case (a surname the document prints in capitals, or a contact name) "
-        "cannot be tested "
-        f"until you add the name and decide who is behind it. {added} added; "
+        f"<p><strong>Other people the document names:</strong> {added} added; "
         f"{by.get('confirmed', 0)} link(s) confirmed, {by.get('proposed', 0)} proposed. "
-        "<a href='/identities'>Open Identities</a>.</p>"
+        "<a href='/identities'>Open Identities</a></p>"
     )
 
 
@@ -562,11 +559,8 @@ def _devices(conn: sqlite3.Connection, page: Page, back: str, heading: bool = Tr
     named = device_names.logged_names(conn)
     out = [
         ("<h2>Devices and stipulations</h2>" if heading else "")
-        + "<p>Who used each phone is a stipulation you make, not "
-        "a finding. Every report lists it as a limitation.</p>"
-        "<p>If the document calls a phone something else, such as TARGET PHONE or Item 1, "
-        "give that name here, as the document writes it, so the audit knows which phone a "
-        "claim means. Separate names with commas. Every report lists the names you gave.</p>"
+        + "<p class='muted'>A stipulation you make, not a finding. Every report lists it as a "
+        "limitation.</p>"
         "<table class='tidy'><thead><tr><th>Device</th><th>Source</th><th>Stipulated user</th>"
         "<th>Change</th><th>Document names</th></tr></thead>"
     ]
@@ -2220,8 +2214,7 @@ def _date_order_choice(off: str) -> str:
         "<option value=''>let Mabillon work it out</option>"
         "<option value='mdy'>month first (3/4 is 4 March)</option>"
         "<option value='dmy'>day first (3/4 is 3 April)</option>"
-        "</select></label> <span class='muted'>Dates like 3/4/2026 that nothing in the report "
-        "decides are left unread unless you state the order.</span></p>"
+        "</select></label></p>"
     )
 
 
@@ -2294,11 +2287,6 @@ def setup_page(
     busy = job_kind is not None
     audit_busy = job_kind == "audit"
     out = ["<h1>Set up and run</h1>", recovery_box(page, recovery_key), name_form(page)]
-    out.append(
-        "<p class='lede'>Import the files, settle the claims, confirm who used each phone, then "
-        "run the audit. It runs in the background; you can review each claim as soon as it is "
-        "labeled.</p>"
-    )
     out.append(_step_strip(ready, audit_busy))
 
     # 1. files
@@ -2339,10 +2327,9 @@ def setup_page(
         out.append("<p class='muted'>No files yet.</p>")
     out.append(
         "<details class='fold'><summary>Hashes and where the copies are kept</summary>"
-        "<p class='muted'>Each file is copied into "
-        f"<span class='mono'>{e(inputs_folder)}</span>, made read-only and SHA-256 hashed; "
-        "Mabillon reads only the copy, and the hash of what it parsed must match the hash of what "
-        "it received. Your original file is not changed.</p>"
+        "<p class='muted'>Read-only copies in "
+        f"<span class='mono'>{e(inputs_folder)}</span>. Your original files are not changed."
+        "</p>"
         + (
             "<table class='tidy hashes'><thead><tr><th>File</th><th>SHA-256</th></tr></thead>"
             + "".join(hashes)
@@ -2363,7 +2350,6 @@ def setup_page(
             "Government document (PDF)",
             ".pdf",
             busy,
-            hint="An affidavit, police or forensic report.",
         )
         + _upload_form(
             page,
@@ -2371,9 +2357,7 @@ def setup_page(
             "Phone report",
             ".xlsx,.pdf,.ufdr,.zip,.xml",
             busy,
-            hint="Cellebrite (UFDR package .ufdr, Excel .xlsx or PDF) or Magnet AXIOM (XML or "
-            "Excel export). Only a UFDR stating report version 7.48 has been tested; every other "
-            "format or version shows a not-tested notice.",
+            hint="Cellebrite or Magnet AXIOM. Tested: UFDR report version 7.48 only.",
         )
         + "</div></details>"
     )
@@ -2393,9 +2377,7 @@ def setup_page(
                 + ">"
                 "Propose claims with the local model</button>"
                 "<a class='button' href='/claim/new'>Add a claim yourself</a></div>"
-                "<p class='muted'>The model reads each paragraph that has no claims yet and "
-                "proposes claims, each quoting its paragraph. Nothing is audited until you "
-                "accept, edit or remove each one.</p>",
+                "<p class='muted'>Nothing is audited until you accept it.</p>",
                 "plain",
                 back="/setup",
                 anchor="claims",
@@ -2403,7 +2385,6 @@ def setup_page(
         )
     if order or any(c.status.value == "removed" for c in claims.values()):
         out.append(
-            "<p>Claims run in this order. Move the ones you want first to the top.</p>"
             "<table class='tidy claim-order'><thead><tr><th>#</th><th>Claim</th>"
             "<th>Status</th><th>Text</th><th>Decide</th></tr></thead>"
         )
@@ -2425,8 +2406,7 @@ def setup_page(
         removed = [c for c in claims.values() if c.status.value == "removed"]
         if removed:
             out.append(
-                "<div class='removed'><p class='muted'>Removed, not audited. Put one back to "
-                "accept it again; each change is in the audit log.</p><ul>"
+                "<div class='removed'><p class='muted'>Removed, not audited.</p><ul>"
                 + "".join(
                     f"<li><a href='{e(link('/claim', id=c.id))}'>"
                     f"{e(claim_name(conn, c.id, c.paragraph_id))}</a>"
@@ -2475,9 +2455,7 @@ def setup_page(
             "/model/check",
             "<div class='inline-actions'><button type='submit'"
             + (" disabled" if busy else "")
-            + ">Check the model now</button><span class='muted'>Finds the model file, checks its "
-            "SHA-256 against the config and checks this computer's memory. The audit also does "
-            "this first.</span></div>",
+            + ">Check the model now</button></div>",
             "plain",
             back="/setup",
             anchor="model",
@@ -2514,17 +2492,13 @@ def setup_page(
                 "/audit/start",
                 acks + "<details class='options'><summary>More options</summary>"
                 "<div class='checks'><label><input type='checkbox' name='ai_review' value='1'> "
-                "Also run the AI reviewer: a sorting aid that decides nothing and costs one more "
-                "model call per supporting item.</label><label><input type='checkbox' "
-                "name='label_all' value='1'> Also label claims a failed check already decides "
-                "(more model calls; their verdict cannot change).</label><label><input "
-                "type='checkbox' name='no_challenge' value='1'> Skip the challenge step: code's "
-                "searches for what undercuts a claim close to supported. It only adds doubt; "
-                "skipping it saves model calls.</label></div></details>"
+                "Also run the AI reviewer. It sorts evidence and decides nothing.</label>"
+                "<label><input type='checkbox' name='label_all' value='1'> Also label claims a "
+                "failed check already decides. Their verdict cannot change.</label><label><input "
+                "type='checkbox' name='no_challenge' value='1'> Skip the challenge step, code's "
+                "search for what undercuts a claim close to supported.</label></div></details>"
                 "<div class='inline-actions'>"
                 f"<button type='submit' class='primary'{off}>{start}</button>"
-                "<span class='muted'>Keeps this "
-                "computer awake while it runs. You can stop it; finished claims are kept.</span>"
                 "</div>",
                 back="/run",
             )
@@ -2549,8 +2523,6 @@ def cloud_section(
     out = [
         "<div id='cloud'><h3>Cloud AI for this case</h3>",
         f"<p><strong>{'Cloud AI on for this case' if use else 'Local only'}.</strong> {e(why)}</p>",
-        "<p class='muted'>Off by default: everything runs on this computer unless you opt in "
-        "for this case below.</p>",
         "<details class='fold'><summary>What cloud AI sends, and what it never sends</summary>"
         "<p class='muted'>With cloud AI, Mabillon sends one question at a time to Anthropic under "
         "your own key: the assumption being tested, one record, the messages around it, the "
@@ -2571,8 +2543,7 @@ def cloud_section(
             f"{' checked' if csam else ''}> {e(CSAM_NOTE)} This case then never uses cloud AI."
             "</label></div>"
             f"<div class='inline-actions'><button type='submit'{off}>Save the cloud choice"
-            "</button><span class='muted'>Recorded in the case's audit log under your name."
-            "</span></div>",
+            "</button></div>",
             back="/setup",
             anchor="cloud",
         ),
@@ -2589,10 +2560,7 @@ def cloud_section(
     # The key form folds away until the case opts in: a local-only case does not need it.
     out.append(f"<details class='fold'{' open' if allowed else ''}><summary>")
     if key_problem is None:
-        out.append(
-            "An Anthropic key is set up on this computer.</summary>"
-            "<p class='muted'>Replace it below if you need to.</p>"
-        )
+        out.append("An Anthropic key is set up on this computer.</summary>")
     else:
         out.append(f"No cloud key yet</summary><p class='muted'>{e(key_problem)}.</p>")
     out.append(
@@ -2640,10 +2608,8 @@ def encryption_section(page: Page, protection: str, busy: bool) -> str:
         out.append(
             "<p>This case is <strong>not encrypted</strong>.</p>"
             "<details class='fold'><summary>Encrypt this case</summary>"
-            "<p class='muted'>Anyone who can read its folder "
-            "can read its database and the copies of its files. Encrypting locks both with a "
-            "passphrase (AES-256). It is a one-way step, it does not change any finding, and "
-            "large reports can take a few minutes; keep this page open.</p>"
+            "<p class='muted'>Locks the database and the file copies with a passphrase "
+            "(AES-256). One way; it can take a few minutes, so keep this page open.</p>"
             + wait
             + page.form(
                 "/case/encrypt",
@@ -2677,9 +2643,8 @@ def encryption_section(page: Page, protection: str, busy: bool) -> str:
         )
         return "".join(out)
     out.append(
-        "<p>This case is <strong>encrypted</strong>: its database and the copies of its files "
-        "cannot be read without the passphrase or the recovery key. It stays unlocked until you "
-        "lock it or stop Mabillon.</p>"
+        "<p>This case is <strong>encrypted</strong>. It stays unlocked until you lock it or stop "
+        "Mabillon.</p>"
         + wait
         + page.form(
             "/case/lock",
@@ -2802,9 +2767,7 @@ def run_page(
             out.append(
                 page.form(
                     "/audit/stop",
-                    "<button type='submit'>Stop after the current claim</button> <span "
-                    "class='muted'>The claim being labeled finishes first; every finished claim "
-                    "is kept and a resumed audit reuses its model outputs.</span>",
+                    "<button type='submit'>Stop after the current claim</button>",
                     back="/run",
                 )
             )
@@ -2825,9 +2788,8 @@ def run_page(
     )
     if not running and run["status"] != "completed":
         out.append(
-            "<p>This audit did not finish. Finished claims can be reviewed now. "
-            "<a href='/setup'>Resume it from Set up and run</a>; finished claims reuse their "
-            "stored model outputs and take seconds.</p>"
+            "<p>This audit did not finish. Finished claims are kept. "
+            "<a href='/setup'>Resume it</a></p>"
         )
     view = pipeline.view_run(conn)
     labels = {}
