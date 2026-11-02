@@ -317,6 +317,15 @@ def test_proposed_claims_must_be_decided_and_owners_confirmed_before_the_audit(a
     assert status.claim_name(conn, "C05", pid) == "C05"
     for path in ("/setup", "/claims"):
         assert f">{name}</a>" in get(app, path).text
+    # Set up's claims table keeps short cells whole and puts Accept, Up, Down and Remove on one
+    # row, with Edit the wording under them.
+    setup = get(app, "/setup").text
+    assert "<table class='tidy claim-order'>" in setup
+    row = setup.split(f"<tr id='claim-{proposed[0]}'>", 1)[1].split("</tr>", 1)[0]
+    actions = row.split("<div class='claim-actions'>", 1)[1].split("</div>", 1)[0]
+    for label in (">Accept<", "Move up", "Move down", ">Remove<"):
+        assert label in actions
+    assert "<details><summary>Edit the wording</summary>" in row.split(actions, 1)[1]
     claim_page = get(app, "/claim", id=proposed[0]).text
     assert f"<h1>{name} " in claim_page and proposed[0] in claim_page  # the id stays findable
     post(app, "/audit/start", next="/run")
@@ -328,6 +337,11 @@ def test_proposed_claims_must_be_decided_and_owners_confirmed_before_the_audit(a
     _add_gold_claims(app, conn)
     page = get(app, "/setup").text
     assert "has no stipulated user" in page
+    # Each removed claim has a Put back button, which accepts it again through /claim/edit.
+    removed_list = page.split("<div class='removed'>", 1)[1].split("</div>", 1)[0]
+    for cid in proposed:
+        assert f"name='claim' value='{cid}'" in removed_list
+    assert removed_list.count(">Put back</button>") == len(proposed)
     post(app, "/audit/start", next="/run")
     assert "not ready" in get(app, "/").text  # owners not confirmed, not acknowledged
     _stipulate(app)
@@ -390,10 +404,13 @@ def test_audit_runs_in_the_background_in_the_experts_order(app, inputs):
     held = status.case_holdings(conn)
     assert len(held) == 2 and any("Apple iPhone 13" in h for h in held), held
     report = render_report(conn)
+    assert (
+        html.escape(status.HOLDINGS) in report
+    )  # the screen heads the list "Sources in this case"
+    assert "<p>Sources in this case</p>" in claim_page
     for page_html in (claim_page, report):
-        assert html.escape(status.HOLDINGS) in page_html
         assert all(html.escape(h) in page_html for h in held)
-    assert html.escape(status.HOLDINGS) not in get(app, "/claim", id="C05").text
+    assert "Sources in this case" not in get(app, "/claim", id="C05").text
     assert pipeline.last_run(conn)["not_tested"].keys() == {"C21"}
     assert all(not st.untested for cid, st in states.items() if cid != "C21")
     assert audit_log.verify_chain(conn)
