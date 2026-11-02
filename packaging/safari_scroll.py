@@ -60,7 +60,9 @@ class Driver:
     def find(self, css: str) -> str | None:
         try:
             return self.s("POST", "/element", {"using": "css selector", "value": css})[ELEMENT]
-        except Exception:  # noqa: BLE001 - not on the page
+        except Exception as err:  # noqa: BLE001 - not on the page
+            body = err.read().decode()[:300] if isinstance(err, urllib.error.HTTPError) else ""
+            print(json.dumps({"find": css, "error": str(err), "body": body}), flush=True)
             return None
 
     def click(self, el: str) -> None:
@@ -134,7 +136,8 @@ def main() -> int:
         d.get(demo + "/claim?id=D03")
         box = d.find("#agent input[name=reason]")
         if box is None:
-            note("D03 testability card", False, error="no undecided card")
+            card = d.js("const a = document.getElementById('agent'); return a && a.innerText")
+            note("D03 testability card", False, error="no undecided card", card=card)
         else:
             d.click(box)
             before = note("D03 click the reason box")
