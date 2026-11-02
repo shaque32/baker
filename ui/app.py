@@ -1095,8 +1095,7 @@ class App:
             )
         estimate = (
             f"Rough estimate for {n} claims: "
-            f"{jobs.duration(jobs.estimate_seconds(n, spc, cloud_spc))} ({calls}, {source}). "
-            "Claims labeled before reuse their stored outputs and take seconds."
+            f"{jobs.duration(jobs.estimate_seconds(n, spc, cloud_spc))} ({calls}, {source})."
             if n
             else ""
         )

@@ -45,14 +45,12 @@ def help_page(page: Page, report_text: str | None, withheld: str | None, case_op
     )
     about = (
         "<section class='hs about'><h2>What Mabillon does and doesn't do</h2>"
-        "<p>Mabillon is a verification layer on top of Cellebrite and AXIOM. It takes the "
-        "scrolling, not the judgment.</p>"
+        "<p>Mabillon is a verification layer on top of Cellebrite and AXIOM.</p>"
         "<div class='dodont'><div><h3>It does</h3><ul>"
         + "".join(f"<li>{e(x)}</li>" for x in DOES)
         + "</ul></div><div><h3>It does not</h3><ul>"
         + "".join(f"<li>{e(x)}</li>" for x in DOES_NOT)
-        + "</ul></div></div><p class='muted'>The full one-page explainer is "
-        "<code>docs/ONE_PAGER.md</code> in the Mabillon folder.</p></section>"
+        + "</ul></div></div></section>"
     )
     scope = (
         "It describes this Mabillon install and the case open now (counts and states only)."
@@ -68,9 +66,8 @@ def help_page(page: Page, report_text: str | None, withheld: str | None, case_op
     else:
         body = (
             "<ol class='steps'><li><a class='button' href='/help/bug-report.json' download>"
-            "Save the bug report</a> "
-            "(a small JSON file).</li>"
-            "<li>Open it and read it. It is the same text as below.</li>"
+            "Save the bug report</a></li>"
+            "<li>Read it. It is the text below.</li>"
             f"<li>Attach it to an email to {e(SUPPORT_EMAIL)}.</li></ol>"
             "<h3>Left out on purpose</h3><ul>"
             + "".join(f"<li>{e(x)}</li>" for x in bug_report.WITHHELD)
@@ -79,9 +76,8 @@ def help_page(page: Page, report_text: str | None, withheld: str | None, case_op
         )
     report = (
         "<section class='hs report'><h2>Send a bug report</h2>"
-        "<p>The bug report holds Mabillon's versions, this computer's system and model setup, "
-        f"the last background job and recent errors, with no case data. {e(scope)} Mabillon "
-        "never sends it: you save it and send it yourself.</p>"
+        "<p>Versions, this computer's system and model setup, the last background job and "
+        f"recent errors, with no case data. {e(scope)} You send it yourself.</p>"
         f"{body}</section>"
     )
     return page.wrap(

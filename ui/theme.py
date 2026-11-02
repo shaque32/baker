@@ -89,11 +89,15 @@ h3 { font: 600 14px/1.4 var(--sans); margin: 24px 0 8px; }
 .mono { font: 400 12px/1.5 var(--mono);
   color: var(--muted); letter-spacing: 0; word-break: break-all; }
 .muted { color: var(--muted); }
+/* visually hidden: kept for a screen reader and for tools that read the page */
+.vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%);
+  white-space: nowrap; }
 a { color: var(--accent); text-decoration-color: rgb(29 53 87 / 0.3);
   text-underline-offset: 3px; }
 a:hover { text-decoration-color: currentColor; }
 
-/* Sidebar: the wordmark, the open case, the pages in three groups, and the offline line */
+/* Sidebar: the wordmark, the open case, the pages in three groups; the footer holds the offline
+   line, the reviewer and Help */
 header.top { position: fixed; inset: 0 auto 0 0; z-index: 5; width: var(--sidebar);
   display: flex; flex-direction: column; background: var(--side);
   overflow-y: auto; scrollbar-width: thin; }
@@ -104,7 +108,9 @@ header.top { position: fixed; inset: 0 auto 0 0; z-index: 5; width: var(--sideba
 .casename { display: flex; flex-direction: column; gap: 2px; font-weight: 600;
   font-size: 13px; line-height: 1.35; margin: 18px 12px 4px; padding: 10px 12px;
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); }
-.casename small { font: 400 12px var(--sans); color: var(--muted); letter-spacing: 0; }
+a.casename { color: var(--fg); text-decoration: none; }
+a.casename:hover, a.casename.on { border-color: var(--line-strong); }
+a.casename.on { box-shadow: 0 1px 2px rgb(20 20 20 / 0.05); }
 .bar .right { order: 3; margin-top: auto; display: flex; flex-direction: column;
   align-items: flex-start; gap: 6px; padding: 16px 20px 20px; border-top: 1px solid var(--line); }
 .pill { display: inline-flex; align-items: center; gap: 7px; border: 0; padding: 0;
@@ -114,7 +120,9 @@ header.top { position: fixed; inset: 0 auto 0 0; z-index: 5; width: var(--sideba
   background: var(--sup); }
 a.pill::before { background: var(--accent); }
 a.pill:hover { color: var(--fg); }
-.who { font-size: 12px; color: var(--muted); } .who strong { color: var(--fg); font-weight: 600; }
+.who { font-size: 12px; color: var(--fg); font-weight: 600; }
+.bar .right a.help { font-size: 12px; color: var(--muted); text-decoration: none; }
+.bar .right a.help:hover { color: var(--fg); }
 nav.tabs { order: 2; display: flex; flex-direction: column; gap: 1px; padding: 12px 12px 16px;
   font-size: 13.5px; }
 nav.tabs a { color: var(--ink-2); text-decoration: none; padding: 6px 10px; border-radius: 6px;
@@ -497,7 +505,6 @@ body .verdict::before { content: none; }
 body .verdict.v-nt { color: var(--muted); background: var(--panel); border: 0; }
 
 /* claims ledger: the queue, and the column beside a claim */
-.tally { display: none; }
 .counts { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 14px; }
 .counts .verdict { font-size: 12px; }
 .counts .verdict b { font-weight: 600; margin-left: 4px; }
@@ -517,18 +524,11 @@ body .verdict.v-nt { color: var(--muted); background: var(--panel); border: 0; }
 .ledger .text { font-size: 14px; line-height: 1.5; }
 .ledger .needs { margin-top: 4px; font-size: 12.5px; color: var(--muted); }
 
-/* claims overview: progress, one number per group, the next claim up, then the groups */
-.overview-head { display: flex; flex-wrap: wrap; align-items: flex-end;
-  justify-content: space-between; gap: 16px 40px; }
-.overview-head > div:first-child { flex: 1 1 460px; }
-.overview-head h1 { font: 600 24px/1.3 var(--sans); letter-spacing: -0.01em; margin: 0 0 8px; }
-.progress { flex: 0 1 280px; margin-bottom: 14px; }
-.progress .lbl { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px;
-  color: var(--muted); margin-bottom: 6px; }
-.progress .lbl b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
-.progress .track { height: 4px; border-radius: 999px; background: var(--panel); overflow: hidden; }
-.progress .track span { display: block; height: 100%; background: var(--accent);
-  border-radius: 999px; }
+/* claims overview: the headline and its one action, one number per group, the next claim up,
+   then the groups */
+.overview-head { display: flex; flex-wrap: wrap; align-items: center;
+  justify-content: space-between; gap: 12px 40px; }
+.overview-head h1 { font: 600 24px/1.3 var(--sans); letter-spacing: -0.01em; margin: 0; }
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 12px; margin: 24px 0 28px; }
 .tile { display: flex; flex-direction: column; gap: 4px; padding: 16px 18px;
@@ -547,7 +547,6 @@ body .verdict.v-nt { color: var(--muted); background: var(--panel); border: 0; }
 .tile .n { font: 600 30px/1.25 var(--sans); letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums; }
 .tile.t-you .n { color: var(--accent); }
-.tile .sub { font-size: 12.5px; color: var(--muted); line-height: 1.45; }
 .nextup { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
   padding: 18px 22px; margin: 0 0 36px; }
 .nextup .head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; }
@@ -559,6 +558,9 @@ body .verdict.v-nt { color: var(--muted); background: var(--panel); border: 0; }
 a.button { display: inline-flex; align-items: center; min-height: 34px; padding: 0 14px;
   border-radius: var(--ctl-radius); text-decoration: none; font-weight: 500; font-size: 13.5px;
   transition: background-color 0.15s var(--ease); }
+a.button:not(.primary) { color: var(--fg); background: var(--card);
+  border: 1px solid var(--line-strong); box-shadow: 0 1px 2px rgb(20 20 20 / 0.05); }
+a.button:not(.primary):hover { background: var(--hover); border-color: var(--line-hover); }
 a.button.primary { background: var(--accent); color: var(--accent-fg); font-weight: 600;
   box-shadow: 0 1px 2px rgb(29 53 87 / 0.22); }
 a.button.primary:hover { background: var(--accent-hover); }
@@ -568,7 +570,6 @@ section.group { margin: 36px 0; }
 .ghead h2 { font: 600 16px/1.4 var(--sans); margin: 0; border: 0; padding: 0; }
 .ghead .muted { font-size: 13px; }
 details.fold > summary { font-size: 13px; color: var(--muted); cursor: pointer; margin: 0 0 10px; }
-.kinds { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 10px; }
 /* claim page: what has to be true, the evidence as a conversation, the working folded */
 .truths .checklist { list-style: none; padding: 0; margin: 8px 0 20px; background: var(--card);
   border: 1px solid var(--line); border-radius: var(--radius); }
@@ -597,11 +598,8 @@ details.working { margin: 20px 0; }
   align-items: start; }
 aside.side { position: sticky; top: 24px; max-height: calc(100vh - 48px); overflow-y: auto;
   scrollbar-width: thin; }
-aside.side .eyebrow { display: flex; justify-content: space-between; margin: 2px 2px 0;
-  font-weight: 600; color: var(--fg); }
-aside.side .eyebrow span { font-weight: 400; color: var(--muted); }
 aside.side .ledger .row { padding: 10px 14px; }
-aside.side .ledger .text { font-size: 13px; display: -webkit-box; -webkit-line-clamp: 3;
+aside.side .ledger .text { font-size: 13px; display: -webkit-box; -webkit-line-clamp: 2;
   -webkit-box-orient: vertical; overflow: hidden; }
 aside.side .ledger li.on { box-shadow: inset 2px 0 0 var(--accent); background: var(--accent-bg); }
 
