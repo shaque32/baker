@@ -42,6 +42,9 @@ CSS = """
   background: none; font-size: 13px; }
 .pg-claim #verdict p.format-notice { margin: 8px 0; }
 .pg-claim #verdict p.format-notice strong { font-weight: 500; }
+.pg-claim #verdict details.fmt > summary { color: var(--ink-2); }
+.pg-claim #verdict details.fmt > summary strong { font-weight: 500; }
+.pg-claim #verdict details.fmt p.format-notice { margin-left: 18px; }
 .pg-claim #verdict .in > details { margin-top: 10px; }
 .pg-claim #verdict .in > details > summary { font-size: 13px; }
 .pg-claim #verdict > .in.vacts { display: flex; flex-wrap: wrap; align-items: baseline;

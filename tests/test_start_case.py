@@ -404,10 +404,13 @@ def test_audit_runs_in_the_background_in_the_experts_order(app, inputs):
     held = status.case_holdings(conn)
     assert len(held) == 2 and any("Apple iPhone 13" in h for h in held), held
     report = render_report(conn)
+    assert (
+        html.escape(status.HOLDINGS) in report
+    )  # the screen heads the list "Sources in this case"
+    assert "<p>Sources in this case</p>" in claim_page
     for page_html in (claim_page, report):
-        assert html.escape(status.HOLDINGS) in page_html
         assert all(html.escape(h) in page_html for h in held)
-    assert html.escape(status.HOLDINGS) not in get(app, "/claim", id="C05").text
+    assert "Sources in this case" not in get(app, "/claim", id="C05").text
     assert pipeline.last_run(conn)["not_tested"].keys() == {"C21"}
     assert all(not st.untested for cid, st in states.items() if cid != "C21")
     assert audit_log.verify_chain(conn)

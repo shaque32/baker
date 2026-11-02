@@ -74,12 +74,7 @@ def _option_text(text: str, label: str, limit: int = 80) -> str:
 
 def exhibits_page(conn: sqlite3.Connection, page: Page) -> str:
     exhibits = load_exhibits(conn)
-    out = [
-        "<div class='pg-exhibits'><h1>Exhibits</h1><p>Paste the messages a government exhibit "
-        "quotes. Mabillon finds each one in the imported extraction and shows it in its own "
-        "conversation, with the messages around it and related threads. Code finds and verifies "
-        "every match; no model decides one.</p>"
-    ]
+    out = ["<div class='pg-exhibits'><h1>Exhibits</h1>"]
     if needs_request(conn):
         out.append(
             "<p class='warn'>Only curated reports (or sources of unknown coverage) are imported. "
@@ -112,10 +107,7 @@ def exhibits_page(conn: sqlite3.Connection, page: Page) -> str:
                 )
             )
     else:
-        out.append(
-            "<p class='muted'>No exhibit yet. Paste the messages an exhibit quotes in "
-            "<a href='#add'>the form below</a>, and Mabillon searches the extraction for each.</p>"
-        )
+        out.append("<p class='muted'>No exhibits yet.</p>")
 
     paragraphs = list(
         conn.execute(
@@ -135,16 +127,11 @@ def exhibits_page(conn: sqlite3.Connection, page: Page) -> str:
             "<div class='fields'><p><label>Exhibit name <input type='text' name='label' "
             "required maxlength='120' class='wide' placeholder='Government Exhibit 4'></label>"
             f"</p><p><label>Cited in (optional) <select name='paragraph'>{options}</select>"
-            "</label></p></div><p><label>Quoted messages, as the exhibit prints them <span "
-            "class='hint'>Screenshots are not read: type or paste the text.</span>"
+            "</label></p></div><p><label>Quoted messages, as the exhibit prints them"
             f"<textarea name='text' rows='8' required maxlength='{MAX_EXHIBIT_CHARS}'>"
             "</textarea></label></p><fieldset class='msgsplit'><legend>One message per</legend>"
             "<label><input type='radio' name='split' value='line' checked> line</label>"
-            "<label><input type='radio' name='split' value='block'> paragraph <span "
-            "class='muted'>(blank line between messages; keeps a message that runs over several "
-            "lines whole)</span></label></fieldset><p class='muted'>A time or sender name printed "
-            "in front of a message is set aside and shown, not compared. An ellipsis marks "
-            "words the exhibit left out; Mabillon shows them.</p>"
+            "<label><input type='radio' name='split' value='block'> paragraph</label></fieldset>"
             "<button type='submit' class='primary'>Add and search</button>",
             back="/exhibits",
         )

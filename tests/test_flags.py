@@ -141,7 +141,7 @@ def test_flags_from_the_claim_page(db, conn):
     assert page.count("Flag this label") == sum(
         1 for x in claim_state(conn, "C05").evidence if x.stance.value != "irrelevant"
     )
-    assert "Flag: I disagree with this verdict" in page and "Flag a record Mabillon missed" in page
+    assert "Flag this verdict" in page and "Flag a record Mabillon missed" in page
     # no reviewer name yet: nothing recorded
     post(app, "/flag/add", claim="C05", kind="wrong_label", evidence=eid, should_be="irrelevant")
     assert flags.flags(conn) == []
@@ -170,9 +170,9 @@ def test_flags_from_the_claim_page(db, conn):
     assert "Your flags on this claim (1)" in get(app, "/claim", id="C05").text
 
     case_page = get(app, "/").text
-    assert "1 flag for Mabillon's error log" in case_page and "/log#flags" in case_page
+    assert "<dt>Flags</dt><dd><a href='/log#flags'>1</a></dd>" in case_page
     log_page = get(app, "/log").text
-    assert "Flags for Mabillon" in log_page and "Download the redacted summary" in log_page
+    assert "<h2 id='flags'>Flags</h2>" in log_page and "Download the redacted summary" in log_page
     r = get(app, "/flags/summary.json", pilot="P1")
     assert r.status == 200 and "attachment" in r.header("Content-Disposition")
     assert ("Referrer-Policy", "same-origin") in r.headers
@@ -292,7 +292,7 @@ def test_flags_must_disagree_and_target_the_audit_on_screen(db, conn):
         flags.add_flag(conn, "C06", flags.VERDICT, EXPERT, should_be=baker)
     app = App(db, expert="Test Expert", port=PORT)
     page = get(app, "/claim", id="C06").text
-    form = page.split("Flag: I disagree with this verdict", 1)[1].split("</form>", 1)[0]
+    form = page.split("Flag this verdict", 1)[1].split("</form>", 1)[0]
     assert f"value='{baker}'" not in form
 
     # An evidence item the audit on screen does not hold (an older run's) can't be flagged.

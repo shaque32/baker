@@ -49,7 +49,11 @@ CSS = """
 .pg-overview .ov-who { min-width: 0; color: var(--ink-2); }
 .pg-overview .ov-none { display: inline-block; font-size: 12px; line-height: 1.5;
   padding: 1px 9px; border-radius: 999px; background: var(--panel); color: var(--muted); }
-.pg-overview p.ov-note { max-width: 72ch; font-size: 13px; margin: 0 0 12px; }
+.pg-overview .ov-head { display: flex; align-items: baseline; justify-content: space-between;
+  max-width: 880px; margin: 44px 0 10px; }
+.pg-overview .ov-head h2 { margin: 0; }
+.pg-overview .ov-head a { font-size: 13px; color: var(--muted); text-decoration: none; }
+.pg-overview .ov-head a:hover { color: var(--fg); }
 
 .pg-overview .ov-record { margin-top: 52px; }
 .pg-overview .ov-record h2 { margin-top: 0; font-size: 14px; }
