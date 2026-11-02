@@ -1162,17 +1162,15 @@ def flags_overview(conn: sqlite3.Connection) -> str:
     # one quiet panel: the count, how to flag, and the download on one line with its note
     return (
         "<section class='logflags'>"
-        "<h2 id='flags'>Flags for Mabillon's error log</h2>"
-        f"<p><strong>{n} flag{'' if n == 1 else 's'}</strong>{': ' + e(counts) if counts else ''}."
-        " Flag a wrong label, a missed record or a verdict you disagree with on any claim page."
+        "<h2 id='flags'>Flags</h2>"
+        f"<p><strong>{n} flag{'' if n == 1 else 's'}</strong>{': ' + e(counts) if counts else ''}"
         "</p>"
         "<form method='get' action='/flags/summary.json' class='flagform'>"
         "<input type='text' name='pilot' maxlength='60' placeholder='Pilot name (optional)' "
         "aria-label='Pilot name (optional)'> "
         "<button type='submit'>Download the redacted summary</button>"
-        "<p class='muted'>Nothing is sent. The file holds counts, labels and versions only: no "
-        "claim text, quotes, notes, names, record references or ids. Read it before you share "
-        "it.</p></form></section>"
+        "<p class='muted'>Counts, labels and versions only: no case text, names or ids. Nothing "
+        "is sent.</p></form></section>"
     )
 
 
@@ -1844,8 +1842,7 @@ def log_page(conn: sqlite3.Connection, page: Page, show_all: bool, show_views: b
         (show_views, VIEW, -1 if show_all else 200),
     )
     status = (
-        "<p class='chain ok'>Hash chain verified: every entry matches the hash of the one before."
-        "</p>"
+        "<p class='chain ok'>Hash chain verified</p>"
         if summary["chain_ok"]
         else "<div class='flash err chain'><strong>Hash chain failed verification.</strong> The "
         "log was changed outside Mabillon.</div>"
@@ -1885,11 +1882,6 @@ def log_page(conn: sqlite3.Connection, page: Page, show_all: bool, show_views: b
                     (f"Shown ({views})", link("/log", **all_p, views="1"), show_views),
                 ],
             )
-        )
-        controls.append(
-            "<span class='muted'>"
-            + ("" if show_views else f"{views} page views not shown here; ")
-            + "<a href='/activity'>Activity</a> lists them too.</span>"
         )
     out = [
         "<div class='pg-log'>",
@@ -1959,16 +1951,13 @@ def _report_switch(conn: sqlite3.Connection, page: Page) -> str:
     """The per-case switch for the report's Examiner activity table (off by default)."""
     on = activity.in_report(conn)
     state = (
-        "<strong>In the report: included.</strong> The report shows this case's activity per "
-        "claim, with time on its pages."
+        "<strong>In the report: included.</strong>"
         if on
-        else "<strong>In the report: left out</strong> (the default). The report says it is "
-        "not included; the audit log keeps every page view."
+        else "<strong>In the report: left out.</strong>"
     )
     return page.form(
         "/activity/report",
-        f"<p>{state} <span class='muted'>The choice is yours for this case, and the audit log "
-        "records each change with your name.</span></p>"
+        f"<p>{state}</p>"
         f"<input type='hidden' name='include' value='{'0' if on else '1'}'>"
         "<button type='submit'>"
         + ("Leave activity out of the report" if on else "Include activity in the report")
@@ -2000,10 +1989,6 @@ def activity_page(conn: sqlite3.Connection, page: Page, claim: str, show_all: bo
     out = [
         "<div class='pg-activity'>",
         "<h1>Activity</h1>",
-        "<p class='lede'>Every page opened in this case is recorded in its audit log, with the "
-        "time, the examiner's name, the page and the evidence it listed, beside the examiner's "
-        "decisions. The hash chain covers these entries like every other. Nothing here leaves "
-        "this computer.</p>",
         "<details class='howcounted'><summary>How time on page is counted</summary>"
         "<p class='muted'>Time on page runs from opening a page to the next page opened. "
         "The screen runs no scripts, so Mabillon cannot tell what was on screen or read; a "
@@ -2053,7 +2038,7 @@ def activity_page(conn: sqlite3.Connection, page: Page, claim: str, show_all: bo
         if known:
             bar.append(f"<a href='{e(link('/claim', id=claim))}'>Open claim {e(claim)}</a>")
         else:
-            bar.append("<span class='muted'>There is no such claim in this case.</span>")
+            bar.append("<span class='muted'>No such claim in this case.</span>")
     if cut:
         more = {"claim": claim} if known else {}
         bar.append(

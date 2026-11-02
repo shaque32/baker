@@ -172,7 +172,7 @@ def test_flags_from_the_claim_page(db, conn):
     case_page = get(app, "/").text
     assert "<dt>Flags</dt><dd><a href='/log#flags'>1</a></dd>" in case_page
     log_page = get(app, "/log").text
-    assert "Flags for Mabillon" in log_page and "Download the redacted summary" in log_page
+    assert "<h2 id='flags'>Flags</h2>" in log_page and "Download the redacted summary" in log_page
     r = get(app, "/flags/summary.json", pilot="P1")
     assert r.status == 200 and "attachment" in r.header("Content-Disposition")
     assert ("Referrer-Policy", "same-origin") in r.headers

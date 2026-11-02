@@ -1,4 +1,4 @@
-## 2026-11-02: Simpler app: shell, Case, Claims, one claim, evidence, Add a claim and Cases (PR pending)
+## 2026-11-02: Simpler app: fewer labels and helper lines on every page but Set up and run (PR pending)
 - Changed: first step of the "simplify the app" plan (Arsh: cut taglines, helper text and
   secondary labels; fix the layout where a screen needs them). Sidebar: 14 links to 11. Cases
   is the case card at the top (a link with a cases folder), Help sits in the sidebar's foot,
@@ -25,13 +25,22 @@
   source list (the report keeps its sentence). Evidence page: no helper line over the context.
   A row's status that repeats its group's heading stays in the markup, visually hidden, so the
   screen and report still agree word for word (tests/test_report_consistency.py).
+  Tools: page titles are the sidebar names (Identities, Timeline, Gaps); no intro paragraphs on
+  Identities, Exhibits, Timeline or Gaps (Gaps keeps its not-found caveat, Identities keeps how
+  links work in its fold, now with "Nothing is merged" first); no hints in the exhibit, person,
+  alias and timeline settings forms; an unplaced name says "Used in C18 · no person yet". Record
+  pages: Audit log says "Hash chain verified" and "Flags", drops the flag how-to and the page-view
+  note (the Shown (N) control says it); Activity drops its intro and the report switch says
+  "In the report: left out." or "included."; Help drops the tagline and the one-pager pointer and
+  shortens the bug report steps (the never-send-case-content line stays). Set up and run and the
+  audit progress page are left to their own thread.
   Kept on purpose: demo banner, "not tested" notices, verdict and review-state names, provenance
   tiers, the claim page's gap sentences and absence coverage.
 - Where: PR pending (branch claude/project-thread-01u5i7)
 - Verified: ruff; `make check` (numbers in the PR); screenshots of the demo at 1280 px before and
   after in /mnt/project-files/baker/simplify/.
-- Open: tools, record pages and Set up and run follow (plan: plans/simplify-app.md in the
-  project files). Windows browsers not looked at.
+- Open: Set up and run, and splitting ui/pages.py per page, follow (plan: plans/simplify-app.md
+  in the project files). Windows browsers not looked at.
 - Affects: none (wording and layout of the local screen; no verdict, rule or label change)
 - Status doc: pending: section on the review screen (the `/claims` paragraph): replace "opens
   with how many claims need the expert and a progress bar" with "opens with how many claims need

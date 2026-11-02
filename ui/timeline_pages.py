@@ -24,19 +24,15 @@ from ui.pages import Page, e
 def _settings_form(page: Page, s: Settings, back: str) -> str:
     form = page.form(
         "/timeline/settings",
-        "<div class='settings-head'>"
-        "<p class='muted'>Used by the Timeline and Gaps checks. Your name is recorded in the audit "
-        "log with any change.</p></div><div class='fields'>"
+        "<div class='fields'>"
         "<label class='field'>Time tolerance<span class='unit-input'>"
         f"<input type='number' name='tolerance_min' required inputmode='numeric' "
         f"min='{TOLERANCE_RANGE[0]}' max='{TOLERANCE_RANGE[1]}' value='{s.tolerance_min}'>"
-        "<span class='unit'>min</span></span><small>How far a phone record may sit from a time "
-        "the document states before the Timeline shows the difference.</small></label>"
+        "<span class='unit'>min</span></span></label>"
         "<label class='field'>Shortest quiet stretch<span class='unit-input'>"
         f"<input type='number' name='gap_hours' required inputmode='numeric' "
         f"min='{GAP_RANGE[0]}' max='{GAP_RANGE[1]}' value='{s.gap_hours}'>"
-        "<span class='unit'>hours</span></span><small>Gaps lists only stretches with no "
-        "messages or calls at least this long.</small></label>"
+        "<span class='unit'>hours</span></span></label>"
         "</div><div class='actions'><button type='submit' class='primary'>Save settings</button>"
         "</div>",
         cls="box settings",
@@ -68,10 +64,7 @@ def timeline_page(conn: sqlite3.Connection, page: Page, s: Settings) -> str:
         _settings_form(page, s, "/timeline"),
     )
     out = [
-        "<div class='pg-timeline'><h1>The document's clock against the phones'</h1>"
-        "<p class='lede'>Each date and time the government document states, beside the phone "
-        "records' own timestamps. A difference is for you to weigh; it does not change any "
-        "verdict.</p>",
+        "<div class='pg-timeline'><h1>Timeline</h1>",
     ]
     if not rows:
         out.append(folds)
@@ -93,9 +86,9 @@ def timeline_page(conn: sqlite3.Connection, page: Page, s: Settings) -> str:
     skipped = [r for r in rows if r.status == "not_compared"]
     if skipped:
         out.append(
-            f"<h2>Not compared{_count(len(skipped))}</h2><p class='muted'>Dates Mabillon could "
-            "not read plainly, such as a numeric date that reads either way. Mabillon never "
-            "picks a month and day order.</p>" + timeline_rows(skipped, views.data)
+            f"<h2>Not compared{_count(len(skipped))}</h2><p class='muted'>Dates that read more "
+            "than one way. Mabillon never picks a month and day order.</p>"
+            + timeline_rows(skipped, views.data)
         )
     out.append("</div>")
     return page.wrap("Timeline check", "".join(out), wide=True)
@@ -104,9 +97,7 @@ def timeline_page(conn: sqlite3.Connection, page: Page, s: Settings) -> str:
 def gaps_page(conn: sqlite3.Connection, page: Page, s: Settings) -> str:
     views = compute(conn, s, rows=False)
     out = [
-        "<div class='pg-gaps'><h1>Where the records go quiet</h1><p class='lede'>Stretches "
-        "with no messages or calls, on each phone, in each app and in each thread, measured "
-        f"against that series' own pace.</p><p class='caveat'>{e(NOT_FOUND)}</p>",
+        f"<div class='pg-gaps'><h1>Gaps</h1><p class='caveat'>{e(NOT_FOUND)}</p>",
         _folds(
             "<details class='more'><summary>When a stretch is listed</summary><p>A stretch is "
             "listed when it lasts at least the shortest quiet stretch in the case settings "
