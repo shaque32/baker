@@ -675,14 +675,22 @@ def _tally(states: list[ClaimState]) -> str:
     return f"<div class='tally'>{bar}</div><div class='counts'>{chips}</div>"
 
 
+def _ledger_anchor(claim_id: str) -> str:
+    """The id of a claim's row in the side ledger. A ledger link lands on it, so the browser
+    scrolls the ledger to the claim just opened instead of back to the first claim."""
+    return "lg-" + urlquote(claim_id, safe="")
+
+
 def _ledger(states: list[ClaimState], current: str | None = None, compact: bool = False) -> str:
     rows = []
     for st in states:
         needs = "" if compact else " ".join(t for _, t in st.needs())
+        anchor = _ledger_anchor(st.claim.id)
         rows.append(
-            f"<li{' class=on' if st.claim.id == current else ''}>"
+            f"<li id='{e(anchor)}'{' class=on' if st.claim.id == current else ''}>"
             "<div class='row'><div class='head'><span class='meta'>"
-            f"<a href='{e(link('/claim', id=st.claim.id))}'>{e(st.name)}</a> · {e(st.where)} · "
+            f"<a href='{e(link('/claim', id=st.claim.id))}#{e(anchor)}'>{e(st.name)}</a> · "
+            f"{e(st.where)} · "
             f"{e(st.claim.claim_type.value.replace('_', ' '))}</span>"
             f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span></div>"
             f"<div class='text'>{q(st.claim.text)}</div>"
@@ -1426,8 +1434,11 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
         f"<aside class='side'><div class='eyebrow'>Claims ledger <span>{len(states)} claims"
         f"</span></div>{_tally(states)}{_ledger(states, c.id, compact=True)}</aside>"
     )
-    body = f"<div class='split pg-claim'>{side}<div class='claim-main'>{''.join(out)}</div></div>"
-    return page.wrap(st.name, body, run_banner(conn, page, back), wide=True)
+    # The run banner sits in the claim's column, so the ledger starts at the top of the page and
+    # fits the window: its last rows, and the open claim's row pinned to its edge, stay on screen.
+    main = run_banner(conn, page, back) + "".join(out)
+    body = f"<div class='split pg-claim'>{side}<div class='claim-main'>{main}</div></div>"
+    return page.wrap(st.name, body, wide=True)
 
 
 AROUND = 1  # messages either side of each evidence record on the claim page

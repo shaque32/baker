@@ -398,7 +398,7 @@ def identities_page(conn: sqlite3.Connection, page: Page) -> str:
         )
         per_opts = "".join(f"<option value='{e(p.id)}'>{e(p.name)}</option>" for p in case.persons)
         out.append(
-            "<h2>Link an account yourself</h2>"
+            "<h2 id='link-yourself'>Link an account yourself</h2>"
             + page.form(
                 "/identity/link",
                 f"<p class='pick'><label>Account <select name='account'>{acc_opts}</select>"
@@ -410,6 +410,7 @@ def identities_page(conn: sqlite3.Connection, page: Page) -> str:
                 "once and listed in the report as a limitation.</span></p>",
                 "box linkself",
                 back="/identities",
+                anchor="link-yourself",  # back to this form, not the top of a long page
             )
         )
     return page.wrap("Identities", "<div class='pg-ids'>" + "".join(out) + "</div>")
