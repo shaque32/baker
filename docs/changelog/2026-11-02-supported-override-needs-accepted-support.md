@@ -1,4 +1,4 @@
-## 2026-11-02: an override to Supported needs accepted support, and a bad stored verdict no longer takes the case down (#PR)
+## 2026-11-02: an override to Supported needs accepted support, and a bad stored verdict no longer takes the case down (#205)
 - Changed: on the claim page (and `mabillon verdict --set supported`), "Override the verdict" to
   Supported on a claim whose verdict cites no evidence (demo C05, unproven) stored Supported with
   nothing cited. The frozen VerdictDecision contract refuses that row, so every page of the case
@@ -16,7 +16,7 @@
   does not change `core/audit/rules.py`, RULE_VERSION, contracts or schema. It does narrow
   overrides: Supported over a contradicted or unproven verdict now needs accepted support, where
   before it was stored (and from contradicted, cited the contradicting items).
-- Where: PR #PR
+- Where: PR #205
 - Verified: tests/test_verdict_override.py (7 tests: refusal stores and logs nothing; the screen
   flashes the reason and every page stays 200; dismissed support does not count; accepted
   support is cited, logged, renders, and the exported bundle verifies, also after overriding
@@ -32,6 +32,6 @@
 - Status doc: pending: §4 "Verdicts come from code or the expert", after "under the expert's
   name in the audit log.", add "An override to Supported needs at least one supporting item
   the expert accepted on an observed record of a core assumption, and cites those items; the
-  bundle verifier replays them (#PR)." §12 table row 1 (Verdicts come from versioned rules),
+  bundle verifier replays them (#205)." §12 table row 1 (Verdicts come from versioned rules),
   after "as the expert's decision;", add "an override to Supported needs expert-accepted support
   and cites it;".
