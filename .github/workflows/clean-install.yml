@@ -153,6 +153,19 @@ jobs:
           python packaging/smoke_ui.py --serve http://127.0.0.1:8765 --demo http://127.0.0.1:8766 \
             --screenshots "$RUNNER_TEMP/ui"
 
+      # Safari is a pilot's default browser. Report only while the Safari behavior is measured.
+      - name: Safari on the demo case, does an action land where it was taken
+        continue-on-error: true
+        run: |
+          # The launchers' --open started Safari as a person's; WebDriver needs its own window.
+          pkill -x Safari || true
+          sleep 2
+          sudo safaridriver --enable
+          nohup safaridriver -p 4444 > "$RUNNER_TEMP/ui/safaridriver.log" 2>&1 &
+          for i in $(seq 20); do curl -sf http://127.0.0.1:4444/status >/dev/null && break; sleep 1; done
+          python packaging/safari_scroll.py --demo http://127.0.0.1:8766 --driver http://127.0.0.1:4444 \
+            2>&1 | tee "$RUNNER_TEMP/ui/safari-scroll.log"
+
       - name: Logs
         if: always()
         run: tail -n 40 "$RUNNER_TEMP"/ui/*.log || true
