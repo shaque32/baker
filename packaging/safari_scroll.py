@@ -18,6 +18,7 @@ import argparse
 import json
 import sys
 import time
+import urllib.error
 import urllib.request
 
 ELEMENT = "element-6066-11e4-a52e-4f735466cecc"
@@ -27,7 +28,14 @@ class Driver:
     def __init__(self, base: str) -> None:
         self.base = base.rstrip("/")
         caps = {"capabilities": {"alwaysMatch": {"browserName": "safari"}}}
-        self.sid = self._call("POST", "/session", caps)["sessionId"]
+        for attempt in range(4):  # a fresh runner's first session can be refused
+            try:
+                self.sid = self._call("POST", "/session", caps)["sessionId"]
+                return
+            except urllib.error.HTTPError as err:
+                print(json.dumps({"session": attempt, "error": err.read().decode()[:600]}))
+                time.sleep(5)
+        raise SystemExit("safaridriver refused every session")
 
     def _call(self, method: str, path: str, body: dict | None = None):  # noqa: ANN202
         data = json.dumps(body if body is not None else {}).encode() if method == "POST" else None

@@ -157,6 +157,9 @@ jobs:
       - name: Safari on the demo case, does an action land where it was taken
         continue-on-error: true
         run: |
+          # The launchers' --open started Safari as a person's; WebDriver needs its own window.
+          pkill -x Safari || true
+          sleep 2
           sudo safaridriver --enable
           nohup safaridriver -p 4444 > "$RUNNER_TEMP/ui/safaridriver.log" 2>&1 &
           for i in $(seq 20); do curl -sf http://127.0.0.1:4444/status >/dev/null && break; sleep 1; done
