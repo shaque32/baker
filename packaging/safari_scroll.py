@@ -59,7 +59,8 @@ class Driver:
 
     def find(self, css: str) -> str | None:
         try:
-            return self.s("POST", "/element", {"using": "css selector", "value": css})[ELEMENT]
+            ref = self.s("POST", "/element", {"using": "css selector", "value": css})
+            return ref.get(ELEMENT) or next(iter(ref.values()))  # Safari may use "ELEMENT"
         except Exception as err:  # noqa: BLE001 - not on the page
             body = err.read().decode()[:300] if isinstance(err, urllib.error.HTTPError) else ""
             print(json.dumps({"find": css, "error": str(err), "body": body}), flush=True)
