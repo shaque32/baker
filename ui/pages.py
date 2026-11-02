@@ -162,9 +162,9 @@ class Page:
         wide: bool = False,
     ) -> str:
         who = (
-            f"Reviewing as <strong>{e(self.expert)}</strong>"
+            f"<span class='who' title='Your name goes with every decision'>{e(self.expert)}</span>"
             if self.expert
-            else "<strong>Enter your name on the case page before reviewing.</strong>"
+            else "<a class='who' href='/'>Enter your name</a>"
         )
         flash = ""
         if self.flash:
@@ -172,10 +172,9 @@ class Page:
             # A toast: the page may open part-way down, at the item acted on.
             flash = f'<div class="flash toast{" err" if err else ""}" role="status">{e(msg)}</div>'
         meta = f"<meta http-equiv='refresh' content='{int(refresh)}'>" if refresh else ""
-        groups = [[("/cases", "Cases")]] if self.many_cases else []
-        if self.case_name is not None:
-            groups += TAB_GROUPS
-        groups.append([("/help", "Help")])
+        groups = TAB_GROUPS if self.case_name is not None else []
+        if self.many_cases and self.case_name is None:
+            groups = [[("/cases", "Cases")]]
         links = "<span class='sep' aria-hidden='true'></span>".join(
             "".join(
                 f"<a href='{href}'{' class=on' if _tab(self.path) == href else ''}>{label}</a>"
@@ -183,12 +182,13 @@ class Page:
             )
             for group in groups
         )
-        case = (
-            f"<div class='casename'>{q(self.case_name)}<small>case open on this computer</small>"
-            "</div>"
-            if self.case_name is not None
-            else ""
-        )
+        case = ""
+        if self.case_name is not None:  # the case's name; with a cases folder, a way back to it
+            tag, href = (
+                ("a", " href='/cases' title='All cases'") if self.many_cases else ("div", "")
+            )
+            on = " on" if self.path == "/cases" else ""
+            case = f"<{tag} class='casename{on}'{href}>{q(self.case_name)}</{tag}>"
         notice = f"<div class='flash'>{self.notice}</div>" if self.notice else ""
         return (
             "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
@@ -200,12 +200,12 @@ class Page:
             f"<a class='brand' href='{'/' if self.case_name is not None else '/cases'}'>"
             f"{MARK}<span>Mabillon</span></a>{case}<div class='right'>"
             + (
-                "<a class='pill' href='/setup#cloud'>Cloud labels on · one question at a time "
-                "goes to Anthropic</a>"
+                "<a class='pill' href='/setup#cloud' title='One question at a time goes to "
+                "Anthropic'>Cloud labels on</a>"
                 if self.cloud
-                else "<span class='pill'>Offline · nothing leaves this computer</span>"
+                else "<span class='pill' title='Nothing leaves this computer'>Offline</span>"
             )
-            + f"<span class='who'>{who}</span></div></div>"
+            + f"{who}<a href='/help' class='help'>Help</a></div></div>"
             f"<nav class='tabs'>{links}</nav></header>"
             f"<main{' class=wide' if wide else ''}>{notice}{flash}{banner}{body}</main>"
             "</body></html>"
@@ -223,7 +223,6 @@ TAB_GROUPS = [
         ("/gaps", "Gaps"),
     ],
     [
-        ("/claim/new", "Add a claim"),
         ("/setup", "Set up and run"),
         ("/log", "Audit log"),
         ("/activity", "Activity"),
@@ -233,7 +232,7 @@ TAB_GROUPS = [
 
 def _tab(path: str) -> str:
     """The tab a page sits under: a claim and its evidence under the queue."""
-    if path in ("/claim", "/evidence"):
+    if path in ("/claim", "/evidence", "/claim/new"):
         return "/claims"
     if path in ("/exhibit", "/exhibit/match", "/request-letter"):
         return "/exhibits"
@@ -348,8 +347,7 @@ def overview(conn: sqlite3.Connection, page: Page) -> str:
         out.append(
             page.form(
                 "/expert",
-                "<p><strong>Who is reviewing?</strong> Your name is recorded with every "
-                "decision in the audit log.</p><input type='text' name='name' required "
+                "<p><strong>Your name</strong></p><input type='text' name='name' required "
                 "maxlength='60' placeholder='Your name'> <button type='submit' class='primary'>"
                 "Start reviewing</button>",
             )
@@ -386,7 +384,7 @@ def _case_status(states: list[ClaimState]) -> str:
     counts = "".join(
         f"<li><a href='/claims#{g}'><span class='name t-{g}'>{e(name)}</span> "
         f"<b>{by[g]}</b></a></li>"
-        for g, name, _sub in GROUPS
+        for g, name in GROUPS
         if g != "you" and (by[g] or g != "not")
     )
     return (
@@ -427,13 +425,11 @@ def _case_setup(conn: sqlite3.Connection) -> str:
         else "<span class='muted'>none imported</span>"
     )
     return (
-        "<h2 id='setup'>Case setup</h2><ul class='setuplist'>"
+        "<div class='ov-head'><h2 id='setup'>Case setup</h2><a href='/setup'>Change</a></div>"
+        "<ul class='setuplist'>"
         + "".join(rows)
         + "<li><span class='ov-dev'>Government documents</span>"
         f"<span class='ov-who'>{docs}</span></li></ul>"
-        "<p class='muted ov-note'>Who used each phone is a stipulation you make, not a finding. "
-        "Every report lists it as a limitation. <a href='/setup'>Change devices and stipulations "
-        "on Set up and run</a>.</p>"
     )
 
 
@@ -461,27 +457,12 @@ def _record(conn: sqlite3.Connection, page: Page, run: dict | None, summary: dic
     rows.append(
         (
             "Audit log",
-            f"{summary['entries']} entries. Hash chain "
-            f"{'verified' if summary['chain_ok'] else '<strong>FAILED VERIFICATION</strong>'}. "
-            "<a href='/log'>Open the log</a>.",
+            f"<a href='/log'>{summary['entries']} entries</a>, hash chain "
+            f"{'verified' if summary['chain_ok'] else '<strong>FAILED VERIFICATION</strong>'}",
         )
     )
     active = F.active_flags(conn)
-    rows.append(
-        (
-            "Flags",
-            f"{len(active)} flag{'' if len(active) == 1 else 's'} for Mabillon's error log. "
-            "Flag from any claim page; <a href='/log#flags'>the redacted summary</a> is on the "
-            "Audit log page.",
-        )
-    )
-    rows.append(
-        (
-            "Full audit",
-            "New evidence search and model labels run from <a href='/setup'>Set up and run</a>, "
-            "in the background.",
-        )
-    )
+    rows.append(("Flags", f"<a href='/log#flags'>{len(active)}</a>"))
     out = [
         "<section class='ov-record'><h2 id='record'>Record</h2><dl class='record'>"
         + "".join(f"<dt>{k}</dt><dd>{v}</dd>" for k, v in rows)
@@ -694,11 +675,11 @@ def _ledger(states: list[ClaimState], current: str | None = None, compact: bool 
 
 # where a claim sits on the overview: what waits on the expert first, then the findings
 GROUPS = (
-    ("you", "Needs you", "Waiting on your review"),
-    ("con", "Contradicted", "The verdict rules or an expert decided it"),
-    ("unp", "Unproven", "The claim says more than the data shows"),
-    ("sup", "Supported", "An expert accepted its key evidence or overrode the verdict"),
-    ("not", "Not audited", "No verdict yet"),
+    ("you", "Needs you"),
+    ("con", "Contradicted"),
+    ("unp", "Unproven"),
+    ("sup", "Supported"),
+    ("not", "Not audited"),
 )
 NEEDS_YOU = 4  # needs() priority at or below this waits on the expert
 
@@ -732,24 +713,26 @@ def _group(st: ClaimState) -> str:
 
 def _claim_row(st: ClaimState, group: str) -> str:
     """One claim on the overview, laid out like the site's ledger: its name, the claim, its status
-    at the right, then small lines saying where it is, what it needs from the expert and why it
-    is unproven. Every row shows its status in words; a status that repeats its group's heading
-    word for word is marked `same` and shows as plain text rather than a pill. The standing
-    "verdict not yet confirmed" reminder is left out here; the claim page shows it."""
+    at the right, then small lines saying where it is, the one thing it needs from the expert and
+    the topics that leave it unproven. A status that repeats its group's heading word for word is
+    left to the heading. The standing "verdict not yet confirmed" reminder is left out here; the
+    claim page shows it."""
     note = ""
-    if group == "you":
+    if group == "you":  # why it waits on the expert: the most urgent need, in its words
         lines = _you_lines(st)
-        note = f"<div class='needs'>{e(' '.join(lines))}</div>" if lines else ""
-    if group in ("you", "unp"):
-        note += _gap_lines(st)
-    heading = {g: name for g, name, _ in GROUPS}[group]
-    same = " class='same'" if group != "you" and st.label == heading else ""
+        note = f"<div class='needs'>{e(lines[0])}</div>" if lines else ""
+    if group in ("you", "unp"):  # why it is unproven: the topics; the claim page says the rest
+        note += "".join(f"<span class='gap'>{e(topic)}</span>" for topic, _ in st.explain_lines())
+    # a status that repeats its group's heading word for word is left to the heading
+    same = group != "you" and st.label == dict(GROUPS)[group]
+    pill = f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span>"
     return (
-        f"<li{same}><div class='row'><span class='cid'>"
+        "<li><div class='row'><span class='cid'>"
         f"<a href='{e(link('/claim', id=st.claim.id))}'>{e(st.name)}</a></span>"
         f"<div class='text'>{q(st.claim.text)}</div>"
-        f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span>"
-        f"<div class='sub'><span class='meta'>{e(st.where)} · "
+        # the heading says it on screen; the words stay for a screen reader and for tools
+        + (f"<span class='vh'>{pill}</span>" if same else pill)
+        + f"<div class='sub'><span class='meta'>{e(st.where)} · "
         f"{e(st.claim.claim_type.value.replace('_', ' '))}</span>{note}</div></div></li>"
     )
 
@@ -770,12 +753,9 @@ def _you_lines(st: ClaimState) -> list[str]:
     return lines
 
 
-def _tile(group: str, name: str, sub: str, n: int) -> str:
+def _tile(group: str, name: str, n: int) -> str:
     """A count; it links to its section when there is one (Needs you starts at the next-up card)."""
-    inner = (
-        f"<span class='name'>{e(name)}</span><span class='n'>{n}</span>"
-        f"<span class='sub'>{e(sub)}</span>"
-    )
+    inner = f"<span class='name'>{e(name)}</span><span class='n'>{n}</span>"
     if not n:
         return f"<div class='tile t-{group} empty'>{inner}</div>"
     href = "#next" if group == "you" else f"#{group}"
@@ -808,11 +788,10 @@ def _group_rows(rows: list[ClaimState], g: str, folded: bool) -> str:
 
 def claims_queue(conn: sqlite3.Connection, page: Page) -> str:
     states = queue(conn)
-    by: dict[str, list[ClaimState]] = {g: [] for g, _, _ in GROUPS}
+    by: dict[str, list[ClaimState]] = {g: [] for g, _ in GROUPS}
     for st in states:
         by[_group(st)].append(st)
     you, total = len(by["you"]), len(states)
-    done = total - you - len(by["not"])
     if not total:
         head = "No claims yet"
     elif you:
@@ -821,24 +800,15 @@ def claims_queue(conn: sqlite3.Connection, page: Page) -> str:
         head = "Nothing waits on you."
     out = [
         "<div class='pg-claims'>"
-        f"<div class='overview-head'><div><h1>{e(head)}</h1><p class='muted'>Nothing becomes "
-        "supported until you accept its key evidence and re-run the verdicts. AI-accepted "
-        "evidence only sorts the work.</p></div>"
-        + (
-            f"<div class='progress'><div class='lbl'><span>Settled"
-            f"</span><b>{done} of {total}</b></div><div class='track'>"
-            f"<span style='width:{100 * done / total:.2f}%'></span></div></div>"
-            if total
-            else ""
-        )
-        + "</div>",
+        f"<div class='overview-head'><h1>{e(head)}</h1>"
+        "<a class='button' href='/claim/new'>Add a claim</a></div>",
         "<nav class='tiles' aria-label='Claims by finding'>"
-        + "".join(_tile(g, name, sub, len(by[g])) for g, name, sub in GROUPS if by[g] or g != "not")
+        + "".join(_tile(g, name, len(by[g])) for g, name in GROUPS if by[g] or g != "not")
         + "</nav>",
     ]
     if by["you"]:
         out.append(_next_up(by["you"][0]))
-    for g, name, sub in GROUPS:
+    for g, name in GROUPS:
         rows = by[g][1:] if g == "you" else by[g]
         if g == "you" and not rows:
             continue
@@ -846,28 +816,12 @@ def claims_queue(conn: sqlite3.Connection, page: Page) -> str:
             continue
         title = "Also waiting on you" if g == "you" else name
         folded = g in ("con", "sup") and bool(by["you"])
-        # the tile above already gives each group's sentence; the heading keeps only the count,
-        # and a folded group leaves the count to its "Show N claims" line. Unproven keeps its
-        # own caveat, which no tile says.
+        # the heading keeps only the count; a folded group leaves it to its "Show N claims" line
         count = "" if folded else f"{len(rows)} claim{'s' if len(rows) != 1 else ''}"
-        sub = (
-            "What the data does not show. Not found never means it did not happen."
-            if g == "unp"
-            else ""
-        )
-        extra = ""
-        if g == "unp":
-            kinds = Counter(k for st in rows for k in st.gaps())
-            extra = "".join(
-                f"<span class='stpill'>{e(GAP_TOPICS[k])} <b>{n}</b></span>"
-                for k, n in kinds.most_common()
-            )
-        said = " · ".join(e(x) for x in (count, sub) if x)
         out.append(
             f"<section class='group' id='{g}'><div class='ghead'><h2>{e(title)}</h2>"
-            + (f"<span class='muted'>{said}</span>" if said else "")
+            + (f"<span class='muted'>{count}</span>" if count else "")
             + "</div>"
-            + (f"<div class='kinds'>{extra}</div>" if extra else "")
             + _group_rows(rows, g, folded=folded)
             + "</section>"
         )
@@ -1884,15 +1838,12 @@ def new_claim_page(conn: sqlite3.Connection, page: Page) -> str:
     else:
         body += page.form(
             "/claim/add",
+            f"<p><label>Paragraph <select name='paragraph'>{opts}</select></label></p>"
+            "<p><label>Claim text <textarea name='text' rows='4' required></textarea></label></p>"
             "<p><label>Claim id <input type='text' name='id' required maxlength='20' "
             f"value='C{n:02d}'></label>"
             f" <label>Type <select name='type'>{types}</select></label></p>"
-            f"<p><label>Paragraph <select name='paragraph'>{opts}</select></label></p>"
-            "<p><label>Claim text, as the document states it "
-            "<textarea name='text' rows='4' required></textarea></label></p>"
-            "<p class='act'><button type='submit' class='primary'>Add claim</button> "
-            "<span class='muted'>A new claim needs a full audit before it has a verdict.</span>"
-            "</p>",
+            "<p class='act'><button type='submit' class='primary'>Add claim</button></p>",
         )
     return page.wrap("Add a claim", f"<div class='pg-newclaim'>{body}</div>")
 
@@ -2170,10 +2121,7 @@ def error_page(page: Page, status: int, message: str) -> str:
 # ---------------------------------------------------------------- cases
 
 
-PASSPHRASE_HINT = (
-    "At least 12 characters; a few words is easiest. Mabillon cannot recover a lost passphrase: "
-    "keep it, or the recovery key Mabillon shows next, somewhere safe."
-)
+PASSPHRASE_HINT = "At least 12 characters. Mabillon cannot recover a lost passphrase."
 LOCK_LABEL = {"plain": "Not encrypted", "locked": "Encrypted, locked", "open": "Encrypted"}
 
 
@@ -2243,26 +2191,21 @@ def cases_page(
         out.append("</tbody></table>")
     else:
         out.append("<p class='empty'>No cases yet.</p>")
-    out.append(
-        f"<p class='where'>Cases folder: <span class='mono'>{e(home)}</span>. Each case is a "
-        "folder with its own database and read-only copies of its files.</p>"
-    )
+    out.append(f"<p class='where'>Cases folder: <span class='mono'>{e(home)}</span></p>")
     out.append(
         "<section class='newcase'><h2>New case</h2>"
         + page.form(
             "/case/new",
             "<p><label>Case name <input type='text' name='name' required maxlength='80' "
-            "class='wide' placeholder='For example: United States v. Petrov (synthetic)'>"
-            "</label></p>"
-            "<p><label><input type='checkbox' name='encrypt' value='1' checked> Encrypt this case "
-            "with a passphrase (recommended)</label></p>"
+            "class='wide'></label></p>"
+            "<p><label><input type='checkbox' name='encrypt' value='1' checked> Encrypt with a "
+            "passphrase</label></p>"
             "<div class='pass'><div class='passfields'>"
             "<input type='password' name='passphrase' autocomplete='new-password' minlength='12' "
             "placeholder='Passphrase' aria-label='Passphrase'> "
             "<input type='password' name='passphrase2' autocomplete='new-password' "
             "placeholder='The passphrase again' aria-label='The passphrase again'></div>"
-            f"<p class='muted'>{e(PASSPHRASE_HINT)} The case name stays readable in this list."
-            "</p></div>"
+            f"<p class='muted'>{e(PASSPHRASE_HINT)} The case name is not encrypted.</p></div>"
             "<button type='submit' class='primary'>Make the case</button>",
         )
         + "</section></div>"
@@ -2275,8 +2218,7 @@ def name_form(page: Page) -> str:
         return ""
     return page.form(
         "/expert",
-        "<p><strong>Who is working on this case?</strong> Your name is recorded with every "
-        "decision in the audit log.</p><div class='row'><input type='text' name='name' required "
+        "<p><strong>Your name</strong></p><div class='row'><input type='text' name='name' required "
         "maxlength='60' placeholder='Your name' aria-label='Your name'> "
         "<button type='submit'>Continue</button></div>",
         "box nameform",

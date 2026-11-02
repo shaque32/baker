@@ -170,7 +170,7 @@ def test_flags_from_the_claim_page(db, conn):
     assert "Your flags on this claim (1)" in get(app, "/claim", id="C05").text
 
     case_page = get(app, "/").text
-    assert "1 flag for Mabillon's error log" in case_page and "/log#flags" in case_page
+    assert "<dt>Flags</dt><dd><a href='/log#flags'>1</a></dd>" in case_page
     log_page = get(app, "/log").text
     assert "Flags for Mabillon" in log_page and "Download the redacted summary" in log_page
     r = get(app, "/flags/summary.json", pilot="P1")

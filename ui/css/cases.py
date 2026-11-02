@@ -13,8 +13,6 @@ CSS = """
 .pg-cases { max-width: 880px; }
 .pg-cases h1 { margin-bottom: 20px; }
 .pg-cases .lede { max-width: 68ch; }
-.pg-cases .vh { position: absolute; width: 1px; height: 1px; overflow: hidden;
-  clip-path: inset(50%); white-space: nowrap; }
 /* Each row reads like the site's ledger: the case name, one small line of facts (state and
    encryption), and its action at the right. Still a <table>; the header row stays for screen
    readers and is hidden on screen, since each fact already says what it is. */
