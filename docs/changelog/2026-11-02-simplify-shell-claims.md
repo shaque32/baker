@@ -1,4 +1,4 @@
-## 2026-11-02: Simpler app: fewer labels and helper lines on every page but Set up and run (PR pending)
+## 2026-11-02: Simpler app: fewer labels and helper lines on every page but Set up and run (#206)
 - Changed: first step of the "simplify the app" plan (Arsh: cut taglines, helper text and
   secondary labels; fix the layout where a screen needs them). Sidebar: 14 links to 11. Cases
   is the case card at the top (a link with a cases folder), Help sits in the sidebar's foot,
@@ -36,7 +36,7 @@
   audit progress page are left to their own thread.
   Kept on purpose: demo banner, "not tested" notices, verdict and review-state names, provenance
   tiers, the claim page's gap sentences and absence coverage.
-- Where: PR pending (branch claude/project-thread-01u5i7)
+- Where: PR #206
 - Verified: ruff; `make check` (numbers in the PR); screenshots of the demo at 1280 px before and
   after in /mnt/project-files/baker/simplify/.
 - Open: Set up and run, and splitting ui/pages.py per page, follow (plan: plans/simplify-app.md
