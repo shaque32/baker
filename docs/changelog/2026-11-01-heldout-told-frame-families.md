@@ -19,7 +19,7 @@
   Why: the go bar already counts told frames and undated denials as moved traps (`GO_BAR.md`
   bars 2 and 3), and a fine-tuned model must be scored on held-out ones written apart from the
   training side (#199).
-- Where: PR #202 (built on #199; merge after #199)
+- Where: PR #202
 - Verified: on a Linux container, 2026-11-01. 80 held-out generator tests pass: the existing ones
   with the new counts and plain-file pins, plus 5 new (records drawn from denials, values and
   statements, never a corrected one; told frames in the supports frames, never "the message"
@@ -31,11 +31,10 @@
   held-out against the signed and draft probe sets, the smoke and v13 sets and case01, 0
   flagged; held-out against seed 1 of #199's training generator (sha256 `284a90d7405a91df`),
   1 flagged, the chance match #199 already recorded (training T004763 against an unchanged
-  Baker-wording item, now id D000802 instead of D000747), so nothing new. `make check` on
-  #199's branch (0dd2876) with this change: lint clean, 3,620 tests passed, 9 skipped (the
-  changelog test then failed only on this entry's placeholder `Where:` line, fixed and
-  re-run: 21 passed); eval gate unchanged: case01 model-free 1.00 with 0 false supported
-  (PASS), hostile PASS, case02 aggregate 0.90 with 0 false supported.
+  Baker-wording item, now id D000802 instead of D000747), so nothing new. `make check` with
+  main at 8298ddc (#199 merged) merged in, 2026-11-02: lint clean, 3,623 tests passed, 9
+  skipped; eval gate unchanged: case01 model-free 1.00 with 0 false supported (PASS), hostile
+  PASS, case02 aggregate 0.90 with 0 false supported.
 - Open: the full overlap check with case02 has not run on the new files; Arsh's 100-item
   held-out sample is still unchecked, so held-out scores stay provisional. Every plain
   held-out item changed with the version bump (ids, chats and records), so earlier dev-split
