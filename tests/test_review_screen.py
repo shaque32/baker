@@ -507,3 +507,19 @@ def test_a_form_brings_the_expert_back_to_what_they_acted_on(db, conn):
     assert 'class="flash toast" role="status"' in page  # seen wherever the page opens
     assert 'value="/claim?id=C05#verdict"' in page  # the re-run banner comes back to the verdict
     assert 'value="/#audit"' in get(app, "/").text and "id='audit'" in get(app, "/").text
+
+
+def test_the_side_ledger_keeps_the_open_claim_in_view(db, conn):
+    """Each ledger link lands on its own row, so opening C10 from the ledger scrolls the ledger
+    to C10 instead of back to C01; the CSS keeps the window at the top of the new claim, and
+    scroll-initial-target covers a load with no anchor (after a form, from the overview)."""
+    app = App(db, expert="Test Expert", port=PORT)
+    page = get(app, "/claim", id="C10").text
+    side = page.split("<aside class='side'>", 1)[1].split("</aside>", 1)[0]
+    assert "<li id='lg-C10' class=on>" in side
+    assert "<a href='/claim?id=C10#lg-C10'>" in side
+    assert "<li id='lg-C01'>" in side and "<a href='/claim?id=C01#lg-C01'>" in side
+    assert ".pg-claim aside.side .ledger li.on { scroll-initial-target: nearest;" in page
+    assert "html:has(.pg-claim aside.side .ledger li:target) { scroll-padding-top: 100vh; }" in page
+    # an overflow:hidden ledger would itself be the nearest scroll box and nothing would move
+    assert ".pg-claim aside.side .ledger { overflow: clip; }" in page
