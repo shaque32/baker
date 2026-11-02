@@ -1727,7 +1727,8 @@ def _verdict_forms(page: Page, st: ClaimState, back: str) -> str:
             anchor="verdict",
         )
         + "<p class='muted'>A confirmation or override applies to this run's verdict. After "
-        "re-running the verdicts, confirm again.</p></details>"
+        "re-running the verdicts, confirm again. Supported needs supporting evidence you "
+        "accepted on this claim, which the verdict then cites.</p></details>"
     )
 
 
@@ -2164,6 +2165,24 @@ def error_page(page: Page, status: int, message: str) -> str:
         "Error",
         f"<div class='pg-error'><h1>{status}</h1><p class='lede'>{e(message)}</p>"
         f"<p class='actions'>{back}<a href='/help'>Help</a></p></div>",
+    )
+
+
+def stored_verdict_page(page: Page, message: str, back: str) -> str:
+    """A stored verdict the contract refuses (core/pipeline.py StoredVerdictInvalid): no page
+    of the case can show it, so this says why and offers the one repair, a verdict re-run
+    (core/review/redecide.py), which decides every claim again under the rules."""
+    return page.wrap(
+        "A stored verdict needs a re-run",
+        "<div class='pg-error'><h1>A stored verdict cannot be shown</h1>"
+        f"<p class='lede'>{e(message[:1].upper() + message[1:])}</p>"
+        + page.form(
+            "/redecide",
+            "<button type='submit'>Re-run the verdicts</button> <span class='muted'>No model "
+            "runs. Confirm or override the verdicts again afterwards.</span>",
+            back=back,
+        )
+        + "<p class='actions'><a href='/help'>Help</a></p></div>",
     )
 
 
