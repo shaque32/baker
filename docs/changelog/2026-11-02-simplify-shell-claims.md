@@ -1,4 +1,4 @@
-## 2026-11-02: Simpler app shell, Case, Claims, Add a claim and Cases pages (PR pending)
+## 2026-11-02: Simpler app: shell, Case, Claims, one claim, evidence, Add a claim and Cases (PR pending)
 - Changed: first step of the "simplify the app" plan (Arsh: cut taglines, helper text and
   secondary labels; fix the layout where a screen needs them). Sidebar: 14 links to 11. Cases
   is the case card at the top (a link with a cases folder), Help sits in the sidebar's foot,
@@ -13,13 +13,25 @@
   line. Cases: no folder explanation or name placeholder; the passphrase line keeps the length
   rule, the no-recovery warning and "The case name is not encrypted". Name forms ask "Your
   name" only (the flash after it still says the name goes with every decision).
+  One claim: the side list shows each claim's name, status and two lines of text (no tally or
+  "Claims ledger" heading); the Verdict card drops the standing "not yet confirmed" reminder
+  (the Confirm fold is it) and, on an untested claim, the lines the Evidence section shows in
+  full; two or more format notices fold under one line that counts them (every word stays);
+  "Why", "Rules' working", "Flag this verdict" and "Messages around it" replace longer labels;
+  reason fields say "Reason"; flag forms drop their help line (the flags list keeps it); no
+  tagline under "What has to be true"; a "Quoted:" line shows only when the verified quote is
+  part of the highlighted message, not all of it; the agent card keeps "Nothing here is used
+  until you accept it" and drops the rest; "Sources in this case" heads the untested claim's
+  source list (the report keeps its sentence). Evidence page: no helper line over the context.
+  A row's status that repeats its group's heading stays in the markup, visually hidden, so the
+  screen and report still agree word for word (tests/test_report_consistency.py).
   Kept on purpose: demo banner, "not tested" notices, verdict and review-state names, provenance
   tiers, the claim page's gap sentences and absence coverage.
 - Where: PR pending (branch claude/project-thread-01u5i7)
 - Verified: ruff; `make check` (numbers in the PR); screenshots of the demo at 1280 px before and
   after in /mnt/project-files/baker/simplify/.
-- Open: the claim page, tools, record pages and Set up and run follow in later PRs (plan:
-  plans/simplify-app.md in the project files). Windows browsers not looked at.
+- Open: tools, record pages and Set up and run follow (plan: plans/simplify-app.md in the
+  project files). Windows browsers not looked at.
 - Affects: none (wording and layout of the local screen; no verdict, rule or label change)
 - Status doc: pending: section on the review screen (the `/claims` paragraph): replace "opens
   with how many claims need the expert and a progress bar" with "opens with how many claims need

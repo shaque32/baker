@@ -505,7 +505,6 @@ body .verdict::before { content: none; }
 body .verdict.v-nt { color: var(--muted); background: var(--panel); border: 0; }
 
 /* claims ledger: the queue, and the column beside a claim */
-.tally { display: none; }
 .counts { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 14px; }
 .counts .verdict { font-size: 12px; }
 .counts .verdict b { font-weight: 600; margin-left: 4px; }
@@ -599,11 +598,8 @@ details.working { margin: 20px 0; }
   align-items: start; }
 aside.side { position: sticky; top: 24px; max-height: calc(100vh - 48px); overflow-y: auto;
   scrollbar-width: thin; }
-aside.side .eyebrow { display: flex; justify-content: space-between; margin: 2px 2px 0;
-  font-weight: 600; color: var(--fg); }
-aside.side .eyebrow span { font-weight: 400; color: var(--muted); }
 aside.side .ledger .row { padding: 10px 14px; }
-aside.side .ledger .text { font-size: 13px; display: -webkit-box; -webkit-line-clamp: 3;
+aside.side .ledger .text { font-size: 13px; display: -webkit-box; -webkit-line-clamp: 2;
   -webkit-box-orient: vertical; overflow: hidden; }
 aside.side .ledger li.on { box-shadow: inset 2px 0 0 var(--accent); background: var(--accent-bg); }
 

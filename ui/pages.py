@@ -71,9 +71,9 @@ from core.review import withheld as W
 from core.review.activity import VIEW
 from core.review.status import (
     AGAINST,
+    AGENT_STEP,
     CONTRADICTION_FOUND,
     GAP_TOPICS,
-    HOLDINGS,
     STALE,
     ClaimState,
     _agent,
@@ -638,39 +638,17 @@ def _vcls(st: ClaimState) -> str:
     return f"{st.css} v-nt" if st.untested else st.css
 
 
-def _tally(states: list[ClaimState]) -> str:
-    """A bar split by finding, then one chip per finding with its count."""
-    if not states:
-        return ""
-    known = {"v-sup", "v-con", "v-unp", "v-await", "v-confirm"}
-    by_label = Counter((st.label, _vcls(st)) for st in states)
-    bar = "".join(
-        f"<span class='{css if css in known else 'other'}' "
-        f"style='width:{100 * n / len(states):.2f}%'></span>"
-        for (_, css), n in sorted(by_label.items(), key=lambda kv: kv[0][1])
+def _ledger(states: list[ClaimState], current: str | None = None) -> str:
+    """The claims beside a claim page: each claim's name and status, then its text."""
+    rows = "".join(
+        f"<li{' class=on' if st.claim.id == current else ''}>"
+        "<div class='row'><div class='head'><span class='meta'>"
+        f"<a href='{e(link('/claim', id=st.claim.id))}'>{e(st.name)}</a></span>"
+        f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span></div>"
+        f"<div class='text'>{q(st.claim.text)}</div></div></li>"
+        for st in states
     )
-    chips = "".join(
-        f"<span class='verdict {css}'>{e(label)} <b>{n}</b></span>"
-        for (label, css), n in sorted(by_label.items(), key=lambda kv: kv[0][1])
-    )
-    return f"<div class='tally'>{bar}</div><div class='counts'>{chips}</div>"
-
-
-def _ledger(states: list[ClaimState], current: str | None = None, compact: bool = False) -> str:
-    rows = []
-    for st in states:
-        needs = "" if compact else " ".join(t for _, t in st.needs())
-        rows.append(
-            f"<li{' class=on' if st.claim.id == current else ''}>"
-            "<div class='row'><div class='head'><span class='meta'>"
-            f"<a href='{e(link('/claim', id=st.claim.id))}'>{e(st.name)}</a> · {e(st.where)} · "
-            f"{e(st.claim.claim_type.value.replace('_', ' '))}</span>"
-            f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span></div>"
-            f"<div class='text'>{q(st.claim.text)}</div>"
-            + (f"<div class='needs'>{e(needs)}</div>" if needs else "")
-            + "</div></li>"
-        )
-    return f"<ul class='ledger'>{''.join(rows)}</ul>"
+    return f"<ul class='ledger'>{rows}</ul>"
 
 
 # where a claim sits on the overview: what waits on the expert first, then the findings
@@ -858,7 +836,7 @@ def _decide_form(page: Page, item: EvidenceItem, decided: bool, back: str) -> st
         "/evidence/decide",
         f"<input type='hidden' name='id' value='{e(item.id)}'>"
         "<input type='text' class='wide' name='reason' required maxlength='500' "
-        "placeholder='Why, in one sentence (recorded in the audit log)'><br>"
+        "placeholder='Reason' aria-label='Reason'><br>"
         "<button type='submit' name='status' value='accepted'>Accept</button>"
         "<button type='submit' name='status' value='dismissed'>Dismiss</button>" + reopen,
         back=back,
@@ -873,7 +851,7 @@ def _confirm_form(page: Page, item: EvidenceItem, back: str) -> str:
         "/evidence/confirm",
         f"<input type='hidden' name='id' value='{e(item.id)}'>"
         "<input type='text' class='wide' name='reason' required maxlength='500' "
-        "placeholder='Why, in one sentence (recorded in the audit log)'><br>"
+        "placeholder='Reason' aria-label='Reason'><br>"
         "<button type='submit' name='status' value='accepted'>Confirm contradiction</button>"
         "<button type='submit' name='status' value='dismissed'>Dismiss</button>",
         back=back,
@@ -937,8 +915,7 @@ def evidence_card(
         )
         form = ""
     around_a = (
-        f"<a class='ev-around' href='{e(link('/evidence', id=item.id))}'>"
-        "See about 20 messages around it</a>"
+        f"<a class='ev-around' href='{e(link('/evidence', id=item.id))}'>Messages around it</a>"
         if around_link
         else ""
     )
@@ -991,8 +968,13 @@ def _conversation(
     if len(lines) < 2:  # no neighbours (a contact, a call): the quote says it all
         return quote, ""
     thread = f"<div class='thread mini'>{''.join(_msg(ln) for ln in lines)}</div>"
-    quoted = f"<p class='quoted'><span class='muted'>Quoted:</span> {q(item.quote)}</p>"
+    whole = any(ln.is_target and ln.body.strip() == item.quote.strip() for ln in lines)
+    # the quote is the whole highlighted message: the bubble already shows it, word for word
+    quoted = (
+        "" if whole else f"<p class='quoted'><span class='muted'>Quoted:</span> {q(item.quote)}</p>"
+    )
     if folded:
+        quoted = quoted or quote  # the neighbours fold away; the quote itself stays in view
         return quoted, (
             f"<details class='ev-thread'><summary>The messages around it ({len(lines)})"
             f"</summary>{thread}</details>"
@@ -1061,8 +1043,7 @@ def _flag_label_form(
             )
             + "</select> "
             + _note_field()
-            + f"<button type='submit'>Save flag</button> <span class='muted'>{e(FLAG_HELP)}"
-            "</span>",
+            + "<button type='submit'>Save flag</button>",
             back=back,
             anchor=item.id,
         )
@@ -1075,7 +1056,7 @@ def _flag_verdict_form(conn: sqlite3.Connection, page: Page, st: ClaimState, bac
     d = st.decision
     gave = F.baker_verdict(conn, st.claim.id, st.run_id, d.verdict.value) if d else None
     return (
-        "<details class='flag'><summary>Flag: I disagree with this verdict</summary>"
+        "<details class='flag'><summary>Flag this verdict</summary>"
         + page.form(
             "/flag/add",
             _flag_fields(st.claim.id, F.VERDICT, st.run_id)
@@ -1086,8 +1067,7 @@ def _flag_verdict_form(conn: sqlite3.Connection, page: Page, st: ClaimState, bac
             )
             + "</select> "
             + _note_field()
-            + f"<button type='submit'>Save flag</button> <span class='muted'>{e(FLAG_HELP)}"
-            "</span>",
+            + "<button type='submit'>Save flag</button>",
             back=back,
             anchor="verdict",
         )
@@ -1104,8 +1084,7 @@ def _flag_missed_form(page: Page, st: ClaimState, back: str) -> str:
             + f"<input type='text' class='wide' name='record' maxlength='{F.RECORD_MAX}' "
             "placeholder='Where it is, for example the file and row (optional)'><br>"
             + _note_field()
-            + f"<button type='submit'>Save flag</button> <span class='muted'>{e(FLAG_HELP)}"
-            "</span>",
+            + "<button type='submit'>Save flag</button>",
             back=back,
             anchor="flag-missed",
         )
@@ -1274,16 +1253,22 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
         "<div class='card' id='verdict'><div class='in'><div class='vhead'><h2>Verdict</h2>"
         f"<span class='verdict {_vcls(st)}'>{e(st.label)}</span></div>"
     )
-    needs = st.needs()
+    # the standing "not yet confirmed" reminder is the Confirm fold's job; an untested claim's
+    # why and the agent's proposal each show in full under Evidence
+    needs = [
+        t
+        for t in _you_lines(st)
+        if not (st.untested and (t.startswith("Not tested:") or t == AGENT_STEP))
+    ]
     if needs:
-        out.append("<ul class='needs'>" + "".join(f"<li>{e(t)}</li>" for _, t in needs) + "</ul>")
-    out.append(_gap_lines(st))  # the same lines as the overview and the report
-    out.append(claim_format_notices(conn, st))  # the same notices as the report's claim
+        out.append("<ul class='needs'>" + "".join(f"<li>{e(t)}</li>" for t in needs) + "</ul>")
+    out.append(_gap_lines(st))  # the same lines as the report
+    out.append(_claim_notices(conn, st))
     out.append(forwarded_warning(conn, st))
     out.append(mixed_app_note(conn, st))
     if d is not None:
         out.append(
-            "<details><summary>Why (reasons from the verdict rules)</summary><ul>"
+            "<details><summary>Why</summary><ul>"
             + "".join(f"<li>{e(r)}</li>" for r in d.reasons)
             + f"</ul><p class='muted'>Rule version {e(d.rule_version)}, run "
             f"{e(d.pipeline_run_id)}.</p></details>"
@@ -1321,9 +1306,8 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
         out.append(f"<p class='warn'><strong>{e(st.not_tested or '')}</strong></p>")
         if "matches no person" in (st.not_tested or ""):
             out.append(
-                "<p>A name in this claim is not a person in the case yet. Add it on "
-                "<a href='/identities'>Identities</a> and decide who is behind it; the next "
-                "audit run can then test the claim.</p>"
+                "<p><a href='/identities'>Add the name on Identities</a>; the next audit can then "
+                "test the claim.</p>"
             )
         out.append(_holdings(conn))
         out.append(
@@ -1332,8 +1316,8 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
             )
         )
     groups = _groups(st)
-    if not groups:
-        out.append("<p class='muted'>No relevant evidence items were stored for this claim.</p>")
+    if not groups and not st.untested:  # an untested claim searched nothing, as it says above
+        out.append("<p class='muted'>No relevant evidence items.</p>")
     by_assumption = {a.id: a for a in st.assumptions}
     found = forwarded.affected(conn)
     threads: dict[str, list[str]] = {}  # each thread read once for the page's cards
@@ -1376,15 +1360,28 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
 
     out.append(_edit_claim_form(page, st, back))
     states = claim_states(conn)
-    side = (
-        f"<aside class='side'><div class='eyebrow'>Claims ledger <span>{len(states)} claims"
-        f"</span></div>{_tally(states)}{_ledger(states, c.id, compact=True)}</aside>"
-    )
+    side = f"<aside class='side'>{_ledger(states, c.id)}</aside>"
     body = f"<div class='split pg-claim'>{side}<div class='claim-main'>{''.join(out)}</div></div>"
     return page.wrap(st.name, body, run_banner(conn, page, back), wide=True)
 
 
 AROUND = 1  # messages either side of each evidence record on the claim page
+
+
+def _claim_notices(conn: sqlite3.Connection, st: ClaimState) -> str:
+    """The report's format notices for the claim's sources (claim_format_notices); two or more
+    fold under one line that counts the untested ones, as the case page does. Every word stays."""
+    notices = claim_format_notices(conn, st)
+    n = notices.count("<p class='format-notice")
+    if n < 2:
+        return notices
+    untested = notices.count("<p class='format-notice warn'")
+    head = (
+        f"{untested} of {n} files come from an export version not tested with Mabillon."
+        if untested
+        else f"Format notices for {n} files."
+    )
+    return f"<details class='fmt'><summary><strong>{e(head)}</strong></summary>{notices}</details>"
 
 
 AGENT_CHECKED = (
@@ -1419,18 +1416,14 @@ def _agent_card(
         f"<input type='hidden' name='run' value='{e(x.run_id)}'>"
         f"<input type='hidden' name='attempt' value='{x.attempt}'>"
         "<input type='text' class='wide' name='reason' required maxlength='500' "
-        "placeholder='Why, in one sentence (recorded in the audit log)'><br>"
+        "placeholder='Reason' aria-label='Reason'><br>"
     )
     accept = (
         "<button type='submit' name='decision' value='accept'>Accept these assumptions</button>"
     )
     reject = "<button type='submit' name='decision' value='reject'>Reject</button>"
     if x.decided is None:
-        state = (
-            "<p><strong>Waiting for you.</strong> Nothing here is used until you accept it. "
-            "Accepting puts these assumptions in the case from the next audit on, if the agent "
-            "gives them again for this claim's text. The claim's text never changes.</p>"
-        )
+        state = "<p><strong>Waiting for you.</strong> Nothing here is used until you accept it.</p>"
         form = page.form("/testability/decide", fields + accept + reject, back=back, anchor="agent")
     else:
         action, actor = x.decided
@@ -1453,8 +1446,6 @@ def _agent_card(
         "<section class='agent' id='agent'>"
         f"<h2><span class='badge b-agent'>{e(testability.PROPOSED_MARK)}</span> Assumptions that "
         "would make this claim testable</h2>"
-        "<p class='muted'>The testability step asked the local model again, with the reasons "
-        "code refused the first try. It only proposes.</p>"
         f"<ul class='proposed'>{rows}</ul>"
         f"<details class='more'><summary>What code checked</summary><p>{e(AGENT_CHECKED)}{sheet}"
         "</p><p>What the claim and its paragraph name in the case, by code's lookups (the "
@@ -1477,7 +1468,7 @@ def _agent_fail_card(
     texts = {a.id: a.text for a in st.assumptions}
     reason = (
         "<input type='text' class='wide' name='reason' required maxlength='500' "
-        "placeholder='Why, in one sentence (recorded in the audit log)'><br>"
+        "placeholder='Reason' aria-label='Reason'><br>"
     )
     rows = []
     for c in st.agent_fails:
@@ -1577,8 +1568,7 @@ def _must_be_true(
         )
     return (
         "<section class='truths'><h2>What has to be true</h2>"
-        "<p class='muted'>Each part of the claim the records would have to show, and what the "
-        f"verdict rules found.</p><ul class='checklist'>{''.join(rows)}</ul></section>"
+        f"<ul class='checklist'>{''.join(rows)}</ul></section>"
     )
 
 
@@ -1621,11 +1611,7 @@ def _working(st: ClaimState) -> str:
 
     if not out:
         return ""
-    return (
-        "<details class='working'><summary>Show the rules' working: assumptions, checks and "
-        "what was searched"
-        f"</summary>{''.join(out)}</details>"
-    )
+    return f"<details class='working'><summary>Rules' working</summary>{''.join(out)}</details>"
 
 
 def _context_link(f: explain.Fit) -> str | None:
@@ -1688,7 +1674,7 @@ def _verdict_forms(page: Page, st: ClaimState, back: str) -> str:
 def _holdings(conn: sqlite3.Connection) -> str:
     held = case_holdings(conn)
     items = "".join(f"<li>{e(h)}</li>" for h in held) or "<li>No extraction imported.</li>"
-    return f"<div class='holdings'><p>{e(HOLDINGS)}</p><ul>{items}</ul></div>"
+    return f"<div class='holdings'><p>Sources in this case</p><ul>{items}</ul></div>"
 
 
 def _edit_claim_form(page: Page, st: ClaimState, back: str) -> str:
@@ -1713,8 +1699,7 @@ def _edit_claim_form(page: Page, st: ClaimState, back: str) -> str:
             f"<input type='hidden' name='claim' value='{cid}'>"
             "<input type='hidden' name='status' value='edited'>"
             f"<textarea name='text' rows='3' required>{e(st.claim.text)}</textarea><br>"
-            "<button type='submit'>Save new wording</button> <span class='muted'>A changed "
-            "claim needs a full audit.</span>",
+            "<button type='submit'>Save new wording</button>",
             back=back,
             anchor="edit",
         )
@@ -1778,10 +1763,7 @@ def evidence_page(conn: sqlite3.Connection, page: Page, evidence_id: str) -> str
     out.append("<h2>Context</h2>")
     lines = build_context(conn, item.record_id, CONTEXT_WINDOW)
     if lines:
-        out.append(
-            "<p class='muted'>Messages around the record, in time order. Times are the phone's "
-            "local time. The record under review is highlighted.</p><div class='thread'>"
-        )
+        out.append("<div class='thread'>")
         out.extend(_msg(ln) for ln in lines)
         out.append("</div>")
     else:

@@ -581,7 +581,10 @@ def test_the_claim_page_leads_with_what_has_to_be_true_and_shows_records_in_conv
     assert "Covered (computed by the rules)" in working and "What was searched" in working
     c05 = app.handle(Request("GET", "/claim", {"id": "C05"}, dict(HOST))).body.decode()
     assert "<div class='thread mini'>" in c05 and "This record</span>" in c05
-    assert "Records found (derived)" in c05 and "Quoted:" in c05
+    assert "Records found (derived)" in c05
+    # the verified quote is the whole highlighted message, so no separate "Quoted:" line repeats it
+    target = c05.split("<div class='msg out target'>", 1)[1].split("</div></div>", 1)[0]
+    assert "need 2 more by friday</span></div>" in target and "Quoted:" not in c05
     for page in (c05, c06):  # Baker's own words in the checklist
         truths = page.split("<section class='truths'>", 1)[1].split("</section>", 1)[0]
         text = re.sub(r"<[^>]+>", " ", truths).lower()
