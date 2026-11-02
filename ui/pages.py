@@ -1434,8 +1434,11 @@ def claim_page(conn: sqlite3.Connection, page: Page, claim_id: str) -> str | Non
         f"<aside class='side'><div class='eyebrow'>Claims ledger <span>{len(states)} claims"
         f"</span></div>{_tally(states)}{_ledger(states, c.id, compact=True)}</aside>"
     )
-    body = f"<div class='split pg-claim'>{side}<div class='claim-main'>{''.join(out)}</div></div>"
-    return page.wrap(st.name, body, run_banner(conn, page, back), wide=True)
+    # The run banner sits in the claim's column, so the ledger starts at the top of the page and
+    # fits the window: its last rows, and the open claim's row pinned to its edge, stay on screen.
+    main = run_banner(conn, page, back) + "".join(out)
+    body = f"<div class='split pg-claim'>{side}<div class='claim-main'>{main}</div></div>"
+    return page.wrap(st.name, body, wide=True)
 
 
 AROUND = 1  # messages either side of each evidence record on the claim page

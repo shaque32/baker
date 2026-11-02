@@ -91,6 +91,8 @@ return {
   target: h ? (t ? Math.round(t.getBoundingClientRect().top) : 'missing') : null,
   ledger: a ? Math.round(a.scrollTop) : null,
   open_row: on ? Math.round(on.getBoundingClientRect().top - a.getBoundingClientRect().top) : null,
+  ledger_h: a ? Math.round(Math.min(a.getBoundingClientRect().bottom, innerHeight)
+    - a.getBoundingClientRect().top) : null,
   height: innerHeight,
 };
 """
@@ -166,6 +168,10 @@ def main() -> int:
         if btn:
             d.click(btn)
             note("C09 confirm verdict (redirect to #verdict)", lambda s: s["y"] > 0)
+            note(
+                "C09's row shows in the ledger after the form",
+                lambda s: 0 <= s["open_row"] and s["open_row"] + 40 <= s["ledger_h"],
+            )
     finally:
         d.quit()
     print(json.dumps({"summary": {"steps": len(out), "landed_wrong": bad}}), flush=True)

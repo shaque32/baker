@@ -196,6 +196,9 @@ CSS = """
 .pg-claim aside.side .ledger { overflow: clip; } /* not a scroll box, so the aside is "nearest" */
 .pg-claim aside.side .ledger li { scroll-margin-top: 30vh; }
 .pg-claim aside.side .ledger li.on { scroll-initial-target: nearest; scroll-snap-align: center; }
+/* where nothing scrolled the ledger (Safari after a form), the open claim's row still shows:
+   it sticks to the ledger's top or bottom edge until the list is scrolled to it */
+.pg-claim aside.side .ledger li.on { position: sticky; top: 0; bottom: 0; z-index: 1; }
 html:has(.pg-claim aside.side .ledger li:target) { scroll-padding-top: 100vh; }
 
 /* ---- one evidence item */
@@ -209,6 +212,7 @@ html:has(.pg-claim aside.side .ledger li:target) { scroll-padding-top: 100vh; }
   .pg-claim .claim-main { max-width: none; }
   /* the ledger sits below the claim here: opening a claim stays at the top of the page */
   .pg-claim aside.side .ledger li { scroll-margin-top: 100000px; }
+  .pg-claim aside.side .ledger li.on { position: relative; }
 }
 @media (max-width: 600px) {
   .pg-claim #verdict > .in, .pg-claim #verdict > .in.vacts { padding-left: 16px;

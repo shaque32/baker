@@ -5,7 +5,10 @@
   while the window stays at the top of the new claim (CSS only; the page policy still forbids
   scripts). In Chrome and Edge, `scroll-initial-target` also centres the open claim on any load
   without that anchor, such as after a form or from the Claims overview. The ledger list uses
-  `overflow: clip` instead of `hidden` on this page so it is not itself a scroll box.
+  `overflow: clip` instead of `hidden` on this page so it is not itself a scroll box. Safari
+  has no `scroll-initial-target`, so the open claim's row is also pinned (`position: sticky`)
+  to the ledger's top or bottom edge until the list is scrolled to it, and the run banner moved
+  into the claim's column so the ledger starts at the top of the page and fits the window.
   Identities: "Link an account yourself" now comes back to its own form instead of the top of
   the page. Code: `ui/pages.py` (`_ledger`), `ui/css/claim.py`, `ui/identity_pages.py`.
   CI: the Mac clean-install job drives Safari through safaridriver on the demo case
@@ -17,8 +20,10 @@
   Identities link form went to the top. Safari 27.2 on GitHub's macos-15 runner (2026-11-02):
   typing in the testability card does not move the page, accepting lands on the card, confirming
   a verdict lands on the verdict, and opening C10 from the side ledger shows C10 in the ledger.
-- Open: Safari has no `scroll-initial-target`, so after a form on a claim page (or arriving
-  from the Claims overview) Safari's side ledger starts at C01 again; the page itself lands
-  right. Firefox not run. The Safari CI step does not fail the job yet.
+  Arsh saw Safari's ledger go back to C01 after accepting a proposal; the pinned row covers
+  that (Chromium with `scroll-initial-target` removed: the open claim shows at the ledger's
+  edge after a form).
+- Open: the pinned row in Safari is checked by the CI step (report only, does not fail the
+  job yet); Firefox not run.
 - Affects: none (review screen navigation only)
 - Status doc: no change
