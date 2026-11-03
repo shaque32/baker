@@ -1163,3 +1163,32 @@ placeholders, and change the header's second line to "v1.1, signed by Arsh on <d
 docs/prompts/agent_testability.md draft v1.1 (v1.0: 2026-10-28)." The draft's header then says
 signed. `diff <(sed -n '/prompt starts/,$p' docs/prompts/agent_testability.md) <(sed -n
 '/prompt starts/,$p' core/audit/prompts/agent_testability.md)` prints nothing.
+
+## 2026-11-03 claude/project-thread-6i2msb-case06: sign case06's key and assumption sheet
+File: eval/gold/case06/gold.jsonl, eval/gold/case06/assumptions.jsonl (new)
+Why: the case05 go/no-go (2026-11-03, NO-GO on conversion, 5 of 33) spent case05, so the next
+testability go/no-go needs a new held-out case (plans/testability-pass.md, step 5; Arsh chose
+"Phone designations, then replay" on 2026-11-03 and wrote "i need this to work"). A builder who
+never read the step's prompt, code, tests or demo, the filler or name code, the eval runner, or
+any case04 or case05 result or diagnosis, drafted all 48 claims and 89 sheet rows under case05's
+design, from a brief that adds only what the product reads (phone, number and event names in
+case.json, and code's window conventions). A second blind reader checked them (10 findings, 9
+fixed, 1 kept with a reason, answered in the signing sheet) and rechecked the fixes.
+`eval/gold/` is human-owned, so the signed copies are Arsh's to write. Until they exist,
+`eval/run_pipeline.py` reports case06's key and sheet as drafts, the testability step refuses to
+run on the draft sheet, and no go/no-go is given. case06 stays out of `make eval` and every
+merge gate. Arsh reads `eval/synthetic/case06/SIGNING_SHEET.md` (its count tables, the claims,
+the assumption rows, the six windows that follow no convention, the SKIP and DUKE naming
+departure, and the second read) and may change any verdict or row first; the commands below copy
+the drafts as they stand.
+Diff: on main after the case06 PR merges, from the repo root (macOS and GNU sed):
+   D=$(date -u +%Y-%m-%d); T=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+   mkdir -p eval/gold/case06
+   sed -e "s/\"labeled_by\":\"DRAFT (case06 builder, not signed by Arsh)\"/\"labeled_by\":\"Arsh, $D\"/" \
+       -e "s/\"labeled_at\":\"2026-11-03T00:00:00Z\"/\"labeled_at\":\"$T\"/" \
+       eval/synthetic/case06/draft_gold.jsonl > eval/gold/case06/gold.jsonl
+   sed -e "s/\"labeled_by\": \"DRAFT (case06 builder, not signed by Arsh)\"/\"labeled_by\": \"Arsh, $D\"/" \
+       eval/synthetic/case06/draft_assumptions.jsonl > eval/gold/case06/assumptions.jsonl
+   grep -c DRAFT eval/gold/case06/gold.jsonl eval/gold/case06/assumptions.jsonl
+The last line must print 0 for both files. The copies are the drafts with only `labeled_by`
+(and, in the key, `labeled_at`) changed: 48 key lines and 89 sheet rows.
