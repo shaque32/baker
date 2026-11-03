@@ -1415,9 +1415,12 @@ _EVENT_TIE_RE = re.compile(
 )
 # A word right before a tie that makes it more or less than that one day: "about two days
 # after", "within two days after", "at least a day before", "in the two days before", "no later
-# than the day after", "never on the day of".
+# than the day after", "never on the day of", "for two days after" (a span ending on that day,
+# Codex on #201).
 _EVENT_TIE_LEAD_RE = re.compile(
-    r"\b(?:about|approximately|approx|around|roughly|nearly|almost|some|within|in|by|until|"
+    r"\b(?:for|throughout|across|spanning|lasting|full|straight|consecutive|continuous|"
+    r"rest|remaining|both|"
+    r"about|approximately|approx|around|roughly|nearly|almost|some|within|in|by|until|"
     r"till|since|before|after|from|between|through|thru|at|least|most|than|more|less|over|"
     r"under|up|to|the|and|or|during|prior|following|past|first|last|every|each|only|just|"
     r"shortly|soon|late|early|later|earlier|not|never|no|nor|except|other|another|"
@@ -1476,6 +1479,8 @@ def event_windows(text: str, events: list[case_events.CaseEvent]) -> list[Stated
             return None
         if _EVENT_TIE_LEAD_RE.search(plain[: tie.start()]):
             return None
+        if tie.group("n") and _NEXT_TO_A_NUMBER_RE.search(plain[: tie.start("n")]):
+            return None  # "Twenty two days after": not "two days after" (Codex on #201)
         tail = plain[t:]
         if _OPEN_TAIL_RE.match(tail) or _JOIN_AHEAD_RE.match(tail):
             return None
