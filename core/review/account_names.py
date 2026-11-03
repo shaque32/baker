@@ -108,15 +108,33 @@ def written(conn: sqlite3.Connection, text: str) -> list[tuple[str, int, int]]:
     """(identifier as the expert wrote it, start, end) for each place the text writes a name
     the expert gave a number or an account, whole, with or without a leading "the" ("from the
     BURNER", "BURNER called"), the outermost where two overlap, in text order. Code reads each
-    as that number or id wherever it reads a party from a claim's own words."""
+    as that number or id wherever it reads a party from a claim's own words. A name in
+    capitals counts only written in capitals ("a burner phone" is no name: aliases.defined_spans);
+    where the text writes one in lower case is `lowered`."""
     found = {
         (ident, s, e)
         for ident, names in logged_names(conn).items()
         for n in names
         for form in {n, aliases.without_the(n)}
-        for s, e in aliases.spans(form, text)
+        for s, e in aliases.defined_spans(form, text)
     }
     return sorted(
         (m for m in found if not any(o[1] <= m[1] and m[2] <= o[2] and o != m for o in found)),
+        key=lambda m: (m[1], m[2]),
+    )
+
+
+def lowered(conn: sqlite3.Connection, text: str) -> list[tuple[str, int, int]]:
+    """(identifier, start, end) for each place the text writes, in lower case, a name in
+    capitals the expert gave a number or an account ("a burner phone" for "the BURNER"). The
+    filler refuses to read such words as the number, or as no number: they may be either."""
+    return sorted(
+        {
+            (ident, s, e)
+            for ident, names in logged_names(conn).items()
+            for n in names
+            for form in {n, aliases.without_the(n)}
+            for s, e in aliases.lowered_spans(form, text)
+        },
         key=lambda m: (m[1], m[2]),
     )
