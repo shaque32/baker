@@ -684,3 +684,18 @@ def test_the_why_fold_leads_with_plain_lines_and_keeps_the_rules_text(root):
     plain = c19.split("<ul class='why-lines'>", 1)[1].split("</ul>", 1)[0]
     assert plain.count("<li>") == 1 and "5 records contradict this" in plain
     assert "An expert accepted each." in plain
+
+
+def test_a_phone_named_with_a_blocked_word_keeps_the_claim_page_open(root):
+    """An expert may name a phone anything the document calls it. The Why lines print that name
+    as the case's text, so the forbidden-word check reads it as cited and the page still opens."""
+    case = _case(root)
+    conn = connect(case.db)
+    actions.name_device(conn, "dev:item1", ["Leader's phone"], EXPERT)
+    conn.commit()
+    app = App(home=demo.cases_dir(root), port=PORT, model_check=None)
+    app.open_case(case)
+    resp = app.handle(Request("GET", "/claim", {"id": "C10"}, dict(HOST)))
+    assert resp.status == 200
+    plain = resp.body.decode().split("<ul class='why-lines'>", 1)[1].split("</ul>", 1)[0]
+    assert '<span class="q">Leader&#x27;s phone</span> prints it in UTC' in plain

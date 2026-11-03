@@ -195,3 +195,26 @@ def test_nothing_tested_and_a_missing_central_point(conn):
 def test_a_reason_it_cannot_place_prints_as_the_rules_wrote_it(conn):
     d = decide([asm(1)]).model_copy(update={"reasons": ("A reason from a later rule set.",)})
     assert plain(conn, d, [asm(1)]) == ["A reason from a later rule set."]
+
+
+def test_rule_3c_keeps_the_observed_record_requirement(conn):
+    a = asm(1)
+    d = decide([a], [ev(1, a, Stance.SUPPORTS, S.AI_ACCEPTED)])
+    got = plain(conn, d, [a], [ev(1, a, Stance.SUPPORTS, S.AI_ACCEPTED)])
+    assert any("supporting evidence on an observed phone record" in g for g in got)
+
+
+def test_links_name_the_assumption_and_stance_the_line_reads(conn):
+    """One record can back two assumptions of a claim; the link asks for the item on the line's
+    own assumption, read with the line's stance."""
+    a, b = asm(1), asm(2)
+    items = [ev(1, a, Stance.CONTRADICTS), ev(1, b, Stance.SUPPORTS)]
+    d = decide([a, b], items)
+    asked: list[tuple] = []
+
+    def href(rid, assumption, stance):
+        asked.append((rid, assumption, stance))
+        return "/x"
+
+    why.lines(conn, d.reasons, [a, b], [], items, href=href)
+    assert asked == [("msg:item1:Chats!1", a.id, Stance.CONTRADICTS)]

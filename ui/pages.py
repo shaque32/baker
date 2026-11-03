@@ -1363,12 +1363,16 @@ AROUND = 1  # messages either side of each evidence record on the claim page
 def _why(conn: sqlite3.Connection, st: ClaimState, d: VerdictDecision) -> str:
     """Why the verdict: one plain line per reason (core/report/why.py), then the reasons exactly
     as the rules stored them, with the rule version and run, folded as Technical details."""
-    items = {x.record_id: x.id for x in st.evidence}
 
-    def href(rid: str) -> str | None:
-        """A record's link: its evidence item on this claim, else the message in its thread."""
-        if rid in items:
-            return link("/evidence", id=items[rid])
+    def href(rid: str, assumption: str | None, stance: Stance | None) -> str | None:
+        """A record's link: its evidence item on this claim for the line's assumption (the one
+        read with the line's stance first), else the message in its thread."""
+        items = [
+            x for x in st.evidence if x.record_id == rid and assumption in (None, x.assumption_id)
+        ]
+        items.sort(key=lambda x: x.stance is not stance)
+        if items:
+            return link("/evidence", id=items[0].id)
         return link("/selection/context", id=rid) if rid.startswith("msg:") else None
 
     plain = why.lines(conn, d.reasons, st.assumptions, st.checks, st.evidence, href=href)

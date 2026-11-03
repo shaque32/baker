@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, tzinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from core.contracts import Assumption, AssumptionKind, CheckResult, EvidenceItem
+from core.contracts import Assumption, AssumptionKind, CheckResult, EvidenceItem, Stance
 from core.report.fmt import e, q
 from core.report.names import Names
 from core.review import device_names
@@ -73,6 +73,12 @@ _NEEDS = {
         "Only a passing check or an expert can establish what the records leave out."
     ),
 }
+
+
+# A record's link on the page: (record id, the assumption the line is about, the stance the line
+# reads it with) -> URL, or None for no link. The assumption and stance pick the evidence item
+# when one record backs several assumptions of a claim.
+Href = Callable[[str, str | None, Stance | None], str | None]
 
 
 @dataclass
@@ -209,7 +215,7 @@ class _Writer:
         checks: list[CheckResult],
         evidence: list[EvidenceItem],
         names: Names,
-        href: Callable[[str], str | None] | None,
+        href: Href | None,
     ) -> None:
         self.case = _Case(conn, names)
         self.names = names
@@ -220,6 +226,11 @@ class _Writer:
 
     # ---- pieces
 
+    def phone(self, source_id: str | None) -> str:
+        """A phone's name as HTML: the case's name for it is the case's text (an expert may call
+        it anything), so it goes through q() as the names in an assumption do."""
+        return e("the phone") if source_id is None else q(self.case.phone(source_id))
+
     def said(self, a: Assumption) -> str:
         """An assumption's text with its ids shown by name."""
         return self.names.html(a.text)
@@ -228,14 +239,20 @@ class _Writer:
         """'message on Item 1', a contact by its saved name; `when` adds the record's time in
         its phone's zone, to tell apart records that would read alike."""
         kind = e(r.kind) + (f" “{q(r.name)}”" if r.name else "")
-        label = f"{kind} on {e(self.case.phone(r.source_id))}"
+        label = f"{kind} on {self.phone(r.source_id)}"
         if when and r.ts_utc is not None:
             zone = _zone(self.case.zone_of(r.source_id))
             at = r.ts_utc.astimezone(zone[0]) if zone else r.ts_utc
             label += e(f", {_clock(at)}" + ("" if zone else " UTC"))
         return label
 
-    def records(self, rids: list[str], most: int = 3) -> str:
+    def records(
+        self,
+        rids: list[str],
+        most: int = 3,
+        assumption: str | None = None,
+        stance: Stance | None = None,
+    ) -> str:
         """Links to the records, the first `most` of them, then how many more."""
         recs = [self.case.record(r) for r in rids]
         plain = [self._label(r, False) for r in recs]
@@ -244,7 +261,7 @@ class _Writer:
         for r, label in list(zip(recs, labels, strict=True))[:most]:
             if labels.count(label) > 1:  # still alike (no time): number them
                 label += e(f" ({labels[: recs.index(r) + 1].count(label)})")
-            target = self.href(r.id) if self.href else None
+            target = self.href(r.id, assumption, stance) if self.href else None
             shown.append(
                 f"<span title='{e(r.id)}'>{label}</span>"
                 if target is None
@@ -256,6 +273,10 @@ class _Writer:
         if len(shown) <= 2:
             return " and ".join(shown)
         return "; ".join(shown[:-1]) + "; and " + shown[-1]
+
+    def cited(self, c: CheckResult) -> str:
+        """Links to the records a check's outcome rests on."""
+        return self.records(list(c.record_ids), assumption=c.assumption_id)
 
     def assumption_in(self, reason: str) -> Assumption | None:
         """The assumption a reason quotes, by its stored text (the longest that fits)."""
@@ -287,7 +308,7 @@ class _Writer:
             held = " and ".join(_plural(n, k) for k, n in kinds.most_common())
             return (
                 f"The phone records hold {e(held)} in that window, so this does not hold: "
-                f"{self.said(a)}. Records: {self.records(list(c.record_ids))}."
+                f"{self.said(a)}. Records: {self.cited(c)}."
             )
         if c.check_name == "count":
             m = _COUNTED.search(c.detail)
@@ -297,7 +318,7 @@ class _Writer:
                     f"{e(m[3])}: {self.said(a)}."
                 )
         label = _CHECK_LABEL.get(c.check_name, c.check_name)
-        rec = f" ({self.records(list(c.record_ids))})" if c.record_ids else ""
+        rec = f" ({self.cited(c)})" if c.record_ids else ""
         return f"The {e(label)} check on the phone records{rec} does not match: {self.said(a)}."
 
     def time_line(self, c: CheckResult, a: Assumption) -> str | None:
@@ -331,10 +352,10 @@ class _Writer:
             own = r.ts_utc.astimezone(z).utcoffset()
             if own is not None and int(own.total_seconds() // 60) != r.offset_min:
                 out.append(
-                    f"{e(self.case.phone(r.source_id))} prints it in {e(_offset(r.offset_min))} "
+                    f"{self.phone(r.source_id)} prints it in {e(_offset(r.offset_min))} "
                     f"as \u201c{q(r.ts_raw)}\u201d, not in {e(zname)}."
                 )
-        out.append(f"Records: {self.records(list(c.record_ids))}.")
+        out.append(f"Records: {self.cited(c)}.")
         return " ".join(out)
 
     def sender_line(self, c: CheckResult, a: Assumption) -> str | None:
@@ -350,7 +371,7 @@ class _Writer:
             return None
         who = " or ".join(self.names.html(p) for p in people)
         froms = " and ".join(
-            e(acct)
+            q(acct)
             + (
                 " (saved as " + ", ".join(f"\u201c{q(n)}\u201d" for n in names) + ")"
                 if names
@@ -361,7 +382,7 @@ class _Writer:
         copies = "Every copy was" if len(recs) > 1 else "It was"
         return (
             f"No copy of the message came from {who}. {copies} sent from {froms}. "
-            f"Records: {self.records(list(c.record_ids))}."
+            f"Records: {self.cited(c)}."
         )
 
     def line(self, reason: str) -> tuple[tuple[str, ...] | None, str]:
@@ -431,10 +452,11 @@ class _Writer:
         if rule == "3c":
             waiting = _WAITING.search(reason)
             line = (
-                "No expert has accepted a supporting record yet. AI review sorts evidence but "
-                "cannot make a claim supported."
+                "No expert has accepted supporting evidence on an observed phone record yet. "
+                "AI review sorts evidence but cannot make a claim supported."
                 if "by an expert" in reason
-                else "Neither an expert nor the AI reviewer has accepted a supporting record yet."
+                else "Neither an expert nor the AI reviewer has accepted supporting evidence on an "
+                "observed phone record yet."
             )
             if waiting:
                 n = int(waiting[1])
@@ -471,7 +493,8 @@ class _Writer:
             out += " Not dismissed yet."
         if pending == "True":
             out += " It counts once you accept it."
-        return out + f" {'Records' if many else 'Record'}: {self.records(rids, most=5)}."
+        links = self.records(rids, most=5, assumption=a.id, stance=Stance(verb))
+        return out + f" {'Records' if many else 'Record'}: {links}."
 
 
 def lines(
@@ -482,7 +505,7 @@ def lines(
     evidence: list[EvidenceItem],
     *,
     names: Names | None = None,
-    href: Callable[[str], str | None] | None = None,
+    href: Href | None = None,
 ) -> list[Line]:
     """The verdict's reasons as plain lines, in the rules' order, each with the reasons it
     stands for. `href` maps a record id to the page that shows it (None: no link)."""
