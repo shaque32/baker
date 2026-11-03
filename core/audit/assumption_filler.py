@@ -847,6 +847,11 @@ def _flat(text: str) -> str:
     return re.sub(r"\s", " ", text)
 
 
+def _both(words: str, other: str) -> str:
+    """Why an answer that names both a person and something else is refused."""
+    return f"{words!r} names both a person the expert created and {other}; never pick one"
+
+
 def _lowered(words: str, what: str) -> str:
     """Why words that write a name in capitals in lower case are refused
     (core/identity/aliases.in_lower_case)."""
@@ -3532,21 +3537,12 @@ class LocalAssumptionFiller:
         """The one person a model's name answer is: their whole name or last name, or an
         alias the expert gave them, written whole (core/identity/aliases.spans, #181)."""
         written = _nfc(name.strip())
-        n = written.casefold()
-        hits = []
-        # An alias is the whole answer as the alias matcher reads it, so "@subject-1" (a
-        # handle) is not "SUBJECT-1" (Codex on #186).
-        for pid, (full, aliases) in person_names(self.conn).items():
-            parts = _nfc(full.strip()).casefold().split()
-            if (
-                n == " ".join(parts)
-                or (parts and n == parts[-1])
-                # whole, with or without a leading "the": "COURIER" for "the COURIER"
-                or any(alias_answers(a, written) for a in aliases)
-            ):
-                hits.append(pid)
+        hits = self._persons_answered(written)
+        number = account_names.designated(self.conn, written)
+        if number is not None and hits:
+            # A person added after the expert named the number (Codex on #209): never pick one.
+            raise Reject(_both(name, f"the number {number} as the expert named it"))
         if not hits:
-            number = account_names.designated(self.conn, written)
             if number is not None:
                 # A number the document names is never a person: no identity link follows.
                 raise Reject(
@@ -3559,6 +3555,23 @@ class LocalAssumptionFiller:
             found = "no person" if not hits else f"{len(hits)} persons"
             raise Reject(f"{name!r} matches {found} the expert created")
         return hits[0]
+
+    def _persons_answered(self, written: str) -> list[str]:
+        """The persons the expert created whom a whole answer names: their whole name or last
+        name, or an alias, whole, with or without a leading "the" ("COURIER" for "the
+        COURIER"). An alias is the whole answer as the alias matcher reads it, so "@subject-1"
+        (a handle) is not "SUBJECT-1" (Codex on #186)."""
+        n = written.casefold()
+        hits = []
+        for pid, (full, aliases) in person_names(self.conn).items():
+            parts = _nfc(full.strip()).casefold().split()
+            if (
+                n == " ".join(parts)
+                or (parts and n == parts[-1])
+                or any(alias_answers(a, written) for a in aliases)
+            ):
+                hits.append(pid)
+        return hits
 
     def _written_phones(self, text: str) -> set[str]:
         """The devices the text writes by id, source id, label or a name the expert gave them
@@ -3698,7 +3711,11 @@ class LocalAssumptionFiller:
         ident = re.sub(r"(?i)^(user\s*id|id|number|no\.)\s*", "", acc.as_written.strip())
         # A name the expert gave a number or id ("the BURNER") is that identifier, and the
         # rules below still apply to it: a number alone never picks the app.
-        ident = account_names.designated(self.conn, acc.as_written) or ident
+        named_ident = account_names.designated(self.conn, acc.as_written)
+        if named_ident is not None:
+            if self._persons_answered(_nfc(acc.as_written.strip())):
+                raise Reject(_both(acc.as_written, f"the number or id {named_ident}"))
+            ident = named_ident
         want = key(acc.app, ident)
         sources = set(self.data.sources_for(device_ids)) if device_ids else None
         mine = [
@@ -3707,7 +3724,7 @@ class LocalAssumptionFiller:
             if a.app.casefold() == app and (sources is None or a.source_id in sources)
         ]
         hits = {a.id for a in mine if a.key == want}
-        number = phone_digits(ident)
+        number = phone_digits(ident) if named_ident is None else self._named_number(ident)
         named = app == NATIVE_CALL_APP or self._app_named(claim_text, acc.app)
         if number is not None and named:
             # One number written two ways on one app ("+19195677484" and "9195677484", from two
@@ -3723,6 +3740,28 @@ class LocalAssumptionFiller:
         if not hits:
             raise Reject(f"{acc.as_written!r} on {acc.app} matches no account in the case")
         return hits
+
+    def _named_number(self, identifier: str) -> str | None:
+        """The phone number an identifier the expert named is, as its digits, or None for an
+        id that is no number (Codex on #209). A number written as a number ("+1 (720)
+        555-0186") or a WhatsApp id ("12125550122@s.whatsapp.net") is one. Bare digits
+        ("12125550122") are one when a phone app's or the call log's account holds that number
+        (account_names.holders); digits that only an app's user id holds ("7001002345" on
+        Telegram) are not, so they never find a phone's account."""
+        if (d := phone_digits(identifier)) is not None:
+            return d
+        ident = identifier.strip()
+        jid = re.fullmatch(r"(\d{8,15})@s\.whatsapp\.net", ident)
+        if jid is not None:
+            return jid.group(1)
+        d = account_names.number_digits(ident) if re.fullmatch(r"\d{8,15}", ident) else None
+        if d is not None and any(
+            namespace(a.app) == "tel" or a.app == NATIVE_CALL_APP
+            for h in account_names.holders(self.conn, ident)
+            if (a := self.data.accounts.get(h)) is not None
+        ):
+            return d
+        return None
 
     def _named_apps(self, claim_text: str) -> list[str]:
         """The apps the claim names the way `_channels` requires, phone apps aside (a phone

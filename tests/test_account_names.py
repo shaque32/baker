@@ -695,3 +695,57 @@ def test_speaking_by_phone_about_messages_names_a_call_never_a_text(conn):
     assert filler._channels(text, ["call"]) == ["call"]
     with pytest.raises(Reject, match="does not name the channel"):
         filler._channels(text, ["SMS"])
+
+
+# ---------------------------------------------------------------- Codex on #209
+
+
+@pytest.mark.parametrize("identifier", [GARAGE, "12125550122@s.whatsapp.net", "12125550122"])
+def test_a_number_named_as_any_app_writes_it_finds_the_phone_apps_account(conn, identifier):
+    # The expert may name the number as WhatsApp writes it, or as bare digits: it is still
+    # that number on the phone app.
+    actions.name_account(conn, identifier, ["the BURNER"], EXPERT, _clock)
+    text = (
+        "At about 7:58 p.m. on March 9, 2026, Item 1 placed a call of about two minutes to the"
+        " BURNER."
+    )
+    prop = P(
+        "record_time",
+        channels=["call"],
+        accounts=[{"as_written": "BURNER", "app": "Phone"}],
+        phones=["Item 1"],
+        duration={"as_written": "about two minutes"},
+        window=W("At about 7:58 p.m. on March 9, 2026", "2026-03-09T19:50", "2026-03-09T20:06"),
+    )
+    assumptions, filler = build(conn, text, ClaimType.COMMUNICATION, [prop])
+    (a,) = [a for a in assumptions if a.template_id == "record_time"]
+    assert a.params.account_ids == (MARC_PHONE,)
+    assert _run(conn, a) is CheckOutcome.PASS
+
+
+def test_digits_only_an_apps_user_id_holds_are_no_phone_number(conn):
+    conn.execute(
+        "INSERT INTO accounts (id, source_id, locator, device_id, app, identifier)"
+        " VALUES ('acct:item1:Telegram:7185550199', 'item1', 'Contacts!99', 'dev:item1',"
+        " 'Telegram', '7185550199')"
+    )
+    filler = _filler(conn)
+    assert filler._named_number("7185550199") is None  # a user id, not (718) 555-0199
+    assert filler._named_number("12125550122") == "12125550122"  # held by phone accounts
+    assert filler._named_number("12125550122@s.whatsapp.net") == "12125550122"
+
+
+def test_a_person_named_like_a_numbers_name_is_refused_and_never_picked(conn):
+    actions.name_account(conn, GARAGE, ["the BURNER"], EXPERT, _clock)
+    with pytest.raises(ReviewError, match="would also match the number or account"):
+        actions.add_person(conn, "Burner", EXPERT, _clock)
+    # a person entered before this check: neither reading is picked
+    conn.execute(
+        "INSERT INTO persons (id, name, created_by) VALUES ('person:burner', 'Burner', ?)",
+        (EXPERT,),
+    )
+    filler = _filler(conn)
+    with pytest.raises(Reject, match="names both a person"):
+        filler._person("BURNER")
+    with pytest.raises(Reject, match="names both a person"):
+        filler._accounts(_Account(as_written="BURNER", app="Phone"), ["dev:item1"], "")

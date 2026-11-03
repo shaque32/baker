@@ -550,6 +550,14 @@ def add_person(conn: sqlite3.Connection, name: str, actor: str, clock: Clock | N
                     f"{name} would also match {other} ({pid}), whom the document also calls "
                     f"{a}; the audit could not tell them apart"
                 )
+    from core.review import account_names
+
+    for f, what in account_names.forms(conn).items():
+        if f in taken:  # a number named first (Codex on #209)
+            raise ReviewError(
+                f"{name} would also match {what}, as the expert named it; the audit could not "
+                "tell them apart"
+            )
     pid = person_id_for(name, (r[0] for r in rows))
     now = _now(clock)
     with conn:
