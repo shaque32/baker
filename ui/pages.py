@@ -13,7 +13,6 @@ shows as confirmed.
 
 from __future__ import annotations
 
-import html
 import json
 import sqlite3
 from collections import Counter
@@ -37,8 +36,9 @@ from core.contracts import (
 from core.hypotheses import explain
 from core.ingest import coverage as import_coverage
 from core.ingest import forwarded, tested
-from core.report.html import CSS as REPORT_CSS
+from core.report.fmt import e, q
 from core.report.html import (
+    COVERAGE,
     STANCE_LABEL,
     audit_log_summary,
     build_label,
@@ -55,6 +55,7 @@ from core.report.html import (
     sources,
     stand_in_banner,
 )
+from core.report.html import CSS as REPORT_CSS
 from core.report.hypotheses import CSS as ALTERNATIVES_CSS
 from core.report.hypotheses import alternatives_html
 from core.report.names import plain_ids
@@ -95,15 +96,6 @@ UI_CSS = """
 tr.target td { font-weight: bold; background: var(--warn); }
 .ctx td { font-size: 12px; }
 """
-
-
-def e(text: object) -> str:
-    return html.escape("" if text is None else str(text))
-
-
-def q(text: object) -> str:
-    """Cited text, never the tool's own words."""
-    return f'<span class="q">{html.escape(str(text))}</span>'
 
 
 def link(path: str, **params: str) -> str:
@@ -2199,12 +2191,6 @@ def name_form(page: Page) -> str:
 
 # ---------------------------------------------------------------- set up and run
 
-FIDELITY = {
-    "curated_report": "curated report (examiner-selected; cannot show absence)",
-    "full_extraction": "full extraction",
-    "unknown": "not known (cannot show absence)",
-}
-
 
 def _import_coverage(conn: sqlite3.Connection, source_id: str) -> str:
     """What the import read and what it did not (core/ingest/coverage.py): the headline, then
@@ -2324,7 +2310,7 @@ def setup_page(
                 what = f"{e(kind)}, {e(extraction)} extraction, {e(tool)} {e(tver or '')}"
                 fc = tested.for_source(conn, sid)
                 what += format_notice(fc) if fc is not None else ""
-                cov = e(FIDELITY.get(fidelity, fidelity)) + _import_coverage(conn, sid)
+                cov = e(COVERAGE.get(fidelity, fidelity)) + _import_coverage(conn, sid)
                 recs = str(counts.get(sid, 0))
             out.append(
                 f"<tr><td>{q(fname)}<br><span class='mono'>{e(sid)}</span></td>"

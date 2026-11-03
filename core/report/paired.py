@@ -14,11 +14,11 @@ is involved, and nothing here sets or changes a verdict.
 from __future__ import annotations
 
 import hashlib
-import html
 from collections.abc import Callable
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from core.enrich.local_time import format_local
+from core.report.fmt import e
 from core.report.restore import q
 from core.restore.store import FIDELITY_WORDS
 from core.selection.audit import gap_text
@@ -37,10 +37,6 @@ CSS = """
 .pair-claim table td { font-size: 13px; vertical-align: top; overflow-wrap: anywhere; }
 .pair-claim tr.thr td { background: var(--panel); font-weight: 600; }
 """
-
-
-def e(text: object) -> str:
-    return html.escape("" if text is None else str(text))
 
 
 def _n(n: int, word: str, plural: str | None = None) -> str:
