@@ -13,8 +13,9 @@ from __future__ import annotations
 import json
 import shutil
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -532,3 +533,36 @@ def test_texting_names_sms_and_speaking_by_phone_names_a_call(conn):
     assert filler._channels("On March 25, 2026, PETROV was texting Alex.", ["SMS"]) == ["SMS"]
     got = filler._channels("PETROV and REYES spoke by phone for eight minutes.", ["call"])
     assert got == ["call"]
+
+
+def test_code_reads_a_plainly_stated_time_instead_of_the_models(conn):
+    # "at about 7:58 p.m." is 7:50 to 8:06 (stated_windows). A model's 7:58 to 8:10 has both
+    # ends within check_window's 15 minutes, but code's reading of the words is the range.
+    text = (
+        "At about 7:58 p.m. on March 9, 2026, Item 1 placed a call of about two minutes to"
+        " +1 (212) 555-0122."
+    )
+    prop = P(
+        "record_time",
+        channels=["call"],
+        accounts=[{"as_written": "+1 (212) 555-0122", "app": "Phone"}],
+        phones=["Item 1"],
+        duration={"as_written": "about two minutes"},
+        window=W("At about 7:58 p.m. on March 9, 2026", "2026-03-09T19:58", "2026-03-09T20:10"),
+    )
+    assumptions, filler = build(conn, text, ClaimType.COMMUNICATION, [prop])
+    (a,) = [a for a in assumptions if a.template_id == "record_time"]
+    w = a.params.window
+    end = w.end_utc + timedelta(microseconds=1)  # stored as the last instant inside
+    local = (w.start_utc.astimezone(ZoneInfo(w.tz)), end.astimezone(ZoneInfo(w.tz)))
+    assert [t.strftime("%H:%M") for t in local] == ["19:50", "20:06"]
+    assert w.raw == "At about 7:58 p.m. on March 9, 2026"
+    # a range its words leave open keeps the model's checked times
+    text = "On March 9, 2026, after 7:58 p.m., Item 1 placed a call to +1 (212) 555-0122."
+    prop["window"] = W("after 7:58 p.m.", "2026-03-09T19:58", "2026-03-10T00:00")
+    prop["duration"] = None
+    assumptions, filler = build(conn, text, ClaimType.COMMUNICATION, [prop])
+    for a in assumptions:
+        if a.template_id == "record_time":
+            w = a.params.window
+            assert w.start_utc.astimezone(ZoneInfo(w.tz)).strftime("%H:%M") == "19:58"

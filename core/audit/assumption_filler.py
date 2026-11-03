@@ -156,8 +156,9 @@ MAX_PROPOSALS = 8
 #   4: #201 reads a whole day tied to an event the expert entered (case_events).
 #   5: a name the expert gave a number reads as that number, in a model's answer and in the
 #      claim's own words; person and phone names match with or without "the"; a call's time
-#      range drops words a claim that quotes nothing never quoted; "texting" names SMS and
-#      "spoke by phone" a call.
+#      range drops words a claim that quotes nothing never quoted; a range whose words state
+#      one plain range takes code's reading of them; "texting" names SMS and "spoke by phone"
+#      a call.
 FILLER_VERSION = "5"
 MAX_WINDOW_DAYS = 400
 TIME_SLACK = timedelta(minutes=15)
