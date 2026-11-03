@@ -415,13 +415,14 @@ SCRIPTED_MESSAGES: tuple[Msg, ...] = (
     _m("yl_4", "2025-03-13 23:15:40", "var_sig", "coy_sig", "in", EV),
     _m("yl_5", "2025-03-13 23:41:20", "var_sig", "coy_sig", "out. heading to the barn"),
     # ---- VARLOW <-> PELLOQUIN, SMS (items 1 and 3)
-    # C39: PELLOQUIN offers himself, to VARLOW
+    # C39: PELLOQUIN offers himself, to VARLOW (the trailer is VARLOW's; PELLOQUIN's flatbed
+    # pulls it)
     _m(
         "pv_offer",
         "2025-02-14 16:40:20",
         "pel_sms",
         "var_sms",
-        "if u ever need a trailer and a driver im around",
+        "if u ever need a driver to pull ur trailer im around",
     ),
     _m("pv_offer2", "2025-02-14 16:52:05", "var_sms", "pel_sms", "good to know"),
     # C31: 6:25 p.m. PST on Feb 18; Item 1 prints 2/19/2025 2:25:30 AM(UTC+0)
@@ -462,13 +463,22 @@ SCRIPTED_MESSAGES: tuple[Msg, ...] = (
     _m("pv_s3", "2025-03-19 16:15:12", "pel_sms", "var_sms", "its gone"),
     _m("vp_s4", "2025-03-19 16:30:00", "var_sms", "pel_sms", "use the other number"),
     # ---- VARLOW <-> PELLOQUIN, WhatsApp (items 1 and 3)
-    # C40: on Item 3 only
+    # C40: on Item 3 only. The first message fixes which keys: the trailer's
+    _m(
+        "vw_keys0",
+        "2025-02-27 19:12:40",
+        "var_wa",
+        "pel_wa",
+        "left the trailer at ur place. hitch lock and trailer keys are in ur mailbox",
+        EV,
+        skip=("item1",),
+    ),
     _m(
         "vw_keys",
         "2025-02-27 19:20:15",
         "var_wa",
         "pel_wa",
-        "keys stay with u, nobody else drives it",
+        "keys stay with u, nobody else tows it",
         EV,
         skip=("item1",),
     ),
@@ -560,7 +570,14 @@ SCRIPTED_MESSAGES: tuple[Msg, ...] = (
     # C23: the exchange fixes "the twins"
     _m("sc_twins", "2025-03-22 11:40:20", "spr_sms", "coy_sms", "the twins are in 17", EV),
     _m("sc_twins2", "2025-03-22 11:46:55", "coy_sms", "spr_sms", "the 150s?", EV),
-    _m("sc_twins3", "2025-03-22 11:48:30", "spr_sms", "coy_sms", "ya both 150s, locked up", EV),
+    _m(
+        "sc_twins3",
+        "2025-03-22 11:48:30",
+        "spr_sms",
+        "coy_sms",
+        "ya both 150 outboards, locked up",
+        EV,
+    ),
     # ---- the SPARE LINE <-> PELLOQUIN, SMS (item 3 only)
     _m("sp_new", "2025-02-20 12:25:00", "spr_sms", "pel_sms", "this is the other number"),
     _m("sp_new2", "2025-02-20 12:30:40", "pel_sms", "spr_sms", "got it"),
@@ -595,15 +612,16 @@ SCRIPTED_MESSAGES: tuple[Msg, ...] = (
     # ... and one the morning after, outside it
     _m("s8", "2025-03-20 09:05:15", "pel_sms", "spr_sms", "truck is gone today"),
     # ---- COYLE <-> PELLOQUIN, WhatsApp (items 2 and 3)
+    # C02
     _m(
-        "cp_hitch",
+        "cp_key",
         "2025-03-04 16:10:25",
         "coy_wa",
         "pel_wa",
-        "hitch key is on the nail in the shed",
+        "boathouse key is on the nail in the shed",
         EV,
     ),
-    _m("cp_hitch2", "2025-03-04 16:18:02", "pel_wa", "coy_wa", "got it"),
+    _m("cp_key2", "2025-03-04 16:18:02", "pel_wa", "coy_wa", "got it"),
     # C34: 12:52 a.m. PST, before the hour; 3:05 a.m. PDT, after the jump (Item 3 prints
     # 2:05:10 AM(UTC-8), a time the phone never showed)
     _m("pc_road", "2025-03-09 00:52:30", "pel_wa", "coy_wa", "on the road"),
@@ -666,16 +684,24 @@ SCRIPTED_MESSAGES: tuple[Msg, ...] = (
     # C47: the BROKER's phone number writes to her that morning too (wrong candidate)
     _m("bc_tg", "2025-03-03 10:30:15", "brk_sms", "coy_sms", "u get my telegram?"),
     _m("bc_tg2", "2025-03-03 10:35:00", "coy_sms", "brk_sms", "ya"),
-    # ---- Duke Marchetti ("Duke" on Item 2) <-> COYLE (item 2)
-    # C39: COYLE asks Item 2's "Duke", not PELLOQUIN
+    # ---- Duke Marchetti ("Duke" on Item 2) <-> COYLE (item 2). Her boat mechanic, plainly: he
+    # introduces himself and his shop, and every message from him is about her skiff or his shop
+    _m(
+        "mc_intro",
+        "2025-02-12 10:05:30",
+        "mar_sms",
+        "coy_sms",
+        "this is duke at marchetti marine. ur skiff is in bay 2, pick up anytime",
+    ),
+    # C39: COYLE asks Item 2's "Duke", not PELLOQUIN, to pull her skiff to the ramp
     _m(
         "cm_recruit",
         "2025-02-15 10:30:05",
         "coy_sms",
         "mar_sms",
-        "need someone with a trailer next month, u in?",
+        "need someone with a truck to pull my skiff trailer to the ramp sat, u in?",
     ),
-    _m("cm_recruit2", "2025-02-15 10:45:40", "mar_sms", "coy_sms", "not me, ask around"),
+    _m("cm_recruit2", "2025-02-15 10:45:40", "mar_sms", "coy_sms", "sure, sat at 9"),
     # C03: similar words, about her skiff
     _m(
         "cm_cowl",
@@ -690,27 +716,33 @@ SCRIPTED_MESSAGES: tuple[Msg, ...] = (
         "2025-03-11 09:40:15",
         "mar_sms",
         "coy_sms",
-        "the lower unit is shot, bring it monday",
+        "the lower unit is shot, bring the skiff in monday",
         EV,
     ),
-    # C24: that morning Item 2's "Duke" wants out of something else
+    # C24: that morning Item 2's "Duke" wants out of something else, the boat show
     _m(
         "mc_out",
         "2025-03-15 08:30:05",
         "mar_sms",
         "coy_sms",
-        "i want out of the boat thing, too much hassle",
+        "i want out of the boat show booth this year, too much hassle",
     ),
-    # C37: similar words from Item 2's "Duke"
+    # C37: similar words from Item 2's "Duke", a repair quote for her skiff
     _m(
         "mc_price",
         "2025-03-14 18:30:10",
         "mar_wa",
         "coy_wa",
-        "2200 for the big ones is too high, nobody pays that",
+        "skiff rebuild quote: 1900 for the big one, 700 for the kicker, parts extra",
     ),
-    # C43: similar words from Item 2's "Duke"
-    _m("mc_fuel", "2025-03-18 08:05:00", "mar_sms", "coy_sms", "fuel dock thursday? cant do 6"),
+    # C43: similar words from Item 2's "Duke", a skiff appointment
+    _m(
+        "mc_fuel",
+        "2025-03-18 08:05:00",
+        "mar_sms",
+        "coy_sms",
+        "bring the skiff to the fuel dock thursday 8am, ill check the pump",
+    ),
     # ---- Emmett Strade ("Emmett" on Item 2) <-> COYLE (item 2). C44's wrong candidate
     _m(
         "cs_kayak",
@@ -877,6 +909,8 @@ RESERVED_STEMS = (
     "kayak",
     "garage",
     "skiff",
+    "marchetti",
+    "mailbox",
     "lower unit",
     "thursday",
     "friday",

@@ -176,10 +176,10 @@ CLAIMS: tuple[DraftClaim, ...] = (
         "plain",
         "supported",
         "none",
-        'On March 4, 2025, COYLE sent PELLOQUIN a WhatsApp message reading "hitch key is on the '
-        'nail in the shed".',
+        'On March 4, 2025, COYLE sent PELLOQUIN a WhatsApp message reading "boathouse key is on '
+        'the nail in the shed".',
         ("COYLE's WhatsApp account sent the message to PELLOQUIN on Mar 4",),
-        (("item2", "cp_hitch"), ("item3", "cp_hitch")),
+        (("item2", "cp_key"), ("item3", "cp_key")),
         "Outgoing on Item 2 at 4:10 p.m. PST on Mar 4, incoming on Item 3. A clean claim.",
     ),
     C(
@@ -194,8 +194,9 @@ CLAIMS: tuple[DraftClaim, ...] = (
         "Both copies (Items 1 and 2) were sent by VARLOW's number, +13605550114, at 11:45 a.m. "
         "PST on Mar 6; COYLE answered 'after 8'. Observed data rules out the stated sender.",
         "COYLE did write 'the white cowls are off the skiff, come look' that day, to Item 2's "
-        "'Duke' (Duke Marchetti) about her skiff. A loose match on those words passes the "
-        "sender; the sheet tests the claim's exact words.",
+        "'Duke' (+12535550151, the mechanic who wrote 'this is duke at marchetti marine'), about "
+        "her skiff. A loose match on those words passes the sender; the sheet tests the claim's "
+        "exact words.",
         (("item2", "cm_cowl"),),
     ),
     C(
@@ -208,11 +209,11 @@ CLAIMS: tuple[DraftClaim, ...] = (
         'till the heat dies down".',
         ("VARLOW's SMS account sent the words to PELLOQUIN on Mar 10",),
         (("item1", "vg_wrap"),),
-        "No message with these words is on any phone. On Mar 10 VARLOW texted his foreman "
-        "Hollis Grebe 'keep the motors wrapped till the paint cures', which is not the claim. "
-        "The reports are curated, so not shown, not ruled out.",
-        "A loose match takes the Grebe text for the quote and passes the sender (VARLOW wrote "
-        "it). The sheet tests the claim's exact words, to the HAULER.",
+        "No message with these words is on any phone. On Mar 10 VARLOW texted Item 1's "
+        "'Hollis' (+13605550120) 'keep the motors wrapped till the paint cures', which is not "
+        "the claim. The reports are curated, so not shown, not ruled out.",
+        "A loose match takes the text to 'Hollis' for the quote and passes the sender (VARLOW "
+        "wrote it). The sheet tests the claim's exact words, to the HAULER.",
         (("item1", "vg_wrap"),),
         "defined terms (TRANSFER, the HAULER), an alias (SKIP), a day set by an event, indirect "
         "speech",
@@ -233,11 +234,18 @@ CLAIMS: tuple[DraftClaim, ...] = (
             ("item3", "sp_straps"),
             ("item1", "vp_new"),
             ("item3", "vp_new"),
+            ("item3", "sp_new"),
+            ("item1", "vp_s4"),
+            ("item3", "vp_s4"),
             ("item2", "sc_new"),
         ),
         "Incoming on Item 3 from +13605550163 at 7:15 p.m. PST on Wednesday, Feb 26. VARLOW's "
         "own number gave the HAULER that number on Feb 20 ('new number for boat stuff is 360 555 "
-        "0163. this one stays personal', on Items 1 and 3), a record from his own phone.",
+        "0163. this one stays personal', on Items 1 and 3), a record from his own phone; twenty "
+        "minutes later 0163 wrote to the HAULER 'this is the other number', and on Mar 19 "
+        "VARLOW's own number told him 'use the other number'. Not relied on: 0163's 'its skip' "
+        "to COYLE, because Item 3 also saves another number as 'Skip' (+13605550184) beside "
+        "0163 as 'Skip 2', so a nickname alone does not tie the number to VARLOW.",
         "VARLOW's own number also texted the HAULER that afternoon ('u around tmrw?'). A "
         "reading that takes CC-1's own number for the sender finds the quote came from "
         "elsewhere and fails it. The sheet names the SPARE LINE.",
@@ -276,8 +284,8 @@ CLAIMS: tuple[DraftClaim, ...] = (
         ("Item 1 has a contact 'Lars' holding +12535550148",),
         (("item1", "contact:Lars"),),
         "Item 1's Contacts sheet holds 'Lars' with +12535550148.",
-        "Item 3 also saves a 'Lars', with +13605550173 (Lars Petrakis). A reading on Item 3 "
-        "finds another number. The sheet names Item 1.",
+        "Item 3 also saves a 'Lars', with +13605550173. A reading on Item 3 finds another "
+        "number. The sheet names Item 1.",
         (("item3", "contact:Lars"),),
     ),
     C(
@@ -305,8 +313,8 @@ CLAIMS: tuple[DraftClaim, ...] = (
         'On Item 3, the Telegram names "Skip" and "Em V" belong to one account.',
         ("On Item 3's Telegram, 'Skip' and 'Em V' are one account",),
         (("item3", "ts_dock"), ("item3", "vt_tanks2")),
-        "'Skip' is Telegram user id 8820484 (Skip Tennant, a dock hand); 'Em V' is 8820411 "
-        "(VARLOW). Two accounts.",
+        "'Skip' is Telegram user id 8820484, who writes 'dock 4 needs a hand sat morning'; 'Em "
+        "V' is 8820411 (VARLOW). Two accounts.",
         "SKIP is VARLOW's nickname (paragraph 2), and 'Em V' is his Telegram account. A reading "
         "that takes Item 3's 'Skip' for VARLOW calls them one account. The sheet tests the two "
         "names as written.",
@@ -323,8 +331,8 @@ CLAIMS: tuple[DraftClaim, ...] = (
         (("item2", "contact:Captain"), ("item2", "sc_new2")),
         "Item 2's 'Captain' holds +13605550163; she wrote 'saved u as captain lol' to the "
         "number on Feb 20.",
-        "Item 3 also saves a 'Captain', with +13605550109 (Rollo Dunmore, the harbormaster). A "
-        "reading on Item 3 finds another number. The sheet names Item 2.",
+        "Item 3 also saves a 'Captain', with +13605550109. A reading on Item 3 finds another "
+        "number. The sheet names Item 2.",
         (("item3", "contact:Captain"),),
         "a designation (CC-2), a number by its defined name (SPARE LINE), 'her phone' for Item 2",
     ),
@@ -361,9 +369,11 @@ CLAIMS: tuple[DraftClaim, ...] = (
         'The text message "the lower unit is shot" that CC-2 received from "Duke" on March '
         "11, 2025 was sent by the HAULER.",
         ("PELLOQUIN's SMS account sent the message Item 2 received on Mar 11",),
-        (("item2", "mc_lower"), ("item2", "contact:Duke")),
-        "The only copy is on Item 2, from +12535550151, the number Item 2 saves as 'Duke' (Duke "
-        "Marchetti, her mechanic). PELLOQUIN's +13605550138 did not send it.",
+        (("item2", "mc_lower"), ("item2", "contact:Duke"), ("item2", "mc_intro")),
+        "The only copy is on Item 2, from +12535550151, the number Item 2 saves as 'Duke'. That "
+        "number introduced itself to her on Feb 12 as 'duke at marchetti marine' with her skiff "
+        "in its shop, and its every message is about her skiff or the shop; Item 2 saves "
+        "PELLOQUIN separately, as 'Duncan P' (+13605550138), which did not send it.",
         "DUKE is PELLOQUIN's nickname (paragraph 2), and Item 1 saves PELLOQUIN as 'Duke'; "
         "Item 2's 'Duke' is another person. A reading that takes Item 2's 'Duke' for the HAULER "
         "passes the sender. The sheet names PELLOQUIN.",
@@ -505,9 +515,9 @@ CLAIMS: tuple[DraftClaim, ...] = (
         ),
         "COYLE asked 'the outboards?' and VARLOW answered 'ya 4 outboards, two are 150s': the "
         "exchange fixes the meaning.",
-        "Rafe Lindqvist wrote '4 big fish off the north jetty today' to PELLOQUIN that evening, "
-        "about fish. A reading that mixes the threads finds 'big fish' meaning fish. The sheet "
-        "names VARLOW and COYLE.",
+        "Item 3's 'Rafe' (+13605550178) wrote '4 big fish off the north jetty today' to "
+        "PELLOQUIN that evening, about fish. A reading that mixes the threads finds 'big fish' "
+        "meaning fish. The sheet names VARLOW and COYLE.",
         (("item3", "rf_fish"),),
     ),
     C(
@@ -572,9 +582,9 @@ CLAIMS: tuple[DraftClaim, ...] = (
         "Sent at 9:20 a.m. PST on Mar 4. The thread fixes it: 'u want the red tanks too?' / 'ya "
         "the soup cans. all 6 fuel tanks' the evening before, and 'all 6?' / 'all 6 tanks ya' "
         "after.",
-        "That morning Odile Marsh wrote 'bring the soup cans to moms, she needs them for the "
-        "drive' to PELLOQUIN, about soup. A reading that mixes the threads finds soup. The sheet "
-        "names VARLOW and PELLOQUIN.",
+        "That morning Item 3's 'Odile' (WhatsApp 13605550156) wrote 'bring the soup cans to "
+        "moms, she needs them for the drive' to PELLOQUIN, about soup. A reading that mixes the "
+        "threads finds soup. The sheet names VARLOW and PELLOQUIN.",
         (("item3", "od_soup"),),
         "an alias (SKIP), a role (the HAULER), 'the next morning' referring back, indirect speech",
     ),
@@ -590,9 +600,16 @@ CLAIMS: tuple[DraftClaim, ...] = (
             "The SPARE LINE sent the message to COYLE on Mar 22",
             "'the twins' meant the two 150-horsepower motors",
         ),
-        (("item2", "sc_twins"), ("item2", "sc_twins2"), ("item2", "sc_twins3")),
+        (
+            ("item2", "sc_twins"),
+            ("item2", "sc_twins2"),
+            ("item2", "sc_twins3"),
+            ("item2", "vc_fish3"),
+        ),
         "Incoming on Item 2 from +13605550163 at 11:40 a.m. PDT on Mar 22; 'the 150s?' / 'ya "
-        "both 150s, locked up' fix the meaning.",
+        "both 150 outboards, locked up' fix the meaning in the exchange itself. '150' on an "
+        "outboard is its horsepower, and the Feb 24 thread on the same phone ('ya 4 outboards, "
+        "two are 150s') uses it the same way.",
         "VARLOW's own number also texted her that morning ('call me tonight'). A reading that "
         "takes CC-1's own number for the SPARE LINE finds the quote came from elsewhere. "
         "The sheet names the SPARE LINE.",
@@ -613,12 +630,14 @@ CLAIMS: tuple[DraftClaim, ...] = (
             "'duke' meant PELLOQUIN",
         ),
         (("item1", "cv_duke"), ("item2", "cv_duke")),
-        "Observed at 7:10 p.m. PDT on Mar 15; VARLOW answered 'ok'. Which Duke is not fixed: "
-        "that morning Item 2's 'Duke' (Duke Marchetti) wrote to her 'i want out of the boat "
-        "thing, too much hassle'.",
+        "Observed at 7:10 p.m. PDT on Mar 15; VARLOW answered 'ok'. Which Duke is not fixed. "
+        "COYLE's own phone saves PELLOQUIN as 'Duncan P' and saves another number, "
+        "+12535550151, as 'Duke' (it introduced itself as 'duke at marchetti marine'); that "
+        "morning that 'Duke' wrote to her 'i want out of the boat show booth this year, too "
+        "much hassle'. Nothing in the exchange says which one she meant, or out of what.",
         "A reading that takes DUKE (paragraph 2) as fixing the quote supports the meaning; one "
-        "that reads the morning text contradicts it. Neither is fixed. The sheet names COYLE "
-        "and VARLOW.",
+        "that takes her own phone's 'Duke' contradicts it. Neither is fixed. The sheet names "
+        "COYLE and VARLOW.",
         (("item2", "mc_out"),),
         "defined terms (KITTIWAKE THEFT, the HAULER), designations, a day set by an event, "
         "indirect speech",
@@ -856,7 +875,7 @@ CLAIMS: tuple[DraftClaim, ...] = (
         (("item2", "cp_took"), ("item3", "cp_took"), ("item3", "cp_took2")),
         "DUKE is PELLOQUIN (paragraph 2). Texts on Mar 26 ('they took the 150s' / 'i know. dont "
         "call me').",
-        "Item 2 saves another man as 'Duke' (Duke Marchetti), with whom she has no contact "
+        "Item 2 saves another number as 'Duke' (+12535550151), with which she has no contact "
         "after Mar 22. A reading that takes Item 2's 'Duke' finds none and leaves the claim "
         "unproven. The sheet names PELLOQUIN.",
         (("item2", "contact:Duke"),),
@@ -900,9 +919,10 @@ CLAIMS: tuple[DraftClaim, ...] = (
         ),
         "PELLOQUIN asked 'what do i ask for the motors?', COYLE answered with the prices, and "
         "he took them ('ok 2200'): the exchange fixes who set the price.",
-        "That evening Item 2's 'Duke' (Duke Marchetti) wrote '2200 for the big ones is too high, "
-        "nobody pays that'. A loose match makes him the one who set it. The sheet tests the "
-        "exact words, from COYLE.",
+        "That evening Item 2's 'Duke' (+12535550151) sent her, on WhatsApp, 'skiff rebuild "
+        "quote: 1900 for the big one, 700 for the kicker, parts extra'. A loose match on a price "
+        "for the big one and the kicker makes him the one who set it. The sheet tests the exact "
+        "words, from COYLE.",
         (("item2", "mc_price"),),
     ),
     C(
@@ -933,10 +953,12 @@ CLAIMS: tuple[DraftClaim, ...] = (
         ("COYLE recruited PELLOQUIN",),
         (("item3", "pv_offer"), ("item2", "cm_recruit"), ("item2", "cm_recruit2")),
         "No record shows COYLE asking PELLOQUIN. He offered himself to VARLOW ('if u ever need "
-        "a trailer and a driver im around'); COYLE asked Item 2's 'Duke' (Duke Marchetti), who "
-        "said no. Recruitment by her is not fixed.",
+        "a driver to pull ur trailer im around'); COYLE asked Item 2's 'Duke' (+12535550151) "
+        "'need someone with a truck to pull my skiff trailer to the ramp sat, u in?', and he "
+        "said 'sure, sat at 9'. Recruitment of PELLOQUIN by her is not fixed.",
         "DUKE is PELLOQUIN's nickname (paragraph 2). A reading that takes Item 2's 'Duke' for "
-        "PELLOQUIN finds her asking him and supports the claim. The sheet names PELLOQUIN.",
+        "PELLOQUIN finds her asking him to pull a trailer and his yes, and supports the claim. "
+        "The sheet names PELLOQUIN.",
         (("item2", "cm_recruit"),),
     ),
     C(
@@ -946,13 +968,15 @@ CLAIMS: tuple[DraftClaim, ...] = (
         "supported",
         "second_phone",
         'CC-1 put the HAULER in charge of the trailer keys, telling him on WhatsApp "keys '
-        'stay with u, nobody else drives it".',
+        'stay with u, nobody else tows it".',
         (
             "VARLOW sent the message to PELLOQUIN",
-            "VARLOW put PELLOQUIN in charge of the keys",
+            "VARLOW put PELLOQUIN in charge of the trailer keys",
         ),
-        (("item3", "vw_keys"), ("item3", "vw_keys2")),
-        "Incoming on Item 3 from VARLOW's WhatsApp at 7:20 p.m. PST on Feb 27; the HAULER "
+        (("item3", "vw_keys0"), ("item3", "vw_keys"), ("item3", "vw_keys2")),
+        "Incoming on Item 3 from VARLOW's WhatsApp at 7:20 p.m. PST on Feb 27. Eight minutes "
+        "earlier, opening the thread, he wrote 'left the trailer at ur place. hitch lock and "
+        "trailer keys are in ur mailbox', which fixes the keys as the trailer's; the HAULER "
         "answered 'got it, nobody else'.",
         "CC-1's own phone (Item 1) does not hold the exchange. A reading of Item 1 alone "
         "finds nothing. The sheet names no phone, and the check finds Item 3's copy.",
@@ -974,9 +998,9 @@ CLAIMS: tuple[DraftClaim, ...] = (
         (("item2", "yl_1"), ("item2", "yl_2"), ("item2", "yl_3"), ("item1", "yl_2")),
         "At 10:58 p.m. PDT she wrote 'parked at the corner of ferrule, ill watch the road', at "
         "11:09 'patrol car just passed, wait', at 11:14 'clear, go'. The thread fixes the role.",
-        "The night before, Mina Ostrowski wrote 'patrol car just passed our street again, u "
-        "driving home?' to VARLOW. A loose match makes her the lookout. The sheet tests the "
-        "exact words, from COYLE, on Signal.",
+        "The night before, Item 1's 'Mina' (+13605550135) wrote 'patrol car just passed our "
+        "street again, u driving home?' to VARLOW. A loose match makes her the lookout. The "
+        "sheet tests the exact words, from COYLE, on Signal.",
         (("item1", "mv_patrol"),),
         "defined terms (KITTIWAKE THEFT), a designation, an alias (SKIP), 'the night of' an "
         "event, indirect speech",
@@ -1025,8 +1049,9 @@ CLAIMS: tuple[DraftClaim, ...] = (
         (("item1", "vc_fuel"), ("item2", "vc_fuel"), ("item2", "vc_fuel2")),
         "VARLOW wrote 'fuel dock thursday 6pm' at 10:15 a.m. PDT on Tuesday, Mar 18, and COYLE "
         "answered 'ok'. Thursday after Tuesday Mar 18 is Mar 20.",
-        "That morning Item 2's 'Duke' (Duke Marchetti) wrote 'fuel dock thursday? cant do 6' to "
-        "her. A loose match makes him the one she met. The sheet names VARLOW and COYLE.",
+        "That morning Item 2's 'Duke' (+12535550151) wrote to her 'bring the skiff to the fuel "
+        "dock thursday 8am, ill check the pump'. A loose match takes his Thursday at the fuel "
+        "dock for the meeting claimed. The sheet names VARLOW and COYLE.",
         (("item2", "mc_fuel"),),
     ),
     C(
@@ -1049,7 +1074,7 @@ CLAIMS: tuple[DraftClaim, ...] = (
         ),
         "'need the motors out of the boathouse by sat' at 9:30 a.m. PST and 'ok ill clear it "
         "friday' at 9:44 a.m. on Mar 4.",
-        "That morning COYLE asked Item 2's 'Emmett' (Emmett Strade) 'need the kayaks out of the "
+        "That morning COYLE asked Item 2's 'Emmett' (+12535550159) 'need the kayaks out of the "
         "garage by sat', and he agreed. A reading that takes Item 2's 'Emmett' for EMMETT "
         "VARLOW finds the kayak exchange. The sheet names VARLOW's accounts.",
         (("item2", "cs_kayak"), ("item2", "cs_kayak2")),
@@ -1064,7 +1089,7 @@ CLAIMS: tuple[DraftClaim, ...] = (
         ("A call between COYLE and PELLOQUIN on Mar 16, 540 to 660 s",),
         (("item2", "cl_cp16"), ("item3", "cl_cp16"), ("item2", "cl_cm16")),
         "Their only call that day is 45 s (11:20 a.m. PDT). The ten-minute call (612 s, 2:40 "
-        "p.m.) is with Item 2's 'Duke' (Duke Marchetti). Curated reports, so not shown.",
+        "p.m.) is with Item 2's 'Duke' (+12535550151). Curated reports, so not shown.",
         "DUKE is PELLOQUIN's nickname (paragraph 2). A reading that takes Item 2's 'Duke' for "
         "PELLOQUIN finds the 612 s call and supports the claim. The sheet names PELLOQUIN.",
         (("item2", "cl_cm16"), ("item2", "contact:Duke")),
@@ -1145,7 +1170,7 @@ SUMMARY: dict[str, str] = {
     "C07": "Item 1's 'Lars' holds +12535550148; Item 3's 'Lars' is another number.",
     "C08": "Item 1's 'Duke' holds 0138; 0192 is saved as 'Duke work'. Not shown (contact lists "
     "edit).",
-    "C09": "Two Telegram ids: 'Skip' 8820484 (Skip Tennant), 'Em V' 8820411.",
+    "C09": "Two Telegram ids: 'Skip' 8820484 (another man), 'Em V' 8820411.",
     "C10": "Item 2's 'Captain' holds +13605550163; she wrote 'saved u as captain lol'.",
     "C11": "One Telegram id, 8820422 (Item 2's own); Item 3 shows 'Ren C' to Mar 11, "
     "'harborlights' from Mar 12.",
@@ -1161,8 +1186,9 @@ SUMMARY: dict[str, str] = {
     "mother).",
     "C21": "Sent 6:05 p.m. PDT Mar 18; Item 1 prints Mar 19 (UTC+0).",
     "C22": "Mar 4 morning; 'ya the soup cans. all 6 fuel tanks' the evening before fixes it.",
-    "C23": "'the 150s?' / 'ya both 150s, locked up' fix it.",
-    "C24": "Observed; which Duke is not fixed (Item 2's 'Duke' wanted out that morning).",
+    "C23": "'the 150s?' / 'ya both 150 outboards, locked up' fix it.",
+    "C24": "Observed; which Duke is not fixed (Item 2's 'Duke' wanted out of a boat show "
+    "booth that morning).",
     "C25": "8 on Pacific dates; printed (UTC) dates give 9.",
     "C26": "6 on Item 3; Item 2 has 7.",
     "C27": "6 on Mar 12 Pacific; Item 3's printed Mar 12 gives 4.",
@@ -1177,11 +1203,13 @@ SUMMARY: dict[str, str] = {
     "C36": "None on Item 1 (curated); Item 3 holds a Mar 28 WhatsApp.",
     "C37": "He asked the price, COYLE set it, he took it.",
     "C38": "Sent 6:15 p.m. PDT Mar 21; Item 1 prints Mar 22 (UTC+0).",
-    "C39": "PELLOQUIN offered himself to VARLOW; COYLE asked Item 2's 'Duke'.",
-    "C40": "His instruction and 'got it, nobody else', on Item 3 only.",
+    "C39": "PELLOQUIN offered himself to VARLOW; COYLE asked Item 2's 'Duke', who agreed.",
+    "C40": "'trailer keys are in ur mailbox', his instruction and 'got it, nobody else', on "
+    "Item 3 only.",
     "C41": "'ill watch the road', 'patrol car just passed, wait', 'clear, go' on Signal.",
     "C42": "Sent to Item 3's 'Lars' (his cousin), not the BROKER; no sale shown.",
-    "C43": "Proposal and 'ok' on Mar 18; Thursday is Mar 20.",
+    "C43": "Proposal and 'ok' on Mar 18; Thursday is Mar 20. Item 2's 'Duke' set her an 8 "
+    "a.m. Thursday at the fuel dock.",
     "C44": "Request and 'ok ill clear it friday' on Mar 4.",
     "C45": "Only a 45 s call; the ten-minute call is with Item 2's 'Duke'.",
     "C46": "4:47 a.m. PDT Mar 9, on Item 3 only.",
@@ -1208,8 +1236,8 @@ AFFIDAVIT: tuple[tuple[int, tuple[str, ...]], ...] = (
             '"CC-1"), who goes by "SKIP". Item 2 is an Apple iPhone 12 mini seized from '
             'RENATA COYLE ("COYLE" or "CC-2"). Item 3 is a Kyocera DuraForce Ultra 5G (the '
             '"KYOCERA") seized from DUNCAN PELLOQUIN ("PELLOQUIN" or "CC-3"), called '
-            '"DUKE", who hauled the stolen equipment on his trailer for VARLOW and COYLE (the '
-            '"HAULER").',
+            '"DUKE", who hauled the stolen equipment on VARLOW\'s trailer for VARLOW and COYLE '
+            '(the "HAULER").',
         ),
     ),
     (
@@ -1387,7 +1415,7 @@ NON_CONVENTION: dict[str, str] = {
 }
 
 Q01 = "check the dinghy dock after 9, its quiet"
-Q02 = "hitch key is on the nail in the shed"
+Q02 = "boathouse key is on the nail in the shed"
 Q03 = "the white cowls are off, come see tonight"
 Q04 = "the motors stay wrapped till the heat dies down"
 Q05 = "bring the long straps and the dolly"
@@ -1403,7 +1431,7 @@ Q23 = "the twins are in 17"
 Q24 = "duke wants out"
 Q37 = "2200 for the big ones, 900 for the kickers"
 Q38 = "put them in 17, not the boathouse"
-Q40 = "keys stay with u, nobody else drives it"
+Q40 = "keys stay with u, nobody else tows it"
 Q41 = "patrol car just passed"
 Q42 = "the two yamahas are ready"
 Q43 = "fuel dock thursday 6pm"
@@ -1538,9 +1566,13 @@ SHEET: tuple[ClaimSpec, ...] = (
                 "authorship",
                 P(quoted_text=Q05, person_ids=[VAR], account_ids=[SPR3], channels=["SMS"]),
                 None,
-                "That VARLOW used the SPARE LINE: paragraph 3, and his own number's 'new number "
+                "That VARLOW used the SPARE LINE: paragraph 3; his own number's 'new number "
                 "for boat stuff is 360 555 0163. this one stays personal' to the HAULER (Items 1 "
-                "and 3). Core: the expert decides it.",
+                "and 3, Feb 20); 0163's 'this is the other number' to him twenty minutes later "
+                "(Item 3); his own number's 'use the other number' (Mar 19, Items 1 and 3). "
+                "Note: Item 3 saves 0163 as 'Skip 2' and another number, +13605550184, as "
+                "'Skip', so 0163's 'its skip' to COYLE does not tie it to VARLOW by itself. Core: "
+                "the expert decides it.",
             ),
         ),
     ),
@@ -1939,7 +1971,7 @@ SHEET: tuple[ClaimSpec, ...] = (
         (
             A(
                 "sender",
-                P(quoted_text=Q23, account_ids=[SPR2], channels=["SMS"]),
+                P(quoted_text=Q23, account_ids=[SPR2]),
                 "pass",
                 "Incoming on Item 2 from the SPARE LINE.",
             ),
@@ -1949,7 +1981,6 @@ SHEET: tuple[ClaimSpec, ...] = (
                     quoted_text=Q23,
                     person_ids=[COY],
                     account_ids=[SPR2],
-                    channels=["SMS"],
                     window=day(
                         "2025-03-22", "Three days before the RECOVERY (Saturday, March 22, 2025)"
                     ),
@@ -1963,13 +1994,14 @@ SHEET: tuple[ClaimSpec, ...] = (
                     quoted_text=Q23,
                     person_ids=[COY],
                     account_ids=[SPR2],
-                    channels=["SMS"],
                     window=day(
                         "2025-03-22", "Three days before the RECOVERY (Saturday, March 22, 2025)"
                     ),
                 ),
                 None,
-                "'the 150s?' / 'ya both 150s, locked up' in the same exchange.",
+                "'the 150s?' / 'ya both 150 outboards, locked up' in the same exchange; '150' "
+                "is an outboard's horsepower, as in the Feb 24 thread ('ya 4 outboards, two are "
+                "150s').",
             ),
         ),
     ),
@@ -1978,16 +2010,15 @@ SHEET: tuple[ClaimSpec, ...] = (
         (
             A(
                 "sender",
-                P(quoted_text=Q24, person_ids=[COY], channels=["SMS"]),
+                P(quoted_text=Q24, person_ids=[COY]),
                 "pass",
-                "Outgoing on Item 2.",
+                "A text, outgoing on Item 2 and incoming on Item 1.",
             ),
             A(
                 "record_time",
                 P(
                     quoted_text=Q24,
                     person_ids=[COY, VAR],
-                    channels=["SMS"],
                     window=day(
                         "2025-03-15",
                         "Two days after the KITTIWAKE THEFT (Saturday, March 15, 2025)",
@@ -2001,7 +2032,6 @@ SHEET: tuple[ClaimSpec, ...] = (
                 P(
                     quoted_text=Q24,
                     person_ids=[COY, VAR],
-                    channels=["SMS"],
                     window=day(
                         "2025-03-15",
                         "Two days after the KITTIWAKE THEFT (Saturday, March 15, 2025)",
@@ -2296,7 +2326,8 @@ SHEET: tuple[ClaimSpec, ...] = (
         (A("role", P(person_ids=[COY, PEL]), None, "That COYLE recruited PELLOQUIN."),),
         (
             "Role only: no check tests recruitment. PELLOQUIN offered himself to VARLOW (Feb 14); "
-            "COYLE's request for a driver went to Item 2's 'Duke', who said no.",
+            "COYLE's request to pull her skiff trailer went to Item 2's 'Duke' (+12535550151), "
+            "who agreed.",
         ),
     ),
     ClaimSpec(
@@ -2312,8 +2343,9 @@ SHEET: tuple[ClaimSpec, ...] = (
                 "role",
                 P(person_ids=[VAR, PEL]),
                 None,
-                "That VARLOW put him in charge of the keys: his instruction, 'got it, nobody "
-                "else'.",
+                "That VARLOW put him in charge of the trailer keys: 'left the trailer at ur "
+                "place. hitch lock and trailer keys are in ur mailbox' (7:12 p.m.), his "
+                "instruction, 'got it, nobody else' (Item 3).",
             ),
         ),
     ),
@@ -2566,11 +2598,13 @@ ALIAS_IN_QUOTES: dict[str, str] = {
     "other number: Item 1's 'Duke' holds PELLOQUIN's own +13605550138; the claim's "
     "+13605550192 is saved as 'Duke work'.",
     "C09": 'SKIP matches the quoted Telegram name "Skip" and points to VARLOW. Wrong: on Item 3, '
-    "Telegram 'Skip' is Skip Tennant, user id 8820484. (\"Em V\" matches no alias.)",
+    "Telegram 'Skip' is another man, user id 8820484 (also 'Skip', +13605550184). (\"Em V\" "
+    "matches no alias.)",
     "C12": 'DUKE matches the quoted sender name "Duke" and points to PELLOQUIN. Wrong: on Item 2, '
-    "'Duke' is Duke Marchetti, +12535550151. The claim's own 'the HAULER' is PELLOQUIN, rightly.",
+    "'Duke' is +12535550151, a mechanic by his own texts. The claim's own 'the HAULER' is "
+    "PELLOQUIN, rightly.",
     "C24": 'DUKE matches "duke" in the quote "duke wants out" and points to PELLOQUIN. Not '
-    "fixed: Item 2 also saves Duke Marchetti as 'Duke' (+12535550151), and the conversation "
+    "fixed: Item 2 also saves another number as 'Duke' (+12535550151), and the conversation "
     "does not say which Duke is meant. The claim's own 'the HAULER' is PELLOQUIN.",
 }
 
@@ -2578,7 +2612,7 @@ ALIAS_IN_QUOTES: dict[str, str] = {
 # reader reads the draft.
 FIRST_DRAFT_VERDICT: dict[str, str] = {}
 
-SECOND_READ_DATE = ""
+SECOND_READ_DATE = "2026-11-03"
 
 
 @dataclass(frozen=True)
@@ -2591,4 +2625,101 @@ class Finding:
 
 
 # The second blind read's findings, one line each, once a second reader has read the draft.
-SECOND_READ: tuple[Finding, ...] = ()
+SECOND_READ: tuple[Finding, ...] = (
+    Finding(
+        "R1",
+        ("C40", "C02"),
+        "wrong verdict",
+        "fixed",
+        "Agreed: as drafted no record fixed 'trailer', and paragraph 2 made the trailer his own. "
+        "The data changed, not the verdict: the trailer is now VARLOW's (paragraph 2; his offer "
+        "'if u ever need a driver to pull ur trailer im around'), the WhatsApp thread on Item 3 "
+        "now opens with 'left the trailer at ur place. hitch lock and trailer keys are in ur "
+        "mailbox' eight minutes before the quote, the quote reads 'nobody else tows it', and the "
+        "core row says trailer keys. C02's text is now about the boathouse key, so no record "
+        "points the keys elsewhere. Supported, now fixed by the records.",
+    ),
+    Finding(
+        "R2",
+        ("C39",),
+        "weak",
+        "fixed",
+        "Agreed: the decoy said no, so the described trap did not support. Item 2's 'Duke' now "
+        "answers her 'need someone with a truck to pull my skiff trailer to the ramp sat, u in?' "
+        "with 'sure, sat at 9', so taking him for PELLOQUIN does find a yes. Hazard and gap "
+        "rewritten. Unproven unchanged.",
+    ),
+    Finding(
+        "R3",
+        ("C12", "C24", "C37", "C43", "C35", "C45", "C03"),
+        "weak",
+        "fixed",
+        "Agreed: three of his texts read like an insider's. Item 2's 'Duke' (+12535550151) is "
+        "now plainly her mechanic: he opens with 'this is duke at marchetti marine. ur skiff is "
+        "in bay 2', quotes a 'skiff rebuild quote: 1900 for the big one, 700 for the kicker, "
+        "parts extra', wants out of 'the boat show booth', and sets her own 8 a.m. Thursday at "
+        "the fuel dock for the skiff. No text of his touches the scheme's prices, plans or "
+        "times. Verdicts unchanged: C12 contradicted, C24 unproven, C37 and C43 supported.",
+    ),
+    Finding(
+        "R4",
+        ("C05",),
+        "sheet",
+        "fixed",
+        "Agreed: the key now cites 0163's 'this is the other number' (Item 3, Feb 20) and "
+        "VARLOW's 'use the other number' (Mar 19, Items 1 and 3), and the authorship note says "
+        "Item 3 saves +13605550184 as 'Skip' beside 0163 as 'Skip 2', so 'its skip' is not "
+        "relied on. Supported unchanged.",
+    ),
+    Finding(
+        "R5",
+        ("C09", "C12", "C24", "C35", "C39", "C45"),
+        "sheet",
+        "fixed",
+        "Agreed: the sheet now says plainly that SKIP and DUKE equal the first names of two "
+        "people who own no phone, on purpose (the same-name hazard), as a departure from the "
+        "brief's naming rule, and lists it under What to decide.",
+    ),
+    Finding(
+        "R6",
+        ("C47",),
+        "cosmetic",
+        "kept",
+        "No change: the expert action that enters number names accepts any id an account in the "
+        "case holds, so a Telegram user id is a valid number name.",
+    ),
+    Finding(
+        "R7",
+        ("C03", "C09", "C12", "C24", "C35", "C37", "C39", "C41", "C43", "C44", "C45"),
+        "cosmetic",
+        "fixed",
+        "Agreed: rationales, hazards and the alias notes now name decoys only by the contact "
+        "name, number or id a report shows, or by words in their own texts.",
+    ),
+    Finding(
+        "R8",
+        ("C23", "C24"),
+        "sheet",
+        "fixed",
+        "Agreed: the claims name no app, so their rows no longer set a channel. C23 keeps the "
+        "SPARE LINE's account, C24 the two people.",
+    ),
+    Finding(
+        "R9",
+        ("C23",),
+        "weak",
+        "fixed",
+        "Agreed: the exchange now reads 'ya both 150 outboards, locked up', and the key and the "
+        "meaning row cite the Feb 24 'ya 4 outboards, two are 150s' for the horsepower.",
+    ),
+    Finding(
+        "R10",
+        ("C34",),
+        "weak",
+        "kept",
+        "Kept: paragraph 5 itself puts the clock change in the TRANSFER ('the night the clocks "
+        "went forward, at 2 a.m.'), signed case05 C34 has the same construction, and the sheet "
+        "lists the window. A clock-time wording would have to end on 2 a.m., a minute that "
+        "never existed that night, which is a worse trap than the one it removes.",
+    ),
+)

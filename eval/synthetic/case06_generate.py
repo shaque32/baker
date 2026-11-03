@@ -756,14 +756,27 @@ def non_convention_windows() -> list[str]:
     return out
 
 
+# The two non-owners whose first names equal an alias (the same-name hazard), as the reports
+# show them.
+SKIP_DECOY = "Item 3's 'Skip' (+13605550184, Telegram user id 8820484)"
+DUKE_DECOY = "Item 2's 'Duke' (+12535550151)"
+
+
 def defined_names() -> list[str]:
     """What case.json enters at case setup, as the affidavit defines it."""
     out = [
         "## Names and events the affidavit defines (case.json)",
         "",
         "The eval's case setup enters these as an expert would. Each is defined once in the",
-        "affidavit, and no name equals another or a phone owner's name, with or without 'the'.",
-        "The BROKER is a person who owns no seized phone, so it is in no list.",
+        "affidavit, and no name equals another defined name or a phone owner's name, with or",
+        "without 'the'. The BROKER is a person who owns no seized phone, so it is in no list.",
+        "",
+        "**A departure from the brief's naming rule, on purpose.** The brief says no alias",
+        "equals another person's name. Two do: the aliases SKIP (VARLOW) and DUKE (PELLOQUIN)",
+        f"equal the first names of two people who own no phone, {SKIP_DECOY} and {DUKE_DECOY}.",
+        "That is the same-name hazard (C09, C12, C24, C35, C39 and C45), as real affidavits",
+        "define nicknames that other people also go by. Keeping the rule instead means new",
+        "decoys for those six claims.",
         "",
         "| Kind | For | Names |",
         "|---|---|---|",
@@ -828,7 +841,10 @@ def render_signing_sheet(gold: list[GoldClaim]) -> str:
         "   check exists, so only expert review covers that row.",
         "4. Are the six windows that follow no convention (listed below) the ones a careful",
         "   examiner would give?",
-        "5. Do case.json's defined names and events match the affidavit (listed below)?",
+        "5. Do case.json's defined names and events match the affidavit (listed below)? Do you",
+        "   accept that the aliases SKIP and DUKE equal the first names of two people who own no",
+        "   phone (Item 3's 'Skip', Item 2's 'Duke'), on purpose as the same-name hazard, a",
+        "   departure from the brief's naming rule?",
         "",
         *non_convention_windows(),
         "",

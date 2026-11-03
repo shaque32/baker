@@ -35,7 +35,10 @@ What to decide:
    check exists, so only expert review covers that row.
 4. Are the six windows that follow no convention (listed below) the ones a careful
    examiner would give?
-5. Do case.json's defined names and events match the affidavit (listed below)?
+5. Do case.json's defined names and events match the affidavit (listed below)? Do you
+   accept that the aliases SKIP and DUKE equal the first names of two people who own no
+   phone (Item 3's 'Skip', Item 2's 'Duke'), on purpose as the same-name hazard, a
+   departure from the brief's naming rule?
 
 ## Windows that follow no convention
 
@@ -58,8 +61,15 @@ minute) on the night the TRANSFER began, March 8 into 9.
 ## Names and events the affidavit defines (case.json)
 
 The eval's case setup enters these as an expert would. Each is defined once in the
-affidavit, and no name equals another or a phone owner's name, with or without 'the'.
-The BROKER is a person who owns no seized phone, so it is in no list.
+affidavit, and no name equals another defined name or a phone owner's name, with or
+without 'the'. The BROKER is a person who owns no seized phone, so it is in no list.
+
+**A departure from the brief's naming rule, on purpose.** The brief says no alias
+equals another person's name. Two do: the aliases SKIP (VARLOW) and DUKE (PELLOQUIN)
+equal the first names of two people who own no phone, Item 3's 'Skip' (+13605550184, Telegram user id 8820484) and Item 2's 'Duke' (+12535550151).
+That is the same-name hazard (C09, C12, C24, C35, C39 and C45), as real affidavits
+define nicknames that other people also go by. Keeping the rule instead means new
+decoys for those six claims.
 
 | Kind | For | Names |
 |---|---|---|
@@ -78,11 +88,24 @@ The BROKER is a person who owns no seized phone, so it is in no list.
 | event | 2025-03-17 to 2025-03-19 | SURVEILLANCE: "deputies watched COYLE's boathouse on Halyard Point" |
 | event | 2025-03-25 | RECOVERY: "deputies opened unit 17 at Port Wendle Mini Storage and recovered three of the outboard motors" |
 
-## Second read (pending)
+## Second read (2026-11-03)
 
-No second read yet. Before signing, a second, blind reviewer reads the draft key and
-sheet against rules 0.4.0 and the three reports; their findings go here, one line
-each: fixed (the key, the sheet or the wording changed), or kept and why.
+A second, blind reviewer read the draft key and sheet against rules 0.4.0 and the three
+reports. Read this before signing. One line per finding: fixed (the key, the sheet or
+the wording changed), or kept and why. Verdicts changed: none.
+
+| Finding | Claims | Graded | Outcome | Answer |
+|---|---|---|---|---|
+| R1 | C40, C02 | wrong verdict | fixed | Agreed: as drafted no record fixed 'trailer', and paragraph 2 made the trailer his own. The data changed, not the verdict: the trailer is now VARLOW's (paragraph 2; his offer 'if u ever need a driver to pull ur trailer im around'), the WhatsApp thread on Item 3 now opens with 'left the trailer at ur place. hitch lock and trailer keys are in ur mailbox' eight minutes before the quote, the quote reads 'nobody else tows it', and the core row says trailer keys. C02's text is now about the boathouse key, so no record points the keys elsewhere. Supported, now fixed by the records. |
+| R2 | C39 | weak | fixed | Agreed: the decoy said no, so the described trap did not support. Item 2's 'Duke' now answers her 'need someone with a truck to pull my skiff trailer to the ramp sat, u in?' with 'sure, sat at 9', so taking him for PELLOQUIN does find a yes. Hazard and gap rewritten. Unproven unchanged. |
+| R3 | C12, C24, C37, C43, C35, C45, C03 | weak | fixed | Agreed: three of his texts read like an insider's. Item 2's 'Duke' (+12535550151) is now plainly her mechanic: he opens with 'this is duke at marchetti marine. ur skiff is in bay 2', quotes a 'skiff rebuild quote: 1900 for the big one, 700 for the kicker, parts extra', wants out of 'the boat show booth', and sets her own 8 a.m. Thursday at the fuel dock for the skiff. No text of his touches the scheme's prices, plans or times. Verdicts unchanged: C12 contradicted, C24 unproven, C37 and C43 supported. |
+| R4 | C05 | sheet | fixed | Agreed: the key now cites 0163's 'this is the other number' (Item 3, Feb 20) and VARLOW's 'use the other number' (Mar 19, Items 1 and 3), and the authorship note says Item 3 saves +13605550184 as 'Skip' beside 0163 as 'Skip 2', so 'its skip' is not relied on. Supported unchanged. |
+| R5 | C09, C12, C24, C35, C39, C45 | sheet | fixed | Agreed: the sheet now says plainly that SKIP and DUKE equal the first names of two people who own no phone, on purpose (the same-name hazard), as a departure from the brief's naming rule, and lists it under What to decide. |
+| R6 | C47 | cosmetic | kept | No change: the expert action that enters number names accepts any id an account in the case holds, so a Telegram user id is a valid number name. |
+| R7 | C03, C09, C12, C24, C35, C37, C39, C41, C43, C44, C45 | cosmetic | fixed | Agreed: rationales, hazards and the alias notes now name decoys only by the contact name, number or id a report shows, or by words in their own texts. |
+| R8 | C23, C24 | sheet | fixed | Agreed: the claims name no app, so their rows no longer set a channel. C23 keeps the SPARE LINE's account, C24 the two people. |
+| R9 | C23 | weak | fixed | Agreed: the exchange now reads 'ya both 150 outboards, locked up', and the key and the meaning row cite the Feb 24 'ya 4 outboards, two are 150s' for the horsepower. |
+| R10 | C34 | weak | kept | Kept: paragraph 5 itself puts the clock change in the TRANSFER ('the night the clocks went forward, at 2 a.m.'), signed case05 C34 has the same construction, and the sheet lists the window. A clock-time wording would have to end on 2 a.m., a minute that never existed that night, which is a worse trap than the one it removes. |
 
 ## Aliases inside quotes
 
@@ -91,9 +114,9 @@ these names inside quotes. The wording stays: the match is real product behaviou
 Check where each one points.
 
 - C08: DUKE matches the quoted contact name "Duke" and points to PELLOQUIN. Right person, other number: Item 1's 'Duke' holds PELLOQUIN's own +13605550138; the claim's +13605550192 is saved as 'Duke work'.
-- C09: SKIP matches the quoted Telegram name "Skip" and points to VARLOW. Wrong: on Item 3, Telegram 'Skip' is Skip Tennant, user id 8820484. ("Em V" matches no alias.)
-- C12: DUKE matches the quoted sender name "Duke" and points to PELLOQUIN. Wrong: on Item 2, 'Duke' is Duke Marchetti, +12535550151. The claim's own 'the HAULER' is PELLOQUIN, rightly.
-- C24: DUKE matches "duke" in the quote "duke wants out" and points to PELLOQUIN. Not fixed: Item 2 also saves Duke Marchetti as 'Duke' (+12535550151), and the conversation does not say which Duke is meant. The claim's own 'the HAULER' is PELLOQUIN.
+- C09: SKIP matches the quoted Telegram name "Skip" and points to VARLOW. Wrong: on Item 3, Telegram 'Skip' is another man, user id 8820484 (also 'Skip', +13605550184). ("Em V" matches no alias.)
+- C12: DUKE matches the quoted sender name "Duke" and points to PELLOQUIN. Wrong: on Item 2, 'Duke' is +12535550151, a mechanic by his own texts. The claim's own 'the HAULER' is PELLOQUIN, rightly.
+- C24: DUKE matches "duke" in the quote "duke wants out" and points to PELLOQUIN. Not fixed: Item 2 also saves another number as 'Duke' (+12535550151), and the conversation does not say which Duke is meant. The claim's own 'the HAULER' is PELLOQUIN.
 
 ## Counts
 
@@ -169,7 +192,7 @@ covers them:
 | C06 | communication | affidavit | second_phone | **supported** | Item 3 (the KYOCERA) received it at 3:41 a.m. PDT Mar 9; Item 2 lacks it. | [ ] |
 | C07 | identity | plain | contact_name | **supported** | Item 1's 'Lars' holds +12535550148; Item 3's 'Lars' is another number. | [ ] |
 | C08 | identity | plain | second_number | **unproven** | Item 1's 'Duke' holds 0138; 0192 is saved as 'Duke work'. Not shown (contact lists edit). | [ ] |
-| C09 | identity | plain | same_name | **contradicted** | Two Telegram ids: 'Skip' 8820484 (Skip Tennant), 'Em V' 8820411. | [ ] |
+| C09 | identity | plain | same_name | **contradicted** | Two Telegram ids: 'Skip' 8820484 (another man), 'Em V' 8820411. | [ ] |
 | C10 | identity | affidavit | contact_name | **supported** | Item 2's 'Captain' holds +13605550163; she wrote 'saved u as captain lol'. | [ ] |
 | C11 | identity | affidavit | second_number | **supported** | One Telegram id, 8820422 (Item 2's own); Item 3 shows 'Ren C' to Mar 11, 'harborlights' from Mar 12. | [ ] |
 | C12 | identity | affidavit | contact_name | **contradicted** | Item 2's 'Duke' (+12535550151) sent it, not PELLOQUIN's +13605550138. | [ ] |
@@ -183,8 +206,8 @@ covers them:
 | C20 | content_meaning | plain | similar_quote | **unproven** | Observed; 'the sleeping bags' is not fixed (and she wrote the same words to her mother). | [ ] |
 | C21 | content_meaning | plain | near_window | **contradicted** | Sent 6:05 p.m. PDT Mar 18; Item 1 prints Mar 19 (UTC+0). | [ ] |
 | C22 | content_meaning | affidavit | similar_quote | **supported** | Mar 4 morning; 'ya the soup cans. all 6 fuel tanks' the evening before fixes it. | [ ] |
-| C23 | content_meaning | affidavit | second_number | **supported** | 'the 150s?' / 'ya both 150s, locked up' fix it. | [ ] |
-| C24 | content_meaning | affidavit | same_name | **unproven** | Observed; which Duke is not fixed (Item 2's 'Duke' wanted out that morning). | [ ] |
+| C23 | content_meaning | affidavit | second_number | **supported** | 'the 150s?' / 'ya both 150 outboards, locked up' fix it. | [ ] |
+| C24 | content_meaning | affidavit | same_name | **unproven** | Observed; which Duke is not fixed (Item 2's 'Duke' wanted out of a boat show booth that morning). | [ ] |
 | C25 | count | plain | near_window | **supported** | 8 on Pacific dates; printed (UTC) dates give 9. | [ ] |
 | C26 | count | plain | second_phone | **supported** | 6 on Item 3; Item 2 has 7. | [ ] |
 | C27 | count | plain | near_window | **contradicted** | 6 on Mar 12 Pacific; Item 3's printed Mar 12 gives 4. | [ ] |
@@ -199,11 +222,11 @@ covers them:
 | C36 | absence | affidavit | second_phone | **unproven** | None on Item 1 (curated); Item 3 holds a Mar 28 WhatsApp. | [ ] |
 | C37 | role | plain | similar_quote | **supported** | He asked the price, COYLE set it, he took it. | [ ] |
 | C38 | role | plain | near_window | **contradicted** | Sent 6:15 p.m. PDT Mar 21; Item 1 prints Mar 22 (UTC+0). | [ ] |
-| C39 | role | plain | same_name | **unproven** | PELLOQUIN offered himself to VARLOW; COYLE asked Item 2's 'Duke'. | [ ] |
-| C40 | role | affidavit | second_phone | **supported** | His instruction and 'got it, nobody else', on Item 3 only. | [ ] |
+| C39 | role | plain | same_name | **unproven** | PELLOQUIN offered himself to VARLOW; COYLE asked Item 2's 'Duke', who agreed. | [ ] |
+| C40 | role | affidavit | second_phone | **supported** | 'trailer keys are in ur mailbox', his instruction and 'got it, nobody else', on Item 3 only. | [ ] |
 | C41 | role | affidavit | similar_quote | **supported** | 'ill watch the road', 'patrol car just passed, wait', 'clear, go' on Signal. | [ ] |
 | C42 | role | affidavit | contact_name | **unproven** | Sent to Item 3's 'Lars' (his cousin), not the BROKER; no sale shown. | [ ] |
-| C43 | event | plain | similar_quote | **supported** | Proposal and 'ok' on Mar 18; Thursday is Mar 20. | [ ] |
+| C43 | event | plain | similar_quote | **supported** | Proposal and 'ok' on Mar 18; Thursday is Mar 20. Item 2's 'Duke' set her an 8 a.m. Thursday at the fuel dock. | [ ] |
 | C44 | event | plain | same_name | **supported** | Request and 'ok ill clear it friday' on Mar 4. | [ ] |
 | C45 | event | plain | same_name | **unproven** | Only a 45 s call; the ten-minute call is with Item 2's 'Duke'. | [ ] |
 | C46 | event | affidavit | second_phone | **supported** | 4:47 a.m. PDT Mar 9, on Item 3 only. | [ ] |
@@ -219,15 +242,15 @@ One table for the whole sheet; the claim texts are in `affidavit_draft.md` and
 |---|---|---|---|---|---|---|
 | C01 | `sender` | yes | quoted_text: check the dinghy dock after 9, its quiet<br>person_ids: person:varlow<br>channels: SMS | pass | Outgoing on Item 1. | [ ] |
 |  | `record_time` | yes | quoted_text: check the dinghy dock after 9, its quiet<br>person_ids: person:varlow, person:coyle<br>channels: SMS<br>window: "On February 19, 2025" (America/Los_Angeles, local wall clock) | pass | 8:15 p.m. PST Feb 19; Item 1 prints 2/20 4:15:40 AM(UTC+0). |  |
-| C02 | `sender` | yes | quoted_text: hitch key is on the nail in the shed<br>person_ids: person:coyle<br>channels: WhatsApp | pass | Outgoing on Item 2. | [ ] |
-|  | `record_time` | yes | quoted_text: hitch key is on the nail in the shed<br>person_ids: person:coyle, person:pelloquin<br>channels: WhatsApp<br>window: "On March 4, 2025" (America/Los_Angeles, local wall clock) | pass | 4:10 p.m. PST Mar 4. |  |
+| C02 | `sender` | yes | quoted_text: boathouse key is on the nail in the shed<br>person_ids: person:coyle<br>channels: WhatsApp | pass | Outgoing on Item 2. | [ ] |
+|  | `record_time` | yes | quoted_text: boathouse key is on the nail in the shed<br>person_ids: person:coyle, person:pelloquin<br>channels: WhatsApp<br>window: "On March 4, 2025" (America/Los_Angeles, local wall clock) | pass | 4:10 p.m. PST Mar 4. |  |
 | C03 | `sender` | yes | quoted_text: the white cowls are off, come see tonight<br>person_ids: person:coyle<br>channels: SMS | fail | Both copies came from VARLOW's +13605550114, not from COYLE. | [ ] |
 |  | `record_time` | yes | quoted_text: the white cowls are off, come see tonight<br>person_ids: person:varlow, person:coyle<br>channels: SMS<br>window: "On March 6, 2025" (America/Los_Angeles, local wall clock) | pass | 11:45 a.m. PST Mar 6, between their numbers. |  |
 | C04 | `sender` | yes | quoted_text: the motors stay wrapped till the heat dies down<br>person_ids: person:varlow<br>channels: SMS | inconclusive | No message with these words on any phone. | [ ] |
 |  | `record_time` | yes | quoted_text: the motors stay wrapped till the heat dies down<br>person_ids: person:varlow, person:pelloquin<br>channels: SMS<br>window: "The day after the TRANSFER (Monday, March 10, 2025)" (America/Los_Angeles, local wall clock) | inconclusive | The TRANSFER ended on March 9, so the day after is March 10. Not found. |  |
 | C05 | `sender` | yes | quoted_text: bring the long straps and the dolly<br>account_ids: acct:item3:SMS:+13605550163<br>channels: SMS | pass | Incoming on Item 3 from the SPARE LINE (paragraph 3). | [ ] |
 |  | `record_time` | yes | quoted_text: bring the long straps and the dolly<br>person_ids: person:pelloquin<br>account_ids: acct:item3:SMS:+13605550163<br>channels: SMS<br>window: "Two days before the HARBOR THEFT (Wednesday, February 26, 2025)" (America/Los_Angeles, local wall clock) | pass | The HARBOR THEFT began on February 28. 7:15 p.m. PST Feb 26. |  |
-|  | `authorship` | yes | quoted_text: bring the long straps and the dolly<br>person_ids: person:varlow<br>account_ids: acct:item3:SMS:+13605550163<br>channels: SMS | - | That VARLOW used the SPARE LINE: paragraph 3, and his own number's 'new number for boat stuff is 360 555 0163. this one stays personal' to the HAULER (Items 1 and 3). Core: the expert decides it. |  |
+|  | `authorship` | yes | quoted_text: bring the long straps and the dolly<br>person_ids: person:varlow<br>account_ids: acct:item3:SMS:+13605550163<br>channels: SMS | - | That VARLOW used the SPARE LINE: paragraph 3; his own number's 'new number for boat stuff is 360 555 0163. this one stays personal' to the HAULER (Items 1 and 3, Feb 20); 0163's 'this is the other number' to him twenty minutes later (Item 3); his own number's 'use the other number' (Mar 19, Items 1 and 3). Note: Item 3 saves 0163 as 'Skip 2' and another number, +13605550184, as 'Skip', so 0163's 'its skip' to COYLE does not tie it to VARLOW by itself. Core: the expert decides it. |  |
 | C06 | `sender` | yes | quoted_text: leave the trailer at the barn, not the boathouse<br>person_ids: person:coyle<br>channels: Telegram | pass | CC-2 is COYLE; her Telegram (8820422) sent it. | [ ] |
 |  | `record_time` | yes | quoted_text: leave the trailer at the barn, not the boathouse<br>person_ids: person:coyle, person:pelloquin<br>device_ids: dev:item3<br>channels: Telegram<br>window: "At about 3:40 a.m. on March 9, 2025" (America/Los_Angeles, local wall clock) | pass | The KYOCERA is Item 3 (paragraph 2). 3:41 a.m. PDT Mar 9 (printed 2:41:30 AM(UTC-8)). |  |
 | C07 | `contact_entry` | yes | device_ids: dev:item1<br>quoted_text: Lars<br>account_ids: acct:item1:SMS:+12535550148 | pass | Item 1's 'Lars' holds +12535550148. | [ ] |
@@ -258,12 +281,12 @@ One table for the whole sheet; the claim texts are in `affidavit_draft.md` and
 | C22 | `sender` | yes | quoted_text: bring the soup cans to the boathouse<br>person_ids: person:varlow<br>channels: Telegram | pass | SKIP is VARLOW; outgoing on Item 1. | [ ] |
 |  | `record_time` | yes | quoted_text: bring the soup cans to the boathouse<br>person_ids: person:varlow, person:pelloquin<br>channels: Telegram<br>window: "The next morning (March 4, 2025, 5 a.m. to noon)" (America/Los_Angeles, local wall clock) | pass | Examiner's window: 'The next morning' after March 3 (the sentence before, C20): March 4, morning read as 5 a.m. to noon. 9:20 a.m. PST Mar 4. |  |
 |  | `meaning` | yes | quoted_text: bring the soup cans to the boathouse<br>person_ids: person:varlow, person:pelloquin<br>channels: Telegram<br>window: "The next morning (March 4, 2025, 5 a.m. to noon)" (America/Los_Angeles, local wall clock) | - | 'ya the soup cans. all 6 fuel tanks' (Mar 3) and 'all 6 tanks ya' in the thread. Examiner's window: 'The next morning' after March 3 (the sentence before, C20): March 4, morning read as 5 a.m. to noon. |  |
-| C23 | `sender` | yes | quoted_text: the twins are in 17<br>account_ids: acct:item2:SMS:+13605550163<br>channels: SMS | pass | Incoming on Item 2 from the SPARE LINE. | [ ] |
-|  | `record_time` | yes | quoted_text: the twins are in 17<br>person_ids: person:coyle<br>account_ids: acct:item2:SMS:+13605550163<br>channels: SMS<br>window: "Three days before the RECOVERY (Saturday, March 22, 2025)" (America/Los_Angeles, local wall clock) | pass | The RECOVERY was March 25. 11:40 a.m. PDT Mar 22. |  |
-|  | `meaning` | yes | quoted_text: the twins are in 17<br>person_ids: person:coyle<br>account_ids: acct:item2:SMS:+13605550163<br>channels: SMS<br>window: "Three days before the RECOVERY (Saturday, March 22, 2025)" (America/Los_Angeles, local wall clock) | - | 'the 150s?' / 'ya both 150s, locked up' in the same exchange. |  |
-| C24 | `sender` | yes | quoted_text: duke wants out<br>person_ids: person:coyle<br>channels: SMS | pass | Outgoing on Item 2. | [ ] |
-|  | `record_time` | yes | quoted_text: duke wants out<br>person_ids: person:coyle, person:varlow<br>channels: SMS<br>window: "Two days after the KITTIWAKE THEFT (Saturday, March 15, 2025)" (America/Los_Angeles, local wall clock) | pass | The KITTIWAKE THEFT was March 13. 7:10 p.m. PDT Mar 15 (Item 1 prints Mar 16). |  |
-|  | `meaning` | yes | quoted_text: duke wants out<br>person_ids: person:coyle, person:varlow<br>channels: SMS<br>window: "Two days after the KITTIWAKE THEFT (Saturday, March 15, 2025)" (America/Los_Angeles, local wall clock) | - | Not fixed: which Duke. |  |
+| C23 | `sender` | yes | quoted_text: the twins are in 17<br>account_ids: acct:item2:SMS:+13605550163 | pass | Incoming on Item 2 from the SPARE LINE. | [ ] |
+|  | `record_time` | yes | quoted_text: the twins are in 17<br>person_ids: person:coyle<br>account_ids: acct:item2:SMS:+13605550163<br>window: "Three days before the RECOVERY (Saturday, March 22, 2025)" (America/Los_Angeles, local wall clock) | pass | The RECOVERY was March 25. 11:40 a.m. PDT Mar 22. |  |
+|  | `meaning` | yes | quoted_text: the twins are in 17<br>person_ids: person:coyle<br>account_ids: acct:item2:SMS:+13605550163<br>window: "Three days before the RECOVERY (Saturday, March 22, 2025)" (America/Los_Angeles, local wall clock) | - | 'the 150s?' / 'ya both 150 outboards, locked up' in the same exchange; '150' is an outboard's horsepower, as in the Feb 24 thread ('ya 4 outboards, two are 150s'). |  |
+| C24 | `sender` | yes | quoted_text: duke wants out<br>person_ids: person:coyle | pass | A text, outgoing on Item 2 and incoming on Item 1. | [ ] |
+|  | `record_time` | yes | quoted_text: duke wants out<br>person_ids: person:coyle, person:varlow<br>window: "Two days after the KITTIWAKE THEFT (Saturday, March 15, 2025)" (America/Los_Angeles, local wall clock) | pass | The KITTIWAKE THEFT was March 13. 7:10 p.m. PDT Mar 15 (Item 1 prints Mar 16). |  |
+|  | `meaning` | yes | quoted_text: duke wants out<br>person_ids: person:coyle, person:varlow<br>window: "Two days after the KITTIWAKE THEFT (Saturday, March 15, 2025)" (America/Los_Angeles, local wall clock) | - | Not fixed: which Duke. |  |
 | C25 | `message_count` | yes | device_ids: dev:item1<br>person_ids: person:varlow, person:coyle<br>channels: Signal<br>expected_count: 8<br>count_op: eq<br>each_way: True<br>window: "Between February 17 and February 23, 2025" (America/Los_Angeles, local wall clock) | pass | Eight on Pacific dates; printed (UTC) dates give nine. | [ ] |
 | C26 | `message_count` | yes | device_ids: dev:item3<br>person_ids: person:pelloquin, person:coyle<br>channels: WhatsApp<br>expected_count: 6<br>count_op: eq<br>each_way: True<br>window: "From March 10 through March 14, 2025" (America/Los_Angeles, local wall clock) | pass | Six on Item 3; Item 2 holds seven. | [ ] |
 | C27 | `message_count` | yes | device_ids: dev:item3<br>person_ids: person:pelloquin, person:varlow<br>channels: SMS<br>expected_count: 4<br>count_op: eq<br>each_way: True<br>window: "On March 12, 2025" (America/Los_Angeles, local wall clock) | fail | Six on the Pacific day; Item 3's printed Mar 12 holds four. | [ ] |
@@ -283,8 +306,8 @@ One table for the whole sheet; the claim texts are in `affidavit_draft.md` and
 |  | `record_time` | yes | quoted_text: put them in 17, not the boathouse<br>person_ids: person:varlow, person:coyle<br>channels: SMS<br>window: "On March 22, 2025" (America/Los_Angeles, local wall clock) | fail | Sent 6:15 p.m. PDT Mar 21; Item 1 prints 3/22 1:15:10 AM(UTC+0). |  |
 |  | `role` | yes | person_ids: person:varlow | - | That VARLOW decided where they were stored. |  |
 | C39 | `role` | yes | person_ids: person:coyle, person:pelloquin | - | That COYLE recruited PELLOQUIN. | [ ] |
-| C40 | `sender` | yes | quoted_text: keys stay with u, nobody else drives it<br>person_ids: person:varlow<br>channels: WhatsApp | pass | CC-1 is VARLOW; his WhatsApp sent it (on Item 3 only). | [ ] |
-|  | `role` | yes | person_ids: person:varlow, person:pelloquin | - | That VARLOW put him in charge of the keys: his instruction, 'got it, nobody else'. |  |
+| C40 | `sender` | yes | quoted_text: keys stay with u, nobody else tows it<br>person_ids: person:varlow<br>channels: WhatsApp | pass | CC-1 is VARLOW; his WhatsApp sent it (on Item 3 only). | [ ] |
+|  | `role` | yes | person_ids: person:varlow, person:pelloquin | - | That VARLOW put him in charge of the trailer keys: 'left the trailer at ur place. hitch lock and trailer keys are in ur mailbox' (7:12 p.m.), his instruction, 'got it, nobody else' (Item 3). |  |
 | C41 | `sender` | yes | quoted_text: patrol car just passed<br>person_ids: person:coyle<br>channels: Signal | pass | Outgoing on Item 2. | [ ] |
 |  | `record_time` | yes | quoted_text: patrol car just passed<br>person_ids: person:coyle, person:varlow<br>channels: Signal<br>window: "On the night of the KITTIWAKE THEFT (6 p.m. on March 13 to 6 a.m. on March 14, 2025)" (America/Los_Angeles, local wall clock) | pass | Examiner's window: 'The night of' the KITTIWAKE THEFT (Thursday, March 13): 6 p.m. on March 13 to 6 a.m. on March 14. 11:09 p.m. PDT Mar 13. |  |
 |  | `role` | yes | person_ids: person:coyle | - | That COYLE kept lookout: her thread that night. |  |
@@ -312,7 +335,7 @@ Gaps:
 - C08: Unproven, not contradicted: the contact check never fails on a missing entry (contact lists are edited, and a curated report may leave entries out), so Item 1's 'Duke' holding +13605550138 does not rule out an entry 'Duke' with +13605550192.
 - C11: same_account passes because the account's display name is the first name Item 3 shows ('Ren C'), and the thread title and later rows' sender cells show 'harborlights'. No row tests when the name changed: 'until March 12' rests on the printed rows (last 'Ren C' 8:41 p.m. Mar 11, first 'harborlights' 4:45 p.m. Mar 12).
 - C12: That CC-2 received it is shown by the time row's phone (Item 2), not by a party.
-- C39: Role only: no check tests recruitment. PELLOQUIN offered himself to VARLOW (Feb 14); COYLE's request for a driver went to Item 2's 'Duke', who said no.
+- C39: Role only: no check tests recruitment. PELLOQUIN offered himself to VARLOW (Feb 14); COYLE's request to pull her skiff trailer went to Item 2's 'Duke' (+12535550151), who agreed.
 - C43: 'At the fuel dock' and '6 p.m.' are tested only as words inside the quote, which the sender check matches verbatim; whether anyone met there is not tested.
 - C48: The row tests any call between them; the claim says CC-2 placed it, which the one call found (outgoing from her number) also shows.
 

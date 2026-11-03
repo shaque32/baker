@@ -279,7 +279,7 @@ def test_the_design_counts(gold):
         assert wordings == {"plain": 3, "affidavit": 3}, t
     verdicts = Counter(g.gold_verdict.value for g in gold)
     assert verdicts == {"supported": 24, "contradicted": 12, "unproven": 12}
-    assert not key.FIRST_DRAFT_VERDICT and not key.SECOND_READ  # no second read yet
+    assert not key.FIRST_DRAFT_VERDICT  # the second read changed no verdict
     assert sum(c.hazard != "none" for c in key.CLAIMS) >= 24
     used = {c.hazard for c in key.CLAIMS} - {"none"}
     assert used == set(key.HAZARDS) - {"none"}  # every hazard kind is planted somewhere
@@ -287,11 +287,41 @@ def test_the_design_counts(gold):
     assert not [c for c in key.CLAIMS if c.claim_type == "absence" and c.verdict == "supported"]
 
 
-def test_the_second_read_is_pending(built):
+def test_the_second_read_answers_every_finding(built):
+    ids = {c.claim_id for c in key.CLAIMS}
+    assert [f.finding_id for f in key.SECOND_READ] == [f"R{i}" for i in range(1, 11)]
+    for f in key.SECOND_READ:
+        assert f.claims and set(f.claims) <= ids, f.finding_id
+        assert f.outcome in ("fixed", "kept") and f.answer, f.finding_id
     sheet_md = (built / "SIGNING_SHEET.md").read_text(encoding="utf-8")
-    assert "## Second read (pending)" in sheet_md
+    assert f"## Second read ({key.SECOND_READ_DATE})" in sheet_md
+    for f in key.SECOND_READ:
+        assert f"| {f.finding_id} | {', '.join(f.claims)} |" in sheet_md
     answer_key = (built / "ANSWER_KEY_DRAFT.md").read_text(encoding="utf-8")
-    assert "No second read yet; see `SIGNING_SHEET.md`." in answer_key
+    assert f"The second read ({key.SECOND_READ_DATE}) changed no verdict" in answer_key
+
+
+def test_the_sheet_names_the_alias_departure(built, meta):
+    """SKIP and DUKE equal the first names of two people who own no phone, on purpose (the
+    same-name hazard). The signing sheet says so, as a departure from the brief's naming rule."""
+    sheet_md = (built / "SIGNING_SHEET.md").read_text(encoding="utf-8")
+    assert "A departure from the brief's naming rule, on purpose." in sheet_md
+    assert "Item 3's 'Skip' (+13605550184, Telegram user id 8820484)" in sheet_md
+    assert "Item 2's 'Duke' (+12535550151)" in sheet_md
+    aliases = {a for d in meta["devices"] for a in d["aliases"]}
+    assert {"SKIP", "DUKE"} <= aliases
+    # the two same-name people are in the reports' contacts and own no seized phone
+    contacts = {
+        (dev.key, name, num)
+        for dev in story.DEVICES
+        for name, nums in dev.contacts
+        for _, num in nums
+    }
+    assert ("item3", "Skip", "+13605550184") in contacts
+    assert ("item2", "Duke", "+12535550151") in contacts
+    owners = {dev.owner for dev in story.DEVICES}
+    same_name = {story.ACCOUNTS["ten_sms"].person, story.ACCOUNTS["mar_sms"].person}
+    assert same_name.isdisjoint(owners)
 
 
 def test_every_alias_match_inside_a_quote_is_recorded(built, meta):

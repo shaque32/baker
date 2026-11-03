@@ -7,7 +7,7 @@ Every name, number, agency and event in this document is fictional. Generated fr
 
 1. I, Sergeant M. Aldecott of the Brackwater County Marine Theft Unit (a fictional agency), make this affidavit from my training, experience and review of the evidence described below.
 
-2. This affidavit relies on forensic extraction reports for three phones. Item 1 is a Samsung Galaxy Z Flip5 (the "GALAXY") seized from EMMETT VARLOW ("VARLOW" or "CC-1"), who goes by "SKIP". Item 2 is an Apple iPhone 12 mini seized from RENATA COYLE ("COYLE" or "CC-2"). Item 3 is a Kyocera DuraForce Ultra 5G (the "KYOCERA") seized from DUNCAN PELLOQUIN ("PELLOQUIN" or "CC-3"), called "DUKE", who hauled the stolen equipment on his trailer for VARLOW and COYLE (the "HAULER").
+2. This affidavit relies on forensic extraction reports for three phones. Item 1 is a Samsung Galaxy Z Flip5 (the "GALAXY") seized from EMMETT VARLOW ("VARLOW" or "CC-1"), who goes by "SKIP". Item 2 is an Apple iPhone 12 mini seized from RENATA COYLE ("COYLE" or "CC-2"). Item 3 is a Kyocera DuraForce Ultra 5G (the "KYOCERA") seized from DUNCAN PELLOQUIN ("PELLOQUIN" or "CC-3"), called "DUKE", who hauled the stolen equipment on VARLOW's trailer for VARLOW and COYLE (the "HAULER").
 
 3. VARLOW also used a second phone number, +1 (360) 555-0163 (the "SPARE LINE"). PELLOQUIN's employer gave him a work phone number, +1 (360) 555-0192 (the "WORK NUMBER"), used on a phone that was not seized. A buyer of stolen marine equipment, referred to below as the "BROKER", used the number +1 (253) 555-0148 and the Telegram account "kelpwise", user ID 8820450 (the "KELPWISE ACCOUNT").
 
@@ -25,13 +25,13 @@ Every name, number, agency and event in this document is fictional. Generated fr
 
 9. COYLE recruited PELLOQUIN to haul the stolen motors. VARLOW and PELLOQUIN had no contact of any kind on February 18, 2025. On February 19, 2025, VARLOW texted COYLE "check the dinghy dock after 9, its quiet". Between February 17 and February 23, 2025, Item 1 recorded 8 Signal messages exchanged between VARLOW and COYLE.
 
-10. At about 9:10 p.m. on February 21, 2025, VARLOW called PELLOQUIN; the call lasted about four minutes. On February 24, 2025, VARLOW texted COYLE "spotted 4 big fish on the north float"; "big fish" meant outboard motors. Two days before the HARBOR THEFT, CC-1 texted the HAULER from the SPARE LINE: "bring the long straps and the dolly". CC-1 put the HAULER in charge of the trailer keys, telling him on WhatsApp "keys stay with u, nobody else drives it".
+10. At about 9:10 p.m. on February 21, 2025, VARLOW called PELLOQUIN; the call lasted about four minutes. On February 24, 2025, VARLOW texted COYLE "spotted 4 big fish on the north float"; "big fish" meant outboard motors. Two days before the HARBOR THEFT, CC-1 texted the HAULER from the SPARE LINE: "bring the long straps and the dolly". CC-1 put the HAULER in charge of the trailer keys, telling him on WhatsApp "keys stay with u, nobody else tows it".
 
 11. Item 1 contains a contact saved as "Lars" with the number +1 (253) 555-0148. Item 1 contains a contact saved as "Duke" with the number +1 (360) 555-0192. On Item 3, the Telegram names "Skip" and "Em V" belong to one account. CC-2 saved the SPARE LINE in her phone as "Captain". The text message "the lower unit is shot" that CC-2 received from "Duke" on March 11, 2025 was sent by the HAULER.
 
 12. On the Monday after the HARBOR THEFT, CC-2 offered two outboard motors to the KELPWISE ACCOUNT on Telegram, which answered "deal, 3k for both, cash". On March 3, 2025, COYLE texted VARLOW "keep the sleeping bags dry", meaning the stolen chartplotters wrapped in plastic. The next morning, SKIP asked the HAULER on Telegram to "bring the soup cans to the boathouse", by which he meant the fuel tanks. Between March 3 and March 7, 2025, the GALAXY recorded at least six WhatsApp messages between CC-1 and CC-3.
 
-13. On March 4, 2025, COYLE asked VARLOW by text to clear the motors out of the boathouse, and VARLOW agreed. On March 4, 2025, COYLE sent PELLOQUIN a WhatsApp message reading "hitch key is on the nail in the shed". On March 6, 2025, COYLE texted VARLOW "the white cowls are off, come see tonight".
+13. On March 4, 2025, COYLE asked VARLOW by text to clear the motors out of the boathouse, and VARLOW agreed. On March 4, 2025, COYLE sent PELLOQUIN a WhatsApp message reading "boathouse key is on the nail in the shed". On March 6, 2025, COYLE texted VARLOW "the white cowls are off, come see tonight".
 
 ## Page 3
 

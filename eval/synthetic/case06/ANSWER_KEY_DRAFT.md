@@ -10,7 +10,7 @@ case05's design so the runs compare. It was written without reading the testabil
 step's code, prompt, tests or demo, or any run result. Its builder wired it into no
 gate.
 
-Draft split: 24 supported, 12 contradicted, 12 unproven; 3 claims need more than one phone. Every intended verdict was recorded before the story was written, and none changed while building. No second read yet; see `SIGNING_SHEET.md`.
+Draft split: 24 supported, 12 contradicted, 12 unproven; 3 claims need more than one phone. Every intended verdict was recorded before the story was written, and none changed while building. The second read (2026-11-03) changed no verdict; see `SIGNING_SHEET.md`.
 
 Shared assumption: Item 1 is used by VARLOW, Item 2 by COYLE and Item 3 by PELLOQUIN, so each phone's own accounts speak for its owner. The key treats this as given, as the affidavit does; it is not proven by the data. Paragraph 3 says the SPARE LINE is VARLOW's second number, and a record from his own phone ties him to it: on February 20 VARLOW's own number texts the HAULER 'new number for boat stuff is 360 555 0163. this one stays personal' (on Items 1 and 3), and fifteen minutes later the SPARE LINE writes 'its skip. new number for boat stuff' to COYLE, who saves it as 'Captain'. C05 rests on that tie, in an authorship row the expert decides. Paragraph 3 says the WORK NUMBER is PELLOQUIN's; it writes 'on shift till 11, this is the work line' to VARLOW, and Item 1 saves it as 'Duke work'. C16 and C08 are about the number, not about who held it.
 
@@ -118,13 +118,13 @@ behind the phone.
 | Record id | Role | Printed time | From | To | Text |
 |---|---|---|---|---|---|
 | `msg:item1:Chats!393` | key, wrong reading | 2/20/2025 4:15:40 AM(UTC+0) | SMS +13605550114 (owner) | +12535550127 Ren | check the dinghy dock after 9, its quiet |
-| `msg:item2:Chats!353` | key | 2/19/2025 8:15:40 PM(UTC-8) | SMS +13605550114 Skip | +12535550127 (owner) | check the dinghy dock after 9, its quiet |
+| `msg:item2:Chats!354` | key | 2/19/2025 8:15:40 PM(UTC-8) | SMS +13605550114 Skip | +12535550127 (owner) | check the dinghy dock after 9, its quiet |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 ## C02: draft **supported** (communication, plain wording)
 
-> On March 4, 2025, COYLE sent PELLOQUIN a WhatsApp message reading "hitch key is on the nail in the shed".
+> On March 4, 2025, COYLE sent PELLOQUIN a WhatsApp message reading "boathouse key is on the nail in the shed".
 
 - Type: communication. Page 2, paragraph 13. Wording: plain.
 - Core assumptions: COYLE's WhatsApp account sent the message to PELLOQUIN on Mar 4
@@ -135,8 +135,8 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 | Record id | Role | Printed time | From | To | Text |
 |---|---|---|---|---|---|
-| `msg:item2:Chats!404` | key | 3/4/2025 4:10:25 PM(UTC-8) | WhatsApp 12535550127@s.whatsapp.net (owner) | 13605550138@s.whatsapp.net Duncan P | hitch key is on the nail in the shed |
-| `msg:item3:Chats!445` | key | 3/4/2025 4:10:25 PM(UTC-8) | WhatsApp 12535550127@s.whatsapp.net Ren C | 13605550138@s.whatsapp.net (owner) | hitch key is on the nail in the shed |
+| `msg:item2:Chats!405` | key | 3/4/2025 4:10:25 PM(UTC-8) | WhatsApp 12535550127@s.whatsapp.net (owner) | 13605550138@s.whatsapp.net Duncan P | boathouse key is on the nail in the shed |
+| `msg:item3:Chats!446` | key | 3/4/2025 4:10:25 PM(UTC-8) | WhatsApp 12535550127@s.whatsapp.net Ren C | 13605550138@s.whatsapp.net (owner) | boathouse key is on the nail in the shed |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -147,16 +147,16 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 - Type: communication. Page 2, paragraph 13. Wording: plain.
 - Core assumptions: COYLE's SMS account sent the message to VARLOW on Mar 6
 - Why: Both copies (Items 1 and 2) were sent by VARLOW's number, +13605550114, at 11:45 a.m. PST on Mar 6; COYLE answered 'after 8'. Observed data rules out the stated sender.
-- Hazard: `similar_quote`. COYLE did write 'the white cowls are off the skiff, come look' that day, to Item 2's 'Duke' (Duke Marchetti) about her skiff. A loose match on those words passes the sender; the sheet tests the claim's exact words.
+- Hazard: `similar_quote`. COYLE did write 'the white cowls are off the skiff, come look' that day, to Item 2's 'Duke' (+12535550151, the mechanic who wrote 'this is duke at marchetti marine'), about her skiff. A loose match on those words passes the sender; the sheet tests the claim's exact words.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
 | Record id | Role | Printed time | From | To | Text |
 |---|---|---|---|---|---|
 | `msg:item1:Chats!402` | key | 3/6/2025 7:45:25 PM(UTC+0) | SMS +13605550114 (owner) | +12535550127 Ren | the white cowls are off, come see tonight |
-| `msg:item2:Chats!362` | key | 3/6/2025 11:45:25 AM(UTC-8) | SMS +13605550114 Skip | +12535550127 (owner) | the white cowls are off, come see tonight |
-| `msg:item2:Chats!363` | key | 3/6/2025 11:52:10 AM(UTC-8) | SMS +12535550127 (owner) | +13605550114 Skip | after 8 |
-| `msg:item2:Chats!201` | wrong reading | 3/6/2025 1:20:30 PM(UTC-8) | SMS +12535550127 (owner) | +12535550151 Duke | the white cowls are off the skiff, come look |
+| `msg:item2:Chats!363` | key | 3/6/2025 11:45:25 AM(UTC-8) | SMS +13605550114 Skip | +12535550127 (owner) | the white cowls are off, come see tonight |
+| `msg:item2:Chats!364` | key | 3/6/2025 11:52:10 AM(UTC-8) | SMS +12535550127 (owner) | +13605550114 Skip | after 8 |
+| `msg:item2:Chats!202` | wrong reading | 3/6/2025 1:20:30 PM(UTC-8) | SMS +12535550127 (owner) | +12535550151 Duke | the white cowls are off the skiff, come look |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -166,8 +166,8 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 - Type: communication. Page 3, paragraph 15. Wording: affidavit (defined terms (TRANSFER, the HAULER), an alias (SKIP), a day set by an event, indirect speech).
 - Core assumptions: VARLOW's SMS account sent the words to PELLOQUIN on Mar 10
-- Why: No message with these words is on any phone. On Mar 10 VARLOW texted his foreman Hollis Grebe 'keep the motors wrapped till the paint cures', which is not the claim. The reports are curated, so not shown, not ruled out.
-- Hazard: `similar_quote`. A loose match takes the Grebe text for the quote and passes the sender (VARLOW wrote it). The sheet tests the claim's exact words, to the HAULER.
+- Why: No message with these words is on any phone. On Mar 10 VARLOW texted Item 1's 'Hollis' (+13605550120) 'keep the motors wrapped till the paint cures', which is not the claim. The reports are curated, so not shown, not ruled out.
+- Hazard: `similar_quote`. A loose match takes the text to 'Hollis' for the quote and passes the sender (VARLOW wrote it). The sheet tests the claim's exact words, to the HAULER.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
@@ -183,7 +183,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 - Type: communication. Page 2, paragraph 10. Wording: affidavit (defined terms (HARBOR THEFT, SPARE LINE, the HAULER), a designation, a day set by an event). Needs more than one phone.
 - Core assumptions: The SPARE LINE sent the message to PELLOQUIN on Feb 26; VARLOW wrote what the SPARE LINE sent
-- Why: Incoming on Item 3 from +13605550163 at 7:15 p.m. PST on Wednesday, Feb 26. VARLOW's own number gave the HAULER that number on Feb 20 ('new number for boat stuff is 360 555 0163. this one stays personal', on Items 1 and 3), a record from his own phone.
+- Why: Incoming on Item 3 from +13605550163 at 7:15 p.m. PST on Wednesday, Feb 26. VARLOW's own number gave the HAULER that number on Feb 20 ('new number for boat stuff is 360 555 0163. this one stays personal', on Items 1 and 3), a record from his own phone; twenty minutes later 0163 wrote to the HAULER 'this is the other number', and on Mar 19 VARLOW's own number told him 'use the other number'. Not relied on: 0163's 'its skip' to COYLE, because Item 3 also saves another number as 'Skip' (+13605550184) beside 0163 as 'Skip 2', so a nickname alone does not tie the number to VARLOW.
 - Hazard: `second_number`. VARLOW's own number also texted the HAULER that afternoon ('u around tmrw?'). A reading that takes CC-1's own number for the sender finds the quote came from elsewhere and fails it. The sheet names the SPARE LINE.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
@@ -193,7 +193,10 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 | `msg:item3:Chats!414` | key | 2/26/2025 7:15:40 PM(UTC-8) | SMS +13605550163 Skip 2 | +13605550138 (owner) | bring the long straps and the dolly |
 | `msg:item1:Chats!349` | key | 2/20/2025 8:05:10 PM(UTC+0) | SMS +13605550114 (owner) | +13605550138 Duke | new number for boat stuff is 360 555 0163. this one stays personal |
 | `msg:item3:Chats!311` | key | 2/20/2025 12:05:10 PM(UTC-8) | SMS +13605550114 Emmett V | +13605550138 (owner) | new number for boat stuff is 360 555 0163. this one stays personal |
-| `msg:item2:Chats!373` | key | 2/20/2025 12:20:30 PM(UTC-8) | SMS +13605550163 Captain | +12535550127 (owner) | its skip. new number for boat stuff |
+| `msg:item3:Chats!412` | key | 2/20/2025 12:25:00 PM(UTC-8) | SMS +13605550163 Skip 2 | +13605550138 (owner) | this is the other number |
+| `msg:item1:Chats!362` | key | 3/19/2025 11:30:00 PM(UTC+0) | SMS +13605550114 (owner) | +13605550138 Duke | use the other number |
+| `msg:item3:Chats!324` | key | 3/19/2025 3:30:00 PM(UTC-8) | SMS +13605550114 Emmett V | +13605550138 (owner) | use the other number |
+| `msg:item2:Chats!374` | key | 2/20/2025 12:20:30 PM(UTC-8) | SMS +13605550163 Captain | +12535550127 (owner) | its skip. new number for boat stuff |
 | `msg:item3:Chats!313` | wrong reading | 2/26/2025 3:30:20 PM(UTC-8) | SMS +13605550114 Emmett V | +13605550138 (owner) | u around tmrw? |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
@@ -211,8 +214,8 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 | Record id | Role | Printed time | From | To | Text |
 |---|---|---|---|---|---|
-| `msg:item3:Chats!455` | key, wrong reading | 3/9/2025 2:41:30 AM(UTC-8) | Telegram 8820422 Ren C | 8820433 (owner) | leave the trailer at the barn, not the boathouse |
-| `msg:item2:Chats!407` | wrong reading | 3/9/2025 3:05:10 AM(UTC-7) | WhatsApp 12535550127@s.whatsapp.net (owner) | 13605550138@s.whatsapp.net Duncan P | slow down on the hill |
+| `msg:item3:Chats!456` | key, wrong reading | 3/9/2025 2:41:30 AM(UTC-8) | Telegram 8820422 Ren C | 8820433 (owner) | leave the trailer at the barn, not the boathouse |
+| `msg:item2:Chats!408` | wrong reading | 3/9/2025 3:05:10 AM(UTC-7) | WhatsApp 12535550127@s.whatsapp.net (owner) | 13605550138@s.whatsapp.net Duncan P | slow down on the hill |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -223,7 +226,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 - Type: identity. Page 2, paragraph 11. Wording: plain.
 - Core assumptions: Item 1 has a contact 'Lars' holding +12535550148
 - Why: Item 1's Contacts sheet holds 'Lars' with +12535550148.
-- Hazard: `contact_name`. Item 3 also saves a 'Lars', with +13605550173 (Lars Petrakis). A reading on Item 3 finds another number. The sheet names Item 1.
+- Hazard: `contact_name`. Item 3 also saves a 'Lars', with +13605550173. A reading on Item 3 finds another number. The sheet names Item 1.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
@@ -259,16 +262,16 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 - Type: identity. Page 2, paragraph 11. Wording: plain.
 - Core assumptions: On Item 3's Telegram, 'Skip' and 'Em V' are one account
-- Why: 'Skip' is Telegram user id 8820484 (Skip Tennant, a dock hand); 'Em V' is 8820411 (VARLOW). Two accounts.
+- Why: 'Skip' is Telegram user id 8820484, who writes 'dock 4 needs a hand sat morning'; 'Em V' is 8820411 (VARLOW). Two accounts.
 - Hazard: `same_name`. SKIP is VARLOW's nickname (paragraph 2), and 'Em V' is his Telegram account. A reading that takes Item 3's 'Skip' for VARLOW calls them one account. The sheet tests the two names as written.
-- Alias inside a quote: SKIP matches the quoted Telegram name "Skip" and points to VARLOW. Wrong: on Item 3, Telegram 'Skip' is Skip Tennant, user id 8820484. ("Em V" matches no alias.)
+- Alias inside a quote: SKIP matches the quoted Telegram name "Skip" and points to VARLOW. Wrong: on Item 3, Telegram 'Skip' is another man, user id 8820484 (also 'Skip', +13605550184). ("Em V" matches no alias.)
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
 | Record id | Role | Printed time | From | To | Text |
 |---|---|---|---|---|---|
 | `msg:item3:Chats!345` | key, wrong reading | 3/5/2025 7:45:10 AM(UTC-8) | Telegram 8820484 Skip | 8820433 (owner) | dock 4 needs a hand sat morning |
-| `msg:item3:Chats!440` | key | 3/3/2025 7:46:33 PM(UTC-8) | Telegram 8820411 Em V | 8820433 (owner) | ya the soup cans. all 6 fuel tanks |
+| `msg:item3:Chats!441` | key | 3/3/2025 7:46:33 PM(UTC-8) | Telegram 8820411 Em V | 8820433 (owner) | ya the soup cans. all 6 fuel tanks |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -279,14 +282,14 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 - Type: identity. Page 2, paragraph 11. Wording: affidavit (a designation (CC-2), a number by its defined name (SPARE LINE), 'her phone' for Item 2).
 - Core assumptions: Item 2 has a contact 'Captain' holding +13605550163
 - Why: Item 2's 'Captain' holds +13605550163; she wrote 'saved u as captain lol' to the number on Feb 20.
-- Hazard: `contact_name`. Item 3 also saves a 'Captain', with +13605550109 (Rollo Dunmore, the harbormaster). A reading on Item 3 finds another number. The sheet names Item 2.
+- Hazard: `contact_name`. Item 3 also saves a 'Captain', with +13605550109. A reading on Item 3 finds another number. The sheet names Item 2.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
 | Record id | Role | Printed time | From | To | Text |
 |---|---|---|---|---|---|
 | `contact:item2:Contacts!4#1` | key |  | contact | | Captain: +13605550163 |
-| `msg:item2:Chats!374` | key | 2/20/2025 12:28:05 PM(UTC-8) | SMS +12535550127 (owner) | +13605550163 Captain | saved u as captain lol |
+| `msg:item2:Chats!375` | key | 2/20/2025 12:28:05 PM(UTC-8) | SMS +12535550127 (owner) | +13605550163 Captain | saved u as captain lol |
 | `contact:item3:Contacts!7#1` | wrong reading |  | contact | | Captain: +13605550109 |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
@@ -304,9 +307,9 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 | Record id | Role | Printed time | From | To | Text |
 |---|---|---|---|---|---|
-| `msg:item3:Chats!456` | key | 3/11/2025 7:30:10 PM(UTC-8) | Telegram 8820422 Ren C | 8820433 (owner) | u up tmrw? |
-| `msg:item3:Chats!458` | key | 3/12/2025 3:45:20 PM(UTC-8) | Telegram 8820422 harborlights | 8820433 (owner) | changed my name on here |
-| `msg:item2:Chats!417` | key | 3/12/2025 4:45:20 PM(UTC-7) | Telegram 8820422 (owner) | 8820433 Duncan P | changed my name on here |
+| `msg:item3:Chats!457` | key | 3/11/2025 7:30:10 PM(UTC-8) | Telegram 8820422 Ren C | 8820433 (owner) | u up tmrw? |
+| `msg:item3:Chats!459` | key | 3/12/2025 3:45:20 PM(UTC-8) | Telegram 8820422 harborlights | 8820433 (owner) | changed my name on here |
+| `msg:item2:Chats!418` | key | 3/12/2025 4:45:20 PM(UTC-7) | Telegram 8820422 (owner) | 8820433 Duncan P | changed my name on here |
 | `contact:item3:Contacts!6#1` | wrong reading |  | contact | | Ren C: +12535550127 |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
@@ -317,16 +320,17 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 - Type: identity. Page 2, paragraph 11. Wording: affidavit (a designation (CC-2), a role (the HAULER), a contact name in quotes).
 - Core assumptions: PELLOQUIN's SMS account sent the message Item 2 received on Mar 11
-- Why: The only copy is on Item 2, from +12535550151, the number Item 2 saves as 'Duke' (Duke Marchetti, her mechanic). PELLOQUIN's +13605550138 did not send it.
+- Why: The only copy is on Item 2, from +12535550151, the number Item 2 saves as 'Duke'. That number introduced itself to her on Feb 12 as 'duke at marchetti marine' with her skiff in its shop, and its every message is about her skiff or the shop; Item 2 saves PELLOQUIN separately, as 'Duncan P' (+13605550138), which did not send it.
 - Hazard: `contact_name`. DUKE is PELLOQUIN's nickname (paragraph 2), and Item 1 saves PELLOQUIN as 'Duke'; Item 2's 'Duke' is another person. A reading that takes Item 2's 'Duke' for the HAULER passes the sender. The sheet names PELLOQUIN.
-- Alias inside a quote: DUKE matches the quoted sender name "Duke" and points to PELLOQUIN. Wrong: on Item 2, 'Duke' is Duke Marchetti, +12535550151. The claim's own 'the HAULER' is PELLOQUIN, rightly.
+- Alias inside a quote: DUKE matches the quoted sender name "Duke" and points to PELLOQUIN. Wrong: on Item 2, 'Duke' is +12535550151, a mechanic by his own texts. The claim's own 'the HAULER' is PELLOQUIN, rightly.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
 | Record id | Role | Printed time | From | To | Text |
 |---|---|---|---|---|---|
-| `msg:item2:Chats!204` | key | 3/11/2025 9:40:15 AM(UTC-7) | SMS +12535550151 Duke | +12535550127 (owner) | the lower unit is shot, bring it monday |
+| `msg:item2:Chats!205` | key | 3/11/2025 9:40:15 AM(UTC-7) | SMS +12535550151 Duke | +12535550127 (owner) | the lower unit is shot, bring the skiff in monday |
 | `contact:item2:Contacts!6#1` | key, wrong reading |  | contact | | Duke: +12535550151 |
+| `msg:item2:Chats!167` | key | 2/12/2025 10:05:30 AM(UTC-8) | SMS +12535550151 Duke | +12535550127 (owner) | this is duke at marchetti marine. ur skiff is in bay 2, pick up anytime |
 | `contact:item1:Contacts!4#1` | wrong reading |  | contact | | Duke: +13605550138 |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
@@ -420,7 +424,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 | Record id | Role | Printed time | From | To | Text |
 |---|---|---|---|---|---|
 | `msg:item1:Chats!423` | key, wrong reading | 3/15/2025 11:31:20 PM(UTC+0) | WhatsApp 13605550114@s.whatsapp.net (owner) | 13605550138@s.whatsapp.net Duke | move the trailer behind the barn tonight |
-| `msg:item3:Chats!435` | key | 3/15/2025 3:31:20 PM(UTC-8) | WhatsApp 13605550114@s.whatsapp.net Emmett V | 13605550138@s.whatsapp.net (owner) | move the trailer behind the barn tonight |
+| `msg:item3:Chats!436` | key | 3/15/2025 3:31:20 PM(UTC-8) | WhatsApp 13605550114@s.whatsapp.net Emmett V | 13605550138@s.whatsapp.net (owner) | move the trailer behind the barn tonight |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -448,7 +452,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 - Type: content_meaning. Page 2, paragraph 10. Wording: plain.
 - Core assumptions: VARLOW sent the message to COYLE on Feb 24; 'big fish' meant outboard motors
 - Why: COYLE asked 'the outboards?' and VARLOW answered 'ya 4 outboards, two are 150s': the exchange fixes the meaning.
-- Hazard: `similar_quote`. Rafe Lindqvist wrote '4 big fish off the north jetty today' to PELLOQUIN that evening, about fish. A reading that mixes the threads finds 'big fish' meaning fish. The sheet names VARLOW and COYLE.
+- Hazard: `similar_quote`. Item 3's 'Rafe' (+13605550178) wrote '4 big fish off the north jetty today' to PELLOQUIN that evening, about fish. A reading that mixes the threads finds 'big fish' meaning fish. The sheet names VARLOW and COYLE.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
@@ -457,7 +461,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 | `msg:item1:Chats!395` | key | 2/24/2025 7:20:15 PM(UTC+0) | SMS +13605550114 (owner) | +12535550127 Ren | spotted 4 big fish on the north float |
 | `msg:item1:Chats!396` | key | 2/24/2025 7:26:40 PM(UTC+0) | SMS +12535550127 Ren | +13605550114 (owner) | the outboards? |
 | `msg:item1:Chats!397` | key | 2/24/2025 7:28:02 PM(UTC+0) | SMS +13605550114 (owner) | +12535550127 Ren | ya 4 outboards, two are 150s |
-| `msg:item2:Chats!355` | key | 2/24/2025 11:20:15 AM(UTC-8) | SMS +13605550114 Skip | +12535550127 (owner) | spotted 4 big fish on the north float |
+| `msg:item2:Chats!356` | key | 2/24/2025 11:20:15 AM(UTC-8) | SMS +13605550114 Skip | +12535550127 (owner) | spotted 4 big fish on the north float |
 | `msg:item3:Chats!204` | wrong reading | 2/24/2025 6:30:20 PM(UTC-8) | SMS +13605550178 Rafe | +13605550138 (owner) | 4 big fish off the north jetty today, come out sat |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
@@ -476,7 +480,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 | Record id | Role | Printed time | From | To | Text |
 |---|---|---|---|---|---|
 | `msg:item1:Chats!398` | key | 3/3/2025 10:15:30 PM(UTC+0) | SMS +12535550127 Ren | +13605550114 (owner) | keep the sleeping bags dry |
-| `msg:item2:Chats!358` | key | 3/3/2025 2:15:30 PM(UTC-8) | SMS +12535550127 (owner) | +13605550114 Skip | keep the sleeping bags dry |
+| `msg:item2:Chats!359` | key | 3/3/2025 2:15:30 PM(UTC-8) | SMS +12535550127 (owner) | +13605550114 Skip | keep the sleeping bags dry |
 | `msg:item2:Chats!88` | wrong reading | 3/1/2025 5:00:10 PM(UTC-8) | WhatsApp 12535550127@s.whatsapp.net (owner) | 12535550146@s.whatsapp.net Mom | keep the sleeping bags dry, rain all week at the lake |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
@@ -495,7 +499,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 | Record id | Role | Printed time | From | To | Text |
 |---|---|---|---|---|---|
 | `msg:item1:Chats!408` | key, wrong reading | 3/19/2025 1:05:20 AM(UTC+0) | SMS +12535550127 Ren | +13605550114 (owner) | the guard naps after 2, every night |
-| `msg:item2:Chats!368` | key | 3/18/2025 6:05:20 PM(UTC-7) | SMS +12535550127 (owner) | +13605550114 Skip | the guard naps after 2, every night |
+| `msg:item2:Chats!369` | key | 3/18/2025 6:05:20 PM(UTC-7) | SMS +12535550127 (owner) | +13605550114 Skip | the guard naps after 2, every night |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -506,18 +510,18 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 - Type: content_meaning. Page 2, paragraph 12. Wording: affidavit (an alias (SKIP), a role (the HAULER), 'the next morning' referring back, indirect speech).
 - Core assumptions: VARLOW sent the message to PELLOQUIN on the morning of Mar 4; 'the soup cans' meant the fuel tanks
 - Why: Sent at 9:20 a.m. PST on Mar 4. The thread fixes it: 'u want the red tanks too?' / 'ya the soup cans. all 6 fuel tanks' the evening before, and 'all 6?' / 'all 6 tanks ya' after.
-- Hazard: `similar_quote`. That morning Odile Marsh wrote 'bring the soup cans to moms, she needs them for the drive' to PELLOQUIN, about soup. A reading that mixes the threads finds soup. The sheet names VARLOW and PELLOQUIN.
+- Hazard: `similar_quote`. That morning Item 3's 'Odile' (WhatsApp 13605550156) wrote 'bring the soup cans to moms, she needs them for the drive' to PELLOQUIN, about soup. A reading that mixes the threads finds soup. The sheet names VARLOW and PELLOQUIN.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
 | Record id | Role | Printed time | From | To | Text |
 |---|---|---|---|---|---|
 | `msg:item1:Chats!427` | key | 3/4/2025 5:20:15 PM(UTC+0) | Telegram 8820411 (owner) | 8820433 Duncan P | bring the soup cans to the boathouse |
-| `msg:item3:Chats!441` | key | 3/4/2025 9:20:15 AM(UTC-8) | Telegram 8820411 Em V | 8820433 (owner) | bring the soup cans to the boathouse |
-| `msg:item3:Chats!439` | key | 3/3/2025 7:40:10 PM(UTC-8) | Telegram 8820433 (owner) | 8820411 Em V | u want the red tanks too? |
-| `msg:item3:Chats!440` | key | 3/3/2025 7:46:33 PM(UTC-8) | Telegram 8820411 Em V | 8820433 (owner) | ya the soup cans. all 6 fuel tanks |
-| `msg:item3:Chats!442` | key | 3/4/2025 9:31:02 AM(UTC-8) | Telegram 8820433 (owner) | 8820411 Em V | all 6? |
-| `msg:item3:Chats!443` | key | 3/4/2025 9:33:40 AM(UTC-8) | Telegram 8820411 Em V | 8820433 (owner) | all 6 tanks ya |
+| `msg:item3:Chats!442` | key | 3/4/2025 9:20:15 AM(UTC-8) | Telegram 8820411 Em V | 8820433 (owner) | bring the soup cans to the boathouse |
+| `msg:item3:Chats!440` | key | 3/3/2025 7:40:10 PM(UTC-8) | Telegram 8820433 (owner) | 8820411 Em V | u want the red tanks too? |
+| `msg:item3:Chats!441` | key | 3/3/2025 7:46:33 PM(UTC-8) | Telegram 8820411 Em V | 8820433 (owner) | ya the soup cans. all 6 fuel tanks |
+| `msg:item3:Chats!443` | key | 3/4/2025 9:31:02 AM(UTC-8) | Telegram 8820433 (owner) | 8820411 Em V | all 6? |
+| `msg:item3:Chats!444` | key | 3/4/2025 9:33:40 AM(UTC-8) | Telegram 8820411 Em V | 8820433 (owner) | all 6 tanks ya |
 | `msg:item3:Chats!110` | wrong reading | 3/4/2025 8:30:40 AM(UTC-8) | WhatsApp 13605550156@s.whatsapp.net Odile | 13605550138@s.whatsapp.net (owner) | bring the soup cans to moms, she needs them for the drive |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
@@ -528,17 +532,18 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 - Type: content_meaning. Page 4, paragraph 18. Wording: affidavit (defined terms (RECOVERY, SPARE LINE), a designation, a day set by an event, indirect speech, a number in words).
 - Core assumptions: The SPARE LINE sent the message to COYLE on Mar 22; 'the twins' meant the two 150-horsepower motors
-- Why: Incoming on Item 2 from +13605550163 at 11:40 a.m. PDT on Mar 22; 'the 150s?' / 'ya both 150s, locked up' fix the meaning.
+- Why: Incoming on Item 2 from +13605550163 at 11:40 a.m. PDT on Mar 22; 'the 150s?' / 'ya both 150 outboards, locked up' fix the meaning in the exchange itself. '150' on an outboard is its horsepower, and the Feb 24 thread on the same phone ('ya 4 outboards, two are 150s') uses it the same way.
 - Hazard: `second_number`. VARLOW's own number also texted her that morning ('call me tonight'). A reading that takes CC-1's own number for the SPARE LINE finds the quote came from elsewhere. The sheet names the SPARE LINE.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
 | Record id | Role | Printed time | From | To | Text |
 |---|---|---|---|---|---|
-| `msg:item2:Chats!375` | key | 3/22/2025 11:40:20 AM(UTC-7) | SMS +13605550163 Captain | +12535550127 (owner) | the twins are in 17 |
-| `msg:item2:Chats!376` | key | 3/22/2025 11:46:55 AM(UTC-7) | SMS +12535550127 (owner) | +13605550163 Captain | the 150s? |
-| `msg:item2:Chats!377` | key | 3/22/2025 11:48:30 AM(UTC-7) | SMS +13605550163 Captain | +12535550127 (owner) | ya both 150s, locked up |
-| `msg:item2:Chats!372` | wrong reading | 3/22/2025 9:10:05 AM(UTC-7) | SMS +13605550114 Skip | +12535550127 (owner) | call me tonight |
+| `msg:item2:Chats!376` | key | 3/22/2025 11:40:20 AM(UTC-7) | SMS +13605550163 Captain | +12535550127 (owner) | the twins are in 17 |
+| `msg:item2:Chats!377` | key | 3/22/2025 11:46:55 AM(UTC-7) | SMS +12535550127 (owner) | +13605550163 Captain | the 150s? |
+| `msg:item2:Chats!378` | key | 3/22/2025 11:48:30 AM(UTC-7) | SMS +13605550163 Captain | +12535550127 (owner) | ya both 150 outboards, locked up |
+| `msg:item2:Chats!358` | key | 2/24/2025 11:28:02 AM(UTC-8) | SMS +13605550114 Skip | +12535550127 (owner) | ya 4 outboards, two are 150s |
+| `msg:item2:Chats!373` | wrong reading | 3/22/2025 9:10:05 AM(UTC-7) | SMS +13605550114 Skip | +12535550127 (owner) | call me tonight |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -548,17 +553,17 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 - Type: content_meaning. Page 3, paragraph 17. Wording: affidavit (defined terms (KITTIWAKE THEFT, the HAULER), designations, a day set by an event, indirect speech).
 - Core assumptions: COYLE sent the message to VARLOW on Mar 15; 'duke' meant PELLOQUIN
-- Why: Observed at 7:10 p.m. PDT on Mar 15; VARLOW answered 'ok'. Which Duke is not fixed: that morning Item 2's 'Duke' (Duke Marchetti) wrote to her 'i want out of the boat thing, too much hassle'.
-- Hazard: `same_name`. A reading that takes DUKE (paragraph 2) as fixing the quote supports the meaning; one that reads the morning text contradicts it. Neither is fixed. The sheet names COYLE and VARLOW.
-- Alias inside a quote: DUKE matches "duke" in the quote "duke wants out" and points to PELLOQUIN. Not fixed: Item 2 also saves Duke Marchetti as 'Duke' (+12535550151), and the conversation does not say which Duke is meant. The claim's own 'the HAULER' is PELLOQUIN.
+- Why: Observed at 7:10 p.m. PDT on Mar 15; VARLOW answered 'ok'. Which Duke is not fixed. COYLE's own phone saves PELLOQUIN as 'Duncan P' and saves another number, +12535550151, as 'Duke' (it introduced itself as 'duke at marchetti marine'); that morning that 'Duke' wrote to her 'i want out of the boat show booth this year, too much hassle'. Nothing in the exchange says which one she meant, or out of what.
+- Hazard: `same_name`. A reading that takes DUKE (paragraph 2) as fixing the quote supports the meaning; one that takes her own phone's 'Duke' contradicts it. Neither is fixed. The sheet names COYLE and VARLOW.
+- Alias inside a quote: DUKE matches "duke" in the quote "duke wants out" and points to PELLOQUIN. Not fixed: Item 2 also saves another number as 'Duke' (+12535550151), and the conversation does not say which Duke is meant. The claim's own 'the HAULER' is PELLOQUIN.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
 | Record id | Role | Printed time | From | To | Text |
 |---|---|---|---|---|---|
 | `msg:item1:Chats!404` | key | 3/16/2025 2:10:30 AM(UTC+0) | SMS +12535550127 Ren | +13605550114 (owner) | duke wants out |
-| `msg:item2:Chats!364` | key | 3/15/2025 7:10:30 PM(UTC-7) | SMS +12535550127 (owner) | +13605550114 Skip | duke wants out |
-| `msg:item2:Chats!205` | wrong reading | 3/15/2025 8:30:05 AM(UTC-7) | SMS +12535550151 Duke | +12535550127 (owner) | i want out of the boat thing, too much hassle |
+| `msg:item2:Chats!365` | key | 3/15/2025 7:10:30 PM(UTC-7) | SMS +12535550127 (owner) | +13605550114 Skip | duke wants out |
+| `msg:item2:Chats!206` | wrong reading | 3/15/2025 8:30:05 AM(UTC-7) | SMS +12535550151 Duke | +12535550127 (owner) | i want out of the boat show booth this year, too much hassle |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -602,13 +607,13 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 | Record id | Role | Printed time | From | To | Text |
 |---|---|---|---|---|---|
-| `msg:item3:Chats!449` | key | 3/10/2025 9:20:05 AM(UTC-8) | WhatsApp 12535550127@s.whatsapp.net Ren C | 13605550138@s.whatsapp.net (owner) | u around this week? |
-| `msg:item3:Chats!450` | key | 3/10/2025 9:31:40 AM(UTC-8) | WhatsApp 13605550138@s.whatsapp.net (owner) | 12535550127@s.whatsapp.net Ren C | after 4 most days |
-| `msg:item3:Chats!451` | key | 3/13/2025 2:00:12 PM(UTC-8) | WhatsApp 13605550138@s.whatsapp.net (owner) | 12535550127@s.whatsapp.net Ren C | trailer has a flat, fixing it tonight |
-| `msg:item3:Chats!452` | key | 3/14/2025 12:00:20 PM(UTC-8) | WhatsApp 13605550138@s.whatsapp.net (owner) | 12535550127@s.whatsapp.net Ren C | what do i ask for the motors? |
-| `msg:item3:Chats!453` | key | 3/14/2025 12:06:45 PM(UTC-8) | WhatsApp 12535550127@s.whatsapp.net Ren C | 13605550138@s.whatsapp.net (owner) | 2200 for the big ones, 900 for the kickers |
-| `msg:item3:Chats!454` | key | 3/14/2025 12:08:10 PM(UTC-8) | WhatsApp 13605550138@s.whatsapp.net (owner) | 12535550127@s.whatsapp.net Ren C | ok 2200 |
-| `msg:item2:Chats!410` | wrong reading | 3/12/2025 7:05:30 PM(UTC-7) | WhatsApp 12535550127@s.whatsapp.net (owner) | 13605550138@s.whatsapp.net Duncan P | ? |
+| `msg:item3:Chats!450` | key | 3/10/2025 9:20:05 AM(UTC-8) | WhatsApp 12535550127@s.whatsapp.net Ren C | 13605550138@s.whatsapp.net (owner) | u around this week? |
+| `msg:item3:Chats!451` | key | 3/10/2025 9:31:40 AM(UTC-8) | WhatsApp 13605550138@s.whatsapp.net (owner) | 12535550127@s.whatsapp.net Ren C | after 4 most days |
+| `msg:item3:Chats!452` | key | 3/13/2025 2:00:12 PM(UTC-8) | WhatsApp 13605550138@s.whatsapp.net (owner) | 12535550127@s.whatsapp.net Ren C | trailer has a flat, fixing it tonight |
+| `msg:item3:Chats!453` | key | 3/14/2025 12:00:20 PM(UTC-8) | WhatsApp 13605550138@s.whatsapp.net (owner) | 12535550127@s.whatsapp.net Ren C | what do i ask for the motors? |
+| `msg:item3:Chats!454` | key | 3/14/2025 12:06:45 PM(UTC-8) | WhatsApp 12535550127@s.whatsapp.net Ren C | 13605550138@s.whatsapp.net (owner) | 2200 for the big ones, 900 for the kickers |
+| `msg:item3:Chats!455` | key | 3/14/2025 12:08:10 PM(UTC-8) | WhatsApp 13605550138@s.whatsapp.net (owner) | 12535550127@s.whatsapp.net Ren C | ok 2200 |
+| `msg:item2:Chats!411` | wrong reading | 3/12/2025 7:05:30 PM(UTC-7) | WhatsApp 12535550127@s.whatsapp.net (owner) | 13605550138@s.whatsapp.net Duncan P | ? |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -677,8 +682,8 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 | `msg:item1:Chats!420` | key | 3/4/2025 9:15:20 PM(UTC+0) | WhatsApp 13605550138@s.whatsapp.net Duke | 13605550114@s.whatsapp.net (owner) | need gas money |
 | `msg:item1:Chats!421` | key | 3/5/2025 6:40:12 PM(UTC+0) | WhatsApp 13605550138@s.whatsapp.net Duke | 13605550114@s.whatsapp.net (owner) | flat is fixed |
 | `msg:item1:Chats!422` | key | 3/6/2025 11:05:33 PM(UTC+0) | WhatsApp 13605550114@s.whatsapp.net (owner) | 13605550138@s.whatsapp.net Duke | sat night, late |
-| `msg:item3:Chats!431` | wrong reading | 3/4/2025 1:22:41 PM(UTC-8) | WhatsApp 13605550114@s.whatsapp.net Emmett V | 13605550138@s.whatsapp.net (owner) | sending |
-| `msg:item3:Chats!434` | wrong reading | 3/7/2025 12:10:50 PM(UTC-8) | WhatsApp 13605550138@s.whatsapp.net (owner) | 13605550114@s.whatsapp.net Emmett V | ok |
+| `msg:item3:Chats!432` | wrong reading | 3/4/2025 1:22:41 PM(UTC-8) | WhatsApp 13605550114@s.whatsapp.net Emmett V | 13605550138@s.whatsapp.net (owner) | sending |
+| `msg:item3:Chats!435` | wrong reading | 3/7/2025 12:10:50 PM(UTC-8) | WhatsApp 13605550138@s.whatsapp.net (owner) | 13605550114@s.whatsapp.net Emmett V | ok |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -695,19 +700,19 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 | Record id | Role | Printed time | From | To | Text |
 |---|---|---|---|---|---|
-| `msg:item2:Chats!315` | key | 3/8/2025 11:05:20 PM(UTC-8) | Signal +13605550114 Skip | +12535550127 (owner) | leaving now |
-| `msg:item2:Chats!316` | key | 3/8/2025 11:40:02 PM(UTC-8) | Signal +12535550127 (owner) | +13605550114 Skip | the side door is open |
-| `msg:item2:Chats!317` | key | 3/9/2025 12:10:45 AM(UTC-8) | Signal +13605550114 Skip | +12535550127 (owner) | here |
-| `msg:item2:Chats!318` | key | 3/9/2025 12:35:30 AM(UTC-8) | Signal +13605550114 Skip | +12535550127 (owner) | first 2 are on |
-| `msg:item2:Chats!319` | key | 3/9/2025 1:05:12 AM(UTC-8) | Signal +12535550127 (owner) | +13605550114 Skip | how many left |
-| `msg:item2:Chats!320` | key | 3/9/2025 1:30:40 AM(UTC-8) | Signal +13605550114 Skip | +12535550127 (owner) | 2 more |
-| `msg:item2:Chats!321` | key | 3/9/2025 1:55:08 AM(UTC-8) | Signal +12535550127 (owner) | +13605550114 Skip | hurry |
-| `msg:item2:Chats!322` | key | 3/9/2025 3:12:30 AM(UTC-7) | Signal +13605550114 Skip | +12535550127 (owner) | all 4 are on, rolling |
-| `msg:item2:Chats!323` | key | 3/9/2025 3:28:15 AM(UTC-7) | Signal +12535550127 (owner) | +13605550114 Skip | my phone just skipped an hour lol |
-| `msg:item2:Chats!324` | key | 3/9/2025 3:45:50 AM(UTC-7) | Signal +13605550114 Skip | +12535550127 (owner) | at the barn, unloading |
-| `msg:item2:Chats!325` | key | 3/9/2025 3:58:20 AM(UTC-7) | Signal +12535550127 (owner) | +13605550114 Skip | text me when ur home |
-| `msg:item2:Chats!326` | wrong reading | 3/9/2025 4:10:05 AM(UTC-7) | Signal +13605550114 Skip | +12535550127 (owner) | heading home |
-| `msg:item2:Chats!327` | wrong reading | 3/9/2025 4:40:30 AM(UTC-7) | Signal +12535550127 (owner) | +13605550114 Skip | night |
+| `msg:item2:Chats!316` | key | 3/8/2025 11:05:20 PM(UTC-8) | Signal +13605550114 Skip | +12535550127 (owner) | leaving now |
+| `msg:item2:Chats!317` | key | 3/8/2025 11:40:02 PM(UTC-8) | Signal +12535550127 (owner) | +13605550114 Skip | the side door is open |
+| `msg:item2:Chats!318` | key | 3/9/2025 12:10:45 AM(UTC-8) | Signal +13605550114 Skip | +12535550127 (owner) | here |
+| `msg:item2:Chats!319` | key | 3/9/2025 12:35:30 AM(UTC-8) | Signal +13605550114 Skip | +12535550127 (owner) | first 2 are on |
+| `msg:item2:Chats!320` | key | 3/9/2025 1:05:12 AM(UTC-8) | Signal +12535550127 (owner) | +13605550114 Skip | how many left |
+| `msg:item2:Chats!321` | key | 3/9/2025 1:30:40 AM(UTC-8) | Signal +13605550114 Skip | +12535550127 (owner) | 2 more |
+| `msg:item2:Chats!322` | key | 3/9/2025 1:55:08 AM(UTC-8) | Signal +12535550127 (owner) | +13605550114 Skip | hurry |
+| `msg:item2:Chats!323` | key | 3/9/2025 3:12:30 AM(UTC-7) | Signal +13605550114 Skip | +12535550127 (owner) | all 4 are on, rolling |
+| `msg:item2:Chats!324` | key | 3/9/2025 3:28:15 AM(UTC-7) | Signal +12535550127 (owner) | +13605550114 Skip | my phone just skipped an hour lol |
+| `msg:item2:Chats!325` | key | 3/9/2025 3:45:50 AM(UTC-7) | Signal +13605550114 Skip | +12535550127 (owner) | at the barn, unloading |
+| `msg:item2:Chats!326` | key | 3/9/2025 3:58:20 AM(UTC-7) | Signal +12535550127 (owner) | +13605550114 Skip | text me when ur home |
+| `msg:item2:Chats!327` | wrong reading | 3/9/2025 4:10:05 AM(UTC-7) | Signal +13605550114 Skip | +12535550127 (owner) | heading home |
+| `msg:item2:Chats!328` | wrong reading | 3/9/2025 4:40:30 AM(UTC-7) | Signal +12535550127 (owner) | +13605550114 Skip | night |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -745,8 +750,8 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 | Record id | Role | Printed time | From | To | Text |
 |---|---|---|---|---|---|
 | `msg:item1:Chats!430` | key | 3/27/2025 5:20:15 PM(UTC+0) | WhatsApp 12535550127@s.whatsapp.net Ren | 13605550114@s.whatsapp.net (owner) | dont use texts anymore. only here |
-| `msg:item2:Chats!421` | key, wrong reading | 3/27/2025 10:20:15 AM(UTC-7) | WhatsApp 12535550127@s.whatsapp.net (owner) | 13605550114@s.whatsapp.net Skip | dont use texts anymore. only here |
-| `msg:item2:Chats!422` | key | 3/27/2025 10:31:40 AM(UTC-7) | WhatsApp 13605550114@s.whatsapp.net Skip | 12535550127@s.whatsapp.net (owner) | ok |
+| `msg:item2:Chats!422` | key, wrong reading | 3/27/2025 10:20:15 AM(UTC-7) | WhatsApp 12535550127@s.whatsapp.net (owner) | 13605550114@s.whatsapp.net Skip | dont use texts anymore. only here |
+| `msg:item2:Chats!423` | key | 3/27/2025 10:31:40 AM(UTC-7) | WhatsApp 13605550114@s.whatsapp.net Skip | 12535550127@s.whatsapp.net (owner) | ok |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -782,10 +787,10 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 | Record id | Role | Printed time | From | To | Text |
 |---|---|---|---|---|---|
-| `msg:item2:Chats!406` | key | 3/9/2025 12:52:30 AM(UTC-8) | WhatsApp 13605550138@s.whatsapp.net Duncan P | 12535550127@s.whatsapp.net (owner) | on the road |
-| `msg:item2:Chats!407` | key | 3/9/2025 3:05:10 AM(UTC-7) | WhatsApp 12535550127@s.whatsapp.net (owner) | 13605550138@s.whatsapp.net Duncan P | slow down on the hill |
-| `msg:item3:Chats!447` | key, wrong reading | 3/9/2025 12:52:30 AM(UTC-8) | WhatsApp 13605550138@s.whatsapp.net (owner) | 12535550127@s.whatsapp.net Ren C | on the road |
-| `msg:item3:Chats!448` | key, wrong reading | 3/9/2025 2:05:10 AM(UTC-8) | WhatsApp 12535550127@s.whatsapp.net Ren C | 13605550138@s.whatsapp.net (owner) | slow down on the hill |
+| `msg:item2:Chats!407` | key | 3/9/2025 12:52:30 AM(UTC-8) | WhatsApp 13605550138@s.whatsapp.net Duncan P | 12535550127@s.whatsapp.net (owner) | on the road |
+| `msg:item2:Chats!408` | key | 3/9/2025 3:05:10 AM(UTC-7) | WhatsApp 12535550127@s.whatsapp.net (owner) | 13605550138@s.whatsapp.net Duncan P | slow down on the hill |
+| `msg:item3:Chats!448` | key, wrong reading | 3/9/2025 12:52:30 AM(UTC-8) | WhatsApp 13605550138@s.whatsapp.net (owner) | 12535550127@s.whatsapp.net Ren C | on the road |
+| `msg:item3:Chats!449` | key, wrong reading | 3/9/2025 2:05:10 AM(UTC-8) | WhatsApp 12535550127@s.whatsapp.net Ren C | 13605550138@s.whatsapp.net (owner) | slow down on the hill |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -796,15 +801,15 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 - Type: absence. Page 4, paragraph 19. Wording: affidavit (defined terms (RECOVERY), a designation, an alias (DUKE), days set by an event).
 - Core assumptions: No contact between COYLE and PELLOQUIN on Mar 26 and 27
 - Why: DUKE is PELLOQUIN (paragraph 2). Texts on Mar 26 ('they took the 150s' / 'i know. dont call me').
-- Hazard: `same_name`. Item 2 saves another man as 'Duke' (Duke Marchetti), with whom she has no contact after Mar 22. A reading that takes Item 2's 'Duke' finds none and leaves the claim unproven. The sheet names PELLOQUIN.
+- Hazard: `same_name`. Item 2 saves another number as 'Duke' (+12535550151), with which she has no contact after Mar 22. A reading that takes Item 2's 'Duke' finds none and leaves the claim unproven. The sheet names PELLOQUIN.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
 | Record id | Role | Printed time | From | To | Text |
 |---|---|---|---|---|---|
-| `msg:item2:Chats!419` | key | 3/26/2025 9:15:40 AM(UTC-7) | SMS +12535550127 (owner) | +13605550138 Duncan P | they took the 150s |
-| `msg:item3:Chats!460` | key | 3/26/2025 8:15:40 AM(UTC-8) | SMS +12535550127 Ren C | +13605550138 (owner) | they took the 150s |
-| `msg:item3:Chats!461` | key | 3/26/2025 8:22:05 AM(UTC-8) | SMS +13605550138 (owner) | +12535550127 Ren C | i know. dont call me |
+| `msg:item2:Chats!420` | key | 3/26/2025 9:15:40 AM(UTC-7) | SMS +12535550127 (owner) | +13605550138 Duncan P | they took the 150s |
+| `msg:item3:Chats!461` | key | 3/26/2025 8:15:40 AM(UTC-8) | SMS +12535550127 Ren C | +13605550138 (owner) | they took the 150s |
+| `msg:item3:Chats!462` | key | 3/26/2025 8:22:05 AM(UTC-8) | SMS +13605550138 (owner) | +12535550127 Ren C | i know. dont call me |
 | `contact:item2:Contacts!6#1` | wrong reading |  | contact | | Duke: +12535550151 |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
@@ -822,8 +827,8 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 | Record id | Role | Printed time | From | To | Text |
 |---|---|---|---|---|---|
-| `msg:item3:Chats!437` | key, wrong reading | 3/28/2025 10:05:40 AM(UTC-8) | WhatsApp 13605550114@s.whatsapp.net Emmett V | 13605550138@s.whatsapp.net (owner) | u ok? |
-| `msg:item3:Chats!438` | key | 3/28/2025 10:20:10 AM(UTC-8) | WhatsApp 13605550138@s.whatsapp.net (owner) | 13605550114@s.whatsapp.net Emmett V | dont text me |
+| `msg:item3:Chats!438` | key, wrong reading | 3/28/2025 10:05:40 AM(UTC-8) | WhatsApp 13605550114@s.whatsapp.net Emmett V | 13605550138@s.whatsapp.net (owner) | u ok? |
+| `msg:item3:Chats!439` | key | 3/28/2025 10:20:10 AM(UTC-8) | WhatsApp 13605550138@s.whatsapp.net (owner) | 13605550114@s.whatsapp.net Emmett V | dont text me |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -834,17 +839,17 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 - Type: role. Page 3, paragraph 16. Wording: plain.
 - Core assumptions: COYLE sent the message to PELLOQUIN on Mar 14; COYLE set the price
 - Why: PELLOQUIN asked 'what do i ask for the motors?', COYLE answered with the prices, and he took them ('ok 2200'): the exchange fixes who set the price.
-- Hazard: `similar_quote`. That evening Item 2's 'Duke' (Duke Marchetti) wrote '2200 for the big ones is too high, nobody pays that'. A loose match makes him the one who set it. The sheet tests the exact words, from COYLE.
+- Hazard: `similar_quote`. That evening Item 2's 'Duke' (+12535550151) sent her, on WhatsApp, 'skiff rebuild quote: 1900 for the big one, 700 for the kicker, parts extra'. A loose match on a price for the big one and the kicker makes him the one who set it. The sheet tests the exact words, from COYLE.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
 | Record id | Role | Printed time | From | To | Text |
 |---|---|---|---|---|---|
-| `msg:item2:Chats!412` | key | 3/14/2025 1:00:20 PM(UTC-7) | WhatsApp 13605550138@s.whatsapp.net Duncan P | 12535550127@s.whatsapp.net (owner) | what do i ask for the motors? |
-| `msg:item2:Chats!413` | key | 3/14/2025 1:06:45 PM(UTC-7) | WhatsApp 12535550127@s.whatsapp.net (owner) | 13605550138@s.whatsapp.net Duncan P | 2200 for the big ones, 900 for the kickers |
-| `msg:item2:Chats!414` | key | 3/14/2025 1:08:10 PM(UTC-7) | WhatsApp 13605550138@s.whatsapp.net Duncan P | 12535550127@s.whatsapp.net (owner) | ok 2200 |
-| `msg:item3:Chats!453` | key | 3/14/2025 12:06:45 PM(UTC-8) | WhatsApp 12535550127@s.whatsapp.net Ren C | 13605550138@s.whatsapp.net (owner) | 2200 for the big ones, 900 for the kickers |
-| `msg:item2:Chats!302` | wrong reading | 3/14/2025 6:30:10 PM(UTC-7) | WhatsApp 12535550151@s.whatsapp.net Duke | 12535550127@s.whatsapp.net (owner) | 2200 for the big ones is too high, nobody pays that |
+| `msg:item2:Chats!413` | key | 3/14/2025 1:00:20 PM(UTC-7) | WhatsApp 13605550138@s.whatsapp.net Duncan P | 12535550127@s.whatsapp.net (owner) | what do i ask for the motors? |
+| `msg:item2:Chats!414` | key | 3/14/2025 1:06:45 PM(UTC-7) | WhatsApp 12535550127@s.whatsapp.net (owner) | 13605550138@s.whatsapp.net Duncan P | 2200 for the big ones, 900 for the kickers |
+| `msg:item2:Chats!415` | key | 3/14/2025 1:08:10 PM(UTC-7) | WhatsApp 13605550138@s.whatsapp.net Duncan P | 12535550127@s.whatsapp.net (owner) | ok 2200 |
+| `msg:item3:Chats!454` | key | 3/14/2025 12:06:45 PM(UTC-8) | WhatsApp 12535550127@s.whatsapp.net Ren C | 13605550138@s.whatsapp.net (owner) | 2200 for the big ones, 900 for the kickers |
+| `msg:item2:Chats!303` | wrong reading | 3/14/2025 6:30:10 PM(UTC-7) | WhatsApp 12535550151@s.whatsapp.net Duke | 12535550127@s.whatsapp.net (owner) | skiff rebuild quote: 1900 for the big one, 700 for the kicker, parts extra |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -862,7 +867,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 | Record id | Role | Printed time | From | To | Text |
 |---|---|---|---|---|---|
 | `msg:item1:Chats!410` | key, wrong reading | 3/22/2025 1:15:10 AM(UTC+0) | SMS +13605550114 (owner) | +12535550127 Ren | put them in 17, not the boathouse |
-| `msg:item2:Chats!370` | key | 3/21/2025 6:15:10 PM(UTC-7) | SMS +13605550114 Skip | +12535550127 (owner) | put them in 17, not the boathouse |
+| `msg:item2:Chats!371` | key | 3/21/2025 6:15:10 PM(UTC-7) | SMS +13605550114 Skip | +12535550127 (owner) | put them in 17, not the boathouse |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -872,34 +877,35 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 - Type: role. Page 2, paragraph 9. Wording: plain.
 - Core assumptions: COYLE recruited PELLOQUIN
-- Why: No record shows COYLE asking PELLOQUIN. He offered himself to VARLOW ('if u ever need a trailer and a driver im around'); COYLE asked Item 2's 'Duke' (Duke Marchetti), who said no. Recruitment by her is not fixed.
-- Hazard: `same_name`. DUKE is PELLOQUIN's nickname (paragraph 2). A reading that takes Item 2's 'Duke' for PELLOQUIN finds her asking him and supports the claim. The sheet names PELLOQUIN.
+- Why: No record shows COYLE asking PELLOQUIN. He offered himself to VARLOW ('if u ever need a driver to pull ur trailer im around'); COYLE asked Item 2's 'Duke' (+12535550151) 'need someone with a truck to pull my skiff trailer to the ramp sat, u in?', and he said 'sure, sat at 9'. Recruitment of PELLOQUIN by her is not fixed.
+- Hazard: `same_name`. DUKE is PELLOQUIN's nickname (paragraph 2). A reading that takes Item 2's 'Duke' for PELLOQUIN finds her asking him to pull a trailer and his yes, and supports the claim. The sheet names PELLOQUIN.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
 | Record id | Role | Printed time | From | To | Text |
 |---|---|---|---|---|---|
-| `msg:item3:Chats!307` | key | 2/14/2025 4:40:20 PM(UTC-8) | SMS +13605550138 (owner) | +13605550114 Emmett V | if u ever need a trailer and a driver im around |
-| `msg:item2:Chats!173` | key, wrong reading | 2/15/2025 10:30:05 AM(UTC-8) | SMS +12535550127 (owner) | +12535550151 Duke | need someone with a trailer next month, u in? |
-| `msg:item2:Chats!174` | key | 2/15/2025 10:45:40 AM(UTC-8) | SMS +12535550151 Duke | +12535550127 (owner) | not me, ask around |
+| `msg:item3:Chats!307` | key | 2/14/2025 4:40:20 PM(UTC-8) | SMS +13605550138 (owner) | +13605550114 Emmett V | if u ever need a driver to pull ur trailer im around |
+| `msg:item2:Chats!174` | key, wrong reading | 2/15/2025 10:30:05 AM(UTC-8) | SMS +12535550127 (owner) | +12535550151 Duke | need someone with a truck to pull my skiff trailer to the ramp sat, u in? |
+| `msg:item2:Chats!175` | key | 2/15/2025 10:45:40 AM(UTC-8) | SMS +12535550151 Duke | +12535550127 (owner) | sure, sat at 9 |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 ## C40: draft **supported** (role, affidavit wording)
 
-> CC-1 put the HAULER in charge of the trailer keys, telling him on WhatsApp "keys stay with u, nobody else drives it".
+> CC-1 put the HAULER in charge of the trailer keys, telling him on WhatsApp "keys stay with u, nobody else tows it".
 
 - Type: role. Page 2, paragraph 10. Wording: affidavit (a designation (CC-1), a role (the HAULER), indirect speech).
-- Core assumptions: VARLOW sent the message to PELLOQUIN; VARLOW put PELLOQUIN in charge of the keys
-- Why: Incoming on Item 3 from VARLOW's WhatsApp at 7:20 p.m. PST on Feb 27; the HAULER answered 'got it, nobody else'.
+- Core assumptions: VARLOW sent the message to PELLOQUIN; VARLOW put PELLOQUIN in charge of the trailer keys
+- Why: Incoming on Item 3 from VARLOW's WhatsApp at 7:20 p.m. PST on Feb 27. Eight minutes earlier, opening the thread, he wrote 'left the trailer at ur place. hitch lock and trailer keys are in ur mailbox', which fixes the keys as the trailer's; the HAULER answered 'got it, nobody else'.
 - Hazard: `second_phone`. CC-1's own phone (Item 1) does not hold the exchange. A reading of Item 1 alone finds nothing. The sheet names no phone, and the check finds Item 3's copy.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
 | Record id | Role | Printed time | From | To | Text |
 |---|---|---|---|---|---|
-| `msg:item3:Chats!427` | key, wrong reading | 2/27/2025 7:20:15 PM(UTC-8) | WhatsApp 13605550114@s.whatsapp.net Emmett V | 13605550138@s.whatsapp.net (owner) | keys stay with u, nobody else drives it |
-| `msg:item3:Chats!428` | key | 2/27/2025 7:26:40 PM(UTC-8) | WhatsApp 13605550138@s.whatsapp.net (owner) | 13605550114@s.whatsapp.net Emmett V | got it, nobody else |
+| `msg:item3:Chats!427` | key | 2/27/2025 7:12:40 PM(UTC-8) | WhatsApp 13605550114@s.whatsapp.net Emmett V | 13605550138@s.whatsapp.net (owner) | left the trailer at ur place. hitch lock and trailer keys are in ur mailbox |
+| `msg:item3:Chats!428` | key, wrong reading | 2/27/2025 7:20:15 PM(UTC-8) | WhatsApp 13605550114@s.whatsapp.net Emmett V | 13605550138@s.whatsapp.net (owner) | keys stay with u, nobody else tows it |
+| `msg:item3:Chats!429` | key | 2/27/2025 7:26:40 PM(UTC-8) | WhatsApp 13605550138@s.whatsapp.net (owner) | 13605550114@s.whatsapp.net Emmett V | got it, nobody else |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -910,15 +916,15 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 - Type: role. Page 3, paragraph 16. Wording: affidavit (defined terms (KITTIWAKE THEFT), a designation, an alias (SKIP), 'the night of' an event, indirect speech).
 - Core assumptions: COYLE sent the message to VARLOW on the night of Mar 13; COYLE kept lookout
 - Why: At 10:58 p.m. PDT she wrote 'parked at the corner of ferrule, ill watch the road', at 11:09 'patrol car just passed, wait', at 11:14 'clear, go'. The thread fixes the role.
-- Hazard: `similar_quote`. The night before, Mina Ostrowski wrote 'patrol car just passed our street again, u driving home?' to VARLOW. A loose match makes her the lookout. The sheet tests the exact words, from COYLE, on Signal.
+- Hazard: `similar_quote`. The night before, Item 1's 'Mina' (+13605550135) wrote 'patrol car just passed our street again, u driving home?' to VARLOW. A loose match makes her the lookout. The sheet tests the exact words, from COYLE, on Signal.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
 | Record id | Role | Printed time | From | To | Text |
 |---|---|---|---|---|---|
-| `msg:item2:Chats!328` | key | 3/13/2025 10:58:10 PM(UTC-7) | Signal +12535550127 (owner) | +13605550114 Skip | parked at the corner of ferrule, ill watch the road |
-| `msg:item2:Chats!329` | key | 3/13/2025 11:09:30 PM(UTC-7) | Signal +12535550127 (owner) | +13605550114 Skip | patrol car just passed, wait |
-| `msg:item2:Chats!330` | key | 3/13/2025 11:14:05 PM(UTC-7) | Signal +12535550127 (owner) | +13605550114 Skip | clear, go |
+| `msg:item2:Chats!329` | key | 3/13/2025 10:58:10 PM(UTC-7) | Signal +12535550127 (owner) | +13605550114 Skip | parked at the corner of ferrule, ill watch the road |
+| `msg:item2:Chats!330` | key | 3/13/2025 11:09:30 PM(UTC-7) | Signal +12535550127 (owner) | +13605550114 Skip | patrol car just passed, wait |
+| `msg:item2:Chats!331` | key | 3/13/2025 11:14:05 PM(UTC-7) | Signal +12535550127 (owner) | +13605550114 Skip | clear, go |
 | `msg:item1:Chats!389` | key | 3/14/2025 6:09:30 AM(UTC+0) | Signal +12535550127 Ren | +13605550114 (owner) | patrol car just passed, wait |
 | `msg:item1:Chats!324` | wrong reading | 3/13/2025 4:30:05 AM(UTC+0) | SMS +13605550135 Mina | +13605550114 (owner) | patrol car just passed our street again, u driving home? |
 
@@ -951,16 +957,16 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 - Type: event. Page 4, paragraph 18. Wording: plain.
 - Core assumptions: VARLOW proposed the meeting by text on Mar 18; 'thursday' meant Mar 20; they arranged it
 - Why: VARLOW wrote 'fuel dock thursday 6pm' at 10:15 a.m. PDT on Tuesday, Mar 18, and COYLE answered 'ok'. Thursday after Tuesday Mar 18 is Mar 20.
-- Hazard: `similar_quote`. That morning Item 2's 'Duke' (Duke Marchetti) wrote 'fuel dock thursday? cant do 6' to her. A loose match makes him the one she met. The sheet names VARLOW and COYLE.
+- Hazard: `similar_quote`. That morning Item 2's 'Duke' (+12535550151) wrote to her 'bring the skiff to the fuel dock thursday 8am, ill check the pump'. A loose match takes his Thursday at the fuel dock for the meeting claimed. The sheet names VARLOW and COYLE.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
 | Record id | Role | Printed time | From | To | Text |
 |---|---|---|---|---|---|
 | `msg:item1:Chats!406` | key | 3/18/2025 5:15:35 PM(UTC+0) | SMS +13605550114 (owner) | +12535550127 Ren | fuel dock thursday 6pm |
-| `msg:item2:Chats!366` | key | 3/18/2025 10:15:35 AM(UTC-7) | SMS +13605550114 Skip | +12535550127 (owner) | fuel dock thursday 6pm |
-| `msg:item2:Chats!367` | key | 3/18/2025 10:21:08 AM(UTC-7) | SMS +12535550127 (owner) | +13605550114 Skip | ok |
-| `msg:item2:Chats!206` | wrong reading | 3/18/2025 8:05:00 AM(UTC-7) | SMS +12535550151 Duke | +12535550127 (owner) | fuel dock thursday? cant do 6 |
+| `msg:item2:Chats!367` | key | 3/18/2025 10:15:35 AM(UTC-7) | SMS +13605550114 Skip | +12535550127 (owner) | fuel dock thursday 6pm |
+| `msg:item2:Chats!368` | key | 3/18/2025 10:21:08 AM(UTC-7) | SMS +12535550127 (owner) | +13605550114 Skip | ok |
+| `msg:item2:Chats!207` | wrong reading | 3/18/2025 8:05:00 AM(UTC-7) | SMS +12535550151 Duke | +12535550127 (owner) | bring the skiff to the fuel dock thursday 8am, ill check the pump |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -971,7 +977,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 - Type: event. Page 2, paragraph 13. Wording: plain.
 - Core assumptions: COYLE sent the request to VARLOW on Mar 4; VARLOW sent the agreement
 - Why: 'need the motors out of the boathouse by sat' at 9:30 a.m. PST and 'ok ill clear it friday' at 9:44 a.m. on Mar 4.
-- Hazard: `same_name`. That morning COYLE asked Item 2's 'Emmett' (Emmett Strade) 'need the kayaks out of the garage by sat', and he agreed. A reading that takes Item 2's 'Emmett' for EMMETT VARLOW finds the kayak exchange. The sheet names VARLOW's accounts.
+- Hazard: `same_name`. That morning COYLE asked Item 2's 'Emmett' (+12535550159) 'need the kayaks out of the garage by sat', and he agreed. A reading that takes Item 2's 'Emmett' for EMMETT VARLOW finds the kayak exchange. The sheet names VARLOW's accounts.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
 
@@ -979,10 +985,10 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 |---|---|---|---|---|---|
 | `msg:item1:Chats!400` | key | 3/4/2025 5:30:20 PM(UTC+0) | SMS +12535550127 Ren | +13605550114 (owner) | need the motors out of the boathouse by sat |
 | `msg:item1:Chats!401` | key | 3/4/2025 5:44:51 PM(UTC+0) | SMS +13605550114 (owner) | +12535550127 Ren | ok ill clear it friday |
-| `msg:item2:Chats!360` | key | 3/4/2025 9:30:20 AM(UTC-8) | SMS +12535550127 (owner) | +13605550114 Skip | need the motors out of the boathouse by sat |
-| `msg:item2:Chats!361` | key | 3/4/2025 9:44:51 AM(UTC-8) | SMS +13605550114 Skip | +12535550127 (owner) | ok ill clear it friday |
-| `msg:item2:Chats!229` | wrong reading | 3/4/2025 8:10:20 AM(UTC-8) | SMS +12535550127 (owner) | +12535550159 Emmett | need the kayaks out of the garage by sat |
-| `msg:item2:Chats!230` | wrong reading | 3/4/2025 8:25:00 AM(UTC-8) | SMS +12535550159 Emmett | +12535550127 (owner) | ok saturday morning |
+| `msg:item2:Chats!361` | key | 3/4/2025 9:30:20 AM(UTC-8) | SMS +12535550127 (owner) | +13605550114 Skip | need the motors out of the boathouse by sat |
+| `msg:item2:Chats!362` | key | 3/4/2025 9:44:51 AM(UTC-8) | SMS +13605550114 Skip | +12535550127 (owner) | ok ill clear it friday |
+| `msg:item2:Chats!230` | wrong reading | 3/4/2025 8:10:20 AM(UTC-8) | SMS +12535550127 (owner) | +12535550159 Emmett | need the kayaks out of the garage by sat |
+| `msg:item2:Chats!231` | wrong reading | 3/4/2025 8:25:00 AM(UTC-8) | SMS +12535550159 Emmett | +12535550127 (owner) | ok saturday morning |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -992,7 +998,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 - Type: event. Page 3, paragraph 17. Wording: plain.
 - Core assumptions: A call between COYLE and PELLOQUIN on Mar 16, 540 to 660 s
-- Why: Their only call that day is 45 s (11:20 a.m. PDT). The ten-minute call (612 s, 2:40 p.m.) is with Item 2's 'Duke' (Duke Marchetti). Curated reports, so not shown.
+- Why: Their only call that day is 45 s (11:20 a.m. PDT). The ten-minute call (612 s, 2:40 p.m.) is with Item 2's 'Duke' (+12535550151). Curated reports, so not shown.
 - Hazard: `same_name`. DUKE is PELLOQUIN's nickname (paragraph 2). A reading that takes Item 2's 'Duke' for PELLOQUIN finds the 612 s call and supports the claim. The sheet names PELLOQUIN.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
   marked so):
@@ -1019,7 +1025,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 | Record id | Role | Printed time | From | To | Text |
 |---|---|---|---|---|---|
-| `msg:item3:Chats!444` | key, wrong reading | 3/9/2025 3:47:10 AM(UTC-8) | Telegram 8820433 (owner) | 8820411 Em V | all unloaded. trailer is back in the barn |
+| `msg:item3:Chats!445` | key, wrong reading | 3/9/2025 3:47:10 AM(UTC-8) | Telegram 8820433 (owner) | 8820411 Em V | all unloaded. trailer is back in the barn |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
@@ -1036,10 +1042,10 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 | Record id | Role | Printed time | From | To | Text |
 |---|---|---|---|---|---|
-| `msg:item2:Chats!379` | key | 3/3/2025 10:05:10 AM(UTC-8) | Telegram 8820422 (owner) | 8820450 kelpwise | 2 outboards, 90s, both run. 3500 for the pair |
-| `msg:item2:Chats!380` | key | 3/3/2025 10:40:25 AM(UTC-8) | Telegram 8820450 kelpwise | 8820422 (owner) | deal, 3k for both, cash |
-| `msg:item2:Chats!381` | key | 3/3/2025 10:52:02 AM(UTC-8) | Telegram 8820422 (owner) | 8820450 kelpwise | ok 3k |
-| `msg:item2:Chats!402` | wrong reading | 3/3/2025 10:30:15 AM(UTC-8) | SMS +12535550148 | +12535550127 (owner) | u get my telegram? |
+| `msg:item2:Chats!380` | key | 3/3/2025 10:05:10 AM(UTC-8) | Telegram 8820422 (owner) | 8820450 kelpwise | 2 outboards, 90s, both run. 3500 for the pair |
+| `msg:item2:Chats!381` | key | 3/3/2025 10:40:25 AM(UTC-8) | Telegram 8820450 kelpwise | 8820422 (owner) | deal, 3k for both, cash |
+| `msg:item2:Chats!382` | key | 3/3/2025 10:52:02 AM(UTC-8) | Telegram 8820422 (owner) | 8820450 kelpwise | ok 3k |
+| `msg:item2:Chats!403` | wrong reading | 3/3/2025 10:30:15 AM(UTC-8) | SMS +12535550148 | +12535550127 (owner) | u get my telegram? |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
