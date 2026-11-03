@@ -135,9 +135,12 @@ from core.audit.checks._common import (
     person_party,
 )
 from core.contracts import Claim, ClaimType, ModelRun, TimeWindow
+from core.identity.aliases import answers as alias_answers
 from core.identity.aliases import key as alias_key
 from core.identity.aliases import person_names
 from core.identity.aliases import spans as alias_spans
+from core.review import account_names
+from core.review.device_names import keys as phone_keys
 from core.review.device_names import logged_names, name_key
 from core.zones import resolve_zone
 
@@ -151,7 +154,11 @@ MAX_PROPOSALS = 8
 #   3: #164, #169, #172 (sent_by, each_way), #186 (person aliases) and #190 (positions found in
 #      the claim as written) change which proposals are kept and what code adds.
 #   4: #201 reads a whole day tied to an event the expert entered (case_events).
-FILLER_VERSION = "4"
+#   5: a name the expert gave a number reads as that number, in a model's answer and in the
+#      claim's own words; person and phone names match with or without "the"; a call's time
+#      range drops words a claim that quotes nothing never quoted; "texting" names SMS and
+#      "spoke by phone" a call.
+FILLER_VERSION = "5"
 MAX_WINDOW_DAYS = 400
 TIME_SLACK = timedelta(minutes=15)
 
@@ -200,8 +207,19 @@ REQUIRED_TEMPLATES: dict[ClaimType, frozenset[str]] = {
 
 # Words in a claim that name a channel. App names count as themselves.
 CHANNEL_WORDS: dict[str, tuple[str, ...]] = {
-    "sms": ("sms", "text message", "texted", "texts", "text"),
-    "call": ("call", "called", "calls", "phoned"),
+    "sms": ("sms", "text message", "texted", "texts", "texting", "text"),
+    "call": (
+        "call",
+        "called",
+        "calls",
+        "phoned",
+        # speaking by phone is a call ("VARGA and ODUM spoke by phone for eight minutes")
+        "spoke by phone",
+        "spoken by phone",
+        "talked by phone",
+        "spoke on the phone",
+        "talked on the phone",
+    ),
 }
 # Words for a phone's own messages, whether or not the case holds an app by that name.
 _PHONE_MESSAGE_WORDS = (*CHANNEL_WORDS["sms"], "imessage", "imessages", "mms", "rcs")
@@ -826,6 +844,32 @@ def _flat(text: str) -> str:
     """The text with each line break or other whitespace character as one space, same length,
     so a quote a PDF wrapped over two lines is still one quoted span (Codex on #160)."""
     return re.sub(r"\s", " ", text)
+
+
+def unquoted_time_quote(claim_text: str, p: _ProposalOut) -> tuple[_ProposalOut, str | None]:
+    """A call's time range with quoted_text when the claim quotes nothing at all, and the note
+    saying the words were dropped. A model may copy the claim's own sentence there ("At about
+    11:50 p.m. ... VARGA called ODUM"): a call holds no words, so the record_time check of a
+    call rests on its parties, app and time, never on words, and the words are dropped, and
+    noted, rather than refusing the time range. Nothing else changes: a claim that quotes
+    anything (straight, curly or single quotes) keeps the rule that the words lie inside its
+    quotes, a message's time range is picked by its words and still needs them, and every
+    other template that takes words (a sender, a meaning, a contact's saved name, a weekday)
+    rests on them and keeps refusing."""
+    words = p.quoted_text.strip()
+    if (
+        p.template_id != "record_time"
+        or CALL_CHANNEL not in {c.strip().casefold() for c in p.channels}
+        or not words
+        or _QUOTE_SPAN_RE.search(_flat(_nfc(claim_text)))
+        or any(q in claim_text for q in '"“”„')
+    ):
+        return p, None
+    note = (
+        f"quoted_text {words!r} dropped: the claim quotes no words, and a call's time range"
+        " does not rest on any"
+    )
+    return p.model_copy(update={"quoted_text": ""}), note
 
 
 def _in_quotes(value: str, text: str) -> bool:
@@ -2418,6 +2462,9 @@ class LocalAssumptionFiller:
                 p = _ProposalOut.model_validate(item)
                 if p.template_id not in allowed_ids:
                     raise Reject(f"template {p.template_id!r} is not allowed for this claim")
+                p, note = unquoted_time_quote(claim.text, p)
+                if note:
+                    self._drop(claim, i, note, call.id)
                 out.append(self._resolve(claim, para, p))
             except ValidationError as e:
                 self._drop(claim, i, f"wrong shape: {e.error_count()} errors", call.id)
@@ -2753,6 +2800,8 @@ class LocalAssumptionFiller:
         for i in [*idents, *params.get("handles", [])]:
             if i and i.strip():
                 spans += _ident_spans(clause, i)
+        for a in found:  # "the BURNER" for its number, as the expert named it
+            spans += self._named_spans(clause, a.identifier)
         numbers = {d for i in idents if i and (d := phone_digits(i)) is not None}
         written_numbers = set()
         for m in _PHONE_RE.finditer(clause):
@@ -2763,8 +2812,10 @@ class LocalAssumptionFiller:
                 written_numbers.add(d)
         for a in found:
             names = [x for x in (a.identifier, a.display_name) if x and x.strip()]
-            if not any(_ident_spans(clause, x) for x in names) and not any(
-                phone_digits(x) in written_numbers for x in names
+            if (
+                not any(_ident_spans(clause, x) for x in names)
+                and not any(phone_digits(x) in written_numbers for x in names)
+                and not self._named_spans(clause, a.identifier)
             ):
                 # An account the clause does not write: the count would credit its messages
                 # to a side the claim names otherwise (Codex on #172).
@@ -2813,6 +2864,7 @@ class LocalAssumptionFiller:
                 if i and i.strip():
                     # whole only: "7001002" inside "70010023" is another account (Codex on #172)
                     out += [("accounts", s, e, False) for s, e in _ident_spans(text, i)]
+                    out += [("accounts", s, e, False) for s, e in self._named_spans(text, i)]
             # one number written another way ("+1 (212) 555-0122" for +12125550122; R6)
             numbers = {d for i in idents if i and (d := phone_digits(i)) is not None}
             for m in _PHONE_RE.finditer(text):
@@ -2870,7 +2922,7 @@ class LocalAssumptionFiller:
             for a in accounts:
                 i = (self.data.accounts[a].identifier or "").strip()
                 d = phone_digits(i) if i else None
-                if i and _ident_spans(text, i):
+                if i and (_ident_spans(text, i) or self._named_spans(text, i)):
                     out.add(a)
                 elif d is not None and any(
                     phone_digits(m.group(0).strip(" .,-")) == d for m in _PHONE_RE.finditer(text)
@@ -3475,9 +3527,20 @@ class LocalAssumptionFiller:
             if (
                 n == " ".join(parts)
                 or (parts and n == parts[-1])
-                or any(alias_spans(a, written) == [(0, len(written))] for a in aliases)
+                # whole, with or without a leading "the": "COURIER" for "the COURIER"
+                or any(alias_answers(a, written) for a in aliases)
             ):
                 hits.append(pid)
+        if not hits:
+            number = account_names.designated(self.conn, written)
+            if number is not None:
+                # A number the document names is never a person: no identity link follows.
+                raise Reject(
+                    f"{name!r} is the number {number} as the expert named it, not a person;"
+                    " write it as an account"
+                )
+            if self._named_device(written) is not None:
+                raise Reject(f"{name!r} is a phone, not a person; write it as a phone")
         if len(hits) != 1:
             found = "no person" if not hits else f"{len(hits)} persons"
             raise Reject(f"{name!r} matches {found} the expert created")
@@ -3502,21 +3565,55 @@ class LocalAssumptionFiller:
             )
         ]
 
+    def _numbers_named(self, text: str) -> list[tuple[str, int, int]]:
+        """(identifier, start, end) where the text writes a name the expert gave a number or an
+        account ("the BURNER", core/review/account_names.py): code reads it as that number or
+        id wherever it reads a party from the claim's words, and never as a person."""
+        return account_names.written(self.conn, text)
+
+    def _named_spans(self, text: str, identifier: str) -> list[tuple[int, int]]:
+        """Where the text writes a name the expert gave this number or id."""
+        want = account_names.identifier_key(identifier)
+        return [
+            (start, end)
+            for ident, start, end in self._numbers_named(text)
+            if account_names.identifier_key(ident) == want
+        ]
+
+    def _names_a_number(self, claim_text: str) -> bool:
+        """True when the claim, outside quoted words, writes a name the expert gave a phone
+        number: it writes that number, as `_writes_a_number` reads one."""
+        return any(
+            phone_digits(ident) is not None
+            for ident, _, _ in self._numbers_named(_unquoted(_nfc(claim_text)))
+        )
+
     def _device(self, phone: str) -> str:
         """The device a phone name means: its id, source id or label, or a name the expert
         gave it (core/review/device_names.py)."""
-        want = name_key(phone)
+        hits = self._devices_named(phone)
+        if len(hits) != 1:
+            raise Reject(f"phone {phone!r} matches {len(hits)} devices")
+        return hits[0]
+
+    def _devices_named(self, phone: str) -> list[str]:
+        """The devices a phone name means, compared with or without a leading "the" ("the
+        SAMSUNG" and "SAMSUNG" are one name, device_names.keys)."""
+        want = phone_keys(phone)
         named = logged_names(self.conn)
-        hits = [
+        return [
             did
             for did, sid, label in self.conn.execute(
                 "SELECT id, source_id, label FROM devices ORDER BY id"
             )
-            if want in {name_key(x) for x in (did, sid, label, *named.get(did, [])) if x}
+            if want
+            & set().union(*(phone_keys(x) for x in (did, sid, label, *named.get(did, [])) if x))
         ]
-        if len(hits) != 1:
-            raise Reject(f"phone {phone!r} matches {len(hits)} devices")
-        return hits[0]
+
+    def _named_device(self, words: str) -> str | None:
+        """The one device these words name, or None."""
+        hits = self._devices_named(words)
+        return hits[0] if len(hits) == 1 else None
 
     def _channels(self, claim_text: str, names: list[str], template_id: str = "") -> list[str]:
         vocab = {c.casefold(): c for c in self.channels()}
@@ -3576,6 +3673,9 @@ class LocalAssumptionFiller:
         only one that holds the number."""
         app = acc.app.strip().casefold()
         ident = re.sub(r"(?i)^(user\s*id|id|number|no\.)\s*", "", acc.as_written.strip())
+        # A name the expert gave a number or id ("the BURNER") is that identifier, and the
+        # rules below still apply to it: a number alone never picks the app.
+        ident = account_names.designated(self.conn, acc.as_written) or ident
         want = key(acc.app, ident)
         sources = set(self.data.sources_for(device_ids)) if device_ids else None
         mine = [
@@ -3629,7 +3729,7 @@ class LocalAssumptionFiller:
         if (
             not named
             and NATIVE_CALL_APP in self.channels()
-            and _writes_a_number(claim_text)
+            and (_writes_a_number(claim_text) or self._names_a_number(claim_text))
             # "a Signal call" on a case with no Signal is no call-log call (Codex on #169)
             and not _names_an_app_off_the_case(_unquoted(_nfc(claim_text)))
         ):
@@ -3671,6 +3771,10 @@ class LocalAssumptionFiller:
                 written.append(m.group(0).strip(" .,-"))
                 numbers.append(m.group(0).strip(" .,-"))
                 spans.append(m.span())
+        for ident, start, end in self._numbers_named(bare):
+            # "the BURNER called ...": the number or id the expert named, never a person
+            written.append(ident)
+            spans.append((start, end))
         for m in _QUOTE_SPAN_RE.finditer(_flat(text)):
             if m.group(0)[1:-1].strip():
                 written.append(m.group(0)[1:-1].strip())
@@ -3771,6 +3875,13 @@ class LocalAssumptionFiller:
             if (d := phone_digits(m.group(0).strip(" .,-"))) is not None:
                 numbers.add(d)
                 spans.append(m.span())
+        for ident, start, end in self._numbers_named(bare):
+            # "had no contact with the BURNER": the number the expert named. A name for an id
+            # that is no number is no party code reads here.
+            if (d := phone_digits(ident)) is None:
+                raise Reject(f"no contact: {bare[start:end]!r} names an id, not a number")
+            numbers.add(d)
+            spans.append((start, end))
         if joiner := self._absence_joiner(bare):
             # "never communicated with SMITH while REYES was abroad" (Codex on #169)
             raise Reject(f"no contact: the claim joins another clause ({joiner!r})")
@@ -3838,6 +3949,7 @@ class LocalAssumptionFiller:
             for m in _PHONE_RE.finditer(bare)
             if phone_digits(m.group(0).strip(" .,-")) is not None
         ]
+        spans += [(start, end) for _, start, end in self._numbers_named(bare)]
         for found in self._person_spans(bare).values():
             spans += found
         return any(

@@ -77,9 +77,10 @@ def stored(conn: sqlite3.Connection) -> list[CaseEvent]:
 
 
 def taken(conn: sqlite3.Connection, but: str = "") -> dict[str, str]:
-    """Every form a person or another event is already matched by -> what it names ("a person,
-    Owen Halloran" or "the event SEARCH"): each person's name forms (aliases.name_keys), each
-    alias's forms and each other event's. `but` is an event name to leave out."""
+    """Every form a person, another event or a number's name is already matched by -> what it
+    names ("a person, Owen Halloran" or "the event SEARCH"): each person's name forms
+    (aliases.name_keys), each alias's forms, each other event's and each name the expert gave a
+    number or account (core/review/account_names.py). `but` is an event name to leave out."""
     out: dict[str, str] = {}
     for pid, name in conn.execute("SELECT id, name FROM persons ORDER BY id"):
         for f in aliases.name_keys(name):
@@ -92,6 +93,10 @@ def taken(conn: sqlite3.Connection, but: str = "") -> dict[str, str]:
         if key(ev.name) != key(but):
             for f in aliases.forms(ev.name):
                 out.setdefault(f, f"the event {ev.name}")
+    from core.review import account_names  # a number's name never also names an event
+
+    for f, what in account_names.forms(conn).items():
+        out.setdefault(f, what)
     return out
 
 

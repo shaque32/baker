@@ -694,7 +694,9 @@ def name_device(
     statement, not a finding: the report lists each name with who gave it and when. Refused
     when a name would also match another device, so a phone name never reaches two devices.
     Returns the names as recorded."""
-    from core.review.device_names import ACTION, logged_names, name_key
+    from core.identity.aliases import forms as alias_forms
+    from core.review import account_names
+    from core.review.device_names import ACTION, keys, logged_names, name_key
 
     _expert(actor)
     dev = conn.execute("SELECT label FROM devices WHERE id = ?", (device_id,)).fetchone()
@@ -711,14 +713,91 @@ def name_device(
     for did, sid, label in conn.execute("SELECT id, source_id, label FROM devices ORDER BY id"):
         if did == device_id:
             continue
-        theirs = {name_key(x) for x in (did, sid, label, *taken.get(did, [])) if x}
+        theirs = set().union(*(keys(x) for x in (did, sid, label, *taken.get(did, [])) if x))
         for name in clean:
-            if name_key(name) in theirs:
+            if keys(name) & theirs:  # with or without a leading "the"
                 raise ReviewError(f"{name} already names {label} ({did})")
+    numbers = account_names.forms(conn)
+    for name in clean:
+        clash = sorted(alias_forms(name) & numbers.keys())
+        if clash:
+            raise ReviewError(f"{name} already names {numbers[clash[0]]}")
     now = _now(clock)
     with conn:
         audit_log.append(
             conn, now, actor, ACTION, {"device_id": device_id, "label": dev[0], "names": clean}
+        )
+    return clean
+
+
+def name_account(
+    conn: sqlite3.Connection,
+    identifier: str,
+    names: list[str],
+    actor: str,
+    clock: Clock | None = None,
+) -> list[str]:
+    """The expert records the names the government document gives a number or an account
+    ("the BURNER" for "+1 (720) 555-0186"), so the assumption filler can tell which number a
+    claim names. The list replaces the identifier's earlier names; an empty list clears them.
+    It is the expert's statement, not a finding: the report lists each name with who gave it
+    and when. A name means the number or id only, never a person, so it confirms no identity
+    link. Refused when no account in the case holds the identifier, or when a name would also
+    match a person (their name, surname or an alias), a phone, an event or another number's
+    name, with or without a leading "the". Returns the names as recorded."""
+    from core.audit import case_events as ev
+    from core.identity.aliases import forms, key, name_keys, stored
+    from core.review import account_names
+    from core.review.device_names import keys as phone_keys
+    from core.review.device_names import logged_names as phone_names
+
+    _expert(actor)
+    ident = " ".join(identifier.split())
+    if not ident or not account_names.holders(conn, ident):
+        raise ReviewError(f"no account in the case holds {identifier!r}")
+    clean: list[str] = []
+    for raw in names:
+        name = " ".join(raw.split())
+        if not name or len(name) > account_names.MAX_NAME:
+            raise ReviewError(
+                "enter each name as the document writes it"
+                f" (up to {account_names.MAX_NAME} characters)"
+            )
+        if not key(name):
+            raise ReviewError(f"{name} has no letter or digit, so the audit could not match it")
+        other = account_names.holders(conn, name)
+        if other and account_names.identifier_key(name) != account_names.identifier_key(ident):
+            # a name that is itself another account's number or id would read as both
+            raise ReviewError(f"{name} is itself a number or id in the case ({other[0]})")
+        if key(name) not in {key(n) for n in clean}:
+            clean.append(name)
+    taken: dict[str, str] = {}
+    for (pname,) in conn.execute("SELECT name FROM persons ORDER BY id"):
+        taken.update(dict.fromkeys(name_keys(pname) - taken.keys(), f"the person {pname}"))
+    people = dict(conn.execute("SELECT id, name FROM persons"))
+    for a in stored(conn):
+        who = f"the person {people.get(a.person_id, a.person_id)}"
+        taken.update(dict.fromkeys(forms(a.alias) - taken.keys(), who))
+    for e in ev.stored(conn):
+        taken.update(dict.fromkeys(forms(e.name) - taken.keys(), f"the event {e.name}"))
+    for f, what in account_names.forms(conn, but=ident).items():
+        taken.setdefault(f, what)
+    phones = phone_names(conn)
+    for did, sid, label in conn.execute("SELECT id, source_id, label FROM devices ORDER BY id"):
+        theirs = set().union(*(phone_keys(x) for x in (did, sid, label, *phones.get(did, [])) if x))
+        for name in clean:
+            if phone_keys(name) & theirs:
+                raise ReviewError(f"{name} already names the phone {label} ({did})")
+    for name in clean:
+        clash = sorted(forms(name) & taken.keys())
+        if clash:
+            raise ReviewError(
+                f"{name} would also match {taken[clash[0]]}; the audit could not tell them apart"
+            )
+    now = _now(clock)
+    with conn:
+        audit_log.append(
+            conn, now, actor, account_names.ACTION, {"identifier": ident, "names": clean}
         )
     return clean
 
@@ -782,6 +861,15 @@ def set_aliases(
             raise ReviewError(
                 f"{alias} would also match {names.get(pid, pid)} ({pid}); the audit could not "
                 "tell them apart"
+            )
+    from core.review import account_names
+
+    numbers = account_names.forms(conn)  # a number's name never also names a person
+    for alias in clean:
+        clash = sorted(forms(alias) & numbers.keys())
+        if clash:
+            raise ReviewError(
+                f"{alias} would also match {numbers[clash[0]]}; the audit could not tell them apart"
             )
     have = {key(a.alias): a.alias for a in rows if a.person_id == person_id}
     keep = {key(a) for a in clean}

@@ -32,13 +32,40 @@ def key(text: str) -> str:
     return " ".join(re.sub(r"[\W_]+", " ", unicodedata.normalize("NFC", text).casefold()).split())
 
 
+_THE_RE = re.compile(r"(?i)^\s*the\s+(?=\S)")
+
+
+def without_the(text: str) -> str:
+    """The text without a leading "the" ("the COURIER" -> "COURIER"). Documents define a
+    designation with or without it, and a model may drop or add it."""
+    m = _THE_RE.match(text)
+    return text[m.end() :] if m and key(text[m.end() :]) else text
+
+
+def bare(text: str) -> str:
+    """A name's key without a leading "the": "the COURIER" and "COURIER" are one."""
+    return key(without_the(text))
+
+
 def forms(text: str) -> set[str]:
-    """Every form a reader compares a name or an alias by: its key, and its name words as the
-    Identities page reads them (core/identity/links.tokens drops initials and numbers, so
+    """Every form a reader compares a name or an alias by: its key, the key without a leading
+    "the" (`bare`, so "the COURIER" clashes wherever "COURIER" would), and its name words as
+    the Identities page reads them (core/identity/links.tokens drops initials and numbers, so
     "John Q Smith" reads as "john smith")."""
     from core.identity.links import tokens  # links reads this module, so not at the top
 
-    return {f for f in (key(text), " ".join(tokens(text))) if f}
+    return {f for f in (key(text), bare(text), " ".join(tokens(text))) if f}
+
+
+def answers(alias: str, answer: str) -> bool:
+    """True when the whole answer is the alias as `spans` reads it, with or without a leading
+    "the" on either side: a model's "COURIER" for the alias "the COURIER", or "the HAL" for
+    "HAL". Still whole, so "@courier" (a handle) and "COURIER VAN" are not "the COURIER"."""
+    written = unicodedata.normalize("NFC", answer.strip())
+    if written and spans(alias, written) == [(0, len(written))]:
+        return True
+    a, w = without_the(alias), without_the(written)
+    return (a, w) != (alias, written) and bool(key(w)) and spans(a, w) == [(0, len(w))]
 
 
 def name_keys(name: str) -> set[str]:

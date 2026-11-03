@@ -95,6 +95,7 @@ from core.audit.assumption_filler import (
     coverage_gap,
     fill_schema,
     phone_digits,
+    unquoted_time_quote,
 )
 from core.audit.assumptions import Proposal, from_proposal, templates_for
 from core.audit.invariants import InvariantViolation
@@ -107,6 +108,7 @@ from core.contracts import (
     canonical_json,
 )
 from core.identity.aliases import person_names, written
+from core.review import account_names
 from core.review.device_names import logged_names, name_key
 
 # 0.2.0: the claim-only check (outcome "outside"), the checks each try ran ("check"), the
@@ -213,6 +215,15 @@ def _found(filler: LocalAssumptionFiller, texts: Sequence[str]) -> list[tuple[Lo
         for m in _PHONE_RE.finditer(_nfc(t))
         if (d := phone_digits(m.group(0))) is not None
     ]
+    # A name the expert gave a number or an account ("the BURNER"): the number, never a person.
+    for ident, given in account_names.logged_names(conn).items():
+        holders = account_names.holders(conn, ident)
+        for words in given:
+            w = _alias_written(words, texts)
+            if w is not None and holders:
+                what = f"the number {ident} as the expert named it: an account, not a person"
+                out += [(Lookup("account", w, what), aid) for aid in holders]
+                break
     for a in sorted(filler.data.accounts.values(), key=lambda a: a.id):
         w = _written(a.identifier, texts) if len(a.identifier.strip()) >= MIN_NAME else None
         if w is None:
@@ -489,6 +500,9 @@ def check_answer(
             p = _ProposalOut.model_validate(item)
             if p.template_id not in allowed:
                 raise Reject(f"template {p.template_id!r} is not allowed for this claim")
+            p, note = unquoted_time_quote(claim.text, p)
+            if note:
+                reasons.append(f"item {i}: {note}")
             kept.append(filler._resolve(claim, para, p))
         except ValidationError as e:
             reasons.append(f"item {i}: wrong shape: {e.error_count()} errors")

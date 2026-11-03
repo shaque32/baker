@@ -22,6 +22,14 @@ def name_key(name: str) -> str:
     return re.sub(r"\s+", "", name.casefold())
 
 
+def keys(name: str) -> set[str]:
+    """Every key a phone name is matched by: `name_key`, and the same without a leading "the",
+    so "the SAMSUNG" and "SAMSUNG" name one phone, whichever the expert or a model writes."""
+    from core.identity.aliases import without_the
+
+    return {k for k in (name_key(name), name_key(without_the(name))) if k}
+
+
 def named_by(conn: sqlite3.Connection) -> list[tuple[str, str, str, str, list[str]]]:
     """(device id, device label, actor, at_utc, names) for each device's newest entry that
     gives it names, in device order, for the report."""
