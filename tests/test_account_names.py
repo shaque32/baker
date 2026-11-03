@@ -749,3 +749,30 @@ def test_a_person_named_like_a_numbers_name_is_refused_and_never_picked(conn):
         filler._person("BURNER")
     with pytest.raises(Reject, match="names both a person"):
         filler._accounts(_Account(as_written="BURNER", app="Phone"), ["dev:item1"], "")
+
+
+def test_the_claims_own_words_read_an_alias_without_its_the(conn):
+    # Codex on #209: "COURIER sent ..." names the alias "the COURIER" in the claim, as the
+    # model's answer "COURIER" does, so the sender of a count is read.
+    actions.set_aliases(conn, PETROV, ["the COURIER"], EXPERT, _clock)
+    filler = _filler(conn)
+    text = "COURIER called Marc; the COURIER's phone"
+    assert [text[s:e] for s, e in sorted(filler._person_spans(text)[PETROV])] == [
+        "COURIER",
+        "the COURIER",
+    ]
+    with pytest.raises(Reject, match="in lower case"):
+        filler._person_spans("a courier called Marc")
+    text = "On March 25, 2026, on Item 1, COURIER sent +1 (212) 555-0182 three text messages."
+    prop = P(
+        "message_count",
+        people=["COURIER"],
+        accounts=[{"as_written": "+1 (212) 555-0182", "app": "SMS"}],
+        channels=["SMS"],
+        phones=["Item 1"],
+        count={"value": 3},
+        window=W("On March 25, 2026", "2026-03-25T00:00", "2026-03-26T00:00"),
+    )
+    assumptions, filler = build(conn, text, ClaimType.COUNT, [prop])
+    (a,) = [a for a in assumptions if a.template_id == "message_count"]
+    assert a.params.sent_by == (PETROV,), filler.drops

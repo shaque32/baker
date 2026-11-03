@@ -152,6 +152,23 @@ def lowered_spans(alias: str, text: str) -> list[tuple[int, int]]:
     return [(s, e) for s, e in spans(alias, text) if in_lower_case(alias, norm[s:e])]
 
 
+def either_spans(alias: str, text: str) -> list[tuple[int, int]]:
+    """`defined_spans` of the alias and of its form without a leading "the", the outermost
+    where two overlap, in text order: a claim may write "COURIER" for the alias "the COURIER",
+    as a model's answer may (`answers`; Codex on #209)."""
+    found = {s for f in dict.fromkeys((alias, without_the(alias))) for s in defined_spans(f, text)}
+    return sorted(
+        s for s in found if not any(o[0] <= s[0] and s[1] <= o[1] and o != s for o in found)
+    )
+
+
+def either_lowered(alias: str, text: str) -> list[tuple[int, int]]:
+    """`lowered_spans` of the alias and of its form without a leading "the"."""
+    return sorted(
+        {s for f in dict.fromkeys((alias, without_the(alias))) for s in lowered_spans(f, text)}
+    )
+
+
 def defined_written(alias: str, text: str) -> str | None:
     """The alias as the text writes it (`defined_spans`, the first place), or None."""
     found = defined_spans(alias, text)

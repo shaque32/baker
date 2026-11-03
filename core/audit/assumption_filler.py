@@ -136,7 +136,12 @@ from core.audit.checks._common import (
 )
 from core.contracts import Claim, ClaimType, ModelRun, TimeWindow
 from core.identity.aliases import answers as alias_answers
-from core.identity.aliases import defined_spans, in_lower_case, lowered_spans, person_names
+from core.identity.aliases import (
+    either_lowered,
+    either_spans,
+    in_lower_case,
+    person_names,
+)
 from core.identity.aliases import key as alias_key
 from core.identity.aliases import spans as alias_spans
 from core.review import account_names
@@ -3436,7 +3441,7 @@ class LocalAssumptionFiller:
                 span
                 for _, aliases in persons.values()
                 for a in aliases
-                for span in defined_spans(a, between)
+                for span in either_spans(a, between)
             ),
             key=lambda span: (span[0], -span[1]),
         )
@@ -3498,16 +3503,17 @@ class LocalAssumptionFiller:
 
     def _person_spans(self, text: str) -> dict[str, list[tuple[int, int]]]:
         """Person id -> where the text names that person the expert created: their name
-        (whole, or the last name, _name_spans) or an alias the expert gave them, whole only
-        and read as every alias reader reads it (core/identity/aliases.spans). An alias two
-        persons share names neither (core/identity/aliases.person_names)."""
+        (whole, or the last name, _name_spans) or an alias the expert gave them, whole only,
+        with or without its leading "the", and in capitals if the alias is (core/identity/
+        aliases.either_spans). An alias two persons share names neither
+        (core/identity/aliases.person_names)."""
         persons = person_names(self.conn)
         for _, aliases in persons.values():
             for a in aliases:
-                if low := lowered_spans(a, text):
+                if low := either_lowered(a, text):
                     raise Reject(_lowered(_nfc(text)[slice(*low[0])], f"the alias {a!r}"))
         by_alias = {
-            pid: [sp for a in aliases for sp in defined_spans(a, text)]
+            pid: [sp for a in aliases for sp in either_spans(a, text)]
             for pid, (_, aliases) in persons.items()
         }
         found = {
