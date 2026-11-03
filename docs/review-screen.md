@@ -217,6 +217,16 @@ its message) go into the next bug report.
 
 ## Local-server protections
 
+`127.0.0.1` answers every program and every account on the computer, so each launch makes a
+random screen key (`ui/screen_key.py`). `mabillon serve --open` opens the browser at
+`/open?key=<key>` (and prints that link); that request sets the key as an HttpOnly,
+SameSite=Strict cookie named for the port, and every other request without it gets 403 before
+the app sees it. Another account on a shared computer cannot read an open case or the form token
+on its pages. The key changes on every launch and is kept, while the screen runs, in
+`~/.mabillon/screen/<port>.key` (this account only), so starting Mabillon again while it runs
+opens the running screen. Typing `http://127.0.0.1:8765` into a browser that has not been through
+the launch link shows "This Mabillon screen opens only in the browser Mabillon started".
+
 Another web page open in the same browser can send requests to `127.0.0.1`, so the server
 checks the Host header (blocks DNS rebinding), requires a per-session random token on every
 form (in an upload, before a byte of the file is written), refuses cross-site requests, and

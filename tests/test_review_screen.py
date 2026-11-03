@@ -438,10 +438,12 @@ def test_server_binds_loopback_only_and_answers(db):
     try:
         host, port = server.server_address[:2]
         assert host == "127.0.0.1"
+        key = server.key  # type: ignore[attr-defined]
+        cookie = {"Cookie": f"{key.cookie_name}={key.value}"}
         t = threading.Thread(target=server.handle_request)
         t.start()
         c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
-        c.request("GET", "/claims")
+        c.request("GET", "/claims", headers=cookie)
         r = c.getresponse()
         body = r.read().decode()
         t.join(10)
@@ -453,7 +455,7 @@ def test_server_binds_loopback_only_and_answers(db):
             "POST",
             "/redecide",
             urlencode({"token": "forged"}),
-            {"Content-Type": "application/x-www-form-urlencoded"},
+            {"Content-Type": "application/x-www-form-urlencoded", **cookie},
         )
         assert c.getresponse().status == 403
         t.join(10)

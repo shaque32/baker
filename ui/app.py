@@ -22,8 +22,9 @@ Each case page the examiner opens is recorded in the same audit log as a `view` 
 time, the examiner's name, the page and the evidence it listed (core/review/activity.py). The
 Activity page shows that trail with time on each page; a view never changes a verdict.
 
-Local-server protections. Another web page open in the same browser can send requests to
-127.0.0.1, so:
+Local-server protections. Every request first needs this launch's screen key, which ui/server.py
+checks before handle() runs (ui/screen_key.py), so another account on the computer cannot read
+the screen. Another web page open in the same browser can send requests to 127.0.0.1, so:
 - the Host header must name this server (127.0.0.1 or localhost on its port), which blocks DNS
   rebinding;
 - every POST carries a random token that only this server's own pages contain, and its Origin

@@ -33,7 +33,8 @@ Giving a demo: [docs/demo.md](docs/demo.md) (the 10-minute flow and the planted 
 key). Installing on an expert's computer: [docs/install-mac.md](docs/install-mac.md) (one
 script, Apple silicon) or [docs/install.md](docs/install.md) (Windows installer).
 
-Opens Mabillon at `http://127.0.0.1:8765/`, served from this computer only, with no internet
+Opens Mabillon at `http://127.0.0.1:8765/` through a launch link with a per-launch key (other
+accounts on the computer cannot open it), served from this computer only, with no internet
 access and no scripts. The expert makes a case, imports the government document and the
 phone reports (Cellebrite Excel, PDF or UFDR; Magnet AXIOM XML or Excel, unverified), copied
 into the case folder, read-only, SHA-256 hashed, then settles the claims, confirms who used

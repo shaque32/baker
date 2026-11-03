@@ -65,8 +65,9 @@ The demo is a ready-made, fully synthetic case (two phones, seven planted traps)
 so it opens in seconds. Run it before you open anything real.
 
 1. Start it. Mac: double-click **Mabillon demo**. Windows: in **Mabillon command prompt**, run
-   `mabillon demo`. Your browser opens `http://127.0.0.1:8766`. Only your computer can open that
-   address. Closing the window that started it stops Mabillon.
+   `mabillon demo`. Your browser opens `http://127.0.0.1:8766`. Only your computer, and only the
+   browser Mabillon opened, can use that address. Closing the window that started it stops
+   Mabillon.
 2. Open the case. The setup page lists three imported files, each with its SHA-256, and the phone
    reports marked "curated report", which means they cannot show that something did not happen.
 3. Open claim **C05** ("need 2 more by friday"). The model-side label says "supports", but the
