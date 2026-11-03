@@ -51,7 +51,7 @@
   Agreed with the validation thread, which owns assumption_filler.py, on 2026-11-03, on top of
   #201 (case events, FILLER_VERSION 4).
 - Where: branch claude/project-thread-6i2msb-designations (merge after #201)
-- Verified: tests/test_account_names.py (52 tests on synthetic case01): entering, replacing
+- Verified: tests/test_account_names.py (54 tests on synthetic case01): entering, replacing
   and clearing names; every refusal; holders across apps and WhatsApp ids; the name never
   resolves to a person and adds no person or link; Not current; bundle repair inputs; the
   report line passes the word check; the CLI; a model's account answer, a code-read call
