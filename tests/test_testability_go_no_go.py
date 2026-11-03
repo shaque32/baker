@@ -327,5 +327,6 @@ def test_a_no_stance_dev_check_measures_the_step_and_never_gives_a_go_no_go(tmp_
 def test_spent_cases_give_no_go_no_go_and_no_stance_needs_the_step():
     # case04 (2026-10-30) and case05 (2026-11-03) each had their go/no-go of record
     assert not {"case04", "case05"} & rp.TESTABILITY_GO_NO_GO_CASES
+    assert rp.TESTABILITY_GO_NO_GO_CASES == {"case06"}  # the next held-out case
     with pytest.raises(SystemExit):
         rp.main(["--case", "case01", "--mode", "real", "--no-stance"])
