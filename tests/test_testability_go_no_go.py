@@ -217,6 +217,25 @@ def test_a_run_and_its_repeat_give_a_go_with_the_hardware_recorded(tmp_path, mon
     assert "pipeline: testability go/no-go: GO\n" in printed
     assert f"(code version {assumption_filler.FILLER_VERSION})" in printed
     assert "pipeline: testability go/no-go: pass: 0 false supported" in printed
+    # for information, not bars (Grok on #210): changed claims on the key's verdict, and tries
+    # refused for words the claim does not write, first tries and retries apart
+    changed = record["false_supported"]["claims_the_agent_changed"]
+    assert 0 <= record["changed_claims_on_the_keys_verdict"] <= changed
+    assert f"{record['changed_claims_on_the_keys_verdict']} of the {changed} claims" in printed
+    unwritten = record["testability"]["refused_for_words_not_in_the_claim"]
+    assert unwritten["of_first_tries"] + unwritten["of_retries"] == record["testability"]["tries"]
+    assert "refused for words the claim does not write (for information)" in printed
+
+
+def test_a_try_refused_for_unwritten_words_is_counted_as_such():
+    from core.audit.testability import Attempt
+
+    unwritten = Attempt(
+        2, None, [], [], "refused", ["'BIG T' is not written in the claim or its paragraph"]
+    )
+    other = Attempt(2, None, [], [], "refused", ["phone 'Item 9' matches 0 devices"])
+    sheet = Attempt(1, None, [], [], "mismatch", ["is not written in the claim"])
+    assert [rp._unwritten(a) for a in (unwritten, other, sheet)] == [True, False, False]
 
 
 def test_a_repeat_whose_step_answers_differ_is_a_no_go(tmp_path, monkeypatch, capsys):

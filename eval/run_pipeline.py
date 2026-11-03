@@ -731,8 +731,24 @@ def testability_summary(
         "min_testable": TESTABILITY_MIN_TESTABLE,
         "go_no_go_case": case in TESTABILITY_GO_NO_GO_CASES,
         "stance": "skipped" if stance_skipped else "run",
+        # For information (Grok on #210): whether a retry trades a repeated answer for words the
+        # claim does not write. Refused tries whose reasons say a value, quote, duration or
+        # range is not written in the claim, first tries and retries apart.
+        "refused_for_words_not_in_the_claim": {
+            "first_tries": sum(_unwritten(a) for a in tries if a.n == 1),
+            "of_first_tries": sum(a.n == 1 for a in tries),
+            "retries": sum(_unwritten(a) for a in tries if a.n > 1),
+            "of_retries": sum(a.n > 1 for a in tries),
+        },
     }
     return out
+
+
+def _unwritten(attempt) -> bool:  # noqa: ANN001 - core.audit.testability.Attempt
+    """True when code refused the try for words the claim (or its paragraph) does not write."""
+    return attempt.outcome == "refused" and any(
+        "not written in the claim" in r for r in attempt.reasons
+    )
 
 
 def run_once(
@@ -1051,6 +1067,12 @@ def print_testability(t: dict) -> None:
         f"{t['repairs_on_claims_the_sheet_leaves_untested']} on claims the sheet leaves untested;"
         f" {t['seconds']} s"
     )
+    if u := t.get("refused_for_words_not_in_the_claim"):
+        print(
+            "pipeline: testability: refused for words the claim does not write (for "
+            f"information): {u['first_tries']} of {u['of_first_tries']} first tries, "
+            f"{u['retries']} of {u['of_retries']} retries"
+        )
 
 
 # The go/no-go's settings: what Arsh sets, in the order the reasons name them.
@@ -1273,6 +1295,11 @@ def report_go_no_go(
     changed = agent_changed(out / f"{case}.db")
     mine = [g for g in gold if g.claim_id in changed]
     false_supported = score(mine, first).n_false_supported if gold else None
+    # For information, not a bar (Grok on #210): of the claims the agent changed, how many
+    # ended on the key's verdict. The rubber-stamp expert accepts every stance label, so a
+    # converted claim can end on a wrong verdict the step did not cause.
+    verdicts = {p.claim_id: p.verdict for p in first}
+    on_key = sum(verdicts.get(g.claim_id) == g.gold_verdict for g in mine) if gold else None
     whole_run = score(gold, first).n_false_supported if gold else None
     status = key_status(gold_path(case)) if gold else None
     repeat = None
@@ -1296,6 +1323,7 @@ def report_go_no_go(
             "claims_the_agent_changed": len(changed),
             "whole_run": whole_run,
         },
+        "changed_claims_on_the_keys_verdict": on_key,
         "gold": {"path": str(gold_path(case)), "status": status},
         "testability": t,
         "repeat": repeat,
@@ -1310,6 +1338,11 @@ def report_go_no_go(
     for c in result["checks"]:  # type: ignore[attr-defined]
         mark = "pass" if c["ok"] else "FAIL"
         print(f"pipeline: testability go/no-go: {mark}: {c['bar']}: {c['value']}")
+    if on_key is not None:
+        print(
+            f"pipeline: testability go/no-go: for information, not a bar: {on_key} of the"
+            f" {len(changed)} claims the agent changed ended on the key's verdict"
+        )
     print(f"pipeline: testability go/no-go: made with {provenance(summary.get('versions'))}")
     return result
 
