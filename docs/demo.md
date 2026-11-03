@@ -13,7 +13,9 @@ mabillon demo --paired           # also add a UFDR of Item 1, to show what the c
 Run it again before every demo: each run deletes the demo case and builds a clean one (about
 6 seconds). It uses its own folder (`~/Mabillon/demo/cases`, or `$MABILLON_DEMO/cases`) and its own
 port (8766), so it never shows your other cases on a screen share and can run beside a real
-`mabillon serve` on 8765. Ctrl+C stops it.
+`mabillon serve` on 8765. Ctrl+C stops it. If a demo from earlier is still running, a new run
+resets the case and opens the running one; if another program holds 8766, it uses the next free
+port and says which.
 
 ## What is real and what is scripted
 
