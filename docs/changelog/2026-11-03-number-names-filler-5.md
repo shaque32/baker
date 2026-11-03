@@ -50,8 +50,8 @@
     phone" name a call.
   Agreed with the validation thread, which owns assumption_filler.py, on 2026-11-03, on top of
   #201 (case events, FILLER_VERSION 4).
-- Where: branch claude/project-thread-6i2msb-designations (merge after #201)
-- Verified: tests/test_account_names.py (52 tests on synthetic case01): entering, replacing
+- Where: PR #209 (merge after #201)
+- Verified: tests/test_account_names.py (54 tests on synthetic case01): entering, replacing
   and clearing names; every refusal; holders across apps and WhatsApp ids; the name never
   resolves to a person and adds no person or link; Not current; bundle repair inputs; the
   report line passes the word check; the CLI; a model's account answer, a code-read call
@@ -75,4 +75,4 @@
   record the document's names for a number or account id ("the BURNER"), with `mabillon
   name-account`; the audit reads a claim's use of the name as that number, never as a person,
   and every report lists the names as the expert's statement. A name matches with or without a
-  leading "the" (#PR)."
+  leading "the" (#209)."
