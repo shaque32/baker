@@ -29,7 +29,7 @@
   - Why: in the case04 alias replay, 8 of the 11 remaining window or quote refusals were dated
     only by an event or by the sentence before.
 - Where: PR #201 (branch claude/project-thread-ds0ify)
-- Verified: 66 new tests in `tests/test_case_events.py`. They fail on main, which has no table, actions
+- Verified: 74 new tests in `tests/test_case_events.py`. They fail on main, which has no table, actions
     or reader. The near-miss tests are guards that pass both before and after.
   - Replay of Arsh's recorded case04 filler answers (development data, filler only, no model)
     with the three events an expert would enter from its affidavit: claims with a core
