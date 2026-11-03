@@ -24,6 +24,11 @@
     number. A change marks verdicts Not current (case_changed_after), and the bundle check
     counts it as an input that can change a testability repair. The testability step's
     lookups list a number's name as every account that holds it, "an account, not a person".
+    A number named as WhatsApp writes it ("12125550122@s.whatsapp.net") or as bare digits is
+    still that number on the phone app; digits only an app's user id holds are no phone
+    number. A person added after a number was named, with a name the number's name matches,
+    is refused, and an answer that would name both a person and a number is refused rather
+    than picking one (Codex on #209).
   - **"the" either way.** A model's answer matches a person alias or a phone name whole, with
     or without a leading "the" on either side (core/identity/aliases.answers,
     device_names.keys): "COURIER" for "the COURIER". Clash checks compare the form without
@@ -68,7 +73,7 @@
   Agreed with the validation thread, which owns assumption_filler.py, on 2026-11-03, on top of
   #201 (case events, FILLER_VERSION 4).
 - Where: PR #209 (merge after #201)
-- Verified: tests/test_account_names.py (65 tests on synthetic case01): entering, replacing
+- Verified: tests/test_account_names.py (70 tests on synthetic case01): entering, replacing
   and clearing names; every refusal; holders across apps and WhatsApp ids; the name never
   resolves to a person and adds no person or link; Not current; bundle repair inputs; the
   report line passes the word check; the CLI; a model's account answer, a code-read call
@@ -81,7 +86,9 @@
   p.m." stays inconclusive with the call listed outside the window; a message 9 minutes after
   "about" fails on code's range; an apostrophe ("VARGA's") quotes nothing and a single-quoted
   word does; "the courier", "a burner phone" and "the samsung" are never the alias, number or
-  phone named in capitals; "spoke by phone about the messages" never names SMS.
+  phone named in capitals; "spoke by phone about the messages" never names SMS. Codex on
+  #209: a number named by its WhatsApp id or bare digits finds the Phone account; a Telegram
+  user id of ten digits is no phone number; a person "Burner" after "the BURNER" is refused.
   tests/test_device_names.py: "target phone" no longer matches "TARGET PHONE". make check:
   see the PR.
 - Open: Not measured on any model run. The case05 claims these address are development data
