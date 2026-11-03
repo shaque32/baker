@@ -1,7 +1,8 @@
 """`mabillon serve` and `mabillon demo` when their port is taken (cli/main.py _bind).
 
-A Mabillon already on the port is opened instead of a second one; another program on the port
-moves the screen to the next free port, and the line printed names it."""
+The screen moves to the next free port and the line printed names the port and who holds it.
+A Mabillon already on the port is never reused: it may hold another case, folder or examiner,
+or a demo case a reset has just replaced."""
 
 from __future__ import annotations
 
@@ -43,12 +44,14 @@ def test_another_program_on_the_port_moves_to_the_next_free_one(monkeypatch):
     assert "try --port 8766" not in note
 
 
-def test_a_mabillon_already_on_the_port_is_opened_not_doubled(monkeypatch):
+def test_a_mabillon_already_on_the_port_is_named_and_not_reused(monkeypatch):
     monkeypatch.setattr(cli, "_mabillon_on", lambda port: port == 8766)
     make, opened = _taken(8766)
     server, note = cli._bind(8766, make)
-    assert server is None and opened == []
-    assert "Mabillon is already running at http://127.0.0.1:8766/" in note
+    assert server == "server on 8767" and opened == [8767]
+    assert note == (
+        "Port 8766 is used by another Mabillon (stop it with Ctrl+C in its window); using 8767."
+    )
 
 
 def test_every_port_taken_says_so(monkeypatch):

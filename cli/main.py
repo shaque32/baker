@@ -560,22 +560,22 @@ def _mabillon_on(port: int) -> bool:
 
 
 def _bind(port: int, make):  # noqa: ANN001, ANN202
-    """Open the screen on `port`. If a Mabillon already answers there, returns (None, a line
-    saying so), and the caller opens that one. If another program holds the port, the next
-    free port of the PORT_TRIES after it is used and the line names it."""
+    """Open the screen on `port`, or, when the port is taken, on the next free one of the
+    PORT_TRIES after it, with a line saying why. A Mabillon already on the port is never reused:
+    it may hold another case, folder or examiner, or a demo case a reset has just replaced."""
     try:
         return make(port), ""
     except OSError as e:
         if not _in_use(e):
             raise SystemExit(f"cannot open port {port} on 127.0.0.1 ({e})") from e
-    if _mabillon_on(port):
-        return None, (
-            f"Mabillon is already running at http://127.0.0.1:{port}/. Use that one, or stop "
-            "it (Ctrl+C in its window) and run this again."
-        )
+    holder = (
+        "another Mabillon (stop it with Ctrl+C in its window)"
+        if _mabillon_on(port)
+        else "another program"
+    )
     for other in range(port + 1, port + 1 + PORT_TRIES):
         try:
-            return make(other), f"Port {port} is used by another program; using {other}."
+            return make(other), f"Port {port} is used by {holder}; using {other}."
         except OSError as e:
             if not _in_use(e):
                 raise SystemExit(f"cannot open port {other} on 127.0.0.1 ({e})") from e
@@ -597,13 +597,6 @@ def cmd_serve(a: argparse.Namespace) -> int:
         home = a.cases or cases_home()
         home.mkdir(parents=True, exist_ok=True)
     server, note = _bind(a.port, lambda port: make_server(a.db, port, a.expert, home=home))
-    if server is None:  # a Mabillon already answers on the port: open that one
-        print(note)
-        if a.open:
-            import webbrowser
-
-            webbrowser.open(f"http://127.0.0.1:{a.port}/")
-        return 0
     if note:
         print(note)
     where = f"case {a.db}" if a.db is not None else f"cases in {home}"
