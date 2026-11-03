@@ -35,7 +35,6 @@ FONT_CSS = (
     _face("IBM Plex Sans", "ibm-plex-sans-latin-wght-normal.woff2", "100 700", _LATIN)
     + _face("IBM Plex Sans", "ibm-plex-sans-cyrillic-wght-normal.woff2", "100 700", _CYRILLIC)
     + _face("Instrument Serif", "instrument-serif-latin-400-normal.woff2", "400", _LATIN)
-    + _face("Instrument Serif", "instrument-serif-latin-400-italic.woff2", "400", _LATIN, "italic")
     + _face("IBM Plex Mono", "ibm-plex-mono-latin-400-normal.woff2", "400", _LATIN)
     + _face("IBM Plex Mono", "ibm-plex-mono-cyrillic-400-normal.woff2", "400", _CYRILLIC)
 )
@@ -61,7 +60,7 @@ THEME_CSS = """
 :root { --fg: #141414; --bg: #f7f5f0; --card: #fdfcfa; --side: #f7f5f0; --panel: #efece5;
   --line: #e4e0d8; --line-strong: #cfc9bd; --muted: #5f5a51; --hover: #f5f2ec;
   --ink-2: #3d3a34;
-  --serif: var(--sans); --wordmark: "Instrument Serif", Georgia, serif;
+  --wordmark: "Instrument Serif", Georgia, serif;
   --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
   --ring: rgb(29 53 87 / 0.16); --accent-bg: #e9edf3; --unp: #5f5a51; --unp-bg: #efece5;
   --unp-line: #dcd7cc; --await: #1d3557;

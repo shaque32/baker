@@ -98,14 +98,12 @@ from core.contracts import (
     CheckOutcome,
     CheckResult,
     Claim,
-    ClaimExtractor,
     ClaimStatus,
     ClaimType,
     DeterministicCheck,
     EvidenceItem,
     EvidenceReviewer,
     EvidenceStatus,
-    GovDocParagraph,
     ModelCallOutcome,
     ModelRun,
     PipelineRunStatus,
@@ -847,29 +845,6 @@ def view_run(conn: sqlite3.Connection) -> dict | None:
     if attempt is not None and attempt["manifest"]:
         return attempt
     return last_run(conn)
-
-
-# ---------------------------------------------------------------- claims step
-
-
-def extract_claims(
-    conn: sqlite3.Connection, extractor: ClaimExtractor, paragraphs: list[GovDocParagraph]
-) -> list[Claim]:
-    """Store the extractor's proposals. The expert then accepts, edits or removes each one."""
-    claims = extractor.extract(paragraphs)
-    para_ids = {p.id for p in paragraphs}
-    with conn:
-        for c in claims:
-            if c.paragraph_id not in para_ids:
-                raise ValueError(f"{c.id} cites paragraph {c.paragraph_id}, which was not given")
-            if c.status != ClaimStatus.PROPOSED:
-                raise ValueError(f"{c.id}: an extractor only proposes claims")
-            conn.execute(
-                "INSERT INTO claims (id, paragraph_id, text, claim_type, status, model_run_id)"
-                " VALUES (?, ?, ?, ?, ?, ?)",
-                (c.id, c.paragraph_id, c.text, c.claim_type.value, c.status.value, c.model_run_id),
-            )
-    return claims
 
 
 # ---------------------------------------------------------------- audit step
