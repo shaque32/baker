@@ -22,7 +22,7 @@
     never "people"; "quoted_text" only holds words inside the claim's quotation marks; a
     sender names only the sender; a message count names its two sides. Its header lists each
     change. PROPOSED_CHANGES.md has the exact edit to the signed copy, which stays v1.0.
-- Where: branch claude/project-thread-6i2msb-case-setup (merge after #209)
+- Where: PR #210 (merge after #209)
 - Verified: tests/test_case_setup_names.py (case.json matches the generators; case04 and
   case05 setup enter the names under the eval's expert actor; the names resolve in the filler
   to the affidavit's phones and number; "COURIER" reads as the alias "the COURIER"; the FENCE
