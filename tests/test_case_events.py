@@ -410,6 +410,49 @@ def test_code_dates_a_quoted_message_by_the_tie(events):
     )
 
 
+@pytest.mark.parametrize("day, made", [("March 21", True), ("March 22", False)])
+def test_a_models_range_must_be_the_day_the_claims_tie_names(events, day, made):
+    # Codex on #210: "On March 22, 2026, the day after the RAID" (the RAID on March 20) is
+    # refused when code reads its range; a model's range on the written date is refused too.
+    quote = "need 2 more by friday"
+    iso = {"March 21": "2026-03-21", "March 22": "2026-03-22"}[day]
+    nxt = {"March 21": "2026-03-22", "March 22": "2026-03-23"}[day]
+    window = {
+        "as_written": f"On {day}, 2026",
+        "start": f"{iso}T00:00",
+        "end": f"{nxt}T00:00",
+        "zone": "phone",
+    }
+    prop = {
+        "template_id": "record_time",
+        "people": ["PETROV"],
+        "accounts": [],
+        "handles": [],
+        "phones": [],
+        "channels": [],
+        "quoted_text": quote,
+        "count": None,
+        "duration": None,
+        "window": window,
+    }
+    filler = LocalAssumptionFiller(
+        FakeModel(json.dumps({"assumptions": [prop]})), events, template=DRAFT
+    )
+    c = Claim(
+        id="X5",
+        paragraph_id=PARA,
+        text=f'On {day}, 2026, the day after the RAID, PETROV wrote to @northstar: "{quote}".',
+        claim_type=ClaimType.COMMUNICATION,
+        status=ClaimStatus.ACCEPTED,
+    )
+    timed = [
+        a for a in TemplateAssumptionBuilder(filler).build(c) if a.template_id == "record_time"
+    ]
+    assert bool(timed) == made, filler.drops
+    if not made:
+        assert any("tie to a defined event are not one day" in d.reason for d in filler.drops)
+
+
 def test_a_claim_dated_by_an_event_is_not_tested_on_its_sender_alone(events):
     c = Claim(
         id="X3",

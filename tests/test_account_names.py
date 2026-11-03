@@ -776,3 +776,54 @@ def test_the_claims_own_words_read_an_alias_without_its_the(conn):
     assumptions, filler = build(conn, text, ClaimType.COUNT, [prop])
     (a,) = [a for a in assumptions if a.template_id == "message_count"]
     assert a.params.sent_by == (PETROV,), filler.drops
+
+
+# ---------------------------------------------------------------- Codex on #210
+
+
+@pytest.mark.parametrize("identifier", ["12125550182", "12125550122@s.whatsapp.net"])
+def test_no_contact_reads_a_number_named_by_its_whatsapp_id_or_bare_digits(conn, identifier):
+    # The expert may enter the number as bare digits or as WhatsApp writes it; "never
+    # communicated with the BURNER" still reads it as that number, not as an id.
+    actions.name_account(conn, identifier, ["the BURNER"], EXPERT, _clock)
+    text = "dev:item1 never communicated with the BURNER."
+    assumptions, filler = build(
+        conn, text, ClaimType.ABSENCE, [P("no_contact", phones=["dev:item1"])]
+    )
+    (a,) = [a for a in assumptions if a.template_id == "no_contact"]
+    digits = filler._named_number(identifier)
+    assert a.params.person_ids == (PETROV,) and a.params.account_ids
+    assert all(digits in filler.data.accounts[x].identifier for x in a.params.account_ids)
+
+
+def test_a_phone_name_is_read_in_the_claims_words_without_its_the(conn):
+    actions.name_device(conn, "dev:item1", ["the SAMSUNG"], EXPERT, _clock)
+    filler = _filler(conn)
+    assert filler._written_phones("SAMSUNG exchanged SMS messages with REYES.") == {"dev:item1"}
+    # "the SAMSUNG" is one place, not two
+    assert filler._phone_spans("the SAMSUNG exchanged SMS messages.") == [("dev:item1", 0, 11)]
+    with pytest.raises(Reject, match="lower case"):
+        filler._written_phones("a samsung exchanged SMS messages with REYES.")
+    # a count scoped to the other phone leaves the SAMSUNG untested
+    with pytest.raises(Reject, match="writes a phone the count does not search"):
+        filler._phones_kept(
+            "SAMSUNG exchanged 3 messages with REYES.", {"device_ids": ["dev:item2"]}
+        )
+
+
+def test_ids_that_differ_only_in_punctuation_are_two_accounts(conn):
+    for i, ident in enumerate(["alice.smith@example.com", "alice-smith@example.com"]):
+        conn.execute(
+            "INSERT INTO accounts (id, source_id, locator, device_id, app, identifier)"
+            f" VALUES ('acct:item1:Email:{i}', 'item1', 'Emails!{i}', 'dev:item1', 'Email', ?)",
+            (ident,),
+        )
+    assert account_names.holders(conn, "alice.smith@example.com") == ["acct:item1:Email:0"]
+    assert account_names.holders(conn, "Alice.Smith@Example.com") == ["acct:item1:Email:0"]
+    assert account_names.holders(conn, "alice-smith@example.com") == ["acct:item1:Email:1"]
+    actions.name_account(conn, "alice.smith@example.com", ["the MAILBOX"], EXPERT, _clock)
+    actions.name_account(conn, "alice-smith@example.com", ["the DROPBOX"], EXPERT, _clock)
+    assert account_names.logged_names(conn) == {
+        "alice.smith@example.com": ["the MAILBOX"],
+        "alice-smith@example.com": ["the DROPBOX"],
+    }
