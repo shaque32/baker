@@ -9,12 +9,12 @@ time and a quiet stretch are derived (computed by code). Nothing here is a verdi
 
 from __future__ import annotations
 
-import html
 import sqlite3
 from dataclasses import dataclass
 from datetime import timedelta
 
 from core.ingest import forwarded
+from core.report.fmt import e, q
 from core.timeline.check import (
     FLAGGED,
     STATUS_TEXT,
@@ -84,15 +84,6 @@ CSS = """
   .gap dl { grid-template-columns: minmax(0, 1fr); }
 }
 """
-
-
-def q(text: object) -> str:
-    """A cited span: text from the government document or the evidence."""
-    return f'<span class="q">{html.escape(str(text))}</span>'
-
-
-def e(text: object) -> str:
-    return html.escape("" if text is None else str(text))
 
 
 @dataclass(frozen=True)
