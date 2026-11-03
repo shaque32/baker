@@ -16,12 +16,12 @@ Display rules:
 
 from __future__ import annotations
 
-import html
 import sqlite3
 from collections.abc import Callable
 
 from core.contracts import Exhibit, ExhibitExcerpt, ExhibitMatch, MatchMethod
 from core.ingest import forwarded
+from core.report.fmt import e, q
 from core.restore.fold import differences
 from core.restore.match import MAX_MATCHES, omitted
 from core.restore.store import (
@@ -58,14 +58,6 @@ METHOD_WORDS = {
     MatchMethod.TOLERANT: "Tolerant match",
     MatchMethod.TRANSLITERATION: "Transliteration match (Cyrillic and Latin spelling)",
 }
-
-
-def q(text: object) -> str:
-    return f'<span class="q">{html.escape(str(text))}</span>'
-
-
-def e(text: object) -> str:
-    return html.escape("" if text is None else str(text))
 
 
 def shown(text: str) -> str:

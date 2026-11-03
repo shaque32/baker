@@ -539,7 +539,7 @@ class App:
                 body.encode("utf-8"),
                 [
                     ("Content-Type", "application/json; charset=utf-8"),
-                    ("Content-Disposition", 'attachment; filename="baker-flag-summary.json"'),
+                    ("Content-Disposition", 'attachment; filename="mabillon-flag-summary.json"'),
                     *self._security_headers(),
                 ],
             )
@@ -560,7 +560,7 @@ class App:
                 activity.csv_text(activity.steps(conn)).encode("utf-8"),
                 [
                     ("Content-Type", "text/csv; charset=utf-8"),
-                    ("Content-Disposition", 'attachment; filename="baker-activity.csv"'),
+                    ("Content-Disposition", 'attachment; filename="mabillon-activity.csv"'),
                     *self._security_headers(),
                 ],
             )
@@ -579,7 +579,7 @@ class App:
             resp = self._html(body)
             if download:
                 resp.headers.append(
-                    ("Content-Disposition", 'attachment; filename="baker-report.html"')
+                    ("Content-Disposition", 'attachment; filename="mabillon-report.html"')
                 )
             return resp
         return self._not_found(page, "no such page")
@@ -1454,7 +1454,7 @@ class App:
             text.encode("utf-8"),
             [
                 ("Content-Type", "text/plain; charset=utf-8"),
-                ("Content-Disposition", 'attachment; filename="baker-request-draft.txt"'),
+                ("Content-Disposition", 'attachment; filename="mabillon-request-draft.txt"'),
                 *self._security_headers(),
             ],
         )
@@ -1521,7 +1521,7 @@ class App:
                     ("Content-Type", "application/json; charset=utf-8"),
                     (
                         "Content-Disposition",
-                        f'attachment; filename="baker-bug-report-{stamp}.json"',
+                        f'attachment; filename="mabillon-bug-report-{stamp}.json"',
                     ),
                     *self._security_headers(),
                 ],
