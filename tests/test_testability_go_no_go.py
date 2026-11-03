@@ -281,3 +281,51 @@ def test_no_claim_the_agent_changed_never_passes_the_false_supported_bar(tmp_pat
         "no claim the agent changed, so the bar has nothing to score; 0 in the whole run, "
         "for information"
     )
+
+
+def test_a_no_stance_dev_check_measures_the_step_and_never_gives_a_go_no_go(tmp_path, monkeypatch):
+    """--no-stance: no stance model runs (a stand-in labels every candidate irrelevant), the
+    step's measures are recorded as usual, and the go/no-go is none given, even on a held-out
+    case with every other condition met."""
+    monkeypatch.setattr(rp, "TESTABILITY_GO_NO_GO_CASES", frozenset({"case01"}))
+    monkeypatch.setattr(rp, "TESTABILITY_X_PERCENT", 40.0)
+    monkeypatch.setattr(rp, "TESTABILITY_Y_BUDGET", {"calls": 1, "seconds": 600})
+    monkeypatch.setattr(rp, "TESTABILITY_CAP", 1)
+    monkeypatch.setattr(rp, "TESTABILITY_MIN_TESTABLE", 1)
+    calls: list[str] = []
+
+    def answers(prompt: str) -> str:
+        calls.append(prompt)
+        return _eval_answers(prompt)
+
+    model = RuntimeFake(respond=answers)
+    runs = []
+    for out in (tmp_path, tmp_path / "repeat"):
+        runs.append(
+            rp.run_once(
+                "case01",
+                "real",
+                "accept",
+                out,
+                None,
+                "rubber-stamp",
+                claim_ids=["C01"],
+                filler_model=model,
+                testability_cap=1,
+                testability_model=model,
+                stance=False,
+            )
+        )
+    assert not any('"stance"' in _eval_answers(p) for p in calls)  # no stance prompt was sent
+    t = json.loads((tmp_path / "run.json").read_text("utf-8"))["testability"]
+    assert t["stance"] == "skipped" and t["tries"] >= 1
+    r = rp.report_go_no_go("case01", tmp_path, "rubber-stamp", runs[0], runs[1])
+    assert r["decision"] == "none given"
+    assert r["why"] == ["stance was skipped (--no-stance, a dev check)"]
+
+
+def test_spent_cases_give_no_go_no_go_and_no_stance_needs_the_step():
+    # case04 (2026-10-30) and case05 (2026-11-03) each had their go/no-go of record
+    assert not {"case04", "case05"} & rp.TESTABILITY_GO_NO_GO_CASES
+    with pytest.raises(SystemExit):
+        rp.main(["--case", "case01", "--mode", "real", "--no-stance"])
