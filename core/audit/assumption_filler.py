@@ -874,8 +874,9 @@ def unquoted_time_quote(claim_text: str, p: _ProposalOut) -> tuple[_ProposalOut,
     noted, rather than refusing the time range. Nothing else changes: a claim that quotes
     anything (straight, curly or single quotes) keeps the rule that the words lie inside its
     quotes, a message's time range is picked by its words and still needs them, and every
-    other template that takes words (a sender, a meaning, a contact's saved name, a weekday)
-    rests on them and keeps refusing."""
+    other template that takes words keeps its own rule for them (a sender's and a meaning's
+    lie inside the claim's quotes; a contact's saved name or a weekday is written in the
+    claim)."""
     words = p.quoted_text.strip()
     if (
         p.template_id != "record_time"
@@ -1454,7 +1455,9 @@ def event_windows(text: str, events: list[case_events.CaseEvent]) -> list[Stated
     days after the KEDZIE YARD theft" with the theft
     on March 21, 2026 is March 23 from 00:00 to March 24 00:00, wall clock; the filler places
     it in the phone's zone like a date the claim writes. The event's name is matched whole
-    (case_events.spans); a name written inside quotation marks is not read."""
+    (case_events.spans), a name in capitals only where it is written in capitals, so "the day
+    after the search" ties nothing to "the SEARCH" and the claim's own date, if any, stands; a
+    name written inside quotation marks is not read."""
     plain = _unquoted(_flat(_nfc(text)))
     found = [(ev, s, t) for ev in events for s, t in case_events.spans(ev.name, plain)]
     if not found:

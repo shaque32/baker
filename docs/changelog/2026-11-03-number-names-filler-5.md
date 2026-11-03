@@ -45,13 +45,18 @@
     than guess which they mean; the testability lookups do not list them. A name with a digit
     ("SUBJECT-1", "CW-1") is no ordinary word and is still matched in any case ("Subject 1",
     Codex on #181), as is a name with a lower-case letter ("the iPHONE"). This narrows #139: a
-    phone the expert named "TARGET PHONE" is no longer matched by "target phone".
+    phone the expert named "TARGET PHONE" is no longer matched by "target phone". Event names
+    (#201) follow the same rule (case_events.spans, asked by the validation thread): "the day
+    after the search" ties nothing to the event "the SEARCH", so a claim with no other date is
+    refused as before and a claim's own written date stands. Clash checks still compare every
+    name in any case, so "the search" and "the SEARCH" can never name two things.
   - **A call's unquoted words.** When the claim quotes nothing at all (no straight, curly or
     single quotes), quoted_text on a call's time range (record_time with channel "call") is
     dropped, and the drop is logged with the words, instead of refusing the time range: a
     call holds no words, so its check rests on parties, app and time. Everything else keeps
-    refusing words the claim does not quote: a sender, a meaning, a contact's saved name, a
-    weekday, and a message's time range, which is picked by its words.
+    its rule: a sender's, a meaning's and a message's time range's words must lie inside the
+    claim's quotation marks (a message's time range is picked by its words), and a contact's
+    saved name or a weekday must be written in the claim, quoted or not.
   - **Code reads a plainly stated time.** When the words a model gives for a range state one
     plain range, code's reading of them is the range, not the model's arithmetic: "at about
     11:50 p.m. on November 14, 2025" is 11:42 to 11:58 p.m. (8 minutes either side, as
@@ -92,8 +97,11 @@
   #209: a number named by its WhatsApp id or bare digits finds the Phone account; a Telegram
   user id of ten digits is no phone number; a person "Burner" after "the BURNER" is refused;
   "COURIER sent ..." reads the sender as the alias "the COURIER".
-  tests/test_device_names.py: "target phone" no longer matches "TARGET PHONE". make check:
-  see the PR.
+  tests/test_device_names.py: "target phone" no longer matches "TARGET PHONE".
+  tests/test_case_events.py: "The day after the search" dates nothing for the SEARCH (refused,
+  no date) and "On March 21, 2026, the day after the search" keeps its own date; "The SEARCH"
+  with its "the" in any case is read; "OP-7" and "KEDZIE YARD theft" match in any case; an
+  alias and an event that differ only in case still clash, both ways. make check: see the PR.
 - Open: Not measured on any model run. The case05 claims these address are development data
   (case05 is spent); the go/no-go of record is a fresh case06 on Arsh's Mac. A blocker fixed
   does not mean a claim converts: some case05 claims had two. The case screen has no form for
@@ -108,4 +116,5 @@
   record the document's names for a number or account id ("the BURNER"), with `mabillon
   name-account`; the audit reads a claim's use of the name as that number, never as a person,
   and every report lists the names as the expert's statement. A name matches with or without a
-  leading "the", and a name in capitals only where it is written in capitals (#209)."
+  leading "the", and a name in capitals (a person's alias, a phone's, a number's or an event's)
+only where it is written in capitals (#209)."
