@@ -293,10 +293,17 @@ def test_the_second_read_answers_every_finding(built):
     for f in key.SECOND_READ:
         assert f.claims and set(f.claims) <= ids, f.finding_id
         assert f.outcome in ("fixed", "kept") and f.answer, f.finding_id
+    # the reader's own sureness: two likely, eight questions
+    assert [f.finding_id for f in key.SECOND_READ if f.sureness == "likely"] == ["R1", "R2"]
     sheet_md = (built / "SIGNING_SHEET.md").read_text(encoding="utf-8")
     assert f"## Second read ({key.SECOND_READ_DATE})" in sheet_md
+    header = "| Finding | Claims | Reader's sureness | Builder's view | Outcome | Answer |"
+    assert header in sheet_md
     for f in key.SECOND_READ:
-        assert f"| {f.finding_id} | {', '.join(f.claims)} |" in sheet_md
+        assert (
+            f"| {f.finding_id} | {', '.join(f.claims)} | {f.sureness} | {f.severity} | "
+            f"{f.outcome} |"
+        ) in sheet_md
     answer_key = (built / "ANSWER_KEY_DRAFT.md").read_text(encoding="utf-8")
     assert f"The second read ({key.SECOND_READ_DATE}) changed no verdict" in answer_key
 
@@ -320,6 +327,12 @@ def test_the_sheet_names_the_alias_departure(built, meta):
     assert ("item3", "Skip", "+13605550184") in contacts
     assert ("item2", "Duke", "+12535550151") in contacts
     owners = {dev.owner for dev in story.DEVICES}
+    # the note's claim lists agree with each claim's hazard label
+    hazard = {c.claim_id: c.hazard for c in key.CLAIMS}
+    assert all(hazard[cid] == "same_name" for cid in key.ALIAS_SAME_NAME)
+    assert all(hazard[cid] == "contact_name" for cid in key.ALIAS_CONTACT_NAME)
+    assert "the same-name hazard in C09, C24, C35, C39 and C45" in sheet_md
+    assert "the contact-name\nhazard in C12" in sheet_md
     same_name = {story.ACCOUNTS["ten_sms"].person, story.ACCOUNTS["mar_sms"].person}
     assert same_name.isdisjoint(owners)
 

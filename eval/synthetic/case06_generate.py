@@ -701,14 +701,15 @@ def second_read() -> list[str]:
         f"## Second read ({key.SECOND_READ_DATE})",
         "",
         "A second, blind reviewer read the draft key and sheet against rules 0.4.0 and the three",
-        "reports. Read this before signing. One line per finding: fixed (the key, the sheet or",
-        f"the wording changed), or kept and why. Verdicts changed: {changed or 'none'}.",
+        "reports. Read this before signing. One line per finding: how sure the reader was",
+        "(likely, or a question), the builder's view of it, then fixed (the key, the sheet or",
+        f"the wording changed) or kept and why. Verdicts changed: {changed or 'none'}.",
         "",
-        "| Finding | Claims | Graded | Outcome | Answer |",
-        "|---|---|---|---|---|",
+        "| Finding | Claims | Reader's sureness | Builder's view | Outcome | Answer |",
+        "|---|---|---|---|---|---|",
         *[
-            f"| {f.finding_id} | {', '.join(f.claims)} | {f.severity} | {f.outcome} | "
-            f"{_cell(f.answer)} |"
+            f"| {f.finding_id} | {', '.join(f.claims)} | {f.sureness} | {f.severity} | "
+            f"{f.outcome} | {_cell(f.answer)} |"
             for f in key.SECOND_READ
         ],
     ]
@@ -762,6 +763,10 @@ SKIP_DECOY = "Item 3's 'Skip' (+13605550184, Telegram user id 8820484)"
 DUKE_DECOY = "Item 2's 'Duke' (+12535550151)"
 
 
+def _and(ids: tuple[str, ...]) -> str:
+    return ids[0] if len(ids) == 1 else f"{', '.join(ids[:-1])} and {ids[-1]}"
+
+
 def defined_names() -> list[str]:
     """What case.json enters at case setup, as the affidavit defines it."""
     out = [
@@ -774,9 +779,10 @@ def defined_names() -> list[str]:
         "**A departure from the brief's naming rule, on purpose.** The brief says no alias",
         "equals another person's name. Two do: the aliases SKIP (VARLOW) and DUKE (PELLOQUIN)",
         f"equal the first names of two people who own no phone, {SKIP_DECOY} and {DUKE_DECOY}.",
-        "That is the same-name hazard (C09, C12, C24, C35, C39 and C45), as real affidavits",
-        "define nicknames that other people also go by. Keeping the rule instead means new",
-        "decoys for those six claims.",
+        f"That is the same-name hazard in {_and(key.ALIAS_SAME_NAME)}, and the contact-name",
+        f"hazard in {_and(key.ALIAS_CONTACT_NAME)} (Item 2's 'Duke' against Item 1's 'Duke'), as",
+        "real affidavits define nicknames that other people also go by. Keeping the rule",
+        "instead means new decoys for those claims.",
         "",
         "| Kind | For | Names |",
         "|---|---|---|",

@@ -67,9 +67,10 @@ without 'the'. The BROKER is a person who owns no seized phone, so it is in no l
 **A departure from the brief's naming rule, on purpose.** The brief says no alias
 equals another person's name. Two do: the aliases SKIP (VARLOW) and DUKE (PELLOQUIN)
 equal the first names of two people who own no phone, Item 3's 'Skip' (+13605550184, Telegram user id 8820484) and Item 2's 'Duke' (+12535550151).
-That is the same-name hazard (C09, C12, C24, C35, C39 and C45), as real affidavits
-define nicknames that other people also go by. Keeping the rule instead means new
-decoys for those six claims.
+That is the same-name hazard in C09, C24, C35, C39 and C45, and the contact-name
+hazard in C12 (Item 2's 'Duke' against Item 1's 'Duke'), as
+real affidavits define nicknames that other people also go by. Keeping the rule
+instead means new decoys for those claims.
 
 | Kind | For | Names |
 |---|---|---|
@@ -91,21 +92,22 @@ decoys for those six claims.
 ## Second read (2026-11-03)
 
 A second, blind reviewer read the draft key and sheet against rules 0.4.0 and the three
-reports. Read this before signing. One line per finding: fixed (the key, the sheet or
-the wording changed), or kept and why. Verdicts changed: none.
+reports. Read this before signing. One line per finding: how sure the reader was
+(likely, or a question), the builder's view of it, then fixed (the key, the sheet or
+the wording changed) or kept and why. Verdicts changed: none.
 
-| Finding | Claims | Graded | Outcome | Answer |
-|---|---|---|---|---|
-| R1 | C40, C02 | wrong verdict | fixed | Agreed: as drafted no record fixed 'trailer', and paragraph 2 made the trailer his own. The data changed, not the verdict: the trailer is now VARLOW's (paragraph 2; his offer 'if u ever need a driver to pull ur trailer im around'), the WhatsApp thread on Item 3 now opens with 'left the trailer at ur place. hitch lock and trailer keys are in ur mailbox' eight minutes before the quote, the quote reads 'nobody else tows it', and the core row says trailer keys. C02's text is now about the boathouse key, so no record points the keys elsewhere. Supported, now fixed by the records. |
-| R2 | C39 | weak | fixed | Agreed: the decoy said no, so the described trap did not support. Item 2's 'Duke' now answers her 'need someone with a truck to pull my skiff trailer to the ramp sat, u in?' with 'sure, sat at 9', so taking him for PELLOQUIN does find a yes. Hazard and gap rewritten. Unproven unchanged. |
-| R3 | C12, C24, C37, C43, C35, C45, C03 | weak | fixed | Agreed: three of his texts read like an insider's. Item 2's 'Duke' (+12535550151) is now plainly her mechanic: he opens with 'this is duke at marchetti marine. ur skiff is in bay 2', quotes a 'skiff rebuild quote: 1900 for the big one, 700 for the kicker, parts extra', wants out of 'the boat show booth', and sets her own 8 a.m. Thursday at the fuel dock for the skiff. No text of his touches the scheme's prices, plans or times. Verdicts unchanged: C12 contradicted, C24 unproven, C37 and C43 supported. |
-| R4 | C05 | sheet | fixed | Agreed: the key now cites 0163's 'this is the other number' (Item 3, Feb 20) and VARLOW's 'use the other number' (Mar 19, Items 1 and 3), and the authorship note says Item 3 saves +13605550184 as 'Skip' beside 0163 as 'Skip 2', so 'its skip' is not relied on. Supported unchanged. |
-| R5 | C09, C12, C24, C35, C39, C45 | sheet | fixed | Agreed: the sheet now says plainly that SKIP and DUKE equal the first names of two people who own no phone, on purpose (the same-name hazard), as a departure from the brief's naming rule, and lists it under What to decide. |
-| R6 | C47 | cosmetic | kept | No change: the expert action that enters number names accepts any id an account in the case holds, so a Telegram user id is a valid number name. |
-| R7 | C03, C09, C12, C24, C35, C37, C39, C41, C43, C44, C45 | cosmetic | fixed | Agreed: rationales, hazards and the alias notes now name decoys only by the contact name, number or id a report shows, or by words in their own texts. |
-| R8 | C23, C24 | sheet | fixed | Agreed: the claims name no app, so their rows no longer set a channel. C23 keeps the SPARE LINE's account, C24 the two people. |
-| R9 | C23 | weak | fixed | Agreed: the exchange now reads 'ya both 150 outboards, locked up', and the key and the meaning row cite the Feb 24 'ya 4 outboards, two are 150s' for the horsepower. |
-| R10 | C34 | weak | kept | Kept: paragraph 5 itself puts the clock change in the TRANSFER ('the night the clocks went forward, at 2 a.m.'), signed case05 C34 has the same construction, and the sheet lists the window. A clock-time wording would have to end on 2 a.m., a minute that never existed that night, which is a worse trap than the one it removes. |
+| Finding | Claims | Reader's sureness | Builder's view | Outcome | Answer |
+|---|---|---|---|---|---|
+| R1 | C40, C02 | likely | wrong verdict | fixed | Agreed: as drafted no record fixed 'trailer', and paragraph 2 made the trailer his own. The data changed, not the verdict: the trailer is now VARLOW's (paragraph 2; his offer 'if u ever need a driver to pull ur trailer im around'), the WhatsApp thread on Item 3 now opens with 'left the trailer at ur place. hitch lock and trailer keys are in ur mailbox' eight minutes before the quote, the quote reads 'nobody else tows it', and the core row says trailer keys. C02's text is now about the boathouse key, so no record points the keys elsewhere. Supported, now fixed by the records. |
+| R2 | C39 | likely | weak | fixed | Agreed: the decoy said no, so the described trap did not support. Item 2's 'Duke' now answers her 'need someone with a truck to pull my skiff trailer to the ramp sat, u in?' with 'sure, sat at 9', so taking him for PELLOQUIN does find a yes. Hazard and gap rewritten. Unproven unchanged. |
+| R3 | C12, C24, C37, C43, C35, C45, C03 | question | weak | fixed | Agreed: three of his texts read like an insider's. Item 2's 'Duke' (+12535550151) is now plainly her mechanic: he writes 'this is duke at marchetti marine. ur skiff is in bay 2' (Feb 12), quotes a 'skiff rebuild quote: 1900 for the big one, 700 for the kicker, parts extra', wants out of 'the boat show booth', and sets her own 8 a.m. Thursday at the fuel dock for the skiff. No text of his touches the scheme's prices, plans or times. Verdicts unchanged: C12 contradicted, C24 unproven, C37 and C43 supported. |
+| R4 | C05 | question | sheet | fixed | Agreed: the key now cites 0163's 'this is the other number' (Item 3, Feb 20) and VARLOW's 'use the other number' (Mar 19, Items 1 and 3), and the authorship note says Item 3 saves +13605550184 as 'Skip' beside 0163 as 'Skip 2', so 'its skip' is neither relied on nor cited as key evidence. Supported unchanged. |
+| R5 | C09, C12, C24, C35, C39, C45 | question | sheet | fixed | Agreed: the sheet now says plainly that SKIP and DUKE equal the first names of two people who own no phone, on purpose (the same-name hazard), as a departure from the brief's naming rule, and lists it under What to decide. |
+| R6 | C47 | question | cosmetic | kept | No change: the expert action that enters number names accepts any id an account in the case holds, so a Telegram user id is a valid number name. |
+| R7 | C03, C09, C12, C24, C35, C37, C39, C41, C43, C44, C45 | question | cosmetic | fixed | Agreed: rationales, hazards and the alias notes now name decoys only by the contact name, number or id a report shows, or by words in their own texts. |
+| R8 | C23, C24 | question | sheet | fixed | Agreed: the claims name no app, so their rows no longer set a channel. C23 keeps the SPARE LINE's account, C24 the two people. |
+| R9 | C23 | question | weak | fixed | Agreed: the exchange now reads 'ya both 150 outboards, locked up', and the key and the meaning row cite the Feb 24 'ya 4 outboards, two are 150s' for the horsepower. |
+| R10 | C34 | question | weak | kept | Kept: paragraph 5 itself puts the clock change in the TRANSFER ('the night the clocks went forward, at 2 a.m.'), signed case05 C34 has the same construction, and the sheet lists the window. A clock-time wording would have to end on 2 a.m., a minute that never existed that night, which is a worse trap than the one it removes. |
 
 ## Aliases inside quotes
 

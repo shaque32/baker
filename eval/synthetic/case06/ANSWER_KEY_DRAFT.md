@@ -12,7 +12,7 @@ gate.
 
 Draft split: 24 supported, 12 contradicted, 12 unproven; 3 claims need more than one phone. Every intended verdict was recorded before the story was written, and none changed while building. The second read (2026-11-03) changed no verdict; see `SIGNING_SHEET.md`.
 
-Shared assumption: Item 1 is used by VARLOW, Item 2 by COYLE and Item 3 by PELLOQUIN, so each phone's own accounts speak for its owner. The key treats this as given, as the affidavit does; it is not proven by the data. Paragraph 3 says the SPARE LINE is VARLOW's second number, and a record from his own phone ties him to it: on February 20 VARLOW's own number texts the HAULER 'new number for boat stuff is 360 555 0163. this one stays personal' (on Items 1 and 3), and fifteen minutes later the SPARE LINE writes 'its skip. new number for boat stuff' to COYLE, who saves it as 'Captain'. C05 rests on that tie, in an authorship row the expert decides. Paragraph 3 says the WORK NUMBER is PELLOQUIN's; it writes 'on shift till 11, this is the work line' to VARLOW, and Item 1 saves it as 'Duke work'. C16 and C08 are about the number, not about who held it.
+Shared assumption: Item 1 is used by VARLOW, Item 2 by COYLE and Item 3 by PELLOQUIN, so each phone's own accounts speak for its owner. The key treats this as given, as the affidavit does; it is not proven by the data. Paragraph 3 says the SPARE LINE is VARLOW's second number, and a record from his own phone ties him to it: on February 20 VARLOW's own number texts the HAULER 'new number for boat stuff is 360 555 0163. this one stays personal' (on Items 1 and 3), and twenty minutes later the SPARE LINE writes 'this is the other number' to the HAULER (Item 3). C05 rests on that tie, in an authorship row the expert decides. The SPARE LINE also writes 'its skip. new number for boat stuff' to COYLE, who saves it as 'Captain', but Item 3 saves another number as 'Skip', so the key does not rest on that nickname. Paragraph 3 says the WORK NUMBER is PELLOQUIN's; it writes 'on shift till 11, this is the work line' to VARLOW, and Item 1 saves it as 'Duke work'. C16 and C08 are about the number, not about who held it.
 
 Reading rules (how the key reads approximate or defined wording):
 
@@ -196,7 +196,6 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 | `msg:item3:Chats!412` | key | 2/20/2025 12:25:00 PM(UTC-8) | SMS +13605550163 Skip 2 | +13605550138 (owner) | this is the other number |
 | `msg:item1:Chats!362` | key | 3/19/2025 11:30:00 PM(UTC+0) | SMS +13605550114 (owner) | +13605550138 Duke | use the other number |
 | `msg:item3:Chats!324` | key | 3/19/2025 3:30:00 PM(UTC-8) | SMS +13605550114 Emmett V | +13605550138 (owner) | use the other number |
-| `msg:item2:Chats!374` | key | 2/20/2025 12:20:30 PM(UTC-8) | SMS +13605550163 Captain | +12535550127 (owner) | its skip. new number for boat stuff |
 | `msg:item3:Chats!313` | wrong reading | 2/26/2025 3:30:20 PM(UTC-8) | SMS +13605550114 Emmett V | +13605550138 (owner) | u around tmrw? |
 
 Arsh's decision: [ ] agree  [ ] change to ______  Note:
@@ -320,7 +319,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 - Type: identity. Page 2, paragraph 11. Wording: affidavit (a designation (CC-2), a role (the HAULER), a contact name in quotes).
 - Core assumptions: PELLOQUIN's SMS account sent the message Item 2 received on Mar 11
-- Why: The only copy is on Item 2, from +12535550151, the number Item 2 saves as 'Duke'. That number introduced itself to her on Feb 12 as 'duke at marchetti marine' with her skiff in its shop, and its every message is about her skiff or the shop; Item 2 saves PELLOQUIN separately, as 'Duncan P' (+13605550138), which did not send it.
+- Why: The only copy is on Item 2, from +12535550151, the number Item 2 saves as 'Duke'. On Feb 12 that number wrote to her 'this is duke at marchetti marine. ur skiff is in bay 2, pick up anytime', and its other messages are about her skiff, boat repairs and a boat show booth; Item 2 saves PELLOQUIN separately, as 'Duncan P' (+13605550138), which did not send it.
 - Hazard: `contact_name`. DUKE is PELLOQUIN's nickname (paragraph 2), and Item 1 saves PELLOQUIN as 'Duke'; Item 2's 'Duke' is another person. A reading that takes Item 2's 'Duke' for the HAULER passes the sender. The sheet names PELLOQUIN.
 - Alias inside a quote: DUKE matches the quoted sender name "Duke" and points to PELLOQUIN. Wrong: on Item 2, 'Duke' is +12535550151, a mechanic by his own texts. The claim's own 'the HAULER' is PELLOQUIN, rightly.
 - Key evidence (and the wrong reading's records, which are not key evidence unless
@@ -553,7 +552,7 @@ Arsh's decision: [ ] agree  [ ] change to ______  Note:
 
 - Type: content_meaning. Page 3, paragraph 17. Wording: affidavit (defined terms (KITTIWAKE THEFT, the HAULER), designations, a day set by an event, indirect speech).
 - Core assumptions: COYLE sent the message to VARLOW on Mar 15; 'duke' meant PELLOQUIN
-- Why: Observed at 7:10 p.m. PDT on Mar 15; VARLOW answered 'ok'. Which Duke is not fixed. COYLE's own phone saves PELLOQUIN as 'Duncan P' and saves another number, +12535550151, as 'Duke' (it introduced itself as 'duke at marchetti marine'); that morning that 'Duke' wrote to her 'i want out of the boat show booth this year, too much hassle'. Nothing in the exchange says which one she meant, or out of what.
+- Why: Observed at 7:10 p.m. PDT on Mar 15; VARLOW answered 'ok'. Which Duke is not fixed. COYLE's own phone saves PELLOQUIN as 'Duncan P' and saves another number, +12535550151, as 'Duke' (on Feb 12 it wrote 'this is duke at marchetti marine'); that morning that 'Duke' wrote to her 'i want out of the boat show booth this year, too much hassle'. Nothing in the exchange says which one she meant, or out of what.
 - Hazard: `same_name`. A reading that takes DUKE (paragraph 2) as fixing the quote supports the meaning; one that takes her own phone's 'Duke' contradicts it. Neither is fixed. The sheet names COYLE and VARLOW.
 - Alias inside a quote: DUKE matches "duke" in the quote "duke wants out" and points to PELLOQUIN. Not fixed: Item 2 also saves another number as 'Duke' (+12535550151), and the conversation does not say which Duke is meant. The claim's own 'the HAULER' is PELLOQUIN.
 - Key evidence (and the wrong reading's records, which are not key evidence unless

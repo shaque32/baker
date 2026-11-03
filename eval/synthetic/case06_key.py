@@ -124,9 +124,11 @@ DEVICE_ATTRIBUTION = (
     "not proven by the data. Paragraph 3 says the SPARE LINE is VARLOW's second number, and a "
     "record from his own phone ties him to it: on February 20 VARLOW's own number texts the "
     "HAULER 'new number for boat stuff is 360 555 0163. this one stays personal' (on Items 1 "
-    "and 3), and fifteen minutes later the SPARE LINE writes 'its skip. new number for boat "
-    "stuff' to COYLE, who saves it as 'Captain'. C05 rests on that tie, in an authorship row "
-    "the expert decides. Paragraph 3 says the WORK NUMBER is PELLOQUIN's; it writes 'on shift "
+    "and 3), and twenty minutes later the SPARE LINE writes 'this is the other number' to the "
+    "HAULER (Item 3). C05 rests on that tie, in an authorship row the expert decides. The "
+    "SPARE LINE also writes 'its skip. new number for boat stuff' to COYLE, who saves it as "
+    "'Captain', but Item 3 saves another number as 'Skip', so the key does not rest on that "
+    "nickname. Paragraph 3 says the WORK NUMBER is PELLOQUIN's; it writes 'on shift "
     "till 11, this is the work line' to VARLOW, and Item 1 saves it as 'Duke work'. C16 and C08 "
     "are about the number, not about who held it."
 )
@@ -237,7 +239,6 @@ CLAIMS: tuple[DraftClaim, ...] = (
             ("item3", "sp_new"),
             ("item1", "vp_s4"),
             ("item3", "vp_s4"),
-            ("item2", "sc_new"),
         ),
         "Incoming on Item 3 from +13605550163 at 7:15 p.m. PST on Wednesday, Feb 26. VARLOW's "
         "own number gave the HAULER that number on Feb 20 ('new number for boat stuff is 360 555 "
@@ -370,10 +371,11 @@ CLAIMS: tuple[DraftClaim, ...] = (
         "11, 2025 was sent by the HAULER.",
         ("PELLOQUIN's SMS account sent the message Item 2 received on Mar 11",),
         (("item2", "mc_lower"), ("item2", "contact:Duke"), ("item2", "mc_intro")),
-        "The only copy is on Item 2, from +12535550151, the number Item 2 saves as 'Duke'. That "
-        "number introduced itself to her on Feb 12 as 'duke at marchetti marine' with her skiff "
-        "in its shop, and its every message is about her skiff or the shop; Item 2 saves "
-        "PELLOQUIN separately, as 'Duncan P' (+13605550138), which did not send it.",
+        "The only copy is on Item 2, from +12535550151, the number Item 2 saves as 'Duke'. On "
+        "Feb 12 that number wrote to her 'this is duke at marchetti marine. ur skiff is in bay "
+        "2, pick up anytime', and its other messages are about her skiff, boat repairs and a "
+        "boat show booth; Item 2 saves PELLOQUIN separately, as 'Duncan P' (+13605550138), "
+        "which did not send it.",
         "DUKE is PELLOQUIN's nickname (paragraph 2), and Item 1 saves PELLOQUIN as 'Duke'; "
         "Item 2's 'Duke' is another person. A reading that takes Item 2's 'Duke' for the HAULER "
         "passes the sender. The sheet names PELLOQUIN.",
@@ -632,7 +634,7 @@ CLAIMS: tuple[DraftClaim, ...] = (
         (("item1", "cv_duke"), ("item2", "cv_duke")),
         "Observed at 7:10 p.m. PDT on Mar 15; VARLOW answered 'ok'. Which Duke is not fixed. "
         "COYLE's own phone saves PELLOQUIN as 'Duncan P' and saves another number, "
-        "+12535550151, as 'Duke' (it introduced itself as 'duke at marchetti marine'); that "
+        "+12535550151, as 'Duke' (on Feb 12 it wrote 'this is duke at marchetti marine'); that "
         "morning that 'Duke' wrote to her 'i want out of the boat show booth this year, too "
         "much hassle'. Nothing in the exchange says which one she meant, or out of what.",
         "A reading that takes DUKE (paragraph 2) as fixing the quote supports the meaning; one "
@@ -2608,6 +2610,11 @@ ALIAS_IN_QUOTES: dict[str, str] = {
     "does not say which Duke is meant. The claim's own 'the HAULER' is PELLOQUIN.",
 }
 
+# Claims whose decoy is a non-owner whose first name equals an alias the affidavit defines
+# (SKIP or DUKE), by hazard label. C44's same-name decoy is 'Emmett', a first name, not an alias.
+ALIAS_SAME_NAME: tuple[str, ...] = ("C09", "C24", "C35", "C39", "C45")
+ALIAS_CONTACT_NAME: tuple[str, ...] = ("C12",)
+
 # Verdicts a second read changed: claim id -> the verdict first drafted. Empty until a second
 # reader reads the draft.
 FIRST_DRAFT_VERDICT: dict[str, str] = {}
@@ -2619,7 +2626,8 @@ SECOND_READ_DATE = "2026-11-03"
 class Finding:
     finding_id: str
     claims: tuple[str, ...]
-    severity: str  # wrong verdict, sheet, weak, cosmetic (graded by the builder)
+    sureness: Literal["likely", "question"]  # the second reader's own label
+    severity: str  # wrong verdict, sheet, weak, cosmetic (the builder's view)
     outcome: Literal["fixed", "kept"]
     answer: str
 
@@ -2629,6 +2637,7 @@ SECOND_READ: tuple[Finding, ...] = (
     Finding(
         "R1",
         ("C40", "C02"),
+        "likely",
         "wrong verdict",
         "fixed",
         "Agreed: as drafted no record fixed 'trailer', and paragraph 2 made the trailer his own. "
@@ -2642,6 +2651,7 @@ SECOND_READ: tuple[Finding, ...] = (
     Finding(
         "R2",
         ("C39",),
+        "likely",
         "weak",
         "fixed",
         "Agreed: the decoy said no, so the described trap did not support. Item 2's 'Duke' now "
@@ -2652,11 +2662,12 @@ SECOND_READ: tuple[Finding, ...] = (
     Finding(
         "R3",
         ("C12", "C24", "C37", "C43", "C35", "C45", "C03"),
+        "question",
         "weak",
         "fixed",
         "Agreed: three of his texts read like an insider's. Item 2's 'Duke' (+12535550151) is "
-        "now plainly her mechanic: he opens with 'this is duke at marchetti marine. ur skiff is "
-        "in bay 2', quotes a 'skiff rebuild quote: 1900 for the big one, 700 for the kicker, "
+        "now plainly her mechanic: he writes 'this is duke at marchetti marine. ur skiff is in "
+        "bay 2' (Feb 12), quotes a 'skiff rebuild quote: 1900 for the big one, 700 for the kicker, "
         "parts extra', wants out of 'the boat show booth', and sets her own 8 a.m. Thursday at "
         "the fuel dock for the skiff. No text of his touches the scheme's prices, plans or "
         "times. Verdicts unchanged: C12 contradicted, C24 unproven, C37 and C43 supported.",
@@ -2664,16 +2675,18 @@ SECOND_READ: tuple[Finding, ...] = (
     Finding(
         "R4",
         ("C05",),
+        "question",
         "sheet",
         "fixed",
         "Agreed: the key now cites 0163's 'this is the other number' (Item 3, Feb 20) and "
         "VARLOW's 'use the other number' (Mar 19, Items 1 and 3), and the authorship note says "
-        "Item 3 saves +13605550184 as 'Skip' beside 0163 as 'Skip 2', so 'its skip' is not "
-        "relied on. Supported unchanged.",
+        "Item 3 saves +13605550184 as 'Skip' beside 0163 as 'Skip 2', so 'its skip' is "
+        "neither relied on nor cited as key evidence. Supported unchanged.",
     ),
     Finding(
         "R5",
         ("C09", "C12", "C24", "C35", "C39", "C45"),
+        "question",
         "sheet",
         "fixed",
         "Agreed: the sheet now says plainly that SKIP and DUKE equal the first names of two "
@@ -2683,6 +2696,7 @@ SECOND_READ: tuple[Finding, ...] = (
     Finding(
         "R6",
         ("C47",),
+        "question",
         "cosmetic",
         "kept",
         "No change: the expert action that enters number names accepts any id an account in the "
@@ -2691,6 +2705,7 @@ SECOND_READ: tuple[Finding, ...] = (
     Finding(
         "R7",
         ("C03", "C09", "C12", "C24", "C35", "C37", "C39", "C41", "C43", "C44", "C45"),
+        "question",
         "cosmetic",
         "fixed",
         "Agreed: rationales, hazards and the alias notes now name decoys only by the contact "
@@ -2699,6 +2714,7 @@ SECOND_READ: tuple[Finding, ...] = (
     Finding(
         "R8",
         ("C23", "C24"),
+        "question",
         "sheet",
         "fixed",
         "Agreed: the claims name no app, so their rows no longer set a channel. C23 keeps the "
@@ -2707,6 +2723,7 @@ SECOND_READ: tuple[Finding, ...] = (
     Finding(
         "R9",
         ("C23",),
+        "question",
         "weak",
         "fixed",
         "Agreed: the exchange now reads 'ya both 150 outboards, locked up', and the key and the "
@@ -2715,6 +2732,7 @@ SECOND_READ: tuple[Finding, ...] = (
     Finding(
         "R10",
         ("C34",),
+        "question",
         "weak",
         "kept",
         "Kept: paragraph 5 itself puts the clock change in the TRANSFER ('the night the clocks "
