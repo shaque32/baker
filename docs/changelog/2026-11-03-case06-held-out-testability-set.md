@@ -1,4 +1,4 @@
-## 2026-11-03: Synthetic case06 draft, the held-out set for the next testability go/no-go
+## 2026-11-03: Synthetic case06, signed, the held-out set for the next testability go/no-go; testability prompt v1.1 signed
 - Changed: a new synthetic case06 is the held-out set for the testability step's next go/no-go,
   because the case05 go/no-go (2026-11-03, NO-GO on conversion, 5 of 33) spent case05. A fresh
   builder wrote it from a brief (project files, `plans/case06-brief.md`) without reading the
@@ -46,8 +46,15 @@
 
   `eval/run_pipeline.py` registers case06's draft key, sheet, reports and affidavit PDF, and
   `TESTABILITY_GO_NO_GO_CASES` names case06 alone (registered before the build started).
-  `PROPOSED_CHANGES.md` holds Arsh's signing entry with the commands that copy the drafts into
-  `eval/gold/case06/`.
+
+  Signed: Arsh approved on 2026-11-03 at 21:03Z, in the project thread, both the case06 key and
+  sheet (as they stood after the second read and its recheck, the SKIP and DUKE naming
+  departure included) and the testability prompt v1.1 (the draft in #210). On his choice the
+  same minute, the conversion bar stays as it is; how many claims the agent changed end on the
+  key's verdict is reported beside it, not a bar (#210). Both are applied here from their
+  `PROPOSED_CHANGES.md` entries: `eval/gold/case06/gold.jsonl` and `assumptions.jsonl` are the
+  drafts with only `labeled_by` and `labeled_at` changed, and
+  `core/audit/prompts/agent_testability.md` is v1.1, its body the draft's word for word.
 - Where: PR #211 (branch `claude/project-thread-6i2msb-case06`, merge after #210)
 - Verified: `tests/test_synthetic_case06.py` (synthetic only, 38 tests): the generator gives the
   same bytes twice and the committed drafts match a fresh build; the importer reads all three
@@ -59,12 +66,16 @@
   sheet gives all 48 drafted verdicts (accuracy 1.00, 0 false supported against the draft key,
   partly by construction since the simulated expert reads that key). The signing commands were
   run on a scratch copy: 48 key lines and 89 rows, `grep -c DRAFT` prints 0 for both, and both
-  then report as signed. make check: see the PR.
-- Open: no go/no-go has run on case06. It needs #201, #209 and #210 merged, prompt v1.1 signed,
-  Arsh's signature on this key and sheet, and an overnight run on Arsh's Mac (about 10 to 12
-  hours, unmeasured for case06); the first complete run is the result of record. Whether the
-  conversion bar should count only claims that end on the key's verdict is Arsh's decision,
-  asked before the run. The model-free result shows only that the right sheet gives the drafted
-  verdicts, not that the hazards trap a model.
-- Affects: none (eval data draft)
+  then report as signed. Applied the same way: `grep -c DRAFT` prints 0 for both signed files
+  (48 key lines, 89 rows), each differs from its draft only in `labeled_by` and `labeled_at`,
+  `key_status` and `sheet_status` say signed, and the signed prompt's body equals the draft's
+  from `<!-- prompt starts -->` down. make check: see the PR.
+- Open: no go/no-go has run on case06. It needs #201, #209, #210 and this PR merged, and an
+  overnight run on Arsh's Mac (about 10 to 12 hours, unmeasured for case06); the first complete
+  run is the result of record. Nothing is tuned on case06 before it (plans/testability-pass.md,
+  "Frozen before the case06 run"). The model-free result shows only that the right sheet gives
+  the signed verdicts, not that the hazards trap a model. Prompt v1.1 is unmeasured on any
+  model run.
+- Affects: the testability agent's prompt (v1.1; eval only, the agent stays off by default); no
+  privacy, network or verdict rule change; no customer-facing claim.
 - Status doc: no change

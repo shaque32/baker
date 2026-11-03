@@ -1163,6 +1163,10 @@ placeholders, and change the header's second line to "v1.1, signed by Arsh on <d
 docs/prompts/agent_testability.md draft v1.1 (v1.0: 2026-10-28)." The draft's header then says
 signed. `diff <(sed -n '/prompt starts/,$p' docs/prompts/agent_testability.md) <(sed -n
 '/prompt starts/,$p' core/audit/prompts/agent_testability.md)` prints nothing.
+SIGNED by Arsh on 2026-11-03 at 21:03Z ("approve", project thread "Build agents into the
+audit"), the draft v1.1 as it stands in PR #210. APPLIED on claude/project-thread-6i2msb-case06
+(#211): the signed copy's body is the draft's from `<!-- prompt starts -->` down (the diff
+above prints nothing), its header says v1.1, and the draft's header says signed.
 
 ## 2026-11-03 claude/project-thread-6i2msb-case06: sign case06's key and assumption sheet
 File: eval/gold/case06/gold.jsonl, eval/gold/case06/assumptions.jsonl (new)
@@ -1192,3 +1196,10 @@ Diff: on main after the case06 PR merges, from the repo root (macOS and GNU sed)
    grep -c DRAFT eval/gold/case06/gold.jsonl eval/gold/case06/assumptions.jsonl
 The last line must print 0 for both files. The copies are the drafts with only `labeled_by`
 (and, in the key, `labeled_at`) changed: 48 key lines and 89 sheet rows.
+SIGNED by Arsh on 2026-11-03 at 21:03Z ("approve", project thread "Build agents into the
+audit"), the key and sheet as they stood after the second blind read and its recheck (24
+supported, 12 contradicted, 12 unproven; 89 rows), with the conversion bar unchanged (his choice
+on the card the same minute: the share of changed claims on the key's verdict is reported beside
+it, not a bar). APPLIED on claude/project-thread-6i2msb-case06 (#211) with the commands above,
+D=2026-11-03: only `labeled_by` and `labeled_at` changed; `grep -c DRAFT` prints 0 for both, and
+both report as signed.

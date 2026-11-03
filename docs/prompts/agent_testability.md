@@ -1,11 +1,11 @@
-# Testability agent prompt (DRAFT v1.1, for Arsh to sign; v1.0 is signed)
+# Testability agent prompt (draft v1.1, signed by Arsh on 2026-11-03)
 
 Draft by the agent thread "Build agents into the audit", 2026-10-28 (plans/agentic.md step 3).
-Arsh signed draft v0.1 word for word as v1.0 on 2026-10-28. This is draft v1.1 (2026-11-03,
-plans/testability-pass.md step 3), not signed: `core/audit/testability.py` loads only the signed
-copy at `core/audit/prompts/agent_testability.md`, which stays v1.0 until Arsh signs. The eval
-can name this draft (`eval/run_pipeline.py --testability-prompt`), and its output then says the
-prompt is a draft and gives no go/no-go.
+Arsh signed draft v0.1 word for word as v1.0 on 2026-10-28, and this draft v1.1 (2026-11-03,
+plans/testability-pass.md step 3) word for word as v1.1 on 2026-11-03. `core/audit/testability.py`
+loads only the signed copy at `core/audit/prompts/agent_testability.md`. The eval can still name
+this file (`eval/run_pipeline.py --testability-prompt`), and its output then says the prompt is a
+draft and gives no go/no-go; the go/no-go runs on the signed copy.
 
 Changes from v1.0, each a rule the templates already have, written out:
 - A retry changes what the reasons name. In the case05 go/no-go the second try repeated the
