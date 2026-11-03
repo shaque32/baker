@@ -9,7 +9,7 @@ prompt is a draft and gives no go/no-go.
 
 Changes from v1.0, each a rule the templates already have, written out:
 - A retry changes what the reasons name. In the case05 go/no-go the second try repeated the
-  first word for word on nearly every claim, so the cap of 2 bought nothing.
+  first exactly on 23 of the 29 claims that had two, so the cap of 2 bought little.
 - A name the lookups list as an account (an expert's name for a number, "TARGET TELEPHONE 2")
   goes in "accounts", never "people". "people" takes people only, never a phone, an app or such
   a name; "accounts" never takes a person, an app or a phone.
