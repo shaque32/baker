@@ -31,7 +31,9 @@
     than picking one (Codex on #209).
   - **"the" either way.** A model's answer matches a person alias or a phone name whole, with
     or without a leading "the" on either side (core/identity/aliases.answers,
-    device_names.keys): "COURIER" for "the COURIER". Clash checks compare the form without
+    device_names.keys): "COURIER" for "the COURIER", and so does the claim's own wording when
+    code reads a person from it ("COURIER sent ...", Codex on #209). Clash checks compare the
+    form without
     "the" too (aliases.forms), so an alias "the COURIER" is refused when another person is
     named "Courier", and the same holds for events and number names.
   - **A defined term in capitals counts only in capitals** (Baker Eval on #209). A person
@@ -73,7 +75,7 @@
   Agreed with the validation thread, which owns assumption_filler.py, on 2026-11-03, on top of
   #201 (case events, FILLER_VERSION 4).
 - Where: PR #209 (merge after #201)
-- Verified: tests/test_account_names.py (70 tests on synthetic case01): entering, replacing
+- Verified: tests/test_account_names.py (71 tests on synthetic case01): entering, replacing
   and clearing names; every refusal; holders across apps and WhatsApp ids; the name never
   resolves to a person and adds no person or link; Not current; bundle repair inputs; the
   report line passes the word check; the CLI; a model's account answer, a code-read call
@@ -88,7 +90,8 @@
   word does; "the courier", "a burner phone" and "the samsung" are never the alias, number or
   phone named in capitals; "spoke by phone about the messages" never names SMS. Codex on
   #209: a number named by its WhatsApp id or bare digits finds the Phone account; a Telegram
-  user id of ten digits is no phone number; a person "Burner" after "the BURNER" is refused.
+  user id of ten digits is no phone number; a person "Burner" after "the BURNER" is refused;
+  "COURIER sent ..." reads the sender as the alias "the COURIER".
   tests/test_device_names.py: "target phone" no longer matches "TARGET PHONE". make check:
   see the PR.
 - Open: Not measured on any model run. The case05 claims these address are development data
