@@ -1,4 +1,4 @@
-## 2026-11-03: `mabillon demo` and `serve` handle a port already in use (#PR)
+## 2026-11-03: `mabillon demo` and `serve` handle a port already in use (#212)
 - Changed: when the port was taken, `mabillon demo` said "cannot open port 8766 ... try
   --port 8766", naming the port that had just failed (seen on Arsh's Mac with an earlier demo
   still running). Now `cli/main.py` `_bind` asks the port's server with one HEAD request on
@@ -8,7 +8,7 @@
   free port of the ten after it and the line printed names it. Any other bind error is shown
   without a port suggestion. The HEAD request is answered before any page runs, so nothing is
   logged in a case's audit log.
-- Where: PR #N
+- Where: PR #212
 - Verified: tests/test_serve_port.py (7 tests: free port, next free port, Mabillon already
   running, all ports taken, other bind errors, a real Mabillon server recognised, another
   program not taken for Mabillon); by hand on Linux: a second `serve` on a running Mabillon's
