@@ -11,7 +11,7 @@
   - the repeat was byte-identical (110 calls compared);
   - 1.88 calls and 71.2 s per claim.
   case05 is now spent as held-out data and is not re-run. The testability step stays off.
-- Where: branch `claude/project-thread-6i2msb-case05-result`
+- Where: PR #208
 - Verified: Arsh's run on a MacBook Air M4, 24 GB, macOS 15.6.1 arm64, from 2026-11-02 20:38Z
   until the go/no-go was written at 2026-11-03 08:46Z. It used filler code version 3, rules
   0.4.0, and qwen3-14b-q4_k_m (SHA-256 500a8806e85e) for assumptions, stance and testability,
