@@ -141,6 +141,7 @@ from core.identity.aliases import (
     either_spans,
     in_lower_case,
     person_names,
+    without_the,
 )
 from core.identity.aliases import key as alias_key
 from core.identity.aliases import spans as alias_spans
@@ -3589,20 +3590,30 @@ class LocalAssumptionFiller:
         return {did for did, _, _ in self._phone_spans(text)}
 
     def _phone_spans(self, text: str) -> list[tuple[str, int, int]]:
-        """(device, start, end) for each place `_written_phones` finds a device written."""
+        """(device, start, end) for each place `_written_phones` finds a device written. A name
+        the expert gave a phone is found with or without its leading "the" ("SAMSUNG exchanged
+        ..." for "the SAMSUNG"), as a model's answer is (device_names.keys; Codex on #210),
+        the outermost where two overlap."""
         named = logged_names(self.conn)
-        out = []
+        found: set[tuple[str, int, int]] = set()
         for did, sid, label in self.conn.execute("SELECT id, source_id, label FROM devices"):
-            for x in (did, sid, label, *named.get(did, [])):
-                if not (x and name_key(x)):
+            names = named.get(did, [])
+            forms = [*(x for x in (did, sid, label) if x), *names]
+            forms += [b for n in names if (b := without_the(n)) != n]
+            for x in dict.fromkeys(forms):
+                if not name_key(x):
                     continue
                 pattern = r"(?<!\w)" + r"\s*".join(map(re.escape, name_key(x))) + r"(?!\w)"
                 for m in re.finditer(pattern, text, re.I):
-                    if x in named.get(did, []) and in_lower_case(x, m.group(0)):
+                    if x not in (did, sid, label) and in_lower_case(x, m.group(0)):
                         # "the samsung" for the expert's "the SAMSUNG": it may be any Samsung
                         raise Reject(_lowered(m.group(0), f"the phone name {x!r}"))
-                    out.append((did, *m.span()))
-        return out
+                    found.add((did, *m.span()))
+        return sorted(
+            (d, s, e)
+            for d, s, e in found
+            if not any(o[0] == d and o[1] <= s and e <= o[2] and o != (d, s, e) for o in found)
+        )
 
     def _numbers_named(self, text: str) -> list[tuple[str, int, int]]:
         """(identifier, start, end) where the text writes a name the expert gave a number or an
@@ -3628,7 +3639,7 @@ class LocalAssumptionFiller:
         """True when the claim, outside quoted words, writes a name the expert gave a phone
         number: it writes that number, as `_writes_a_number` reads one."""
         return any(
-            phone_digits(ident) is not None
+            self._named_number(ident) is not None
             for ident, _, _ in self._numbers_named(_unquoted(_nfc(claim_text)))
         )
 
@@ -3949,7 +3960,7 @@ class LocalAssumptionFiller:
         for ident, start, end in self._numbers_named(bare):
             # "had no contact with the BURNER": the number the expert named. A name for an id
             # that is no number is no party code reads here.
-            if (d := phone_digits(ident)) is None:
+            if (d := self._named_number(ident)) is None:
                 raise Reject(f"no contact: {bare[start:end]!r} names an id, not a number")
             numbers.add(d)
             spans.append((start, end))
@@ -4224,6 +4235,12 @@ class LocalAssumptionFiller:
         if zone is None and w.zone == "UTC":
             raise Reject("the range does not say UTC")
         check_window(start, end, w.as_written, claim_text, para, template_id)
+        tied = event_windows(claim_text, self._events())
+        if tied and not any(t.start <= start and end <= t.end for t in tied):
+            # "On March 22, 2026, the day after the RAID" with the RAID on March 20: the claim's
+            # date and its tie are not one day, so a range on either tests half the claim, as
+            # `_stated` refuses it when code reads the range (Codex on #210)
+            raise Reject("the time range and the claim's tie to a defined event are not one day")
         # When the range's own words state one plain range, code's reading of them is the
         # range, not the model's arithmetic: "at about 11:50 p.m." is 11:42 to 11:58, never the
         # 11:50 to midnight a model may give and the 15 minutes check_window allows let pass.

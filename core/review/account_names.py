@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
+import unicodedata
 
 from core.identity import aliases
 
@@ -42,10 +43,16 @@ def number_digits(words: str) -> str | None:
 
 def identifier_key(identifier: str) -> str:
     """How an identifier is compared: a number by its digits (a WhatsApp id by the number it
-    holds), anything else by its alias key."""
-    jid = re.fullmatch(r"(\d{8,15})@s\.whatsapp\.net", identifier.strip())
-    d = jid.group(1) if jid else number_digits(identifier)
-    return f"tel:{d}" if d is not None else f"id:{aliases.key(identifier)}"
+    holds), anything else whole, its punctuation kept, as the checks compare account ids
+    (core/audit/checks/_common.norm_identifier): "alice.smith@example.com" and
+    "alice-smith@example.com" are two accounts (Codex on #210). An address or handle with an
+    "@" is compared in any case, as an email or Instagram id is there."""
+    ident = unicodedata.normalize("NFC", identifier.strip())
+    jid = re.fullmatch(r"(\d{8,15})@s\.whatsapp\.net", ident)
+    d = jid.group(1) if jid else number_digits(ident)
+    if d is not None:
+        return f"tel:{d}"
+    return f"id:{ident.casefold() if '@' in ident else ident}"
 
 
 def holders(conn: sqlite3.Connection, identifier: str) -> list[str]:

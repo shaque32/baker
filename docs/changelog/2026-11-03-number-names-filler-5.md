@@ -28,12 +28,15 @@
     still that number on the phone app; digits only an app's user id holds are no phone
     number. A person added after a number was named, with a name the number's name matches,
     is refused, and an answer that would name both a person and a number is refused rather
-    than picking one (Codex on #209).
+    than picking one (Codex on #209). A no-contact party named by such a WhatsApp id or bare
+    digits reads as the number too; an id other than a number is compared whole, its
+    punctuation kept, so "alice.smith@example.com" and "alice-smith@example.com" are two
+    accounts with their own names (Codex on #210).
   - **"the" either way.** A model's answer matches a person alias or a phone name whole, with
     or without a leading "the" on either side (core/identity/aliases.answers,
     device_names.keys): "COURIER" for "the COURIER", and so does the claim's own wording when
-    code reads a person from it ("COURIER sent ...", Codex on #209). Clash checks compare the
-    form without
+    code reads a person from it ("COURIER sent ...", Codex on #209), and a phone from it
+    ("SAMSUNG exchanged ...", Codex on #210). Clash checks compare the form without
     "the" too (aliases.forms), so an alias "the COURIER" is refused when another person is
     named "Courier", and the same holds for events and number names.
   - **A defined term in capitals counts only in capitals** (Baker Eval on #209). A person
@@ -49,7 +52,10 @@
     (#201) follow the same rule (case_events.spans, asked by the validation thread): "the day
     after the search" ties nothing to the event "the SEARCH", so a claim with no other date is
     refused as before and a claim's own written date stands. Clash checks still compare every
-    name in any case, so "the search" and "the SEARCH" can never name two things.
+    name in any case, so "the search" and "the SEARCH" can never name two things. A model's
+    range must also lie on the day a claim's tie names, as code's own reading already had to
+    (#201): "On March 22, 2026, the day after the RAID" with the RAID on March 20 is refused
+    either way (Codex on #210).
   - **A call's unquoted words.** When the claim quotes nothing at all (no straight, curly or
     single quotes), quoted_text on a call's time range (record_time with channel "call") is
     dropped, and the drop is logged with the words, instead of refusing the time range: a
@@ -101,7 +107,11 @@
   tests/test_case_events.py: "The day after the search" dates nothing for the SEARCH (refused,
   no date) and "On March 21, 2026, the day after the search" keeps its own date; "The SEARCH"
   with its "the" in any case is read; "OP-7" and "KEDZIE YARD theft" match in any case; an
-  alias and an event that differ only in case still clash, both ways. make check: see the PR.
+  alias and an event that differ only in case still clash, both ways; a model's range on a
+  written date that is not the tied day is refused. Codex on #210: no contact with a number
+  named by its WhatsApp id or bare digits; "SAMSUNG exchanged ..." reads the phone named "the
+  SAMSUNG", once, and a count on the other phone is refused; two email ids differing only in
+  punctuation keep their own names. make check: see the PR.
 - Open: Not measured on any model run. The case05 claims these address are development data
   (case05 is spent); the go/no-go of record is a fresh case06 on Arsh's Mac. A blocker fixed
   does not mean a claim converts: some case05 claims had two. The case screen has no form for
