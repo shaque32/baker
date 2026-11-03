@@ -234,7 +234,7 @@ def test_the_activity_table_is_in_the_report_only_when_the_expert_includes_it(db
     assert "<h2>Examiner activity</h2>" in report and "Not included." in report
     assert "Time on its pages" not in report
     page = get(app, "/activity").text
-    assert "In the report: left out</strong> (the default)" in page
+    assert "In the report: left out.</strong>" in page
     assert "Include activity in the report" in page
 
     assert post(app, "/activity/report", include="1").status == 303
@@ -302,7 +302,7 @@ def test_activity_page_csv_and_log_page(db, conn):
     hashes = dict(conn.execute("SELECT seq, hash FROM audit_log").fetchall())
     assert all(hashes[int(x["seq"])] == x["entry_hash"] for x in rows)
     log = get(app, "/log").text
-    assert "page views not shown" in log and "<td>view</td>" not in log
+    assert "Shown (" in log and "<td>view</td>" not in log  # page views hidden by default
     assert "<td>view</td>" in get(app, "/log", views="1").text
 
 

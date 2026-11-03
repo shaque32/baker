@@ -42,6 +42,9 @@ CSS = """
   background: none; font-size: 13px; }
 .pg-claim #verdict p.format-notice { margin: 8px 0; }
 .pg-claim #verdict p.format-notice strong { font-weight: 500; }
+.pg-claim #verdict details.fmt > summary { color: var(--ink-2); }
+.pg-claim #verdict details.fmt > summary strong { font-weight: 500; }
+.pg-claim #verdict details.fmt p.format-notice { margin-left: 18px; }
 .pg-claim #verdict .in > details { margin-top: 10px; }
 .pg-claim #verdict .in > details > summary { font-size: 13px; }
 .pg-claim #verdict > .in.vacts { display: flex; flex-wrap: wrap; align-items: baseline;
@@ -187,6 +190,20 @@ CSS = """
   outline: 1.5px solid var(--accent); outline-offset: 0; }
 .pg-claim .msg .cited, .pg-evidence .msg .cited { font-size: 12px; }
 
+/* the side ledger keeps the open claim in view. A ledger link lands on that claim's row
+   (#lg-<id>), which scrolls the ledger to it, a third of the way down; the window stays at
+   the top of the new claim (the padding below is only set while a ledger row is the target).
+   scroll-initial-target centres the open claim on any load, after a form or from the
+   overview, where the browser supports it (Chrome, Edge). No script: the page's policy
+   forbids it. */
+.pg-claim aside.side .ledger { overflow: clip; } /* not a scroll box, so the aside is "nearest" */
+.pg-claim aside.side .ledger li { scroll-margin-top: 30vh; }
+.pg-claim aside.side .ledger li.on { scroll-initial-target: nearest; scroll-snap-align: center; }
+/* where nothing scrolled the ledger (Safari after a form), the open claim's row still shows:
+   it sticks to the ledger's top or bottom edge until the list is scrolled to it */
+.pg-claim aside.side .ledger li.on { position: sticky; top: 0; bottom: 0; z-index: 1; }
+html:has(.pg-claim aside.side .ledger li:target) { scroll-padding-top: 100vh; }
+
 /* ---- one evidence item */
 .pg-evidence { max-width: 820px; }
 .pg-evidence p.ev-of { color: var(--muted); max-width: 70ch; }
@@ -196,6 +213,9 @@ CSS = """
 
 @media (max-width: 960px) {
   .pg-claim .claim-main { max-width: none; }
+  /* the ledger sits below the claim here: opening a claim stays at the top of the page */
+  .pg-claim aside.side .ledger li { scroll-margin-top: 100000px; }
+  .pg-claim aside.side .ledger li.on { position: relative; }
 }
 @media (max-width: 600px) {
   .pg-claim #verdict > .in, .pg-claim #verdict > .in.vacts { padding-left: 16px;

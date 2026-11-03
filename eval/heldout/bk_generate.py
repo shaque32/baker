@@ -59,12 +59,21 @@ WRITERS: dict[str, Writer] = {
 }
 
 
+# Each item's random stream is keyed by its place in this block, counted on from the plain
+# item count of eval.heldout 1.3.0 (1,150 test, 575 dev), never by its id: plain families
+# added later (1.4.0 added three) move the ids but leave these items as they were.
+STREAM_BASE = {"test": 1150, "dev": 575}
+
+
 def bk_drafts(split: str) -> list[tuple[BkSlot, BkDraft, dict[str, str]]]:
     """Every planned slot of the split with its writer's draft and the names its people read
     by, in id order; the draft's rationale already reads by those names."""
     out = []
-    for slot in bk_schedule()[split]:
-        rng = item_rng(BK_GENERATOR, SEEDS[split], slot.index)
+    planned = bk_schedule()[split]
+    first = planned[0].index if planned else 1
+    for slot in planned:
+        stream = STREAM_BASE[split] + 1 + (slot.index - first)
+        rng = item_rng(BK_GENERATOR, SEEDS[split], stream)
         draft = WRITERS[slot.family](slot, rng)
         names = name_people(rng, slot, draft)
         draft.rationale = readable(draft.rationale, names)
