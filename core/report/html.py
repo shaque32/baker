@@ -107,6 +107,7 @@ from core.report import paired as paired_html
 from core.report import restore as restore_html
 from core.report import selection as selection_html
 from core.report import timeline as timeline_html
+from core.report.fmt import e, q, said
 from core.review import activity, audit_log, device_names
 from core.review.status import (
     AWAITING_EXPERT,
@@ -331,21 +332,6 @@ details summary { cursor: pointer; font-size: 13px; font-weight: 500; color: var
   .noprint { display: none; }
 }
 """
-
-
-def q(text: object) -> str:
-    """A cited span: text from the government document or the evidence, not the tool's words."""
-    return f'<span class="q">{html.escape(str(text))}</span>'
-
-
-def said(text: object) -> str:
-    """A reason or note an expert typed, as they wrote it. Never for Mabillon's or a model's
-    text."""
-    return f'<span class="said">{html.escape(str(text))}</span>'
-
-
-def e(text: object) -> str:
-    return html.escape("" if text is None else str(text))
 
 
 def withheld_word(word: str) -> str:

@@ -12,12 +12,12 @@ or changes a verdict.
 
 from __future__ import annotations
 
-import html
 import re
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from core.report.fmt import e
 from core.report.letter import letter_body
 from core.report.paired import paired_html
 from core.report.restore import METHOD_WORDS, context_table, highlighted, q
@@ -87,10 +87,6 @@ ul.sel-quotes li { margin: 0 0 8px; font-size: 13.5px; line-height: 1.5; }
 @media (max-width: 600px) { .bub { max-width: 92%; } .sel-convo { padding: 12px 10px; } }
 @media print { .sel-passage { break-inside: avoid; } }
 """
-
-
-def e(text: object) -> str:
-    return html.escape("" if text is None else str(text))
 
 
 GAP_WORDS = (
