@@ -1,4 +1,4 @@
-## 2026-11-03: Per-launch screen key: only the browser Mabillon opened can use the screen (#PR)
+## 2026-11-03: Per-launch screen key: only the browser Mabillon opened can use the screen (#215)
 - Changed: `127.0.0.1` answers every account on the computer, so another account on a shared lab
   machine could read an open, unlocked case and the form token on its pages (security checklist
   gap A, 2026-11-03). Each launch now makes a random key (`ui/screen_key.py`). `mabillon serve`
@@ -10,7 +10,7 @@
   Ctrl+C, SIGTERM or the Terminal window closing (SIGHUP). The install smoke tests
   (`packaging/smoke_ui.py`, `packaging/safari_scroll.py`) read that file and go through the
   launch link. First PR of the desktop-app plan (plans/desktop-app-sign-in.md).
-- Where: branch claude/project-thread-jvh1pc
+- Where: PR #215
 - Verified: `tests/test_screen_key.py` (11 tests: refused without the key, launch link sets the
   cookie, wrong keys and other ports refused, app token check still behind the key, key file
   mode and cleanup, second launch opens the running screen); a demo run on Linux driven by
